@@ -1,0 +1,77 @@
+{
+  "session_id": "SPEC-简辑批量视频编辑器-2026-09-11",
+  "generated_at": "2026-09-11T23:18:21+08:00",
+  "version": 1,
+  "terms": [
+    {
+      "term": "原始素材",
+      "definition": "用户导入且永不被简辑修改或覆盖的视频文件。",
+      "aliases": ["原视频", "输入视频"],
+      "first_defined_in": "product-brief.md",
+      "category": "core"
+    },
+    {
+      "term": "素材批次",
+      "definition": "本次需要套用同一编辑模板的一组原始素材。",
+      "aliases": ["批次"],
+      "first_defined_in": "product-brief.md",
+      "category": "core"
+    },
+    {
+      "term": "编辑模板",
+      "definition": "可保存、复用并应用于整个素材批次的图层与滤镜配置。",
+      "aliases": ["模板"],
+      "first_defined_in": "product-brief.md",
+      "category": "core"
+    },
+    {
+      "term": "文字图层",
+      "definition": "具有内容、样式、层级和归一化布局的文字元素。",
+      "aliases": ["文字"],
+      "first_defined_in": "product-brief.md",
+      "category": "core"
+    },
+    {
+      "term": "贴纸图层",
+      "definition": "引用本地图片并具有层级和归一化布局的视觉元素。",
+      "aliases": ["贴纸"],
+      "first_defined_in": "product-brief.md",
+      "category": "core"
+    },
+    {
+      "term": "全局滤镜",
+      "definition": "作用于整条视频完整画面的单个颜色效果及强度参数。",
+      "aliases": ["滤镜"],
+      "first_defined_in": "product-brief.md",
+      "category": "core"
+    },
+    {
+      "term": "验证样片",
+      "definition": "使用最终渲染链路对一条素材产生的预检输出。",
+      "aliases": ["样片"],
+      "first_defined_in": "product-brief.md",
+      "category": "technical"
+    },
+    {
+      "term": "导出任务",
+      "definition": "一条原始素材与一个冻结模板快照组合后的渲染工作单元。",
+      "aliases": ["任务"],
+      "first_defined_in": "product-brief.md",
+      "category": "technical"
+    },
+    {
+      "term": "导出批次",
+      "definition": "同一次启动并共享模板快照的一组导出任务。",
+      "aliases": ["导出队列"],
+      "first_defined_in": "product-brief.md",
+      "category": "technical"
+    },
+    {
+      "term": "输出成片",
+      "definition": "成功导出的独立 MP4 文件。",
+      "aliases": ["输出视频", "成片"],
+      "first_defined_in": "product-brief.md",
+      "category": "business"
+    }
+  ]
+}

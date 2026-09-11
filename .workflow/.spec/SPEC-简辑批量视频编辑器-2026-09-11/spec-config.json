@@ -1,0 +1,92 @@
+{
+  "session_id": "SPEC-简辑批量视频编辑器-2026-09-11",
+  "seed_input": "在 Ubuntu 上做一个简单剪辑工具：批量导入一批原始视频，为它们套用同一组贴纸、文字和滤镜，然后分别批量导出，供重复简单剪辑使用。",
+  "input_type": "text",
+  "timestamp": "2026-09-11T23:18:21+08:00",
+  "mode": "interactive",
+  "complexity": "moderate",
+  "depth": "standard",
+  "focus_areas": [
+    "批量导入与素材管理",
+    "可复用编辑模板",
+    "预览与导出一致性",
+    "批量渲染队列",
+    "Ubuntu 本地运行与数据安全"
+  ],
+  "seed_analysis": {
+    "problem_statement": "用户需要把同一套简单视觉处理反复应用到一批原始视频；通用剪辑软件逐条编辑和导出的操作成本过高，且容易产生参数不一致。",
+    "target_users": [
+      "需要批量处理短视频的个人创作者或运营人员"
+    ],
+    "domain": "Ubuntu 本地桌面视频批处理与轻量剪辑",
+    "constraints": [
+      "首个版本只面向 Ubuntu 桌面环境",
+      "原始素材必须保持不变",
+      "媒体处理必须在本机完成",
+      "同一模板应用于多个输入并分别生成输出"
+    ],
+    "dimensions": [
+      "素材兼容性",
+      "模板表达能力",
+      "批量导出可靠性",
+      "编辑预览体验",
+      "本地数据与错误恢复"
+    ]
+  },
+  "has_codebase": false,
+  "spec_type": "platform",
+  "iteration_count": 0,
+  "iteration_history": [],
+  "refined_requirements_file": "refined-requirements.json",
+  "phasesCompleted": [
+    {
+      "phase": 1,
+      "name": "discovery",
+      "output_file": "spec-config.json",
+      "completed_at": "2026-09-11T23:18:21+08:00"
+    },
+    {
+      "phase": 1.5,
+      "name": "requirement-clarification",
+      "output_file": "refined-requirements.json",
+      "discussion_rounds": 1,
+      "completed_at": "2026-09-11T23:18:21+08:00"
+    },
+    {
+      "phase": 2,
+      "name": "product-brief",
+      "output_file": "product-brief.md",
+      "completed_at": "2026-09-11T23:18:21+08:00"
+    },
+    {
+      "phase": 3,
+      "name": "requirements",
+      "output_dir": "requirements/",
+      "output_index": "requirements/_index.md",
+      "file_count": 11,
+      "completed_at": "2026-09-11T23:18:21+08:00"
+    },
+    {
+      "phase": 4,
+      "name": "architecture",
+      "output_dir": "architecture/",
+      "output_index": "architecture/_index.md",
+      "file_count": 4,
+      "completed_at": "2026-09-11T23:18:21+08:00"
+    },
+    {
+      "phase": 5,
+      "name": "epics-stories",
+      "output_dir": "epics/",
+      "output_index": "epics/_index.md",
+      "file_count": 5,
+      "completed_at": "2026-09-11T23:18:21+08:00"
+    },
+    {
+      "phase": 6,
+      "name": "readiness-check",
+      "output_file": "readiness-report.md",
+      "completed_at": "2026-09-11T23:18:21+08:00"
+    }
+  ]
+}
