@@ -26,4 +26,19 @@ describe("TemplateCompiler", () => {
     expect(command.textFiles[0].content).toContain("$(not a command)");
     expect(escapeFilterValue("a:b,c;[d]\\e")).toBe("a\\:b\\,c\\;\\[d\\]\\\\e");
   });
+
+  it("wraps full-width CJK glyphs within the normalized layer width", async () => {
+    const template = createDefaultTemplate();
+    template.layers.push({
+      id: crypto.randomUUID(), type: "text", content: "简辑真实素材测试", fontFamily: "Noto Sans CJK SC", fontSizeRatio: 0.08,
+      color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.004,
+      x: 0.06, y: 0.08, width: 0.88, opacity: 1, zIndex: 1, visible: true,
+    });
+    const command = await new TemplateCompiler().compile(template, { ...media, width: 720, height: 1280 }, DEFAULT_PRESET, {
+      ffmpegPath: "/usr/bin/ffmpeg",
+      fontResolver: { resolve: async () => "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" },
+      textFilePath: () => "/tmp/jianji-cjk-text.txt",
+    });
+    expect(command.textFiles[0].content).toBe("简辑真实素材\n测试");
+  });
 });

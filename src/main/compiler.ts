@@ -62,7 +62,7 @@ function sortedVisibleLayers(template: EditTemplate): Layer[] {
 }
 
 function wrapText(content: string, widthRatio: number, fontSizeRatio: number, dimensions: { width: number; height: number }): string {
-  const approximateGlyphWidth = Math.max(1, dimensions.height * fontSizeRatio * 0.6);
+  const approximateGlyphWidth = Math.max(1, dimensions.height * fontSizeRatio);
   const maxUnits = Math.max(1, dimensions.width * widthRatio);
   const lines = content.split("\n");
   return lines.flatMap((line) => {

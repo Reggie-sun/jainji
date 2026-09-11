@@ -3,6 +3,7 @@ import type { AppState } from "../main/application";
 import { recoveryAdvice } from "../main/errors";
 import type { Color, EditTemplate, ExportPreset, Layer } from "../main/domain";
 import type { MediaView } from "../main/media";
+import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults";
 
 type PublicState = AppState & { capabilities: CapabilityStatus };
 type CapabilityStatus = {
@@ -119,7 +120,7 @@ export default function App() {
   const addText = () => {
     if (!state) return;
     const next = cloneTemplate(state.project.template);
-    const layer: Layer = { id: crypto.randomUUID(), type: "text", content: "新文字", fontFamily: "DejaVu Sans", fontSizeRatio: 0.08, color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.006, x: 0.08, y: 0.08, width: 0.8, opacity: 1, zIndex: next.layers.length, visible: true };
+    const layer: Layer = { id: crypto.randomUUID(), type: "text", content: "新文字", fontFamily: DEFAULT_TEXT_FONT_FAMILY, fontSizeRatio: 0.08, color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.006, x: 0.08, y: 0.08, width: 0.8, opacity: 1, zIndex: next.layers.length, visible: true };
     next.layers.push(layer); setSelectedLayerId(layer.id); void updateTemplate(next);
   };
 

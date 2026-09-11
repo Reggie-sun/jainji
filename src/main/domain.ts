@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 
+export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
+
 export const SCHEMA_VERSION = 1;
 
 const AbsolutePath = z.string().min(1).refine((value) => value.startsWith("/"), "must be an absolute path");
