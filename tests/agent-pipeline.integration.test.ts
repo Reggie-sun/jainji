@@ -46,7 +46,7 @@ describe("agent to local export", () => {
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set())).rejects.toThrow("系统对话框");
       expect(requests).toHaveLength(0);
       const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" }, multiplier: 51 }, new Set([outputDirectory]))).rejects.toThrow("100 条");
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" }, multiplier: 126 }, new Set([outputDirectory]))).rejects.toThrow("250 条");
       expect(requests).toHaveLength(0);
       await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { productPrice: "19.90", sticker: "heart", fontFamily } }, new Set([outputDirectory]));
       const deadline = Date.now() + 20_000;

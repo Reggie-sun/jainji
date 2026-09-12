@@ -110,7 +110,7 @@ export default function App() {
   });
   const start = () => void run(async () => {
     const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
-    if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error("请填写有效的制作条数，向上取整后不能超过 100 条。");
+    if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`请填写有效的制作条数，向上取整后不能超过 ${MAX_AGENT_OUTPUTS} 条。`);
     apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, multiplier: quantity.multiplier }));
     setStep("results");
   });

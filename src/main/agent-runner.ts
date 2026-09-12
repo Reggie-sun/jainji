@@ -29,7 +29,7 @@ export class AgentRunner {
     if (this.running) throw new Error("Agent 正在处理，请等待完成或停止当前任务。");
     if (media.length === 0 || media.some((item) => item.probeStatus !== "ready")) throw new Error("请先导入有效素材。");
     ProductionMultiplierSchema.parse(multiplier);
-    if (media.length * multiplier > MAX_AGENT_OUTPUTS) throw new Error("本轮成片数量不能超过 100 条，请减少制作倍数。");
+    if (media.length * multiplier > MAX_AGENT_OUTPUTS) throw new Error(`本轮成片数量不能超过 ${MAX_AGENT_OUTPUTS} 条，请减少制作倍数。`);
     const versions = structuredClone(media).flatMap((source) => Array.from({ length: multiplier }, (_, index) => ({ source, version: index + 1 })));
     this.controller = new AbortController();
     this.run = {

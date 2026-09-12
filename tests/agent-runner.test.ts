@@ -45,9 +45,19 @@ describe("agent run lifecycle", () => {
   it("rejects invalid multipliers and excessive output counts before calling the model", () => {
     const provider = vi.fn();
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue: vi.fn(), stickerAssets, onChange: () => {} });
-    for (const multiplier of [0, -1, 1.5, 101, NaN]) expect(() => runner.start("project", "clean", "", [media("a")], multiplier)).toThrow();
-    expect(() => runner.start("project", "clean", "", [media("a"), media("b")], 51)).toThrow();
+    for (const multiplier of [0, -1, 1.5, 251, NaN]) expect(() => runner.start("project", "clean", "", [media("a")], multiplier)).toThrow();
+    expect(() => runner.start("project", "clean", "", [media("a"), media("b")], 126)).toThrow();
     expect(provider).not.toHaveBeenCalled();
+  });
+  it("independently plans and enqueues all 250 outputs", async () => {
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockImplementation(async () => crypto.randomUUID());
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a")], 250);
+    await runner.settled();
+    expect(provider).toHaveBeenCalledTimes(250);
+    expect(enqueue).toHaveBeenCalledTimes(250);
+    expect(runner.snapshot()?.items).toHaveLength(250);
   });
   it("isolates failed material and freezes an independent plan for every export", async () => {
     const sources = [media("a.mp4"), media("b.mp4"), media("c.mp4")];

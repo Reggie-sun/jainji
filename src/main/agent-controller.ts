@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { AgentStartInput } from "../shared/agent.js";
-import { AgentStartSchema } from "../shared/agent.js";
+import { AgentStartSchema, MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 import type { ApplicationService } from "./application.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { DEFAULT_PRESET, type MediaItem } from "./domain.js";
@@ -78,7 +78,7 @@ export class AgentController {
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedDirectories.has(outputDirectory)) throw new Error("请通过系统对话框选择输出目录。");
       const ids = [...new Set(parsed.mediaIds)];
-      if (this.service.currentProject.exportBatches.length + ids.length * (parsed.multiplier ?? 1) > 100) throw new Error("按当前倍数制作将超过项目 100 条导出记录上限，请减少倍数或新建项目。");
+      if (this.service.currentProject.exportBatches.length + ids.length * (parsed.multiplier ?? 1) > MAX_AGENT_OUTPUTS) throw new Error(`按当前倍数制作将超过项目 ${MAX_AGENT_OUTPUTS} 条导出记录上限，请减少倍数或新建项目。`);
       const media = ids.map((id) => this.service.getMedia(id));
       if (media.some((item) => !item || item.probeStatus !== "ready")) throw new Error("所选素材不可用，请重新导入。");
       await assertOutputDirectorySafe(outputDirectory, media as MediaItem[]);

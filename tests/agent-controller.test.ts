@@ -13,7 +13,7 @@ import type { AssetLibrary } from "../src/main/asset-library";
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("AgentController queue admission", () => {
-  it("does not let another project's recovered queued task block a new visible project", async () => {
+  it.each([1, 250])("admits %i outputs despite another project's recovered queued task", async (multiplier) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-admission-"));
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
@@ -24,7 +24,8 @@ describe("AgentController queue admission", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
     try {
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]))).resolves.toBeUndefined();
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], multiplier, outputDirectory: directory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]))).resolves.toBeUndefined();
+      expect(controller.snapshot()?.items).toHaveLength(multiplier);
     } finally { await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
 

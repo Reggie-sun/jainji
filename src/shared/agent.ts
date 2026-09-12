@@ -36,7 +36,7 @@ export interface ConnectionStatus { configured: boolean; baseUrl: string; model:
 export interface ChatGPTModel { model: string; displayName: string; supportedReasoningEfforts: { reasoningEffort: string; description: string }[]; defaultReasoningEffort?: string; }
 export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in" | "ready" | "error"; email?: string; plan?: string; model?: string; reasoningEffort?: string; models?: ChatGPTModel[]; message?: string; }
 
-export const MAX_AGENT_OUTPUTS = 100;
+export const MAX_AGENT_OUTPUTS = 250;
 export const ProductionMultiplierSchema = z.number().int().min(1).max(MAX_AGENT_OUTPUTS);
 
 export function calculateProductionQuantity(sourceCount: number, requestedCount: number): { multiplier: number; total: number } | undefined {
@@ -50,7 +50,7 @@ export const AgentStartSchema = z.object({
   exportFormat: ExportFormatSchema.optional(),
   decorations: DecorationSchema.optional(),
   ruleId: RuleIdSchema,
-  mediaIds: z.array(z.string().uuid()).min(1).max(100),
+  mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS),
   outputDirectory: z.string().min(1),
   brief: z.string().trim().max(1000),
 }).strict().refine((input) => RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
