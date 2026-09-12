@@ -12,6 +12,7 @@ import type { ExportQueue } from "./queue.js";
 import type { BuiltinStickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema } from "../shared/decorations.js";
+import type { AssetLibrary } from "./asset-library.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -19,7 +20,7 @@ export class AgentController {
   private testing = false;
   private preparingController?: AbortController;
   private testController?: AbortController;
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: BuiltinStickerAssets, readonly provider = new AgentProvider()) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: BuiltinStickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider()) {}
 
   get busy(): boolean { return this.preparing || this.testing || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -44,7 +45,10 @@ export class AgentController {
     try {
       const parsed = AgentStartSchema.parse(input);
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
-      if (!await resolveFont(decorations.fontFamily)) throw new Error("所选字体不可用，请重新选择已安装字体。");
+      const stickerAssets = this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
+      this.preparingController.signal.throwIfAborted();
+      const font = this.library ? await this.library.resolveFont(decorations.fontFamily) : await resolveFont(decorations.fontFamily);
+      if (!font) throw new Error("所选字体不可用，请重新选择已安装字体。");
       if (!path.isAbsolute(parsed.outputDirectory)) throw new Error("请选择有效的输出目录。");
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedDirectories.has(outputDirectory)) throw new Error("请通过系统对话框选择输出目录。");
@@ -65,7 +69,7 @@ export class AgentController {
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
         },
-        stickerAssets: this.stickerAssets,
+        stickerAssets,
         decorations,
         onChange: this.onChange,
       });

@@ -2,14 +2,14 @@ import { randomUUID } from "node:crypto";
 import { type AgentRun, type RuleId } from "../shared/agent.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { materializePlan, ProviderError, type PackagingPlan } from "./agent-provider.js";
-import type { BuiltinStickerAssets } from "./builtin-stickers.js";
+import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
   plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
-  stickerAssets: BuiltinStickerAssets;
+  stickerAssets: StickerAssets;
   decorations?: DecorationOptions;
   onChange(): void;
 }

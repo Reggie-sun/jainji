@@ -10,6 +10,7 @@ export interface BuiltinStickerAsset {
 }
 
 export type BuiltinStickerAssets = Readonly<Record<StickerId, BuiltinStickerAsset>>;
+export type StickerAssets = BuiltinStickerAssets & Readonly<Record<string, BuiltinStickerAsset | undefined>>;
 
 type Rgba = readonly [number, number, number, number];
 type Point = readonly [number, number];

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { createDefaultTemplate, EditTemplateSchema, type Color, type EditTemplate } from "./domain.js";
 import { ConnectionInputSchema, getRule, type ConnectionInput, type ConnectionStatus, type RuleId } from "../shared/agent.js";
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
-import type { BuiltinStickerAssets } from "./builtin-stickers.js";
+import type { StickerAssets } from "./builtin-stickers.js";
 import { DecorationSchema, type DecorationOptions } from "../shared/decorations.js";
 
 const CaptionSchema = z.object({
@@ -31,7 +31,7 @@ export function validatePlan(input: unknown, ruleId: RuleId): PackagingPlan {
   return plan;
 }
 
-export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { width: number; height: number }, stickerAssets: BuiltinStickerAssets, decorations?: DecorationOptions): EditTemplate {
+export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { width: number; height: number }, stickerAssets: StickerAssets, decorations?: DecorationOptions): EditTemplate {
   const options = DecorationSchema.parse(decorations ?? {});
   const plan = validatePlan(raw, ruleId);
   const color = (r: number, g: number, b: number, a = 1): Color => ({ r, g, b, a });
@@ -52,12 +52,13 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const usedCorners = new Set(plan.captions.map((caption) => caption.corner));
   const stickerCorner = rule.stickerCorners.find((corner) => !usedCorners.has(corner)) ?? rule.stickerCorners[0];
   const sticker = stickerAssets[options.sticker === "template" || options.sticker === "none" ? rule.sticker : options.sticker];
+  if (options.sticker !== "none" && !sticker) throw new Error("所选贴纸尚未下载，请重新选择。");
   return EditTemplateSchema.parse({
     ...createDefaultTemplate(rule.name),
     layoutPolicy: CORNER_SAFE_POLICY.id,
     filter: { presetId: plan.filter, intensity: plan.intensity },
     layers: [...captions, ...(options.sticker === "none" ? [] : [{
-      id: randomUUID(), type: "sticker", assetPath: sticker.assetPath, assetFingerprint: sticker.assetFingerprint,
+      id: randomUUID(), type: "sticker", assetPath: sticker!.assetPath, assetFingerprint: sticker!.assetFingerprint,
       x: stickerCorner.endsWith("right") ? 1 - CORNER_SAFE_POLICY.cornerMargin - rule.stickerWidth : CORNER_SAFE_POLICY.cornerMargin,
       y: stickerCorner.startsWith("bottom") ? CORNER_SAFE_POLICY.bottomCornerStart : CORNER_SAFE_POLICY.cornerMargin,
       width: rule.stickerWidth, rotationDeg: rule.stickerRotation, opacity: 0.94, zIndex: captions.length, visible: true,

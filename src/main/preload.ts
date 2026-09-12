@@ -3,9 +3,11 @@ import type { AgentStartInput, ConnectionInput } from "../shared/agent.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
 import type { DecorationCatalog } from "../shared/decorations.js";
+import type { LibraryAssetPreview } from "../shared/asset-library.js";
 
 const api = {
   decorationCatalog: (): Promise<DecorationCatalog> => ipcRenderer.invoke("decorations.catalog"),
+  libraryAsset: (id: string): Promise<LibraryAssetPreview> => ipcRenderer.invoke("library.asset", id),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   getState: (): Promise<DesktopState> => ipcRenderer.invoke("app.state"),
   configureAgent: (input: ConnectionInput): Promise<DesktopState> => ipcRenderer.invoke("agent.configure", input),

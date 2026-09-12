@@ -14,6 +14,8 @@ import { JobStore } from "./store.js";
 import { ModelConnections } from "./model-connections.js";
 import { AgentController } from "./agent-controller.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
+import { AssetLibrary } from "./asset-library.js";
+import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
@@ -36,6 +38,7 @@ let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
 let agent: AgentController;
 let connections: ModelConnections;
+let library: AssetLibrary;
 let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
@@ -67,6 +70,16 @@ function publish(snapshot: QueueSnapshot): void {
 }
 
 function registerHandlers(): void {
+  ipcMain.handle("library.asset", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    const id = z.string().min(1).max(100).parse(input);
+    const preview = await library.preview(id);
+    if (LIBRARY_FONTS.some((font) => font.id === id) && !capabilities.fonts) {
+      capabilities = (await checkCapabilities(app.getPath("userData"), (family) => library.resolveFont(family))).status;
+      notifyState();
+    }
+    return preview;
+  });
   ipcMain.handle("decorations.catalog", async (event): Promise<DecorationCatalog> => {
     assertTrustedSender(event);
     const assets = await ensureBuiltinStickerAssets(path.join(app.getPath("userData"), "agent-stickers"));
@@ -288,20 +301,22 @@ async function bootstrap(): Promise<void> {
     if (!media || media.probeStatus !== "ready") return new Response("Not found", { status: 404 });
     return net.fetch(pathToFileURL(media.sourcePath).toString());
   });
-  const checked = await checkCapabilities(userData);
+  library = new AssetLibrary(path.join(userData, "asset-library"));
+  const fontResolver = { resolve: (family: string) => library.resolveFont(family) };
+  const checked = await checkCapabilities(userData, fontResolver.resolve);
   capabilities = checked.status;
   ffmpeg = checked.adapter ?? new FfmpegAdapter(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", process.env.JIANJI_FFPROBE_PATH || "ffprobe");
-  service = new ApplicationService(ffmpeg, { resolve: resolveFont });
+  service = new ApplicationService(ffmpeg, fontResolver);
   queue = new ExportQueue({
     jobStore: new JobStore(path.join(userData, "jobs")),
     ffmpeg,
-    fontResolver: { resolve: resolveFont },
+    fontResolver,
     onSnapshot: publish,
   });
   queue.setMediaLookup((id) => service.getMedia(id));
   const stickerAssets = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, connections.provider);
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider);
   await queue.recover();
   registerHandlers();
   await createWindow();

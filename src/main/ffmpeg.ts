@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { basename } from "node:path";
 import { FONT_CHOICES } from "../shared/decorations.js";
+import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import { binaryCandidates, windowsFontCandidates } from "./platform.js";
 
 export interface CommandResult {
@@ -120,7 +121,7 @@ export async function discoverBinary(name: "ffmpeg" | "ffprobe"): Promise<string
   return executable(override || name);
 }
 
-export async function checkCapabilities(appDataDirectory: string): Promise<{ status: CapabilityStatus; adapter?: FfmpegAdapter }> {
+export async function checkCapabilities(appDataDirectory: string, fontResolver: (family: string) => Promise<string | null> = resolveFont): Promise<{ status: CapabilityStatus; adapter?: FfmpegAdapter }> {
   const [ffmpegPath, ffprobePath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe")]);
   const status: CapabilityStatus = {
     ready: false,
@@ -130,7 +131,7 @@ export async function checkCapabilities(appDataDirectory: string): Promise<{ sta
     overlay: false,
     h264Encoder: false,
     aacEncoder: false,
-    fonts: (await Promise.all(FONT_CHOICES.map(resolveFont))).some(Boolean),
+    fonts: (await Promise.all([...FONT_CHOICES, ...LIBRARY_FONTS.map((entry) => entry.family!)].map(fontResolver))).some(Boolean),
     appDataWritable: false,
   };
   try {
