@@ -44,14 +44,23 @@ export class AgentRunner {
   async settled(): Promise<void> { await this.pending; }
 
   private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
-    try {
-      for (const [index, source] of media.entries()) {
+    let next = 0;
+    const pendingFrames = new Map<string, Promise<string[]>>();
+    const worker = async () => {
+      while (next < media.length) {
+        const index = next++;
+        const source = media[index];
         const item = run.items[index];
         if (signal.aborted) { item.status = "cancelled"; continue; }
         item.status = "analyzing";
         this.dependencies.onChange();
         try {
-          const frames = await this.dependencies.frames(source, signal);
+          let extracting = pendingFrames.get(source.id);
+          if (!extracting) {
+            extracting = this.dependencies.frames(source, signal).finally(() => pendingFrames.delete(source.id));
+            pendingFrames.set(source.id, extracting);
+          }
+          const frames = await extracting;
           signal.throwIfAborted();
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog);
           signal.throwIfAborted();
@@ -65,6 +74,9 @@ export class AgentRunner {
         }
         this.dependencies.onChange();
       }
+    };
+    try {
+      await Promise.all(Array.from({ length: Math.min(3, media.length) }, () => worker()));
     } finally {
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();

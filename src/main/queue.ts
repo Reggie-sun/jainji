@@ -75,6 +75,9 @@ export class ExportQueue {
   private readonly pendingStarts = new Set<string>();
   private running = false;
   private activeStart?: Promise<void>;
+  private readonly activeTasks = new Map<string, Promise<void>>();
+  private finishStart?: (error?: unknown) => void;
+  private executionError?: unknown;
   private shuttingDown = false;
   private shutdownRequested = false;
   private globalRevision = 0;
@@ -164,28 +167,43 @@ export class ExportQueue {
       this.states.set(batchId, loaded.state);
     }
     if (this.shuttingDown) return;
-    if (this.running) { this.pendingStarts.add(batchId); return; }
-    this.running = true;
-    const run = this.runBatch(batchId);
-    this.activeStart = run;
-    try {
-      await run;
-    } finally {
-      if (this.activeStart === run) this.activeStart = undefined;
-      this.running = false;
-      if (this.shuttingDown) { this.pendingStarts.clear(); return; }
-      const pending = [...this.pendingStarts];
-      this.pendingStarts.clear();
-      for (const pendingBatchId of pending) await this.start(pendingBatchId);
+    const alreadyRunning = this.running;
+    this.pendingStarts.add(batchId);
+    if (!this.running) {
+      this.running = true;
+      this.executionError = undefined;
+      this.activeStart = new Promise<void>((resolve, reject) => {
+        this.finishStart = (error) => error === undefined ? resolve() : reject(error);
+      });
     }
+    const active = this.activeStart;
+    this.pump();
+    if (!alreadyRunning) await active;
   }
 
-  private async runBatch(batchId: string): Promise<void> {
-    const state = this.states.get(batchId);
-    if (!state) return;
-    for (const task of state.batch.tasks) {
-      if (task.status !== "queued") continue;
-      await this.execute(state, task);
+  private pump(): void {
+    if (this.shuttingDown) this.pendingStarts.clear();
+    for (const batchId of this.pendingStarts) {
+      const state = this.states.get(batchId)!;
+      for (const task of state.batch.tasks) {
+        if (this.activeTasks.size >= 2) return;
+        if (task.status !== "queued" || this.activeTasks.has(task.id)) continue;
+        const work = this.execute(state, task).catch((error: unknown) => {
+          this.executionError ??= error;
+        }).finally(() => {
+          this.activeTasks.delete(task.id);
+          this.pump();
+        });
+        this.activeTasks.set(task.id, work);
+      }
+      this.pendingStarts.delete(batchId);
+    }
+    if (this.activeTasks.size === 0) {
+      this.running = false;
+      this.activeStart = undefined;
+      const finish = this.finishStart;
+      this.finishStart = undefined;
+      finish?.(this.executionError);
     }
   }
 
@@ -216,7 +234,6 @@ export class ExportQueue {
         if (!["failed", "interrupted"].includes(task.status)) continue;
         task.attempts.push({ attempt: Math.max(1, task.attempt), status: task.status, startedAt: task.startedAt, finishedAt: task.finishedAt, outputPath: task.outputPath, errorCode: task.errorCode, errorMessage: task.errorMessage });
         task.attempt += 1;
-        task.status = "queued";
         task.progress = 0;
         task.outputArtifact = undefined;
         task.outputPath = await allocateOutputPath(state.batch.outputDirectory, this.mediaFor(state, task)?.sourcePath ?? "video.mp4", "_edited", state.batch.tasks.filter((other) => other.id !== task.id).map((other) => other.outputPath).filter((entry): entry is string => Boolean(entry)), state.batch.preset.container);
@@ -224,13 +241,13 @@ export class ExportQueue {
         task.errorMessage = undefined;
         task.startedAt = undefined;
         task.finishedAt = undefined;
+        task.status = "queued";
         changed = true;
       }
       if (changed) { state.batch.status = "active"; await this.persist(state); changedBatchIds.push(state.batch.id); }
     }
     if (this.states.size > 0) this.emit();
-    if (this.running) changedBatchIds.forEach((batchId) => this.pendingStarts.add(batchId));
-    else for (const batchId of changedBatchIds) await this.start(batchId);
+    await Promise.all(changedBatchIds.map((batchId) => this.start(batchId)));
   }
 
   async hydrate(batches: readonly ExportBatch[]): Promise<void> {
