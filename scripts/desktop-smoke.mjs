@@ -40,6 +40,7 @@ const server = createServer((request, response) => {
     }
     assert.equal(input.messages[anthropic ? 0 : 1].content.filter((item) => item.type === (anthropic ? "image" : "image_url")).length, 3);
     assert.equal(input.model, anthropic ? "MiniMax-M3" : "smoke-vision-next", "video analysis uses the selected model");
+    if (!anthropic) assert.equal(input.reasoning_effort, "high", "video analysis uses selected effort");
     assert.equal(request.headers.authorization, anthropic ? "Bearer cc-switch-fixture-key" : "Bearer local-smoke-key");
     requests += 1;
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
@@ -155,10 +156,15 @@ try {
   await evaluate("document.querySelector('.model-picker select').value = 'smoke-codex-next'; document.querySelector('.model-picker select').dispatchEvent(new Event('change', { bubbles: true }))");
   await waitFor("document.body.innerText.includes('创作模型已切换并保存')");
   assert.equal((await evaluate("window.jianji.getState()")).connection.model, "smoke-codex-next");
+  assert.deepEqual(await evaluate("[...document.querySelector('.effort-picker select').options].map(option => option.value)"), ["", "medium", "xhigh", "ultra"], "efforts come from the chosen model");
+  await evaluate("document.querySelector('.effort-picker select').value = 'xhigh'; document.querySelector('.effort-picker select').dispatchEvent(new Event('change', { bubbles: true }))");
+  await waitFor("document.querySelector('.effort-picker select').value === 'xhigh' && !document.querySelector('.effort-picker select').disabled");
+  assert.equal((await evaluate("window.jianji.getState()")).connection.reasoningEffort, "xhigh");
   await click("刷新登录状态");
   assert.equal((await evaluate("window.jianji.getState()")).chatgpt.status, "ready");
   assert.equal((await evaluate("window.jianji.getState()")).connection.model, "smoke-codex-next");
   assert.equal(JSON.parse(await readFile(path.join(directory, "connections/connections.json"), "utf8")).chatgptModel, "smoke-codex-next");
+  assert.equal(JSON.parse(await readFile(path.join(directory, "connections/connections.json"), "utf8")).chatgptReasoningEffort, "xhigh");
   await screenshot("01b-chatgpt-ready");
   await click("断开");
   await waitFor("document.body.innerText.includes('使用 ChatGPT 登录')");
@@ -187,6 +193,7 @@ try {
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.model-picker datalist option')].map(option => option.value)"), ["smoke-vision"], "saved candidates survive trailing slash and legacy default protocol");
   await evaluate("document.querySelector('.model-picker input').focus(); document.querySelector('.model-picker input').select()");
   await send("Input.insertText", { text: "smoke-vision-next" });
+  await evaluate("document.querySelector('.effort-picker select').value = 'high'; document.querySelector('.effort-picker select').dispatchEvent(new Event('change', { bubbles: true }))");
   await click("应用模型");
   await waitFor("document.body.innerText.includes('当前模型：smoke-vision-next')");
   assert.equal((await evaluate("window.jianji.getState()")).connection.model, "smoke-vision-next");
@@ -201,10 +208,12 @@ try {
   await click("自动生成提示词");
   await waitFor("document.querySelector('.generate-brief').disabled && document.querySelector('#creative-brief').disabled");
   assert.equal(await evaluate("document.querySelector('.model-picker input').disabled"), true);
+  assert.equal(await evaluate("document.querySelector('.effort-picker select').disabled"), true);
   assert.equal(await evaluate("(async () => { const state = await window.jianji.getState(); try { await window.jianji.selectModel({ connectionId: state.connections.selected, model: 'forbidden-switch' }); return false; } catch { return true; } })()"), true, "IPC rejects model switch during a request");
   await waitFor("document.querySelector('#creative-brief').value.includes('保持清爽自然')");
   assert.equal(briefRequests, 1, "one explicit API request");
   assert.equal(briefPayload.model, "smoke-vision-next", "selected model reaches provider request");
+  assert.equal(briefPayload.reasoning_effort, "high", "selected effort reaches provider request");
   assert.equal(requests, 0, "prompt generation does not export");
   assert.equal(JSON.stringify(briefPayload).includes("公主请下单"), true, "selected sticker label sent");
   const generatedBrief = await evaluate("document.querySelector('#creative-brief').value");

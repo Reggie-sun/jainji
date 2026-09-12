@@ -53,11 +53,11 @@ export class ModelConnections {
     }, openBrowser, path.join(userData, "codex", "workspace"), () => {
       const state = this.chatgpt.status();
       if (this.wantChatGPT) {
-        if (state.status === "ready" && state.model) this.provider.useChatGPT(state.model, (messages, signal) => this.chatgpt.complete(messages, signal));
+        if (state.status === "ready" && state.model) this.provider.useChatGPT(state.model, (messages, signal) => this.chatgpt.complete(messages, signal), state.reasoningEffort);
         else this.provider.clear();
       }
       this.changed();
-    }, () => this.store.snapshot().chatgptModel);
+    }, () => this.store.snapshot().chatgptModel, () => this.store.snapshot().chatgptReasoningEffort);
   }
   assertIdle(): void { if (this.pending || ["starting", "logging-in"].includes(this.chatgpt.status().status)) throw new ProviderError("连接正在处理中，请等待或取消登录。"); }
   private async exclusive(action: () => Promise<void>): Promise<void> {
@@ -96,15 +96,15 @@ export class ModelConnections {
     const parsed = SelectModelSchema.safeParse(input);
     if (!parsed.success) throw new ProviderError("请选择连接并填写有效的模型名称。");
     await this.exclusive(async () => {
-      const { connectionId, model } = parsed.data;
+      const { connectionId, model, reasoningEffort } = parsed.data;
       if (this.store.snapshot().selected !== connectionId) throw new ProviderError("当前连接已变更，请重新选择模型。");
       if (connectionId === "chatgpt") {
-        this.chatgpt.assertModel(model);
-        await this.store.saveChatGPTModel(model);
-        this.chatgpt.selectModel(model);
+        this.chatgpt.assertModel(model, reasoningEffort);
+        await this.store.saveChatGPTModel(model, reasoningEffort);
+        this.chatgpt.selectModel(model, reasoningEffort);
       } else {
         const profile = this.store.get(connectionId);
-        await this.store.save({ ...profile.input, id: connectionId, name: profile.name, model });
+        await this.store.save({ ...profile.input, id: connectionId, name: profile.name, model, reasoningEffort });
         this.activate(connectionId);
       }
     });

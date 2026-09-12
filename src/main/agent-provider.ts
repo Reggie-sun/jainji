@@ -174,13 +174,13 @@ export { ProviderError } from "./api-transport.js";
 
 export class AgentProvider {
   private connection?: ConnectionInput;
-  private chatgpt?: { model: string; complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> };
+  private chatgpt?: { model: string; reasoningEffort?: string; complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> };
   private providerName?: string;
   constructor(private readonly request: typeof fetch = fetch) {}
 
   status(): ConnectionStatus {
-    if (this.chatgpt) return { configured: true, baseUrl: "", model: this.chatgpt.model, source: "chatgpt", providerName: "ChatGPT" };
-    return { ...(this.providerName ? { source: "api" as const, providerName: this.providerName } : {}), ...(this.connection?.protocol ? { protocol: this.connection.protocol } : {}), configured: Boolean(this.connection), baseUrl: this.connection?.baseUrl ?? "https://api.openai.com/v1", model: this.connection?.model ?? "" };
+    if (this.chatgpt) return { configured: true, baseUrl: "", model: this.chatgpt.model, reasoningEffort: this.chatgpt.reasoningEffort, source: "chatgpt", providerName: "ChatGPT" };
+    return { ...(this.providerName ? { source: "api" as const, providerName: this.providerName } : {}), ...(this.connection?.protocol ? { protocol: this.connection.protocol } : {}), configured: Boolean(this.connection), baseUrl: this.connection?.baseUrl ?? "https://api.openai.com/v1", model: this.connection?.model ?? "", reasoningEffort: this.connection?.reasoningEffort };
   }
   configure(input: unknown, providerName?: string): ConnectionStatus {
     const parsed = ConnectionInputSchema.safeParse(input);
@@ -189,7 +189,7 @@ export class AgentProvider {
     this.connection = { ...parsed.data, baseUrl: parsed.data.baseUrl.replace(/\/+$/, "") };
     return this.status();
   }
-  useChatGPT(model: string, complete: (messages: ModelMessage[], signal: AbortSignal) => Promise<string>): void { this.clear(); this.chatgpt = { model, complete }; }
+  useChatGPT(model: string, complete: (messages: ModelMessage[], signal: AbortSignal) => Promise<string>, reasoningEffort?: string): void { this.clear(); this.chatgpt = { model, complete, reasoningEffort }; }
   clear(): void { this.connection = undefined; this.chatgpt = undefined; this.providerName = undefined; }
 
   async test(signal: AbortSignal): Promise<void> {

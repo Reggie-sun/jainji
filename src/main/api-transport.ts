@@ -9,11 +9,11 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   headers[connection.authHeader === "x-api-key" ? "x-api-key" : "Authorization"] = connection.authHeader === "x-api-key" ? connection.apiKey : `Bearer ${connection.apiKey}`;
   let endpoint = "/chat/completions";
-  let body: unknown = { model: connection.model, messages, stream: false };
+  let body: unknown = { model: connection.model, messages, stream: false, ...(connection.reasoningEffort ? { reasoning_effort: connection.reasoningEffort } : {}) };
   if (protocol === "anthropic") {
     endpoint = connection.baseUrl.endsWith("/v1") ? "/messages" : "/v1/messages";
     headers["anthropic-version"] = "2023-06-01";
-    body = { model: connection.model, max_tokens: 2048, stream: false,
+    body = { model: connection.model, max_tokens: 2048, stream: false, ...(connection.reasoningEffort ? { output_config: { effort: connection.reasoningEffort } } : {}),
       system: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n"),
       messages: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : m.content.map((item) => {
         if (item.type === "text") return item;
@@ -24,7 +24,7 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
     };
   } else if (protocol === "responses") {
     endpoint = "/responses";
-    body = { model: connection.model, store: false, stream: false, input: messages.map((m) => ({ role: m.role,
+    body = { model: connection.model, store: false, stream: false, ...(connection.reasoningEffort ? { reasoning: { effort: connection.reasoningEffort } } : {}), input: messages.map((m) => ({ role: m.role,
       content: typeof m.content === "string" ? m.content : m.content.map((item) => item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url, detail: "low" }),
     })) };
   }

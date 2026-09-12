@@ -10,6 +10,25 @@ const input = { name: "My provider", model: "vision", baseUrl: "https://example.
 async function setup() { const directory = await mkdtemp(path.join(tmpdir(), "jianji-connections-")); directories.push(directory); const store = new ConnectionStore(directory); await store.load(); return { directory, store }; }
 afterEach(async () => { await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true }))); });
 describe("built-in connections", () => {
+  it("persists and clears model effort while preserving credentials and ordinary profile edits", async () => {
+    const { directory } = await setup();
+    const connections = new ModelConnections(directory, process.cwd(), async () => {}, () => {});
+    await connections.store.load(); await connections.save(input);
+    const id = connections.store.snapshot().profiles[0].id; await connections.select(id);
+    await connections.selectModel({ connectionId: id, model: "vision", reasoningEffort: "high" });
+    expect(connections.provider.status().reasoningEffort).toBe("high");
+    await connections.save({ ...input, id, name: "renamed" });
+    expect(connections.provider.status().reasoningEffort).toBe("high");
+    const restored = new ModelConnections(directory, process.cwd(), async () => {}, () => {}); await restored.restore();
+    expect(restored.provider.status().reasoningEffort).toBe("high");
+    expect(restored.store.get(id).input.apiKey).toBe(input.apiKey);
+    await restored.selectModel({ connectionId: id, model: "vision" });
+    expect(restored.provider.status().reasoningEffort).toBeUndefined();
+    await restored.store.saveChatGPTModel("vision", "ultra");
+    const store = new ConnectionStore(path.join(directory, "connections")); await store.load();
+    expect(store.snapshot().chatgptReasoningEffort).toBe("ultra");
+    await connections.dispose(); await restored.dispose();
+  });
   it("keeps the active model when saving fails and blocks competing operations while saving", async () => {
     const { directory } = await setup();
     const connections = new ModelConnections(directory, process.cwd(), async () => {}, () => {});

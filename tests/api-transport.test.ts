@@ -14,6 +14,15 @@ function requestReply(body: unknown) {
 }
 
 describe("completeApi protocol transport", () => {
+  it.each(["chat-completions", "responses", "anthropic"] as const)("sends explicit effort using the %s field", async (protocol) => {
+    const reply = protocol === "anthropic" ? { content: [{ type: "text", text: "ok" }] } : protocol === "responses" ? { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }] } : { choices: [{ message: { content: "ok" } }] };
+    const request = requestReply(reply);
+    await completeApi({ baseUrl: "https://example.test/v1", model: "vision", apiKey: key, protocol, reasoningEffort: "high" }, messages, new AbortController().signal, request);
+    const body = JSON.parse(String(vi.mocked(request).mock.calls[0][1]?.body));
+    if (protocol === "anthropic") expect(body.output_config).toEqual({ effort: "high" });
+    else if (protocol === "responses") expect(body.reasoning).toEqual({ effort: "high" });
+    else expect(body.reasoning_effort).toBe("high");
+  });
   it("converts JPEG frames and system messages to an Anthropic Bearer request", async () => {
     const request = requestReply({ content: [{ type: "text", text: "{\"summary\":\"ok\"}" }] });
     const connection: ConnectionInput = { baseUrl: "https://minimax.example/anthropic", model: "MiniMax-VL", apiKey: key, protocol: "anthropic", authHeader: "bearer" };

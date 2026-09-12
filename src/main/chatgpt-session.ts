@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { z } from "zod";
 import { ProviderError, type ModelMessage } from "./api-transport.js";
-import type { ChatGPTStatus } from "../shared/agent.js";
+import { ReasoningEffortSchema, type ChatGPTStatus } from "../shared/agent.js";
 import type { RpcClient } from "./codex-rpc.js";
 
 export function trustedLoginUrl(value: string): string {
@@ -20,12 +20,17 @@ export class ChatGPTSession {
   private disposed = false;
   private revision = 0;
   private refreshGeneration = 0;
-  constructor(private readonly create: () => Promise<RpcClient>, private readonly openBrowser: (url: string) => Promise<void>, private readonly cwd: string, private readonly changed: () => void, private readonly preferredModel: () => string | undefined = () => undefined) {}
+  constructor(private readonly create: () => Promise<RpcClient>, private readonly openBrowser: (url: string) => Promise<void>, private readonly cwd: string, private readonly changed: () => void, private readonly preferredModel: () => string | undefined = () => undefined, private readonly preferredEffort: () => string | undefined = () => undefined) {}
   status(): ChatGPTStatus { return { ...this.state }; }
-  assertModel(model: string): void {
-    if (this.state.status !== "ready" || !this.state.models?.some((item) => item.model === model)) throw new ProviderError("请选择当前账户可用的视觉模型。");
+  assertModel(model: string, reasoningEffort?: string): void {
+    const selected = this.state.models?.find((item) => item.model === model);
+    if (this.state.status !== "ready" || !selected) throw new ProviderError("请选择当前账户可用的视觉模型。");
+    if (reasoningEffort !== undefined && !selected.supportedReasoningEfforts.some((item) => item.reasoningEffort === reasoningEffort)) throw new ProviderError("此模型不支持所选推理档位，请重新选择。");
   }
-  selectModel(model: string): void { this.assertModel(model); this.set({ ...this.state, model, message: undefined }); }
+  selectModel(model: string, reasoningEffort?: string): void {
+    this.assertModel(model, reasoningEffort);
+    this.set({ ...this.state, model, reasoningEffort: reasoningEffort ?? this.state.models!.find((item) => item.model === model)!.defaultReasoningEffort, message: undefined });
+  }
   private set(state: ChatGPTStatus): void { this.state = state; this.changed(); }
   private async client(): Promise<RpcClient> {
     if (this.disposed) throw new ProviderError("应用正在关闭。");
@@ -75,7 +80,9 @@ export class ChatGPTSession {
     const response = z.object({ account: z.object({ type: z.string(), email: z.string().nullable().optional(), planType: z.string().optional() }).nullable() }).parse(await rpc.request("account/read", { refreshToken: false }));
     if (revision !== this.revision || generation !== this.refreshGeneration || this.disposed) return false;
     if (response.account?.type !== "chatgpt") { this.set(this.awaitingAccountUpdate || this.loginId ? { status: "logging-in", message: "等待登录状态同步，可在完成授权后刷新。" } : { status: "signed-out" }); return false; }
-    const schema = z.object({ data: z.array(z.object({ model: z.string(), displayName: z.string().optional(), isDefault: z.boolean(), hidden: z.boolean(), inputModalities: z.array(z.string()) })), nextCursor: z.string().nullable().optional() });
+    const schema = z.object({ data: z.array(z.object({ model: z.string(), displayName: z.string().optional(), isDefault: z.boolean(), hidden: z.boolean(), inputModalities: z.array(z.string()),
+      supportedReasoningEfforts: z.array(z.object({ reasoningEffort: ReasoningEffortSchema, description: z.string() })).default([]), defaultReasoningEffort: ReasoningEffortSchema.optional(),
+    })), nextCursor: z.string().nullable().optional() });
     const available: z.infer<typeof schema>["data"] = [];
     const cursors = new Set<string>();
     let cursor: string | undefined;
@@ -92,11 +99,14 @@ export class ChatGPTSession {
     if (!eligible.length) throw new ProviderError("当前账户没有可用的视觉模型。");
     const preferred = this.preferredModel() ?? this.state.model;
     const selected = preferred ? eligible.find((model) => model.model === preferred) : eligible.find((model) => model.isDefault) ?? eligible[0];
+    const requestedEffort = this.preferredEffort();
+    const invalidEffort = requestedEffort !== undefined && !selected?.supportedReasoningEfforts.some((item) => item.reasoningEffort === requestedEffort);
     if (revision !== this.revision || generation !== this.refreshGeneration || this.disposed) return false;
     this.loginId = undefined; this.awaitingAccountUpdate = false; clearTimeout(this.loginTimer);
-    this.set({ status: "ready", email: response.account.email ?? undefined, plan: response.account.planType, model: selected?.model,
-      models: [...new Map(eligible.map((item) => [item.model, { model: item.model, displayName: item.displayName || item.model }])).values()],
-      ...(!selected ? { message: "上次使用的模型当前不可用，请重新选择模型。" } : {}),
+    this.set({ status: "ready", email: response.account.email ?? undefined, plan: response.account.planType, model: invalidEffort ? undefined : selected?.model,
+      reasoningEffort: invalidEffort ? undefined : requestedEffort ?? selected?.defaultReasoningEffort,
+      models: [...new Map(eligible.map((item) => [item.model, { model: item.model, displayName: item.displayName || item.model, supportedReasoningEfforts: item.supportedReasoningEfforts, defaultReasoningEffort: item.defaultReasoningEffort }])).values()],
+      ...(!selected ? { message: "上次使用的模型当前不可用，请重新选择模型。" } : invalidEffort ? { message: "上次使用的推理档位当前不可用，请重新选择模型和档位。" } : {}),
     });
     return true;
   }
@@ -153,6 +163,7 @@ export class ChatGPTSession {
   async complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> {
     if (this.state.status !== "ready" || !this.state.model) throw new ProviderError("请先使用 ChatGPT 登录。");
     const model = this.state.model;
+    const effort = this.state.reasoningEffort;
     const rpc = await this.client();
     await mkdir(this.cwd, { recursive: true, mode: 0o700 });
     const aborted = AbortSignal.any([signal, AbortSignal.timeout(180_000)]);
@@ -185,7 +196,7 @@ export class ChatGPTSession {
         rpc.on("notification", receive); rpc.on("closed", closed); aborted.addEventListener("abort", stop, { once: true });
         if (aborted.aborted) { stop(); return; }
         const input = messages.filter((m) => m.role === "user").flatMap<Record<string, unknown>>((m) => typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content.map((item) => item.type === "text" ? item : { type: "image", url: item.image_url.url, detail: "low" }));
-        void rpc.request("turn/start", { threadId: thread.thread.id, input, environments: [],
+        void rpc.request("turn/start", { threadId: thread.thread.id, input, environments: [], ...(effort ? { effort } : {}),
           approvalPolicy: "never", sandboxPolicy: { type: "readOnly", networkAccess: false },
         }).then((result) => {
           turnId = z.object({ turn: z.object({ id: z.string() }) }).parse(result).turn.id;
