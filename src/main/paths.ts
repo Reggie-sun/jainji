@@ -111,7 +111,7 @@ export async function validateTemplateResources(template: EditTemplate, fontReso
         missing.push(`贴纸不可读取：${path.basename(layer.assetPath)}`);
       }
       const extension = path.extname(layer.assetPath).toLowerCase();
-      if (![".png", ".jpg", ".jpeg", ".webp"].includes(extension)) missing.push(`贴纸格式：${path.basename(layer.assetPath)}`);
+      if (![".png", ".jpg", ".jpeg", ".webp", ".gif"].includes(extension)) missing.push(`贴纸格式：${path.basename(layer.assetPath)}`);
     }
   }
   return missing;

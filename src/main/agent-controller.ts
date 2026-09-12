@@ -9,7 +9,7 @@ import { AgentRunner } from "./agent-runner.js";
 import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
 import type { ExportQueue } from "./queue.js";
-import type { BuiltinStickerAssets } from "./builtin-stickers.js";
+import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema } from "../shared/decorations.js";
 import type { AssetLibrary } from "./asset-library.js";
@@ -20,7 +20,7 @@ export class AgentController {
   private testing = false;
   private preparingController?: AbortController;
   private testController?: AbortController;
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: BuiltinStickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider()) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider()) {}
 
   get busy(): boolean { return this.preparing || this.testing || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }

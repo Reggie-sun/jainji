@@ -130,7 +130,9 @@ export class TemplateCompiler {
         continue;
       }
 
-      args.push("-loop", "1", "-i", layer.assetPath);
+      // stream_loop works for both still images and animated GIFs. The output -t
+      // remains the single duration owner, so sticker streams cannot extend a job.
+      args.push("-stream_loop", "-1", "-i", layer.assetPath);
       const stickerIndex = inputIndex;
       inputIndex += 1;
       const sourceLabel = `sticker${stickerIndex}src`;
@@ -147,7 +149,7 @@ export class TemplateCompiler {
         `[${stickerIndex}:v]format=rgba,` +
         `rotate=${angle}:c=none:ow=rotw(${angle}):oh=roth(${angle}),` +
         `scale=${stickerScale},` +
-        `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=N/FRAME_RATE/TB[${sourceLabel}]`,
+        `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=PTS-STARTPTS[${sourceLabel}]`,
       );
       graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
       const overlayX = governed

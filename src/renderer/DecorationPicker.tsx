@@ -155,17 +155,19 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
     setFontLoading(""); setFontError(""); setFailedFont(undefined);
     onChange({ ...value, fontFamily: family as DecorationOptions["fontFamily"] });
   };
-  const selectedSticker = CURATED_STICKERS.find((asset) => asset.id === value.sticker) ?? LIBRARY_STICKERS.find((asset) => asset.id === value.sticker);
+  const selectedStickerLabel = catalog?.stickers.find((asset) => asset.id === value.sticker)?.label
+    ?? CURATED_STICKERS.find((asset) => asset.id === value.sticker)?.label
+    ?? LIBRARY_STICKERS.find((asset) => asset.id === value.sticker)?.label;
 
   return <section className="decoration-picker card" aria-label="贴纸与字体">
     <h2>贴纸与字体</h2><p>选择后应用到本轮每条视频；贴纸自动避开文字，保持在角落。</p>
     {catalogError && <p role="alert">{catalogError}</p>}
-    <fieldset disabled={disabled || !catalog}><legend>贴纸库</legend><div className="sticker-choices">
+    <fieldset disabled={disabled || !catalog}><legend>本地贴纸库</legend><div className="sticker-choices">
       {(["template", "none"] as const).map((id) => <button type="button" key={id} aria-pressed={value.sticker === id} onClick={() => onChange({ ...value, sticker: id })}>{id === "template" ? "跟随模板" : "不加贴纸"}</button>)}
-      {catalog?.stickers.map((sticker) => <button type="button" key={sticker.id} aria-pressed={value.sticker === sticker.id} onClick={() => onChange({ ...value, sticker: sticker.id })}><img src={sticker.url} alt="" /><span>{sticker.label}</span></button>)}
+      {catalog?.stickers.map((sticker) => <button type="button" key={sticker.id} aria-pressed={value.sticker === sticker.id} title={sticker.source === "downloaded" ? "本地下载素材，仅供个人练习" : undefined} onClick={() => onChange({ ...value, sticker: sticker.id })}><img src={sticker.url} alt="" /><span>{sticker.label}</span></button>)}
     </div></fieldset>
     <div className="library-heading"><div><strong>电商视频精选贴纸</strong><span>{CURATED_STICKERS.length} 款 · 促销、指引、强调、轻装饰</span></div><label htmlFor="sticker-search">搜索</label><input id="sticker-search" value={search} disabled={disabled} placeholder="如：促销、箭头、蝴蝶" onChange={(event) => { setSearch(event.target.value); setPage(0); }} /></div>
-    {selectedSticker && <p className="library-selection">已选择：{selectedSticker.label}</p>}
+    {selectedStickerLabel && <p className="library-selection">已选择：{selectedStickerLabel}</p>}
     <div className="library-sticker-grid" aria-live="polite">{pageStickers.map((asset) => {
       const previewUrl = previewUrls[asset.id]; const state = previewStates[asset.id];
       return <div className="library-sticker" key={asset.id}><button type="button" className="library-sticker-choice" aria-pressed={value.sticker === asset.id} disabled={disabled || !previewUrl} onClick={() => onChange({ ...value, sticker: asset.id as DecorationOptions["sticker"] })}>{previewUrl ? <img src={previewUrl} alt="" /> : <span className="sticker-placeholder">{state === "error" ? "预览失败" : "下载预览中…"}</span>}<span>{asset.label}</span></button>{state === "error" && <button type="button" className="asset-retry" disabled={disabled} onClick={() => retryPreview(asset)}>重试下载</button>}</div>;
@@ -181,6 +183,6 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
     {fontError && <p className="font-status" role="alert">{fontError} {failedFont && <button type="button" disabled={disabled} onClick={() => loadFont(failedFont)}>重试</button>}</p>}
     <div className="font-example" style={{ fontFamily: `"${value.fontFamily}", "Microsoft YaHei", sans-serif` }}>今日好物推荐 · 19.9元</div>
     <small>本机字体直接可用；在线字体需先下载，示例展示实际加载后的字形，成片字号与颜色随模板调整。</small>
-    <p className="library-license">贴纸来源：<a href="https://github.com/microsoft/fluentui-emoji" target="_blank" rel="noreferrer">Microsoft Fluent Emoji</a>（<a href="https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a>）；字体来源：<a href="https://fonts.google.com/" target="_blank" rel="noreferrer">Google Fonts</a>（<a href="https://openfontlicense.org/" target="_blank" rel="noreferrer">SIL Open Font License 1.1</a>）。</p>
+    <p className="library-license">本地下载中文贴纸仅供个人练习，授权以原下载页和账户权益为准；在线贴纸来源：<a href="https://github.com/microsoft/fluentui-emoji" target="_blank" rel="noreferrer">Microsoft Fluent Emoji</a>（<a href="https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a>）；字体来源：<a href="https://fonts.google.com/" target="_blank" rel="noreferrer">Google Fonts</a>（<a href="https://openfontlicense.org/" target="_blank" rel="noreferrer">SIL Open Font License 1.1</a>）。</p>
   </section>;
 }

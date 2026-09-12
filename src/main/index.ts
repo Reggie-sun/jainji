@@ -14,6 +14,9 @@ import { JobStore } from "./store.js";
 import { ModelConnections } from "./model-connections.js";
 import { AgentController } from "./agent-controller.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
+import type { StickerAssets } from "./builtin-stickers.js";
+import { loadBundledStickerAssets } from "./bundled-stickers.js";
+import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { AssetLibrary } from "./asset-library.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
@@ -39,6 +42,7 @@ let capabilities: CapabilityStatus;
 let agent: AgentController;
 let connections: ModelConnections;
 let library: AssetLibrary;
+let stickerAssets: StickerAssets;
 let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
@@ -89,10 +93,16 @@ function registerHandlers(): void {
   });
   ipcMain.handle("decorations.catalog", async (event): Promise<DecorationCatalog> => {
     assertTrustedSender(event);
-    const assets = await ensureBuiltinStickerAssets(path.join(app.getPath("userData"), "agent-stickers"));
     const fonts = await Promise.all(FONT_CHOICES.map(async (font) => await resolveFont(font) ? font : null));
-    const labels = { sparkle: "星芒", arrow: "箭头", heart: "爱心", burst: "爆闪" };
-    const stickers = await Promise.all((Object.keys(labels) as Array<keyof typeof labels>).map(async (id) => ({ id, label: labels[id], url: `data:image/png;base64,${(await readFile(assets[id].assetPath)).toString("base64")}` })));
+    const entries = [
+      ...([{"id":"sparkle","label":"星芒"},{"id":"arrow","label":"箭头"},{"id":"heart","label":"爱心"},{"id":"burst","label":"爆闪"}] as const).map((entry) => ({ ...entry, mimeType: "image/png", animated: false, source: "builtin" as const })),
+      ...BUNDLED_STICKERS.map((entry) => ({ ...entry, source: "downloaded" as const })),
+    ];
+    const stickers = await Promise.all(entries.map(async ({ id, label, mimeType, animated, source }) => {
+      const asset = stickerAssets[id];
+      if (!asset) throw new Error(`missing bundled sticker: ${id}`);
+      return { id, label, animated, source, url: `data:${mimeType};base64,${(await readFile(asset.assetPath)).toString("base64")}` };
+    }));
     return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers };
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
@@ -324,7 +334,11 @@ async function bootstrap(): Promise<void> {
     onSnapshot: publish,
   });
   queue.setMediaLookup((id) => service.getMedia(id));
-  const stickerAssets = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
+  const builtins = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
+  const bundledDirectory = app.isPackaged
+    ? path.join(process.resourcesPath, "stickers", "downloaded")
+    : path.join(app.getAppPath(), "resources", "stickers", "downloaded");
+  stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory) };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider);

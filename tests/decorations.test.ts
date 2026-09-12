@@ -17,4 +17,10 @@ describe("selected decorations", () => {
     expect(() => DecorationSchema.parse({ sticker: "/tmp/arbitrary.png" })).toThrow();
     expect(() => DecorationSchema.parse({ fontFamily: "/tmp/arbitrary.ttf" })).toThrow();
   });
+  it("accepts a bundled Chinese sticker while retaining corner-safe template geometry", () => {
+    const localAssets = { ...assets, "local-limited-discount": { assetPath: "/tmp/limited-discount.png", assetFingerprint: "sha256:local" } };
+    const decorations = DecorationSchema.parse({ sticker: "local-limited-discount" });
+    const template = materializePlan(plan, "black-gold", { width: 720, height: 1280 }, localAssets, decorations);
+    expect(template.layers[1]).toMatchObject({ assetPath: "/tmp/limited-discount.png", width: 0.12, x: 0.84, y: 0.8 });
+  });
 });

@@ -50,6 +50,12 @@
       "dist-electron/**/*",
       "package.json"
     ],
+    "extraResources": [
+      {
+        "from": "resources/stickers",
+        "to": "stickers"
+      }
+    ],
     "linux": {
       "target": [
         "AppImage",

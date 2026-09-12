@@ -72,8 +72,22 @@ describe("TemplateCompiler", () => {
       ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused.txt",
     });
     const graph = command.args[command.args.indexOf("-filter_complex") + 1];
+    expect(command.args.slice(command.args.indexOf("-stream_loop"), command.args.indexOf("-stream_loop") + 4)).toEqual(["-stream_loop", "-1", "-i", "/tmp/square.png"]);
     expect(graph).toContain("scale=64:29:force_original_aspect_ratio=decrease");
     expect(graph).toContain("overlay=x=main_w-overlay_w-main_w*0.04000:y=main_h-overlay_h-main_h*0.04000");
+  });
+
+  it("loops GIF sticker inputs without flattening their frame timestamps", async () => {
+    const template = createDefaultTemplate();
+    template.layers.push({
+      id: crypto.randomUUID(), type: "sticker", assetPath: "/tmp/animated.gif", assetFingerprint: "fixture",
+      x: 0.04, y: 0.04, width: 0.12, rotationDeg: 0, opacity: 1, zIndex: 1, visible: true,
+    });
+    const command = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, {
+      ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused.txt",
+    });
+    expect(command.args.slice(command.args.indexOf("-stream_loop"), command.args.indexOf("-stream_loop") + 4)).toEqual(["-stream_loop", "-1", "-i", "/tmp/animated.gif"]);
+    expect(command.args[command.args.indexOf("-filter_complex") + 1]).toContain("setpts=PTS-STARTPTS");
   });
 
   it.each([

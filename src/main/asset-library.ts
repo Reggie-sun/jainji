@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { LIBRARY_ASSETS, LIBRARY_LICENSES, type LibraryAsset, type LibraryAssetPreview } from "../shared/asset-library.js";
 import type { DecorationOptions } from "../shared/decorations.js";
-import type { BuiltinStickerAsset, BuiltinStickerAssets, StickerAssets } from "./builtin-stickers.js";
+import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 
 /** Pinned upstream files are the only accepted inputs; IPC never accepts URLs or paths. */
@@ -94,7 +94,7 @@ export class AssetLibrary {
     return entry ? await this.cached(entry) ? this.file(entry) : null : resolveFont(family);
   }
 
-  async prepare(options: DecorationOptions, builtins: BuiltinStickerAssets): Promise<StickerAssets> {
+  async prepare(options: DecorationOptions, builtins: StickerAssets): Promise<StickerAssets> {
     const fonts = [...this.entries.values()].filter((entry) => entry.kind === "font" && entry.family === options.fontFamily);
     for (const font of fonts) await this.ensure(font.id);
     if (!this.entries.has(options.sticker)) return builtins;
