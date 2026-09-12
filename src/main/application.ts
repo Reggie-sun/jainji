@@ -17,6 +17,7 @@ import { MediaCatalog, toMediaView, type MediaView } from "./media.js";
 import { pathsEqual, validateTemplateResources, type FontResolver } from "./paths.js";
 import { ProjectStore } from "./store.js";
 import type { QueueSnapshot } from "./queue.js";
+import { runLayoutAgent, type LayoutAgentInput } from "./layout-agent.js";
 
 export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots">;
 export interface PublicQueueState {
@@ -105,6 +106,10 @@ export class ApplicationService {
     this.project.activeTemplateId = template.id;
     this.touch();
     return cloneTemplate(template);
+  }
+
+  applyLayoutAgent(input: LayoutAgentInput): EditTemplate {
+    return this.updateTemplate(runLayoutAgent(this.activeTemplate, input));
   }
 
   async templateReadiness(template = this.activeTemplate): Promise<{ ready: boolean; missing: string[] }> {

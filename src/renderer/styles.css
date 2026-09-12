@@ -80,3 +80,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .toolbar-actions { display: flex; align-items: center; gap: 7px; }
 .toolbar-actions .ghost-button { padding: 6px 9px; font-size: 10px; }
 .template-warning { margin-top: 15px; padding: 10px 12px; border-radius: 7px; border: 1px solid rgba(255,141,137,.3); background: rgba(255,141,137,.06); color: #ffbbb6; font-size: 11px; }
+.preview-layer.text { box-sizing: border-box; }
+.agent-section { background: linear-gradient(145deg, rgba(182,243,107,.07), rgba(24,33,44,.2)); }
+.agent-section > p { margin: 9px 0 2px; color: #7f8d9f; font-size: 10px; line-height: 1.45; }
+.agent-mode { color: #7f8d9f; font: 9px ui-monospace, monospace; text-transform: uppercase; }
+.agent-mode.active { color: var(--accent); }
+.agent-rules { display: flex; flex-wrap: wrap; gap: 5px; margin: 12px 0; }
+.agent-rules span { padding: 4px 6px; border: 1px solid #344150; border-radius: 999px; color: #92a0b1; font-size: 9px; }
+.agent-apply { width: 100%; padding: 8px 10px; border: 1px solid rgba(182,243,107,.42); border-radius: 6px; color: #18210e; background: var(--accent); font-size: 11px; font-weight: 700; }
+.agent-apply:disabled { cursor: not-allowed; opacity: .45; }

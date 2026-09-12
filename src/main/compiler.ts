@@ -1,5 +1,6 @@
 import path from "node:path";
 import { EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
+import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -114,6 +115,11 @@ export class TemplateCompiler {
           `fontcolor=${color(layer.color, layer.opacity)}`,
           `bordercolor=${color(layer.strokeColor, layer.opacity)}`,
           `borderw=${Math.round(layer.strokeWidthRatio * dimensions.height)}`,
+          ...(layer.backgroundColor ? [
+            "box=1",
+            `boxcolor=${color(layer.backgroundColor, layer.opacity)}`,
+            `boxborderw=${Math.round((layer.backgroundPaddingRatio ?? 0.006) * dimensions.height)}`,
+          ] : []),
           `x=w*${layer.x.toFixed(5)}`,
           `y=h*${layer.y.toFixed(5)}`,
           "fix_bounds=1",
@@ -130,14 +136,30 @@ export class TemplateCompiler {
       const scaledLabel = `sticker${stickerIndex}`;
       const nextLabel = `base${graph.length}`;
       const angle = (Math.PI * layer.rotationDeg / 180).toFixed(6);
+      const governed = template.layoutPolicy === CORNER_SAFE_POLICY.id;
+      const corner = nearestStickerCorner(layer);
+      const stickerWidth = Math.max(1, Math.round(dimensions.width * layer.width));
+      const stickerScale = governed
+        ? `${stickerWidth}:${Math.max(1, Math.round(dimensions.height * CORNER_SAFE_POLICY.maxStickerHeight))}:force_original_aspect_ratio=decrease`
+        : `${stickerWidth}:-1`;
       graph.push(
         `[${stickerIndex}:v]format=rgba,` +
         `rotate=${angle}:c=none:ow=rotw(${angle}):oh=roth(${angle}),` +
-        `scale=${Math.max(1, Math.round(dimensions.width * layer.width))}:-1,` +
+        `scale=${stickerScale},` +
         `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=N/FRAME_RATE/TB[${sourceLabel}]`,
       );
       graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
-      graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}:format=auto[${nextLabel}]`);
+      const overlayX = governed
+        ? corner.horizontal === "right"
+          ? `main_w-overlay_w-main_w*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
+          : `main_w*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
+        : `main_w*${layer.x.toFixed(5)}`;
+      const overlayY = governed
+        ? corner.vertical === "bottom"
+          ? `main_h-overlay_h-main_h*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
+          : `main_h*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
+        : `main_h*${layer.y.toFixed(5)}`;
+      graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=${overlayX}:y=${overlayY}:format=auto[${nextLabel}]`);
       baseLabel = nextLabel;
     }
 

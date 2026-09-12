@@ -1,5 +1,6 @@
 import type { AppState } from "./main/application";
 import type { EditTemplate, ExportPreset } from "./main/domain";
+import type { LayoutAgentInput } from "./main/layout-agent";
 
 declare global {
   interface Window {
@@ -11,6 +12,7 @@ declare global {
       removeMedia(mediaId: string): Promise<AppState & { capabilities: any }>;
       selectStickerAsset(): Promise<{ assetPath: string; assetFingerprint: string } | null>;
       updateTemplate(template: EditTemplate): Promise<AppState & { capabilities: any }>;
+      applyLayoutAgent(input: LayoutAgentInput): Promise<AppState & { capabilities: any }>;
       saveTemplate(): Promise<EditTemplate | null>;
       loadTemplate(): Promise<AppState & { capabilities: any } | null>;
       saveProject(): Promise<AppState & { capabilities: any } | null>;

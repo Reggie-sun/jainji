@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
+import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-policy.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -81,6 +82,8 @@ export const TextLayerSchema = z.object({
   color: ColorSchema,
   strokeColor: ColorSchema,
   strokeWidthRatio: z.number().finite().min(0).lte(0.05),
+  backgroundColor: ColorSchema.optional(),
+  backgroundPaddingRatio: z.number().finite().min(0).lte(0.05).optional(),
 }).strict();
 export type TextLayer = z.infer<typeof TextLayerSchema>;
 
@@ -111,6 +114,7 @@ export const EditTemplateSchema = z.object({
   version: z.number().int().positive(),
   layers: z.array(LayerSchema).max(100),
   filter: FilterConfigSchema,
+  layoutPolicy: z.literal(CORNER_SAFE_POLICY.id).optional(),
   createdAt: DateTime,
   updatedAt: DateTime,
 }).strict().superRefine((template, ctx) => {
@@ -120,7 +124,18 @@ export const EditTemplateSchema = z.object({
     ids.add(layer.id);
     if (layer.x + layer.width > 1) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "layer exceeds the right edge" });
     if (layer.y >= 1) ctx.addIssue({ code: "custom", path: ["layers", index, "y"], message: "layer must start inside the frame" });
+    if (template.layoutPolicy === CORNER_SAFE_POLICY.id && layer.type === "sticker") {
+      for (const message of cornerSafeStickerIssues(layer)) ctx.addIssue({ code: "custom", path: ["layers", index], message });
+    }
   });
+  if (template.layoutPolicy === CORNER_SAFE_POLICY.id) {
+    const areaProxy = template.layers
+      .filter((layer) => layer.type === "sticker" && layer.visible)
+      .reduce((total, layer) => total + layer.width * layer.width, 0);
+    if (areaProxy - CORNER_SAFE_POLICY.maxTotalStickerAreaProxy > 1e-9) {
+      ctx.addIssue({ code: "custom", path: ["layers"], message: "贴纸总面积估算不得超过画面的 8%" });
+    }
+  }
 });
 export type EditTemplate = z.infer<typeof EditTemplateSchema>;
 

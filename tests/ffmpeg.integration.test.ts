@@ -6,6 +6,7 @@ import { ArtifactVerifier } from "../src/main/artifact";
 import { TemplateCompiler } from "../src/main/compiler";
 import { createDefaultTemplate, DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, type MediaItem } from "../src/main/domain";
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
+import { runLayoutAgent } from "../src/main/layout-agent";
 
 describe("real FFmpeg proof render", () => {
   it("renders Unicode text, transparent sticker and filter, then verifies the artifact", async () => {
@@ -22,9 +23,8 @@ describe("real FFmpeg proof render", () => {
     const probe = await new FfmpegAdapter(ffmpegPath, ffprobePath).probe(sourcePath);
     const stream = probe.streams?.find((item) => item.codec_type === "video")!;
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: path.basename(sourcePath), fingerprint: "fixture", sizeBytes: 1, durationMs: Math.round(Number(probe.format?.duration ?? 1) * 1_000), width: stream.width!, height: stream.height!, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
-    const template = createDefaultTemplate("fixture");
-    template.layers.push({ id: crypto.randomUUID(), type: "text", content: "你好，简辑", fontFamily: DEFAULT_TEXT_FONT_FAMILY, fontSizeRatio: 0.12, color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.004, x: 0.05, y: 0.05, width: 0.8, opacity: 1, zIndex: 1, visible: true });
-    template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: stickerPath, assetFingerprint: "fixture", x: 0.7, y: 0.6, width: 0.2, rotationDeg: 7, opacity: 0.8, zIndex: 2, visible: true });
+    const template = runLayoutAgent(createDefaultTemplate("fixture"), { style: "black-gold", title: "你好，简辑", price: "19.9元2单" });
+    template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: stickerPath, assetFingerprint: "fixture", x: 0.76, y: 0.8, width: 0.2, rotationDeg: 7, opacity: 0.8, zIndex: 3, visible: true });
     template.filter = { presetId: "warm", intensity: 0.6 };
     const compiler = new TemplateCompiler();
     const compiled = await compiler.compile(template, media, DEFAULT_PRESET, { ffmpegPath, fontResolver: { resolve: resolveFont }, textFilePath: (id) => path.join(directory, `${id}.txt`) });

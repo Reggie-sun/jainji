@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { EditTemplate, ExportPreset } from "./domain.js";
 import type { AppState } from "./application.js";
+import type { LayoutAgentInput } from "./layout-agent.js";
 
 const api = {
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
@@ -10,6 +11,7 @@ const api = {
   removeMedia: (mediaId: string): Promise<AppState & { capabilities: unknown }> => ipcRenderer.invoke("media.remove", mediaId),
   selectStickerAsset: (): Promise<{ assetPath: string; assetFingerprint: string } | null> => ipcRenderer.invoke("media.selectStickerAsset"),
   updateTemplate: (template: EditTemplate): Promise<AppState & { capabilities: unknown }> => ipcRenderer.invoke("template.update", { template }),
+  applyLayoutAgent: (input: LayoutAgentInput): Promise<AppState & { capabilities: unknown }> => ipcRenderer.invoke("agent.applyLayout", input),
   saveTemplate: (): Promise<EditTemplate | null> => ipcRenderer.invoke("template.save"),
   loadTemplate: (): Promise<AppState & { capabilities: unknown } | null> => ipcRenderer.invoke("template.load"),
   saveProject: (): Promise<AppState & { capabilities: unknown } | null> => ipcRenderer.invoke("project.save"),

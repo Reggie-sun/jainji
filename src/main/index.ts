@@ -10,6 +10,7 @@ import { checkCapabilities, FfmpegAdapter, resolveFont, type CapabilityStatus } 
 import { canonicalPath, fingerprintFile, isPathWithinDirectory } from "./paths.js";
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
 import { JobStore } from "./store.js";
+import { LayoutAgentInputSchema } from "./layout-agent.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -93,6 +94,11 @@ function registerHandlers(): void {
     assertTrustedSender(event);
     const { template } = templateUpdateSchema.parse(input);
     service.updateTemplate(template);
+    return publicState();
+  });
+  ipcMain.handle("agent.applyLayout", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    service.applyLayoutAgent(LayoutAgentInputSchema.parse(input));
     return publicState();
   });
   ipcMain.handle("template.save", async (event) => {
