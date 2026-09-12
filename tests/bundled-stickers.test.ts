@@ -6,15 +6,18 @@ import { loadBundledStickerAssets } from "../src/main/bundled-stickers";
 import { fingerprintFile, validateTemplateResources } from "../src/main/paths";
 import { createDefaultTemplate } from "../src/main/domain";
 import { BUNDLED_STICKERS } from "../src/shared/bundled-stickers";
+import { DecorationSchema } from "../src/shared/decorations";
 
 const resourceDirectory = path.resolve("resources/stickers/downloaded");
 
 describe("bundled downloaded stickers", () => {
-  it("loads eight pinned PNG and GIF files with matching fingerprints", async () => {
+  it("loads eighteen pinned PNG and GIF files with matching fingerprints", async () => {
     const assets = await loadBundledStickerAssets(resourceDirectory);
+    expect(BUNDLED_STICKERS).toHaveLength(18);
     expect(Object.keys(assets).sort()).toEqual(BUNDLED_STICKERS.map(({ id }) => id).sort());
     expect(BUNDLED_STICKERS.filter(({ animated }) => animated)).toHaveLength(3);
     for (const entry of BUNDLED_STICKERS) {
+      expect(DecorationSchema.parse({ sticker: entry.id }).sticker).toBe(entry.id);
       const asset = assets[entry.id];
       expect(path.extname(asset.assetPath)).toBe(path.extname(entry.fileName));
       expect((await readFile(asset.assetPath)).length).toBeGreaterThan(0);

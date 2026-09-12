@@ -163,8 +163,8 @@ try {
   assert.equal(await evaluate("document.body.innerText.includes('贴纸 · 青色箭头') && document.body.innerText.includes('滤镜 · 清透')"), true);
   await click("清爽日常");
   assert.equal(await evaluate("document.querySelector('.template-card.clean').getAttribute('aria-pressed')"), "true");
-  await waitFor("document.body.innerText.includes('公主请下单（动效）')");
-  assert.equal(await evaluate("document.querySelectorAll('.sticker-choices button').length"), 14);
+  await waitFor("document.body.innerText.includes('公主请下单（动效）') && document.body.innerText.includes('特别推荐')");
+  assert.equal(await evaluate("document.querySelectorAll('.sticker-choices button').length"), 24);
   assert.equal(await evaluate("document.querySelectorAll('.sticker-choices img[src^=\"data:image/gif\"]').length"), 3);
   await click("公主请下单（动效）");
   assert.equal(await evaluate("[...document.querySelectorAll('.sticker-choices button')].find(button => button.textContent.includes('公主请下单')).getAttribute('aria-pressed')"), "true");
