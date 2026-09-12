@@ -10,6 +10,44 @@ const input = { name: "My provider", model: "vision", baseUrl: "https://example.
 async function setup() { const directory = await mkdtemp(path.join(tmpdir(), "jianji-connections-")); directories.push(directory); const store = new ConnectionStore(directory); await store.load(); return { directory, store }; }
 afterEach(async () => { await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true }))); });
 describe("built-in connections", () => {
+  it("keeps the active model when saving fails and blocks competing operations while saving", async () => {
+    const { directory } = await setup();
+    const connections = new ModelConnections(directory, process.cwd(), async () => {}, () => {});
+    await connections.store.load(); await connections.save(input);
+    const id = connections.store.snapshot().profiles[0].id; await connections.select(id);
+    let reject!: (error: Error) => void;
+    vi.spyOn(connections.store, "save").mockImplementationOnce(() => new Promise((_, no) => { reject = no; }));
+    const switching = connections.selectModel({ connectionId: id, model: "vision-next" });
+    const failed = expect(switching).rejects.toThrow("disk-full");
+    expect(() => connections.assertIdle()).toThrow();
+    await expect(connections.selectModel({ connectionId: id, model: "another" })).rejects.toThrow();
+    reject(new Error("disk-full")); await failed;
+    expect(connections.provider.status().model).toBe("vision");
+    expect(connections.store.get(id).input.model).toBe("vision");
+    expect(() => connections.assertIdle()).not.toThrow(); await connections.dispose();
+  });
+  it("switches the active API model without changing credentials, persists it, and rejects stale selections", async () => {
+    const { directory } = await setup();
+    const connections = new ModelConnections(directory, process.cwd(), async () => {}, () => {});
+    await connections.store.load(); await connections.save(input);
+    const id = connections.store.snapshot().profiles[0].id; await connections.select(id);
+    await connections.selectModel({ connectionId: id, model: "vision-next" });
+    expect(connections.provider.status().model).toBe("vision-next");
+    expect(connections.store.get(id).input.apiKey).toBe(input.apiKey);
+    await expect(connections.selectModel({ connectionId: "chatgpt", model: "vision" })).rejects.toThrow();
+    await expect(connections.selectModel({ connectionId: id, model: " " })).rejects.toThrow();
+    const restored = new ModelConnections(directory, process.cwd(), async () => {}, () => {}); await restored.restore();
+    expect(restored.provider.status().model).toBe("vision-next");
+    expect(JSON.stringify(restored.store.snapshot())).not.toContain(input.apiKey);
+    await connections.dispose(); await restored.dispose();
+  });
+  it("persists a ChatGPT preference alongside API profiles", async () => {
+    const { directory, store } = await setup();
+    await store.select("chatgpt"); await store.saveChatGPTModel("vision-next"); await store.save(input);
+    const restored = new ConnectionStore(directory); await restored.load();
+    expect(restored.snapshot().chatgptModel).toBe("vision-next");
+    expect(restored.snapshot().selected).toBe("chatgpt");
+  });
   it("retains legacy ChatGPT selection when an inactive API profile is saved", async () => {
     const { directory } = await setup(); await mkdir(path.join(directory, "codex"));
     await writeFile(path.join(directory, "codex", "auth.json"), "fixture-only");

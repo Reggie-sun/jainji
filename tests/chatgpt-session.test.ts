@@ -8,9 +8,10 @@ import type { RpcClient } from "../src/main/codex-rpc";
 
 class FakeRpc extends EventEmitter implements RpcClient {
   account: unknown = null;
+  models = [{ model: "vision", isDefault: true, hidden: false, inputModalities: ["text", "image"] }, { model: "vision-next", isDefault: false, hidden: false, inputModalities: ["image"] }, { model: "text-only", isDefault: false, hidden: false, inputModalities: ["text"] }];
   request = vi.fn(async (method: string, _params: unknown): Promise<any> => {
     if (method === "account/read") return { account: this.account };
-    if (method === "model/list") return { data: [{ model: "vision", isDefault: true, hidden: false, inputModalities: ["text", "image"] }] };
+    if (method === "model/list") return { data: this.models };
     if (method === "account/login/start") return { type: "chatgpt", loginId: "login", authUrl: "https://auth.openai.com/authorize?state=fake" };
     if (method === "thread/start") return { thread: { id: "thread" } };
     if (method === "turn/start") return { turn: { id: "turn" } };
@@ -29,6 +30,42 @@ async function setup() {
 afterEach(async () => { await Promise.all(directories.splice(0).map((p) => rm(p, { recursive: true, force: true }))); });
 
 describe("managed ChatGPT session", () => {
+  it("loads later model pages and excludes hidden and text-only entries", async () => {
+    const { rpc, session } = await setup(); rpc.account = { type: "chatgpt" };
+    rpc.request.mockImplementation(async (method, params: any) => {
+      if (method === "account/read") return { account: rpc.account };
+      if (method === "model/list") return params.cursor ? { data: [rpc.models[1]], nextCursor: null } : { data: [rpc.models[0], rpc.models[2], { ...rpc.models[1], model: "hidden", hidden: true }], nextCursor: "page-2" };
+      return {};
+    });
+    await session.refresh();
+    expect(session.status().models?.map((item) => item.model)).toEqual(["vision", "vision-next"]);
+    expect(rpc.request).toHaveBeenCalledWith("model/list", { includeHidden: false, cursor: "page-2" });
+    await session.dispose();
+  });
+  it("uses the selected vision model on the actual thread and rejects unavailable models", async () => {
+    const { rpc, session } = await setup(); rpc.account = { type: "chatgpt" }; await session.refresh();
+    expect(session.status().models?.map((item) => item.model)).toEqual(["vision", "vision-next"]);
+    expect(() => session.selectModel("text-only")).toThrow();
+    expect(() => session.selectModel("unknown")).toThrow();
+    session.selectModel("vision-next");
+    const result = session.complete([{ role: "user", content: "brief" }], new AbortController().signal);
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    expect(rpc.request).toHaveBeenCalledWith("thread/start", expect.objectContaining({ model: "vision-next", environments: [] }));
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "ok" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await result).toBe("ok"); await session.dispose();
+  });
+  it("restores the preferred model and requires reselection if it is no longer available", async () => {
+    const { rpc, session: unused } = await setup(); await unused.dispose();
+    rpc.account = { type: "chatgpt" };
+    const session = new ChatGPTSession(async () => rpc, async () => {}, directories.at(-1)!, () => {}, () => "vision-next");
+    await session.refresh(); expect(session.status().model).toBe("vision-next");
+    rpc.models = rpc.models.filter((item) => item.model !== "vision-next");
+    await session.refresh(); expect(session.status().model).toBeUndefined();
+    expect(session.status().message).toContain("重新选择");
+    await expect(session.complete([], new AbortController().signal)).rejects.toThrow();
+    await session.dispose();
+  });
   it("accepts a new login while a cancelled login metadata request is still pending", async () => {
     const { rpc, session } = await setup(); await session.login();
     let finish!: (value: unknown) => void;
@@ -85,7 +122,7 @@ describe("managed ChatGPT session", () => {
     rpc.account = { type: "chatgpt", email: "test@example.test", planType: "plus", tokens: "must-not-escape" };
     rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
     await vi.waitFor(() => expect(session.status().status).toBe("ready"));
-    expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision" });
+    expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision", models: [{ model: "vision", displayName: "vision" }, { model: "vision-next", displayName: "vision-next" }] });
     session.dispose();
   });
   it("refreshes again when account/updated follows a successful login before account/read is ready", async () => {
@@ -95,7 +132,7 @@ describe("managed ChatGPT session", () => {
     await vi.waitFor(() => expect(session.status().message).toContain("同步"));
     rpc.account = { type: "chatgpt", email: "test@example.test", planType: "plus" };
     rpc.emit("notification", "account/updated", { authMode: "chatgpt", planType: "plus" });
-    await vi.waitFor(() => expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision" }));
+    await vi.waitFor(() => expect(session.status()).toMatchObject({ status: "ready", email: "test@example.test", plan: "plus", model: "vision" }));
     session.dispose();
   });
   it("cancels login and ignores its late success notification", async () => {

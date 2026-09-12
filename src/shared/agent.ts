@@ -31,7 +31,8 @@ export const ConnectionInputSchema = z.object({
 }).strict();
 export type ConnectionInput = z.infer<typeof ConnectionInputSchema>;
 export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; source?: "api" | "chatgpt"; providerName?: string; protocol?: string; }
-export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in" | "ready" | "error"; email?: string; plan?: string; model?: string; message?: string; }
+export interface ChatGPTModel { model: string; displayName: string; }
+export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in" | "ready" | "error"; email?: string; plan?: string; model?: string; models?: ChatGPTModel[]; message?: string; }
 
 export const MAX_AGENT_OUTPUTS = 100;
 export const ProductionMultiplierSchema = z.number().int().min(1).max(MAX_AGENT_OUTPUTS);

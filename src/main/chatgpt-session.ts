@@ -20,8 +20,12 @@ export class ChatGPTSession {
   private disposed = false;
   private revision = 0;
   private refreshGeneration = 0;
-  constructor(private readonly create: () => Promise<RpcClient>, private readonly openBrowser: (url: string) => Promise<void>, private readonly cwd: string, private readonly changed: () => void) {}
+  constructor(private readonly create: () => Promise<RpcClient>, private readonly openBrowser: (url: string) => Promise<void>, private readonly cwd: string, private readonly changed: () => void, private readonly preferredModel: () => string | undefined = () => undefined) {}
   status(): ChatGPTStatus { return { ...this.state }; }
+  assertModel(model: string): void {
+    if (this.state.status !== "ready" || !this.state.models?.some((item) => item.model === model)) throw new ProviderError("请选择当前账户可用的视觉模型。");
+  }
+  selectModel(model: string): void { this.assertModel(model); this.set({ ...this.state, model, message: undefined }); }
   private set(state: ChatGPTStatus): void { this.state = state; this.changed(); }
   private async client(): Promise<RpcClient> {
     if (this.disposed) throw new ProviderError("应用正在关闭。");
@@ -71,13 +75,29 @@ export class ChatGPTSession {
     const response = z.object({ account: z.object({ type: z.string(), email: z.string().nullable().optional(), planType: z.string().optional() }).nullable() }).parse(await rpc.request("account/read", { refreshToken: false }));
     if (revision !== this.revision || generation !== this.refreshGeneration || this.disposed) return false;
     if (response.account?.type !== "chatgpt") { this.set(this.awaitingAccountUpdate || this.loginId ? { status: "logging-in", message: "等待登录状态同步，可在完成授权后刷新。" } : { status: "signed-out" }); return false; }
-    const models = z.object({ data: z.array(z.object({ model: z.string(), isDefault: z.boolean(), hidden: z.boolean(), inputModalities: z.array(z.string()).default(["text", "image"]) })) }).parse(await rpc.request("model/list", { includeHidden: false }));
-    const eligible = models.data.filter((model) => !model.hidden && model.inputModalities.includes("image"));
-    const selected = eligible.find((model) => model.isDefault) ?? eligible[0];
-    if (!selected) throw new ProviderError("当前账户没有可用的视觉模型。");
+    const schema = z.object({ data: z.array(z.object({ model: z.string(), displayName: z.string().optional(), isDefault: z.boolean(), hidden: z.boolean(), inputModalities: z.array(z.string()) })), nextCursor: z.string().nullable().optional() });
+    const available: z.infer<typeof schema>["data"] = [];
+    const cursors = new Set<string>();
+    let cursor: string | undefined;
+    do {
+      const response = await rpc.request("model/list", { includeHidden: false, ...(cursor ? { cursor } : {}) });
+      if (revision !== this.revision || generation !== this.refreshGeneration || this.disposed) return false;
+      const page = schema.parse(response);
+      available.push(...page.data);
+      cursor = page.nextCursor ?? undefined;
+      if (cursor && cursors.has(cursor)) throw new ProviderError("模型列表分页无效，请刷新登录状态。");
+      if (cursor) cursors.add(cursor);
+    } while (cursor);
+    const eligible = available.filter((model) => !model.hidden && model.inputModalities.includes("image"));
+    if (!eligible.length) throw new ProviderError("当前账户没有可用的视觉模型。");
+    const preferred = this.preferredModel() ?? this.state.model;
+    const selected = preferred ? eligible.find((model) => model.model === preferred) : eligible.find((model) => model.isDefault) ?? eligible[0];
     if (revision !== this.revision || generation !== this.refreshGeneration || this.disposed) return false;
     this.loginId = undefined; this.awaitingAccountUpdate = false; clearTimeout(this.loginTimer);
-    this.set({ status: "ready", email: response.account.email ?? undefined, plan: response.account.planType, model: selected.model });
+    this.set({ status: "ready", email: response.account.email ?? undefined, plan: response.account.planType, model: selected?.model,
+      models: [...new Map(eligible.map((item) => [item.model, { model: item.model, displayName: item.displayName || item.model }])).values()],
+      ...(!selected ? { message: "上次使用的模型当前不可用，请重新选择模型。" } : {}),
+    });
     return true;
   }
   async login(): Promise<void> {
@@ -132,12 +152,13 @@ export class ChatGPTSession {
   }
   async complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> {
     if (this.state.status !== "ready" || !this.state.model) throw new ProviderError("请先使用 ChatGPT 登录。");
+    const model = this.state.model;
     const rpc = await this.client();
     await mkdir(this.cwd, { recursive: true, mode: 0o700 });
     const aborted = AbortSignal.any([signal, AbortSignal.timeout(180_000)]);
     aborted.throwIfAborted();
     const thread = z.object({ thread: z.object({ id: z.string() }) }).parse(await rpc.request("thread/start", {
-      model: this.state.model, cwd: this.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [],
+      model, cwd: this.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [],
       baseInstructions: "You are a video packaging planner. Follow the response format requested by the current task. Do not use tools, commands, files, skills, or external services.",
       developerInstructions: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n"),
     }));

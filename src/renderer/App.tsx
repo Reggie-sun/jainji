@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import type { DesktopState } from "../shared/desktop";
 import type { RuleId } from "../shared/agent";
 import { ConnectionPanel } from "./ConnectionPanel";
+import { ModelPicker } from "./ModelPicker";
 import { TemplatePanel } from "./TemplatePanel";
 import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { DecorationSchema, type DecorationOptions, type Corner } from "../shared/decorations";
@@ -142,6 +143,7 @@ export default function App() {
     <div className="main-area">
       <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{state.capabilities.ready ? "本地引擎就绪" : "引擎待配置"}</span><button className="icon-button" aria-label="打开项目" disabled={locked || exporting} onClick={() => changeProject(true)}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked} onClick={() => void run(async () => { const next = await window.jianji.saveProject(); if (next) { apply(next); setNotice({ error: false, text: "项目已保存。" }); } })}><Icon name="download" size={15} />保存项目</button></div></header>
       <main className="content">
+        {(step === "templates" || step === "connection") && <ModelPicker connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} disabled={locked || exporting} onSelect={(input) => run(async () => { apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} />}
         {notice && <div className={notice.error ? "notice error" : "notice success"} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "close" : "check"} size={17} /><span>{notice.text}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setNotice(undefined)}><Icon name="close" size={16} /></button></div>}
         {!state.capabilities.ready && step !== "connection" && <div className="capability-banner" role="status"><Icon name="settings" /><div><strong>本地导出引擎需要配置</strong><p>{state.capabilities.message} Windows：安装 FFmpeg 并加入 PATH；Linux：安装 FFmpeg、fontconfig 与 Noto CJK 字体。配置完成后重启应用。</p></div></div>}
         {agentRunning && <div className="activity-banner" role="status"><span className="activity-orb"><Icon name="spark" size={17} /></span><div><strong>Agent 正在逐条创作</strong><span>当前任务使用已冻结的素材与规则。</span></div><button className="text-button" disabled={busy} onClick={() => void run(async () => { apply(await window.jianji.cancelAgent()); })}>停止本轮任务</button></div>}
