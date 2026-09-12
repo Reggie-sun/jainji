@@ -11,7 +11,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (message.id === undefined) return;
   let result = {};
   if (message.method === "account/read") result = { account: loggedIn ? { type: "chatgpt", email: "smoke@example.test", planType: "plus" } : null };
-  if (message.method === "model/list") result = { data: [{ model: "smoke-codex-vision", isDefault: true, hidden: false, inputModalities: ["text", "image"] }] };
+  if (message.method === "model/list") result = { data: [{ model: "smoke-codex-vision", isDefault: true, hidden: false, inputModalities: ["text", "image"] }, { model: "smoke-codex-next", displayName: "Smoke Next", isDefault: false, hidden: false, inputModalities: ["image"] }, { model: "smoke-text", isDefault: false, hidden: false, inputModalities: ["text"] }] };
   if (message.method === "account/login/start") {
     result = { type: "chatgpt", loginId: "smoke-login", authUrl: "https://auth.openai.com/authorize?state=smoke" };
     timer = setTimeout(() => {

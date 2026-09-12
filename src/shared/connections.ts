@@ -7,6 +7,11 @@ export const SaveConnectionSchema = ConnectionInputSchema.extend({
   apiKey: ConnectionInputSchema.shape.apiKey.optional(),
 }).strict();
 export type SaveConnection = z.infer<typeof SaveConnectionSchema>;
+export const SelectModelSchema = z.object({
+  connectionId: z.union([z.literal("chatgpt"), z.string().uuid()]),
+  model: ConnectionInputSchema.shape.model,
+}).strict();
+export type SelectModel = z.infer<typeof SelectModelSchema>;
 export interface SavedConnection {
   id: string;
   name: string;
@@ -18,5 +23,6 @@ export interface SavedConnection {
 export interface ConnectionLibrary {
   profiles: SavedConnection[];
   selected: string | null;
+  chatgptModel?: string;
   error?: string;
 }

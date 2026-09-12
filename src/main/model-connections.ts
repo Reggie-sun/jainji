@@ -7,6 +7,7 @@ import { CodexRpc } from "./codex-rpc.js";
 import { ProviderError } from "./api-transport.js";
 import { loadCCSwitchProvider, listCCSwitchProviders } from "./cc-switch.js";
 import { ConnectionStore } from "./connection-store.js";
+import { SelectModelSchema } from "../shared/connections.js";
 
 export function codexLaunch(appPath: string, userData: string): { command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
   const arch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : undefined;
@@ -56,7 +57,7 @@ export class ModelConnections {
         else this.provider.clear();
       }
       this.changed();
-    });
+    }, () => this.store.snapshot().chatgptModel);
   }
   assertIdle(): void { if (this.pending || ["starting", "logging-in"].includes(this.chatgpt.status().status)) throw new ProviderError("连接正在处理中，请等待或取消登录。"); }
   private async exclusive(action: () => Promise<void>): Promise<void> {
@@ -91,6 +92,23 @@ export class ModelConnections {
     await this.exclusive(async () => { const id = await this.store.save(input); if (this.store.snapshot().selected === id) this.activate(id); });
   }
   async select(id: string): Promise<void> { await this.exclusive(async () => { this.store.get(id); await this.store.select(id); this.activate(id); }); }
+  async selectModel(input: unknown): Promise<void> {
+    const parsed = SelectModelSchema.safeParse(input);
+    if (!parsed.success) throw new ProviderError("请选择连接并填写有效的模型名称。");
+    await this.exclusive(async () => {
+      const { connectionId, model } = parsed.data;
+      if (this.store.snapshot().selected !== connectionId) throw new ProviderError("当前连接已变更，请重新选择模型。");
+      if (connectionId === "chatgpt") {
+        this.chatgpt.assertModel(model);
+        await this.store.saveChatGPTModel(model);
+        this.chatgpt.selectModel(model);
+      } else {
+        const profile = this.store.get(connectionId);
+        await this.store.save({ ...profile.input, id: connectionId, name: profile.name, model });
+        this.activate(connectionId);
+      }
+    });
+  }
   async remove(id: string): Promise<void> {
     await this.exclusive(async () => { const active = this.store.snapshot().selected === id; await this.store.remove(id); if (active) this.provider.clear(); });
   }

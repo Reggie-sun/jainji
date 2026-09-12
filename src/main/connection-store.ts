@@ -7,7 +7,7 @@ import { SaveConnectionSchema, type ConnectionLibrary } from "../shared/connecti
 import { ProviderError } from "./api-transport.js";
 
 const ProfileSchema = ConnectionInputSchema.extend({ id: z.string().uuid(), name: z.string().trim().min(1).max(80) });
-const StoreSchema = z.object({ version: z.literal(1), selected: z.string().nullable(), profiles: z.array(ProfileSchema).max(100) }).strict().superRefine((store, ctx) => {
+const StoreSchema = z.object({ version: z.literal(1), selected: z.string().nullable(), chatgptModel: ConnectionInputSchema.shape.model.optional(), profiles: z.array(ProfileSchema).max(100) }).strict().superRefine((store, ctx) => {
   if (new Set(store.profiles.map((p) => p.id)).size !== store.profiles.length ||
       (store.selected !== null && store.selected !== "chatgpt" && !store.profiles.some((p) => p.id === store.selected))) ctx.addIssue({ code: "custom", message: "Invalid profile selection" });
 });
@@ -31,7 +31,7 @@ export class ConnectionStore {
     this.loaded = true;
   }
   snapshot(): ConnectionLibrary {
-    return { selected: this.state.selected, error: this.error, profiles: this.state.profiles.map(({ id, name, baseUrl, model, protocol, authHeader }) => ({ id, name, baseUrl, model, protocol: protocol ?? "chat-completions", authHeader: authHeader ?? "bearer" })) };
+    return { selected: this.state.selected, chatgptModel: this.state.chatgptModel, error: this.error, profiles: this.state.profiles.map(({ id, name, baseUrl, model, protocol, authHeader }) => ({ id, name, baseUrl, model, protocol: protocol ?? "chat-completions", authHeader: authHeader ?? "bearer" })) };
   }
   get(id: string): { name: string; input: ConnectionInput } {
     const profile = this.state.profiles.find((p) => p.id === id);
@@ -68,6 +68,7 @@ export class ConnectionStore {
     if (id !== null && id !== "chatgpt") this.get(id);
     await this.commit({ ...this.state, selected: id });
   }
+  async saveChatGPTModel(model: string): Promise<void> { await this.commit({ ...this.state, chatgptModel: model }); }
   async remove(id: string): Promise<void> {
     this.get(id);
     await this.commit({ ...this.state, selected: this.state.selected === id ? null : this.state.selected, profiles: this.state.profiles.filter((p) => p.id !== id) });

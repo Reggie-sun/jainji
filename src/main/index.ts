@@ -110,6 +110,7 @@ function registerHandlers(): void {
     assertTrustedSender(event); agent.assertIdle(); await connections.save(input); return publicState();
   });
   ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
+  ipcMain.handle("connection.model.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.selectModel(input); return publicState(); });
   ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("agent.disconnect", async (event) => {
     assertTrustedSender(event); agent.assertIdle(); await connections.disconnect(); return publicState();

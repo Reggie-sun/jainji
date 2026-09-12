@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AgentStartInput, GenerateBriefInput } from "../shared/agent.js";
-import type { SaveConnection } from "../shared/connections.js";
+import type { SaveConnection, SelectModel } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
 import type { DecorationCatalog } from "../shared/decorations.js";
@@ -13,6 +13,7 @@ const api = {
   getState: (): Promise<DesktopState> => ipcRenderer.invoke("app.state"),
   saveConnection: (input: SaveConnection): Promise<DesktopState> => ipcRenderer.invoke("connection.save", input),
   selectConnection: (id: string): Promise<DesktopState> => ipcRenderer.invoke("connection.select", id),
+  selectModel: (input: SelectModel): Promise<DesktopState> => ipcRenderer.invoke("connection.model.select", input),
   removeConnection: (id: string): Promise<DesktopState> => ipcRenderer.invoke("connection.remove", id),
   loginChatGPT: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.login"),
   refreshChatGPT: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.refresh"),
