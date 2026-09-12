@@ -11,6 +11,7 @@ import { canonicalPath, fingerprintFile, isPathWithinDirectory } from "./paths.j
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
 import { JobStore } from "./store.js";
 import { AgentController } from "./agent-controller.js";
+import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { DesktopState } from "../shared/desktop.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
@@ -278,7 +279,8 @@ async function bootstrap(): Promise<void> {
     onSnapshot: publish,
   });
   queue.setMediaLookup((id) => service.getMedia(id));
-  agent = new AgentController(service, queue, ffmpeg, notifyState);
+  const stickerAssets = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets);
   await queue.recover();
   registerHandlers();
   await createWindow();

@@ -9,6 +9,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from "../src/main/domain";
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
+import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 describe("agent to local export", () => {
   it("extracts real frames, calls a local compatible endpoint, and renders independent verified videos", async (context) => {
@@ -22,7 +23,7 @@ describe("agent to local export", () => {
       request.on("end", () => {
         requests.push(JSON.parse(body));
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面添加简短标题", captions: [{ text: `片段${requests.length}`, corner: "top-left", size: 0.026 }], filter: "none", intensity: 0 }) } }] }));
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面添加简短标题", captions: [{ text: `片段${requests.length}`, corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 }) } }] }));
       });
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -30,7 +31,8 @@ describe("agent to local export", () => {
     const adapter = new FfmpegAdapter(ffmpegPath, ffprobePath);
     const service = new ApplicationService(adapter, { resolve: resolveFont });
     const queue = new ExportQueue({ ffmpeg: adapter, fontResolver: { resolve: resolveFont }, jobStore: new JobStore(path.join(directory, "jobs")) });
-    const controller = new AgentController(service, queue, adapter, () => {});
+    const stickerAssets = await ensureBuiltinStickerAssets(path.join(directory, "agent-stickers"));
+    const controller = new AgentController(service, queue, adapter, () => {}, stickerAssets);
     try {
       for (const name of ["素材一.mp4", "素材二.mp4"]) {
         const source = path.join(directory, name);
@@ -61,6 +63,7 @@ describe("agent to local export", () => {
       const batches = queue.snapshot().batches;
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed"]);
       expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content)).toEqual(["片段1", "片段2"]);
+      expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
       for (const { batch } of batches) {
         const result = await adapter.probe(batch.tasks[0].outputPath!);
         expect(result.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);

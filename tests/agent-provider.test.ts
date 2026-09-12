@@ -1,18 +1,20 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentProvider, materializePlan, validatePlan } from "../src/main/agent-provider";
-import { ConnectionInputSchema } from "../src/shared/agent";
+import { ConnectionInputSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { TemplateCompiler } from "../src/main/compiler";
 import { DEFAULT_PRESET, type MediaItem } from "../src/main/domain";
+import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
-const plan = { summary: "保留主体，添加短标题", captions: [{ text: "好物日常", corner: "top-left", size: 0.026 }], filter: "warm", intensity: 0.2 };
+const plan = { summary: "保留主体，添加短标题", captions: [{ text: "好物日常", corner: "top-left", size: 0.026 }], filter: "warm", intensity: 0.4 };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }));
+const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
   it("keeps twelve Chinese characters on one line for portrait and landscape media", async () => {
     for (const dimensions of [{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }]) {
-      const input = { ...plan, captions: [{ text: "一二三四五六七八九十一二", corner: "bottom-right", size: 0.03 }], filter: "none" };
-      const template = materializePlan(input, "clean", dimensions);
+      const input = { ...plan, captions: [{ text: "一二三四五六七八九十一二", corner: "bottom-right", size: 0.03 }], filter: "cool", intensity: 0.3 };
+      const template = materializePlan(input, "clean", dimensions, stickerAssets);
       const compiled = await new TemplateCompiler().compile(template, { ...dimensions, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/text.txt" });
       expect(compiled.textFiles[0].content).toBe(input.captions[0].text);
       expect(template.layers[0].type === "text" && template.layers[0].fontSizeRatio * dimensions.height).toBeCloseTo(0.03 * dimensions.width);
@@ -56,9 +58,23 @@ describe("agent provider boundary", () => {
     expect(() => validatePlan({ ...plan, captions: [plan.captions[0], plan.captions[0]] }, "black-gold")).toThrow();
     expect(() => validatePlan({ ...plan, command: "ffmpeg" }, "black-gold")).toThrow();
     expect(() => validatePlan({ ...plan, captions: [{ ...plan.captions[0], assetPath: "/tmp/file" }] }, "black-gold")).toThrow();
-    const template = materializePlan(plan, "black-gold", { width: 1920, height: 1080 });
+    const template = materializePlan(plan, "black-gold", { width: 1920, height: 1080 }, stickerAssets);
     expect(template.layoutPolicy).toBe("corner-safe-v1");
     expect(template.layers[0]).toMatchObject({ type: "text", content: "好物日常", x: 0.04, y: 0.04 });
+    expect(template.layers[1]).toMatchObject({ type: "sticker", assetPath: "/tmp/sparkle.png", width: 0.12, x: 0.84, y: 0.8 });
+  });
+
+  it("materializes every visible rule as a distinct filtered template with one governed sticker", () => {
+    expect(RULE_TEMPLATES).toHaveLength(8);
+    const signatures = RULE_TEMPLATES.map((rule) => {
+      const template = materializePlan({ ...plan, filter: rule.filters[0], intensity: rule.minIntensity }, rule.id, { width: 1080, height: 1920 }, stickerAssets);
+      const sticker = template.layers.find((layer) => layer.type === "sticker");
+      expect(sticker).toMatchObject({ type: "sticker", width: rule.stickerWidth, rotationDeg: rule.stickerRotation });
+      expect(template.filter).toEqual({ presetId: rule.filters[0], intensity: rule.minIntensity });
+      expect(sticker && sticker.width * sticker.width).toBeLessThan(0.08);
+      return `${template.filter.presetId}:${rule.sticker}:${rule.textColor.join("-")}:${rule.backgroundColor.join("-")}:${rule.stickerWidth}:${rule.stickerRotation}`;
+    });
+    expect(new Set(signatures).size).toBe(RULE_TEMPLATES.length);
   });
 
   it("rejects insecure remote destinations and URL credentials while allowing loopback", () => {

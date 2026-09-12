@@ -7,6 +7,9 @@ import { ApplicationService } from "../src/main/application";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
+import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
+
+const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("AgentController queue admission", () => {
   it("does not let another project's recovered queued task block a new visible project", async () => {
@@ -17,7 +20,7 @@ describe("AgentController queue admission", () => {
     const id = crypto.randomUUID();
     service.currentProject.mediaItems.push({ id, displayName: "test", sourcePath: path.join(directory, "missing.mp4"), fingerprint: "missing", width: 10, height: 10, durationMs: 1000, sizeBytes: 1, rotation: 0, importedAt: new Date().toISOString(), probeStatus: "ready" });
     queue.snapshot = () => ({ revision: 1, batches: [{ batch: { projectId: "other-project", tasks: [{ status: "queued" }] } }] } as ReturnType<ExportQueue["snapshot"]>);
-    const controller = new AgentController(service, queue, ffmpeg, () => {});
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
     try {
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory }, new Set([directory]))).resolves.toBeUndefined();

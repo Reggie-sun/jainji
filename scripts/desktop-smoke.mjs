@@ -27,7 +27,7 @@ const server = createServer((request, response) => {
     requests += 1;
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "保留主体，添加克制的暖色角标", captions: [{ text: "把日常过成喜欢", corner: "top-left", size: 0.026 }], filter: "none", intensity: 0 }) } }] }));
+    response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "保留主体，添加清透角标", captions: [{ text: "把日常过成喜欢", corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 }) } }] }));
   });
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -117,6 +117,8 @@ try {
   await waitFor("document.body.innerText.includes('测试素材.mp4')");
   await screenshot("02-materials");
   await click("下一步");
+  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 8);
+  assert.equal(await evaluate("document.body.innerText.includes('贴纸 · 青色箭头') && document.body.innerText.includes('滤镜 · 清透')"), true);
   await click("清爽日常");
   assert.equal(await evaluate("document.querySelector('.template-card.clean').getAttribute('aria-pressed')"), "true");
   await screenshot("03-templates");
@@ -131,7 +133,7 @@ try {
   const state = await evaluate("window.jianji.getState()");
   assert.equal(state.queue.batches[0].batch.tasks[0].status, "completed");
   assert.equal(JSON.stringify(state).includes("local-smoke-key"), false);
-  assert.equal(state.agentRun.items[0].summary, "保留主体，添加克制的暖色角标");
+  assert.equal(state.agentRun.items[0].summary, "保留主体，添加清透角标");
   await screenshot("05-results");
   await click("规则模板");
   await click("交给 Agent，开始出片");

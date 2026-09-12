@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { type AgentRun, type RuleId } from "../shared/agent.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { materializePlan, ProviderError, type PackagingPlan } from "./agent-provider.js";
+import type { BuiltinStickerAssets } from "./builtin-stickers.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
   plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
+  stickerAssets: BuiltinStickerAssets;
   onChange(): void;
 }
 
@@ -47,7 +49,7 @@ export class AgentRunner {
           signal.throwIfAborted();
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal);
           signal.throwIfAborted();
-          const template = materializePlan(plan, run.ruleId, source);
+          const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets);
           item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = plan.summary;
           item.status = "exporting";

@@ -9,6 +9,7 @@ import { AgentRunner } from "./agent-runner.js";
 import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
 import type { ExportQueue } from "./queue.js";
+import type { BuiltinStickerAssets } from "./builtin-stickers.js";
 
 export class AgentController {
   readonly provider = new AgentProvider();
@@ -17,7 +18,7 @@ export class AgentController {
   private testing = false;
   private preparingController?: AbortController;
   private testController?: AbortController;
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: BuiltinStickerAssets) {}
 
   get busy(): boolean { return this.preparing || this.testing || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -61,6 +62,7 @@ export class AgentController {
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
         },
+        stickerAssets: this.stickerAssets,
         onChange: this.onChange,
       });
       this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[]);
