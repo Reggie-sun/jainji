@@ -10,6 +10,7 @@ export type SaveConnection = z.infer<typeof SaveConnectionSchema>;
 export const SelectModelSchema = z.object({
   connectionId: z.union([z.literal("chatgpt"), z.string().uuid()]),
   model: ConnectionInputSchema.shape.model,
+  reasoningEffort: ConnectionInputSchema.shape.reasoningEffort,
 }).strict();
 export type SelectModel = z.infer<typeof SelectModelSchema>;
 export interface SavedConnection {
@@ -17,6 +18,7 @@ export interface SavedConnection {
   name: string;
   baseUrl: string;
   model: string;
+  reasoningEffort?: string;
   protocol: "chat-completions" | "responses" | "anthropic";
   authHeader: "bearer" | "x-api-key";
 }
@@ -24,5 +26,6 @@ export interface ConnectionLibrary {
   profiles: SavedConnection[];
   selected: string | null;
   chatgptModel?: string;
+  chatgptReasoningEffort?: string;
   error?: string;
 }

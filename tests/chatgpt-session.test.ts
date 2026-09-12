@@ -30,6 +30,33 @@ async function setup() {
 afterEach(async () => { await Promise.all(directories.splice(0).map((p) => rm(p, { recursive: true, force: true }))); });
 
 describe("managed ChatGPT session", () => {
+  it("restores saved effort and requires reselection if the catalog withdraws it", async () => {
+    const { rpc, session: unused } = await setup(); await unused.dispose(); rpc.account = { type: "chatgpt" };
+    Object.assign(rpc.models[0], { supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Deep" }], defaultReasoningEffort: "high" });
+    const session = new ChatGPTSession(async () => rpc, async () => {}, directories.at(-1)!, () => {}, () => "vision", () => "high");
+    await session.refresh(); expect(session.status().reasoningEffort).toBe("high");
+    Object.assign(rpc.models[0], { supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Quick" }], defaultReasoningEffort: "low" });
+    await session.refresh(); expect(session.status().model).toBeUndefined();
+    expect(session.status().message).toContain("档位");
+    await expect(session.complete([], new AbortController().signal)).rejects.toThrow();
+    await session.dispose();
+  });
+  it("exposes model-specific efforts, passes selection to turn/start, and rejects unsupported levels", async () => {
+    const { rpc, session } = await setup(); rpc.account = { type: "chatgpt" };
+    Object.assign(rpc.models[0], { supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Quick" }, { reasoningEffort: "ultra", description: "Deep" }], defaultReasoningEffort: "low" });
+    await session.refresh();
+    expect(session.status().models?.[0].supportedReasoningEfforts).toEqual([{ reasoningEffort: "low", description: "Quick" }, { reasoningEffort: "ultra", description: "Deep" }]);
+    expect(session.status().reasoningEffort).toBe("low");
+    expect(() => session.selectModel("vision", "high")).toThrow();
+    session.selectModel("vision", "ultra");
+    const result = session.complete([{ role: "user", content: "brief" }], new AbortController().signal);
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.objectContaining({ effort: "ultra" })));
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "ok" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await result).toBe("ok");
+    session.selectModel("vision"); expect(session.status().reasoningEffort).toBe("low");
+    await session.dispose();
+  });
   it("loads later model pages and excludes hidden and text-only entries", async () => {
     const { rpc, session } = await setup(); rpc.account = { type: "chatgpt" };
     rpc.request.mockImplementation(async (method, params: any) => {
@@ -122,7 +149,7 @@ describe("managed ChatGPT session", () => {
     rpc.account = { type: "chatgpt", email: "test@example.test", planType: "plus", tokens: "must-not-escape" };
     rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
     await vi.waitFor(() => expect(session.status().status).toBe("ready"));
-    expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision", models: [{ model: "vision", displayName: "vision" }, { model: "vision-next", displayName: "vision-next" }] });
+    expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision", models: [{ model: "vision", displayName: "vision", supportedReasoningEfforts: [] }, { model: "vision-next", displayName: "vision-next", supportedReasoningEfforts: [] }] });
     session.dispose();
   });
   it("refreshes again when account/updated follows a successful login before account/read is ready", async () => {

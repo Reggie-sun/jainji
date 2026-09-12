@@ -18,6 +18,7 @@ export const RuleIdSchema = z.enum(["black-gold", "clean", "mono", "coral-pop", 
 export type RuleId = z.infer<typeof RuleIdSchema>;
 export type StickerId = RuleTemplate["sticker"];
 
+export const ReasoningEffortSchema = z.string().trim().min(1).max(64);
 export const ConnectionInputSchema = z.object({
   baseUrl: z.string().trim().url().max(2048).refine((value) => {
     const url = new URL(value);
@@ -25,14 +26,15 @@ export const ConnectionInputSchema = z.object({
       (url.protocol === "https:" || (url.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)));
   }, "请使用 HTTPS API 地址；本机服务允许 HTTP。"),
   model: z.string().trim().min(1).max(200),
+  reasoningEffort: ReasoningEffortSchema.optional(),
   apiKey: z.string().trim().min(1).max(4096).refine((value) => !/[\r\n]/.test(value)),
   protocol: z.enum(["chat-completions", "responses", "anthropic"]).optional(),
   authHeader: z.enum(["bearer", "x-api-key"]).optional(),
 }).strict();
 export type ConnectionInput = z.infer<typeof ConnectionInputSchema>;
-export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; source?: "api" | "chatgpt"; providerName?: string; protocol?: string; }
-export interface ChatGPTModel { model: string; displayName: string; }
-export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in" | "ready" | "error"; email?: string; plan?: string; model?: string; models?: ChatGPTModel[]; message?: string; }
+export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; reasoningEffort?: string; source?: "api" | "chatgpt"; providerName?: string; protocol?: string; }
+export interface ChatGPTModel { model: string; displayName: string; supportedReasoningEfforts: { reasoningEffort: string; description: string }[]; defaultReasoningEffort?: string; }
+export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in" | "ready" | "error"; email?: string; plan?: string; model?: string; reasoningEffort?: string; models?: ChatGPTModel[]; message?: string; }
 
 export const MAX_AGENT_OUTPUTS = 100;
 export const ProductionMultiplierSchema = z.number().int().min(1).max(MAX_AGENT_OUTPUTS);

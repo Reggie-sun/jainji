@@ -52,9 +52,10 @@ describe("bundled Codex runtime", () => {
     try {
       await rpc.initialize();
       const thread = await rpc.request("thread/start", { model: "gpt-5.4", cwd: launch.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [], baseInstructions: "Reply with OK only." });
-      await rpc.request("turn/start", { threadId: thread.thread.id, input: [{ type: "text", text: "Test" }], environments: [], sandboxPolicy: { type: "readOnly", networkAccess: false } });
+      await rpc.request("turn/start", { threadId: thread.thread.id, input: [{ type: "text", text: "Test" }], effort: "high", environments: [], sandboxPolicy: { type: "readOnly", networkAccess: false } });
       const request = await Promise.race([captured, new Promise((_, reject) => setTimeout(() => reject(new Error("No local model request")), 10_000))]);
       const names = request.tools.map((tool: any) => tool.name ?? tool.type);
+      expect(request.reasoning.effort).toBe("high");
       expect(names.filter((name: string) => !["update_plan", "request_user_input"].includes(name))).toEqual([]);
     } finally {
       await rpc.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));
