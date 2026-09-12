@@ -1,0 +1,115 @@
+import { EventEmitter } from "node:events";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { ChatGPTSession, trustedLoginUrl } from "../src/main/chatgpt-session";
+import type { RpcClient } from "../src/main/codex-rpc";
+
+class FakeRpc extends EventEmitter implements RpcClient {
+  account: unknown = null;
+  request = vi.fn(async (method: string, _params: unknown): Promise<any> => {
+    if (method === "account/read") return { account: this.account };
+    if (method === "model/list") return { data: [{ model: "vision", isDefault: true, hidden: false, inputModalities: ["text", "image"] }] };
+    if (method === "account/login/start") return { type: "chatgpt", loginId: "login", authUrl: "https://auth.openai.com/authorize?state=fake" };
+    if (method === "thread/start") return { thread: { id: "thread" } };
+    if (method === "turn/start") return { turn: { id: "turn" } };
+    if (method === "account/logout") this.account = null;
+    return {};
+  });
+  close() { this.emit("closed"); }
+}
+const directories: string[] = [];
+async function setup() {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-chatgpt-")); directories.push(directory);
+  const rpc = new FakeRpc(); const browser = vi.fn().mockResolvedValue(undefined);
+  const session = new ChatGPTSession(async () => rpc, browser, directory, () => {});
+  return { rpc, session, browser };
+}
+afterEach(async () => { await Promise.all(directories.splice(0).map((p) => rm(p, { recursive: true, force: true }))); });
+
+describe("managed ChatGPT session", () => {
+  it("opens official OAuth, reacts only to the matching completion and exposes account metadata", async () => {
+    const { rpc, session, browser } = await setup();
+    await session.login();
+    expect(browser).toHaveBeenCalledWith("https://auth.openai.com/authorize?state=fake");
+    expect(session.status().status).toBe("logging-in");
+    rpc.emit("notification", "account/login/completed", { loginId: "different", success: true });
+    expect(session.status().status).toBe("logging-in");
+    rpc.account = { type: "chatgpt", email: "test@example.test", planType: "plus", tokens: "must-not-escape" };
+    rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
+    await vi.waitFor(() => expect(session.status().status).toBe("ready"));
+    expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision" });
+    session.dispose();
+  });
+  it("cancels login and ignores its late success notification", async () => {
+    const { rpc, session } = await setup();
+    await session.login(); await session.cancelLogin();
+    expect(rpc.request).toHaveBeenCalledWith("account/login/cancel", { loginId: "login" });
+    rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
+    expect(session.status().status).toBe("signed-out"); session.dispose();
+  });
+  it("does not reactivate a session cancelled while models were loading", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" };
+    let finish!: (value: any) => void;
+    rpc.request.mockImplementation(async (method) => method === "account/read" ? { account: rpc.account } : new Promise((resolve) => { finish = resolve; }));
+    const refresh = session.refresh();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await session.cancelLogin();
+    finish({ data: [{ model: "vision", isDefault: true, hidden: false }] });
+    expect(await refresh).toBe(false); expect(session.status().status).toBe("signed-out"); session.dispose();
+  });
+  it("clears a login already persisted when cancel returns notFound", async () => {
+    const { rpc, session } = await setup();
+    await session.login();
+    rpc.account = { type: "chatgpt", email: "test@example.test" };
+    rpc.request.mockImplementationOnce(async () => ({ status: "notFound" }));
+    await session.cancelLogin();
+    rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
+    expect(rpc.request).toHaveBeenCalledWith("account/logout", {});
+    expect(await session.refresh()).toBe(false);
+    expect(session.status().status).toBe("signed-out"); session.dispose();
+  });
+  it("does not claim logout succeeded when the credentials could remain", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" }; await session.refresh();
+    rpc.request.mockRejectedValueOnce(new Error("raw-sensitive-error"));
+    await expect(session.logout()).rejects.toThrow("退出登录未完成");
+    expect(session.status()).toEqual({ status: "error", message: "未能确认退出登录，请重新连接后退出。" });
+    expect(rpc.account).not.toBeNull(); session.dispose();
+  });
+  it("sends images in an ephemeral read-only turn, ignores commentary and other threads", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" }; await session.refresh();
+    const result = session.complete([{ role: "system", content: "hard rules" }, { role: "user", content: [{ type: "text", text: "brief" }, { type: "image_url", image_url: { url: "data:image/jpeg;base64,aA==", detail: "low" } }] }], new AbortController().signal);
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    expect(rpc.request).toHaveBeenCalledWith("thread/start", expect.objectContaining({ ephemeral: true, sandbox: "read-only", approvalPolicy: "never", developerInstructions: "hard rules", environments: [] }));
+    expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.objectContaining({ input: [{ type: "text", text: "brief" }, { type: "image", url: "data:image/jpeg;base64,aA==", detail: "low" }], sandboxPolicy: { type: "readOnly", networkAccess: false }, environments: [] }));
+    rpc.emit("notification", "turn/completed", { threadId: "other", turn: { status: "failed" } });
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "comment", phase: "commentary" } });
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: '{"summary":"ok"}', phase: "final_answer" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await result).toBe('{"summary":"ok"}');
+    expect(rpc.request).toHaveBeenCalledWith("thread/unsubscribe", { threadId: "thread" });
+    expect(rpc.listenerCount("notification")).toBe(1); session.dispose();
+  });
+  it("interrupts a cancelled request and drops provider error details", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" }; await session.refresh();
+    const abort = new AbortController();
+    const result = session.complete([{ role: "user", content: "test" }], abort.signal);
+    const rejected = expect(result).rejects.toThrow("已停止生成");
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    abort.abort(); await rejected;
+    expect(rpc.request).toHaveBeenCalledWith("turn/interrupt", { threadId: "thread", turnId: "turn" });
+    const failure = session.complete([{ role: "user", content: "test" }], new AbortController().signal);
+    const failed = expect(failure).rejects.toThrow("ChatGPT 任务失败");
+    await vi.waitFor(() => expect(rpc.request.mock.calls.filter(([method]) => method === "turn/start")).toHaveLength(2));
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "failed", error: { message: "secret-token-raw-body" } } });
+    await failed; session.dispose();
+  });
+  it("rejects nonofficial browser targets", () => {
+    for (const url of ["http://auth.openai.com", "https://auth.openai.com.evil.test", "file:///tmp/a", "https://user@chatgpt.com/"]) expect(() => trustedLoginUrl(url)).toThrow();
+  });
+});

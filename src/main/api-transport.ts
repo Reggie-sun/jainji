@@ -1,0 +1,60 @@
+import { z } from "zod";
+import type { ConnectionInput } from "../shared/agent.js";
+
+export type ModelMessage = { role: "system" | "user"; content: string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: string } })[] };
+export class ProviderError extends Error {}
+
+export async function completeApi(connection: ConnectionInput, messages: ModelMessage[], signal: AbortSignal, request: typeof fetch): Promise<string> {
+  const protocol = connection.protocol ?? "chat-completions";
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  headers[connection.authHeader === "x-api-key" ? "x-api-key" : "Authorization"] = connection.authHeader === "x-api-key" ? connection.apiKey : `Bearer ${connection.apiKey}`;
+  let endpoint = "/chat/completions";
+  let body: unknown = { model: connection.model, messages, stream: false };
+  if (protocol === "anthropic") {
+    endpoint = connection.baseUrl.endsWith("/v1") ? "/messages" : "/v1/messages";
+    headers["anthropic-version"] = "2023-06-01";
+    body = { model: connection.model, max_tokens: 2048, stream: false,
+      system: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n"),
+      messages: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : m.content.map((item) => {
+        if (item.type === "text") return item;
+        const match = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(item.image_url.url);
+        if (!match) throw new ProviderError("抽帧图片格式无效。");
+        return { type: "image", source: { type: "base64", media_type: "image/jpeg", data: match[1] } };
+      }) })),
+    };
+  } else if (protocol === "responses") {
+    endpoint = "/responses";
+    body = { model: connection.model, store: false, stream: false, input: messages.map((m) => ({ role: m.role,
+      content: typeof m.content === "string" ? m.content : m.content.map((item) => item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url, detail: "low" }),
+    })) };
+  }
+  try {
+    const response = await request(`${connection.baseUrl}${endpoint}`, {
+      method: "POST", redirect: "error", headers, body: JSON.stringify(body),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]),
+    });
+    if (!response.ok) {
+      await response.body?.cancel();
+      const reason = response.status === 401 || response.status === 403 ? "API Key 无效或没有模型权限" : response.status === 429 ? "额度不足或请求过于频繁" : `服务返回 HTTP ${response.status}`;
+      throw new ProviderError(`${reason}，请检查 API 配置。`);
+    }
+    const raw: unknown = await response.json();
+    let content: string;
+    if (protocol === "anthropic") {
+      const parsed = z.object({ content: z.array(z.object({ type: z.string(), text: z.string().optional() })) }).parse(raw);
+      content = parsed.content.filter((item) => item.type === "text").map((item) => item.text ?? "").join("");
+    } else if (protocol === "responses") {
+      const parsed = z.object({ status: z.literal("completed"), output: z.array(z.object({ type: z.string(), content: z.array(z.object({ type: z.string(), text: z.string().optional() })).optional() })) }).parse(raw);
+      content = parsed.output.filter((item) => item.type === "message").flatMap((item) => item.content ?? []).filter((item) => item.type === "output_text").map((item) => item.text ?? "").join("");
+    } else {
+      content = z.object({ choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1) }).parse(raw).choices[0].message.content;
+    }
+    if (!content || content.length > 16_000) throw new ProviderError("模型返回内容为空或过长。");
+    if (content.includes(connection.apiKey)) throw new ProviderError("服务响应包含敏感信息，已丢弃。");
+    return content;
+  } catch (error) {
+    if (signal.aborted) throw new ProviderError("已停止生成。");
+    if (error instanceof ProviderError) throw error;
+    throw new ProviderError("API 请求失败、响应格式不符或超时，请检查地址、网络和模型支持。");
+  }
+}

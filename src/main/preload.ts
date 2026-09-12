@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AgentStartInput, ConnectionInput } from "../shared/agent.js";
+import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
 import type { DecorationCatalog } from "../shared/decorations.js";
 
@@ -8,6 +9,10 @@ const api = {
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   getState: (): Promise<DesktopState> => ipcRenderer.invoke("app.state"),
   configureAgent: (input: ConnectionInput): Promise<DesktopState> => ipcRenderer.invoke("agent.configure", input),
+  loginChatGPT: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.login"),
+  cancelChatGPTLogin: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.cancel"),
+  listCCSwitch: (): Promise<CCSwitchProvider[]> => ipcRenderer.invoke("connection.ccswitch.list"),
+  useCCSwitch: (id: string, appType: "claude" | "codex"): Promise<DesktopState> => ipcRenderer.invoke("connection.ccswitch.use", { id, appType }),
   disconnectAgent: (): Promise<DesktopState> => ipcRenderer.invoke("agent.disconnect"),
   testAgent: (): Promise<boolean> => ipcRenderer.invoke("agent.test"),
   startAgent: (input: AgentStartInput): Promise<DesktopState> => ipcRenderer.invoke("agent.start", input),

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
@@ -22,23 +22,39 @@ const server = createServer((request, response) => {
   request.on("data", (chunk) => { body += chunk; });
   request.on("end", async () => {
     const input = JSON.parse(body);
-    assert.equal(request.url, "/v1/chat/completions");
-    assert.equal(input.messages[1].content.filter((item) => item.type === "image_url").length, 3);
+    const anthropic = request.url === "/anthropic/v1/messages";
+    assert.equal(request.url, anthropic ? "/anthropic/v1/messages" : "/v1/chat/completions");
+    assert.equal(input.messages[anthropic ? 0 : 1].content.filter((item) => item.type === (anthropic ? "image" : "image_url")).length, 3);
+    assert.equal(request.headers.authorization, anthropic ? "Bearer cc-switch-fixture-key" : "Bearer local-smoke-key");
     requests += 1;
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "保留主体，添加清透角标", captions: [{ text: "把日常过成喜欢", corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 }) } }] }));
+    const text = JSON.stringify({ summary: "保留主体，添加清透角标", captions: [{ text: "把日常过成喜欢", corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 });
+    response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
   });
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const apiPort = server.address().port;
+const fixtureHome = path.join(directory, "home");
+await mkdir(path.join(fixtureHome, ".cc-switch"), { recursive: true });
+const SQL = await require("sql.js/dist/sql-asm.js")();
+const db = new SQL.Database();
+db.run("CREATE TABLE providers (id TEXT, app_type TEXT, name TEXT, settings_config TEXT, is_current INTEGER)");
+db.run("INSERT INTO providers VALUES (?, ?, ?, ?, 1)", ["fixture", "claude", "MiniMax fixture", JSON.stringify({ env: { ANTHROPIC_AUTH_TOKEN: "cc-switch-fixture-key", ANTHROPIC_BASE_URL: `http://127.0.0.1:${apiPort}/anthropic`, ANTHROPIC_MODEL: "MiniMax-M3" } })]);
+await writeFile(path.join(fixtureHome, ".cc-switch", "cc-switch.db"), Buffer.from(db.export())); db.close();
 const portServer = createSocketServer();
 await new Promise((resolve) => portServer.listen(0, "127.0.0.1", resolve));
 const debugPort = portServer.address().port;
 await new Promise((resolve) => portServer.close(resolve));
 const bootstrap = path.join(directory, "bootstrap.cjs");
-await writeFile(bootstrap, `const { app, dialog } = require("electron");
+await writeFile(bootstrap, `const { app, dialog, shell } = require("electron");
+require("node:os").homedir = () => ${JSON.stringify(fixtureHome)};
+const childProcess = require("node:child_process");
+const nativeSpawn = childProcess.spawn;
+childProcess.spawn = (command, args, options) => /[\\\\/]vendor[\\\\/].*[\\\\/]bin[\\\\/]codex(?:\\.exe)?$/.test(command) ? nativeSpawn(${JSON.stringify(process.execPath)}, [${JSON.stringify(path.join(root, "tests/fixtures/codex-app-server.cjs"))}, ${JSON.stringify(path.join(directory, "codex.pid"))}], options) : nativeSpawn(command, args, options);
+shell.openExternal = async (url) => { if (!url.startsWith("https://auth.openai.com/")) throw new Error("Unexpected login URL"); };
 app.setPath("userData", ${JSON.stringify(directory)});
+require("node:fs").watch(${JSON.stringify(directory)}, (_event, name) => { if (name === "quit.signal") app.quit(); });
 app.getAppPath = () => ${JSON.stringify(root)};
 app.commandLine.appendSwitch("remote-debugging-port", ${JSON.stringify(String(debugPort))});
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
@@ -106,6 +122,18 @@ try {
   await send("Runtime.enable");
   await waitFor("document.body.innerText.includes('接入你的创作搭档')");
   await screenshot("01-connection");
+  await click("使用 ChatGPT 登录");
+  await waitFor("document.body.innerText.includes('取消登录')");
+  await screenshot("01a-login-pending");
+  await click("取消登录");
+  await waitFor("document.body.innerText.includes('使用 ChatGPT 登录')");
+  await click("使用 ChatGPT 登录");
+  await waitFor("document.body.innerText.includes('smoke@example.test')");
+  assert.equal((await evaluate("window.jianji.getState()")).connection.source, "chatgpt");
+  await screenshot("01b-chatgpt-ready");
+  await click("断开");
+  await waitFor("document.body.innerText.includes('使用 ChatGPT 登录')");
+  await click("手动 API");
   for (const [index, value] of [`http://127.0.0.1:${apiPort}/v1`, "smoke-vision", "local-smoke-key"].entries()) {
     await evaluate(`document.querySelectorAll('.connection-form input')[${index}].focus();document.querySelectorAll('.connection-form input')[${index}].select()`);
     await send("Input.insertText", { text: value });
@@ -135,6 +163,17 @@ try {
   assert.equal(JSON.stringify(state).includes("local-smoke-key"), false);
   assert.equal(state.agentRun.items[0].summary, "保留主体，添加清透角标");
   await screenshot("05-results");
+  await click("模型与 API");
+  await click("CC Switch");
+  await waitFor("document.body.innerText.includes('MiniMax fixture')");
+  assert.equal(await evaluate("document.body.innerText.includes('cc-switch-fixture-key')"), false);
+  await screenshot("06-cc-switch");
+  await click("使用此配置");
+  await waitFor("document.body.innerText.includes('把视频拖到这里')");
+  const imported = await evaluate("window.jianji.getState()");
+  assert.equal(imported.connection.source, "cc-switch");
+  assert.equal(imported.connection.protocol, "anthropic");
+  assert.equal(JSON.stringify(imported).includes("cc-switch-fixture-key"), false);
   await click("规则模板");
   await click("交给 Agent，开始出片");
   await waitFor("document.querySelector('.result-row .status-tag.failed') !== null");
@@ -148,6 +187,14 @@ try {
   assert.equal(await evaluate("document.querySelector('.result-row:has(.status-tag.cancelled)').innerText.includes('重试导出')"), false);
   assert.equal(requests, 2, "Export retry must not invoke the provider again");
   assert.deepEqual(exceptions, []);
+  const codexPid = Number(await readFile(path.join(directory, "codex.pid"), "utf8"));
+  const exit = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("Application did not finish shutdown")), 10_000);
+    child.once("exit", (code) => { clearTimeout(timer); resolve(code); });
+  });
+  await writeFile(path.join(directory, "quit.signal"), "quit");
+  assert.equal(await exit, 0);
+  assert.throws(() => process.kill(codexPid, 0), { code: "ESRCH" }, "App must wait for its Codex child to exit");
   console.log(JSON.stringify({ result: "PASS", providerRequests: requests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
 } catch (error) {
   console.error(processLog.slice(-3000));
@@ -155,6 +202,13 @@ try {
 } finally {
   socket?.close();
   child.kill("SIGKILL");
+  try {
+    const pid = Number(await readFile(path.join(directory, "codex.pid"), "utf8"));
+    if (Number.isSafeInteger(pid) && pid > 0) {
+      const owned = process.platform !== "linux" || (await readFile(`/proc/${pid}/cmdline`, "utf8")).includes(path.join(root, "tests/fixtures/codex-app-server.cjs"));
+      if (owned) process.kill(pid, "SIGKILL");
+    }
+  } catch { /* The task-owned fixture has already exited. */ }
   server.closeAllConnections();
   await new Promise((resolve) => server.close(resolve));
 }

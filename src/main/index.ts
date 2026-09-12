@@ -11,6 +11,7 @@ import { checkCapabilities, FfmpegAdapter, resolveFont, type CapabilityStatus } 
 import { canonicalPath, fingerprintFile, isPathWithinDirectory } from "./paths.js";
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
 import { JobStore } from "./store.js";
+import { ModelConnections } from "./model-connections.js";
 import { AgentController } from "./agent-controller.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { DesktopState } from "../shared/desktop.js";
@@ -34,6 +35,7 @@ let queue: ExportQueue;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
 let agent: AgentController;
+let connections: ModelConnections;
 let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
@@ -49,7 +51,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), agentRun: agent.snapshot() };
+  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), agentRun: agent.snapshot() };
 }
 
 function notifyState(): void {
@@ -75,15 +77,24 @@ function registerHandlers(): void {
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
   ipcMain.handle("agent.configure", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle(); agent.provider.configure(input); return publicState();
+    assertTrustedSender(event); agent.assertIdle(); await connections.configure(input); return publicState();
   });
   ipcMain.handle("agent.disconnect", async (event) => {
-    assertTrustedSender(event); agent.assertIdle(); agent.provider.clear(); return publicState();
+    assertTrustedSender(event); agent.assertIdle(); await connections.disconnect(); return publicState();
   });
-  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); await agent.test(); return true; });
+  ipcMain.handle("connection.chatgpt.login", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.login(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.cancel", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.cancelLogin(); return publicState(); });
+  ipcMain.handle("connection.ccswitch.list", async (event) => { assertTrustedSender(event); return connections.listCCSwitch(); });
+  ipcMain.handle("connection.ccswitch.use", async (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle();
+    const selected = z.object({ id: z.string().min(1).max(200), appType: z.enum(["claude", "codex"]) }).strict().parse(input);
+    await connections.useCCSwitch(selected.id, selected.appType); return publicState();
+  });
+  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); connections.assertIdle(); await agent.test(); return true; });
   ipcMain.handle("agent.start", async (event, input) => {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
+    connections.assertIdle();
     await agent.start(input, approvedOutputDirectories); return publicState();
   });
   ipcMain.handle("agent.cancel", async (event) => { assertTrustedSender(event); await agent.cancel(); return publicState(); });
@@ -289,10 +300,12 @@ async function bootstrap(): Promise<void> {
   });
   queue.setMediaLookup((id) => service.getMedia(id));
   const stickerAssets = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets);
+  connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, connections.provider);
   await queue.recover();
   registerHandlers();
   await createWindow();
+  void connections.restore();
 }
 
 function requestQuit(): void {
@@ -300,7 +313,7 @@ function requestQuit(): void {
   if (!queue) { quitting = true; app.exit(0); return; }
   if (!service?.hasUnsavedChanges || !mainWindow) {
     quitting = true;
-    void agent.cancel().then(() => queue.shutdown()).finally(() => app.exit(0));
+    void agent.cancel().then(async () => { await connections.dispose(); await queue.shutdown(); }).finally(() => app.exit(0));
     return;
   }
   closingPrompt = true;
@@ -326,14 +339,15 @@ function requestQuit(): void {
     }
     quitting = true;
     await agent.cancel();
+    await connections.dispose();
     await queue.shutdown();
     app.exit(0);
   })().catch((error) => { console.error("graceful shutdown failed", error); closingPrompt = false; });
 }
 
 app.on("before-quit", (event) => {
-  if (quitting) return;
   event.preventDefault();
+  if (quitting) return;
   requestQuit();
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

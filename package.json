@@ -2,13 +2,16 @@
   "name": "jianji",
   "version": "0.1.0",
   "description": "简辑：Windows / Linux Agent 视频创作工作台",
-  "author": { "name": "简辑", "email": "jianji@localhost" },
+  "author": {
+    "name": "简辑",
+    "email": "jianji@localhost"
+  },
   "homepage": "https://github.com/jianji-editor/jianji",
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
     "dev": "node scripts/dev.mjs",
-    "build": "npm run typecheck && vite build && esbuild src/main/index.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/main.cjs && esbuild src/main/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/preload.cjs",
+    "build": "npm run typecheck && vite build && esbuild src/main/index.ts --bundle --platform=node --format=cjs --external:electron --external:sql.js/* --outfile=dist-electron/main.cjs && esbuild src/main/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/preload.cjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -18,15 +21,19 @@
     "package:win": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
+    "@openai/codex": "0.154.0",
     "@vitejs/plugin-react": "4.3.4",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "smol-toml": "1.6.0",
+    "sql.js": "1.14.2",
     "zod": "3.24.1"
   },
   "devDependencies": {
     "@types/node": "22.10.2",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
+    "@types/sql.js": "1.4.9",
     "electron": "33.2.1",
     "electron-builder": "25.1.8",
     "esbuild": "0.24.2",
@@ -38,8 +45,26 @@
     "appId": "local.jianji.editor",
     "productName": "简辑",
     "asar": true,
-    "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
-    "linux": { "target": ["AppImage", "deb"], "category": "AudioVideo", "maintainer": "jianji@localhost" },
-    "win": { "target": ["nsis"] }
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "AudioVideo",
+      "maintainer": "jianji@localhost"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "asarUnpack": [
+      "node_modules/@openai/codex-*/vendor/**/*"
+    ]
   }
 }

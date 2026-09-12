@@ -25,9 +25,12 @@ export const ConnectionInputSchema = z.object({
   }, "请使用 HTTPS API 地址；本机服务允许 HTTP。"),
   model: z.string().trim().min(1).max(200),
   apiKey: z.string().trim().min(1).max(4096).refine((value) => !/[\r\n]/.test(value)),
+  protocol: z.enum(["chat-completions", "responses", "anthropic"]).optional(),
+  authHeader: z.enum(["bearer", "x-api-key"]).optional(),
 }).strict();
 export type ConnectionInput = z.infer<typeof ConnectionInputSchema>;
-export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; }
+export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; source?: "api" | "cc-switch" | "chatgpt"; providerName?: string; protocol?: string; }
+export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in" | "ready" | "error"; email?: string; plan?: string; model?: string; message?: string; }
 
 export const AgentStartSchema = z.object({
   decorations: DecorationSchema.optional(),

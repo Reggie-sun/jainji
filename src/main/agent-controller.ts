@@ -14,13 +14,12 @@ import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema } from "../shared/decorations.js";
 
 export class AgentController {
-  readonly provider = new AgentProvider();
   private runner?: AgentRunner;
   private preparing = false;
   private testing = false;
   private preparingController?: AbortController;
   private testController?: AbortController;
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: BuiltinStickerAssets) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: BuiltinStickerAssets, readonly provider = new AgentProvider()) {}
 
   get busy(): boolean { return this.preparing || this.testing || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -34,7 +33,7 @@ export class AgentController {
 
   async start(input: AgentStartInput, approvedDirectories: ReadonlySet<string>): Promise<void> {
     this.assertIdle();
-    if (!this.provider.status().configured) throw new Error("请先接入 API Key。");
+    if (!this.provider.status().configured) throw new Error("请先接入模型。");
     if (this.queue.snapshot().batches.some(({ batch }) => batch.tasks.some((task) =>
       ["validating", "running", "verifying", "cancelling"].includes(task.status) ||
       (batch.projectId === this.service.currentProject.id && task.status === "queued")))) {
