@@ -46,15 +46,17 @@ describe("agent to local export", () => {
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory }, new Set())).rejects.toThrow("系统对话框");
       expect(requests).toHaveLength(0);
       const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
-      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { sticker: "heart", fontFamily } }, new Set([outputDirectory]));
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 51 }, new Set([outputDirectory]))).rejects.toThrow("100 条");
+      expect(requests).toHaveLength(0);
+      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { sticker: "heart", fontFamily } }, new Set([outputDirectory]));
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         const snapshot = queue.snapshot();
-        if (!controller.busy && snapshot.batches.length === 2 && snapshot.batches.every(({ batch }) => batch.status !== "active")) break;
+        if (!controller.busy && snapshot.batches.length === 4 && snapshot.batches.every(({ batch }) => batch.status !== "active")) break;
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
-      expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting"]);
-      expect(requests).toHaveLength(2);
+      expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
+      expect(requests).toHaveLength(4);
       for (const request of requests) {
         const images = request.messages[1].content.filter((item) => item.type === "image_url");
         expect(images).toHaveLength(3);
@@ -62,14 +64,18 @@ describe("agent to local export", () => {
         expect(JSON.stringify(request)).not.toContain(directory);
       }
       const batches = queue.snapshot().batches;
-      expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed"]);
-      expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content)).toEqual(["今日精选", "好物日常"]);
+      expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
+      expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content)).toEqual(["今日精选", "好物日常", "好物日常", "好物日常"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers[0]).toMatchObject({ fontFamily });
         expect(batch.templateSnapshot.layers[1]).toMatchObject({ assetPath: stickerAssets.heart.assetPath });
       }
+      expect(new Set(batches.map(({ batch }) => batch.tasks[0].outputPath)).size).toBe(4);
+      expect(new Set(batches.map(({ batch }) => batch.tasks[0].id)).size).toBe(4);
+      expect(new Set(batches.map(({ batch }) => batch.tasks[0].mediaId)).size).toBe(2);
       for (const { batch } of batches) {
+        expect(batch.tasks[0].outputArtifact).toMatchObject({ taskId: batch.tasks[0].id, path: batch.tasks[0].outputPath });
         const result = await adapter.probe(batch.tasks[0].outputPath!);
         expect(result.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);
         expect(result.streams?.find((stream) => stream.codec_type === "video")).toMatchObject({ width: 320, height: 180 });

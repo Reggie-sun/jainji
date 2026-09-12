@@ -14,6 +14,40 @@ function plan(text: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent run lifecycle", () => {
+  it("continues later versions after one version fails", async () => {
+    const provider = vi.fn().mockRejectedValueOnce(new ProviderError("请求失败")).mockResolvedValue(plan("下一版"));
+    const enqueue = vi.fn().mockImplementation(async () => crypto.randomUUID());
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a.mp4")], 3);
+    await runner.settled();
+    expect(runner.snapshot()?.items.map((item) => item.status)).toEqual(["failed", "exporting", "exporting"]);
+    expect(provider).toHaveBeenCalledTimes(3);
+    expect(enqueue).toHaveBeenCalledTimes(2);
+  });
+  it("creates independently planned versions for each source while retaining the manual price", async () => {
+    const sources = [media("a.mp4"), media("b.mp4")];
+    const provider = vi.fn().mockResolvedValue(plan("通用短句"));
+    const enqueue = vi.fn().mockImplementation(async () => crypto.randomUUID());
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ productPrice: "19.90" }), onChange: () => {} });
+    runner.start("project", "clean", "", sources, 3);
+    await runner.settled();
+    const items = runner.snapshot()!.items;
+    expect(items).toHaveLength(6);
+    expect(new Set(items.map((item) => item.id)).size).toBe(6);
+    expect(items.map((item) => item.version)).toEqual([1, 2, 3, 1, 2, 3]);
+    expect(items.map((item) => item.mediaId)).toEqual([sources[0].id, sources[0].id, sources[0].id, sources[1].id, sources[1].id, sources[1].id]);
+    expect(provider).toHaveBeenCalledTimes(6);
+    expect(new Set(enqueue.mock.calls.map(([template]) => template.id)).size).toBe(6);
+    expect(enqueue.mock.calls.every(([template]) => template.layers.some((layer: { content?: string }) => layer.content === "¥ 19.90"))).toBe(true);
+  });
+
+  it("rejects invalid multipliers and excessive output counts before calling the model", () => {
+    const provider = vi.fn();
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue: vi.fn(), stickerAssets, onChange: () => {} });
+    for (const multiplier of [0, -1, 1.5, 101, NaN]) expect(() => runner.start("project", "clean", "", [media("a")], multiplier)).toThrow();
+    expect(() => runner.start("project", "clean", "", [media("a"), media("b")], 51)).toThrow();
+    expect(provider).not.toHaveBeenCalled();
+  });
   it("isolates failed material and freezes an independent plan for every export", async () => {
     const sources = [media("a.mp4"), media("b.mp4"), media("c.mp4")];
     const enqueue = vi.fn().mockResolvedValue("task");
@@ -33,7 +67,7 @@ describe("agent run lifecycle", () => {
     const frames = () => new Promise<string[]>((resolve) => { release = resolve; });
     const provider = vi.fn(); const enqueue = vi.fn();
     const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
-    runner.start("project", "clean", "", [media("a"), media("b")]);
+    runner.start("project", "clean", "", [media("a"), media("b")], 3);
     expect(() => runner.start("project", "clean", "", [media("c")])).toThrow("正在处理");
     runner.cancel(); release([]);
     await runner.settled();
@@ -41,6 +75,7 @@ describe("agent run lifecycle", () => {
     expect(enqueue).not.toHaveBeenCalled();
     expect(runner.snapshot()?.status).toBe("cancelled");
     expect(runner.snapshot()?.items.every((item) => item.status === "cancelled")).toBe(true);
+    expect(runner.snapshot()?.items).toHaveLength(6);
   });
 
   it("does not publish arbitrary local errors to the frontend", async () => {

@@ -81,7 +81,7 @@ export class AgentController {
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedDirectories.has(outputDirectory)) throw new Error("请通过系统对话框选择输出目录。");
       const ids = [...new Set(parsed.mediaIds)];
-      if (this.service.currentProject.exportBatches.length + ids.length > 100) throw new Error("当前项目的导出记录已达上限，请保存并新建项目。");
+      if (this.service.currentProject.exportBatches.length + ids.length * (parsed.multiplier ?? 1) > 100) throw new Error("按当前倍数制作将超过项目 100 条导出记录上限，请减少倍数或新建项目。");
       const media = ids.map((id) => this.service.getMedia(id));
       if (media.some((item) => !item || item.probeStatus !== "ready")) throw new Error("所选素材不可用，请重新导入。");
       await assertOutputDirectorySafe(outputDirectory, media as MediaItem[]);
@@ -102,7 +102,7 @@ export class AgentController {
         autoCatalog,
         onChange: this.onChange,
       });
-      this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[]);
+      this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[], parsed.multiplier ?? 1);
     } finally { this.preparing = false; this.preparingController = undefined; }
   }
 
