@@ -223,7 +223,7 @@ try {
   await screenshot("04-compact");
   await send("Emulation.clearDeviceMetricsOverride");
   await click("选择本地文件夹");
-  await click("交给 Agent，开始出片");
+  await click("交给 Agent，制作");
   await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
   assert.equal(requests, 1);
   const state = await evaluate("window.jianji.getState()");
@@ -251,7 +251,7 @@ try {
   assert.equal(imported.connection.protocol, "anthropic");
   assert.equal(JSON.stringify(imported).includes("cc-switch-fixture-key"), false);
   await click("规则模板");
-  await click("交给 Agent，开始出片");
+  await click("交给 Agent，制作");
   await waitFor("document.querySelector('.result-row .status-tag.failed') !== null");
   await writeFile(source, sourceBytes);
   await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent === '重试导出').click()");
