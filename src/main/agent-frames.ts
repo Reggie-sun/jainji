@@ -16,8 +16,8 @@ export async function extractAgentFrames(ffmpeg: FfmpegAdapter, media: MediaItem
       const output = path.join(directory, `${frames.length}.jpg`);
       const command = ffmpeg.run([
         "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
-        "-ss", String(Math.max(0, (media.durationMs / 1000 - 0.1) * fraction)), "-i", media.sourcePath,
-        "-frames:v", "1", "-vf", "scale=640:640:force_original_aspect_ratio=decrease", "-q:v", "5", output,
+        "-ss", String(Math.max(0, (media.durationMs / 1000 - 0.1) * fraction)), "-threads", "1", "-i", media.sourcePath,
+        "-frames:v", "1", "-filter_threads", "1", "-vf", "scale=640:640:force_original_aspect_ratio=decrease", "-threads", "1", "-q:v", "5", output,
       ]);
       const timeout = setTimeout(() => { void command.cancel().catch(() => undefined); }, 20_000);
       const abort = () => { void command.cancel().catch(() => undefined); };

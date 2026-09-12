@@ -64,13 +64,13 @@ describe("agent run lifecycle", () => {
   });
 
   it("blocks concurrent runs and stops before any further provider call or export", async () => {
-    let release!: (images: string[]) => void;
-    const frames = () => new Promise<string[]>((resolve) => { release = resolve; });
+    const releases: ((images: string[]) => void)[] = [];
+    const frames = () => new Promise<string[]>((resolve) => { releases.push(resolve); });
     const provider = vi.fn(); const enqueue = vi.fn();
     const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
     runner.start("project", "clean", "", [media("a"), media("b")], 3);
     expect(() => runner.start("project", "clean", "", [media("c")])).toThrow("正在处理");
-    runner.cancel(); release([]);
+    runner.cancel(); releases.forEach((release) => release([]));
     await runner.settled();
     expect(provider).not.toHaveBeenCalled();
     expect(enqueue).not.toHaveBeenCalled();

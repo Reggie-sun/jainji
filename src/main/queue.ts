@@ -22,6 +22,7 @@ import { type FfmpegAdapter, type RunningCommand } from "./ffmpeg.js";
 import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathWithinDirectory, validateTemplateResources, type FontResolver } from "./paths.js";
 import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
+import { executionLimits } from "./execution-limits.js";
 
 export interface QueueSnapshot {
   revision: number;
@@ -69,13 +70,14 @@ function immutableSnapshot(template: EditTemplate): EditTemplate {
 }
 
 export class ExportQueue {
+  private readonly limits = executionLimits();
   private readonly states = new Map<string, QueueState>();
   private readonly controllers = new Map<string, RunningCommand>();
   private readonly cancelRequested = new Set<string>();
   private readonly pendingStarts = new Set<string>();
   private running = false;
   private activeStart?: Promise<void>;
-  private readonly activeTasks = new Map<string, Promise<void>>();
+  private readonly activeTasks = new Map<string, { work: Promise<void>; threads: number }>();
   private finishStart?: (error?: unknown) => void;
   private executionError?: unknown;
   private shuttingDown = false;
@@ -186,15 +188,20 @@ export class ExportQueue {
     for (const batchId of this.pendingStarts) {
       const state = this.states.get(batchId)!;
       for (const task of state.batch.tasks) {
-        if (this.activeTasks.size >= 2) return;
+        if (this.activeTasks.size >= this.limits.exports) return;
         if (task.status !== "queued" || this.activeTasks.has(task.id)) continue;
-        const work = this.execute(state, task).catch((error: unknown) => {
+        const freeThreads = this.limits.threads - [...this.activeTasks.values()].reduce((sum, active) => sum + active.threads, 0);
+        if (freeThreads <= 0) return;
+        const waiting = [...this.pendingStarts].reduce((sum, id) => sum + this.states.get(id)!.batch.tasks.filter((candidate) => candidate.status === "queued" && !this.activeTasks.has(candidate.id)).length, 0);
+        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / 2)));
+        const threads = Math.max(1, Math.min(maxThreads, Math.floor(freeThreads / Math.min(waiting, this.limits.exports - this.activeTasks.size))));
+        const work = this.execute(state, task, threads).catch((error: unknown) => {
           this.executionError ??= error;
         }).finally(() => {
           this.activeTasks.delete(task.id);
           this.pump();
         });
-        this.activeTasks.set(task.id, work);
+        this.activeTasks.set(task.id, { work, threads });
       }
       this.pendingStarts.delete(batchId);
     }
@@ -337,7 +344,7 @@ export class ExportQueue {
 
   setMediaLookup(lookup: (mediaId: string) => MediaItem | undefined): void { this.mediaLookup = lookup; }
 
-  private async execute(state: QueueState, task: ExportTask): Promise<void> {
+  private async execute(state: QueueState, task: ExportTask, threads: number): Promise<void> {
     const media = this.mediaFor(state, task);
     if (!media) { await this.fail(state, task, new JianjiError("找不到导出素材。", "input_invalid", "input", false)); return; }
     if (!task.outputPath || !isPathWithinDirectory(state.batch.outputDirectory, task.outputPath)) {
@@ -361,6 +368,7 @@ export class ExportQueue {
         ffmpegPath: this.dependencies.ffmpeg.ffmpegPath,
         fontResolver: this.dependencies.fontResolver,
         textFilePath: textPath,
+        threads,
       });
       temporaryTextFiles = compiled.textFiles.map((file) => file.path);
       await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { encoding: "utf8", mode: 0o600 })));

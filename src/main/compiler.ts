@@ -16,6 +16,7 @@ export interface CompileOptions {
   ffmpegPath: string;
   fontResolver: FontResolver;
   textFilePath: (layerId: string) => string;
+  threads?: number;
 }
 
 export interface CompiledCommand {
@@ -92,7 +93,8 @@ export class TemplateCompiler {
     const textFiles: TextFile[] = [];
     // FFmpeg enables autorotation by default; omitting the legacy flag keeps compatibility
     // with system builds that parse it as an input option requiring a value.
-    const args: string[] = ["-hide_banner", "-nostdin", "-y", "-i", media.sourcePath];
+    const threadArgs = options.threads === undefined ? [] : ["-threads", String(options.threads)];
+    const args: string[] = ["-hide_banner", "-nostdin", "-y", ...threadArgs, "-i", media.sourcePath];
     let inputIndex = 1;
     let baseLabel = "base0";
     const graph: string[] = [];
@@ -132,7 +134,7 @@ export class TemplateCompiler {
 
       // stream_loop works for both still images and animated GIFs. The output -t
       // remains the single duration owner, so sticker streams cannot extend a job.
-      args.push("-stream_loop", "-1", "-i", layer.assetPath);
+      args.push(...threadArgs, "-stream_loop", "-1", "-i", layer.assetPath);
       const stickerIndex = inputIndex;
       inputIndex += 1;
       const sourceLabel = `sticker${stickerIndex}src`;
@@ -175,11 +177,13 @@ export class TemplateCompiler {
     graph.push(`[${baseLabel}]null[vout]`);
 
     args.push(
+      ...(options.threads === undefined ? [] : ["-filter_complex_threads", String(options.threads)]),
       "-filter_complex", graph.join(";"),
       "-map", "[vout]",
       "-map", "0:a?",
       "-t", Math.max(0.01, media.durationMs / 1000).toFixed(3),
       "-c:v", "libx264",
+      ...threadArgs,
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-b:a", preset.quality === "high" ? "256k" : preset.quality === "small" ? "128k" : "192k",

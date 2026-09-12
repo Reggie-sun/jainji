@@ -65,7 +65,7 @@ describe("agent to local export", () => {
       }
       const batches = queue.snapshot().batches;
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
-      expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content)).toEqual(["今日精选", "好物日常", "好物日常", "好物日常"]);
+      expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content).sort()).toEqual(["今日精选", "好物日常", "好物日常", "好物日常"].sort());
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers[0]).toMatchObject({ fontFamily });
@@ -78,7 +78,7 @@ describe("agent to local export", () => {
         expect(batch.tasks[0].outputArtifact).toMatchObject({ taskId: batch.tasks[0].id, path: batch.tasks[0].outputPath });
         const result = await adapter.probe(batch.tasks[0].outputPath!);
         expect(result.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);
-        expect(result.streams?.find((stream) => stream.codec_type === "video")).toMatchObject({ width: 320, height: 180 });
+        expect(result.streams?.find((stream) => stream.codec_type === "video")).toMatchObject({ width: 1280, height: 720 });
       }
     } finally {
       await controller.cancel(); await queue.shutdown();

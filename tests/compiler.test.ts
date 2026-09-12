@@ -73,7 +73,7 @@ describe("TemplateCompiler", () => {
     });
     const graph = command.args[command.args.indexOf("-filter_complex") + 1];
     expect(command.args.slice(command.args.indexOf("-stream_loop"), command.args.indexOf("-stream_loop") + 4)).toEqual(["-stream_loop", "-1", "-i", "/tmp/square.png"]);
-    expect(graph).toContain("scale=64:29:force_original_aspect_ratio=decrease");
+    expect(graph).toContain("scale=256:115:force_original_aspect_ratio=decrease");
     expect(graph).toContain("overlay=x=main_w-overlay_w-main_w*0.04000:y=main_h-overlay_h-main_h*0.04000");
   });
 

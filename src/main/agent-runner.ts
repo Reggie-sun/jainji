@@ -4,6 +4,7 @@ import type { EditTemplate, MediaItem } from "./domain.js";
 import { materializePlan, ProviderError, type AgentDecorationCatalog, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
+import { executionLimits } from "./execution-limits.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -76,7 +77,7 @@ export class AgentRunner {
       }
     };
     try {
-      await Promise.all(Array.from({ length: Math.min(3, media.length) }, () => worker()));
+      await Promise.all(Array.from({ length: Math.min(executionLimits().analysis, media.length) }, () => worker()));
     } finally {
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();

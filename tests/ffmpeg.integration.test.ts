@@ -19,7 +19,7 @@ describe("real FFmpeg proof render", () => {
     const template = createDefaultTemplate("cool lightness");
     template.filter = { presetId: "cool", intensity: 0.3 };
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "gray.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 200, width: 64, height: 64, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
-    const compiled = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, { ffmpegPath, fontResolver: { resolve: async () => null }, textFilePath: () => path.join(directory, "unused.txt") });
+    const compiled = await new TemplateCompiler().compile(template, media, { ...DEFAULT_PRESET, resolutionMode: "source" }, { ffmpegPath, fontResolver: { resolve: async () => null }, textFilePath: () => path.join(directory, "unused.txt") });
     const output = path.join(directory, "cool.mp4");
     const rendered = await runCommand(compiled.binary, [...compiled.args, output]).promise;
     expect(rendered.code, rendered.stderr).toBe(0);
