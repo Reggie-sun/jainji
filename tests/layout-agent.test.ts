@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { createDefaultTemplate, EditTemplateSchema, type StickerLayer } from "../src/main/domain";
-import { runLayoutAgent } from "../src/main/layout-agent";
 import { beginLayerDrag, constrainedStickerPreviewGeometry, cumulativeDragPosition, snapStickerToCorner } from "../src/shared/layout-policy";
 
 function sticker(overrides: Partial<StickerLayer> = {}): StickerLayer {
@@ -12,19 +11,6 @@ function sticker(overrides: Partial<StickerLayer> = {}): StickerLayer {
 }
 
 describe("rule-constrained layout agent", () => {
-  it("generates two compact corner badges and enables the hard policy", () => {
-    const template = runLayoutAgent(createDefaultTemplate(), {
-      style: "black-gold", title: "今日好物推荐", price: "19.9元2单",
-    });
-    expect(template.layoutPolicy).toBe("corner-safe-v1");
-    expect(template.layers).toHaveLength(2);
-    expect(template.layers.map((layer) => layer.type)).toEqual(["text", "text"]);
-    expect(template.layers[0]).toMatchObject({ content: "今日好物推荐", x: 0.025, y: 0.022, width: 0.38 });
-    expect(template.layers[1]).toMatchObject({ content: "19.9元2单", x: 0.7, y: 0.022, width: 0.275 });
-    expect(template.layers.every((layer) => layer.type !== "text" || layer.backgroundColor !== undefined)).toBe(true);
-    expect(() => EditTemplateSchema.parse(template)).not.toThrow();
-  });
-
   it("rejects governed stickers outside corners, over width, or over rotation limits", () => {
     const template = { ...createDefaultTemplate(), layoutPolicy: "corner-safe-v1" as const };
     expect(() => EditTemplateSchema.parse({ ...template, layers: [sticker({ x: 0.4, y: 0.4 })] })).toThrow(/四角/);

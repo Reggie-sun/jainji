@@ -17,7 +17,6 @@ export const CORNER_LABELS: Record<Corner, string> = { "top-left": "左上角", 
 const CornerDecorationSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }).strict(),
   z.object({ type: z.literal("sticker"), sticker: z.string().refine((id) => stickerIds.has(id) && id !== "none" && id !== "template", "unknown sticker") }).strict(),
-  z.object({ type: z.literal("text"), text: z.string().trim().min(1).max(12).refine((text) => !/[\u0000-\u001f\u007f]/.test(text)), fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font") }).strict(),
 ]);
 export type CornerDecoration = z.infer<typeof CornerDecorationSchema>;
 export const PRODUCT_PRICE_MAX_LENGTH = 12;

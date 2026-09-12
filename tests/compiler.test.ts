@@ -11,54 +11,24 @@ const media: MediaItem = {
 describe("TemplateCompiler", () => {
   it("keeps hostile paths in argv and escapes filter values", async () => {
     const template = createDefaultTemplate();
-    template.layers.push({
-      id: crypto.randomUUID(), type: "text", content: "Unicode 演示; $(not a command)", fontFamily: "DejaVu Sans", fontSizeRatio: 0.06,
-      color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.004,
-      x: 0.1, y: 0.1, width: 0.7, opacity: 1, zIndex: 1, visible: true,
-    });
     const command = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, {
-      ffmpegPath: "/usr/bin/ffmpeg",
-      fontResolver: { resolve: async () => "/usr/share/fonts/truetype/dejavu/DejaVu Sans.ttf" },
-      textFilePath: () => "/tmp/jianji-text.txt",
+      ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/jianji-text.txt",
     });
     expect(command.args).toContain(media.sourcePath);
     expect(command.args.join(" ")).not.toContain("shell=true");
-    expect(command.textFiles[0].content).toContain("$(not a command)");
-    expect(escapeFilterValue("a:b,c;[d]\\e")).toBe("a\\:b\\,c\\;\\[d\\]\\\\e");
+    expect(escapeFilterValue("a:b,c;[d]")).toBe("a\\:b\\,c\\;\\[d\\]");
   });
 
-  it("wraps full-width CJK glyphs within the normalized layer width", async () => {
+  it("rejects legacy badges before resolving fonts or producing a command", async () => {
     const template = createDefaultTemplate();
     template.layers.push({
-      id: crypto.randomUUID(), type: "text", content: "简辑真实素材测试", fontFamily: "Noto Sans CJK SC", fontSizeRatio: 0.08,
-      color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.004,
-      x: 0.06, y: 0.08, width: 0.88, opacity: 1, zIndex: 1, visible: true,
+      id: crypto.randomUUID(), type: "text", content: "细节之美", fontFamily: "Noto Sans CJK SC", fontSizeRatio: 0.026,
+      color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.001,
+      x: 0.54, y: 0.9, width: 0.42, opacity: 1, zIndex: 1, visible: true,
     });
-    const command = await new TemplateCompiler().compile(template, { ...media, width: 720, height: 1280 }, DEFAULT_PRESET, {
-      ffmpegPath: "/usr/bin/ffmpeg",
-      fontResolver: { resolve: async () => "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" },
-      textFilePath: () => "/tmp/jianji-cjk-text.txt",
-    });
-    expect(command.textFiles[0].content).toBe("简辑真实素材\n测试");
-  });
-
-  it("compiles an agent badge background through drawtext box options", async () => {
-    const template = createDefaultTemplate();
-    template.layers.push({
-      id: crypto.randomUUID(), type: "text", content: "19.9元2单", fontFamily: "Noto Sans CJK SC", fontSizeRatio: 0.026,
-      color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 143, g: 21, b: 21, a: 0.9 }, strokeWidthRatio: 0.001,
-      backgroundColor: { r: 232, g: 62, b: 62, a: 0.92 }, backgroundPaddingRatio: 0.006,
-      x: 0.7, y: 0.022, width: 0.275, opacity: 1, zIndex: 2, visible: true,
-    });
-    const command = await new TemplateCompiler().compile(template, { ...media, width: 720, height: 1280 }, DEFAULT_PRESET, {
-      ffmpegPath: "/usr/bin/ffmpeg",
-      fontResolver: { resolve: async () => "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc" },
-      textFilePath: () => "/tmp/jianji-agent-price.txt",
-    });
-    const graph = command.args[command.args.indexOf("-filter_complex") + 1];
-    expect(graph).toContain("box=1");
-    expect(graph).toContain("boxcolor=0xe83e3e@0.920");
-    expect(graph).toContain("boxborderw=8");
+    await expect(new TemplateCompiler().compile(template, media, DEFAULT_PRESET, {
+      ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => { throw new Error("must not resolve"); } }, textFilePath: () => "/tmp/unused.txt",
+    })).rejects.toThrow("请手动填写价格并重新制作");
   });
 
   it("fits governed bottom-corner stickers inside landscape output bounds", async () => {

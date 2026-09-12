@@ -90,7 +90,7 @@ describe("export format selection", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, library);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     vi.spyOn(frames, "extractAgentFrames").mockResolvedValue([]);
-    vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "fixture", captions: [{ text: "示例", corner: "top-left", size: 0.025 }], filter: "cool", intensity: 0.3 });
+    vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "fixture", captions: [], filter: "cool", intensity: 0.3 });
     vi.spyOn(queue, "start").mockResolvedValue();
     try {
       await controller.start({ ruleId: "clean", brief: "", mediaIds: [media.id], outputDirectory: directory, decorations: { productPrice: "19.90", sticker: "none", fontFamily: "Noto Sans CJK SC" }, exportFormat }, new Set([directory]));

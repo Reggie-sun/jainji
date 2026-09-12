@@ -47,7 +47,7 @@ describe("verified asset cache", () => {
     expect(() => DecorationSchema.parse({ sticker: "fluent-arbitrary" })).toThrow();
     expect(() => DecorationSchema.parse({ fontFamily: "/tmp/random.ttf" })).toThrow();
   });
-  it("prepares all selected corner assets and the fonts needed by automatic captions", async () => {
+  it("prepares selected sticker assets without downloading decorative fonts", async () => {
     const serif = Buffer.from("serif");
     const sans = Buffer.from("sans");
     const heart = Buffer.from("heart");
@@ -62,13 +62,13 @@ describe("verified asset cache", () => {
     const prepared = await library.prepare(DecorationSchema.parse({
       sticker: "heart",
       corners: {
-        "top-left": { type: "text", text: "限时", fontFamily: "Noto Serif CJK SC" },
+        "top-left": { type: "sticker", sticker: "heart" },
         "bottom-right": { type: "sticker", sticker: "heart" },
       },
     }), {} as BuiltinStickerAssets);
-    expect(download).toHaveBeenCalledTimes(3);
+    expect(download).toHaveBeenCalledTimes(1);
     expect(prepared.heart).toMatchObject({ assetPath: expect.stringMatching(/\.png$/) });
-    await expect(library.resolveFont("Noto Serif CJK SC")).resolves.toMatch(/\.ttf$/);
-    await expect(library.resolveFont("Noto Sans CJK SC")).resolves.toMatch(/\.ttf$/);
+    await expect(library.resolveFont("Noto Serif CJK SC")).resolves.toBeNull();
+    await expect(library.resolveFont("Noto Sans CJK SC")).resolves.toBeNull();
   });
 });

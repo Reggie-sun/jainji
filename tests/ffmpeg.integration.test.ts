@@ -6,7 +6,8 @@ import { ArtifactVerifier } from "../src/main/artifact";
 import { TemplateCompiler } from "../src/main/compiler";
 import { createDefaultTemplate, DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, type MediaItem } from "../src/main/domain";
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
-import { runLayoutAgent } from "../src/main/layout-agent";
+import { materializePlan } from "../src/main/agent-provider";
+import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 describe("real FFmpeg proof render", () => {
   it.for([{ shade: "black", min: 14, max: 20 }, { shade: "gray", min: 110, max: 140 }, { shade: "white", min: 220, max: 236 }])("preserves $shade brightness with the cool filter", { timeout: 60_000 }, async ({ shade, min, max }, context) => {
@@ -53,7 +54,7 @@ describe("real FFmpeg proof render", () => {
     const probe = await new FfmpegAdapter(ffmpegPath, ffprobePath).probe(sourcePath);
     const stream = probe.streams?.find((item) => item.codec_type === "video")!;
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: path.basename(sourcePath), fingerprint: "fixture", sizeBytes: 1, durationMs: Math.round(Number(probe.format?.duration ?? 1) * 1_000), width: stream.width!, height: stream.height!, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
-    const template = runLayoutAgent(createDefaultTemplate("fixture"), { style: "black-gold", title: "你好，简辑", price: "19.9元2单" });
+    const template = materializePlan({ summary: "价格与贴纸", captions: [], filter: "warm", intensity: 0.4 }, "black-gold", media, await ensureBuiltinStickerAssets(path.join(directory, "assets")), { productPrice: "19.9元2件", sticker: "none" });
     template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: stickerPath, assetFingerprint: "fixture", x: 0.76, y: 0.8, width: 0.2, rotationDeg: 7, opacity: 0.8, zIndex: 3, visible: true });
     template.filter = { presetId: "warm", intensity: 0.6 };
     const compiler = new TemplateCompiler();

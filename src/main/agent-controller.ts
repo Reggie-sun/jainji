@@ -12,7 +12,6 @@ import type { ExportQueue } from "./queue.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema } from "../shared/decorations.js";
-import { FONT_CHOICES } from "../shared/decorations.js";
 import { decorationFontFamilies, type AssetLibrary } from "./asset-library.js";
 
 const AUTO_STICKER_LABELS: Readonly<Record<string, string>> = {
@@ -49,12 +48,10 @@ export class AgentController {
   }
 
   private async autoCatalog(): Promise<AgentDecorationCatalog> {
-    const fonts = (await Promise.all(FONT_CHOICES.map(async (family) => await resolveFont(family) ? family : null)))
-      .filter((family): family is NonNullable<typeof family> => family !== null);
     const stickers = Object.entries(AUTO_STICKER_LABELS)
       .filter(([id]) => Boolean(this.stickerAssets[id]))
       .map(([id, label]) => ({ id, label }));
-    return { fonts, stickers };
+    return { fonts: [], stickers };
   }
 
   async start(input: AgentStartInput, approvedDirectories: ReadonlySet<string>): Promise<void> {

@@ -23,7 +23,7 @@ describe("agent to local export", () => {
       request.on("end", () => {
         requests.push(JSON.parse(body));
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面添加简短标题", captions: [{ text: requests.length === 1 ? "今日精选" : "好物日常", corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 }) } }] }));
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3 }) } }] }));
       });
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -65,11 +65,11 @@ describe("agent to local export", () => {
       }
       const batches = queue.snapshot().batches;
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
-      expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content).sort()).toEqual(["今日精选", "好物日常", "好物日常", "好物日常"].sort());
+      expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "text").every((layer) => layer.content === "¥ 19.90"))).toBe(true);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
       for (const { batch } of batches) {
-        expect(batch.templateSnapshot.layers[0]).toMatchObject({ fontFamily });
-        expect(batch.templateSnapshot.layers[1]).toMatchObject({ assetPath: stickerAssets.heart.assetPath });
+        expect(batch.templateSnapshot.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "¥ 19.90", fontFamily: DEFAULT_TEXT_FONT_FAMILY });
+        expect(batch.templateSnapshot.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: stickerAssets.heart.assetPath });
       }
       expect(new Set(batches.map(({ batch }) => batch.tasks[0].outputPath)).size).toBe(4);
       expect(new Set(batches.map(({ batch }) => batch.tasks[0].id)).size).toBe(4);

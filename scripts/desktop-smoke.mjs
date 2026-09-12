@@ -34,7 +34,7 @@ const server = createServer((request, response) => {
       await new Promise(resolve => setTimeout(resolve, 300));
       response.setHeader("Content-Type", "application/json");
       if (failBrief) { response.writeHead(503); response.end('{}'); return; }
-      const text = "保持清爽自然，保留已选贴纸与文字，按画面需要留白。";
+      const text = "保持清爽自然，保留已选贴纸与手动价格，按画面需要留白。";
       response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
       return;
     }
@@ -45,7 +45,7 @@ const server = createServer((request, response) => {
     requests += 1;
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
-    const text = JSON.stringify({ summary: "保留主体，添加清透角标", captions: [{ text: "把日常过成喜欢", corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 });
+    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], filter: "cool", intensity: 0.3 });
     response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
   });
 });
@@ -190,6 +190,10 @@ try {
   assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 8);
   assert.equal(await evaluate("document.body.innerText.includes('贴纸 · 青色箭头') && document.body.innerText.includes('滤镜 · 清透')"), true);
   await click("清爽日常");
+  assert.equal(await evaluate("document.querySelector('#caption-font') === null && document.querySelector('option[value=\"text\"]') === null"), true, "no decorative text controls");
+  await evaluate("document.querySelector('#product-price').focus()");
+  await send("Input.insertText", { text: "19.9元30贴" });
+  assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), "false");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.model-picker datalist option')].map(option => option.value)"), ["smoke-vision"], "saved candidates survive trailing slash and legacy default protocol");
   await evaluate("document.querySelector('.model-picker input').focus(); document.querySelector('.model-picker input').select()");
   await send("Input.insertText", { text: "smoke-vision-next" });
@@ -238,7 +242,10 @@ try {
   const state = await evaluate("window.jianji.getState()");
   assert.equal(state.queue.batches[0].batch.tasks[0].status, "completed");
   assert.equal(JSON.stringify(state).includes("local-smoke-key"), false);
-  assert.equal(state.agentRun.items[0].summary, "保留主体，添加清透角标");
+  assert.equal(state.agentRun.items[0].summary, "保留主体与手动价格");
+  const savedJob = JSON.parse(await readFile(path.join(directory, "jobs", `${state.queue.batches[0].batch.id}.json`), "utf8"));
+  assert.equal(savedJob.batch.templateSnapshot.productPrice, "19.9元30贴");
+  assert.deepEqual(savedJob.batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content), ["19.9元30贴"]);
   await screenshot("05-results");
   await click("模型与 API");
   await click("API 连接管理");

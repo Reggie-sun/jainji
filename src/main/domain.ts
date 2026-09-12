@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-policy.js";
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
+import { RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
+import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -118,6 +120,7 @@ export const EditTemplateSchema = z.object({
   layers: z.array(LayerSchema).max(100),
   filter: FilterConfigSchema,
   layoutPolicy: z.literal(CORNER_SAFE_POLICY.id).optional(),
+  productPrice: RequiredProductPriceSchema.optional(),
   createdAt: DateTime,
   updatedAt: DateTime,
 }).strict().superRefine((template, ctx) => {
@@ -141,6 +144,17 @@ export const EditTemplateSchema = z.object({
   }
 });
 export type EditTemplate = z.infer<typeof EditTemplateSchema>;
+
+// Historical templates remain readable; execution must obey the current text rule.
+export function assertPriceOnlyTemplate(template: EditTemplate): void {
+  const text = template.layers.filter((layer) => layer.type === "text");
+  if (text.length === 0 && template.productPrice === undefined) return;
+  const price = RequiredProductPriceSchema.safeParse(template.productPrice);
+  if (!price.success || text.length !== 1 || text[0].content !== formatProductPrice(price.data) ||
+      text[0].textAlign !== "center" || text[0].x !== 0.1 || text[0].y !== 0.13 || text[0].width !== 0.8 || !text[0].visible) {
+    throw new JianjiError("模板包含非手动价格文字或旧版文字布局，请手动填写价格并重新制作；不能重试旧文字方案。", "input_invalid", "input", false);
+  }
+}
 
 export const ExportPresetSchema = z.object({
   container: ExportFormatSchema,

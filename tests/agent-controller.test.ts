@@ -39,7 +39,7 @@ describe("AgentController queue admission", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets, library);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
     try {
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { productPrice: "19.90", mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "text", text: "坏数据", fontFamily: "Not A Font" } } } }, new Set([directory]))).resolves.toBeUndefined();
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { productPrice: "19.90", mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "sticker", sticker: "heart" } } } }, new Set([directory]))).resolves.toBeUndefined();
       expect(library.prepare).not.toHaveBeenCalled();
       expect(library.resolveFont).toHaveBeenCalledTimes(1);
       expect(library.resolveFont).toHaveBeenCalledWith("Noto Sans CJK SC");

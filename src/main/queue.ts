@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { access, constants, link, open, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
+  assertPriceOnlyTemplate,
   cloneTemplate,
   deriveBatchStatus,
   ExportBatchSchema,
@@ -127,6 +128,7 @@ export class ExportQueue {
   async createBatch(input: CreateBatchInput): Promise<ExportBatch> {
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
+    assertPriceOnlyTemplate(template);
     const parsedPreset = ExportPresetSchema.parse(input.preset);
     const selected = input.mediaIds.map((id) => input.mediaItems.find((item) => item.id === id));
     if (selected.some((item): item is undefined => !item)) throw new JianjiError("存在未找到的素材。", "input_invalid", "input", false);
@@ -232,6 +234,11 @@ export class ExportQueue {
 
   async retry(taskIds?: readonly string[]): Promise<void> {
     const requested = taskIds ? new Set(taskIds) : undefined;
+    for (const state of this.states.values()) {
+      if (state.batch.tasks.some((task) => (!requested || requested.has(task.id)) && ["failed", "interrupted"].includes(task.status))) {
+        assertPriceOnlyTemplate(state.batch.templateSnapshot);
+      }
+    }
     const changedBatchIds: string[] = [];
     for (const state of this.states.values()) {
       let changed = false;
@@ -355,6 +362,7 @@ export class ExportQueue {
     let temporaryTextFiles: string[] = [];
     await this.transition(state, task, "validating");
     try {
+      assertPriceOnlyTemplate(state.batch.templateSnapshot);
       await access(media.sourcePath, constants.R_OK);
       if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
       const missing = await validateTemplateResources(state.batch.templateSnapshot, this.dependencies.fontResolver);

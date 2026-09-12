@@ -9,8 +9,8 @@ import { DecorationSchema } from "../src/shared/decorations";
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
 }
-function plan(text: string): PackagingPlan {
-  return { summary: text, captions: [{ text, corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 };
+function plan(summary: string): PackagingPlan {
+  return { summary, captions: [], filter: "cool", intensity: 0.3 };
 }
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
@@ -58,7 +58,7 @@ describe("agent run lifecycle", () => {
     sources[2].displayName = "changed.mp4";
     await runner.settled();
     expect(runner.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "failed", "exporting"]);
-    expect(enqueue.mock.calls.map(([template]) => template.layers[0].content)).toEqual(["第一条", "第三条"]);
+    expect(enqueue.mock.calls.map(([template]) => template.layers.filter((layer: { type: string }) => layer.type === "text"))).toEqual([[], []]);
     expect(enqueue.mock.calls[1][1].displayName).toBe("c.mp4");
     expect(enqueue.mock.calls[0][0].id).not.toBe(enqueue.mock.calls[1][0].id);
   });

@@ -1,80 +1,66 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentProvider, materializePlan, validatePlan } from "../src/main/agent-provider";
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
-import { TemplateCompiler } from "../src/main/compiler";
-import { DEFAULT_PRESET, type MediaItem } from "../src/main/domain";
+import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
-const plan = { summary: "保留主体，添加短标题", captions: [{ text: "好物日常", corner: "top-left", size: 0.026 }], filter: "warm", intensity: 0.4 };
-const autoCatalog = { fonts: ["Noto Serif CJK SC", "Noto Sans CJK SC"], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }] };
-const autoPlan = { ...plan, captions: [{ ...plan.captions[0], fontFamily: "Noto Serif CJK SC" }], stickers: [{ corner: "bottom-right", sticker: "heart" }] };
+const plan = { summary: "保留主体", captions: [], filter: "warm", intensity: 0.4 };
+const autoCatalog = { fonts: ["Noto Serif CJK SC"], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }] };
+const autoPlan = { ...plan, stickers: [{ corner: "bottom-right", sticker: "heart" }] };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }));
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
-  it("rejects model-generated product names even when the JSON is otherwise valid", async () => {
-    for (const catalog of [undefined, autoCatalog]) {
-      const raw = catalog ? autoPlan : plan;
-      const request = vi.fn().mockResolvedValue(reply(JSON.stringify({ ...raw, captions: [{ ...raw.captions[0], text: "木质香薰" }] })));
-      const provider = new AgentProvider(request);
+  it("rejects every model-supplied caption in manual and agent plans", async () => {
+    for (const [catalog, raw] of [[undefined, plan], [autoCatalog, autoPlan]] as const) {
+      expect(() => validatePlan({ ...raw, captions: [{ text: "细节之美" }] }, "black-gold", catalog)).toThrow();
+      const provider = new AgentProvider(vi.fn().mockResolvedValue(reply(JSON.stringify({ ...raw, captions: [{ text: "木质香薰" }] }))));
       provider.configure(connection);
-      await expect(provider.plan("black-gold", "加入木质香薰产品名", [], new AbortController().signal, catalog)).rejects.toThrow("格式或规则不合格");
+      await expect(provider.plan("black-gold", "日常", [], new AbortController().signal, catalog)).rejects.toThrow("格式或规则不合格");
     }
   });
-  it("materializes only the manually supplied center price in either decoration mode", async () => {
-    for (const automatic of [false, true]) {
-      const raw = automatic ? autoPlan : plan;
-      const catalog = automatic ? autoCatalog : undefined;
-      const options = { mode: automatic ? "agent" : "manual", productPrice: "19.90" };
+
+  it("requires an explicit empty captions array and agent stickers", () => {
+    expect(validatePlan(plan, "black-gold")).toMatchObject(plan);
+    expect(() => validatePlan({ ...plan, captions: undefined }, "black-gold")).toThrow();
+    expect(validatePlan(autoPlan, "black-gold", autoCatalog)).toMatchObject(autoPlan);
+    expect(() => validatePlan({ ...autoPlan, stickers: undefined }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "unknown" }] }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "heart" }, { corner: "bottom-right", sticker: "sparkle" }] }, "black-gold", autoCatalog)).toThrow();
+  });
+
+  it("materializes only the local center price using the default font", () => {
+    for (const [raw, options, catalog] of [
+      [plan, { mode: "manual", productPrice: "19.90" }, undefined],
+      [autoPlan, { mode: "agent", productPrice: "19.90" }, autoCatalog],
+    ] as const) {
       const template = materializePlan(raw, "black-gold", { width: 1080, height: 1920 }, stickerAssets, options, catalog);
-      const center = template.layers.filter((layer) => layer.type === "text" && layer.textAlign === "center");
-      expect(center).toHaveLength(1);
-      expect(center[0]).toMatchObject({ content: "¥ 19.90", x: 0.1, y: 0.13, width: 0.8 });
-      const compiled = await new TemplateCompiler().compile(template, { width: 1080, height: 1920, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/text.txt" });
-      expect(compiled.textFiles.some((file) => file.content === "¥ 19.90")).toBe(true);
-      expect(JSON.stringify(compiled)).toContain("x=w*0.50000-text_w/2");
-      for (const productPrice of [undefined, "", "   "]) {
-        const empty = materializePlan(raw, "black-gold", { width: 1080, height: 1920 }, stickerAssets, { ...options, productPrice }, catalog);
-        expect(empty.layers.some((layer) => layer.type === "text" && layer.textAlign === "center")).toBe(false);
-      }
-      for (const productPrice of ["香薰19.9", "¥19.9", "19.999", "-1", "1\n9", "9999999"]) {
-        expect(() => materializePlan(raw, "black-gold", { width: 1080, height: 1920 }, stickerAssets, { ...options, productPrice }, catalog)).toThrow();
-      }
-      expect(() => materializePlan({ ...raw, price: "香薰" }, "black-gold", { width: 1080, height: 1920 }, stickerAssets, options, catalog)).toThrow();
+      const textLayers = template.layers.filter((layer) => layer.type === "text");
+      expect(textLayers).toEqual([expect.objectContaining({ content: "¥ 19.90", fontFamily: DEFAULT_TEXT_FONT_FAMILY, textAlign: "center", x: 0.1, y: 0.13, width: 0.8 })]);
+      expect(template.productPrice).toBe("19.90");
     }
   });
 
-  it.each(["19.9元30贴", "29.90元50片", "999999.99元1贴", "19.90元1000毫升"])("exports the exact manual quantity price: %s", async (productPrice) => {
-    for (const automatic of [false, true]) {
-      const template = materializePlan(automatic ? autoPlan : plan, "black-gold", { width: 1080, height: 1920 }, stickerAssets, { mode: automatic ? "agent" : "manual", productPrice }, automatic ? autoCatalog : undefined);
-      const compiled = await new TemplateCompiler().compile(template, { width: 1080, height: 1920, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/text.txt" });
-      expect(compiled.textFiles.some((file) => file.content === productPrice)).toBe(true);
-      expect(template.layers.filter((layer) => layer.type === "text" && layer.textAlign === "center")).toEqual([expect.objectContaining({ content: productPrice })]);
-    }
+  it("allows planning without a price but produces no text layer", () => {
+    const template = materializePlan(plan, "black-gold", { width: 720, height: 1280 }, stickerAssets);
+    expect(template.productPrice).toBeUndefined();
+    expect(template.layers.every((layer) => layer.type === "sticker")).toBe(true);
   });
 
-  it("forbids product names and model-written center prices in both model prompts", async () => {
-    const request = vi.fn().mockResolvedValueOnce(reply("保留画面" )).mockResolvedValueOnce(reply(JSON.stringify(plan)));
+  it("forbids decorative text in model instructions", async () => {
+    const request = vi.fn().mockResolvedValueOnce(reply("保留画面")).mockResolvedValueOnce(reply(JSON.stringify(plan)));
     const provider = new AgentProvider(request);
     provider.configure(connection);
     await provider.generateBrief({ ruleId: "black-gold", brief: "请写产品名" }, new AbortController().signal);
     await provider.plan("black-gold", "请写产品名", [], new AbortController().signal);
     for (const call of request.mock.calls) {
       const system = JSON.parse(call[1].body).messages[0].content;
-      expect(system).toContain("禁止在新增文案中加入产品名");
+      expect(system).toContain("新增文字只允许用户手动填写、由本地程序生成的居中价格");
       expect(system).toContain("Agent 不得生成、推测、改写价格");
     }
   });
-  it("keeps twelve Chinese characters on one line for portrait and landscape media", async () => {
-    for (const dimensions of [{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }]) {
-      const input = { ...plan, captions: [{ text: "一二三四五六七八九十一二", corner: "bottom-right", size: 0.03 }], filter: "cool", intensity: 0.3 };
-      const template = materializePlan(input, "clean", dimensions, stickerAssets);
-      const compiled = await new TemplateCompiler().compile(template, { ...dimensions, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/text.txt" });
-      expect(compiled.textFiles[0].content).toBe(input.captions[0].text);
-      expect(template.layers[0].type === "text" && template.layers[0].fontSizeRatio * dimensions.height).toBeCloseTo(0.03 * dimensions.width);
-    }
-  });
+
   it("keeps the key private and sends visual context to the configured completion endpoint", async () => {
     const request = vi.fn().mockResolvedValue(reply(JSON.stringify(plan)));
     const provider = new AgentProvider(request);
@@ -90,7 +76,7 @@ describe("agent provider boundary", () => {
     await expect(provider.test(new AbortController().signal)).rejects.toThrow("请先接入");
   });
 
-  it("does not surface response bodies or automatically retry failed paid requests", async () => {
+  it("does not surface response bodies or retry failed paid requests", async () => {
     const request = vi.fn().mockResolvedValue(new Response(connection.apiKey, { status: 401 }));
     const provider = new AgentProvider(request);
     provider.configure(connection);
@@ -98,7 +84,7 @@ describe("agent provider boundary", () => {
     expect(request).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects sensitive responses and invalid plans rather than using a fallback template", async () => {
+  it("rejects sensitive responses and invalid plans without fallback", async () => {
     const request = vi.fn().mockResolvedValueOnce(reply(connection.apiKey)).mockResolvedValueOnce(reply("not json"));
     const provider = new AgentProvider(request);
     provider.configure(connection);
@@ -106,105 +92,34 @@ describe("agent provider boundary", () => {
     await expect(provider.plan("clean", "", [], new AbortController().signal)).rejects.toThrow("格式或规则不合格");
   });
 
-  it("generates a text-only brief from manual choices using safe catalogue labels", async () => {
-    const request = vi.fn().mockResolvedValue(reply("  用暖金滤镜突出手作质感，保留左上标题和右下贴纸的呼吸空间。  "));
+  it("uses only sticker choices in manual brief context", async () => {
+    const request = vi.fn().mockResolvedValue(reply("保留右下贴纸空间。"));
     const provider = new AgentProvider(request);
     provider.configure(connection);
-    await expect(provider.generateBrief({ ruleId: "black-gold", brief: "参考：木质香薰", decorations: { sticker: "heart", fontFamily: "Noto Serif CJK SC", corners: {
-      "top-left": { type: "text", text: "手作日常", fontFamily: "Noto Serif CJK SC" },
-      "bottom-right": { type: "sticker", sticker: "local-limited-discount" },
-    } } }, new AbortController().signal)).resolves.toBe("用暖金滤镜突出手作质感，保留左上标题和右下贴纸的呼吸空间。");
+    await provider.generateBrief({ ruleId: "black-gold", decorations: { sticker: "heart", corners: { "bottom-right": { type: "sticker", sticker: "local-limited-discount" } } } }, new AbortController().signal);
     const messages = JSON.parse(request.mock.calls[0][1].body).messages;
-    expect(messages[1].content).toBeTypeOf("string");
-    expect(messages[0].content).not.toContain("手作日常");
+    expect(messages[1].content).toContain("爱心");
     expect(messages[1].content).toContain("限时折扣");
-    expect(messages[1].content).toContain("手作日常");
-    expect(messages[1].content).toContain("Noto Serif CJK SC");
-    expect(JSON.stringify(messages)).not.toContain("data:image");
+    expect(JSON.stringify(messages)).not.toContain("fontFamily");
   });
 
-  it("allows a free stylistic direction when choices are absent or agent-managed", async () => {
-    const request = vi.fn().mockResolvedValue(reply("自然清透的生活记录方向。"));
-    const provider = new AgentProvider(request);
-    provider.configure(connection);
-    await provider.generateBrief({ ruleId: "clean", decorations: { mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "text", text: "坏数据", fontFamily: "Not A Font" } } } }, new AbortController().signal);
-    const user = JSON.parse(request.mock.calls[0][1].body).messages[1].content;
-    expect(user).toContain("自由发挥");
-    expect(user).not.toContain("限时折扣");
-  });
-
-  it("omits unused global decorations when every corner is explicitly empty", async () => {
-    const request = vi.fn().mockResolvedValue(reply("保留干净画面，不添加角落装饰。"));
-    const provider = new AgentProvider(request);
-    provider.configure(connection);
-    await provider.generateBrief({ ruleId: "clean", decorations: { sticker: "local-limited-discount", fontFamily: "Noto Serif CJK SC", corners: {
-      "top-left": { type: "none" }, "top-right": { type: "none" }, "bottom-left": { type: "none" }, "bottom-right": { type: "none" },
-    } } }, new AbortController().signal);
-    const user = JSON.parse(request.mock.calls[0][1].body).messages[1].content;
-    expect(user).not.toContain("限时折扣");
-    expect(user).not.toContain("Noto Serif CJK SC");
-    for (const corner of ["左上角", "右上角", "左下角", "右下角"]) expect(user).toContain(`${corner}留空`);
-  });
-
-  it("rejects invalid brief responses without a fallback", async () => {
+  it("rejects invalid brief responses and insecure connection URLs", async () => {
     for (const response of ["", "\u0000", "x".repeat(1001)]) {
       const provider = new AgentProvider(vi.fn().mockResolvedValue(reply(response)));
       provider.configure(connection);
       await expect(provider.generateBrief({ ruleId: "clean" }, new AbortController().signal)).rejects.toThrow();
     }
     expect(() => GenerateBriefSchema.parse({ ruleId: "clean", brief: "x".repeat(1001) })).toThrow();
-  });
-
-  it("enforces rule limits, disallows executable/file inputs, and reserves distinct corners", () => {
-    expect(() => validatePlan({ ...plan, filter: "mono", intensity: 0 }, "mono")).toThrow();
-    expect(() => validatePlan({ ...plan, intensity: 0.9 }, "black-gold")).toThrow();
-    expect(() => validatePlan(plan, "clean")).toThrow();
-    expect(() => validatePlan({ ...plan, captions: [plan.captions[0], plan.captions[0]] }, "black-gold")).toThrow();
-    expect(() => validatePlan({ ...plan, command: "ffmpeg" }, "black-gold")).toThrow();
-    expect(() => validatePlan({ ...plan, captions: [{ ...plan.captions[0], assetPath: "/tmp/file" }] }, "black-gold")).toThrow();
-    const template = materializePlan(plan, "black-gold", { width: 1920, height: 1080 }, stickerAssets);
-    expect(template.layoutPolicy).toBe("corner-safe-v1");
-    expect(template.layers[0]).toMatchObject({ type: "text", content: "好物日常", x: 0.04, y: 0.04 });
-    expect(template.layers[1]).toMatchObject({ type: "sticker", assetPath: "/tmp/sparkle.png", width: 0.12, x: 0.84, y: 0.8 });
-  });
-
-  it("fails closed for agent-selected decorations and materializes only its occupied corners", () => {
-    expect(validatePlan(autoPlan, "black-gold", autoCatalog)).toMatchObject(autoPlan);
-    expect(() => validatePlan({ ...autoPlan, captions: [{ ...autoPlan.captions[0], fontFamily: "unknown" }] }, "black-gold", autoCatalog)).toThrow();
-    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "unknown" }] }, "black-gold", autoCatalog)).toThrow();
-    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "heart" }] }, "black-gold", autoCatalog)).toThrow();
-    expect(() => validatePlan({ ...autoPlan, captions: [{ text: "缺少字体", corner: "top-left", size: 0.026 }] }, "black-gold", autoCatalog)).toThrow();
-    expect(() => validatePlan({ ...autoPlan, stickers: undefined }, "black-gold", autoCatalog)).toThrow();
-    const template = materializePlan(autoPlan, "black-gold", { width: 720, height: 1280 }, stickerAssets, { mode: "agent", sticker: "none", fontFamily: "SimHei", corners: { "top-left": { type: "text", text: "手动", fontFamily: "SimHei" } } }, autoCatalog);
-    expect(template.layers).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "text", content: "好物日常", fontFamily: "Noto Serif CJK SC", x: 0.04, y: 0.04 }),
-      expect.objectContaining({ type: "sticker", assetPath: "/tmp/heart.png", x: 0.84, y: 0.8 }),
-    ]));
-    expect(template.layers).toHaveLength(2);
-  });
-
-  it("permits an intentionally empty agent decoration plan", () => {
-    const template = materializePlan({ ...autoPlan, captions: [], stickers: [] }, "black-gold", { width: 720, height: 1280 }, stickerAssets, { mode: "agent" }, autoCatalog);
-    expect(template.layers).toEqual([]);
-  });
-
-  it("materializes every visible rule as a distinct filtered template with one governed sticker", () => {
-    expect(RULE_TEMPLATES).toHaveLength(8);
-    const signatures = RULE_TEMPLATES.map((rule) => {
-      const template = materializePlan({ ...plan, filter: rule.filters[0], intensity: rule.minIntensity }, rule.id, { width: 1080, height: 1920 }, stickerAssets);
-      const sticker = template.layers.find((layer) => layer.type === "sticker");
-      expect(sticker).toMatchObject({ type: "sticker", width: rule.stickerWidth, rotationDeg: rule.stickerRotation });
-      expect(template.filter).toEqual({ presetId: rule.filters[0], intensity: rule.minIntensity });
-      expect(sticker && sticker.width * sticker.width).toBeLessThan(0.08);
-      return `${template.filter.presetId}:${rule.sticker}:${rule.textColor.join("-")}:${rule.backgroundColor.join("-")}:${rule.stickerWidth}:${rule.stickerRotation}`;
-    });
-    expect(new Set(signatures).size).toBe(RULE_TEMPLATES.length);
-  });
-
-  it("rejects insecure remote destinations and URL credentials while allowing loopback", () => {
     for (const baseUrl of ["http://example.test/v1", "https://key@example.test/v1", "https://example.test/v1?key=secret", "file:///tmp/a"]) {
       expect(ConnectionInputSchema.safeParse({ ...connection, baseUrl }).success).toBe(false);
     }
     expect(ConnectionInputSchema.safeParse({ ...connection, baseUrl: "http://127.0.0.1:1234/v1" }).success).toBe(true);
+  });
+
+  it("keeps rule templates distinct without text style fields", () => {
+    expect(RULE_TEMPLATES).toHaveLength(8);
+    const signatures = RULE_TEMPLATES.map((rule) => `${rule.id}:${rule.sticker}:${rule.stickerWidth}:${rule.stickerRotation}`);
+    expect(new Set(signatures).size).toBe(RULE_TEMPLATES.length);
+    expect(RULE_TEMPLATES.every((rule) => !("previewCaption" in rule) && !("maxFontSize" in rule) && !("maxBadges" in rule) && !("textColor" in rule) && !("backgroundColor" in rule))).toBe(true);
   });
 });

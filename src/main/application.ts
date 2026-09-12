@@ -3,7 +3,6 @@ import path from "node:path";
 import {
   cloneTemplate,
   createDefaultProject,
-  DEFAULT_TEXT_FONT_FAMILY,
   EditTemplateSchema,
   now,
   ProjectSchema,
@@ -215,14 +214,6 @@ function toPublicQueue(queue: QueueSnapshot, projectId: string): PublicQueueSnap
         const { templateSnapshot: _templateSnapshot, mediaSnapshots: _mediaSnapshots, ...batch } = state.batch;
         return { revision: state.revision, updatedAt: state.updatedAt, batch };
       }),
-  };
-}
-
-export function createTextLayer(): EditTemplate["layers"][number] {
-  return {
-    id: randomUUID(), type: "text", content: "新文字", fontFamily: DEFAULT_TEXT_FONT_FAMILY, fontSizeRatio: 0.08,
-    color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0.006,
-    x: 0.08, y: 0.08, width: 0.8, opacity: 1, zIndex: 0, visible: true,
   };
 }
 

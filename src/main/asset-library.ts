@@ -12,12 +12,7 @@ function hasAutomaticCorners(options: DecorationOptions): boolean {
 }
 
 export function decorationFontFamilies(options: DecorationOptions): string[] {
-  const priceFonts = options.productPrice?.trim() ? [DEFAULT_TEXT_FONT_FAMILY] : [];
-  if (options.mode === "agent") return priceFonts;
-  const fonts = Object.values(options.corners ?? {})
-    .flatMap((decoration) => decoration?.type === "text" ? [decoration.fontFamily] : []);
-  if (hasAutomaticCorners(options)) fonts.push(options.fontFamily);
-  return [...new Set([...fonts, ...priceFonts])];
+  return options.productPrice?.trim() ? [DEFAULT_TEXT_FONT_FAMILY] : [];
 }
 
 function decorationStickerIds(options: DecorationOptions): string[] {

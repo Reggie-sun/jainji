@@ -1,5 +1,5 @@
 import path from "node:path";
-import { EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
+import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
 
 export interface FontResolver {
@@ -90,6 +90,7 @@ function wrapText(content: string, widthRatio: number, fontSizeRatio: number, di
 export class TemplateCompiler {
   async compile(templateInput: EditTemplate, media: MediaItem, preset: ExportPreset, options: CompileOptions): Promise<CompiledCommand> {
     const template = EditTemplateSchema.parse(templateInput);
+    assertPriceOnlyTemplate(template);
     const textFiles: TextFile[] = [];
     // FFmpeg enables autorotation by default; omitting the legacy flag keeps compatibility
     // with system builds that parse it as an input option requiring a value.

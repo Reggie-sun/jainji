@@ -39,7 +39,7 @@ describe("AgentRunner concurrency", () => {
     runner.start("project", "clean", "", [media()], 5);
     await vi.waitFor(() => expect(plans).toHaveLength(3));
     expect(frames).toHaveBeenCalledTimes(1);
-    const plan: PackagingPlan = { summary: "ok", captions: [{ text: "好物", corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 };
+    const plan: PackagingPlan = { summary: "ok", captions: [], filter: "cool", intensity: 0.3 };
     plans[1].resolve(plan);
     await vi.waitFor(() => expect(plans).toHaveLength(4));
     expect(enqueue).toHaveBeenCalledTimes(1);
