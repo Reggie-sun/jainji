@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DecorationCatalog, DecorationOptions } from "../shared/decorations";
 import { FONT_CHOICES, FONT_LABELS } from "../shared/decorations";
 import { LIBRARY_FONTS, LIBRARY_STICKERS, type LibraryAsset } from "../shared/asset-library";
+import { CURATED_STICKERS } from "../shared/curated-stickers";
 import "./decorations.css";
 
 const PAGE_SIZE = 24;
@@ -101,7 +102,7 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
 
   const filteredStickers = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    return query ? LIBRARY_STICKERS.filter((asset) => `${asset.label} ${asset.id}`.toLocaleLowerCase().includes(query)) : LIBRARY_STICKERS;
+    return query ? CURATED_STICKERS.filter((asset) => `${asset.label} ${asset.searchTerms}`.toLocaleLowerCase().includes(query)) : CURATED_STICKERS;
   }, [search]);
   const pageCount = Math.max(1, Math.ceil(filteredStickers.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
@@ -154,7 +155,7 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
     setFontLoading(""); setFontError(""); setFailedFont(undefined);
     onChange({ ...value, fontFamily: family as DecorationOptions["fontFamily"] });
   };
-  const selectedSticker = LIBRARY_STICKERS.find((asset) => asset.id === value.sticker);
+  const selectedSticker = CURATED_STICKERS.find((asset) => asset.id === value.sticker) ?? LIBRARY_STICKERS.find((asset) => asset.id === value.sticker);
 
   return <section className="decoration-picker card" aria-label="贴纸与字体">
     <h2>贴纸与字体</h2><p>选择后应用到本轮每条视频；贴纸自动避开文字，保持在角落。</p>
@@ -163,7 +164,7 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
       {(["template", "none"] as const).map((id) => <button type="button" key={id} aria-pressed={value.sticker === id} onClick={() => onChange({ ...value, sticker: id })}>{id === "template" ? "跟随模板" : "不加贴纸"}</button>)}
       {catalog?.stickers.map((sticker) => <button type="button" key={sticker.id} aria-pressed={value.sticker === sticker.id} onClick={() => onChange({ ...value, sticker: sticker.id })}><img src={sticker.url} alt="" /><span>{sticker.label}</span></button>)}
     </div></fieldset>
-    <div className="library-heading"><div><strong>Fluent Emoji 贴纸</strong><span>{LIBRARY_STICKERS.length} 个贴纸 · 下载后才可选用</span></div><label htmlFor="sticker-search">搜索</label><input id="sticker-search" value={search} disabled={disabled} placeholder="名称或 ID" onChange={(event) => { setSearch(event.target.value); setPage(0); }} /></div>
+    <div className="library-heading"><div><strong>电商视频精选贴纸</strong><span>{CURATED_STICKERS.length} 款 · 促销、指引、强调、轻装饰</span></div><label htmlFor="sticker-search">搜索</label><input id="sticker-search" value={search} disabled={disabled} placeholder="如：促销、箭头、蝴蝶" onChange={(event) => { setSearch(event.target.value); setPage(0); }} /></div>
     {selectedSticker && <p className="library-selection">已选择：{selectedSticker.label}</p>}
     <div className="library-sticker-grid" aria-live="polite">{pageStickers.map((asset) => {
       const previewUrl = previewUrls[asset.id]; const state = previewStates[asset.id];
