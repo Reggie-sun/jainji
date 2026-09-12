@@ -43,12 +43,12 @@ describe("agent to local export", () => {
       const ids = service.currentProject.mediaItems.map((item) => item.id);
       const outputDirectory = path.join(directory, "out");
       controller.provider.configure({ apiKey: "local-test-key", model: "local-test-vision", baseUrl: `http://127.0.0.1:${port}/v1` });
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory }, new Set())).rejects.toThrow("系统对话框");
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set())).rejects.toThrow("系统对话框");
       expect(requests).toHaveLength(0);
       const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 51 }, new Set([outputDirectory]))).rejects.toThrow("100 条");
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" }, multiplier: 51 }, new Set([outputDirectory]))).rejects.toThrow("100 条");
       expect(requests).toHaveLength(0);
-      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { sticker: "heart", fontFamily } }, new Set([outputDirectory]));
+      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { productPrice: "19.90", sticker: "heart", fontFamily } }, new Set([outputDirectory]));
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         const snapshot = queue.snapshot();

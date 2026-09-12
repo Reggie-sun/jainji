@@ -18,7 +18,7 @@ const STICKER_LABELS = new Map<string, string>([
 
 const AUTOMATIC_CAPTIONS = [...RULE_TEMPLATES.map((rule) => rule.previewCaption), "好物日常", "手作日常", "今日精选", "细节之美"];
 
-const TEXT_CONTENT_RULE = "禁止在新增文案中加入产品名、商品名或品牌名，即使画面或补充说明中出现也不能加入。中间文字只允许手动填写的产品价格，由程序生成；未填写则不显示。Agent 不得生成、推测、改写价格，也不得用产品名或其他文案替代中间价格。四角只使用不含产品名的装饰短句。";
+const TEXT_CONTENT_RULE = "禁止在新增文案中加入产品名、商品名或品牌名，即使画面或补充说明中出现也不能加入。中间文字只允许手动填写的产品价格，由程序生成；开始制作前必须由用户手动填写。Agent 不得生成、推测、改写价格，也不得用产品名或其他文案替代中间价格。四角只使用不含产品名的装饰短句。";
 
 function briefDecorationContext(input: GenerateBriefInput): string {
   const decorations = DecorationSchema.parse(input.decorations ?? {});

@@ -20,7 +20,7 @@ import type { DesktopState } from "../src/shared/desktop";
 
 describe("export format selection", () => {
   it("keeps legacy requests and presets on MP4 and rejects unknown formats", () => {
-    const input = { ruleId: "clean", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp/output", brief: "" };
+    const input = { decorations: { productPrice: "19.90" }, ruleId: "clean", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp/output", brief: "" };
     expect(AgentStartSchema.parse(input).exportFormat ?? "mp4").toBe("mp4");
     expect(DEFAULT_PRESET.container).toBe("mp4");
     for (const exportFormat of ["mp4", "mov", "mkv"]) {
@@ -93,7 +93,7 @@ describe("export format selection", () => {
     vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "fixture", captions: [{ text: "示例", corner: "top-left", size: 0.025 }], filter: "cool", intensity: 0.3 });
     vi.spyOn(queue, "start").mockResolvedValue();
     try {
-      await controller.start({ ruleId: "clean", brief: "", mediaIds: [media.id], outputDirectory: directory, decorations: { sticker: "none", fontFamily: "Noto Sans CJK SC" }, exportFormat }, new Set([directory]));
+      await controller.start({ ruleId: "clean", brief: "", mediaIds: [media.id], outputDirectory: directory, decorations: { productPrice: "19.90", sticker: "none", fontFamily: "Noto Sans CJK SC" }, exportFormat }, new Set([directory]));
       await vi.waitFor(() => expect(controller.snapshot()?.status).toBe("finished"));
       expect(controller.snapshot()?.items[0].status).toBe("exporting");
       expect(queue.snapshot().batches[0].batch.preset).toEqual({ ...DEFAULT_PRESET, container: exportFormat ?? "mp4" });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DecorationSchema } from "./decorations.js";
+import { DecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
 
 export const RULE_TEMPLATES = [
@@ -53,7 +53,9 @@ export const AgentStartSchema = z.object({
   mediaIds: z.array(z.string().uuid()).min(1).max(100),
   outputDirectory: z.string().min(1),
   brief: z.string().trim().max(1000),
-}).strict();
+}).strict().refine((input) => RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
+  path: ["decorations", "productPrice"], message: "请手动填写产品价格，Agent 不能代填或改写。",
+});
 export type AgentStartInput = z.infer<typeof AgentStartSchema>;
 
 export const GenerateBriefSchema = z.object({

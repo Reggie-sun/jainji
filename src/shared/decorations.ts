@@ -21,6 +21,7 @@ const CornerDecorationSchema = z.discriminatedUnion("type", [
 ]);
 export type CornerDecoration = z.infer<typeof CornerDecorationSchema>;
 export const ProductPriceSchema = z.string().trim().max(9).regex(/^(?:\d{1,6}(?:\.\d{1,2})?)?$/, "价格只能填写金额，最多两位小数，不能包含产品名。");
+export const RequiredProductPriceSchema = ProductPriceSchema.min(1, "请手动填写产品价格，Agent 不能代填或改写。");
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {
     return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined };

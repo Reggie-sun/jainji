@@ -24,7 +24,7 @@ describe("AgentController queue admission", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
     try {
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory }, new Set([directory]))).resolves.toBeUndefined();
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]))).resolves.toBeUndefined();
     } finally { await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
 
@@ -35,13 +35,14 @@ describe("AgentController queue admission", () => {
     const queue = new ExportQueue({ ffmpeg, fontResolver: { resolve: async () => null }, jobStore: new JobStore(path.join(directory, "jobs")) });
     const id = crypto.randomUUID();
     service.currentProject.mediaItems.push({ id, displayName: "test", sourcePath: path.join(directory, "missing.mp4"), fingerprint: "missing", width: 10, height: 10, durationMs: 1000, sizeBytes: 1, rotation: 0, importedAt: new Date().toISOString(), probeStatus: "ready" });
-    const library = { prepare: vi.fn(() => { throw new Error("manual asset should not prepare"); }), resolveFont: vi.fn(() => { throw new Error("manual font should not resolve"); }) } as unknown as AssetLibrary;
+    const library = { prepare: vi.fn(() => { throw new Error("manual asset should not prepare"); }), resolveFont: vi.fn(async () => "/tmp/default-font.ttf") } as unknown as AssetLibrary;
     const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets, library);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
     try {
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "text", text: "坏数据", fontFamily: "Not A Font" } } } }, new Set([directory]))).resolves.toBeUndefined();
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { productPrice: "19.90", mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "text", text: "坏数据", fontFamily: "Not A Font" } } } }, new Set([directory]))).resolves.toBeUndefined();
       expect(library.prepare).not.toHaveBeenCalled();
-      expect(library.resolveFont).not.toHaveBeenCalled();
+      expect(library.resolveFont).toHaveBeenCalledTimes(1);
+      expect(library.resolveFont).toHaveBeenCalledWith("Noto Sans CJK SC");
     } finally { await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
 

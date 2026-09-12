@@ -9,7 +9,7 @@ import { DecorationSchema } from "../src/shared/decorations";
 vi.mock("../src/main/ffmpeg", async (original) => ({ ...await original<typeof import("../src/main/ffmpeg")>(), resolveFont: vi.fn() }));
 afterEach(() => vi.clearAllMocks());
 describe("font admission before provider", () => {
-  it.each([undefined, { mode: "manual", productPrice: "19.90", fontFamily: "Noto Serif CJK SC" }, { mode: "agent", productPrice: "19.90" }])("checks the required default font before provider work: %j", async (decorations) => {
+  it.each([{ productPrice: "19.90" }, { mode: "manual", productPrice: "19.90", fontFamily: "Noto Serif CJK SC" }, { mode: "agent", productPrice: "19.90" }])("checks the required default font before provider work: %j", async (decorations) => {
     vi.mocked(resolveFont).mockImplementation(async (family) => family === "Noto Serif CJK SC" ? "/tmp/serif.ttf" : null);
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: resolveFont });
