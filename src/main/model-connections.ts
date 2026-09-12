@@ -11,7 +11,8 @@ export function codexLaunch(appPath: string, userData: string): { command: strin
   const arch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : undefined;
   if (!arch || !["linux", "win32"].includes(process.platform)) throw new ProviderError("当前系统暂不支持内置 Codex。");
   const require = createRequire(path.join(appPath, "package.json"));
-  const pkg = require.resolve(`@openai/codex-${process.platform}-${process.arch}/package.json`);
+  const codexRequire = createRequire(require.resolve("@openai/codex/package.json"));
+  const pkg = codexRequire.resolve(`@openai/codex-${process.platform}-${process.arch}/package.json`);
   const target = `${arch}-${process.platform === "win32" ? "pc-windows-msvc" : "unknown-linux-musl"}`;
   const command = path.join(path.dirname(pkg), "vendor", target, "bin", process.platform === "win32" ? "codex.exe" : "codex").replace(/app\.asar([\\/])/, "app.asar.unpacked$1");
   // Only OS/runtime and network routing variables reach the dedicated child.

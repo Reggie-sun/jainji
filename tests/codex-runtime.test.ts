@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -7,6 +7,17 @@ import { codexLaunch } from "../src/main/model-connections";
 import { CodexRpc } from "../src/main/codex-rpc";
 
 describe("bundled Codex runtime", () => {
+  it("resolves platform binaries nested under the Codex package by electron-builder", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-nested-codex-"));
+    const codexRoot = path.join(directory, "node_modules", "@openai", "codex");
+    const platformRoot = path.join(codexRoot, "node_modules", "@openai", `codex-${process.platform}-${process.arch}`);
+    try {
+      await mkdir(platformRoot, { recursive: true });
+      await writeFile(path.join(codexRoot, "package.json"), '{"name":"@openai/codex"}');
+      await writeFile(path.join(platformRoot, "package.json"), '{}');
+      expect(codexLaunch(directory, directory).command.startsWith(platformRoot + path.sep)).toBe(true);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
   it("waits for a child that ignores graceful termination to actually exit", async () => {
     const program = `process.on('SIGTERM',()=>{});require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id!==undefined)process.stdout.write(JSON.stringify({id:m.id,result:{}})+'\\n');});setInterval(()=>{},1000);`;
     const rpc = new CodexRpc(process.execPath, ["-e", program], {}, process.cwd());
