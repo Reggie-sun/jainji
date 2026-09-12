@@ -22,11 +22,11 @@ server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plug
     response.end(await server.transformIndexHtml(request.url, `<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main id="root" style="max-width:1050px;margin:auto;padding:24px"></main><script type="module">
       import React from 'react';import {createRoot} from 'react-dom/client';
       import {TemplatePanel} from '/src/renderer/TemplatePanel.tsx';
-      import {DecorationPicker} from '/src/renderer/DecorationPicker.tsx';
+      import {CornerDecorationPicker} from '/src/renderer/CornerDecorationPicker.tsx';
       import '/src/renderer/styles.css';
       window.failCatalog=false;
       window.jianji={decorationCatalog:async()=>{if(window.failCatalog)throw Error('fixture failure');return {fonts:['Noto Sans CJK SC','serif'],stickers:${JSON.stringify(stickers)}};},libraryAsset:async()=>{throw Error('offline fixture');}};
-      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});const [exportFormat,onExportFormat]=React.useState('mp4');const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{selected,onSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(DecorationPicker,{value:options,onChange:setOptions,disabled:false}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:1,disabled});}
+      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:1,disabled});}
       createRoot(document.getElementById('root')).render(React.createElement(Fixture));
     </script></body></html>`));
   });
@@ -94,6 +94,49 @@ try {
     await click(`.template-card.${name}`);
     await waitFor("!document.querySelector('.template-preview [role=status]') && !document.querySelector('.template-preview [role=alert]')");
   }
+  await click('.corner-slot.bottom-right');
+  await evaluate("{const el=document.querySelector('[aria-label=角落内容类型]');el.value='sticker';el.dispatchEvent(new Event('change',{bubbles:true}));}");
+  await waitFor("window.fixtureOptions.corners?.['bottom-right']?.type==='sticker'");
+  await evaluate("[...document.querySelectorAll('.sticker-choices button')].find(b=>b.textContent==='heart').click()");
+  await click('.corner-slot.bottom-left');
+  await evaluate("{const el=document.querySelector('[aria-label=角落内容类型]');el.value='text';el.dispatchEvent(new Event('change',{bubbles:true}));}");
+  await waitFor("window.fixtureOptions.corners?.['bottom-left']?.type==='text'");
+  await evaluate("{const el=document.querySelector('[aria-label=角落文字]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'限时好物');el.dispatchEvent(new Event('input',{bubbles:true}));}");
+  await waitFor("window.fixtureOptions.corners['bottom-left'].text==='限时好物'");
+  await evaluate("{const el=document.querySelector('#caption-font');el.value='Noto Sans CJK SC';el.dispatchEvent(new Event('change',{bubbles:true}));}");
+  await waitFor("window.fixtureOptions.corners['bottom-left'].fontFamily==='Noto Sans CJK SC'");
+  await evaluate(`{
+    const NativeFontFace=window.FontFace;window.restoreFontFace=()=>{window.FontFace=NativeFontFace};
+    window.FontFace=function(family){return new NativeFontFace(family,'local("Noto Sans CJK SC")')};
+    window.jianji.libraryAsset=()=>new Promise(resolve=>{window.releaseFont=()=>resolve({url:'fixture-font'})});
+    const select=document.querySelector('#caption-font');
+    select.value=[...select.options].find(option=>option.textContent.includes('在线字体')).value;
+    select.dispatchEvent(new Event('change',{bubbles:true}));
+  }`);
+  await waitFor("window.releaseFont");
+  await evaluate("{const el=document.querySelector('[aria-label=角落文字]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'下载时改字');el.dispatchEvent(new Event('input',{bubbles:true}));}");
+  await waitFor("window.fixtureOptions.corners['bottom-left'].text==='下载时改字'");
+  await evaluate('window.releaseFont()');
+  await waitFor("!document.querySelector('#caption-font').disabled");
+  assert.notEqual(await evaluate("window.fixtureOptions.corners['bottom-left'].fontFamily"), "Noto Sans CJK SC", "online font committed");
+  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-left'].text"), '下载时改字', 'font download completion preserves latest text');
+  await evaluate("window.restoreFontFace();window.jianji.libraryAsset=async()=>{throw Error('offline fixture')};");
+  await evaluate("{const el=document.querySelector('#caption-font');el.value='Noto Sans CJK SC';el.dispatchEvent(new Event('change',{bubbles:true}));}");
+  await evaluate("{const el=document.querySelector('[aria-label=角落文字]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'限时好物');el.dispatchEvent(new Event('input',{bubbles:true}));}");
+  await click('.corner-slot.bottom-right');
+  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-right'].sticker"), 'heart', 'independent right sticker retained');
+  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-left'].text"), '限时好物', 'independent left text retained');
+  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-left'].fontFamily"), 'Noto Sans CJK SC', 'corner font independent from global serif');
+  for (const corner of ['top-left','top-right']) {
+    await click(`.corner-slot.${corner}`);
+    await evaluate("{const el=document.querySelector('[aria-label=角落内容类型]');el.value='none';el.dispatchEvent(new Event('change',{bubbles:true}));}");
+    await waitFor(`window.fixtureOptions.corners['${corner}'].type==='none'`);
+  }
+  await evaluate('window.setFixtureDisabled(true)');
+  await waitFor("[...document.querySelectorAll('.corner-slot')].every(b=>b.disabled)");
+  assert.equal(await evaluate("document.querySelector('[aria-label=角落内容类型]').disabled"), true);
+  await evaluate('window.setFixtureDisabled(false)');
+  await waitFor("!document.querySelector('.corner-slot').disabled");
   await evaluate("document.querySelector('.template-preview').scrollIntoView({block:'center'})");
   const screenshot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(directory, "preview.png"), Buffer.from(screenshot.data, "base64"));
@@ -102,7 +145,7 @@ try {
   await writeFile(path.join(directory, "export-format.png"), Buffer.from(exportScreenshot.data, "base64"));
   await send("Emulation.setDeviceMetricsOverride", { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
   assert.equal(await evaluate("document.documentElement.scrollWidth <= innerWidth"), true, "no horizontal overflow at minimum width");
-  console.log(`PASS: export formats/default/disabled, eight templates, sticker removal, font pixels, asset error/recovery, narrow layout. Screenshots: ${directory}`);
+  console.log(`PASS: four independent corners, mixed text/sticker, retained choices, disabled controls, export formats/default/disabled, eight templates, sticker removal, font pixels, asset error/recovery, narrow layout. Screenshots: ${directory}`);
 } finally {
   socket?.close(); chrome.kill(); await server.close();
 }

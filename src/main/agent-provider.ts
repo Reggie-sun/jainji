@@ -1,11 +1,11 @@
 import { completeApi, ProviderError, type ModelMessage } from "./api-transport.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { createDefaultTemplate, EditTemplateSchema, type Color, type EditTemplate } from "./domain.js";
+import { createDefaultTemplate, EditTemplateSchema, type Color, type EditTemplate, type Layer } from "./domain.js";
 import { ConnectionInputSchema, getRule, type ConnectionInput, type ConnectionStatus, type RuleId } from "../shared/agent.js";
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { StickerAssets } from "./builtin-stickers.js";
-import { DecorationSchema, type DecorationOptions } from "../shared/decorations.js";
+import { CORNERS, DecorationSchema, type Corner, type DecorationOptions } from "../shared/decorations.js";
 
 const CaptionSchema = z.object({
   text: z.string().trim().min(1).max(12).refine((text) => !/[\r\n\u0000-\u001f]/.test(text)),
@@ -37,32 +37,55 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const color = (r: number, g: number, b: number, a = 1): Color => ({ r, g, b, a });
   const rule = getRule(ruleId);
   const rgba = (channels: readonly [number, number, number] | readonly [number, number, number, number]): Color => color(channels[0], channels[1], channels[2], channels[3] ?? 1);
-  const captions = plan.captions.map((caption, index) => ({
-    id: randomUUID(), type: "text" as const, content: caption.text, fontFamily: options.fontFamily,
+  const position = (corner: Corner) => ({
+    x: corner.endsWith("right") ? 0.54 : 0.04,
+    y: corner.startsWith("bottom") ? 0.9 : 0.04,
+  });
+  const textLayer = (corner: Corner, content: string, fontFamily: string, index: number, size = 0.026) => ({
+    id: randomUUID(), type: "text" as const, content, fontFamily,
     // Half-frame columns and short labels reserve the central subject area.
-    x: caption.corner.endsWith("right") ? 0.54 : 0.04,
-    y: caption.corner.startsWith("bottom") ? 0.9 : 0.04,
+    ...position(corner),
     // Model sizes use frame width; the existing compiler uses frame height.
-    width: 0.42, fontSizeRatio: Math.min(caption.size * dimensions.width / dimensions.height, 0.06), opacity: 1, zIndex: index, visible: true,
+    width: 0.42, fontSizeRatio: Math.min(size * dimensions.width / dimensions.height, 0.06), opacity: 1, zIndex: index, visible: true,
     color: rgba(rule.textColor),
     strokeColor: rule.textColor[0] + rule.textColor[1] + rule.textColor[2] > 500 ? color(0, 0, 0, 0.4) : color(255, 255, 255, 0.18),
     strokeWidthRatio: 0.001,
     backgroundColor: rgba(rule.backgroundColor), backgroundPaddingRatio: 0.006,
-  }));
+  });
+  const captions = plan.captions
+    .filter((caption) => !options.corners?.[caption.corner])
+    .map((caption, index) => textLayer(caption.corner, caption.text, options.fontFamily, index, caption.size));
   const usedCorners = new Set(plan.captions.map((caption) => caption.corner));
-  const stickerCorner = rule.stickerCorners.find((corner) => !usedCorners.has(corner)) ?? rule.stickerCorners[0];
-  const sticker = stickerAssets[options.sticker === "template" || options.sticker === "none" ? rule.sticker : options.sticker];
-  if (options.sticker !== "none" && !sticker) throw new Error("所选贴纸尚未下载，请重新选择。");
+  const explicitLayers: Layer[] = [];
+  for (const corner of CORNERS) {
+    const decoration = options.corners?.[corner];
+    if (!decoration || decoration.type === "none") continue;
+    if (decoration.type === "text") {
+      explicitLayers.push(textLayer(corner, decoration.text, decoration.fontFamily, captions.length + explicitLayers.length, rule.maxFontSize));
+      continue;
+    }
+    const sticker = stickerAssets[decoration.sticker];
+    if (!sticker) throw new Error("所选贴纸尚未下载，请重新选择。");
+    explicitLayers.push({
+      id: randomUUID(), type: "sticker" as const, assetPath: sticker.assetPath, assetFingerprint: sticker.assetFingerprint,
+      x: corner.endsWith("right") ? 1 - CORNER_SAFE_POLICY.cornerMargin - rule.stickerWidth : CORNER_SAFE_POLICY.cornerMargin,
+      y: corner.startsWith("bottom") ? CORNER_SAFE_POLICY.bottomCornerStart : CORNER_SAFE_POLICY.cornerMargin,
+      width: rule.stickerWidth, rotationDeg: rule.stickerRotation, opacity: 0.94, zIndex: captions.length + explicitLayers.length, visible: true,
+    });
+  }
+  const stickerCorner = rule.stickerCorners.find((corner) => !usedCorners.has(corner) && !options.corners?.[corner]);
+  const sticker = stickerCorner && options.sticker !== "none" ? stickerAssets[options.sticker === "template" ? rule.sticker : options.sticker] : undefined;
+  if (stickerCorner && options.sticker !== "none" && !sticker) throw new Error("所选贴纸尚未下载，请重新选择。");
   return EditTemplateSchema.parse({
     ...createDefaultTemplate(rule.name),
     layoutPolicy: CORNER_SAFE_POLICY.id,
     filter: { presetId: plan.filter, intensity: plan.intensity },
-    layers: [...captions, ...(options.sticker === "none" ? [] : [{
+    layers: [...captions, ...explicitLayers, ...(sticker ? [{
       id: randomUUID(), type: "sticker", assetPath: sticker!.assetPath, assetFingerprint: sticker!.assetFingerprint,
-      x: stickerCorner.endsWith("right") ? 1 - CORNER_SAFE_POLICY.cornerMargin - rule.stickerWidth : CORNER_SAFE_POLICY.cornerMargin,
-      y: stickerCorner.startsWith("bottom") ? CORNER_SAFE_POLICY.bottomCornerStart : CORNER_SAFE_POLICY.cornerMargin,
-      width: rule.stickerWidth, rotationDeg: rule.stickerRotation, opacity: 0.94, zIndex: captions.length, visible: true,
-    }])],
+      x: stickerCorner!.endsWith("right") ? 1 - CORNER_SAFE_POLICY.cornerMargin - rule.stickerWidth : CORNER_SAFE_POLICY.cornerMargin,
+      y: stickerCorner!.startsWith("bottom") ? CORNER_SAFE_POLICY.bottomCornerStart : CORNER_SAFE_POLICY.cornerMargin,
+      width: rule.stickerWidth, rotationDeg: rule.stickerRotation, opacity: 0.94, zIndex: captions.length + explicitLayers.length, visible: true,
+    }] : [])],
   });
 }
 

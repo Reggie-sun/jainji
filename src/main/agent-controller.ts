@@ -12,7 +12,7 @@ import type { ExportQueue } from "./queue.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema } from "../shared/decorations.js";
-import type { AssetLibrary } from "./asset-library.js";
+import { decorationFontFamilies, type AssetLibrary } from "./asset-library.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -47,8 +47,10 @@ export class AgentController {
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const stickerAssets = this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
       this.preparingController.signal.throwIfAborted();
-      const font = this.library ? await this.library.resolveFont(decorations.fontFamily) : await resolveFont(decorations.fontFamily);
-      if (!font) throw new Error("所选字体不可用，请重新选择已安装字体。");
+      for (const family of decorationFontFamilies(decorations)) {
+        const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
+        if (!font) throw new Error("所选字体不可用，请重新选择已安装字体。");
+      }
       if (!path.isAbsolute(parsed.outputDirectory)) throw new Error("请选择有效的输出目录。");
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedDirectories.has(outputDirectory)) throw new Error("请通过系统对话框选择输出目录。");

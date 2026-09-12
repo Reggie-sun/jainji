@@ -11,9 +11,19 @@ export const FONT_LABELS: Record<typeof FONT_CHOICES[number], string> = {
 };
 const stickerIds = new Set(["template", "none", "sparkle", "arrow", "heart", "burst", ...BUNDLED_STICKERS.map((entry) => entry.id), ...LIBRARY_STICKERS.map((entry) => entry.id)]);
 const fontFamilies = new Set<string>([...FONT_CHOICES, ...LIBRARY_FONTS.map((entry) => entry.family!)]);
+export const CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+export type Corner = typeof CORNERS[number];
+export const CORNER_LABELS: Record<Corner, string> = { "top-left": "左上角", "top-right": "右上角", "bottom-left": "左下角", "bottom-right": "右下角" };
+const CornerDecorationSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("none") }).strict(),
+  z.object({ type: z.literal("sticker"), sticker: z.string().refine((id) => stickerIds.has(id) && id !== "none" && id !== "template", "unknown sticker") }).strict(),
+  z.object({ type: z.literal("text"), text: z.string().trim().min(1).max(12).refine((text) => !/[\u0000-\u001f\u007f]/.test(text)), fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font") }).strict(),
+]);
+export type CornerDecoration = z.infer<typeof CornerDecorationSchema>;
 export const DecorationSchema = z.object({
   sticker: z.string().refine((id) => stickerIds.has(id), "unknown sticker").default("template"),
   fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font").default(DEFAULT_TEXT_FONT_FAMILY),
+  corners: z.object({ "top-left": CornerDecorationSchema.optional(), "top-right": CornerDecorationSchema.optional(), "bottom-left": CornerDecorationSchema.optional(), "bottom-right": CornerDecorationSchema.optional() }).strict().optional(),
 }).strict();
 export type DecorationOptions = z.infer<typeof DecorationSchema>;
 export interface DecorationCatalog {

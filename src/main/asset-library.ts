@@ -2,9 +2,27 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { LIBRARY_ASSETS, LIBRARY_LICENSES, type LibraryAsset, type LibraryAssetPreview } from "../shared/asset-library.js";
-import type { DecorationOptions } from "../shared/decorations.js";
+import { CORNERS, type DecorationOptions } from "../shared/decorations.js";
 import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
+
+function hasAutomaticCorners(options: DecorationOptions): boolean {
+  return CORNERS.some((corner) => !options.corners?.[corner]);
+}
+
+export function decorationFontFamilies(options: DecorationOptions): string[] {
+  const fonts = Object.values(options.corners ?? {})
+    .flatMap((decoration) => decoration?.type === "text" ? [decoration.fontFamily] : []);
+  if (hasAutomaticCorners(options)) fonts.push(options.fontFamily);
+  return [...new Set(fonts)];
+}
+
+function decorationStickerIds(options: DecorationOptions): string[] {
+  const stickers = Object.values(options.corners ?? {})
+    .flatMap((decoration) => decoration?.type === "sticker" ? [decoration.sticker] : []);
+  if (hasAutomaticCorners(options) && options.sticker !== "template" && options.sticker !== "none") stickers.push(options.sticker);
+  return [...new Set(stickers)];
+}
 
 /** Pinned upstream files are the only accepted inputs; IPC never accepts URLs or paths. */
 export class AssetLibrary {
@@ -95,9 +113,13 @@ export class AssetLibrary {
   }
 
   async prepare(options: DecorationOptions, builtins: StickerAssets): Promise<StickerAssets> {
-    const fonts = [...this.entries.values()].filter((entry) => entry.kind === "font" && entry.family === options.fontFamily);
-    for (const font of fonts) await this.ensure(font.id);
-    if (!this.entries.has(options.sticker)) return builtins;
-    return { ...builtins, [options.sticker]: await this.ensure(options.sticker) };
+    for (const family of decorationFontFamilies(options)) {
+      const font = [...this.entries.values()].find((entry) => entry.kind === "font" && entry.family === family);
+      if (font) await this.ensure(font.id);
+    }
+    const selected = await Promise.all(decorationStickerIds(options)
+      .filter((id) => this.entries.has(id))
+      .map(async (id) => [id, await this.ensure(id)] as const));
+    return selected.length ? { ...builtins, ...Object.fromEntries(selected) } : builtins;
   }
 }

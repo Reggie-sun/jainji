@@ -1,32 +1,40 @@
 import { useEffect, useRef, useState } from "react";
 import type { RuleTemplate } from "../shared/agent";
 import { LIBRARY_STICKERS } from "../shared/asset-library";
-import type { DecorationOptions } from "../shared/decorations";
+import { CORNERS, CORNER_LABELS, type Corner, type DecorationOptions } from "../shared/decorations";
 import { constrainedStickerPreviewGeometry, CORNER_SAFE_POLICY } from "../shared/layout-policy";
 import "./template-preview.css";
 
-export function TemplatePreview({ rule, options }: { rule: RuleTemplate; options: DecorationOptions }) {
+export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect, disabled }: { rule: RuleTemplate; options: DecorationOptions; selectedCorner?: Corner; onCornerSelect?(corner: Corner): void; disabled?: boolean }) {
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [asset, setAsset] = useState<{ id: string; image: HTMLImageElement }>();
-  const [failed, setFailed] = useState("");
+  const [assets, setAssets] = useState<Record<string, HTMLImageElement>>({});
+  const [failed, setFailed] = useState<string[]>([]);
   const stickerId = options.sticker === "template" ? rule.sticker : options.sticker;
-
+  const autoCorner = rule.stickerCorners.find((corner) => corner !== "top-left" && !options.corners?.[corner]);
+  const stickerSlots = CORNERS.flatMap((corner) => {
+    const slot = options.corners?.[corner];
+    if (slot?.type === "sticker") return [{ corner, id: slot.sticker }];
+    return !slot && corner === autoCorner && stickerId !== "none" ? [{ corner, id: stickerId }] : [];
+  });
+  const assetKey = JSON.stringify([...new Set(stickerSlots.map(({ id }) => id))].sort());
   useEffect(() => {
-    if (stickerId === "none") return;
     let active = true;
-    setFailed("");
+    setFailed([]);
+    const ids: string[] = JSON.parse(assetKey);
     void (async () => {
-      const catalog = await window.jianji.decorationCatalog();
-      let url = catalog.stickers.find((entry) => entry.id === stickerId)?.url;
-      if (!url && LIBRARY_STICKERS.some((entry) => entry.id === stickerId)) url = (await window.jianji.libraryAsset(stickerId)).url;
-      if (!url) throw new Error("missing sticker");
-      const image = new Image();
-      image.src = url;
-      await image.decode();
-      if (active) setAsset({ id: stickerId, image });
-    })().catch(() => { if (active) setFailed(stickerId); });
+      const catalog = ids.length ? await window.jianji.decorationCatalog() : undefined;
+      await Promise.all(ids.map(async (id) => {
+        try {
+          let url = catalog?.stickers.find((entry) => entry.id === id)?.url;
+          if (!url && LIBRARY_STICKERS.some((entry) => entry.id === id)) url = (await window.jianji.libraryAsset(id)).url;
+          if (!url) throw new Error("missing sticker");
+          const image = new Image(); image.src = url; await image.decode();
+          if (active) setAssets((current) => ({ ...current, [id]: image }));
+        } catch { if (active) setFailed((current) => [...current, id]); }
+      }));
+    })().catch(() => { if (active) setFailed(ids); });
     return () => { active = false; };
-  }, [stickerId]);
+  }, [assetKey]);
 
   useEffect(() => {
     const draw = () => {
@@ -45,14 +53,23 @@ export function TemplatePreview({ rule, options }: { rule: RuleTemplate; options
       context.fillStyle = "#526550"; context.textBaseline = "top";
       context.font = '24px sans-serif'; context.fillText("DAILY", 411, 765);
 
-      // A single sample caption leaves the other corners available for the sticker.
-      const fontSize = rule.maxFontSize * width;
-      context.font = `${fontSize}px "${options.fontFamily}", sans-serif`;
-      const padding = 0.006 * height;
-      context.fillStyle = `rgba(${rule.backgroundColor.join(",")})`;
-      context.fillRect(width * 0.04 - padding, height * 0.04 - padding, context.measureText(rule.previewCaption).width + padding * 2, fontSize + padding * 2);
-      context.fillStyle = `rgb(${rule.textColor.join(",")})`;
-      context.fillText(rule.previewCaption, width * 0.04, height * 0.04);
+      const drawText = (corner: Corner, text: string, family: string) => {
+        const fontSize = rule.maxFontSize * width;
+        context.font = `${fontSize}px "${family}", sans-serif`;
+        context.textBaseline = "top";
+        const x = width * (corner.endsWith("right") ? 0.54 : 0.04);
+        const y = height * (corner.startsWith("bottom") ? 0.9 : 0.04);
+        const padding = 0.006 * height;
+        context.fillStyle = `rgba(${rule.backgroundColor.join(",")})`;
+        context.fillRect(x - padding, y - padding, Math.min(context.measureText(text).width, width * 0.42) + padding * 2, fontSize + padding * 2);
+        context.fillStyle = `rgb(${rule.textColor.join(",")})`;
+        context.fillText(text, x, y, width * 0.42);
+      };
+      if (!options.corners?.["top-left"]) drawText("top-left", rule.previewCaption, options.fontFamily);
+      for (const corner of CORNERS) {
+        const slot = options.corners?.[corner];
+        if (slot?.type === "text") drawText(corner, slot.text, slot.fontFamily);
+      }
 
       context.save();
       context.textAlign = "center";
@@ -67,48 +84,35 @@ export function TemplatePreview({ rule, options }: { rule: RuleTemplate; options
       context.fillStyle = "#775653";
       context.fillText("价格占位", width / 2, height * 0.19);
 
-      const slotSize = width * 0.2;
-      const slotMargin = width * CORNER_SAFE_POLICY.cornerMargin;
-      const slotY = height - slotMargin - slotSize;
-      for (const [x, label] of [[slotMargin, "左下贴纸"], [width - slotMargin - slotSize, "右下贴纸"]] as const) {
-        context.fillStyle = "#ffffff99";
-        context.strokeStyle = "#748572";
-        context.lineWidth = 2;
-        context.setLineDash([10, 8]);
-        context.beginPath();
-        context.roundRect(x, slotY, slotSize, slotSize, 16);
-        context.fill();
-        context.stroke();
-        context.fillStyle = "#526550";
-        context.textBaseline = "middle";
-        context.fillText(label, x + slotSize / 2, slotY + slotSize / 2);
-      }
       context.restore();
 
-      if (stickerId !== "none" && asset?.id === stickerId) {
-        const corner = rule.stickerCorners.find((entry) => entry !== "top-left")!;
+      for (const { corner, id } of stickerSlots) {
+        const asset = assets[id];
+        if (!asset || failed.includes(id)) continue;
         const angle = rule.stickerRotation * Math.PI / 180;
         const geometry = constrainedStickerPreviewGeometry({
           layer: { x: corner.endsWith("right") ? 1 - CORNER_SAFE_POLICY.cornerMargin - rule.stickerWidth : CORNER_SAFE_POLICY.cornerMargin, y: corner.startsWith("bottom") ? CORNER_SAFE_POLICY.bottomCornerStart : CORNER_SAFE_POLICY.cornerMargin, width: rule.stickerWidth, rotationDeg: rule.stickerRotation },
-          frameWidth: width, frameHeight: height, sourceWidth: asset.image.naturalWidth, sourceHeight: asset.image.naturalHeight,
+          frameWidth: width, frameHeight: height, sourceWidth: asset.naturalWidth, sourceHeight: asset.naturalHeight,
         });
         const imageWidth = geometry.imageWidth * width, imageHeight = geometry.imageHeight * height;
         context.save(); context.translate((geometry.x + geometry.width / 2) * width, (geometry.y + geometry.height / 2) * height);
         context.rotate(angle); context.globalAlpha = 0.94;
-        context.drawImage(asset.image, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
+        context.drawImage(asset, -imageWidth / 2, -imageHeight / 2, imageWidth, imageHeight);
         context.restore();
       }
     };
     draw();
     document.fonts.addEventListener("loadingdone", draw);
     return () => document.fonts.removeEventListener("loadingdone", draw);
-  }, [rule, options.fontFamily, stickerId, asset]);
+  }, [rule, options, assetKey, assets, failed]);
 
   return <section className="template-preview card" aria-label="整体模板预览">
-    <div className="template-preview-picture"><canvas ref={canvas} width={900} height={1600} role="img" aria-label={`${rule.name}排版示例：左上角文字“${rule.previewCaption}”，上方居中价格占位，左下和右下贴纸占位，${stickerId === "none" ? "不加贴纸" : "角落贴纸"}`} /></div>
+    <div className="template-preview-picture"><canvas ref={canvas} width={900} height={1600} role="img" aria-label={`${rule.name}排版示例：上方居中价格占位，四角可独立选择贴纸或文字`} />
+      {onCornerSelect && CORNERS.map((corner) => <button type="button" key={corner} className={`corner-slot ${corner}`} aria-label={`编辑${CORNER_LABELS[corner]}`} aria-pressed={selectedCorner === corner} disabled={disabled} onClick={() => { onCornerSelect(corner); document.getElementById("corner-decoration-editor")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }}><span>{CORNER_LABELS[corner]} · {options.corners?.[corner]?.type === "text" ? "文字" : options.corners?.[corner]?.type === "sticker" ? "贴纸" : options.corners?.[corner]?.type === "none" ? "留空" : "选择内容"}</span></button>)}
+    </div>
     <div className="template-preview-info"><span className="eyebrow">TEMPLATE PREVIEW</span><h2>{rule.name} · 整体预览</h2><p>先看一眼贴纸与文字放在一起的效果，再开始制作。</p><dl><div><dt>文字</dt><dd>{options.fontFamily} · 字号为画面宽度的 {(rule.maxFontSize * 100).toFixed(1)}%</dd></div><div><dt>颜色</dt><dd><span className="preview-color" style={{ backgroundColor: `rgb(${rule.textColor.join(",")})` }} />#{rule.textColor.map((value) => value.toString(16).padStart(2, "0")).join("").toUpperCase()}</dd></div><div><dt>贴纸</dt><dd>{stickerId === "none" ? "不加贴纸" : `宽度为画面的 ${(rule.stickerWidth * 100).toFixed(0)}%`}</dd></div></dl>
-      {stickerId !== "none" && (failed === stickerId ? <p role="alert">贴纸预览加载失败，请重新选择贴纸。</p> : asset?.id !== stickerId && <p role="status">正在加载贴纸预览…</p>)}
-      <small>9:16 静态排版示例。上方价格与下方两个虚线框仅为占位示意，不会写入成片；真实价格需自行提供。切换模板、贴纸或字体即可预览；实际文案、字号与位置由 Agent 根据素材调整。</small>
+      {failed.length > 0 ? <p role="alert">贴纸预览加载失败，请重新选择贴纸。</p> : stickerSlots.some(({ id }) => !assets[id]) && <p role="status">正在加载贴纸预览…</p>}
+      <small>点击四角分别选择贴纸、文字与字体，所选内容会用于成片。上方价格仍为占位示意，不写入成片。未设置的角落由 Agent 根据素材安排；此处为 9:16 静态示例。</small>
     </div>
   </section>;
 }
