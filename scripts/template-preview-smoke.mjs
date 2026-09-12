@@ -26,7 +26,7 @@ server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plug
       import '/src/renderer/styles.css';
       window.failCatalog=false;
       window.jianji={decorationCatalog:async()=>{if(window.failCatalog)throw Error('fixture failure');return {fonts:['Noto Sans CJK SC','serif'],stickers:${JSON.stringify(stickers)}};},libraryAsset:async()=>{throw Error('offline fixture');}};
-      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [requestedCount,onRequestedCount]=React.useState();const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{requestedCount,onRequestedCount,onProductPrice:(productPrice)=>setOptions(current=>({...current,productPrice})),selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:3,disabled});}
+      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [requestedCount,onRequestedCount]=React.useState();const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{requestedCount,onRequestedCount,onProductPrice:(productPrice)=>setOptions(current=>({...current,productPrice})),selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),onGenerateBrief:()=>{window.generatedBrief=true;},brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:3,disabled});}
       createRoot(document.getElementById('root')).render(React.createElement(Fixture));
     </script></body></html>`));
   });
@@ -94,6 +94,12 @@ try {
   assert.equal(await picture(), emptyPricePicture, 'invalid price is not drawn');
   await fillPrice('');
   assert.equal(await picture(), emptyPricePicture, 'cleared price disappears');
+  await fillPrice('19.9元30贴');
+  assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), 'false');
+  assert.equal(await evaluate("document.querySelector('.generate-brief').disabled"), false);
+  await click('.generate-brief');
+  assert.equal(await evaluate('window.generatedBrief'), true, 'valid quantity price enables prompt generation');
+  assert.notEqual(await picture(), emptyPricePicture, 'quantity price appears in preview');
   await fillPrice('19.90');
   const initial = await picture();
   await click(".template-card.clean");

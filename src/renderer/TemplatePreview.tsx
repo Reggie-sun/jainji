@@ -2,7 +2,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults";
 import { useEffect, useRef, useState } from "react";
 import type { RuleTemplate } from "../shared/agent";
 import { LIBRARY_STICKERS } from "../shared/asset-library";
-import { CORNERS, CORNER_LABELS, ProductPriceSchema, type Corner, type DecorationOptions } from "../shared/decorations";
+import { CORNERS, CORNER_LABELS, formatProductPrice, ProductPriceSchema, type Corner, type DecorationOptions } from "../shared/decorations";
 import { constrainedStickerPreviewGeometry, CORNER_SAFE_POLICY } from "../shared/layout-policy";
 import "./template-preview.css";
 
@@ -80,9 +80,9 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
         context.lineWidth = 8;
         context.lineJoin = "round";
         context.strokeStyle = "#fff8ed";
-        context.strokeText(`¥ ${options.productPrice.trim()}`, width / 2, height * 0.13);
+        context.strokeText(formatProductPrice(options.productPrice), width / 2, height * 0.13);
         context.fillStyle = "#df303e";
-        context.fillText(`¥ ${options.productPrice.trim()}`, width / 2, height * 0.13);
+        context.fillText(formatProductPrice(options.productPrice), width / 2, height * 0.13);
         context.restore();
       }
 

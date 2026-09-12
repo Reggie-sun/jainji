@@ -5,7 +5,7 @@ import { createDefaultTemplate, EditTemplateSchema, type Color, type EditTemplat
 import { ConnectionInputSchema, GenerateBriefSchema, getRule, RULE_TEMPLATES, type ConnectionInput, type ConnectionStatus, type GenerateBriefInput, type RuleId } from "../shared/agent.js";
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { StickerAssets } from "./builtin-stickers.js";
-import { CORNERS, CORNER_LABELS, DecorationSchema, type Corner, type DecorationOptions } from "../shared/decorations.js";
+import { CORNERS, CORNER_LABELS, formatProductPrice, DecorationSchema, type Corner, type DecorationOptions } from "../shared/decorations.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
@@ -120,7 +120,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
     width: rule.stickerWidth, rotationDeg: rule.stickerRotation, opacity: 0.94, zIndex: index, visible: true,
   });
   const priceLayers: Layer[] = options.productPrice ? [{
-    ...textLayer("top-left", `¥ ${options.productPrice}`, DEFAULT_TEXT_FONT_FAMILY, 100),
+    ...textLayer("top-left", formatProductPrice(options.productPrice), DEFAULT_TEXT_FONT_FAMILY, 100),
     x: 0.1, y: 0.13, width: 0.8, textAlign: "center",
     fontSizeRatio: Math.min(0.08 * dimensions.width / dimensions.height, 0.14),
     color: color(223, 48, 62), strokeColor: color(255, 248, 237),

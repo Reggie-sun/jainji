@@ -20,8 +20,14 @@ const CornerDecorationSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string().trim().min(1).max(12).refine((text) => !/[\u0000-\u001f\u007f]/.test(text)), fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font") }).strict(),
 ]);
 export type CornerDecoration = z.infer<typeof CornerDecorationSchema>;
-export const ProductPriceSchema = z.string().trim().max(9).regex(/^(?:\d{1,6}(?:\.\d{1,2})?)?$/, "价格只能填写金额，最多两位小数，不能包含产品名。");
+export const PRODUCT_PRICE_MAX_LENGTH = 12;
+export const PRODUCT_PRICE_HELP = "请填写金额或金额＋数量单位，例如19.90、19.9元30贴；最多12字，金额最多两位小数，不能包含产品名。";
+export const ProductPriceSchema = z.string().trim().max(PRODUCT_PRICE_MAX_LENGTH).regex(/^(?:\d{1,6}(?:\.\d{1,2})?(?:元(?:[1-9]\d{0,5}(?:贴|片|个|件|包|袋|盒|瓶|罐|支|条|卷|枚|只|双|对|套|组|份|张|本|杯|克|千克|斤|公斤|毫升|升))?)?)?$/, PRODUCT_PRICE_HELP);
 export const RequiredProductPriceSchema = ProductPriceSchema.min(1, "请手动填写产品价格，Agent 不能代填或改写。");
+export function formatProductPrice(price: string): string {
+  const value = RequiredProductPriceSchema.parse(price);
+  return value.includes("元") ? value : `¥ ${value}`;
+}
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {
     return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined };

@@ -45,6 +45,15 @@ describe("agent provider boundary", () => {
     }
   });
 
+  it.each(["19.9元30贴", "29.90元50片", "999999.99元1贴", "19.90元1000毫升"])("exports the exact manual quantity price: %s", async (productPrice) => {
+    for (const automatic of [false, true]) {
+      const template = materializePlan(automatic ? autoPlan : plan, "black-gold", { width: 1080, height: 1920 }, stickerAssets, { mode: automatic ? "agent" : "manual", productPrice }, automatic ? autoCatalog : undefined);
+      const compiled = await new TemplateCompiler().compile(template, { width: 1080, height: 1920, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/text.txt" });
+      expect(compiled.textFiles.some((file) => file.content === productPrice)).toBe(true);
+      expect(template.layers.filter((layer) => layer.type === "text" && layer.textAlign === "center")).toEqual([expect.objectContaining({ content: productPrice })]);
+    }
+  });
+
   it("forbids product names and model-written center prices in both model prompts", async () => {
     const request = vi.fn().mockResolvedValueOnce(reply("保留画面" )).mockResolvedValueOnce(reply(JSON.stringify(plan)));
     const provider = new AgentProvider(request);
