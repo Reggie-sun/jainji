@@ -8,6 +8,7 @@ export function CornerDecorationPicker({ value, onChange, disabled, selected, on
 }) {
   const valueRef = useRef(value);
   valueRef.current = value;
+  const automatic = value.mode === "agent";
   const slot = selected ? value.corners?.[selected] : undefined;
   const update = (next?: CornerDecoration) => {
     if (!selected || disabled) return;
@@ -17,6 +18,11 @@ export function CornerDecorationPicker({ value, onChange, disabled, selected, on
   };
   const pickerValue = selected ? { sticker: slot?.type === "sticker" ? slot.sticker : "none", fontFamily: slot?.type === "text" ? slot.fontFamily : value.fontFamily } : value;
   return <section id="corner-decoration-editor" aria-label="四角内容设置">
+    <div className="corner-tabs" role="group" aria-label="装饰选择方式">
+      <button type="button" disabled={disabled} aria-pressed={automatic} onClick={() => { onChange({ ...value, mode: "agent" }); onSelect(undefined); }}>全部交给 Agent</button>
+      <button type="button" disabled={disabled} aria-pressed={!automatic} onClick={() => onChange({ ...value, mode: "manual" })}>自己设置</button>
+    </div>
+    {automatic ? <div className="card corner-settings"><h2>Agent 按画面需要选择</h2><p>根据每条视频选择贴纸、文字、字体和位置。四个角落不必加满，也可以全部留空。</p><p>从内置装饰贴纸和本机可用字体中选择，遵守所选模板的尺寸与数量限制。切回“自己设置”可继续使用之前的选择。</p></div> : <>
     <div className="corner-tabs" role="group" aria-label="选择编辑角落">
       <button type="button" disabled={disabled} aria-pressed={!selected} onClick={() => onSelect(undefined)}>默认样式</button>
       {CORNERS.map((corner) => <button type="button" key={corner} disabled={disabled} aria-pressed={selected === corner} onClick={() => onSelect(corner)}>{CORNER_LABELS[corner]}</button>)}
@@ -37,5 +43,6 @@ export function CornerDecorationPicker({ value, onChange, disabled, selected, on
       }
       else update(next.sticker === "none" ? { type: "none" } : next.sticker === "template" ? undefined : { type: "sticker", sticker: next.sticker });
     }} />}
+    </>}
   </section>;
 }

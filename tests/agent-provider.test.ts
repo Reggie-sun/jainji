@@ -7,6 +7,8 @@ import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
 const plan = { summary: "保留主体，添加短标题", captions: [{ text: "好物日常", corner: "top-left", size: 0.026 }], filter: "warm", intensity: 0.4 };
+const autoCatalog = { fonts: ["Noto Serif CJK SC", "Noto Sans CJK SC"], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }] };
+const autoPlan = { ...plan, captions: [{ ...plan.captions[0], fontFamily: "Noto Serif CJK SC" }], stickers: [{ corner: "bottom-right", sticker: "heart" }] };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }));
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
@@ -62,6 +64,26 @@ describe("agent provider boundary", () => {
     expect(template.layoutPolicy).toBe("corner-safe-v1");
     expect(template.layers[0]).toMatchObject({ type: "text", content: "好物日常", x: 0.04, y: 0.04 });
     expect(template.layers[1]).toMatchObject({ type: "sticker", assetPath: "/tmp/sparkle.png", width: 0.12, x: 0.84, y: 0.8 });
+  });
+
+  it("fails closed for agent-selected decorations and materializes only its occupied corners", () => {
+    expect(validatePlan(autoPlan, "black-gold", autoCatalog)).toMatchObject(autoPlan);
+    expect(() => validatePlan({ ...autoPlan, captions: [{ ...autoPlan.captions[0], fontFamily: "unknown" }] }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "unknown" }] }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "heart" }] }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, captions: [{ text: "缺少字体", corner: "top-left", size: 0.026 }] }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: undefined }, "black-gold", autoCatalog)).toThrow();
+    const template = materializePlan(autoPlan, "black-gold", { width: 720, height: 1280 }, stickerAssets, { mode: "agent", sticker: "none", fontFamily: "SimHei", corners: { "top-left": { type: "text", text: "手动", fontFamily: "SimHei" } } }, autoCatalog);
+    expect(template.layers).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "text", content: "好物日常", fontFamily: "Noto Serif CJK SC", x: 0.04, y: 0.04 }),
+      expect.objectContaining({ type: "sticker", assetPath: "/tmp/heart.png", x: 0.84, y: 0.8 }),
+    ]));
+    expect(template.layers).toHaveLength(2);
+  });
+
+  it("permits an intentionally empty agent decoration plan", () => {
+    const template = materializePlan({ ...autoPlan, captions: [], stickers: [] }, "black-gold", { width: 720, height: 1280 }, stickerAssets, { mode: "agent" }, autoCatalog);
+    expect(template.layers).toEqual([]);
   });
 
   it("materializes every visible rule as a distinct filtered template with one governed sticker", () => {

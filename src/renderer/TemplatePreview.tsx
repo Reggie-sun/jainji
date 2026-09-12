@@ -6,12 +6,13 @@ import { constrainedStickerPreviewGeometry, CORNER_SAFE_POLICY } from "../shared
 import "./template-preview.css";
 
 export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect, disabled }: { rule: RuleTemplate; options: DecorationOptions; selectedCorner?: Corner; onCornerSelect?(corner: Corner): void; disabled?: boolean }) {
+  const automatic = options.mode === "agent";
   const canvas = useRef<HTMLCanvasElement>(null);
   const [assets, setAssets] = useState<Record<string, HTMLImageElement>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const stickerId = options.sticker === "template" ? rule.sticker : options.sticker;
   const autoCorner = rule.stickerCorners.find((corner) => corner !== "top-left" && !options.corners?.[corner]);
-  const stickerSlots = CORNERS.flatMap((corner) => {
+  const stickerSlots = (automatic ? [] : CORNERS).flatMap((corner) => {
     const slot = options.corners?.[corner];
     if (slot?.type === "sticker") return [{ corner, id: slot.sticker }];
     return !slot && corner === autoCorner && stickerId !== "none" ? [{ corner, id: stickerId }] : [];
@@ -65,8 +66,8 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
         context.fillStyle = `rgb(${rule.textColor.join(",")})`;
         context.fillText(text, x, y, width * 0.42);
       };
-      if (!options.corners?.["top-left"]) drawText("top-left", rule.previewCaption, options.fontFamily);
-      for (const corner of CORNERS) {
+      if (!automatic && !options.corners?.["top-left"]) drawText("top-left", rule.previewCaption, options.fontFamily);
+      for (const corner of automatic ? [] : CORNERS) {
         const slot = options.corners?.[corner];
         if (slot?.type === "text") drawText(corner, slot.text, slot.fontFamily);
       }
@@ -108,11 +109,11 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
 
   return <section className="template-preview card" aria-label="整体模板预览">
     <div className="template-preview-picture"><canvas ref={canvas} width={900} height={1600} role="img" aria-label={`${rule.name}排版示例：上方居中价格占位，四角可独立选择贴纸或文字`} />
-      {onCornerSelect && CORNERS.map((corner) => <button type="button" key={corner} className={`corner-slot ${corner}`} aria-label={`编辑${CORNER_LABELS[corner]}`} aria-pressed={selectedCorner === corner} disabled={disabled} onClick={() => { onCornerSelect(corner); document.getElementById("corner-decoration-editor")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }}><span>{CORNER_LABELS[corner]} · {options.corners?.[corner]?.type === "text" ? "文字" : options.corners?.[corner]?.type === "sticker" ? "贴纸" : options.corners?.[corner]?.type === "none" ? "留空" : "选择内容"}</span></button>)}
+      {!automatic && onCornerSelect && CORNERS.map((corner) => <button type="button" key={corner} className={`corner-slot ${corner}`} aria-label={`编辑${CORNER_LABELS[corner]}`} aria-pressed={selectedCorner === corner} disabled={disabled} onClick={() => { onCornerSelect(corner); document.getElementById("corner-decoration-editor")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }}><span>{CORNER_LABELS[corner]} · {options.corners?.[corner]?.type === "text" ? "文字" : options.corners?.[corner]?.type === "sticker" ? "贴纸" : options.corners?.[corner]?.type === "none" ? "留空" : "选择内容"}</span></button>)}
     </div>
-    <div className="template-preview-info"><span className="eyebrow">TEMPLATE PREVIEW</span><h2>{rule.name} · 整体预览</h2><p>先看一眼贴纸与文字放在一起的效果，再开始制作。</p><dl><div><dt>文字</dt><dd>{options.fontFamily} · 字号为画面宽度的 {(rule.maxFontSize * 100).toFixed(1)}%</dd></div><div><dt>颜色</dt><dd><span className="preview-color" style={{ backgroundColor: `rgb(${rule.textColor.join(",")})` }} />#{rule.textColor.map((value) => value.toString(16).padStart(2, "0")).join("").toUpperCase()}</dd></div><div><dt>贴纸</dt><dd>{stickerId === "none" ? "不加贴纸" : `宽度为画面的 ${(rule.stickerWidth * 100).toFixed(0)}%`}</dd></div></dl>
+    <div className="template-preview-info"><span className="eyebrow">TEMPLATE PREVIEW</span><h2>{rule.name} · {automatic ? "Agent 自动安排" : "整体预览"}</h2>{automatic ? <p>开始出片后，Agent 根据每条素材决定使用哪些角落，也可以全部留空。具体贴纸与文字将在生成后确定。</p> : <><p>先看一眼贴纸与文字放在一起的效果，再开始制作。</p><dl><div><dt>文字</dt><dd>{options.fontFamily} · 字号为画面宽度的 {(rule.maxFontSize * 100).toFixed(1)}%</dd></div><div><dt>颜色</dt><dd><span className="preview-color" style={{ backgroundColor: `rgb(${rule.textColor.join(",")})` }} />#{rule.textColor.map((value) => value.toString(16).padStart(2, "0")).join("").toUpperCase()}</dd></div><div><dt>贴纸</dt><dd>{stickerId === "none" ? "不加贴纸" : `宽度为画面的 ${(rule.stickerWidth * 100).toFixed(0)}%`}</dd></div></dl></>}
       {failed.length > 0 ? <p role="alert">贴纸预览加载失败，请重新选择贴纸。</p> : stickerSlots.some(({ id }) => !assets[id]) && <p role="status">正在加载贴纸预览…</p>}
-      <small>点击四角分别选择贴纸、文字与字体，所选内容会用于成片。上方价格仍为占位示意，不写入成片。未设置的角落由 Agent 根据素材安排；此处为 9:16 静态示例。</small>
+      <small>{automatic ? "此处仅展示示意背景，不代表 Agent 已作出选择。上方价格为占位，不写入成片。" : "点击四角分别选择贴纸、文字与字体，所选内容会用于成片。上方价格仍为占位示意，不写入成片。未设置的角落由 Agent 根据素材安排；此处为 9:16 静态示例。"}</small>
     </div>
   </section>;
 }

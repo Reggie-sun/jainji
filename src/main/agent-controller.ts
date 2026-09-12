@@ -4,7 +4,7 @@ import { AgentStartSchema } from "../shared/agent.js";
 import type { ApplicationService } from "./application.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { DEFAULT_PRESET, type MediaItem } from "./domain.js";
-import { AgentProvider } from "./agent-provider.js";
+import { AgentProvider, type AgentDecorationCatalog } from "./agent-provider.js";
 import { AgentRunner } from "./agent-runner.js";
 import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
@@ -12,7 +12,12 @@ import type { ExportQueue } from "./queue.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema } from "../shared/decorations.js";
+import { FONT_CHOICES } from "../shared/decorations.js";
 import { decorationFontFamilies, type AssetLibrary } from "./asset-library.js";
+
+const AUTO_STICKER_LABELS: Readonly<Record<string, string>> = {
+  sparkle: "星芒", arrow: "箭头", heart: "爱心", burst: "爆闪",
+};
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -32,6 +37,15 @@ export class AgentController {
     finally { this.testing = false; this.testController = undefined; }
   }
 
+  private async autoCatalog(): Promise<AgentDecorationCatalog> {
+    const fonts = (await Promise.all(FONT_CHOICES.map(async (family) => await resolveFont(family) ? family : null)))
+      .filter((family): family is NonNullable<typeof family> => family !== null);
+    const stickers = Object.entries(AUTO_STICKER_LABELS)
+      .filter(([id]) => Boolean(this.stickerAssets[id]))
+      .map(([id, label]) => ({ id, label }));
+    return { fonts, stickers };
+  }
+
   async start(input: AgentStartInput, approvedDirectories: ReadonlySet<string>): Promise<void> {
     this.assertIdle();
     if (!this.provider.status().configured) throw new Error("请先接入模型。");
@@ -45,11 +59,14 @@ export class AgentController {
     try {
       const parsed = AgentStartSchema.parse(input);
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
-      const stickerAssets = this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
+      const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog() : undefined;
+      const stickerAssets = decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
       this.preparingController.signal.throwIfAborted();
-      for (const family of decorationFontFamilies(decorations)) {
-        const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
-        if (!font) throw new Error("所选字体不可用，请重新选择已安装字体。");
+      if (decorations.mode !== "agent") {
+        for (const family of decorationFontFamilies(decorations)) {
+          const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
+          if (!font) throw new Error("所选字体不可用，请重新选择已安装字体。");
+        }
       }
       if (!path.isAbsolute(parsed.outputDirectory)) throw new Error("请选择有效的输出目录。");
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
@@ -63,7 +80,7 @@ export class AgentController {
       const projectId = this.service.currentProject.id;
       this.runner = new AgentRunner({
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
-        plan: (rule, brief, frames, signal) => this.provider.plan(rule, brief, frames, signal),
+        plan: (rule, brief, frames, signal, catalog) => this.provider.plan(rule, brief, frames, signal, catalog),
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
           const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
@@ -73,6 +90,7 @@ export class AgentController {
         },
         stickerAssets,
         decorations,
+        autoCatalog,
         onChange: this.onChange,
       });
       this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[]);

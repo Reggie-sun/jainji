@@ -1,16 +1,17 @@
 import { randomUUID } from "node:crypto";
 import { type AgentRun, type RuleId } from "../shared/agent.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
-import { materializePlan, ProviderError, type PackagingPlan } from "./agent-provider.js";
+import { materializePlan, ProviderError, type AgentDecorationCatalog, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
-  plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal): Promise<PackagingPlan>;
+  plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
   stickerAssets: StickerAssets;
   decorations?: DecorationOptions;
+  autoCatalog?: AgentDecorationCatalog;
   onChange(): void;
 }
 
@@ -49,9 +50,9 @@ export class AgentRunner {
         try {
           const frames = await this.dependencies.frames(source, signal);
           signal.throwIfAborted();
-          const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal);
+          const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog);
           signal.throwIfAborted();
-          const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations);
+          const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = plan.summary;
           item.status = "exporting";

@@ -16,7 +16,7 @@ export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirect
   outputDirectory: string; onOutput(): void; onStart(): void; count: number; disabled: boolean;
 }) {
   const rule = getRule(selected);
-  const invalidCornerText = Object.values(decorationOptions?.corners ?? {}).some((slot) => slot?.type === "text" && (!slot.text.trim() || /[\u0000-\u001f\u007f]/.test(slot.text)));
+  const invalidCornerText = decorationOptions?.mode !== "agent" && Object.values(decorationOptions?.corners ?? {}).some((slot) => slot?.type === "text" && (!slot.text.trim() || /[\u0000-\u001f\u007f]/.test(slot.text)));
   return <>
     <Heading eyebrow="02 / CHOOSE YOUR DIRECTION" title="定下风格，放手让它创作">模板规定边界。文案、角标位置与色彩细节，由 Agent 根据每条素材决定。</Heading>
     <div className="template-grid" role="group" aria-label="规则模板">

@@ -3,6 +3,7 @@ import { AgentRunner } from "../src/main/agent-runner";
 import { type MediaItem, now } from "../src/main/domain";
 import { ProviderError, type PackagingPlan } from "../src/main/agent-provider";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
+import { DecorationSchema } from "../src/shared/decorations";
 
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
@@ -47,5 +48,16 @@ describe("agent run lifecycle", () => {
     runner.start("project", "clean", "", [media("a")]);
     await runner.settled();
     expect(JSON.stringify(runner.snapshot())).not.toContain("private path or key");
+  });
+
+  it("passes the agent decoration catalog through to plan materialization", async () => {
+    const catalog = { fonts: ["Noto Sans CJK SC"], stickers: [{ id: "heart", label: "爱心" }] };
+    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], stickers: [{ corner: "bottom-right", sticker: "heart" }], filter: "cool", intensity: 0.3 });
+    const enqueue = vi.fn().mockResolvedValue("task");
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
+    runner.start("project", "clean", "", [media("agent.mp4")]);
+    await runner.settled();
+    expect(provider.mock.calls[0][4]).toEqual(catalog);
+    expect(enqueue.mock.calls[0][0].layers).toEqual([expect.objectContaining({ type: "sticker", assetPath: "/tmp/heart.png" })]);
   });
 });

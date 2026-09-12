@@ -137,6 +137,22 @@ try {
   assert.equal(await evaluate("document.querySelector('[aria-label=角落内容类型]').disabled"), true);
   await evaluate('window.setFixtureDisabled(false)');
   await waitFor("!document.querySelector('.corner-slot').disabled");
+  const manualSettings = await evaluate('JSON.stringify(window.fixtureOptions.corners)');
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='全部交给 Agent').click()");
+  await waitFor("window.fixtureOptions.mode==='agent'");
+  assert.equal(await evaluate("document.querySelectorAll('.corner-slot').length"), 0, 'auto mode hides manual selection slots');
+  assert.equal(await evaluate("Boolean(document.querySelector('.decoration-picker'))"), false, 'auto mode requires no manual picker');
+  assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('全部留空')"), true, 'auto mode explicitly allows empty corners');
+  await evaluate("document.querySelector('#corner-decoration-editor').scrollIntoView({block:'center'})");
+  const autoScreenshot = await send("Page.captureScreenshot", { format: "png" });
+  await writeFile(path.join(directory, "agent-mode.png"), Buffer.from(autoScreenshot.data, "base64"));
+  await evaluate('window.setFixtureDisabled(true)');
+  await waitFor("[...document.querySelectorAll('[aria-label=装饰选择方式] button')].every(b=>b.disabled)");
+  await evaluate('window.setFixtureDisabled(false)');
+  await waitFor("![...document.querySelectorAll('[aria-label=装饰选择方式] button')][0].disabled");
+  await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='自己设置').click()");
+  await waitFor("document.querySelectorAll('.corner-slot').length===4");
+  assert.equal(await evaluate('JSON.stringify(window.fixtureOptions.corners)'), manualSettings, 'returning to manual preserves selections');
   await evaluate("document.querySelector('.template-preview').scrollIntoView({block:'center'})");
   const screenshot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(directory, "preview.png"), Buffer.from(screenshot.data, "base64"));
@@ -145,7 +161,7 @@ try {
   await writeFile(path.join(directory, "export-format.png"), Buffer.from(exportScreenshot.data, "base64"));
   await send("Emulation.setDeviceMetricsOverride", { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
   assert.equal(await evaluate("document.documentElement.scrollWidth <= innerWidth"), true, "no horizontal overflow at minimum width");
-  console.log(`PASS: four independent corners, mixed text/sticker, retained choices, disabled controls, export formats/default/disabled, eight templates, sticker removal, font pixels, asset error/recovery, narrow layout. Screenshots: ${directory}`);
+  console.log(`PASS: agent/manual modes and restoration, four independent corners, mixed text/sticker, retained choices, disabled controls, export formats/default/disabled, eight templates, sticker removal, font pixels, asset error/recovery, narrow layout. Screenshots: ${directory}`);
 } finally {
   socket?.close(); chrome.kill(); await server.close();
 }
