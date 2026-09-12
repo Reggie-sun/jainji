@@ -46,15 +46,16 @@ function filterExpression(config: FilterConfig): string | null {
   }
 }
 
-function outputScale(preset: ExportPreset): string | null {
+function outputScale(preset: ExportPreset, dimensions: { width: number; height: number }): string | null {
   if (preset.resolutionMode === "source") return null;
-  const size = preset.resolutionMode === "1080p" ? "1920:1080" : "1280:720";
+  const size = `${dimensions.width}:${dimensions.height}`;
   return `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2`;
 }
 
 function outputDimensions(media: MediaItem, preset: ExportPreset): { width: number; height: number } {
-  if (preset.resolutionMode === "1080p") return { width: 1920, height: 1080 };
-  if (preset.resolutionMode === "720p") return { width: 1280, height: 720 };
+  const portrait = media.height > media.width;
+  if (preset.resolutionMode === "1080p") return portrait ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
+  if (preset.resolutionMode === "720p") return portrait ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
   return { width: media.width, height: media.height };
 }
 
@@ -96,7 +97,7 @@ export class TemplateCompiler {
     let baseLabel = "base0";
     const graph: string[] = [];
     const dimensions = outputDimensions(media, preset);
-    const sourceFilters = ["setpts=PTS-STARTPTS", outputScale(preset), "format=yuv420p"].filter(Boolean).join(",");
+    const sourceFilters = ["setpts=PTS-STARTPTS", outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
 
     for (const layer of sortedVisibleLayers(template)) {
@@ -180,6 +181,7 @@ export class TemplateCompiler {
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-b:a", preset.quality === "high" ? "256k" : preset.quality === "small" ? "128k" : "192k",
+      "-ar", "44100",
       "-preset", preset.quality === "high" ? "slow" : "medium",
       "-crf", preset.quality === "high" ? "18" : preset.quality === "small" ? "28" : "23",
       ...(preset.frameRateMode === "30" ? ["-r", "30"] : []),

@@ -75,4 +75,21 @@ describe("TemplateCompiler", () => {
     expect(graph).toContain("scale=64:29:force_original_aspect_ratio=decrease");
     expect(graph).toContain("overlay=x=main_w-overlay_w-main_w*0.04000:y=main_h-overlay_h-main_h*0.04000");
   });
+
+  it.each([
+    { name: "portrait 720p", width: 540, height: 960, resolutionMode: "720p" as const, size: "720:1280" },
+    { name: "landscape 720p", width: 1920, height: 1080, resolutionMode: "720p" as const, size: "1280:720" },
+    { name: "portrait 1080p", width: 720, height: 1280, resolutionMode: "1080p" as const, size: "1080:1920" },
+  ])("preserves orientation for $name exports", async ({ width, height, resolutionMode, size }) => {
+    const command = await new TemplateCompiler().compile(createDefaultTemplate(), { ...media, width, height }, { ...DEFAULT_PRESET, resolutionMode, frameRateMode: "30" }, {
+      ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused.txt",
+    });
+    const graph = command.args[command.args.indexOf("-filter_complex") + 1];
+    expect(graph).toContain(`scale=${size}:force_original_aspect_ratio=decrease,pad=${size}`);
+    expect(command.args.slice(command.args.indexOf("-r"), command.args.indexOf("-r") + 2)).toEqual(["-r", "30"]);
+    expect(command.args.slice(command.args.indexOf("-c:v"), command.args.indexOf("-c:v") + 2)).toEqual(["-c:v", "libx264"]);
+    expect(command.args.slice(command.args.indexOf("-c:a"), command.args.indexOf("-c:a") + 2)).toEqual(["-c:a", "aac"]);
+    expect(command.args.slice(command.args.indexOf("-b:a"), command.args.indexOf("-b:a") + 2)).toEqual(["-b:a", "192k"]);
+    expect(command.args.slice(command.args.indexOf("-ar"), command.args.indexOf("-ar") + 2)).toEqual(["-ar", "44100"]);
+  });
 });
