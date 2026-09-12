@@ -1,15 +1,18 @@
 import { RULE_TEMPLATES, getRule, type RuleId } from "../shared/agent";
 import { Heading, Icon } from "./ui";
+import type { ReactNode } from "react";
 
 const STICKER_GLYPHS = { sparkle: "✦", arrow: "↗", heart: "♥", burst: "✹" } as const;
 
-export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirectory, onOutput, onStart, count, disabled }: {
+export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirectory, onOutput, onStart, count, disabled, decorations }: {
+  decorations?: ReactNode;
   selected: RuleId; onSelect(id: RuleId): void; brief: string; onBrief(text: string): void;
   outputDirectory: string; onOutput(): void; onStart(): void; count: number; disabled: boolean;
 }) {
   const rule = getRule(selected);
   return <>
     <Heading eyebrow="02 / CHOOSE YOUR DIRECTION" title="定下风格，放手让它创作">模板规定边界。文案、角标位置与色彩细节，由 Agent 根据每条素材决定。</Heading>
+    {decorations}
     <div className="template-grid" role="group" aria-label="规则模板">
       {RULE_TEMPLATES.map((template, index) => <button key={template.id} className={`template-card ${template.id} ${selected === template.id ? "selected" : ""}`} aria-pressed={selected === template.id} onClick={() => onSelect(template.id)} disabled={disabled}>
         <div className="template-art"><span className="template-number">{String(index + 1).padStart(2, "0")}</span><span className="filter-pill">滤镜 · {template.filterLabel}</span><div className="art-circle" /><div className="art-column" /><span className={`template-sticker sticker-${template.sticker}`} aria-hidden="true">{STICKER_GLYPHS[template.sticker]}</span><span className="art-label">{template.previewCaption}</span><div className="art-line" /></div>

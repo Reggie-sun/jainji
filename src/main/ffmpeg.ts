@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { basename } from "node:path";
-import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
+import { FONT_CHOICES } from "../shared/decorations.js";
 import { binaryCandidates, windowsFontCandidates } from "./platform.js";
 
 export interface CommandResult {
@@ -130,7 +130,7 @@ export async function checkCapabilities(appDataDirectory: string): Promise<{ sta
     overlay: false,
     h264Encoder: false,
     aacEncoder: false,
-    fonts: Boolean(await resolveFont(DEFAULT_TEXT_FONT_FAMILY)),
+    fonts: (await Promise.all(FONT_CHOICES.map(resolveFont))).some(Boolean),
     appDataWritable: false,
   };
   try {

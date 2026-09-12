@@ -10,6 +10,8 @@ import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
 import type { ExportQueue } from "./queue.js";
 import type { BuiltinStickerAssets } from "./builtin-stickers.js";
+import { resolveFont } from "./ffmpeg.js";
+import { DecorationSchema } from "../shared/decorations.js";
 
 export class AgentController {
   readonly provider = new AgentProvider();
@@ -42,6 +44,8 @@ export class AgentController {
     this.preparingController = new AbortController();
     try {
       const parsed = AgentStartSchema.parse(input);
+      const decorations = DecorationSchema.parse(parsed.decorations ?? {});
+      if (!await resolveFont(decorations.fontFamily)) throw new Error("所选字体不可用，请重新选择已安装字体。");
       if (!path.isAbsolute(parsed.outputDirectory)) throw new Error("请选择有效的输出目录。");
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedDirectories.has(outputDirectory)) throw new Error("请通过系统对话框选择输出目录。");
@@ -63,6 +67,7 @@ export class AgentController {
           return batch.tasks[0].id;
         },
         stickerAssets: this.stickerAssets,
+        decorations,
         onChange: this.onChange,
       });
       this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[]);

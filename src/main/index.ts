@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, stat, readFile } from "node:fs/promises";
+import { FONT_CHOICES, type DecorationCatalog } from "../shared/decorations.js";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { z } from "zod";
@@ -64,6 +65,14 @@ function publish(snapshot: QueueSnapshot): void {
 }
 
 function registerHandlers(): void {
+  ipcMain.handle("decorations.catalog", async (event): Promise<DecorationCatalog> => {
+    assertTrustedSender(event);
+    const assets = await ensureBuiltinStickerAssets(path.join(app.getPath("userData"), "agent-stickers"));
+    const fonts = await Promise.all(FONT_CHOICES.map(async (font) => await resolveFont(font) ? font : null));
+    const labels = { sparkle: "星芒", arrow: "箭头", heart: "爱心", burst: "爆闪" };
+    const stickers = await Promise.all((Object.keys(labels) as Array<keyof typeof labels>).map(async (id) => ({ id, label: labels[id], url: `data:image/png;base64,${(await readFile(assets[id].assetPath)).toString("base64")}` })));
+    return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers };
+  });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
   ipcMain.handle("agent.configure", async (event, input: unknown) => {
     assertTrustedSender(event); agent.assertIdle(); agent.provider.configure(input); return publicState();

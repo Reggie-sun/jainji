@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DecorationSchema } from "./decorations.js";
 
 export const RULE_TEMPLATES = [
   { id: "black-gold", name: "黑金精选", label: "质感好物", description: "暖金滤镜配星芒贴纸，适合产品展示与直播切片。", maxBadges: 2, maxFontSize: 0.032, minIntensity: 0.35, maxIntensity: 0.55, filters: ["warm"], filterLabel: "暖金", sticker: "sparkle", stickerLabel: "金色星芒", previewCaption: "精选 · 有质感", textColor: [247, 220, 160], backgroundColor: [0, 0, 0, 0.64], stickerWidth: 0.12, stickerRotation: 8, stickerCorners: ["bottom-right", "bottom-left", "top-right", "top-left"] },
@@ -29,6 +30,7 @@ export type ConnectionInput = z.infer<typeof ConnectionInputSchema>;
 export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; }
 
 export const AgentStartSchema = z.object({
+  decorations: DecorationSchema.optional(),
   ruleId: RuleIdSchema,
   mediaIds: z.array(z.string().uuid()).min(1).max(100),
   outputDirectory: z.string().min(1),

@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { AgentStartInput, ConnectionInput } from "../shared/agent.js";
 import type { DesktopState } from "../shared/desktop.js";
+import type { DecorationCatalog } from "../shared/decorations.js";
 
 const api = {
+  decorationCatalog: (): Promise<DecorationCatalog> => ipcRenderer.invoke("decorations.catalog"),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   getState: (): Promise<DesktopState> => ipcRenderer.invoke("app.state"),
   configureAgent: (input: ConnectionInput): Promise<DesktopState> => ipcRenderer.invoke("agent.configure", input),

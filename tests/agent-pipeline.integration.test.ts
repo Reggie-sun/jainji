@@ -45,7 +45,8 @@ describe("agent to local export", () => {
       controller.provider.configure({ apiKey: "local-test-key", model: "local-test-vision", baseUrl: `http://127.0.0.1:${port}/v1` });
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory }, new Set())).rejects.toThrow("系统对话框");
       expect(requests).toHaveLength(0);
-      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory }, new Set([outputDirectory]));
+      const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
+      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { sticker: "heart", fontFamily } }, new Set([outputDirectory]));
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         const snapshot = queue.snapshot();
@@ -64,6 +65,10 @@ describe("agent to local export", () => {
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed"]);
       expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content)).toEqual(["片段1", "片段2"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
+      for (const { batch } of batches) {
+        expect(batch.templateSnapshot.layers[0]).toMatchObject({ fontFamily });
+        expect(batch.templateSnapshot.layers[1]).toMatchObject({ assetPath: stickerAssets.heart.assetPath });
+      }
       for (const { batch } of batches) {
         const result = await adapter.probe(batch.tasks[0].outputPath!);
         expect(result.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);
