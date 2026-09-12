@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AgentStartInput } from "../shared/agent.js";
+import type { AgentStartInput, GenerateBriefInput } from "../shared/agent.js";
 import type { SaveConnection } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
@@ -21,6 +21,7 @@ const api = {
   importCCSwitch: (id: string, appType: "claude" | "codex"): Promise<DesktopState> => ipcRenderer.invoke("connection.ccswitch.import", { id, appType }),
   disconnectAgent: (): Promise<DesktopState> => ipcRenderer.invoke("agent.disconnect"),
   testAgent: (): Promise<boolean> => ipcRenderer.invoke("agent.test"),
+  generateBrief: (input: GenerateBriefInput): Promise<string> => ipcRenderer.invoke("agent.generateBrief", input),
   startAgent: (input: AgentStartInput): Promise<DesktopState> => ipcRenderer.invoke("agent.start", input),
   cancelAgent: (): Promise<DesktopState> => ipcRenderer.invoke("agent.cancel"),
   selectAndProbe: (): Promise<DesktopState> => ipcRenderer.invoke("media.selectAndProbe"),

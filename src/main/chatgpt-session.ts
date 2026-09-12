@@ -138,7 +138,7 @@ export class ChatGPTSession {
     aborted.throwIfAborted();
     const thread = z.object({ thread: z.object({ id: z.string() }) }).parse(await rpc.request("thread/start", {
       model: this.state.model, cwd: this.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [],
-      baseInstructions: "You are a video packaging planner. Return only the requested JSON. Do not use tools, commands, files, skills, or external services.",
+      baseInstructions: "You are a video packaging planner. Follow the response format requested by the current task. Do not use tools, commands, files, skills, or external services.",
       developerInstructions: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n"),
     }));
     let turnId: string | undefined;

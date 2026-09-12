@@ -44,4 +44,23 @@ describe("AgentController queue admission", () => {
       expect(library.resolveFont).not.toHaveBeenCalled();
     } finally { await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
+
+  it("cancels a pending brief generation and clears its busy state", async () => {
+    const ffmpeg = new FfmpegAdapter("unused", "unused");
+    const service = new ApplicationService(ffmpeg, { resolve: async () => null });
+    const queue = { snapshot: () => ({ revision: 1, batches: [] }) } as unknown as ExportQueue;
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets);
+    let reject!: (error: unknown) => void;
+    controller.provider.useChatGPT("test", (_messages, signal) => new Promise<string>((_resolve, fail) => {
+      reject = fail;
+      signal.addEventListener("abort", () => fail(signal.reason), { once: true });
+    }));
+    const pending = controller.generateBrief({ ruleId: "clean" });
+    expect(controller.busy).toBe(true);
+    await expect(controller.generateBrief({ ruleId: "clean" })).rejects.toThrow("正在处理");
+    await controller.cancel();
+    await expect(pending).rejects.toBeDefined();
+    expect(controller.busy).toBe(false);
+    expect(reject).toBeTypeOf("function");
+  });
 });

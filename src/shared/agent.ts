@@ -43,6 +43,13 @@ export const AgentStartSchema = z.object({
 }).strict();
 export type AgentStartInput = z.infer<typeof AgentStartSchema>;
 
+export const GenerateBriefSchema = z.object({
+  ruleId: RuleIdSchema,
+  decorations: DecorationSchema.optional(),
+  brief: z.string().trim().max(1000).default(""),
+}).strict();
+export type GenerateBriefInput = z.infer<typeof GenerateBriefSchema>;
+
 export interface AgentItem {
   mediaId: string;
   name: string;

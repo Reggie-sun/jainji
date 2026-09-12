@@ -17,6 +17,9 @@ const output = path.join(directory, "output");
 execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
 const sourceBytes = await readFile(source);
 let requests = 0;
+let briefRequests = 0;
+let briefPayload;
+let failBrief = false;
 const server = createServer((request, response) => {
   let body = "";
   request.on("data", (chunk) => { body += chunk; });
@@ -24,6 +27,17 @@ const server = createServer((request, response) => {
     const input = JSON.parse(body);
     const anthropic = request.url === "/anthropic/v1/messages";
     assert.equal(request.url, anthropic ? "/anthropic/v1/messages" : "/v1/chat/completions");
+    const userContent = input.messages[anthropic ? 0 : 1].content;
+    if (typeof userContent === "string") {
+      assert.equal(request.headers.authorization, anthropic ? "Bearer cc-switch-fixture-key" : "Bearer local-smoke-key");
+      briefRequests += 1; briefPayload = input;
+      await new Promise(resolve => setTimeout(resolve, 300));
+      response.setHeader("Content-Type", "application/json");
+      if (failBrief) { response.writeHead(503); response.end('{}'); return; }
+      const text = "保持清爽自然，保留已选贴纸与文字，按画面需要留白。";
+      response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
+      return;
+    }
     assert.equal(input.messages[anthropic ? 0 : 1].content.filter((item) => item.type === (anthropic ? "image" : "image_url")).length, 3);
     assert.equal(request.headers.authorization, anthropic ? "Bearer cc-switch-fixture-key" : "Bearer local-smoke-key");
     requests += 1;
@@ -168,6 +182,22 @@ try {
   assert.equal(await evaluate("document.querySelectorAll('.sticker-choices img[src^=\"data:image/gif\"]').length"), 3);
   await click("公主请下单（动效）");
   assert.equal(await evaluate("[...document.querySelectorAll('.sticker-choices button')].find(button => button.textContent.includes('公主请下单')).getAttribute('aria-pressed')"), "true");
+  await click("自动生成提示词");
+  await waitFor("document.querySelector('.generate-brief').disabled && document.querySelector('#creative-brief').disabled");
+  await waitFor("document.querySelector('#creative-brief').value.includes('保持清爽自然')");
+  assert.equal(briefRequests, 1, "one explicit API request");
+  assert.equal(requests, 0, "prompt generation does not export");
+  assert.equal(JSON.stringify(briefPayload).includes("公主请下单"), true, "selected sticker label sent");
+  const generatedBrief = await evaluate("document.querySelector('#creative-brief').value");
+  failBrief = true;
+  await click("自动生成提示词");
+  await waitFor("!document.querySelector('.generate-brief').disabled");
+  assert.equal(await evaluate("document.querySelector('#creative-brief').value"), generatedBrief, "API error preserves existing text");
+  assert.equal(briefRequests, 2, "no automatic retries");
+  failBrief = false;
+  await evaluate("document.querySelector('#creative-brief').focus();document.querySelector('#creative-brief').select()");
+  await send("Input.insertText", { text: "生成后仍可编辑" });
+  assert.equal(await evaluate("document.querySelector('#creative-brief').value"), "生成后仍可编辑");
   await screenshot("03-templates");
   await send("Emulation.setDeviceMetricsOverride", { width: 1080, height: 720, deviceScaleFactor: 1, mobile: false });
   assert.equal(await evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true, "1080px viewport overflows");
@@ -222,7 +252,7 @@ try {
   await writeFile(path.join(directory, "quit.signal"), "quit");
   assert.equal(await exit, 0);
   assert.throws(() => process.kill(codexPid, 0), { code: "ESRCH" }, "App must wait for its Codex child to exit");
-  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, briefRequests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
 } catch (error) {
   console.error(processLog.slice(-3000));
   throw error;

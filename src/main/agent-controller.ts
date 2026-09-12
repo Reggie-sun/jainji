@@ -23,11 +23,13 @@ export class AgentController {
   private runner?: AgentRunner;
   private preparing = false;
   private testing = false;
+  private generatingBrief = false;
   private preparingController?: AbortController;
   private testController?: AbortController;
+  private briefController?: AbortController;
   constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider()) {}
 
-  get busy(): boolean { return this.preparing || this.testing || Boolean(this.runner?.running); }
+  get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
   assertIdle(): void { if (this.busy) throw new Error("Agent 正在处理，请等待或先停止当前任务。"); }
 
@@ -35,6 +37,15 @@ export class AgentController {
     this.assertIdle(); this.testing = true; this.testController = new AbortController();
     try { await this.provider.test(this.testController.signal); }
     finally { this.testing = false; this.testController = undefined; }
+  }
+
+  async generateBrief(input: unknown): Promise<string> {
+    this.assertIdle();
+    if (!this.provider.status().configured) throw new Error("请先接入模型。");
+    this.generatingBrief = true;
+    this.briefController = new AbortController();
+    try { return await this.provider.generateBrief(input, this.briefController.signal); }
+    finally { this.generatingBrief = false; this.briefController = undefined; }
   }
 
   private async autoCatalog(): Promise<AgentDecorationCatalog> {
@@ -100,6 +111,7 @@ export class AgentController {
   async cancel(): Promise<void> {
     this.preparingController?.abort();
     this.testController?.abort();
+    this.briefController?.abort();
     this.runner?.cancel();
     for (const item of this.runner?.snapshot()?.items ?? []) {
       if (item.taskId) await this.queue.cancel(item.taskId);

@@ -150,6 +150,19 @@ describe("managed ChatGPT session", () => {
     expect(rpc.request).toHaveBeenCalledWith("thread/unsubscribe", { threadId: "thread" });
     expect(rpc.listenerCount("notification")).toBe(1); session.dispose();
   });
+  it("allows task-requested plain text without weakening tool restrictions", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" }; await session.refresh();
+    const result = session.complete([{ role: "system", content: "Return a plain Chinese creative brief." }, { role: "user", content: "自然风格" }], new AbortController().signal);
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    const params = rpc.request.mock.calls.find(([method]) => method === "thread/start")![1] as { baseInstructions: string };
+    expect(params.baseInstructions).not.toContain("Return only the requested JSON");
+    expect(params.baseInstructions).toContain("Do not use tools, commands, files, skills, or external services");
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "保留自然光与留白。", phase: "final_answer" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await result).toBe("保留自然光与留白。");
+    session.dispose();
+  });
   it("interrupts a cancelled request and drops provider error details", async () => {
     const { rpc, session } = await setup();
     rpc.account = { type: "chatgpt" }; await session.refresh();

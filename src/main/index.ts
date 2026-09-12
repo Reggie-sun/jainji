@@ -124,6 +124,9 @@ function registerHandlers(): void {
     await connections.importCCSwitch(selected.id, selected.appType); return publicState();
   });
   ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); connections.assertIdle(); await agent.test(); return true; });
+  ipcMain.handle("agent.generateBrief", async (event, input: unknown) => {
+    assertTrustedSender(event); connections.assertIdle(); return agent.generateBrief(input);
+  });
   ipcMain.handle("agent.start", async (event, input) => {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentProvider, materializePlan, validatePlan } from "../src/main/agent-provider";
-import { ConnectionInputSchema, RULE_TEMPLATES } from "../src/shared/agent";
+import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { TemplateCompiler } from "../src/main/compiler";
 import { DEFAULT_PRESET, type MediaItem } from "../src/main/domain";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
@@ -51,6 +51,55 @@ describe("agent provider boundary", () => {
     provider.configure(connection);
     await expect(provider.test(new AbortController().signal)).rejects.toThrow("敏感信息");
     await expect(provider.plan("clean", "", [], new AbortController().signal)).rejects.toThrow("格式或规则不合格");
+  });
+
+  it("generates a text-only brief from manual choices using safe catalogue labels", async () => {
+    const request = vi.fn().mockResolvedValue(reply("  用暖金滤镜突出手作质感，保留左上标题和右下贴纸的呼吸空间。  "));
+    const provider = new AgentProvider(request);
+    provider.configure(connection);
+    await expect(provider.generateBrief({ ruleId: "black-gold", brief: "参考：木质香薰", decorations: { sticker: "heart", fontFamily: "Noto Serif CJK SC", corners: {
+      "top-left": { type: "text", text: "手作日常", fontFamily: "Noto Serif CJK SC" },
+      "bottom-right": { type: "sticker", sticker: "local-limited-discount" },
+    } } }, new AbortController().signal)).resolves.toBe("用暖金滤镜突出手作质感，保留左上标题和右下贴纸的呼吸空间。");
+    const messages = JSON.parse(request.mock.calls[0][1].body).messages;
+    expect(messages[1].content).toBeTypeOf("string");
+    expect(messages[0].content).not.toContain("手作日常");
+    expect(messages[1].content).toContain("限时折扣");
+    expect(messages[1].content).toContain("手作日常");
+    expect(messages[1].content).toContain("Noto Serif CJK SC");
+    expect(JSON.stringify(messages)).not.toContain("data:image");
+  });
+
+  it("allows a free stylistic direction when choices are absent or agent-managed", async () => {
+    const request = vi.fn().mockResolvedValue(reply("自然清透的生活记录方向。"));
+    const provider = new AgentProvider(request);
+    provider.configure(connection);
+    await provider.generateBrief({ ruleId: "clean", decorations: { mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "text", text: "坏数据", fontFamily: "Not A Font" } } } }, new AbortController().signal);
+    const user = JSON.parse(request.mock.calls[0][1].body).messages[1].content;
+    expect(user).toContain("自由发挥");
+    expect(user).not.toContain("限时折扣");
+  });
+
+  it("omits unused global decorations when every corner is explicitly empty", async () => {
+    const request = vi.fn().mockResolvedValue(reply("保留干净画面，不添加角落装饰。"));
+    const provider = new AgentProvider(request);
+    provider.configure(connection);
+    await provider.generateBrief({ ruleId: "clean", decorations: { sticker: "local-limited-discount", fontFamily: "Noto Serif CJK SC", corners: {
+      "top-left": { type: "none" }, "top-right": { type: "none" }, "bottom-left": { type: "none" }, "bottom-right": { type: "none" },
+    } } }, new AbortController().signal);
+    const user = JSON.parse(request.mock.calls[0][1].body).messages[1].content;
+    expect(user).not.toContain("限时折扣");
+    expect(user).not.toContain("Noto Serif CJK SC");
+    for (const corner of ["左上角", "右上角", "左下角", "右下角"]) expect(user).toContain(`${corner}留空`);
+  });
+
+  it("rejects invalid brief responses without a fallback", async () => {
+    for (const response of ["", "\u0000", "x".repeat(1001)]) {
+      const provider = new AgentProvider(vi.fn().mockResolvedValue(reply(response)));
+      provider.configure(connection);
+      await expect(provider.generateBrief({ ruleId: "clean" }, new AbortController().signal)).rejects.toThrow();
+    }
+    expect(() => GenerateBriefSchema.parse({ ruleId: "clean", brief: "x".repeat(1001) })).toThrow();
   });
 
   it("enforces rule limits, disallows executable/file inputs, and reserves distinct corners", () => {
