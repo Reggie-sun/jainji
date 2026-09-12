@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -9,6 +9,33 @@ import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/m
 import { runLayoutAgent } from "../src/main/layout-agent";
 
 describe("real FFmpeg proof render", () => {
+  it.for([{ shade: "black", min: 14, max: 20 }, { shade: "gray", min: 110, max: 140 }, { shade: "white", min: 220, max: 236 }])("preserves $shade brightness with the cool filter", { timeout: 60_000 }, async ({ shade, min, max }, context) => {
+    const ffmpegPath = await discoverBinary("ffmpeg");
+    if (!ffmpegPath) { context.skip(); return; }
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-cool-lightness-"));
+    const sourcePath = path.join(directory, "gray.mp4");
+    const source = await runCommand(ffmpegPath, ["-v", "error", "-f", "lavfi", "-i", `color=${shade}:s=64x64:r=24:d=0.2`, "-c:v", "libx264", "-pix_fmt", "yuv420p", sourcePath]).promise;
+    expect(source.code, source.stderr).toBe(0);
+    const template = createDefaultTemplate("cool lightness");
+    template.filter = { presetId: "cool", intensity: 0.3 };
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "gray.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 200, width: 64, height: 64, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
+    const compiled = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, { ffmpegPath, fontResolver: { resolve: async () => null }, textFilePath: () => path.join(directory, "unused.txt") });
+    const output = path.join(directory, "cool.mp4");
+    const rendered = await runCommand(compiled.binary, [...compiled.args, output]).promise;
+    expect(rendered.code, rendered.stderr).toBe(0);
+    const measured = await runCommand(ffmpegPath, ["-hide_banner", "-i", output, "-vf", "signalstats,metadata=print", "-frames:v", "1", "-f", "null", "-"]).promise;
+    expect(measured.code, measured.stderr).toBe(0);
+    const luma = Number(measured.stderr.match(/lavfi.signalstats.YAVG=([\d.]+)/)?.[1]);
+    expect(luma).toBeGreaterThanOrEqual(min);
+    expect(luma).toBeLessThanOrEqual(max);
+    if (shade === "gray") {
+      const pixels = path.join(directory, "cool.rgb");
+      const decoded = await runCommand(ffmpegPath, ["-v", "error", "-i", output, "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", pixels]).promise;
+      expect(decoded.code, decoded.stderr).toBe(0);
+      const rgb = await readFile(pixels);
+      expect(rgb[2]).toBeGreaterThan(rgb[0]);
+    }
+  });
   it("renders Unicode text, transparent sticker and filter, then verifies the artifact", async (context) => {
     const [ffmpegPath, ffprobePath, fontPath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
     if (!ffmpegPath || !ffprobePath || !fontPath) {

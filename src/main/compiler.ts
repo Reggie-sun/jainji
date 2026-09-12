@@ -40,7 +40,7 @@ function filterExpression(config: FilterConfig): string | null {
   const amount = config.intensity;
   switch (config.presetId) {
     case "warm": return `eq=saturation=${(1 + amount * 0.18).toFixed(3)}:contrast=${(1 + amount * 0.05).toFixed(3)}:brightness=${(amount * 0.04).toFixed(3)}`;
-    case "cool": return `colorbalance=bs=${(amount * 0.12).toFixed(3)}:gs=${(-amount * 0.03).toFixed(3)}:rh=${(-amount * 0.08).toFixed(3)}`;
+    case "cool": return `colorchannelmixer=rr=${(1 - amount * 0.08).toFixed(3)}:gg=${(1 - amount * 0.03).toFixed(3)}:bb=1`;
     case "mono": return `hue=s=${(1 - amount).toFixed(3)}`;
     case "vivid": return `eq=saturation=${(1 + amount * 0.38).toFixed(3)}:contrast=${(1 + amount * 0.1).toFixed(3)}`;
   }
