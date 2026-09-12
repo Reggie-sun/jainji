@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent } from "react";
 import type { DesktopState } from "../shared/desktop";
-import type { RuleId } from "../shared/agent";
+import { calculateProductionQuantity, MAX_AGENT_OUTPUTS, type RuleId } from "../shared/agent";
 import { ConnectionPanel } from "./ConnectionPanel";
 import { ModelPicker } from "./ModelPicker";
 import { TemplatePanel } from "./TemplatePanel";
@@ -27,7 +27,7 @@ export default function App() {
   const [rule, setRule] = useState<RuleId>("black-gold");
   const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({}));
   const [selectedCorner, setSelectedCorner] = useState<Corner>();
-  const [multiplier, setMultiplier] = useState(1);
+  const [requestedCount, setRequestedCount] = useState<number>();
   const [brief, setBrief] = useState("");
   const [generatingBrief, setGeneratingBrief] = useState(false);
   const [outputDirectory, setOutputDirectory] = useState("");
@@ -109,7 +109,9 @@ export default function App() {
     if (next) { apply(next); setStep(next.connection.configured ? "import" : "connection"); }
   });
   const start = () => void run(async () => {
-    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, multiplier }));
+    const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
+    if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error("请填写有效的制作条数，向上取整后不能超过 100 条。");
+    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, multiplier: quantity.multiplier }));
     setStep("results");
   });
   const generateBrief = () => void run(async () => {
@@ -160,7 +162,7 @@ export default function App() {
           </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>ORIGINAL</span></div><div className="source-preview">{preview ? <video key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><div className="preview-frame"><Icon name="play" size={27} /></div><p>等一份好素材</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "从一个片段开始"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "生活片段、产品展示、灵感记录，都能拥有自己的表达。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。开始创作时，仅发送 3 张抽帧供 Agent 分析。</p></div></aside></div>
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => setStep("templates")}>下一步，选择模板<Icon name="arrow" size={18} /></button></div>
         </>}
-        {step === "templates" && <TemplatePanel multiplier={multiplier} onMultiplier={setMultiplier} onProductPrice={(productPrice) => setDecorations((current) => ({ ...current, productPrice }))} onGenerateBrief={generateBrief} generatingBrief={generatingBrief} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) setOutputDirectory(directory); })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={(productPrice) => setDecorations((current) => ({ ...current, productPrice }))} onGenerateBrief={generateBrief} generatingBrief={generatingBrief} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) setOutputDirectory(directory); })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigate("import")} />}
       </main>
       <footer className="app-footer"><span>简辑 · 让每一份素材，都有好表达。</span><span><i /> 本地渲染，原片保留</span></footer>

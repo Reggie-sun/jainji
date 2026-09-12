@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { calculateProductionQuantity } from "../src/shared/agent";
 import { AgentRunner } from "../src/main/agent-runner";
 import { type MediaItem, now } from "../src/main/domain";
 import { ProviderError, type PackagingPlan } from "../src/main/agent-provider";
@@ -29,7 +30,7 @@ describe("agent run lifecycle", () => {
     const provider = vi.fn().mockResolvedValue(plan("通用短句"));
     const enqueue = vi.fn().mockImplementation(async () => crypto.randomUUID());
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ productPrice: "19.90" }), onChange: () => {} });
-    runner.start("project", "clean", "", sources, 3);
+    runner.start("project", "clean", "", sources, calculateProductionQuantity(sources.length, 5)!.multiplier);
     await runner.settled();
     const items = runner.snapshot()!.items;
     expect(items).toHaveLength(6);

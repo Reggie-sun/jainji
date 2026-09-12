@@ -26,7 +26,7 @@ server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plug
       import '/src/renderer/styles.css';
       window.failCatalog=false;
       window.jianji={decorationCatalog:async()=>{if(window.failCatalog)throw Error('fixture failure');return {fonts:['Noto Sans CJK SC','serif'],stickers:${JSON.stringify(stickers)}};},libraryAsset:async()=>{throw Error('offline fixture');}};
-      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [multiplier,onMultiplier]=React.useState(1);const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{multiplier,onMultiplier,onProductPrice:(productPrice)=>setOptions(current=>({...current,productPrice})),selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:1,disabled});}
+      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [requestedCount,onRequestedCount]=React.useState();const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{requestedCount,onRequestedCount,onProductPrice:(productPrice)=>setOptions(current=>({...current,productPrice})),selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:3,disabled});}
       createRoot(document.getElementById('root')).render(React.createElement(Fixture));
     </script></body></html>`));
   });
@@ -73,13 +73,15 @@ try {
   await evaluate("window.setFixtureDisabled(false)");
   await waitFor("!document.querySelector('#export-format').disabled");
   const picture = () => evaluate("document.querySelector('.template-preview canvas').toDataURL()");
-  await click('[aria-label="快捷制作倍数"] button:nth-child(3)');
-  assert.equal(await evaluate("document.querySelector('#production-multiplier').value"), '3');
-  assert.equal(await evaluate("document.querySelector('.step-footer').textContent.includes('制作 3 条成片')"), true);
-  await evaluate("{const el=document.querySelector('#production-multiplier');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'1.5');el.dispatchEvent(new Event('input',{bubbles:true}));}");
-  await pause(100);
-  assert.equal(await evaluate("document.querySelector('.step-footer button').disabled"), true, 'fractional multiplier blocks export');
-  await click('[aria-label="快捷制作倍数"] button:first-child');
+  await click('[aria-label="快捷制作条数"] button:nth-child(2)');
+  assert.equal(await evaluate("document.querySelector('#production-count').value"), '10');
+  assert.equal(await evaluate("document.querySelector('.step-footer').textContent.includes('制作 12 条成片')"), true);
+  for (const value of ['0', '1.5', '100', '']) {
+    await evaluate(`{const el=document.querySelector('#production-count');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,${JSON.stringify(value)});el.dispatchEvent(new Event('input',{bubbles:true}));}`);
+    await pause(100);
+    assert.equal(await evaluate("document.querySelector('.step-footer button').disabled"), true, 'invalid or rounded-over-limit quantity blocks export');
+  }
+  await click('[aria-label="快捷制作条数"] button:nth-child(2)');
   const emptyPricePicture = await picture();
   const fillPrice = async (value) => {
     await evaluate(`{const input=document.querySelector('#product-price');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));}`);

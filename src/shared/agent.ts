@@ -37,6 +37,12 @@ export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in
 export const MAX_AGENT_OUTPUTS = 100;
 export const ProductionMultiplierSchema = z.number().int().min(1).max(MAX_AGENT_OUTPUTS);
 
+export function calculateProductionQuantity(sourceCount: number, requestedCount: number): { multiplier: number; total: number } | undefined {
+  if (!Number.isInteger(sourceCount) || sourceCount < 1 || !Number.isInteger(requestedCount) || requestedCount < 1) return undefined;
+  const multiplier = Math.ceil(requestedCount / sourceCount);
+  return { multiplier, total: sourceCount * multiplier };
+}
+
 export const AgentStartSchema = z.object({
   multiplier: ProductionMultiplierSchema.optional(),
   exportFormat: ExportFormatSchema.optional(),
