@@ -23,7 +23,7 @@ describe("agent to local export", () => {
       request.on("end", () => {
         requests.push(JSON.parse(body));
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面添加简短标题", captions: [{ text: `片段${requests.length}`, corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 }) } }] }));
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面添加简短标题", captions: [{ text: requests.length === 1 ? "今日精选" : "好物日常", corner: "top-left", size: 0.026 }], filter: "cool", intensity: 0.3 }) } }] }));
       });
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -63,7 +63,7 @@ describe("agent to local export", () => {
       }
       const batches = queue.snapshot().batches;
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed"]);
-      expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content)).toEqual(["片段1", "片段2"]);
+      expect(batches.map(({ batch }) => (batch.templateSnapshot.layers[0] as { content: string }).content)).toEqual(["今日精选", "好物日常"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers[0]).toMatchObject({ fontFamily });

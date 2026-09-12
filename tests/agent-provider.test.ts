@@ -13,6 +13,50 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("rejects model-generated product names even when the JSON is otherwise valid", async () => {
+    for (const catalog of [undefined, autoCatalog]) {
+      const raw = catalog ? autoPlan : plan;
+      const request = vi.fn().mockResolvedValue(reply(JSON.stringify({ ...raw, captions: [{ ...raw.captions[0], text: "木质香薰" }] })));
+      const provider = new AgentProvider(request);
+      provider.configure(connection);
+      await expect(provider.plan("black-gold", "加入木质香薰产品名", [], new AbortController().signal, catalog)).rejects.toThrow("格式或规则不合格");
+    }
+  });
+  it("materializes only the manually supplied center price in either decoration mode", async () => {
+    for (const automatic of [false, true]) {
+      const raw = automatic ? autoPlan : plan;
+      const catalog = automatic ? autoCatalog : undefined;
+      const options = { mode: automatic ? "agent" : "manual", productPrice: "19.90" };
+      const template = materializePlan(raw, "black-gold", { width: 1080, height: 1920 }, stickerAssets, options, catalog);
+      const center = template.layers.filter((layer) => layer.type === "text" && layer.textAlign === "center");
+      expect(center).toHaveLength(1);
+      expect(center[0]).toMatchObject({ content: "¥ 19.90", x: 0.1, y: 0.13, width: 0.8 });
+      const compiled = await new TemplateCompiler().compile(template, { width: 1080, height: 1920, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/text.txt" });
+      expect(compiled.textFiles.some((file) => file.content === "¥ 19.90")).toBe(true);
+      expect(JSON.stringify(compiled)).toContain("x=w*0.50000-text_w/2");
+      for (const productPrice of [undefined, "", "   "]) {
+        const empty = materializePlan(raw, "black-gold", { width: 1080, height: 1920 }, stickerAssets, { ...options, productPrice }, catalog);
+        expect(empty.layers.some((layer) => layer.type === "text" && layer.textAlign === "center")).toBe(false);
+      }
+      for (const productPrice of ["香薰19.9", "¥19.9", "19.999", "-1", "1\n9", "9999999"]) {
+        expect(() => materializePlan(raw, "black-gold", { width: 1080, height: 1920 }, stickerAssets, { ...options, productPrice }, catalog)).toThrow();
+      }
+      expect(() => materializePlan({ ...raw, price: "香薰" }, "black-gold", { width: 1080, height: 1920 }, stickerAssets, options, catalog)).toThrow();
+    }
+  });
+
+  it("forbids product names and model-written center prices in both model prompts", async () => {
+    const request = vi.fn().mockResolvedValueOnce(reply("保留画面" )).mockResolvedValueOnce(reply(JSON.stringify(plan)));
+    const provider = new AgentProvider(request);
+    provider.configure(connection);
+    await provider.generateBrief({ ruleId: "black-gold", brief: "请写产品名" }, new AbortController().signal);
+    await provider.plan("black-gold", "请写产品名", [], new AbortController().signal);
+    for (const call of request.mock.calls) {
+      const system = JSON.parse(call[1].body).messages[0].content;
+      expect(system).toContain("禁止在新增文案中加入产品名");
+      expect(system).toContain("Agent 不得生成、推测、改写价格");
+    }
+  });
   it("keeps twelve Chinese characters on one line for portrait and landscape media", async () => {
     for (const dimensions of [{ width: 1080, height: 1920 }, { width: 1920, height: 1080 }]) {
       const input = { ...plan, captions: [{ text: "一二三四五六七八九十一二", corner: "bottom-right", size: 0.03 }], filter: "cool", intensity: 0.3 };

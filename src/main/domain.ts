@@ -78,6 +78,7 @@ const LayerBase = {
 export const TextLayerSchema = z.object({
   ...LayerBase,
   type: z.literal("text"),
+  textAlign: z.enum(["left", "center"]).optional(),
   content: z.string().min(1).max(500),
   fontFamily: z.string().min(1).max(200),
   fontSizeRatio: z.number().finite().gt(0).lte(0.5),

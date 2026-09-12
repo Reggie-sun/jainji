@@ -26,7 +26,7 @@ server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plug
       import '/src/renderer/styles.css';
       window.failCatalog=false;
       window.jianji={decorationCatalog:async()=>{if(window.failCatalog)throw Error('fixture failure');return {fonts:['Noto Sans CJK SC','serif'],stickers:${JSON.stringify(stickers)}};},libraryAsset:async()=>{throw Error('offline fixture');}};
-      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:1,disabled});}
+      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{onProductPrice:(productPrice)=>setOptions(current=>({...current,productPrice})),selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:1,disabled});}
       createRoot(document.getElementById('root')).render(React.createElement(Fixture));
     </script></body></html>`));
   });
@@ -73,6 +73,19 @@ try {
   await evaluate("window.setFixtureDisabled(false)");
   await waitFor("!document.querySelector('#export-format').disabled");
   const picture = () => evaluate("document.querySelector('.template-preview canvas').toDataURL()");
+  const emptyPricePicture = await picture();
+  const fillPrice = async (value) => {
+    await evaluate(`{const input=document.querySelector('#product-price');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));}`);
+    await waitFor(`window.fixtureOptions.productPrice===${JSON.stringify(value)}`);
+  };
+  await fillPrice('19.90');
+  assert.notEqual(await picture(), emptyPricePicture, 'manual price appears in preview');
+  await fillPrice('产品名');
+  assert.equal(await evaluate("document.querySelector('.step-footer button').disabled"), true, 'invalid price blocks export');
+  assert.equal(await picture(), emptyPricePicture, 'invalid price is not drawn');
+  await fillPrice('');
+  assert.equal(await picture(), emptyPricePicture, 'cleared price disappears');
+  await fillPrice('19.90');
   const initial = await picture();
   await click(".template-card.clean");
   await waitFor("!document.querySelector('.template-preview [role=status]')");
@@ -140,6 +153,7 @@ try {
   const manualSettings = await evaluate('JSON.stringify(window.fixtureOptions.corners)');
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='全部交给 Agent').click()");
   await waitFor("window.fixtureOptions.mode==='agent'");
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.90", "price survives mode switch");
   assert.equal(await evaluate("document.querySelectorAll('.corner-slot').length"), 0, 'auto mode hides manual selection slots');
   assert.equal(await evaluate("Boolean(document.querySelector('.decoration-picker'))"), false, 'auto mode requires no manual picker');
   assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('全部留空')"), true, 'auto mode explicitly allows empty corners');

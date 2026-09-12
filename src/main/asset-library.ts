@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { LIBRARY_ASSETS, LIBRARY_LICENSES, type LibraryAsset, type LibraryAssetPreview } from "../shared/asset-library.js";
 import { CORNERS, type DecorationOptions } from "../shared/decorations.js";
+import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 
@@ -11,10 +12,12 @@ function hasAutomaticCorners(options: DecorationOptions): boolean {
 }
 
 export function decorationFontFamilies(options: DecorationOptions): string[] {
+  const priceFonts = options.productPrice?.trim() ? [DEFAULT_TEXT_FONT_FAMILY] : [];
+  if (options.mode === "agent") return priceFonts;
   const fonts = Object.values(options.corners ?? {})
     .flatMap((decoration) => decoration?.type === "text" ? [decoration.fontFamily] : []);
   if (hasAutomaticCorners(options)) fonts.push(options.fontFamily);
-  return [...new Set(fonts)];
+  return [...new Set([...fonts, ...priceFonts])];
 }
 
 function decorationStickerIds(options: DecorationOptions): string[] {

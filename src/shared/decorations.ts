@@ -20,12 +20,14 @@ const CornerDecorationSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string().trim().min(1).max(12).refine((text) => !/[\u0000-\u001f\u007f]/.test(text)), fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font") }).strict(),
 ]);
 export type CornerDecoration = z.infer<typeof CornerDecorationSchema>;
+export const ProductPriceSchema = z.string().trim().max(9).regex(/^(?:\d{1,6}(?:\.\d{1,2})?)?$/, "价格只能填写金额，最多两位小数，不能包含产品名。");
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {
     return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined };
   }
   return input;
 }, z.object({
+  productPrice: ProductPriceSchema.optional(),
   mode: z.enum(["manual", "agent"]).optional(),
   sticker: z.string().refine((id) => stickerIds.has(id), "unknown sticker").default("template"),
   fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font").default(DEFAULT_TEXT_FONT_FAMILY),

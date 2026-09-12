@@ -73,11 +73,9 @@ export class AgentController {
       const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog() : undefined;
       const stickerAssets = decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
       this.preparingController.signal.throwIfAborted();
-      if (decorations.mode !== "agent") {
-        for (const family of decorationFontFamilies(decorations)) {
-          const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
-          if (!font) throw new Error("所选字体不可用，请重新选择已安装字体。");
-        }
+      for (const family of decorationFontFamilies(decorations)) {
+        const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
+        if (!font) throw new Error("所选字体不可用，请重新选择已安装字体。");
       }
       if (!path.isAbsolute(parsed.outputDirectory)) throw new Error("请选择有效的输出目录。");
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
