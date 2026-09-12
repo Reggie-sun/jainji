@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-policy.js";
+import { isAbsolutePath } from "./platform.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
 export const SCHEMA_VERSION = 1;
 
-const AbsolutePath = z.string().min(1).refine((value) => value.startsWith("/"), "must be an absolute path");
+const AbsolutePath = z.string().min(1).refine(isAbsolutePath, "must be an absolute path");
 const Unit = z.number().finite().min(0).max(1);
 const NonNegativeInt = z.number().int().min(0);
 const DateTime = z.string().datetime({ offset: true });

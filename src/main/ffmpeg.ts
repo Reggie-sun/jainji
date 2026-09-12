@@ -1,6 +1,8 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, constants } from "node:fs/promises";
 import { basename } from "node:path";
+import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
+import { binaryCandidates, windowsFontCandidates } from "./platform.js";
 
 export interface CommandResult {
   code: number;
@@ -106,7 +108,7 @@ export interface CapabilityStatus {
 }
 
 async function executable(command: string): Promise<string | null> {
-  const candidates = command.includes("/") ? [command] : (process.env.PATH ?? "").split(":").map((directory) => `${directory}/${command}`);
+  const candidates = binaryCandidates(command);
   for (const candidate of candidates) {
     try { await access(candidate, constants.X_OK); return candidate; } catch { /* continue */ }
   }
@@ -128,7 +130,7 @@ export async function checkCapabilities(appDataDirectory: string): Promise<{ sta
     overlay: false,
     h264Encoder: false,
     aacEncoder: false,
-    fonts: Boolean(await executable("fc-match")),
+    fonts: Boolean(await resolveFont(DEFAULT_TEXT_FONT_FAMILY)),
     appDataWritable: false,
   };
   try {
@@ -153,6 +155,12 @@ export async function checkCapabilities(appDataDirectory: string): Promise<{ sta
 }
 
 export async function resolveFont(fontFamily: string): Promise<string | null> {
+  if (process.platform === "win32") {
+    for (const candidate of windowsFontCandidates(fontFamily)) {
+      try { await access(candidate, constants.F_OK); return candidate; } catch { /* continue */ }
+    }
+    return null;
+  }
   const fcMatch = await executable("fc-match");
   if (!fcMatch) return null;
   const result = await runCommand(fcMatch, ["-f", "%{family}\n%{file}", fontFamily]).promise;

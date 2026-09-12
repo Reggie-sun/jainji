@@ -10,11 +10,12 @@ import { checkCapabilities, FfmpegAdapter, resolveFont, type CapabilityStatus } 
 import { canonicalPath, fingerprintFile, isPathWithinDirectory } from "./paths.js";
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
 import { JobStore } from "./store.js";
-import { LayoutAgentInputSchema } from "./layout-agent.js";
+import { AgentController } from "./agent-controller.js";
+import type { DesktopState } from "../shared/desktop.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
-const outputDirectorySchema = z.string().startsWith("/");
+const outputDirectorySchema = z.string().refine((value) => path.isAbsolute(value), "path must be absolute");
 const exportCreateSchema = z.object({
   mediaIds: z.array(uuidSchema).min(1).max(1000),
   outputDirectory: outputDirectorySchema,
@@ -30,6 +31,7 @@ let service: ApplicationService;
 let queue: ExportQueue;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
+let agent: AgentController;
 let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
@@ -44,20 +46,39 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("untrusted IPC sender");
 }
 
-async function publicState() {
-  return { ...(await service.state(currentState())), capabilities };
+async function publicState(): Promise<DesktopState> {
+  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), agentRun: agent.snapshot() };
+}
+
+function notifyState(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  void publicState().then((state) => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("export.subscribe", state);
+  }).catch(() => undefined);
 }
 
 function publish(snapshot: QueueSnapshot): void {
   void service.syncQueue(snapshot).catch((error) => console.error("queue project sync failed", error));
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  void publicState().then((state) => mainWindow?.webContents.send("export.subscribe", state));
+  notifyState();
 }
 
 function registerHandlers(): void {
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
-  ipcMain.handle("media.selectAndProbe", async (event) => {
+  ipcMain.handle("agent.configure", async (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle(); agent.provider.configure(input); return publicState();
+  });
+  ipcMain.handle("agent.disconnect", async (event) => {
+    assertTrustedSender(event); agent.assertIdle(); agent.provider.clear(); return publicState();
+  });
+  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); await agent.test(); return true; });
+  ipcMain.handle("agent.start", async (event, input) => {
     assertTrustedSender(event);
+    if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
+    await agent.start(input, approvedOutputDirectories); return publicState();
+  });
+  ipcMain.handle("agent.cancel", async (event) => { assertTrustedSender(event); await agent.cancel(); return publicState(); });
+  ipcMain.handle("media.selectAndProbe", async (event) => {
+    assertTrustedSender(event); agent.assertIdle();
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: "导入原始素材",
       properties: ["openFile", "multiSelections"],
@@ -68,13 +89,13 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("media.addAndProbe", async (event, input: unknown) => {
-    assertTrustedSender(event);
+    assertTrustedSender(event); agent.assertIdle();
     const paths = pathListSchema.parse(input);
     await service.addMedia(paths);
     return publicState();
   });
   ipcMain.handle("media.remove", async (event, input: unknown) => {
-    assertTrustedSender(event);
+    assertTrustedSender(event); agent.assertIdle();
     const id = uuidSchema.parse(input);
     service.removeMedia(id);
     return publicState();
@@ -94,11 +115,6 @@ function registerHandlers(): void {
     assertTrustedSender(event);
     const { template } = templateUpdateSchema.parse(input);
     service.updateTemplate(template);
-    return publicState();
-  });
-  ipcMain.handle("agent.applyLayout", async (event, input: unknown) => {
-    assertTrustedSender(event);
-    service.applyLayoutAgent(LayoutAgentInputSchema.parse(input));
     return publicState();
   });
   ipcMain.handle("template.save", async (event) => {
@@ -122,7 +138,7 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {
-    assertTrustedSender(event);
+    assertTrustedSender(event); agent.assertIdle();
     if (service.hasUnsavedChanges) {
       const choice = await dialog.showMessageBox(mainWindow!, {
         type: "question",
@@ -139,7 +155,7 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("project.load", async (event) => {
-    assertTrustedSender(event);
+    assertTrustedSender(event); agent.assertIdle();
     const result = await dialog.showOpenDialog(mainWindow!, { title: "打开项目", properties: ["openFile"], filters: [{ name: "简辑项目", extensions: ["json"] }] });
     if (result.canceled || !result.filePaths[0]) return null;
     await service.loadProject(result.filePaths[0]);
@@ -220,7 +236,7 @@ async function createWindow(): Promise<void> {
     height: 920,
     minWidth: 1080,
     minHeight: 720,
-    backgroundColor: "#0d1117",
+    backgroundColor: "#f7f8fa",
     webPreferences: {
       preload: path.join(app.getAppPath(), "dist-electron/preload.cjs"),
       contextIsolation: true,
@@ -228,6 +244,8 @@ async function createWindow(): Promise<void> {
       sandbox: true,
     },
   });
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("will-navigate", (event) => { event.preventDefault(); });
   const devUrl = process.env.JIANJI_DEV_SERVER_URL;
   if (devUrl) await mainWindow.loadURL(devUrl);
   else await mainWindow.loadFile(path.join(app.getAppPath(), "dist/index.html"));
@@ -260,6 +278,7 @@ async function bootstrap(): Promise<void> {
     onSnapshot: publish,
   });
   queue.setMediaLookup((id) => service.getMedia(id));
+  agent = new AgentController(service, queue, ffmpeg, notifyState);
   await queue.recover();
   registerHandlers();
   await createWindow();
@@ -270,7 +289,7 @@ function requestQuit(): void {
   if (!queue) { quitting = true; app.exit(0); return; }
   if (!service?.hasUnsavedChanges || !mainWindow) {
     quitting = true;
-    void queue.shutdown().finally(() => app.exit(0));
+    void agent.cancel().then(() => queue.shutdown()).finally(() => app.exit(0));
     return;
   }
   closingPrompt = true;
@@ -295,6 +314,7 @@ function requestQuit(): void {
       await service.saveProject(projectPath);
     }
     quitting = true;
+    await agent.cancel();
     await queue.shutdown();
     app.exit(0);
   })().catch((error) => { console.error("graceful shutdown failed", error); closingPrompt = false; });

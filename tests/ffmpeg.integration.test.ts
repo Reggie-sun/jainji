@@ -9,9 +9,12 @@ import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/m
 import { runLayoutAgent } from "../src/main/layout-agent";
 
 describe("real FFmpeg proof render", () => {
-  it("renders Unicode text, transparent sticker and filter, then verifies the artifact", async () => {
+  it("renders Unicode text, transparent sticker and filter, then verifies the artifact", async (context) => {
     const [ffmpegPath, ffprobePath, fontPath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
-    if (!ffmpegPath || !ffprobePath || !fontPath) return;
+    if (!ffmpegPath || !ffprobePath || !fontPath) {
+      context.skip();
+      return;
+    }
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-ffmpeg-"));
     const sourcePath = path.join(directory, "横屏;$(not-a-command).mp4");
     const stickerPath = path.join(directory, "贴纸.png");

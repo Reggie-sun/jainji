@@ -1,19 +1,21 @@
 {
   "name": "jianji",
   "version": "0.1.0",
-  "description": "简辑：Ubuntu 本地批量视频编辑器",
+  "description": "简辑：Windows / Linux Agent 视频创作工作台",
   "author": { "name": "简辑", "email": "jianji@localhost" },
   "homepage": "https://github.com/jianji-editor/jianji",
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
-    "dev": "npm run build && concurrently -k \"vite\" \"wait-on http://localhost:5173 && JIANJI_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run typecheck && vite build && esbuild src/main/index.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/main.cjs && esbuild src/main/preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist-electron/preload.cjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "electron .",
-    "package": "npm run build && electron-builder --linux AppImage deb"
+    "package": "npm run package:linux",
+    "package:linux": "npm run build && electron-builder --linux AppImage deb",
+    "package:win": "npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "@vitejs/plugin-react": "4.3.4",
@@ -25,20 +27,19 @@
     "@types/node": "22.10.2",
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
-    "concurrently": "9.1.2",
     "electron": "33.2.1",
     "electron-builder": "25.1.8",
     "esbuild": "0.24.2",
     "typescript": "5.7.2",
     "vite": "6.0.7",
-    "vitest": "2.1.8",
-    "wait-on": "8.0.1"
+    "vitest": "2.1.8"
   },
   "build": {
     "appId": "local.jianji.editor",
     "productName": "简辑",
     "asar": true,
     "files": ["dist/**/*", "dist-electron/**/*", "package.json"],
-    "linux": { "target": ["AppImage", "deb"], "category": "AudioVideo", "maintainer": "jianji@localhost" }
+    "linux": { "target": ["AppImage", "deb"], "category": "AudioVideo", "maintainer": "jianji@localhost" },
+    "win": { "target": ["nsis"] }
   }
 }
