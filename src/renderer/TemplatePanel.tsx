@@ -3,12 +3,14 @@ import { Heading, Icon } from "./ui";
 import type { ReactNode } from "react";
 import { DecorationSchema, type DecorationOptions } from "../shared/decorations";
 import { TemplatePreview } from "./TemplatePreview";
+import { DEFAULT_EXPORT_FORMAT, EXPORT_FORMATS, type ExportFormat } from "../shared/export-format";
 
 const STICKER_GLYPHS = { sparkle: "✦", arrow: "↗", heart: "♥", burst: "✹" } as const;
 
-export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirectory, onOutput, onStart, count, disabled, decorations, decorationOptions }: {
+export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirectory, onOutput, onStart, count, disabled, decorations, decorationOptions, exportFormat, onExportFormat }: {
   decorations?: ReactNode;
   decorationOptions?: DecorationOptions;
+  exportFormat: ExportFormat; onExportFormat(format: ExportFormat): void;
   selected: RuleId; onSelect(id: RuleId): void; brief: string; onBrief(text: string): void;
   outputDirectory: string; onOutput(): void; onStart(): void; count: number; disabled: boolean;
 }) {
@@ -24,7 +26,7 @@ export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirect
     <TemplatePreview rule={rule} options={decorationOptions ?? DecorationSchema.parse({})} />
     {decorations}
     <div className="rules-banner"><div className="icon-tile"><Icon name="shield" /></div><div><strong>{rule.name} · 已锁定的创作边界</strong><p>贴纸仅放四角且宽度 ≤ {(rule.stickerWidth * 100).toFixed(0)}% · 单行 ≤ 12 字 · 字号 ≤ {(rule.maxFontSize * 100).toFixed(1)}% 画面宽 · 不裁剪、不拼接 · 保留原始音频</p></div><span className="small-tag">本地校验</span></div>
-    <div className="brief-layout"><div className="card brief-card"><label htmlFor="creative-brief">还有想告诉 Agent 的？ <span>可选</span></label><textarea id="creative-brief" value={brief} maxLength={1000} rows={3} disabled={disabled} onChange={(event) => onBrief(event.target.value)} placeholder="例如：突出手作质感，语气温柔一点。需要价格或产品信息时，请提供真实内容。" /><small>留空也可以。Agent 会从画面出发，不自动添加未经提供的价格和优惠。</small></div><div className="card export-card"><span className="eyebrow">DELIVERY</span><h3>成片保存到</h3><button className="directory-picker" disabled={disabled} onClick={onOutput}><Icon name="folder" /><span>{outputDirectory || "选择本地文件夹"}</span><Icon name="arrow" size={16} /></button><p>每条素材生成一个独立 MP4，保留原分辨率与帧率。</p></div></div>
+    <div className="brief-layout"><div className="card brief-card"><label htmlFor="creative-brief">还有想告诉 Agent 的？ <span>可选</span></label><textarea id="creative-brief" value={brief} maxLength={1000} rows={3} disabled={disabled} onChange={(event) => onBrief(event.target.value)} placeholder="例如：突出手作质感，语气温柔一点。需要价格或产品信息时，请提供真实内容。" /><small>留空也可以。Agent 会从画面出发，不自动添加未经提供的价格和优惠。</small></div><div className="card export-card"><span className="eyebrow">DELIVERY</span><h3>成片保存到</h3><button className="directory-picker" disabled={disabled} onClick={onOutput}><Icon name="folder" /><span>{outputDirectory || "选择本地文件夹"}</span><Icon name="arrow" size={16} /></button><label className="export-format" htmlFor="export-format">导出格式<select id="export-format" value={exportFormat} disabled={disabled} onChange={(event) => onExportFormat(event.target.value as ExportFormat)}>{EXPORT_FORMATS.map((format) => <option key={format} value={format}>{format.toUpperCase()}{format === DEFAULT_EXPORT_FORMAT ? "（默认）" : ""}</option>)}</select></label><p>每条素材生成一个独立 {exportFormat.toUpperCase()}，保留原分辨率与帧率。</p></div></div>
     <div className="step-footer"><div><strong>{count} 条素材，{count} 份独立创意</strong><small>点击开始后发送抽帧并调用模型，完成包装后自动在本地导出。</small></div><button className="button primary" disabled={disabled || !count || !outputDirectory} onClick={onStart}><Icon name="spark" size={18} />交给 Agent，开始出片<Icon name="arrow" size={18} /></button></div>
   </>;
 }

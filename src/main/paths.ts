@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { access, constants, mkdir, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import type { EditTemplate, MediaItem } from "./domain.js";
+import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format.js";
 
 export async function fingerprintFile(filePath: string): Promise<string> {
   const hash = createHash("sha256");
@@ -81,12 +82,13 @@ export async function allocateOutputPath(
   sourcePath: string,
   suffix: string,
   reserved: readonly string[] = [],
+  container: ExportFormat = DEFAULT_EXPORT_FORMAT,
 ): Promise<string> {
   const sourceName = path.basename(sourcePath, path.extname(sourcePath));
   const base = sanitizeFilename(`${sourceName}${suffix}`);
   const used = new Set(reserved.map((entry) => path.resolve(entry)));
   for (let index = 0; ; index += 1) {
-    const filename = `${base}${index === 0 ? "" : `_${index}`}.mp4`;
+    const filename = `${base}${index === 0 ? "" : `_${index}`}.${container}`;
     const candidate = path.resolve(outputDirectory, filename);
     if (used.has(candidate) || await pathExists(candidate)) continue;
     if (await pathsEqual(candidate, sourcePath)) continue;

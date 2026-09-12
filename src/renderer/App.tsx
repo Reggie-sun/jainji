@@ -5,6 +5,7 @@ import { ConnectionPanel } from "./ConnectionPanel";
 import { TemplatePanel } from "./TemplatePanel";
 import { DecorationPicker } from "./DecorationPicker";
 import { DecorationSchema, type DecorationOptions } from "../shared/decorations";
+import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ResultsPanel } from "./ResultsPanel";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 
@@ -26,6 +27,7 @@ export default function App() {
   const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({}));
   const [brief, setBrief] = useState("");
   const [outputDirectory, setOutputDirectory] = useState("");
+  const [exportFormat, setExportFormat] = useState<ExportFormat>(DEFAULT_EXPORT_FORMAT);
   const [dragOver, setDragOver] = useState(false);
   const [previewId, setPreviewId] = useState<string>();
   const [retryingIds, setRetryingIds] = useState<string[]>([]);
@@ -103,7 +105,7 @@ export default function App() {
     if (next) { apply(next); setStep(next.connection.configured ? "import" : "connection"); }
   });
   const start = () => void run(async () => {
-    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations }));
+    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat }));
     setStep("results");
   });
   const retryExport = (id: string) => {
@@ -148,7 +150,7 @@ export default function App() {
           </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>ORIGINAL</span></div><div className="source-preview">{preview ? <video key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><div className="preview-frame"><Icon name="play" size={27} /></div><p>等一份好素材</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "从一个片段开始"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "生活片段、产品展示、灵感记录，都能拥有自己的表达。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。开始创作时，仅发送 3 张抽帧供 Agent 分析。</p></div></aside></div>
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => setStep("templates")}>下一步，选择模板<Icon name="arrow" size={18} /></button></div>
         </>}
-        {step === "templates" && <TemplatePanel decorationOptions={decorations} decorations={<DecorationPicker value={decorations} onChange={setDecorations} disabled={locked || exporting} />} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) setOutputDirectory(directory); })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel exportFormat={exportFormat} onExportFormat={setExportFormat} decorationOptions={decorations} decorations={<DecorationPicker value={decorations} onChange={setDecorations} disabled={locked || exporting} />} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) setOutputDirectory(directory); })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigate("import")} />}
       </main>
       <footer className="app-footer"><span>简辑 · 让每一份素材，都有好表达。</span><span><i /> 本地渲染，原片保留</span></footer>

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-policy.js";
 import { isAbsolutePath } from "./platform.js";
+import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -141,7 +142,7 @@ export const EditTemplateSchema = z.object({
 export type EditTemplate = z.infer<typeof EditTemplateSchema>;
 
 export const ExportPresetSchema = z.object({
-  container: z.literal("mp4"),
+  container: ExportFormatSchema,
   videoCodec: z.literal("h264"),
   audioCodec: z.literal("aac"),
   resolutionMode: z.enum(["source", "1080p", "720p"]),
@@ -239,7 +240,7 @@ export const QueueStateSchema = z.object({
 export type QueueState = z.infer<typeof QueueStateSchema>;
 
 export const DEFAULT_PRESET: ExportPreset = {
-  container: "mp4",
+  container: DEFAULT_EXPORT_FORMAT,
   videoCodec: "h264",
   audioCodec: "aac",
   resolutionMode: "source",

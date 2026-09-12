@@ -64,7 +64,7 @@ export class AgentController {
         plan: (rule, brief, frames, signal) => this.provider.plan(rule, brief, frames, signal),
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
-          const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: DEFAULT_PRESET });
+          const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
           if (signal.aborted) await this.queue.cancel(batch.tasks[0].id);
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;

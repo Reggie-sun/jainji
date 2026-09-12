@@ -26,7 +26,7 @@ server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plug
       import '/src/renderer/styles.css';
       window.failCatalog=false;
       window.jianji={decorationCatalog:async()=>{if(window.failCatalog)throw Error('fixture failure');return {fonts:['Noto Sans CJK SC','serif'],stickers:${JSON.stringify(stickers)}};},libraryAsset:async()=>{throw Error('offline fixture');}};
-      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});return React.createElement(TemplatePanel,{selected,onSelect,decorationOptions:options,decorations:React.createElement(DecorationPicker,{value:options,onChange:setOptions,disabled:false}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:1,disabled:false});}
+      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});const [exportFormat,onExportFormat]=React.useState('mp4');const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{selected,onSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(DecorationPicker,{value:options,onChange:setOptions,disabled:false}),brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:1,disabled});}
       createRoot(document.getElementById('root')).render(React.createElement(Fixture));
     </script></body></html>`));
   });
@@ -62,6 +62,16 @@ try {
   await send("Page.navigate", { url: `http://127.0.0.1:${port}/__template-preview` });
   await waitFor("document.querySelector('.template-preview canvas') && !document.querySelector('.template-preview [role=status]')");
   assert.equal(await evaluate("Boolean(document.querySelector('.template-preview [role=alert]'))"), false);
+  assert.equal(await evaluate("document.querySelector('#export-format').value"), "mp4", "default remains MP4");
+  for (const format of ["mov", "mkv", "mp4"]) {
+    await evaluate(`{const select=document.querySelector('#export-format');select.value=${JSON.stringify(format)};select.dispatchEvent(new Event('change',{bubbles:true}));}`);
+    await waitFor(`document.querySelector('.export-card p').textContent.includes(${JSON.stringify(format.toUpperCase())})`);
+    assert.equal(await evaluate("document.querySelector('#export-format').value"), format);
+  }
+  await evaluate("window.setFixtureDisabled(true)");
+  await waitFor("document.querySelector('#export-format').disabled");
+  await evaluate("window.setFixtureDisabled(false)");
+  await waitFor("!document.querySelector('#export-format').disabled");
   const picture = () => evaluate("document.querySelector('.template-preview canvas').toDataURL()");
   const initial = await picture();
   await click(".template-card.clean");
@@ -87,9 +97,12 @@ try {
   await evaluate("document.querySelector('.template-preview').scrollIntoView({block:'center'})");
   const screenshot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(directory, "preview.png"), Buffer.from(screenshot.data, "base64"));
+  await evaluate("document.querySelector('.export-card').scrollIntoView({block:'center'})");
+  const exportScreenshot = await send("Page.captureScreenshot", { format: "png" });
+  await writeFile(path.join(directory, "export-format.png"), Buffer.from(exportScreenshot.data, "base64"));
   await send("Emulation.setDeviceMetricsOverride", { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
   assert.equal(await evaluate("document.documentElement.scrollWidth <= innerWidth"), true, "no horizontal overflow at minimum width");
-  console.log(`PASS: eight templates, sticker removal, font pixels, asset error/recovery, narrow layout. Screenshot: ${directory}/preview.png`);
+  console.log(`PASS: export formats/default/disabled, eight templates, sticker removal, font pixels, asset error/recovery, narrow layout. Screenshots: ${directory}`);
 } finally {
   socket?.close(); chrome.kill(); await server.close();
 }

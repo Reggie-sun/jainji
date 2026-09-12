@@ -187,7 +187,8 @@ export class TemplateCompiler {
       "-preset", preset.quality === "high" ? "slow" : "medium",
       "-crf", preset.quality === "high" ? "18" : preset.quality === "small" ? "28" : "23",
       ...(preset.frameRateMode === "30" ? ["-r", "30"] : []),
-      "-movflags", "+faststart",
+      ...(preset.container === "mkv" ? [] : ["-movflags", "+faststart"]),
+      "-f", preset.container === "mkv" ? "matroska" : preset.container,
       "-progress", "pipe:1",
       "-nostats",
     );

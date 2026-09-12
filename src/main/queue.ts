@@ -135,7 +135,7 @@ export class ExportQueue {
     const reserved: string[] = [];
     const tasks: ExportTask[] = [];
     for (const item of media) {
-      const outputPath = await allocateOutputPath(input.outputDirectory, item.sourcePath, "_edited", reserved);
+      const outputPath = await allocateOutputPath(input.outputDirectory, item.sourcePath, "_edited", reserved, parsedPreset.container);
       reserved.push(outputPath);
       tasks.push(ExportTaskSchema.parse({
         id: randomUUID(), batchId, mediaId: item.id, status: "queued", progress: 0,
@@ -219,7 +219,7 @@ export class ExportQueue {
         task.status = "queued";
         task.progress = 0;
         task.outputArtifact = undefined;
-        task.outputPath = await allocateOutputPath(state.batch.outputDirectory, this.mediaFor(state, task)?.sourcePath ?? "video.mp4", "_edited", state.batch.tasks.filter((other) => other.id !== task.id).map((other) => other.outputPath).filter((entry): entry is string => Boolean(entry)));
+        task.outputPath = await allocateOutputPath(state.batch.outputDirectory, this.mediaFor(state, task)?.sourcePath ?? "video.mp4", "_edited", state.batch.tasks.filter((other) => other.id !== task.id).map((other) => other.outputPath).filter((entry): entry is string => Boolean(entry)), state.batch.preset.container);
         task.errorCode = undefined;
         task.errorMessage = undefined;
         task.startedAt = undefined;
@@ -338,7 +338,7 @@ export class ExportQueue {
       if (await this.stopRequested(state, task)) return;
       await this.transition(state, task, "running", { attempt: Math.max(1, task.attempt), startedAt: now() });
       if (await this.stopRequested(state, task)) return;
-      partialPath = path.join(state.batch.outputDirectory, `.${path.basename(task.outputPath!)}.${state.batch.id}.${task.id}.${Math.max(1, task.attempt)}.partial.mp4`);
+      partialPath = path.join(state.batch.outputDirectory, `.${path.basename(task.outputPath!)}.${state.batch.id}.${task.id}.${Math.max(1, task.attempt)}.partial.${state.batch.preset.container}`);
       const textPath = (layerId: string) => path.join(state.batch.outputDirectory, `.jianji-${task.id}-${Math.max(1, task.attempt)}-${layerId}.txt`);
       const compiled = await this.compiler.compile(state.batch.templateSnapshot, media, state.batch.preset, {
         ffmpegPath: this.dependencies.ffmpeg.ffmpegPath,
@@ -398,7 +398,7 @@ export class ExportQueue {
         }
         return;
       }
-      let finalPath = await publishWithoutReplacement(partialPath, task.outputPath as string, state.batch.outputDirectory, media.sourcePath, state.batch.tasks.filter((other) => other.id !== task.id).map((other) => other.outputPath).filter((entry): entry is string => Boolean(entry)));
+      let finalPath = await publishWithoutReplacement(partialPath, task.outputPath as string, state.batch.outputDirectory, media.sourcePath, state.batch.tasks.filter((other) => other.id !== task.id).map((other) => other.outputPath).filter((entry): entry is string => Boolean(entry)), state.batch.preset.container);
       artifact.path = finalPath;
       task.outputPath = finalPath;
       task.outputArtifact = artifact;
@@ -483,7 +483,7 @@ async function syncDirectory(directory: string): Promise<void> {
   }
 }
 
-async function publishWithoutReplacement(partialPath: string, requestedPath: string, outputDirectory: string, sourcePath: string, reserved: readonly string[]): Promise<string> {
+async function publishWithoutReplacement(partialPath: string, requestedPath: string, outputDirectory: string, sourcePath: string, reserved: readonly string[], container: ExportPreset["container"]): Promise<string> {
   let finalPath = requestedPath;
   while (true) {
     try {
@@ -493,7 +493,7 @@ async function publishWithoutReplacement(partialPath: string, requestedPath: str
       return finalPath;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      finalPath = await allocateOutputPath(outputDirectory, sourcePath, "_edited", [...reserved, finalPath]);
+      finalPath = await allocateOutputPath(outputDirectory, sourcePath, "_edited", [...reserved, finalPath], container);
     }
   }
 }
