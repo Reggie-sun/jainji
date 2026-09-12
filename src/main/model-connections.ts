@@ -6,6 +6,7 @@ import { ChatGPTSession } from "./chatgpt-session.js";
 import { CodexRpc } from "./codex-rpc.js";
 import { ProviderError } from "./api-transport.js";
 import { loadCCSwitchProvider, listCCSwitchProviders } from "./cc-switch.js";
+import { ConnectionStore } from "./connection-store.js";
 
 export function codexLaunch(appPath: string, userData: string): { command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
   const arch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : undefined;
@@ -39,7 +40,9 @@ export class ModelConnections {
   private pending = false;
   private wantChatGPT = false;
   private activeRpc?: CodexRpc;
+  readonly store: ConnectionStore;
   constructor(private readonly userData: string, appPath: string, openBrowser: (url: string) => Promise<void>, private readonly changed: () => void) {
+    this.store = new ConnectionStore(path.join(userData, "connections"));
     this.chatgpt = new ChatGPTSession(async () => {
       const launch = codexLaunch(appPath, userData);
       await mkdir(launch.cwd, { recursive: true, mode: 0o700 });
@@ -61,23 +64,48 @@ export class ModelConnections {
     try { await action(); } finally { this.pending = false; this.changed(); }
   }
   async restore(): Promise<void> {
+    await this.store.load();
+    const saved = this.store.snapshot();
+    if (saved.error) { this.changed(); return; }
+    if (saved.selected && saved.selected !== "chatgpt") {
+      await this.exclusive(async () => { this.activate(saved.selected!); });
+      return;
+    }
+    if (this.store.exists && saved.selected === null) { this.changed(); return; }
     try { await access(path.join(this.userData, "codex", "auth.json")); }
     catch { return; }
-    await this.exclusive(async () => { this.wantChatGPT = true; await this.chatgpt.refresh(); }).catch(() => undefined);
+    await this.exclusive(async () => {
+      if (!this.store.exists) await this.store.select("chatgpt");
+      this.wantChatGPT = true; await this.chatgpt.refresh();
+    }).catch(() => undefined);
   }
-  async login(): Promise<void> { await this.exclusive(async () => { this.wantChatGPT = true; this.provider.clear(); await this.chatgpt.login(); }); }
+  async login(): Promise<void> { await this.exclusive(async () => { await this.store.select("chatgpt"); this.wantChatGPT = true; this.provider.clear(); await this.chatgpt.login(); }); }
   async cancelLogin(): Promise<void> { if (this.pending) throw new ProviderError("连接正在处理中，请稍后取消。"); this.wantChatGPT = false; this.provider.clear(); await this.chatgpt.cancelLogin(); }
-  async configure(input: unknown): Promise<void> { await this.exclusive(async () => { this.provider.configure(input); this.wantChatGPT = false; }); }
-  async useCCSwitch(id: string, appType: "claude" | "codex"): Promise<void> {
+  async refreshLogin(): Promise<void> {
+    if (this.pending) throw new ProviderError("连接正在处理中，请稍后刷新。");
+    this.pending = true;
+    try { await this.chatgpt.refresh(); } finally { this.pending = false; this.changed(); }
+  }
+  private activate(id: string): void { const profile = this.store.get(id); this.provider.configure(profile.input, profile.name); this.wantChatGPT = false; }
+  async save(input: unknown): Promise<void> {
+    await this.exclusive(async () => { const id = await this.store.save(input); if (this.store.snapshot().selected === id) this.activate(id); });
+  }
+  async select(id: string): Promise<void> { await this.exclusive(async () => { this.store.get(id); await this.store.select(id); this.activate(id); }); }
+  async remove(id: string): Promise<void> {
+    await this.exclusive(async () => { const active = this.store.snapshot().selected === id; await this.store.remove(id); if (active) this.provider.clear(); });
+  }
+  async importCCSwitch(id: string, appType: "claude" | "codex"): Promise<void> {
     await this.exclusive(async () => {
       const input = await loadCCSwitchProvider(id, appType);
-      this.provider.configure(input, "CC Switch"); this.wantChatGPT = false;
+      const metadata = (await listCCSwitchProviders()).find((p) => p.id === id && p.appType === appType);
+      await this.store.save({ ...input, name: metadata?.name ?? `${appType} 导入配置` });
     });
   }
   async listCCSwitch() { return listCCSwitchProviders(); }
   async disconnect(): Promise<void> {
     await this.exclusive(async () => {
       const logout = this.wantChatGPT;
+      await this.store.select(null);
       this.wantChatGPT = false; this.provider.clear();
       if (logout) await this.chatgpt.logout();
     });

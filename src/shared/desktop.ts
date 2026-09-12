@@ -1,10 +1,12 @@
 import type { AppState } from "../main/application";
 import type { CapabilityStatus } from "../main/ffmpeg";
 import type { AgentRun, ConnectionStatus, ChatGPTStatus } from "./agent";
+import type { ConnectionLibrary } from "./connections";
 
 export type DesktopState = AppState & {
   capabilities: CapabilityStatus;
   connection: ConnectionStatus;
   chatgpt?: ChatGPTStatus;
+  connections?: ConnectionLibrary;
   agentRun?: AgentRun;
 };

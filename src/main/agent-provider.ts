@@ -76,7 +76,7 @@ export class AgentProvider {
 
   status(): ConnectionStatus {
     if (this.chatgpt) return { configured: true, baseUrl: "", model: this.chatgpt.model, source: "chatgpt", providerName: "ChatGPT" };
-    return { ...(this.providerName ? { source: "cc-switch" as const, providerName: this.providerName } : {}), ...(this.connection?.protocol ? { protocol: this.connection.protocol } : {}), configured: Boolean(this.connection), baseUrl: this.connection?.baseUrl ?? "https://api.openai.com/v1", model: this.connection?.model ?? "" };
+    return { ...(this.providerName ? { source: "api" as const, providerName: this.providerName } : {}), ...(this.connection?.protocol ? { protocol: this.connection.protocol } : {}), configured: Boolean(this.connection), baseUrl: this.connection?.baseUrl ?? "https://api.openai.com/v1", model: this.connection?.model ?? "" };
   }
   configure(input: unknown, providerName?: string): ConnectionStatus {
     const parsed = ConnectionInputSchema.safeParse(input);

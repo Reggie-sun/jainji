@@ -14,10 +14,12 @@ export class ChatGPTSession {
   private rpc?: RpcClient;
   private starting?: Promise<RpcClient>;
   private loginId?: string;
+  private awaitingAccountUpdate = false;
   private loginTimer?: ReturnType<typeof setTimeout>;
   private state: ChatGPTStatus = { status: "signed-out" };
   private disposed = false;
   private revision = 0;
+  private refreshGeneration = 0;
   constructor(private readonly create: () => Promise<RpcClient>, private readonly openBrowser: (url: string) => Promise<void>, private readonly cwd: string, private readonly changed: () => void) {}
   status(): ChatGPTStatus { return { ...this.state }; }
   private set(state: ChatGPTStatus): void { this.state = state; this.changed(); }
@@ -30,7 +32,7 @@ export class ChatGPTSession {
       rpc.on("notification", this.notification);
       rpc.on("closed", () => {
         if (this.rpc !== rpc) return;
-        this.rpc = undefined; this.loginId = undefined; clearTimeout(this.loginTimer);
+        this.rpc = undefined; this.loginId = undefined; this.awaitingAccountUpdate = false; clearTimeout(this.loginTimer);
         this.set({ status: "error", message: "Codex 连接已断开，请重新登录。" });
       });
       this.rpc = rpc;
@@ -40,35 +42,61 @@ export class ChatGPTSession {
   }
   private notification = (method: string, params: any): void => {
     if (method === "account/login/completed" && this.loginId && params?.loginId === this.loginId) {
-      this.loginId = undefined; clearTimeout(this.loginTimer);
-      if (params.success) void this.refresh().catch(() => this.set({ status: "error", message: "登录完成，但账户或模型信息读取失败，请重试连接。" }));
-      else this.set({ status: "error", message: "ChatGPT 登录未完成，请重试。" });
+      this.loginId = undefined;
+      if (params.success) {
+        this.awaitingAccountUpdate = true;
+        void this.refresh().catch(() => undefined);
+      } else {
+        clearTimeout(this.loginTimer);
+        this.awaitingAccountUpdate = false;
+        this.set({ status: "error", message: "ChatGPT 登录未完成，请重试。" });
+      }
+    }
+    if (method === "account/updated" && params?.authMode === "chatgpt" && this.awaitingAccountUpdate) {
+      void this.refresh().catch(() => undefined);
     }
   };
   async refresh(): Promise<boolean> {
     const revision = this.revision;
+    const generation = ++this.refreshGeneration;
+    try { return await this.readAccount(generation); }
+    catch (error) {
+      if (revision === this.revision && generation === this.refreshGeneration && !this.disposed) this.set({ status: "error", message: "账户或模型信息读取失败，请检查网络并刷新登录状态。" });
+      throw error;
+    }
+  }
+  private async readAccount(generation: number): Promise<boolean> {
+    const revision = this.revision;
     const rpc = await this.client();
     const response = z.object({ account: z.object({ type: z.string(), email: z.string().nullable().optional(), planType: z.string().optional() }).nullable() }).parse(await rpc.request("account/read", { refreshToken: false }));
-    if (revision !== this.revision || this.disposed) return false;
-    if (response.account?.type !== "chatgpt") { this.set({ status: "signed-out" }); return false; }
+    if (revision !== this.revision || generation !== this.refreshGeneration || this.disposed) return false;
+    if (response.account?.type !== "chatgpt") { this.set(this.awaitingAccountUpdate || this.loginId ? { status: "logging-in", message: "等待登录状态同步，可在完成授权后刷新。" } : { status: "signed-out" }); return false; }
     const models = z.object({ data: z.array(z.object({ model: z.string(), isDefault: z.boolean(), hidden: z.boolean(), inputModalities: z.array(z.string()).default(["text", "image"]) })) }).parse(await rpc.request("model/list", { includeHidden: false }));
     const eligible = models.data.filter((model) => !model.hidden && model.inputModalities.includes("image"));
     const selected = eligible.find((model) => model.isDefault) ?? eligible[0];
     if (!selected) throw new ProviderError("当前账户没有可用的视觉模型。");
-    if (revision !== this.revision || this.disposed) return false;
+    if (revision !== this.revision || generation !== this.refreshGeneration || this.disposed) return false;
+    this.loginId = undefined; this.awaitingAccountUpdate = false; clearTimeout(this.loginTimer);
     this.set({ status: "ready", email: response.account.email ?? undefined, plan: response.account.planType, model: selected.model });
     return true;
   }
   async login(): Promise<void> {
     if (this.loginId || this.state.status === "starting") throw new ProviderError("登录正在进行中。");
     this.set({ status: "starting" });
+    // A metadata/network failure must not erase an already persisted login.
+    try { if (await this.refresh()) return; }
+    catch { this.set({ status: "error", message: "账户信息读取失败，请检查网络并刷新登录状态。" }); throw new ProviderError("无法读取 ChatGPT 账户信息，请重试。"); }
     try {
-      if (await this.refresh()) return;
       const rpc = await this.client();
       const result = z.object({ type: z.literal("chatgpt"), loginId: z.string(), authUrl: z.string() }).parse(await rpc.request("account/login/start", { type: "chatgpt", useHostedLoginSuccessPage: true, appBrand: "chatgpt" }));
       this.loginId = result.loginId;
       this.set({ status: "logging-in" });
-      this.loginTimer = setTimeout(() => { void this.cancelLogin().catch(() => undefined); }, 5 * 60_000);
+      this.loginTimer = setTimeout(() => {
+        if (this.awaitingAccountUpdate) {
+          this.awaitingAccountUpdate = false;
+          this.set({ status: "error", message: "授权已完成，但账户同步超时，请刷新登录状态。" });
+        } else { void this.cancelLogin().catch(() => undefined); }
+      }, 5 * 60_000);
       await this.openBrowser(trustedLoginUrl(result.authUrl));
     } catch {
       await this.cancelLogin().catch(() => undefined);
@@ -79,8 +107,8 @@ export class ChatGPTSession {
   async cancelLogin(): Promise<void> {
     this.revision += 1;
     const id = this.loginId;
-    const hadAttempt = Boolean(id) || ["starting", "logging-in"].includes(this.state.status);
-    this.loginId = undefined; clearTimeout(this.loginTimer);
+    const hadAttempt = Boolean(id) || this.awaitingAccountUpdate || ["starting", "logging-in"].includes(this.state.status);
+    this.loginId = undefined; this.awaitingAccountUpdate = false; clearTimeout(this.loginTimer);
     try {
       if (id && this.rpc) await this.rpc.request("account/login/cancel", { loginId: id });
       // The callback may have persisted credentials just before cancellation.

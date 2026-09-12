@@ -90,7 +90,7 @@ button{color:inherit}
 .form-title{display:flex;gap:13px;align-items:center;margin-bottom:23px}.icon-tile{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;border:1px solid #e1ece7;background:#f0f6f3;border-radius:10px;color:#368976}
 .form-title h2{font-size:17px;font-weight:600;margin-bottom:5px}.form-title p{font-size:10px;color:#98a1aa}
 .connection-form label{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;font-size:11px;font-weight:500}
-.connection-form input{height:43px;border:1px solid #e3e7eb;background:#fafbfc;border-radius:6px;padding:0 12px;font-size:11px;color:#3d4b53;width:100%}
+.connection-form input,.connection-form select{height:43px;border:1px solid #e3e7eb;background:#fafbfc;border-radius:6px;padding:0 12px;font-size:11px;color:#3d4b53;width:100%}
 input::placeholder,textarea::placeholder{color:#a4aeb5}
 .connection-form label small{font-size:9px;color:#9aa3ab;font-weight:400;line-height:1.7}
 .privacy-note{display:flex;gap:10px;margin:2px 0 22px;color:#7b9186;background:#f6f9f7;border-radius:7px;padding:12px}

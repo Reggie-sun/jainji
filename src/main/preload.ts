@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AgentStartInput, ConnectionInput } from "../shared/agent.js";
+import type { AgentStartInput } from "../shared/agent.js";
+import type { SaveConnection } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
 import type { DecorationCatalog } from "../shared/decorations.js";
@@ -10,11 +11,14 @@ const api = {
   libraryAsset: (id: string): Promise<LibraryAssetPreview> => ipcRenderer.invoke("library.asset", id),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   getState: (): Promise<DesktopState> => ipcRenderer.invoke("app.state"),
-  configureAgent: (input: ConnectionInput): Promise<DesktopState> => ipcRenderer.invoke("agent.configure", input),
+  saveConnection: (input: SaveConnection): Promise<DesktopState> => ipcRenderer.invoke("connection.save", input),
+  selectConnection: (id: string): Promise<DesktopState> => ipcRenderer.invoke("connection.select", id),
+  removeConnection: (id: string): Promise<DesktopState> => ipcRenderer.invoke("connection.remove", id),
   loginChatGPT: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.login"),
+  refreshChatGPT: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.refresh"),
   cancelChatGPTLogin: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.cancel"),
   listCCSwitch: (): Promise<CCSwitchProvider[]> => ipcRenderer.invoke("connection.ccswitch.list"),
-  useCCSwitch: (id: string, appType: "claude" | "codex"): Promise<DesktopState> => ipcRenderer.invoke("connection.ccswitch.use", { id, appType }),
+  importCCSwitch: (id: string, appType: "claude" | "codex"): Promise<DesktopState> => ipcRenderer.invoke("connection.ccswitch.import", { id, appType }),
   disconnectAgent: (): Promise<DesktopState> => ipcRenderer.invoke("agent.disconnect"),
   testAgent: (): Promise<boolean> => ipcRenderer.invoke("agent.test"),
   startAgent: (input: AgentStartInput): Promise<DesktopState> => ipcRenderer.invoke("agent.start", input),

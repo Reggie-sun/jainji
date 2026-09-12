@@ -40,7 +40,7 @@ Windows 使用系统 Microsoft YaHei 字体：项目中的默认 `Noto Sans CJK 
 
 ## Workflow
 
-1. 选择连接方式：使用 ChatGPT 登录、复用 CC Switch 当前 API 配置，或手动填写兼容 Chat Completions 的 API 地址、视觉模型 ID 与 Key。
+1. 选择连接方式：使用 ChatGPT 登录，或在内置 API 连接管理中添加服务商、地址、协议、视觉模型与 Key。保存后从列表选择使用；支持编辑、切换、删除与重启恢复。
 2. 导入 MP4、MOV、MKV 或 WebM，选中需要包装的素材。
 3. 选择黑金精选、清爽日常或黑白叙事模板。可选填真实产品信息、文案偏好等补充要求，并选择输出文件夹。
 4. 点击“交给 Agent，开始出片”。每条视频抽取 3 张缩略帧，模型生成短文案、角落位置和滤镜；本地校验通过后交给原有导出队列。
@@ -50,10 +50,11 @@ Windows 使用系统 Microsoft YaHei 字体：项目中的默认 `Noto Sans CJK 
 
 ## Privacy And State
 
+- API 连接与 Key 保存在 `userData/connections/connections.json`，与项目文件隔离，界面只获得脱敏元数据。Key 为明文；Linux 文件权限为 `0600`、目录为 `0700`，Windows 使用当前用户目录权限，请保护本机账号与备份。删除配置会移除保存的 Key；断开仅停止使用并保留 API 配置。
 - ChatGPT 登录通过随应用打包的官方 Codex App Server 在系统浏览器完成，使用账号的 Codex 权益与限额。简辑在自己的 `userData/codex` 目录保存登录状态，关闭后保留，点击“断开”退出。该目录由 Codex 管理，凭据文件按本机私密数据处理；不读取、改写全局 Codex 登录状态，不复制 CC Switch 的 OAuth token。
-- CC Switch 从当前用户的 `~/.cc-switch/cc-switch.db` 只读导入当前 Claude/Codex API 配置（Windows 同样使用用户主目录）。支持 Anthropic Messages、Responses 与 Chat Completions，必须有 API Key、地址和视觉模型。OAuth-only 配置提示使用 ChatGPT 登录；不会把账号 token 当作 API Key。
-- CC Switch 列表只显示服务商、模型和地址；选择时重新读取。连接后固定使用本次配置，切换 CC Switch 后需刷新并重新选择。读取期间数据库正在写入或有未合并日志时拒绝读取，提示关闭 CC Switch 后刷新；不写回数据库。
-- API Key 只保存在本次运行的主进程内存中，不写入项目、磁盘或浏览器存储，界面保存后清空输入。
+- 内置连接管理不依赖 CC Switch 运行。可选的一次性迁移入口从当前用户的 `~/.cc-switch/cc-switch.db` 只读导入当前 Claude/Codex API 配置到简辑配置列表（Windows 同样使用用户主目录）。支持 Anthropic Messages、Responses 与 Chat Completions，必须有 API Key、地址和视觉模型。OAuth-only 配置提示使用 ChatGPT 登录；不会把账号 token 当作 API Key。
+- CC Switch 导入列表只显示服务商、模型和地址；导入时重新读取。导入后保存在简辑中，修改外部 CC Switch 不会改变已保存的简辑配置。读取期间数据库正在写入或有未合并日志时拒绝读取，提示关闭 CC Switch 后刷新；不写回数据库。
+- API Key 不回传界面、不写入项目或浏览器存储；编辑时留空保留已有 Key，保存后清空输入。
 - 开始创作时，3 张抽帧和用户补充要求会发送到配置的服务商。原视频和本地文件路径不进入模型请求。
 - 模型调用使用用户服务商的额度；“测试连接”会发送一次文本请求，不能证明视觉能力或出片质量。
 - 已创建的导出任务及其模板、素材快照保存在原有本地队列中。项目保存不包含 API Key。重新打开项目后需要重新选择输出目录，已存在任务可重试。

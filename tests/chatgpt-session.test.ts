@@ -29,6 +29,52 @@ async function setup() {
 afterEach(async () => { await Promise.all(directories.splice(0).map((p) => rm(p, { recursive: true, force: true }))); });
 
 describe("managed ChatGPT session", () => {
+  it("accepts a new login while a cancelled login metadata request is still pending", async () => {
+    const { rpc, session } = await setup(); await session.login();
+    let finish!: (value: unknown) => void;
+    rpc.request.mockImplementationOnce(() => new Promise((ok) => { finish = ok; }));
+    rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await session.cancelLogin(); await session.login();
+    rpc.account = { type: "chatgpt" };
+    rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
+    rpc.emit("notification", "account/updated", { authMode: "chatgpt" });
+    await vi.waitFor(() => expect(session.status().status).toBe("ready"));
+    finish({ account: null }); await new Promise((ok) => setTimeout(ok, 0));
+    expect(session.status().status).toBe("ready"); await session.dispose();
+  });
+  it.each(["null", "error"])("does not let a stale notification refresh overwrite a manual refresh: %s", async (failure) => {
+    const { rpc, session } = await setup(); await session.login();
+    let resolve!: (value: unknown) => void;
+    let reject!: (error: Error) => void;
+    rpc.request.mockImplementationOnce(() => new Promise((ok, no) => { resolve = ok; reject = no; }));
+    rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
+    await vi.waitFor(() => expect(resolve).toBeDefined());
+    rpc.account = { type: "chatgpt" }; expect(await session.refresh()).toBe(true);
+    if (failure === "null") resolve({ account: null }); else reject(new Error("stale failure"));
+    await new Promise((ok) => setTimeout(ok, 0));
+    expect(session.status().status).toBe("ready"); await session.dispose();
+  });
+  it("recovers a persisted login without a completion event and clears its cancellation timer", async () => {
+    const { rpc, session } = await setup();
+    await session.login();
+    rpc.account = { type: "chatgpt" };
+    expect(await session.refresh()).toBe(true);
+    expect(session.status().status).toBe("ready");
+    await session.cancelLogin();
+    expect(rpc.request).not.toHaveBeenCalledWith("account/logout", {});
+    await session.dispose();
+  });
+  it("keeps existing credentials when a metadata read fails while reconnecting", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" };
+    rpc.request.mockRejectedValueOnce(new Error("private remote failure"));
+    await expect(session.login()).rejects.toThrow("账户信息");
+    expect(rpc.request).not.toHaveBeenCalledWith("account/logout", {});
+    expect(session.status().status).toBe("error");
+    expect(await session.refresh()).toBe(true);
+    await session.dispose();
+  });
   it("opens official OAuth, reacts only to the matching completion and exposes account metadata", async () => {
     const { rpc, session, browser } = await setup();
     await session.login();
@@ -40,6 +86,16 @@ describe("managed ChatGPT session", () => {
     rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
     await vi.waitFor(() => expect(session.status().status).toBe("ready"));
     expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision" });
+    session.dispose();
+  });
+  it("refreshes again when account/updated follows a successful login before account/read is ready", async () => {
+    const { rpc, session } = await setup();
+    await session.login();
+    rpc.emit("notification", "account/login/completed", { loginId: "login", success: true });
+    await vi.waitFor(() => expect(session.status().message).toContain("同步"));
+    rpc.account = { type: "chatgpt", email: "test@example.test", planType: "plus" };
+    rpc.emit("notification", "account/updated", { authMode: "chatgpt", planType: "plus" });
+    await vi.waitFor(() => expect(session.status()).toEqual({ status: "ready", email: "test@example.test", plan: "plus", model: "vision" }));
     session.dispose();
   });
   it("cancels login and ignores its late success notification", async () => {

@@ -43,6 +43,13 @@ let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
 
+// A single owner protects saved connections and the managed OAuth callback.
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on("second-instance", () => {
+  if (mainWindow?.isMinimized()) mainWindow.restore();
+  mainWindow?.show(); mainWindow?.focus();
+});
+
 protocol.registerSchemesAsPrivileged([
   { scheme: "jianji-media", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
@@ -54,7 +61,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), agentRun: agent.snapshot() };
+  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot() };
 }
 
 function notifyState(): void {
@@ -89,19 +96,22 @@ function registerHandlers(): void {
     return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers };
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
-  ipcMain.handle("agent.configure", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle(); await connections.configure(input); return publicState();
+  ipcMain.handle("connection.save", async (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle(); await connections.save(input); return publicState();
   });
+  ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
+  ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("agent.disconnect", async (event) => {
     assertTrustedSender(event); agent.assertIdle(); await connections.disconnect(); return publicState();
   });
   ipcMain.handle("connection.chatgpt.login", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.login(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.refresh", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.refreshLogin(); return publicState(); });
   ipcMain.handle("connection.chatgpt.cancel", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.cancelLogin(); return publicState(); });
   ipcMain.handle("connection.ccswitch.list", async (event) => { assertTrustedSender(event); return connections.listCCSwitch(); });
-  ipcMain.handle("connection.ccswitch.use", async (event, input: unknown) => {
+  ipcMain.handle("connection.ccswitch.import", async (event, input: unknown) => {
     assertTrustedSender(event); agent.assertIdle();
     const selected = z.object({ id: z.string().min(1).max(200), appType: z.enum(["claude", "codex"]) }).strict().parse(input);
-    await connections.useCCSwitch(selected.id, selected.appType); return publicState();
+    await connections.importCCSwitch(selected.id, selected.appType); return publicState();
   });
   ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); connections.assertIdle(); await agent.test(); return true; });
   ipcMain.handle("agent.start", async (event, input) => {
@@ -316,6 +326,7 @@ async function bootstrap(): Promise<void> {
   queue.setMediaLookup((id) => service.getMedia(id));
   const stickerAssets = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
+  await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider);
   await queue.recover();
   registerHandlers();

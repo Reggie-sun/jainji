@@ -121,6 +121,12 @@ try {
   };
   await send("Runtime.enable");
   await waitFor("document.body.innerText.includes('接入你的创作搭档')");
+  const duplicate = spawn(require("electron"), [bootstrap], { cwd: root, env: environment, stdio: "ignore" });
+  const duplicateExit = await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => { duplicate.kill(); reject(new Error("Second instance failed to exit")); }, 5000);
+    duplicate.once("exit", (code) => { clearTimeout(timeout); resolve(code); });
+  });
+  assert.equal(duplicateExit, 0, "Second instance must leave the existing connection owner running");
   await screenshot("01-connection");
   await click("使用 ChatGPT 登录");
   await waitFor("document.body.innerText.includes('取消登录')");
@@ -130,15 +136,23 @@ try {
   await click("使用 ChatGPT 登录");
   await waitFor("document.body.innerText.includes('smoke@example.test')");
   assert.equal((await evaluate("window.jianji.getState()")).connection.source, "chatgpt");
+  await click("刷新登录状态");
+  assert.equal((await evaluate("window.jianji.getState()")).chatgpt.status, "ready");
   await screenshot("01b-chatgpt-ready");
   await click("断开");
   await waitFor("document.body.innerText.includes('使用 ChatGPT 登录')");
-  await click("手动 API");
-  for (const [index, value] of [`http://127.0.0.1:${apiPort}/v1`, "smoke-vision", "local-smoke-key"].entries()) {
+  await click("API 连接管理");
+  await click("添加 API 连接");
+  for (const [index, value] of ["Smoke API", `http://127.0.0.1:${apiPort}/v1`, "smoke-vision", "local-smoke-key"].entries()) {
     await evaluate(`document.querySelectorAll('.connection-form input')[${index}].focus();document.querySelectorAll('.connection-form input')[${index}].select()`);
     await send("Input.insertText", { text: value });
   }
   await click("保存连接");
+  await waitFor("document.body.innerText.includes('使用此连接')");
+  await click("编辑");
+  assert.equal(await evaluate("document.querySelector('input[type=password]').value"), "");
+  await click("保存连接");
+  await click("使用此连接");
   await waitFor("document.body.innerText.includes('把视频拖到这里')");
   assert.equal(await evaluate("localStorage.length"), 0);
   await click("选择本地素材");
@@ -164,14 +178,22 @@ try {
   assert.equal(state.agentRun.items[0].summary, "保留主体，添加清透角标");
   await screenshot("05-results");
   await click("模型与 API");
-  await click("CC Switch");
+  await click("API 连接管理");
+  await evaluate("document.querySelector('details').open = true");
+  await click("读取可导入配置");
   await waitFor("document.body.innerText.includes('MiniMax fixture')");
   assert.equal(await evaluate("document.body.innerText.includes('cc-switch-fixture-key')"), false);
   await screenshot("06-cc-switch");
-  await click("使用此配置");
+  await click("导入到简辑");
+  await waitFor("document.querySelectorAll('.provider-choice').length === 3");
+  await click("删除");
+  await click("确认删除");
+  await waitFor("document.querySelectorAll('.provider-choice').length === 2");
+  assert.equal((await evaluate("window.jianji.getState()")).connection.configured, false);
+  await evaluate("[...document.querySelectorAll('.provider-choice')].find(p => p.querySelector('strong').textContent.includes('MiniMax') && p.textContent.includes('使用此连接')).querySelector('button').click()");
   await waitFor("document.body.innerText.includes('把视频拖到这里')");
   const imported = await evaluate("window.jianji.getState()");
-  assert.equal(imported.connection.source, "cc-switch");
+  assert.equal(imported.connection.source, "api");
   assert.equal(imported.connection.protocol, "anthropic");
   assert.equal(JSON.stringify(imported).includes("cc-switch-fixture-key"), false);
   await click("规则模板");

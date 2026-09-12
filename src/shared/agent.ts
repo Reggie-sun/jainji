@@ -29,7 +29,7 @@ export const ConnectionInputSchema = z.object({
   authHeader: z.enum(["bearer", "x-api-key"]).optional(),
 }).strict();
 export type ConnectionInput = z.infer<typeof ConnectionInputSchema>;
-export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; source?: "api" | "cc-switch" | "chatgpt"; providerName?: string; protocol?: string; }
+export interface ConnectionStatus { configured: boolean; baseUrl: string; model: string; source?: "api" | "chatgpt"; providerName?: string; protocol?: string; }
 export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in" | "ready" | "error"; email?: string; plan?: string; model?: string; message?: string; }
 
 export const AgentStartSchema = z.object({
