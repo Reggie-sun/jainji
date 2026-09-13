@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const FEEDBACK_REPOSITORY = "Reggie-sun/jainji";
-export const FEEDBACK_ENDPOINT = "https://reggie-sun.ccwu.cc";
+export const FEEDBACK_ENDPOINT = "https://feedback.reggie-sun.ccwu.cc";
 export const MAX_FEEDBACK_IMAGE_BYTES = 5 * 1024 * 1024;
 export const FeedbackScreenshotSchema = z.object({
   contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),

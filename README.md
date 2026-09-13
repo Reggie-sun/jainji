@@ -61,7 +61,7 @@ Windows 使用系统 Microsoft YaHei 字体：项目中的默认 `Noto Sans CJK 
 
 侧栏“反馈问题”可填写问题描述、选择或粘贴一张截图，并直接创建 `Reggie-sun/jainji` 的 GitHub Issue。提交成功后显示 Issue 编号和打开入口。此功能移植自 `csgojiaoben` 的问题反馈入口，不启动其自动修复、PR 或 Issue automation 工作流。
 
-用户无需 GitHub 账号或 Token。桌面端将反馈发送到开发者中继 `https://reggie-sun.ccwu.cc`，由运行在开发者电脑上的服务创建 Issue；电脑及公网隧道须保持在线。服务部署见 [Feedback Service](docs/feedback-service.md)。客户端不再读取旧版 `bug-feedback/credentials.json` 或 `JIANJI_GITHUB_TOKEN`，旧凭据文件不会自动删除。
+用户无需 GitHub 账号或 Token。桌面端将反馈发送到开发者中继 `https://feedback.reggie-sun.ccwu.cc`，由运行在开发者电脑上的服务创建 Issue；电脑及公网隧道须保持在线。服务部署见 [Feedback Service](docs/feedback-service.md)。客户端不再读取旧版 `bug-feedback/credentials.json` 或 `JIANJI_GITHUB_TOKEN`，旧凭据文件不会自动删除。
 
 描述在提交前移除常见凭据、链接和本地路径，脱敏后最多保留 8000 字，可展开查看预览；仍需人工检查自由文本。自动上下文仅包含应用版本、系统类型、当前页面与时间，不自动收集视频、项目、模型配置或日志。截图支持最多 5 MB 的 PNG、JPEG、WebP，会上传到中继并通过公开链接显示在 GitHub Issue 中；提交前请遮挡私人信息。客户端保留截图副本。
 
