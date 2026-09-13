@@ -117,7 +117,7 @@ describe("agent provider boundary", () => {
   });
 
   it("keeps rule templates distinct without text style fields", () => {
-    expect(RULE_TEMPLATES).toHaveLength(8);
+    expect(RULE_TEMPLATES).toHaveLength(12);
     const signatures = RULE_TEMPLATES.map((rule) => `${rule.id}:${rule.sticker}:${rule.stickerWidth}:${rule.stickerRotation}`);
     expect(new Set(signatures).size).toBe(RULE_TEMPLATES.length);
     expect(RULE_TEMPLATES.every((rule) => !("previewCaption" in rule) && !("maxFontSize" in rule) && !("maxBadges" in rule) && !("textColor" in rule) && !("backgroundColor" in rule))).toBe(true);

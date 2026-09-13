@@ -11,10 +11,14 @@ export const RULE_TEMPLATES = [
   { id: "sunset", name: "落日暖片", label: "温柔生活", description: "柔暖滤镜配小爱心，适合手作、美食与生活记录。", minIntensity: 0.38, maxIntensity: 0.58, filters: ["warm"], filterLabel: "柔暖", sticker: "heart", stickerLabel: "奶油爱心", stickerWidth: 0.11, stickerRotation: -7, stickerCorners: ["bottom-left", "top-left", "bottom-right", "top-right"] },
   { id: "electric", name: "电光焦点", label: "潮流节奏", description: "高饱和滤镜配爆闪贴纸，为运动与快节奏素材提气。", minIntensity: 0.55, maxIntensity: 0.75, filters: ["vivid"], filterLabel: "高饱和", sticker: "burst", stickerLabel: "电光爆闪", stickerWidth: 0.13, stickerRotation: 10, stickerCorners: ["top-left", "bottom-left", "top-right", "bottom-right"] },
   { id: "cream-studio", name: "奶油画报", label: "轻奢陈列", description: "轻暖色彩配小型爆闪，适合美妆、饰品与静物陈列。", minIntensity: 0.28, maxIntensity: 0.45, filters: ["warm", "vivid"], filterLabel: "奶油暖", sticker: "burst", stickerLabel: "香槟爆闪", stickerWidth: 0.1, stickerRotation: -10, stickerCorners: ["bottom-right", "bottom-left", "top-right", "top-left"] },
+  { id: "rose-soft", name: "玫瑰柔光", label: "细腻好物", description: "轻暖滤镜与小爱心，适合花艺、美妆和柔和陈列。", minIntensity: 0.2, maxIntensity: 0.35, filters: ["warm"], filterLabel: "轻暖", sticker: "heart", stickerLabel: "柔光爱心", stickerWidth: 0.09, stickerRotation: -4, stickerCorners: ["top-left", "bottom-right", "top-right", "bottom-left"] },
+  { id: "ocean-blue", name: "海盐蓝调", label: "清凉展示", description: "清凉蓝调搭配小星芒，适合夏日饮品与清爽产品。", minIntensity: 0.45, maxIntensity: 0.65, filters: ["cool"], filterLabel: "海盐冷调", sticker: "sparkle", stickerLabel: "清凉星芒", stickerWidth: 0.1, stickerRotation: 5, stickerCorners: ["bottom-left", "top-right", "bottom-right", "top-left"] },
+  { id: "candy-pop", name: "糖果派对", label: "缤纷开箱", description: "浓郁鲜明色彩搭配爆闪，适合彩色小物与活力开箱。", minIntensity: 0.7, maxIntensity: 0.85, filters: ["vivid"], filterLabel: "糖果鲜彩", sticker: "burst", stickerLabel: "活力爆闪", stickerWidth: 0.14, stickerRotation: -12, stickerCorners: ["top-right", "bottom-left", "top-left", "bottom-right"] },
+  { id: "retro-amber", name: "琥珀复古", label: "暖意手作", description: "浓暖滤镜搭配小箭头，适合烘焙、木作与复古物件。", minIntensity: 0.6, maxIntensity: 0.78, filters: ["warm"], filterLabel: "琥珀暖调", sticker: "arrow", stickerLabel: "复古箭头", stickerWidth: 0.1, stickerRotation: 4, stickerCorners: ["bottom-right", "top-left", "bottom-left", "top-right"] },
 ] as const;
 
 export type RuleTemplate = typeof RULE_TEMPLATES[number];
-export const RuleIdSchema = z.enum(["black-gold", "clean", "mono", "coral-pop", "mint-fresh", "sunset", "electric", "cream-studio"]);
+export const RuleIdSchema = z.enum(RULE_TEMPLATES.map((rule) => rule.id) as [RuleTemplate["id"], ...RuleTemplate["id"][]]);
 export type RuleId = z.infer<typeof RuleIdSchema>;
 export type StickerId = RuleTemplate["sticker"];
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DEFAULT_TEXT_FONT_FAMILY } from "./defaults.js";
 import { LIBRARY_FONTS, LIBRARY_STICKERS } from "./asset-library.js";
 import { BUNDLED_STICKERS } from "./bundled-stickers.js";
+import { PriceStyleIdSchema } from "./price-styles.js";
 
 export const FONT_CHOICES = [DEFAULT_TEXT_FONT_FAMILY, "Noto Serif CJK SC", "AR PL UKai CN", "AR PL UMing CN", "Microsoft YaHei", "SimHei", "SimSun", "KaiTi", "FangSong"] as const;
 export const FONT_LABELS: Record<typeof FONT_CHOICES[number], string> = {
@@ -34,6 +35,7 @@ export const DecorationSchema = z.preprocess((input) => {
   return input;
 }, z.object({
   productPrice: ProductPriceSchema.optional(),
+  priceStyle: PriceStyleIdSchema.optional(),
   mode: z.enum(["manual", "agent"]).optional(),
   sticker: z.string().refine((id) => stickerIds.has(id), "unknown sticker").default("template"),
   fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font").default(DEFAULT_TEXT_FONT_FAMILY),

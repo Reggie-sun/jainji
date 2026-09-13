@@ -88,6 +88,11 @@ export const TextLayerSchema = z.object({
   color: ColorSchema,
   strokeColor: ColorSchema,
   strokeWidthRatio: z.number().finite().min(0).lte(0.05),
+  shadow: z.object({
+    color: ColorSchema,
+    xRatio: z.number().finite().min(-0.02).max(0.02),
+    yRatio: z.number().finite().min(-0.02).max(0.02),
+  }).strict().optional(),
   backgroundColor: ColorSchema.optional(),
   backgroundPaddingRatio: z.number().finite().min(0).lte(0.05).optional(),
 }).strict();

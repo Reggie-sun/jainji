@@ -1,12 +1,13 @@
 import { completeApi, ProviderError, type ModelMessage } from "./api-transport.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { createDefaultTemplate, EditTemplateSchema, type Color, type EditTemplate, type Layer } from "./domain.js";
+import { createDefaultTemplate, EditTemplateSchema, type EditTemplate, type Layer } from "./domain.js";
 import { ConnectionInputSchema, GenerateBriefSchema, getRule, type ConnectionInput, type ConnectionStatus, type GenerateBriefInput, type RuleId } from "../shared/agent.js";
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { CORNERS, CORNER_LABELS, formatProductPrice, DecorationSchema, type Corner } from "../shared/decorations.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
+import { getPriceStyle, priceFontSizeRatio, priceStyleAppearance } from "../shared/price-styles.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 
@@ -81,7 +82,6 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const options = DecorationSchema.parse(decorations ?? {});
   if (options.mode === "agent" && !catalog) throw new Error("Agent 装饰目录不可用，请重新开始。");
   const plan = validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
-  const color = (r: number, g: number, b: number, a = 1): Color => ({ r, g, b, a });
   const rule = getRule(ruleId);
   const stickerLayer = (corner: Corner, sticker: NonNullable<StickerAssets[string]>, index: number): Layer => ({
     id: randomUUID(), type: "sticker", assetPath: sticker.assetPath, assetFingerprint: sticker.assetFingerprint,
@@ -93,9 +93,8 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
     id: randomUUID(), type: "text", content: formatProductPrice(options.productPrice), fontFamily: DEFAULT_TEXT_FONT_FAMILY,
     opacity: 1, zIndex: 100, visible: true,
     x: 0.1, y: 0.13, width: 0.8, textAlign: "center",
-    fontSizeRatio: Math.min(0.08 * dimensions.width / dimensions.height, 0.14),
-    color: color(223, 48, 62), strokeColor: color(255, 248, 237),
-    strokeWidthRatio: 0.0025, backgroundColor: undefined,
+    fontSizeRatio: priceFontSizeRatio(dimensions.width, dimensions.height),
+    ...priceStyleAppearance(getPriceStyle(options.priceStyle)),
   }] : [];
   if (options.mode === "agent") {
     const autoPlan = plan as AgentPackagingPlan;

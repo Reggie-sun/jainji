@@ -119,6 +119,11 @@ export class TemplateCompiler {
           `fontcolor=${color(layer.color, layer.opacity)}`,
           `bordercolor=${color(layer.strokeColor, layer.opacity)}`,
           `borderw=${Math.round(layer.strokeWidthRatio * dimensions.height)}`,
+          ...(layer.shadow ? [
+            `shadowcolor=${color(layer.shadow.color, layer.opacity)}`,
+            `shadowx=${Math.round(layer.shadow.xRatio * dimensions.height)}`,
+            `shadowy=${Math.round(layer.shadow.yRatio * dimensions.height)}`,
+          ] : []),
           ...(layer.backgroundColor ? [
             "box=1",
             `boxcolor=${color(layer.backgroundColor, layer.opacity)}`,
