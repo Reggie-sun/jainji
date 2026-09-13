@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const FEEDBACK_REPOSITORY = "Reggie-sun/jainji";
+export const FEEDBACK_ENDPOINT = "https://reggie-sun.ccwu.cc";
 export const MAX_FEEDBACK_IMAGE_BYTES = 5 * 1024 * 1024;
 export const FeedbackScreenshotSchema = z.object({
   contentType: z.enum(["image/png", "image/jpeg", "image/webp"]),
@@ -14,7 +15,10 @@ export const BugFeedbackSchema = z.object({
 }).strict();
 export type FeedbackScreenshot = z.infer<typeof FeedbackScreenshotSchema>;
 export type BugFeedback = z.infer<typeof BugFeedbackSchema>;
-export type FeedbackStatus = { configured: boolean; repository: string; credentialSource: "environment" | "local" | "none" };
+export const FeedbackSubmissionSchema = BugFeedbackSchema.extend({
+  client: z.object({ version: z.string().min(1).max(60), platform: z.enum(["linux", "win32", "darwin"]) }).strict(),
+}).strict();
+export type FeedbackSubmission = z.infer<typeof FeedbackSubmissionSchema>;
 export const FeedbackReceiptSchema = z.object({
   feedbackId: z.string().uuid(),
   issueNumber: z.number().int().positive().safe(),

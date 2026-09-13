@@ -9,7 +9,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import { once } from "node:events";
 
-// Real Electron, renderer and IPC; GitHub and external shell actions are isolated fixtures.
+// Real Electron -> real local relay -> fixture GitHub; no real credentials or remote issues.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
 const directory = await mkdtemp(path.join(tmpdir(), "jianji-feedback-smoke-"));
@@ -45,6 +45,17 @@ const server = createServer((request, response) => {
 });
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const apiPort = server.address().port;
+const relayBundle = path.join(directory, "relay.cjs");
+await require("esbuild").build({ entryPoints: [path.join(root, "src/feedback-server/service.ts")], bundle: true, platform: "node", format: "cjs", outfile: relayBundle });
+const { createFeedbackServer } = require(relayBundle);
+const relay = createFeedbackServer({ directory: path.join(directory, "relay-data"), token: "fixture-github-secret", publicUrl: "https://feedback.example.test",
+  fetcher: (url, options) => {
+    assert.ok(String(url).startsWith("https://api.github.com/"));
+    return fetch(String(url).replace("https://api.github.com", `http://127.0.0.1:${apiPort}`), options);
+  },
+});
+await new Promise((resolve) => relay.listen(0, "127.0.0.1", resolve));
+const relayPort = relay.address().port;
 const portServer = createSocketServer();
 await new Promise((resolve) => portServer.listen(0, "127.0.0.1", resolve));
 const debugPort = portServer.address().port;
@@ -55,16 +66,11 @@ app.setPath("userData", ${JSON.stringify(directory)});
 app.getAppPath = () => ${JSON.stringify(root)};
 app.commandLine.appendSwitch("remote-debugging-port", ${JSON.stringify(String(debugPort))});
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
-const nativeFetch = globalThis.fetch;
-globalThis.fetch = (url, options) => {
-  if (!String(url).startsWith("https://api.github.com/")) throw new Error("Unexpected network request in feedback smoke");
-  return nativeFetch(String(url).replace("https://api.github.com", "http://127.0.0.1:${apiPort}"), options);
-};
 shell.openExternal = async (url) => { require("node:fs").writeFileSync(${JSON.stringify(path.join(directory, "opened-url.txt"))}, url); };
 shell.showItemInFolder = (file) => { require("node:fs").writeFileSync(${JSON.stringify(path.join(directory, "revealed-file.txt"))}, file); };
 require(${JSON.stringify(path.join(root, "dist-electron/main.cjs"))});
 `);
-const environment = { ...process.env, JIANJI_GITHUB_TOKEN: "" };
+const environment = { ...process.env, JIANJI_GITHUB_TOKEN: "client-canary-must-not-be-used", JIANJI_FEEDBACK_URL: `http://127.0.0.1:${relayPort}` };
 delete environment.ELECTRON_RUN_AS_NODE;
 delete environment.JIANJI_DEV_SERVER_URL;
 let processLog = "";
@@ -126,11 +132,8 @@ try {
   await click("反馈问题");
   await waitFor("document.querySelector('dialog').open");
   assert.equal(await evaluate("document.querySelector('.feedback-dialog button.button.primary').disabled"), true);
-  await fill("feedback-token", "fixture-github-secret");
-  await click("保存 Token");
-  await waitFor("document.querySelector('.feedback-settings summary').innerText.includes('已配置')");
-  assert.equal(await evaluate("document.getElementById('feedback-token').value"), "");
-  assert.ok(!(await evaluate("JSON.stringify(await window.jianji.feedbackStatus())")).includes("fixture-github-secret"));
+  assert.equal(await evaluate("Boolean(document.querySelector('#feedback-token'))"), false);
+  assert.equal(await evaluate("'configureFeedback' in window.jianji || 'feedbackStatus' in window.jianji"), false);
   const description = "点击导出后无响应 token=private-description /home/private/video.mp4";
   await fill("feedback-description", description, "HTMLTextAreaElement");
   const { root: documentNode } = await send("DOM.getDocument");
@@ -142,7 +145,7 @@ try {
   const screenshot = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(directory, "feedback-form.png"), Buffer.from(screenshot.data, "base64"));
   await click("提交到 GitHub");
-  await waitFor("document.querySelector('dialog').innerText.includes('GitHub 拒绝访问')");
+  await waitFor("document.querySelector('dialog').innerText.includes('反馈服务暂时无法确认')");
   assert.equal(await evaluate("document.querySelector('dialog').innerText.includes('fixture-github-secret')"), false);
   assert.equal(await evaluate("document.getElementById('feedback-description').value"), description);
   await click("重试 / 核对提交");
@@ -151,6 +154,7 @@ try {
   assert.ok(!JSON.stringify(posts).includes("private-description"));
   assert.ok(!JSON.stringify(posts).includes("/home/private"));
   assert.ok(!JSON.stringify(posts).includes(imageBase64));
+  assert.ok(posts[1].body.includes("https://feedback.example.test/api/feedback/"));
   const id = posts[1].body.match(/bug-feedback-id:([a-f0-9-]+)/)[1];
   const input = { feedbackId: id, description, page: "connection", screenshot: { contentType: "image/png", dataBase64: imageBase64 } };
   assert.equal((await evaluate(`await window.jianji.submitFeedback(${JSON.stringify(input)})`)).issueNumber, 42);
@@ -160,6 +164,9 @@ try {
   await click("打开截图所在文件夹");
   const localImage = await readFile(path.join(directory, "revealed-file.txt"), "utf8");
   assert.equal((await readFile(localImage)).toString("base64"), imageBase64);
+  const publishedImage = await fetch(`http://127.0.0.1:${relayPort}/api/feedback/${id}/screenshot`);
+  assert.equal(publishedImage.status, 200);
+  assert.equal(Buffer.from(await publishedImage.arrayBuffer()).toString("base64"), imageBase64);
   const receiptImage = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(directory, "feedback-receipt.png"), Buffer.from(receiptImage.data, "base64"));
   await evaluate("document.querySelector('button[aria-label=\"关闭问题反馈\"]').click()");
@@ -169,7 +176,7 @@ try {
   await fill("feedback-description", "结果不明后的重启恢复检查", "HTMLTextAreaElement");
   dropNext = true;
   await click("提交到 GitHub");
-  await waitFor("document.querySelector('dialog').innerText.includes('提交结果尚未确认')");
+  await waitFor("document.querySelector('dialog').innerText.includes('反馈服务暂时无法确认')");
   assert.equal(posts.length, 3);
   socket.close();
   const exited = once(child, "exit"); child.kill("SIGKILL"); await exited;
@@ -198,9 +205,10 @@ try {
   await click("打开截图所在文件夹");
   assert.equal(await readFile(path.join(directory, "revealed-file.txt"), "utf8"), localImage);
   assert.deepEqual(exceptions, []);
-  console.log(JSON.stringify({ status: "PASS", github: "local fixture only", posts: posts.length, screenshotDirectory: directory, runtimeExceptions: exceptions }, null, 2));
+  console.log(JSON.stringify({ status: "PASS", relay: "real local service", github: "local fixture only", posts: posts.length, screenshotDirectory: directory, runtimeExceptions: exceptions }, null, 2));
 } catch (error) { console.error(processLog.slice(-2000)); throw error; }
 finally {
   socket?.close(); child.kill("SIGKILL");
+  relay.closeAllConnections(); await new Promise((resolve) => relay.close(resolve));
   server.closeAllConnections(); await new Promise((resolve) => server.close(resolve));
 }

@@ -2,13 +2,10 @@
 .feedback-dialog::backdrop{background:#152a3b66}
 .feedback-heading{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
 .feedback-heading h2{margin:6px 0 0;font-size:24px}
-.feedback-intro,.feedback-settings p,.feedback-image p,.feedback-privacy{font-size:12px;line-height:1.8;color:#627079;overflow-wrap:anywhere}
+.feedback-intro,.feedback-image p,.feedback-privacy{font-size:12px;line-height:1.8;color:#627079;overflow-wrap:anywhere}
 .feedback-intro{margin-bottom:16px}
-.feedback-settings{padding:12px 14px;background:#f5f8f7;border:1px solid #e2eae7;border-radius:10px;margin-bottom:18px}
 .feedback-dialog summary{cursor:pointer;font-size:13px;font-weight:600}
-.feedback-settings p{margin-top:10px}
-.feedback-token{display:grid;gap:8px;margin-top:12px}
-.feedback-dialog input[type=password],.feedback-dialog textarea{display:block;width:100%;border:1px solid #dce4e1;border-radius:8px;padding:10px 12px;background:#fff;color:inherit}
+.feedback-dialog textarea{display:block;width:100%;border:1px solid #dce4e1;border-radius:8px;padding:10px 12px;background:#fff;color:inherit}
 .feedback-dialog textarea{resize:vertical;min-height:100px;max-height:240px;line-height:1.7}
 .feedback-label{display:flex;justify-content:space-between;gap:12px;font-size:13px;font-weight:600;margin:16px 0 9px}
 .feedback-label span{font-size:11px;font-weight:400;color:#78838d}
