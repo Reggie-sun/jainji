@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { LIBRARY_ASSETS, LIBRARY_STICKERS, LIBRARY_LICENSES, type LibraryAsset, type LibraryAssetPreview } from "../shared/asset-library.js";
-import { CORNERS, type DecorationOptions } from "../shared/decorations.js";
+import { CORNERS, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
+import { fingerprintFile } from "./paths.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
@@ -21,7 +22,7 @@ export function decorationFontFamilies(options: DecorationOptions): string[] {
   return options.productPrice?.trim() ? [DEFAULT_TEXT_FONT_FAMILY] : [];
 }
 
-function decorationStickerIds(options: DecorationOptions): string[] {
+export function decorationStickerIds(options: DecorationOptions): string[] {
   const stickers = Object.values(options.corners ?? {})
     .flatMap((decoration) => decoration?.type === "sticker" ? [decoration.sticker] : []);
   if (hasAutomaticCorners(options) && options.sticker !== "template" && options.sticker !== "none") stickers.push(options.sticker);
@@ -124,6 +125,10 @@ export class AssetLibrary {
   }
 
   async prepare(options: DecorationOptions, builtins: StickerAssets): Promise<StickerAssets> {
+    for (const id of decorationStickerIds(options).filter(isUploadedStickerId)) {
+      const asset = builtins[id];
+      if (!asset || await fingerprintFile(asset.assetPath) !== asset.assetFingerprint) throw new Error("上传的贴纸缺失或已变化，请重新上传。");
+    }
     for (const family of decorationFontFamilies(options)) {
       const font = [...this.entries.values()].find((entry) => entry.kind === "font" && entry.family === family);
       if (font) await this.ensure(font.id);

@@ -17,8 +17,11 @@ const output = path.join(directory, "output");
 const collectionFile = path.join(directory, "夏季新品.jianji-project.json");
 execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
 const sourceBytes = await readFile(source);
+const uploadSource = path.join(directory, "uploaded-heart.png");
+execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=red:s=64x64", "-frames:v", "1", uploadSource]);
 let requests = 0;
 let briefRequests = 0;
+let shortlistRequests = 0;
 let briefPayload;
 let failBrief = false;
 const server = createServer((request, response) => {
@@ -29,7 +32,19 @@ const server = createServer((request, response) => {
     const anthropic = request.url === "/anthropic/v1/messages";
     assert.equal(request.url, anthropic ? "/anthropic/v1/messages" : "/v1/chat/completions");
     const userContent = input.messages[anthropic ? 0 : 1].content;
-    if (typeof userContent === "string") {
+    const systemText = anthropic ? input.system : input.messages[0].content;
+    if (systemText.includes("你是视频贴纸选材师")) {
+      shortlistRequests += 1;
+      const uploadText = userContent.find(item => item.type === "text" && item.text.includes("用户上传贴纸，目录编号"))?.text;
+      assert.ok(uploadText, "automatic shortlist receives uploaded artwork with its catalog number");
+      assert.equal(userContent.filter(item => item.type === (anthropic ? "image" : "image_url")).length, 4);
+      const number = Number(uploadText.match(/目录编号 (\d+)/)[1]);
+      const text = JSON.stringify({ candidates: [number] });
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
+      return;
+    }
+    if (typeof userContent === "string" || systemText.includes("你是视频包装创意总监")) {
       assert.equal(request.headers.authorization, anthropic ? "Bearer cc-switch-fixture-key" : "Bearer local-smoke-key");
       briefRequests += 1; briefPayload = input;
       await new Promise(resolve => setTimeout(resolve, 300));
@@ -39,14 +54,17 @@ const server = createServer((request, response) => {
       response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
       return;
     }
-    assert.equal(input.messages[anthropic ? 0 : 1].content.filter((item) => item.type === (anthropic ? "image" : "image_url")).length, 3);
+    assert.equal(input.messages[anthropic ? 0 : 1].content.filter((item) => item.type === (anthropic ? "image" : "image_url")).length, 4, "three video frames plus the actual uploaded sticker image");
+    assert.equal(JSON.stringify(input).includes("用户手动选择的上传贴纸") || JSON.stringify(input).includes("贴纸候选"), true);
+    assert.equal(JSON.stringify(input).includes(directory), false, "local upload paths never reach the provider");
     assert.equal(input.model, anthropic ? "MiniMax-M3" : "smoke-vision-next", "video analysis uses the selected model");
     if (!anthropic) assert.equal(input.reasoning_effort, "high", "video analysis uses selected effort");
     assert.equal(request.headers.authorization, anthropic ? "Bearer cc-switch-fixture-key" : "Bearer local-smoke-key");
     requests += 1;
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
-    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], filter: "cool", intensity: 0.3 });
+    const automatic = systemText.includes('"stickers"');
+    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: [{ corner: "top-left", sticker: JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)[0] }] } : {}), filter: "cool", intensity: 0.3 });
     response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
   });
 });
@@ -75,7 +93,7 @@ require("node:fs").watch(${JSON.stringify(directory)}, (_event, name) => { if (n
 app.getAppPath = () => ${JSON.stringify(root)};
 app.commandLine.appendSwitch("remote-debugging-port", ${JSON.stringify(String(debugPort))});
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
-dialog.showOpenDialog = async (_window, options) => ({ canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : options.title === "打开项目" ? [${JSON.stringify(collectionFile)}] : [${JSON.stringify(source)}] });
+dialog.showOpenDialog = async (_window, options) => ({ canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : options.title === "上传贴纸" ? [${JSON.stringify(uploadSource)}] : options.title === "打开项目" ? [${JSON.stringify(collectionFile)}] : [${JSON.stringify(source)}] });
 dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(collectionFile)} });
 dialog.showMessageBox = async () => ({ response: 1 });
 require(${JSON.stringify(path.join(root, "dist-electron/main.cjs"))});
@@ -280,6 +298,20 @@ try {
   assert.equal(await evaluate("document.documentElement.scrollWidth <= window.innerWidth"), true, "1080px viewport overflows");
   await screenshot("04-compact");
   await send("Emulation.clearDeviceMetricsOverride");
+  await click("上传贴纸");
+  await waitFor("document.querySelector('.sticker-choices button[aria-pressed=true]')?.textContent.includes('我的贴纸')");
+  const uploaded = (await evaluate("window.jianji.decorationCatalog()")).stickers.filter(sticker => sticker.source === "uploaded");
+  assert.equal(uploaded.length, 1);
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.9元30贴");
+  await click("上传贴纸");
+  await waitFor("!document.body.innerText.includes('正在上传…')");
+  assert.equal((await evaluate("window.jianji.decorationCatalog()")).stickers.filter(sticker => sticker.source === "uploaded").length, 1);
+  await unlink(uploadSource);
+  await click("自动生成提示词");
+  await waitFor("!document.querySelector('.generate-brief').disabled");
+  assert.equal(briefRequests, 3);
+  assert.equal(briefPayload.messages[1].content.filter(item => item.type === "image_url").length, 1, "brief generation sees the uploaded sticker image");
+  assert.equal(JSON.stringify(briefPayload).includes(directory), false);
   await click("选择本地文件夹");
   await click("交给 Agent，制作");
   await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
@@ -292,6 +324,7 @@ try {
   assert.equal(state.agentRun.items[0].summary, "保留主体与手动价格");
   const savedJob = JSON.parse(await readFile(path.join(directory, "jobs", `${state.queue.batches[0].batch.id}.json`), "utf8"));
   assert.equal(savedJob.batch.templateSnapshot.productPrice, "19.9元30贴");
+  assert.equal(savedJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath === path.join(directory, "uploaded-stickers", `${uploaded[0].id}.png`)), true, "uploaded image survives source removal and real FFmpeg export");
   assert.deepEqual(savedJob.batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content), ["19.9元30贴"]);
   assert.deepEqual(savedJob.batch.templateSnapshot.layers.find(layer => layer.type === "text").shadow, { color: { r: 232, g: 70, b: 120, a: 1 }, xRatio: 0.004, yRatio: 0.005 }, "selected price appearance survives IPC and is frozen for retries");
   await screenshot("05-results");
@@ -354,6 +387,19 @@ try {
   assert.equal(requests, 2, "opening a saved collection never restarts model work");
   assert.deepEqual(await readFile(source), sourceBytes, "recovery leaves the original video unchanged");
   await screenshot("07-reopened-collection-unlocked");
+  await click("全部交给 Agent");
+  await waitFor("document.body.innerText.includes('上传贴纸供 Agent 选择') && document.body.innerText.includes('我的贴纸')");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '上传贴纸' && !button.disabled)"), true);
+  await evaluate("document.querySelector('.directory-picker').click()");
+  await waitFor("[...document.querySelectorAll('button')].some(button => button.textContent.includes('交给 Agent，制作') && !button.disabled)");
+  await click("交给 Agent，制作");
+  await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
+  assert.equal(shortlistRequests, 1);
+  assert.equal(requests, 3);
+  const autoState = await evaluate("window.jianji.getState()");
+  const autoBatch = autoState.queue.batches.find(batch => batch.batch.tasks.some(task => task.status === "completed"));
+  const autoJob = JSON.parse(await readFile(path.join(directory, "jobs", `${autoBatch.batch.id}.json`), "utf8"));
+  assert.equal(autoJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath.endsWith(`${uploaded[0].id}.png`)), true, "Agent-selected upload reaches real FFmpeg output");
   assert.deepEqual(exceptions, []);
   const codexPid = Number(await readFile(path.join(directory, "codex.pid"), "utf8"));
   const exit = new Promise((resolve, reject) => {
@@ -363,7 +409,7 @@ try {
   await writeFile(path.join(directory, "quit.signal"), "quit");
   assert.equal(await exit, 0);
   assert.throws(() => process.kill(codexPid, 0), { code: "ESRCH" }, "App must wait for its Codex child to exit");
-  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, briefRequests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, briefRequests, shortlistRequests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
 } catch (error) {
   console.error(processLog.slice(-3000));
   throw error;

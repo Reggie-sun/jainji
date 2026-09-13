@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } from "electron";
 import { mkdir, stat, readFile } from "node:fs/promises";
 import { FONT_CHOICES, type DecorationCatalog } from "../shared/decorations.js";
 import { pathToFileURL } from "node:url";
@@ -18,6 +18,7 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import { loadBundledStickerAssets } from "./bundled-stickers.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { AssetLibrary } from "./asset-library.js";
+import { UploadedStickers } from "./uploaded-stickers.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
@@ -44,6 +45,7 @@ let capabilities: CapabilityStatus;
 let agent: AgentController;
 let connections: ModelConnections;
 let library: AssetLibrary;
+let uploadedStickers: UploadedStickers;
 let stickerAssets: StickerAssets;
 let quitting = false;
 let closingPrompt = false;
@@ -84,6 +86,21 @@ function publish(snapshot: QueueSnapshot): void {
 
 function registerHandlers(): void {
   registerBugFeedbackHandlers(assertTrustedSender);
+  ipcMain.handle("decorations.import", async (event) => {
+    assertTrustedSender(event);
+    agent.assertIdle();
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: "上传贴纸", properties: ["openFile"],
+      filters: [{ name: "静态贴纸图片", extensions: ["png", "jpg", "jpeg"] }],
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    agent.assertIdle();
+    try {
+      const imported = await uploadedStickers.importFile(result.filePaths[0]);
+      Object.assign(stickerAssets, { [imported.id]: imported.asset });
+      return imported.id;
+    } catch { throw new Error("贴纸上传失败，请选择有效的 PNG/JPG 静态图片（10 MB 以内、宽高不超过 4096 像素），并检查磁盘空间。"); }
+  });
   ipcMain.handle("library.asset", async (event, input: unknown) => {
     assertTrustedSender(event);
     const id = z.string().min(1).max(100).parse(input);
@@ -106,7 +123,7 @@ function registerHandlers(): void {
       if (!asset) throw new Error(`missing bundled sticker: ${id}`);
       return { id, label, animated, source, url: `data:${mimeType};base64,${(await readFile(asset.assetPath)).toString("base64")}` };
     }));
-    return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers };
+    return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers: [...stickers, ...await uploadedStickers.catalog()] };
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
   ipcMain.handle("connection.save", async (event, input: unknown) => {
@@ -363,7 +380,13 @@ async function bootstrap(): Promise<void> {
   const bundledDirectory = app.isPackaged
     ? path.join(process.resourcesPath, "stickers", "downloaded")
     : path.join(app.getAppPath(), "resources", "stickers", "downloaded");
-  stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory) };
+  uploadedStickers = new UploadedStickers(path.join(userData, "uploaded-stickers"), (bytes) => {
+    const image = nativeImage.createFromBuffer(bytes);
+    const { width, height } = image.getSize();
+    if (image.isEmpty() || width > 4096 || height > 4096) throw new Error("无效或过大的图片。");
+    return image.toPNG();
+  });
+  stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider);

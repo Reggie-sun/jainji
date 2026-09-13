@@ -8,14 +8,18 @@ const PAGE_SIZE = 24;
 type PreviewState = "loading" | "error";
 type PreviewRequest = { asset: LibraryAsset; epoch: number };
 
-export function DecorationPicker({ value, onChange, disabled }: { value: DecorationOptions; onChange(value: DecorationOptions): void; disabled: boolean }) {
+export function DecorationPicker({ value, onChange, disabled, automatic = false }: { value: DecorationOptions; onChange(value: DecorationOptions): void; disabled: boolean; automatic?: boolean }) {
   const [catalog, setCatalog] = useState<DecorationCatalog>();
   const [catalogError, setCatalogError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [previewStates, setPreviewStates] = useState<Record<string, PreviewState>>({});
   const mounted = useRef(true);
+  const latest = useRef({ value, onChange, disabled });
+  latest.current = { value, onChange, disabled };
   const previewUrlsRef = useRef<Record<string, string>>({});
   const previewPending = useRef(new Set<string>());
   const previewQueue = useRef<{ active: number; entries: PreviewRequest[] }>({ active: 0, entries: [] });
@@ -67,9 +71,10 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
   }, []);
 
   const filteredStickers = useMemo(() => {
+    if (automatic) return [];
     const query = search.trim().toLocaleLowerCase();
     return query ? CURATED_STICKERS.filter((asset) => `${asset.label} ${asset.searchTerms}`.toLocaleLowerCase().includes(query)) : CURATED_STICKERS;
-  }, [search]);
+  }, [search, automatic]);
   const pageCount = Math.max(1, Math.ceil(filteredStickers.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount - 1);
   const pageStickers = useMemo(() => filteredStickers.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE), [currentPage, filteredStickers]);
@@ -98,10 +103,31 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
     ?? CURATED_STICKERS.find((asset) => asset.id === value.sticker)?.label
     ?? LIBRARY_STICKERS.find((asset) => asset.id === value.sticker)?.label;
 
+  const importSticker = async () => {
+    if (disabled || importing) return;
+    setImporting(true);
+    setImportError("");
+    try {
+      const id = await window.jianji.importSticker();
+      if (!id || !mounted.current) return;
+      const next = await window.jianji.decorationCatalog();
+      if (!mounted.current) return;
+      setCatalog(next);
+      setCatalogError("");
+      if (!automatic && !latest.current.disabled) latest.current.onChange({ ...latest.current.value, sticker: id });
+    } catch {
+      if (mounted.current) setImportError("上传失败，请选择有效的 PNG/JPG 图片（10 MB 以内、宽高不超过 4096 像素），并检查磁盘空间后重试。");
+    } finally { if (mounted.current) setImporting(false); }
+  };
+
   return <section className="decoration-picker card" aria-label="贴纸">
-    <h2>选择贴纸</h2><p>选择后应用到本轮每条视频的对应内容。</p>
+    <h2>{automatic ? "上传贴纸供 Agent 选择" : "选择贴纸"}</h2><p>{automatic ? "上传后加入贴纸库，Agent 会看图并按画面需要选用，也可以留空。" : "选择后应用到本轮每条视频的对应内容。"}</p>
+    <button type="button" className="button secondary" disabled={disabled || importing} onClick={() => void importSticker()}>{importing ? "正在上传…" : "上传贴纸"}</button>
+    <p>支持 PNG、JPG 静态图片，最大 10 MB、宽高不超过 4096 像素。制作和生成提示词时，{automatic ? "上传库中的" : "手动选中的"}贴纸图片会发送给当前模型用于搭配。上传图案与自带文字由你负责。</p>
+    {importError && <p role="alert">{importError}</p>}
     {catalogError && <p role="alert">{catalogError}</p>}
-    <fieldset disabled={disabled || !catalog}><legend>本地贴纸库</legend><div className="sticker-choices">
+    {automatic ? <div className="sticker-choices">{catalog?.stickers.filter((sticker) => sticker.source === "uploaded").map((sticker) => <div className="library-sticker-choice" key={sticker.id}><img src={sticker.url} alt="" /><span>{sticker.label}</span></div>)}</div> : <>
+    <fieldset disabled={disabled || importing || !catalog}><legend>本地贴纸库</legend><div className="sticker-choices">
       {(["template", "none"] as const).map((id) => <button type="button" key={id} aria-pressed={value.sticker === id} onClick={() => onChange({ ...value, sticker: id })}>{id === "template" ? "跟随模板" : "不加贴纸"}</button>)}
       {catalog?.stickers.map((sticker) => <button type="button" key={sticker.id} aria-pressed={value.sticker === sticker.id} title={sticker.source === "downloaded" ? "本地下载素材，仅供个人练习" : undefined} onClick={() => onChange({ ...value, sticker: sticker.id })}><img src={sticker.url} alt="" /><span>{sticker.label}</span></button>)}
     </div></fieldset>
@@ -114,5 +140,6 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
     {!pageStickers.length && <p className="library-empty">没有匹配的贴纸。</p>}
     <div className="library-pagination" aria-label="贴纸分页"><button type="button" disabled={disabled || currentPage === 0} onClick={() => setPage((current) => current - 1)}>上一页</button><span>{currentPage + 1} / {pageCount}</span><button type="button" disabled={disabled || currentPage >= pageCount - 1} onClick={() => setPage((current) => current + 1)}>下一页</button></div>
     <p className="library-license">本地下载中文贴纸仅供个人练习，授权以原下载页和账户权益为准；在线贴纸来源：<a href="https://github.com/microsoft/fluentui-emoji" target="_blank" rel="noreferrer">Microsoft Fluent Emoji</a>（<a href="https://github.com/microsoft/fluentui-emoji/blob/main/LICENSE" target="_blank" rel="noreferrer">MIT License</a>）。</p>
+    </>}
   </section>;
 }

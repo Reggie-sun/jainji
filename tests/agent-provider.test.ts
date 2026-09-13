@@ -169,6 +169,37 @@ describe("agent provider boundary", () => {
     expect(JSON.stringify(messages)).not.toContain("fontFamily");
   });
 
+  it("sends actual uploaded sticker images for manual planning and brief generation", async () => {
+    const request = vi.fn().mockResolvedValueOnce(reply(JSON.stringify({ summary: "搭配上传贴纸", captions: [], filter: "cool", intensity: 0.3 }))).mockResolvedValueOnce(reply("保留用户贴纸，使用清爽滤镜。"));
+    const provider = new AgentProvider(request);
+    provider.configure(connection);
+    const previews = [{ id: `uploaded-${"a".repeat(64)}`, url: "data:image/jpeg;base64,c3RpY2tlcg==" }];
+    await provider.plan("clean", "", ["data:image/jpeg;base64,dmlkZW8="], new AbortController().signal, undefined, undefined, previews);
+    await provider.generateBrief({ ruleId: "clean", decorations: { sticker: previews[0].id } }, new AbortController().signal, previews);
+    for (const call of request.mock.calls) {
+      const messages = JSON.parse(call[1].body).messages;
+      expect(messages[1].content).toContainEqual({ type: "image_url", image_url: { url: previews[0].url, detail: "low" } });
+      expect(JSON.stringify(messages)).toContain("用户手动选择的上传贴纸");
+      expect(JSON.stringify(messages)).toContain("不能自行替换");
+      expect(JSON.stringify(messages)).not.toContain("assetPath");
+    }
+  });
+
+  it("lets automatic selection see and choose locally cataloged uploads, including user-supplied text", async () => {
+    const id = `uploaded-${"b".repeat(64)}`;
+    const preview = { id, url: "data:image/jpeg;base64,dXBsb2Fk" };
+    const catalog = { fonts: [], stickers: [{ id, label: "用户上传的文字贴纸" }], previews: [preview] };
+    const request = vi.fn().mockResolvedValueOnce(reply('{"candidates":[1]}')).mockResolvedValueOnce(reply(JSON.stringify({ summary: "选用用户上传", captions: [], stickers: [{ corner: "top-left", sticker: id }], filter: "cool", intensity: 0.3 })));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    expect(await provider.shortlist("clean", "", [], new AbortController().signal, catalog)).toEqual([id]);
+    await provider.plan("clean", "", [], new AbortController().signal, catalog);
+    for (const call of request.mock.calls) {
+      const messages = JSON.parse(call[1].body).messages;
+      expect(messages[1].content).toContainEqual({ type: "image_url", image_url: { url: preview.url, detail: "low" } });
+      expect(messages[0].content).toContain("明确例外");
+    }
+  });
+
   it("rejects invalid brief responses and insecure connection URLs", async () => {
     for (const response of ["", "\u0000", "x".repeat(1001)]) {
       const provider = new AgentProvider(vi.fn().mockResolvedValue(reply(response)));
