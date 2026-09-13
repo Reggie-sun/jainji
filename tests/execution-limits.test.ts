@@ -14,8 +14,8 @@ describe("hardware execution limits", () => {
     expect(expected.threads).toBe(cores);
   });
 
-  it("uses up to four GPU export slots without multiplying CPU software exports", () => {
-    expect(executionLimits(20, "h264_nvenc")).toEqual({ exports: 4, analysis: 8, threads: 20 });
+  it("uses up to six GPU export slots without multiplying CPU software exports", () => {
+    expect(executionLimits(20, "h264_nvenc")).toEqual({ exports: 6, analysis: 8, threads: 20 });
     expect(executionLimits(2, "h264_nvenc").exports).toBe(2);
     expect(executionLimits(20, "libx264").exports).toBe(1);
   });

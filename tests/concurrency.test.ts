@@ -126,20 +126,20 @@ describe("global export concurrency", () => {
     }
   });
 
-  it("uses four NVENC export slots and forwards the hardware encoder to the compiler", async () => {
+  it("uses six NVENC export slots and forwards the hardware encoder to the compiler", async () => {
     const f = await queueFixture(20);
-    const batch = await f.batch(5);
+    const batch = await f.batch(7);
     const running = f.queue.start(batch.id);
-    await vi.waitFor(() => expect(f.commands).toHaveLength(4));
-    expect(f.compile.mock.calls.map((call) => call[3].threads)).toEqual(Array(4).fill(5));
-    expect(f.compile.mock.calls.map((call) => call[3].videoEncoder)).toEqual(Array(4).fill("h264_nvenc"));
+    await vi.waitFor(() => expect(f.commands).toHaveLength(6));
+    expect(f.compile.mock.calls.map((call) => call[3].threads)).toEqual(Array(6).fill(3));
+    expect(f.compile.mock.calls.map((call) => call[3].videoEncoder)).toEqual(Array(6).fill("h264_nvenc"));
     await f.commands[0].finish();
-    await vi.waitFor(() => expect(f.commands).toHaveLength(5));
-    expect(f.compile.mock.calls[4][3].threads).toBe(5);
-    expect(f.compile.mock.calls[4][3].videoEncoder).toBe("h264_nvenc");
+    await vi.waitFor(() => expect(f.commands).toHaveLength(7));
+    expect(f.compile.mock.calls[6][3].threads).toBe(3);
+    expect(f.compile.mock.calls[6][3].videoEncoder).toBe("h264_nvenc");
     await Promise.all(f.commands.slice(1).map((command) => command.finish()));
     await running;
-    expect(f.peak()).toBe(4);
+    expect(f.peak()).toBe(6);
     expect(f.queue.snapshot().batches[0].batch.tasks.every((task) => task.status === "completed")).toBe(true);
   });
 
@@ -158,24 +158,27 @@ describe("global export concurrency", () => {
     expect(f.peak()).toBe(1);
   });
 
-  it("gives sparse work more threads and reuses the budget as new batches arrive", async () => {
+  it("keeps CPU budget available so progressive GPU arrivals fill every slot", async () => {
     const f = await queueFixture(20);
+    const slots = limits.executionLimits(20, "h264_nvenc").exports;
     const first = await f.batch();
+    const batches = [first];
     const running = f.queue.start(first.id);
     await vi.waitFor(() => expect(f.commands).toHaveLength(1));
-    expect(f.compile.mock.calls[0][3].threads).toBe(8);
-    const second = await f.batch(2);
-    await f.queue.start(second.id);
-    await vi.waitFor(() => expect(f.commands).toHaveLength(3));
-    expect(f.compile.mock.calls.map((call) => call[3].threads)).toEqual([8, 6, 6]);
-    const third = await f.batch();
-    await f.queue.start(third.id);
-    expect(f.commands).toHaveLength(3);
-    await f.queue.hydrate([first, second, third]);
-    expect(f.queue.snapshot().batches.flatMap(({ batch }) => batch.tasks).map((task) => task.status)).toEqual(["running", "running", "running", "queued"]);
+    for (let index = 1; index < slots; index++) {
+      const next = await f.batch();
+      batches.push(next);
+      await f.queue.start(next.id);
+      await vi.waitFor(() => expect(f.commands).toHaveLength(index + 1));
+    }
+    expect(f.compile.mock.calls.reduce((sum, call) => sum + call[3].threads!, 0)).toBeLessThanOrEqual(20);
+    const waiting = await f.batch();
+    await f.queue.start(waiting.id);
+    expect(f.commands).toHaveLength(slots);
+    await f.queue.hydrate([...batches, waiting]);
+    expect(f.queue.snapshot().batches.flatMap(({ batch }) => batch.tasks).map((task) => task.status)).toEqual([...Array(slots).fill("running"), "queued"]);
     await f.commands[0].finish();
-    await vi.waitFor(() => expect(f.commands).toHaveLength(4));
-    expect(f.compile.mock.calls[3][3].threads).toBe(8);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(slots + 1));
     await Promise.all(f.commands.slice(1).map((command) => command.finish()));
     await running;
     expect(f.queue.snapshot().batches.flatMap(({ batch }) => batch.tasks).every((task) => task.status === "completed")).toBe(true);

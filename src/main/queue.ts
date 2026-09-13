@@ -200,9 +200,10 @@ export class ExportQueue {
         if (task.status !== "queued" || this.activeTasks.has(task.id)) continue;
         const freeThreads = this.limits.threads - [...this.activeTasks.values()].reduce((sum, active) => sum + active.threads, 0);
         if (freeThreads <= 0) return;
-        const waiting = [...this.pendingStarts].reduce((sum, id) => sum + this.states.get(id)!.batch.tasks.filter((candidate) => candidate.status === "queued" && !this.activeTasks.has(candidate.id)).length, 0);
-        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / 2)));
-        const threads = Math.max(1, Math.min(maxThreads, Math.floor(freeThreads / Math.min(waiting, this.limits.exports - this.activeTasks.size))));
+        // Reserve a fair CPU share for later GPU jobs, which arrive progressively
+        // while the Agent is planning; early exports must not consume all slots' budget.
+        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.videoEncoder === "h264_nvenc" ? this.limits.exports : 2))));
+        const threads = Math.min(maxThreads, freeThreads);
         const work = this.execute(state, task, threads).catch((error: unknown) => {
           this.executionError ??= error;
         }).finally(() => {

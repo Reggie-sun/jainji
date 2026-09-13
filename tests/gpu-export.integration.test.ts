@@ -39,16 +39,16 @@ it("exports price, sticker and audio through real NVENC and verifies the publish
       fontResolver: { resolve: resolveFont }, jobStore: new JobStore(path.join(directory, "jobs")),
     });
     const batch = await queue.createBatch({
-      projectId: service.currentProject.id, template, mediaIds: Array(4).fill(media.id), mediaItems: [media],
+      projectId: service.currentProject.id, template, mediaIds: Array(6).fill(media.id), mediaItems: [media],
       outputDirectory: path.join(directory, "out"), preset: { ...DEFAULT_PRESET, resolutionMode: "source" },
     });
     await queue.start(batch.id);
-    expect(run).toHaveBeenCalledTimes(4);
+    expect(run).toHaveBeenCalledTimes(6);
     for (const [args] of run.mock.calls) expect(args[args.indexOf("-c:v") + 1]).toBe("h264_nvenc");
     const tasks = queue.snapshot().batches[0].batch.tasks;
-    expect(tasks.map((task) => task.errorMessage)).toEqual(Array(4).fill(undefined));
-    expect(tasks.map((task) => task.status)).toEqual(Array(4).fill("completed"));
-    expect(new Set(tasks.map((task) => task.outputPath)).size).toBe(4);
+    expect(tasks.map((task) => task.errorMessage)).toEqual(Array(6).fill(undefined));
+    expect(tasks.map((task) => task.status)).toEqual(Array(6).fill("completed"));
+    expect(new Set(tasks.map((task) => task.outputPath)).size).toBe(6);
     for (const task of tasks) {
       expect(task.outputArtifact?.durationMs).toBeGreaterThanOrEqual(1900);
       const output = await adapter.probe(task.outputPath!);

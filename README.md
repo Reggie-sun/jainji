@@ -26,7 +26,7 @@ Windows 与 Linux 使用相同命令。开发启动器自动分配本地端口�
 
 ## Local Engine
 
-目前安装包不内置 FFmpeg。两平台均需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg。应用启动时实际试编码，优先选择可用的 NVIDIA `h264_nvenc`；不可用时使用 `libx264`。GPU 最多并行 4 条导出，CPU 软件编码最多 1 条；文字、贴纸与滤镜合成仍使用 CPU，单条 CPU 导出可以使用多个线程。
+目前安装包不内置 FFmpeg。两平台均需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg。应用启动时实际试编码，优先选择可用的 NVIDIA `h264_nvenc`；不可用时使用 `libx264`。GPU 最多并行 6 条导出，且不超过可用 CPU 核数；CPU 软件编码最多 1 条。文字、贴纸与滤镜合成仍使用 CPU，单条 CPU 导出可以使用多个线程。GPU 每条任务的 CPU 线程上限按总预算与并发槽位均分，避免早到的任务耗尽预算；20 核机器最多 6 路、每路 3 线程。这是批量吞吐策略，少量任务不保证单条更快，也不代表所有硬件和素材的最优并发。
 
 引擎查找顺序为：`JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH` 显式指定的路径、应用用户目录下的 `tools/ffmpeg/bin/`、系统 `PATH`。Linux 默认用户目录为 `~/.config/jianji`，Windows 为 `%APPDATA%/jianji`；本地安装应同时放入 `ffmpeg` 和 `ffprobe`（Windows 使用 `.exe`），保留构建的许可证文件。这样可以为简辑单独安装含 NVENC 的引擎，不替换其他环境里的 FFmpeg。
 
