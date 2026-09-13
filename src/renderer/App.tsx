@@ -30,7 +30,7 @@ export default function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [rule, setRule] = useState<RuleId>("black-gold");
-  const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({}));
+  const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({ mode: "agent" }));
   const [selectedCorner, setSelectedCorner] = useState<Corner>();
   const [requestedCount, setRequestedCount] = useState<number>();
   const [brief, setBrief] = useState("");

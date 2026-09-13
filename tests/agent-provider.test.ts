@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentProvider, materializePlan, validatePlan } from "../src/main/agent-provider";
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
+import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
@@ -12,6 +13,47 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("spreads concurrent shortlist starting points across the eligible directory", async () => {
+    const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1,2,3,4,5,6,7,8,9,10,11,12]}'));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    const catalog = { fonts: [], stickers: AUTOMATIC_STICKERS.slice(0, 48) };
+    const choices = await Promise.all(Array.from({ length: 4 }, (_, outputIndex) => provider.shortlist("clean", "", [], new AbortController().signal, catalog, { outputIndex, totalOutputs: 4, stickerUsage: [] })));
+    expect(new Set(choices.flat()).size).toBe(48);
+    expect(catalog.stickers).toEqual(AUTOMATIC_STICKERS.slice(0, 48));
+  });
+
+  it("carries the same distinct visual direction through selection and design before usage exists", async () => {
+    const request = vi.fn().mockImplementation(async (_url, init) => reply(JSON.parse(init.body).messages[0].content.includes("你是视频贴纸选材师") ? '{"candidates":[1]}' : JSON.stringify(autoPlan)));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    const directions: string[] = [];
+    for (let outputIndex = 0; outputIndex < 4; outputIndex++) {
+      const selection = { outputIndex, totalOutputs: 4, stickerUsage: [] };
+      await provider.shortlist("black-gold", "", [], new AbortController().signal, autoCatalog, selection);
+      await provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog, selection);
+      const systems = request.mock.calls.slice(-2).map((call) => JSON.parse(call[1].body).messages[0].content as string);
+      const direction = systems[0].match(/本条视觉探索方向：([^。]+)。/)?.[1];
+      expect(direction).toBeTruthy();
+      expect(systems[1]).toContain(`本条视觉探索方向：${direction}。`);
+      expect(systems[1]).toContain("不是固定方案");
+      directions.push(direction!);
+    }
+    expect(new Set(directions).size).toBe(4);
+  });
+
+  it("cycles small catalogs for larger batches and preserves empty and single-output selection", async () => {
+    const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1]}'));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    const choices = [];
+    for (let outputIndex = 0; outputIndex < 5; outputIndex++) {
+      choices.push(await provider.shortlist("clean", "", [], new AbortController().signal, autoCatalog, { outputIndex, totalOutputs: 5, stickerUsage: [] }));
+    }
+    expect(choices).toEqual([["heart"], ["sparkle"], ["heart"], ["sparkle"], ["heart"]]);
+    await provider.shortlist("clean", "", [], new AbortController().signal, autoCatalog, { outputIndex: 0, totalOutputs: 1, stickerUsage: [] });
+    expect(JSON.parse(request.mock.calls.at(-1)![1].body).messages[0].content).not.toContain("本条视觉探索方向");
+    request.mockResolvedValueOnce(reply('{"candidates":[]}'));
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, { fonts: [], stickers: [] }, { outputIndex: 0, totalOutputs: 4, stickerUsage: [] })).resolves.toEqual([]);
+  });
+
   it("rotates eligible candidates despite forbidden entries and maps usage to current numbers", async () => {
     const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1]}'));
     const provider = new AgentProvider(request); provider.configure(connection);

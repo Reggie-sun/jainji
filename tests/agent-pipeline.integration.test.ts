@@ -70,9 +70,16 @@ describe("agent to local export", () => {
       if (mode === "agent") {
         const systems = finalRequests.map((request) => request.messages[0].content as string);
         expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));
+        const directions = systems.map((system) => system.match(/本条视觉探索方向：([^。]+)。/)?.[1]);
+        expect(directions.every(Boolean)).toBe(true);
+        expect(new Set(directions).size).toBe(4);
+        const shortlistDirections = requests.filter((request) => !finalRequests.includes(request))
+          .map((request) => (request.messages[0].content as string).match(/本条视觉探索方向：([^。]+)。/)?.[1]);
+        expect(new Set(shortlistDirections)).toEqual(new Set(directions));
         expect(systems.every((system) => !system.includes('"sticker":"arrow"') && !system.includes("清透色彩配轻箭头贴纸"))).toBe(true);
       } else {
         expect(requests.every((request) => !(request.messages[0].content as string).includes("当前为同批第"))).toBe(true);
+        expect(requests.every((request) => !(request.messages[0].content as string).includes("本条视觉探索方向"))).toBe(true);
       }
       for (const request of requests) {
         const content = request.messages[1].content;

@@ -240,6 +240,7 @@ try {
   assert.equal(await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').value"), "尚未保存的新名称");
   await screenshot("02-materials");
   await click("下一步");
+  assert.equal(await evaluate("[...document.querySelectorAll('.corner-tabs button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "true", "price-only workflow defaults to automatic decoration");
   assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12);
   assert.equal(await evaluate("document.body.innerText.includes('贴纸 · 青色箭头') && document.body.innerText.includes('滤镜 · 清透')"), true);
   await click("清爽日常");
