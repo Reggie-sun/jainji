@@ -94,6 +94,7 @@ export class TemplateCompiler {
     const template = EditTemplateSchema.parse(templateInput);
     assertPriceOnlyTemplate(template);
     const textFiles: TextFile[] = [];
+    const durationSeconds = Math.max(0.01, media.durationMs / 1000);
     // FFmpeg enables autorotation by default; omitting the legacy flag keeps compatibility
     // with system builds that parse it as an input option requiring a value.
     const threadArgs = options.threads === undefined ? [] : ["-threads", String(options.threads)];
@@ -140,9 +141,9 @@ export class TemplateCompiler {
         continue;
       }
 
-      // stream_loop works for both still images and animated GIFs. The output -t
-      // remains the single duration owner, so sticker streams cannot extend a job.
-      args.push(...threadArgs, "-stream_loop", "-1", "-i", layer.assetPath);
+      // Bound looping inputs too: output -t alone can leave sticker decoding
+      // running and buffering indefinitely when the main video reaches EOF.
+      args.push(...threadArgs, "-t", durationSeconds.toFixed(3), "-stream_loop", "-1", "-i", layer.assetPath);
       const stickerIndex = inputIndex;
       inputIndex += 1;
       const sourceLabel = `sticker${stickerIndex}src`;
@@ -189,7 +190,7 @@ export class TemplateCompiler {
       "-filter_complex", graph.join(";"),
       "-map", "[vout]",
       "-map", "0:a?",
-      "-t", Math.max(0.01, media.durationMs / 1000).toFixed(3),
+      "-t", durationSeconds.toFixed(3),
       ...videoEncodingArgs(options.videoEncoder ?? "libx264", preset.quality),
       ...threadArgs,
       "-pix_fmt", "yuv420p",
@@ -203,7 +204,7 @@ export class TemplateCompiler {
       "-nostats",
     );
 
-    return { binary: options.ffmpegPath, args, textFiles, durationSeconds: Math.max(0.01, media.durationMs / 1000) };
+    return { binary: options.ffmpegPath, args, textFiles, durationSeconds };
   }
 }
 
