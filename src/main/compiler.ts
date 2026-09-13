@@ -156,8 +156,14 @@ export class TemplateCompiler {
       const stickerScale = governed
         ? `${stickerWidth}:${Math.max(1, Math.round(dimensions.height * CORNER_SAFE_POLICY.maxStickerHeight))}:force_original_aspect_ratio=decrease`
         : `${stickerWidth}:-1`;
+      const radians = Math.PI * layer.rotationDeg / 180;
+      // Keep twice the final rotated width for smooth edges, without enlarging small inputs.
+      const resizeRatio = `min(1,${stickerWidth * 2}/(iw*${Math.abs(Math.cos(radians)).toFixed(6)}+ih*${Math.abs(Math.sin(radians)).toFixed(6)}))`;
+      // Very thin inputs must not round a scaled dimension down to zero.
+      const preScale = layer.rotationDeg === 0 ? "" :
+        `scale=w='if(lt(min(iw,ih)*${resizeRatio},2),iw,ceil(iw*${resizeRatio}))':h=-1,`;
       graph.push(
-        `[${stickerIndex}:v]format=rgba,` +
+        `[${stickerIndex}:v]${preScale}format=rgba,` +
         `rotate=${angle}:c=none:ow=rotw(${angle}):oh=roth(${angle}),` +
         `scale=${stickerScale},` +
         `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=PTS-STARTPTS[${sourceLabel}]`,
