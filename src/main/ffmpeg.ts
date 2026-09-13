@@ -1,9 +1,10 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, constants } from "node:fs/promises";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 import { FONT_CHOICES } from "../shared/decorations.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import { binaryCandidates, windowsFontCandidates } from "./platform.js";
+import { selectH264Encoder, type H264Encoder } from "./video-encoder.js";
 
 export interface CommandResult {
   code: number;
@@ -101,6 +102,7 @@ export interface CapabilityStatus {
   drawtext: boolean;
   overlay: boolean;
   h264Encoder: boolean;
+  videoEncoder?: H264Encoder;
   aacEncoder: boolean;
   fonts: boolean;
   appDataWritable: boolean;
@@ -116,13 +118,34 @@ async function executable(command: string): Promise<string | null> {
   return null;
 }
 
-export async function discoverBinary(name: "ffmpeg" | "ffprobe"): Promise<string | null> {
+export async function discoverBinary(name: "ffmpeg" | "ffprobe", appDataDirectory?: string): Promise<string | null> {
   const override = name === "ffmpeg" ? process.env.JIANJI_FFMPEG_PATH : process.env.JIANJI_FFPROBE_PATH;
-  return executable(override || name);
+  if (override) return executable(override);
+  if (appDataDirectory) {
+    const local = await executable(join(appDataDirectory, "tools", "ffmpeg", "bin", process.platform === "win32" ? `${name}.exe` : name));
+    if (local) return local;
+  }
+  return executable(name);
+}
+
+async function fontsAvailable(fontResolver: (family: string) => Promise<string | null>): Promise<boolean> {
+  return (await Promise.all([...FONT_CHOICES, ...LIBRARY_FONTS.map((entry) => entry.family!)].map(fontResolver))).some(Boolean);
+}
+
+function updateReadiness(status: CapabilityStatus): CapabilityStatus {
+  status.ready = status.ffmpeg && status.ffprobe && status.drawtext && status.overlay && status.h264Encoder && status.aacEncoder && status.fonts && status.appDataWritable;
+  if (status.ready) status.message = undefined;
+  else status.message ??= "本机 FFmpeg 能力不完整，导出入口已锁定。";
+  return status;
+}
+
+/** Adding a font must not reselect the engine already captured by the export queue. */
+export async function refreshFontCapabilities(status: CapabilityStatus, fontResolver: (family: string) => Promise<string | null>): Promise<CapabilityStatus> {
+  return updateReadiness({ ...status, fonts: await fontsAvailable(fontResolver) });
 }
 
 export async function checkCapabilities(appDataDirectory: string, fontResolver: (family: string) => Promise<string | null> = resolveFont): Promise<{ status: CapabilityStatus; adapter?: FfmpegAdapter }> {
-  const [ffmpegPath, ffprobePath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe")]);
+  const [ffmpegPath, ffprobePath] = await Promise.all([discoverBinary("ffmpeg", appDataDirectory), discoverBinary("ffprobe", appDataDirectory)]);
   const status: CapabilityStatus = {
     ready: false,
     ffmpeg: Boolean(ffmpegPath),
@@ -131,7 +154,7 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
     overlay: false,
     h264Encoder: false,
     aacEncoder: false,
-    fonts: (await Promise.all([...FONT_CHOICES, ...LIBRARY_FONTS.map((entry) => entry.family!)].map(fontResolver))).some(Boolean),
+    fonts: await fontsAvailable(fontResolver),
     appDataWritable: false,
   };
   try {
@@ -139,7 +162,7 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
     status.appDataWritable = true;
   } catch { /* reported below */ }
   if (!ffmpegPath || !ffprobePath) {
-    status.message = "未找到可用的 ffmpeg 或 ffprobe，请安装带 libx264/AAC 的 system FFmpeg。";
+    status.message = "未找到可用的 ffmpeg 或 ffprobe，请安装带 H.264/AAC 编码器的 FFmpeg。";
     return { status };
   }
   const version = await runCommand(ffmpegPath, ["-version"]).promise;
@@ -148,11 +171,15 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
   status.ffmpegVersion = version.stdout.split(/\r?\n/, 1)[0]?.replace(/^ffmpeg version\s*/i, "") || undefined;
   status.drawtext = /\bdrawtext\b/.test(filters.stdout);
   status.overlay = /\boverlay\b/.test(filters.stdout);
-  status.h264Encoder = /\blibx264\b/.test(encoders.stdout);
+  status.videoEncoder = await selectH264Encoder(encoders.code === 0 ? encoders.stdout : "", async (args) => {
+    const command = runCommand(ffmpegPath, args);
+    const timeout = setTimeout(() => command.process.kill("SIGKILL"), 5_000);
+    try { return (await command.promise).code === 0; }
+    finally { clearTimeout(timeout); }
+  });
+  status.h264Encoder = Boolean(status.videoEncoder);
   status.aacEncoder = /\baac\b/.test(encoders.stdout);
-  status.ready = status.ffmpeg && status.ffprobe && status.drawtext && status.overlay && status.h264Encoder && status.aacEncoder && status.fonts && status.appDataWritable;
-  if (!status.ready) status.message = "本机 FFmpeg 能力不完整，导出入口已锁定。";
-  return { status, adapter: new FfmpegAdapter(ffmpegPath, ffprobePath) };
+  return { status: updateReadiness(status), adapter: new FfmpegAdapter(ffmpegPath, ffprobePath) };
 }
 
 export async function resolveFont(fontFamily: string): Promise<string | null> {

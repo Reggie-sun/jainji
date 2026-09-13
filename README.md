@@ -26,7 +26,11 @@ Windows 与 Linux 使用相同命令。开发启动器自动分配本地端口�
 
 ## Local Engine
 
-目前安装包不内置 FFmpeg。两平台均需安装包含 `libx264`、`aac`、`drawtext` 与 `overlay` 的 FFmpeg，并将 `ffmpeg`、`ffprobe` 加入 `PATH`。也可通过 `JIANJI_FFMPEG_PATH` 与 `JIANJI_FFPROBE_PATH` 指定完整路径。
+目前安装包不内置 FFmpeg。两平台均需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg。应用启动时实际试编码，优先选择可用的 NVIDIA `h264_nvenc`；不可用时使用 `libx264`。GPU 最多并行 4 条导出，CPU 软件编码最多 1 条；文字、贴纸与滤镜合成仍使用 CPU，单条 CPU 导出可以使用多个线程。
+
+引擎查找顺序为：`JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH` 显式指定的路径、应用用户目录下的 `tools/ffmpeg/bin/`、系统 `PATH`。Linux 默认用户目录为 `~/.config/jianji`，Windows 为 `%APPDATA%/jianji`；本地安装应同时放入 `ffmpeg` 和 `ffprobe`（Windows 使用 `.exe`），保留构建的许可证文件。这样可以为简辑单独安装含 NVENC 的引擎，不替换其他环境里的 FFmpeg。
+
+GPU 需要匹配的 NVIDIA 驱动和包含 `h264_nvenc` 的 FFmpeg 构建，不能仅凭显卡存在或 `-encoders` 列表判断可用。顶部状态显示当前 GPU / CPU 编码路线。路线在启动时选定；实际导出若失败，会明确标记失败，不会静默切换编码器重做。GPU 使用 NVENC 的质量参数，CPU 保留原 x264 参数，两者不保证相同文件体积或逐像素一致。
 
 Ubuntu/Debian：
 

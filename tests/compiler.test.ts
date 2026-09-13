@@ -9,6 +9,21 @@ const media: MediaItem = {
 };
 
 describe("TemplateCompiler", () => {
+  it("uses the selected GPU encoder while preserving the governed filter graph and container", async () => {
+    const compiler = new TemplateCompiler();
+    const options = { ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused", threads: 4 };
+    const template = createDefaultTemplate();
+    const cpu = await compiler.compile(template, media, DEFAULT_PRESET, options);
+    const gpu = await compiler.compile(template, media, DEFAULT_PRESET, { ...options, videoEncoder: "h264_nvenc" });
+    expect(gpu.args[gpu.args.indexOf("-c:v") + 1]).toBe("h264_nvenc");
+    expect(gpu.args).toContain("-cq");
+    expect(gpu.args).not.toContain("-crf");
+    expect(gpu.args[gpu.args.indexOf("-filter_complex") + 1]).toBe(cpu.args[cpu.args.indexOf("-filter_complex") + 1]);
+    expect(gpu.args[gpu.args.indexOf("-t") + 1]).toBe(cpu.args[cpu.args.indexOf("-t") + 1]);
+    expect(gpu.args[gpu.args.indexOf("-f") + 1]).toBe("mp4");
+    expect(gpu.args).toContain("0:a?");
+  });
+
   it("keeps hostile paths in argv and escapes filter values", async () => {
     const template = createDefaultTemplate();
     const command = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, {

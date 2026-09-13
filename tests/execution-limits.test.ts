@@ -6,12 +6,18 @@ import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem } from "../s
 describe("hardware execution limits", () => {
   it.each([
     [1, { exports: 1, analysis: 1, threads: 1 }],
-    [4, { exports: 4, analysis: 4, threads: 4 }],
-    [20, { exports: 20, analysis: 8, threads: 20 }],
-    [40, { exports: 20, analysis: 8, threads: 40 }],
+    [4, { exports: 1, analysis: 4, threads: 4 }],
+    [20, { exports: 1, analysis: 8, threads: 20 }],
+    [40, { exports: 1, analysis: 8, threads: 40 }],
   ])("bounds process and thread counts for %i available CPUs", (cores, expected) => {
     expect(executionLimits(cores)).toEqual(expected);
     expect(expected.threads).toBe(cores);
+  });
+
+  it("uses up to four GPU export slots without multiplying CPU software exports", () => {
+    expect(executionLimits(20, "h264_nvenc")).toEqual({ exports: 4, analysis: 8, threads: 20 });
+    expect(executionLimits(2, "h264_nvenc").exports).toBe(2);
+    expect(executionLimits(20, "libx264").exports).toBe(1);
   });
 
   it("defaults to 720p and bounds decoding, filtering and encoding threads", async () => {

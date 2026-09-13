@@ -1,6 +1,7 @@
 import path from "node:path";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
+import { videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -17,6 +18,7 @@ export interface CompileOptions {
   fontResolver: FontResolver;
   textFilePath: (layerId: string) => string;
   threads?: number;
+  videoEncoder?: H264Encoder;
 }
 
 export interface CompiledCommand {
@@ -188,14 +190,12 @@ export class TemplateCompiler {
       "-map", "[vout]",
       "-map", "0:a?",
       "-t", Math.max(0.01, media.durationMs / 1000).toFixed(3),
-      "-c:v", "libx264",
+      ...videoEncodingArgs(options.videoEncoder ?? "libx264", preset.quality),
       ...threadArgs,
       "-pix_fmt", "yuv420p",
       "-c:a", "aac",
       "-b:a", preset.quality === "high" ? "256k" : preset.quality === "small" ? "128k" : "192k",
       "-ar", "44100",
-      "-preset", preset.quality === "high" ? "slow" : "medium",
-      "-crf", preset.quality === "high" ? "18" : preset.quality === "small" ? "28" : "23",
       ...(preset.frameRateMode === "30" ? ["-r", "30"] : []),
       ...(preset.container === "mkv" ? [] : ["-movflags", "+faststart"]),
       "-f", preset.container === "mkv" ? "matroska" : preset.container,

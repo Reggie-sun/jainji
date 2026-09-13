@@ -12,6 +12,7 @@ import { discoverBinary, FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { fingerprintFile } from "../src/main/paths";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
+import type { H264Encoder } from "../src/main/video-encoder";
 import { DecorationSchema } from "../src/shared/decorations";
 import * as limits from "../src/main/execution-limits";
 
@@ -53,8 +54,9 @@ describe("AgentRunner concurrency", () => {
   });
 });
 
-async function queueFixture(cores = 2) {
-  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: cores, analysis: 3, threads: cores });
+async function queueFixture(cores = 2, videoEncoder: H264Encoder = "h264_nvenc") {
+  const originalExecutionLimits = limits.executionLimits;
+  vi.spyOn(limits, "executionLimits").mockImplementation((_cpuCount, encoder) => originalExecutionLimits(cores, encoder));
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-concurrency-"));
   directories.push(directory);
   const source = path.join(directory, "input.mp4");
@@ -85,6 +87,7 @@ async function queueFixture(cores = 2) {
     compiler: { compile } as unknown as TemplateCompiler,
     artifactVerifier: { verify: async (file: string, taskId: string) => ({ taskId, path: file, sizeBytes: (await readFile(file)).length, durationMs: 1000, createdAt: now() }) } as ArtifactVerifier,
     fontResolver: { resolve: async () => null },
+    videoEncoder,
   });
   const batch = (count = 1) => queue.createBatch({ template: createDefaultTemplate(), mediaIds: Array.from({ length: count }, () => item.id), mediaItems: [item], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
   return { queue, batch, commands, jobStore, compile, peak: () => peak };
@@ -123,19 +126,36 @@ describe("global export concurrency", () => {
     }
   });
 
-  it("fills twenty export slots without exceeding the CPU thread budget", async () => {
+  it("uses four NVENC export slots and forwards the hardware encoder to the compiler", async () => {
     const f = await queueFixture(20);
-    const batch = await f.batch(21);
+    const batch = await f.batch(5);
     const running = f.queue.start(batch.id);
-    await vi.waitFor(() => expect(f.commands).toHaveLength(20));
-    expect(f.compile.mock.calls.map((call) => call[3].threads)).toEqual(Array(20).fill(1));
+    await vi.waitFor(() => expect(f.commands).toHaveLength(4));
+    expect(f.compile.mock.calls.map((call) => call[3].threads)).toEqual(Array(4).fill(5));
+    expect(f.compile.mock.calls.map((call) => call[3].videoEncoder)).toEqual(Array(4).fill("h264_nvenc"));
     await f.commands[0].finish();
-    await vi.waitFor(() => expect(f.commands).toHaveLength(21));
-    expect(f.compile.mock.calls[20][3].threads).toBe(1);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(5));
+    expect(f.compile.mock.calls[4][3].threads).toBe(5);
+    expect(f.compile.mock.calls[4][3].videoEncoder).toBe("h264_nvenc");
     await Promise.all(f.commands.slice(1).map((command) => command.finish()));
     await running;
-    expect(f.peak()).toBe(20);
+    expect(f.peak()).toBe(4);
     expect(f.queue.snapshot().batches[0].batch.tasks.every((task) => task.status === "completed")).toBe(true);
+  });
+
+  it("keeps CPU exports to one lane while giving that export eight threads", async () => {
+    const f = await queueFixture(20, "libx264");
+    const batch = await f.batch(2);
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    expect(f.compile.mock.calls[0][3].threads).toBe(8);
+    expect(f.compile.mock.calls[0][3].videoEncoder).toBe("libx264");
+    await f.commands[0].finish();
+    await vi.waitFor(() => expect(f.commands).toHaveLength(2));
+    expect(f.compile.mock.calls[1][3].threads).toBe(8);
+    await f.commands[1].finish();
+    await running;
+    expect(f.peak()).toBe(1);
   });
 
   it("gives sparse work more threads and reuses the budget as new batches arrive", async () => {
@@ -159,6 +179,18 @@ describe("global export concurrency", () => {
     await Promise.all(f.commands.slice(1).map((command) => command.finish()));
     await running;
     expect(f.queue.snapshot().batches.flatMap(({ batch }) => batch.tasks).every((task) => task.status === "completed")).toBe(true);
+  });
+
+  it("does not retry a failed NVENC export with software encoding", async () => {
+    const f = await queueFixture(20);
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    expect(f.compile.mock.calls[0][3].videoEncoder).toBe("h264_nvenc");
+    await f.commands[0].finish(1);
+    await running;
+    expect(f.commands).toHaveLength(1);
+    expect(f.queue.snapshot().batches[0].batch.tasks[0].status).toBe("failed");
   });
 
   it("renders and verifies real FFmpeg exports up to the hardware concurrency limit", async (context) => {

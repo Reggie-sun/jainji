@@ -24,6 +24,7 @@ import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathW
 import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
 import { executionLimits } from "./execution-limits.js";
+import type { H264Encoder } from "./video-encoder.js";
 
 export interface QueueSnapshot {
   revision: number;
@@ -40,6 +41,7 @@ export interface CreateBatchInput {
 }
 
 export interface ExportQueueDependencies {
+  videoEncoder?: H264Encoder;
   jobStore: JobStore;
   ffmpeg: FfmpegAdapter;
   compiler?: TemplateCompiler;
@@ -71,7 +73,8 @@ function immutableSnapshot(template: EditTemplate): EditTemplate {
 }
 
 export class ExportQueue {
-  private readonly limits = executionLimits();
+  private readonly limits: ReturnType<typeof executionLimits>;
+  private readonly videoEncoder: H264Encoder;
   private readonly states = new Map<string, QueueState>();
   private readonly controllers = new Map<string, RunningCommand>();
   private readonly cancelRequested = new Set<string>();
@@ -90,6 +93,8 @@ export class ExportQueue {
   private persistChain: Promise<void> = Promise.resolve();
 
   constructor(private readonly dependencies: ExportQueueDependencies) {
+    this.videoEncoder = dependencies.videoEncoder ?? "libx264";
+    this.limits = executionLimits(undefined, this.videoEncoder);
     this.compiler = dependencies.compiler ?? new TemplateCompiler();
     this.verifier = dependencies.artifactVerifier ?? new ArtifactVerifier(dependencies.ffmpeg);
   }
@@ -388,6 +393,7 @@ export class ExportQueue {
         fontResolver: this.dependencies.fontResolver,
         textFilePath: textPath,
         threads,
+        videoEncoder: this.videoEncoder,
       });
       temporaryTextFiles = compiled.textFiles.map((file) => file.path);
       await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { encoding: "utf8", mode: 0o600 })));

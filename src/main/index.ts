@@ -7,7 +7,7 @@ import { z } from "zod";
 import { ApplicationService } from "./application.js";
 import { ArtifactVerifier } from "./artifact.js";
 import { DEFAULT_PRESET, EditTemplateSchema, ExportPresetSchema, type ExportPreset } from "./domain.js";
-import { checkCapabilities, FfmpegAdapter, resolveFont, type CapabilityStatus } from "./ffmpeg.js";
+import { checkCapabilities, FfmpegAdapter, refreshFontCapabilities, resolveFont, type CapabilityStatus } from "./ffmpeg.js";
 import { canonicalPath, fingerprintFile, isPathWithinDirectory } from "./paths.js";
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
 import { JobStore } from "./store.js";
@@ -87,7 +87,7 @@ function registerHandlers(): void {
     const id = z.string().min(1).max(100).parse(input);
     const preview = await library.preview(id);
     if (LIBRARY_FONTS.some((font) => font.id === id) && !capabilities.fonts) {
-      capabilities = (await checkCapabilities(app.getPath("userData"), (family) => library.resolveFont(family))).status;
+      capabilities = await refreshFontCapabilities(capabilities, (family) => library.resolveFont(family));
       notifyState();
     }
     return preview;
@@ -351,6 +351,7 @@ async function bootstrap(): Promise<void> {
   queue = new ExportQueue({
     jobStore: new JobStore(path.join(userData, "jobs")),
     ffmpeg,
+    videoEncoder: capabilities.videoEncoder,
     fontResolver,
     onSnapshot: publish,
   });
