@@ -10,12 +10,15 @@ import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/m
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
+import { AssetLibrary } from "../src/main/asset-library";
+import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
 
 describe("agent to local export", () => {
   for (const mode of ["manual", "agent"] as const) it(`extracts real frames and renders independent verified videos in ${mode} mode`, async (context) => {
     const [ffmpegPath, ffprobePath, font] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
     if (!ffmpegPath || !ffprobePath || !font) { context.skip(); return; }
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-agent-proof-"));
+    const butterfly = AUTOMATIC_STICKERS.find(({ label }) => label === "蝴蝶")!;
     const requests: Array<{ model: string; messages: Array<{ content: string | Array<{ type: string; image_url?: { url: string } }> }> }> = [];
     const server = createServer((request, response) => {
       let body = "";
@@ -23,7 +26,12 @@ describe("agent to local export", () => {
       request.on("end", () => {
         requests.push(JSON.parse(body));
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [{ corner: "bottom-right", sticker: "heart" }] } : {}) }) } }] }));
+        const system = requests.at(-1)!.messages[0].content as string;
+        const shortlist = system.includes("你是视频贴纸选材师");
+        const entries = shortlist ? JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]) as [number, string, string][] : [];
+        const result = shortlist ? { candidates: [entries.find(([, label]) => label === "蝴蝶")![0]] }
+          : { summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [{ corner: "bottom-right", sticker: butterfly.id }] } : {}) };
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       });
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -32,7 +40,8 @@ describe("agent to local export", () => {
     const service = new ApplicationService(adapter, { resolve: resolveFont });
     const queue = new ExportQueue({ ffmpeg: adapter, fontResolver: { resolve: resolveFont }, jobStore: new JobStore(path.join(directory, "jobs")) });
     const stickerAssets = await ensureBuiltinStickerAssets(path.join(directory, "agent-stickers"));
-    const controller = new AgentController(service, queue, adapter, () => {}, stickerAssets);
+    const library = new AssetLibrary(path.join(directory, "library"), async () => { throw new Error("sticker network forbidden"); });
+    const controller = new AgentController(service, queue, adapter, () => {}, stickerAssets, library);
     try {
       for (const name of ["素材一.mp4", "素材二.mp4"]) {
         const source = path.join(directory, name);
@@ -56,9 +65,10 @@ describe("agent to local export", () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
-      expect(requests).toHaveLength(4);
+      expect(requests).toHaveLength(mode === "agent" ? 8 : 4);
+      const finalRequests = requests.filter((request) => !(request.messages[0].content as string).includes("你是视频贴纸选材师"));
       if (mode === "agent") {
-        const systems = requests.map((request) => request.messages[0].content as string);
+        const systems = finalRequests.map((request) => request.messages[0].content as string);
         expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));
         expect(systems.every((system) => !system.includes('"sticker":"arrow"') && !system.includes("清透色彩配轻箭头贴纸"))).toBe(true);
       } else {
@@ -68,7 +78,8 @@ describe("agent to local export", () => {
         const content = request.messages[1].content;
         if (typeof content === "string") throw new Error("expected visual content");
         const images = content.filter((item) => item.type === "image_url");
-        expect(images).toHaveLength(3);
+        const isFinal = finalRequests.includes(request);
+        expect(images).toHaveLength(mode === "agent" && isFinal ? 4 : 3);
         expect(images.every((item) => item.image_url!.url.startsWith("data:image/jpeg;base64,/9j/"))).toBe(true);
         expect(JSON.stringify(request)).not.toContain(directory);
       }
@@ -78,7 +89,7 @@ describe("agent to local export", () => {
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "¥ 19.90", fontFamily: DEFAULT_TEXT_FONT_FAMILY });
-        expect(batch.templateSnapshot.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: stickerAssets.heart.assetPath });
+        expect(batch.templateSnapshot.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: mode === "agent" ? (await library.ensure(butterfly.id)).assetPath : stickerAssets.heart.assetPath });
       }
       expect(new Set(batches.map(({ batch }) => batch.tasks[0].outputPath)).size).toBe(4);
       expect(new Set(batches.map(({ batch }) => batch.tasks[0].id)).size).toBe(4);

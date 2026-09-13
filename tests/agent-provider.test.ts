@@ -12,6 +12,40 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("rotates eligible candidates despite forbidden entries and maps usage to current numbers", async () => {
+    const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1]}'));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    const catalog = { fonts: [], stickers: [{ id: "unreviewed", label: "未审核" }, ...autoCatalog.stickers] };
+    const signal = new AbortController().signal;
+    await expect(provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 0, totalOutputs: 3, stickerUsage: [] })).resolves.toEqual(["heart"]);
+    await expect(provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 1, totalOutputs: 3, stickerUsage: [] })).resolves.toEqual(["sparkle"]);
+    await provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 2, totalOutputs: 3, stickerUsage: [{ id: "heart", count: 2 }] });
+    expect(JSON.parse(request.mock.calls[2][1].body).messages[0].content).toContain('"number":2,"count":2');
+  });
+  it("shortlists numbered candidates from the full directory and rejects forbidden or duplicate choices", async () => {
+    const catalog = { fonts: [], stickers: [...autoCatalog.stickers, { id: "local-limited-discount", label: "限时折扣" }] };
+    const request = vi.fn().mockResolvedValueOnce(reply('{"candidates":[1]}')).mockResolvedValueOnce(reply('{"candidates":[3]}')).mockResolvedValueOnce(reply('{"candidates":[1,1]}'));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    const signal = new AbortController().signal;
+    await expect(provider.shortlist("black-gold", "", [], signal, catalog)).resolves.toEqual(["heart"]);
+    const messages = JSON.parse(request.mock.calls[0][1].body).messages;
+    expect(JSON.stringify(messages)).toContain("限时折扣");
+    expect(JSON.stringify(messages)).toContain("禁止");
+    await expect(provider.shortlist("black-gold", "", [], signal, catalog)).rejects.toThrow("候选");
+    await expect(provider.shortlist("black-gold", "", [], signal, catalog)).rejects.toThrow("候选");
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
+  it("sends numbered candidate JPEGs separately from video frames and rejects textual stickers locally", async () => {
+    const request = vi.fn().mockResolvedValue(reply(JSON.stringify(autoPlan)));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    const preview = "data:image/jpeg;base64,cHJldmlldw==";
+    await provider.plan("black-gold", "", ["data:image/jpeg;base64,ZnJhbWU="], new AbortController().signal, { ...autoCatalog, previews: [{ id: "heart", url: preview }] });
+    const body = JSON.parse(request.mock.calls[0][1].body);
+    expect(body.messages[1].content).toContainEqual({ type: "image_url", image_url: { url: preview, detail: "low" } });
+    expect(JSON.stringify(body)).toContain("贴纸候选 1");
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "local-limited-discount" }] }, "black-gold", { fonts: [], stickers: [{ id: "local-limited-discount", label: "限时折扣" }] })).toThrow();
+  });
   it("removes template sticker bias from automatic briefs and plans", async () => {
     const request = vi.fn().mockResolvedValueOnce(reply("按画面留白选择贴纸")).mockResolvedValueOnce(reply(JSON.stringify(autoPlan)));
     const provider = new AgentProvider(request);

@@ -1,11 +1,17 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { LIBRARY_ASSETS, LIBRARY_LICENSES, type LibraryAsset, type LibraryAssetPreview } from "../shared/asset-library.js";
+import { LIBRARY_ASSETS, LIBRARY_STICKERS, LIBRARY_LICENSES, type LibraryAsset, type LibraryAssetPreview } from "../shared/asset-library.js";
 import { CORNERS, type DecorationOptions } from "../shared/decorations.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
+
+const bundledStickerIds = new Set(LIBRARY_STICKERS.map(({ id }) => id));
+export function bundledStickerDirectory(runtime: { resourcesPath?: string; defaultApp?: boolean } = process as NodeJS.Process & { resourcesPath?: string; defaultApp?: boolean }): string {
+  return runtime.resourcesPath && !runtime.defaultApp
+    ? path.join(runtime.resourcesPath, "sticker-library") : path.resolve("resources/sticker-library");
+}
 
 function hasAutomaticCorners(options: DecorationOptions): boolean {
   return CORNERS.some((corner) => !options.corners?.[corner]);
@@ -30,7 +36,8 @@ export class AssetLibrary {
   private readonly waiting: Array<() => void> = [];
 
   constructor(private readonly root: string, private readonly download: typeof fetch = fetch,
-    entries: readonly LibraryAsset[] = LIBRARY_ASSETS, private readonly licenses: Readonly<Record<string, string>> = LIBRARY_LICENSES) {
+    entries: readonly LibraryAsset[] = LIBRARY_ASSETS, private readonly licenses: Readonly<Record<string, string>> = LIBRARY_LICENSES,
+    private readonly bundledRoot = bundledStickerDirectory()) {
     this.entries = new Map(entries.map((entry) => [entry.id, entry]));
   }
 
@@ -74,22 +81,28 @@ export class AssetLibrary {
       await writeFile(path.join(this.root, "licenses", `${entry.license}.txt`), license, "utf8");
       let bytes = await this.cached(entry);
       if (!bytes) {
-        const response = await this.download(entry.url, { signal: AbortSignal.timeout(30000), redirect: "error" });
-        if (!response.ok || !response.body) throw new Error("素材下载失败，请检查网络后重试。");
-        const reader = response.body.getReader();
-        const chunks: Uint8Array[] = [];
-        let length = 0;
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            length += value.byteLength;
-            if (length > entry.size) throw new Error("素材大小校验失败。");
-            chunks.push(value);
-          }
-        } finally { await reader.cancel(); }
-        bytes = Buffer.concat(chunks);
-        if (!this.valid(entry, bytes)) throw new Error("素材内容校验失败，请重试。");
+        if (entry.kind === "sticker" && bundledStickerIds.has(entry.id)) {
+          try { bytes = await readFile(path.join(this.bundledRoot, `${entry.blob}.png`)); }
+          catch { throw new Error("内置贴纸缺失，请重新安装完整软件包。"); }
+          if (!this.valid(entry, bytes)) throw new Error("内置贴纸校验失败，请重新安装完整软件包。");
+        } else {
+          const response = await this.download(entry.url, { signal: AbortSignal.timeout(30000), redirect: "error" });
+          if (!response.ok || !response.body) throw new Error("素材下载失败，请检查网络后重试。");
+          const reader = response.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let length = 0;
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              length += value.byteLength;
+              if (length > entry.size) throw new Error("素材大小校验失败。");
+              chunks.push(value);
+            }
+          } finally { await reader.cancel(); }
+          bytes = Buffer.concat(chunks);
+          if (!this.valid(entry, bytes)) throw new Error("素材内容校验失败，请重试。");
+        }
         const temporary = `${this.file(entry)}.${randomUUID()}.part`;
         try { await writeFile(temporary, bytes, { flag: "wx" }); await rename(temporary, this.file(entry)); }
         finally { await rm(temporary, { force: true }); }

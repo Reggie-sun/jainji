@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AssetLibrary } from "../src/main/asset-library";
+import { AssetLibrary, bundledStickerDirectory } from "../src/main/asset-library";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import type { LibraryAsset } from "../src/shared/asset-library";
 import { DecorationSchema } from "../src/shared/decorations";
@@ -19,6 +19,36 @@ const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
 async function directory() { const value = await mkdtemp(path.join(tmpdir(), "jianji-library-test-")); directories.push(value); return value; }
 describe("verified asset cache", () => {
+  it("reads packaged sticker bytes offline and never downloads missing or corrupted package assets", async () => {
+    const selected = LIBRARY_STICKERS[0];
+    const offline = vi.fn(async (): Promise<Response> => { throw new Error("offline"); });
+    const root = await directory();
+    const library = new AssetLibrary(root, offline);
+    const asset = await library.ensure(selected.id);
+    expect(asset.assetPath).toBe(path.join(root, `${selected.blob}.png`));
+    expect((await library.preview(selected.id)).url).toMatch(/^data:image\/png;base64,/);
+    const brokenRoot = await directory();
+    const broken = new AssetLibrary(await directory(), offline, [selected], { fluent: "MIT fixture" }, brokenRoot);
+    await expect(broken.ensure(selected.id)).rejects.toThrow("内置贴纸缺失");
+    await writeFile(path.join(brokenRoot, `${selected.blob}.png`), "corrupt");
+    await expect(broken.ensure(selected.id)).rejects.toThrow("内置贴纸校验失败");
+    expect(offline).not.toHaveBeenCalled();
+  });
+  it("preserves frozen resource paths when the application package moves", async () => {
+    const selected = LIBRARY_STICKERS[0];
+    const firstPackage = await directory(); const secondPackage = await directory(); const root = await directory();
+    for (const destination of [firstPackage, secondPackage]) await copyFile(path.resolve("resources/sticker-library", `${selected.blob}.png`), path.join(destination, `${selected.blob}.png`));
+    const offline = vi.fn(async (): Promise<Response> => { throw new Error("offline"); });
+    const first = await new AssetLibrary(root, offline, [selected], { fluent: "MIT fixture" }, firstPackage).ensure(selected.id);
+    await rm(firstPackage, { recursive: true });
+    expect(await new AssetLibrary(root, offline, [selected], { fluent: "MIT fixture" }, secondPackage).ensure(selected.id)).toEqual(first);
+    expect((await readFile(first.assetPath)).length).toBe(selected.size);
+    expect(offline).not.toHaveBeenCalled();
+  });
+  it("resolves installed resources independently of the current working directory", () => {
+    expect(bundledStickerDirectory({ resourcesPath: "/installed/resources" })).toBe("/installed/resources/sticker-library");
+    expect(bundledStickerDirectory({ resourcesPath: "/electron/resources", defaultApp: true })).toBe(path.resolve("resources/sticker-library"));
+  });
   it("coalesces requests, preserves license and reuses verified cache offline after restart", async () => {
     const root = await directory();
     const download = vi.fn(async () => new Response(contents));

@@ -13,10 +13,10 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema } from "../shared/decorations.js";
 import { decorationFontFamilies, type AssetLibrary } from "./asset-library.js";
-
-const AUTO_STICKER_LABELS: Readonly<Record<string, string>> = {
-  sparkle: "星芒", arrow: "箭头", heart: "爱心", burst: "爆闪",
-};
+import { AUTOMATIC_STICKERS } from "../shared/automatic-stickers.js";
+import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
+import { LIBRARY_STICKERS } from "../shared/asset-library.js";
+import { stickerPreview } from "./sticker-preview.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -48,9 +48,12 @@ export class AgentController {
   }
 
   private async autoCatalog(): Promise<AgentDecorationCatalog> {
-    const stickers = Object.entries(AUTO_STICKER_LABELS)
-      .filter(([id]) => Boolean(this.stickerAssets[id]))
-      .map(([id, label]) => ({ id, label }));
+    const labels = new Map(AUTOMATIC_STICKERS.map(({ id, label }) => [id, label]));
+    const stickers = [
+      ...AUTOMATIC_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id])),
+      ...BUNDLED_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id])),
+      ...(this.library ? LIBRARY_STICKERS : []),
+    ].map(({ id, label }) => ({ id, label: labels.get(id) ?? label }));
     return { fonts: [], stickers };
   }
 
@@ -68,7 +71,7 @@ export class AgentController {
       const parsed = AgentStartSchema.parse(input);
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog() : undefined;
-      const stickerAssets = decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
+      const stickerAssets = decorations.mode === "agent" ? { ...this.stickerAssets } : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
       this.preparingController.signal.throwIfAborted();
       for (const family of decorationFontFamilies(decorations)) {
         const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
@@ -84,9 +87,32 @@ export class AgentController {
       await assertOutputDirectorySafe(outputDirectory, media as MediaItem[]);
       this.preparingController.signal.throwIfAborted();
       const projectId = this.service.currentProject.id;
+      const previews = new Map<string, Promise<{ id: string; url: string }>>();
       this.runner = new AgentRunner({
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
-        plan: (rule, brief, frames, signal, catalog, selection) => this.provider.plan(rule, brief, frames, signal, catalog, selection),
+        plan: async (rule, brief, frames, signal, catalog, selection) => {
+          if (!catalog) return this.provider.plan(rule, brief, frames, signal);
+          const ids = await this.provider.shortlist(rule, brief, frames, signal, catalog, selection);
+          const candidatePreviews = [];
+          for (const id of ids) {
+            signal.throwIfAborted();
+            let preview = previews.get(id);
+            if (!preview) {
+              preview = (async () => {
+                const asset = stickerAssets[id] ?? await this.library!.ensure(id);
+                signal.throwIfAborted();
+                const url = await stickerPreview(this.ffmpeg, asset, signal);
+                (stickerAssets as Record<string, typeof asset>)[id] = asset;
+                return { id, url };
+              })();
+              previews.set(id, preview);
+            }
+            candidatePreviews.push(await preview);
+          }
+          signal.throwIfAborted();
+          const candidates = { fonts: [], stickers: ids.map((id) => catalog.stickers.find((entry) => entry.id === id)!), previews: candidatePreviews };
+          return this.provider.plan(rule, brief, frames, signal, candidates, selection);
+        },
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
           const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
