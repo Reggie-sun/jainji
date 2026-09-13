@@ -10,7 +10,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
-async function fixture(encoders: string, probeWorks: boolean) {
+async function fixture(encoders: string, probeWorks: boolean, concurrentWorks = probeWorks) {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-encoder-capabilities-"));
   directories.push(directory);
   const bin = path.join(directory, "tools", "ffmpeg", "bin");
@@ -20,6 +20,10 @@ const args = process.argv.slice(2);
 if (args.includes('-encoders')) console.log(${JSON.stringify(encoders + " aac")});
 else if (args.includes('-filters')) console.log('drawtext overlay');
 else if (args.includes('-version')) console.log('ffmpeg version fixture');
+else if (args.includes('-progress')) {
+  if (!${concurrentWorks}) process.exit(1);
+  setInterval(() => console.log('out_time_ms=100000\\nprogress=continue'), 50);
+}
 else process.exit(${probeWorks ? 0 : 1});
 `;
   for (const name of ["ffmpeg", "ffprobe"]) {
@@ -36,6 +40,7 @@ it.skipIf(process.platform === "win32")("selects a working app-local GPU encoder
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
   expect(result.status.ready).toBe(true);
   expect(result.status.videoEncoder).toBe("h264_nvenc");
+  expect(result.status.executionLimits?.exports).toBeGreaterThanOrEqual(1);
   expect(result.adapter?.ffmpegPath).toBe(path.join(bin, "ffmpeg"));
 });
 
@@ -44,6 +49,7 @@ it.skipIf(process.platform === "win32")("reports the CPU route when the NVENC de
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
   expect(result.status.ready).toBe(true);
   expect(result.status.videoEncoder).toBe("libx264");
+  expect(result.status.executionLimits?.exports).toBe(1);
 });
 
 it.skipIf(process.platform === "win32")("locks export when neither encoder is usable", async () => {
@@ -51,6 +57,13 @@ it.skipIf(process.platform === "win32")("locks export when neither encoder is us
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
   expect(result.status.ready).toBe(false);
   expect(result.status.videoEncoder).toBeUndefined();
+});
+
+it.skipIf(process.platform === "win32")("does not retain a GPU profile when session validation fails after a single encode succeeds", async () => {
+  const { directory } = await fixture("h264_nvenc libx264", true, false);
+  const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
+  expect(result.status.videoEncoder).toBe("libx264");
+  expect(result.status.executionLimits?.exports).toBe(1);
 });
 
 it.skipIf(process.platform === "win32")("honors an explicit binary override before the app-local engine", async () => {
@@ -73,5 +86,6 @@ it.skipIf(process.platform === "win32")("refreshes fonts without changing the en
   expect(refreshed.ready).toBe(true);
   expect(refreshed.message).toBeUndefined();
   expect(refreshed.videoEncoder).toBe("h264_nvenc");
+  expect(refreshed.executionLimits).toEqual(status.executionLimits);
   expect(status.fonts).toBe(false);
 });

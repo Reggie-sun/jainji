@@ -134,6 +134,7 @@ try {
     await pause(80);
   };
   const screenshot = async (name) => {
+    await send("Page.bringToFront");
     const image = await send("Page.captureScreenshot", { format: "png" });
     await writeFile(path.join(directory, `${name}.png`), Buffer.from(image.data, "base64"));
   };
@@ -284,6 +285,8 @@ try {
   await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
   assert.equal(requests, 1);
   const state = await evaluate("window.jianji.getState()");
+  const encoderLabels = { libx264: "CPU 编码", h264_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", h264_qsv: "Intel GPU" };
+  assert.equal(await evaluate("document.querySelector('.engine-status').textContent"), `${encoderLabels[state.capabilities.videoEncoder]} · ${state.capabilities.executionLimits.exports} 路`);
   assert.equal(state.queue.batches[0].batch.tasks[0].status, "completed");
   assert.equal(JSON.stringify(state).includes("local-smoke-key"), false);
   assert.equal(state.agentRun.items[0].summary, "保留主体与手动价格");

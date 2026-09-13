@@ -352,6 +352,7 @@ async function bootstrap(): Promise<void> {
     jobStore: new JobStore(path.join(userData, "jobs")),
     ffmpeg,
     videoEncoder: capabilities.videoEncoder,
+    executionLimits: capabilities.executionLimits,
     fontResolver,
     onSnapshot: publish,
   });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { executionLimits } from "../src/main/execution-limits";
+import { executionLimits, verifiedExportCount } from "../src/main/execution-limits";
 import { TemplateCompiler } from "../src/main/compiler";
 import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem } from "../src/main/domain";
 
@@ -15,9 +15,27 @@ describe("hardware execution limits", () => {
   });
 
   it("uses up to six GPU export slots without multiplying CPU software exports", () => {
-    expect(executionLimits(20, "h264_nvenc")).toEqual({ exports: 6, analysis: 8, threads: 20 });
-    expect(executionLimits(2, "h264_nvenc").exports).toBe(2);
+    const memory = { totalBytes: 96 * 1024 ** 3, availableBytes: 80 * 1024 ** 3 };
+    expect(executionLimits(20, "h264_nvenc", memory)).toEqual({ exports: 6, analysis: 8, threads: 20 });
+    expect(executionLimits(2, "h264_nvenc", memory).exports).toBe(1);
+    expect(executionLimits(8, "h264_nvenc", memory).exports).toBe(2);
     expect(executionLimits(20, "libx264").exports).toBe(1);
+  });
+
+  it("reduces GPU concurrency when available memory is limited", () => {
+    expect(executionLimits(20, "h264_nvenc", { totalBytes: 8 * 1024 ** 3, availableBytes: 4 * 1024 ** 3 }).exports).toBe(2);
+    expect(executionLimits(20, "h264_nvenc", { totalBytes: 96 * 1024 ** 3, availableBytes: 2 * 1024 ** 3 }).exports).toBe(1);
+  });
+
+  it.each(["h264_nvenc", "h264_amf", "h264_qsv"] as const)("sizes %s from the same CPU and memory policy", (encoder) => {
+    expect(executionLimits(12, encoder, { totalBytes: 16 * 1024 ** 3, availableBytes: 12 * 1024 ** 3 }).exports).toBe(4);
+  });
+
+  it("uses only a concurrency level that passes simultaneous encoding", async () => {
+    const tried: number[] = [];
+    expect(await verifiedExportCount(6, async (count) => { tried.push(count); return count <= 4; })).toBe(4);
+    expect(tried).toEqual([6, 5, 4]);
+    expect(await verifiedExportCount(2, async () => { throw new Error("device unavailable"); })).toBe(0);
   });
 
   it("defaults to 720p and bounds decoding, filtering and encoding threads", async () => {

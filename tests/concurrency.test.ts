@@ -54,9 +54,9 @@ describe("AgentRunner concurrency", () => {
   });
 });
 
-async function queueFixture(cores = 2, videoEncoder: H264Encoder = "h264_nvenc") {
+async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc", verifiedSlots?: number) {
   const originalExecutionLimits = limits.executionLimits;
-  vi.spyOn(limits, "executionLimits").mockImplementation((_cpuCount, encoder) => originalExecutionLimits(cores, encoder));
+  vi.spyOn(limits, "executionLimits").mockImplementation((_cpuCount, encoder) => originalExecutionLimits(cores, encoder, { totalBytes: 64 * 1024 ** 3, availableBytes: 48 * 1024 ** 3 }));
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-concurrency-"));
   directories.push(directory);
   const source = path.join(directory, "input.mp4");
@@ -88,12 +88,24 @@ async function queueFixture(cores = 2, videoEncoder: H264Encoder = "h264_nvenc")
     artifactVerifier: { verify: async (file: string, taskId: string) => ({ taskId, path: file, sizeBytes: (await readFile(file)).length, durationMs: 1000, createdAt: now() }) } as ArtifactVerifier,
     fontResolver: { resolve: async () => null },
     videoEncoder,
+    ...(verifiedSlots === undefined ? {} : { executionLimits: { ...limits.executionLimits(cores, videoEncoder), exports: verifiedSlots } }),
   });
   const batch = (count = 1) => queue.createBatch({ template: createDefaultTemplate(), mediaIds: Array.from({ length: count }, () => item.id), mediaItems: [item], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
   return { queue, batch, commands, jobStore, compile, peak: () => peak };
 }
 
 describe("global export concurrency", () => {
+  it("honors the startup-verified limit instead of recalculating a larger GPU cap", async () => {
+    const f = await queueFixture(20, "h264_nvenc", 2);
+    const batch = await f.batch(3);
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(2));
+    await f.commands[0].finish();
+    await vi.waitFor(() => expect(f.commands).toHaveLength(3));
+    await Promise.all(f.commands.slice(1).map((command) => command.finish()));
+    await running;
+    expect(f.peak()).toBe(2);
+  });
   it("preserves a requested retry while its queued state is still being saved", async () => {
     const f = await queueFixture(1);
     const batch = await f.batch();

@@ -36,6 +36,7 @@ it("exports price, sticker and audio through real NVENC and verifies the publish
     const run = vi.spyOn(adapter, "run");
     queue = new ExportQueue({
       ffmpeg: adapter, videoEncoder: checked.status.videoEncoder,
+      executionLimits: checked.status.executionLimits,
       fontResolver: { resolve: resolveFont }, jobStore: new JobStore(path.join(directory, "jobs")),
     });
     const batch = await queue.createBatch({

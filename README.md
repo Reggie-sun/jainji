@@ -26,11 +26,15 @@ Windows 与 Linux 使用相同命令。开发启动器自动分配本地端口�
 
 ## Local Engine
 
-目前安装包不内置 FFmpeg。两平台均需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg。应用启动时实际试编码，优先选择可用的 NVIDIA `h264_nvenc`；不可用时使用 `libx264`。GPU 最多并行 6 条导出，且不超过可用 CPU 核数；CPU 软件编码最多 1 条。文字、贴纸与滤镜合成仍使用 CPU，单条 CPU 导出可以使用多个线程。GPU 每条任务的 CPU 线程上限按总预算与并发槽位均分，避免早到的任务耗尽预算；20 核机器最多 6 路、每路 3 线程。这是批量吞吐策略，少量任务不保证单条更快，也不代表所有硬件和素材的最优并发。
+目前安装包不内置 FFmpeg。Windows / Linux 都需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg，以及匹配硬件的驱动。启动时按 NVIDIA NVENC → AMD AMF → Intel QSV 顺序实际试编码，选用首个通过检测的硬件编码器；全部不可用时使用 `libx264`，CPU 软件编码始终单路。编译进 FFmpeg 的编码器列表或显卡名称不代表实际可用。
 
-引擎查找顺序为：`JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH` 显式指定的路径、应用用户目录下的 `tools/ffmpeg/bin/`、系统 `PATH`。Linux 默认用户目录为 `~/.config/jianji`，Windows 为 `%APPDATA%/jianji`；本地安装应同时放入 `ffmpeg` 和 `ffprobe`（Windows 使用 `.exe`），保留构建的许可证文件。这样可以为简辑单独安装含 NVENC 的引擎，不替换其他环境里的 FFmpeg。
+并发在每次启动时自动确定：每约 3 个可用 CPU 逻辑核允许一路 GPU 导出，上限 6 路；再按总内存、启动时可用内存降低上限，预留桌面与制作流程所需空间。程序会同时试编码验证候选路数，失败时逐级减少，全部失败则继续检测下一种编码器。队列与界面共享这份启动配置，界面显示编码器厂商和实际并发路数；换电脑或更新驱动后重启即可重新检测。检测只使用本地生成的测试画面，不请求模型，也不发送用户视频。
 
-GPU 需要匹配的 NVIDIA 驱动和包含 `h264_nvenc` 的 FFmpeg 构建，不能仅凭显卡存在或 `-encoders` 列表判断可用。顶部状态显示当前 GPU / CPU 编码路线。路线在启动时选定；实际导出若失败，会明确标记失败，不会静默切换编码器重做。GPU 使用 NVENC 的质量参数，CPU 保留原 x264 参数，两者不保证相同文件体积或逐像素一致。
+文字、贴纸与滤镜合成仍使用 CPU；每个 GPU 任务按并发槽位均分线程预算，避免早到的任务占满预算。这是保守的资源与驱动准入策略，不是全素材测速，也不保证所有机器的绝对最快或任意高分辨率任务都不会耗尽资源。运行中不会因其他应用占用资源而重新选择编码器或静默重做失败任务；应结束当前批次后重启，重新检测可用资源。
+
+引擎查找顺序为：`JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH` 显式指定的路径、应用用户目录下的 `tools/ffmpeg/bin/`、系统 `PATH`。Linux 默认用户目录为 `~/.config/jianji`，Windows 为 `%APPDATA%/jianji`；本地安装应同时放入 `ffmpeg` 和 `ffprobe`（Windows 使用 `.exe`），保留构建的许可证文件。Windows 的 FFmpeg 构建需包含目标显卡对应的 `h264_nvenc`、`h264_amf` 或 `h264_qsv`；缺少硬件编码支持时会选用 CPU。
+
+各厂商使用各自的质量参数，CPU 保留原 x264 参数，不保证跨编码器相同体积或逐像素一致。Linux NVIDIA 有真实导出验证；Windows AMD / Intel 的参数和选择逻辑已有自动测试，仍需目标设备实测。
 
 Ubuntu/Debian：
 

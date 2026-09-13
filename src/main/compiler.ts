@@ -1,7 +1,7 @@
 import path from "node:path";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
-import { videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
+import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -98,7 +98,7 @@ export class TemplateCompiler {
     // FFmpeg enables autorotation by default; omitting the legacy flag keeps compatibility
     // with system builds that parse it as an input option requiring a value.
     const threadArgs = options.threads === undefined ? [] : ["-threads", String(options.threads)];
-    const args: string[] = ["-hide_banner", "-nostdin", "-y", ...threadArgs, "-i", media.sourcePath];
+    const args: string[] = ["-hide_banner", "-nostdin", "-y", ...encoderDeviceArgs(options.videoEncoder ?? "libx264"), ...threadArgs, "-i", media.sourcePath];
     let inputIndex = 1;
     let baseLabel = "base0";
     const graph: string[] = [];
@@ -193,7 +193,7 @@ export class TemplateCompiler {
       "-t", durationSeconds.toFixed(3),
       ...videoEncodingArgs(options.videoEncoder ?? "libx264", preset.quality),
       ...threadArgs,
-      "-pix_fmt", "yuv420p",
+      "-pix_fmt", encoderPixelFormat(options.videoEncoder ?? "libx264"),
       "-c:a", "aac",
       "-b:a", preset.quality === "high" ? "256k" : preset.quality === "small" ? "128k" : "192k",
       "-ar", "44100",

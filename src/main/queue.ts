@@ -42,6 +42,7 @@ export interface CreateBatchInput {
 
 export interface ExportQueueDependencies {
   videoEncoder?: H264Encoder;
+  executionLimits?: ReturnType<typeof executionLimits>;
   jobStore: JobStore;
   ffmpeg: FfmpegAdapter;
   compiler?: TemplateCompiler;
@@ -94,7 +95,7 @@ export class ExportQueue {
 
   constructor(private readonly dependencies: ExportQueueDependencies) {
     this.videoEncoder = dependencies.videoEncoder ?? "libx264";
-    this.limits = executionLimits(undefined, this.videoEncoder);
+    this.limits = { ...(dependencies.executionLimits ?? executionLimits(undefined, this.videoEncoder)) };
     this.compiler = dependencies.compiler ?? new TemplateCompiler();
     this.verifier = dependencies.artifactVerifier ?? new ArtifactVerifier(dependencies.ffmpeg);
   }
@@ -202,7 +203,7 @@ export class ExportQueue {
         if (freeThreads <= 0) return;
         // Reserve a fair CPU share for later GPU jobs, which arrive progressively
         // while the Agent is planning; early exports must not consume all slots' budget.
-        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.videoEncoder === "h264_nvenc" ? this.limits.exports : 2))));
+        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.videoEncoder !== "libx264" ? this.limits.exports : 2))));
         const threads = Math.min(maxThreads, freeThreads);
         const work = this.execute(state, task, threads).catch((error: unknown) => {
           this.executionError ??= error;

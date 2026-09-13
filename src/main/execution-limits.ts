@@ -1,12 +1,31 @@
-import { availableParallelism } from "node:os";
+import { availableParallelism, freemem, totalmem } from "node:os";
 import type { H264Encoder } from "./video-encoder.js";
 
-export function executionLimits(cpuCount = availableParallelism(), videoEncoder: H264Encoder = "libx264") {
+export interface MemoryCapacity {
+  totalBytes: number;
+  availableBytes: number;
+}
+
+export function executionLimits(cpuCount = availableParallelism(), videoEncoder: H264Encoder = "libx264", memory: MemoryCapacity = { totalBytes: totalmem(), availableBytes: freemem() }) {
   const cores = Math.max(1, Math.floor(cpuCount));
-  const exports = videoEncoder === "h264_nvenc" ? Math.min(6, cores) : 1;
+  const gib = 1024 ** 3;
+  // Keep room for the desktop and planning, and never budget more than half of RAM.
+  const memoryBudget = Math.max(0, Math.min(memory.totalBytes / 2, memory.availableBytes - Math.max(2 * gib, memory.totalBytes * 0.15)));
+  const memorySlots = Math.max(1, Math.floor(memoryBudget / gib));
+  const exports = videoEncoder !== "libx264" ? Math.min(6, Math.max(1, Math.floor(cores / 3)), memorySlots) : 1;
   return {
     exports,
     analysis: Math.min(8, cores),
     threads: cores,
   };
+}
+
+export type ExecutionLimits = ReturnType<typeof executionLimits>;
+
+/** Test actual simultaneous sessions: a working single encoder is not a capacity check. */
+export async function verifiedExportCount(maximum: number, probe: (count: number) => Promise<boolean>): Promise<number> {
+  for (let count = maximum; count >= 1; count--) {
+    try { if (await probe(count)) return count; } catch { /* Try a smaller startup allocation. */ }
+  }
+  return 0;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { selectH264Encoder, videoEncodingArgs } from "../src/main/video-encoder";
+import { encoderDeviceArgs, encoderPixelFormat, selectH264Encoder, videoEncodingArgs } from "../src/main/video-encoder";
 
 describe("H.264 encoder selection", () => {
   it("prefers NVENC only after an actual encode succeeds", async () => {
@@ -30,6 +30,39 @@ describe("H.264 encoder selection", () => {
   it("allows a verified GPU encoder even without libx264", async () => {
     expect(await selectH264Encoder("h264_nvenc", async () => true)).toBe("h264_nvenc");
   });
+
+  it("tries AMD after a failed NVIDIA probe", async () => {
+    const probe = vi.fn(async (args: string[]) => args[args.indexOf("-c:v") + 1] === "h264_amf");
+    expect(await selectH264Encoder("h264_nvenc h264_amf libx264", probe)).toBe("h264_amf");
+    expect(probe.mock.calls.map(([args]) => args[args.indexOf("-c:v") + 1])).toEqual(["h264_nvenc", "h264_amf"]);
+  });
+
+  it("tries Intel after unavailable NVIDIA and AMD probes", async () => {
+    const probe = vi.fn(async (args: string[]) => args[args.indexOf("-c:v") + 1] === "h264_qsv");
+    expect(await selectH264Encoder("h264_nvenc h264_amf h264_qsv libx264", probe)).toBe("h264_qsv");
+    expect(probe.mock.calls.map(([args]) => args[args.indexOf("-c:v") + 1])).toEqual(["h264_nvenc", "h264_amf", "h264_qsv"]);
+  });
+
+  it("continues after a throwing hardware probe and falls back to CPU", async () => {
+    const probe = vi.fn(async () => { throw new Error("device unavailable"); });
+    expect(await selectH264Encoder("h264_nvenc h264_amf h264_qsv libx264", probe)).toBe("libx264");
+    expect(probe).toHaveBeenCalledTimes(3);
+  });
+
+  it("uses the encoder pixel format in hardware probes", async () => {
+    const probe = vi.fn(async (_args: string[]) => true);
+    await selectH264Encoder("h264_amf", probe);
+    const args = probe.mock.calls[0][0];
+    expect(args[args.indexOf("-pix_fmt") + 1]).toBe("nv12");
+  });
+
+  it("requires QSV hardware device initialization before probing", async () => {
+    const probe = vi.fn(async (_args: string[]) => false);
+    expect(await selectH264Encoder("h264_qsv libx264", probe)).toBe("libx264");
+    const args = probe.mock.calls[0][0];
+    expect(args.slice(args.indexOf("-init_hw_device"), args.indexOf("-init_hw_device") + 2)).toEqual(["-init_hw_device", "qsv:hw"]);
+    expect(args.indexOf("-init_hw_device")).toBeLessThan(args.indexOf("-f"));
+  });
 });
 
 describe("encoder-specific quality options", () => {
@@ -46,5 +79,43 @@ describe("encoder-specific quality options", () => {
   it("preserves software encoding quality defaults", () => {
     expect(videoEncodingArgs("libx264", "balanced")).toEqual(["-c:v", "libx264", "-preset", "medium", "-crf", "23"]);
     expect(videoEncodingArgs("libx264", "high")).toContain("slow");
+  });
+
+  it.each([
+    ["high", "quality", "18"],
+    ["balanced", "balanced", "23"],
+    ["small", "speed", "28"],
+  ] as const)("uses AMF CQP options for %s", (quality, amfQuality, qp) => {
+    expect(videoEncodingArgs("h264_amf", quality)).toEqual([
+      "-c:v", "h264_amf", "-quality", amfQuality, "-rc", "cqp", "-qp_i", qp, "-qp_p", qp, "-qp_b", qp,
+    ]);
+  });
+
+  it.each([
+    ["high", "slow", "18"],
+    ["balanced", "medium", "23"],
+    ["small", "fast", "28"],
+  ] as const)("uses QSV quality options for %s", (quality, preset, globalQuality) => {
+    expect(videoEncodingArgs("h264_qsv", quality)).toEqual([
+      "-c:v", "h264_qsv", "-preset", preset, "-global_quality", globalQuality,
+    ]);
+  });
+
+  it.each([
+    ["libx264", "yuv420p"],
+    ["h264_nvenc", "yuv420p"],
+    ["h264_amf", "nv12"],
+    ["h264_qsv", "nv12"],
+  ] as const)("uses %s pixel format %s", (encoder, pixelFormat) => {
+    expect(encoderPixelFormat(encoder)).toBe(pixelFormat);
+  });
+
+  it.each([
+    ["libx264", []],
+    ["h264_nvenc", []],
+    ["h264_amf", []],
+    ["h264_qsv", ["-init_hw_device", "qsv:hw"]],
+  ] as const)("uses %s device arguments", (encoder, deviceArgs) => {
+    expect(encoderDeviceArgs(encoder)).toEqual(deviceArgs);
   });
 });

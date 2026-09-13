@@ -9,6 +9,19 @@ const media: MediaItem = {
 };
 
 describe("TemplateCompiler", () => {
+  it.each(["h264_amf", "h264_qsv"] as const)("uses the probed pixel format and options for %s", async (videoEncoder) => {
+    const command = await new TemplateCompiler().compile(createDefaultTemplate(), media, DEFAULT_PRESET, {
+      ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused", videoEncoder,
+    });
+    expect(command.args[command.args.indexOf("-c:v") + 1]).toBe(videoEncoder);
+    expect(command.args[command.args.indexOf("-pix_fmt") + 1]).toBe("nv12");
+    if (videoEncoder === "h264_qsv") {
+      expect(command.args[command.args.indexOf("-init_hw_device") + 1]).toBe("qsv:hw");
+      expect(command.args.indexOf("-init_hw_device")).toBeLessThan(command.args.indexOf("-i"));
+    }
+    expect(command.args).not.toContain("-crf");
+    expect(command.args).toContain("0:a?");
+  });
   it("uses the selected GPU encoder while preserving the governed filter graph and container", async () => {
     const compiler = new TemplateCompiler();
     const options = { ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused", threads: 4 };

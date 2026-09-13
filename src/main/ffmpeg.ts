@@ -5,6 +5,8 @@ import { FONT_CHOICES } from "../shared/decorations.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import { binaryCandidates, windowsFontCandidates } from "./platform.js";
 import { selectH264Encoder, type H264Encoder } from "./video-encoder.js";
+import { executionLimits, verifiedExportCount, type ExecutionLimits } from "./execution-limits.js";
+import { probeConcurrentEncodes } from "./hardware-probe.js";
 
 export interface CommandResult {
   code: number;
@@ -103,6 +105,7 @@ export interface CapabilityStatus {
   overlay: boolean;
   h264Encoder: boolean;
   videoEncoder?: H264Encoder;
+  executionLimits?: ExecutionLimits;
   aacEncoder: boolean;
   fonts: boolean;
   appDataWritable: boolean;
@@ -171,12 +174,28 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
   status.ffmpegVersion = version.stdout.split(/\r?\n/, 1)[0]?.replace(/^ffmpeg version\s*/i, "") || undefined;
   status.drawtext = /\bdrawtext\b/.test(filters.stdout);
   status.overlay = /\boverlay\b/.test(filters.stdout);
-  status.videoEncoder = await selectH264Encoder(encoders.code === 0 ? encoders.stdout : "", async (args) => {
+  const probeDeadline = Date.now() + 15_000;
+  const tryEncode = async (args: string[]): Promise<boolean> => {
+    const remaining = Math.min(5_000, probeDeadline - Date.now());
+    if (remaining <= 0) return false;
     const command = runCommand(ffmpegPath, args);
-    const timeout = setTimeout(() => command.process.kill("SIGKILL"), 5_000);
+    const timeout = setTimeout(() => command.process.kill("SIGKILL"), remaining);
     try { return (await command.promise).code === 0; }
     finally { clearTimeout(timeout); }
+  };
+  status.videoEncoder = await selectH264Encoder(encoders.code === 0 ? encoders.stdout : "", async (args) => {
+    if (!await tryEncode(args)) return false;
+    const encoder = args[args.indexOf("-c:v") + 1] as H264Encoder;
+    const limits = executionLimits(undefined, encoder);
+    const exports = await verifiedExportCount(limits.exports, (count) => {
+      const remaining = Math.min(5_000, probeDeadline - Date.now());
+      return remaining > 0 ? probeConcurrentEncodes(args, count, (probeArgs, onProgress) => runCommand(ffmpegPath, probeArgs, onProgress), remaining) : Promise.resolve(false);
+    });
+    if (!exports) return false;
+    status.executionLimits = { ...limits, exports };
+    return true;
   });
+  if (status.videoEncoder === "libx264") status.executionLimits = executionLimits(undefined, "libx264");
   status.h264Encoder = Boolean(status.videoEncoder);
   status.aacEncoder = /\baac\b/.test(encoders.stdout);
   return { status: updateReadiness(status), adapter: new FfmpegAdapter(ffmpegPath, ffprobePath) };
