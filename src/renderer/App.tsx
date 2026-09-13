@@ -7,16 +7,18 @@ import { MaterialCollection } from "./MaterialCollection";
 import { ModelPicker } from "./ModelPicker";
 import { TemplatePanel } from "./TemplatePanel";
 import { CornerDecorationPicker } from "./CornerDecorationPicker";
+import { StickerLibraryPanel } from "./StickerLibraryPanel";
 import { DecorationSchema, type DecorationOptions, type Corner } from "../shared/decorations";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ResultsPanel } from "./ResultsPanel";
 import { BugFeedbackDialog } from "./BugFeedbackDialog";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 
-type Step = "connection" | "import" | "templates" | "results";
+type Step = "connection" | "import" | "templates" | "stickers" | "results";
 const steps: { id: Step; icon: string; label: string; detail: string }[] = [
   { id: "import", icon: "folder", label: "素材工作台", detail: "01" },
   { id: "templates", icon: "grid", label: "规则模板", detail: "02" },
+  { id: "stickers", icon: "upload", label: "上传贴纸", detail: "" },
   { id: "results", icon: "film", label: "我的作品", detail: "03" },
 ];
 
@@ -153,7 +155,7 @@ export default function App() {
     });
   };
   const navigate = (next: Step) => {
-    if (!state.connection.configured && next !== "results") setStep("connection");
+    if (!state.connection.configured && next !== "results" && next !== "stickers") setStep("connection");
     else setStep(next);
   };
 
@@ -166,14 +168,16 @@ export default function App() {
       <div className="sidebar-note"><span className="small-tag"><Icon name="spark" size={14} /> AGENT AT WORK</span><h3>你来定方向，<br />细节交给 Agent。</h3><p>素材 + 规则模板<br />每条视频，独立表达。</p><div className="note-lines"><i /><i /><i /></div></div>
       <div className="sidebar-bottom"><button className="connection-link" onClick={() => setFeedbackOpen(true)}><Icon name="edit" size={18} /><span>反馈问题</span></button><button className={step === "connection" ? "connection-link active" : "connection-link"} onClick={() => setStep("connection")}><Icon name="settings" size={18} /><span>模型与 API</span><i className={state.connection.configured ? "status-dot connected" : "status-dot"} /></button><div className="sidebar-platform">LOCAL DESKTOP <span>WIN / LINUX</span></div></div>
     </aside>
-    <BugFeedbackDialog open={feedbackOpen} page={step} onClose={() => setFeedbackOpen(false)} />
+    {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
+    <BugFeedbackDialog open={feedbackOpen} page={step === "stickers" ? "templates" : step} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">
       <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{engineLabel}</span><button className="icon-button" aria-label="打开项目" disabled={locked || exporting} onClick={() => changeProject(true)}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onClick={saveCollection}><Icon name="download" size={15} />保存项目</button></div></header>
       <main className="content">
         {(step === "templates" || step === "connection") && <ModelPicker connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} disabled={locked || exporting} onSelect={(input) => run(async () => { apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} />}
         {notice && <div className={notice.error ? "notice error" : "notice success"} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "close" : "check"} size={17} /><span>{notice.text}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setNotice(undefined)}><Icon name="close" size={16} /></button></div>}
-        {!state.capabilities.ready && step !== "connection" && <div className="capability-banner" role="status"><Icon name="settings" /><div><strong>本地导出引擎需要配置</strong><p>{state.capabilities.message} Windows：安装 FFmpeg 并加入 PATH；Linux：安装 FFmpeg、fontconfig 与 Noto CJK 字体。配置完成后重启应用。</p></div></div>}
+        {!state.capabilities.ready && step !== "connection" && step !== "stickers" && <div className="capability-banner" role="status"><Icon name="settings" /><div><strong>本地导出引擎需要配置</strong><p>{state.capabilities.message} Windows：安装 FFmpeg 并加入 PATH；Linux：安装 FFmpeg、fontconfig 与 Noto CJK 字体。配置完成后重启应用。</p></div></div>}
         {agentRunning && <div className="activity-banner" role="status"><span className="activity-orb"><Icon name="spark" size={17} /></span><div><strong>Agent 正在逐条创作</strong><span>当前任务使用已冻结的素材与规则。</span></div><button className="text-button" disabled={busy} onClick={() => void run(async () => { apply(await window.jianji.cancelAgent()); })}>停止本轮任务</button></div>}
+        {step === "stickers" && <StickerLibraryPanel disabled={locked || exporting} />}
         {step === "connection" && <ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => void run(async () => { apply(await window.jianji.loginChatGPT()); })} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); setStep("import"); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={() => setStep("import")} />}
         {step === "import" && <>
           <Heading eyebrow="01 / A LITTLE MATERIAL, A LOT OF POSSIBILITY" title="好作品，从你的素材开始">放入视频，选个风格。把反复的调整，交给你的创作搭档。</Heading>

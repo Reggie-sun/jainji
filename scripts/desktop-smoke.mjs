@@ -93,7 +93,14 @@ require("node:fs").watch(${JSON.stringify(directory)}, (_event, name) => { if (n
 app.getAppPath = () => ${JSON.stringify(root)};
 app.commandLine.appendSwitch("remote-debugging-port", ${JSON.stringify(String(debugPort))});
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
-dialog.showOpenDialog = async (_window, options) => ({ canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : options.title === "上传贴纸" ? [${JSON.stringify(uploadSource)}] : options.title === "打开项目" ? [${JSON.stringify(collectionFile)}] : [${JSON.stringify(source)}] });
+let stickerPickerCalls = 0;
+dialog.showOpenDialog = async (_window, options) => {
+  if (options.title === "上传贴纸") {
+    stickerPickerCalls += 1;
+    return stickerPickerCalls === 1 ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [stickerPickerCalls === 2 ? ${JSON.stringify(source)} : ${JSON.stringify(uploadSource)}] };
+  }
+  return { canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : options.title === "打开项目" ? [${JSON.stringify(collectionFile)}] : [${JSON.stringify(source)}] };
+};
 dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(collectionFile)} });
 dialog.showMessageBox = async () => ({ response: 1 });
 require(${JSON.stringify(path.join(root, "dist-electron/main.cjs"))});
@@ -158,6 +165,17 @@ try {
   };
   await send("Runtime.enable");
   await waitFor("document.body.innerText.includes('接入你的创作搭档')");
+  await click("上传贴纸");
+  await waitFor("document.body.innerText.includes('还没有上传贴纸')");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '选择图片上传' && !button.disabled)"), true, "standalone sticker library is available without a model or video");
+  await screenshot("00-sticker-library-empty");
+  await click("选择图片上传");
+  await waitFor("!document.body.innerText.includes('正在上传…')");
+  assert.equal(await evaluate("document.querySelectorAll('.uploaded-sticker-grid img').length"), 0, "cancel preserves empty library");
+  await click("选择图片上传");
+  await waitFor("document.querySelector('[role=alert]')?.textContent.includes('上传失败')");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '选择图片上传' && !button.disabled)"), true, "invalid upload can be retried");
+  await click("模型与 API");
   const duplicate = spawn(require("electron"), [bootstrap], { cwd: root, env: environment, stdio: "ignore" });
   const duplicateExit = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => { duplicate.kill(); reject(new Error("Second instance failed to exit")); }, 5000);
@@ -300,13 +318,19 @@ try {
   await screenshot("04-compact");
   await send("Emulation.clearDeviceMetricsOverride");
   await click("上传贴纸");
-  await waitFor("document.querySelector('.sticker-choices button[aria-pressed=true]')?.textContent.includes('我的贴纸')");
+  await click("选择图片上传");
+  await waitFor("document.querySelectorAll('.uploaded-sticker-grid img').length === 1");
   const uploaded = (await evaluate("window.jianji.decorationCatalog()")).stickers.filter(sticker => sticker.source === "uploaded");
   assert.equal(uploaded.length, 1);
-  assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.9元30贴");
-  await click("上传贴纸");
+  await click("选择图片上传");
   await waitFor("!document.body.innerText.includes('正在上传…')");
   assert.equal((await evaluate("window.jianji.decorationCatalog()")).stickers.filter(sticker => sticker.source === "uploaded").length, 1);
+  await screenshot("04a-sticker-library");
+  await click("规则模板");
+  await waitFor("document.querySelector('.sticker-choices button[aria-pressed=true]')?.textContent.includes('公主请下单')");
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.9元30贴", "library navigation preserves price and manual selection");
+  assert.equal(await evaluate("[...document.querySelectorAll('main button')].some(button => button.textContent === '选择图片上传')"), false, "template picker no longer owns upload");
+  await click(uploaded[0].label);
   await unlink(uploadSource);
   await click("自动生成提示词");
   await waitFor("!document.querySelector('.generate-brief').disabled");
@@ -389,8 +413,10 @@ try {
   assert.deepEqual(await readFile(source), sourceBytes, "recovery leaves the original video unchanged");
   await screenshot("07-reopened-collection-unlocked");
   await click("全部交给 Agent");
-  await waitFor("document.body.innerText.includes('上传贴纸供 Agent 选择') && document.body.innerText.includes('我的贴纸')");
-  assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '上传贴纸' && !button.disabled)"), true);
+  await click("上传贴纸");
+  await waitFor("document.querySelectorAll('.uploaded-sticker-grid img').length === 1");
+  await click("规则模板");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "true", "library navigation preserves automatic mode");
   await evaluate("document.querySelector('.directory-picker').click()");
   await waitFor("[...document.querySelectorAll('button')].some(button => button.textContent.includes('交给 Agent，制作') && !button.disabled)");
   await click("交给 Agent，制作");
