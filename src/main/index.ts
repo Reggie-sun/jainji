@@ -21,6 +21,7 @@ import { AssetLibrary } from "./asset-library.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
+import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -82,6 +83,7 @@ function publish(snapshot: QueueSnapshot): void {
 }
 
 function registerHandlers(): void {
+  registerBugFeedbackHandlers(assertTrustedSender);
   ipcMain.handle("library.asset", async (event, input: unknown) => {
     assertTrustedSender(event);
     const id = z.string().min(1).max(100).parse(input);

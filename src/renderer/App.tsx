@@ -10,6 +10,7 @@ import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { DecorationSchema, type DecorationOptions, type Corner } from "../shared/decorations";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ResultsPanel } from "./ResultsPanel";
+import { BugFeedbackDialog } from "./BugFeedbackDialog";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 
 type Step = "connection" | "import" | "templates" | "results";
@@ -26,6 +27,7 @@ export default function App() {
   const [notice, setNotice] = useState<{ error: boolean; text: string }>();
   const [initError, setInitError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [rule, setRule] = useState<RuleId>("black-gold");
   const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({}));
@@ -162,8 +164,9 @@ export default function App() {
       <span className="nav-label">WORKSPACE</span>
       <nav aria-label="创作流程">{steps.map((item) => <button className={step === item.id ? "active" : ""} onClick={() => navigate(item.id)} key={item.id}><Icon name={item.icon} size={19} /><span>{item.label}</span><small>{item.detail}</small></button>)}</nav>
       <div className="sidebar-note"><span className="small-tag"><Icon name="spark" size={14} /> AGENT AT WORK</span><h3>你来定方向，<br />细节交给 Agent。</h3><p>素材 + 规则模板<br />每条视频，独立表达。</p><div className="note-lines"><i /><i /><i /></div></div>
-      <div className="sidebar-bottom"><button className={step === "connection" ? "connection-link active" : "connection-link"} onClick={() => setStep("connection")}><Icon name="settings" size={18} /><span>模型与 API</span><i className={state.connection.configured ? "status-dot connected" : "status-dot"} /></button><div className="sidebar-platform">LOCAL DESKTOP <span>WIN / LINUX</span></div></div>
+      <div className="sidebar-bottom"><button className="connection-link" onClick={() => setFeedbackOpen(true)}><Icon name="edit" size={18} /><span>反馈问题</span></button><button className={step === "connection" ? "connection-link active" : "connection-link"} onClick={() => setStep("connection")}><Icon name="settings" size={18} /><span>模型与 API</span><i className={state.connection.configured ? "status-dot connected" : "status-dot"} /></button><div className="sidebar-platform">LOCAL DESKTOP <span>WIN / LINUX</span></div></div>
     </aside>
+    <BugFeedbackDialog open={feedbackOpen} page={step} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">
       <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{engineLabel}</span><button className="icon-button" aria-label="打开项目" disabled={locked || exporting} onClick={() => changeProject(true)}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onClick={saveCollection}><Icon name="download" size={15} />保存项目</button></div></header>
       <main className="content">

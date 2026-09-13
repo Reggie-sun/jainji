@@ -5,8 +5,17 @@ import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
 import type { DecorationCatalog } from "../shared/decorations.js";
 import type { LibraryAssetPreview } from "../shared/asset-library.js";
+import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt, FeedbackStatus } from "../shared/bug-feedback.js";
 
 const api = {
+  feedbackStatus: (): Promise<FeedbackStatus> => ipcRenderer.invoke("feedback.status"),
+  configureFeedback: (token: string): Promise<FeedbackStatus> => ipcRenderer.invoke("feedback.configure", token),
+  submitFeedback: (input: BugFeedback): Promise<FeedbackReceipt> => ipcRenderer.invoke("feedback.submit", input),
+  feedbackHistory: (): Promise<FeedbackHistoryEntry[]> => ipcRenderer.invoke("feedback.history"),
+  resumeFeedback: (feedbackId: string): Promise<FeedbackReceipt> => ipcRenderer.invoke("feedback.resume", feedbackId),
+  openFeedback: (feedbackId: string): Promise<boolean> => ipcRenderer.invoke("feedback.open", feedbackId),
+  openFeedbackRepository: (): Promise<boolean> => ipcRenderer.invoke("feedback.repository"),
+  revealFeedbackScreenshot: (feedbackId: string): Promise<boolean> => ipcRenderer.invoke("feedback.screenshot", feedbackId),
   decorationCatalog: (): Promise<DecorationCatalog> => ipcRenderer.invoke("decorations.catalog"),
   libraryAsset: (id: string): Promise<LibraryAssetPreview> => ipcRenderer.invoke("library.asset", id),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
