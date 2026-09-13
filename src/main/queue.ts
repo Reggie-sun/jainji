@@ -76,6 +76,7 @@ export class ExportQueue {
   private readonly controllers = new Map<string, RunningCommand>();
   private readonly cancelRequested = new Set<string>();
   private readonly pendingStarts = new Set<string>();
+  private readonly preparingRetries = new Set<string>();
   private running = false;
   private activeStart?: Promise<void>;
   private readonly activeTasks = new Map<string, { work: Promise<void>; threads: number }>();
@@ -99,7 +100,7 @@ export class ExportQueue {
       const recovered = structuredClone(state);
       let changed = false;
       for (const task of recovered.batch.tasks) {
-        if (!EXECUTION.has(task.status)) continue;
+        if (task.status !== "queued" && !EXECUTION.has(task.status)) continue;
         task.status = "interrupted";
         task.progress = Math.min(task.progress, 0.99);
         task.errorCode = "interrupted";
@@ -239,33 +240,43 @@ export class ExportQueue {
         assertPriceOnlyTemplate(state.batch.templateSnapshot);
       }
     }
-    const changedBatchIds: string[] = [];
-    for (const state of this.states.values()) {
-      let changed = false;
-      for (const task of state.batch.tasks) {
-        if (requested && !requested.has(task.id)) continue;
-        if (!requested && !["failed", "interrupted"].includes(task.status)) continue;
-        if (!["failed", "interrupted"].includes(task.status)) continue;
-        task.attempts.push({ attempt: Math.max(1, task.attempt), status: task.status, startedAt: task.startedAt, finishedAt: task.finishedAt, outputPath: task.outputPath, errorCode: task.errorCode, errorMessage: task.errorMessage });
-        task.attempt += 1;
-        task.progress = 0;
-        task.outputArtifact = undefined;
-        task.outputPath = await allocateOutputPath(state.batch.outputDirectory, this.mediaFor(state, task)?.sourcePath ?? "video.mp4", "_edited", state.batch.tasks.filter((other) => other.id !== task.id).map((other) => other.outputPath).filter((entry): entry is string => Boolean(entry)), state.batch.preset.container);
-        task.errorCode = undefined;
-        task.errorMessage = undefined;
-        task.startedAt = undefined;
-        task.finishedAt = undefined;
-        task.status = "queued";
-        changed = true;
+    const preparedTaskIds: string[] = [];
+    try {
+      const changedBatchIds: string[] = [];
+      for (const state of this.states.values()) {
+        let changed = false;
+        for (const task of state.batch.tasks) {
+          if (this.preparingRetries.has(task.id)) continue;
+          if (requested && !requested.has(task.id)) continue;
+          if (!requested && !["failed", "interrupted"].includes(task.status)) continue;
+          if (!["failed", "interrupted"].includes(task.status)) continue;
+          this.preparingRetries.add(task.id);
+          preparedTaskIds.push(task.id);
+          task.attempts.push({ attempt: Math.max(1, task.attempt), status: task.status, startedAt: task.startedAt, finishedAt: task.finishedAt, outputPath: task.outputPath, errorCode: task.errorCode, errorMessage: task.errorMessage });
+          task.attempt += 1;
+          task.progress = 0;
+          task.outputArtifact = undefined;
+          task.outputPath = await allocateOutputPath(state.batch.outputDirectory, this.mediaFor(state, task)?.sourcePath ?? "video.mp4", "_edited", state.batch.tasks.filter((other) => other.id !== task.id).map((other) => other.outputPath).filter((entry): entry is string => Boolean(entry)), state.batch.preset.container);
+          task.errorCode = undefined;
+          task.errorMessage = undefined;
+          task.startedAt = undefined;
+          task.finishedAt = undefined;
+          task.status = "queued";
+          changed = true;
+        }
+        if (changed) { state.batch.status = "active"; await this.persist(state); changedBatchIds.push(state.batch.id); }
       }
-      if (changed) { state.batch.status = "active"; await this.persist(state); changedBatchIds.push(state.batch.id); }
+      if (this.states.size > 0) this.emit();
+      await Promise.all(changedBatchIds.map((batchId) => this.start(batchId)));
+    } finally {
+      for (const id of preparedTaskIds) this.preparingRetries.delete(id);
     }
-    if (this.states.size > 0) this.emit();
-    await Promise.all(changedBatchIds.map((batchId) => this.start(batchId)));
   }
 
   async hydrate(batches: readonly ExportBatch[]): Promise<void> {
     for (const batch of batches) {
+      // In-memory scheduled work belongs to the live executor, not recovery.
+      if (this.pendingStarts.has(batch.id) || this.states.get(batch.id)?.batch.tasks.some((task) => this.activeTasks.has(task.id) || this.preparingRetries.has(task.id))) continue;
       let state = this.states.get(batch.id);
       if (!state) {
         try { state = (await this.dependencies.jobStore.load(batch.id)).state; }
@@ -277,7 +288,7 @@ export class ExportQueue {
       }
       let recovered = false;
       for (const task of state.batch.tasks) {
-        if (!EXECUTION.has(task.status)) continue;
+        if (task.status !== "queued" && !EXECUTION.has(task.status)) continue;
         task.status = "interrupted";
         task.progress = Math.min(task.progress, 0.99);
         task.errorCode = "interrupted";

@@ -34,7 +34,7 @@ describe("ExportQueue", () => {
     expect(tasks[1].outputArtifact?.durationMs).toBe(1_000);
   });
 
-  it("marks persisted execution states as interrupted on recovery", async () => {
+  it.each(["queued", "validating", "running", "verifying", "cancelling"] as const)("marks persisted %s as interrupted on recovery", async (status) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-recovery-"));
     const output = path.join(directory, "output");
     const source = path.join(directory, "input.mp4");
@@ -46,7 +46,7 @@ describe("ExportQueue", () => {
     firstQueue.setMediaLookup((id) => id === media.id ? media : undefined);
     const batch = await firstQueue.createBatch({ template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], outputDirectory: output, preset: DEFAULT_PRESET });
     const state = firstQueue.snapshot().batches[0];
-    state.batch.tasks[0].status = "running";
+    state.batch.tasks[0].status = status;
     state.batch.status = "active";
     await jobStore.save(state);
     const recoveredQueue = new ExportQueue({ jobStore, ffmpeg, fontResolver: { resolve: async () => null } });
@@ -54,6 +54,24 @@ describe("ExportQueue", () => {
     expect(recovered.batches[0].batch.id).toBe(batch.id);
     expect(recovered.batches[0].batch.tasks[0].status).toBe("interrupted");
     expect(recovered.batches[0].batch.tasks[0].errorCode).toBe("interrupted");
+  });
+
+  it.each(["project", "store", "memory"])("interrupts abandoned queued tasks when opening from %s without executing them", async (source) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-open-queued-"));
+    const sourcePath = path.join(directory, "input.mp4");
+    await writeFile(sourcePath, "original");
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "input.mp4", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 8, durationMs: 1000, width: 10, height: 10, rotation: 0, probeStatus: "ready", importedAt: now() };
+    const ffmpeg = { ffmpegPath: "/fake", run: () => { throw new Error("opening must not render"); } } as unknown as FfmpegAdapter;
+    const jobStore = new JobStore(path.join(directory, "jobs"));
+    const original = new ExportQueue({ jobStore, ffmpeg, fontResolver: { resolve: async () => null } });
+    const batch = await original.createBatch({ projectId: crypto.randomUUID(), template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
+    const store = source === "project" ? new JobStore(path.join(directory, "empty-jobs")) : jobStore;
+    const queue = source === "memory" ? original : new ExportQueue({ jobStore: store, ffmpeg, fontResolver: { resolve: async () => null } });
+    await queue.hydrate([batch]);
+    expect(queue.snapshot().batches[0].batch.tasks[0]).toMatchObject({ status: "interrupted", errorCode: "interrupted" });
+    expect((await store.load(batch.id)).state.batch.tasks[0].status).toBe("interrupted");
+    expect(await fingerprintFile(sourcePath)).toBe(media.fingerprint);
+    expect(batch.tasks[0].status).toBe("queued");
   });
 
   it("waits for an active task to stop before persisting shutdown recovery", async () => {
@@ -79,6 +97,8 @@ describe("ExportQueue", () => {
     const batch = await queue.createBatch({ template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], outputDirectory: output, preset: DEFAULT_PRESET });
     const startPromise = queue.start(batch.id);
     await startedPromise;
+    await queue.hydrate([batch]);
+    expect(queue.snapshot().batches[0].batch.tasks[0].status).toBe("running");
     await queue.shutdown();
     await startPromise;
     const task = queue.snapshot().batches[0].batch.tasks[0];

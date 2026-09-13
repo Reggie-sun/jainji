@@ -323,6 +323,34 @@ try {
   await waitFor("document.querySelector('.result-row .status-tag.cancelled') !== null");
   assert.equal(await evaluate("document.querySelector('.result-row:has(.status-tag.cancelled)').innerText.includes('重试导出')"), false);
   assert.equal(requests, 2, "Export retry must not invoke the provider again");
+  await waitFor("(async () => !(await window.jianji.getState()).project.hasUnsavedChanges)()");
+  await click("新建创作");
+  await waitFor("document.body.innerText.includes('你的素材即将在这里就位')");
+  const historicalProject = structuredClone(savedCollection);
+  historicalProject.id = crypto.randomUUID();
+  const historicalBatch = structuredClone(savedJob.batch);
+  historicalBatch.id = crypto.randomUUID();
+  historicalBatch.projectId = historicalProject.id;
+  historicalBatch.status = "active";
+  historicalBatch.tasks = Array.from({ length: 57 }, () => ({
+    id: crypto.randomUUID(), batchId: historicalBatch.id, mediaId: historicalProject.mediaItems[0].id,
+    status: "queued", progress: 0, attempt: 0, createdAt: new Date().toISOString(), attempts: [],
+  }));
+  historicalProject.exportBatches = [historicalBatch];
+  await writeFile(collectionFile, JSON.stringify(historicalProject));
+  await click("打开素材集");
+  await waitFor("document.body.innerText.includes('测试素材.mp4')");
+  const reopened = await evaluate("window.jianji.getState()");
+  assert.equal(reopened.queue.batches[0].batch.tasks.length, 57);
+  assert.equal(reopened.queue.batches[0].batch.tasks.every(task => task.status === "interrupted"), true);
+  await click("规则模板");
+  assert.equal(await evaluate("[...document.querySelectorAll('.template-card')].every(button => !button.disabled)"), true, "abandoned queued jobs must not lock templates");
+  assert.equal(await evaluate("document.querySelector('.model-picker input').disabled"), false, "abandoned jobs must not lock model selection");
+  await click("清爽日常");
+  assert.equal(await evaluate("document.querySelector('.template-card.clean').getAttribute('aria-pressed')"), "true");
+  assert.equal(requests, 2, "opening a saved collection never restarts model work");
+  assert.deepEqual(await readFile(source), sourceBytes, "recovery leaves the original video unchanged");
+  await screenshot("07-reopened-collection-unlocked");
   assert.deepEqual(exceptions, []);
   const codexPid = Number(await readFile(path.join(directory, "codex.pid"), "utf8"));
   const exit = new Promise((resolve, reject) => {

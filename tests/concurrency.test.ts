@@ -91,6 +91,38 @@ async function queueFixture(cores = 2) {
 }
 
 describe("global export concurrency", () => {
+  it("preserves a requested retry while its queued state is still being saved", async () => {
+    const f = await queueFixture(1);
+    const batch = await f.batch();
+    const first = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    await f.commands[0].finish(1);
+    await first;
+    const saving = deferred<void>();
+    const release = deferred<void>();
+    const save = f.jobStore.save.bind(f.jobStore);
+    vi.spyOn(f.jobStore, "save").mockImplementationOnce(async (state) => {
+      saving.resolve();
+      await release.promise;
+      await save(state);
+    });
+    const retrying = f.queue.retry([batch.tasks[0].id]);
+    try {
+      await saving.promise;
+      await f.queue.hydrate([batch]);
+      expect(f.queue.snapshot().batches[0].batch.tasks[0].status).toBe("queued");
+      release.resolve();
+      await vi.waitFor(() => expect(f.commands).toHaveLength(2));
+      await f.commands[1].finish();
+      await retrying;
+      expect(f.queue.snapshot().batches[0].batch.tasks[0].status).toBe("completed");
+    } finally {
+      release.resolve();
+      await f.queue.shutdown();
+      await retrying.catch(() => undefined);
+    }
+  });
+
   it("fills twenty export slots without exceeding the CPU thread budget", async () => {
     const f = await queueFixture(20);
     const batch = await f.batch(21);
@@ -119,6 +151,8 @@ describe("global export concurrency", () => {
     const third = await f.batch();
     await f.queue.start(third.id);
     expect(f.commands).toHaveLength(3);
+    await f.queue.hydrate([first, second, third]);
+    expect(f.queue.snapshot().batches.flatMap(({ batch }) => batch.tasks).map((task) => task.status)).toEqual(["running", "running", "running", "queued"]);
     await f.commands[0].finish();
     await vi.waitFor(() => expect(f.commands).toHaveLength(4));
     expect(f.compile.mock.calls[3][3].threads).toBe(8);
