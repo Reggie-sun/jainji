@@ -83,6 +83,14 @@ const debugPort = portServer.address().port;
 await new Promise((resolve) => portServer.close(resolve));
 const bootstrap = path.join(directory, "bootstrap.cjs");
 await writeFile(bootstrap, `const { app, dialog, shell } = require("electron");
+const filePromises = require("node:fs/promises");
+const originalWriteFile = filePromises.writeFile;
+filePromises.writeFile = async (file, ...args) => {
+  if (typeof file === "string" && file.endsWith(".deleted")) {
+    while (!require("node:fs").existsSync(${JSON.stringify(path.join(directory, "delete.release"))})) await new Promise(resolve => setTimeout(resolve, 10));
+  }
+  return originalWriteFile(file, ...args);
+};
 require("node:os").homedir = () => ${JSON.stringify(fixtureHome)};
 const childProcess = require("node:child_process");
 const nativeSpawn = childProcess.spawn;
@@ -427,6 +435,42 @@ try {
   const autoBatch = autoState.queue.batches.find(batch => batch.batch.tasks.some(task => task.status === "completed"));
   const autoJob = JSON.parse(await readFile(path.join(directory, "jobs", `${autoBatch.batch.id}.json`), "utf8"));
   assert.equal(autoJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath.endsWith(`${uploaded[0].id}.png`)), true, "Agent-selected upload reaches real FFmpeg output");
+  const uploadedPath = path.join(directory, "uploaded-stickers", `${uploaded[0].id}.png`);
+  const frozenStickerBytes = await readFile(uploadedPath);
+  await click("规则模板");
+  await click("自己设置");
+  await click("左上角");
+  await evaluate("document.querySelector('select[aria-label=\"角落内容类型\"]').value = 'sticker'; document.querySelector('select[aria-label=\"角落内容类型\"]').dispatchEvent(new Event('change', { bubbles: true }))");
+  await waitFor(`[...document.querySelectorAll('.sticker-choices button')].some(button => button.textContent === ${JSON.stringify(uploaded[0].label)})`);
+  await click(uploaded[0].label);
+  await click("上传贴纸");
+  await waitFor("document.querySelectorAll('.uploaded-sticker-grid img').length === 1");
+  await evaluate("document.querySelector('.sticker-delete-actions button').click()");
+  await click("取消");
+  assert.equal(await evaluate("document.querySelectorAll('.uploaded-sticker-grid img').length"), 1, "cancel keeps the sticker");
+  assert.equal(await evaluate("window.jianji.removeSticker('heart').then(() => false, () => true)"), true, "IPC cannot delete a builtin");
+  await evaluate("document.querySelector('.sticker-delete-actions button').click()");
+  await click("确认删除");
+  await click("规则模板");
+  await click("上传贴纸");
+  await waitFor("document.querySelectorAll('.uploaded-sticker-grid img').length === 1");
+  await writeFile(path.join(directory, "delete.release"), "release");
+  await waitFor("document.querySelectorAll('.uploaded-sticker-grid img').length === 0");
+  assert.equal((await evaluate("window.jianji.decorationCatalog()")).stickers.some(sticker => sticker.id === uploaded[0].id), false);
+  assert.deepEqual(await readFile(uploadedPath), frozenStickerBytes, "deletion preserves the frozen asset for export retries");
+  assert.equal(await evaluate(`window.jianji.generateBrief({ruleId:'clean',decorations:{mode:'manual',sticker:${JSON.stringify(uploaded[0].id)},productPrice:'19.90'}}).then(() => false, () => true)`), true, "deleted upload cannot reach a new model request");
+  assert.equal(briefRequests, 3);
+  await click("规则模板");
+  assert.equal(await evaluate("document.querySelector('select[aria-label=\"角落内容类型\"]').value"), "none", "deleting clears explicit corner selection");
+  await click("默认样式");
+  await waitFor("document.querySelector('.sticker-choices button[aria-pressed=true]')?.textContent === '不加贴纸'");
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.9元30贴");
+  await writeFile(uploadSource, frozenStickerBytes);
+  await click("上传贴纸");
+  await click("选择图片上传");
+  await waitFor("document.querySelectorAll('.uploaded-sticker-grid img').length === 1");
+  assert.equal((await evaluate("window.jianji.decorationCatalog()")).stickers.some(sticker => sticker.id === uploaded[0].id), true, "reimport restores a removed upload");
+  await screenshot("08-sticker-delete-restored");
   assert.deepEqual(exceptions, []);
   const codexPid = Number(await readFile(path.join(directory, "codex.pid"), "utf8"));
   const exit = new Promise((resolve, reject) => {

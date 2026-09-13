@@ -5,4 +5,7 @@
 .uploaded-sticker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
 .uploaded-sticker-grid .library-sticker-choice{min-width:0;overflow-wrap:anywhere;text-align:center}
 .uploaded-sticker-grid img{width:80px;height:80px}
+.sticker-delete-actions{display:flex;justify-content:center;gap:8px;margin-top:8px}
+.sticker-delete-actions button{border:0;background:transparent;color:#a33131;font-size:12px;padding:5px;cursor:pointer}
+.sticker-delete-actions button:disabled{opacity:.5;cursor:default}
 @media(max-width:560px){.sticker-upload-panel{padding:16px}.uploaded-sticker-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}}

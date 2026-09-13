@@ -16,6 +16,7 @@ const api = {
   revealFeedbackScreenshot: (feedbackId: string): Promise<boolean> => ipcRenderer.invoke("feedback.screenshot", feedbackId),
   decorationCatalog: (): Promise<DecorationCatalog> => ipcRenderer.invoke("decorations.catalog"),
   importSticker: (): Promise<string | null> => ipcRenderer.invoke("decorations.import"),
+  removeSticker: (id: string): Promise<void> => ipcRenderer.invoke("decorations.remove", id),
   libraryAsset: (id: string): Promise<LibraryAssetPreview> => ipcRenderer.invoke("library.asset", id),
   getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   getState: (): Promise<DesktopState> => ipcRenderer.invoke("app.state"),

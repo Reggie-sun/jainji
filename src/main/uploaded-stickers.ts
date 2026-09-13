@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { link, mkdir, open, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { link, mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
@@ -67,15 +67,24 @@ export class UploadedStickers {
         if (digest(await readFile(assetPath)) !== hash) throw new Error("已保存的贴纸损坏，请检查本地素材目录。");
       }
     } finally { await rm(temporary, { force: true }); }
+    await rm(path.join(this.root, `${id}.deleted`), { force: true });
     return { id, asset: { assetPath, assetFingerprint: `sha256:${hash}` } };
+  }
+
+  async remove(id: string): Promise<void> {
+    if (!isUploadedStickerId(id)) throw new Error("只能删除用户上传的贴纸。");
+    if (!(await stat(path.join(this.root, `${id}.png`))).isFile()) throw new Error("上传贴纸不存在。");
+    // Keep the immutable image at its original path for frozen export retries.
+    await writeFile(path.join(this.root, `${id}.deleted`), "", { flag: "a" });
   }
 
   async load(): Promise<Record<string, BuiltinStickerAsset>> {
     await mkdir(this.root, { recursive: true });
     const assets: Record<string, BuiltinStickerAsset> = {};
-    for (const name of (await readdir(this.root)).sort()) {
+    const names = new Set(await readdir(this.root));
+    for (const name of [...names].sort()) {
       const id = name.replace(/\.png$/, "");
-      if (name !== `${id}.png` || !isUploadedStickerId(id)) continue;
+      if (name !== `${id}.png` || !isUploadedStickerId(id) || names.has(`${id}.deleted`)) continue;
       const assetPath = path.join(this.root, name);
       const bytes = await readFile(assetPath);
       if (bytes.length > MAX_BYTES || `uploaded-${digest(bytes)}` !== id) continue;

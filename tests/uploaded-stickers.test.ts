@@ -24,6 +24,28 @@ async function fixture() {
 }
 
 describe("uploaded stickers", () => {
+  it("removes uploads from the persistent catalog while preserving frozen export files, and restores on reimport", async () => {
+    const { root, source, store } = await fixture();
+    const imported = await store.importFile(source);
+    const original = await readFile(imported.asset.assetPath);
+    await store.remove(imported.id);
+    expect(await store.catalog()).toEqual([]);
+    const reloaded = new UploadedStickers(path.join(root, "uploads"), () => { throw new Error("unused"); });
+    expect(await reloaded.load()).toEqual({});
+    expect(await readFile(imported.asset.assetPath)).toEqual(original);
+    expect(await readFile(source)).toEqual(original);
+    expect(await store.importFile(source)).toEqual(imported);
+    expect(Object.keys(await reloaded.load())).toEqual([imported.id]);
+  });
+
+  it("rejects deleting builtins, path traversal and unknown uploads", async () => {
+    const { store } = await fixture();
+    for (const id of ["heart", "../../source.png", `uploaded-${"f".repeat(64)}`]) {
+      await expect(store.remove(id)).rejects.toThrow();
+    }
+    expect(await store.load()).toEqual({});
+  });
+
   it("copies and deduplicates images, reloads without the source and exports through the existing plan", async () => {
     const { root, builtins, source, store } = await fixture();
     const imported = await store.importFile(source);

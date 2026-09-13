@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } from "electron";
 import { mkdir, stat, readFile } from "node:fs/promises";
-import { FONT_CHOICES, type DecorationCatalog } from "../shared/decorations.js";
+import { FONT_CHOICES, isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { z } from "zod";
@@ -47,6 +47,7 @@ let connections: ModelConnections;
 let library: AssetLibrary;
 let uploadedStickers: UploadedStickers;
 let stickerAssets: StickerAssets;
+let stickerMutation = false;
 let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
@@ -95,11 +96,29 @@ function registerHandlers(): void {
     });
     if (result.canceled || !result.filePaths.length) return null;
     agent.assertIdle();
+    if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
+    stickerMutation = true;
     try {
       const imported = await uploadedStickers.importFile(result.filePaths[0]);
       Object.assign(stickerAssets, { [imported.id]: imported.asset });
       return imported.id;
     } catch { throw new Error("贴纸上传失败，请选择有效的 PNG/JPG 静态图片（10 MB 以内、宽高不超过 4096 像素），并检查磁盘空间。"); }
+    finally { stickerMutation = false; }
+  });
+  ipcMain.handle("decorations.remove", async (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle();
+    const id = z.string().refine(isUploadedStickerId, "只能删除用户上传的贴纸。").parse(input);
+    if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
+    const asset = stickerAssets[id];
+    if (!asset) throw new Error("上传贴纸不存在或已删除。");
+    stickerMutation = true;
+    // Remove eligibility synchronously before another run can take its snapshot.
+    delete (stickerAssets as Record<string, unknown>)[id];
+    try { await uploadedStickers.remove(id); }
+    catch {
+      Object.assign(stickerAssets, { [id]: asset });
+      throw new Error("贴纸删除失败，请检查本地素材目录权限后重试。");
+    } finally { stickerMutation = false; }
   });
   ipcMain.handle("library.asset", async (event, input: unknown) => {
     assertTrustedSender(event);
