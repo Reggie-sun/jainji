@@ -10,6 +10,7 @@ import { JobStore } from "../src/main/store";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import type { AssetLibrary } from "../src/main/asset-library";
 import * as agentFrames from "../src/main/agent-frames";
+import { DEFAULT_PRESET } from "../src/main/domain";
 
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
@@ -39,19 +40,30 @@ describe("AgentController queue admission", () => {
       expect(controller.busy).toBe(false);
     } finally { frames.mockRestore(); finalPlan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
-  it.each([1, 250])("admits %i outputs despite another project's recovered queued task", async (multiplier) => {
+  it.each([1, 250])("admits %i outputs with 500 historical exports despite another project's recovered queued task", async (multiplier) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-admission-"));
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
     const queue = new ExportQueue({ ffmpeg, fontResolver: { resolve: async () => null }, jobStore: new JobStore(path.join(directory, "jobs")) });
     const id = crypto.randomUUID();
     service.currentProject.mediaItems.push({ id, displayName: "test", sourcePath: path.join(directory, "missing.mp4"), fingerprint: "missing", width: 10, height: 10, durationMs: 1000, sizeBytes: 1, rotation: 0, importedAt: new Date().toISOString(), probeStatus: "ready" });
+    service.currentProject.exportBatches = Array.from({ length: 500 }, () => {
+      const batchId = crypto.randomUUID();
+      return {
+        schemaVersion: 1, id: batchId, projectId: service.currentProject.id,
+        templateSnapshot: service.currentProject.templates[0], mediaIds: [id],
+        outputDirectory: directory, preset: DEFAULT_PRESET, status: "cancelled",
+        estimatedBytes: 0, createdAt: service.currentProject.updatedAt,
+        tasks: [{ id: crypto.randomUUID(), batchId, mediaId: id, status: "cancelled", progress: 0, attempt: 0, createdAt: service.currentProject.updatedAt, attempts: [] }],
+      };
+    });
     queue.snapshot = () => ({ revision: 1, batches: [{ batch: { projectId: "other-project", tasks: [{ status: "queued" }] } }] } as ReturnType<ExportQueue["snapshot"]>);
     const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
     try {
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], multiplier, outputDirectory: directory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]))).resolves.toBeUndefined();
       expect(controller.snapshot()?.items).toHaveLength(multiplier);
+      expect(service.currentProject.exportBatches).toHaveLength(500);
     } finally { await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
 

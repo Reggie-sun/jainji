@@ -5,7 +5,6 @@ import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
 import { RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
 import { JianjiError } from "./errors.js";
-import { MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -243,7 +242,7 @@ export const ProjectSchema = z.object({
   mediaItems: z.array(MediaItemSchema).max(1000),
   templates: z.array(EditTemplateSchema).max(100),
   activeTemplateId: z.string().uuid(),
-  exportBatches: z.array(ExportBatchSchema).max(MAX_AGENT_OUTPUTS),
+  exportBatches: z.array(ExportBatchSchema),
   updatedAt: DateTime,
 }).strict().superRefine((project, ctx) => {
   if (!project.templates.some((template) => template.id === project.activeTemplateId)) {

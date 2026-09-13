@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { ProjectStore } from "../src/main/store";
 import { createDefaultProject, DEFAULT_PRESET, EditTemplateSchema, ProjectSchema, type EditTemplate } from "../src/main/domain";
 
 describe("versioned domain schemas", () => {
-  it("round-trips 250 export records and rejects a 251st record", () => {
+  it("saves and reloads export history beyond a single run's 250 outputs", async () => {
     const project = createDefaultProject();
     const mediaId = crypto.randomUUID();
-    project.exportBatches = Array.from({ length: 250 }, () => {
+    project.exportBatches = Array.from({ length: 500 }, () => {
       const id = crypto.randomUUID();
       return {
         schemaVersion: 1, id, projectId: project.id, templateSnapshot: project.templates[0],
@@ -14,9 +18,12 @@ describe("versioned domain schemas", () => {
         tasks: [{ id: crypto.randomUUID(), batchId: id, mediaId, status: "queued", progress: 0, attempt: 0, createdAt: project.updatedAt, attempts: [] }],
       };
     });
-    expect(ProjectSchema.parse(JSON.parse(JSON.stringify(project))).exportBatches).toHaveLength(250);
-    project.exportBatches.push({ ...project.exportBatches[0], id: crypto.randomUUID() });
-    expect(() => ProjectSchema.parse(project)).toThrow();
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-history-"));
+    try {
+      const store = new ProjectStore(path.join(directory, "project.json"));
+      await store.save(project);
+      expect((await store.load()).project).toEqual(project);
+    } finally { await rm(directory, { recursive: true, force: true }); }
   });
   it("rejects unknown and future schema fields", () => {
     const project = createDefaultProject();
