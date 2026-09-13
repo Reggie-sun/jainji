@@ -47,6 +47,8 @@ export class ApplicationService {
   private projectFile?: ProjectStore;
   private dirty = true;
   private mutationVersion = 0;
+  private queueSyncWork?: Promise<void>;
+  private pendingQueueSave?: { project: Project; snapshot: Project; store: ProjectStore; version: number };
   private readonly mediaCatalog: MediaCatalog;
 
   constructor(ffmpeg: FfmpegAdapter, private readonly fontResolver: FontResolver) {
@@ -145,6 +147,8 @@ export class ApplicationService {
     this.renameProject(name);
     const store = new ProjectStore(filePath);
     const version = this.mutationVersion;
+    // This explicit save includes the latest state and supersedes older pending autosaves.
+    this.pendingQueueSave = undefined;
     await store.save(this.project);
     this.projectFile = store;
     if (this.mutationVersion === version) this.dirty = false;
@@ -163,21 +167,45 @@ export class ApplicationService {
     return structuredClone(this.project);
   }
 
-  async syncQueue(queue: QueueSnapshot): Promise<void> {
-    let changed = false;
-    for (const state of queue.batches) {
-      if (state.batch.projectId !== this.project.id) continue;
-      const index = this.project.exportBatches.findIndex((batch) => batch.id === state.batch.id);
-      if (index < 0) this.project.exportBatches.push(structuredClone(state.batch));
-      else this.project.exportBatches[index] = structuredClone(state.batch);
-      changed = true;
-    }
-    if (!changed) return;
-    this.touch();
-    const version = this.mutationVersion;
-    if (this.projectFile) {
-      await this.projectFile.save(this.project);
-      if (this.mutationVersion === version) this.dirty = false;
+  syncQueue(queue: QueueSnapshot): Promise<void> {
+    try {
+      let changed = false;
+      for (const state of queue.batches) {
+        if (state.batch.projectId !== this.project.id) continue;
+        const index = this.project.exportBatches.findIndex((batch) => batch.id === state.batch.id);
+        if (index < 0) this.project.exportBatches.push(structuredClone(state.batch));
+        else this.project.exportBatches[index] = structuredClone(state.batch);
+        changed = true;
+      }
+      if (!changed) return Promise.resolve();
+      this.touch();
+      if (!this.projectFile) return Promise.resolve();
+      // Progress may arrive faster than atomic disk writes. Keep one active save
+      // and the latest pending state, rather than retaining a project per event.
+      this.pendingQueueSave = { project: this.project, snapshot: structuredClone(this.project), store: this.projectFile, version: this.mutationVersion };
+      this.queueSyncWork ??= Promise.resolve().then(async () => {
+        try {
+          let failure: { error: unknown } | undefined;
+          while (this.pendingQueueSave) {
+            const { project, snapshot, store, version } = this.pendingQueueSave;
+            this.pendingQueueSave = undefined;
+            // New/open/save-as supersedes the old automatic-save destination.
+            if (this.project !== project || this.projectFile !== store) continue;
+            try { await store.save(snapshot); }
+            catch (error) {
+              failure ??= { error };
+              continue;
+            }
+            if (this.project === project && this.projectFile === store && this.mutationVersion === version) this.dirty = false;
+          }
+          if (failure) throw failure.error;
+        } finally {
+          this.queueSyncWork = undefined;
+        }
+      });
+      return this.queueSyncWork;
+    } catch (error) {
+      return Promise.reject(error);
     }
   }
 
