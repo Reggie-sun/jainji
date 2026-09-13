@@ -86,7 +86,7 @@ export class AgentController {
       const projectId = this.service.currentProject.id;
       this.runner = new AgentRunner({
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
-        plan: (rule, brief, frames, signal, catalog) => this.provider.plan(rule, brief, frames, signal, catalog),
+        plan: (rule, brief, frames, signal, catalog, selection) => this.provider.plan(rule, brief, frames, signal, catalog, selection),
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
           const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });

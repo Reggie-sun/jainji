@@ -12,18 +12,18 @@ import { JobStore } from "../src/main/store";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 describe("agent to local export", () => {
-  it("extracts real frames, calls a local compatible endpoint, and renders independent verified videos", async (context) => {
+  for (const mode of ["manual", "agent"] as const) it(`extracts real frames and renders independent verified videos in ${mode} mode`, async (context) => {
     const [ffmpegPath, ffprobePath, font] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
     if (!ffmpegPath || !ffprobePath || !font) { context.skip(); return; }
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-agent-proof-"));
-    const requests: Array<{ model: string; messages: Array<{ content: Array<{ type: string; image_url?: { url: string } }> }> }> = [];
+    const requests: Array<{ model: string; messages: Array<{ content: string | Array<{ type: string; image_url?: { url: string } }> }> }> = [];
     const server = createServer((request, response) => {
       let body = "";
       request.on("data", (chunk) => { body += chunk; });
       request.on("end", () => {
         requests.push(JSON.parse(body));
         response.setHeader("Content-Type", "application/json");
-        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3 }) } }] }));
+        response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [{ corner: "bottom-right", sticker: "heart" }] } : {}) }) } }] }));
       });
     });
     await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -48,7 +48,7 @@ describe("agent to local export", () => {
       const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" }, multiplier: 126 }, new Set([outputDirectory]))).rejects.toThrow("250 条");
       expect(requests).toHaveLength(0);
-      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { productPrice: "19.90", sticker: "heart", fontFamily } }, new Set([outputDirectory]));
+      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { mode, productPrice: "19.90", sticker: "heart", fontFamily } }, new Set([outputDirectory]));
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         const snapshot = queue.snapshot();
@@ -57,8 +57,17 @@ describe("agent to local export", () => {
       }
       expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
       expect(requests).toHaveLength(4);
+      if (mode === "agent") {
+        const systems = requests.map((request) => request.messages[0].content as string);
+        expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));
+        expect(systems.every((system) => !system.includes('"sticker":"arrow"') && !system.includes("清透色彩配轻箭头贴纸"))).toBe(true);
+      } else {
+        expect(requests.every((request) => !(request.messages[0].content as string).includes("当前为同批第"))).toBe(true);
+      }
       for (const request of requests) {
-        const images = request.messages[1].content.filter((item) => item.type === "image_url");
+        const content = request.messages[1].content;
+        if (typeof content === "string") throw new Error("expected visual content");
+        const images = content.filter((item) => item.type === "image_url");
         expect(images).toHaveLength(3);
         expect(images.every((item) => item.image_url!.url.startsWith("data:image/jpeg;base64,/9j/"))).toBe(true);
         expect(JSON.stringify(request)).not.toContain(directory);

@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
-import { materializePlan, ProviderError, type AgentDecorationCatalog, type PackagingPlan } from "./agent-provider.js";
+import { materializePlan, ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
-  plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog): Promise<PackagingPlan>;
+  plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog, selection?: AgentSelectionContext): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
   stickerAssets: StickerAssets;
   decorations?: DecorationOptions;
@@ -46,6 +46,7 @@ export class AgentRunner {
 
   private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
     let next = 0;
+    const stickerUsage = new Map<string, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
     const worker = async () => {
       while (next < media.length) {
@@ -63,9 +64,16 @@ export class AgentRunner {
           }
           const frames = await extracting;
           signal.throwIfAborted();
-          const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog);
+          const selection = this.dependencies.autoCatalog ? {
+            outputIndex: index, totalOutputs: media.length,
+            stickerUsage: Array.from(stickerUsage, ([id, count]) => ({ id, count })),
+          } : undefined;
+          const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
           const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
+          if (selection && "stickers" in plan) {
+            for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
+          }
           item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = plan.summary;
           item.status = "exporting";

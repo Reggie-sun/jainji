@@ -12,6 +12,38 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("removes template sticker bias from automatic briefs and plans", async () => {
+    const request = vi.fn().mockResolvedValueOnce(reply("按画面留白选择贴纸")).mockResolvedValueOnce(reply(JSON.stringify(autoPlan)));
+    const provider = new AgentProvider(request);
+    provider.configure(connection);
+    await provider.generateBrief({ ruleId: "black-gold", decorations: { mode: "agent" } }, new AbortController().signal);
+    await provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog);
+    for (const call of request.mock.calls) {
+      const system = JSON.parse(call[1].body).messages[0].content;
+      expect(system).not.toContain('"sticker":"sparkle"');
+      expect(system).not.toContain("暖金滤镜配星芒贴纸");
+      expect(system).toContain('"minIntensity":0.35');
+      expect(system).toContain("新增文字只允许");
+    }
+  });
+
+  it("varies equal-use catalog ordering and prioritizes less used stickers without excluding choices", async () => {
+    const request = vi.fn().mockImplementation(async () => reply(JSON.stringify(autoPlan)));
+    const provider = new AgentProvider(request);
+    provider.configure(connection);
+    for (const context of [
+      { outputIndex: 0, totalOutputs: 3, stickerUsage: [] },
+      { outputIndex: 1, totalOutputs: 3, stickerUsage: [] },
+      { outputIndex: 0, totalOutputs: 3, stickerUsage: [{ id: "heart", count: 2 }] },
+    ]) await provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog, context);
+    const systems = request.mock.calls.map((call) => JSON.parse(call[1].body).messages[0].content as string);
+    expect(systems[0].indexOf('"id":"heart"')).toBeLessThan(systems[0].indexOf('"id":"sparkle"'));
+    for (const system of systems.slice(1)) expect(system.indexOf('"id":"sparkle"')).toBeLessThan(system.indexOf('"id":"heart"'));
+    expect(systems[2]).toContain('"count":2');
+    expect(autoCatalog.stickers.map(({ id }) => id)).toEqual(["heart", "sparkle"]);
+    expect(request).toHaveBeenCalledTimes(3);
+  });
+
   it("rejects every model-supplied caption in manual and agent plans", async () => {
     for (const [catalog, raw] of [[undefined, plan], [autoCatalog, autoPlan]] as const) {
       expect(() => validatePlan({ ...raw, captions: [{ text: "细节之美" }] }, "black-gold", catalog)).toThrow();
