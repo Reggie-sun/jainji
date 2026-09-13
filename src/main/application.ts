@@ -16,6 +16,7 @@ import { MediaCatalog, toMediaView, type MediaView } from "./media.js";
 import { pathsEqual, validateTemplateResources, type FontResolver } from "./paths.js";
 import { ProjectStore } from "./store.js";
 import type { QueueSnapshot } from "./queue.js";
+import { MaterialNameSchema } from "../shared/material-names.js";
 
 export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots">;
 export interface PublicQueueState {
@@ -32,6 +33,7 @@ export interface AppState {
   project: {
     id: string;
     name: string;
+    hasUnsavedChanges: boolean;
     updatedAt: string;
     mediaItems: MediaView[];
     template: EditTemplate;
@@ -74,6 +76,13 @@ export class ApplicationService {
 
   removeMedia(mediaId: string): void {
     this.project.mediaItems = this.project.mediaItems.filter((item) => item.id !== mediaId);
+    this.touch();
+  }
+
+  renameProject(nameInput: string): void {
+    const name = MaterialNameSchema.parse(nameInput);
+    if (this.project.name === name) return;
+    this.project.name = name;
     this.touch();
   }
 
@@ -130,8 +139,10 @@ export class ApplicationService {
     return cloneTemplate(value);
   }
 
-  async saveProject(filePath: string): Promise<Project> {
+  async saveProject(filePath: string, nameInput?: string): Promise<Project> {
+    const name = nameInput === undefined ? this.project.name : MaterialNameSchema.parse(nameInput);
     await this.assertNotSource(filePath);
+    this.renameProject(name);
     const store = new ProjectStore(filePath);
     const version = this.mutationVersion;
     await store.save(this.project);
@@ -181,6 +192,7 @@ export class ApplicationService {
       project: {
         id: this.project.id,
         name: this.project.name,
+        hasUnsavedChanges: this.dirty,
         updatedAt: this.project.updatedAt,
         mediaItems: this.project.mediaItems.map(toMediaView),
         template: cloneTemplate(this.activeTemplate),

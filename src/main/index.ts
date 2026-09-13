@@ -20,6 +20,7 @@ import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { AssetLibrary } from "./asset-library.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
+import { MaterialNameSchema } from "../shared/material-names.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -188,11 +189,18 @@ function registerHandlers(): void {
     await service.loadTemplate(result.filePaths[0]);
     return publicState();
   });
-  ipcMain.handle("project.save", async (event) => {
-    assertTrustedSender(event);
-    const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目", defaultPath: `${service.currentProject.name}.jianji-project.json` });
+  ipcMain.handle("project.rename", (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle();
+    service.renameProject(MaterialNameSchema.parse(input));
+  });
+  ipcMain.handle("project.save", async (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle();
+    const name = input === undefined ? service.currentProject.name : MaterialNameSchema.parse(input);
+    const fileName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
+    const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目与素材集", defaultPath: service.projectPath ?? `${fileName}.jianji-project.json` });
     if (result.canceled || !result.filePath) return null;
-    await service.saveProject(result.filePath);
+    agent.assertIdle();
+    await service.saveProject(result.filePath, name);
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {
@@ -216,6 +224,15 @@ function registerHandlers(): void {
     assertTrustedSender(event); agent.assertIdle();
     const result = await dialog.showOpenDialog(mainWindow!, { title: "打开项目", properties: ["openFile"], filters: [{ name: "简辑项目", extensions: ["json"] }] });
     if (result.canceled || !result.filePaths[0]) return null;
+    if (service.hasUnsavedChanges && (service.currentProject.mediaItems.length || service.projectPath)) {
+      const choice = await dialog.showMessageBox(mainWindow!, {
+        type: "question", title: "打开素材集", message: "当前项目有尚未保存的更改。",
+        detail: "请先取消并保存当前素材集，或继续打开并放弃这些更改。",
+        buttons: ["继续打开", "取消"], defaultId: 1, cancelId: 1,
+      });
+      if (choice.response !== 0) return null;
+    }
+    agent.assertIdle();
     await service.loadProject(result.filePaths[0]);
     await queue.hydrate(service.currentProject.exportBatches);
     return publicState();

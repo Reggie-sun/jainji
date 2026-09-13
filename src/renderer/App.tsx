@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from "react"
 import type { DesktopState } from "../shared/desktop";
 import { calculateProductionQuantity, MAX_AGENT_OUTPUTS, type RuleId } from "../shared/agent";
 import { ConnectionPanel } from "./ConnectionPanel";
+import { MaterialNameSchema } from "../shared/material-names";
+import { MaterialCollection } from "./MaterialCollection";
 import { ModelPicker } from "./ModelPicker";
 import { TemplatePanel } from "./TemplatePanel";
 import { CornerDecorationPicker } from "./CornerDecorationPicker";
@@ -19,6 +21,7 @@ const steps: { id: Step; icon: string; label: string; detail: string }[] = [
 
 export default function App() {
   const [state, setState] = useState<DesktopState>();
+  const [collectionName, setCollectionName] = useState("");
   const [step, setStep] = useState<Step>("connection");
   const [notice, setNotice] = useState<{ error: boolean; text: string }>();
   const [initError, setInitError] = useState("");
@@ -45,6 +48,7 @@ export default function App() {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
     if (projectId.current !== next.project.id) {
       projectId.current = next.project.id;
+      setCollectionName(next.project.name);
       knownMedia.current.clear();
       setOutputDirectory("");
       setPreviewId(undefined);
@@ -106,7 +110,21 @@ export default function App() {
   };
   const changeProject = (load: boolean) => void run(async () => {
     const next = await (load ? window.jianji.loadProject() : window.jianji.newProject());
-    if (next) { apply(next); setStep(next.connection.configured ? "import" : "connection"); }
+    if (next) { apply(next); setCollectionName(next.project.name); setStep(next.connection.configured ? "import" : "connection"); }
+  });
+  const renameCollection = (name: string) => {
+    setCollectionName(name);
+    const parsed = MaterialNameSchema.safeParse(name);
+    if (!parsed.success) return;
+    const currentId = state.project.id;
+    void window.jianji.renameProject(parsed.data).then(() => {
+      setState((current) => current?.project.id === currentId ? { ...current, project: { ...current.project, name: parsed.data, hasUnsavedChanges: true } } : current);
+    }).catch(() => setNotice({ error: true, text: "素材集名称未能更新，请重试。" }));
+  };
+  const saveCollection = () => void run(async () => {
+    const name = MaterialNameSchema.parse(collectionName);
+    const next = await window.jianji.saveProject(name);
+    if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "素材集已保存，下次可通过“打开素材集”继续使用。" }); }
   });
   const start = () => void run(async () => {
     const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
@@ -143,7 +161,7 @@ export default function App() {
       <div className="sidebar-bottom"><button className={step === "connection" ? "connection-link active" : "connection-link"} onClick={() => setStep("connection")}><Icon name="settings" size={18} /><span>模型与 API</span><i className={state.connection.configured ? "status-dot connected" : "status-dot"} /></button><div className="sidebar-platform">LOCAL DESKTOP <span>WIN / LINUX</span></div></div>
     </aside>
     <div className="main-area">
-      <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{state.capabilities.ready ? "本地引擎就绪" : "引擎待配置"}</span><button className="icon-button" aria-label="打开项目" disabled={locked || exporting} onClick={() => changeProject(true)}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked} onClick={() => void run(async () => { const next = await window.jianji.saveProject(); if (next) { apply(next); setNotice({ error: false, text: "项目已保存。" }); } })}><Icon name="download" size={15} />保存项目</button></div></header>
+      <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{state.capabilities.ready ? "本地引擎就绪" : "引擎待配置"}</span><button className="icon-button" aria-label="打开项目" disabled={locked || exporting} onClick={() => changeProject(true)}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onClick={saveCollection}><Icon name="download" size={15} />保存项目</button></div></header>
       <main className="content">
         {(step === "templates" || step === "connection") && <ModelPicker connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} disabled={locked || exporting} onSelect={(input) => run(async () => { apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} />}
         {notice && <div className={notice.error ? "notice error" : "notice success"} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "close" : "check"} size={17} /><span>{notice.text}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setNotice(undefined)}><Icon name="close" size={16} /></button></div>}
@@ -152,6 +170,7 @@ export default function App() {
         {step === "connection" && <ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => void run(async () => { apply(await window.jianji.loginChatGPT()); })} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); setStep("import"); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={() => setStep("import")} />}
         {step === "import" && <>
           <Heading eyebrow="01 / A LITTLE MATERIAL, A LOT OF POSSIBILITY" title="好作品，从你的素材开始">放入视频，选个风格。把反复的调整，交给你的创作搭档。</Heading>
+          <MaterialCollection name={collectionName} dirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} onOpen={() => changeProject(true)} onSave={saveCollection} />
           <div className="import-layout"><div className="import-main">
             <div className={"drop-zone" + (dragOver ? " drag-over" : "")} onDragOver={(event) => { event.preventDefault(); if (!locked) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={dropMedia}>
               <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked || !state.connection.configured} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>

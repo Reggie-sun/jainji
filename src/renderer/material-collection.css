@@ -1,0 +1,7 @@
+.material-collection{padding:18px 22px;margin-bottom:20px}
+.material-collection form{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+.material-collection label{flex:1;min-width:180px;font-size:12px;font-weight:600}
+.material-collection input{width:100%;min-width:0;border:1px solid #d2ded8;border-radius:6px;background:#fff;color:inherit;padding:9px 10px;font-size:12px}
+.material-collection input{display:block;margin-top:8px}
+.material-collection p{margin-top:12px;font-size:11px;line-height:1.7;color:#85938e}
+.material-collection p span{color:#507f70;margin-right:12px}
