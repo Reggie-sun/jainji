@@ -16,6 +16,37 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent run lifecycle", () => {
+  it("extracts a source once across worker waves but plans every version and refreshes on the next run", async () => {
+    const frames = vi.fn().mockResolvedValue(["frame"]);
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockResolvedValue("task");
+    const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    const sources = [media("a"), media("b")];
+    const versions = executionLimits().analysis + 1;
+    runner.start("project", "clean", "", sources, versions);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(2 * versions);
+    expect(enqueue).toHaveBeenCalledTimes(2 * versions);
+    runner.start("project", "clean", "", sources, versions);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(4);
+    expect(provider).toHaveBeenCalledTimes(4 * versions);
+  });
+
+  it("does not retain failed extraction for later versions of the same source", async () => {
+    const frames = vi.fn().mockRejectedValueOnce(new Error("unreadable source")).mockResolvedValue(["frame"]);
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockResolvedValue("task");
+    const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a")], executionLimits().analysis + 1);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(runner.snapshot()?.items.filter((item) => item.status === "failed")).toHaveLength(executionLimits().analysis);
+  });
+
   it("supplies independent batch positions and immutable usage snapshots, resetting between runs", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
     const contexts: AgentSelectionContext[] = [];

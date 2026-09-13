@@ -38,8 +38,8 @@ describe("hardware execution limits", () => {
     expect(await verifiedExportCount(2, async () => { throw new Error("device unavailable"); })).toBe(0);
   });
 
-  it("defaults to 720p and bounds decoding, filtering and encoding threads", async () => {
-    expect(DEFAULT_PRESET.resolutionMode).toBe("720p");
+  it("defaults to source resolution and bounds decoding, filtering and encoding threads", async () => {
+    expect(DEFAULT_PRESET.resolutionMode).toBe("source");
     const template = createDefaultTemplate();
     template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: "/tmp/sticker.gif", assetFingerprint: "test", x: 0, y: 0, width: 0.1, rotationDeg: 0, opacity: 1, zIndex: 0, visible: true });
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4", displayName: "source.mp4", fingerprint: "test", width: 1920, height: 1080, durationMs: 1000, sizeBytes: 1, rotation: 0, probeStatus: "ready", importedAt: now() };
@@ -49,7 +49,7 @@ describe("hardware execution limits", () => {
     expect(threadOptions).toEqual(["1", "1", "1"]);
     expect(args.slice(args.indexOf("-threads"), args.indexOf("-threads") + 4)).toEqual(["-threads", "1", "-i", media.sourcePath]);
     expect(args[args.indexOf("-filter_complex_threads") + 1]).toBe("1");
-    expect(args[args.indexOf("-filter_complex") + 1]).toContain("1280:720");
+    expect(args[args.indexOf("-filter_complex") + 1]).toContain("[0:v]setpts=PTS-STARTPTS,format=yuv420p[base0]");
     expect(args[args.indexOf("-preset") + 1]).toBe("medium");
     expect(args[args.indexOf("-crf") + 1]).toBe("23");
   });

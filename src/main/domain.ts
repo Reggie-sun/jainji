@@ -263,7 +263,7 @@ export const DEFAULT_PRESET: ExportPreset = {
   container: DEFAULT_EXPORT_FORMAT,
   videoCodec: "h264",
   audioCodec: "aac",
-  resolutionMode: "720p",
+  resolutionMode: "source",
   frameRateMode: "source",
   quality: "balanced",
 };

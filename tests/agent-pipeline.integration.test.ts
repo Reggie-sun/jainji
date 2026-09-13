@@ -105,7 +105,7 @@ describe("agent to local export", () => {
         expect(batch.tasks[0].outputArtifact).toMatchObject({ taskId: batch.tasks[0].id, path: batch.tasks[0].outputPath });
         const result = await adapter.probe(batch.tasks[0].outputPath!);
         expect(result.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);
-        expect(result.streams?.find((stream) => stream.codec_type === "video")).toMatchObject({ width: 1280, height: 720 });
+        expect(result.streams?.find((stream) => stream.codec_type === "video")).toMatchObject({ width: 320, height: 180 });
       }
     } finally {
       await controller.cancel(); await queue.shutdown();
