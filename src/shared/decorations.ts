@@ -32,7 +32,7 @@ export function formatProductPrice(price: string): string {
 }
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {
-    return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined };
+    return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined, priceStyle: undefined };
   }
   return input;
 }, z.object({

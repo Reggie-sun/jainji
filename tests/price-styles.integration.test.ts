@@ -10,7 +10,7 @@ import { DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, type MediaItem } from "../src
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
 import { ArtifactVerifier } from "../src/main/artifact";
 
-it("renders every price style with distinct pixels, preserving landscape and portrait video/audio", { timeout: 60_000 }, async (context) => {
+it.for(["manual", "agent"] as const)("renders every %s price style with distinct pixels, preserving landscape and portrait video/audio", { timeout: 60_000 }, async (mode, context) => {
   const [ffmpegPath, ffprobePath, font] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
   if (!ffmpegPath || !ffprobePath || !font) { context.skip(); return; }
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-price-styles-"));
@@ -23,7 +23,7 @@ it("renders every price style with distinct pixels, preserving landscape and por
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "fixture", fingerprint: "fixture", sizeBytes: 1, durationMs: 500, width, height, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     const hashes = new Set<string>();
     for (const style of PRICE_STYLES) {
-      const template = materializePlan({ summary: "花字", captions: [], filter: "warm", intensity: 0.4 }, "black-gold", media, assets, { productPrice: "19.9元30贴", priceStyle: style.id, sticker: "none" });
+      const template = materializePlan({ summary: "花字", captions: [], filter: "warm", intensity: 0.4, ...(mode === "agent" ? { stickers: [], priceStyle: style.id } : {}) }, "black-gold", media, assets, { mode, productPrice: "19.9元30贴", ...(mode === "manual" ? { priceStyle: style.id } : {}), sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
       const compiled = await new TemplateCompiler().compile(template, media, { ...DEFAULT_PRESET, resolutionMode: "source", frameRateMode: "source" }, { ffmpegPath, fontResolver: { resolve: async () => font }, textFilePath: (id) => path.join(directory, `${id}.txt`), threads: 1 });
       await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content)));
       const output = path.join(directory, `${width}-${style.id}.mp4`);

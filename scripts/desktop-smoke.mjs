@@ -64,7 +64,7 @@ const server = createServer((request, response) => {
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
     const automatic = systemText.includes('"stickers"');
-    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: [{ corner: "top-left", sticker: JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)[0], width: 0.12, rotationDeg: 0 }] } : {}), filter: "cool", intensity: 0.3 });
+    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: [{ corner: "top-left", sticker: JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)[0], width: 0.12, rotationDeg: 0 }], priceStyle: "ice" } : {}), filter: "cool", intensity: 0.3 });
     response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
   });
 });
@@ -293,12 +293,14 @@ try {
   await evaluate("document.querySelector('#product-price').focus()");
   await send("Input.insertText", { text: "19.9元30贴" });
   assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), "false");
-  assert.equal(await evaluate("document.querySelectorAll('.price-style-option').length"), 8);
+  assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 0, "automatic decoration hides manual price choices");
+  assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('价格花字由 Agent 自主选择')"), true, "automatic preview marks its classic sample as undecided");
   const classicPreview = await evaluate("document.querySelector('.template-preview canvas').toDataURL()");
-  await click("漫画撞色");
-  assert.notEqual(await evaluate("document.querySelector('.template-preview canvas').toDataURL()"), classicPreview, "price selection redraws the preview");
   await click("自己设置");
   assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12, "manual decoration restores template choices");
+  assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 8, "manual decoration restores eight price choices");
+  await click("漫画撞色");
+  assert.notEqual(await evaluate("document.querySelector('.template-preview canvas').toDataURL()"), classicPreview, "price selection redraws the preview");
   await click("海盐蓝调");
   assert.equal(await evaluate("document.querySelector('.price-style-option[aria-pressed=true]').textContent.includes('漫画撞色')"), true, "mode and template switches retain price style");
   assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.9元30贴", "style changes cannot rewrite price");
@@ -444,6 +446,7 @@ try {
   await waitFor("document.querySelectorAll('.uploaded-sticker-grid img').length === 1");
   await click("规则模板");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "true", "library navigation preserves automatic mode");
+  assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 0, "automatic mode hides the retained manual price style");
   await evaluate("document.querySelector('.directory-picker').click()");
   await waitFor("[...document.querySelectorAll('button')].some(button => button.textContent.includes('交给 Agent，制作') && !button.disabled)");
   await click("交给 Agent，制作");
@@ -454,6 +457,7 @@ try {
   const autoBatch = autoState.queue.batches.find(batch => batch.batch.tasks.some(task => task.status === "completed"));
   const autoJob = JSON.parse(await readFile(path.join(directory, "jobs", `${autoBatch.batch.id}.json`), "utf8"));
   assert.equal(autoJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath.endsWith(`${uploaded[0].id}.png`)), true, "Agent-selected upload reaches real FFmpeg output");
+  assert.deepEqual(autoJob.batch.templateSnapshot.layers.find(layer => layer.type === "text").color, { r: 224, g: 253, b: 255, a: 1 }, "Agent-selected price appearance reaches the frozen automatic export");
   const uploadedPath = path.join(directory, "uploaded-stickers", `${uploaded[0].id}.png`);
   const frozenStickerBytes = await readFile(uploadedPath);
   await click("规则模板");

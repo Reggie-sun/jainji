@@ -1,7 +1,7 @@
 // Real browser rendering of the production panel; local assets, no provider calls.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -26,7 +26,7 @@ server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plug
       import '/src/renderer/styles.css';
       window.failCatalog=false;
       window.jianji={decorationCatalog:async()=>{if(window.failCatalog)throw Error('fixture failure');return {fonts:['Noto Sans CJK SC','serif'],stickers:${JSON.stringify(stickers)}};},libraryAsset:async()=>{throw Error('offline fixture');}};
-      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC'});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [requestedCount,onRequestedCount]=React.useState();const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{requestedCount,onRequestedCount,onProductPrice:(productPrice)=>setOptions(current=>({...current,productPrice})),selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),onGenerateBrief:()=>{window.generatedBrief=true;},brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:3,disabled});}
+      function Fixture(){const [selected,onSelect]=React.useState('black-gold');const [options,setOptions]=React.useState({sticker:'template',fontFamily:'Noto Sans CJK SC',priceStyle:undefined});window.fixtureOptions=options;const [selectedCorner,onCornerSelect]=React.useState();const [exportFormat,onExportFormat]=React.useState('mp4');const [requestedCount,onRequestedCount]=React.useState();const [disabled,setDisabled]=React.useState(false);window.setFixtureDisabled=setDisabled;return React.createElement(TemplatePanel,{requestedCount,onRequestedCount,onProductPrice:(productPrice)=>setOptions(current=>({...current,productPrice})),onPriceStyle:(priceStyle)=>setOptions(current=>({...current,priceStyle})),selected,onSelect,selectedCorner,onCornerSelect,exportFormat,onExportFormat,decorationOptions:options,decorations:React.createElement(CornerDecorationPicker,{selected:selectedCorner,onSelect:onCornerSelect,value:options,onChange:setOptions,disabled}),onGenerateBrief:()=>{window.generatedBrief=true;},brief:'',onBrief:()=>{},outputDirectory:'/tmp/example',onOutput:()=>{},onStart:()=>{throw Error('must not start');},count:3,disabled});}
       createRoot(document.getElementById('root')).render(React.createElement(Fixture));
     </script></body></html>`));
   });
@@ -65,7 +65,7 @@ try {
   assert.equal(await evaluate("document.querySelector('#export-format').value"), "mp4", "default remains MP4");
   for (const format of ["mov", "mkv", "mp4"]) {
     await evaluate(`{const select=document.querySelector('#export-format');select.value=${JSON.stringify(format)};select.dispatchEvent(new Event('change',{bubbles:true}));}`);
-    await waitFor(`document.querySelector('.export-card p').textContent.includes(${JSON.stringify(format.toUpperCase())})`);
+    await waitFor(`document.querySelector('#export-format').value===${JSON.stringify(format)}`);
     assert.equal(await evaluate("document.querySelector('#export-format').value"), format);
   }
   await evaluate("window.setFixtureDisabled(true)");
@@ -139,6 +139,8 @@ try {
   assert.equal(await evaluate("document.querySelector('[aria-label=角落内容类型]').disabled"), true);
   await evaluate('window.setFixtureDisabled(false)');
   await waitFor("!document.querySelector('.corner-slot').disabled");
+  await click('[data-price-style="comic"]');
+  await waitFor("window.fixtureOptions.priceStyle==='comic'");
   const manualSettings = await evaluate('JSON.stringify(window.fixtureOptions.corners)');
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='全部交给 Agent').click()");
   await waitFor("window.fixtureOptions.mode==='agent'");
@@ -146,12 +148,14 @@ try {
   assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 0, 'auto mode hides fixed template choices');
   assert.equal(await evaluate("document.querySelectorAll('.corner-slot').length"), 0, 'auto mode hides manual selection slots');
   assert.equal(await evaluate("Boolean(document.querySelector('.decoration-picker'))"), false, 'auto mode requires no manual picker');
+  assert.equal(await evaluate("document.querySelector('.price-style-picker')"), null, 'automatic mode hides manual price choices');
+  assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 0, 'automatic mode has no price-style cards');
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].filter(button => button.textContent === '全部交给 Agent').length"), 1, 'one master Agent switch controls price appearance and stickers');
+  assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('价格花字由 Agent 自主选择')"), true, 'automatic preview labels the classic sample as undecided');
   assert.equal(await evaluate("document.querySelector('.rules-banner').textContent.includes('奶油画报')"), false, 'auto mode exposes no selected template name');
   assert.equal(await evaluate("document.body.innerText.includes('贴纸仅放四角且宽度 ≤ 20%')"), true, 'auto mode states neutral sticker boundary');
   assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('全部留空')"), true, 'auto mode explicitly allows empty corners');
   await evaluate("document.querySelector('#corner-decoration-editor').scrollIntoView({block:'center'})");
-  const autoScreenshot = await send("Page.captureScreenshot", { format: "png" });
-  await writeFile(path.join(directory, "agent-mode.png"), Buffer.from(autoScreenshot.data, "base64"));
   await evaluate('window.setFixtureDisabled(true)');
   await waitFor("[...document.querySelectorAll('[aria-label=装饰选择方式] button')].every(b=>b.disabled)");
   await evaluate('window.setFixtureDisabled(false)');
@@ -159,17 +163,15 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='自己设置').click()");
   await waitFor("document.querySelectorAll('.corner-slot').length===4");
   assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12, 'manual mode restores template choices');
+  assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 8, 'manual mode restores eight price-style cards');
+  assert.equal(await evaluate("document.querySelector('[data-price-style=\"comic\"]').getAttribute('aria-pressed')"), 'true', 'manual mode restores the chosen price style');
   assert.equal(await evaluate("document.querySelector('.template-card.cream-studio').getAttribute('aria-pressed')"), 'true', 'manual mode restores the chosen template');
   assert.equal(await evaluate('JSON.stringify(window.fixtureOptions.corners)'), manualSettings, 'returning to manual preserves selections');
   await evaluate("document.querySelector('.template-preview').scrollIntoView({block:'center'})");
-  const screenshot = await send("Page.captureScreenshot", { format: "png" });
-  await writeFile(path.join(directory, "preview.png"), Buffer.from(screenshot.data, "base64"));
   await evaluate("document.querySelector('.export-card').scrollIntoView({block:'center'})");
-  const exportScreenshot = await send("Page.captureScreenshot", { format: "png" });
-  await writeFile(path.join(directory, "export-format.png"), Buffer.from(exportScreenshot.data, "base64"));
   await send("Emulation.setDeviceMetricsOverride", { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
   assert.equal(await evaluate("document.documentElement.scrollWidth <= innerWidth"), true, "no horizontal overflow at minimum width");
-  console.log(`PASS: agent/manual modes and restoration, neutral automatic sticker boundary, four independent corners, retained choices, disabled controls, export formats/default/disabled, twelve manual templates, sticker removal, asset error/recovery, narrow layout. Screenshots: ${directory}`);
+  console.log("PASS: agent/manual modes and restoration, neutral automatic sticker boundary, four independent corners, retained choices, disabled controls, export formats/default/disabled, twelve manual templates, sticker removal, asset error/recovery, narrow layout.");
 } finally {
   socket?.close(); chrome.kill(); await server.close();
 }

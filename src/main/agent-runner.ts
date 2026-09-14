@@ -47,6 +47,7 @@ export class AgentRunner {
   private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
     let next = 0;
     const stickerUsage = new Map<string, number>();
+    const priceStyleUsage = new Map<string, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
     const remainingVersions = new Map<string, number>();
     for (const source of media) remainingVersions.set(source.id, (remainingVersions.get(source.id) ?? 0) + 1);
@@ -70,14 +71,17 @@ export class AgentRunner {
           const frames = await extracting;
           signal.throwIfAborted();
           const selection = this.dependencies.autoCatalog ? {
+            catalogSeed: run.id,
             outputIndex: index, totalOutputs: media.length,
             stickerUsage: Array.from(stickerUsage, ([id, count]) => ({ id, count })),
+            priceStyleUsage: Array.from(priceStyleUsage, ([id, count]) => ({ id, count })),
           } : undefined;
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
           const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
+            priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = plan.summary;

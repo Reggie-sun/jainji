@@ -18,7 +18,7 @@ const dimensions = { width: 720, height: 1280 };
 
 it("rejects decorative model text in both modes at the local boundary", () => {
   for (const catalog of [undefined, { fonts: [], stickers: [] }]) {
-    const raw = { ...plan, ...(catalog ? { stickers: [] } : {}), captions: [{ text: "细节之美", corner: "bottom-right", size: 0.026, ...(catalog ? { fontFamily: "Noto Sans CJK SC" } : {}) }] };
+    const raw = { ...plan, ...(catalog ? { priceStyle: "classic", stickers: [] } : {}), captions: [{ text: "细节之美", corner: "bottom-right", size: 0.026, ...(catalog ? { fontFamily: "Noto Sans CJK SC" } : {}) }] };
     expect(() => validatePlan(raw, "black-gold", catalog)).toThrow();
   }
 });
@@ -37,7 +37,7 @@ it("retains strict model fields and template filter limits", () => {
 it.each(["19.9元30贴", "29.90元50片", "999999.99元1贴", "19.90元1000毫升"])("renders the exact manual quantity price without wrapping: %s", async (productPrice) => {
   for (const size of [dimensions, { width: 1920, height: 1080 }]) {
     for (const mode of ["manual", "agent"] as const) {
-      const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [] } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
+      const template = materializePlan({ ...plan, ...(mode === "agent" ? { priceStyle: "classic", stickers: [] } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
       const compiled = await new TemplateCompiler().compile(template, { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/price.txt" });
       expect(compiled.textFiles.map((entry) => entry.content)).toEqual([productPrice]);
     }

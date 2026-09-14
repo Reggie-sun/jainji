@@ -3,16 +3,57 @@ import { AgentProvider, materializePlan, validatePlan } from "../src/main/agent-
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
+import { PRICE_STYLES } from "../src/shared/price-styles";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
 const plan = { summary: "保留主体", captions: [], filter: "warm", intensity: 0.4 };
 const autoCatalog = { fonts: ["Noto Serif CJK SC"], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }] };
-const autoPlan = { ...plan, stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] };
+const autoPlan = { ...plan, priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }));
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("randomizes eligible candidates between batches while keeping a batch reproducible", async () => {
+    const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1,2,3,4]}'));
+    const provider = new AgentProvider(request); provider.configure(connection);
+    const catalog = { fonts: [], stickers: AUTOMATIC_STICKERS };
+    const choices = [];
+    for (const catalogSeed of ["batch-a", "batch-b", "batch-a"]) {
+      choices.push(await provider.shortlist("clean", "", [], new AbortController().signal, catalog, { outputIndex: 0, totalOutputs: 1, stickerUsage: [], catalogSeed }));
+    }
+    expect(choices[0]).not.toEqual(choices[1]);
+    expect(choices[0]).toEqual(choices[2]);
+    expect(choices.flat().every(id => AUTOMATIC_STICKERS.some(entry => entry.id === id))).toBe(true);
+  });
+
+  it("materializes model price appearance even when the draft retains a manual style", () => {
+    for (const style of PRICE_STYLES) {
+      const template = materializePlan({ ...autoPlan, priceStyle: style.id }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent", productPrice: "19.9元30贴" }, autoCatalog);
+      expect(template.layers.find(layer => layer.type === "text")).toMatchObject({ content: "19.9元30贴", color: style.color, strokeColor: style.strokeColor });
+    }
+    expect(() => validatePlan({ ...autoPlan, priceStyle: undefined }, "black-gold", autoCatalog)).toThrow();
+    expect(materializePlan({ ...autoPlan, priceStyle: "ice" }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent", productPrice: "19.90", priceStyle: "comic" }, autoCatalog).layers.find(layer => layer.type === "text")).toMatchObject({ color: PRICE_STYLES.find(style => style.id === "ice")!.color, content: "¥ 19.90" });
+  });
+
+  it("spreads randomized price choices across concurrent outputs and deprioritizes used styles", async () => {
+    const firstChoices: string[] = [];
+    const request = vi.fn().mockImplementation(async (_url, init) => {
+      const system = JSON.parse(init.body).messages[0].content as string;
+      const styles = JSON.parse(system.match(/价格花字目录（仅外观，不含价格内容）：(\[.*?\])。/)![1]);
+      firstChoices.push(styles[0].id);
+      expect(system).not.toContain("batch-seed");
+      return reply(JSON.stringify({ ...autoPlan, priceStyle: styles[0].id }));
+    });
+    const provider = new AgentProvider(request); provider.configure(connection);
+    for (let outputIndex = 0; outputIndex < PRICE_STYLES.length; outputIndex++) {
+      await provider.plan("clean", "", [], new AbortController().signal, autoCatalog, { outputIndex, totalOutputs: PRICE_STYLES.length, stickerUsage: [], catalogSeed: "batch-seed" });
+    }
+    expect(new Set(firstChoices).size).toBe(PRICE_STYLES.length);
+    await provider.plan("clean", "", [], new AbortController().signal, autoCatalog, { outputIndex: 0, totalOutputs: 1, stickerUsage: [], priceStyleUsage: [{ id: "classic", count: 4 }] });
+    expect(firstChoices.at(-1)).not.toBe("classic");
+  });
+
   it("spreads concurrent shortlist starting points across the eligible directory", async () => {
     const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1,2,3,4,5,6,7,8,9,10,11,12]}'));
     const provider = new AgentProvider(request); provider.configure(connection);
@@ -248,7 +289,7 @@ describe("agent provider boundary", () => {
     const id = `uploaded-${"b".repeat(64)}`;
     const preview = { id, url: "data:image/jpeg;base64,dXBsb2Fk" };
     const catalog = { fonts: [], stickers: [{ id, label: "用户上传的文字贴纸" }], previews: [preview] };
-    const request = vi.fn().mockResolvedValueOnce(reply('{"candidates":[1]}')).mockResolvedValueOnce(reply(JSON.stringify({ summary: "选用用户上传", captions: [], stickers: [{ corner: "top-left", sticker: id, width: 0.12, rotationDeg: 0 }], filter: "cool", intensity: 0.3 })));
+    const request = vi.fn().mockResolvedValueOnce(reply('{"candidates":[1]}')).mockResolvedValueOnce(reply(JSON.stringify({ summary: "选用用户上传", captions: [], priceStyle: "classic", stickers: [{ corner: "top-left", sticker: id, width: 0.12, rotationDeg: 0 }], filter: "cool", intensity: 0.3 })));
     const provider = new AgentProvider(request); provider.configure(connection);
     expect(await provider.shortlist("clean", "", [], new AbortController().signal, catalog)).toEqual([id]);
     await provider.plan("clean", "", [], new AbortController().signal, catalog);
