@@ -2,7 +2,7 @@
 
 ## Overview
 
-面向 Windows 与 Linux 的本地视频包装桌面应用。用户接入自己的模型 API、导入视频、选择规则模板，Agent 为每条视频分别设计中文短角标与滤镜，再自动导出独立 MP4。
+面向 Windows 与 Linux 的本地视频包装桌面应用。用户接入自己的模型 API、导入视频、选择规则模板，Agent 为每条视频分别选择贴纸与滤镜，再自动导出独立 MP4。新增文字只包含用户手动填写、由本地程序渲染的居中价格。
 
 这版保留视频原有顺序、时长、分辨率、帧率与音频；不包含多素材拼接、语音转写、配音或新素材生成。
 
@@ -93,7 +93,7 @@ npm run package:linux
 npm run package:win
 ```
 
-Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带；无需用户另外安装 Node 或 Codex。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。当前工程配置的签名、安装体验与 Windows 实机运行尚需在 Windows 环境验收。
+Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带；无需用户另外安装 Node 或 Codex。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。Windows x64 的构建、模拟服务桌面流程、静默安装与卸载已验证，记录见 [Windows 验收规范](windows-acceptance-spec.md)；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
 
 测试包含规则拒绝、Key 不回传、错误脱敏、取消、素材方案隔离、Windows/POSIX 路径，以及真实 FFmpeg 与本地模拟 API 的端到端处理。真实媒体测试缺少引擎或字体时会明确跳过。CI 配置覆盖 Ubuntu 与 Windows 的静态检查和测试；本地模拟服务测试不代表商业服务商已验证。
 

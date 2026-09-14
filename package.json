@@ -71,6 +71,7 @@
       "maintainer": "jianji@localhost"
     },
     "win": {
+      "signAndEditExecutable": false,
       "target": [
         "nsis"
       ]

@@ -17,7 +17,7 @@ function schemaVersionOf(value: unknown): number | undefined {
 }
 
 async function fsyncFile(filePath: string): Promise<void> {
-  const handle = await open(filePath, "r");
+  const handle = await open(filePath, "r+");
   try { await handle.sync(); } finally { await handle.close(); }
 }
 

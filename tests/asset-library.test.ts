@@ -46,7 +46,7 @@ describe("verified asset cache", () => {
     expect(offline).not.toHaveBeenCalled();
   });
   it("resolves installed resources independently of the current working directory", () => {
-    expect(bundledStickerDirectory({ resourcesPath: "/installed/resources" })).toBe("/installed/resources/sticker-library");
+    expect(bundledStickerDirectory({ resourcesPath: "/installed/resources" })).toBe(path.join("/installed/resources", "sticker-library"));
     expect(bundledStickerDirectory({ resourcesPath: "/electron/resources", defaultApp: true })).toBe(path.resolve("resources/sticker-library"));
   });
   it("coalesces requests, preserves license and reuses verified cache offline after restart", async () => {

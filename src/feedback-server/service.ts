@@ -375,9 +375,14 @@ async function writeJson(file: string, value: unknown): Promise<void> {
 }
 
 async function fsyncDirectory(directory: string): Promise<void> {
-  const handle = await open(directory, "r");
-  try { await handle.sync(); }
-  finally { await handle.close(); }
+  try {
+    const handle = await open(directory, "r");
+    try { await handle.sync(); }
+    finally { await handle.close(); }
+  } catch (error) {
+    // Windows does not support syncing directory handles.
+    if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM") throw error;
+  }
 }
 
 function githubRejection(status: number): string {

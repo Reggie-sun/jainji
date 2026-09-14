@@ -522,7 +522,7 @@ function redactResult(stderr: string): string {
 }
 
 async function syncFile(filePath: string): Promise<void> {
-  const handle = await open(filePath, "r");
+  const handle = await open(filePath, "r+");
   try { await handle.sync(); } finally { await handle.close(); }
 }
 

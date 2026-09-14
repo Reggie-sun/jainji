@@ -83,8 +83,10 @@ it.each(["queued", "failed"] as const)("keeps %s historical jobs readable but bl
     await expect(queue.retry([batch.tasks[0].id])).rejects.toThrow(/重新制作/);
     expect(queue.snapshot()).toEqual(before);
   } else {
+    expect(queue.snapshot().batches[0].batch.tasks[0].status).toBe("interrupted");
     await queue.start(id);
-    expect(queue.snapshot().batches[0].batch.tasks[0]).toMatchObject({ status: "failed", errorCode: "input_invalid", errorMessage: expect.stringContaining("重新制作") });
+    expect(queue.snapshot().batches[0].batch.tasks[0].status).toBe("interrupted");
+    await expect(queue.retry([batch.tasks[0].id])).rejects.toThrow(/重新制作/);
   }
   expect(run).not.toHaveBeenCalled();
 });
