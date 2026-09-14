@@ -22,8 +22,8 @@ describe("TemplateCompiler", () => {
     expect(command.args.slice(command.args.indexOf("-stream_loop"), command.args.indexOf("-stream_loop") + 2)).toEqual(["-stream_loop", "-1"]);
   });
 
-  it.each([[540, 960], [1080, 1920]])("preserves %i x %i source dimensions by default", async (width, height) => {
-    const command = await new TemplateCompiler().compile(createDefaultTemplate(), { ...media, width, height }, DEFAULT_PRESET, {
+  it.each([[540, 960], [1080, 1920]])("preserves %i x %i dimensions with explicit source resolution", async (width, height) => {
+    const command = await new TemplateCompiler().compile(createDefaultTemplate(), { ...media, width, height }, { ...DEFAULT_PRESET, resolutionMode: "source" }, {
       ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused",
     });
     const graph = command.args[command.args.indexOf("-filter_complex") + 1];
