@@ -121,12 +121,20 @@ async function executable(command: string): Promise<string | null> {
   return null;
 }
 
-export async function discoverBinary(name: "ffmpeg" | "ffprobe", appDataDirectory?: string): Promise<string | null> {
+function bundledResourcesDirectory(): string | undefined {
+  return (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath;
+}
+
+export async function discoverBinary(name: "ffmpeg" | "ffprobe", appDataDirectory?: string, resourcesDirectory = bundledResourcesDirectory()): Promise<string | null> {
   const override = name === "ffmpeg" ? process.env.JIANJI_FFMPEG_PATH : process.env.JIANJI_FFPROBE_PATH;
   if (override) return executable(override);
   if (appDataDirectory) {
     const local = await executable(join(appDataDirectory, "tools", "ffmpeg", "bin", process.platform === "win32" ? `${name}.exe` : name));
     if (local) return local;
+  }
+  if (process.platform === "win32" && resourcesDirectory) {
+    const bundled = await executable(join(resourcesDirectory, "ffmpeg", `${name}.exe`));
+    if (bundled) return bundled;
   }
   return executable(name);
 }
@@ -201,8 +209,12 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
   return { status: updateReadiness(status), adapter: new FfmpegAdapter(ffmpegPath, ffprobePath) };
 }
 
-export async function resolveFont(fontFamily: string): Promise<string | null> {
+export async function resolveFont(fontFamily: string, resourcesDirectory = bundledResourcesDirectory()): Promise<string | null> {
   if (process.platform === "win32") {
+    if (fontFamily === "Noto Sans CJK SC" && resourcesDirectory) {
+      const bundled = join(resourcesDirectory, "fonts", "NotoSansCJKsc-Regular.otf");
+      try { await access(bundled, constants.F_OK); return bundled; } catch { /* continue */ }
+    }
     for (const candidate of windowsFontCandidates(fontFamily)) {
       try { await access(candidate, constants.F_OK); return candidate; } catch { /* continue */ }
     }

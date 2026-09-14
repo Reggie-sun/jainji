@@ -1,6 +1,6 @@
 {
   "name": "jianji",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "简辑：Windows / Linux Agent 视频创作工作台",
   "author": {
     "name": "简辑",
@@ -20,7 +20,7 @@
     "start": "electron .",
     "package": "npm run package:linux",
     "package:linux": "npm run build && electron-builder --linux AppImage deb",
-    "package:win": "npm run build && electron-builder --win nsis"
+    "package:win": "node scripts/prepare-win-ffmpeg.mjs && npm run build && electron-builder --win nsis"
   },
   "dependencies": {
     "@openai/codex": "0.154.0",
@@ -72,6 +72,16 @@
     },
     "win": {
       "signAndEditExecutable": false,
+      "extraResources": [
+        {
+          "from": "dist-ffmpeg/win32-x64",
+          "to": "ffmpeg"
+        },
+        {
+          "from": "resources/fonts",
+          "to": "fonts"
+        }
+      ],
       "target": [
         "nsis"
       ]

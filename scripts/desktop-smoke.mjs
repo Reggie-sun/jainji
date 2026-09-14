@@ -139,7 +139,7 @@ try {
     await writeFile(path.join(directory, `${name}.png`), Buffer.from(image.data, "base64"));
   };
   await send("Runtime.enable");
-  await waitFor("document.body.innerText.includes('接入你的创作搭档')");
+  await waitFor("document.body?.innerText.includes('接入你的创作搭档')");
   const duplicate = spawn(require("electron"), [bootstrap], { cwd: root, env: environment, stdio: "ignore" });
   const duplicateExit = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => { duplicate.kill(); reject(new Error("Second instance failed to exit")); }, 5000);
