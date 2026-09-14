@@ -22,6 +22,7 @@ import { UploadedStickers } from "./uploaded-stickers.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
+import { RecentProjects } from "./recent-projects.js";
 import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
@@ -39,6 +40,7 @@ const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict()
 
 let mainWindow: BrowserWindow | undefined;
 let service: ApplicationService;
+let recentProjects: RecentProjects;
 let queue: ExportQueue;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
@@ -70,7 +72,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot() };
+  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), recentProjectsWarning: recentProjects.warning };
 }
 
 function notifyState(): void {
@@ -239,6 +241,7 @@ function registerHandlers(): void {
     if (result.canceled || !result.filePath) return null;
     agent.assertIdle();
     await service.saveProject(result.filePath, name);
+    await recentProjects.remember(result.filePath, service.currentProject);
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {
@@ -258,10 +261,15 @@ function registerHandlers(): void {
     service.newProject();
     return publicState();
   });
-  ipcMain.handle("project.load", async (event) => {
+  ipcMain.handle("project.load", async (event, input: unknown) => {
     assertTrustedSender(event); agent.assertIdle();
-    const result = await dialog.showOpenDialog(mainWindow!, { title: "打开项目", properties: ["openFile"], filters: [{ name: "简辑项目", extensions: ["json"] }] });
-    if (result.canceled || !result.filePaths[0]) return null;
+    let filePath: string;
+    if (input !== undefined) filePath = recentProjects.resolve(uuidSchema.parse(input));
+    else {
+      const result = await dialog.showOpenDialog(mainWindow!, { title: "打开项目", properties: ["openFile"], filters: [{ name: "简辑项目", extensions: ["json"] }] });
+      if (result.canceled || !result.filePaths[0]) return null;
+      filePath = result.filePaths[0];
+    }
     if (service.hasUnsavedChanges && (service.currentProject.mediaItems.length || service.projectPath)) {
       const choice = await dialog.showMessageBox(mainWindow!, {
         type: "question", title: "打开素材集", message: "当前项目有尚未保存的更改。",
@@ -271,8 +279,13 @@ function registerHandlers(): void {
       if (choice.response !== 0) return null;
     }
     agent.assertIdle();
-    await service.loadProject(result.filePaths[0]);
+    try { await service.loadProject(filePath); }
+    catch (error) {
+      if (input === undefined) throw error;
+      throw new Error("无法打开该素材集，文件可能已移动、删除或损坏。请使用“打开其他素材集”重新选择。", { cause: error });
+    }
     await queue.hydrate(service.currentProject.exportBatches);
+    await recentProjects.remember(filePath, service.currentProject);
     return publicState();
   });
   ipcMain.handle("output.selectDirectory", async (event) => {
@@ -374,6 +387,8 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
   const userData = app.getPath("userData");
   await mkdir(userData, { recursive: true });
+  recentProjects = new RecentProjects(path.join(userData, "recent-projects.json"));
+  await recentProjects.initialize([process.cwd(), app.getPath("documents")]);
   protocol.handle("jianji-media", async (request) => {
     const id = decodeURIComponent(new URL(request.url).hostname);
     const media = service?.getMedia(id);
@@ -443,6 +458,7 @@ function requestQuit(): void {
         projectPath = result.filePath;
       }
       await service.saveProject(projectPath);
+      await recentProjects.remember(projectPath, service.currentProject);
     }
     quitting = true;
     await agent.cancel();

@@ -82,10 +82,14 @@ await new Promise((resolve) => portServer.listen(0, "127.0.0.1", resolve));
 const debugPort = portServer.address().port;
 await new Promise((resolve) => portServer.close(resolve));
 const bootstrap = path.join(directory, "bootstrap.cjs");
+await writeFile(path.join(directory, "recent-projects.json"), "{broken-index-fixture");
 await writeFile(bootstrap, `const { app, dialog, shell } = require("electron");
+process.chdir(${JSON.stringify(directory)});
+app.setPath("documents", ${JSON.stringify(directory)});
 const filePromises = require("node:fs/promises");
 const originalWriteFile = filePromises.writeFile;
 filePromises.writeFile = async (file, ...args) => {
+  if (typeof file === "string" && file.includes("recent-projects.json.tmp-") && require("node:fs").existsSync(${JSON.stringify(path.join(directory, "index-failure"))})) throw new Error("ENOSPC: fixture recent index failure");
   if (typeof file === "string" && file.endsWith(".deleted")) {
     while (!require("node:fs").existsSync(${JSON.stringify(path.join(directory, "delete.release"))})) await new Promise(resolve => setTimeout(resolve, 10));
   }
@@ -110,7 +114,7 @@ dialog.showOpenDialog = async (_window, options) => {
   return { canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : options.title === "打开项目" ? [${JSON.stringify(collectionFile)}] : [${JSON.stringify(source)}] };
 };
 dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(collectionFile)} });
-dialog.showMessageBox = async () => ({ response: 1 });
+dialog.showMessageBox = async (_window, options) => ({ response: options.title === "保存项目更改？" && require("node:fs").existsSync(${JSON.stringify(path.join(directory, "index-failure"))}) ? 0 : 1 });
 require(${JSON.stringify(path.join(root, "dist-electron/main.cjs"))});
 `);
 const environment = { ...process.env };
@@ -173,6 +177,7 @@ try {
   };
   await send("Runtime.enable");
   await waitFor("document.body.innerText.includes('接入你的创作搭档')");
+  assert.equal(await evaluate("document.body.innerText.includes('素材集列表暂时无法读取')"), true, "a corrupt index must not prevent desktop startup");
   await click("上传贴纸");
   await waitFor("document.body.innerText.includes('还没有上传贴纸')");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '选择图片上传' && !button.disabled)"), true, "standalone sticker library is available without a model or video");
@@ -242,7 +247,9 @@ try {
   assert.equal(savedCollection.mediaItems[0].sourcePath, source);
   await click("新建创作");
   await waitFor("document.body.innerText.includes('你的素材即将在这里就位')");
-  await click("打开素材集");
+  const savedEntry = (await evaluate("window.jianji.getState()")).recentProjects.find(entry => entry.name === "夏季新品");
+  assert.ok(savedEntry, "saved collection appears in the dropdown");
+  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').value = ${JSON.stringify(savedEntry.id)}; document.querySelector('[aria-label="已保存的素材集"]').dispatchEvent(new Event('change', { bubbles: true }))`);
   await waitFor("document.body.innerText.includes('测试素材.mp4')");
   assert.equal(await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').value"), "夏季新品");
   assert.equal((await evaluate("window.jianji.getState()")).project.mediaItems[0].probeStatus, "ready");
@@ -254,16 +261,29 @@ try {
   await click("规则模板");
   await click("素材工作台");
   assert.equal(await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').value"), "尚未保存的新名称", "navigation retains the edited collection name");
-  await click("打开素材集");
+  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').value = ${JSON.stringify(savedEntry.id)}; document.querySelector('[aria-label="已保存的素材集"]').dispatchEvent(new Event('change', { bubbles: true }))`);
+  await waitFor("!document.querySelector('[aria-label=\"已保存的素材集\"]').disabled");
   assert.equal((await evaluate("window.jianji.getState()")).project.name, "尚未保存的新名称", "cancelled open preserves unsaved names");
   await click("保存项目");
   await waitFor("document.body.innerText.includes('素材集已保存')");
   assert.equal(JSON.parse(await readFile(collectionFile, "utf8")).name, "尚未保存的新名称", "topbar save uses the same collection name");
+  const recentEntries = (await evaluate("window.jianji.getState()")).recentProjects;
+  assert.equal(recentEntries.length, 1, "resaving a collection updates rather than duplicates its entry");
+  assert.equal(recentEntries[0].name, "尚未保存的新名称");
+  assert.equal(JSON.parse(await readFile(path.join(directory, "recent-projects.json"), "utf8")).entries[0].id, savedEntry.id, "dropdown index is persisted");
+  await writeFile(path.join(directory, "index-failure"), "fail index writes only");
+  await click("保存素材集");
+  await waitFor("document.body.innerText.includes('素材集列表暂时无法更新')");
+  assert.equal((await evaluate("window.jianji.getState()")).project.hasUnsavedChanges, false, "index failure does not turn successful project save into failure");
   await click("新建创作");
   await waitFor("document.body.innerText.includes('你的素材即将在这里就位')");
-  await click("打开素材集");
+  await click("打开其他素材集");
   await waitFor("document.body.innerText.includes('测试素材.mp4')");
   assert.equal(await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').value"), "尚未保存的新名称");
+  assert.equal(await evaluate("document.body.innerText.includes('素材集列表暂时无法更新')"), true, "project open returns its actual state despite index write failure");
+  await unlink(path.join(directory, "index-failure"));
+  await click("保存素材集");
+  await waitFor("!document.body.innerText.includes('素材集列表暂时无法更新')");
   await screenshot("02-materials");
   await click("下一步");
   assert.equal(await evaluate("[...document.querySelectorAll('.corner-tabs button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "true", "price-only workflow defaults to automatic decoration");
@@ -406,7 +426,7 @@ try {
   }));
   historicalProject.exportBatches = [historicalBatch];
   await writeFile(collectionFile, JSON.stringify(historicalProject));
-  await click("打开素材集");
+  await click("打开其他素材集");
   await waitFor("document.body.innerText.includes('测试素材.mp4')");
   const reopened = await evaluate("window.jianji.getState()");
   assert.equal(reopened.queue.batches[0].batch.tasks.length, 57);
@@ -476,6 +496,8 @@ try {
     const timer = setTimeout(() => reject(new Error("Application did not finish shutdown")), 10_000);
     child.once("exit", (code) => { clearTimeout(timer); resolve(code); });
   });
+  await writeFile(path.join(directory, "index-failure"), "fail index writes only");
+  await evaluate("window.jianji.renameProject('退出保存测试')");
   await writeFile(path.join(directory, "quit.signal"), "quit");
   assert.equal(await exit, 0);
   assert.throws(() => process.kill(codexPid, 0), { code: "ESRCH" }, "App must wait for its Codex child to exit");

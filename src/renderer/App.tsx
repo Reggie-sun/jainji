@@ -117,8 +117,8 @@ export default function App() {
     const paths = [...event.dataTransfer.files].map((file) => window.jianji.getPathForFile(file)).filter(Boolean);
     if (paths.length) void run(async () => { apply(await window.jianji.addAndProbe(paths)); });
   };
-  const changeProject = (load: boolean) => void run(async () => {
-    const next = await (load ? window.jianji.loadProject() : window.jianji.newProject());
+  const changeProject = (load: boolean, recentId?: string) => void run(async () => {
+    const next = await (load ? window.jianji.loadProject(recentId) : window.jianji.newProject());
     if (next) { apply(next); setCollectionName(next.project.name); setStep(next.connection.configured ? "import" : "connection"); }
   });
   const renameCollection = (name: string) => {
@@ -133,7 +133,7 @@ export default function App() {
   const saveCollection = () => void run(async () => {
     const name = MaterialNameSchema.parse(collectionName);
     const next = await window.jianji.saveProject(name);
-    if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "素材集已保存，下次可通过“打开素材集”继续使用。" }); }
+    if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "素材集已保存，下次可从下拉列表选择使用。" }); }
   });
   const start = () => void run(async () => {
     const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
@@ -174,6 +174,7 @@ export default function App() {
     <div className="main-area">
       <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{engineLabel}</span><button className="icon-button" aria-label="打开项目" disabled={locked || exporting} onClick={() => changeProject(true)}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onClick={saveCollection}><Icon name="download" size={15} />保存项目</button></div></header>
       <main className="content">
+        {state.recentProjectsWarning && <div className="notice error" role="status">{state.recentProjectsWarning}</div>}
         {(step === "templates" || step === "connection") && <ModelPicker connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} disabled={locked || exporting} onSelect={(input) => run(async () => { apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} />}
         {notice && <div className={notice.error ? "notice error" : "notice success"} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "close" : "check"} size={17} /><span>{notice.text}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setNotice(undefined)}><Icon name="close" size={16} /></button></div>}
         {!state.capabilities.ready && step !== "connection" && step !== "stickers" && <div className="capability-banner" role="status"><Icon name="settings" /><div><strong>本地导出引擎需要配置</strong><p>{state.capabilities.message} Windows：安装 FFmpeg 并加入 PATH；Linux：安装 FFmpeg、fontconfig 与 Noto CJK 字体。配置完成后重启应用。</p></div></div>}
@@ -189,7 +190,7 @@ export default function App() {
         {step === "connection" && <ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => void run(async () => { apply(await window.jianji.loginChatGPT()); })} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); setStep("import"); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={() => setStep("import")} />}
         {step === "import" && <>
           <Heading eyebrow="01 / A LITTLE MATERIAL, A LOT OF POSSIBILITY" title="好作品，从你的素材开始">放入视频，填写价格。贴纸与滤镜可以交给 Agent 自主安排。</Heading>
-          <MaterialCollection name={collectionName} dirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} onOpen={() => changeProject(true)} onSave={saveCollection} />
+          <MaterialCollection name={collectionName} dirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} recentProjects={state.recentProjects ?? []} onOpen={(id) => changeProject(true, id)} onSave={saveCollection} />
           <div className="import-layout"><div className="import-main">
             <div className={"drop-zone" + (dragOver ? " drag-over" : "")} onDragOver={(event) => { event.preventDefault(); if (!locked) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={dropMedia}>
               <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked || !state.connection.configured} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>

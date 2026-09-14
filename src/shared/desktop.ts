@@ -9,4 +9,6 @@ export type DesktopState = AppState & {
   chatgpt?: ChatGPTStatus;
   connections?: ConnectionLibrary;
   agentRun?: AgentRun;
+  recentProjects?: { id: string; name: string; mediaCount: number; fileName: string }[];
+  recentProjectsWarning?: string;
 };
