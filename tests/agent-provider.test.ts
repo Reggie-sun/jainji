@@ -12,6 +12,41 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it.each(RULE_TEMPLATES)("uses valid corner and filter examples for $id", async (rule) => {
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...autoPlan, filter: rule.filters[0], intensity: rule.minIntensity }));
+    const provider = new AgentProvider();
+    provider.useChatGPT("test-model", complete);
+    await provider.plan(rule.id, "", [], new AbortController().signal, autoCatalog);
+    const system = complete.mock.calls[0][0][0].content as string;
+    const example = JSON.parse(system.split("结构为 ")[1].split("。summary")[0]);
+    example.stickers[0].sticker = "heart";
+    expect(() => validatePlan(example, rule.id, autoCatalog)).not.toThrow();
+    expect(system).toContain("summary 必须为 1 到 240 字符");
+    expect(system).not.toContain("top-left|top-right");
+  });
+
+  it.each([
+    ["not json", "JSON 格式无效"],
+    [JSON.stringify({ ...autoPlan, summary: "x".repeat(241) }), "summary 必须为 1 到 240 字符"],
+    [JSON.stringify({ ...autoPlan, captions: ["secret-content"] }), "captions 必须为空数组"],
+    [JSON.stringify({ ...autoPlan, intensity: 0.9 }), "滤镜强度必须在 0.35 到 0.55 之间"],
+    [JSON.stringify({ ...autoPlan, filter: "cool" }), "所选模板只允许滤镜：warm"],
+    [JSON.stringify({ ...autoPlan, stickers: undefined }), "stickers 必须为最多 4 项的数组"],
+    [JSON.stringify({ ...autoPlan, stickers: [{ corner: "secret-content", sticker: "heart" }] }), "贴纸角落必须为四角之一"],
+    [JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "secret-content" }] }), "贴纸不在本次候选目录中"],
+    [JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "heart" }, { corner: "top-left", sticker: "sparkle" }] }), "贴纸角落不得重复"],
+    [JSON.stringify({ ...autoPlan, "secret-content": "private-value" }), "方案包含未允许的字段"],
+  ])("reports a safe actionable reason without retrying: %s", async (response, reason) => {
+    const complete = vi.fn().mockResolvedValue(response);
+    const provider = new AgentProvider();
+    provider.useChatGPT("test-model", complete);
+    const error = await provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog).catch((error: Error) => error);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain(reason);
+    expect((error as Error).message).not.toMatch(/secret-content|private-value/);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it("rotates eligible candidates despite forbidden entries and maps usage to current numbers", async () => {
     const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1]}'));
     const provider = new AgentProvider(request); provider.configure(connection);

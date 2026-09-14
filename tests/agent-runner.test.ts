@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { calculateProductionQuantity } from "../src/shared/agent";
 import { AgentRunner } from "../src/main/agent-runner";
 import { type MediaItem, now } from "../src/main/domain";
-import { ProviderError, type PackagingPlan, type AgentSelectionContext } from "../src/main/agent-provider";
+import { AgentProvider, ProviderError, type PackagingPlan, type AgentSelectionContext } from "../src/main/agent-provider";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { DecorationSchema } from "../src/shared/decorations";
 import { executionLimits } from "../src/main/execution-limits";
@@ -16,6 +16,19 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent run lifecycle", () => {
+  it("preserves the validation reason and never enqueues or retries an invalid model plan", async () => {
+    const provider = new AgentProvider();
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...plan("保留主体"), intensity: 0.9 }));
+    provider.useChatGPT("test-model", complete);
+    const enqueue = vi.fn();
+    const runner = new AgentRunner({ frames: async () => [], plan: provider.plan.bind(provider), enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a.mp4")]);
+    await runner.settled();
+    expect(runner.snapshot()?.items[0]).toMatchObject({ status: "failed", error: expect.stringContaining("滤镜强度必须在 0.25 到 0.4 之间") });
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
   it("supplies independent batch positions and immutable usage snapshots, resetting between runs", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
     const contexts: AgentSelectionContext[] = [];
