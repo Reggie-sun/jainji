@@ -1,0 +1,4 @@
+Noto Sans CJK SC Regular 2.004
+Source: https://github.com/notofonts/noto-cjk/tree/Sans2.004/Sans/OTF/SimplifiedChinese
+Font SHA-256: 2c76254f6fc379fddfce0a7e84fb5385bb135d3e399294f6eeb6680d0365b74b
+License: SIL Open Font License 1.1, see LICENSE.txt in this directory.

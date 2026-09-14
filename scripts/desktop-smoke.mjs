@@ -238,7 +238,7 @@ desktopSmoke: try {
     await writeFile(path.join(directory, `${name}.png`), Buffer.from(image.data, "base64"));
   };
   await send("Runtime.enable");
-  await waitFor("document.body.innerText.includes('接入你的创作搭档')");
+  await waitFor("document.body?.innerText.includes('接入你的创作搭档')");
   if (smokeScope === "knowledge") {
     await runKnowledgeSmoke({ evaluate, click, waitFor, send, screenshot, apiPort, directory, fixture: knowledgeFixture });
     assert.deepEqual(exceptions, []);

@@ -2,7 +2,7 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
-import { checkCapabilities, discoverBinary, refreshFontCapabilities } from "../src/main/ffmpeg";
+import { checkCapabilities, discoverBinary, refreshFontCapabilities, resolveFont } from "../src/main/ffmpeg";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -88,4 +88,25 @@ it.skipIf(process.platform === "win32")("refreshes fonts without changing the en
   expect(refreshed.videoEncoder).toBe("h264_nvenc");
   expect(refreshed.executionLimits).toEqual(status.executionLimits);
   expect(status.fonts).toBe(false);
+});
+
+it.skipIf(process.platform !== "win32")("finds bundled Windows binaries without a system FFmpeg install", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-bundled-engine-"));
+  directories.push(directory);
+  const resources = path.join(directory, "resources");
+  await mkdir(path.join(resources, "ffmpeg"), { recursive: true });
+  for (const name of ["ffmpeg", "ffprobe"]) await writeFile(path.join(resources, "ffmpeg", `${name}.exe`), "fixture");
+  vi.stubEnv("JIANJI_FFMPEG_PATH", "");
+  vi.stubEnv("JIANJI_FFPROBE_PATH", "");
+  expect(await discoverBinary("ffmpeg", directory, resources)).toBe(path.join(resources, "ffmpeg", "ffmpeg.exe"));
+  expect(await discoverBinary("ffprobe", directory, resources)).toBe(path.join(resources, "ffmpeg", "ffprobe.exe"));
+});
+
+it.skipIf(process.platform !== "win32")("uses the bundled default Chinese font when available", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-bundled-font-"));
+  directories.push(directory);
+  const font = path.join(directory, "fonts", "NotoSansCJKsc-Regular.otf");
+  await mkdir(path.dirname(font), { recursive: true });
+  await writeFile(font, "fixture");
+  expect(await resolveFont("Noto Sans CJK SC", directory)).toBe(font);
 });

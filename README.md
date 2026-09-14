@@ -28,13 +28,13 @@ Windows 与 Linux 使用相同命令。开发启动器自动分配本地端口�
 
 ## Local Engine
 
-目前安装包不内置 FFmpeg。Windows / Linux 都需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg，以及匹配硬件的驱动。启动时按 NVIDIA NVENC → AMD AMF → Intel QSV 顺序实际试编码，选用首个通过检测的硬件编码器；全部不可用时使用 `libx264`，CPU 软件编码始终单路。编译进 FFmpeg 的编码器列表或显卡名称不代表实际可用。
+Windows x64 安装包内置 FFmpeg 9.0.1 essentials 的 `ffmpeg.exe`、`ffprobe.exe`，以及默认中文价格字体 Noto Sans CJK SC；用户无需另装 FFmpeg、字体、Node.js 或 Codex。Linux 仍需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg 和中文字体。启动时按 NVIDIA NVENC → AMD AMF → Intel QSV 顺序实际试编码，选用首个通过检测的硬件编码器；全部不可用时使用 `libx264`，CPU 软件编码始终单路。GPU 加速需要设备本身及匹配驱动；编码器列表或显卡名称不代表实际可用。
 
 并发在每次启动时自动确定：每约 3 个可用 CPU 逻辑核允许一路 GPU 导出，上限 6 路；再按总内存、启动时可用内存降低上限，预留桌面与制作流程所需空间。程序会同时试编码验证候选路数，失败时逐级减少，全部失败则继续检测下一种编码器。队列与界面共享这份启动配置，界面显示编码器厂商和实际并发路数；换电脑或更新驱动后重启即可重新检测。检测只使用本地生成的测试画面，不请求模型，也不发送用户视频。
 
 文字、贴纸与滤镜合成仍使用 CPU；每个 GPU 任务按并发槽位均分线程预算，避免早到的任务占满预算。这是保守的资源与驱动准入策略，不是全素材测速，也不保证所有机器的绝对最快或任意高分辨率任务都不会耗尽资源。运行中不会因其他应用占用资源而重新选择编码器或静默重做失败任务；应结束当前批次后重启，重新检测可用资源。
 
-引擎查找顺序为：`JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH` 显式指定的路径、应用用户目录下的 `tools/ffmpeg/bin/`、系统 `PATH`。Linux 默认用户目录为 `~/.config/jianji`，Windows 为 `%APPDATA%/jianji`；本地安装应同时放入 `ffmpeg` 和 `ffprobe`（Windows 使用 `.exe`），保留构建的许可证文件。Windows 的 FFmpeg 构建需包含目标显卡对应的 `h264_nvenc`、`h264_amf` 或 `h264_qsv`；缺少硬件编码支持时会选用 CPU。
+引擎查找顺序为：`JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH` 显式指定的路径、应用用户目录下的 `tools/ffmpeg/bin/`、Windows 安装包内置引擎、系统 `PATH`。Linux 默认用户目录为 `~/.config/jianji`，Windows 为 `%APPDATA%/jianji`。手动覆盖本地引擎时应同时放入 `ffmpeg` 和 `ffprobe`（Windows 使用 `.exe`），保留构建的许可证文件。缺少硬件编码支持时会选用 CPU。
 
 各厂商使用各自的质量参数，CPU 保留原 x264 参数，不保证跨编码器相同体积或逐像素一致。Linux NVIDIA 有真实导出验证；Windows AMD / Intel 的参数和选择逻辑已有自动测试，仍需目标设备实测。
 
@@ -44,9 +44,9 @@ Ubuntu/Debian：
 sudo apt install ffmpeg fontconfig fonts-noto-cjk
 ```
 
-Windows 使用系统 Microsoft YaHei 字体：项目中的默认 `Noto Sans CJK SC` 在 Windows 明确映射到 `C:\Windows\Fonts\msyh.ttc`（实际依据 `WINDIR`）。其他字体仅解析代码声明的 Windows 字体，不任意替换。Windows 精简版若缺少该字体，需先安装系统中文字体。字体差异可能造成两个平台的文字外观不同。
+Windows 安装版的默认 `Noto Sans CJK SC` 从安装目录中的开源字体文件直接加载，即使系统没有 Microsoft YaHei 也能绘制中文价格。开发版若没有该内置文件，仍可回退到 `C:\Windows\Fonts\msyh.ttc`（实际依据 `WINDIR`）。其他字体仅解析代码声明的 Windows 字体，不任意替换。
 
-安装引擎或字体后重启应用。缺少必要能力时，界面会显示提示并禁止开始出片。
+升级安装包或更换自定义引擎后重启应用。安装目录中的 FFmpeg 和字体若被删除，界面会显示提示并禁止开始出片。
 
 ## Workflow
 
@@ -144,7 +144,7 @@ npm run package:linux
 npm run package:win
 ```
 
-Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带；无需用户另外安装 Node 或 Codex。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。Windows x64 的构建、模拟服务桌面流程、静默安装与卸载已验证，记录见 [Windows 验收规范](windows-acceptance-spec.md)；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
+Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带。Windows 打包脚本从固定版本获取 FFmpeg 并校验 SHA-256；离线构建可设置 `JIANJI_FFMPEG_ARCHIVE` 指向已下载的 `ffmpeg-9.0.1-essentials_build.zip`。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。Windows 验证记录见 [Windows 验收规范](windows-acceptance-spec.md)；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
 
 测试包含规则拒绝、Key 不回传、错误脱敏、取消、素材方案隔离、Windows/POSIX 路径，以及真实 FFmpeg 与本地模拟 API 的端到端处理。真实媒体测试缺少引擎或字体时会明确跳过。CI 配置覆盖 Ubuntu 与 Windows 的静态检查和测试；本地模拟服务测试不代表商业服务商已验证。`node scripts/cover-toggle-smoke.mjs` 用隔离 Chrome 验证覆盖开关、保存状态和装饰模式互不影响，不调用模型或修改用户项目。
 

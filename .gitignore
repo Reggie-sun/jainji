@@ -3,6 +3,7 @@ dist/
 dist-electron/
 dist-feedback/
 dist-model-server/
+dist-ffmpeg/
 release/
 coverage/
 *.log
