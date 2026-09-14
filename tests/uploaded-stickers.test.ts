@@ -61,7 +61,7 @@ describe("uploaded stickers", () => {
     expect(template.layers).toEqual(expect.arrayContaining([expect.objectContaining({ type: "sticker", ...imported.asset }), expect.objectContaining({ type: "text", content: "¥ 19.90" })]));
     expect(isAutomaticStickerAllowed(imported.id)).toBe(false);
     expect(DecorationSchema.parse({ mode: "agent", sticker: imported.id }).sticker).toBe("template");
-    const automatic = { summary: "选择用户上传贴纸", captions: [], stickers: [{ corner: "top-left", sticker: imported.id }], filter: "warm", intensity: 0.4 };
+    const automatic = { summary: "选择用户上传贴纸", captions: [], stickers: [{ corner: "top-left", sticker: imported.id, width: 0.12, rotationDeg: 0 }], filter: "warm", intensity: 0.4 };
     expect(materializePlan(automatic, "black-gold", { width: 720, height: 1280 }, assets, { mode: "agent", productPrice: "19.90" }, { fonts: [], stickers: [{ id: imported.id, label: "用户上传" }] }).layers).toEqual(expect.arrayContaining([expect.objectContaining({ type: "sticker", ...imported.asset })]));
     expect(() => materializePlan(automatic, "black-gold", { width: 720, height: 1280 }, assets, { mode: "agent", productPrice: "19.90" }, { fonts: [], stickers: [] })).toThrow();
   });

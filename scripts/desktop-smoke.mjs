@@ -64,7 +64,7 @@ const server = createServer((request, response) => {
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
     const automatic = systemText.includes('"stickers"');
-    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: [{ corner: "top-left", sticker: JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)[0] }] } : {}), filter: "cool", intensity: 0.3 });
+    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: [{ corner: "top-left", sticker: JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)[0], width: 0.12, rotationDeg: 0 }] } : {}), filter: "cool", intensity: 0.3 });
     response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
   });
 });
@@ -267,9 +267,8 @@ try {
   await screenshot("02-materials");
   await click("下一步");
   assert.equal(await evaluate("[...document.querySelectorAll('.corner-tabs button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "true", "price-only workflow defaults to automatic decoration");
-  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12);
-  assert.equal(await evaluate("document.body.innerText.includes('贴纸 · 青色箭头') && document.body.innerText.includes('滤镜 · 清透')"), true);
-  await click("清爽日常");
+  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 0, "automatic decoration does not select a fixed template");
+  assert.equal(await evaluate("document.body.innerText.includes('贴纸仅放四角且宽度 ≤ 20%')"), true, "automatic decoration shows neutral sticker boundary");
   assert.equal(await evaluate("document.querySelector('#caption-font') === null && document.querySelector('option[value=\"text\"]') === null"), true, "no decorative text controls");
   await evaluate("document.querySelector('#product-price').focus()");
   await send("Input.insertText", { text: "19.9元30贴" });
@@ -278,8 +277,8 @@ try {
   const classicPreview = await evaluate("document.querySelector('.template-preview canvas').toDataURL()");
   await click("漫画撞色");
   assert.notEqual(await evaluate("document.querySelector('.template-preview canvas').toDataURL()"), classicPreview, "price selection redraws the preview");
-  await click("全部交给 Agent");
   await click("自己设置");
+  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12, "manual decoration restores template choices");
   await click("海盐蓝调");
   assert.equal(await evaluate("document.querySelector('.price-style-option[aria-pressed=true]').textContent.includes('漫画撞色')"), true, "mode and template switches retain price style");
   assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.9元30贴", "style changes cannot rewrite price");

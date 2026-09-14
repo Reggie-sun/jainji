@@ -30,7 +30,7 @@ describe("agent to local export", () => {
         const shortlist = system.includes("你是视频贴纸选材师");
         const entries = shortlist ? JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]) as [number, string, string][] : [];
         const result = shortlist ? { candidates: [entries.find(([, label]) => label === "蝴蝶")![0]] }
-          : { summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [{ corner: "bottom-right", sticker: butterfly.id }] } : {}) };
+          : { summary: "根据画面选择滤镜", captions: [], filter: mode === "agent" ? "none" : "cool", intensity: mode === "agent" ? 0 : 0.3, ...(mode === "agent" ? { stickers: [{ corner: "bottom-right", sticker: butterfly.id, width: 0.17, rotationDeg: -11 }] } : {}) };
         response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       });
     });
@@ -70,12 +70,8 @@ describe("agent to local export", () => {
       if (mode === "agent") {
         const systems = finalRequests.map((request) => request.messages[0].content as string);
         expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));
-        const directions = systems.map((system) => system.match(/本条视觉探索方向：([^。]+)。/)?.[1]);
-        expect(directions.every(Boolean)).toBe(true);
-        expect(new Set(directions).size).toBe(4);
-        const shortlistDirections = requests.filter((request) => !finalRequests.includes(request))
-          .map((request) => (request.messages[0].content as string).match(/本条视觉探索方向：([^。]+)。/)?.[1]);
-        expect(new Set(shortlistDirections)).toEqual(new Set(directions));
+        expect(requests.every((request) => !(request.messages[0].content as string).includes("本条视觉探索方向"))).toBe(true);
+        expect(systems.every((system) => system.includes('"filters":["none","warm","cool","mono","vivid"]'))).toBe(true);
         expect(systems.every((system) => !system.includes('"sticker":"arrow"') && !system.includes("清透色彩配轻箭头贴纸"))).toBe(true);
       } else {
         expect(requests.every((request) => !(request.messages[0].content as string).includes("当前为同批第"))).toBe(true);
@@ -94,6 +90,10 @@ describe("agent to local export", () => {
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "text").every((layer) => layer.content === "¥ 19.90"))).toBe(true);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
+      if (mode === "agent") for (const { batch } of batches) {
+        expect(batch.templateSnapshot.filter).toEqual({ presetId: "none", intensity: 0 });
+        expect(batch.templateSnapshot.layers.find(layer => layer.type === "sticker")).toMatchObject({ width: 0.17, rotationDeg: -11 });
+      }
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "¥ 19.90", fontFamily: DEFAULT_TEXT_FONT_FAMILY });
         expect(batch.templateSnapshot.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: mode === "agent" ? (await library.ensure(butterfly.id)).assetPath : stickerAssets.heart.assetPath });

@@ -108,9 +108,6 @@ try {
   const clean = await picture();
   await evaluate("[...document.querySelectorAll('.sticker-choices button')].find(b=>b.textContent==='不加贴纸').click()");
   await pause(100); assert.notEqual(await picture(), clean, "no sticker removes image");
-  const noSticker = await picture();
-  await evaluate("const select=document.querySelector('#caption-font');select.value='serif';select.dispatchEvent(new Event('change',{bubbles:true}))");
-  await pause(100); assert.notEqual(await picture(), noSticker, "font changes actual pixels");
   await evaluate("window.failCatalog=true;[...document.querySelectorAll('.sticker-choices button')].find(b=>b.textContent==='heart').click()");
   await waitFor("document.querySelector('.template-preview [role=alert]')");
   const failedPicture = await picture();
@@ -127,34 +124,11 @@ try {
   await waitFor("window.fixtureOptions.corners?.['bottom-right']?.type==='sticker'");
   await evaluate("[...document.querySelectorAll('.sticker-choices button')].find(b=>b.textContent==='heart').click()");
   await click('.corner-slot.bottom-left');
-  await evaluate("{const el=document.querySelector('[aria-label=角落内容类型]');el.value='text';el.dispatchEvent(new Event('change',{bubbles:true}));}");
-  await waitFor("window.fixtureOptions.corners?.['bottom-left']?.type==='text'");
-  await evaluate("{const el=document.querySelector('[aria-label=角落文字]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'限时好物');el.dispatchEvent(new Event('input',{bubbles:true}));}");
-  await waitFor("window.fixtureOptions.corners['bottom-left'].text==='限时好物'");
-  await evaluate("{const el=document.querySelector('#caption-font');el.value='Noto Sans CJK SC';el.dispatchEvent(new Event('change',{bubbles:true}));}");
-  await waitFor("window.fixtureOptions.corners['bottom-left'].fontFamily==='Noto Sans CJK SC'");
-  await evaluate(`{
-    const NativeFontFace=window.FontFace;window.restoreFontFace=()=>{window.FontFace=NativeFontFace};
-    window.FontFace=function(family){return new NativeFontFace(family,'local("Noto Sans CJK SC")')};
-    window.jianji.libraryAsset=()=>new Promise(resolve=>{window.releaseFont=()=>resolve({url:'fixture-font'})});
-    const select=document.querySelector('#caption-font');
-    select.value=[...select.options].find(option=>option.textContent.includes('在线字体')).value;
-    select.dispatchEvent(new Event('change',{bubbles:true}));
-  }`);
-  await waitFor("window.releaseFont");
-  await evaluate("{const el=document.querySelector('[aria-label=角落文字]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'下载时改字');el.dispatchEvent(new Event('input',{bubbles:true}));}");
-  await waitFor("window.fixtureOptions.corners['bottom-left'].text==='下载时改字'");
-  await evaluate('window.releaseFont()');
-  await waitFor("!document.querySelector('#caption-font').disabled");
-  assert.notEqual(await evaluate("window.fixtureOptions.corners['bottom-left'].fontFamily"), "Noto Sans CJK SC", "online font committed");
-  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-left'].text"), '下载时改字', 'font download completion preserves latest text');
-  await evaluate("window.restoreFontFace();window.jianji.libraryAsset=async()=>{throw Error('offline fixture')};");
-  await evaluate("{const el=document.querySelector('#caption-font');el.value='Noto Sans CJK SC';el.dispatchEvent(new Event('change',{bubbles:true}));}");
-  await evaluate("{const el=document.querySelector('[aria-label=角落文字]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(el,'限时好物');el.dispatchEvent(new Event('input',{bubbles:true}));}");
+  await evaluate("{const el=document.querySelector('[aria-label=角落内容类型]');el.value='none';el.dispatchEvent(new Event('change',{bubbles:true}));}");
+  await waitFor("window.fixtureOptions.corners?.['bottom-left']?.type==='none'");
   await click('.corner-slot.bottom-right');
   assert.equal(await evaluate("window.fixtureOptions.corners['bottom-right'].sticker"), 'heart', 'independent right sticker retained');
-  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-left'].text"), '限时好物', 'independent left text retained');
-  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-left'].fontFamily"), 'Noto Sans CJK SC', 'corner font independent from global serif');
+  assert.equal(await evaluate("window.fixtureOptions.corners['bottom-left'].type"), 'none', 'independent left setting retained');
   for (const corner of ['top-left','top-right']) {
     await click(`.corner-slot.${corner}`);
     await evaluate("{const el=document.querySelector('[aria-label=角落内容类型]');el.value='none';el.dispatchEvent(new Event('change',{bubbles:true}));}");
@@ -169,8 +143,11 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='全部交给 Agent').click()");
   await waitFor("window.fixtureOptions.mode==='agent'");
   assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.90", "price survives mode switch");
+  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 0, 'auto mode hides fixed template choices');
   assert.equal(await evaluate("document.querySelectorAll('.corner-slot').length"), 0, 'auto mode hides manual selection slots');
   assert.equal(await evaluate("Boolean(document.querySelector('.decoration-picker'))"), false, 'auto mode requires no manual picker');
+  assert.equal(await evaluate("document.querySelector('.rules-banner').textContent.includes('奶油画报')"), false, 'auto mode exposes no selected template name');
+  assert.equal(await evaluate("document.body.innerText.includes('贴纸仅放四角且宽度 ≤ 20%')"), true, 'auto mode states neutral sticker boundary');
   assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('全部留空')"), true, 'auto mode explicitly allows empty corners');
   await evaluate("document.querySelector('#corner-decoration-editor').scrollIntoView({block:'center'})");
   const autoScreenshot = await send("Page.captureScreenshot", { format: "png" });
@@ -181,6 +158,8 @@ try {
   await waitFor("![...document.querySelectorAll('[aria-label=装饰选择方式] button')][0].disabled");
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='自己设置').click()");
   await waitFor("document.querySelectorAll('.corner-slot').length===4");
+  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12, 'manual mode restores template choices');
+  assert.equal(await evaluate("document.querySelector('.template-card.cream-studio').getAttribute('aria-pressed')"), 'true', 'manual mode restores the chosen template');
   assert.equal(await evaluate('JSON.stringify(window.fixtureOptions.corners)'), manualSettings, 'returning to manual preserves selections');
   await evaluate("document.querySelector('.template-preview').scrollIntoView({block:'center'})");
   const screenshot = await send("Page.captureScreenshot", { format: "png" });
@@ -190,7 +169,7 @@ try {
   await writeFile(path.join(directory, "export-format.png"), Buffer.from(exportScreenshot.data, "base64"));
   await send("Emulation.setDeviceMetricsOverride", { width: 760, height: 1000, deviceScaleFactor: 1, mobile: false });
   assert.equal(await evaluate("document.documentElement.scrollWidth <= innerWidth"), true, "no horizontal overflow at minimum width");
-  console.log(`PASS: agent/manual modes and restoration, four independent corners, mixed text/sticker, retained choices, disabled controls, export formats/default/disabled, eight templates, sticker removal, font pixels, asset error/recovery, narrow layout. Screenshots: ${directory}`);
+  console.log(`PASS: agent/manual modes and restoration, neutral automatic sticker boundary, four independent corners, retained choices, disabled controls, export formats/default/disabled, twelve manual templates, sticker removal, asset error/recovery, narrow layout. Screenshots: ${directory}`);
 } finally {
   socket?.close(); chrome.kill(); await server.close();
 }
