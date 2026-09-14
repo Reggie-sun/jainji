@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DEFAULT_EXPORT_SETTINGS, ExportSettingsSchema } from "../shared/export-settings.js";
 import { randomUUID } from "node:crypto";
 import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-policy.js";
 import { isAbsolutePath } from "./platform.js";
@@ -161,13 +162,10 @@ export function assertPriceOnlyTemplate(template: EditTemplate): void {
   }
 }
 
-export const ExportPresetSchema = z.object({
+export const ExportPresetSchema = ExportSettingsSchema.extend({
   container: ExportFormatSchema,
   videoCodec: z.literal("h264"),
   audioCodec: z.literal("aac"),
-  resolutionMode: z.enum(["source", "1080p", "720p"]),
-  frameRateMode: z.enum(["source", "30"]),
-  quality: z.enum(["high", "balanced", "small"]),
 }).strict();
 export type ExportPreset = z.infer<typeof ExportPresetSchema>;
 
@@ -263,9 +261,7 @@ export const DEFAULT_PRESET: ExportPreset = {
   container: DEFAULT_EXPORT_FORMAT,
   videoCodec: "h264",
   audioCodec: "aac",
-  resolutionMode: "720p",
-  frameRateMode: "source",
-  quality: "balanced",
+  ...DEFAULT_EXPORT_SETTINGS,
 };
 
 export function now(): string {
