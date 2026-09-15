@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentProvider, materializePlan, validatePlan } from "../src/main/agent-provider";
+import { AgentProvider, ProviderError, materializePlan, validatePlan } from "../src/main/agent-provider";
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
@@ -14,6 +14,43 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it.each([
+    ['{"candidates":[编号]}', "JSON 格式无效"],
+    ['```json\n{"candidates":[1]}\n```', "JSON 格式无效"],
+    ['{"candidates":[1,1]}', "候选编号不得重复"],
+    ['{"candidates":[0]}', "候选编号必须为 1 到 3 的整数"],
+    ['{"candidates":[4]}', "候选编号必须为 1 到 3 的整数"],
+    ['{"candidates":[1.5]}', "候选编号必须为 1 到 3 的整数"],
+    ['{"candidates":["private-value"]}', "候选编号必须为 1 到 3 的整数"],
+    ['{"candidates":[3]}', "候选包含不允许自动选用的贴纸"],
+    [JSON.stringify({ candidates: Array(13).fill(1) }), "candidates 必须为最多 12 项的数组"],
+    ['{"candidates":null}', "candidates 必须为最多 12 项的数组"],
+    ['{}', "candidates 必须为最多 12 项的数组"],
+    ['null', "必须返回仅含 candidates 的 JSON 对象"],
+    ['{"candidates":[],"private-key":"private-value"}', "不得包含 candidates 以外的字段"],
+  ])("explains invalid shortlists safely without retrying: %s", async (response, reason) => {
+    const complete = vi.fn().mockResolvedValue(response);
+    const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+    const catalog = { fonts: [], stickers: [...autoCatalog.stickers, { id: "unreviewed", label: "未审核" }] };
+    const error = await provider.shortlist("clean", "", [], new AbortController().signal, catalog).catch((error: Error) => error);
+    expect(error).toBeInstanceOf(ProviderError);
+    expect((error as Error).message).toContain(reason);
+    expect((error as Error).message).not.toMatch(/private-value|private-key/);
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("provides a valid empty shortlist example and explicit number constraints", async () => {
+    const complete = vi.fn().mockResolvedValue('{"candidates":[]}');
+    const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, autoCatalog)).resolves.toEqual([]);
+    const system = complete.mock.calls[0][0][0].content as string;
+    const example = JSON.parse(system.split("结构示例：")[1].split("。")[0]);
+    expect(example).toEqual({ candidates: [] });
+    expect(system).toContain("1 到 2 的整数");
+    expect(system).toContain("不要 Markdown");
+    expect(system).toContain("不得添加其他字段");
+  });
+
   it("requires model-selected price styles only in automatic plans, without fallback", async () => {
     for (const priceStyle of [undefined, "unknown", { color: "red" }]) {
       const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...autoPlan, priceStyle }));
