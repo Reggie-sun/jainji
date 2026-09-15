@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { calculateProductionQuantity } from "../src/shared/agent";
 import { AgentRunner } from "../src/main/agent-runner";
-import { type MediaItem, now } from "../src/main/domain";
+import { DEFAULT_PRESET, type EditTemplate, type MediaItem, now } from "../src/main/domain";
+import { TemplateCompiler } from "../src/main/compiler";
 import { AgentProvider, ProviderError, type PackagingPlan, type AgentSelectionContext } from "../src/main/agent-provider";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { DecorationSchema } from "../src/shared/decorations";
@@ -16,6 +17,26 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent run lifecycle", () => {
+  it.each(["source", "720p", "1080p"] as const)("freezes text size for %s output before compiling nonstandard sources", async (resolutionMode) => {
+    const productPrice = "一二三四五六七八九十一二\n春日新品";
+    for (const size of [{ width: 1080, height: 1350 }, { width: 2560, height: 1080 }]) {
+      const source = { ...media("source.mp4"), ...size };
+      const enqueue = vi.fn(async (template: EditTemplate) => {
+        const frozen = JSON.parse(JSON.stringify(template));
+        const before = JSON.stringify(frozen);
+        const compiled = await new TemplateCompiler().compile(frozen, source, { ...DEFAULT_PRESET, resolutionMode }, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id) => `/tmp/${id}.txt` });
+        expect(compiled.textFiles.map((entry) => entry.content)).toEqual(productPrice.split("\n"));
+        expect(JSON.stringify(frozen)).toBe(before);
+        return "task";
+      });
+      const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("包装"), enqueue, stickerAssets, decorations: DecorationSchema.parse({ productPrice, sticker: "none" }), resolutionMode, onChange: () => {} });
+      runner.start("project", "clean", "", [source]);
+      await runner.settled();
+      expect(enqueue).toHaveBeenCalledOnce();
+      expect(runner.snapshot()?.items[0].status).toBe("exporting");
+    }
+  });
+
   it("preserves the validation reason and never enqueues or retries an invalid model plan", async () => {
     const provider = new AgentProvider();
     const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...plan("保留主体"), intensity: 0.9 }));

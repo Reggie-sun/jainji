@@ -1,4 +1,5 @@
 import path from "node:path";
+import { outputDimensions } from "../shared/export-settings.js";
 import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
@@ -54,13 +55,6 @@ function outputScale(preset: ExportPreset, dimensions: { width: number; height: 
   if (preset.resolutionMode === "source") return null;
   const size = `${dimensions.width}:${dimensions.height}`;
   return `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2`;
-}
-
-function outputDimensions(media: MediaItem, preset: ExportPreset): { width: number; height: number } {
-  const portrait = media.height > media.width;
-  if (preset.resolutionMode === "1080p") return portrait ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
-  if (preset.resolutionMode === "720p") return portrait ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
-  return { width: media.width, height: media.height };
 }
 
 function sortedVisibleLayers(template: EditTemplate): Layer[] {

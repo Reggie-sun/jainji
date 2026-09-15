@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { outputDimensions, type ExportSettings } from "../shared/export-settings.js";
 import { MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { materializePlan, ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
@@ -13,6 +14,7 @@ interface RunnerDependencies {
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
   stickerAssets: StickerAssets;
   decorations?: DecorationOptions;
+  resolutionMode?: ExportSettings["resolutionMode"];
   autoCatalog?: AgentDecorationCatalog;
   onChange(): void;
 }
@@ -79,7 +81,8 @@ export class AgentRunner {
           } : undefined;
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
-          const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
+          const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
+          const template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);

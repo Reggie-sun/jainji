@@ -295,11 +295,11 @@ try {
   assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), "false");
   assert.equal(await evaluate("document.querySelector('#product-price').tagName"), "TEXTAREA");
   await evaluate("document.querySelector('#product-price').select()");
-  await send("Input.insertText", { text: "9.9元到手5卷" });
+  await send("Input.insertText", { text: "春日新品" });
   await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
   await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
-  await send("Input.insertText", { text: "19.9元拍一发三" });
-  const twoLinePrice = "9.9元到手5卷\n19.9元拍一发三";
+  await send("Input.insertText", { text: "到手30贴" });
+  const twoLinePrice = "春日新品\n到手30贴";
   assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice);
   assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), "false");
   assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 0, "automatic decoration hides manual price choices");

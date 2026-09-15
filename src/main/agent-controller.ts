@@ -119,6 +119,7 @@ export class AgentController {
       for (const preview of autoCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       this.runner = new AgentRunner({
+        resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
           if (!catalog) {

@@ -61,7 +61,7 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
         const style = previewPriceStyle;
         const cssColor = (color: typeof style.color) => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
         const lines = formatProductPrice(options.productPrice).split("\n");
-        const fontSize = height * priceFontSizeRatio(width, height);
+        const fontSize = height * priceFontSizeRatio(width, height, lines.join("\n"));
         const border = Math.round(style.strokeWidthRatio * height);
         for (const [index, text] of lines.entries()) {
           const x = width / 2, y = height * 0.13 + index * fontSize * PRICE_LINE_HEIGHT;

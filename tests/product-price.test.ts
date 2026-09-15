@@ -17,7 +17,7 @@ it.each(["manual", "agent"])("preserves two manual price lines in %s mode", (mod
   expect(formatProductPrice(productPrice.replace("\n", "\r\n"))).toBe(productPrice);
 });
 
-it.each(["9元\n19元\n29元", "9元\n\n19元", "9元到手0卷", "9元拍零发三", "9元到手面膜", "9元拍一发三包邮", "999999.99元99卷"])("rejects malformed multiline offers: %s", (price) => {
+it.each(["9元\n19元\n29元", "9元\n \n19元", "9元\n\n19元", "一二三四五六七八九十一二三", "9元\u0000贴"])("rejects malformed multiline offers: %s", (price) => {
   expect(RequiredProductPriceSchema.safeParse(price).success).toBe(false);
 });
 
@@ -25,8 +25,8 @@ it.each(["19.9元30贴", "29.90元50片", "9元1盒", "19.90", "19.9元"])("acce
   expect(AgentStartSchema.parse({ ...input, decorations: { productPrice } }).decorations?.productPrice).toBe(productPrice);
 });
 
-it.each(["19.9元30贴产品名", "19.9元面膜", "19.999元30贴", "19元0贴", "19元30", "19元30贴\n买一送一"])("rejects invalid price descriptions: %s", (price) => {
-  expect(RequiredProductPriceSchema.safeParse(price).success).toBe(false);
+it.each(["19.9元30贴产品名", "19.9元面膜", "19.999元30贴", "19元0贴", "19元30", "19元30贴\n买一送一"])("accepts user-authored text without amount grammar: %s", (price) => {
+  expect(RequiredProductPriceSchema.parse(price)).toBe(price);
 });
 
 it.each([undefined, {}, { productPrice: "" }, { productPrice: "   " }, { mode: "agent" }, { mode: "agent", productPrice: "" }])("rejects production without a manually entered price: %j", async (decorations) => {
@@ -41,4 +41,11 @@ it.each([undefined, {}, { productPrice: "" }, { productPrice: "   " }, { mode: "
 
 it.each(["manual", "agent"])("preserves the entered price in %s mode", (mode) => {
   expect(AgentStartSchema.parse({ ...input, decorations: { mode, productPrice: "19.90" } }).decorations?.productPrice).toBe("19.90");
+});
+
+it.each(["19.9元\n到手30贴", "春日新品\n拍一发三", "手工棉柔巾", "折扣 50%", "%{n}", "19.999"])("preserves arbitrary manual text: %s", (productPrice) => {
+  for (const mode of ["manual", "agent"]) {
+    expect(AgentStartSchema.parse({ ...input, decorations: { mode, productPrice } }).decorations?.productPrice).toBe(productPrice);
+  }
+  expect(formatProductPrice(productPrice)).toBe(productPrice);
 });

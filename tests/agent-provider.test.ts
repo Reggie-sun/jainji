@@ -288,8 +288,8 @@ describe("agent provider boundary", () => {
     await provider.plan("black-gold", "请写产品名", [], new AbortController().signal);
     for (const call of request.mock.calls) {
       const system = JSON.parse(call[1].body).messages[0].content;
-      expect(system).toContain("新增文字只允许用户手动填写、由本地程序生成的居中价格");
-      expect(system).toContain("Agent 不得生成、推测、改写价格");
+      expect(system).toContain("新增文字只允许用户在展示文字栏手动填写、由本地程序生成的居中文字");
+      expect(system).toContain("Agent 不得生成、推测、改写价格或其他手动文字");
     }
   });
 
