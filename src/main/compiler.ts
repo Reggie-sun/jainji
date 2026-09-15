@@ -4,7 +4,7 @@ import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
 import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
-import { coverMotionExpression } from "./cover-motion.js";
+import { coverMotionExpression, coverRasterExpressions } from "./cover-motion.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -152,14 +152,21 @@ export class TemplateCompiler {
         const motion = layer.cover.motion;
         if (motion && (motion.endMs > media.durationMs || motion.keyframes.some((frame) => frame.timeMs > media.durationMs))) throw new Error("覆盖轨迹时间超出素材时长");
         const largest = motion?.keyframes.reduce((a, b) => a.rectangle.width >= b.rectangle.width ? a : b).rectangle;
-        const coverWidth = Math.max(1, Math.round(dimensions.width * (largest?.width ?? layer.width)));
-        const coverHeight = Math.max(1, Math.round(dimensions.height * (largest?.height ?? layer.cover.height)));
-        graph.push(
-          `[${stickerIndex}:v]format=rgba,` +
-          `crop=w='min(iw,ceil(ih*${coverWidth}/${coverHeight}))':h='min(ih,ceil(iw*${coverHeight}/${coverWidth}))':exact=1,` +
-          `scale=${coverWidth}:${coverHeight}:force_original_aspect_ratio=increase,` +
-          `crop=${coverWidth}:${coverHeight},setpts=PTS-STARTPTS[${sourceLabel}]`,
-        );
+        const opaque = layer.cover.opaqueBackground;
+        const coverSize = (dimension: number, ratio: number) => opaque ? Math.min(dimension, 2 * Math.ceil(dimension * ratio / 2) + 2) : Math.max(1, Math.round(dimension * ratio));
+        const coverWidth = coverSize(dimensions.width, largest?.width ?? layer.width);
+        const coverHeight = coverSize(dimensions.height, largest?.height ?? layer.cover.height);
+        const raster = opaque ? coverRasterExpressions(motion?.keyframes ?? [{ timeMs: 0, rectangle: { x: layer.x, y: layer.y, width: layer.width, height: layer.cover.height } }], dimensions.width, dimensions.height) : undefined;
+        const artwork = opaque ? `${sourceLabel}art` : sourceLabel;
+        const fit = opaque
+          ? `scale=w='max(1,round(iw*min(${coverWidth}/iw,${coverHeight}/ih)))':h='max(1,round(ih*min(${coverWidth}/iw,${coverHeight}/ih)))',pad=${coverWidth}:${coverHeight}:(ow-iw)/2:(oh-ih)/2:color=white`
+          : `crop=w='min(iw,ceil(ih*${coverWidth}/${coverHeight}))':h='min(ih,ceil(iw*${coverHeight}/${coverWidth}))':exact=1,scale=${coverWidth}:${coverHeight}:force_original_aspect_ratio=increase,crop=${coverWidth}:${coverHeight}`;
+        graph.push(`[${stickerIndex}:v]format=rgba,${fit},setpts=PTS-STARTPTS[${artwork}]`);
+        if (opaque) {
+          graph.push(`[${artwork}]split[${artwork}foreground][${artwork}background]`);
+          graph.push(`[${artwork}background]lutrgb=r=255:g=255:b=255:a=255[${artwork}white]`);
+          graph.push(`[${artwork}white][${artwork}foreground]overlay=0:0:format=auto[${sourceLabel}]`);
+        }
         if (motion) {
           const main = `coverMain${stickerIndex}`, clock = `coverClock${stickerIndex}`, blank = `coverBlank${stickerIndex}`, clocked = `coverClocked${stickerIndex}`;
           // Borrow the source timestamps instead of animating at the PNG input's 25 fps.
@@ -167,12 +174,13 @@ export class TemplateCompiler {
           graph.push(`[${clock}]format=rgba,crop=${coverWidth}:${coverHeight}:0:0:exact=1,colorchannelmixer=aa=0[${blank}]`);
           graph.push(`[${blank}][${sourceLabel}]overlay=0:0:format=auto[${clocked}]`);
           const width = coverMotionExpression(motion.keyframes, "width"), height = coverMotionExpression(motion.keyframes, "height");
-          graph.push(`[${clocked}]scale=w='max(1,round(${dimensions.width}*(${width})))':h='max(1,round(${dimensions.height}*(${height})))':eval=frame[${scaledLabel}]`);
+          graph.push(`[${clocked}]scale=w='${raster?.width ?? `max(1,round(${dimensions.width}*(${width})))`}':h='${raster?.height ?? `max(1,round(${dimensions.height}*(${height})))`}':eval=frame[${scaledLabel}]`);
           const x = coverMotionExpression(motion.keyframes, "x"), y = coverMotionExpression(motion.keyframes, "y");
-          graph.push(`[${main}][${scaledLabel}]overlay=x='main_w*(${x})':y='main_h*(${y})':enable='gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})':format=auto[${nextLabel}]`);
+          graph.push(`[${main}][${scaledLabel}]overlay=x='${raster?.x ?? `main_w*(${x})`}':y='${raster?.y ?? `main_h*(${y})`}':enable='gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})':format=auto[${nextLabel}]`);
         } else {
-          graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
-          graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}:format=auto[${nextLabel}]`);
+          graph.push(`[${sourceLabel}]${raster ? `scale=w='${raster.width}':h='${raster.height}'` : "null"}[${scaledLabel}]`);
+          const position = raster ? `x='${raster.x}':y='${raster.y}'` : `x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}`;
+          graph.push(`[${baseLabel}][${scaledLabel}]overlay=${position}:format=auto[${nextLabel}]`);
         }
         baseLabel = nextLabel;
         continue;
@@ -219,8 +227,8 @@ export class TemplateCompiler {
     }
     graph.push(`[${baseLabel}]null[vout]`);
 
-    const automaticCover = template.layers.some((layer) => layer.type === "sticker" && layer.cover?.automatic);
-    const graphPath = automaticCover ? options.textFilePath("cover-graph") : undefined;
+    const scriptedCover = template.layers.some((layer) => layer.type === "sticker" && (layer.cover?.automatic || layer.cover?.opaqueBackground));
+    const graphPath = scriptedCover ? options.textFilePath("cover-graph") : undefined;
     if (graphPath) textFiles.push({ layerId: "cover-graph", path: graphPath, content: graph.join(";") });
 
     args.push(

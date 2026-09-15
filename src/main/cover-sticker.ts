@@ -47,7 +47,7 @@ export function coverLayerForMedia(frozen: FrozenCoverSticker, source: { id?: st
   return {
     id: randomUUID(), type: "sticker", assetPath: frozen.assetPath, assetFingerprint: frozen.assetFingerprint,
     x: rect.x, y: rect.y,
-    width: rect.width, cover: { stickerId: frozen.stickerId, height: rect.height, ...(motion ? { motion } : {}) },
+    width: rect.width, cover: { stickerId: frozen.stickerId, height: rect.height, opaqueBackground: true, ...(motion ? { motion } : {}) },
     rotationDeg: 0, opacity: 1, zIndex: 90, visible: true,
   };
 }

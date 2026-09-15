@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { discoverBinary, FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
@@ -28,6 +28,7 @@ it("renders source-clocked motion, scale and visibility at 60 fps and retains au
     const template = createDefaultTemplate();
     template.layers.push(coverLayerForMedia(frozen, source, source));
     const compiled = await new TemplateCompiler().compile(template, source, { ...DEFAULT_PRESET, resolutionMode: "source" }, { ffmpegPath: ffmpeg, fontResolver: { resolve: async () => null }, textFilePath: () => path.join(directory, "unused.txt") });
+    await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content)));
     const rendered = await runCommand(ffmpeg, [...compiled.args, output]).promise;
     expect(rendered.code, rendered.stderr).toBe(0);
     // Non-25fps-aligned frames detect stale sticker dimensions independently of x/y.
@@ -39,16 +40,20 @@ it("renders source-clocked motion, scale and visibility at 60 fps and retains au
       let minX = 320, minY = 180, maxX = -1, maxY = -1;
       for (let y = 0; y < 180; y++) for (let x = 0; x < 320; x++) {
         const offset = (y * 320 + x) * 3;
-        if (data[offset + 2] > data[offset] + 80 && data[offset + 2] > data[offset + 1] + 80) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+        const blue = data[offset + 2] > data[offset] + 80 && data[offset + 2] > data[offset + 1] + 80;
+        const whiteBacking = data[offset] > 210 && data[offset + 1] > 210 && data[offset + 2] > 210;
+        if (blue || whiteBacking) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
       }
       const timeMs = frame / 60 * 1000;
       if (timeMs < track.startMs || timeMs >= track.endMs) expect(maxX, `hidden at frame ${frame}`).toBe(-1);
       else {
         const rectangle = interpolateCoverRectangle(track.keyframes, timeMs);
-        expect(Math.abs(minX - rectangle.x * 320), `x at frame ${frame}`).toBeLessThanOrEqual(2);
-        expect(Math.abs(minY - rectangle.y * 180), `y at frame ${frame}`).toBeLessThanOrEqual(2);
-        expect(Math.abs(maxX - minX + 1 - rectangle.width * 320), `width at frame ${frame}`).toBeLessThanOrEqual(2);
-        expect(Math.abs(maxY - minY + 1 - rectangle.height * 180), `height at frame ${frame}`).toBeLessThanOrEqual(2);
+        const left = 2 * Math.floor(rectangle.x * 320 / 2), top = 2 * Math.floor(rectangle.y * 180 / 2);
+        const right = 2 * Math.ceil((rectangle.x + rectangle.width) * 320 / 2), bottom = 2 * Math.ceil((rectangle.y + rectangle.height) * 180 / 2);
+        expect(Math.abs(minX - left), `x at frame ${frame}`).toBeLessThanOrEqual(1);
+        expect(Math.abs(minY - top), `y at frame ${frame}`).toBeLessThanOrEqual(1);
+        expect(Math.abs(maxX + 1 - right), `right at frame ${frame}`).toBeLessThanOrEqual(1);
+        expect(Math.abs(maxY + 1 - bottom), `bottom at frame ${frame}`).toBeLessThanOrEqual(1);
       }
     }
     const probe = await new FfmpegAdapter(ffmpeg, ffprobe).probe(output);

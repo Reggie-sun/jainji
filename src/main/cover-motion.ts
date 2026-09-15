@@ -13,3 +13,14 @@ export function coverMotionExpression(frames: readonly CoverKeyframe[], field: k
   }
   return expression;
 }
+
+// Enclose the normalized rectangle on the 2-pixel grid used by 4:2:0 overlays.
+export function coverRasterExpressions(frames: readonly CoverKeyframe[], width: number, height: number): Record<keyof CoverRectangle, string> {
+  const x = coverMotionExpression(frames, "x"), y = coverMotionExpression(frames, "y");
+  const w = coverMotionExpression(frames, "width"), h = coverMotionExpression(frames, "height");
+  const left = `2*floor(${width}*(${x})/2)`, top = `2*floor(${height}*(${y})/2)`;
+  return { x: left, y: top,
+    width: `max(1,min(${width},2*ceil(${width}*((${x})+(${w}))/2))-(${left}))`,
+    height: `max(1,min(${height},2*ceil(${height}*((${y})+(${h}))/2))-(${top}))`,
+  };
+}

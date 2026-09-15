@@ -76,13 +76,15 @@ it("recognizes both moving fixture badges across windows and renders every gener
       const decoded = await runCommand(binary, ["-v", "error", "-i", output, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", raw]).promise;
       expect(decoded.code, decoded.stderr).toBe(0);
       const data = await readFile(raw);
-      let originalBadge = 0, blue = 0;
+      let originalBadge = 0, blue = 0, whiteBacking = 0;
       for (let offset = 0; offset < data.length; offset += 3) {
         if ((data[offset] > data[offset + 1] + 80 && data[offset] > data[offset + 2] + 80) || (data[offset + 1] > data[offset] + 80 && data[offset + 1] > data[offset + 2] + 80)) originalBadge++;
         if (data[offset + 2] > data[offset] + 80 && data[offset + 2] > data[offset + 1] + 80) blue++;
+        if (data[offset] > 210 && data[offset + 1] > 210 && data[offset + 2] > 210) whiteBacking++;
       }
       expect(originalBadge, `uncovered badge at frame ${frame}`).toBeLessThan(10);
-      expect(blue).toBeGreaterThan(100);
+      expect(blue).toBeGreaterThan(0);
+      expect(whiteBacking).toBeGreaterThan(100);
     }
     const info = await ffmpeg.probe(output);
     expect(info.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);

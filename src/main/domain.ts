@@ -110,6 +110,7 @@ export const StickerLayerSchema = z.object({
     stickerId: CoverStickerIdSchema,
     height: z.number().finite().gt(0).max(1),
     motion: CoverTrackSchema.optional(),
+    opaqueBackground: z.literal(true).optional(),
     automatic: z.literal(true).optional(),
     targetId: z.string().min(1).max(80).optional(),
   }).strict().optional(),
