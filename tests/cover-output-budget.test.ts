@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentProvider, AUTOMATIC_COVER_COMPLETION_OPTIONS } from "../src/main/agent-provider";
 import { completeApi, type ModelMessage } from "../src/main/api-transport";
 import type { ConnectionInput } from "../src/shared/agent";
+import { DEFAULT_QWEN_CONNECTION } from "../src/shared/connections";
 
 const connection: ConnectionInput = { baseUrl: "https://example.test/v1", model: "vision", apiKey: "synthetic-key-not-real" };
 const messages: ModelMessage[] = [{ role: "user", content: "return JSON" }];
@@ -15,6 +16,14 @@ function responseFor(protocol: "chat-completions" | "responses" | "anthropic", c
 }
 
 describe("automatic cover output budget", () => {
+  it("requests complete JSON and the explicit cover budget from the team Qwen server", async () => {
+    const request = vi.fn().mockResolvedValue(responseFor("chat-completions", detectionResponse));
+    const provider = new AgentProvider(request, 0);
+    provider.configure({ baseUrl: DEFAULT_QWEN_CONNECTION.baseUrl, model: DEFAULT_QWEN_CONNECTION.model, apiKey: connection.apiKey });
+    await expect(provider.detectCovers([{ timeMs: 0, url: "data:image/jpeg;base64,aGVsbG8=" }], undefined, new AbortController().signal)).resolves.toEqual([{ timeMs: 0, targets: [] }]);
+    expect(JSON.parse(String(request.mock.calls[0][1].body))).toMatchObject({ max_tokens: 32768, response_format: { type: "json_object" } });
+    expect(request).toHaveBeenCalledOnce();
+  });
   it.each(["chat-completions", "responses", "anthropic"] as const)("accepts a complete eight-frame sixteen-target result through %s", async (protocol) => {
     const frames = Array.from({ length: 8 }, (_, index) => ({ timeMs: index * 250, targets: Array.from({ length: 16 }, (_, target) => ({
       id: `target-${target}`, rectangle: { x: (target % 4) * 0.2, y: Math.floor(target / 4) * 0.2, width: 0.1, height: 0.1 },
@@ -36,11 +45,11 @@ describe("automatic cover output budget", () => {
     else expect(body.max_output_tokens).toBe(32_768);
   });
 
-  it("keeps Chat Completions token settings unchanged while accepting the larger detection response", async () => {
+  it("forwards the cover token budget through Chat Completions", async () => {
     const request = vi.fn().mockResolvedValue(responseFor("chat-completions", longResult)) as unknown as typeof fetch;
     await expect(completeApi(connection, messages, new AbortController().signal, request, AUTOMATIC_COVER_COMPLETION_OPTIONS)).resolves.toBe(longResult);
     const call = vi.mocked(request).mock.calls[0]!;
-    expect(JSON.parse(String((call[1] as RequestInit).body))).not.toHaveProperty("max_tokens");
+    expect(JSON.parse(String((call[1] as RequestInit).body)).max_tokens).toBe(32_768);
   });
 
   it("keeps the ordinary completion budget unchanged", async () => {

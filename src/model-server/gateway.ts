@@ -3,10 +3,11 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { DEFAULT_QWEN_CONNECTION } from "../shared/connections.js";
 
 const MAX_BODY_BYTES = 32 * 1024 * 1024;
-const MAX_OUTPUT_TOKENS = 2048;
+const DEFAULT_OUTPUT_TOKENS = 2048;
+const MAX_OUTPUT_TOKENS = 32768;
 const UPSTREAM_TIMEOUT_MS = 85_000;
 const UPSTREAM_BASE_URL = "http://127.0.0.1:8000/v1";
-const ALLOWED_PAYLOAD_KEYS = new Set(["model", "messages", "stream", "reasoning_effort", "n", "max_tokens", "max_completion_tokens"]);
+const ALLOWED_PAYLOAD_KEYS = new Set(["model", "messages", "stream", "reasoning_effort", "n", "max_tokens", "max_completion_tokens", "response_format"]);
 
 export type ModelGatewayOptions = {
   keys: string[];
@@ -111,6 +112,12 @@ function normalizePayload(payload: Record<string, unknown>): Record<string, unkn
   if (Object.keys(payload).some((key) => !ALLOWED_PAYLOAD_KEYS.has(key))) throw new GatewayError(400, "请求格式无效。");
   if (payload.model !== DEFAULT_QWEN_CONNECTION.model) throw new GatewayError(400, "不支持的模型。");
   validateMessages(payload.messages);
+  if ("response_format" in payload) {
+    const format = payload.response_format;
+    if (!format || Array.isArray(format) || typeof format !== "object" || Object.keys(format).length !== 1 || !("type" in format) || format.type !== "json_object") {
+      throw new GatewayError(400, "仅支持 JSON object 输出格式。");
+    }
+  }
   if ("stream" in payload && typeof payload.stream !== "boolean") throw new GatewayError(400, "请求格式无效。");
   if ("reasoning_effort" in payload && (typeof payload.reasoning_effort !== "string" || !payload.reasoning_effort.trim() || payload.reasoning_effort.length > 32)) throw new GatewayError(400, "请求格式无效。");
   if ("n" in payload && payload.n !== 1) throw new GatewayError(400, "仅支持 n=1。");
@@ -119,7 +126,7 @@ function normalizePayload(payload: Record<string, unknown>): Record<string, unkn
       throw new GatewayError(400, "输出长度必须在允许范围内。");
     }
   }
-  if (!("max_tokens" in payload) && !("max_completion_tokens" in payload)) return { ...payload, max_tokens: MAX_OUTPUT_TOKENS };
+  if (!("max_tokens" in payload) && !("max_completion_tokens" in payload)) return { ...payload, max_tokens: DEFAULT_OUTPUT_TOKENS };
   return payload;
 }
 

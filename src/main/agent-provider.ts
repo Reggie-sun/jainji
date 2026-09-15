@@ -242,7 +242,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
 export { ProviderError } from "./api-transport.js";
 
 export const API_REQUEST_MIN_INTERVAL_MS = 1_000;
-export const AUTOMATIC_COVER_COMPLETION_OPTIONS: CompletionOptions = { maxOutputTokens: 32_768, maxOutputCharacters: 128_000 };
+export const AUTOMATIC_COVER_COMPLETION_OPTIONS: CompletionOptions = { maxOutputTokens: 32_768, maxOutputCharacters: 128_000, jsonObject: true };
 
 function waitForApiInterval(milliseconds: number): Promise<void> {
   if (milliseconds <= 0) return Promise.resolve();

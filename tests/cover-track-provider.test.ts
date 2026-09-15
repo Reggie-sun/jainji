@@ -29,6 +29,19 @@ describe("automatic cover tracking provider", () => {
     await expect(provider.detectCovers([image(500)], undefined, new AbortController().signal)).resolves.toEqual([frame(500, [])]);
   });
 
+  it("makes an empty overlap explicit without allowing later targets to be moved into it", async () => {
+    const complete = vi.fn().mockResolvedValue(detected([frame(250, []), frame(500)]));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    await expect(provider.detectCovers([image(250), image(500)], frame(250, []), new AbortController().signal)).resolves.toEqual([frame(250, []), frame(500)]);
+    const context = complete.mock.calls[0][0][1].content[0].text as string;
+    expect(context).toContain("第一帧 targets 必须为空数组");
+    expect(context).toContain("不得把后续帧新出现的目标提前到第一帧");
+    expect(context).toContain("status=uncertain");
+    complete.mockResolvedValueOnce(detected([frame(250), frame(500)]));
+    await expect(provider.detectCovers([image(250), image(500)], frame(250, []), new AbortController().signal)).rejects.toThrow("重叠抽帧");
+    expect(complete).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     [JSON.stringify({ status: "uncertain", frames: [frame(0)] }), "无法可靠识别全部原贴纸"],
     ["not-json", "JSON 格式无效"],

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { completeApi, type ModelMessage } from "../src/main/api-transport";
 import type { ConnectionInput } from "../src/shared/agent";
+import { DEFAULT_QWEN_CONNECTION } from "../src/shared/connections";
 
 const key = "synthetic-key-not-real";
 const jpeg = "data:image/jpeg;base64,aGVsbG8=";
@@ -14,6 +15,27 @@ function requestReply(body: unknown) {
 }
 
 describe("completeApi protocol transport", () => {
+  it.each([DEFAULT_QWEN_CONNECTION.baseUrl, "http://127.0.0.1:8000/v1", "http://localhost:8000/v1"])("requests JSON objects for cover calls to the deployed Qwen endpoint %s", async (baseUrl) => {
+    const request = requestReply({ choices: [{ finish_reason: "stop", message: { content: "{}" } }] });
+    await completeApi({ ...DEFAULT_QWEN_CONNECTION, baseUrl, apiKey: key }, messages, new AbortController().signal, request, { jsonObject: true });
+    expect(JSON.parse(String(vi.mocked(request).mock.calls[0][1]?.body)).response_format).toEqual({ type: "json_object" });
+  });
+
+  it.each([
+    { ...DEFAULT_QWEN_CONNECTION, baseUrl: "https://other.example/v1" },
+    { ...DEFAULT_QWEN_CONNECTION, model: "other-model" },
+  ])("does not infer JSON mode support for an unverified connection", async (connection) => {
+    const request = requestReply({ choices: [{ message: { content: "{}" } }] });
+    await completeApi({ ...connection, apiKey: key }, messages, new AbortController().signal, request, { jsonObject: true });
+    expect(JSON.parse(String(vi.mocked(request).mock.calls[0][1]?.body))).not.toHaveProperty("response_format");
+  });
+  it("rejects length-truncated Chat Completions before returning partial JSON, without retrying", async () => {
+    const request = requestReply({ choices: [{ finish_reason: "length", message: { content: '{"frames":[' } }] });
+    await expect(completeApi({ baseUrl: "http://127.0.0.1:8000/v1", model: "vision", apiKey: key }, messages,
+      new AbortController().signal, request, { maxOutputTokens: 32768 })).rejects.toThrow("输出达到长度上限");
+    expect(request).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(vi.mocked(request).mock.calls[0][1]?.body)).max_tokens).toBe(32768);
+  });
   it.each(["chat-completions", "responses", "anthropic"] as const)("sends explicit effort using the %s field", async (protocol) => {
     const reply = protocol === "anthropic" ? { content: [{ type: "text", text: "ok" }] } : protocol === "responses" ? { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "ok" }] }] } : { choices: [{ message: { content: "ok" } }] };
     const request = requestReply(reply);

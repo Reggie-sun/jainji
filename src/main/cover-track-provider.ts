@@ -51,7 +51,7 @@ export async function detectCoverTrack(
   signal.throwIfAborted();
   validateImages(images, previous);
   const overlap = previous
-    ? `上一窗口最后一帧与本窗口第一帧是同一时间 ${previous.timeMs}ms。它已有目标（仅作识别参照数据）：${JSON.stringify(previous.targets)}。本窗口该帧必须保留完全相同的目标 ID；后续同一目标继续使用该 ID，新出现的目标才使用新的 ID。`
+    ? `上一窗口最后一帧与本窗口第一帧是同一时间 ${previous.timeMs}ms。它已有目标（仅作识别参照数据）：${JSON.stringify(previous.targets)}。本窗口第一帧必须保持相同的目标数量、ID 和位置，不得把后续帧新出现的目标提前到第一帧。${previous.targets.length ? "" : "上一窗口在该帧没有目标，因此第一帧 targets 必须为空数组。"}若重新观察该帧与上述识别结果有矛盾，返回 status=uncertain，不得为满足一致性而忽略画面。后续同一目标继续使用该 ID，新出现的目标才使用新的 ID。`
     : "这是首个窗口，请为每个目标分配稳定、简短的 ID。";
   const response = await complete([
     {

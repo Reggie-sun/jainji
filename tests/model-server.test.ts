@@ -64,7 +64,7 @@ describe("shared local Qwen gateway", () => {
     const [, init] = fetcher.mock.calls[0] ?? [];
     expect((init?.headers as Record<string, string>)["X-Do-Not-Forward"]).toBeUndefined();
     expect(JSON.parse(String(init?.body))).toMatchObject({ model: valid.model, max_tokens: 2048 });
-    for (const body of [{ ...valid, n: 2 }, { ...valid, max_tokens: 2049 }, { ...valid, max_completion_tokens: 2049 }, { ...valid, max_tokens: 1.5 }]) {
+    for (const body of [{ ...valid, n: 2 }, { ...valid, max_tokens: 32769 }, { ...valid, max_completion_tokens: 32769 }, { ...valid, max_tokens: 1.5 }]) {
       expect((await fetch(`${base}/v1/chat/completions`, authorized({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }))).status).toBe(400);
     }
     expect((await fetch(`${base}/v1/chat/completions`, authorized({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...valid, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: "https://internal.example/image.png" } }] }] }) }))).status).toBe(400);
@@ -73,6 +73,28 @@ describe("shared local Qwen gateway", () => {
     const largeImage = `data:image/jpeg;base64,${"A".repeat(5_000_000)}`;
     expect((await fetch(`${base}/v1/chat/completions`, authorized({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...valid, messages: [{ role: "user", content: [{ type: "image_url", image_url: { url: largeImage } }] }] }) }))).status).toBe(200);
     expect(fetcher).toHaveBeenCalledTimes(3);
+  });
+
+  it("forwards an explicitly bounded cover output budget while retaining the ordinary default", async () => {
+    const { base, fetcher } = await start();
+    for (const field of ["max_tokens", "max_completion_tokens"]) {
+      const response = await fetch(`${base}/v1/chat/completions`, authorized({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...valid, [field]: 32768 }) }));
+      expect(response.status).toBe(200);
+      const body = JSON.parse(String(vi.mocked(fetcher).mock.calls.at(-1)?.[1]?.body));
+      expect(body[field]).toBe(32768);
+      expect(body).not.toHaveProperty(field === "max_tokens" ? "max_completion_tokens" : "max_tokens");
+    }
+  });
+
+  it("accepts only the bounded JSON object response format", async () => {
+    const { base, fetcher } = await start();
+    const post = (format: unknown) => fetch(`${base}/v1/chat/completions`, authorized({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...valid, response_format: format }) }));
+    expect((await post({ type: "json_object" })).status).toBe(200);
+    expect(JSON.parse(String(vi.mocked(fetcher).mock.calls[0]?.[1]?.body)).response_format).toEqual({ type: "json_object" });
+    for (const format of [null, [], "json_object", { type: "json_schema", json_schema: {} }, { type: "json_object", schema: {} }]) {
+      expect((await post(format)).status).toBe(400);
+    }
+    expect(fetcher).toHaveBeenCalledOnce();
   });
 
   it("rejects oversized bodies and aborts the upstream request on a timeout", async () => {
