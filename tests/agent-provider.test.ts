@@ -96,9 +96,9 @@ describe("agent provider boundary", () => {
     const systems = complete.mock.calls.map((call) => call[0][0].content as string);
     const catalogs = systems.map((system) => JSON.parse(system.split("价格花字目录（仅外观，不含价格内容）：")[1].split("。priceStyle")[0]));
     expect(catalogs[0][0].id).toBe("classic");
-    expect(catalogs[1][0].id).toBe(PRICE_STYLES[2].id);
+    expect(catalogs[1][0].id).not.toBe(catalogs[0][0].id);
     expect(catalogs[2][0].id).toBe("comic");
-    expect(catalogs.every((catalog) => catalog.length === 8)).toBe(true);
+    expect(catalogs.every((catalog) => catalog.length === PRICE_STYLES.length)).toBe(true);
     expect(systems[2]).toContain('"id":"classic","count":2');
     expect(systems[2]).toContain('"priceStyle":"comic"');
   });

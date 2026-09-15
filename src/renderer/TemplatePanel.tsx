@@ -7,7 +7,7 @@ import { DecorationSchema, RequiredProductPriceSchema, PRODUCT_PRICE_MAX_LENGTH,
 import { TemplatePreview } from "./TemplatePreview";
 import { DEFAULT_EXPORT_FORMAT, EXPORT_FORMATS, type ExportFormat } from "../shared/export-format";
 import { PriceStylePicker } from "./PriceStylePicker";
-import type { PriceStyleId } from "../shared/price-styles";
+import { PRICE_STYLES, type PriceStyleId } from "../shared/price-styles";
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy";
 
 const STICKER_GLYPHS = { sparkle: "✦", arrow: "↗", heart: "♥", burst: "✹" } as const;
@@ -41,7 +41,7 @@ export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirect
       </button>)}
     </div>}
     <TemplatePreview selectedCorner={selectedCorner} onCornerSelect={onCornerSelect} disabled={disabled} rule={rule} options={decorationOptions ?? DecorationSchema.parse({})} />
-    <div className="card brief-card price-input-card"><label htmlFor="product-price">展示文字 / 价格 <span>必填 · 手动输入</span></label><textarea id="product-price" rows={2} required aria-invalid={invalidPrice} aria-describedby="product-price-help" inputMode="text" value={decorationOptions?.productPrice ?? ""} maxLength={PRODUCT_PRICE_MAX_LENGTH} disabled={disabled} onChange={(event) => onProductPrice?.(event.target.value)} placeholder={"9.9元到手5卷\n19.9元拍一发三"} /><small id="product-price-help">按 Enter 换行，最多2行、每行12字。可填写任意文字，不要求包含金额；同一批视频使用相同内容，Agent 不能代填或改写。</small>{invalidPrice && <p role="alert">{PRODUCT_PRICE_HELP}</p>}{automatic ? <p>价格花字由 Agent 按每条素材从现有 8 款中选择，同批会参考已使用的样式减少重复，但不保证每版不同。手动价格保持不变；切回“自己设置”可继续使用之前选择的花字。</p> : <PriceStylePicker value={decorationOptions?.priceStyle} price={decorationOptions?.productPrice} disabled={disabled} onChange={onPriceStyle} />}</div>
+    <div className="card brief-card price-input-card"><label htmlFor="product-price">展示文字 / 价格 <span>必填 · 手动输入</span></label><textarea id="product-price" rows={2} required aria-invalid={invalidPrice} aria-describedby="product-price-help" inputMode="text" value={decorationOptions?.productPrice ?? ""} maxLength={PRODUCT_PRICE_MAX_LENGTH} disabled={disabled} onChange={(event) => onProductPrice?.(event.target.value)} placeholder={"9.9元到手5卷\n19.9元拍一发三"} /><small id="product-price-help">按 Enter 换行，最多2行、每行12字。可填写任意文字，不要求包含金额；同一批视频使用相同内容，Agent 不能代填或改写。</small>{invalidPrice && <p role="alert">{PRODUCT_PRICE_HELP}</p>}{automatic ? <p>价格花字由 Agent 按每条素材从现有 {PRICE_STYLES.length} 款中选择，同批会参考已使用的样式减少重复，但不保证每版不同。手动价格保持不变；切回“自己设置”可继续使用之前选择的花字。</p> : <PriceStylePicker value={decorationOptions?.priceStyle} price={decorationOptions?.productPrice} disabled={disabled} onChange={onPriceStyle} />}</div>
     {decorations}
     <div className="rules-banner"><div className="icon-tile"><Icon name="shield" /></div><div><strong>{automatic ? "已锁定的创作边界" : `${rule.name} · 手动模板边界`}</strong><p>贴纸仅放四角且宽度 ≤ {(CORNER_SAFE_POLICY.maxStickerWidth * 100).toFixed(0)}% · 新增文字仅限手动展示文字 · 不裁剪、不拼接 · 保留原始音频</p></div><span className="small-tag">本地校验</span></div>
     {coverPanel}

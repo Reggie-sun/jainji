@@ -312,7 +312,11 @@ try {
   const classicPreview = await evaluate("document.querySelector('.template-preview canvas').toDataURL()");
   await click("自己设置");
   assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12, "manual decoration restores template choices");
-  assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 8, "manual decoration restores eight price choices");
+  assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 20, "manual decoration restores all twenty price choices");
+  await click("森系奶绿");
+  assert.equal(await evaluate("document.querySelector('[data-price-style=forest]').getAttribute('aria-pressed')"), "true");
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice, "new styles preserve manual text");
+  assert.notEqual(await evaluate("document.querySelector('.template-preview canvas').toDataURL()"), classicPreview, "new style redraws preview");
   await click("漫画撞色");
   assert.notEqual(await evaluate("document.querySelector('.template-preview canvas').toDataURL()"), classicPreview, "price selection redraws the preview");
   await click("海盐蓝调");
