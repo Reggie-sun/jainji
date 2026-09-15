@@ -4,6 +4,7 @@ import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
 import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
+import { coverMotionExpression } from "./cover-motion.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -148,16 +149,31 @@ export class TemplateCompiler {
       const scaledLabel = `sticker${stickerIndex}`;
       const nextLabel = `base${graph.length}`;
       if (layer.cover) {
-        const coverWidth = Math.max(1, Math.round(dimensions.width * layer.width));
-        const coverHeight = Math.max(1, Math.round(dimensions.height * layer.cover.height));
+        const motion = layer.cover.motion;
+        if (motion && (motion.endMs > media.durationMs || motion.keyframes.some((frame) => frame.timeMs > media.durationMs))) throw new Error("覆盖轨迹时间超出素材时长");
+        const largest = motion?.keyframes.reduce((a, b) => a.rectangle.width >= b.rectangle.width ? a : b).rectangle;
+        const coverWidth = Math.max(1, Math.round(dimensions.width * (largest?.width ?? layer.width)));
+        const coverHeight = Math.max(1, Math.round(dimensions.height * (largest?.height ?? layer.cover.height)));
         graph.push(
           `[${stickerIndex}:v]format=rgba,` +
           `crop=w='min(iw,ceil(ih*${coverWidth}/${coverHeight}))':h='min(ih,ceil(iw*${coverHeight}/${coverWidth}))':exact=1,` +
           `scale=${coverWidth}:${coverHeight}:force_original_aspect_ratio=increase,` +
           `crop=${coverWidth}:${coverHeight},setpts=PTS-STARTPTS[${sourceLabel}]`,
         );
-        graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
-        graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}:format=auto[${nextLabel}]`);
+        if (motion) {
+          const main = `coverMain${stickerIndex}`, clock = `coverClock${stickerIndex}`, blank = `coverBlank${stickerIndex}`, clocked = `coverClocked${stickerIndex}`;
+          // Borrow the source timestamps instead of animating at the PNG input's 25 fps.
+          graph.push(`[${baseLabel}]split[${main}][${clock}]`);
+          graph.push(`[${clock}]format=rgba,crop=${coverWidth}:${coverHeight}:0:0:exact=1,colorchannelmixer=aa=0[${blank}]`);
+          graph.push(`[${blank}][${sourceLabel}]overlay=0:0:format=auto[${clocked}]`);
+          const width = coverMotionExpression(motion.keyframes, "width"), height = coverMotionExpression(motion.keyframes, "height");
+          graph.push(`[${clocked}]scale=w='max(1,round(${dimensions.width}*(${width})))':h='max(1,round(${dimensions.height}*(${height})))':eval=frame[${scaledLabel}]`);
+          const x = coverMotionExpression(motion.keyframes, "x"), y = coverMotionExpression(motion.keyframes, "y");
+          graph.push(`[${main}][${scaledLabel}]overlay=x='main_w*(${x})':y='main_h*(${y})':enable='gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})':format=auto[${nextLabel}]`);
+        } else {
+          graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
+          graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}:format=auto[${nextLabel}]`);
+        }
         baseLabel = nextLabel;
         continue;
       }

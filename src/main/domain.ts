@@ -5,7 +5,7 @@ import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-po
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
 import { RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
-import { CoverStickerIdSchema, CoverStickerSchema } from "../shared/cover-sticker.js";
+import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverTrackMediaIssue } from "../shared/cover-sticker.js";
 import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
@@ -108,6 +108,7 @@ export const StickerLayerSchema = z.object({
   cover: z.object({
     stickerId: CoverStickerIdSchema,
     height: z.number().finite().gt(0).max(1),
+    motion: CoverTrackSchema.optional(),
   }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;
@@ -258,6 +259,8 @@ export const ProjectSchema = z.object({
   coverSticker: CoverStickerSchema.optional(),
   updatedAt: DateTime,
 }).strict().superRefine((project, ctx) => {
+  const trackIssue = coverTrackMediaIssue(project.coverSticker?.tracks, project.mediaItems);
+  if (trackIssue) ctx.addIssue({ code: "custom", path: ["coverSticker", "tracks"], message: trackIssue });
   if (!project.templates.some((template) => template.id === project.activeTemplateId)) {
     ctx.addIssue({ code: "custom", path: ["activeTemplateId"], message: "active template does not exist" });
   }

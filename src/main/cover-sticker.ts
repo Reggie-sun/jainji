@@ -8,6 +8,7 @@ export interface FrozenCoverSticker {
   assetPath: string;
   assetFingerprint: string;
   rectangle: CoverRectangle;
+  tracks?: CoverSticker["tracks"];
 }
 
 export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[]): FrozenCoverSticker | undefined {
@@ -19,19 +20,25 @@ export function resolveCoverSticker(settings: CoverSticker | undefined, assets: 
     .flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))[0];
   const previousIndex = options.stickerIds.indexOf(previous);
   const stickerId = options.stickerIds[(previousIndex + 1) % options.stickerIds.length];
-  return { stickerId, ...assets[stickerId]!, rectangle: structuredClone(options.rectangle) };
+  return { stickerId, ...assets[stickerId]!, rectangle: structuredClone(options.rectangle), ...(options.tracks ? { tracks: structuredClone(options.tracks) } : {}) };
 }
 
-export function coverLayerForMedia(frozen: FrozenCoverSticker, source: { width: number; height: number }, output: { width: number; height: number }): StickerLayer {
+export function coverLayerForMedia(frozen: FrozenCoverSticker, source: { id?: string; width: number; height: number }, output: { width: number; height: number }): StickerLayer {
   const scale = Math.min(output.width / source.width, output.height / source.height);
   const widthRatio = Math.min(1, source.width * scale / output.width);
   const heightRatio = Math.min(1, source.height * scale / output.height);
-  const rect = frozen.rectangle;
-  return {
-    id: randomUUID(), type: "sticker", assetPath: frozen.assetPath, assetFingerprint: frozen.assetFingerprint,
+  const mapRectangle = (rect: CoverRectangle): CoverRectangle => ({
     x: (1 - widthRatio) / 2 + rect.x * widthRatio,
     y: (1 - heightRatio) / 2 + rect.y * heightRatio,
-    width: rect.width * widthRatio, cover: { stickerId: frozen.stickerId, height: rect.height * heightRatio },
+    width: rect.width * widthRatio, height: rect.height * heightRatio,
+  });
+  const track = source.id ? frozen.tracks?.[source.id] : undefined;
+  const rect = mapRectangle(track?.keyframes[0].rectangle ?? frozen.rectangle);
+  const motion = track && { ...track, keyframes: track.keyframes.map((frame) => ({ timeMs: frame.timeMs, rectangle: mapRectangle(frame.rectangle) })) };
+  return {
+    id: randomUUID(), type: "sticker", assetPath: frozen.assetPath, assetFingerprint: frozen.assetFingerprint,
+    x: rect.x, y: rect.y,
+    width: rect.width, cover: { stickerId: frozen.stickerId, height: rect.height, ...(motion ? { motion } : {}) },
     rotationDeg: 0, opacity: 1, zIndex: 90, visible: true,
   };
 }

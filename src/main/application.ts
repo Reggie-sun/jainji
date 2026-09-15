@@ -17,7 +17,7 @@ import { pathsEqual, validateTemplateResources, type FontResolver } from "./path
 import { ProjectStore } from "./store.js";
 import type { QueueSnapshot } from "./queue.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
-import { CoverStickerSchema, type CoverSticker } from "../shared/cover-sticker.js";
+import { CoverStickerSchema, coverTrackMediaIssue, type CoverSticker } from "../shared/cover-sticker.js";
 
 export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots">;
 export interface PublicQueueState {
@@ -62,7 +62,10 @@ export class ApplicationService {
   get projectPath(): string | undefined { return this.projectFile?.path; }
 
   setCoverSticker(input: unknown): void {
-    this.project.coverSticker = CoverStickerSchema.parse(input);
+    const settings = CoverStickerSchema.parse(input);
+    const issue = coverTrackMediaIssue(settings.tracks, this.project.mediaItems);
+    if (issue) throw new Error(issue);
+    this.project.coverSticker = settings;
     this.touch();
   }
 
@@ -85,6 +88,7 @@ export class ApplicationService {
 
   removeMedia(mediaId: string): void {
     this.project.mediaItems = this.project.mediaItems.filter((item) => item.id !== mediaId);
+    if (this.project.coverSticker?.tracks) delete this.project.coverSticker.tracks[mediaId];
     this.touch();
   }
 

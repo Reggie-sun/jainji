@@ -68,8 +68,9 @@ describe("reusable batch cover", () => {
   });
 
   it.each(["manual", "agent"] as const)("keeps all versions uniform in %s mode and freezes independently of later settings", async (mode) => {
-    const frozen = resolveCoverSticker(options, assets, [])!;
     const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4", displayName: "source.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
+    const track = { startMs: 100, endMs: 900, keyframes: [{ timeMs: 0, rectangle: options.rectangle }, { timeMs: 1000, rectangle: { ...options.rectangle, x: 0.5 } }] };
+    const frozen = resolveCoverSticker({ ...options, tracks: { [source.id]: track } }, assets, [])!;
     const enqueue = vi.fn(async (_template: EditTemplate) => crypto.randomUUID());
     const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [], priceStyle: "mint" } : {}) }), enqueue, stickerAssets: assets,
       decorations: DecorationSchema.parse({ mode, sticker: "none", productPrice: "手动内容" }), autoCatalog: mode === "agent" ? { fonts: [], stickers: [] } : undefined, coverSticker: frozen, onChange: () => {} });
@@ -80,6 +81,7 @@ describe("reusable batch cover", () => {
       expect(template.layers.filter((layer) => layer.type === "sticker" && layer.cover)).toHaveLength(1);
       expect(template.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: assets[a].assetPath, cover: { stickerId: a } });
       expect(template.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "手动内容" });
+      expect(template.layers.find((layer) => layer.type === "sticker")).toMatchObject({ cover: { motion: track } });
     }
     frozen.rectangle.x = 0;
     expect(enqueue.mock.calls[0][0].layers.find((layer) => layer.type === "sticker")?.x).toBe(0.3);
