@@ -22,7 +22,7 @@ export function CornerDecorationPicker({ value, onChange, disabled, selected, on
       <button type="button" disabled={disabled} aria-pressed={automatic} onClick={() => { onChange({ ...value, mode: "agent" }); onSelect(undefined); }}>全部交给 Agent</button>
       <button type="button" disabled={disabled} aria-pressed={!automatic} onClick={() => onChange({ ...value, mode: "manual" })}>自己设置</button>
     </div>
-    {automatic ? <div className="card corner-settings"><h2>Agent 按画面需要选择</h2><p>根据每条视频选择价格花字、贴纸和位置。四个角落不必加满，也可以全部留空。</p><p>普通装饰可从内置贴纸与用户上传贴纸中选择，仅放在四角。原贴纸覆盖会自动开启，可跟随画面任意位置的识别目标；请先在左侧“上传贴纸”添加自己的覆盖图片。切回“自己设置”可继续使用之前的手动设置。</p></div> : <>
+    {automatic ? <div className="card corner-settings"><h2>Agent 按画面需要选择</h2><p>根据每条视频选择价格花字、贴纸和位置。四个角落不必加满，也可以全部留空。</p><p>普通装饰可从内置贴纸与用户上传贴纸中选择，仅放在四角。需要覆盖原贴纸时，请单独开启下方“覆盖原贴纸”，并选择自己的覆盖图片。切回“自己设置”可继续使用之前的手动设置。</p></div> : <>
     <div className="corner-tabs" role="group" aria-label="选择编辑角落">
       <button type="button" disabled={disabled} aria-pressed={!selected} onClick={() => onSelect(undefined)}>默认样式</button>
       {CORNERS.map((corner) => <button type="button" key={corner} disabled={disabled} aria-pressed={selected === corner} onClick={() => onSelect(corner)}>{CORNER_LABELS[corner]}</button>)}

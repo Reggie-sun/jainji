@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { DEFAULT_COVER_STICKER, CoverStickerSchema, type CoverRectangle, type CoverSticker } from "../shared/cover-sticker.js";
-import { isUploadedStickerId } from "../shared/decorations.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
 import type { ExportBatch, StickerLayer } from "./domain.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
@@ -14,17 +13,16 @@ export interface FrozenCoverSticker {
   automatic?: boolean;
 }
 
-export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[], mode: "manual" | "agent" = "manual"): FrozenCoverSticker | undefined {
+export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[]): FrozenCoverSticker | undefined {
   const options = CoverStickerSchema.parse(settings ?? DEFAULT_COVER_STICKER);
-  if (mode !== "agent" && !options.enabled) return undefined;
-  const candidates = mode === "agent" && !options.stickerIds.length ? Object.keys(assets).filter((id) => isUploadedStickerId(id) && assets[id]).sort() : options.stickerIds;
-  if (!candidates.length) throw new Error("全部交给 Agent 会自动覆盖原贴纸，请先上传至少一张自己的覆盖贴纸。");
+  if (!options.enabled) return undefined;
+  const candidates = options.stickerIds;
   if (candidates.some((id) => !assets[id])) throw new Error("覆盖贴纸已删除或不可用，请重新选择自己的贴纸。");
   const previous = [...history].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
     .flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))[0];
   const previousIndex = candidates.indexOf(previous);
   const stickerId = candidates[(previousIndex + 1) % candidates.length];
-  return { stickerId, ...assets[stickerId]!, rectangle: structuredClone(options.rectangle), ...(options.tracks ? { tracks: structuredClone(options.tracks) } : {}), ...(mode === "agent" || options.trackingMode === "agent" ? { automatic: true } : {}) };
+  return { stickerId, ...assets[stickerId]!, rectangle: structuredClone(options.rectangle), ...(options.tracks ? { tracks: structuredClone(options.tracks) } : {}), ...(options.trackingMode === "agent" ? { automatic: true } : {}) };
 }
 
 export function automaticCoverLayers(frozen: FrozenCoverSticker, source: { id: string; width: number; height: number }, output: { width: number; height: number }, tracks: readonly AutomaticCoverTrack[]): StickerLayer[] {

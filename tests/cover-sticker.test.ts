@@ -22,22 +22,22 @@ const builtin = { assetPath: "/tmp/builtin.png", assetFingerprint: "sha256:built
 const assets = { sparkle: builtin, arrow: builtin, heart: builtin, burst: builtin, [a]: { assetPath: "/tmp/a.png", assetFingerprint: "sha256:a" }, [b]: { assetPath: "/tmp/b.png", assetFingerprint: "sha256:b" } };
 
 describe("reusable batch cover", () => {
-  it("enables automatic coverage from uploaded assets when full Agent mode has no cover settings", () => {
-    const frozen = resolveCoverSticker(undefined, assets, [], "agent");
-    expect(frozen).toMatchObject({ automatic: true, stickerId: a });
+  it("requires explicit coverage settings independently of decoration mode", () => {
+    expect(resolveCoverSticker(undefined, assets, [])).toBeUndefined();
     const disabled = { ...options, enabled: false, trackingMode: "manual" as const };
-    expect(resolveCoverSticker(disabled, assets, [], "agent")).toMatchObject({ automatic: true, stickerId: a });
+    expect(resolveCoverSticker(disabled, assets, [])).toBeUndefined();
     expect(disabled.enabled).toBe(false);
-    expect(resolveCoverSticker(disabled, assets, [], "manual")).toBeUndefined();
-    expect(() => resolveCoverSticker(undefined, { sparkle: builtin }, [], "agent")).toThrow("请先上传");
+    expect(resolveCoverSticker(undefined, { sparkle: builtin }, [])).toBeUndefined();
+    expect(resolveCoverSticker({ ...options, trackingMode: "agent" }, assets, [])).toMatchObject({ automatic: true, stickerId: a });
+    expect(resolveCoverSticker({ ...options, trackingMode: "manual" }, assets, [])).not.toHaveProperty("automatic");
   });
-  it.each(["manual", "agent"] as const)("selects once per %s controller run and automatically covers even with the old switch disabled", async (mode) => {
+  it.each(["manual", "agent"] as const)("respects enabled and disabled coverage in a %s controller run", async (mode) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-controller-"));
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
     const source: MediaItem = { id: crypto.randomUUID(), sourcePath: path.join(directory, "source.mp4"), displayName: "source.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     service.currentProject.mediaItems.push(source);
-    service.setCoverSticker({ ...options, enabled: mode === "manual", trackingMode: "manual" });
+    service.setCoverSticker({ ...options, enabled: true, trackingMode: "agent" });
     const history: ExportBatch[] = [];
     const queue = {
       snapshot: () => ({ revision: history.length, batches: history.map((batch) => ({ batch })) }),
@@ -57,27 +57,36 @@ describe("reusable batch cover", () => {
     try {
       await controller.start(input, new Set([directory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false));
-      if (mode === "agent") service.currentProject.coverSticker = undefined;
       await controller.start(input, new Set([directory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false));
       expect(history.flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))).toEqual([a, a, b, b]);
       service.setCoverSticker({ ...options, stickerIds: [`uploaded-${"c".repeat(64)}`] });
       await expect(controller.start(input, new Set([directory]))).rejects.toThrow("覆盖贴纸已删除");
       expect(plan).toHaveBeenCalledTimes(4);
-      expect(detect).toHaveBeenCalledTimes(mode === "agent" ? 2 : 0);
-      expect(history.every((batch) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.cover && Boolean(layer.cover.automatic) === (mode === "agent")))).toBe(true);
+      expect(detect).toHaveBeenCalledTimes(2);
+      expect(history.every((batch) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.cover?.automatic))).toBe(true);
+      for (const settings of [undefined, { ...options, enabled: false, stickerIds: [`uploaded-${"c".repeat(64)}`] }]) {
+        service.currentProject.coverSticker = settings;
+        await controller.start(input, new Set([directory]));
+        await vi.waitFor(() => expect(controller.busy).toBe(false));
+      }
+      expect(plan).toHaveBeenCalledTimes(8);
+      expect(detect).toHaveBeenCalledTimes(2);
+      expect(history.slice(4)).toHaveLength(4);
+      expect(history.slice(4).every((batch) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
     } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); detect.mockRestore(); await rm(directory, { recursive: true, force: true }); }
   });
-  it("rejects full Agent production without uploaded cover assets before requesting a model", async () => {
+  it("rejects enabled coverage with missing assets before requesting a model", async () => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
+    service.setCoverSticker(options);
     const queue = { snapshot: () => ({ revision: 0, batches: [] }) } as unknown as ExportQueue;
     const controller = new AgentController(service, queue, ffmpeg, () => {}, { sparkle: builtin, arrow: builtin, heart: builtin, burst: builtin });
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     const plan = vi.spyOn(controller.provider, "plan");
     const detect = vi.spyOn(controller.provider, "detectCovers");
     try {
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp", decorations: { mode: "agent", productPrice: "19.9", sticker: "none", fontFamily: "Noto Sans CJK SC" } }, new Set(["/tmp"]))).rejects.toThrow("请先上传");
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp", decorations: { mode: "agent", productPrice: "19.9", sticker: "none", fontFamily: "Noto Sans CJK SC" } }, new Set(["/tmp"]))).rejects.toThrow("覆盖贴纸已删除");
       expect(plan).not.toHaveBeenCalled();
       expect(detect).not.toHaveBeenCalled();
       expect(controller.busy).toBe(false);

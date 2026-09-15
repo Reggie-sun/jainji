@@ -59,6 +59,8 @@ Windows 使用系统 Microsoft YaHei 字体：项目中的默认 `Noto Sans CJK 
 
 模板限制贴纸数量、四角位置、尺寸、滤镜与强度。模型返回不合格方案时，该条失败，不使用固定模板伪装模型成功，也不自动重试请求。静态包装不能替代逐帧主体避让或人工观看验收。
 
+“覆盖原贴纸”是独立可选开关，默认关闭，不随“全部交给 Agent”开启。需要覆盖时勾选“启用覆盖”，选择自己的上传贴纸和自动识别／手动设置方式，再点击“保存覆盖设置”。关闭后不进行覆盖识别或添加覆盖层，也不要求上传覆盖贴纸；已有候选和手动轨迹保留。已开始的任务继续使用冻结设置，自动识别不确定时仍明确失败。
+
 ## Bug Feedback
 
 侧栏“反馈问题”可填写问题描述、选择或粘贴一张截图，并直接创建 `Reggie-sun/jainji` 的 GitHub Issue。提交成功后显示 Issue 编号和打开入口。此功能移植自 `csgojiaoben` 的问题反馈入口，不启动其自动修复、PR 或 Issue automation 工作流。
@@ -99,7 +101,7 @@ npm run package:win
 
 Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带；无需用户另外安装 Node 或 Codex。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。Windows x64 的构建、模拟服务桌面流程、静默安装与卸载已验证，记录见 [Windows 验收规范](windows-acceptance-spec.md)；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
 
-测试包含规则拒绝、Key 不回传、错误脱敏、取消、素材方案隔离、Windows/POSIX 路径，以及真实 FFmpeg 与本地模拟 API 的端到端处理。真实媒体测试缺少引擎或字体时会明确跳过。CI 配置覆盖 Ubuntu 与 Windows 的静态检查和测试；本地模拟服务测试不代表商业服务商已验证。
+测试包含规则拒绝、Key 不回传、错误脱敏、取消、素材方案隔离、Windows/POSIX 路径，以及真实 FFmpeg 与本地模拟 API 的端到端处理。真实媒体测试缺少引擎或字体时会明确跳过。CI 配置覆盖 Ubuntu 与 Windows 的静态检查和测试；本地模拟服务测试不代表商业服务商已验证。`node scripts/cover-toggle-smoke.mjs` 用隔离 Chrome 验证覆盖开关、保存状态和装饰模式互不影响，不调用模型或修改用户项目。
 
 桌面交互 smoke 使用真实 Electron、IPC 和 FFmpeg，模型服务、OAuth App Server、CC Switch 数据库与文件选择器使用隔离 fixture。先构建，再在有图形环境的终端运行 `node scripts/desktop-smoke.mjs`；无显示的 Linux 可运行 `xvfb-run -a node scripts/desktop-smoke.mjs`。验证登录/取消/退出、CC Switch 导入及 Anthropic 图片请求、手动 API、素材导入、模板选择、自动导出、Key 不回传与窄窗口布局。另有真实 Codex 二进制初始化、独立登录目录和禁用工具配置测试，不发起真实登录或模型推理。真实账号授权和商业模型出片尚需用户登录后验证。
 
