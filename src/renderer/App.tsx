@@ -36,14 +36,7 @@ export default function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [rule, setRule] = useState<RuleId>("black-gold");
-  const [decorations, setDecorations] = useState<DecorationOptions>(() => {
-    const defaults = DecorationSchema.parse({ mode: "agent" });
-    try {
-      return { ...defaults, productPrice: window.localStorage.getItem(PRODUCT_PRICE_STORAGE_KEY) ?? "" };
-    } catch {
-      return defaults;
-    }
-  });
+  const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({ mode: "agent" }));
   const [selectedCorner, setSelectedCorner] = useState<Corner>();
   const [stickerRevision, setStickerRevision] = useState(0);
   const [coverStickerDirty, setCoverStickerDirty] = useState(false);
@@ -66,6 +59,13 @@ export default function App() {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
     if (projectId.current !== next.project.id) {
       projectId.current = next.project.id;
+      let productPrice = "";
+      try {
+        productPrice = window.localStorage.getItem(`${PRODUCT_PRICE_STORAGE_KEY}.${next.project.id}`) ?? "";
+      } catch {
+        setNotice({ error: true, text: "未能读取此素材集保存的展示文字，请重新填写。" });
+      }
+      setDecorations((current) => ({ ...current, productPrice }));
       setCollectionName(next.project.name);
       knownMedia.current.clear();
       setOutputDirectory("");
@@ -152,7 +152,7 @@ export default function App() {
   const rememberProductPrice = (productPrice: string) => {
     setDecorations((current) => ({ ...current, productPrice }));
     try {
-      window.localStorage.setItem(PRODUCT_PRICE_STORAGE_KEY, productPrice);
+      window.localStorage.setItem(`${PRODUCT_PRICE_STORAGE_KEY}.${state.project.id}`, productPrice);
     } catch {
       setNotice({ error: true, text: "展示文字未能保存到本机，本次仍可使用；重新打开后可能需要再次填写。" });
     }
