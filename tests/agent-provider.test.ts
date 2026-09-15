@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentProvider, ProviderError, materializePlan, validatePlan } from "../src/main/agent-provider";
+import { AgentProvider, API_REQUEST_MIN_INTERVAL_MS, ProviderError, materializePlan, validatePlan } from "../src/main/agent-provider";
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
@@ -14,6 +14,27 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("serializes API requests and spaces successive requests", async () => {
+    vi.useFakeTimers();
+    try {
+      const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ content: [{ type: "text", text: "ok" }] }))) as unknown as typeof fetch;
+      const provider = new AgentProvider(request, API_REQUEST_MIN_INTERVAL_MS);
+      provider.configure({ ...connection, protocol: "anthropic", authHeader: "bearer" });
+      const signal = new AbortController().signal;
+      const first = provider.generateBrief({ ruleId: "clean" }, signal);
+      const second = provider.generateBrief({ ruleId: "clean" }, signal);
+      for (let i = 0; i < 20; i++) await Promise.resolve();
+      expect(vi.mocked(request)).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(API_REQUEST_MIN_INTERVAL_MS - 1);
+      expect(vi.mocked(request)).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      await Promise.all([first, second]);
+      expect(vi.mocked(request)).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it.each([
     ['{"candidates":[编号]}', "JSON 格式无效"],
     ['```json\n{"candidates":[1]}\n```', "JSON 格式无效"],

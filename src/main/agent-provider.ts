@@ -240,11 +240,20 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
 
 export { ProviderError } from "./api-transport.js";
 
+export const API_REQUEST_MIN_INTERVAL_MS = 1_000;
+
+function waitForApiInterval(milliseconds: number): Promise<void> {
+  if (milliseconds <= 0) return Promise.resolve();
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
 export class AgentProvider {
   private connection?: ConnectionInput;
   private chatgpt?: { model: string; reasoningEffort?: string; complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> };
   private providerName?: string;
-  constructor(private readonly request: typeof fetch = fetch) {}
+  private apiRequestTail = Promise.resolve();
+  private lastApiRequestAt?: number;
+  constructor(private readonly request: typeof fetch = fetch, private readonly apiRequestMinIntervalMs = API_REQUEST_MIN_INTERVAL_MS) {}
 
   status(): ConnectionStatus {
     if (this.chatgpt) return { configured: true, baseUrl: "", model: this.chatgpt.model, reasoningEffort: this.chatgpt.reasoningEffort, source: "chatgpt", providerName: "ChatGPT" };
@@ -324,6 +333,23 @@ export class AgentProvider {
   private async complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> {
     if (this.chatgpt) return this.chatgpt.complete(messages, signal);
     if (!this.connection) throw new ProviderError("请先接入模型。");
-    return completeApi(this.connection, messages, signal, this.request);
+    const previous = this.apiRequestTail;
+    let release!: () => void;
+    this.apiRequestTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      // Token Plan keys use the sk-cp- prefix. Anthropic-compatible MiniMax
+      // connections are also throttled because the protocol alone is the
+      // stable provider signal available in older saved connections.
+      const tokenPlan = this.connection.apiKey.startsWith("sk-cp-");
+      const interval = tokenPlan || this.connection.protocol === "anthropic" ? this.apiRequestMinIntervalMs : 0;
+      const wait = this.lastApiRequestAt === undefined ? 0 : interval - (Date.now() - this.lastApiRequestAt);
+      await waitForApiInterval(wait);
+      signal.throwIfAborted();
+      this.lastApiRequestAt = Date.now();
+      return await completeApi(this.connection, messages, signal, this.request);
+    } finally {
+      release();
+    }
   }
 }
