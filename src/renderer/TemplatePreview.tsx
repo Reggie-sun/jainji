@@ -4,7 +4,7 @@ import type { RuleTemplate } from "../shared/agent";
 import { LIBRARY_STICKERS } from "../shared/asset-library";
 import { CORNERS, CORNER_LABELS, formatProductPrice, ProductPriceSchema, type Corner, type DecorationOptions } from "../shared/decorations";
 import { constrainedStickerPreviewGeometry, CORNER_SAFE_POLICY } from "../shared/layout-policy";
-import { getPriceStyle, priceFontSizeRatio } from "../shared/price-styles";
+import { getPriceStyle, PRICE_LINE_HEIGHT, priceFontSizeRatio } from "../shared/price-styles";
 import "./template-preview.css";
 
 export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect, disabled }: { rule: RuleTemplate; options: DecorationOptions; selectedCorner?: Corner; onCornerSelect?(corner: Corner): void; disabled?: boolean }) {
@@ -59,36 +59,38 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
       if (options.productPrice?.trim() && ProductPriceSchema.safeParse(options.productPrice).success) {
         const style = getPriceStyle(options.priceStyle);
         const cssColor = (color: typeof style.color) => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
-        const text = formatProductPrice(options.productPrice);
+        const lines = formatProductPrice(options.productPrice).split("\n");
         const fontSize = height * priceFontSizeRatio(width, height);
         const border = Math.round(style.strokeWidthRatio * height);
-        const x = width / 2, y = height * 0.13;
-        context.save();
-        context.textAlign = "center";
-        context.font = `${fontSize}px "${DEFAULT_TEXT_FONT_FAMILY}", sans-serif`;
-        // Position the visible glyph top as drawtext does, rather than the font em box.
-        context.textBaseline = "alphabetic";
-        const glyph = context.measureText(text);
-        const baseline = y + glyph.actualBoundingBoxAscent;
-        if (style.backgroundColor) {
-          const padding = Math.round((style.backgroundPaddingRatio ?? 0.006) * height);
-          context.fillStyle = cssColor(style.backgroundColor);
-          context.fillRect(x - glyph.width / 2 - padding, y - padding, glyph.width + 2 * padding, glyph.actualBoundingBoxAscent + glyph.actualBoundingBoxDescent + 2 * padding);
+        for (const [index, text] of lines.entries()) {
+          const x = width / 2, y = height * 0.13 + index * fontSize * PRICE_LINE_HEIGHT;
+          context.save();
+          context.textAlign = "center";
+          context.font = `${fontSize}px "${DEFAULT_TEXT_FONT_FAMILY}", sans-serif`;
+          // Position the visible glyph top as drawtext does, rather than the font em box.
+          context.textBaseline = "alphabetic";
+          const glyph = context.measureText(text);
+          const baseline = y + glyph.actualBoundingBoxAscent;
+          if (style.backgroundColor) {
+            const padding = Math.round((style.backgroundPaddingRatio ?? 0.006) * height);
+            context.fillStyle = cssColor(style.backgroundColor);
+            context.fillRect(x - glyph.width / 2 - padding, y - padding, glyph.width + 2 * padding, glyph.actualBoundingBoxAscent + glyph.actualBoundingBoxDescent + 2 * padding);
+          }
+          context.lineWidth = border * 2;
+          context.lineJoin = "round";
+          if (style.shadow) {
+            context.fillStyle = cssColor(style.shadow.color);
+            context.strokeStyle = cssColor(style.shadow.color);
+            const sx = x + Math.round(style.shadow.xRatio * height), sy = baseline + Math.round(style.shadow.yRatio * height);
+            if (border) context.strokeText(text, sx, sy);
+            context.fillText(text, sx, sy);
+          }
+          context.strokeStyle = cssColor(style.strokeColor);
+          if (border) context.strokeText(text, x, baseline);
+          context.fillStyle = cssColor(style.color);
+          context.fillText(text, x, baseline);
+          context.restore();
         }
-        context.lineWidth = border * 2;
-        context.lineJoin = "round";
-        if (style.shadow) {
-          context.fillStyle = cssColor(style.shadow.color);
-          context.strokeStyle = cssColor(style.shadow.color);
-          const sx = x + Math.round(style.shadow.xRatio * height), sy = baseline + Math.round(style.shadow.yRatio * height);
-          if (border) context.strokeText(text, sx, sy);
-          context.fillText(text, sx, sy);
-        }
-        context.strokeStyle = cssColor(style.strokeColor);
-        if (border) context.strokeText(text, x, baseline);
-        context.fillStyle = cssColor(style.color);
-        context.fillText(text, x, baseline);
-        context.restore();
       }
 
       for (const { corner, id } of stickerSlots) {

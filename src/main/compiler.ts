@@ -1,4 +1,5 @@
 import path from "node:path";
+import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
 import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
@@ -110,34 +111,37 @@ export class TemplateCompiler {
       if (layer.type === "text") {
         const fontPath = await options.fontResolver.resolve(layer.fontFamily);
         if (!fontPath) throw new Error(`font_missing:${layer.fontFamily}`);
-        const textPath = options.textFilePath(layer.id);
-        textFiles.push({ layerId: layer.id, path: textPath, content: wrapText(layer.content, layer.width, layer.fontSizeRatio, dimensions) });
-        const nextLabel = `base${graph.length}`;
-        const drawtext = [
-          "drawtext=" +
-          `fontfile='${escapeFilterValue(fontPath)}'`,
-          `textfile='${escapeFilterValue(textPath)}'`,
-          "expansion=none",
-          `fontsize=h*${layer.fontSizeRatio.toFixed(5)}`,
-          `fontcolor=${color(layer.color, layer.opacity)}`,
-          `bordercolor=${color(layer.strokeColor, layer.opacity)}`,
-          `borderw=${Math.round(layer.strokeWidthRatio * dimensions.height)}`,
-          ...(layer.shadow ? [
-            `shadowcolor=${color(layer.shadow.color, layer.opacity)}`,
-            `shadowx=${Math.round(layer.shadow.xRatio * dimensions.height)}`,
-            `shadowy=${Math.round(layer.shadow.yRatio * dimensions.height)}`,
-          ] : []),
-          ...(layer.backgroundColor ? [
-            "box=1",
-            `boxcolor=${color(layer.backgroundColor, layer.opacity)}`,
-            `boxborderw=${Math.round((layer.backgroundPaddingRatio ?? 0.006) * dimensions.height)}`,
-          ] : []),
-          layer.textAlign === "center" ? `x=w*${(layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
-          `y=h*${layer.y.toFixed(5)}`,
-          "fix_bounds=1",
-        ].join(":");
-        graph.push(`[${baseLabel}]${drawtext}[${nextLabel}]`);
-        baseLabel = nextLabel;
+        const lines = wrapText(layer.content, layer.width, layer.fontSizeRatio, dimensions).split("\n");
+        for (const [index, content] of lines.entries()) {
+          const textPath = options.textFilePath(index === 0 ? layer.id : `${layer.id}-line-${index + 1}`);
+          textFiles.push({ layerId: layer.id, path: textPath, content });
+          const nextLabel = `base${graph.length}`;
+          const drawtext = [
+            "drawtext=" +
+            `fontfile='${escapeFilterValue(fontPath)}'`,
+            `textfile='${escapeFilterValue(textPath)}'`,
+            "expansion=none",
+            `fontsize=h*${layer.fontSizeRatio.toFixed(5)}`,
+            `fontcolor=${color(layer.color, layer.opacity)}`,
+            `bordercolor=${color(layer.strokeColor, layer.opacity)}`,
+            `borderw=${Math.round(layer.strokeWidthRatio * dimensions.height)}`,
+            ...(layer.shadow ? [
+              `shadowcolor=${color(layer.shadow.color, layer.opacity)}`,
+              `shadowx=${Math.round(layer.shadow.xRatio * dimensions.height)}`,
+              `shadowy=${Math.round(layer.shadow.yRatio * dimensions.height)}`,
+            ] : []),
+            ...(layer.backgroundColor ? [
+              "box=1",
+              `boxcolor=${color(layer.backgroundColor, layer.opacity)}`,
+              `boxborderw=${Math.round((layer.backgroundPaddingRatio ?? 0.006) * dimensions.height)}`,
+            ] : []),
+            layer.textAlign === "center" ? `x=w*${(layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
+            `y=h*${(layer.y + index * layer.fontSizeRatio * PRICE_LINE_HEIGHT).toFixed(5)}`,
+            "fix_bounds=1",
+          ].join(":");
+          graph.push(`[${baseLabel}]${drawtext}[${nextLabel}]`);
+          baseLabel = nextLabel;
+        }
         continue;
       }
 

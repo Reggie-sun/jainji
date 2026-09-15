@@ -20,13 +20,17 @@ const CornerDecorationSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("sticker"), sticker: z.string().refine((id) => stickerIds.has(id) && id !== "none" && id !== "template", "unknown sticker") }).strict(),
 ]);
 export type CornerDecoration = z.infer<typeof CornerDecorationSchema>;
-export const PRODUCT_PRICE_MAX_LENGTH = 12;
-export const PRODUCT_PRICE_HELP = "请填写金额或金额＋数量单位，例如19.90、19.9元30贴；最多12字，金额最多两位小数，不能包含产品名。";
-export const ProductPriceSchema = z.string().trim().max(PRODUCT_PRICE_MAX_LENGTH).regex(/^(?:\d{1,6}(?:\.\d{1,2})?(?:元(?:[1-9]\d{0,5}(?:贴|片|个|件|包|袋|盒|瓶|罐|支|条|卷|枚|只|双|对|套|组|份|张|本|杯|克|千克|斤|公斤|毫升|升))?)?)?$/, PRODUCT_PRICE_HELP);
-export const RequiredProductPriceSchema = ProductPriceSchema.min(1, "请手动填写产品价格，Agent 不能代填或改写。");
+export const PRODUCT_PRICE_MAX_LENGTH = 25;
+export const PRODUCT_PRICE_HELP = "请手动填写价格，按 Enter 换行，最多2行、每行12字。支持19.9元30贴、9.9元到手5卷、19.9元拍一发三；金额最多两位小数，不能包含产品名。";
+const priceLine = /^\d{1,6}(?:\.\d{1,2})?(?:元(?:(?:到手)?[1-9]\d{0,5}(?:贴|片|个|件|包|袋|盒|瓶|罐|支|条|卷|枚|只|双|对|套|组|份|张|本|杯|克|千克|斤|公斤|毫升|升)|拍(?:[1-9]\d{0,5}|[一二三四五六七八九十])发(?:[1-9]\d{0,5}|[一二三四五六七八九十]))?)?$/;
+export const ProductPriceSchema = z.string().trim().transform((value) => value.replace(/\r\n/g, "\n")).pipe(z.string().max(PRODUCT_PRICE_MAX_LENGTH, PRODUCT_PRICE_HELP).refine((value) => {
+  const lines = value.split("\n");
+  return value === "" || (lines.length <= 2 && lines.every((line) => line.length <= 12 && priceLine.test(line)));
+}, PRODUCT_PRICE_HELP));
+export const RequiredProductPriceSchema = ProductPriceSchema.refine((value) => value.length > 0, "请手动填写产品价格，Agent 不能代填或改写。");
 export function formatProductPrice(price: string): string {
   const value = RequiredProductPriceSchema.parse(price);
-  return value.includes("元") ? value : `¥ ${value}`;
+  return value.split("\n").map((line) => line.includes("元") ? line : `¥ ${line}`).join("\n");
 }
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {

@@ -229,6 +229,15 @@ try {
   await evaluate("document.querySelector('#product-price').focus()");
   await send("Input.insertText", { text: "19.9元30贴" });
   assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), "false");
+  assert.equal(await evaluate("document.querySelector('#product-price').tagName"), "TEXTAREA");
+  await evaluate("document.querySelector('#product-price').select()");
+  await send("Input.insertText", { text: "9.9元到手5卷" });
+  await send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13, text: "\r" });
+  await send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+  await send("Input.insertText", { text: "19.9元拍一发三" });
+  const twoLinePrice = "9.9元到手5卷\n19.9元拍一发三";
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice);
+  assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), "false");
   assert.equal(await evaluate("document.querySelectorAll('.price-style-option').length"), 8);
   const classicPreview = await evaluate("document.querySelector('.template-preview canvas').toDataURL()");
   await click("漫画撞色");
@@ -237,7 +246,7 @@ try {
   await click("自己设置");
   await click("海盐蓝调");
   assert.equal(await evaluate("document.querySelector('.price-style-option[aria-pressed=true]').textContent.includes('漫画撞色')"), true, "mode and template switches retain price style");
-  assert.equal(await evaluate("document.querySelector('#product-price').value"), "19.9元30贴", "style changes cannot rewrite price");
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice, "style changes cannot rewrite price");
   await click("清爽日常");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.model-picker datalist option')].map(option => option.value)"), ["smoke-vision"], "saved candidates survive trailing slash and legacy default protocol");
   await evaluate("document.querySelector('.model-picker input').focus(); document.querySelector('.model-picker input').select()");
@@ -291,8 +300,8 @@ try {
   assert.equal(JSON.stringify(state).includes("local-smoke-key"), false);
   assert.equal(state.agentRun.items[0].summary, "保留主体与手动价格");
   const savedJob = JSON.parse(await readFile(path.join(directory, "jobs", `${state.queue.batches[0].batch.id}.json`), "utf8"));
-  assert.equal(savedJob.batch.templateSnapshot.productPrice, "19.9元30贴");
-  assert.deepEqual(savedJob.batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content), ["19.9元30贴"]);
+  assert.equal(savedJob.batch.templateSnapshot.productPrice, twoLinePrice);
+  assert.deepEqual(savedJob.batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content), [twoLinePrice]);
   assert.deepEqual(savedJob.batch.templateSnapshot.layers.find(layer => layer.type === "text").shadow, { color: { r: 232, g: 70, b: 120, a: 1 }, xRatio: 0.004, yRatio: 0.005 }, "selected price appearance survives IPC and is frozen for retries");
   await screenshot("05-results");
   await click("模型与 API");

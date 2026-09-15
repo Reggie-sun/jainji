@@ -16,6 +16,22 @@ const plan = { summary: "仅保留价格", captions: [], filter: "warm", intensi
 const options = { productPrice: "19.9元30贴", sticker: "none" };
 const dimensions = { width: 720, height: 1280 };
 
+it.each(["manual", "agent"] as const)("compiles two centered price lines from one frozen layer in %s mode", async (mode) => {
+  const productPrice = "9.9元到手5卷\n19.9元拍一发三";
+  for (const size of [dimensions, { width: 1920, height: 1080 }]) {
+    const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [] } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
+    expect(template.layers).toHaveLength(1);
+    expect(template.layers[0]).toMatchObject({ content: productPrice });
+    const compiled = await new TemplateCompiler().compile(JSON.parse(JSON.stringify(template)), { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id) => `/tmp/${id}.txt` });
+    expect(compiled.textFiles.map((entry) => entry.content)).toEqual(productPrice.split("\n"));
+    expect(new Set(compiled.textFiles.map((entry) => entry.path)).size).toBe(2);
+    const graph = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
+    expect(graph.match(/x=w\*0.50000-text_w\/2/g)).toHaveLength(2);
+    expect(graph).toContain("y=h*0.13000");
+    expect(graph).toContain(`y=h*${(0.13 + Math.min(0.08 * size.width / size.height, 0.14) * 1.4).toFixed(5)}`);
+  }
+});
+
 it("rejects decorative model text in both modes at the local boundary", () => {
   for (const catalog of [undefined, { fonts: [], stickers: [] }]) {
     const raw = { ...plan, ...(catalog ? { stickers: [] } : {}), captions: [{ text: "细节之美", corner: "bottom-right", size: 0.026, ...(catalog ? { fontFamily: "Noto Sans CJK SC" } : {}) }] };

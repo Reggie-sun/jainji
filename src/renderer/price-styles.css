@@ -8,7 +8,7 @@
 .price-style-option:focus-visible{outline:3px solid #1d957b;outline-offset:3px}
 .price-style-option:disabled{opacity:.55;cursor:not-allowed}
 .price-style-swatch{display:flex;align-items:center;justify-content:center;min-height:78px;background:linear-gradient(135deg,#f3f0e9,#dce5df);border-radius:6px;padding:12px 4px;overflow:hidden}
-.price-style-swatch>span{font:26px "Noto Sans CJK SC","Microsoft YaHei",sans-serif;white-space:nowrap;padding:3px 6px;line-height:1.4;max-width:100%}
+.price-style-swatch>span{font:26px "Noto Sans CJK SC","Microsoft YaHei",sans-serif;white-space:pre;text-align:center;padding:3px 6px;line-height:1.4;max-width:100%}
 .price-style-option strong,.price-style-option small{display:block;margin:9px 6px 0}
 .price-style-option strong{font-size:13px;color:#2f4140}
 .price-style-option small{font-size:11px;color:#6f7c79;margin-top:5px}

@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { AgentStartSchema } from "../src/shared/agent";
-import { RequiredProductPriceSchema } from "../src/shared/decorations";
+import { formatProductPrice, RequiredProductPriceSchema } from "../src/shared/decorations";
 import { AgentController } from "../src/main/agent-controller";
 import type { ApplicationService } from "../src/main/application";
 import type { ExportQueue } from "../src/main/queue";
@@ -8,6 +8,18 @@ import type { FfmpegAdapter } from "../src/main/ffmpeg";
 import type { StickerAssets } from "../src/main/builtin-stickers";
 
 const input = { ruleId: "clean" as const, brief: "价格由 Agent 猜测", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp/output" };
+
+it.each(["manual", "agent"])("preserves two manual price lines in %s mode", (mode) => {
+  const productPrice = "9.9元到手5卷\n19.9元拍一发三";
+  expect(AgentStartSchema.parse({ ...input, decorations: { mode, productPrice } }).decorations?.productPrice).toBe(productPrice);
+  expect(formatProductPrice(productPrice)).toBe(productPrice);
+  expect(formatProductPrice("9.9\n19.9元拍一发三")).toBe("¥ 9.9\n19.9元拍一发三");
+  expect(formatProductPrice(productPrice.replace("\n", "\r\n"))).toBe(productPrice);
+});
+
+it.each(["9元\n19元\n29元", "9元\n\n19元", "9元到手0卷", "9元拍零发三", "9元到手面膜", "9元拍一发三包邮", "999999.99元99卷"])("rejects malformed multiline offers: %s", (price) => {
+  expect(RequiredProductPriceSchema.safeParse(price).success).toBe(false);
+});
 
 it.each(["19.9元30贴", "29.90元50片", "9元1盒", "19.90", "19.9元"])("accepts manually entered price and quantity: %s", (productPrice) => {
   expect(AgentStartSchema.parse({ ...input, decorations: { productPrice } }).decorations?.productPrice).toBe(productPrice);

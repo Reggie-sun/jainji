@@ -8,7 +8,7 @@ const cssColor = (color: PriceStyle["color"]) => `rgba(${color.r}, ${color.g}, $
 export function PriceStylePicker({ value, price, disabled, onChange }: { value?: PriceStyleId; price?: string; disabled: boolean; onChange?(id: PriceStyleId): void }) {
   const validPrice = RequiredProductPriceSchema.safeParse(price);
   const sample = validPrice.success ? formatProductPrice(validPrice.data) : "价格";
-  const sampleUnits = [...sample].reduce((total, character) => total + (/[\u0000-\u00ff]/.test(character) ? 0.6 : 1), 0);
+  const sampleUnits = Math.max(...sample.split("\n").map((line) => [...line].reduce((total, character) => total + (/[\u0000-\u00ff]/.test(character) ? 0.6 : 1), 0)));
   const selected = getPriceStyle(value);
   return <section className="price-style-picker" aria-label="价格花字样式">
     <div className="price-style-heading"><div><h3>价格花字</h3><p>描边、投影、底牌自由搭配包装模板。</p></div><span className="small-tag">{PRICE_STYLES.length} 款 · 已选{selected.name}</span></div>
