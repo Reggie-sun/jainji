@@ -84,7 +84,7 @@ try {
   await click('[aria-label="快捷制作条数"] button:nth-child(2)');
   const emptyPricePicture = await picture();
   const fillPrice = async (value) => {
-    await evaluate(`{const input=document.querySelector('#product-price');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));}`);
+    await evaluate(`{const input=document.querySelector('#product-price');Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype,'value').set.call(input,${JSON.stringify(value)});input.dispatchEvent(new Event('input',{bubbles:true}));}`);
     await waitFor(`window.fixtureOptions.productPrice===${JSON.stringify(value)}`);
   };
   await fillPrice('19.90');
