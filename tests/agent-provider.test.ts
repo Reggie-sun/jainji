@@ -39,11 +39,11 @@ describe("agent provider boundary", () => {
     ['{"candidates":[编号]}', "JSON 格式无效"],
     ['```json\n{"candidates":[1]}\n```', "JSON 格式无效"],
     ['{"candidates":[1,1]}', "候选编号不得重复"],
-    ['{"candidates":[0]}', "候选编号必须为 1 到 3 的整数"],
-    ['{"candidates":[4]}', "候选编号必须为 1 到 3 的整数"],
-    ['{"candidates":[1.5]}', "候选编号必须为 1 到 3 的整数"],
-    ['{"candidates":["private-value"]}', "候选编号必须为 1 到 3 的整数"],
-    ['{"candidates":[3]}', "候选包含不允许自动选用的贴纸"],
+    ['{"candidates":[0]}', "候选编号必须为 1 到 2 的整数"],
+    ['{"candidates":[4]}', "候选编号必须为 1 到 2 的整数"],
+    ['{"candidates":[1.5]}', "候选编号必须为 1 到 2 的整数"],
+    ['{"candidates":["private-value"]}', "候选编号必须为 1 到 2 的整数"],
+    ['{"candidates":[3]}', "候选编号必须为 1 到 2 的整数"],
     [JSON.stringify({ candidates: Array(13).fill(1) }), "candidates 必须为最多 12 项的数组"],
     ['{"candidates":null}', "candidates 必须为最多 12 项的数组"],
     ['{}', "candidates 必须为最多 12 项的数组"],
@@ -70,6 +70,43 @@ describe("agent provider boundary", () => {
     expect(system).toContain("1 到 2 的整数");
     expect(system).toContain("不要 Markdown");
     expect(system).toContain("不得添加其他字段");
+  });
+
+  it("omits forbidden entries while preserving uploaded preview numbers and batch usage", async () => {
+    const id = `uploaded-${"b".repeat(64)}`;
+    const preview = { id, url: "data:image/jpeg;base64,dXBsb2Fk" };
+    const catalog = { fonts: [], stickers: [
+      { id: "unreviewed", label: "未审核，不得给模型选用" },
+      { id: "heart", label: "爱心" },
+      { id, label: "用户上传" },
+    ], previews: [preview] };
+    const complete = vi.fn().mockResolvedValue('{"candidates":[1]}');
+    const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, catalog,
+      { outputIndex: 0, totalOutputs: 1, stickerUsage: [{ id: "heart", count: 2 }] })).resolves.toEqual([id]);
+    const messages = complete.mock.calls[0][0];
+    const system = messages[0].content as string;
+    const directory = JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]);
+    expect(directory).toEqual([[1, "用户上传", "允许"], [2, "爱心", "允许"]]);
+    expect(system).toContain('"number":2,"count":2');
+    expect(system).not.toContain("未审核，不得给模型选用");
+    expect(JSON.stringify(messages[1].content)).toContain("目录编号 1");
+    expect(messages[1].content).toContainEqual({ type: "image_url", image_url: { url: preview.url, detail: "low" } });
+  });
+
+  it("gives an actually valid empty-catalog plan example and still rejects invented stickers without retrying", async () => {
+    const catalog = { fonts: [], stickers: [] };
+    const complete = vi.fn().mockResolvedValueOnce(JSON.stringify({ ...autoPlan, stickers: [] }))
+      .mockResolvedValueOnce(JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "mint", width: 0.12, rotationDeg: 0 }] }));
+    const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+    await expect(provider.plan("black-gold", "", [], new AbortController().signal, catalog)).resolves.toMatchObject({ stickers: [] });
+    const system = complete.mock.calls[0][0][0].content as string;
+    const example = JSON.parse(system.split("结构为 ")[1].split("。summary")[0]);
+    expect(example.stickers).toEqual([]);
+    expect(() => validatePlan(example, "black-gold", catalog)).not.toThrow();
+    expect(system).toContain('stickers 必须为 []');
+    await expect(provider.plan("black-gold", "", [], new AbortController().signal, catalog)).rejects.toThrow("贴纸不在本次候选目录中");
+    expect(complete).toHaveBeenCalledTimes(2);
   });
 
   it("requires model-selected price styles only in automatic plans, without fallback", async () => {
@@ -110,7 +147,6 @@ describe("agent provider boundary", () => {
     await provider.plan(rule.id, "", [], new AbortController().signal, autoCatalog);
     const system = complete.mock.calls[0][0][0].content as string;
     const example = JSON.parse(system.split("结构为 ")[1].split("。summary")[0]);
-    example.stickers[0].sticker = "heart";
     expect(() => validatePlan(example, rule.id, autoCatalog)).not.toThrow();
     expect(system).toContain("summary 必须为 1 到 240 字符");
     expect(system).not.toContain("top-left|top-right");
@@ -246,15 +282,15 @@ describe("agent provider boundary", () => {
     await provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 2, totalOutputs: 3, stickerUsage: [{ id: "heart", count: 2 }], priceStyleUsage: [] });
     expect(JSON.parse(request.mock.calls[2][1].body).messages[0].content).toContain('"number":2,"count":2');
   });
-  it("shortlists numbered candidates from the full directory and rejects forbidden or duplicate choices", async () => {
+  it("shortlists only eligible numbered candidates and rejects out-of-range or duplicate choices", async () => {
     const catalog = { fonts: [], stickers: [...autoCatalog.stickers, { id: "local-limited-discount", label: "限时折扣" }] };
     const request = vi.fn().mockResolvedValueOnce(reply('{"candidates":[1]}')).mockResolvedValueOnce(reply('{"candidates":[3]}')).mockResolvedValueOnce(reply('{"candidates":[1,1]}'));
     const provider = new AgentProvider(request); provider.configure(connection);
     const signal = new AbortController().signal;
     await expect(provider.shortlist("black-gold", "", [], signal, catalog)).resolves.toEqual(["heart"]);
     const messages = JSON.parse(request.mock.calls[0][1].body).messages;
-    expect(JSON.stringify(messages)).toContain("限时折扣");
-    expect(JSON.stringify(messages)).toContain("禁止");
+    expect(JSON.stringify(messages)).not.toContain("限时折扣");
+    expect(messages[0].content).toContain("1 到 2 的整数");
     await expect(provider.shortlist("black-gold", "", [], signal, catalog)).rejects.toThrow("候选");
     await expect(provider.shortlist("black-gold", "", [], signal, catalog)).rejects.toThrow("候选");
     expect(request).toHaveBeenCalledTimes(3);
