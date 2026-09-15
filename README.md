@@ -89,6 +89,8 @@ Windows 安装版的默认 `Noto Sans CJK SC` 从安装目录中的开源字体�
 
 ## Build And Verification
 
+最新 main `2d1ecb4` 功能与内置 Windows 运行环境的 0.1.2 验证见 [Windows 0.1.2 验证记录](docs/windows-verification-0.1.2.md)。
+
 ```bash
 npm run typecheck
 npm test
