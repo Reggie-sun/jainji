@@ -31,7 +31,7 @@ describe("agent to local export", () => {
         const shortlist = system.includes("你是视频贴纸选材师");
         const entries = shortlist ? JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]) as [number, string, string][] : [];
         const result = shortlist ? { candidates: [entries.find(([, label]) => label === "蝴蝶")![0]] }
-          : { summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { priceStyle: requests.filter((entry) => !(entry.messages[0].content as string).includes("你是视频贴纸选材师")).length % 2 ? "comic" : "mint", stickers: [{ corner: "bottom-right", sticker: butterfly.id }] } : {}) };
+          : { summary: "根据画面选择滤镜", captions: [], filter: mode === "agent" ? "none" : "cool", intensity: mode === "agent" ? 0 : 0.3, ...(mode === "agent" ? { priceStyle: JSON.parse(system.match(/价格花字目录（仅外观，不含价格内容）：(\[.*?\])。/)![1])[0].id, stickers: [{ corner: "bottom-right", sticker: butterfly.id, width: 0.17, rotationDeg: -11 }] } : {}) };
         response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       });
     });
@@ -71,9 +71,12 @@ describe("agent to local export", () => {
       if (mode === "agent") {
         const systems = finalRequests.map((request) => request.messages[0].content as string);
         expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));
+        expect(requests.every((request) => !(request.messages[0].content as string).includes("本条视觉探索方向"))).toBe(true);
+        expect(systems.every((system) => system.includes('"filters":["none","warm","cool","mono","vivid"]'))).toBe(true);
         expect(systems.every((system) => !system.includes('"sticker":"arrow"') && !system.includes("清透色彩配轻箭头贴纸"))).toBe(true);
       } else {
         expect(requests.every((request) => !(request.messages[0].content as string).includes("当前为同批第"))).toBe(true);
+        expect(requests.every((request) => !(request.messages[0].content as string).includes("本条视觉探索方向"))).toBe(true);
       }
       for (const request of requests) {
         const content = request.messages[1].content;
@@ -87,11 +90,20 @@ describe("agent to local export", () => {
       const batches = queue.snapshot().batches;
       if (mode === "agent") {
         const colors = batches.map(({ batch }) => JSON.stringify(batch.templateSnapshot.layers.find((layer) => layer.type === "text")!.color));
-        expect(new Set(colors)).toEqual(new Set([JSON.stringify(getPriceStyle("comic").color), JSON.stringify(getPriceStyle("mint").color)]));
+        const selectedColors = finalRequests.map((request) => {
+          const styles = JSON.parse((request.messages[0].content as string).match(/价格花字目录（仅外观，不含价格内容）：(\[.*?\])。/)![1]);
+          return JSON.stringify(getPriceStyle(styles[0].id).color);
+        });
+        expect(new Set(colors)).toEqual(new Set(selectedColors));
       }
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "text").every((layer) => layer.content === "¥ 19.90"))).toBe(true);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
+      if (mode === "agent") expect(new Set(batches.map(({ batch }) => JSON.stringify(batch.templateSnapshot.layers.find(layer => layer.type === "text")?.color))).size).toBe(4);
+      if (mode === "agent") for (const { batch } of batches) {
+        expect(batch.templateSnapshot.filter).toEqual({ presetId: "none", intensity: 0 });
+        expect(batch.templateSnapshot.layers.find(layer => layer.type === "sticker")).toMatchObject({ width: 0.17, rotationDeg: -11 });
+      }
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "¥ 19.90", fontFamily: DEFAULT_TEXT_FONT_FAMILY });
         expect(batch.templateSnapshot.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: mode === "agent" ? (await library.ensure(butterfly.id)).assetPath : stickerAssets.heart.assetPath });

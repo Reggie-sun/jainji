@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
+import { ExportSettingsSchema } from "./export-settings.js";
 
 export const RULE_TEMPLATES = [
   { id: "black-gold", name: "黑金精选", label: "质感好物", description: "暖金滤镜配星芒贴纸，适合产品展示与直播切片。", minIntensity: 0.35, maxIntensity: 0.55, filters: ["warm"], filterLabel: "暖金", sticker: "sparkle", stickerLabel: "金色星芒", stickerWidth: 0.12, stickerRotation: 8, stickerCorners: ["bottom-right", "bottom-left", "top-right", "top-left"] },
@@ -52,6 +53,7 @@ export function calculateProductionQuantity(sourceCount: number, requestedCount:
 export const AgentStartSchema = z.object({
   multiplier: ProductionMultiplierSchema.optional(),
   exportFormat: ExportFormatSchema.optional(),
+  exportSettings: ExportSettingsSchema.optional(),
   decorations: DecorationSchema.optional(),
   ruleId: RuleIdSchema,
   mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS),

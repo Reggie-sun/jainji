@@ -50,6 +50,8 @@ export class AgentRunner {
     const stickerUsage = new Map<string, number>();
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
+    const remainingVersions = new Map<string, number>();
+    for (const source of media) remainingVersions.set(source.id, (remainingVersions.get(source.id) ?? 0) + 1);
     const worker = async () => {
       while (next < media.length) {
         const index = next++;
@@ -61,12 +63,16 @@ export class AgentRunner {
         try {
           let extracting = pendingFrames.get(source.id);
           if (!extracting) {
-            extracting = this.dependencies.frames(source, signal).finally(() => pendingFrames.delete(source.id));
+            extracting = this.dependencies.frames(source, signal).catch((error) => {
+              pendingFrames.delete(source.id);
+              throw error;
+            });
             pendingFrames.set(source.id, extracting);
           }
           const frames = await extracting;
           signal.throwIfAborted();
           const selection = this.dependencies.autoCatalog ? {
+            catalogSeed: run.id,
             outputIndex: index, totalOutputs: media.length,
             stickerUsage: Array.from(stickerUsage, ([id, count]) => ({ id, count })),
             priceStyleUsage: Array.from(priceStyleUsage, ([id, count]) => ({ id, count })),
@@ -75,8 +81,8 @@ export class AgentRunner {
           signal.throwIfAborted();
           const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           if (selection && "stickers" in plan) {
-            priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
+            priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = plan.summary;
@@ -84,6 +90,10 @@ export class AgentRunner {
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
+        } finally {
+          const remaining = remainingVersions.get(source.id)! - 1;
+          remainingVersions.set(source.id, remaining);
+          if (remaining === 0) pendingFrames.delete(source.id);
         }
         this.dependencies.onChange();
       }
@@ -91,6 +101,7 @@ export class AgentRunner {
     try {
       await Promise.all(Array.from({ length: Math.min(executionLimits().analysis, media.length) }, () => worker()));
     } finally {
+      pendingFrames.clear();
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();
     }

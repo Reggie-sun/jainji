@@ -5,3 +5,5 @@
 .material-collection input{display:block;margin-top:8px}
 .material-collection p{margin-top:12px;font-size:11px;line-height:1.7;color:#85938e}
 .material-collection p span{color:#507f70;margin-right:12px}
+.material-collection .saved-collections{display:block;margin-top:16px;font-size:12px}
+.saved-collections select{display:block;width:100%;margin-top:8px;padding:10px;border:1px solid #d2ded8;border-radius:6px;background:#fff;color:inherit;font:inherit}

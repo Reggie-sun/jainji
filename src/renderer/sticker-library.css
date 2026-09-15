@@ -1,0 +1,11 @@
+.sticker-upload-panel{padding:24px;margin-bottom:20px}
+.sticker-upload-panel>p{font-size:13px;line-height:1.7;color:#63776d;margin:16px 0}
+.sticker-upload-panel>small{display:block;max-width:760px;font-size:12px;line-height:1.8;color:#63776d}
+.sticker-upload-panel [role=alert]{color:#a33131}
+.uploaded-sticker-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
+.uploaded-sticker-grid .library-sticker-choice{min-width:0;overflow-wrap:anywhere;text-align:center}
+.uploaded-sticker-grid img{width:80px;height:80px}
+.sticker-delete-actions{display:flex;justify-content:center;gap:8px;margin-top:8px}
+.sticker-delete-actions button{border:0;background:transparent;color:#a33131;font-size:12px;padding:5px;cursor:pointer}
+.sticker-delete-actions button:disabled{opacity:.5;cursor:default}
+@media(max-width:560px){.sticker-upload-panel{padding:16px}.uploaded-sticker-grid{grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}}

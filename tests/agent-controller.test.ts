@@ -10,11 +10,44 @@ import { JobStore } from "../src/main/store";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import type { AssetLibrary } from "../src/main/asset-library";
 import * as agentFrames from "../src/main/agent-frames";
+import * as stickerPreviews from "../src/main/sticker-preview";
 import { DEFAULT_PRESET } from "../src/main/domain";
 
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("AgentController queue admission", () => {
+  it.each(["start", "brief"])("waits for uploaded preview cleanup when cancelling %s", async (operation) => {
+    const ffmpeg = new FfmpegAdapter("unused", "unused");
+    const service = new ApplicationService(ffmpeg, { resolve: async () => null });
+    const queue = { snapshot: () => ({ revision: 1, batches: [] }) } as unknown as ExportQueue;
+    const id = `uploaded-${"c".repeat(64)}`;
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [id]: { assetPath: "/unused.png", assetFingerprint: "unused" } });
+    controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
+    let aborted = false;
+    let release!: () => void;
+    const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockImplementation(async (_ffmpeg, _asset, signal) => new Promise((_resolve, reject) => {
+      release = () => reject(new Error("cancelled after cleanup"));
+      signal.addEventListener("abort", () => { aborted = true; }, { once: true });
+    }));
+    const plan = vi.spyOn(controller.provider, "plan");
+    const brief = vi.spyOn(controller.provider, "generateBrief");
+    try {
+      const input = { ruleId: "clean" as const, brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: path.resolve("unused-output"), decorations: { mode: "agent" as const, productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } };
+      const pending = (operation === "start" ? controller.start(input, new Set()) : controller.generateBrief({ ruleId: input.ruleId, decorations: input.decorations })).catch(() => undefined);
+      await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+      let cancelled = false;
+      const cancel = controller.cancel().then(() => { cancelled = true; });
+      await vi.waitFor(() => expect(aborted).toBe(true));
+      expect(cancelled).toBe(false);
+      expect(controller.busy).toBe(true);
+      release();
+      await Promise.all([pending, cancel]);
+      expect(controller.busy).toBe(false);
+      expect(plan).not.toHaveBeenCalled();
+      expect(brief).not.toHaveBeenCalled();
+    } finally { release?.(); preview.mockRestore(); plan.mockRestore(); brief.mockRestore(); }
+  });
+
   it("cancels candidate selection without preparing previews or calling the final model", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-shortlist-cancel-"));
     const ffmpeg = new FfmpegAdapter("unused", "unused");

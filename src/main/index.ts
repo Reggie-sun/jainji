@@ -1,6 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } from "electron";
 import { mkdir, stat, readFile } from "node:fs/promises";
-import { FONT_CHOICES, type DecorationCatalog } from "../shared/decorations.js";
+import { FONT_CHOICES, isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { z } from "zod";
@@ -18,9 +18,11 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import { loadBundledStickerAssets } from "./bundled-stickers.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { AssetLibrary } from "./asset-library.js";
+import { UploadedStickers } from "./uploaded-stickers.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
+import { RecentProjects } from "./recent-projects.js";
 import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
@@ -38,13 +40,16 @@ const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict()
 
 let mainWindow: BrowserWindow | undefined;
 let service: ApplicationService;
+let recentProjects: RecentProjects;
 let queue: ExportQueue;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
 let agent: AgentController;
 let connections: ModelConnections;
 let library: AssetLibrary;
+let uploadedStickers: UploadedStickers;
 let stickerAssets: StickerAssets;
+let stickerMutation = false;
 let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
@@ -67,7 +72,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot() };
+  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), recentProjectsWarning: recentProjects.warning };
 }
 
 function notifyState(): void {
@@ -84,6 +89,39 @@ function publish(snapshot: QueueSnapshot): void {
 
 function registerHandlers(): void {
   registerBugFeedbackHandlers(assertTrustedSender);
+  ipcMain.handle("decorations.import", async (event) => {
+    assertTrustedSender(event);
+    agent.assertIdle();
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      title: "上传贴纸", properties: ["openFile"],
+      filters: [{ name: "静态贴纸图片", extensions: ["png", "jpg", "jpeg"] }],
+    });
+    if (result.canceled || !result.filePaths.length) return null;
+    agent.assertIdle();
+    if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
+    stickerMutation = true;
+    try {
+      const imported = await uploadedStickers.importFile(result.filePaths[0]);
+      Object.assign(stickerAssets, { [imported.id]: imported.asset });
+      return imported.id;
+    } catch { throw new Error("贴纸上传失败，请选择有效的 PNG/JPG 静态图片（10 MB 以内、宽高不超过 4096 像素），并检查磁盘空间。"); }
+    finally { stickerMutation = false; }
+  });
+  ipcMain.handle("decorations.remove", async (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle();
+    const id = z.string().refine(isUploadedStickerId, "只能删除用户上传的贴纸。").parse(input);
+    if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
+    const asset = stickerAssets[id];
+    if (!asset) throw new Error("上传贴纸不存在或已删除。");
+    stickerMutation = true;
+    // Remove eligibility synchronously before another run can take its snapshot.
+    delete (stickerAssets as Record<string, unknown>)[id];
+    try { await uploadedStickers.remove(id); }
+    catch {
+      Object.assign(stickerAssets, { [id]: asset });
+      throw new Error("贴纸删除失败，请检查本地素材目录权限后重试。");
+    } finally { stickerMutation = false; }
+  });
   ipcMain.handle("library.asset", async (event, input: unknown) => {
     assertTrustedSender(event);
     const id = z.string().min(1).max(100).parse(input);
@@ -106,7 +144,7 @@ function registerHandlers(): void {
       if (!asset) throw new Error(`missing bundled sticker: ${id}`);
       return { id, label, animated, source, url: `data:${mimeType};base64,${(await readFile(asset.assetPath)).toString("base64")}` };
     }));
-    return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers };
+    return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers: [...stickers, ...await uploadedStickers.catalog()] };
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
   ipcMain.handle("connection.save", async (event, input: unknown) => {
@@ -203,6 +241,7 @@ function registerHandlers(): void {
     if (result.canceled || !result.filePath) return null;
     agent.assertIdle();
     await service.saveProject(result.filePath, name);
+    await recentProjects.remember(result.filePath, service.currentProject);
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {
@@ -222,10 +261,15 @@ function registerHandlers(): void {
     service.newProject();
     return publicState();
   });
-  ipcMain.handle("project.load", async (event) => {
+  ipcMain.handle("project.load", async (event, input: unknown) => {
     assertTrustedSender(event); agent.assertIdle();
-    const result = await dialog.showOpenDialog(mainWindow!, { title: "打开项目", properties: ["openFile"], filters: [{ name: "简辑项目", extensions: ["json"] }] });
-    if (result.canceled || !result.filePaths[0]) return null;
+    let filePath: string;
+    if (input !== undefined) filePath = recentProjects.resolve(uuidSchema.parse(input));
+    else {
+      const result = await dialog.showOpenDialog(mainWindow!, { title: "打开项目", properties: ["openFile"], filters: [{ name: "简辑项目", extensions: ["json"] }] });
+      if (result.canceled || !result.filePaths[0]) return null;
+      filePath = result.filePaths[0];
+    }
     if (service.hasUnsavedChanges && (service.currentProject.mediaItems.length || service.projectPath)) {
       const choice = await dialog.showMessageBox(mainWindow!, {
         type: "question", title: "打开素材集", message: "当前项目有尚未保存的更改。",
@@ -235,8 +279,13 @@ function registerHandlers(): void {
       if (choice.response !== 0) return null;
     }
     agent.assertIdle();
-    await service.loadProject(result.filePaths[0]);
+    try { await service.loadProject(filePath); }
+    catch (error) {
+      if (input === undefined) throw error;
+      throw new Error("无法打开该素材集，文件可能已移动、删除或损坏。请使用“打开其他素材集”重新选择。", { cause: error });
+    }
     await queue.hydrate(service.currentProject.exportBatches);
+    await recentProjects.remember(filePath, service.currentProject);
     return publicState();
   });
   ipcMain.handle("output.selectDirectory", async (event) => {
@@ -338,6 +387,8 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
   const userData = app.getPath("userData");
   await mkdir(userData, { recursive: true });
+  recentProjects = new RecentProjects(path.join(userData, "recent-projects.json"));
+  await recentProjects.initialize([process.cwd(), app.getPath("documents")]);
   protocol.handle("jianji-media", async (request) => {
     const id = decodeURIComponent(new URL(request.url).hostname);
     const media = service?.getMedia(id);
@@ -363,7 +414,13 @@ async function bootstrap(): Promise<void> {
   const bundledDirectory = app.isPackaged
     ? path.join(process.resourcesPath, "stickers", "downloaded")
     : path.join(app.getAppPath(), "resources", "stickers", "downloaded");
-  stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory) };
+  uploadedStickers = new UploadedStickers(path.join(userData, "uploaded-stickers"), (bytes) => {
+    const image = nativeImage.createFromBuffer(bytes);
+    const { width, height } = image.getSize();
+    if (image.isEmpty() || width > 4096 || height > 4096) throw new Error("无效或过大的图片。");
+    return image.toPNG();
+  });
+  stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider);
@@ -401,6 +458,7 @@ function requestQuit(): void {
         projectPath = result.filePath;
       }
       await service.saveProject(projectPath);
+      await recentProjects.remember(projectPath, service.currentProject);
     }
     quitting = true;
     await agent.cancel();

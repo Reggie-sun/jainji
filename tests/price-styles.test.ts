@@ -13,12 +13,11 @@ const sticker = { assetPath: "/tmp/sticker.png", assetFingerprint: "fixture" };
 const assets: StickerAssets = { sparkle: sticker, arrow: sticker, heart: sticker, burst: sticker };
 
 describe("local price styles", () => {
-  it("keeps old drafts compatible and rejects unknown styles in either mode", () => {
+  it("retains manual styles and ignores retained manual appearance in automatic mode", () => {
     expect(DecorationSchema.parse({ productPrice: "19.90" }).priceStyle).toBeUndefined();
-    for (const mode of ["manual", "agent"]) {
-      expect(() => DecorationSchema.parse({ mode, productPrice: "19.90", priceStyle: "unknown" })).toThrow();
-      expect(DecorationSchema.parse({ mode, productPrice: "19.90", priceStyle: "comic" })).toMatchObject({ productPrice: "19.90", priceStyle: "comic" });
-    }
+    expect(() => DecorationSchema.parse({ mode: "manual", productPrice: "19.90", priceStyle: "unknown" })).toThrow();
+    expect(DecorationSchema.parse({ mode: "manual", productPrice: "19.90", priceStyle: "comic" }).priceStyle).toBe("comic");
+    expect(DecorationSchema.parse({ mode: "agent", productPrice: "19.90", priceStyle: "comic" }).priceStyle).toBeUndefined();
   });
 
   it.each(PRICE_STYLES)("freezes $id into exactly one local price layer and compiles its effects", async (entry) => {

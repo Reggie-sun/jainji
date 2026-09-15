@@ -49,7 +49,7 @@ describe("hardware execution limits", () => {
     expect(threadOptions).toEqual(["1", "1", "1"]);
     expect(args.slice(args.indexOf("-threads"), args.indexOf("-threads") + 4)).toEqual(["-threads", "1", "-i", media.sourcePath]);
     expect(args[args.indexOf("-filter_complex_threads") + 1]).toBe("1");
-    expect(args[args.indexOf("-filter_complex") + 1]).toContain("1280:720");
+    expect(args[args.indexOf("-filter_complex") + 1]).toContain("scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720");
     expect(args[args.indexOf("-preset") + 1]).toBe("medium");
     expect(args[args.indexOf("-crf") + 1]).toBe("23");
   });

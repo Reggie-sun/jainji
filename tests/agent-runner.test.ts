@@ -29,6 +29,37 @@ describe("agent run lifecycle", () => {
     expect(complete).toHaveBeenCalledTimes(1);
   });
 
+  it("extracts a source once across worker waves but plans every version and refreshes on the next run", async () => {
+    const frames = vi.fn().mockResolvedValue(["frame"]);
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockResolvedValue("task");
+    const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    const sources = [media("a"), media("b")];
+    const versions = executionLimits().analysis + 1;
+    runner.start("project", "clean", "", sources, versions);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(2 * versions);
+    expect(enqueue).toHaveBeenCalledTimes(2 * versions);
+    runner.start("project", "clean", "", sources, versions);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(4);
+    expect(provider).toHaveBeenCalledTimes(4 * versions);
+  });
+
+  it("does not retain failed extraction for later versions of the same source", async () => {
+    const frames = vi.fn().mockRejectedValueOnce(new Error("unreadable source")).mockResolvedValue(["frame"]);
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockResolvedValue("task");
+    const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a")], executionLimits().analysis + 1);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(runner.snapshot()?.items.filter((item) => item.status === "failed")).toHaveLength(executionLimits().analysis);
+  });
+
   it("supplies independent batch positions and immutable usage snapshots, resetting between runs", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
     const contexts: AgentSelectionContext[] = [];
@@ -36,7 +67,7 @@ describe("agent run lifecycle", () => {
     const provider = vi.fn(async (_rule, _brief, _frames, _signal, _catalog, context) => {
       contexts.push(context);
       await new Promise<void>((resolve) => releases.push(resolve));
-      return { ...plan("包装"), priceStyle: "comic", stickers: [{ corner: "bottom-right", sticker: "heart" }] };
+      return { ...plan("包装"), priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] };
     });
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue: async () => "task", stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
@@ -48,9 +79,10 @@ describe("agent run lifecycle", () => {
     releases.shift()!();
     await vi.waitFor(() => expect(contexts.length).toBe(firstWave + 1));
     expect(contexts[firstWave].stickerUsage).toEqual([{ id: "heart", count: 1 }]);
-    expect(contexts[firstWave].priceStyleUsage).toEqual([{ id: "comic", count: 1 }]);
-    expect(contexts[0].priceStyleUsage).toEqual([]);
     expect(contexts[0].stickerUsage).toEqual([]);
+    expect(contexts[firstWave].priceStyleUsage).toEqual([{ id: "classic", count: 1 }]);
+    expect(contexts[0].priceStyleUsage).toEqual([]);
+    expect(new Set(contexts.map(context => context.catalogSeed)).size).toBe(1);
     while (runner.running) {
       releases.splice(0).forEach((release) => release());
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -58,7 +90,9 @@ describe("agent run lifecycle", () => {
     await runner.settled();
     runner.start("project", "clean", "", [media("b")]);
     await vi.waitFor(() => expect(contexts.length).toBe(11));
-    expect(contexts[10]).toEqual({ outputIndex: 0, totalOutputs: 1, stickerUsage: [], priceStyleUsage: [] });
+    expect(contexts[10]).toMatchObject({ outputIndex: 0, totalOutputs: 1, stickerUsage: [], priceStyleUsage: [] });
+    expect(contexts[10].catalogSeed).toBeTruthy();
+    expect(contexts[10].catalogSeed).not.toBe(contexts[0].catalogSeed);
     releases.shift()!();
     await runner.settled();
   });
@@ -75,7 +109,7 @@ describe("agent run lifecycle", () => {
   });
   it("does not count rejected automatic plans as sticker usage or retry them", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), priceStyle: "comic", intensity: 1, stickers: [{ corner: "bottom-right", sticker: "heart" }] });
+    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), priceStyle: "classic", intensity: 1.1, stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] });
     const enqueue = vi.fn();
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
@@ -158,7 +192,7 @@ describe("agent run lifecycle", () => {
 
   it("passes the agent decoration catalog through to plan materialization", async () => {
     const catalog = { fonts: ["Noto Sans CJK SC"], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart" }], filter: "cool", intensity: 0.3 });
+    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }], filter: "cool", intensity: 0.3 });
     const enqueue = vi.fn().mockResolvedValue("task");
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("agent.mp4")]);
