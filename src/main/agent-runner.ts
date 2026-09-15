@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { outputDimensions, type ExportSettings } from "../shared/export-settings.js";
 import { MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { materializePlan, ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
+import type { PriceStyleId } from "../shared/price-styles.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -12,6 +14,7 @@ interface RunnerDependencies {
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
   stickerAssets: StickerAssets;
   decorations?: DecorationOptions;
+  resolutionMode?: ExportSettings["resolutionMode"];
   autoCatalog?: AgentDecorationCatalog;
   onChange(): void;
 }
@@ -47,7 +50,10 @@ export class AgentRunner {
   private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
     let next = 0;
     const stickerUsage = new Map<string, number>();
+    const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
+    const remainingVersions = new Map<string, number>();
+    for (const source of media) remainingVersions.set(source.id, (remainingVersions.get(source.id) ?? 0) + 1);
     const worker = async () => {
       while (next < media.length) {
         const index = next++;
@@ -59,20 +65,27 @@ export class AgentRunner {
         try {
           let extracting = pendingFrames.get(source.id);
           if (!extracting) {
-            extracting = this.dependencies.frames(source, signal).finally(() => pendingFrames.delete(source.id));
+            extracting = this.dependencies.frames(source, signal).catch((error) => {
+              pendingFrames.delete(source.id);
+              throw error;
+            });
             pendingFrames.set(source.id, extracting);
           }
           const frames = await extracting;
           signal.throwIfAborted();
           const selection = this.dependencies.autoCatalog ? {
+            catalogSeed: run.id,
             outputIndex: index, totalOutputs: media.length,
             stickerUsage: Array.from(stickerUsage, ([id, count]) => ({ id, count })),
+            priceStyleUsage: Array.from(priceStyleUsage, ([id, count]) => ({ id, count })),
           } : undefined;
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
-          const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
+          const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
+          const template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
+            priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = plan.summary;
@@ -80,6 +93,10 @@ export class AgentRunner {
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
+        } finally {
+          const remaining = remainingVersions.get(source.id)! - 1;
+          remainingVersions.set(source.id, remaining);
+          if (remaining === 0) pendingFrames.delete(source.id);
         }
         this.dependencies.onChange();
       }
@@ -87,6 +104,7 @@ export class AgentRunner {
     try {
       await Promise.all(Array.from({ length: Math.min(executionLimits().analysis, media.length) }, () => worker()));
     } finally {
+      pendingFrames.clear();
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();
     }

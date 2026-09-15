@@ -1,4 +1,6 @@
 import path from "node:path";
+import { outputDimensions } from "../shared/export-settings.js";
+import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
 import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
@@ -55,13 +57,6 @@ function outputScale(preset: ExportPreset, dimensions: { width: number; height: 
   return `scale=${size}:force_original_aspect_ratio=decrease,pad=${size}:(ow-iw)/2:(oh-ih)/2`;
 }
 
-function outputDimensions(media: MediaItem, preset: ExportPreset): { width: number; height: number } {
-  const portrait = media.height > media.width;
-  if (preset.resolutionMode === "1080p") return portrait ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
-  if (preset.resolutionMode === "720p") return portrait ? { width: 720, height: 1280 } : { width: 1280, height: 720 };
-  return { width: media.width, height: media.height };
-}
-
 function sortedVisibleLayers(template: EditTemplate): Layer[] {
   return [...template.layers].filter((layer) => layer.visible).sort((left, right) => left.zIndex - right.zIndex);
 }
@@ -110,34 +105,37 @@ export class TemplateCompiler {
       if (layer.type === "text") {
         const fontPath = await options.fontResolver.resolve(layer.fontFamily);
         if (!fontPath) throw new Error(`font_missing:${layer.fontFamily}`);
-        const textPath = options.textFilePath(layer.id);
-        textFiles.push({ layerId: layer.id, path: textPath, content: wrapText(layer.content, layer.width, layer.fontSizeRatio, dimensions) });
-        const nextLabel = `base${graph.length}`;
-        const drawtext = [
-          "drawtext=" +
-          `fontfile='${escapeFilterValue(fontPath)}'`,
-          `textfile='${escapeFilterValue(textPath)}'`,
-          "expansion=none",
-          `fontsize=h*${layer.fontSizeRatio.toFixed(5)}`,
-          `fontcolor=${color(layer.color, layer.opacity)}`,
-          `bordercolor=${color(layer.strokeColor, layer.opacity)}`,
-          `borderw=${Math.round(layer.strokeWidthRatio * dimensions.height)}`,
-          ...(layer.shadow ? [
-            `shadowcolor=${color(layer.shadow.color, layer.opacity)}`,
-            `shadowx=${Math.round(layer.shadow.xRatio * dimensions.height)}`,
-            `shadowy=${Math.round(layer.shadow.yRatio * dimensions.height)}`,
-          ] : []),
-          ...(layer.backgroundColor ? [
-            "box=1",
-            `boxcolor=${color(layer.backgroundColor, layer.opacity)}`,
-            `boxborderw=${Math.round((layer.backgroundPaddingRatio ?? 0.006) * dimensions.height)}`,
-          ] : []),
-          layer.textAlign === "center" ? `x=w*${(layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
-          `y=h*${layer.y.toFixed(5)}`,
-          "fix_bounds=1",
-        ].join(":");
-        graph.push(`[${baseLabel}]${drawtext}[${nextLabel}]`);
-        baseLabel = nextLabel;
+        const lines = wrapText(layer.content, layer.width, layer.fontSizeRatio, dimensions).split("\n");
+        for (const [index, content] of lines.entries()) {
+          const textPath = options.textFilePath(index === 0 ? layer.id : `${layer.id}-line-${index + 1}`);
+          textFiles.push({ layerId: layer.id, path: textPath, content });
+          const nextLabel = `base${graph.length}`;
+          const drawtext = [
+            "drawtext=" +
+            `fontfile='${escapeFilterValue(fontPath)}'`,
+            `textfile='${escapeFilterValue(textPath)}'`,
+            "expansion=none",
+            `fontsize=h*${layer.fontSizeRatio.toFixed(5)}`,
+            `fontcolor=${color(layer.color, layer.opacity)}`,
+            `bordercolor=${color(layer.strokeColor, layer.opacity)}`,
+            `borderw=${Math.round(layer.strokeWidthRatio * dimensions.height)}`,
+            ...(layer.shadow ? [
+              `shadowcolor=${color(layer.shadow.color, layer.opacity)}`,
+              `shadowx=${Math.round(layer.shadow.xRatio * dimensions.height)}`,
+              `shadowy=${Math.round(layer.shadow.yRatio * dimensions.height)}`,
+            ] : []),
+            ...(layer.backgroundColor ? [
+              "box=1",
+              `boxcolor=${color(layer.backgroundColor, layer.opacity)}`,
+              `boxborderw=${Math.round((layer.backgroundPaddingRatio ?? 0.006) * dimensions.height)}`,
+            ] : []),
+            layer.textAlign === "center" ? `x=w*${(layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
+            `y=h*${(layer.y + index * layer.fontSizeRatio * PRICE_LINE_HEIGHT).toFixed(5)}`,
+            "fix_bounds=1",
+          ].join(":");
+          graph.push(`[${baseLabel}]${drawtext}[${nextLabel}]`);
+          baseLabel = nextLabel;
+        }
         continue;
       }
 
@@ -156,8 +154,14 @@ export class TemplateCompiler {
       const stickerScale = governed
         ? `${stickerWidth}:${Math.max(1, Math.round(dimensions.height * CORNER_SAFE_POLICY.maxStickerHeight))}:force_original_aspect_ratio=decrease`
         : `${stickerWidth}:-1`;
+      const radians = Math.PI * layer.rotationDeg / 180;
+      // Keep twice the final rotated width for smooth edges, without enlarging small inputs.
+      const resizeRatio = `min(1,${stickerWidth * 2}/(iw*${Math.abs(Math.cos(radians)).toFixed(6)}+ih*${Math.abs(Math.sin(radians)).toFixed(6)}))`;
+      // Very thin inputs must not round a scaled dimension down to zero.
+      const preScale = layer.rotationDeg === 0 ? "" :
+        `scale=w='if(lt(min(iw,ih)*${resizeRatio},2),iw,ceil(iw*${resizeRatio}))':h=-1,`;
       graph.push(
-        `[${stickerIndex}:v]format=rgba,` +
+        `[${stickerIndex}:v]${preScale}format=rgba,` +
         `rotate=${angle}:c=none:ow=rotw(${angle}):oh=roth(${angle}),` +
         `scale=${stickerScale},` +
         `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=PTS-STARTPTS[${sourceLabel}]`,

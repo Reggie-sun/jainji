@@ -99,7 +99,7 @@ export function DecorationPicker({ value, onChange, disabled }: { value: Decorat
     ?? LIBRARY_STICKERS.find((asset) => asset.id === value.sticker)?.label;
 
   return <section className="decoration-picker card" aria-label="贴纸">
-    <h2>选择贴纸</h2><p>选择后应用到本轮每条视频的对应内容。</p>
+    <h2>选择贴纸</h2><p>选择后应用到本轮每条视频的对应内容。添加自己的图片，请使用左侧“上传贴纸”栏目。</p>
     {catalogError && <p role="alert">{catalogError}</p>}
     <fieldset disabled={disabled || !catalog}><legend>本地贴纸库</legend><div className="sticker-choices">
       {(["template", "none"] as const).map((id) => <button type="button" key={id} aria-pressed={value.sticker === id} onClick={() => onChange({ ...value, sticker: id })}>{id === "template" ? "跟随模板" : "不加贴纸"}</button>)}

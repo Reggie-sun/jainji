@@ -9,6 +9,30 @@ const media: MediaItem = {
 };
 
 describe("TemplateCompiler", () => {
+  it.each([7, -7, 90])("reduces oversized stickers before %i degree rotation without changing animation input", async (rotationDeg) => {
+    const template = createDefaultTemplate();
+    template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: "/tmp/animated.gif", assetFingerprint: "fixture", x: 0.04, y: 0.04, width: 0.12, rotationDeg, opacity: 1, zIndex: 0, visible: true });
+    const command = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, {
+      ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused",
+    });
+    const graph = command.args[command.args.indexOf("-filter_complex") + 1];
+    const stickerGraph = graph.slice(graph.indexOf("[1:v]"));
+    expect(stickerGraph.indexOf("scale=")).toBeLessThan(stickerGraph.indexOf("rotate="));
+    expect(stickerGraph).toContain("min(iw,");
+    expect(command.args.slice(command.args.indexOf("-stream_loop"), command.args.indexOf("-stream_loop") + 2)).toEqual(["-stream_loop", "-1"]);
+  });
+
+  it.each([[540, 960], [1080, 1920]])("preserves %i x %i dimensions with explicit source resolution", async (width, height) => {
+    const command = await new TemplateCompiler().compile(createDefaultTemplate(), { ...media, width, height }, { ...DEFAULT_PRESET, resolutionMode: "source" }, {
+      ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused",
+    });
+    const graph = command.args[command.args.indexOf("-filter_complex") + 1];
+    expect(graph).not.toContain("scale=");
+    expect(graph).not.toContain("pad=");
+    expect(command.args).not.toContain("-r");
+    expect(command.args).toContain("0:a?");
+  });
+
   it.each(["h264_amf", "h264_qsv"] as const)("uses the probed pixel format and options for %s", async (videoEncoder) => {
     const command = await new TemplateCompiler().compile(createDefaultTemplate(), media, DEFAULT_PRESET, {
       ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused", videoEncoder,
@@ -66,7 +90,7 @@ describe("TemplateCompiler", () => {
       id: crypto.randomUUID(), type: "sticker", assetPath: "/tmp/square.png", assetFingerprint: "fixture",
       x: 0.76, y: 0.8, width: 0.2, rotationDeg: 0, opacity: 1, zIndex: 1, visible: true,
     });
-    const command = await new TemplateCompiler().compile(template, { ...media, width: 320, height: 180 }, DEFAULT_PRESET, {
+    const command = await new TemplateCompiler().compile(template, { ...media, width: 320, height: 180 }, { ...DEFAULT_PRESET, resolutionMode: "720p" }, {
       ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused.txt",
     });
     const graph = command.args[command.args.indexOf("-filter_complex") + 1];

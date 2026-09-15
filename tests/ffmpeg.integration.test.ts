@@ -10,6 +10,32 @@ import { materializePlan } from "../src/main/agent-provider";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 
 describe("real FFmpeg proof render", () => {
+  it.for([
+    { width: 540, height: 960, outputWidth: 720, outputHeight: 1280 },
+    { width: 960, height: 540, outputWidth: 1280, outputHeight: 720 },
+  ])("exports $width x $height at the default upload dimensions with audio", { timeout: 60_000 }, async ({ width, height, outputWidth, outputHeight }, context) => {
+    const [ffmpegPath, ffprobePath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe")]);
+    if (!ffmpegPath || !ffprobePath) { context.skip(); return; }
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-upload-size-"));
+    const sourcePath = path.join(directory, "source.mp4");
+    const source = await runCommand(ffmpegPath, ["-v", "error", "-f", "lavfi", "-i", `testsrc2=s=${width}x${height}:r=24:d=1`, "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:v", "libx264", "-c:a", "aac", sourcePath]).promise;
+    expect(source.code, source.stderr).toBe(0);
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "source.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width, height, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
+    const compiled = await new TemplateCompiler().compile(createDefaultTemplate(), media, DEFAULT_PRESET, { ffmpegPath, fontResolver: { resolve: async () => null }, textFilePath: () => path.join(directory, "unused.txt"), threads: 1 });
+    const outputPath = path.join(directory, "output.mp4");
+    const rendered = await runCommand(compiled.binary, [...compiled.args, outputPath]).promise;
+    expect(rendered.code, rendered.stderr).toBe(0);
+    const probe = await new FfmpegAdapter(ffmpegPath, ffprobePath).probe(outputPath);
+    const video = probe.streams?.find((stream) => stream.codec_type === "video");
+    expect(video?.width).toBe(outputWidth);
+    expect(video?.height).toBe(outputHeight);
+    const rate = await runCommand(ffprobePath, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "csv=p=0", outputPath]).promise;
+    expect(rate.code, rate.stderr).toBe(0);
+    expect(rate.stdout.trim()).toBe("24/1");
+    expect(probe.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);
+    expect(Number(probe.format?.duration)).toBeCloseTo(1, 1);
+  });
+
   it.for([{ shade: "black", min: 14, max: 20 }, { shade: "gray", min: 110, max: 140 }, { shade: "white", min: 220, max: 236 }])("preserves $shade brightness with the cool filter", { timeout: 60_000 }, async ({ shade, min, max }, context) => {
     const ffmpegPath = await discoverBinary("ffmpeg");
     if (!ffmpegPath) { context.skip(); return; }

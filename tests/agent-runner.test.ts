@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { calculateProductionQuantity } from "../src/shared/agent";
 import { AgentRunner } from "../src/main/agent-runner";
-import { type MediaItem, now } from "../src/main/domain";
-import { ProviderError, type PackagingPlan, type AgentSelectionContext } from "../src/main/agent-provider";
+import { DEFAULT_PRESET, type EditTemplate, type MediaItem, now } from "../src/main/domain";
+import { TemplateCompiler } from "../src/main/compiler";
+import { AgentProvider, ProviderError, type PackagingPlan, type AgentSelectionContext } from "../src/main/agent-provider";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { DecorationSchema } from "../src/shared/decorations";
 import { executionLimits } from "../src/main/execution-limits";
@@ -16,6 +17,70 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent run lifecycle", () => {
+  it.each(["source", "720p", "1080p"] as const)("freezes text size for %s output before compiling nonstandard sources", async (resolutionMode) => {
+    const productPrice = "一二三四五六七八九十一二\n春日新品";
+    for (const size of [{ width: 1080, height: 1350 }, { width: 2560, height: 1080 }]) {
+      const source = { ...media("source.mp4"), ...size };
+      const enqueue = vi.fn(async (template: EditTemplate) => {
+        const frozen = JSON.parse(JSON.stringify(template));
+        const before = JSON.stringify(frozen);
+        const compiled = await new TemplateCompiler().compile(frozen, source, { ...DEFAULT_PRESET, resolutionMode }, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id) => `/tmp/${id}.txt` });
+        expect(compiled.textFiles.map((entry) => entry.content)).toEqual(productPrice.split("\n"));
+        expect(JSON.stringify(frozen)).toBe(before);
+        return "task";
+      });
+      const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("包装"), enqueue, stickerAssets, decorations: DecorationSchema.parse({ productPrice, sticker: "none" }), resolutionMode, onChange: () => {} });
+      runner.start("project", "clean", "", [source]);
+      await runner.settled();
+      expect(enqueue).toHaveBeenCalledOnce();
+      expect(runner.snapshot()?.items[0].status).toBe("exporting");
+    }
+  });
+
+  it("preserves the validation reason and never enqueues or retries an invalid model plan", async () => {
+    const provider = new AgentProvider();
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...plan("保留主体"), intensity: 0.9 }));
+    provider.useChatGPT("test-model", complete);
+    const enqueue = vi.fn();
+    const runner = new AgentRunner({ frames: async () => [], plan: provider.plan.bind(provider), enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a.mp4")]);
+    await runner.settled();
+    expect(runner.snapshot()?.items[0]).toMatchObject({ status: "failed", error: expect.stringContaining("滤镜强度必须在 0.25 到 0.4 之间") });
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
+
+  it("extracts a source once across worker waves but plans every version and refreshes on the next run", async () => {
+    const frames = vi.fn().mockResolvedValue(["frame"]);
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockResolvedValue("task");
+    const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    const sources = [media("a"), media("b")];
+    const versions = executionLimits().analysis + 1;
+    runner.start("project", "clean", "", sources, versions);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(2 * versions);
+    expect(enqueue).toHaveBeenCalledTimes(2 * versions);
+    runner.start("project", "clean", "", sources, versions);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(4);
+    expect(provider).toHaveBeenCalledTimes(4 * versions);
+  });
+
+  it("does not retain failed extraction for later versions of the same source", async () => {
+    const frames = vi.fn().mockRejectedValueOnce(new Error("unreadable source")).mockResolvedValue(["frame"]);
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockResolvedValue("task");
+    const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a")], executionLimits().analysis + 1);
+    await runner.settled();
+    expect(frames).toHaveBeenCalledTimes(2);
+    expect(provider).toHaveBeenCalledTimes(1);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(runner.snapshot()?.items.filter((item) => item.status === "failed")).toHaveLength(executionLimits().analysis);
+  });
+
   it("supplies independent batch positions and immutable usage snapshots, resetting between runs", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
     const contexts: AgentSelectionContext[] = [];
@@ -23,7 +88,7 @@ describe("agent run lifecycle", () => {
     const provider = vi.fn(async (_rule, _brief, _frames, _signal, _catalog, context) => {
       contexts.push(context);
       await new Promise<void>((resolve) => releases.push(resolve));
-      return { ...plan("包装"), stickers: [{ corner: "bottom-right", sticker: "heart" }] };
+      return { ...plan("包装"), priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] };
     });
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue: async () => "task", stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
@@ -36,6 +101,9 @@ describe("agent run lifecycle", () => {
     await vi.waitFor(() => expect(contexts.length).toBe(firstWave + 1));
     expect(contexts[firstWave].stickerUsage).toEqual([{ id: "heart", count: 1 }]);
     expect(contexts[0].stickerUsage).toEqual([]);
+    expect(contexts[firstWave].priceStyleUsage).toEqual([{ id: "classic", count: 1 }]);
+    expect(contexts[0].priceStyleUsage).toEqual([]);
+    expect(new Set(contexts.map(context => context.catalogSeed)).size).toBe(1);
     while (runner.running) {
       releases.splice(0).forEach((release) => release());
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -43,7 +111,9 @@ describe("agent run lifecycle", () => {
     await runner.settled();
     runner.start("project", "clean", "", [media("b")]);
     await vi.waitFor(() => expect(contexts.length).toBe(11));
-    expect(contexts[10]).toEqual({ outputIndex: 0, totalOutputs: 1, stickerUsage: [] });
+    expect(contexts[10]).toMatchObject({ outputIndex: 0, totalOutputs: 1, stickerUsage: [], priceStyleUsage: [] });
+    expect(contexts[10].catalogSeed).toBeTruthy();
+    expect(contexts[10].catalogSeed).not.toBe(contexts[0].catalogSeed);
     releases.shift()!();
     await runner.settled();
   });
@@ -60,13 +130,13 @@ describe("agent run lifecycle", () => {
   });
   it("does not count rejected automatic plans as sticker usage or retry them", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), intensity: 1, stickers: [{ corner: "bottom-right", sticker: "heart" }] });
+    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), priceStyle: "classic", intensity: 1.1, stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] });
     const enqueue = vi.fn();
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
     await runner.settled();
     expect(provider).toHaveBeenCalledTimes(10);
-    expect(provider.mock.calls.every((call) => call[5].stickerUsage.length === 0)).toBe(true);
+    expect(provider.mock.calls.every((call) => call[5].stickerUsage.length === 0 && call[5].priceStyleUsage.length === 0)).toBe(true);
     expect(enqueue).not.toHaveBeenCalled();
     expect(runner.snapshot()?.items.every((item) => item.status === "failed")).toBe(true);
   });
@@ -143,7 +213,7 @@ describe("agent run lifecycle", () => {
 
   it("passes the agent decoration catalog through to plan materialization", async () => {
     const catalog = { fonts: ["Noto Sans CJK SC"], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], stickers: [{ corner: "bottom-right", sticker: "heart" }], filter: "cool", intensity: 0.3 });
+    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }], filter: "cool", intensity: 0.3 });
     const enqueue = vi.fn().mockResolvedValue("task");
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("agent.mp4")]);

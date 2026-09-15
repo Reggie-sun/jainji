@@ -34,6 +34,8 @@ export function getPriceStyle(id: PriceStyleId = "classic"): PriceStyle {
 export function priceStyleAppearance(style: PriceStyle) {
   return { color: style.color, strokeColor: style.strokeColor, strokeWidthRatio: style.strokeWidthRatio, shadow: style.shadow, backgroundColor: style.backgroundColor, backgroundPaddingRatio: style.backgroundPaddingRatio };
 }
-export function priceFontSizeRatio(width: number, height: number): number {
-  return Math.min(0.08 * width / height, 0.14);
+export const PRICE_LINE_HEIGHT = 1.4;
+export function priceFontSizeRatio(width: number, height: number, text = ""): number {
+  const longestLine = Math.max(1, ...text.split("\n").map((line) => [...line].length));
+  return Math.min(0.08 * width / height, 0.14, 0.78 * width / height / longestLine);
 }

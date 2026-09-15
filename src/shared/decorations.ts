@@ -11,38 +11,43 @@ export const FONT_LABELS: Record<typeof FONT_CHOICES[number], string> = {
   "Microsoft YaHei": "微软雅黑", SimHei: "黑体", SimSun: "宋体", KaiTi: "楷体", FangSong: "仿宋",
 };
 const stickerIds = new Set(["template", "none", "sparkle", "arrow", "heart", "burst", ...BUNDLED_STICKERS.map((entry) => entry.id), ...LIBRARY_STICKERS.map((entry) => entry.id)]);
+export function isUploadedStickerId(id: string): boolean { return /^uploaded-[a-f0-9]{64}$/.test(id); }
+const isStickerId = (id: string): boolean => stickerIds.has(id) || isUploadedStickerId(id);
 const fontFamilies = new Set<string>([...FONT_CHOICES, ...LIBRARY_FONTS.map((entry) => entry.family!)]);
 export const CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
 export type Corner = typeof CORNERS[number];
 export const CORNER_LABELS: Record<Corner, string> = { "top-left": "左上角", "top-right": "右上角", "bottom-left": "左下角", "bottom-right": "右下角" };
 const CornerDecorationSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("none") }).strict(),
-  z.object({ type: z.literal("sticker"), sticker: z.string().refine((id) => stickerIds.has(id) && id !== "none" && id !== "template", "unknown sticker") }).strict(),
+  z.object({ type: z.literal("sticker"), sticker: z.string().refine((id) => isStickerId(id) && id !== "none" && id !== "template", "unknown sticker") }).strict(),
 ]);
 export type CornerDecoration = z.infer<typeof CornerDecorationSchema>;
-export const PRODUCT_PRICE_MAX_LENGTH = 12;
-export const PRODUCT_PRICE_HELP = "请填写金额或金额＋数量单位，例如19.90、19.9元30贴；最多12字，金额最多两位小数，不能包含产品名。";
-export const ProductPriceSchema = z.string().trim().max(PRODUCT_PRICE_MAX_LENGTH).regex(/^(?:\d{1,6}(?:\.\d{1,2})?(?:元(?:[1-9]\d{0,5}(?:贴|片|个|件|包|袋|盒|瓶|罐|支|条|卷|枚|只|双|对|套|组|份|张|本|杯|克|千克|斤|公斤|毫升|升))?)?)?$/, PRODUCT_PRICE_HELP);
-export const RequiredProductPriceSchema = ProductPriceSchema.min(1, "请手动填写产品价格，Agent 不能代填或改写。");
+export const PRODUCT_PRICE_MAX_LENGTH = 25;
+export const PRODUCT_PRICE_HELP = "请手动填写展示文字，按 Enter 换行，最多2行、每行12字，不能有空白行。支持价格、数量、产品名或其他文字，不要求包含金额。Agent 不能代填或改写。";
+export const ProductPriceSchema = z.string().trim().transform((value) => value.replace(/\r\n/g, "\n")).pipe(z.string().max(PRODUCT_PRICE_MAX_LENGTH, PRODUCT_PRICE_HELP).refine((value) => {
+  const lines = value.split("\n");
+  return value === "" || (lines.length <= 2 && lines.every((line) => line.length <= 12 && line.trim().length > 0 && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(line)));
+}, PRODUCT_PRICE_HELP));
+export const RequiredProductPriceSchema = ProductPriceSchema.refine((value) => value.length > 0, "请手动填写产品价格，Agent 不能代填或改写。");
 export function formatProductPrice(price: string): string {
   const value = RequiredProductPriceSchema.parse(price);
-  return value.includes("元") ? value : `¥ ${value}`;
+  return value.split("\n").map((line) => /^\d{1,6}(?:\.\d{1,2})?$/.test(line) ? `¥ ${line}` : line).join("\n");
 }
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {
-    return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined };
+    return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined, priceStyle: undefined };
   }
   return input;
 }, z.object({
   productPrice: ProductPriceSchema.optional(),
   priceStyle: PriceStyleIdSchema.optional(),
   mode: z.enum(["manual", "agent"]).optional(),
-  sticker: z.string().refine((id) => stickerIds.has(id), "unknown sticker").default("template"),
+  sticker: z.string().refine(isStickerId, "unknown sticker").default("template"),
   fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font").default(DEFAULT_TEXT_FONT_FAMILY),
   corners: z.object({ "top-left": CornerDecorationSchema.optional(), "top-right": CornerDecorationSchema.optional(), "bottom-left": CornerDecorationSchema.optional(), "bottom-right": CornerDecorationSchema.optional() }).strict().optional(),
 }).strict());
 export type DecorationOptions = z.infer<typeof DecorationSchema>;
 export interface DecorationCatalog {
   fonts: string[];
-  stickers: { id: string; label: string; url: string; animated: boolean; source: "builtin" | "downloaded" }[];
+  stickers: { id: string; label: string; url: string; animated: boolean; source: "builtin" | "downloaded" | "uploaded" }[];
 }

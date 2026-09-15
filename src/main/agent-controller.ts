@@ -1,6 +1,6 @@
 import path from "node:path";
 import type { AgentStartInput } from "../shared/agent.js";
-import { AgentStartSchema, MAX_AGENT_OUTPUTS } from "../shared/agent.js";
+import { AgentStartSchema, GenerateBriefSchema, MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 import type { ApplicationService } from "./application.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { DEFAULT_PRESET, type MediaItem } from "./domain.js";
@@ -11,8 +11,8 @@ import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
 import type { ExportQueue } from "./queue.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
-import { DecorationSchema } from "../shared/decorations.js";
-import { decorationFontFamilies, type AssetLibrary } from "./asset-library.js";
+import { DecorationSchema, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
+import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from "./asset-library.js";
 import { AUTOMATIC_STICKERS } from "../shared/automatic-stickers.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
@@ -26,6 +26,7 @@ export class AgentController {
   private preparingController?: AbortController;
   private testController?: AbortController;
   private briefController?: AbortController;
+  private pendingOperation?: Promise<void>;
   constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider()) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
@@ -43,18 +44,43 @@ export class AgentController {
     if (!this.provider.status().configured) throw new Error("请先接入模型。");
     this.generatingBrief = true;
     this.briefController = new AbortController();
-    try { return await this.provider.generateBrief(input, this.briefController.signal); }
-    finally { this.generatingBrief = false; this.briefController = undefined; }
+    let settle!: () => void;
+    this.pendingOperation = new Promise<void>((resolve) => { settle = resolve; });
+    try {
+      const parsed = GenerateBriefSchema.parse(input);
+      const options = DecorationSchema.parse(parsed.decorations ?? {});
+      const previews = options.mode === "agent" ? (await this.autoCatalog(this.briefController.signal)).previews ?? [] : await this.manualStickerPreviews(options, this.briefController.signal);
+      return await this.provider.generateBrief(parsed, this.briefController.signal, previews);
+    }
+    finally { this.generatingBrief = false; this.briefController = undefined; this.pendingOperation = undefined; settle(); }
   }
 
-  private async autoCatalog(): Promise<AgentDecorationCatalog> {
+  private async manualStickerPreviews(options: DecorationOptions, signal: AbortSignal): Promise<{ id: string; url: string }[]> {
+    if (options.mode === "agent") return [];
+    const previews = [];
+    for (const id of decorationStickerIds(options).filter(isUploadedStickerId)) {
+      signal.throwIfAborted();
+      const asset = this.stickerAssets[id];
+      if (!asset) throw new Error("上传的贴纸缺失，请重新上传。");
+      previews.push({ id, url: await stickerPreview(this.ffmpeg, asset, signal) });
+    }
+    return previews;
+  }
+
+  private async autoCatalog(signal: AbortSignal): Promise<AgentDecorationCatalog> {
     const labels = new Map(AUTOMATIC_STICKERS.map(({ id, label }) => [id, label]));
     const stickers = [
       ...AUTOMATIC_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id])),
       ...BUNDLED_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id])),
       ...(this.library ? LIBRARY_STICKERS : []),
+      ...Object.keys(this.stickerAssets).filter(isUploadedStickerId).map((id) => ({ id, label: `用户上传贴纸 ${id.slice(9, 17)}` })),
     ].map(({ id, label }) => ({ id, label: labels.get(id) ?? label }));
-    return { fonts: [], stickers };
+    const previews = [];
+    for (const { id } of stickers.filter(({ id }) => isUploadedStickerId(id))) {
+      signal.throwIfAborted();
+      previews.push({ id, url: await stickerPreview(this.ffmpeg, this.stickerAssets[id]!, signal) });
+    }
+    return { fonts: [], stickers, previews };
   }
 
   async start(input: AgentStartInput, approvedDirectories: ReadonlySet<string>): Promise<void> {
@@ -67,10 +93,12 @@ export class AgentController {
     }
     this.preparing = true;
     this.preparingController = new AbortController();
+    let settle!: () => void;
+    this.pendingOperation = new Promise<void>((resolve) => { settle = resolve; });
     try {
       const parsed = AgentStartSchema.parse(input);
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
-      const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog() : undefined;
+      const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const stickerAssets = decorations.mode === "agent" ? { ...this.stickerAssets } : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
       this.preparingController.signal.throwIfAborted();
       for (const family of decorationFontFamilies(decorations)) {
@@ -88,10 +116,16 @@ export class AgentController {
       this.preparingController.signal.throwIfAborted();
       const projectId = this.service.currentProject.id;
       const previews = new Map<string, Promise<{ id: string; url: string }>>();
+      for (const preview of autoCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
+      let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       this.runner = new AgentRunner({
+        resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
-          if (!catalog) return this.provider.plan(rule, brief, frames, signal);
+          if (!catalog) {
+            manualPreviews ??= this.manualStickerPreviews(decorations, signal);
+            return this.provider.plan(rule, brief, frames, signal, undefined, undefined, await manualPreviews);
+          }
           const ids = await this.provider.shortlist(rule, brief, frames, signal, catalog, selection);
           const candidatePreviews = [];
           for (const id of ids) {
@@ -115,7 +149,7 @@ export class AgentController {
         },
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
-          const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
+          const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
           if (signal.aborted) await this.queue.cancel(batch.tasks[0].id);
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
@@ -126,7 +160,7 @@ export class AgentController {
         onChange: this.onChange,
       });
       this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[], parsed.multiplier ?? 1);
-    } finally { this.preparing = false; this.preparingController = undefined; }
+    } finally { this.preparing = false; this.preparingController = undefined; this.pendingOperation = undefined; settle(); }
   }
 
   async cancel(): Promise<void> {
@@ -137,6 +171,6 @@ export class AgentController {
     for (const item of this.runner?.snapshot()?.items ?? []) {
       if (item.taskId) await this.queue.cancel(item.taskId);
     }
-    await this.runner?.settled();
+    await Promise.all([this.runner?.settled(), this.pendingOperation]);
   }
 }

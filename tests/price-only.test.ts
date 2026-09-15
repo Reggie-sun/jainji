@@ -16,9 +16,40 @@ const plan = { summary: "仅保留价格", captions: [], filter: "warm", intensi
 const options = { productPrice: "19.9元30贴", sticker: "none" };
 const dimensions = { width: 720, height: 1280 };
 
+it.each(["19.9元\n到手30贴", "春日新品\n拍一发三", "一二三四五六七八九十一二\n一二三四五六七八九十一二", "%{n}\n优惠 50%"])("preserves arbitrary manual text through export: %s", async (productPrice) => {
+  for (const mode of ["manual", "agent"] as const) {
+    for (const size of [dimensions, { width: 1920, height: 1080 }]) {
+      const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [], priceStyle: "classic" } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
+      const compile = (value: typeof template) => new TemplateCompiler().compile(value, { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id) => `/tmp/${id}.txt` });
+      const compiled = await compile(JSON.parse(JSON.stringify(template)));
+      expect(compiled.textFiles.map((entry) => entry.content)).toEqual(productPrice.split("\n"));
+      expect(compiled.args.join(" ")).toContain("expansion=none");
+      const changed = structuredClone(template);
+      if (changed.layers[0].type === "text") changed.layers[0].content = "模型擅自改写";
+      await expect(compile(changed)).rejects.toThrow(/价格/);
+    }
+  }
+});
+
+it.each(["manual", "agent"] as const)("compiles two centered price lines from one frozen layer in %s mode", async (mode) => {
+  const productPrice = "9.9元到手5卷\n19.9元拍一发三";
+  for (const size of [dimensions, { width: 1920, height: 1080 }]) {
+    const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [], priceStyle: "classic" } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
+    expect(template.layers).toHaveLength(1);
+    expect(template.layers[0]).toMatchObject({ content: productPrice });
+    const compiled = await new TemplateCompiler().compile(JSON.parse(JSON.stringify(template)), { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id) => `/tmp/${id}.txt` });
+    expect(compiled.textFiles.map((entry) => entry.content)).toEqual(productPrice.split("\n"));
+    expect(new Set(compiled.textFiles.map((entry) => entry.path)).size).toBe(2);
+    const graph = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
+    expect(graph.match(/x=w\*0.50000-text_w\/2/g)).toHaveLength(2);
+    expect(graph).toContain("y=h*0.13000");
+    expect(graph).toContain(`y=h*${(0.13 + Math.min(0.08 * size.width / size.height, 0.14) * 1.4).toFixed(5)}`);
+  }
+});
+
 it("rejects decorative model text in both modes at the local boundary", () => {
   for (const catalog of [undefined, { fonts: [], stickers: [] }]) {
-    const raw = { ...plan, ...(catalog ? { stickers: [] } : {}), captions: [{ text: "细节之美", corner: "bottom-right", size: 0.026, ...(catalog ? { fontFamily: "Noto Sans CJK SC" } : {}) }] };
+    const raw = { ...plan, ...(catalog ? { stickers: [], priceStyle: "classic" } : {}), captions: [{ text: "细节之美", corner: "bottom-right", size: 0.026, ...(catalog ? { fontFamily: "Noto Sans CJK SC" } : {}) }] };
     expect(() => validatePlan(raw, "black-gold", catalog)).toThrow();
   }
 });
@@ -37,7 +68,7 @@ it("retains strict model fields and template filter limits", () => {
 it.each(["19.9元30贴", "29.90元50片", "999999.99元1贴", "19.90元1000毫升"])("renders the exact manual quantity price without wrapping: %s", async (productPrice) => {
   for (const size of [dimensions, { width: 1920, height: 1080 }]) {
     for (const mode of ["manual", "agent"] as const) {
-      const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [] } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
+      const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [], priceStyle: "classic" } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
       const compiled = await new TemplateCompiler().compile(template, { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/price.txt" });
       expect(compiled.textFiles.map((entry) => entry.content)).toEqual([productPrice]);
     }
