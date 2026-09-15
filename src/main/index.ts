@@ -523,7 +523,8 @@ async function bootstrap(): Promise<void> {
     if (!media || media.probeStatus !== "ready") return new Response("Not found", { status: 404 });
     return mediaResponse(media.sourcePath, request);
   });
-  library = new AssetLibrary(path.join(userData, "asset-library"));
+  library = new AssetLibrary(path.join(userData, "asset-library"), fetch, undefined, undefined,
+    app.isPackaged ? path.join(process.resourcesPath, "sticker-library") : path.join(app.getAppPath(), "resources", "sticker-library"));
   const fontResolver = { resolve: (family: string) => library.resolveFont(family) };
   const checked = await checkCapabilities(userData, fontResolver.resolve);
   capabilities = checked.status;

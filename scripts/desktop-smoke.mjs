@@ -668,6 +668,7 @@ desktopSmoke: try {
   assert.equal(reopened.queue.batches[0].batch.tasks.every(task => task.status === "interrupted"), true);
   await click("规则模板");
   await click("自己设置");
+  await waitFor("document.querySelector('.model-picker input') && !document.querySelector('.model-picker input').disabled");
   assert.equal(await evaluate("[...document.querySelectorAll('.template-card')].every(button => !button.disabled)"), true, "abandoned queued jobs must not lock templates");
   assert.equal(await evaluate("document.querySelector('.model-picker input').disabled"), false, "abandoned jobs must not lock model selection");
   await click("清爽日常");

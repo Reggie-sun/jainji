@@ -122,6 +122,8 @@ Agent 自动覆盖的近似位置不是源贴纸事实，不写入源知识库�
 
 ## Build And Verification
 
+Windows 0.1.2 安装包在 main `2d1ecb4` 基线上的功能与内置运行环境验证，见 [Windows 0.1.2 验证记录](docs/windows-verification-0.1.2.md)。
+
 ### Validation Harness
 
 开发回归和指定成片共用 [policy](.agent/harness/policy.json)，每次运行在 `.agent/harness/runs/<run-id>/` 创建独立的本地回执、日志和输入快照；该目录不会提交 Git，也不会自动上传或清理。
