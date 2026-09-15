@@ -25,6 +25,8 @@ import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
 import { executionLimits } from "./execution-limits.js";
 import type { H264Encoder } from "./video-encoder.js";
+import { outputDimensions } from "../shared/export-settings.js";
+import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } from "./gpu-memory.js";
 
 export interface QueueSnapshot {
   revision: number;
@@ -41,6 +43,7 @@ export interface CreateBatchInput {
 }
 
 export interface ExportQueueDependencies {
+  gpuFreeMemory?: () => Promise<number | undefined>;
   videoEncoder?: H264Encoder;
   executionLimits?: ReturnType<typeof executionLimits>;
   jobStore: JobStore;
@@ -83,7 +86,11 @@ export class ExportQueue {
   private readonly preparingRetries = new Set<string>();
   private running = false;
   private activeStart?: Promise<void>;
-  private readonly activeTasks = new Map<string, { work: Promise<void>; threads: number }>();
+  private readonly activeTasks = new Map<string, { work: Promise<void>; threads: number; gpuMemory: number }>();
+  private probingMemory = false;
+  private gpuMemoryObserved = false;
+  private pumpRequested = false;
+  private memoryTimer?: ReturnType<typeof setTimeout>;
   private finishStart?: (error?: unknown) => void;
   private executionError?: unknown;
   private shuttingDown = false;
@@ -193,7 +200,27 @@ export class ExportQueue {
   }
 
   private pump(): void {
+    clearTimeout(this.memoryTimer);
+    this.memoryTimer = undefined;
+    if (this.probingMemory) { this.pumpRequested = true; return; }
+    if (this.videoEncoder !== "h264_nvenc" || this.shuttingDown) { this.pumpReady(); return; }
+    this.probingMemory = true;
+    void Promise.resolve().then(this.dependencies.gpuFreeMemory ?? readGpuFreeMemory).catch(() => undefined).then((free) => {
+      // A transient telemetry failure must not bypass a previously observed
+      // memory constraint. Single-slot fallback is only for unsupported hosts.
+      if (free !== undefined) this.gpuMemoryObserved = true;
+      this.pumpReady(free ?? (this.gpuMemoryObserved ? 0 : undefined));
+    }).finally(() => {
+      this.probingMemory = false;
+      if (this.pumpRequested) { this.pumpRequested = false; this.pump(); }
+    });
+  }
+
+  private pumpReady(freeGpuMiB?: number): void {
     if (this.shuttingDown) this.pendingStarts.clear();
+    // Reserve active tasks again: a just-launched encoder may not yet appear in
+    // nvidia-smi. Conservative double accounting prevents startup bursts.
+    let gpuBudget = (freeGpuMiB ?? 0) - GPU_MEMORY_RESERVE_MIB - [...this.activeTasks.values()].reduce((sum, task) => sum + task.gpuMemory, 0);
     for (const batchId of this.pendingStarts) {
       const state = this.states.get(batchId)!;
       for (const task of state.batch.tasks) {
@@ -201,6 +228,17 @@ export class ExportQueue {
         if (task.status !== "queued" || this.activeTasks.has(task.id)) continue;
         const freeThreads = this.limits.threads - [...this.activeTasks.values()].reduce((sum, active) => sum + active.threads, 0);
         if (freeThreads <= 0) return;
+        const media = this.mediaFor(state, task);
+        const dimensions = media ? outputDimensions(media, state.batch.preset) : { width: 1280, height: 720 };
+        const gpuMemory = this.videoEncoder === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
+        if (gpuMemory && (freeGpuMiB === undefined ? this.activeTasks.size > 0 : gpuBudget < gpuMemory)) {
+          const message = "等待 GPU 显存释放后继续导出，可停止此任务。";
+          if (task.errorMessage !== message) { task.errorMessage = message; this.emit(); }
+          this.memoryTimer = setTimeout(() => this.pump(), 2000);
+          return;
+        }
+        task.errorMessage = undefined;
+        gpuBudget -= gpuMemory;
         // Reserve a fair CPU share for later GPU jobs, which arrive progressively
         // while the Agent is planning; early exports must not consume all slots' budget.
         const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.videoEncoder !== "libx264" ? this.limits.exports : 2))));
@@ -211,7 +249,7 @@ export class ExportQueue {
           this.activeTasks.delete(task.id);
           this.pump();
         });
-        this.activeTasks.set(task.id, { work, threads });
+        this.activeTasks.set(task.id, { work, threads, gpuMemory });
       }
       this.pendingStarts.delete(batchId);
     }
@@ -230,6 +268,7 @@ export class ExportQueue {
     const { state, task } = located;
     if (task.status === "queued") {
       await this.transition(state, task, "cancelled", { errorCode: "cancelled", errorMessage: "用户取消了待处理任务。" });
+      this.pump();
       return;
     }
     if (task.status === "running" || task.status === "validating" || task.status === "verifying") {
@@ -334,6 +373,7 @@ export class ExportQueue {
     this.shuttingDown = true;
     this.shutdownRequested = true;
     const active = this.activeStart;
+    this.pump();
     for (const state of this.states.values()) {
       for (const task of state.batch.tasks) {
         if (EXECUTION.has(task.status)) this.cancelRequested.add(task.id);
@@ -426,7 +466,9 @@ export class ExportQueue {
         await this.transition(state, task, "cancelled", { errorCode: "cancelled", errorMessage: "用户取消了当前任务。", finishedAt: now() });
         return;
       }
-      if (result.code !== 0) throw new JianjiError(redactResult(result.stderr), "ffmpeg_failed", "process", true);
+      if (result.code !== 0) throw new JianjiError(result.stderr.includes("CUDA_ERROR_OUT_OF_MEMORY")
+        ? "GPU 显存不足，无法启动硬件编码。请释放显存后重试导出。"
+        : redactResult(result.stderr), "ffmpeg_failed", "process", true);
       await this.transition(state, task, "verifying", { progress: 0.99 });
       if (this.cancelRequested.delete(task.id)) {
         await unlink(partialPath).catch(() => undefined);

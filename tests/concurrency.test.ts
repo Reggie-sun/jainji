@@ -54,7 +54,7 @@ describe("AgentRunner concurrency", () => {
   });
 });
 
-async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc", verifiedSlots?: number) {
+async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc", verifiedSlots?: number, gpuFreeMemory = async (): Promise<number | undefined> => 32_000) {
   const originalExecutionLimits = limits.executionLimits;
   vi.spyOn(limits, "executionLimits").mockImplementation((_cpuCount, encoder) => originalExecutionLimits(cores, encoder, { totalBytes: 64 * 1024 ** 3, availableBytes: 48 * 1024 ** 3 }));
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-concurrency-"));
@@ -62,7 +62,7 @@ async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc",
   const source = path.join(directory, "input.mp4");
   await writeFile(source, "input");
   const item = { ...media(), sourcePath: source, fingerprint: await fingerprintFile(source) };
-  const commands: { finish(code?: number): Promise<void> }[] = [];
+  const commands: { finish(code?: number, stderr?: string): Promise<void> }[] = [];
   let active = 0;
   let peak = 0;
   const ffmpeg = {
@@ -72,9 +72,9 @@ async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc",
       const marker = `encoded-${commands.length}`;
       active++;
       peak = Math.max(peak, active);
-      const finish = async (code = 0) => {
+      const finish = async (code = 0, stderr = "test failure") => {
         if (code === 0) await writeFile(args.at(-1)!, marker);
-        result.resolve({ code, stdout: "", stderr: "test failure" });
+        result.resolve({ code, stdout: "", stderr });
       };
       commands.push({ finish });
       return { process: {}, promise: result.promise.finally(() => { active--; }), cancel: () => finish(130) };
@@ -83,7 +83,7 @@ async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc",
   const jobStore = new JobStore(path.join(directory, "jobs"));
   const compile = vi.fn<TemplateCompiler["compile"]>(async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }));
   const queue = new ExportQueue({
-    jobStore, ffmpeg,
+    jobStore, ffmpeg, gpuFreeMemory,
     compiler: { compile } as unknown as TemplateCompiler,
     artifactVerifier: { verify: async (file: string, taskId: string) => ({ taskId, path: file, sizeBytes: (await readFile(file)).length, durationMs: 1000, createdAt: now() }) } as ArtifactVerifier,
     fontResolver: { resolve: async () => null },
@@ -95,6 +95,99 @@ async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc",
 }
 
 describe("global export concurrency", () => {
+  it("keeps waiting if telemetry fails after reporting low VRAM", async () => {
+    let free: number | undefined = 100;
+    const probe = vi.fn(async () => free);
+    const f = await queueFixture(20, "h264_nvenc", 6, probe);
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    try {
+      await vi.waitFor(() => expect(f.queue.snapshot().batches[0].batch.tasks[0].errorMessage).toContain("显存"));
+      free = undefined;
+      await f.queue.start(batch.id);
+      await vi.waitFor(() => expect(probe).toHaveBeenCalledTimes(2));
+      expect(f.commands).toHaveLength(0);
+      expect(f.queue.snapshot().batches[0].batch.tasks[0].status).toBe("queued");
+      free = 1500;
+      await f.queue.start(batch.id);
+      await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+      await f.commands[0].finish();
+      await running;
+    } finally { await f.queue.shutdown(); }
+  });
+
+  it("does not launch work when shutdown races a pending memory query", async () => {
+    const reading = deferred<number>();
+    const probe = vi.fn(() => reading.promise);
+    const f = await queueFixture(20, "h264_nvenc", 6, probe);
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce());
+    const shutdown = f.queue.shutdown();
+    reading.resolve(32_000);
+    await Promise.all([running, shutdown]);
+    expect(f.commands).toHaveLength(0);
+  });
+
+  it("explains a raced CUDA OOM without retrying or changing encoders", async () => {
+    const f = await queueFixture();
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    await f.commands[0].finish(1, "cuCtxCreate failed CUDA_ERROR_OUT_OF_MEMORY");
+    await running;
+    expect(f.queue.snapshot().batches[0].batch.tasks[0]).toMatchObject({ status: "failed", errorMessage: expect.stringContaining("GPU 显存不足") });
+    expect(f.commands).toHaveLength(1);
+    expect(f.compile.mock.calls[0][3].videoEncoder).toBe("h264_nvenc");
+    await f.queue.shutdown();
+  });
+
+  it("waits for VRAM, resumes after it is released, and reserves startup headroom", async () => {
+    let free = 628;
+    const f = await queueFixture(20, "h264_nvenc", 6, async () => free);
+    const batch = await f.batch(2);
+    const running = f.queue.start(batch.id);
+    try {
+      await vi.waitFor(() => expect(f.queue.snapshot().batches[0].batch.tasks[0].errorMessage).toContain("显存"));
+      expect(f.commands).toHaveLength(0);
+      expect(f.queue.snapshot().batches[0].batch.tasks[0]).toMatchObject({ status: "queued", attempt: 0 });
+      free = 1500;
+      await vi.waitFor(() => expect(f.commands).toHaveLength(1), { timeout: 3000 });
+      expect(f.queue.snapshot().batches[0].batch.tasks[1].status).toBe("queued");
+      await f.commands[0].finish();
+      await vi.waitFor(() => expect(f.commands).toHaveLength(2));
+      await f.commands[1].finish();
+      await running;
+      expect(f.peak()).toBe(1);
+    } finally { await f.queue.shutdown(); }
+  });
+
+  it.each(["cancel", "shutdown"])("settles a memory-blocked queue on %s without launching FFmpeg", async (action) => {
+    const f = await queueFixture(20, "h264_nvenc", 6, async () => 0);
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(f.queue.snapshot().batches[0].batch.tasks[0].errorMessage).toContain("显存"));
+    if (action === "cancel") await f.queue.cancel(batch.tasks[0].id);
+    else await f.queue.shutdown();
+    await running;
+    expect(f.commands).toHaveLength(0);
+    await f.queue.shutdown();
+  });
+
+  it("uses one NVENC slot if memory telemetry is unavailable", async () => {
+    const f = await queueFixture(20, "h264_nvenc", 6, async () => undefined);
+    const batch = await f.batch(2);
+    const running = f.queue.start(batch.id);
+    try {
+      await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+      await f.commands[0].finish();
+      await vi.waitFor(() => expect(f.commands).toHaveLength(2));
+      await f.commands[1].finish();
+      await running;
+      expect(f.peak()).toBe(1);
+    } finally { await f.queue.shutdown(); }
+  });
+
   it("honors the startup-verified limit instead of recalculating a larger GPU cap", async () => {
     const f = await queueFixture(20, "h264_nvenc", 2);
     const batch = await f.batch(3);
