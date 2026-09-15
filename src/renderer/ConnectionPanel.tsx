@@ -11,7 +11,7 @@ export function ConnectionPanel({ connection, chatgpt, library, busy, onSave, on
   onTest(): void; onDisconnect(): void; onContinue(): void; onLogin(): void; onRefreshLogin(): void; onCancelLogin(): void;
   onImport(id: string, appType: "claude" | "codex"): Promise<boolean>;
 }) {
-  const [mode, setMode] = useState(connection.source === "api" || (library.selected && library.selected !== "chatgpt") ? "api" : "chatgpt");
+  const [mode, setMode] = useState(connection.source === "chatgpt" || library.selected === "chatgpt" ? "chatgpt" : "api");
   const loginPending = chatgpt?.status === "logging-in" || chatgpt?.status === "starting";
   const locked = busy || loginPending;
   return <>

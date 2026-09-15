@@ -10,6 +10,7 @@
   "main": "dist-electron/main.cjs",
   "type": "module",
   "scripts": {
+    "build:model-server": "esbuild src/model-server/index.ts --bundle --platform=node --format=esm --outfile=dist-model-server/server.mjs",
     "dev": "node scripts/dev.mjs",
     "build:feedback": "esbuild src/feedback-server/index.ts --bundle --platform=node --format=esm --outfile=dist-feedback/server.mjs",
     "start:feedback": "node dist-feedback/server.mjs",

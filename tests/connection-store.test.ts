@@ -4,12 +4,45 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConnectionStore } from "../src/main/connection-store";
 import { ModelConnections } from "../src/main/model-connections";
+import { DEFAULT_QWEN_CONNECTION } from "../src/shared/connections";
 
 const directories: string[] = [];
 const input = { name: "My provider", model: "vision", baseUrl: "https://example.test/v1", apiKey: "private-test-key", protocol: "responses" as const };
 async function setup() { const directory = await mkdtemp(path.join(tmpdir(), "jianji-connections-")); directories.push(directory); const store = new ConnectionStore(directory); await store.load(); return { directory, store }; }
 afterEach(async () => { await Promise.all(directories.splice(0).map((d) => rm(d, { recursive: true, force: true }))); });
 describe("built-in connections", () => {
+  it("activates the default team Qwen on first credential save, persists it, and respects disconnect", async () => {
+    const { directory } = await setup();
+    const connections = new ModelConnections(directory, process.cwd(), async () => {}, () => {});
+    await connections.restore();
+    expect(connections.provider.status().configured).toBe(false);
+    await connections.save({ ...DEFAULT_QWEN_CONNECTION, apiKey: "private-member-fixture-key" });
+    expect(connections.provider.status()).toMatchObject({ configured: true, baseUrl: DEFAULT_QWEN_CONNECTION.baseUrl, model: DEFAULT_QWEN_CONNECTION.model });
+    expect(JSON.stringify(connections.store.snapshot())).not.toContain("private-member-fixture-key");
+    const restored = new ModelConnections(directory, process.cwd(), async () => {}, () => {});
+    await restored.restore();
+    expect(restored.provider.status().model).toBe(DEFAULT_QWEN_CONNECTION.model);
+    await restored.disconnect();
+    const disconnected = new ModelConnections(directory, process.cwd(), async () => {}, () => {});
+    await disconnected.restore();
+    expect(disconnected.provider.status().configured).toBe(false);
+    expect(disconnected.store.snapshot().profiles).toHaveLength(1);
+    await connections.dispose(); await restored.dispose(); await disconnected.dispose();
+  });
+  it("requires a private Key and preserves an existing explicit connection when adding team Qwen", async () => {
+    const { directory } = await setup();
+    const connections = new ModelConnections(directory, process.cwd(), async () => {}, () => {});
+    await connections.restore();
+    await expect(connections.save(DEFAULT_QWEN_CONNECTION)).rejects.toThrow("API Key");
+    expect(connections.store.snapshot().profiles).toHaveLength(0);
+    await connections.save(input);
+    const id = connections.store.snapshot().profiles[0].id;
+    await connections.select(id);
+    await connections.save({ ...DEFAULT_QWEN_CONNECTION, apiKey: "private-member-fixture-key" });
+    expect(connections.store.snapshot().selected).toBe(id);
+    expect(connections.provider.status().model).toBe(input.model);
+    await connections.dispose();
+  });
   it("persists and clears model effort while preserving credentials and ordinary profile edits", async () => {
     const { directory } = await setup();
     const connections = new ModelConnections(directory, process.cwd(), async () => {}, () => {});

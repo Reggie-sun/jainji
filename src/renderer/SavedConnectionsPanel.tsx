@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import type { ConnectionLibrary, SavedConnection, SaveConnection } from "../shared/connections";
+import { DEFAULT_QWEN_CONNECTION } from "../shared/connections";
 import type { CCSwitchProvider } from "../main/cc-switch";
 
 export function SavedConnectionsPanel({ library, locked, onSave, onSelect, onRemove, onImport }: {
@@ -9,10 +10,10 @@ export function SavedConnectionsPanel({ library, locked, onSave, onSelect, onRem
   onRemove(id: string): Promise<boolean>;
   onImport(id: string, appType: "claude" | "codex"): Promise<boolean>;
 }) {
-  const [editing, setEditing] = useState<SavedConnection | "new">();
-  const [name, setName] = useState("");
-  const [baseUrl, setBaseUrl] = useState("https://api.openai.com/v1");
-  const [model, setModel] = useState("");
+  const [editing, setEditing] = useState<SavedConnection | "new" | undefined>(library.profiles.length === 0 && library.selected === null && !library.error ? "new" : undefined);
+  const [name, setName] = useState(DEFAULT_QWEN_CONNECTION.name);
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_QWEN_CONNECTION.baseUrl);
+  const [model, setModel] = useState(DEFAULT_QWEN_CONNECTION.model);
   const [key, setKey] = useState("");
   const [protocol, setProtocol] = useState<SavedConnection["protocol"]>("chat-completions");
   const [authHeader, setAuthHeader] = useState<SavedConnection["authHeader"]>("bearer");
@@ -22,9 +23,9 @@ export function SavedConnectionsPanel({ library, locked, onSave, onSelect, onRem
   const [deleting, setDeleting] = useState<string>();
   const edit = (profile: SavedConnection | "new") => {
     setEditing(profile); setKey("");
-    setName(profile === "new" ? "" : profile.name);
-    setBaseUrl(profile === "new" ? "https://api.openai.com/v1" : profile.baseUrl);
-    setModel(profile === "new" ? "" : profile.model);
+    setName(profile === "new" ? DEFAULT_QWEN_CONNECTION.name : profile.name);
+    setBaseUrl(profile === "new" ? DEFAULT_QWEN_CONNECTION.baseUrl : profile.baseUrl);
+    setModel(profile === "new" ? DEFAULT_QWEN_CONNECTION.model : profile.model);
     setProtocol(profile === "new" ? "chat-completions" : profile.protocol);
     setAuthHeader(profile === "new" ? "bearer" : profile.authHeader);
   };
@@ -39,7 +40,7 @@ export function SavedConnectionsPanel({ library, locked, onSave, onSelect, onRem
     finally { setReading(false); }
   };
   return <div className="auth-choice">
-    <h3>我的 API 连接</h3><p>在简辑内保存和切换服务商，重启后自动恢复上次使用的连接。</p>
+    <h3>我的 API 连接</h3><p>默认使用团队的 Qwen 视觉模型，首次填写分配给你的 API Key。重启后自动恢复上次使用的连接。</p>
     {library.error && <p role="alert">{library.error}</p>}
     {library.profiles.length === 0 && <p>还没有保存的连接，添加一个即可开始。</p>}
     {library.profiles.map((profile) => <div className="provider-choice" key={profile.id}>

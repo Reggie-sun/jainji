@@ -7,7 +7,7 @@ import { CodexRpc } from "./codex-rpc.js";
 import { ProviderError } from "./api-transport.js";
 import { loadCCSwitchProvider, listCCSwitchProviders } from "./cc-switch.js";
 import { ConnectionStore } from "./connection-store.js";
-import { SelectModelSchema } from "../shared/connections.js";
+import { DEFAULT_QWEN_CONNECTION, SelectModelSchema } from "../shared/connections.js";
 
 export function codexLaunch(appPath: string, userData: string): { command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
   const arch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : undefined;
@@ -89,7 +89,15 @@ export class ModelConnections {
   }
   private activate(id: string): void { const profile = this.store.get(id); this.provider.configure(profile.input, profile.name); this.wantChatGPT = false; }
   async save(input: unknown): Promise<void> {
-    await this.exclusive(async () => { const id = await this.store.save(input); if (this.store.snapshot().selected === id) this.activate(id); });
+    await this.exclusive(async () => {
+      const firstConnection = !this.store.exists;
+      const id = await this.store.save(input);
+      const profile = this.store.get(id);
+      if (firstConnection && profile.input.baseUrl === DEFAULT_QWEN_CONNECTION.baseUrl &&
+          profile.input.model === DEFAULT_QWEN_CONNECTION.model && profile.input.protocol === DEFAULT_QWEN_CONNECTION.protocol &&
+          profile.input.authHeader === DEFAULT_QWEN_CONNECTION.authHeader) await this.store.select(id);
+      if (this.store.snapshot().selected === id) this.activate(id);
+    });
   }
   async select(id: string): Promise<void> { await this.exclusive(async () => { this.store.get(id); await this.store.select(id); this.activate(id); }); }
   async selectModel(input: unknown): Promise<void> {

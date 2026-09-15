@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 dist-feedback/
+dist-model-server/
 release/
 coverage/
 *.log
