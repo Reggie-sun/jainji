@@ -7,11 +7,42 @@ import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
 const plan = { summary: "保留主体", captions: [], filter: "warm", intensity: 0.4 };
 const autoCatalog = { fonts: ["Noto Serif CJK SC"], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }] };
-const autoPlan = { ...plan, stickers: [{ corner: "bottom-right", sticker: "heart" }] };
+const autoPlan = { ...plan, priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart" }] };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }));
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("requires model-selected price styles only in automatic plans, without fallback", async () => {
+    for (const priceStyle of [undefined, "unknown", { color: "red" }]) {
+      const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...autoPlan, priceStyle }));
+      const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+      await expect(provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog)).rejects.toThrow("priceStyle 必须选择");
+      expect(complete).toHaveBeenCalledTimes(1);
+    }
+    expect(() => validatePlan({ ...plan, priceStyle: "classic" }, "black-gold")).toThrow();
+    expect(() => validatePlan({ ...autoPlan, productPrice: "1元" }, "black-gold", autoCatalog)).toThrow();
+  });
+
+  it("rotates price style suggestions and prioritizes less used styles without forcing the model", async () => {
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...autoPlan, priceStyle: "gold" }));
+    const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+    for (const selection of [
+      { outputIndex: 0, totalOutputs: 3, stickerUsage: [], priceStyleUsage: [] },
+      { outputIndex: 1, totalOutputs: 3, stickerUsage: [], priceStyleUsage: [] },
+      { outputIndex: 0, totalOutputs: 3, stickerUsage: [], priceStyleUsage: [{ id: "classic" as const, count: 2 }] },
+    ]) {
+      await expect(provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog, selection)).resolves.toMatchObject({ priceStyle: "gold" });
+    }
+    const systems = complete.mock.calls.map((call) => call[0][0].content as string);
+    const catalogs = systems.map((system) => JSON.parse(system.split("价格花字目录：")[1].split("。priceStyle")[0]));
+    expect(catalogs[0][0].id).toBe("classic");
+    expect(catalogs[1][0].id).toBe("comic");
+    expect(catalogs[2][0].id).toBe("comic");
+    expect(catalogs.every((catalog) => catalog.length === 8)).toBe(true);
+    expect(systems[2]).toContain('"id":"classic","count":2');
+    expect(systems[2]).toContain('"priceStyle":"comic"');
+  });
+
   it.each(RULE_TEMPLATES)("uses valid corner and filter examples for $id", async (rule) => {
     const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...autoPlan, filter: rule.filters[0], intensity: rule.minIntensity }));
     const provider = new AgentProvider();
@@ -52,9 +83,9 @@ describe("agent provider boundary", () => {
     const provider = new AgentProvider(request); provider.configure(connection);
     const catalog = { fonts: [], stickers: [{ id: "unreviewed", label: "未审核" }, ...autoCatalog.stickers] };
     const signal = new AbortController().signal;
-    await expect(provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 0, totalOutputs: 3, stickerUsage: [] })).resolves.toEqual(["heart"]);
-    await expect(provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 1, totalOutputs: 3, stickerUsage: [] })).resolves.toEqual(["sparkle"]);
-    await provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 2, totalOutputs: 3, stickerUsage: [{ id: "heart", count: 2 }] });
+    await expect(provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 0, totalOutputs: 3, stickerUsage: [], priceStyleUsage: [] })).resolves.toEqual(["heart"]);
+    await expect(provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 1, totalOutputs: 3, stickerUsage: [], priceStyleUsage: [] })).resolves.toEqual(["sparkle"]);
+    await provider.shortlist("black-gold", "", [], signal, catalog, { outputIndex: 2, totalOutputs: 3, stickerUsage: [{ id: "heart", count: 2 }], priceStyleUsage: [] });
     expect(JSON.parse(request.mock.calls[2][1].body).messages[0].content).toContain('"number":2,"count":2');
   });
   it("shortlists numbered candidates from the full directory and rejects forbidden or duplicate choices", async () => {
@@ -101,9 +132,9 @@ describe("agent provider boundary", () => {
     const provider = new AgentProvider(request);
     provider.configure(connection);
     for (const context of [
-      { outputIndex: 0, totalOutputs: 3, stickerUsage: [] },
-      { outputIndex: 1, totalOutputs: 3, stickerUsage: [] },
-      { outputIndex: 0, totalOutputs: 3, stickerUsage: [{ id: "heart", count: 2 }] },
+      { outputIndex: 0, totalOutputs: 3, stickerUsage: [], priceStyleUsage: [] },
+      { outputIndex: 1, totalOutputs: 3, stickerUsage: [], priceStyleUsage: [] },
+      { outputIndex: 0, totalOutputs: 3, stickerUsage: [{ id: "heart", count: 2 }], priceStyleUsage: [] },
     ]) await provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog, context);
     const systems = request.mock.calls.map((call) => JSON.parse(call[1].body).messages[0].content as string);
     expect(systems[0].indexOf('"id":"heart"')).toBeLessThan(systems[0].indexOf('"id":"sparkle"'));

@@ -9,6 +9,7 @@ import "./template-preview.css";
 
 export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect, disabled }: { rule: RuleTemplate; options: DecorationOptions; selectedCorner?: Corner; onCornerSelect?(corner: Corner): void; disabled?: boolean }) {
   const automatic = options.mode === "agent";
+  const previewPriceStyle = getPriceStyle(automatic ? undefined : options.priceStyle);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [assets, setAssets] = useState<Record<string, HTMLImageElement>>({});
   const [failed, setFailed] = useState<string[]>([]);
@@ -57,7 +58,7 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
       context.font = '24px sans-serif'; context.fillText("DAILY", 411, 765);
 
       if (options.productPrice?.trim() && ProductPriceSchema.safeParse(options.productPrice).success) {
-        const style = getPriceStyle(options.priceStyle);
+        const style = previewPriceStyle;
         const cssColor = (color: typeof style.color) => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
         const lines = formatProductPrice(options.productPrice).split("\n");
         const fontSize = height * priceFontSizeRatio(width, height);
@@ -109,16 +110,16 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
       }
     };
     draw();
-  }, [rule, options, assetKey, assets, failed]);
+  }, [rule, options, previewPriceStyle, assetKey, assets, failed]);
 
   return <section className="template-preview card" aria-label="整体模板预览">
     <div className="template-preview-picture"><canvas ref={canvas} width={900} height={1600} role="img" aria-label={`${rule.name}排版示例：上方居中显示手动价格，四角可独立选择贴纸`} />
       {!automatic && onCornerSelect && CORNERS.map((corner) => <button type="button" key={corner} className={`corner-slot ${corner}`} aria-label={`编辑${CORNER_LABELS[corner]}`} aria-pressed={selectedCorner === corner} disabled={disabled} onClick={() => { onCornerSelect(corner); document.getElementById("corner-decoration-editor")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }}><span>{CORNER_LABELS[corner]} · {options.corners?.[corner]?.type === "sticker" ? "贴纸" : options.corners?.[corner]?.type === "none" ? "留空" : "选择内容"}</span></button>)}
     </div>
-    <div className="template-preview-info"><span className="eyebrow">TEMPLATE PREVIEW</span><h2>{rule.name} · {automatic ? "Agent 自动安排" : "整体预览"}</h2>{automatic ? <p>开始出片后，Agent 根据每条素材决定使用哪些角落，也可以全部留空。具体贴纸将在生成后确定。</p> : <><p>先看一眼贴纸放在一起的效果，再开始制作。</p><dl><div><dt>贴纸</dt><dd>{stickerId === "none" ? "不加贴纸" : `宽度为画面的 ${(rule.stickerWidth * 100).toFixed(0)}%`}</dd></div></dl></>}
-      <p>价格花字 · {getPriceStyle(options.priceStyle).name}。此处为排版与花字示例，未应用视频滤镜；成片颜色会随所选滤镜变化。</p>
+    <div className="template-preview-info"><span className="eyebrow">TEMPLATE PREVIEW</span><h2>{rule.name} · {automatic ? "Agent 自动安排" : "整体预览"}</h2>{automatic ? <p>开始出片后，Agent 根据每条素材决定使用哪些角落和价格花字，也可以全部留空。具体贴纸与花字将在生成后确定。</p> : <><p>先看一眼贴纸放在一起的效果，再开始制作。</p><dl><div><dt>贴纸</dt><dd>{stickerId === "none" ? "不加贴纸" : `宽度为画面的 ${(rule.stickerWidth * 100).toFixed(0)}%`}</dd></div></dl></>}
+      <p>{automatic ? "价格花字 · 示例样式（尚未确定）。" : `价格花字 · ${previewPriceStyle.name}。`}此处为排版与花字示例，未应用视频滤镜；成片颜色会随所选滤镜变化。</p>
       {failed.length > 0 ? <p role="alert">贴纸预览加载失败，请重新选择贴纸。</p> : stickerSlots.some(({ id }) => !assets[id]) && <p role="status">正在加载贴纸预览…</p>}
-      <small>{automatic ? "此处仅展示示意背景，不代表 Agent 已作出选择。中间仅显示手动填写的价格，开始制作前必须填写。" : "点击四角分别选择贴纸，所选内容会用于成片。中间仅显示手动填写的价格，开始制作前必须填写。未设置的角落按默认贴纸与模板规则安排；此处为 9:16 静态示例。"}</small>
+      <small>{automatic ? "此处仅展示示意背景和默认花字，不代表 Agent 已作出选择。Agent 从现有 8 款中按画面选择，同批会参考使用记录减少重复，但不保证每版不同。中间仅显示手动填写的价格，开始制作前必须填写。" : "点击四角分别选择贴纸，所选内容会用于成片。中间仅显示手动填写的价格，开始制作前必须填写。未设置的角落按默认贴纸与模板规则安排；此处为 9:16 静态示例。"}</small>
     </div>
   </section>;
 }

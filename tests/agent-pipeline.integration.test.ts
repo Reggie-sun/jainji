@@ -12,6 +12,7 @@ import { JobStore } from "../src/main/store";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { AssetLibrary } from "../src/main/asset-library";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
+import { getPriceStyle } from "../src/shared/price-styles";
 
 describe("agent to local export", () => {
   for (const mode of ["manual", "agent"] as const) it(`extracts real frames and renders independent verified videos in ${mode} mode`, async (context) => {
@@ -30,7 +31,7 @@ describe("agent to local export", () => {
         const shortlist = system.includes("你是视频贴纸选材师");
         const entries = shortlist ? JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]) as [number, string, string][] : [];
         const result = shortlist ? { candidates: [entries.find(([, label]) => label === "蝴蝶")![0]] }
-          : { summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [{ corner: "bottom-right", sticker: butterfly.id }] } : {}) };
+          : { summary: "根据画面选择滤镜", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { priceStyle: requests.filter((entry) => !(entry.messages[0].content as string).includes("你是视频贴纸选材师")).length % 2 ? "comic" : "mint", stickers: [{ corner: "bottom-right", sticker: butterfly.id }] } : {}) };
         response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       });
     });
@@ -57,7 +58,7 @@ describe("agent to local export", () => {
       const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" }, multiplier: 126 }, new Set([outputDirectory]))).rejects.toThrow("250 条");
       expect(requests).toHaveLength(0);
-      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { mode, productPrice: "19.90", sticker: "heart", fontFamily } }, new Set([outputDirectory]));
+      await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { mode, productPrice: "19.90", priceStyle: "classic", sticker: "heart", fontFamily } }, new Set([outputDirectory]));
       const deadline = Date.now() + 20_000;
       while (Date.now() < deadline) {
         const snapshot = queue.snapshot();
@@ -84,6 +85,10 @@ describe("agent to local export", () => {
         expect(JSON.stringify(request)).not.toContain(directory);
       }
       const batches = queue.snapshot().batches;
+      if (mode === "agent") {
+        const colors = batches.map(({ batch }) => JSON.stringify(batch.templateSnapshot.layers.find((layer) => layer.type === "text")!.color));
+        expect(new Set(colors)).toEqual(new Set([JSON.stringify(getPriceStyle("comic").color), JSON.stringify(getPriceStyle("mint").color)]));
+      }
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "text").every((layer) => layer.content === "¥ 19.90"))).toBe(true);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);

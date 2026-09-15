@@ -5,6 +5,7 @@ import { materializePlan, ProviderError, type AgentDecorationCatalog, type Agent
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
+import type { PriceStyleId } from "../shared/price-styles.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -47,6 +48,7 @@ export class AgentRunner {
   private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
     let next = 0;
     const stickerUsage = new Map<string, number>();
+    const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
     const worker = async () => {
       while (next < media.length) {
@@ -67,11 +69,13 @@ export class AgentRunner {
           const selection = this.dependencies.autoCatalog ? {
             outputIndex: index, totalOutputs: media.length,
             stickerUsage: Array.from(stickerUsage, ([id, count]) => ({ id, count })),
+            priceStyleUsage: Array.from(priceStyleUsage, ([id, count]) => ({ id, count })),
           } : undefined;
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
           const template = materializePlan(plan, run.ruleId, source, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           if (selection && "stickers" in plan) {
+            priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
           }
           item.taskId = await this.dependencies.enqueue(template, source, signal);

@@ -35,7 +35,7 @@ describe("local price styles", () => {
     expect(graph.match(/drawtext=/g)).toHaveLength(1);
     if (style.shadow) expect(graph).toContain(`shadowx=${Math.round(style.shadow.xRatio * media.height)}`);
     if (style.backgroundColor) expect(graph).toContain("box=1");
-    const auto = materializePlan({ ...plan, stickers: [] }, "black-gold", media, assets, { mode: "agent", productPrice: "19.9元30贴", priceStyle: style.id }, { fonts: [], stickers: [] });
+    const auto = materializePlan({ ...plan, stickers: [], priceStyle: style.id }, "black-gold", media, assets, { mode: "agent", productPrice: "19.9元30贴", priceStyle: style.id === "classic" ? "comic" : "classic" }, { fonts: [], stickers: [] });
     expect(auto.layers[0]).toMatchObject({ color: style.color, content: "19.9元30贴" });
     expect(materializePlan(plan, "black-gold", media, assets, { sticker: "none", priceStyle: style.id }).layers).toEqual([]);
   });

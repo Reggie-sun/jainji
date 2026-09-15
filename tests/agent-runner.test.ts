@@ -36,7 +36,7 @@ describe("agent run lifecycle", () => {
     const provider = vi.fn(async (_rule, _brief, _frames, _signal, _catalog, context) => {
       contexts.push(context);
       await new Promise<void>((resolve) => releases.push(resolve));
-      return { ...plan("包装"), stickers: [{ corner: "bottom-right", sticker: "heart" }] };
+      return { ...plan("包装"), priceStyle: "comic", stickers: [{ corner: "bottom-right", sticker: "heart" }] };
     });
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue: async () => "task", stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
@@ -48,6 +48,8 @@ describe("agent run lifecycle", () => {
     releases.shift()!();
     await vi.waitFor(() => expect(contexts.length).toBe(firstWave + 1));
     expect(contexts[firstWave].stickerUsage).toEqual([{ id: "heart", count: 1 }]);
+    expect(contexts[firstWave].priceStyleUsage).toEqual([{ id: "comic", count: 1 }]);
+    expect(contexts[0].priceStyleUsage).toEqual([]);
     expect(contexts[0].stickerUsage).toEqual([]);
     while (runner.running) {
       releases.splice(0).forEach((release) => release());
@@ -56,7 +58,7 @@ describe("agent run lifecycle", () => {
     await runner.settled();
     runner.start("project", "clean", "", [media("b")]);
     await vi.waitFor(() => expect(contexts.length).toBe(11));
-    expect(contexts[10]).toEqual({ outputIndex: 0, totalOutputs: 1, stickerUsage: [] });
+    expect(contexts[10]).toEqual({ outputIndex: 0, totalOutputs: 1, stickerUsage: [], priceStyleUsage: [] });
     releases.shift()!();
     await runner.settled();
   });
@@ -73,13 +75,13 @@ describe("agent run lifecycle", () => {
   });
   it("does not count rejected automatic plans as sticker usage or retry them", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), intensity: 1, stickers: [{ corner: "bottom-right", sticker: "heart" }] });
+    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), priceStyle: "comic", intensity: 1, stickers: [{ corner: "bottom-right", sticker: "heart" }] });
     const enqueue = vi.fn();
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
     await runner.settled();
     expect(provider).toHaveBeenCalledTimes(10);
-    expect(provider.mock.calls.every((call) => call[5].stickerUsage.length === 0)).toBe(true);
+    expect(provider.mock.calls.every((call) => call[5].stickerUsage.length === 0 && call[5].priceStyleUsage.length === 0)).toBe(true);
     expect(enqueue).not.toHaveBeenCalled();
     expect(runner.snapshot()?.items.every((item) => item.status === "failed")).toBe(true);
   });
@@ -156,7 +158,7 @@ describe("agent run lifecycle", () => {
 
   it("passes the agent decoration catalog through to plan materialization", async () => {
     const catalog = { fonts: ["Noto Sans CJK SC"], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], stickers: [{ corner: "bottom-right", sticker: "heart" }], filter: "cool", intensity: 0.3 });
+    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart" }], filter: "cool", intensity: 0.3 });
     const enqueue = vi.fn().mockResolvedValue("task");
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("agent.mp4")]);
