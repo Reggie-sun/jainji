@@ -4,6 +4,7 @@ import type { SaveConnection, SelectModel } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
 import type { DecorationCatalog } from "../shared/decorations.js";
+import type { CoverSticker } from "../shared/cover-sticker.js";
 import type { LibraryAssetPreview } from "../shared/asset-library.js";
 import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shared/bug-feedback.js";
 
@@ -38,6 +39,7 @@ const api = {
   addAndProbe: (paths: string[]): Promise<DesktopState> => ipcRenderer.invoke("media.addAndProbe", paths),
   removeMedia: (mediaId: string): Promise<DesktopState> => ipcRenderer.invoke("media.remove", mediaId),
   renameProject: (name: string): Promise<void> => ipcRenderer.invoke("project.rename", name),
+  setCoverSticker: (input: CoverSticker): Promise<DesktopState> => ipcRenderer.invoke("project.coverSticker", input),
   saveProject: (name?: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.save", name),
   loadProject: (recentId?: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.load", recentId),
   newProject: (): Promise<DesktopState> => ipcRenderer.invoke("project.new"),

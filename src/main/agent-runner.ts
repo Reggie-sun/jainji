@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { outputDimensions, type ExportSettings } from "../shared/export-settings.js";
 import { MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
-import type { EditTemplate, MediaItem } from "./domain.js";
+import { EditTemplateSchema, type EditTemplate, type MediaItem } from "./domain.js";
 import { materializePlan, ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
 import type { PriceStyleId } from "../shared/price-styles.js";
+import { coverLayerForMedia, type FrozenCoverSticker } from "./cover-sticker.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -16,6 +17,7 @@ interface RunnerDependencies {
   decorations?: DecorationOptions;
   resolutionMode?: ExportSettings["resolutionMode"];
   autoCatalog?: AgentDecorationCatalog;
+  coverSticker?: FrozenCoverSticker;
   onChange(): void;
 }
 
@@ -82,7 +84,8 @@ export class AgentRunner {
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
           const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
-          const template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
+          let template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
+          if (this.dependencies.coverSticker) template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, coverLayerForMedia(this.dependencies.coverSticker, source, dimensions)] });
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);

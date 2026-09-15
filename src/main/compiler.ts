@@ -147,6 +147,20 @@ export class TemplateCompiler {
       const sourceLabel = `sticker${stickerIndex}src`;
       const scaledLabel = `sticker${stickerIndex}`;
       const nextLabel = `base${graph.length}`;
+      if (layer.cover) {
+        const coverWidth = Math.max(1, Math.round(dimensions.width * layer.width));
+        const coverHeight = Math.max(1, Math.round(dimensions.height * layer.cover.height));
+        graph.push(
+          `[${stickerIndex}:v]format=rgba,` +
+          `crop=w='min(iw,ceil(ih*${coverWidth}/${coverHeight}))':h='min(ih,ceil(iw*${coverHeight}/${coverWidth}))':exact=1,` +
+          `scale=${coverWidth}:${coverHeight}:force_original_aspect_ratio=increase,` +
+          `crop=${coverWidth}:${coverHeight},setpts=PTS-STARTPTS[${sourceLabel}]`,
+        );
+        graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
+        graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}:format=auto[${nextLabel}]`);
+        baseLabel = nextLabel;
+        continue;
+      }
       const angle = (Math.PI * layer.rotationDeg / 180).toFixed(6);
       const governed = template.layoutPolicy === CORNER_SAFE_POLICY.id;
       const corner = nearestStickerCorner(layer);

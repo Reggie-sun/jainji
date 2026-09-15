@@ -369,6 +369,24 @@ try {
   assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice, "library navigation preserves price and manual selection");
   assert.equal(await evaluate("[...document.querySelectorAll('main button')].some(button => button.textContent === '选择图片上传')"), false, "template picker no longer owns upload");
   await click(uploaded[0].label);
+  await evaluate("document.querySelector('.cover-sticker-toggle input').click(); document.querySelector('.cover-sticker-choice input').click()");
+  await waitFor("document.querySelector('.cover-sticker-frame') !== null");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled"), true, "unapplied cover edits block production");
+  const dragCover = async (selector, dx, dy) => {
+    const point = await evaluate(`(() => { const element = document.querySelector(${JSON.stringify(selector)}); element.scrollIntoView({block:'center'}); const r = element.getBoundingClientRect(); return { x:r.x+r.width/2, y:r.y+r.height/2 }; })()`);
+    await send("Input.dispatchMouseEvent", { type: "mousePressed", ...point, button: "left", clickCount: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: point.x + dx, y: point.y + dy, button: "left", buttons: 1 });
+    await send("Input.dispatchMouseEvent", { type: "mouseReleased", x: point.x + dx, y: point.y + dy, button: "left", clickCount: 1 });
+    await pause(80);
+  };
+  await dragCover('.cover-sticker-frame', -40, -20);
+  await dragCover('.cover-sticker-handle', 30, 20);
+  await click("保存覆盖设置");
+  await waitFor("document.body.innerText.includes('覆盖设置已应用')");
+  const coverSettings = (await evaluate("window.jianji.getState()")).project.coverSticker;
+  assert.ok(coverSettings.rectangle.x < 0.35 && coverSettings.rectangle.width > 0.3, "real pointer drag and resize update IPC settings");
+  assert.deepEqual(coverSettings.stickerIds, [uploaded[0].id]);
+  await screenshot("04b-cover-sticker");
   await unlink(uploadSource);
   await click("自动生成提示词");
   await waitFor("!document.querySelector('.generate-brief').disabled");
@@ -387,6 +405,10 @@ try {
   assert.equal(state.agentRun.items[0].summary, "保留主体与手动价格");
   const savedJob = JSON.parse(await readFile(path.join(directory, "jobs", `${state.queue.batches[0].batch.id}.json`), "utf8"));
   assert.equal(savedJob.batch.templateSnapshot.productPrice, twoLinePrice);
+  const coverLayer = savedJob.batch.templateSnapshot.layers.find(layer => layer.cover);
+  assert.equal(coverLayer.cover.stickerId, uploaded[0].id);
+  assert.equal(coverLayer.x, coverSettings.rectangle.x);
+  assert.equal(coverLayer.cover.height, coverSettings.rectangle.height);
   assert.deepEqual(savedJob.batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content), [twoLinePrice]);
   assert.equal(savedJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath === path.join(directory, "uploaded-stickers", `${uploaded[0].id}.png`)), true, "uploaded image survives source removal and real FFmpeg export");
   assert.deepEqual(savedJob.batch.templateSnapshot.layers.find(layer => layer.type === "text").shadow, { color: { r: 232, g: 70, b: 120, a: 1 }, xRatio: 0.004, yRatio: 0.005 }, "selected price appearance survives IPC and is frozen for retries");

@@ -5,6 +5,7 @@ import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-po
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
 import { RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
+import { CoverStickerIdSchema, CoverStickerSchema } from "../shared/cover-sticker.js";
 import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
@@ -104,6 +105,10 @@ export const StickerLayerSchema = z.object({
   assetPath: AbsolutePath,
   assetFingerprint: z.string().min(1),
   rotationDeg: z.number().finite().min(-360).max(360),
+  cover: z.object({
+    stickerId: CoverStickerIdSchema,
+    height: z.number().finite().gt(0).max(1),
+  }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;
 
@@ -131,18 +136,27 @@ export const EditTemplateSchema = z.object({
   updatedAt: DateTime,
 }).strict().superRefine((template, ctx) => {
   const ids = new Set<string>();
+  let coverCount = 0;
   template.layers.forEach((layer, index) => {
     if (ids.has(layer.id)) ctx.addIssue({ code: "custom", path: ["layers", index, "id"], message: "layer id must be unique" });
     ids.add(layer.id);
-    if (layer.x + layer.width > 1) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "layer exceeds the right edge" });
+    if (layer.x + layer.width > 1 + (layer.type === "sticker" && layer.cover ? 1e-9 : 0)) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "layer exceeds the right edge" });
     if (layer.y >= 1) ctx.addIssue({ code: "custom", path: ["layers", index, "y"], message: "layer must start inside the frame" });
-    if (template.layoutPolicy === CORNER_SAFE_POLICY.id && layer.type === "sticker") {
+    if (layer.type === "sticker" && layer.cover) {
+      coverCount += 1;
+      if (layer.width <= 0) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "覆盖贴纸宽度必须大于零" });
+      if (layer.y + layer.cover.height > 1 + 1e-9) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "height"], message: "覆盖贴纸必须完整位于画面内" });
+      if (layer.rotationDeg !== 0) ctx.addIssue({ code: "custom", path: ["layers", index, "rotationDeg"], message: "覆盖贴纸不支持旋转" });
+      if (layer.opacity !== 1) ctx.addIssue({ code: "custom", path: ["layers", index, "opacity"], message: "覆盖贴纸必须完全不透明" });
+    }
+    if (template.layoutPolicy === CORNER_SAFE_POLICY.id && layer.type === "sticker" && !layer.cover) {
       for (const message of cornerSafeStickerIssues(layer)) ctx.addIssue({ code: "custom", path: ["layers", index], message });
     }
   });
+  if (coverCount > 1) ctx.addIssue({ code: "custom", path: ["layers"], message: "每个模板最多只能有一个覆盖贴纸" });
   if (template.layoutPolicy === CORNER_SAFE_POLICY.id) {
     const areaProxy = template.layers
-      .filter((layer) => layer.type === "sticker" && layer.visible)
+      .filter((layer) => layer.type === "sticker" && !layer.cover && layer.visible)
       .reduce((total, layer) => total + layer.width * layer.width, 0);
     if (areaProxy - CORNER_SAFE_POLICY.maxTotalStickerAreaProxy > 1e-9) {
       ctx.addIssue({ code: "custom", path: ["layers"], message: "贴纸总面积估算不得超过画面的 8%" });
@@ -241,6 +255,7 @@ export const ProjectSchema = z.object({
   templates: z.array(EditTemplateSchema).max(100),
   activeTemplateId: z.string().uuid(),
   exportBatches: z.array(ExportBatchSchema),
+  coverSticker: CoverStickerSchema.optional(),
   updatedAt: DateTime,
 }).strict().superRefine((project, ctx) => {
   if (!project.templates.some((template) => template.id === project.activeTemplateId)) {

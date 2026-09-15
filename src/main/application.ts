@@ -17,6 +17,7 @@ import { pathsEqual, validateTemplateResources, type FontResolver } from "./path
 import { ProjectStore } from "./store.js";
 import type { QueueSnapshot } from "./queue.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
+import { CoverStickerSchema, type CoverSticker } from "../shared/cover-sticker.js";
 
 export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots">;
 export interface PublicQueueState {
@@ -37,6 +38,7 @@ export interface AppState {
     updatedAt: string;
     mediaItems: MediaView[];
     template: EditTemplate;
+    coverSticker?: CoverSticker;
   };
   queue: PublicQueueSnapshot;
   templateReadiness: { ready: boolean; missing: string[] };
@@ -58,6 +60,11 @@ export class ApplicationService {
   get currentProject(): Project { return this.project; }
   get hasUnsavedChanges(): boolean { return this.dirty; }
   get projectPath(): string | undefined { return this.projectFile?.path; }
+
+  setCoverSticker(input: unknown): void {
+    this.project.coverSticker = CoverStickerSchema.parse(input);
+    this.touch();
+  }
 
   newProject(name = "我的简辑项目"): Project {
     this.project = createDefaultProject(name);
@@ -224,6 +231,7 @@ export class ApplicationService {
         updatedAt: this.project.updatedAt,
         mediaItems: this.project.mediaItems.map(toMediaView),
         template: cloneTemplate(this.activeTemplate),
+        coverSticker: this.project.coverSticker && structuredClone(this.project.coverSticker),
       },
       queue: toPublicQueue(queue, this.project.id),
       templateReadiness: { ready: false, missing: [] },

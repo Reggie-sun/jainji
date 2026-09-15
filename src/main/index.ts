@@ -233,6 +233,11 @@ function registerHandlers(): void {
     assertTrustedSender(event); agent.assertIdle();
     service.renameProject(MaterialNameSchema.parse(input));
   });
+  ipcMain.handle("project.coverSticker", async (event, input: unknown) => {
+    assertTrustedSender(event); agent.assertIdle();
+    service.setCoverSticker(input);
+    return publicState();
+  });
   ipcMain.handle("project.save", async (event, input: unknown) => {
     assertTrustedSender(event); agent.assertIdle();
     const name = input === undefined ? service.currentProject.name : MaterialNameSchema.parse(input);

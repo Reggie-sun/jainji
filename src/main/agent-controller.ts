@@ -17,6 +17,7 @@ import { AUTOMATIC_STICKERS } from "../shared/automatic-stickers.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { stickerPreview } from "./sticker-preview.js";
+import { resolveCoverSticker } from "./cover-sticker.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -98,6 +99,9 @@ export class AgentController {
     try {
       const parsed = AgentStartSchema.parse(input);
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
+      const project = this.service.currentProject;
+      const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
+      const coverSticker = resolveCoverSticker(project.coverSticker, this.stickerAssets, history);
       const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const stickerAssets = decorations.mode === "agent" ? { ...this.stickerAssets } : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
       this.preparingController.signal.throwIfAborted();
@@ -119,6 +123,7 @@ export class AgentController {
       for (const preview of autoCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       this.runner = new AgentRunner({
+        coverSticker,
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
