@@ -242,6 +242,22 @@ describe("managed ChatGPT session", () => {
     rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "failed", error: { message: "secret-token-raw-body" } } });
     await failed; session.dispose();
   });
+  it("accepts the larger cover detection character budget without changing normal calls", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" }; await session.refresh();
+    const result = session.complete([{ role: "user", content: "return JSON" }], new AbortController().signal, { maxOutputTokens: 32_768, maxOutputCharacters: 128_000 });
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    const output = "x".repeat(20_000);
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: output, phase: "final_answer" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await result).toBe(output);
+    const ordinary = session.complete([{ role: "user", content: "return JSON" }], new AbortController().signal);
+    await vi.waitFor(() => expect(rpc.request.mock.calls.filter(([method]) => method === "turn/start")).toHaveLength(2));
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: output, phase: "final_answer" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    await expect(ordinary).rejects.toThrow("未返回有效的包装方案");
+    await session.dispose();
+  });
   it("rejects nonofficial browser targets", () => {
     for (const url of ["http://auth.openai.com", "https://auth.openai.com.evil.test", "file:///tmp/a", "https://user@chatgpt.com/"]) expect(() => trustedLoginUrl(url)).toThrow();
   });

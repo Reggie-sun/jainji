@@ -1,6 +1,6 @@
 import { mkdir } from "node:fs/promises";
 import { z } from "zod";
-import { ProviderError, type ModelMessage } from "./api-transport.js";
+import { ProviderError, type CompletionOptions, type ModelMessage } from "./api-transport.js";
 import { ReasoningEffortSchema, type ChatGPTStatus } from "../shared/agent.js";
 import type { RpcClient } from "./codex-rpc.js";
 
@@ -160,7 +160,7 @@ export class ChatGPTSession {
       throw new ProviderError("退出登录未完成，请重新连接后退出。");
     }
   }
-  async complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> {
+  async complete(messages: ModelMessage[], signal: AbortSignal, options: CompletionOptions = {}): Promise<string> {
     if (this.state.status !== "ready" || !this.state.model) throw new ProviderError("请先使用 ChatGPT 登录。");
     const model = this.state.model;
     const effort = this.state.reasoningEffort;
@@ -189,7 +189,7 @@ export class ChatGPTSession {
           if (method === "item/completed" && params.item?.type === "agentMessage" && params.item.phase !== "commentary") finalText = params.item.text;
           if (method === "turn/completed") {
             if (params.turn?.status !== "completed") { fail("ChatGPT 任务失败，请检查账户额度、模型权限或网络。"); return; }
-            if (typeof finalText !== "string" || !finalText || finalText.length > 16_000) { fail("ChatGPT 未返回有效的包装方案。"); return; }
+            if (typeof finalText !== "string" || !finalText || finalText.length > (options.maxOutputCharacters ?? 16_000)) { fail("ChatGPT 未返回有效的包装方案。"); return; }
             cleanup(); resolve(finalText);
           }
         };

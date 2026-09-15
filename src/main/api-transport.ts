@@ -3,8 +3,14 @@ import type { ConnectionInput } from "../shared/agent.js";
 
 export type ModelMessage = { role: "system" | "user"; content: string | ({ type: "text"; text: string } | { type: "image_url"; image_url: { url: string; detail: string } })[] };
 export class ProviderError extends Error {}
+export interface CompletionOptions {
+  maxOutputTokens?: number;
+  maxOutputCharacters?: number;
+}
 
-export async function completeApi(connection: ConnectionInput, messages: ModelMessage[], signal: AbortSignal, request: typeof fetch): Promise<string> {
+const DEFAULT_MAX_OUTPUT_CHARACTERS = 16_000;
+
+export async function completeApi(connection: ConnectionInput, messages: ModelMessage[], signal: AbortSignal, request: typeof fetch, options: CompletionOptions = {}): Promise<string> {
   const protocol = connection.protocol ?? "chat-completions";
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   headers[connection.authHeader === "x-api-key" ? "x-api-key" : "Authorization"] = connection.authHeader === "x-api-key" ? connection.apiKey : `Bearer ${connection.apiKey}`;
@@ -13,7 +19,7 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
   if (protocol === "anthropic") {
     endpoint = connection.baseUrl.endsWith("/v1") ? "/messages" : "/v1/messages";
     headers["anthropic-version"] = "2023-06-01";
-    body = { model: connection.model, max_tokens: 2048, stream: false, ...(connection.reasoningEffort ? { output_config: { effort: connection.reasoningEffort } } : {}),
+    body = { model: connection.model, max_tokens: options.maxOutputTokens ?? 2048, stream: false, ...(connection.reasoningEffort ? { output_config: { effort: connection.reasoningEffort } } : {}),
       system: messages.filter((m) => m.role === "system").map((m) => m.content).join("\n"),
       messages: messages.filter((m) => m.role !== "system").map((m) => ({ role: m.role, content: typeof m.content === "string" ? m.content : m.content.map((item) => {
         if (item.type === "text") return item;
@@ -24,7 +30,7 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
     };
   } else if (protocol === "responses") {
     endpoint = "/responses";
-    body = { model: connection.model, store: false, stream: false, ...(connection.reasoningEffort ? { reasoning: { effort: connection.reasoningEffort } } : {}), input: messages.map((m) => ({ role: m.role,
+    body = { model: connection.model, store: false, stream: false, ...(options.maxOutputTokens ? { max_output_tokens: options.maxOutputTokens } : {}), ...(connection.reasoningEffort ? { reasoning: { effort: connection.reasoningEffort } } : {}), input: messages.map((m) => ({ role: m.role,
       content: typeof m.content === "string" ? m.content : m.content.map((item) => item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url, detail: "low" }),
     })) };
   }
@@ -49,7 +55,7 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
     } else {
       content = z.object({ choices: z.array(z.object({ message: z.object({ content: z.string() }) })).min(1) }).parse(raw).choices[0].message.content;
     }
-    if (!content || content.length > 16_000) throw new ProviderError("模型返回内容为空或过长。");
+    if (!content || content.length > (options.maxOutputCharacters ?? DEFAULT_MAX_OUTPUT_CHARACTERS)) throw new ProviderError("模型返回内容为空或过长。");
     if (content.includes(connection.apiKey)) throw new ProviderError("服务响应包含敏感信息，已丢弃。");
     return content;
   } catch (error) {

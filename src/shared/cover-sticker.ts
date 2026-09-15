@@ -31,6 +31,7 @@ export const CoverStickerSchema = z.object({
   stickerIds: z.array(CoverStickerIdSchema).max(50),
   rectangle: CoverRectangleSchema,
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
+  trackingMode: z.enum(["manual", "agent"]).optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.enabled && !value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "请至少选择一张自己的贴纸" });
   if (new Set(value.stickerIds).size !== value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "覆盖候选不得重复" });
@@ -57,4 +58,4 @@ export function interpolateCoverRectangle(keyframes: readonly CoverKeyframe[], t
   const amount = (timeMs - a.timeMs) / (b.timeMs - a.timeMs);
   return Object.fromEntries((["x", "y", "width", "height"] as const).map((key) => [key, a.rectangle[key] + (b.rectangle[key] - a.rectangle[key]) * amount])) as CoverRectangle;
 }
-export const DEFAULT_COVER_STICKER: CoverSticker = { enabled: false, stickerIds: [], rectangle: { x: 0.35, y: 0.4, width: 0.3, height: 0.2 } };
+export const DEFAULT_COVER_STICKER: CoverSticker = { enabled: false, stickerIds: [], rectangle: { x: 0.35, y: 0.4, width: 0.3, height: 0.2 }, trackingMode: "agent" };

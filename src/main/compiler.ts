@@ -219,9 +219,13 @@ export class TemplateCompiler {
     }
     graph.push(`[${baseLabel}]null[vout]`);
 
+    const automaticCover = template.layers.some((layer) => layer.type === "sticker" && layer.cover?.automatic);
+    const graphPath = automaticCover ? options.textFilePath("cover-graph") : undefined;
+    if (graphPath) textFiles.push({ layerId: "cover-graph", path: graphPath, content: graph.join(";") });
+
     args.push(
       ...(options.threads === undefined ? [] : ["-filter_complex_threads", String(options.threads)]),
-      "-filter_complex", graph.join(";"),
+      ...(graphPath ? ["-filter_complex_script", graphPath] : ["-filter_complex", graph.join(";")]),
       "-map", "[vout]",
       "-map", "0:a?",
       "-t", durationSeconds.toFixed(3),

@@ -1,4 +1,4 @@
-import { completeApi, ProviderError, type ModelMessage } from "./api-transport.js";
+import { completeApi, ProviderError, type CompletionOptions, type ModelMessage } from "./api-transport.js";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createDefaultTemplate, EditTemplateSchema, FilterPresetSchema, type EditTemplate, type Layer } from "./domain.js";
@@ -11,6 +11,8 @@ import { getPriceStyle, PRICE_STYLES, PriceStyleIdSchema, priceFontSizeRatio, pr
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
+import { detectCoverTrack } from "./cover-track-provider.js";
+import type { CoverDetectionImage, DetectedCoverFrame } from "../shared/automatic-cover.js";
 
 const STICKER_LABELS = new Map<string, string>([
   ["sparkle", "星芒"], ["arrow", "箭头"], ["heart", "爱心"], ["burst", "爆闪"],
@@ -241,6 +243,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
 export { ProviderError } from "./api-transport.js";
 
 export const API_REQUEST_MIN_INTERVAL_MS = 1_000;
+export const AUTOMATIC_COVER_COMPLETION_OPTIONS: CompletionOptions = { maxOutputTokens: 32_768, maxOutputCharacters: 128_000 };
 
 function waitForApiInterval(milliseconds: number): Promise<void> {
   if (milliseconds <= 0) return Promise.resolve();
@@ -249,7 +252,7 @@ function waitForApiInterval(milliseconds: number): Promise<void> {
 
 export class AgentProvider {
   private connection?: ConnectionInput;
-  private chatgpt?: { model: string; reasoningEffort?: string; complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> };
+  private chatgpt?: { model: string; reasoningEffort?: string; complete(messages: ModelMessage[], signal: AbortSignal, options?: CompletionOptions): Promise<string> };
   private providerName?: string;
   private apiRequestTail = Promise.resolve();
   private lastApiRequestAt?: number;
@@ -266,7 +269,7 @@ export class AgentProvider {
     this.connection = { ...parsed.data, baseUrl: parsed.data.baseUrl.replace(/\/+$/, "") };
     return this.status();
   }
-  useChatGPT(model: string, complete: (messages: ModelMessage[], signal: AbortSignal) => Promise<string>, reasoningEffort?: string): void { this.clear(); this.chatgpt = { model, complete, reasoningEffort }; }
+  useChatGPT(model: string, complete: (messages: ModelMessage[], signal: AbortSignal, options?: CompletionOptions) => Promise<string>, reasoningEffort?: string): void { this.clear(); this.chatgpt = { model, complete, reasoningEffort }; }
   clear(): void { this.connection = undefined; this.chatgpt = undefined; this.providerName = undefined; }
 
   async test(signal: AbortSignal): Promise<void> {
@@ -330,8 +333,12 @@ export class AgentProvider {
     catch (error) { throw new ProviderError(`模型返回的包装方案格式或规则不合格：${planFailureReason(error)}。本条未导出，可检查模型后重新生成。`); }
   }
 
-  private async complete(messages: ModelMessage[], signal: AbortSignal): Promise<string> {
-    if (this.chatgpt) return this.chatgpt.complete(messages, signal);
+  async detectCovers(images: readonly CoverDetectionImage[], previous: DetectedCoverFrame | undefined, signal: AbortSignal): Promise<DetectedCoverFrame[]> {
+    return detectCoverTrack((messages, requestSignal) => this.complete(messages, requestSignal, AUTOMATIC_COVER_COMPLETION_OPTIONS), images, previous, signal);
+  }
+
+  private async complete(messages: ModelMessage[], signal: AbortSignal, options?: CompletionOptions): Promise<string> {
+    if (this.chatgpt) return this.chatgpt.complete(messages, signal, options);
     if (!this.connection) throw new ProviderError("请先接入模型。");
     const previous = this.apiRequestTail;
     let release!: () => void;
@@ -347,7 +354,7 @@ export class AgentProvider {
       await waitForApiInterval(wait);
       signal.throwIfAborted();
       this.lastApiRequestAt = Date.now();
-      return await completeApi(this.connection, messages, signal, this.request);
+      return await completeApi(this.connection, messages, signal, this.request, options);
     } finally {
       release();
     }

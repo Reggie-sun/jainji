@@ -53,7 +53,7 @@ export class ModelConnections {
     }, openBrowser, path.join(userData, "codex", "workspace"), () => {
       const state = this.chatgpt.status();
       if (this.wantChatGPT) {
-        if (state.status === "ready" && state.model) this.provider.useChatGPT(state.model, (messages, signal) => this.chatgpt.complete(messages, signal), state.reasoningEffort);
+        if (state.status === "ready" && state.model) this.provider.useChatGPT(state.model, (messages, signal, options) => this.chatgpt.complete(messages, signal, options), state.reasoningEffort);
         else this.provider.clear();
       }
       this.changed();

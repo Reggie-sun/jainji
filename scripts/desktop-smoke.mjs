@@ -22,6 +22,7 @@ execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-logl
 let requests = 0;
 let briefRequests = 0;
 let shortlistRequests = 0;
+let coverRequests = 0;
 let briefPayload;
 let failBrief = false;
 const server = createServer((request, response) => {
@@ -33,6 +34,19 @@ const server = createServer((request, response) => {
     assert.equal(request.url, anthropic ? "/anthropic/v1/messages" : "/v1/chat/completions");
     const userContent = input.messages[anthropic ? 0 : 1].content;
     const systemText = anthropic ? input.system : input.messages[0].content;
+    if (systemText.includes("你是视频画面覆盖物追踪器")) {
+      coverRequests++;
+      assert.equal(JSON.stringify(input).includes(directory), false, "tracking never sends local paths");
+      const times = userContent.flatMap(item => item.type === "text" && item.text.match(/^抽帧时间：(\d+)ms。$/) ? [Number(item.text.match(/^抽帧时间：(\d+)ms。$/)[1])] : []);
+      assert.ok(times.length > 0 && times.length <= 8);
+      const text = JSON.stringify({ status: "ok", frames: times.map(timeMs => ({ timeMs, targets: [
+        { id: "one", rectangle: { x: 0.1 + timeMs / 20000, y: 0.1, width: 0.1, height: 0.1 } },
+        { id: "two", rectangle: { x: 0.7, y: 0.7, width: 0.1, height: 0.1 } },
+      ] })) });
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
+      return;
+    }
     if (systemText.includes("你是视频贴纸选材师")) {
       shortlistRequests += 1;
       const uploadText = userContent.find(item => item.type === "text" && item.text.includes("用户上传贴纸，目录编号"))?.text;
@@ -378,6 +392,7 @@ try {
   assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice, "library navigation preserves price and manual selection");
   assert.equal(await evaluate("[...document.querySelectorAll('main button')].some(button => button.textContent === '选择图片上传')"), false, "template picker no longer owns upload");
   await click(uploaded[0].label);
+  await click("手动设置");
   await evaluate("document.querySelector('.cover-sticker-toggle input').click(); document.querySelector('.cover-sticker-choice input').click()");
   await waitFor("document.querySelector('.cover-sticker-frame') !== null");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled"), true, "unapplied cover edits block production");
@@ -475,8 +490,19 @@ try {
   assert.equal(imported.connection.protocol, "anthropic");
   assert.equal(JSON.stringify(imported).includes("cc-switch-fixture-key"), false);
   await click("规则模板");
+  await click("Agent 自动识别全部原贴纸");
+  assert.equal(await evaluate("document.querySelector('.cover-track-editor') === null"), true, "automatic recognition needs no hand-drawn keys");
+  await click("保存覆盖设置");
+  await waitFor("document.body.innerText.includes('覆盖设置已应用')");
+  await evaluate("document.querySelector('.cover-agent-mode').scrollIntoView({block:'center'})");
+  await screenshot("06a-automatic-cover");
   await click("交给 Agent，制作");
   await waitFor("document.querySelector('.result-row .status-tag.failed') !== null");
+  assert.equal(coverRequests, 3, "four seconds are scanned in three overlapping windows");
+  const automaticState = await evaluate("window.jianji.getState()");
+  const failedBatch = automaticState.queue.batches.find(entry => entry.batch.tasks.some(task => task.status === "failed"));
+  const automaticJob = JSON.parse(await readFile(path.join(directory, "jobs", `${failedBatch.batch.id}.json`), "utf8"));
+  assert.equal(automaticJob.batch.templateSnapshot.layers.filter(layer => layer.cover?.automatic).length, 2, "all recognized targets are frozen for retry");
   await writeFile(source, sourceBytes);
   await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent === '重试导出').click()");
   await waitFor("document.querySelector('.result-row .status-tag.running') !== null");
@@ -486,6 +512,7 @@ try {
   await waitFor("document.querySelector('.result-row .status-tag.cancelled') !== null");
   assert.equal(await evaluate("document.querySelector('.result-row:has(.status-tag.cancelled)').innerText.includes('重试导出')"), false);
   assert.equal(requests, 2, "Export retry must not invoke the provider again");
+  assert.equal(coverRequests, 3, "export retry reuses frozen automatic tracks");
   await waitFor("(async () => !(await window.jianji.getState()).project.hasUnsavedChanges)()");
   await click("新建创作");
   await waitFor("document.body.innerText.includes('你的素材即将在这里就位')");
@@ -578,7 +605,7 @@ try {
   await writeFile(path.join(directory, "quit.signal"), "quit");
   assert.equal(await exit, 0);
   assert.throws(() => process.kill(codexPid, 0), { code: "ESRCH" }, "App must wait for its Codex child to exit");
-  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, briefRequests, shortlistRequests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, briefRequests, shortlistRequests, coverRequests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
 } catch (error) {
   console.error(processLog.slice(-3000));
   throw error;

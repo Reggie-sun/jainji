@@ -6,6 +6,7 @@ import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
 import { RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
 import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverTrackMediaIssue } from "../shared/cover-sticker.js";
+import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
 import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
@@ -109,6 +110,8 @@ export const StickerLayerSchema = z.object({
     stickerId: CoverStickerIdSchema,
     height: z.number().finite().gt(0).max(1),
     motion: CoverTrackSchema.optional(),
+    automatic: z.literal(true).optional(),
+    targetId: z.string().min(1).max(80).optional(),
   }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;
@@ -149,12 +152,13 @@ export const EditTemplateSchema = z.object({
       if (layer.y + layer.cover.height > 1 + 1e-9) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "height"], message: "覆盖贴纸必须完整位于画面内" });
       if (layer.rotationDeg !== 0) ctx.addIssue({ code: "custom", path: ["layers", index, "rotationDeg"], message: "覆盖贴纸不支持旋转" });
       if (layer.opacity !== 1) ctx.addIssue({ code: "custom", path: ["layers", index, "opacity"], message: "覆盖贴纸必须完全不透明" });
+      if (layer.cover.automatic && (!layer.cover.motion || !layer.cover.targetId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover"], message: "自动覆盖必须有识别目标与轨迹" });
     }
     if (template.layoutPolicy === CORNER_SAFE_POLICY.id && layer.type === "sticker" && !layer.cover) {
       for (const message of cornerSafeStickerIssues(layer)) ctx.addIssue({ code: "custom", path: ["layers", index], message });
     }
   });
-  if (coverCount > 1) ctx.addIssue({ code: "custom", path: ["layers"], message: "每个模板最多只能有一个覆盖贴纸" });
+  if (coverCount > MAX_AUTOMATIC_COVER_TRACKS || (coverCount > 1 && template.layers.some((layer) => layer.type === "sticker" && layer.cover && !layer.cover.automatic))) ctx.addIssue({ code: "custom", path: ["layers"], message: `手动覆盖最多一个；多目标自动覆盖最多 ${MAX_AUTOMATIC_COVER_TRACKS} 段` });
   if (template.layoutPolicy === CORNER_SAFE_POLICY.id) {
     const areaProxy = template.layers
       .filter((layer) => layer.type === "sticker" && !layer.cover && layer.visible)

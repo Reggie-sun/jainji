@@ -7,7 +7,8 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
 import type { PriceStyleId } from "../shared/price-styles.js";
-import { coverLayerForMedia, type FrozenCoverSticker } from "./cover-sticker.js";
+import { coverLayerForMedia, automaticCoverLayers, type FrozenCoverSticker } from "./cover-sticker.js";
+import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -18,6 +19,7 @@ interface RunnerDependencies {
   resolutionMode?: ExportSettings["resolutionMode"];
   autoCatalog?: AgentDecorationCatalog;
   coverSticker?: FrozenCoverSticker;
+  detectCoverTracks?(media: MediaItem, signal: AbortSignal): Promise<AutomaticCoverTrack[]>;
   onChange(): void;
 }
 
@@ -54,6 +56,7 @@ export class AgentRunner {
     const stickerUsage = new Map<string, number>();
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
+    const pendingCoverTracks = new Map<string, Promise<AutomaticCoverTrack[]>>();
     const remainingVersions = new Map<string, number>();
     for (const source of media) remainingVersions.set(source.id, (remainingVersions.get(source.id) ?? 0) + 1);
     const worker = async () => {
@@ -75,6 +78,19 @@ export class AgentRunner {
           }
           const frames = await extracting;
           signal.throwIfAborted();
+          let coverTracks: AutomaticCoverTrack[] | undefined;
+          if (this.dependencies.coverSticker?.automatic) {
+            if (!this.dependencies.detectCoverTracks) throw new ProviderError("自动覆盖识别服务不可用，本条已停止。");
+            item.summary = "正在自动识别并追踪全部原贴纸…";
+            this.dependencies.onChange();
+            let detecting = pendingCoverTracks.get(source.id);
+            if (!detecting) {
+              detecting = this.dependencies.detectCoverTracks(source, signal);
+              pendingCoverTracks.set(source.id, detecting);
+            }
+            coverTracks = await detecting;
+            signal.throwIfAborted();
+          }
           const selection = this.dependencies.autoCatalog ? {
             catalogSeed: run.id,
             outputIndex: index, totalOutputs: media.length,
@@ -85,13 +101,16 @@ export class AgentRunner {
           signal.throwIfAborted();
           const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
           let template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
-          if (this.dependencies.coverSticker) template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, coverLayerForMedia(this.dependencies.coverSticker, source, dimensions)] });
+          if (this.dependencies.coverSticker) {
+            const layers = coverTracks !== undefined ? automaticCoverLayers(this.dependencies.coverSticker, source, dimensions, coverTracks) : [coverLayerForMedia(this.dependencies.coverSticker, source, dimensions)];
+            template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers] });
+          }
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           item.taskId = await this.dependencies.enqueue(template, source, signal);
-          item.summary = plan.summary;
+          item.summary = coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
           item.status = "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
@@ -99,7 +118,7 @@ export class AgentRunner {
         } finally {
           const remaining = remainingVersions.get(source.id)! - 1;
           remainingVersions.set(source.id, remaining);
-          if (remaining === 0) pendingFrames.delete(source.id);
+          if (remaining === 0) { pendingFrames.delete(source.id); pendingCoverTracks.delete(source.id); }
         }
         this.dependencies.onChange();
       }
@@ -108,6 +127,7 @@ export class AgentRunner {
       await Promise.all(Array.from({ length: Math.min(executionLimits().analysis, media.length) }, () => worker()));
     } finally {
       pendingFrames.clear();
+      pendingCoverTracks.clear();
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();
     }

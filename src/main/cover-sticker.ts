@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { CoverStickerSchema, type CoverRectangle, type CoverSticker } from "../shared/cover-sticker.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
 import type { ExportBatch, StickerLayer } from "./domain.js";
+import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 
 export interface FrozenCoverSticker {
   stickerId: string;
@@ -9,6 +10,7 @@ export interface FrozenCoverSticker {
   assetFingerprint: string;
   rectangle: CoverRectangle;
   tracks?: CoverSticker["tracks"];
+  automatic?: boolean;
 }
 
 export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[]): FrozenCoverSticker | undefined {
@@ -20,7 +22,14 @@ export function resolveCoverSticker(settings: CoverSticker | undefined, assets: 
     .flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))[0];
   const previousIndex = options.stickerIds.indexOf(previous);
   const stickerId = options.stickerIds[(previousIndex + 1) % options.stickerIds.length];
-  return { stickerId, ...assets[stickerId]!, rectangle: structuredClone(options.rectangle), ...(options.tracks ? { tracks: structuredClone(options.tracks) } : {}) };
+  return { stickerId, ...assets[stickerId]!, rectangle: structuredClone(options.rectangle), ...(options.tracks ? { tracks: structuredClone(options.tracks) } : {}), ...(options.trackingMode === "agent" ? { automatic: true } : {}) };
+}
+
+export function automaticCoverLayers(frozen: FrozenCoverSticker, source: { id: string; width: number; height: number }, output: { width: number; height: number }, tracks: readonly AutomaticCoverTrack[]): StickerLayer[] {
+  return tracks.map(({ targetId, track }) => {
+    const layer = coverLayerForMedia({ ...frozen, tracks: { [source.id]: track } }, source, output);
+    return { ...layer, cover: { ...layer.cover!, automatic: true, targetId } };
+  });
 }
 
 export function coverLayerForMedia(frozen: FrozenCoverSticker, source: { id?: string; width: number; height: number }, output: { width: number; height: number }): StickerLayer {
