@@ -102,7 +102,7 @@ export class AgentController {
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const project = this.service.currentProject;
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
-      const coverSticker = resolveCoverSticker(project.coverSticker, this.stickerAssets, history);
+      const coverSticker = resolveCoverSticker(project.coverSticker, this.stickerAssets, history, decorations.mode);
       const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const stickerAssets = decorations.mode === "agent" ? { ...this.stickerAssets } : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
       this.preparingController.signal.throwIfAborted();

@@ -7,6 +7,7 @@ import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { DecorationSchema } from "../src/shared/decorations";
 
 vi.mock("../src/main/ffmpeg", async (original) => ({ ...await original<typeof import("../src/main/ffmpeg")>(), resolveFont: vi.fn() }));
+vi.mock("../src/main/sticker-preview", () => ({ stickerPreview: vi.fn(async () => "data:image/jpeg;base64,aA==") }));
 afterEach(() => vi.clearAllMocks());
 describe("font admission before provider", () => {
   it.each([{ productPrice: "19.90" }, { mode: "manual", productPrice: "19.90", fontFamily: "Noto Serif CJK SC" }, { mode: "agent", productPrice: "19.90" }])("checks the required default font before provider work: %j", async (decorations) => {
@@ -14,7 +15,8 @@ describe("font admission before provider", () => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: resolveFont });
     const queue = { snapshot: () => ({ batches: [] }) } as unknown as ExportQueue;
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, {} as BuiltinStickerAssets);
+    const assets = Object.fromEntries(["sparkle", "arrow", "heart", "burst", `uploaded-${"a".repeat(64)}`].map((id) => [id, { assetPath: "/tmp/fixture.png", assetFingerprint: "fixture" }])) as BuiltinStickerAssets;
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets);
     controller.provider.configure({ baseUrl: "https://example.test", apiKey: "fixture", model: "fixture" });
     const plan = vi.spyOn(controller.provider, "plan");
     await expect(controller.start({ ruleId: "clean", mediaIds: [crypto.randomUUID()], outputDirectory: "relative", brief: "", decorations: decorations ? DecorationSchema.parse(decorations) : undefined }, new Set())).rejects.toThrow("所选字体不可用");

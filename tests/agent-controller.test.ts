@@ -10,6 +10,7 @@ import { JobStore } from "../src/main/store";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import type { AssetLibrary } from "../src/main/asset-library";
 import * as agentFrames from "../src/main/agent-frames";
+import * as automaticCover from "../src/main/automatic-cover";
 import * as stickerPreviews from "../src/main/sticker-preview";
 import { DEFAULT_PRESET } from "../src/main/domain";
 
@@ -56,13 +57,15 @@ describe("AgentController queue admission", () => {
     const id = crypto.randomUUID();
     service.currentProject.mediaItems.push({ id, displayName: "test", sourcePath: path.join(directory, "missing.mp4"), fingerprint: "missing", width: 10, height: 10, durationMs: 1000, sizeBytes: 1, rotation: 0, importedAt: new Date().toISOString(), probeStatus: "ready" });
     const library = { ensure: vi.fn(), resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary;
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets, library);
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [`uploaded-${"a".repeat(64)}`]: stickerAssets.sparkle }, library);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
     const finalPlan = vi.spyOn(controller.provider, "plan");
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _images, signal) => new Promise((_resolve, reject) => {
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     }));
+    const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
+    const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockResolvedValue([]);
     try {
       await controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { mode: "agent", productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]));
       await vi.waitFor(() => expect(shortlist).toHaveBeenCalledTimes(1));
@@ -71,7 +74,7 @@ describe("AgentController queue admission", () => {
       expect(library.ensure).not.toHaveBeenCalled();
       expect(controller.snapshot()?.items[0].status).toBe("cancelled");
       expect(controller.busy).toBe(false);
-    } finally { frames.mockRestore(); finalPlan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
+    } finally { preview.mockRestore(); detect.mockRestore(); frames.mockRestore(); finalPlan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
   it.each([1, 250])("admits %i outputs with 500 historical exports despite another project's recovered queued task", async (multiplier) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-admission-"));
@@ -108,14 +111,16 @@ describe("AgentController queue admission", () => {
     const id = crypto.randomUUID();
     service.currentProject.mediaItems.push({ id, displayName: "test", sourcePath: path.join(directory, "missing.mp4"), fingerprint: "missing", width: 10, height: 10, durationMs: 1000, sizeBytes: 1, rotation: 0, importedAt: new Date().toISOString(), probeStatus: "ready" });
     const library = { prepare: vi.fn(() => { throw new Error("manual asset should not prepare"); }), resolveFont: vi.fn(async () => "/tmp/default-font.ttf") } as unknown as AssetLibrary;
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets, library);
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [`uploaded-${"a".repeat(64)}`]: stickerAssets.sparkle }, library);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
+    const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
+    const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockResolvedValue([]);
     try {
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { productPrice: "19.90", mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "sticker", sticker: "heart" } } } }, new Set([directory]))).resolves.toBeUndefined();
       expect(library.prepare).not.toHaveBeenCalled();
       expect(library.resolveFont).toHaveBeenCalledTimes(1);
       expect(library.resolveFont).toHaveBeenCalledWith("Noto Sans CJK SC");
-    } finally { await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
+    } finally { preview.mockRestore(); detect.mockRestore(); await controller.cancel(); await rm(directory, { recursive: true, force: true }); }
   });
 
   it("cancels a pending brief generation and clears its busy state", async () => {

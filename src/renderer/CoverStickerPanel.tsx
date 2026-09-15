@@ -8,12 +8,13 @@ import "./cover-sticker.css";
 
 const cloneCoverSticker = (value: CoverSticker | undefined): CoverSticker => ({ ...(value ?? DEFAULT_COVER_STICKER), stickerIds: [...(value?.stickerIds ?? DEFAULT_COVER_STICKER.stickerIds)], rectangle: { ...(value?.rectangle ?? DEFAULT_COVER_STICKER.rectangle) }, tracks: value?.tracks && Object.fromEntries(Object.entries(value.tracks).map(([mediaId, track]) => [mediaId, { ...track, keyframes: track.keyframes.map((frame) => ({ ...frame, rectangle: { ...frame.rectangle } })) }])) });
 
-export function CoverStickerPanel({ projectId, value, selectedMedia, revision, disabled, onSave, onDirtyChange }: {
+export function CoverStickerPanel({ projectId, value, selectedMedia, revision, disabled, automatic, onSave, onDirtyChange }: {
   projectId: string;
   value?: CoverSticker;
   selectedMedia: readonly MediaView[];
   revision: number;
   disabled: boolean;
+  automatic: boolean;
   onSave(value: CoverSticker): Promise<void>;
   onDirtyChange?(dirty: boolean): void;
 }) {
@@ -35,8 +36,8 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   }, [projectId]);
 
   useEffect(() => {
-    onDirtyChange?.(JSON.stringify(draft) !== savedSignature);
-  }, [draft, onDirtyChange, savedSignature]);
+    onDirtyChange?.(automatic ? JSON.stringify(draft.stickerIds) !== JSON.stringify(value?.stickerIds ?? []) : JSON.stringify(draft) !== savedSignature);
+  }, [automatic, draft, onDirtyChange, savedSignature, value?.stickerIds]);
 
   useEffect(() => {
     let active = true;
@@ -47,25 +48,31 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   }, [revision]);
 
   const preview = selectedMedia.find((media) => media.id === previewId) ?? selectedMedia[0];
-  const previewCandidates = draft.stickerIds.flatMap((id) => stickers?.find((sticker) => sticker.id === id) ?? []);
+  const effectiveStickerIds = automatic && draft.stickerIds.length === 0 ? (stickers?.map((sticker) => sticker.id) ?? []) : draft.stickerIds;
+  const previewCandidates = effectiveStickerIds.flatMap((id) => stickers?.find((sticker) => sticker.id === id) ?? []);
   const previewSticker = previewCandidates.find((sticker) => sticker.id === previewStickerId) ?? previewCandidates[0];
   const missingSticker = stickers !== undefined && draft.stickerIds.some((id) => !stickers.some((sticker) => sticker.id === id));
-  const trackingMode = draft.trackingMode ?? "manual";
+  const trackingMode = automatic ? "agent" : draft.trackingMode ?? "manual";
+  const enabled = automatic || draft.enabled;
   const estimatedRequests = selectedMedia.reduce((total, media) => total + Math.max(1, Math.ceil((Math.max(1, Math.ceil(media.durationMs / 250)) - 1) / 7)), 0);
   const updateTrack = (mediaId: string, track?: CoverTrack) => setDraft((current) => {
     const tracks = { ...current.tracks };
     if (track) tracks[mediaId] = track; else delete tracks[mediaId];
     return { ...current, tracks: Object.keys(tracks).length ? tracks : undefined };
   });
-  const toggleSticker = (id: string) => setDraft((current) => ({ ...current, stickerIds: current.stickerIds.includes(id) ? current.stickerIds.filter((entry) => entry !== id) : [...current.stickerIds, id] }));
+  const toggleSticker = (id: string) => setDraft((current) => {
+    const currentIds = automatic && current.stickerIds.length === 0 ? (stickers?.map((sticker) => sticker.id) ?? []) : current.stickerIds;
+    return { ...current, stickerIds: currentIds.includes(id) ? currentIds.filter((entry) => entry !== id) : [...currentIds, id] };
+  });
   const save = async () => {
     setError(""); setMessage("");
     if (!stickers) { setError("上传贴纸仍在读取中，请稍后再保存。"); return; }
-    if (draft.enabled && !draft.stickerIds.length) { setError("启用覆盖贴纸前，请至少选择一张自己上传的贴纸。"); return; }
-    if (draft.enabled && missingSticker) { setError("已选贴纸已不在上传素材库中，请重新选择后保存。"); return; }
+    if (automatic && !stickers.length) { setError("全部交给 Agent 时，请先上传至少一张自己的覆盖贴纸。"); return; }
+    if (!automatic && draft.enabled && !draft.stickerIds.length) { setError("启用覆盖贴纸前，请至少选择一张自己上传的贴纸。"); return; }
+    if (enabled && missingSticker) { setError("已选贴纸已不在上传素材库中，请重新选择后保存。"); return; }
     setSaving(true);
     try {
-      await onSave(draft);
+      await onSave(automatic && draft.enabled && draft.stickerIds.length === 0 ? { ...draft, stickerIds: effectiveStickerIds } : draft);
       setMessage("覆盖设置已应用；保存素材集后可跨重启复用。");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "覆盖设置保存失败，请重试。");
@@ -73,14 +80,14 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   };
 
   return <>
-    <Heading eyebrow="COVER STICKER" title={trackingMode === "agent" ? "Agent 自动覆盖原贴纸" : "手动覆盖原贴纸"}>{trackingMode === "agent" ? "开始制作后，Agent 会识别原贴纸并自动生成多目标跟随轨迹。" : "选择自己的贴纸固定覆盖，或为每条素材设置移动轨迹。"}</Heading>
+    <Heading eyebrow="COVER STICKER" title={automatic ? "Agent 自动覆盖原贴纸" : trackingMode === "agent" ? "Agent 自动覆盖原贴纸" : "手动覆盖原贴纸"}>{automatic ? "“全部交给 Agent”会识别全部原贴纸，并用你的贴纸自动生成多目标跟随轨迹。" : trackingMode === "agent" ? "开始制作后，Agent 会识别原贴纸并自动生成多目标跟随轨迹。" : "选择自己的贴纸固定覆盖，或为每条素材设置移动轨迹。"}</Heading>
     <section className="card cover-sticker-panel" aria-label="固定覆盖贴纸设置">
-      <div className="cover-sticker-heading"><div><h2>覆盖设置</h2><p>固定框可自由调整宽高；轨迹在关键帧之间平滑移动、等比缩放。图片裁切填满框，透明区域仍可看到原视频。</p></div><label className="cover-sticker-toggle"><input type="checkbox" checked={draft.enabled} disabled={disabled || saving} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />启用覆盖</label></div>
-      <div className="cover-tracking-tabs" role="group" aria-label="覆盖贴纸跟随方式"><button type="button" aria-pressed={trackingMode === "agent"} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "agent" }))}>Agent 自动识别全部原贴纸 <span>推荐</span></button><button type="button" aria-pressed={trackingMode === "manual"} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "manual" }))}>手动设置</button></div>
-      {!stickers ? <p className="cover-sticker-loading">正在读取上传贴纸…</p> : stickers.length === 0 ? <p className="cover-sticker-empty">还没有可用的上传贴纸。请先到“上传贴纸”添加 PNG 或 JPG 图片。</p> : <div className="cover-sticker-choices" role="group" aria-label="选择覆盖贴纸候选">{stickers.map((sticker) => <label className={draft.stickerIds.includes(sticker.id) ? "cover-sticker-choice selected" : "cover-sticker-choice"} key={sticker.id}><input type="checkbox" checked={draft.stickerIds.includes(sticker.id)} disabled={disabled || saving} onChange={() => toggleSticker(sticker.id)} /><img src={sticker.url} alt="" /><span>{sticker.label}</span></label>)}</div>}
-      {draft.enabled && draft.stickerIds.length === 0 && <p className="cover-sticker-warning" role="alert">请至少选择一张上传贴纸。</p>}
+      <div className="cover-sticker-heading"><div><h2>{automatic ? "自动覆盖已开启" : "覆盖设置"}</h2><p>{automatic ? "本次制作会用当前 Agent 逐段识别所有原贴纸；无需启用开关，也不使用固定框或手动关键帧。" : "固定框可自由调整宽高；轨迹在关键帧之间平滑移动、等比缩放。图片裁切填满框，透明区域仍可看到原视频。"}</p></div>{automatic ? <span className="cover-agent-status">随“全部交给 Agent”自动启用</span> : <label className="cover-sticker-toggle"><input type="checkbox" checked={draft.enabled} disabled={disabled || saving} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />启用覆盖</label>}</div>
+      {!automatic && <div className="cover-tracking-tabs" role="group" aria-label="覆盖贴纸跟随方式"><button type="button" aria-pressed={trackingMode === "agent"} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "agent" }))}>Agent 自动识别全部原贴纸 <span>推荐</span></button><button type="button" aria-pressed={trackingMode === "manual"} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "manual" }))}>手动设置</button></div>}
+      {!stickers ? <p className="cover-sticker-loading">正在读取上传贴纸…</p> : stickers.length === 0 ? <p className="cover-sticker-empty">还没有可用的上传贴纸。请先到“上传贴纸”添加 PNG 或 JPG 图片。</p> : <div className="cover-sticker-choices" role="group" aria-label="选择覆盖贴纸候选">{stickers.map((sticker) => <label className={effectiveStickerIds.includes(sticker.id) ? "cover-sticker-choice selected" : "cover-sticker-choice"} key={sticker.id}><input type="checkbox" checked={effectiveStickerIds.includes(sticker.id)} disabled={disabled || saving} onChange={() => toggleSticker(sticker.id)} /><img src={sticker.url} alt="" /><span>{sticker.label}</span></label>)}</div>}
+      {!automatic && draft.enabled && draft.stickerIds.length === 0 && <p className="cover-sticker-warning" role="alert">请至少选择一张上传贴纸。</p>}
       {missingSticker && <p className="cover-sticker-warning" role="alert">有已选贴纸不在当前上传素材库中，请重新选择。<button type="button" disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, stickerIds: current.stickerIds.filter((id) => stickers?.some((sticker) => sticker.id === id)) }))}>清除失效候选</button></p>}
-      <p className="cover-sticker-note">{draft.stickerIds.length < 2 ? "只选一张时不会轮换；添加两张或更多候选后，下一批会换用其他候选。" : `已选 ${draft.stickerIds.length} 张候选：同一批的全部选中素材使用同一张，下一批从候选中换用。`}</p>
+      <p className="cover-sticker-note">{automatic && draft.stickerIds.length === 0 ? `未单独选择时，全部 ${effectiveStickerIds.length} 张已上传贴纸都作为候选。` : effectiveStickerIds.length < 2 ? "只选一张时不会轮换；添加两张或更多候选后，下一批会换用其他候选。" : `已选 ${effectiveStickerIds.length} 张候选：同一批的全部选中素材使用同一张，下一批从候选中换用。`}</p>
       <div className="cover-sticker-editor"><div className="cover-sticker-preview-wrap">
         {previewCandidates.length > 0 && <label className="cover-sticker-media-select">候选示意<select aria-label="预览覆盖候选" value={previewSticker?.id ?? ""} disabled={disabled || saving} onChange={(event) => setPreviewStickerId(event.target.value)}>{previewCandidates.map((sticker) => <option value={sticker.id} key={sticker.id}>{sticker.label}</option>)}</select></label>}
         {previewCandidates.length > 1 && <p className="cover-sticker-note">这里可逐款检查覆盖效果，不代表下一批选款；制作时按候选顺序轮换。请确认每款的透明区域与裁切都能盖住原贴纸。</p>}
