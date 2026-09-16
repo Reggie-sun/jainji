@@ -2,11 +2,20 @@
 .cover-review header, .cover-review-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
 .cover-review h3 { margin: 0; }
 .cover-review p { line-height: 1.6; }
-.cover-review button { padding: 8px 12px; }
-.cover-review-frame { position: relative; max-width: 640px; max-height: 520px; background: #111; margin: 16px auto; }
-.cover-review-frame video { width: 100%; height: 100%; }
-.review-box { position: absolute; background: #1d9a7022; border: 2px solid #34d399; padding: 0 !important; }
-.review-box.algorithm { border-color: #fbbf24; background: #fbbf2422; }
+.cover-review button { padding: 8px 12px; border: 1px solid #d2ded8; border-radius: 7px; background: #fff; font-size: 12px; }
+.cover-review button[aria-pressed=true] { border-color: #178875; color: #106e60; background: #edf7f3; }
+.cover-review select, .cover-review input[type=number] { padding: 6px 8px; border: 1px solid #d2ded8; border-radius: 6px; background: #fff; color: inherit; }
+.cover-review-frame { position: relative; background: #111; margin: 16px auto; }
+.cover-review-frame video { display: block; width: 100%; height: 100%; }
+.cover-review .review-box { position: absolute; box-sizing: border-box; background: #1d9a7022; border: 2px solid #34d399; }
+.cover-review .review-box.selected { border-color: #fff; outline: 1px solid #059669; }
+.cover-review .review-box-move { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: white; text-shadow: 0 1px 3px #000; cursor: move; touch-action: none; user-select: none; font-size: 11px; }
+.cover-review .review-box-resize { position: absolute; bottom: -8px; right: -8px; width: 20px; height: 20px; min-width: 0; padding: 0; border: 2px solid white; border-radius: 4px; background: #059669; cursor: nwse-resize; touch-action: none; }
+.cover-review .review-box button:disabled { cursor: default; }
+.cover-review-hint { color: var(--text-muted, #94a3b8); font-size: 13px; text-align: center; }
+.cover-review details { margin: 12px 0; }
+.cover-review summary { cursor: pointer; color: var(--text-muted, #94a3b8); font-size: 13px; }
+.cover-review fieldset { margin-top: 12px; border: 1px solid var(--border, #cbd5e1); border-radius: 8px; }
 .cover-review-timeline { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
 .cover-review-timeline label { width: 100%; }
 .cover-review-timeline input { width: 100%; }
