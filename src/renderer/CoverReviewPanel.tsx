@@ -17,7 +17,8 @@ import "./cover-review.css";
 const labels: Record<CoverReviewDraft["status"], string> = { draft: "草稿", analyzing: "候选分析中", reviewing: "独立复核中", needs_human: "待人工审阅", preparing_preview: "动态预览准备中", awaiting_approval: "待最终确认", approved: "已批准", stale: "证据已过期", cancelled: "已停止", failed: "准备失败" };
 
 export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onState(state: DesktopState): void }) {
-  const draft = drafts.at(-1);
+  const selectedIds = new Set(input.mediaIds);
+  const draft = [...drafts].reverse().find((item) => item.media.length === selectedIds.size && item.media.every(({ mediaId }) => selectedIds.has(mediaId)));
   const [mediaId, setMediaId] = useState("");
   const [activeId, setActiveId] = useState("");
   const [buffer, setBuffer] = useState<CoverSegment>();
@@ -36,7 +37,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
   useEffect(() => { setVersion(requestedVersion.current ?? 0); requestedVersion.current = undefined; setTimeMs(0); setActiveId(""); }, [media?.mediaId, draft?.id]);
   const running = useRef(false);
   const run = async (work: () => Promise<DesktopState>) => { if (running.current) return false; running.current = true; setBusy(true); setError(""); try { onState(await work()); return true; } catch (error) { setError(error instanceof Error ? error.message : "审阅操作失败。"); return false; } finally { running.current = false; setBusy(false); } };
-  if (!draft || !media || !source) return <section className="cover-review"><h3>半自动覆盖审阅</h3><p>先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。</p><button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>建立人工审阅草稿</button>{error && <p role="alert">{error}</p>}</section>;
+  if (!draft || !media || !source) return <section className="cover-review"><h3>半自动覆盖审阅</h3><p>{drafts.length ? `当前选择了 ${selectedIds.size} 条素材，需要为这批素材建立审阅草稿。旧素材的审阅记录已保留。` : "先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。"}</p><button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>{busy ? "正在准备素材…" : "建立人工审阅草稿"}</button>{error && <p role="alert">{error}</p>}</section>;
   const ref = { projectId: draft.projectId, draftId: draft.id, expectedRevision: draft.revision, mediaId: media.mediaId };
   const command = (value: Omit<CoverReviewCommand, keyof typeof ref> & Record<string, unknown>) => run(() => window.jianji.editCoverReview({ ...ref, ...value } as CoverReviewCommand));
   const seek = (value: number) => { video.current?.pause(); if (video.current) video.current.currentTime = value / 1000; setTimeMs(value); };

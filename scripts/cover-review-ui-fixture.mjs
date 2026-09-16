@@ -30,10 +30,14 @@ function Fixture() {
  const [portrait, setPortrait] = useState(false);
  const [agentRun, setAgentRun] = useState();
  const [mediaItems, setMediaItems] = useState([${JSON.stringify(media)}]);
+ const [selectedIds, setSelectedIds] = useState([${JSON.stringify(media.id)}]);
+ const [previousDrafts, setPreviousDrafts] = useState([]);
  window.jianji.viewCoverReview = async (_id, _revision, mediaId, version) => ({...draft, frozen:draft.frozen.map(item=>item.mediaId===mediaId&&item.version===version?{...item,preview:{...item.preview,viewed:true}}:item)});
  window.fixture = {snapshot:()=>request('/state'), reset:async()=>{setDraft(await request('/reset',{}))}, fail:()=>request('/fail',{}), portrait:()=>setPortrait(true), progress:()=>setDraft({...draft,status:'preparing_preview'}), designing:()=>{setDraft({...draft,status:'preparing_preview',frameTimes:{[draft.media[0].mediaId]:[0]},media:draft.media.map(m=>({...m,evidence:[{}]}))});setAgentRun({projectId:draft.projectId,status:'running',items:[{name:'测试素材 · 第1版',status:'prepared'},{name:'测试素材 · 第2版',status:'analyzing'}]})}};
- window.fixture.previews = () => { const second = {...mediaItems[0],id:'second-media',displayName:'第二个素材'}; setMediaItems([mediaItems[0],second]); setDraft({...draft,status:'awaiting_approval',media:[draft.media[0],{...draft.media[0],mediaId:second.id}],frozen:[{mediaId:mediaItems[0].id,version:1,preview:{viewed:true}},{mediaId:second.id,version:2,preview:{viewed:false}}]}); };
- return <main style={{maxWidth:820,margin:'24px auto',padding:16}}><CoverReviewPanel agentRun={agentRun} drafts={[draft]} mediaItems={mediaItems.map(item=>({...item,...(portrait ? {width:180,height:320,previewUrl:'/portrait.mp4'}: {})}))} input={{mediaIds:[${JSON.stringify(media.id)}],multiplier:1}} library={{profiles:[]}} onState={setDraft}/></main>;
+ window.fixture.previews = () => { const second = {...mediaItems[0],id:'second-media',displayName:'第二个素材'}; setMediaItems([mediaItems[0],second]); setSelectedIds([mediaItems[0].id,second.id]); setDraft({...draft,status:'awaiting_approval',media:[draft.media[0],{...draft.media[0],mediaId:second.id}],frozen:[{mediaId:mediaItems[0].id,version:1,preview:{viewed:true}},{mediaId:second.id,version:2,preview:{viewed:false}}]}); };
+ window.fixture.selectBatch = ids => { setMediaItems(items=>[...items,...ids.filter(id=>!items.some(item=>item.id===id)).map(id=>({...items[0],id,displayName:id}))]); setSelectedIds(ids); };
+ window.jianji.createCoverReview = ids => request('/create',ids);
+ return <main style={{maxWidth:820,margin:'24px auto',padding:16}}><CoverReviewPanel agentRun={agentRun} drafts={[...previousDrafts,draft]} mediaItems={mediaItems.map(item=>({...item,...(portrait ? {width:180,height:320,previewUrl:'/portrait.mp4'}: {})}))} input={{mediaIds:selectedIds,multiplier:1}} library={{profiles:[]}} onState={next=>{if(next.id!==draft.id)setPreviousDrafts(items=>[...items,draft]);setDraft(next)}}/></main>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);
 ` }, bundle: true, format: "esm", outfile: "fixture.js", write: false });
@@ -49,6 +53,12 @@ const server = createServer(async (req, res) => {
     if (req.url === "/state") return res.end(JSON.stringify({ draft, calls }));
     if (req.url === "/reset") { draft = structuredClone(initial); calls = []; return res.end(JSON.stringify(draft)); }
     if (req.url === "/fail") { failNext = true; return res.end("{}"); }
+    if (req.url === "/create") {
+      let body = ""; for await (const chunk of req) body += chunk;
+      const ids = JSON.parse(body); calls.push({type:'create',mediaIds:ids});
+      draft = createCoverReviewDraft(draft.projectId, ids.map(id=>({...media,id})));
+      return res.end(JSON.stringify(draft));
+    }
     if (req.url === "/edit") {
       let body = ""; for await (const chunk of req) body += chunk;
       const command = JSON.parse(body); calls.push(command);
