@@ -187,3 +187,35 @@ Acceptance：独立连接接通、真实模型响应已证实；有效媒体导�
 本 checkpoint 状态为 download started：完整性校验、模型加载、真实定位/跟踪及成片验收均尚未完成；后续结果追加记录。证据 owner 为同目录 `download-manifest.json`，模型下载完成不等于修复完成。
 
 Source references：[OpenCV template matching](https://docs.opencv.org/4.13.0/d4/dc6/tutorial_py_template_matching.html)、[SAM 2 official repository](https://github.com/facebookresearch/sam2)、[SAM 2.1 tiny model card](https://huggingface.co/facebook/sam2.1-hiera-tiny)、[SAM 2 video API](https://huggingface.co/docs/transformers/model_doc/sam2_video)、[SAM 3 official repository](https://github.com/facebookresearch/sam3)。官方能力描述仅用于候选筛选，不替代上述实测。
+
+## SAM 3.1 Download And Offline Probe Results
+
+权重下载完成，实际大小 1,745,546,848 bytes、SHA-256 `9ba99c92703c2e8b4f47de2d34a539bb8e18923049e238b780d70dbe6368eb03` 均与固定 revision 的发布元数据一致。验证后从 `.partial` 非覆盖重命名为 `/home/reggie/jianji-validation/20260916-sam31/model/sam3.1_multiplex_fp16.safetensors`；同目录保存 SAM License，`download-manifest.json` 已更新。没有复制到 ComfyUI 模型库，没有读取凭据。
+
+### Runtime And Method
+
+复用 ComfyUI `7cee3ceb1a35503172e0dfb8dbdbdedee2aba8aa` 的原生 SAM 3.1 API 与 Python 3.12.13 / PyTorch 2.11.0+cu130 / PyAV 18.0.0 / RTX 5090。通过 `bwrap --unshare-net` 断网、ComfyUI 目录只读挂载、`PYTHONDONTWRITEBYTECODE=1`、`HF_HUB_OFFLINE=1` 运行；未启动 ComfyUI 服务、未修改依赖或应用配置。两个实验脚本为证据目录的 `probe.py` 和 `video_probe.py`，不属于应用生产代码。
+
+默认 attention 后端在第一次检测抛出 `cuDNN Frontend error: No valid execution plans built`。只设置 `torch.backends.cuda.enable_cudnn_sdp(False)` 仍失败，因为 ComfyUI 的 SDPA wrapper 在内部重新启用其优先列表。最终仅在实验进程中把 `comfy.ops.SDPA_BACKEND_PRIORITY` 设置为 FLASH_ATTENTION / EFFICIENT_ATTENTION / MATH，并禁用 cuDNN SDP；没有改磁盘上的 ComfyUI 源码。三个阶段分别保存 `static-runtime.log`、`static-no-cudnn-runtime.log`、`static-backend-priority-runtime.log`。这是实验运行兼容措施，不是已验证的跨平台生产修复。
+
+静态实验固定 `(15)` 的 750/1000 ms 两帧，事先指定两个独立提示 `sticker:16`、`graphic overlay:16`，threshold=0.5，refine_iterations=0，保留原始 detector masks，不输入人工框/点。`:16` 明确避免原生 tokenizer 默认只保留一个检测。静态 JSON 保存帧摘要、模型摘要、版本、提示、参数、原框和 mask 边界；PNG 为诊断图，不是成片。模型和 text encoder 加载成功，日志未报告 missing keys，但尚未与官方实现做数值等价性验证。
+
+### Observations
+
+- `sticker:16` 在两帧各返回两个候选：商品区域与左下图标，漏掉其他角落目标；此提示不合格。
+- `graphic overlay:16` 在两帧各返回五个候选：四角图案及中下部原字幕。主线程目检检测图与源帧确认候选位置，但没有独立逐像素真值，不能声称完整边缘覆盖或通用准确率。原字幕也是 graphic overlay，模型响应不等于“全部候选都应覆盖”的产品判定。
+- 视频实验使用原素材前90帧、30fps，提示 `graphic overlay:16`、threshold=0.5、max_objects=16、detect_interval=1，无初始手工 mask；原视频 SHA-256 为 `1879f887abed779c7d8222ab2c526a981497a7c3aa6114ba05913c30afc6ccb5`。GPU 调用和返回耗时约9.476秒，峰值 allocated 约3.20 GiB；耗时不含模型加载和后续证据落盘，不是整批制作性能。
+- 视频首帧自动发现四角图案；第11帧右下目标仍有 mask。切镜后两只底部图案在源画面也已消失，不能把此时空 mask 算作漏跟。左上标签在第46帧仍有 mask，但边界从正常约56像素宽扩展为 `[4,5,514,30]`，包含远处零散像素；若直接转成一个白底矩形，会严重多盖。
+- 90帧累计产生9个候选身份；第89帧还存在字幕、笔记本屏幕内容、手中商品贴片的候选，不能直接作为原贴纸覆盖目标。最后一帧左上标签回到正常局部边界，也不能抵消切镜帧的异常。
+
+视频结果保存在 `video/results.json`、`video/packed-masks.npz` 与第0/11/22/30/45/46/60/89帧的原图和边界图；`video-runtime.log` 保存完整运行日志。主线程核查模型摘要、静态原帧摘要、加载日志及第0/46/89帧可视化。当前静态识别和自动视频推理已跑通，但语义筛选、完整边界、跨镜头稳定性仍未验收。
+
+独立 `reviewer_xhigh` 对实验记录给出 accept with concerns，无阻止保存记录的问题，不批准生产接入。review 核对权重摘要、源帧、API 参数、mask 解包方式与上述语义/几何反例，并指出第3帧（100 ms）左下 id=0 短暂为空。主线程随后用 FFmpeg 精确提取原视频第3帧到 `video/frame-3-source.png`，确认左下图案仍可见、该帧其他候选也没有覆盖它，故当前自动检测/跟踪组合还存在短暂漏目标；不能声称切镜前四个目标始终连续。这里只抽取诊断原帧，不是 FFmpeg 成片导出验收。
+
+### Decision And Acceptance Boundary
+
+SAM 3.1 在这段素材上比此前组合提供了更有用的小目标候选，但不能把所有候选直接生成覆盖层，也不能仅删除少量离群像素就宣布覆盖正确。保留为候选定位引擎，尚未批准生产接入；不在当前8帧模型框路径后追加修补或自动回退链。下一阶段仍需单一像素定位 owner、贴纸与字幕/实物的语义判定、切镜/出现消失验证及独立画面真值。
+
+本轮没有修改 Jianji 生产算法、原桌面连接或项目，没有生成导出模板/成片，没有进行 FFmpeg/ffprobe/播放或冻结重试验收。原用户截图故障仍未宣称修复。下载期间 checkpoint `9ac9c69` 已位于 main；本节仍只提交可复查记录，不将实验脚本或权重合入应用。
+
+完成检查：实际两个离线探针退出0，下载与素材摘要核对通过，`git diff --check` 通过；最终只提交本报告。无 Jianji 代码变更，未重复运行无关 typecheck/build；无关 untracked 文件保留。`systematic-debugging` 用于区分运行时兼容故障与模型输出反例，`verification-before-completion` 用于限定下载、推理与产品验收的不同结论。
