@@ -46,14 +46,20 @@ export function MaterialCollection({ name, dirty, disabled, openingDisabled, onS
         setSelectedRecentId(item.id);
         setRenaming(false);
         closePicker();
-      }}><strong>{item.name}</strong><small>{item.mediaCount} 条素材 · {item.fileName}</small></button><button className="saved-collection-option-delete" type="button" aria-label={`删除素材集 ${item.name}`} title="删除素材集" disabled={openingDisabled || managing} onClick={() => deleteRecent(item.id)}><Icon name="close" size={16} /></button></div>)}
-    </div></details><button className="button secondary compact" type="button" disabled={openingDisabled || managing || !selected} onClick={() => { if (selected) onOpen(selected.id); }}>打开</button><button className="button secondary compact" type="button" disabled={openingDisabled || managing || !selected} onClick={() => { setRenameName(selected?.name ?? ""); setRenaming(true); }}>重命名</button></div></div>
+        onOpen(item.id);
+      }}><strong>{item.name}</strong><small>{item.mediaCount} 条素材 · {item.fileName}</small></button><button className="saved-collection-option-action saved-collection-option-rename" type="button" aria-label={`重命名素材集 ${item.name}`} disabled={openingDisabled || managing} onClick={() => {
+        setSelectedRecentId(item.id);
+        setRenameName(item.name);
+        setRenaming(true);
+        closePicker();
+      }}>重命名</button><button className="saved-collection-option-action saved-collection-option-delete" type="button" aria-label={`删除素材集 ${item.name}`} title="删除素材集" disabled={openingDisabled || managing} onClick={() => deleteRecent(item.id)}><Icon name="close" size={16} /></button></div>)}
+    </div></details></div></div>
     {renaming && selected && <form className="saved-collection-rename" onSubmit={(event) => {
       event.preventDefault();
       if (!parsedRename.success || managing) return;
       setManaging(true);
       void onRename(selected.id, parsedRename.data).then((renamed) => { if (renamed) setRenaming(false); }).finally(() => setManaging(false));
     }}><label>新的素材集名称<input aria-label="新的素材集名称" value={renameName} maxLength={120} autoFocus disabled={managing} onChange={(event) => setRenameName(event.target.value)} /></label><button className="button primary compact" type="submit" disabled={managing || !parsedRename.success}>确认重命名</button><button className="button secondary compact" type="button" disabled={managing} onClick={() => setRenaming(false)}>取消</button></form>}
-    <p><span>{dirty ? "尚有更改未保存" : "已保存"}</span>保存全部素材及名称；从下拉列表选中后，可以打开、重命名或删除。原视频仍在原位置，请勿移动或删除。</p>
+    <p><span>{dirty ? "尚有更改未保存" : "已保存"}</span>点击下拉列表中的素材集即可打开，也可以直接重命名或删除。原视频仍在原位置，请勿移动或删除。</p>
   </section>;
 }
