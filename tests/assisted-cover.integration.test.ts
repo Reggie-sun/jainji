@@ -51,6 +51,35 @@ function deferred() {
   return { promise, resolve };
 }
 
+it.each(["complete", "save failure", "cancel"])("publishes draft frame preparation progress and recovers after %s", async (outcome) => {
+  const f = await fixture();
+  const first = f.service.currentProject.mediaItems[0];
+  const second = { ...first, id: randomUUID() };
+  f.service.currentProject.mediaItems.push(second);
+  const gate = deferred();
+  const extract = vi.fn(async (media: MediaItem) => {
+    if (media.id === second.id) await gate.promise;
+    return { evidence: structuredClone(f.draft.media[0].evidence), images: [], frameTimesMs: [0] };
+  });
+  const discardEvidence = vi.fn(async () => undefined);
+  const controller = new CoverReviewController(f.service, f.agent, f.queue, { root: f.directory, extract, analyze: vi.fn(), verify: async () => undefined, discardEvidence, changed() {} });
+  const creating = controller.create([first.id, second.id]);
+  const result = creating.catch(error => error);
+  try {
+    await vi.waitFor(() => expect(extract).toHaveBeenCalledTimes(2));
+    const draft = f.service.currentProject.reviewDrafts!.at(-1)!;
+    expect(draft.status).toBe("draft");
+    expect(draft.media[0].evidence.length).toBeGreaterThan(0);
+    expect(draft.media[1].evidence).toEqual([]);
+    if (outcome === "save failure") vi.spyOn(f.service, "saveReviewDraft").mockRejectedValue(new Error("disk failure"));
+    if (outcome === "cancel") { const stop = controller.cancel(); gate.resolve(); await stop; }
+  } finally { gate.resolve(); await result; }
+  if (outcome === "save failure") expect(await result).toMatchObject({ message: "disk failure" });
+  expect(f.service.currentProject.reviewDrafts!.at(-1)!.status).toBe(outcome === "cancel" ? "cancelled" : "needs_human");
+  expect(discardEvidence).not.toHaveBeenCalled();
+  expect(controller.busy).toBe(false);
+});
+
 it("repairs missing frame evidence without discarding confirmed boxes or decisions", async () => {
   const f = await fixture();
   const draft = structuredClone(f.draft); draft.status = "needs_human"; draft.frozen = [];

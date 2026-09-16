@@ -54,22 +54,25 @@ export class CoverReviewController {
     const media = mediaIds.map((id) => this.service.getMedia(id));
     if (!media.length || media.some((item) => !item || item.probeStatus !== "ready")) throw new Error("请选择有效素材。");
     const draft = createCoverReviewDraft(project.id, media as MediaItem[]);
+    draft.status = "draft";
     await this.save(draft);
     try {
       for (const source of media as MediaItem[]) {
         const extracted = await this.dependencies.extract(source, draft, signal);
         draft.frameTimes ??= {}; draft.frameTimes[source.id] = extracted.frameTimesMs;
         draft.media.find(({ mediaId }) => mediaId === source.id)!.evidence = extracted.evidence;
+        signal.throwIfAborted();
+        await this.save(draft, draft.revision);
       }
+      draft.status = "needs_human";
       await this.save(draft, draft.revision);
     } catch (error) {
       draft.status = signal.aborted && !this.preservingDrafts ? "cancelled" : "needs_human";
       for (const item of draft.media.filter((item) => !item.evidence.length)) { item.analysis = "incomplete"; item.analysisError = `视频帧准备未完成：${error instanceof Error ? error.message : "抽帧失败"}。生成预览时会重新准备，已确认的框会保留。`.slice(0, 2000); }
       try { await this.save(draft, draft.revision); }
       catch (error) {
-        const evidence = draft.media.flatMap((media) => media.evidence);
-        const referenced = new Set((this.service.currentProject.reviewDrafts ?? []).flatMap((item) => item.media.flatMap((media) => media.evidence.map(({ id }) => id))));
-        await this.dependencies.discardEvidence?.(draft.projectId, evidence, evidence.filter(({ id }) => referenced.has(id)));
+        // A failed save may already have committed before a queue rewrite failed.
+        // Keep extracted files when persisted ownership is uncertain.
         throw error;
       }
     }

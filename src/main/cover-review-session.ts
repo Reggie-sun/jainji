@@ -91,7 +91,7 @@ export function assertReviewResolved(draft: CoverReviewDraft): void {
 
 export function recoverCoverReviewDraft(draft: CoverReviewDraft): CoverReviewDraft {
   const recovered = structuredClone(draft);
-  if (["analyzing", "reviewing", "preparing_preview"].includes(recovered.status)) {
+  if (["draft", "analyzing", "reviewing", "preparing_preview"].includes(recovered.status)) {
     if (recovered.review?.status === "running") {
       recovered.review.status = "incomplete";
       for (const media of recovered.media) media.issues.push({ id: randomUUID(), kind: "insufficient_evidence", evidenceIds: media.evidence.map(({ id }) => id), reason: "上次独立复核已中断，未自动重试；请人工检查。", origin: "review" });

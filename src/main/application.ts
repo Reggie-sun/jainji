@@ -72,7 +72,7 @@ export class ApplicationService {
   get projectPath(): string | undefined { return this.projectFile?.path; }
 
   recoverInterruptedReviews(): void {
-    if (!this.project.reviewDrafts?.some(({ status }) => ["analyzing", "reviewing", "preparing_preview"].includes(status))) return;
+    if (!this.project.reviewDrafts?.some(({ status }) => ["draft", "analyzing", "reviewing", "preparing_preview"].includes(status))) return;
     this.project.reviewDrafts = this.project.reviewDrafts.map(recoverCoverReviewDraft);
     this.touch();
   }

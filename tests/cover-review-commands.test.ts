@@ -27,8 +27,8 @@ it("validates human geometry and keeps two independent visible segments", () => 
   expect(() => editCoverReviewDraft(draft, { ...base, type: "put_segment", identity, segment: { ...segment, track: { ...segment.track, endMs: 1001 } } })).toThrow();
   expect(split.media[0].decisions).toHaveLength(2);
 });
-it("recovery keeps interrupted analysis honest without model calls", () => {
-  const { draft } = fixture(); draft.status = "analyzing";
+it.each(["draft", "analyzing"] as const)("recovery keeps interrupted %s honest without model calls", (status) => {
+  const { draft } = fixture(); draft.status = status;
   const restored = recoverCoverReviewDraft(draft);
   expect(restored.status).toBe("needs_human");
   expect(restored.media[0].analysis).toBe("incomplete");
