@@ -283,7 +283,7 @@ try {
   await waitFor("document.body.innerText.includes('你的素材即将在这里就位')");
   const savedEntry = (await evaluate("window.jianji.getState()")).recentProjects.find(entry => entry.name === "夏季新品");
   assert.ok(savedEntry, "saved collection appears in the dropdown");
-  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').value = ${JSON.stringify(savedEntry.id)}; document.querySelector('[aria-label="已保存的素材集"]').dispatchEvent(new Event('change', { bubbles: true }))`);
+  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').click(); document.querySelector('[data-recent-id=${JSON.stringify(savedEntry.id)}]').click()`);
   await click("打开");
   await waitFor("document.body.innerText.includes('测试素材.mp4')");
   assert.equal(await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').value"), "夏季新品");
@@ -296,9 +296,9 @@ try {
   await click("规则模板");
   await click("素材工作台");
   assert.equal(await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').value"), "尚未保存的新名称", "navigation retains the edited collection name");
-  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').value = ${JSON.stringify(savedEntry.id)}; document.querySelector('[aria-label="已保存的素材集"]').dispatchEvent(new Event('change', { bubbles: true }))`);
+  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').click(); document.querySelector('[data-recent-id=${JSON.stringify(savedEntry.id)}]').click()`);
   await click("打开");
-  await waitFor("!document.querySelector('[aria-label=\"已保存的素材集\"]').disabled");
+  await waitFor("document.querySelector('[aria-label=\"已保存的素材集\"]').getAttribute('aria-disabled') === 'false'");
   assert.equal((await evaluate("window.jianji.getState()")).project.name, "尚未保存的新名称", "cancelled open preserves unsaved names");
   await click("保存项目");
   await waitFor("document.body.innerText.includes('素材集已保存')");
@@ -651,7 +651,7 @@ try {
   await click("素材工作台");
   const managedEntry = (await evaluate("window.jianji.getState()")).recentProjects[0];
   const managementProjectId = (await evaluate("window.jianji.getState()")).project.id;
-  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').value = ${JSON.stringify(managedEntry.id)}; document.querySelector('[aria-label="已保存的素材集"]').dispatchEvent(new Event('change', { bubbles: true }))`);
+  await evaluate(`document.querySelector('[aria-label="已保存的素材集"]').click(); document.querySelector('[data-recent-id=${JSON.stringify(managedEntry.id)}]').click()`);
   await waitFor("[...document.querySelectorAll('button')].some(button => button.textContent === '重命名' && !button.disabled)");
   assert.equal((await evaluate("window.jianji.getState()")).project.id, managementProjectId, "selecting a saved collection for management does not load it");
   assert.equal((await evaluate("window.jianji.getState()")).project.mediaItems.length, 0, "management selection keeps the current workspace untouched");
@@ -662,7 +662,10 @@ try {
   await waitFor("document.body.innerText.includes('素材集已重命名')");
   assert.equal(JSON.parse(await readFile(collectionFile, "utf8")).name, "重命名素材集", "saved collection rename is durable");
   assert.equal((await evaluate("window.jianji.getState()")).recentProjects[0].name, "重命名素材集");
-  await click("删除");
+  await evaluate("document.querySelector('[aria-label=\"已保存的素材集\"]').click()");
+  await waitFor("[...document.querySelectorAll('.saved-collection-option-delete')].some(button => button.getAttribute('aria-label') === '删除素材集 重命名素材集')");
+  await screenshot("09-saved-collection-menu-delete");
+  await evaluate("[...document.querySelectorAll('.saved-collection-option-delete')].find(button => button.getAttribute('aria-label') === '删除素材集 重命名素材集').click()");
   await waitFor("document.body.innerText.includes('素材集已移到系统回收站')");
   assert.equal((await evaluate("window.jianji.getState()")).recentProjects.length, 0, "deleted collection leaves the saved list");
   assert.equal((await evaluate("window.jianji.getState()")).project.id, managementProjectId, "deleting a saved collection does not load it");

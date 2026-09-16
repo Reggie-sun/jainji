@@ -1,6 +1,6 @@
 import { MaterialNameSchema } from "../shared/material-names";
 import type { DesktopState } from "../shared/desktop";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "./ui";
 import "./material-collection.css";
 
@@ -15,11 +15,23 @@ export function MaterialCollection({ name, dirty, disabled, openingDisabled, onS
   const [renaming, setRenaming] = useState(false);
   const [managing, setManaging] = useState(false);
   const [selectedRecentId, setSelectedRecentId] = useState(activeRecentId ?? "");
+  const picker = useRef<HTMLDetailsElement>(null);
   const selected = recentProjects.find((item) => item.id === selectedRecentId);
   const parsedRename = MaterialNameSchema.safeParse(renameName);
+  const closePicker = () => picker.current?.removeAttribute("open");
+  const deleteRecent = (recentId: string) => {
+    setManaging(true);
+    void onDelete(recentId).then((removed) => {
+      if (!removed) return;
+      if (selectedRecentId === recentId) setSelectedRecentId("");
+      setRenaming(false);
+      closePicker();
+    }).finally(() => setManaging(false));
+  };
   useEffect(() => {
     setSelectedRecentId(activeRecentId ?? "");
     setRenaming(false);
+    closePicker();
   }, [activeRecentId]);
   return <section className="card material-collection" aria-label="保存与打开素材集">
     <form onSubmit={(event) => { event.preventDefault(); if (parsed.success && !disabled) onSave(); }}>
@@ -27,17 +39,15 @@ export function MaterialCollection({ name, dirty, disabled, openingDisabled, onS
       <button className="button primary compact" disabled={disabled || !parsed.success} type="submit"><Icon name="download" size={15} />保存素材集</button>
       <button className="button secondary compact" disabled={openingDisabled} type="button" onClick={() => onOpen()}><Icon name="folder" size={15} />打开其他素材集</button>
     </form>
-    <div className="saved-collections"><label htmlFor="saved-collection-select">已保存的素材集</label><div className="saved-collection-row"><select id="saved-collection-select" aria-label="已保存的素材集" value={selected?.id ?? ""} disabled={openingDisabled || !recentProjects.length} onChange={(event) => {
-      setSelectedRecentId(event.target.value);
-      setRenaming(false);
-    }}>
-      <option value="">{recentProjects.length ? "选择要管理的素材集…" : "暂无记录，可先保存或打开已有素材集"}</option>
-      {recentProjects.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.mediaCount} 条素材 · {item.fileName}</option>)}
-    </select><button className="button secondary compact" type="button" disabled={openingDisabled || managing || !selected} onClick={() => { if (selected) onOpen(selected.id); }}>打开</button><button className="button secondary compact" type="button" disabled={openingDisabled || managing || !selected} onClick={() => { setRenameName(selected?.name ?? ""); setRenaming(true); }}>重命名</button><button className="button secondary compact saved-collection-delete" type="button" disabled={openingDisabled || managing || !selected} onClick={() => {
-      if (!selected) return;
-      setManaging(true);
-      void onDelete(selected.id).then((removed) => { if (removed) { setRenaming(false); setSelectedRecentId(""); } }).finally(() => setManaging(false));
-    }}>删除</button></div></div>
+    <div className="saved-collections"><label>已保存的素材集</label><div className="saved-collection-row"><details className="saved-collection-picker" ref={picker}><summary aria-label="已保存的素材集" aria-disabled={openingDisabled || managing || !recentProjects.length} onClick={(event) => {
+      if (openingDisabled || managing || !recentProjects.length) event.preventDefault();
+    }}><span>{selected ? `${selected.name} · ${selected.mediaCount} 条素材 · ${selected.fileName}` : recentProjects.length ? "选择要管理的素材集…" : "暂无记录，可先保存或打开已有素材集"}</span><span className="saved-collection-chevron" aria-hidden="true">⌄</span></summary><div className="saved-collection-menu" role="listbox" aria-label="素材集列表">
+      {recentProjects.map((item) => <div className="saved-collection-option-row" key={item.id}><button className="saved-collection-option" type="button" role="option" aria-selected={item.id === selectedRecentId} data-recent-id={item.id} onClick={() => {
+        setSelectedRecentId(item.id);
+        setRenaming(false);
+        closePicker();
+      }}><strong>{item.name}</strong><small>{item.mediaCount} 条素材 · {item.fileName}</small></button><button className="saved-collection-option-delete" type="button" aria-label={`删除素材集 ${item.name}`} title="删除素材集" disabled={openingDisabled || managing} onClick={() => deleteRecent(item.id)}><Icon name="close" size={16} /></button></div>)}
+    </div></details><button className="button secondary compact" type="button" disabled={openingDisabled || managing || !selected} onClick={() => { if (selected) onOpen(selected.id); }}>打开</button><button className="button secondary compact" type="button" disabled={openingDisabled || managing || !selected} onClick={() => { setRenameName(selected?.name ?? ""); setRenaming(true); }}>重命名</button></div></div>
     {renaming && selected && <form className="saved-collection-rename" onSubmit={(event) => {
       event.preventDefault();
       if (!parsedRename.success || managing) return;
