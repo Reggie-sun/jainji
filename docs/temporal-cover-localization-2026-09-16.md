@@ -200,3 +200,31 @@ bwrap --unshare-net --die-with-parent --ro-bind / / --dev /dev --proc /proc \
 `seal.py` 实际 exit 0，核验运行实现/配置摘要、失败 attempt 的代码快照、964 个 raw 对照计数和反例框，封存 5086 个文件。`integrity-manifest.json` SHA-256 为 `565ad76f4c18a7642fae28c6543c8ed06538f8fa509986b8ad0c3bc48607935e`。`executions.json` 是按工具结果记录的退出状态，不是完整日志；本地 README 说明独立目录复现方式。外部 Python 适配器运行其 10 项测试及真实重放，repository 文档修改只检查 diff/引用，不运行无关应用 typecheck/build。
 
 最终独立 `reviewer_high` 为 `accept with concerns`，无阻止交付隔离适配器和 FAIL 记录的问题。其指出 audit 本身没有逐项验证旧比较文件的 seal；主线程随后额外只读核验所比较的 964 个旧 mask 与 2 个旧结果 JSON，966 个摘要全部匹配已固定的 baseline seal。此验证支持本次精确重放结论，但未来重跑仍应先补足同样校验。运行后 provenance 与固定开发片段路由的限制继续保留；review 不批准生产或泛化。
+
+# Frozen Real Retest On Another Development Video
+
+## Scope And Method
+
+用户要求“继续真实测试”后，在 `main@602bf77` 使用新证据目录 `/home/reggie/jianji-validation/20260916-real-retest-gqNRAB/`，不修改生产代码。根据冻结 corpus 的 `development && !previously_exposed` 条目，按 `(width,height,SHA256)` 排序选择素材，不按画面挑选通过样例：`竞品详情-抖音电商罗盘 (31).mp4`，SHA-256 `54d8f2624c850c81051ecc9103660da70bafa0148c00a168fcc8b2ff18333dc2`，540×960、30fps。实际测试为原生首 240 帧，时间戳 0–7.966667 秒；它仍属于原 development 分组，不是独立 holdout，也不是全批泛化验收。旧 corpus 的未暴露标记是历史快照，本轮后该素材已暴露。
+
+直接复用已封存的 SAM 3.1 detector，参数仍为 `decorative sticker:16`、threshold 0.5、tile 384、stride 256、refine 0；全画面加均匀铺满的 tiles，每帧 9 个输入。没有固定四角种子、人工坐标或旧 VLM 框。240 帧模型推理 exit 0，保存 **2,160 个检测输入、4,928 个 raw proposal**，其中 2,245 个触及人工 tile 边界；保留全部候选，不以最高分或预先去重代替判断。
+
+本地 Qwen 沿用上轮时间证据 prompt、六格布局和 greedy generation 参数，证据帧预先均匀确定为 `[0,48,96,143,191,239]`。仅适配原生尺寸裁切和源 PTS 标签，不沿用旧 720×1280 的裁切常数。计划逐一分类首帧全部 32 个候选，并只将语义正例作为传播假设；没有把模型响应当真值。
+
+## Concrete Failure And Stop
+
+**语义 seed gate FAIL**：首帧 `t01-m01=[5,4,23,24]`、304 像素，是左上橙色表情图案唯一 raw proposal。模型原始响应为 `physical_object`，理由是“真实人物面部”。`semantics/04-input.png` 显示该卡通脸图案在 0/48/191/239 帧出现，96/143 帧不显示；主线程与独立 Agent 分别目检，确认该响应为语义假阴性，而非拍摄人物。该候选会被当前 semantic-positive-only seed 策略排除，不能用人工改分类后继续声称自动成功。
+
+确认反例后主动终止本次 Qwen 实验进程（exit 143），不重试或调参。实际取得 **13/32 条响应**（3 个 `overlay_sticker`、10 个 `physical_object`），14 张输入板包含 1 张未获得响应的在途输入。原始 manifest 的 RUNNING 状态保留，`executions.json` 明确覆盖为主动中断，不伪装全量分类完成。未运行 SAM2 传播；这不是 SAM2 本轮实测失败，也不证明将来的重发现或反向恢复不可行。
+
+另有 discovery-stage 反例：frame 239 / 7.966667s 的右上橙粉小图案可见，但全部 raw proposal 均未与离线验收区 `[500,0,540,50]` 相交。该区域只用于运行后的反例核对，不是推理 seed，也不是精确人工轮廓。此证据只证明检测阶段漏检，不能单独推断已有 tracker 无法补全。
+
+## Verification And Boundary
+
+`validate.py` exit 0：核验源视频摘要、240 张输入、2,160 个实际 tile 像素、4,928 个 mask 的原坐标边界/尺寸/像素数、13 条语义候选顺序与输入摘要、上述唯一候选和漏检反例。240 条 presence 均 UNKNOWN，accepted boundaries 为空，所有准确率为 null。没有穷尽轮廓及生命周期标注，不能把目检或模型响应当用户人工验收。独立 QA 的坐标/判断未被推理脚本读取。
+
+本轮在语义失败处停止：**无合格最终边界、无导出、无生产接入、未使用 holdout**。只复用了已有本地模型和依赖，所有媒体/模型进程断网隔离，未启停桌面应用、未访问 API Key。`systematic-debugging` 和 `verification-before-completion` 分别用于冻结参数反例验证与实际证据检查，没有借测试扩大实现范围。repo 仍仅更新本报告，无关 untracked 文件不动。
+
+`seal.py` exit 0，封存 8,080 个文件；`integrity-manifest.json` SHA-256 为 `97b82b61c1250fdf47863aa87fea952a1ea2db818b8111b8ccef4701ffd9ae9d`。本地 Qwen 文件摘要是运行后 provenance，不冒充加载前校验。所有已完成模型/媒体实验进程均已退出，唯一主动终止的是本轮语义 Python 进程。
+
+最终独立 `reviewer_high` 为 `accept`，无 blocking issue：分别查看语义反例和 frame 239 原图/候选，复算计数，核对未执行传播、UNKNOWN presence、空 accepted boundaries 和无 GT 泄漏；只接受本轮 FAIL 记录。主线程另已逐项核验全部 8,080 个文件摘要与完整文件集合，零不匹配，并通过 5 个外部脚本语法检查和 `git diff --check`。没有因纯报告更新运行无关应用 build/typecheck。
