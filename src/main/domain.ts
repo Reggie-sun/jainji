@@ -106,6 +106,14 @@ export const StickerLayerSchema = z.object({
   assetPath: AbsolutePath,
   assetFingerprint: z.string().min(1),
   rotationDeg: z.number().finite().min(-360).max(360),
+  activeRanges: z.array(z.object({
+    startMs: z.number().finite().nonnegative(),
+    endMs: z.number().finite().positive(),
+  }).strict()).min(1).max(MAX_AUTOMATIC_COVER_TRACKS * 50 * 6 + 1).superRefine((ranges, ctx) => {
+    if (ranges.some((range, index) => range.endMs <= range.startMs || (index > 0 && range.startMs < ranges[index - 1].endMs))) {
+      ctx.addIssue({ code: "custom", message: "贴纸显示时段必须正向、有序且不重叠" });
+    }
+  }).optional(),
   cover: z.object({
     stickerId: CoverStickerIdSchema,
     height: z.number().finite().gt(0).max(1),
@@ -152,6 +160,7 @@ export const EditTemplateSchema = z.object({
     if (layer.x + layer.width > 1 + (layer.type === "sticker" && layer.cover ? 1e-9 : 0)) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "layer exceeds the right edge" });
     if (layer.y >= 1) ctx.addIssue({ code: "custom", path: ["layers", index, "y"], message: "layer must start inside the frame" });
     if (layer.type === "sticker" && layer.cover) {
+      if (layer.activeRanges) ctx.addIssue({ code: "custom", path: ["layers", index, "activeRanges"], message: "覆盖层只能使用自身轨迹时段" });
       coverCount += 1;
       if (layer.cover.regionId) {
         if (regionIds.has(layer.cover.regionId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "regionId"], message: "覆盖框编号不得重复" });

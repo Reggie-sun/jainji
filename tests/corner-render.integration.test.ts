@@ -24,9 +24,14 @@ it.for(["manual", "agent"] as const)("renders %s stickers and only a local cente
       "bottom-left": { type: "none" },
       "bottom-right": { type: "sticker", sticker: "burst" },
     } }))
-    : materializePlan({ summary: "按需装饰", captions: [], priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }], filter: "warm", intensity: 0.4 }, "black-gold", { width: 720, height: 1280 }, assets, DecorationSchema.parse({ mode: "agent", productPrice: "19.90" }), { fonts: [DEFAULT_TEXT_FONT_FAMILY], stickers: [{ id: "heart", label: "爱心" }] });
+    : materializePlan({ summary: "按需装饰", captions: [], priceStyle: "classic", stickers: [
+      { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+      { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+      { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+      { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+    ], filter: "warm", intensity: 0.4 }, "black-gold", { width: 720, height: 1280 }, assets, DecorationSchema.parse({ mode: "agent", productPrice: "19.90" }), { fonts: [DEFAULT_TEXT_FONT_FAMILY], stickers: [{ id: "heart", label: "爱心" }] });
   expect(template.layers.filter((layer) => layer.type === "text")).toEqual([expect.objectContaining({ content: "¥ 19.90", textAlign: "center" })]);
-  expect(template.layers.filter((layer) => layer.type === "sticker")).toHaveLength(mode === "manual" ? 3 : 1);
+  expect(template.layers.filter((layer) => layer.type === "sticker")).toHaveLength(mode === "manual" ? 3 : 4);
   const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "source.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 250, width: 720, height: 1280, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
   const compiled = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, { ffmpegPath, fontResolver: { resolve: resolveFont }, textFilePath: (id) => path.join(directory, `${id}.txt`) });
   expect(compiled.textFiles.map((entry) => entry.content)).toEqual(["¥ 19.90"]);

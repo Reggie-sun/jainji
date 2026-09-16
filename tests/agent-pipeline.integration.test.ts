@@ -40,7 +40,12 @@ describe("agent to local export", () => {
         const shortlist = system.includes("你是视频贴纸选材师");
         const entries = shortlist ? JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]) as [number, string, string][] : [];
         const result = shortlist ? { candidates: [entries.find(([, label]) => label === "蝴蝶")![0]] }
-          : { summary: "根据画面选择滤镜", captions: [], filter: mode === "agent" ? "none" : "cool", intensity: mode === "agent" ? 0 : 0.3, ...(mode === "agent" ? { priceStyle: JSON.parse(system.match(/价格花字目录（仅外观，不含价格内容）：(\[.*?\])。/)![1])[0].id, stickers: [{ corner: "bottom-right", sticker: butterfly.id, width: 0.17, rotationDeg: -11 }] } : {}) };
+          : { summary: "根据画面选择滤镜", captions: [], filter: mode === "agent" ? "none" : "cool", intensity: mode === "agent" ? 0 : 0.3, ...(mode === "agent" ? { priceStyle: JSON.parse(system.match(/价格花字目录（仅外观，不含价格内容）：(\[.*?\])。/)![1])[0].id, stickers: [
+            { corner: "top-left", sticker: butterfly.id, width: 0.08, rotationDeg: 0 },
+            { corner: "top-right", sticker: butterfly.id, width: 0.08, rotationDeg: 0 },
+            { corner: "bottom-left", sticker: butterfly.id, width: 0.08, rotationDeg: 0 },
+            { corner: "bottom-right", sticker: butterfly.id, width: 0.17, rotationDeg: -11 },
+          ] } : {}) };
         response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       });
     });
@@ -109,11 +114,11 @@ describe("agent to local export", () => {
       }
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "text").every((layer) => layer.content === "¥ 19.90"))).toBe(true);
-      expect(batches.every(({ batch }) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker"))).toBe(true);
+      expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "sticker").length === (mode === "agent" ? 4 : 1))).toBe(true);
       if (mode === "agent") expect(new Set(batches.map(({ batch }) => JSON.stringify(batch.templateSnapshot.layers.find(layer => layer.type === "text")?.color))).size).toBe(4);
       if (mode === "agent") for (const { batch } of batches) {
         expect(batch.templateSnapshot.filter).toEqual({ presetId: "none", intensity: 0 });
-        expect(batch.templateSnapshot.layers.find(layer => layer.type === "sticker")).toMatchObject({ width: 0.17, rotationDeg: -11 });
+        expect(batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.width === 0.17 && layer.rotationDeg === -11)).toBe(true);
       }
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "¥ 19.90", fontFamily: DEFAULT_TEXT_FONT_FAMILY });

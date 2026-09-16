@@ -103,6 +103,7 @@ export class TemplateCompiler {
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
 
     for (const layer of sortedVisibleLayers(template)) {
+      if (layer.type === "sticker" && layer.activeRanges?.some(range => range.endMs > media.durationMs)) throw new Error("贴纸显示时段超出素材时长");
       if (layer.type === "text") {
         const fontPath = await options.fontResolver.resolve(layer.fontFamily);
         if (!fontPath) throw new Error(`font_missing:${layer.fontFamily}`);
@@ -215,7 +216,8 @@ export class TemplateCompiler {
           ? `main_h-overlay_h-main_h*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
           : `main_h*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
         : `main_h*${layer.y.toFixed(5)}`;
-      graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=${overlayX}:y=${overlayY}:format=auto[${nextLabel}]`);
+      const enabled = layer.activeRanges ? `:enable='${layer.activeRanges.map(range => `gte(t,${range.startMs / 1000})*lt(t,${range.endMs / 1000})`).join("+")}'` : "";
+      graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=${overlayX}:y=${overlayY}${enabled}:format=auto[${nextLabel}]`);
       baseLabel = nextLabel;
     }
 
@@ -227,7 +229,7 @@ export class TemplateCompiler {
     }
     graph.push(`[${baseLabel}]null[vout]`);
 
-    const scriptedCover = template.layers.some((layer) => layer.type === "sticker" && (layer.cover?.automatic || layer.cover?.opaqueBackground));
+    const scriptedCover = template.layers.some((layer) => layer.type === "sticker" && (layer.activeRanges || layer.cover?.automatic || layer.cover?.opaqueBackground));
     const graphPath = scriptedCover ? options.textFilePath("cover-graph") : undefined;
     if (graphPath) textFiles.push({ layerId: "cover-graph", path: graphPath, content: graph.join(";") });
 

@@ -11,6 +11,13 @@ const media: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4
 const plan = { summary: "手动价格", captions: [], filter: "warm", intensity: 0.4 };
 const sticker = { assetPath: "/tmp/sticker.png", assetFingerprint: "fixture" };
 const assets: StickerAssets = { sparkle: sticker, arrow: sticker, heart: sticker, burst: sticker };
+const automaticHeartStickers = () => [
+  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+];
+const automaticCatalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
 
 describe("local price styles", () => {
   it("retains manual styles and ignores retained manual appearance in automatic mode", () => {
@@ -34,8 +41,9 @@ describe("local price styles", () => {
     expect(graph.match(/drawtext=/g)).toHaveLength(1);
     if (style.shadow) expect(graph).toContain(`shadowx=${Math.round(style.shadow.xRatio * media.height)}`);
     if (style.backgroundColor) expect(graph).toContain("box=1");
-    const auto = materializePlan({ ...plan, stickers: [], priceStyle: style.id }, "black-gold", media, assets, { mode: "agent", productPrice: "19.9元30贴", priceStyle: style.id === "classic" ? "comic" : "classic" }, { fonts: [], stickers: [] });
-    expect(auto.layers[0]).toMatchObject({ color: style.color, content: "19.9元30贴" });
+    const auto = materializePlan({ ...plan, stickers: automaticHeartStickers(), priceStyle: style.id }, "black-gold", media, assets, { mode: "agent", productPrice: "19.9元30贴", priceStyle: style.id === "classic" ? "comic" : "classic" }, automaticCatalog);
+    expect(auto.layers.filter((layer) => layer.type === "sticker")).toHaveLength(4);
+    expect(auto.layers.find((layer) => layer.type === "text")).toMatchObject({ color: style.color, content: "19.9元30贴" });
     expect(materializePlan(plan, "black-gold", media, assets, { sticker: "none", priceStyle: style.id }).layers).toEqual([]);
   });
 

@@ -15,6 +15,12 @@ function plan(summary: string): PackagingPlan {
   return { summary, captions: [], filter: "cool", intensity: 0.3 };
 }
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
+const automaticHeartStickers = () => [
+  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+];
 
 describe("agent run lifecycle", () => {
   it.each(["source", "720p", "1080p"] as const)("freezes text size for %s output before compiling nonstandard sources", async (resolutionMode) => {
@@ -88,7 +94,7 @@ describe("agent run lifecycle", () => {
     const provider = vi.fn(async (_rule, _brief, _frames, _signal, _catalog, context) => {
       contexts.push(context);
       await new Promise<void>((resolve) => releases.push(resolve));
-      return { ...plan("包装"), priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] };
+      return { ...plan("包装"), priceStyle: "classic", stickers: automaticHeartStickers() };
     });
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue: async () => "task", stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
@@ -99,7 +105,7 @@ describe("agent run lifecycle", () => {
     expect(contexts.every((context) => context.totalOutputs === 10 && context.stickerUsage.length === 0)).toBe(true);
     releases.shift()!();
     await vi.waitFor(() => expect(contexts.length).toBe(firstWave + 1));
-    expect(contexts[firstWave].stickerUsage).toEqual([{ id: "heart", count: 1 }]);
+    expect(contexts[firstWave].stickerUsage).toEqual([{ id: "heart", count: 4 }]);
     expect(contexts[0].stickerUsage).toEqual([]);
     expect(contexts[firstWave].priceStyleUsage).toEqual([{ id: "classic", count: 1 }]);
     expect(contexts[0].priceStyleUsage).toEqual([]);
@@ -130,7 +136,7 @@ describe("agent run lifecycle", () => {
   });
   it("does not count rejected automatic plans as sticker usage or retry them", async () => {
     const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), priceStyle: "classic", intensity: 1.1, stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] });
+    const provider = vi.fn().mockResolvedValue({ ...plan("无效方案"), priceStyle: "classic", intensity: 1.1, stickers: automaticHeartStickers() });
     const enqueue = vi.fn();
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("a")], 10);
@@ -213,12 +219,13 @@ describe("agent run lifecycle", () => {
 
   it("passes the agent decoration catalog through to plan materialization", async () => {
     const catalog = { fonts: ["Noto Sans CJK SC"], stickers: [{ id: "heart", label: "爱心" }] };
-    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }], filter: "cool", intensity: 0.3 });
+    const provider = vi.fn().mockResolvedValue({ summary: "仅贴纸", captions: [], priceStyle: "classic", stickers: automaticHeartStickers(), filter: "cool", intensity: 0.3 });
     const enqueue = vi.fn().mockResolvedValue("task");
     const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent" }), autoCatalog: catalog, onChange: () => {} });
     runner.start("project", "clean", "", [media("agent.mp4")]);
     await runner.settled();
     expect(provider.mock.calls[0][4]).toEqual(catalog);
-    expect(enqueue.mock.calls[0][0].layers).toEqual([expect.objectContaining({ type: "sticker", assetPath: "/tmp/heart.png" })]);
+    expect(enqueue.mock.calls[0][0].layers).toHaveLength(4);
+    expect(enqueue.mock.calls[0][0].layers).toEqual(expect.arrayContaining([expect.objectContaining({ type: "sticker", assetPath: "/tmp/heart.png" })]));
   });
 });

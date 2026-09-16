@@ -9,7 +9,7 @@ import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
 const plan = { summary: "保留主体", captions: [], filter: "warm", intensity: 0.4 };
 const autoCatalog = { fonts: ["Noto Serif CJK SC"], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }] };
-const autoPlan = { ...plan, priceStyle: "classic", stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }] };
+const autoPlan = { ...plan, priceStyle: "classic", stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker: "heart", width: 0.12, rotationDeg: 0 })) };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }));
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
@@ -44,11 +44,11 @@ describe("agent provider boundary", () => {
     ['{"candidates":[1.5]}', "候选编号必须为 1 到 2 的整数"],
     ['{"candidates":["private-value"]}', "候选编号必须为 1 到 2 的整数"],
     ['{"candidates":[3]}', "候选编号必须为 1 到 2 的整数"],
-    [JSON.stringify({ candidates: Array(13).fill(1) }), "candidates 必须为最多 12 项的数组"],
-    ['{"candidates":null}', "candidates 必须为最多 12 项的数组"],
-    ['{}', "candidates 必须为最多 12 项的数组"],
+    [JSON.stringify({ candidates: Array(13).fill(1) }), "candidates 必须为 1 到 12 项的数组"],
+    ['{"candidates":null}', "candidates 必须为 1 到 12 项的数组"],
+    ['{}', "candidates 必须为 1 到 12 项的数组"],
     ['null', "必须返回仅含 candidates 的 JSON 对象"],
-    ['{"candidates":[],"private-key":"private-value"}', "不得包含 candidates 以外的字段"],
+    ['{"candidates":[1],"private-key":"private-value"}', "不得包含 candidates 以外的字段"],
   ])("explains invalid shortlists safely without retrying: %s", async (response, reason) => {
     const complete = vi.fn().mockResolvedValue(response);
     const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
@@ -60,13 +60,13 @@ describe("agent provider boundary", () => {
     expect(complete).toHaveBeenCalledTimes(1);
   });
 
-  it("provides a valid empty shortlist example and explicit number constraints", async () => {
-    const complete = vi.fn().mockResolvedValue('{"candidates":[]}');
+  it("provides a valid nonempty shortlist example and explicit number constraints", async () => {
+    const complete = vi.fn().mockResolvedValue('{"candidates":[1]}');
     const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
-    await expect(provider.shortlist("clean", "", [], new AbortController().signal, autoCatalog)).resolves.toEqual([]);
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, autoCatalog)).resolves.toEqual(["heart"]);
     const system = complete.mock.calls[0][0][0].content as string;
     const example = JSON.parse(system.split("结构示例：")[1].split("。")[0]);
-    expect(example).toEqual({ candidates: [] });
+    expect(example).toEqual({ candidates: [1] });
     expect(system).toContain("1 到 2 的整数");
     expect(system).toContain("不要 Markdown");
     expect(system).toContain("不得添加其他字段");
@@ -94,19 +94,14 @@ describe("agent provider boundary", () => {
     expect(messages[1].content).toContainEqual({ type: "image_url", image_url: { url: preview.url, detail: "low" } });
   });
 
-  it("gives an actually valid empty-catalog plan example and still rejects invented stickers without retrying", async () => {
+  it("rejects empty catalogs before model requests and invented stickers without retrying", async () => {
     const catalog = { fonts: [], stickers: [] };
-    const complete = vi.fn().mockResolvedValueOnce(JSON.stringify({ ...autoPlan, stickers: [] }))
-      .mockResolvedValueOnce(JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "mint", width: 0.12, rotationDeg: 0 }] }));
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...autoPlan, stickers: autoPlan.stickers.map(sticker => ({ ...sticker, sticker: "mint" })) }));
     const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
-    await expect(provider.plan("black-gold", "", [], new AbortController().signal, catalog)).resolves.toMatchObject({ stickers: [] });
-    const system = complete.mock.calls[0][0][0].content as string;
-    const example = JSON.parse(system.split("结构为 ")[1].split("。summary")[0]);
-    expect(example.stickers).toEqual([]);
-    expect(() => validatePlan(example, "black-gold", catalog)).not.toThrow();
-    expect(system).toContain('stickers 必须为 []');
-    await expect(provider.plan("black-gold", "", [], new AbortController().signal, catalog)).rejects.toThrow("贴纸不在本次候选目录中");
-    expect(complete).toHaveBeenCalledTimes(2);
+    await expect(provider.plan("black-gold", "", [], new AbortController().signal, catalog)).rejects.toThrow("没有可用的贴纸候选");
+    expect(complete).not.toHaveBeenCalled();
+    await expect(provider.plan("black-gold", "", [], new AbortController().signal, autoCatalog)).rejects.toThrow("贴纸不在本次候选目录中");
+    expect(complete).toHaveBeenCalledTimes(1);
   });
 
   it("requires model-selected price styles only in automatic plans, without fallback", async () => {
@@ -239,26 +234,26 @@ describe("agent provider boundary", () => {
   });
 
   it("lets the agent choose filter and geometry independently of every manual preset", () => {
-    const raw = { ...autoPlan, filter: "none", intensity: 0, stickers: [{ corner: "top-right", sticker: "heart", width: 0.17, rotationDeg: -11 }] };
+    const raw = { ...autoPlan, filter: "none", intensity: 0, stickers: [{ corner: "top-right", sticker: "heart", width: 0.17, rotationDeg: -11 }, ...autoPlan.stickers.filter(s => s.corner !== "top-right").map(s => ({ ...s, width: 0.1 }))] };
     for (const rule of RULE_TEMPLATES) {
       const template = materializePlan(raw, rule.id, { width: 640, height: 480 }, stickerAssets, { mode: "agent", productPrice: "19.90" }, autoCatalog);
       expect(template.filter).toEqual({ presetId: "none", intensity: 0 });
       expect(template.layers[0]).toMatchObject({ width: 0.17, rotationDeg: -11, y: 0.04 });
       expect(template.layers[0].x).toBeCloseTo(0.79);
       expect(template.name).not.toBe(rule.name);
-      expect(template.layers[1]).toMatchObject({ content: "¥ 19.90" });
+      expect(template.layers[4]).toMatchObject({ content: "¥ 19.90" });
     }
     expect(() => validatePlan({ ...plan, filter: "none", intensity: 0 }, "black-gold")).toThrow();
   });
 
   it("rejects missing or unsafe agent geometry instead of supplying a preset", () => {
     for (const geometry of [{}, { width: 0.21, rotationDeg: 0 }, { width: 0, rotationDeg: 0 }, { width: 0.12, rotationDeg: 16 }]) {
-      expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "top-right", sticker: "heart", ...geometry }] }, "black-gold", autoCatalog)).toThrow();
+      expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "heart", ...geometry }, ...autoPlan.stickers.slice(1)] }, "black-gold", autoCatalog)).toThrow(/width|rotationDeg/);
     }
-    expect(() => materializePlan({ ...autoPlan, stickers: ["top-left", "top-right", "bottom-left"].map(corner => ({ corner, sticker: "heart", width: 0.2, rotationDeg: 0 })) }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent" }, autoCatalog)).toThrow();
+    expect(() => materializePlan({ ...autoPlan, stickers: autoPlan.stickers.map(sticker => ({ ...sticker, width: 0.2 })) }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent" }, autoCatalog)).toThrow("贴纸总面积");
   });
 
-  it("cycles small catalogs for larger batches and preserves empty and single-output selection", async () => {
+  it("cycles small catalogs for larger batches, handles single outputs and rejects empty catalogs", async () => {
     const request = vi.fn().mockImplementation(async () => reply('{"candidates":[1]}'));
     const provider = new AgentProvider(request); provider.configure(connection);
     const choices = [];
@@ -268,8 +263,8 @@ describe("agent provider boundary", () => {
     expect(choices).toEqual([["heart"], ["sparkle"], ["heart"], ["sparkle"], ["heart"]]);
     await provider.shortlist("clean", "", [], new AbortController().signal, autoCatalog, { outputIndex: 0, totalOutputs: 1, stickerUsage: [] });
     expect(JSON.parse(request.mock.calls.at(-1)![1].body).messages[0].content).not.toContain("本条视觉探索方向");
-    request.mockResolvedValueOnce(reply('{"candidates":[]}'));
-    await expect(provider.shortlist("clean", "", [], new AbortController().signal, { fonts: [], stickers: [] }, { outputIndex: 0, totalOutputs: 4, stickerUsage: [] })).resolves.toEqual([]);
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, { fonts: [], stickers: [] }, { outputIndex: 0, totalOutputs: 4, stickerUsage: [] })).rejects.toThrow("没有可用的贴纸候选");
+    expect(request).toHaveBeenCalledTimes(6);
   });
 
   it("rotates eligible candidates despite forbidden entries and maps usage to current numbers", async () => {
@@ -449,7 +444,7 @@ describe("agent provider boundary", () => {
     const id = `uploaded-${"b".repeat(64)}`;
     const preview = { id, url: "data:image/jpeg;base64,dXBsb2Fk" };
     const catalog = { fonts: [], stickers: [{ id, label: "用户上传的文字贴纸" }], previews: [preview] };
-    const request = vi.fn().mockResolvedValueOnce(reply('{"candidates":[1]}')).mockResolvedValueOnce(reply(JSON.stringify({ summary: "选用用户上传", captions: [], priceStyle: "classic", stickers: [{ corner: "top-left", sticker: id, width: 0.12, rotationDeg: 0 }], filter: "cool", intensity: 0.3 })));
+    const request = vi.fn().mockResolvedValueOnce(reply('{"candidates":[1]}')).mockResolvedValueOnce(reply(JSON.stringify({ summary: "选用用户上传", captions: [], priceStyle: "classic", stickers: autoPlan.stickers.map(sticker => ({ ...sticker, sticker: id })), filter: "cool", intensity: 0.3 })));
     const provider = new AgentProvider(request); provider.configure(connection);
     expect(await provider.shortlist("clean", "", [], new AbortController().signal, catalog)).toEqual([id]);
     await provider.plan("clean", "", [], new AbortController().signal, catalog);

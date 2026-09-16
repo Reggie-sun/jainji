@@ -14,14 +14,14 @@ const catalog = (stickers = [
 });
 
 describe("cover sticker selection provider", () => {
-  it("requires a nonempty cover shortlist while ordinary decoration may stay empty", async () => {
+  it("requires nonempty shortlists for both coverage and four-corner decoration", async () => {
     const complete = vi.fn().mockResolvedValue('{"candidates":[]}');
     const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
     const signal = new AbortController().signal;
     await expect(provider.shortlist("clean", "", frames, signal, catalog(), undefined, "cover")).rejects.toThrow("不得为空");
     expect(complete.mock.calls[0][0][0].content).toContain("挑选 1 到 12");
     expect(complete.mock.calls[0][0][0].content).not.toContain('{"candidates":[]}');
-    await expect(provider.shortlist("clean", "", frames, signal, catalog())).resolves.toEqual([]);
+    await expect(provider.shortlist("clean", "", frames, signal, catalog())).rejects.toThrow("不得为空");
   });
   it("selects exactly one locally allowed built-in candidate by its ID", async () => {
     const complete = vi.fn().mockResolvedValue('{"sticker":"heart"}');

@@ -9,6 +9,7 @@ import { executionLimits } from "./execution-limits.js";
 import type { PriceStyleId } from "../shared/price-styles.js";
 import { manualCoverLayers, automaticCoverLayers, type FrozenCoverSticker } from "./cover-sticker.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
+import { fillUncoveredCorners } from "./automatic-corner-layout.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -123,6 +124,7 @@ export class AgentRunner {
           if (coverSticker) {
             const layers = coverTracks !== undefined ? automaticCoverLayers(coverSticker, source, dimensions, coverTracks) : manualCoverLayers(coverSticker, source, dimensions, item.version);
             template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers.map((layer) => ({ ...layer, cover: { ...layer.cover!, selection: { runId: run.id, round: item.version } } }))] });
+            if (this.dependencies.decorations?.mode === "agent") template = EditTemplateSchema.parse({ ...template, layers: fillUncoveredCorners(template.layers, source.durationMs) });
           }
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);

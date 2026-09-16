@@ -50,10 +50,21 @@ const server = createServer((request, response) => {
     if (systemText.includes("你是视频贴纸选材师")) {
       shortlistRequests += 1;
       const uploadText = userContent.find(item => item.type === "text" && item.text.includes("用户上传贴纸，目录编号"))?.text;
-      assert.ok(uploadText, "automatic shortlist receives uploaded artwork with its catalog number");
-      assert.equal(userContent.filter(item => item.type === (anthropic ? "image" : "image_url")).length, 4);
-      const number = Number(uploadText.match(/目录编号 (\d+)/)[1]);
+      const covering = systemText.includes("为原贴纸覆盖");
+      if (!covering) assert.ok(uploadText, "automatic decoration shortlist receives uploaded artwork with its catalog number");
+      assert.equal(userContent.filter(item => item.type === (anthropic ? "image" : "image_url")).length, uploadText ? 4 : 3);
+      const entries = JSON.parse(systemText.split("完整目录为 [编号,名称,资格]：")[1]);
+      const number = uploadText ? Number(uploadText.match(/目录编号 (\d+)/)[1]) : entries.find(entry => entry[1] === "爱心" && entry[2] === "允许")?.[0];
+      assert.ok(number, "cover shortlist selects an allowed builtin when the previous uploaded cover is excluded");
       const text = JSON.stringify({ candidates: [number] });
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
+      return;
+    }
+    if (systemText.includes("你是视频原贴纸覆盖层的选材师")) {
+      const sticker = userContent.find(item => item.type === "text" && item.text.startsWith("候选贴纸 1，ID："))?.text.match(/ID：([^，]+)/)?.[1];
+      assert.ok(sticker);
+      const text = JSON.stringify({ sticker });
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
       return;
@@ -78,7 +89,8 @@ const server = createServer((request, response) => {
     if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
     const automatic = systemText.includes('"stickers"');
-    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: [{ corner: "top-left", sticker: JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)[0], width: 0.12, rotationDeg: 0 }], priceStyle: "ice" } : {}), filter: "cool", intensity: 0.3 });
+    const sticker = JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)?.[0];
+    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => ({ corner, sticker, width: 0.12, rotationDeg: 0 })), priceStyle: "ice" } : {}), filter: "cool", intensity: 0.3 });
     response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
   });
 });
@@ -117,6 +129,8 @@ shell.openExternal = async (url) => { if (!url.startsWith("https://auth.openai.c
 app.setPath("userData", ${JSON.stringify(directory)});
 require("node:fs").watch(${JSON.stringify(directory)}, (_event, name) => { if (name === "quit.signal") app.quit(); });
 app.getAppPath = () => ${JSON.stringify(root)};
+process.defaultApp = false;
+process.resourcesPath = ${JSON.stringify(path.join(root, "resources"))}; // Resource fixture is independent of the isolated project cwd.
 app.commandLine.appendSwitch("remote-debugging-port", ${JSON.stringify(String(debugPort))});
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 let stickerPickerCalls = 0;
@@ -392,8 +406,11 @@ try {
   assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice, "library navigation preserves price and manual selection");
   assert.equal(await evaluate("[...document.querySelectorAll('main button')].some(button => button.textContent === '选择图片上传')"), false, "template picker no longer owns upload");
   await click(uploaded[0].label);
+  await evaluate("document.querySelector('.cover-sticker-toggle input').click()");
+  await waitFor("[...document.querySelectorAll('button')].some(button => button.textContent.includes('手动设置'))");
   await click("手动设置");
-  await evaluate("document.querySelector('.cover-sticker-toggle input').click(); document.querySelector('.cover-sticker-choice input').click()");
+  await waitFor("document.querySelector('.cover-sticker-choice input') !== null");
+  await evaluate("document.querySelector('.cover-sticker-choice input').click()");
   await waitFor("document.querySelector('.cover-sticker-frame') !== null");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled"), true, "unapplied cover edits block production");
   const dragCover = async (selector, dx, dy) => {
@@ -407,8 +424,10 @@ try {
   await dragCover('.cover-sticker-handle', 30, 20);
   await click("保存覆盖设置");
   await waitFor("document.body.innerText.includes('覆盖设置已应用')");
-  const coverSettings = (await evaluate("window.jianji.getState()")).project.coverSticker;
-  assert.ok(coverSettings.rectangle.x < 0.35 && coverSettings.rectangle.width > 0.3, "real pointer drag and resize update IPC settings");
+  const coverState = await evaluate("window.jianji.getState()");
+  const coverSettings = coverState.project.coverSticker;
+  const coverRectangle = coverSettings.mediaRegions[coverState.project.mediaItems[0].id][0].rectangle;
+  assert.ok(coverRectangle.x < 0.35 && coverRectangle.width > 0.3, "real pointer drag and resize update per-media IPC settings");
   assert.deepEqual(coverSettings.stickerIds, [uploaded[0].id]);
   await screenshot("04b-cover-sticker");
   await click("为此素材启用轨迹");
@@ -430,7 +449,8 @@ try {
   await click("保存覆盖设置");
   await waitFor("document.body.innerText.includes('覆盖设置已应用')");
   const motionState = await evaluate("window.jianji.getState()");
-  const coverTrack = motionState.project.coverSticker.tracks[motionState.project.mediaItems[0].id];
+  const coverMediaId = motionState.project.mediaItems[0].id;
+  const coverTrack = motionState.project.coverSticker.mediaRegions[coverMediaId][0].tracks[coverMediaId];
   assert.equal(coverTrack.keyframes.length, 2);
   assert.equal(coverTrack.keyframes[1].timeMs, 1000);
   assert.ok(coverTrack.keyframes[1].rectangle.x > coverTrack.keyframes[0].rectangle.x);
@@ -463,8 +483,8 @@ try {
   assert.equal(savedJob.batch.templateSnapshot.productPrice, twoLinePrice);
   const coverLayer = savedJob.batch.templateSnapshot.layers.find(layer => layer.cover);
   assert.equal(coverLayer.cover.stickerId, uploaded[0].id);
-  assert.equal(coverLayer.x, coverSettings.rectangle.x);
-  assert.equal(coverLayer.cover.height, coverSettings.rectangle.height);
+  assert.equal(coverLayer.x, coverRectangle.x);
+  assert.equal(coverLayer.cover.height, coverRectangle.height);
   assert.deepEqual(coverLayer.cover.motion, coverTrack, "motion is frozen through real IPC and export");
   assert.deepEqual(savedJob.batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content), [twoLinePrice]);
   assert.equal(savedJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath === path.join(directory, "uploaded-stickers", `${uploaded[0].id}.png`)), true, "uploaded image survives source removal and real FFmpeg export");
@@ -491,7 +511,7 @@ try {
   assert.equal(JSON.stringify(imported).includes("cc-switch-fixture-key"), false);
   await click("规则模板");
   await waitFor("document.querySelector('.cover-sticker-choice input') !== null");
-  await evaluate("document.querySelector('.cover-sticker-toggle input').click(); document.querySelector('.cover-sticker-choice input').click()");
+  await evaluate("document.querySelector('.cover-sticker-choice input').click(); document.querySelector('.cover-sticker-toggle input').click()");
   await click("保存覆盖设置");
   await waitFor("(async () => !(await window.jianji.getState()).project.coverSticker.enabled)()");
   await waitFor("document.querySelector('.cover-sticker-toggle input')?.checked === false");
@@ -499,19 +519,22 @@ try {
   await waitFor("document.querySelector('.cover-sticker-toggle input')?.checked === true");
   await waitFor("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled");
   await click("全部交给 Agent");
-  await waitFor("document.querySelector('.cover-agent-status') !== null");
+  assert.equal(await evaluate("document.querySelector('.cover-tracking-tabs button[aria-pressed=true]').textContent"), "手动设置", "decoration mode does not change tracking mode");
   await click("自己设置");
   assert.equal(await evaluate("document.querySelector('.cover-sticker-toggle input').checked"), true, "switching modes retains the unsaved manual cover draft");
   await click("全部交给 Agent");
+  await evaluate("[...document.querySelectorAll('.cover-tracking-tabs button')].find(button => button.textContent.includes('Agent')).click()");
   await waitFor("document.querySelector('.cover-agent-status') !== null");
-  assert.equal(await evaluate("document.querySelector('.cover-sticker-toggle') === null"), true, "full Agent mode has no separate cover switch");
-  assert.equal(await evaluate("document.querySelector('.cover-tracking-tabs') === null"), true, "full Agent mode has no manual tracking selector");
-  assert.equal(await evaluate("[...document.querySelectorAll('.cover-sticker-choice input')].every(input => input.checked)"), true, "empty stored cover candidates use every uploaded sticker in full Agent mode");
+  assert.equal(await evaluate("document.querySelector('.cover-sticker-toggle input').checked"), true, "full Agent mode retains the independent cover switch");
+  assert.equal(await evaluate("document.querySelector('.cover-tracking-tabs') !== null"), true, "tracking mode remains independent");
+  assert.equal(await evaluate("document.querySelectorAll('.cover-sticker-choice input').length"), 0, "automatic cover selection does not require manual candidates");
   assert.equal(await evaluate("document.querySelector('.cover-track-editor') === null"), true, "automatic recognition needs no hand-drawn keys");
   await evaluate("document.querySelector('.cover-agent-mode').scrollIntoView({block:'center'})");
   await screenshot("06a-automatic-cover");
   await evaluate("(async () => { const state = await window.jianji.getState(); await window.jianji.selectVisionConnection({ connectionId: state.connections.selected, model: state.connection.model }); })()");
-  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled"), false, "full Agent mode starts without saving or enabling cover settings");
+  await click("保存覆盖设置");
+  await waitFor("document.body.innerText.includes('覆盖设置已应用')");
+  assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled"), false, "automatic cover starts only after explicit settings are applied");
   await click("交给 Agent，制作");
   await waitFor("document.querySelector('.result-row .status-tag.failed') !== null");
   assert.equal(coverRequests, 3, "four seconds are scanned in three overlapping windows");
@@ -564,15 +587,19 @@ try {
   await click("规则模板");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "true", "library navigation preserves automatic mode");
   assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 0, "automatic mode hides the retained manual price style");
+  assert.equal(await evaluate("document.querySelector('#product-price').value"), "", "the new collection ID does not inherit another collection's manual text");
+  await evaluate("document.querySelector('#product-price').focus(); document.querySelector('#product-price').select()");
+  await send("Input.insertText", { text: twoLinePrice });
   await evaluate("document.querySelector('.directory-picker').click()");
   await waitFor("[...document.querySelectorAll('button')].some(button => button.textContent.includes('交给 Agent，制作') && !button.disabled)");
   await click("交给 Agent，制作");
   await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
-  assert.equal(shortlistRequests, 2);
+  assert.equal(shortlistRequests, 3, "one cover shortlist plus two automatic decoration shortlists");
   assert.equal(requests, 3);
   const autoState = await evaluate("window.jianji.getState()");
   const autoBatch = autoState.queue.batches.find(batch => batch.batch.tasks.some(task => task.status === "completed"));
   const autoJob = JSON.parse(await readFile(path.join(directory, "jobs", `${autoBatch.batch.id}.json`), "utf8"));
+  assert.equal(autoJob.batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && !layer.cover).length, 4, "coverage-off automatic production fills four corners");
   assert.equal(autoJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath.endsWith(`${uploaded[0].id}.png`)), true, "Agent-selected upload reaches real FFmpeg output");
   assert.deepEqual(autoJob.batch.templateSnapshot.layers.find(layer => layer.type === "text").color, { r: 224, g: 253, b: 255, a: 1 }, "Agent-selected price appearance reaches the frozen automatic export");
   const uploadedPath = path.join(directory, "uploaded-stickers", `${uploaded[0].id}.png`);

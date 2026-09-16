@@ -40,7 +40,11 @@ const server = createServer((request, response) => {
         const entries = JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]);
         result = { candidates: [(entries.find(entry => entry[1] === "爱心") ?? entries.find(entry => entry[1] === "星芒") ?? entries[0])[0]] };
       } else if (system.includes("你是视频原贴纸覆盖层的选材师")) result = { sticker: content.find(item => item.type === "text" && item.text.startsWith("候选贴纸 1，ID：")).text.match(/ID：([^，]+)/)[1] };
-      else result = { summary: "模拟包装", captions: [], stickers: [], priceStyle: "ice", filter: "none", intensity: 0 };
+      else {
+        const sticker = content.find(item => item.type === "text" && item.text.startsWith("贴纸候选 1，ID："))?.text.match(/ID：([^。，]+)/)?.[1];
+        assert.ok(sticker);
+        result = { summary: "模拟包装", captions: [], stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker, width: 0.12, rotationDeg: 0 })), priceStyle: "ice", filter: "none", intensity: 0 };
+      }
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
     } catch (error) { fixtureErrors.push(String(error)); response.writeHead(500); response.end("fixture assertion failed"); }
@@ -56,6 +60,7 @@ const bootstrap = path.join(directory, "bootstrap.cjs");
 await writeFile(bootstrap, `const { app, dialog } = require("electron");
 app.setPath("userData", ${JSON.stringify(directory)});
 app.getAppPath = () => ${JSON.stringify(root)};
+process.defaultApp = true; // Bootstrap loads the development build and its repository resources.
 app.commandLine.appendSwitch("remote-debugging-port", ${JSON.stringify(String(debugPort))});
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 dialog.showOpenDialog = async (_window, options) => ({ canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : [${JSON.stringify(source)}] });

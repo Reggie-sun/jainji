@@ -15,17 +15,27 @@ import { ExportBatchSchema } from "../src/main/domain";
 const plan = { summary: "仅保留价格", captions: [], filter: "warm", intensity: 0.4 };
 const options = { productPrice: "19.9元30贴", sticker: "none" };
 const dimensions = { width: 720, height: 1280 };
+const automaticAssets: StickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) as StickerAssets;
+const automaticHeartStickers = () => [
+  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+];
+const automaticCatalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
+const automaticPlan = (priceStyle = "classic") => ({ ...plan, stickers: automaticHeartStickers(), priceStyle });
 
 it.each(["19.9元\n到手30贴", "春日新品\n拍一发三", "一二三四五六七八九十一二\n一二三四五六七八九十一二", "%{n}\n优惠 50%"])("preserves arbitrary manual text through export: %s", async (productPrice) => {
   for (const mode of ["manual", "agent"] as const) {
     for (const size of [dimensions, { width: 1920, height: 1080 }]) {
-      const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [], priceStyle: "classic" } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
+      const template = materializePlan(mode === "agent" ? automaticPlan() : plan, "black-gold", size, automaticAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? automaticCatalog : undefined);
       const compile = (value: typeof template) => new TemplateCompiler().compile(value, { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id) => `/tmp/${id}.txt` });
       const compiled = await compile(JSON.parse(JSON.stringify(template)));
       expect(compiled.textFiles.map((entry) => entry.content)).toEqual(productPrice.split("\n"));
       expect(compiled.args.join(" ")).toContain("expansion=none");
       const changed = structuredClone(template);
-      if (changed.layers[0].type === "text") changed.layers[0].content = "模型擅自改写";
+      const priceLayer = changed.layers.find((layer) => layer.type === "text");
+      if (priceLayer?.type === "text") priceLayer.content = "模型擅自改写";
       await expect(compile(changed)).rejects.toThrow(/价格/);
     }
   }
@@ -34,9 +44,9 @@ it.each(["19.9元\n到手30贴", "春日新品\n拍一发三", "一二三四五�
 it.each(["manual", "agent"] as const)("compiles two centered price lines from one frozen layer in %s mode", async (mode) => {
   const productPrice = "9.9元到手5卷\n19.9元拍一发三";
   for (const size of [dimensions, { width: 1920, height: 1080 }]) {
-    const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [], priceStyle: "classic" } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
-    expect(template.layers).toHaveLength(1);
-    expect(template.layers[0]).toMatchObject({ content: productPrice });
+    const template = materializePlan(mode === "agent" ? automaticPlan() : plan, "black-gold", size, automaticAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? automaticCatalog : undefined);
+    expect(template.layers.filter((layer) => layer.type === "sticker")).toHaveLength(mode === "agent" ? 4 : 0);
+    expect(template.layers.find((layer) => layer.type === "text")).toMatchObject({ content: productPrice });
     const compiled = await new TemplateCompiler().compile(JSON.parse(JSON.stringify(template)), { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id) => `/tmp/${id}.txt` });
     expect(compiled.textFiles.map((entry) => entry.content)).toEqual(productPrice.split("\n"));
     expect(new Set(compiled.textFiles.map((entry) => entry.path)).size).toBe(2);
@@ -48,8 +58,8 @@ it.each(["manual", "agent"] as const)("compiles two centered price lines from on
 });
 
 it("rejects decorative model text in both modes at the local boundary", () => {
-  for (const catalog of [undefined, { fonts: [], stickers: [] }]) {
-    const raw = { ...plan, ...(catalog ? { stickers: [], priceStyle: "classic" } : {}), captions: [{ text: "细节之美", corner: "bottom-right", size: 0.026, ...(catalog ? { fontFamily: "Noto Sans CJK SC" } : {}) }] };
+  for (const catalog of [undefined, automaticCatalog]) {
+    const raw = { ...(catalog ? automaticPlan() : plan), captions: [{ text: "细节之美", corner: "bottom-right", size: 0.026, ...(catalog ? { fontFamily: "Noto Sans CJK SC" } : {}) }] };
     expect(() => validatePlan(raw, "black-gold", catalog)).toThrow();
   }
 });
@@ -68,7 +78,7 @@ it("retains strict model fields and template filter limits", () => {
 it.each(["19.9元30贴", "29.90元50片", "999999.99元1贴", "19.90元1000毫升"])("renders the exact manual quantity price without wrapping: %s", async (productPrice) => {
   for (const size of [dimensions, { width: 1920, height: 1080 }]) {
     for (const mode of ["manual", "agent"] as const) {
-      const template = materializePlan({ ...plan, ...(mode === "agent" ? { stickers: [], priceStyle: "classic" } : {}) }, "black-gold", size, {} as StickerAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? { fonts: [], stickers: [] } : undefined);
+      const template = materializePlan(mode === "agent" ? automaticPlan() : plan, "black-gold", size, automaticAssets, { mode, productPrice, sticker: "none" }, mode === "agent" ? automaticCatalog : undefined);
       const compiled = await new TemplateCompiler().compile(template, { ...size, sourcePath: "/tmp/source.mp4", durationMs: 1000 } as MediaItem, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/price.txt" });
       expect(compiled.textFiles.map((entry) => entry.content)).toEqual([productPrice]);
     }

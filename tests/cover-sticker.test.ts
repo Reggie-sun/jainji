@@ -21,6 +21,12 @@ const a = `uploaded-${"a".repeat(64)}`, b = `uploaded-${"b".repeat(64)}`;
 const options = { enabled: true, stickerIds: [a, b], rectangle: { x: 0.3, y: 0.4, width: 0.3, height: 0.2 } };
 const builtin = { assetPath: "/tmp/builtin.png", assetFingerprint: "sha256:builtin" };
 const assets = { sparkle: builtin, arrow: builtin, heart: builtin, burst: builtin, [a]: { assetPath: "/tmp/a.png", assetFingerprint: "sha256:a" }, [b]: { assetPath: "/tmp/b.png", assetFingerprint: "sha256:b" } };
+const automaticHeartStickers = () => [
+  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+];
 
 describe("reusable batch cover", () => {
   it.each(["failure", "cancel"])("shares cover selection without silent retries on %s", async (outcome) => {
@@ -66,10 +72,10 @@ describe("reusable batch cover", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, { ensure: async () => builtin, prepare: async () => assets, resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
-    const plan = vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [], priceStyle: "ice" as const } : {}) });
+    const plan = vi.spyOn(controller.provider, "plan").mockImplementation(async (_rule, _brief, _frames, _signal, catalog) => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => ({ corner, sticker: catalog!.stickers[0].id, width: 0.12, rotationDeg: 0 })), priceStyle: "ice" as const } : {}) }));
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
-    const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? [] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
+    const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? ["sparkle"] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
     const creativeDetect = vi.spyOn(controller.provider, "detectCovers");
     const visionDetect = vi.spyOn(controller.visionProvider, "detectCovers").mockResolvedValue([]);
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockImplementation(async (_ffmpeg, _source, recognize, signal) => {
@@ -147,19 +153,19 @@ describe("reusable batch cover", () => {
     const track = { startMs: 100, endMs: 900, keyframes: [{ timeMs: 0, rectangle: options.rectangle }, { timeMs: 1000, rectangle: { ...options.rectangle, x: 0.5 } }] };
     const frozen = resolveCoverSticker({ ...options, tracks: { [source.id]: track } }, assets, [])!;
     const enqueue = vi.fn(async (_template: EditTemplate) => crypto.randomUUID());
-    const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [], priceStyle: "mint" } : {}) }), enqueue, stickerAssets: assets,
-      decorations: DecorationSchema.parse({ mode, sticker: "none", productPrice: "手动内容" }), autoCatalog: mode === "agent" ? { fonts: [], stickers: [] } : undefined, coverSticker: frozen, onChange: () => {} });
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: automaticHeartStickers(), priceStyle: "mint" } : {}) }), enqueue, stickerAssets: assets,
+      decorations: DecorationSchema.parse({ mode, sticker: "none", productPrice: "手动内容" }), autoCatalog: mode === "agent" ? { fonts: [], stickers: [{ id: "heart", label: "爱心" }] } : undefined, coverSticker: frozen, onChange: () => {} });
     runner.start("project", "clean", "", [source], 4);
     await runner.settled();
     expect(enqueue).toHaveBeenCalledTimes(4);
     for (const [index, [template]] of enqueue.mock.calls.entries()) {
       expect(template.layers.filter((layer) => layer.type === "sticker" && layer.cover)).toHaveLength(1);
-      expect(template.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: assets[index % 2 ? b : a].assetPath, cover: { stickerId: index % 2 ? b : a } });
+      expect(template.layers.find((layer) => layer.type === "sticker" && layer.cover)).toMatchObject({ assetPath: assets[index % 2 ? b : a].assetPath, cover: { stickerId: index % 2 ? b : a } });
       expect(template.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "手动内容" });
-      expect(template.layers.find((layer) => layer.type === "sticker")).toMatchObject({ cover: { motion: track } });
+      expect(template.layers.find((layer) => layer.type === "sticker" && layer.cover)).toMatchObject({ cover: { motion: track } });
     }
     frozen.rectangle.x = 0;
-    expect(enqueue.mock.calls[0][0].layers.find((layer) => layer.type === "sticker")?.x).toBe(0.3);
+    expect(enqueue.mock.calls[0][0].layers.find((layer) => layer.type === "sticker" && layer.cover)?.x).toBe(0.3);
   });
   it("validates user rectangles and uploaded candidates without weakening ordinary settings", () => {
     expect(CoverStickerSchema.parse(options)).toEqual(options);

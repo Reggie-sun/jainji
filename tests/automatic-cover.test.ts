@@ -11,6 +11,12 @@ const id = `uploaded-${"a".repeat(64)}`;
 const rect = { x: 0.1, y: 0.1, width: 0.1, height: 0.1 };
 const asset = { assetPath: "/tmp/cover.png", assetFingerprint: "fixture" };
 const assets = { sparkle: asset, heart: asset, burst: asset, arrow: asset, [id]: asset };
+const automaticHeartStickers = () => [
+  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+];
 const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/video.mp4", displayName: "video", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
 const observations = [0, 250, 500, 750].map((timeMs) => ({ timeMs, targets: [
   { id: "a", rectangle: { ...rect, x: 0.1 + timeMs / 5000 } },
@@ -63,7 +69,7 @@ describe("fully automatic multi-target cover", () => {
     const tracks = automaticCoverTracks(observations, 1000);
     const detectCoverTracks = vi.fn(async () => tracks);
     const enqueue = vi.fn(async (_template: EditTemplate) => crypto.randomUUID());
-    const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [], priceStyle: "ice" } : {}) }), enqueue, decorations: DecorationSchema.parse({ mode, productPrice: "手动内容", sticker: "none" }), stickerAssets: assets, coverSticker: resolveCoverSticker(settings, assets, []), detectCoverTracks, autoCatalog: mode === "agent" ? { fonts: [], stickers: [] } : undefined, onChange: () => {} });
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: automaticHeartStickers(), priceStyle: "ice" } : {}) }), enqueue, decorations: DecorationSchema.parse({ mode, productPrice: "手动内容", sticker: "none" }), stickerAssets: assets, coverSticker: resolveCoverSticker(settings, assets, []), detectCoverTracks, autoCatalog: mode === "agent" ? { fonts: [], stickers: [{ id: "heart", label: "爱心" }] } : undefined, onChange: () => {} });
     runner.start("project", "clean", "", [source], 3);
     await runner.settled();
     expect(detectCoverTracks).toHaveBeenCalledTimes(1);
