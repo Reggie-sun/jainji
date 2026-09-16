@@ -11,5 +11,6 @@ export type DesktopState = AppState & {
   connections?: ConnectionLibrary;
   agentRun?: AgentRun;
   recentProjects?: { id: string; name: string; mediaCount: number; fileName: string }[];
+  activeRecentProjectId?: string;
   recentProjectsWarning?: string;
 };

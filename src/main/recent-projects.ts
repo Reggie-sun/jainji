@@ -55,6 +55,11 @@ export class RecentProjects {
     return entry.filePath;
   }
 
+  async idForPath(filePath: string): Promise<string | undefined> {
+    const resolved = await canonicalPath(filePath);
+    return this.entries.find((item) => item.filePath === resolved)?.id;
+  }
+
   remember(filePath: string, project: Pick<Project, "name" | "mediaItems">): Promise<void> {
     const name = project.name;
     const mediaCount = project.mediaItems.length;
@@ -66,6 +71,24 @@ export class RecentProjects {
       this.entries = entries;
       this.warning = undefined;
     }).catch(() => { this.warnWriteFailure(); });
+    this.work = pending;
+    return pending;
+  }
+
+  forget(id: string): Promise<void> {
+    const pending = this.work.catch(() => undefined).then(async () => {
+      const entries = this.entries.filter((item) => item.id !== id);
+      if (entries.length === this.entries.length) throw new Error("找不到该素材集，请刷新列表后重试。");
+      try {
+        await atomicWriteJson(this.filePath, { schemaVersion: 1, entries });
+        this.warning = undefined;
+      } catch {
+        this.warning = "素材集已删除，但保存列表暂时无法更新；重启后如再次出现，请重新删除该记录。";
+      }
+      // The project file has already been removed. Do not leave an unusable
+      // entry visible merely because the auxiliary index could not be written.
+      this.entries = entries;
+    });
     this.work = pending;
     return pending;
   }

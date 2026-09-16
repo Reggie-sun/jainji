@@ -6,11 +6,11 @@ import path from "node:path";
 import { z } from "zod";
 import { ApplicationService } from "./application.js";
 import { ArtifactVerifier } from "./artifact.js";
-import { DEFAULT_PRESET, EditTemplateSchema, ExportPresetSchema, type ExportPreset } from "./domain.js";
+import { DEFAULT_PRESET, EditTemplateSchema, ExportPresetSchema, now, type ExportPreset } from "./domain.js";
 import { checkCapabilities, FfmpegAdapter, refreshFontCapabilities, resolveFont, type CapabilityStatus } from "./ffmpeg.js";
-import { canonicalPath, fingerprintFile, isPathWithinDirectory } from "./paths.js";
+import { canonicalPath, fingerprintFile, isPathWithinDirectory, pathExists, pathsEqual } from "./paths.js";
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
-import { JobStore } from "./store.js";
+import { JobStore, ProjectStore } from "./store.js";
 import { ModelConnections } from "./model-connections.js";
 import { CoverReviewController } from "./cover-review-controller.js";
 import { CoverReviewEvidence } from "./cover-review-evidence.js";
@@ -43,10 +43,12 @@ const proofSchema = z.object({ mediaId: uuidSchema }).strict();
 const retrySchema = z.object({ taskIds: z.array(uuidSchema).optional() }).strict();
 const taskSchema = z.object({ taskId: uuidSchema }).strict();
 const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict();
+const savedProjectRenameSchema = z.object({ recentId: uuidSchema, name: MaterialNameSchema }).strict();
 
 let mainWindow: BrowserWindow | undefined;
 let service: ApplicationService;
 let recentProjects: RecentProjects;
+let activeRecentProjectId: string | undefined;
 let queue: ExportQueue;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
@@ -81,7 +83,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), recentProjectsWarning: recentProjects.warning };
+  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
 function notifyState(): void {
@@ -267,6 +269,7 @@ function registerHandlers(): void {
     coverReview?.assertIdle(); agent.assertIdle();
     await service.saveProject(result.filePath, name);
     await recentProjects.remember(result.filePath, service.currentProject);
+    activeRecentProjectId = await recentProjects.idForPath(result.filePath);
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {
@@ -285,6 +288,7 @@ function registerHandlers(): void {
     }
     coverReview?.assertIdle(); agent.assertIdle();
     service.newProject();
+    activeRecentProjectId = undefined;
     return publicState();
   });
   ipcMain.handle("project.load", async (event, input: unknown) => {
@@ -312,6 +316,50 @@ function registerHandlers(): void {
     }
     await queue.hydrate(service.currentProject.exportBatches);
     await recentProjects.remember(filePath, service.currentProject);
+    activeRecentProjectId = await recentProjects.idForPath(filePath);
+    return publicState();
+  });
+  ipcMain.handle("project.saved.rename", async (event, input: unknown) => {
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    const { recentId, name } = savedProjectRenameSchema.parse(input);
+    const filePath = recentProjects.resolve(recentId);
+    const active = service.projectPath ? await pathsEqual(service.projectPath, filePath) : false;
+    if (active) {
+      if (service.hasUnsavedChanges) throw new Error("当前素材集有尚未保存的更改，请先保存后再重命名。");
+      await service.saveProject(filePath, name);
+      await recentProjects.remember(filePath, service.currentProject);
+    } else {
+      const store = new ProjectStore(filePath);
+      const { project } = await store.load();
+      project.name = name;
+      project.updatedAt = now();
+      await store.save(project);
+      await recentProjects.remember(filePath, project);
+    }
+    return publicState();
+  });
+  ipcMain.handle("project.saved.remove", async (event, input: unknown) => {
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    const recentId = uuidSchema.parse(input);
+    const entry = recentProjects.list().find((item) => item.id === recentId);
+    if (!entry) throw new Error("找不到该素材集，请刷新列表后重试。");
+    const filePath = recentProjects.resolve(recentId);
+    const active = service.projectPath ? await pathsEqual(service.projectPath, filePath) : false;
+    const choice = await dialog.showMessageBox(mainWindow!, {
+      type: "warning",
+      title: "删除素材集",
+      message: `确定删除“${entry.name}”？`,
+      detail: `${active && service.hasUnsavedChanges ? "当前尚未保存的更改也会丢失。" : ""}素材集项目文件将移到系统回收站，原视频不会被删除。`,
+      buttons: ["移到回收站", "取消"],
+      defaultId: 1,
+      cancelId: 1,
+    });
+    if (choice.response !== 0) return null;
+    if (await pathExists(filePath)) await shell.trashItem(filePath);
+    const backupPath = `${filePath}.bak`;
+    if (await pathExists(backupPath)) await shell.trashItem(backupPath).catch(() => undefined);
+    await recentProjects.forget(recentId);
+    if (active) { service.newProject(); activeRecentProjectId = undefined; }
     return publicState();
   });
   ipcMain.handle("output.selectDirectory", async (event) => {

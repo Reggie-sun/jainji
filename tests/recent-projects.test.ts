@@ -46,6 +46,7 @@ it("deduplicates saved paths, updates names, and preserves concurrent registrati
   expect(recent.list()[0]).toMatchObject({ id, name: "改名后的素材" });
   expect(recent.list()).toHaveLength(2);
   expect(recent.resolve(id)).toBe(first);
+  await expect(recent.idForPath(first)).resolves.toBe(id);
   expect(() => recent.resolve(crypto.randomUUID())).toThrow("找不到");
 });
 
@@ -77,4 +78,24 @@ it("reports index write failure separately, retaining the last list and successf
   await recent.remember(second, createDefaultProject("第二组"));
   expect(recent.warning).toBeUndefined();
   expect(recent.list()).toHaveLength(2);
+});
+
+it("forgets a deleted collection and keeps it hidden when the auxiliary index write fails", async () => {
+  const { registry, first, second } = await fixture();
+  const recent = new RecentProjects(registry);
+  await recent.initialize();
+  await recent.remember(first, createDefaultProject("第一组"));
+  await recent.remember(second, createDefaultProject("第二组"));
+  const firstId = recent.list().find((entry) => entry.fileName === "first.json")!.id;
+  await recent.forget(firstId);
+  expect(recent.list().map((entry) => entry.fileName)).toEqual(["second.jianji-project.json"]);
+  const reopened = new RecentProjects(registry);
+  await reopened.initialize();
+  expect(reopened.list()).toEqual(recent.list());
+
+  const secondId = recent.list()[0].id;
+  vi.spyOn(store, "atomicWriteJson").mockRejectedValueOnce(new Error("ENOSPC"));
+  await expect(recent.forget(secondId)).resolves.toBeUndefined();
+  expect(recent.list()).toEqual([]);
+  expect(recent.warning).toContain("无法更新");
 });
