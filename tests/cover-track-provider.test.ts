@@ -35,17 +35,40 @@ describe("automatic cover tracking provider", () => {
     await expect(provider.detectCovers([image(500)], undefined, new AbortController().signal)).resolves.toEqual([frame(500, [])]);
   });
 
-  it("makes an empty overlap explicit without allowing later targets to be moved into it", async () => {
+  it("scopes completeness to supplied images and handles sticker visibility across a cut", async () => {
+    const previous = frame(3500);
+    const frames = [previous, frame(3750, []), frame(4000, [target("badge-1"), target("badge-2", 0.6)])];
+    const complete = vi.fn().mockResolvedValue(detected(frames));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    const result = await provider.detectCovers(frames.map(({ timeMs }) => image(timeMs)), previous, new AbortController().signal);
+    expect(result.map((frame) => frame.targets.map(({ rectangle }) => rectangle))).toEqual(frames.map((frame) => frame.targets.map(({ rectangle }) => rectangle)));
+    expect(result[2].targets[0].id).toBe(previous.targets[0].id);
+    expect(result[2].targets[1].id).not.toBe(previous.targets[0].id);
+    const instructions = complete.mock.calls[0][0][0].content;
+    expect(instructions).toContain("只判断本次实际提供的抽帧");
+    expect(instructions).toContain("不要因为未提供的帧不可见而返回 uncertain");
+    expect(instructions).toContain("普通口播字幕、字幕条不属于贴纸");
+    expect(instructions).toContain("贴纸内部的文字仍属于贴纸图案");
+    expect(instructions).toContain("目标消失的帧不要返回该目标");
+    expect(instructions).toContain("切镜本身不代表识别不确定");
+    expect(instructions).toContain("无法可靠区分、定位或穷尽可见贴纸时，返回 status=uncertain");
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it("rejects added or omitted overlap targets without feeding old detections back to the model", async () => {
     const complete = vi.fn().mockResolvedValue(detected([frame(250, []), frame(500)]));
     const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
-    await expect(provider.detectCovers([image(250), image(500)], frame(250, []), new AbortController().signal)).resolves.toEqual([frame(250, []), frame(500)]);
+    const result = await provider.detectCovers([image(250), image(500)], frame(250, []), new AbortController().signal);
+    expect(result[0]).toEqual(frame(250, []));
+    expect(result[1].targets).toHaveLength(1);
     const context = complete.mock.calls[0][0][1].content[0].text as string;
-    expect(context).toContain("第一帧 targets 必须为空数组");
-    expect(context).toContain("不得把后续帧新出现的目标提前到第一帧");
-    expect(context).toContain("status=uncertain");
+    expect(context).toContain("独立检查本窗口每张画面");
+    expect(context).not.toContain("上一窗口");
     complete.mockResolvedValueOnce(detected([frame(250), frame(500)]));
     await expect(provider.detectCovers([image(250), image(500)], frame(250, []), new AbortController().signal)).rejects.toThrow("重叠抽帧");
-    expect(complete).toHaveBeenCalledTimes(2);
+    complete.mockResolvedValueOnce(detected([frame(250, []), frame(500, [])]));
+    await expect(provider.detectCovers([image(250), image(500)], frame(250), new AbortController().signal)).rejects.toThrow("重叠抽帧");
+    expect(complete).toHaveBeenCalledTimes(3);
   });
 
   it.each([
@@ -81,20 +104,47 @@ describe("automatic cover tracking provider", () => {
 
     await expect(provider.detectCovers([image(250), image(500)], previous, new AbortController().signal)).resolves.toHaveLength(2);
     expect(complete).toHaveBeenCalledOnce();
-    expect(complete.mock.calls[0][0][1].content[0]).toMatchObject({ type: "text", text: expect.stringContaining("badge-1") });
+    expect(JSON.stringify(complete.mock.calls[0][0])).not.toContain("badge-1");
 
-    complete.mockResolvedValueOnce(detected([frame(250, [target("different")]), frame(500, [target("different")])]));
-    await expect(provider.detectCovers([image(250), image(500)], previous, new AbortController().signal)).rejects.toThrow("目标 ID 必须与上一窗口保持一致");
+    complete.mockResolvedValueOnce(detected([frame(250, [target("different", 0.2)]), frame(500, [target("different", 0.3)])]));
+    await expect(provider.detectCovers([image(250), image(500)], previous, new AbortController().signal)).resolves.toEqual([frame(250, [target("badge-1", 0.2)]), frame(500, [target("badge-1", 0.3)])]);
   });
 
-  it("rejects exchanged target boxes on the identical overlap image but tolerates small detection jitter", async () => {
+  it("aligns window-local IDs by geometry and tolerates small detection jitter", async () => {
     const previous = frame(250, [target("a", 0.1), target("b", 0.7)]);
     const complete = vi.fn().mockResolvedValue(detected([frame(250, [target("a", 0.7), target("b", 0.1)])]));
     const provider = new AgentProvider();
     provider.useChatGPT("vision", complete);
-    await expect(provider.detectCovers([image(250)], previous, new AbortController().signal)).rejects.toThrow("重叠抽帧");
+    await expect(provider.detectCovers([image(250)], previous, new AbortController().signal)).resolves.toEqual([frame(250, [target("b", 0.7), target("a", 0.1)])]);
     complete.mockResolvedValueOnce(detected([frame(250, [target("a", 0.102), target("b", 0.698)])]));
     await expect(provider.detectCovers([image(250)], previous, new AbortController().signal)).resolves.toHaveLength(1);
+  });
+
+  it("rejects ambiguous, duplicate or substantially displaced overlap matches", async () => {
+    const provider = new AgentProvider();
+    const complete = vi.fn(); provider.useChatGPT("vision", complete);
+    for (const [previous, next] of [
+      [frame(250, [target("a", 0.1), target("b", 0.11)]), frame(250, [target("x", 0.1), target("y", 0.11)])],
+      [frame(250, [target("a", 0.1), target("b", 0.7)]), frame(250, [target("x", 0.1), target("y", 0.102)])],
+      [frame(250), frame(250, [target("x", 0.6)])],
+    ]) {
+      complete.mockResolvedValueOnce(detected([next]));
+      await expect(provider.detectCovers([image(250)], previous, new AbortController().signal)).rejects.toThrow("重叠抽帧");
+    }
+    expect(complete).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not give a new target the continuing target's ID after local renumbering", async () => {
+    const previous = frame(250, [target("a")]);
+    const complete = vi.fn().mockResolvedValue(detected([frame(250, [target("b")]), frame(500, [target("b"), target("a", 0.6)])]));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    const result = await provider.detectCovers([image(250), image(500)], previous, new AbortController().signal);
+    expect(result[0].targets[0].id).toBe("a");
+    expect(result[1].targets[0].id).toBe("a");
+    expect(result[1].targets[1].id).not.toBe("a");
+    complete.mockResolvedValueOnce(detected([frame(500, [target("x"), target("y", 0.6)]), frame(750, [target("y", 0.62)])]));
+    const next = await provider.detectCovers([image(500), image(750)], result[1], new AbortController().signal);
+    expect(next[1].targets[0].id).toBe(result[1].targets[1].id);
   });
 
   it("does not dispatch after cancellation", async () => {
