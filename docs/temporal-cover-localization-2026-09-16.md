@@ -168,3 +168,35 @@ bwrap --unshare-net --die-with-parent --ro-bind / / --dev /dev --proc /proc \
 `integrity-manifest.json` 封存 16341 个文件，清单自身 SHA-256 为 `c95f95d8ee143dc7bf188b1da5cd93a02977e3414e784a6d45e68852f48d7e9d`。此处的可复查证据包括原帧、候选/mask、模型原始响应、取消记录、逐帧未知状态和失败结论；没有有效覆盖成片。所有本轮外部脚本语法解析通过；repository 仍只修改本报告，不为文档变更运行无关 typecheck/build。
 
 最终独立 `reviewer_high` 为 `accept with concerns`，无阻止记录当前失败结果的问题：完整复核 seal 的 16341 个文件集合及 SHA-256，确认 45 个原始候选语义输入无遗漏、无 GT 泄漏，并复核上述漏检与传播大框。其指出 frame 217 的异常大框主要由主体外的一个远端孤立像素触发；若以后使用组件过滤，必须作为新的自动规则独立验收，不能据此直接裁框通过。此 verdict 接受的是证据与 FAIL 记录，不是算法、模块或生产接入验收。
+
+# Reuse Adapter Implementation
+
+用户要求“复用适配”后，在 `main@afca495` 上新增隔离适配器，目录为 `/home/reggie/jianji-validation/20260916-reuse-adapter-eNbhVV/`。本次落实的是成熟模块间的薄适配和可验证接口，不是生产接入；保持用户原先的独立目录、无新依赖/权重、无付费服务、无应用重启和失败关闭约束。`systematic-debugging` 用于核对真实 API 行为，`verification-before-completion` 用于区分适配测试成功与视频验收失败。
+
+## Reused Modules And Contract
+
+检查本机 Transformers 4.57.1 发现：`Sam2VideoProcessor.post_process_masks` 接受 `max_sprinkle_area`，但实际 `Sam2ImageProcessorFast.post_process_masks` 的组件清理仍是 TODO，参数未执行。合成离群点测试证明默认输出和传入 16 的输出相同，不能只传参数便声称启用清理。
+
+`mask_adapter.py` 直接 import 现有 ComfyUI `comfy.ldm.sam3.tracker.fill_holes_in_mask_scores`，在原始低分辨率 logits 上使用其现有视频路径采用的 `max_area=16`，再调用 Transformers 原分辨率后处理。不复制连通域实现、不取最大组件、不用真值调参、不改模型 memory。该 helper 同时清理前景小组件和填充小背景孔；16 的单位是低分辨率像素，不能解释为原视频只删 16 像素。
+
+适配输入为有限浮点 N×1×H×W scores、原始尺寸及唯一 ID；输出保存 raw/candidate/removed/added 四类 mask、原始及清理后的 logits、边界和增删像素数。所有候选保持 boundary=UNVERIFIED、presence=UNKNOWN、identity=INPUT_HYPOTHESIS、export_permitted=false。单元测试专门证明：与噪点像素相同的真实小细节也可能被删，不能由清理完成自动授予导出权限。
+
+## Interface Repairs And Verification
+
+首轮真实重放因对象 ID 列表不匹配被拦下。原因是原生 processor 把传入 list 保存为待处理状态，model forward 又对其逐项 remove；若调用侧复用同一 list，自己的身份映射也被修改。`seed_session` 现在保留不可变 tuple，并传独立 list 副本；没有重排或猜测对象身份。失败输入目录和初版脚本保留在 `forward-failed-id-alias/`、`failed-id-alias-*.py`。
+
+独立 review 还指出 `assert` 不能承担完整性 gate。本次已改为显式异常，并绑定源视频、帧、模型、全部 seed proposal 的内容/顺序及 mask 摘要；`python -O` 下的拒绝测试通过。10 项测试实际 exit 0，覆盖无效维度/非有限 scores、重复 ID、空 mask 不判消失、多对象/非方形输出、增删像素、保留较大断开组件和 native ID 别名问题。早期测试另有 dtype fixture 错误，已修正为原生 `torch.float32`；执行记录区分测试夹具失败与模型失败。
+
+最终正向 82 帧、反向 159 帧均 exit 0，seed 帧重复，实际仍是 240 个不同源帧。`audit_adapter.py` 核验 964 个对象帧的原始 mask 与上一轮逐像素一致；272 个对象帧因输出清理发生变化，合计删除 725、增加 1428 个原生像素，964 条 presence 均为 UNKNOWN。计数包含重复 seed，不是 964 个唯一时刻或准确率。本轮没有重跑发现/语义，复用经 seal 核验的自动 seeds；没有消耗 holdout。
+
+## Outcome And Remaining Blocker
+
+局部改善可复现：forward frame 217 右下原框 `[15,1251,720,1280]` 变为 `[688,1251,720,1280]`，删除 1 个、增加 47 个原生像素；左上从 `[4,3,79,93]` 变为 `[4,3,79,38]`。这证明现成清理模块消除了这些离群像素造成的异常范围，不证明完整目标边界通过。
+
+**真实片段仍 FAIL**：reverse frame 45 的喇叭 candidate/raw 框均为 `[8,1247,32,1273]`，右侧黄色放射线在框外。主线程和独立 QA 分别查看 `audit/reverse-f045-zoom.png`，确认只包住核心、未包住整件图案。原始传播已经遗漏的细节不能由去噪适配补回。因此适配代码与接口验证已落地，但完整边界、唯一身份、逐帧生命周期及批次泛化尚未通过；不生成导出、不修改生产识别。
+
+`runtime-provenance.json` 补录实际 HF session/model 源码、模型/processor 配置摘要及 OpenCV 4.12.0 backend；明确为运行后对未修改本地环境的记录。Comfy 导入的 CUDA130 建议警告保留：实际清理走 CPU OpenCV/Torch，SAM 2 推理仍用原 Transformers CUDA128 环境，没有安装或升级。当前 runner 对本开发片段固定路由，校验失败可能留下输出目录；它不是已打包的通用生产组件。repository 仍仅更新本任务报告，无关 untracked 文件保留。
+
+`seal.py` 实际 exit 0，核验运行实现/配置摘要、失败 attempt 的代码快照、964 个 raw 对照计数和反例框，封存 5086 个文件。`integrity-manifest.json` SHA-256 为 `565ad76f4c18a7642fae28c6543c8ed06538f8fa509986b8ad0c3bc48607935e`。`executions.json` 是按工具结果记录的退出状态，不是完整日志；本地 README 说明独立目录复现方式。外部 Python 适配器运行其 10 项测试及真实重放，repository 文档修改只检查 diff/引用，不运行无关应用 typecheck/build。
+
+最终独立 `reviewer_high` 为 `accept with concerns`，无阻止交付隔离适配器和 FAIL 记录的问题。其指出 audit 本身没有逐项验证旧比较文件的 seal；主线程随后额外只读核验所比较的 964 个旧 mask 与 2 个旧结果 JSON，966 个摘要全部匹配已固定的 baseline seal。此验证支持本次精确重放结论，但未来重跑仍应先补足同样校验。运行后 provenance 与固定开发片段路由的限制继续保留；review 不批准生产或泛化。
