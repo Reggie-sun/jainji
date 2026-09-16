@@ -47,6 +47,26 @@ describe("cover review evidence", () => {
     await expect(store.verify(extracted.evidence)).resolves.toBeUndefined();
   });
 
+  it("batches long-video frame selection to keep the FFmpeg filter graph bounded", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-batched-"));
+    const source = path.join(directory, "source.mp4");
+    const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=30", "-t", "18", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
+    if (generated.code !== 0) throw new Error(generated.stderr);
+    const media = { id: randomUUID(), sourcePath: source, displayName: "source.mp4", fingerprint: await fingerprintFile(source), sizeBytes: 1, durationMs: 18_000, width: 64, height: 64, rotation: 0 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
+    const adapter = new FfmpegAdapter("ffmpeg", "ffprobe"), original = adapter.run.bind(adapter), selectionSizes: number[] = [];
+    vi.spyOn(adapter, "run").mockImplementation((args) => {
+      const select = args.find((arg) => arg.startsWith("select='"));
+      if (select) selectionSizes.push((select.match(/eq\(n\\,/g) ?? []).length);
+      return original(args);
+    });
+
+    const extracted = await new CoverReviewEvidence(path.join(directory, "evidence", randomUUID()), adapter).extract(media, randomUUID(), 0, new AbortController().signal);
+
+    expect(selectionSizes.length).toBeGreaterThan(1);
+    expect(Math.max(...selectionSizes)).toBeLessThanOrEqual(64);
+    expect(extracted.evidence).toHaveLength(selectionSizes.reduce((total, count) => total + count, 0));
+  });
+
   it("normalizes a shifted first decoded PTS while retaining its raw evidence timestamp", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-shifted-"));
     const source = path.join(directory, "shifted.mp4");

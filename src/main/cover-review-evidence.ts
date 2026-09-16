@@ -11,6 +11,7 @@ import { fingerprintFile } from "./paths.js";
 
 const SAMPLE_INTERVAL_MS = 250;
 const MAX_DETECTOR_DIMENSION = 1280;
+const MAX_FRAMES_PER_EXTRACTION = 64;
 
 interface ProbeFrame { index: number; pts: number; timeBase: number; timeMs: number; timeOriginSeconds: number; width: number; height: number }
 interface ProbeOutput { streams?: Array<{ time_base?: string }>; frames?: Array<{ best_effort_timestamp?: string | number; best_effort_timestamp_time?: string | number; width?: number; height?: number }> }
@@ -86,18 +87,22 @@ export class CoverReviewEvidence {
     const filesystem = await statfs(directory);
     const estimate = samples.reduce((total, frame) => total + frame.width * frame.height, 0);
     if (filesystem.bavail * filesystem.bsize < estimate) throw new Error("审阅证据磁盘空间不足。");
-    // FFmpeg limits expression recursion depth. A flat sum forms a left-deep
-    // tree and fails on longer clips; pair terms to keep depth logarithmic.
-    let terms = samples.map((frame) => `eq(n\\,${frame.index})`);
-    while (terms.length > 1) terms = Array.from({ length: Math.ceil(terms.length / 2) }, (_, index) => terms[index * 2 + 1] === undefined ? terms[index * 2] : `(${terms[index * 2]}+${terms[index * 2 + 1]})`);
-    const selectors = terms[0];
     const prefix = randomUUID();
-    const originalPattern = path.join(directory, `${prefix}-%08d.png`);
     const cleanupAttempt = async () => { await Promise.all((await readdir(directory)).filter((name) => name.startsWith(prefix)).map((name) => unlink(path.join(directory, name)).catch(() => undefined))); };
     try {
-    const extracted = await cancellable(this.ffmpeg.run(["-hide_banner", "-loglevel", "error", "-nostdin", "-i", media.sourcePath, "-vf", `select='${selectors}'`, "-vsync", "0", originalPattern]), signal);
-    if (extracted.code !== 0) throw new Error("无法抽取审阅证据帧。");
-    const files = (await readdir(directory)).filter((name) => new RegExp(`^${prefix}-\\d{8}\\.png$`).test(name)).sort();
+    for (let offset = 0; offset < samples.length; offset += MAX_FRAMES_PER_EXTRACTION) {
+      const batch = samples.slice(offset, offset + MAX_FRAMES_PER_EXTRACTION);
+      // Keep each extraction bounded and its selector tree shallow enough for
+      // FFmpeg's expression recursion limit.
+      let terms = batch.map((frame) => `eq(n\\,${frame.index})`);
+      while (terms.length > 1) terms = Array.from({ length: Math.ceil(terms.length / 2) }, (_, index) => terms[index * 2 + 1] === undefined ? terms[index * 2] : `(${terms[index * 2]}+${terms[index * 2 + 1]})`);
+      const selectors = terms[0];
+      const batchIndex = String(offset / MAX_FRAMES_PER_EXTRACTION).padStart(4, "0");
+      const originalPattern = path.join(directory, `${prefix}-${batchIndex}-%08d.png`);
+      const extracted = await cancellable(this.ffmpeg.run(["-hide_banner", "-loglevel", "error", "-nostdin", "-i", media.sourcePath, "-vf", `select='${selectors}'`, "-vsync", "0", originalPattern]), signal);
+      if (extracted.code !== 0) throw new Error("无法抽取审阅证据帧。");
+    }
+    const files = (await readdir(directory)).filter((name) => new RegExp(`^${prefix}-\\d{4}-\\d{8}\\.png$`).test(name)).sort();
     if (files.length !== samples.length) throw new Error("审阅证据帧不完整。");
     const evidence: CoverEvidence[] = [], images: CoverDetectionImage[] = [];
     for (const [index, name] of files.entries()) {
