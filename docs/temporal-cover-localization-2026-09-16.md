@@ -228,3 +228,17 @@ bwrap --unshare-net --die-with-parent --ro-bind / / --dev /dev --proc /proc \
 `seal.py` exit 0，封存 8,080 个文件；`integrity-manifest.json` SHA-256 为 `97b82b61c1250fdf47863aa87fea952a1ea2db818b8111b8ccef4701ffd9ae9d`。本地 Qwen 文件摘要是运行后 provenance，不冒充加载前校验。所有已完成模型/媒体实验进程均已退出，唯一主动终止的是本轮语义 Python 进程。
 
 最终独立 `reviewer_high` 为 `accept`，无 blocking issue：分别查看语义反例和 frame 239 原图/候选，复算计数，核对未执行传播、UNKNOWN presence、空 accepted boundaries 和无 GT 泄漏；只接受本轮 FAIL 记录。主线程另已逐项核验全部 8,080 个文件摘要与完整文件集合，零不匹配，并通过 5 个外部脚本语法检查和 `git diff --check`。没有因纯报告更新运行无关应用 build/typecheck。
+
+# MiniMax Single-Case API Comparison
+
+用户要求调用 MiniMax，并明确允许既有连接模块在进程内使用已保存 Key 认证后，在 `/home/reggie/jianji-validation/20260916-minimax-semantic-IkW9AA/` 执行一次隔离 Node 请求。复用生产 `ConnectionStore` 与 `completeApi`，不启动 Electron、不改连接或生产代码、不复制凭据；bwrap 将 host 只读挂载，仅证据目录持久可写。模型为现有 `MiniMax-M3` / Responses，锁定官方 `https://api.minimaxi.com/v1`；最多一次请求、禁止 redirect、无重试。调用前 `reviewer_xhigh` 指出 endpoint 未完全冻结，修复并绑定实际执行 bundle 摘要后复审 accept。
+
+使用上一轮 `semantics/04-input.png` 的完全相同 PNG 字节与 prompt，不附正确答案。图片 SHA-256 `2f730626fd6e2ac9b3635a97cecd4a08f3703bc8040622dd7fa3d26680a8db6e`，prompt SHA-256 `dec98691628a133c0fd5003cce93a0025b62487d4e2ae1186526d8de0ec2487b`。输出上限 1024 tokens，保留已保存推理档位；它与 Qwen 的 192-token greedy 设置不同，因此仅为同图同 prompt 的单例对照，不是严格同设置 benchmark，也没有使用 holdout。
+
+**真实 API 接通，单例语义仍 FAIL**：唯一请求 HTTP 200，Responses status=completed，耗时 4243ms；服务返回 3336 input / 51 output / 3387 total tokens。JSON 合法，但分类仍为 `physical_object`，理由描述背景产品包装，而不是红框中的左上橙色贴图。原响应保存在 `result.json`，运行后的 Agent 验收另存 `evaluation.json`；不是用户人工验收，也不是整个模型准确率。该响应提示可能存在目标指向或小目标理解问题，但单次结果不能隔离根因，不能直接断言换模型无效或 MiniMax 不支持视觉。
+
+没有追加请求、传播、媒体导出或生产接入。原封存输入/源数据未修改，API Key 未向 Agent 展示或写入证据；预检编译、Node syntax check 和断网 inspect 通过，实际 API 进程 exit 0。仍保持整体 FAIL 与 exportPermitted=false。
+
+`seal.mjs` 离线校验输入、prompt、源码、实际 bundle、单次完成响应后封存 8 个文件，seal SHA-256 为 `9af58b13cb8f90167ef785690a2eee1fba0f6f89e52d55a348ce6b688032c861`。主线程再独立复核完整文件集合及 8 个摘要，全部一致；只提交本报告，保留无关文件。
+
+调用后独立 `reviewer_xhigh` 为 `accept`，复核输入图片、模型原文、单例 FAIL 归因边界及全部 8 个摘要，无 blocking issue；不是生产或泛化验收通过。
