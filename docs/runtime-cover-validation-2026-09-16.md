@@ -86,3 +86,23 @@ Verification：62 项相关测试通过；`npm run build`（含 typecheck）通�
 证据包含 `state-16.json`、`state-17.json`、`state-15.json`、`requests.jsonl`、`response-1.json` 至 `response-56.json`、`observations-16.json`、`observations-15.json`、两张 contact sheet 与本地任务记录。实验 MP4 在上述证据目录的 `output/` 下，文件名分别为 `竞品详情-抖音电商罗盘 (16)_edited.mp4` 和 `竞品详情-抖音电商罗盘 (15)_edited.mp4`；均为未通过画面验收的诊断产物。
 
 独立 `reviewer_xhigh` 根据新增真实证据 scoped re-review 改为 `reject`：不发布未匹配观测直接放行的实验，恢复数量及几何无法可靠关联时的拒绝。当前 blocker 是所选视觉模型在这些素材上的漏检、定位差异和明确不确定，而非 FFmpeg。下一步需明确选择另一视觉模型做相同素材验证，不能以更多容错或猜测轨迹冒充覆盖成功。原始 JSON 格式失败本轮未复现，仍不能声称其根因已解决。
+
+## Luna Live Validation
+
+用户先指定 ChatGPT `gpt-6-astra / high`，随后明确改用 `gpt-5.6-luna`。最终实际测试为视觉 `gpt-5.6-luna / high`、创作 `gpt-5.6-luna / medium`；未调用 Astra。账户实时模型列表确认 Luna 支持图片和 high 档位。
+
+验证目录为 `/home/reggie/jianji-validation/20260916-luna-cover/`。独立 Electron userData 只读挂载应用自己的 `codex/auth.json`，没有复制 API Key 或 OAuth 凭据，也未访问全局 Codex 登录。测试配置只含 ChatGPT 的模型选择，不含 API profiles。覆盖显式开启、trackingMode=agent、装饰 mode=agent，手动展示文字保持此前的 `19.9元2支`；每份素材各一次新制作，无重试、无模型切换、无手动框或固定方案回退。
+
+`connections.png` 与 renderer 实际 select 值确认创作 medium、视觉 high 分开显示。诊断启动器只记录 thread/turn 的模型、角色、effort、完成状态及模型最终文本，不记录完整 RPC、请求图片、账户信息或认证内容。`requests.jsonl` 中 6 次 creation 请求为 medium，6 次 vision 请求为 high；创作仅完成贴纸初筛、选款，因后续识别失败尚未进入最终样式方案阶段。
+
+| Source | Shared frame / responses | Result |
+| --- | --- | --- |
+| `(15).mp4` | 1750 ms；response-3 为 1 个目标，response-4 为 2 个 | 1.75–3.50 秒窗口无法关联，未导出 |
+| `(16).mp4` | 1750 ms；response-7 为 5 个目标，response-8 为 3 个 | 同上，未导出 |
+| `(17).mp4` | 1750 ms；response-11 为 2 个目标，response-12 为 3 个 | 同上，未导出 |
+
+`state-15.json`、`state-16.json`、`state-17.json` 均为 agentRun finished / item failed / queue batches 空；本轮没有成片、FFmpeg 导出、成片 ffprobe、成片播放或冻结模板重试验收。模型 JSON 均合法并返回 status=ok，不等于其逐帧枚举正确。独立 `test_analyzer` 只读复核前两份响应、请求分工和本地计数拒绝逻辑，确认当前证据不支持“本地误拒”；第三份最终结果由主线程核对。
+
+按生产抽帧参数重新提取的 `source15-1750.jpg`、`source16-1750.jpg` 经主线程画面检查：15 的左右上角图案都在，response-3 漏掉右上角；16 的两个上角和底部居中表情可见，但底部左右角图案已不在，response-7 仍报告它们。更换模型后仍出现跨窗口漏检/残留目标，不能继续将问题归因于 MiniMax 单一服务商，也不能放松关联保护。多图输入的逐帧对应/消失判断需要另行隔离验证，目前不能据此断言传输排序、模型或 prompt 的唯一根因。
+
+本轮未改生产代码，main 继续保留 `d5372ea` 的失败保护；未改用户项目或创作配置。Luna 选择已在独立验证窗口保存，原桌面窗口的连接配置仍为 MiniMax；原窗口存在未保存编辑，尝试关闭时取消了保存/退出，未强制丢弃或覆盖。配置接通和真实模型响应已验证，可靠覆盖与有效成片验收均未通过。
