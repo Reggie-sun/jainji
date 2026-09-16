@@ -4,7 +4,7 @@ import { AgentStartSchema, GenerateBriefSchema, MAX_AGENT_OUTPUTS } from "../sha
 import type { ApplicationService } from "./application.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { DEFAULT_PRESET, type MediaItem } from "./domain.js";
-import { AgentProvider, type AgentDecorationCatalog } from "./agent-provider.js";
+import { AgentProvider, ProviderError, type AgentDecorationCatalog } from "./agent-provider.js";
 import { AgentRunner } from "./agent-runner.js";
 import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
@@ -13,7 +13,7 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
 import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from "./asset-library.js";
-import { AUTOMATIC_STICKERS } from "../shared/automatic-stickers.js";
+import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { stickerPreview } from "./sticker-preview.js";
@@ -102,9 +102,11 @@ export class AgentController {
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const project = this.service.currentProject;
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
-      const coverSticker = resolveCoverSticker(project.coverSticker, this.stickerAssets, history);
-      const autoCatalog = decorations.mode === "agent" ? await this.autoCatalog(this.preparingController.signal) : undefined;
-      const stickerAssets = decorations.mode === "agent" ? { ...this.stickerAssets } : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets;
+      const automaticCover = project.coverSticker?.enabled && project.coverSticker.trackingMode === "agent" ? structuredClone(project.coverSticker) : undefined;
+      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history);
+      const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
+      const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
+      const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets) };
       this.preparingController.signal.throwIfAborted();
       for (const family of decorationFontFamilies(decorations)) {
         const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
@@ -121,10 +123,45 @@ export class AgentController {
       this.preparingController.signal.throwIfAborted();
       const projectId = this.service.currentProject.id;
       const previews = new Map<string, Promise<{ id: string; url: string }>>();
-      for (const preview of autoCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
+      for (const preview of availableCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
+      const prepareCandidates = async (ids: string[], catalog: AgentDecorationCatalog, signal: AbortSignal): Promise<AgentDecorationCatalog> => {
+        const candidatePreviews = [];
+        for (const id of ids) {
+          signal.throwIfAborted();
+          if (!catalog.stickers.some((entry) => entry.id === id)) throw new ProviderError("模型选择了目录外的贴纸，本条已停止。");
+          let preview = previews.get(id);
+          if (!preview) {
+            preview = (async () => {
+              const asset = stickerAssets[id] ?? await this.library!.ensure(id);
+              signal.throwIfAborted();
+              const url = await stickerPreview(this.ffmpeg, asset, signal);
+              (stickerAssets as Record<string, typeof asset>)[id] = asset;
+              return { id, url };
+            })();
+            previews.set(id, preview);
+          }
+          candidatePreviews.push(await preview);
+        }
+        signal.throwIfAborted();
+        return { fonts: [], stickers: ids.map((id) => catalog.stickers.find((entry) => entry.id === id)!), previews: candidatePreviews };
+      };
+      const previousCoverId = [...history].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+        .flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))[0];
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       this.runner = new AgentRunner({
         coverSticker,
+        selectCoverSticker: automaticCover ? async (frames, signal) => {
+          const eligible = availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id));
+          const stickers = eligible.length > 1 ? eligible.filter(({ id }) => id !== previousCoverId) : eligible;
+          const catalog = { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };
+          if (!stickers.length) throw new ProviderError("没有可用的自动覆盖贴纸，请检查本地素材库。");
+          const ids = await this.provider.shortlist(parsed.ruleId, `为本批原贴纸覆盖选择图案，本批统一一款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
+          const candidates = await prepareCandidates(ids, catalog, signal);
+          const stickerId = await this.provider.selectCoverSticker(frames, signal, candidates);
+          signal.throwIfAborted();
+          if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本批已停止。");
+          return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
+        } : undefined,
         detectCoverTracks: (item, signal) => recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => this.provider.detectCovers(images, previous, currentSignal), signal),
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
@@ -134,24 +171,7 @@ export class AgentController {
             return this.provider.plan(rule, brief, frames, signal, undefined, undefined, await manualPreviews);
           }
           const ids = await this.provider.shortlist(rule, brief, frames, signal, catalog, selection);
-          const candidatePreviews = [];
-          for (const id of ids) {
-            signal.throwIfAborted();
-            let preview = previews.get(id);
-            if (!preview) {
-              preview = (async () => {
-                const asset = stickerAssets[id] ?? await this.library!.ensure(id);
-                signal.throwIfAborted();
-                const url = await stickerPreview(this.ffmpeg, asset, signal);
-                (stickerAssets as Record<string, typeof asset>)[id] = asset;
-                return { id, url };
-              })();
-              previews.set(id, preview);
-            }
-            candidatePreviews.push(await preview);
-          }
-          signal.throwIfAborted();
-          const candidates = { fonts: [], stickers: ids.map((id) => catalog.stickers.find((entry) => entry.id === id)!), previews: candidatePreviews };
+          const candidates = await prepareCandidates(ids, catalog, signal);
           return this.provider.plan(rule, brief, frames, signal, candidates, selection);
         },
         enqueue: async (template, item, signal) => {

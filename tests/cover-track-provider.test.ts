@@ -7,6 +7,12 @@ const frame = (timeMs: number, targets = [target("badge-1")]) => ({ timeMs, targ
 const detected = (frames = [frame(0), frame(250, [target("badge-1", 0.2), target("badge-2", 0.6)])]) => JSON.stringify({ status: "ok", frames });
 
 describe("automatic cover tracking provider", () => {
+  it("reports the uncertain source time window without retrying or treating it as no targets", async () => {
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({ status: "uncertain", frames: [frame(1750), frame(2000)] }));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    await expect(provider.detectCovers([image(1750), image(2000)], undefined, new AbortController().signal)).rejects.toThrow("1.75–2.00 秒");
+    expect(complete).toHaveBeenCalledTimes(1);
+  });
   it("returns every detected target for every submitted frame", async () => {
     const complete = vi.fn().mockResolvedValue(detected());
     const provider = new AgentProvider();

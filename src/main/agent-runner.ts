@@ -19,6 +19,7 @@ interface RunnerDependencies {
   resolutionMode?: ExportSettings["resolutionMode"];
   autoCatalog?: AgentDecorationCatalog;
   coverSticker?: FrozenCoverSticker;
+  selectCoverSticker?(frames: string[], signal: AbortSignal): Promise<FrozenCoverSticker>;
   detectCoverTracks?(media: MediaItem, signal: AbortSignal): Promise<AutomaticCoverTrack[]>;
   onChange(): void;
 }
@@ -57,6 +58,7 @@ export class AgentRunner {
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
     const pendingCoverTracks = new Map<string, Promise<AutomaticCoverTrack[]>>();
+    let pendingCoverSticker: Promise<FrozenCoverSticker> | undefined;
     const remainingVersions = new Map<string, number>();
     for (const source of media) remainingVersions.set(source.id, (remainingVersions.get(source.id) ?? 0) + 1);
     const worker = async () => {
@@ -78,8 +80,11 @@ export class AgentRunner {
           }
           const frames = await extracting;
           signal.throwIfAborted();
+          if (this.dependencies.selectCoverSticker && !pendingCoverSticker) pendingCoverSticker = this.dependencies.selectCoverSticker(frames, signal);
+          const coverSticker = pendingCoverSticker ? await pendingCoverSticker : this.dependencies.coverSticker;
+          signal.throwIfAborted();
           let coverTracks: AutomaticCoverTrack[] | undefined;
-          if (this.dependencies.coverSticker?.automatic) {
+          if (coverSticker?.automatic) {
             if (!this.dependencies.detectCoverTracks) throw new ProviderError("自动覆盖识别服务不可用，本条已停止。");
             item.summary = "正在自动识别并追踪全部原贴纸…";
             this.dependencies.onChange();
@@ -101,8 +106,8 @@ export class AgentRunner {
           signal.throwIfAborted();
           const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
           let template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
-          if (this.dependencies.coverSticker) {
-            const layers = coverTracks !== undefined ? automaticCoverLayers(this.dependencies.coverSticker, source, dimensions, coverTracks) : [coverLayerForMedia(this.dependencies.coverSticker, source, dimensions)];
+          if (coverSticker) {
+            const layers = coverTracks !== undefined ? automaticCoverLayers(coverSticker, source, dimensions, coverTracks) : [coverLayerForMedia(coverSticker, source, dimensions)];
             template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers] });
           }
           if (selection && "stickers" in plan) {

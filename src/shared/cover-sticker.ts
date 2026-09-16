@@ -1,6 +1,8 @@
 import { z } from "zod";
+import { isAutomaticStickerAllowed } from "./automatic-stickers.js";
 
-export const CoverStickerIdSchema = z.string().regex(/^uploaded-[a-f0-9]{64}$/, "请选择自己上传的贴纸");
+const UploadedCoverStickerIdSchema = z.string().regex(/^uploaded-[a-f0-9]{64}$/, "请选择自己上传的贴纸");
+export const CoverStickerIdSchema = z.string().refine((id) => /^uploaded-[a-f0-9]{64}$/.test(id) || isAutomaticStickerAllowed(id), "覆盖贴纸不可用");
 export const CoverRectangleSchema = z.object({
   x: z.number().finite().min(0).max(1),
   y: z.number().finite().min(0).max(1),
@@ -28,12 +30,12 @@ export const CoverTrackSchema = z.object({
 });
 export const CoverStickerSchema = z.object({
   enabled: z.boolean(),
-  stickerIds: z.array(CoverStickerIdSchema).max(50),
+  stickerIds: z.array(UploadedCoverStickerIdSchema).max(50),
   rectangle: CoverRectangleSchema,
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
   trackingMode: z.enum(["manual", "agent"]).optional(),
 }).strict().superRefine((value, ctx) => {
-  if (value.enabled && !value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "请至少选择一张自己的贴纸" });
+  if (value.enabled && value.trackingMode !== "agent" && !value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "请至少选择一张自己的贴纸" });
   if (new Set(value.stickerIds).size !== value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "覆盖候选不得重复" });
 });
 export type CoverSticker = z.infer<typeof CoverStickerSchema>;

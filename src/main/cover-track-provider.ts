@@ -72,7 +72,7 @@ export async function detectCoverTrack(
   signal.throwIfAborted();
   try {
     const parsed = CoverDetectionResponseSchema.parse(JSON.parse(response));
-    if (parsed.status === "uncertain") throw new ProviderError("模型无法可靠识别全部原贴纸，本条未导出，可调整素材后重新生成。");
+    if (parsed.status === "uncertain") throw new ProviderError(`模型无法可靠识别全部原贴纸（${(images[0].timeMs / 1000).toFixed(2)}–${(images[images.length - 1].timeMs / 1000).toFixed(2)} 秒），本条未导出。请检查该时段，或改用手动覆盖；无需覆盖时可关闭覆盖。`);
     if (parsed.frames.some((frame, index) => frame.timeMs !== images[index]?.timeMs) || parsed.frames.length !== images.length) {
       throw new Error("time-mismatch");
     }

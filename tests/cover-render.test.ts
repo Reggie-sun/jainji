@@ -32,7 +32,7 @@ describe("cover sticker templates", () => {
   it("rejects out-of-frame, forged, non-opaque, rotated and duplicate covers", () => {
     for (const layer of [
       coverLayer({ y: 0.9, cover: { stickerId: coverId, height: 0.17 } }),
-      coverLayer({ cover: { stickerId: "heart", height: 0.17 } }),
+      coverLayer({ cover: { stickerId: "unknown-builtin", height: 0.17 } }),
       coverLayer({ opacity: 0.8 }),
       coverLayer({ rotationDeg: 1 }),
       coverLayer({ width: 0 }),

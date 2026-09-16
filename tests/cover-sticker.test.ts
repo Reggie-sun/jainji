@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
 import { CoverStickerSchema } from "../src/shared/cover-sticker";
 import { resolveCoverSticker, coverLayerForMedia } from "../src/main/cover-sticker";
 import { createDefaultTemplate, EditTemplateSchema, type ExportBatch, type MediaItem, type EditTemplate } from "../src/main/domain";
@@ -22,6 +23,21 @@ const builtin = { assetPath: "/tmp/builtin.png", assetFingerprint: "sha256:built
 const assets = { sparkle: builtin, arrow: builtin, heart: builtin, burst: builtin, [a]: { assetPath: "/tmp/a.png", assetFingerprint: "sha256:a" }, [b]: { assetPath: "/tmp/b.png", assetFingerprint: "sha256:b" } };
 
 describe("reusable batch cover", () => {
+  it.each(["failure", "cancel"])("shares cover selection without silent retries on %s", async (outcome) => {
+    const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4", displayName: "source", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
+    let rejectSelection!: (error: Error) => void;
+    const selectCoverSticker = vi.fn(() => new Promise<never>((_resolve, reject) => { rejectSelection = reject; }));
+    const plan = vi.fn(), enqueue = vi.fn(), detectCoverTracks = vi.fn();
+    const runner = new AgentRunner({ frames: async () => [], plan, enqueue, detectCoverTracks, selectCoverSticker, stickerAssets: assets, onChange: () => {} });
+    runner.start("project", "clean", "", [source, { ...source, id: crypto.randomUUID() }], 2);
+    await vi.waitFor(() => expect(selectCoverSticker).toHaveBeenCalledTimes(1));
+    if (outcome === "cancel") runner.cancel();
+    rejectSelection(new Error("selection failed"));
+    await runner.settled();
+    expect(selectCoverSticker).toHaveBeenCalledTimes(1);
+    expect(plan).not.toHaveBeenCalled(); expect(enqueue).not.toHaveBeenCalled(); expect(detectCoverTracks).not.toHaveBeenCalled();
+    expect(runner.snapshot()?.items.every((item) => item.status === (outcome === "cancel" ? "cancelled" : "failed"))).toBe(true);
+  });
   it("requires explicit coverage settings independently of decoration mode", () => {
     expect(resolveCoverSticker(undefined, assets, [])).toBeUndefined();
     const disabled = { ...options, enabled: false, trackingMode: "manual" as const };
@@ -37,7 +53,7 @@ describe("reusable batch cover", () => {
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
     const source: MediaItem = { id: crypto.randomUUID(), sourcePath: path.join(directory, "source.mp4"), displayName: "source.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     service.currentProject.mediaItems.push(source);
-    service.setCoverSticker({ ...options, enabled: true, trackingMode: "agent" });
+    service.setCoverSticker({ ...options, stickerIds: [], enabled: true, trackingMode: "agent" });
     const history: ExportBatch[] = [];
     const queue = {
       snapshot: () => ({ revision: history.length, batches: history.map((batch) => ({ batch })) }),
@@ -46,12 +62,14 @@ describe("reusable batch cover", () => {
         history.push(batch); return batch;
       }, start: async () => {}, cancel: async () => {},
     } as unknown as ExportQueue;
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, { prepare: async () => assets, resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary);
+    const libraryId = AUTOMATIC_STICKERS.find(({ id }) => id.startsWith("fluent-"))!.id;
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, { ensure: async () => builtin, prepare: async () => assets, resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
     const plan = vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [], priceStyle: "ice" as const } : {}) });
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
-    const shortlist = vi.spyOn(controller.provider, "shortlist").mockResolvedValue([]);
+    const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockResolvedValueOnce(libraryId).mockResolvedValueOnce("sparkle");
+    const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? [] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockResolvedValue([{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: options.rectangle }] } }]);
     const input = { ruleId: "clean" as const, brief: "", mediaIds: [source.id], multiplier: 2, outputDirectory: directory, decorations: { mode, productPrice: "手动内容", sticker: "none", fontFamily: "Noto Sans CJK SC" } };
     try {
@@ -59,7 +77,10 @@ describe("reusable batch cover", () => {
       await vi.waitFor(() => expect(controller.busy).toBe(false));
       await controller.start(input, new Set([directory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false));
-      expect(history.flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))).toEqual([a, a, b, b]);
+      expect(history.flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))).toEqual([libraryId, libraryId, "sparkle", "sparkle"]);
+      expect(selectCover).toHaveBeenCalledTimes(2);
+      expect(shortlist.mock.calls.filter((call) => !call[5])[1][4].stickers.some(({ id }) => id === libraryId)).toBe(false);
+      expect(Object.keys(assets)).not.toContain(libraryId);
       service.setCoverSticker({ ...options, stickerIds: [`uploaded-${"c".repeat(64)}`] });
       await expect(controller.start(input, new Set([directory]))).rejects.toThrow("覆盖贴纸已删除");
       expect(plan).toHaveBeenCalledTimes(4);
@@ -74,7 +95,7 @@ describe("reusable batch cover", () => {
       expect(detect).toHaveBeenCalledTimes(2);
       expect(history.slice(4)).toHaveLength(4);
       expect(history.slice(4).every((batch) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
-    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); detect.mockRestore(); await rm(directory, { recursive: true, force: true }); }
+    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); detect.mockRestore(); await rm(directory, { recursive: true, force: true }); }
   });
   it("rejects enabled coverage with missing assets before requesting a model", async () => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");
@@ -129,6 +150,7 @@ describe("reusable batch cover", () => {
   });
   it("validates user rectangles and uploaded candidates without weakening ordinary settings", () => {
     expect(CoverStickerSchema.parse(options)).toEqual(options);
+    expect(CoverStickerSchema.parse({ ...options, trackingMode: "agent", stickerIds: [] }).stickerIds).toEqual([]);
     for (const invalid of [{ ...options, stickerIds: [] }, { ...options, stickerIds: ["heart"] }, { ...options, stickerIds: [a, a] }, { ...options, rectangle: { ...options.rectangle, x: 0.9 } }]) expect(() => CoverStickerSchema.parse(invalid)).toThrow();
   });
 
