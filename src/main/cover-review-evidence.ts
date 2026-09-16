@@ -86,7 +86,11 @@ export class CoverReviewEvidence {
     const filesystem = await statfs(directory);
     const estimate = samples.reduce((total, frame) => total + frame.width * frame.height, 0);
     if (filesystem.bavail * filesystem.bsize < estimate) throw new Error("审阅证据磁盘空间不足。");
-    const selectors = samples.map((frame) => `eq(n\\,${frame.index})`).join("+");
+    // FFmpeg limits expression recursion depth. A flat sum forms a left-deep
+    // tree and fails on longer clips; pair terms to keep depth logarithmic.
+    let terms = samples.map((frame) => `eq(n\\,${frame.index})`);
+    while (terms.length > 1) terms = Array.from({ length: Math.ceil(terms.length / 2) }, (_, index) => terms[index * 2 + 1] === undefined ? terms[index * 2] : `(${terms[index * 2]}+${terms[index * 2 + 1]})`);
+    const selectors = terms[0];
     const prefix = randomUUID();
     const originalPattern = path.join(directory, `${prefix}-%08d.png`);
     const cleanupAttempt = async () => { await Promise.all((await readdir(directory)).filter((name) => name.startsWith(prefix)).map((name) => unlink(path.join(directory, name)).catch(() => undefined))); };

@@ -1,15 +1,30 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CoverReviewEvidence } from "../src/main/cover-review-evidence";
-import { FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
+import { discoverBinary, FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { fingerprintFile } from "../src/main/paths";
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
 describe("cover review evidence", () => {
+  it("extracts more than 100 selected frames without exceeding FFmpeg expression depth", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-long-"));
+    try {
+      const ffmpeg = (await discoverBinary("ffmpeg"))!, ffprobe = (await discoverBinary("ffprobe"))!;
+      const sourcePath = path.join(directory, "long.mp4");
+      const generated = await runCommand(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=4", "-t", "36", "-c:v", "libx264", sourcePath]).promise;
+      expect(generated.code, generated.stderr).toBe(0);
+      const media = { id: randomUUID(), sourcePath, displayName: "long.mp4", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 1, durationMs: 36000, width: 64, height: 64, rotation: 0 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
+      const store = new CoverReviewEvidence(path.join(directory, "evidence"), new FfmpegAdapter(ffmpeg, ffprobe));
+      const result = await store.extract(media, randomUUID(), 0, new AbortController().signal);
+      expect(result.evidence).toHaveLength(144);
+      expect(result.evidence.map(frame => frame.pts * frame.timeBase * 1000)).toEqual(Array.from({ length: 144 }, (_, i) => i * 250));
+      await expect(store.verify(result.evidence)).resolves.toBeUndefined();
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  }, 60000);
   it("accepts an empty manual-evidence set before its directory exists", async () => {
     const store = new CoverReviewEvidence(path.join(tmpdir(), `jianji-missing-evidence-${randomUUID()}`), {} as any);
     await expect(store.verify([])).resolves.toBeUndefined();
