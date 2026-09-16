@@ -12,6 +12,12 @@ import { canonicalPath, fingerprintFile, isPathWithinDirectory } from "./paths.j
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
 import { JobStore } from "./store.js";
 import { ModelConnections } from "./model-connections.js";
+import { CoverReviewController } from "./cover-review-controller.js";
+import { CoverReviewEvidence } from "./cover-review-evidence.js";
+import { analyzeCoverCandidates } from "./cover-candidates.js";
+import { prepareIndependentReviewMedia } from "./cover-review-input.js";
+import { AgentStartSchema } from "../shared/agent.js";
+import { SelectModelSchema } from "../shared/connections.js";
 import { AgentController } from "./agent-controller.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -45,6 +51,7 @@ let queue: ExportQueue;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
 let agent: AgentController;
+let coverReview: CoverReviewController;
 let connections: ModelConnections;
 let library: AssetLibrary;
 let uploadedStickers: UploadedStickers;
@@ -62,6 +69,7 @@ app.on("second-instance", () => {
 });
 
 protocol.registerSchemesAsPrivileged([
+  { scheme: "jianji-review", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: "jianji-media", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
@@ -69,6 +77,7 @@ function currentState(): QueueSnapshot { return queue.snapshot(); }
 
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("untrusted IPC sender");
+  if (quitting) throw new Error("应用正在退出，请等待下次启动。");
 }
 
 async function publicState(): Promise<DesktopState> {
@@ -88,16 +97,25 @@ function publish(snapshot: QueueSnapshot): void {
 }
 
 function registerHandlers(): void {
+  const reviewRef = z.object({ id: uuidSchema, revision: z.number().int().nonnegative() }).strict();
+  ipcMain.handle("coverReview.create", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.create(z.array(uuidSchema).min(1).max(250).parse(input)); return publicState(); });
+  ipcMain.handle("coverReview.edit", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.edit(input); return publicState(); });
+  ipcMain.handle("coverReview.analyze", async (event, input: unknown) => { assertTrustedSender(event); connections.assertIdle(); const ref = reviewRef.parse(input); await coverReview.analyze(ref.id, ref.revision); return publicState(); });
+  ipcMain.handle("coverReview.review", async (event, input: unknown) => { assertTrustedSender(event); coverReview.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ selection: SelectModelSchema, enabled: z.literal(true) }).parse(input); await coverReview.review(ref.id, ref.revision, ref.selection, connections.reviewProvider(ref.selection)); return publicState(); });
+  ipcMain.handle("coverReview.prepare", async (event, input: unknown) => { assertTrustedSender(event); connections.assertIdle(); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.prepare(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
+  ipcMain.handle("coverReview.approve", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.approve(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
+  ipcMain.handle("coverReview.viewed", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ mediaId: uuidSchema, version: z.number().int().positive() }).parse(input); await coverReview.viewed(ref.id, ref.revision, ref.mediaId, ref.version); return publicState(); });
+  ipcMain.handle("coverReview.cancel", async (event) => { assertTrustedSender(event); await coverReview.cancel(); return publicState(); });
   registerBugFeedbackHandlers(assertTrustedSender);
   ipcMain.handle("decorations.import", async (event) => {
     assertTrustedSender(event);
-    agent.assertIdle();
+    coverReview?.assertIdle(); agent.assertIdle();
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: "上传贴纸", properties: ["openFile"],
       filters: [{ name: "静态贴纸图片", extensions: ["png", "jpg", "jpeg"] }],
     });
     if (result.canceled || !result.filePaths.length) return null;
-    agent.assertIdle();
+    coverReview?.assertIdle(); agent.assertIdle();
     if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
     stickerMutation = true;
     try {
@@ -108,7 +126,7 @@ function registerHandlers(): void {
     finally { stickerMutation = false; }
   });
   ipcMain.handle("decorations.remove", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const id = z.string().refine(isUploadedStickerId, "只能删除用户上传的贴纸。").parse(input);
     if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
     const asset = stickerAssets[id];
@@ -148,54 +166,55 @@ function registerHandlers(): void {
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
   ipcMain.handle("connection.save", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle(); await connections.save(input); return publicState();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.save(input); return publicState();
   });
-  ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
-  ipcMain.handle("connection.model.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.selectModel(input); return publicState(); });
-  ipcMain.handle("connection.vision.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.selectVision(input); return publicState(); });
-  ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
+  ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
+  ipcMain.handle("connection.model.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectModel(input); return publicState(); });
+  ipcMain.handle("connection.vision.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectVision(input); return publicState(); });
+  ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("agent.disconnect", async (event) => {
-    assertTrustedSender(event); agent.assertIdle(); await connections.disconnect(); return publicState();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.disconnect(); return publicState();
   });
-  ipcMain.handle("connection.chatgpt.login", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.login(); return publicState(); });
-  ipcMain.handle("connection.chatgpt.refresh", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.refreshLogin(); return publicState(); });
-  ipcMain.handle("connection.chatgpt.cancel", async (event) => { assertTrustedSender(event); agent.assertIdle(); await connections.cancelLogin(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.login", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.login(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.refresh", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.refreshLogin(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.cancel", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.cancelLogin(); return publicState(); });
   ipcMain.handle("connection.ccswitch.list", async (event) => { assertTrustedSender(event); return connections.listCCSwitch(); });
   ipcMain.handle("connection.ccswitch.import", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const selected = z.object({ id: z.string().min(1).max(200), appType: z.enum(["claude", "codex"]) }).strict().parse(input);
     await connections.importCCSwitch(selected.id, selected.appType); return publicState();
   });
-  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); connections.assertIdle(); await agent.test(); return true; });
+  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); connections.assertIdle(); await agent.test(); return true; });
   ipcMain.handle("agent.generateBrief", async (event, input: unknown) => {
-    assertTrustedSender(event); connections.assertIdle(); return agent.generateBrief(input);
+    assertTrustedSender(event); coverReview?.assertIdle(); connections.assertIdle(); return agent.generateBrief(input);
   });
   ipcMain.handle("agent.start", async (event, input) => {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
-    connections.assertIdle();
+    coverReview?.assertIdle(); connections.assertIdle();
     await agent.start(input, approvedOutputDirectories); return publicState();
   });
   ipcMain.handle("agent.cancel", async (event) => { assertTrustedSender(event); await agent.cancel(); return publicState(); });
   ipcMain.handle("media.selectAndProbe", async (event) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: "导入原始素材",
       properties: ["openFile", "multiSelections"],
       filters: [{ name: "视频", extensions: ["mp4", "mov", "mkv", "webm"] }],
     });
     if (result.canceled) return publicState();
+    coverReview?.assertIdle(); agent.assertIdle();
     await service.addMedia(result.filePaths);
     return publicState();
   });
   ipcMain.handle("media.addAndProbe", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const paths = pathListSchema.parse(input);
     await service.addMedia(paths);
     return publicState();
   });
   ipcMain.handle("media.remove", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const id = uuidSchema.parse(input);
     service.removeMedia(id);
     return publicState();
@@ -231,27 +250,27 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("project.rename", (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     service.renameProject(MaterialNameSchema.parse(input));
   });
   ipcMain.handle("project.coverSticker", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     service.setCoverSticker(input);
     return publicState();
   });
   ipcMain.handle("project.save", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const name = input === undefined ? service.currentProject.name : MaterialNameSchema.parse(input);
     const fileName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
     const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目与素材集", defaultPath: service.projectPath ?? `${fileName}.jianji-project.json` });
     if (result.canceled || !result.filePath) return null;
-    agent.assertIdle();
+    coverReview?.assertIdle(); agent.assertIdle();
     await service.saveProject(result.filePath, name);
     await recentProjects.remember(result.filePath, service.currentProject);
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     if (service.hasUnsavedChanges) {
       const choice = await dialog.showMessageBox(mainWindow!, {
         type: "question",
@@ -264,11 +283,12 @@ function registerHandlers(): void {
       });
       if (choice.response !== 0) return publicState();
     }
+    coverReview?.assertIdle(); agent.assertIdle();
     service.newProject();
     return publicState();
   });
   ipcMain.handle("project.load", async (event, input: unknown) => {
-    assertTrustedSender(event); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     let filePath: string;
     if (input !== undefined) filePath = recentProjects.resolve(uuidSchema.parse(input));
     else {
@@ -284,7 +304,7 @@ function registerHandlers(): void {
       });
       if (choice.response !== 0) return null;
     }
-    agent.assertIdle();
+    coverReview?.assertIdle(); agent.assertIdle();
     try { await service.loadProject(filePath); }
     catch (error) {
       if (input === undefined) throw error;
@@ -430,6 +450,25 @@ async function bootstrap(): Promise<void> {
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider);
+  const reviewRoot = path.join(userData, "cover-review");
+  coverReview = new CoverReviewController(service, agent, queue, {
+    root: reviewRoot,
+    extract: (media, draft, signal) => new CoverReviewEvidence(path.join(reviewRoot, draft.projectId), ffmpeg).extract(media, draft.id, draft.revision, signal),
+    verify: (projectId, evidence) => new CoverReviewEvidence(path.join(reviewRoot, projectId), ffmpeg).verify(evidence),
+    images: (projectId, evidence, signal) => new CoverReviewEvidence(path.join(reviewRoot, projectId), ffmpeg).images(evidence, signal),
+    reviewMedia: (draft, signal) => prepareIndependentReviewMedia(new CoverReviewEvidence(path.join(reviewRoot, draft.projectId), ffmpeg), draft, signal),
+    discardEvidence: (projectId, evidence, retained) => new CoverReviewEvidence(path.join(reviewRoot, projectId), ffmpeg).discardUnreferenced(evidence, retained),
+    analyze: (media, images, signal, request) => analyzeCoverCandidates(media, images, (images, previous, signal) => agent.visionProvider.detectCovers(images, previous, signal), signal, request),
+    changed: notifyState,
+  });
+  protocol.handle("jianji-review", async (request) => {
+    try {
+      const url = new URL(request.url);
+      const [revision, mediaId, version] = url.pathname.slice(1).split("/");
+      const file = await coverReview.previewPath(uuidSchema.parse(url.hostname), z.coerce.number().int().nonnegative().parse(revision), uuidSchema.parse(mediaId), z.coerce.number().int().positive().parse(version));
+      return net.fetch(pathToFileURL(file).toString());
+    } catch { return new Response("Preview unavailable", { status: 404 }); }
+  });
   await queue.recover();
   registerHandlers();
   await createWindow();
@@ -441,7 +480,7 @@ function requestQuit(): void {
   if (!queue) { quitting = true; app.exit(0); return; }
   if (!service?.hasUnsavedChanges || !mainWindow) {
     quitting = true;
-    void agent.cancel().then(async () => { await connections.dispose(); await queue.shutdown(); }).finally(() => app.exit(0));
+    void coverReview.shutdown().then(async () => { await connections.dispose(); await queue.shutdown(); }).finally(() => app.exit(0));
     return;
   }
   closingPrompt = true;
@@ -467,7 +506,7 @@ function requestQuit(): void {
       await recentProjects.remember(projectPath, service.currentProject);
     }
     quitting = true;
-    await agent.cancel();
+    await coverReview.shutdown();
     await connections.dispose();
     await queue.shutdown();
     app.exit(0);

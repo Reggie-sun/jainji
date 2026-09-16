@@ -1,20 +1,21 @@
 import { randomUUID } from "node:crypto";
-import { outputDimensions, type ExportSettings } from "../shared/export-settings.js";
+import { type ExportSettings } from "../shared/export-settings.js";
 import { MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
-import { EditTemplateSchema, type EditTemplate, type MediaItem } from "./domain.js";
-import { materializePlan, ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
+import { type EditTemplate, type MediaItem } from "./domain.js";
+import { ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
 import type { PriceStyleId } from "../shared/price-styles.js";
-import { manualCoverLayers, automaticCoverLayers, type FrozenCoverSticker } from "./cover-sticker.js";
+import { type FrozenCoverSticker } from "./cover-sticker.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
-import { fillUncoveredCorners } from "./automatic-corner-layout.js";
+import { prepareAgentTemplate } from "./agent-template-preparation.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
   plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog, selection?: AgentSelectionContext): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
+  prepared?(template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal): Promise<void>;
   stickerAssets: StickerAssets;
   decorations?: DecorationOptions;
   resolutionMode?: ExportSettings["resolutionMode"];
@@ -101,7 +102,7 @@ export class AgentRunner {
           let coverTracks: AutomaticCoverTrack[] | undefined;
           if (coverSticker?.automatic) {
             if (!this.dependencies.detectCoverTracks) throw new ProviderError("自动覆盖识别服务不可用，本条已停止。");
-            item.summary = "正在自动识别并追踪全部原贴纸…";
+            item.summary = this.dependencies.prepared ? "正在读取人工确认的覆盖区间…" : "正在自动识别并追踪全部原贴纸…";
             this.dependencies.onChange();
             let detecting = pendingCoverTracks.get(source.id);
             if (!detecting) {
@@ -119,20 +120,17 @@ export class AgentRunner {
           } : undefined;
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
-          const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
-          let template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
-          if (coverSticker) {
-            const layers = coverTracks !== undefined ? automaticCoverLayers(coverSticker, source, dimensions, coverTracks) : manualCoverLayers(coverSticker, source, dimensions, item.version);
-            template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers.map((layer) => ({ ...layer, cover: { ...layer.cover!, selection: { runId: run.id, round: item.version } } }))] });
-            if (this.dependencies.decorations?.mode === "agent") template = EditTemplateSchema.parse({ ...template, layers: fillUncoveredCorners(template.layers, source.durationMs) });
-          }
+          const template = prepareAgentTemplate({ plan, ruleId: run.ruleId, source, resolutionMode: this.dependencies.resolutionMode,
+            stickerAssets: this.dependencies.stickerAssets, decorations: this.dependencies.decorations, catalog: this.dependencies.autoCatalog,
+            coverSticker, coverTracks, runId: run.id, version: item.version });
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
-          item.taskId = await this.dependencies.enqueue(template, source, signal);
-          item.summary = coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
-          item.status = "exporting";
+          if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
+          else item.taskId = await this.dependencies.enqueue(template, source, signal);
+          item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
+          item.status = this.dependencies.prepared ? "prepared" : "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
@@ -145,7 +143,7 @@ export class AgentRunner {
       }
     };
     try {
-      await Promise.all(Array.from({ length: Math.min(executionLimits().analysis, media.length) }, () => worker()));
+      await Promise.all(Array.from({ length: this.dependencies.prepared ? 1 : Math.min(executionLimits().analysis, media.length) }, () => worker()));
     } finally {
       pendingFrames.clear();
       pendingCoverTracks.clear();

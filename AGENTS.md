@@ -21,6 +21,8 @@
 
 ## Canonical Ownership
 
+- `assisted` 是显式半自动覆盖模式：算法候选与人工决定分开保存；草稿编辑使旧预览和批准失效。所有版本冻结并经动态预览、用户明确确认后，才可通过原导出队列幂等提交。独立复核默认关闭，只报告问题，不能批准或自动改稿；退出保留可恢复草稿，不自动调用模型或提交未入队版本。
+
 | Concern | Canonical owner |
 | --- | --- |
 | 制作请求、价格与装饰数据校验 | [agent.ts](src/shared/agent.ts)、[decorations.ts](src/shared/decorations.ts) |
@@ -29,6 +31,8 @@
 | 模型方案校验与本地图层生成 | [agent-provider.ts](src/main/agent-provider.ts) |
 | 自动四角覆盖优先与补齐时段 | [automatic-corner-layout.ts](src/main/automatic-corner-layout.ts) |
 | 原贴纸自动识别与跟随轨迹 | [automatic-cover.ts](src/main/automatic-cover.ts)、[cover-track-provider.ts](src/main/cover-track-provider.ts)、[automatic-cover-tracks.ts](src/main/automatic-cover-tracks.ts) |
+| 半自动审阅、证据与批准 | [cover-review.ts](src/shared/cover-review.ts)、[cover-review-controller.ts](src/main/cover-review-controller.ts)、[cover-review-session.ts](src/main/cover-review-session.ts)、[cover-review-evidence.ts](src/main/cover-review-evidence.ts)、[cover-review-approval.ts](src/main/cover-review-approval.ts) |
+| 已知持久格式迁移与旧副本 | [state-migrations.ts](src/main/state-migrations.ts)、[store.ts](src/main/store.ts) |
 | 模板领域、编译、导出生命周期与文件验证 | [domain.ts](src/main/domain.ts)、[compiler.ts](src/main/compiler.ts)、[queue.ts](src/main/queue.ts)、[artifact.ts](src/main/artifact.ts) |
 | 模型连接、凭据与 ChatGPT 会话 | [model-connections.ts](src/main/model-connections.ts)、[connection-store.ts](src/main/connection-store.ts)、[chatgpt-session.ts](src/main/chatgpt-session.ts) |
 

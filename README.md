@@ -66,6 +66,18 @@ Windows 使用系统 Microsoft YaHei 字体：项目中的默认 `Noto Sans CJK 
 
 自动覆盖的独立模型路由可在构建后运行 `node scripts/vision-connection-smoke.mjs` 验证：使用隔离 Electron、两组本地模拟模型和真实 FFmpeg，检查配置界面、请求分工、运行中切换限制、识别不确定时拒绝导出及缺失配置准入。不调用真实账号，不能代替识别准确率验收。
 
+### Assisted Cover Review
+
+开启覆盖后可显式选择“半自动审阅”，保存设置和项目，再建立草稿。建立草稿只在本机保存原帧证据；“分析候选”才会使用视觉识别连接。识别失败仍保留草稿供人工处理，不产生可直接导出的轨迹。可以补框、删除误框、修改完整边界和可见时段、拆分区间或身份、合并身份，以及逐原帧查看。每个素材须确认覆盖范围或明确选择不覆盖，每项问题须单独处置。
+
+完成编辑后点击“冻结所有版本并准备动态预览”：创作连接选择贴纸和外观，本机复用导出编译器串行渲染每版预览。查看并确认全部版本后才创建正式任务；重复确认复用原提交，编辑后须重新准备。正常退出保留草稿；重启不自动分析或提交剩余版本。显式“停止准备”取消草稿及已提交任务。
+
+单轮独立复核试点默认关闭。主动开启后从现有连接库选择复核模型，界面显示冻结请求数；先盲检全画面，再核对候选及局部证据。失败也占预算，无自动重试、切换服务、修正或批准。相同模型的独立请求不能视为独立正确性证明。问题、调用计数和中断状态随项目保存，API Key 不进入项目。一次修正阶段仍受配对人工评测及明确启用条件约束，当前未开放。
+
+项目和 job 格式升级到 v2，模板继续使用 v1。首次已知旧格式迁移前保存独立 `.migration-v1-*.backup`；项目迁移副本位置会显示在界面。未知未来格式不会回退到旧备份。降级使用独立旧副本，不让旧版本写入新项目/job。审阅帧和预览位于应用 `userData/cover-review/`，不要删除仍被草稿引用的文件；缺失或摘要变化会阻止批准。
+
+构建后可运行 `node scripts/assisted-cover-smoke.mjs`（无显示环境加 `xvfb-run -a`）。离线评测运行 `node scripts/assisted-cover-evaluate.mjs <frozen-manifest.json> [output-directory]`：清单需提供 `cases`，每项含 `id/sourcePath/sourceSha256/sourceGroup/split`，分别封存 `development` 和 `holdout`；可选 `startMs/endMs/sourceDurationMs` 指定片段。配对人工记录的字段及验证范围见 [半自动覆盖验证报告](docs/semi-automatic-cover-validation.md)。这些脚本不调用真实模型账号。
+
 ## Bug Feedback
 
 侧栏“反馈问题”可填写问题描述、选择或粘贴一张截图，并直接创建 `Reggie-sun/jainji` 的 GitHub Issue。提交成功后显示 Issue 编号和打开入口。此功能移植自 `csgojiaoben` 的问题反馈入口，不启动其自动修复、PR 或 Issue automation 工作流。

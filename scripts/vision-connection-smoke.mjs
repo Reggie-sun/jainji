@@ -56,9 +56,11 @@ const portServer = createSocketServer();
 await new Promise(resolve => portServer.listen(0, "127.0.0.1", resolve));
 const debugPort = portServer.address().port;
 await new Promise(resolve => portServer.close(resolve));
+await writeFile(path.join(directory, "recent-projects.json"), '{"schemaVersion":1,"entries":[]}\n', { mode: 0o600 });
 const bootstrap = path.join(directory, "bootstrap.cjs");
 await writeFile(bootstrap, `const { app, dialog } = require("electron");
 app.setPath("userData", ${JSON.stringify(directory)});
+app.setPath("documents", ${JSON.stringify(directory)});
 app.getAppPath = () => ${JSON.stringify(root)};
 process.defaultApp = true; // Bootstrap loads the development build and its repository resources.
 app.commandLine.appendSwitch("remote-debugging-port", ${JSON.stringify(String(debugPort))});
@@ -67,7 +69,7 @@ dialog.showOpenDialog = async (_window, options) => ({ canceled: false, filePath
 require(${JSON.stringify(path.join(root, "dist-electron/main.cjs"))});`);
 const environment = { ...process.env };
 delete environment.ELECTRON_RUN_AS_NODE; delete environment.JIANJI_DEV_SERVER_URL;
-const child = spawn(require("electron"), [bootstrap], { cwd: root, env: environment, stdio: ["ignore", "pipe", "pipe"] });
+const child = spawn(require("electron"), [bootstrap], { cwd: directory, env: environment, stdio: ["ignore", "pipe", "pipe"] });
 let processLog = "";
 child.stderr.on("data", chunk => { processLog += chunk; }); child.stdout.on("data", chunk => { processLog += chunk; });
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));

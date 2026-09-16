@@ -19,6 +19,9 @@ import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { stickerPreview } from "./sticker-preview.js";
 import { resolveCoverSticker, previousCoverStickerId, unusedCoverStickerIds } from "./cover-sticker.js";
 import { recognizeAutomaticCovers } from "./automatic-cover.js";
+import type { CoverReviewDraft } from "../shared/cover-review.js";
+import type { EditTemplate } from "./domain.js";
+import { assertReviewResolved } from "./cover-review-session.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -85,7 +88,21 @@ export class AgentController {
     return { fonts: [], stickers, previews };
   }
 
+  async prepareReview(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, draft: CoverReviewDraft, prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void>): Promise<void> {
+    assertReviewResolved(draft);
+    if (draft.projectId !== this.service.currentProject.id || draft.status !== "preparing_preview") throw new Error("审阅状态不允许准备预览。");
+    if (input.mediaIds.length !== draft.media.length || input.mediaIds.some((id) => !draft.media.some(({ mediaId }) => id === mediaId))) throw new Error("制作素材与审阅集合不同。");
+    await this.startInternal(input, approvedDirectories, { draft, prepared });
+    await this.runner?.settled();
+    const failures = this.runner?.snapshot()?.items.filter(({ status }) => status !== "prepared") ?? [];
+    if (failures.length) throw new Error(`部分版本准备失败或已取消：${failures.map(({ error }) => error ?? "用户已停止准备").join("；")}`);
+  }
+
   async start(input: AgentStartInput, approvedDirectories: ReadonlySet<string>): Promise<void> {
+    return this.startInternal(input, approvedDirectories);
+  }
+
+  private async startInternal(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, assisted?: { draft: CoverReviewDraft; prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void> }): Promise<void> {
     this.assertIdle();
     if (!this.provider.status().configured) throw new Error("请先接入模型。");
     if (this.queue.snapshot().batches.some(({ batch }) => batch.tasks.some((task) =>
@@ -101,9 +118,10 @@ export class AgentController {
       const parsed = AgentStartSchema.parse(input);
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const project = this.service.currentProject;
+      if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted) throw new Error("半自动覆盖必须先审阅、预览和批准。");
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
-      const automaticCover = project.coverSticker?.enabled && project.coverSticker.trackingMode === "agent" ? structuredClone(project.coverSticker) : undefined;
-      if (automaticCover && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型。");
+      const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
+      if (automaticCover && !assisted && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型。");
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
@@ -149,6 +167,7 @@ export class AgentController {
       const previousCoverId = previousCoverStickerId(history);
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       this.runner = new AgentRunner({
+        prepared: assisted?.prepared,
         coverSticker,
         selectCoverSticker: automaticCover ? async (frames, signal, previousSelections) => {
           const eligible = availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id));
@@ -163,7 +182,7 @@ export class AgentController {
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
         } : undefined,
-        detectCoverTracks: (item, signal) => recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => this.visionProvider.detectCovers(images, previous, currentSignal), signal),
+        detectCoverTracks: (item, signal) => assisted ? Promise.resolve(assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.disposition === "no_cover" ? [] : assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.segments.map((segment) => ({ targetId: segment.id, track: segment.track }))) : recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => this.visionProvider.detectCovers(images, previous, currentSignal), signal),
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {

@@ -245,7 +245,7 @@ export class TemplateCompiler {
       "-c:a", "aac",
       "-b:a", preset.quality === "high" ? "256k" : preset.quality === "small" ? "128k" : "192k",
       "-ar", "44100",
-      ...(preset.frameRateMode === "30" ? ["-r", "30"] : []),
+      ...(preset.frameRateMode === "30" ? ["-r", "30"] : ["-vsync", "vfr"]),
       ...(preset.container === "mkv" ? [] : ["-movflags", "+faststart"]),
       "-f", preset.container === "mkv" ? "matroska" : preset.container,
       "-progress", "pipe:1",

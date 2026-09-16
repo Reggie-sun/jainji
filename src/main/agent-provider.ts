@@ -14,6 +14,7 @@ import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { detectCoverTrack } from "./cover-track-provider.js";
 import type { CoverDetectionImage, DetectedCoverFrame } from "../shared/automatic-cover.js";
+import { runIndependentCoverReview, type IndependentReviewInput, type IndependentAttempt } from "./cover-review-provider.js";
 
 const STICKER_LABELS = new Map<string, string>([
   ["sparkle", "星芒"], ["arrow", "箭头"], ["heart", "爱心"], ["burst", "爆闪"],
@@ -369,6 +370,10 @@ export class AgentProvider {
       return plan;
     }
     catch (error) { throw new ProviderError(`模型返回的包装方案格式或规则不合格：${planFailureReason(error)}。本条未导出，可检查模型后重新生成。`); }
+  }
+
+  async reviewCovers(input: IndependentReviewInput, signal: AbortSignal, persistAttempt: (attempt: IndependentAttempt) => Promise<void>) {
+    return runIndependentCoverReview((messages, requestSignal) => this.complete(messages as ModelMessage[], requestSignal), input, signal, persistAttempt);
   }
 
   async detectCovers(images: readonly CoverDetectionImage[], previous: DetectedCoverFrame | undefined, signal: AbortSignal): Promise<DetectedCoverFrame[]> {

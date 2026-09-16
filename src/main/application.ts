@@ -18,6 +18,8 @@ import { ProjectStore } from "./store.js";
 import type { QueueSnapshot } from "./queue.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
 import { CoverStickerSchema, coverSettingsMediaIssue, type CoverSticker } from "../shared/cover-sticker.js";
+import { CoverReviewDraftSchema, type CoverReviewDraft } from "../shared/cover-review.js";
+import { recoverCoverReviewDraft } from "./cover-review-session.js";
 
 export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots">;
 export interface PublicQueueState {
@@ -39,6 +41,8 @@ export interface AppState {
     mediaItems: MediaView[];
     template: EditTemplate;
     coverSticker?: CoverSticker;
+    reviewDrafts?: CoverReviewDraft[];
+    migrationBackupPath?: string;
   };
   queue: PublicQueueSnapshot;
   templateReadiness: { ready: boolean; missing: string[] };
@@ -52,6 +56,9 @@ export class ApplicationService {
   private queueSyncWork?: Promise<void>;
   private pendingQueueSave?: { project: Project; snapshot: Project; store: ProjectStore; version: number };
   private readonly mediaCatalog: MediaCatalog;
+  private migrationBackupPath?: string;
+  private reviewWrite: Promise<void> = Promise.resolve();
+  private reviewPersisting = false;
 
   constructor(ffmpeg: FfmpegAdapter, private readonly fontResolver: FontResolver) {
     this.mediaCatalog = new MediaCatalog(ffmpeg);
@@ -60,6 +67,46 @@ export class ApplicationService {
   get currentProject(): Project { return this.project; }
   get hasUnsavedChanges(): boolean { return this.dirty; }
   get projectPath(): string | undefined { return this.projectFile?.path; }
+
+  recoverInterruptedReviews(): void {
+    if (!this.project.reviewDrafts?.some(({ status }) => ["analyzing", "reviewing", "preparing_preview"].includes(status))) return;
+    this.project.reviewDrafts = this.project.reviewDrafts.map(recoverCoverReviewDraft);
+    this.touch();
+  }
+
+  saveReviewDraft(input: CoverReviewDraft, expectedRevision?: number): Promise<void> {
+    const draft = CoverReviewDraftSchema.parse(input);
+    const project = this.project;
+    const store = this.projectFile;
+    const work = this.reviewWrite.catch(() => undefined).then(async () => {
+      if (this.project !== project || this.projectFile !== store || draft.projectId !== project.id) throw new Error("项目已切换，审阅未保存。");
+      if (!store) throw new Error("请先保存项目，再建立持久审阅草稿。");
+      const existing = project.reviewDrafts?.find(({ id }) => id === draft.id);
+      if ((existing?.revision ?? undefined) !== expectedRevision) throw new Error("审阅修订已过期。");
+      this.reviewPersisting = true;
+      try {
+        this.pendingQueueSave = undefined;
+        await this.queueSyncWork;
+        // Publish only after durability. Queue progress may still update memory;
+        // fold the newest snapshot into the same barrier before publishing.
+        let version: number;
+        let updatedAt: string;
+        do {
+          version = this.mutationVersion;
+          const next = structuredClone(project);
+          next.reviewDrafts = [...(next.reviewDrafts ?? []).filter(({ id }) => id !== draft.id), draft];
+          updatedAt = now(); next.updatedAt = updatedAt;
+          await store.save(next);
+          if (this.project !== project || this.projectFile !== store) throw new Error("项目已切换，审阅未应用。");
+        } while (version !== this.mutationVersion);
+        project.reviewDrafts = [...(project.reviewDrafts ?? []).filter(({ id }) => id !== draft.id), draft];
+        project.updatedAt = updatedAt;
+        this.mutationVersion += 1; this.dirty = false;
+      } finally { this.reviewPersisting = false; }
+    });
+    this.reviewWrite = work;
+    return work;
+  }
 
   setCoverSticker(input: unknown): void {
     const settings = CoverStickerSchema.parse(input);
@@ -72,6 +119,7 @@ export class ApplicationService {
   newProject(name = "我的简辑项目"): Project {
     this.project = createDefaultProject(name);
     this.projectFile = undefined;
+    this.migrationBackupPath = undefined;
     this.dirty = true;
     this.mutationVersion += 1;
     return structuredClone(this.project);
@@ -174,6 +222,8 @@ export class ApplicationService {
     const store = new ProjectStore(filePath);
     const loaded = await store.load();
     this.project = loaded.project;
+    this.migrationBackupPath = loaded.migrationBackupPath;
+    this.project.reviewDrafts = this.project.reviewDrafts?.map(recoverCoverReviewDraft);
     this.projectFile = store;
     this.mutationVersion += 1;
     await this.revalidateMedia();
@@ -194,6 +244,7 @@ export class ApplicationService {
       }
       if (!changed) return Promise.resolve();
       this.touch();
+      if (this.reviewPersisting) return Promise.resolve();
       if (!this.projectFile) return Promise.resolve();
       // Progress may arrive faster than atomic disk writes. Keep one active save
       // and the latest pending state, rather than retaining a project per event.
@@ -240,6 +291,8 @@ export class ApplicationService {
         mediaItems: this.project.mediaItems.map(toMediaView),
         template: cloneTemplate(this.activeTemplate),
         coverSticker: this.project.coverSticker && structuredClone(this.project.coverSticker),
+        reviewDrafts: this.project.reviewDrafts && structuredClone(this.project.reviewDrafts),
+        migrationBackupPath: this.migrationBackupPath,
       },
       queue: toPublicQueue(queue, this.project.id),
       templateReadiness: { ready: false, missing: [] },

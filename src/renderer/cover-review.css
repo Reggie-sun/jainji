@@ -1,0 +1,16 @@
+.cover-review { margin: 20px 0; padding: 20px; border: 1px solid var(--border, #cbd5e1); border-radius: 12px; }
+.cover-review header, .cover-review-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
+.cover-review h3 { margin: 0; }
+.cover-review p { line-height: 1.6; }
+.cover-review button { padding: 8px 12px; }
+.cover-review-frame { position: relative; max-width: 640px; max-height: 520px; background: #111; margin: 16px auto; }
+.cover-review-frame video { width: 100%; height: 100%; }
+.review-box { position: absolute; background: #1d9a7022; border: 2px solid #34d399; padding: 0 !important; }
+.review-box.algorithm { border-color: #fbbf24; background: #fbbf2422; }
+.cover-review-timeline { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+.cover-review-timeline label { width: 100%; }
+.cover-review-timeline input { width: 100%; }
+.cover-review-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 12px; }
+.cover-review-fields input { display: block; width: 100%; }
+.cover-review-issue { border-left: 3px solid #eab308; padding: 8px 12px; margin: 12px 0; }
+.cover-review [role=alert] { color: #dc2626; }

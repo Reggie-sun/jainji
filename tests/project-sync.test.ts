@@ -23,9 +23,9 @@ async function fixture() {
   const id = crypto.randomUUID();
   const mediaId = crypto.randomUUID();
   const snapshot: QueueSnapshot = { revision: 1, batches: [{
-    schemaVersion: 1, revision: 1, updatedAt: now(),
+    schemaVersion: 2, revision: 1, updatedAt: now(),
     batch: {
-      schemaVersion: 1, id, projectId: service.currentProject.id,
+      schemaVersion: 2, id, projectId: service.currentProject.id,
       templateSnapshot: service.activeTemplate, mediaIds: [mediaId],
       outputDirectory: directory, preset: DEFAULT_PRESET, status: "active", estimatedBytes: 0, createdAt: now(),
       tasks: [{ id: crypto.randomUUID(), batchId: id, mediaId, status: "running", progress: 0, attempt: 1, createdAt: now(), attempts: [] }],

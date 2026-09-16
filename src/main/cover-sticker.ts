@@ -26,6 +26,7 @@ export interface FrozenCoverSticker extends FrozenCoverPlacement {
 export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[], mediaIds?: readonly string[]): FrozenCoverSticker | undefined {
   const options = CoverStickerSchema.parse(settings ?? DEFAULT_COVER_STICKER);
   if (!options.enabled) return undefined;
+  if (options.trackingMode === "assisted") throw new Error("半自动覆盖必须经过审阅和批准。");
   const layouts = mediaIds ? Object.fromEntries(mediaIds.map((id) => [id, manualCoverRegions(options, id)])) : undefined;
   const regions = layouts ? Object.values(layouts).flat() : manualCoverRegions(options);
   if (!regions.length) return undefined;

@@ -2,8 +2,8 @@
 
 ## Status And Goal
 
-- Status: `draft / not executed`，2026-09-16。
-- Baseline: `main@6560f2c`；本次只新增计划，不实施、不运行模型、不启动或重启桌面应用。
+- Status: `implemented through M6 pilot / M7 gated`，2026-09-17。实施与分层证据见 [验证报告](../../semi-automatic-cover-validation.md)。
+- Planning baseline: `main@6560f2c`；实施从计划提交后的 `main@2aea317` 开始，在当前工作目录的 feature branch 完成；未执行真实模型调用或操作用户当前桌面。
 - Spec: [Semi-Automatic Sticker Cover and Independent Review v0.1](../../semi-automatic-cover-review-spec.md)。REQ / AC 编号均引用该规格，不另建需求来源。
 - Goal: 先让用户完成候选编辑、动态预览和确认导出，再以证据决定是否增加独立复核及一次修正。
 - Scope: 显式 `assisted` 模式、持久审阅草稿、人工编辑、冻结方案预览、批准与幂等入队、可选复核和离线评测。
@@ -187,6 +187,6 @@ Hard invariants: 原视频顺序/时长/音频不变；展示文字只能由用�
 
 ## Next Action And Plan Validation
 
-后续收到实施授权后的第一项是 M1：先补显式模式分派与旧/新持久化兼容测试，再实现数据合同。不要从增加模型调用、修改 prompt 或绕过旧严格失败开始。
+M1–M5 已实现，M6 作为默认关闭的一轮零修正试点实现。实施验证、命令、限制与运行证据由 [验证报告](../../semi-automatic-cover-validation.md) 独占记录。
 
-本次计划校验仅包括源码依据、spec 覆盖、依赖顺序、文件目标/命令存在性、链接和 diff 检查。所有新增模块、脚本和测试均为计划项，未创建、未运行；没有真实模型、媒体或桌面验收结果。
+M7 的下一步是提供封存案例的配对人工评测，并由用户明确选择启用修正。当前没有这些证据，不实施自动修正循环，也不把本计划标记为全部验收。真实模型、Windows 实机与人工成片质量仍是独立验收层。

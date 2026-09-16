@@ -1,7 +1,23 @@
 import { copyFile, mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
-import { SCHEMA_VERSION, type QueueState, type Project, QueueStateSchema, ProjectSchema } from "./domain.js";
+import {
+  BATCH_SCHEMA_VERSION,
+  PROJECT_SCHEMA_VERSION,
+  QUEUE_SCHEMA_VERSION,
+  SCHEMA_VERSION,
+  TEMPLATE_SCHEMA_VERSION,
+  type QueueState,
+  type Project,
+  QueueStateSchema,
+  ProjectSchema,
+} from "./domain.js";
+import {
+  FutureSchemaVersionError,
+  migrateProjectState,
+  migrateQueueState,
+  type StateMigrationResult,
+} from "./state-migrations.js";
 
 export class StoreError extends Error {
   constructor(public readonly code: "corrupt" | "future_schema" | "unavailable", message: string, options?: ErrorOptions) {
@@ -33,10 +49,10 @@ async function fsyncDirectory(directory: string): Promise<void> {
 const writeChains = new Map<string, Promise<void>>();
 
 /** Atomic JSON persistence with a previous-valid backup. */
-export function atomicWriteJson(filePath: string, value: unknown): Promise<void> {
+export function atomicWriteJson(filePath: string, value: unknown, signal?: AbortSignal): Promise<void> {
   const key = path.resolve(filePath);
   const previous = writeChains.get(key) ?? Promise.resolve();
-  const write = previous.catch(() => undefined).then(() => atomicWriteJsonNow(filePath, value));
+  const write = previous.catch(() => undefined).then(() => atomicWriteJsonNow(filePath, value, signal));
   const tracked = write.finally(() => {
     if (writeChains.get(key) === tracked) writeChains.delete(key);
   });
@@ -44,7 +60,7 @@ export function atomicWriteJson(filePath: string, value: unknown): Promise<void>
   return tracked;
 }
 
-async function atomicWriteJsonNow(filePath: string, value: unknown): Promise<void> {
+async function atomicWriteJsonNow(filePath: string, value: unknown, signal?: AbortSignal): Promise<void> {
   const directory = path.dirname(filePath);
   await mkdir(directory, { recursive: true });
   const temporary = `${filePath}.tmp-${process.pid}-${randomUUID()}`;
@@ -55,6 +71,7 @@ async function atomicWriteJsonNow(filePath: string, value: unknown): Promise<voi
       await copyFile(filePath, `${filePath}.bak`);
       await fsyncFile(`${filePath}.bak`);
     }
+    signal?.throwIfAborted();
     await rename(temporary, filePath);
     await fsyncDirectory(directory);
   } catch (error) {
@@ -80,29 +97,58 @@ async function isolateCorrupt(filePath: string): Promise<void> {
   await rename(filePath, quarantine).catch(() => undefined);
 }
 
+async function preserveMigrationBackup(filePath: string, sourcePath: string): Promise<string> {
+  const backupPath = `${filePath}.migration-v1-${Date.now()}-${randomUUID()}.backup`;
+  try {
+    await copyFile(sourcePath, backupPath);
+    await fsyncFile(backupPath);
+    await fsyncDirectory(path.dirname(backupPath));
+    return backupPath;
+  } catch (error) {
+    throw new StoreError("unavailable", `Cannot preserve migration backup: ${path.basename(filePath)}`, { cause: error });
+  }
+}
+
 export async function readValidatedJson<T>(
   filePath: string,
   parse: (value: unknown) => T,
-  options: { useBackup?: boolean } = {},
-): Promise<{ value: T; source: "primary" | "backup" }> {
+  options: {
+    useBackup?: boolean;
+    maxVersion?: number;
+    migrate?: (value: unknown) => StateMigrationResult;
+  } = {},
+): Promise<{ value: T; source: "primary" | "backup"; migrationBackupPath?: string }> {
   const candidates = [filePath, ...(options.useBackup === false ? [] : [`${filePath}.bak`])];
   let primaryError: unknown;
   for (const [index, candidate] of candidates.entries()) {
     try {
       const raw = await readJson(candidate);
       const version = schemaVersionOf(raw);
-      if (version !== undefined && version > SCHEMA_VERSION) {
+      if (version !== undefined && version > (options.maxVersion ?? SCHEMA_VERSION)) {
         throw new StoreError("future_schema", `Unsupported future schema version ${version}`);
       }
-      const value = parse(raw);
-      if (index > 0) {
-        if (await exists(filePath)) await isolateCorrupt(filePath);
-        await atomicWriteJson(filePath, value);
+      const migration = options.migrate?.(raw) ?? { value: raw, migrated: false };
+      const value = parse(migration.value);
+      let migrationBackupPath: string | undefined;
+      try {
+        migrationBackupPath = migration.migrated
+          ? await preserveMigrationBackup(filePath, candidate)
+          : undefined;
+        if (index > 0 || migration.migrated) {
+          if (index > 0 && await exists(filePath)) await isolateCorrupt(filePath);
+          await atomicWriteJson(filePath, value);
+        }
+      } catch (error) {
+        if (error instanceof StoreError) throw error;
+        throw new StoreError("unavailable", `Cannot rewrite JSON state: ${path.basename(filePath)}`, { cause: error });
       }
-      return { value, source: index === 0 ? "primary" : "backup" };
+      return { value, source: index === 0 ? "primary" : "backup", ...(migrationBackupPath ? { migrationBackupPath } : {}) };
     } catch (error) {
       if (index === 0) primaryError = error;
-      if (error instanceof StoreError && error.code === "future_schema") throw error;
+      if (error instanceof FutureSchemaVersionError) {
+        throw new StoreError("future_schema", error.message, { cause: error });
+      }
+      if (error instanceof StoreError && error.code !== "corrupt") throw error;
     }
   }
   if (await exists(filePath)) await isolateCorrupt(filePath);
@@ -116,9 +162,21 @@ export class ProjectStore {
     await atomicWriteJson(this.filePath, ProjectSchema.parse(project));
   }
 
-  async load(): Promise<{ project: Project; source: "primary" | "backup" }> {
-    const result = await readValidatedJson(this.filePath, (value) => ProjectSchema.parse(value));
-    return { project: result.value, source: result.source };
+  async load(): Promise<{ project: Project; source: "primary" | "backup"; migrationBackupPath?: string }> {
+    const result = await readValidatedJson(
+      this.filePath,
+      (value) => ProjectSchema.parse(value),
+      {
+        maxVersion: PROJECT_SCHEMA_VERSION,
+        migrate: (value) => migrateProjectState(value, {
+          project: PROJECT_SCHEMA_VERSION,
+          queue: QUEUE_SCHEMA_VERSION,
+          batch: BATCH_SCHEMA_VERSION,
+          template: TEMPLATE_SCHEMA_VERSION,
+        }),
+      },
+    );
+    return { project: result.value, source: result.source, ...(result.migrationBackupPath ? { migrationBackupPath: result.migrationBackupPath } : {}) };
   }
 
   get path(): string { return this.filePath; }
@@ -127,13 +185,25 @@ export class ProjectStore {
 export class JobStore {
   constructor(private readonly jobsDirectory: string) {}
 
-  async save(state: QueueState): Promise<void> {
-    await atomicWriteJson(this.pathFor(state.batch.id), QueueStateSchema.parse(state));
+  async save(state: QueueState, signal?: AbortSignal): Promise<void> {
+    await atomicWriteJson(this.pathFor(state.batch.id), QueueStateSchema.parse(state), signal);
   }
 
-  async load(batchId: string): Promise<{ state: QueueState; source: "primary" | "backup" }> {
-    const result = await readValidatedJson(this.pathFor(batchId), (value) => QueueStateSchema.parse(value));
-    return { state: result.value, source: result.source };
+  async load(batchId: string): Promise<{ state: QueueState; source: "primary" | "backup"; migrationBackupPath?: string }> {
+    const result = await readValidatedJson(
+      this.pathFor(batchId),
+      (value) => QueueStateSchema.parse(value),
+      {
+        maxVersion: QUEUE_SCHEMA_VERSION,
+        migrate: (value) => migrateQueueState(value, {
+          project: PROJECT_SCHEMA_VERSION,
+          queue: QUEUE_SCHEMA_VERSION,
+          batch: BATCH_SCHEMA_VERSION,
+          template: TEMPLATE_SCHEMA_VERSION,
+        }),
+      },
+    );
+    return { state: result.value, source: result.source, ...(result.migrationBackupPath ? { migrationBackupPath: result.migrationBackupPath } : {}) };
   }
 
   async loadAll(): Promise<QueueState[]> {
@@ -145,8 +215,8 @@ export class JobStore {
       if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
       try { states.push((await this.load(entry.name.slice(0, -5))).state); }
       catch (error) {
-        if (error instanceof StoreError && error.code === "future_schema") throw error;
-        // A single corrupt job must not prevent unrelated jobs from recovering.
+        if (error instanceof StoreError && error.code === "corrupt") continue;
+        throw error;
       }
     }
     return states;

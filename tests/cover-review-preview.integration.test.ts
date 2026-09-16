@@ -1,0 +1,43 @@
+import { mkdir, mkdtemp, readdir, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { expect, it } from "vitest";
+import { FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
+import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem } from "../src/main/domain";
+import { fingerprintFile } from "../src/main/paths";
+import { ExportQueue } from "../src/main/queue";
+import { JobStore } from "../src/main/store";
+import { removeUnreferencedPreviews } from "../src/main/cover-review-preview";
+import type { CoverReviewDraft } from "../src/shared/cover-review";
+
+it("removes discarded preview files but keeps another draft's references", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "jianji-review-preview-gc-"));
+  const prefix = `${randomUUID()}/${randomUUID()}/0/previews`;
+  await mkdir(path.join(root, prefix), { recursive: true });
+  const discard = `${prefix}/${randomUUID()}.mp4`, retained = `${prefix}/${randomUUID()}.mp4`, alias = `${prefix}/${randomUUID()}.mp4`;
+  await writeFile(path.join(root, discard), "discard"); await writeFile(path.join(root, retained), "keep");
+  await symlink(path.join(root, retained), path.join(root, alias));
+  const discarded = [discard, retained, `./${retained}`, alias].map((relativePath) => ({ preview: { relativePath } }));
+  await removeUnreferencedPreviews(root, discarded, [{ frozen: [{ preview: { relativePath: `./${retained}` } }] }] as CoverReviewDraft[]);
+  expect(await readdir(path.join(root, prefix))).toEqual(expect.arrayContaining([path.basename(retained), path.basename(alias)]));
+  expect(await readdir(path.join(root, prefix))).toHaveLength(2);
+});
+
+it("renders a verified temporary preview through the queue owner without creating a job", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-review-preview-"));
+  const sourcePath = path.join(directory, "source.mp4");
+  const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24", "-f", "lavfi", "-i", "sine=f=440", "-t", "0.5", "-c:v", "libx264", "-c:a", "aac", sourcePath]).promise;
+  expect(generated.code, generated.stderr).toBe(0);
+  const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe");
+  const jobStore = new JobStore(path.join(directory, "jobs"));
+  const queue = new ExportQueue({ ffmpeg, jobStore, fontResolver: { resolve: async () => null }, executionLimits: { analysis: 1, exports: 1, threads: 2 } });
+  const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "preview", durationMs: 500, width: 160, height: 90, rotation: 0, sizeBytes: 1, importedAt: now(), probeStatus: "ready" };
+  const output = await queue.renderPreview({ template: createDefaultTemplate(), media, preset: { ...DEFAULT_PRESET, resolutionMode: "source" }, cacheDirectory: path.join(directory, "cache"), signal: new AbortController().signal });
+  const probe = await ffmpeg.probe(output);
+  expect(probe.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);
+  expect(probe.streams?.find((stream) => stream.codec_type === "video")?.width).toBe(160);
+  expect(queue.snapshot().batches).toEqual([]);
+  expect(await jobStore.loadAll()).toEqual([]);
+  expect((await readdir(path.join(directory, "cache"))).filter((name) => name.endsWith(".mp4"))).toHaveLength(1);
+});

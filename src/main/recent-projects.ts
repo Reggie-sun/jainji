@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { readFile, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { ProjectSchema, type Project } from "./domain.js";
+import { ProjectSchema, PROJECT_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION, BATCH_SCHEMA_VERSION, TEMPLATE_SCHEMA_VERSION, type Project } from "./domain.js";
+import { migrateProjectState } from "./state-migrations.js";
 import { canonicalPath } from "./paths.js";
 import { atomicWriteJson, readValidatedJson } from "./store.js";
 
@@ -35,7 +36,7 @@ export class RecentProjects {
         if (!file.isFile() || !file.name.endsWith(".json")) continue;
         const filePath = path.join(directory, file.name);
         let project: Project;
-        try { project = ProjectSchema.parse(JSON.parse(await readFile(filePath, "utf8"))); }
+        try { project = ProjectSchema.parse(migrateProjectState(JSON.parse(await readFile(filePath, "utf8")), { project: PROJECT_SCHEMA_VERSION, queue: QUEUE_SCHEMA_VERSION, batch: BATCH_SCHEMA_VERSION, template: TEMPLATE_SCHEMA_VERSION }).value); }
         catch { continue; }
         await this.remember(filePath, project);
       }

@@ -14,7 +14,7 @@ async function fixture() {
   const registry = path.join(directory, "recent-projects.json");
   const first = path.join(directory, "first.json");
   const second = path.join(directory, "second.jianji-project.json");
-  await writeFile(first, JSON.stringify(createDefaultProject("第一组")));
+  await writeFile(first, JSON.stringify({ ...createDefaultProject("第一组"), schemaVersion: 1 }));
   await writeFile(second, JSON.stringify(createDefaultProject("第二组")));
   return { directory, registry, first, second };
 }

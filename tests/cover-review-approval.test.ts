@@ -1,0 +1,56 @@
+import { randomUUID } from "node:crypto";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { expect, it, vi } from "vitest";
+import { reviewDigest } from "../src/main/cover-review-approval";
+import { ExportQueue } from "../src/main/queue";
+import { JobStore, StoreError } from "../src/main/store";
+import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem, type ExportBatch } from "../src/main/domain";
+import { FfmpegAdapter } from "../src/main/ffmpeg";
+import { fingerprintFile } from "../src/main/paths";
+
+it("never overwrites a job on unavailable migration during hydrate", async () => {
+  const save = vi.fn();
+  const jobStore = { load: async () => { throw new StoreError("unavailable", "backup failed"); }, save } as unknown as JobStore;
+  const queue = new ExportQueue({ jobStore, ffmpeg: new FfmpegAdapter("unused", "unused"), fontResolver: { resolve: async () => null } });
+  await expect(queue.hydrate([{ id: randomUUID() } as ExportBatch])).rejects.toMatchObject({ code: "unavailable" });
+  expect(save).not.toHaveBeenCalled();
+});
+it("cancellation during durable lookup cannot persist a new submission", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-approval-cancel-"));
+  const sourcePath = path.join(directory, "source.mp4"); await writeFile(sourcePath, "fixture");
+  const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "fixture", sizeBytes: 7, durationMs: 1000, width: 10, height: 10, rotation: 0, probeStatus: "ready", importedAt: now() };
+  let release!: () => void;
+  const loadAll = vi.fn(() => new Promise<[]>(resolve => { release = () => resolve([]); }));
+  const save = vi.fn();
+  const jobStore = { loadAll, save } as unknown as JobStore;
+  const queue = new ExportQueue({ jobStore, ffmpeg: new FfmpegAdapter("unused", "unused"), fontResolver: { resolve: async () => null } });
+  const input = { projectId: randomUUID(), template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], preset: DEFAULT_PRESET, outputDirectory: directory };
+  const bindingDigest = reviewDigest({ projectId: input.projectId, template: input.template, media: input.mediaItems, preset: input.preset, outputDirectory: directory });
+  const controller = new AbortController();
+  const pending = queue.createBatch({ ...input, submission: { submissionId: randomUUID(), mediaId: media.id, version: 1, bindingDigest } }, controller.signal);
+  const assertion = expect(pending).rejects.toThrow();
+  await vi.waitFor(() => expect(loadAll).toHaveBeenCalled());
+  controller.abort(); release(); await assertion;
+  expect(save).not.toHaveBeenCalled(); expect(queue.snapshot().batches).toHaveLength(0);
+});
+it("serializes replay across awaits and finds the durable task after restart", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-approval-"));
+  const sourcePath = path.join(directory, "source.mp4"); await writeFile(sourcePath, "fixture");
+  const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "fixture", sizeBytes: 7, durationMs: 1000, width: 10, height: 10, rotation: 0, probeStatus: "ready", importedAt: now() };
+  const dependencies = { jobStore: new JobStore(path.join(directory, "jobs")), ffmpeg: new FfmpegAdapter("unused", "unused"), fontResolver: { resolve: async () => null } };
+  const queue = new ExportQueue(dependencies);
+  const input = { projectId: randomUUID(), template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], preset: DEFAULT_PRESET, outputDirectory: path.join(directory, "output") };
+  const bindingDigest = reviewDigest({ projectId: input.projectId, template: input.template, media: input.mediaItems, preset: input.preset, outputDirectory: input.outputDirectory });
+  const submitted = { ...input, submission: { submissionId: randomUUID(), mediaId: media.id, version: 1, bindingDigest } };
+  const batches = await Promise.all([queue.createBatch(submitted), queue.createBatch(submitted)]);
+  expect(batches[0].tasks[0].id).toBe(batches[1].tasks[0].id);
+  const restarted = new ExportQueue(dependencies);
+  const replay = await restarted.createBatch(submitted);
+  expect(replay.tasks[0].id).toBe(batches[0].tasks[0].id);
+  const changed = { ...submitted, preset: { ...DEFAULT_PRESET, quality: "small" as const } };
+  changed.submission = { ...submitted.submission, bindingDigest: reviewDigest({ projectId: changed.projectId, template: changed.template, media: changed.mediaItems, preset: changed.preset, outputDirectory: changed.outputDirectory }) };
+  await expect(restarted.createBatch(changed)).rejects.toThrow(/冲突/);
+  expect(await dependencies.jobStore.loadAll()).toHaveLength(1);
+});

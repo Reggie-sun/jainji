@@ -7,11 +7,17 @@ import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-form
 import { RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
 import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverSettingsMediaIssue, MAX_MANUAL_COVERS } from "../shared/cover-sticker.js";
 import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
+import { CoverReviewDraftSchema } from "../shared/cover-review.js";
 import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
-export const SCHEMA_VERSION = 1;
+export const TEMPLATE_SCHEMA_VERSION = 1;
+export const PROJECT_SCHEMA_VERSION = 2;
+export const QUEUE_SCHEMA_VERSION = 2;
+export const BATCH_SCHEMA_VERSION = 2;
+// Legacy template format remains unchanged.
+export const SCHEMA_VERSION = TEMPLATE_SCHEMA_VERSION;
 
 const AbsolutePath = z.string().min(1).refine(isAbsolutePath, "must be an absolute path");
 const Unit = z.number().finite().min(0).max(1);
@@ -256,9 +262,10 @@ export const ExportBatchStatusSchema = z.enum(["active", "completed", "completed
 export type ExportBatchStatus = z.infer<typeof ExportBatchStatusSchema>;
 
 export const ExportBatchSchema = z.object({
-  schemaVersion: z.literal(SCHEMA_VERSION),
+  schemaVersion: z.literal(BATCH_SCHEMA_VERSION),
   id: z.string().uuid(),
   projectId: z.string().uuid().optional(),
+  submission: z.object({ submissionId: z.string().uuid(), mediaId: z.string().uuid(), version: z.number().int().positive(), bindingDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional(),
   templateSnapshot: EditTemplateSchema,
   mediaIds: z.array(z.string().uuid()).min(1),
   mediaSnapshots: z.array(MediaItemSchema).min(1).max(1000).optional(),
@@ -273,7 +280,7 @@ export const ExportBatchSchema = z.object({
 export type ExportBatch = z.infer<typeof ExportBatchSchema>;
 
 export const ProjectSchema = z.object({
-  schemaVersion: z.literal(SCHEMA_VERSION),
+  schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   id: z.string().uuid(),
   name: z.string().min(1).max(120),
   mediaItems: z.array(MediaItemSchema).max(1000),
@@ -281,6 +288,7 @@ export const ProjectSchema = z.object({
   activeTemplateId: z.string().uuid(),
   exportBatches: z.array(ExportBatchSchema),
   coverSticker: CoverStickerSchema.optional(),
+  reviewDrafts: z.array(CoverReviewDraftSchema).optional(),
   updatedAt: DateTime,
 }).strict().superRefine((project, ctx) => {
   const trackIssue = coverSettingsMediaIssue(project.coverSticker, project.mediaItems);
@@ -292,7 +300,7 @@ export const ProjectSchema = z.object({
 export type Project = z.infer<typeof ProjectSchema>;
 
 export const QueueStateSchema = z.object({
-  schemaVersion: z.literal(SCHEMA_VERSION),
+  schemaVersion: z.literal(QUEUE_SCHEMA_VERSION),
   revision: z.number().int().nonnegative(),
   batch: ExportBatchSchema,
   updatedAt: DateTime,
@@ -327,7 +335,7 @@ export function createDefaultTemplate(name = "未命名模板"): EditTemplate {
 export function createDefaultProject(name = "我的简辑项目"): Project {
   const template = createDefaultTemplate();
   return {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: PROJECT_SCHEMA_VERSION,
     id: randomUUID(),
     name,
     mediaItems: [],

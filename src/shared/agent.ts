@@ -76,7 +76,7 @@ export interface AgentItem {
   version: number;
   mediaId: string;
   name: string;
-  status: "waiting" | "analyzing" | "exporting" | "failed" | "cancelled";
+  status: "waiting" | "analyzing" | "prepared" | "exporting" | "failed" | "cancelled";
   summary?: string;
   error?: string;
   taskId?: string;

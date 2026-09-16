@@ -109,12 +109,12 @@ it.each(["queued", "failed"] as const)("keeps %s historical jobs readable but bl
   const mediaId = crypto.randomUUID();
   const timestamp = new Date().toISOString();
   const batch = ExportBatchSchema.parse({
-    schemaVersion: 1, id, templateSnapshot: template, mediaIds: [mediaId],
+    schemaVersion: 2, id, templateSnapshot: template, mediaIds: [mediaId],
     mediaSnapshots: [{ id: mediaId, ...dimensions, sourcePath: path.join(directory, "source.mp4"), displayName: "source", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, rotation: 0, probeStatus: "ready", importedAt: timestamp }],
     outputDirectory: directory, preset: DEFAULT_PRESET, status: status === "queued" ? "active" : "completed_with_errors", estimatedBytes: 1, createdAt: timestamp,
     tasks: [{ id: crypto.randomUUID(), batchId: id, mediaId, status, progress: 0, attempt: 1, outputPath: path.join(directory, "out.mp4"), createdAt: timestamp, attempts: [] }],
   });
-  await store.save({ schemaVersion: 1, revision: 1, batch, updatedAt: timestamp });
+  await store.save({ schemaVersion: 2, revision: 1, batch, updatedAt: timestamp });
   const run = vi.fn();
   const queue = new ExportQueue({ jobStore: store, ffmpeg: { run } as unknown as FfmpegAdapter, fontResolver: { resolve: async () => null } });
   expect((await queue.recover()).batches[0].batch.templateSnapshot.layers).toEqual(template.layers);

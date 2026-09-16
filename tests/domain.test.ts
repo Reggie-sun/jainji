@@ -12,7 +12,7 @@ describe("versioned domain schemas", () => {
     project.exportBatches = Array.from({ length: 500 }, () => {
       const id = crypto.randomUUID();
       return {
-        schemaVersion: 1, id, projectId: project.id, templateSnapshot: project.templates[0],
+        schemaVersion: 2, id, projectId: project.id, templateSnapshot: project.templates[0],
         mediaIds: [mediaId], outputDirectory: "/tmp/outputs", preset: DEFAULT_PRESET,
         status: "active", estimatedBytes: 0, createdAt: project.updatedAt,
         tasks: [{ id: crypto.randomUUID(), batchId: id, mediaId, status: "queued", progress: 0, attempt: 0, createdAt: project.updatedAt, attempts: [] }],
@@ -28,7 +28,7 @@ describe("versioned domain schemas", () => {
   it("rejects unknown and future schema fields", () => {
     const project = createDefaultProject();
     expect(() => ProjectSchema.parse({ ...project, unknown: true })).toThrow();
-    expect(() => ProjectSchema.parse({ ...project, schemaVersion: 2 })).toThrow();
+    expect(() => ProjectSchema.parse({ ...project, schemaVersion: project.schemaVersion + 1 })).toThrow();
   });
 
   it("rejects layers outside the normalized frame", () => {

@@ -7,8 +7,17 @@ import type { DecorationCatalog } from "../shared/decorations.js";
 import type { CoverSticker } from "../shared/cover-sticker.js";
 import type { LibraryAssetPreview } from "../shared/asset-library.js";
 import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shared/bug-feedback.js";
+import type { CoverReviewCommand } from "./cover-review-session.js";
 
 const api = {
+  createCoverReview: (mediaIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("coverReview.create", mediaIds),
+  editCoverReview: (command: CoverReviewCommand): Promise<DesktopState> => ipcRenderer.invoke("coverReview.edit", command),
+  analyzeCoverReview: (id: string, revision: number): Promise<DesktopState> => ipcRenderer.invoke("coverReview.analyze", { id, revision }),
+  reviewCoverReview: (id: string, revision: number, selection: import("../shared/connections.js").SelectModel): Promise<DesktopState> => ipcRenderer.invoke("coverReview.review", { id, revision, selection, enabled: true }),
+  prepareCoverReview: (id: string, revision: number, input: AgentStartInput): Promise<DesktopState> => ipcRenderer.invoke("coverReview.prepare", { id, revision, input }),
+  approveCoverReview: (id: string, revision: number, input: AgentStartInput): Promise<DesktopState> => ipcRenderer.invoke("coverReview.approve", { id, revision, input }),
+  viewCoverReview: (id: string, revision: number, mediaId: string, version: number): Promise<DesktopState> => ipcRenderer.invoke("coverReview.viewed", { id, revision, mediaId, version }),
+  cancelCoverReview: (): Promise<DesktopState> => ipcRenderer.invoke("coverReview.cancel"),
   submitFeedback: (input: BugFeedback): Promise<FeedbackReceipt> => ipcRenderer.invoke("feedback.submit", input),
   feedbackHistory: (): Promise<FeedbackHistoryEntry[]> => ipcRenderer.invoke("feedback.history"),
   resumeFeedback: (feedbackId: string): Promise<FeedbackReceipt> => ipcRenderer.invoke("feedback.resume", feedbackId),

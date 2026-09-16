@@ -116,6 +116,19 @@ export class ModelConnections {
       this.activateVision();
     });
   }
+  reviewProvider(input: unknown): AgentProvider {
+    this.assertIdle();
+    const { connectionId, model, reasoningEffort } = SelectModelSchema.parse(input);
+    const provider = new AgentProvider(fetch, undefined, this.apiRequests);
+    if (connectionId === "chatgpt") {
+      this.chatgpt.assertModel(model, reasoningEffort);
+      provider.useChatGPT(model, (messages, signal, options) => this.chatgpt.completeWithModel(model, reasoningEffort, messages, signal, options), reasoningEffort);
+    } else {
+      const profile = this.store.get(connectionId);
+      provider.configure({ ...profile.input, model, reasoningEffort }, profile.name);
+    }
+    return provider;
+  }
   async save(input: unknown): Promise<void> {
     await this.exclusive(async () => {
       const firstConnection = !this.store.exists;

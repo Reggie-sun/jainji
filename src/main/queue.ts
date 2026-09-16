@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { access, constants, link, open, unlink, writeFile } from "node:fs/promises";
+import { access, constants, link, open, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
+  BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
   assertPriceOnlyTemplate,
   cloneTemplate,
   deriveBatchStatus,
@@ -27,6 +28,7 @@ import { executionLimits } from "./execution-limits.js";
 import type { H264Encoder } from "./video-encoder.js";
 import { outputDimensions } from "../shared/export-settings.js";
 import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } from "./gpu-memory.js";
+import { reviewDigest } from "./cover-review-approval.js";
 
 export interface QueueSnapshot {
   revision: number;
@@ -40,6 +42,7 @@ export interface CreateBatchInput {
   mediaItems: readonly MediaItem[];
   outputDirectory: string;
   preset: ExportPreset;
+  submission?: ExportBatch["submission"];
 }
 
 export interface ExportQueueDependencies {
@@ -99,6 +102,57 @@ export class ExportQueue {
   private readonly compiler: TemplateCompiler;
   private readonly verifier: ArtifactVerifier;
   private persistChain: Promise<void> = Promise.resolve();
+  private submissionChain: Promise<void> = Promise.resolve();
+
+  async renderPreview(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; cacheDirectory: string; signal: AbortSignal }): Promise<string> {
+    input.signal.throwIfAborted();
+    if (this.shuttingDown || this.activeTasks.size || this.pendingStarts.size) throw new Error("导出资源忙，请等待当前任务结束后准备预览。");
+    const id = randomUUID();
+    const preset = ExportPresetSchema.parse(input.preset);
+    const template = immutableSnapshot(input.template);
+    const media = structuredClone(input.media);
+    const work = Promise.resolve().then(async () => {
+      input.signal.throwIfAborted();
+      assertPriceOnlyTemplate(template);
+      if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new Error("原素材已变化。");
+      const missing = await validateTemplateResources(template, this.dependencies.fontResolver);
+      if (missing.length) throw new Error("预览依赖素材不可用。");
+      await mkdir(input.cacheDirectory, { recursive: true });
+      const directory = await realpath(input.cacheDirectory);
+      const output = path.join(directory, `${id}.${preset.container}`);
+      const compiled = await this.compiler.compile(template, media, preset, {
+        ffmpegPath: this.dependencies.ffmpeg.ffmpegPath, fontResolver: this.dependencies.fontResolver,
+        textFilePath: (layerId) => path.join(directory, `${id}-${layerId}.txt`),
+        threads: this.limits.threads, videoEncoder: this.videoEncoder,
+      });
+      try {
+        if (this.videoEncoder === "h264_nvenc") {
+          const free = await (this.dependencies.gpuFreeMemory ?? readGpuFreeMemory)();
+          const size = outputDimensions(media, preset);
+          if (free !== undefined && free - GPU_MEMORY_RESERVE_MIB < estimateNvencMemoryMiB(size.width, size.height)) throw new Error("GPU 显存不足，预览未开始。");
+        }
+        await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
+        input.signal.throwIfAborted();
+        if (this.shuttingDown) throw new Error("预览已停止。");
+        const command = this.dependencies.ffmpeg.run([...compiled.args, output]);
+        this.controllers.set(id, command);
+        const abort = () => { void command.cancel(); };
+        input.signal.addEventListener("abort", abort, { once: true });
+        try {
+          const result = await command.promise;
+          input.signal.throwIfAborted();
+          if (this.shuttingDown || result.code !== 0) throw new Error("动态预览渲染失败。");
+          await this.verifier.verify(output, id);
+          input.signal.throwIfAborted();
+          return output;
+        } finally { input.signal.removeEventListener("abort", abort); this.controllers.delete(id); }
+      } catch (error) { await unlink(output).catch(() => undefined); throw error; }
+      finally { await Promise.all(compiled.textFiles.map(({ path }) => unlink(path).catch(() => undefined))); }
+    });
+    this.activeTasks.set(id, { work: work.then(() => undefined, () => undefined), threads: this.limits.threads, gpuMemory: 0 });
+    try { return await work; }
+    finally { this.activeTasks.delete(id); this.pump(); }
+  }
 
   constructor(private readonly dependencies: ExportQueueDependencies) {
     this.videoEncoder = dependencies.videoEncoder ?? "libx264";
@@ -139,7 +193,33 @@ export class ExportQueue {
     return { revision: this.globalRevision, batches: [...this.states.values()].map((state) => structuredClone(state)) };
   }
 
-  async createBatch(input: CreateBatchInput): Promise<ExportBatch> {
+  async createBatch(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
+    signal?.throwIfAborted();
+    if (!input.submission) return this.createBatchNow(input, signal);
+    const frozen = structuredClone(input);
+    const work = this.submissionChain.catch(() => undefined).then(async () => {
+      signal?.throwIfAborted();
+      const submission = frozen.submission!;
+      if (frozen.mediaIds.length !== 1 || frozen.mediaIds[0] !== submission.mediaId) throw new Error("批准提交素材不匹配。");
+      const digest = reviewDigest({ projectId: frozen.projectId, template: frozen.template, media: frozen.mediaItems.filter(({ id }) => id === submission.mediaId), preset: frozen.preset, outputDirectory: path.resolve(frozen.outputDirectory) });
+      if (digest !== submission.bindingDigest) throw new Error("批准提交摘要不匹配。");
+      // Also inspect durable jobs: a prior save may have succeeded before its
+      // caller received a receipt, including after a process restart.
+      const states = [...this.states.values(), ...await this.dependencies.jobStore.loadAll()];
+      signal?.throwIfAborted();
+      const existing = states.find(({ batch }) => batch.submission?.submissionId === submission.submissionId && batch.submission.mediaId === submission.mediaId && batch.submission.version === submission.version);
+      if (existing) {
+        if (existing.batch.submission!.bindingDigest !== digest) throw new Error("相同批准提交键的内容发生冲突。");
+        return structuredClone(existing.batch);
+      }
+      return this.createBatchNow(frozen, signal);
+    });
+    this.submissionChain = work.then(() => undefined, () => undefined);
+    return work;
+  }
+
+  private async createBatchNow(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
+    signal?.throwIfAborted();
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
     assertPriceOnlyTemplate(template);
@@ -164,14 +244,16 @@ export class ExportQueue {
       }));
     }
     const batch = ExportBatchSchema.parse({
-      schemaVersion: 1, id: batchId, projectId: input.projectId ?? randomUUID(), templateSnapshot: template,
+      schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId: input.projectId ?? randomUUID(), templateSnapshot: template,
       mediaIds: media.map((item) => item.id), outputDirectory: path.resolve(input.outputDirectory),
       mediaSnapshots: structuredClone(media),
+      submission: input.submission,
       preset: parsedPreset, status: "active", estimatedBytes: media.reduce((sum, item) => sum + item.sizeBytes, 0),
       createdAt: now(), tasks,
     });
-    const state: QueueState = { schemaVersion: 1, revision: 1, batch, updatedAt: now() };
-    await this.dependencies.jobStore.save(state);
+    const state: QueueState = { schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, batch, updatedAt: now() };
+    signal?.throwIfAborted();
+    await this.dependencies.jobStore.save(state, signal);
     this.states.set(batch.id, state);
     this.globalRevision = Math.max(this.globalRevision, state.revision);
     this.emit();
@@ -327,8 +409,8 @@ export class ExportQueue {
       if (!state) {
         try { state = (await this.dependencies.jobStore.load(batch.id)).state; }
         catch (error) {
-          if (error instanceof StoreError && error.code === "future_schema") throw error;
-          state = { schemaVersion: 1, revision: 1, batch: structuredClone(batch), updatedAt: now() };
+          if (error instanceof StoreError && error.code !== "corrupt") throw error;
+          state = { schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, batch: structuredClone(batch), updatedAt: now() };
           await this.dependencies.jobStore.save(state);
         }
       }
@@ -384,6 +466,7 @@ export class ExportQueue {
       await controller.cancel();
     }));
     await active?.catch(() => undefined);
+    await Promise.all([...this.activeTasks.values()].map(({ work }) => work));
     for (const state of this.states.values()) {
       for (const task of state.batch.tasks) {
         if (EXECUTION.has(task.status)) {

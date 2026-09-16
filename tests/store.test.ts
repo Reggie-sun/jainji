@@ -15,11 +15,11 @@ describe("atomic JSON store", () => {
     await atomicWriteJson(filePath, second);
     expect(JSON.parse(await readFile(`${filePath}.bak`, "utf8")).name).toBe("first");
     await writeFile(filePath, "{broken", "utf8");
-    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value));
+    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: 2 });
     expect(result.source).toBe("backup");
     expect(result.value.name).toBe("first");
     expect((await readdir(directory)).some((name) => name.startsWith("project.json.corrupt-"))).toBe(true);
-    expect((await readValidatedJson(filePath, (value) => ProjectSchema.parse(value))).source).toBe("primary");
+    expect((await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: 2 })).source).toBe("primary");
   });
 
   it("serializes concurrent writes to one state file", async () => {
@@ -28,7 +28,7 @@ describe("atomic JSON store", () => {
     const first = createDefaultProject("first");
     const second = createDefaultProject("second");
     await Promise.all([atomicWriteJson(filePath, first), atomicWriteJson(filePath, second)]);
-    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value));
+    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: 2 });
     expect(["first", "second"]).toContain(result.value.name);
     expect(result.source).toBe("primary");
   });

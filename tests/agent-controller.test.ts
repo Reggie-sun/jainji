@@ -86,7 +86,7 @@ describe("AgentController queue admission", () => {
     service.currentProject.exportBatches = Array.from({ length: 500 }, () => {
       const batchId = crypto.randomUUID();
       return {
-        schemaVersion: 1, id: batchId, projectId: service.currentProject.id,
+        schemaVersion: 2, id: batchId, projectId: service.currentProject.id,
         templateSnapshot: service.currentProject.templates[0], mediaIds: [id],
         outputDirectory: directory, preset: DEFAULT_PRESET, status: "cancelled",
         estimatedBytes: 0, createdAt: service.currentProject.updatedAt,
