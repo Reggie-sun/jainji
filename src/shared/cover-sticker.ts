@@ -28,20 +28,44 @@ export const CoverTrackSchema = z.object({
     }
   });
 });
+export const MAX_MANUAL_COVERS = 64;
+export const CoverRegionSchema = z.object({
+  id: z.string().uuid(),
+  rectangle: CoverRectangleSchema,
+  stickerId: UploadedCoverStickerIdSchema.optional(),
+  tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
+}).strict();
+export type CoverRegion = z.infer<typeof CoverRegionSchema>;
 export const CoverStickerSchema = z.object({
   enabled: z.boolean(),
   stickerIds: z.array(UploadedCoverStickerIdSchema).max(50),
   rectangle: CoverRectangleSchema,
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
   trackingMode: z.enum(["manual", "agent"]).optional(),
+  regions: z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS).optional(),
 }).strict().superRefine((value, ctx) => {
-  if (value.enabled && value.trackingMode !== "agent" && !value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "请至少选择一张自己的贴纸" });
+  const needsSharedSticker = !value.regions || value.regions.some((region) => !region.stickerId);
+  if (value.enabled && value.trackingMode !== "agent" && needsSharedSticker && !value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "请为统一款至少选择一张自己的贴纸" });
+  if (value.enabled && value.trackingMode !== "agent" && value.regions?.length === 0) ctx.addIssue({ code: "custom", path: ["regions"], message: "请至少添加一个覆盖框" });
+  if (value.regions && new Set(value.regions.map((region) => region.id)).size !== value.regions.length) ctx.addIssue({ code: "custom", path: ["regions"], message: "覆盖框编号不得重复" });
   if (new Set(value.stickerIds).size !== value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "覆盖候选不得重复" });
 });
 export type CoverSticker = z.infer<typeof CoverStickerSchema>;
 export type CoverRectangle = z.infer<typeof CoverRectangleSchema>;
 export type CoverKeyframe = z.infer<typeof CoverKeyframeSchema>;
 export type CoverTrack = z.infer<typeof CoverTrackSchema>;
+
+// Old projects have a single rectangle; explicit regions become the sole manual layout.
+export function manualCoverRegions(settings: CoverSticker): CoverRegion[] {
+  return settings.regions ?? [{ id: "00000000-0000-4000-8000-000000000001", rectangle: settings.rectangle, tracks: settings.tracks }];
+}
+
+export function coverSettingsMediaIssue(settings: CoverSticker | undefined, media: readonly { id: string; durationMs: number }[]): string | undefined {
+  for (const region of settings ? manualCoverRegions(settings) : []) {
+    const issue = coverTrackMediaIssue(region.tracks, media);
+    if (issue) return issue;
+  }
+}
 
 export function coverTrackMediaIssue(tracks: CoverSticker["tracks"], media: readonly { id: string; durationMs: number }[]): string | undefined {
   for (const [id, track] of Object.entries(tracks ?? {})) {

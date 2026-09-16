@@ -7,7 +7,7 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
 import type { PriceStyleId } from "../shared/price-styles.js";
-import { coverLayerForMedia, automaticCoverLayers, type FrozenCoverSticker } from "./cover-sticker.js";
+import { manualCoverLayers, automaticCoverLayers, type FrozenCoverSticker } from "./cover-sticker.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 
 interface RunnerDependencies {
@@ -107,7 +107,7 @@ export class AgentRunner {
           const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
           let template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           if (coverSticker) {
-            const layers = coverTracks !== undefined ? automaticCoverLayers(coverSticker, source, dimensions, coverTracks) : [coverLayerForMedia(coverSticker, source, dimensions)];
+            const layers = coverTracks !== undefined ? automaticCoverLayers(coverSticker, source, dimensions, coverTracks) : manualCoverLayers(coverSticker, source, dimensions);
             template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers] });
           }
           if (selection && "stickers" in plan) {

@@ -5,7 +5,7 @@ import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-po
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
 import { RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
-import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverTrackMediaIssue } from "../shared/cover-sticker.js";
+import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverSettingsMediaIssue, MAX_MANUAL_COVERS } from "../shared/cover-sticker.js";
 import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
 import { JianjiError } from "./errors.js";
 
@@ -113,6 +113,8 @@ export const StickerLayerSchema = z.object({
     opaqueBackground: z.literal(true).optional(),
     automatic: z.literal(true).optional(),
     targetId: z.string().min(1).max(80).optional(),
+    regionId: z.string().uuid().optional(),
+    sharedSticker: z.literal(true).optional(),
   }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;
@@ -142,6 +144,7 @@ export const EditTemplateSchema = z.object({
 }).strict().superRefine((template, ctx) => {
   const ids = new Set<string>();
   let coverCount = 0;
+  const regionIds = new Set<string>();
   template.layers.forEach((layer, index) => {
     if (ids.has(layer.id)) ctx.addIssue({ code: "custom", path: ["layers", index, "id"], message: "layer id must be unique" });
     ids.add(layer.id);
@@ -149,6 +152,11 @@ export const EditTemplateSchema = z.object({
     if (layer.y >= 1) ctx.addIssue({ code: "custom", path: ["layers", index, "y"], message: "layer must start inside the frame" });
     if (layer.type === "sticker" && layer.cover) {
       coverCount += 1;
+      if (layer.cover.regionId) {
+        if (regionIds.has(layer.cover.regionId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "regionId"], message: "覆盖框编号不得重复" });
+        regionIds.add(layer.cover.regionId);
+      }
+      if ((layer.cover.automatic && (layer.cover.regionId || layer.cover.sharedSticker)) || (layer.cover.sharedSticker && !layer.cover.regionId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover"], message: "覆盖框选款标记必须属于手动覆盖框" });
       if (layer.width <= 0) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "覆盖贴纸宽度必须大于零" });
       if (layer.y + layer.cover.height > 1 + 1e-9) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "height"], message: "覆盖贴纸必须完整位于画面内" });
       if (layer.rotationDeg !== 0) ctx.addIssue({ code: "custom", path: ["layers", index, "rotationDeg"], message: "覆盖贴纸不支持旋转" });
@@ -159,7 +167,8 @@ export const EditTemplateSchema = z.object({
       for (const message of cornerSafeStickerIssues(layer)) ctx.addIssue({ code: "custom", path: ["layers", index], message });
     }
   });
-  if (coverCount > MAX_AUTOMATIC_COVER_TRACKS || (coverCount > 1 && template.layers.some((layer) => layer.type === "sticker" && layer.cover && !layer.cover.automatic))) ctx.addIssue({ code: "custom", path: ["layers"], message: `手动覆盖最多一个；多目标自动覆盖最多 ${MAX_AUTOMATIC_COVER_TRACKS} 段` });
+  if (coverCount > Math.max(MAX_MANUAL_COVERS, MAX_AUTOMATIC_COVER_TRACKS)) ctx.addIssue({ code: "custom", path: ["layers"], message: "覆盖图层数量超出上限" });
+  if (coverCount > 1 && template.layers.some((layer) => layer.type === "sticker" && layer.cover && !layer.cover.automatic && !layer.cover.regionId)) ctx.addIssue({ code: "custom", path: ["layers"], message: "多个手动覆盖框必须各自指定编号" });
   if (template.layoutPolicy === CORNER_SAFE_POLICY.id) {
     const areaProxy = template.layers
       .filter((layer) => layer.type === "sticker" && !layer.cover && layer.visible)
@@ -264,7 +273,7 @@ export const ProjectSchema = z.object({
   coverSticker: CoverStickerSchema.optional(),
   updatedAt: DateTime,
 }).strict().superRefine((project, ctx) => {
-  const trackIssue = coverTrackMediaIssue(project.coverSticker?.tracks, project.mediaItems);
+  const trackIssue = coverSettingsMediaIssue(project.coverSticker, project.mediaItems);
   if (trackIssue) ctx.addIssue({ code: "custom", path: ["coverSticker", "tracks"], message: trackIssue });
   if (!project.templates.some((template) => template.id === project.activeTemplateId)) {
     ctx.addIssue({ code: "custom", path: ["activeTemplateId"], message: "active template does not exist" });
