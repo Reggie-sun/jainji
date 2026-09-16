@@ -64,3 +64,25 @@
 Verification：62 项相关测试通过；`npm run build`（含 typecheck）通过。真实 FFmpeg 集成覆盖合并范围保留与输出媒体；隔离 Electron/IPC/FFmpeg 视觉连接 smoke 通过，产物为 `/tmp/jianji-vision-smoke-u3fRgY/output/source_edited.mp4`（模拟服务，不是用户素材）。尚无修复后的真实完整素材成片或人工验收，不能声称两类问题均已解决。
 
 独立 `reviewer_xhigh` 结论为 `accept with concerns`：无 blocking issue；确认唯一匹配与记录响应回放，保留 JSON 根因及完整实片验收未完成的限制。最终 diff 由主线程复核。
+
+## Repeated Failures And Rejected Experiment
+
+后续用户报告 `(16)` 在 1.75–3.50 秒、`(17)` 在 3.50–5.25 秒、`(15)` 在 24.50–26.25 秒仍因跨窗口关联失败而整批停止。不能把上一轮局部几何回放通过视为这些真实素材已修复。
+
+本轮尝试了保留共享抽帧、只续接明确身份、将未匹配的旧新框分别保留的方案。68 项相关测试、build/typecheck、隔离 Electron/IPC/FFmpeg smoke 均通过；初次 independent review 为 `accept with concerns`。随后完整真实媒体验证提供了反证，该实验已全部撤回，未作为生产修复提交。main 的生产逻辑恢复到 `d5372ea`；未匹配的数量/几何仍明确失败。
+
+真实测试使用独立 userData 和输出目录 `/home/reggie/jianji-validation/20260916-cover-fix/`，只读挂载应用现有连接和登录文件，不复制 Key，不改原创作配置。创作仍为 `gpt-5.6-luna / medium`，视觉仍为 `MiniMax-M3 / 服务商默认`，手动内容仍为 `19.9元2支`。每份素材只做一次新制作，无模型重试或自动切换。
+
+| Source | Model / media result | Visual result |
+| --- | --- | --- |
+| `(16).mp4` | 22 个视觉窗口完成，20 条冻结覆盖轨迹；407 个模型观测框全部几何覆盖。实验成片 38.778 秒、720×1280、30 fps、H.264/AAC，7,039,649 bytes | `contact16.png` 约 2 秒处底部表情漏盖；模型框定位不准确，画面验收失败 |
+| `(17).mp4` | 已越过原 3.50 秒失败点，但第 14 个窗口（22.75–24.50 秒）明确返回 `status=uncertain`，本条无输出 | 正确停止，未绕过不确定性 |
+| `(15).mp4` | 20 个视觉窗口完成，13 条冻结覆盖轨迹；292 个模型观测框全部几何覆盖。实验成片 34.877 秒、720×1280、30 fps、H.264/AAC，7,553,563 bytes | `contact15.png` 约 25 秒后原角标仍可见；画面验收失败 |
+
+两个实验成片均经过队列文件验证、独立 ffprobe、FFmpeg 全流解码（exit 0）及 Electron 静音整段播放（ended=true、无 media error）。这仅证明媒体有效，不代表覆盖成功。对应任务为 `08c29e27-20d8-466b-948b-521af10159ef`、`a43a259e-2380-4b6b-9abe-2fb257a623cf`。冻结模板包含原手动文字与 `opaqueBackground=true`；未进行本轮真实导出重试。
+
+关键反证：`response-50.json` 对 24.50 秒返回 3 个目标；`response-51.json` 对同一画面及整个 24.50–26.25 秒窗口返回 `status=ok`、0 个目标，`response-52.json` 后续仍为 0。实际角标仍在。仅保留旧框一个采样间隔不能修复后续漏检；继续放宽关联条件会把失败变成漏盖。同数量也不保证可靠：`(16)` 的同帧底部框偏移导致实际露出。
+
+证据包含 `state-16.json`、`state-17.json`、`state-15.json`、`requests.jsonl`、`response-1.json` 至 `response-56.json`、`observations-16.json`、`observations-15.json`、两张 contact sheet 与本地任务记录。实验 MP4 在上述证据目录的 `output/` 下，文件名分别为 `竞品详情-抖音电商罗盘 (16)_edited.mp4` 和 `竞品详情-抖音电商罗盘 (15)_edited.mp4`；均为未通过画面验收的诊断产物。
+
+独立 `reviewer_xhigh` 根据新增真实证据 scoped re-review 改为 `reject`：不发布未匹配观测直接放行的实验，恢复数量及几何无法可靠关联时的拒绝。当前 blocker 是所选视觉模型在这些素材上的漏检、定位差异和明确不确定，而非 FFmpeg。下一步需明确选择另一视觉模型做相同素材验证，不能以更多容错或猜测轨迹冒充覆盖成功。原始 JSON 格式失败本轮未复现，仍不能声称其根因已解决。
