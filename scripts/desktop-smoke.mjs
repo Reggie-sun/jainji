@@ -336,6 +336,10 @@ try {
   const twoLinePrice = "春日新品\n到手30贴";
   assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice);
   assert.equal(await evaluate("document.querySelector('#product-price').getAttribute('aria-invalid')"), "false");
+  await click("保存项目");
+  await waitFor("document.body.innerText.includes('素材集已保存')");
+  const priceProject = JSON.parse(await readFile(collectionFile, "utf8"));
+  assert.equal(priceProject.templates.find(template => template.id === priceProject.activeTemplateId).productPriceDraft, twoLinePrice, "manual display text is stored in the active template JSON");
   assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 0, "automatic decoration hides manual price choices");
   assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('价格花字由 Agent 自主选择')"), true, "automatic preview marks its classic sample as undecided");
   const classicPreview = await evaluate("document.querySelector('.template-preview canvas').toDataURL()");

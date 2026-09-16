@@ -11,7 +11,7 @@ import { CoverReviewController } from "../src/main/cover-review-controller";
 import { createCoverReviewDraft, editCoverReviewDraft } from "../src/main/cover-review-session";
 import { reviewDigest } from "../src/main/cover-review-approval";
 import { DEFAULT_COVER_STICKER } from "../src/shared/cover-sticker";
-import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem } from "../src/main/domain";
+import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem, type Project } from "../src/main/domain";
 import type { AgentController } from "../src/main/agent-controller";
 import { fingerprintFile } from "../src/main/paths";
 
@@ -44,6 +44,13 @@ async function fixture() {
   await service.saveReviewDraft(draft);
   return { directory, service, queue, controller, agent, draft, input, file, previewFile };
 }
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 it("rejects changed output settings, missing preview and forged premature approval", async () => {
   const f = await fixture();
   await expect(f.controller.approve(f.draft.id, f.draft.revision, { ...f.input, brief: "changed" }, new Set([f.directory]))).rejects.toThrow(/设置已变化/);
@@ -76,6 +83,44 @@ it("does not publish a draft mutation when project storage fails", async () => {
     await expect(f.service.saveReviewDraft({ ...previous, status: "preparing_preview" }, previous.revision)).rejects.toThrow(/disk/);
     expect(f.service.currentProject.reviewDrafts![0]).toEqual(previous);
   } finally { spy.mockRestore(); }
+});
+
+it("does not let a pending display text save overwrite a review revision", async () => {
+  const f = await fixture();
+  const gate = deferred();
+  const started = deferred();
+  const original = ProjectStore.prototype.save;
+  let chain = Promise.resolve();
+  let firstWrite = true;
+  vi.spyOn(ProjectStore.prototype, "save").mockImplementation(function (this: ProjectStore, project: Project) {
+    const frozen = structuredClone(project);
+    const work = chain.then(async () => {
+      if (firstWrite) {
+        firstWrite = false;
+        started.resolve();
+        await gate.promise;
+      }
+      await original.call(this, frozen);
+    });
+    chain = work.catch(() => undefined);
+    return work;
+  });
+
+  f.service.setProductPriceDraft("19.9元");
+  const firstPriceSave = f.service.persistCurrentProject();
+  await started.promise;
+  f.service.setProductPriceDraft("29.9元");
+  const finalPriceSave = f.service.persistCurrentProject();
+  const previous = structuredClone(f.service.currentProject.reviewDrafts![0]);
+  const revised = { ...previous, status: "preparing_preview" as const };
+  const reviewSave = f.service.saveReviewDraft(revised, previous.revision);
+
+  gate.resolve();
+  await Promise.all([firstPriceSave, finalPriceSave, reviewSave]);
+  const disk = JSON.parse(await readFile(f.file, "utf8"));
+  expect(disk.templates[0].productPriceDraft).toBe("29.9元");
+  expect(disk.reviewDrafts[0].status).toBe("preparing_preview");
+  expect(f.service.currentProject.reviewDrafts![0].status).toBe("preparing_preview");
 });
 
 it("cancelling while validating evidence cannot start a later creative request", async () => {

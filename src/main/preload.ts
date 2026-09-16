@@ -49,6 +49,7 @@ const api = {
   addAndProbe: (paths: string[]): Promise<DesktopState> => ipcRenderer.invoke("media.addAndProbe", paths),
   removeMedia: (mediaId: string): Promise<DesktopState> => ipcRenderer.invoke("media.remove", mediaId),
   renameProject: (name: string): Promise<void> => ipcRenderer.invoke("project.rename", name),
+  setProductPriceDraft: (projectId: string, productPrice: string): Promise<DesktopState> => ipcRenderer.invoke("project.productPriceDraft", { projectId, productPrice }),
   setCoverSticker: (input: CoverSticker): Promise<DesktopState> => ipcRenderer.invoke("project.coverSticker", input),
   saveProject: (name?: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.save", name),
   loadProject: (recentId?: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.load", recentId),

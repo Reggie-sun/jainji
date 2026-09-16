@@ -12,7 +12,7 @@ import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { StickerLibraryPanel } from "./StickerLibraryPanel";
 import { CoverReviewPanel } from "./CoverReviewPanel";
 import { CoverStickerPanel } from "./CoverStickerPanel";
-import { DecorationSchema, type DecorationOptions, type Corner } from "../shared/decorations";
+import { DecorationSchema, ProductPriceSchema, type DecorationOptions, type Corner } from "../shared/decorations";
 import type { CoverSticker } from "../shared/cover-sticker";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ResultsPanel } from "./ResultsPanel";
@@ -20,7 +20,6 @@ import { BugFeedbackDialog } from "./BugFeedbackDialog";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 
 type Step = "connection" | "import" | "templates" | "stickers" | "results";
-const PRODUCT_PRICE_STORAGE_KEY = "jianji.productPrice";
 const steps: { id: Step; icon: string; label: string; detail: string }[] = [
   { id: "import", icon: "folder", label: "素材工作台", detail: "01" },
   { id: "templates", icon: "grid", label: "规则模板", detail: "02" },
@@ -57,22 +56,38 @@ export default function App() {
   const projectId = useRef("");
   const operation = useRef(false);
 
-  const apply = useCallback((next: DesktopState) => {
+  const apply = useCallback((next: DesktopState, restoreProductPrice = false) => {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
-    if (projectId.current !== next.project.id) {
+    const projectChanged = projectId.current !== next.project.id;
+    if (projectChanged) {
       projectId.current = next.project.id;
-      let productPrice = "";
-      try {
-        productPrice = window.localStorage.getItem(`${PRODUCT_PRICE_STORAGE_KEY}.${next.project.id}`) ?? "";
-      } catch {
-        setNotice({ error: true, text: "未能读取此素材集保存的展示文字，请重新填写。" });
-      }
-      setDecorations((current) => ({ ...current, productPrice }));
       setCollectionName(next.project.name);
       knownMedia.current.clear();
       setOutputDirectory("");
       setPreviewId(undefined);
       setCoverStickerDirty(false);
+    }
+    if (projectChanged || restoreProductPrice) {
+      let productPrice = next.project.template.productPriceDraft ?? "";
+      if (next.project.template.productPriceDraft === undefined) {
+        const legacyKey = `jianji.productPrice.${next.project.id}`;
+        try {
+          const legacy = window.localStorage.getItem(legacyKey);
+          const parsed = legacy === null ? undefined : ProductPriceSchema.safeParse(legacy);
+          if (parsed?.success) {
+            productPrice = parsed.data;
+            void window.jianji.setProductPriceDraft(next.project.id, parsed.data).then((saved) => {
+              if (saved.activeRecentProjectId) window.localStorage.removeItem(legacyKey);
+              if (projectId.current === next.project.id) setState(saved);
+            }).catch(() => {
+              if (projectId.current === next.project.id) setNotice({ error: true, text: "旧版展示文字未能迁入当前素材集，请重试。" });
+            });
+          }
+        } catch {
+          setNotice({ error: true, text: "旧版展示文字未能读取；当前素材集仍可重新填写。" });
+        }
+      }
+      setDecorations((current) => ({ ...current, productPrice }));
     }
     const additions = ready.filter((item) => !knownMedia.current.has(item.id)).map((item) => item.id);
     knownMedia.current = new Set(next.project.mediaItems.map((item) => item.id));
@@ -90,7 +105,7 @@ export default function App() {
       return;
     }
     let active = true;
-    void window.jianji.getState().then((next) => { if (active) apply(next); }).catch(() => {
+    void window.jianji.getState().then((next) => { if (active) apply(next, true); }).catch(() => {
       if (active) setInitError("桌面环境初始化失败，请关闭应用后重新启动。");
     });
     const unsubscribe = window.jianji.onExportSnapshot((next) => { if (active) apply(next); });
@@ -135,7 +150,7 @@ export default function App() {
   };
   const changeProject = (load: boolean, recentId?: string) => void run(async () => {
     const next = await (load ? window.jianji.loadProject(recentId) : window.jianji.newProject());
-    if (next) { apply(next); setCollectionName(next.project.name); setStep(next.connection.configured ? "import" : "connection"); }
+    if (next) { apply(next, true); setCollectionName(next.project.name); setStep(next.connection.configured ? "import" : "connection"); }
   });
   const renameCollection = (name: string) => {
     setCollectionName(name);
@@ -169,11 +184,15 @@ export default function App() {
   };
   const rememberProductPrice = (productPrice: string) => {
     setDecorations((current) => ({ ...current, productPrice }));
-    try {
-      window.localStorage.setItem(`${PRODUCT_PRICE_STORAGE_KEY}.${state.project.id}`, productPrice);
-    } catch {
-      setNotice({ error: true, text: "展示文字未能保存到本机，本次仍可使用；重新打开后可能需要再次填写。" });
-    }
+    const parsed = ProductPriceSchema.safeParse(productPrice);
+    if (!parsed.success) return;
+    const currentId = state.project.id;
+    setState((current) => current?.project.id === currentId ? { ...current, project: { ...current.project, hasUnsavedChanges: true, template: { ...current.project.template, productPriceDraft: parsed.data } } } : current);
+    void window.jianji.setProductPriceDraft(currentId, parsed.data).then((next) => {
+      if (projectId.current === currentId) setState(next);
+    }).catch(() => {
+      if (projectId.current === currentId) setNotice({ error: true, text: "展示文字未能写入当前素材集，请重试。" });
+    });
   };
   const start = () => void run(async () => {
     if (coverStickerDirty) throw new Error("请先保存覆盖设置后再开始制作。");

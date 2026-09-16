@@ -1,6 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } from "electron";
 import { mkdir, stat, readFile } from "node:fs/promises";
-import { FONT_CHOICES, isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
+import { FONT_CHOICES, ProductPriceSchema, isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { z } from "zod";
@@ -43,6 +43,7 @@ const proofSchema = z.object({ mediaId: uuidSchema }).strict();
 const retrySchema = z.object({ taskIds: z.array(uuidSchema).optional() }).strict();
 const taskSchema = z.object({ taskId: uuidSchema }).strict();
 const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict();
+const productPriceDraftSchema = z.object({ projectId: uuidSchema, productPrice: ProductPriceSchema }).strict();
 const savedProjectRenameSchema = z.object({ recentId: uuidSchema, name: MaterialNameSchema }).strict();
 
 let mainWindow: BrowserWindow | undefined;
@@ -254,6 +255,14 @@ function registerHandlers(): void {
   ipcMain.handle("project.rename", (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     service.renameProject(MaterialNameSchema.parse(input));
+  });
+  ipcMain.handle("project.productPriceDraft", async (event, input: unknown) => {
+    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    const { projectId, productPrice } = productPriceDraftSchema.parse(input);
+    if (service.currentProject.id !== projectId) throw new Error("素材集已切换，展示文字未保存。");
+    service.setProductPriceDraft(productPrice);
+    await service.persistCurrentProject();
+    return publicState();
   });
   ipcMain.handle("project.coverSticker", async (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();

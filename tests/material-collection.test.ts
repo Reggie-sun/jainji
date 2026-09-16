@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApplicationService } from "../src/main/application";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
+import { ProjectStore } from "../src/main/store";
 
 const directories: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
@@ -37,6 +38,57 @@ describe("named material collections", () => {
     await reopened.saveProject(file);
     await service.loadProject(file);
     expect(service.currentProject.name).toBe("新品细节素材集");
+  });
+
+  it("persists the editable display text in the active template", async () => {
+    const { directory, service, createService } = await fixture();
+    const file = path.join(directory, "collection.json");
+    service.setProductPriceDraft("19.9元到手5卷\n29.9元拍一发三");
+    expect(() => service.setProductPriceDraft("未完成\n\n草稿")).toThrow();
+    expect(service.activeTemplate.productPriceDraft).toBe("19.9元到手5卷\n29.9元拍一发三");
+    await service.saveProject(file, "夏季新品");
+    service.setProductPriceDraft("29.9元拍一发三");
+    expect(await service.persistCurrentProject()).toBe(true);
+
+    const saved = JSON.parse(await readFile(file, "utf8"));
+    expect(saved.templates.find((template: { id: string }) => template.id === saved.activeTemplateId)?.productPriceDraft).toBe("29.9元拍一发三");
+
+    const reopened = createService();
+    await reopened.loadProject(file);
+    expect(reopened.activeTemplate.productPriceDraft).toBe("29.9元拍一发三");
+
+    reopened.setProductPriceDraft("");
+    await reopened.saveProject(file);
+    expect(JSON.parse(await readFile(file, "utf8")).templates[0].productPriceDraft).toBe("");
+  });
+
+  it("persists an explicit clear when the template has no display text draft", async () => {
+    const { directory, service, createService } = await fixture();
+    const file = path.join(directory, "collection.json");
+    await service.saveProject(file, "夏季新品");
+
+    service.setProductPriceDraft("");
+    expect(await service.persistCurrentProject()).toBe(true);
+    expect(JSON.parse(await readFile(file, "utf8")).templates[0].productPriceDraft).toBe("");
+
+    const reopened = createService();
+    await reopened.loadProject(file);
+    expect(reopened.activeTemplate.productPriceDraft).toBe("");
+  });
+
+  it("coalesces rapid display text persistence and keeps the latest value", async () => {
+    const { directory, service } = await fixture();
+    const file = path.join(directory, "collection.json");
+    const save = vi.spyOn(ProjectStore.prototype, "save");
+    await service.saveProject(file, "夏季新品");
+    const pending: Promise<boolean>[] = [];
+    for (const value of ["1", "19", "19.9", "19.9元", "19.9元30贴"]) {
+      service.setProductPriceDraft(value);
+      pending.push(service.persistCurrentProject());
+    }
+    await Promise.all(pending);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(await readFile(file, "utf8")).templates[0].productPriceDraft).toBe("19.9元30贴");
   });
 
   it("retains the saved name while marking a missing original as unavailable", async () => {

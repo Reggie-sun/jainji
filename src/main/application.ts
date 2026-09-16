@@ -17,6 +17,7 @@ import { pathsEqual, validateTemplateResources, type FontResolver } from "./path
 import { ProjectStore } from "./store.js";
 import type { QueueSnapshot } from "./queue.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
+import { ProductPriceSchema } from "../shared/decorations.js";
 import { CoverStickerSchema, coverSettingsMediaIssue, type CoverSticker } from "../shared/cover-sticker.js";
 import { CoverReviewDraftSchema, type CoverReviewDraft } from "../shared/cover-review.js";
 import { recoverCoverReviewDraft } from "./cover-review-session.js";
@@ -55,6 +56,8 @@ export class ApplicationService {
   private mutationVersion = 0;
   private queueSyncWork?: Promise<void>;
   private pendingQueueSave?: { project: Project; snapshot: Project; store: ProjectStore; version: number };
+  private projectSaveWork?: Promise<void>;
+  private pendingProjectSave?: { project: Project; snapshot: Project; store: ProjectStore; version: number };
   private readonly mediaCatalog: MediaCatalog;
   private migrationBackupPath?: string;
   private reviewWrite: Promise<void> = Promise.resolve();
@@ -85,6 +88,9 @@ export class ApplicationService {
       if ((existing?.revision ?? undefined) !== expectedRevision) throw new Error("审阅修订已过期。");
       this.reviewPersisting = true;
       try {
+        this.pendingProjectSave = undefined;
+        await this.projectSaveWork?.catch(() => undefined);
+        if (this.project !== project || this.projectFile !== store) throw new Error("项目已切换，审阅未应用。");
         this.pendingQueueSave = undefined;
         await this.queueSyncWork;
         // Publish only after durability. Queue progress may still update memory;
@@ -180,6 +186,38 @@ export class ApplicationService {
     return cloneTemplate(template);
   }
 
+  setProductPriceDraft(input: string): void {
+    const productPriceDraft = ProductPriceSchema.parse(input);
+    const template = this.activeTemplate;
+    if (template.productPriceDraft === productPriceDraft) return;
+    template.productPriceDraft = productPriceDraft;
+    template.updatedAt = now();
+    this.touch();
+  }
+
+  async persistCurrentProject(): Promise<boolean> {
+    const project = this.project;
+    const store = this.projectFile;
+    if (!store) return false;
+    this.pendingQueueSave = undefined;
+    this.pendingProjectSave = { project, snapshot: structuredClone(project), store, version: this.mutationVersion };
+    this.projectSaveWork ??= Promise.resolve().then(async () => {
+      try {
+        while (this.pendingProjectSave) {
+          const pending = this.pendingProjectSave;
+          this.pendingProjectSave = undefined;
+          if (this.project !== pending.project || this.projectFile !== pending.store) continue;
+          await pending.store.save(pending.snapshot);
+          if (this.project === pending.project && this.projectFile === pending.store && this.mutationVersion === pending.version) this.dirty = false;
+        }
+      } finally {
+        this.projectSaveWork = undefined;
+      }
+    });
+    await this.projectSaveWork;
+    return true;
+  }
+
   async templateReadiness(template = this.activeTemplate): Promise<{ ready: boolean; missing: string[] }> {
     const missing = await validateTemplateResources(template, this.fontResolver);
     return { ready: missing.length === 0, missing };
@@ -207,6 +245,8 @@ export class ApplicationService {
   async saveProject(filePath: string, nameInput?: string): Promise<Project> {
     const name = nameInput === undefined ? this.project.name : MaterialNameSchema.parse(nameInput);
     await this.assertNotSource(filePath);
+    this.pendingProjectSave = undefined;
+    await this.projectSaveWork?.catch(() => undefined);
     this.renameProject(name);
     const store = new ProjectStore(filePath);
     const version = this.mutationVersion;
