@@ -510,6 +510,7 @@ try {
   assert.equal(await evaluate("document.querySelector('.cover-track-editor') === null"), true, "automatic recognition needs no hand-drawn keys");
   await evaluate("document.querySelector('.cover-agent-mode').scrollIntoView({block:'center'})");
   await screenshot("06a-automatic-cover");
+  await evaluate("(async () => { const state = await window.jianji.getState(); await window.jianji.selectVisionConnection({ connectionId: state.connections.selected, model: state.connection.model }); })()");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled"), false, "full Agent mode starts without saving or enabling cover settings");
   await click("交给 Agent，制作");
   await waitFor("document.querySelector('.result-row .status-tag.failed') !== null");

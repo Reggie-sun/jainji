@@ -33,6 +33,7 @@ export interface SavedConnection {
 export interface ConnectionLibrary {
   profiles: SavedConnection[];
   selected: string | null;
+  vision?: SelectModel | null;
   chatgptModel?: string;
   chatgptReasoningEffort?: string;
   error?: string;

@@ -6,6 +6,7 @@ import { ConnectionPanel } from "./ConnectionPanel";
 import { MaterialNameSchema } from "../shared/material-names";
 import { MaterialCollection } from "./MaterialCollection";
 import { ModelPicker } from "./ModelPicker";
+import { VisionConnectionPanel } from "./VisionConnectionPanel";
 import { TemplatePanel } from "./TemplatePanel";
 import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { StickerLibraryPanel } from "./StickerLibraryPanel";
@@ -203,6 +204,7 @@ export default function App() {
       <main className="content">
         {state.recentProjectsWarning && <div className="notice error" role="status">{state.recentProjectsWarning}</div>}
         {(step === "templates" || step === "connection") && <ModelPicker connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} disabled={locked || exporting} onSelect={(input) => run(async () => { apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} />}
+        {(step === "templates" || step === "connection") && <VisionConnectionPanel connection={state.visionConnection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} disabled={locked || exporting} onSelect={(input) => run(async () => { apply(await window.jianji.selectVisionConnection(input)); }, "视觉识别模型设置已保存。")} />}
         {notice && <div className={notice.error ? "notice error" : "notice success"} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "close" : "check"} size={17} /><span>{notice.text}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setNotice(undefined)}><Icon name="close" size={16} /></button></div>}
         {!state.capabilities.ready && step !== "connection" && step !== "stickers" && <div className="capability-banner" role="status"><Icon name="settings" /><div><strong>本地导出引擎需要配置</strong><p>{state.capabilities.message} Windows：安装 FFmpeg 并加入 PATH；Linux：安装 FFmpeg、fontconfig 与 Noto CJK 字体。配置完成后重启应用。</p></div></div>}
         {agentRunning && <div className="activity-banner" role="status"><span className="activity-orb"><Icon name="spark" size={17} /></span><div><strong>Agent 正在逐条创作</strong><span>当前任务使用已冻结的素材与规则。</span></div><button className="text-button" disabled={busy} onClick={() => void run(async () => { apply(await window.jianji.cancelAgent()); })}>停止本轮任务</button></div>}

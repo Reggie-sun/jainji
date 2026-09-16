@@ -1,4 +1,5 @@
 import { completeApi, ProviderError, type CompletionOptions, type ModelMessage } from "./api-transport.js";
+import { ApiRequestScheduler } from "./api-request-scheduler.js";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { createDefaultTemplate, EditTemplateSchema, FilterPresetSchema, type EditTemplate, type Layer } from "./domain.js";
@@ -284,18 +285,11 @@ export { ProviderError } from "./api-transport.js";
 export const API_REQUEST_MIN_INTERVAL_MS = 1_000;
 export const AUTOMATIC_COVER_COMPLETION_OPTIONS: CompletionOptions = { maxOutputTokens: 32_768, maxOutputCharacters: 128_000, jsonObject: true };
 
-function waitForApiInterval(milliseconds: number): Promise<void> {
-  if (milliseconds <= 0) return Promise.resolve();
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
-}
-
 export class AgentProvider {
   private connection?: ConnectionInput;
   private chatgpt?: { model: string; reasoningEffort?: string; complete(messages: ModelMessage[], signal: AbortSignal, options?: CompletionOptions): Promise<string> };
   private providerName?: string;
-  private apiRequestTail = Promise.resolve();
-  private lastApiRequestAt?: number;
-  constructor(private readonly request: typeof fetch = fetch, private readonly apiRequestMinIntervalMs = API_REQUEST_MIN_INTERVAL_MS) {}
+  constructor(private readonly request: typeof fetch = fetch, private readonly apiRequestMinIntervalMs = API_REQUEST_MIN_INTERVAL_MS, private readonly apiRequests = new ApiRequestScheduler()) {}
 
   status(): ConnectionStatus {
     if (this.chatgpt) return { configured: true, baseUrl: "", model: this.chatgpt.model, reasoningEffort: this.chatgpt.reasoningEffort, source: "chatgpt", providerName: "ChatGPT" };
@@ -406,23 +400,9 @@ export class AgentProvider {
   private async complete(messages: ModelMessage[], signal: AbortSignal, options?: CompletionOptions): Promise<string> {
     if (this.chatgpt) return this.chatgpt.complete(messages, signal, options);
     if (!this.connection) throw new ProviderError("请先接入模型。");
-    const previous = this.apiRequestTail;
-    let release!: () => void;
-    this.apiRequestTail = new Promise<void>((resolve) => { release = resolve; });
-    await previous;
-    try {
-      // Token Plan keys use the sk-cp- prefix. Anthropic-compatible MiniMax
-      // connections are also throttled because the protocol alone is the
-      // stable provider signal available in older saved connections.
-      const tokenPlan = this.connection.apiKey.startsWith("sk-cp-");
-      const interval = tokenPlan || this.connection.protocol === "anthropic" ? this.apiRequestMinIntervalMs : 0;
-      const wait = this.lastApiRequestAt === undefined ? 0 : interval - (Date.now() - this.lastApiRequestAt);
-      await waitForApiInterval(wait);
-      signal.throwIfAborted();
-      this.lastApiRequestAt = Date.now();
-      return await completeApi(this.connection, messages, signal, this.request, options);
-    } finally {
-      release();
-    }
+    const connection = this.connection;
+    // Preserve Token Plan / Anthropic spacing across roles sharing credentials.
+    const interval = connection.apiKey.startsWith("sk-cp-") || connection.protocol === "anthropic" ? this.apiRequestMinIntervalMs : 0;
+    return this.apiRequests.run(connection, interval, signal, () => completeApi(connection, messages, signal, this.request, options));
   }
 }

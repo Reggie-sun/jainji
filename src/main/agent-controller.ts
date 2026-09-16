@@ -29,7 +29,7 @@ export class AgentController {
   private testController?: AbortController;
   private briefController?: AbortController;
   private pendingOperation?: Promise<void>;
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider()) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider()) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -103,6 +103,7 @@ export class AgentController {
       const project = this.service.currentProject;
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
       const automaticCover = project.coverSticker?.enabled && project.coverSticker.trackingMode === "agent" ? structuredClone(project.coverSticker) : undefined;
+      if (automaticCover && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型。");
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
@@ -162,7 +163,7 @@ export class AgentController {
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
         } : undefined,
-        detectCoverTracks: (item, signal) => recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => this.provider.detectCovers(images, previous, currentSignal), signal),
+        detectCoverTracks: (item, signal) => recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => this.visionProvider.detectCovers(images, previous, currentSignal), signal),
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {

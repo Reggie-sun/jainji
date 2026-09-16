@@ -72,7 +72,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), recentProjectsWarning: recentProjects.warning };
+  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), recentProjectsWarning: recentProjects.warning };
 }
 
 function notifyState(): void {
@@ -152,6 +152,7 @@ function registerHandlers(): void {
   });
   ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("connection.model.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.selectModel(input); return publicState(); });
+  ipcMain.handle("connection.vision.select", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.selectVision(input); return publicState(); });
   ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("agent.disconnect", async (event) => {
     assertTrustedSender(event); agent.assertIdle(); await connections.disconnect(); return publicState();
@@ -428,7 +429,7 @@ async function bootstrap(): Promise<void> {
   stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider);
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider);
   await queue.recover();
   registerHandlers();
   await createWindow();

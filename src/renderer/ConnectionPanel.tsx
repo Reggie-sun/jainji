@@ -39,7 +39,7 @@ export function ConnectionPanel({ connection, chatgpt, library, busy, onSave, on
           <small>登录状态由官方 Codex 运行时保存在简辑本机目录，可通过“断开”退出当前账号。</small>
         </div>}
         {mode === "api" && <SavedConnectionsPanel library={library} locked={locked} onSave={onSave} onSelect={onSelect} onRemove={onRemove} onImport={onImport} />}
-        <div className="privacy-note"><Icon name="shield" size={18} /><p>每条视频的 3 张抽帧和补充要求会发送给所选模型。原始视频留在本地。</p></div>
+        <div className="privacy-note"><Icon name="shield" size={18} /><p>创作抽帧和补充要求发送给创作模型；自动覆盖开启时，识别抽帧发送给独立配置的视觉模型。原始视频留在本地。</p></div>
         {connection.configured && <div className="connection-actions"><button type="button" className="text-button" disabled={locked} onClick={onTest}>测试连接（一次请求）</button><button type="button" className="text-button" disabled={busy} onClick={onContinue}>使用已保存配置</button><button type="button" className="text-button muted" disabled={locked} onClick={onDisconnect}>断开</button></div>}
       </div>
     </div>

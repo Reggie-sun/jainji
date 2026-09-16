@@ -258,6 +258,29 @@ describe("managed ChatGPT session", () => {
     await expect(ordinary).rejects.toThrow("未返回有效的包装方案");
     await session.dispose();
   });
+  it("uses a requested model and effort for each visual call without changing the creative selection", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" };
+    Object.assign(rpc.models[0], { supportedReasoningEfforts: [{ reasoningEffort: "low", description: "Quick" }], defaultReasoningEffort: "low" });
+    Object.assign(rpc.models[1], { supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Deep" }], defaultReasoningEffort: "high" });
+    await session.refresh();
+    session.selectModel("vision", "low");
+
+    const visual = session.completeWithModel("vision-next", "high", [{ role: "user", content: "detect" }], new AbortController().signal);
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    expect(rpc.request).toHaveBeenCalledWith("thread/start", expect.objectContaining({ model: "vision-next" }));
+    expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.objectContaining({ effort: "high" }));
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "visual", phase: "final_answer" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await visual).toBe("visual");
+    expect(session.status()).toMatchObject({ model: "vision", reasoningEffort: "low" });
+
+    const threadsBeforeInvalid = rpc.request.mock.calls.filter(([method]) => method === "thread/start").length;
+    await expect(session.completeWithModel("vision-next", "low", [], new AbortController().signal)).rejects.toThrow("不支持");
+    await expect(session.completeWithModel("missing", undefined, [], new AbortController().signal)).rejects.toThrow("请选择");
+    expect(rpc.request.mock.calls.filter(([method]) => method === "thread/start")).toHaveLength(threadsBeforeInvalid);
+    await session.dispose();
+  });
   it("rejects nonofficial browser targets", () => {
     for (const url of ["http://auth.openai.com", "https://auth.openai.com.evil.test", "file:///tmp/a", "https://user@chatgpt.com/"]) expect(() => trustedLoginUrl(url)).toThrow();
   });

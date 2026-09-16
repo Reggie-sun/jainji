@@ -6,6 +6,7 @@ import type { ConnectionLibrary } from "./connections";
 export type DesktopState = AppState & {
   capabilities: CapabilityStatus;
   connection: ConnectionStatus;
+  visionConnection?: ConnectionStatus;
   chatgpt?: ChatGPTStatus;
   connections?: ConnectionLibrary;
   agentRun?: AgentRun;

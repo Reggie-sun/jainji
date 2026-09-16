@@ -161,9 +161,15 @@ export class ChatGPTSession {
     }
   }
   async complete(messages: ModelMessage[], signal: AbortSignal, options: CompletionOptions = {}): Promise<string> {
-    if (this.state.status !== "ready" || !this.state.model) throw new ProviderError("请先使用 ChatGPT 登录。");
-    const model = this.state.model;
-    const effort = this.state.reasoningEffort;
+    return this.completeUsing(this.state.model, this.state.reasoningEffort, messages, signal, options);
+  }
+  async completeWithModel(model: string, reasoningEffort: string | undefined, messages: ModelMessage[], signal: AbortSignal, options: CompletionOptions = {}): Promise<string> {
+    this.assertModel(model, reasoningEffort);
+    const effort = reasoningEffort ?? this.state.models!.find((item) => item.model === model)!.defaultReasoningEffort;
+    return this.completeUsing(model, effort, messages, signal, options);
+  }
+  private async completeUsing(model: string | undefined, effort: string | undefined, messages: ModelMessage[], signal: AbortSignal, options: CompletionOptions): Promise<string> {
+    if (this.state.status !== "ready" || !model) throw new ProviderError("请先使用 ChatGPT 登录。");
     const rpc = await this.client();
     await mkdir(this.cwd, { recursive: true, mode: 0o700 });
     const aborted = AbortSignal.any([signal, AbortSignal.timeout(180_000)]);

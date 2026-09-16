@@ -2,6 +2,7 @@ import { access, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { AgentProvider } from "./agent-provider.js";
+import { ApiRequestScheduler } from "./api-request-scheduler.js";
 import { ChatGPTSession } from "./chatgpt-session.js";
 import { CodexRpc } from "./codex-rpc.js";
 import { ProviderError } from "./api-transport.js";
@@ -36,9 +37,12 @@ export function codexLaunch(appPath: string, userData: string): { command: strin
 }
 
 export class ModelConnections {
-  readonly provider = new AgentProvider();
+  private readonly apiRequests = new ApiRequestScheduler();
+  readonly provider = new AgentProvider(fetch, undefined, this.apiRequests);
+  readonly visionProvider = new AgentProvider(fetch, undefined, this.apiRequests);
   readonly chatgpt: ChatGPTSession;
   private pending = false;
+  private disposed = false;
   private wantChatGPT = false;
   private activeRpc?: CodexRpc;
   readonly store: ConnectionStore;
@@ -56,6 +60,7 @@ export class ModelConnections {
         if (state.status === "ready" && state.model) this.provider.useChatGPT(state.model, (messages, signal, options) => this.chatgpt.complete(messages, signal, options), state.reasoningEffort);
         else this.provider.clear();
       }
+      this.activateVision();
       this.changed();
     }, () => this.store.snapshot().chatgptModel, () => this.store.snapshot().chatgptReasoningEffort);
   }
@@ -70,14 +75,14 @@ export class ModelConnections {
     if (saved.error) { this.changed(); return; }
     if (saved.selected && saved.selected !== "chatgpt") {
       await this.exclusive(async () => { this.activate(saved.selected!); });
-      return;
     }
-    if (this.store.exists && saved.selected === null) { this.changed(); return; }
+    this.activateVision();
+    if (this.store.exists && saved.selected !== "chatgpt" && saved.vision?.connectionId !== "chatgpt") { this.changed(); return; }
     try { await access(path.join(this.userData, "codex", "auth.json")); }
     catch { return; }
     await this.exclusive(async () => {
       if (!this.store.exists) await this.store.select("chatgpt");
-      this.wantChatGPT = true; await this.chatgpt.refresh();
+      this.wantChatGPT = this.store.snapshot().selected === "chatgpt"; await this.chatgpt.refresh();
     }).catch(() => undefined);
   }
   async login(): Promise<void> { await this.exclusive(async () => { await this.store.select("chatgpt"); this.wantChatGPT = true; this.provider.clear(); await this.chatgpt.login(); }); }
@@ -88,6 +93,29 @@ export class ModelConnections {
     try { await this.chatgpt.refresh(); } finally { this.pending = false; this.changed(); }
   }
   private activate(id: string): void { const profile = this.store.get(id); this.provider.configure(profile.input, profile.name); this.wantChatGPT = false; }
+  private activateVision(): void {
+    if (this.disposed) return;
+    const selection = this.store.snapshot().vision;
+    this.visionProvider.clear();
+    if (!selection) return;
+    const { connectionId, model, reasoningEffort } = selection;
+    if (connectionId === "chatgpt") {
+      try { this.chatgpt.assertModel(model, reasoningEffort); } catch { return; }
+      this.visionProvider.useChatGPT(model, (messages, signal, options) => this.chatgpt.completeWithModel(model, reasoningEffort, messages, signal, options), reasoningEffort);
+    } else {
+      const profile = this.store.get(connectionId);
+      this.visionProvider.configure({ ...profile.input, model, reasoningEffort }, profile.name);
+    }
+  }
+  async selectVision(input: unknown): Promise<void> {
+    const parsed = SelectModelSchema.nullable().safeParse(input);
+    if (!parsed.success) throw new ProviderError("请选择视觉识别连接并填写有效的模型名称。");
+    await this.exclusive(async () => {
+      if (parsed.data?.connectionId === "chatgpt") this.chatgpt.assertModel(parsed.data.model, parsed.data.reasoningEffort);
+      await this.store.selectVision(parsed.data);
+      this.activateVision();
+    });
+  }
   async save(input: unknown): Promise<void> {
     await this.exclusive(async () => {
       const firstConnection = !this.store.exists;
@@ -97,6 +125,7 @@ export class ModelConnections {
           profile.input.model === DEFAULT_QWEN_CONNECTION.model && profile.input.protocol === DEFAULT_QWEN_CONNECTION.protocol &&
           profile.input.authHeader === DEFAULT_QWEN_CONNECTION.authHeader) await this.store.select(id);
       if (this.store.snapshot().selected === id) this.activate(id);
+      if (this.store.snapshot().vision?.connectionId === id) this.activateVision();
     });
   }
   async select(id: string): Promise<void> { await this.exclusive(async () => { this.store.get(id); await this.store.select(id); this.activate(id); }); }
@@ -118,7 +147,7 @@ export class ModelConnections {
     });
   }
   async remove(id: string): Promise<void> {
-    await this.exclusive(async () => { const active = this.store.snapshot().selected === id; await this.store.remove(id); if (active) this.provider.clear(); });
+    await this.exclusive(async () => { const active = this.store.snapshot().selected === id; await this.store.remove(id); if (active) this.provider.clear(); this.activateVision(); });
   }
   async importCCSwitch(id: string, appType: "claude" | "codex"): Promise<void> {
     await this.exclusive(async () => {
@@ -136,5 +165,5 @@ export class ModelConnections {
       if (logout) await this.chatgpt.logout();
     });
   }
-  async dispose(): Promise<void> { this.wantChatGPT = false; this.provider.clear(); await Promise.all([this.chatgpt.dispose(), this.activeRpc?.close()]); }
+  async dispose(): Promise<void> { this.disposed = true; this.wantChatGPT = false; this.provider.clear(); this.visionProvider.clear(); await Promise.all([this.chatgpt.dispose(), this.activeRpc?.close()]); }
 }

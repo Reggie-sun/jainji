@@ -70,9 +70,20 @@ describe("reusable batch cover", () => {
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? [] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
-    const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockResolvedValue([{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: options.rectangle }] } }]);
+    const creativeDetect = vi.spyOn(controller.provider, "detectCovers");
+    const visionDetect = vi.spyOn(controller.visionProvider, "detectCovers").mockResolvedValue([]);
+    const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockImplementation(async (_ffmpeg, _source, recognize, signal) => {
+      await recognize([], undefined, signal);
+      return [{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: options.rectangle }] } }];
+    });
     const input = { ruleId: "clean" as const, brief: "", mediaIds: [source.id], multiplier: 2, outputDirectory: directory, decorations: { mode, productPrice: "手动内容", sticker: "none", fontFamily: "Noto Sans CJK SC" } };
     try {
+      await expect(controller.start(input, new Set([directory]))).rejects.toThrow("独立的视觉识别模型");
+      expect(preview).not.toHaveBeenCalled();
+      expect(shortlist).not.toHaveBeenCalled();
+      expect(plan).not.toHaveBeenCalled();
+      expect(detect).not.toHaveBeenCalled();
+      controller.visionProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
       await controller.start(input, new Set([directory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false));
       await controller.start(input, new Set([directory]));
@@ -85,6 +96,8 @@ describe("reusable batch cover", () => {
       await expect(controller.start(input, new Set([directory]))).rejects.toThrow("覆盖贴纸已删除");
       expect(plan).toHaveBeenCalledTimes(4);
       expect(detect).toHaveBeenCalledTimes(2);
+      expect(visionDetect).toHaveBeenCalledTimes(2);
+      expect(creativeDetect).not.toHaveBeenCalled();
       expect(history.every((batch) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.cover?.automatic))).toBe(true);
       for (const settings of [undefined, { ...options, enabled: false, stickerIds: [`uploaded-${"c".repeat(64)}`] }]) {
         service.currentProject.coverSticker = settings;
@@ -95,7 +108,7 @@ describe("reusable batch cover", () => {
       expect(detect).toHaveBeenCalledTimes(2);
       expect(history.slice(4)).toHaveLength(4);
       expect(history.slice(4).every((batch) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
-    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); detect.mockRestore(); await rm(directory, { recursive: true, force: true }); }
+    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); detect.mockRestore(); creativeDetect.mockRestore(); visionDetect.mockRestore(); await rm(directory, { recursive: true, force: true }); }
   });
   it("rejects enabled coverage with missing assets before requesting a model", async () => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");
