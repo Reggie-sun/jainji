@@ -1,10 +1,10 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, net, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, shell } from "electron";
 import { mkdir, stat, readFile } from "node:fs/promises";
 import { FONT_CHOICES, ProductPriceSchema, isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
-import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { z } from "zod";
 import { ApplicationService } from "./application.js";
+import { mediaResponse } from "./media-response.js";
 import { ArtifactVerifier } from "./artifact.js";
 import { DEFAULT_PRESET, EditTemplateSchema, ExportPresetSchema, now, type ExportPreset } from "./domain.js";
 import { checkCapabilities, FfmpegAdapter, refreshFontCapabilities, resolveFont, type CapabilityStatus } from "./ffmpeg.js";
@@ -476,7 +476,7 @@ async function bootstrap(): Promise<void> {
     const id = decodeURIComponent(new URL(request.url).hostname);
     const media = service?.getMedia(id);
     if (!media || media.probeStatus !== "ready") return new Response("Not found", { status: 404 });
-    return net.fetch(pathToFileURL(media.sourcePath).toString());
+    return mediaResponse(media.sourcePath, request);
   });
   library = new AssetLibrary(path.join(userData, "asset-library"));
   const fontResolver = { resolve: (family: string) => library.resolveFont(family) };
@@ -523,7 +523,7 @@ async function bootstrap(): Promise<void> {
       const url = new URL(request.url);
       const [revision, mediaId, version] = url.pathname.slice(1).split("/");
       const file = await coverReview.previewPath(uuidSchema.parse(url.hostname), z.coerce.number().int().nonnegative().parse(revision), uuidSchema.parse(mediaId), z.coerce.number().int().positive().parse(version));
-      return net.fetch(pathToFileURL(file).toString());
+      return await mediaResponse(file, request);
     } catch { return new Response("Preview unavailable", { status: 404 }); }
   });
   await queue.recover();

@@ -76,6 +76,18 @@ try {
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('规则模板'))?.click()"); await wait("document.body.innerText.includes('覆盖')");
   await evaluate(`window.jianji.setCoverSticker({enabled:true,trackingMode:'assisted',stickerIds:[],rectangle:{x:0.1,y:0.1,width:0.2,height:0.1}})`);
   await evaluate(`window.jianji.createCoverReview([${JSON.stringify(media.id)}])`); state = await evaluate("window.jianji.getState()"); let draft = state.project.reviewDrafts.at(-1); await evaluate("location.reload()"); await pause(500); await evaluate("window.jianji.loadProject().then(()=>window.jianji.getState())"); await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('规则模板'))?.click()"); await wait("document.body.innerText.includes('半自动覆盖审阅')"); await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('下一原帧'))?.click()"); await shot("review-draft");
+  await wait("document.querySelector('.cover-review video')?.readyState >= 2");
+  await evaluate("[...document.querySelectorAll('.cover-review button')].find(b=>b.textContent==='下一原帧').click()");
+  await pause(300);
+  const steppedTime = await evaluate("document.querySelector('.cover-review video').currentTime");
+  assert.ok(steppedTime > 0, `next frame did not seek: ${steppedTime}`);
+  await evaluate("(()=>{const s=document.querySelector('.cover-review input[type=range]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(s,'600');s.dispatchEvent(new Event('input',{bubbles:true}));})()");
+  await pause(300);
+  assert.ok(Math.abs(await evaluate("document.querySelector('.cover-review video').currentTime") - 0.6) < 0.01, "timeline did not seek to 600ms");
+  await evaluate("[...document.querySelectorAll('.cover-review button')].find(b=>b.textContent==='上一原帧').click()");
+  await pause(300);
+  const previousTime = await evaluate("document.querySelector('.cover-review video').currentTime");
+  assert.ok(previousTime > 0.5 && previousTime < 0.6, `previous frame did not seek: ${previousTime}`);
   await evaluate(`window.jianji.analyzeCoverReview(${JSON.stringify(draft.id)},${draft.revision})`); state = await evaluate("window.jianji.getState()"); draft = state.project.reviewDrafts.at(-1); assert.equal(draft.media[0].analysis, "incomplete");
   await evaluate(`document.querySelector('.cover-review input[type="checkbox"]')?.click()`); await wait("Boolean(document.querySelector('.cover-review select[aria-label=\"复核连接\"]'))");
   await evaluate(`(()=>{const select=document.querySelector('.cover-review select[aria-label="复核连接"]');const setter=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set;setter.call(select,${JSON.stringify(connection.id)});select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
@@ -89,7 +101,12 @@ try {
   await evaluate(`window.jianji.prepareCoverReview(${JSON.stringify(draft.id)},${draft.revision},${JSON.stringify(input)})`); state = await evaluate("window.jianji.getState()"); draft = state.project.reviewDrafts.at(-1); assert.equal(draft.frozen.length, 2);
   for (const frozen of draft.frozen) await evaluate(`window.jianji.viewCoverReview(${JSON.stringify(draft.id)},${draft.revision},${JSON.stringify(frozen.mediaId)},${frozen.version})`);
   await evaluate("location.reload()"); await pause(500); await evaluate("window.jianji.loadProject().then(()=>window.jianji.getState())"); await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('规则模板'))?.click()"); await wait("Boolean(document.querySelector('.cover-review video'))");
-  for (const frozen of draft.frozen) { await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('第 ${frozen.version} 版动态预览'))?.click()`); await evaluate(`new Promise((resolve,reject)=>{const v=document.querySelector('.cover-review video');if(!v)return reject(new Error('preview video unavailable'));v.oncanplay=()=>{v.play().then(()=>{v.pause();resolve()}).catch(reject)};v.onerror=()=>reject(new Error('preview video failed'));v.load()})`); }
+  for (const frozen of draft.frozen) { await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('第 ${frozen.version} 版动态预览'))?.click()`); await evaluate(`new Promise((resolve,reject)=>{const v=document.querySelector('.cover-review video');if(!v)return reject(new Error('preview video unavailable'));v.oncanplay=()=>{v.play().then(()=>{v.pause();resolve()}).catch(reject)};v.onerror=()=>reject(new Error('preview video failed'));v.load()})`);
+    await evaluate("(()=>{const v=document.querySelector('.cover-review video');v.pause();v.currentTime=0.6;})()");
+    await wait("Math.abs(document.querySelector('.cover-review video').currentTime-0.6)<0.01 && !document.querySelector('.cover-review video').seeking");
+    const partial = await evaluate("(async()=>{const r=await fetch(document.querySelector('.cover-review video').src,{headers:{Range:'bytes=0-99'}});return {status:r.status,length:r.headers.get('content-length'),range:r.headers.get('content-range'),bytes:(await r.arrayBuffer()).byteLength}})()");
+    assert.equal(partial.status, 206); assert.equal(partial.length, "100"); assert.equal(partial.bytes, 100); assert.match(partial.range, /^bytes 0-99\//);
+  }
   state = await evaluate("window.jianji.getState()"); assert.equal(state.queue.batches.length, 0); await evaluate(`window.jianji.approveCoverReview(${JSON.stringify(draft.id)},${draft.revision},${JSON.stringify(input)})`); state = await evaluate("window.jianji.getState()"); const batches = state.queue.batches.length; await evaluate(`window.jianji.approveCoverReview(${JSON.stringify(draft.id)},${draft.revision},${JSON.stringify(input)})`); assert.equal((await evaluate("window.jianji.getState()")).queue.batches.length, batches);
   await wait("window.jianji.getState().then(s=>s.queue.batches.length>0&&s.queue.batches.every(b=>b.batch.tasks.every(t=>t.status==='completed')))"); state = await evaluate("window.jianji.getState()");
   const tasks = state.queue.batches.flatMap((batch) => batch.batch.tasks), frozenTemplates = state.project.reviewDrafts.at(-1).frozen.map((item) => item.templateDigest);
