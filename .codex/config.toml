@@ -1,0 +1,12 @@
+[mcp_servers.codegraph]
+command = "node"
+args = [
+  "/home/reggie/vscode_folder/MCP/mcp-server-codegraph/dist/index.js",
+  "/home/reggie/vscode_folder/jianji",
+]
+cwd = "/home/reggie/vscode_folder/MCP/mcp-server-codegraph"
+startup_timeout_sec = 120
+tool_timeout_sec = 120
+
+[mcp_servers.codegraph.env]
+CODEGRAPH_INDEX_PATH = ".codex/codegraph-index.json"
