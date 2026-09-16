@@ -29,8 +29,11 @@ function Fixture() {
  const [draft, setDraft] = useState(${JSON.stringify(draft)});
  const [portrait, setPortrait] = useState(false);
  const [agentRun, setAgentRun] = useState();
+ const [mediaItems, setMediaItems] = useState([${JSON.stringify(media)}]);
+ window.jianji.viewCoverReview = async (_id, _revision, mediaId, version) => ({...draft, frozen:draft.frozen.map(item=>item.mediaId===mediaId&&item.version===version?{...item,preview:{...item.preview,viewed:true}}:item)});
  window.fixture = {snapshot:()=>request('/state'), reset:async()=>{setDraft(await request('/reset',{}))}, fail:()=>request('/fail',{}), portrait:()=>setPortrait(true), progress:()=>setDraft({...draft,status:'preparing_preview'}), designing:()=>{setDraft({...draft,status:'preparing_preview',frameTimes:{[draft.media[0].mediaId]:[0]},media:draft.media.map(m=>({...m,evidence:[{}]}))});setAgentRun({projectId:draft.projectId,status:'running',items:[{name:'测试素材 · 第1版',status:'prepared'},{name:'测试素材 · 第2版',status:'analyzing'}]})}};
- return <main style={{maxWidth:820,margin:'24px auto',padding:16}}><CoverReviewPanel agentRun={agentRun} drafts={[draft]} mediaItems={[{...${JSON.stringify(media)}, ...(portrait ? {width:180,height:320,previewUrl:'/portrait.mp4'}: {})}]} input={{mediaIds:[${JSON.stringify(media.id)}],multiplier:1}} library={{profiles:[]}} onState={setDraft}/></main>;
+ window.fixture.previews = () => { const second = {...mediaItems[0],id:'second-media',displayName:'第二个素材'}; setMediaItems([mediaItems[0],second]); setDraft({...draft,status:'awaiting_approval',media:[draft.media[0],{...draft.media[0],mediaId:second.id}],frozen:[{mediaId:mediaItems[0].id,version:1,preview:{viewed:true}},{mediaId:second.id,version:2,preview:{viewed:false}}]}); };
+ return <main style={{maxWidth:820,margin:'24px auto',padding:16}}><CoverReviewPanel agentRun={agentRun} drafts={[draft]} mediaItems={mediaItems.map(item=>({...item,...(portrait ? {width:180,height:320,previewUrl:'/portrait.mp4'}: {})}))} input={{mediaIds:[${JSON.stringify(media.id)}],multiplier:1}} library={{profiles:[]}} onState={setDraft}/></main>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);
 ` }, bundle: true, format: "esm", outfile: "fixture.js", write: false });

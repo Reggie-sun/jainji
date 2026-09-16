@@ -28,11 +28,12 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
   const [reviewSelection, setReviewSelection] = useState<SelectModel>();
   const [error, setError] = useState("");
   const video = useRef<HTMLVideoElement>(null);
+  const requestedVersion = useRef<number>();
   const media = draft?.media.find((item) => item.mediaId === mediaId) ?? draft?.media[0];
   const source = mediaItems.find(({ id }) => id === media?.mediaId);
   const active = media?.segments.find(({ id }) => id === activeId);
   useEffect(() => { setBuffer(active && structuredClone(active)); }, [activeId, draft?.revision]);
-  useEffect(() => { setVersion(0); setTimeMs(0); setActiveId(""); }, [media?.mediaId, draft?.id]);
+  useEffect(() => { setVersion(requestedVersion.current ?? 0); requestedVersion.current = undefined; setTimeMs(0); setActiveId(""); }, [media?.mediaId, draft?.id]);
   const running = useRef(false);
   const run = async (work: () => Promise<DesktopState>) => { if (running.current) return false; running.current = true; setBusy(true); setError(""); try { onState(await work()); return true; } catch (error) { setError(error instanceof Error ? error.message : "审阅操作失败。"); return false; } finally { running.current = false; setBusy(false); } };
   if (!draft || !media || !source) return <section className="cover-review"><h3>半自动覆盖审阅</h3><p>先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。</p><button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>建立人工审阅草稿</button>{error && <p role="alert">{error}</p>}</section>;
@@ -48,6 +49,14 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
   const versions = draft.frozen.filter((item) => item.mediaId === media.mediaId);
   const frozen = versions.find((item) => item.version === version);
   const dirty = !!buffer && JSON.stringify(buffer) !== JSON.stringify(active);
+  const viewedCount = draft.frozen.filter((item) => item.preview?.viewed).length;
+  const openPreview = () => {
+    const target = draft.frozen.find((item) => !item.preview?.viewed) ?? versions[0] ?? draft.frozen[0];
+    if (!target) return;
+    if (target.mediaId !== media.mediaId) requestedVersion.current = target.version;
+    setMediaId(target.mediaId); setVersion(target.version);
+    requestAnimationFrame(() => { video.current?.scrollIntoView({ behavior: "smooth", block: "center" }); video.current?.focus({ preventScroll: true }); });
+  };
   const rect = buffer && interpolateCoverRectangle(buffer.track.keyframes, timeMs);
   const updateRect = (key: "x" | "y" | "width" | "height", value: number) => {
     if (!buffer || !rect) return;
@@ -83,7 +92,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     </div>
     {!frozen && <p className="cover-review-hint">拖动框移动，拉右下角调整大小，松手自动保存。</p>}
     {dirty && <p role="status">数值修改尚未保存。<button type="button" disabled={!editable} onClick={() => void command({ type: "put_segment", identity: media.identities.find(({ id }) => id === buffer.identityId)!, segment: buffer })}>保存此框</button><button type="button" disabled={busy} onClick={() => setBuffer(active && structuredClone(active))}>放弃修改</button></p>}
-    <div className="cover-review-actions"><button type="button" onClick={() => step(-1)} disabled={!!frozen}>上一原帧</button><button type="button" onClick={() => step(1)} disabled={!!frozen}>下一原帧</button>{frozen && <button type="button" disabled={busy} onClick={() => void run(() => window.jianji.viewCoverReview(draft.id, draft.revision, media.mediaId, version))}>我已查看此版动态预览</button>}</div>
+    <div className="cover-review-actions"><button type="button" onClick={() => step(-1)} disabled={!!frozen}>上一原帧</button><button type="button" onClick={() => step(1)} disabled={!!frozen}>下一原帧</button>{frozen && <><button type="button" disabled={busy || !!frozen.preview?.viewed || draft.status !== "awaiting_approval"} onClick={() => void run(() => window.jianji.viewCoverReview(draft.id, draft.revision, media.mediaId, version))}>{frozen.preview?.viewed ? "此版已查看 ✓" : "我已查看此版动态预览"}</button>{frozen.preview?.viewed && viewedCount < draft.frozen.length && <button type="button" disabled={busy || dirty} onClick={openPreview}>下一待查看预览</button>}</>}</div>
     <CoverReviewTimeline media={media} timeMs={timeMs} onSeek={seek} activeId={activeId} onSelect={(id) => { if (!dirty) setActiveId(id); }} />
     {media.observations.length > 0 && <details><summary>查看识别候选</summary>{media.observations.map((observation, index) => {
       const evidence = media.evidence.find(({ id }) => id === observation.evidenceId)!;
@@ -107,7 +116,8 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     {["analyzing", "reviewing", "preparing_preview"].includes(draft.status) && <CoverReviewProgress draft={draft} agentRun={agentRun} onStop={() => void window.jianji.cancelCoverReview().then(onState).catch((error: Error) => setError(error.message))} />}
     {busy && !["analyzing", "reviewing", "preparing_preview"].includes(draft.status) && <p role="status">正在处理，请稍候…</p>}
     <details><summary>预览费用说明</summary><p>准备每版预计使用 2 次覆盖选材请求，自动装饰另需 2 次创作请求；手动装饰需 1 次创作请求。共 {draft.media.length * (input.multiplier ?? 1)} 个版本，费用未知。</p></details>
-    <div className="cover-review-actions"><button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(() => window.jianji.prepareCoverReview(draft.id, draft.revision, input))}>生成预览</button><button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status)} onClick={() => void run(() => window.jianji.approveCoverReview(draft.id, draft.revision, input))}>{draft.status === "approved" ? "核对并继续未提交版本" : "确认全部版本并导出"}</button></div>
+    {draft.frozen.length > 0 && <p role="status">预览已生成 · 已查看 {viewedCount}/{draft.frozen.length}。逐版播放并确认后即可导出。</p>}
+    <div className="cover-review-actions">{draft.frozen.length > 0 ? <button className="button primary" type="button" disabled={busy || dirty} onClick={openPreview}>查看预览</button> : <button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(() => window.jianji.prepareCoverReview(draft.id, draft.revision, input))}>生成预览</button>}<button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status) || (draft.status === "awaiting_approval" && (!draft.frozen.length || viewedCount < draft.frozen.length))} onClick={() => void run(() => window.jianji.approveCoverReview(draft.id, draft.revision, input))}>{draft.status === "approved" ? "核对并继续未提交版本" : "确认全部版本并导出"}</button></div>
     <details><summary>重新开始</summary><button type="button" disabled={busy || dirty} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>新建草稿</button></details>
     {error && <p role="alert">{error}</p>}
   </section>;

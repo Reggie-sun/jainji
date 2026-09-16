@@ -99,7 +99,22 @@ try {
   await evaluate(`window.jianji.editCoverReview(${JSON.stringify({ type:"confirm_geometry", projectId:draft.projectId,draftId:draft.id,expectedRevision:draft.revision,mediaId:media.id })})`); state = await evaluate("window.jianji.getState()"); draft = state.project.reviewDrafts.at(-1); await shot("review-manual-edit");
   const input = { ruleId:"clean", brief:"", mediaIds:[media.id], outputDirectory:output, decorations:{mode:"manual",productPrice:"测试",sticker:"none",fontFamily:"Noto Sans CJK SC"}, multiplier:2 };
   await evaluate(`window.jianji.prepareCoverReview(${JSON.stringify(draft.id)},${draft.revision},${JSON.stringify(input)})`); state = await evaluate("window.jianji.getState()"); draft = state.project.reviewDrafts.at(-1); assert.equal(draft.frozen.length, 2);
-  for (const frozen of draft.frozen) await evaluate(`window.jianji.viewCoverReview(${JSON.stringify(draft.id)},${draft.revision},${JSON.stringify(frozen.mediaId)},${frozen.version})`);
+  await wait("document.body.innerText.includes('已查看 0/2')");
+  assert.equal(await evaluate("[...document.querySelectorAll('.cover-review button')].find(b=>b.textContent==='确认全部版本并导出').disabled"), true);
+  await evaluate("[...document.querySelectorAll('.cover-review button')].find(b=>b.textContent==='查看预览').click()");
+  await wait("document.querySelector('.cover-review video')?.src.startsWith('jianji-review:') && document.querySelector('.cover-review video').readyState >= 2");
+  assert.equal((await evaluate("window.jianji.getState()")).project.reviewDrafts.at(-1).frozen.filter(item=>item.preview?.viewed).length, 0);
+  for (let index = 0; index < draft.frozen.length; index++) {
+    await evaluate("[...document.querySelectorAll('.cover-review button')].find(b=>b.textContent==='我已查看此版动态预览').click()");
+    await wait(`document.body.innerText.includes('已查看 ${index + 1}/2')`);
+    if (index === 0) {
+      assert.equal(await evaluate("[...document.querySelectorAll('.cover-review button')].find(b=>b.textContent==='确认全部版本并导出').disabled"), true);
+      await evaluate("[...document.querySelectorAll('.cover-review button')].find(b=>b.textContent==='下一待查看预览').click()");
+      await wait("document.querySelector('.cover-review video')?.src.endsWith('/2')");
+    }
+  }
+  await wait("[...document.querySelectorAll('.cover-review button')].some(b=>b.textContent==='确认全部版本并导出'&&!b.disabled)");
+  await shot("preview-entry-reviewed");
   await evaluate("location.reload()"); await pause(500); await evaluate("window.jianji.loadProject().then(()=>window.jianji.getState())"); await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent.includes('规则模板'))?.click()"); await wait("Boolean(document.querySelector('.cover-review video'))");
   for (const frozen of draft.frozen) { await evaluate(`[...document.querySelectorAll('button')].find(b=>b.textContent.includes('第 ${frozen.version} 版动态预览'))?.click()`); await evaluate(`new Promise((resolve,reject)=>{const v=document.querySelector('.cover-review video');if(!v)return reject(new Error('preview video unavailable'));v.oncanplay=()=>{v.play().then(()=>{v.pause();resolve()}).catch(reject)};v.onerror=()=>reject(new Error('preview video failed'));v.load()})`);
     await evaluate("(()=>{const v=document.querySelector('.cover-review video');v.pause();v.currentTime=0.6;})()");
