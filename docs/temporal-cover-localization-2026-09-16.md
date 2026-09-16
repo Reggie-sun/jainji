@@ -111,3 +111,60 @@ bwrap --unshare-net --die-with-parent --ro-bind / / --dev /dev --proc /proc \
 `integrity-manifest.json` 封存本轮 81 个文件并引用上一轮 evidence seal，SHA-256 为 `027806e0e557f37be705877a44df48ca3e110c578b205358437a2105df62e935`。本轮没有新增输入解码，复用经摘要核验的原始 240 帧；没有模型推理、服务重启、下载、凭据访问或导出。另有只读本地 Python/PyTorch 版本检查，没有安装依赖或启动模型。当前仍未获得可发布的识别修复。
 
 本轮独立 `reviewer_high` 为 `accept with concerns`，无阻止保存失败记录的问题。复核重新核验上一轮全部 1952 个和本轮全部 81 个 sealed 文件，并确认 6 组原框重放、采样范围及反例图一致。保留的复现限制：ablation 入口只直接校验基线脚本/帧/manifest，三个输入元数据 JSON 的完整 seal 校验由本次独立复核补足；再次运行前应先核验完整 baseline seal。隔离命令和 exit 0 的原始依据在会话工具记录中，未包含于本轮 manifest；脚本中的形态学参数 literal 与本次冻结基线一致，不应据此视为通用实验工具。报告最终 diff 与 `git diff --check` 由主线程检查后，仅提交本报告。
+
+# Batch Generalization And Module Reuse Probe
+
+用户继续要求修复，并明确选择范围 A：本批电商视频中的屏幕贴纸，包含小动画、切镜和出现/消失。当前轮基于 `main@b094b8a`，仍是隔离实验，不修改生产链路。用户询问能否直接复用成熟模块；本轮实际复用 ComfyUI 的 `SAM3_Detect` 与 Transformers 的 `Sam2VideoModel`，自写脚本仅负责实验输入组织、证据保存及诊断，不重写分割器或传播器。
+
+证据目录：`/home/reggie/jianji-validation/20260916-generalization-G0EX5g/`。复用现有 SAM 3.1、SAM 2.1 tiny 和本机 Qwen3-VL 权重，以独立断网 `bwrap` 进程执行；无新安装/下载、商业调用、凭据读取或桌面应用重启。ComfyUI 环境为 Python 3.12.13 / PyTorch 2.11.0+cu130；Qwen 与 SAM 2 使用原 Python 3.13.5 / PyTorch 2.9.0+cu128 环境。GPU 为 RTX 5090。脚本依然位于用户最初指定的外部证据目录；没有将未通过的实验放入生产 `scripts/` 或识别 owner。
+
+## Corpus And Scope
+
+`corpus.py` 对素材目录的 33 个 MP4 保存 SHA-256、ffprobe 元数据，并以 10%/50%/90% 三个时间点的感知 hash 做保守相似组划分。结果是 2 组：29 文件 development，4 文件 holdout，0 reserve。留出文件为 `(18)`、`(24)`、`(25)`、`(28)`，均属同一个相似组。本轮没有将其图像用于模型或目检调参；元数据/hash 分组不等于从未读取其媒体。
+
+这是一个组级留出，不是四个独立内容测试。三帧 hash 不能证明语义独立；即使将来全部通过，也最多报告本批次覆盖与有限组间迁移，不能声称任意电商视频泛化。本轮定位/传播仍只检查指定原素材的首 240 帧；未通过开发片段，因此不消耗留出验收。
+
+## Discovery And Semantic Evidence
+
+`segment_tiles.py` 固定使用 `decorative sticker:16`、threshold 0.5、refine 0；输入全帧及均匀 384×384、stride 256 的重叠分块，遍历全画面，不使用角落先验。每帧共 16 个输入，保留所有 mask、候选框与触碰人工 tile 边缘的标记。它与之前失败的 `graphic overlay` 自动视频组合不同，但仍只是候选引擎。
+
+先对 6 个开发帧检查尺度问题，再执行两项密集对照：
+
+- `dense_scan.py`：原分辨率解码 240 帧，每帧单次全帧检测；已在 frame 1、8、28 等帧出现原图仍可见目标的候选空缺。
+- `dense_tiles.py`：按冻结的全帧加均匀分块规则检测全部 240 帧，保存 9245 个 raw proposals。虽然恢复了多处全帧遗漏，frame 162 的右上“推荐”图案仍整件漏检。独立 QA 和主线程分别核对原图及候选 JSON，图案可见但没有相应候选。不能把未检出当作消失。
+
+`audit_tiles.py` 仅以自动语义探针得到的四个参考 proposal 检查几何支持，保存所有 IoU≥0.5 的别名及诊断并集；不删除重叠候选，不把并集当作最终边界。960 条 target/frame 记录的 presence 全为 UNKNOWN，identity 为 UNRESOLVED。无支持帧列表不是漏检率或消失区间，须与源图分别判断。
+
+语义实验的失败和局部改善均保留：全图加局部双图的 19 案探针把右下图案解释为字幕；局部图优先的变体在前 8 案已出现实物/字幕误判，因此中止，剩余 37 案未评估；单张局部/全局组合图仍对小图案不确定，并有一次 JSON 截断。最初分类脚本还在语义前去重、丢弃人工边缘候选，不能用作最终对象解析器。
+
+`temporal_semantics.py` 改用一张六时刻证据板，前 8 个原始候选返回四个贴纸、四个实物类别，与主线程局部目检相符；其文字理由仍可能含不准确描述，不能据类别一致宣称身份或边界通过。`temporal_all.py` 保持同一 prompt 和图像组织，扩大到 frame 158 全部 45 个候选，不先去重/过滤，精确复用前 8 个已有输入/响应，另外调用 37 次离线推理。这仍不是全部 9245 个候选的语义验收，也没有保证覆盖字幕负例。
+
+## Reused Video Propagation
+
+`propagate_masks.py` 将 frame 158 四个自动发现并经局部语义分类的原始 SAM 3 mask 直接交给现有 `Sam2VideoProcessor.add_inputs_to_inference_session(input_masks=...)`，然后调用 `Sam2VideoModel.propagate_in_video_iterator`。没有使用旧 VLM 坏框、人工坐标或手工修补 mask。两次独立 session 分别正向检查 158–239（82 帧）与反向检查 158–0（159 帧），seed 帧重复，合计覆盖原片段 240 个不同帧。没有把模型 mask 是否为空直接解释为确定 presence。
+
+| Evidence | Observation | Gate |
+| --- | --- | --- |
+| `mask-propagation-forward/results.json`, frame 162 / object 3 | 在检测空缺帧继续得到右上 mask，框 `[647,10,711,68]` | 局部传播恢复，不证明完整包住图案 |
+| 同文件，frame 217 / object 0 | 右下对象框扩成 `[15,1251,720,1280]`，横跨底部；原图右下只是一枚小图案 | 异常远端像素造成大框，FAIL，不能任意剪掉来通过 |
+| 同文件，frame 217 / object 1 | 左上对象扩成 `[4,3,79,93]`，延伸到背景 | 完整且唯一边界未确认 |
+| `mask-propagation-reverse/results.json`, frame 0 / object 1 | 左上对象扩成 `[6,6,241,253]` | 反向传播也不能直接生成覆盖框 |
+| 反向 frame 156→157，45→46 | 两只底部对象的空/非空变化与独立 QA 检查的这两处出现/消失边界一致 | 仅局部时间证据；不能代替全部逐帧生命周期验收 |
+
+独立 QA 实际查看了原帧 40–50 和 150–162：底部两图案在 45→46 消失、156→157 出现，顶部两图案在所查窗口持续可见。这是 Agent 离线目检，不是用户人工验收，也没有被推理脚本读取。没有穷尽标注全部帧、全部目标轮廓，因此不提供伪精确 recall、像素完整覆盖率或时段准确率。
+
+## Acceptance Boundary
+
+**当前组合 FAIL；无合格最终边界、无导出、无生产接入。** 成熟模块已经复用，但单帧发现仍有漏检，传播仍有异常大框；语义类别探针不能消除这些几何失败。没有因一次 mask 空缺结束身份，也没有通过固定四角框、最大连通块裁切、无条件 padding 或调宽 gate 伪装成功。
+
+本轮没有证明 DEVA、XMem 或其他成熟模块不可行，也没有把它们的文档当作实测。它们与发现、语义身份、边界完整性及生命周期 gate 的职责不同，不能作为“直接搬来即可通过”的依据。后续若换用尚未准备好的实现/权重，须先列明本地缺口及依赖，再按用户约束取得安装/下载授权；当前失败结果不授权扩大生产实现。
+
+## Verification And Evidence Seal
+
+密集分块、候选诊断、45 案语义及两次传播进程均实际 exit 0。45 案最终类别计数为 6 个 `overlay_sticker`、39 个 `physical_object`，包括重复对象 proposal，不是 6 个唯一贴纸，也不是 100% 语义准确率。`execution-record.json` 保存主线程据工具完成输出记录的脚本、解释器、隔离方式与 exit；不是完整 stdout 转录，也不冒充早期所有探针的执行历史。
+
+`finalize.py` 在断网只读隔离中 exit 0：重新校验全部 33 个源视频摘要；核对 240 张分块输入与原始帧解码像素完全一致（PNG 编码字节可以不同）；逐一核验 9245 个 mask 的尺寸、像素数和原坐标边界；核对 45 张语义输入摘要、960 条 UNKNOWN 记录、正反向完整帧号及每帧四个 propagation 对象。`result.json` 明确 FAIL、空 accepted boundaries、禁止导出，各准确率为 null。
+
+`integrity-manifest.json` 封存 16341 个文件，清单自身 SHA-256 为 `c95f95d8ee143dc7bf188b1da5cd93a02977e3414e784a6d45e68852f48d7e9d`。此处的可复查证据包括原帧、候选/mask、模型原始响应、取消记录、逐帧未知状态和失败结论；没有有效覆盖成片。所有本轮外部脚本语法解析通过；repository 仍只修改本报告，不为文档变更运行无关 typecheck/build。
+
+最终独立 `reviewer_high` 为 `accept with concerns`，无阻止记录当前失败结果的问题：完整复核 seal 的 16341 个文件集合及 SHA-256，确认 45 个原始候选语义输入无遗漏、无 GT 泄漏，并复核上述漏检与传播大框。其指出 frame 217 的异常大框主要由主体外的一个远端孤立像素触发；若以后使用组件过滤，必须作为新的自动规则独立验收，不能据此直接裁框通过。此 verdict 接受的是证据与 FAIL 记录，不是算法、模块或生产接入验收。
