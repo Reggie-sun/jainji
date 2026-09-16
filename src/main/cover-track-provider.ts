@@ -64,7 +64,7 @@ export async function detectCoverTrack(
         { type: "text", text: `${overlap} 本窗口抽帧时间依次为：${JSON.stringify(images.map(({ timeMs }) => timeMs))}。` },
         ...images.flatMap(({ timeMs, url }) => [
           { type: "text" as const, text: `抽帧时间：${timeMs}ms。` },
-          { type: "image_url" as const, image_url: { url, detail: "low" } },
+          { type: "image_url" as const, image_url: { url, detail: "high" } },
         ]),
       ],
     },

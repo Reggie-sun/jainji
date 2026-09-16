@@ -40,7 +40,7 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
   } else if (protocol === "responses") {
     endpoint = "/responses";
     body = { model: connection.model, store: false, stream: false, ...(options.maxOutputTokens ? { max_output_tokens: options.maxOutputTokens } : {}), ...(connection.reasoningEffort ? { reasoning: { effort: connection.reasoningEffort } } : {}), input: messages.map((m) => ({ role: m.role,
-      content: typeof m.content === "string" ? m.content : m.content.map((item) => item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url, detail: "low" }),
+      content: typeof m.content === "string" ? m.content : m.content.map((item) => item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url, detail: item.image_url.detail }),
     })) };
   }
   try {

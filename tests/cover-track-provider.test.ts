@@ -25,7 +25,7 @@ describe("automatic cover tracking provider", () => {
     const [system, user] = complete.mock.calls[0][0];
     expect(system.content).toContain("所有后期叠加的贴纸、图形价签和装饰覆盖物");
     expect(system.content).toContain("真实产品标签、人脸、实物");
-    expect(user.content).toContainEqual({ type: "image_url", image_url: { url: image(0).url, detail: "low" } });
+    expect(user.content).toContainEqual({ type: "image_url", image_url: { url: image(0).url, detail: "high" } });
   });
 
   it("accepts an empty target list", async () => {

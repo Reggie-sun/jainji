@@ -16,7 +16,7 @@ export async function recognizeAutomaticCovers(ffmpeg: FfmpegAdapter, media: Med
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-detection-"));
   try {
     const command = ffmpeg.run(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-threads", "1", "-i", media.sourcePath,
-      "-t", String(media.durationMs / 1000), "-vf", "fps=4:start_time=0:round=up,scale=640:640:force_original_aspect_ratio=decrease", "-vsync", "0", "-filter_threads", "1", "-threads", "1", "-q:v", "4", path.join(directory, "%08d.jpg")]);
+      "-t", String(media.durationMs / 1000), "-vf", "fps=4:start_time=0:round=up,scale=w='min(iw,1280)':h='min(ih,1280)':force_original_aspect_ratio=decrease", "-vsync", "0", "-filter_threads", "1", "-threads", "1", "-q:v", "4", path.join(directory, "%08d.jpg")]);
     const abort = () => { void command.cancel().catch(() => undefined); };
     const timeout = setTimeout(abort, Math.max(30_000, media.durationMs * 2));
     signal.addEventListener("abort", abort, { once: true });

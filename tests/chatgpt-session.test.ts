@@ -199,13 +199,13 @@ describe("managed ChatGPT session", () => {
     expect(session.status()).toEqual({ status: "error", message: "未能确认退出登录，请重新连接后退出。" });
     expect(rpc.account).not.toBeNull(); session.dispose();
   });
-  it("sends images in an ephemeral read-only turn, ignores commentary and other threads", async () => {
+  it.each(["low", "high"])("sends %s detail images in an ephemeral read-only turn, ignores commentary and other threads", async (detail) => {
     const { rpc, session } = await setup();
     rpc.account = { type: "chatgpt" }; await session.refresh();
-    const result = session.complete([{ role: "system", content: "hard rules" }, { role: "user", content: [{ type: "text", text: "brief" }, { type: "image_url", image_url: { url: "data:image/jpeg;base64,aA==", detail: "low" } }] }], new AbortController().signal);
+    const result = session.complete([{ role: "system", content: "hard rules" }, { role: "user", content: [{ type: "text", text: "brief" }, { type: "image_url", image_url: { url: "data:image/jpeg;base64,aA==", detail } }] }], new AbortController().signal);
     await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
     expect(rpc.request).toHaveBeenCalledWith("thread/start", expect.objectContaining({ ephemeral: true, sandbox: "read-only", approvalPolicy: "never", developerInstructions: "hard rules", environments: [] }));
-    expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.objectContaining({ input: [{ type: "text", text: "brief" }, { type: "image", url: "data:image/jpeg;base64,aA==", detail: "low" }], sandboxPolicy: { type: "readOnly", networkAccess: false }, environments: [] }));
+    expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.objectContaining({ input: [{ type: "text", text: "brief" }, { type: "image", url: "data:image/jpeg;base64,aA==", detail }], sandboxPolicy: { type: "readOnly", networkAccess: false }, environments: [] }));
     rpc.emit("notification", "turn/completed", { threadId: "other", turn: { status: "failed" } });
     rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "comment", phase: "commentary" } });
     rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: '{"summary":"ok"}', phase: "final_answer" } });

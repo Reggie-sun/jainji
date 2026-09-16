@@ -52,10 +52,12 @@ describe("bundled Codex runtime", () => {
     try {
       await rpc.initialize();
       const thread = await rpc.request("thread/start", { model: "gpt-5.4", cwd: launch.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [], baseInstructions: "Reply with OK only." });
-      await rpc.request("turn/start", { threadId: thread.thread.id, input: [{ type: "text", text: "Test" }], effort: "high", environments: [], sandboxPolicy: { type: "readOnly", networkAccess: false } });
+      const image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAF0lEQVR4nGP8z0AaYCJR/aiGUQ1DSAMAQC4BH2bjRnMAAAAASUVORK5CYII=";
+      await rpc.request("turn/start", { threadId: thread.thread.id, input: [{ type: "text", text: "Test" }, { type: "image", url: image, detail: "high" }], effort: "high", environments: [], sandboxPolicy: { type: "readOnly", networkAccess: false } });
       const request = await Promise.race([captured, new Promise((_, reject) => setTimeout(() => reject(new Error("No local model request")), 10_000))]);
       const names = request.tools.map((tool: any) => tool.name ?? tool.type);
       expect(request.reasoning.effort).toBe("high");
+      expect(request.input.flatMap((item: any) => item.content ?? [])).toContainEqual(expect.objectContaining({ type: "input_image", detail: "high" }));
       expect(names.filter((name: string) => !["update_plan", "request_user_input"].includes(name))).toEqual([]);
     } finally {
       await rpc.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));

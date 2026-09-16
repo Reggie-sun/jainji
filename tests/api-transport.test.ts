@@ -73,11 +73,12 @@ describe("completeApi protocol transport", () => {
     expect(options?.headers).not.toHaveProperty("Authorization");
   });
 
-  it("uses the Responses protocol with ephemeral image input and completed output extraction", async () => {
+  it.each(["low", "high"])("uses the Responses protocol with ephemeral %s detail image input and completed output extraction", async (detail) => {
     const request = requestReply({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "response text" }] }] });
     const connection: ConnectionInput = { baseUrl: "https://api.openai.com/v1", model: "gpt-test", apiKey: key, protocol: "responses", authHeader: "bearer" };
 
-    await expect(completeApi(connection, messages, new AbortController().signal, request)).resolves.toBe("response text");
+    const input: ModelMessage[] = [messages[0], { role: "user", content: [{ type: "text", text: "看图包装" }, { type: "image_url", image_url: { url: jpeg, detail } }] }];
+    await expect(completeApi(connection, input, new AbortController().signal, request)).resolves.toBe("response text");
     const [url, options] = vi.mocked(request).mock.calls[0];
     expect(url).toBe("https://api.openai.com/v1/responses");
     expect(options?.headers).toMatchObject({ Authorization: `Bearer ${key}` });
@@ -85,7 +86,7 @@ describe("completeApi protocol transport", () => {
       model: "gpt-test", store: false, stream: false,
       input: [
         { role: "system", content: "只返回 JSON" },
-        { role: "user", content: [{ type: "input_text", text: "看图包装" }, { type: "input_image", image_url: jpeg, detail: "low" }] },
+        { role: "user", content: [{ type: "input_text", text: "看图包装" }, { type: "input_image", image_url: jpeg, detail }] },
       ],
     });
   });
