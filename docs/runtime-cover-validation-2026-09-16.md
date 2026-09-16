@@ -178,4 +178,12 @@ Acceptance：独立连接接通、真实模型响应已证实；有效媒体导�
 
 系统有尚未挂载的 NTFS 分区 `nvme0n1p3` / `nvme0n1p5`，未检查其内容、未擅自挂载。不能据已挂载路径搜索结果断言权重不存在于整台机器；继续需要确认 Windows 分区或权重的大致位置，也可由用户决定重新获取获授权权重。没有因此切换产品模型或修改应用。runtime-notes.txt 保存加载检查与 crop 错误的摘录，明确不是完整 stderr transcript。最终仅本报告有 tracked diff，`git diff --check` 通过；本轮没有应用代码变更，不为报告重复运行无关 build/typecheck。
 
+## SAM 3.1 Download Checkpoint
+
+用户选择 B 重新下载已获授权权重，并要求下载时 merge 进入 main。当前原本就在 main，前述记录已在 `dc651b5`；没有待合并的生产修复分支。此 checkpoint 只记录授权下载，不将尚未验证的算法合入生产路径。
+
+来源为 ComfyUI 原生模板明确引用的 [Comfy-Org/sam3.1](https://huggingface.co/Comfy-Org/sam3.1)，发布方说明这是 `facebook/sam3.1` 的 ComfyUI 重打包，使用 SAM License，模型接口 gated=false。固定 revision `f38cd62b71494b53ac2b56ca36e24f3c8d565581`，文件 `checkpoints/sam3.1_multiplex_fp16.safetensors`，期望 1,745,546,848 bytes / SHA-256 `9ba99c92703c2e8b4f47de2d34a539bb8e18923049e238b780d70dbe6368eb03`。下载到 `/home/reggie/jianji-validation/20260916-sam31/model/`，不覆盖 ComfyUI 模型目录、不读取凭据、不修改应用连接。
+
+本 checkpoint 状态为 download started：完整性校验、模型加载、真实定位/跟踪及成片验收均尚未完成；后续结果追加记录。证据 owner 为同目录 `download-manifest.json`，模型下载完成不等于修复完成。
+
 Source references：[OpenCV template matching](https://docs.opencv.org/4.13.0/d4/dc6/tutorial_py_template_matching.html)、[SAM 2 official repository](https://github.com/facebookresearch/sam2)、[SAM 2.1 tiny model card](https://huggingface.co/facebook/sam2.1-hiera-tiny)、[SAM 2 video API](https://huggingface.co/docs/transformers/model_doc/sam2_video)、[SAM 3 official repository](https://github.com/facebookresearch/sam3)。官方能力描述仅用于候选筛选，不替代上述实测。
