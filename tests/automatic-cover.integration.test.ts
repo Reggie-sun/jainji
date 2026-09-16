@@ -8,6 +8,7 @@ import { recognizeAutomaticCovers } from "../src/main/automatic-cover";
 import { automaticCoverLayers, resolveCoverSticker } from "../src/main/cover-sticker";
 import { createDefaultTemplate, DEFAULT_PRESET, type MediaItem } from "../src/main/domain";
 import { TemplateCompiler } from "../src/main/compiler";
+import { interpolateCoverRectangle } from "../src/shared/cover-sticker";
 
 it("recognizes both moving fixture badges across windows and renders every generated cover", { timeout: 60_000 }, async (context) => {
   const [binary, probe] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe")]);
@@ -19,6 +20,13 @@ it("recognizes both moving fixture badges across windows and renders every gener
     const sourceCommand = await runCommand(binary, ["-v", "error", "-f", "lavfi", "-i", "color=c=gray:s=320x180:r=20:d=2.5", "-f", "lavfi", "-i", "color=c=red:s=32x18:r=20:d=2.5", "-f", "lavfi", "-i", "color=c=lime:s=32x18:r=20:d=2.5", "-f", "lavfi", "-i", "sine=frequency=440:duration=2.5", "-filter_complex", "[0:v][1:v]overlay=x='20+40*t':y=20[a];[a][2:v]overlay=x='230-30*t':y=100:enable='lt(t,1.25)'[v]", "-map", "[v]", "-map", "3:a", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-t", "2.5", sourcePath]).promise;
     expect(sourceCommand.code, sourceCommand.stderr).toBe(0);
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "source", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 1, durationMs: 2500, width: 320, height: 180, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
+    // A detector can reconcile two observations into a larger overlap box. The
+    // sampling pipeline must retain that reconciled frame, not discard it.
+    const reconciled = await recognizeAutomaticCovers(ffmpeg, media, async (images, previous) => images.map(({ timeMs }, index) => ({
+      timeMs, targets: [{ id: "badge", rectangle: { x: 0.1, y: 0.1, width: 0.1, height: previous && index === 0 ? 0.2 : 0.1 } }],
+    })), new AbortController().signal);
+    const boundary = interpolateCoverRectangle(reconciled[0].track.keyframes, 1750);
+    expect(boundary.y + boundary.height).toBeGreaterThanOrEqual(0.3);
     let requests = 0;
     // The fixture detector inspects decoded pixels; no commercial model is called.
     const tracks = await recognizeAutomaticCovers(ffmpeg, media, async (images, previous) => {

@@ -7,6 +7,50 @@ const frame = (timeMs: number, targets = [target("badge-1")]) => ({ timeMs, targ
 const detected = (frames = [frame(0), frame(250, [target("badge-1", 0.2), target("badge-2", 0.6)])]) => JSON.stringify({ status: "ok", frames });
 
 describe("automatic cover tracking provider", () => {
+  it("preserves both observed extents when the same corner badges have nested boxes", async () => {
+    const previous = { timeMs: 1750, targets: [
+      { id: "left", rectangle: { x: 0, y: 0, width: 0.12, height: 0.08 } },
+      { id: "right", rectangle: { x: 0.87, y: 0, width: 0.13, height: 0.09 } },
+    ] };
+    const current = { timeMs: 1750, targets: [
+      { id: "one", rectangle: { x: 0, y: 0, width: 0.12, height: 0.04 } },
+      { id: "two", rectangle: { x: 0.88, y: 0, width: 0.12, height: 0.05 } },
+    ] };
+    const complete = vi.fn().mockResolvedValue(detected([current]));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    const [result] = await provider.detectCovers([image(1750)], previous, new AbortController().signal);
+    expect(result).toEqual(previous);
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it("accepts a globally unique assignment despite one locally ambiguous candidate", async () => {
+    const previous = frame(250, [target("a", 0.1), target("b", 0.16)]);
+    const complete = vi.fn().mockResolvedValue(detected([frame(250, [target("x", 0.13), target("y", 0.2)])]));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    const [result] = await provider.detectCovers([image(250)], previous, new AbortController().signal);
+    expect(result.targets.map(t => t.id)).toEqual(["a", "b"]);
+    expect(result.targets[0].rectangle.x).toBe(0.1);
+    expect(result.targets[0].rectangle.width).toBeCloseTo(0.23);
+  });
+
+  it("rejects a tiny nested object rather than identifying it with a large overlay", async () => {
+    const previous = frame(250);
+    const complete = vi.fn().mockResolvedValue(detected([frame(250, [{ id: "tiny", rectangle: { x: 0.1, y: 0.2, width: 0.02, height: 0.01 } }])]));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    await expect(provider.detectCovers([image(250)], previous, new AbortController().signal)).rejects.toThrow("重叠抽帧");
+  });
+
+  it("locates invalid JSON without exposing model output or retrying", async () => {
+    const response = '{"private":"model-secret",';
+    const complete = vi.fn().mockResolvedValue(response);
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    const error = await provider.detectCovers([image(1750), image(2000)], undefined, new AbortController().signal).catch(e => e);
+    expect(error.message).toContain("JSON 格式无效");
+    expect(error.message).toContain("1.75–2.00 秒");
+    expect(error.message).toContain(`响应 ${response.length} 字符`);
+    expect(error.message).not.toContain("model-secret");
+    expect(complete).toHaveBeenCalledOnce();
+  });
   it("reports the uncertain source time window without retrying or treating it as no targets", async () => {
     const complete = vi.fn().mockResolvedValue(JSON.stringify({ status: "uncertain", frames: [frame(1750), frame(2000)] }));
     const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
@@ -127,11 +171,15 @@ describe("automatic cover tracking provider", () => {
       [frame(250, [target("a", 0.1), target("b", 0.11)]), frame(250, [target("x", 0.1), target("y", 0.11)])],
       [frame(250, [target("a", 0.1), target("b", 0.7)]), frame(250, [target("x", 0.1), target("y", 0.102)])],
       [frame(250), frame(250, [target("x", 0.6)])],
+      // Recorded source (16): the bottom emoji was also substantially displaced,
+      // not just boxed more loosely. This must still stop the export.
+      [frame(250, [{ id: "emoji", rectangle: { x: 0.46, y: 0.93, width: 0.07, height: 0.07 } }]),
+        frame(250, [{ id: "other", rectangle: { x: 0.4, y: 0.88, width: 0.1, height: 0.1 } }])],
     ]) {
       complete.mockResolvedValueOnce(detected([next]));
       await expect(provider.detectCovers([image(250)], previous, new AbortController().signal)).rejects.toThrow("重叠抽帧");
     }
-    expect(complete).toHaveBeenCalledTimes(3);
+    expect(complete).toHaveBeenCalledTimes(4);
   });
 
   it("does not give a new target the continuing target's ID after local renumbering", async () => {

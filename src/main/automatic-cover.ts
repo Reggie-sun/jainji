@@ -40,6 +40,7 @@ export async function recognizeAutomaticCovers(ffmpeg: FfmpegAdapter, media: Med
       const previous = detected.at(-1);
       const result = await detect(images, previous, signal);
       signal.throwIfAborted();
+      if (previous) detected[detected.length - 1] = result[0];
       detected.push(...(previous ? result.slice(1) : result));
       if (offset + COVER_DETECTION_WINDOW >= files.length) break;
     }
