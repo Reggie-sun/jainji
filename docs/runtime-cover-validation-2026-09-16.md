@@ -106,3 +106,33 @@ Verification：62 项相关测试通过；`npm run build`（含 typecheck）通�
 按生产抽帧参数重新提取的 `source15-1750.jpg`、`source16-1750.jpg` 经主线程画面检查：15 的左右上角图案都在，response-3 漏掉右上角；16 的两个上角和底部居中表情可见，但底部左右角图案已不在，response-7 仍报告它们。更换模型后仍出现跨窗口漏检/残留目标，不能继续将问题归因于 MiniMax 单一服务商，也不能放松关联保护。多图输入的逐帧对应/消失判断需要另行隔离验证，目前不能据此断言传输排序、模型或 prompt 的唯一根因。
 
 本轮未改生产代码，main 继续保留 `d5372ea` 的失败保护；未改用户项目或创作配置。Luna 选择已在独立验证窗口保存，原桌面窗口的连接配置仍为 MiniMax；原窗口存在未保存编辑，尝试关闭时取消了保存/退出，未强制丢弃或覆盖。配置接通和真实模型响应已验证，可靠覆盖与有效成片验收均未通过。
+
+## Single-Frame Isolation
+
+用户再次报告 `(15)` 在 26.25–28.00 秒关联失败、`(16)` 在 1.75–3.50 秒关联失败、`(17)` 同窗口的 818 字符 JSON 无效。重新只读检查原应用配置，视觉仍为 MiniMax-M3；不能将该截图当作原应用已切至 Luna 的证据。生产代码不保存完整失败响应，已有诊断证据中没有找到该 818 字符原文，因此无法确认截断、Markdown、解释文字或其他语法错误的具体原因。
+
+本轮用现有 owner 做有界真实对照：`ModelConnections` → `visionProvider.detectCovers` → 原 `detectCoverTrack` prompt → ChatGPT Luna/high，每份素材只送一张 1750 ms 图片、不带 previous、各一次请求，无创作调用、无重试、无导出。证据在 `/home/reggie/jianji-validation/20260916-frame-isolation/`，包括可复查诊断脚本、三张 JPEG、`requests.jsonl`、`response-{15,16,17}.txt` 和 `parsed-{15,16,17}.json`。使用独立 userData，只读挂载简辑自己的登录文件，不复制凭据、不读全局 Codex 登录、不改原窗口。
+
+单帧结果：15 返回 2 个目标、16 返回 3 个、17 返回 3 个，与主线程检查对应原帧的可见目标数量一致。15、16 的 JPEG 与前轮核查原帧逐字节一致，且传输边界记录的图片 SHA-256 相同；三个 turn 均为 high、imageCount=1、detail=high。原提示词未改，只减少输入帧数量，单帧成功仅指 JSON/schema 和目标数量，不代表框已完整覆盖或全片识别可靠。
+
+这组对照支持多帧联合识别中的遗漏、持续可见性判断或时间对应是主要调查方向；不支持继续放松重叠帧计数/几何检查，也不足以断言每帧独立识别即可解决全片跟随。当前一次输入 8 张图的方案要求模型同时完成目标枚举、定位、出现消失与窗口内身份跟随；跨窗又要求独立模型观察完全一致。之前完整实片已经证实直接拆段放行会漏盖，不能恢复该实验。
+
+独立只读 transport audit 确认 API 输入转换保留文本/图片顺序；Responses 要求 status=completed 后提取 output_text。另发现 ChatGPT completion wrapper 的 token-budget 测试只覆盖参数传递到回调，未证明实际 RPC 设置了预算；这不是当前 MiniMax/Responses 818 字符错误的归因，也未在未核对 Codex RPC 合法字段前修改协议。Anthropic stop_reason 等未涉及当前请求的旁支保持不动。
+
+当时没有找到可安全宣称解决上述失败的局部代码修复，先停止增加匹配容错并保存诊断。随后用户明确要求“继续修复”，进行了下述有界替换实验；实验没有通过真实验证，未保留生产代码改动。
+
+## Single-Frame Repair Experiment — Rejected
+
+候选实现删除 8 帧窗口与重叠帧重复观察路径，每个 250 ms 抽帧仅请求一次；模型只返回当前图片的矩形，本地单一 owner 负责相邻帧唯一匹配。保留 uncertain/非法结果拒绝、关联歧义拒绝、64 条轨迹限制、冻结模板和原导出队列；没有重试、切换模型、手动画框或固定覆盖回退。单帧请求显著增加调用次数，不能只凭离线测试就上线。
+
+候选代码曾通过 563 项测试（2 项跳过）、typecheck/build、隔离 Electron/IPC/模拟服务/真实 FFmpeg 的 vision-connection smoke。独立 `reviewer_xhigh` 给出 accept with concerns：未确认代码缺陷，但合法 ok 仍可能漏检，且完整素材的调用开销和画面效果未验收。review 不能代替真实素材证明。
+
+真实验证证据目录：`/home/reggie/jianji-validation/20260916-single-frame-repair/`。素材为 `竞品详情-抖音电商罗盘 (15).mp4`，34.854 秒；覆盖显式开启、agent 跟随、一版本，沿用既有手动文字 `19.9元2支`。隔离应用复用简辑登录状态的只读挂载，创作 Luna/medium，视觉 Luna/high；不改原桌面配置和用户项目、不复制凭据。
+
+`requests.jsonl` 记录 2 次创作请求（初筛、选款）和 5 次视觉请求（0、250、500、750、1000 ms），全部正常返回。99.149 秒后，0.75–1.00 秒的关联校验失败，未进入创作样式方案或 FFmpeg 导出；没有重复发起请求。`state-15.json` 为 agentRun finished、item failed、queue batches 空，`output/` 为空。
+
+主线程对照 `response-6.txt`、`response-7.txt` 与原帧 `source15-750.png`、`source15-1000.png`：右下角小图标仍在底部，但模型框从 y=0.981、height=0.013 变成 y=0.946、height=0.020，两个框纵向不相交；后者位于实际图标上方。750 ms 左上角模型框 width=0.063，在 540 像素宽图中仅约 34 像素，也没有包住完整标签。数量相同和 JSON 合法仍不足以证明定位可靠，放宽身份匹配也不能修正漏盖。
+
+Decision：单帧职责拆分排除了同一抽帧重复回答的矛盾，但未解决真实定位质量，故撤回全部本轮实验代码、测试及 README/AGENTS 改动，恢复提交 `d70826e` 的生产实现。撤回前将差异及新增关联模块/测试保存到证据目录的 `rejected-experiment.patch`、`cover-frame-association.ts`、`cover-frame-association.test.ts`，供复查，不作为可用补丁推荐。无关 untracked 项目和 `docs/video-sticker-alternatives.md` 未处理。恢复后重新运行 6 个相关测试文件：56 项通过；`npm run build`（包含 typecheck）通过，只有既有 bundle size 警告；`git diff --check` 通过，最终仅报告文件有 tracked diff。
+
+Acceptance：独立连接接通、真实模型响应已证实；有效媒体导出、成片 ffprobe/播放、全目标白底覆盖和冻结重试均未通过本轮真实验收。没有新成片路径；不能宣称截图中的问题已修复，也未获得生产 818 字符无效 JSON 原文。下一步需要重新评估定位能力及像素级检测/跟踪方案，不再把扩大关联容差或换成单帧请求当成充分修复。
