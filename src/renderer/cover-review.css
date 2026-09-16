@@ -23,3 +23,6 @@
 .cover-review-fields input { display: block; width: 100%; }
 .cover-review-issue { border-left: 3px solid #eab308; padding: 8px 12px; margin: 12px 0; }
 .cover-review [role=alert] { color: #dc2626; }
+.cover-review-progress { padding: 14px 16px; margin: 16px 0; background: #edf7f3; border: 1px solid #b7d6ce; border-radius: 8px; }
+.cover-review-progress progress { width: 100%; accent-color: #178875; margin-top: 10px; }
+.cover-review-progress p, .cover-review-progress span { margin: 6px 0; font-size: 12px; }

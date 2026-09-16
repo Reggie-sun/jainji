@@ -10,12 +10,13 @@ import type { ChatGPTStatus } from "../shared/agent";
 import { ModelPicker } from "./ModelPicker";
 import { CoverReviewTimeline } from "./CoverReviewTimeline";
 import { CoverReviewBox } from "./CoverReviewBox";
+import { CoverReviewProgress } from "./CoverReviewProgress";
 import { moveCoverSegment } from "./cover-review-geometry";
 import "./cover-review.css";
 
 const labels: Record<CoverReviewDraft["status"], string> = { draft: "草稿", analyzing: "候选分析中", reviewing: "独立复核中", needs_human: "待人工审阅", preparing_preview: "动态预览准备中", awaiting_approval: "待最终确认", approved: "已批准", stale: "证据已过期", cancelled: "已停止", failed: "准备失败" };
 
-export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onState(state: DesktopState): void }) {
+export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onState(state: DesktopState): void }) {
   const draft = drafts.at(-1);
   const [mediaId, setMediaId] = useState("");
   const [activeId, setActiveId] = useState("");
@@ -73,7 +74,6 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     <button type="button" disabled={!reviewSelection || draft.status !== "needs_human" || busy || dirty || !!draft.review} onClick={() => { if (reviewSelection) void run(() => window.jianji.reviewCoverReview(draft.id, draft.revision, reviewSelection)); }}>运行一轮复核</button></fieldset>}
     {draft.review && <p>{draft.review.status === "complete" ? "检查完成，请确认画面" : draft.review.status === "incomplete" ? "检查未完成，请人工确认" : "正在检查…"}</p>}
     </details>
-    {["analyzing", "reviewing", "preparing_preview"].includes(draft.status) && <button type="button" onClick={() => void window.jianji.cancelCoverReview().then(onState).catch((error: Error) => setError(error.message))}>停止准备</button>}
     <label>审阅素材<select disabled={busy || dirty} value={media.mediaId} onChange={(event) => setMediaId(event.target.value)}>{draft.media.map((item) => <option key={item.mediaId} value={item.mediaId}>{mediaItems.find(({ id }) => id === item.mediaId)?.displayName} · {item.disposition === "unresolved" ? "未确认" : item.disposition === "no_cover" ? "明确不覆盖" : "覆盖范围已确认"}</option>)}</select></label>
     {media.analysisError && <p role="status">{!media.evidence.length || !draft.frameTimes?.[media.mediaId]?.length ? "视频帧尚未准备完成。点击“生成预览”会继续准备，已确认的框会保留。" : `自动分析未完成：${media.analysisError}`}</p>}
     {versions.length > 0 && <div className="cover-review-actions"><button type="button" disabled={busy || dirty} onClick={() => setVersion(0)}>原片与人工框</button>{versions.map((item) => <button type="button" key={item.version} disabled={busy || dirty} onClick={() => setVersion(item.version)}>第 {item.version} 版动态预览 {item.preview?.viewed ? "✓" : "待查看"}</button>)}</div>}
@@ -104,6 +104,8 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
       <button type="button" disabled={dirty} onClick={() => void command({ type: "split", segmentId: buffer.id, atMs: Math.ceil(timeMs) })}>在当前时间拆分区间</button>
     </fieldset></details>}
     <div>{media.issues.filter((issue) => !media.decisions.some(({ issueId }) => issueId === issue.id)).map((issue) => <div key={issue.id} className="cover-review-issue"><p>{issue.reason}</p><div>{issue.evidenceIds.map((id) => { const evidence = media.evidence.find((item) => item.id === id); if (!evidence) return null; const at = (evidence.pts * evidence.timeBase - (evidence.timeOriginSeconds ?? 0)) * 1000; return <button type="button" key={id} disabled={busy || dirty} onClick={() => { setVersion(0); setActiveId(issue.segmentId ?? media.segments.find((item) => item.identityId === issue.identityId)?.id ?? ""); seek(at); }}>查看证据 {(at / 1000).toFixed(3)}s</button>; })}</div>{issue.suggestion && <p>复核建议（只读，需人工建框）：左 {(issue.suggestion.x * 100).toFixed(1)}%、上 {(issue.suggestion.y * 100).toFixed(1)}%、宽 {(issue.suggestion.width * 100).toFixed(1)}%、高 {(issue.suggestion.height * 100).toFixed(1)}%。</p>}<><button disabled={!editable || dirty} onClick={() => void command({ type: "resolve_issue", issueId: issue.id, action: "accept_uncertainty" })}>明确接受此项不确定性</button><button disabled={!editable || dirty} onClick={() => void command({ type: "resolve_issue", issueId: issue.id, action: "correct" })}>已人工修正</button></></div>)}</div>
+    {["analyzing", "reviewing", "preparing_preview"].includes(draft.status) && <CoverReviewProgress draft={draft} agentRun={agentRun} onStop={() => void window.jianji.cancelCoverReview().then(onState).catch((error: Error) => setError(error.message))} />}
+    {busy && !["analyzing", "reviewing", "preparing_preview"].includes(draft.status) && <p role="status">正在处理，请稍候…</p>}
     <details><summary>预览费用说明</summary><p>准备每版预计使用 2 次覆盖选材请求，自动装饰另需 2 次创作请求；手动装饰需 1 次创作请求。共 {draft.media.length * (input.multiplier ?? 1)} 个版本，费用未知。</p></details>
     <div className="cover-review-actions"><button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(() => window.jianji.prepareCoverReview(draft.id, draft.revision, input))}>生成预览</button><button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status)} onClick={() => void run(() => window.jianji.approveCoverReview(draft.id, draft.revision, input))}>{draft.status === "approved" ? "核对并继续未提交版本" : "确认全部版本并导出"}</button></div>
     <details><summary>重新开始</summary><button type="button" disabled={busy || dirty} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>新建草稿</button></details>

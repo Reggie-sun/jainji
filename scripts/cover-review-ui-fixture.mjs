@@ -24,12 +24,13 @@ import {createRoot} from 'react-dom/client';
 import {CoverReviewPanel} from './src/renderer/CoverReviewPanel';
 import './src/renderer/styles.css';
 async function request(path, value) { const response = await fetch(path, value === undefined ? {} : {method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(value)}); const data = await response.json(); if(!response.ok) throw new Error(data.error); return data; }
-window.jianji = {editCoverReview: value => request('/edit',value)};
+window.jianji = {editCoverReview: value => request('/edit',value), cancelCoverReview:async()=> (await request('/state')).draft};
 function Fixture() {
  const [draft, setDraft] = useState(${JSON.stringify(draft)});
  const [portrait, setPortrait] = useState(false);
- window.fixture = {snapshot:()=>request('/state'), reset:async()=>{setDraft(await request('/reset',{}))}, fail:()=>request('/fail',{}), portrait:()=>setPortrait(true)};
- return <main style={{maxWidth:820,margin:'24px auto',padding:16}}><CoverReviewPanel drafts={[draft]} mediaItems={[{...${JSON.stringify(media)}, ...(portrait ? {width:180,height:320,previewUrl:'/portrait.mp4'}: {})}]} input={{mediaIds:[${JSON.stringify(media.id)}],multiplier:1}} library={{profiles:[]}} onState={setDraft}/></main>;
+ const [agentRun, setAgentRun] = useState();
+ window.fixture = {snapshot:()=>request('/state'), reset:async()=>{setDraft(await request('/reset',{}))}, fail:()=>request('/fail',{}), portrait:()=>setPortrait(true), progress:()=>setDraft({...draft,status:'preparing_preview'}), designing:()=>{setDraft({...draft,status:'preparing_preview',frameTimes:{[draft.media[0].mediaId]:[0]},media:draft.media.map(m=>({...m,evidence:[{}]}))});setAgentRun({projectId:draft.projectId,status:'running',items:[{name:'测试素材 · 第1版',status:'prepared'},{name:'测试素材 · 第2版',status:'analyzing'}]})}};
+ return <main style={{maxWidth:820,margin:'24px auto',padding:16}}><CoverReviewPanel agentRun={agentRun} drafts={[draft]} mediaItems={[{...${JSON.stringify(media)}, ...(portrait ? {width:180,height:320,previewUrl:'/portrait.mp4'}: {})}]} input={{mediaIds:[${JSON.stringify(media.id)}],multiplier:1}} library={{profiles:[]}} onState={setDraft}/></main>;
 }
 createRoot(document.getElementById('root')).render(<Fixture/>);
 ` }, bundle: true, format: "esm", outfile: "fixture.js", write: false });
