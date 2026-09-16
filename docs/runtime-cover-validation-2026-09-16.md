@@ -136,3 +136,46 @@ Verification：62 项相关测试通过；`npm run build`（含 typecheck）通�
 Decision：单帧职责拆分排除了同一抽帧重复回答的矛盾，但未解决真实定位质量，故撤回全部本轮实验代码、测试及 README/AGENTS 改动，恢复提交 `d70826e` 的生产实现。撤回前将差异及新增关联模块/测试保存到证据目录的 `rejected-experiment.patch`、`cover-frame-association.ts`、`cover-frame-association.test.ts`，供复查，不作为可用补丁推荐。无关 untracked 项目和 `docs/video-sticker-alternatives.md` 未处理。恢复后重新运行 6 个相关测试文件：56 项通过；`npm run build`（包含 typecheck）通过，只有既有 bundle size 警告；`git diff --check` 通过，最终仅报告文件有 tracked diff。
 
 Acceptance：独立连接接通、真实模型响应已证实；有效媒体导出、成片 ffprobe/播放、全目标白底覆盖和冻结重试均未通过本轮真实验收。没有新成片路径；不能宣称截图中的问题已修复，也未获得生产 818 字符无效 JSON 原文。下一步需要重新评估定位能力及像素级检测/跟踪方案，不再把扩大关联容差或换成单帧请求当成充分修复。
+
+## Pixel Localization And Tracking Feasibility
+
+用户允许扩大到像素级定位/跟踪评估。本轮是离线 feasibility spike，未修改应用算法、连接配置、项目或导出模板，未调用新的商业模型；没有重启应用。实验脚本和结果仅保存在 `/home/reggie/jianji-validation/20260916-pixel-spike/`，不作为可部署实现。`systematic-debugging` 与 `brainstorming` 用于分离“发现全部目标”“完整像素定位”“时序跟踪”三个问题，避免将实验运行成功当作产品验收。
+
+### Environment And Reproduction
+
+本机实测 RTX 5090 / 32607 MiB、CUDA 可用；复用 Python 3.13.5、OpenCV 4.12.0、PyTorch 2.9.0+cu128、Transformers 4.57.1，没有安装或升级系统依赖。下载公开 Apache-2.0 权重 `facebook/sam2.1-hiera-tiny`，固定 revision `de431c4043854a71d8101e17995dfe596bf101a5`，约 149 MiB 存在独立证据目录。只使用 safetensors、token=False、trust_remote_code=False；后续推理 local_files_only / HF_HUB_OFFLINE，不上传视频、原帧或凭据。
+
+权重 SHA-256：`48c14467e5cf9e51870511feb72c89688e82dd74523142c0538b663e193ac2a7`。图像实验按官方 model card 使用 `Sam2Model`，配置 model_type=sam2_video 产生兼容性警告；另用 output_loading_info 核查 missing/unexpected/mismatched/error_msgs 均为0，未发现缺失权重。此检查不能代替实现数值等价性证明。视频实验使用匹配的 `Sam2VideoModel`，无该类型警告。
+
+`probe.py` 提供 template / sam2 / automatic / multiscale / tiles / video 六个实验入口。静态对照按照应用现有 FFmpeg fps=4 参数提取 `(15)` 前五张 JPEG，使用 750/1000 ms 两帧及已有 `response-6/7.txt` 的原框；视频对照使用原始 30 fps 前 90 帧及 `response-3.txt` 原框，没有手工纠正种子或将人工框用于导出。静态结果保存源帧 SHA-256，SAM 结果保存模型 revision；video JSON 保存种子框、fps 和逐帧结果，但不含源视频摘要和完整软件参数，automatic JSON 生成于添加 cropLayers/explicitTiles 字段前。复查需同时使用本节环境记录与脚本，不能将这些 JSON 称为独立完整复现包。掩码 PNG 为诊断数据，不是覆盖成片。
+
+### Results
+
+| Probe | Observed result | Acceptance |
+| --- | --- | --- |
+| OpenCV normalized template matching | 750→1000 ms 左上角部分标签匹配分数 0.9784，仍仅 35 像素宽；左下角最高分位置跑到商品区域 | 不能证明完整定位，也不能只按最高分接受身份 |
+| SAM 2.1 box-prompt segmentation | 750 ms 左上角坏框 `[0,1,35,30]` 产生 `[0,0,35,32]` 局部掩码；1000 ms 右下角偏移框产生 `[520,912,540,936]`，仍未盖住实际底部图标 | 在现有坏框后加分割器不是充分修复 |
+| SAM 2.1 full-image automatic proposals | 两帧各 9 个候选，包含左上标签，但没有其他三个角落图案的独立完整候选 | 默认自动候选召回不合格；分割候选也不是贴纸语义判定 |
+| Official multiscale pipeline | crops_n_layers=1 在现有 fast processor 内抛出不同 crop tensor 尺寸无法 stack 的 RuntimeError | 该实验未完成，不统计为模型质量失败；未修改依赖源码 |
+| Explicit whole image + overlapping 2×2 tiles | 原图加四个通用重叠分块，无手工指定贴纸区域；共 31/35 个候选，3.37/3.08 秒，仍无另外三个角落图案的完整独立候选 | 此组多尺度参数也未达到召回要求，未继续放低阈值碰运气 |
+| SAM 2.1 video propagation | 90 帧、4 个初始目标，13.94 秒，峰值 allocated 约 2992 MiB；右下图标从第11帧起出现空掩码；左上标签在第46帧切镜后丢失，第89帧原图仍清楚可见 | 跟踪运行成功，但跟踪质量不合格 |
+
+上述 score / predictedIou 都是模型或相关性输出，不是独立标注所得的准确率；耗时包含本实验预处理/掩码落盘等操作，不是引擎纯吞吐或整批制作性能。仅测一个素材的局部，不外推其他素材、SAM 2 全系列或通用识别准确率。主线程对照 `source-frame89.png`、静态原帧与掩码坐标确认可见标签仍存在。
+
+另抽取首次丢失的原视频第11、46帧，保存为 `first-loss-01.png`、`first-loss-02.png`；目视确认前者右下小图标、后者左上标签仍可见。实验结果不支持通过忽略空掩码、永久延长覆盖或放松关联来出片。本轮未生成导出模板/成片，未执行用户任务重试。
+
+独立 `reviewer_xhigh` 给出 accept with concerns，确认以上反例支持拒绝将当前组合上线；指出首帧 mask 已含背景，故视频失败只能归于“已有模型框 → SAM2Video”的当前组合，不能独立归因于跟踪器，也不能声称正确分割种子下仍失败。主线程已修正报告对 JSON 元数据完整性的过度表述；本 review 不构成引擎或生产架构验收。
+
+### Integration Boundary And Decision
+
+独立 `architecture_auditor` 检查现有源码：视觉连接应仅负责后期贴纸的语义识别；最终像素几何、身份及可见区间应由一个定位/跟踪 owner 负责，不能把多个修补器串在当前错误框之后。若新方案验收后替换旧路径，应退休8帧重叠观察和双重身份关联，保留 `AgentRunner.detectCoverTracks()` 的结果接口、创作选款/样式、手动文字、白底、冻结模板及重试零识别。现有 FFmpeg stdout 按 UTF-8 累积，不能直接用它承载密集 rawvideo；还需有界解码、取消/资源上限与 Windows/Linux 打包验证。本轮没有实施这些架构变更。
+
+下一候选可评估具有语义检测与视频分割能力的 SAM 3，但尚无本机效果证据，不预先认定它能解决小贴纸问题。官方模型接口当前返回 gated=manual，需要用户已获授权的权重或自行申请访问；未读取本机其他账号、请求受限权重、接受用户条款或寻找绕过访问限制的镜像。用户表示已有授权权重，并要求自行查找文件；不要求 Token/API Key。
+
+### Local SAM 3 Weight Search
+
+按用户授权进行只读文件名/目录检查，覆盖可访问的 `/home/reggie` 模型与缓存目录、`/mnt`、`/media`，并单独核查 ComfyUI、Hugging Face、`.local`、下载和实验目录；没有找到 SAM 3 权重本体。找到 `/home/reggie/ComfyUI/comfy/ldm/sam3` 和 Python 环境内的 SAM 3 支持代码，以及 ComfyUI 原生 Image/Video Segmentation 模板对 `sam3.1_multiplex_fp16.safetensors` 的引用；这不证明文件已下载。当前 `/home/reggie/ComfyUI/models/checkpoints` 只有零字节占位文件，未配置 extra_model_paths.yaml。未读取凭据或 shell 历史。
+
+系统有尚未挂载的 NTFS 分区 `nvme0n1p3` / `nvme0n1p5`，未检查其内容、未擅自挂载。不能据已挂载路径搜索结果断言权重不存在于整台机器；继续需要确认 Windows 分区或权重的大致位置，也可由用户决定重新获取获授权权重。没有因此切换产品模型或修改应用。runtime-notes.txt 保存加载检查与 crop 错误的摘录，明确不是完整 stderr transcript。最终仅本报告有 tracked diff，`git diff --check` 通过；本轮没有应用代码变更，不为报告重复运行无关 build/typecheck。
+
+Source references：[OpenCV template matching](https://docs.opencv.org/4.13.0/d4/dc6/tutorial_py_template_matching.html)、[SAM 2 official repository](https://github.com/facebookresearch/sam2)、[SAM 2.1 tiny model card](https://huggingface.co/facebook/sam2.1-hiera-tiny)、[SAM 2 video API](https://huggingface.co/docs/transformers/model_doc/sam2_video)、[SAM 3 official repository](https://github.com/facebookresearch/sam3)。官方能力描述仅用于候选筛选，不替代上述实测。
