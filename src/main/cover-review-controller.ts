@@ -62,9 +62,9 @@ export class CoverReviewController {
         draft.media.find(({ mediaId }) => mediaId === source.id)!.evidence = extracted.evidence;
       }
       await this.save(draft, draft.revision);
-    } catch {
+    } catch (error) {
       draft.status = signal.aborted && !this.preservingDrafts ? "cancelled" : "needs_human";
-      for (const item of draft.media) { item.analysis = "incomplete"; item.analysisError = "证据准备未完成，可人工编辑；批准前须重新建立完整证据。"; }
+      for (const item of draft.media.filter((item) => !item.evidence.length)) { item.analysis = "incomplete"; item.analysisError = `视频帧准备未完成：${error instanceof Error ? error.message : "抽帧失败"}。生成预览时会重新准备，已确认的框会保留。`.slice(0, 2000); }
       try { await this.save(draft, draft.revision); }
       catch (error) {
         const evidence = draft.media.flatMap((media) => media.evidence);
@@ -192,6 +192,7 @@ export class CoverReviewController {
       await this.save(draft, revision);
       const createdPreviews: { preview: { relativePath: string } }[] = [];
       try {
+        await this.prepareMissingEvidence(draft, signal);
         await this.validateEvidence(draft);
         signal.throwIfAborted();
         this.assertEnabled();
@@ -242,6 +243,42 @@ export class CoverReviewController {
     draft.frozen.find((item) => item.mediaId === mediaId && item.version === version)!.preview!.viewed = true;
     await this.save(draft, revision);
     });
+  }
+  private async prepareMissingEvidence(draft: CoverReviewDraft, signal: AbortSignal): Promise<void> {
+    for (const media of draft.media) {
+      signal.throwIfAborted();
+      if (media.evidence.length && draft.frameTimes?.[media.mediaId]?.length) continue;
+      const source = this.service.getMedia(media.mediaId);
+      if (!source || source.fingerprint !== media.sourceFingerprint || await fingerprintFile(source.sourcePath) !== media.sourceFingerprint) throw new Error("原素材已变化，请重建审阅草稿。");
+      // Existing observations and decisions keep their evidence identities.
+      if (media.evidence.length) await this.dependencies.verify(draft.projectId, media.evidence);
+      const extracted = await this.dependencies.extract(source, draft, signal);
+      let saveAttempted = false, saveCompleted = false;
+      try {
+        signal.throwIfAborted();
+        if (!extracted.evidence.length || !extracted.frameTimesMs.length) throw new Error("视频帧准备未完成，请再次生成预览。");
+        const next = structuredClone(draft);
+        const repaired = next.media.find((item) => item.mediaId === media.mediaId)!;
+        if (!repaired.evidence.length) repaired.evidence = extracted.evidence;
+        next.frameTimes ??= {}; next.frameTimes[media.mediaId] = extracted.frameTimesMs;
+        if (repaired.analysis === "incomplete" && !repaired.observations.length && !repaired.issues.length) {
+          repaired.analysis = "not_started";
+          delete repaired.analysisError;
+        }
+        saveAttempted = true;
+        await this.save(next, draft.revision);
+        saveCompleted = true;
+        Object.assign(draft, next);
+      } finally {
+        // A failed save may have reached disk before a queue-driven rewrite failed.
+        // Keep this batch when commit status is uncertain; unpublished memory is not proof of no reference.
+        if (!saveAttempted || saveCompleted) {
+          const references = new Set((this.service.currentProject.reviewDrafts ?? []).flatMap((item) => item.media.flatMap((media) => media.evidence.map(({ id }) => id))));
+          const retained = extracted.evidence.filter(({ id }) => references.has(id));
+          if (retained.length !== extracted.evidence.length) await this.dependencies.discardEvidence?.(draft.projectId, extracted.evidence, retained);
+        }
+      }
+    }
   }
   private async validateEvidence(draft: CoverReviewDraft): Promise<void> {
     for (const media of draft.media) {

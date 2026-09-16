@@ -4,7 +4,7 @@ import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { createServer as createSocketServer } from "node:net";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, unlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -119,5 +119,21 @@ try {
   await wait(`window.jianji.getState().then(s=>s.queue.batches.flatMap(b=>b.batch.tasks).find(t=>t.id===${JSON.stringify(failed.id)})?.status==='completed')`); state = await evaluate("window.jianji.getState()");
   const retryRequestsDelta = totalRequests - requestsBeforeRetry; assert.equal(retryRequestsDelta, 0); assert.ok(visionRequests > 0 && reviewRequests === 2 && creativeRequests > 0);
   for (const task of state.queue.batches.flatMap((batch) => batch.batch.tasks)) { const probe = JSON.parse(execFileSync("ffprobe", ["-v","error","-show_format","-show_streams","-of","json",task.outputPath], { encoding:"utf8" })); assert.ok(Number(probe.format.duration) > 0); assert.ok(probe.streams.some((stream) => stream.codec_type === "audio")); } await shot("approved-output");
-  const report = { result:"PASS", validation, outputs: state.queue.batches.flatMap((batch) => batch.batch.tasks.map((task) => task.outputPath)), totalRequests, visionRequests, reviewRequests, creativeRequests, retryRequestsDelta, frozenVersions: draft.frozen.length, taskCount: state.queue.batches.flatMap((batch) => batch.batch.tasks).length }; await writeFile(path.join(validation, "report.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 }); console.log(JSON.stringify(report, null, 2));
+  // Reproduce an old failed-evidence draft in this isolated project only.
+  const persisted = JSON.parse(await readFile(collection, "utf8"));
+  const recovery = structuredClone(draft); recovery.id = randomUUID(); recovery.status = "needs_human"; recovery.frozen = [];
+  delete recovery.frameTimes; delete recovery.approval; delete recovery.review;
+  recovery.media[0] = { ...recovery.media[0], identities: [identity], segments: [segment], disposition: "cover", evidence: [], observations: [], issues: [], decisions: recovery.media[0].decisions.filter(item => !item.issueId), analysis: "incomplete", analysisError: "证据准备未完成，可人工编辑；批准前须重新建立完整证据。" };
+  persisted.reviewDrafts.push(recovery);
+  await writeFile(collection, JSON.stringify(persisted));
+  await evaluate("window.jianji.loadProject()");
+  await wait("document.body.innerText.includes('已确认的框会保留')");
+  await evaluate(`window.jianji.prepareCoverReview(${JSON.stringify(recovery.id)},${recovery.revision},${JSON.stringify(input)})`);
+  const recovered = (await evaluate("window.jianji.getState()")).project.reviewDrafts.find(item => item.id === recovery.id);
+  assert.equal(recovered.status, "awaiting_approval"); assert.equal(recovered.revision, recovery.revision);
+  assert.deepEqual(recovered.media[0].segments, recovery.media[0].segments);
+  assert.deepEqual(recovered.media[0].decisions, recovery.media[0].decisions);
+  assert.ok(recovered.media[0].evidence.length && recovered.frameTimes[media.id].length);
+  assert.equal(recovered.media[0].analysisError, undefined); assert.equal(recovered.frozen.length, 2);
+  const report = { result:"PASS", evidenceRecovery:"PASS", validation, outputs: state.queue.batches.flatMap((batch) => batch.batch.tasks.map((task) => task.outputPath)), totalRequests, visionRequests, reviewRequests, creativeRequests, retryRequestsDelta, frozenVersions: draft.frozen.length, taskCount: state.queue.batches.flatMap((batch) => batch.batch.tasks).length }; await writeFile(path.join(validation, "report.json"), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600 }); console.log(JSON.stringify(report, null, 2));
 } finally { socket?.close(); child.kill("SIGKILL"); fixture.closeAllConnections(); await new Promise((resolve) => fixture.close(resolve)); }

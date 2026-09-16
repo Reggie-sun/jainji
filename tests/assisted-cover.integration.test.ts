@@ -5,13 +5,13 @@ import path from "node:path";
 import { expect, it, vi } from "vitest";
 import { ApplicationService } from "../src/main/application";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
-import { ExportQueue } from "../src/main/queue";
+import { ExportQueue, type QueueSnapshot } from "../src/main/queue";
 import { JobStore, ProjectStore } from "../src/main/store";
 import { CoverReviewController } from "../src/main/cover-review-controller";
 import { createCoverReviewDraft, editCoverReviewDraft } from "../src/main/cover-review-session";
 import { reviewDigest } from "../src/main/cover-review-approval";
 import { DEFAULT_COVER_STICKER } from "../src/shared/cover-sticker";
-import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem, type Project } from "../src/main/domain";
+import { createDefaultTemplate, DEFAULT_PRESET, now, BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION, type MediaItem, type Project } from "../src/main/domain";
 import type { AgentController } from "../src/main/agent-controller";
 import { fingerprintFile } from "../src/main/paths";
 
@@ -50,6 +50,99 @@ function deferred() {
   const promise = new Promise<void>((done) => { resolve = done; });
   return { promise, resolve };
 }
+
+it("repairs missing frame evidence without discarding confirmed boxes or decisions", async () => {
+  const f = await fixture();
+  const draft = structuredClone(f.draft); draft.status = "needs_human"; draft.frozen = [];
+  const originalEvidence = structuredClone(draft.media[0].evidence);
+  draft.media[0].evidence = []; delete draft.frameTimes;
+  const identityId = randomUUID();
+  draft.media[0].identities = [{ id: identityId, label: "人工框", semantics: "sticker", origin: "human" }];
+  draft.media[0].segments = [{ id: randomUUID(), identityId, origin: "human", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: { x: 0.2, y: 0.2, width: 0.2, height: 0.2 } }] } }];
+  draft.media[0].disposition = "cover"; draft.media[0].analysis = "incomplete"; draft.media[0].analysisError = "证据准备未完成";
+  await f.service.saveReviewDraft(draft, draft.revision);
+  const extract = vi.fn(async () => ({ evidence: originalEvidence, images: [], frameTimesMs: [0, 500] }));
+  const prepareReview = vi.fn(async () => { throw new Error("MODEL_BOUNDARY"); });
+  const controller = new CoverReviewController(f.service, { ...f.agent, prepareReview } as unknown as AgentController, f.queue, { root: f.directory, extract, analyze: vi.fn(), verify: async () => undefined, changed() {} });
+  await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow("MODEL_BOUNDARY");
+  const saved = (await new ProjectStore(f.file).load()).project.reviewDrafts![0];
+  expect(saved.id).toBe(draft.id); expect(saved.revision).toBe(draft.revision);
+  expect(saved.media[0]).toMatchObject({ disposition: "cover", segments: draft.media[0].segments, identities: draft.media[0].identities, decisions: draft.media[0].decisions, evidence: originalEvidence });
+  expect(saved.media[0].analysisError).toBeUndefined(); expect(saved.frameTimes).toEqual({ [draft.media[0].mediaId]: [0, 500] });
+  await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow("MODEL_BOUNDARY");
+  expect(extract).toHaveBeenCalledTimes(1);
+});
+
+it("retains old evidence references when only frame times need repair", async () => {
+  const f = await fixture();
+  const draft = structuredClone(f.draft); draft.status = "needs_human"; draft.frozen = []; delete draft.frameTimes;
+  draft.media[0].observations = [{ evidenceId: draft.media[0].evidence[0].id, presence: "UNKNOWN", origin: "algorithm" }];
+  await f.service.saveReviewDraft(draft, draft.revision);
+  const generated = [{ ...draft.media[0].evidence[0], id: randomUUID() }];
+  const discardEvidence = vi.fn(async () => undefined);
+  const controller = new CoverReviewController(f.service, { ...f.agent, prepareReview: async () => { throw new Error("MODEL_BOUNDARY"); } } as unknown as AgentController, f.queue, { root: f.directory, extract: async () => ({ evidence: generated, images: [], frameTimesMs: [0, 500] }), analyze: vi.fn(), verify: async () => undefined, discardEvidence, changed() {} });
+  await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow("MODEL_BOUNDARY");
+  expect(f.service.currentProject.reviewDrafts![0].media[0]).toMatchObject({ evidence: draft.media[0].evidence, observations: draft.media[0].observations });
+  expect(discardEvidence).toHaveBeenCalledWith(draft.projectId, generated, []);
+});
+
+it.each(["cancel", "save failure"])("handles recovered evidence ownership after %s", async (failure) => {
+  const f = await fixture();
+  const draft = structuredClone(f.draft); draft.status = "needs_human"; draft.frozen = [];
+  const generated = draft.media[0].evidence; draft.media[0].evidence = []; delete draft.frameTimes;
+  await f.service.saveReviewDraft(draft, draft.revision);
+  const gate = deferred(); const prepareReview = vi.fn(); const discardEvidence = vi.fn(async () => undefined);
+  const extract = vi.fn(async () => { await gate.promise; return { evidence: generated, images: [], frameTimesMs: [0, 500] }; });
+  const controller = new CoverReviewController(f.service, { ...f.agent, prepareReview } as unknown as AgentController, f.queue, { root: f.directory, extract, analyze: vi.fn(), verify: async () => undefined, discardEvidence, changed() {} });
+  const work = controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory])).catch(() => undefined);
+  await vi.waitFor(() => expect(extract).toHaveBeenCalled());
+  if (failure === "cancel") { const stop = controller.cancel(); gate.resolve(); await Promise.all([stop, work]); }
+  else { const save = vi.spyOn(f.service, "saveReviewDraft").mockRejectedValue(new Error("disk failure")); gate.resolve(); await work; save.mockRestore(); }
+  expect(prepareReview).not.toHaveBeenCalled();
+  if (failure === "cancel") expect(discardEvidence).toHaveBeenCalledWith(draft.projectId, generated, []);
+  else expect(discardEvidence).not.toHaveBeenCalled();
+  expect(f.service.currentProject.reviewDrafts![0].media[0].evidence).toEqual([]);
+  expect(f.service.currentProject.reviewDrafts![0].media[0].decisions).toEqual(draft.media[0].decisions);
+});
+
+it("keeps evidence committed before a queue-triggered rewrite fails", async () => {
+  const f = await fixture();
+  const draft = structuredClone(f.draft); draft.status = "needs_human"; draft.frozen = [];
+  const generated = draft.media[0].evidence; draft.media[0].evidence = []; delete draft.frameTimes;
+  await f.service.saveReviewDraft(draft, draft.revision);
+  const batchId = randomUUID(), stamp = now();
+  const snapshot: QueueSnapshot = { revision: 1, batches: [{ schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, updatedAt: stamp, batch: { schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId: draft.projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [draft.media[0].mediaId], outputDirectory: f.directory, preset: DEFAULT_PRESET, status: "active", estimatedBytes: 1, createdAt: stamp, tasks: [{ id: randomUUID(), batchId, mediaId: draft.media[0].mediaId, status: "running", progress: 0.3, attempt: 1, createdAt: stamp, attempts: [] }] } }] };
+  const realSave = ProjectStore.prototype.save; let writes = 0;
+  const save = vi.spyOn(ProjectStore.prototype, "save").mockImplementation(async function(this: ProjectStore, project) {
+    const attempt = ++writes;
+    if (attempt >= 3) throw new Error("disk failure");
+    await realSave.call(this, project);
+    if (attempt === 2) await f.service.syncQueue(snapshot);
+  });
+  const prepareReview = vi.fn(), discardEvidence = vi.fn(async () => undefined);
+  const controller = new CoverReviewController(f.service, { ...f.agent, prepareReview } as unknown as AgentController, f.queue, { root: f.directory, extract: async () => ({ evidence: generated, images: [], frameTimesMs: [0, 500] }), analyze: vi.fn(), verify: async () => undefined, discardEvidence, changed() {} });
+  try {
+    await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow("disk failure");
+    expect(JSON.parse(await readFile(f.file, "utf8")).reviewDrafts[0].media[0].evidence).toEqual(generated);
+    expect(f.service.currentProject.reviewDrafts![0].media[0].evidence).toEqual([]);
+    expect(discardEvidence).not.toHaveBeenCalled(); expect(prepareReview).not.toHaveBeenCalled();
+  } finally { save.mockRestore(); }
+});
+
+it("failed evidence recovery preserves confirmations and cannot call a model", async () => {
+  const f = await fixture();
+  const draft = structuredClone(f.draft); draft.status = "needs_human"; draft.frozen = []; draft.media[0].evidence = []; delete draft.frameTimes;
+  await f.service.saveReviewDraft(draft, draft.revision);
+  const prepareReview = vi.fn();
+  const extract = vi.fn(async () => { throw new Error("抽帧失败"); });
+  const controller = new CoverReviewController(f.service, { ...f.agent, prepareReview } as unknown as AgentController, f.queue, { root: f.directory, extract, analyze: vi.fn(), verify: async () => undefined, changed() {} });
+  await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow("抽帧失败");
+  expect(prepareReview).not.toHaveBeenCalled();
+  expect(f.service.currentProject.reviewDrafts![0].media[0].decisions).toEqual(draft.media[0].decisions);
+  await writeFile(f.service.currentProject.mediaItems[0].sourcePath, "changed");
+  await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow("原素材已变化");
+  expect(extract).toHaveBeenCalledTimes(1);
+});
 
 it("rejects changed output settings, missing preview and forged premature approval", async () => {
   const f = await fixture();
