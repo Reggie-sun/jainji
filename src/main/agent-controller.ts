@@ -17,7 +17,7 @@ import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automat
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { stickerPreview } from "./sticker-preview.js";
-import { resolveCoverSticker } from "./cover-sticker.js";
+import { resolveCoverSticker, previousCoverStickerId, unusedCoverStickerIds } from "./cover-sticker.js";
 import { recognizeAutomaticCovers } from "./automatic-cover.js";
 
 export class AgentController {
@@ -103,7 +103,7 @@ export class AgentController {
       const project = this.service.currentProject;
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
       const automaticCover = project.coverSticker?.enabled && project.coverSticker.trackingMode === "agent" ? structuredClone(project.coverSticker) : undefined;
-      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history);
+      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets) };
@@ -145,21 +145,21 @@ export class AgentController {
         signal.throwIfAborted();
         return { fonts: [], stickers: ids.map((id) => catalog.stickers.find((entry) => entry.id === id)!), previews: candidatePreviews };
       };
-      const previousCoverId = [...history].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))[0];
+      const previousCoverId = previousCoverStickerId(history);
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       this.runner = new AgentRunner({
         coverSticker,
-        selectCoverSticker: automaticCover ? async (frames, signal) => {
+        selectCoverSticker: automaticCover ? async (frames, signal, previousSelections) => {
           const eligible = availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id));
-          const stickers = eligible.length > 1 ? eligible.filter(({ id }) => id !== previousCoverId) : eligible;
+          const candidateIds = unusedCoverStickerIds(eligible.map(({ id }) => id), previousSelections, previousCoverId);
+          const stickers = eligible.filter(({ id }) => candidateIds.includes(id));
           const catalog = { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };
           if (!stickers.length) throw new ProviderError("没有可用的自动覆盖贴纸，请检查本地素材库。");
-          const ids = await this.provider.shortlist(parsed.ruleId, `为本批原贴纸覆盖选择图案，本批统一一款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
+          const ids = await this.provider.shortlist(parsed.ruleId, `为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
           const candidates = await prepareCandidates(ids, catalog, signal);
           const stickerId = await this.provider.selectCoverSticker(frames, signal, candidates);
           signal.throwIfAborted();
-          if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本批已停止。");
+          if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
         } : undefined,
         detectCoverTracks: (item, signal) => recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => this.provider.detectCovers(images, previous, currentSignal), signal),

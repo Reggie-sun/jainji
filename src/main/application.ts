@@ -92,6 +92,7 @@ export class ApplicationService {
     for (const region of this.project.coverSticker?.regions ?? []) {
       if (region.tracks) delete region.tracks[mediaId];
     }
+    if (this.project.coverSticker?.mediaRegions) delete this.project.coverSticker.mediaRegions[mediaId];
     this.touch();
   }
 

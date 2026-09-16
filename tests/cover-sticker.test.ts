@@ -68,7 +68,7 @@ describe("reusable batch cover", () => {
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
     const plan = vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: [], priceStyle: "ice" as const } : {}) });
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
-    const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockResolvedValueOnce(libraryId).mockResolvedValueOnce("sparkle");
+    const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? [] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockResolvedValue([{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: options.rectangle }] } }]);
     const input = { ruleId: "clean" as const, brief: "", mediaIds: [source.id], multiplier: 2, outputDirectory: directory, decorations: { mode, productPrice: "手动内容", sticker: "none", fontFamily: "Noto Sans CJK SC" } };
@@ -77,8 +77,8 @@ describe("reusable batch cover", () => {
       await vi.waitFor(() => expect(controller.busy).toBe(false));
       await controller.start(input, new Set([directory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false));
-      expect(history.flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))).toEqual([libraryId, libraryId, "sparkle", "sparkle"]);
-      expect(selectCover).toHaveBeenCalledTimes(2);
+      expect(history.flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))).toEqual([libraryId, "sparkle", libraryId, "sparkle"]);
+      expect(selectCover).toHaveBeenCalledTimes(4);
       expect(shortlist.mock.calls.filter((call) => !call[5])[1][4].stickers.some(({ id }) => id === libraryId)).toBe(false);
       expect(Object.keys(assets)).not.toContain(libraryId);
       service.setCoverSticker({ ...options, stickerIds: [`uploaded-${"c".repeat(64)}`] });
@@ -129,7 +129,7 @@ describe("reusable batch cover", () => {
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 
-  it.each(["manual", "agent"] as const)("keeps all versions uniform in %s mode and freezes independently of later settings", async (mode) => {
+  it.each(["manual", "agent"] as const)("rotates successive rounds in %s mode and freezes independently of later settings", async (mode) => {
     const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4", displayName: "source.mp4", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     const track = { startMs: 100, endMs: 900, keyframes: [{ timeMs: 0, rectangle: options.rectangle }, { timeMs: 1000, rectangle: { ...options.rectangle, x: 0.5 } }] };
     const frozen = resolveCoverSticker({ ...options, tracks: { [source.id]: track } }, assets, [])!;
@@ -139,9 +139,9 @@ describe("reusable batch cover", () => {
     runner.start("project", "clean", "", [source], 4);
     await runner.settled();
     expect(enqueue).toHaveBeenCalledTimes(4);
-    for (const [template] of enqueue.mock.calls) {
+    for (const [index, [template]] of enqueue.mock.calls.entries()) {
       expect(template.layers.filter((layer) => layer.type === "sticker" && layer.cover)).toHaveLength(1);
-      expect(template.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: assets[a].assetPath, cover: { stickerId: a } });
+      expect(template.layers.find((layer) => layer.type === "sticker")).toMatchObject({ assetPath: assets[index % 2 ? b : a].assetPath, cover: { stickerId: index % 2 ? b : a } });
       expect(template.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "手动内容" });
       expect(template.layers.find((layer) => layer.type === "sticker")).toMatchObject({ cover: { motion: track } });
     }

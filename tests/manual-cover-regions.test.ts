@@ -20,7 +20,7 @@ const settings = (): CoverSticker => ({ enabled: true, stickerIds: [a, b], recta
 ] });
 
 describe("multiple manual cover regions", () => {
-  it("freezes all four regions and rotates only shared artwork across batches", () => {
+  it("freezes all four regions and rotates shared and independent artwork across rounds", () => {
     const options = settings();
     const frozen = resolveCoverSticker(options, assets, [])!;
     const layers = manualCoverLayers(frozen, source, source);
@@ -28,7 +28,7 @@ describe("multiple manual cover regions", () => {
     expect(layers.map((layer) => layer.cover?.regionId)).toEqual(options.regions!.map((region) => region.id));
     const template = EditTemplateSchema.parse({ ...createDefaultTemplate(), layers });
     const history = [{ createdAt: new Date().toISOString(), templateSnapshot: template }] as ExportBatch[];
-    expect(manualCoverLayers(resolveCoverSticker(options, assets, history)!, source, source).map((layer) => layer.cover?.stickerId)).toEqual([b, b, b, a]);
+    expect(manualCoverLayers(resolveCoverSticker(options, assets, history)!, source, source).map((layer) => layer.cover?.stickerId)).toEqual([a, b, b, b]);
     options.regions![0].rectangle.x = 0.3;
     expect(manualCoverLayers(frozen, source, source)[0].x).toBe(0);
   });

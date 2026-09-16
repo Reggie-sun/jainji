@@ -1,43 +1,81 @@
 import { randomUUID } from "node:crypto";
-import { DEFAULT_COVER_STICKER, CoverStickerSchema, manualCoverRegions, type CoverRectangle, type CoverSticker } from "../shared/cover-sticker.js";
+import { DEFAULT_COVER_STICKER, CoverStickerSchema, manualCoverRegions, type CoverRectangle, type CoverRegion, type CoverSticker } from "../shared/cover-sticker.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
 import type { ExportBatch, StickerLayer } from "./domain.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 
-interface FrozenCoverPlacement {
+interface CoverArtwork {
   stickerId: string;
   assetPath: string;
   assetFingerprint: string;
+}
+
+interface FrozenCoverPlacement extends CoverArtwork {
   rectangle: CoverRectangle;
   tracks?: CoverSticker["tracks"];
   automatic?: boolean;
   regionId?: string;
   sharedSticker?: true;
+  artworkCycle?: CoverArtwork[];
 }
 export interface FrozenCoverSticker extends FrozenCoverPlacement {
   regions?: FrozenCoverPlacement[];
+  mediaRegions?: Record<string, FrozenCoverPlacement[]>;
 }
 
-export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[]): FrozenCoverSticker | undefined {
+export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[], mediaIds?: readonly string[]): FrozenCoverSticker | undefined {
   const options = CoverStickerSchema.parse(settings ?? DEFAULT_COVER_STICKER);
   if (!options.enabled) return undefined;
-  const regions = manualCoverRegions(options);
-  const candidates = regions.some((region) => !region.stickerId) ? options.stickerIds : [];
+  const layouts = mediaIds ? Object.fromEntries(mediaIds.map((id) => [id, manualCoverRegions(options, id)])) : undefined;
+  const regions = layouts ? Object.values(layouts).flat() : manualCoverRegions(options);
+  if (!regions.length) return undefined;
+  if (regions.some((region) => !region.stickerId) && !options.stickerIds.length) throw new Error("仍有素材的覆盖框使用统一款，请选择覆盖候选贴纸。");
+  const candidates = options.stickerIds;
   if ([...candidates, ...regions.flatMap((region) => region.stickerId ? [region.stickerId] : [])].some((id) => !assets[id])) throw new Error("覆盖贴纸已删除或不可用，请重新选择自己的贴纸。");
-  const previous = [...history].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-    .flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover && (!layer.cover.regionId || layer.cover.sharedSticker) ? [layer.cover.stickerId] : []))[0];
-  const previousIndex = candidates.indexOf(previous);
-  const sharedId = candidates[(previousIndex + 1) % candidates.length];
-  const placements = regions.map((region): FrozenCoverPlacement => {
-    const stickerId = region.stickerId ?? sharedId;
-    return { stickerId, ...assets[stickerId]!, rectangle: structuredClone(region.rectangle), ...(region.tracks ? { tracks: structuredClone(region.tracks) } : {}),
-      ...(options.regions ? { regionId: region.id, ...(!region.stickerId ? { sharedSticker: true as const } : {}) } : {}) };
-  });
+  const previous = previousCoverStickerId(history, true);
+  const freeze = (region: CoverRegion, mediaId?: string): FrozenCoverPlacement => {
+    const tracks = mediaId ? region.tracks?.[mediaId] ? { [mediaId]: region.tracks[mediaId] } : undefined : region.tracks;
+    const available = region.stickerId ? [region.stickerId, ...candidates.filter((id) => id !== region.stickerId)] : candidates;
+    const last = region.stickerId ? previousCoverStickerId(history, false, { id: region.id, mediaId }) : previous;
+    const start = (available.indexOf(last ?? "") + 1) % available.length;
+    const cycleIds = [...available.slice(start), ...available.slice(0, start)];
+    const stickerId = cycleIds[0];
+    return { stickerId, ...assets[stickerId]!, ...(cycleIds.length > 1 ? { artworkCycle: cycleIds.map((id) => ({ stickerId: id, ...assets[id]! })) } : {}), rectangle: structuredClone(region.rectangle), ...(tracks ? { tracks: structuredClone(tracks) } : {}),
+      ...(options.regions || layouts ? { regionId: region.id, ...(!region.stickerId ? { sharedSticker: true as const } : {}) } : {}) };
+  };
+  if (layouts) {
+    const mediaRegions = Object.fromEntries(Object.entries(layouts).map(([id, items]) => [id, items.map((region) => freeze(region, id))]));
+    const first = Object.values(mediaRegions).find((items) => items.length)![0];
+    return { ...first, regions: [], mediaRegions };
+  }
+  const placements = regions.map((region) => freeze(region));
   return { ...placements[0], ...(options.regions ? { regions: placements } : {}), ...(options.trackingMode === "agent" ? { automatic: true } : {}) };
 }
 
-export function manualCoverLayers(frozen: FrozenCoverSticker, source: { id?: string; width: number; height: number }, output: { width: number; height: number }): StickerLayer[] {
-  return (frozen.regions ?? [frozen]).map((placement) => coverLayerForMedia(placement, source, output));
+// Queue insertion order can differ from round order when plans finish concurrently.
+export function previousCoverStickerId(history: readonly ExportBatch[], sharedOnly = false, region?: { id: string; mediaId?: string }): string | undefined {
+  const covers = [...history].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .filter((batch) => !region?.mediaId || batch.mediaIds.includes(region.mediaId))
+    .flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover && (!region || layer.cover.regionId === region.id) && (!sharedOnly || !layer.cover.regionId || layer.cover.sharedSticker) ? [layer.cover] : []));
+  const latest = covers[0];
+  if (!latest?.selection) return latest?.stickerId;
+  return covers.filter((cover) => cover.selection?.runId === latest.selection!.runId)
+    .sort((a, b) => b.selection!.round - a.selection!.round)[0].stickerId;
+}
+
+export function unusedCoverStickerIds(eligible: readonly string[], selected: readonly string[], previous?: string): string[] {
+  const used = new Set<string>();
+  for (const id of selected) {
+    if (used.size === eligible.length) used.clear();
+    if (eligible.includes(id)) used.add(id);
+  }
+  const last = selected.at(-1) ?? previous;
+  const fresh = eligible.filter((id) => !used.has(id) && id !== last);
+  return fresh.length ? fresh : eligible.length > 1 ? eligible.filter((id) => id !== last) : [...eligible];
+}
+
+export function manualCoverLayers(frozen: FrozenCoverSticker, source: { id?: string; width: number; height: number }, output: { width: number; height: number }, version = 1): StickerLayer[] {
+  return ((source.id && frozen.mediaRegions?.[source.id]) || frozen.regions || [frozen]).map((placement) => coverLayerForMedia({ ...placement, ...placement.artworkCycle?.[(version - 1) % placement.artworkCycle.length] }, source, output));
 }
 
 export function automaticCoverLayers(frozen: FrozenCoverSticker, source: { id: string; width: number; height: number }, output: { width: number; height: number }, tracks: readonly AutomaticCoverTrack[]): StickerLayer[] {

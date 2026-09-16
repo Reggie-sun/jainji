@@ -115,6 +115,7 @@ export const StickerLayerSchema = z.object({
     targetId: z.string().min(1).max(80).optional(),
     regionId: z.string().uuid().optional(),
     sharedSticker: z.literal(true).optional(),
+    selection: z.object({ runId: z.string().uuid(), round: z.number().int().positive() }).strict().optional(),
   }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;

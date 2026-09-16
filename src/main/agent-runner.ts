@@ -19,7 +19,7 @@ interface RunnerDependencies {
   resolutionMode?: ExportSettings["resolutionMode"];
   autoCatalog?: AgentDecorationCatalog;
   coverSticker?: FrozenCoverSticker;
-  selectCoverSticker?(frames: string[], signal: AbortSignal): Promise<FrozenCoverSticker>;
+  selectCoverSticker?(frames: string[], signal: AbortSignal, previousSelections: readonly string[]): Promise<FrozenCoverSticker>;
   detectCoverTracks?(media: MediaItem, signal: AbortSignal): Promise<AutomaticCoverTrack[]>;
   onChange(): void;
 }
@@ -58,7 +58,22 @@ export class AgentRunner {
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
     const pendingCoverTracks = new Map<string, Promise<AutomaticCoverTrack[]>>();
-    let pendingCoverSticker: Promise<FrozenCoverSticker> | undefined;
+    const pendingCoverStickers = new Map<number, Promise<FrozenCoverSticker>>();
+    const selectedCoverIds: string[] = [];
+    const coverForVersion = (version: number, frames: string[]): Promise<FrozenCoverSticker> => {
+      let pending = pendingCoverStickers.get(version);
+      if (!pending) {
+        const previous = version > 1 ? coverForVersion(version - 1, frames) : Promise.resolve();
+        pending = previous.then(async () => {
+          signal.throwIfAborted();
+          const selected = await this.dependencies.selectCoverSticker!(frames, signal, [...selectedCoverIds]);
+          selectedCoverIds.push(selected.stickerId);
+          return selected;
+        });
+        pendingCoverStickers.set(version, pending);
+      }
+      return pending;
+    };
     const remainingVersions = new Map<string, number>();
     for (const source of media) remainingVersions.set(source.id, (remainingVersions.get(source.id) ?? 0) + 1);
     const worker = async () => {
@@ -80,8 +95,7 @@ export class AgentRunner {
           }
           const frames = await extracting;
           signal.throwIfAborted();
-          if (this.dependencies.selectCoverSticker && !pendingCoverSticker) pendingCoverSticker = this.dependencies.selectCoverSticker(frames, signal);
-          const coverSticker = pendingCoverSticker ? await pendingCoverSticker : this.dependencies.coverSticker;
+          const coverSticker = this.dependencies.selectCoverSticker ? await coverForVersion(item.version, frames) : this.dependencies.coverSticker;
           signal.throwIfAborted();
           let coverTracks: AutomaticCoverTrack[] | undefined;
           if (coverSticker?.automatic) {
@@ -107,8 +121,8 @@ export class AgentRunner {
           const dimensions = outputDimensions(source, { resolutionMode: this.dependencies.resolutionMode ?? "source" });
           let template = materializePlan(plan, run.ruleId, dimensions, this.dependencies.stickerAssets, this.dependencies.decorations, this.dependencies.autoCatalog);
           if (coverSticker) {
-            const layers = coverTracks !== undefined ? automaticCoverLayers(coverSticker, source, dimensions, coverTracks) : manualCoverLayers(coverSticker, source, dimensions);
-            template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers] });
+            const layers = coverTracks !== undefined ? automaticCoverLayers(coverSticker, source, dimensions, coverTracks) : manualCoverLayers(coverSticker, source, dimensions, item.version);
+            template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers.map((layer) => ({ ...layer, cover: { ...layer.cover!, selection: { runId: run.id, round: item.version } } }))] });
           }
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
