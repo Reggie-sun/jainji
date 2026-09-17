@@ -3,7 +3,7 @@ import type { CoverReviewDraft, CoverSegment } from "../shared/cover-review";
 import type { CoverReviewCommand } from "../main/cover-review-session";
 import type { MediaView } from "../main/media";
 import type { DesktopState } from "../shared/desktop";
-import type { AgentStartInput } from "../shared/agent";
+import { AgentStartSchema, type AgentStartInput } from "../shared/agent";
 import { interpolateCoverRectangle } from "../shared/cover-sticker";
 import type { ConnectionLibrary, SelectModel } from "../shared/connections";
 import type { ChatGPTStatus } from "../shared/agent";
@@ -16,7 +16,7 @@ import "./cover-review.css";
 
 const labels: Record<CoverReviewDraft["status"], string> = { draft: "视频帧准备中", analyzing: "候选分析中", reviewing: "独立复核中", needs_human: "待人工审阅", preparing_preview: "动态预览准备中", awaiting_approval: "待最终确认", approved: "已批准", stale: "证据已过期", cancelled: "已停止", failed: "准备失败" };
 
-export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onState(state: DesktopState): void }) {
+export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, onResolveOutputDirectory, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onResolveOutputDirectory(existingDirectory?: string): Promise<string>; onState(state: DesktopState): void }) {
   const selectedIds = new Set(input.mediaIds);
   const draft = [...drafts].reverse().find((item) => item.media.length === selectedIds.size && item.media.every(({ mediaId }) => selectedIds.has(mediaId)));
   const [mediaId, setMediaId] = useState("");
@@ -37,6 +37,8 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
   useEffect(() => { setVersion(requestedVersion.current ?? 0); requestedVersion.current = undefined; setTimeMs(0); setActiveId(""); }, [media?.mediaId, draft?.id]);
   const running = useRef(false);
   const run = async (work: () => Promise<DesktopState>) => { if (running.current) return false; running.current = true; setBusy(true); setError(""); try { onState(await work()); return true; } catch (error) { setError(error instanceof Error ? error.message : "审阅操作失败。"); return false; } finally { running.current = false; setBusy(false); } };
+  const priorRequest = (() => { try { return draft?.requestJson ? AgentStartSchema.safeParse(JSON.parse(draft.requestJson)).data : undefined; } catch { return undefined; } })();
+  const resolvedInput = async (): Promise<AgentStartInput> => ({ ...input, outputDirectory: await onResolveOutputDirectory(priorRequest?.outputDirectory) });
   if (!draft || !media || !source) return <section className="cover-review"><h3>半自动覆盖审阅</h3><p>{drafts.length ? `当前选择了 ${selectedIds.size} 条素材，需要为这批素材建立审阅草稿。旧素材的审阅记录已保留。` : "先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。"}</p><button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>{busy ? "正在准备素材…" : "建立人工审阅草稿"}</button>{error && <p role="alert">{error}</p>}</section>;
   const ref = { projectId: draft.projectId, draftId: draft.id, expectedRevision: draft.revision, mediaId: media.mediaId };
   const command = (value: Omit<CoverReviewCommand, keyof typeof ref> & Record<string, unknown>) => run(() => window.jianji.editCoverReview({ ...ref, ...value } as CoverReviewCommand));
@@ -118,7 +120,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     {busy && !["draft", "analyzing", "reviewing", "preparing_preview"].includes(draft.status) && <p role="status">正在处理，请稍候…</p>}
     <details><summary>预览费用说明</summary><p>准备每版预计使用 2 次覆盖选材请求，自动装饰另需 2 次创作请求；手动装饰需 1 次创作请求。共 {draft.media.length * (input.multiplier ?? 1)} 个版本，费用未知。</p></details>
     {draft.frozen.length > 0 && <p role="status">预览已生成 · 已查看 {viewedCount}/{draft.frozen.length}。逐版播放并确认后即可导出。</p>}
-    <div className="cover-review-actions">{draft.frozen.length > 0 ? <button className="button primary" type="button" disabled={busy || dirty} onClick={openPreview}>查看预览</button> : <button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(() => window.jianji.prepareCoverReview(draft.id, draft.revision, input))}>生成预览</button>}<button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status) || (draft.status === "awaiting_approval" && (!draft.frozen.length || viewedCount < draft.frozen.length))} onClick={() => void run(() => window.jianji.approveCoverReview(draft.id, draft.revision, input))}>{draft.status === "approved" ? "核对并继续未提交版本" : "确认全部版本并导出"}</button></div>
+    <div className="cover-review-actions">{draft.frozen.length > 0 ? <button className="button primary" type="button" disabled={busy || dirty} onClick={openPreview}>查看预览</button> : <button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(async () => window.jianji.prepareCoverReview(draft.id, draft.revision, await resolvedInput()))}>生成预览</button>}<button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status) || (draft.status === "awaiting_approval" && (!draft.frozen.length || viewedCount < draft.frozen.length))} onClick={() => void run(async () => window.jianji.approveCoverReview(draft.id, draft.revision, await resolvedInput()))}>{draft.status === "approved" ? "核对并继续未提交版本" : "确认全部版本并导出"}</button></div>
     <details><summary>重新开始</summary><button type="button" disabled={busy || dirty} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>新建草稿</button></details>
     {error && <p role="alert">{error}</p>}
   </section>;

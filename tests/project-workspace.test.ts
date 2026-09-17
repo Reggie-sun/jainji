@@ -29,6 +29,7 @@ it("stores a resumable workspace without duplicating the manual display text", a
     requestedCount: 10,
     exportFormat: "mov",
     exportSettings: { resolutionMode: "1080p", frameRateMode: "30", quality: "high" },
+    outputDirectoryMode: "manual",
     outputDirectory: directory,
   });
 

@@ -48,6 +48,8 @@ export default function App() {
   const [brief, setBrief] = useState("");
   const [generatingBrief, setGeneratingBrief] = useState(false);
   const [outputDirectory, setOutputDirectory] = useState("");
+  const [outputDirectoryMode, setOutputDirectoryMode] = useState<"automatic" | "manual">("automatic");
+  const [automaticOutputFor, setAutomaticOutputFor] = useState("");
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
   const [exportFormat, setExportFormat] = useState<ExportFormat>(DEFAULT_EXPORT_FORMAT);
   const [dragOver, setDragOver] = useState(false);
@@ -78,7 +80,10 @@ export default function App() {
       setRequestedCount(workspace?.requestedCount);
       setExportSettings(workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS);
       setExportFormat(workspace?.exportFormat ?? DEFAULT_EXPORT_FORMAT);
-      setOutputDirectory(workspace?.outputDirectory ?? "");
+      const manualOutput = workspace?.outputDirectoryMode === "manual" && !!workspace.outputDirectory;
+      setOutputDirectoryMode(manualOutput ? "manual" : "automatic");
+      setOutputDirectory(manualOutput ? workspace.outputDirectory! : "");
+      setAutomaticOutputFor("");
       setSelectedCorner(undefined);
       setPreviewId(undefined);
       setCoverStickerDirty(false);
@@ -133,6 +138,14 @@ export default function App() {
     const unsubscribe = window.jianji.onExportSnapshot((next) => { if (active) apply(next); });
     return () => { active = false; unsubscribe(); };
   }, [apply]);
+
+  const automaticSelectionKey = [...selected].sort().join(":");
+  useEffect(() => {
+    if (outputDirectoryMode === "automatic" && automaticOutputFor && automaticOutputFor !== automaticSelectionKey) {
+      setOutputDirectory("");
+      setAutomaticOutputFor("");
+    }
+  }, [automaticOutputFor, automaticSelectionKey, outputDirectoryMode]);
 
   const run = async (action: () => Promise<void>, success?: string): Promise<boolean> => {
     if (operation.current) return false;
@@ -199,7 +212,8 @@ export default function App() {
       ...(Number.isInteger(requestedCount) ? { requestedCount } : {}),
       exportFormat,
       exportSettings,
-      ...(outputDirectory ? { outputDirectory } : {}),
+      outputDirectoryMode,
+      ...(outputDirectoryMode === "manual" && outputDirectory ? { outputDirectory } : {}),
     });
     const next = await window.jianji.saveProject(name, workspace);
     if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "项目已保存，下次可从已保存项目列表继续。" }); }
@@ -232,13 +246,25 @@ export default function App() {
       if (projectId.current === currentId) setNotice({ error: true, text: "展示文字未能写入当前项目，请重试。" });
     });
   };
+  const resolveOutputDirectory = async (existingDirectory?: string): Promise<string> => {
+    if (outputDirectoryMode === "manual") {
+      if (!outputDirectory) throw new Error("请选择成片保存目录。");
+      return outputDirectory;
+    }
+    if (outputDirectory && automaticOutputFor === automaticSelectionKey) return outputDirectory;
+    const directory = await window.jianji.createAutomaticOutputDirectory(selected, existingDirectory);
+    setOutputDirectory(directory);
+    setAutomaticOutputFor(automaticSelectionKey);
+    return directory;
+  };
   const start = () => void (async () => {
     const accepted = await run(async () => {
     if (coverStickerDirty) throw new Error("请先保存覆盖设置后再开始制作。");
     const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
     if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`请填写有效的制作条数，向上取整后不能超过 ${MAX_AGENT_OUTPUTS} 条。`);
     const sourceStickerRefresh = sourceStickerRefreshInput(sourceRefresh.refresh);
-    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(sourceStickerRefresh ? { sourceStickerRefresh } : {}) }));
+    const resolvedOutputDirectory = await resolveOutputDirectory();
+    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(sourceStickerRefresh ? { sourceStickerRefresh } : {}) }));
     setStep("results");
     });
     if (accepted) sourceRefresh.consume();
@@ -262,6 +288,10 @@ export default function App() {
     });
   };
   const navigate = (next: Step) => {
+    if (next === "import" && step === "results" && outputDirectoryMode === "automatic") {
+      setOutputDirectory("");
+      setAutomaticOutputFor("");
+    }
     if (!state.connection.configured && next !== "results" && next !== "stickers") setStep("connection");
     else setStep(next);
   };
@@ -311,8 +341,8 @@ export default function App() {
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => setStep("templates")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <SourceStickerKnowledgeControls projectId={state.project.id} selectedReadyIds={selectedMedia.filter((item) => item.probeStatus === "ready").map((item) => item.id)} eligible={sourceStickerRefreshEligible(decorations.mode, state.project.coverSticker)} disabled={locked || exporting} refresh={sourceRefresh.refresh} onRequest={sourceRefresh.request} />}
-        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={generateBrief} generatingBrief={generatingBrief} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) setOutputDirectory(directory); })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
-        {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onState={apply} />}
+        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={generateBrief} generatingBrief={generatingBrief} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
+        {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigate("import")} />}
       </main>
       <footer className="app-footer"><span>简辑 · 让每一份素材，都有好表达。</span><span><i /> 本地渲染，原片保留</span></footer>

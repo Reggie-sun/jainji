@@ -32,6 +32,7 @@ import { MaterialNameSchema } from "../shared/material-names.js";
 import { RecentProjects } from "./recent-projects.js";
 import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
+import { createAutomaticOutputDirectory } from "./automatic-output-directory.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -48,6 +49,7 @@ const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict()
 const productPriceDraftSchema = z.object({ projectId: uuidSchema, productPrice: ProductPriceSchema }).strict();
 const savedProjectRenameSchema = z.object({ recentId: uuidSchema, name: MaterialNameSchema }).strict();
 const projectSaveSchema = z.object({ name: MaterialNameSchema.optional(), workspaceDraft: ProjectWorkspaceSchema.optional() }).strict();
+const automaticOutputSchema = z.object({ mediaIds: z.array(uuidSchema).min(1).max(1000), existingDirectory: outputDirectorySchema.optional() }).strict();
 
 let mainWindow: BrowserWindow | undefined;
 let service: ApplicationService;
@@ -387,6 +389,16 @@ function registerHandlers(): void {
     const result = await dialog.showOpenDialog(mainWindow!, { title: "选择输出目录", properties: ["openDirectory", "createDirectory"] });
     if (result.canceled || !result.filePaths[0]) return null;
     const selected = await canonicalPath(result.filePaths[0]);
+    approvedOutputDirectories.add(selected);
+    return selected;
+  });
+  ipcMain.handle("output.createAutomaticDirectory", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    const { mediaIds, existingDirectory } = automaticOutputSchema.parse(input);
+    const media = mediaIds.map((id) => service.getMedia(id));
+    if (media.some((item) => !item)) throw new Error("所选素材已变化，请返回素材页重新选择。");
+    const created = await createAutomaticOutputDirectory(media.map((item) => item!.sourcePath), new Date(), existingDirectory);
+    const selected = await canonicalPath(created);
     approvedOutputDirectories.add(selected);
     return selected;
   });

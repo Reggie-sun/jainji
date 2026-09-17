@@ -59,6 +59,7 @@ const api = {
   removeSavedProject: (recentId: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.saved.remove", recentId),
   newProject: (): Promise<DesktopState> => ipcRenderer.invoke("project.new"),
   selectOutputDirectory: (): Promise<string | null> => ipcRenderer.invoke("output.selectDirectory"),
+  createAutomaticOutputDirectory: (mediaIds: string[], existingDirectory?: string): Promise<string> => ipcRenderer.invoke("output.createAutomaticDirectory", { mediaIds, ...(existingDirectory ? { existingDirectory } : {}) }),
   cancelExport: (taskId: string): Promise<DesktopState> => ipcRenderer.invoke("export.cancel", { taskId }),
   retryExport: (taskIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("export.retry", { taskIds }),
   openArtifact: (taskId: string): Promise<boolean> => ipcRenderer.invoke("artifact.open", { taskId }),

@@ -13,6 +13,7 @@ export const ProjectWorkspaceSchema = z.object({
   requestedCount: z.number().int().min(1).max(MAX_AGENT_OUTPUTS).optional(),
   exportFormat: ExportFormatSchema,
   exportSettings: ExportSettingsSchema,
+  outputDirectoryMode: z.enum(["automatic", "manual"]).optional(),
   outputDirectory: z.string().min(1).max(4096).optional(),
 }).strict();
 
