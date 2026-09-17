@@ -51,6 +51,7 @@
 
 ## Verification And Completion
 
+- 在声称工作已完成、问题已修复或检查已通过，以及执行 commit 或创建 PR 前，MUST 显式读取并执行 current runtime 提供的 `verification-before-completion` skill；所有结论必须基于与当前 working-tree/runtime 状态一致的 fresh verification evidence。若该 skill 不可用，仍 MUST 执行同等 gate 并明确报告缺失能力。
 - 行为变更必须提供相关可执行证据；价格准入优先检查 [product-price.test.ts](tests/product-price.test.ts)，价格图层与模型文字边界检查 [agent-provider.test.ts](tests/agent-provider.test.ts)。跨制作与导出流程的变更还需相关 integration tests。
 - 代码变更运行 `npm run typecheck` 和受影响测试；构建、打包或 Electron 集成变更运行相应检查。非微小界面行为变更应验证实际交互，桌面 smoke 的运行方式见 README。
 - 区分 schema/unit tests、模拟服务集成、真实模型调用、真实 FFmpeg 导出与人工观看。缺少引擎、字体、平台或账号时明确报告跳过与未验证部分；测试通过不能代表商业服务、Windows 实机或成片质量已验收。
