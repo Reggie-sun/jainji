@@ -2,7 +2,7 @@
 
 ## Status And Scope
 
-M5 已开始，**整体验收尚未通过**。本轮在 `43fd416` 上补齐本地审计与历史提示，分支 `fix/preserve-original-corner-stickers`；仅执行本地确定性测试、合成视频、模拟模型和真实 Electron/FFmpeg 验证，未使用真实账号或商业服务额度。实施合同见 [spec](source-sticker-knowledge-spec.md)，阶段状态见 [plan](source-sticker-knowledge-plan.md)。
+M5 已开始，**整体验收尚未通过**。本轮在 `43fd416` 上补齐本地审计与历史提示，代码提交 `ea91fab` 位于 `main`；原 `fix/preserve-original-corner-stickers` 已在本轮开始前快进合并到 `main`。仅执行本地确定性测试、合成视频、模拟模型和真实 Electron/FFmpeg 验证，未使用真实账号或商业服务额度。实施合同见 [spec](source-sticker-knowledge-spec.md)，阶段状态见 [plan](source-sticker-knowledge-plan.md)。
 
 测试成功不能替代真实素材语义正确性、人工全片播放或 Windows 实机验收。M1–M4 的阶段完成不代表以下剩余合同与 AC-20 已完成。
 
