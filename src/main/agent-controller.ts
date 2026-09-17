@@ -1,4 +1,6 @@
 import path from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import type { AgentStartInput } from "../shared/agent.js";
 import { AgentStartSchema, GenerateBriefSchema, MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 import type { ApplicationService } from "./application.js";
@@ -21,6 +23,8 @@ import { detectCollaborativeCovers } from "./collaborative-cover.js";
 import type { CoverReviewDraft } from "../shared/cover-review.js";
 import type { EditTemplate } from "./domain.js";
 import { assertReviewResolved } from "./cover-review-session.js";
+import { SupervisorEvidence } from "./supervisor-evidence.js";
+import { superviseRenderedTemplate } from "./supervised-preview.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -118,8 +122,9 @@ export class AgentController {
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
       const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
       const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
+      const supervised = !assisted && Boolean(automaticCover || preserveSourceStickers);
       if ((automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
-      if ((automaticCover && !assisted || preserveSourceStickers) && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于多 Agent 协同识别。");
+      if (supervised && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于主管 Agent 修正与样片检查。");
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
@@ -181,10 +186,30 @@ export class AgentController {
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
         } : undefined,
-        detectCoverTracks: (item, signal) => assisted ? Promise.resolve(assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.disposition === "no_cover" ? [] : assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.segments.map((segment) => ({ targetId: segment.id, track: segment.track }))) : recognizeAutomaticCovers(this.ffmpeg, item,
-          (images, previous, currentSignal) => detectCollaborativeCovers(images, previous, currentSignal,
-            (frames, requestSignal, role) => this.visionProvider.detectCovers(frames, undefined, requestSignal, role),
-            (frames, requestSignal, role) => this.reviewerProvider.detectCovers(frames, undefined, requestSignal, role)), signal),
+        detectCoverTracks: async (item, signal, onStage) => {
+          if (assisted) return assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.disposition === "no_cover" ? [] : assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.segments.map((segment) => ({ targetId: segment.id, track: segment.track }));
+          const evidence = new SupervisorEvidence(this.ffmpeg, item);
+          try {
+            return await recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => detectCollaborativeCovers(images, previous, currentSignal,
+              (frames, requestSignal) => this.visionProvider.detectCovers(frames, undefined, requestSignal),
+              (context, requestSignal) => this.reviewerProvider.superviseRecognition(context, requestSignal),
+              (requests, requestSignal) => evidence.inspect(requests, requestSignal),
+              stage => onStage(`${stage} · ${(images[0].timeMs / 1000).toFixed(2)}–${(images.at(-1)!.timeMs / 1000).toFixed(2)} 秒`)),
+            signal, decorations.displayMode === "first-3s" ? Math.min(3000, item.durationMs) : item.durationMs);
+          } finally { await evidence.dispose(); }
+        },
+        supervise: supervised ? async (template, item, tracks, rebuild, signal, onStage) => {
+          const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-preview-"));
+          const evidence = new SupervisorEvidence(this.ffmpeg, item);
+          try {
+            return await superviseRenderedTemplate({ template, tracks, durationMs: item.durationMs,
+              coverEnabled: Boolean(automaticCover), automaticCorners: decorations.mode === "agent", signal, rebuild, onStage,
+              render: (candidate, requestSignal) => this.queue.renderPreview({ template: candidate, media: item, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container }, cacheDirectory: directory, signal: requestSignal }),
+              inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
+              review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
+            });
+          } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
+        } : undefined,
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {

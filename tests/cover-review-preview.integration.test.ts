@@ -40,4 +40,14 @@ it("renders a verified temporary preview through the queue owner without creatin
   expect(queue.snapshot().batches).toEqual([]);
   expect(await jobStore.loadAll()).toEqual([]);
   expect((await readdir(path.join(directory, "cache"))).filter((name) => name.endsWith(".mp4"))).toHaveLength(1);
+  const input = { template: createDefaultTemplate(), media, preset: { ...DEFAULT_PRESET, resolutionMode: "source" as const }, cacheDirectory: path.join(directory, "queued-previews"), signal: new AbortController().signal };
+  const first = queue.renderPreview(input);
+  const controller = new AbortController();
+  const cancelled = queue.renderPreview({ ...input, signal: controller.signal });
+  controller.abort();
+  await expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+  const second = queue.renderPreview(input);
+  expect(await Promise.all([first, second])).toHaveLength(2);
+  expect(queue.snapshot().batches).toEqual([]);
+  expect((await readdir(input.cacheDirectory)).filter(name => name.endsWith(".mp4"))).toHaveLength(2);
 });

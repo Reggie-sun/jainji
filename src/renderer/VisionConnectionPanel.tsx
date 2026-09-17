@@ -41,13 +41,13 @@ export function VisionConnectionPanel({ connection, chatgpt, library, disabled, 
 
   return <>
     <div className="card brief-card model-picker">
-    <label htmlFor={fieldId}>{label} <span>{role === "vision" ? "原贴纸识别与补角" : "独立复核与争议复查"}</span></label>
+    <label htmlFor={fieldId}>{label} <span>{role === "vision" ? "执行 Agent · 原贴纸识别" : "主管 Agent · 修正与样片检查"}</span></label>
     <select id={fieldId} value={selection?.connectionId ?? ""} disabled={disabled || Boolean(library.error)} onChange={(event) => void selectConnection(event.target.value)}>
       <option value="">不配置{label}</option>
       <option value="chatgpt" disabled={!chatgptReady}>ChatGPT 登录{chatgptReady ? "" : "（尚未就绪）"}</option>
       {library.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.model}</option>)}
     </select>
-    <small>{role === "vision" ? "自动覆盖，以及关闭覆盖时的“全部交给 Agent”，均由识别与复核 Agent 独立查看原始帧；分歧时双方最多复查一次，仍不一致就停止。关闭覆盖时只补空缺角落和时段。" : "可选择 API 或 ChatGPT 登录；三个 Agent 可以共用同一连接、同一模型，只需保存一次 API Key。每个角色的模型选择分别保存，复核使用独立上下文；争议复查不自动切换模型。"}</small>
+    <small>{role === "vision" ? "执行 Agent 提出原贴纸位置，主管看原图、补帧或放大后修正，再检查真实渲染样片。关闭覆盖时保留原贴纸，只补空缺角落和时段。" : "可选择 API 或 ChatGPT 登录；三个角色可共用同一连接和模型。主管使用独立上下文，每个识别窗口最多检查3轮；样片最多检查5轮、修正2次，仍未通过就停止，不自动切换模型。"}</small>
     {library.error && <p role="alert">{library.error}</p>}
     {selection?.connectionId === "chatgpt" && !chatgptReady && <p role="alert">ChatGPT {label}连接尚未就绪，请先完成登录并刷新状态。</p>}
     {selection && !connection?.configured && <p role="alert">{label}未就绪，请检查连接状态并重新选择可用模型。</p>}

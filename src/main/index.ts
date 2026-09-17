@@ -391,6 +391,7 @@ function registerHandlers(): void {
   });
   ipcMain.handle("proof.render", async (event, input: unknown) => {
     assertTrustedSender(event);
+    agent.assertIdle();
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const { mediaId } = proofSchema.parse(input);
     const media = service.getMedia(mediaId);
@@ -403,6 +404,7 @@ function registerHandlers(): void {
   });
   ipcMain.handle("export.create", async (event, input: unknown) => {
     assertTrustedSender(event);
+    agent.assertIdle();
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const parsed = exportCreateSchema.parse(input);
     const preset = parsed.preset as ExportPreset;
@@ -413,7 +415,7 @@ function registerHandlers(): void {
     return { batchId: batch.id, taskIds: batch.tasks.map((task) => task.id) };
   });
   ipcMain.handle("export.cancel", async (event, input: unknown) => { assertTrustedSender(event); await queue.cancel(taskSchema.parse(input).taskId); return publicState(); });
-  ipcMain.handle("export.retry", async (event, input: unknown) => { assertTrustedSender(event); await queue.retry(retrySchema.parse(input).taskIds); return publicState(); });
+  ipcMain.handle("export.retry", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await queue.retry(retrySchema.parse(input).taskIds); return publicState(); });
   ipcMain.handle("artifact.open", async (event, input: unknown) => {
     assertTrustedSender(event);
     const taskId = taskSchema.parse(input).taskId;

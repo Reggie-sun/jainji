@@ -16,6 +16,7 @@ import type { AssetLibrary } from "../src/main/asset-library";
 import * as agentFrames from "../src/main/agent-frames";
 import * as automaticCover from "../src/main/automatic-cover";
 import * as stickerPreviews from "../src/main/sticker-preview";
+import * as supervisedPreview from "../src/main/supervised-preview";
 
 const a = `uploaded-${"a".repeat(64)}`, b = `uploaded-${"b".repeat(64)}`;
 const options = { enabled: true, stickerIds: [a, b], rectangle: { x: 0.3, y: 0.4, width: 0.3, height: 0.2 } };
@@ -76,10 +77,11 @@ describe("reusable batch cover", () => {
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? ["sparkle"] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
-    const creativeDetect = vi.spyOn(controller.reviewerProvider, "detectCovers").mockResolvedValue([]);
+    const superviseRecognition = vi.spyOn(controller.reviewerProvider, "superviseRecognition").mockImplementation(async (context) => JSON.stringify({ action: "resolve", reason: "复核完成", frames: context.images.map(({ timeMs }) => ({ timeMs, targets: [] })) }));
+    const superviseTemplate = vi.spyOn(supervisedPreview, "superviseRenderedTemplate").mockImplementation(async ({ template }) => template);
     const visionDetect = vi.spyOn(controller.visionProvider, "detectCovers").mockResolvedValue([]);
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockImplementation(async (_ffmpeg, _source, recognize, signal) => {
-      await recognize([], undefined, signal);
+      await recognize([{ timeMs: 0, url: "data:image/jpeg;base64,aA==" }], undefined, signal);
       return [{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: service.currentProject.coverSticker?.enabled ? options.rectangle : { x: 0, y: 0, width: 0.1, height: 0.1 } }] } }];
     });
     const input = { ruleId: "clean" as const, brief: "", mediaIds: [source.id], multiplier: 2, outputDirectory: directory, decorations: { mode, productPrice: "手动内容", sticker: "none", fontFamily: "Noto Sans CJK SC" } };
@@ -104,7 +106,8 @@ describe("reusable batch cover", () => {
       expect(plan).toHaveBeenCalledTimes(4);
       expect(detect).toHaveBeenCalledTimes(2);
       expect(visionDetect).toHaveBeenCalledTimes(2);
-      expect(creativeDetect).toHaveBeenCalledTimes(2);
+      expect(superviseRecognition).toHaveBeenCalledTimes(2);
+      expect(superviseTemplate).toHaveBeenCalledTimes(4);
       expect(history.every((batch) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.cover?.automatic))).toBe(true);
       for (const settings of [undefined, { ...options, enabled: false, stickerIds: [`uploaded-${"c".repeat(64)}`] }]) {
         service.currentProject.coverSticker = settings;
@@ -114,7 +117,8 @@ describe("reusable batch cover", () => {
       expect(plan).toHaveBeenCalledTimes(8);
       expect(detect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
       expect(visionDetect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
-      expect(creativeDetect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
+      expect(superviseRecognition).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
+      expect(superviseTemplate).toHaveBeenCalledTimes(mode === "agent" ? 8 : 4);
       expect(selectCover).toHaveBeenCalledTimes(4);
       expect(shortlist.mock.calls.filter(call => call[6] === "cover")).toHaveLength(4);
       if (mode === "agent") {
@@ -125,7 +129,7 @@ describe("reusable batch cover", () => {
       }
       expect(history.slice(4)).toHaveLength(4);
       expect(history.slice(4).every((batch) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
-    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); detect.mockRestore(); creativeDetect.mockRestore(); visionDetect.mockRestore(); await rm(directory, { recursive: true, force: true }); }
+    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); detect.mockRestore(); superviseRecognition.mockRestore(); superviseTemplate.mockRestore(); visionDetect.mockRestore(); await rm(directory, { recursive: true, force: true }); }
   });
   it("rejects enabled coverage with missing assets before requesting a model", async () => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");

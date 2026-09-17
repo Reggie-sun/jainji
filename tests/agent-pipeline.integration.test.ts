@@ -37,6 +37,19 @@ describe("agent to local export", () => {
           response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ status: "ok", frames: times.map((timeMs) => ({ timeMs, targets: [{ id: "fixture", rectangle: { x: 0.1, y: 0.1, width: 0.15, height: 0.15 } }] })) }) } }] }));
           return;
         }
+        if (system.includes("当前阶段是原贴纸识别")) {
+          const content = requests.at(-1)!.messages[1].content;
+          const times = typeof content === "string" ? [] : content.flatMap((item) => {
+            const match = /^原图 (\d+)ms$/.exec("text" in item ? String(item.text) : "");
+            return match ? [Number(match[1])] : [];
+          });
+          response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ action: "resolve", reason: "原图识别结果已复核", frames: times.map((timeMs) => ({ timeMs, targets: [{ id: "fixture", rectangle: { x: 0.1, y: 0.1, width: 0.15, height: 0.15 } }] })) }) } }] }));
+          return;
+        }
+        if (system.includes("当前阶段是检查真实渲染样片")) {
+          response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ action: "pass", reason: "样片检查通过" }) } }] }));
+          return;
+        }
         const shortlist = system.includes("你是视频贴纸选材师");
         const entries = shortlist ? JSON.parse(system.split("完整目录为 [编号,名称,资格]：")[1]) as [number, string, string][] : [];
         const result = shortlist ? { candidates: [entries.find(([, label]) => label === "蝴蝶")![0]] }
@@ -75,23 +88,30 @@ describe("agent to local export", () => {
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" }, multiplier: 126 }, new Set([outputDirectory]))).rejects.toThrow("250 条");
       expect(requests).toHaveLength(0);
       await controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, multiplier: 2, decorations: { mode, productPrice: "19.90", priceStyle: "classic", sticker: "heart", fontFamily } }, new Set([outputDirectory]));
-      const deadline = Date.now() + 20_000;
+      const deadline = Date.now() + 50_000;
       while (Date.now() < deadline) {
         const snapshot = queue.snapshot();
         if (!controller.busy && snapshot.batches.length === 4 && snapshot.batches.every(({ batch }) => batch.status !== "active")) break;
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
-      expect(requests).toHaveLength(mode === "agent" ? 12 : 4);
-      const coverRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频画面覆盖物追踪器"));
-      const finalRequests = requests.filter((request) => !(request.messages[0].content as string).includes("你是视频贴纸选材师") && !coverRequests.includes(request));
-      expect(coverRequests).toHaveLength(mode === "agent" ? 4 : 0);
+      expect(requests).toHaveLength(mode === "agent" ? 16 : 4);
+      const detectorRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频画面覆盖物追踪器"));
+      const recognitionRequests = requests.filter((request) => (request.messages[0].content as string).includes("当前阶段是原贴纸识别"));
+      const previewRequests = requests.filter((request) => (request.messages[0].content as string).includes("当前阶段是检查真实渲染样片"));
+      const shortlistRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频贴纸选材师"));
+      const planRequests = requests.filter((request) => !detectorRequests.includes(request) && !recognitionRequests.includes(request) && !previewRequests.includes(request) && !shortlistRequests.includes(request));
+      expect(detectorRequests).toHaveLength(mode === "agent" ? 2 : 0);
+      expect(recognitionRequests).toHaveLength(mode === "agent" ? 2 : 0);
+      expect(previewRequests).toHaveLength(mode === "agent" ? 4 : 0);
       if (mode === "agent") {
-        expect(coverRequests.filter(request => request.model === "local-test-detector")).toHaveLength(2);
-        expect(coverRequests.filter(request => request.model === "local-test-reviewer")).toHaveLength(2);
+        expect(detectorRequests.every(request => request.model === "local-test-detector")).toBe(true);
+        expect(recognitionRequests.every(request => request.model === "local-test-reviewer")).toBe(true);
+        expect(previewRequests.every(request => request.model === "local-test-reviewer")).toBe(true);
+        expect([...shortlistRequests, ...planRequests].every(request => request.model === "local-test-vision")).toBe(true);
       }
       if (mode === "agent") {
-        const systems = finalRequests.map((request) => request.messages[0].content as string);
+        const systems = planRequests.map((request) => request.messages[0].content as string);
         expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));
         expect(requests.every((request) => !(request.messages[0].content as string).includes("本条视觉探索方向"))).toBe(true);
         expect(systems.every((system) => system.includes('"filters":["none","warm","cool","mono","vivid"]'))).toBe(true);
@@ -104,7 +124,7 @@ describe("agent to local export", () => {
         const content = request.messages[1].content;
         if (typeof content === "string") throw new Error("expected visual content");
         const images = content.filter((item) => item.type === "image_url");
-        expect(images).toHaveLength(coverRequests.includes(request) || mode === "agent" && finalRequests.includes(request) ? 4 : 3);
+        expect(images).toHaveLength(previewRequests.includes(request) ? 16 : mode === "agent" && !shortlistRequests.includes(request) ? 4 : 3);
         expect(images.every((item) => item.image_url!.url.startsWith("data:image/jpeg;base64,/9j/"))).toBe(true);
         expect(JSON.stringify(request)).not.toContain(directory);
       }
@@ -112,7 +132,7 @@ describe("agent to local export", () => {
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
       if (mode === "agent") {
         const colors = batches.map(({ batch }) => JSON.stringify(batch.templateSnapshot.layers.find((layer) => layer.type === "text")!.color));
-        const selectedColors = finalRequests.map((request) => {
+        const selectedColors = planRequests.map((request) => {
           const styles = JSON.parse((request.messages[0].content as string).match(/价格花字目录（仅外观，不含价格内容）：(\[.*?\])。/)![1]);
           return JSON.stringify(getPriceStyle(styles[0].id).color);
         });
@@ -153,5 +173,5 @@ describe("agent to local export", () => {
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(directory, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 60_000);
 });

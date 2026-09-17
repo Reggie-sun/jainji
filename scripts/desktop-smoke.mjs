@@ -24,6 +24,8 @@ let requests = 0;
 let briefRequests = 0;
 let shortlistRequests = 0;
 let coverRequests = 0;
+let supervisorRequests = 0;
+let checkSupervisorAdmission;
 let briefPayload;
 let failBrief = false;
 const server = createServer((request, response) => {
@@ -35,6 +37,23 @@ const server = createServer((request, response) => {
     assert.equal(request.url, anthropic ? "/anthropic/v1/messages" : "/v1/chat/completions");
     const userContent = input.messages[anthropic ? 0 : 1].content;
     const systemText = anthropic ? input.system : input.messages[0].content;
+    if (systemText.includes("你是视频包装主管 Agent")) {
+      supervisorRequests++;
+      assert.equal(JSON.stringify(input).includes(directory), false, "supervisor never receives local paths");
+      let result;
+      if (systemText.includes("当前阶段是原贴纸识别")) {
+        const context = JSON.parse(userContent[0].text.slice("检查上下文：".length).split("。原图时间：")[0]);
+        result = { action: "resolve", reason: "fixture source review", frames: context.proposal };
+      } else {
+        await checkSupervisorAdmission();
+        result = { action: "pass", reason: "fixture rendered preview review" };
+        if (requests === 2) await unlink(source); // Formal export failure AFTER the verified preview.
+      }
+      const text = JSON.stringify(result);
+      response.setHeader("Content-Type", "application/json");
+      response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
+      return;
+    }
     if (systemText.includes("你是视频画面覆盖物追踪器")) {
       coverRequests++;
       assert.equal(JSON.stringify(input).includes(directory), false, "tracking never sends local paths");
@@ -87,11 +106,10 @@ const server = createServer((request, response) => {
     if (!anthropic) assert.equal(input.reasoning_effort, "high", "video analysis uses selected effort");
     assert.equal(request.headers.authorization, anthropic ? "Bearer cc-switch-fixture-key" : "Bearer local-smoke-key");
     requests += 1;
-    if (requests === 2) await unlink(source); // Repro a local render failure after analysis.
     response.setHeader("Content-Type", "application/json");
     const automatic = systemText.includes('"stickers"');
     const sticker = JSON.stringify(userContent).match(/uploaded-[a-f0-9]{64}/)?.[0];
-    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => ({ corner, sticker, width: 0.12, rotationDeg: 0 })), priceStyle: "ice" } : {}), filter: "cool", intensity: 0.3 });
+    const text = JSON.stringify({ summary: "保留主体与手动价格", captions: [], ...(automatic ? { stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => ({ corner, sticker, width: 0.08, rotationDeg: 0 })), priceStyle: "ice" } : {}), filter: "cool", intensity: 0.3 });
     response.end(JSON.stringify(anthropic ? { content: [{ type: "text", text }] } : { choices: [{ message: { content: text } }] }));
   });
 });
@@ -190,6 +208,15 @@ desktopSmoke: try {
     const result = await send("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
     if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
     return result.result.value;
+  };
+  checkSupervisorAdmission = async () => {
+    const outcome = await evaluate("(async () => { try { await window.jianji.retryExport([]); return 'unexpected admission'; } catch (error) { return String(error); } })()");
+    assert.ok(outcome.includes("Agent 正在处理"), "historical retries cannot interrupt supervisor rendering");
+    await pause(100);
+    assert.ok(await evaluate("document.querySelector('.result-info')?.textContent.includes('主管')"), "supervisor stage is visible in results");
+    await evaluate("document.querySelector('.result-row:has(.status-tag.analyzing)')?.scrollIntoView({ block: 'center' })");
+    const progressImage = await send("Page.captureScreenshot", { format: "png" });
+    await writeFile(path.join(directory, "supervisor-progress.png"), Buffer.from(progressImage.data, "base64"));
   };
   const waitFor = async (expression) => {
     for (let attempt = 0; attempt < 200; attempt++) { if (await evaluate(expression)) return; await pause(100); }
@@ -588,7 +615,7 @@ desktopSmoke: try {
   assert.equal(await evaluate("document.querySelector('.cover-track-editor') === null"), true, "automatic recognition needs no hand-drawn keys");
   await evaluate("document.querySelector('.cover-agent-mode').scrollIntoView({block:'center'})");
   await screenshot("06a-automatic-cover");
-  await evaluate("(async () => { const state = await window.jianji.getState(); await window.jianji.selectVisionConnection({ connectionId: state.connections.selected, model: state.connection.model }); })()");
+  await evaluate("(async () => { const state = await window.jianji.getState(); await window.jianji.selectVisionConnection({ connectionId: state.connections.selected, model: state.connection.model }); await window.jianji.selectReviewerConnection({ connectionId: state.connections.selected, model: state.connection.model }); })()");
   await click("保存覆盖设置");
   await waitFor("document.body.innerText.includes('覆盖设置已应用')");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('交给 Agent，制作')).disabled"), false, "automatic cover starts only after explicit settings are applied");
@@ -659,6 +686,17 @@ desktopSmoke: try {
   assert.equal(autoJob.batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && !layer.cover).length, 4, "coverage-off automatic production fills four corners");
   assert.equal(autoJob.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.assetPath.endsWith(`${uploaded[0].id}.png`)), true, "Agent-selected upload reaches real FFmpeg output");
   assert.deepEqual(autoJob.batch.templateSnapshot.layers.find(layer => layer.type === "text").color, { r: 224, g: 253, b: 255, a: 1 }, "Agent-selected price appearance reaches the frozen automatic export");
+  if (smokeScope === "supervisor") {
+    assert.ok(supervisorRequests >= 2, "recognition and actual preview supervision were exercised");
+    await evaluate("document.querySelector('.result-row:has(.status-tag.completed)')?.scrollIntoView({ block: 'center' })");
+    await screenshot("08-supervisor-completed");
+    const report = { result: "PASS", scope: smokeScope, providerRequests: requests, coverRequests, supervisorRequests,
+      screenshotDirectory: directory, output: autoBatch.batch.tasks[0].outputPath, runtimeExceptions: exceptions };
+    assert.deepEqual(exceptions, []);
+    await writeFile(path.join(directory, "supervisor-report.json"), JSON.stringify(report, null, 2));
+    console.log(JSON.stringify(report, null, 2));
+    break desktopSmoke;
+  }
   const uploadedPath = path.join(directory, "uploaded-stickers", `${uploaded[0].id}.png`);
   const frozenStickerBytes = await readFile(uploadedPath);
   await click("规则模板");
@@ -730,7 +768,7 @@ desktopSmoke: try {
   await writeFile(path.join(directory, "quit.signal"), "quit");
   assert.equal(await exit, 0);
   assert.throws(() => process.kill(codexPid, 0), { code: "ESRCH" }, "App must wait for its Codex child to exit");
-  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, briefRequests, shortlistRequests, coverRequests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
+  console.log(JSON.stringify({ result: "PASS", providerRequests: requests, briefRequests, shortlistRequests, coverRequests, supervisorRequests, screenshotDirectory: directory, output: state.queue.batches[0].batch.tasks[0].outputPath, runtimeExceptions: exceptions }, null, 2));
 } catch (error) {
   console.error(processLog.slice(-3000));
   throw error;

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { access, constants, link, open, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import {
   BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
   assertPriceOnlyTemplate,
@@ -106,11 +107,15 @@ export class ExportQueue {
 
   async renderPreview(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; cacheDirectory: string; signal: AbortSignal }): Promise<string> {
     input.signal.throwIfAborted();
-    if (this.shuttingDown || this.activeTasks.size || this.pendingStarts.size) throw new Error("导出资源忙，请等待当前任务结束后准备预览。");
-    const id = randomUUID();
     const preset = ExportPresetSchema.parse(input.preset);
     const template = immutableSnapshot(input.template);
     const media = structuredClone(input.media);
+    // A historical retry can arrive between supervisor rounds. Wait on the same
+    // queue's resources instead of discarding an already paid model decision.
+    while (!this.shuttingDown && (this.activeTasks.size || this.pendingStarts.size)) await delay(50, undefined, { signal: input.signal });
+    input.signal.throwIfAborted();
+    if (this.shuttingDown) throw new Error("预览已停止。");
+    const id = randomUUID();
     const work = Promise.resolve().then(async () => {
       input.signal.throwIfAborted();
       assertPriceOnlyTemplate(template);
