@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { CORNER_SAFE_POLICY, LEGACY_CORNER_SAFE_POLICY, cornerSafeStickerIssues, getCornerSafePolicy } from "../shared/layout-policy.js";
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
-import { ProductPriceSchema, RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
+import { DecorationDisplayModeSchema, ProductPriceSchema, RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
 import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverSettingsMediaIssue, MAX_MANUAL_COVERS } from "../shared/cover-sticker.js";
 import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
 import { CoverReviewDraftSchema } from "../shared/cover-review.js";
@@ -154,6 +154,7 @@ export const EditTemplateSchema = z.object({
   filter: FilterConfigSchema,
   layoutPolicy: z.enum([LEGACY_CORNER_SAFE_POLICY.id, CORNER_SAFE_POLICY.id]).optional(),
   productPriceDraft: ProductPriceSchema.optional(),
+  decorationDisplayMode: DecorationDisplayModeSchema.optional(),
   productPrice: RequiredProductPriceSchema.optional(),
   createdAt: DateTime,
   updatedAt: DateTime,

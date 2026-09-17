@@ -69,8 +69,9 @@ describe("AgentController queue admission", () => {
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockResolvedValue([]);
     try {
-      await controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { mode: "agent", productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]));
+      await controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { mode: "agent", displayMode: "first-3s", productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]));
       await vi.waitFor(() => expect(shortlist).toHaveBeenCalledTimes(1));
+      expect(shortlist.mock.calls[0][1]).toContain("最后 0.5 秒渐隐");
       const catalog = shortlist.mock.calls[0][4];
       expect(catalog.stickers).toHaveLength(56);
       expect(catalog.stickers.every(({ id: stickerId }) => isAutomaticStickerAllowed(stickerId) || isUploadedStickerId(stickerId))).toBe(true);

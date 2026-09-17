@@ -11,7 +11,7 @@ import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
 import type { ExportQueue } from "./queue.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
-import { DecorationSchema, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
+import { DecorationSchema, decorationTimingContext, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
 import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from "./asset-library.js";
 import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { stickerPreview } from "./sticker-preview.js";
@@ -170,9 +170,9 @@ export class AgentController {
           const stickers = eligible.filter(({ id }) => candidateIds.includes(id));
           const catalog = { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };
           if (!stickers.length) throw new ProviderError("没有可用的自动覆盖贴纸，请检查本地素材库。");
-          const ids = await this.provider.shortlist(parsed.ruleId, `为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
+          const ids = await this.provider.shortlist(parsed.ruleId, `${decorationTimingContext(decorations?.displayMode)}为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
           const candidates = await prepareCandidates(ids, catalog, signal);
-          const stickerId = await this.provider.selectCoverSticker(frames, signal, candidates);
+          const stickerId = await this.provider.selectCoverSticker(frames, signal, candidates, decorations?.displayMode);
           signal.throwIfAborted();
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
@@ -181,6 +181,7 @@ export class AgentController {
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
+          brief = `${decorationTimingContext(decorations?.displayMode)}\n${brief}`;
           if (!catalog) {
             manualPreviews ??= this.manualStickerPreviews(decorations, signal);
             return this.provider.plan(rule, brief, frames, signal, undefined, undefined, await manualPreviews);

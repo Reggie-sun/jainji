@@ -91,6 +91,11 @@ export class TemplateCompiler {
     assertPriceOnlyTemplate(template);
     const textFiles: TextFile[] = [];
     const durationSeconds = Math.max(0.01, media.durationMs / 1000);
+    const displayLimit = template.decorationDisplayMode === "first-3s" ? "lt(t,3)" : undefined;
+    const fadeEnd = Math.min(3, durationSeconds);
+    const fadeDuration = Math.min(0.5, fadeEnd);
+    const fadeStart = fadeEnd - fadeDuration;
+    const fade = displayLimit ? `,fade=t=out:st=${fadeStart}:d=${fadeDuration}:alpha=1` : "";
     // FFmpeg enables autorotation by default; omitting the legacy flag keeps compatibility
     // with system builds that parse it as an input option requiring a value.
     const threadArgs = options.threads === undefined ? [] : ["-threads", String(options.threads)];
@@ -102,6 +107,18 @@ export class TemplateCompiler {
     const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
     const sourceFilters = ["setpts=PTS-STARTPTS", outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
+
+    const fadeOnVideoClock = (sticker: string): string => {
+      const main = `${sticker}Main`, clock = `${sticker}Clock`, sized = `${sticker}Sized`, artwork = `${sticker}Artwork`, blank = `${sticker}Blank`, clocked = `${sticker}Clocked`, faded = `${sticker}Faded`;
+      // A low-fps GIF must fade on every source-video frame, not only on GIF frame changes.
+      graph.push(`[${baseLabel}]split[${main}][${clock}]`);
+      graph.push(`[${clock}][${sticker}]scale2ref=w=iw:h=ih[${sized}][${artwork}]`);
+      graph.push(`[${sized}]format=rgba,colorchannelmixer=aa=0[${blank}]`);
+      graph.push(`[${blank}][${artwork}]overlay=0:0:format=auto[${clocked}]`);
+      graph.push(`[${clocked}]null${fade}[${faded}]`);
+      baseLabel = main;
+      return faded;
+    };
 
     for (const layer of sortedVisibleLayers(template)) {
       if (layer.type === "sticker" && layer.activeRanges?.some(range => range.endMs > media.durationMs)) throw new Error("贴纸显示时段超出素材时长");
@@ -135,6 +152,7 @@ export class TemplateCompiler {
             layer.textAlign === "center" ? `x=w*${(layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
             `y=h*${(layer.y + index * layer.fontSizeRatio * PRICE_LINE_HEIGHT).toFixed(5)}`,
             "fix_bounds=1",
+            ...(displayLimit ? [`enable='${displayLimit}'`, `alpha='clip((${fadeEnd}-t)/${fadeDuration},0,1)'`] : []),
           ].join(":");
           graph.push(`[${baseLabel}]${drawtext}[${nextLabel}]`);
           baseLabel = nextLabel;
@@ -176,13 +194,14 @@ export class TemplateCompiler {
           graph.push(`[${clock}]format=rgba,crop=${coverWidth}:${coverHeight}:0:0:exact=1,colorchannelmixer=aa=0[${blank}]`);
           graph.push(`[${blank}][${sourceLabel}]overlay=0:0:format=auto[${clocked}]`);
           const width = coverMotionExpression(motion.keyframes, "width"), height = coverMotionExpression(motion.keyframes, "height");
-          graph.push(`[${clocked}]scale=w='${raster?.width ?? `max(1,round(${dimensions.width}*(${width})))`}':h='${raster?.height ?? `max(1,round(${dimensions.height}*(${height})))`}':eval=frame[${scaledLabel}]`);
+          graph.push(`[${clocked}]scale=w='${raster?.width ?? `max(1,round(${dimensions.width}*(${width})))`}':h='${raster?.height ?? `max(1,round(${dimensions.height}*(${height})))`}':eval=frame${fade}[${scaledLabel}]`);
           const x = coverMotionExpression(motion.keyframes, "x"), y = coverMotionExpression(motion.keyframes, "y");
-          graph.push(`[${main}][${scaledLabel}]overlay=x='${raster?.x ?? `main_w*(${x})`}':y='${raster?.y ?? `main_h*(${y})`}':enable='gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})':format=auto[${nextLabel}]`);
+          graph.push(`[${main}][${scaledLabel}]overlay=x='${raster?.x ?? `main_w*(${x})`}':y='${raster?.y ?? `main_h*(${y})`}':enable='gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})${displayLimit ? `*${displayLimit}` : ""}':format=auto[${nextLabel}]`);
         } else {
           graph.push(`[${sourceLabel}]${raster ? `scale=w='${raster.width}':h='${raster.height}'` : "null"}[${scaledLabel}]`);
+          const timedSticker = displayLimit ? fadeOnVideoClock(scaledLabel) : scaledLabel;
           const position = raster ? `x='${raster.x}':y='${raster.y}'` : `x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}`;
-          graph.push(`[${baseLabel}][${scaledLabel}]overlay=${position}:format=auto[${nextLabel}]`);
+          graph.push(`[${baseLabel}][${timedSticker}]overlay=${position}${displayLimit ? `:enable='${displayLimit}'` : ""}:format=auto[${nextLabel}]`);
         }
         baseLabel = nextLabel;
         continue;
@@ -205,7 +224,8 @@ export class TemplateCompiler {
         `scale=${stickerScale},` +
         `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=PTS-STARTPTS[${sourceLabel}]`,
       );
-      graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
+      const timedSticker = displayLimit ? fadeOnVideoClock(sourceLabel) : sourceLabel;
+      graph.push(`[${timedSticker}]null[${scaledLabel}]`);
       const overlayX = layoutPolicy
         ? corner.horizontal === "right"
           ? `main_w-overlay_w-main_w*${layoutPolicy.cornerMargin.toFixed(5)}`
@@ -216,7 +236,8 @@ export class TemplateCompiler {
           ? `main_h-overlay_h-main_h*${layoutPolicy.cornerMargin.toFixed(5)}`
           : `main_h*${layoutPolicy.cornerMargin.toFixed(5)}`
         : `main_h*${layer.y.toFixed(5)}`;
-      const enabled = layer.activeRanges ? `:enable='${layer.activeRanges.map(range => `gte(t,${range.startMs / 1000})*lt(t,${range.endMs / 1000})`).join("+")}'` : "";
+      const active = layer.activeRanges?.map(range => `gte(t,${range.startMs / 1000})*lt(t,${range.endMs / 1000})`).join("+");
+      const enabled = active || displayLimit ? `:enable='${active && displayLimit ? `(${active})*${displayLimit}` : active ?? displayLimit}'` : "";
       graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=${overlayX}:y=${overlayY}${enabled}:format=auto[${nextLabel}]`);
       baseLabel = nextLabel;
     }

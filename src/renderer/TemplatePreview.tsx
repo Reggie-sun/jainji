@@ -2,7 +2,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults";
 import { useEffect, useRef, useState } from "react";
 import type { RuleTemplate } from "../shared/agent";
 import { LIBRARY_STICKERS } from "../shared/asset-library";
-import { CORNERS, CORNER_LABELS, formatProductPrice, ProductPriceSchema, type Corner, type DecorationOptions } from "../shared/decorations";
+import { CORNERS, CORNER_LABELS, decorationTimingContext, formatProductPrice, ProductPriceSchema, type Corner, type DecorationOptions } from "../shared/decorations";
 import { constrainedStickerPreviewGeometry, CORNER_SAFE_POLICY } from "../shared/layout-policy";
 import { getPriceStyle, PRICE_LINE_HEIGHT, priceFontSizeRatio } from "../shared/price-styles";
 import "./template-preview.css";
@@ -119,6 +119,7 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
     </div>
     <div className="template-preview-info"><span className="eyebrow">{automatic ? "AGENT CAPABILITY" : "TEMPLATE PREVIEW"}</span><h2>{automatic ? "Agent 自主安排" : `${rule.name} · 整体预览`}</h2>{automatic ? <p>开始出片后，Agent 为四个角落各选贴纸。开启覆盖时，已有原贴纸的角落优先覆盖，没有覆盖层的时段补齐；具体选款和时段将在生成后确定。</p> : <><p>先看一眼贴纸放在一起的效果，再开始制作。</p><dl><div><dt>贴纸</dt><dd>{stickerId === "none" ? "不加贴纸" : `宽度不超过画面的 ${(previewStickerWidth * 100).toFixed(0)}%`}</dd></div></dl></>}
       <p>{automatic ? "价格花字由 Agent 自主选择；当前仅以经典红白示例展示。" : `价格花字 · ${getPriceStyle(options.priceStyle).name}。此处为排版与花字示例；成片颜色会随所选滤镜变化。`}</p>
+      <p>{decorationTimingContext(options.displayMode)}此处为显示期间的静态示例。</p>
       {failed.length > 0 ? <p role="alert">贴纸预览加载失败，请重新选择贴纸。</p> : stickerSlots.some(({ id }) => !assets[id]) && <p role="status">正在加载贴纸预览…</p>}
       <small>{automatic ? "此处仅展示示意背景和默认花字，不代表 Agent 已作出选择。Agent 从现有 8 款中按画面选择，同批会参考使用记录减少重复，但不保证每版不同。中间仅显示手动填写的价格，开始制作前必须填写。" : "点击四角分别选择贴纸，所选内容会用于成片。中间仅显示手动填写的价格，开始制作前必须填写。未设置的角落按默认贴纸与模板规则安排；此处为 9:16 静态示例。"}</small>
     </div>

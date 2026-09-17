@@ -33,6 +33,11 @@ export function formatProductPrice(price: string): string {
   const value = RequiredProductPriceSchema.parse(price);
   return value.split("\n").map((line) => /^\d{1,6}(?:\.\d{1,2})?$/.test(line) ? `¥ ${line}` : line).join("\n");
 }
+export const DecorationDisplayModeSchema = z.enum(["full", "first-3s"]);
+export type DecorationDisplayMode = z.infer<typeof DecorationDisplayModeSchema>;
+export function decorationTimingContext(mode?: DecorationDisplayMode): string {
+  return mode === "first-3s" ? "展示时段：手动展示文字 / 价格和全部新增贴纸仅在视频前 3 秒显示，最后 0.5 秒渐隐，3 秒时完全消失；不足 3 秒时在视频结尾前渐隐。原视频内容不变。" : "展示时段：手动展示文字 / 价格和贴纸全程显示，覆盖与四角补齐仍遵守各自有效时段。";
+}
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {
     return { ...input, sticker: "template", fontFamily: DEFAULT_TEXT_FONT_FAMILY, corners: undefined, priceStyle: undefined };
@@ -40,6 +45,7 @@ export const DecorationSchema = z.preprocess((input) => {
   return input;
 }, z.object({
   productPrice: ProductPriceSchema.optional(),
+  displayMode: DecorationDisplayModeSchema.optional(),
   priceStyle: PriceStyleIdSchema.optional(),
   mode: z.enum(["manual", "agent"]).optional(),
   sticker: z.string().refine(isStickerId, "unknown sticker").default("template"),
