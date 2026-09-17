@@ -45,10 +45,10 @@ it("renders frozen corner gap intervals, opaque source coverage, and unchanged o
     await run(["-i", output, "-vf", `select=eq(n\\,${frame}),crop=2:2:${x}:${y}`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", file]);
     return readFile(file);
   };
-  for (const frame of [1, 6, 8]) { const pixel = await pixels(frame, 20, 26); expect(pixel[2]).toBeGreaterThan(pixel[0]+100); }
-  const gap = await pixels(4, 20, 26); expect(Math.max(...gap)).toBeLessThan(20);
+  for (const frame of [1, 6, 8]) { const pixel = await pixels(frame, 20, 24); expect(pixel[2]).toBeGreaterThan(pixel[0]+100); }
+  const gap = await pixels(4, 20, 24); expect(Math.max(...gap)).toBeLessThan(20);
   const white = await pixels(4, 4, 4); expect(Math.min(...white)).toBeGreaterThan(225);
-  for (const frame of [1, 4, 8]) { const pixel = await pixels(frame, 290, 20); expect(pixel[2]).toBeGreaterThan(pixel[0]+100); }
+  for (const frame of [1, 4, 8]) { const pixel = await pixels(frame, 300, 20); expect(pixel[2]).toBeGreaterThan(pixel[0]+100); }
   // A retry compiler consumes the saved intervals unchanged, without the runner or any model.
   const retry = await compiler.compile(JSON.parse(JSON.stringify(frozen)), media, { ...DEFAULT_PRESET, resolutionMode: "source" }, options);
   expect(retry.args).toEqual(compiled.args);

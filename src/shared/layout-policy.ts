@@ -12,7 +12,7 @@ export const LEGACY_CORNER_SAFE_POLICY = {
 export const CORNER_SAFE_POLICY = {
   id: "corner-safe-v2" as const,
   cornerInset: 0.03,
-  cornerMargin: 0.015,
+  cornerMargin: 0.005,
   bottomCornerStart: 0.88,
   maxStickerWidth: 0.1,
   maxStickerHeight: 0.1,

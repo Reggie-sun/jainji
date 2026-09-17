@@ -105,14 +105,14 @@ describe("TemplateCompiler", () => {
     template.layoutPolicy = "corner-safe-v2";
     template.layers.push({
       id: crypto.randomUUID(), type: "sticker", assetPath: "/tmp/square.png", assetFingerprint: "fixture",
-      x: 0.885, y: 0.88, width: 0.1, rotationDeg: 0, opacity: 1, zIndex: 1, visible: true,
+      x: 0.895, y: 0.88, width: 0.1, rotationDeg: 0, opacity: 1, zIndex: 1, visible: true,
     });
     const command = await new TemplateCompiler().compile(template, { ...media, width: 320, height: 180 }, { ...DEFAULT_PRESET, resolutionMode: "720p" }, {
       ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused.txt",
     });
     const graph = command.args[command.args.indexOf("-filter_complex") + 1];
     expect(graph).toContain("scale=128:72:force_original_aspect_ratio=decrease");
-    expect(graph).toContain("overlay=x=main_w-overlay_w-main_w*0.01500:y=main_h-overlay_h-main_h*0.01500");
+    expect(graph).toContain("overlay=x=main_w-overlay_w-main_w*0.00500:y=main_h-overlay_h-main_h*0.00500");
   });
 
   it("loops GIF sticker inputs without flattening their frame timestamps", async () => {

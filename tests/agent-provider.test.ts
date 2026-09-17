@@ -238,8 +238,8 @@ describe("agent provider boundary", () => {
     for (const rule of RULE_TEMPLATES) {
       const template = materializePlan(raw, rule.id, { width: 640, height: 480 }, stickerAssets, { mode: "agent", productPrice: "19.90" }, autoCatalog);
       expect(template.filter).toEqual({ presetId: "none", intensity: 0 });
-      expect(template.layers[0]).toMatchObject({ width: 0.1, rotationDeg: -11, y: 0.015 });
-      expect(template.layers[0].x).toBeCloseTo(0.885);
+      expect(template.layers[0]).toMatchObject({ width: 0.1, rotationDeg: -11, y: 0.005 });
+      expect(template.layers[0].x).toBeCloseTo(0.895);
       expect(template.name).not.toBe(rule.name);
       expect(template.layers[4]).toMatchObject({ content: "¥ 19.90" });
     }
