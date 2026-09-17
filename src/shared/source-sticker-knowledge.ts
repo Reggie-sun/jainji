@@ -139,6 +139,22 @@ export const KnowledgeDisputeSchema = z.object({
 }).strict();
 export type SourceIdentity = z.infer<typeof SourceIdentitySchema>;
 export type SourceFacts = z.infer<typeof SourceFactsSchema>;
+/** Safe per-version progress projection; evidence bytes and local paths remain in the main process. */
+export interface SourceKnowledgeProgress {
+  phase: "checking" | "recognizing" | "reusing" | "correcting" | "reviewed" | "not-saved" | "blocked";
+  origin?: "cold" | "warm" | "refresh" | "run";
+  reason?: string;
+  sourceKey?: string;
+  revisionId?: string;
+  reviewedRanges?: ReviewedRange[];
+  recognitionRequests: number;
+  previewRequests: number;
+  revisions: number;
+  renders: number;
+  elapsedMs: number;
+  executor?: string;
+  supervisor?: string;
+}
 /** Compare the actual piecewise source geometry in a problem's scope, not redundant
  * keyframe encodings, evidence labels or sampling metadata. */
 export function sourceGeometryChanged(before: SourceFacts, after: SourceFacts, ranges: readonly ReviewedRange[], targetId?: string): boolean {

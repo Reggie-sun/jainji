@@ -17,6 +17,8 @@ import type { CoverSticker } from "../shared/cover-sticker";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace";
 import { ResultsPanel } from "./ResultsPanel";
+import { SourceStickerKnowledgeControls } from "./SourceStickerKnowledgeControls";
+import { sourceStickerRefreshEligible, sourceStickerRefreshInput, sourceStickerRefreshModeKey, useSourceStickerRefresh } from "./source-sticker-refresh";
 import { BugFeedbackDialog } from "./BugFeedbackDialog";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 
@@ -56,6 +58,12 @@ export default function App() {
   const knownMedia = useRef(new Set<string>());
   const projectId = useRef("");
   const operation = useRef(false);
+  const sourceRefresh = useSourceStickerRefresh({
+    projectId: state?.project.id ?? "",
+    selectedReadyIds: state?.project.mediaItems.filter((item) => item.probeStatus === "ready" && selected.includes(item.id)).map((item) => item.id) ?? [],
+    eligible: sourceStickerRefreshEligible(decorations.mode, state?.project.coverSticker),
+    modeKey: sourceStickerRefreshModeKey(decorations.mode, state?.project.coverSticker),
+  });
 
   const apply = useCallback((next: DesktopState, restoreProductPrice = false) => {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
@@ -224,13 +232,17 @@ export default function App() {
       if (projectId.current === currentId) setNotice({ error: true, text: "展示文字未能写入当前项目，请重试。" });
     });
   };
-  const start = () => void run(async () => {
+  const start = () => void (async () => {
+    const accepted = await run(async () => {
     if (coverStickerDirty) throw new Error("请先保存覆盖设置后再开始制作。");
     const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
     if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`请填写有效的制作条数，向上取整后不能超过 ${MAX_AGENT_OUTPUTS} 条。`);
-    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier }));
+    const sourceStickerRefresh = sourceStickerRefreshInput(sourceRefresh.refresh);
+    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(sourceStickerRefresh ? { sourceStickerRefresh } : {}) }));
     setStep("results");
-  });
+    });
+    if (accepted) sourceRefresh.consume();
+  })();
   const generateBrief = () => void run(async () => {
     setGeneratingBrief(true);
     try { setBrief(await window.jianji.generateBrief({ ruleId: rule, decorations, brief })); }
@@ -298,6 +310,7 @@ export default function App() {
           </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>ORIGINAL</span></div><div className="source-preview">{preview ? <video key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><div className="preview-frame"><Icon name="play" size={27} /></div><p>等一份好素材</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "从一个片段开始"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "生活片段、产品展示、灵感记录，都能拥有自己的表达。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。发送抽帧供 Agent 分析；自动覆盖开启时，还会逐段发送追踪抽帧。</p></div></aside></div>
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => setStep("templates")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
+        {step === "templates" && <SourceStickerKnowledgeControls projectId={state.project.id} selectedReadyIds={selectedMedia.filter((item) => item.probeStatus === "ready").map((item) => item.id)} eligible={sourceStickerRefreshEligible(decorations.mode, state.project.coverSticker)} disabled={locked || exporting} refresh={sourceRefresh.refresh} onRequest={sourceRefresh.request} />}
         {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={generateBrief} generatingBrief={generatingBrief} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) setOutputDirectory(directory); })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onState={apply} />}
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigate("import")} />}

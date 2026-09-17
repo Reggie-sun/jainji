@@ -60,6 +60,12 @@ export class AgentRunner {
 
   private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
     let next = 0;
+    const knowledgeStarted = new Map<string, number>();
+    const stopKnowledgeProgress = (item: AgentRun["items"][number], cancelled: boolean, reason: string): void => {
+      if (!item.sourceKnowledge) return;
+      item.sourceKnowledge = { ...item.sourceKnowledge, elapsedMs: Date.now() - knowledgeStarted.get(item.id)!,
+        ...(item.sourceKnowledge.phase === "blocked" ? {} : { phase: "blocked", reason: cancelled ? "本轮已取消，未完成候选不会发布。" : reason }) };
+    };
     const stickerUsage = new Map<string, number>();
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
@@ -91,9 +97,11 @@ export class AgentRunner {
         item.status = "analyzing";
         this.dependencies.onChange();
         const onStage = (stage: string) => { item.summary = stage; this.dependencies.onChange(); };
+        knowledgeStarted.set(item.id, Date.now());
         try {
           const knowledge = this.dependencies.knowledge;
-          const binding = knowledge ? await knowledge.acquire(source, this.dependencies.decorations?.displayMode === "first-3s" ? Math.min(3000, source.durationMs) : source.durationMs, signal, onStage) : undefined;
+          const binding = knowledge ? await knowledge.acquire(source, this.dependencies.decorations?.displayMode === "first-3s" ? Math.min(3000, source.durationMs) : source.durationMs, signal, onStage,
+            progress => { item.sourceKnowledge = progress; this.dependencies.onChange(); }) : undefined;
           let extracting = pendingFrames.get(source.id);
           if (!extracting) {
             extracting = this.dependencies.frames(source, signal).catch((error) => {
@@ -155,6 +163,7 @@ export class AgentRunner {
           item.status = this.dependencies.prepared || version ? "prepared" : "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
+          stopKnowledgeProgress(item, signal.aborted, "本版创作或样片准备未完成，未提交导出；请查看本条失败原因。");
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
         } finally {
           const remaining = remainingVersions.get(source.id)! - 1;
@@ -173,6 +182,7 @@ export class AgentRunner {
         catch (error) {
           for (const { index } of group) {
             run.items[index].status = signal.aborted ? "cancelled" : "failed";
+            stopKnowledgeProgress(run.items[index], signal.aborted, "源知识修订或证据完整性未确认，受影响版本未导出。");
             run.items[index].error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "源知识修订或证据完整性未确认，受影响版本未导出。";
           }
         }
@@ -181,7 +191,7 @@ export class AgentRunner {
       // before starting any formal job, so later versions cannot collide with exports.
       for (const { index, version, source } of reviewed) {
         const item = run.items[index];
-        if (signal.aborted) { item.status = "cancelled"; continue; }
+        if (signal.aborted) { item.status = "cancelled"; stopKnowledgeProgress(item, true, ""); continue; }
         if (item.status === "failed") continue;
         try {
           item.taskId = await this.dependencies.knowledge!.enqueue(version, signal, template => this.dependencies.enqueue(template, source, signal));
@@ -189,6 +199,7 @@ export class AgentRunner {
           item.summary = `${item.summary?.split(" · 主管样片检查通过")[0]} · 主管样片检查通过，已提交导出`;
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
+          stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "主管样片检查通过，但正式导出提交失败。";
         }
         this.dependencies.onChange();

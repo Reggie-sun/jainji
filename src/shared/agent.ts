@@ -2,6 +2,7 @@ import { z } from "zod";
 import { DecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
 import { ExportSettingsSchema } from "./export-settings.js";
+import type { SourceKnowledgeProgress } from "./source-sticker-knowledge.js";
 
 export const RULE_TEMPLATES = [
   { id: "black-gold", name: "黑金精选", label: "质感好物", description: "暖金滤镜配星芒贴纸，适合产品展示与直播切片。", minIntensity: 0.35, maxIntensity: 0.55, filters: ["warm"], filterLabel: "暖金", sticker: "sparkle", stickerLabel: "金色星芒", stickerWidth: 0.08, stickerRotation: 8, stickerCorners: ["bottom-right", "bottom-left", "top-right", "top-left"] },
@@ -51,6 +52,7 @@ export function calculateProductionQuantity(sourceCount: number, requestedCount:
 }
 
 export const AgentStartSchema = z.object({
+  sourceStickerRefresh: z.object({ projectId: z.string().uuid(), mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS) }).strict().optional(),
   multiplier: ProductionMultiplierSchema.optional(),
   exportFormat: ExportFormatSchema.optional(),
   exportSettings: ExportSettingsSchema.optional(),
@@ -59,7 +61,9 @@ export const AgentStartSchema = z.object({
   mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS),
   outputDirectory: z.string().min(1),
   brief: z.string().trim().max(1000),
-}).strict().refine((input) => RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
+}).strict().refine(input => !input.sourceStickerRefresh || (new Set(input.sourceStickerRefresh.mediaIds).size === input.sourceStickerRefresh.mediaIds.length && input.sourceStickerRefresh.mediaIds.every(id => input.mediaIds.includes(id))), {
+  path: ["sourceStickerRefresh"], message: "重新检查的素材必须属于本次制作，且不能重复。",
+}).refine((input) => RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
   path: ["decorations", "productPrice"], message: "请手动填写产品价格，Agent 不能代填或改写。",
 });
 export type AgentStartInput = z.infer<typeof AgentStartSchema>;
@@ -80,6 +84,7 @@ export interface AgentItem {
   summary?: string;
   error?: string;
   taskId?: string;
+  sourceKnowledge?: SourceKnowledgeProgress;
 }
 export interface AgentRun {
   id: string;

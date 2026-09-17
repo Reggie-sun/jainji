@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { KnowledgeCandidateSchema, coversRanges, sourceObservationsChanged, type KnowledgeCandidate, type KnowledgeEvidence, type KnowledgeRevision, type SourceFacts, type SourceIdentity } from "../shared/source-sticker-knowledge.js";
+import { KnowledgeCandidateSchema, coversRanges, sourceObservationsChanged, type KnowledgeCandidate, type KnowledgeEvidence, type KnowledgeRevision, type SourceFacts, type SourceIdentity, type SourceKnowledgeProgress } from "../shared/source-sticker-knowledge.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { ProviderError } from "./api-transport.js";
 import { SourceStickerKnowledgeStore, KnowledgeStoreError, factsDigest, sourceKey, type KnowledgeRun } from "./source-sticker-knowledge-store.js";
@@ -25,6 +25,23 @@ export interface KnowledgeVersion {
   readonly reviewSession: PreviewReviewSession;
 }
 type Version = KnowledgeVersion & { binding: KnowledgeBinding; rebuild: KnowledgePreviewInput["rebuild"]; digest: string; headId: string | null; run: KnowledgeRun; checkedTemplate: string };
+type Progress = { value: SourceKnowledgeProgress; started: number; notify?: (value: SourceKnowledgeProgress) => void };
+function report(progress: Progress, patch: Partial<SourceKnowledgeProgress>): void {
+  Object.assign(progress.value, patch, { elapsedMs: Date.now() - progress.started });
+  progress.notify?.(structuredClone(progress.value));
+}
+function failureReason(error: unknown): string {
+  if (error instanceof KnowledgeStoreError) return {
+    conflict: "源知识存在争议或并发修订，已停止复用；重新检查不会清除已有反证。",
+    integrity: "源知识完整性无法确认，已停止制作；请保留知识文件以便恢复。",
+    future_schema: "源知识来自不兼容版本，已保留文件并停止复用。",
+    source_changed: "源文件已变化，请重新导入素材。",
+    locked: "知识库被占用或需要恢复，自动制作已停止。",
+    cancelled: "本轮已取消，未完成候选不会发布。",
+    quota: "知识或反证未能安全保存，本轮已停止；请保留现有知识文件。",
+  }[error.code];
+  return "原贴纸检查未完成，本轮未回退旧知识；请查看本条失败原因。";
+}
 /** Only fact references flow into the next version; published preview evidence stays immutable. */
 function retainSourceEvidence(candidate: KnowledgeCandidate, blobs: Map<string, Buffer>) {
   const ids = new Set([...candidate.facts.observations.map(o => o.evidenceId),
@@ -42,7 +59,7 @@ function retainSourceEvidence(candidate: KnowledgeCandidate, blobs: Map<string, 
 interface SessionOptions {
   store: SourceStickerKnowledgeStore;
   identify(media: MediaItem, signal: AbortSignal): Promise<SourceIdentity>;
-  recognize(media: MediaItem, source: SourceIdentity, horizonMs: number, signal: AbortSignal, onStage: (stage: string) => void, onWindow: (window: Recognition) => Promise<void>): Promise<Recognition>;
+  recognize(media: MediaItem, source: SourceIdentity, horizonMs: number, signal: AbortSignal, onStage: (stage: string) => void, onWindow: (window: Recognition) => Promise<void>, onRequest: () => void): Promise<Recognition>;
   review(input: KnowledgePreviewInput): Promise<SupervisedPreviewResult>;
   executor: string;
   supervisor: string;
@@ -56,6 +73,7 @@ export class SourceStickerKnowledgeSession {
   private readonly versions = new Map<KnowledgeVersion, Version>();
   private readonly versionIds = new Set<string>();
   private readonly runs = new Set<KnowledgeRun>();
+  private readonly progress = new Map<KnowledgeBinding, Progress>();
   private closed = false;
   constructor(private readonly options: SessionOptions) {}
 
@@ -67,13 +85,18 @@ export class SourceStickerKnowledgeSession {
   private async token(source: SourceIdentity, signal?: AbortSignal): Promise<KnowledgeRun> {
     const token = await this.options.store.beginRun(source, signal); this.runs.add(token); return token;
   }
-  async acquire(media: MediaItem, horizonMs: number, signal: AbortSignal, onStage: (stage: string) => void): Promise<KnowledgeBinding> {
+  async acquire(media: MediaItem, horizonMs: number, signal: AbortSignal, onStage: (stage: string) => void, onProgress?: (value: SourceKnowledgeProgress) => void): Promise<KnowledgeBinding> {
+    const progress: Progress = { started: Date.now(), notify: onProgress, value: { phase: "checking", recognitionRequests: 0, previewRequests: 0, revisions: 0, renders: 0, elapsedMs: 0, executor: this.options.executor, supervisor: this.options.supervisor } };
+    report(progress, {});
+    try {
     this.live(signal);
     const source = await this.options.identify(media, signal);
     if (source.fingerprint !== media.fingerprint || !Number.isSafeInteger(horizonMs) || horizonMs < 1 || horizonMs > source.durationMs) throw new ProviderError("源素材或识别时域已变化，请重新导入。");
     await this.options.store.verifySource(media.sourcePath, source); this.live(signal);
     const key = sourceKey(source), requiredRanges = [{ startMs: 0, endMs: horizonMs }];
+    report(progress, { sourceKey: key });
     let pending = this.sources.get(key);
+    const shared = Boolean(pending);
     if (!pending) {
       pending = (async () => {
         // Recognition fences late model responses before onWindow. Accepted counterevidence
@@ -94,12 +117,15 @@ export class SourceStickerKnowledgeSession {
           resolvedDisputeIds.push(id);
         };
         const warm = head && coversRanges(head.revision.candidate.facts.reviewedRanges, requiredRanges) && !this.options.refreshMediaIds?.has(media.id);
+        report(progress, { phase: warm ? "reusing" : "recognizing", origin: warm ? "warm" : this.options.refreshMediaIds?.has(media.id) ? "refresh" : "cold",
+          reason: warm ? "源身份与所需时域匹配" : this.options.refreshMediaIds?.has(media.id) ? "本轮主动重新检查" : head ? "已有知识时域不足" : "尚无已核查知识", revisionId: head?.revision.id });
         if (warm) {
           onStage("复用已核查的源贴纸知识；本版仍需创作和样片检查…");
           ({ facts, evidence } = head.revision.candidate); evidence = evidence.filter(e => e.kind === "source"); blobs = head.blobs;
         } else {
           onStage("首次检查或重新检查源贴纸…");
-          ({ facts, evidence, blobs, requests } = await this.options.recognize(media, source, horizonMs, signal, onStage, counterevidence));
+          ({ facts, evidence, blobs, requests } = await this.options.recognize(media, source, horizonMs, signal, onStage, counterevidence, () => report(progress, { recognitionRequests: progress.value.recognitionRequests + 1 })));
+          report(progress, { recognitionRequests: requests });
           if (!resolvedDisputeIds.length) await counterevidence({ facts, evidence, blobs, requests });
         }
         this.live(signal); await this.options.store.verifySource(media.sourcePath, source);
@@ -118,7 +144,14 @@ export class SourceStickerKnowledgeSession {
     if (state.unresolvedIssue) throw new ProviderError("本轮源贴纸存在未解决反证，后续同源版本已停止。");
     if (!coversRanges(state.candidate.facts.reviewedRanges, requiredRanges)) throw new ProviderError("本轮源知识时域不足，不能复用为全程。");
     this.live(signal);
-    const binding = Object.freeze({ key, media: structuredClone(media), horizonMs }); this.bindings.add(binding); return binding;
+    if (shared) report(progress, { phase: "reusing", origin: "run", reason: "本轮同源素材共享核查事实；仍检查新样片", revisionId: state.head?.id });
+    report(progress, { reviewedRanges: state.candidate.facts.reviewedRanges });
+    const binding = Object.freeze({ key, media: structuredClone(media), horizonMs }); this.bindings.add(binding); this.progress.set(binding, progress); return binding;
+    } catch (error) {
+      report(progress, { phase: "blocked", reason: signal.aborted ? "本轮已取消，未完成候选不会发布。" : failureReason(error) });
+      if (error instanceof KnowledgeStoreError) throw new ProviderError(failureReason(error));
+      throw error;
+    }
   }
   async tracks(binding: KnowledgeBinding) { return knowledgeTracks((await this.state(binding)).candidate, binding.horizonMs); }
 
@@ -130,6 +163,8 @@ export class SourceStickerKnowledgeSession {
     await this.check(version, signal, onStage); this.versions.set(version, version); return version;
   }
   private async check(version: Version, signal: AbortSignal, onStage: (stage: string) => void): Promise<void> {
+    const progress = this.progress.get(version.binding)!;
+    try {
     this.live(signal);
     const state = await this.state(version.binding), previous = state.head;
     if (state.unresolvedIssue) throw new ProviderError("本轮源贴纸存在未解决反证，不能另开版本继承旧候选。");
@@ -137,9 +172,12 @@ export class SourceStickerKnowledgeSession {
     const candidate = KnowledgeCandidateSchema.parse({ ...state.candidate, id: randomUUID(), runId: run.id, baseRevisionId: previous?.id ?? null, requiredRanges: [{ startMs: 0, endMs: version.binding.horizonMs }], evidence: state.candidate.evidence.filter(e => e.kind === "source") });
     let handoff: KnowledgeReviewHandoff | undefined;
     const result = await this.options.review({ template: version.template, tracks: knowledgeTracks(candidate, version.binding.horizonMs), media: version.binding.media,
-      rebuild: version.rebuild, signal, onStage, session: version.reviewSession,
+      rebuild: version.rebuild, signal, onStage: stage => {
+        const budget = version.reviewSession.snapshot();
+        report(progress, { previewRequests: budget.turns, revisions: budget.revisions, renders: budget.renders }); onStage(stage);
+      }, session: version.reviewSession,
       knowledge: { candidate, blobs: state.blobs, previousRevision: previous,
-        onSourceIssue: () => { state.blocked = true; state.unresolvedIssue = true; },
+        onSourceIssue: () => { state.blocked = true; state.unresolvedIssue = true; report(progress, { phase: "correcting", reason: "发现原贴纸事实问题，正在有界修正" }); },
         onDispute: async ({ dispute, blobs }) => { state.blocked = true; await this.options.store.recordDispute(run, dispute, blobs); },
         onReviewed: async value => { handoff = value; return "not-saved"; },
       } });
@@ -170,6 +208,16 @@ export class SourceStickerKnowledgeSession {
     version.template = { ...result.template, sourceStickerKnowledge: { sourceKey: version.binding.key, revisionId: persistence === "saved" ? state.head!.id : handoff.candidate.id,
       factsDigest: version.digest, reviewedRanges: structuredClone(handoff.candidate.facts.reviewedRanges), verification: "sampled", persistence } };
     version.checkedTemplate = templateDigest(version.template);
+    const budget = version.reviewSession.snapshot();
+    report(progress, { phase: persistence === "saved" ? "reviewed" : "not-saved", revisionId: version.template.sourceStickerKnowledge!.revisionId,
+      reason: persistence === "saved" ? "已基于当前源事实通过本版样片检查。" : "本版样片已通过，但知识保存空间不足，未保存供下次复用。",
+      reviewedRanges: handoff.candidate.facts.reviewedRanges, previewRequests: budget.turns, revisions: budget.revisions, renders: budget.renders });
+    } catch (error) {
+      const budget = version.reviewSession.snapshot();
+      report(progress, { phase: "blocked", reason: signal.aborted ? "本轮已取消，未完成候选不会发布。" : failureReason(error),
+        previewRequests: budget.turns, revisions: budget.revisions, renders: budget.renders });
+      throw error;
+    }
   }
   private current(version: Version, state: SourceState): boolean { return !state.blocked && version.headId === (state.head?.id ?? null) && version.digest === factsDigest(state.candidate.facts); }
 
@@ -183,6 +231,7 @@ export class SourceStickerKnowledgeSession {
         if (state.blocked) throw new ProviderError("源贴纸仍有未解决反证，本轮受影响版本未导出。");
         if (this.current(version, state)) continue;
         onStage("源贴纸事实已修正，正在重建并重新检查受影响版本…");
+        report(this.progress.get(version.binding)!, { phase: "correcting", reason: "同源事实已修正，旧样片结论失效，正在重建检查" });
         version.template = version.rebuild({ action: "revise", reason: "同源知识修订传播", tracks: knowledgeTracks(state.candidate, version.binding.horizonMs), corners: version.reviewSession.snapshot().corners });
         await this.check(version, signal, onStage); changed = true;
       }
@@ -203,6 +252,6 @@ export class SourceStickerKnowledgeSession {
   async close(): Promise<void> {
     this.closed = true;
     await Promise.all([...this.runs].map(run => this.options.store.endRun(run)));
-    this.runs.clear(); this.sources.clear(); this.bindings.clear(); this.versions.clear(); this.versionIds.clear();
+    this.runs.clear(); this.sources.clear(); this.bindings.clear(); this.versions.clear(); this.versionIds.clear(); this.progress.clear();
   }
 }

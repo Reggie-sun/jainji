@@ -125,6 +125,12 @@ export class AgentController {
       const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
       const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
       const supervised = !assisted && Boolean(automaticCover || preserveSourceStickers);
+      const refresh = parsed.sourceStickerRefresh;
+      if (refresh) {
+        if (refresh.projectId !== project.id) throw new Error("重新检查意图属于其他项目，请重新选择素材。");
+        if (!supervised) throw new Error("重新检查原贴纸仅用于自动识别模式，不改变手动或半自动草稿。");
+        if (parsed.mediaIds.some(id => !project.mediaItems.some(item => item.id === id && item.probeStatus === "ready"))) throw new Error("重新检查的素材不属于当前项目或已不可用。");
+      }
       if ((automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
       if (supervised && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于主管 Agent 修正与样片检查。");
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
@@ -146,6 +152,10 @@ export class AgentController {
       await assertOutputDirectorySafe(outputDirectory, media as MediaItem[]);
       this.preparingController.signal.throwIfAborted();
       if (supervised && !this.knowledgeStore) throw new Error("源贴纸知识库不可用或需要恢复；自动制作已停止，已有导出和手动模式不受影响。");
+      if (refresh && this.service.currentProject.id !== refresh.projectId) throw new Error("项目已切换，请重新设置原贴纸检查意图。");
+      // Apply the one-shot intent to every same-byte copy before any source is acquired.
+      const refreshFingerprints = new Set((media as MediaItem[]).filter(item => refresh?.mediaIds.includes(item.id)).map(item => item.fingerprint));
+      const refreshMediaIds = new Set((media as MediaItem[]).filter(item => refreshFingerprints.has(item.fingerprint)).map(item => item.id));
       const projectId = this.service.currentProject.id;
       const previews = new Map<string, Promise<{ id: string; url: string }>>();
       for (const preview of availableCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
@@ -174,14 +184,15 @@ export class AgentController {
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
       const knowledge = supervised ? new SourceStickerKnowledgeSession({
+        refreshMediaIds,
         store: this.knowledgeStore!, executor: this.visionProvider.status().model.slice(0, 160), supervisor: this.reviewerProvider.status().model.slice(0, 160),
         identify: async (item, signal) => {
           const evidence = new SupervisorEvidence(this.ffmpeg, item);
           try { return await evidence.sourceIdentity(signal); } finally { await evidence.dispose(); }
         },
-        recognize: (item, source, horizon, signal, onStage, onWindow) => recognizeSourceStickerKnowledge(this.ffmpeg, item, source, horizon, signal,
-          (images, requestSignal) => this.visionProvider.detectCovers(images, undefined, requestSignal),
-          (context, requestSignal) => this.reviewerProvider.superviseRecognition(context, requestSignal), onStage, onWindow),
+        recognize: (item, source, horizon, signal, onStage, onWindow, onRequest) => recognizeSourceStickerKnowledge(this.ffmpeg, item, source, horizon, signal,
+          (images, requestSignal) => { onRequest(); return this.visionProvider.detectCovers(images, undefined, requestSignal); },
+          (context, requestSignal) => { onRequest(); return this.reviewerProvider.superviseRecognition(context, requestSignal); }, onStage, onWindow),
         review: async input => {
           const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-preview-"));
           const evidence = new SupervisorEvidence(this.ffmpeg, input.media);

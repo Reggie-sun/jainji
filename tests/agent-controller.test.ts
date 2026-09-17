@@ -75,7 +75,7 @@ describe("AgentController queue admission", () => {
     try {
       await controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { mode: "agent", displayMode: "first-3s", productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]));
       await vi.waitFor(() => expect(shortlist).toHaveBeenCalledTimes(1));
-      expect(knowledge.acquire).toHaveBeenCalledWith(expect.objectContaining({ id }), 1000, expect.any(AbortSignal), expect.any(Function));
+      expect(knowledge.acquire).toHaveBeenCalledWith(expect.objectContaining({ id }), 1000, expect.any(AbortSignal), expect.any(Function), expect.any(Function));
       expect(knowledge.acquire.mock.invocationCallOrder[0]).toBeLessThan(shortlist.mock.invocationCallOrder[0]);
       expect(shortlist.mock.calls[0][1]).toContain("最后 0.5 秒渐隐");
       const catalog = shortlist.mock.calls[0][4];
@@ -134,7 +134,7 @@ describe("AgentController queue admission", () => {
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     try {
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { productPrice: "19.90", mode: "agent", sticker: "local-limited-discount", fontFamily: "Not A Font", corners: { "top-left": { type: "sticker", sticker: "heart" } } } }, new Set([directory]))).resolves.toBeUndefined();
-      await vi.waitFor(() => expect(knowledge.acquire).toHaveBeenCalledWith(expect.objectContaining({ id }), 1000, expect.any(AbortSignal), expect.any(Function)));
+      await vi.waitFor(() => expect(knowledge.acquire).toHaveBeenCalledWith(expect.objectContaining({ id }), 1000, expect.any(AbortSignal), expect.any(Function), expect.any(Function)));
       expect(library.prepare).not.toHaveBeenCalled();
       expect(library.resolveFont).toHaveBeenCalledTimes(1);
       expect(library.resolveFont).toHaveBeenCalledWith("Noto Sans CJK SC");

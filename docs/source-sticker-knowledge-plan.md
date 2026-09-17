@@ -1,7 +1,7 @@
 ---
 title: Reusable Source Sticker Knowledge Implementation Plan
 status: in-progress
-execution: m3-complete
+execution: m4-complete
 version: 0.1
 date: 2026-09-17
 baseline: ef74adf
@@ -12,7 +12,7 @@ spec: source-sticker-knowledge-spec.md
 
 落实 [Source Sticker Knowledge Spec](source-sticker-knowledge-spec.md)：将经过原图核查与真实样片检查的源贴纸事实保存下来，后续同源素材复用；原事实被纠正时传播给本批受影响版本，保持新包装逐版本创作与检查。
 
-M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接、M3 的自动制作复用及修订传播已实现；M4–M5 尚未开始。**当前制作入口已启用精确源知识复用，新版本仍逐条创作与样片核查；尚无用户刷新入口，也不代表真实素材验收已完成。**
+M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接、M3 的自动制作复用及修订传播、M4 的一次性刷新入口与状态展示已实现，M5 尚未开始。**当前制作入口已启用精确源知识复用，新版本仍逐条创作与样片核查；不代表真实素材验收已完成。**
 
 采用 Native Codex 执行，按仓库现行规则进行有界实施、验证及提交。默认使用当前工作树，不创建 worktree；实现前检查当前规则、Git 状态、live agents 与精确文件 ownership，保留无关工作。技术选择在规格内自行收敛；只有真实同文件冲突或目标/授权变化才需要用户决定。
 
@@ -61,7 +61,7 @@ M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据�
 
 # Milestones
 
-依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。当前 M1、M2 完成，下一阶段为 M3，尚未启动。
+依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。当前 M1–M4 完成，下一阶段 M5 尚未启动。
 
 ## M1 — Source Contract And Durable Store
 
@@ -101,7 +101,7 @@ M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据�
 
 Fresh verification：完整测试 837 项通过、2 项跳过（NVENC/字体能力条件及未启用的在线素材下载），`npm run typecheck`、`npm run build`、`git diff --check` 通过；native `reviewer_xhigh` 独立审查无剩余阻断项。覆盖 AC-01–17、19、21–22 的本地合同/集成部分，包含合成 CFR/VFR、真实 FFmpeg 和模拟模型；AC-15、17–18 的用户交互与 AC-20 真实素材仍留待 M4/M5，不将历史 fixture 或模拟主管判断当作真实识别质量。构建的 bundle 大小提示未在本阶段优化。
 
-**Handoff limitation:** 内部显式刷新可绕过健康知识命中，但已持久 disputed 的源在 `readHead` 时继续阻断；M4 需要明确有界恢复方案，不能通过删除反证解锁。相同字节副本的刷新意图必须在运行前按源统一，迟到刷新会停止受影响版本。未运行真实模型、Windows 实机或人工全片验收。
+**Handoff limitation:** 内部显式刷新可绕过健康知识命中，但已持久 disputed 的源在 `readHead` 时继续阻断；M4 明确采用保守边界：刷新不是恢复或重置，不删除反证解锁，界面说明阻断原因。恢复能力需另行定义有证据的恢复合同，未在本阶段实现。相同字节副本的刷新意图必须在运行前按源统一，迟到刷新会停止受影响版本。未运行真实模型、Windows 实机或人工全片验收。
 
 **Scope:** 新增知识 session 协调模块；接入 `agent-controller.ts`、`agent-runner.ts`、`index.ts`；按需要扩展 `domain.ts`、`state-migrations.ts` 及冻结引用。由一个 writer 拥有本阶段这些共享文件。
 
@@ -118,6 +118,14 @@ Fresh verification：完整测试 837 项通过、2 项跳过（NVENC/字体能�
 **Verification:** 新增 `tests/source-sticker-knowledge-session.test.ts`、`tests/source-sticker-knowledge.integration.test.ts`；扩展 `agent-controller`、`agent-runner`、`agent-pipeline`、`state-migrations` 和 `cover-sticker` 测试。覆盖 AC-01–17、19、21–22 的跨模块行为，以 AC-09、11、12、16、22 为本阶段硬门槛。
 
 ## M4 — Minimal User Controls
+
+**Status:** 完成。`sourceStickerRefresh` 由原制作入口携带，绑定项目和本轮素材子集；相同字节副本在开始前统一刷新。renderer 的独立小组件与本地 hook 保存一次性意图：选择、项目、模式变化清除，准入成功消费、拒绝保留，不持久化或单独调用模型。原 typed preload / DesktopState 已传递共享制作输入与 AgentRun，无需新增 IPC 或第二套状态通道；assisted prepare/approve 在保存草稿前拒绝刷新字段。
+
+逐条展示冷/暖/刷新来源、识别/修正/终态，以及折叠的核查时域、模型、请求和渲染计数、耗时。错误只投影安全原因；失败渲染计入尝试次数，修正完成不残留进行中文案，制作或提交失败不会仍显示正在复用。已知争议与完整性未知继续阻断；刷新不提供重置或恢复功能。
+
+**Fresh verification:** 全量 855 项通过、2 项条件跳过（GPU 能力及未启用在线素材下载）；`npm run typecheck`、`npm run build`、`git diff --check` 通过。关键合同与审查发现有 red→green 回归。隔离 Electron smoke 通过 AC-15、17–18 的刷新、配置准入、选择/项目/模式切换、并发拒绝、失败不回退、取消及源事实修正状态场景：冷/暖/刷新源识别相关请求分别 6/0/6，每版仍创作和检查样片；另一个暖版本修正消耗 2 次样片检查、1 次修订、2 次渲染，未重复创作。最终本机证据为 `/tmp/jianji-desktop-smoke-a0xvlX/knowledge-smoke.json` 及同目录截图，可通过 README 命令重跑；产物仅为合成视频、模拟模型与真实 FFmpeg 的交互证据，不是识别准确率验收。Chrome MCP 共享 profile 被占用，未干扰已有浏览器，采用现有隔离 Electron/CDP 路径。真实模型、真实素材人工观看和 Windows 实机留待 M5；bundle 大小提示未在本阶段优化。
+
+独立 native `reviewer_xhigh` 最终结论为 accept，无剩余阻断项；复核覆盖代码/测试/文档及最终 smoke JSON 与截图。已修复失败渲染计数、成功后残留进行中文案、assisted 写入一次性意图和外部失败耗时偏低的问题；未增加新的恢复、模型调用或导出生命周期 owner。
 
 **Scope:** `src/shared/agent.ts`、`src/shared/desktop.ts`、`src/main/preload.ts`、对应 IPC、制作输入组装、素材操作及 `ResultsPanel.tsx`。新增独立小组件承接刷新入口，避免在 `App.tsx` 中加入知识领域逻辑；如需修改该文件先重新检查 ownership。
 

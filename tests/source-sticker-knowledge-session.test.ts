@@ -7,7 +7,7 @@ import { createDefaultTemplate, type MediaItem } from "../src/main/domain";
 import { SourceStickerKnowledgeStore, identifySource, factsDigest } from "../src/main/source-sticker-knowledge-store";
 import { SourceStickerKnowledgeSession, type KnowledgePreviewInput } from "../src/main/source-sticker-knowledge-session";
 import { superviseRenderedTemplate } from "../src/main/supervised-preview";
-import type { KnowledgeCandidate, SourceFacts } from "../src/shared/source-sticker-knowledge";
+import type { KnowledgeCandidate, SourceFacts, SourceKnowledgeProgress } from "../src/shared/source-sticker-knowledge";
 import type { PreviewReviewInput } from "../src/main/supervisor-protocol";
 
 const stores: SourceStickerKnowledgeStore[] = [];
@@ -29,7 +29,7 @@ async function fixture(quotaBytes?: number) {
   let recognitions = 0, previews = 0;
   let recognitionError: Error | undefined, recognitionFacts: ((facts: SourceFacts) => SourceFacts) | undefined, failAfterWindow = false;
   let acceptedWindow = () => {};
-  let previewExtras = false;
+  let previewExtras = false, renderFailure = false;
   const inheritedEvidence: string[][] = [];
   let decision: (input: PreviewReviewInput) => string = () => JSON.stringify({ action: "pass", reason: "checked" });
   const original = Buffer.from("actual source frame"), rendered = Buffer.from("actual preview frame");
@@ -45,7 +45,7 @@ async function fixture(quotaBytes?: number) {
   const review = async (input: KnowledgePreviewInput) => {
     inheritedEvidence.push(input.knowledge.candidate.evidence.map(e => e.id));
     return superviseRenderedTemplate({ ...input, durationMs: 6000, coverEnabled: false, automaticCorners: true,
-    render: async () => { previews++; return "preview"; },
+    render: async () => { previews++; if (renderFailure) throw new Error("render failed"); return "preview"; },
     inspect: async () => [{ requestedTimeMs: 0, timeMs: 0, sourceUrl: "source", sourceEvidenceId: "original", previewUrl: "preview", previewTimeMs: 0, previewEvidenceId: "preview" }],
     review: async (context) => decision(context),
     knowledge: { ...input.knowledge, outputSettingsDigest: "c".repeat(64), capture: (_images, binding) => ({ source, evidence: [sourceEvidence, ...(previewExtras ? [{ ...sourceEvidence, id: `preview-only-${previews}` }] : []), { id: "preview", kind: "preview", digest: hash(rendered), byteLength: rendered.length, pts: 0, timeMs: 0, timeBase: "1/1000", timeOriginPts: 0, width: 720, height: 1280, sourceEvidenceId: "original", ...binding }], blobs: new Map([[hash(original), original], [hash(rendered), rendered]]) }) },
@@ -54,11 +54,33 @@ async function fixture(quotaBytes?: number) {
   const template = () => ({ ...createDefaultTemplate(), productPrice: "手动两行\n保持不变", decorationDisplayMode: "first-3s" as const,
     layers: [{ id: crypto.randomUUID(), type: "text" as const, content: "手动两行\n保持不变", textAlign: "center" as const, x: 0.1, y: 0.13, width: 0.8, visible: true, opacity: 1, zIndex: 10,
       fontFamily: "sans-serif", fontSizeRatio: 0.04, color: { r: 255, g: 255, b: 255, a: 1 }, strokeColor: { r: 0, g: 0, b: 0, a: 1 }, strokeWidthRatio: 0 }] });
-  return { directory, file, source, store, media, session, template, inheritedEvidence, extraPreviewSources: () => { previewExtras = true; }, counts: () => ({ recognitions, previews }), decide: (fn: typeof decision) => { decision = fn; }, recognitionFailure: (error: Error) => { recognitionError = error; }, recognitionChange: (fn: typeof recognitionFacts) => { recognitionFacts = fn; }, failAfterWindow: (accepted = () => {}) => { failAfterWindow = true; acceptedWindow = accepted; }, quota: (bytes: number) => { storeOptions.quotaBytes = bytes; } };
+  return { directory, file, source, store, media, session, template, inheritedEvidence, renderFailure: () => { renderFailure = true; }, extraPreviewSources: () => { previewExtras = true; }, counts: () => ({ recognitions, previews }), decide: (fn: typeof decision) => { decision = fn; }, recognitionFailure: (error: Error) => { recognitionError = error; }, recognitionChange: (fn: typeof recognitionFacts) => { recognitionFacts = fn; }, failAfterWindow: (accepted = () => {}) => { failAfterWindow = true; acceptedWindow = accepted; }, quota: (bytes: number) => { storeOptions.quotaBytes = bytes; } };
 }
 const stage = () => undefined;
 
 describe("source knowledge session", () => {
+  it("reports attempted renders even if rendering fails before the next stage", async () => {
+    const f = await fixture(), session = f.session(), states: SourceKnowledgeProgress[] = [];
+    const binding = await session.acquire(f.media, 3000, signal(), stage, value => states.push(value));
+    f.renderFailure(); const t = f.template();
+    await expect(session.review(binding, t, () => t, signal(), stage)).rejects.toThrow("render failed");
+    expect(states.at(-1)).toMatchObject({ phase: "blocked", renders: 1, previewRequests: 0 });
+    await session.close();
+  });
+  it("reports cold, warm and explicit refresh with per-version sampled evidence and actual preview budget", async () => {
+    const f = await fixture();
+    for (const [refresh, origin, requests] of [[false, "cold", 2], [false, "warm", 0], [true, "refresh", 2]] as const) {
+      const states: SourceKnowledgeProgress[] = [], session = f.session(refresh);
+      const binding = await session.acquire(f.media, 3000, signal(), stage, value => states.push(value));
+      const t = f.template(); await session.review(binding, t, () => t, signal(), stage);
+      expect(states.some(value => value.phase === (origin === "warm" ? "reusing" : "recognizing"))).toBe(true);
+      expect(states.at(-1)).toMatchObject({ phase: "reviewed", origin, recognitionRequests: requests, previewRequests: 1, renders: 1, revisions: 0, reviewedRanges: [{ startMs: 0, endMs: 3000 }] });
+      expect(states.at(-1)?.revisionId).toBeTruthy();
+      expect(JSON.stringify(states)).not.toContain(f.directory);
+      await session.close();
+    }
+  });
+
   it("does not accumulate preview-only source evidence in later versions or warm runs", async () => {
     const f = await fixture(); f.extraPreviewSources();
     const session = f.session(), binding = await session.acquire(f.media, 3000, signal(), stage);
@@ -84,7 +106,8 @@ describe("source knowledge session", () => {
   });
 
   it("invalidates earlier versions after a later fact correction and reuses the original preview budget", async () => {
-    const f = await fixture(), session = f.session(), binding = await session.acquire(f.media, 3000, signal(), stage);
+    const states: SourceKnowledgeProgress[] = [];
+    const f = await fixture(), session = f.session(), binding = await session.acquire(f.media, 3000, signal(), stage, value => states.push(value));
     const a = f.template(), b = f.template();
     const first = await session.review(binding, a, () => a, signal(), stage);
     let correctedOnce = false;
@@ -100,6 +123,7 @@ describe("source knowledge session", () => {
     const second = await session.review(binding, b, () => b, signal(), stage);
     await expect(session.enqueue(first, signal(), async () => "unsafe")).rejects.toThrow();
     await session.reconcile([first, second], signal(), stage);
+    expect(states.at(-1)).toMatchObject({ phase: "reviewed", reason: "已基于当前源事实通过本版样片检查。" });
     expect(first.reviewSession.snapshot()).toMatchObject({ turns: 2, revisions: 1, renders: 2 });
     const frozen = await session.enqueue(first, signal(), async template => template);
     expect(frozen.sourceStickerKnowledge?.revisionId).toBe(second.template.sourceStickerKnowledge?.revisionId);

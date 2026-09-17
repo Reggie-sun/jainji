@@ -188,6 +188,7 @@ export class CoverReviewController {
       if (draft.status !== "needs_human") throw new Error("请先完成人工审阅。");
       assertReviewResolved(draft);
       const parsed = AgentStartSchema.parse(input);
+      if (parsed.sourceStickerRefresh) throw new Error("半自动审阅不接受原贴纸重新检查意图。");
       if (!this.service.currentProject.coverSticker?.enabled || this.service.currentProject.coverSticker.trackingMode !== "assisted") throw new Error("请显式启用半自动覆盖。");
       draft.settingsDigest = reviewDigest(this.service.currentProject.coverSticker);
       draft.requestJson = JSON.stringify(parsed); draft.frozen = []; delete draft.approval;
@@ -296,6 +297,7 @@ export class CoverReviewController {
       const draft = this.current(id, revision);
       this.assertEnabled();
       const parsed = AgentStartSchema.parse(input);
+      if (parsed.sourceStickerRefresh) throw new Error("半自动审阅不接受原贴纸重新检查意图。");
       if (draft.settingsDigest !== reviewDigest(this.service.currentProject.coverSticker)) throw new Error("覆盖设置已变化，请重新准备预览。");
       if (reviewDigest(parsed) !== reviewDigest(JSON.parse(draft.requestJson ?? "null"))) throw new Error("制作设置已变化，请重新编辑并准备预览。");
       if (!directories.has(await realpath(parsed.outputDirectory))) throw new Error("请重新选择批准的输出目录。");

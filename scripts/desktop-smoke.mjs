@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { spawn, execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
 import { createServer as createSocketServer } from "node:net";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { knowledgeProviderFixture, runKnowledgeSmoke } from "./source-sticker-knowledge-smoke.mjs";
 
 // Real Electron/IPC/FFmpeg smoke; only the provider and native file picker are fixtures.
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,6 +17,8 @@ const source = path.join(directory, "测试素材.mp4");
 const output = path.join(directory, "output");
 const collectionFile = path.join(directory, "夏季新品.jianji-project.json");
 const smokeScope = process.env.JIANJI_SMOKE_SCOPE;
+const knowledgeFixture = knowledgeProviderFixture();
+if (smokeScope === "knowledge") await symlink(path.join(root, "resources"), path.join(directory, "resources"), "junction");
 execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
 const sourceBytes = await readFile(source);
 const uploadSource = path.join(directory, "uploaded-heart.png");
@@ -33,6 +36,7 @@ const server = createServer((request, response) => {
   request.on("data", (chunk) => { body += chunk; });
   request.on("end", async () => {
     const input = JSON.parse(body);
+    if (smokeScope === "knowledge") { await knowledgeFixture.respond(input, response); return; }
     const anthropic = request.url === "/anthropic/v1/messages";
     assert.equal(request.url, anthropic ? "/anthropic/v1/messages" : "/v1/chat/completions");
     const userContent = input.messages[anthropic ? 0 : 1].content;
@@ -163,7 +167,7 @@ dialog.showOpenDialog = async (_window, options) => {
   return { canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : options.title === "打开项目" ? [${JSON.stringify(collectionFile)}] : [${JSON.stringify(source)}] };
 };
 dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(collectionFile)} });
-dialog.showMessageBox = async (_window, options) => ({ response: options.title === "删除项目" || options.title === "保存项目更改？" && require("node:fs").existsSync(${JSON.stringify(path.join(directory, "index-failure"))}) ? 0 : 1 });
+dialog.showMessageBox = async (_window, options) => ({ response: options.title === "删除项目" || ${JSON.stringify(smokeScope === "knowledge")} && options.title === "新建项目" || options.title === "保存项目更改？" && require("node:fs").existsSync(${JSON.stringify(path.join(directory, "index-failure"))}) ? 0 : 1 });
 require(${JSON.stringify(path.join(root, "dist-electron/main.cjs"))});
 `);
 const environment = { ...process.env };
@@ -235,6 +239,12 @@ desktopSmoke: try {
   };
   await send("Runtime.enable");
   await waitFor("document.body.innerText.includes('接入你的创作搭档')");
+  if (smokeScope === "knowledge") {
+    await runKnowledgeSmoke({ evaluate, click, waitFor, send, screenshot, apiPort, directory, fixture: knowledgeFixture });
+    assert.deepEqual(exceptions, []);
+    assert.deepEqual(await readFile(source), sourceBytes);
+    break desktopSmoke;
+  }
   assert.equal(await evaluate("document.body.innerText.includes('已保存项目列表暂时无法读取')"), true, "a corrupt index must not prevent desktop startup");
   await click("上传贴纸");
   await waitFor("document.body.innerText.includes('还没有上传贴纸')");

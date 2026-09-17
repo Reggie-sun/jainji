@@ -18,6 +18,24 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("supervisor production admission", () => {
+  it.each(["creative", "reconcile", "enqueue"])("ends the knowledge progress when %s fails outside recognition", async (failure) => {
+    let clock = 100;
+    const now = vi.spyOn(Date, "now").mockImplementation(() => clock);
+    const knowledge = knowledgeFixture();
+    const acquire = knowledge.acquire;
+    knowledge.acquire = async (...args) => {
+      const binding = await acquire(...args);
+      args[4]?.({ phase: "reusing", origin: "warm", recognitionRequests: 0, previewRequests: 0, renders: 0, revisions: 0, elapsedMs: 1 });
+      return binding;
+    };
+    if (failure === "reconcile") knowledge.reconcile = async () => { throw new Error("reconcile failed"); };
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => { clock = 5100; if (failure === "creative") throw new Error("creative failed"); return plan("设计"); },
+      enqueue: async () => { if (failure === "enqueue") throw new Error("enqueue failed"); return crypto.randomUUID(); }, stickerAssets, knowledge, onChange: () => {} });
+    try { runner.start("project", "clean", "", [media("one")]); await runner.settled(); } finally { now.mockRestore(); }
+    expect(runner.snapshot()?.items[0]).toMatchObject({ status: "failed", sourceKnowledge: { phase: "blocked" } });
+    expect(runner.snapshot()?.items[0].sourceKnowledge?.reason).not.toContain("正在");
+    expect(runner.snapshot()?.items[0].sourceKnowledge?.elapsedMs).toBe(5000);
+  });
   it("does not retain an invalid corner correction when a later track-only revision succeeds", async () => {
     const enqueue = vi.fn(async () => crypto.randomUUID());
     const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ ...plan("设计"), stickers: (["top-left", "top-right", "bottom-left", "bottom-right"] as const).map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })), priceStyle: "classic" }),

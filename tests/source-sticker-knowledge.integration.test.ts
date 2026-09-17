@@ -11,7 +11,7 @@ import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
 import type { PreviewReviewInput } from "../src/main/supervisor-protocol";
 
-it("reuses across projects/restart and cover settings, rechecks each style, and retries frozen jobs after knowledge GC", async () => {
+it.each([false, true])("reuses or explicitly refreshes same-byte copies across projects/restart, with frozen retries (refresh=%s)", async (refresh) => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-warm-knowledge-"));
   const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe"), file = path.join(root, "source.mp4"), copy = path.join(root, "renamed.mp4");
   expect((await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-f", "lavfi", "-i", "sine=f=440", "-t", "1", "-c:v", "libx264", "-c:a", "aac", file]).promise).code).toBe(0);
@@ -23,7 +23,7 @@ it("reuses across projects/restart and cover settings, rechecks each style, and 
   try {
     const revisions: string[] = [], projects: string[] = [], mediaIds: string[] = [];
     for (const warm of [false, true]) {
-      const service = new ApplicationService(ffmpeg, { resolve: resolveFont }); await service.addMedia([warm ? copy : file]);
+      const service = new ApplicationService(ffmpeg, { resolve: resolveFont }); await service.addMedia(warm ? [copy, file] : [file]);
       projects.push(service.currentProject.id); mediaIds.push(service.currentProject.mediaItems[0].id);
       if (warm) service.currentProject.coverSticker = { enabled: true, trackingMode: "agent", stickerIds: [], rectangle: { x: 0, y: 0, width: 0.1, height: 0.1 } };
       const jobs = new JobStore(path.join(root, warm ? "warm-jobs" : "cold-jobs"));
@@ -39,7 +39,9 @@ it("reuses across projects/restart and cover settings, rechecks each style, and 
       vi.spyOn(controller.reviewerProvider, "superviseRecognition").mockImplementation(async input => { counts.recognition++; return JSON.stringify({ action: "resolve", reason: "checked", frames: input.proposal }); });
       vi.spyOn(controller.reviewerProvider, "supervisePreview").mockImplementation(async input => { counts.preview++; expect(input.knowledge?.facts.targets).toHaveLength(1); return JSON.stringify({ action: "pass", reason: "new preview checked" }); });
       const outputDirectory = path.join(root, warm ? "warm-output" : "cold-output");
-      const input = { ruleId: "clean" as const, brief: "", mediaIds: service.currentProject.mediaItems.map(item => item.id), outputDirectory, decorations: { mode: "agent" as const, productPrice: warm ? "第二批\n手动文字" : "第一批", displayMode: "full" as const, sticker: "none", fontFamily: "Noto Sans CJK SC" }, exportSettings: { resolutionMode: "source" as const, frameRateMode: "source" as const, quality: "balanced" as const } };
+      const input = { ruleId: "clean" as const, brief: "", mediaIds: service.currentProject.mediaItems.map(item => item.id), outputDirectory,
+        ...(warm && refresh ? { sourceStickerRefresh: { projectId: service.currentProject.id, mediaIds: [service.currentProject.mediaItems[1].id] } } : {}),
+        decorations: { mode: "agent" as const, productPrice: warm ? "第二批\n手动文字" : "第一批", displayMode: "full" as const, sticker: "none", fontFamily: "Noto Sans CJK SC" }, exportSettings: { resolutionMode: "source" as const, frameRateMode: "source" as const, quality: "balanced" as const } };
       if (warm) {
         controller.visionProvider.clear();
         await expect(controller.start(input, new Set([outputDirectory]))).rejects.toThrow("视觉识别模型");
@@ -47,14 +49,16 @@ it("reuses across projects/restart and cover settings, rechecks each style, and 
         controller.visionProvider.configure({ apiKey: "fixture", model: "changed-model", baseUrl: "https://unused.invalid/v1" });
       }
       await controller.start(input, new Set([outputDirectory]));
-      await vi.waitFor(() => { expect(controller.busy).toBe(false); expect(controller.snapshot()?.items[0].error).toBeUndefined(); expect(queue.snapshot().batches[0]?.batch.tasks[0].status).toBe("completed"); }, { timeout: 30_000 });
+      await vi.waitFor(() => { expect(controller.busy).toBe(false); expect(controller.snapshot()?.items.every(item => !item.error)).toBe(true); expect(queue.snapshot().batches).toHaveLength(warm ? 2 : 1); expect(queue.snapshot().batches.every(({ batch }) => batch.tasks.every(task => task.status === "completed"))).toBe(true); }, { timeout: 30_000 });
       const batch = queue.snapshot().batches[0].batch;
       revisions.push(batch.templateSnapshot.sourceStickerKnowledge!.revisionId);
       expect(batch.templateSnapshot.productPrice).toBe(input.decorations.productPrice);
       expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && layer.cover)).toHaveLength(warm ? 1 : 0);
       expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && !layer.cover)).toHaveLength(3);
       if (warm) {
-        expect(counts).toEqual({ detection: 1, recognition: 1, creative: 2, preview: 2 });
+        expect(counts).toEqual({ detection: refresh ? 2 : 1, recognition: refresh ? 2 : 1, creative: 3, preview: 3 });
+        expect(controller.snapshot()?.items.map(item => item.sourceKnowledge?.origin)).toEqual([refresh ? "refresh" : "warm", "run"]);
+        expect(controller.snapshot()?.items.map(item => item.sourceKnowledge?.recognitionRequests)).toEqual([refresh ? 2 : 0, 0]);
         const frozen = structuredClone(batch.templateSnapshot);
         expect((await store.collect(0)).removed).toHaveLength(1); await store.close();
         await queue.shutdown();
@@ -64,12 +68,12 @@ it("reuses across projects/restart and cover settings, rechecks each style, and 
         await jobs.save(saved);
         const recovered = new ExportQueue({ ffmpeg, jobStore: jobs, fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } }); queues.push(recovered);
         await recovered.recover(); await recovered.retry([batch.tasks[0].id]);
-        await vi.waitFor(() => expect(recovered.snapshot().batches[0].batch.tasks[0].status).toBe("completed"), { timeout: 30_000 });
-        expect(recovered.snapshot().batches[0].batch.templateSnapshot).toEqual(frozen);
-        expect(counts).toEqual({ detection: 1, recognition: 1, creative: 2, preview: 2 });
+        await vi.waitFor(() => expect(recovered.snapshot().batches.find(entry => entry.batch.id === batch.id)!.batch.tasks[0].status).toBe("completed"), { timeout: 30_000 });
+        expect(recovered.snapshot().batches.find(entry => entry.batch.id === batch.id)!.batch.templateSnapshot).toEqual(frozen);
+        expect(counts).toEqual({ detection: refresh ? 2 : 1, recognition: refresh ? 2 : 1, creative: 3, preview: 3 });
       } else { await store.close(); store = await SourceStickerKnowledgeStore.open(root); }
     }
-    expect(new Set(projects).size).toBe(2); expect(new Set(mediaIds).size).toBe(2); expect(new Set(revisions).size).toBe(1);
+    expect(new Set(projects).size).toBe(2); expect(new Set(mediaIds).size).toBe(2); expect(new Set(revisions).size).toBe(refresh ? 2 : 1);
   } finally { for (const controller of controllers) await controller.cancel(); await store.close(); for (const queue of queues) await queue.shutdown(); await rm(root, { recursive: true, force: true }); }
 }, 60_000);
 
