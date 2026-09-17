@@ -15,6 +15,7 @@ const directory = await mkdtemp(path.join(tmpdir(), "jianji-desktop-smoke-"));
 const source = path.join(directory, "测试素材.mp4");
 const output = path.join(directory, "output");
 const collectionFile = path.join(directory, "夏季新品.jianji-project.json");
+const smokeScope = process.env.JIANJI_SMOKE_SCOPE;
 execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
 const sourceBytes = await readFile(source);
 const uploadSource = path.join(directory, "uploaded-heart.png");
@@ -140,6 +141,7 @@ dialog.showOpenDialog = async (_window, options) => {
     stickerPickerCalls += 1;
     return stickerPickerCalls === 1 ? { canceled: true, filePaths: [] } : { canceled: false, filePaths: [stickerPickerCalls === 2 ? ${JSON.stringify(source)} : ${JSON.stringify(uploadSource)}] };
   }
+  if (options.title === "打开项目") await filePromises.writeFile(${JSON.stringify(path.join(directory, "project-picker.called"))}, "called");
   return { canceled: false, filePaths: options.properties.includes("openDirectory") ? [${JSON.stringify(output)}] : options.title === "打开项目" ? [${JSON.stringify(collectionFile)}] : [${JSON.stringify(source)}] };
 };
 dialog.showSaveDialog = async () => ({ canceled: false, filePath: ${JSON.stringify(collectionFile)} });
@@ -155,7 +157,7 @@ child.stderr.on("data", (chunk) => { processLog += chunk.toString(); });
 child.stdout.on("data", (chunk) => { processLog += chunk.toString(); });
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let socket;
-try {
+desktopSmoke: try {
   let target;
   for (let attempt = 0; attempt < 100; attempt++) {
     if (child.exitCode !== null) throw new Error(`Electron exited: ${processLog}`);
@@ -281,14 +283,29 @@ try {
   assert.equal(savedCollection.mediaItems[0].sourcePath, source);
   await click("新建创作");
   await waitFor("document.body.innerText.includes('你的素材即将在这里就位')");
+  const blankProjectId = (await evaluate("window.jianji.getState()")).project.id;
+  if (smokeScope === "saved-project-open") {
+    await click("规则模板");
+    await evaluate("document.querySelector('[aria-label=\"打开项目\"]').click()");
+    await waitFor("document.querySelector('[aria-label=\"已保存的素材集\"]') !== null");
+    assert.equal(await readFile(path.join(directory, "project-picker.called"), "utf8").then(() => true, () => false), false, "topbar saved-project entry stays inside the app");
+    assert.equal((await evaluate("window.jianji.getState()")).project.id, blankProjectId, "showing saved projects does not load one before the user selects it");
+  }
   const savedEntry = (await evaluate("window.jianji.getState()")).recentProjects.find(entry => entry.name === "夏季新品");
   assert.ok(savedEntry, "saved collection appears in the saved list");
   assert.equal(await evaluate(`document.querySelector('[data-recent-id=${JSON.stringify(savedEntry.id)}]') !== null`), true, "saved collection is directly visible");
+  if (smokeScope === "saved-project-open") await screenshot("saved-project-before-open");
   await evaluate(`document.querySelector('[data-recent-id=${JSON.stringify(savedEntry.id)}]').click()`);
   await waitFor("document.body.innerText.includes('测试素材.mp4')");
   assert.equal(await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').value"), "夏季新品");
   assert.equal((await evaluate("window.jianji.getState()")).project.mediaItems[0].probeStatus, "ready");
   assert.deepEqual(await readFile(source), sourceBytes, "naming and saving never change the source video");
+  if (smokeScope === "saved-project-open") {
+    await screenshot("saved-project-after-open");
+    assert.deepEqual(exceptions, []);
+    console.log(JSON.stringify({ result: "PASS", scope: smokeScope, screenshotDirectory: directory, before: path.join(directory, "saved-project-before-open.png"), after: path.join(directory, "saved-project-after-open.png"), projectName: "夏季新品", restoredMedia: "测试素材.mp4" }, null, 2));
+    break desktopSmoke;
+  }
   await evaluate("document.querySelector('[aria-label=\"素材集名称\"]').focus(); document.querySelector('[aria-label=\"素材集名称\"]').select()");
   await send("Input.insertText", { text: "尚未保存的新名称" });
   await waitFor("(async () => (await window.jianji.getState()).project.name === '尚未保存的新名称')()");
