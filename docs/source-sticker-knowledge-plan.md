@@ -1,7 +1,7 @@
 ---
 title: Reusable Source Sticker Knowledge Implementation Plan
 status: in-progress
-execution: m4-complete
+execution: m5-in-progress
 version: 0.1
 date: 2026-09-17
 baseline: ef74adf
@@ -12,7 +12,7 @@ spec: source-sticker-knowledge-spec.md
 
 落实 [Source Sticker Knowledge Spec](source-sticker-knowledge-spec.md)：将经过原图核查与真实样片检查的源贴纸事实保存下来，后续同源素材复用；原事实被纠正时传播给本批受影响版本，保持新包装逐版本创作与检查。
 
-M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接、M3 的自动制作复用及修订传播、M4 的一次性刷新入口与状态展示已实现，M5 尚未开始。**当前制作入口已启用精确源知识复用，新版本仍逐条创作与样片核查；不代表真实素材验收已完成。**
+M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接、M3 的自动制作复用及修订传播、M4 的一次性刷新入口与状态展示已实现，M5 已开始本地验收与缺口审查。**真实素材对照尚未运行，逐制作审计和历史争议提示仍有合同缺口，整体验收未完成。** 详见 [验收报告](source-sticker-knowledge-validation.md)。
 
 采用 Native Codex 执行，按仓库现行规则进行有界实施、验证及提交。默认使用当前工作树，不创建 worktree；实现前检查当前规则、Git 状态、live agents 与精确文件 ownership，保留无关工作。技术选择在规格内自行收敛；只有真实同文件冲突或目标/授权变化才需要用户决定。
 
@@ -61,7 +61,7 @@ M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据�
 
 # Milestones
 
-依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。当前 M1–M4 完成，下一阶段 M5 尚未启动。
+依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。当前 M1–M4 阶段完成，M5 本地验收进行中，尚未满足整体验收。
 
 ## M1 — Source Contract And Durable Store
 
@@ -138,6 +138,8 @@ Fresh verification：完整测试 837 项通过、2 项跳过（NVENC/字体能�
 **Verification:** 在现有 `scripts/desktop-smoke.mjs` 增加知识冷/暖/刷新场景，使用隔离 userData、模拟服务及真实 FFmpeg；实际 Electron 交互检查进度、点击、取消和项目切换。AC-15、17–18 必须有界面与主进程两层证据。
 
 ## M5 — Review And Real-Media Acceptance
+
+**Status:** 进行中，未通过整体验收。基于 `82539f3` 重新执行全量 855 项通过/2 项条件跳过、typecheck/build 与隔离 Electron knowledge smoke；实际商业服务调用为 0。最终验收审查发现 REQ-20 的持久逐制作审计与 REQ-13 的历史争议提示缺口；真实素材、连接和预算仍需明确后冻结。AC 分层结果、证据与下一步仅记录在 [验收报告](source-sticker-knowledge-validation.md)，不把合成 fixture 当作 AC-20 通过。
 
 **Scope:** 最终 diff、相关回归、真实同批对照及验证报告。先完成本地确定性检查，再执行授权范围内的真实模型与真实视频测试。
 
