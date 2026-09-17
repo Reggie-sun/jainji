@@ -44,7 +44,7 @@ M5 已开始，**整体验收尚未通过**。此前在 `43fd416` 上补齐本�
 | 17 | LOCAL_PASS | vision-connections 与 controller/desktop：角色路由、连接缺失与运行中准入；真实组合仅有下述有限 pilot，未验证其他组合或全面可靠性 |
 | 18 | LOCAL_PASS | 真实 Electron 模拟服务 smoke：首次/暖复用/修正/取消/项目切换，无新增逐条批准 |
 | 19 | LOCAL_PASS | state-migrations/store：旧格式读取与 future schema 拒绝；跨机器实机未验证 |
-| 20 | PARTIAL | 一条真实素材冷出片、暖失败及结构化初筛修复后暖出片；缺旧基线、刷新、覆盖开启、完整场景矩阵及配对人工全片质量记录 |
+| 20 | PARTIAL | 一条真实素材冷出片、暖失败及修复后暖出片、主动刷新出片；缺旧基线、覆盖开启、完整场景矩阵及配对人工全片质量记录 |
 | 21 | LOCAL_PASS | supervisor-knowledge：有证据的事实变化与渲染 no-op 区分，不借无关微调解锁成片问题 |
 | 22 | LOCAL_PASS | store/session：反证在后续失败、取消、重启后阻断；反证写失败不降为 miss |
 
@@ -138,6 +138,22 @@ TDD 先观察新增 3 项协议断言因缺 `outputSchema` 失败，再实现。
 
 同一 reviewer 对新增现场证据另做只读复核，独立确认调用数、schema/正文、原修订与证据摘要、正式任务和输出摘要，并重跑 ffprobe 与完整严格解码；结论 accept。代码/build SHA、凭据清理与本次视觉抽样由父 Agent 验证，此次证据复核未重复视觉抽样。
 
+## Explicit Refresh Pilot — 2026-09-18
+
+用户选择 A，授权同一素材、覆盖关闭、最多 10 次调用、失败即停。使用 `890fddd` 的 fresh build，在 `/tmp/jianji-knowledge-refresh-2Z07Ak` 新建隔离 userData/项目/输出，复制原冷 pilot 的完整知识库；沿用源 SHA、角色配置、手动文字 `19.9元30贴`、`first-3s` 和导出设置。通过真实制作 IPC 的 `sourceStickerRefresh` 绑定本次项目和素材，不导入人工坐标、不替换模型响应；不是刷新按钮的 UI 点击验收。
+
+Run `8a71e283-c006-47d1-a8b6-168889694927` 明确记录 `lookup=refresh`，实际重新识别：执行 2 次、识别主管 2 次、创作 2 次、样片主管 1 次，共 **7 次 provider 调用**，边界日志一致，未触及 10 次上限。样片渲染 1 次、样片修订计数 0，约 99.3 秒入队，再约 15.5 秒完成正式导出；无服务错误重试或连接切换。识别阶段问题标志与样片修订计数含义不同，不能把后者为零解释成从未发现源问题。
+
+持久事件依次为原 revision、两条 `incomplete_boundary` dispute、新 revision。两条反证均引用旧修订 `728d3135-d400-436b-83fd-c96f8fa2244a`，新修订 `c28dcc9b-d52e-4fca-8e92-6a35782c2e06` 以它为 base，明确列出两个 `resolvedDisputeIds`，并绑定重新核查的源证据与通过的新样片；争议事件保留而非删除。新事实摘要为 `38cf75ae7b32dfa82fd7bbf472169c764586cde50e97a2485d4a7ae61d6b3116`，仍只核查 `[0,3000)`。这证明本轮有证据的修订发布流程，不能将模型报告的边界变化等同于人工认定旧事实必错；也不证明刷新可绕过运行前已存在的争议阻断。
+
+离线校验覆盖四份 record 摘要和全部 **65 条证据引用**的摘要/字节数（含旧证据与两条争议）；新 revision 含 26 条引用、12 个观察和 7 对样片检查帧。源 SHA 未变，代码和构建 SHA 与报告一致；临时登录/API 配置副本移除，owner lock 释放。`report.json`、`requests.jsonl`、`verification.json`、`verify.mjs` 及配对帧保留于隔离目录，原 pilot 未改写。
+
+成片为该目录 `output/7a3cf3be8fb777e2760d8712a6050ace_edited.mp4`，10,461,525 字节，SHA-256 `5a82d32b3ad0c318b22c60a06ea61515b9ee2dfe5c28090a87b70b806f3fa6d3`。ffprobe 显示源/输出视频、音频各自时长一致，完整音视频严格解码通过；父 Agent 查看 1、2.733、3.1、20 秒成片并对照同源样本：左下原贴纸保留，前三秒仅补另外三角及用户文字，渐隐后无新增层。仅为抽样，不是人工全片或音频听感验收。
+
+本轮未改产品代码。fresh build（含 typecheck、资产验证）通过；刷新与知识 integration 两份 suites **11/11 通过**。实际单条刷新出片成功，完整场景、成本对照、人工质量和 Windows 仍未验证，M5 / AC-20 继续 PARTIAL。
+
+native `reviewer_xhigh` 对本轮证据及两份文档独立只读复核，确认 7 次调用、四事件关联、65 条证据摘要/字节数、正式任务的新修订引用及输出摘要；独立 ffprobe、完整严格解码和 diff-check 通过，结论 accept。该现场结果不证明故障时写入顺序，也不替代既有持久化故障测试或人工质量验收。
+
 ## Next Checkpoint
 
-下一步补主动刷新及其余代表性素材、覆盖开启和旧基线对照，先冻结范围、配置和调用预算；不因本次成功自动扩大付费运行。Windows 实机和人工完整播放仍未验证。
+下一步补覆盖开启、其余代表性素材和旧基线对照，先冻结范围、配置和调用预算；不因本次成功自动扩大付费运行。Windows 实机和人工完整播放仍未验证。
