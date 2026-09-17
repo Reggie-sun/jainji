@@ -13,6 +13,8 @@ import * as agentFrames from "../src/main/agent-frames";
 import * as automaticCover from "../src/main/automatic-cover";
 import * as stickerPreviews from "../src/main/sticker-preview";
 import { DEFAULT_PRESET } from "../src/main/domain";
+import { isAutomaticStickerAllowed } from "../src/shared/automatic-stickers";
+import { isUploadedStickerId } from "../src/shared/decorations";
 
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
@@ -69,6 +71,10 @@ describe("AgentController queue admission", () => {
     try {
       await controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { mode: "agent", productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]));
       await vi.waitFor(() => expect(shortlist).toHaveBeenCalledTimes(1));
+      const catalog = shortlist.mock.calls[0][4];
+      expect(catalog.stickers).toHaveLength(56);
+      expect(catalog.stickers.every(({ id: stickerId }) => isAutomaticStickerAllowed(stickerId) || isUploadedStickerId(stickerId))).toBe(true);
+      expect(catalog.stickers.some(({ id: stickerId }) => stickerId.startsWith("local-") || stickerId === "fluent-bf9436317c97f49dd95dacd3358e8983a24b2aec")).toBe(false);
       await controller.cancel();
       expect(finalPlan).not.toHaveBeenCalled();
       expect(library.ensure).not.toHaveBeenCalled();

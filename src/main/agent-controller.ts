@@ -14,8 +14,6 @@ import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
 import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from "./asset-library.js";
 import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
-import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
-import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { stickerPreview } from "./sticker-preview.js";
 import { resolveCoverSticker, previousCoverStickerId, unusedCoverStickerIds } from "./cover-sticker.js";
 import { recognizeAutomaticCovers } from "./automatic-cover.js";
@@ -73,13 +71,10 @@ export class AgentController {
   }
 
   private async autoCatalog(signal: AbortSignal): Promise<AgentDecorationCatalog> {
-    const labels = new Map(AUTOMATIC_STICKERS.map(({ id, label }) => [id, label]));
     const stickers = [
-      ...AUTOMATIC_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id])),
-      ...BUNDLED_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id])),
-      ...(this.library ? LIBRARY_STICKERS : []),
+      ...AUTOMATIC_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id]) || Boolean(this.library)),
       ...Object.keys(this.stickerAssets).filter(isUploadedStickerId).map((id) => ({ id, label: `用户上传贴纸 ${id.slice(9, 17)}` })),
-    ].map(({ id, label }) => ({ id, label: labels.get(id) ?? label }));
+    ];
     const previews = [];
     for (const { id } of stickers.filter(({ id }) => isUploadedStickerId(id))) {
       signal.throwIfAborted();
