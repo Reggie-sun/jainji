@@ -8,6 +8,8 @@ export interface CompletionOptions {
   maxOutputTokens?: number;
   maxOutputCharacters?: number;
   jsonObject?: boolean;
+  // Codex turn/start only; API connections keep their existing format capabilities.
+  chatgptOutputSchema?: Record<string, unknown>;
 }
 
 const DEFAULT_MAX_OUTPUT_CHARACTERS = 16_000;

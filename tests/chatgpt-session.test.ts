@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ChatGPTSession, trustedLoginUrl } from "../src/main/chatgpt-session";
 import type { RpcClient } from "../src/main/codex-rpc";
+import { AgentProvider } from "../src/main/agent-provider";
 
 class FakeRpc extends EventEmitter implements RpcClient {
   account: unknown = null;
@@ -30,6 +31,50 @@ async function setup() {
 afterEach(async () => { await Promise.all(directories.splice(0).map((p) => rm(p, { recursive: true, force: true }))); });
 
 describe("managed ChatGPT session", () => {
+  it.each(["decoration", "cover"] as const)("constrains %s shortlist turns without constraining later plain text", async (purpose) => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" }; await session.refresh();
+    const provider = new AgentProvider();
+    provider.useChatGPT("vision", (messages, signal, options) => session.complete(messages, signal, options));
+    const result = provider.shortlist("clean", "", [], new AbortController().signal,
+      { fonts: [], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }, { id: "unreviewed", label: "禁止" }] }, undefined, purpose);
+    await vi.waitFor(() => expect(rpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    const turn = rpc.request.mock.calls.find(([method]) => method === "turn/start")![1];
+    // Finish the turn before assertions so the red case cannot leave a pending request.
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: '{"candidates":[1]}', phase: "final_answer" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await result).toEqual(["heart"]);
+    expect(turn).toMatchObject({
+      outputSchema: { type: "object", properties: { candidates: { type: "array", items: { type: "integer", minimum: 1, maximum: 2 }, minItems: 1, maxItems: 12 } }, required: ["candidates"], additionalProperties: false },
+      environments: [], approvalPolicy: "never", sandboxPolicy: { type: "readOnly", networkAccess: false },
+    });
+    const brief = provider.generateBrief({ ruleId: "clean" }, new AbortController().signal);
+    await vi.waitFor(() => expect(rpc.request.mock.calls.filter(([method]) => method === "turn/start")).toHaveLength(2));
+    expect(rpc.request.mock.calls.filter(([method]) => method === "turn/start")[1][1]).not.toHaveProperty("outputSchema");
+    rpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "保留自然光。", phase: "final_answer" } });
+    rpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await brief).toBe("保留自然光。");
+    await session.dispose();
+  });
+
+  it("does not retry or remove the schema when a constrained turn is rejected", async () => {
+    const { rpc, session } = await setup();
+    rpc.account = { type: "chatgpt" }; await session.refresh();
+    const original = rpc.request.getMockImplementation()!;
+    rpc.request.mockImplementation(async (method, params) => {
+      if (method === "turn/start") throw new Error("private-provider-schema-error");
+      return original(method, params);
+    });
+    const provider = new AgentProvider();
+    provider.useChatGPT("vision", (messages, signal, options) => session.complete(messages, signal, options));
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal,
+      { fonts: [], stickers: [{ id: "heart", label: "爱心" }] })).rejects.toThrow("ChatGPT 请求未完成");
+    const turns = rpc.request.mock.calls.filter(([method]) => method === "turn/start");
+    expect(turns).toHaveLength(1);
+    expect(turns[0][1]).toHaveProperty("outputSchema");
+    await session.dispose();
+  });
+
   it("restores saved effort and requires reselection if the catalog withdraws it", async () => {
     const { rpc, session: unused } = await setup(); await unused.dispose(); rpc.account = { type: "chatgpt" };
     Object.assign(rpc.models[0], { supportedReasoningEfforts: [{ reasoningEffort: "high", description: "Deep" }], defaultReasoningEffort: "high" });

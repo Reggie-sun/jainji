@@ -44,7 +44,7 @@ M5 已开始，**整体验收尚未通过**。此前在 `43fd416` 上补齐本�
 | 17 | LOCAL_PASS | vision-connections 与 controller/desktop：角色路由、连接缺失与运行中准入；真实组合仅有下述有限 pilot，未验证其他组合或全面可靠性 |
 | 18 | LOCAL_PASS | 真实 Electron 模拟服务 smoke：首次/暖复用/修正/取消/项目切换，无新增逐条批准 |
 | 19 | LOCAL_PASS | state-migrations/store：旧格式读取与 future schema 拒绝；跨机器实机未验证 |
-| 20 | PARTIAL | 已有一条真实素材冷/暖 pilot：冷出片、暖命中后创作解析失败；缺旧基线、刷新、覆盖开启、完整场景矩阵及配对人工全片质量记录 |
+| 20 | PARTIAL | 一条真实素材冷出片、暖失败及结构化初筛修复后暖出片；缺旧基线、刷新、覆盖开启、完整场景矩阵及配对人工全片质量记录 |
 | 21 | LOCAL_PASS | supervisor-knowledge：有证据的事实变化与渲染 no-op 区分，不借无关微调解锁成片问题 |
 | 22 | LOCAL_PASS | store/session：反证在后续失败、取消、重启后阻断；反证写失败不降为 miss |
 
@@ -120,6 +120,24 @@ pilot 前只读核对了仓库现有项目元数据，未修改、stage 或导�
 
 Fresh checks：`tests/agent-provider.test.ts` 与 `tests/chatgpt-session.test.ts` 合计 **90/90 通过**；额外离线断言核对了真实 phase/thread/completion、非法 JSON、1 次调用、暖识别 0、源未变及凭据清理。随应用安装的 Codex `0.154.0` 离线生成协议 schema，`v2/TurnStartParams.json` 包含 `outputSchema`（用于约束本轮最终回答）；此命令不调用模型。该证据支持下一步评估候选请求的结构化输出，但尚未实现或实测其服务端效果，M5 仍未通过。
 
+## Structured Shortlist And Warm Export — 2026-09-18
+
+本轮仅给 ChatGPT 的装饰/覆盖初筛请求传入 `outputSchema`：整数编号范围来自已过滤的可选目录，候选数量 1–12，只允许 `candidates` 字段。约束经 `CompletionOptions.chatgptOutputSchema` 传至当次 `turn/start`，不影响后续自由文本、创作终稿、主管或 API 连接。仍保留本地 strict schema、去重、资格校验及失败即停；服务拒绝 schema 时不移除约束重试，不修补坏 JSON。工具禁用和取消边界不变。
+
+TDD 先观察新增 3 项协议断言因缺 `outputSchema` 失败，再实现。最终 8 份相关 suites 共 **143/143 通过**，覆盖 provider/session、API transport、vision connections、本地 Codex 隔离、制作链路、知识复用与四角集成；`npm run typecheck`、`npm run build`、`git diff --check` 通过。构建保留原 bundle 大小提示。native `reviewer_xhigh` 独立代码审查 ACCEPT，并独立重跑两份 focused suites 94 项、typecheck 和 diff-check；没有剩余阻断项。
+
+用户同意继续后，使用新隔离目录 `/tmp/jianji-knowledge-schema-76eOtP`，复制已关闭的原 pilot 知识库，同源、同手动文字、同配置执行一次暖运行，最多 4 次调用，无模型响应替换。基线为 `341650a` 加本轮实现；`report.json` 冻结实际 3 份生产代码和构建 SHA，`verify.mjs` 已核对它们与当前工作树/构建一致。原项目和原证据目录未改写。
+
+- Run `05f36b4c-062c-4a6a-9ea7-fc566a7998f6` 命中原修订 `728d3135-d400-436b-83fd-c96f8fa2244a`，仍为 `[0,3000)`。实际 **识别执行 0、识别主管 0、创作 2、样片主管 1**，合计 3 次 provider 调用，与 RPC 边界计数一致；无重试。样片渲染 1 次、有效修订 0 次，主管 pass 后原队列正式导出完成。
+- 首次 RPC 确实带有编号上限 55 的 `outputSchema`，最终正文为 `{"candidates":[3,11,26,49]}`；其余两次 RPC 不带该约束。当前服务接受了该请求，本轮候选解析成功，不代表所有未来响应均保证合法。
+- 成片位于该目录 `output/7a3cf3be8fb777e2760d8712a6050ace_edited.mp4`，10,458,954 字节，SHA-256 `07103b396f890de5245c6df3800d2694d37acfbec278b207be3890bc622affa0`。`ffprobe` 视频/音频时长分别与源一致；完整视频和音频严格解码退出 0。
+- 源 SHA 未变；知识 manifest、record 及全部 26 条证据引用的摘要/字节数核对通过，仍仅原修订、无新增发布或 dispute。隔离登录/API 配置副本已移除，owner lock 已释放。
+- 对照查看 1、2.733、3.1、20 秒源/成片：原左下贴纸保留，前 3 秒只补另外三角及手动文字，2.733 秒渐隐，3.1 和 20 秒无新增层。抽样不是人工全片播放或音频听感验收，不能据此证明所有时刻/素材的质量。现场截图仍是连接页，不代表结果页交互验收。
+
+本轮新增暖成片成功证据，但样本仅 1 条、覆盖关闭且新增层仅前 3 秒。不同代码版本的冷/暖试验不是严格成本对照；未统计 token/费用，M5 / AC-20 仍为 PARTIAL。
+
+同一 reviewer 对新增现场证据另做只读复核，独立确认调用数、schema/正文、原修订与证据摘要、正式任务和输出摘要，并重跑 ffprobe 与完整严格解码；结论 accept。代码/build SHA、凭据清理与本次视觉抽样由父 Agent 验证，此次证据复核未重复视觉抽样。
+
 ## Next Checkpoint
 
-下一步针对候选请求增加有界结构化输出约束，保持本地 strict schema、候选资格、工具禁用和失败即停；先用协议/离线测试验证，再显式开展真实暖运行。不得把本次候选自动补成合法 JSON 或声称问题已修复。之后补暖成功、刷新及其余代表性素材和覆盖开启对照；Windows 实机和人工完整播放仍未验证。
+下一步补主动刷新及其余代表性素材、覆盖开启和旧基线对照，先冻结范围、配置和调用预算；不因本次成功自动扩大付费运行。Windows 实机和人工完整播放仍未验证。

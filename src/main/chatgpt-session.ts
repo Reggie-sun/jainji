@@ -203,6 +203,7 @@ export class ChatGPTSession {
         if (aborted.aborted) { stop(); return; }
         const input = messages.filter((m) => m.role === "user").flatMap<Record<string, unknown>>((m) => typeof m.content === "string" ? [{ type: "text", text: m.content }] : m.content.map((item) => item.type === "text" ? item : { type: "image", url: item.image_url.url, detail: item.image_url.detail }));
         void rpc.request("turn/start", { threadId: thread.thread.id, input, environments: [], ...(effort ? { effort } : {}),
+          ...(options.chatgptOutputSchema ? { outputSchema: options.chatgptOutputSchema } : {}),
           approvalPolicy: "never", sandboxPolicy: { type: "readOnly", networkAccess: false },
         }).then((result) => {
           turnId = z.object({ turn: z.object({ id: z.string() }) }).parse(result).turn.id;

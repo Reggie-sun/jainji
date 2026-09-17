@@ -36,6 +36,7 @@ describe("agent provider boundary", () => {
   });
 
   it.each([
+    ['{"candidates":[1,4,9,16}', "JSON 格式无效"],
     ['{"candidates":[编号]}', "JSON 格式无效"],
     ['```json\n{"candidates":[1]}\n```', "JSON 格式无效"],
     ['{"candidates":[1,1]}', "候选编号不得重复"],
@@ -283,7 +284,9 @@ describe("agent provider boundary", () => {
     const provider = new AgentProvider(request); provider.configure(connection);
     const signal = new AbortController().signal;
     await expect(provider.shortlist("black-gold", "", [], signal, catalog)).resolves.toEqual(["heart"]);
-    const messages = JSON.parse(request.mock.calls[0][1].body).messages;
+    const body = JSON.parse(request.mock.calls[0][1].body);
+    expect(Object.keys(body).sort()).toEqual(["messages", "model", "stream"]);
+    const messages = body.messages;
     expect(JSON.stringify(messages)).not.toContain("限时折扣");
     expect(messages[0].content).toContain("1 到 2 的整数");
     await expect(provider.shortlist("black-gold", "", [], signal, catalog)).rejects.toThrow("候选");
