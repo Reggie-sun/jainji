@@ -294,6 +294,9 @@ desktopSmoke: try {
   await click("新建创作");
   await waitFor("document.body.innerText.includes('你的素材即将在这里就位')");
   const blankProjectId = (await evaluate("window.jianji.getState()")).project.id;
+  await evaluate("document.querySelector('[aria-label=\"查看素材\"]').click()");
+  assert.equal(await evaluate("document.querySelector('nav button.active')?.textContent.includes('素材工作台')"), true, "folder button opens the material workspace");
+  assert.equal(await evaluate("document.querySelector('.saved-projects-dialog') === null"), true, "material entry does not open saved projects");
   await click("上传贴纸");
   await evaluate("document.querySelector('[aria-label=\"打开项目\"]').click()");
   await waitFor("document.querySelector('.saved-projects-dialog[open] [aria-label=\"已保存项目\"]') !== null");
