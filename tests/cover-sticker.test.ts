@@ -22,10 +22,10 @@ const options = { enabled: true, stickerIds: [a, b], rectangle: { x: 0.3, y: 0.4
 const builtin = { assetPath: "/tmp/builtin.png", assetFingerprint: "sha256:builtin" };
 const assets = { sparkle: builtin, arrow: builtin, heart: builtin, burst: builtin, [a]: { assetPath: "/tmp/a.png", assetFingerprint: "sha256:a" }, [b]: { assetPath: "/tmp/b.png", assetFingerprint: "sha256:b" } };
 const automaticHeartStickers = () => [
-  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
 ];
 
 describe("reusable batch cover", () => {
@@ -72,7 +72,7 @@ describe("reusable batch cover", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, { ensure: async () => builtin, prepare: async () => assets, resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
-    const plan = vi.spyOn(controller.provider, "plan").mockImplementation(async (_rule, _brief, _frames, _signal, catalog) => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => ({ corner, sticker: catalog!.stickers[0].id, width: 0.12, rotationDeg: 0 })), priceStyle: "ice" as const } : {}) }));
+    const plan = vi.spyOn(controller.provider, "plan").mockImplementation(async (_rule, _brief, _frames, _signal, catalog) => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => ({ corner, sticker: catalog!.stickers[0].id, width: 0.08, rotationDeg: 0 })), priceStyle: "ice" as const } : {}) }));
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? ["sparkle"] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);

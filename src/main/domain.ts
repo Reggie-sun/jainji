@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { DEFAULT_EXPORT_SETTINGS, ExportSettingsSchema } from "../shared/export-settings.js";
 import { randomUUID } from "node:crypto";
-import { CORNER_SAFE_POLICY, cornerSafeStickerIssues } from "../shared/layout-policy.js";
+import { CORNER_SAFE_POLICY, LEGACY_CORNER_SAFE_POLICY, cornerSafeStickerIssues, getCornerSafePolicy } from "../shared/layout-policy.js";
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
 import { ProductPriceSchema, RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
@@ -152,12 +152,13 @@ export const EditTemplateSchema = z.object({
   version: z.number().int().positive(),
   layers: z.array(LayerSchema).max(100),
   filter: FilterConfigSchema,
-  layoutPolicy: z.literal(CORNER_SAFE_POLICY.id).optional(),
+  layoutPolicy: z.enum([LEGACY_CORNER_SAFE_POLICY.id, CORNER_SAFE_POLICY.id]).optional(),
   productPriceDraft: ProductPriceSchema.optional(),
   productPrice: RequiredProductPriceSchema.optional(),
   createdAt: DateTime,
   updatedAt: DateTime,
 }).strict().superRefine((template, ctx) => {
+  const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
   const ids = new Set<string>();
   let coverCount = 0;
   const regionIds = new Set<string>();
@@ -180,18 +181,18 @@ export const EditTemplateSchema = z.object({
       if (layer.opacity !== 1) ctx.addIssue({ code: "custom", path: ["layers", index, "opacity"], message: "覆盖贴纸必须完全不透明" });
       if (layer.cover.automatic && (!layer.cover.motion || !layer.cover.targetId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover"], message: "自动覆盖必须有识别目标与轨迹" });
     }
-    if (template.layoutPolicy === CORNER_SAFE_POLICY.id && layer.type === "sticker" && !layer.cover) {
-      for (const message of cornerSafeStickerIssues(layer)) ctx.addIssue({ code: "custom", path: ["layers", index], message });
+    if (layoutPolicy && layer.type === "sticker" && !layer.cover) {
+      for (const message of cornerSafeStickerIssues(layer, layoutPolicy)) ctx.addIssue({ code: "custom", path: ["layers", index], message });
     }
   });
   if (coverCount > Math.max(MAX_MANUAL_COVERS, MAX_AUTOMATIC_COVER_TRACKS)) ctx.addIssue({ code: "custom", path: ["layers"], message: "覆盖图层数量超出上限" });
   if (coverCount > 1 && template.layers.some((layer) => layer.type === "sticker" && layer.cover && !layer.cover.automatic && !layer.cover.regionId)) ctx.addIssue({ code: "custom", path: ["layers"], message: "多个手动覆盖框必须各自指定编号" });
-  if (template.layoutPolicy === CORNER_SAFE_POLICY.id) {
+  if (layoutPolicy) {
     const areaProxy = template.layers
       .filter((layer) => layer.type === "sticker" && !layer.cover && layer.visible)
       .reduce((total, layer) => total + layer.width * layer.width, 0);
-    if (areaProxy - CORNER_SAFE_POLICY.maxTotalStickerAreaProxy > 1e-9) {
-      ctx.addIssue({ code: "custom", path: ["layers"], message: "贴纸总面积估算不得超过画面的 8%" });
+    if (areaProxy - layoutPolicy.maxTotalStickerAreaProxy > 1e-9) {
+      ctx.addIssue({ code: "custom", path: ["layers"], message: `贴纸总面积估算不得超过画面的 ${Math.round(layoutPolicy.maxTotalStickerAreaProxy * 100)}%` });
     }
   }
 });

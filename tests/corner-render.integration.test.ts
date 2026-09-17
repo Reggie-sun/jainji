@@ -25,10 +25,10 @@ it.for(["manual", "agent"] as const)("renders %s stickers and only a local cente
       "bottom-right": { type: "sticker", sticker: "burst" },
     } }))
     : materializePlan({ summary: "按需装饰", captions: [], priceStyle: "classic", stickers: [
-      { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-      { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
-      { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-      { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+      { corner: "top-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+      { corner: "top-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
+      { corner: "bottom-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+      { corner: "bottom-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
     ], filter: "warm", intensity: 0.4 }, "black-gold", { width: 720, height: 1280 }, assets, DecorationSchema.parse({ mode: "agent", productPrice: "19.90" }), { fonts: [DEFAULT_TEXT_FONT_FAMILY], stickers: [{ id: "heart", label: "爱心" }] });
   expect(template.layers.filter((layer) => layer.type === "text")).toEqual([expect.objectContaining({ content: "¥ 19.90", textAlign: "center" })]);
   expect(template.layers.filter((layer) => layer.type === "sticker")).toHaveLength(mode === "manual" ? 3 : 4);

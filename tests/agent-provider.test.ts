@@ -9,7 +9,7 @@ import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
 const plan = { summary: "保留主体", captions: [], filter: "warm", intensity: 0.4 };
 const autoCatalog = { fonts: ["Noto Serif CJK SC"], stickers: [{ id: "heart", label: "爱心" }, { id: "sparkle", label: "星芒" }] };
-const autoPlan = { ...plan, priceStyle: "classic", stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker: "heart", width: 0.12, rotationDeg: 0 })) };
+const autoPlan = { ...plan, priceStyle: "classic", stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })) };
 const reply = (content: string) => new Response(JSON.stringify({ choices: [{ message: { content } }] }));
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
@@ -155,8 +155,8 @@ describe("agent provider boundary", () => {
     [JSON.stringify({ ...autoPlan, filter: "invalid" }), "filter 必须为允许的滤镜枚举值"],
     [JSON.stringify({ ...autoPlan, stickers: undefined }), "stickers 必须为最多 4 项的数组"],
     [JSON.stringify({ ...autoPlan, stickers: [{ corner: "secret-content", sticker: "heart" }] }), "贴纸角落必须为四角之一"],
-    [JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "secret-content", width: 0.12, rotationDeg: 0 }] }), "贴纸不在本次候选目录中"],
-    [JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 }, { corner: "top-left", sticker: "sparkle", width: 0.12, rotationDeg: 0 }] }), "贴纸角落不得重复"],
+    [JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "secret-content", width: 0.08, rotationDeg: 0 }] }), "贴纸不在本次候选目录中"],
+    [JSON.stringify({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "heart", width: 0.08, rotationDeg: 0 }, { corner: "top-left", sticker: "sparkle", width: 0.08, rotationDeg: 0 }] }), "贴纸角落不得重复"],
     [JSON.stringify({ ...autoPlan, "secret-content": "private-value" }), "方案包含未允许的字段"],
   ])("reports a safe actionable reason without retrying: %s", async (response, reason) => {
     const complete = vi.fn().mockResolvedValue(response);
@@ -229,17 +229,17 @@ describe("agent provider boundary", () => {
       expect(system).not.toContain('"id":"black-gold"');
       expect(system).not.toContain("本条视觉探索方向");
       expect(system).toContain('"filters":["none","warm","cool","mono","vivid"]');
-      expect(system).toContain('"maxStickerWidth":0.2');
+      expect(system).toContain('"maxStickerWidth":0.1');
     }
   });
 
   it("lets the agent choose filter and geometry independently of every manual preset", () => {
-    const raw = { ...autoPlan, filter: "none", intensity: 0, stickers: [{ corner: "top-right", sticker: "heart", width: 0.17, rotationDeg: -11 }, ...autoPlan.stickers.filter(s => s.corner !== "top-right").map(s => ({ ...s, width: 0.1 }))] };
+    const raw = { ...autoPlan, filter: "none", intensity: 0, stickers: [{ corner: "top-right", sticker: "heart", width: 0.1, rotationDeg: -11 }, ...autoPlan.stickers.filter(s => s.corner !== "top-right").map(s => ({ ...s, width: 0.08 }))] };
     for (const rule of RULE_TEMPLATES) {
       const template = materializePlan(raw, rule.id, { width: 640, height: 480 }, stickerAssets, { mode: "agent", productPrice: "19.90" }, autoCatalog);
       expect(template.filter).toEqual({ presetId: "none", intensity: 0 });
-      expect(template.layers[0]).toMatchObject({ width: 0.17, rotationDeg: -11, y: 0.04 });
-      expect(template.layers[0].x).toBeCloseTo(0.79);
+      expect(template.layers[0]).toMatchObject({ width: 0.1, rotationDeg: -11, y: 0.015 });
+      expect(template.layers[0].x).toBeCloseTo(0.885);
       expect(template.name).not.toBe(rule.name);
       expect(template.layers[4]).toMatchObject({ content: "¥ 19.90" });
     }
@@ -247,10 +247,10 @@ describe("agent provider boundary", () => {
   });
 
   it("rejects missing or unsafe agent geometry instead of supplying a preset", () => {
-    for (const geometry of [{}, { width: 0.21, rotationDeg: 0 }, { width: 0, rotationDeg: 0 }, { width: 0.12, rotationDeg: 16 }]) {
+    for (const geometry of [{}, { width: 0.101, rotationDeg: 0 }, { width: 0, rotationDeg: 0 }, { width: 0.08, rotationDeg: 16 }]) {
       expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "top-left", sticker: "heart", ...geometry }, ...autoPlan.stickers.slice(1)] }, "black-gold", autoCatalog)).toThrow(/width|rotationDeg/);
     }
-    expect(() => materializePlan({ ...autoPlan, stickers: autoPlan.stickers.map(sticker => ({ ...sticker, width: 0.2 })) }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent" }, autoCatalog)).toThrow("贴纸总面积");
+    expect(() => materializePlan({ ...autoPlan, stickers: autoPlan.stickers.map(sticker => ({ ...sticker, width: 0.1 })) }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent" }, autoCatalog)).toThrow("贴纸总面积");
   });
 
   it("cycles small catalogs for larger batches, handles single outputs and rejects empty catalogs", async () => {
@@ -299,7 +299,7 @@ describe("agent provider boundary", () => {
     const body = JSON.parse(request.mock.calls[0][1].body);
     expect(body.messages[1].content).toContainEqual({ type: "image_url", image_url: { url: preview, detail: "low" } });
     expect(JSON.stringify(body)).toContain("贴纸候选 1");
-    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "local-limited-discount", width: 0.12, rotationDeg: 0 }] }, "black-gold", { fonts: [], stickers: [{ id: "local-limited-discount", label: "限时折扣" }] })).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "local-limited-discount", width: 0.08, rotationDeg: 0 }] }, "black-gold", { fonts: [], stickers: [{ id: "local-limited-discount", label: "限时折扣" }] })).toThrow();
   });
   it("removes template sticker bias from automatic briefs and plans", async () => {
     const request = vi.fn().mockResolvedValueOnce(reply("按画面留白选择贴纸")).mockResolvedValueOnce(reply(JSON.stringify(autoPlan)));
@@ -347,8 +347,8 @@ describe("agent provider boundary", () => {
     expect(() => validatePlan({ ...plan, captions: undefined }, "black-gold")).toThrow();
     expect(validatePlan(autoPlan, "black-gold", autoCatalog)).toMatchObject(autoPlan);
     expect(() => validatePlan({ ...autoPlan, stickers: undefined }, "black-gold", autoCatalog)).toThrow();
-    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "unknown", width: 0.12, rotationDeg: 0 }] }, "black-gold", autoCatalog)).toThrow();
-    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 }, { corner: "bottom-right", sticker: "sparkle", width: 0.12, rotationDeg: 0 }] }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "unknown", width: 0.08, rotationDeg: 0 }] }, "black-gold", autoCatalog)).toThrow();
+    expect(() => validatePlan({ ...autoPlan, stickers: [{ corner: "bottom-right", sticker: "heart", width: 0.08, rotationDeg: 0 }, { corner: "bottom-right", sticker: "sparkle", width: 0.08, rotationDeg: 0 }] }, "black-gold", autoCatalog)).toThrow();
   });
 
   it("materializes only the local center price using the default font", () => {

@@ -81,7 +81,7 @@ describe("real FFmpeg proof render", () => {
     const stream = probe.streams?.find((item) => item.codec_type === "video")!;
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: path.basename(sourcePath), fingerprint: "fixture", sizeBytes: 1, durationMs: Math.round(Number(probe.format?.duration ?? 1) * 1_000), width: stream.width!, height: stream.height!, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     const template = materializePlan({ summary: "价格与贴纸", captions: [], filter: "warm", intensity: 0.4 }, "black-gold", media, await ensureBuiltinStickerAssets(path.join(directory, "assets")), { productPrice: "19.9元2件", sticker: "none" });
-    template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: stickerPath, assetFingerprint: "fixture", x: 0.76, y: 0.8, width: 0.2, rotationDeg: 7, opacity: 0.8, zIndex: 3, visible: true });
+    template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: stickerPath, assetFingerprint: "fixture", x: 0.885, y: 0.88, width: 0.1, rotationDeg: 7, opacity: 0.8, zIndex: 3, visible: true });
     template.filter = { presetId: "warm", intensity: 0.6 };
     const compiler = new TemplateCompiler();
     const compiled = await compiler.compile(template, media, DEFAULT_PRESET, { ffmpegPath, fontResolver: { resolve: resolveFont }, textFilePath: (id) => path.join(directory, `${id}.txt`) });

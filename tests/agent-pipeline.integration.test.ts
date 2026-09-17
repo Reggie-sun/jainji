@@ -44,7 +44,7 @@ describe("agent to local export", () => {
             { corner: "top-left", sticker: butterfly.id, width: 0.08, rotationDeg: 0 },
             { corner: "top-right", sticker: butterfly.id, width: 0.08, rotationDeg: 0 },
             { corner: "bottom-left", sticker: butterfly.id, width: 0.08, rotationDeg: 0 },
-            { corner: "bottom-right", sticker: butterfly.id, width: 0.17, rotationDeg: -11 },
+            { corner: "bottom-right", sticker: butterfly.id, width: 0.1, rotationDeg: -11 },
           ] } : {}) };
         response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
       });
@@ -118,7 +118,7 @@ describe("agent to local export", () => {
       if (mode === "agent") expect(new Set(batches.map(({ batch }) => JSON.stringify(batch.templateSnapshot.layers.find(layer => layer.type === "text")?.color))).size).toBe(4);
       if (mode === "agent") for (const { batch } of batches) {
         expect(batch.templateSnapshot.filter).toEqual({ presetId: "none", intensity: 0 });
-        expect(batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.width === 0.17 && layer.rotationDeg === -11)).toBe(true);
+        expect(batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.width === 0.1 && layer.rotationDeg === -11)).toBe(true);
       }
       for (const { batch } of batches) {
         expect(batch.templateSnapshot.layers.find((layer) => layer.type === "text")).toMatchObject({ content: "¥ 19.90", fontFamily: DEFAULT_TEXT_FONT_FAMILY });

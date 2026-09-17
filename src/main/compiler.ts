@@ -2,7 +2,7 @@ import path from "node:path";
 import { outputDimensions } from "../shared/export-settings.js";
 import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
-import { CORNER_SAFE_POLICY, nearestStickerCorner } from "../shared/layout-policy.js";
+import { getCornerSafePolicy, nearestStickerCorner } from "../shared/layout-policy.js";
 import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
 import { coverMotionExpression, coverRasterExpressions } from "./cover-motion.js";
 
@@ -99,6 +99,7 @@ export class TemplateCompiler {
     let baseLabel = "base0";
     const graph: string[] = [];
     const dimensions = outputDimensions(media, preset);
+    const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
     const sourceFilters = ["setpts=PTS-STARTPTS", outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
 
@@ -187,11 +188,10 @@ export class TemplateCompiler {
         continue;
       }
       const angle = (Math.PI * layer.rotationDeg / 180).toFixed(6);
-      const governed = template.layoutPolicy === CORNER_SAFE_POLICY.id;
       const corner = nearestStickerCorner(layer);
       const stickerWidth = Math.max(1, Math.round(dimensions.width * layer.width));
-      const stickerScale = governed
-        ? `${stickerWidth}:${Math.max(1, Math.round(dimensions.height * CORNER_SAFE_POLICY.maxStickerHeight))}:force_original_aspect_ratio=decrease`
+      const stickerScale = layoutPolicy
+        ? `${stickerWidth}:${Math.max(1, Math.round(dimensions.height * layoutPolicy.maxStickerHeight))}:force_original_aspect_ratio=decrease`
         : `${stickerWidth}:-1`;
       const radians = Math.PI * layer.rotationDeg / 180;
       // Keep twice the final rotated width for smooth edges, without enlarging small inputs.
@@ -206,15 +206,15 @@ export class TemplateCompiler {
         `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=PTS-STARTPTS[${sourceLabel}]`,
       );
       graph.push(`[${sourceLabel}]null[${scaledLabel}]`);
-      const overlayX = governed
+      const overlayX = layoutPolicy
         ? corner.horizontal === "right"
-          ? `main_w-overlay_w-main_w*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
-          : `main_w*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
+          ? `main_w-overlay_w-main_w*${layoutPolicy.cornerMargin.toFixed(5)}`
+          : `main_w*${layoutPolicy.cornerMargin.toFixed(5)}`
         : `main_w*${layer.x.toFixed(5)}`;
-      const overlayY = governed
+      const overlayY = layoutPolicy
         ? corner.vertical === "bottom"
-          ? `main_h-overlay_h-main_h*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
-          : `main_h*${CORNER_SAFE_POLICY.cornerMargin.toFixed(5)}`
+          ? `main_h-overlay_h-main_h*${layoutPolicy.cornerMargin.toFixed(5)}`
+          : `main_h*${layoutPolicy.cornerMargin.toFixed(5)}`
         : `main_h*${layer.y.toFixed(5)}`;
       const enabled = layer.activeRanges ? `:enable='${layer.activeRanges.map(range => `gte(t,${range.startMs / 1000})*lt(t,${range.endMs / 1000})`).join("+")}'` : "";
       graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=${overlayX}:y=${overlayY}${enabled}:format=auto[${nextLabel}]`);

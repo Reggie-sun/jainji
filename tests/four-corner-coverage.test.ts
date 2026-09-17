@@ -11,7 +11,7 @@ const asset = { assetPath: "/tmp/heart.png", assetFingerprint: "heart" };
 const assets = { heart: asset, sparkle: asset, arrow: asset, burst: asset };
 const catalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
 const plan = { summary: "四角包装", captions: [], filter: "none" as const, intensity: 0, priceStyle: "classic" as const,
-  stickers: corners.map(corner => ({ corner, sticker: "heart", width: 0.12, rotationDeg: 0 })) };
+  stickers: corners.map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })) };
 const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4", displayName: "source", fingerprint: "source", sizeBytes: 1,
   durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
 const rectangle = { x: 0, y: 0, width: 0.12, height: 0.1 };
@@ -52,7 +52,7 @@ describe("automatic four-corner coverage", () => {
   });
   it("fills all four corners without invoking recognition when coverage is disabled", async () => {
     const { template, detect } = await produce();
-    expect(decorations(template).map(l => [l.x, l.y])).toEqual([[0.04,0.04],[0.84,0.04],[0.04,0.8],[0.84,0.8]]);
+    expect(decorations(template).map(l => [l.x, l.y])).toEqual([[0.015,0.015],[0.905,0.015],[0.015,0.88],[0.905,0.88]]);
     expect(detect).not.toHaveBeenCalled();
   });
   it("keeps four decorations when enabled recognition finds no originals", async () => {
@@ -90,10 +90,10 @@ describe("automatic four-corner coverage", () => {
     expect(ordinary[2]).toHaveProperty("activeRanges");
     const top = ordinary[0] as StickerLayer & { activeRanges: { startMs: number; endMs: number }[] };
     const bottom = ordinary[2] as typeof top;
-    expect(top.activeRanges[0].startMs).toBeCloseTo(1000 * 0.2 / 0.9);
+    expect(top.activeRanges[0].startMs).toBeCloseTo(1000 * 0.115 / 0.9);
     expect(top.activeRanges[0].endMs).toBe(1000);
     expect(bottom.activeRanges[0].startMs).toBe(0);
-    expect(bottom.activeRanges[0].endMs).toBeCloseTo(1000 * 0.7 / 0.9);
+    expect(bottom.activeRanges[0].endMs).toBeCloseTo(1000 * 0.785 / 0.9);
   });
   it.each([
     [{ x: 0.04, y: 0.75, width: 0.12, height: 0.2 }, [2]],

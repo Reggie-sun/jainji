@@ -62,10 +62,10 @@ describe("uploaded stickers", () => {
     expect(isAutomaticStickerAllowed(imported.id)).toBe(false);
     expect(DecorationSchema.parse({ mode: "agent", sticker: imported.id }).sticker).toBe("template");
     const automatic = { summary: "选择用户上传贴纸", captions: [], priceStyle: "classic", stickers: [
-      { corner: "top-left", sticker: imported.id, width: 0.12, rotationDeg: 0 },
-      { corner: "top-right", sticker: imported.id, width: 0.12, rotationDeg: 0 },
-      { corner: "bottom-left", sticker: imported.id, width: 0.12, rotationDeg: 0 },
-      { corner: "bottom-right", sticker: imported.id, width: 0.12, rotationDeg: 0 },
+      { corner: "top-left", sticker: imported.id, width: 0.08, rotationDeg: 0 },
+      { corner: "top-right", sticker: imported.id, width: 0.08, rotationDeg: 0 },
+      { corner: "bottom-left", sticker: imported.id, width: 0.08, rotationDeg: 0 },
+      { corner: "bottom-right", sticker: imported.id, width: 0.08, rotationDeg: 0 },
     ], filter: "warm", intensity: 0.4 };
     const automaticLayers = materializePlan(automatic, "black-gold", { width: 720, height: 1280 }, assets, { mode: "agent", productPrice: "19.90" }, { fonts: [], stickers: [{ id: imported.id, label: "用户上传" }] }).layers;
     expect(automaticLayers.filter((layer) => layer.type === "sticker")).toHaveLength(4);

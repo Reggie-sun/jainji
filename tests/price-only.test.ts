@@ -17,10 +17,10 @@ const options = { productPrice: "19.9元30贴", sticker: "none" };
 const dimensions = { width: 720, height: 1280 };
 const automaticAssets: StickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) as StickerAssets;
 const automaticHeartStickers = () => [
-  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
 ];
 const automaticCatalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
 const automaticPlan = (priceStyle = "classic") => ({ ...plan, stickers: automaticHeartStickers(), priceStyle });

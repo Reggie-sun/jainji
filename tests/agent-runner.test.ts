@@ -16,10 +16,10 @@ function plan(summary: string): PackagingPlan {
 }
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 const automaticHeartStickers = () => [
-  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
 ];
 
 describe("agent run lifecycle", () => {

@@ -10,7 +10,7 @@ describe("selected decorations", () => {
   it("uses selected stickers and never materializes decorative text", () => {
     const template = materializePlan(plan, "black-gold", { width: 720, height: 1280 }, assets, { sticker: "heart", productPrice: "19.90" });
     expect(template.layers).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "sticker", assetPath: "/tmp/heart.png", width: 0.12, y: 0.8 }),
+      expect.objectContaining({ type: "sticker", assetPath: "/tmp/heart.png", width: 0.08, y: 0.88 }),
       expect.objectContaining({ type: "text", content: "¥ 19.90", textAlign: "center" }),
     ]));
     expect(template.layers.filter((layer) => layer.type === "text")).toHaveLength(1);
@@ -34,6 +34,14 @@ describe("selected decorations", () => {
     expect(template.layers).toHaveLength(3);
     expect(template.layers.every((layer) => layer.type === "sticker")).toBe(true);
     expect(template.layers.map((layer) => layer.type === "sticker" && layer.assetPath)).toEqual(["/tmp/heart.png", "/tmp/arrow.png", "/tmp/burst.png"]);
+  });
+
+  it("keeps four manual stickers inside the compact layout budget", () => {
+    const template = materializePlan({ summary: "测试", captions: [], filter: "vivid", intensity: 0.55 }, "electric", { width: 720, height: 1280 }, assets, DecorationSchema.parse({
+      corners: Object.fromEntries(["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => [corner, { type: "sticker", sticker: "burst" }])),
+    }));
+    expect(template.layers).toHaveLength(4);
+    expect(template.layers.every((layer) => layer.type === "sticker" && layer.width === 0.08)).toBe(true);
   });
 
   it("rejects manual corner text and invalid sticker choices", () => {

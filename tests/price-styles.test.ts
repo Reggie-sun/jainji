@@ -12,10 +12,10 @@ const plan = { summary: "手动价格", captions: [], filter: "warm", intensity:
 const sticker = { assetPath: "/tmp/sticker.png", assetFingerprint: "fixture" };
 const assets: StickerAssets = { sparkle: sticker, arrow: sticker, heart: sticker, burst: sticker };
 const automaticHeartStickers = () => [
-  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
 ];
 const automaticCatalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
 

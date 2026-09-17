@@ -1,4 +1,4 @@
-export const CORNER_SAFE_POLICY = {
+export const LEGACY_CORNER_SAFE_POLICY = {
   id: "corner-safe-v1" as const,
   cornerInset: 0.08,
   cornerMargin: 0.04,
@@ -8,6 +8,26 @@ export const CORNER_SAFE_POLICY = {
   maxStickerRotation: 15,
   maxTotalStickerAreaProxy: 0.08,
 };
+
+export const CORNER_SAFE_POLICY = {
+  id: "corner-safe-v2" as const,
+  cornerInset: 0.03,
+  cornerMargin: 0.015,
+  bottomCornerStart: 0.88,
+  maxStickerWidth: 0.1,
+  maxStickerHeight: 0.1,
+  maxStickerRotation: 15,
+  maxTotalStickerAreaProxy: 0.03,
+};
+
+export type CornerSafePolicy = typeof LEGACY_CORNER_SAFE_POLICY | typeof CORNER_SAFE_POLICY;
+export type CornerSafePolicyId = CornerSafePolicy["id"];
+
+export function getCornerSafePolicy(id: CornerSafePolicyId | undefined): CornerSafePolicy | undefined {
+  if (id === LEGACY_CORNER_SAFE_POLICY.id) return LEGACY_CORNER_SAFE_POLICY;
+  if (id === CORNER_SAFE_POLICY.id) return CORNER_SAFE_POLICY;
+  return undefined;
+}
 
 export interface CornerSafeSticker {
   x: number;
@@ -24,32 +44,32 @@ export function nearestStickerCorner(layer: Pick<CornerSafeSticker, "x" | "y" | 
   };
 }
 
-export function isCornerAnchored(layer: CornerSafeSticker): boolean {
-  const left = layer.x <= CORNER_SAFE_POLICY.cornerInset;
-  const right = layer.x + layer.width >= 1 - CORNER_SAFE_POLICY.cornerInset;
-  const top = layer.y <= CORNER_SAFE_POLICY.cornerInset;
-  const bottom = layer.y >= CORNER_SAFE_POLICY.bottomCornerStart;
+export function isCornerAnchored(layer: CornerSafeSticker, policy: CornerSafePolicy = CORNER_SAFE_POLICY): boolean {
+  const left = layer.x <= policy.cornerInset;
+  const right = layer.x + layer.width >= 1 - policy.cornerInset;
+  const top = layer.y <= policy.cornerInset;
+  const bottom = layer.y >= policy.bottomCornerStart;
   return (left || right) && (top || bottom);
 }
 
-export function cornerSafeStickerIssues(layer: CornerSafeSticker): string[] {
+export function cornerSafeStickerIssues(layer: CornerSafeSticker, policy: CornerSafePolicy = CORNER_SAFE_POLICY): string[] {
   if (!layer.visible) return [];
   const issues: string[] = [];
-  if (layer.width > CORNER_SAFE_POLICY.maxStickerWidth) issues.push("贴纸宽度不得超过画面的 20%");
-  if (!isCornerAnchored(layer)) issues.push("贴纸必须放在画面四角之一");
-  if (Math.abs(layer.rotationDeg) > CORNER_SAFE_POLICY.maxStickerRotation) issues.push("贴纸旋转不得超过 15°");
+  if (layer.width > policy.maxStickerWidth) issues.push(`贴纸宽度不得超过画面的 ${policy.maxStickerWidth * 100}%`);
+  if (!isCornerAnchored(layer, policy)) issues.push("贴纸必须贴近画面四角之一");
+  if (Math.abs(layer.rotationDeg) > policy.maxStickerRotation) issues.push(`贴纸旋转不得超过 ${policy.maxStickerRotation}°`);
   return issues;
 }
 
-export function snapStickerToCorner<T extends CornerSafeSticker>(layer: T): T {
-  const width = Math.min(layer.width, CORNER_SAFE_POLICY.maxStickerWidth);
+export function snapStickerToCorner<T extends CornerSafeSticker>(layer: T, policy: CornerSafePolicy = CORNER_SAFE_POLICY): T {
+  const width = Math.min(layer.width, policy.maxStickerWidth);
   const corner = nearestStickerCorner(layer);
   return {
     ...layer,
     width,
-    x: corner.horizontal === "right" ? Number((1 - CORNER_SAFE_POLICY.cornerMargin - width).toFixed(6)) : CORNER_SAFE_POLICY.cornerMargin,
-    y: corner.vertical === "bottom" ? CORNER_SAFE_POLICY.bottomCornerStart : CORNER_SAFE_POLICY.cornerMargin,
-    rotationDeg: Math.max(-CORNER_SAFE_POLICY.maxStickerRotation, Math.min(CORNER_SAFE_POLICY.maxStickerRotation, layer.rotationDeg)),
+    x: corner.horizontal === "right" ? Number((1 - policy.cornerMargin - width).toFixed(6)) : policy.cornerMargin,
+    y: corner.vertical === "bottom" ? policy.bottomCornerStart : policy.cornerMargin,
+    rotationDeg: Math.max(-policy.maxStickerRotation, Math.min(policy.maxStickerRotation, layer.rotationDeg)),
   };
 }
 
@@ -87,6 +107,7 @@ interface StickerPreviewGeometryInput {
   frameHeight: number;
   sourceWidth: number;
   sourceHeight: number;
+  policy?: CornerSafePolicy;
 }
 
 export interface StickerPreviewGeometry {
@@ -99,20 +120,21 @@ export interface StickerPreviewGeometry {
 }
 
 export function constrainedStickerPreviewGeometry(input: StickerPreviewGeometryInput): StickerPreviewGeometry {
+  const policy = input.policy ?? CORNER_SAFE_POLICY;
   const angle = Math.abs(input.layer.rotationDeg) * Math.PI / 180;
   const cosine = Math.abs(Math.cos(angle));
   const sine = Math.abs(Math.sin(angle));
   const rotatedWidth = input.sourceWidth * cosine + input.sourceHeight * sine;
   const rotatedHeight = input.sourceHeight * cosine + input.sourceWidth * sine;
-  const maxWidth = input.frameWidth * Math.min(input.layer.width, CORNER_SAFE_POLICY.maxStickerWidth);
-  const maxHeight = input.frameHeight * CORNER_SAFE_POLICY.maxStickerHeight;
+  const maxWidth = input.frameWidth * Math.min(input.layer.width, policy.maxStickerWidth);
+  const maxHeight = input.frameHeight * policy.maxStickerHeight;
   const scale = Math.min(maxWidth / rotatedWidth, maxHeight / rotatedHeight);
   const width = rotatedWidth * scale / input.frameWidth;
   const height = rotatedHeight * scale / input.frameHeight;
   const corner = nearestStickerCorner(input.layer);
   return {
-    x: corner.horizontal === "right" ? 1 - CORNER_SAFE_POLICY.cornerMargin - width : CORNER_SAFE_POLICY.cornerMargin,
-    y: corner.vertical === "bottom" ? 1 - CORNER_SAFE_POLICY.cornerMargin - height : CORNER_SAFE_POLICY.cornerMargin,
+    x: corner.horizontal === "right" ? 1 - policy.cornerMargin - width : policy.cornerMargin,
+    y: corner.vertical === "bottom" ? 1 - policy.cornerMargin - height : policy.cornerMargin,
     width,
     height,
     imageWidth: input.sourceWidth * scale / input.frameWidth,

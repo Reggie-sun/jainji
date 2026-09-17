@@ -12,10 +12,10 @@ const rect = { x: 0.1, y: 0.1, width: 0.1, height: 0.1 };
 const asset = { assetPath: "/tmp/cover.png", assetFingerprint: "fixture" };
 const assets = { sparkle: asset, heart: asset, burst: asset, arrow: asset, [id]: asset };
 const automaticHeartStickers = () => [
-  { corner: "top-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "top-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-left", sticker: "heart", width: 0.12, rotationDeg: 0 },
-  { corner: "bottom-right", sticker: "heart", width: 0.12, rotationDeg: 0 },
+  { corner: "top-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "top-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-left", sticker: "heart", width: 0.08, rotationDeg: 0 },
+  { corner: "bottom-right", sticker: "heart", width: 0.08, rotationDeg: 0 },
 ];
 const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/video.mp4", displayName: "video", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
 const observations = [0, 250, 500, 750].map((timeMs) => ({ timeMs, targets: [
