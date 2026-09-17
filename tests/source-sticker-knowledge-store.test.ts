@@ -188,6 +188,32 @@ describe("durable source sticker knowledge", () => {
     expect((await store.collect(0)).removed).toEqual([]);
     expect((await store.lookup(source, ranges)).status).toBe("disputed");
   });
+  it("finishes all queued counterevidence accepted before cancellation, without admitting late reports", async () => {
+    const controller = new AbortController(); let cancel = false;
+    const { store, source } = await fixture({ fault: (at) => { if (cancel && at === "after_marker") controller.abort(); } });
+    const initial = await prepare(store, source); const revision = await publish(store, initial);
+    const p = await prepare(store, source, revision.id, 3000, controller.signal); cancel = true;
+    const dispute = { schemaVersion: 1 as const, revisionId: revision.id, ranges, kind: "missing_target" as const, reason: "observed contradiction", evidence: p.candidate.evidence.filter((e) => e.kind === "source"), at: new Date().toISOString() };
+    await expect(Promise.all([store.recordDispute(p.run, { ...dispute, id: "one" }, p.blobs), store.recordDispute(p.run, { ...dispute, id: "two" }, p.blobs)])).resolves.toEqual([undefined, undefined]);
+    const found = await store.lookup(source, ranges);
+    expect(found.status).toBe("disputed");
+    if (found.status === "disputed") expect(found.disputeIds).toEqual(["one", "two"]);
+    await expect(store.recordDispute(p.run, { ...dispute, id: "late" }, p.blobs)).rejects.toMatchObject({ code: "cancelled" });
+  });
+  it.each(["close", "collect"])("protects accepted counterevidence while %s races its queued write", async (race) => {
+    const { store, source, directory } = await fixture();
+    const initial = await prepare(store, source); const revision = await publish(store, initial); await store.endRun(initial.run);
+    const controller = new AbortController(), p = await prepare(store, source, revision.id, 3000, controller.signal);
+    const collection = race === "collect" ? store.collect(0) : undefined;
+    const saving = store.recordDispute(p.run, { schemaVersion: 1, id: "dispute", revisionId: revision.id, ranges, kind: "missing_target", reason: "observed contradiction", evidence: p.candidate.evidence.filter(e => e.kind === "source"), at: new Date().toISOString() }, p.blobs);
+    controller.abort();
+    const closing = race === "close" ? store.close() : undefined;
+    await expect(saving).resolves.toBeUndefined();
+    if (collection) expect((await collection).removed).toEqual([]);
+    await closing; await store.close();
+    const reopened = await SourceStickerKnowledgeStore.open(directory); stores.push(reopened);
+    expect((await reopened.lookup(source, ranges)).status).toBe("disputed");
+  });
 
   it("requires actual fact correction to resolve a dispute, then retains immutable history", async () => {
     const { store, source } = await fixture(); const first = await publish(store, await prepare(store, source));

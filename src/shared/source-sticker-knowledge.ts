@@ -139,6 +139,25 @@ export const KnowledgeDisputeSchema = z.object({
 }).strict();
 export type SourceIdentity = z.infer<typeof SourceIdentitySchema>;
 export type SourceFacts = z.infer<typeof SourceFactsSchema>;
+/** Compare the actual piecewise source geometry in a problem's scope, not redundant
+ * keyframe encodings, evidence labels or sampling metadata. */
+export function sourceGeometryChanged(before: SourceFacts, after: SourceFacts, ranges: readonly ReviewedRange[], targetId?: string): boolean {
+  const targets = (facts: SourceFacts) => facts.targets.filter((target) => !targetId || target.id === targetId);
+  const times = new Set(ranges.flatMap((range) => [range.startMs, range.endMs]));
+  for (const facts of [before, after]) for (const target of targets(facts)) for (const { track } of target.segments) {
+    for (const time of [track.startMs, track.endMs, ...track.keyframes.map((frame) => frame.timeMs)]) if (ranges.some((range) => time >= range.startMs && time <= range.endMs)) times.add(time);
+  }
+  const points = [...times].sort((a, b) => a - b);
+  const samples = [...points, ...points.slice(1).map((point, i) => (point + points[i]) / 2)].filter((time) => ranges.some((range) => time >= range.startMs && time < range.endMs));
+  const at = (facts: SourceFacts, time: number) => new Map(targets(facts).flatMap((target) => {
+    const segment = target.segments.find(({ track }) => time >= track.startMs && time < track.endMs);
+    return segment ? [[target.id, interpolateCoverRectangle(segment.track.keyframes, time)] as const] : [];
+  }));
+  return samples.some((time) => {
+    const a = at(before, time), b = at(after, time);
+    return a.size !== b.size || [...a].some(([id, rectangle]) => !b.has(id) || (["x", "y", "width", "height"] as const).some((key) => Math.abs(rectangle[key] - b.get(id)![key]) > 1e-9));
+  });
+}
 export type KnowledgeEvidence = z.infer<typeof KnowledgeEvidenceSchema>;
 export type KnowledgeCandidate = z.infer<typeof KnowledgeCandidateSchema>;
 export type KnowledgePublicationProof = z.infer<typeof KnowledgePublicationProofSchema>;

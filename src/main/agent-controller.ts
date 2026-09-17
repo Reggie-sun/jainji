@@ -188,26 +188,27 @@ export class AgentController {
         } : undefined,
         detectCoverTracks: async (item, signal, onStage) => {
           if (assisted) return assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.disposition === "no_cover" ? [] : assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.segments.map((segment) => ({ targetId: segment.id, track: segment.track }));
-          const evidence = new SupervisorEvidence(this.ffmpeg, item);
-          try {
-            return await recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => detectCollaborativeCovers(images, previous, currentSignal,
+          return recognizeAutomaticCovers(this.ffmpeg, item, async (images, previous, currentSignal) => {
+            // Recognition's budget belongs to a window, not the entire source video.
+            const evidence = new SupervisorEvidence(this.ffmpeg, item);
+            try { return await detectCollaborativeCovers(images, previous, currentSignal,
               (frames, requestSignal) => this.visionProvider.detectCovers(frames, undefined, requestSignal),
               (context, requestSignal) => this.reviewerProvider.superviseRecognition(context, requestSignal),
               (requests, requestSignal) => evidence.inspect(requests, requestSignal),
-              stage => onStage(`${stage} · ${(images[0].timeMs / 1000).toFixed(2)}–${(images.at(-1)!.timeMs / 1000).toFixed(2)} 秒`)),
-            signal, decorations.displayMode === "first-3s" ? Math.min(3000, item.durationMs) : item.durationMs);
-          } finally { await evidence.dispose(); }
+              stage => onStage(`${stage} · ${(images[0].timeMs / 1000).toFixed(2)}–${(images.at(-1)!.timeMs / 1000).toFixed(2)} 秒`));
+            } finally { await evidence.dispose(); }
+          }, signal, decorations.displayMode === "first-3s" ? Math.min(3000, item.durationMs) : item.durationMs);
         },
         supervise: supervised ? async (template, item, tracks, rebuild, signal, onStage) => {
           const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-preview-"));
           const evidence = new SupervisorEvidence(this.ffmpeg, item);
           try {
-            return await superviseRenderedTemplate({ template, tracks, durationMs: item.durationMs,
+            return (await superviseRenderedTemplate({ template, tracks, durationMs: item.durationMs,
               coverEnabled: Boolean(automaticCover), automaticCorners: decorations.mode === "agent", signal, rebuild, onStage,
               render: (candidate, requestSignal) => this.queue.renderPreview({ template: candidate, media: item, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container }, cacheDirectory: directory, signal: requestSignal }),
               inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
               review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
-            });
+            })).template;
           } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
         } : undefined,
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,

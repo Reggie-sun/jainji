@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultTemplate } from "../src/main/domain";
-import { superviseRenderedTemplate } from "../src/main/supervised-preview";
+import { superviseRenderedTemplate, PreviewReviewSession } from "../src/main/supervised-preview";
 
 const pass = JSON.stringify({ action: "pass", reason: "检查通过" });
 const revise = JSON.stringify({ action: "revise", reason: "原贴纸被漏检", tracks: [{ targetId: "a", track: { startMs: 0, endMs: 3000, keyframes: [{ timeMs: 0, rectangle: { x: 0.8, y: 0.8, width: 0.1, height: 0.1 } }] } }] });
@@ -23,7 +23,7 @@ describe("rendered supervisor loop", () => {
     await expect(superviseRenderedTemplate(blocked)).rejects.toThrow("上限");
     expect(blocked.render).toHaveBeenCalledOnce();
     const repaired = fixture(); repaired.review.mockResolvedValueOnce(malformedRevision).mockResolvedValueOnce(pass).mockResolvedValueOnce(revise).mockResolvedValueOnce(pass);
-    await expect(superviseRenderedTemplate(repaired)).resolves.toMatchObject({ version: 2 });
+    await expect(superviseRenderedTemplate(repaired)).resolves.toMatchObject({ template: { version: 2 } });
     expect(repaired.render).toHaveBeenCalledTimes(2);
     expect(repaired.review.mock.calls[1][0].history[0]).toMatchObject({ action: "revise", reason: "左下缺角" });
   });
@@ -48,7 +48,7 @@ describe("rendered supervisor loop", () => {
     expect(input.render).toHaveBeenCalledTimes(2);
     expect(input.rebuild).toHaveBeenCalledOnce();
     expect(input.review.mock.calls[1][0].evidence.every((image: { previewUrl: string }) => image.previewUrl === "preview-1")).toBe(true);
-    expect(result.version).toBe(2);
+    expect(result.template.version).toBe(2);
     expect(input.review.mock.calls[0][0]).toMatchObject({ durationMs: 5000, trackHorizonMs: 3000, remainingRevisions: 2 });
     expect(input.review.mock.calls[1][0].remainingRevisions).toBe(1);
     expect(input.inspect.mock.calls[0][0].map(request => request.timeMs)).toEqual(expect.arrayContaining([2500, 2750, 3100]));
@@ -83,5 +83,32 @@ describe("rendered supervisor loop", () => {
     input.review.mockImplementation(async () => { controller.abort(); return revise; });
     await expect(superviseRenderedTemplate(input)).rejects.toThrow();
     expect(input.rebuild).not.toHaveBeenCalled();
+  });
+
+  it("returns checked scope, source tracks, history and cumulative counts without enqueuing", async () => {
+    const input = fixture(); input.review.mockResolvedValueOnce(revise).mockResolvedValueOnce(pass);
+    const result = await superviseRenderedTemplate(input);
+    expect(result).toMatchObject({ checkedRanges: [{ startMs: 0, endMs: 3000 }], budget: { turns: 2, revisions: 1, renders: 2 }, tracks: [{ targetId: "a" }] });
+    expect(result.history[0]).toMatchObject({ action: "revise", applied: true });
+    expect(result.knowledge).toBeUndefined();
+  });
+
+  it("shares a version's original five-turn budget across calls, including failures", async () => {
+    const session = new PreviewReviewSession(); const input = fixture();
+    input.review.mockRejectedValueOnce(new Error("network"));
+    await expect(superviseRenderedTemplate({ ...input, session })).rejects.toThrow("network");
+    expect(session.snapshot().turns).toBe(1);
+    input.review.mockResolvedValue(pass);
+    for (let i = 0; i < 4; i++) await superviseRenderedTemplate({ ...input, session });
+    expect(input.review).toHaveBeenCalledTimes(5);
+    await expect(superviseRenderedTemplate({ ...input, session })).rejects.toThrow("上限");
+    expect(input.review).toHaveBeenCalledTimes(5);
+  });
+  it("does not transfer a legacy visual repair to a stale template on resume", async () => {
+    const input = fixture(), session = new PreviewReviewSession();
+    input.review.mockResolvedValueOnce(revise).mockRejectedValueOnce(new Error("network"));
+    await expect(superviseRenderedTemplate({ ...input, session })).rejects.toThrow("network");
+    input.review.mockResolvedValue(pass);
+    await expect(superviseRenderedTemplate({ ...input, session })).rejects.toThrow("上限");
   });
 });

@@ -5,11 +5,10 @@ import path from "node:path";
 import { z } from "zod";
 import {
   KnowledgeCandidateSchema, KnowledgeDisputeSchema, KnowledgePublicationProofSchema, ReviewedRangeSchema,
-  SourceIdentitySchema, coversRanges, type KnowledgeCandidate, type KnowledgeDispute, type KnowledgeEvidence,
+  SourceIdentitySchema, coversRanges, sourceGeometryChanged, type KnowledgeCandidate, type KnowledgeDispute, type KnowledgeEvidence,
   type KnowledgePublicationProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
 } from "../shared/source-sticker-knowledge.js";
 import { fingerprintFile } from "./paths.js";
-import { interpolateCoverRectangle } from "../shared/cover-sticker.js";
 
 const DEFAULT_QUOTA_BYTES = 256 * 1024 * 1024;
 const MAX_RECORD_BYTES = 4 * 1024 * 1024;
@@ -111,27 +110,6 @@ function checkBlobs(evidence: KnowledgeEvidence[], blobs: ReadonlyMap<string, Bu
   return result;
 }
 
-// Compare actual facts in the disputed time/target scope. Renaming evidence, changing
-// sampling metadata or adjusting an unrelated interval cannot clear a known problem.
-function disputedFactsChanged(before: KnowledgeCandidate, after: KnowledgeCandidate, dispute: KnowledgeDispute): boolean {
-  const targets = (candidate: KnowledgeCandidate) => candidate.facts.targets.filter((t) => !dispute.targetId || t.id === dispute.targetId);
-  const times = new Set(dispute.ranges.flatMap((r) => [r.startMs, r.endMs]));
-  for (const candidate of [before, after]) for (const target of targets(candidate)) for (const { track } of target.segments) {
-    for (const time of [track.startMs, track.endMs, ...track.keyframes.map((f) => f.timeMs)]) if (dispute.ranges.some((r) => time >= r.startMs && time <= r.endMs)) times.add(time);
-  }
-  const points = [...times].sort((a, b) => a - b);
-  const samples = [...points, ...points.slice(1).map((point, i) => (point + points[i]) / 2)].filter((time) => dispute.ranges.some((r) => time >= r.startMs && time < r.endMs));
-  const at = (candidate: KnowledgeCandidate, time: number) => new Map(targets(candidate).flatMap((target) => {
-    const segment = target.segments.find((s) => time >= s.track.startMs && time < s.track.endMs);
-    return segment ? [[target.id, interpolateCoverRectangle(segment.track.keyframes, time)] as const] : [];
-  }));
-  for (const time of samples) {
-    const a = at(before, time), b = at(after, time);
-    if (a.size !== b.size || [...a].some(([id, rectangle]) => !b.has(id) || (["x", "y", "width", "height"] as const).some((key) => Math.abs(rectangle[key] - b.get(id)![key]) > 1e-9))) return true;
-  }
-  return false;
-}
-
 /** Single durable owner under userData. The OS-visible lifetime lock rejects shared-profile
  * instances. A crashed/poisoned owner is never automatically stolen: explicit recovery is
  * required. This barrier also survives total write failure during a confirmed dispute.
@@ -140,6 +118,7 @@ function disputedFactsChanged(before: KnowledgeCandidate, after: KnowledgeCandid
 export class SourceStickerKnowledgeStore {
   readonly directory: string;
   private readonly runs = new Map<string, Run>();
+  private readonly pendingDisputes = new Map<string, number>();
   private tail: Promise<unknown> = Promise.resolve();
   private closed = false;
   private closePromise?: Promise<void>;
@@ -172,8 +151,8 @@ export class SourceStickerKnowledgeStore {
     }
   }
 
-  private exclusive<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.tail.then(() => { if (this.closed || this.poisoned) throw new KnowledgeStoreError("integrity", "Knowledge store closed or requires recovery"); return operation(); });
+  private exclusive<T>(operation: () => Promise<T>, acceptedDispute = false): Promise<T> {
+    const result = this.tail.then(() => { if ((this.closed && !acceptedDispute) || this.poisoned) throw new KnowledgeStoreError("integrity", "Knowledge store closed or requires recovery"); return operation(); });
     this.tail = result.catch(() => undefined); return result;
   }
   private sourceDirectory(source: SourceIdentity): string { return path.join(this.directory, "sources", sourceKey(source)); }
@@ -265,7 +244,7 @@ export class SourceStickerKnowledgeStore {
     if (new Set(candidate.resolvedDisputeIds).size !== candidate.resolvedDisputeIds.length || candidate.resolvedDisputeIds.length !== disputes.size || candidate.resolvedDisputeIds.some((id) => !disputes.has(id))) throw new KnowledgeStoreError("conflict", "Unresolved or unknown source dispute");
     if (previous && factsDigest(candidate.facts) !== previous.factsDigest && !candidate.changes.length) throw new KnowledgeStoreError("integrity", "Fact revisions require evidence and reasons");
     for (const dispute of disputes.values()) {
-      if (!previous || !disputedFactsChanged(previous.candidate, candidate, dispute) || !coversRanges(candidate.facts.reviewedRanges, dispute.ranges)
+      if (!previous || !sourceGeometryChanged(previous.candidate.facts, candidate.facts, dispute.ranges, dispute.targetId) || !coversRanges(candidate.facts.reviewedRanges, dispute.ranges)
         || !candidate.changes.some((change) => coversRanges(change.ranges, dispute.ranges) && (!dispute.targetId || change.targetId === dispute.targetId))) throw new KnowledgeStoreError("conflict", "Dispute has no bound fact correction");
     }
   }
@@ -298,13 +277,18 @@ export class SourceStickerKnowledgeStore {
   }
   async recordDispute(token: KnowledgeRun, input: KnowledgeDispute, inputBlobs: ReadonlyMap<string, Buffer>): Promise<void> {
     const dispute = KnowledgeDisputeSchema.parse(input); const blobs = checkBlobs(dispute.evidence, inputBlobs);
+    // Accept confirmed local handoffs before serializing disk work, so one response's
+    // queued counterevidence cannot be lost when cancellation interrupts its first write.
+    if (this.closed || this.poisoned) throw new KnowledgeStoreError("integrity", "Knowledge store closed or requires recovery");
+    const run = this.run(token);
+    const key = sourceKey(run.source);
+    this.pendingDisputes.set(key, (this.pendingDisputes.get(key) ?? 0) + 1);
     return this.exclusive(async () => {
-      const run = this.run(token), loaded = await this.load(run.source);
+      const loaded = await this.load(run.source);
       if (!loaded) throw new KnowledgeStoreError("integrity", "No reviewed source to dispute");
       this.checkDispute(run.source, dispute, loaded.revisions);
       const existing = loaded.disputes.get(dispute.id);
       if (existing) { if (canonical(existing) !== canonical(dispute)) throw new KnowledgeStoreError("conflict"); return; }
-      this.run(token); // Acceptance point: confirmed evidence handoff finishes despite subsequent cancellation.
       try { await this.append(run.source, { schemaVersion: 1, type: "dispute", source: run.source, dispute }, blobs, loaded); }
       catch (e) {
         // Includes failures before append could create its source marker (quota accounting,
@@ -313,6 +297,9 @@ export class SourceStickerKnowledgeStore {
         catch { this.poisoned = true; }
         throw e;
       }
+    }, true).finally(() => {
+      const remaining = this.pendingDisputes.get(key)! - 1;
+      if (remaining) this.pendingDisputes.set(key, remaining); else this.pendingDisputes.delete(key);
     });
   }
 
@@ -423,13 +410,14 @@ export class SourceStickerKnowledgeStore {
           const manifest = ManifestSchema.parse(parseJson(await readSafe(path.join(directory, "manifest.json"))));
           if (sourceKey(manifest.source) !== key) continue;
           const loaded = (await this.load(manifest.source))!;
-          if (loaded.disputes.size || Object.keys(manifest.references).length || [...this.runs.values()].some((r) => !r.ended && !r.signal?.aborted && sourceKey(r.source) === key)) continue;
+          if (this.pendingDisputes.has(key) || loaded.disputes.size || Object.keys(manifest.references).length || [...this.runs.values()].some((r) => !r.ended && !r.signal?.aborted && sourceKey(r.source) === key)) continue;
           candidates.push({ key, loaded });
         } catch { /* Integrity-unknown records are protected, never silently discarded. */ }
       }
       const removed: string[] = []; let bytes = await this.usage();
       for (const { key } of candidates.sort((a, b) => a.loaded.manifest.updatedAt - b.loaded.manifest.updatedAt)) {
         if (bytes <= targetBytes) break;
+        if (this.pendingDisputes.has(key)) continue;
         const directory = path.join(this.directory, "sources", key), trash = path.join(this.directory, `collected-${randomUUID()}`);
         await rename(directory, trash); await syncDirectory(path.dirname(directory)); await syncDirectory(this.directory);
         await rm(trash, { recursive: true }); await syncDirectory(this.directory); removed.push(key); bytes = await this.usage();

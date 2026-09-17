@@ -78,7 +78,7 @@ describe("reusable batch cover", () => {
     const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? ["sparkle"] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
     const superviseRecognition = vi.spyOn(controller.reviewerProvider, "superviseRecognition").mockImplementation(async (context) => JSON.stringify({ action: "resolve", reason: "复核完成", frames: context.images.map(({ timeMs }) => ({ timeMs, targets: [] })) }));
-    const superviseTemplate = vi.spyOn(supervisedPreview, "superviseRenderedTemplate").mockImplementation(async ({ template }) => template);
+    const superviseTemplate = vi.spyOn(supervisedPreview, "superviseRenderedTemplate").mockImplementation(async ({ template, tracks }) => ({ template, tracks, checkedRanges: [], budget: { turns: 1, revisions: 0, renders: 1 }, history: [], issues: [], persistence: "not-requested", session: new supervisedPreview.PreviewReviewSession() }));
     const visionDetect = vi.spyOn(controller.visionProvider, "detectCovers").mockResolvedValue([]);
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockImplementation(async (_ffmpeg, _source, recognize, signal) => {
       await recognize([{ timeMs: 0, url: "data:image/jpeg;base64,aA==" }], undefined, signal);

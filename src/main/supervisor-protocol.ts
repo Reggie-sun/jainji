@@ -5,6 +5,7 @@ import { CoverRectangleSchema, CoverTrackSchema } from "../shared/cover-sticker.
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 import type { SupervisorEvidenceImage } from "./supervisor-evidence.js";
+import { SourceFactsSchema, ReviewedRangeSchema, KnowledgeDisputeSchema } from "../shared/source-sticker-knowledge.js";
 
 export const MAX_RECOGNITION_TURNS = 3;
 export const MAX_PREVIEW_TURNS = 5;
@@ -23,11 +24,20 @@ const CornerCorrectionSchema = z.object({
   width: z.number().positive().max(CORNER_SAFE_POLICY.maxStickerWidth),
   rotationDeg: z.number().min(-CORNER_SAFE_POLICY.maxStickerRotation).max(CORNER_SAFE_POLICY.maxStickerRotation),
 }).strict();
-export const PreviewDecisionSchema = z.discriminatedUnion("action", [
-  InspectSchema, StopSchema,
-  z.object({ action: z.literal("pass"), reason }).strict(),
-  z.object({ action: z.literal("revise"), reason, tracks: SupervisorTracksSchema, corners: z.array(CornerCorrectionSchema).max(4).optional() }).strict(),
+const IssueFields = { id: z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/), reason, ranges: z.array(ReviewedRangeSchema).min(1).max(64), evidenceIds: z.array(z.string().min(1).max(120)).min(1).max(64) };
+export const PreviewIssueSchema = z.discriminatedUnion("scope", [
+  z.object({ ...IssueFields, scope: z.literal("source"), kind: KnowledgeDisputeSchema.shape.kind, targetId: z.string().min(1).max(120).optional() }).strict(),
+  z.object({ ...IssueFields, scope: z.literal("render"), kind: z.enum(["missing_corner", "duplicate_corner", "occlusion", "coverage", "content_timing"]) }).strict(),
 ]);
+const issues = z.array(PreviewIssueSchema).max(32).optional();
+export const PreviewDecisionSchema = z.discriminatedUnion("action", [
+  InspectSchema.extend({ issues }), StopSchema.extend({ issues }),
+  z.object({ action: z.literal("pass"), reason }).strict(),
+  z.object({ action: z.literal("revise"), reason, tracks: SupervisorTracksSchema, corners: z.array(CornerCorrectionSchema).max(4).optional(),
+    issues, resolvedIssueIds: z.array(z.string().min(1).max(120)).max(32).optional(), sourceFacts: SourceFactsSchema.optional() }).strict(),
+]);
+export type PreviewIssue = z.infer<typeof PreviewIssueSchema>;
+export type PreviewIssueRecord = PreviewIssue & { status: "open" | "awaiting-review" | "resolved"; reportedTurn: number; resolvedTurn?: number; disputedRevisionId?: string };
 export type PreviewRevision = Extract<z.infer<typeof PreviewDecisionSchema>, { action: "revise" }>;
 export interface RecognitionReviewInput {
   images: readonly CoverDetectionImage[];
@@ -52,6 +62,9 @@ export interface PreviewReviewInput {
   revision: number;
   remainingRevisions: number;
   history: Array<{ turn: number; revision: number; action: string; reason: string; applied?: boolean; feedback?: string }>;
+  issues?: PreviewIssueRecord[];
+  knowledge?: { candidateId: string; sourceKey: string; baseRevisionId: string | null; factsDigest: string;
+    requiredRanges: Array<{ startMs: number; endMs: number }>; facts: z.infer<typeof SourceFactsSchema>; evidenceIds: string[] };
 }
 
 export function validateSupervisorTracks(tracks: AutomaticCoverTrack[], durationMs: number): AutomaticCoverTrack[] {

@@ -1,7 +1,7 @@
 ---
 title: Reusable Source Sticker Knowledge Implementation Plan
 status: in-progress
-execution: m1-complete
+execution: m2-complete
 version: 0.1
 date: 2026-09-17
 baseline: ef74adf
@@ -12,7 +12,7 @@ spec: source-sticker-knowledge-spec.md
 
 落实 [Source Sticker Knowledge Spec](source-sticker-knowledge-spec.md)：将经过原图核查与真实样片检查的源贴纸事实保存下来，后续同源素材复用；原事实被纠正时传播给本批受影响版本，保持新包装逐版本创作与检查。
 
-M1 的共享合同与独立持久 owner 已实现并经确定性测试验证；M2–M5 尚未开始。**当前未接入制作路径，不代表跨批复用或真实素材验收已完成。**
+M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接已实现；M3–M5 尚未开始。**当前制作入口只适配结果结构，尚未启用知识查询、跨批复用或修订传播，不代表真实素材验收已完成。**
 
 采用 Native Codex 执行，按仓库现行规则进行有界实施、验证及提交。默认使用当前工作树，不创建 worktree；实现前检查当前规则、Git 状态、live agents 与精确文件 ownership，保留无关工作。技术选择在规格内自行收敛；只有真实同文件冲突或目标/授权变化才需要用户决定。
 
@@ -61,7 +61,7 @@ M1 的共享合同与独立持久 owner 已实现并经确定性测试验证；M
 
 # Milestones
 
-依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。当前 M1 完成，下一阶段为 M2，尚未启动。
+依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。当前 M1、M2 完成，下一阶段为 M3，尚未启动。
 
 ## M1 — Source Contract And Durable Store
 
@@ -76,6 +76,10 @@ M1 的共享合同与独立持久 owner 已实现并经确定性测试验证；M
 **Verification:** 新增 `tests/source-sticker-knowledge.test.ts`、`tests/source-sticker-knowledge-store.test.ts`；仅使用临时文件与确定性 fixture。覆盖 AC-01、03–05、08、12–14、19、22 中的持久化合同。
 
 ## M2 — Supervisor Results And Evidence Handoff
+
+**Status:** 完成结构化结果、逐版本累计预算、源事实/外观修正分离及证据交接。新增 `supervisor-knowledge.ts` 只组装临时证据和调用持久化回调，不成为第二个 store。反证在修补校验和预算判断前交接；已接受的多项反证在取消、关闭及清理竞争中保持受保护，迟到响应不能新增决定。重新绑定基础修订计入原预算，并使旧问题解决状态失效。识别证据按窗口释放，避免将样片保留额度错误应用到整个长视频。
+
+本阶段相关 13 份测试、224 项通过，另经 `npm run typecheck`、`npm run build`、`git diff --check` 验证；native `reviewer_xhigh` 独立审查无剩余阻断项。证据包含确定性 store 故障/竞争测试、合成 CFR/VFR/裁剪帧、真实 FFmpeg 及原队列的多窗口识别、样片重检与取消；不包含真实模型或用户素材验收。旋转 fixture 验证了本机指定方向的几何，尚未证明所有探测元数据约定、FFmpeg 版本或 Windows 方向一致。构建仍报告 bundle 大小提示，未为此扩展优化范围。
 
 **Scope:** `supervisor-protocol.ts`、`supervised-preview.ts`、`supervisor-provider.ts`、`supervisor-evidence.ts` 及其调用适配，保持既有对外制作行为。
 
