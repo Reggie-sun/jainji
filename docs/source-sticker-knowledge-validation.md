@@ -2,7 +2,7 @@
 
 ## Status And Scope
 
-M5 已开始，**整体验收尚未通过**。本轮检查基于 `82539f3`，分支 `fix/preserve-original-corner-stickers`；仅执行本地确定性测试、合成视频、模拟模型和真实 Electron/FFmpeg 验证，未使用真实账号或商业服务额度。实施合同见 [spec](source-sticker-knowledge-spec.md)，阶段状态见 [plan](source-sticker-knowledge-plan.md)。
+M5 已开始，**整体验收尚未通过**。本轮在 `43fd416` 上补齐本地审计与历史提示，分支 `fix/preserve-original-corner-stickers`；仅执行本地确定性测试、合成视频、模拟模型和真实 Electron/FFmpeg 验证，未使用真实账号或商业服务额度。实施合同见 [spec](source-sticker-knowledge-spec.md)，阶段状态见 [plan](source-sticker-knowledge-plan.md)。
 
 测试成功不能替代真实素材语义正确性、人工全片播放或 Windows 实机验收。M1–M4 的阶段完成不代表以下剩余合同与 AC-20 已完成。
 
@@ -10,12 +10,14 @@ M5 已开始，**整体验收尚未通过**。本轮检查基于 `82539f3`，分
 
 | Check | Result |
 | --- | --- |
-| `npm test -- --maxWorkers=2 --minWorkers=2` | 102 个文件通过、1 个文件跳过；855 项通过、2 项条件跳过 |
+| `npm test -- --maxWorkers=2 --minWorkers=2` | 105 个文件通过、1 个文件跳过；880 项通过、2 项条件跳过 |
 | `npm run build` | 通过，包含 `npm run typecheck`；3144 个贴纸文件与许可证摘要验证通过；仍有 bundle 大小提示 |
 | `JIANJI_SMOKE_SCOPE=knowledge xvfb-run -a node scripts/desktop-smoke.mjs` | 通过，隔离 userData、模拟 provider、合成 testsrc、真实 IPC 与 FFmpeg |
-| Smoke evidence | `/tmp/jianji-desktop-smoke-XJPtF0/knowledge-smoke.json` 与同目录冷/暖/修正/失败/项目切换截图；临时目录可能被系统清理，可按命令重跑 |
+| Smoke evidence | `/tmp/jianji-desktop-smoke-2xw51P/knowledge-smoke.json` 与同目录冷/暖/修正/失败/历史争议/项目切换截图；临时目录可能被系统清理，可按命令重跑 |
 
 两项跳过分别为 GPU 导出能力条件和未启用的在线素材下载。没有跳过源知识合同测试。Smoke 中冷/暖/主动刷新各自的源识别相关调用为 **6 / 0 / 6**，每版仍检查新样片；暖版本的源事实修正消耗 2 次样片检查、1 次有效修订、2 次渲染。失败刷新和取消不进入新创作。上述数字仅证明模拟合同，不代表实际模型成本或识别质量。
+
+本轮 smoke 另验证 `outcomes.json` 的 6 条终态记录（4 次已入队、1 次失败、1 次取消）；暖运行执行识别与识别主管均为 0，样片主管 1 次、创作 provider 2 次（初筛及方案）。历史争议警告在修订已被替代后仍显示，已完成状态与播放入口保留。脚本只适配新默认自动输出目录的选择控件，不修改自动目录功能。
 
 ## Acceptance Matrix
 
@@ -28,7 +30,7 @@ M5 已开始，**整体验收尚未通过**。本轮检查基于 `82539f3`，分
 | 03 | LOCAL_PASS | knowledge store：同字节副本、不同字节、源变化；真实重编码素材未作质量对照 |
 | 04 | LOCAL_PASS | store/session 的时域包含关系，decoration-display 与 supervisor 的真实 FFmpeg 合成边界验证 |
 | 05 | LOCAL_PASS | shared schema/recognition：空目标仍需时域和证据，未知或失败不发布 |
-| 06 | PARTIAL | knowledge integration：文字、filter、覆盖设置改变不复用旧样片批准；尚缺独立的暖命中换输出尺寸/款式配对用例，不是公平性能对照 |
+| 06 | LOCAL_PASS | knowledge integration 新增独立暖命中换 source→720p、heart→sparkle、classic→gold 的配对用例；保持源与手动文字，知识修订不变、模板和样片摘要不同，重新检查样片；不是公平性能对照 |
 | 07 | PARTIAL | knowledge/supervised-agent/source-corner-render 集成证明开关与布局机制；真实贴纸配对画面未验收 |
 | 08 | LOCAL_PASS | store 不导入人工历史；assisted 集成与 refresh 入口拒绝回归 |
 | 09 | LOCAL_PASS | knowledge integration/session：B 修正后 A 重建重审，保留原创作与文字 |
@@ -38,7 +40,7 @@ M5 已开始，**整体验收尚未通过**。本轮检查基于 `82539f3`，分
 | 13 | LOCAL_PASS | store 证据摘要/缺失/future schema/配额回归；session 未保存结果与阻断分离 |
 | 14 | LOCAL_PASS | store/session：持久反证与普通服务失败分离 |
 | 15 | LOCAL_PASS | refresh/controller/session 与桌面：显式绕过命中，失败不回退，无隐藏调用 |
-| 16 | PARTIAL | knowledge integration：GC 后按冻结模板重试、0 模型调用通过；REQ-13 的历史争议提示尚缺 |
+| 16 | LOCAL_PASS | knowledge integration：GC 后按冻结模板重试、0 模型调用；store/projection/UI/smoke 验证历史争议提示、缺本地库时提示未知但不干预重试 |
 | 17 | LOCAL_PASS | vision-connections 与 controller/desktop：角色路由、连接缺失与运行中准入；未验证真实商业模型组合 |
 | 18 | LOCAL_PASS | 真实 Electron 模拟服务 smoke：首次/暖复用/修正/取消/项目切换，无新增逐条批准 |
 | 19 | LOCAL_PASS | state-migrations/store：旧格式读取与 future schema 拒绝；跨机器实机未验证 |
@@ -48,14 +50,16 @@ M5 已开始，**整体验收尚未通过**。本轮检查基于 `82539f3`，分
 
 测试 owner 均位于 `tests/`：`source-sticker-knowledge*.test.ts`、`source-sticker-recognition.test.ts`、`source-sticker-refresh.test.ts`、`supervisor-knowledge.test.ts`、`supervised-preview.test.ts` 及表中对应 integration 文件。完整命令执行上述集合，而非只挑选成功用例。
 
-## Confirmed Contract Gaps
+## Closed Local Gaps And Remaining Boundaries
 
-1. **REQ-20 的逐制作审计尚不完整。** [AgentRunner](../src/main/agent-runner.ts) 的 `run` 是内存当前运行，下一次 `start` 替换；[SourceKnowledgeProgress](../src/shared/source-sticker-knowledge.ts) 包含运行计数但不构成持久历史。[冻结模板](../src/main/domain.ts) 保存知识引用，不保存每次制作的完整命中原因、请求数、失败阶段和耗时；暖运行事实不变时不会发布新知识 revision。因此不能在下一轮或重启后追溯每一次失败、取消及暖制作。已有 smoke JSON 不能替代应用逐制作记录。修复需要有界审计保留合同，并覆盖重启、失败及未入队版本；审计不成为第二套事实或队列 owner。
-2. **REQ-13 的历史受影响结果提示尚缺。** [ResultsPanel](../src/renderer/ResultsPanel.tsx) 仅从当前 `AgentRun` 投影详情，没有将历史冻结知识引用与已确认反证关联的只读提示。即使新修订已修复问题，也需识别旧冻结修订曾受反证影响，不能只看当前 head 是否仍为 disputed。原冻结重试机制正确，不能为补提示而改写模板、阻止已有任务重试、自动重做成片或让历史任务依赖知识库可用性。
+1. **REQ-20 的终态制作审计已落地。** [共享审计合同](../src/shared/source-sticker-knowledge-audit.ts) 与现有 knowledge store 保存按 run/item 关联的终态记录；下一轮制作、跨项目与重启不覆盖前一轮。记录查找原因、采用修订/事实摘要、样片摘要引用、分角色 provider 调用次数、修订/渲染计数、耗时、失败阶段与主管动作。普通失败、取消、从未开始的取消项和未入队版本均有覆盖；模型 pass 后本地发布失败仍保留 pass 与独立失败阶段，不伪装模型拒绝。窗口反证与样片反证都记录问题标志。
+2. **REQ-13 的历史提示已落地。** [只读投影](../src/main/source-sticker-knowledge-projection.ts) 将冻结任务引用关联到不可变争议事件，包括已 superseded 的旧修订；缺失或不可读显示未知。既有模板、队列和重试不改写、不依赖查询成功。历史投影缓存仅为提示，按 owner mutation epoch 失效并合并同一投影的并发读取；进度通知不累计磁盘查询。129 源引用、争议写入 marker 前失败、重启及 GC 有回归。该提示不声明实时证据健康；外部绕过 owner 篡改文件后可能直到后续 mutation/重启才更新，实际复用准入仍每次校验证据。
 
-上述缺口与真实模型尚未执行分别记录；不因门禁安全或单元测试通过而声称规格全部满足。
+审计保留最新至多 1000 条终态 / 2 MiB，单条最多 64 KiB，并计入既有 store 配额；旧诊断记录可淘汰，不删除或固定保留源证据。摘要是关联信息，不是永久媒体证据。普通审计写失败清理未发布临时副本，保留旧完整日志并在本条提示未保存，不改变事实门禁或导出状态；future/corrupt 日志不覆盖。硬崩溃发生在终态写入之前可能没有该轮记录，不自动恢复付费任务；本轮没有新增崩溃事务日志或无限历史承诺。
 
-独立 native `reviewer_xhigh` 对完整规格符合性的结论为 **reject**，不是已发现复用安全门禁被绕过：两项 P2 缺口阻止整体验收。reviewer 另行执行 7 个相关文件、106 项测试全部通过，并用不写文件的内存诊断确认旧运行被替换、历史任务缺少风险提示。M4 的 scoped review accept 与本次累计规格验收 reject 的范围不同，不能相互替代。
+计数口径明确为 `provider-invocations`，包含进入 provider 后的失败/取消，不等于已发送 HTTP 数、token 用量或商业费用。`previewActions` 是主管报告，不是人工判定；`quality` 始终为 `not-evaluated`。真实验收仍须在临时证据清理前另行保留授权的配对帧/可播放样片，采集实际服务调用/用量并人工标注误拒绝与画面错误。不能只用本审计日志完成 AC-20。
+
+历史 `82539f3` 的累计规格审查曾因上述两项 P2 缺口给出 reject；本轮针对修复的 native `reviewer_xhigh` 最终独立复审为 **accept with concerns，无剩余阻断项**，不覆盖 AC-20 真实验收。审查推动修复进度查询重复 I/O、审计临时副本残留、发布失败误标模型结论、窗口反证标志遗漏，以及失败事务未使提示缓存失效的问题。reviewer 独立执行最新 audit/projection/session/store 65 项通过、typecheck/diff-check 通过；较早的 7 份 scoped suites 104 项通过。非阻断关注为上述终态写入前崩溃、计数/质量口径及外部篡改后的提示缓存滞后边界，未当作真实验收通过。
 
 ## Real-Media Preflight
 
@@ -69,4 +73,4 @@ M5 已开始，**整体验收尚未通过**。本轮检查基于 `82539f3`，分
 
 ## Next Checkpoint
 
-先收敛上述两个合同缺口及回归，再在明确的真实测试输入与调用预算内冻结 pilot。当前不能将 M5 或整个功能标为验收完成；Windows 实机和人工完整播放仍未验证。
+本地缺口修复 checkpoint 后，按已同意的 3 条蝴蝶贴及项目已存展示文字 `19.9元30贴` 准备隔离 pilot；仍须确定创作/识别/主管的连接与模型、总调用预算和输出位置，再冻结实际输入并开始真实服务。当前不能将 M5 或整个功能标为验收完成；Windows 实机和人工完整播放仍未验证。

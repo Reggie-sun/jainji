@@ -183,6 +183,7 @@ export class AgentController {
       const previousCoverId = previousCoverStickerId(history);
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
+      let creativeRequests = 0;
       const knowledge = supervised ? new SourceStickerKnowledgeSession({
         refreshMediaIds,
         store: this.knowledgeStore!, executor: this.visionProvider.status().model.slice(0, 160), supervisor: this.reviewerProvider.status().model.slice(0, 160),
@@ -191,8 +192,8 @@ export class AgentController {
           try { return await evidence.sourceIdentity(signal); } finally { await evidence.dispose(); }
         },
         recognize: (item, source, horizon, signal, onStage, onWindow, onRequest) => recognizeSourceStickerKnowledge(this.ffmpeg, item, source, horizon, signal,
-          (images, requestSignal) => { onRequest(); return this.visionProvider.detectCovers(images, undefined, requestSignal); },
-          (context, requestSignal) => { onRequest(); return this.reviewerProvider.superviseRecognition(context, requestSignal); }, onStage, onWindow),
+          (images, requestSignal) => { onRequest("executor"); return this.visionProvider.detectCovers(images, undefined, requestSignal); },
+          (context, requestSignal) => { onRequest("supervisor"); return this.reviewerProvider.superviseRecognition(context, requestSignal); }, onStage, onWindow),
         review: async input => {
           const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-preview-"));
           const evidence = new SupervisorEvidence(this.ffmpeg, input.media);
@@ -207,6 +208,9 @@ export class AgentController {
       }) : undefined;
       this.runner = new AgentRunner({
         knowledge,
+        recordOutcome: knowledge ? outcome => this.knowledgeStore!.recordOutcome(outcome) : undefined,
+        creativeRequests: () => creativeRequests,
+        creativeModel: this.provider.status().model.slice(0, 160),
         prepared: assisted?.prepared,
         coverSticker,
         preserveSourceStickers,
@@ -216,8 +220,10 @@ export class AgentController {
           const stickers = eligible.filter(({ id }) => candidateIds.includes(id));
           const catalog = { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };
           if (!stickers.length) throw new ProviderError("没有可用的自动覆盖贴纸，请检查本地素材库。");
+          creativeRequests++;
           const ids = await this.provider.shortlist(parsed.ruleId, `${decorationTimingContext(decorations?.displayMode)}为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
           const candidates = await prepareCandidates(ids, catalog, signal);
+          creativeRequests++;
           const stickerId = await this.provider.selectCoverSticker(frames, signal, candidates, decorations?.displayMode);
           signal.throwIfAborted();
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
@@ -234,10 +240,14 @@ export class AgentController {
           if (preserveSourceStickers) brief = `保留原视频已有贴纸，不新增覆盖层。请为四角各提供一项候补设计，本地根据独立视觉识别的原贴纸占位，只在空缺角落和时段添加。\n${brief}`;
           if (!catalog) {
             manualPreviews ??= this.manualStickerPreviews(decorations, signal);
-            return this.provider.plan(rule, brief, frames, signal, undefined, undefined, await manualPreviews);
+            const previews = await manualPreviews;
+            creativeRequests++;
+            return this.provider.plan(rule, brief, frames, signal, undefined, undefined, previews);
           }
+          creativeRequests++;
           const ids = await this.provider.shortlist(rule, brief, frames, signal, catalog, selection);
           const candidates = await prepareCandidates(ids, catalog, signal);
+          creativeRequests++;
           return this.provider.plan(rule, brief, frames, signal, candidates, selection);
         },
         enqueue: async (template, item, signal) => {

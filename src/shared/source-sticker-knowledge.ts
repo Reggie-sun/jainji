@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CoverRectangleSchema, CoverTrackSchema, interpolateCoverRectangle } from "./cover-sticker.js";
 import { MAX_AUTOMATIC_COVER_TRACKS } from "./automatic-cover.js";
+import type { KnowledgeLookupReason, KnowledgeOutcome } from "./source-sticker-knowledge-audit.js";
 
 export const KNOWLEDGE_SCHEMA_VERSION = 1;
 const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/);
@@ -154,6 +155,16 @@ export interface SourceKnowledgeProgress {
   elapsedMs: number;
   executor?: string;
   supervisor?: string;
+  lookupReason?: KnowledgeLookupReason;
+  executorRequests?: number;
+  recognitionSupervisorRequests?: number;
+  modelVerdict?: "passed" | "not-passed" | "not-evaluated";
+  sourceIssueReported?: boolean;
+  factsDigest?: string;
+  templateDigest?: string;
+  previewEvidenceDigests?: string[];
+  previewActions?: KnowledgeOutcome["previewActions"];
+  failureStage?: KnowledgeOutcome["failureStage"];
 }
 /** Compare the actual piecewise source geometry in a problem's scope, not redundant
  * keyframe encodings, evidence labels or sampling metadata. */

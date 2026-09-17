@@ -7,6 +7,18 @@ import { ResultsPanel } from "../src/renderer/ResultsPanel";
 import type { DesktopState } from "../src/shared/desktop";
 import { consumeSourceStickerRefresh, reconcileSourceStickerRefresh, requestSourceStickerRefresh, sourceStickerRefreshInput } from "../src/renderer/source-sticker-refresh";
 
+function historicalResultMarkup(risk?: "disputed" | "unknown", status: "completed" | "failed" = "completed") {
+  const taskId = "private-source-knowledge-task-id";
+  return renderToStaticMarkup(createElement(ResultsPanel, {
+    state: {
+      queue: { batches: [{ batch: { tasks: [{ id: taskId, mediaId: "private-media-id", status, progress: 1 }] } }] },
+      project: { mediaItems: [] },
+      ...(risk ? { sourceKnowledgeRisks: { [taskId]: risk } } : {}),
+    } as unknown as DesktopState,
+    busy: false, retryingIds: [], onCancel: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+  }));
+}
+
 describe("source sticker refresh intent", () => {
   it("clears a one-shot refresh intent when selected scope, project, or eligibility changes", () => {
     const projectId = crypto.randomUUID(), first = crypto.randomUUID(), second = crypto.randomUUID();
@@ -61,5 +73,37 @@ describe("source sticker refresh intent", () => {
     }));
     expect(html).toContain("本轮源贴纸流程已停止");
     expect(html).toContain("已有反证，已安全停止。");
+  });
+
+  it("keeps old results unchanged when no historical source knowledge risk exists", () => {
+    const html = historicalResultMarkup();
+    expect(html).toContain("已完成");
+    expect(html).toContain("播放");
+    expect(html).not.toContain("原贴纸位置后来发现争议");
+    expect(html).not.toContain("无法确认此结果的源贴纸历史状态");
+  });
+
+  it("warns that a completed result has a later disputed source knowledge history without exposing identifiers", () => {
+    const html = historicalResultMarkup("disputed");
+    expect(html).toContain("原贴纸位置后来发现争议");
+    expect(html).toContain("重试仍使用原冻结方案");
+    expect(html).toContain("重新生成才使用当前知识");
+    expect(html).toContain("已完成");
+    expect(html).toContain("播放");
+    expect(html).not.toContain("private-source-knowledge-task-id");
+    expect(html).not.toContain("private-media-id");
+  });
+
+  it("keeps retry enabled for a failed disputed historical result", () => {
+    const html = historicalResultMarkup("disputed", "failed");
+    expect(html).toContain("原贴纸位置后来发现争议");
+    expect(html).toMatch(/<button class="text-button">重试导出<\/button>/);
+  });
+
+  it("shows the read-only unknown historical knowledge warning", () => {
+    const html = historicalResultMarkup("unknown");
+    expect(html).toContain("无法确认此结果的源贴纸历史状态");
+    expect(html).toContain("不影响按原冻结方案重试");
+    expect(html).not.toContain("private-source-knowledge-task-id");
   });
 });

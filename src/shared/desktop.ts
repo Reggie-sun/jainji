@@ -11,6 +11,7 @@ export type DesktopState = AppState & {
   chatgpt?: ChatGPTStatus;
   connections?: ConnectionLibrary;
   agentRun?: AgentRun;
+  sourceKnowledgeRisks?: Record<string, "disputed" | "unknown">;
   recentProjects?: { id: string; name: string; mediaCount: number; fileName: string }[];
   activeRecentProjectId?: string;
   recentProjectsWarning?: string;

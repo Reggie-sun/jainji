@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 // Called only by the isolated Electron smoke. No user media or real providers.
@@ -58,7 +58,8 @@ export async function runKnowledgeSmoke({ evaluate, click, waitFor, send, screen
   await click("下一步");
   await evaluate("document.querySelector('#product-price').focus()");
   await send("Input.insertText", { text: "手动展示\n19.9元" });
-  await click("选择本地文件夹");
+  await evaluate("document.querySelector('.directory-picker').click()");
+  await waitFor("document.querySelector('.directory-picker')?.textContent.includes('output') && !document.querySelector('.directory-picker').disabled");
   const beforeIntent = { ...fixture.counts };
   await click("重新检查原贴纸");
   assert.equal(await intent(), true);
@@ -149,12 +150,21 @@ export async function runKnowledgeSmoke({ evaluate, click, waitFor, send, screen
   assert.equal(corrected.phase, "reviewed");
   assert.equal(fixture.counts.creative, 4, "source correction does not request a second creative plan");
   assert.equal(fixture.counts.preview, 5);
+  const risks = (await state()).sourceKnowledgeRisks;
+  assert.ok(Object.values(risks).includes("disputed"), "superseded source facts still warn for frozen historical results");
+  await waitFor("document.body.innerText.includes('后来发现争议')");
+  await screenshot("knowledge-history-dispute");
+  const outcomes = JSON.parse(await readFile(path.join(directory, "source-sticker-knowledge", "outcomes.json"), "utf8")).records;
+  assert.equal(outcomes.length, 6);
+  assert.deepEqual(outcomes.map(row => row.result), ["queued", "queued", "queued", "failed", "cancelled", "queued"]);
+  assert.deepEqual(outcomes[1].requests, { executor: 0, recognitionSupervisor: 0, previewSupervisor: 1, creative: 2 });
+  assert.ok(outcomes.every(row => row.quality === "not-evaluated"));
   await click("规则模板"); await click("重新检查原贴纸");
   await click("新建创作"); await click("选择本地素材"); await click("下一步");
   assert.equal(await intent(), false, "new project cannot inherit refresh intent");
   await evaluate("document.querySelector('[aria-label=\"原贴纸知识重新检查\"]').scrollIntoView({block:'center'})");
   await screenshot("knowledge-project-reset");
-  const report = { cold, warm, refreshed, corrected, calls: fixture.counts, evidence: "isolated Electron IPC + synthetic video + mock provider + real FFmpeg; not real model quality acceptance" };
+  const report = { cold, warm, refreshed, corrected, outcomes, historicalRisks: risks, calls: fixture.counts, evidence: "isolated Electron IPC + synthetic video + mock provider + real FFmpeg; not real model quality acceptance" };
   await writeFile(path.join(directory, "knowledge-smoke.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify({ passed: true, scope: "knowledge", directory, calls: fixture.counts }));
 }

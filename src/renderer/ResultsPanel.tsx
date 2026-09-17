@@ -4,6 +4,10 @@ import { Heading, Icon } from "./ui";
 
 const labels: Record<string, string> = { queued: "等待导出", validating: "检查素材", running: "正在渲染", verifying: "校验成片", cancelling: "正在停止", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
+const sourceKnowledgeRiskWarning = {
+  disputed: "此结果采用的原贴纸位置后来发现争议，画面可能受影响。重试仍使用原冻结方案；重新生成才使用当前知识。",
+  unknown: "无法确认此结果的源贴纸历史状态；不影响按原冻结方案重试。",
+} as const;
 export function ResultsPanel({ state, busy, retryingIds, onCancel, onRetry, onOpen, onReveal, onNew }: {
   state: DesktopState; busy: boolean; retryingIds: string[]; onCancel(taskId: string): void; onRetry(taskId: string): void; onOpen(taskId: string): void; onReveal(taskId: string): void; onNew(): void;
 }) {
@@ -22,7 +26,8 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onRetry, onOp
       {[...tasks].reverse().map((task) => {
         const media = state.project.mediaItems.find((item) => item.id === task.mediaId);
         const plan = planned.find((item) => item.taskId === task.id);
-        return <div className="result-row" key={task.id}><div className={`result-icon ${task.status === "completed" ? "complete" : ""}`}><Icon name={task.status === "completed" ? "check" : "film"} /></div><div className="result-info"><strong>{plan?.name ?? media?.displayName ?? "视频素材"}</strong><p>{task.errorMessage || plan?.summary || "独立包装 · 成片"}</p><SourceStickerKnowledgeDetails progress={plan?.sourceKnowledge} />{!terminal.has(task.status) && <progress aria-label="导出进度" max={1} value={task.progress} />}</div><span className={`status-tag ${task.status}`}>{labels[task.status]}{task.status === "running" ? ` ${Math.round(task.progress * 100)}%` : ""}</span><div className="row-actions">{task.status === "completed" ? <><button className="button secondary compact" onClick={() => onOpen(task.id)}><Icon name="play" size={15} />播放</button><button className="icon-button" aria-label="打开成片文件夹" onClick={() => onReveal(task.id)}><Icon name="folder" size={18} /></button></> : task.status === "failed" || task.status === "interrupted" ? <button className="text-button" disabled={busy || state.agentRun?.status === "running" || retryingIds.includes(task.id)} onClick={() => onRetry(task.id)}>重试导出</button> : task.status === "cancelled" ? null : <button className="text-button muted" disabled={busy} onClick={() => onCancel(task.id)}>停止</button>}</div></div>;
+        const riskWarning = state.sourceKnowledgeRisks?.[task.id];
+        return <div className="result-row" key={task.id}><div className={`result-icon ${task.status === "completed" ? "complete" : ""}`}><Icon name={task.status === "completed" ? "check" : "film"} /></div><div className="result-info"><strong>{plan?.name ?? media?.displayName ?? "视频素材"}</strong><p>{task.errorMessage || plan?.summary || "独立包装 · 成片"}</p><SourceStickerKnowledgeDetails progress={plan?.sourceKnowledge} />{riskWarning && <small>{sourceKnowledgeRiskWarning[riskWarning]}</small>}{!terminal.has(task.status) && <progress aria-label="导出进度" max={1} value={task.progress} />}</div><span className={`status-tag ${task.status}`}>{labels[task.status]}{task.status === "running" ? ` ${Math.round(task.progress * 100)}%` : ""}</span><div className="row-actions">{task.status === "completed" ? <><button className="button secondary compact" onClick={() => onOpen(task.id)}><Icon name="play" size={15} />播放</button><button className="icon-button" aria-label="打开成片文件夹" onClick={() => onReveal(task.id)}><Icon name="folder" size={18} /></button></> : task.status === "failed" || task.status === "interrupted" ? <button className="text-button" disabled={busy || state.agentRun?.status === "running" || retryingIds.includes(task.id)} onClick={() => onRetry(task.id)}>重试导出</button> : task.status === "cancelled" ? null : <button className="text-button muted" disabled={busy} onClick={() => onCancel(task.id)}>停止</button>}</div></div>;
       })}
     </div>
     <div className="result-footnote"><Icon name="shield" size={16} /><span>重试导出会复用已生成的方案，不重新调用模型。分析中的任务退出后不会自动恢复。</span></div>

@@ -12,6 +12,7 @@ import { expandSourceCoverTracks, type AutomaticCoverTrack } from "./automatic-c
 import { prepareAgentTemplate } from "./agent-template-preparation.js";
 import type { PreviewRevision } from "./supervisor-protocol.js";
 import type { KnowledgeBinding, KnowledgeVersion, SourceStickerKnowledgeSession } from "./source-sticker-knowledge-session.js";
+import type { KnowledgeOutcome, KnowledgeProductionStage } from "../shared/source-sticker-knowledge-audit.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -27,6 +28,9 @@ interface RunnerDependencies {
   selectCoverSticker?(frames: string[], signal: AbortSignal, previousSelections: readonly string[]): Promise<FrozenCoverSticker>;
   detectCoverTracks?(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void): Promise<AutomaticCoverTrack[]>;
   knowledge?: Pick<SourceStickerKnowledgeSession, "acquire" | "tracks" | "review" | "reconcile" | "enqueue" | "close">;
+  recordOutcome?(outcome: KnowledgeOutcome): Promise<void>;
+  creativeRequests?(): number;
+  creativeModel?: string;
   onChange(): void;
 }
 
@@ -60,6 +64,7 @@ export class AgentRunner {
 
   private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
     let next = 0;
+    const audit = run.items.map(() => ({ started: Date.now(), finished: undefined as number | undefined, stage: "waiting" as KnowledgeProductionStage, creative: 0 }));
     const knowledgeStarted = new Map<string, number>();
     const stopKnowledgeProgress = (item: AgentRun["items"][number], cancelled: boolean, reason: string): void => {
       if (!item.sourceKnowledge) return;
@@ -93,15 +98,19 @@ export class AgentRunner {
         const index = next++;
         const source = media[index];
         const item = run.items[index];
-        if (signal.aborted) { item.status = "cancelled"; continue; }
+        if (signal.aborted) { item.status = "cancelled"; audit[index].finished = Date.now(); continue; }
         item.status = "analyzing";
         this.dependencies.onChange();
         const onStage = (stage: string) => { item.summary = stage; this.dependencies.onChange(); };
         knowledgeStarted.set(item.id, Date.now());
+        audit[index].started = Date.now();
+        const creativeBefore = this.dependencies.creativeRequests?.() ?? 0;
         try {
           const knowledge = this.dependencies.knowledge;
+          audit[index].stage = "knowledge";
           const binding = knowledge ? await knowledge.acquire(source, this.dependencies.decorations?.displayMode === "first-3s" ? Math.min(3000, source.durationMs) : source.durationMs, signal, onStage,
             progress => { item.sourceKnowledge = progress; this.dependencies.onChange(); }) : undefined;
+          audit[index].stage = "frames";
           let extracting = pendingFrames.get(source.id);
           if (!extracting) {
             extracting = this.dependencies.frames(source, signal).catch((error) => {
@@ -112,6 +121,7 @@ export class AgentRunner {
           }
           const frames = await extracting;
           signal.throwIfAborted();
+          audit[index].stage = "cover-selection";
           const coverSticker = this.dependencies.selectCoverSticker ? await coverForVersion(item.version, frames) : this.dependencies.coverSticker;
           signal.throwIfAborted();
           let coverTracks: AutomaticCoverTrack[] | undefined;
@@ -129,8 +139,10 @@ export class AgentRunner {
             stickerUsage: Array.from(stickerUsage, ([id, count]) => ({ id, count })),
             priceStyleUsage: Array.from(priceStyleUsage, ([id, count]) => ({ id, count })),
           } : undefined;
+          audit[index].stage = "creative";
           const plan = await this.dependencies.plan(run.ruleId, brief, frames, signal, this.dependencies.autoCatalog, selection);
           signal.throwIfAborted();
+          audit[index].stage = "prepare";
           const preparation = { plan, ruleId: run.ruleId, source, resolutionMode: this.dependencies.resolutionMode,
             stickerAssets: this.dependencies.stickerAssets, decorations: this.dependencies.decorations, catalog: this.dependencies.autoCatalog,
             coverSticker, coverTracks, sourceStickerTracks, runId: run.id, version: item.version };
@@ -147,6 +159,7 @@ export class AgentRunner {
               // Rebuilding stickers must not regenerate or modify the user's frozen text layer.
               return { ...original, layers: [...original.layers.filter(layer => layer.type === "text"), ...rebuilt.layers.filter(layer => layer.type !== "text")] };
             };
+            audit[index].stage = "preview";
             version = await knowledge.review(binding, template, rebuild, signal, onStage);
             template = version.template;
             signal.throwIfAborted();
@@ -166,6 +179,8 @@ export class AgentRunner {
           stopKnowledgeProgress(item, signal.aborted, "本版创作或样片准备未完成，未提交导出；请查看本条失败原因。");
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
         } finally {
+          if (item.status === "failed" || item.status === "cancelled") audit[index].finished = Date.now();
+          audit[index].creative = (this.dependencies.creativeRequests?.() ?? 0) - creativeBefore;
           const remaining = remainingVersions.get(source.id)! - 1;
           remainingVersions.set(source.id, remaining);
           if (remaining === 0) pendingFrames.delete(source.id);
@@ -178,10 +193,12 @@ export class AgentRunner {
       const groups = new Map<string, typeof reviewed>();
       for (const entry of reviewed) groups.set(entry.binding.key, [...(groups.get(entry.binding.key) ?? []), entry]);
       for (const group of groups.values()) {
+        for (const { index } of group) audit[index].stage = "reconcile";
         try { await this.dependencies.knowledge!.reconcile(group.map(entry => entry.version), signal, stage => { for (const entry of group) run.items[entry.index].summary = stage; this.dependencies.onChange(); }); }
         catch (error) {
           for (const { index } of group) {
             run.items[index].status = signal.aborted ? "cancelled" : "failed";
+            audit[index].finished = Date.now();
             stopKnowledgeProgress(run.items[index], signal.aborted, "源知识修订或证据完整性未确认，受影响版本未导出。");
             run.items[index].error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "源知识修订或证据完整性未确认，受影响版本未导出。";
           }
@@ -191,9 +208,10 @@ export class AgentRunner {
       // before starting any formal job, so later versions cannot collide with exports.
       for (const { index, version, source } of reviewed) {
         const item = run.items[index];
-        if (signal.aborted) { item.status = "cancelled"; stopKnowledgeProgress(item, true, ""); continue; }
+        if (signal.aborted) { item.status = "cancelled"; audit[index].finished = Date.now(); stopKnowledgeProgress(item, true, ""); continue; }
         if (item.status === "failed") continue;
         try {
+          audit[index].stage = "enqueue";
           item.taskId = await this.dependencies.knowledge!.enqueue(version, signal, template => this.dependencies.enqueue(template, source, signal));
           item.status = signal.aborted ? "cancelled" : "exporting";
           item.summary = `${item.summary?.split(" · 主管样片检查通过")[0]} · 主管样片检查通过，已提交导出`;
@@ -202,11 +220,35 @@ export class AgentRunner {
           stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "主管样片检查通过，但正式导出提交失败。";
         }
+        audit[index].finished = Date.now();
         this.dependencies.onChange();
       }
     } finally {
       pendingFrames.clear();
       await this.dependencies.knowledge?.close();
+      if (this.dependencies.recordOutcome) for (const [index, item] of run.items.entries()) {
+        const progress = item.sourceKnowledge, detail = audit[index];
+        const record: KnowledgeOutcome = {
+          schemaVersion: 1, id: item.id, runId: run.id, projectId: run.projectId, mediaId: item.mediaId, version: item.version,
+          startedAt: new Date(detail.started).toISOString(), finishedAt: new Date(detail.finished ?? Date.now()).toISOString(), elapsedMs: Math.max(0, (detail.finished ?? Date.now()) - detail.started),
+          result: item.taskId ? "queued" : item.status === "cancelled" ? "cancelled" : "failed", taskId: item.taskId,
+          stage: detail.stage, lookup: progress?.lookupReason ?? (detail.stage === "waiting" ? "not-started" : "unknown"),
+          sourceKey: progress?.sourceKey, revisionId: progress?.revisionId, factsDigest: progress?.factsDigest,
+          templateDigest: progress?.templateDigest, previewEvidenceDigests: progress?.previewEvidenceDigests,
+          requests: { executor: progress?.executorRequests ?? 0, recognitionSupervisor: progress?.recognitionSupervisorRequests ?? 0, previewSupervisor: progress?.previewRequests ?? 0, creative: detail.creative },
+          requestMetric: "provider-invocations",
+          revisions: progress?.revisions ?? 0, renders: progress?.renders ?? 0,
+          executor: progress?.executor, supervisor: progress?.supervisor, creative: this.dependencies.creativeModel,
+          modelVerdict: progress?.modelVerdict ?? "not-evaluated", sourceIssueReported: progress?.sourceIssueReported ?? false, quality: "not-evaluated",
+          previewActions: progress?.previewActions,
+          failureStage: progress?.failureStage,
+        };
+        try { await this.dependencies.recordOutcome(record); }
+        catch {
+          const warning = "制作统计未保存，无法在重启后追溯本次记录；原知识与导出状态不变。";
+          if (item.error) item.error += ` ${warning}`; else item.summary = `${item.summary ?? ""} ${warning}`;
+        }
+      }
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();
     }

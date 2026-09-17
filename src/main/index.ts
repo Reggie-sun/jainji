@@ -20,6 +20,7 @@ import { AgentStartSchema } from "../shared/agent.js";
 import { SelectModelSchema } from "../shared/connections.js";
 import { AgentController } from "./agent-controller.js";
 import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
+import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { loadBundledStickerAssets } from "./bundled-stickers.js";
@@ -89,20 +90,34 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  const state = await service.state(currentState());
+  const snapshot = currentState();
+  const state = await service.state(snapshot);
   const outputDirectory = state.project.workspaceDraft?.outputDirectory;
   if (outputDirectory) {
     const approved = await canonicalPath(outputDirectory).then((value) => approvedOutputDirectories.has(value)).catch(() => false);
     if (!approved) delete state.project.workspaceDraft!.outputDirectory;
   }
-  return { ...state, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
+  const sourceKnowledgeRisks = await projectKnowledgeRisks({ ...snapshot, batches: snapshot.batches.filter(({ batch }) => batch.projectId === state.project.id) }, sourceKnowledge);
+  return { ...state, sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
+let notifying = false, notificationPending = false;
 function notifyState(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  void publicState().then((state) => {
-    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("export.subscribe", state);
-  }).catch(() => undefined);
+  notificationPending = true;
+  if (notifying) return;
+  notifying = true;
+  void (async () => {
+    try {
+      while (notificationPending && mainWindow && !mainWindow.isDestroyed()) {
+        notificationPending = false;
+        try {
+          const state = await publicState();
+          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("export.subscribe", state);
+        } catch { /* Later notifications can retry; never accumulate snapshot readers. */ }
+      }
+    } finally { notifying = false; }
+  })();
 }
 
 function publish(snapshot: QueueSnapshot): void {

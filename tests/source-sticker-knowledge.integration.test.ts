@@ -11,6 +11,43 @@ import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
 import type { PreviewReviewInput } from "../src/main/supervisor-protocol";
 
+it("warm reuse permits a new output size and style but requires a newly bound rendered preview", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "jianji-warm-style-"));
+  const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe"), file = path.join(root, "source.mp4");
+  expect((await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-t", "1", "-c:v", "libx264", file]).promise).code).toBe(0);
+  const service = new ApplicationService(ffmpeg, { resolve: resolveFont }); await service.addMedia([file]);
+  const store = await SourceStickerKnowledgeStore.open(root), assets = await ensureBuiltinStickerAssets(path.join(root, "stickers"));
+  const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(root, "jobs")), fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
+  const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, store);
+  try {
+    for (const provider of [controller.provider, controller.visionProvider, controller.reviewerProvider]) provider.configure({ apiKey: "fixture", model: "fixture", baseUrl: "https://unused.invalid/v1" });
+    let warm = false;
+    vi.spyOn(controller.provider, "shortlist").mockResolvedValue(["heart", "sparkle"]);
+    vi.spyOn(controller.provider, "plan").mockImplementation(async () => ({ summary: "fixed creative fixture", captions: [], filter: "none", intensity: 0, priceStyle: warm ? "gold" : "classic",
+      stickers: (["top-left", "top-right", "bottom-left", "bottom-right"] as const).map(corner => ({ corner, sticker: warm ? "sparkle" : "heart", width: 0.08, rotationDeg: 0 })) }));
+    const detection = vi.spyOn(controller.visionProvider, "detectCovers").mockImplementation(async images => images.map(image => ({ timeMs: image.timeMs, targets: [] })));
+    const recognition = vi.spyOn(controller.reviewerProvider, "superviseRecognition").mockImplementation(async input => JSON.stringify({ action: "resolve", reason: "fixture", frames: input.proposal }));
+    const preview = vi.spyOn(controller.reviewerProvider, "supervisePreview").mockResolvedValue(JSON.stringify({ action: "pass", reason: "new preview" }));
+    const outputDirectory = path.join(root, "output");
+    for (const mode of ["source", "720p"] as const) {
+      warm = mode === "720p";
+      await controller.start({ mediaIds: [service.currentProject.mediaItems[0].id], ruleId: "clean", brief: "", outputDirectory,
+        decorations: { mode: "agent", productPrice: "固定手动文字", sticker: "none", fontFamily: "Noto Sans CJK SC" },
+        exportSettings: { resolutionMode: mode, frameRateMode: "source", quality: "balanced" } }, new Set([outputDirectory]));
+      await vi.waitFor(() => { expect(controller.busy).toBe(false); expect(controller.snapshot()?.items[0].status).toBe("exporting"); expect(queue.snapshot().batches.every(({ batch }) => batch.tasks[0].status === "completed")).toBe(true); }, { timeout: 30_000 });
+    }
+    const records = await store.listOutcomes(service.currentProject.id);
+    expect(records.map(row => row.lookup)).toEqual(["absent", "hit"]);
+    expect(records[0].revisionId).toBe(records[1].revisionId);
+    expect(records[0].templateDigest).not.toBe(records[1].templateDigest);
+    expect(records[0].previewEvidenceDigests).not.toEqual(records[1].previewEvidenceDigests);
+    expect(detection).toHaveBeenCalledOnce(); expect(recognition).toHaveBeenCalledOnce(); expect(preview).toHaveBeenCalledTimes(2);
+    const batches = queue.snapshot().batches.map(entry => entry.batch);
+    expect(batches.map(batch => batch.preset.resolutionMode)).toEqual(["source", "720p"]);
+    expect(batches.map(batch => batch.templateSnapshot.layers.find(layer => layer.type === "sticker")?.assetFingerprint)).toEqual([assets.heart.assetFingerprint, assets.sparkle.assetFingerprint]);
+  } finally { await controller.cancel(); await store.close(); await queue.shutdown(); await rm(root, { recursive: true, force: true }); }
+}, 60_000);
+
 it.each([false, true])("reuses or explicitly refreshes same-byte copies across projects/restart, with frozen retries (refresh=%s)", async (refresh) => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-warm-knowledge-"));
   const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe"), file = path.join(root, "source.mp4"), copy = path.join(root, "renamed.mp4");
@@ -51,6 +88,13 @@ it.each([false, true])("reuses or explicitly refreshes same-byte copies across p
       await controller.start(input, new Set([outputDirectory]));
       await vi.waitFor(() => { expect(controller.busy).toBe(false); expect(controller.snapshot()?.items.every(item => !item.error)).toBe(true); expect(queue.snapshot().batches).toHaveLength(warm ? 2 : 1); expect(queue.snapshot().batches.every(({ batch }) => batch.tasks.every(task => task.status === "completed"))).toBe(true); }, { timeout: 30_000 });
       const batch = queue.snapshot().batches[0].batch;
+      const outcomes = await store.listOutcomes(service.currentProject.id);
+      expect(outcomes).toHaveLength(warm ? 2 : 1);
+      expect(outcomes[0]).toMatchObject({ result: "queued", lookup: warm ? refresh ? "refresh" : "hit" : "absent", stage: "enqueue", quality: "not-evaluated",
+        requests: { executor: !warm || refresh ? 1 : 0, recognitionSupervisor: !warm || refresh ? 1 : 0, previewSupervisor: 1, creative: warm ? 4 : 2 }, modelVerdict: "passed" });
+      expect(outcomes[0].revisionId).toBe(batch.templateSnapshot.sourceStickerKnowledge!.revisionId);
+      expect(outcomes[0].previewEvidenceDigests?.length).toBeGreaterThan(0);
+      expect(await store.listOutcomes()).toHaveLength(warm ? 3 : 1);
       revisions.push(batch.templateSnapshot.sourceStickerKnowledge!.revisionId);
       expect(batch.templateSnapshot.productPrice).toBe(input.decorations.productPrice);
       expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && layer.cover)).toHaveLength(warm ? 1 : 0);
@@ -111,5 +155,8 @@ it("rebuilds version A after B corrects shared source facts without another crea
     const templates = queue.snapshot().batches.map(({ batch }) => batch.templateSnapshot);
     expect(new Set(templates.map(t => t.sourceStickerKnowledge!.revisionId)).size).toBe(1);
     expect(templates.every(t => t.productPrice === "原始手动文字" && t.layers.filter(l => l.type === "sticker").length === 3)).toBe(true);
+    const outcomes = await store.listOutcomes(service.currentProject.id);
+    expect(outcomes.map(row => [row.requests.previewSupervisor, row.revisions, row.renders])).toEqual([[2, 1, 2], [2, 1, 2]]);
+    expect(outcomes[1].sourceIssueReported).toBe(true);
   } finally { await controller.cancel(); await store.close(); await queue.shutdown(); await rm(root, { recursive: true, force: true }); }
 }, 60_000);

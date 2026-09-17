@@ -12,7 +12,7 @@ spec: source-sticker-knowledge-spec.md
 
 落实 [Source Sticker Knowledge Spec](source-sticker-knowledge-spec.md)：将经过原图核查与真实样片检查的源贴纸事实保存下来，后续同源素材复用；原事实被纠正时传播给本批受影响版本，保持新包装逐版本创作与检查。
 
-M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接、M3 的自动制作复用及修订传播、M4 的一次性刷新入口与状态展示已实现，M5 已开始本地验收与缺口审查。**真实素材对照尚未运行，逐制作审计和历史争议提示仍有合同缺口，整体验收未完成。** 详见 [验收报告](source-sticker-knowledge-validation.md)。
+M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接、M3 的自动制作复用及修订传播、M4 的一次性刷新入口与状态展示已实现；M5 已补齐本地终态制作审计、历史争议提示及输出尺寸/款式配对回归。**真实素材对照尚未运行，整体验收未完成。** 计数口径、保留边界及证据见 [验收报告](source-sticker-knowledge-validation.md)。
 
 采用 Native Codex 执行，按仓库现行规则进行有界实施、验证及提交。默认使用当前工作树，不创建 worktree；实现前检查当前规则、Git 状态、live agents 与精确文件 ownership，保留无关工作。技术选择在规格内自行收敛；只有真实同文件冲突或目标/授权变化才需要用户决定。
 
@@ -139,7 +139,7 @@ Fresh verification：完整测试 837 项通过、2 项跳过（NVENC/字体能�
 
 ## M5 — Review And Real-Media Acceptance
 
-**Status:** 进行中，未通过整体验收。基于 `82539f3` 重新执行全量 855 项通过/2 项条件跳过、typecheck/build 与隔离 Electron knowledge smoke；实际商业服务调用为 0。最终验收审查发现 REQ-20 的持久逐制作审计与 REQ-13 的历史争议提示缺口；真实素材、连接和预算仍需明确后冻结。AC 分层结果、证据与下一步仅记录在 [验收报告](source-sticker-knowledge-validation.md)，不把合成 fixture 当作 AC-20 通过。
+**Status:** 进行中，未通过整体验收。在 `43fd416` 上完成 REQ-20 终态审计与 REQ-13 历史争议提示的本地修复、AC-06 独立输出尺寸/款式配对回归；全量 880 项通过/2 项条件跳过、typecheck/build 与隔离 Electron knowledge smoke 通过，实际商业服务调用为 0。真实 pilot 已同意采用少量蝴蝶贴及已存手动文字，连接和预算仍须明确。AC 分层结果、审计限制、独立复审证据与下一步仅记录在 [验收报告](source-sticker-knowledge-validation.md)，不把合成 fixture 当作 AC-20 通过。
 
 **Scope:** 最终 diff、相关回归、真实同批对照及验证报告。先完成本地确定性检查，再执行授权范围内的真实模型与真实视频测试。
 

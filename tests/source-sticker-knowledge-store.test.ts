@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile, readdir, rm, copyFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, readdir, rm, copyFile, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -37,6 +37,14 @@ const publish = (store: SourceStickerKnowledgeStore, p: Prepared) => store.publi
 const ranges = [{ startMs: 0, endMs: 3000 }];
 
 describe("durable source sticker knowledge", () => {
+  it("invalidates historical projections even when a confirmed dispute fails before its transaction marker", async () => {
+    const { store, source, file } = await fixture(); const p = await prepare(store, source); await publish(store, p);
+    expect(await store.revisionRisk(sourceKey(source), p.candidate.id)).toBe("none"); const generation = store.historyGeneration;
+    await symlink(file, path.join(store.directory, "invalid-quota-entry"));
+    await expect(store.recordDispute(p.run, { schemaVersion: 1, id: "dispute", revisionId: p.candidate.id, ranges, kind: "missing_target", reason: "confirmed", evidence: p.candidate.evidence.filter(e => e.kind === "source"), at: new Date().toISOString() }, p.blobs)).rejects.toThrow();
+    expect(store.historyGeneration).toBeGreaterThan(generation);
+    expect(await store.revisionRisk(sourceKey(source), p.candidate.id)).toBe("unknown");
+  });
   it("checks out verified head evidence even when its coverage is partial, without lending mutable buffers", async () => {
     const { store, source } = await fixture(); const p = await prepare(store, source);
     await publish(store, p);
@@ -243,7 +251,8 @@ describe("durable source sticker knowledge", () => {
   });
 
   it("requires actual fact correction to resolve a dispute, then retains immutable history", async () => {
-    const { store, source } = await fixture(); const first = await publish(store, await prepare(store, source));
+    const { store, source, directory } = await fixture(); const first = await publish(store, await prepare(store, source));
+    expect(await store.revisionRisk(sourceKey(source), first.id)).toBe("none");
     const p = await prepare(store, source, first.id);
     await store.recordDispute(p.run, { schemaVersion: 1, id: "dispute", revisionId: first.id, ranges, kind: "missing_target", reason: "missed sticker", evidence: p.candidate.evidence.filter((e) => e.kind === "source"), at: new Date().toISOString() }, p.blobs);
     p.candidate.resolvedDisputeIds = ["dispute"];
@@ -260,6 +269,13 @@ describe("durable source sticker knowledge", () => {
     const corrected = await publish(store, p);
     expect((await store.lookup(source, ranges))).toMatchObject({ status: "hit", revision: { id: corrected.id } });
     expect((await store.readRevision(source, first.id))?.candidate.facts.targets).toEqual([]);
+    expect(await store.revisionRisk(sourceKey(source), first.id)).toBe("disputed");
+    expect(await store.revisionRisk(sourceKey(source), corrected.id)).toBe("none");
+    await store.close(); const reopened = await SourceStickerKnowledgeStore.open(directory); stores.push(reopened);
+    expect(await reopened.revisionRisk(sourceKey(source), first.id)).toBe("disputed");
+    expect(await reopened.revisionRisk(sourceKey(source), "missing-revision")).toBe("unknown");
+    await reopened.collect(0);
+    expect(await reopened.revisionRisk(sourceKey(source), first.id)).toBe("unknown");
   });
 
   it("protects persistent references across restart", async () => {

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { KnowledgePreviewActionSchema } from "../shared/source-sticker-knowledge-audit.js";
 import { KnowledgeCandidateSchema, coversRanges, sourceObservationsChanged, type KnowledgeCandidate, type KnowledgeEvidence, type KnowledgeRevision, type SourceFacts, type SourceIdentity, type SourceKnowledgeProgress } from "../shared/source-sticker-knowledge.js";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { ProviderError } from "./api-transport.js";
@@ -59,7 +60,7 @@ function retainSourceEvidence(candidate: KnowledgeCandidate, blobs: Map<string, 
 interface SessionOptions {
   store: SourceStickerKnowledgeStore;
   identify(media: MediaItem, signal: AbortSignal): Promise<SourceIdentity>;
-  recognize(media: MediaItem, source: SourceIdentity, horizonMs: number, signal: AbortSignal, onStage: (stage: string) => void, onWindow: (window: Recognition) => Promise<void>, onRequest: () => void): Promise<Recognition>;
+  recognize(media: MediaItem, source: SourceIdentity, horizonMs: number, signal: AbortSignal, onStage: (stage: string) => void, onWindow: (window: Recognition) => Promise<void>, onRequest: (role: "executor" | "supervisor") => void): Promise<Recognition>;
   review(input: KnowledgePreviewInput): Promise<SupervisedPreviewResult>;
   executor: string;
   supervisor: string;
@@ -86,8 +87,9 @@ export class SourceStickerKnowledgeSession {
     const token = await this.options.store.beginRun(source, signal); this.runs.add(token); return token;
   }
   async acquire(media: MediaItem, horizonMs: number, signal: AbortSignal, onStage: (stage: string) => void, onProgress?: (value: SourceKnowledgeProgress) => void): Promise<KnowledgeBinding> {
-    const progress: Progress = { started: Date.now(), notify: onProgress, value: { phase: "checking", recognitionRequests: 0, previewRequests: 0, revisions: 0, renders: 0, elapsedMs: 0, executor: this.options.executor, supervisor: this.options.supervisor } };
+    const progress: Progress = { started: Date.now(), notify: onProgress, value: { phase: "checking", lookupReason: "unknown", executorRequests: 0, recognitionSupervisorRequests: 0, modelVerdict: "not-evaluated", recognitionRequests: 0, previewRequests: 0, revisions: 0, renders: 0, elapsedMs: 0, executor: this.options.executor, supervisor: this.options.supervisor } };
     report(progress, {});
+    let failureStage: "identify" | "recognition" = "identify";
     try {
     this.live(signal);
     const source = await this.options.identify(media, signal);
@@ -112,19 +114,25 @@ export class SourceStickerKnowledgeSession {
           const times = window.evidence.filter(e => e.kind === "source" && observedIds.has(e.id) && overlap.some(r => e.timeMs >= r.startMs && e.timeMs < r.endMs)).map(e => e.timeMs);
           if (!sourceObservationsChanged(head.revision.candidate.facts, window.facts, times)) return;
           const id = randomUUID(), originals = window.evidence.filter((e): e is Extract<KnowledgeEvidence, { kind: "source" }> => e.kind === "source" && overlap.some(r => e.timeMs >= r.startMs && e.timeMs < r.endMs));
+          report(progress, { sourceIssueReported: true });
           // This accepted handoff must finish even if a later window fails or is cancelled.
           await this.options.store.recordDispute(run, { schemaVersion: 1, id, revisionId: head.revision.id, ranges: overlap, kind: "incomplete_boundary", reason: "重新识别与已有源事实矛盾", evidence: originals, at: new Date().toISOString() }, window.blobs);
           resolvedDisputeIds.push(id);
         };
         const warm = head && coversRanges(head.revision.candidate.facts.reviewedRanges, requiredRanges) && !this.options.refreshMediaIds?.has(media.id);
         report(progress, { phase: warm ? "reusing" : "recognizing", origin: warm ? "warm" : this.options.refreshMediaIds?.has(media.id) ? "refresh" : "cold",
+          lookupReason: warm ? "hit" : this.options.refreshMediaIds?.has(media.id) ? "refresh" : head ? "coverage" : "absent",
           reason: warm ? "源身份与所需时域匹配" : this.options.refreshMediaIds?.has(media.id) ? "本轮主动重新检查" : head ? "已有知识时域不足" : "尚无已核查知识", revisionId: head?.revision.id });
         if (warm) {
           onStage("复用已核查的源贴纸知识；本版仍需创作和样片检查…");
           ({ facts, evidence } = head.revision.candidate); evidence = evidence.filter(e => e.kind === "source"); blobs = head.blobs;
         } else {
+          failureStage = "recognition";
           onStage("首次检查或重新检查源贴纸…");
-          ({ facts, evidence, blobs, requests } = await this.options.recognize(media, source, horizonMs, signal, onStage, counterevidence, () => report(progress, { recognitionRequests: progress.value.recognitionRequests + 1 })));
+          ({ facts, evidence, blobs, requests } = await this.options.recognize(media, source, horizonMs, signal, onStage, counterevidence, role => report(progress, {
+            recognitionRequests: progress.value.recognitionRequests + 1,
+            ...(role === "executor" ? { executorRequests: (progress.value.executorRequests ?? 0) + 1 } : { recognitionSupervisorRequests: (progress.value.recognitionSupervisorRequests ?? 0) + 1 }),
+          })));
           report(progress, { recognitionRequests: requests });
           if (!resolvedDisputeIds.length) await counterevidence({ facts, evidence, blobs, requests });
         }
@@ -144,11 +152,12 @@ export class SourceStickerKnowledgeSession {
     if (state.unresolvedIssue) throw new ProviderError("本轮源贴纸存在未解决反证，后续同源版本已停止。");
     if (!coversRanges(state.candidate.facts.reviewedRanges, requiredRanges)) throw new ProviderError("本轮源知识时域不足，不能复用为全程。");
     this.live(signal);
-    if (shared) report(progress, { phase: "reusing", origin: "run", reason: "本轮同源素材共享核查事实；仍检查新样片", revisionId: state.head?.id });
+    if (shared) report(progress, { phase: "reusing", origin: "run", lookupReason: "run", reason: "本轮同源素材共享核查事实；仍检查新样片", revisionId: state.head?.id });
     report(progress, { reviewedRanges: state.candidate.facts.reviewedRanges });
     const binding = Object.freeze({ key, media: structuredClone(media), horizonMs }); this.bindings.add(binding); this.progress.set(binding, progress); return binding;
     } catch (error) {
-      report(progress, { phase: "blocked", reason: signal.aborted ? "本轮已取消，未完成候选不会发布。" : failureReason(error) });
+      if (error instanceof KnowledgeStoreError && progress.value.lookupReason === "unknown") report(progress, { lookupReason: error.code === "conflict" ? "disputed" : error.code });
+      report(progress, { phase: "blocked", failureStage, reason: signal.aborted ? "本轮已取消，未完成候选不会发布。" : failureReason(error) });
       if (error instanceof KnowledgeStoreError) throw new ProviderError(failureReason(error));
       throw error;
     }
@@ -164,6 +173,7 @@ export class SourceStickerKnowledgeSession {
   }
   private async check(version: Version, signal: AbortSignal, onStage: (stage: string) => void): Promise<void> {
     const progress = this.progress.get(version.binding)!;
+    let failureStage: "preview" | "publication" = "preview";
     try {
     this.live(signal);
     const state = await this.state(version.binding), previous = state.head;
@@ -177,10 +187,11 @@ export class SourceStickerKnowledgeSession {
         report(progress, { previewRequests: budget.turns, revisions: budget.revisions, renders: budget.renders }); onStage(stage);
       }, session: version.reviewSession,
       knowledge: { candidate, blobs: state.blobs, previousRevision: previous,
-        onSourceIssue: () => { state.blocked = true; state.unresolvedIssue = true; report(progress, { phase: "correcting", reason: "发现原贴纸事实问题，正在有界修正" }); },
+        onSourceIssue: () => { state.blocked = true; state.unresolvedIssue = true; report(progress, { phase: "correcting", sourceIssueReported: true, reason: "发现原贴纸事实问题，正在有界修正" }); },
         onDispute: async ({ dispute, blobs }) => { state.blocked = true; await this.options.store.recordDispute(run, dispute, blobs); },
         onReviewed: async value => { handoff = value; return "not-saved"; },
       } });
+    failureStage = "publication";
     this.live(signal); await this.options.store.verifySource(version.binding.media.sourcePath, state.source); this.live(signal);
     if (!handoff || !result.knowledge || result.session !== version.reviewSession || handoff.candidate.id !== result.knowledge.candidate.id || handoff.proof.factsDigest !== factsDigest(handoff.candidate.facts)
       || handoff.proof.previewEvidenceIds.some(id => { const frame = handoff!.candidate.evidence.find(e => e.id === id); return frame?.kind !== "preview" || frame.templateDigest !== templateDigest(result.template); })) throw new ProviderError("样片未绑定当前源事实和模板，本条已停止。");
@@ -210,11 +221,17 @@ export class SourceStickerKnowledgeSession {
     version.checkedTemplate = templateDigest(version.template);
     const budget = version.reviewSession.snapshot();
     report(progress, { phase: persistence === "saved" ? "reviewed" : "not-saved", revisionId: version.template.sourceStickerKnowledge!.revisionId,
+      modelVerdict: "passed", factsDigest: version.digest, templateDigest: version.checkedTemplate,
+      previewActions: budget.history.map(entry => KnowledgePreviewActionSchema.parse(entry.action)),
+      previewEvidenceDigests: handoff.candidate.evidence.filter(e => e.kind === "preview").map(e => e.digest).slice(0, 256),
       reason: persistence === "saved" ? "已基于当前源事实通过本版样片检查。" : "本版样片已通过，但知识保存空间不足，未保存供下次复用。",
       reviewedRanges: handoff.candidate.facts.reviewedRanges, previewRequests: budget.turns, revisions: budget.revisions, renders: budget.renders });
     } catch (error) {
       const budget = version.reviewSession.snapshot();
       report(progress, { phase: "blocked", reason: signal.aborted ? "本轮已取消，未完成候选不会发布。" : failureReason(error),
+        failureStage,
+        modelVerdict: budget.history.at(-1)?.action === "pass" ? "passed" : budget.history.length ? "not-passed" : "not-evaluated",
+        previewActions: budget.history.map(entry => KnowledgePreviewActionSchema.parse(entry.action)),
         previewRequests: budget.turns, revisions: budget.revisions, renders: budget.renders });
       throw error;
     }

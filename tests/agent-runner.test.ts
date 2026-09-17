@@ -8,6 +8,7 @@ import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { DecorationSchema } from "../src/shared/decorations";
 import { executionLimits } from "../src/main/execution-limits";
 import { knowledgeFixture } from "./helpers/knowledge-session";
+import type { KnowledgeOutcome } from "../src/shared/source-sticker-knowledge-audit";
 
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
@@ -18,6 +19,27 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("supervisor production admission", () => {
+  it.each(["knowledge", "creative", "reconcile", "enqueue", "queued", "cancelled"] as const)("records terminal %s outcomes even without an exported task", async failure => {
+    const records: KnowledgeOutcome[] = [];
+    const knowledge = knowledgeFixture();
+    const acquire = knowledge.acquire;
+    knowledge.acquire = async (...args) => {
+      args[4]?.({ phase: "reusing", origin: "warm", lookupReason: "hit", recognitionRequests: 0, executorRequests: 0, recognitionSupervisorRequests: 0, previewRequests: 0, renders: 0, revisions: 0, elapsedMs: 1 });
+      if (failure === "knowledge") throw new Error("private path/key must not be logged");
+      return acquire(...args);
+    };
+    if (failure === "reconcile") knowledge.reconcile = async () => { throw new Error("reconcile"); };
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => {
+      if (failure === "cancelled") { runner.cancel(); throw new Error("cancelled"); }
+      if (failure === "creative") throw new Error("creative"); return plan("设计");
+    }, enqueue: async () => { if (failure === "enqueue") throw new Error("enqueue"); return "task"; },
+    stickerAssets, knowledge, recordOutcome: async record => { records.push(record); }, onChange: () => {} });
+    runner.start("project", "clean", "", [media("one")], failure === "cancelled" ? 2 : 1); await runner.settled();
+    expect(records).toHaveLength(failure === "cancelled" ? 2 : 1);
+    expect(records[0]).toMatchObject({ result: failure === "queued" ? "queued" : failure === "cancelled" ? "cancelled" : "failed", stage: failure === "queued" ? "enqueue" : failure === "cancelled" ? "creative" : failure, lookup: "hit", quality: "not-evaluated" });
+    expect(JSON.stringify(records)).not.toContain("private");
+    if (failure === "cancelled") expect(records[1]).toMatchObject({ result: "cancelled", stage: "waiting", lookup: "not-started" });
+  });
   it.each(["creative", "reconcile", "enqueue"])("ends the knowledge progress when %s fails outside recognition", async (failure) => {
     let clock = 100;
     const now = vi.spyOn(Date, "now").mockImplementation(() => clock);

@@ -9,9 +9,12 @@ import {
   type KnowledgePublicationProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
 } from "../shared/source-sticker-knowledge.js";
 import { fingerprintFile } from "./paths.js";
+import { KnowledgeOutcomeSchema, type KnowledgeOutcome } from "../shared/source-sticker-knowledge-audit.js";
 
 const DEFAULT_QUOTA_BYTES = 256 * 1024 * 1024;
 const MAX_RECORD_BYTES = 4 * 1024 * 1024;
+const MAX_OUTCOME_BYTES = 2 * 1024 * 1024;
+const OutcomesSchema = z.object({ schemaVersion: z.literal(1), records: z.array(KnowledgeOutcomeSchema).max(1000) }).strict();
 const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/);
 const Digest = z.string().regex(/^[a-f0-9]{64}$/);
 const ManifestSchema = z.object({
@@ -25,7 +28,7 @@ const EventSchema = z.discriminatedUnion("type", [
 ]);
 type Manifest = z.infer<typeof ManifestSchema>;
 type Event = z.infer<typeof EventSchema>;
-type Loaded = { manifest: Manifest; revisions: Map<string, KnowledgeRevision>; disputes: Map<string, KnowledgeDispute>; headBlobs: Map<string, Buffer> };
+type Loaded = { manifest: Manifest; revisions: Map<string, KnowledgeRevision>; disputes: Map<string, KnowledgeDispute>; disputedRevisions: Set<string>; headBlobs: Map<string, Buffer> };
 export interface KnowledgeRun { readonly id: string }
 type Run = { token: KnowledgeRun; source: SourceIdentity; signal?: AbortSignal; ended: boolean; publication?: string };
 type StoreOptions = { quotaBytes?: number; fault?: (point: string) => void | Promise<void> };
@@ -119,10 +122,17 @@ export class SourceStickerKnowledgeStore {
   readonly directory: string;
   private readonly runs = new Map<string, Run>();
   private readonly pendingDisputes = new Map<string, number>();
+  // Informational history only; never consulted by lookup, publication or admission.
+  // Refresh on restart and every owner mutation; avoid hashing the evidence archive
+  // on every renderer/FFmpeg progress tick. No evidence bytes are retained here.
+  private readonly historicalRisks = new Map<string, Map<string, "none" | "disputed">>();
+  private historyEpoch = 0;
+  get historyGeneration(): number { return this.historyEpoch; }
   private tail: Promise<unknown> = Promise.resolve();
   private closed = false;
   private closePromise?: Promise<void>;
   private poisoned = false;
+  private poison(): void { this.poisoned = true; this.historyEpoch++; this.historicalRisks.clear(); }
   private constructor(directory: string, private readonly options: StoreOptions) { this.directory = directory; }
 
   static async open(userData: string, options: StoreOptions = {}): Promise<SourceStickerKnowledgeStore> {
@@ -191,6 +201,7 @@ export class SourceStickerKnowledgeStore {
     const eventNames = await readdir(path.join(directory, "events"));
     if (eventNames.length !== manifest.events.length || eventNames.some((id) => !manifest.events.some((event) => event.id === id))) throw new KnowledgeStoreError("integrity", "Manifest omits durable events");
     const revisions = new Map<string, KnowledgeRevision>(), disputes = new Map<string, KnowledgeDispute>();
+    const disputedRevisions = new Set<string>();
     const headBlobs = new Map<string, Buffer>();
     let head: string | null = null;
     for (const entry of manifest.events) {
@@ -214,12 +225,13 @@ export class SourceStickerKnowledgeStore {
       } else {
         if (sourceKey(record.source) !== sourceKey(source) || disputes.has(record.dispute.id)) throw new KnowledgeStoreError("integrity");
         this.checkDispute(source, record.dispute, revisions);
+        disputedRevisions.add(record.dispute.revisionId);
         disputes.set(record.dispute.id, record.dispute);
       }
     }
     if (manifest.currentRevisionId !== head || Object.values(manifest.references).some((id) => !revisions.has(id))) throw new KnowledgeStoreError("integrity", "Invalid manifest reference");
     for (const revision of revisions.values()) revision.state = [...disputes.values()].some((d) => d.revisionId === revision.id) ? "disputed" : revision.id === head ? "reviewed" : "superseded";
-    return { manifest, revisions, disputes, headBlobs };
+    return { manifest, revisions, disputes, disputedRevisions, headBlobs };
   }
 
   /** Checked source evidence is lent only as detached bytes, never as store paths. */
@@ -261,6 +273,27 @@ export class SourceStickerKnowledgeStore {
   }
   async readRevision(source: SourceIdentity, revisionId: string): Promise<KnowledgeRevision | undefined> {
     return this.exclusive(async () => (await this.load(source))?.revisions.get(revisionId));
+  }
+  /** Read-only historical warning, not an admission/retry gate. Resolved disputes
+   * still affect outputs frozen against the old revision. Missing evidence is unknown.
+   */
+  async revisionRisk(key: string, revisionId: string): Promise<"none" | "disputed" | "unknown"> {
+    try {
+      Digest.parse(key); Id.parse(revisionId);
+      return await this.exclusive(async () => {
+        const cached = this.historicalRisks.get(key);
+        if (cached) return cached.get(revisionId) ?? "unknown";
+        const directory = path.join(this.directory, "sources", key); await directorySafe(directory);
+        const manifest = ManifestSchema.parse(parseJson(await readSafe(path.join(directory, "manifest.json"))));
+        if (sourceKey(manifest.source) !== key) throw new KnowledgeStoreError("integrity");
+        const loaded = await this.load(manifest.source);
+        if (!loaded) return "unknown";
+        const risks = new Map<string, "none" | "disputed">([...loaded.revisions.keys()].map(id => [id, loaded.disputedRevisions.has(id) ? "disputed" : "none"]));
+        if (this.historicalRisks.size >= 128) this.historicalRisks.delete(this.historicalRisks.keys().next().value!);
+        this.historicalRisks.set(key, risks);
+        return risks.get(revisionId) ?? "unknown";
+      });
+    } catch { return "unknown"; }
   }
 
   private checkResolution(candidate: KnowledgeCandidate, disputes: Map<string, KnowledgeDispute>, previous?: KnowledgeRevision): void {
@@ -310,14 +343,15 @@ export class SourceStickerKnowledgeStore {
       const loaded = await this.load(run.source);
       if (!loaded) throw new KnowledgeStoreError("integrity", "No reviewed source to dispute");
       this.checkDispute(run.source, dispute, loaded.revisions);
+      this.historyEpoch++; this.historicalRisks.delete(key);
       const existing = loaded.disputes.get(dispute.id);
       if (existing) { if (canonical(existing) !== canonical(dispute)) throw new KnowledgeStoreError("conflict"); return; }
       try { await this.append(run.source, { schemaVersion: 1, type: "dispute", source: run.source, dispute }, blobs, loaded); }
       catch (e) {
         // Includes failures before append could create its source marker (quota accounting,
         // directory errors, etc.). The lifetime lock must then survive close/restart.
-        try { if (!(await exists(path.join(this.sourceDirectory(run.source), "pending.json")))) this.poisoned = true; }
-        catch { this.poisoned = true; }
+        try { if (!(await exists(path.join(this.sourceDirectory(run.source), "pending.json")))) this.poison(); }
+        catch { this.poison(); }
         throw e;
       }
     }, true).finally(() => {
@@ -327,18 +361,20 @@ export class SourceStickerKnowledgeStore {
   }
 
   private async transaction(source: SourceIdentity, action: () => Promise<void>): Promise<void> {
+    this.historyEpoch++;
+    this.historicalRisks.delete(sourceKey(source));
     const directory = this.sourceDirectory(source);
     try {
       await this.options.fault?.("before_marker");
       await mkdir(directory, { recursive: true }); await directorySafe(directory); await syncDirectory(path.dirname(directory));
       await writeDurable(path.join(directory, "pending.json"), canonical({ schemaVersion: 1, transactionId: randomUUID() }));
-    } catch (e) { this.poisoned = true; throw e; }
+    } catch (e) { this.poison(); throw e; }
     // On any later failure the durable source marker stays, including after a committed
     // manifest. Never guess whether a missing dispute was just a cache miss.
     await this.options.fault?.("after_marker");
     await action();
     await unlink(path.join(directory, "pending.json"));
-    try { await syncDirectory(directory); } catch (e) { this.poisoned = true; throw e; }
+    try { await syncDirectory(directory); } catch (e) { this.poison(); throw e; }
   }
   private async append(source: SourceIdentity, event: Event, blobs: Map<string, Buffer>, loaded: Loaded | null, beforeCommit?: () => void): Promise<void> {
     const bytes = canonical(event);
@@ -418,6 +454,46 @@ export class SourceStickerKnowledgeStore {
     }
     return bytes;
   }
+  private async outcomes(): Promise<KnowledgeOutcome[]> {
+    const file = path.join(this.directory, "outcomes.json");
+    return await exists(file) ? OutcomesSchema.parse(parseJson(await readSafe(file, MAX_OUTCOME_BYTES))).records : [];
+  }
+  async listOutcomes(projectId?: string): Promise<KnowledgeOutcome[]> {
+    if (projectId !== undefined) Id.parse(projectId);
+    return this.exclusive(async () => (await this.outcomes()).filter(row => projectId === undefined || row.projectId === projectId));
+  }
+  /** At most the latest 1000 terminal attempts / 2 MiB. This bounded diagnostic log
+   * does not pin facts or delete source evidence. Atomic replacement retains the old
+   * complete log on interruption; unknown formats are never overwritten.
+   */
+  async recordOutcome(input: KnowledgeOutcome): Promise<void> {
+    const record = KnowledgeOutcomeSchema.parse(input);
+    if (metadataSize(record) > 64 * 1024) throw new KnowledgeStoreError("quota", "Production outcome too large");
+    return this.exclusive(async () => {
+      const records = await this.outcomes();
+      const previous = records.find(row => row.id === record.id);
+      if (previous) {
+        if (canonical(previous) !== canonical(record)) throw new KnowledgeStoreError("conflict", "Production outcome is immutable");
+        return;
+      }
+      records.push(record);
+      while (records.length > 1000 || metadataSize({ schemaVersion: 1, records }) > MAX_OUTCOME_BYTES) records.shift();
+      const value = { schemaVersion: 1, records };
+      if (await this.usage() + metadataSize(value) > (this.options.quotaBytes ?? DEFAULT_QUOTA_BYTES)) throw new KnowledgeStoreError("quota");
+      await this.options.fault?.("before_outcome");
+      const file = path.join(this.directory, "outcomes.json"), temporary = `${file}.tmp-${randomUUID()}`;
+      try {
+        await writeDurable(temporary, canonical(value));
+        await this.options.fault?.("after_outcome_write");
+        renameSync(temporary, file);
+        await syncDirectory(this.directory);
+      } finally {
+        // Unlike a fact transaction, an uncommitted diagnostic copy carries no
+        // counterevidence. Never accumulate quota-consuming copies on retries.
+        if (await exists(temporary)) { await unlink(temporary); await syncDirectory(this.directory); }
+      }
+    });
+  }
   /** Oldest-updated whole sources first. Pins, active runs, disputes and unreadable sources
    * are never evicted. Orphan transactions require explicit recovery, not quota cleanup.
    * Rename invalidates lookup before evidence removal; no source media is ever touched.
@@ -442,6 +518,8 @@ export class SourceStickerKnowledgeStore {
         if (bytes <= targetBytes) break;
         if (this.pendingDisputes.has(key)) continue;
         const directory = path.join(this.directory, "sources", key), trash = path.join(this.directory, `collected-${randomUUID()}`);
+        this.historicalRisks.delete(key);
+        this.historyEpoch++;
         await rename(directory, trash); await syncDirectory(path.dirname(directory)); await syncDirectory(this.directory);
         await rm(trash, { recursive: true }); await syncDirectory(this.directory); removed.push(key); bytes = await this.usage();
       }
@@ -450,6 +528,7 @@ export class SourceStickerKnowledgeStore {
   }
   async close(): Promise<void> {
     if (this.closePromise) return this.closePromise;
+    this.historyEpoch++; this.historicalRisks.clear();
     this.closed = true;
     for (const run of this.runs.values()) run.ended = true;
     this.closePromise = this.tail.then(async () => {

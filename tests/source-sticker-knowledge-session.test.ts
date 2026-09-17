@@ -67,6 +67,24 @@ describe("source knowledge session", () => {
     expect(states.at(-1)).toMatchObject({ phase: "blocked", renders: 1, previewRequests: 0 });
     await session.close();
   });
+  it("retains the supervisor's stop separately from unverified human quality", async () => {
+    const f = await fixture(), session = f.session(), states: SourceKnowledgeProgress[] = [];
+    const binding = await session.acquire(f.media, 3000, signal(), stage, value => states.push(value));
+    f.decide(() => JSON.stringify({ action: "stop", reason: "model cannot confirm" }));
+    const t = f.template();
+    await expect(session.review(binding, t, () => t, signal(), stage)).rejects.toThrow();
+    expect(states.at(-1)?.previewActions).toEqual(["stop"]);
+    await session.close();
+  });
+  it("retains the model pass when a later publication gate fails", async () => {
+    const f = await fixture(), session = f.session(), states: SourceKnowledgeProgress[] = [];
+    const binding = await session.acquire(f.media, 3000, signal(), stage, value => states.push(value));
+    f.store.publish = async () => { throw new Error("local publication failure"); };
+    const t = f.template();
+    await expect(session.review(binding, t, () => t, signal(), stage)).rejects.toThrow("local publication failure");
+    expect(states.at(-1)).toMatchObject({ phase: "blocked", failureStage: "publication", modelVerdict: "passed", previewActions: ["pass"] });
+    await session.close();
+  });
   it("reports cold, warm and explicit refresh with per-version sampled evidence and actual preview budget", async () => {
     const f = await fixture();
     for (const [refresh, origin, requests] of [[false, "cold", 2], [false, "warm", 0], [true, "refresh", 2]] as const) {
@@ -76,6 +94,9 @@ describe("source knowledge session", () => {
       expect(states.some(value => value.phase === (origin === "warm" ? "reusing" : "recognizing"))).toBe(true);
       expect(states.at(-1)).toMatchObject({ phase: "reviewed", origin, recognitionRequests: requests, previewRequests: 1, renders: 1, revisions: 0, reviewedRanges: [{ startMs: 0, endMs: 3000 }] });
       expect(states.at(-1)?.revisionId).toBeTruthy();
+      expect(states.at(-1)?.lookupReason).toBe(origin === "cold" ? "absent" : origin === "warm" ? "hit" : "refresh");
+      expect(states.at(-1)?.modelVerdict).toBe("passed");
+      expect(states.at(-1)?.previewEvidenceDigests).toHaveLength(1);
       expect(JSON.stringify(states)).not.toContain(f.directory);
       await session.close();
     }
@@ -230,8 +251,9 @@ describe("source knowledge session", () => {
     await first.review(binding, t, () => t, signal(), stage); await first.close();
     const abort = new AbortController();
     f.recognitionChange(facts => corrected({ facts } as KnowledgeCandidate)); f.failAfterWindow(() => { if (cancel) abort.abort(); });
-    const refresh = f.session(true);
-    await expect(refresh.acquire(f.media, 3000, abort.signal, stage)).rejects.toThrow();
+    const refresh = f.session(true), states: SourceKnowledgeProgress[] = [];
+    await expect(refresh.acquire(f.media, 3000, abort.signal, stage, value => states.push(value))).rejects.toThrow();
+    expect(states.at(-1)).toMatchObject({ sourceIssueReported: true, lookupReason: "refresh", failureStage: "recognition" });
     await refresh.close(); await f.store.close();
     const reopened = await SourceStickerKnowledgeStore.open(f.directory); stores.push(reopened);
     expect((await reopened.lookup(f.source, [{ startMs: 0, endMs: 3000 }])).status).toBe("disputed");
