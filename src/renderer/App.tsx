@@ -12,11 +12,13 @@ import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { StickerLibraryPanel } from "./StickerLibraryPanel";
 import { CoverReviewPanel } from "./CoverReviewPanel";
 import { CoverStickerPanel } from "./CoverStickerPanel";
-import { DecorationSchema, ProductPriceSchema, type DecorationOptions, type Corner } from "../shared/decorations";
+import { DecorationAppearanceSchema, DecorationSchema, ProductPriceSchema, type DecorationOptions, type Corner } from "../shared/decorations";
 import type { CoverSticker } from "../shared/cover-sticker";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
+import { ProjectWorkspaceSchema } from "../shared/project-workspace";
 import { ResultsPanel } from "./ResultsPanel";
 import { BugFeedbackDialog } from "./BugFeedbackDialog";
+import { SavedProjectsDialog } from "./SavedProjectsDialog";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 
 type Step = "connection" | "import" | "templates" | "stickers" | "results";
@@ -35,6 +37,7 @@ export default function App() {
   const [initError, setInitError] = useState("");
   const [busy, setBusy] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [savedProjectsOpen, setSavedProjectsOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [rule, setRule] = useState<RuleId>("black-gold");
   const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({ mode: "agent" }));
@@ -59,11 +62,18 @@ export default function App() {
   const apply = useCallback((next: DesktopState, restoreProductPrice = false) => {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
     const projectChanged = projectId.current !== next.project.id;
+    const workspace = next.project.workspaceDraft;
     if (projectChanged) {
       projectId.current = next.project.id;
       setCollectionName(next.project.name);
       knownMedia.current.clear();
-      setOutputDirectory("");
+      setRule(workspace?.ruleId ?? "black-gold");
+      setBrief(workspace?.brief ?? "");
+      setRequestedCount(workspace?.requestedCount);
+      setExportSettings(workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS);
+      setExportFormat(workspace?.exportFormat ?? DEFAULT_EXPORT_FORMAT);
+      setOutputDirectory(workspace?.outputDirectory ?? "");
+      setSelectedCorner(undefined);
       setPreviewId(undefined);
       setCoverStickerDirty(false);
     }
@@ -80,23 +90,29 @@ export default function App() {
               if (saved.activeRecentProjectId) window.localStorage.removeItem(legacyKey);
               if (projectId.current === next.project.id) setState(saved);
             }).catch(() => {
-              if (projectId.current === next.project.id) setNotice({ error: true, text: "旧版展示文字未能迁入当前素材集，请重试。" });
+              if (projectId.current === next.project.id) setNotice({ error: true, text: "旧版展示文字未能迁入当前项目，请重试。" });
             });
           }
         } catch {
-          setNotice({ error: true, text: "旧版展示文字未能读取；当前素材集仍可重新填写。" });
+          setNotice({ error: true, text: "旧版展示文字未能读取；当前项目仍可重新填写。" });
         }
       }
-      setDecorations((current) => ({ ...current, productPrice }));
+      const appearance = projectChanged ? workspace?.decorations ?? DecorationAppearanceSchema.parse({ mode: "agent" }) : undefined;
+      setDecorations((current) => DecorationSchema.parse({ ...(appearance ?? current), productPrice }));
     }
     const additions = ready.filter((item) => !knownMedia.current.has(item.id)).map((item) => item.id);
     knownMedia.current = new Set(next.project.mediaItems.map((item) => item.id));
-    setSelected((current) => [...new Set([...current.filter((id) => ready.some((item) => item.id === id)), ...additions])]);
+    if (projectChanged) {
+      const restored = workspace?.selectedMediaIds ?? ready.map((item) => item.id);
+      setSelected(restored.filter((id) => ready.some((item) => item.id === id)));
+    } else {
+      setSelected((current) => [...new Set([...current.filter((id) => ready.some((item) => item.id === id)), ...additions])]);
+    }
     setState(next);
     if (!initialized.current) {
       initialized.current = true;
-      setStep(next.connection.configured ? "import" : "connection");
-    }
+      setStep(next.connection.configured ? workspace?.step ?? "import" : "connection");
+    } else if (projectChanged) setStep(next.connection.configured ? workspace?.step ?? "import" : "connection");
   }, []);
 
   useEffect(() => {
@@ -148,10 +164,14 @@ export default function App() {
     const paths = [...event.dataTransfer.files].map((file) => window.jianji.getPathForFile(file)).filter(Boolean);
     if (paths.length) void run(async () => { apply(await window.jianji.addAndProbe(paths)); });
   };
-  const changeProject = (load: boolean, recentId?: string) => void run(async () => {
-    const next = await (load ? window.jianji.loadProject(recentId) : window.jianji.newProject());
-    if (next) { apply(next, true); setCollectionName(next.project.name); setStep(next.connection.configured ? "import" : "connection"); }
-  });
+  const changeProject = async (load: boolean, recentId?: string): Promise<boolean> => {
+    let changed = false;
+    await run(async () => {
+      const next = await (load ? window.jianji.loadProject(recentId) : window.jianji.newProject());
+      if (next) { apply(next, true); setCollectionName(next.project.name); changed = true; }
+    });
+    return changed;
+  };
   const renameCollection = (name: string) => {
     setCollectionName(name);
     const parsed = MaterialNameSchema.safeParse(name);
@@ -159,18 +179,30 @@ export default function App() {
     const currentId = state.project.id;
     void window.jianji.renameProject(parsed.data).then(() => {
       setState((current) => current?.project.id === currentId ? { ...current, project: { ...current.project, name: parsed.data, hasUnsavedChanges: true } } : current);
-    }).catch(() => setNotice({ error: true, text: "素材集名称未能更新，请重试。" }));
+    }).catch(() => setNotice({ error: true, text: "项目名称未能更新，请重试。" }));
   };
   const saveCollection = () => void run(async () => {
     const name = MaterialNameSchema.parse(collectionName);
-    const next = await window.jianji.saveProject(name);
-    if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "素材集已保存，下次可从下拉列表选择使用。" }); }
+    const resumeStep = step === "templates" || step === "results" ? step : step === "import" ? "import" : state.project.workspaceDraft?.step ?? (selected.length ? "templates" : "import");
+    const workspace = ProjectWorkspaceSchema.parse({
+      step: resumeStep,
+      selectedMediaIds: selected,
+      ruleId: rule,
+      brief,
+      decorations: DecorationAppearanceSchema.parse(decorations),
+      ...(Number.isInteger(requestedCount) ? { requestedCount } : {}),
+      exportFormat,
+      exportSettings,
+      ...(outputDirectory ? { outputDirectory } : {}),
+    });
+    const next = await window.jianji.saveProject(name, workspace);
+    if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "项目已保存，下次可从右上角项目列表继续。" }); }
   });
   const renameSavedCollection = async (recentId: string, name: string): Promise<boolean> => run(async () => {
     const next = await window.jianji.renameSavedProject(recentId, name);
     apply(next);
     setCollectionName(next.project.name);
-  }, "素材集已重命名。");
+  }, "项目已重命名。");
   const removeSavedCollection = async (recentId: string): Promise<boolean> => {
     let removed = false;
     const completed = await run(async () => {
@@ -179,7 +211,7 @@ export default function App() {
       removed = true;
       apply(next);
     });
-    if (completed && removed) setNotice({ error: false, text: "素材集已移到系统回收站，原视频未删除。" });
+    if (completed && removed) setNotice({ error: false, text: "项目已移到系统回收站，原视频未删除。" });
     return completed && removed;
   };
   const rememberProductPrice = (productPrice: string) => {
@@ -191,7 +223,7 @@ export default function App() {
     void window.jianji.setProductPriceDraft(currentId, parsed.data).then((next) => {
       if (projectId.current === currentId) setState(next);
     }).catch(() => {
-      if (projectId.current === currentId) setNotice({ error: true, text: "展示文字未能写入当前素材集，请重试。" });
+      if (projectId.current === currentId) setNotice({ error: true, text: "展示文字未能写入当前项目，请重试。" });
     });
   };
   const start = () => void run(async () => {
@@ -227,7 +259,7 @@ export default function App() {
   return <div className="app-shell">
     <aside className="sidebar">
       <a className="brand" href="#" onClick={(event) => { event.preventDefault(); navigate("import"); }}><div className="brand-symbol"><Icon name="spark" size={24} /></div><div><strong>简辑<span>JIANJI</span></strong><small>让创作，简单一点</small></div></a>
-      <button className="new-project" disabled={locked || exporting} onClick={() => changeProject(false)}><span>＋</span> 新建创作<Icon name="arrow" size={16} /></button>
+      <button className="new-project" disabled={locked || exporting} onClick={() => void changeProject(false)}><span>＋</span> 新建创作<Icon name="arrow" size={16} /></button>
       <span className="nav-label">WORKSPACE</span>
       <nav aria-label="创作流程">{steps.map((item) => <button className={step === item.id ? "active" : ""} onClick={() => navigate(item.id)} key={item.id}><Icon name={item.icon} size={19} /><span>{item.label}</span><small>{item.detail}</small></button>)}</nav>
       <div className="sidebar-note"><span className="small-tag"><Icon name="spark" size={14} /> AGENT AT WORK</span><h3>你来定方向，<br />细节交给 Agent。</h3><p>素材 + 规则模板<br />每条视频，独立表达。</p><div className="note-lines"><i /><i /><i /></div></div>
@@ -235,8 +267,9 @@ export default function App() {
     </aside>
     {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
     <BugFeedbackDialog open={feedbackOpen} page={step === "stickers" ? "templates" : step} onClose={() => setFeedbackOpen(false)} />
+    <SavedProjectsDialog open={savedProjectsOpen} projects={state.recentProjects ?? []} activeId={state.activeRecentProjectId} disabled={locked || exporting} onClose={() => setSavedProjectsOpen(false)} onOpen={(id) => changeProject(true, id)} onRename={renameSavedCollection} onDelete={removeSavedCollection} />
     <div className="main-area">
-      <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{engineLabel}</span><button className="icon-button" aria-label="打开项目" title="打开已保存项目" disabled={locked || exporting} onClick={() => { setStep("import"); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onClick={saveCollection}><Icon name="download" size={15} />保存项目</button></div></header>
+      <header className="topbar"><div className="breadcrumb">创作空间 <span>/</span> <strong>{step === "connection" ? "模型连接" : steps.find((item) => item.id === step)?.label}</strong></div><div className="topbar-actions"><span className={state.capabilities.ready ? "engine-status" : "engine-status unavailable"}><i />{engineLabel}</span><button className="icon-button" aria-label="打开项目" title="打开已保存项目" disabled={locked || exporting} onClick={() => setSavedProjectsOpen(true)}><Icon name="folder" size={18} /></button><button className="button secondary compact" disabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onClick={saveCollection}><Icon name="download" size={15} />保存项目</button></div></header>
       <main className="content">
         {state.recentProjectsWarning && <div className="notice error" role="status">{state.recentProjectsWarning}</div>}
         {state.project.migrationBackupPath && <div className="notice" role="status">项目已升级；降级副本保存在：{state.project.migrationBackupPath}</div>}
@@ -256,7 +289,7 @@ export default function App() {
         {step === "connection" && <ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => void run(async () => { apply(await window.jianji.loginChatGPT()); })} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); setStep("import"); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={() => setStep("import")} />}
         {step === "import" && <>
           <Heading eyebrow="01 / A LITTLE MATERIAL, A LOT OF POSSIBILITY" title="好作品，从你的素材开始">放入视频，填写价格。贴纸与滤镜可以交给 Agent 自主安排。</Heading>
-          <MaterialCollection name={collectionName} dirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} recentProjects={state.recentProjects ?? []} activeRecentId={state.activeRecentProjectId} onOpen={(id) => changeProject(true, id)} onSave={saveCollection} onRename={renameSavedCollection} onDelete={removeSavedCollection} />
+          <MaterialCollection name={collectionName} dirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} onBrowse={() => void changeProject(true)} onSave={saveCollection} />
           <div className="import-layout"><div className="import-main">
             <div className={"drop-zone" + (dragOver ? " drag-over" : "")} onDragOver={(event) => { event.preventDefault(); if (!locked) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={dropMedia}>
               <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked || !state.connection.configured} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>

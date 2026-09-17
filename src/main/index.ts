@@ -30,6 +30,7 @@ import type { DesktopState } from "../shared/desktop.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
 import { RecentProjects } from "./recent-projects.js";
 import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
+import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -45,6 +46,7 @@ const taskSchema = z.object({ taskId: uuidSchema }).strict();
 const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict();
 const productPriceDraftSchema = z.object({ projectId: uuidSchema, productPrice: ProductPriceSchema }).strict();
 const savedProjectRenameSchema = z.object({ recentId: uuidSchema, name: MaterialNameSchema }).strict();
+const projectSaveSchema = z.object({ name: MaterialNameSchema.optional(), workspaceDraft: ProjectWorkspaceSchema.optional() }).strict();
 
 let mainWindow: BrowserWindow | undefined;
 let service: ApplicationService;
@@ -84,7 +86,13 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  return { ...(await service.state(currentState())), capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
+  const state = await service.state(currentState());
+  const outputDirectory = state.project.workspaceDraft?.outputDirectory;
+  if (outputDirectory) {
+    const approved = await canonicalPath(outputDirectory).then((value) => approvedOutputDirectories.has(value)).catch(() => false);
+    if (!approved) delete state.project.workspaceDraft!.outputDirectory;
+  }
+  return { ...state, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
 function notifyState(): void {
@@ -259,7 +267,7 @@ function registerHandlers(): void {
   ipcMain.handle("project.productPriceDraft", async (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const { projectId, productPrice } = productPriceDraftSchema.parse(input);
-    if (service.currentProject.id !== projectId) throw new Error("素材集已切换，展示文字未保存。");
+    if (service.currentProject.id !== projectId) throw new Error("项目已切换，展示文字未保存。");
     service.setProductPriceDraft(productPrice);
     await service.persistCurrentProject();
     return publicState();
@@ -271,12 +279,13 @@ function registerHandlers(): void {
   });
   ipcMain.handle("project.save", async (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
-    const name = input === undefined ? service.currentProject.name : MaterialNameSchema.parse(input);
+    const parsed = projectSaveSchema.parse(input ?? {});
+    const name = parsed.name ?? service.currentProject.name;
     const fileName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
-    const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目与素材集", defaultPath: service.projectPath ?? `${fileName}.jianji-project.json` });
+    const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目", defaultPath: service.projectPath ?? `${fileName}.jianji-project.json` });
     if (result.canceled || !result.filePath) return null;
     coverReview?.assertIdle(); agent.assertIdle();
-    await service.saveProject(result.filePath, name);
+    await service.saveProject(result.filePath, name, parsed.workspaceDraft);
     await recentProjects.remember(result.filePath, service.currentProject);
     activeRecentProjectId = await recentProjects.idForPath(result.filePath);
     return publicState();
@@ -311,8 +320,8 @@ function registerHandlers(): void {
     }
     if (service.hasUnsavedChanges && (service.currentProject.mediaItems.length || service.projectPath)) {
       const choice = await dialog.showMessageBox(mainWindow!, {
-        type: "question", title: "打开素材集", message: "当前项目有尚未保存的更改。",
-        detail: "请先取消并保存当前素材集，或继续打开并放弃这些更改。",
+        type: "question", title: "打开项目", message: "当前项目有尚未保存的更改。",
+        detail: "请先取消并保存当前项目，或继续打开并放弃这些更改。",
         buttons: ["继续打开", "取消"], defaultId: 1, cancelId: 1,
       });
       if (choice.response !== 0) return null;
@@ -321,7 +330,7 @@ function registerHandlers(): void {
     try { await service.loadProject(filePath); }
     catch (error) {
       if (input === undefined) throw error;
-      throw new Error("无法打开该素材集，文件可能已移动、删除或损坏。请使用“打开其他素材集”重新选择。", { cause: error });
+      throw new Error("无法打开该项目，文件可能已移动、删除或损坏。请使用“从项目文件导入”重新选择。", { cause: error });
     }
     await queue.hydrate(service.currentProject.exportBatches);
     await recentProjects.remember(filePath, service.currentProject);
@@ -334,7 +343,7 @@ function registerHandlers(): void {
     const filePath = recentProjects.resolve(recentId);
     const active = service.projectPath ? await pathsEqual(service.projectPath, filePath) : false;
     if (active) {
-      if (service.hasUnsavedChanges) throw new Error("当前素材集有尚未保存的更改，请先保存后再重命名。");
+      if (service.hasUnsavedChanges) throw new Error("当前项目有尚未保存的更改，请先保存后再重命名。");
       await service.saveProject(filePath, name);
       await recentProjects.remember(filePath, service.currentProject);
     } else {
@@ -351,14 +360,14 @@ function registerHandlers(): void {
     assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
     const recentId = uuidSchema.parse(input);
     const entry = recentProjects.list().find((item) => item.id === recentId);
-    if (!entry) throw new Error("找不到该素材集，请刷新列表后重试。");
+    if (!entry) throw new Error("找不到该项目，请刷新列表后重试。");
     const filePath = recentProjects.resolve(recentId);
     const active = service.projectPath ? await pathsEqual(service.projectPath, filePath) : false;
     const choice = await dialog.showMessageBox(mainWindow!, {
       type: "warning",
-      title: "删除素材集",
+      title: "删除项目",
       message: `确定删除“${entry.name}”？`,
-      detail: `${active && service.hasUnsavedChanges ? "当前尚未保存的更改也会丢失。" : ""}素材集项目文件将移到系统回收站，原视频不会被删除。`,
+      detail: `${active && service.hasUnsavedChanges ? "当前尚未保存的更改也会丢失。" : ""}项目文件将移到系统回收站，原视频不会被删除。`,
       buttons: ["移到回收站", "取消"],
       defaultId: 1,
       cancelId: 1,

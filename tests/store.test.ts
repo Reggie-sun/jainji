@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { createDefaultProject, ProjectSchema } from "../src/main/domain";
+import { createDefaultProject, PROJECT_SCHEMA_VERSION, ProjectSchema } from "../src/main/domain";
 import { atomicWriteJson, readValidatedJson } from "../src/main/store";
 
 describe("atomic JSON store", () => {
@@ -15,11 +15,11 @@ describe("atomic JSON store", () => {
     await atomicWriteJson(filePath, second);
     expect(JSON.parse(await readFile(`${filePath}.bak`, "utf8")).name).toBe("first");
     await writeFile(filePath, "{broken", "utf8");
-    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: 2 });
+    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: PROJECT_SCHEMA_VERSION });
     expect(result.source).toBe("backup");
     expect(result.value.name).toBe("first");
     expect((await readdir(directory)).some((name) => name.startsWith("project.json.corrupt-"))).toBe(true);
-    expect((await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: 2 })).source).toBe("primary");
+    expect((await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: PROJECT_SCHEMA_VERSION })).source).toBe("primary");
   });
 
   it("serializes concurrent writes to one state file", async () => {
@@ -28,7 +28,7 @@ describe("atomic JSON store", () => {
     const first = createDefaultProject("first");
     const second = createDefaultProject("second");
     await Promise.all([atomicWriteJson(filePath, first), atomicWriteJson(filePath, second)]);
-    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: 2 });
+    const result = await readValidatedJson(filePath, (value) => ProjectSchema.parse(value), { maxVersion: PROJECT_SCHEMA_VERSION });
     expect(["first", "second"]).toContain(result.value.name);
     expect(result.source).toBe("primary");
   });

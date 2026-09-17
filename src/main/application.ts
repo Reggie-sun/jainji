@@ -21,6 +21,7 @@ import { ProductPriceSchema } from "../shared/decorations.js";
 import { CoverStickerSchema, coverSettingsMediaIssue, type CoverSticker } from "../shared/cover-sticker.js";
 import { CoverReviewDraftSchema, type CoverReviewDraft } from "../shared/cover-review.js";
 import { recoverCoverReviewDraft } from "./cover-review-session.js";
+import { ProjectWorkspaceSchema, type ProjectWorkspace } from "../shared/project-workspace.js";
 
 export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots">;
 export interface PublicQueueState {
@@ -43,6 +44,7 @@ export interface AppState {
     template: EditTemplate;
     coverSticker?: CoverSticker;
     reviewDrafts?: CoverReviewDraft[];
+    workspaceDraft?: ProjectWorkspace;
     migrationBackupPath?: string;
   };
   queue: PublicQueueSnapshot;
@@ -242,12 +244,17 @@ export class ApplicationService {
     return cloneTemplate(value);
   }
 
-  async saveProject(filePath: string, nameInput?: string): Promise<Project> {
+  async saveProject(filePath: string, nameInput?: string, workspaceInput?: ProjectWorkspace): Promise<Project> {
     const name = nameInput === undefined ? this.project.name : MaterialNameSchema.parse(nameInput);
+    const workspace = workspaceInput === undefined ? undefined : ProjectWorkspaceSchema.parse(workspaceInput);
     await this.assertNotSource(filePath);
     this.pendingProjectSave = undefined;
     await this.projectSaveWork?.catch(() => undefined);
     this.renameProject(name);
+    if (workspace && JSON.stringify(workspace) !== JSON.stringify(this.project.workspaceDraft)) {
+      this.project.workspaceDraft = workspace;
+      this.touch();
+    }
     const store = new ProjectStore(filePath);
     const version = this.mutationVersion;
     // This explicit save includes the latest state and supersedes older pending autosaves.
@@ -332,6 +339,7 @@ export class ApplicationService {
         template: cloneTemplate(this.activeTemplate),
         coverSticker: this.project.coverSticker && structuredClone(this.project.coverSticker),
         reviewDrafts: this.project.reviewDrafts && structuredClone(this.project.reviewDrafts),
+        workspaceDraft: this.project.workspaceDraft && structuredClone(this.project.workspaceDraft),
         migrationBackupPath: this.migrationBackupPath,
       },
       queue: toPublicQueue(queue, this.project.id),

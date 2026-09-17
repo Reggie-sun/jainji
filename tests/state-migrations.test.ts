@@ -6,7 +6,7 @@ import { BATCH_SCHEMA_VERSION, createDefaultProject, DEFAULT_PRESET, PROJECT_SCH
 import { FutureSchemaVersionError, migrateProjectState, migrateQueueState, type PersistenceSchemaVersions } from "../src/main/state-migrations";
 import { atomicWriteJson, JobStore, ProjectStore, StoreError } from "../src/main/store";
 
-const versions: PersistenceSchemaVersions = { project: 2, queue: 2, batch: 2, template: 1 };
+const versions: PersistenceSchemaVersions = { project: 3, queue: 2, batch: 2, template: 1 };
 
 function legacyBatch(project: ReturnType<typeof createDefaultProject>) {
   const id = crypto.randomUUID();
@@ -33,7 +33,15 @@ describe("state migrations", () => {
 
     expect(result).toEqual({
       migrated: true,
-      value: { schemaVersion: 2, templates: [template], exportBatches: [{ schemaVersion: 2, templateSnapshot: template }] },
+      value: { schemaVersion: 3, templates: [template], exportBatches: [{ schemaVersion: 2, templateSnapshot: template }] },
+    });
+  });
+
+  it("migrates a v2 project without inventing a workspace draft", () => {
+    const project = { schemaVersion: 2, templates: [], exportBatches: [] };
+    expect(migrateProjectState(project, versions)).toEqual({
+      migrated: true,
+      value: { ...project, schemaVersion: 3 },
     });
   });
 

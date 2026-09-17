@@ -25,7 +25,7 @@ export class RecentProjects {
       return;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
-        this.warning = "已保存素材集列表暂时无法读取。素材集文件不受影响，可通过“打开其他素材集”重新选择。";
+        this.warning = "已保存项目列表暂时无法读取。项目文件不受影响，可通过“从项目文件导入”重新选择。";
         return;
       }
     }
@@ -51,7 +51,7 @@ export class RecentProjects {
 
   resolve(id: string): string {
     const entry = this.entries.find((item) => item.id === id);
-    if (!entry) throw new Error("找不到该素材集，请使用“打开其他素材集”。");
+    if (!entry) throw new Error("找不到该项目，请使用“从项目文件导入”。");
     return entry.filePath;
   }
 
@@ -78,12 +78,12 @@ export class RecentProjects {
   forget(id: string): Promise<void> {
     const pending = this.work.catch(() => undefined).then(async () => {
       const entries = this.entries.filter((item) => item.id !== id);
-      if (entries.length === this.entries.length) throw new Error("找不到该素材集，请刷新列表后重试。");
+      if (entries.length === this.entries.length) throw new Error("找不到该项目，请刷新列表后重试。");
       try {
         await atomicWriteJson(this.filePath, { schemaVersion: 1, entries });
         this.warning = undefined;
       } catch {
-        this.warning = "素材集已删除，但保存列表暂时无法更新；重启后如再次出现，请重新删除该记录。";
+        this.warning = "项目已删除，但保存列表暂时无法更新；重启后如再次出现，请重新删除该记录。";
       }
       // The project file has already been removed. Do not leave an unusable
       // entry visible merely because the auxiliary index could not be written.
@@ -94,6 +94,6 @@ export class RecentProjects {
   }
 
   private warnWriteFailure(): void {
-    this.warning = "已保存素材集列表暂时无法更新。素材集文件不受影响，可通过“打开其他素材集”继续使用。";
+    this.warning = "已保存项目列表暂时无法更新。项目文件不受影响，可通过“从项目文件导入”继续使用。";
   }
 }

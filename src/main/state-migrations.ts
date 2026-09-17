@@ -70,7 +70,7 @@ export function migrateProjectState(value: unknown, versions: PersistenceSchemaV
     return result.value;
   });
   const version = schemaVersionOf(project);
-  const nextProject = version === 1 && versions.project !== 1
+  const nextProject = version !== undefined && version < versions.project
     ? { ...project, schemaVersion: versions.project }
     : project;
   migrated ||= nextProject !== project;

@@ -53,6 +53,8 @@ export const DecorationSchema = z.preprocess((input) => {
   corners: z.object({ "top-left": CornerDecorationSchema.optional(), "top-right": CornerDecorationSchema.optional(), "bottom-left": CornerDecorationSchema.optional(), "bottom-right": CornerDecorationSchema.optional() }).strict().optional(),
 }).strict());
 export type DecorationOptions = z.infer<typeof DecorationSchema>;
+export const DecorationAppearanceSchema = DecorationSchema.transform(({ productPrice: _productPrice, ...appearance }) => appearance);
+export type DecorationAppearance = z.infer<typeof DecorationAppearanceSchema>;
 export interface DecorationCatalog {
   fonts: string[];
   stickers: { id: string; label: string; url: string; animated: boolean; source: "builtin" | "downloaded" | "uploaded" }[];

@@ -8,6 +8,7 @@ import type { CoverSticker } from "../shared/cover-sticker.js";
 import type { LibraryAssetPreview } from "../shared/asset-library.js";
 import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shared/bug-feedback.js";
 import type { CoverReviewCommand } from "./cover-review-session.js";
+import type { ProjectWorkspace } from "../shared/project-workspace.js";
 
 const api = {
   createCoverReview: (mediaIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("coverReview.create", mediaIds),
@@ -51,7 +52,7 @@ const api = {
   renameProject: (name: string): Promise<void> => ipcRenderer.invoke("project.rename", name),
   setProductPriceDraft: (projectId: string, productPrice: string): Promise<DesktopState> => ipcRenderer.invoke("project.productPriceDraft", { projectId, productPrice }),
   setCoverSticker: (input: CoverSticker): Promise<DesktopState> => ipcRenderer.invoke("project.coverSticker", input),
-  saveProject: (name?: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.save", name),
+  saveProject: (name?: string, workspaceDraft?: ProjectWorkspace): Promise<DesktopState | null> => ipcRenderer.invoke("project.save", { name, workspaceDraft }),
   loadProject: (recentId?: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.load", recentId),
   renameSavedProject: (recentId: string, name: string): Promise<DesktopState> => ipcRenderer.invoke("project.saved.rename", { recentId, name }),
   removeSavedProject: (recentId: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.saved.remove", recentId),

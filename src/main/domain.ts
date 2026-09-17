@@ -8,12 +8,13 @@ import { DecorationDisplayModeSchema, ProductPriceSchema, RequiredProductPriceSc
 import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverSettingsMediaIssue, MAX_MANUAL_COVERS } from "../shared/cover-sticker.js";
 import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
 import { CoverReviewDraftSchema } from "../shared/cover-review.js";
+import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
 import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
 export const TEMPLATE_SCHEMA_VERSION = 1;
-export const PROJECT_SCHEMA_VERSION = 2;
+export const PROJECT_SCHEMA_VERSION = 3;
 export const QUEUE_SCHEMA_VERSION = 2;
 export const BATCH_SCHEMA_VERSION = 2;
 // Legacy template format remains unchanged.
@@ -292,12 +293,16 @@ export const ProjectSchema = z.object({
   exportBatches: z.array(ExportBatchSchema),
   coverSticker: CoverStickerSchema.optional(),
   reviewDrafts: z.array(CoverReviewDraftSchema).optional(),
+  workspaceDraft: ProjectWorkspaceSchema.optional(),
   updatedAt: DateTime,
 }).strict().superRefine((project, ctx) => {
   const trackIssue = coverSettingsMediaIssue(project.coverSticker, project.mediaItems);
   if (trackIssue) ctx.addIssue({ code: "custom", path: ["coverSticker", "tracks"], message: trackIssue });
   if (!project.templates.some((template) => template.id === project.activeTemplateId)) {
     ctx.addIssue({ code: "custom", path: ["activeTemplateId"], message: "active template does not exist" });
+  }
+  if (project.workspaceDraft?.outputDirectory && !isAbsolutePath(project.workspaceDraft.outputDirectory)) {
+    ctx.addIssue({ code: "custom", path: ["workspaceDraft", "outputDirectory"], message: "must be an absolute path" });
   }
 });
 export type Project = z.infer<typeof ProjectSchema>;
