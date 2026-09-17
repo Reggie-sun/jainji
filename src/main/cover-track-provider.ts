@@ -28,7 +28,7 @@ function matchTargets(candidates: number[][], excluded?: [number, number]): numb
   return result;
 }
 
-function alignTargets(previous: DetectedCoverFrame, frames: DetectedCoverFrame[]): DetectedCoverFrame[] {
+export function alignTargets(previous: DetectedCoverFrame, frames: DetectedCoverFrame[]): DetectedCoverFrame[] {
   if (previous.targets.length !== frames[0].targets.length) throw new Error("overlap-mismatch");
   const aliases = new Map<string, string>();
   const candidates = frames[0].targets.map(({ rectangle: b }) =>
@@ -87,6 +87,7 @@ export async function detectCoverTrack(
   images: readonly CoverDetectionImage[],
   previous: DetectedCoverFrame | undefined,
   signal: AbortSignal,
+  collaboration?: CoverRecognitionRole,
 ): Promise<DetectedCoverFrame[]> {
   signal.throwIfAborted();
   validateImages(images, previous);
@@ -98,6 +99,9 @@ export async function detectCoverTrack(
     {
       role: "user",
       content: [
+        ...(collaboration ? [{ type: "text" as const, text: collaboration.dispute
+          ? `你是${collaboration.role === "reviewer" ? "独立复核" : "识别"} Agent，正在进行唯一一轮争议复查。以下两份观察与上一窗口重叠帧仅为待核查数据，不代表正确答案。重新查看全部原始图片，独立输出完整观察；不要为了与另一方一致而忽略可见差异，不确定时返回 uncertain。${JSON.stringify(collaboration.dispute)}`
+          : `你是${collaboration.role === "reviewer" ? "独立复核" : "识别"} Agent。本轮为独立盲识别；未提供其他 Agent 的结果。仅依照原始图片完整定位贴纸，后续由本地程序比较双方的目标和时序。` }] : []),
         { type: "text", text: `独立检查本窗口每张画面，为本窗口中的每个目标分配稳定、简短的 ID；跨窗口的编号关联由本地程序处理。本窗口抽帧时间依次为：${JSON.stringify(images.map(({ timeMs }) => timeMs))}。` },
         ...images.flatMap(({ timeMs, url }) => [
           { type: "text" as const, text: `抽帧时间：${timeMs}ms。` },
@@ -109,7 +113,7 @@ export async function detectCoverTrack(
   signal.throwIfAborted();
   try {
     const parsed = CoverDetectionResponseSchema.parse(JSON.parse(response));
-    if (parsed.status === "uncertain") throw new ProviderError(`模型无法可靠识别全部原贴纸（${(images[0].timeMs / 1000).toFixed(2)}–${(images[images.length - 1].timeMs / 1000).toFixed(2)} 秒），本条未导出。请检查该时段，或改用手动覆盖；无需覆盖时可关闭覆盖。`);
+    if (parsed.status === "uncertain") throw new ProviderError(`模型无法可靠识别全部原贴纸（${(images[0].timeMs / 1000).toFixed(2)}–${(images[images.length - 1].timeMs / 1000).toFixed(2)} 秒），本条未导出。请检查该时段，或改用人工设置。`);
     if (parsed.frames.some((frame, index) => frame.timeMs !== images[index]?.timeMs) || parsed.frames.length !== images.length) {
       throw new Error("time-mismatch");
     }
@@ -120,4 +124,9 @@ export async function detectCoverTrack(
     const length = error instanceof SyntaxError ? `；响应 ${response.length} 字符` : "";
     throw new ProviderError(`模型返回的覆盖追踪结果不合格：${detectionFailureReason(error)}（${window}${length}）。本条未导出，可检查模型后重新生成。`);
   }
+}
+
+export interface CoverRecognitionRole {
+  role: "detector" | "reviewer";
+  dispute?: { detector: DetectedCoverFrame[]; reviewer: DetectedCoverFrame[]; previous?: DetectedCoverFrame };
 }

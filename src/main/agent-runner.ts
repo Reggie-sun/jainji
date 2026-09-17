@@ -104,7 +104,7 @@ export class AgentRunner {
           let sourceStickerTracks: AutomaticCoverTrack[] | undefined;
           if (coverSticker?.automatic || this.dependencies.preserveSourceStickers) {
             if (!this.dependencies.detectCoverTracks) throw new ProviderError("原贴纸识别服务不可用，本条已停止。");
-            item.summary = this.dependencies.prepared ? "正在读取人工确认的覆盖区间…" : this.dependencies.preserveSourceStickers ? "正在识别原贴纸占位，只补空缺角落…" : "正在自动识别并追踪全部原贴纸…";
+            item.summary = this.dependencies.prepared ? "正在读取人工确认的覆盖区间…" : "正在多 Agent 协同识别原贴纸：独立盲识别、复核，分歧最多复查一次…";
             this.dependencies.onChange();
             let detecting = pendingCoverTracks.get(source.id);
             if (!detecting) {

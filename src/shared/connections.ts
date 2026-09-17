@@ -34,6 +34,7 @@ export interface ConnectionLibrary {
   profiles: SavedConnection[];
   selected: string | null;
   vision?: SelectModel | null;
+  reviewer?: SelectModel | null;
   chatgptModel?: string;
   chatgptReasoningEffort?: string;
   error?: string;

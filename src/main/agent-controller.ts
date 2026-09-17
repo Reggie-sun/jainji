@@ -17,6 +17,7 @@ import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automat
 import { stickerPreview } from "./sticker-preview.js";
 import { resolveCoverSticker, previousCoverStickerId, unusedCoverStickerIds } from "./cover-sticker.js";
 import { recognizeAutomaticCovers } from "./automatic-cover.js";
+import { detectCollaborativeCovers } from "./collaborative-cover.js";
 import type { CoverReviewDraft } from "../shared/cover-review.js";
 import type { EditTemplate } from "./domain.js";
 import { assertReviewResolved } from "./cover-review-session.js";
@@ -30,7 +31,7 @@ export class AgentController {
   private testController?: AbortController;
   private briefController?: AbortController;
   private pendingOperation?: Promise<void>;
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider()) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider()) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -118,6 +119,7 @@ export class AgentController {
       const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
       const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
       if ((automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
+      if ((automaticCover && !assisted || preserveSourceStickers) && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于多 Agent 协同识别。");
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
@@ -179,7 +181,10 @@ export class AgentController {
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
         } : undefined,
-        detectCoverTracks: (item, signal) => assisted ? Promise.resolve(assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.disposition === "no_cover" ? [] : assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.segments.map((segment) => ({ targetId: segment.id, track: segment.track }))) : recognizeAutomaticCovers(this.ffmpeg, item, (images, previous, currentSignal) => this.visionProvider.detectCovers(images, previous, currentSignal), signal),
+        detectCoverTracks: (item, signal) => assisted ? Promise.resolve(assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.disposition === "no_cover" ? [] : assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.segments.map((segment) => ({ targetId: segment.id, track: segment.track }))) : recognizeAutomaticCovers(this.ffmpeg, item,
+          (images, previous, currentSignal) => detectCollaborativeCovers(images, previous, currentSignal,
+            (frames, requestSignal, role) => this.visionProvider.detectCovers(frames, undefined, requestSignal, role),
+            (frames, requestSignal, role) => this.reviewerProvider.detectCovers(frames, undefined, requestSignal, role)), signal),
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {

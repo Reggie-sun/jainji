@@ -12,7 +12,7 @@ import { getPriceStyle, PRICE_STYLES, PriceStyleIdSchema, priceFontSizeRatio, pr
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
-import { detectCoverTrack } from "./cover-track-provider.js";
+import { detectCoverTrack, type CoverRecognitionRole } from "./cover-track-provider.js";
 import type { CoverDetectionImage, DetectedCoverFrame } from "../shared/automatic-cover.js";
 import { runIndependentCoverReview, type IndependentReviewInput, type IndependentAttempt } from "./cover-review-provider.js";
 
@@ -381,8 +381,8 @@ export class AgentProvider {
     return runIndependentCoverReview((messages, requestSignal) => this.complete(messages as ModelMessage[], requestSignal), input, signal, persistAttempt);
   }
 
-  async detectCovers(images: readonly CoverDetectionImage[], previous: DetectedCoverFrame | undefined, signal: AbortSignal): Promise<DetectedCoverFrame[]> {
-    return detectCoverTrack((messages, requestSignal) => this.complete(messages, requestSignal, AUTOMATIC_COVER_COMPLETION_OPTIONS), images, previous, signal);
+  async detectCovers(images: readonly CoverDetectionImage[], previous: DetectedCoverFrame | undefined, signal: AbortSignal, collaboration?: CoverRecognitionRole): Promise<DetectedCoverFrame[]> {
+    return detectCoverTrack((messages, requestSignal) => this.complete(messages, requestSignal, AUTOMATIC_COVER_COMPLETION_OPTIONS), images, previous, signal, collaboration);
   }
 
   async selectCoverSticker(images: string[], signal: AbortSignal, catalog: AgentDecorationCatalog, displayMode?: DecorationDisplayMode): Promise<string> {

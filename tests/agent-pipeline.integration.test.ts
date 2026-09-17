@@ -68,6 +68,7 @@ describe("agent to local export", () => {
       const outputDirectory = path.join(directory, "out");
       controller.provider.configure({ apiKey: "local-test-key", model: "local-test-vision", baseUrl: `http://127.0.0.1:${port}/v1` });
       controller.visionProvider.configure({ apiKey: "local-test-key", model: "local-test-detector", baseUrl: `http://127.0.0.1:${port}/v1` });
+      controller.reviewerProvider.configure({ apiKey: "local-test-key", model: "local-test-reviewer", baseUrl: `http://127.0.0.1:${port}/v1` });
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set())).rejects.toThrow("系统对话框");
       expect(requests).toHaveLength(0);
       const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
@@ -81,10 +82,14 @@ describe("agent to local export", () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
-      expect(requests).toHaveLength(mode === "agent" ? 10 : 4);
+      expect(requests).toHaveLength(mode === "agent" ? 12 : 4);
       const coverRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频画面覆盖物追踪器"));
       const finalRequests = requests.filter((request) => !(request.messages[0].content as string).includes("你是视频贴纸选材师") && !coverRequests.includes(request));
-      expect(coverRequests).toHaveLength(mode === "agent" ? 2 : 0);
+      expect(coverRequests).toHaveLength(mode === "agent" ? 4 : 0);
+      if (mode === "agent") {
+        expect(coverRequests.filter(request => request.model === "local-test-detector")).toHaveLength(2);
+        expect(coverRequests.filter(request => request.model === "local-test-reviewer")).toHaveLength(2);
+      }
       if (mode === "agent") {
         const systems = finalRequests.map((request) => request.messages[0].content as string);
         expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));

@@ -25,14 +25,15 @@ const server = createServer((request, response) => {
     try {
       const input = JSON.parse(body), system = input.messages[0].content, content = input.messages[1].content;
       const detecting = system.includes("你是视频画面覆盖物追踪器");
-      requests.push({ model: input.model, detecting });
-      assert.equal(request.headers.authorization, detecting ? "Bearer vision-fixture" : "Bearer creative-fixture");
-      assert.equal(input.model, detecting ? "detector-next" : "creative");
+      const reviewing = detecting && content.some(item => item.type === "text" && item.text.includes("你是独立复核 Agent"));
+      requests.push({ model: input.model, detecting, reviewing });
+      assert.equal(request.headers.authorization, reviewing ? "Bearer review-fixture" : detecting ? "Bearer vision-fixture" : "Bearer creative-fixture");
+      assert.equal(input.model, reviewing ? "reviewer-next" : detecting ? "detector-next" : "creative");
       assert.equal(JSON.stringify(input).includes(directory), false);
       let result;
       if (detecting) {
-        assert.equal(input.reasoning_effort, "high");
-        if (!uncertain && !releaseVision) await new Promise(resolve => { releaseVision = resolve; });
+        if (!reviewing) assert.equal(input.reasoning_effort, "high");
+        if (!reviewing && !uncertain && !releaseVision) await new Promise(resolve => { releaseVision = resolve; });
         const times = content.flatMap(item => item.type === "text" && /^抽帧时间：(\d+)ms。$/.test(item.text) ? [Number(item.text.match(/\d+/)[0])] : []);
         assert.ok(times.length);
         result = { status: uncertain ? "uncertain" : "ok", frames: times.map(timeMs => ({ timeMs, targets: uncertain ? [] : [{ id: "one", rectangle: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } }] })) };
@@ -128,6 +129,7 @@ try {
   await evaluate(`(async () => {
     await window.jianji.saveConnection({ name:'Creative fixture', baseUrl:'http://127.0.0.1:${apiPort}/v1', model:'creative', apiKey:'creative-fixture' });
     await window.jianji.saveConnection({ name:'Vision fixture', baseUrl:'http://127.0.0.1:${apiPort}/v1', model:'detector', apiKey:'vision-fixture' });
+    await window.jianji.saveConnection({ name:'Review fixture', baseUrl:'http://127.0.0.1:${apiPort}/v1', model:'reviewer', apiKey:'review-fixture' });
     const s = await window.jianji.getState();
     await window.jianji.selectConnection(s.connections.profiles.find(p=>p.name==='Creative fixture').id);
   })()`);
@@ -149,6 +151,20 @@ try {
   assert.equal(configured.visionConnection.model, "detector-next");
   assert.equal(configured.visionConnection.reasoningEffort, "high");
   assert.equal(JSON.stringify(configured).includes("vision-fixture"), false);
+  const reviewerId = configured.connections.profiles.find(p => p.name === "Review fixture").id;
+  await evaluate(`(() => { const input=document.querySelector('#reviewer-connection'); input.value=${JSON.stringify(reviewerId)}; input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  await waitFor("document.body.innerText.includes('当前复核模型：reviewer')");
+  const reviewCard = "[...document.querySelectorAll('.model-picker')].find(card=>card.textContent.includes('当前复核模型：'))";
+  await evaluate(`${reviewCard}.querySelector('input').focus(); ${reviewCard}.querySelector('input').select()`);
+  await send("Input.insertText", { text: "reviewer-next" });
+  await evaluate(`${reviewCard}.querySelector('button').click()`);
+  await waitFor("document.body.innerText.includes('当前复核模型：reviewer-next')");
+  const configuredReview = await evaluate("window.jianji.getState()");
+  assert.equal(configuredReview.connection.model, "creative");
+  assert.equal(configuredReview.visionConnection.model, "detector-next");
+  assert.equal(configuredReview.reviewerConnection.model, "reviewer-next");
+  assert.equal(JSON.stringify(configuredReview).includes("review-fixture"), false);
+  assert.ok(await evaluate("[...document.querySelector('#reviewer-connection').options].some(option=>option.value==='chatgpt')"));
   await screenshot("vision-configuration");
   await evaluate("window.jianji.selectAndProbe()");
   await evaluate("window.jianji.selectOutputDirectory()");
@@ -158,7 +174,7 @@ try {
   await evaluate(`window.jianji.startAgent(${JSON.stringify(input)})`);
   for (let i=0; i<200 && !releaseVision; i++) await pause(100);
   assert.equal(typeof releaseVision, "function");
-  for (const expression of ["window.jianji.selectVisionConnection(null)", `window.jianji.selectModel({connectionId:${JSON.stringify(configured.connections.selected)},model:'changed'})`]) {
+  for (const expression of ["window.jianji.selectVisionConnection(null)", "window.jianji.selectReviewerConnection(null)", `window.jianji.selectModel({connectionId:${JSON.stringify(configured.connections.selected)},model:'changed'})`]) {
     assert.match(await evaluate(`(async()=>{try{await ${expression};return 'unexpected success'}catch(e){return e.message}})()`), /正在处理/);
   }
   releaseVision();
@@ -195,8 +211,15 @@ try {
   assert.equal(requests.length, count);
   assert.deepEqual(exceptions, []);
   assert.deepEqual(fixtureErrors, []);
+  assert.ok(requests.some(request => request.reviewing && request.model === "reviewer-next"));
   const saved = JSON.parse(await readFile(path.join(directory,"connections/connections.json"),"utf8"));
   assert.equal(saved.vision, null);
+  assert.deepEqual(saved.reviewer, {connectionId: reviewerId, model: "reviewer-next"});
+  await evaluate(`window.jianji.selectVisionConnection({connectionId:${JSON.stringify(visionId)},model:'detector-next'})`);
+  await evaluate("window.jianji.selectReviewerConnection(null)");
+  const beforeMissingReview = requests.length;
+  assert.match(await evaluate(`(async()=>{try{await window.jianji.startAgent(${JSON.stringify(input)});return 'unexpected success'}catch(e){return e.message}})()`), /配置复核模型/);
+  assert.equal(requests.length, beforeMissingReview);
   console.log(JSON.stringify({ result:"PASS", directory, output:task.outputPath, requests, runtimeExceptions:exceptions },null,2));
 } catch(error) { console.error(processLog.slice(-3000)); throw error; }
 finally {

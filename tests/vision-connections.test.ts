@@ -17,6 +17,29 @@ async function setup() {
 }
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
 
+it("shares one API credential across three independent agent roles, including the same model", async () => {
+  const { root, connections, id } = await setup();
+  try {
+    await connections.selectVision({ connectionId: id, model: "creative" });
+    await connections.selectReviewer({ connectionId: id, model: "creative" });
+    expect(connections.provider).not.toBe(connections.visionProvider);
+    expect(connections.reviewerProvider).not.toBe(connections.visionProvider);
+    for (const provider of [connections.provider, connections.visionProvider, connections.reviewerProvider]) {
+      expect(provider.status()).toMatchObject({ configured: true, source: "api", model: "creative" });
+    }
+    const saved = JSON.parse(await readFile(path.join(root, "connections/connections.json"), "utf8"));
+    expect(saved.profiles).toHaveLength(1);
+    expect(JSON.stringify(saved).split(profile.apiKey)).toHaveLength(2);
+    await connections.selectReviewer({ connectionId: id, model: "review-next" });
+    expect(connections.provider.status().model).toBe("creative");
+    expect(connections.visionProvider.status().model).toBe("creative");
+    expect(connections.reviewerProvider.status().model).toBe("review-next");
+    await connections.save({ id, ...profile, apiKey: "updated-key" });
+    expect(connections.reviewerProvider.status().model).toBe("review-next");
+    expect(JSON.stringify(connections.store.snapshot())).not.toContain("updated-key");
+  } finally { await connections.dispose(); }
+});
+
 it("restores an independent vision model without changing creative selection or duplicating credentials", async () => {
   const { root, connections, id } = await setup();
   try {

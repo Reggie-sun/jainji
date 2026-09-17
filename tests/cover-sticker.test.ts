@@ -76,7 +76,7 @@ describe("reusable batch cover", () => {
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? ["sparkle"] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
-    const creativeDetect = vi.spyOn(controller.provider, "detectCovers");
+    const creativeDetect = vi.spyOn(controller.reviewerProvider, "detectCovers").mockResolvedValue([]);
     const visionDetect = vi.spyOn(controller.visionProvider, "detectCovers").mockResolvedValue([]);
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockImplementation(async (_ffmpeg, _source, recognize, signal) => {
       await recognize([], undefined, signal);
@@ -90,6 +90,7 @@ describe("reusable batch cover", () => {
       expect(plan).not.toHaveBeenCalled();
       expect(detect).not.toHaveBeenCalled();
       controller.visionProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
+      controller.reviewerProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
       await controller.start(input, new Set([directory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false));
       await controller.start(input, new Set([directory]));
@@ -103,7 +104,7 @@ describe("reusable batch cover", () => {
       expect(plan).toHaveBeenCalledTimes(4);
       expect(detect).toHaveBeenCalledTimes(2);
       expect(visionDetect).toHaveBeenCalledTimes(2);
-      expect(creativeDetect).not.toHaveBeenCalled();
+      expect(creativeDetect).toHaveBeenCalledTimes(2);
       expect(history.every((batch) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.cover?.automatic))).toBe(true);
       for (const settings of [undefined, { ...options, enabled: false, stickerIds: [`uploaded-${"c".repeat(64)}`] }]) {
         service.currentProject.coverSticker = settings;
@@ -113,6 +114,7 @@ describe("reusable batch cover", () => {
       expect(plan).toHaveBeenCalledTimes(8);
       expect(detect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
       expect(visionDetect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
+      expect(creativeDetect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
       expect(selectCover).toHaveBeenCalledTimes(4);
       expect(shortlist.mock.calls.filter(call => call[6] === "cover")).toHaveLength(4);
       if (mode === "agent") {

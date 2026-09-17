@@ -35,6 +35,7 @@ const api = {
   selectConnection: (id: string): Promise<DesktopState> => ipcRenderer.invoke("connection.select", id),
   selectModel: (input: SelectModel): Promise<DesktopState> => ipcRenderer.invoke("connection.model.select", input),
   selectVisionConnection: (input: SelectModel | null): Promise<DesktopState> => ipcRenderer.invoke("connection.vision.select", input),
+  selectReviewerConnection: (input: SelectModel | null): Promise<DesktopState> => ipcRenderer.invoke("connection.reviewer.select", input),
   removeConnection: (id: string): Promise<DesktopState> => ipcRenderer.invoke("connection.remove", id),
   loginChatGPT: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.login"),
   refreshChatGPT: (): Promise<DesktopState> => ipcRenderer.invoke("connection.chatgpt.refresh"),

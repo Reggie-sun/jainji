@@ -7,6 +7,7 @@ export type DesktopState = AppState & {
   capabilities: CapabilityStatus;
   connection: ConnectionStatus;
   visionConnection?: ConnectionStatus;
+  reviewerConnection?: ConnectionStatus;
   chatgpt?: ChatGPTStatus;
   connections?: ConnectionLibrary;
   agentRun?: AgentRun;

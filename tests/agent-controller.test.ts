@@ -27,6 +27,7 @@ describe("AgentController queue admission", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [id]: { assetPath: "/unused.png", assetFingerprint: "unused" } });
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     controller.visionProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
+    controller.reviewerProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
     let aborted = false;
     let release!: () => void;
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockImplementation(async (_ffmpeg, _asset, signal) => new Promise((_resolve, reject) => {
@@ -63,6 +64,7 @@ describe("AgentController queue admission", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [`uploaded-${"a".repeat(64)}`]: stickerAssets.sparkle }, library);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     controller.visionProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
+    controller.reviewerProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
     const finalPlan = vi.spyOn(controller.provider, "plan");
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _images, signal) => new Promise((_resolve, reject) => {
@@ -123,6 +125,7 @@ describe("AgentController queue admission", () => {
     const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [`uploaded-${"a".repeat(64)}`]: stickerAssets.sparkle }, library);
     controller.provider.configure({ apiKey: "unused-key", model: "unused", baseUrl: "https://example.test/v1" });
     controller.visionProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
+    controller.reviewerProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockResolvedValue([]);
     try {

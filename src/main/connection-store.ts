@@ -7,16 +7,17 @@ import { SaveConnectionSchema, SelectModelSchema, type SelectModel, type Connect
 import { ProviderError } from "./api-transport.js";
 
 const ProfileSchema = ConnectionInputSchema.extend({ id: z.string().uuid(), name: z.string().trim().min(1).max(80) });
-const StoreSchema = z.object({ version: z.literal(1), selected: z.string().nullable(), vision: SelectModelSchema.nullable().default(null), chatgptModel: ConnectionInputSchema.shape.model.optional(), chatgptReasoningEffort: ConnectionInputSchema.shape.reasoningEffort, profiles: z.array(ProfileSchema).max(100) }).strict().superRefine((store, ctx) => {
+const StoreSchema = z.object({ version: z.literal(1), selected: z.string().nullable(), vision: SelectModelSchema.nullable().default(null), reviewer: SelectModelSchema.nullable().default(null), chatgptModel: ConnectionInputSchema.shape.model.optional(), chatgptReasoningEffort: ConnectionInputSchema.shape.reasoningEffort, profiles: z.array(ProfileSchema).max(100) }).strict().superRefine((store, ctx) => {
   if (new Set(store.profiles.map((p) => p.id)).size !== store.profiles.length ||
       (store.selected !== null && store.selected !== "chatgpt" && !store.profiles.some((p) => p.id === store.selected))) ctx.addIssue({ code: "custom", message: "Invalid profile selection" });
   if (store.vision && store.vision.connectionId !== "chatgpt" && !store.profiles.some((p) => p.id === store.vision!.connectionId)) ctx.addIssue({ code: "custom", message: "Invalid vision profile selection" });
+  if (store.reviewer && store.reviewer.connectionId !== "chatgpt" && !store.profiles.some((p) => p.id === store.reviewer!.connectionId)) ctx.addIssue({ code: "custom", message: "Invalid reviewer profile selection" });
 });
 type Store = z.infer<typeof StoreSchema>;
 
 // This file is private application configuration, never part of a project/export.
 export class ConnectionStore {
-  private state: Store = { version: 1, selected: null, vision: null, profiles: [] };
+  private state: Store = { version: 1, selected: null, vision: null, reviewer: null, profiles: [] };
   private error?: string;
   private loaded = false;
   exists = false;
@@ -32,7 +33,7 @@ export class ConnectionStore {
     this.loaded = true;
   }
   snapshot(): ConnectionLibrary {
-    return { selected: this.state.selected, vision: this.state.vision ? { ...this.state.vision } : null, chatgptModel: this.state.chatgptModel, chatgptReasoningEffort: this.state.chatgptReasoningEffort, error: this.error, profiles: this.state.profiles.map(({ id, name, baseUrl, model, reasoningEffort, protocol, authHeader }) => ({ id, name, baseUrl, model, reasoningEffort, protocol: protocol ?? "chat-completions", authHeader: authHeader ?? "bearer" })) };
+    return { selected: this.state.selected, vision: this.state.vision ? { ...this.state.vision } : null, reviewer: this.state.reviewer ? { ...this.state.reviewer } : null, chatgptModel: this.state.chatgptModel, chatgptReasoningEffort: this.state.chatgptReasoningEffort, error: this.error, profiles: this.state.profiles.map(({ id, name, baseUrl, model, reasoningEffort, protocol, authHeader }) => ({ id, name, baseUrl, model, reasoningEffort, protocol: protocol ?? "chat-completions", authHeader: authHeader ?? "bearer" })) };
   }
   get(id: string): { name: string; input: ConnectionInput } {
     const profile = this.state.profiles.find((p) => p.id === id);
@@ -76,8 +77,12 @@ export class ConnectionStore {
     if (vision && vision.connectionId !== "chatgpt") this.get(vision.connectionId);
     await this.commit({ ...this.state, vision });
   }
+  async selectReviewer(reviewer: SelectModel | null): Promise<void> {
+    if (reviewer && reviewer.connectionId !== "chatgpt") this.get(reviewer.connectionId);
+    await this.commit({ ...this.state, reviewer });
+  }
   async remove(id: string): Promise<void> {
     this.get(id);
-    await this.commit({ ...this.state, selected: this.state.selected === id ? null : this.state.selected, vision: this.state.vision?.connectionId === id ? null : this.state.vision, profiles: this.state.profiles.filter((p) => p.id !== id) });
+    await this.commit({ ...this.state, selected: this.state.selected === id ? null : this.state.selected, vision: this.state.vision?.connectionId === id ? null : this.state.vision, reviewer: this.state.reviewer?.connectionId === id ? null : this.state.reviewer, profiles: this.state.profiles.filter((p) => p.id !== id) });
   }
 }

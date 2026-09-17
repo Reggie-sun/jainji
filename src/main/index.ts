@@ -92,7 +92,7 @@ async function publicState(): Promise<DesktopState> {
     const approved = await canonicalPath(outputDirectory).then((value) => approvedOutputDirectories.has(value)).catch(() => false);
     if (!approved) delete state.project.workspaceDraft!.outputDirectory;
   }
-  return { ...state, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
+  return { ...state, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
 function notifyState(): void {
@@ -182,6 +182,7 @@ function registerHandlers(): void {
   ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("connection.model.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectModel(input); return publicState(); });
   ipcMain.handle("connection.vision.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectVision(input); return publicState(); });
+  ipcMain.handle("connection.reviewer.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectReviewer(input); return publicState(); });
   ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("agent.disconnect", async (event) => {
     assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.disconnect(); return publicState();
@@ -515,7 +516,7 @@ async function bootstrap(): Promise<void> {
   stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider);
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider);
   const reviewRoot = path.join(userData, "cover-review");
   coverReview = new CoverReviewController(service, agent, queue, {
     root: reviewRoot,
