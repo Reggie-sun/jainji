@@ -5,3 +5,12 @@
 .material-collection input{display:block;margin-top:8px}
 .material-collection p{margin-top:12px;font-size:11px;line-height:1.7;color:#85938e}
 .material-collection p span{color:#507f70;margin-right:12px}
+.material-collection .saved-collections{display:block;margin-top:16px;font-size:12px}
+.saved-collections>label{display:block}
+.saved-collection-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+.saved-collection-row select{min-width:0;flex:1;padding:10px;border:1px solid #d2ded8;border-radius:6px;background:#fff;color:inherit;font:inherit}
+.saved-collection-row .button{flex:0 0 auto}
+.saved-collection-row .saved-collection-delete{color:#a34f45}
+.saved-collection-rename{margin-top:10px;padding:12px;border:1px solid #e1e9e5;border-radius:7px;background:#f8fbf9}
+.material-collection .saved-collection-rename{align-items:end}
+@media(max-width:720px){.saved-collection-row{align-items:stretch;flex-wrap:wrap}.saved-collection-row select{flex-basis:100%}.saved-collection-row .button{flex:1}.saved-collection-rename .button{flex:1}}
