@@ -108,6 +108,18 @@ pilot 前只读核对了仓库现有项目元数据，未修改、stage 或导�
 
 本次文档和现场证据经 native `reviewer_xhigh` 独立只读复核，结论为 accept with concerns、无阻断项；其独立重验了 record/证据/输出摘要、字节数、ffprobe、完整解码与四组配对帧。已按建议限定预检历史时态与商业组合覆盖，并移除仅有现场进度观察、缺持久文件支持的细节。结论不覆盖完整 M5。
 
+## Warm Failure Diagnosis — 2026-09-18
+
+用户要求继续定位后，先只读检查上轮隔离 runtime 日志和 `AgentProvider.shortlist → complete → ChatGPTSession.completeUsing` 路径。旧日志仅记录事件名，没有失败正文，不能恢复上轮确切错误文本。使用 systematic-debugging 分离模型输出和响应收集假设；本轮未修改产品代码或放宽 JSON/schema 校验。
+
+为取得边界证据，另建 `/tmp/jianji-knowledge-diagnostic-PIGhtv`，从已正常关闭的上轮知识库复制完整证据快照到新 owner；新项目、相同源/文字/配置，仅执行一次暖诊断，上限 4 次调用。最终实际只有 **1 次 ChatGPT 创作调用、0 次识别/主管/预览调用**，失败即停止。原 pilot 目录不改写；隔离登录/API 配置副本已移除，owner 已释放，源 SHA 未变，知识仍为原单一修订，无新发布或 dispute。
+
+该次 run 为 `64689a33-9b4e-4701-903c-be1cc6faa2e5`。`requests.jsonl` 在 RPC 边界捕获同一 thread 的唯一 `item/completed` / `agentMessage`，phase 为 `final_answer`，正文是 `{"candidates":[1,4,9,16}`；随后收到 `turn/completed`、status 为 `completed`。正文缺少数组结束符 `]`，离线 `JSON.parse` 明确抛出 SyntaxError。故**本次复现的直接原因是模型最终文本本身不合法，不是知识命中错误或收集了 commentary**；服务报告 completed 不保证文本符合应用合同。原 pilot 同类错误缺原文，不能断言两次具体坏文本完全一致。
+
+诊断正文仅保存在上述私有目录的此次 Agent 消息记录中；未记录认证回复、图片请求或凭据，未添加生产 raw-response 日志。独立 code_mapper 的只读映射确认：shortlist 当前仅通过 prompt 要求 JSON，ChatGPT 路径未传递结构化输出约束；当前本地候选校验及单次失败停止符合合同。没有以补括号、剥离 Markdown、自动重试或换模型作为修复。
+
+Fresh checks：`tests/agent-provider.test.ts` 与 `tests/chatgpt-session.test.ts` 合计 **90/90 通过**；额外离线断言核对了真实 phase/thread/completion、非法 JSON、1 次调用、暖识别 0、源未变及凭据清理。随应用安装的 Codex `0.154.0` 离线生成协议 schema，`v2/TurnStartParams.json` 包含 `outputSchema`（用于约束本轮最终回答）；此命令不调用模型。该证据支持下一步评估候选请求的结构化输出，但尚未实现或实测其服务端效果，M5 仍未通过。
+
 ## Next Checkpoint
 
-先定位暖运行创作候选 JSON 失败，取得可脱敏的原始响应或可靠复现，再决定是否需要修复；下一次真实调用须显式开始，不自动消耗剩余预算。之后补暖成功、刷新及其余代表性素材和覆盖开启对照。当前不能将 M5 或整个功能标为验收完成；Windows 实机和人工完整播放仍未验证。
+下一步针对候选请求增加有界结构化输出约束，保持本地 strict schema、候选资格、工具禁用和失败即停；先用协议/离线测试验证，再显式开展真实暖运行。不得把本次候选自动补成合法 JSON 或声称问题已修复。之后补暖成功、刷新及其余代表性素材和覆盖开启对照；Windows 实机和人工完整播放仍未验证。
