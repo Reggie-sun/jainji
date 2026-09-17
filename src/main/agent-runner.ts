@@ -8,9 +8,10 @@ import type { DecorationOptions } from "../shared/decorations.js";
 import { executionLimits } from "./execution-limits.js";
 import type { PriceStyleId } from "../shared/price-styles.js";
 import { type FrozenCoverSticker } from "./cover-sticker.js";
-import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
+import { expandSourceCoverTracks, type AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 import { prepareAgentTemplate } from "./agent-template-preparation.js";
 import type { PreviewRevision } from "./supervisor-protocol.js";
+import type { KnowledgeBinding, KnowledgeVersion, SourceStickerKnowledgeSession } from "./source-sticker-knowledge-session.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -25,7 +26,7 @@ interface RunnerDependencies {
   preserveSourceStickers?: boolean;
   selectCoverSticker?(frames: string[], signal: AbortSignal, previousSelections: readonly string[]): Promise<FrozenCoverSticker>;
   detectCoverTracks?(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void): Promise<AutomaticCoverTrack[]>;
-  supervise?(template: EditTemplate, media: MediaItem, tracks: AutomaticCoverTrack[], rebuild: (revision: PreviewRevision) => EditTemplate, signal: AbortSignal, onStage: (stage: string) => void): Promise<EditTemplate>;
+  knowledge?: Pick<SourceStickerKnowledgeSession, "acquire" | "tracks" | "review" | "reconcile" | "enqueue" | "close">;
   onChange(): void;
 }
 
@@ -62,10 +63,9 @@ export class AgentRunner {
     const stickerUsage = new Map<string, number>();
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
-    const pendingCoverTracks = new Map<string, Promise<AutomaticCoverTrack[]>>();
     const pendingCoverStickers = new Map<number, Promise<FrozenCoverSticker>>();
     const selectedCoverIds: string[] = [];
-    const reviewed: Array<{ index: number; template: EditTemplate; source: MediaItem }> = [];
+    const reviewed: Array<{ index: number; version: KnowledgeVersion; binding: KnowledgeBinding; source: MediaItem }> = [];
     const coverForVersion = (version: number, frames: string[]): Promise<FrozenCoverSticker> => {
       let pending = pendingCoverStickers.get(version);
       if (!pending) {
@@ -92,6 +92,8 @@ export class AgentRunner {
         this.dependencies.onChange();
         const onStage = (stage: string) => { item.summary = stage; this.dependencies.onChange(); };
         try {
+          const knowledge = this.dependencies.knowledge;
+          const binding = knowledge ? await knowledge.acquire(source, this.dependencies.decorations?.displayMode === "first-3s" ? Math.min(3000, source.durationMs) : source.durationMs, signal, onStage) : undefined;
           let extracting = pendingFrames.get(source.id);
           if (!extracting) {
             extracting = this.dependencies.frames(source, signal).catch((error) => {
@@ -107,17 +109,10 @@ export class AgentRunner {
           let coverTracks: AutomaticCoverTrack[] | undefined;
           let sourceStickerTracks: AutomaticCoverTrack[] | undefined;
           if (coverSticker?.automatic || this.dependencies.preserveSourceStickers) {
-            if (!this.dependencies.detectCoverTracks) throw new ProviderError("原贴纸识别服务不可用，本条已停止。");
-            item.summary = this.dependencies.prepared ? "正在读取人工确认的覆盖区间…" : "正在由执行 Agent 识别、主管 Agent 看图修正原贴纸…";
-            this.dependencies.onChange();
-            let detecting = pendingCoverTracks.get(source.id);
-            if (!detecting) {
-              detecting = this.dependencies.detectCoverTracks(source, signal, onStage);
-              pendingCoverTracks.set(source.id, detecting);
-            }
-            const tracks = await detecting;
+            if (!binding && (!this.dependencies.prepared || !this.dependencies.detectCoverTracks)) throw new ProviderError("源贴纸知识检查不可用，本条已停止。");
+            const tracks = binding ? await knowledge!.tracks(binding) : await this.dependencies.detectCoverTracks!(source, signal, onStage);
             if (this.dependencies.preserveSourceStickers) sourceStickerTracks = tracks;
-            else coverTracks = tracks;
+            else coverTracks = binding ? expandSourceCoverTracks(tracks) : tracks;
             signal.throwIfAborted();
           }
           const selection = this.dependencies.autoCatalog ? {
@@ -132,17 +127,20 @@ export class AgentRunner {
             stickerAssets: this.dependencies.stickerAssets, decorations: this.dependencies.decorations, catalog: this.dependencies.autoCatalog,
             coverSticker, coverTracks, sourceStickerTracks, runId: run.id, version: item.version };
           let template = prepareAgentTemplate(preparation);
-          if (this.dependencies.supervise && !this.dependencies.prepared) {
+          let version: KnowledgeVersion | undefined;
+          if (knowledge && binding && !this.dependencies.prepared) {
             const original = template;
-            template = await this.dependencies.supervise(template, source, sourceStickerTracks ?? coverTracks ?? [], revision => {
+            const rebuild = (revision: PreviewRevision) => {
               const candidatePlan = revision.corners?.length && "stickers" in plan
                 ? { ...plan, stickers: plan.stickers.map(sticker => ({ ...sticker, ...revision.corners!.find(corner => corner.corner === sticker.corner) })) }
                 : plan;
               const rebuilt = prepareAgentTemplate({ ...preparation, plan: candidatePlan,
-                ...(this.dependencies.preserveSourceStickers ? { sourceStickerTracks: revision.tracks } : { coverTracks: revision.tracks }) });
+                ...(this.dependencies.preserveSourceStickers ? { sourceStickerTracks: revision.tracks } : { coverTracks: expandSourceCoverTracks(revision.tracks) }) });
               // Rebuilding stickers must not regenerate or modify the user's frozen text layer.
               return { ...original, layers: [...original.layers.filter(layer => layer.type === "text"), ...rebuilt.layers.filter(layer => layer.type !== "text")] };
-            }, signal, onStage);
+            };
+            version = await knowledge.review(binding, template, rebuild, signal, onStage);
+            template = version.template;
             signal.throwIfAborted();
           }
           if (selection && "stickers" in plan) {
@@ -150,31 +148,43 @@ export class AgentRunner {
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
-          else if (this.dependencies.supervise) reviewed.push({ index, template: structuredClone(template), source });
+          else if (version && binding) reviewed.push({ index, version, binding, source });
           else item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
-          if (this.dependencies.supervise) item.summary += " · 主管样片检查通过，等待本轮检查结束后导出";
-          item.status = this.dependencies.prepared || this.dependencies.supervise ? "prepared" : "exporting";
+          if (version) item.summary += " · 主管样片检查通过，等待本轮检查结束后导出";
+          item.status = this.dependencies.prepared || version ? "prepared" : "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
         } finally {
           const remaining = remainingVersions.get(source.id)! - 1;
           remainingVersions.set(source.id, remaining);
-          if (remaining === 0) { pendingFrames.delete(source.id); pendingCoverTracks.delete(source.id); }
+          if (remaining === 0) pendingFrames.delete(source.id);
         }
         this.dependencies.onChange();
       }
     };
     try {
-      await Promise.all(Array.from({ length: this.dependencies.prepared || this.dependencies.supervise ? 1 : Math.min(executionLimits().analysis, media.length) }, () => worker()));
+      await Promise.all(Array.from({ length: this.dependencies.prepared || this.dependencies.knowledge ? 1 : Math.min(executionLimits().analysis, media.length) }, () => worker()));
+      const groups = new Map<string, typeof reviewed>();
+      for (const entry of reviewed) groups.set(entry.binding.key, [...(groups.get(entry.binding.key) ?? []), entry]);
+      for (const group of groups.values()) {
+        try { await this.dependencies.knowledge!.reconcile(group.map(entry => entry.version), signal, stage => { for (const entry of group) run.items[entry.index].summary = stage; this.dependencies.onChange(); }); }
+        catch (error) {
+          for (const { index } of group) {
+            run.items[index].status = signal.aborted ? "cancelled" : "failed";
+            run.items[index].error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "源知识修订或证据完整性未确认，受影响版本未导出。";
+          }
+        }
+      }
       // The existing queue owns both previews and formal exports. Finish all previews
       // before starting any formal job, so later versions cannot collide with exports.
-      for (const { index, template, source } of reviewed) {
+      for (const { index, version, source } of reviewed) {
         const item = run.items[index];
         if (signal.aborted) { item.status = "cancelled"; continue; }
+        if (item.status === "failed") continue;
         try {
-          item.taskId = await this.dependencies.enqueue(template, source, signal);
+          item.taskId = await this.dependencies.knowledge!.enqueue(version, signal, template => this.dependencies.enqueue(template, source, signal));
           item.status = signal.aborted ? "cancelled" : "exporting";
           item.summary = `${item.summary?.split(" · 主管样片检查通过")[0]} · 主管样片检查通过，已提交导出`;
         } catch (error) {
@@ -185,7 +195,7 @@ export class AgentRunner {
       }
     } finally {
       pendingFrames.clear();
-      pendingCoverTracks.clear();
+      await this.dependencies.knowledge?.close();
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();
     }

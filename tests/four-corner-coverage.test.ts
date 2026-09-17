@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentProvider, validatePlan } from "../src/main/agent-provider";
 import { AgentRunner } from "../src/main/agent-runner";
+import { knowledgeFixture } from "./helpers/knowledge-session";
 import { DEFAULT_PRESET, EditTemplateSchema, type EditTemplate, type MediaItem, type StickerLayer } from "../src/main/domain";
 import { TemplateCompiler } from "../src/main/compiler";
 import { DecorationSchema } from "../src/shared/decorations";
@@ -27,7 +28,7 @@ async function produce(tracks?: AutomaticCoverTrack[], mode: "agent" | "manual" 
     autoCatalog: mode === "agent" ? catalog : undefined,
     coverSticker: tracks ? { stickerId: "heart", ...asset, rectangle, automatic: true } : undefined,
     preserveSourceStickers: mode === "agent" && !tracks,
-    detectCoverTracks: detect, enqueue: async template => { queued.push(template); return crypto.randomUUID(); }, onChange: () => {} });
+    knowledge: tracks || mode === "agent" ? knowledgeFixture(detect) : undefined, enqueue: async template => { queued.push(template); return crypto.randomUUID(); }, onChange: () => {} });
   runner.start("project", "clean", "", [source]); await runner.settled();
   expect(runner.snapshot()?.items[0].error).toBeUndefined();
   expect(queued).toHaveLength(1);
@@ -91,10 +92,12 @@ describe("automatic four-corner coverage", () => {
     expect(ordinary[2]).toHaveProperty("activeRanges");
     const top = ordinary[0] as StickerLayer & { activeRanges: { startMs: number; endMs: number }[] };
     const bottom = ordinary[2] as typeof top;
-    expect(top.activeRanges[0].startMs).toBeCloseTo(1000 * 0.105 / 0.9);
+    // Raw source geometry is expanded by 0.02 for rendering and clamped at both edges.
+    // The resulting cover moves from y=0 to y=0.88 with height=0.12.
+    expect(top.activeRanges[0].startMs).toBeCloseTo(1000 * 0.105 / 0.88);
     expect(top.activeRanges[0].endMs).toBe(1000);
     expect(bottom.activeRanges[0].startMs).toBe(0);
-    expect(bottom.activeRanges[0].endMs).toBeCloseTo(1000 * 0.795 / 0.9);
+    expect(bottom.activeRanges[0].endMs).toBeCloseTo(1000 * 0.775 / 0.88);
   });
   it.each([
     [{ x: 0.04, y: 0.75, width: 0.12, height: 0.2 }, [2]],

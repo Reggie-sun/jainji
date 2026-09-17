@@ -202,6 +202,7 @@ describe("supervisor knowledge handoff", () => {
   it("sends whole fact context and full companions alongside cropped evidence, without paths", async () => {
     const input = fixture(); await superviseRenderedTemplate(input);
     const context = input.review.mock.calls[0][0];
+    expect(context.knowledge?.sourceEvidence).toEqual(expect.arrayContaining([expect.objectContaining({ id: "source", timeMs: 0, pts: 0, width: 720, height: 1280 })]));
     context.evidence[0] = { ...context.evidence[0], sourceUrl: "data:source-crop", previewUrl: "data:preview-crop", fullSourceUrl: "data:source-full", fullPreviewUrl: "data:preview-full", fullSourceEvidenceId: "parent" };
     const complete = vi.fn(async (_messages: ModelMessage[]) => pass);
     await supervisePreview(complete, context, input.signal);

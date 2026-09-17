@@ -1,12 +1,13 @@
+/** Historical algorithm fixture for pixel-level regression coverage; production uses source-sticker-recognition. */
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { COVER_DETECTION_WINDOW, COVER_SAMPLE_INTERVAL_MS, type CoverDetectionImage, type DetectedCoverFrame } from "../shared/automatic-cover.js";
-import { fingerprintFile } from "./paths.js";
-import { ProviderError } from "./api-transport.js";
-import type { FfmpegAdapter } from "./ffmpeg.js";
-import type { MediaItem } from "./domain.js";
-import { automaticCoverTracks, type AutomaticCoverTrack } from "./automatic-cover-tracks.js";
+import { COVER_DETECTION_WINDOW, COVER_SAMPLE_INTERVAL_MS, type CoverDetectionImage, type DetectedCoverFrame } from "../../src/shared/automatic-cover.js";
+import { fingerprintFile } from "../../src/main/paths.js";
+import { ProviderError } from "../../src/main/api-transport.js";
+import type { FfmpegAdapter } from "../../src/main/ffmpeg.js";
+import type { MediaItem } from "../../src/main/domain.js";
+import { automaticCoverTracks, type AutomaticCoverTrack } from "../../src/main/automatic-cover-tracks.js";
 
 type Detect = (images: readonly CoverDetectionImage[], previous: DetectedCoverFrame | undefined, signal: AbortSignal) => Promise<DetectedCoverFrame[]>;
 

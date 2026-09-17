@@ -5,6 +5,7 @@ import * as limits from "../src/main/execution-limits";
 import { ApplicationService } from "../src/main/application";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
 import { AgentRunner } from "../src/main/agent-runner";
+import { knowledgeFixture } from "./helpers/knowledge-session";
 import { DecorationSchema } from "../src/shared/decorations";
 import { createDefaultTemplate, type MediaItem, type ExportBatch } from "../src/main/domain";
 
@@ -117,7 +118,7 @@ describe("per-material manual coverage", () => {
     const output: { id: string; sticker: string }[] = [];
     const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3 }),
       enqueue: async (template, source) => { const cover = template.layers.find(layer => layer.type === "sticker" && layer.cover); if (cover?.type === "sticker") output.push({ id: source.id, sticker: cover.cover!.stickerId }); return crypto.randomUUID(); },
-      stickerAssets: assets, decorations: DecorationSchema.parse({ productPrice: "手动文字", sticker: "none" }), selectCoverSticker, detectCoverTracks, onChange: () => {} });
+      stickerAssets: assets, decorations: DecorationSchema.parse({ productPrice: "手动文字", sticker: "none" }), selectCoverSticker, knowledge: knowledgeFixture(detectCoverTracks), onChange: () => {} });
     runner.start("project", "clean", "", media.slice(0, 2), 3); await runner.settled();
     expect(selections).toEqual([[], [a], [a,b]]);
     expect(selectCoverSticker).toHaveBeenCalledTimes(3);

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { FfmpegAdapter, discoverBinary, runCommand } from "../src/main/ffmpeg";
 import { fingerprintFile } from "../src/main/paths";
-import { recognizeAutomaticCovers } from "../src/main/automatic-cover";
+import { recognizeAutomaticCovers } from "./helpers/legacy-automatic-cover";
 import { automaticCoverLayers, resolveCoverSticker } from "../src/main/cover-sticker";
 import { createDefaultTemplate, DEFAULT_PRESET, type MediaItem } from "../src/main/domain";
 import { TemplateCompiler } from "../src/main/compiler";

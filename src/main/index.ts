@@ -19,6 +19,7 @@ import { prepareIndependentReviewMedia } from "./cover-review-input.js";
 import { AgentStartSchema } from "../shared/agent.js";
 import { SelectModelSchema } from "../shared/connections.js";
 import { AgentController } from "./agent-controller.js";
+import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { loadBundledStickerAssets } from "./bundled-stickers.js";
@@ -478,10 +479,14 @@ async function createWindow(): Promise<void> {
   mainWindow.on("closed", () => { mainWindow = undefined; });
 }
 
+let sourceKnowledge: SourceStickerKnowledgeStore | undefined;
 async function bootstrap(): Promise<void> {
   await app.whenReady();
   const userData = app.getPath("userData");
   await mkdir(userData, { recursive: true });
+  // Failure disables only new automatic analysis, never frozen jobs or manual editing.
+  try { sourceKnowledge = await SourceStickerKnowledgeStore.open(userData); }
+  catch { sourceKnowledge = undefined; }
   recentProjects = new RecentProjects(path.join(userData, "recent-projects.json"));
   await recentProjects.initialize([process.cwd(), app.getPath("documents")]);
   protocol.handle("jianji-media", async (request) => {
@@ -518,7 +523,7 @@ async function bootstrap(): Promise<void> {
   stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider);
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge);
   const reviewRoot = path.join(userData, "cover-review");
   coverReview = new CoverReviewController(service, agent, queue, {
     root: reviewRoot,
@@ -544,12 +549,23 @@ async function bootstrap(): Promise<void> {
   void connections.restore();
 }
 
+async function shutdownServices(): Promise<void> {
+  try { await coverReview?.shutdown(); }
+  finally {
+    try { await agent?.cancel(); }
+    finally {
+      try { await sourceKnowledge?.close(); }
+      finally { try { await connections?.dispose(); } finally { await queue?.shutdown(); } }
+    }
+  }
+}
+
 function requestQuit(): void {
   if (quitting || closingPrompt) return;
-  if (!queue) { quitting = true; app.exit(0); return; }
+  if (!queue) { quitting = true; void shutdownServices().finally(() => app.exit(0)); return; }
   if (!service?.hasUnsavedChanges || !mainWindow) {
     quitting = true;
-    void coverReview.shutdown().then(async () => { await connections.dispose(); await queue.shutdown(); }).finally(() => app.exit(0));
+    void shutdownServices().finally(() => app.exit(0));
     return;
   }
   closingPrompt = true;
@@ -575,9 +591,7 @@ function requestQuit(): void {
       await recentProjects.remember(projectPath, service.currentProject);
     }
     quitting = true;
-    await coverReview.shutdown();
-    await connections.dispose();
-    await queue.shutdown();
+    await shutdownServices();
     app.exit(0);
   })().catch((error) => { console.error("graceful shutdown failed", error); closingPrompt = false; });
 }

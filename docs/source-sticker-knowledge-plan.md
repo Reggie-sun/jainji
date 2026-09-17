@@ -1,7 +1,7 @@
 ---
 title: Reusable Source Sticker Knowledge Implementation Plan
 status: in-progress
-execution: m2-complete
+execution: m3-complete
 version: 0.1
 date: 2026-09-17
 baseline: ef74adf
@@ -12,7 +12,7 @@ spec: source-sticker-knowledge-spec.md
 
 落实 [Source Sticker Knowledge Spec](source-sticker-knowledge-spec.md)：将经过原图核查与真实样片检查的源贴纸事实保存下来，后续同源素材复用；原事实被纠正时传播给本批受影响版本，保持新包装逐版本创作与检查。
 
-M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接已实现；M3–M5 尚未开始。**当前制作入口只适配结果结构，尚未启用知识查询、跨批复用或修订传播，不代表真实素材验收已完成。**
+M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据交接、M3 的自动制作复用及修订传播已实现；M4–M5 尚未开始。**当前制作入口已启用精确源知识复用，新版本仍逐条创作与样片核查；尚无用户刷新入口，也不代表真实素材验收已完成。**
 
 采用 Native Codex 执行，按仓库现行规则进行有界实施、验证及提交。默认使用当前工作树，不创建 worktree；实现前检查当前规则、Git 状态、live agents 与精确文件 ownership，保留无关工作。技术选择在规格内自行收敛；只有真实同文件冲突或目标/授权变化才需要用户决定。
 
@@ -94,6 +94,14 @@ M1 的共享合同与独立持久 owner、M2 的结构化主管结果与证据�
 **Verification:** 扩展 `tests/supervised-preview.test.ts`、`tests/supervisor-evidence.integration.test.ts`、`tests/supervised-agent.integration.test.ts`；证明 source/output 配对、VFR、裁剪映射、取消及累计预算。覆盖 AC-04、07、10–11、13、21–22。
 
 ## M3 — Reuse And Revision Propagation
+
+**Status:** 完成。`source-sticker-knowledge-session.ts` 独占运行内源事实和版本绑定，替代 `pendingCoverTracks`；`source-sticker-recognition.ts` 按实际解码时间生成未扩边的源事实，安全扩边只发生在覆盖渲染。旧识别入口移至历史测试 fixture，保留像素回归。应用只创建一个 userData store，并在正常退出和部分启动失败时释放 owner。正式入队前通过 store 的串行准入重新核对修订、反证、模板和源文件；冻结任务不依赖知识库。
+
+本阶段确定性测试覆盖冷/暖跨项目与重启复用、同源不同 ID、B→A 重建重审、预算延续、CAS 冲突、原文字冻结、知识清理后原队列重试，以及窗口失败/取消后反证持久阻断。只比较实际观察时刻的反证，避免新识别标签与窗口尾部插值产生误争议；冷候选的已知问题也不能被另开版本直接通过。后续版本只继承事实引用及裁剪父证据，不累积无关预览原图。
+
+Fresh verification：完整测试 837 项通过、2 项跳过（NVENC/字体能力条件及未启用的在线素材下载），`npm run typecheck`、`npm run build`、`git diff --check` 通过；native `reviewer_xhigh` 独立审查无剩余阻断项。覆盖 AC-01–17、19、21–22 的本地合同/集成部分，包含合成 CFR/VFR、真实 FFmpeg 和模拟模型；AC-15、17–18 的用户交互与 AC-20 真实素材仍留待 M4/M5，不将历史 fixture 或模拟主管判断当作真实识别质量。构建的 bundle 大小提示未在本阶段优化。
+
+**Handoff limitation:** 内部显式刷新可绕过健康知识命中，但已持久 disputed 的源在 `readHead` 时继续阻断；M4 需要明确有界恢复方案，不能通过删除反证解锁。相同字节副本的刷新意图必须在运行前按源统一，迟到刷新会停止受影响版本。未运行真实模型、Windows 实机或人工全片验收。
 
 **Scope:** 新增知识 session 协调模块；接入 `agent-controller.ts`、`agent-runner.ts`、`index.ts`；按需要扩展 `domain.ts`、`state-migrations.ts` 及冻结引用。由一个 writer 拥有本阶段这些共享文件。
 

@@ -142,6 +142,13 @@ export type SourceFacts = z.infer<typeof SourceFactsSchema>;
 /** Compare the actual piecewise source geometry in a problem's scope, not redundant
  * keyframe encodings, evidence labels or sampling metadata. */
 export function sourceGeometryChanged(before: SourceFacts, after: SourceFacts, ranges: readonly ReviewedRange[], targetId?: string): boolean {
+  return geometryChanged(before, after, ranges, targetId, true);
+}
+/** Fresh labels and interpolation beyond the last observed frame are not counterevidence. */
+export function sourceObservationsChanged(before: SourceFacts, after: SourceFacts, times: readonly number[]): boolean {
+  return geometryChanged(before, after, [], undefined, false, times);
+}
+function geometryChanged(before: SourceFacts, after: SourceFacts, ranges: readonly ReviewedRange[], targetId: string | undefined, matchIds: boolean, observedTimes?: readonly number[]): boolean {
   const targets = (facts: SourceFacts) => facts.targets.filter((target) => !targetId || target.id === targetId);
   const times = new Set(ranges.flatMap((range) => [range.startMs, range.endMs]));
   for (const facts of [before, after]) for (const target of targets(facts)) for (const { track } of target.segments) {
@@ -153,9 +160,14 @@ export function sourceGeometryChanged(before: SourceFacts, after: SourceFacts, r
     const segment = target.segments.find(({ track }) => time >= track.startMs && time < track.endMs);
     return segment ? [[target.id, interpolateCoverRectangle(segment.track.keyframes, time)] as const] : [];
   }));
-  return samples.some((time) => {
+  return (observedTimes ?? samples).some((time) => {
     const a = at(before, time), b = at(after, time);
-    return a.size !== b.size || [...a].some(([id, rectangle]) => !b.has(id) || (["x", "y", "width", "height"] as const).some((key) => Math.abs(rectangle[key] - b.get(id)![key]) > 1e-9));
+    if (a.size !== b.size) return true;
+    return [...a].some(([id, rectangle]) => {
+      const matched = [...b].find(([other, value]) => (!matchIds || other === id) && (["x", "y", "width", "height"] as const).every(key => Math.abs(rectangle[key] - value[key]) <= 1e-9));
+      if (!matched) return true;
+      b.delete(matched[0]); return false;
+    });
   });
 }
 export type KnowledgeEvidence = z.infer<typeof KnowledgeEvidenceSchema>;

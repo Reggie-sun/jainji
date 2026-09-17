@@ -25,7 +25,7 @@ const EventSchema = z.discriminatedUnion("type", [
 ]);
 type Manifest = z.infer<typeof ManifestSchema>;
 type Event = z.infer<typeof EventSchema>;
-type Loaded = { manifest: Manifest; revisions: Map<string, KnowledgeRevision>; disputes: Map<string, KnowledgeDispute> };
+type Loaded = { manifest: Manifest; revisions: Map<string, KnowledgeRevision>; disputes: Map<string, KnowledgeDispute>; headBlobs: Map<string, Buffer> };
 export interface KnowledgeRun { readonly id: string }
 type Run = { token: KnowledgeRun; source: SourceIdentity; signal?: AbortSignal; ended: boolean; publication?: string };
 type StoreOptions = { quotaBytes?: number; fault?: (point: string) => void | Promise<void> };
@@ -180,7 +180,7 @@ export class SourceStickerKnowledgeStore {
     if (sourceKey(await identifySource(file, source)) !== sourceKey(source)) throw new KnowledgeStoreError("source_changed");
   }
 
-  private async load(source: SourceIdentity): Promise<Loaded | null> {
+  private async load(source: SourceIdentity, includeHeadEvidence = false): Promise<Loaded | null> {
     const directory = this.sourceDirectory(source);
     if (!(await exists(directory))) return null;
     await directorySafe(directory);
@@ -191,6 +191,7 @@ export class SourceStickerKnowledgeStore {
     const eventNames = await readdir(path.join(directory, "events"));
     if (eventNames.length !== manifest.events.length || eventNames.some((id) => !manifest.events.some((event) => event.id === id))) throw new KnowledgeStoreError("integrity", "Manifest omits durable events");
     const revisions = new Map<string, KnowledgeRevision>(), disputes = new Map<string, KnowledgeDispute>();
+    const headBlobs = new Map<string, Buffer>();
     let head: string | null = null;
     for (const entry of manifest.events) {
       const eventDirectory = path.join(directory, "events", entry.id); await directorySafe(eventDirectory);
@@ -202,6 +203,7 @@ export class SourceStickerKnowledgeStore {
       for (const frame of evidence) {
         const blob = await readSafe(path.join(eventDirectory, "evidence", frame.digest), 8 * 1024 * 1024);
         if (blob.length !== frame.byteLength || digest(blob) !== frame.digest) throw new KnowledgeStoreError("integrity", "Evidence digest mismatch");
+        if (includeHeadEvidence && record.type === "revision" && record.candidate.id === manifest.currentRevisionId) headBlobs.set(frame.digest, blob);
       }
       if (record.type === "revision") {
         const candidate = record.candidate; checkProof(candidate, record.proof);
@@ -217,7 +219,28 @@ export class SourceStickerKnowledgeStore {
     }
     if (manifest.currentRevisionId !== head || Object.values(manifest.references).some((id) => !revisions.has(id))) throw new KnowledgeStoreError("integrity", "Invalid manifest reference");
     for (const revision of revisions.values()) revision.state = [...disputes.values()].some((d) => d.revisionId === revision.id) ? "disputed" : revision.id === head ? "reviewed" : "superseded";
-    return { manifest, revisions, disputes };
+    return { manifest, revisions, disputes, headBlobs };
+  }
+
+  /** Checked source evidence is lent only as detached bytes, never as store paths. */
+  async readHead(source: SourceIdentity): Promise<{ revision: KnowledgeRevision; blobs: Map<string, Buffer> } | undefined> {
+    const identity = SourceIdentitySchema.parse(source);
+    return this.exclusive(async () => {
+      const loaded = await this.load(identity, true);
+      if (loaded?.disputes.size) throw new KnowledgeStoreError("conflict", "源贴纸知识存在未解决反证，已停止复用。");
+      const revision = loaded?.revisions.get(loaded.manifest.currentRevisionId ?? "");
+      return revision ? { revision, blobs: loaded!.headBlobs } : undefined;
+    });
+  }
+
+  /** Final queue handoff shares the publication lock. The callback must not call this store. */
+  async admit<T>(token: KnowledgeRun, expectedRevisionId: string | null, enqueue: () => Promise<T>): Promise<T> {
+    return this.exclusive(async () => {
+      const run = this.run(token), loaded = await this.load(run.source);
+      if (loaded?.disputes.size || (loaded?.manifest.currentRevisionId ?? null) !== expectedRevisionId) throw new KnowledgeStoreError("conflict", "源贴纸知识已变化或存在反证，本条未导出。");
+      this.run(token);
+      return enqueue();
+    });
   }
 
   async lookup(source: SourceIdentity, required: ReviewedRange[]): Promise<KnowledgeLookup> {

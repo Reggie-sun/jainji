@@ -20,7 +20,7 @@ baseline: 37ed26c
 - [成熟方案调研](sticker-cover-prior-art-2026-09-16.md)支持拆分发现、完整边界、语义身份、跨帧关联与重发现；不支持靠反复询问同一坐标保证正确。
 - [运行验证](runtime-cover-validation-2026-09-16.md)与[真实覆盖复测](live-cover-retest-2026-09-16.md)仍是失败证据，不能由本规格覆盖为 PASS。
 - 当前 [CoverStickerSchema](../src/shared/cover-sticker.ts)仅支持 `manual` / `agent`；手动设置已有逐素材、多框及关键帧能力。单个 `CoverTrack` 只有一个有效区间，关键帧有数量和比例约束。
-- 当前 [AgentRunner](../src/main/agent-runner.ts)识别后继续生成方案并入队，没有人工审阅暂停点。[automatic-cover.ts](../src/main/automatic-cover.ts)的临时抽帧会清理，不能直接作为持久审阅证据路径。
+- 基线 [AgentRunner](../src/main/agent-runner.ts)识别后继续生成方案并入队，没有人工审阅暂停点。[automatic-cover.ts（现存历史测试 fixture）](../tests/helpers/legacy-automatic-cover.ts)的临时抽帧会清理，不能直接作为持久审阅证据路径。
 
 # Goals And Non-Goals
 
@@ -154,7 +154,7 @@ baseline: 37ed26c
 | 模式及手动轨迹兼容 | [cover-sticker.ts](../src/shared/cover-sticker.ts)；扩展模式，不复制旧校验 |
 | 审阅草稿、问题、批准数据 | 新增独立共享 schema 模块，由 [domain.ts](../src/main/domain.ts) 的项目 schema 引用；不塞入导出模板作为另一套轨迹 owner |
 | 状态与批准准入 | [agent-controller.ts](../src/main/agent-controller.ts)入口及 [agent-runner.ts](../src/main/agent-runner.ts)阶段衔接；复杂审阅协调放独立模块，不能膨胀现有大文件 |
-| 候选与跟随 | [automatic-cover.ts](../src/main/automatic-cover.ts)、[cover-track-provider.ts](../src/main/cover-track-provider.ts)、[automatic-cover-tracks.ts](../src/main/automatic-cover-tracks.ts)；严格模式输出合同不变，新增草稿适配边界不把部分结果伪装成成功轨迹 |
+| 候选与跟随（规划基线） | [automatic-cover.ts（历史 fixture）](../tests/helpers/legacy-automatic-cover.ts)、[cover-track-provider.ts](../src/main/cover-track-provider.ts)、[automatic-cover-tracks.ts](../src/main/automatic-cover-tracks.ts)；严格模式输出合同不变，新增草稿适配边界不把部分结果伪装成成功轨迹 |
 | 复核模型调用 | 独立复核职责模块，复用 [model-connections.ts](../src/main/model-connections.ts) 与 [connection-store.ts](../src/main/connection-store.ts)；不新增模型连接管理器 |
 | 人工编辑与状态展示 | [CoverStickerPanel.tsx](../src/renderer/CoverStickerPanel.tsx)及按职责拆分的审阅组件；主进程仍独占准入判断 |
 | 保存与迁移 | [store.ts](../src/main/store.ts)及项目 schema；证据目录生命周期仅一个 owner |

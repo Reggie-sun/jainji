@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentRunner } from "../src/main/agent-runner";
+import { knowledgeFixture } from "./helpers/knowledge-session";
 import { EditTemplateSchema, type EditTemplate, type MediaItem, type StickerLayer } from "../src/main/domain";
 import { DecorationSchema } from "../src/shared/decorations";
 import { ProviderError } from "../src/main/api-transport";
@@ -20,7 +21,7 @@ async function produce(tracks: AutomaticCoverTrack[], options: { fail?: boolean;
     stickerAssets: { heart: asset, sparkle: asset, arrow: asset, burst: asset },
     autoCatalog: { fonts: [], stickers: [{ id: "heart", label: "爱心" }] },
     decorations: DecorationSchema.parse({ mode: "agent", productPrice: "手动文字", displayMode: "first-3s" }),
-    preserveSourceStickers: true, detectCoverTracks: detect, resolutionMode: options.resolutionMode ?? "source",
+    preserveSourceStickers: true, knowledge: knowledgeFixture(detect), resolutionMode: options.resolutionMode ?? "source",
     enqueue: async template => { templates.push(template); return crypto.randomUUID(); }, onChange: () => {} });
   runner.start("project", "clean", "", [source], options.versions ?? 1); await runner.settled();
   return { templates, detect, createPlan, run: runner.snapshot()! };

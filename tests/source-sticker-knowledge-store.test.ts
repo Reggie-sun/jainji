@@ -37,6 +37,33 @@ const publish = (store: SourceStickerKnowledgeStore, p: Prepared) => store.publi
 const ranges = [{ startMs: 0, endMs: 3000 }];
 
 describe("durable source sticker knowledge", () => {
+  it("checks out verified head evidence even when its coverage is partial, without lending mutable buffers", async () => {
+    const { store, source } = await fixture(); const p = await prepare(store, source);
+    await publish(store, p);
+    const head = await store.readHead(source);
+    expect(head?.revision.id).toBe(p.candidate.id);
+    expect(head?.blobs.get(p.candidate.evidence[0].digest)?.toString()).toBe("original frame");
+    head!.blobs.get(p.candidate.evidence[0].digest)!.fill(0);
+    expect((await store.readHead(source))?.blobs.get(p.candidate.evidence[0].digest)?.toString()).toBe("original frame");
+  });
+
+  it("serializes final admission with publication and refuses stale or disputed knowledge", async () => {
+    const { store, source } = await fixture(); const first = await prepare(store, source);
+    await publish(store, first);
+    let release!: () => void; const barrier = new Promise<void>(resolve => { release = resolve; });
+    let entered!: () => void; const entry = new Promise<void>(resolve => { entered = resolve; });
+    const next = await prepare(store, source, first.candidate.id);
+    const order: string[] = [];
+    const admission = store.admit(first.run, first.candidate.id, async () => { entered(); await barrier; order.push("enqueue"); return "task"; });
+    await entry;
+    const publication = publish(store, next).then(() => { order.push("publish"); });
+    release(); expect(await admission).toBe("task"); await publication;
+    expect(order).toEqual(["enqueue", "publish"]);
+    await expect(store.admit(first.run, first.candidate.id, async () => "wrong")).rejects.toMatchObject({ code: "conflict" });
+    await store.recordDispute(next.run, { schemaVersion: 1, id: "known", revisionId: next.candidate.id, ranges, kind: "missing_target", reason: "confirmed contradiction", evidence: next.candidate.evidence.filter(e => e.kind === "source"), at: new Date().toISOString() }, next.blobs);
+    await expect(store.readHead(source)).rejects.toMatchObject({ code: "conflict" });
+    await expect(store.admit(next.run, next.candidate.id, async () => "wrong")).rejects.toMatchObject({ code: "conflict" });
+  });
   it("hits identical copies after reopen; changed/reencoded bytes cannot hit; validates the source again", async () => {
     const { store, source, directory, file } = await fixture();
     const revision = await publish(store, await prepare(store, source));

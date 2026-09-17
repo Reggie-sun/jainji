@@ -10,6 +10,7 @@ import { JobStore } from "../src/main/store";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { fingerprintFile } from "../src/main/paths";
 import type { PreviewReviewInput } from "../src/main/supervisor-protocol";
+import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
 
 describe("automatic supervisor through real render and original queue", () => {
   it.each([{ coverEnabled: false, cancel: false, inspectWindows: false }, { coverEnabled: true, cancel: false, inspectWindows: false }, { coverEnabled: false, cancel: true, inspectWindows: false }, { coverEnabled: false, cancel: false, inspectWindows: true }])("checks actual renders before admission (cover=$coverEnabled, cancel=$cancel, multiwindow=$inspectWindows)", async ({ coverEnabled, cancel, inspectWindows }) => {
@@ -24,7 +25,8 @@ describe("automatic supervisor through real render and original queue", () => {
     const jobs = new JobStore(path.join(directory, "jobs"));
     const queue = new ExportQueue({ ffmpeg, jobStore: jobs, fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
     const assets = await ensureBuiltinStickerAssets(path.join(directory, "stickers"));
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets);
+    const knowledge = await SourceStickerKnowledgeStore.open(directory);
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, knowledge);
     if (coverEnabled) service.currentProject.coverSticker = { enabled: true, trackingMode: "agent", stickerIds: [], rectangle: { x: 0, y: 0, width: 0.1, height: 0.1 } };
     for (const provider of [controller.provider, controller.visionProvider, controller.reviewerProvider]) provider.configure({ apiKey: "fixture", model: "fixture", baseUrl: "https://unused.invalid/v1" });
     vi.spyOn(controller.provider, "shortlist").mockResolvedValue(["heart"]);
@@ -42,8 +44,13 @@ describe("automatic supervisor through real render and original queue", () => {
       expect(queue.snapshot().batches).toHaveLength(0);
       expect(input.evidence.every(image => image.sourceUrl.startsWith("data:image/jpeg;") && image.previewUrl?.startsWith("data:image/jpeg;"))).toBe(true);
       expect(JSON.stringify(input)).not.toContain(directory);
+      const rectangle = { x: 0.825, y: 0.89, width: 0.15, height: 0.1 };
+      const track = { startMs: 0, endMs: inspectWindows ? duration * 1000 : 3000, keyframes: [{ timeMs: 0, rectangle }] };
+      const facts = input.knowledge!.facts, evidenceIds = facts.observations.map(o => o.evidenceId);
       return JSON.stringify(inspected.length === 1
-        ? { action: "revise", reason: "右下已有原贴纸，修正占位", tracks: [{ targetId: "source-badge", track: { startMs: 0, endMs: inspectWindows ? duration * 1000 : 3000, keyframes: [{ timeMs: 0, rectangle: { x: 0.825, y: 0.89, width: 0.15, height: 0.1 } }] } }] }
+        ? { action: "revise", reason: "右下已有原贴纸，修正占位", tracks: [{ targetId: "source-badge", track }],
+          sourceFacts: { ...facts, targets: [{ id: "source-badge", segments: [{ id: "badge", track, interpolation: "linear", evidenceIds }] }], observations: evidenceIds.map(evidenceId => ({ evidenceId, targetId: "source-badge", presence: "PRESENT", rectangle })) },
+          issues: [{ id: "missing", scope: "source", kind: "missing_target", reason: "右下存在原贴纸", ranges: facts.reviewedRanges, evidenceIds }], resolvedIssueIds: ["missing"] }
         : { action: "pass", reason: "重新检查修订样片" });
     });
     const render = vi.spyOn(queue, "renderPreview");
@@ -63,7 +70,7 @@ describe("automatic supervisor through real render and original queue", () => {
       expect(review).toHaveBeenCalledTimes(2);
       expect(inspected.map(input => [input.turn, input.revision, input.remainingRevisions])).toEqual([[1, 0, 2], [2, 1, 1]]);
       expect(inspected[1].history[0]).toMatchObject({ action: "revise", applied: true });
-      expect(inspected.every(input => input.knowledge === undefined)).toBe(true); // M2 adapts results without enabling cross-run reuse.
+      expect(inspected.every(input => input.knowledge?.facts.reviewedRanges.length)).toBe(true);
       expect(inspected.every(input => input.evidence.every(image => image.sourceEvidenceId && image.previewEvidenceId))).toBe(true);
       expect(render).toHaveBeenCalledTimes(2);
       expect(detect).toHaveBeenCalledTimes(inspectWindows ? 7 : 2);
@@ -80,7 +87,7 @@ describe("automatic supervisor through real render and original queue", () => {
       expect(output.streams?.some(stream => stream.codec_type === "audio")).toBe(true);
       expect(Number(output.format?.duration)).toBeCloseTo(duration, 1);
       for (const [call] of render.mock.calls) await expect(access(call.cacheDirectory)).rejects.toThrow();
-    } finally { await controller.cancel(); await queue.shutdown(); await rm(directory, { recursive: true, force: true }); }
+    } finally { await controller.cancel(); await knowledge.close(); await queue.shutdown(); await rm(directory, { recursive: true, force: true }); }
   }, 60_000);
 
 });

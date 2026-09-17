@@ -4,6 +4,22 @@ import { ProviderError } from "./api-transport.js";
 
 export interface AutomaticCoverTrack { targetId: string; track: CoverTrack }
 
+function expandFrames(frames: readonly CoverKeyframe[]): CoverKeyframe[] {
+  const maxWidth = Math.max(...frames.map(({ rectangle }) => Math.min(1, rectangle.width + 0.02)));
+  const maxHeight = Math.max(...frames.map(({ rectangle }) => Math.min(1, rectangle.height + 0.02)));
+  const ratio = maxWidth / maxHeight;
+  return frames.map(({ timeMs, rectangle: rect }) => {
+    const width = Math.min(maxWidth, Math.max(Math.min(1, rect.width + 0.02), Math.min(1, rect.height + 0.02) * ratio));
+    const height = Math.min(maxHeight, width / ratio);
+    return { timeMs, rectangle: { x: Math.max(0, Math.min(1 - width, rect.x + rect.width / 2 - width / 2)), y: Math.max(0, Math.min(1 - height, rect.y + rect.height / 2 - height / 2)), width, height } };
+  });
+}
+
+/** Safety padding is a rendering decision, never a mutation of reusable source facts. */
+export function expandSourceCoverTracks(tracks: readonly AutomaticCoverTrack[]): AutomaticCoverTrack[] {
+  return tracks.map(({ targetId, track }) => ({ targetId, track: CoverTrackSchema.parse({ ...track, keyframes: expandFrames(track.keyframes) }) }));
+}
+
 function simplify(frames: CoverKeyframe[], detections: CoverKeyframe[]): CoverKeyframe[] {
   if (frames.length <= 2) return frames;
   const kept = new Set([0, frames.length - 1]);
@@ -48,14 +64,7 @@ export function automaticCoverTracks(frames: readonly DetectedCoverFrame[], dura
   }
   const tracks: AutomaticCoverTrack[] = [];
   for (const [runIndex, run] of runs.entries()) {
-    const maxWidth = Math.max(...run.frames.map(({ rectangle }) => Math.min(1, rectangle.width + 0.02)));
-    const maxHeight = Math.max(...run.frames.map(({ rectangle }) => Math.min(1, rectangle.height + 0.02)));
-    const ratio = maxWidth / maxHeight;
-    const expanded = run.frames.map(({ timeMs, rectangle: rect }) => {
-      const width = Math.min(maxWidth, Math.max(Math.min(1, rect.width + 0.02), Math.min(1, rect.height + 0.02) * ratio));
-      const height = Math.min(maxHeight, width / ratio);
-      return { timeMs, rectangle: { x: Math.max(0, Math.min(1 - width, rect.x + rect.width / 2 - width / 2)), y: Math.max(0, Math.min(1 - height, rect.y + rect.height / 2 - height / 2)), width, height } };
-    });
+    const expanded = expandFrames(run.frames);
     const reduced = simplify(expanded, run.frames);
     for (let offset = 0; offset < reduced.length; offset += 49) {
       const keyframes = reduced.slice(offset, offset + 50);

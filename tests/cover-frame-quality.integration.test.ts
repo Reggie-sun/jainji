@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { discoverBinary, FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { fingerprintFile } from "../src/main/paths";
-import { recognizeAutomaticCovers } from "../src/main/automatic-cover";
+import { recognizeAutomaticCovers } from "./helpers/legacy-automatic-cover";
 import type { MediaItem } from "../src/main/domain";
 
 it.each([

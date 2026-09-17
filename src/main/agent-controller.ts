@@ -1,4 +1,5 @@
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { AgentStartInput } from "../shared/agent.js";
@@ -18,8 +19,9 @@ import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from 
 import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { stickerPreview } from "./sticker-preview.js";
 import { resolveCoverSticker, previousCoverStickerId, unusedCoverStickerIds } from "./cover-sticker.js";
-import { recognizeAutomaticCovers } from "./automatic-cover.js";
-import { detectCollaborativeCovers } from "./collaborative-cover.js";
+import { recognizeSourceStickerKnowledge } from "./source-sticker-recognition.js";
+import { SourceStickerKnowledgeSession } from "./source-sticker-knowledge-session.js";
+import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import type { CoverReviewDraft } from "../shared/cover-review.js";
 import type { EditTemplate } from "./domain.js";
 import { assertReviewResolved } from "./cover-review-session.js";
@@ -35,7 +37,7 @@ export class AgentController {
   private testController?: AbortController;
   private briefController?: AbortController;
   private pendingOperation?: Promise<void>;
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider()) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -143,6 +145,7 @@ export class AgentController {
       if (media.some((item) => !item || item.probeStatus !== "ready")) throw new Error("所选素材不可用，请重新导入。");
       await assertOutputDirectorySafe(outputDirectory, media as MediaItem[]);
       this.preparingController.signal.throwIfAborted();
+      if (supervised && !this.knowledgeStore) throw new Error("源贴纸知识库不可用或需要恢复；自动制作已停止，已有导出和手动模式不受影响。");
       const projectId = this.service.currentProject.id;
       const previews = new Map<string, Promise<{ id: string; url: string }>>();
       for (const preview of availableCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
@@ -169,7 +172,30 @@ export class AgentController {
       };
       const previousCoverId = previousCoverStickerId(history);
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
+      const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
+      const knowledge = supervised ? new SourceStickerKnowledgeSession({
+        store: this.knowledgeStore!, executor: this.visionProvider.status().model.slice(0, 160), supervisor: this.reviewerProvider.status().model.slice(0, 160),
+        identify: async (item, signal) => {
+          const evidence = new SupervisorEvidence(this.ffmpeg, item);
+          try { return await evidence.sourceIdentity(signal); } finally { await evidence.dispose(); }
+        },
+        recognize: (item, source, horizon, signal, onStage, onWindow) => recognizeSourceStickerKnowledge(this.ffmpeg, item, source, horizon, signal,
+          (images, requestSignal) => this.visionProvider.detectCovers(images, undefined, requestSignal),
+          (context, requestSignal) => this.reviewerProvider.superviseRecognition(context, requestSignal), onStage, onWindow),
+        review: async input => {
+          const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-preview-"));
+          const evidence = new SupervisorEvidence(this.ffmpeg, input.media);
+          try { return await superviseRenderedTemplate({ ...input, durationMs: input.media.durationMs,
+            coverEnabled: Boolean(automaticCover), automaticCorners: decorations.mode === "agent",
+            knowledge: { ...input.knowledge, outputSettingsDigest: createHash("sha256").update(JSON.stringify(preset)).digest("hex"), capture: (images, binding) => evidence.capture(images, binding) },
+            render: (candidate, requestSignal) => this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal }),
+            inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
+            review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
+          }); } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
+        },
+      }) : undefined;
       this.runner = new AgentRunner({
+        knowledge,
         prepared: assisted?.prepared,
         coverSticker,
         preserveSourceStickers,
@@ -186,30 +212,9 @@ export class AgentController {
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
         } : undefined,
-        detectCoverTracks: async (item, signal, onStage) => {
-          if (assisted) return assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.disposition === "no_cover" ? [] : assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!.segments.map((segment) => ({ targetId: segment.id, track: segment.track }));
-          return recognizeAutomaticCovers(this.ffmpeg, item, async (images, previous, currentSignal) => {
-            // Recognition's budget belongs to a window, not the entire source video.
-            const evidence = new SupervisorEvidence(this.ffmpeg, item);
-            try { return await detectCollaborativeCovers(images, previous, currentSignal,
-              (frames, requestSignal) => this.visionProvider.detectCovers(frames, undefined, requestSignal),
-              (context, requestSignal) => this.reviewerProvider.superviseRecognition(context, requestSignal),
-              (requests, requestSignal) => evidence.inspect(requests, requestSignal),
-              stage => onStage(`${stage} · ${(images[0].timeMs / 1000).toFixed(2)}–${(images.at(-1)!.timeMs / 1000).toFixed(2)} 秒`));
-            } finally { await evidence.dispose(); }
-          }, signal, decorations.displayMode === "first-3s" ? Math.min(3000, item.durationMs) : item.durationMs);
-        },
-        supervise: supervised ? async (template, item, tracks, rebuild, signal, onStage) => {
-          const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-preview-"));
-          const evidence = new SupervisorEvidence(this.ffmpeg, item);
-          try {
-            return (await superviseRenderedTemplate({ template, tracks, durationMs: item.durationMs,
-              coverEnabled: Boolean(automaticCover), automaticCorners: decorations.mode === "agent", signal, rebuild, onStage,
-              render: (candidate, requestSignal) => this.queue.renderPreview({ template: candidate, media: item, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container }, cacheDirectory: directory, signal: requestSignal }),
-              inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
-              review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
-            })).template;
-          } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
+        detectCoverTracks: assisted ? async item => {
+          const source = assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!;
+          return source.disposition === "no_cover" ? [] : source.segments.map(segment => ({ targetId: segment.id, track: segment.track }));
         } : undefined,
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),

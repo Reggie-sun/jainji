@@ -9,6 +9,7 @@ import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverSettin
 import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
 import { CoverReviewDraftSchema } from "../shared/cover-review.js";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
+import { SourceFactsSchema } from "../shared/source-sticker-knowledge.js";
 import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
@@ -156,6 +157,11 @@ export const EditTemplateSchema = z.object({
   layoutPolicy: z.enum([LEGACY_CORNER_SAFE_POLICY.id, CORNER_SAFE_POLICY.id]).optional(),
   productPriceDraft: ProductPriceSchema.optional(),
   decorationDisplayMode: DecorationDisplayModeSchema.optional(),
+  sourceStickerKnowledge: z.object({
+    sourceKey: z.string().regex(/^[a-f0-9]{64}$/), revisionId: z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),
+    factsDigest: z.string().regex(/^[a-f0-9]{64}$/), verification: z.literal("sampled"), persistence: z.enum(["saved", "not-saved"]),
+    reviewedRanges: SourceFactsSchema.shape.reviewedRanges,
+  }).strict().optional(),
   productPrice: RequiredProductPriceSchema.optional(),
   createdAt: DateTime,
   updatedAt: DateTime,

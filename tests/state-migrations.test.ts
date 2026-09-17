@@ -27,6 +27,17 @@ function legacyBatch(project: ReturnType<typeof createDefaultProject>) {
 }
 
 describe("state migrations", () => {
+  it("round trips optional frozen source provenance without requiring local knowledge or changing legacy templates", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-knowledge-migration-"));
+    const legacy = createDefaultProject(), project = structuredClone(legacy);
+    project.templates[0].sourceStickerKnowledge = { sourceKey: "a".repeat(64), revisionId: "frozen-revision", factsDigest: "b".repeat(64), verification: "sampled", persistence: "saved", reviewedRanges: [{ startMs: 0, endMs: 3000 }] };
+    const store = new ProjectStore(path.join(directory, "project.json"));
+    await store.save(project);
+    expect((await store.load()).project.templates[0]).toEqual(project.templates[0]);
+    await store.save(legacy);
+    expect((await store.load()).project.templates[0]).toEqual(legacy.templates[0]);
+    expect((await store.load()).project.templates[0].sourceStickerKnowledge).toBeUndefined();
+  });
   it("migrates a v1 project and nested batch without changing frozen template data", () => {
     const template = { schemaVersion: 1, version: 7, layers: [{ render: "frozen" }] };
     const result = migrateProjectState({ schemaVersion: 1, templates: [template], exportBatches: [{ schemaVersion: 1, templateSnapshot: template }] }, versions);

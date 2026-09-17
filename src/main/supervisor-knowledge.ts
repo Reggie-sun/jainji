@@ -20,6 +20,7 @@ export interface KnowledgeReviewOptions {
   capture(images: readonly SupervisorEvidenceImage[], binding: EvidenceBinding): SupervisorEvidenceHandoff;
   // The coordinator owns persistence. A confirmed handoff is awaited even after cancellation.
   onDispute?(handoff: DisputeHandoff): Promise<void>;
+  onSourceIssue?(issue: PreviewIssue): void;
   onReviewed?(handoff: KnowledgeReviewHandoff): Promise<"saved" | "not-saved">;
 }
 
@@ -81,7 +82,8 @@ export class SupervisorKnowledgeReview {
   }
   context(): NonNullable<PreviewReviewInput["knowledge"]> {
     return { candidateId: this.candidate.id, sourceKey: sourceKey(this.candidate.source), baseRevisionId: this.candidate.baseRevisionId,
-      factsDigest: factsDigest(this.candidate.facts), requiredRanges: structuredClone(this.candidate.requiredRanges), facts: structuredClone(this.candidate.facts), evidenceIds: [...this.reviewed] };
+      factsDigest: factsDigest(this.candidate.facts), requiredRanges: structuredClone(this.candidate.requiredRanges), facts: structuredClone(this.candidate.facts), evidenceIds: [...this.reviewed],
+      sourceEvidence: structuredClone([...this.records.values()].filter((record): record is Extract<KnowledgeEvidence, { kind: "source" }> => record.kind === "source" && this.reviewed.has(record.id))) };
   }
   validateIssue(issue: PreviewIssue): void {
     const required = issue.scope === "source" ? this.candidate.requiredRanges : [{ startMs: 0, endMs: this.candidate.source.durationMs }];
@@ -91,6 +93,7 @@ export class SupervisorKnowledgeReview {
     if (issue.scope === "source" && issue.targetId && !this.candidate.facts.targets.some((target) => target.id === issue.targetId)) throw new Error("问题目标不存在");
   }
   async dispute(issue: PreviewIssue): Promise<string | undefined> {
+    if (issue.scope === "source") this.options.onSourceIssue?.(issue);
     const previous = this.options.previousRevision;
     if (issue.scope !== "source" || !previous || sourceGeometryChanged(previous.candidate.facts, this.candidate.facts, issue.ranges, issue.targetId)) return;
     const ids = new Set(issue.evidenceIds);

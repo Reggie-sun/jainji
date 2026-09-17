@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { KnowledgeCandidateSchema, SourceIdentitySchema, coversRanges } from "../src/shared/source-sticker-knowledge";
+import { KnowledgeCandidateSchema, SourceIdentitySchema, coversRanges, sourceObservationsChanged, type SourceFacts } from "../src/shared/source-sticker-knowledge";
 
 const digest = "a".repeat(64);
 const source = { fingerprint: `sha256:${digest}`, byteLength: 100, width: 720, height: 1280, rotation: 0, durationMs: 10000, timeBase: "1/90000", timeOriginPts: 0, interpretationVersion: 1 };
@@ -8,6 +8,16 @@ const facts = { reviewedRanges: [{ startMs: 0, endMs: 3000 }], targets: [], excl
 const candidate = { schemaVersion: 1, id: "candidate", state: "candidate", source, baseRevisionId: null, runId: "run", requiredRanges: facts.reviewedRanges, facts, evidence: [evidence], resolvedDisputeIds: [], changes: [], provenance: { executor: "test/model", supervisor: "test/model", contractVersion: 1, requests: 2, at: "2026-09-17T00:00:00Z" } };
 
 describe("source sticker knowledge contract", () => {
+  it("compares fresh recognition only at observed times, ignoring window-tail interpolation and local labels", () => {
+    const moving = (id: string, endMs: number, points: number[][]): SourceFacts => ({ ...facts, observations: [], targets: [{ id, segments: [{ id: "segment", interpolation: "linear", evidenceIds: ["frame"], track: { startMs: 0, endMs, keyframes: points.map(([timeMs, x]) => ({ timeMs, rectangle: { x, y: 0, width: 0.1, height: 0.1 } })) } }] }] });
+    const previous = moving("old-label", 3000, [[0, 0.1], [1750, 0.275], [2000, 0.3]]);
+    const window = moving("new-label", 1751, [[0, 0.1], [1750, 0.275]]);
+    expect(sourceObservationsChanged(previous, window, [0, 1750])).toBe(false);
+    window.targets[0].segments[0].track.keyframes[1].rectangle.x = 0.4;
+    expect(sourceObservationsChanged(previous, window, [0, 1750])).toBe(true);
+    expect(sourceObservationsChanged(previous, { ...window, targets: [] }, [0])).toBe(true);
+  });
+
   it("requires byte identity and a complete decoding interpretation, without paths or styling", () => {
     expect(SourceIdentitySchema.safeParse(source).success).toBe(true);
     for (const invalid of [{ ...source, fingerprint: "filename.mp4" }, { ...source, byteLength: 0 }, { ...source, path: "/video.mp4" }, { ...source, timeBase: "0/0" }]) expect(SourceIdentitySchema.safeParse(invalid).success).toBe(false);

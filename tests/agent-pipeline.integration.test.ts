@@ -13,6 +13,7 @@ import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { AssetLibrary } from "../src/main/asset-library";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
 import { getPriceStyle } from "../src/shared/price-styles";
+import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
 
 describe("agent to local export", () => {
   for (const mode of ["manual", "agent"] as const) it(`extracts real frames and renders independent verified videos in ${mode} mode`, async (context) => {
@@ -69,7 +70,8 @@ describe("agent to local export", () => {
     const queue = new ExportQueue({ ffmpeg: adapter, fontResolver: { resolve: resolveFont }, jobStore: new JobStore(path.join(directory, "jobs")) });
     const stickerAssets = await ensureBuiltinStickerAssets(path.join(directory, "agent-stickers"));
     const library = new AssetLibrary(path.join(directory, "library"), async () => { throw new Error("sticker network forbidden"); });
-    const controller = new AgentController(service, queue, adapter, () => {}, stickerAssets, library);
+    const knowledge = await SourceStickerKnowledgeStore.open(directory);
+    const controller = new AgentController(service, queue, adapter, () => {}, stickerAssets, library, undefined, undefined, undefined, knowledge);
     try {
       for (const name of ["素材一.mp4", "素材二.mp4"]) {
         const source = path.join(directory, name);
@@ -95,14 +97,15 @@ describe("agent to local export", () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
-      expect(requests).toHaveLength(mode === "agent" ? 16 : 4);
+      expect(new Set(service.currentProject.mediaItems.map(item => item.fingerprint)).size).toBe(1);
+      expect(requests).toHaveLength(mode === "agent" ? 14 : 4);
       const detectorRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频画面覆盖物追踪器"));
       const recognitionRequests = requests.filter((request) => (request.messages[0].content as string).includes("当前阶段是原贴纸识别"));
       const previewRequests = requests.filter((request) => (request.messages[0].content as string).includes("当前阶段是检查真实渲染样片"));
       const shortlistRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频贴纸选材师"));
       const planRequests = requests.filter((request) => !detectorRequests.includes(request) && !recognitionRequests.includes(request) && !previewRequests.includes(request) && !shortlistRequests.includes(request));
-      expect(detectorRequests).toHaveLength(mode === "agent" ? 2 : 0);
-      expect(recognitionRequests).toHaveLength(mode === "agent" ? 2 : 0);
+      expect(detectorRequests).toHaveLength(mode === "agent" ? 1 : 0);
+      expect(recognitionRequests).toHaveLength(mode === "agent" ? 1 : 0);
       expect(previewRequests).toHaveLength(mode === "agent" ? 4 : 0);
       if (mode === "agent") {
         expect(detectorRequests.every(request => request.model === "local-test-detector")).toBe(true);
@@ -124,7 +127,7 @@ describe("agent to local export", () => {
         const content = request.messages[1].content;
         if (typeof content === "string") throw new Error("expected visual content");
         const images = content.filter((item) => item.type === "image_url");
-        expect(images).toHaveLength(previewRequests.includes(request) ? 16 : mode === "agent" && !shortlistRequests.includes(request) ? 4 : 3);
+        expect(images).toHaveLength(previewRequests.includes(request) ? 16 : detectorRequests.includes(request) || recognitionRequests.includes(request) ? 5 : mode === "agent" && !shortlistRequests.includes(request) ? 4 : 3);
         expect(images.every((item) => item.image_url!.url.startsWith("data:image/jpeg;base64,/9j/"))).toBe(true);
         expect(JSON.stringify(request)).not.toContain(directory);
       }
@@ -169,7 +172,7 @@ describe("agent to local export", () => {
         expect(result.streams?.find((stream) => stream.codec_type === "video")).toMatchObject({ width: 1280, height: 720 });
       }
     } finally {
-      await controller.cancel(); await queue.shutdown();
+      await controller.cancel(); await knowledge.close(); await queue.shutdown();
       await new Promise<void>((resolve) => server.close(() => resolve()));
       await rm(directory, { recursive: true, force: true });
     }

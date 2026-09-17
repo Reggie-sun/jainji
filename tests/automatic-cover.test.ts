@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { automaticCoverTracks } from "../src/main/automatic-cover-tracks";
+import { automaticCoverTracks, expandSourceCoverTracks } from "../src/main/automatic-cover-tracks";
 import { automaticCoverLayers, resolveCoverSticker } from "../src/main/cover-sticker";
 import { createDefaultTemplate, EditTemplateSchema, type EditTemplate, type MediaItem } from "../src/main/domain";
 import { AgentRunner } from "../src/main/agent-runner";
+import { knowledgeFixture } from "./helpers/knowledge-session";
 import { DecorationSchema } from "../src/shared/decorations";
 import { ProviderError } from "../src/main/api-transport";
 import { interpolateCoverRectangle } from "../src/shared/cover-sticker";
@@ -25,6 +26,15 @@ const observations = [0, 250, 500, 750].map((timeMs) => ({ timeMs, targets: [
 const settings = { enabled: true, stickerIds: [id], rectangle: { ...rect, x: 0.8 }, trackingMode: "agent" as const };
 
 describe("fully automatic multi-target cover", () => {
+  it("expands raw knowledge only for rendering without altering source geometry or visibility", () => {
+    const raw = [{ targetId: "source", track: { startMs: 200, endMs: 600, keyframes: [{ timeMs: 200, rectangle: rect }] } }];
+    const before = structuredClone(raw);
+    const expanded = expandSourceCoverTracks(raw);
+    expect(raw).toEqual(before);
+    expect(expanded[0].track).toMatchObject({ startMs: 200, endMs: 600 });
+    expect(expanded[0].track.keyframes[0].rectangle.x).toBeCloseTo(0.09);
+    expect(expanded[0].track.keyframes[0].rectangle.width).toBeCloseTo(0.12);
+  });
   it.each(["left", "right", "top", "bottom"])("keeps detected coverage at the %s image edge during simplification", (edge) => {
     const frames = [0, 250, 500].map((timeMs) => {
       const coordinate = timeMs === 250 ? 0 : 0.011;
@@ -69,7 +79,7 @@ describe("fully automatic multi-target cover", () => {
     const tracks = automaticCoverTracks(observations, 1000);
     const detectCoverTracks = vi.fn(async () => tracks);
     const enqueue = vi.fn(async (_template: EditTemplate) => crypto.randomUUID());
-    const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: automaticHeartStickers(), priceStyle: "ice" } : {}) }), enqueue, decorations: DecorationSchema.parse({ mode, productPrice: "手动内容", sticker: "none" }), stickerAssets: assets, coverSticker: resolveCoverSticker(settings, assets, []), detectCoverTracks, autoCatalog: mode === "agent" ? { fonts: [], stickers: [{ id: "heart", label: "爱心" }] } : undefined, onChange: () => {} });
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: automaticHeartStickers(), priceStyle: "ice" } : {}) }), enqueue, decorations: DecorationSchema.parse({ mode, productPrice: "手动内容", sticker: "none" }), stickerAssets: assets, coverSticker: resolveCoverSticker(settings, assets, []), knowledge: knowledgeFixture(detectCoverTracks), autoCatalog: mode === "agent" ? { fonts: [], stickers: [{ id: "heart", label: "爱心" }] } : undefined, onChange: () => {} });
     runner.start("project", "clean", "", [source], 3);
     await runner.settled();
     expect(detectCoverTracks).toHaveBeenCalledTimes(1);
@@ -82,7 +92,7 @@ describe("fully automatic multi-target cover", () => {
   it("fails every version on uncertain detection without retries, packaging calls or manual fallback", async () => {
     const detectCoverTracks = vi.fn(async () => { throw new ProviderError("无法确定全部原贴纸"); });
     const plan = vi.fn(), enqueue = vi.fn();
-    const runner = new AgentRunner({ frames: async () => [], plan, enqueue, stickerAssets: assets, coverSticker: resolveCoverSticker(settings, assets, []), detectCoverTracks, onChange: () => {} });
+    const runner = new AgentRunner({ frames: async () => [], plan, enqueue, stickerAssets: assets, coverSticker: resolveCoverSticker(settings, assets, []), knowledge: knowledgeFixture(detectCoverTracks), onChange: () => {} });
     runner.start("project", "clean", "", [source], 3);
     await runner.settled();
     expect(detectCoverTracks).toHaveBeenCalledTimes(1);

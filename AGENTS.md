@@ -32,7 +32,8 @@
 | 模型方案校验与本地图层生成 | [agent-provider.ts](src/main/agent-provider.ts) |
 | 自动四角覆盖优先与补齐时段 | [automatic-corner-layout.ts](src/main/automatic-corner-layout.ts) |
 | 自动主管协议、修正与样片检查 | [supervisor-protocol.ts](src/main/supervisor-protocol.ts)、[collaborative-cover.ts](src/main/collaborative-cover.ts)、[supervised-preview.ts](src/main/supervised-preview.ts)、[supervisor-evidence.ts](src/main/supervisor-evidence.ts) |
-| 原贴纸自动识别与跟随轨迹 | [automatic-cover.ts](src/main/automatic-cover.ts)、[cover-track-provider.ts](src/main/cover-track-provider.ts)、[automatic-cover-tracks.ts](src/main/automatic-cover-tracks.ts) |
+| 原贴纸自动识别与跟随轨迹 | [source-sticker-recognition.ts](src/main/source-sticker-recognition.ts)、[cover-track-provider.ts](src/main/cover-track-provider.ts)、[automatic-cover-tracks.ts](src/main/automatic-cover-tracks.ts) |
+| 可复用源贴纸合同、持久化与逐版本修订传播 | [source-sticker-knowledge.ts](src/shared/source-sticker-knowledge.ts)、[source-sticker-knowledge-store.ts](src/main/source-sticker-knowledge-store.ts)、[source-sticker-knowledge-session.ts](src/main/source-sticker-knowledge-session.ts) |
 | 半自动审阅、证据与批准 | [cover-review.ts](src/shared/cover-review.ts)、[cover-review-controller.ts](src/main/cover-review-controller.ts)、[cover-review-session.ts](src/main/cover-review-session.ts)、[cover-review-evidence.ts](src/main/cover-review-evidence.ts)、[cover-review-approval.ts](src/main/cover-review-approval.ts) |
 | 已知持久格式迁移与旧副本 | [state-migrations.ts](src/main/state-migrations.ts)、[store.ts](src/main/store.ts) |
 | 模板领域、编译、导出生命周期与文件验证 | [domain.ts](src/main/domain.ts)、[compiler.ts](src/main/compiler.ts)、[queue.ts](src/main/queue.ts)、[artifact.ts](src/main/artifact.ts) |

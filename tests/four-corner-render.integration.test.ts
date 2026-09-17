@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, it } from "vitest";
 import { AgentRunner } from "../src/main/agent-runner";
+import { knowledgeFixture } from "./helpers/knowledge-session";
 import { TemplateCompiler } from "../src/main/compiler";
 import { DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, type EditTemplate, type MediaItem } from "../src/main/domain";
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
@@ -26,7 +27,7 @@ it("renders frozen corner gap intervals, opaque source coverage, and unchanged o
     stickerAssets: { heart: normal, sparkle: normal, arrow: normal, burst: normal }, autoCatalog: { fonts: [], stickers: [{ id: "heart", label: "爱心" }] },
     decorations: DecorationSchema.parse({ mode: "agent", productPrice: "用户内容" }), resolutionMode: "source",
     coverSticker: { stickerId: "sparkle", assetPath: coverPath, assetFingerprint: "cover", rectangle, automatic: true },
-    detectCoverTracks: async () => [{ targetId: "original", track: { startMs: 200, endMs: 600, keyframes: [{ timeMs: 200, rectangle }] } }],
+    knowledge: knowledgeFixture(async () => [{ targetId: "original", track: { startMs: 200, endMs: 600, keyframes: [{ timeMs: 200, rectangle }] } }]),
     enqueue: async template => { frozen = JSON.parse(JSON.stringify(template)); return crypto.randomUUID(); }, onChange: () => {} });
   runner.start("project", "clean", "", [media]); await runner.settled();
   expect(runner.snapshot()?.items[0].status).toBe("exporting");

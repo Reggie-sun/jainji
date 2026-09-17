@@ -7,6 +7,7 @@ import { AgentProvider, ProviderError, type PackagingPlan, type AgentSelectionCo
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { DecorationSchema } from "../src/shared/decorations";
 import { executionLimits } from "../src/main/execution-limits";
+import { knowledgeFixture } from "./helpers/knowledge-session";
 
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
@@ -22,10 +23,10 @@ describe("supervisor production admission", () => {
     const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ ...plan("设计"), stickers: (["top-left", "top-right", "bottom-left", "bottom-right"] as const).map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })), priceStyle: "classic" }),
       enqueue, stickerAssets, decorations: DecorationSchema.parse({ mode: "agent", productPrice: "手动展示" }),
       autoCatalog: { fonts: [], stickers: [{ id: "heart", label: "爱心" }] },
-      supervise: async (_template, _source, _tracks, rebuild) => {
+      knowledge: knowledgeFixture(undefined, async (_template, _source, _tracks, rebuild) => {
         expect(() => rebuild({ action: "revise", reason: "非法总面积", tracks: [], corners: (["top-left", "top-right", "bottom-left", "bottom-right"] as const).map(corner => ({ corner, width: 0.1, rotationDeg: 0 })) })).toThrow();
         return rebuild({ action: "revise", reason: "仅修正轨迹", tracks: [] });
-      }, onChange: () => {} });
+      }), onChange: () => {} });
     runner.start("project", "clean", "", [media("one")]); await runner.settled();
     expect(enqueue).toHaveBeenCalledOnce();
     expect(runner.snapshot()?.items[0].error).toBeUndefined();
@@ -35,12 +36,12 @@ describe("supervisor production admission", () => {
     const enqueue = vi.fn(async (template: EditTemplate) => { events.push("enqueue"); expect(template.layers.find(layer => layer.type === "text")?.content).toBe("手动展示"); return crypto.randomUUID(); });
     const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
       decorations: DecorationSchema.parse({ productPrice: "手动展示", sticker: "heart" }),
-      supervise: async (template, _source, _tracks, rebuild) => {
+      knowledge: knowledgeFixture(undefined, async (template, _source, _tracks, rebuild) => {
         events.push("preview");
         const revised = rebuild({ action: "revise", reason: "检查", tracks: [] });
         expect(revised.layers.find(layer => layer.type === "text")).toEqual(template.layers.find(layer => layer.type === "text"));
         return revised;
-      }, onChange: () => {} });
+      }), onChange: () => {} });
     runner.start("project", "clean", "", [media("one"), media("two")]);
     await runner.settled();
     expect(events).toEqual(["preview", "preview", "enqueue", "enqueue"]);
@@ -49,13 +50,13 @@ describe("supervisor production admission", () => {
   it("does not enqueue a failed review and cancels previously prepared versions before submission", async () => {
     const enqueue = vi.fn(); let count = 0;
     const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
-      supervise: async template => { if (++count === 2) { runner.cancel(); throw new Error("cancelled"); } return template; }, onChange: () => {} });
+      knowledge: knowledgeFixture(undefined, async template => { if (++count === 2) { runner.cancel(); throw new Error("cancelled"); } return template; }), onChange: () => {} });
     runner.start("project", "clean", "", [media("one"), media("two")]);
     await runner.settled();
     expect(enqueue).not.toHaveBeenCalled();
     expect(runner.snapshot()?.items.every(item => item.status === "cancelled")).toBe(true);
     const failing = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
-      supervise: async () => { throw new ProviderError("主管未通过"); }, onChange: () => {} });
+      knowledge: knowledgeFixture(undefined, async () => { throw new ProviderError("主管未通过"); }), onChange: () => {} });
     failing.start("project", "clean", "", [media("one")]); await failing.settled();
     expect(enqueue).not.toHaveBeenCalled(); expect(failing.snapshot()?.items[0].error).toBe("主管未通过");
   });

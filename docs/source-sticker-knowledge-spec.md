@@ -23,7 +23,7 @@ baseline: ef74adf
 - [AgentRunner](../src/main/agent-runner.ts) 使用 `pendingCoverTracks` 在单次运行中共享识别结果，运行结束后清理；没有跨批次的原贴纸知识。
 - [supervised-preview.ts](../src/main/supervised-preview.ts) 返回通过检查的模板；样片修正后的原贴纸事实没有作为独立修订传播给同素材其他版本或后续批次。
 - [supervisor-protocol.ts](../src/main/supervisor-protocol.ts) 已有受限的补帧、修正及通过协议；识别窗口最多 3 轮主管调用，样片最多 5 轮检查、2 次有效修订。
-- [automatic-cover.ts](../src/main/automatic-cover.ts) 在前 3 秒模式下只分析所需时段；模板中冻结的轨迹用于本次渲染，不代表已观察完整视频。
+- 基线的 [automatic-cover.ts（现存历史测试 fixture）](../tests/helpers/legacy-automatic-cover.ts) 在前 3 秒模式下只分析所需时段；模板中冻结的轨迹用于本次渲染，不代表已观察完整视频。
 - 当前 [半自动规格](semi-automatic-cover-review-spec.md) 的人工批准属于 `assisted`。其历史基线描述不能覆盖当前代码，也不能作为本功能取消自动模式或导入人工批准的依据。
 
 现有真实验证曾出现误识别原贴纸导致缺角，以及主管误解 3 秒边界；因此不能仅缓存模型说过的 `pass`。知识身份、证据、适用时段和修订一致性必须一起约束。
@@ -159,7 +159,7 @@ baseline: ef74adf
 | 源知识领域、修订、证据合同 | 新增聚焦的共享 schema；复用现有 rectangle/track 校验 |
 | 内容匹配、原子持久化、冲突与清理 | 新增主进程 knowledge store；复用现有指纹、文件安全能力，不放进 UI 或大型 controller |
 | 运行内复用、刷新和修订传播 | 新增小型协调模块，由 [agent-controller.ts](../src/main/agent-controller.ts)、[agent-runner.ts](../src/main/agent-runner.ts) 调用 |
-| 原图识别与跟随 | [automatic-cover.ts](../src/main/automatic-cover.ts)、[collaborative-cover.ts](../src/main/collaborative-cover.ts)、[automatic-cover-tracks.ts](../src/main/automatic-cover-tracks.ts) |
+| 原图识别与跟随 | [source-sticker-recognition.ts](../src/main/source-sticker-recognition.ts)、[collaborative-cover.ts](../src/main/collaborative-cover.ts)、[automatic-cover-tracks.ts](../src/main/automatic-cover-tracks.ts) |
 | 主管协议及修正结果 | [supervisor-protocol.ts](../src/main/supervisor-protocol.ts)、[supervised-preview.ts](../src/main/supervised-preview.ts)；分别返回源事实与模板结果 |
 | 证据抽取与持久交接 | [supervisor-evidence.ts](../src/main/supervisor-evidence.ts) 提供抽取，knowledge store 在临时清理前分别保存成功修订证据和已成立的反证 |
 | 图层生成及补角 | [agent-template-preparation.ts](../src/main/agent-template-preparation.ts)、[automatic-corner-layout.ts](../src/main/automatic-corner-layout.ts) |

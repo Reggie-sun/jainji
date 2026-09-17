@@ -5,7 +5,7 @@ import { CoverRectangleSchema, CoverTrackSchema } from "../shared/cover-sticker.
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 import type { SupervisorEvidenceImage } from "./supervisor-evidence.js";
-import { SourceFactsSchema, ReviewedRangeSchema, KnowledgeDisputeSchema } from "../shared/source-sticker-knowledge.js";
+import { SourceFactsSchema, ReviewedRangeSchema, KnowledgeDisputeSchema, type KnowledgeEvidence } from "../shared/source-sticker-knowledge.js";
 
 export const MAX_RECOGNITION_TURNS = 3;
 export const MAX_PREVIEW_TURNS = 5;
@@ -64,7 +64,8 @@ export interface PreviewReviewInput {
   history: Array<{ turn: number; revision: number; action: string; reason: string; applied?: boolean; feedback?: string }>;
   issues?: PreviewIssueRecord[];
   knowledge?: { candidateId: string; sourceKey: string; baseRevisionId: string | null; factsDigest: string;
-    requiredRanges: Array<{ startMs: number; endMs: number }>; facts: z.infer<typeof SourceFactsSchema>; evidenceIds: string[] };
+    requiredRanges: Array<{ startMs: number; endMs: number }>; facts: z.infer<typeof SourceFactsSchema>; evidenceIds: string[];
+    sourceEvidence: Array<Extract<KnowledgeEvidence, { kind: "source" }>> };
 }
 
 export function validateSupervisorTracks(tracks: AutomaticCoverTrack[], durationMs: number): AutomaticCoverTrack[] {
