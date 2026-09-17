@@ -1,7 +1,7 @@
 ---
 title: Reusable Source Sticker Knowledge Implementation Plan
-status: draft
-execution: not-started
+status: in-progress
+execution: m1-complete
 version: 0.1
 date: 2026-09-17
 baseline: ef74adf
@@ -12,7 +12,7 @@ spec: source-sticker-knowledge-spec.md
 
 落实 [Source Sticker Knowledge Spec](source-sticker-knowledge-spec.md)：将经过原图核查与真实样片检查的源贴纸事实保存下来，后续同源素材复用；原事实被纠正时传播给本批受影响版本，保持新包装逐版本创作与检查。
 
-本计划仅为实施准备，**尚未执行，不表示已有持久知识功能或真实验收结果**。用户本轮要求 spec 与 plan；本次不修改产品代码、不调用真实模型、不启动制作任务。
+M1 的共享合同与独立持久 owner 已实现并经确定性测试验证；M2–M5 尚未开始。**当前未接入制作路径，不代表跨批复用或真实素材验收已完成。**
 
 采用 Native Codex 执行，按仓库现行规则进行有界实施、验证及提交。默认使用当前工作树，不创建 worktree；实现前检查当前规则、Git 状态、live agents 与精确文件 ownership，保留无关工作。技术选择在规格内自行收敛；只有真实同文件冲突或目标/授权变化才需要用户决定。
 
@@ -61,9 +61,11 @@ spec: source-sticker-knowledge-spec.md
 
 # Milestones
 
-依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。下面的“完成”均指将来的收敛条件，当前所有 milestone 均未开始。
+依赖顺序：`M1 → M2 → M3 → M4 → M5`。默认串行实施；不为形式上的并行增加共享写入。当前 M1 完成，下一阶段为 M2，尚未启动。
 
 ## M1 — Source Contract And Durable Store
+
+**Status:** 完成共享合同、store 与两份 focused tests；38 项测试及 `npm run typecheck` 通过。当前证据限于本机临时文件、确定性 fixture 和故障注入；未做真实断电、Windows 或真实模型/媒体验收。共享 userData 使用独占 owner lock；异常退出或无法持久保存阻断信息时保留锁并拒绝自动恢复，后续接入须明确处理恢复提示。
 
 **Scope:** 新增共享知识 schema 和知识 store；仅在必要处接入既有指纹/路径工具。不接通生产模型或制作路径。
 
@@ -161,4 +163,4 @@ npm test -- --maxWorkers=2 --minWorkers=2
 
 实施交付需要：与 spec 对照的 AC 结果、相关测试和实际桌面证据、独立审查结果、真实素材报告及未验证项、任务范围内的 commit。完成前按仓库要求执行 `verification-before-completion`；仅有 plan 勾选或模型自报通过不构成验收。
 
-计划不是运行日志。本次仅交付 spec 与 plan，并检查链接、需求覆盖和二者一致性；之后真正开始实现时再更新 milestone 状态。当前仓库没有为本任务声明专用 session-capture owner，不另建重复会话记录。
+计划仅维护 milestone 状态，不复制运行日志。当前仓库没有为本任务声明专用 session-capture owner，不另建重复会话记录。
