@@ -80,7 +80,7 @@ describe("reusable batch cover", () => {
     const visionDetect = vi.spyOn(controller.visionProvider, "detectCovers").mockResolvedValue([]);
     const detect = vi.spyOn(automaticCover, "recognizeAutomaticCovers").mockImplementation(async (_ffmpeg, _source, recognize, signal) => {
       await recognize([], undefined, signal);
-      return [{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: options.rectangle }] } }];
+      return [{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: service.currentProject.coverSticker?.enabled ? options.rectangle : { x: 0, y: 0, width: 0.1, height: 0.1 } }] } }];
     });
     const input = { ruleId: "clean" as const, brief: "", mediaIds: [source.id], multiplier: 2, outputDirectory: directory, decorations: { mode, productPrice: "手动内容", sticker: "none", fontFamily: "Noto Sans CJK SC" } };
     try {
@@ -111,7 +111,16 @@ describe("reusable batch cover", () => {
         await vi.waitFor(() => expect(controller.busy).toBe(false));
       }
       expect(plan).toHaveBeenCalledTimes(8);
-      expect(detect).toHaveBeenCalledTimes(2);
+      expect(detect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
+      expect(visionDetect).toHaveBeenCalledTimes(mode === "agent" ? 4 : 2);
+      expect(selectCover).toHaveBeenCalledTimes(4);
+      expect(shortlist.mock.calls.filter(call => call[6] === "cover")).toHaveLength(4);
+      if (mode === "agent") {
+        expect(history.slice(4).every(batch => batch.templateSnapshot.layers.filter(layer => layer.type === "sticker").length === 3)).toBe(true);
+        controller.visionProvider.clear();
+        await expect(controller.start(input, new Set([directory]))).rejects.toThrow("独立的视觉识别模型");
+        expect(plan).toHaveBeenCalledTimes(8);
+      }
       expect(history.slice(4)).toHaveLength(4);
       expect(history.slice(4).every((batch) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
     } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); detect.mockRestore(); creativeDetect.mockRestore(); visionDetect.mockRestore(); await rm(directory, { recursive: true, force: true }); }

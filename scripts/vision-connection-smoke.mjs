@@ -43,7 +43,7 @@ const server = createServer((request, response) => {
       else {
         const sticker = content.find(item => item.type === "text" && item.text.startsWith("贴纸候选 1，ID："))?.text.match(/ID：([^。，]+)/)?.[1];
         assert.ok(sticker);
-        result = { summary: "模拟包装", captions: [], stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker, width: 0.12, rotationDeg: 0 })), priceStyle: "ice", filter: "none", intensity: 0 };
+        result = { summary: "模拟包装", captions: [], stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker, width: 0.08, rotationDeg: 0 })), priceStyle: "ice", filter: "none", intensity: 0 };
       }
       response.setHeader("Content-Type", "application/json");
       response.end(JSON.stringify({ choices: [{ message: { content: JSON.stringify(result) } }] }));
@@ -170,6 +170,17 @@ try {
   const job = JSON.parse(await readFile(path.join(directory, "jobs", `${completed.queue.batches[0].batch.id}.json`), "utf8"));
   assert.ok(job.batch.templateSnapshot.layers.some(layer=>layer.cover?.automatic));
   assert.ok(requests.some(r=>r.detecting) && requests.some(r=>!r.detecting));
+  await evaluate("window.jianji.setCoverSticker({enabled:false,trackingMode:'agent',stickerIds:[],rectangle:{x:0,y:0,width:0.1,height:0.1}})");
+  const beforePreserving = requests.filter(r=>r.detecting).length;
+  await evaluate(`window.jianji.startAgent(${JSON.stringify(input)})`);
+  await waitFor("window.jianji.getState().then(s=>s.queue.batches.length===2 && s.queue.batches.every(b=>b.batch.tasks.every(t=>t.status==='completed')))");
+  const preserved = await evaluate("window.jianji.getState()");
+  const preservedBatch = preserved.queue.batches.find(b=>b.batch.id!==job.batch.id).batch;
+  const preservedJob = JSON.parse(await readFile(path.join(directory, "jobs", `${preservedBatch.id}.json`), "utf8"));
+  assert.ok(requests.filter(r=>r.detecting).length > beforePreserving, "coverage off still identifies source occupancy");
+  const decorations = preservedJob.batch.templateSnapshot.layers.filter(layer=>layer.type==='sticker');
+  assert.equal(decorations.length, 3, "original top-left sticker replaces that corner's new decoration");
+  assert.ok(decorations.every(layer=>!layer.cover && !(layer.x<0.5 && layer.y<0.5)));
   uncertain = true;
   const detections = requests.filter(request => request.detecting).length;
   await evaluate(`window.jianji.startAgent(${JSON.stringify(input)})`);
@@ -177,7 +188,7 @@ try {
   const failed = await evaluate("window.jianji.getState()");
   assert.ok(requests.filter(request => request.detecting).length > detections);
   assert.match(JSON.stringify(failed.agentRun.items), /无法可靠识别全部原贴纸/);
-  assert.equal(failed.queue.batches.length, completed.queue.batches.length);
+  assert.equal(failed.queue.batches.length, preserved.queue.batches.length);
   await evaluate("window.jianji.selectVisionConnection(null)");
   const count = requests.length;
   assert.match(await evaluate(`(async()=>{try{await window.jianji.startAgent(${JSON.stringify(input)});return 'unexpected success'}catch(e){return e.message}})()`), /独立的视觉识别模型/);

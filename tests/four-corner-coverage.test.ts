@@ -20,12 +20,13 @@ const track = (startMs: number, endMs: number): AutomaticCoverTrack => ({ target
 
 async function produce(tracks?: AutomaticCoverTrack[], mode: "agent" | "manual" = "agent") {
   const queued: EditTemplate[] = [];
-  const detect = vi.fn(async () => tracks!);
+  const detect = vi.fn(async () => tracks ?? []);
   const runner = new AgentRunner({ frames: async () => [],
     plan: async () => mode === "agent" ? plan : { summary: "手动", captions: [], filter: "cool", intensity: 0.3 },
     stickerAssets: assets, decorations: DecorationSchema.parse({ mode, productPrice: "用户内容", sticker: "none" }),
     autoCatalog: mode === "agent" ? catalog : undefined,
     coverSticker: tracks ? { stickerId: "heart", ...asset, rectangle, automatic: true } : undefined,
+    preserveSourceStickers: mode === "agent" && !tracks,
     detectCoverTracks: detect, enqueue: async template => { queued.push(template); return crypto.randomUUID(); }, onChange: () => {} });
   runner.start("project", "clean", "", [source]); await runner.settled();
   expect(runner.snapshot()?.items[0].error).toBeUndefined();
@@ -50,10 +51,10 @@ describe("automatic four-corner coverage", () => {
     await expect(provider.plan("clean", "", [], new AbortController().signal, { fonts: [], stickers: [] })).rejects.toThrow("候选");
     expect(complete).toHaveBeenCalledTimes(1);
   });
-  it("fills all four corners without invoking recognition when coverage is disabled", async () => {
+  it("fills all four corners after confirming no original stickers when coverage is disabled", async () => {
     const { template, detect } = await produce();
     expect(decorations(template).map(l => [l.x, l.y])).toEqual([[0.005,0.005],[0.915,0.005],[0.005,0.88],[0.915,0.88]]);
-    expect(detect).not.toHaveBeenCalled();
+    expect(detect).toHaveBeenCalledTimes(1);
   });
   it("keeps four decorations when enabled recognition finds no originals", async () => {
     const { template, detect } = await produce([]);

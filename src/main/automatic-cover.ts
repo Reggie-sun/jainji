@@ -24,10 +24,10 @@ export async function recognizeAutomaticCovers(ffmpeg: FfmpegAdapter, media: Med
     try {
       const result = await command.promise;
       signal.throwIfAborted();
-      if (result.code !== 0) throw new ProviderError("自动覆盖抽帧失败，未进行猜测覆盖。请检查素材后重试。");
+      if (result.code !== 0) throw new ProviderError("原贴纸识别抽帧失败，本条已停止。请检查素材后重试。");
     } finally { clearTimeout(timeout); signal.removeEventListener("abort", abort); }
     const files = (await readdir(directory)).filter((name) => /^\d{8}\.jpg$/.test(name)).sort();
-    if (!files.length) throw new ProviderError("素材过短或无法读取自动识别画面，本条未覆盖。");
+    if (!files.length) throw new ProviderError("素材过短或无法读取原贴纸识别画面，本条已停止。");
     const detected: DetectedCoverFrame[] = [];
     for (let offset = 0; offset < files.length; offset += COVER_DETECTION_WINDOW - 1) {
       signal.throwIfAborted();

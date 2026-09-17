@@ -18,6 +18,7 @@ describe("font admission before provider", () => {
     const assets = Object.fromEntries(["sparkle", "arrow", "heart", "burst", `uploaded-${"a".repeat(64)}`].map((id) => [id, { assetPath: "/tmp/fixture.png", assetFingerprint: "fixture" }])) as BuiltinStickerAssets;
     const controller = new AgentController(service, queue, ffmpeg, () => {}, assets);
     controller.provider.configure({ baseUrl: "https://example.test", apiKey: "fixture", model: "fixture" });
+    controller.visionProvider.configure({ baseUrl: "https://example.test", apiKey: "fixture", model: "detector" });
     const plan = vi.spyOn(controller.provider, "plan");
     await expect(controller.start({ ruleId: "clean", mediaIds: [crypto.randomUUID()], outputDirectory: "relative", brief: "", decorations: decorations ? DecorationSchema.parse(decorations) : undefined }, new Set())).rejects.toThrow("所选字体不可用");
     expect(resolveFont).toHaveBeenCalledWith("Noto Sans CJK SC");

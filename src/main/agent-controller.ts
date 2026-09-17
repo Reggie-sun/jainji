@@ -116,7 +116,8 @@ export class AgentController {
       if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted) throw new Error("半自动覆盖必须先审阅、预览和批准。");
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
       const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
-      if (automaticCover && !assisted && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型。");
+      const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
+      if ((automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
       const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
@@ -164,6 +165,7 @@ export class AgentController {
       this.runner = new AgentRunner({
         prepared: assisted?.prepared,
         coverSticker,
+        preserveSourceStickers,
         selectCoverSticker: automaticCover ? async (frames, signal, previousSelections) => {
           const eligible = availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id));
           const candidateIds = unusedCoverStickerIds(eligible.map(({ id }) => id), previousSelections, previousCoverId);
@@ -182,6 +184,7 @@ export class AgentController {
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
           brief = `${decorationTimingContext(decorations?.displayMode)}\n${brief}`;
+          if (preserveSourceStickers) brief = `保留原视频已有贴纸，不新增覆盖层。请为四角各提供一项候补设计，本地根据独立视觉识别的原贴纸占位，只在空缺角落和时段添加。\n${brief}`;
           if (!catalog) {
             manualPreviews ??= this.manualStickerPreviews(decorations, signal);
             return this.provider.plan(rule, brief, frames, signal, undefined, undefined, await manualPreviews);

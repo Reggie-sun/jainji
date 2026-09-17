@@ -67,6 +67,7 @@ describe("agent to local export", () => {
       const ids = service.currentProject.mediaItems.map((item) => item.id);
       const outputDirectory = path.join(directory, "out");
       controller.provider.configure({ apiKey: "local-test-key", model: "local-test-vision", baseUrl: `http://127.0.0.1:${port}/v1` });
+      controller.visionProvider.configure({ apiKey: "local-test-key", model: "local-test-detector", baseUrl: `http://127.0.0.1:${port}/v1` });
       await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: ids, outputDirectory, decorations: { productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set())).rejects.toThrow("系统对话框");
       expect(requests).toHaveLength(0);
       const fontFamily = await resolveFont("Noto Serif CJK SC") ? "Noto Serif CJK SC" : DEFAULT_TEXT_FONT_FAMILY;
@@ -80,10 +81,10 @@ describe("agent to local export", () => {
         await new Promise((resolve) => setTimeout(resolve, 25));
       }
       expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
-      expect(requests).toHaveLength(mode === "agent" ? 8 : 4);
+      expect(requests).toHaveLength(mode === "agent" ? 10 : 4);
       const coverRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频画面覆盖物追踪器"));
       const finalRequests = requests.filter((request) => !(request.messages[0].content as string).includes("你是视频贴纸选材师") && !coverRequests.includes(request));
-      expect(coverRequests).toHaveLength(0);
+      expect(coverRequests).toHaveLength(mode === "agent" ? 2 : 0);
       if (mode === "agent") {
         const systems = finalRequests.map((request) => request.messages[0].content as string);
         expect(new Set(systems.map((system) => system.match(/当前为同批第 (\d+)\/4 条/)?.[1]))).toEqual(new Set(["1", "2", "3", "4"]));
@@ -98,7 +99,7 @@ describe("agent to local export", () => {
         const content = request.messages[1].content;
         if (typeof content === "string") throw new Error("expected visual content");
         const images = content.filter((item) => item.type === "image_url");
-        expect(images).toHaveLength(mode === "agent" && finalRequests.includes(request) ? 4 : 3);
+        expect(images).toHaveLength(coverRequests.includes(request) || mode === "agent" && finalRequests.includes(request) ? 4 : 3);
         expect(images.every((item) => item.image_url!.url.startsWith("data:image/jpeg;base64,/9j/"))).toBe(true);
         expect(JSON.stringify(request)).not.toContain(directory);
       }
@@ -114,7 +115,16 @@ describe("agent to local export", () => {
       }
       expect(batches.map(({ batch }) => batch.tasks[0].status)).toEqual(["completed", "completed", "completed", "completed"]);
       expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "text").every((layer) => layer.content === "¥ 19.90"))).toBe(true);
-      expect(batches.every(({ batch }) => batch.templateSnapshot.layers.filter((layer) => layer.type === "sticker").length === (mode === "agent" ? 4 : 1))).toBe(true);
+      for (const { batch } of batches) {
+        const stickers = batch.templateSnapshot.layers.filter(layer => layer.type === "sticker");
+        if (mode === "manual") expect(stickers).toHaveLength(1);
+        else {
+          expect(stickers.filter(layer => !(layer.x < 0.5 && layer.y < 0.5))).toHaveLength(3);
+          const occupied = stickers.find(layer => layer.x < 0.5 && layer.y < 0.5);
+          // AAC padding can extend container duration beyond the final sampled video frame.
+          if (occupied) expect(occupied.activeRanges?.every(range => range.startMs >= 1000)).toBe(true);
+        }
+      }
       if (mode === "agent") expect(new Set(batches.map(({ batch }) => JSON.stringify(batch.templateSnapshot.layers.find(layer => layer.type === "text")?.color))).size).toBe(4);
       if (mode === "agent") for (const { batch } of batches) {
         expect(batch.templateSnapshot.filter).toEqual({ presetId: "none", intensity: 0 });

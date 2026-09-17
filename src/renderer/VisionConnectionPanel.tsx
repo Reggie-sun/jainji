@@ -38,17 +38,17 @@ export function VisionConnectionPanel({ connection, chatgpt, library, disabled, 
 
   return <>
     <div className="card brief-card model-picker">
-    <label htmlFor="vision-connection">视觉识别模型 <span>自动覆盖专用</span></label>
+    <label htmlFor="vision-connection">视觉识别模型 <span>原贴纸识别与补角</span></label>
     <select id="vision-connection" value={selection?.connectionId ?? ""} disabled={disabled || Boolean(library.error)} onChange={(event) => void selectConnection(event.target.value)}>
       <option value="">不配置视觉识别模型</option>
       <option value="chatgpt" disabled={!chatgptReady}>ChatGPT 登录{chatgptReady ? "" : "（尚未就绪）"}</option>
       {library.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.model}</option>)}
     </select>
-    <small>仅在启用“Agent 自动识别全部原贴纸”时发送抽帧做画面识别；创作 Agent 的贴纸和样式选择不受影响。跟随轨迹仍由本机生成。</small>
+    <small>自动覆盖，以及关闭覆盖时的“全部交给 Agent”，都会发送抽帧识别原贴纸。关闭覆盖时仅用于判断哪些角落和时段需要补贴纸，不替换原贴纸；选款和样式仍由创作 Agent 负责。</small>
     {library.error && <p role="alert">{library.error}</p>}
     {selection?.connectionId === "chatgpt" && !chatgptReady && <p role="alert">ChatGPT 视觉识别连接尚未就绪，请先完成登录并刷新状态。</p>}
     {selection && !connection?.configured && <p role="alert">视觉识别模型未就绪，请检查连接状态并重新选择可用模型。</p>}
-    {!selection && <p role="status">未配置视觉识别模型时，自动覆盖无法开始；手动覆盖不受影响。</p>}
+    {!selection && <p role="status">未配置视觉识别模型时，自动覆盖和关闭覆盖时的 Agent 自动补角无法开始；手动设置且不使用自动覆盖时不受影响。</p>}
     </div>
     {pickerConnection && <ModelPicker connection={pickerConnection} chatgpt={chatgpt ? { ...chatgpt, message: undefined } : undefined} library={pickerLibrary} disabled={disabled || Boolean(library.error)} title="视觉识别模型" description="当前视觉识别模型" onSelect={onSelect} />}
   </>;

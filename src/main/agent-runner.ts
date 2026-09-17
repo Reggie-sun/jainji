@@ -21,6 +21,7 @@ interface RunnerDependencies {
   resolutionMode?: ExportSettings["resolutionMode"];
   autoCatalog?: AgentDecorationCatalog;
   coverSticker?: FrozenCoverSticker;
+  preserveSourceStickers?: boolean;
   selectCoverSticker?(frames: string[], signal: AbortSignal, previousSelections: readonly string[]): Promise<FrozenCoverSticker>;
   detectCoverTracks?(media: MediaItem, signal: AbortSignal): Promise<AutomaticCoverTrack[]>;
   onChange(): void;
@@ -100,16 +101,19 @@ export class AgentRunner {
           const coverSticker = this.dependencies.selectCoverSticker ? await coverForVersion(item.version, frames) : this.dependencies.coverSticker;
           signal.throwIfAborted();
           let coverTracks: AutomaticCoverTrack[] | undefined;
-          if (coverSticker?.automatic) {
-            if (!this.dependencies.detectCoverTracks) throw new ProviderError("自动覆盖识别服务不可用，本条已停止。");
-            item.summary = this.dependencies.prepared ? "正在读取人工确认的覆盖区间…" : "正在自动识别并追踪全部原贴纸…";
+          let sourceStickerTracks: AutomaticCoverTrack[] | undefined;
+          if (coverSticker?.automatic || this.dependencies.preserveSourceStickers) {
+            if (!this.dependencies.detectCoverTracks) throw new ProviderError("原贴纸识别服务不可用，本条已停止。");
+            item.summary = this.dependencies.prepared ? "正在读取人工确认的覆盖区间…" : this.dependencies.preserveSourceStickers ? "正在识别原贴纸占位，只补空缺角落…" : "正在自动识别并追踪全部原贴纸…";
             this.dependencies.onChange();
             let detecting = pendingCoverTracks.get(source.id);
             if (!detecting) {
               detecting = this.dependencies.detectCoverTracks(source, signal);
               pendingCoverTracks.set(source.id, detecting);
             }
-            coverTracks = await detecting;
+            const tracks = await detecting;
+            if (this.dependencies.preserveSourceStickers) sourceStickerTracks = tracks;
+            else coverTracks = tracks;
             signal.throwIfAborted();
           }
           const selection = this.dependencies.autoCatalog ? {
@@ -122,14 +126,14 @@ export class AgentRunner {
           signal.throwIfAborted();
           const template = prepareAgentTemplate({ plan, ruleId: run.ruleId, source, resolutionMode: this.dependencies.resolutionMode,
             stickerAssets: this.dependencies.stickerAssets, decorations: this.dependencies.decorations, catalog: this.dependencies.autoCatalog,
-            coverSticker, coverTracks, runId: run.id, version: item.version });
+            coverSticker, coverTracks, sourceStickerTracks, runId: run.id, version: item.version });
           if (selection && "stickers" in plan) {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
           else item.taskId = await this.dependencies.enqueue(template, source, signal);
-          item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
+          item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
           item.status = this.dependencies.prepared ? "prepared" : "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
