@@ -1,8 +1,8 @@
 ---
 title: Lightweight Video Validation Harness
-status: draft
-execution: not executed
-version: 0.1
+status: implemented
+execution: executed
+version: 1.0
 date: 2026-09-17
 baseline: 20c270f
 ---
@@ -11,7 +11,7 @@ baseline: 20c270f
 
 为简辑增加两个显式运行入口：代码修改后的核心回归验证，以及指定导出批次的实际成片验证。共用一份可执行 policy，每次运行保存独立 runs 证据。优先复用现有测试、共享 schema、FFmpeg 与 ffprobe，不新增生产任务生命周期。
 
-本文件与[实施计划](video-validation-harness-plan.md)均为 `draft / not executed`。本轮仅编写文档；下文 MUST 是拟实施合同，不代表 harness 已实现、测试已运行或成片已验收。
+本文件是已实现合同；实现 owner 位于 `src/harness/`、`scripts/run-harness.mjs` 与 `.agent/harness/policy.json`。是否通过仍只由某次独立 run 的 `receipt.json` 及其绑定证据决定，本文状态不代表任意用户成片已验收。
 
 # Evidence And Ownership
 
@@ -41,7 +41,7 @@ baseline: 20c270f
 
 # Entry Points
 
-拟提供以下 CLI，实际命名在实现时保持本文与 README 一致：
+提供以下 CLI，命名与 README 一致：
 
 ```text
 npm run harness -- code
@@ -57,7 +57,7 @@ npm run harness -- media --queue <queue-state.json>
 
 # Policy Contract
 
-**REQ-04 — Single owner.** 拟使用 `.agent/harness/policy.json`，只保存 schemaVersion、命名检查集合、必需性、命令参数数组、超时及媒体容差；不支持 shell 字符串或动态表达式。runner 校验 policy，未知版本、无检查、重复 ID、非法参数和非有限/负容差均拒绝。运行固定于仓库根目录，通过无 shell 的子进程执行；跨平台使用 Node 入口或明确兼容的启动方式。
+**REQ-04 — Single owner.** 使用 `.agent/harness/policy.json`，只保存 schemaVersion、命名检查集合、必需性、命令参数数组、超时及媒体容差；不支持 shell 字符串或动态表达式。runner 校验 policy，未知版本、无检查、重复 ID、非法参数和非有限/负容差均拒绝。运行固定于仓库根目录，通过无 shell 的子进程执行；跨平台使用 Node 入口或明确兼容的启动方式。
 
 产品不变量仍归 AGENTS.md、共享 schema 与生产模块所有。policy 只负责“执行什么检查、怎样汇总证据”，不再复制文字长度、贴纸几何、覆盖开关等业务规则。
 
@@ -127,4 +127,4 @@ media 另记录输入文件 hash、批次/task/attempt、冻结 template/preset 
 
 实现完成报告必须区分 harness 自测、核心回归、合成视频验证和用户真实成片验证，列出实际 runs 路径与未执行项。Linux 通过不能代表 Windows 实机通过。首版不以性能承诺作为验收门槛，记录耗时后再决定是否有必要优化。
 
-当前没有选择任何用户真实批次；后续实现可先用隔离 fixture 完成验证。实际成片验收须使用明确输入，不能自行扫描用户项目并据此宣布验收。
+当前没有选择任何用户真实批次；实现已使用隔离合成 fixture 验证成功与失败路径。实际用户成片验收仍须使用明确输入，不能自行扫描用户项目并据此宣布验收。

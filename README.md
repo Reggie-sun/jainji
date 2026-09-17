@@ -108,6 +108,20 @@ Windows 使用系统 Microsoft YaHei 字体：项目中的默认 `Noto Sans CJK 
 
 ## Build And Verification
 
+### Validation Harness
+
+开发回归和指定成片共用 [policy](.agent/harness/policy.json)，每次运行在 `.agent/harness/runs/<run-id>/` 创建独立的本地回执、日志和输入快照；该目录不会提交 Git，也不会自动上传或清理。
+
+```bash
+npm run harness -- code
+npm run harness -- media --project /absolute/path/project.json --batch <batch-id> [--batch <batch-id> ...]
+npm run harness -- media --queue /absolute/path/queue-state.json
+```
+
+`code` 顺序运行固定的 typecheck、harness 自测、核心规则和真实 FFmpeg 测试组，不等于完整发布或桌面验收。`media` 只读解析当前 schema 的项目或 QueueState，只检查显式批次及冻结的 `mediaSnapshots`，不会迁移项目、入队、重导出或调用模型；缺少冻结快照时返回 `NOT_EVALUATED`，不会使用当前素材补齐历史证据。
+
+结果为 `PASS`、`FAIL` 或 `NOT_EVALUATED`，退出码分别为 `0`、`1`、`2`。必需检查的 skip、超时、缺少报告、VFR 无法可靠判定、工具不可用和证据缺失都不能通过。media 会执行文件身份、完整解码、规格、时长、逐帧时间戳、音轨与模板文字检查，并生成首/中/尾源片和成片定位帧；这些自动证据不等于观看验收，回执始终保留 `visualReview=NOT_EVALUATED`。详细合同见 [Spec](docs/video-validation-harness-spec.md)，实施边界见 [Plan](docs/video-validation-harness-plan.md)。
+
 ```bash
 npm run typecheck
 npm test

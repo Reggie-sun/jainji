@@ -1,21 +1,21 @@
 ---
 title: Lightweight Video Validation Harness Implementation Plan
-status: draft
-execution: not executed
-version: 0.1
+status: complete
+execution: executed
+version: 1.0
 date: 2026-09-17
 baseline: 20c270f
 ---
 
 # Goal And Authority
 
-实施[规格](video-validation-harness-spec.md)定义的 code 与 media 两个入口，共用 policy 和 runs。用户当前要求先写 specs 和 plan；本文件不构成已开始实现或已运行验证的声明。
+已按[规格](video-validation-harness-spec.md)实现 code 与 media 两个入口，共用 policy 和 runs。完成状态表示四个实施阶段已落地并有合成 fixture 与核心回归证据；不表示任何未显式选择的用户成片通过。
 
 采用当前工作树内的有界实现，保留无关文档和用户项目文件。实现前重新检查 Git 状态与精确目标文件 ownership；不创建 worktree，不调用真实模型，不启动用户生产任务。
 
 # Scope And Owners
 
-预期新增 `.agent/harness/policy.json`、`scripts/harness/` 下的 CLI/runner 与媒体检查模块、`tests/harness*.test.ts`；仅为接入命令、忽略本地运行产物和使用说明，修改 package.json、.gitignore、README.md。具体文件拆分以 runner 与 media 两种职责为界，不为每个检查创建框架或单独模块。
+新增 `.agent/harness/policy.json`、`scripts/run-harness.mjs`、`src/harness/` 下的 CLI/runner 与媒体检查模块、`tests/harness*.test.ts`；仅为接入命令、忽略本地运行产物和使用说明，修改 package.json、.gitignore、README.md。具体文件拆分以 runner、code 与 media 三种职责为界，不为每个检查创建框架或单独模块。
 
 直接复用 domain schemas、outputDimensions、fingerprintFile 和 FFmpeg 工具能力；不修改制作、队列、模板或持久化 owner。必要的 TypeScript 执行方式复用已有 esbuild，并纳入类型检查范围，不引入新运行时依赖。不得因新 CLI 另建一份 ExportBatch 或展示文字 schema。
 
@@ -29,6 +29,8 @@ baseline: 20c270f
 | M4 — Integration and handoff | README 命令、范围、隐私及判定语义；review 最终 diff；保存演示 runs | AC-08；相关类型检查与测试通过，交付回执及未验证边界，仅提交本任务文件 |
 
 M1 → M2/M3 → M4；默认顺序完成，不为可并行性增加协调成本。到实施阶段按语义风险选择一次独立审查，重点看误报 PASS、scope 丢失、冻结数据绑定、跨平台启动和进程清理；不叠加重复评审流程。
+
+四个 milestone 均已完成。实现保持 runner、code 与 media 三个职责边界，未引入数据库、DAG、生产任务生命周期或新依赖。
 
 # Verification Strategy
 
@@ -50,6 +52,6 @@ M1 → M2/M3 → M4；默认顺序完成，不为可并行性增加协调成本�
 
 # Completion And Record
 
-文档阶段仅检查路径引用、合同一致性、范围和 diff，不制造测试 run。仓库当前未发现专用 session-record/capture skill，采用这两份规格与计划作为本次文档产物；不新增运行记录体系。
+实现交付必须包含 task-only commit、实际执行的检查与退出码、成功和失败示例 run 路径、未验证项及剩余限制。runs 是本地证据，不进入 Git；最终回执而不是本计划的状态字段决定某次执行是否通过。
 
-实施阶段交付：task-only commit、实际执行的检查与退出码、成功和失败示例 run 路径、未验证项及剩余限制。不得把本文件的验收标准勾选为已经通过，也不得将生成文档计为 harness 实现完成。
+仓库当前未发现专用 session-record/capture skill；本功能不另建 session record owner。`receipt.json` 仅负责 harness 执行证据，不能取代项目、队列或人工成片验收记录。

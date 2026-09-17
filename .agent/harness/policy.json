@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "codeChecks": [
+    {
+      "id": "typecheck",
+      "kind": "command",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/typescript/bin/tsc", "--noEmit", "--pretty", "false"],
+      "timeoutMs": 180000
+    },
+    {
+      "id": "harness",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/harness.test.ts", "tests/harness-media.integration.test.ts"],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "text-and-plan",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/product-price.test.ts", "tests/price-only.test.ts", "tests/agent-provider.test.ts"],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "lifecycle",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/agent-controller.test.ts", "tests/agent-runner.test.ts", "tests/queue.test.ts"],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "cover-contracts",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/automatic-cover.test.ts", "tests/cover-track-provider.test.ts", "tests/four-corner-coverage.test.ts", "tests/cover-review-approval.test.ts"],
+      "timeoutMs": 300000
+    },
+    {
+      "id": "real-media",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/agent-pipeline.integration.test.ts", "tests/ffmpeg.integration.test.ts", "tests/four-corner-render.integration.test.ts"],
+      "timeoutMs": 600000
+    }
+  ],
+  "media": {
+    "checks": [
+      { "id": "membership", "required": true },
+      { "id": "source-identity", "required": true },
+      { "id": "decode", "required": true },
+      { "id": "output-spec", "required": true },
+      { "id": "duration", "required": true },
+      { "id": "frame-rate", "required": true },
+      { "id": "audio", "required": true },
+      { "id": "template-text", "required": true },
+      { "id": "visual-evidence", "required": true }
+    ],
+    "commandTimeoutMs": 120000,
+    "durationMinimumToleranceMs": 100,
+    "durationFramePeriods": 2,
+    "frameRateToleranceRatio": 0.001,
+    "audioDurationToleranceMs": 100,
+    "thumbnailWidth": 480
+  }
+}
