@@ -260,11 +260,12 @@ export default function App() {
     if (coverStickerDirty) throw new Error("请先保存覆盖设置后再开始制作。");
     const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
     if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`请填写有效的制作条数，向上取整后不能超过 ${MAX_AGENT_OUTPUTS} 条。`);
+    setWorkflowSection("results");
+    setStep("results");
+    window.scrollTo({ top: 0, behavior: "smooth" });
     const sourceStickerRefresh = sourceStickerRefreshInput(sourceRefresh.refresh);
     const resolvedOutputDirectory = await resolveOutputDirectory();
     apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(sourceStickerRefresh ? { sourceStickerRefresh } : {}) }));
-    setWorkflowSection("results");
-    setStep("results");
     });
     if (accepted) sourceRefresh.consume();
   })();
