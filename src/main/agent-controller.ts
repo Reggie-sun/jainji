@@ -17,6 +17,8 @@ import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema, decorationTimingContext, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
 import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from "./asset-library.js";
 import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
+import { LIBRARY_STICKERS } from "../shared/asset-library.js";
+import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { stickerPreview } from "./sticker-preview.js";
 import { resolveCoverSticker, previousCoverStickerId, unusedCoverStickerIds } from "./cover-sticker.js";
 import { recognizeSourceStickerKnowledge } from "./source-sticker-recognition.js";
@@ -77,9 +79,11 @@ export class AgentController {
     return previews;
   }
 
-  private async autoCatalog(signal: AbortSignal): Promise<AgentDecorationCatalog> {
+  private async autoCatalog(signal: AbortSignal, cover = false): Promise<AgentDecorationCatalog> {
+    const builtins = cover ? [...AUTOMATIC_STICKERS, ...BUNDLED_STICKERS, ...LIBRARY_STICKERS] : AUTOMATIC_STICKERS;
+    const libraryIds = new Set(LIBRARY_STICKERS.map(({ id }) => id));
     const stickers = [
-      ...AUTOMATIC_STICKERS.filter(({ id }) => Boolean(this.stickerAssets[id]) || Boolean(this.library)),
+      ...new Map(builtins.filter(({ id }) => Boolean(this.stickerAssets[id]) || Boolean(this.library) && libraryIds.has(id)).map(({ id, label }) => [id, { id, label }])).values(),
       ...Object.keys(this.stickerAssets).filter(isUploadedStickerId).map((id) => ({ id, label: `用户上传贴纸 ${id.slice(9, 17)}` })),
     ];
     const previews = [];
@@ -134,8 +138,8 @@ export class AgentController {
       if ((automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
       if (supervised && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于主管 Agent 修正与样片检查。");
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
-      const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal) : undefined;
-      const autoCatalog = decorations.mode === "agent" ? availableCatalog : undefined;
+      const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover)) : undefined;
+      const autoCatalog = decorations.mode === "agent" ? { ...availableCatalog!, stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)) } : undefined;
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets) };
       this.preparingController.signal.throwIfAborted();
       for (const family of decorationFontFamilies(decorations)) {
@@ -215,7 +219,7 @@ export class AgentController {
         coverSticker,
         preserveSourceStickers,
         selectCoverSticker: automaticCover ? async (frames, signal, previousSelections) => {
-          const eligible = availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id));
+          const eligible = availableCatalog!.stickers;
           const candidateIds = unusedCoverStickerIds(eligible.map(({ id }) => id), previousSelections, previousCoverId);
           const stickers = eligible.filter(({ id }) => candidateIds.includes(id));
           const catalog = { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };

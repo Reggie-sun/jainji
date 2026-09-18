@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
-import { CoverStickerSchema } from "../src/shared/cover-sticker";
+import { CoverStickerSchema, CoverStickerIdSchema } from "../src/shared/cover-sticker";
 import { resolveCoverSticker, coverLayerForMedia } from "../src/main/cover-sticker";
 import { createDefaultTemplate, EditTemplateSchema, type ExportBatch, type MediaItem, type EditTemplate } from "../src/main/domain";
 import { AgentRunner } from "../src/main/agent-runner";
@@ -29,6 +29,13 @@ const automaticHeartStickers = () => [
 ];
 
 describe("reusable batch cover", () => {
+  it("freezes all registered cover stickers without opening manual upload-only choices", () => {
+    for (const id of ["local-limited-discount", "fluent-afab45c605865ebd35da37d3d027730a800e17fb", a]) {
+      expect(CoverStickerIdSchema.safeParse(id).success).toBe(true);
+      expect(CoverStickerSchema.safeParse({ ...options, trackingMode: "manual", stickerIds: [id] }).success).toBe(id === a);
+    }
+    for (const id of ["none", "template", "local-unknown", "uploaded-invalid"]) expect(CoverStickerIdSchema.safeParse(id).success).toBe(false);
+  });
   it.each(["failure", "cancel"])("shares cover selection without silent retries on %s", async (outcome) => {
     const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4", displayName: "source", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     let rejectSelection!: (error: Error) => void;

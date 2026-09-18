@@ -11,6 +11,8 @@ import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { fingerprintFile } from "../src/main/paths";
 import type { PreviewReviewInput } from "../src/main/supervisor-protocol";
 import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
+import { AssetLibrary } from "../src/main/asset-library";
+import { loadBundledStickerAssets } from "../src/main/bundled-stickers";
 
 describe("automatic supervisor through real render and original queue", () => {
   it.each([{ coverEnabled: false, cancel: false, inspectWindows: false }, { coverEnabled: true, cancel: false, inspectWindows: false }, { coverEnabled: false, cancel: true, inspectWindows: false }, { coverEnabled: false, cancel: false, inspectWindows: true }])("checks actual renders before admission (cover=$coverEnabled, cancel=$cancel, multiwindow=$inspectWindows)", async ({ coverEnabled, cancel, inspectWindows }) => {
@@ -24,13 +26,19 @@ describe("automatic supervisor through real render and original queue", () => {
     await service.addMedia([source]);
     const jobs = new JobStore(path.join(directory, "jobs"));
     const queue = new ExportQueue({ ffmpeg, jobStore: jobs, fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
-    const assets = await ensureBuiltinStickerAssets(path.join(directory, "stickers"));
+    const assets = { ...await ensureBuiltinStickerAssets(path.join(directory, "stickers")), ...await loadBundledStickerAssets(path.resolve("resources/stickers/downloaded")) };
     const knowledge = await SourceStickerKnowledgeStore.open(directory);
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, knowledge);
+    const library = coverEnabled ? new AssetLibrary(path.join(directory, "library"), async () => { throw new Error("No network allowed"); }) : undefined;
+    const coverId = coverEnabled ? "fluent-afab45c605865ebd35da37d3d027730a800e17fb" : "heart";
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, library, undefined, undefined, undefined, knowledge);
     if (coverEnabled) service.currentProject.coverSticker = { enabled: true, trackingMode: "agent", stickerIds: [], rectangle: { x: 0, y: 0, width: 0.1, height: 0.1 } };
     for (const provider of [controller.provider, controller.visionProvider, controller.reviewerProvider]) provider.configure({ apiKey: "fixture", model: "fixture", baseUrl: "https://unused.invalid/v1" });
-    vi.spyOn(controller.provider, "shortlist").mockResolvedValue(["heart"]);
-    vi.spyOn(controller.provider, "selectCoverSticker").mockResolvedValue("heart");
+    vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, _selection, purpose) => {
+      expect(catalog.stickers.some(({ id }) => id === "local-limited-discount")).toBe(purpose === "cover");
+      expect(catalog.stickers.some(({ id }) => id === "fluent-afab45c605865ebd35da37d3d027730a800e17fb")).toBe(purpose === "cover");
+      return [purpose === "cover" ? coverId : "heart"];
+    });
+    vi.spyOn(controller.provider, "selectCoverSticker").mockResolvedValue(coverId);
     vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "fixture", captions: [], filter: "none", intensity: 0,
       stickers: (["top-left", "top-right", "bottom-left", "bottom-right"] as const).map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })), priceStyle: "classic" });
     const detect = vi.spyOn(controller.visionProvider, "detectCovers").mockImplementation(async images => images.map(image => ({ timeMs: image.timeMs, targets: [] })));
@@ -81,6 +89,7 @@ describe("automatic supervisor through real render and original queue", () => {
       expect(batch.templateSnapshot.decorationDisplayMode).toBe(displayMode);
       expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && !layer.cover && (!layer.activeRanges || layer.activeRanges.some(range => range.startMs < 3000)))).toHaveLength(3);
       expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && layer.cover)).toHaveLength(coverEnabled ? 1 : 0);
+      if (coverEnabled) expect(batch.templateSnapshot.layers.find(layer => layer.type === "sticker" && layer.cover)).toMatchObject({ cover: { stickerId: coverId, automatic: true } });
       expect((await jobs.loadAll())).toHaveLength(1);
       expect(await fingerprintFile(source)).toBe(fingerprint);
       const output = await ffmpeg.probe(batch.tasks[0].outputPath!);

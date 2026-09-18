@@ -12,7 +12,7 @@ export const FONT_LABELS: Record<typeof FONT_CHOICES[number], string> = {
 };
 const stickerIds = new Set(["template", "none", "sparkle", "arrow", "heart", "burst", ...BUNDLED_STICKERS.map((entry) => entry.id), ...LIBRARY_STICKERS.map((entry) => entry.id)]);
 export function isUploadedStickerId(id: string): boolean { return /^uploaded-[a-f0-9]{64}$/.test(id); }
-const isStickerId = (id: string): boolean => stickerIds.has(id) || isUploadedStickerId(id);
+export const isStickerId = (id: string): boolean => stickerIds.has(id) || isUploadedStickerId(id);
 const fontFamilies = new Set<string>([...FONT_CHOICES, ...LIBRARY_FONTS.map((entry) => entry.family!)]);
 export const CORNERS = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
 export type Corner = typeof CORNERS[number];

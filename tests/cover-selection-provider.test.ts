@@ -4,6 +4,8 @@ import { AgentProvider, ProviderError } from "../src/main/agent-provider";
 const preview = (value: string) => `data:image/jpeg;base64,${Buffer.from(value).toString("base64")}`;
 const uploaded = `uploaded-${"a".repeat(64)}`;
 const frames = [preview("video-frame")];
+const money = { id: "fluent-afab45c605865ebd35da37d3d027730a800e17fb", label: "钱袋 优惠" };
+const promo = { id: "local-limited-discount", label: "限时折扣" };
 const catalog = (stickers = [
   { id: "heart", label: "爱心" },
   { id: uploaded, label: "用户上传贴纸" },
@@ -14,6 +16,22 @@ const catalog = (stickers = [
 });
 
 describe("cover sticker selection provider", () => {
+  it.each([money, promo])("shortlists $id for cover but not ordinary decoration", async (sticker) => {
+    const complete = vi.fn().mockResolvedValue('{"candidates":[1]}');
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    const candidates = catalog([sticker]);
+    await expect(provider.shortlist("clean", "", frames, new AbortController().signal, candidates, undefined, "cover")).resolves.toEqual([sticker.id]);
+    await expect(provider.shortlist("clean", "", frames, new AbortController().signal, candidates)).rejects.toThrow("没有可用");
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it.each([money, promo])("selects cataloged cover $id without the decoration whitelist", async (sticker) => {
+    const complete = vi.fn().mockResolvedValue(JSON.stringify({ sticker: sticker.id }));
+    const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
+    await expect(provider.selectCoverSticker(frames, new AbortController().signal, catalog([sticker]))).resolves.toBe(sticker.id);
+    await expect(provider.selectCoverSticker(frames, new AbortController().signal, catalog())).rejects.toThrow("本次候选目录");
+  });
+
   it("requires nonempty shortlists for both coverage and four-corner decoration", async () => {
     const complete = vi.fn().mockResolvedValue('{"candidates":[]}');
     const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
@@ -70,7 +88,7 @@ describe("cover sticker selection provider", () => {
   it.each([
     ["empty catalog", []],
     ["duplicate IDs", [{ id: "heart", label: "爱心" }, { id: "heart", label: "重复爱心" }]],
-    ["disallowed built-in", [{ id: "local-limited-discount", label: "限时折扣" }]],
+    ["unknown built-in", [{ id: "local-unknown-sticker", label: "未知贴纸" }]],
   ])("rejects invalid local candidate catalog before dispatch: %s", async (_name, stickers) => {
     const complete = vi.fn();
     const provider = new AgentProvider();

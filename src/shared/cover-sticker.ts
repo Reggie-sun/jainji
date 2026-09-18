@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { isAutomaticStickerAllowed } from "./automatic-stickers.js";
+import { isStickerId } from "./decorations.js";
 
 const UploadedCoverStickerIdSchema = z.string().regex(/^uploaded-[a-f0-9]{64}$/, "请选择自己上传的贴纸");
-export const CoverStickerIdSchema = z.string().refine((id) => /^uploaded-[a-f0-9]{64}$/.test(id) || isAutomaticStickerAllowed(id), "覆盖贴纸不可用");
+export const CoverStickerIdSchema = z.string().refine((id) => isStickerId(id) && id !== "none" && id !== "template", "覆盖贴纸不可用");
 export const CoverRectangleSchema = z.object({
   x: z.number().finite().min(0).max(1),
   y: z.number().finite().min(0).max(1),
