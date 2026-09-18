@@ -24,6 +24,7 @@ describe("automatic supervisor through real render and original queue", () => {
     const fingerprint = await fingerprintFile(source);
     const service = new ApplicationService(ffmpeg, { resolve: resolveFont });
     await service.addMedia([source]);
+    const sourceDurationMs = service.currentProject.mediaItems[0].durationMs;
     const jobs = new JobStore(path.join(directory, "jobs"));
     const queue = new ExportQueue({ ffmpeg, jobStore: jobs, fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
     const assets = { ...await ensureBuiltinStickerAssets(path.join(directory, "stickers")), ...await loadBundledStickerAssets(path.resolve("resources/stickers/downloaded")) };
@@ -47,13 +48,15 @@ describe("automatic supervisor through real render and original queue", () => {
       : { action: "resolve", reason: "fixture deliberately misses corner, preview repairs it", frames: input.proposal }));
     const inspected: PreviewReviewInput[] = [];
     const review = vi.spyOn(controller.reviewerProvider, "supervisePreview").mockImplementation(async input => {
+      expect(input.trackHorizonMs).toBe(sourceDurationMs);
+      expect(input.knowledge!.requiredRanges).toEqual([{ startMs: 0, endMs: sourceDurationMs }]);
       inspected.push(input);
       if (cancel) { void controller.cancel(); return JSON.stringify({ action: "pass", reason: "取消竞态" }); }
       expect(queue.snapshot().batches).toHaveLength(0);
       expect(input.evidence.every(image => image.sourceUrl.startsWith("data:image/jpeg;") && image.previewUrl?.startsWith("data:image/jpeg;"))).toBe(true);
       expect(JSON.stringify(input)).not.toContain(directory);
       const rectangle = { x: 0.825, y: 0.89, width: 0.15, height: 0.1 };
-      const track = { startMs: 0, endMs: inspectWindows ? duration * 1000 : 3000, keyframes: [{ timeMs: 0, rectangle }] };
+      const track = { startMs: 0, endMs: sourceDurationMs, keyframes: [{ timeMs: 0, rectangle }] };
       const facts = input.knowledge!.facts, evidenceIds = facts.observations.map(o => o.evidenceId);
       return JSON.stringify(inspected.length === 1
         ? { action: "revise", reason: "右下已有原贴纸，修正占位", tracks: [{ targetId: "source-badge", track }],
@@ -81,7 +84,7 @@ describe("automatic supervisor through real render and original queue", () => {
       expect(inspected.every(input => input.knowledge?.facts.reviewedRanges.length)).toBe(true);
       expect(inspected.every(input => input.evidence.every(image => image.sourceEvidenceId && image.previewEvidenceId))).toBe(true);
       expect(render).toHaveBeenCalledTimes(2);
-      expect(detect).toHaveBeenCalledTimes(inspectWindows ? 7 : 2);
+      expect(detect).toHaveBeenCalledTimes(inspectWindows ? 7 : 3);
       if (inspectWindows) expect(recognition.mock.calls.filter(([input]) => input.turn === 3).reduce((count, [input]) => count + input.evidence.length, 0)).toBeGreaterThan(40);
       await vi.waitFor(() => expect(queue.snapshot().batches[0]?.batch.tasks[0].status).toBe("completed"), { timeout: 30_000 });
       const batch = queue.snapshot().batches[0].batch;

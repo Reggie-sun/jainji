@@ -266,6 +266,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
       layoutPolicy: CORNER_SAFE_POLICY.id,
       productPrice: options.productPrice || undefined,
       decorationDisplayMode: options.displayMode,
+      stickerDisplayMode: "full",
       filter: { presetId: autoPlan.filter, intensity: autoPlan.intensity },
       layers: [...layers, ...priceLayers],
     });
@@ -287,6 +288,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
     layoutPolicy: CORNER_SAFE_POLICY.id,
     productPrice: options.productPrice || undefined,
     decorationDisplayMode: options.displayMode,
+    stickerDisplayMode: "full",
     filter: { presetId: legacyPlan.filter, intensity: legacyPlan.intensity },
     layers: [...explicitLayers, ...(sticker ? [stickerLayer(stickerCorner!, sticker, explicitLayers.length)] : []), ...priceLayers],
   });

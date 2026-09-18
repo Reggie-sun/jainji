@@ -17,6 +17,23 @@ function fixture() {
 }
 
 describe("rendered supervisor loop", () => {
+  it("samples later sticker intervals as well as the price fade within eight frames", async () => {
+    const input = fixture();
+    await superviseRenderedTemplate({ ...input, durationMs: 20000, template: { ...input.template, stickerDisplayMode: "full" } });
+    expect(input.inspect.mock.calls[0][0].map(request => request.timeMs)).toEqual([0, 2500, 2750, 3100, 5000, 10000, 14999, 19999]);
+  });
+  it("reviews full-duration sticker repairs while still sampling the price fade", async () => {
+    const input = fixture();
+    const template = { ...input.template, stickerDisplayMode: "full" as const,
+      layers: input.template.layers.map(layer => ({ ...layer, activeRanges: [{ startMs: 3000, endMs: 5000 }] })) };
+    input.rebuild.mockImplementation(() => ({ ...template, layers: template.layers.map(layer => ({ ...layer, width: 0.09 })) }));
+    input.review.mockResolvedValueOnce(revise.replace('"endMs":3000', '"endMs":5000')).mockResolvedValueOnce(pass);
+    const result = await superviseRenderedTemplate({ ...input, template });
+    expect(result).toMatchObject({ checkedRanges: [{ startMs: 0, endMs: 5000 }], budget: { renders: 2, revisions: 1 } });
+    expect(result.tracks[0].track.endMs).toBe(5000);
+    expect(input.review.mock.calls[0][0]).toMatchObject({ displayMode: "first-3s", stickerDisplayMode: "full", trackHorizonMs: 5000 });
+    expect(input.inspect.mock.calls[0][0].map(request => request.timeMs)).toEqual(expect.arrayContaining([2500, 2750, 3100, 4999]));
+  });
   it("retains a repair request even when its schema is invalid, until an effective repair is reviewed", async () => {
     const malformedRevision = JSON.stringify({ action: "revise", reason: "左下缺角", tracks: [], corners: [{ corner: "bottom-left", width: 0.2, rotationDeg: 0 }] });
     const blocked = fixture(); blocked.review.mockResolvedValueOnce(malformedRevision).mockResolvedValue(pass);

@@ -157,6 +157,8 @@ export const EditTemplateSchema = z.object({
   layoutPolicy: z.enum([LEGACY_CORNER_SAFE_POLICY.id, CORNER_SAFE_POLICY.id]).optional(),
   productPriceDraft: ProductPriceSchema.optional(),
   decorationDisplayMode: DecorationDisplayModeSchema.optional(),
+  // Absent on historical exports: their stickers retain the legacy shared timing.
+  stickerDisplayMode: z.literal("full").optional(),
   sourceStickerKnowledge: z.object({
     sourceKey: z.string().regex(/^[a-f0-9]{64}$/), revisionId: z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),
     factsDigest: z.string().regex(/^[a-f0-9]{64}$/), verification: z.literal("sampled"), persistence: z.enum(["saved", "not-saved"]),

@@ -21,6 +21,7 @@ describe("decoration display timing", () => {
     const automaticPlan = { ...plan, priceStyle: "classic", stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })) };
     const template = materializePlan(mode === "agent" ? automaticPlan : plan, "clean", media, assets, { mode, productPrice: "9.9元\n两支", displayMode: "first-3s" }, mode === "agent" ? catalog : undefined);
     expect(EditTemplateSchema.parse(JSON.parse(JSON.stringify(template))).decorationDisplayMode).toBe("first-3s");
+    expect(EditTemplateSchema.parse(JSON.parse(JSON.stringify(template)))).toHaveProperty("stickerDisplayMode", "full");
     expect(template.layers.find(layer => layer.type === "text")).toMatchObject({ content: "9.9元\n两支" });
   });
 
@@ -46,7 +47,11 @@ describe("decoration display timing", () => {
     const graph = compiled.textFiles.find(file => file.layerId === "cover-graph")!.content;
     expect(graph).toContain("gte(t,0)*lt(t,1)+gte(t,2)*lt(t,5)");
     expect(graph).toContain("gte(t,1)*lt(t,5)");
-    expect(graph.match(/lt\(t,3\)/g)?.length ?? 0).toBe(displayMode === "first-3s" ? 5 : 0);
+    expect(graph.match(/lt\(t,3\)/g)?.length ?? 0).toBe(displayMode === "first-3s" ? 2 : 0);
+    expect(graph).not.toContain("fade=t=out");
     expect(await new TemplateCompiler().compile(JSON.parse(JSON.stringify(template)), media, DEFAULT_PRESET, options)).toEqual(compiled);
+    const legacy = JSON.parse(JSON.stringify(template)); delete legacy.stickerDisplayMode;
+    const historical = await new TemplateCompiler().compile(legacy, media, DEFAULT_PRESET, options);
+    expect(historical.textFiles.find(file => file.layerId === "cover-graph")!.content.match(/lt\(t,3\)/g)?.length ?? 0).toBe(displayMode === "first-3s" ? 5 : 0);
   });
 });

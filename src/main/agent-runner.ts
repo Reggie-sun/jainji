@@ -108,7 +108,7 @@ export class AgentRunner {
         try {
           const knowledge = this.dependencies.knowledge;
           audit[index].stage = "knowledge";
-          const binding = knowledge ? await knowledge.acquire(source, this.dependencies.decorations?.displayMode === "first-3s" ? Math.min(3000, source.durationMs) : source.durationMs, signal, onStage,
+          const binding = knowledge ? await knowledge.acquire(source, source.durationMs, signal, onStage,
             progress => { item.sourceKnowledge = progress; this.dependencies.onChange(); }) : undefined;
           audit[index].stage = "frames";
           let extracting = pendingFrames.get(source.id);

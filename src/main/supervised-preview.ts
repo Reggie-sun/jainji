@@ -64,7 +64,8 @@ export interface SupervisedPreviewResult {
 function sampleTimes(template: EditTemplate, durationMs: number): EvidenceRequest[] {
   const end = Math.max(0, durationMs - 1);
   const times = template.decorationDisplayMode === "first-3s"
-    ? [0, Math.min(500, end / 4), Math.max(0, Math.min(3000, durationMs) - 500), Math.max(0, Math.min(3000, durationMs) - 250), 3100, durationMs / 2, end]
+    ? [0, Math.max(0, Math.min(3000, durationMs) - 500), Math.max(0, Math.min(3000, durationMs) - 250), 3100,
+      ...(template.stickerDisplayMode === "full" ? [end / 4, end / 2, end * 3 / 4] : [Math.min(500, end / 4), durationMs / 2]), end]
     : [0, ...[1, 2, 3, 4, 5, 6].map(index => end * index / 7), end];
   return [...new Set(times.map(time => Math.round(Math.min(end, time))))].sort((a, b) => a - b).map(timeMs => ({ timeMs }));
 }
@@ -77,7 +78,7 @@ export function supervisorLayerProjection(template: EditTemplate): Array<Record<
 }
 
 function effectiveLayers(template: EditTemplate, durationMs: number): string {
-  const endMs = template.decorationDisplayMode === "first-3s" ? Math.min(3000, durationMs) : durationMs;
+  const endMs = template.stickerDisplayMode !== "full" && template.decorationDisplayMode === "first-3s" ? Math.min(3000, durationMs) : durationMs;
   return JSON.stringify(supervisorLayerProjection({ ...template, layers: template.layers.flatMap(layer => {
     if (!layer.visible) return [];
     if (layer.type !== "sticker" || !layer.activeRanges) return [layer];
@@ -92,7 +93,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
   signal.throwIfAborted();
   let template = EditTemplateSchema.parse(input.template), tracks = structuredClone(input.tracks);
   let previewPath: string | undefined, feedback: string | undefined;
-  const trackHorizonMs = template.decorationDisplayMode === "first-3s" ? Math.min(3000, input.durationMs) : input.durationMs;
+  const trackHorizonMs = template.stickerDisplayMode !== "full" && template.decorationDisplayMode === "first-3s" ? Math.min(3000, input.durationMs) : input.durationMs;
   const checkedRanges = [{ startMs: 0, endMs: trackHorizonMs }];
   const knowledge = input.knowledge ? new SupervisorKnowledgeReview(input.knowledge, input.session?.snapshot().issues) : undefined;
   if (knowledge && (!coversRanges(knowledge.candidate.requiredRanges, checkedRanges) || knowledge.candidate.source.durationMs !== input.durationMs
@@ -115,7 +116,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
     const turn = ++state.turns, revision = state.revisions;
     input.onStage(`主管检查真实样片 ${turn}/${MAX_PREVIEW_TURNS} · 修订 ${revision}/${MAX_PREVIEW_REVISIONS}`);
     const raw = await input.review({ durationMs: input.durationMs, trackHorizonMs, displayMode: template.decorationDisplayMode ?? "full", coverEnabled: input.coverEnabled,
-      automaticCorners: input.automaticCorners, tracks, layers: supervisorLayerProjection(template), evidence, feedback, turn, revision,
+      stickerDisplayMode: template.stickerDisplayMode, automaticCorners: input.automaticCorners, tracks, layers: supervisorLayerProjection(template), evidence, feedback, turn, revision,
       remainingRevisions: MAX_PREVIEW_REVISIONS - revision, history: structuredClone(history), issues: structuredClone(state.issues), knowledge: knowledge?.context() }, signal);
     signal.throwIfAborted();
     let decoded: unknown;
@@ -188,7 +189,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
         const candidate = EditTemplateSchema.parse(input.rebuild({ ...decision, corners }));
         assertPriceOnlyTemplate(candidate);
         if (JSON.stringify(candidate.layers.filter(layer => layer.type === "text")) !== JSON.stringify(template.layers.filter(layer => layer.type === "text"))
-          || candidate.productPrice !== template.productPrice || candidate.decorationDisplayMode !== template.decorationDisplayMode
+          || candidate.productPrice !== template.productPrice || candidate.decorationDisplayMode !== template.decorationDisplayMode || candidate.stickerDisplayMode !== template.stickerDisplayMode
           || (!input.coverEnabled && candidate.layers.some(layer => layer.type === "sticker" && layer.cover))) throw new Error("protected-field");
         const visibleChanged = effectiveLayers(candidate, input.durationMs) !== effectiveLayers(template, input.durationMs);
         if (decision.sourceFacts && !knowledge) throw new Error("源事实缺少证据");

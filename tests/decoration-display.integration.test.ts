@@ -32,7 +32,7 @@ for (const { duration, mode, animated } of [{ duration: 4, mode: "first-3s", ani
   const probe = await new FfmpegAdapter(ffmpeg, ffprobe).probe(output);
   expect(Number(probe.format?.duration)).toBeCloseTo(duration, 1);
   expect(probe.streams?.some(stream => stream.codec_type === "audio")).toBe(true);
-  const strengths: number[][] = [];
+  const textStrengths: number[] = [];
   for (const frame of duration > 3 ? [24, 27, 29, 30, 39] : [0, 7, 9]) {
     const file = path.join(root, `${frame}.rgb`);
     await run(["-i", output, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", file]);
@@ -41,21 +41,19 @@ for (const { duration, mode, animated } of [{ duration: 4, mode: "first-3s", ani
     const visible = frame < 30 || mode === "full";
     for (const [x, y] of [[10, 10], [308, 10], [10, 228], [308, 228], [144, 120], [236, 120]]) {
       const rgb = pixel(x, y);
-      if (visible) expect(rgb[2]).toBeGreaterThan(rgb[0] + 15);
-      else expect(Math.max(...rgb)).toBeLessThan(25);
+      expect(rgb[2]).toBeGreaterThan(rgb[0] + 150);
     }
     let textPeak = 0;
     for (let y = 30; y < 75; y++) for (let x = 80; x < 240; x++) textPeak = Math.max(textPeak, ...pixel(x, y));
     expect(textPeak > 25).toBe(visible);
-    strengths.push([pixel(10, 10)[2], pixel(144, 120)[2], pixel(236, 120)[2], textPeak]);
+    textStrengths.push(textPeak);
     const original = pixel(160, 190);
     expect(original[0]).toBeGreaterThan(200); expect(original[1]).toBeGreaterThan(200); expect(original[2]).toBeLessThan(30);
   }
-  if (mode === "first-3s") for (let layer = 0; layer < 4; layer++) {
+  if (mode === "first-3s") {
     // Text and its background blend separately, so their combined brightness is nonlinear.
-    const minimumDrop = layer === 3 ? 20 : 40;
-    expect(strengths[0][layer]).toBeGreaterThan(strengths[1][layer] + minimumDrop);
-    expect(strengths[1][layer]).toBeGreaterThan(strengths[2][layer] + minimumDrop);
+    expect(textStrengths[0]).toBeGreaterThan(textStrengths[1] + 20);
+    expect(textStrengths[1]).toBeGreaterThan(textStrengths[2] + 20);
   }
   expect(await new TemplateCompiler().compile(JSON.parse(JSON.stringify(template)), media, { ...DEFAULT_PRESET, resolutionMode: "source" }, options)).toEqual(compiled);
   console.info(`decoration timing evidence: ${output}`);

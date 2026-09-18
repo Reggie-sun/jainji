@@ -92,10 +92,11 @@ export class TemplateCompiler {
     const textFiles: TextFile[] = [];
     const durationSeconds = Math.max(0.01, media.durationMs / 1000);
     const displayLimit = template.decorationDisplayMode === "first-3s" ? "lt(t,3)" : undefined;
+    const stickerLimit = template.stickerDisplayMode === "full" ? undefined : displayLimit;
     const fadeEnd = Math.min(3, durationSeconds);
     const fadeDuration = Math.min(0.5, fadeEnd);
     const fadeStart = fadeEnd - fadeDuration;
-    const fade = displayLimit ? `,fade=t=out:st=${fadeStart}:d=${fadeDuration}:alpha=1` : "";
+    const fade = stickerLimit ? `,fade=t=out:st=${fadeStart}:d=${fadeDuration}:alpha=1` : "";
     // FFmpeg enables autorotation by default; omitting the legacy flag keeps compatibility
     // with system builds that parse it as an input option requiring a value.
     const threadArgs = options.threads === undefined ? [] : ["-threads", String(options.threads)];
@@ -196,12 +197,12 @@ export class TemplateCompiler {
           const width = coverMotionExpression(motion.keyframes, "width"), height = coverMotionExpression(motion.keyframes, "height");
           graph.push(`[${clocked}]scale=w='${raster?.width ?? `max(1,round(${dimensions.width}*(${width})))`}':h='${raster?.height ?? `max(1,round(${dimensions.height}*(${height})))`}':eval=frame${fade}[${scaledLabel}]`);
           const x = coverMotionExpression(motion.keyframes, "x"), y = coverMotionExpression(motion.keyframes, "y");
-          graph.push(`[${main}][${scaledLabel}]overlay=x='${raster?.x ?? `main_w*(${x})`}':y='${raster?.y ?? `main_h*(${y})`}':enable='gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})${displayLimit ? `*${displayLimit}` : ""}':format=auto[${nextLabel}]`);
+          graph.push(`[${main}][${scaledLabel}]overlay=x='${raster?.x ?? `main_w*(${x})`}':y='${raster?.y ?? `main_h*(${y})`}':enable='gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})${stickerLimit ? `*${stickerLimit}` : ""}':format=auto[${nextLabel}]`);
         } else {
           graph.push(`[${sourceLabel}]${raster ? `scale=w='${raster.width}':h='${raster.height}'` : "null"}[${scaledLabel}]`);
-          const timedSticker = displayLimit ? fadeOnVideoClock(scaledLabel) : scaledLabel;
+          const timedSticker = stickerLimit ? fadeOnVideoClock(scaledLabel) : scaledLabel;
           const position = raster ? `x='${raster.x}':y='${raster.y}'` : `x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}`;
-          graph.push(`[${baseLabel}][${timedSticker}]overlay=${position}${displayLimit ? `:enable='${displayLimit}'` : ""}:format=auto[${nextLabel}]`);
+          graph.push(`[${baseLabel}][${timedSticker}]overlay=${position}${stickerLimit ? `:enable='${stickerLimit}'` : ""}:format=auto[${nextLabel}]`);
         }
         baseLabel = nextLabel;
         continue;
@@ -224,7 +225,7 @@ export class TemplateCompiler {
         `scale=${stickerScale},` +
         `colorchannelmixer=aa=${layer.opacity.toFixed(4)},setpts=PTS-STARTPTS[${sourceLabel}]`,
       );
-      const timedSticker = displayLimit ? fadeOnVideoClock(sourceLabel) : sourceLabel;
+      const timedSticker = stickerLimit ? fadeOnVideoClock(sourceLabel) : sourceLabel;
       graph.push(`[${timedSticker}]null[${scaledLabel}]`);
       const overlayX = layoutPolicy
         ? corner.horizontal === "right"
@@ -237,7 +238,7 @@ export class TemplateCompiler {
           : `main_h*${layoutPolicy.cornerMargin.toFixed(5)}`
         : `main_h*${layer.y.toFixed(5)}`;
       const active = layer.activeRanges?.map(range => `gte(t,${range.startMs / 1000})*lt(t,${range.endMs / 1000})`).join("+");
-      const enabled = active || displayLimit ? `:enable='${active && displayLimit ? `(${active})*${displayLimit}` : active ?? displayLimit}'` : "";
+      const enabled = active || stickerLimit ? `:enable='${active && stickerLimit ? `(${active})*${stickerLimit}` : active ?? stickerLimit}'` : "";
       graph.push(`[${baseLabel}][${scaledLabel}]overlay=x=${overlayX}:y=${overlayY}${enabled}:format=auto[${nextLabel}]`);
       baseLabel = nextLabel;
     }

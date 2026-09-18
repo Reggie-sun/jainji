@@ -51,6 +51,7 @@ export interface PreviewReviewInput {
   durationMs: number;
   trackHorizonMs: number;
   displayMode: "full" | "first-3s";
+  stickerDisplayMode?: "full";
   coverEnabled: boolean;
   automaticCorners: boolean;
   tracks: AutomaticCoverTrack[];
