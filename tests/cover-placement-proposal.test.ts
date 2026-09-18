@@ -7,6 +7,7 @@ import { proposeCoverPlacement, type ReviewCoverPlacementInput } from "../src/ma
 import { discoverBinary, FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { fingerprintFile } from "../src/main/paths";
 import type { MediaItem } from "../src/main/domain";
+import { CoverDiagnostics } from "../src/main/cover-diagnostics";
 
 async function command(binary: string, args: string[]): Promise<void> {
   const result = await runCommand(binary, ["-v", "error", ...args]).promise;
@@ -67,16 +68,23 @@ describe("cover placement proposal", () => {
   }, 60_000);
 
   it("supplies inspected evidence and accepts a corrected response within its bounded turns", async () => {
+    const diagnostics = new CoverDiagnostics();
     let fixtureValue: Awaited<ReturnType<typeof fixture>> | undefined;
     try {
       fixtureValue = await fixture();
       const complete = vi.fn(async (input: ReviewCoverPlacementInput) => complete.mock.calls.length === 1
         ? JSON.stringify({ action: "inspect", reason: "need detail", requests: [{ timeMs: 500, crop: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 } }] })
         : input.images.some((image) => image.crop) ? proposal() : "invalid");
-      const result = await proposeCoverPlacement(fixtureValue.adapter, fixtureValue.media, new AbortController().signal, complete, () => {});
+      const result = await proposeCoverPlacement(fixtureValue.adapter, fixtureValue.media, new AbortController().signal, complete, () => {}, undefined, diagnostics);
       expect(result.tracks).toHaveLength(1);
       expect(complete).toHaveBeenCalledTimes(2);
       expect(complete.mock.calls[1][0].images.some((image: { crop?: unknown }) => Boolean(image.crop))).toBe(true);
+      expect(diagnostics.state.events).toEqual(expect.arrayContaining([
+        expect.objectContaining({ stage: "proposal-provider", outcome: "ok" }),
+        expect.objectContaining({ stage: "validation", action: "inspect", requests: [{ timeMs: 500, crop: { x: 0.25, y: 0.25, width: 0.5, height: 0.5 } }] }),
+        expect.objectContaining({ stage: "validation", action: "propose", outcome: "ok", tracks: expect.any(Object) }),
+      ]));
+      expect(JSON.stringify(diagnostics.state)).not.toMatch(/data:image|source.mp4|approximate placement|need detail/);
     } finally { if (fixtureValue) await rm(fixtureValue.directory, { recursive: true, force: true }); }
   }, 60_000);
 

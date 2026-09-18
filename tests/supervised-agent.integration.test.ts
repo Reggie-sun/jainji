@@ -76,6 +76,17 @@ describe("automatic supervisor through real render and original queue", () => {
         decorations: { mode: "agent", displayMode, productPrice: "手动内容", sticker: "none", fontFamily: "Noto Sans CJK SC" }, exportSettings: { resolutionMode: "source", frameRateMode: "source", quality: "balanced" } }, new Set([outputDirectory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false), { timeout: 30_000 });
       expect(controller.snapshot()?.items[0].error).toBeUndefined();
+      const trace = controller.snapshot()?.items[0].coverDiagnostics;
+      if (coverEnabled) {
+        expect(trace?.droppedEvents).toBe(0);
+        for (const stage of ["queue-wait", "full-render", "artifact-verify", "paired-evidence", "proposal-provider", "review-provider"]) {
+          expect(trace?.events).toEqual(expect.arrayContaining([expect.objectContaining({ stage, durationMs: expect.any(Number) })]));
+        }
+        expect(trace?.events.some(event => event.outcome === "running")).toBe(false);
+        expect(JSON.stringify(trace)).not.toMatch(/data:image|source.mp4|fixture|右下|sourcePath|baseUrl|apiKey/);
+        expect(JSON.stringify(service.currentProject)).not.toMatch(/coverDiagnostics|droppedEvents|startedMs/);
+        if (cancel) expect(trace?.events.at(-1)).toMatchObject({ stage: "lifecycle", outcome: "cancelled" });
+      } else expect(trace).toBeUndefined();
       if (cancel) {
         expect(controller.snapshot()?.items[0].status).toBe("cancelled");
         expect(queue.snapshot().batches).toHaveLength(0);
@@ -106,6 +117,7 @@ describe("automatic supervisor through real render and original queue", () => {
         expect(await knowledge.listOutcomes()).toHaveLength(0);
       }
       expect((await jobs.loadAll())).toHaveLength(1);
+      expect(JSON.stringify(await jobs.loadAll())).not.toMatch(/coverDiagnostics|droppedEvents|startedMs/);
       expect(await fingerprintFile(source)).toBe(fingerprint);
       const output = await ffmpeg.probe(batch.tasks[0].outputPath!);
       expect(output.streams?.some(stream => stream.codec_type === "audio")).toBe(true);

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultTemplate } from "../src/main/domain";
 import { superviseRenderedTemplate, PreviewReviewSession } from "../src/main/supervised-preview";
+import { CoverDiagnostics, diagnosticTracks } from "../src/main/cover-diagnostics";
 
 const pass = JSON.stringify({ action: "pass", reason: "检查通过" });
 const revise = JSON.stringify({ action: "revise", reason: "原贴纸被漏检", tracks: [{ targetId: "a", track: { startMs: 0, endMs: 3000, keyframes: [{ timeMs: 0, rectangle: { x: 0.8, y: 0.8, width: 0.1, height: 0.1 } }] } }] });
@@ -17,6 +18,20 @@ function fixture() {
 }
 
 describe("rendered supervisor loop", () => {
+  it("retains revision identities and prior inspection checkpoints after a later failure without replaying them", async () => {
+    const input = fixture(), diagnostics = new CoverDiagnostics();
+    const request = { timeMs: 1250, crop: { x: 0.7, y: 0.7, width: 0.3, height: 0.3 } };
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "inspect", reason: "secret /home/me sk-key", requests: [request] }))
+      .mockResolvedValueOnce(revise).mockRejectedValueOnce(new Error("account@example.com"));
+    await expect(superviseRenderedTemplate({ ...input, diagnostics })).rejects.toThrow("account");
+    const revision = diagnostics.state.events.find(event => event.action === "revise" && event.outcome === "ok");
+    expect(revision).toMatchObject({ previousTracks: diagnosticTracks([]), tracks: diagnosticTracks(JSON.parse(revise).tracks) });
+    const nextSample = diagnostics.state.events.find(event => event.stage === "sample" && event.revision === 1);
+    expect(nextSample?.priorInspections).toEqual([request]);
+    expect(nextSample?.requests).not.toContainEqual(request);
+    expect(diagnostics.state.events.at(-1)).toMatchObject({ stage: "review-provider", outcome: "failed" });
+    expect(JSON.stringify(diagnostics.state)).not.toMatch(/secret|home|sk-key|account|fixture.png|preview-1/);
+  });
   it.each([
     { mode: "first-3s" as const, times: [0, 2500, 2750, 3100, 5000, 10000, 14999, 19999] },
     { mode: "first-5s" as const, times: [0, 4500, 4750, 5000, 5100, 10000, 14999, 19999] },
@@ -81,9 +96,12 @@ describe("rendered supervisor loop", () => {
   });
   it("never accepts a revision without a subsequent pass and stops at two revisions", async () => {
     const input = fixture(); input.review.mockResolvedValue(revise);
-    await expect(superviseRenderedTemplate(input)).rejects.toThrow("上限");
+    const diagnostics = new CoverDiagnostics();
+    await expect(superviseRenderedTemplate({ ...input, diagnostics })).rejects.toThrow("上限");
     expect(input.render).toHaveBeenCalledTimes(3);
     expect(input.rebuild).toHaveBeenCalledTimes(2);
+    expect(diagnostics.state.events.filter(event => event.action === "revise" && event.outcome === "ok")).toHaveLength(2);
+    expect(diagnostics.state.events.at(-1)).toMatchObject({ outcome: "failed", reason: "budget-exhausted", revision: 2 });
   });
   it("bounds malformed responses and rejects out-of-range tracks, tools and new text", async () => {
     for (const answer of ["not JSON", revise.replace('"endMs":3000', '"endMs":6000'), JSON.stringify({ action: "inspect", reason: "超时", requests: [{ timeMs: 5000 }] }), JSON.stringify({ action: "pass", reason: "通过", text: "改写" })]) {

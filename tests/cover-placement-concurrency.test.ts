@@ -11,7 +11,7 @@ function media(fingerprint: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${fingerprint}`, displayName: fingerprint, fingerprint, sizeBytes: 10,
     width: 640, height: 480, durationMs: 1000, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
 }
-function harness(selectCoverSticker?: ConstructorParameters<typeof AgentRunner>[0]["selectCoverSticker"], failure?: "acquire" | "frames") {
+function harness(selectCoverSticker?: ConstructorParameters<typeof AgentRunner>[0]["selectCoverSticker"], failure?: "acquire" | "frames" | "enqueue" | "late-cancel" | "resolved-cancel") {
   const active = new Set<string>(), entered: string[] = [], releases: Array<() => void> = [], events: string[] = [];
   let peak = 0;
   const runner = new AgentRunner({
@@ -22,7 +22,8 @@ function harness(selectCoverSticker?: ConstructorParameters<typeof AgentRunner>[
     plan: async () => ({ summary: "ok", captions: [], filter: "cool", intensity: 0.3 }),
     enqueue: async () => { events.push("enqueue"); return crypto.randomUUID(); }, onChange() {},
     placement: {
-      acquire: async source => {
+      acquire: async (source, _signal, _onStage, diagnostics) => {
+        diagnostics?.scope("proposal", 1).record("validation", "ok", { action: "propose", reason: "accepted" });
         if (active.has(source.fingerprint)) throw new Error("same source overlapped");
         active.add(source.fingerprint); entered.push(source.fingerprint); peak = Math.max(peak, active.size);
         await new Promise<void>(resolve => releases.push(resolve));
@@ -32,7 +33,12 @@ function harness(selectCoverSticker?: ConstructorParameters<typeof AgentRunner>[
         return { tracks: [] } as unknown as CoverPlacement;
       },
       review: async (_source, _placement, template) => { events.push("preview"); return template; },
-      enqueue: async (_source, _template, signal, submit) => { signal.throwIfAborted(); return submit(); },
+      enqueue: async (_source, _template, signal, submit) => {
+        if (failure === "enqueue") throw new Error("private enqueue failure");
+        if (failure === "late-cancel") runner.cancel();
+        if (failure === "resolved-cancel") { runner.cancel(); return "cancelled-task"; }
+        signal.throwIfAborted(); return submit();
+      },
       close: async () => { expect(active.size).toBe(0); events.push("close"); },
     },
   });
@@ -63,6 +69,17 @@ it("runs independent cover sources concurrently, serializes copies/versions, and
   }
 });
 
+it.each(["enqueue", "late-cancel", "resolved-cancel"] as const)("keeps the terminal diagnostic accurate after preview passes but %s occurs", async failure => {
+  const h = harness(undefined, failure);
+  h.runner.start("project", "clean", "", [media("a")]);
+  await vi.waitFor(() => expect(h.releases).toHaveLength(1));
+  h.releases[0](); await h.runner.settled();
+  const item = h.runner.snapshot()!.items[0];
+  expect(item.status).toBe(failure === "enqueue" ? "failed" : "cancelled");
+  expect(item.coverDiagnostics?.events.at(-1)).toMatchObject({ stage: "lifecycle", outcome: item.status });
+  expect(h.events).not.toContain("enqueue");
+});
+
 it("cancels queued sources and waits for active work before closing the placement session", async () => {
   vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 1, analysis: 2, threads: 2 });
   const h = harness();
@@ -77,6 +94,10 @@ it("cancels queued sources and waits for active work before closing the placemen
   expect(h.entered).toEqual(["a", "b"]);
   expect(h.events).toEqual(["close"]);
   expect(h.runner.snapshot()?.items.map(item => item.status)).toEqual(["cancelled", "cancelled", "cancelled"]);
+  const snapshot = h.runner.snapshot()!;
+  expect(snapshot.items[0].coverDiagnostics?.events).toEqual(expect.arrayContaining([expect.objectContaining({ action: "propose" }), expect.objectContaining({ outcome: "cancelled", stage: "lifecycle" })]));
+  snapshot.items[0].coverDiagnostics!.events.length = 0;
+  expect(h.runner.snapshot()!.items[0].coverDiagnostics!.events.length).toBeGreaterThan(0);
 });
 
 it("caps cover work at three even on larger machines", async () => {
@@ -125,5 +146,6 @@ it.each(["acquire", "frames"] as const)("does not make healthy peers depend on a
     h.releases.forEach(release => release()); await h.runner.settled();
     expect(selected).toEqual([["b"]]);
     expect(h.runner.snapshot()?.items.map(item => item.status)).toEqual(["failed", "exporting"]);
+    expect(h.runner.snapshot()!.items[0].coverDiagnostics?.events).toEqual(expect.arrayContaining([expect.objectContaining({ action: "propose" }), expect.objectContaining({ outcome: "failed", stage: "lifecycle" })]));
   } finally { h.runner.cancel(); h.releases.forEach(release => release()); await h.runner.settled(); }
 });

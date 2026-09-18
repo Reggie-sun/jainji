@@ -14,6 +14,7 @@ import type { PreviewRevision } from "./supervisor-protocol.js";
 import type { KnowledgeBinding, KnowledgeVersion, SourceStickerKnowledgeSession } from "./source-sticker-knowledge-session.js";
 import type { KnowledgeOutcome, KnowledgeProductionStage } from "../shared/source-sticker-knowledge-audit.js";
 import type { CoverPlacementSession } from "./cover-placement-session.js";
+import { CoverDiagnostics } from "./cover-diagnostics.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -110,7 +111,13 @@ export class AgentRunner {
     const processItem = async (index: number) => {
         const source = media[index];
         const item = run.items[index];
-        if (signal.aborted) { item.status = "cancelled"; audit[index].finished = Date.now(); return; }
+        const diagnostics = this.dependencies.placement ? new CoverDiagnostics(() => this.dependencies.onChange()) : undefined;
+        if (diagnostics) item.coverDiagnostics = diagnostics.state;
+        if (signal.aborted) {
+          item.status = "cancelled"; audit[index].finished = Date.now();
+          diagnostics?.record("lifecycle", "cancelled", { reason: "cancelled" });
+          return;
+        }
         item.status = "analyzing";
         this.dependencies.onChange();
         const onStage = (stage: string) => { item.summary = stage; this.dependencies.onChange(); };
@@ -122,7 +129,7 @@ export class AgentRunner {
           audit[index].stage = "knowledge";
           const binding = knowledge ? await knowledge.acquire(source, source.durationMs, signal, onStage,
             progress => { item.sourceKnowledge = progress; this.dependencies.onChange(); }) : undefined;
-          const placement = this.dependencies.placement ? await this.dependencies.placement.acquire(source, signal, onStage) : undefined;
+          const placement = this.dependencies.placement ? await this.dependencies.placement.acquire(source, signal, onStage, diagnostics) : undefined;
           signal.throwIfAborted();
           audit[index].stage = "frames";
           let extracting = pendingFrames.get(source.id);
@@ -177,7 +184,7 @@ export class AgentRunner {
               return { ...original, layers: [...original.layers.filter(layer => layer.type === "text"), ...rebuilt.layers.filter(layer => layer.type !== "text")] };
             };
             audit[index].stage = "preview";
-            if (placement) template = await this.dependencies.placement!.review(source, placement, template, rebuild, signal, onStage);
+            if (placement) template = await this.dependencies.placement!.review(source, placement, template, rebuild, signal, onStage, diagnostics);
             else {
               version = await knowledge!.review(binding!, template, rebuild, signal, onStage);
               template = version.template;
@@ -200,6 +207,8 @@ export class AgentRunner {
           stopKnowledgeProgress(item, signal.aborted, "本版创作或样片准备未完成，未提交导出；请查看本条失败原因。");
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
         } finally {
+          diagnostics?.record("lifecycle", item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "failed" : "ok",
+            { reason: item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "stage-failed" : "accepted" });
           if (item.status === "failed" || item.status === "cancelled") audit[index].finished = Date.now();
           audit[index].creative = (this.dependencies.creativeRequests?.() ?? 0) - creativeBefore;
           const remaining = remainingVersions.get(source.id)! - 1;
@@ -243,6 +252,9 @@ export class AgentRunner {
           item.status = signal.aborted ? "cancelled" : "failed";
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "覆盖样片已检查，但源校验或导出提交失败。";
         }
+        if (item.coverDiagnostics) new CoverDiagnostics(() => this.dependencies.onChange(), item.coverDiagnostics)
+          .record("lifecycle", item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "failed" : "ok",
+            { reason: item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "stage-failed" : "accepted" });
         audit[index].finished = Date.now(); this.dependencies.onChange();
       }
       // The existing queue owns both previews and formal exports. Finish all previews

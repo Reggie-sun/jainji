@@ -3,6 +3,7 @@ import { DecorationSchema, ProductionDecorationSchema, RequiredProductPriceSchem
 import { ExportFormatSchema } from "./export-format.js";
 import { ExportSettingsSchema } from "./export-settings.js";
 import type { SourceKnowledgeProgress } from "./source-sticker-knowledge.js";
+import type { CoverDiagnosticState } from "./cover-diagnostics.js";
 
 export const RULE_TEMPLATES = [
   { id: "black-gold", name: "黑金精选", label: "质感好物", description: "暖金滤镜配星芒贴纸，适合产品展示与直播切片。", minIntensity: 0.35, maxIntensity: 0.55, filters: ["warm"], filterLabel: "暖金", sticker: "sparkle", stickerLabel: "金色星芒", stickerWidth: 0.08, stickerRotation: 8, stickerCorners: ["bottom-right", "bottom-left", "top-right", "top-left"] },
@@ -87,6 +88,7 @@ export interface AgentItem {
   error?: string;
   taskId?: string;
   sourceKnowledge?: SourceKnowledgeProgress;
+  coverDiagnostics?: CoverDiagnosticState;
 }
 export interface AgentRun {
   id: string;

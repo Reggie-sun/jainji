@@ -5,13 +5,14 @@ import type { PreviewRevision } from "./supervisor-protocol.js";
 import { sourceKey, type SourceStickerKnowledgeStore, type KnowledgeRun } from "./source-sticker-knowledge-store.js";
 import { templateDigest } from "./supervisor-knowledge.js";
 import { ProviderError } from "./api-transport.js";
+import { diagnosticTracks, type CoverDiagnostics } from "./cover-diagnostics.js";
 
 interface Options {
   identify(media: MediaItem, signal: AbortSignal): Promise<SourceIdentity>;
   store: Pick<SourceStickerKnowledgeStore, "beginRun" | "endRun" | "readHead" | "admit">;
-  propose(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void): Promise<CoverPlacement>;
+  propose(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void, diagnostics?: CoverDiagnostics): Promise<CoverPlacement>;
   review(input: { media: MediaItem; placement: CoverPlacement; template: EditTemplate; rebuild(revision: PreviewRevision): EditTemplate;
-    signal: AbortSignal; onStage(stage: string): void }): Promise<{ template: EditTemplate; tracks: CoverPlacement["tracks"] }>;
+    signal: AbortSignal; onStage(stage: string): void; diagnostics?: CoverDiagnostics }): Promise<{ template: EditTemplate; tracks: CoverPlacement["tracks"] }>;
   cached: readonly CoverPlacement[];
   refreshMediaIds?: ReadonlySet<string>;
 }
@@ -41,17 +42,18 @@ export class CoverPlacementSession {
     signal.throwIfAborted();
     return source;
   }
-  async acquire(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void): Promise<CoverPlacement> {
+  async acquire(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void, diagnostics?: CoverDiagnostics): Promise<CoverPlacement> {
     const source = await this.identify(media, signal), key = sourceKey(source);
     if (this.proposalFailures.has(key)) throw this.proposalFailures.get(key);
     const saved = this.placements.get(key) ?? (!this.options.refreshMediaIds?.has(media.id)
       ? this.options.cached.find(value => sourceKey(value.source) === key) : undefined);
     if (saved) {
+      diagnostics?.scope("proposal").record("validation", "ok", { action: "reuse", reason: "accepted", tracks: diagnosticTracks(saved.tracks) });
       onStage("复用近似覆盖候选；本版仍需检查真实样片…");
       return structuredClone(saved);
     }
     try {
-      const proposal = CoverPlacementSchema.parse(await this.options.propose(media, signal, onStage));
+      const proposal = CoverPlacementSchema.parse(await this.options.propose(media, signal, onStage, diagnostics));
       signal.throwIfAborted();
       if (sourceKey(proposal.source) !== key) throw new ProviderError("覆盖方案与源素材身份不符。");
       this.placements.set(key, proposal);
@@ -59,11 +61,11 @@ export class CoverPlacementSession {
     } catch (error) { this.proposalFailures.set(key, error); throw error; }
   }
   async review(media: MediaItem, placement: CoverPlacement, template: EditTemplate, rebuild: (revision: PreviewRevision) => EditTemplate,
-    signal: AbortSignal, onStage: (stage: string) => void): Promise<EditTemplate> {
+    signal: AbortSignal, onStage: (stage: string) => void, diagnostics?: CoverDiagnostics): Promise<EditTemplate> {
     const key = sourceKey(placement.source);
     try {
       if (sourceKey(await this.identify(media, signal)) !== key) throw new ProviderError("覆盖方案的源素材已变化。");
-      const result = await this.options.review({ media, placement: structuredClone(placement), template, rebuild, signal, onStage });
+      const result = await this.options.review({ media, placement: structuredClone(placement), template, rebuild, signal, onStage, diagnostics });
       signal.throwIfAborted();
       if (sourceKey(await this.identify(media, signal)) !== key) throw new ProviderError("样片检查期间源素材已变化。");
       const reviewed = CoverPlacementSchema.parse({ ...placement, tracks: result.tracks });

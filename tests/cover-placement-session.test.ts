@@ -3,6 +3,7 @@ import { CoverPlacementSession, completedCoverPlacements } from "../src/main/cov
 import { createDefaultTemplate, type MediaItem, type ExportBatch } from "../src/main/domain";
 import { CoverPlacementSchema } from "../src/shared/cover-placement";
 import type { KnowledgeRun } from "../src/main/source-sticker-knowledge-store";
+import { CoverDiagnostics } from "../src/main/cover-diagnostics";
 
 const source = { fingerprint: `sha256:${"a".repeat(64)}`, byteLength: 10, width: 100, height: 100, rotation: 0 as const, durationMs: 6000, timeBase: "1/1000", timeOriginPts: 0, interpretationVersion: 1 };
 const media: MediaItem = { id: crypto.randomUUID(), sourcePath: "/source.mp4", displayName: "source", fingerprint: source.fingerprint, sizeBytes: 10, durationMs: 6000, width: 100, height: 100, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
@@ -19,6 +20,26 @@ function setup(cached = false) {
   return { session, identify, guard, store, admitCheck, propose, review, template };
 }
 describe("approximate cover placement session", () => {
+  it("passes run-only diagnostics through proposal and review, keeps them after close, and never freezes them", async () => {
+    const f = setup(), diagnostics = new CoverDiagnostics();
+    const proposed = await f.session.acquire(media, signal(), () => {}, diagnostics);
+    expect(f.propose.mock.calls[0]).toHaveLength(4);
+    expect((f.propose.mock.calls[0] as unknown[])[3]).toBe(diagnostics);
+    f.review.mockImplementationOnce(async input => {
+      expect(input.diagnostics).toBe(diagnostics);
+      input.diagnostics?.scope("preview", 1).record("validation", "ok", { action: "pass", reason: "accepted" });
+      return { template: input.template, tracks: input.placement.tracks };
+    });
+    const accepted = await f.session.review(media, proposed, f.template, () => f.template, signal(), () => {}, diagnostics);
+    const reuse = new CoverDiagnostics();
+    await f.session.acquire(media, signal(), () => {}, reuse);
+    expect(reuse.state.events[0]).toMatchObject({ action: "reuse", tracks: expect.any(Object) });
+    expect(JSON.stringify(accepted)).not.toMatch(/coverDiagnostics|droppedEvents|startedMs/);
+    expect(JSON.stringify(f.store.beginRun.mock.calls)).not.toMatch(/coverDiagnostics|droppedEvents|startedMs/);
+    await f.session.close();
+    expect(diagnostics.state.events).toHaveLength(1);
+    expect(setup().session).not.toHaveProperty("diagnostics");
+  });
   it("selects newest completed tagged placements regardless of recovered file order, never manual snapshots", () => {
     const batch = (createdAt: string, status: string, tagged: boolean, targetId: string) => ({ createdAt, tasks: [{ status }],
       templateSnapshot: { ...createDefaultTemplate(), ...(tagged ? { coverPlacement: { ...placement, tracks: [{ ...placement.tracks[0], targetId }] } } : {}) } }) as ExportBatch;

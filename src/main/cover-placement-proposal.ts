@@ -7,6 +7,7 @@ import type { MediaItem } from "./domain.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { SupervisorEvidence, type SupervisorEvidenceImage } from "./supervisor-evidence.js";
 import { supervisorValidationFeedback } from "./supervisor-protocol.js";
+import { diagnosticEvidence, diagnosticRequests, diagnosticTracks, measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
 
 const MAX_PROPOSAL_TURNS = 3;
 const MAX_INITIAL_CONTACTS = 12;
@@ -54,6 +55,7 @@ export async function proposeCoverPlacement(
   ffmpeg: FfmpegAdapter, media: MediaItem, signal: AbortSignal,
   complete: (context: ReviewCoverPlacementInput, signal: AbortSignal) => Promise<string>, onStage: (stage: string) => void,
   guard?: (source: SourceIdentity) => Promise<void>,
+  diagnostics?: CoverDiagnostics,
 ): Promise<CoverPlacement> {
   signal.throwIfAborted();
   const owner = new SupervisorEvidence(ffmpeg, media);
@@ -69,7 +71,11 @@ export async function proposeCoverPlacement(
     const contactsByActualTime = new Map<number, SupervisorEvidenceImage>();
     for (let offset = 0, requested = initialTimes(source.durationMs); offset < requested.length; offset += 8) {
       signal.throwIfAborted();
-      const batch = await owner.inspect(requested.slice(offset, offset + 8).map((timeMs) => ({ timeMs })), signal);
+      const requests = requested.slice(offset, offset + 8).map((timeMs) => ({ timeMs }));
+      const trace = diagnostics?.scope("proposal");
+      trace?.record("sample", "ok", { requests: diagnosticRequests(requests) });
+      const batch = await measureCoverStage(trace, "source-evidence", signal, () => owner.inspect(requests, signal));
+      trace?.record("sample", "ok", { evidence: diagnosticEvidence(batch) });
       signal.throwIfAborted();
       // Keep the final requested endpoint when two requested times decode to one frame.
       for (const image of batch) contactsByActualTime.set(image.timeMs, image);
@@ -80,15 +86,20 @@ export async function proposeCoverPlacement(
     let feedback: string | undefined;
     let lastReason = "未得到可渲染的近似覆盖位置。";
     let proposalTurns = 0;
+    let providerCalls = 0;
     while (proposalTurns < MAX_PROPOSAL_TURNS) {
       signal.throwIfAborted();
       const turn = proposalTurns + 1;
       onStage(`正在建议近似覆盖位置 · 校验机会 ${turn}/${MAX_PROPOSAL_TURNS} · 取帧 ${ownerRequests}/${MAX_OWNER_REQUESTS}`);
-      const raw = await complete({ durationMs: source.durationMs, images, feedback, turn }, signal);
+      const trace = diagnostics?.scope("proposal", ++providerCalls);
+      const raw = await measureCoverStage(trace, "proposal-provider", signal, () => complete({ durationMs: source.durationMs, images, feedback, turn }, signal));
       signal.throwIfAborted();
       let decision: z.infer<typeof ProposalDecisionSchema>;
       try { decision = ProposalDecisionSchema.parse(JSON.parse(raw)); }
-      catch (error) { proposalTurns += 1; feedback = proposalFeedback(error); lastReason = feedback; continue; }
+      catch (error) {
+        trace?.record("validation", "failed", { action: "invalid", reason: "invalid-response" });
+        proposalTurns += 1; feedback = proposalFeedback(error); lastReason = feedback; continue;
+      }
 
       if (decision.action === "propose") {
         proposalTurns += 1;
@@ -96,6 +107,7 @@ export async function proposeCoverPlacement(
         try {
           placement = CoverPlacementSchema.parse({ schemaVersion: 1, source, tracks: decision.tracks });
         } catch (error) {
+          trace?.record("validation", "failed", { action: "propose", reason: "invalid-tracks" });
           signal.throwIfAborted();
           feedback = proposalFeedback(error); lastReason = feedback; continue;
         }
@@ -103,24 +115,35 @@ export async function proposeCoverPlacement(
         const finalSource = await owner.sourceIdentity(signal);
         signal.throwIfAborted();
         if (!sameSource(finalSource, source) || !mediaMatches(finalSource, media)) throw new ProviderError("素材身份或时间解释已变化，不能返回近似覆盖位置。");
+        trace?.record("validation", "ok", { action: "propose", reason: "accepted", tracks: diagnosticTracks(placement.tracks) });
         return placement;
       }
-      if (decision.action === "stop") throw new ProviderError("主管无法确认近似覆盖位置，本条未导出。");
+      if (decision.action === "stop") {
+        trace?.record("validation", "failed", { action: "stop", reason: "provider-stop" });
+        throw new ProviderError("主管无法确认近似覆盖位置，本条未导出。");
+      }
       if (decision.requests.some((request) => request.timeMs >= source.durationMs)) {
+        trace?.record("validation", "failed", { action: "inspect", reason: "time-range", requests: diagnosticRequests(decision.requests) });
         proposalTurns += 1;
         feedback = "补充证据时间必须位于素材时长内。";
         lastReason = feedback;
         continue;
       }
-      if (ownerRequests + decision.requests.length > MAX_OWNER_REQUESTS) throw new ProviderError("主管请求的补充证据超过本次 40 帧上限，本条未导出。");
+      if (ownerRequests + decision.requests.length > MAX_OWNER_REQUESTS) {
+        trace?.record("validation", "failed", { action: "inspect", reason: "budget-exhausted", requests: diagnosticRequests(decision.requests) });
+        throw new ProviderError("主管请求的补充证据超过本次 40 帧上限，本条未导出。");
+      }
+      trace?.record("validation", "ok", { action: "inspect", reason: "accepted", requests: diagnosticRequests(decision.requests) });
       onStage("正在抽取主管请求的补充证据");
-      const extra = await owner.inspect(decision.requests, signal);
+      const extra = await measureCoverStage(trace, "source-evidence", signal, () => owner.inspect(decision.requests, signal));
+      trace?.record("inspect", "ok", { requests: diagnosticRequests(decision.requests), evidence: diagnosticEvidence(extra) });
       signal.throwIfAborted();
       ownerRequests += decision.requests.length;
       images = [...images, ...extra];
       feedback = "补充证据已提供；请只给出近似渲染位置，不要声称为源贴纸事实。";
       lastReason = "主管请求补充证据后仍未给出可渲染的近似覆盖位置。";
     }
+    diagnostics?.scope("proposal", providerCalls).record("validation", "failed", { reason: "budget-exhausted" });
     throw new ProviderError(`近似覆盖位置建议达到 ${MAX_PROPOSAL_TURNS} 轮上限：${lastReason}`);
   } finally { await owner.dispose(); }
 }

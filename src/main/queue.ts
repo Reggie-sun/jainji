@@ -30,6 +30,7 @@ import type { H264Encoder } from "./video-encoder.js";
 import { outputDimensions } from "../shared/export-settings.js";
 import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } from "./gpu-memory.js";
 import { reviewDigest } from "./cover-review-approval.js";
+import { measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
 
 export interface QueueSnapshot {
   revision: number;
@@ -105,16 +106,23 @@ export class ExportQueue {
   private persistChain: Promise<void> = Promise.resolve();
   private submissionChain: Promise<void> = Promise.resolve();
 
-  async renderPreview(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; cacheDirectory: string; signal: AbortSignal }): Promise<string> {
+  async renderPreview(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; cacheDirectory: string; signal: AbortSignal; diagnostics?: CoverDiagnostics }): Promise<string> {
     input.signal.throwIfAborted();
     const preset = ExportPresetSchema.parse(input.preset);
     const template = immutableSnapshot(input.template);
     const media = structuredClone(input.media);
     // A historical retry can arrive between supervisor rounds. Wait on the same
     // queue's resources instead of discarding an already paid model decision.
-    while (!this.shuttingDown && (this.activeTasks.size || this.pendingStarts.size)) await delay(50, undefined, { signal: input.signal });
-    input.signal.throwIfAborted();
-    if (this.shuttingDown) throw new Error("预览已停止。");
+    const queueWait = input.diagnostics?.record("queue-wait", "running");
+    let queueWaitFailed = false;
+    try {
+      while (!this.shuttingDown && (this.activeTasks.size || this.pendingStarts.size)) await delay(50, undefined, { signal: input.signal });
+      input.signal.throwIfAborted();
+      if (this.shuttingDown) throw new Error("预览已停止。");
+    } catch (error) {
+      queueWaitFailed = true;
+      throw error;
+    } finally { input.diagnostics?.finish(queueWait, input.signal, queueWaitFailed); }
     const id = randomUUID();
     const work = Promise.resolve().then(async () => {
       input.signal.throwIfAborted();
@@ -139,16 +147,21 @@ export class ExportQueue {
         await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
         input.signal.throwIfAborted();
         if (this.shuttingDown) throw new Error("预览已停止。");
-        const command = this.dependencies.ffmpeg.run([...compiled.args, output]);
-        this.controllers.set(id, command);
-        const abort = () => { void command.cancel(); };
+        let command: RunningCommand | undefined;
+        const abort = () => { void command?.cancel(); };
         input.signal.addEventListener("abort", abort, { once: true });
         try {
-          const result = await command.promise;
-          input.signal.throwIfAborted();
-          if (this.shuttingDown || result.code !== 0) throw new Error("动态预览渲染失败。");
-          await this.verifier.verify(output, id);
-          input.signal.throwIfAborted();
+          await measureCoverStage(input.diagnostics, "full-render", input.signal, async () => {
+            command = this.dependencies.ffmpeg.run([...compiled.args, output]);
+            this.controllers.set(id, command);
+            const result = await command.promise;
+            input.signal.throwIfAborted();
+            if (this.shuttingDown || result.code !== 0) throw new Error("动态预览渲染失败。");
+          });
+          await measureCoverStage(input.diagnostics, "artifact-verify", input.signal, async () => {
+            await this.verifier.verify(output, id);
+            input.signal.throwIfAborted();
+          });
           return output;
         } finally { input.signal.removeEventListener("abort", abort); this.controllers.delete(id); }
       } catch (error) { await unlink(output).catch(() => undefined); throw error; }

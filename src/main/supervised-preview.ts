@@ -7,8 +7,10 @@ import { SupervisorKnowledgeReview, knowledgeTracks, templateDigest, type Knowle
 import { factsDigest, sourceKey } from "./source-sticker-knowledge-store.js";
 import { coversRanges, type ReviewedRange } from "../shared/source-sticker-knowledge.js";
 import { decorationDisplaySeconds } from "../shared/decorations.js";
+import { diagnosticEvidence, diagnosticRequests, diagnosticTracks, diagnosticValidationReason, measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
 
 interface SupervisedPreviewInput {
+  diagnostics?: CoverDiagnostics;
   trackPurpose?: "cover-placement";
   session?: PreviewReviewSession;
   knowledge?: KnowledgeReviewOptions;
@@ -18,7 +20,7 @@ interface SupervisedPreviewInput {
   coverEnabled: boolean;
   automaticCorners: boolean;
   signal: AbortSignal;
-  render(template: EditTemplate, signal: AbortSignal): Promise<string>;
+  render(template: EditTemplate, signal: AbortSignal, diagnostics?: CoverDiagnostics): Promise<string>;
   inspect(requests: readonly EvidenceRequest[], signal: AbortSignal, previewPath: string): Promise<SupervisorEvidenceImage[]>;
   review(input: PreviewReviewInput, signal: AbortSignal): Promise<string>;
   rebuild(revision: PreviewRevision): EditTemplate;
@@ -106,22 +108,27 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
   const session = input.session ?? new PreviewReviewSession();
   const state = session.enter(`${template.id}:${input.durationMs}:${trackHorizonMs}:${knowledge ? sourceKey(knowledge.candidate.source) : "local"}`, binding());
   const { history } = state;
+  const priorInspections: EvidenceRequest[] = [];
   let evidence: SupervisorEvidenceImage[] = [];
   try { while (state.turns < MAX_PREVIEW_TURNS) {
     signal.throwIfAborted();
+    const diagnostics = input.diagnostics?.scope("preview", state.turns + 1, state.revisions);
     if (!previewPath) {
       input.onStage(`正在渲染主管检查样片 · 修订 ${state.revisions}/${MAX_PREVIEW_REVISIONS}`);
       state.renders++;
-      previewPath = await input.render(template, signal);
-      evidence = await input.inspect(sampleTimes(template, input.durationMs), signal, previewPath);
+      const requests = sampleTimes(template, input.durationMs);
+      diagnostics?.record("sample", "ok", { tracks: diagnosticTracks(tracks), requests: diagnosticRequests(requests), priorInspections: diagnosticRequests(priorInspections) });
+      previewPath = await input.render(template, signal, diagnostics);
+      evidence = await measureCoverStage(diagnostics, "paired-evidence", signal, () => input.inspect(requests, signal, previewPath!));
+      diagnostics?.record("sample", "ok", { requests: diagnosticRequests(requests), evidence: diagnosticEvidence(evidence) });
     }
     signal.throwIfAborted();
     knowledge?.observe(evidence, template);
     const turn = ++state.turns, revision = state.revisions;
     input.onStage(`主管检查真实样片 ${turn}/${MAX_PREVIEW_TURNS} · 修订 ${revision}/${MAX_PREVIEW_REVISIONS}`);
-    const raw = await input.review({ trackPurpose: input.trackPurpose, durationMs: input.durationMs, trackHorizonMs, displayMode: template.decorationDisplayMode ?? "full", coverEnabled: input.coverEnabled,
+    const raw = await measureCoverStage(diagnostics, "review-provider", signal, () => input.review({ trackPurpose: input.trackPurpose, durationMs: input.durationMs, trackHorizonMs, displayMode: template.decorationDisplayMode ?? "full", coverEnabled: input.coverEnabled,
       stickerDisplayMode: template.stickerDisplayMode, automaticCorners: input.automaticCorners, tracks, layers: supervisorLayerProjection(template), evidence, feedback, turn, revision,
-      remainingRevisions: MAX_PREVIEW_REVISIONS - revision, history: structuredClone(history), issues: structuredClone(state.issues), knowledge: knowledge?.context() }, signal);
+      remainingRevisions: MAX_PREVIEW_REVISIONS - revision, history: structuredClone(history), issues: structuredClone(state.issues), knowledge: knowledge?.context() }, signal));
     signal.throwIfAborted();
     let decoded: unknown;
     let revisionReason: string | undefined;
@@ -132,6 +139,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
         revisionReason = "reason" in decoded && typeof decoded.reason === "string" ? decoded.reason.slice(0, 500) : "主管要求修订，但修订结构无效";
       }
     } catch (error) {
+      diagnostics?.record("validation", "failed", { action: "invalid", reason: "invalid-response" });
       if (revisionReason) state.unresolved = state.unscopedIssue = true;
       feedback = supervisorValidationFeedback(error, trackHorizonMs);
       history.push({ turn, revision, action: revisionReason ? "revise" : "invalid", reason: revisionReason ?? "返回结构无效", feedback });
@@ -174,6 +182,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
       if (issueError) throw issueError;
       decision = PreviewDecisionSchema.parse(decoded);
     } catch (error) {
+      diagnostics?.record("validation", "failed", { action: revisionReason ? "revise" : "invalid", reason: "invalid-response" });
       if (issueError || (revisionReason && !reported.length)) state.unresolved = state.unscopedIssue = true;
       feedback = supervisorValidationFeedback(error, trackHorizonMs);
       history.push({ turn, revision, action: revisionReason ? "revise" : "invalid", reason: revisionReason ?? "返回结构无效", feedback });
@@ -185,7 +194,10 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
       if (decision.action === "inspect" && decision.requests.some(request => request.timeMs >= input.durationMs)) throw new Error("time-range");
       if (decision.action === "revise") {
         if (!decision.issues?.length && !decision.resolvedIssueIds?.length) state.unresolved = state.unscopedIssue = true;
-        if (revision >= MAX_PREVIEW_REVISIONS || turn === MAX_PREVIEW_TURNS) break;
+        if (revision >= MAX_PREVIEW_REVISIONS || turn === MAX_PREVIEW_TURNS) {
+          diagnostics?.record("validation", "failed", { action: "revise", reason: "budget-exhausted" });
+          break;
+        }
         validateSupervisorTracks(decision.tracks, trackHorizonMs);
         if ((!input.automaticCorners && decision.corners?.length) || new Set(decision.corners?.map(corner => corner.corner)).size !== (decision.corners?.length ?? 0)) throw new Error("corner-correction");
         const updates = decision.corners ?? [];
@@ -207,6 +219,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
         }
         for (const issue of state.issues) if (resolved.includes(issue.id)) issue.status = "awaiting-review";
         if (corrected) knowledge!.accept(corrected);
+        diagnostics?.record("validation", "ok", { action: "revise", reason: "accepted", previousTracks: diagnosticTracks(tracks), tracks: diagnosticTracks(decision.tracks) });
         template = candidate; tracks = structuredClone(decision.tracks); state.revisions++;
         state.corners = corners; state.binding = binding();
         if (visibleChanged) state.unresolved = false;
@@ -215,6 +228,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
         continue;
       }
     } catch (error) {
+      diagnostics?.record("validation", "failed", { action: decision.action, reason: diagnosticValidationReason(error) });
       feedback = supervisorValidationFeedback(error, trackHorizonMs);
       if (history.at(-1)?.turn === turn) history.at(-1)!.feedback = feedback;
       else history.push({ turn, revision, action: revisionReason !== undefined ? "revise" : "invalid", reason: revisionReason ?? "返回结构无效", feedback });
@@ -225,15 +239,24 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
       const persistence = handoff ? await knowledge!.persist(handoff) : "not-requested";
       signal.throwIfAborted();
       for (const issue of state.issues) if (issue.status === "awaiting-review") { issue.status = "resolved"; issue.resolvedTurn = turn; }
+      diagnostics?.record("validation", "ok", { action: "pass", reason: "accepted" });
       return { template: structuredClone(template), tracks: structuredClone(tracks), checkedRanges, budget: { turns: state.turns, revisions: state.revisions, renders: state.renders },
         history: structuredClone(history), issues: structuredClone(state.issues), knowledge: handoff, persistence, session };
     }
-    if (decision.action === "stop") throw new ProviderError(`主管检查样片仍有无法确认的问题，本条未导出。主管报告：${decision.reason}`);
+    if (decision.action === "stop") {
+      diagnostics?.record("validation", "failed", { action: "stop", reason: "provider-stop" });
+      throw new ProviderError(`主管检查样片仍有无法确认的问题，本条未导出。主管报告：${decision.reason}`);
+    }
+    diagnostics?.record("validation", "ok", { action: "inspect", reason: "accepted", requests: diagnosticRequests(decision.requests) });
+    priorInspections.push(...diagnosticRequests(decision.requests).slice(0, 40 - priorInspections.length));
     if (turn === MAX_PREVIEW_TURNS) break;
     input.onStage(`主管请求样片补充证据：${decision.reason}`);
-    evidence = [...evidence, ...await input.inspect(decision.requests, signal, previewPath)];
+    const extra = await measureCoverStage(diagnostics, "paired-evidence", signal, () => input.inspect(decision.requests, signal, previewPath!));
+    diagnostics?.record("inspect", "ok", { requests: diagnosticRequests(decision.requests), evidence: diagnosticEvidence(extra) });
+    evidence = [...evidence, ...extra];
     feedback = "已提供同一版本样片的补充证据，请据此继续检查。";
   }
+  input.diagnostics?.scope("preview", state.turns, state.revisions).record("validation", "failed", { reason: "budget-exhausted" });
   throw limitError();
   } finally { session.leave(); }
 }

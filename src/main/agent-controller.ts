@@ -220,14 +220,14 @@ export class AgentController {
           const evidence = new SupervisorEvidence(this.ffmpeg, item);
           try { return await evidence.sourceIdentity(signal); } finally { await evidence.dispose(); }
         },
-        propose: (item, signal, onStage) => proposeCoverPlacement(this.ffmpeg, item, signal,
-          (context, requestSignal) => this.visionProvider.proposeCoverPlacement(context, requestSignal), onStage),
+        propose: (item, signal, onStage, diagnostics) => proposeCoverPlacement(this.ffmpeg, item, signal,
+          (context, requestSignal) => this.visionProvider.proposeCoverPlacement(context, requestSignal), onStage, undefined, diagnostics),
         review: async input => {
           const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-preview-"));
           const evidence = new SupervisorEvidence(this.ffmpeg, input.media);
           try { return await superviseRenderedTemplate({ ...input, tracks: input.placement.tracks, trackPurpose: "cover-placement",
             durationMs: input.media.durationMs, coverEnabled: true, automaticCorners: decorations.mode === "agent",
-            render: (candidate, requestSignal) => this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal }),
+            render: (candidate, requestSignal, diagnostics) => this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal, diagnostics }),
             inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
             review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
           }); } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
