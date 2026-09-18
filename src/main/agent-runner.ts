@@ -76,6 +76,15 @@ export class AgentRunner {
     const stickerUsage = new Map<string, number>();
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
+    // Versions and byte-identical copies share mutable placement state. Only
+    // distinct sources may run concurrently; knowledge reconciliation stays unchanged.
+    const grouped = new Map<string, number[]>();
+    media.forEach((source, index) => {
+      const key = this.dependencies.placement ? source.fingerprint : String(index);
+      const group = grouped.get(key) ?? [];
+      group.push(index); grouped.set(key, group);
+    });
+    const groupsToRun = [...grouped.values()];
     const pendingCoverStickers = new Map<number, Promise<FrozenCoverSticker>>();
     const selectedCoverIds: string[] = [];
     const reviewed: Array<{ index: number; version: KnowledgeVersion; binding: KnowledgeBinding; source: MediaItem }> = [];
@@ -86,6 +95,8 @@ export class AgentRunner {
         const previous = version > 1 ? coverForVersion(version - 1, frames) : Promise.resolve();
         pending = previous.then(async () => {
           signal.throwIfAborted();
+          // The first eligible source supplies the round's reference; all peers
+          // share this selection, without depending on a failed/blocked source.
           const selected = await this.dependencies.selectCoverSticker!(frames, signal, [...selectedCoverIds]);
           selectedCoverIds.push(selected.stickerId);
           return selected;
@@ -96,12 +107,10 @@ export class AgentRunner {
     };
     const remainingVersions = new Map<string, number>();
     for (const source of media) remainingVersions.set(source.id, (remainingVersions.get(source.id) ?? 0) + 1);
-    const worker = async () => {
-      while (next < media.length) {
-        const index = next++;
+    const processItem = async (index: number) => {
         const source = media[index];
         const item = run.items[index];
-        if (signal.aborted) { item.status = "cancelled"; audit[index].finished = Date.now(); continue; }
+        if (signal.aborted) { item.status = "cancelled"; audit[index].finished = Date.now(); return; }
         item.status = "analyzing";
         this.dependencies.onChange();
         const onStage = (stage: string) => { item.summary = stage; this.dependencies.onChange(); };
@@ -198,10 +207,17 @@ export class AgentRunner {
           if (remaining === 0) pendingFrames.delete(source.id);
         }
         this.dependencies.onChange();
+    };
+    const worker = async () => {
+      while (next < groupsToRun.length) {
+        const group = groupsToRun[next++];
+        for (const index of group) await processItem(index);
       }
     };
     try {
-      await Promise.all(Array.from({ length: this.dependencies.prepared || this.dependencies.knowledge || this.dependencies.placement ? 1 : Math.min(executionLimits().analysis, media.length) }, () => worker()));
+      const concurrency = this.dependencies.prepared || this.dependencies.knowledge ? 1
+        : Math.min(executionLimits().analysis, this.dependencies.placement ? 3 : Infinity, groupsToRun.length);
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
       const groups = new Map<string, typeof reviewed>();
       for (const entry of reviewed) groups.set(entry.binding.key, [...(groups.get(entry.binding.key) ?? []), entry]);
       for (const group of groups.values()) {
@@ -216,7 +232,7 @@ export class AgentRunner {
           }
         }
       }
-      for (const { index, template, source } of placed) {
+      for (const { index, template, source } of placed.sort((left, right) => left.index - right.index)) {
         const item = run.items[index];
         try {
           audit[index].stage = "enqueue";

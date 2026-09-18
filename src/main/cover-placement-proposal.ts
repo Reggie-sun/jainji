@@ -6,6 +6,7 @@ import { ProviderError } from "./api-transport.js";
 import type { MediaItem } from "./domain.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { SupervisorEvidence, type SupervisorEvidenceImage } from "./supervisor-evidence.js";
+import { supervisorValidationFeedback } from "./supervisor-protocol.js";
 
 const MAX_PROPOSAL_TURNS = 3;
 const MAX_INITIAL_CONTACTS = 12;
@@ -40,8 +41,7 @@ function initialTimes(durationMs: number): number[] {
 }
 
 function proposalFeedback(error: unknown): string {
-  if (error instanceof SyntaxError) return "JSON 格式无效；请按协议返回单个 JSON 对象，不要 Markdown。";
-  if (error instanceof z.ZodError) return `返回结构不合格：${error.issues.slice(0, 3).map((issue) => issue.path.join(".") || "action").join("、")}。请检查协议字段、归一化坐标和时间。`;
+  if (error instanceof SyntaxError || error instanceof z.ZodError) return supervisorValidationFeedback(error);
   return "本地校验不通过：轨迹必须在素材时长内，关键帧必须位于轨迹内，同一目标的时段不得重叠。";
 }
 

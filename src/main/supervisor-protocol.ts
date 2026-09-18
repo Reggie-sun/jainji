@@ -89,6 +89,22 @@ export function supervisorValidationFeedback(error: unknown, trackHorizonMs?: nu
   if (error instanceof Error && error.message === "no-visible-change") return "修订没有改变有效显示时段内的画面。若原图该角没有贴纸、样片却漏角，应删除或缩短误识别的原贴纸 tracks；只调整被抑制角标的尺寸不会补回时段。请依据原图真正修正，不能直接改报 pass。";
   if (error instanceof Error && error.message === "unresolved-revision") return "上一轮已报告的问题尚未得到有效修订，不能直接通过。请修正导致问题的轨迹或角标参数；无法确认则 stop。";
   if (error instanceof SyntaxError) return "JSON 格式无效；请按协议返回单个 JSON 对象，不要 Markdown。";
-  if (error instanceof z.ZodError) return `返回结构不合格：${error.issues.slice(0, 3).map(issue => issue.path.join(".") || "action").join("、")}。请检查协议字段、归一化坐标和时间。`;
+  if (error instanceof z.ZodError) {
+    // Only locally authored explanations; never echo arbitrary model values or keys.
+    const explanations: Record<string, string> = {
+      "覆盖框必须完整位于画面内": "框越界：x + width <= 1 且 y + height <= 1；x、y 是左上角，不是中心点",
+      "轨迹缩放必须保持覆盖框比例": "同一段所有关键帧的 width / height 必须相同；仅平移时沿用首帧 width、height，只改变 x、y；缩放时宽高乘同一倍数，不要分别取整",
+      "覆盖结束时间必须晚于开始时间": "endMs 必须大于 startMs",
+      "关键帧时间必须递增且不能重复": "关键帧 timeMs 必须递增且不能重复",
+      "Track exceeds source duration": "endMs 不得超过视频 durationMs",
+      "Keyframe is outside its track or source duration": "timeMs 必须在 startMs、endMs 及视频时长内",
+      "Tracks for the same target cannot overlap": "同一 targetId 的分段时段不得重叠",
+    };
+    const fields = new Set(["action", "tracks", "track", "keyframes", "rectangle", "x", "y", "width", "height", "timeMs", "startMs", "endMs", "targetId", "requests", "crop", "corners"]);
+    return `返回结构不合格：${error.issues.slice(0, 6).map(issue => {
+      const location = issue.path.map(part => typeof part === "number" || fields.has(part) ? part : "field").join(".") || "action";
+      return `${location}：${explanations[issue.message] ?? "字段类型、范围或协议不符"}`;
+    }).join("；")}。请返回修正后的完整方案，不要删除真实目标来绕过校验。`;
+  }
   return "本地校验不通过：请检查时间顺序、重叠帧目标连续性、轨迹区间和贴纸安全边界；不要修改输入的抽帧时间。";
 }

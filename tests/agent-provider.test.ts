@@ -14,7 +14,7 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
-  it("serializes API requests and spaces successive requests", async () => {
+  it("spaces successive API request starts", async () => {
     vi.useFakeTimers();
     try {
       const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ content: [{ type: "text", text: "ok" }] }))) as unknown as typeof fetch;

@@ -29,6 +29,22 @@ const rectangle = { x: 0.1, y: 0.2, width: 0.2, height: 0.1 };
 const proposal = (tracks = [{ targetId: "first", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle }] } }]) => JSON.stringify({ action: "propose", reason: "approximate placement", tracks });
 
 describe("cover placement proposal", () => {
+  it("explains ratio and boundary failures so the next proposal can correct them", async () => {
+    const f = await fixture();
+    try {
+      let calls = 0;
+      const result = await proposeCoverPlacement(f.adapter, f.media, new AbortController().signal, async input => {
+        if (++calls === 1) return proposal([{ targetId: "moving", track: { startMs: 0, endMs: 1000, keyframes: [
+          { timeMs: 0, rectangle }, { timeMs: 500, rectangle: { x: 0.9, y: 0.2, width: 0.2, height: 0.2 } },
+        ] } }]);
+        expect(input.feedback).toContain("x + width");
+        expect(input.feedback).toContain("width / height");
+        return proposal();
+      }, () => {});
+      expect(calls).toBe(2);
+      expect(result.tracks[0].track.keyframes).toHaveLength(1);
+    } finally { await rm(f.directory, { recursive: true, force: true }); }
+  }, 60_000);
   it("keeps approximate tracks separate from source facts and accepts differently shaped targets", async () => {
     let input: ReviewCoverPlacementInput | undefined;
     let fixtureValue: Awaited<ReturnType<typeof fixture>> | undefined;
