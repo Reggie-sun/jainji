@@ -31,6 +31,78 @@ async function setup() {
 afterEach(async () => { await Promise.all(directories.splice(0).map((p) => rm(p, { recursive: true, force: true }))); });
 
 describe("managed ChatGPT session", () => {
+  it("uses the isolated completion runtime for model turns", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-chatgpt-split-")); directories.push(directory);
+    const accountRpc = new FakeRpc(); accountRpc.account = { type: "chatgpt" };
+    const completionRpc = new FakeRpc();
+    const session = new ChatGPTSession(async () => accountRpc, async () => {}, directory, () => {}, () => "vision", () => undefined, async () => completionRpc);
+    await session.refresh();
+    const result = session.complete([{ role: "user", content: "brief" }], new AbortController().signal);
+    await vi.waitFor(() => expect(completionRpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    expect(accountRpc.request).not.toHaveBeenCalledWith("thread/start", expect.anything());
+    completionRpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "ok" } });
+    completionRpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await result).toBe("ok");
+    await session.dispose();
+  });
+  it("closes the isolated completion runtime when the account logs out", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-chatgpt-logout-")); directories.push(directory);
+    const accountRpc = new FakeRpc(); accountRpc.account = { type: "chatgpt" };
+    const completionRpc = new FakeRpc(); const closeCompletion = vi.spyOn(completionRpc, "close");
+    const session = new ChatGPTSession(async () => accountRpc, async () => {}, directory, () => {}, () => "vision", () => undefined, async () => completionRpc);
+    await session.refresh();
+    const result = session.complete([{ role: "user", content: "brief" }], new AbortController().signal);
+    await vi.waitFor(() => expect(completionRpc.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    completionRpc.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "ok" } });
+    completionRpc.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    await result;
+    await session.logout();
+    expect(closeCompletion).toHaveBeenCalledTimes(1);
+    await session.dispose();
+  });
+  it("does not publish a completion runtime that finishes starting after logout", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-chatgpt-start-logout-")); directories.push(directory);
+    const accountRpc = new FakeRpc(); accountRpc.account = { type: "chatgpt" };
+    const completionRpc = new FakeRpc(); const closeCompletion = vi.spyOn(completionRpc, "close");
+    completionRpc.request.mockRejectedValue(new Error("late runtime must not be used"));
+    let finishStarting!: (rpc: RpcClient) => void;
+    const session = new ChatGPTSession(async () => accountRpc, async () => {}, directory, () => {}, () => "vision", () => undefined,
+      async () => new Promise<RpcClient>((resolve) => { finishStarting = resolve; }));
+    await session.refresh();
+    const result = session.complete([{ role: "user", content: "brief" }], new AbortController().signal);
+    await vi.waitFor(() => expect(finishStarting).toBeDefined());
+    await session.logout();
+    finishStarting(completionRpc);
+    await expect(result).rejects.toThrow();
+    expect(closeCompletion).toHaveBeenCalledTimes(1);
+    expect(completionRpc.request).not.toHaveBeenCalledWith("thread/start", expect.anything());
+    await session.dispose();
+  });
+  it("restarts the completion runtime after account credentials are refreshed", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-chatgpt-refresh-runtime-")); directories.push(directory);
+    const accountRpc = new FakeRpc(); accountRpc.account = { type: "chatgpt" };
+    const firstCompletion = new FakeRpc(); const closeFirst = vi.spyOn(firstCompletion, "close");
+    const secondCompletion = new FakeRpc(); const closeSecond = vi.spyOn(secondCompletion, "close");
+    const createCompletion = vi.fn().mockResolvedValueOnce(firstCompletion).mockResolvedValueOnce(secondCompletion);
+    const session = new ChatGPTSession(async () => accountRpc, async () => {}, directory, () => {}, () => "vision", () => undefined, createCompletion);
+    await session.refresh();
+    const first = session.complete([{ role: "user", content: "first" }], new AbortController().signal);
+    await vi.waitFor(() => expect(firstCompletion.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    firstCompletion.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "one" } });
+    firstCompletion.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await first).toBe("one");
+    await session.refresh();
+    expect(closeFirst).toHaveBeenCalledTimes(1);
+    const second = session.complete([{ role: "user", content: "second" }], new AbortController().signal);
+    await vi.waitFor(() => expect(secondCompletion.request).toHaveBeenCalledWith("turn/start", expect.anything()));
+    secondCompletion.emit("notification", "item/completed", { threadId: "thread", item: { type: "agentMessage", text: "two" } });
+    secondCompletion.emit("notification", "turn/completed", { threadId: "thread", turn: { status: "completed" } });
+    expect(await second).toBe("two");
+    expect(createCompletion).toHaveBeenCalledTimes(2);
+    accountRpc.emit("notification", "account/updated", { authMode: "chatgpt" });
+    await vi.waitFor(() => expect(closeSecond).toHaveBeenCalledTimes(1));
+    await session.dispose();
+  });
   it.each(["decoration", "cover"] as const)("constrains %s shortlist turns without constraining later plain text", async (purpose) => {
     const { rpc, session } = await setup();
     rpc.account = { type: "chatgpt" }; await session.refresh();

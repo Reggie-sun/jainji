@@ -13,6 +13,9 @@ export function trustedLoginUrl(value: string): string {
 export class ChatGPTSession {
   private rpc?: RpcClient;
   private starting?: Promise<RpcClient>;
+  private completionRpc?: RpcClient;
+  private completionStarting?: Promise<RpcClient>;
+  private completionGeneration = 0;
   private loginId?: string;
   private awaitingAccountUpdate = false;
   private loginTimer?: ReturnType<typeof setTimeout>;
@@ -20,7 +23,7 @@ export class ChatGPTSession {
   private disposed = false;
   private revision = 0;
   private refreshGeneration = 0;
-  constructor(private readonly create: () => Promise<RpcClient>, private readonly openBrowser: (url: string) => Promise<void>, private readonly cwd: string, private readonly changed: () => void, private readonly preferredModel: () => string | undefined = () => undefined, private readonly preferredEffort: () => string | undefined = () => undefined) {}
+  constructor(private readonly create: () => Promise<RpcClient>, private readonly openBrowser: (url: string) => Promise<void>, private readonly cwd: string, private readonly changed: () => void, private readonly preferredModel: () => string | undefined = () => undefined, private readonly preferredEffort: () => string | undefined = () => undefined, private readonly createCompletion: () => Promise<RpcClient> = create) {}
   status(): ChatGPTStatus { return { ...this.state }; }
   assertModel(model: string, reasoningEffort?: string): void {
     const selected = this.state.models?.find((item) => item.model === model);
@@ -49,6 +52,33 @@ export class ChatGPTSession {
     })().finally(() => { this.starting = undefined; });
     return this.starting;
   }
+  private async completionClient(): Promise<RpcClient> {
+    if (this.disposed) throw new ProviderError("应用正在关闭。");
+    if (this.completionRpc) return this.completionRpc;
+    if (!this.completionStarting) {
+      const generation = this.completionGeneration;
+      this.completionStarting = (async () => {
+        const rpc = await this.createCompletion();
+        if (this.disposed || generation !== this.completionGeneration) {
+          await rpc.close();
+          throw new ProviderError(this.disposed ? "应用正在关闭。" : "ChatGPT 登录状态已更新，请重试。");
+        }
+        rpc.on("closed", () => { if (this.completionRpc === rpc) this.completionRpc = undefined; });
+        this.completionRpc = rpc;
+        return rpc;
+      })();
+    }
+    const starting = this.completionStarting;
+    try { return await starting; }
+    finally { if (this.completionStarting === starting) this.completionStarting = undefined; }
+  }
+  private async closeCompletionRuntime(): Promise<void> {
+    this.completionGeneration += 1;
+    const rpc = this.completionRpc;
+    this.completionRpc = undefined;
+    this.completionStarting = undefined;
+    if (rpc && rpc !== this.rpc) await rpc.close();
+  }
   private notification = (method: string, params: any): void => {
     if (method === "account/login/completed" && this.loginId && params?.loginId === this.loginId) {
       this.loginId = undefined;
@@ -61,11 +91,12 @@ export class ChatGPTSession {
         this.set({ status: "error", message: "ChatGPT 登录未完成，请重试。" });
       }
     }
-    if (method === "account/updated" && params?.authMode === "chatgpt" && this.awaitingAccountUpdate) {
+    if (method === "account/updated" && params?.authMode === "chatgpt") {
       void this.refresh().catch(() => undefined);
     }
   };
   async refresh(): Promise<boolean> {
+    await this.closeCompletionRuntime();
     const revision = this.revision;
     const generation = ++this.refreshGeneration;
     try { return await this.readAccount(generation); }
@@ -140,6 +171,7 @@ export class ChatGPTSession {
     const hadAttempt = Boolean(id) || this.awaitingAccountUpdate || ["starting", "logging-in"].includes(this.state.status);
     this.loginId = undefined; this.awaitingAccountUpdate = false; clearTimeout(this.loginTimer);
     try {
+      await this.closeCompletionRuntime();
       if (id && this.rpc) await this.rpc.request("account/login/cancel", { loginId: id });
       // The callback may have persisted credentials just before cancellation.
       // Logout clears that completed login too, including a cancel/notFound race.
@@ -170,7 +202,7 @@ export class ChatGPTSession {
   }
   private async completeUsing(model: string | undefined, effort: string | undefined, messages: ModelMessage[], signal: AbortSignal, options: CompletionOptions): Promise<string> {
     if (this.state.status !== "ready" || !model) throw new ProviderError("请先使用 ChatGPT 登录。");
-    const rpc = await this.client();
+    const rpc = await this.completionClient();
     await mkdir(this.cwd, { recursive: true, mode: 0o700 });
     const aborted = AbortSignal.any([signal, AbortSignal.timeout(180_000)]);
     aborted.throwIfAborted();
@@ -212,5 +244,8 @@ export class ChatGPTSession {
       });
     } finally { void rpc.request("thread/unsubscribe", { threadId: thread.thread.id }).catch(() => undefined); }
   }
-  async dispose(): Promise<void> { this.disposed = true; clearTimeout(this.loginTimer); await this.rpc?.close(); }
+  async dispose(): Promise<void> {
+    this.disposed = true; clearTimeout(this.loginTimer);
+    await Promise.all([...new Set([this.rpc, this.completionRpc].filter((rpc): rpc is RpcClient => Boolean(rpc)))].map((rpc) => rpc.close()));
+  }
 }

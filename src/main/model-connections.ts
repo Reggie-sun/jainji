@@ -1,6 +1,7 @@
-import { access, mkdir } from "node:fs/promises";
+import { access, mkdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
+import { z } from "zod";
 import { AgentProvider } from "./agent-provider.js";
 import { ApiRequestScheduler } from "./api-request-scheduler.js";
 import { ChatGPTSession } from "./chatgpt-session.js";
@@ -10,7 +11,68 @@ import { loadCCSwitchProvider, listCCSwitchProviders } from "./cc-switch.js";
 import { ConnectionStore } from "./connection-store.js";
 import { DEFAULT_QWEN_CONNECTION, SelectModelSchema } from "../shared/connections.js";
 
+const ChatGPTExecutionCredentialSchema = z.object({
+  tokens: z.object({
+    access_token: z.string().trim().min(1).max(20_000),
+    account_id: z.string().trim().min(1).max(512),
+  }),
+});
+
+export async function readChatGPTExecutionCredential(userData: string): Promise<{ accessToken: string; accountId: string }> {
+  try {
+    try {
+      await access(path.join(userData, "codex-execution", "auth.json"));
+      throw new Error("execution auth must remain absent");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    const raw = await readFile(path.join(userData, "codex", "auth.json"), "utf8");
+    if (raw.length > 1_000_000) throw new Error("credential file too large");
+    const parsed = ChatGPTExecutionCredentialSchema.parse(JSON.parse(raw));
+    return { accessToken: parsed.tokens.access_token, accountId: parsed.tokens.account_id };
+  } catch {
+    throw new ProviderError("ChatGPT 登录凭据不可用，请刷新登录状态。");
+  }
+}
+
 export function codexLaunch(appPath: string, userData: string): { command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
+  return codexRuntimeLaunch(appPath, path.join(userData, "codex"), {
+    cli_auth_credentials_store: "file", model_provider: "openai", ...restrictedCodexSettings(),
+  });
+}
+
+export function codexCompletionLaunch(appPath: string, userData: string, credential: { accessToken: string; accountId: string }): { command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
+  if (!credential.accessToken.trim() || !credential.accountId.trim()) throw new ProviderError("ChatGPT 登录凭据不可用，请刷新登录状态。");
+  const launch = codexRuntimeLaunch(appPath, path.join(userData, "codex-execution"), {
+    cli_auth_credentials_store: "file", model_provider: "jianji_openai_once", ...restrictedCodexSettings(),
+    "features.unbounded_connection_retries": false,
+    "model_providers.jianji_openai_once.name": "OpenAI",
+    "model_providers.jianji_openai_once.base_url": "https://chatgpt.com/backend-api/codex",
+    "model_providers.jianji_openai_once.env_key": "JIANJI_CODEX_ACCESS_TOKEN",
+    "model_providers.jianji_openai_once.env_http_headers.ChatGPT-Account-ID": "JIANJI_CODEX_ACCOUNT_ID",
+    "model_providers.jianji_openai_once.wire_api": "responses",
+    "model_providers.jianji_openai_once.requires_openai_auth": false,
+    "model_providers.jianji_openai_once.request_max_retries": 0,
+    "model_providers.jianji_openai_once.stream_max_retries": 0,
+    "model_providers.jianji_openai_once.supports_websockets": false,
+  });
+  launch.env.JIANJI_CODEX_ACCESS_TOKEN = credential.accessToken;
+  launch.env.JIANJI_CODEX_ACCOUNT_ID = credential.accountId;
+  return launch;
+}
+
+function restrictedCodexSettings(): Record<string, unknown> {
+  return {
+    approval_policy: "never", sandbox_mode: "read-only",
+    web_search: "disabled", "features.shell_tool": false, "features.unified_exec": false,
+    "features.multi_agent": false, "features.apps": false,
+    "features.shell_snapshot": false, "features.skill_mcp_dependency_install": false,
+    "orchestrator.skills.enabled": false,
+    check_for_update_on_startup: false,
+  };
+}
+
+function codexRuntimeLaunch(appPath: string, cwd: string, settings: Record<string, unknown>): { command: string; args: string[]; env: NodeJS.ProcessEnv; cwd: string } {
   const arch = process.arch === "x64" ? "x86_64" : process.arch === "arm64" ? "aarch64" : undefined;
   if (!arch || !["linux", "win32"].includes(process.platform)) throw new ProviderError("当前系统暂不支持内置 Codex。");
   const require = createRequire(path.join(appPath, "package.json"));
@@ -24,15 +86,7 @@ export function codexLaunch(appPath: string, userData: string): { command: strin
   for (const [key, value] of Object.entries(process.env)) {
     if (/^(PATH|HOME|USERPROFILE|HOMEDRIVE|HOMEPATH|SYSTEMROOT|WINDIR|TEMP|TMP|TMPDIR|LANG|LC_.*|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|SSL_CERT_FILE|SSL_CERT_DIR)$/i.test(key)) env[key] = value;
   }
-  env.CODEX_HOME = path.join(userData, "codex");
-  const settings: Record<string, unknown> = {
-    cli_auth_credentials_store: "file", model_provider: "openai", approval_policy: "never", sandbox_mode: "read-only",
-    web_search: "disabled", "features.shell_tool": false, "features.unified_exec": false,
-    "features.multi_agent": false, "features.apps": false,
-    "features.shell_snapshot": false, "features.skill_mcp_dependency_install": false,
-    "orchestrator.skills.enabled": false,
-    check_for_update_on_startup: false,
-  };
+  env.CODEX_HOME = cwd;
   return { command, env, cwd: env.CODEX_HOME, args: ["app-server", ...Object.entries(settings).flatMap(([key, value]) => ["-c", `${key}=${JSON.stringify(value)}`])] };
 }
 
@@ -45,17 +99,15 @@ export class ModelConnections {
   private pending = false;
   private disposed = false;
   private wantChatGPT = false;
-  private activeRpc?: CodexRpc;
   readonly store: ConnectionStore;
   constructor(private readonly userData: string, appPath: string, openBrowser: (url: string) => Promise<void>, private readonly changed: () => void) {
     this.store = new ConnectionStore(path.join(userData, "connections"));
-    this.chatgpt = new ChatGPTSession(async () => {
-      const launch = codexLaunch(appPath, userData);
+    const startCodex = async (launch: ReturnType<typeof codexLaunch>) => {
       await mkdir(launch.cwd, { recursive: true, mode: 0o700 });
       const client = new CodexRpc(launch.command, launch.args, launch.env, launch.cwd);
-      this.activeRpc = client;
       try { await client.initialize(); return client; } catch (error) { client.close(); throw error; }
-    }, openBrowser, path.join(userData, "codex", "workspace"), () => {
+    };
+    this.chatgpt = new ChatGPTSession(async () => startCodex(codexLaunch(appPath, userData)), openBrowser, path.join(userData, "codex", "workspace"), () => {
       const state = this.chatgpt.status();
       if (this.wantChatGPT) {
         if (state.status === "ready" && state.model) this.provider.useChatGPT(state.model, (messages, signal, options) => this.chatgpt.complete(messages, signal, options), state.reasoningEffort);
@@ -64,7 +116,10 @@ export class ModelConnections {
       this.activateVision();
       this.activateReviewer();
       this.changed();
-    }, () => this.store.snapshot().chatgptModel, () => this.store.snapshot().chatgptReasoningEffort);
+    }, () => this.store.snapshot().chatgptModel, () => this.store.snapshot().chatgptReasoningEffort, async () => {
+      const credential = await readChatGPTExecutionCredential(userData);
+      return startCodex(codexCompletionLaunch(appPath, userData, credential));
+    });
   }
   assertIdle(): void { if (this.pending || ["starting", "logging-in"].includes(this.chatgpt.status().status)) throw new ProviderError("连接正在处理中，请等待或取消登录。"); }
   private async exclusive(action: () => Promise<void>): Promise<void> {
@@ -205,5 +260,5 @@ export class ModelConnections {
       if (logout) await this.chatgpt.logout();
     });
   }
-  async dispose(): Promise<void> { this.disposed = true; this.wantChatGPT = false; this.provider.clear(); this.visionProvider.clear(); this.reviewerProvider.clear(); await Promise.all([this.chatgpt.dispose(), this.activeRpc?.close()]); }
+  async dispose(): Promise<void> { this.disposed = true; this.wantChatGPT = false; this.provider.clear(); this.visionProvider.clear(); this.reviewerProvider.clear(); await this.chatgpt.dispose(); }
 }

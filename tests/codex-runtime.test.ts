@@ -3,8 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createServer } from "node:http";
-import { codexLaunch } from "../src/main/model-connections";
+import { codexCompletionLaunch, codexLaunch, readChatGPTExecutionCredential } from "../src/main/model-connections";
 import { CodexRpc } from "../src/main/codex-rpc";
+
+const TEST_CHATGPT_ID_TOKEN = "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF91c2VyX2lkIjoidXNlci0xMjMiLCJjaGF0Z3B0X3BsYW5fdHlwZSI6InBybyIsImNoYXRncHRfYWNjb3VudF9pZCI6ImZpeHR1cmUtYWNjb3VudCJ9fQ.c2ln";
 
 describe("bundled Codex runtime", () => {
   it("resolves platform binaries nested under the Codex package by electron-builder", async () => {
@@ -81,4 +83,121 @@ describe("bundled Codex runtime", () => {
       expect(response.config.web_search).toBe("disabled");
     } finally { await rpc.close(); await rm(directory, { recursive: true, force: true }); }
   }, 30_000);
+  it("sends one authenticated provider request when the first response is unauthorized", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-codex-auth-once-"));
+    await mkdir(path.join(directory, "codex"), { recursive: true });
+    await writeFile(path.join(directory, "codex", "auth.json"), JSON.stringify({
+      tokens: { id_token: TEST_CHATGPT_ID_TOKEN, access_token: "fixture-access-token", refresh_token: "fixture-refresh-token", account_id: "fixture-account" },
+      last_refresh: "2099-01-01T00:00:00Z",
+    }));
+    let requests = 0;
+    const server = createServer((req, res) => {
+      requests += 1;
+      expect(req.headers.authorization).toBe("Bearer fixture-access-token");
+      expect(req.headers["chatgpt-account-id"]).toBe("fixture-account");
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end('{"error":{"message":"fixture unauthorized"}}');
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as { port: number };
+    const launch = codexCompletionLaunch(process.cwd(), directory, { accessToken: "fixture-access-token", accountId: "fixture-account" });
+    launch.args.push("-c", `model_providers.jianji_openai_once.base_url="http://127.0.0.1:${address.port}/v1"`);
+    await mkdir(launch.cwd, { recursive: true });
+    const rpc = new CodexRpc(launch.command, launch.args, launch.env, launch.cwd);
+    try {
+      await rpc.initialize();
+      const thread = await rpc.request("thread/start", { model: "gpt-5.4", cwd: launch.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [], baseInstructions: "Reply with OK only." });
+      const completed = new Promise<any>((resolve) => rpc.on("notification", (method, params) => {
+        if (method === "turn/completed" && params?.threadId === thread.thread.id) resolve(params);
+      }));
+      await rpc.request("turn/start", { threadId: thread.thread.id, input: [{ type: "text", text: "Test" }], environments: [], sandboxPolicy: { type: "readOnly", networkAccess: false } });
+      const result = await Promise.race([completed, new Promise((_, reject) => setTimeout(() => reject(new Error("No failed turn result")), 10_000))]);
+      expect(result.turn.status).not.toBe("completed");
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(requests).toBe(1);
+    } finally {
+      await rpc.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+  it("does not retry when the provider socket closes before a response", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-codex-socket-once-"));
+    let requests = 0;
+    const server = createServer((req) => {
+      requests += 1;
+      req.socket.destroy();
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as { port: number };
+    const launch = codexCompletionLaunch(process.cwd(), directory, { accessToken: "fixture-access-token", accountId: "fixture-account" });
+    launch.args.push("-c", `model_providers.jianji_openai_once.base_url="http://127.0.0.1:${address.port}/v1"`);
+    await mkdir(launch.cwd, { recursive: true });
+    const rpc = new CodexRpc(launch.command, launch.args, launch.env, launch.cwd);
+    try {
+      await rpc.initialize();
+      const thread = await rpc.request("thread/start", { model: "gpt-5.4", cwd: launch.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [], baseInstructions: "Reply with OK only." });
+      const completed = new Promise<any>((resolve) => rpc.on("notification", (method, params) => {
+        if (method === "turn/completed" && params?.threadId === thread.thread.id) resolve(params);
+      }));
+      await rpc.request("turn/start", { threadId: thread.thread.id, input: [{ type: "text", text: "Test" }], environments: [], sandboxPolicy: { type: "readOnly", networkAccess: false } });
+      const result = await Promise.race([completed, new Promise((_, reject) => setTimeout(() => reject(new Error(`No failed turn result after ${requests} requests`)), 5_000))]);
+      expect(result.turn.status).not.toBe("completed");
+      expect(requests).toBe(1);
+    } finally {
+      await rpc.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+  it("does not reconnect after an established provider stream is interrupted", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-codex-stream-once-"));
+    let requests = 0;
+    const server = createServer((_req, res) => {
+      requests += 1;
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write('event: response.created\ndata: {"type":"response.created","response":{"id":"response-test"}}\n\n');
+      setImmediate(() => res.destroy());
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address() as { port: number };
+    const launch = codexCompletionLaunch(process.cwd(), directory, { accessToken: "fixture-access-token", accountId: "fixture-account" });
+    launch.args.push("-c", `model_providers.jianji_openai_once.base_url="http://127.0.0.1:${address.port}/v1"`);
+    await mkdir(launch.cwd, { recursive: true });
+    const rpc = new CodexRpc(launch.command, launch.args, launch.env, launch.cwd);
+    try {
+      await rpc.initialize();
+      const thread = await rpc.request("thread/start", { model: "gpt-5.4", cwd: launch.cwd, ephemeral: true, approvalPolicy: "never", sandbox: "read-only", environments: [], baseInstructions: "Reply with OK only." });
+      const completed = new Promise<any>((resolve) => rpc.on("notification", (method, params) => {
+        if (method === "turn/completed" && params?.threadId === thread.thread.id) resolve(params);
+      }));
+      await rpc.request("turn/start", { threadId: thread.thread.id, input: [{ type: "text", text: "Test" }], environments: [], sandboxPolicy: { type: "readOnly", networkAccess: false } });
+      const result = await Promise.race([completed, new Promise((_, reject) => setTimeout(() => reject(new Error(`No failed turn result after ${requests} requests`)), 5_000))]);
+      expect(result.turn.status).not.toBe("completed");
+      expect(requests).toBe(1);
+    } finally {
+      await rpc.close(); server.closeAllConnections(); await new Promise<void>((resolve) => server.close(() => resolve()));
+      await rm(directory, { recursive: true, force: true });
+    }
+  }, 30_000);
+  it("projects only the access token and account id from the application auth store", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-codex-credential-"));
+    try {
+      await mkdir(path.join(directory, "codex"), { recursive: true });
+      await writeFile(path.join(directory, "codex", "auth.json"), JSON.stringify({
+        auth_mode: "chatgpt",
+        tokens: { access_token: "fixture-access-token", account_id: "fixture-account", refresh_token: "must-not-escape", id_token: { email: "must-not-escape" } },
+        OPENAI_API_KEY: "must-not-escape",
+      }));
+      expect(await readChatGPTExecutionCredential(directory)).toEqual({ accessToken: "fixture-access-token", accountId: "fixture-account" });
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+  it("rejects an execution home that could re-enable managed auth recovery", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-codex-auth-isolation-"));
+    try {
+      await mkdir(path.join(directory, "codex"), { recursive: true });
+      await writeFile(path.join(directory, "codex", "auth.json"), JSON.stringify({ tokens: { access_token: "fixture-access-token", account_id: "fixture-account" } }));
+      await mkdir(path.join(directory, "codex-execution"), { recursive: true });
+      await writeFile(path.join(directory, "codex-execution", "auth.json"), "{}");
+      await expect(readChatGPTExecutionCredential(directory)).rejects.toThrow("登录凭据不可用");
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
 });
