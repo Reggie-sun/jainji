@@ -83,6 +83,7 @@ describe("rendered supervisor loop", () => {
     expect(input.render).toHaveBeenCalledTimes(2);
     expect(input.rebuild).toHaveBeenCalledOnce();
     expect(input.review.mock.calls[1][0].evidence.every((image: { previewUrl: string }) => image.previewUrl === "preview-1")).toBe(true);
+    expect(result.previewPath).toBe("preview-1");
     expect(result.template.version).toBe(2);
     expect(input.review.mock.calls[0][0]).toMatchObject({ durationMs: 5000, trackHorizonMs: 3000, remainingRevisions: 2 });
     expect(input.review.mock.calls[1][0].remainingRevisions).toBe(1);

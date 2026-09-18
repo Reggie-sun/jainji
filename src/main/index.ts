@@ -82,6 +82,7 @@ app.on("second-instance", () => {
 protocol.registerSchemesAsPrivileged([
   { scheme: "jianji-review", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
   { scheme: "jianji-media", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
+  { scheme: "jianji-agent-preview", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
 ]);
 
 function currentState(): QueueSnapshot { return queue.snapshot(); }
@@ -583,6 +584,14 @@ async function bootstrap(): Promise<void> {
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge);
+  protocol.handle("jianji-agent-preview", async (request) => {
+    try {
+      const url = new URL(request.url);
+      const itemId = url.pathname.slice(1);
+      const file = await agent.previewPath(uuidSchema.parse(url.hostname), uuidSchema.parse(itemId));
+      return await mediaResponse(file, request);
+    } catch { return new Response("Preview unavailable", { status: 404 }); }
+  });
   const reviewRoot = path.join(userData, "cover-review");
   coverReview = new CoverReviewController(service, agent, queue, {
     root: reviewRoot,

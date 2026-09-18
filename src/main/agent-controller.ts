@@ -31,6 +31,7 @@ import { SupervisorEvidence } from "./supervisor-evidence.js";
 import { superviseRenderedTemplate } from "./supervised-preview.js";
 import { CoverPlacementSession, completedCoverPlacements } from "./cover-placement-session.js";
 import { proposeCoverPlacement } from "./cover-placement-proposal.js";
+import { AgentPreviewStore } from "./agent-preview-store.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -41,11 +42,13 @@ export class AgentController {
   private testController?: AbortController;
   private briefController?: AbortController;
   private pendingOperation?: Promise<void>;
+  private readonly previews = new AgentPreviewStore();
   constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
   assertIdle(): void { if (this.busy) throw new Error("Agent 正在处理，请等待或先停止当前任务。"); }
+  async previewPath(runId: string, itemId: string): Promise<string> { return this.previews.resolve(this.snapshot(), runId, itemId); }
 
   async test(): Promise<void> {
     this.assertIdle(); this.testing = true; this.testController = new AbortController();
@@ -203,13 +206,17 @@ export class AgentController {
         review: async input => {
           const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-preview-"));
           const evidence = new SupervisorEvidence(this.ffmpeg, input.media);
-          try { return await superviseRenderedTemplate({ ...input, durationMs: input.media.durationMs,
+          let retained = false;
+          try {
+            const result = await superviseRenderedTemplate({ ...input, durationMs: input.media.durationMs,
             coverEnabled: Boolean(automaticCover), automaticCorners: decorations.mode === "agent",
             knowledge: { ...input.knowledge, outputSettingsDigest: createHash("sha256").update(JSON.stringify(preset)).digest("hex"), capture: (images, binding) => evidence.capture(images, binding) },
             render: (candidate, requestSignal) => this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal }),
             inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
             review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
-          }); } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
+            });
+            this.previews.retainDirectory(directory); retained = true; return result;
+          } finally { await evidence.dispose(); if (!retained) await rm(directory, { recursive: true, force: true }); }
         },
       }) : undefined;
       const placement = automaticCover && !assisted ? new CoverPlacementSession({
@@ -225,14 +232,19 @@ export class AgentController {
         review: async input => {
           const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-preview-"));
           const evidence = new SupervisorEvidence(this.ffmpeg, input.media);
-          try { return await superviseRenderedTemplate({ ...input, tracks: input.placement.tracks, trackPurpose: "cover-placement",
+          let retained = false;
+          try {
+            const result = await superviseRenderedTemplate({ ...input, tracks: input.placement.tracks, trackPurpose: "cover-placement",
             durationMs: input.media.durationMs, coverEnabled: true, automaticCorners: decorations.mode === "agent",
             render: (candidate, requestSignal, diagnostics) => this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal, diagnostics }),
             inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
             review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
-          }); } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
+            });
+            this.previews.retainDirectory(directory); retained = true; return result;
+          } finally { await evidence.dispose(); if (!retained) await rm(directory, { recursive: true, force: true }); }
         },
       }) : undefined;
+      await this.previews.clear();
       this.runner = new AgentRunner({
         knowledge,
         placement,
@@ -288,6 +300,8 @@ export class AgentController {
         stickerAssets,
         decorations,
         autoCatalog,
+        retainPreview: (runId, itemId, previewPath) => this.previews.register(runId, itemId, previewPath),
+        finalizePreviews: () => this.previews.prune(),
         onChange: this.onChange,
       });
       this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[], parsed.multiplier ?? 1);
@@ -303,5 +317,6 @@ export class AgentController {
       if (item.taskId) await this.queue.cancel(item.taskId);
     }
     await Promise.all([this.runner?.settled(), this.pendingOperation]);
+    await this.previews.clear();
   }
 }

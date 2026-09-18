@@ -9,6 +9,7 @@ import { DecorationSchema } from "../src/shared/decorations";
 import { executionLimits } from "../src/main/execution-limits";
 import { knowledgeFixture } from "./helpers/knowledge-session";
 import type { KnowledgeOutcome } from "../src/shared/source-sticker-knowledge-audit";
+import { PreviewReviewSession } from "../src/main/supervised-preview";
 
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
@@ -71,7 +72,7 @@ describe("supervisor production admission", () => {
     expect(enqueue).toHaveBeenCalledOnce();
     expect(runner.snapshot()?.items[0].error).toBeUndefined();
   });
-  it("finishes every preview before enqueueing any formal output and retains frozen text", async () => {
+  it("enqueues each distinct source as soon as its preview passes and retains frozen text", async () => {
     const events: string[] = [];
     const enqueue = vi.fn(async (template: EditTemplate) => { events.push("enqueue"); expect(template.layers.find(layer => layer.type === "text")?.content).toBe("手动展示"); return crypto.randomUUID(); });
     const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
@@ -84,21 +85,67 @@ describe("supervisor production admission", () => {
       }), onChange: () => {} });
     runner.start("project", "clean", "", [media("one"), media("two")]);
     await runner.settled();
-    expect(events).toEqual(["preview", "preview", "enqueue", "enqueue"]);
+    expect(events).toEqual(["preview", "enqueue", "preview", "enqueue"]);
     expect(runner.snapshot()?.items.every(item => item.status === "exporting")).toBe(true);
   });
-  it("does not enqueue a failed review and cancels previously prepared versions before submission", async () => {
+  it("keeps an earlier source submitted when a later source review fails or is cancelled", async () => {
     const enqueue = vi.fn(); let count = 0;
     const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
       knowledge: knowledgeFixture(undefined, async template => { if (++count === 2) { runner.cancel(); throw new Error("cancelled"); } return template; }), onChange: () => {} });
     runner.start("project", "clean", "", [media("one"), media("two")]);
     await runner.settled();
-    expect(enqueue).not.toHaveBeenCalled();
-    expect(runner.snapshot()?.items.every(item => item.status === "cancelled")).toBe(true);
+    expect(enqueue).toHaveBeenCalledOnce();
+    expect(runner.snapshot()?.items.map(item => item.status)).toEqual(["exporting", "cancelled"]);
+    enqueue.mockClear();
     const failing = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
       knowledge: knowledgeFixture(undefined, async () => { throw new ProviderError("主管未通过"); }), onChange: () => {} });
     failing.start("project", "clean", "", [media("one")]); await failing.settled();
     expect(enqueue).not.toHaveBeenCalled(); expect(failing.snapshot()?.items[0].error).toBe("主管未通过");
+  });
+  it("keeps same-source versions behind one reconciliation barrier before enqueueing them", async () => {
+    const events: string[] = [];
+    const knowledge = knowledgeFixture(undefined, async template => { events.push("preview"); return template; });
+    knowledge.reconcile = async versions => { events.push(`reconcile:${versions.length}`); };
+    knowledge.enqueue = async (version, signal, enqueue) => { signal.throwIfAborted(); events.push("admit"); return enqueue(version.template); };
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"),
+      enqueue: async () => { events.push("enqueue"); return crypto.randomUUID(); }, stickerAssets, knowledge, onChange: () => {} });
+    runner.start("project", "clean", "", [media("one")], 2);
+    await runner.settled();
+    expect(events).toEqual(["preview", "preview", "reconcile:2", "admit", "enqueue", "admit", "enqueue"]);
+  });
+  it("exposes only an opaque run-local URL for the accepted supervisor preview", async () => {
+    const retainPreview = vi.fn((runId: string, itemId: string, _previewPath: string) => `jianji-agent-preview://${runId}/${itemId}`);
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue: async () => crypto.randomUUID(),
+      stickerAssets, knowledge: knowledgeFixture(), retainPreview, onChange: () => {} });
+    runner.start("project", "clean", "", [media("one")]);
+    await runner.settled();
+    expect(retainPreview).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.stringMatching(/\/tmp\/.*-supervisor-preview\.mp4$/));
+    expect(runner.snapshot()?.items[0].previewUrl).toMatch(/^jianji-agent-preview:\/\/[0-9a-f-]+\/[0-9a-f-]+$/);
+    expect(JSON.stringify(runner.snapshot())).not.toContain("/tmp/");
+  });
+  it("exposes the final preview after same-source reconciliation and finalizes unused previews", async () => {
+    const initial = "/tmp/initial-supervisor-preview.mp4", reconciled = "/tmp/reconciled-supervisor-preview.mp4";
+    const knowledge = knowledgeFixture();
+    knowledge.review = async (_binding, template) => ({ template, previewPath: initial, reviewSession: new PreviewReviewSession() });
+    knowledge.reconcile = async versions => { for (const version of versions) version.previewPath = reconciled; };
+    const retainPreview = vi.fn((runId: string, itemId: string, _previewPath: string) => `jianji-agent-preview://${runId}/${itemId}`);
+    const finalizePreviews = vi.fn(async () => {});
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue: async () => crypto.randomUUID(),
+      stickerAssets, knowledge, retainPreview, finalizePreviews, onChange: () => {} });
+    runner.start("project", "clean", "", [media("one")], 2);
+    await runner.settled();
+    expect(retainPreview).toHaveBeenCalledTimes(2);
+    expect(retainPreview.mock.calls.every(([, , previewPath]) => previewPath === reconciled)).toBe(true);
+    expect(finalizePreviews).toHaveBeenCalledOnce();
+  });
+  it("finalizes unregistered previews after a naturally failed run", async () => {
+    const finalizePreviews = vi.fn(async () => {});
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue: async () => crypto.randomUUID(),
+      stickerAssets, knowledge: knowledgeFixture(undefined, async () => { throw new ProviderError("主管未通过"); }), finalizePreviews, onChange: () => {} });
+    runner.start("project", "clean", "", [media("one")]);
+    await runner.settled();
+    expect(runner.snapshot()?.items[0].status).toBe("failed");
+    expect(finalizePreviews).toHaveBeenCalledOnce();
   });
 });
 const automaticHeartStickers = () => [

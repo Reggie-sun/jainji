@@ -16,7 +16,7 @@ export function knowledgeFixture(detect: (media: MediaItem, signal: AbortSignal,
       return { media, horizonMs, key: media.id };
     },
     tracks: async binding => (await tracks.get(binding.media.id))!,
-    review: async (binding, template, rebuild) => ({ template: await review(template, binding.media, (await tracks.get(binding.media.id))!, rebuild), reviewSession: new PreviewReviewSession() }),
+    review: async (binding, template, rebuild) => ({ template: await review(template, binding.media, (await tracks.get(binding.media.id))!, rebuild), previewPath: `/tmp/${binding.media.id}-supervisor-preview.mp4`, reviewSession: new PreviewReviewSession() }),
     reconcile: async () => {},
     enqueue: async (version, signal, enqueue) => { signal.throwIfAborted(); return enqueue(version.template); },
     close: async () => { tracks.clear(); },

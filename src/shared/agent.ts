@@ -87,6 +87,7 @@ export interface AgentItem {
   summary?: string;
   error?: string;
   taskId?: string;
+  previewUrl?: string;
   sourceKnowledge?: SourceKnowledgeProgress;
   coverDiagnostics?: CoverDiagnosticState;
 }

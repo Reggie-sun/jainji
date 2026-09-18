@@ -151,6 +151,10 @@ it("rebuilds version A after B corrects shared source facts without another crea
     await vi.waitFor(() => { expect(controller.busy).toBe(false); expect(controller.snapshot()?.items.map(item => item.status)).toEqual(["exporting", "exporting"]); }, { timeout: 30_000 });
     expect(creative).toHaveBeenCalledTimes(2); expect(detection).toHaveBeenCalledOnce(); expect(render).toHaveBeenCalledTimes(4);
     expect(checks.map(input => [input.turn, input.revision])).toEqual([[1, 0], [1, 0], [2, 1], [2, 1]]);
+    const renderedPreviews = await Promise.all(render.mock.results.map(result => result.value));
+    const run = controller.snapshot()!;
+    const playablePreviews = await Promise.all(run.items.map(item => controller.previewPath(run.id, item.id)));
+    expect(playablePreviews).toEqual([renderedPreviews[3], renderedPreviews[2]]);
     const templates = queue.snapshot().batches.map(({ batch }) => batch.templateSnapshot);
     expect(new Set(templates.map(t => t.sourceStickerKnowledge!.revisionId)).size).toBe(1);
     expect(templates.every(t => t.productPrice === "原始手动文字" && t.layers.filter(l => l.type === "sticker").length === 3)).toBe(true);

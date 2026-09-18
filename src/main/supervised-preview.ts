@@ -54,6 +54,7 @@ export class PreviewReviewSession {
   leave(): void { this.busy = false; }
 }
 export interface SupervisedPreviewResult {
+  previewPath: string;
   template: EditTemplate;
   tracks: AutomaticCoverTrack[];
   checkedRanges: ReviewedRange[];
@@ -240,7 +241,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
       signal.throwIfAborted();
       for (const issue of state.issues) if (issue.status === "awaiting-review") { issue.status = "resolved"; issue.resolvedTurn = turn; }
       diagnostics?.record("validation", "ok", { action: "pass", reason: "accepted" });
-      return { template: structuredClone(template), tracks: structuredClone(tracks), checkedRanges, budget: { turns: state.turns, revisions: state.revisions, renders: state.renders },
+      return { previewPath: previewPath!, template: structuredClone(template), tracks: structuredClone(tracks), checkedRanges, budget: { turns: state.turns, revisions: state.revisions, renders: state.renders },
         history: structuredClone(history), issues: structuredClone(state.issues), knowledge: handoff, persistence, session };
     }
     if (decision.action === "stop") {

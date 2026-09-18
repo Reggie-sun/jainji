@@ -143,7 +143,11 @@ describe("automatic supervisor through real render and original queue", () => {
           expect(queue.snapshot().batches.every(({ batch }) => batch.tasks[0].status === "completed")).toBe(true); }, { timeout: 30_000 });
         expect(propose).toHaveBeenCalledTimes(2); expect(review).toHaveBeenCalledTimes(4);
       }
-      for (const [call] of render.mock.calls) await expect(access(call.cacheDirectory)).rejects.toThrow();
+      const retainedDirectory = render.mock.calls.at(-1)![0].cacheDirectory;
+      await expect(access(retainedDirectory)).resolves.toBeUndefined();
+      expect(controller.snapshot()?.items[0].previewUrl).toMatch(/^jianji-agent-preview:\/\//);
+      await controller.cancel();
+      for (const directory of new Set(render.mock.calls.map(([call]) => call.cacheDirectory))) await expect(access(directory)).rejects.toThrow();
     } finally { await controller.cancel(); await knowledge.close(); await queue.shutdown(); await rm(directory, { recursive: true, force: true }); }
   }, 60_000);
 

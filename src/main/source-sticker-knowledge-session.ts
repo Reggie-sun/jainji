@@ -23,6 +23,7 @@ export interface KnowledgePreviewInput {
 }
 export interface KnowledgeVersion {
   template: EditTemplate;
+  previewPath?: string;
   readonly reviewSession: PreviewReviewSession;
 }
 type Version = KnowledgeVersion & { binding: KnowledgeBinding; rebuild: KnowledgePreviewInput["rebuild"]; digest: string; headId: string | null; run: KnowledgeRun; checkedTemplate: string };
@@ -216,6 +217,7 @@ export class SourceStickerKnowledgeSession {
     state.candidate = retained.candidate; state.blobs = retained.blobs;
     state.blocked = false; state.unresolvedIssue = false; state.persistence = persistence;
     version.run = run; version.digest = handoff.proof.factsDigest; version.headId = state.head?.id ?? null;
+    version.previewPath = result.previewPath;
     version.template = { ...result.template, sourceStickerKnowledge: { sourceKey: version.binding.key, revisionId: persistence === "saved" ? state.head!.id : handoff.candidate.id,
       factsDigest: version.digest, reviewedRanges: structuredClone(handoff.candidate.facts.reviewedRanges), verification: "sampled", persistence } };
     version.checkedTemplate = templateDigest(version.template);

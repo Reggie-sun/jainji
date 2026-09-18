@@ -45,7 +45,7 @@ function harness(selectCoverSticker?: ConstructorParameters<typeof AgentRunner>[
   return { runner, entered, releases, events, peak: () => peak };
 }
 
-it("runs independent cover sources concurrently, serializes copies/versions, and keeps the preview barrier", async () => {
+it("runs independent cover sources concurrently, serializes copies/versions, and enqueues each completed source group", async () => {
   vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 1, analysis: 2, threads: 2 });
   const h = harness();
   h.runner.start("project", "clean", "", [media("a"), media("a"), media("b"), media("c")], 2);
@@ -55,7 +55,6 @@ it("runs independent cover sources concurrently, serializes copies/versions, and
     await vi.waitFor(() => expect(h.entered).toEqual(["a", "b", "b"]));
     h.releases[2]();
     await vi.waitFor(() => expect(h.entered).toEqual(["a", "b", "b", "c"]));
-    expect(h.events).not.toContain("enqueue");
     for (let index = 0; index < 8; index++) {
       await vi.waitFor(() => expect(h.releases.length).toBeGreaterThan(index));
       h.releases[index]();
@@ -63,7 +62,10 @@ it("runs independent cover sources concurrently, serializes copies/versions, and
     await h.runner.settled();
     expect(h.peak()).toBe(2);
     expect(h.runner.snapshot()?.items.map(item => ({ status: item.status, error: item.error }))).toEqual(Array(8).fill({ status: "exporting", error: undefined }));
-    expect(h.events).toEqual([...Array(8).fill("preview"), ...Array(8).fill("enqueue"), "close"]);
+    expect(h.events.filter(event => event === "preview")).toHaveLength(8);
+    expect(h.events.filter(event => event === "enqueue")).toHaveLength(8);
+    expect(h.events.indexOf("enqueue")).toBeLessThan(h.events.lastIndexOf("preview"));
+    expect(h.events.at(-1)).toBe("close");
   } finally {
     h.runner.cancel(); h.releases.forEach(release => release()); await h.runner.settled();
   }

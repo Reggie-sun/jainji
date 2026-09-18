@@ -12,7 +12,7 @@ interface Options {
   store: Pick<SourceStickerKnowledgeStore, "beginRun" | "endRun" | "readHead" | "admit">;
   propose(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void, diagnostics?: CoverDiagnostics): Promise<CoverPlacement>;
   review(input: { media: MediaItem; placement: CoverPlacement; template: EditTemplate; rebuild(revision: PreviewRevision): EditTemplate;
-    signal: AbortSignal; onStage(stage: string): void; diagnostics?: CoverDiagnostics }): Promise<{ template: EditTemplate; tracks: CoverPlacement["tracks"] }>;
+    signal: AbortSignal; onStage(stage: string): void; diagnostics?: CoverDiagnostics }): Promise<{ template: EditTemplate; tracks: CoverPlacement["tracks"]; previewPath?: string }>;
   cached: readonly CoverPlacement[];
   refreshMediaIds?: ReadonlySet<string>;
 }
@@ -26,6 +26,7 @@ export function completedCoverPlacements(history: readonly ExportBatch[]): Cover
 export class CoverPlacementSession {
   private readonly placements = new Map<string, CoverPlacement>();
   private readonly accepted = new Map<string, string>();
+  private readonly previews = new Map<string, string>();
   private readonly proposalFailures = new Map<string, unknown>();
   private readonly runs = new Map<string, { token: KnowledgeRun; revisionId: string | null }>();
   constructor(private readonly options: Options) {}
@@ -71,6 +72,7 @@ export class CoverPlacementSession {
       const reviewed = CoverPlacementSchema.parse({ ...placement, tracks: result.tracks });
       const accepted = EditTemplateSchema.parse({ ...result.template, coverPlacement: reviewed });
       this.accepted.set(accepted.id, templateDigest(accepted));
+      if (result.previewPath) this.previews.set(accepted.id, result.previewPath);
       this.placements.set(key, reviewed);
       return accepted;
     } catch (error) { this.placements.delete(key); throw error; }
@@ -78,6 +80,10 @@ export class CoverPlacementSession {
   async assertCurrent(media: MediaItem, template: EditTemplate, signal: AbortSignal): Promise<void> {
     if (!template.coverPlacement || this.accepted.get(template.id) !== templateDigest(template)) throw new ProviderError("覆盖方案未通过本轮样片检查或已变化。");
     if (sourceKey(await this.identify(media, signal)) !== sourceKey(template.coverPlacement.source)) throw new ProviderError("覆盖方案的源素材已变化。");
+  }
+  previewPath(template: EditTemplate): string | undefined {
+    if (this.accepted.get(template.id) !== templateDigest(template)) return undefined;
+    return this.previews.get(template.id);
   }
   async enqueue(media: MediaItem, template: EditTemplate, signal: AbortSignal, submit: () => Promise<string>): Promise<string> {
     await this.assertCurrent(media, template, signal);
@@ -87,6 +93,6 @@ export class CoverPlacementSession {
   }
   async close(): Promise<void> {
     try { await Promise.all([...this.runs.values()].map(run => this.options.store.endRun(run.token))); }
-    finally { this.runs.clear(); this.placements.clear(); this.accepted.clear(); this.proposalFailures.clear(); }
+    finally { this.runs.clear(); this.placements.clear(); this.accepted.clear(); this.previews.clear(); this.proposalFailures.clear(); }
   }
 }

@@ -30,7 +30,9 @@ interface RunnerDependencies {
   selectCoverSticker?(frames: string[], signal: AbortSignal, previousSelections: readonly string[]): Promise<FrozenCoverSticker>;
   detectCoverTracks?(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void): Promise<AutomaticCoverTrack[]>;
   knowledge?: Pick<SourceStickerKnowledgeSession, "acquire" | "tracks" | "review" | "reconcile" | "enqueue" | "close">;
-  placement?: Pick<CoverPlacementSession, "acquire" | "review" | "enqueue" | "close">;
+  placement?: Pick<CoverPlacementSession, "acquire" | "review" | "enqueue" | "close"> & Partial<Pick<CoverPlacementSession, "previewPath">>;
+  retainPreview?(runId: string, itemId: string, previewPath: string): string;
+  finalizePreviews?(): Promise<void>;
   recordOutcome?(outcome: KnowledgeOutcome): Promise<void>;
   creativeRequests?(): number;
   creativeModel?: string;
@@ -77,19 +79,19 @@ export class AgentRunner {
     const stickerUsage = new Map<string, number>();
     const priceStyleUsage = new Map<PriceStyleId, number>();
     const pendingFrames = new Map<string, Promise<string[]>>();
-    // Versions and byte-identical copies share mutable placement state. Only
-    // distinct sources may run concurrently; knowledge reconciliation stays unchanged.
+    // Versions and byte-identical copies share mutable supervisor state. Keep
+    // each source group together so it can reconcile before immediate enqueue.
     const grouped = new Map<string, number[]>();
     media.forEach((source, index) => {
-      const key = this.dependencies.placement ? source.fingerprint : String(index);
+      const key = this.dependencies.placement || this.dependencies.knowledge ? source.fingerprint : String(index);
       const group = grouped.get(key) ?? [];
       group.push(index); grouped.set(key, group);
     });
     const groupsToRun = [...grouped.values()];
     const pendingCoverStickers = new Map<number, Promise<FrozenCoverSticker>>();
     const selectedCoverIds: string[] = [];
-    const reviewed: Array<{ index: number; version: KnowledgeVersion; binding: KnowledgeBinding; source: MediaItem }> = [];
-    const placed: Array<{ index: number; template: EditTemplate; source: MediaItem }> = [];
+    const reviewed = new Map<number, { index: number; version: KnowledgeVersion; binding: KnowledgeBinding; source: MediaItem }>();
+    const placed = new Map<number, { index: number; template: EditTemplate; source: MediaItem }>();
     const coverForVersion = (version: number, frames: string[]): Promise<FrozenCoverSticker> => {
       let pending = pendingCoverStickers.get(version);
       if (!pending) {
@@ -184,7 +186,9 @@ export class AgentRunner {
               return { ...original, layers: [...original.layers.filter(layer => layer.type === "text"), ...rebuilt.layers.filter(layer => layer.type !== "text")] };
             };
             audit[index].stage = "preview";
-            if (placement) template = await this.dependencies.placement!.review(source, placement, template, rebuild, signal, onStage, diagnostics);
+            if (placement) {
+              template = await this.dependencies.placement!.review(source, placement, template, rebuild, signal, onStage, diagnostics);
+            }
             else {
               version = await knowledge!.review(binding!, template, rebuild, signal, onStage);
               template = version.template;
@@ -196,11 +200,11 @@ export class AgentRunner {
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
-          else if (version && binding) reviewed.push({ index, version, binding, source });
-          else if (placement) placed.push({ index, template, source });
+          else if (version && binding) reviewed.set(index, { index, version, binding, source });
+          else if (placement) placed.set(index, { index, template, source });
           else item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
-          if (version || placement) item.summary += " · 主管样片检查通过，等待本轮检查结束后导出";
+          if (version || placement) item.summary += " · 主管样片检查通过，正在提交导出";
           item.status = this.dependencies.prepared || version || placement ? "prepared" : "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
@@ -217,23 +221,15 @@ export class AgentRunner {
         }
         this.dependencies.onChange();
     };
-    const worker = async () => {
-      while (next < groupsToRun.length) {
-        const group = groupsToRun[next++];
-        for (const index of group) await processItem(index);
-      }
-    };
-    try {
-      const concurrency = this.dependencies.prepared || this.dependencies.knowledge ? 1
-        : Math.min(executionLimits().analysis, this.dependencies.placement ? 3 : Infinity, groupsToRun.length);
-      await Promise.all(Array.from({ length: concurrency }, () => worker()));
-      const groups = new Map<string, typeof reviewed>();
-      for (const entry of reviewed) groups.set(entry.binding.key, [...(groups.get(entry.binding.key) ?? []), entry]);
-      for (const group of groups.values()) {
-        for (const { index } of group) audit[index].stage = "reconcile";
-        try { await this.dependencies.knowledge!.reconcile(group.map(entry => entry.version), signal, stage => { for (const entry of group) run.items[entry.index].summary = stage; this.dependencies.onChange(); }); }
+    const finalizeGroup = async (indices: readonly number[]) => {
+      const reviewedEntries = indices.flatMap(index => reviewed.get(index) ? [reviewed.get(index)!] : []);
+      const knowledgeGroups = new Map<string, typeof reviewedEntries>();
+      for (const entry of reviewedEntries) knowledgeGroups.set(entry.binding.key, [...(knowledgeGroups.get(entry.binding.key) ?? []), entry]);
+      for (const entries of knowledgeGroups.values()) {
+        for (const { index } of entries) audit[index].stage = "reconcile";
+        try { await this.dependencies.knowledge!.reconcile(entries.map(entry => entry.version), signal, stage => { for (const entry of entries) run.items[entry.index].summary = stage; this.dependencies.onChange(); }); }
         catch (error) {
-          for (const { index } of group) {
+          for (const { index } of entries) {
             run.items[index].status = signal.aborted ? "cancelled" : "failed";
             audit[index].finished = Date.now();
             stopKnowledgeProgress(run.items[index], signal.aborted, "源知识修订或证据完整性未确认，受影响版本未导出。");
@@ -241,12 +237,31 @@ export class AgentRunner {
           }
         }
       }
-      for (const { index, template, source } of placed.sort((left, right) => left.index - right.index)) {
+      for (const { index, version, source } of reviewedEntries) {
+        const item = run.items[index];
+        if (signal.aborted) { item.status = "cancelled"; audit[index].finished = Date.now(); stopKnowledgeProgress(item, true, ""); continue; }
+        if (item.status === "failed") continue;
+        try {
+          audit[index].stage = "enqueue";
+          item.taskId = await this.dependencies.knowledge!.enqueue(version, signal, template => this.dependencies.enqueue(template, source, signal));
+          item.status = signal.aborted ? "cancelled" : "exporting";
+          if (!signal.aborted && version.previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, version.previewPath);
+          item.summary = `${item.summary?.split(" · 主管样片检查通过")[0]} · 主管样片检查通过，已提交导出`;
+        } catch (error) {
+          item.status = signal.aborted ? "cancelled" : "failed";
+          stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
+          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "主管样片检查通过，但正式导出提交失败。";
+        }
+        audit[index].finished = Date.now(); this.dependencies.onChange();
+      }
+      for (const { index, template, source } of indices.flatMap(index => placed.get(index) ? [placed.get(index)!] : [])) {
         const item = run.items[index];
         try {
           audit[index].stage = "enqueue";
           item.taskId = await this.dependencies.placement!.enqueue(source, template, signal, () => this.dependencies.enqueue(template, source, signal));
           item.status = signal.aborted ? "cancelled" : "exporting";
+          const previewPath = this.dependencies.placement!.previewPath?.(template);
+          if (!signal.aborted && previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, previewPath);
           item.summary = "近似覆盖样片检查通过，已提交导出；位置已冻结，下次仍需检查样片。";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
@@ -257,25 +272,18 @@ export class AgentRunner {
             { reason: item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "stage-failed" : "accepted" });
         audit[index].finished = Date.now(); this.dependencies.onChange();
       }
-      // The existing queue owns both previews and formal exports. Finish all previews
-      // before starting any formal job, so later versions cannot collide with exports.
-      for (const { index, version, source } of reviewed) {
-        const item = run.items[index];
-        if (signal.aborted) { item.status = "cancelled"; audit[index].finished = Date.now(); stopKnowledgeProgress(item, true, ""); continue; }
-        if (item.status === "failed") continue;
-        try {
-          audit[index].stage = "enqueue";
-          item.taskId = await this.dependencies.knowledge!.enqueue(version, signal, template => this.dependencies.enqueue(template, source, signal));
-          item.status = signal.aborted ? "cancelled" : "exporting";
-          item.summary = `${item.summary?.split(" · 主管样片检查通过")[0]} · 主管样片检查通过，已提交导出`;
-        } catch (error) {
-          item.status = signal.aborted ? "cancelled" : "failed";
-          stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
-          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "主管样片检查通过，但正式导出提交失败。";
-        }
-        audit[index].finished = Date.now();
-        this.dependencies.onChange();
+    };
+    const worker = async () => {
+      while (next < groupsToRun.length) {
+        const group = groupsToRun[next++];
+        for (const index of group) await processItem(index);
+        await finalizeGroup(group);
       }
+    };
+    try {
+      const concurrency = this.dependencies.prepared || this.dependencies.knowledge ? 1
+        : Math.min(executionLimits().analysis, this.dependencies.placement ? 3 : Infinity, groupsToRun.length);
+      await Promise.all(Array.from({ length: concurrency }, () => worker()));
     } finally {
       pendingFrames.clear();
       await this.dependencies.knowledge?.close();
@@ -305,6 +313,7 @@ export class AgentRunner {
       }
       run.status = signal.aborted ? "cancelled" : "finished";
       this.dependencies.onChange();
+      await this.dependencies.finalizePreviews?.();
     }
   }
 }
