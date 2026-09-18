@@ -5,6 +5,7 @@
 - Source visual truth: `/home/reggie/.codex/generated_images/01a0b376-0e07-7160-ad4b-26ed60008880/exec-23193c5e-2852-4904-862b-c016939725ac.png`
 - Rendered implementation: `/tmp/jianji-cover-final.5EBc2A/state.png`
 - Model drawer implementation: `/tmp/jianji-model-drawer.eHQX9b/state.png`
+- Final Making workspace: `/tmp/jianji-making-no-project.eIR4yk/state.png`
 - Final full-view comparison: `/tmp/jianji-design-qa.H2PzSt/full-comparison-pass2.png`
 - Focused header comparison: `/tmp/jianji-design-qa.H2PzSt/header-focus-pass2.png`
 - Focused model-drawer comparison: `/tmp/jianji-design-qa.H2PzSt/drawer-focus.png`
@@ -52,6 +53,12 @@
 ### Pass 2
 
 - No actionable P0/P1/P2 differences were found after accounting for the documented dynamic-state and canonical-flow constraints.
+
+### Pass 3
+
+- Finding: `[P1]` the Project rail action duplicated Making without providing a distinct user task.
+- Fix: removed the redundant Project rail action. Project save/import/rename/delete remain in the Making material workspace and the compact header project menu, preserving the canonical project functions without duplicate navigation.
+- Post-fix evidence: `/tmp/jianji-making-no-project.eIR4yk/state.png` shows the simplified rail and the restored project-management card inside Making.
 
 ## Follow-up Polish
 

@@ -1,7 +1,7 @@
 import { Icon } from "./ui";
 import { WORKFLOW_STEPS, activeWorkflowId, type Step, type WorkflowId } from "./workspace-flow";
 
-export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, disabled, onWorkflow, onNewProject, onProjectManager, onStickerLibrary, onResults, onModels, onFeedback }: {
+export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, disabled, onWorkflow, onNewProject, onStickerLibrary, onResults, onModels, onFeedback }: {
   step: Step;
   modelsOpen: boolean;
   connectionConfigured: boolean;
@@ -10,7 +10,6 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
   disabled: boolean;
   onWorkflow(id: WorkflowId): void;
   onNewProject(): void;
-  onProjectManager(): void;
   onStickerLibrary(): void;
   onResults(): void;
   onModels(): void;
@@ -24,7 +23,6 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
     <button className="rail-new" type="button" disabled={disabled} onClick={onNewProject}><span>＋</span><span>新建</span></button>
     <nav aria-label="工作区">
       <button className={step === "import" || step === "templates" ? "active" : ""} type="button" onClick={() => onWorkflow("materials")}><Icon name="play" /><span>制作</span></button>
-      <button type="button" onClick={onProjectManager}><Icon name="folder" /><span>项目</span></button>
       <button className={step === "stickers" ? "active" : ""} type="button" onClick={onStickerLibrary}><Icon name="upload" /><span>贴纸库</span></button>
       <button className={step === "results" ? "active" : ""} type="button" onClick={onResults}><Icon name="film" /><span>作品</span></button>
     </nav>
