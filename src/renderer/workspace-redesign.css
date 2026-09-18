@@ -92,8 +92,6 @@ body { background: var(--workspace-canvas); color: var(--workspace-ink); }
 .section-heading .eyebrow { color: #4d8a79; letter-spacing: 1.2px; }
 .section-heading h1 { color: #18302a; font-size: 26px; }
 .section-heading>p { color: #71817c; font-size: 13px; }
-.timing-workspace { min-height: calc(100vh - 300px); }
-.timing-workspace #display-time-settings { max-width: 760px; }
 .card { border-color: var(--workspace-border); box-shadow: 0 2px 10px #143b2e08; }
 .button.primary { background: var(--workspace-green); }
 .button.primary:hover:not(:disabled) { background: #056651; }
