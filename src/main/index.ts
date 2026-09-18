@@ -20,6 +20,7 @@ import { AgentStartSchema, FrozenAgentStartSchema } from "../shared/agent.js";
 import { SelectModelSchema } from "../shared/connections.js";
 import { AgentController } from "./agent-controller.js";
 import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
+import { openSourceStickerKnowledge, type KnowledgeRecoveryFailure } from "./source-sticker-knowledge-startup.js";
 import { installDevelopmentQuit } from "./development-lifecycle.js";
 import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
@@ -508,13 +509,42 @@ async function createWindow(): Promise<void> {
 }
 
 let sourceKnowledge: SourceStickerKnowledgeStore | undefined;
+function recoveryFailureDetail(reason: KnowledgeRecoveryFailure): string {
+  if (reason === "future_schema") return "检测到更高版本的知识库格式。请使用相同或更新版本打开；旧知识库保持不变。";
+  if (reason === "integrity") return "知识库格式或目录结构无法安全读取，旧知识库保持不变。";
+  if (reason === "locked") return "恢复时知识库所有权发生变化。请关闭其他简辑实例后重试。";
+  return "旧知识库保持不变。请检查磁盘空间和目录权限后重试。";
+}
 async function bootstrap(): Promise<void> {
   await app.whenReady();
   const userData = app.getPath("userData");
   await mkdir(userData, { recursive: true });
   // Failure disables only new automatic analysis, never frozen jobs or manual editing.
-  try { sourceKnowledge = await SourceStickerKnowledgeStore.open(userData); }
-  catch { sourceKnowledge = undefined; }
+  sourceKnowledge = await openSourceStickerKnowledge(userData, {
+    confirmRecovery: async () => {
+      try {
+        const choice = await dialog.showMessageBox({
+          type: "warning",
+          title: "源贴纸知识库需要恢复",
+          message: "上次退出没有完整释放源贴纸知识库。",
+          detail: "安全重建会保留最近一份旧知识库作为恢复副本，并新建空知识库；不会复用状态不确定的事实。已有导出、项目和手动模式不受影响，新自动制作会重新识别源贴纸。",
+          buttons: ["安全重建", "暂不恢复"],
+          defaultId: 0,
+          cancelId: 1,
+        });
+        return choice.response === 0;
+      } catch { return false; }
+    },
+    reportRecoveryFailure: async (reason) => {
+      await dialog.showMessageBox({
+        type: "error",
+        title: "源贴纸知识库恢复失败",
+        message: "未能安全重建源贴纸知识库，自动制作仍保持停止。",
+        detail: recoveryFailureDetail(reason),
+        buttons: ["知道了"],
+      });
+    },
+  });
   recentProjects = new RecentProjects(path.join(userData, "recent-projects.json"));
   await recentProjects.initialize([process.cwd(), app.getPath("documents")]);
   protocol.handle("jianji-media", async (request) => {

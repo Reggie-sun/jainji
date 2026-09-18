@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile, readdir, rm, copyFile, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, readdir, rm, copyFile, mkdir, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -115,6 +115,71 @@ describe("durable source sticker knowledge", () => {
   it("rejects another userData writer, including after an abandoned owner lock", async () => {
     const { directory } = await fixture();
     await expect(SourceStickerKnowledgeStore.open(directory)).rejects.toMatchObject({ code: "locked" });
+  });
+
+  it("explicitly quarantines an abandoned store before opening a fresh knowledge owner", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-source-knowledge-recovery-"));
+    let recovered: SourceStickerKnowledgeStore | undefined;
+    try {
+      const file = path.join(directory, "source.mp4");
+      await writeFile(file, "original deterministic source bytes");
+      const source = await identifySource(file, interpretation);
+      const original = await SourceStickerKnowledgeStore.open(directory);
+      await publish(original, await prepare(original, source));
+      await original.close();
+      await writeFile(path.join(original.directory, "recovery-sentinel"), "preserved old knowledge");
+      await mkdir(path.join(original.directory, "owner.lock"));
+
+      recovered = await SourceStickerKnowledgeStore.recoverAbandoned(directory);
+      const entries = await readdir(directory);
+      const quarantine = entries.find(name => name === "source-sticker-knowledge.recovery");
+      expect(quarantine).toBe("source-sticker-knowledge.recovery");
+      expect(await readFile(path.join(directory, quarantine!, "recovery-sentinel"), "utf8")).toBe("preserved old knowledge");
+      await expect(readFile(path.join(recovered.directory, "recovery-sentinel"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await recovered.lookup(source, ranges)).toMatchObject({ status: "miss", reason: "absent" });
+      await expect(SourceStickerKnowledgeStore.open(directory)).rejects.toMatchObject({ code: "locked" });
+    } finally { await recovered?.close(); await rm(directory, { recursive: true, force: true }); }
+  });
+
+  it("refuses recovery when no abandoned owner barrier exists", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-source-knowledge-recovery-"));
+    try {
+      const original = await SourceStickerKnowledgeStore.open(directory); await original.close();
+      await expect(SourceStickerKnowledgeStore.recoverAbandoned(directory)).rejects.toMatchObject({ code: "locked" });
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
+  it.each([
+    ["future", '{"schemaVersion":999}', "future_schema"],
+    ["unreadable", "not-json", "integrity"],
+  ])("preserves a %s-format locked store instead of rebuilding over it", async (_case, format, code) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-source-knowledge-recovery-"));
+    try {
+      const original = await SourceStickerKnowledgeStore.open(directory); await original.close();
+      await writeFile(path.join(original.directory, "format.json"), format);
+      await mkdir(path.join(original.directory, "owner.lock"));
+      await expect(SourceStickerKnowledgeStore.recoverAbandoned(directory)).rejects.toMatchObject({ code });
+      expect(await readFile(path.join(original.directory, "format.json"), "utf8")).toBe(format);
+      expect((await readdir(directory)).filter(name => name.startsWith("source-sticker-knowledge.recovery"))).toEqual([]);
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
+  it("keeps only the latest explicit recovery copy", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-source-knowledge-recovery-"));
+    let recovered: SourceStickerKnowledgeStore | undefined;
+    try {
+      const original = await SourceStickerKnowledgeStore.open(directory); await original.close();
+      await writeFile(path.join(original.directory, "recovery-sentinel"), "first");
+      await mkdir(path.join(original.directory, "owner.lock"));
+      recovered = await SourceStickerKnowledgeStore.recoverAbandoned(directory); await recovered.close();
+      await writeFile(path.join(recovered.directory, "recovery-sentinel"), "second");
+      await mkdir(path.join(recovered.directory, "owner.lock"));
+
+      recovered = await SourceStickerKnowledgeStore.recoverAbandoned(directory);
+      const recoveries = (await readdir(directory)).filter(name => name.startsWith("source-sticker-knowledge.recovery"));
+      expect(recoveries).toEqual(["source-sticker-knowledge.recovery"]);
+      expect(await readFile(path.join(directory, recoveries[0], "recovery-sentinel"), "utf8")).toBe("second");
+    } finally { await recovered?.close(); await rm(directory, { recursive: true, force: true }); }
   });
 
   it("cancelled runs and late responses cannot publish", async () => {

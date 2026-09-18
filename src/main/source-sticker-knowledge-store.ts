@@ -78,6 +78,13 @@ function parseJson(bytes: Buffer): unknown {
   if (value?.schemaVersion > 1) throw new KnowledgeStoreError("future_schema");
   return value;
 }
+async function verifyFormat(file: string): Promise<void> {
+  try { z.object({ schemaVersion: z.literal(1) }).strict().parse(parseJson(await readSafe(file))); }
+  catch (error) {
+    if (error instanceof KnowledgeStoreError) throw error;
+    throw new KnowledgeStoreError("integrity", "Unreadable knowledge format");
+  }
+}
 async function writeDurable(file: string, bytes: Buffer | string): Promise<void> {
   const handle = await open(file, "wx", 0o600);
   try { await handle.writeFile(bytes); await handle.sync(); } finally { await handle.close(); }
@@ -146,7 +153,7 @@ export class SourceStickerKnowledgeStore {
     try {
       await syncDirectory(directory); await syncDirectory(path.dirname(directory));
       const format = path.join(directory, "format.json");
-      if (await exists(format)) z.object({ schemaVersion: z.literal(1) }).strict().parse(parseJson(await readSafe(format)));
+      if (await exists(format)) await verifyFormat(format);
       else {
         if ((await readdir(directory)).some((name) => name !== "owner.lock")) throw new KnowledgeStoreError("integrity", "Missing store format");
         await writeDurable(format, canonical({ schemaVersion: 1 }));
@@ -159,6 +166,27 @@ export class SourceStickerKnowledgeStore {
       if (e instanceof KnowledgeStoreError && e.code === "future_schema") { await rm(lock, { recursive: true }); await syncDirectory(directory); }
       throw e;
     }
+  }
+
+  /** The caller must already own the application-wide single-instance lock and obtain
+   * explicit user confirmation. Preserve the uncertain store instead of reusing or
+   * deleting facts whose last owner did not close cleanly. */
+  static async recoverAbandoned(userData: string, options: StoreOptions = {}): Promise<SourceStickerKnowledgeStore> {
+    await mkdir(userData, { recursive: true });
+    const root = await realpath(userData);
+    const directory = path.join(root, "source-sticker-knowledge");
+    await directorySafe(directory);
+    const lock = path.join(directory, "owner.lock");
+    if (!(await exists(lock))) throw new KnowledgeStoreError("locked", "No abandoned knowledge owner barrier");
+    await directorySafe(lock);
+    const format = path.join(directory, "format.json");
+    if (!(await exists(format))) throw new KnowledgeStoreError("integrity", "Missing knowledge format");
+    await verifyFormat(format);
+    const quarantine = path.join(root, "source-sticker-knowledge.recovery");
+    if (await exists(quarantine)) { await directorySafe(quarantine); await rm(quarantine, { recursive: true }); await syncDirectory(root); }
+    await rename(directory, quarantine);
+    await syncDirectory(root);
+    return SourceStickerKnowledgeStore.open(root, options);
   }
 
   private exclusive<T>(operation: () => Promise<T>, acceptedDispute = false): Promise<T> {
