@@ -10,6 +10,7 @@ import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
 import { CoverReviewDraftSchema } from "../shared/cover-review.js";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
 import { SourceFactsSchema } from "../shared/source-sticker-knowledge.js";
+import { CoverPlacementSchema } from "../shared/cover-placement.js";
 import { JianjiError } from "./errors.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
@@ -159,6 +160,8 @@ export const EditTemplateSchema = z.object({
   decorationDisplayMode: DecorationDisplayModeSchema.optional(),
   // Absent on historical exports: their stickers retain the legacy shared timing.
   stickerDisplayMode: z.literal("full").optional(),
+  // Approximate placement accepted by a rendered preview; not reusable source occupancy facts.
+  coverPlacement: CoverPlacementSchema.optional(),
   sourceStickerKnowledge: z.object({
     sourceKey: z.string().regex(/^[a-f0-9]{64}$/), revisionId: z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/),
     factsDigest: z.string().regex(/^[a-f0-9]{64}$/), verification: z.literal("sampled"), persistence: z.enum(["saved", "not-saved"]),
@@ -168,6 +171,7 @@ export const EditTemplateSchema = z.object({
   createdAt: DateTime,
   updatedAt: DateTime,
 }).strict().superRefine((template, ctx) => {
+  if (template.coverPlacement && template.sourceStickerKnowledge) ctx.addIssue({ code: "custom", message: "Cover placement cannot be represented as source knowledge" });
   const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
   const ids = new Set<string>();
   let coverCount = 0;

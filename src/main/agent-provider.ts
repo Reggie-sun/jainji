@@ -15,6 +15,8 @@ import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { CoverStickerIdSchema } from "../shared/cover-sticker.js";
 import { detectCoverTrack } from "./cover-track-provider.js";
 import { superviseRecognition, supervisePreview } from "./supervisor-provider.js";
+import { coverPlacementMessages } from "./cover-placement-provider.js";
+import type { ReviewCoverPlacementInput } from "./cover-placement-proposal.js";
 import type { RecognitionReviewInput, PreviewReviewInput } from "./supervisor-protocol.js";
 import type { CoverDetectionImage, DetectedCoverFrame } from "../shared/automatic-cover.js";
 import { runIndependentCoverReview, type IndependentReviewInput, type IndependentAttempt } from "./cover-review-provider.js";
@@ -397,6 +399,10 @@ export class AgentProvider {
 
   async superviseRecognition(input: RecognitionReviewInput, signal: AbortSignal): Promise<string> {
     return superviseRecognition((messages, requestSignal) => this.complete(messages, requestSignal, AUTOMATIC_COVER_COMPLETION_OPTIONS), input, signal);
+  }
+
+  async proposeCoverPlacement(input: ReviewCoverPlacementInput, signal: AbortSignal): Promise<string> {
+    return this.complete(coverPlacementMessages(input), signal, AUTOMATIC_COVER_COMPLETION_OPTIONS);
   }
 
   async supervisePreview(input: PreviewReviewInput, signal: AbortSignal): Promise<string> {

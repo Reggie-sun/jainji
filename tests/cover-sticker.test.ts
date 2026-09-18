@@ -16,6 +16,7 @@ import type { AssetLibrary } from "../src/main/asset-library";
 import * as agentFrames from "../src/main/agent-frames";
 import * as stickerPreviews from "../src/main/sticker-preview";
 import { controllerKnowledge } from "./helpers/controller-knowledge";
+import { CoverPlacementSession } from "../src/main/cover-placement-session";
 
 const a = `uploaded-${"a".repeat(64)}`, b = `uploaded-${"b".repeat(64)}`;
 const options = { enabled: true, stickerIds: [a, b], rectangle: { x: 0.3, y: 0.4, width: 0.3, height: 0.2 } };
@@ -77,6 +78,11 @@ describe("reusable batch cover", () => {
     } as unknown as ExportQueue;
     const libraryId = AUTOMATIC_STICKERS.find(({ id }) => id.startsWith("fluent-"))!.id;
     const knowledge = controllerKnowledge(() => [{ targetId: "detected", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: service.currentProject.coverSticker?.enabled ? options.rectangle : { x: 0, y: 0, width: 0.1, height: 0.1 } }] } }]);
+    const placementAcquire = vi.spyOn(CoverPlacementSession.prototype, "acquire").mockResolvedValue({ schemaVersion: 1,
+      source: { fingerprint: `sha256:${"a".repeat(64)}`, byteLength: 1, width: 640, height: 480, rotation: 0, durationMs: 1000, timeBase: "1/1000", timeOriginPts: 0, interpretationVersion: 1 },
+      tracks: [{ targetId: "placed", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: options.rectangle }] } }] });
+    const placementReview = vi.spyOn(CoverPlacementSession.prototype, "review").mockImplementation(async (_media, _placement, template) => structuredClone(template));
+    const placementAdmit = vi.spyOn(CoverPlacementSession.prototype, "enqueue").mockImplementation(async (_media, _template, signal, submit) => { signal.throwIfAborted(); return submit(); });
     const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, { ensure: async () => builtin, prepare: async () => assets, resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary, undefined, undefined, undefined, knowledge.store);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
@@ -109,12 +115,11 @@ describe("reusable batch cover", () => {
       service.setCoverSticker({ ...options, stickerIds: [`uploaded-${"c".repeat(64)}`] });
       await expect(controller.start(input, new Set([directory]))).rejects.toThrow("覆盖贴纸已删除");
       expect(plan).toHaveBeenCalledTimes(4);
-      expect(knowledge.acquire).toHaveBeenCalledTimes(4);
-      expect(knowledge.tracks).toHaveBeenCalledTimes(4);
-      expect(knowledge.review).toHaveBeenCalledTimes(4);
-      expect(knowledge.reconcile).toHaveBeenCalledTimes(2);
-      expect(knowledge.enqueue).toHaveBeenCalledTimes(4);
-      expect(knowledge.close).toHaveBeenCalledTimes(2);
+      expect(placementAcquire).toHaveBeenCalledTimes(4);
+      expect(placementReview).toHaveBeenCalledTimes(4);
+      expect(placementAdmit).toHaveBeenCalledTimes(4);
+      expect(knowledge.acquire).not.toHaveBeenCalled();
+      expect(knowledge.review).not.toHaveBeenCalled();
       expect(visionDetect).not.toHaveBeenCalled();
       expect(recognitionReview).not.toHaveBeenCalled();
       expect(history.every((batch) => batch.templateSnapshot.layers.some((layer) => layer.type === "sticker" && layer.cover?.automatic))).toBe(true);
@@ -124,8 +129,8 @@ describe("reusable batch cover", () => {
         await vi.waitFor(() => expect(controller.busy).toBe(false));
       }
       expect(plan).toHaveBeenCalledTimes(8);
-      const knowledgeVersions = mode === "agent" ? 8 : 4;
-      const knowledgeRuns = mode === "agent" ? 4 : 2;
+      const knowledgeVersions = mode === "agent" ? 4 : 0;
+      const knowledgeRuns = mode === "agent" ? 2 : 0;
       expect(knowledge.acquire).toHaveBeenCalledTimes(knowledgeVersions);
       expect(knowledge.tracks).toHaveBeenCalledTimes(knowledgeVersions);
       expect(knowledge.review).toHaveBeenCalledTimes(knowledgeVersions);
@@ -144,7 +149,7 @@ describe("reusable batch cover", () => {
       }
       expect(history.slice(4)).toHaveLength(4);
       expect(history.slice(4).every((batch) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
-    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); recognitionReview.mockRestore(); visionDetect.mockRestore(); knowledge.restore(); await rm(directory, { recursive: true, force: true }); }
+    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); recognitionReview.mockRestore(); visionDetect.mockRestore(); knowledge.restore(); placementAcquire.mockRestore(); placementReview.mockRestore(); placementAdmit.mockRestore(); await rm(directory, { recursive: true, force: true }); }
   });
   it("rejects enabled coverage with missing assets before requesting a model", async () => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");

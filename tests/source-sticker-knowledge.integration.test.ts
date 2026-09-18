@@ -62,7 +62,6 @@ it.each([false, true])("reuses or explicitly refreshes same-byte copies across p
     for (const warm of [false, true]) {
       const service = new ApplicationService(ffmpeg, { resolve: resolveFont }); await service.addMedia(warm ? [copy, file] : [file]);
       projects.push(service.currentProject.id); mediaIds.push(service.currentProject.mediaItems[0].id);
-      if (warm) service.currentProject.coverSticker = { enabled: true, trackingMode: "agent", stickerIds: [], rectangle: { x: 0, y: 0, width: 0.1, height: 0.1 } };
       const jobs = new JobStore(path.join(root, warm ? "warm-jobs" : "cold-jobs"));
       const queue = new ExportQueue({ ffmpeg, jobStore: jobs, fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } }); queues.push(queue);
       const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, store); controllers.push(controller);
@@ -91,13 +90,13 @@ it.each([false, true])("reuses or explicitly refreshes same-byte copies across p
       const outcomes = await store.listOutcomes(service.currentProject.id);
       expect(outcomes).toHaveLength(warm ? 2 : 1);
       expect(outcomes[0]).toMatchObject({ result: "queued", lookup: warm ? refresh ? "refresh" : "hit" : "absent", stage: "enqueue", quality: "not-evaluated",
-        requests: { executor: !warm || refresh ? 1 : 0, recognitionSupervisor: !warm || refresh ? 1 : 0, previewSupervisor: 1, creative: warm ? 4 : 2 }, modelVerdict: "passed" });
+        requests: { executor: !warm || refresh ? 1 : 0, recognitionSupervisor: !warm || refresh ? 1 : 0, previewSupervisor: 1, creative: 2 }, modelVerdict: "passed" });
       expect(outcomes[0].revisionId).toBe(batch.templateSnapshot.sourceStickerKnowledge!.revisionId);
       expect(outcomes[0].previewEvidenceDigests?.length).toBeGreaterThan(0);
       expect(await store.listOutcomes()).toHaveLength(warm ? 3 : 1);
       revisions.push(batch.templateSnapshot.sourceStickerKnowledge!.revisionId);
       expect(batch.templateSnapshot.productPrice).toBe(input.decorations.productPrice);
-      expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && layer.cover)).toHaveLength(warm ? 1 : 0);
+      expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && layer.cover)).toHaveLength(0);
       expect(batch.templateSnapshot.layers.filter(layer => layer.type === "sticker" && !layer.cover)).toHaveLength(3);
       if (warm) {
         expect(counts).toEqual({ detection: refresh ? 2 : 1, recognition: refresh ? 2 : 1, creative: 3, preview: 3 });

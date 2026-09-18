@@ -48,6 +48,7 @@ export interface RecognitionReviewInput {
   turn: number;
 }
 export interface PreviewReviewInput {
+  trackPurpose?: "cover-placement";
   durationMs: number;
   trackHorizonMs: number;
   displayMode: "full" | "first-3s" | "first-5s";

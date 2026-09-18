@@ -28,7 +28,7 @@ try {
           window.resetFixture=()=>{setValue(undefined);setProjectId('other');};
           return React.createElement(React.Fragment,null,
             React.createElement(CornerDecorationPicker,{value:options,onChange:setOptions,onSelect:()=>{},disabled}),
-            React.createElement(CoverStickerPanel,{projectId,value,selectedMedia:[],revision,disabled,onSave:async v=>{window.saves.push(structuredClone(v));setValue(v);},onDirtyChange:setDirty}));}
+            React.createElement(CoverStickerPanel,{projectId,value,selectedMedia:[{id:'fixture-media',displayName:'fixture.mp4',width:640,height:480,durationMs:1000,previewUrl:''}],revision,disabled,onSave:async v=>{window.saves.push(structuredClone(v));setValue(v);},onDirtyChange:setDirty}));}
         createRoot(document.getElementById('root')).render(React.createElement(Fixture));
       </script></body></html>`));
     });
@@ -70,6 +70,7 @@ try {
   assert.equal(await evaluate(`document.querySelector('${toggle}').checked`), false, "mode switching cannot enable coverage");
   await click(toggle);
   await waitFor("window.fixture.dirty && document.querySelector('.cover-tracking-tabs')");
+  await clickText("手动设置");
   await clickText("保存覆盖设置");
   assert.equal(await evaluate("window.saves.length"), 1, "enabled without a candidate cannot save");
   await evaluate("window.addFixtureSticker()");
@@ -82,7 +83,9 @@ try {
   await clickText("自己设置"); await clickText("全部交给 Agent");
   assert.equal(await evaluate("document.querySelector('.cover-tracking-tabs button:nth-child(2)').getAttribute('aria-pressed')"), "true");
   assert.equal(await evaluate("window.fixture.dirty"), false, "decoration modes do not rewrite cover draft");
-  await clickText("Agent 自动识别全部原贴纸");
+  await clickText("Agent 看图自动覆盖");
+  assert.ok(await evaluate("document.querySelector('.cover-agent-mode').innerText.includes('最多 12 张全片联系帧')"));
+  assert.equal(await evaluate("document.querySelector('.cover-agent-mode').innerText.includes('每秒检测 4 帧')"), false);
   await clickText("保存覆盖设置");
   await waitFor("window.saves.length===3 && !window.fixture.dirty");
   assert.equal(await evaluate("window.fixture.value.trackingMode"), "agent");

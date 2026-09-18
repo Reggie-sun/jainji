@@ -29,6 +29,8 @@ import type { EditTemplate } from "./domain.js";
 import { assertReviewResolved } from "./cover-review-session.js";
 import { SupervisorEvidence } from "./supervisor-evidence.js";
 import { superviseRenderedTemplate } from "./supervised-preview.js";
+import { CoverPlacementSession, completedCoverPlacements } from "./cover-placement-session.js";
+import { proposeCoverPlacement } from "./cover-placement-proposal.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -188,7 +190,7 @@ export class AgentController {
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
       const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
       let creativeRequests = 0;
-      const knowledge = supervised ? new SourceStickerKnowledgeSession({
+      const knowledge = preserveSourceStickers && !assisted ? new SourceStickerKnowledgeSession({
         refreshMediaIds,
         store: this.knowledgeStore!, executor: this.visionProvider.status().model.slice(0, 160), supervisor: this.reviewerProvider.status().model.slice(0, 160),
         identify: async (item, signal) => {
@@ -210,8 +212,30 @@ export class AgentController {
           }); } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
         },
       }) : undefined;
+      const placement = automaticCover && !assisted ? new CoverPlacementSession({
+        refreshMediaIds,
+        store: this.knowledgeStore!,
+        cached: completedCoverPlacements(history),
+        identify: async (item, signal) => {
+          const evidence = new SupervisorEvidence(this.ffmpeg, item);
+          try { return await evidence.sourceIdentity(signal); } finally { await evidence.dispose(); }
+        },
+        propose: (item, signal, onStage) => proposeCoverPlacement(this.ffmpeg, item, signal,
+          (context, requestSignal) => this.visionProvider.proposeCoverPlacement(context, requestSignal), onStage),
+        review: async input => {
+          const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-preview-"));
+          const evidence = new SupervisorEvidence(this.ffmpeg, input.media);
+          try { return await superviseRenderedTemplate({ ...input, tracks: input.placement.tracks, trackPurpose: "cover-placement",
+            durationMs: input.media.durationMs, coverEnabled: true, automaticCorners: decorations.mode === "agent",
+            render: (candidate, requestSignal) => this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal }),
+            inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
+            review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
+          }); } finally { await evidence.dispose(); await rm(directory, { recursive: true, force: true }); }
+        },
+      }) : undefined;
       this.runner = new AgentRunner({
         knowledge,
+        placement,
         recordOutcome: knowledge ? outcome => this.knowledgeStore!.recordOutcome(outcome) : undefined,
         creativeRequests: () => creativeRequests,
         creativeModel: this.provider.status().model.slice(0, 160),

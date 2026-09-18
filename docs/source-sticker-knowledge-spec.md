@@ -14,6 +14,10 @@ baseline: ef74adf
 
 对应实施顺序、代码归属与验证入口见 [Implementation Plan](source-sticker-knowledge-plan.md)。
 
+## Automatic Cover Boundary Update
+
+后续用户选择将自动覆盖替换为“看全片联系帧、近似定框、按真实样片验收”。该路径的 `CoverPlacement` 是渲染方案，冻结在原导出模板，不发布为本规格的 `SourceFacts`，不自动导入历史人工坐标。关闭覆盖的自动补角继续遵守本规格的源事实、证据和争议合同；开启覆盖也不能绕过已有源知识争议或完整性阻断。近似方案的当前实现归属见 [cover-placement-session.ts](../src/main/cover-placement-session.ts)；预算与用户操作见 [README](../README.md)。下文是原源知识规格和历史基线，不代表近似覆盖路径的产品验收已完成。
+
 # Evidence And Current Behavior
 
 参考 session `01a0aae9-7228-76d2-801a-b2c5dc631b28` 的实际操作：自动识别失败后，在用户授权代看并接受误差的前提下，Codex 查看多帧联系表，按素材设置覆盖范围、排除商品与普通字幕，再交给创作模型设计并抽查成片。氨糖膏的 16 条素材保存了 39 个覆盖区域；后续批次复用这些区域。马油使用看图后的四角覆盖，蝴蝶贴复用用户原先确认的范围。该过程证明了“看图决定、保存、复用”的价值，不能作为无人干预自动识别通过率。

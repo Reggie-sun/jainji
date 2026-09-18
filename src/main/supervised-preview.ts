@@ -9,6 +9,7 @@ import { coversRanges, type ReviewedRange } from "../shared/source-sticker-knowl
 import { decorationDisplaySeconds } from "../shared/decorations.js";
 
 interface SupervisedPreviewInput {
+  trackPurpose?: "cover-placement";
   session?: PreviewReviewSession;
   knowledge?: KnowledgeReviewOptions;
   template: EditTemplate;
@@ -91,6 +92,7 @@ function effectiveLayers(template: EditTemplate, durationMs: number): string {
 
 /** This gate returns a frozen candidate only after reviewing the latest real render. It never enqueues. */
 export async function superviseRenderedTemplate(input: SupervisedPreviewInput): Promise<SupervisedPreviewResult> {
+  if (input.trackPurpose === "cover-placement" && (!input.coverEnabled || input.knowledge)) throw new ProviderError("近似覆盖不能作为原贴纸知识复核。");
   const { signal } = input;
   signal.throwIfAborted();
   let template = EditTemplateSchema.parse(input.template), tracks = structuredClone(input.tracks);
@@ -117,7 +119,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
     knowledge?.observe(evidence, template);
     const turn = ++state.turns, revision = state.revisions;
     input.onStage(`主管检查真实样片 ${turn}/${MAX_PREVIEW_TURNS} · 修订 ${revision}/${MAX_PREVIEW_REVISIONS}`);
-    const raw = await input.review({ durationMs: input.durationMs, trackHorizonMs, displayMode: template.decorationDisplayMode ?? "full", coverEnabled: input.coverEnabled,
+    const raw = await input.review({ trackPurpose: input.trackPurpose, durationMs: input.durationMs, trackHorizonMs, displayMode: template.decorationDisplayMode ?? "full", coverEnabled: input.coverEnabled,
       stickerDisplayMode: template.stickerDisplayMode, automaticCorners: input.automaticCorners, tracks, layers: supervisorLayerProjection(template), evidence, feedback, turn, revision,
       remainingRevisions: MAX_PREVIEW_REVISIONS - revision, history: structuredClone(history), issues: structuredClone(state.issues), knowledge: knowledge?.context() }, signal);
     signal.throwIfAborted();

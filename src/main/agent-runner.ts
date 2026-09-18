@@ -13,6 +13,7 @@ import { prepareAgentTemplate } from "./agent-template-preparation.js";
 import type { PreviewRevision } from "./supervisor-protocol.js";
 import type { KnowledgeBinding, KnowledgeVersion, SourceStickerKnowledgeSession } from "./source-sticker-knowledge-session.js";
 import type { KnowledgeOutcome, KnowledgeProductionStage } from "../shared/source-sticker-knowledge-audit.js";
+import type { CoverPlacementSession } from "./cover-placement-session.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
@@ -28,6 +29,7 @@ interface RunnerDependencies {
   selectCoverSticker?(frames: string[], signal: AbortSignal, previousSelections: readonly string[]): Promise<FrozenCoverSticker>;
   detectCoverTracks?(media: MediaItem, signal: AbortSignal, onStage: (stage: string) => void): Promise<AutomaticCoverTrack[]>;
   knowledge?: Pick<SourceStickerKnowledgeSession, "acquire" | "tracks" | "review" | "reconcile" | "enqueue" | "close">;
+  placement?: Pick<CoverPlacementSession, "acquire" | "review" | "enqueue" | "close">;
   recordOutcome?(outcome: KnowledgeOutcome): Promise<void>;
   creativeRequests?(): number;
   creativeModel?: string;
@@ -77,6 +79,7 @@ export class AgentRunner {
     const pendingCoverStickers = new Map<number, Promise<FrozenCoverSticker>>();
     const selectedCoverIds: string[] = [];
     const reviewed: Array<{ index: number; version: KnowledgeVersion; binding: KnowledgeBinding; source: MediaItem }> = [];
+    const placed: Array<{ index: number; template: EditTemplate; source: MediaItem }> = [];
     const coverForVersion = (version: number, frames: string[]): Promise<FrozenCoverSticker> => {
       let pending = pendingCoverStickers.get(version);
       if (!pending) {
@@ -110,6 +113,8 @@ export class AgentRunner {
           audit[index].stage = "knowledge";
           const binding = knowledge ? await knowledge.acquire(source, source.durationMs, signal, onStage,
             progress => { item.sourceKnowledge = progress; this.dependencies.onChange(); }) : undefined;
+          const placement = this.dependencies.placement ? await this.dependencies.placement.acquire(source, signal, onStage) : undefined;
+          signal.throwIfAborted();
           audit[index].stage = "frames";
           let extracting = pendingFrames.get(source.id);
           if (!extracting) {
@@ -126,7 +131,10 @@ export class AgentRunner {
           signal.throwIfAborted();
           let coverTracks: AutomaticCoverTrack[] | undefined;
           let sourceStickerTracks: AutomaticCoverTrack[] | undefined;
-          if (coverSticker?.automatic || this.dependencies.preserveSourceStickers) {
+          if (placement) {
+            if (!coverSticker?.automatic || this.dependencies.preserveSourceStickers) throw new ProviderError("近似覆盖方案不能用于原贴纸占位判断。");
+            coverTracks = placement.tracks;
+          } else if (coverSticker?.automatic || this.dependencies.preserveSourceStickers) {
             if (!binding && (!this.dependencies.prepared || !this.dependencies.detectCoverTracks)) throw new ProviderError("源贴纸知识检查不可用，本条已停止。");
             const tracks = binding ? await knowledge!.tracks(binding) : await this.dependencies.detectCoverTracks!(source, signal, onStage);
             if (this.dependencies.preserveSourceStickers) sourceStickerTracks = tracks;
@@ -148,20 +156,23 @@ export class AgentRunner {
             coverSticker, coverTracks, sourceStickerTracks, runId: run.id, version: item.version };
           let template = prepareAgentTemplate(preparation);
           let version: KnowledgeVersion | undefined;
-          if (knowledge && binding && !this.dependencies.prepared) {
+          if ((knowledge && binding || placement) && !this.dependencies.prepared) {
             const original = template;
             const rebuild = (revision: PreviewRevision) => {
               const candidatePlan = revision.corners?.length && "stickers" in plan
                 ? { ...plan, stickers: plan.stickers.map(sticker => ({ ...sticker, ...revision.corners!.find(corner => corner.corner === sticker.corner) })) }
                 : plan;
               const rebuilt = prepareAgentTemplate({ ...preparation, plan: candidatePlan,
-                ...(this.dependencies.preserveSourceStickers ? { sourceStickerTracks: revision.tracks } : { coverTracks: expandSourceCoverTracks(revision.tracks) }) });
+                ...(this.dependencies.preserveSourceStickers ? { sourceStickerTracks: revision.tracks } : { coverTracks: placement ? revision.tracks : expandSourceCoverTracks(revision.tracks) }) });
               // Rebuilding stickers must not regenerate or modify the user's frozen text layer.
               return { ...original, layers: [...original.layers.filter(layer => layer.type === "text"), ...rebuilt.layers.filter(layer => layer.type !== "text")] };
             };
             audit[index].stage = "preview";
-            version = await knowledge.review(binding, template, rebuild, signal, onStage);
-            template = version.template;
+            if (placement) template = await this.dependencies.placement!.review(source, placement, template, rebuild, signal, onStage);
+            else {
+              version = await knowledge!.review(binding!, template, rebuild, signal, onStage);
+              template = version.template;
+            }
             signal.throwIfAborted();
           }
           if (selection && "stickers" in plan) {
@@ -170,10 +181,11 @@ export class AgentRunner {
           }
           if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
           else if (version && binding) reviewed.push({ index, version, binding, source });
+          else if (placement) placed.push({ index, template, source });
           else item.taskId = await this.dependencies.enqueue(template, source, signal);
           item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
-          if (version) item.summary += " · 主管样片检查通过，等待本轮检查结束后导出";
-          item.status = this.dependencies.prepared || version ? "prepared" : "exporting";
+          if (version || placement) item.summary += " · 主管样片检查通过，等待本轮检查结束后导出";
+          item.status = this.dependencies.prepared || version || placement ? "prepared" : "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           stopKnowledgeProgress(item, signal.aborted, "本版创作或样片准备未完成，未提交导出；请查看本条失败原因。");
@@ -189,7 +201,7 @@ export class AgentRunner {
       }
     };
     try {
-      await Promise.all(Array.from({ length: this.dependencies.prepared || this.dependencies.knowledge ? 1 : Math.min(executionLimits().analysis, media.length) }, () => worker()));
+      await Promise.all(Array.from({ length: this.dependencies.prepared || this.dependencies.knowledge || this.dependencies.placement ? 1 : Math.min(executionLimits().analysis, media.length) }, () => worker()));
       const groups = new Map<string, typeof reviewed>();
       for (const entry of reviewed) groups.set(entry.binding.key, [...(groups.get(entry.binding.key) ?? []), entry]);
       for (const group of groups.values()) {
@@ -203,6 +215,19 @@ export class AgentRunner {
             run.items[index].error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "源知识修订或证据完整性未确认，受影响版本未导出。";
           }
         }
+      }
+      for (const { index, template, source } of placed) {
+        const item = run.items[index];
+        try {
+          audit[index].stage = "enqueue";
+          item.taskId = await this.dependencies.placement!.enqueue(source, template, signal, () => this.dependencies.enqueue(template, source, signal));
+          item.status = signal.aborted ? "cancelled" : "exporting";
+          item.summary = "近似覆盖样片检查通过，已提交导出；位置已冻结，下次仍需检查样片。";
+        } catch (error) {
+          item.status = signal.aborted ? "cancelled" : "failed";
+          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "覆盖样片已检查，但源校验或导出提交失败。";
+        }
+        audit[index].finished = Date.now(); this.dependencies.onChange();
       }
       // The existing queue owns both previews and formal exports. Finish all previews
       // before starting any formal job, so later versions cannot collide with exports.
@@ -226,6 +251,7 @@ export class AgentRunner {
     } finally {
       pendingFrames.clear();
       await this.dependencies.knowledge?.close();
+      await this.dependencies.placement?.close();
       if (this.dependencies.recordOutcome) for (const [index, item] of run.items.entries()) {
         const progress = item.sourceKnowledge, detail = audit[index];
         const record: KnowledgeOutcome = {
