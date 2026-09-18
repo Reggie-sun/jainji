@@ -28,7 +28,7 @@ try {
           window.fixture=options;window.setFixtureDisabled=setDisabled;
           return React.createElement(React.Fragment,null,
             React.createElement(WorkspaceSubnav,{active:section,onNavigate:(id,selector)=>{setSection(id);document.querySelector(selector)?.scrollIntoView({block:'start'});}}),
-            React.createElement(TemplatePanel,{selected:'clean',onSelect:()=>{},brief:'',onBrief:()=>{},outputDirectory:'/tmp',onOutput:()=>{},onStart:()=>{window.submitted=options;},count:1,disabled,exportFormat:'mp4',onExportFormat:()=>{},decorationOptions:options,
+            React.createElement(TemplatePanel,{activeSection:section,selected:'clean',onSelect:()=>{},brief:'',onBrief:()=>{},outputDirectory:'/tmp',onOutput:()=>{},onStart:()=>{window.submitted=options;},count:1,disabled,exportFormat:'mp4',onExportFormat:()=>{},decorationOptions:options,
               onDisplayMode:displayMode=>setOptions(v=>({...v,displayMode})),
               decorations:React.createElement(CornerDecorationPicker,{value:options,onChange:setOptions,onSelect:()=>{},disabled})}));}
         createRoot(document.getElementById('root')).render(React.createElement(Fixture));
@@ -65,9 +65,13 @@ try {
   await waitFor("document.querySelector('.workspace-subnav button.active')?.textContent.trim()==='显示时段'");
   assert.equal(await evaluate("document.querySelector('.workspace-subnav button.active').getAttribute('aria-current')"), "location");
   assert.equal(await evaluate("document.querySelector('#display-time-settings').getBoundingClientRect().top < window.innerHeight"), true);
+  assert.equal(await evaluate("document.querySelector('.timing-workspace') !== null"), true);
+  assert.equal(await evaluate("document.querySelector('.template-preview') === null && document.querySelector('.brief-layout') === null"), true);
   assert.equal(await evaluate("document.querySelector('#decoration-display-mode').value"), "full");
   await evaluate("{const el=document.querySelector('#decoration-display-mode');el.value='first-5s';el.dispatchEvent(new Event('change',{bubbles:true}))}");
   await waitFor("window.fixture.displayMode==='first-5s'");
+  await clickText("模板");
+  await waitFor("document.querySelector('.template-preview') !== null");
   assert.equal(await evaluate("document.querySelector('.template-preview-info').textContent.includes('最后 0.5 秒渐隐')"), true);
   await clickText("自己设置");
   assert.equal(await evaluate("window.fixture.displayMode"), "first-5s");
@@ -82,7 +86,7 @@ try {
   await waitFor("!document.querySelector('#decoration-display-mode').disabled");
   await evaluate("{const el=document.querySelector('#decoration-display-mode');el.value='full';el.dispatchEvent(new Event('change',{bubbles:true}))}");
   await waitFor("window.fixture.displayMode==='full'");
-  console.log("PASS: display-time navigation stays active and reaches its settings; default full display, first-5s selection, fade preview description, manual/Agent mode retention, submitted choice and text, busy lock, return to full display.");
+  console.log("PASS: display-time opens an independent settings view and stays active; default full display, first-5s selection, fade preview description, manual/Agent mode retention, submitted choice and text, busy lock, return to full display.");
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode === null) {
