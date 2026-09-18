@@ -20,6 +20,7 @@ import { AgentStartSchema, FrozenAgentStartSchema } from "../shared/agent.js";
 import { SelectModelSchema } from "../shared/connections.js";
 import { AgentController } from "./agent-controller.js";
 import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
+import { installDevelopmentQuit } from "./development-lifecycle.js";
 import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -629,4 +630,6 @@ app.on("before-quit", (event) => {
   requestQuit();
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
-void bootstrap().catch((error) => { console.error(error); app.quit(); });
+const startup = bootstrap();
+installDevelopmentQuit(process, startup, () => app.quit());
+void startup.catch((error) => { console.error(error); app.quit(); });

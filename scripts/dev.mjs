@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { context } from "esbuild";
+import { requestDevelopmentQuit, waitForDevelopmentQuit } from "./dev-lifecycle.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -27,6 +28,7 @@ function start(command, args, options = {}) {
 }
 
 function waitForExit(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode ?? 1);
   return new Promise((resolve, reject) => {
     child.once("error", reject);
     child.once("exit", (code) => resolve(code ?? 1));
@@ -69,8 +71,9 @@ function scheduleElectronRestart(bundle) {
   restartTimer = setTimeout(() => {
     if (stopping) return;
     restartRequested = true;
-    console.log(`[dev] ${bundle} rebuilt; restarting Electron.`);
-    if (electron?.exitCode === null) electron.kill("SIGKILL");
+    console.log(`[dev] ${bundle} rebuilt; requesting normal Electron exit. Save or cancel in the app if prompted.`);
+    try { requestDevelopmentQuit(electron); }
+    catch (error) { restartRequested = false; console.error(`[dev] ${error.message}`); }
   }, 100);
 }
 
@@ -104,11 +107,14 @@ async function shutdown(signal) {
   clearTimeout(restartTimer);
   if (signal) process.exitCode = signal === "SIGINT" ? 130 : 143;
   shutdownPromise = (async () => {
-    for (const child of children) {
-      if (child.exitCode === null) child.kill(child === electron ? "SIGKILL" : "SIGTERM");
+    if (electron?.exitCode === null && electron.signalCode === null) {
+      console.log("[dev] Waiting for normal Electron shutdown; no forced-quit timeout.");
+      await waitForDevelopmentQuit(electron);
     }
+    const remaining = [...children].filter(child => child !== electron);
+    for (const child of remaining) if (child.exitCode === null) child.kill("SIGTERM");
     setTimeout(() => {
-      for (const child of children) {
+      for (const child of remaining) {
         if (child.exitCode === null) child.kill("SIGKILL");
       }
     }, 1_000).unref();
@@ -117,7 +123,7 @@ async function shutdown(signal) {
   return shutdownPromise;
 }
 
-for (const signal of ["SIGINT", "SIGTERM"]) process.once(signal, () => { void shutdown(signal); });
+for (const signal of ["SIGINT", "SIGTERM"]) process.on(signal, () => { void shutdown(signal).catch(error => console.error(`[dev] ${error.message}`)); });
 
 const port = await reservePort();
 const devServerUrl = `http://127.0.0.1:${port}`;
@@ -149,7 +155,9 @@ try {
   vite = start(process.execPath, [viteCli, "--host", "127.0.0.1", "--port", String(port), "--strictPort"]);
   await waitForVite(vite, devServerUrl);
   while (!stopping) {
-    electron = start(electronBinary, ["."], { env: { ...process.env, JIANJI_DEV_SERVER_URL: devServerUrl } });
+    // A terminal Ctrl+C must reach the launcher, not kill Electron before cleanup.
+    electron = start(electronBinary, ["."], { stdio: ["inherit", "inherit", "inherit", "ipc"], detached: process.platform !== "win32",
+      env: { ...process.env, JIANJI_DEV_SERVER_URL: devServerUrl } });
     const exitCode = await waitForExit(electron);
     if (stopping) break;
     if (restartRequested) {
