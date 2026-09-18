@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
+import { DecorationSchema, ProductionDecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
 import { ExportSettingsSchema } from "./export-settings.js";
 import type { SourceKnowledgeProgress } from "./source-sticker-knowledge.js";
@@ -51,12 +51,12 @@ export function calculateProductionQuantity(sourceCount: number, requestedCount:
   return { multiplier, total: sourceCount * multiplier };
 }
 
-export const AgentStartSchema = z.object({
+const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof DecorationSchema>, z.ZodTypeDef, unknown>) => z.object({
   sourceStickerRefresh: z.object({ projectId: z.string().uuid(), mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS) }).strict().optional(),
   multiplier: ProductionMultiplierSchema.optional(),
   exportFormat: ExportFormatSchema.optional(),
   exportSettings: ExportSettingsSchema.optional(),
-  decorations: DecorationSchema.optional(),
+  decorations: decorations.optional(),
   ruleId: RuleIdSchema,
   mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS),
   outputDirectory: z.string().min(1),
@@ -66,11 +66,13 @@ export const AgentStartSchema = z.object({
 }).refine((input) => RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
   path: ["decorations", "productPrice"], message: "请手动填写产品价格，Agent 不能代填或改写。",
 });
+export const AgentStartSchema = createAgentStartSchema(ProductionDecorationSchema);
+export const FrozenAgentStartSchema = createAgentStartSchema(DecorationSchema);
 export type AgentStartInput = z.infer<typeof AgentStartSchema>;
 
 export const GenerateBriefSchema = z.object({
   ruleId: RuleIdSchema,
-  decorations: DecorationSchema.optional(),
+  decorations: ProductionDecorationSchema.optional(),
   brief: z.string().trim().max(1000).default(""),
 }).strict();
 export type GenerateBriefInput = z.infer<typeof GenerateBriefSchema>;

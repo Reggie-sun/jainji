@@ -6,6 +6,7 @@ import { MAX_PREVIEW_REVISIONS, MAX_PREVIEW_TURNS, PreviewDecisionSchema, Previe
 import { SupervisorKnowledgeReview, knowledgeTracks, templateDigest, type KnowledgeReviewOptions, type KnowledgeReviewHandoff } from "./supervisor-knowledge.js";
 import { factsDigest, sourceKey } from "./source-sticker-knowledge-store.js";
 import { coversRanges, type ReviewedRange } from "../shared/source-sticker-knowledge.js";
+import { decorationDisplaySeconds } from "../shared/decorations.js";
 
 interface SupervisedPreviewInput {
   session?: PreviewReviewSession;
@@ -63,8 +64,9 @@ export interface SupervisedPreviewResult {
 
 function sampleTimes(template: EditTemplate, durationMs: number): EvidenceRequest[] {
   const end = Math.max(0, durationMs - 1);
-  const times = template.decorationDisplayMode === "first-3s"
-    ? [0, Math.max(0, Math.min(3000, durationMs) - 500), Math.max(0, Math.min(3000, durationMs) - 250), 3100,
+  const limitMs = (decorationDisplaySeconds(template.decorationDisplayMode) ?? 0) * 1000;
+  const times = limitMs
+    ? [0, Math.max(0, Math.min(limitMs, durationMs) - 500), Math.max(0, Math.min(limitMs, durationMs) - 250), limitMs + 100,
       ...(template.stickerDisplayMode === "full" ? [end / 4, end / 2, end * 3 / 4] : [Math.min(500, end / 4), durationMs / 2]), end]
     : [0, ...[1, 2, 3, 4, 5, 6].map(index => end * index / 7), end];
   return [...new Set(times.map(time => Math.round(Math.min(end, time))))].sort((a, b) => a - b).map(timeMs => ({ timeMs }));

@@ -6,7 +6,7 @@ import { createDefaultTemplate, EditTemplateSchema, FilterPresetSchema, type Edi
 import { ConnectionInputSchema, GenerateBriefSchema, getRule, type ConnectionInput, type ConnectionStatus, type GenerateBriefInput, type RuleId } from "../shared/agent.js";
 import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { StickerAssets } from "./builtin-stickers.js";
-import { CORNERS, CORNER_LABELS, formatProductPrice, DecorationSchema, decorationTimingContext, isUploadedStickerId, type Corner, type DecorationDisplayMode } from "../shared/decorations.js";
+import { CORNERS, CORNER_LABELS, formatProductPrice, ProductionDecorationSchema, decorationTimingContext, isUploadedStickerId, type Corner, type DecorationDisplayMode } from "../shared/decorations.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 import { getPriceStyle, PRICE_STYLES, PriceStyleIdSchema, priceFontSizeRatio, priceStyleAppearance, type PriceStyleId } from "../shared/price-styles.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
@@ -36,7 +36,7 @@ function manualStickerContent(previews: readonly { id: string; url: string }[], 
 }
 
 function briefDecorationContext(input: GenerateBriefInput): string {
-  const decorations = DecorationSchema.parse(input.decorations ?? {});
+  const decorations = ProductionDecorationSchema.parse(input.decorations ?? {});
   if (decorations.mode === "agent") return decorationTimingContext(decorations.displayMode) + "当前为自动装饰模式，没有手动选择；请自由发挥风格方向，但不得编造商品、价格、折扣或功效事实。";
   const choices: string[] = [decorationTimingContext(decorations.displayMode)];
   if (CORNERS.some((corner) => !decorations.corners?.[corner])) {
@@ -232,7 +232,7 @@ export function validatePlan(input: unknown, ruleId: RuleId, catalog?: AgentDeco
 }
 
 export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { width: number; height: number }, stickerAssets: StickerAssets, decorations?: unknown, catalog?: AgentDecorationCatalog): EditTemplate {
-  const options = DecorationSchema.parse(decorations ?? {});
+  const options = ProductionDecorationSchema.parse(decorations ?? {});
   if (options.mode === "agent" && !catalog) throw new Error("Agent 装饰目录不可用，请重新开始。");
   const plan = validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
   const priceStyle = options.mode === "agent" ? (plan as AgentPackagingPlan).priceStyle : options.priceStyle;

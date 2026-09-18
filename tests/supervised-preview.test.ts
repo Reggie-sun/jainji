@@ -17,10 +17,13 @@ function fixture() {
 }
 
 describe("rendered supervisor loop", () => {
-  it("samples later sticker intervals as well as the price fade within eight frames", async () => {
+  it.each([
+    { mode: "first-3s" as const, times: [0, 2500, 2750, 3100, 5000, 10000, 14999, 19999] },
+    { mode: "first-5s" as const, times: [0, 4500, 4750, 5000, 5100, 10000, 14999, 19999] },
+  ])("samples later stickers and the $mode price fade within eight frames", async ({ mode, times }) => {
     const input = fixture();
-    await superviseRenderedTemplate({ ...input, durationMs: 20000, template: { ...input.template, stickerDisplayMode: "full" } });
-    expect(input.inspect.mock.calls[0][0].map(request => request.timeMs)).toEqual([0, 2500, 2750, 3100, 5000, 10000, 14999, 19999]);
+    await superviseRenderedTemplate({ ...input, durationMs: 20000, template: { ...input.template, decorationDisplayMode: mode, stickerDisplayMode: "full" } });
+    expect(input.inspect.mock.calls[0][0].map(request => request.timeMs)).toEqual(times);
   });
   it("reviews full-duration sticker repairs while still sampling the price fade", async () => {
     const input = fixture();

@@ -7,7 +7,7 @@ import { TemplateCompiler } from "../src/main/compiler";
 import { DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, type MediaItem } from "../src/main/domain";
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
 
-for (const { duration, mode, animated } of [{ duration: 4, mode: "first-3s", animated: false }, { duration: 1, mode: "first-3s", animated: false }, { duration: 4, mode: "full", animated: false }, { duration: 4, mode: "first-3s", animated: true }] as const) it(`renders ${mode} with ${animated ? "2fps GIF" : "PNG"} on a ${duration} second source with original content and audio intact`, { timeout: 60_000 }, async context => {
+for (const { duration, mode, animated } of [{ duration: 6, mode: "first-5s", animated: false }, { duration: 1, mode: "first-5s", animated: false }, { duration: 6, mode: "full", animated: false }, { duration: 6, mode: "first-5s", animated: true }] as const) it(`renders ${mode} with ${animated ? "2fps GIF" : "PNG"} on a ${duration} second source with original content and audio intact`, { timeout: 60_000 }, async context => {
   const [ffmpeg, ffprobe, font] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
   if (!ffmpeg || !ffprobe || !font) { context.skip(); return; }
   const root = await mkdtemp(path.join(tmpdir(), "jianji-display-timing-"));
@@ -17,7 +17,7 @@ for (const { duration, mode, animated } of [{ duration: 4, mode: "first-3s", ani
   await run(["-f", "lavfi", "-i", "color=c=blue:s=16x32:r=2:d=1", ...(animated ? ["-loop", "0"] : ["-frames:v", "1"]), stickerPath]);
   const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "fixture", fingerprint: "fixture", sizeBytes: 1, durationMs: duration * 1000, width: 320, height: 240, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
   const asset = { assetPath: stickerPath, assetFingerprint: "fixture" };
-  const template = materializePlan({ summary: "四角", captions: [], priceStyle: duration > 3 ? "label" : "classic", filter: "none", intensity: 0, stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })) }, "clean", media, { heart: asset, sparkle: asset, arrow: asset, burst: asset }, { mode: "agent", productPrice: "9.9元", displayMode: mode }, { fonts: [], stickers: [{ id: "heart", label: "爱心" }] });
+  const template = materializePlan({ summary: "四角", captions: [], priceStyle: duration > 5 ? "label" : "classic", filter: "none", intensity: 0, stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map(corner => ({ corner, sticker: "heart", width: 0.08, rotationDeg: 0 })) }, "clean", media, { heart: asset, sparkle: asset, arrow: asset, burst: asset }, { mode: "agent", productPrice: "9.9元", displayMode: mode }, { fonts: [], stickers: [{ id: "heart", label: "爱心" }] });
   const base = template.layers.find(layer => layer.type === "sticker")!;
   if (base.type !== "sticker") throw Error("missing sticker");
   const rectangle = { x: 0.4, y: 0.45, width: 0.1, height: 0.1 };
@@ -33,12 +33,12 @@ for (const { duration, mode, animated } of [{ duration: 4, mode: "first-3s", ani
   expect(Number(probe.format?.duration)).toBeCloseTo(duration, 1);
   expect(probe.streams?.some(stream => stream.codec_type === "audio")).toBe(true);
   const textStrengths: number[] = [];
-  for (const frame of duration > 3 ? [24, 27, 29, 30, 39] : [0, 7, 9]) {
+  for (const frame of duration > 5 ? [44, 47, 49, 50, 59] : [0, 7, 9]) {
     const file = path.join(root, `${frame}.rgb`);
     await run(["-i", output, "-vf", `select=eq(n\\,${frame})`, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", file]);
     const pixels = await readFile(file);
     const pixel = (x: number, y: number) => pixels.subarray((y * 320 + x) * 3, (y * 320 + x) * 3 + 3);
-    const visible = frame < 30 || mode === "full";
+    const visible = frame < 50 || mode === "full";
     for (const [x, y] of [[10, 10], [308, 10], [10, 228], [308, 228], [144, 120], [236, 120]]) {
       const rgb = pixel(x, y);
       expect(rgb[2]).toBeGreaterThan(rgb[0] + 150);
@@ -50,7 +50,7 @@ for (const { duration, mode, animated } of [{ duration: 4, mode: "first-3s", ani
     const original = pixel(160, 190);
     expect(original[0]).toBeGreaterThan(200); expect(original[1]).toBeGreaterThan(200); expect(original[2]).toBeLessThan(30);
   }
-  if (mode === "first-3s") {
+  if (mode === "first-5s") {
     // Text and its background blend separately, so their combined brightness is nonlinear.
     expect(textStrengths[0]).toBeGreaterThan(textStrengths[1] + 20);
     expect(textStrengths[1]).toBeGreaterThan(textStrengths[2] + 20);

@@ -57,15 +57,15 @@ try {
   await send("Page.navigate", { url: `http://127.0.0.1:${server.httpServer.address().port}/__decoration-display` });
   await waitFor("document.querySelector('#decoration-display-mode') && window.fixture");
   assert.equal(await evaluate("document.querySelector('#decoration-display-mode').value"), "full");
-  await evaluate("{const el=document.querySelector('#decoration-display-mode');el.value='first-3s';el.dispatchEvent(new Event('change',{bubbles:true}))}");
-  await waitFor("window.fixture.displayMode==='first-3s'");
+  await evaluate("{const el=document.querySelector('#decoration-display-mode');el.value='first-5s';el.dispatchEvent(new Event('change',{bubbles:true}))}");
+  await waitFor("window.fixture.displayMode==='first-5s'");
   assert.equal(await evaluate("document.querySelector('.template-preview-info').textContent.includes('最后 0.5 秒渐隐')"), true);
   await clickText("自己设置");
-  assert.equal(await evaluate("window.fixture.displayMode"), "first-3s");
+  assert.equal(await evaluate("window.fixture.displayMode"), "first-5s");
   await clickText("全部交给 Agent");
-  assert.equal(await evaluate("window.fixture.displayMode"), "first-3s");
+  assert.equal(await evaluate("window.fixture.displayMode"), "first-5s");
   await click(".step-footer .button.primary");
-  assert.equal(await evaluate("window.submitted.displayMode"), "first-3s");
+  assert.equal(await evaluate("window.submitted.displayMode"), "first-5s");
   assert.equal(await evaluate("window.submitted.productPrice"), "9.9元");
   await evaluate("window.setFixtureDisabled(true)");
   await waitFor("document.querySelector('#decoration-display-mode').disabled");
@@ -73,7 +73,7 @@ try {
   await waitFor("!document.querySelector('#decoration-display-mode').disabled");
   await evaluate("{const el=document.querySelector('#decoration-display-mode');el.value='full';el.dispatchEvent(new Event('change',{bubbles:true}))}");
   await waitFor("window.fixture.displayMode==='full'");
-  console.log("PASS: default full display, first-3s selection, fade preview description, manual/Agent mode retention, submitted choice and text, busy lock, return to full display.");
+  console.log("PASS: default full display, first-5s selection, fade preview description, manual/Agent mode retention, submitted choice and text, busy lock, return to full display.");
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode === null) {

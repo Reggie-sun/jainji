@@ -33,10 +33,13 @@ export function formatProductPrice(price: string): string {
   const value = RequiredProductPriceSchema.parse(price);
   return value.split("\n").map((line) => /^\d{1,6}(?:\.\d{1,2})?$/.test(line) ? `¥ ${line}` : line).join("\n");
 }
-export const DecorationDisplayModeSchema = z.enum(["full", "first-3s"]);
+export const DecorationDisplayModeSchema = z.enum(["full", "first-3s", "first-5s"]);
 export type DecorationDisplayMode = z.infer<typeof DecorationDisplayModeSchema>;
+export function decorationDisplaySeconds(mode?: DecorationDisplayMode): number | undefined {
+  return mode === "first-3s" ? 3 : mode === "first-5s" ? 5 : undefined;
+}
 export function decorationTimingContext(mode?: DecorationDisplayMode): string {
-  return mode === "first-3s" ? "展示时段：手动展示文字 / 价格仅在视频前 3 秒显示，最后 0.5 秒渐隐，3 秒时完全消失；不足 3 秒时在视频结尾前渐隐。普通贴纸全程保留，覆盖贴纸与四角补齐按全程识别的有效时段显示，不随价格渐隐。原视频内容不变。" : "展示时段：手动展示文字 / 价格和贴纸全程显示，覆盖与四角补齐仍遵守各自有效时段。";
+  return mode === "first-3s" || mode === "first-5s" ? "展示时段：手动展示文字 / 价格仅在视频前 5 秒显示，最后 0.5 秒渐隐，5 秒时完全消失；不足 5 秒时在视频结尾前渐隐。普通贴纸全程保留，覆盖贴纸与四角补齐按全程识别的有效时段显示，不随价格渐隐。原视频内容不变。" : "展示时段：手动展示文字 / 价格和贴纸全程显示，覆盖与四角补齐仍遵守各自有效时段。";
 }
 export const DecorationSchema = z.preprocess((input) => {
   if (input && typeof input === "object" && "mode" in input && input.mode === "agent") {
@@ -53,6 +56,11 @@ export const DecorationSchema = z.preprocess((input) => {
   corners: z.object({ "top-left": CornerDecorationSchema.optional(), "top-right": CornerDecorationSchema.optional(), "bottom-left": CornerDecorationSchema.optional(), "bottom-right": CornerDecorationSchema.optional() }).strict().optional(),
 }).strict());
 export type DecorationOptions = z.infer<typeof DecorationSchema>;
+// Upgrade only new production, not persisted drafts or frozen approval requests.
+export const ProductionDecorationSchema = z.preprocess((input) => {
+  if (input && typeof input === "object" && "displayMode" in input && input.displayMode === "first-3s") return { ...input, displayMode: "first-5s" };
+  return input;
+}, DecorationSchema);
 export const DecorationAppearanceSchema = DecorationSchema.transform(({ productPrice: _productPrice, ...appearance }) => appearance);
 export type DecorationAppearance = z.infer<typeof DecorationAppearanceSchema>;
 export interface DecorationCatalog {

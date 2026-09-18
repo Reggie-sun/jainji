@@ -5,6 +5,7 @@ import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type Ex
 import { getCornerSafePolicy, nearestStickerCorner } from "../shared/layout-policy.js";
 import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
 import { coverMotionExpression, coverRasterExpressions } from "./cover-motion.js";
+import { decorationDisplaySeconds } from "../shared/decorations.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -91,9 +92,10 @@ export class TemplateCompiler {
     assertPriceOnlyTemplate(template);
     const textFiles: TextFile[] = [];
     const durationSeconds = Math.max(0.01, media.durationMs / 1000);
-    const displayLimit = template.decorationDisplayMode === "first-3s" ? "lt(t,3)" : undefined;
-    const stickerLimit = template.stickerDisplayMode === "full" ? undefined : displayLimit;
-    const fadeEnd = Math.min(3, durationSeconds);
+    const displaySeconds = decorationDisplaySeconds(template.decorationDisplayMode);
+    const displayLimit = displaySeconds ? `lt(t,${displaySeconds})` : undefined;
+    const stickerLimit = template.stickerDisplayMode !== "full" && template.decorationDisplayMode === "first-3s" ? displayLimit : undefined;
+    const fadeEnd = Math.min(displaySeconds ?? durationSeconds, durationSeconds);
     const fadeDuration = Math.min(0.5, fadeEnd);
     const fadeStart = fadeEnd - fadeDuration;
     const fade = stickerLimit ? `,fade=t=out:st=${fadeStart}:d=${fadeDuration}:alpha=1` : "";

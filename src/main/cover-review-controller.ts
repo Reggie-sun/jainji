@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
-import { AgentStartSchema, type AgentStartInput } from "../shared/agent.js";
+import { AgentStartSchema, FrozenAgentStartSchema, type AgentStartInput } from "../shared/agent.js";
 import { CoverPreviewPathSchema, CoverReviewDraftSchema, type CoverReviewDraft, type CoverReviewMedia, type CoverEvidence } from "../shared/cover-review.js";
 import type { CoverDetectionImage } from "../shared/automatic-cover.js";
 import { DEFAULT_PRESET, EditTemplateSchema, ExportPresetSchema, type MediaItem } from "./domain.js";
@@ -296,7 +296,8 @@ export class CoverReviewController {
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
       this.assertEnabled();
-      const parsed = AgentStartSchema.parse(input);
+      const frozenRequest = FrozenAgentStartSchema.parse(JSON.parse(draft.requestJson ?? "null"));
+      const parsed = (frozenRequest.decorations?.displayMode === "first-3s" ? FrozenAgentStartSchema : AgentStartSchema).parse(input);
       if (parsed.sourceStickerRefresh) throw new Error("半自动审阅不接受原贴纸重新检查意图。");
       if (draft.settingsDigest !== reviewDigest(this.service.currentProject.coverSticker)) throw new Error("覆盖设置已变化，请重新准备预览。");
       if (reviewDigest(parsed) !== reviewDigest(JSON.parse(draft.requestJson ?? "null"))) throw new Error("制作设置已变化，请重新编辑并准备预览。");

@@ -316,7 +316,7 @@ desktopSmoke: try {
     await click("下一步");
     await click("自己设置");
     await click("海盐蓝调");
-    await evaluate("document.querySelector('#decoration-display-mode').value = 'first-3s'; document.querySelector('#decoration-display-mode').dispatchEvent(new Event('change', { bubbles: true }))");
+    await evaluate("document.querySelector('#decoration-display-mode').value = 'first-5s'; document.querySelector('#decoration-display-mode').dispatchEvent(new Event('change', { bubbles: true }))");
     await evaluate("document.querySelector('#creative-brief').focus()");
     await send("Input.insertText", { text: "恢复做到一半的提示" });
     await evaluate("document.querySelector('#export-format').value = 'mov'; document.querySelector('#export-format').dispatchEvent(new Event('change', { bubbles: true }))");
@@ -365,7 +365,7 @@ desktopSmoke: try {
   assert.deepEqual(await readFile(source), sourceBytes, "naming and saving never change the source video");
   if (smokeScope === "saved-project-open") {
     assert.equal(await evaluate("document.querySelector('#creative-brief').value"), "恢复做到一半的提示", "saved project restores the unfinished brief");
-    assert.equal(await evaluate("document.querySelector('#decoration-display-mode').value"), "first-3s", "saved project restores decoration timing");
+    assert.equal(await evaluate("document.querySelector('#decoration-display-mode').value"), "first-5s", "saved project restores decoration timing");
     assert.equal(await evaluate("document.querySelector('#export-format').value"), "mov", "saved project restores export format");
     assert.equal(await evaluate("document.querySelector('#production-count').value"), "10", "saved project restores production count");
     assert.equal(await evaluate("[...document.querySelectorAll('button')].find(button => button.textContent.includes('海盐蓝调'))?.getAttribute('aria-pressed')"), "true", "saved project restores the selected rule");

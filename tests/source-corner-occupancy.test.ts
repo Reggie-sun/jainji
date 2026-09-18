@@ -40,7 +40,7 @@ describe("preserving source corner stickers without covers", () => {
     const { templates } = await produce([track(), track(0.9), track(0, 0.9), track(0.9, 0.9)]);
     expect(stickers(templates[0])).toHaveLength(0);
     expect(templates[0].layers.find(layer => layer.type === "text")).toMatchObject({ content: "手动文字" });
-    expect(templates[0].decorationDisplayMode).toBe("first-3s");
+    expect(templates[0].decorationDisplayMode).toBe("first-5s");
   });
   it("fills only missing time ranges and freezes them across serialization", async () => {
     const { templates } = await produce([track(0, 0, 500, 2500)]);

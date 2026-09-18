@@ -50,7 +50,7 @@ export interface RecognitionReviewInput {
 export interface PreviewReviewInput {
   durationMs: number;
   trackHorizonMs: number;
-  displayMode: "full" | "first-3s";
+  displayMode: "full" | "first-3s" | "first-5s";
   stickerDisplayMode?: "full";
   coverEnabled: boolean;
   automaticCorners: boolean;

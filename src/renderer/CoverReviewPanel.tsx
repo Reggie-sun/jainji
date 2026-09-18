@@ -3,7 +3,7 @@ import type { CoverReviewDraft, CoverSegment } from "../shared/cover-review";
 import type { CoverReviewCommand } from "../main/cover-review-session";
 import type { MediaView } from "../main/media";
 import type { DesktopState } from "../shared/desktop";
-import { AgentStartSchema, type AgentStartInput } from "../shared/agent";
+import { FrozenAgentStartSchema, type AgentStartInput } from "../shared/agent";
 import { interpolateCoverRectangle } from "../shared/cover-sticker";
 import type { ConnectionLibrary, SelectModel } from "../shared/connections";
 import type { ChatGPTStatus } from "../shared/agent";
@@ -37,7 +37,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
   useEffect(() => { setVersion(requestedVersion.current ?? 0); requestedVersion.current = undefined; setTimeMs(0); setActiveId(""); }, [media?.mediaId, draft?.id]);
   const running = useRef(false);
   const run = async (work: () => Promise<DesktopState>) => { if (running.current) return false; running.current = true; setBusy(true); setError(""); try { onState(await work()); return true; } catch (error) { setError(error instanceof Error ? error.message : "审阅操作失败。"); return false; } finally { running.current = false; setBusy(false); } };
-  const priorRequest = (() => { try { return draft?.requestJson ? AgentStartSchema.safeParse(JSON.parse(draft.requestJson)).data : undefined; } catch { return undefined; } })();
+  const priorRequest = (() => { try { return draft?.requestJson ? FrozenAgentStartSchema.safeParse(JSON.parse(draft.requestJson)).data : undefined; } catch { return undefined; } })();
   const resolvedInput = async (): Promise<AgentStartInput> => ({ ...input, outputDirectory: await onResolveOutputDirectory(priorRequest?.outputDirectory) });
   if (!draft || !media || !source) return <section className="cover-review"><h3>半自动覆盖审阅</h3><p>{drafts.length ? `当前选择了 ${selectedIds.size} 条素材，需要为这批素材建立审阅草稿。旧素材的审阅记录已保留。` : "先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。"}</p><button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>{busy ? "正在准备素材…" : "建立人工审阅草稿"}</button>{error && <p role="alert">{error}</p>}</section>;
   const ref = { projectId: draft.projectId, draftId: draft.id, expectedRevision: draft.revision, mediaId: media.mediaId };

@@ -19,7 +19,7 @@ describe("automatic supervisor through real render and original queue", () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-integration-"));
     const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe");
     const source = path.join(directory, "source.mp4");
-    const duration = inspectWindows ? 12 : 4, displayMode = inspectWindows ? "full" as const : "first-3s" as const;
+    const duration = inspectWindows ? 12 : 4, displayMode = inspectWindows ? "full" as const : "first-5s" as const;
     expect((await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-f", "lavfi", "-i", "sine=f=440", "-vf", "drawbox=x=132:y=255:w=24:h=24:color=white:t=fill", "-t", String(duration), "-c:v", "libx264", "-c:a", "aac", source]).promise).code).toBe(0);
     const fingerprint = await fingerprintFile(source);
     const service = new ApplicationService(ffmpeg, { resolve: resolveFont });

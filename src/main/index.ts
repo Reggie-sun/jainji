@@ -16,7 +16,7 @@ import { CoverReviewController } from "./cover-review-controller.js";
 import { CoverReviewEvidence } from "./cover-review-evidence.js";
 import { analyzeCoverCandidates } from "./cover-candidates.js";
 import { prepareIndependentReviewMedia } from "./cover-review-input.js";
-import { AgentStartSchema } from "../shared/agent.js";
+import { AgentStartSchema, FrozenAgentStartSchema } from "../shared/agent.js";
 import { SelectModelSchema } from "../shared/connections.js";
 import { AgentController } from "./agent-controller.js";
 import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
@@ -132,7 +132,7 @@ function registerHandlers(): void {
   ipcMain.handle("coverReview.analyze", async (event, input: unknown) => { assertTrustedSender(event); connections.assertIdle(); const ref = reviewRef.parse(input); await coverReview.analyze(ref.id, ref.revision); return publicState(); });
   ipcMain.handle("coverReview.review", async (event, input: unknown) => { assertTrustedSender(event); coverReview.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ selection: SelectModelSchema, enabled: z.literal(true) }).parse(input); await coverReview.review(ref.id, ref.revision, ref.selection, connections.reviewProvider(ref.selection)); return publicState(); });
   ipcMain.handle("coverReview.prepare", async (event, input: unknown) => { assertTrustedSender(event); connections.assertIdle(); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.prepare(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
-  ipcMain.handle("coverReview.approve", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.approve(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
+  ipcMain.handle("coverReview.approve", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ input: FrozenAgentStartSchema }).parse(input); await coverReview.approve(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
   ipcMain.handle("coverReview.viewed", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ mediaId: uuidSchema, version: z.number().int().positive() }).parse(input); await coverReview.viewed(ref.id, ref.revision, ref.mediaId, ref.version); return publicState(); });
   ipcMain.handle("coverReview.cancel", async (event) => { assertTrustedSender(event); await coverReview.cancel(); return publicState(); });
   registerBugFeedbackHandlers(assertTrustedSender);

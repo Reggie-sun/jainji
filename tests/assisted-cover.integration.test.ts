@@ -51,6 +51,29 @@ function deferred() {
   return { promise, resolve };
 }
 
+it("resumes historical three-second approvals without upgrading their frozen request", async () => {
+  const f = await fixture();
+  const input = { ...f.input, decorations: { ...f.input.decorations, displayMode: "first-3s" as const } };
+  f.draft.requestJson = JSON.stringify(input);
+  await f.service.saveReviewDraft(f.draft, f.draft.revision);
+  await expect(f.controller.approve(f.draft.id, f.draft.revision, { ...input, decorations: { ...input.decorations, displayMode: "first-5s" } }, new Set([f.directory]))).rejects.toThrow(/设置已变化/);
+  await f.controller.approve(f.draft.id, f.draft.revision, input, new Set([f.directory]));
+  await f.controller.approve(f.draft.id, f.draft.revision, input, new Set([f.directory]));
+  expect(f.service.currentProject.reviewDrafts![0].approval!.receipts).toHaveLength(1);
+  expect(JSON.parse(f.service.currentProject.reviewDrafts![0].requestJson!).decorations.displayMode).toBe("first-3s");
+});
+
+it("approves a new five-second preview prepared from an old editable timing choice", async () => {
+  const f = await fixture();
+  const input = { ...f.input, decorations: { ...f.input.decorations, displayMode: "first-3s" as const } };
+  const { AgentStartSchema } = await import("../src/shared/agent");
+  f.draft.requestJson = JSON.stringify(AgentStartSchema.parse(input));
+  await f.service.saveReviewDraft(f.draft, f.draft.revision);
+  await f.controller.approve(f.draft.id, f.draft.revision, input, new Set([f.directory]));
+  expect(f.service.currentProject.reviewDrafts![0].approval!.receipts).toHaveLength(1);
+  expect(JSON.parse(f.service.currentProject.reviewDrafts![0].requestJson!).decorations.displayMode).toBe("first-5s");
+});
+
 it.each(["complete", "save failure", "cancel"])("publishes draft frame preparation progress and recovers after %s", async (outcome) => {
   const f = await fixture();
   const first = f.service.currentProject.mediaItems[0];
