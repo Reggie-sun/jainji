@@ -316,7 +316,7 @@ export default function App() {
   };
 
   return <div className="app-shell">
-    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} disabled={locked || exporting} onWorkflow={navigateWorkflow} onNewProject={() => void changeProject(false)} onStickerLibrary={() => navigate("stickers")} onResults={() => navigateWorkflow("results")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
+    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onStickerLibrary={() => navigate("stickers")} onResults={() => navigateWorkflow("results")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
     {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
     <BugFeedbackDialog open={feedbackOpen} page={step === "stickers" ? "templates" : step} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">

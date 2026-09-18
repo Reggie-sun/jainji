@@ -1,15 +1,13 @@
 import { Icon } from "./ui";
 import { WORKFLOW_STEPS, activeWorkflowId, type Step, type WorkflowId } from "./workspace-flow";
 
-export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, disabled, onWorkflow, onNewProject, onStickerLibrary, onResults, onModels, onFeedback }: {
+export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, onWorkflow, onStickerLibrary, onResults, onModels, onFeedback }: {
   step: Step;
   modelsOpen: boolean;
   connectionConfigured: boolean;
   engineReady: boolean;
   engineLabel: string;
-  disabled: boolean;
   onWorkflow(id: WorkflowId): void;
-  onNewProject(): void;
   onStickerLibrary(): void;
   onResults(): void;
   onModels(): void;
@@ -20,7 +18,6 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
       <span className="brand-symbol"><Icon name="spark" size={23} /></span>
       <strong>简辑</strong>
     </button>
-    <button className="rail-new" type="button" disabled={disabled} onClick={onNewProject}><span>＋</span><span>新建</span></button>
     <nav aria-label="工作区">
       <button className={step === "import" || step === "templates" ? "active" : ""} type="button" onClick={() => onWorkflow("materials")}><Icon name="play" /><span>制作</span></button>
       <button className={step === "stickers" ? "active" : ""} type="button" onClick={onStickerLibrary}><Icon name="upload" /><span>贴纸库</span></button>

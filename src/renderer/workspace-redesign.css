@@ -29,8 +29,7 @@ body { background: var(--workspace-canvas); color: var(--workspace-ink); }
 }
 .workspace-brand,
 .workspace-rail nav button,
-.rail-utilities button,
-.rail-new {
+.rail-utilities button {
   width: 100%;
   border: 0;
   background: transparent;
@@ -39,9 +38,7 @@ body { background: var(--workspace-canvas); color: var(--workspace-ink); }
 .workspace-brand { display: grid; place-items: center; gap: 7px; padding: 0 0 20px; }
 .workspace-brand .brand-symbol { width: 43px; height: 43px; border-radius: 12px; }
 .workspace-brand strong { color: #fff; font-size: 16px; letter-spacing: 2px; }
-.rail-new { display: grid; place-items: center; gap: 3px; min-height: 58px; margin-bottom: 18px; border: 1px solid #3e685e; border-radius: 10px; color: #b9eadb; font-size: 10px; }
-.rail-new>span:first-child { font-size: 21px; line-height: 1; }
-.workspace-rail nav { display: grid; gap: 7px; }
+.workspace-rail nav { display: grid; gap: 7px; margin-top: 10px; }
 .workspace-rail nav button,
 .rail-utilities button { position: relative; display: grid; place-items: center; gap: 6px; min-height: 60px; padding: 9px 4px; border-radius: 9px; color: #98aca7; font-size: 10px; }
 .workspace-rail nav button:hover,
