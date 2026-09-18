@@ -1,5 +1,6 @@
 export type Step = "connection" | "import" | "templates" | "stickers" | "results";
 export type WorkflowId = "materials" | "packaging" | "cover" | "export" | "results";
+export type TemplateSectionId = "template" | "corners" | "cover" | "timing" | "export";
 
 export type WorkflowTarget = {
   step: Step;
@@ -32,4 +33,14 @@ export function activeWorkflowId(step: Step, section: WorkflowId): WorkflowId | 
   if (step === "templates") return ["packaging", "cover", "export"].includes(section) ? section : "packaging";
   if (step === "results") return "results";
   return undefined;
+}
+
+export function workflowForTemplateSection(section: TemplateSectionId): WorkflowId {
+  if (section === "cover" || section === "export") return section;
+  return "packaging";
+}
+
+export function templateSectionForWorkflow(workflow: WorkflowId): TemplateSectionId {
+  if (workflow === "cover" || workflow === "export") return workflow;
+  return "template";
 }

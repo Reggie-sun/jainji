@@ -21,13 +21,14 @@ import { BugFeedbackDialog } from "./BugFeedbackDialog";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 import { ModelSettingsDrawer } from "./ModelSettingsDrawer";
 import { WorkspaceHeader, WorkspaceRail, WorkspaceSubnav } from "./WorkspaceChrome";
-import { resolveWorkflowTarget, type Step, type WorkflowId } from "./workspace-flow";
+import { resolveWorkflowTarget, templateSectionForWorkflow, workflowForTemplateSection, type Step, type TemplateSectionId, type WorkflowId } from "./workspace-flow";
 
 export default function App() {
   const [state, setState] = useState<DesktopState>();
   const [collectionName, setCollectionName] = useState("");
   const [step, setStep] = useState<Step>("connection");
   const [workflowSection, setWorkflowSection] = useState<WorkflowId>("materials");
+  const [templateSection, setTemplateSection] = useState<TemplateSectionId>("template");
   const [modelsOpen, setModelsOpen] = useState(false);
   const [notice, setNotice] = useState<{ error: boolean; text: string }>();
   const [initError, setInitError] = useState("");
@@ -83,6 +84,7 @@ export default function App() {
       setPreviewId(undefined);
       setCoverStickerDirty(false);
       setWorkflowSection(workspace?.step === "results" ? "results" : workspace?.step === "templates" ? "packaging" : "materials");
+      setTemplateSection("template");
     }
     if (projectChanged || restoreProductPrice) {
       let productPrice = next.project.template.productPriceDraft ?? "";
@@ -301,6 +303,7 @@ export default function App() {
   const navigateWorkflow = (id: WorkflowId) => {
     const target = resolveWorkflowTarget(id);
     setWorkflowSection(target.section);
+    if (target.step === "templates") setTemplateSection(templateSectionForWorkflow(id));
     navigate(target.step);
     if (target.selector) scrollAfterRender(target.selector);
     else window.scrollTo({ top: 0, behavior: "smooth" });
@@ -349,7 +352,7 @@ export default function App() {
           </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>ORIGINAL</span></div><div className="source-preview">{preview ? <video key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><div className="preview-frame"><Icon name="play" size={27} /></div><p>等一份好素材</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "从一个片段开始"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "生活片段、产品展示、灵感记录，都能拥有自己的表达。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。发送抽帧供 Agent 分析；自动覆盖开启时，还会逐段发送追踪抽帧。</p></div></aside></div>
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
-        {step === "templates" && <WorkspaceSubnav active={workflowSection} onNavigate={(selector) => { setWorkflowSection(selector === "#cover-sticker-settings" ? "cover" : selector === ".export-card" ? "export" : "packaging"); scrollAfterRender(selector); }} />}
+        {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
         {step === "templates" && <div className="template-workspace-start"><SourceStickerKnowledgeControls projectId={state.project.id} selectedReadyIds={selectedMedia.filter((item) => item.probeStatus === "ready").map((item) => item.id)} eligible={sourceStickerRefreshEligible(decorations.mode, state.project.coverSticker)} disabled={locked || exporting} refresh={sourceRefresh.refresh} onRequest={sourceRefresh.request} /></div>}
         {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={generateBrief} generatingBrief={generatingBrief} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}

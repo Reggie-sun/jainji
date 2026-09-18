@@ -1,5 +1,5 @@
 import { Icon } from "./ui";
-import { WORKFLOW_STEPS, activeWorkflowId, type Step, type WorkflowId } from "./workspace-flow";
+import { WORKFLOW_STEPS, activeWorkflowId, type Step, type TemplateSectionId, type WorkflowId } from "./workspace-flow";
 
 export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, onWorkflow, onStickerLibrary, onResults, onModels, onFeedback }: {
   step: Step;
@@ -83,10 +83,10 @@ const TEMPLATE_SECTIONS = [
 ] as const;
 
 export function WorkspaceSubnav({ active, onNavigate }: {
-  active: WorkflowId;
-  onNavigate(selector: string): void;
+  active: TemplateSectionId;
+  onNavigate(id: TemplateSectionId, selector: string): void;
 }) {
   return <nav className="workspace-subnav" aria-label="包装设置">
-    {TEMPLATE_SECTIONS.map((item) => <button key={item.id} type="button" className={(active === "cover" && item.id === "cover") || (active === "export" && item.id === "export") || (active === "packaging" && item.id === "template") ? "active" : ""} onClick={() => onNavigate(item.selector)}><Icon name={item.icon} size={16} />{item.label}</button>)}
+    {TEMPLATE_SECTIONS.map((item) => <button key={item.id} type="button" className={active === item.id ? "active" : ""} aria-current={active === item.id ? "location" : undefined} onClick={() => onNavigate(item.id, item.selector)}><Icon name={item.icon} size={16} />{item.label}</button>)}
   </nav>;
 }

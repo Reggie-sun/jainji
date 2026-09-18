@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { WORKFLOW_STEPS, activeWorkflowId, resolveWorkflowTarget } from "../src/renderer/workspace-flow";
+import { WORKFLOW_STEPS, activeWorkflowId, resolveWorkflowTarget, templateSectionForWorkflow, workflowForTemplateSection } from "../src/renderer/workspace-flow";
 
 describe("workspace workflow navigation", () => {
   it("keeps every creation stage visible in the redesigned stepper", () => {
@@ -20,5 +20,16 @@ describe("workspace workflow navigation", () => {
     expect(activeWorkflowId("templates", "export")).toBe("export");
     expect(activeWorkflowId("results", "packaging")).toBe("results");
     expect(activeWorkflowId("stickers", "cover")).toBeUndefined();
+  });
+
+  it("keeps packaging subnav sections distinct from top-level workflow stages", () => {
+    expect(workflowForTemplateSection("template")).toBe("packaging");
+    expect(workflowForTemplateSection("corners")).toBe("packaging");
+    expect(workflowForTemplateSection("timing")).toBe("packaging");
+    expect(workflowForTemplateSection("cover")).toBe("cover");
+    expect(workflowForTemplateSection("export")).toBe("export");
+    expect(templateSectionForWorkflow("packaging")).toBe("template");
+    expect(templateSectionForWorkflow("cover")).toBe("cover");
+    expect(templateSectionForWorkflow("export")).toBe("export");
   });
 });
