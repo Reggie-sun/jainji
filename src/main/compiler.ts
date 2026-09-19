@@ -3,7 +3,7 @@ import { outputDimensions } from "../shared/export-settings.js";
 import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
 import { assertPriceOnlyTemplate, EditTemplateSchema, type EditTemplate, type ExportPreset, type FilterConfig, type Layer, type MediaItem } from "./domain.js";
 import { getCornerSafePolicy, nearestStickerCorner } from "../shared/layout-policy.js";
-import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
+import { encoderDeviceArgs, encoderPixelFormat, previewEncodingArgs, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
 import { coverMotionExpression, coverRasterExpressions } from "./cover-motion.js";
 import { decorationDisplaySeconds } from "../shared/decorations.js";
 
@@ -23,6 +23,13 @@ export interface CompileOptions {
   textFilePath: (layerId: string) => string;
   threads?: number;
   videoEncoder?: H264Encoder;
+  /** Temporary review samples only: fastest draft encoding, never for exports. */
+  draftEncoding?: boolean;
+}
+
+function videoEncodingArgsFor(options: CompileOptions, preset: ExportPreset): string[] {
+  const encoder = options.videoEncoder ?? "libx264";
+  return options.draftEncoding ? previewEncodingArgs(encoder) : videoEncodingArgs(encoder, preset.quality);
 }
 
 export interface CompiledCommand {
@@ -265,7 +272,7 @@ export class TemplateCompiler {
       "-map", "[vout]",
       "-map", "0:a?",
       "-t", durationSeconds.toFixed(3),
-      ...videoEncodingArgs(options.videoEncoder ?? "libx264", preset.quality),
+      ...videoEncodingArgsFor(options, preset),
       ...threadArgs,
       "-pix_fmt", encoderPixelFormat(options.videoEncoder ?? "libx264"),
       "-c:a", "aac",

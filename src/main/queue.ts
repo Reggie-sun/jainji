@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { access, constants, link, open, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
-import { setTimeout as delay } from "node:timers/promises";
 import {
   BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
   assertPriceOnlyTemplate,
@@ -59,6 +58,25 @@ export interface ExportQueueDependencies {
   onSnapshot?: (snapshot: QueueSnapshot) => void;
 }
 
+interface PendingPreview {
+  id: string;
+  template: EditTemplate;
+  media: MediaItem;
+  preset: ExportPreset;
+  cacheDirectory: string;
+  signal: AbortSignal;
+  diagnostics?: CoverDiagnostics;
+  queueWait?: Parameters<CoverDiagnostics["finish"]>[0];
+  abortListener: () => void;
+  resolve: (output: string) => void;
+  reject: (error: unknown) => void;
+}
+
+function abortErrorOf(signal: AbortSignal): unknown {
+  try { signal.throwIfAborted(); } catch (error) { return error; }
+  return new Error("预览已停止。");
+}
+
 const EXECUTION = new Set(["validating", "running", "verifying", "cancelling"]);
 
 function transitionAllowed(from: ExportTask["status"], to: ExportTask["status"]): boolean {
@@ -89,6 +107,7 @@ export class ExportQueue {
   private readonly cancelRequested = new Set<string>();
   private readonly pendingStarts = new Set<string>();
   private readonly preparingRetries = new Set<string>();
+  private readonly pendingPreviews: PendingPreview[] = [];
   private running = false;
   private activeStart?: Promise<void>;
   private readonly activeTasks = new Map<string, { work: Promise<void>; threads: number; gpuMemory: number }>();
@@ -108,68 +127,76 @@ export class ExportQueue {
 
   async renderPreview(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; cacheDirectory: string; signal: AbortSignal; diagnostics?: CoverDiagnostics }): Promise<string> {
     input.signal.throwIfAborted();
+    if (this.shuttingDown) throw new Error("预览已停止。");
     const preset = ExportPresetSchema.parse(input.preset);
     const template = immutableSnapshot(input.template);
     const media = structuredClone(input.media);
-    // A historical retry can arrive between supervisor rounds. Wait on the same
-    // queue's resources instead of discarding an already paid model decision.
+    // Previews drive the paid supervisor pipeline: they share the render slots
+    // and start ahead of queued exports instead of waiting for a fully idle queue.
     const queueWait = input.diagnostics?.record("queue-wait", "running");
-    let queueWaitFailed = false;
-    try {
-      while (!this.shuttingDown && (this.activeTasks.size || this.pendingStarts.size)) await delay(50, undefined, { signal: input.signal });
-      input.signal.throwIfAborted();
-      if (this.shuttingDown) throw new Error("预览已停止。");
-    } catch (error) {
-      queueWaitFailed = true;
-      throw error;
-    } finally { input.diagnostics?.finish(queueWait, input.signal, queueWaitFailed); }
     const id = randomUUID();
-    const work = Promise.resolve().then(async () => {
-      input.signal.throwIfAborted();
-      assertPriceOnlyTemplate(template);
-      if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new Error("原素材已变化。");
-      const missing = await validateTemplateResources(template, this.dependencies.fontResolver);
-      if (missing.length) throw new Error("预览依赖素材不可用。");
-      await mkdir(input.cacheDirectory, { recursive: true });
-      const directory = await realpath(input.cacheDirectory);
-      const output = path.join(directory, `${id}.${preset.container}`);
-      const compiled = await this.compiler.compile(template, media, preset, {
-        ffmpegPath: this.dependencies.ffmpeg.ffmpegPath, fontResolver: this.dependencies.fontResolver,
-        textFilePath: (layerId) => path.join(directory, `${id}-${layerId}.txt`),
-        threads: this.limits.threads, videoEncoder: this.videoEncoder,
-      });
-      try {
-        if (this.videoEncoder === "h264_nvenc") {
-          const free = await (this.dependencies.gpuFreeMemory ?? readGpuFreeMemory)();
-          const size = outputDimensions(media, preset);
-          if (free !== undefined && free - GPU_MEMORY_RESERVE_MIB < estimateNvencMemoryMiB(size.width, size.height)) throw new Error("GPU 显存不足，预览未开始。");
-        }
-        await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
-        input.signal.throwIfAborted();
-        if (this.shuttingDown) throw new Error("预览已停止。");
-        let command: RunningCommand | undefined;
-        const abort = () => { void command?.cancel(); };
-        input.signal.addEventListener("abort", abort, { once: true });
-        try {
-          await measureCoverStage(input.diagnostics, "full-render", input.signal, async () => {
-            command = this.dependencies.ffmpeg.run([...compiled.args, output]);
-            this.controllers.set(id, command);
-            const result = await command.promise;
-            input.signal.throwIfAborted();
-            if (this.shuttingDown || result.code !== 0) throw new Error("动态预览渲染失败。");
-          });
-          await measureCoverStage(input.diagnostics, "artifact-verify", input.signal, async () => {
-            await this.verifier.verify(output, id);
-            input.signal.throwIfAborted();
-          });
-          return output;
-        } finally { input.signal.removeEventListener("abort", abort); this.controllers.delete(id); }
-      } catch (error) { await unlink(output).catch(() => undefined); throw error; }
-      finally { await Promise.all(compiled.textFiles.map(({ path }) => unlink(path).catch(() => undefined))); }
+    return new Promise<string>((resolve, reject) => {
+      const pending: PendingPreview = {
+        id, template, media, preset, cacheDirectory: input.cacheDirectory,
+        signal: input.signal, diagnostics: input.diagnostics, queueWait,
+        abortListener: () => undefined, resolve, reject,
+      };
+      pending.abortListener = () => {
+        const index = this.pendingPreviews.indexOf(pending);
+        if (index < 0) return; // Already started; the render's own abort wiring cancels it.
+        this.pendingPreviews.splice(index, 1);
+        input.diagnostics?.finish(queueWait, input.signal, true);
+        reject(abortErrorOf(input.signal));
+      };
+      input.signal.addEventListener("abort", pending.abortListener, { once: true });
+      this.pendingPreviews.push(pending);
+      this.pump();
     });
-    this.activeTasks.set(id, { work: work.then(() => undefined, () => undefined), threads: this.limits.threads, gpuMemory: 0 });
-    try { return await work; }
-    finally { this.activeTasks.delete(id); this.pump(); }
+  }
+
+  private async executePreview(preview: PendingPreview, threads: number): Promise<string> {
+    const { id, template, media, preset, signal } = preview;
+    signal.throwIfAborted();
+    assertPriceOnlyTemplate(template);
+    if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new Error("原素材已变化。");
+    const missing = await validateTemplateResources(template, this.dependencies.fontResolver);
+    if (missing.length) throw new Error("预览依赖素材不可用。");
+    await mkdir(preview.cacheDirectory, { recursive: true });
+    const directory = await realpath(preview.cacheDirectory);
+    const output = path.join(directory, `${id}.${preset.container}`);
+    const compiled = await this.compiler.compile(template, media, preset, {
+      ffmpegPath: this.dependencies.ffmpeg.ffmpegPath, fontResolver: this.dependencies.fontResolver,
+      textFilePath: (layerId) => path.join(directory, `${id}-${layerId}.txt`),
+      threads, videoEncoder: this.videoEncoder, draftEncoding: true,
+    });
+    try {
+      if (this.videoEncoder === "h264_nvenc") {
+        const free = await (this.dependencies.gpuFreeMemory ?? readGpuFreeMemory)();
+        const size = outputDimensions(media, preset);
+        if (free !== undefined && free - GPU_MEMORY_RESERVE_MIB < estimateNvencMemoryMiB(size.width, size.height)) throw new Error("GPU 显存不足，预览未开始。");
+      }
+      await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
+      signal.throwIfAborted();
+      if (this.shuttingDown) throw new Error("预览已停止。");
+      let command: RunningCommand | undefined;
+      const abort = () => { void command?.cancel(); };
+      signal.addEventListener("abort", abort, { once: true });
+      try {
+        await measureCoverStage(preview.diagnostics, "full-render", signal, async () => {
+          command = this.dependencies.ffmpeg.run([...compiled.args, output]);
+          this.controllers.set(id, command);
+          const result = await command.promise;
+          signal.throwIfAborted();
+          if (this.shuttingDown || result.code !== 0) throw new Error("动态预览渲染失败。");
+        });
+        await measureCoverStage(preview.diagnostics, "artifact-verify", signal, async () => {
+          await this.verifier.verify(output, id);
+          signal.throwIfAborted();
+        });
+        return output;
+      } finally { signal.removeEventListener("abort", abort); this.controllers.delete(id); }
+    } catch (error) { await unlink(output).catch(() => undefined); throw error; }
+    finally { await Promise.all(compiled.textFiles.map(({ path }) => unlink(path).catch(() => undefined))); }
   }
 
   constructor(private readonly dependencies: ExportQueueDependencies) {
@@ -317,10 +344,48 @@ export class ExportQueue {
   }
 
   private pumpReady(freeGpuMiB?: number): void {
-    if (this.shuttingDown) this.pendingStarts.clear();
+    if (this.shuttingDown) {
+      this.pendingStarts.clear();
+      while (this.pendingPreviews.length) {
+        const preview = this.pendingPreviews.shift()!;
+        preview.signal.removeEventListener("abort", preview.abortListener);
+        preview.diagnostics?.finish(preview.queueWait, preview.signal, true);
+        preview.reject(new Error("预览已停止。"));
+      }
+    }
     // Reserve active tasks again: a just-launched encoder may not yet appear in
     // nvidia-smi. Conservative double accounting prevents startup bursts.
     let gpuBudget = (freeGpuMiB ?? 0) - GPU_MEMORY_RESERVE_MIB - [...this.activeTasks.values()].reduce((sum, task) => sum + task.gpuMemory, 0);
+    // Supervisor previews block a paid model pipeline, so they take render slots
+    // ahead of queued exports; analysis is bounded, so export starvation is temporary.
+    while (this.pendingPreviews.length) {
+      const preview = this.pendingPreviews[0];
+      if (preview.signal.aborted) {
+        this.pendingPreviews.shift();
+        preview.signal.removeEventListener("abort", preview.abortListener);
+        preview.diagnostics?.finish(preview.queueWait, preview.signal, true);
+        preview.reject(abortErrorOf(preview.signal));
+        continue;
+      }
+      if (this.activeTasks.size >= this.limits.exports) return;
+      const freeThreads = this.limits.threads - [...this.activeTasks.values()].reduce((sum, active) => sum + active.threads, 0);
+      if (freeThreads <= 0) return;
+      const dimensions = outputDimensions(preview.media, preview.preset);
+      const gpuMemory = this.videoEncoder === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
+      if (gpuMemory && (freeGpuMiB === undefined ? this.activeTasks.size > 0 : gpuBudget < gpuMemory)) {
+        this.memoryTimer = setTimeout(() => this.pump(), 2000);
+        return;
+      }
+      gpuBudget -= gpuMemory;
+      const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.videoEncoder !== "libx264" ? this.limits.exports : 2))));
+      const threads = Math.min(maxThreads, freeThreads);
+      this.pendingPreviews.shift();
+      preview.signal.removeEventListener("abort", preview.abortListener);
+      preview.diagnostics?.finish(preview.queueWait, preview.signal, false);
+      const tracked = this.executePreview(preview, threads).then(preview.resolve, preview.reject).then(() => undefined, () => undefined);
+      this.activeTasks.set(preview.id, { work: tracked, threads, gpuMemory });
+      void tracked.finally(() => { this.activeTasks.delete(preview.id); this.pump(); });
+    }
     for (const batchId of this.pendingStarts) {
       const state = this.states.get(batchId)!;
       for (const task of state.batch.tasks) {

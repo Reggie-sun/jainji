@@ -18,11 +18,12 @@ function deferred<T>() {
 }
 
 type Command = {
+  args: string[];
   cancel: ReturnType<typeof vi.fn>;
   finish: (code?: number) => void;
 };
 
-async function fixture(verifier?: ArtifactVerifier) {
+async function fixture(verifier?: ArtifactVerifier, limits = { analysis: 1, exports: 2, threads: 2 }) {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-preview-diagnostics-"));
   const sourcePath = path.join(directory, "source.mp4");
   await writeFile(sourcePath, "source");
@@ -33,9 +34,10 @@ async function fixture(verifier?: ArtifactVerifier) {
   const commands: Command[] = [];
   const ffmpeg = {
     ffmpegPath: "/fake/ffmpeg",
-    run: vi.fn(() => {
+    run: vi.fn((args: string[]) => {
       const result = deferred<{ code: number; stdout: string; stderr: string }>();
       const command: Command = {
+        args,
         cancel: vi.fn(async () => result.resolve({ code: 130, stdout: "", stderr: "cancelled" })),
         finish: (code = 0) => result.resolve({ code, stdout: "", stderr: "" }),
       };
@@ -49,12 +51,12 @@ async function fixture(verifier?: ArtifactVerifier) {
   const queue = new ExportQueue({
     jobStore: new JobStore(path.join(directory, "jobs")), ffmpeg,
     compiler: { compile: async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }) } as unknown as TemplateCompiler,
-    artifactVerifier, fontResolver: { resolve: async () => null }, executionLimits: { analysis: 1, exports: 2, threads: 1 },
+    artifactVerifier, fontResolver: { resolve: async () => null }, executionLimits: limits,
   });
   const input = (diagnostics: CoverDiagnostics, signal = new AbortController().signal) => ({
     template: createDefaultTemplate(), media, preset: DEFAULT_PRESET, cacheDirectory: path.join(directory, "cache"), signal, diagnostics,
   });
-  return { commands, directory, input, queue };
+  return { commands, directory, input, media, queue };
 }
 
 function stages(diagnostics: CoverDiagnostics, stage: string) {
@@ -62,23 +64,20 @@ function stages(diagnostics: CoverDiagnostics, stage: string) {
 }
 
 describe("cover preview queue diagnostics", () => {
-  it("records each preview's actual queue wait and separate serial render spans", async () => {
+  it("runs previews concurrently in the render lane and records each one's spans", async () => {
     const f = await fixture();
     const firstDiagnostics = new CoverDiagnostics().scope("preview");
     const secondDiagnostics = new CoverDiagnostics().scope("preview");
     const first = f.queue.renderPreview(f.input(firstDiagnostics));
     const second = f.queue.renderPreview(f.input(secondDiagnostics));
-    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
-    await vi.waitFor(() => expect(stages(secondDiagnostics, "queue-wait")[0]?.outcome).toBe("running"));
+    await vi.waitFor(() => expect(f.commands).toHaveLength(2));
     expect(stages(firstDiagnostics, "full-render")[0]).toMatchObject({ outcome: "running" });
-    expect(stages(secondDiagnostics, "full-render")).toEqual([]);
+    expect(stages(secondDiagnostics, "full-render")[0]).toMatchObject({ outcome: "running" });
+    expect(stages(secondDiagnostics, "queue-wait")[0]).toMatchObject({ outcome: "ok", durationMs: expect.any(Number) });
 
     f.commands[0].finish();
-    await first;
-    await vi.waitFor(() => expect(f.commands).toHaveLength(2));
-    expect(stages(secondDiagnostics, "queue-wait")[0]).toMatchObject({ outcome: "ok", durationMs: expect.any(Number) });
-    expect(stages(secondDiagnostics, "full-render")[0]).toMatchObject({ outcome: "running" });
     f.commands[1].finish();
+    await first;
     await second;
 
     for (const diagnostics of [firstDiagnostics, secondDiagnostics]) {
@@ -86,14 +85,45 @@ describe("cover preview queue diagnostics", () => {
       expect(stages(diagnostics, "full-render")[0]).toMatchObject({ phase: "preview", outcome: "ok", durationMs: expect.any(Number) });
       expect(stages(diagnostics, "artifact-verify")[0]).toMatchObject({ phase: "preview", outcome: "ok", durationMs: expect.any(Number) });
     }
-    expect(stages(secondDiagnostics, "full-render")[0].startedMs).toBeGreaterThanOrEqual(stages(firstDiagnostics, "full-render")[0].finishedMs!);
     expect(f.queue.snapshot().batches).toEqual([]);
   });
 
-  it("records cancellation while a preview waits for the serial queue", async () => {
-    const f = await fixture();
-    const running = f.queue.renderPreview(f.input(new CoverDiagnostics().scope("preview")));
+  it("starts a waiting preview before queued export tasks when a render slot frees", async () => {
+    const f = await fixture(undefined, { analysis: 1, exports: 1, threads: 2 });
+    f.queue.setMediaLookup(() => f.media);
+    const batch = await f.queue.createBatch({
+      template: createDefaultTemplate(), mediaIds: [f.media.id, f.media.id], mediaItems: [f.media, f.media],
+      outputDirectory: path.join(f.directory, "output"), preset: DEFAULT_PRESET,
+    });
+    const finished = f.queue.start(batch.id);
     await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    const firstTaskOutput = f.commands[0].args[f.commands[0].args.length - 1];
+
+    const previewDiagnostics = new CoverDiagnostics().scope("preview");
+    const preview = f.queue.renderPreview(f.input(previewDiagnostics));
+    await vi.waitFor(() => expect(stages(previewDiagnostics, "queue-wait")[0]?.outcome).toBe("running"));
+    expect(f.commands).toHaveLength(1);
+
+    f.commands[0].finish();
+    await vi.waitFor(() => expect(f.commands).toHaveLength(2));
+    // The preview jumps ahead of the still-queued second export task.
+    expect(f.commands[1].args[f.commands[1].args.length - 1]).toContain("cache");
+    expect(firstTaskOutput).not.toContain("cache");
+    expect(stages(previewDiagnostics, "queue-wait")[0]).toMatchObject({ outcome: "ok", durationMs: expect.any(Number) });
+
+    f.commands[1].finish();
+    await preview;
+    await vi.waitFor(() => expect(f.commands).toHaveLength(3));
+    expect(f.commands[2].args[f.commands[2].args.length - 1]).not.toContain("cache");
+    f.commands[2].finish();
+    await finished;
+  });
+
+  it("records cancellation while a preview waits for a render slot", async () => {
+    const f = await fixture();
+    const first = f.queue.renderPreview(f.input(new CoverDiagnostics().scope("preview")));
+    const second = f.queue.renderPreview(f.input(new CoverDiagnostics().scope("preview")));
+    await vi.waitFor(() => expect(f.commands).toHaveLength(2));
     const waitingDiagnostics = new CoverDiagnostics().scope("preview");
     const cancellation = new AbortController();
     const waiting = f.queue.renderPreview(f.input(waitingDiagnostics, cancellation.signal));
@@ -102,7 +132,10 @@ describe("cover preview queue diagnostics", () => {
     await expect(waiting).rejects.toMatchObject({ name: "AbortError" });
     expect(stages(waitingDiagnostics, "queue-wait")[0]).toMatchObject({ outcome: "cancelled", reason: "cancelled" });
     f.commands[0].finish();
-    await running;
+    f.commands[1].finish();
+    await first;
+    await second;
+    expect(f.commands).toHaveLength(2);
   });
 
   it("keeps bounded cancelled and verification-failed preview observations out of queue state", async () => {
