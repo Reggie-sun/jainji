@@ -296,8 +296,8 @@ export class CoverReviewController {
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
       this.assertEnabled();
-      const frozenRequest = FrozenAgentStartSchema.parse(JSON.parse(draft.requestJson ?? "null"));
-      const parsed = (frozenRequest.decorations?.displayMode === "first-3s" ? FrozenAgentStartSchema : AgentStartSchema).parse(input);
+      const frozenRequest = FrozenAgentStartSchema.nullable().parse(JSON.parse(draft.requestJson ?? "null"));
+      const parsed = (frozenRequest?.decorations?.displayMode === "first-3s" ? FrozenAgentStartSchema : AgentStartSchema).parse(input);
       if (parsed.sourceStickerRefresh) throw new Error("半自动审阅不接受原贴纸重新检查意图。");
       if (draft.settingsDigest !== reviewDigest(this.service.currentProject.coverSticker)) throw new Error("覆盖设置已变化，请重新准备预览。");
       if (reviewDigest(parsed) !== reviewDigest(JSON.parse(draft.requestJson ?? "null"))) throw new Error("制作设置已变化，请重新编辑并准备预览。");
