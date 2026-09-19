@@ -192,16 +192,17 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
     if (failed?.status === "rejected") { state.blocked = true; throw failed.reason; }
     signal.throwIfAborted();
     let decision: ReturnType<typeof PreviewDecisionSchema.parse>;
+    let ignoredMovingTracks = false;
     try {
       if (issueError) throw issueError;
       decision = PreviewDecisionSchema.parse(decoded);
       if (decision.action === "revise" && input.trackPurpose === "cover-placement") {
         const validated = validateSupervisorTracks(decision.tracks, trackHorizonMs);
         const staticTracks = staticAutomaticCoverTracks(validated);
-        const ignoredMovingOnly = staticTracks.length < validated.length
+        ignoredMovingTracks = staticTracks.length < validated.length
           && JSON.stringify(staticTracks) === JSON.stringify(tracks)
-          && !decision.corners?.length && !decision.issues?.length && !decision.resolvedIssueIds?.length && !decision.sourceFacts;
-        decision = ignoredMovingOnly
+          && !decision.issues?.length && !decision.resolvedIssueIds?.length && !decision.sourceFacts;
+        decision = ignoredMovingTracks && !decision.corners?.length
           ? { action: "pass", reason: "位置移动或跳变的原动图按快速导出规则忽略" }
           : { ...decision, tracks: staticTracks };
       }
@@ -217,8 +218,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
       if (decision.action === "pass" && (state.unresolved || state.issues.some(issue => issue.status === "open"))) throw new Error("unresolved-revision");
       if (decision.action === "inspect" && decision.requests.some(request => request.timeMs >= input.durationMs)) throw new Error("time-range");
       if (decision.action === "revise") {
-        if (!decision.issues?.length && !decision.resolvedIssueIds?.length) state.unresolved = state.unscopedIssue = true;
-        if (revision >= MAX_PREVIEW_REVISIONS || turn === MAX_PREVIEW_TURNS) {
+        if (!ignoredMovingTracks && (revision >= MAX_PREVIEW_REVISIONS || turn === MAX_PREVIEW_TURNS)) {
           diagnostics?.record("validation", "failed", { action: "revise", reason: "budget-exhausted" });
           break;
         }
@@ -235,21 +235,33 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
         if (decision.sourceFacts && !knowledge) throw new Error("源事实缺少证据");
         const corrected = knowledge?.correction(decision, state.issues, trackHorizonMs);
         if (knowledge && !corrected && JSON.stringify(decision.tracks) !== JSON.stringify(tracks)) throw new Error("源轨迹必须通过源事实修正");
-        if (!visibleChanged && !corrected) throw new Error("no-visible-change");
-        const resolved = decision.resolvedIssueIds ?? [];
-        for (const id of resolved) {
-          const issue = state.issues.find(value => value.id === id && value.status === "open");
-          if (!issue || (issue.scope === "render" ? !visibleChanged : !corrected)) throw new Error("问题没有对应的有效修正");
+        if (!visibleChanged && !corrected && ignoredMovingTracks) {
+          const reason = "位置移动或跳变的原动图按快速导出规则忽略";
+          Object.assign(history.at(-1)!, { action: "pass", reason });
+          diagnostics?.record("validation", "ok", { action: "pass", reason: "accepted" });
+          decision = { action: "pass", reason };
+        } else {
+          if (!decision.issues?.length && !decision.resolvedIssueIds?.length) state.unresolved = state.unscopedIssue = true;
+          if (revision >= MAX_PREVIEW_REVISIONS || turn === MAX_PREVIEW_TURNS) {
+            diagnostics?.record("validation", "failed", { action: "revise", reason: "budget-exhausted" });
+            break;
+          }
+          if (!visibleChanged && !corrected) throw new Error("no-visible-change");
+          const resolved = decision.resolvedIssueIds ?? [];
+          for (const id of resolved) {
+            const issue = state.issues.find(value => value.id === id && value.status === "open");
+            if (!issue || (issue.scope === "render" ? !visibleChanged : !corrected)) throw new Error("问题没有对应的有效修正");
+          }
+          for (const issue of state.issues) if (resolved.includes(issue.id)) issue.status = "awaiting-review";
+          if (corrected) knowledge!.accept(corrected);
+          diagnostics?.record("validation", "ok", { action: "revise", reason: "accepted", previousTracks: diagnosticTracks(tracks), tracks: diagnosticTracks(decision.tracks) });
+          template = candidate; tracks = structuredClone(decision.tracks); state.revisions++;
+          state.corners = corners; state.binding = binding();
+          if (visibleChanged) state.unresolved = false;
+          history.at(-1)!.applied = true;
+          previewPath = undefined; evidence = []; feedback = "已按修订重新渲染，必须重新检查本次样片才能通过。";
+          continue;
         }
-        for (const issue of state.issues) if (resolved.includes(issue.id)) issue.status = "awaiting-review";
-        if (corrected) knowledge!.accept(corrected);
-        diagnostics?.record("validation", "ok", { action: "revise", reason: "accepted", previousTracks: diagnosticTracks(tracks), tracks: diagnosticTracks(decision.tracks) });
-        template = candidate; tracks = structuredClone(decision.tracks); state.revisions++;
-        state.corners = corners; state.binding = binding();
-        if (visibleChanged) state.unresolved = false;
-        history.at(-1)!.applied = true;
-        previewPath = undefined; evidence = []; feedback = "已按修订重新渲染，必须重新检查本次样片才能通过。";
-        continue;
       }
     } catch (error) {
       diagnostics?.record("validation", "failed", { action: decision.action, reason: diagnosticValidationReason(error) });

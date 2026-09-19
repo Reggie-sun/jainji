@@ -149,6 +149,23 @@ describe("rendered supervisor loop", () => {
     expect(input.render).toHaveBeenCalledOnce();
     expect(input.rebuild).not.toHaveBeenCalled();
   });
+  it("ignores a moving-only placement revision with redundant corner values", async () => {
+    const input = fixture();
+    input.rebuild.mockImplementation(() => structuredClone(input.template));
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "revise", reason: "移动目标与未改变的角落参数", tracks: [{ targetId: "moving", track: {
+      startMs: 0, endMs: 3000, keyframes: [
+        { timeMs: 0, rectangle: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } },
+        { timeMs: 2500, rectangle: { x: 0.6, y: 0.1, width: 0.1, height: 0.1 } },
+      ],
+    } }], corners: [{ corner: "top-left", width: 0.08, rotationDeg: 0 }] }));
+
+    const result = await superviseRenderedTemplate({ ...input, trackPurpose: "cover-placement", coverEnabled: true });
+
+    expect(result.tracks).toEqual([]);
+    expect(input.rebuild).toHaveBeenCalledOnce();
+    expect(input.render).toHaveBeenCalledOnce();
+    expect(input.review).toHaveBeenCalledOnce();
+  });
   it("rerenders a fixed-center scaling placement revision", async () => {
     const input = fixture();
     input.review.mockResolvedValueOnce(JSON.stringify({ action: "revise", reason: "固定贴纸缩放后仍漏盖", tracks: [{ targetId: "scaling", track: {
