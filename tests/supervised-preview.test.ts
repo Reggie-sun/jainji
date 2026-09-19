@@ -178,6 +178,23 @@ describe("rendered supervisor loop", () => {
     expect(input.render).toHaveBeenCalledOnce();
     expect(input.rebuild).not.toHaveBeenCalled();
   });
+  it("keeps invalid corners unresolved when the same revision only adds moving tracks", async () => {
+    const input = fixture();
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "revise", reason: "移动目标旁的角落仍遮住字幕", tracks: [{ targetId: "moving", track: {
+      startMs: 0, endMs: 3000, keyframes: [
+        { timeMs: 0, rectangle: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } },
+        { timeMs: 2500, rectangle: { x: 0.6, y: 0.1, width: 0.1, height: 0.1 } },
+      ],
+    } }], corners: [
+      { corner: "top-left", width: 0.08, rotationDeg: 0 },
+      { corner: "top-left", width: 0.09, rotationDeg: 0 },
+    ] })).mockResolvedValue(pass);
+
+    await expect(superviseRenderedTemplate({ ...input, trackPurpose: "cover-placement", coverEnabled: true })).rejects.toThrow("上限");
+
+    expect(input.render).toHaveBeenCalledOnce();
+    expect(input.rebuild).not.toHaveBeenCalled();
+  });
   it("does not let an ignored moving target bypass an earlier unresolved revision", async () => {
     const input = fixture();
     input.rebuild.mockImplementation(() => structuredClone(input.template));

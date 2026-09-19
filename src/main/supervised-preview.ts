@@ -266,6 +266,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
         }
       }
     } catch (error) {
+      if (decision.action === "revise") state.unresolved = state.unscopedIssue = true;
       diagnostics?.record("validation", "failed", { action: decision.action, reason: diagnosticValidationReason(error) });
       feedback = supervisorValidationFeedback(error, trackHorizonMs);
       if (history.at(-1)?.turn === turn) history.at(-1)!.feedback = feedback;
