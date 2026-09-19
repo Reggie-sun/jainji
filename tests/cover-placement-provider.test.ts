@@ -10,6 +10,8 @@ it("sends full-frame images with approximate placement semantics, not source-fac
   expect(messages[0].content).toContain("合理覆盖误差");
   expect(messages[0].content).toContain("propose");
   expect(messages[0].content).toContain("价格在5秒消失无关");
+  expect(messages[0].content).toContain("白色不透明底板");
+  expect(messages[0].content).toContain("免责声明");
   expect(messages[1].content).toEqual(expect.arrayContaining([
     { type: "image_url", image_url: { url: "data:image/jpeg;base64,aA==", detail: "high" } },
     { type: "text", text: JSON.stringify({ timeMs: 5490 }) },
@@ -27,5 +29,8 @@ it("gives the preview reviewer placement-specific instructions without source-fa
   expect(prompt).toContain("不要返回 sourceFacts");
   expect(prompt).not.toContain("tracks 必须返回修正后的全部原贴纸轨迹");
   expect(prompt).toContain("每次有效修订都重新渲染");
+  expect(prompt).toContain("opaqueBackground");
+  expect(prompt).toContain("白色不透明底板");
+  expect(prompt).toContain("未受影响");
   expect(prompt).toContain("inspect");
 });

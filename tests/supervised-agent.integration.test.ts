@@ -48,6 +48,7 @@ describe("automatic supervisor through real render and original queue", () => {
       ? { action: "inspect", reason: "核查本窗口原图", requests: input.images.slice(0, 4).map(image => ({ timeMs: image.timeMs })) }
       : { action: "resolve", reason: "fixture deliberately misses corner, preview repairs it", frames: input.proposal }));
     const inspected: PreviewReviewInput[] = [];
+    const checkpoints = Array.from({ length: 8 }, (_, index) => ({ timeMs: (index + 1) * 125, crop: { x: 0.7, y: 0.7, width: 0.3, height: 0.3 } }));
     const review = vi.spyOn(controller.reviewerProvider, "supervisePreview").mockImplementation(async input => {
       expect(input.trackHorizonMs).toBe(sourceDurationMs);
       if (coverEnabled) { expect(input.knowledge).toBeUndefined(); expect(input.trackPurpose).toBe("cover-placement"); }
@@ -59,9 +60,17 @@ describe("automatic supervisor through real render and original queue", () => {
       expect(JSON.stringify(input)).not.toContain(directory);
       const rectangle = { x: 0.825, y: 0.89, width: 0.15, height: 0.1 };
       const track = { startMs: 0, endMs: sourceDurationMs, keyframes: [{ timeMs: 0, rectangle }] };
-      if (coverEnabled) return JSON.stringify(inspected.length === 1
-        ? { action: "revise", reason: "覆盖右下角原图标", tracks: [{ targetId: "placement-badge", track }] }
-        : { action: "pass", reason: "覆盖完整且未遮挡主体，允许近似边界" });
+      if (coverEnabled) {
+        if (input.turn <= 2) return JSON.stringify({ action: "inspect", reason: "核查局部", requests: checkpoints.slice((input.turn - 1) * 4, input.turn * 4) });
+        if (input.turn >= 4) {
+          for (const request of checkpoints) expect(input.evidence).toEqual(expect.arrayContaining([expect.objectContaining({ requestedTimeMs: request.timeMs, crop: expect.any(Object) })]));
+          const previousIds = new Set(inspected[inspected.length - 2].evidence.map(image => image.previewEvidenceId));
+          expect(input.evidence.every(image => !previousIds.has(image.previewEvidenceId))).toBe(true);
+        }
+        if (input.turn <= 4) return JSON.stringify({ action: "revise", reason: "覆盖右下角原图标", tracks: [{ targetId: "placement-badge",
+          track: { ...track, keyframes: [{ timeMs: 0, rectangle: { ...rectangle, x: input.turn === 3 ? 0.82 : 0.825 } }] } }] });
+        return JSON.stringify({ action: "pass", reason: "覆盖完整且未遮挡主体，允许近似边界" });
+      }
       const facts = input.knowledge!.facts, evidenceIds = facts.observations.map(o => o.evidenceId);
       return JSON.stringify(inspected.length === 1
         ? { action: "revise", reason: "右下已有原贴纸，修正占位", tracks: [{ targetId: "source-badge", track }],
@@ -74,7 +83,7 @@ describe("automatic supervisor through real render and original queue", () => {
       const outputDirectory = path.join(directory, "output");
       await controller.start({ ruleId: "clean", brief: "", mediaIds: service.currentProject.mediaItems.map(media => media.id), outputDirectory,
         decorations: { mode: "agent", displayMode, productPrice: "手动内容", sticker: "none", fontFamily: "Noto Sans CJK SC" }, exportSettings: { resolutionMode: "source", frameRateMode: "source", quality: "balanced" } }, new Set([outputDirectory]));
-      await vi.waitFor(() => expect(controller.busy).toBe(false), { timeout: 30_000 });
+      await vi.waitFor(() => expect(controller.busy).toBe(false), { timeout: 60_000 });
       expect(controller.snapshot()?.items[0].error).toBeUndefined();
       const trace = controller.snapshot()?.items[0].coverDiagnostics;
       if (coverEnabled) {
@@ -94,12 +103,13 @@ describe("automatic supervisor through real render and original queue", () => {
         for (const [call] of render.mock.calls) await expect(access(call.cacheDirectory)).rejects.toThrow();
         return;
       }
-      expect(review).toHaveBeenCalledTimes(2);
-      expect(inspected.map(input => [input.turn, input.revision, input.remainingRevisions])).toEqual([[1, 0, 2], [2, 1, 1]]);
-      expect(inspected[1].history[0]).toMatchObject({ action: "revise", applied: true });
+      expect(review).toHaveBeenCalledTimes(coverEnabled ? 5 : 2);
+      expect(inspected.map(input => [input.turn, input.revision, input.remainingRevisions])).toEqual(coverEnabled
+        ? [[1, 0, 2], [2, 0, 2], [3, 0, 2], [4, 1, 1], [5, 2, 0]] : [[1, 0, 2], [2, 1, 1]]);
+      expect(inspected.at(-1)!.history).toEqual(expect.arrayContaining([expect.objectContaining({ action: "revise", applied: true })]));
       expect(inspected.every(input => coverEnabled ? !input.knowledge : input.knowledge?.facts.reviewedRanges.length)).toBe(true);
       expect(inspected.every(input => input.evidence.every(image => image.sourceEvidenceId && image.previewEvidenceId))).toBe(true);
-      expect(render).toHaveBeenCalledTimes(2);
+      expect(render).toHaveBeenCalledTimes(coverEnabled ? 3 : 2);
       expect(detect).toHaveBeenCalledTimes(coverEnabled ? 0 : inspectWindows ? 7 : 3);
       expect(propose).toHaveBeenCalledTimes(coverEnabled ? 1 : 0);
       if (coverEnabled) expect(recognition).not.toHaveBeenCalled();
@@ -136,12 +146,12 @@ describe("automatic supervisor through real render and original queue", () => {
         await controller.start(request, new Set([outputDirectory]));
         await vi.waitFor(() => { expect(controller.busy).toBe(false); expect(controller.snapshot()?.items[0].error).toBeUndefined(); expect(queue.snapshot().batches).toHaveLength(2);
           expect(queue.snapshot().batches.every(({ batch }) => batch.tasks[0].status === "completed")).toBe(true); }, { timeout: 30_000 });
-        expect(propose).toHaveBeenCalledOnce(); expect(review).toHaveBeenCalledTimes(3); expect(render).toHaveBeenCalledTimes(3);
+        expect(propose).toHaveBeenCalledOnce(); expect(review).toHaveBeenCalledTimes(6); expect(render).toHaveBeenCalledTimes(4);
         expect(queue.snapshot().batches[1].batch.templateSnapshot.coverPlacement).toEqual(saved.coverPlacement);
         await controller.start({ ...request, sourceStickerRefresh: { projectId: service.currentProject.id, mediaIds: [copied.id] } }, new Set([outputDirectory]));
         await vi.waitFor(() => { expect(controller.busy).toBe(false); expect(queue.snapshot().batches).toHaveLength(3);
           expect(queue.snapshot().batches.every(({ batch }) => batch.tasks[0].status === "completed")).toBe(true); }, { timeout: 30_000 });
-        expect(propose).toHaveBeenCalledTimes(2); expect(review).toHaveBeenCalledTimes(4);
+        expect(propose).toHaveBeenCalledTimes(2); expect(review).toHaveBeenCalledTimes(7);
       }
       const retainedDirectory = render.mock.calls.at(-1)![0].cacheDirectory;
       await expect(access(retainedDirectory)).resolves.toBeUndefined();
@@ -149,6 +159,6 @@ describe("automatic supervisor through real render and original queue", () => {
       await controller.cancel();
       for (const directory of new Set(render.mock.calls.map(([call]) => call.cacheDirectory))) await expect(access(directory)).rejects.toThrow();
     } finally { await controller.cancel(); await knowledge.close(); await queue.shutdown(); await rm(directory, { recursive: true, force: true }); }
-  }, 60_000);
+  }, 90_000);
 
 });

@@ -33,7 +33,8 @@ export class PreviewReviewSession {
   private busy = false;
   private scope?: string;
   private readonly state = { turns: 0, revisions: 0, renders: 0, history: [] as PreviewReviewInput["history"], issues: [] as PreviewIssueRecord[],
-    unresolved: false, unscopedIssue: false, blocked: false, corners: [] as NonNullable<PreviewRevision["corners"]>, binding: "" };
+    unresolved: false, unscopedIssue: false, blocked: false, corners: [] as NonNullable<PreviewRevision["corners"]>, binding: "",
+    inspections: [] as EvidenceRequest[] };
   snapshot() { return structuredClone(this.state); }
   enter(scope: string, binding: string) {
     if (this.state.blocked) throw new Error("反证持久交接失败，不能继续此检查会话");
@@ -80,7 +81,7 @@ export function supervisorLayerProjection(template: EditTemplate): Array<Record<
   return template.layers.map(layer => layer.type === "text"
     ? { type: layer.type, content: layer.content, x: layer.x, y: layer.y, width: layer.width }
     : { type: layer.type, x: layer.x, y: layer.y, width: layer.width, rotationDeg: layer.rotationDeg, visible: layer.visible,
-      activeRanges: layer.activeRanges, cover: layer.cover ? { height: layer.cover.height, motion: layer.cover.motion } : undefined });
+      activeRanges: layer.activeRanges, cover: layer.cover ? { height: layer.cover.height, motion: layer.cover.motion, opaqueBackground: layer.cover.opaqueBackground } : undefined });
 }
 
 function effectiveLayers(template: EditTemplate, durationMs: number): string {
@@ -109,7 +110,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
   const session = input.session ?? new PreviewReviewSession();
   const state = session.enter(`${template.id}:${input.durationMs}:${trackHorizonMs}:${knowledge ? sourceKey(knowledge.candidate.source) : "local"}`, binding());
   const { history } = state;
-  const priorInspections: EvidenceRequest[] = [];
+  const priorInspections = state.inspections;
   let evidence: SupervisorEvidenceImage[] = [];
   try { while (state.turns < MAX_PREVIEW_TURNS) {
     signal.throwIfAborted();
@@ -118,9 +119,19 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
       input.onStage(`正在渲染主管检查样片 · 修订 ${state.revisions}/${MAX_PREVIEW_REVISIONS}`);
       state.renders++;
       const requests = sampleTimes(template, input.durationMs);
+      if (input.trackPurpose === "cover-placement") {
+        for (const request of priorInspections) {
+          if (!requests.some(value => JSON.stringify(value) === JSON.stringify(request))) requests.push(structuredClone(request));
+        }
+      }
       diagnostics?.record("sample", "ok", { tracks: diagnosticTracks(tracks), requests: diagnosticRequests(requests), priorInspections: diagnosticRequests(priorInspections) });
       previewPath = await input.render(template, signal, diagnostics);
-      evidence = await measureCoverStage(diagnostics, "paired-evidence", signal, () => input.inspect(requests, signal, previewPath!));
+      evidence = [];
+      for (let offset = 0; offset < requests.length; offset += 8) {
+        signal.throwIfAborted();
+        const images = await measureCoverStage(diagnostics, "paired-evidence", signal, () => input.inspect(requests.slice(offset, offset + 8), signal, previewPath!));
+        evidence.push(...images);
+      }
       diagnostics?.record("sample", "ok", { requests: diagnosticRequests(requests), evidence: diagnosticEvidence(evidence) });
     }
     signal.throwIfAborted();
@@ -249,7 +260,10 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
       throw new ProviderError(`主管检查样片仍有无法确认的问题，本条未导出。主管报告：${decision.reason}`);
     }
     diagnostics?.record("validation", "ok", { action: "inspect", reason: "accepted", requests: diagnosticRequests(decision.requests) });
-    priorInspections.push(...diagnosticRequests(decision.requests).slice(0, 40 - priorInspections.length));
+    // At most four requests per turn and five turns; keep geometry, never image bytes.
+    for (const request of decision.requests) {
+      if (!priorInspections.some(value => JSON.stringify(value) === JSON.stringify(request))) priorInspections.push(structuredClone(request));
+    }
     if (turn === MAX_PREVIEW_TURNS) break;
     input.onStage(`主管请求样片补充证据：${decision.reason}`);
     const extra = await measureCoverStage(diagnostics, "paired-evidence", signal, () => input.inspect(decision.requests, signal, previewPath!));

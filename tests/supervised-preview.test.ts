@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDefaultTemplate } from "../src/main/domain";
-import { superviseRenderedTemplate, PreviewReviewSession } from "../src/main/supervised-preview";
+import { superviseRenderedTemplate, PreviewReviewSession, supervisorLayerProjection } from "../src/main/supervised-preview";
 import { CoverDiagnostics, diagnosticTracks } from "../src/main/cover-diagnostics";
 
 const pass = JSON.stringify({ action: "pass", reason: "检查通过" });
@@ -18,19 +18,58 @@ function fixture() {
 }
 
 describe("rendered supervisor loop", () => {
-  it("retains revision identities and prior inspection checkpoints after a later failure without replaying them", async () => {
+  it("replays placement inspection checkpoints on the new render and retains diagnostics after failure", async () => {
     const input = fixture(), diagnostics = new CoverDiagnostics();
     const request = { timeMs: 1250, crop: { x: 0.7, y: 0.7, width: 0.3, height: 0.3 } };
     input.review.mockResolvedValueOnce(JSON.stringify({ action: "inspect", reason: "secret /home/me sk-key", requests: [request] }))
       .mockResolvedValueOnce(revise).mockRejectedValueOnce(new Error("account@example.com"));
-    await expect(superviseRenderedTemplate({ ...input, diagnostics })).rejects.toThrow("account");
+    await expect(superviseRenderedTemplate({ ...input, diagnostics, trackPurpose: "cover-placement", coverEnabled: true })).rejects.toThrow("account");
     const revision = diagnostics.state.events.find(event => event.action === "revise" && event.outcome === "ok");
     expect(revision).toMatchObject({ previousTracks: diagnosticTracks([]), tracks: diagnosticTracks(JSON.parse(revise).tracks) });
     const nextSample = diagnostics.state.events.find(event => event.stage === "sample" && event.revision === 1);
     expect(nextSample?.priorInspections).toEqual([request]);
-    expect(nextSample?.requests).not.toContainEqual(request);
+    expect(nextSample?.requests).toContainEqual(request);
+    const calls = input.inspect.mock.calls.filter(call => call[2] === "preview-1");
+    expect(calls.flatMap(call => call[0])).toContainEqual(request);
+    expect(calls.every(call => call[0].length <= 8)).toBe(true);
+    expect(input.review.mock.calls[2][0].evidence.every((image: { previewUrl: string }) => image.previewUrl === "preview-1")).toBe(true);
     expect(diagnostics.state.events.at(-1)).toMatchObject({ stage: "review-provider", outcome: "failed" });
     expect(JSON.stringify(diagnostics.state)).not.toMatch(/secret|home|sk-key|account|fixture.png|preview-1/);
+  });
+  it("retains the opaque footprint flag in the path-free review projection", () => {
+    const input = fixture();
+    for (const opaqueBackground of [true, undefined] as const) {
+      const template = { ...input.template, layers: input.template.layers.map(layer => ({ ...layer, cover: { stickerId: "heart", height: 0.1, opaqueBackground } })) };
+      expect(supervisorLayerProjection(template)[0]).toMatchObject({ cover: { height: 0.1, opaqueBackground } });
+      expect(JSON.stringify(supervisorLayerProjection(template))).not.toContain("fixture.png");
+    }
+  });
+  it("replays both crops at the same time, deduplicates identical requests and uses at most five turns", async () => {
+    const input = fixture();
+    const left = { timeMs: 1250, crop: { x: 0, y: 0, width: 0.2, height: 0.2 } };
+    const right = { timeMs: 1250, crop: { x: 0.8, y: 0.8, width: 0.2, height: 0.2 } };
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "inspect", reason: "left", requests: [left] }))
+      .mockResolvedValueOnce(JSON.stringify({ action: "inspect", reason: "right", requests: [left, right] }))
+      .mockResolvedValueOnce(revise).mockResolvedValueOnce(revise).mockResolvedValueOnce(pass);
+    const result = await superviseRenderedTemplate({ ...input, trackPurpose: "cover-placement", coverEnabled: true });
+    expect(result.budget).toEqual({ turns: 5, revisions: 2, renders: 3 });
+    for (const turn of [3, 4]) {
+      const images = input.review.mock.calls[turn][0].evidence;
+      expect(images.filter((image: { requestedTimeMs: number }) => image.requestedTimeMs === 1250)).toHaveLength(2);
+    }
+    expect(input.inspect.mock.calls.every(call => call[0].length <= 8)).toBe(true);
+  });
+  it("fails closed if extracting a replayed checkpoint fails", async () => {
+    const input = fixture();
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "inspect", reason: "check", requests: [{ timeMs: 1250 }] }))
+      .mockResolvedValueOnce(revise).mockResolvedValueOnce(pass);
+    const inspect = input.inspect.getMockImplementation()!;
+    input.inspect.mockImplementation(async (requests, signal, previewPath) => {
+      if (previewPath === "preview-1" && requests.some(request => request.timeMs === 1250)) throw new Error("replay failed");
+      return inspect(requests, signal, previewPath);
+    });
+    await expect(superviseRenderedTemplate({ ...input, trackPurpose: "cover-placement", coverEnabled: true })).rejects.toThrow("replay failed");
+    expect(input.review).toHaveBeenCalledTimes(2);
   });
   it.each([
     { mode: "first-3s" as const, times: [0, 2500, 2750, 3100, 5000, 10000, 14999, 19999] },

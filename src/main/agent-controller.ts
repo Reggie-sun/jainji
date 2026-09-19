@@ -231,12 +231,19 @@ export class AgentController {
           (context, requestSignal) => this.visionProvider.proposeCoverPlacement(context, requestSignal), onStage, undefined, diagnostics),
         review: async input => {
           const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-preview-"));
-          const evidence = new SupervisorEvidence(this.ffmpeg, input.media);
+          let evidence = new SupervisorEvidence(this.ffmpeg, input.media);
           let retained = false;
           try {
             const result = await superviseRenderedTemplate({ ...input, tracks: input.placement.tracks, trackPurpose: "cover-placement",
             durationMs: input.media.durationMs, coverEnabled: true, automaticCorners: decorations.mode === "agent",
-            render: (candidate, requestSignal, diagnostics) => this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal, diagnostics }),
+            render: async (candidate, requestSignal, diagnostics) => {
+              const preview = await this.queue.renderPreview({ template: candidate, media: input.media, preset, cacheDirectory: directory, signal: requestSignal, diagnostics });
+              // Placement evidence has no durable handoff. Each new render replaces
+              // obsolete image handles; replayed checkpoints bind to the new preview.
+              await evidence.dispose();
+              evidence = new SupervisorEvidence(this.ffmpeg, input.media);
+              return preview;
+            },
             inspect: (requests, requestSignal, previewPath) => evidence.inspect(requests, requestSignal, previewPath),
             review: (context, requestSignal) => this.reviewerProvider.supervisePreview(context, requestSignal),
             });
