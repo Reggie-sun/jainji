@@ -166,6 +166,21 @@ describe("rendered supervisor loop", () => {
     expect(input.render).toHaveBeenCalledOnce();
     expect(input.review).toHaveBeenCalledOnce();
   });
+  it("does not treat an unverifiable hidden corner change as a redundant moving-only revision", async () => {
+    const input = fixture();
+    input.template.layers[0] = { ...input.template.layers[0], cover: { stickerId: "heart", height: 0.08 } } as typeof input.template.layers[0];
+    input.rebuild.mockImplementation(() => structuredClone(input.template));
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "revise", reason: "被覆盖层隐藏的角落仍遮住免责声明", tracks: [{ targetId: "moving", track: {
+      startMs: 0, endMs: 3000, keyframes: [
+        { timeMs: 0, rectangle: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } },
+        { timeMs: 2500, rectangle: { x: 0.6, y: 0.1, width: 0.1, height: 0.1 } },
+      ],
+    } }], corners: [{ corner: "top-left", width: 0.09, rotationDeg: 0 }] })).mockResolvedValue(pass);
+
+    await expect(superviseRenderedTemplate({ ...input, trackPurpose: "cover-placement", coverEnabled: true })).rejects.toThrow("上限");
+
+    expect(input.render).toHaveBeenCalledOnce();
+  });
   it("keeps a schema-valid but locally invalid revision unresolved", async () => {
     const input = fixture();
     input.review.mockResolvedValueOnce(JSON.stringify({ action: "revise", reason: "重复角落", tracks: [], corners: [

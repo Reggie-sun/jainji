@@ -9,6 +9,7 @@ import { coversRanges, type ReviewedRange } from "../shared/source-sticker-knowl
 import { decorationDisplaySeconds } from "../shared/decorations.js";
 import { diagnosticEvidence, diagnosticRequests, diagnosticTracks, diagnosticValidationReason, measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
 import { staticAutomaticCoverTracks } from "./cover-sticker.js";
+import { nearestStickerCorner } from "../shared/layout-policy.js";
 
 interface SupervisedPreviewInput {
   diagnostics?: CoverDiagnostics;
@@ -93,6 +94,15 @@ function effectiveLayers(template: EditTemplate, durationMs: number): string {
     const activeRanges = layer.activeRanges.map(range => ({ startMs: range.startMs, endMs: Math.min(endMs, range.endMs) })).filter(range => range.endMs > range.startMs);
     return activeRanges.length ? [{ ...layer, activeRanges }] : [];
   }) }));
+}
+
+function redundantCornerCorrections(template: EditTemplate, corners: NonNullable<PreviewRevision["corners"]>): boolean {
+  return corners.every(corner => template.layers.some(layer => {
+    if (layer.type !== "sticker" || layer.cover || !layer.visible) return false;
+    const nearest = nearestStickerCorner(layer);
+    return `${nearest.vertical}-${nearest.horizontal}` === corner.corner
+      && layer.width === corner.width && layer.rotationDeg === corner.rotationDeg;
+  }));
 }
 
 /** This gate returns a frozen candidate only after reviewing the latest real render. It never enqueues. */
@@ -236,7 +246,7 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
         if (decision.sourceFacts && !knowledge) throw new Error("源事实缺少证据");
         const corrected = knowledge?.correction(decision, state.issues, trackHorizonMs);
         if (knowledge && !corrected && JSON.stringify(decision.tracks) !== JSON.stringify(tracks)) throw new Error("源轨迹必须通过源事实修正");
-        if (!visibleChanged && !corrected && ignoredMovingTracks) {
+        if (!visibleChanged && !corrected && ignoredMovingTracks && redundantCornerCorrections(template, decision.corners ?? [])) {
           if (state.unresolved || state.issues.some(issue => issue.status === "open")) throw new Error("unresolved-revision");
           const reason = "位置移动或跳变的原动图按快速导出规则忽略";
           Object.assign(history.at(-1)!, { action: "pass", reason });
