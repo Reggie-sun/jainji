@@ -190,7 +190,7 @@ export class TemplateCompiler {
           graph.push(`[${artwork}background]lutrgb=r=255:g=255:b=255:a=255[${artwork}white]`);
           graph.push(`[${artwork}white][${artwork}foreground]overlay=0:0:format=auto[${sourceLabel}]`);
         }
-        if (motion) {
+        if (motion && motion.keyframes.length > 1) {
           const main = `coverMain${stickerIndex}`, clock = `coverClock${stickerIndex}`, blank = `coverBlank${stickerIndex}`, clocked = `coverClocked${stickerIndex}`;
           // Borrow the source timestamps instead of animating at the PNG input's 25 fps.
           graph.push(`[${baseLabel}]split[${main}][${clock}]`);
@@ -204,7 +204,9 @@ export class TemplateCompiler {
           graph.push(`[${sourceLabel}]${raster ? `scale=w='${raster.width}':h='${raster.height}'` : "null"}[${scaledLabel}]`);
           const timedSticker = stickerLimit ? fadeOnVideoClock(scaledLabel) : scaledLabel;
           const position = raster ? `x='${raster.x}':y='${raster.y}'` : `x=main_w*${layer.x.toFixed(5)}:y=main_h*${layer.y.toFixed(5)}`;
-          graph.push(`[${baseLabel}][${timedSticker}]overlay=${position}${stickerLimit ? `:enable='${stickerLimit}'` : ""}:format=auto[${nextLabel}]`);
+          const active = motion ? `gte(t,${motion.startMs / 1000})*lt(t,${motion.endMs / 1000})` : undefined;
+          const enabled = active && stickerLimit ? `(${active})*${stickerLimit}` : active ?? stickerLimit;
+          graph.push(`[${baseLabel}][${timedSticker}]overlay=${position}${enabled ? `:enable='${enabled}'` : ""}:format=auto[${nextLabel}]`);
         }
         baseLabel = nextLabel;
         continue;

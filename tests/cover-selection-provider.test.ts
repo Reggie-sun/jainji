@@ -21,6 +21,7 @@ describe("cover sticker selection provider", () => {
     const provider = new AgentProvider(); provider.useChatGPT("vision", complete);
     const candidates = catalog([sticker]);
     await expect(provider.shortlist("clean", "", frames, new AbortController().signal, candidates, undefined, "cover")).resolves.toEqual([sticker.id]);
+    expect(complete.mock.calls[0][0][0].content).toContain("第一项将直接作为本轮覆盖选款");
     await expect(provider.shortlist("clean", "", frames, new AbortController().signal, candidates)).rejects.toThrow("没有可用");
     expect(complete).toHaveBeenCalledOnce();
   });

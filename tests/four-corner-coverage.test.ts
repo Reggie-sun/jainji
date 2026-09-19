@@ -83,21 +83,14 @@ describe("automatic four-corner coverage", () => {
     expect(decorations(template).every(l => !("activeRanges" in l))).toBe(true);
     expect(decorations((await produce([track(0, 1000)], "manual")).template)).toHaveLength(0);
   });
-  it("uses each moving cover's corner occupancy, not only its first keyframe", async () => {
+  it("does not reserve corner occupancy for a spatially moving cover", async () => {
     const moving = track(0, 1000);
     moving.track.keyframes.push({ timeMs: 1000, rectangle: { ...rectangle, y: 0.9 } });
     const { template } = await produce([moving]);
     const ordinary = decorations(template);
-    expect(ordinary[0]).toHaveProperty("activeRanges");
-    expect(ordinary[2]).toHaveProperty("activeRanges");
-    const top = ordinary[0] as StickerLayer & { activeRanges: { startMs: number; endMs: number }[] };
-    const bottom = ordinary[2] as typeof top;
-    // Raw source geometry is expanded by 0.02 for rendering and clamped at both edges.
-    // The resulting cover moves from y=0 to y=0.88 with height=0.12.
-    expect(top.activeRanges[0].startMs).toBeCloseTo(1000 * 0.105 / 0.88);
-    expect(top.activeRanges[0].endMs).toBe(1000);
-    expect(bottom.activeRanges[0].startMs).toBe(0);
-    expect(bottom.activeRanges[0].endMs).toBeCloseTo(1000 * 0.775 / 0.88);
+    expect(ordinary).toHaveLength(4);
+    expect(ordinary.every(layer => layer.activeRanges === undefined)).toBe(true);
+    expect(template.layers.some(layer => layer.type === "sticker" && layer.cover)).toBe(false);
   });
   it.each([
     [{ x: 0.04, y: 0.75, width: 0.12, height: 0.2 }, [2]],
@@ -115,7 +108,11 @@ describe("automatic four-corner coverage", () => {
     const compiler = new TemplateCompiler();
     const options = { ffmpegPath: "/fake", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: (id: string) => `/tmp/${id}` };
     const command = await compiler.compile(template, source, DEFAULT_PRESET, options);
-    expect(command.textFiles.find(f => f.layerId === "cover-graph")?.content).toContain("enable='gte(t,0)*lt(t,0.2)+gte(t,0.6)*lt(t,1)'");
+    const graph = command.textFiles.find(f => f.layerId === "cover-graph")?.content;
+    expect(graph).toContain("enable='gte(t,0)*lt(t,0.2)+gte(t,0.6)*lt(t,1)'");
+    expect(graph).toContain("enable='gte(t,0.2)*lt(t,0.6)'");
+    expect(graph).not.toContain("coverClock");
+    expect(graph).not.toContain(":eval=frame");
     await expect(compiler.compile(template, { ...source, durationMs: 900 }, DEFAULT_PRESET, options)).rejects.toThrow("时长");
   });
   it("rejects ambiguous persisted timing instead of changing historical untimed templates", async () => {

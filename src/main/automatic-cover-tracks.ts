@@ -63,14 +63,14 @@ export function automaticCoverTracks(frames: readonly DetectedCoverFrame[], dura
     active = next;
   }
   const tracks: AutomaticCoverTrack[] = [];
-  for (const [runIndex, run] of runs.entries()) {
+  for (const run of runs) {
     const expanded = expandFrames(run.frames);
     const reduced = simplify(expanded, run.frames);
     for (let offset = 0; offset < reduced.length; offset += 49) {
       const keyframes = reduced.slice(offset, offset + 50);
       const startMs = offset === 0 ? run.startMs : keyframes[0].timeMs;
       const endMs = offset + 50 < reduced.length ? keyframes[keyframes.length - 1].timeMs : run.endMs;
-      if (endMs > startMs) tracks.push({ targetId: `${run.id}-${runIndex}-${offset}`, track: CoverTrackSchema.parse({ startMs, endMs, keyframes }) });
+      if (endMs > startMs) tracks.push({ targetId: run.id, track: CoverTrackSchema.parse({ startMs, endMs, keyframes }) });
       if (offset + 50 >= reduced.length) break;
     }
   }

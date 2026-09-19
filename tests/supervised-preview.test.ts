@@ -134,6 +134,21 @@ describe("rendered supervisor loop", () => {
     expect(input.render).toHaveBeenCalledOnce();
     expect(input.review.mock.calls[1][0].evidence.length).toBeGreaterThan(input.review.mock.calls[0][0].evidence.length);
   });
+  it("ignores a moving-only placement revision without rerendering", async () => {
+    const input = fixture();
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "revise", reason: "动图横向移动", tracks: [{ targetId: "moving", track: {
+      startMs: 0, endMs: 3000, keyframes: [
+        { timeMs: 0, rectangle: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } },
+        { timeMs: 2500, rectangle: { x: 0.6, y: 0.1, width: 0.1, height: 0.1 } },
+      ],
+    } }] }));
+
+    const result = await superviseRenderedTemplate({ ...input, trackPurpose: "cover-placement", coverEnabled: true });
+
+    expect(result.tracks).toEqual([]);
+    expect(input.render).toHaveBeenCalledOnce();
+    expect(input.rebuild).not.toHaveBeenCalled();
+  });
   it("never accepts a revision without a subsequent pass and stops at two revisions", async () => {
     const input = fixture(); input.review.mockResolvedValue(revise);
     const diagnostics = new CoverDiagnostics();

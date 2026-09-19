@@ -269,9 +269,13 @@ export class AgentController {
           if (!stickers.length) throw new ProviderError("没有可用的自动覆盖贴纸，请检查本地素材库。");
           creativeRequests++;
           const ids = await this.provider.shortlist(parsed.ruleId, `${decorationTimingContext(decorations?.displayMode)}为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
-          const candidates = await prepareCandidates(ids, catalog, signal);
-          creativeRequests++;
-          const stickerId = await this.provider.selectCoverSticker(frames, signal, candidates, decorations?.displayMode);
+          const stickerId = ids[0];
+          if (!stickerId || !catalog.stickers.some((entry) => entry.id === stickerId)) throw new ProviderError("覆盖初筛没有返回有效候选，本轮已停止。");
+          if (!stickerAssets[stickerId]) {
+            const asset = await this.library!.ensure(stickerId);
+            signal.throwIfAborted();
+            (stickerAssets as Record<string, typeof asset>)[stickerId] = asset;
+          }
           signal.throwIfAborted();
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };

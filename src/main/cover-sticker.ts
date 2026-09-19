@@ -79,8 +79,41 @@ export function manualCoverLayers(frozen: FrozenCoverSticker, source: { id?: str
   return ((source.id && frozen.mediaRegions?.[source.id]) || frozen.regions || [frozen]).map((placement) => coverLayerForMedia({ ...placement, ...placement.artworkCycle?.[(version - 1) % placement.artworkCycle.length] }, source, output));
 }
 
+const MAX_STATIC_COVER_DRIFT = 0.02;
+
+export function staticAutomaticCoverTracks(tracks: readonly AutomaticCoverTrack[]): AutomaticCoverTrack[] {
+  const grouped = new Map<string, AutomaticCoverTrack[]>();
+  for (const value of tracks) grouped.set(value.targetId, [...(grouped.get(value.targetId) ?? []), value]);
+  const result: AutomaticCoverTrack[] = [];
+  for (const values of grouped.values()) {
+    const frames = values.flatMap(({ track }) => track.keyframes);
+    const reference = frames[0]?.rectangle;
+    if (!reference || frames.some(({ rectangle }) => {
+      const centerX = rectangle.x + rectangle.width / 2, centerY = rectangle.y + rectangle.height / 2;
+      const referenceCenterX = reference.x + reference.width / 2, referenceCenterY = reference.y + reference.height / 2;
+      return Math.abs(centerX - referenceCenterX) > MAX_STATIC_COVER_DRIFT
+        || Math.abs(centerY - referenceCenterY) > MAX_STATIC_COVER_DRIFT
+        || Math.abs(rectangle.width - reference.width) > MAX_STATIC_COVER_DRIFT
+        || Math.abs(rectangle.height - reference.height) > MAX_STATIC_COVER_DRIFT;
+    })) continue;
+    if (frames.length === 1) {
+      result.push(...structuredClone(values));
+      continue;
+    }
+    const left = Math.min(...frames.map(({ rectangle }) => rectangle.x));
+    const top = Math.min(...frames.map(({ rectangle }) => rectangle.y));
+    const right = Math.max(...frames.map(({ rectangle }) => rectangle.x + rectangle.width));
+    const bottom = Math.max(...frames.map(({ rectangle }) => rectangle.y + rectangle.height));
+    const rectangle = { x: left, y: top, width: right - left, height: bottom - top };
+    result.push(...values.map(({ targetId, track }) => ({ targetId, track: {
+      startMs: track.startMs, endMs: track.endMs, keyframes: [{ timeMs: track.startMs, rectangle }],
+    } })));
+  }
+  return result;
+}
+
 export function automaticCoverLayers(frozen: FrozenCoverSticker, source: { id: string; width: number; height: number }, output: { width: number; height: number }, tracks: readonly AutomaticCoverTrack[]): StickerLayer[] {
-  return tracks.map(({ targetId, track }) => {
+  return staticAutomaticCoverTracks(tracks).map(({ targetId, track }) => {
     const layer = coverLayerForMedia({ ...frozen, tracks: { [source.id]: track } }, source, output);
     return { ...layer, cover: { ...layer.cover!, automatic: true, targetId } };
   });

@@ -8,6 +8,7 @@ import { factsDigest, sourceKey } from "./source-sticker-knowledge-store.js";
 import { coversRanges, type ReviewedRange } from "../shared/source-sticker-knowledge.js";
 import { decorationDisplaySeconds } from "../shared/decorations.js";
 import { diagnosticEvidence, diagnosticRequests, diagnosticTracks, diagnosticValidationReason, measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
+import { staticAutomaticCoverTracks } from "./cover-sticker.js";
 
 interface SupervisedPreviewInput {
   diagnostics?: CoverDiagnostics;
@@ -99,7 +100,8 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
   if (input.trackPurpose === "cover-placement" && (!input.coverEnabled || input.knowledge)) throw new ProviderError("近似覆盖不能作为原贴纸知识复核。");
   const { signal } = input;
   signal.throwIfAborted();
-  let template = EditTemplateSchema.parse(input.template), tracks = structuredClone(input.tracks);
+  let template = EditTemplateSchema.parse(input.template), tracks = input.trackPurpose === "cover-placement"
+    ? staticAutomaticCoverTracks(input.tracks) : structuredClone(input.tracks);
   let previewPath: string | undefined, feedback: string | undefined;
   const trackHorizonMs = template.stickerDisplayMode !== "full" && template.decorationDisplayMode === "first-3s" ? Math.min(3000, input.durationMs) : input.durationMs;
   const checkedRanges = [{ startMs: 0, endMs: trackHorizonMs }];
@@ -189,10 +191,20 @@ export async function superviseRenderedTemplate(input: SupervisedPreviewInput): 
     const failed = handoffs.find(result => result.status === "rejected");
     if (failed?.status === "rejected") { state.blocked = true; throw failed.reason; }
     signal.throwIfAborted();
-    let decision;
+    let decision: ReturnType<typeof PreviewDecisionSchema.parse>;
     try {
       if (issueError) throw issueError;
       decision = PreviewDecisionSchema.parse(decoded);
+      if (decision.action === "revise" && input.trackPurpose === "cover-placement") {
+        const validated = validateSupervisorTracks(decision.tracks, trackHorizonMs);
+        const staticTracks = staticAutomaticCoverTracks(validated);
+        const ignoredMovingOnly = staticTracks.length < validated.length
+          && JSON.stringify(staticTracks) === JSON.stringify(tracks)
+          && !decision.corners?.length && !decision.issues?.length && !decision.resolvedIssueIds?.length && !decision.sourceFacts;
+        decision = ignoredMovingOnly
+          ? { action: "pass", reason: "位置移动或跳变的原动图按快速导出规则忽略" }
+          : { ...decision, tracks: staticTracks };
+      }
     } catch (error) {
       diagnostics?.record("validation", "failed", { action: revisionReason ? "revise" : "invalid", reason: "invalid-response" });
       if (issueError || (revisionReason && !reported.length)) state.unresolved = state.unscopedIssue = true;

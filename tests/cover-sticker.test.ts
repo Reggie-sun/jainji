@@ -109,7 +109,7 @@ describe("reusable batch cover", () => {
       await controller.start(input, new Set([directory]));
       await vi.waitFor(() => expect(controller.busy).toBe(false));
       expect(history.flatMap((batch) => batch.templateSnapshot.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []))).toEqual([libraryId, "sparkle", libraryId, "sparkle"]);
-      expect(selectCover).toHaveBeenCalledTimes(4);
+      expect(selectCover).not.toHaveBeenCalled();
       expect(shortlist.mock.calls.filter((call) => !call[5])[1][4].stickers.some(({ id }) => id === libraryId)).toBe(false);
       expect(Object.keys(assets)).not.toContain(libraryId);
       service.setCoverSticker({ ...options, stickerIds: [`uploaded-${"c".repeat(64)}`] });
@@ -139,7 +139,7 @@ describe("reusable batch cover", () => {
       expect(knowledge.close).toHaveBeenCalledTimes(knowledgeRuns);
       expect(visionDetect).not.toHaveBeenCalled();
       expect(recognitionReview).not.toHaveBeenCalled();
-      expect(selectCover).toHaveBeenCalledTimes(4);
+      expect(selectCover).not.toHaveBeenCalled();
       expect(shortlist.mock.calls.filter(call => call[6] === "cover")).toHaveLength(4);
       if (mode === "agent") {
         expect(history.slice(4).every(batch => batch.templateSnapshot.layers.filter(layer => layer.type === "sticker").length === 3)).toBe(true);

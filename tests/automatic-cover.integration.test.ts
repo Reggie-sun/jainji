@@ -10,7 +10,7 @@ import { createDefaultTemplate, DEFAULT_PRESET, type MediaItem } from "../src/ma
 import { TemplateCompiler } from "../src/main/compiler";
 import { interpolateCoverRectangle } from "../src/shared/cover-sticker";
 
-it("recognizes both moving fixture badges across windows and renders every generated cover", { timeout: 60_000 }, async (context) => {
+it("recognizes moving fixture badges but omits them from automatic cover rendering", { timeout: 60_000 }, async (context) => {
   const [binary, probe] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe")]);
   if (!binary || !probe) return context.skip();
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-auto-cover-proof-"));
@@ -73,8 +73,9 @@ it("recognizes both moving fixture badges across windows and renders every gener
     const frozen = resolveCoverSticker({ enabled: true, stickerIds: [id], trackingMode: "agent", rectangle: { x: 0.8, y: 0.8, width: 0.1, height: 0.1 } }, { [id]: { assetPath, assetFingerprint: "fixture" } }, [])!;
     const template = createDefaultTemplate();
     template.layers = automaticCoverLayers(frozen, media, media, tracks);
+    expect(template.layers).toEqual([]);
     const compiled = await new TemplateCompiler().compile(template, media, { ...DEFAULT_PRESET, resolutionMode: "source" }, { ffmpegPath: binary, fontResolver: { resolve: async () => null }, textFilePath: (id) => path.join(directory, `${id}.txt`) });
-    expect(compiled.args).toContain("-filter_complex_script");
+    expect(compiled.args).not.toContain("-filter_complex_script");
     await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content)));
     const output = path.join(directory, "output.mp4");
     const rendered = await runCommand(binary, [...compiled.args, output]).promise;
@@ -90,9 +91,9 @@ it("recognizes both moving fixture badges across windows and renders every gener
         if (data[offset + 2] > data[offset] + 80 && data[offset + 2] > data[offset + 1] + 80) blue++;
         if (data[offset] > 210 && data[offset + 1] > 210 && data[offset + 2] > 210) whiteBacking++;
       }
-      expect(originalBadge, `uncovered badge at frame ${frame}`).toBeLessThan(10);
-      expect(blue).toBeGreaterThan(0);
-      expect(whiteBacking).toBeGreaterThan(100);
+      expect(originalBadge, `moving badge missing at frame ${frame}`).toBeGreaterThan(10);
+      expect(blue).toBeLessThan(10);
+      expect(whiteBacking).toBeLessThan(10);
     }
     const info = await ffmpeg.probe(output);
     expect(info.streams?.some((stream) => stream.codec_type === "audio")).toBe(true);

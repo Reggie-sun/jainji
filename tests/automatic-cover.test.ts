@@ -20,7 +20,7 @@ const automaticHeartStickers = () => [
 ];
 const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/video.mp4", displayName: "video", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
 const observations = [0, 250, 500, 750].map((timeMs) => ({ timeMs, targets: [
-  { id: "a", rectangle: { ...rect, x: 0.1 + timeMs / 5000 } },
+  { id: "a", rectangle: { ...rect, x: 0.1 + timeMs / 100_000 } },
   ...(timeMs < 500 ? [{ id: "b", rectangle: { ...rect, x: 0.7 } }] : []),
 ] }));
 const settings = { enabled: true, stickerIds: [id], rectangle: { ...rect, x: 0.8 }, trackingMode: "agent" as const };
@@ -62,11 +62,38 @@ describe("fully automatic multi-target cover", () => {
     expect(EditTemplateSchema.parse({ ...createDefaultTemplate(), layers }).layers).toHaveLength(2);
     expect(automaticCoverLayers(frozen, source, source, [])).toEqual([]);
   });
+  it("does not render a source target whose rectangle moves across the frame", () => {
+    const frozen = resolveCoverSticker(settings, assets, [])!;
+    const stable = { targetId: "stable", track: { startMs: 0, endMs: 1000, keyframes: [
+      { timeMs: 0, rectangle: rect },
+      { timeMs: 750, rectangle: { ...rect, x: 0.11 } },
+    ] } };
+    const moving = { targetId: "moving", track: { startMs: 0, endMs: 1000, keyframes: [
+      { timeMs: 0, rectangle: rect },
+      { timeMs: 750, rectangle: { ...rect, x: 0.5 } },
+    ] } };
+
+    const layers = automaticCoverLayers(frozen, source, source, [stable, moving]);
+
+    expect(layers).toHaveLength(1);
+    expect(layers[0].cover).toMatchObject({ targetId: "stable", motion: { keyframes: [{ timeMs: 0 }] } });
+  });
   it("splits disappearances rather than drawing a track through missing targets", () => {
     const frames = [0, 250, 500, 750, 1000].map((timeMs) => ({ timeMs, targets: timeMs === 0 || timeMs === 1000 ? [{ id: "a", rectangle: rect }] : [] }));
     const tracks = automaticCoverTracks(frames, 1250);
     expect(tracks).toHaveLength(2);
     expect(tracks.map(({ track }) => [track.startMs, track.endMs])).toEqual([[0, 250], [750, 1250]]);
+  });
+  it("ignores a target that disappears and jumps to another position", () => {
+    const frames = [
+      { timeMs: 0, targets: [{ id: "a", rectangle: rect }] },
+      { timeMs: 250, targets: [] },
+      { timeMs: 500, targets: [{ id: "a", rectangle: { ...rect, x: 0.6 } }] },
+    ];
+    const tracks = automaticCoverTracks(frames, 750);
+    const frozen = resolveCoverSticker(settings, assets, [])!;
+
+    expect(automaticCoverLayers(frozen, source, source, tracks)).toEqual([]);
   });
   it("segments complex motion into bounded keyframe lists with continuous boundaries", () => {
     const frames = Array.from({ length: 80 }, (_, index) => ({ timeMs: index * 250, targets: [{ id: "a", rectangle: { ...rect, x: index % 2 ? 0.4 : 0.1 } }] }));
