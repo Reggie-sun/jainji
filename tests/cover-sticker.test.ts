@@ -52,6 +52,23 @@ describe("reusable batch cover", () => {
     expect(plan).not.toHaveBeenCalled(); expect(enqueue).not.toHaveBeenCalled(); expect(detectCoverTracks).not.toHaveBeenCalled();
     expect(runner.snapshot()?.items.every((item) => item.status === (outcome === "cancel" ? "cancelled" : "failed"))).toBe(true);
   });
+  it("preserves human-approved moving tracks in the assisted prepared path", async () => {
+    const source: MediaItem = { id: crypto.randomUUID(), sourcePath: "/tmp/source.mp4", displayName: "source", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 640, height: 480, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
+    const track = { startMs: 0, endMs: 1000, keyframes: [
+      { timeMs: 0, rectangle: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } },
+      { timeMs: 750, rectangle: { x: 0.6, y: 0.1, width: 0.1, height: 0.1 } },
+    ] };
+    const prepared = vi.fn(async (_template: EditTemplate) => {});
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3 }), enqueue: vi.fn(),
+      detectCoverTracks: async () => [{ targetId: "human", track }], selectCoverSticker: async () => ({ stickerId: a, ...assets[a], rectangle: options.rectangle, automatic: true }),
+      prepared, stickerAssets: assets, onChange: () => {} });
+
+    runner.start("project", "clean", "", [source], 1);
+    await runner.settled();
+
+    expect(prepared).toHaveBeenCalledTimes(1);
+    expect(prepared.mock.calls[0]![0].layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.motion] : [])[0]).toEqual(track);
+  });
   it("requires explicit coverage settings independently of decoration mode", () => {
     expect(resolveCoverSticker(undefined, assets, [])).toBeUndefined();
     const disabled = { ...options, enabled: false, trackingMode: "manual" as const };

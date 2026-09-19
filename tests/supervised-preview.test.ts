@@ -149,6 +149,22 @@ describe("rendered supervisor loop", () => {
     expect(input.render).toHaveBeenCalledOnce();
     expect(input.rebuild).not.toHaveBeenCalled();
   });
+  it("rerenders a fixed-center scaling placement revision", async () => {
+    const input = fixture();
+    input.review.mockResolvedValueOnce(JSON.stringify({ action: "revise", reason: "固定贴纸缩放后仍漏盖", tracks: [{ targetId: "scaling", track: {
+      startMs: 0, endMs: 3000, keyframes: [
+        { timeMs: 0, rectangle: { x: 0.1, y: 0.1, width: 0.1, height: 0.1 } },
+        { timeMs: 2500, rectangle: { x: 0.08, y: 0.08, width: 0.14, height: 0.14 } },
+      ],
+    } }] })).mockResolvedValueOnce(pass);
+
+    const result = await superviseRenderedTemplate({ ...input, trackPurpose: "cover-placement", coverEnabled: true });
+
+    expect(result.tracks).toHaveLength(1);
+    expect(result.tracks[0].track.keyframes).toHaveLength(1);
+    expect(input.render).toHaveBeenCalledTimes(2);
+    expect(input.rebuild).toHaveBeenCalledOnce();
+  });
   it("never accepts a revision without a subsequent pass and stops at two revisions", async () => {
     const input = fixture(); input.review.mockResolvedValue(revise);
     const diagnostics = new CoverDiagnostics();

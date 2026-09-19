@@ -8,11 +8,11 @@ import { automaticCoverLayers, manualCoverLayers, type FrozenCoverSticker } from
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 import { fillUncoveredCorners } from "./automatic-corner-layout.js";
 
-export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleId; source: MediaItem; resolutionMode?: ExportSettings["resolutionMode"]; stickerAssets: StickerAssets; decorations?: DecorationOptions; catalog?: AgentDecorationCatalog; coverSticker?: FrozenCoverSticker; coverTracks?: AutomaticCoverTrack[]; sourceStickerTracks?: AutomaticCoverTrack[]; runId: string; version: number }) {
+export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleId; source: MediaItem; resolutionMode?: ExportSettings["resolutionMode"]; stickerAssets: StickerAssets; decorations?: DecorationOptions; catalog?: AgentDecorationCatalog; coverSticker?: FrozenCoverSticker; coverTracks?: AutomaticCoverTrack[]; sourceStickerTracks?: AutomaticCoverTrack[]; preserveCoverMotion?: boolean; runId: string; version: number }) {
   const dimensions = outputDimensions(input.source, { resolutionMode: input.resolutionMode ?? "source" });
   let template = materializePlan(input.plan, input.ruleId, dimensions, input.stickerAssets, input.decorations, input.catalog);
   if (input.coverSticker) {
-    const layers = input.coverTracks !== undefined ? automaticCoverLayers(input.coverSticker, input.source, dimensions, input.coverTracks) : manualCoverLayers(input.coverSticker, input.source, dimensions, input.version);
+    const layers = input.coverTracks !== undefined ? automaticCoverLayers(input.coverSticker, input.source, dimensions, input.coverTracks, { preserveMotion: input.preserveCoverMotion }) : manualCoverLayers(input.coverSticker, input.source, dimensions, input.version);
     template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers.map((layer) => ({ ...layer, cover: { ...layer.cover!, selection: { runId: input.runId, round: input.version } } }))] });
   }
   if (input.decorations?.mode === "agent") {

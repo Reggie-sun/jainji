@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { automaticCoverTracks, expandSourceCoverTracks } from "../src/main/automatic-cover-tracks";
-import { automaticCoverLayers, resolveCoverSticker } from "../src/main/cover-sticker";
+import { automaticCoverLayers, resolveCoverSticker, staticAutomaticCoverTracks } from "../src/main/cover-sticker";
 import { createDefaultTemplate, EditTemplateSchema, type EditTemplate, type MediaItem } from "../src/main/domain";
 import { AgentRunner } from "../src/main/agent-runner";
 import { knowledgeFixture } from "./helpers/knowledge-session";
@@ -77,6 +77,18 @@ describe("fully automatic multi-target cover", () => {
 
     expect(layers).toHaveLength(1);
     expect(layers[0].cover).toMatchObject({ targetId: "stable", motion: { keyframes: [{ timeMs: 0 }] } });
+  });
+  it("keeps a fixed-center target that scales in place", () => {
+    const tracks = [{ targetId: "scaling", track: { startMs: 0, endMs: 1000, keyframes: [
+      { timeMs: 0, rectangle: rect },
+      { timeMs: 750, rectangle: { x: 0.08, y: 0.08, width: 0.14, height: 0.14 } },
+    ] } }];
+    const frozen = resolveCoverSticker(settings, assets, [])!;
+
+    const layers = automaticCoverLayers(frozen, source, source, staticAutomaticCoverTracks(tracks));
+
+    expect(layers).toHaveLength(1);
+    expect(layers[0]).toMatchObject({ x: 0.08, y: 0.08, width: 0.14, cover: { height: 0.14, targetId: "scaling" } });
   });
   it("splits disappearances rather than drawing a track through missing targets", () => {
     const frames = [0, 250, 500, 750, 1000].map((timeMs) => ({ timeMs, targets: timeMs === 0 || timeMs === 1000 ? [{ id: "a", rectangle: rect }] : [] }));

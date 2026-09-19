@@ -171,7 +171,7 @@ export class AgentRunner {
           audit[index].stage = "prepare";
           const preparation = { plan, ruleId: run.ruleId, source, resolutionMode: this.dependencies.resolutionMode,
             stickerAssets: this.dependencies.stickerAssets, decorations: this.dependencies.decorations, catalog: this.dependencies.autoCatalog,
-            coverSticker, coverTracks, sourceStickerTracks, runId: run.id, version: item.version };
+            coverSticker, coverTracks, sourceStickerTracks, preserveCoverMotion: Boolean(this.dependencies.prepared), runId: run.id, version: item.version };
           let template = prepareAgentTemplate(preparation);
           let version: KnowledgeVersion | undefined;
           if ((knowledge && binding || placement) && !this.dependencies.prepared) {

@@ -92,9 +92,7 @@ export function staticAutomaticCoverTracks(tracks: readonly AutomaticCoverTrack[
       const centerX = rectangle.x + rectangle.width / 2, centerY = rectangle.y + rectangle.height / 2;
       const referenceCenterX = reference.x + reference.width / 2, referenceCenterY = reference.y + reference.height / 2;
       return Math.abs(centerX - referenceCenterX) > MAX_STATIC_COVER_DRIFT
-        || Math.abs(centerY - referenceCenterY) > MAX_STATIC_COVER_DRIFT
-        || Math.abs(rectangle.width - reference.width) > MAX_STATIC_COVER_DRIFT
-        || Math.abs(rectangle.height - reference.height) > MAX_STATIC_COVER_DRIFT;
+        || Math.abs(centerY - referenceCenterY) > MAX_STATIC_COVER_DRIFT;
     })) continue;
     if (frames.length === 1) {
       result.push(...structuredClone(values));
@@ -112,8 +110,9 @@ export function staticAutomaticCoverTracks(tracks: readonly AutomaticCoverTrack[
   return result;
 }
 
-export function automaticCoverLayers(frozen: FrozenCoverSticker, source: { id: string; width: number; height: number }, output: { width: number; height: number }, tracks: readonly AutomaticCoverTrack[]): StickerLayer[] {
-  return staticAutomaticCoverTracks(tracks).map(({ targetId, track }) => {
+export function automaticCoverLayers(frozen: FrozenCoverSticker, source: { id: string; width: number; height: number }, output: { width: number; height: number }, tracks: readonly AutomaticCoverTrack[], options?: { preserveMotion?: boolean }): StickerLayer[] {
+  const renderedTracks = options?.preserveMotion ? structuredClone(tracks) : staticAutomaticCoverTracks(tracks);
+  return renderedTracks.map(({ targetId, track }) => {
     const layer = coverLayerForMedia({ ...frozen, tracks: { [source.id]: track } }, source, output);
     return { ...layer, cover: { ...layer.cover!, automatic: true, targetId } };
   });
