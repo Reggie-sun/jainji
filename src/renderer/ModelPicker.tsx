@@ -1,6 +1,10 @@
-import { useEffect, useId, useState } from "react";
+import { useId } from "react";
 import type { ChatGPTStatus, ConnectionStatus } from "../shared/agent";
 import type { ConnectionLibrary, SelectModel } from "../shared/connections";
+
+const EFFORT_LABELS: Record<string, string> = { none: "不推理", minimal: "最少", low: "低", medium: "中", high: "高", xhigh: "超高", max: "最高", ultra: "极高" };
+const effortLabel = (value: string) => EFFORT_LABELS[value] ? `${EFFORT_LABELS[value]} · ${value}` : value;
+const apiEfforts = (protocol?: string) => protocol === "anthropic" ? ["low", "medium", "high", "xhigh", "max"] : ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 export function ModelPicker({ connection, chatgpt, library, disabled, onSelect, title = "创作模型", description = "当前模型" }: {
   connection: ConnectionStatus; chatgpt?: ChatGPTStatus; library: ConnectionLibrary; disabled: boolean;
@@ -8,17 +12,11 @@ export function ModelPicker({ connection, chatgpt, library, disabled, onSelect, 
   title?: string; description?: string;
 }) {
   const id = useId();
-  const [model, setModel] = useState(connection.model);
-  const [effort, setEffort] = useState(connection.reasoningEffort ?? "");
-  useEffect(() => { setModel(connection.model); setEffort(connection.reasoningEffort ?? ""); }, [connection.model, connection.reasoningEffort, library.selected]);
   const selected = library.selected;
   const isChatGPT = selected === "chatgpt";
   if (!selected || (isChatGPT && chatgpt?.status !== "ready")) return null;
-  const candidates = [...new Set(library.profiles.filter((profile) => profile.baseUrl.replace(/\/+$/, "") === connection.baseUrl && profile.protocol === (connection.protocol ?? "chat-completions")).map((profile) => profile.model))];
+  const selectedProfile = isChatGPT ? undefined : library.profiles.find((profile) => profile.id === selected);
   const selectedModel = chatgpt?.models?.find((item) => item.model === connection.model);
-  const apiEfforts = connection.protocol === "anthropic" ? ["low", "medium", "high", "xhigh", "max"] : ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
-  const labels: Record<string, string> = { none: "不推理", minimal: "最少", low: "低", medium: "中", high: "高", xhigh: "超高", max: "最高", ultra: "极高" };
-  const effortLabel = (value: string) => labels[value] ? `${labels[value]} · ${value}` : value;
   return <div className="card brief-card model-picker">
     <label htmlFor={id}>{title} <span>{isChatGPT ? "ChatGPT" : connection.providerName || "API"}</span></label>
     {isChatGPT ? <><select id={id} value={connection.model} disabled={disabled} onChange={(event) => void onSelect({ connectionId: selected, model: event.target.value })}>
@@ -29,17 +27,23 @@ export function ModelPicker({ connection, chatgpt, library, disabled, onSelect, 
         <option value="">默认{selectedModel?.defaultReasoningEffort ? `（${effortLabel(selectedModel.defaultReasoningEffort)}）` : "（服务商决定）"}</option>
         {selectedModel?.supportedReasoningEfforts.map((item) => <option key={item.reasoningEffort} value={item.reasoningEffort} title={item.description}>{effortLabel(item.reasoningEffort)}</option>)}
       </select></label>
-    </> : <form onSubmit={(event) => { event.preventDefault(); void onSelect({ connectionId: selected, model: model.trim(), reasoningEffort: effort || undefined }); }}>
-      <input id={id} list={`${id}-models`} required maxLength={200} value={model} disabled={disabled} onChange={(event) => { setModel(event.target.value); setEffort(""); }} placeholder="输入支持图片的模型 ID" />
-      <datalist id={`${id}-models`}>{candidates.map((candidate) => <option key={candidate} value={candidate} />)}</datalist>
-      <label className="effort-picker" htmlFor={`${id}-effort`}>推理档位<select id={`${id}-effort`} value={effort} disabled={disabled} onChange={(event) => setEffort(event.target.value)}>
+    </> : <>
+      <select id={id} value={selectedProfile ? selected : ""} disabled={disabled} onChange={(event) => {
+        const profile = library.profiles.find((item) => item.id === event.target.value);
+        if (profile) void onSelect({ connectionId: profile.id, model: profile.model });
+      }}>
+        {!selectedProfile && <option value="" disabled>请选择模型</option>}
+        {library.profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · {profile.model}</option>)}
+      </select>
+      <label className="effort-picker" htmlFor={`${id}-effort`}>推理档位<select id={`${id}-effort`} value={connection.reasoningEffort ?? ""} disabled={disabled || !selectedProfile} onChange={(event) => {
+        if (selectedProfile) void onSelect({ connectionId: selectedProfile.id, model: selectedProfile.model, reasoningEffort: event.target.value || undefined });
+      }}>
         <option value="">默认（不指定）</option>
-        {[...new Set([...apiEfforts, ...(effort ? [effort] : [])])].map((value) => <option key={value} value={value}>{effortLabel(value)}</option>)}
+        {[...new Set([...apiEfforts(selectedProfile?.protocol), ...(connection.reasoningEffort ? [connection.reasoningEffort] : [])])].map((value) => <option key={value} value={value}>{effortLabel(value)}</option>)}
       </select></label>
-      <button type="submit" className="button secondary" disabled={disabled || !model.trim() || (model.trim() === connection.model && effort === (connection.reasoningEffort ?? ""))}>应用模型</button>
-    </form>}
+    </>}
     <small>{description}：{connection.model || "尚未选择"} · 推理档位：{connection.reasoningEffort ? effortLabel(connection.reasoningEffort) : "服务商默认"}。切换后自动保存。</small>
-    {!isChatGPT && <small>输入服务商支持的视觉模型 ID，或从已保存的同服务商模型中选择，然后点击“应用模型”。无需重填 API Key。</small>}
+    {!isChatGPT && <small>从已保存的连接中选择模型；需要更多模型或自定义模型 ID 时，请在“管理连接”中添加或编辑。</small>}
     {!isChatGPT && <small>档位选项是协议提供的通用值，是否支持取决于具体模型与服务商；不支持时选择“默认”。</small>}
     {isChatGPT && chatgpt?.message && <p role="alert">{chatgpt.message}</p>}
   </div>;
