@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { encoderDeviceArgs, encoderPixelFormat, previewEncodingArgs, selectH264Encoder, videoEncodingArgs } from "../src/main/video-encoder";
+import { encoderDeviceArgs, encoderPixelFormat, selectH264Encoder, videoEncodingArgs } from "../src/main/video-encoder";
 
 describe("H.264 encoder selection", () => {
   it("prefers NVENC only after an actual encode succeeds", async () => {
@@ -117,27 +117,5 @@ describe("encoder-specific quality options", () => {
     ["h264_qsv", ["-init_hw_device", "qsv:hw"]],
   ] as const)("uses %s device arguments", (encoder, deviceArgs) => {
     expect(encoderDeviceArgs(encoder)).toEqual(deviceArgs);
-  });
-});
-
-describe("preview draft encoding options", () => {
-  it("uses the fastest NVENC preset with draft quality for review samples", () => {
-    const args = previewEncodingArgs("h264_nvenc");
-    expect(args[args.indexOf("-c:v") + 1]).toBe("h264_nvenc");
-    expect(args[args.indexOf("-preset") + 1]).toBe("p1");
-    expect(args[args.indexOf("-rc") + 1]).toBe("vbr");
-    expect(args[args.indexOf("-cq") + 1]).toBe("30");
-    expect(args).not.toContain("-tune");
-  });
-
-  it("uses fast software draft encoding for review samples", () => {
-    expect(previewEncodingArgs("libx264")).toEqual(["-c:v", "libx264", "-preset", "veryfast", "-crf", "28"]);
-  });
-
-  it("uses speed-first AMF and QSV draft encoding", () => {
-    expect(previewEncodingArgs("h264_amf")).toEqual([
-      "-c:v", "h264_amf", "-quality", "speed", "-rc", "cqp", "-qp_i", "30", "-qp_p", "30", "-qp_b", "30",
-    ]);
-    expect(previewEncodingArgs("h264_qsv")).toEqual(["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "30"]);
   });
 });

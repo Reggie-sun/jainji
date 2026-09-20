@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access, constants, link, open, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
+import { access, constants, copyFile, link, open, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
   BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
@@ -167,7 +167,7 @@ export class ExportQueue {
     const compiled = await this.compiler.compile(template, media, preset, {
       ffmpegPath: this.dependencies.ffmpeg.ffmpegPath, fontResolver: this.dependencies.fontResolver,
       textFilePath: (layerId) => path.join(directory, `${id}-${layerId}.txt`),
-      threads, videoEncoder: this.videoEncoder, draftEncoding: true,
+      threads, videoEncoder: this.videoEncoder,
     });
     try {
       if (this.videoEncoder === "h264_nvenc") {
@@ -238,6 +238,9 @@ export class ExportQueue {
     return { revision: this.globalRevision, batches: [...this.states.values()].map((state) => structuredClone(state)) };
   }
 
+  /** Concurrent render slots shared by exports and review previews. */
+  get renderSlots(): number { return this.limits.exports; }
+
   async createBatch(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
     signal?.throwIfAborted();
     if (!input.submission) return this.createBatchNow(input, signal);
@@ -303,6 +306,62 @@ export class ExportQueue {
     this.globalRevision = Math.max(this.globalRevision, state.revision);
     this.emit();
     return structuredClone(batch);
+  }
+
+  /**
+   * Publish an already-approved review sample as the final export: verify it,
+   * move it into the output directory without overwriting existing files, and
+   * record the artifact as a completed task. Skips the render pipeline so a
+   * supervised version is in the folder the moment the supervisor passes.
+   */
+  async publishApprovedSample(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; samplePath: string; outputDirectory: string; projectId?: string }): Promise<{ batchId: string; taskId: string; outputPath: string }> {
+    if (this.shuttingDown) throw new Error("queue is shutting down");
+    const template = immutableSnapshot(input.template);
+    assertPriceOnlyTemplate(template);
+    if (input.media.probeStatus !== "ready") throw new JianjiError("只能发布已审核通过的素材。", "input_invalid", "input", false);
+    await assertOutputDirectorySafe(input.outputDirectory, [input.media]);
+    if (await fingerprintFile(input.media.sourcePath) !== input.media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
+    const missing = await validateTemplateResources(template, this.dependencies.fontResolver);
+    if (missing.length > 0) throw new JianjiError(`模板资源缺失：${missing.join("、")}`, "resource_missing", "resource", false);
+    const parsed = ExportPresetSchema.parse(input.preset);
+    const outputPath = await allocateOutputPath(input.outputDirectory, input.media.sourcePath, "_edited", [], parsed.container);
+
+    const batchId = randomUUID();
+    ExportTaskSchema.parse({
+      id: randomUUID(), batchId, mediaId: input.media.id, status: "queued", progress: 0,
+      attempt: 0, outputPath, createdAt: now(), attempts: [],
+    });
+    const batch = ExportBatchSchema.parse({
+      schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId: input.projectId ?? randomUUID(), templateSnapshot: template,
+      mediaIds: [input.media.id], outputDirectory: path.resolve(input.outputDirectory),
+      mediaSnapshots: structuredClone([input.media]),
+      submission: undefined, preset: parsed, status: "active", estimatedBytes: input.media.sizeBytes,
+      createdAt: now(), tasks: [{ id: randomUUID(), batchId, mediaId: input.media.id, status: "queued", progress: 0,
+        attempt: 0, outputPath, createdAt: now(), attempts: [] }],
+    });
+    const state: QueueState = { schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, batch, updatedAt: now() };
+    const task = state.batch.tasks[0];
+    this.states.set(batch.id, state);
+    const partialPath = path.join(state.batch.outputDirectory, `.${path.basename(outputPath)}.${batchId}.${task.id}.1.partial.${parsed.container}`);
+
+    await this.transition(state, task, "validating");
+    await this.transition(state, task, "running", { attempt: Math.max(1, task.attempt), startedAt: now() });
+    try {
+      await copyFile(input.samplePath, partialPath);
+      await syncFile(partialPath);
+      await this.transition(state, task, "verifying", { progress: 0.99 });
+      const artifact = await this.verifier.verify(partialPath, task.id);
+      const finalPath = await publishWithoutReplacement(partialPath, outputPath, state.batch.outputDirectory, input.media.sourcePath, [], parsed.container);
+      artifact.path = finalPath;
+      task.outputPath = finalPath;
+      task.outputArtifact = artifact;
+      await this.transition(state, task, "completed", { progress: 1, finishedAt: now(), errorCode: undefined, errorMessage: undefined });
+      return { batchId: batch.id, taskId: task.id, outputPath: finalPath };
+    } catch (error) {
+      await unlink(partialPath).catch(() => undefined);
+      await this.fail(state, task, classifyError(error));
+      throw error;
+    }
   }
 
   async start(batchId: string): Promise<void> {

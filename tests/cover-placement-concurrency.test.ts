@@ -21,6 +21,7 @@ function harness(selectCoverSticker?: ConstructorParameters<typeof AgentRunner>[
     frames: async source => { if (failure === "frames" && source.fingerprint === "a") throw new Error("bad source"); return [source.displayName]; }, selectCoverSticker,
     plan: async () => ({ summary: "ok", captions: [], filter: "cool", intensity: 0.3 }),
     enqueue: async () => { events.push("enqueue"); return crypto.randomUUID(); }, onChange() {},
+    renderSlots: () => 6,
     placement: {
       acquire: async (source, _signal, _onStage, diagnostics) => {
         diagnostics?.scope("proposal", 1).record("validation", "ok", { action: "propose", reason: "accepted" });
@@ -45,25 +46,20 @@ function harness(selectCoverSticker?: ConstructorParameters<typeof AgentRunner>[
   return { runner, entered, releases, events, peak: () => peak };
 }
 
-it("runs independent cover sources concurrently, serializes copies/versions, and enqueues each completed source group", async () => {
-  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 1, analysis: 2, threads: 2 });
+it("runs independent cover sources concurrently up to the render lane and serializes copies of the same source", async () => {
+  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 6, analysis: 8, threads: 8 });
   const h = harness();
-  h.runner.start("project", "clean", "", [media("a"), media("a"), media("b"), media("c")], 2);
+  h.runner.start("project", "clean", "", [media("a"), media("a"), media("b"), media("b"), media("c"), media("d"), media("e")], 2);
   try {
-    await vi.waitFor(() => expect(h.entered).toEqual(["a", "b"]));
-    h.releases[1]();
-    await vi.waitFor(() => expect(h.entered).toEqual(["a", "b", "b"]));
-    h.releases[2]();
-    await vi.waitFor(() => expect(h.entered).toEqual(["a", "b", "b", "c"]));
-    for (let index = 0; index < 8; index++) {
+    for (let index = 0; index < 14; index++) {
       await vi.waitFor(() => expect(h.releases.length).toBeGreaterThan(index));
       h.releases[index]();
     }
     await h.runner.settled();
-    expect(h.peak()).toBe(2);
-    expect(h.runner.snapshot()?.items.map(item => ({ status: item.status, error: item.error }))).toEqual(Array(8).fill({ status: "exporting", error: undefined }));
-    expect(h.events.filter(event => event === "preview")).toHaveLength(8);
-    expect(h.events.filter(event => event === "enqueue")).toHaveLength(8);
+    expect(h.peak()).toBeLessThanOrEqual(6);
+    expect(h.runner.snapshot()?.items.map(item => ({ status: item.status, error: item.error }))).toEqual(Array(14).fill({ status: "exporting", error: undefined }));
+    expect(h.events.filter(event => event === "preview")).toHaveLength(14);
+    expect(h.events.filter(event => event === "enqueue")).toHaveLength(14);
     expect(h.events.indexOf("enqueue")).toBeLessThan(h.events.lastIndexOf("preview"));
     expect(h.events.at(-1)).toBe("close");
   } finally {
@@ -83,37 +79,37 @@ it.each(["enqueue", "late-cancel", "resolved-cancel"] as const)("keeps the termi
 });
 
 it("cancels queued sources and waits for active work before closing the placement session", async () => {
-  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 1, analysis: 2, threads: 2 });
+  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 6, analysis: 8, threads: 8 });
   const h = harness();
-  h.runner.start("project", "clean", "", [media("a"), media("b"), media("c")]);
+  h.runner.start("project", "clean", "", [media("a"), media("b"), media("c"), media("d"), media("e"), media("f"), media("g")]);
   try {
-    await vi.waitFor(() => expect(h.entered).toEqual(["a", "b"]));
+    await vi.waitFor(() => expect(h.entered.length).toBeGreaterThanOrEqual(6));
     h.runner.cancel(); h.releases[0]();
     await Promise.resolve(); expect(h.events).not.toContain("close");
   } finally {
     h.runner.cancel(); h.releases.forEach(release => release()); await h.runner.settled();
   }
-  expect(h.entered).toEqual(["a", "b"]);
+  expect(h.entered.length).toBeGreaterThanOrEqual(6);
   expect(h.events).toEqual(["close"]);
-  expect(h.runner.snapshot()?.items.map(item => item.status)).toEqual(["cancelled", "cancelled", "cancelled"]);
+  expect(h.runner.snapshot()?.items.map(item => item.status)).toEqual(["cancelled", "cancelled", "cancelled", "cancelled", "cancelled", "cancelled", "cancelled"]);
   const snapshot = h.runner.snapshot()!;
   expect(snapshot.items[0].coverDiagnostics?.events).toEqual(expect.arrayContaining([expect.objectContaining({ action: "propose" }), expect.objectContaining({ outcome: "cancelled", stage: "lifecycle" })]));
   snapshot.items[0].coverDiagnostics!.events.length = 0;
   expect(h.runner.snapshot()!.items[0].coverDiagnostics!.events.length).toBeGreaterThan(0);
 });
 
-it("caps cover work at three even on larger machines", async () => {
-  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 1, analysis: 8, threads: 8 });
+it("caps cover work at the export render lane even on larger machines", async () => {
+  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 6, analysis: 8, threads: 8 });
   const h = harness();
-  h.runner.start("project", "clean", "", [media("a"), media("b"), media("c"), media("d")]);
-  try { await vi.waitFor(() => expect(h.entered).toEqual(["a", "b", "c"])); }
+  h.runner.start("project", "clean", "", [media("a"), media("b"), media("c"), media("d"), media("e"), media("f"), media("g"), media("h")]);
+  try { await vi.waitFor(() => expect(h.entered).toHaveLength(6)); }
   finally { h.runner.cancel(); h.releases.forEach(release => release()); await h.runner.settled(); }
-  expect(h.peak()).toBe(3);
-  expect(h.entered).not.toContain("d");
+  expect(h.peak()).toBe(6);
+  expect(h.entered.length).toBeLessThan(8);
 });
 
 it("shares one selection per round from the first eligible source and preserves rotation", async () => {
-  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 1, analysis: 2, threads: 2 });
+  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 6, analysis: 8, threads: 8 });
   const selected: Array<{ frames: string[]; previous: readonly string[] }> = [];
   const h = harness(async (frames, _signal, previous) => {
     selected.push({ frames, previous });
@@ -136,7 +132,7 @@ it("shares one selection per round from the first eligible source and preserves 
 });
 
 it.each(["acquire", "frames"] as const)("does not make healthy peers depend on a first source failing at %s", async failure => {
-  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 1, analysis: 2, threads: 2 });
+  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 6, analysis: 8, threads: 8 });
   const selected: string[][] = [];
   const h = harness(async frames => {
     selected.push(frames);

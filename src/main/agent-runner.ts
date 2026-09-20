@@ -20,6 +20,9 @@ interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
   plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog, selection?: AgentSelectionContext): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
+  publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal): Promise<string>;
+  /** Real render slots from the export queue (encoder-aware); defaults to the legacy cap when absent. */
+  renderSlots?(): number;
   prepared?(template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal): Promise<void>;
   stickerAssets: StickerAssets;
   decorations?: DecorationOptions;
@@ -243,10 +246,14 @@ export class AgentRunner {
         if (item.status === "failed") continue;
         try {
           audit[index].stage = "enqueue";
-          item.taskId = await this.dependencies.knowledge!.enqueue(version, signal, template => this.dependencies.enqueue(template, source, signal));
+          const published = Boolean(version.previewPath && this.dependencies.publishApproved);
+          item.taskId = await this.dependencies.knowledge!.enqueue(version, signal, template =>
+            published
+              ? this.dependencies.publishApproved!(template, source, version.previewPath!, signal)
+              : this.dependencies.enqueue(template, source, signal));
           item.status = signal.aborted ? "cancelled" : "exporting";
           if (!signal.aborted && version.previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, version.previewPath);
-          item.summary = `${item.summary?.split(" · 主管样片检查通过")[0]} · 主管样片检查通过，已提交导出`;
+          item.summary = `${item.summary?.split(" · 主管样片检查通过")[0]} · 主管样片检查通过，${published ? "已发布到输出目录" : "已提交导出"}`;
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
@@ -258,11 +265,15 @@ export class AgentRunner {
         const item = run.items[index];
         try {
           audit[index].stage = "enqueue";
-          item.taskId = await this.dependencies.placement!.enqueue(source, template, signal, () => this.dependencies.enqueue(template, source, signal));
-          item.status = signal.aborted ? "cancelled" : "exporting";
           const previewPath = this.dependencies.placement!.previewPath?.(template);
+          const published = Boolean(previewPath && this.dependencies.publishApproved);
+          item.taskId = await this.dependencies.placement!.enqueue(source, template, signal, () =>
+            published
+              ? this.dependencies.publishApproved!(template, source, previewPath!, signal)
+              : this.dependencies.enqueue(template, source, signal));
+          item.status = signal.aborted ? "cancelled" : "exporting";
           if (!signal.aborted && previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, previewPath);
-          item.summary = "近似覆盖样片检查通过，已提交导出；位置已冻结，下次仍需检查样片。";
+          item.summary = `近似覆盖样片检查通过，${published ? "已发布到输出目录；位置已冻结，下次仍需检查样片" : "已提交导出；位置已冻结，下次仍需检查样片"}`;
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "覆盖样片已检查，但源校验或导出提交失败。";
@@ -282,7 +293,7 @@ export class AgentRunner {
     };
     try {
       const concurrency = this.dependencies.prepared || this.dependencies.knowledge ? 1
-        : Math.min(executionLimits().analysis, this.dependencies.placement ? 3 : Infinity, groupsToRun.length);
+        : Math.min(executionLimits().analysis, this.dependencies.placement ? Math.min(this.dependencies.renderSlots?.() ?? 3, 6) : Infinity, groupsToRun.length);
       await Promise.all(Array.from({ length: concurrency }, () => worker()));
     } finally {
       pendingFrames.clear();

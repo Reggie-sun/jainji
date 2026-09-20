@@ -308,6 +308,14 @@ export class AgentController {
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
         },
+        publishApproved: async (template, item, samplePath, signal) => {
+          signal.throwIfAborted();
+          const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
+          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, outputDirectory });
+          this.onChange();
+          return taskId;
+        },
+        renderSlots: () => this.queue.renderSlots,
         stickerAssets,
         decorations,
         autoCatalog,

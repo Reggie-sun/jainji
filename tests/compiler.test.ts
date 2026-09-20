@@ -61,19 +61,6 @@ describe("TemplateCompiler", () => {
     expect(gpu.args).toContain("0:a?");
   });
 
-  it("uses draft encoding options for review samples without changing export quality", async () => {
-    const compiler = new TemplateCompiler();
-    const options = { ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused", videoEncoder: "h264_nvenc" as const };
-    const template = createDefaultTemplate();
-    const draft = await compiler.compile(template, media, DEFAULT_PRESET, { ...options, draftEncoding: true });
-    const exportCommand = await compiler.compile(template, media, DEFAULT_PRESET, options);
-    expect(draft.args[draft.args.indexOf("-preset") + 1]).toBe("p1");
-    expect(draft.args[draft.args.indexOf("-cq") + 1]).toBe("30");
-    expect(exportCommand.args[exportCommand.args.indexOf("-preset") + 1]).toBe("p4");
-    expect(draft.args[draft.args.indexOf("-filter_complex") + 1]).toBe(exportCommand.args[exportCommand.args.indexOf("-filter_complex") + 1]);
-    expect(draft.args[draft.args.indexOf("-t") + 1]).toBe(exportCommand.args[exportCommand.args.indexOf("-t") + 1]);
-  });
-
   it("keeps hostile paths in argv and escapes filter values", async () => {
     const template = createDefaultTemplate();
     const command = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, {

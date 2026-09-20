@@ -34,6 +34,36 @@ describe("ExportQueue", () => {
     expect(tasks[1].outputArtifact?.durationMs).toBe(1_000);
   });
 
+  it("publishes an approved preview sample as a completed export without re-rendering", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-queue-publish-"));
+    const output = path.join(directory, "output");
+    const sourcePath = path.join(directory, "a.mp4");
+    await writeFile(sourcePath, "a");
+    const samplePath = path.join(directory, "sample.mp4");
+    await writeFile(samplePath, "encoded");
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "a.mp4", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 1, durationMs: 1_000, width: 10, height: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
+    let encodeCalls = 0;
+    const fakeFfmpeg = {
+      ffmpegPath: "/fake/ffmpeg",
+      run: () => { encodeCalls += 1; throw new Error("encode must not run when publishing an approved sample"); },
+    } as unknown as FfmpegAdapter;
+    const fakeVerifier = { verify: async (filePath: string, taskId: string): Promise<OutputArtifact> => ({ taskId, path: filePath, sizeBytes: 9, durationMs: 1_000, createdAt: now() }) } as unknown as ArtifactVerifier;
+    const fakeCompiler = { compile: async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }) } as any;
+    const queue = new ExportQueue({ jobStore: new JobStore(path.join(directory, "jobs")), ffmpeg: fakeFfmpeg, compiler: fakeCompiler, artifactVerifier: fakeVerifier, fontResolver: { resolve: async () => null } });
+    queue.setMediaLookup(() => media);
+    const result = await queue.publishApprovedSample({ projectId: "ee661c87-50d2-4409-884c-828d0dc30dee", template: createDefaultTemplate(), media, samplePath, outputDirectory: output, preset: DEFAULT_PRESET });
+    expect(encodeCalls).toBe(0);
+    const task = queue.snapshot().batches[0].batch.tasks[0];
+    expect(queue.snapshot().batches[0].batch.projectId).toBe("ee661c87-50d2-4409-884c-828d0dc30dee");
+    expect(task.status).toBe("completed");
+    expect(task.outputArtifact?.path).toBe(result.outputPath);
+    expect(task.outputArtifact?.sizeBytes).toBe(9);
+    expect(task.outputPath).toBe(result.outputPath);
+    expect(result.outputPath.startsWith(output + path.sep)).toBe(true);
+    expect(task.startedAt).toBeDefined();
+    expect(task.finishedAt).toBeDefined();
+  });
+
   it.each(["queued", "validating", "running", "verifying", "cancelling"] as const)("marks persisted %s as interrupted on recovery", async (status) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-recovery-"));
     const output = path.join(directory, "output");

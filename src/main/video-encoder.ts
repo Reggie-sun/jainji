@@ -26,24 +26,6 @@ export function videoEncodingArgs(encoder: H264Encoder, quality: ExportPreset["q
   return ["-c:v", encoder, "-preset", quality === "high" ? "slow" : "medium", "-crf", qualityValue];
 }
 
-/**
- * Review samples are temporary and judged only for cover effect and subject
- * visibility, so they use the fastest draft settings; final exports keep the
- * governed quality ladder above.
- */
-export function previewEncodingArgs(encoder: H264Encoder): string[] {
-  if (encoder === "h264_nvenc") {
-    return ["-c:v", encoder, "-preset", "p1", "-rc", "vbr", "-cq", "30", "-b:v", "0"];
-  }
-  if (encoder === "h264_amf") {
-    return ["-c:v", encoder, "-quality", "speed", "-rc", "cqp", "-qp_i", "30", "-qp_p", "30", "-qp_b", "30"];
-  }
-  if (encoder === "h264_qsv") {
-    return ["-c:v", encoder, "-preset", "veryfast", "-global_quality", "30"];
-  }
-  return ["-c:v", encoder, "-preset", "veryfast", "-crf", "28"];
-}
-
 /** Compiled-in hardware support is not proof that a usable device/driver exists. */
 export async function selectH264Encoder(encoders: string, tryEncode: (args: string[]) => Promise<boolean>): Promise<H264Encoder | undefined> {
   for (const encoder of hardwareEncoders) {
