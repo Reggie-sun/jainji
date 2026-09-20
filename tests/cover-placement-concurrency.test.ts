@@ -108,6 +108,54 @@ it("caps cover work at the export render lane even on larger machines", async ()
   expect(h.entered.length).toBeLessThan(8);
 });
 
+function knowledgeHarness() {
+  const active = new Set<string>(), entered: string[] = [], releases: Array<() => void> = [];
+  let peak = 0;
+  const runner = new AgentRunner({
+    stickerAssets: Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets,
+    decorations: DecorationSchema.parse({ sticker: "none", productPrice: "手动文字" }),
+    preserveSourceStickers: true,
+    frames: async source => [source.displayName],
+    plan: async () => ({ summary: "ok", captions: [], filter: "cool", intensity: 0.3 }),
+    enqueue: async () => crypto.randomUUID(), onChange() {},
+    renderSlots: () => 6,
+    knowledge: {
+      acquire: async (item: MediaItem) => {
+        if (active.has(item.fingerprint)) throw new Error("same source overlapped");
+        active.add(item.fingerprint); entered.push(item.fingerprint); peak = Math.max(peak, active.size);
+        await new Promise<void>(resolve => releases.push(resolve));
+        active.delete(item.fingerprint);
+        return { media: item, horizonMs: item.durationMs, key: item.id };
+      },
+      tracks: async () => [],
+      review: async (_binding: unknown, template: unknown) => ({ template, previewPath: "/tmp/preview.mp4" }),
+      reconcile: async () => {},
+      enqueue: async (version: { template: unknown }, signal: AbortSignal, submit: (template: unknown) => Promise<string>) => { signal.throwIfAborted(); return submit(version.template); },
+      close: async () => { if (active.size) throw new Error("knowledge closed with active work"); },
+    } as never,
+  });
+  return { runner, entered, releases, peak: () => peak };
+}
+
+it("knowledge path runs different sources concurrently up to the render lane and serializes same-fingerprint copies", async () => {
+  vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 6, analysis: 8, threads: 8 });
+  const h = knowledgeHarness();
+  h.runner.start("project", "clean", "", [media("a"), media("a"), media("b"), media("b"), media("c"), media("d"), media("e")]);
+  try {
+    await vi.waitFor(() => expect(h.entered).toEqual(["a", "b", "c", "d", "e"]));
+    for (let index = 0; index < 7; index++) {
+      await vi.waitFor(() => expect(h.releases.length).toBeGreaterThan(index));
+      h.releases[index]();
+    }
+    await h.runner.settled();
+    expect(h.peak()).toBeLessThanOrEqual(6);
+    expect(h.entered).toEqual(["a", "b", "c", "d", "e", "a", "b"]);
+    expect(h.runner.snapshot()?.items.map(item => ({ status: item.status, error: item.error }))).toEqual(Array(7).fill({ status: "exporting", error: undefined }));
+  } finally {
+    h.runner.cancel(); h.releases.forEach(release => release()); await h.runner.settled();
+  }
+});
+
 it("shares one selection per round from the first eligible source and preserves rotation", async () => {
   vi.spyOn(limits, "executionLimits").mockReturnValue({ exports: 6, analysis: 8, threads: 8 });
   const selected: Array<{ frames: string[]; previous: readonly string[] }> = [];

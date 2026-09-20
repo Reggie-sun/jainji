@@ -77,6 +77,7 @@ describe("supervisor production admission", () => {
     const enqueue = vi.fn(async (template: EditTemplate) => { events.push("enqueue"); expect(template.layers.find(layer => layer.type === "text")?.content).toBe("手动展示"); return crypto.randomUUID(); });
     const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
       decorations: DecorationSchema.parse({ productPrice: "手动展示", sticker: "heart" }),
+      renderSlots: () => 1, // Deterministic serial lane: this test asserts per-source preview→enqueue ordering, concurrency is covered separately.
       knowledge: knowledgeFixture(undefined, async (template, _source, _tracks, rebuild) => {
         events.push("preview");
         const revised = rebuild({ action: "revise", reason: "检查", tracks: [] });
@@ -91,6 +92,7 @@ describe("supervisor production admission", () => {
   it("keeps an earlier source submitted when a later source review fails or is cancelled", async () => {
     const enqueue = vi.fn(); let count = 0;
     const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue, stickerAssets,
+      renderSlots: () => 1, // Serial lane keeps the cancel timing deterministic.
       knowledge: knowledgeFixture(undefined, async template => { if (++count === 2) { runner.cancel(); throw new Error("cancelled"); } return template; }), onChange: () => {} });
     runner.start("project", "clean", "", [media("one"), media("two")]);
     await runner.settled();

@@ -292,8 +292,8 @@ export class AgentRunner {
       }
     };
     try {
-      const concurrency = this.dependencies.prepared || this.dependencies.knowledge ? 1
-        : Math.min(executionLimits().analysis, this.dependencies.placement ? Math.min(this.dependencies.renderSlots?.() ?? 3, 6) : Infinity, groupsToRun.length);
+      const concurrency = this.dependencies.prepared ? 1
+        : Math.min(executionLimits().analysis, this.dependencies.placement || this.dependencies.knowledge ? Math.min(this.dependencies.renderSlots?.() ?? 3, 6) : Infinity, groupsToRun.length);
       await Promise.all(Array.from({ length: concurrency }, () => worker()));
     } finally {
       pendingFrames.clear();
