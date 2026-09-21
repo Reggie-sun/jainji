@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_EXPORT_SETTINGS, ExportSettingsSchema } from "../shared/export-settings.js";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { CORNER_SAFE_POLICY, LEGACY_CORNER_SAFE_POLICY, cornerSafeStickerIssues, getCornerSafePolicy } from "../shared/layout-policy.js";
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
@@ -221,6 +221,47 @@ export function assertPriceOnlyTemplate(template: EditTemplate): void {
       text[0].textAlign !== "center" || text[0].x !== 0.1 || text[0].y !== 0.13 || text[0].width !== 0.8 || !text[0].visible) {
     throw new JianjiError("模板包含非手动价格文字或旧版文字布局，请手动填写价格并重新制作；不能重试旧文字方案。", "input_invalid", "input", false);
   }
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .filter(([, entry]) => entry !== undefined)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/** Hash everything an append clone must preserve: strips regenerated ids, the text layer content, and the root price. */
+export function appendTemplateDigest(template: EditTemplate): string {
+  const comparable = {
+    ...template,
+    id: undefined,
+    productPrice: undefined,
+    layers: template.layers.map((layer) => ({ ...layer, id: undefined, ...(layer.type === "text" ? { content: undefined } : {}) })),
+  };
+  return createHash("sha256").update(canonicalJson(comparable)).digest("hex");
+}
+
+export function cloneTemplateForAppend(template: EditTemplate, productPrice: string): EditTemplate {
+  const price = RequiredProductPriceSchema.parse(productPrice);
+  if (template.layers.filter((layer) => layer.type === "text").length !== 1) {
+    throw new JianjiError("源批次不含可复用的展示文字层，无法追加制作。", "input_invalid", "input", false);
+  }
+  const before = appendTemplateDigest(template);
+  const cloned = cloneTemplate(template);
+  cloned.id = randomUUID();
+  cloned.productPrice = price;
+  for (const layer of cloned.layers) {
+    layer.id = randomUUID();
+    if (layer.type === "text") layer.content = formatProductPrice(price);
+  }
+  if (appendTemplateDigest(cloned) !== before) {
+    throw new JianjiError("追加制作克隆校验失败：冻结方案在克隆中发生变化。", "input_invalid", "input", false);
+  }
+  return cloned;
 }
 
 export const ExportPresetSchema = ExportSettingsSchema.extend({
