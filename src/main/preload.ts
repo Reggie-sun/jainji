@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AgentStartInput, GenerateBriefInput } from "../shared/agent.js";
+import type { AgentStartInput, AppendProductionInput, GenerateBriefInput } from "../shared/agent.js";
 import type { SaveConnection, SelectModel } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
@@ -62,6 +62,8 @@ const api = {
   createAutomaticOutputDirectory: (mediaIds: string[], existingDirectory?: string): Promise<string> => ipcRenderer.invoke("output.createAutomaticDirectory", { mediaIds, ...(existingDirectory ? { existingDirectory } : {}) }),
   cancelExport: (taskId: string): Promise<DesktopState> => ipcRenderer.invoke("export.cancel", { taskId }),
   retryExport: (taskIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("export.retry", { taskIds }),
+  appendProductionPrefill: (batchId: string): Promise<{ productPrice: string; mediaCount: number }> => ipcRenderer.invoke("export.appendPrefill", { batchId }),
+  appendProduction: (input: AppendProductionInput): Promise<{ batchIds: string[]; outputDirectory: string }> => ipcRenderer.invoke("export.append", input),
   openArtifact: (taskId: string): Promise<boolean> => ipcRenderer.invoke("artifact.open", { taskId }),
   revealArtifact: (taskId: string): Promise<boolean> => ipcRenderer.invoke("artifact.reveal", { taskId }),
   onExportSnapshot: (listener: (state: DesktopState) => void): (() => void) => {

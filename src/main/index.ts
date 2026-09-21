@@ -16,7 +16,7 @@ import { CoverReviewController } from "./cover-review-controller.js";
 import { CoverReviewEvidence } from "./cover-review-evidence.js";
 import { analyzeCoverCandidates } from "./cover-candidates.js";
 import { prepareIndependentReviewMedia } from "./cover-review-input.js";
-import { AgentStartSchema, FrozenAgentStartSchema } from "../shared/agent.js";
+import { AgentStartSchema, AppendProductionSchema, FrozenAgentStartSchema } from "../shared/agent.js";
 import { SelectModelSchema } from "../shared/connections.js";
 import { AgentController } from "./agent-controller.js";
 import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
@@ -47,6 +47,7 @@ const exportCreateSchema = z.object({
 }).strict();
 const proofSchema = z.object({ mediaId: uuidSchema }).strict();
 const retrySchema = z.object({ taskIds: z.array(uuidSchema).optional() }).strict();
+const appendPrefillSchema = z.object({ batchId: uuidSchema }).strict();
 const taskSchema = z.object({ taskId: uuidSchema }).strict();
 const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict();
 const productPriceDraftSchema = z.object({ projectId: uuidSchema, productPrice: ProductPriceSchema }).strict();
@@ -447,6 +448,24 @@ function registerHandlers(): void {
   });
   ipcMain.handle("export.cancel", async (event, input: unknown) => { assertTrustedSender(event); await queue.cancel(taskSchema.parse(input).taskId); return publicState(); });
   ipcMain.handle("export.retry", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await queue.retry(retrySchema.parse(input).taskIds); return publicState(); });
+  ipcMain.handle("export.appendPrefill", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    const { batchId } = appendPrefillSchema.parse(input);
+    const prefill = await queue.appendPrefill(batchId, service.currentProject.id);
+    if (!prefill) throw new Error("找不到属于当前项目的已完成批次。");
+    return prefill;
+  });
+  ipcMain.handle("export.append", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    agent.assertIdle();
+    if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
+    const parsed = AppendProductionSchema.parse(input);
+    const outputDirectory = await canonicalPath(parsed.outputDirectory);
+    if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
+    const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory });
+    for (const batch of batches) void queue.start(batch.id);
+    return { batchIds: batches.map((batch) => batch.id), outputDirectory };
+  });
   ipcMain.handle("artifact.open", async (event, input: unknown) => {
     assertTrustedSender(event);
     const taskId = taskSchema.parse(input).taskId;
