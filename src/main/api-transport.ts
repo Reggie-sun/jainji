@@ -48,7 +48,7 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
   try {
     const response = await request(`${connection.baseUrl}${endpoint}`, {
       method: "POST", redirect: "error", headers, body: JSON.stringify(body),
-      signal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]),
+      signal: AbortSignal.any([signal, AbortSignal.timeout(300_000)]),
     });
     if (!response.ok) {
       await response.body?.cancel();
