@@ -504,7 +504,7 @@ async function createWindow(): Promise<void> {
   mainWindow.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
-    requestQuit();
+    void requestQuit();
   });
   mainWindow.on("closed", () => { mainWindow = undefined; });
 }
@@ -628,12 +628,12 @@ async function shutdownServices(): Promise<void> {
   }
 }
 
-function requestQuit(): void {
+async function requestQuit(): Promise<void> {
   if (quitting || closingPrompt) return;
-  if (!queue) { quitting = true; void shutdownServices().finally(() => app.exit(0)); return; }
+  if (!queue) { quitting = true; try { await shutdownServices(); } finally { app.exit(0); } return; }
   if (!service?.hasUnsavedChanges || !mainWindow) {
     quitting = true;
-    void shutdownServices().finally(() => app.exit(0));
+    try { await shutdownServices(); } finally { app.exit(0); }
     return;
   }
   closingPrompt = true;
@@ -667,7 +667,7 @@ function requestQuit(): void {
 app.on("before-quit", (event) => {
   event.preventDefault();
   if (quitting) return;
-  requestQuit();
+  void requestQuit();
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 const startup = bootstrap();
