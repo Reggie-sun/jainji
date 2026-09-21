@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-09-21T19:15:38.366Z",
+        "reason": "design decision documented in DESIGN.md: Chinese-first UI (Noto Sans CJK SC shapes all CJK glyphs); Inter only shapes Latin/digits with tabular-nums; distinctiveness carried by seal color, solid status stamps and plaque numerals per direction contract seed 58ae6557"
+      }
+    ]
+  }
+}
