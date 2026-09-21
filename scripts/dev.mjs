@@ -102,7 +102,12 @@ function reloadPlugin(bundle) {
 }
 
 async function shutdown(signal) {
-  if (shutdownPromise) return shutdownPromise;
+  if (shutdownPromise) {
+    // A repeated signal re-requests a normal quit; the user may have cancelled the save prompt.
+    try { requestDevelopmentQuit(electron); }
+    catch (error) { console.error(`[dev] ${error.message}`); }
+    return shutdownPromise;
+  }
   stopping = true;
   clearTimeout(restartTimer);
   if (signal) process.exitCode = signal === "SIGINT" ? 130 : 143;
