@@ -9,7 +9,12 @@ electron_pattern="$root/node_modules/electron/dist/electron"
 
 # The dev launcher forwards SIGTERM into a graceful app quit
 # (scripts/dev.mjs -> IPC jianji-dev-quit -> normal save/close flow).
-pkill -TERM -f "node scripts/dev\.mjs" 2>/dev/null || true
+# Match by cwd so another project's `node scripts/dev.mjs` is never signaled.
+for pid in $(pgrep -f "node scripts/dev\.mjs" 2>/dev/null); do
+  if [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$root" ]; then
+    kill -TERM "$pid" 2>/dev/null || true
+  fi
+done
 
 if ! pgrep -f "$electron_pattern" >/dev/null 2>&1; then
   exit 0
