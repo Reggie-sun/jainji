@@ -5,6 +5,7 @@ import {
   BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
   assertPriceOnlyTemplate,
   cloneTemplate,
+  cloneTemplateForAppend,
   deriveBatchStatus,
   ExportBatchSchema,
   ExportPresetSchema,
@@ -30,6 +31,7 @@ import { outputDimensions } from "../shared/export-settings.js";
 import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } from "./gpu-memory.js";
 import { reviewDigest } from "./cover-review-approval.js";
 import { measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
+import { MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 
 export interface QueueSnapshot {
   revision: number;
@@ -306,6 +308,38 @@ export class ExportQueue {
     this.globalRevision = Math.max(this.globalRevision, state.revision);
     this.emit();
     return structuredClone(batch);
+  }
+
+  async appendPrefill(batchId: string, projectId: string): Promise<{ productPrice: string; mediaCount: number } | undefined> {
+    const source = await this.findAppendSource(batchId);
+    if (!source || source.projectId !== projectId) return undefined;
+    return { productPrice: source.templateSnapshot.productPrice ?? "", mediaCount: source.mediaIds.length };
+  }
+
+  async appendFromBatch(input: { batchId: string; projectId: string; count: number; productPrice: string; outputDirectory: string }, signal?: AbortSignal): Promise<ExportBatch[]> {
+    const source = await this.findAppendSource(input.batchId);
+    if (!source || source.projectId !== input.projectId) throw new JianjiError("只能追加当前项目中的已完成批次。", "input_invalid", "input", false);
+    if (source.status !== "completed" && source.status !== "completed_with_errors") throw new JianjiError("只能追加已完成导出的批次。", "input_invalid", "input", false);
+    if (input.count * source.mediaIds.length > MAX_AGENT_OUTPUTS) throw new JianjiError(`追加条数超出单次上限 ${MAX_AGENT_OUTPUTS} 条。`, "input_invalid", "input", false);
+    const mediaItems = source.mediaIds.map((id) => source.mediaSnapshots?.find((item) => item.id === id) ?? this.mediaLookup?.(id));
+    if (mediaItems.some((item): item is undefined => !item)) throw new JianjiError("源批次素材已变化，无法追加制作。", "input_invalid", "input", false);
+    const media = mediaItems as MediaItem[];
+    const created: ExportBatch[] = [];
+    for (let index = 0; index < input.count; index += 1) {
+      const template = cloneTemplateForAppend(source.templateSnapshot, input.productPrice);
+      created.push(await this.createBatchNow({ template, projectId: source.projectId, mediaIds: [...source.mediaIds], mediaItems: media, outputDirectory: input.outputDirectory, preset: source.preset }, signal));
+    }
+    return created;
+  }
+
+  private async findAppendSource(batchId: string): Promise<ExportBatch | undefined> {
+    const cached = this.states.get(batchId);
+    if (cached) return structuredClone(cached.batch);
+    try {
+      return structuredClone((await this.dependencies.jobStore.load(batchId)).state.batch);
+    } catch {
+      return undefined;
+    }
   }
 
   /**
