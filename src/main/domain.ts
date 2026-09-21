@@ -264,6 +264,111 @@ export function cloneTemplateForAppend(template: EditTemplate, productPrice: str
   return cloned;
 }
 
+export interface RandomStickerPoolEntry {
+  id: string;
+  assetPath: string;
+  assetFingerprint: string;
+}
+
+/** Filters eligible for random selection in manual append production. */
+export const RANDOM_FILTER_POOL: readonly FilterPreset[] = ["none", "warm", "cool", "vivid"];
+
+const RANDOM_FILTER_INTENSITY: Record<FilterPreset, { min: number; max: number }> = {
+  none: { min: 0, max: 0 },
+  warm: { min: 0.2, max: 0.55 },
+  cool: { min: 0.2, max: 0.5 },
+  mono: { min: 0.8, max: 1 },
+  vivid: { min: 0.25, max: 0.6 },
+};
+
+/** Digest for random clone: allows sticker asset and filter changes, verifies geometry frozen. */
+export function randomTemplateDigest(template: EditTemplate): string {
+  const comparable = {
+    ...template,
+    id: undefined,
+    productPrice: undefined,
+    filter: undefined,
+    layers: template.layers.map((layer) => {
+      if (layer.type === "text") return { ...layer, id: undefined, content: undefined };
+      const { id: _layerId, assetPath: _path, assetFingerprint: _fingerprint, ...stickerRest } = layer;
+      if (stickerRest.cover) {
+        const { stickerId: _stickerId, ...coverRest } = stickerRest.cover;
+        return { ...stickerRest, cover: coverRest };
+      }
+      return stickerRest;
+    }),
+  };
+  return createHash("sha256").update(canonicalJson(comparable)).digest("hex");
+}
+
+/** Balanced sticker picker: shuffles the pool once, rotates through it, tracks per-template exclusions. */
+export class BalancedStickerPicker {
+  private readonly shuffled: RandomStickerPoolEntry[];
+  private cursor = 0;
+
+  constructor(pool: readonly RandomStickerPoolEntry[]) {
+    if (pool.length === 0) throw new JianjiError("没有可用的贴纸资源。", "input_invalid", "input", false);
+    this.shuffled = [...pool];
+    for (let index = this.shuffled.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1));
+      [this.shuffled[index], this.shuffled[swapIndex]] = [this.shuffled[swapIndex], this.shuffled[index]];
+    }
+  }
+
+  pick(excluded: ReadonlySet<string>): RandomStickerPoolEntry {
+    for (let attempt = 0; attempt < this.shuffled.length * 2; attempt += 1) {
+      const entry = this.shuffled[this.cursor % this.shuffled.length];
+      this.cursor += 1;
+      if (!excluded.has(entry.id)) return entry;
+    }
+    return this.shuffled[this.cursor % this.shuffled.length];
+  }
+}
+
+export function cloneTemplateForRandom(template: EditTemplate, productPrice: string, picker: BalancedStickerPicker): EditTemplate {
+  const price = RequiredProductPriceSchema.parse(productPrice);
+  if (template.layers.filter((layer) => layer.type === "text").length !== 1) {
+    throw new JianjiError("源批次不含可复用的展示文字层，无法追加制作。", "input_invalid", "input", false);
+  }
+  const before = randomTemplateDigest(template);
+  const cloned = cloneTemplate(template);
+  cloned.id = randomUUID();
+  cloned.productPrice = price;
+  const preset = RANDOM_FILTER_POOL[Math.floor(Math.random() * RANDOM_FILTER_POOL.length)];
+  const intensityRange = RANDOM_FILTER_INTENSITY[preset];
+  cloned.filter = { presetId: preset, intensity: intensityRange.min + Math.random() * (intensityRange.max - intensityRange.min) };
+  const usedStickers = new Set<string>();
+  const sharedRegionStickers = new Map<string, RandomStickerPoolEntry>();
+  for (const layer of cloned.layers) {
+    if (layer.type === "sticker" && layer.cover?.regionId && layer.cover.sharedSticker && !sharedRegionStickers.has(layer.cover.regionId)) {
+      const picked = picker.pick(usedStickers);
+      sharedRegionStickers.set(layer.cover.regionId, picked);
+      usedStickers.add(picked.id);
+    }
+  }
+  for (const layer of cloned.layers) {
+    layer.id = randomUUID();
+    if (layer.type === "text") {
+      layer.content = formatProductPrice(price);
+      continue;
+    }
+    let picked: RandomStickerPoolEntry;
+    if (layer.cover?.regionId && layer.cover.sharedSticker) {
+      picked = sharedRegionStickers.get(layer.cover.regionId)!;
+    } else {
+      picked = picker.pick(usedStickers);
+      usedStickers.add(picked.id);
+    }
+    layer.assetPath = picked.assetPath;
+    layer.assetFingerprint = picked.assetFingerprint;
+    if (layer.cover) layer.cover.stickerId = picked.id;
+  }
+  if (randomTemplateDigest(cloned) !== before) {
+    throw new JianjiError("随机克隆校验失败：布局几何在克隆中发生变化。", "input_invalid", "input", false);
+  }
+  return cloned;
+}
+
 export const ExportPresetSchema = ExportSettingsSchema.extend({
   container: ExportFormatSchema,
   videoCodec: z.literal("h264"),

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AppendProductionSchema } from "../src/shared/agent";
-import { appendTemplateDigest, assertPriceOnlyTemplate, cloneTemplateForAppend, createDefaultTemplate, EditTemplateSchema } from "../src/main/domain";
+import { appendTemplateDigest, assertPriceOnlyTemplate, BalancedStickerPicker, cloneTemplateForAppend, cloneTemplateForRandom, createDefaultTemplate, EditTemplateSchema, randomTemplateDigest, RANDOM_FILTER_POOL, type RandomStickerPoolEntry } from "../src/main/domain";
 import { materializePlan } from "../src/main/agent-provider";
 import { formatProductPrice } from "../src/shared/decorations";
 import type { StickerAssets } from "../src/main/builtin-stickers";
@@ -90,5 +90,56 @@ describe("cloneTemplateForAppend", () => {
     const reordered = structuredClone(cloned);
     reordered.layers.reverse();
     expect(appendTemplateDigest(reordered)).not.toBe(appendTemplateDigest(cloned));
+  });
+});
+
+describe("cloneTemplateForRandom", () => {
+  const randomPool: RandomStickerPoolEntry[] = [
+    { id: "sparkle", assetPath: "/tmp/sparkle.png", assetFingerprint: "fp-sparkle" },
+    { id: "arrow", assetPath: "/tmp/arrow.png", assetFingerprint: "fp-arrow" },
+    { id: "heart", assetPath: "/tmp/heart.png", assetFingerprint: "fp-heart" },
+    { id: "burst", assetPath: "/tmp/burst.png", assetFingerprint: "fp-burst" },
+    { id: "star", assetPath: "/tmp/star.png", assetFingerprint: "fp-star" },
+    { id: "flower", assetPath: "/tmp/flower.png", assetFingerprint: "fp-flower" },
+  ];
+
+  it("randomizes stickers and filter while freezing geometry", () => {
+    const source = pricedTemplate("19.9元拍一发三");
+    const picker = new BalancedStickerPicker(randomPool);
+    const cloned = cloneTemplateForRandom(source, "29.9元\n第二件半价", picker);
+    expect(cloned.id).not.toBe(source.id);
+    expect(cloned.productPrice).toBe("29.9元\n第二件半价");
+    const text = cloned.layers.find((layer) => layer.type === "text");
+    if (text?.type !== "text") throw new Error("missing text layer");
+    expect(text.content).toBe(formatProductPrice("29.9元\n第二件半价"));
+    for (const layer of cloned.layers) {
+      if (layer.type !== "sticker") continue;
+      expect(randomPool.some((entry) => entry.assetFingerprint === layer.assetFingerprint)).toBe(true);
+    }
+    expect(RANDOM_FILTER_POOL).toContain(cloned.filter.presetId);
+    expect(randomTemplateDigest(cloned)).toBe(randomTemplateDigest(source));
+    expect(() => EditTemplateSchema.parse(cloned)).not.toThrow();
+    expect(() => assertPriceOnlyTemplate(cloned)).not.toThrow();
+  });
+
+  it("produces different sticker combinations across clones", () => {
+    const source = pricedTemplate("19.9元拍一发三");
+    const picker = new BalancedStickerPicker(randomPool);
+    const first = cloneTemplateForRandom(source, "19.9元拍一发三", picker);
+    const second = cloneTemplateForRandom(source, "19.9元拍一发三", picker);
+    const firstPrints = first.layers.filter((l) => l.type === "sticker").map((l) => l.type === "sticker" ? l.assetFingerprint : "");
+    const secondPrints = second.layers.filter((l) => l.type === "sticker").map((l) => l.type === "sticker" ? l.assetFingerprint : "");
+    expect(firstPrints).not.toEqual(secondPrints);
+  });
+
+  it("rejects an empty sticker pool", () => {
+    const source = pricedTemplate("19.9元拍一发三");
+    expect(() => new BalancedStickerPicker([])).toThrow(/贴纸/);
+    expect(() => cloneTemplateForRandom(source, "19.9元", new BalancedStickerPicker(randomPool))).not.toThrow();
+  });
+
+  it("rejects sources without exactly one text layer", () => {
+    const picker = new BalancedStickerPicker(randomPool);
+    expect(() => cloneTemplateForRandom(createDefaultTemplate(), "19.9元拍一发三", picker)).toThrow(/展示文字层/);
   });
 });

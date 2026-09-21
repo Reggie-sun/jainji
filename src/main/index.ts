@@ -462,7 +462,10 @@ function registerHandlers(): void {
     const parsed = AppendProductionSchema.parse(input);
     const outputDirectory = await canonicalPath(parsed.outputDirectory);
     if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
-    const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory });
+    const stickerPool = Object.entries(stickerAssets)
+      .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && entry[0] !== "template" && entry[0] !== "none")
+      .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
+    const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
     for (const batch of batches) void queue.start(batch.id);
     return { batchIds: batches.map((batch) => batch.id), outputDirectory };
   });

@@ -4,8 +4,9 @@ import path from "node:path";
 import {
   BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
   assertPriceOnlyTemplate,
+  BalancedStickerPicker,
   cloneTemplate,
-  cloneTemplateForAppend,
+  cloneTemplateForRandom,
   deriveBatchStatus,
   ExportBatchSchema,
   ExportPresetSchema,
@@ -18,6 +19,7 @@ import {
   type ExportTask,
   type MediaItem,
   type QueueState,
+  type RandomStickerPoolEntry,
 } from "./domain.js";
 import { ArtifactVerifier } from "./artifact.js";
 import { classifyError, JianjiError } from "./errors.js";
@@ -316,7 +318,7 @@ export class ExportQueue {
     return { productPrice: source.templateSnapshot.productPrice ?? "", mediaCount: source.mediaIds.length };
   }
 
-  async appendFromBatch(input: { batchId: string; projectId: string; count: number; productPrice: string; outputDirectory: string }, signal?: AbortSignal): Promise<ExportBatch[]> {
+  async appendFromBatch(input: { batchId: string; projectId: string; count: number; productPrice: string; outputDirectory: string }, stickerPool: readonly RandomStickerPoolEntry[], signal?: AbortSignal): Promise<ExportBatch[]> {
     const source = await this.findAppendSource(input.batchId);
     if (!source || source.projectId !== input.projectId) throw new JianjiError("只能追加当前项目中的已完成批次。", "input_invalid", "input", false);
     if (source.status !== "completed" && source.status !== "completed_with_errors") throw new JianjiError("只能追加已完成导出的批次。", "input_invalid", "input", false);
@@ -324,9 +326,10 @@ export class ExportQueue {
     const mediaItems = source.mediaIds.map((id) => source.mediaSnapshots?.find((item) => item.id === id) ?? this.mediaLookup?.(id));
     if (mediaItems.some((item): item is undefined => !item)) throw new JianjiError("源批次素材已变化，无法追加制作。", "input_invalid", "input", false);
     const media = mediaItems as MediaItem[];
+    const picker = new BalancedStickerPicker(stickerPool);
     const created: ExportBatch[] = [];
     for (let index = 0; index < input.count; index += 1) {
-      const template = cloneTemplateForAppend(source.templateSnapshot, input.productPrice);
+      const template = cloneTemplateForRandom(source.templateSnapshot, input.productPrice, picker);
       created.push(await this.createBatchNow({ template, projectId: source.projectId, mediaIds: [...source.mediaIds], mediaItems: media, outputDirectory: input.outputDirectory, preset: source.preset }, signal));
     }
     return created;
