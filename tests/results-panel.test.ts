@@ -62,3 +62,19 @@ it("makes an accepted supervisor preview playable while formal export is waiting
   expect(dialog).toContain(`src=\"${previewUrl}\"`);
   expect(dialog).toContain("aria-label=\"关闭样片\"");
 });
+
+it("offers append production on rows of completed batches only", () => {
+  const completedBatchId = crypto.randomUUID();
+  const activeBatchId = crypto.randomUUID();
+  const html = renderToStaticMarkup(createElement(ResultsPanel, {
+    state: {
+      project: { mediaItems: [] },
+      queue: { batches: [
+        { batch: { id: completedBatchId, status: "completed", mediaIds: [], tasks: [{ id: crypto.randomUUID(), batchId: completedBatchId, mediaId: crypto.randomUUID(), status: "completed", progress: 1 }] } },
+        { batch: { id: activeBatchId, status: "active", mediaIds: [], tasks: [{ id: crypto.randomUUID(), batchId: activeBatchId, mediaId: crypto.randomUUID(), status: "running", progress: 0.4 }] } },
+      ] },
+    } as unknown as DesktopState,
+    busy: false, retryingIds: [], onCancel: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+  }));
+  expect(html.match(/追加制作/g)).toHaveLength(1);
+});
