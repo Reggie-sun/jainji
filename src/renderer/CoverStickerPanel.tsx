@@ -115,7 +115,7 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
     return { ...current, regions: current.regions?.map(keep), mediaRegions: current.mediaRegions && Object.fromEntries(Object.entries(current.mediaRegions).map(([mediaId, mediaRegions]) => [mediaId, mediaRegions.map(keep)])) };
   });
   return <>
-    <Heading eyebrow="COVER STICKER" title="覆盖原贴纸">独立选择是否覆盖原视频中的贴纸，不随“全部交给 Agent”自动开启。</Heading>
+    <Heading title="覆盖原贴纸">独立选择是否覆盖原视频中的贴纸，不随“全部交给 Agent”自动开启。</Heading>
     <section className="card cover-sticker-panel" aria-label="覆盖原贴纸设置">
       <div className="cover-sticker-heading"><div><h2>{draft.enabled ? "覆盖已开启" : "覆盖已关闭"}</h2><p>{draft.enabled ? "调整覆盖框与跟随方式；统一款将从全部已上传贴纸中逐轮换用。新覆盖层铺白色不透明底板并等比保留完整图案，保存后应用到下次制作。旧导出任务保留原效果。" : "关闭时保留原贴纸，不添加覆盖层。全部交给 Agent 时仍会识别原贴纸占位，只补空缺角落和时段。"}</p></div><label className="cover-sticker-toggle"><input type="checkbox" checked={draft.enabled} disabled={disabled || saving} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />启用覆盖</label></div>
       {draft.enabled && <>

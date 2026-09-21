@@ -1,0 +1,229 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-22T00:00:00+08:00",
+  "title": "Design System: 简辑 Jianji",
+  "extensions": {
+    "colorMeta": {
+      "seal": {
+        "role": "primary",
+        "displayName": "印章青 (Seal)",
+        "canonical": "#0f7a66",
+        "tonalRamp": [
+          "oklch(22% 0.045 172)",
+          "oklch(32% 0.07 172)",
+          "oklch(42% 0.085 172)",
+          "oklch(52% 0.095 172)",
+          "oklch(62% 0.09 172)",
+          "oklch(72% 0.075 172)",
+          "oklch(83% 0.05 172)",
+          "oklch(93% 0.02 172)"
+        ]
+      },
+      "seal-dark": {
+        "role": "primary",
+        "displayName": "松烟墨 (Pine / Seal Dark)",
+        "canonical": "#12332e",
+        "tonalRamp": [
+          "oklch(15% 0.02 172)",
+          "oklch(24% 0.035 172)",
+          "oklch(33% 0.045 172)",
+          "oklch(43% 0.05 172)",
+          "oklch(54% 0.05 172)",
+          "oklch(65% 0.045 172)",
+          "oklch(78% 0.03 172)",
+          "oklch(91% 0.015 172)"
+        ]
+      },
+      "mint": {
+        "role": "secondary",
+        "displayName": "薄荷纸 (Mint)",
+        "canonical": "#e3f0ea",
+        "tonalRamp": [
+          "oklch(30% 0.05 170)",
+          "oklch(45% 0.06 170)",
+          "oklch(58% 0.06 170)",
+          "oklch(70% 0.05 170)",
+          "oklch(80% 0.04 170)",
+          "oklch(88% 0.028 170)",
+          "oklch(94% 0.016 170)",
+          "oklch(97% 0.008 170)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "纸面 (Paper)",
+        "canonical": "#f7f8f7",
+        "tonalRamp": [
+          "oklch(16% 0.008 165)",
+          "oklch(30% 0.008 165)",
+          "oklch(45% 0.008 165)",
+          "oklch(60% 0.007 165)",
+          "oklch(74% 0.006 165)",
+          "oklch(86% 0.005 165)",
+          "oklch(94% 0.004 165)",
+          "oklch(97.5% 0.003 165)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "墨色 (Ink)",
+        "canonical": "#1a2420",
+        "tonalRamp": [
+          "oklch(14% 0.01 165)",
+          "oklch(24% 0.012 165)",
+          "oklch(36% 0.012 165)",
+          "oklch(48% 0.01 165)",
+          "oklch(60% 0.009 165)",
+          "oklch(72% 0.008 165)",
+          "oklch(85% 0.006 165)",
+          "oklch(95% 0.004 165)"
+        ]
+      },
+      "bad": {
+        "role": "tertiary",
+        "displayName": "印泥红 (Bad)",
+        "canonical": "#b3402f",
+        "tonalRamp": [
+          "oklch(24% 0.06 35)",
+          "oklch(34% 0.09 35)",
+          "oklch(44% 0.12 35)",
+          "oklch(54% 0.14 35)",
+          "oklch(64% 0.13 35)",
+          "oklch(74% 0.1 35)",
+          "oklch(84% 0.06 35)",
+          "oklch(93% 0.025 35)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "页面级标题;无 eyebrow,标题自身承担层级。" },
+      "title": { "displayName": "Title", "purpose": "卡片头标题(14px/650)。" },
+      "control": { "displayName": "Control", "purpose": "按钮、导航、选项卡文字(13px/600)。" },
+      "body": { "displayName": "Body", "purpose": "表单与正文;字号地板 13px。" },
+      "label": { "displayName": "Label", "purpose": "辅助标签与元信息;字号地板 12px。" },
+      "plaque": { "displayName": "Plaque Numeral", "purpose": "作品页统计行数字,价目标牌待遇;tabular-nums。" }
+    },
+    "shadows": [
+      { "name": "focus-ring", "value": "0 0 0 2px #0f7a6622", "purpose": "输入框 focus 淡环,配 seal 边框。" },
+      { "name": "selection-ring", "value": "0 0 0 1px #0f7a66", "purpose": "template-card 选中态描边,非深度。" },
+      { "name": "menu-float", "value": "0 18px 45px #15362b1c", "purpose": "项目菜单浮层;淡墨色透明阴影。" },
+      { "name": "drawer-float", "value": "-20px 0 55px #0c2b2230", "purpose": "模型抽屉右起浮层。" },
+      { "name": "dialog-float", "value": "0 24px 90px #182c3540", "purpose": "模态对话框;阴影最大额度。" }
+    ],
+    "motion": [
+      { "name": "state-fade", "value": "0.15s", "purpose": "按钮/链接/揭示操作的 color 与 opacity 过渡;反馈永不改变几何。" },
+      { "name": "breathe", "value": "2s ease-in-out infinite (opacity .55)", "purpose": "活动 orb 与进行中的呼吸动画;prefers-reduced-motion 下全局关闭。" }
+    ],
+    "breakpoints": [
+      { "name": "narrow", "value": "1000px", "purpose": "双栏折单栏、隐藏预览卡、h1 降 20px。" },
+      { "name": "rail-compact", "value": "1120px", "purpose": "rail 94px 收至 80px,header 去引擎状态。" },
+      { "name": "compact", "value": "1200px", "purpose": "内容 padding 收窄、栅格 gap 收紧。" },
+      { "name": "wide", "value": "1600px", "purpose": "内容顶距增至 38px。" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "印章式主动作;每屏唯一,hover 仅加深不位移,无装饰图标。",
+      "html": "<button class=\"ds-btn-primary\">开始制作</button>",
+      "css": ".ds-btn-primary { background: var(--seal, #0f7a66); color: #fff; border: 1px solid transparent; border-radius: 5px; font-weight: 600; font-size: 13px; font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 18px; min-height: 40px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; } .ds-btn-primary:hover:not(:disabled) { background: var(--seal-hover, #0b6a58); } .ds-btn-primary:disabled { cursor: not-allowed; opacity: .48; } .ds-btn-primary:focus-visible { outline: 2px solid var(--seal, #0f7a66); outline-offset: 2px; }"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "工单白底细线边次动作;hover 换 mint 底。",
+      "html": "<button class=\"ds-btn-secondary\">保存草稿</button>",
+      "css": ".ds-btn-secondary { background: var(--surface, #fff); border: 1px solid var(--line, #dde3df); color: var(--ink-2, #45544d); border-radius: 5px; font-weight: 600; font-size: 13px; font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; display: inline-flex; align-items: center; justify-content: center; gap: 9px; padding: 10px 18px; min-height: 40px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; } .ds-btn-secondary:hover:not(:disabled) { background: var(--mint, #e3f0ea); border-color: #bcd4c9; color: var(--seal-dark, #12332e); } .ds-btn-secondary:focus-visible { outline: 2px solid var(--seal, #0f7a66); outline-offset: 2px; }"
+    },
+    {
+      "name": "Work-Ticket Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "工单分栏卡片:1px 细线、6px 圆角、无阴影;卡片头带数量徽记。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-header\"><h2>素材清单 <span>12</span></h2><span>已就绪</span></div><div class=\"ds-card-body\">行项目以 1px 软细线分隔,行高紧凑。</div></div>",
+      "css": ".ds-card { background: var(--surface, #fff); border: 1px solid var(--line, #dde3df); border-radius: 6px; font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; color: var(--ink, #1a2420); } .ds-card-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; border-bottom: 1px solid var(--line-2, #e9ede9); } .ds-card-header h2 { font-size: 14px; font-weight: 650; margin: 0; display: flex; align-items: center; gap: 10px; } .ds-card-header h2 > span { font-size: 12px; background: var(--line-2, #e9ede9); color: var(--ink-2, #45544d); border-radius: 3px; padding: 2px 7px; font-variant-numeric: tabular-nums; } .ds-card-header > span { font-size: 12px; color: var(--ink-3, #6d7c75); } .ds-card-body { padding: 16px 20px; font-size: 13px; line-height: 1.7; color: var(--ink-2, #45544d); }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "42px 纸面底输入框;focus 转 seal 边框 + 淡环,caret 印章色。",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"展示文字,每行最多 12 字\" />",
+      "css": ".ds-input { height: 42px; width: 100%; border: 1px solid var(--line, #dde3df); background: var(--paper, #f7f8f7); border-radius: 5px; padding: 0 12px; font-size: 13px; font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; color: var(--ink, #1a2420); caret-color: var(--seal, #0f7a66); } .ds-input::placeholder { color: #9aa6a0; } .ds-input:focus { outline: none; border-color: var(--seal, #0f7a66); box-shadow: 0 0 0 2px #0f7a6622; }"
+    },
+    {
+      "name": "Status Stamp",
+      "kind": "chip",
+      "refersTo": "status-stamp",
+      "description": "印刷印章式状态标签:实心色块 + 12px/600 文字,3px 圆角;禁渐变药丸。",
+      "html": "<span class=\"ds-stamp ds-stamp-completed\">已完成</span> <span class=\"ds-stamp ds-stamp-running\">导出中</span> <span class=\"ds-stamp ds-stamp-failed\">失败</span> <span class=\"ds-stamp\">排队中</span>",
+      "css": ".ds-stamp { font-size: 12px; font-weight: 600; font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; padding: 3px 9px; background: var(--line-2, #e9ede9); color: var(--ink-2, #45544d); border-radius: 3px; white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-stamp-completed { background: var(--seal, #0f7a66); color: #fff; } .ds-stamp-failed { background: var(--bad, #b3402f); color: #fff; } .ds-stamp-running { background: var(--seal-dark, #12332e); color: #dff3ec; }"
+    },
+    {
+      "name": "Template Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "规则模板选项卡:无插画,hover 边框转青,选中 = seal 边框 + 选中环 + 实心 selection-ring。",
+      "html": "<button class=\"ds-template-card selected\"><span class=\"ds-template-ring\"><svg width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" fill=\"none\"><path d=\"M2 6.5 5 9.5 10 3\" stroke=\"#fff\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></span><span class=\"ds-template-meta\">规则模板</span><strong>四角促销 + 居中价格</strong><small>四角贴纸、滤镜、价格花字交给 Agent 搭配</small></button>",
+      "css": ".ds-template-card { position: relative; background: var(--surface, #fff); border: 1px solid var(--line, #dde3df); border-radius: 6px; text-align: left; padding: 18px 20px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; color: var(--ink, #1a2420); transition: border-color .15s; } .ds-template-card:hover { border-color: #a9c4b8; } .ds-template-card.selected { border-color: var(--seal, #0f7a66); box-shadow: 0 0 0 1px var(--seal, #0f7a66); } .ds-template-ring { position: absolute; top: 14px; right: 14px; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line, #dde3df); display: grid; place-items: center; } .ds-template-card.selected .ds-template-ring { background: var(--seal, #0f7a66); border-color: var(--seal, #0f7a66); } .ds-template-card:focus-visible { outline: 2px solid var(--seal, #0f7a66); outline-offset: 2px; } .ds-template-meta { font-size: 12px; color: var(--ink-3, #6d7c75); } .ds-template-card strong { font-size: 15px; font-weight: 650; } .ds-template-card small { font-size: 12px; line-height: 1.7; color: var(--ink-2, #45544d); }"
+    },
+    {
+      "name": "Stat Plaque",
+      "kind": "custom",
+      "description": "作品页统计行单元:12px 标签 + 26px/650 tabular 数字 + 12px 单位,价目标牌待遇。",
+      "html": "<div class=\"ds-stat-plaque\"><span>完成条数</span><strong>86<small>条</small></strong></div>",
+      "css": ".ds-stat-plaque { padding: 18px 24px; border-right: 1px solid var(--line-2, #e9ede9); background: var(--surface, #fff); font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; } .ds-stat-plaque span { font-size: 12px; color: var(--ink-3, #6d7c75); } .ds-stat-plaque strong { font-size: 26px; font-weight: 650; display: block; margin-top: 8px; font-variant-numeric: tabular-nums; line-height: 1; color: var(--ink, #1a2420); } .ds-stat-plaque small { font-size: 12px; color: var(--ink-3, #6d7c75); margin-left: 6px; font-weight: 400; }"
+    },
+    {
+      "name": "Workflow Step",
+      "kind": "nav",
+      "description": "五步流程指示:active 步骤号实心 seal + 底部 2px 指示条,complete 用 mint 底步骤号。",
+      "html": "<div class=\"ds-steps\"><button class=\"ds-step complete\"><span class=\"ds-step-num\">1</span>素材</button><button class=\"ds-step active\"><span class=\"ds-step-num\">2</span>包装</button><button class=\"ds-step\"><span class=\"ds-step-num\">3</span>输出</button></div>",
+      "css": ".ds-steps { display: flex; align-items: center; background: #fff; font-family: Inter, \"Noto Sans CJK SC\", \"Microsoft YaHei\", sans-serif; } .ds-step { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 64px; padding: 0 24px; border: 0; background: transparent; color: #89938f; font-size: 13px; font-weight: 600; cursor: pointer; } .ds-step-num { display: grid; place-items: center; width: 27px; height: 27px; border-radius: 50%; background: #edf1f0; color: #7f8b87; font-size: 11px; font-variant-numeric: tabular-nums; } .ds-step.active { color: #0b705d; } .ds-step.active::before { content: \"\"; position: absolute; left: 23%; right: 23%; bottom: 0; height: 2px; border-radius: 2px 2px 0 0; background: var(--seal, #0f7a66); } .ds-step.active .ds-step-num { background: var(--seal, #0f7a66); color: #fff; } .ds-step.complete { color: #446f62; } .ds-step.complete .ds-step-num { background: var(--mint, #e3f0ea); color: #19745e; } .ds-step:focus-visible { outline: 2px solid var(--seal, #0f7a66); outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "印刷工单与价目标牌 (The Print Work-Ticket & Price Sign)",
+    "overview": "简辑是高频批量生产工具,视觉世界取自批发市场价目牌与热敏标签的印刷纪律:纸面、墨色、细线分区。重要信息(价格、条数、进度、统计)享受\"价目标牌\"待遇——以标牌级字号与自重出现;其余一切退为安静的工单表格。深青绿 (seal) 只作\"印章/签字\"色,用于主动作与关键确认态,它的稀有正是它的力量。\n\n密度是生产工具的密度:行高紧凑、数字 tabular-nums、卡片靠 1px 细线而不是阴影分区。辨识度不依赖展示字体,而来自三件套:印章色、实心状态印章、标牌数字。方向来源:concept-seed 58ae6557(degraded roll — 无网络环境下掷骰,无 challengers、无 quality-bar boards,grounded 列表第 5 位中选)。\n\n明确拒绝的类别:AI 工作台营销风(英文 eyebrow + 手绘插画 + 大留白卡片阵)、浅色渐变药丸状态标签、为装饰而存在的英文文案。",
+    "keyCharacteristics": [
+      "印章式主动作:实心 seal 色按钮,反馈不换布局",
+      "细线分区代替阴影:卡片 1px hairline,阴影只属于浮层(菜单/抽屉/对话框)",
+      "状态印章:实心小色块 + 文字,radius 3px,印刷章式",
+      "标牌数字:关键统计 26px、650 自重、tabular-nums",
+      "字号地板:正文/控件 13px,辅助 12px,绝不更小"
+    ],
+    "rules": [
+      { "name": "The One Seal Rule", "body": "任何屏幕上 seal 实心色只出现在主动作与确认态上;同一视图里第二处大面积 seal 就是违规。mint 是它的唯一合法稀释形态。", "section": "colors" },
+      { "name": "The Paper-First Rule", "body": "新表面默认取 paper 或 surface + 细线;想加新颜色时先问\"能不能用墨色层级或细线解决\"。", "section": "colors" },
+      { "name": "The 13px Floor Rule", "body": "正文与控件不低于 13px,辅助文字不低于 12px;没有第三档更小的字号,也没有\"micro\" 文本。", "section": "typography" },
+      { "name": "The Plaque Numeral Rule", "body": "凡用户要核对的数字(条数、进度、统计)一律 tabular-nums;关键统计升至 26px/650,其余数字保持 13px 安静呈现。", "section": "typography" },
+      { "name": "The No-Eyebrow Rule", "body": "标题上方不放任何 kicker/eyebrow 行;层级由字号与自重表达,不由装饰性小字表达。", "section": "typography" },
+      { "name": "The Opaque Chrome Rule", "body": "一切 sticky 层(header、subnav、step-footer)必须完全不透明;半透明 sticky chrome 是已修复过的缺陷,不得回归。", "section": "layout" },
+      { "name": "The Five-Step Rule", "body": "顶层流程导航有且只有五个步骤;新能力进卡片、进 subnav 锚点或进 rail 工具区,不新增第六步。", "section": "layout" },
+      { "name": "The Hairline-Not-Shadow Rule", "body": "分区靠细线,不靠阴影;给静止卡片加阴影即违规。阴影是\"我浮在你之上\"的声明,只有浮层有资格声明。", "section": "elevation" }
+    ],
+    "dos": [
+      "Do 用细线 (1px #dde3df) 分区,用纸面/工单白色阶表达层级。",
+      "Do 让数字 tabular-nums;关键统计用 26px/650 标牌待遇。",
+      "Do 让 seal 只出现在主动作、选中态与确认态;稀释需求用 mint。",
+      "Do 保持字号地板:正文/控件 13px,辅助 12px。",
+      "Do 状态用实心印章色块(completed seal / failed bad / running seal-dark,3px 圆角)。",
+      "Do sticky chrome 保持完全不透明。",
+      "Do hover/focus 反馈只改颜色(.15s),不改几何;破坏性操作用 hover/focus-within 显现且键盘可达。",
+      "Do 尊重 prefers-reduced-motion,保留 focus-visible 的 seal 焦点环。"
+    ],
+    "donts": [
+      "Don't 加 eyebrow/kicker 小字行;标题自身承担层级。",
+      "Don't 放英文装饰性营销文案;界面文案即工单语言。",
+      "Don't 在 UI chrome 中使用 CSS-art 插画或营销插图。",
+      "Don't 给主动作按钮加 sparkle 等装饰图标。",
+      "Don't 给页内 tab 加侧边竖条强调(3px 左缘竖条仅属 rail active 态)。",
+      "Don't 给静止卡片加阴影;阴影只属于浮层(菜单/抽屉/对话框)。",
+      "Don't 用浅色渐变药丸做状态标签。",
+      "Don't 引入第二字族或展示字体(含系统展示面孔);辨识度来自印章色、实心印章与标牌数字。"
+    ]
+  }
+}

@@ -70,7 +70,7 @@ export function BugFeedbackDialog({ open, page, onClose }: { open: boolean; page
 
   if (!open) return null;
   return <dialog ref={dialog} className="feedback-dialog" aria-labelledby="feedback-title" onCancel={(event) => { event.preventDefault(); close(); }} onPaste={paste}>
-    <div className="feedback-heading"><div><span className="eyebrow">HELP US IMPROVE</span><h2 id="feedback-title">反馈问题</h2></div><button className="icon-button" aria-label="关闭问题反馈" disabled={busy || imageBusy} onClick={close}><Icon name="close" size={20} /></button></div>
+    <div className="feedback-heading"><h2 id="feedback-title">反馈问题</h2><button className="icon-button" aria-label="关闭问题反馈" disabled={busy || imageBusy} onClick={close}><Icon name="close" size={20} /></button></div>
     <p className="feedback-intro">直接反馈给开发者，无需 GitHub 账号。描述和所选截图会发布到公开的 GitHub 仓库：<strong>{FEEDBACK_REPOSITORY}</strong></p>
     {error && <p className="notice error" role="alert">{error}</p>}
     {!receipt && history.length > 0 && <details className="feedback-history" open={history.some((entry) => !entry.receipt)}><summary>最近的反馈 · 重启后可在此找回</summary><ul>{history.map((entry) => <li key={entry.feedbackId}><span>{entry.description.slice(0, 60)}</span><button className="text-button" disabled={busy || imageBusy} onClick={() => void resume(entry)}>{entry.receipt ? `查看回执 #${entry.receipt.issueNumber}` : "恢复 / 核对反馈"}</button></li>)}</ul></details>}

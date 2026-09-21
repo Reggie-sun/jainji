@@ -78,8 +78,6 @@ const TEMPLATE_SECTIONS = [
   { id: "template", label: "模板", icon: "grid", selector: ".template-workspace-start" },
   { id: "timing", label: "显示时段", icon: "play", selector: "#display-time-settings" },
   { id: "corners", label: "四角贴纸", icon: "spark", selector: "#corner-decoration-editor" },
-  { id: "cover", label: "覆盖贴纸", icon: "shield", selector: "#cover-sticker-settings" },
-  { id: "export", label: "输出设置", icon: "settings", selector: ".export-card" },
 ] as const;
 
 export function WorkspaceSubnav({ active, onNavigate }: {

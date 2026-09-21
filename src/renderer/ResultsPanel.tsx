@@ -43,7 +43,7 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onRetry, onOp
   }).length;
   const processing = planned.length - completed - failed;
   return <>
-    <Heading eyebrow="03 / YOUR CREATIONS" title={processing ? "灵感正在成为作品" : "每条素材，都有了新表达"}>在这里跟进分析与导出。完成后播放成片，确认你喜欢最终效果。</Heading>
+    <Heading title="作品与导出">跟进分析与导出进度；完成后播放成片验收。</Heading>
     <div className="result-stats"><div><span>本轮制作</span><strong>{planned.length}<small>条</small></strong></div><div><span>正在处理</span><strong>{processing.toString().padStart(2, "0")}</strong></div><div><span>已完成</span><strong className="green-text">{completed.toString().padStart(2, "0")}</strong></div><div><span>需要处理</span><strong className={failed ? "red-text" : ""}>{failed.toString().padStart(2, "0")}</strong></div></div>
     <div className="card result-list"><div className="card-header"><h2>作品与任务</h2><span>原文件始终保留</span></div>
       {tasks.length + unqueued.length === 0 && <div className="empty-state"><Icon name="film" size={36} /><h3>第一条作品，从一份素材开始</h3><p>导入视频并选择模板后，Agent 会在这里开始工作。</p><button className="button secondary" onClick={onNew}>去导入素材<Icon name="arrow" size={16} /></button></div>}

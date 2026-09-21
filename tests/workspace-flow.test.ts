@@ -3,7 +3,7 @@ import { WORKFLOW_STEPS, activeWorkflowId, resolveWorkflowTarget, templateSectio
 
 describe("workspace workflow navigation", () => {
   it("keeps every creation stage visible in the redesigned stepper", () => {
-    expect(WORKFLOW_STEPS.map(({ label }) => label)).toEqual(["素材", "包装", "覆盖贴纸", "导出", "作品"]);
+    expect(WORKFLOW_STEPS.map(({ label }) => label)).toEqual(["素材", "包装", "覆盖贴纸", "输出", "作品"]);
   });
 
   it("routes contextual packaging stages through the existing template surface", () => {

@@ -9,7 +9,7 @@
 .cover-review-frame video { display: block; width: 100%; height: 100%; }
 .cover-review .review-box { position: absolute; box-sizing: border-box; background: #1d9a7022; border: 2px solid #34d399; }
 .cover-review .review-box.selected { border-color: #fff; outline: 1px solid #059669; }
-.cover-review .review-box-move { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: white; text-shadow: 0 1px 3px #000; cursor: move; touch-action: none; user-select: none; font-size: 11px; }
+.cover-review .review-box-move { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; color: white; text-shadow: 0 1px 3px #000; cursor: move; touch-action: none; user-select: none; font-size:12px; }
 .cover-review .review-box-resize { position: absolute; bottom: -8px; right: -8px; width: 20px; height: 20px; min-width: 0; padding: 0; border: 2px solid white; border-radius: 4px; background: #059669; cursor: nwse-resize; touch-action: none; }
 .cover-review .review-box button:disabled { cursor: default; }
 .cover-review-hint { color: var(--text-muted, #94a3b8); font-size: 13px; text-align: center; }
@@ -21,7 +21,7 @@
 .cover-review-timeline input { width: 100%; }
 .cover-review-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 12px; }
 .cover-review-fields input { display: block; width: 100%; }
-.cover-review-issue { border-left: 3px solid #eab308; padding: 8px 12px; margin: 12px 0; }
+.cover-review-issue { border: 1px solid #e8dcc0; background: #faf3e3; border-radius: 5px; padding: 10px 12px; margin: 12px 0; }
 .cover-review [role=alert] { color: #dc2626; }
 .cover-review-progress { padding: 14px 16px; margin: 16px 0; background: #edf7f3; border: 1px solid #b7d6ce; border-radius: 8px; }
 .cover-review-progress progress { width: 100%; accent-color: #178875; margin-top: 10px; }

@@ -6,7 +6,7 @@ export function SourceStickerKnowledgeControls({ projectId: _projectId, selected
 }) {
   const unavailable = disabled || !eligible || selectedReadyIds.length === 0 || Boolean(refresh);
   return <section className="card" aria-label="原贴纸知识重新检查">
-    <div className="card-header"><h2>原贴纸知识 <span>本轮设置</span></h2><span>LOCAL ONLY</span></div>
+    <div className="card-header"><h2>原贴纸知识 <span>本轮设置</span></h2><span>仅保存在本机</span></div>
     <div className="preview-caption">
       <strong>{refresh ? `已安排重新检查 ${refresh.mediaIds.length} 条素材` : "需要时重新检查已选素材"}</strong>
       <p>此按钮只为下一次制作标记当前已选素材；点击本身不会调用模型，也不会写入项目或本机设置。</p>

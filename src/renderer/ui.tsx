@@ -19,8 +19,8 @@ const paths: Record<string, ReactNode> = {
 export function Icon({ name, size = 20 }: { name: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name] ?? paths.spark}</svg>;
 }
-export function Heading({ eyebrow, title, children }: { eyebrow: string; title: string; children: ReactNode }) {
-  return <div className="section-heading"><span className="eyebrow">{eyebrow}</span><h1>{title}</h1><p>{children}</p></div>;
+export function Heading({ title, children }: { title: string; children: ReactNode }) {
+  return <div className="section-heading"><h1>{title}</h1><p>{children}</p></div>;
 }
 export function duration(ms: number) { const seconds = Math.round(ms / 1000); return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`; }
 export function sizeLabel(bytes: number) { return bytes < 1024 * 1024 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1024 / 1024).toFixed(1)} MB`; }

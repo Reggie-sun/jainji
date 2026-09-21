@@ -15,15 +15,8 @@ export function ConnectionPanel({ connection, chatgpt, library, busy, onSave, on
   const loginPending = chatgpt?.status === "logging-in" || chatgpt?.status === "starting";
   const locked = busy || loginPending;
   return <>
-    <Heading eyebrow="LET’S GET CONNECTED" title="接入你的创作搭档">连接模型，剩下的灵感和细节，交给 Agent。</Heading>
+    <Heading title="连接模型">登录 ChatGPT 账号，或添加 API 连接。模型与推理档位之后可在左侧「模型」中随时调整。</Heading>
     <div className="connection-layout">
-      <div className="connection-story">
-        <span className="small-tag"><Icon name="spark" size={15} /> AI PACKAGING STUDIO</span>
-        <h2>给它素材，<br />让好内容<span>自然发生。</span></h2>
-        <p>不必逐个调图层，也不必反复写提示词。<br />选择一种风格，每条素材都有自己的表达。</p>
-        <div className="creative-scene" aria-hidden="true"><div className="scene-orbit" /><div className="scene-frame rear"><span>YOUR FOOTAGE</span><div className="scene-product" /></div><div className="scene-frame front"><span className="scene-label">日常 · 刚刚好</span><div className="scene-product" /><span className="scene-caption">一点生活的温度</span><small>AGENT EDIT</small></div><div className="scene-spark"><Icon name="spark" size={24} /></div><span className="scene-note">原始素材 → 独立包装</span></div>
-        <div className="story-features"><span><Icon name="check" size={16} /> 规则约束</span><span><Icon name="check" size={16} /> 逐条创作</span><span><Icon name="check" size={16} /> 本地出片</span></div>
-      </div>
       <div className="connection-form card">
         <div className="form-title"><div className="icon-tile"><Icon name="key" /></div><div><h2>模型连接</h2><p>登录账号，或复用已有的 API 配置</p></div></div>
         <div className="connection-tabs" role="tablist" aria-label="连接方式">
@@ -43,6 +36,5 @@ export function ConnectionPanel({ connection, chatgpt, library, busy, onSave, on
         {connection.configured && <div className="connection-actions"><button type="button" className="text-button" disabled={locked} onClick={onTest}>测试连接（一次请求）</button><button type="button" className="text-button" disabled={busy} onClick={onContinue}>使用已保存配置</button><button type="button" className="text-button muted" disabled={locked} onClick={onDisconnect}>断开</button></div>}
       </div>
     </div>
-    <div className="platform-note">为本地创作而生 <span>Windows</span><span>Linux</span><span>MP4 / H.264</span></div>
   </>;
 }

@@ -57,7 +57,7 @@ export function StickerLibraryPanel({ disabled, revision, onRemoved }: { disable
   };
 
   return <>
-    <Heading eyebrow="STICKER LIBRARY" title="上传贴纸">把自己的贴纸放进素材库，供 Agent 看图搭配，也可以手动选用。</Heading>
+    <Heading title="贴纸库">把自己的贴纸放进素材库，供 Agent 看图搭配，也可以手动选用。</Heading>
     <section className="card sticker-upload-panel" aria-label="上传贴纸图片">
       <button type="button" className="button primary" disabled={disabled || importing || Boolean(removing)} onClick={() => void importSticker()}><Icon name="upload" size={18} />{importing ? "正在上传…" : "选择图片上传"}</button>
       <p>PNG · JPG / JPEG · 最大 10 MB · 宽高不超过 4096 像素</p>
@@ -67,7 +67,7 @@ export function StickerLibraryPanel({ disabled, revision, onRemoved }: { disable
     </section>
     <section className="card sticker-upload-panel" aria-label="我的上传贴纸">
       <div className="card-header"><h2>我的贴纸 <span>{stickers?.length ?? 0}</span></h2></div>
-      {!stickers ? <p>{error ? "暂时无法显示贴纸。" : "正在读取贴纸…"}</p> : stickers.length === 0 ? <p>还没有上传贴纸，点击上方“选择图片上传”开始添加。</p> : <div className="uploaded-sticker-grid">{stickers.map((sticker) => <div key={sticker.id}><div className="library-sticker-choice"><img src={sticker.url} alt={sticker.label} /><span>{sticker.label}</span></div><div className="sticker-delete-actions">{confirmDelete === sticker.id ? <><button type="button" disabled={disabled || importing || Boolean(removing)} onClick={() => void removeSticker(sticker.id)}>{removing === sticker.id ? "正在删除…" : "确认删除"}</button><button type="button" disabled={Boolean(removing)} onClick={() => setConfirmDelete(undefined)}>取消</button></> : <button type="button" aria-label={`删除 ${sticker.label}`} disabled={disabled || importing || Boolean(removing)} onClick={() => setConfirmDelete(sticker.id)}>删除</button>}</div></div>)}</div>}
+      {!stickers ? <p>{error ? "暂时无法显示贴纸。" : "正在读取贴纸…"}</p> : stickers.length === 0 ? <p>还没有上传贴纸，点击上方“选择图片上传”开始添加。</p> : <div className="uploaded-sticker-grid">{stickers.map((sticker, index) => <div key={sticker.id}><div className="library-sticker-choice"><img src={sticker.url} alt={sticker.label} /><span>贴纸 {index + 1}</span></div><div className="sticker-delete-actions">{confirmDelete === sticker.id ? <><button type="button" disabled={disabled || importing || Boolean(removing)} onClick={() => void removeSticker(sticker.id)}>{removing === sticker.id ? "正在删除…" : "确认删除"}</button><button type="button" disabled={Boolean(removing)} onClick={() => setConfirmDelete(undefined)}>取消</button></> : <button type="button" aria-label={`删除 ${sticker.label}`} disabled={disabled || importing || Boolean(removing)} onClick={() => setConfirmDelete(sticker.id)}>删除</button>}</div></div>)}</div>}
       {confirmDelete && <p>删除后不再供新制作选用；历史任务使用的文件会保留，重新上传同一图片可恢复。</p>}
     </section>
   </>;

@@ -12,7 +12,7 @@ export const WORKFLOW_STEPS: ReadonlyArray<{ id: WorkflowId; label: string; icon
   { id: "materials", label: "素材", icon: "folder" },
   { id: "packaging", label: "包装", icon: "grid" },
   { id: "cover", label: "覆盖贴纸", icon: "shield" },
-  { id: "export", label: "导出", icon: "download" },
+  { id: "export", label: "输出", icon: "settings" },
   { id: "results", label: "作品", icon: "film" },
 ];
 

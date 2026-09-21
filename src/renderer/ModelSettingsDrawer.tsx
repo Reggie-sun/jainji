@@ -27,7 +27,7 @@ export function ModelSettingsDrawer({ open, state, disabled, onClose, onManageCo
   return <div className="model-drawer-layer">
     <button className="model-drawer-backdrop" type="button" aria-label="关闭模型与 API" onClick={onClose} />
     <aside className="model-drawer" role="dialog" aria-modal="true" aria-label="模型与 API">
-      <header><div><span>SETTINGS</span><h2>模型与 API</h2><p>三个角色可使用不同连接，也可以共用同一连接。</p></div><button className="icon-button" type="button" aria-label="关闭模型与 API" onClick={onClose}><Icon name="close" /></button></header>
+      <header><div><h2>模型与 API</h2><p>三个角色可使用不同连接，也可以共用同一连接。</p></div><button className="icon-button" type="button" aria-label="关闭模型与 API" onClick={onClose}><Icon name="close" /></button></header>
       <div className="model-connection-summary">
         <div><span className={state.connection.configured ? "connection-state ready" : "connection-state"}><i />{state.connection.configured ? "连接正常" : "尚未连接"}</span><strong>{state.connection.source === "chatgpt" ? "ChatGPT 登录" : state.connection.providerName || "API 连接"}</strong></div>
         <div><button className="button secondary compact" type="button" disabled={disabled || !state.connection.configured} onClick={onTest}>测试连接</button><button className="button secondary compact" type="button" disabled={disabled} onClick={onManageConnections}>管理连接</button></div>
