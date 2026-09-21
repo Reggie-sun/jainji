@@ -129,7 +129,7 @@ describe("reusable batch cover", () => {
       expect(selectCover).not.toHaveBeenCalled();
       expect(shortlist.mock.calls.filter((call) => !call[5])[1][4].stickers.some(({ id }) => id === libraryId)).toBe(false);
       expect(Object.keys(assets)).not.toContain(libraryId);
-      service.setCoverSticker({ ...options, stickerIds: [`uploaded-${"c".repeat(64)}`] });
+      service.setCoverSticker({ ...options, regions: [{ id: crypto.randomUUID(), rectangle: options.rectangle, stickerId: `uploaded-${"c".repeat(64)}` }] });
       await expect(controller.start(input, new Set([directory]))).rejects.toThrow("覆盖贴纸已删除");
       expect(plan).toHaveBeenCalledTimes(4);
       expect(placementAcquire).toHaveBeenCalledTimes(4);
@@ -178,7 +178,7 @@ describe("reusable batch cover", () => {
     const plan = vi.spyOn(controller.provider, "plan");
     const detect = vi.spyOn(controller.provider, "detectCovers");
     try {
-      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp", decorations: { mode: "agent", productPrice: "19.9", sticker: "none", fontFamily: "Noto Sans CJK SC" } }, new Set(["/tmp"]))).rejects.toThrow("覆盖贴纸已删除");
+      await expect(controller.start({ ruleId: "clean", brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp", decorations: { mode: "agent", productPrice: "19.9", sticker: "none", fontFamily: "Noto Sans CJK SC" } }, new Set(["/tmp"]))).rejects.toThrow("请先上传");
       expect(plan).not.toHaveBeenCalled();
       expect(detect).not.toHaveBeenCalled();
       expect(controller.busy).toBe(false);
@@ -222,20 +222,43 @@ describe("reusable batch cover", () => {
   it("validates user rectangles and uploaded candidates without weakening ordinary settings", () => {
     expect(CoverStickerSchema.parse(options)).toEqual(options);
     expect(CoverStickerSchema.parse({ ...options, trackingMode: "agent", stickerIds: [] }).stickerIds).toEqual([]);
-    for (const invalid of [{ ...options, stickerIds: [] }, { ...options, stickerIds: ["heart"] }, { ...options, stickerIds: [a, a] }, { ...options, rectangle: { ...options.rectangle, x: 0.9 } }]) expect(() => CoverStickerSchema.parse(invalid)).toThrow();
+    expect(CoverStickerSchema.safeParse({ ...options, stickerIds: [] }).success).toBe(true);
+    for (const invalid of [{ ...options, stickerIds: ["heart"] }, { ...options, stickerIds: [a, a] }, { ...options, rectangle: { ...options.rectangle, x: 0.9 } }]) expect(() => CoverStickerSchema.parse(invalid)).toThrow();
   });
 
-  it("rotates against frozen history, and fails for missing candidates", () => {
+  it("rotates against frozen history and derives the pool from available uploads", () => {
     const first = resolveCoverSticker(options, assets, [])!;
     expect(first.stickerId).toBe(a);
     const layer = coverLayerForMedia(first, { width: 640, height: 480 }, { width: 640, height: 480 });
     const history = [{ createdAt: "2026-09-15T00:00:00Z", templateSnapshot: { ...createDefaultTemplate(), layers: [layer] } }] as ExportBatch[];
     expect(resolveCoverSticker(options, assets, history)?.stickerId).toBe(b);
     expect(resolveCoverSticker({ ...options, enabled: false }, {}, history)).toBeUndefined();
-    expect(() => resolveCoverSticker(options, { [a]: assets[a] }, history)).toThrow("覆盖贴纸");
+    expect(resolveCoverSticker(options, { [a]: assets[a] }, history)?.stickerId).toBe(a);
     options.rectangle.x = 0.2;
     expect(first.rectangle.x).toBe(0.3);
     options.rectangle.x = 0.3;
+  });
+
+  it("derives the unified pool from all uploaded stickers regardless of saved stickerIds", () => {
+    const curated = resolveCoverSticker({ ...options, stickerIds: [a] }, assets, [])!;
+    expect(curated.stickerId).toBe(a);
+    expect(curated.artworkCycle?.map((artwork) => artwork.stickerId)).toEqual([a, b]);
+    expect(resolveCoverSticker({ ...options, stickerIds: [] }, assets, [])?.stickerId).toBe(a);
+  });
+
+  it("rejects shared regions before production when no uploaded stickers are available", () => {
+    expect(() => resolveCoverSticker(options, {}, [])).toThrow("请先上传");
+    const assignedOnly = { ...options, regions: [{ id: crypto.randomUUID(), rectangle: options.rectangle, stickerId: a }] };
+    expect(resolveCoverSticker(assignedOnly, { [a]: assets[a] }, [])?.stickerId).toBe(a);
+    expect(() => resolveCoverSticker(assignedOnly, {}, [])).toThrow("覆盖贴纸已删除");
+  });
+
+  it("falls back to the pool start when the previously used sticker was deleted", () => {
+    const first = resolveCoverSticker(options, assets, [])!;
+    const layer = coverLayerForMedia(first, { width: 640, height: 480 }, { width: 640, height: 480 });
+    const history = [{ createdAt: "2026-09-15T00:00:00Z", templateSnapshot: { ...createDefaultTemplate(), layers: [layer] } }] as ExportBatch[];
+    const remaining = { sparkle: assets.sparkle!, [b]: assets[b] };
+    expect(resolveCoverSticker(options, remaining, history)?.stickerId).toBe(b);
   });
 
   it("maps source rectangles into the padded export and freezes opaque zero-rotation layers", () => {

@@ -38,6 +38,8 @@ export const CoverRegionSchema = z.object({
 export type CoverRegion = z.infer<typeof CoverRegionSchema>;
 export const CoverStickerSchema = z.object({
   enabled: z.boolean(),
+  // Deprecated: the unified-cover pool is derived from all uploaded stickers at production time.
+  // Kept so legacy project files keep parsing; production code no longer reads it.
   stickerIds: z.array(UploadedCoverStickerIdSchema).max(50),
   rectangle: CoverRectangleSchema,
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
@@ -45,8 +47,6 @@ export const CoverStickerSchema = z.object({
   regions: z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS).optional(),
   mediaRegions: z.record(z.string().uuid(), z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS)).optional(),
 }).strict().superRefine((value, ctx) => {
-  const needsSharedSticker = value.mediaRegions ? Object.values(value.mediaRegions).flat().some((region) => !region.stickerId) : !value.regions || value.regions.some((region) => !region.stickerId);
-  if (value.enabled && (value.trackingMode ?? "manual") === "manual" && needsSharedSticker && !value.stickerIds.length) ctx.addIssue({ code: "custom", path: ["stickerIds"], message: "请为统一款至少选择一张自己的贴纸" });
   if (value.enabled && (value.trackingMode ?? "manual") === "manual" && !value.mediaRegions && value.regions?.length === 0) ctx.addIssue({ code: "custom", path: ["regions"], message: "请至少添加一个覆盖框" });
   if (value.regions && new Set(value.regions.map((region) => region.id)).size !== value.regions.length) ctx.addIssue({ code: "custom", path: ["regions"], message: "覆盖框编号不得重复" });
   for (const [mediaId, regions] of Object.entries(value.mediaRegions ?? {})) {

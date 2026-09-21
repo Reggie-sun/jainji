@@ -38,7 +38,7 @@ describe("multiple manual cover regions", () => {
     expect(manualCoverLayers(resolveCoverSticker(options, assets, [])!, source, source)).toHaveLength(4);
     expect(() => resolveCoverSticker(options, {}, [])).toThrow("覆盖贴纸已删除");
     delete options.regions[0].stickerId;
-    expect(CoverStickerSchema.safeParse(options).success).toBe(false);
+    expect(CoverStickerSchema.safeParse(options).success).toBe(true);
   });
   it("validates unique regions, bounded counts and per-region geometry", () => {
     const options = settings();
