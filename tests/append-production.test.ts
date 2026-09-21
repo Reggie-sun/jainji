@@ -74,4 +74,21 @@ describe("cloneTemplateForAppend", () => {
   it("rejects sources without exactly one text layer", () => {
     expect(() => cloneTemplateForAppend(createDefaultTemplate(), "19.9元拍一发三")).toThrow(/展示文字层/);
   });
+
+  it("pins the digest to preserved fields so geometry, filter, and layer-order drift cannot escape", () => {
+    const source = pricedTemplate("19.9元拍一发三");
+    const cloned = cloneTemplateForAppend(source, "29.9元\n第二件半价");
+    expect(appendTemplateDigest(cloned)).toBe(appendTemplateDigest(source));
+    const geometryDrift = structuredClone(cloned);
+    const sticker = geometryDrift.layers.find((layer) => layer.type === "sticker");
+    if (sticker?.type !== "sticker") throw new Error("missing sticker layer");
+    sticker.x += 0.01;
+    expect(appendTemplateDigest(geometryDrift)).not.toBe(appendTemplateDigest(cloned));
+    const filterDrift = structuredClone(cloned);
+    filterDrift.filter = { ...filterDrift.filter, intensity: filterDrift.filter.intensity + 0.1 };
+    expect(appendTemplateDigest(filterDrift)).not.toBe(appendTemplateDigest(cloned));
+    const reordered = structuredClone(cloned);
+    reordered.layers.reverse();
+    expect(appendTemplateDigest(reordered)).not.toBe(appendTemplateDigest(cloned));
+  });
 });
