@@ -43,7 +43,7 @@ export const CoverStickerSchema = z.object({
   stickerIds: z.array(UploadedCoverStickerIdSchema).max(50),
   rectangle: CoverRectangleSchema,
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
-  trackingMode: z.enum(["manual", "agent", "assisted", "random"]).optional(),
+  trackingMode: z.enum(["manual", "agent", "assisted"]).optional(),
   regions: z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS).optional(),
   mediaRegions: z.record(z.string().uuid(), z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS)).optional(),
 }).strict().superRefine((value, ctx) => {
