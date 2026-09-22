@@ -644,9 +644,21 @@ async function bootstrap(): Promise<void> {
   void connections.restore();
 }
 
+// Stderr writes during shutdown can synchronously throw EPIPE/EBADF when the
+// Electron parent's pipe or socket was closed earlier (orphaned dev instance,
+// terminal closed mid-quit, smoke harness exited before Electron). The cleanup
+// chain must keep running; non-stderr failures still surface normally.
+function safeLog(...args: unknown[]): void {
+  try { console.error(...args); }
+  catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EPIPE" && code !== "EBADF") throw error;
+  }
+}
+
 async function shutdownServices(): Promise<void> {
   const shutdownStart = Date.now();
-  const mark = (stage: string) => console.error(`[shutdown] ${stage} done +${Date.now() - shutdownStart}ms`);
+  const mark = (stage: string) => safeLog(`[shutdown] ${stage} done +${Date.now() - shutdownStart}ms`);
   try { await coverReview?.shutdown(); mark("coverReview"); }
   finally {
     try { await agent?.cancel(); mark("agent"); }
@@ -690,7 +702,7 @@ async function requestQuit(): Promise<void> {
     quitting = true;
     await shutdownServices();
     app.exit(0);
-  })().catch((error) => { console.error("graceful shutdown failed", error); closingPrompt = false; });
+  })().catch((error) => { safeLog("graceful shutdown failed", error); closingPrompt = false; });
 }
 
 app.on("before-quit", (event) => {
@@ -701,7 +713,7 @@ app.on("before-quit", (event) => {
 // A bare SIGTERM (orphaned dev instance, systemd, kill) gets the same graceful
 // save/close flow as a window close, so the knowledge store lock is released.
 const bootStart = Date.now();
-process.on("SIGTERM", () => { console.error(`[shutdown] sigterm received +${Date.now() - bootStart}ms after boot`); void requestQuit(); });
+process.on("SIGTERM", () => { safeLog(`[shutdown] sigterm received +${Date.now() - bootStart}ms after boot`); void requestQuit(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 const startup = bootstrap();
 installDevelopmentQuit(process, startup, () => app.quit());
