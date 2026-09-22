@@ -248,6 +248,17 @@ describe("reusable batch cover", () => {
     expect(resolveCoverSticker({ ...options, stickerIds: [] }, assets, [])?.stickerId).toBe(a);
   });
 
+  it("includes bundled local stickers in the pool and accepts them for region assignment", () => {
+    const localId = "local-custom-001";
+    const withLocal = { ...assets, [localId]: { assetPath: "/tmp/local.png", assetFingerprint: "sha256:local" } };
+    expect(CoverStickerSchema.safeParse({ ...options, trackingMode: "manual", regions: [{ id: crypto.randomUUID(), rectangle: options.rectangle, stickerId: localId }] }).success).toBe(true);
+    const frozen = resolveCoverSticker(options, withLocal, [])!;
+    expect(frozen.stickerId).toBe(localId);
+    expect(frozen.artworkCycle?.map((artwork) => artwork.stickerId)).toEqual([localId, a, b]);
+    // Builtins stay decorative-only; library (on-demand download) ids never enter the cover pool.
+    expect(frozen.artworkCycle?.some((artwork) => artwork.stickerId === "heart")).toBe(false);
+  });
+
   it("rejects shared regions before production when no uploaded stickers are available", () => {
     expect(() => resolveCoverSticker(options, {}, [])).toThrow("请先上传");
     const assignedOnly = { ...options, regions: [{ id: crypto.randomUUID(), rectangle: options.rectangle, stickerId: a }] };

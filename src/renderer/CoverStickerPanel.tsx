@@ -44,8 +44,8 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   useEffect(() => {
     let active = true;
     void window.jianji.decorationCatalog().then((catalog) => {
-      if (active) setStickers(catalog.stickers.filter((sticker) => sticker.source === "uploaded"));
-    }).catch(() => { if (active) setError("上传贴纸读取失败，请重新打开此页面。"); });
+      if (active) setStickers(catalog.stickers.filter((sticker) => sticker.source === "downloaded" || sticker.source === "uploaded"));
+    }).catch(() => { if (active) setError("贴纸读取失败，请重新打开此页面。"); });
     return () => { active = false; };
   }, [revision]);
 
@@ -97,8 +97,8 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   };
   const save = async () => {
     setError(""); setMessage("");
-    if (draft.enabled && trackingMode === "manual" && !stickers) { setError("上传贴纸仍在读取中，请稍后再保存。"); return; }
-    if (draft.enabled && trackingMode === "manual" && missingSticker) { setError("有已分配的贴纸不在当前上传素材库中，请重新选择后保存。"); return; }
+    if (draft.enabled && trackingMode === "manual" && !stickers) { setError("贴纸仍在读取中，请稍后再保存。"); return; }
+    if (draft.enabled && trackingMode === "manual" && missingSticker) { setError("有已分配的贴纸不在当前贴纸库中，请重新选择后保存。"); return; }
     setSaving(true);
     try {
       await onSave(draft);
@@ -117,12 +117,12 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   return <>
     <Heading title="覆盖原贴纸">独立选择是否覆盖原视频中的贴纸，不随“全部交给 Agent”自动开启。</Heading>
     <section className="card cover-sticker-panel" aria-label="覆盖原贴纸设置">
-      <div className="cover-sticker-heading"><div><h2>{draft.enabled ? "覆盖已开启" : "覆盖已关闭"}</h2><p>{draft.enabled ? "调整覆盖框与跟随方式；统一款将从全部已上传贴纸中逐轮换用。新覆盖层铺白色不透明底板并等比保留完整图案，保存后应用到下次制作。旧导出任务保留原效果。" : "关闭时保留原贴纸，不添加覆盖层。全部交给 Agent 时仍会识别原贴纸占位，只补空缺角落和时段。"}</p></div><label className="cover-sticker-toggle"><input type="checkbox" checked={draft.enabled} disabled={disabled || saving} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />启用覆盖</label></div>
+      <div className="cover-sticker-heading"><div><h2>{draft.enabled ? "覆盖已开启" : "覆盖已关闭"}</h2><p>{draft.enabled ? "调整覆盖框与跟随方式；统一款将从本地贴纸库与已上传贴纸中逐轮换用。新覆盖层铺白色不透明底板并等比保留完整图案，保存后应用到下次制作。旧导出任务保留原效果。" : "关闭时保留原贴纸，不添加覆盖层。全部交给 Agent 时仍会识别原贴纸占位，只补空缺角落和时段。"}</p></div><label className="cover-sticker-toggle"><input type="checkbox" checked={draft.enabled} disabled={disabled || saving} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />启用覆盖</label></div>
       {draft.enabled && <>
         <div className="cover-tracking-tabs" role="group" aria-label="覆盖贴纸跟随方式"><button type="button" aria-pressed={trackingMode === "agent"} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "agent" }))}>Agent 看图自动覆盖</button><button type="button" aria-pressed={trackingMode === "manual"} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "manual" }))}>手动设置</button><button type="button" aria-pressed={trackingMode === "assisted"} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "assisted" }))}>半自动 · 人工审阅</button></div>
         {trackingMode === "assisted" ? <p>半自动覆盖由你编辑完整边界与时段，查看各版本动态预览后再确认导出。</p> : trackingMode === "agent" ? <p className="cover-agent-status">Agent 将从全部本地内置贴纸和可用上传贴纸中看图选款，无需逐张勾选；覆盖可原样使用贴纸自带的文字、价格或品牌图案，普通四角装饰规则不变。同轮素材统一用一款，下一轮换款；一次制作多轮也会轮换。</p> : <>
-          {!stickers ? <p className="cover-sticker-loading">正在读取上传贴纸…</p> : stickers.length === 0 ? <p className="cover-sticker-empty">还没有可用的上传贴纸。请先到“上传贴纸”添加 PNG 或 JPG 图片。</p> : <p className="cover-sticker-note">统一款候选池 = 全部已上传贴纸（当前 {stickers.length} 张），新上传的贴纸自动进入轮换池，无需勾选。</p>}
-          {missingSticker && <p className="cover-sticker-warning" role="alert">有已分配的贴纸不在当前上传素材库中，请重新选择。<button type="button" disabled={disabled || saving} onClick={clearMissingStickers}>清除失效贴纸</button></p>}
+          {!stickers ? <p className="cover-sticker-loading">正在读取贴纸…</p> : stickers.length === 0 ? <p className="cover-sticker-empty">还没有可用的贴纸。请重新安装完整软件包，或到“贴纸库”上传 PNG / JPG 图片。</p> : <p className="cover-sticker-note">统一款候选池 = 本地贴纸库 + 全部已上传贴纸（当前 {stickers.length} 张），新上传的贴纸自动进入轮换池，无需勾选。</p>}
+          {missingSticker && <p className="cover-sticker-warning" role="alert">有已分配的贴纸不在当前贴纸库中，请重新选择。<button type="button" disabled={disabled || saving} onClick={clearMissingStickers}>清除失效贴纸</button></p>}
           <p className="cover-sticker-note">统一候选款供未单独指定的覆盖框共用：同轮素材使用一款，下一轮从候选中换用，不足时循环；每个框也可指定独立起始款。</p>
         </>}
         <div className="cover-sticker-editor"><div className="cover-sticker-preview-wrap">
