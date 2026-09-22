@@ -47,7 +47,7 @@ button{color:inherit}
 /* 主导航 rail 与 header 的结构性样式在 workspace-redesign.css;此处保留共享图元 */
 .brand-symbol{width:42px;height:42px;border-radius:10px;background:var(--mint);color:var(--seal-dark);display:grid;place-items:center;flex-shrink:0}
 
-.content{padding:30px 38px 28px;max-width:1420px;width:100%;margin:0 auto;flex:1}
+.content{padding:30px 38px 28px;width:100%;flex:1}
 
 /* 页面标题 — 无 eyebrow,标题自身承担层级 */
 .section-heading{margin-bottom:22px}
