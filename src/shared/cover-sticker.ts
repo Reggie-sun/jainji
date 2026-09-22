@@ -59,10 +59,21 @@ export type CoverRectangle = z.infer<typeof CoverRectangleSchema>;
 export type CoverKeyframe = z.infer<typeof CoverKeyframeSchema>;
 export type CoverTrack = z.infer<typeof CoverTrackSchema>;
 
+export const DEFAULT_COVER_RECTANGLE: CoverRectangle = { x: 0.35, y: 0.4, width: 0.3, height: 0.2 };
+
 // Old projects have a single rectangle; explicit regions become the sole manual layout.
+// That legacy box only counts when it carries user signal (keyframe tracks or a non-default
+// position): every saved project persists the factory-default rectangle even when the user
+// never configured manual cover, and that vestigial value must not turn into a white cover.
+export function hasLegacyCoverBox(settings: CoverSticker): boolean {
+  if (Object.keys(settings.tracks ?? {}).length) return true;
+  const { x, y, width, height } = settings.rectangle;
+  return x !== DEFAULT_COVER_RECTANGLE.x || y !== DEFAULT_COVER_RECTANGLE.y || width !== DEFAULT_COVER_RECTANGLE.width || height !== DEFAULT_COVER_RECTANGLE.height;
+}
+
 export function manualCoverRegions(settings: CoverSticker, mediaId?: string): CoverRegion[] {
   if (mediaId && settings.mediaRegions?.[mediaId]) return settings.mediaRegions[mediaId];
-  return settings.regions ?? [{ id: "00000000-0000-4000-8000-000000000001", rectangle: settings.rectangle, tracks: settings.tracks }];
+  return settings.regions ?? (hasLegacyCoverBox(settings) ? [{ id: "00000000-0000-4000-8000-000000000001", rectangle: settings.rectangle, tracks: settings.tracks }] : []);
 }
 
 export function coverSettingsMediaIssue(settings: CoverSticker | undefined, media: readonly { id: string; durationMs: number }[]): string | undefined {
@@ -97,4 +108,4 @@ export function interpolateCoverRectangle(keyframes: readonly CoverKeyframe[], t
   const amount = (timeMs - a.timeMs) / (b.timeMs - a.timeMs);
   return Object.fromEntries((["x", "y", "width", "height"] as const).map((key) => [key, a.rectangle[key] + (b.rectangle[key] - a.rectangle[key]) * amount])) as CoverRectangle;
 }
-export const DEFAULT_COVER_STICKER: CoverSticker = { enabled: false, stickerIds: [], rectangle: { x: 0.35, y: 0.4, width: 0.3, height: 0.2 }, trackingMode: "agent" };
+export const DEFAULT_COVER_STICKER: CoverSticker = { enabled: false, stickerIds: [], rectangle: { ...DEFAULT_COVER_RECTANGLE }, trackingMode: "agent" };

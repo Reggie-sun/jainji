@@ -77,4 +77,14 @@ describe("multiple manual cover regions", () => {
     expect(layers).toHaveLength(1); expect(layers[0].x).toBe(rectangle.x);
     expect(layers[0].cover).not.toHaveProperty("regionId");
   });
+  it("treats the factory-default single rectangle as unconfigured instead of a cover box", () => {
+    const vestigial = { enabled: true, stickerIds: [a], rectangle: { x: 0.35, y: 0.4, width: 0.3, height: 0.2 } };
+    expect(manualCoverRegions(vestigial)).toEqual([]);
+    expect(() => resolveCoverSticker(vestigial, assets, [])).toThrow(/覆盖框/);
+    expect(resolveCoverSticker({ ...vestigial, mediaRegions: { [source.id]: [] } }, assets, [], [source.id])).toBeUndefined();
+    const tracked = { ...vestigial, tracks: { [source.id]: { startMs: 0, endMs: 900, keyframes: [{ timeMs: 0, rectangle: vestigial.rectangle }] } } };
+    expect(manualCoverRegions(tracked)).toHaveLength(1);
+    expect(manualCoverRegions({ ...vestigial, trackingMode: "agent" as const })).toEqual([]);
+    expect(resolveCoverSticker({ ...vestigial, trackingMode: "agent" as const }, assets, [])).toBeUndefined();
+  });
 });

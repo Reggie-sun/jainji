@@ -97,6 +97,7 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   };
   const save = async () => {
     setError(""); setMessage("");
+    if (draft.enabled && trackingMode === "manual" && !manualCoverRegions(draft).length && !Object.values(draft.mediaRegions ?? {}).some((list) => list.length)) { setError("请至少添加一个覆盖框，或关闭覆盖。"); return; }
     if (draft.enabled && trackingMode === "manual" && !stickers) { setError("上传贴纸仍在读取中，请稍后再保存。"); return; }
     if (draft.enabled && trackingMode === "manual" && missingSticker) { setError("有已分配的贴纸不在当前上传素材库中，请重新选择后保存。"); return; }
     setSaving(true);

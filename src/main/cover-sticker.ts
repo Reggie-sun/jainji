@@ -30,7 +30,12 @@ export function resolveCoverSticker(settings: CoverSticker | undefined, assets: 
   if (options.trackingMode === "assisted") throw new Error("半自动覆盖必须经过审阅和批准。");
   const layouts = mediaIds ? Object.fromEntries(mediaIds.map((id) => [id, manualCoverRegions(options, id)])) : undefined;
   const regions = layouts ? Object.values(layouts).flat() : manualCoverRegions(options);
-  if (!regions.length) return undefined;
+  if (!regions.length) {
+    // mediaRegions present (even all-empty lists) is explicit per-material intent: no cover.
+    if (Object.keys(options.mediaRegions ?? {}).length) return undefined;
+    if ((options.trackingMode ?? "manual") === "manual") throw new Error("覆盖已开启但还没有任何覆盖框：请先添加覆盖框，或关闭覆盖。");
+    return undefined;
+  }
   const assigned = regions.flatMap((region) => (region.stickerId ? [region.stickerId] : []));
   if (assigned.some((id) => !assets[id])) throw new Error("覆盖贴纸已删除或不可用，请重新选择自己的贴纸。");
   // The unified-cover pool is every uploaded sticker currently available; uploads enter the pool automatically.
