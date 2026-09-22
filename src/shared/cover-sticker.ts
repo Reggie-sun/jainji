@@ -1,7 +1,13 @@
 import { z } from "zod";
-import { isStickerId } from "./decorations.js";
+import { BUNDLED_STICKERS } from "./bundled-stickers.js";
+import { isStickerId, isUploadedStickerId } from "./decorations.js";
 
+const bundledCoverStickerIds: ReadonlySet<string> = new Set(BUNDLED_STICKERS.map((entry) => entry.id));
+/** The unified-cover pool and per-region picks accept anything already on this machine:
+ * bundled library artwork or the user's own uploads. */
+export function isCoverPoolStickerId(id: string): boolean { return bundledCoverStickerIds.has(id) || isUploadedStickerId(id); }
 const UploadedCoverStickerIdSchema = z.string().regex(/^uploaded-[a-f0-9]{64}$/, "请选择自己上传的贴纸");
+const CoverRegionStickerIdSchema = z.string().refine(isCoverPoolStickerId, "请选择本地贴纸库中的贴纸或自己上传的贴纸");
 export const CoverStickerIdSchema = z.string().refine((id) => isStickerId(id) && id !== "none" && id !== "template", "覆盖贴纸不可用");
 export const CoverRectangleSchema = z.object({
   x: z.number().finite().min(0).max(1),
@@ -32,13 +38,13 @@ export const MAX_MANUAL_COVERS = 64;
 export const CoverRegionSchema = z.object({
   id: z.string().uuid(),
   rectangle: CoverRectangleSchema,
-  stickerId: UploadedCoverStickerIdSchema.optional(),
+  stickerId: CoverRegionStickerIdSchema.optional(),
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
 }).strict();
 export type CoverRegion = z.infer<typeof CoverRegionSchema>;
 export const CoverStickerSchema = z.object({
   enabled: z.boolean(),
-  // Deprecated: the unified-cover pool is derived from all uploaded stickers at production time.
+  // Deprecated: the unified-cover pool is derived from all bundled and uploaded stickers at production time.
   // Kept so legacy project files keep parsing; production code no longer reads it.
   stickerIds: z.array(UploadedCoverStickerIdSchema).max(50),
   rectangle: CoverRectangleSchema,

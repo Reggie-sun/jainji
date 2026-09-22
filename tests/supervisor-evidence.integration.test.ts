@@ -43,10 +43,10 @@ it("pairs VFR frames by decoded PTS and rejects invalid crop, time, and cancelle
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervisor-evidence-vfr-"));
   try {
     const source = path.join(directory, "source.mp4"), preview = path.join(directory, "preview.mp4"), sparsePreview = path.join(directory, "sparse-preview.mp4"), sparseSource = path.join(directory, "sparse-source.mp4");
-    await command(ffmpegPath, ["-f", "lavfi", "-i", "testsrc2=size=160x90:rate=20:d=1", "-vf", "select='eq(n,0)+eq(n,2)+eq(n,4)+eq(n,7)+eq(n,10)+eq(n,14)+eq(n,19)'", "-vsync", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
+    await command(ffmpegPath, ["-f", "lavfi", "-i", "testsrc2=size=160x90:rate=20:d=1", "-vf", "select='eq(n,0)+eq(n,2)+eq(n,4)+eq(n,7)+eq(n,10)+eq(n,14)+eq(n,19)'", "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
     await command(ffmpegPath, ["-i", source, "-c", "copy", preview]);
-    await command(ffmpegPath, ["-i", source, "-vf", "select='eq(n,0)'", "-vsync", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", sparsePreview]);
-    await command(ffmpegPath, ["-i", source, "-vf", "select='eq(n,0)+eq(n,6)'", "-vsync", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", sparseSource]);
+    await command(ffmpegPath, ["-i", source, "-vf", "select='eq(n,0)'", "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", sparsePreview]);
+    await command(ffmpegPath, ["-i", source, "-vf", "select='eq(n,0)+eq(n,6)'", "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", sparseSource]);
     const reader = new SupervisorEvidence(new FfmpegAdapter(ffmpegPath, ffprobePath), await media(source, 1000, 160, 90));
     const images = await reader.inspect([{ timeMs: 330 }, { timeMs: 690 }], new AbortController().signal, preview);
     expect(images.map((image) => image.timeMs)).toEqual([350, 700]);

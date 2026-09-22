@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { DEFAULT_COVER_STICKER, CoverStickerSchema, manualCoverRegions, type CoverRectangle, type CoverRegion, type CoverSticker } from "../shared/cover-sticker.js";
-import { isUploadedStickerId } from "../shared/decorations.js";
+import { DEFAULT_COVER_STICKER, CoverStickerSchema, isCoverPoolStickerId, manualCoverRegions, type CoverRectangle, type CoverRegion, type CoverSticker } from "../shared/cover-sticker.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
 import type { ExportBatch, StickerLayer } from "./domain.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
@@ -38,9 +37,9 @@ export function resolveCoverSticker(settings: CoverSticker | undefined, assets: 
   }
   const assigned = regions.flatMap((region) => (region.stickerId ? [region.stickerId] : []));
   if (assigned.some((id) => !assets[id])) throw new Error("覆盖贴纸已删除或不可用，请重新选择自己的贴纸。");
-  // The unified-cover pool is every uploaded sticker currently available; uploads enter the pool automatically.
-  const candidates = Object.keys(assets).filter((id) => isUploadedStickerId(id) && assets[id]).sort();
-  if (regions.some((region) => !region.stickerId) && !candidates.length) throw new Error("仍有覆盖框使用统一款，请先上传至少一张贴纸。");
+  // The unified-cover pool is every bundled and uploaded sticker currently available; new stickers enter automatically.
+  const candidates = Object.keys(assets).filter((id) => isCoverPoolStickerId(id) && assets[id]).sort();
+  if (regions.some((region) => !region.stickerId) && !candidates.length) throw new Error("仍有覆盖框使用统一款，请先上传贴纸或选用本地贴纸库。");
   const previous = previousCoverStickerId(history, true);
   const freeze = (region: CoverRegion, mediaId?: string): FrozenCoverPlacement => {
     const tracks = mediaId ? region.tracks?.[mediaId] ? { [mediaId]: region.tracks[mediaId] } : undefined : region.tracks;

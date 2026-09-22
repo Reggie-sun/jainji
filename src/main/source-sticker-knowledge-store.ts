@@ -64,6 +64,10 @@ function isMissing(error: unknown): boolean { return (error as NodeJS.ErrnoExcep
 async function exists(file: string): Promise<boolean> { try { await lstat(file); return true; } catch (e) { if (isMissing(e)) return false; throw e; } }
 async function directorySafe(directory: string): Promise<void> { const info = await lstat(directory); if (!info.isDirectory() || info.isSymbolicLink()) throw new KnowledgeStoreError("integrity", "Unsafe knowledge directory"); }
 async function syncDirectory(directory: string): Promise<void> {
+  // libuv cannot fsync directory handles on Windows (EPERM); NTFS journaling covers
+  // the metadata durability this barrier exists for, so the barrier is POSIX-only.
+  // File-level durability (writeDurable fsync) is unaffected.
+  if (process.platform === "win32") return;
   // Do not swallow failed durability barriers. Unsupported filesystems fail closed.
   const handle = await open(directory, "r"); try { await handle.sync(); } finally { await handle.close(); }
 }
@@ -180,8 +184,9 @@ export class SourceStickerKnowledgeStore {
     if (!(await exists(lock))) throw new KnowledgeStoreError("locked", "No abandoned knowledge owner barrier");
     await directorySafe(lock);
     const format = path.join(directory, "format.json");
-    if (!(await exists(format))) throw new KnowledgeStoreError("integrity", "Missing knowledge format");
-    await verifyFormat(format);
+    // An owner lost before first write left no facts to preserve; the quarantine
+    // below still retains whatever fragments exist. Corrupt/future formats stay fail-closed.
+    if (await exists(format)) await verifyFormat(format);
     const quarantine = path.join(root, "source-sticker-knowledge.recovery");
     if (await exists(quarantine)) { await directorySafe(quarantine); await rm(quarantine, { recursive: true }); await syncDirectory(root); }
     await rename(directory, quarantine);

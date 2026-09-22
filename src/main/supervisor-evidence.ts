@@ -160,7 +160,7 @@ export class SupervisorEvidence {
     if (crop) filters.push(`crop=${crop.width}:${crop.height}:${crop.x}:${crop.y}:exact=1`);
     filters.push(`scale=w='min(iw,${MAX_DIMENSION})':h='min(ih,${MAX_DIMENSION})':force_original_aspect_ratio=decrease`);
     try {
-      const result = await bounded(this.ffmpeg.run(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-noautorotate", "-i", filePath, "-vf", filters.join(","), "-vsync", "0", "-frames:v", "1", "-q:v", "5", output]), signal, timeoutFor(this.media));
+      const result = await bounded(this.ffmpeg.run(["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-noautorotate", "-i", filePath, "-vf", filters.join(","), "-fps_mode", "passthrough", "-frames:v", "1", "-q:v", "5", output]), signal, timeoutFor(this.media));
       if (result.code !== 0) throw new Error("无法抽取监督证据帧。");
       const bytes = await readFile(output);
       if (!bytes.length || bytes.length > MAX_IMAGE_BYTES) throw new Error("监督证据帧无效或过大。");

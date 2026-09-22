@@ -69,3 +69,11 @@ export const CURATED_STICKERS: Array<LibraryAsset & { searchTerms: string }> = S
   // Missing upstream concepts are omitted, never replaced with a different sticker.
   return asset ? [{ ...asset, label, searchTerms: `${name} ${keywords}` }] : [];
 });
+
+// Custom bundled stickers (user-provided, packaged with installer).
+const customStickers = LIBRARY_STICKERS.filter((asset) => asset.license === "custom");
+CURATED_STICKERS.push(...customStickers.map((asset, index) => ({
+  ...asset,
+  label: `自定义 ${index + 1}`,
+  searchTerms: `自定义 custom ${index + 1}`,
+})));

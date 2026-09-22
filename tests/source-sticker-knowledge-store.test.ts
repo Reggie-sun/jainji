@@ -149,6 +149,22 @@ describe("durable source sticker knowledge", () => {
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 
+  it("recovers an owner lost before its first write instead of failing on the missing format", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-source-knowledge-recovery-"));
+    let recovered: SourceStickerKnowledgeStore | undefined;
+    try {
+      // Crash between acquiring the barrier and writing format.json: no facts exist yet.
+      await mkdir(path.join(directory, "source-sticker-knowledge", "owner.lock"), { recursive: true });
+      recovered = await SourceStickerKnowledgeStore.recoverAbandoned(directory);
+      expect((await readdir(directory)).filter((name) => name.startsWith("source-sticker-knowledge.recovery"))).toEqual(["source-sticker-knowledge.recovery"]);
+      expect(await readFile(path.join(recovered.directory, "format.json"), "utf8")).toContain("schemaVersion");
+      await recovered.close();
+      // After a clean close the store opens normally with no further recovery.
+      const reopened = await SourceStickerKnowledgeStore.open(directory);
+      await reopened.close();
+    } finally { await recovered?.close(); await rm(directory, { recursive: true, force: true }); }
+  });
+
   it.each([
     ["future", '{"schemaVersion":999}', "future_schema"],
     ["unreadable", "not-json", "integrity"],

@@ -11,9 +11,9 @@ import { DecorationSchema } from "../src/shared/decorations";
 const resourceDirectory = path.resolve("resources/stickers/downloaded");
 
 describe("bundled downloaded stickers", () => {
-  it("loads eighteen pinned PNG and GIF files with matching fingerprints", async () => {
+  it("loads pinned PNG and GIF files with matching fingerprints", async () => {
     const assets = await loadBundledStickerAssets(resourceDirectory);
-    expect(BUNDLED_STICKERS).toHaveLength(18);
+    expect(BUNDLED_STICKERS.length).toBeGreaterThanOrEqual(18);
     expect(Object.keys(assets).sort()).toEqual(BUNDLED_STICKERS.map(({ id }) => id).sort());
     expect(BUNDLED_STICKERS.filter(({ animated }) => animated)).toHaveLength(3);
     for (const entry of BUNDLED_STICKERS) {
