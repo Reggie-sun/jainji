@@ -237,8 +237,11 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const options = ProductionDecorationSchema.parse(decorations ?? {});
   if (options.mode === "agent" && !catalog) throw new Error("Agent 装饰目录不可用，请重新开始。");
   const plan = validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
-  const priceStyle = options.mode === "agent" ? (plan as AgentPackagingPlan).priceStyle : options.priceStyle;
   const rule = getRule(ruleId);
+  // Local-random path: font color (priceStyle) is picked from the full catalog
+  // per material. Manual and agent modes keep their existing sources.
+  const randomPriceStyleId: PriceStyleId | undefined = options.mode === "random" ? PRICE_STYLES[Math.floor(Math.random() * PRICE_STYLES.length)].id : undefined;
+  const priceStyle = options.mode === "agent" ? (plan as AgentPackagingPlan).priceStyle : options.mode === "random" ? randomPriceStyleId : options.priceStyle;
   const stickerLayer = (corner: Corner, sticker: NonNullable<StickerAssets[string]>, index: number, width: number = rule.stickerWidth, rotationDeg: number = rule.stickerRotation): Layer => {
     const safeWidth = Math.min(width, CORNER_SAFE_POLICY.maxStickerWidth);
     return {
@@ -274,6 +277,33 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
     });
   }
   const legacyPlan = plan as LegacyPackagingPlan;
+  if (options.mode === "random") {
+    // Four corners each get a DIFFERENT random sticker (the whole point of
+    // "本地随机" — otherwise it's just the manual template path with a new name).
+    // Pool mirrors the agent path: curated artwork + user uploads.
+    const pool = Object.keys(stickerAssets).filter((id) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id));
+    if (pool.length < CORNERS.length) throw new Error("可用贴纸不足 4 款，无法为四角各随机选择一张。");
+    const shuffled = [...pool];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const layers: Layer[] = [];
+    for (const [index, corner] of CORNERS.entries()) {
+      const sticker = stickerAssets[shuffled[index]];
+      if (!sticker) throw new Error("随机选择的贴纸尚未下载，请重新选择。");
+      layers.push(stickerLayer(corner, sticker, layers.length));
+    }
+    return EditTemplateSchema.parse({
+      ...createDefaultTemplate("本地随机包装"),
+      layoutPolicy: CORNER_SAFE_POLICY.id,
+      productPrice: options.productPrice || undefined,
+      decorationDisplayMode: options.displayMode,
+      stickerDisplayMode: "full",
+      filter: { presetId: legacyPlan.filter, intensity: legacyPlan.intensity },
+      layers: [...layers, ...priceLayers],
+    });
+  }
   const explicitLayers: Layer[] = [];
   for (const corner of CORNERS) {
     const decoration = options.corners?.[corner];

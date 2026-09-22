@@ -294,11 +294,13 @@ export class AgentController {
           // Local-random path: pick filter/intensity from the rule without any creative call.
           if (randomPath) {
             const rulePreset = getRule(rule);
+            const filter = rulePreset.filters[Math.floor(Math.random() * rulePreset.filters.length)];
+            const intensity = rulePreset.minIntensity + Math.random() * (rulePreset.maxIntensity - rulePreset.minIntensity);
             return {
               summary: "本地随机包装 · 零模型调用",
               captions: [],
-              filter: rulePreset.filters[0],
-              intensity: rulePreset.minIntensity,
+              filter,
+              intensity,
             };
           }
           // Manual mode is fully local: stickers, price style, and brief come from the user; only filter/intensity remain

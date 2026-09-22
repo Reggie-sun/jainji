@@ -192,6 +192,23 @@ describe("agent provider boundary", () => {
     expect(materializePlan({ ...autoPlan, priceStyle: "ice" }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent", productPrice: "19.90", priceStyle: "comic" }, autoCatalog).layers.find(layer => layer.type === "text")).toMatchObject({ color: PRICE_STYLES.find(style => style.id === "ice")!.color, content: "¥ 19.90" });
   });
 
+  it("random mode picks four different stickers and a random price style per material", () => {
+    const randomPlan = { summary: "本地随机包装 · 零模型调用", captions: [], filter: "warm", intensity: 0.4 };
+    const decorations = { mode: "random" as const, productPrice: "19.90" };
+    const first = materializePlan(randomPlan, "black-gold", { width: 640, height: 480 }, stickerAssets, decorations);
+    const stickerLayers = first.layers.filter((layer) => layer.type === "sticker");
+    expect(stickerLayers).toHaveLength(4);
+    expect(new Set(stickerLayers.map((layer) => layer.assetPath)).size).toBe(4);
+    const textLayer = first.layers.find((layer) => layer.type === "text");
+    expect(PRICE_STYLES.some((style) => JSON.stringify(style.color) === JSON.stringify(textLayer!.color) && JSON.stringify(style.strokeColor) === JSON.stringify(textLayer!.strokeColor))).toBe(true);
+    // Repeated calls should produce at least one different combination over enough trials.
+    const combinations = new Set(Array.from({ length: 20 }, () => {
+      const template = materializePlan(randomPlan, "black-gold", { width: 640, height: 480 }, stickerAssets, decorations);
+      return template.layers.filter((layer) => layer.type === "sticker").map((layer) => layer.assetPath).join("|") + "#" + JSON.stringify(template.layers.find((layer) => layer.type === "text")!.color);
+    }));
+    expect(combinations.size).toBeGreaterThan(1);
+  });
+
   it("spreads randomized price choices across concurrent outputs and deprioritizes used styles", async () => {
     const firstChoices: string[] = [];
     const request = vi.fn().mockImplementation(async (_url, init) => {

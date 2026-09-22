@@ -27,19 +27,20 @@ export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirect
 }) {
   const rule = getRule(selected);
   const automatic = decorationOptions?.mode === "agent";
+  const random = decorationOptions?.mode === "random";
   const invalidPrice = !RequiredProductPriceSchema.safeParse(decorationOptions?.productPrice ?? "").success;
   const quantity = calculateProductionQuantity(count, requestedCount);
   const invalidQuantity = !quantity || quantity.total > MAX_AGENT_OUTPUTS;
   const total = quantity?.total ?? 0;
   return <>
-    <Heading title={automatic ? "包装规则" : "选择模板，自己设置"}>{automatic ? "Agent 可按每条素材选择贴纸；本地只限制位置、尺寸与新增文字。" : "选择一个模板作为手动贴纸与滤镜的默认安排。"}</Heading>
-    {!automatic && <div className="template-grid" role="group" aria-label="规则模板">
+    <Heading title={automatic ? "包装规则" : random ? "本地随机包装" : "选择模板，自己设置"}>{automatic ? "Agent 可按每条素材选择贴纸；本地只限制位置、尺寸与新增文字。" : random ? "滤镜、强度、四角贴纸与价格花字全部由本地随机决定，每条素材不同。" : "选择一个模板作为手动贴纸与滤镜的默认安排。"}</Heading>
+    {!automatic && !random && <div className="template-grid" role="group" aria-label="规则模板">
       {RULE_TEMPLATES.map((template) => <button key={template.id} className={`template-card ${template.id} ${selected === template.id ? "selected" : ""}`} aria-pressed={selected === template.id} onClick={() => onSelect(template.id)} disabled={disabled}>
         <div className="template-description"><div><span>{template.label}</span><h2>{template.name}</h2></div><span className="selection-ring">{selected === template.id && <Icon name="check" size={15} />}</span><p>{template.description}</p><div className="template-tags"><span>贴纸 · {template.stickerLabel}</span><span>滤镜 · {template.filterLabel}</span><span>四角贴纸</span></div></div>
       </button>)}
     </div>}
     <TemplatePreview selectedCorner={selectedCorner} onCornerSelect={onCornerSelect} disabled={disabled} rule={rule} options={decorationOptions ?? DecorationSchema.parse({})} />
-    <div className="card brief-card price-input-card"><label htmlFor="product-price">展示文字 / 价格 <span>必填 · 手动输入</span></label><textarea id="product-price" rows={2} required aria-invalid={invalidPrice} aria-describedby="product-price-help" inputMode="text" value={decorationOptions?.productPrice ?? ""} maxLength={PRODUCT_PRICE_MAX_LENGTH} disabled={disabled} onChange={(event) => onProductPrice?.(event.target.value)} placeholder={"9.9元到手5卷\n19.9元拍一发三"} /><small id="product-price-help">按 Enter 换行，最多2行、每行12字。可填写任意文字，不要求包含金额；同一批视频使用相同内容，Agent 不能代填或改写。</small>{invalidPrice && <p role="alert">{PRODUCT_PRICE_HELP}</p>}{automatic ? <p>价格花字由 Agent 按每条素材从现有 {PRICE_STYLES.length} 款中选择，同批会参考已使用的样式减少重复，但不保证每版不同。手动价格保持不变；切回“自己设置”可继续使用之前选择的花字。</p> : <PriceStylePicker value={decorationOptions?.priceStyle} price={decorationOptions?.productPrice} disabled={disabled} onChange={onPriceStyle} />}</div>
+    <div className="card brief-card price-input-card"><label htmlFor="product-price">展示文字 / 价格 <span>必填 · 手动输入</span></label><textarea id="product-price" rows={2} required aria-invalid={invalidPrice} aria-describedby="product-price-help" inputMode="text" value={decorationOptions?.productPrice ?? ""} maxLength={PRODUCT_PRICE_MAX_LENGTH} disabled={disabled} onChange={(event) => onProductPrice?.(event.target.value)} placeholder={"9.9元到手5卷\n19.9元拍一发三"} /><small id="product-price-help">按 Enter 换行，最多2行、每行12字。可填写任意文字，不要求包含金额；同一批视频使用相同内容，Agent 不能代填或改写。</small>{invalidPrice && <p role="alert">{PRODUCT_PRICE_HELP}</p>}{automatic ? <p>价格花字由 Agent 按每条素材从现有 {PRICE_STYLES.length} 款中选择，同批会参考已使用的样式减少重复，但不保证每版不同。手动价格保持不变；切回“自己设置”可继续使用之前选择的花字。</p> : random ? <p>价格花字从现有 {PRICE_STYLES.length} 款中本地随机选择，每条素材独立随机，不调用模型。手动价格保持不变。</p> : <PriceStylePicker value={decorationOptions?.priceStyle} price={decorationOptions?.productPrice} disabled={disabled} onChange={onPriceStyle} />}</div>
     <div id="display-time-settings" className="card brief-card"><label htmlFor="decoration-display-mode">价格 / 展示文字显示时段</label><select id="decoration-display-mode" value={decorationOptions?.displayMode === "first-3s" ? "first-5s" : decorationOptions?.displayMode ?? "full"} disabled={disabled || !onDisplayMode} onChange={(event) => onDisplayMode?.(event.target.value as DecorationDisplayMode)}><option value="full">全程显示（默认）</option><option value="first-5s">仅前 5 秒显示（渐隐）</option></select><small>仅控制后期添加的展示文字 / 价格；贴纸全程保留，覆盖与补角仍按各自有效时段显示，原视频内容不变。选项会告知 Agent；前 5 秒模式在最后 0.5 秒渐隐，短视频在结尾前渐隐。</small></div>
     {decorations}
     <div className="rules-banner"><div className="icon-tile"><Icon name="shield" /></div><div><strong>{automatic ? "已锁定的创作边界" : `${rule.name} · 手动模板边界`}</strong><p>贴纸仅放四角且宽度 ≤ {(CORNER_SAFE_POLICY.maxStickerWidth * 100).toFixed(0)}% · 新增文字仅限手动展示文字 · 不裁剪、不拼接 · 保留原始音频</p></div><span className="small-tag">本地校验</span></div>
