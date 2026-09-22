@@ -5,6 +5,7 @@ import { expect, it, vi } from "vitest";
 import { ApplicationService } from "../src/main/application";
 import { AgentController } from "../src/main/agent-controller";
 import { FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
+import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
@@ -13,8 +14,8 @@ import type { PreviewReviewInput } from "../src/main/supervisor-protocol";
 
 it("warm reuse permits a new output size and style but requires a newly bound rendered preview", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-warm-style-"));
-  const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe"), file = path.join(root, "source.mp4");
-  expect((await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-t", "1", "-c:v", "libx264", file]).promise).code).toBe(0);
+  const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), file = path.join(root, "source.mp4");
+  expect((await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-t", "1", "-c:v", "libx264", file]).promise).code).toBe(0);
   const service = new ApplicationService(ffmpeg, { resolve: resolveFont }); await service.addMedia([file]);
   const store = await SourceStickerKnowledgeStore.open(root), assets = await ensureBuiltinStickerAssets(path.join(root, "stickers"));
   const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(root, "jobs")), fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
@@ -50,8 +51,8 @@ it("warm reuse permits a new output size and style but requires a newly bound re
 
 it.each([false, true])("reuses or explicitly refreshes same-byte copies across projects/restart, with frozen retries (refresh=%s)", async (refresh) => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-warm-knowledge-"));
-  const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe"), file = path.join(root, "source.mp4"), copy = path.join(root, "renamed.mp4");
-  expect((await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-f", "lavfi", "-i", "sine=f=440", "-t", "1", "-c:v", "libx264", "-c:a", "aac", file]).promise).code).toBe(0);
+  const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), file = path.join(root, "source.mp4"), copy = path.join(root, "renamed.mp4");
+  expect((await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-f", "lavfi", "-i", "sine=f=440", "-t", "1", "-c:v", "libx264", "-c:a", "aac", file]).promise).code).toBe(0);
   await copyFile(file, copy);
   const assets = await ensureBuiltinStickerAssets(path.join(root, "stickers"));
   let store = await SourceStickerKnowledgeStore.open(root);
@@ -122,8 +123,8 @@ it.each([false, true])("reuses or explicitly refreshes same-byte copies across p
 
 it("rebuilds version A after B corrects shared source facts without another creative request", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-revision-propagation-"));
-  const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe"), file = path.join(root, "source.mp4");
-  expect((await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-t", "1", "-c:v", "libx264", file]).promise).code).toBe(0);
+  const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), file = path.join(root, "source.mp4");
+  expect((await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-t", "1", "-c:v", "libx264", file]).promise).code).toBe(0);
   const service = new ApplicationService(ffmpeg, { resolve: resolveFont }); await service.addMedia([file]);
   const store = await SourceStickerKnowledgeStore.open(root), assets = await ensureBuiltinStickerAssets(path.join(root, "stickers"));
   const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(root, "jobs")), fontResolver: { resolve: resolveFont }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });

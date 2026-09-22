@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
+import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ApplicationService } from "../src/main/application";
 import { AgentController } from "../src/main/agent-controller";
 import { ExportQueue } from "../src/main/queue";
@@ -17,10 +18,10 @@ import { loadBundledStickerAssets } from "../src/main/bundled-stickers";
 describe("automatic supervisor through real render and original queue", () => {
   it.each([{ coverEnabled: false, cancel: false, inspectWindows: false }, { coverEnabled: true, cancel: false, inspectWindows: false }, { coverEnabled: true, cancel: true, inspectWindows: false }, { coverEnabled: false, cancel: true, inspectWindows: false }, { coverEnabled: false, cancel: false, inspectWindows: true }])("checks actual renders before admission (cover=$coverEnabled, cancel=$cancel, multiwindow=$inspectWindows)", async ({ coverEnabled, cancel, inspectWindows }) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-supervised-integration-"));
-    const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe");
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
     const source = path.join(directory, "source.mp4");
     const duration = inspectWindows ? 12 : 4, displayMode = inspectWindows ? "full" as const : "first-5s" as const;
-    expect((await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-f", "lavfi", "-i", "sine=f=440", "-vf", "drawbox=x=132:y=255:w=24:h=24:color=white:t=fill", "-t", String(duration), "-c:v", "libx264", "-c:a", "aac", source]).promise).code).toBe(0);
+    expect((await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x284:r=24", "-f", "lavfi", "-i", "sine=f=440", "-vf", "drawbox=x=132:y=255:w=24:h=24:color=white:t=fill", "-t", String(duration), "-c:v", "libx264", "-c:a", "aac", source]).promise).code).toBe(0);
     const fingerprint = await fingerprintFile(source);
     const service = new ApplicationService(ffmpeg, { resolve: resolveFont });
     await service.addMedia([source]);

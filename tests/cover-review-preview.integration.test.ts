@@ -6,6 +6,7 @@ import { expect, it } from "vitest";
 import { FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem } from "../src/main/domain";
 import { fingerprintFile } from "../src/main/paths";
+import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 import { removeUnreferencedPreviews } from "../src/main/cover-review-preview";
@@ -27,9 +28,9 @@ it("removes discarded preview files but keeps another draft's references", async
 it("renders a verified temporary preview through the queue owner without creating a job", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-review-preview-"));
   const sourcePath = path.join(directory, "source.mp4");
-  const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24", "-f", "lavfi", "-i", "sine=f=440", "-t", "0.5", "-c:v", "libx264", "-c:a", "aac", sourcePath]).promise;
+  const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24", "-f", "lavfi", "-i", "sine=f=440", "-t", "0.5", "-c:v", "libx264", "-c:a", "aac", sourcePath]).promise;
   expect(generated.code, generated.stderr).toBe(0);
-  const ffmpeg = new FfmpegAdapter("ffmpeg", "ffprobe");
+  const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
   const jobStore = new JobStore(path.join(directory, "jobs"));
   const queue = new ExportQueue({ ffmpeg, jobStore, fontResolver: { resolve: async () => null }, executionLimits: { analysis: 1, exports: 1, threads: 2 } });
   const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "preview", durationMs: 500, width: 160, height: 90, rotation: 0, sizeBytes: 1, importedAt: now(), probeStatus: "ready" };

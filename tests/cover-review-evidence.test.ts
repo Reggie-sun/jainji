@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { CoverReviewEvidence } from "../src/main/cover-review-evidence";
-import { discoverBinary, FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
+import { FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { fingerprintFile } from "../src/main/paths";
+import { ffmpegBin, ffprobeBin, rotateFixtureArgs } from "./helpers/ffmpeg-bin";
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -13,7 +14,7 @@ describe("cover review evidence", () => {
   it("extracts more than 100 selected frames without exceeding FFmpeg expression depth", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-long-"));
     try {
-      const ffmpeg = (await discoverBinary("ffmpeg"))!, ffprobe = (await discoverBinary("ffprobe"))!;
+      const ffmpeg = ffmpegBin, ffprobe = ffprobeBin;
       const sourcePath = path.join(directory, "long.mp4");
       const generated = await runCommand(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=4", "-t", "36", "-c:v", "libx264", sourcePath]).promise;
       expect(generated.code, generated.stderr).toBe(0);
@@ -33,10 +34,10 @@ describe("cover review evidence", () => {
   it("retains full-resolution PTS evidence while passing bounded detector images", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-extract-"));
     const source = path.join(directory, "source.mp4");
-    const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=12", "-t", "0.8", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=12", "-t", "0.8", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
     if (generated.code !== 0) throw new Error(generated.stderr);
     const media = { id: randomUUID(), sourcePath: source, displayName: "source.mp4", fingerprint: await fingerprintFile(source), sizeBytes: 1, durationMs: 800, width: 320, height: 180, rotation: 0 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
-    const store = new CoverReviewEvidence(path.join(directory, "cover-review", randomUUID()), new FfmpegAdapter("ffmpeg", "ffprobe"));
+    const store = new CoverReviewEvidence(path.join(directory, "cover-review", randomUUID()), new FfmpegAdapter(ffmpegBin, ffprobeBin));
 
     const extracted = await store.extract(media, randomUUID(), 0, new AbortController().signal);
 
@@ -50,10 +51,10 @@ describe("cover review evidence", () => {
   it("batches long-video frame selection to keep the FFmpeg filter graph bounded", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-batched-"));
     const source = path.join(directory, "source.mp4");
-    const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=30", "-t", "18", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=30", "-t", "18", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
     if (generated.code !== 0) throw new Error(generated.stderr);
     const media = { id: randomUUID(), sourcePath: source, displayName: "source.mp4", fingerprint: await fingerprintFile(source), sizeBytes: 1, durationMs: 18_000, width: 64, height: 64, rotation: 0 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
-    const adapter = new FfmpegAdapter("ffmpeg", "ffprobe"), original = adapter.run.bind(adapter), selectionSizes: number[] = [];
+    const adapter = new FfmpegAdapter(ffmpegBin, ffprobeBin), original = adapter.run.bind(adapter), selectionSizes: number[] = [];
     vi.spyOn(adapter, "run").mockImplementation((args) => {
       const select = args.find((arg) => arg.startsWith("select='"));
       if (select) selectionSizes.push((select.match(/eq\(n\\,/g) ?? []).length);
@@ -70,10 +71,10 @@ describe("cover review evidence", () => {
   it("normalizes a shifted first decoded PTS while retaining its raw evidence timestamp", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-shifted-"));
     const source = path.join(directory, "shifted.mp4");
-    const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=12", "-vf", "setpts=PTS+5/TB", "-frames:v", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=12", "-vf", "setpts=PTS+5/TB", "-frames:v", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
     if (generated.code !== 0) throw new Error(generated.stderr);
     const media = { id: randomUUID(), sourcePath: source, displayName: "shifted.mp4", fingerprint: await fingerprintFile(source), sizeBytes: 1, durationMs: 500, width: 160, height: 90, rotation: 0 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
-    const extracted = await new CoverReviewEvidence(path.join(directory, "evidence", randomUUID()), new FfmpegAdapter("ffmpeg", "ffprobe")).extract(media, randomUUID(), 0, new AbortController().signal);
+    const extracted = await new CoverReviewEvidence(path.join(directory, "evidence", randomUUID()), new FfmpegAdapter(ffmpegBin, ffprobeBin)).extract(media, randomUUID(), 0, new AbortController().signal);
     expect(extracted.frameTimesMs[0]).toBe(0);
     expect(extracted.evidence[0].pts).toBeGreaterThan(0);
     expect(extracted.evidence[0].timeOriginSeconds).toBeCloseTo(5, 1);
@@ -82,15 +83,16 @@ describe("cover review evidence", () => {
   it("extracts a 90-degree rotated source in its displayed geometry", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-rotated-"));
     const base = path.join(directory, "base.mp4"), source = path.join(directory, "rotated.mp4");
-    const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=12", "-t", "0.8", "-c:v", "libx264", base]).promise;
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=12", "-t", "0.8", "-c:v", "libx264", base]).promise;
     if (generated.code !== 0) throw new Error(generated.stderr);
-    const rotated = await runCommand("ffmpeg", ["-v", "error", "-i", base, "-c", "copy", "-metadata:s:v:0", "rotate=90", source]).promise;
+    const rotationArgs = await rotateFixtureArgs(90);
+    const rotated = await runCommand(ffmpegBin, ["-v", "error", ...rotationArgs.input, "-i", base, "-c", "copy", ...rotationArgs.output, source]).promise;
     if (rotated.code !== 0) throw new Error(rotated.stderr);
     const media = { id: randomUUID(), sourcePath: source, displayName: "rotated.mp4", fingerprint: await fingerprintFile(source), sizeBytes: 1, durationMs: 800, width: 90, height: 160, rotation: 90 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
     const root = path.join(directory, "evidence", randomUUID());
-    const extracted = await new CoverReviewEvidence(root, new FfmpegAdapter("ffmpeg", "ffprobe")).extract(media, randomUUID(), 0, new AbortController().signal);
+    const extracted = await new CoverReviewEvidence(root, new FfmpegAdapter(ffmpegBin, ffprobeBin)).extract(media, randomUUID(), 0, new AbortController().signal);
     const evidencePath = path.join(root, extracted.evidence[0].relativePath);
-    const probe = await runCommand("ffprobe", ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", evidencePath]).promise;
+    const probe = await runCommand(ffprobeBin, ["-v", "error", "-show_entries", "stream=width,height", "-of", "csv=p=0", evidencePath]).promise;
     if (probe.code !== 0) throw new Error(probe.stderr);
     expect(probe.stdout.trim()).toBe("90,160");
     expect(extracted.evidence[0]).toMatchObject({ width: 90, height: 160, rotation: 90 });
@@ -99,12 +101,12 @@ describe("cover review evidence", () => {
   it("cleans only a failed attempt when its second detector conversion fails", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-cleanup-"));
     const source = path.join(directory, "source.mp4");
-    const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=4", "-t", "0.8", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=4", "-t", "0.8", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
     if (generated.code !== 0) throw new Error(generated.stderr);
     const media = { id: randomUUID(), sourcePath: source, displayName: "source.mp4", fingerprint: await fingerprintFile(source), sizeBytes: 1, durationMs: 800, width: 160, height: 90, rotation: 0 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
     const root = path.join(directory, "evidence", randomUUID()), draftId = randomUUID(), attempt = path.join(root, draftId, "r-0");
     await (await import("node:fs/promises")).mkdir(attempt, { recursive: true }); await writeFile(path.join(attempt, "keep.png"), "keep");
-    const adapter = new FfmpegAdapter("ffmpeg", "ffprobe"), original = adapter.run.bind(adapter); let conversions = 0;
+    const adapter = new FfmpegAdapter(ffmpegBin, ffprobeBin), original = adapter.run.bind(adapter); let conversions = 0;
     vi.spyOn(adapter, "run").mockImplementation((args) => {
       if (args.at(-1)?.endsWith(".jpg") && ++conversions === 2) return { process: {} as any, promise: Promise.resolve({ code: 1, stdout: "", stderr: "fixture" }), cancel: async () => undefined };
       return original(args);
@@ -141,10 +143,10 @@ describe("cover review evidence", () => {
   it("returns contextual crops without retaining crop files and discards only unreferenced evidence", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-crops-"));
     const source = path.join(directory, "source.mp4");
-    const generated = await runCommand("ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=4", "-t", "0.8", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=4", "-t", "0.8", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]).promise;
     if (generated.code !== 0) throw new Error(generated.stderr);
     const media = { id: randomUUID(), sourcePath: source, displayName: "source.mp4", fingerprint: await fingerprintFile(source), sizeBytes: 1, durationMs: 800, width: 320, height: 180, rotation: 0 as const, probeStatus: "ready" as const, importedAt: new Date().toISOString() };
-    const root = path.join(directory, "evidence", randomUUID()), store = new CoverReviewEvidence(root, new FfmpegAdapter("ffmpeg", "ffprobe"));
+    const root = path.join(directory, "evidence", randomUUID()), store = new CoverReviewEvidence(root, new FfmpegAdapter(ffmpegBin, ffprobeBin));
     const extracted = await store.extract(media, randomUUID(), 0, new AbortController().signal);
     const crops = await store.crops(extracted.evidence, [{ evidenceId: extracted.evidence[0].id, rectangle: { x: 0.4, y: 0.4, width: 0.2, height: 0.2 } }], new AbortController().signal);
     expect(crops).toHaveLength(1);

@@ -5,8 +5,9 @@ import { DecorationSchema } from "../src/shared/decorations";
 
 describe("commerce video sticker selection", () => {
   it("resolves every approved concept exactly once with localized search terms", () => {
-    expect(CURATED_STICKERS).toHaveLength(56);
-    expect(CURATED_STICKERS.length).toBe(STICKER_SELECTION.length);
+    expect(CURATED_STICKERS).toHaveLength(126);
+    // Approved concepts resolve exactly once; bundled custom stickers are appended on top.
+    expect(CURATED_STICKERS.filter((asset) => asset.license !== "custom").length).toBe(STICKER_SELECTION.length);
     expect(new Set(CURATED_STICKERS.map((asset) => asset.id)).size).toBe(CURATED_STICKERS.length);
     expect(CURATED_STICKERS.every((asset) => /[\u4e00-\u9fff]/.test(asset.label) && asset.searchTerms.length > 0)).toBe(true);
     expect(CURATED_STICKERS.some((asset) => asset.label === "蝴蝶")).toBe(true);
@@ -15,7 +16,7 @@ describe("commerce video sticker selection", () => {
     }
   });
   it("excludes irrelevant concepts and duplicate skin variants from discovery", () => {
-    expect(CURATED_STICKERS.length).toBeLessThan(100);
+    expect(CURATED_STICKERS.length).toBeLessThan(200);
     expect(CURATED_STICKERS.some((asset) => /\/Dark\/|\/Light\/|\/Medium|Flag|Anatomical|Firefighter|Bow%20and%20arrow/.test(asset.url))).toBe(false);
     expect(CURATED_STICKERS.filter((asset) => asset.searchTerms.includes("Thumbs up"))).toHaveLength(1);
   });
@@ -23,6 +24,6 @@ describe("commerce video sticker selection", () => {
     const hidden = LIBRARY_STICKERS.find((asset) => !CURATED_STICKERS.some((visible) => visible.id === asset.id))!;
     expect(hidden).toBeDefined();
     expect(DecorationSchema.parse({ sticker: hidden.id }).sticker).toBe(hidden.id);
-    expect(LIBRARY_STICKERS).toHaveLength(3144);
+    expect(LIBRARY_STICKERS).toHaveLength(3214);
   });
 });

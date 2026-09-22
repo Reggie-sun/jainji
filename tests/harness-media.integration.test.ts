@@ -4,7 +4,8 @@ import { copyFile, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createDefaultProject, createDefaultTemplate, now, ProjectSchema, type ExportBatch, type MediaItem } from "../src/main/domain.js";
-import { discoverBinary, runCommand } from "../src/main/ffmpeg.js";
+import { runCommand } from "../src/main/ffmpeg.js";
+import { ffmpegBin, ffprobeBin, rotateFixtureArgs } from "./helpers/ffmpeg-bin.js";
 import { fingerprintFile } from "../src/main/paths.js";
 import { loadMediaSelection, validateMediaSelection } from "../src/harness/media.js";
 import { HarnessRun } from "../src/harness/run.js";
@@ -15,7 +16,8 @@ let ffprobePath: string | null;
 const temporaryRoots: string[] = [];
 
 beforeAll(async () => {
-  [ffmpegPath, ffprobePath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe")]);
+  ffmpegPath = ffmpegBin;
+  ffprobePath = ffprobeBin;
 });
 
 afterAll(async () => {
@@ -222,7 +224,10 @@ describe("actual media validation harness", () => {
     const rotatedPath = path.join(sample.root, "rotated.mp4");
     const rotatedOutput = path.join(sample.root, "output", "rotated-result.mp4");
     expect((await runCommand(ffmpegPath, ["-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=25:d=1", "-c:v", "libx264", "-pix_fmt", "yuv420p", basePath]).promise).code).toBe(0);
-    expect((await runCommand(ffmpegPath, ["-v", "error", "-y", "-i", basePath, "-c", "copy", "-metadata:s:v:0", "rotate=90", rotatedPath]).promise).code).toBe(0);
+    // The declared rotation is 270 (clockwise 90); ffprobe reports the display
+    // matrix as -90 and the harness normalizes that to 270.
+    const rotationArgs = await rotateFixtureArgs(270);
+    expect((await runCommand(ffmpegPath, ["-v", "error", "-y", ...rotationArgs.input, "-i", basePath, "-c", "copy", ...rotationArgs.output, rotatedPath]).promise).code).toBe(0);
     expect((await runCommand(ffmpegPath, ["-v", "error", "-y", "-i", rotatedPath, "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", rotatedOutput]).promise).code).toBe(0);
     await replaceFixtureMedia(sample, rotatedPath, rotatedOutput, { width: 180, height: 320, rotation: 270, durationMs: 1_000 });
     const selected = await loadMediaSelection({ kind: "project", filePath: sample.projectPath, batchIds: [sample.batch.id] });

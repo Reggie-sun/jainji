@@ -6,19 +6,22 @@ import { describe, expect, it } from "vitest";
 import { ApplicationService } from "../src/main/application";
 import { AgentController } from "../src/main/agent-controller";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../src/main/domain";
-import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
+import { FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { AssetLibrary } from "../src/main/asset-library";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
+import { COVER_SAMPLE_INTERVAL_MS } from "../src/shared/automatic-cover";
 import { getPriceStyle } from "../src/shared/price-styles";
 import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
+import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 
 describe("agent to local export", () => {
   for (const mode of ["manual", "agent"] as const) it(`extracts real frames and renders independent verified videos in ${mode} mode`, async (context) => {
-    const [ffmpegPath, ffprobePath, font] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
-    if (!ffmpegPath || !ffprobePath || !font) { context.skip(); return; }
+    const ffmpegPath = ffmpegBin, ffprobePath = ffprobeBin;
+    const font = await resolveFont(DEFAULT_TEXT_FONT_FAMILY);
+    if (!font) { context.skip(); return; }
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-agent-proof-"));
     const butterfly = AUTOMATIC_STICKERS.find(({ label }) => label === "蝴蝶")!;
     const requests: Array<{ model: string; messages: Array<{ content: string | Array<{ type: string; image_url?: { url: string } }> }> }> = [];
@@ -123,11 +126,15 @@ describe("agent to local export", () => {
         expect(requests.every((request) => !(request.messages[0].content as string).includes("当前为同批第"))).toBe(true);
         expect(requests.every((request) => !(request.messages[0].content as string).includes("本条视觉探索方向"))).toBe(true);
       }
+      // Detector/recognition frames follow the sampled source timeline: one frame
+      // per COVER_SAMPLE_INTERVAL_MS across the probed container duration, which
+      // differs between ffmpeg generations (exact 1000ms vs padded AAC duration).
+      const sampledFrameCount = Math.ceil(service.currentProject.mediaItems[0].durationMs / COVER_SAMPLE_INTERVAL_MS);
       for (const request of requests) {
         const content = request.messages[1].content;
         if (typeof content === "string") throw new Error("expected visual content");
         const images = content.filter((item) => item.type === "image_url");
-        expect(images).toHaveLength(previewRequests.includes(request) ? 16 : detectorRequests.includes(request) || recognitionRequests.includes(request) ? 5 : mode === "agent" && !shortlistRequests.includes(request) ? 4 : 3);
+        expect(images).toHaveLength(previewRequests.includes(request) ? 16 : detectorRequests.includes(request) || recognitionRequests.includes(request) ? sampledFrameCount : mode === "agent" && !shortlistRequests.includes(request) ? 4 : 3);
         expect(images.every((item) => item.image_url!.url.startsWith("data:image/jpeg;base64,/9j/"))).toBe(true);
         expect(JSON.stringify(request)).not.toContain(directory);
       }
