@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent } from "react";
 import type { MediaView } from "../main/media";
 import { interpolateCoverRectangle, type CoverRectangle, type CoverTrack } from "../shared/cover-sticker";
+import { Icon } from "./ui";
 
 const minimumSize = 0.01;
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(Math.max(value, minimum), maximum);
@@ -23,6 +24,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
   const interaction = useRef<Interaction>();
   const [timeMs, setTimeMs] = useState(0);
   const [notice, setNotice] = useState("");
+  const [playing, setPlaying] = useState(false);
   const durationMs = Math.max(1, Math.round(media.durationMs));
   const active = regions.find((region) => region.id === activeRegionId) ?? regions[0];
   const track = active?.track;
@@ -60,6 +62,18 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
     setTimeMs(normalized);
   };
   const pauseForEdit = () => video.current?.pause();
+  const togglePlay = () => {
+    const element = video.current;
+    if (!element) return;
+    if (element.paused) {
+      const result = element.play();
+      if (result && typeof result.then === "function") {
+        result.catch(() => setPlaying(false));
+      }
+    } else {
+      element.pause();
+    }
+  };
   const updateStatic = (next: CoverRectangle) => {
     if (!active) return;
     pauseForEdit(); onStaticRectangleChange(active.id, next); setNotice("已更新固定覆盖框。");
@@ -138,7 +152,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
 
   return <div className="cover-track-editor">
     <div className="cover-track-preview" ref={stage} style={{ aspectRatio: `${media.width} / ${media.height}`, width: `min(100%, ${52 * media.width / media.height}vh)`, marginInline: "auto" }} onPointerMove={moveInteraction} onPointerUp={() => { interaction.current = undefined; }} onPointerCancel={() => { interaction.current = undefined; }}>
-      <video ref={video} src={media.previewUrl} controls preload="metadata" onTimeUpdate={(event) => { if (event.currentTarget.paused && !interaction.current) setTimeMs(clamp(Math.round(event.currentTarget.currentTime * 1000), 0, durationMs)); }} onSeeked={(event) => { if (!interaction.current) setTimeMs(clamp(Math.round(event.currentTarget.currentTime * 1000), 0, durationMs)); }} />
+      <video ref={video} src={media.previewUrl} preload="metadata" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)} onTimeUpdate={(event) => { if (event.currentTarget.paused && !interaction.current) setTimeMs(clamp(Math.round(event.currentTarget.currentTime * 1000), 0, durationMs)); }} onSeeked={(event) => { if (!interaction.current) setTimeMs(clamp(Math.round(event.currentTarget.currentTime * 1000), 0, durationMs)); }} />
       {enabled && regions.map((region, index) => {
         const regionRectangle = region.track ? interpolateCoverRectangle(region.track.keyframes, timeMs) : region.rectangle;
         const activeFrame = region.id === active?.id;
@@ -148,7 +162,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
       })}
       {enabled && active?.sticker && rectangle && visible(active) && <div className="cover-sticker-selection" style={{ zIndex: regions.length + 1, left: `${rectangle.x * 100}%`, top: `${rectangle.y * 100}%`, width: `${rectangle.width * 100}%`, height: `${rectangle.height * 100}%` }} aria-label="拖动覆盖贴纸" onPointerDown={(event) => startInteraction(event, "drag")}><div className="cover-sticker-handle" aria-label="调整覆盖贴纸尺寸" onPointerDown={(event) => startInteraction(event, "resize")} /></div>}
     </div>
-    <div className="cover-track-time"><label>当前时间 <input type="number" min={0} max={durationMs} step={1} value={timeMs} disabled={disabled} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && setVideoTime(event.target.valueAsNumber)} /> ms</label><input aria-label="定位视频时间" type="range" min={0} max={durationMs} step={1} value={timeMs} disabled={disabled} onChange={(event) => setVideoTime(event.target.valueAsNumber)} /></div>
+    <div className="cover-track-time"><button type="button" className="button secondary compact" aria-label={playing ? "暂停预览" : "播放预览"} aria-pressed={playing} disabled={disabled} onClick={togglePlay}><Icon name={playing ? "pause" : "play"} size={15} />{playing ? "暂停" : "播放"}</button><label>当前时间 <input type="number" min={0} max={durationMs} step={1} value={timeMs} disabled={disabled} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && setVideoTime(event.target.valueAsNumber)} /> ms</label><input aria-label="定位视频时间" type="range" min={0} max={durationMs} step={1} value={timeMs} disabled={disabled} onChange={(event) => setVideoTime(event.target.valueAsNumber)} /></div>
     {!active ? <p className="cover-sticker-note">添加覆盖框后，可拖动并调整它的位置。</p> : !track ? <div className="cover-track-mode"><div><strong>固定覆盖</strong><p>位置和尺寸只影响当前素材。启用轨迹后只影响此素材的当前覆盖框。</p></div><button type="button" className="button secondary compact" disabled={!canEdit} onClick={enableTrack}>为此素材启用轨迹</button></div> : <>
       <div className="cover-track-mode"><div><strong>此素材的关键帧轨迹</strong><p>位置和缩放只影响当前覆盖框；拖动、缩放或修改数值会暂停视频并记录当前帧。</p></div><button type="button" className="button secondary compact" disabled={disabled} onClick={() => { onTrackChange(active.id, undefined); setNotice("已移除此素材的轨迹，恢复固定覆盖框。"); }}>移除此素材轨迹</button></div>
       <div className="cover-track-interval"><label>出现 <input type="number" min={0} max={durationMs} step={1} value={track.startMs} disabled={disabled} onChange={(event) => updateInterval("startMs", event.target.valueAsNumber)} /> ms</label><label>结束 <input type="number" min={1} max={durationMs} step={1} value={track.endMs} disabled={disabled} onChange={(event) => updateInterval("endMs", event.target.valueAsNumber)} /> ms</label></div>
