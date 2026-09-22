@@ -136,7 +136,7 @@ export class AgentController {
       // Local-random path: stickers / price style / cover selection are all decided without the
       // creative round-trip. Skips provider.shortlist + provider.plan and the auto-cover selection
       // call entirely. Manual and agent paths are untouched.
-      const randomPath = decorations.mode === "random" || project.coverSticker?.trackingMode === "random";
+      const randomPath = decorations.mode === "random";
       const supervised = !assisted && Boolean(automaticCover || preserveSourceStickers);
       const refresh = parsed.sourceStickerRefresh;
       if (refresh) {
