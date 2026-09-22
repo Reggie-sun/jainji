@@ -184,7 +184,7 @@ components:
 - **Sticky header**:白底不透明,一行 = 项目切换器 + 保存/打开动作 + 引擎状态(min-height 72px)。
 - **Workflow steps**:素材 → 包装 → 覆盖贴纸 → 输出 → 作品,五个步骤是唯一的顶层流程导航;每步带 27px 圆形步骤号,active 步骤号实心 seal + 底部 2px 指示条,complete 步骤号 mint 底。
 - **Subnav**:只放页内锚点(模板/显示时段/四角贴纸),不得与五步骤重复;active 用 inset 2px 下划线。sticky 于 header 之下。
-- **内容区**:max-width 1420px 居中,padding 30–38px(≥1600px 视口顶距 38px);栅格用 12px gap(模板卡)与 20–22px gap(双栏)。
+- **内容区**:流式全宽(不设 max-width——宽屏下队列与列表必须吃满可用宽度),padding 30–38px(≥1600px 视口顶距 38px);栅格用 12px gap(模板卡)与 20–22px gap(双栏)。
 - **Step footer**:sticky 底部操作条,paper 底不透明 + 顶部细线;左侧"已选 N 条"摘要(tabular-nums),右侧下一步主按钮——开始制作是页面上唯一的主动作。
 - **双栏节奏**:素材步 1.55fr / 0.72fr(左清单右预览);≤1000px 折为单栏并隐藏预览卡。
 
