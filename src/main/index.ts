@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, protocol, screen, shell } from "electron";
 import { mkdir, stat, readFile } from "node:fs/promises";
 import { FONT_CHOICES, ProductPriceSchema, isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
 import path from "node:path";
@@ -505,9 +505,15 @@ async function verifyArtifact(filePath: string, taskId: string): Promise<void> {
 }
 
 async function createWindow(): Promise<void> {
+  // Center on the primary display: mutter otherwise places the window on the
+  // pointer's monitor, and on this dual-monitor setup a window minimized on
+  // the secondary display cannot be restored except through the Shell dock.
+  const primaryArea = screen.getPrimaryDisplay().workArea;
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
+    x: primaryArea.x + Math.max(0, Math.round((primaryArea.width - 1440) / 2)),
+    y: primaryArea.y + Math.max(0, Math.round((primaryArea.height - 920) / 2)),
     minWidth: 1080,
     minHeight: 720,
     backgroundColor: "#f7f8fa",
@@ -678,6 +684,28 @@ async function requestQuit(): Promise<void> {
     return;
   }
   closingPrompt = true;
+  // Development instances restart through make frontend (dev-stop -> SIGTERM ->
+  // jianji-dev-quit). A modal prompt would block the unattended restart loop,
+  // so persist to the existing project file and exit; projects never saved to
+  // a file still prompt so they cannot be discarded silently. Packaged builds
+  // keep the interactive prompt.
+  if (process.env.JIANJI_DEV_SERVER_URL && service.projectPath) {
+    try {
+      const projectPath = service.projectPath;
+      await service.saveProject(projectPath);
+      await recentProjects.remember(projectPath, service.currentProject);
+      quitting = true;
+      try { await shutdownServices(); } finally { app.exit(0); }
+      return;
+    } catch (error) {
+      safeLog("development auto-save failed; falling back to the save prompt", error);
+    }
+  }
+  // The quit prompt is modal to the window: if the window is minimized the
+  // dialog is invisible and the graceful-quit chain would deadlock.
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
   void (async () => {
     const choice = await dialog.showMessageBox(mainWindow!, {
       type: "question",
