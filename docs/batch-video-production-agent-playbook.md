@@ -500,6 +500,38 @@ WA 文档不强求做 CPU 限速；只在需要复刻 Linux 的固定核行为�
 - `verify.py` 的 ffprobe 在 Windows 上改用 `ffprobe.exe`，从 `JIANJI_FFPROBE_PATH` 取绝对路径；不能用 `which ffprobe`。
 - 残留临时文件：`Remove-Item -Force -Recurse` 删 `*.partial.mp4` 与 `.jianji-*.txt`；与 `verify.py` §file-set mismatch 检查一致。
 
+## 应用内 Path B：批次追加制作（2026-09-21 起）
+
+外部脚本改写项目 JSON 的 Path B 已下沉为应用内功能，优先使用本条，不再直接改项目文件。
+
+### UI 路径
+
+1. 「作品」页每个已完成（含部分失败）批次的任务行显示「追加制作」。
+2. 对话框预填源批次保存的手动展示文字（可改）、条数（默认 1）、输出目录（默认自动新建）。
+3. 提交后新批次直接本地渲染，零模型调用；贴纸和滤镜从库中随机搭配（同批次多条互不重复），布局几何保持不变。
+
+### Agent 调用序列（CDP / window.jianji）
+
+```js
+// 1. 从公开队列挑选已完成源批次
+const batches = (await jianji.getState()).queue.batches.map(({ batch }) => batch);
+const source = batches.find((b) => b.status === "completed" && b.mediaIds.length === 1);
+// 2. 预填（主进程读取冻结模板，renderer 无 templateSnapshot）
+const prefill = await jianji.appendProductionPrefill(source.id); // { productPrice, mediaCount }
+// 3. 输出目录：自动新建（素材仍在项目中）或复用已批准目录
+const outputDirectory = await jianji.createAutomaticOutputDirectory(source.mediaIds);
+// 4. 追加：展示文字必须人工指定（可用源批次预填值），空白/超行会被共享 schema 拒绝
+const { batchIds } = await jianji.appendProduction({ batchId: source.id, count: 1, productPrice: prefill.productPrice, outputDirectory });
+// 5. 轮询 getState() 直至新批次 completed；任务级失败走既有 retryExport
+```
+
+守卫与不变量：布局几何（贴纸位置/大小/旋转、覆盖框、时序模式）逐字节冻结（主进程 digest 自校验）；贴纸从内置+已上传贴纸库平衡随机（同批次内不重复）；滤镜从 none/warm/cool/vivid 随机；`count × 素材数 ≤ 250`；只接受当前项目已完成批次；输出目录必须经系统对话框或自动目录批准；发布不覆盖已有文件。全程零模型调用。
+
+### 覆盖保存的 agent 序列
+
+- 手动模式：`jianji.setCoverSticker(settings)`（校验并标脏）→ `jianji.saveProject()`（落盘）。两步都必须调用；只调前者重启后丢失。
+- 半自动（人工审阅）模式：`coverReview.*` 系列 IPC 全程即时落盘，退出保留可恢复草稿，无需额外保存动作。
+
 ## References
 
 - 合同与边界:[batch-video-production-runbook.md](batch-video-production-runbook.md)、仓库根 [AGENTS.md](../AGENTS.md)
