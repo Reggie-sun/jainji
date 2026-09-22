@@ -211,6 +211,7 @@ export class JobStore {
     await mkdir(this.jobsDirectory, { recursive: true });
     const entries = await readdir(this.jobsDirectory, { withFileTypes: true });
     const states: QueueState[] = [];
+    let processed = 0;
     for (const entry of entries) {
       if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
       try { states.push((await this.load(entry.name.slice(0, -5))).state); }
@@ -218,6 +219,8 @@ export class JobStore {
         if (error instanceof StoreError && error.code === "corrupt") continue;
         throw error;
       }
+      // Keep the main-process event loop responsive over large job archives.
+      if (++processed % 100 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
     }
     return states;
   }

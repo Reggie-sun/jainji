@@ -633,19 +633,26 @@ async function bootstrap(): Promise<void> {
       return await mediaResponse(file, request);
     } catch { return new Response("Preview unavailable", { status: 404 }); }
   });
-  await queue.recover();
   registerHandlers();
-  await createWindow();
+  // Show the window before replaying job history; with large histories recover()
+  // can take minutes and the app must not look like it failed to launch.
+  const windowReady = createWindow();
+  // Replay history in the background so it blocks neither the window nor a
+  // graceful quit; recover() publishes a snapshot when done.
+  void queue.recover().catch((error) => console.error("queue recover failed", error));
+  await windowReady;
   void connections.restore();
 }
 
 async function shutdownServices(): Promise<void> {
-  try { await coverReview?.shutdown(); }
+  const shutdownStart = Date.now();
+  const mark = (stage: string) => console.error(`[shutdown] ${stage} done +${Date.now() - shutdownStart}ms`);
+  try { await coverReview?.shutdown(); mark("coverReview"); }
   finally {
-    try { await agent?.cancel(); }
+    try { await agent?.cancel(); mark("agent"); }
     finally {
-      try { await sourceKnowledge?.close(); }
-      finally { try { await connections?.dispose(); } finally { await queue?.shutdown(); } }
+      try { await sourceKnowledge?.close(); mark("sourceKnowledge"); }
+      finally { try { await connections?.dispose(); mark("connections"); } finally { await queue?.shutdown(); mark("queue"); } }
     }
   }
 }
@@ -691,6 +698,10 @@ app.on("before-quit", (event) => {
   if (quitting) return;
   void requestQuit();
 });
+// A bare SIGTERM (orphaned dev instance, systemd, kill) gets the same graceful
+// save/close flow as a window close, so the knowledge store lock is released.
+const bootStart = Date.now();
+process.on("SIGTERM", () => { console.error(`[shutdown] sigterm received +${Date.now() - bootStart}ms after boot`); void requestQuit(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 const startup = bootstrap();
 installDevelopmentQuit(process, startup, () => app.quit());

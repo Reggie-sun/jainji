@@ -212,6 +212,7 @@ export class ExportQueue {
 
   async recover(): Promise<QueueSnapshot> {
     const loaded = await this.dependencies.jobStore.loadAll();
+    let processed = 0;
     for (const state of loaded) {
       const recovered = structuredClone(state);
       let changed = false;
@@ -233,6 +234,8 @@ export class ExportQueue {
       }
       this.states.set(recovered.batch.id, recovered);
       this.globalRevision = Math.max(this.globalRevision, recovered.revision);
+      // Keep the event loop responsive over large job archives.
+      if (++processed % 100 === 0) await new Promise<void>((resolve) => setImmediate(resolve));
     }
     this.emit();
     return this.snapshot();
@@ -657,8 +660,13 @@ export class ExportQueue {
         }
       }
       if (state.batch.tasks.every((task) => !EXECUTION.has(task.status))) {
-        state.batch.status = deriveBatchStatus(state.batch.tasks);
-        await this.persist(state);
+        // transition() already persists interrupted tasks; rewriting every
+        // unchanged batch makes shutdown O(job history) in fsyncs.
+        const derived = deriveBatchStatus(state.batch.tasks);
+        if (derived !== state.batch.status) {
+          state.batch.status = derived;
+          await this.persist(state);
+        }
       }
     }
   }
