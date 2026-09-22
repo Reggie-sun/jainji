@@ -212,7 +212,10 @@ export class AgentRunner {
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           stopKnowledgeProgress(item, signal.aborted, "本版创作或样片准备未完成，未提交导出；请查看本条失败原因。");
-          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
+          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : (() => {
+            const message = error instanceof Error ? error.message : String(error);
+            return `素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试（${message}）`;
+          })();
         } finally {
           diagnostics?.record("lifecycle", item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "failed" : "ok",
             { reason: item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "stage-failed" : "accepted" });
@@ -257,7 +260,10 @@ export class AgentRunner {
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
-          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "主管样片检查通过，但正式导出提交失败。";
+          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : (() => {
+            const message = error instanceof Error ? error.message : String(error);
+            return `主管样片检查通过，但正式导出提交失败（${message}）`;
+          })();
         }
         audit[index].finished = Date.now(); this.dependencies.onChange();
       }
@@ -276,7 +282,10 @@ export class AgentRunner {
           item.summary = `近似覆盖样片检查通过，${published ? "已发布到输出目录；位置已冻结，下次仍需检查样片" : "已提交导出；位置已冻结，下次仍需检查样片"}`;
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
-          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "覆盖样片已检查，但源校验或导出提交失败。";
+          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : (() => {
+            const message = error instanceof Error ? error.message : String(error);
+            return `覆盖样片已检查，但源校验或导出提交失败（${message}）`;
+          })();
         }
         if (item.coverDiagnostics) new CoverDiagnostics(() => this.dependencies.onChange(), item.coverDiagnostics)
           .record("lifecycle", item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "failed" : "ok",
