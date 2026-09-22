@@ -119,20 +119,26 @@ async function main() {
   const options = parseArguments(process.argv.slice(2))
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'))
   const stickers = manifest.assets.filter((asset) => asset.kind === 'sticker')
-  if (stickers.length !== 3144 || stickers.some((asset) => asset.license !== 'fluent')) {
-    throw new Error(`Expected 3,144 Fluent sticker entries, found ${stickers.length}`)
+  const fluentStickers = stickers.filter((asset) => asset.license === 'fluent')
+  if (fluentStickers.length !== 3144) {
+    throw new Error(`Expected 3,144 Fluent sticker entries, found ${fluentStickers.length}`)
   }
   const fluentLicense = manifest.licenses.fluent
   if (typeof fluentLicense !== 'string') throw new Error('Manifest does not contain the Fluent license text')
 
   if (options.verify) {
-    const result = await validateLibrary(stickers, fluentLicense)
-    if (result.missing.length || !result.licenseValid) {
-      console.error(`Verification failed: ${result.missing.length}/3144 invalid or missing sticker files; Fluent license ${result.licenseValid ? 'valid' : 'missing or changed'}.`)
+    const result = await validateLibrary(fluentStickers, fluentLicense)
+    const customStickers = stickers.filter(a => a.license !== 'fluent')
+    const customMissing = []
+    for (const asset of customStickers) {
+      if (!(await validateFile(join(libraryDir, `${asset.blob}.png`), asset))) customMissing.push(asset)
+    }
+    if (result.missing.length || !result.licenseValid || customMissing.length) {
+      console.error(`Verification failed: ${result.missing.length}/3144 Fluent, ${customMissing.length} custom missing; Fluent license ${result.licenseValid ? 'valid' : 'missing or changed'}.`)
       process.exitCode = 1
       return
     }
-    console.log('Verification passed: 3144 sticker files and Fluent license match the pinned manifest.')
+    console.log(`Verification passed: 3144 Fluent + ${customStickers.length} custom sticker files valid.`)
     return
   }
 

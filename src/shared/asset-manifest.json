@@ -28369,6 +28369,636 @@
       "blob": "d037d1f00395175de01de33e62957c30a008a1b1",
       "size": 4063532,
       "license": "zhimangxing"
+    },
+    {
+      "id": "custom-cc7a49206b0c707b88c76f4fbfb50675b68b684f",
+      "kind": "sticker",
+      "label": "5f92a5f4e1f3f160344626012",
+      "url": "",
+      "blob": "cc7a49206b0c707b88c76f4fbfb50675b68b684f",
+      "size": 22184,
+      "license": "custom"
+    },
+    {
+      "id": "custom-f10ee1fc5586630d517a1a5c1637048dcecb19b0",
+      "kind": "sticker",
+      "label": "5f8472cc488181602515660348",
+      "url": "",
+      "blob": "f10ee1fc5586630d517a1a5c1637048dcecb19b0",
+      "size": 107559,
+      "license": "custom"
+    },
+    {
+      "id": "custom-f0593c9064fa4da8383ff165f22200b322e3045e",
+      "kind": "sticker",
+      "label": "6279decb588341652154059454",
+      "url": "",
+      "blob": "f0593c9064fa4da8383ff165f22200b322e3045e",
+      "size": 63829,
+      "license": "custom"
+    },
+    {
+      "id": "custom-febb44970537141c78d14467efa885eb151ec894",
+      "kind": "sticker",
+      "label": "61ae09b95f8261638795705896",
+      "url": "",
+      "blob": "febb44970537141c78d14467efa885eb151ec894",
+      "size": 63629,
+      "license": "custom"
+    },
+    {
+      "id": "custom-dc95e53d5bcf6026540f3909db9ae279a2859630",
+      "kind": "sticker",
+      "label": "mnvYrXLJ30",
+      "url": "",
+      "blob": "dc95e53d5bcf6026540f3909db9ae279a2859630",
+      "size": 122978,
+      "license": "custom"
+    },
+    {
+      "id": "custom-a39594b9c22020d0119ebe17948731bf52752917",
+      "kind": "sticker",
+      "label": "o7vMA6QJvB",
+      "url": "",
+      "blob": "a39594b9c22020d0119ebe17948731bf52752917",
+      "size": 172750,
+      "license": "custom"
+    },
+    {
+      "id": "custom-8e6d2aed21c9cd161ea1fb371c10e8e6a16ebe91",
+      "kind": "sticker",
+      "label": "713kxm6Qqn",
+      "url": "",
+      "blob": "8e6d2aed21c9cd161ea1fb371c10e8e6a16ebe91",
+      "size": 169397,
+      "license": "custom"
+    },
+    {
+      "id": "custom-b2bef438dcc202bf44ada6b7a70b9efc00f384e7",
+      "kind": "sticker",
+      "label": "5ebde7692ba031589503849498",
+      "url": "",
+      "blob": "b2bef438dcc202bf44ada6b7a70b9efc00f384e7",
+      "size": 108247,
+      "license": "custom"
+    },
+    {
+      "id": "custom-ef1900bd41f80ccb43931f43682dcba56063554d",
+      "kind": "sticker",
+      "label": "62791cc95b4dc1652104393204",
+      "url": "",
+      "blob": "ef1900bd41f80ccb43931f43682dcba56063554d",
+      "size": 145400,
+      "license": "custom"
+    },
+    {
+      "id": "custom-0490accb5c7e8b9dc44a95a136f1e843176df3cd",
+      "kind": "sticker",
+      "label": "33061dd43cd7730b1641890765",
+      "url": "",
+      "blob": "0490accb5c7e8b9dc44a95a136f1e843176df3cd",
+      "size": 160482,
+      "license": "custom"
+    },
+    {
+      "id": "custom-adb5879ba7af811c3c248408a71d3ea9b26d1ebb",
+      "kind": "sticker",
+      "label": "VjD3AQxl3b",
+      "url": "",
+      "blob": "adb5879ba7af811c3c248408a71d3ea9b26d1ebb",
+      "size": 144661,
+      "license": "custom"
+    },
+    {
+      "id": "custom-a47145307db3f69eb739564cae29ba3c49037034",
+      "kind": "sticker",
+      "label": "wB3RRnb736",
+      "url": "",
+      "blob": "a47145307db3f69eb739564cae29ba3c49037034",
+      "size": 248421,
+      "license": "custom"
+    },
+    {
+      "id": "custom-0cd73e54570319d60d75fc09a1fff28a3f40bbe0",
+      "kind": "sticker",
+      "label": "5eb8d5282e95e1589171496394",
+      "url": "",
+      "blob": "0cd73e54570319d60d75fc09a1fff28a3f40bbe0",
+      "size": 151391,
+      "license": "custom"
+    },
+    {
+      "id": "custom-c45f4460c9baba90806ffa97eef219ee0f4d09b8",
+      "kind": "sticker",
+      "label": "5f97a243bf5061603772995190",
+      "url": "",
+      "blob": "c45f4460c9baba90806ffa97eef219ee0f4d09b8",
+      "size": 39769,
+      "license": "custom"
+    },
+    {
+      "id": "custom-6e295d906e005bf8c9ef96f3539726fba86023d8",
+      "kind": "sticker",
+      "label": "5XpQMYEPpK",
+      "url": "",
+      "blob": "6e295d906e005bf8c9ef96f3539726fba86023d8",
+      "size": 106193,
+      "license": "custom"
+    },
+    {
+      "id": "custom-c923cc383342cbe5c741892bd8e1b159a4c76c6c",
+      "kind": "sticker",
+      "label": "M0LvrK9031",
+      "url": "",
+      "blob": "c923cc383342cbe5c741892bd8e1b159a4c76c6c",
+      "size": 187832,
+      "license": "custom"
+    },
+    {
+      "id": "custom-dad574ea931238dbdee02851121df9285e6baa75",
+      "kind": "sticker",
+      "label": "mnpYLRQlq0",
+      "url": "",
+      "blob": "dad574ea931238dbdee02851121df9285e6baa75",
+      "size": 60806,
+      "license": "custom"
+    },
+    {
+      "id": "custom-52d280e1f793e92f5a42d34cf92a90694314db5e",
+      "kind": "sticker",
+      "label": "6350bb49493d61666235209509",
+      "url": "",
+      "blob": "52d280e1f793e92f5a42d34cf92a90694314db5e",
+      "size": 92490,
+      "license": "custom"
+    },
+    {
+      "id": "custom-513b097eef66256b0714c36138ff6fbe23bec78b",
+      "kind": "sticker",
+      "label": "61b00f1e5a9691638928158678",
+      "url": "",
+      "blob": "513b097eef66256b0714c36138ff6fbe23bec78b",
+      "size": 109466,
+      "license": "custom"
+    },
+    {
+      "id": "custom-1f9c7bb2a72e069a7ebe66a0e351093332ee7ed5",
+      "kind": "sticker",
+      "label": "5eb7f4abe8c38158911402743",
+      "url": "",
+      "blob": "1f9c7bb2a72e069a7ebe66a0e351093332ee7ed5",
+      "size": 175080,
+      "license": "custom"
+    },
+    {
+      "id": "custom-a84ff95eb28a53a7232f9773edc4995a52d09625",
+      "kind": "sticker",
+      "label": "649141a99ce001687241129592",
+      "url": "",
+      "blob": "a84ff95eb28a53a7232f9773edc4995a52d09625",
+      "size": 93119,
+      "license": "custom"
+    },
+    {
+      "id": "custom-561232df56f20cd05dd0145f3e25f833e75334db",
+      "kind": "sticker",
+      "label": "64a93b6a390091688812394845",
+      "url": "",
+      "blob": "561232df56f20cd05dd0145f3e25f833e75334db",
+      "size": 78970,
+      "license": "custom"
+    },
+    {
+      "id": "custom-c2ca3ccda9bb38b0a6cd7528ef7f33b18573498a",
+      "kind": "sticker",
+      "label": "o7vMReNO3B",
+      "url": "",
+      "blob": "c2ca3ccda9bb38b0a6cd7528ef7f33b18573498a",
+      "size": 204784,
+      "license": "custom"
+    },
+    {
+      "id": "custom-7dd3229c257cdbbc7569900f739a397897744f69",
+      "kind": "sticker",
+      "label": "lMkvN65dvj",
+      "url": "",
+      "blob": "7dd3229c257cdbbc7569900f739a397897744f69",
+      "size": 213788,
+      "license": "custom"
+    },
+    {
+      "id": "custom-46d5b3ea3161aed92ebe1f2b63a7bdd78d6d142c",
+      "kind": "sticker",
+      "label": "0LvrNX95v1",
+      "url": "",
+      "blob": "46d5b3ea3161aed92ebe1f2b63a7bdd78d6d142c",
+      "size": 88703,
+      "license": "custom"
+    },
+    {
+      "id": "custom-8dbebcc664a647feb75327086cc9302d12f57ae9",
+      "kind": "sticker",
+      "label": "5fd58b095e7501607830281632",
+      "url": "",
+      "blob": "8dbebcc664a647feb75327086cc9302d12f57ae9",
+      "size": 54322,
+      "license": "custom"
+    },
+    {
+      "id": "custom-20bfea4edd09c6990c25745983d22ba2dc14978c",
+      "kind": "sticker",
+      "label": "5f639bd84276a1600363480530",
+      "url": "",
+      "blob": "20bfea4edd09c6990c25745983d22ba2dc14978c",
+      "size": 40911,
+      "license": "custom"
+    },
+    {
+      "id": "custom-adabbce6c95eeddc1e99bb3ce370e6473cc59cd2",
+      "kind": "sticker",
+      "label": "627a4d1fe44d51652182303124",
+      "url": "",
+      "blob": "adabbce6c95eeddc1e99bb3ce370e6473cc59cd2",
+      "size": 115824,
+      "license": "custom"
+    },
+    {
+      "id": "custom-5243837744c4b177883b16b8967b4af9814e87b8",
+      "kind": "sticker",
+      "label": "B89pLJkj3M",
+      "url": "",
+      "blob": "5243837744c4b177883b16b8967b4af9814e87b8",
+      "size": 9084,
+      "license": "custom"
+    },
+    {
+      "id": "custom-a11e69c58aeac2e6bfe059abeda5459896f370f3",
+      "kind": "sticker",
+      "label": "61b06fb183d7c1638952881187 (1)",
+      "url": "",
+      "blob": "a11e69c58aeac2e6bfe059abeda5459896f370f3",
+      "size": 72056,
+      "license": "custom"
+    },
+    {
+      "id": "custom-3a3b2d6db9af3ec2100d3a72cd7473cadf4343a8",
+      "kind": "sticker",
+      "label": "kOpmeBV0pr",
+      "url": "",
+      "blob": "3a3b2d6db9af3ec2100d3a72cd7473cadf4343a8",
+      "size": 126399,
+      "license": "custom"
+    },
+    {
+      "id": "custom-65a9338de596b26b171bba3b97ad27a10224b362",
+      "kind": "sticker",
+      "label": "mLvJ7rNB3Y",
+      "url": "",
+      "blob": "65a9338de596b26b171bba3b97ad27a10224b362",
+      "size": 198919,
+      "license": "custom"
+    },
+    {
+      "id": "custom-ff243b7f17ae4bda72e9b9f1176d1bfc7d108462",
+      "kind": "sticker",
+      "label": "64a135cbdca991688286667264",
+      "url": "",
+      "blob": "ff243b7f17ae4bda72e9b9f1176d1bfc7d108462",
+      "size": 46818,
+      "license": "custom"
+    },
+    {
+      "id": "custom-078ab2eb088ee92fce5d8ff0218d09b3a1d24db6",
+      "kind": "sticker",
+      "label": "4yq5rWoPpn",
+      "url": "",
+      "blob": "078ab2eb088ee92fce5d8ff0218d09b3a1d24db6",
+      "size": 55739,
+      "license": "custom"
+    },
+    {
+      "id": "custom-a8e386e5e5f1b140274c036d18856019b1b71d5d",
+      "kind": "sticker",
+      "label": "mLqJ7y6PpY",
+      "url": "",
+      "blob": "a8e386e5e5f1b140274c036d18856019b1b71d5d",
+      "size": 138393,
+      "license": "custom"
+    },
+    {
+      "id": "custom-f8a138c496fbe8e7e79c1b1e016d8f00cea121db",
+      "kind": "sticker",
+      "label": "6279223d103fd1652105789594",
+      "url": "",
+      "blob": "f8a138c496fbe8e7e79c1b1e016d8f00cea121db",
+      "size": 62750,
+      "license": "custom"
+    },
+    {
+      "id": "custom-49e072b33b4720350e33b43e0fcc6579e94ecb92",
+      "kind": "sticker",
+      "label": "616599463c6cc1634048326592",
+      "url": "",
+      "blob": "49e072b33b4720350e33b43e0fcc6579e94ecb92",
+      "size": 61574,
+      "license": "custom"
+    },
+    {
+      "id": "custom-20a353aef825a750c997737514f596068132f676",
+      "kind": "sticker",
+      "label": "5f95d81e2ccee160365571074",
+      "url": "",
+      "blob": "20a353aef825a750c997737514f596068132f676",
+      "size": 73807,
+      "license": "custom"
+    },
+    {
+      "id": "custom-e0462a4ca35edf48e61bfb218a3c2b8e0ab90e03",
+      "kind": "sticker",
+      "label": "5f92a3581963d1603445592349",
+      "url": "",
+      "blob": "e0462a4ca35edf48e61bfb218a3c2b8e0ab90e03",
+      "size": 60111,
+      "license": "custom"
+    },
+    {
+      "id": "custom-e43f289fc0f3cc52ddb6309f177c43f052967f3d",
+      "kind": "sticker",
+      "label": "5eb7827d402161589084797127",
+      "url": "",
+      "blob": "e43f289fc0f3cc52ddb6309f177c43f052967f3d",
+      "size": 114138,
+      "license": "custom"
+    },
+    {
+      "id": "custom-6bdb536512495828267b13af194a386bc039f7a9",
+      "kind": "sticker",
+      "label": "5f95d624bf8b31603655204411",
+      "url": "",
+      "blob": "6bdb536512495828267b13af194a386bc039f7a9",
+      "size": 56219,
+      "license": "custom"
+    },
+    {
+      "id": "custom-e0c5bd9d33fa4b350f33a975669e3c7f7d6edcbc",
+      "kind": "sticker",
+      "label": "5eb95526062481589204262664",
+      "url": "",
+      "blob": "e0c5bd9d33fa4b350f33a975669e3c7f7d6edcbc",
+      "size": 191669,
+      "license": "custom"
+    },
+    {
+      "id": "custom-e87b6c13f87d9a217d58b2549a4491c32f77843c",
+      "kind": "sticker",
+      "label": "YyJve74xqr",
+      "url": "",
+      "blob": "e87b6c13f87d9a217d58b2549a4491c32f77843c",
+      "size": 109895,
+      "license": "custom"
+    },
+    {
+      "id": "custom-759e965c5210875505166187059b67fcb153453d",
+      "kind": "sticker",
+      "label": "5f92a821d77311603446817356",
+      "url": "",
+      "blob": "759e965c5210875505166187059b67fcb153453d",
+      "size": 35689,
+      "license": "custom"
+    },
+    {
+      "id": "custom-84755daf7db9336e2b806ad976a1c5b3d218a6d9",
+      "kind": "sticker",
+      "label": "5eb6c2602fd621589035616976",
+      "url": "",
+      "blob": "84755daf7db9336e2b806ad976a1c5b3d218a6d9",
+      "size": 82759,
+      "license": "custom"
+    },
+    {
+      "id": "custom-1f8497409e1a08769b5460f1f392e2801726fb49",
+      "kind": "sticker",
+      "label": "5f47cc1fec7ce1598540831415",
+      "url": "",
+      "blob": "1f8497409e1a08769b5460f1f392e2801726fb49",
+      "size": 78594,
+      "license": "custom"
+    },
+    {
+      "id": "custom-f0c3d17149f147586d3b1c99f239ea4f76490cdb",
+      "kind": "sticker",
+      "label": "5eb6bac15448b1589033665654",
+      "url": "",
+      "blob": "f0c3d17149f147586d3b1c99f239ea4f76490cdb",
+      "size": 102199,
+      "license": "custom"
+    },
+    {
+      "id": "custom-98211116d02d839b8d70beb6e0e0f5f4fddc164c",
+      "kind": "sticker",
+      "label": "5d0f9f630d76e1561304931765",
+      "url": "",
+      "blob": "98211116d02d839b8d70beb6e0e0f5f4fddc164c",
+      "size": 100674,
+      "license": "custom"
+    },
+    {
+      "id": "custom-86b9ed1ee899a29353bf272021a6eb51b9ca2b93",
+      "kind": "sticker",
+      "label": "5d08cae22c46e1560857314658",
+      "url": "",
+      "blob": "86b9ed1ee899a29353bf272021a6eb51b9ca2b93",
+      "size": 60562,
+      "license": "custom"
+    },
+    {
+      "id": "custom-605cce0f84e6ee53077a9e63a33be4f8e9422f9a",
+      "kind": "sticker",
+      "label": "5df712e00cc561576473312293",
+      "url": "",
+      "blob": "605cce0f84e6ee53077a9e63a33be4f8e9422f9a",
+      "size": 92061,
+      "license": "custom"
+    },
+    {
+      "id": "custom-fd66579e7382d20559b16e0a58cec21a3c8789ec",
+      "kind": "sticker",
+      "label": "5epWJN9wq8",
+      "url": "",
+      "blob": "fd66579e7382d20559b16e0a58cec21a3c8789ec",
+      "size": 24398,
+      "license": "custom"
+    },
+    {
+      "id": "custom-e4325130032808b5a41f1101321098a45d7ad17c",
+      "kind": "sticker",
+      "label": "5f6c3a8782a251600928391378",
+      "url": "",
+      "blob": "e4325130032808b5a41f1101321098a45d7ad17c",
+      "size": 199876,
+      "license": "custom"
+    },
+    {
+      "id": "custom-9680ab202e11fecfaed8a79dfc74b669910771a3",
+      "kind": "sticker",
+      "label": "5f86f0fc90a281602679036832",
+      "url": "",
+      "blob": "9680ab202e11fecfaed8a79dfc74b669910771a3",
+      "size": 52384,
+      "license": "custom"
+    },
+    {
+      "id": "custom-08eb6e489ad428e2ffe89daac4f9b0cc30735911",
+      "kind": "sticker",
+      "label": "5f859f84b27d11602592644336",
+      "url": "",
+      "blob": "08eb6e489ad428e2ffe89daac4f9b0cc30735911",
+      "size": 45539,
+      "license": "custom"
+    },
+    {
+      "id": "custom-125af7434e68b0578d77079e91d58c789b557f0b",
+      "kind": "sticker",
+      "label": "5fad57e4adb7b1605195748137",
+      "url": "",
+      "blob": "125af7434e68b0578d77079e91d58c789b557f0b",
+      "size": 45348,
+      "license": "custom"
+    },
+    {
+      "id": "custom-6ee2437c1f75b34077140329ad756b2dfececb6e",
+      "kind": "sticker",
+      "label": "7KLpEok035",
+      "url": "",
+      "blob": "6ee2437c1f75b34077140329ad756b2dfececb6e",
+      "size": 85228,
+      "license": "custom"
+    },
+    {
+      "id": "custom-e19ac96e192718e6e023e20115339276478e96a6",
+      "kind": "sticker",
+      "label": "9XqPNr4Yvm",
+      "url": "",
+      "blob": "e19ac96e192718e6e023e20115339276478e96a6",
+      "size": 32606,
+      "license": "custom"
+    },
+    {
+      "id": "custom-c88e5b490ae3e5497708985edac82bde7140f0b5",
+      "kind": "sticker",
+      "label": "61cc73a332321164078889952",
+      "url": "",
+      "blob": "c88e5b490ae3e5497708985edac82bde7140f0b5",
+      "size": 76362,
+      "license": "custom"
+    },
+    {
+      "id": "custom-1cc0b2bb86a2a943a1cb276b64bc6b65c8b2cd71",
+      "kind": "sticker",
+      "label": "62b15a0da6c621655790093566",
+      "url": "",
+      "blob": "1cc0b2bb86a2a943a1cb276b64bc6b65c8b2cd71",
+      "size": 313152,
+      "license": "custom"
+    },
+    {
+      "id": "custom-eb46e97a166a1f872dd401aded7a8922f62a4db9",
+      "kind": "sticker",
+      "label": "435f9959f3eeee31603885555",
+      "url": "",
+      "blob": "eb46e97a166a1f872dd401aded7a8922f62a4db9",
+      "size": 184227,
+      "license": "custom"
+    },
+    {
+      "id": "custom-e1d473a6508bec463b2f1504b93fe0240d3ceff8",
+      "kind": "sticker",
+      "label": "612f4a9e92c01163048924660",
+      "url": "",
+      "blob": "e1d473a6508bec463b2f1504b93fe0240d3ceff8",
+      "size": 69727,
+      "license": "custom"
+    },
+    {
+      "id": "custom-3213aadca8d17af5196ef6db617a856b021be5ff",
+      "kind": "sticker",
+      "label": "2765f9a9d9b42b461603968411",
+      "url": "",
+      "blob": "3213aadca8d17af5196ef6db617a856b021be5ff",
+      "size": 217772,
+      "license": "custom"
+    },
+    {
+      "id": "custom-33c591ccdffe55d65527e21b5a80787b7e541ddd",
+      "kind": "sticker",
+      "label": "6066c93535d501617348917312",
+      "url": "",
+      "blob": "33c591ccdffe55d65527e21b5a80787b7e541ddd",
+      "size": 63988,
+      "license": "custom"
+    },
+    {
+      "id": "custom-79bff6e98225f0f728dd8d29201509f94fac60e1",
+      "kind": "sticker",
+      "label": "74667ccfe310785c1741487665",
+      "url": "",
+      "blob": "79bff6e98225f0f728dd8d29201509f94fac60e1",
+      "size": 202304,
+      "license": "custom"
+    },
+    {
+      "id": "custom-068eb80eee7b2cb232c68239407d664db56892ec",
+      "kind": "sticker",
+      "label": "48267503c11d94e01733311505",
+      "url": "",
+      "blob": "068eb80eee7b2cb232c68239407d664db56892ec",
+      "size": 94400,
+      "license": "custom"
+    },
+    {
+      "id": "custom-a6cb5d9a1158d9301ba58e58b06a8c8d4d0bf2ad",
+      "kind": "sticker",
+      "label": "kNwvyPnApD",
+      "url": "",
+      "blob": "a6cb5d9a1158d9301ba58e58b06a8c8d4d0bf2ad",
+      "size": 181928,
+      "license": "custom"
+    },
+    {
+      "id": "custom-6862f80867610bfc373100c570903b74ade26d2b",
+      "kind": "sticker",
+      "label": "KVq4j7Yjvn",
+      "url": "",
+      "blob": "6862f80867610bfc373100c570903b74ade26d2b",
+      "size": 208288,
+      "license": "custom"
+    },
+    {
+      "id": "custom-6733ff69747a1e368aff8cb020088d9499cae563",
+      "kind": "sticker",
+      "label": "MK1p6XdK36",
+      "url": "",
+      "blob": "6733ff69747a1e368aff8cb020088d9499cae563",
+      "size": 229510,
+      "license": "custom"
+    },
+    {
+      "id": "custom-35ecdf6f5f9731999e8d06d71f3c85163e963c9a",
+      "kind": "sticker",
+      "label": "XbvDNjmbq8",
+      "url": "",
+      "blob": "35ecdf6f5f9731999e8d06d71f3c85163e963c9a",
+      "size": 128015,
+      "license": "custom"
+    },
+    {
+      "id": "custom-76964f4f750f4cc51bed5d014e04aac2b129f0d3",
+      "kind": "sticker",
+      "label": "YyJpe7Jb3r",
+      "url": "",
+      "blob": "76964f4f750f4cc51bed5d014e04aac2b129f0d3",
+      "size": 601457,
+      "license": "custom"
     }
   ],
   "licenses": {
@@ -28379,6 +29009,7 @@
     "zcoolqingkehuangyou": "Copyright 2018 The ZCOOL QingKe HuangYou Project Authors (https://www.github.com/googlefonts/zcool-qingke-huangyou)\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at:\nhttp://scripts.sil.org/OFL\n\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded, \nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.\n",
     "longcang": "Copyright 2018 The Long Cang Project Authors (https://github.com/googlefonts/longcang)\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at:\nhttp://scripts.sil.org/OFL\n\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded, \nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.\n",
     "liujianmaocao": "Copyright 2018 The Liu Jian Mao Cao Project Authors (https://www.github.com/googlefonts/liujianmaocao)\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at:\nhttp://scripts.sil.org/OFL\n\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded, \nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.\n",
-    "zhimangxing": "Copyright 2018 The Zhi Mang Xing Project Authors (https://github.com/googlefonts/zhimangxing)\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at:\nhttp://scripts.sil.org/OFL\n\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded, \nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.\n"
+    "zhimangxing": "Copyright 2018 The Zhi Mang Xing Project Authors (https://github.com/googlefonts/zhimangxing)\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at:\nhttp://scripts.sil.org/OFL\n\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded, \nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.\n",
+    "custom": "用户自有贴纸，随应用打包分发。"
   }
 }
