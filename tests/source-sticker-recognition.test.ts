@@ -113,7 +113,7 @@ describe("source sticker recognition knowledge", () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-source-sticker-recognition-vfr-"));
     try {
       const adapter = new FfmpegAdapter(ffmpegPath, ffprobePath), file = path.join(directory, "vfr.mp4");
-      await command(ffmpegPath, ["-f", "lavfi", "-i", "testsrc2=size=160x90:rate=30:d=1", "-vf", "select='eq(n,0)+eq(n,3)+eq(n,10)+eq(n,20)'", "-vsync", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", file]);
+      await command(ffmpegPath, ["-f", "lavfi", "-i", "testsrc2=size=160x90:rate=30:d=1", "-vf", "select='eq(n,0)+eq(n,3)+eq(n,10)+eq(n,20)'", "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", file]);
       const media: MediaItem = { id: crypto.randomUUID(), sourcePath: file, displayName: "vfr.mp4", fingerprint: await fingerprintFile(file), sizeBytes: 1, durationMs: 1000, width: 160, height: 90, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
       const reader = new SupervisorEvidence(adapter, media);
       const source = await reader.sourceIdentity(new AbortController().signal); await reader.dispose();

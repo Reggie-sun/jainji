@@ -259,9 +259,10 @@ export class TemplateCompiler {
     const graphPath = scriptedCover ? options.textFilePath("cover-graph") : undefined;
     if (graphPath) textFiles.push({ layerId: "cover-graph", path: graphPath, content: graph.join(";") });
 
+    // -filter_complex_script is unavailable in some FFmpeg builds; always pass inline.
     args.push(
       ...(options.threads === undefined ? [] : ["-filter_complex_threads", String(options.threads)]),
-      ...(graphPath ? ["-filter_complex_script", graphPath] : ["-filter_complex", graph.join(";")]),
+      "-filter_complex", graph.join(";"),
       "-map", "[vout]",
       "-map", "0:a?",
       "-t", durationSeconds.toFixed(3),
@@ -271,7 +272,8 @@ export class TemplateCompiler {
       "-c:a", "aac",
       "-b:a", preset.quality === "high" ? "256k" : preset.quality === "small" ? "128k" : "192k",
       "-ar", "44100",
-      ...(preset.frameRateMode === "30" ? ["-r", "30"] : ["-vsync", "vfr"]),
+      // -vsync was removed in FFmpeg 8; -fps_mode is its replacement.
+      ...(preset.frameRateMode === "30" ? ["-r", "30"] : ["-fps_mode", "vfr"]),
       ...(preset.container === "mkv" ? [] : ["-movflags", "+faststart"]),
       "-f", preset.container === "mkv" ? "matroska" : preset.container,
       "-progress", "pipe:1",

@@ -245,11 +245,11 @@ describe("actual media validation harness", () => {
     const generated = await runCommand(ffmpegPath, [
       "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=320x180:r=24:d=1",
       "-f", "lavfi", "-i", "testsrc2=s=320x180:r=30:d=1",
-      "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]", "-vsync", "vfr",
+      "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0[v]", "-map", "[v]", "-fps_mode", "vfr",
       "-c:v", "libx264", "-pix_fmt", "yuv420p", vfrPath,
     ]).promise;
     expect(generated.code, generated.stderr).toBe(0);
-    const rendered = await runCommand(ffmpegPath, ["-v", "error", "-y", "-i", vfrPath, "-vsync", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", vfrOutput]).promise;
+    const rendered = await runCommand(ffmpegPath, ["-v", "error", "-y", "-i", vfrPath, "-fps_mode", "vfr", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-an", vfrOutput]).promise;
     expect(rendered.code, rendered.stderr).toBe(0);
     await replaceFixtureMedia(sample, vfrPath, vfrOutput, { width: 320, height: 180, rotation: 0, durationMs: 2_000 });
     const selected = await loadMediaSelection({ kind: "project", filePath: sample.projectPath, batchIds: [sample.batch.id] });

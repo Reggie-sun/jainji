@@ -99,7 +99,7 @@ export class CoverReviewEvidence {
       const selectors = terms[0];
       const batchIndex = String(offset / MAX_FRAMES_PER_EXTRACTION).padStart(4, "0");
       const originalPattern = path.join(directory, `${prefix}-${batchIndex}-%08d.png`);
-      const extracted = await cancellable(this.ffmpeg.run(["-hide_banner", "-loglevel", "error", "-nostdin", "-i", media.sourcePath, "-vf", `select='${selectors}'`, "-vsync", "0", originalPattern]), signal);
+      const extracted = await cancellable(this.ffmpeg.run(["-hide_banner", "-loglevel", "error", "-nostdin", "-i", media.sourcePath, "-vf", `select='${selectors}'`, "-fps_mode", "passthrough", originalPattern]), signal);
       if (extracted.code !== 0) throw new Error("无法抽取审阅证据帧。");
     }
     const files = (await readdir(directory)).filter((name) => new RegExp(`^${prefix}-\\d{4}-\\d{8}\\.png$`).test(name)).sort();
