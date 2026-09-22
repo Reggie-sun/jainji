@@ -20,7 +20,8 @@ export function CornerDecorationPicker({ value, onChange, disabled, selected, on
   return <section id="corner-decoration-editor" aria-label="四角内容设置">
     <div className="corner-tabs" role="group" aria-label="装饰选择方式">
       <button type="button" disabled={disabled} aria-pressed={automatic} onClick={() => { onChange({ ...value, mode: "agent" }); onSelect(undefined); }}>全部交给 Agent</button>
-      <button type="button" disabled={disabled} aria-pressed={!automatic} onClick={() => onChange({ ...value, mode: "manual" })}>自己设置</button>
+      <button type="button" disabled={disabled} aria-pressed={!automatic && value.mode !== "random"} onClick={() => onChange({ ...value, mode: "manual" })}>自己设置</button>
+      <button type="button" disabled={disabled} aria-pressed={value.mode === "random"} onClick={() => { onChange({ ...value, mode: "random" }); onSelect(undefined); }}>本地随机</button>
     </div>
     {automatic ? <div className="card corner-settings"><h2>Agent 四角贴纸安排</h2><p>根据每条视频选择价格花字与贴纸，保留已有角落贴纸，只补齐空缺。</p><p>开启下方“覆盖原贴纸”后，已有贴纸的角落由覆盖层优先占位，其余角落和没有覆盖层的时段自动补齐。关闭覆盖时，通过独立视觉模型识别原贴纸，已有贴纸的角落和时段不再加一张；四角都有时不新增装饰贴纸。贴纸从内置素材和用户上传素材中选用；切回“自己设置”保留原有手动选择。</p></div> : <>
     <div className="corner-tabs" role="group" aria-label="选择编辑角落">
