@@ -16,7 +16,7 @@ it("exports price, sticker and audio through real NVENC and verifies the publish
   let queue: ExportQueue | undefined;
   try {
     const checked = await checkCapabilities(directory, resolveFont);
-    if (!checked.status.ready || checked.status.videoEncoder !== "h264_nvenc" || !await resolveFont(DEFAULT_TEXT_FONT_FAMILY)) {
+    if (!checked.status.ready || checked.status.videoEncoder?.kind !== "hardware" || checked.status.videoEncoder.encoder !== "h264_nvenc" || !await resolveFont(DEFAULT_TEXT_FONT_FAMILY)) {
       context.skip(); return;
     }
     const adapter = checked.adapter!;

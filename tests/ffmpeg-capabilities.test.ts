@@ -39,16 +39,18 @@ it.skipIf(process.platform === "win32")("selects a working app-local GPU encoder
   const { directory, bin } = await fixture("h264_nvenc", true);
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
   expect(result.status.ready).toBe(true);
-  expect(result.status.videoEncoder).toBe("h264_nvenc");
+  expect(result.status.videoEncoder).toEqual({ kind: "hardware", encoder: "h264_nvenc" });
+  expect(result.status.videoEncoderReason).toBeUndefined();
   expect(result.status.executionLimits?.exports).toBeGreaterThanOrEqual(1);
   expect(result.adapter?.ffmpegPath).toBe(path.join(bin, "ffmpeg"));
 });
 
-it.skipIf(process.platform === "win32")("reports the CPU route when the NVENC device probe fails", async () => {
+it.skipIf(process.platform === "win32")("reports the software-fallback route when the NVENC device probe fails but libx264 is available", async () => {
   const { directory } = await fixture("h264_nvenc libx264", false);
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
   expect(result.status.ready).toBe(true);
-  expect(result.status.videoEncoder).toBe("libx264");
+  expect(result.status.videoEncoder).toEqual({ kind: "software-fallback" });
+  expect(result.status.videoEncoderReason).toBe("fallback");
   expect(result.status.executionLimits?.exports).toBe(1);
 });
 
@@ -57,12 +59,23 @@ it.skipIf(process.platform === "win32")("locks export when neither encoder is us
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
   expect(result.status.ready).toBe(false);
   expect(result.status.videoEncoder).toBeUndefined();
+  expect(result.status.videoEncoderReason).toBeUndefined();
+});
+
+it.skipIf(process.platform === "win32")("reports software-only when libx264 is the only H.264 encoder", async () => {
+  const { directory } = await fixture("libx264", true);
+  const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
+  expect(result.status.ready).toBe(true);
+  expect(result.status.videoEncoder).toEqual({ kind: "software-only" });
+  expect(result.status.videoEncoderReason).toBe("only");
+  expect(result.status.executionLimits?.exports).toBe(1);
 });
 
 it.skipIf(process.platform === "win32")("does not retain a GPU profile when session validation fails after a single encode succeeds", async () => {
   const { directory } = await fixture("h264_nvenc libx264", true, false);
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
-  expect(result.status.videoEncoder).toBe("libx264");
+  expect(result.status.videoEncoder).toEqual({ kind: "software-fallback" });
+  expect(result.status.videoEncoderReason).toBe("fallback");
   expect(result.status.executionLimits?.exports).toBe(1);
 });
 
@@ -79,13 +92,13 @@ it.skipIf(process.platform === "win32")("refreshes fonts without changing the en
   const { directory, bin } = await fixture("h264_nvenc libx264", true);
   const { status } = await checkCapabilities(directory, async () => null);
   expect(status.ready).toBe(false);
-  expect(status.videoEncoder).toBe("h264_nvenc");
+  expect(status.videoEncoder).toEqual({ kind: "hardware", encoder: "h264_nvenc" });
   // Even if a subsequent device probe would fail, font refresh must not rerun it.
   await writeFile(path.join(bin, "ffmpeg"), `#!${process.execPath}\nprocess.exit(1);\n`);
   const refreshed = await refreshFontCapabilities(status, async () => "/fixture/new-font.ttf");
   expect(refreshed.ready).toBe(true);
   expect(refreshed.message).toBeUndefined();
-  expect(refreshed.videoEncoder).toBe("h264_nvenc");
+  expect(refreshed.videoEncoder).toEqual({ kind: "hardware", encoder: "h264_nvenc" });
   expect(refreshed.executionLimits).toEqual(status.executionLimits);
   expect(status.fonts).toBe(false);
 });

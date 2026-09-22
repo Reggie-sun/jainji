@@ -12,7 +12,7 @@
 
 body { background: var(--workspace-canvas); color: var(--workspace-ink); }
 .app-shell { background: var(--workspace-canvas); }
-.main-area { margin-left: var(--workspace-rail); }
+.main-area { margin-left: var(--workspace-rail); flex: 1; min-width: 0; }
 
 .workspace-rail {
   position: fixed;
@@ -68,6 +68,19 @@ body { background: var(--workspace-canvas); color: var(--workspace-ink); }
 .project-menu button:hover { background: #eef6f2; color: #176b59; }
 .project-menu-plus { display: grid; place-items: center; width: 17px; font-size: 18px; }
 .workspace-header-row>.engine-status { margin-left: auto; }
+/* Inline hint surfaced by the three-state H.264 capability probe:
+   - .fallback → HW encoder compiled into ffmpeg but runtime probe failed
+                 (typically vLLM/Qwen holding the GPU). Yellow dot, suggests
+                 freeing the GPU before a big batch.
+   - .only     → ffmpeg has no HW encoder at all (no-GPU box or stripped
+                 build). Gray dot, pure informational — the engine still
+                 works on CPU. */
+.engine-warning { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-left: 10px; cursor: help; }
+.engine-warning>i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.engine-warning.fallback { background: #faf3e3; color: var(--warn); border: 1px solid #e8dcc0; }
+.engine-warning.fallback>i { background: #c8a13c; }
+.engine-warning.only { background: #eef1ef; color: #5b6661; border: 1px solid #dce5e1; }
+.engine-warning.only>i { background: #8a958f; }
 .header-project-actions { display: flex; gap: 9px; }
 
 .workflow-steps { min-height: 64px; display: grid; grid-template-columns: repeat(5,minmax(112px,1fr)); align-items: center; max-width: 880px; margin: 0 auto; padding: 0 24px; }

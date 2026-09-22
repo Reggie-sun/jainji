@@ -28,7 +28,7 @@ import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathW
 import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
 import { executionLimits } from "./execution-limits.js";
-import type { H264Encoder } from "./video-encoder.js";
+import type { H264Capability, H264Encoder } from "./video-encoder.js";
 import { outputDimensions } from "../shared/export-settings.js";
 import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } from "./gpu-memory.js";
 import { reviewDigest } from "./cover-review-approval.js";
@@ -52,7 +52,7 @@ export interface CreateBatchInput {
 
 export interface ExportQueueDependencies {
   gpuFreeMemory?: () => Promise<number | undefined>;
-  videoEncoder?: H264Encoder;
+  videoEncoder?: H264Capability;
   executionLimits?: ReturnType<typeof executionLimits>;
   jobStore: JobStore;
   ffmpeg: FfmpegAdapter;
@@ -105,7 +105,7 @@ function immutableSnapshot(template: EditTemplate): EditTemplate {
 
 export class ExportQueue {
   private readonly limits: ReturnType<typeof executionLimits>;
-  private readonly videoEncoder: H264Encoder;
+  private readonly videoEncoder: H264Capability;
   private readonly states = new Map<string, QueueState>();
   private readonly controllers = new Map<string, RunningCommand>();
   private readonly cancelRequested = new Set<string>();
@@ -171,10 +171,10 @@ export class ExportQueue {
     const compiled = await this.compiler.compile(template, media, preset, {
       ffmpegPath: this.dependencies.ffmpeg.ffmpegPath, fontResolver: this.dependencies.fontResolver,
       textFilePath: (layerId) => path.join(directory, `${id}-${layerId}.txt`),
-      threads, videoEncoder: this.videoEncoder,
+      threads, videoEncoder: this.resolveEncoder(),
     });
     try {
-      if (this.videoEncoder === "h264_nvenc") {
+      if (this.resolveEncoder() === "h264_nvenc") {
         const free = await (this.dependencies.gpuFreeMemory ?? readGpuFreeMemory)();
         const size = outputDimensions(media, preset);
         if (free !== undefined && free - GPU_MEMORY_RESERVE_MIB < estimateNvencMemoryMiB(size.width, size.height)) throw new Error("GPU 显存不足，预览未开始。");
@@ -204,10 +204,19 @@ export class ExportQueue {
   }
 
   constructor(private readonly dependencies: ExportQueueDependencies) {
-    this.videoEncoder = dependencies.videoEncoder ?? "libx264";
-    this.limits = { ...(dependencies.executionLimits ?? executionLimits(undefined, this.videoEncoder)) };
+    this.videoEncoder = dependencies.videoEncoder ?? { kind: "software-only" };
+    this.limits = { ...(dependencies.executionLimits ?? executionLimits(undefined, this.resolveEncoder())) };
     this.compiler = dependencies.compiler ?? new TemplateCompiler();
     this.verifier = dependencies.artifactVerifier ?? new ArtifactVerifier(dependencies.ffmpeg);
+  }
+
+  /**
+   * Returns the concrete encoder string that ffmpeg will be invoked with.
+   * Hardware-capable states pick the probed hardware; software states fall back
+   * to libx264 — `H264Capability` only describes why, not the actual binary.
+   */
+  private resolveEncoder(): H264Encoder {
+    return this.videoEncoder.kind === "hardware" ? this.videoEncoder.encoder : "libx264";
   }
 
   async recover(): Promise<QueueSnapshot> {
@@ -429,7 +438,7 @@ export class ExportQueue {
     clearTimeout(this.memoryTimer);
     this.memoryTimer = undefined;
     if (this.probingMemory) { this.pumpRequested = true; return; }
-    if (this.videoEncoder !== "h264_nvenc" || this.shuttingDown) { this.pumpReady(); return; }
+    if (this.resolveEncoder() !== "h264_nvenc" || this.shuttingDown) { this.pumpReady(); return; }
     this.probingMemory = true;
     void Promise.resolve().then(this.dependencies.gpuFreeMemory ?? readGpuFreeMemory).catch(() => undefined).then((free) => {
       // A transient telemetry failure must not bypass a previously observed
@@ -470,13 +479,13 @@ export class ExportQueue {
       const freeThreads = this.limits.threads - [...this.activeTasks.values()].reduce((sum, active) => sum + active.threads, 0);
       if (freeThreads <= 0) return;
       const dimensions = outputDimensions(preview.media, preview.preset);
-      const gpuMemory = this.videoEncoder === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
+      const gpuMemory = this.resolveEncoder() === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
       if (gpuMemory && (freeGpuMiB === undefined ? this.activeTasks.size > 0 : gpuBudget < gpuMemory)) {
         this.memoryTimer = setTimeout(() => this.pump(), 2000);
         return;
       }
       gpuBudget -= gpuMemory;
-      const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.videoEncoder !== "libx264" ? this.limits.exports : 2))));
+      const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.resolveEncoder() !== "libx264" ? this.limits.exports : 2))));
       const threads = Math.min(maxThreads, freeThreads);
       this.pendingPreviews.shift();
       preview.signal.removeEventListener("abort", preview.abortListener);
@@ -494,7 +503,7 @@ export class ExportQueue {
         if (freeThreads <= 0) return;
         const media = this.mediaFor(state, task);
         const dimensions = media ? outputDimensions(media, state.batch.preset) : { width: 1280, height: 720 };
-        const gpuMemory = this.videoEncoder === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
+        const gpuMemory = this.resolveEncoder() === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
         if (gpuMemory && (freeGpuMiB === undefined ? this.activeTasks.size > 0 : gpuBudget < gpuMemory)) {
           const message = "等待 GPU 显存释放后继续导出，可停止此任务。";
           if (task.errorMessage !== message) { task.errorMessage = message; this.emit(); }
@@ -505,7 +514,7 @@ export class ExportQueue {
         gpuBudget -= gpuMemory;
         // Reserve a fair CPU share for later GPU jobs, which arrive progressively
         // while the Agent is planning; early exports must not consume all slots' budget.
-        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.videoEncoder !== "libx264" ? this.limits.exports : 2))));
+        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.resolveEncoder() !== "libx264" ? this.limits.exports : 2))));
         const threads = Math.min(maxThreads, freeThreads);
         const work = this.execute(state, task, threads).catch((error: unknown) => {
           this.executionError ??= error;
@@ -705,7 +714,7 @@ export class ExportQueue {
         fontResolver: this.dependencies.fontResolver,
         textFilePath: textPath,
         threads,
-        videoEncoder: this.videoEncoder,
+        videoEncoder: this.resolveEncoder(),
       });
       temporaryTextFiles = compiled.textFiles.map((file) => file.path);
       await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { encoding: "utf8", mode: 0o600 })));

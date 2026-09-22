@@ -31,13 +31,17 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
   </aside>;
 }
 
-export function WorkspaceHeader({ step, section, projectName, projectDirty, engineReady, engineLabel, disabled, saveDisabled, onWorkflow, onNewProject, onOpenProject, onSaveProject, onProjectManager }: {
+export function WorkspaceHeader({ step, section, projectName, projectDirty, engineReady, engineLabel, engineWarning, disabled, saveDisabled, onWorkflow, onNewProject, onOpenProject, onSaveProject, onProjectManager }: {
   step: Step;
   section: WorkflowId;
   projectName: string;
   projectDirty: boolean;
   engineReady: boolean;
   engineLabel: string;
+  // Three-state hint from the startup encoder probe — `fallback` (HW compiled in
+  // but probe failed, e.g. vLLM holding the GPU) and `only` (no HW encoder at
+  // all). `undefined` means the engine is on real hardware and needs no hint.
+  engineWarning?: { kind: "fallback" | "only"; message: string };
   disabled: boolean;
   saveDisabled: boolean;
   onWorkflow(id: WorkflowId): void;
@@ -60,6 +64,7 @@ export function WorkspaceHeader({ step, section, projectName, projectDirty, engi
         </div>
       </details>
       <span className={engineReady ? "engine-status" : "engine-status unavailable"}><i />{engineLabel}</span>
+      {engineWarning && <span className={`engine-warning ${engineWarning.kind}`} title={engineWarning.message} aria-label={engineWarning.message}><i />{engineWarning.kind === "fallback" ? "GPU 被占用" : "无硬件编码器"}</span>}
       <div className="header-project-actions">
         <button className="button secondary compact" type="button" disabled={disabled} onClick={onOpenProject}><Icon name="folder" size={16} />打开</button>
         <button className="button primary compact" type="button" disabled={saveDisabled} onClick={onSaveProject}><Icon name="download" size={16} />保存项目</button>

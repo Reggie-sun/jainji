@@ -568,8 +568,12 @@ desktopSmoke: try {
   await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
   assert.equal(requests, 1);
   const state = await evaluate("window.jianji.getState()");
-  const encoderLabels = { libx264: "CPU 编码", h264_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", h264_qsv: "Intel GPU" };
-  assert.equal(await evaluate("document.querySelector('.engine-status').textContent"), `${encoderLabels[state.capabilities.videoEncoder]} · ${state.capabilities.executionLimits.exports} 路`);
+  const hardwareLabels = { h264_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", h264_qsv: "Intel GPU" };
+  const capability = state.capabilities.videoEncoder;
+  const expectedLabel = !capability ? "本地编码"
+    : capability.kind === "hardware" ? hardwareLabels[capability.encoder]
+    : "CPU 编码";
+  assert.equal(await evaluate("document.querySelector('.engine-status').textContent"), `${expectedLabel} · ${state.capabilities.executionLimits.exports} 路`);
   assert.equal(state.queue.batches[0].batch.tasks[0].status, "completed");
   assert.equal(JSON.stringify(state).includes("local-smoke-key"), false);
   assert.equal(state.agentRun.items[0].summary, "保留主体与手动价格");

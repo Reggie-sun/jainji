@@ -169,9 +169,22 @@ export default function App() {
   const ready = state.project.mediaItems.filter((item) => item.probeStatus === "ready");
   const preview = ready.find((item) => item.id === previewId) ?? ready[0];
   const canCreate = state.connection.configured && state.capabilities.ready;
-  const encoderLabel = state.capabilities.videoEncoder ? {
-    libx264: "CPU 编码", h264_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", h264_qsv: "Intel GPU",
-  }[state.capabilities.videoEncoder] : "本地编码";
+  const capability = state.capabilities.videoEncoder;
+  const hardwareLabels: Record<"h264_nvenc" | "h264_amf" | "h264_qsv", string> = {
+    h264_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", h264_qsv: "Intel GPU",
+  };
+  const encoderLabel = !capability ? "本地编码"
+    : capability.kind === "hardware" ? hardwareLabels[capability.encoder]
+    : "CPU 编码";
+  // Three-state classification: `hardware` is the happy path; `software-fallback`
+  // means ffmpeg lists a HW encoder but the runtime probe failed (typical:
+  // vLLM/Qwen holding the GPU). `software-only` means ffmpeg has no HW encoder
+  // compiled in. Both still encode — the dot is just a hint to free the GPU
+  // before kicking off a big batch.
+  const engineWarning = !capability ? undefined
+    : capability.kind === "software-fallback" ? { kind: "fallback" as const, message: "GPU 显存被其他进程占用,渲染会显著变慢" }
+    : capability.kind === "software-only" ? { kind: "only" as const, message: "未检测到硬件编码器,使用 CPU 软编码" }
+    : undefined;
   const engineLabel = state.capabilities.ready ? `${encoderLabel} · ${state.capabilities.executionLimits?.exports ?? 1} 路` : "引擎待配置";
 
   const importMedia = () => void run(async () => { apply(await window.jianji.selectAndProbe()); });
@@ -324,7 +337,7 @@ export default function App() {
     {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
     <BugFeedbackDialog open={feedbackOpen} page={step === "stickers" ? "templates" : step} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">
-      <WorkspaceHeader step={step} section={workflowSection} projectName={collectionName} projectDirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} engineReady={state.capabilities.ready} engineLabel={engineLabel} disabled={locked || exporting} saveDisabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onWorkflow={navigateWorkflow} onNewProject={() => void changeProject(false)} onOpenProject={() => void changeProject(true)} onSaveProject={saveCollection} onProjectManager={openProjectManager} />
+      <WorkspaceHeader step={step} section={workflowSection} projectName={collectionName} projectDirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} engineReady={state.capabilities.ready} engineLabel={engineLabel} engineWarning={engineWarning} disabled={locked || exporting} saveDisabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onWorkflow={navigateWorkflow} onNewProject={() => void changeProject(false)} onOpenProject={() => void changeProject(true)} onSaveProject={saveCollection} onProjectManager={openProjectManager} />
       <main className="content">
         {state.recentProjectsWarning && <div className="notice error" role="status">{state.recentProjectsWarning}</div>}
         {state.project.migrationBackupPath && <div className="notice" role="status">项目已升级；降级副本保存在：{state.project.migrationBackupPath}</div>}

@@ -4,7 +4,7 @@ import { basename, join } from "node:path";
 import { FONT_CHOICES } from "../shared/decorations.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import { binaryCandidates, windowsFontCandidates } from "./platform.js";
-import { selectH264Encoder, type H264Encoder } from "./video-encoder.js";
+import { selectH264Capability, type H264Capability, type H264Encoder } from "./video-encoder.js";
 import { executionLimits, verifiedExportCount, type ExecutionLimits } from "./execution-limits.js";
 import { probeConcurrentEncodes } from "./hardware-probe.js";
 
@@ -104,7 +104,9 @@ export interface CapabilityStatus {
   drawtext: boolean;
   overlay: boolean;
   h264Encoder: boolean;
-  videoEncoder?: H264Encoder;
+  videoEncoder?: H264Capability;
+  /** Renderer-readable mirror of `videoEncoder.kind` when not "hardware". */
+  videoEncoderReason?: "fallback" | "only";
   executionLimits?: ExecutionLimits;
   aacEncoder: boolean;
   fonts: boolean;
@@ -191,7 +193,12 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
     try { return (await command.promise).code === 0; }
     finally { clearTimeout(timeout); }
   };
-  status.videoEncoder = await selectH264Encoder(encoders.code === 0 ? encoders.stdout : "", async (args) => {
+  // selectH264Capability wraps selectH264Encoder and reclassifies the result.
+  // We need the inner tryEncode to also fill executionLimits when a hardware
+  // encoder passes the concurrent-export probe, so we capture the picked encoder
+  // by intercepting the probe args.
+  let probedHardware: H264Encoder | undefined;
+  status.videoEncoder = await selectH264Capability(encoders.code === 0 ? encoders.stdout : "", async (args) => {
     if (!await tryEncode(args)) return false;
     const encoder = args[args.indexOf("-c:v") + 1] as H264Encoder;
     const limits = executionLimits(undefined, encoder);
@@ -201,10 +208,16 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
     });
     if (!exports) return false;
     status.executionLimits = { ...limits, exports };
+    probedHardware = encoder;
     return true;
   });
-  if (status.videoEncoder === "libx264") status.executionLimits = executionLimits(undefined, "libx264");
-  status.h264Encoder = Boolean(status.videoEncoder);
+  if (!probedHardware) status.executionLimits = executionLimits(undefined, "libx264");
+  status.h264Encoder = status.videoEncoder !== undefined;
+  status.videoEncoderReason = status.videoEncoder?.kind === "software-fallback"
+    ? "fallback"
+    : status.videoEncoder?.kind === "software-only"
+      ? "only"
+      : undefined;
   status.aacEncoder = /\baac\b/.test(encoders.stdout);
   return { status: updateReadiness(status), adapter: new FfmpegAdapter(ffmpegPath, ffprobePath) };
 }

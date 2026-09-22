@@ -12,7 +12,7 @@ import { discoverBinary, FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { fingerprintFile } from "../src/main/paths";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
-import type { H264Encoder } from "../src/main/video-encoder";
+import type { H264Capability, H264Encoder } from "../src/main/video-encoder";
 import { DecorationSchema } from "../src/shared/decorations";
 import * as limits from "../src/main/execution-limits";
 
@@ -54,7 +54,8 @@ describe("AgentRunner concurrency", () => {
   });
 });
 
-async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc", verifiedSlots?: number, gpuFreeMemory = async (): Promise<number | undefined> => 32_000) {
+async function queueFixture(cores = 6, videoEncoder: H264Capability = { kind: "hardware", encoder: "h264_nvenc" }, verifiedSlots?: number, gpuFreeMemory = async (): Promise<number | undefined> => 32_000) {
+  const underlyingEncoder: H264Encoder = videoEncoder.kind === "hardware" ? videoEncoder.encoder : "libx264";
   const originalExecutionLimits = limits.executionLimits;
   vi.spyOn(limits, "executionLimits").mockImplementation((_cpuCount, encoder) => originalExecutionLimits(cores, encoder, { totalBytes: 64 * 1024 ** 3, availableBytes: 48 * 1024 ** 3 }));
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-concurrency-"));
@@ -88,7 +89,7 @@ async function queueFixture(cores = 6, videoEncoder: H264Encoder = "h264_nvenc",
     artifactVerifier: { verify: async (file: string, taskId: string) => ({ taskId, path: file, sizeBytes: (await readFile(file)).length, durationMs: 1000, createdAt: now() }) } as ArtifactVerifier,
     fontResolver: { resolve: async () => null },
     videoEncoder,
-    ...(verifiedSlots === undefined ? {} : { executionLimits: { ...limits.executionLimits(cores, videoEncoder), exports: verifiedSlots } }),
+    ...(verifiedSlots === undefined ? {} : { executionLimits: { ...limits.executionLimits(cores, underlyingEncoder), exports: verifiedSlots } }),
   });
   const batch = (count = 1) => queue.createBatch({ template: createDefaultTemplate(), mediaIds: Array.from({ length: count }, () => item.id), mediaItems: [item], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
   return { queue, batch, commands, jobStore, compile, peak: () => peak };
@@ -98,7 +99,7 @@ describe("global export concurrency", () => {
   it("keeps waiting if telemetry fails after reporting low VRAM", async () => {
     let free: number | undefined = 100;
     const probe = vi.fn(async () => free);
-    const f = await queueFixture(20, "h264_nvenc", 6, probe);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, probe);
     const batch = await f.batch();
     const running = f.queue.start(batch.id);
     try {
@@ -119,7 +120,7 @@ describe("global export concurrency", () => {
   it("does not launch work when shutdown races a pending memory query", async () => {
     const reading = deferred<number>();
     const probe = vi.fn(() => reading.promise);
-    const f = await queueFixture(20, "h264_nvenc", 6, probe);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, probe);
     const batch = await f.batch();
     const running = f.queue.start(batch.id);
     await vi.waitFor(() => expect(probe).toHaveBeenCalledOnce());
@@ -144,7 +145,7 @@ describe("global export concurrency", () => {
 
   it("waits for VRAM, resumes after it is released, and reserves startup headroom", async () => {
     let free = 628;
-    const f = await queueFixture(20, "h264_nvenc", 6, async () => free);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, async () => free);
     const batch = await f.batch(2);
     const running = f.queue.start(batch.id);
     try {
@@ -163,7 +164,7 @@ describe("global export concurrency", () => {
   });
 
   it.each(["cancel", "shutdown"])("settles a memory-blocked queue on %s without launching FFmpeg", async (action) => {
-    const f = await queueFixture(20, "h264_nvenc", 6, async () => 0);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, async () => 0);
     const batch = await f.batch();
     const running = f.queue.start(batch.id);
     await vi.waitFor(() => expect(f.queue.snapshot().batches[0].batch.tasks[0].errorMessage).toContain("显存"));
@@ -175,7 +176,7 @@ describe("global export concurrency", () => {
   });
 
   it("uses one NVENC slot if memory telemetry is unavailable", async () => {
-    const f = await queueFixture(20, "h264_nvenc", 6, async () => undefined);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, async () => undefined);
     const batch = await f.batch(2);
     const running = f.queue.start(batch.id);
     try {
@@ -189,7 +190,7 @@ describe("global export concurrency", () => {
   });
 
   it("honors the startup-verified limit instead of recalculating a larger GPU cap", async () => {
-    const f = await queueFixture(20, "h264_nvenc", 2);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 2);
     const batch = await f.batch(3);
     const running = f.queue.start(batch.id);
     await vi.waitFor(() => expect(f.commands).toHaveLength(2));
@@ -249,7 +250,7 @@ describe("global export concurrency", () => {
   });
 
   it("keeps CPU exports to one lane while giving that export eight threads", async () => {
-    const f = await queueFixture(20, "libx264");
+    const f = await queueFixture(20, { kind: "software-only" });
     const batch = await f.batch(2);
     const running = f.queue.start(batch.id);
     await vi.waitFor(() => expect(f.commands).toHaveLength(1));
