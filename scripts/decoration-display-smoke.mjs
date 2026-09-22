@@ -61,7 +61,7 @@ try {
   const clickText = async (text) => { await evaluate(`Array.from(document.querySelectorAll('button')).find(el=>el.textContent.trim()===${JSON.stringify(text)}).click()`); await pause(100); };
   await send("Page.navigate", { url: `http://127.0.0.1:${server.httpServer.address().port}/__decoration-display` });
   await waitFor("document.querySelector('#decoration-display-mode') && window.fixture");
-  assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('.workspace-subnav button'), button => button.textContent.trim())"), ["模板", "显示时段", "四角贴纸", "覆盖贴纸", "输出设置"]);
+  assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('.workspace-subnav button'), button => button.textContent.trim())"), ["显示时段", "四角贴纸"]);
   await clickText("显示时段");
   await waitFor("document.querySelector('.workspace-subnav button.active')?.textContent.trim()==='显示时段'");
   assert.equal(await evaluate("document.querySelector('.workspace-subnav button.active').getAttribute('aria-current')"), "location");

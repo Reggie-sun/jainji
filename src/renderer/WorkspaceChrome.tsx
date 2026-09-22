@@ -80,7 +80,6 @@ export function WorkspaceHeader({ step, section, projectName, projectDirty, engi
 }
 
 const TEMPLATE_SECTIONS = [
-  { id: "template", label: "模板", icon: "grid", selector: ".template-workspace-start" },
   { id: "timing", label: "显示时段", icon: "play", selector: "#display-time-settings" },
   { id: "corners", label: "四角贴纸", icon: "spark", selector: "#corner-decoration-editor" },
 ] as const;

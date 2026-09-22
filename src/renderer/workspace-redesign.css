@@ -108,7 +108,6 @@ body { background: var(--workspace-canvas); color: var(--workspace-ink); }
 .button.primary { background: var(--workspace-green); }
 .button.primary:hover:not(:disabled) { background: #0b6a58; }
 .material-collection { scroll-margin-top: 155px; }
-.template-workspace-start,
 #corner-decoration-editor,
 #display-time-settings,
 #cover-sticker-settings,
