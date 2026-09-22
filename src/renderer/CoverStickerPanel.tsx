@@ -10,6 +10,8 @@ const cloneTrack = (track: CoverTrack) => ({ ...track, keyframes: track.keyframe
 const cloneRegion = (region: CoverRegion): CoverRegion => ({ ...region, rectangle: { ...region.rectangle }, tracks: region.tracks && Object.fromEntries(Object.entries(region.tracks).map(([mediaId, track]) => [mediaId, cloneTrack(track)])) });
 const cloneCoverSticker = (value: CoverSticker | undefined): CoverSticker => ({ ...(value ?? DEFAULT_COVER_STICKER), stickerIds: [...(value?.stickerIds ?? DEFAULT_COVER_STICKER.stickerIds)], rectangle: { ...(value?.rectangle ?? DEFAULT_COVER_STICKER.rectangle) }, tracks: value?.tracks && Object.fromEntries(Object.entries(value.tracks).map(([mediaId, track]) => [mediaId, cloneTrack(track)])), regions: value?.regions?.map(cloneRegion), mediaRegions: value?.mediaRegions && Object.fromEntries(Object.entries(value.mediaRegions).map(([mediaId, regions]) => [mediaId, regions.map(cloneRegion)])) });
 const newRegion = (rectangle = { x: 0.35, y: 0.4, width: 0.3, height: 0.2 }): CoverRegion => ({ id: crypto.randomUUID(), rectangle });
+// Unified (rotating) cover regions preview as a plain white board; the actual sticker is picked per round at production time.
+const UNIFIED_PLACEHOLDER: DecorationCatalog["stickers"][number] = { id: "unified-placeholder", label: "统一款占位白板", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", animated: false, source: "builtin" };
 const cornerRectangles = [
   { x: 0, y: 0, width: 0.2, height: 0.15 }, { x: 0.8, y: 0, width: 0.2, height: 0.15 },
   { x: 0, y: 0.85, width: 0.2, height: 0.15 }, { x: 0.8, y: 0.85, width: 0.2, height: 0.15 },
@@ -27,7 +29,6 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   const [draft, setDraft] = useState(() => cloneCoverSticker(value));
   const [stickers, setStickers] = useState<DecorationCatalog["stickers"]>();
   const [previewId, setPreviewId] = useState<string>();
-  const [previewStickerId, setPreviewStickerId] = useState<string>();
   const [activeRegionId, setActiveRegionId] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -51,8 +52,6 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   const trackingMode = draft.trackingMode ?? "manual";
   const regions = preview ? manualCoverRegions(draft, preview.id) : manualCoverRegions(draft);
   const activeRegion = regions.find((region) => region.id === activeRegionId) ?? regions[0];
-  const sharedCandidates = stickers ?? [];
-  const sharedSticker = sharedCandidates.find((sticker) => sticker.id === previewStickerId) ?? sharedCandidates[0];
   const effectiveRegions = selectedMedia.flatMap((media) => manualCoverRegions(draft, media.id));
   const assignedStickerIds = effectiveRegions.flatMap((region) => region.stickerId ? [region.stickerId] : []);
   const missingSticker = stickers !== undefined && assignedStickerIds.some((id) => !stickers.some((sticker) => sticker.id === id));
@@ -108,7 +107,7 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
     } finally { setSaving(false); }
   };
 
-  const previewRegions = regions.map((region) => ({ ...region, track: region.tracks?.[preview?.id ?? ""], sticker: region.stickerId ? stickers?.find((sticker) => sticker.id === region.stickerId) : sharedSticker }));
+  const previewRegions = regions.map((region) => ({ ...region, track: region.tracks?.[preview?.id ?? ""], sticker: region.stickerId ? stickers?.find((sticker) => sticker.id === region.stickerId) : UNIFIED_PLACEHOLDER }));
   const hasMediaOverride = Boolean(preview && draft.mediaRegions && Object.prototype.hasOwnProperty.call(draft.mediaRegions, preview.id));
   const clearMissingStickers = () => setDraft((current) => {
     const keep = (region: CoverRegion) => !region.stickerId || stickers?.some((sticker) => sticker.id === region.stickerId) ? region : { ...region, stickerId: undefined };
@@ -126,7 +125,6 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
           <p className="cover-sticker-note">统一候选款供未单独指定的覆盖框共用：同轮素材使用一款，下一轮从候选中换用，不足时循环；每个框也可指定独立起始款。</p>
         </>}
         <div className="cover-sticker-editor"><div className="cover-sticker-preview-wrap">
-          {trackingMode === "manual" && sharedCandidates.length > 0 && <label className="cover-sticker-media-select">统一款预览<select aria-label="预览统一覆盖贴纸" value={sharedSticker?.id ?? ""} disabled={disabled || saving} onChange={(event) => setPreviewStickerId(event.target.value)}>{sharedCandidates.map((sticker) => <option value={sticker.id} key={sticker.id}>{sticker.label}</option>)}</select></label>}
           {selectedMedia.length > 0 && <label className="cover-sticker-media-select">当前素材<select aria-label="选择覆盖素材" value={preview?.id ?? ""} disabled={disabled || saving} onChange={(event) => { setPreviewId(event.target.value); setActiveRegionId(undefined); }}>{selectedMedia.map((media) => <option value={media.id} key={media.id}>{media.displayName}</option>)}</select></label>}
           {trackingMode === "assisted" ? <p>保存覆盖设置后，在下方建立审阅草稿。可以先人工建框，也可显式请求视觉模型提供候选。</p> : trackingMode === "agent" ? <div className="cover-agent-mode">{preview ? <div className="cover-agent-preview" style={{ aspectRatio: `${preview.width} / ${preview.height}` }}><video key={preview.id} src={preview.previewUrl} controls preload="metadata" /></div> : <div className="cover-sticker-preview-empty">先在素材工作台勾选至少一条可用素材，再开始自动识别。</div>}<p>开始制作后，视觉模型查看最多 12 张全片联系帧，提出近似覆盖位置和时段；独立主管检查真实样片，按遮盖效果和主体可见性判断，允许合理位置误差。必要时补帧或放大；快速闪现、遮挡仍可能漏检，无法确认时停止，不套用旧手动框。</p><p>已选 {selectedMedia.length} 条素材。定框最多纠正 3 次无效方案，补检与初始联系帧共用 40 帧预算；每版最多检查 5 轮样片、修订 2 次，实际调用次数取决于补检与修订。每轮另有 2 次创作选款调用。同源位置可复用，但每版仍检查新样片；同轮统一款式、下一轮换款，单款时复用。定框使用视觉连接，样片使用复核连接，选款使用创作连接，均需支持图片。</p></div> : preview ? <>
             <div className="cover-region-toolbar"><strong>覆盖框 {regions.length}/{MAX_MANUAL_COVERS}</strong><div><button type="button" className="button secondary compact" disabled={disabled || saving || regions.length >= MAX_MANUAL_COVERS} onClick={addFrame}>添加覆盖框</button><button type="button" className="button secondary compact" disabled={disabled || saving || regions.length + 4 > MAX_MANUAL_COVERS} onClick={addCorners}>添加四角</button><button type="button" className="button secondary compact" disabled={disabled || saving || !regions.some((region) => region.stickerId)} onClick={() => updateRegions((current) => current.map((region) => ({ ...region, stickerId: undefined })))}>统一使用候选款</button><button type="button" className="button secondary compact" disabled={disabled || saving || !activeRegion} onClick={deleteActive}>删除当前框</button></div></div>
