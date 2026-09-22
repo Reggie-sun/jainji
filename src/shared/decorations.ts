@@ -50,7 +50,7 @@ export const DecorationSchema = z.preprocess((input) => {
   productPrice: ProductPriceSchema.optional(),
   displayMode: DecorationDisplayModeSchema.optional(),
   priceStyle: PriceStyleIdSchema.optional(),
-  mode: z.enum(["manual", "agent"]).optional(),
+  mode: z.enum(["manual", "agent", "random"]).optional(),
   sticker: z.string().refine(isStickerId, "unknown sticker").default("template"),
   fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font").default(DEFAULT_TEXT_FONT_FAMILY),
   corners: z.object({ "top-left": CornerDecorationSchema.optional(), "top-right": CornerDecorationSchema.optional(), "bottom-left": CornerDecorationSchema.optional(), "bottom-right": CornerDecorationSchema.optional() }).strict().optional(),

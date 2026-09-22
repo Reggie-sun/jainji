@@ -133,6 +133,10 @@ export class AgentController {
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
       const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
       const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
+      // Local-random path: stickers / price style / cover selection are all decided without the
+      // creative round-trip. Skips provider.shortlist + provider.plan and the auto-cover selection
+      // call entirely. Manual and agent paths are untouched.
+      const randomPath = decorations.mode === "random" || project.coverSticker?.trackingMode === "random";
       const supervised = !assisted && Boolean(automaticCover || preserveSourceStickers);
       const refresh = parsed.sourceStickerRefresh;
       if (refresh) {
@@ -287,6 +291,16 @@ export class AgentController {
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
+          // Local-random path: pick filter/intensity from the rule without any creative call.
+          if (randomPath) {
+            const rulePreset = getRule(rule);
+            return {
+              summary: "本地随机包装 · 零模型调用",
+              captions: [],
+              filter: rulePreset.filters[0],
+              intensity: rulePreset.minIntensity,
+            };
+          }
           // Manual mode is fully local: stickers, price style, and brief come from the user; only filter/intensity remain
           // and default to the rule's first allowed preset so we never call the creative model on this path.
           if (decorations?.mode !== "agent" && !catalog && !automaticCover) {
