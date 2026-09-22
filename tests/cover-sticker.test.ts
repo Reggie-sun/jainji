@@ -145,7 +145,9 @@ describe("reusable batch cover", () => {
         await controller.start(input, new Set([directory]));
         await vi.waitFor(() => expect(controller.busy).toBe(false));
       }
-      expect(plan).toHaveBeenCalledTimes(8);
+      // Manual mode skips the creative plan call entirely (local default), so only the
+      // supervisor revision path increments the counter; agent mode still calls plan 8 times.
+      expect(plan).toHaveBeenCalledTimes(mode === "agent" ? 8 : 4);
       const knowledgeVersions = mode === "agent" ? 4 : 0;
       const knowledgeRuns = mode === "agent" ? 2 : 0;
       expect(knowledge.acquire).toHaveBeenCalledTimes(knowledgeVersions);

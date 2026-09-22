@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { AgentStartInput } from "../shared/agent.js";
-import { AgentStartSchema, GenerateBriefSchema, MAX_AGENT_OUTPUTS } from "../shared/agent.js";
+import { AgentStartSchema, GenerateBriefSchema, getRule, MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 import type { ApplicationService } from "./application.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { DEFAULT_PRESET, type MediaItem } from "./domain.js";
@@ -287,6 +287,17 @@ export class AgentController {
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
+          // Manual mode is fully local: stickers, price style, and brief come from the user; only filter/intensity remain
+          // and default to the rule's first allowed preset so we never call the creative model on this path.
+          if (decorations?.mode !== "agent" && !catalog && !automaticCover) {
+            const rulePreset = getRule(rule);
+            return {
+              summary: "手动包装 · 零模型调用",
+              captions: [],
+              filter: rulePreset.filters[0],
+              intensity: rulePreset.minIntensity,
+            };
+          }
           brief = `${decorationTimingContext(decorations?.displayMode)}\n${brief}`;
           if (preserveSourceStickers) brief = `保留原视频已有贴纸，不新增覆盖层。请为四角各提供一项候补设计，本地根据独立视觉识别的原贴纸占位，只在空缺角落和时段添加。\n${brief}`;
           if (!catalog) {

@@ -98,7 +98,7 @@ describe("agent to local export", () => {
       }
       expect(controller.snapshot()?.items.map((item) => item.status)).toEqual(["exporting", "exporting", "exporting", "exporting"]);
       expect(new Set(service.currentProject.mediaItems.map(item => item.fingerprint)).size).toBe(1);
-      expect(requests).toHaveLength(mode === "agent" ? 14 : 4);
+      expect(requests).toHaveLength(mode === "agent" ? 14 : 0);
       const detectorRequests = requests.filter((request) => (request.messages[0].content as string).includes("你是视频画面覆盖物追踪器"));
       const recognitionRequests = requests.filter((request) => (request.messages[0].content as string).includes("当前阶段是原贴纸识别"));
       const previewRequests = requests.filter((request) => (request.messages[0].content as string).includes("当前阶段是检查真实渲染样片"));
