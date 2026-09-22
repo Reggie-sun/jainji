@@ -405,8 +405,104 @@ Path B 的前提是"同一精确源素材已有 completed 批次"。新机器没
 - **Path A(首次制作)**:打开应用,导入素材,手工填展示文字,选"前 5 秒显示",走完整的创作+覆盖检查流程(runbook §Path A)。这需要配置模型连接,且每版都要过样片检查。产出首批 completed 批次后,之后就能用本文 Path B。
 - **整体迁移**:把源机器上该产品的 ①素材目录(保持相对结构)②至少一个 run root(含项目文件、`.app-profile/jobs`、`agent-stickers`、`source-sticker-knowledge`、`uploaded-stickers`)③贴纸与字体资源 完整复制到新机器,并保持项目文件里记录的绝对路径在新机器上同样成立(最简单的做法是使用相同的用户家目录布局)。指纹(sha256)不一致的文件不能被当作同一资源,不得以同名文件冒充。迁移后用只读方式打开项目确认批次仍为 completed,再按本文 Path B 执行。
 
+## Windows Adaptation
+
+原 playbook 是 Linux 路径，本小节给出 Windows 适配；不替换原内容。读者交叉对照原 §Prerequisites / §Machine Layout / §Step 1–§4，将 `bash + python3 + taskset` 替换为下列 PowerShell + 隔离 worker。
+
+### WA.1 路径与二进制
+
+- **app 仓库**：checkout 到与产生源批次相同的 commit；`npm ci`、`npm run build`，产物 `dist-electron\main.cjs`。
+- **FFmpeg**：NSIS 安装包路径 `<install>\resources\ffmpeg\bin\ffmpeg.exe` 与 `ffprobe.exe`；隔离 worker 也可使用 `JIANJI_FFMPEG_PATH=C:\Users\<user>\AppData\Local\jianji\tools\ffmpeg\bin\ffmpeg.exe`。
+- **userData 隔离**：worker 启动通过 `app.setPath('userData', '<worker-run>\.app-profile')` 与 `app.setPath('documents', '<worker-run>')` 重定向；不得使用用户主 APPDATA。
+- **Codex 二进制**：NSIS 包内 `app.asar.unpacked\resources\codex\win32-x64\codex.exe` 由包自带；开发版需要从源码构建。
+
+### WA.2 启动 worker（PowerShell）
+
+```powershell
+$ErrorActionPreference = 'Stop'
+$workerRoot = 'C:\jianji-workers\再次4x70-20260922-100000'
+$projectPath = Join-Path $workerRoot '<项目名>.jianji-project.json'
+$port = 9541
+$repoRoot = 'C:\path\to\jianji'
+$ffmpegDir = 'C:\Users\<user>\AppData\Local\jianji\tools\ffmpeg\bin'
+
+# 不要从 IDE 继承 ELECTRON_RUN_AS_NODE=1（与 Linux 同）
+Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
+$env:JIANJI_FFMPEG_PATH = (Join-Path $ffmpegDir 'ffmpeg.exe')
+$env:JIANJI_FFPROBE_PATH = (Join-Path $ffmpegDir 'ffprobe.exe')
+
+$launch = @"
+const { app } = require('electron');
+app.setPath('userData', '$($workerRoot)\.app-profile');
+app.setPath('documents', '$workerRoot');
+app.getAppPath = () => '$repoRoot';
+process.defaultApp = true;
+app.commandLine.appendSwitch('remote-debugging-port', '$port');
+app.commandLine.appendSwitch('remote-debugging-address', '127.0.0.1');
+require('$repoRoot\\dist-electron\\main.cjs');
+"@
+Set-Content -Path "$workerRoot\launch.cjs" -Value $launch -Encoding UTF8
+
+$proc = Start-Process -FilePath "$repoRoot\node_modules\.bin\electron.cmd" `
+  -ArgumentList "$workerRoot\launch.cjs" `
+  -WorkingDirectory $repoRoot `
+  -RedirectStandardOutput "$workerRoot\electron.out.log" `
+  -RedirectStandardError  "$workerRoot\electron.err.log" `
+  -PassThru
+"$($proc.Id)" | Out-File "$workerRoot\electron.pid" -Encoding utf8
+```
+
+WSL 旁路（若要复用 Linux 脚本）：保留 `bash` + `python3`，但路径改为挂载点（如 `\\wsl$\…\…`），CDP 端口不变，PowerShell 只承担启动隔离 Electron。
+
+### WA.3 CDP 驱动脚本（Node.js，对应原 §Step 1 `cdp.mjs`）
+
+```js
+// cdp.mjs
+import { readFile } from 'node:fs/promises';
+const port = 9541;                 // 替换为分配给 worker 的端口
+const pages = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+const page = pages.find((p) => p.type === 'page');
+const ws = new WebSocket(page.webSocketDebuggerUrl);
+await new Promise((r) => ws.addEventListener('open', r, { once: true }));
+const expression = await readFile(process.argv[2], 'utf8');
+const id = 1;
+ws.send(JSON.stringify({
+  id,
+  method: 'Runtime.evaluate',
+  params: { expression, awaitPromise: true, returnByValue: true }
+}));
+ws.addEventListener('message', ({ data }) => {
+  const m = JSON.parse(data);
+  if (m.id === id) { console.log(JSON.stringify(m.result)); ws.close(); }
+});
+```
+
+启动与监控脚本对应 Linux §Step 2、§Step 3；同样以 `live-status.json`、`completed-tasks.json` 与 `production-blocker-current.json` 作为门禁；WA 临时文件（`*.partial.mp4`、`.jianji-*.txt`）的清理与原 §Step 4 / §6 一致。
+
+### WA.4 taskset 不可用时的 CPU 限制
+
+Windows 没有 `taskset`。可选：
+
+1. `start /affinity <mask>` 启动 electron 进程（按位掩码选核）。
+2. 用 PowerShell `[System.Diagnostics.Process]` 设 `ProcessorAffinity`；脚本需要至少 `SeIncreaseQuotaPrivilege` 才能跨进程修改，多数普通用户权限足够改自己启动的子进程。
+
+WA 文档不强求做 CPU 限速；只在需要复刻 Linux 的固定核行为时启用。
+
+### WA.5 端口与编码
+
+- 端口：与 Linux 同；`netstat -ano | findstr :9541` 看占用；`Stop-Process -Id <pid>` 释放。
+- 编码：所有 JSON 写入用 `UTF8`（含 BOM 由 `Out-File -Encoding utf8` 处理）；PowerShell 5.1 默认 ANSI，需要显式指定 `utf8` 或 `utf8BOM`。
+- 路径分隔符：用 `Path.Combine` 或 `Join-Path`；脚本里避免硬编码 `\`。
+
+### WA.6 闸口
+
+- W21–W29 同样适用；任一 FAIL/BLOCKED/NOT_RUN 不能宣布「Windows Agent 验证完成」。
+- `verify.py` 的 ffprobe 在 Windows 上改用 `ffprobe.exe`，从 `JIANJI_FFPROBE_PATH` 取绝对路径；不能用 `which ffprobe`。
+- 残留临时文件：`Remove-Item -Force -Recurse` 删 `*.partial.mp4` 与 `.jianji-*.txt`；与 `verify.py` §file-set mismatch 检查一致。
+
 ## References
 
 - 合同与边界:[batch-video-production-runbook.md](batch-video-production-runbook.md)、仓库根 [AGENTS.md](../AGENTS.md)
 - 队列/恢复/发布实现:[queue.ts](../src/main/queue.ts)、[artifact.ts](../src/main/artifact.ts)、[compiler.ts](../src/main/compiler.ts)
 - 环境配置与启动:[README.md](../README.md)
+- Windows 验收契约与运行清单：[windows-acceptance-spec.md#test-cases](windows-acceptance-spec.md)，设计契约 [Windows Agent Lifecycle Verification Spec](superpowers/specs/2026-09-22-windows-agent-lifecycle-verification-design.md)
