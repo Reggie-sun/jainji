@@ -11,6 +11,7 @@ const cloneRegion = (region: CoverRegion): CoverRegion => ({ ...region, rectangl
 const cloneCoverSticker = (value: CoverSticker | undefined): CoverSticker => ({ ...(value ?? DEFAULT_COVER_STICKER), stickerIds: [...(value?.stickerIds ?? DEFAULT_COVER_STICKER.stickerIds)], rectangle: { ...(value?.rectangle ?? DEFAULT_COVER_STICKER.rectangle) }, tracks: value?.tracks && Object.fromEntries(Object.entries(value.tracks).map(([mediaId, track]) => [mediaId, cloneTrack(track)])), regions: value?.regions?.map(cloneRegion), mediaRegions: value?.mediaRegions && Object.fromEntries(Object.entries(value.mediaRegions).map(([mediaId, regions]) => [mediaId, regions.map(cloneRegion)])) });
 const newRegion = (rectangle = { x: 0.35, y: 0.4, width: 0.3, height: 0.2 }): CoverRegion => ({ id: crypto.randomUUID(), rectangle });
 // Unified (rotating) cover regions preview as a plain white board; the actual sticker is picked per round at production time.
+// The frame renders as CSS white (CoverTrackEditor skips the <img> for this id), so this url is only a fallback.
 const UNIFIED_PLACEHOLDER: DecorationCatalog["stickers"][number] = { id: "unified-placeholder", label: "统一款占位白板", url: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", animated: false, source: "builtin" };
 const cornerRectangles = [
   { x: 0, y: 0, width: 0.2, height: 0.15 }, { x: 0.8, y: 0, width: 0.2, height: 0.15 },

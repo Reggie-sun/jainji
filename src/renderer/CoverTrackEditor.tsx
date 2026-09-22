@@ -6,7 +6,7 @@ const minimumSize = 0.01;
 const clamp = (value: number, minimum: number, maximum: number) => Math.min(Math.max(value, minimum), maximum);
 
 type Interaction = { kind: "drag" | "resize"; x: number; y: number; timeMs: number; rectangle: CoverRectangle };
-type PreviewRegion = { id: string; rectangle: CoverRectangle; track?: CoverTrack; sticker?: { url: string; label: string } };
+type PreviewRegion = { id: string; rectangle: CoverRectangle; track?: CoverTrack; sticker?: { id?: string; url: string; label: string } };
 
 export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disabled, onActiveRegionChange, onStaticRectangleChange, onTrackChange }: {
   media: MediaView;
@@ -144,7 +144,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
         const activeFrame = region.id === active?.id;
         return region.sticker && visible(region) && <div key={region.id} className={`cover-sticker-frame${activeFrame ? " active" : ""}`} style={{ zIndex: index + 1, left: `${regionRectangle.x * 100}%`, top: `${regionRectangle.y * 100}%`, width: `${regionRectangle.width * 100}%`, height: `${regionRectangle.height * 100}%` }} onPointerDown={(event) => {
           event.preventDefault(); event.stopPropagation(); onActiveRegionChange(region.id);
-        }} aria-label="选择覆盖贴纸"><img src={region.sticker.url} alt={region.sticker.label} /></div>;
+        }} aria-label="选择覆盖贴纸">{region.sticker.id !== "unified-placeholder" && <img src={region.sticker.url} alt={region.sticker.label} />}</div>;
       })}
       {enabled && active?.sticker && rectangle && visible(active) && <div className="cover-sticker-selection" style={{ zIndex: regions.length + 1, left: `${rectangle.x * 100}%`, top: `${rectangle.y * 100}%`, width: `${rectangle.width * 100}%`, height: `${rectangle.height * 100}%` }} aria-label="拖动覆盖贴纸" onPointerDown={(event) => startInteraction(event, "drag")}><div className="cover-sticker-handle" aria-label="调整覆盖贴纸尺寸" onPointerDown={(event) => startInteraction(event, "resize")} /></div>}
     </div>
