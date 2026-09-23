@@ -112,8 +112,8 @@ export default function App() {
     setState(next);
     if (!initialized.current) {
       initialized.current = true;
-      setStep(next.connection.configured ? workspace?.step ?? "import" : "connection");
-    } else if (projectChanged) setStep(next.connection.configured ? workspace?.step ?? "import" : "connection");
+      setStep(workspace?.step ?? "import");
+    } else if (projectChanged) setStep(workspace?.step ?? "import");
   }, []);
 
   useEffect(() => {
@@ -160,7 +160,8 @@ export default function App() {
   const selectedMedia = state.project.mediaItems.filter((item) => selected.includes(item.id));
   const ready = state.project.mediaItems.filter((item) => item.probeStatus === "ready");
   const preview = ready.find((item) => item.id === previewId) ?? ready[0];
-  const canCreate = state.connection.configured && state.capabilities.ready;
+  const usesModel = decorations.mode === "agent" || Boolean(state.project.coverSticker?.enabled && (state.project.coverSticker.trackingMode === "agent" || state.project.coverSticker.trackingMode === "assisted"));
+  const canCreate = state.capabilities.ready;
   const capability = state.capabilities.videoEncoder;
   const hardwareLabels: Record<"h264_nvenc" | "h264_amf" | "h264_qsv", string> = {
     h264_nvenc: "NVIDIA GPU", h264_amf: "AMD GPU", h264_qsv: "Intel GPU",
@@ -182,7 +183,7 @@ export default function App() {
   const importMedia = () => void run(async () => { apply(await window.jianji.selectAndProbe()); });
   const dropMedia = (event: DragEvent) => {
     event.preventDefault(); setDragOver(false);
-    if (locked || !state.connection.configured) return;
+    if (locked) return;
     const paths = [...event.dataTransfer.files].map((file) => window.jianji.getPathForFile(file)).filter(Boolean);
     if (paths.length) void run(async () => { apply(await window.jianji.addAndProbe(paths)); });
   };
@@ -295,8 +296,7 @@ export default function App() {
       setOutputDirectory("");
       setAutomaticOutputFor("");
     }
-    if (!state.connection.configured && next !== "results" && next !== "stickers") setStep("connection");
-    else setStep(next);
+    setStep(next);
   };
 
   const scrollAfterRender = (selector: string) => {
@@ -348,7 +348,7 @@ export default function App() {
           <MaterialCollection name={collectionName} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} onOpen={(id) => void changeProject(true, id)} onRename={renameSavedCollection} onDelete={removeSavedCollection} recentProjects={state.recentProjects ?? []} activeRecentId={state.activeRecentProjectId} />
           <div className="import-layout"><div className="import-main">
             <div className={"drop-zone" + (dragOver ? " drag-over" : "")} onDragOver={(event) => { event.preventDefault(); if (!locked) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={dropMedia}>
-              <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked || !state.connection.configured} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>
+              <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>
             </div>
             <div className="card media-list"><div className="card-header"><h2>素材清单 <span>{state.project.mediaItems.length}</span></h2><button className="text-button" disabled={locked || !ready.length} onClick={() => setSelected(selected.length === ready.length ? [] : ready.map((item) => item.id))}>{selected.length === ready.length && ready.length ? "取消全选" : "选择全部"}</button></div>
               {state.project.mediaItems.length === 0 ? <div className="empty-material"><Icon name="film" size={26} /><p>你的素材即将在这里就位</p><small>导入后自动检查格式、时长与画面尺寸</small></div> : state.project.mediaItems.map((item) => <div className={"media-row" + (preview?.id === item.id ? " previewing" : "")} key={item.id}><input type="checkbox" aria-label={"选择 " + item.displayName} checked={selected.includes(item.id)} disabled={locked || item.probeStatus !== "ready"} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} /><button className="media-thumb" aria-label={"预览 " + item.displayName} disabled={item.probeStatus !== "ready"} onClick={() => setPreviewId(item.id)}><Icon name="film" /></button><div className="media-info"><strong>{item.displayName}</strong><small>{item.probeStatus === "ready" ? item.width + " × " + item.height + " · " + duration(item.durationMs) + " · " + sizeLabel(item.sizeBytes) : item.errorMessage || "素材不可读取"}</small></div><span className={item.probeStatus === "ready" ? "status-tag completed" : "status-tag failed"}>{item.probeStatus === "ready" ? "就绪" : "需处理"}</span><button className="icon-button" aria-label={"移除 " + item.displayName} disabled={locked} onClick={() => void run(async () => { apply(await window.jianji.removeMedia(item.id)); })}><Icon name="close" size={16} /></button></div>)}
@@ -357,7 +357,7 @@ export default function App() {
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
-        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={generateBrief} generatingBrief={generatingBrief} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={state.connection.configured ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}
       </main>

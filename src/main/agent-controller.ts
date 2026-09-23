@@ -115,7 +115,6 @@ export class AgentController {
 
   private async startInternal(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, assisted?: { draft: CoverReviewDraft; prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void> }): Promise<void> {
     this.assertIdle();
-    if (!this.provider.status().configured) throw new Error("请先接入模型。");
     if (this.queue.snapshot().batches.some(({ batch }) => batch.tasks.some((task) =>
       ["validating", "running", "verifying", "cancelling"].includes(task.status) ||
       (batch.projectId === this.service.currentProject.id && task.status === "queued")))) {
@@ -132,6 +131,7 @@ export class AgentController {
       if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted) throw new Error("半自动覆盖必须先审阅、预览和批准。");
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
       const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
+      if ((decorations.mode === "agent" || automaticCover) && !this.provider.status().configured) throw new Error("请先接入模型。");
       const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
       // Local-random path: stickers / price style / cover selection are all decided without the
       // creative round-trip. Skips provider.shortlist + provider.plan and the auto-cover selection

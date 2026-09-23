@@ -28,6 +28,17 @@ const media = (id = crypto.randomUUID()): MediaItem => ({
 });
 
 describe("local random with corner covers", () => {
+  it("requires a model only when the selected path uses one", async () => {
+    const ffmpeg = new FfmpegAdapter("unused", "unused");
+    const service = new ApplicationService(ffmpeg, { resolve: async () => null });
+    const queue = { snapshot: () => ({ batches: [] }) } as unknown as ExportQueue;
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets);
+    const request = { ruleId: "clean" as const, brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp", decorations: DecorationSchema.parse({ mode: "agent", productPrice: "手动文字" }) };
+    await expect(controller.start(request, new Set())).rejects.toThrow("请先接入模型");
+    service.setCoverSticker({ ...settings, trackingMode: "agent" });
+    await expect(controller.start({ ...request, decorations: DecorationSchema.parse({ mode: "random", productPrice: "手动文字" }) }, new Set())).rejects.toThrow("请先接入模型");
+  });
+
   it("uses four different visible covers and omits corner stickers hidden beneath them", () => {
     const source = media();
     const frozen = resolveCoverSticker(settings, assets, [], [source.id], true)!;
@@ -66,7 +77,7 @@ describe("local random with corner covers", () => {
     const queue = { snapshot: () => ({ revision: 0, batches: [] }), createBatch, start: async () => {}, cancel: async () => {} } as unknown as ExportQueue;
     const library = { prepare: async () => assets, resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary;
     const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, library);
-    controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
+    expect(controller.provider.status().configured).toBe(false);
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockImplementation(async () => { throw new Error("random mode must not extract frames"); });
     const plan = vi.spyOn(controller.provider, "plan");
     try {
