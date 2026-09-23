@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { admitReviewedSourceMask } from "../src/main/source-mask-admission";
 import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
 
@@ -11,6 +11,7 @@ const available = ["ffmpeg", "ffprobe"].every(binary => spawnSync(binary, ["-ver
 const directories: string[] = [];
 const stores: SourceStickerKnowledgeStore[] = [];
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const store of stores.splice(0)) await store.close();
   for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true });
 });
@@ -79,6 +80,34 @@ describe.skipIf(!available)("source mask admission and canonical publication", (
     await expect(admitReviewedSourceMask({ ...input, contactSheet, probeReport, reviewReceipt, ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" })).rejects.toThrow(/not a PNG/);
     await writeFile(input.sourcePath, "changed bytes");
     await expect(admitReviewedSourceMask({ ...input, ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" })).rejects.toThrow();
+  });
+
+  it.each(["source hash", "segment range", "mask bytes", "receipt", "frame evidence"] as const)("rejects changed %s without creating a knowledge revision", async change => {
+    const input = await fixture();
+    const probe = JSON.parse(input.probeReport.toString("utf8"));
+    const review = JSON.parse(input.reviewReceipt.toString("utf8"));
+    if (change === "source hash") {
+      probe.sourceSha256 = "f".repeat(64);
+      input.probeReport = Buffer.from(JSON.stringify(probe));
+      input.reviewReceipt = Buffer.from(JSON.stringify({ ...review, sourceSha256: probe.sourceSha256, probeSha256: sha(input.probeReport) }));
+    } else if (change === "segment range") {
+      probe.frameRange = [0, 59];
+      input.probeReport = Buffer.from(JSON.stringify(probe));
+      input.reviewReceipt = Buffer.from(JSON.stringify({ ...review, frameRange: probe.frameRange, reviewedFrames: 59, probeSha256: sha(input.probeReport) }));
+    } else if (change === "mask bytes") input.packedMask = Buffer.alloc(8, 0);
+    else if (change === "receipt") input.reviewReceipt = Buffer.from(JSON.stringify({ ...review, decision: "FAIL" }));
+    else {
+      const publish = input.store.publishSourceMask.bind(input.store);
+      vi.spyOn(input.store, "publishSourceMask").mockImplementation((run, candidate, proof, blobs) => {
+        const changed = new Map(blobs);
+        const frame = candidate.evidence.find(evidence => evidence.kind === "source");
+        if (!frame) throw new Error("missing source frame fixture");
+        changed.set(frame.digest, Buffer.from("changed frame evidence"));
+        return publish(run, candidate, proof, changed);
+      });
+    }
+    await expect(admitReviewedSourceMask({ ...input, ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" })).rejects.toThrow(/^UNSAFE:/);
+    expect(await readdir(path.join(input.store.directory, "sources"))).toEqual([]);
   });
 
   it("rejects a changed stored human review artifact on reload", async () => {

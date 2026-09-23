@@ -29,6 +29,10 @@ node /tmp/jianji-cover-m1-20260924/shape-cover-admit-source-mask.mjs --source '/
 
 # Verification And Limits
 
-`tests/source-mask-admission.test.ts` 用真实 FFmpeg 生成短素材，验证源专用发布、重启读取、审阅档案持久化及篡改拒绝；测试中的合成 receipt 只验证机制，不冒充人工视觉审阅。原知识库、session 和监督证据测试用于检查兼容性。全套 `npm test` 为 1048 通过、2 失败、3 跳过。`tests/cover-placement-concurrency.test.ts` 的 `resolved-cancel` 情况实际为 `exporting`，期望 `cancelled`，单独复跑仍失败；`tests/harness.test.ts` 的进程树超时断言在全套并发运行时失败，单独复跑 7 项均通过。两者均未触及 M4-A 代码路径，不能宣称全套测试通过。
+`tests/source-mask-admission.test.ts` 用真实 FFmpeg 生成短素材，验证源专用发布、重启读取、审阅档案持久化及篡改拒绝；测试中的合成 receipt 只验证机制，不冒充人工视觉审阅。另逐项改变源哈希、片段范围、mask 字节、收据和发布前原帧证据，断言入口返回 `UNSAFE` 且知识库没有新 revision。原知识库、session 和监督证据测试用于检查兼容性。
+
+`74ef062` 检查点的全套测试曾为 1048 通过、2 失败、3 跳过。覆盖并发的 `resolved-cancel` 失败属于 enqueue 返回后取消信号未再次检查；`74ef062` 没修改 runner 或该测试，后续独立提交 `fce917d` 在保存 task ID 前补上检查。当前单文件 10/10、全套运行均通过该断言，旧测试合同仍有效，无需改断言。harness 的进程树超时断言曾在全套并发运行时失败，单独运行及后续全套运行通过；具体调度条件尚未定位，保留为时序波动风险，不把一次全绿当作稳定性证明。
+
+新增负向测试后，本次 `npm run typecheck` 通过、`npm test` 为 1055 通过、3 跳过。M4-A 的源事实发布目标成立；harness 波动尚未收敛，仓库验证状态暂不记为稳定全绿。生产形状匹配切换和 M4-B 均保持阻断。
 
 下一步 M4-B 必须按每个 source revision、输出设置、摆放和轮廓版本独立计算整轮共同候选，预览和正式队列消费同一冻结图层字节；缺 mask、源修订不匹配、coverage 非 100% 或内容安全未通过一律 `UNSAFE`。本阶段没有执行这些门槛，也没有调用产品 Agent、付费模型、Kimi 或 `delogo`。
