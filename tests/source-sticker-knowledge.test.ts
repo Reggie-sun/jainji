@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { KnowledgeCandidateSchema, SourceIdentitySchema, coversRanges, sourceObservationsChanged, type SourceFacts } from "../src/shared/source-sticker-knowledge";
+import { createHash } from "node:crypto";
+import { KnowledgeCandidateSchema, SourceIdentitySchema, coversRanges, sourceGeometryChanged, sourceObservationsChanged, type SourceFacts } from "../src/shared/source-sticker-knowledge";
 
 const digest = "a".repeat(64);
 const source = { fingerprint: `sha256:${digest}`, byteLength: 100, width: 720, height: 1280, rotation: 0, durationMs: 10000, timeBase: "1/90000", timeOriginPts: 0, interpretationVersion: 1 };
@@ -8,6 +9,49 @@ const facts = { reviewedRanges: [{ startMs: 0, endMs: 3000 }], targets: [], excl
 const candidate = { schemaVersion: 1, id: "candidate", state: "candidate", source, baseRevisionId: null, runId: "run", requiredRanges: facts.reviewedRanges, facts, evidence: [evidence], resolvedDisputeIds: [], changes: [], provenance: { executor: "test/model", supervisor: "test/model", contractVersion: 1, requests: 2, at: "2026-09-17T00:00:00Z" } };
 
 describe("source sticker knowledge contract", () => {
+  it("treats changed mask pixels as a source geometry revision within the disputed range", () => {
+    const rectangle = { x: 0.1, y: 0.1, width: 0.1, height: 0.1 };
+    const mask = { kind: "static-binary-v1" as const, bbox: { x: 72, y: 128, width: 3, height: 3 }, encoding: "bitpack-lsb-row-major-v1" as const,
+      dataBase64: "CAA=", sha256: digest, markedPixels: 1, creation: { method: "probe", version: 1 },
+      review: { method: "contact-sheet", version: 1, reviewer: "codex", at: "2026-09-24T00:00:00Z" }, evidenceIds: ["frame", "later"] };
+    const before: SourceFacts = { ...facts, observations: [], targets: [{ id: "sticker", segments: [{ id: "segment", track: { startMs: 0, endMs: 3000, keyframes: [{ timeMs: 0, rectangle }] }, evidenceIds: ["frame", "later"], interpolation: "linear", mask }] }] };
+    const after = structuredClone(before);
+    expect(sourceGeometryChanged(before, after, [{ startMs: 0, endMs: 3000 }], "sticker")).toBe(false);
+    after.targets[0].segments[0].mask!.sha256 = "b".repeat(64);
+    expect(sourceGeometryChanged(before, after, [{ startMs: 0, endMs: 3000 }], "sticker")).toBe(true);
+    expect(sourceGeometryChanged(before, after, [{ startMs: 3000, endMs: 4000 }], "sticker")).toBe(false);
+    expect(sourceObservationsChanged(before, after, [0])).toBe(false);
+  });
+  it("binds a bounded static source-pixel mask to two original PTS inside its segment", () => {
+    const rectangle = { x: 0.1, y: 0.1, width: 0.1, height: 0.1 };
+    const later = { ...evidence, id: "later", pts: 180000, timeMs: 2000 };
+    const bytes = Buffer.from([255, 1]);
+    const mask = {
+      kind: "static-binary-v1", bbox: { x: 72, y: 128, width: 3, height: 3 },
+      encoding: "bitpack-lsb-row-major-v1", dataBase64: bytes.toString("base64"),
+      sha256: createHash("sha256").update(bytes).digest("hex"), markedPixels: 9,
+      creation: { method: "temporal-stability", version: 1 },
+      review: { method: "contact-sheet", version: 1, reviewer: "codex", at: "2026-09-24T00:00:00Z" },
+      evidenceIds: ["frame", "later"],
+    };
+    const segment = { id: "segment", track: { startMs: 0, endMs: 3000, keyframes: [{ timeMs: 0, rectangle }] }, evidenceIds: ["frame", "later"], interpolation: "linear", mask };
+    const factsWithMask = { ...facts, targets: [{ id: "sticker", segments: [segment] }], observations: [
+      { evidenceId: "frame", targetId: "sticker", presence: "PRESENT", rectangle },
+      { evidenceId: "later", targetId: "sticker", presence: "PRESENT", rectangle },
+    ] };
+    const value = { ...candidate, facts: factsWithMask, evidence: [evidence, later] };
+    expect(KnowledgeCandidateSchema.safeParse(value).success).toBe(true);
+    for (const badMask of [
+      { ...mask, bbox: { ...mask.bbox, x: 719 } },
+      { ...mask, bbox: { ...mask.bbox, width: 513 } },
+      { ...mask, evidenceIds: ["frame", "missing"] },
+      { ...mask, evidenceIds: ["frame", "frame"] },
+      { ...mask, dataBase64: "AAAA" },
+    ]) expect(KnowledgeCandidateSchema.safeParse({ ...value, facts: { ...factsWithMask, targets: [{ id: "sticker", segments: [{ ...segment, mask: badMask }] }] } }).success).toBe(false);
+    expect(KnowledgeCandidateSchema.safeParse({ ...value, facts: { ...factsWithMask, targets: [{ id: "sticker", segments: [{ ...segment, track: { ...segment.track, keyframes: [...segment.track.keyframes, { timeMs: 2000, rectangle }] } }] }] } }).success).toBe(false);
+    expect(KnowledgeCandidateSchema.safeParse({ ...value, evidence: [evidence, { ...later, width: 360, height: 640 }] }).success).toBe(false);
+    expect(KnowledgeCandidateSchema.safeParse({ ...value, facts: { ...factsWithMask, targets: [{ id: "sticker", segments: [{ ...segment, mask: { ...mask, dataBase64: "A".repeat(43696) } }] }] } }).success).toBe(false);
+  });
   it("compares fresh recognition only at observed times, ignoring window-tail interpolation and local labels", () => {
     const moving = (id: string, endMs: number, points: number[][]): SourceFacts => ({ ...facts, observations: [], targets: [{ id, segments: [{ id: "segment", interpolation: "linear", evidenceIds: ["frame"], track: { startMs: 0, endMs, keyframes: points.map(([timeMs, x]) => ({ timeMs, rectangle: { x, y: 0, width: 0.1, height: 0.1 } })) } }] }] });
     const previous = moving("old-label", 3000, [[0, 0.1], [1750, 0.275], [2000, 0.3]]);

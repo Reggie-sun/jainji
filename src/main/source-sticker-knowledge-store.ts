@@ -103,6 +103,15 @@ async function atomicJson(file: string, value: unknown, beforeCommit?: () => voi
   await syncDirectory(path.dirname(file));
 }
 function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublicationProof): void {
+  for (const target of candidate.facts.targets) for (const segment of target.segments) if (segment.mask) {
+    const mask = segment.mask, pixels = mask.bbox.width * mask.bbox.height;
+    const packed = Buffer.from(mask.dataBase64, "base64");
+    if (packed.length !== Math.ceil(pixels / 8) || packed.toString("base64") !== mask.dataBase64 || digest(packed) !== mask.sha256
+      || (pixels % 8 !== 0 && (packed[packed.length - 1] & (0xff << (pixels % 8))) !== 0)) throw new KnowledgeStoreError("integrity", "Source pixel mask encoding or digest mismatch");
+    let marked = 0;
+    for (const byte of packed) { let remaining = byte; while (remaining) { remaining &= remaining - 1; marked++; } }
+    if (marked !== mask.markedPixels) throw new KnowledgeStoreError("integrity", "Source pixel mask count mismatch");
+  }
   const expected = factsDigest(candidate.facts);
   const sourceIds = new Set(candidate.evidence.filter((e) => e.kind === "source").map((e) => e.id));
   if (proof.candidateId !== candidate.id || proof.factsDigest !== expected || candidate.facts.observations.some((o) => o.presence === "UNKNOWN")) throw new KnowledgeStoreError("integrity", "Incomplete or stale knowledge proof");

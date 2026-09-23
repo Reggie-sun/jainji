@@ -51,10 +51,26 @@ const PreviewFrameEvidenceSchema = z.object({
   factsDigest: Digest, templateDigest: Digest, outputSettingsDigest: Digest,
 }).strict();
 export const KnowledgeEvidenceSchema = z.discriminatedUnion("kind", [SourceFrameEvidenceSchema, PreviewFrameEvidenceSchema]);
+export const SourcePixelMaskSchema = z.object({
+  kind: z.literal("static-binary-v1"),
+  bbox: z.object({ x: Ms, y: Ms, width: z.number().int().positive().max(512), height: z.number().int().positive().max(512) }).strict(),
+  encoding: z.literal("bitpack-lsb-row-major-v1"),
+  dataBase64: z.string().min(4).max(43692).regex(/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/),
+  sha256: Digest, markedPixels: z.number().int().positive().max(262144),
+  creation: z.object({ method: Id, version: z.number().int().positive() }).strict(),
+  review: z.object({ method: Id, version: z.number().int().positive(), reviewer: Id, at: Time }).strict(),
+  evidenceIds: z.array(Id).min(2).max(512),
+}).strict().superRefine((mask, ctx) => {
+  const pixels = mask.bbox.width * mask.bbox.height;
+  const bytes = Math.ceil(pixels / 8), padding = "=".repeat((3 - bytes % 3) % 3);
+  if (pixels > 262144 || mask.markedPixels > pixels || mask.dataBase64.length !== 4 * Math.ceil(bytes / 3)
+    || !mask.dataBase64.endsWith(padding) || (!padding && mask.dataBase64.endsWith("="))) ctx.addIssue({ code: "custom", message: "Invalid bounded source mask payload" });
+  if (new Set(mask.evidenceIds).size !== mask.evidenceIds.length) ctx.addIssue({ code: "custom", message: "Duplicate source mask evidence" });
+});
 export const SourceFactsSchema = z.object({
   reviewedRanges: Ranges,
   targets: z.array(z.object({
-    id: Id, segments: z.array(z.object({ id: Id, track: CoverTrackSchema, evidenceIds: z.array(Id).min(1).max(2048), interpolation: z.literal("linear") }).strict()).min(1).max(MAX_AUTOMATIC_COVER_TRACKS),
+    id: Id, segments: z.array(z.object({ id: Id, track: CoverTrackSchema, evidenceIds: z.array(Id).min(1).max(2048), interpolation: z.literal("linear"), mask: SourcePixelMaskSchema.optional() }).strict()).min(1).max(MAX_AUTOMATIC_COVER_TRACKS),
   }).strict()).max(MAX_AUTOMATIC_COVER_TRACKS),
   exclusions: z.array(z.object({ kind: z.enum(["subtitle", "product", "person"]), reason: z.string().min(1).max(500), evidenceIds: z.array(Id).min(1).max(2048) }).strict()).max(256),
   observations: z.array(z.object({ evidenceId: Id, targetId: Id.optional(), presence: z.enum(["PRESENT", "ABSENT", "UNKNOWN"]), rectangle: CoverRectangleSchema.optional() }).strict()).min(1).max(8192),
@@ -113,6 +129,19 @@ export const KnowledgeCandidateSchema = z.object({
   for (const target of facts.targets) {
     for (const [index, segment] of target.segments.entries()) {
       const track = segment.track;
+      if (segment.mask) {
+        const { bbox, evidenceIds } = segment.mask;
+        const frames = evidenceIds.map((id) => originals.get(id));
+        const rectangle = track.keyframes[0]?.rectangle;
+        if (track.keyframes.length !== 1 || bbox.x + bbox.width > source.width || bbox.y + bbox.height > source.height
+          || !rectangle || bbox.x < rectangle.x * source.width - 1 || bbox.y < rectangle.y * source.height - 1
+          || bbox.x + bbox.width > (rectangle.x + rectangle.width) * source.width + 1
+          || bbox.y + bbox.height > (rectangle.y + rectangle.height) * source.height + 1) issue("Static mask geometry is outside its source track");
+        if (frames.some((frame, i) => !frame || frame.crop || frame.width !== source.width || frame.height !== source.height
+          || !segment.evidenceIds.includes(evidenceIds[i]) || frame.timeMs < track.startMs || frame.timeMs >= track.endMs)
+          || new Set(frames.map((frame) => frame?.pts)).size < 2
+          || Math.max(...frames.map((frame) => frame?.timeMs ?? 0)) - Math.min(...frames.map((frame) => frame?.timeMs ?? 0)) < 1000) issue("Static mask needs distinct original frame evidence across time");
+      }
       if (!refsValid(segment.evidenceIds) || !coversRanges(facts.reviewedRanges, [track]) || track.keyframes.some((f) => f.timeMs < track.startMs || f.timeMs > track.endMs)) issue("Track outside reviewed evidence/ranges");
       if (index > 0 && track.startMs < target.segments[index - 1].track.endMs) issue("Target segments overlap or are unordered");
       if (!facts.observations.some((o) => o.targetId === target.id && o.presence === "PRESENT" && segment.evidenceIds.includes(o.evidenceId) && originals.has(o.evidenceId) && originals.get(o.evidenceId)!.timeMs >= track.startMs && originals.get(o.evidenceId)!.timeMs < track.endMs)) issue("Segment lacks a present observation inside its interval");
@@ -185,13 +214,16 @@ function geometryChanged(before: SourceFacts, after: SourceFacts, ranges: readon
   const samples = [...points, ...points.slice(1).map((point, i) => (point + points[i]) / 2)].filter((time) => ranges.some((range) => time >= range.startMs && time < range.endMs));
   const at = (facts: SourceFacts, time: number) => new Map(targets(facts).flatMap((target) => {
     const segment = target.segments.find(({ track }) => time >= track.startMs && time < track.endMs);
-    return segment ? [[target.id, interpolateCoverRectangle(segment.track.keyframes, time)] as const] : [];
+    return segment ? [[target.id, { rectangle: interpolateCoverRectangle(segment.track.keyframes, time), mask: segment.mask }] as const] : [];
   }));
   return (observedTimes ?? samples).some((time) => {
     const a = at(before, time), b = at(after, time);
     if (a.size !== b.size) return true;
-    return [...a].some(([id, rectangle]) => {
-      const matched = [...b].find(([other, value]) => (!matchIds || other === id) && (["x", "y", "width", "height"] as const).every(key => Math.abs(rectangle[key] - value[key]) <= 1e-9));
+    return [...a].some(([id, value]) => {
+      const matched = [...b].find(([other, next]) => (!matchIds || other === id)
+        && (["x", "y", "width", "height"] as const).every(key => Math.abs(value.rectangle[key] - next.rectangle[key]) <= 1e-9)
+        && (!matchIds || (value.mask?.sha256 === next.mask?.sha256
+          && (["x", "y", "width", "height"] as const).every(key => value.mask?.bbox[key] === next.mask?.bbox[key]))));
       if (!matched) return true;
       b.delete(matched[0]); return false;
     });

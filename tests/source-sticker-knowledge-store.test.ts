@@ -35,8 +35,55 @@ async function prepare(store: SourceStickerKnowledgeStore, source: SourceIdentit
 type Prepared = Awaited<ReturnType<typeof prepare>>;
 const publish = (store: SourceStickerKnowledgeStore, p: Prepared) => store.publish(p.run, p.candidate, p.proof, p.blobs);
 const ranges = [{ startMs: 0, endMs: 3000 }];
+function withStaticMask(p: Prepared): Prepared {
+  const later = Buffer.from("later source frame"), pixels = Buffer.from([255, 1]);
+  const rectangle = { x: 0.1, y: 0.1, width: 0.1, height: 0.1 };
+  p.candidate.evidence.push({ id: "later", kind: "source", digest: hash(later), byteLength: later.length, pts: 180000, timeMs: 2000, width: 720, height: 1280 });
+  p.blobs.set(hash(later), later);
+  p.candidate.facts.targets = [{ id: "sticker", segments: [{
+    id: "segment", track: { startMs: 0, endMs: 3000, keyframes: [{ timeMs: 0, rectangle }] }, evidenceIds: ["original", "later"], interpolation: "linear",
+    mask: { kind: "static-binary-v1", bbox: { x: 72, y: 128, width: 3, height: 3 }, encoding: "bitpack-lsb-row-major-v1", dataBase64: pixels.toString("base64"), sha256: hash(pixels), markedPixels: 9,
+      creation: { method: "temporal-stability", version: 1 }, review: { method: "contact-sheet", version: 1, reviewer: "codex", at: "2026-09-24T00:00:00Z" }, evidenceIds: ["original", "later"] },
+  }] }];
+  p.candidate.facts.observations = [
+    { evidenceId: "original", targetId: "sticker", presence: "PRESENT", rectangle },
+    { evidenceId: "later", targetId: "sticker", presence: "PRESENT", rectangle },
+  ];
+  p.proof.sourceEvidenceIds.push("later");
+  p.proof.factsDigest = factsDigest(p.candidate.facts);
+  for (const frame of p.candidate.evidence) if (frame.kind === "preview") frame.factsDigest = p.proof.factsDigest;
+  return p;
+}
 
 describe("durable source sticker knowledge", () => {
+  it("persists a mask across reopen and rejects changed source identity", async () => {
+    const { store, source, directory, file } = await fixture();
+    const p = withStaticMask(await prepare(store, source));
+    const revision = await publish(store, p);
+    expect(revision.candidate.facts.targets[0].segments[0].mask?.markedPixels).toBe(9);
+    await store.close();
+    const reopened = await SourceStickerKnowledgeStore.open(directory); stores.push(reopened);
+    expect(await reopened.lookup(source, ranges)).toMatchObject({ status: "hit", revision: { id: revision.id } });
+    expect((await reopened.readHead(source))?.revision.candidate.facts.targets[0].segments[0].mask?.sha256).toBe(hash(Buffer.from([255, 1])));
+    expect((await reopened.lookup({ ...source, interpretationVersion: 2 }, ranges)).status).toBe("miss");
+    await writeFile(file, "changed source bytes");
+    expect((await reopened.lookup(await identifySource(file, interpretation), ranges)).status).toBe("miss");
+  });
+
+  it("rejects damaged mask digests, counts and padding before publication", async () => {
+    const { store, source } = await fixture();
+    for (const damage of ["digest", "count", "padding"] as const) {
+      const p = withStaticMask(await prepare(store, source));
+      const mask = p.candidate.facts.targets[0].segments[0].mask!;
+      if (damage === "digest") mask.sha256 = "a".repeat(64);
+      if (damage === "count") mask.markedPixels = 8;
+      if (damage === "padding") { const bad = Buffer.from([255, 255]); mask.dataBase64 = bad.toString("base64"); mask.sha256 = hash(bad); }
+      p.proof.factsDigest = factsDigest(p.candidate.facts);
+      for (const frame of p.candidate.evidence) if (frame.kind === "preview") frame.factsDigest = p.proof.factsDigest;
+      await expect(publish(store, p)).rejects.toThrow();
+    }
+    expect((await store.lookup(source, ranges)).status).toBe("miss");
+  });
   it("invalidates historical projections even when a confirmed dispute fails before its transaction marker", async () => {
     const { store, source, file } = await fixture(); const p = await prepare(store, source); await publish(store, p);
     expect(await store.revisionRisk(sourceKey(source), p.candidate.id)).toBe("none"); const generation = store.historyGeneration;
