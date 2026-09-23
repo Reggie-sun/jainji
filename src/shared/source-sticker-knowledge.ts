@@ -50,7 +50,11 @@ const PreviewFrameEvidenceSchema = z.object({
   timeBase: TimeBase, timeOriginPts: z.number().int().safe(),
   factsDigest: Digest, templateDigest: Digest, outputSettingsDigest: Digest,
 }).strict();
-export const KnowledgeEvidenceSchema = z.discriminatedUnion("kind", [SourceFrameEvidenceSchema, PreviewFrameEvidenceSchema]);
+const SourceMaskReviewArtifactSchema = z.object({
+  id: Id, kind: z.literal("source-mask-review"), artifact: z.enum(["probe-report", "contact-sheet", "review-receipt"]),
+  digest: Digest, byteLength: z.number().int().positive().max(8 * 1024 * 1024),
+}).strict();
+export const KnowledgeEvidenceSchema = z.discriminatedUnion("kind", [SourceFrameEvidenceSchema, PreviewFrameEvidenceSchema, SourceMaskReviewArtifactSchema]);
 export const SourcePixelMaskSchema = z.object({
   kind: z.literal("static-binary-v1"),
   bbox: z.object({ x: Ms, y: Ms, width: z.number().int().positive().max(512), height: z.number().int().positive().max(512) }).strict(),
@@ -92,7 +96,7 @@ export const KnowledgeCandidateSchema = z.object({
   const refsValid = (ids: string[]) => ids.every((id) => originals.has(id));
   if (new Set(evidence.map((e) => e.id)).size !== evidence.length || new Set(facts.targets.map((t) => t.id)).size !== facts.targets.length) issue("Duplicate evidence or target identity");
   if (!coversRanges(facts.reviewedRanges, candidate.requiredRanges) || [...facts.reviewedRanges, ...candidate.requiredRanges].some((r) => r.endMs > source.durationMs)) issue("Invalid or insufficient reviewed ranges");
-  if (!originals.size || evidence.some((e) => e.timeMs >= source.durationMs)) issue("Missing original evidence or invalid source time");
+  if (!originals.size || evidence.some((e) => e.kind !== "source-mask-review" && e.timeMs >= source.durationMs)) issue("Missing original evidence or invalid source time");
   const [numerator, denominator] = source.timeBase.split("/").map(Number);
   for (const frame of originals.values()) {
     const expectedMs = (frame.pts - source.timeOriginPts) * numerator / denominator * 1000;
@@ -162,6 +166,15 @@ export const KnowledgePublicationProofSchema = z.object({
   candidateId: Id, factsDigest: Digest, sourceReviewed: z.literal(true), previewPassed: z.literal(true),
   unresolvedIssueIds: z.array(Id).max(0), sourceEvidenceIds: z.array(Id).min(1).max(4096), previewEvidenceIds: z.array(Id).min(1).max(4096),
 }).strict();
+/** Source-only admission never claims that a cover preview or content safety passed. */
+export const SourceMaskAdmissionProofSchema = z.object({
+  mode: z.literal("source-mask-only-v1"), candidateId: Id, factsDigest: Digest,
+  sourceReviewed: z.literal(true), maskReview: z.literal("PASS"),
+  sourceEvidenceIds: z.array(Id).min(2).max(512),
+  probeSha256: Digest, contactSheetSha256: Digest, reviewReceiptSha256: Digest,
+  reviewedFrameRange: z.object({ start: Ms, endExclusive: Ms }).strict().refine(value => value.endExclusive > value.start),
+}).strict();
+export const KnowledgeRevisionProofSchema = z.union([KnowledgePublicationProofSchema, SourceMaskAdmissionProofSchema]);
 export const KnowledgeDisputeSchema = z.object({
   schemaVersion: z.literal(KNOWLEDGE_SCHEMA_VERSION), id: Id, revisionId: Id, ranges: Ranges,
   kind: z.enum(["missing_target", "incomplete_boundary", "wrong_semantics", "duplicate_identity", "uncertain_presence"]),
@@ -233,13 +246,14 @@ export type KnowledgeEvidence = z.infer<typeof KnowledgeEvidenceSchema>;
 export type SourcePixelMask = z.infer<typeof SourcePixelMaskSchema>;
 export type KnowledgeCandidate = z.infer<typeof KnowledgeCandidateSchema>;
 export type KnowledgePublicationProof = z.infer<typeof KnowledgePublicationProofSchema>;
+export type SourceMaskAdmissionProof = z.infer<typeof SourceMaskAdmissionProofSchema>;
 export type KnowledgeDispute = z.infer<typeof KnowledgeDisputeSchema>;
 export interface KnowledgeRevision {
   id: string;
   sourceKey: string;
   state: "reviewed" | "disputed" | "superseded";
-  verification: "sampled";
+  verification: "sampled" | "source-mask-only";
   factsDigest: string;
   candidate: KnowledgeCandidate;
-  proof: KnowledgePublicationProof;
+  proof: KnowledgePublicationProof | SourceMaskAdmissionProof;
 }

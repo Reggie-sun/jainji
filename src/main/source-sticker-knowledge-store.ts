@@ -4,9 +4,9 @@ import { lstat, mkdir, open, readdir, realpath, rename, rm, stat, unlink } from 
 import path from "node:path";
 import { z } from "zod";
 import {
-  KnowledgeCandidateSchema, KnowledgeDisputeSchema, KnowledgePublicationProofSchema, ReviewedRangeSchema,
+  KnowledgeCandidateSchema, KnowledgeDisputeSchema, KnowledgePublicationProofSchema, KnowledgeRevisionProofSchema, SourceMaskAdmissionProofSchema, ReviewedRangeSchema,
   SourceIdentitySchema, coversRanges, sourceGeometryChanged, type KnowledgeCandidate, type KnowledgeDispute, type KnowledgeEvidence,
-  type KnowledgePublicationProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
+  type KnowledgePublicationProof, type SourceMaskAdmissionProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
 } from "../shared/source-sticker-knowledge.js";
 import { fingerprintFile } from "./paths.js";
 import { KnowledgeOutcomeSchema, type KnowledgeOutcome } from "../shared/source-sticker-knowledge-audit.js";
@@ -23,7 +23,7 @@ const ManifestSchema = z.object({
   references: z.record(Id, Id).refine((refs) => Object.keys(refs).length <= 4096), updatedAt: z.number().int().nonnegative(),
 }).strict();
 const EventSchema = z.discriminatedUnion("type", [
-  z.object({ schemaVersion: z.literal(1), type: z.literal("revision"), candidate: KnowledgeCandidateSchema, proof: KnowledgePublicationProofSchema }).strict(),
+  z.object({ schemaVersion: z.literal(1), type: z.literal("revision"), candidate: KnowledgeCandidateSchema, proof: KnowledgeRevisionProofSchema }).strict(),
   z.object({ schemaVersion: z.literal(1), type: z.literal("dispute"), source: SourceIdentitySchema, dispute: KnowledgeDisputeSchema }).strict(),
 ]);
 type Manifest = z.infer<typeof ManifestSchema>;
@@ -102,7 +102,7 @@ async function atomicJson(file: string, value: unknown, beforeCommit?: () => voi
   renameSync(temporary, file);
   await syncDirectory(path.dirname(file));
 }
-function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublicationProof): void {
+function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublicationProof | SourceMaskAdmissionProof): void {
   for (const target of candidate.facts.targets) for (const segment of target.segments) if (segment.mask) {
     const mask = segment.mask, pixels = mask.bbox.width * mask.bbox.height;
     const packed = Buffer.from(mask.dataBase64, "base64");
@@ -118,6 +118,35 @@ function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublicationPr
   if (proof.sourceEvidenceIds.some((id) => !sourceIds.has(id)) || candidate.facts.observations.some((o) => !proof.sourceEvidenceIds.includes(o.evidenceId))) throw new KnowledgeStoreError("integrity", "Unreviewed source observations");
   const factEvidence = [...candidate.changes, ...candidate.facts.exclusions, ...candidate.facts.targets.flatMap((t) => t.segments)].flatMap((item) => item.evidenceIds);
   if (factEvidence.some((id) => !proof.sourceEvidenceIds.includes(id))) throw new KnowledgeStoreError("integrity", "Unreviewed fact correction/geometry evidence");
+  if ("mode" in proof) {
+    const segments = candidate.facts.targets.flatMap(target => target.segments);
+    const segment = segments[0], mask = segment?.mask;
+    const sources = candidate.evidence.filter(frame => frame.kind === "source");
+    const reviewed = candidate.evidence.filter(frame => frame.kind === "source" && !frame.crop && proof.sourceEvidenceIds.includes(frame.id));
+    const artifacts = candidate.evidence.filter(frame => frame.kind === "source-mask-review");
+    const hasArtifact = (artifact: "probe-report" | "contact-sheet" | "review-receipt", expected: string) =>
+      artifacts.some(frame => frame.artifact === artifact && frame.digest === expected);
+    const range = candidate.facts.reviewedRanges[0];
+    const { start, endExclusive } = proof.reviewedFrameRange;
+    if (segments.length !== 1 || candidate.facts.targets.length !== 1 || candidate.facts.exclusions.length
+      || candidate.baseRevisionId !== null || candidate.changes.length || candidate.resolvedDisputeIds.length
+      || candidate.evidence.some(frame => frame.kind === "preview") || !mask
+      || mask.creation.method !== "temporal-stability" || mask.creation.version !== 1
+      || mask.review.method !== "contact-sheet" || mask.review.version !== 1
+      || mask.review.reviewer !== candidate.provenance.supervisor || mask.review.at !== candidate.provenance.at
+      || endExclusive - start < 30 || endExclusive - start > 100
+      || candidate.facts.samplingStrategy !== `temporal-stability-v1-frames-${start}-${endExclusive}`
+      || candidate.facts.reviewedRanges.length !== 1 || candidate.requiredRanges.length !== 1
+      || !range || segment.track.startMs !== range.startMs || segment.track.endMs !== range.endMs
+      || candidate.requiredRanges[0]?.startMs !== range.startMs || candidate.requiredRanges[0]?.endMs !== range.endMs
+      || sources.length !== 2 || reviewed.length !== 2 || proof.sourceEvidenceIds.length !== 2
+      || mask.evidenceIds.length !== 2 || mask.evidenceIds.some(id => !proof.sourceEvidenceIds.includes(id))
+      || artifacts.length !== 3 || !hasArtifact("probe-report", proof.probeSha256)
+      || !hasArtifact("contact-sheet", proof.contactSheetSha256)
+      || !hasArtifact("review-receipt", proof.reviewReceiptSha256)) throw new KnowledgeStoreError("integrity", "Incomplete source-only mask proof");
+    return;
+  }
+  if (candidate.evidence.some(frame => frame.kind === "source-mask-review")) throw new KnowledgeStoreError("integrity", "Source mask review artifacts require source-only proof");
   for (const id of proof.previewEvidenceIds) {
     const frame = candidate.evidence.find((e) => e.id === id);
     if (!frame || frame.kind !== "preview" || frame.candidateId !== candidate.id || frame.factsDigest !== expected || !proof.sourceEvidenceIds.includes(frame.sourceEvidenceId)) throw new KnowledgeStoreError("integrity", "Preview does not bind these source facts");
@@ -263,7 +292,7 @@ export class SourceStickerKnowledgeStore {
         if (sourceKey(candidate.source) !== sourceKey(source) || candidate.baseRevisionId !== head || revisions.has(candidate.id)) throw new KnowledgeStoreError("integrity", "Broken revision ancestry");
         this.checkResolution(candidate, disputes, revisions.get(head ?? ""));
         for (const id of candidate.resolvedDisputeIds) disputes.delete(id);
-        revisions.set(candidate.id, { id: candidate.id, sourceKey: sourceKey(source), state: "reviewed", verification: "sampled", factsDigest: factsDigest(candidate.facts), candidate, proof: record.proof }); head = candidate.id;
+        revisions.set(candidate.id, { id: candidate.id, sourceKey: sourceKey(source), state: "reviewed", verification: "mode" in record.proof ? "source-mask-only" : "sampled", factsDigest: factsDigest(candidate.facts), candidate, proof: record.proof }); head = candidate.id;
       } else {
         if (sourceKey(record.source) !== sourceKey(source) || disputes.has(record.dispute.id)) throw new KnowledgeStoreError("integrity");
         this.checkDispute(source, record.dispute, revisions);
@@ -356,6 +385,14 @@ export class SourceStickerKnowledgeStore {
   async publish(token: KnowledgeRun, input: KnowledgeCandidate, proofInput: KnowledgePublicationProof, inputBlobs: ReadonlyMap<string, Buffer>): Promise<KnowledgeRevision> {
     // Parse/copy at the boundary: queued caller mutations cannot change the eventual commit.
     const candidate = KnowledgeCandidateSchema.parse(input), proof = KnowledgePublicationProofSchema.parse(proofInput);
+    return this.publishRevision(token, candidate, proof, inputBlobs);
+  }
+  /** Publish a reviewed source mask before any cover sticker, preview or export exists. */
+  async publishSourceMask(token: KnowledgeRun, input: KnowledgeCandidate, proofInput: SourceMaskAdmissionProof, inputBlobs: ReadonlyMap<string, Buffer>): Promise<KnowledgeRevision> {
+    const candidate = KnowledgeCandidateSchema.parse(input), proof = SourceMaskAdmissionProofSchema.parse(proofInput);
+    return this.publishRevision(token, candidate, proof, inputBlobs);
+  }
+  private async publishRevision(token: KnowledgeRun, candidate: KnowledgeCandidate, proof: KnowledgePublicationProof | SourceMaskAdmissionProof, inputBlobs: ReadonlyMap<string, Buffer>): Promise<KnowledgeRevision> {
     checkProof(candidate, proof); const blobs = checkBlobs(candidate.evidence, inputBlobs);
     return this.exclusive(async () => {
       const run = this.run(token);

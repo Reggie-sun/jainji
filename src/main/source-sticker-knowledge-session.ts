@@ -112,7 +112,7 @@ export class SourceStickerKnowledgeSession {
           if (!head) return;
           const overlap = head.revision.candidate.facts.reviewedRanges.flatMap(a => window.facts.reviewedRanges.map(b => ({ startMs: Math.max(a.startMs, b.startMs), endMs: Math.min(a.endMs, b.endMs) })).filter(r => r.endMs > r.startMs));
           const observedIds = new Set(window.facts.observations.map(o => o.evidenceId));
-          const times = window.evidence.filter(e => e.kind === "source" && observedIds.has(e.id) && overlap.some(r => e.timeMs >= r.startMs && e.timeMs < r.endMs)).map(e => e.timeMs);
+          const times = window.evidence.filter((e): e is Extract<KnowledgeEvidence, { kind: "source" }> => e.kind === "source" && observedIds.has(e.id) && overlap.some(r => e.timeMs >= r.startMs && e.timeMs < r.endMs)).map(e => e.timeMs);
           if (!sourceObservationsChanged(head.revision.candidate.facts, window.facts, times)) return;
           const id = randomUUID(), originals = window.evidence.filter((e): e is Extract<KnowledgeEvidence, { kind: "source" }> => e.kind === "source" && overlap.some(r => e.timeMs >= r.startMs && e.timeMs < r.endMs));
           report(progress, { sourceIssueReported: true });

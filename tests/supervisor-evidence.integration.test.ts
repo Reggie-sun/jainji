@@ -97,7 +97,7 @@ it("hands inspected evidence to knowledge with exact PTS, full crop parents, and
     const crop = handoff.evidence.find((item) => item.id === images[0].sourceEvidenceId);
     if (!crop || crop.kind !== "source") throw new Error("missing cropped source evidence");
     expect(crop).toMatchObject({ kind: "source", crop: { rectangle: images[0].crop } });
-    const parent = handoff.evidence.find((item) => item.kind === "source" && item.id === crop.crop?.sourceEvidenceId);
+    const parent = handoff.evidence.filter((item) => item.kind === "source").find((item) => item.id === crop.crop?.sourceEvidenceId);
     expect(parent).toMatchObject({ kind: "source", pts: expect.any(Number), timeMs: expect.any(Number) });
     expect(parent?.id).toBe(images[0].fullSourceEvidenceId);
     expect(parent?.pts).toBe(identity.timeOriginPts + Math.round(parent!.timeMs / 1000 * Number(identity.timeBase.split("/")[1]) / Number(identity.timeBase.split("/")[0])));
