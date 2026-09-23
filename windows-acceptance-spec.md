@@ -1,5 +1,7 @@
 # 简辑 Windows 验收规范与执行记录
 
+**历史记录（0.1.1）**：本页保留当时的 Windows 自动化与静默安装证据，不代表当前代码或新安装包已验收。当前实机用例请使用 [Windows Acceptance Spec](docs/windows-acceptance-spec.md)；0.1.2 的后续记录见 [Windows 0.1.2 验证记录](docs/windows-verification-0.1.2.md)。
+
 基线：`main` 的 `3e4b428dff8a`，并在 2026-09-14 补验 Windows 0.1.1 的内置运行环境。本记录在 Windows 11 x64（内核 `10.0.26200`）、Node.js `22.19.0` 上执行。**自动化、NSIS 静默安装与内置引擎验证已通过；商业模型、目标 GPU、交互式安装及成片观看尚未验收，不能据此宣布发布完成。**
 
 ## 环境与边界

@@ -146,7 +146,7 @@ npm run package:linux
 npm run package:win
 ```
 
-Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带。Windows 打包脚本从固定版本获取 FFmpeg 并校验 SHA-256；离线构建可设置 `JIANJI_FFMPEG_ARCHIVE` 指向已下载的 `ffmpeg-9.0.1-essentials_build.zip`。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。Windows 验证记录见 [Windows 验收规范](windows-acceptance-spec.md)；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
+Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包，当前 Windows 安装文件名为 `jianji-setup-<version>.exe`。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带。Windows 打包脚本从固定版本获取 FFmpeg 并校验 SHA-256；离线构建可设置 `JIANJI_FFMPEG_ARCHIVE` 指向已下载的 `ffmpeg-9.0.1-essentials_build.zip`。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。推送 `v*` tag 会触发 Windows/Linux 打包并上传 GitHub Release；下载后仍需核对文件、安装与成片。当前 Windows 实机用例见 [Windows Acceptance Spec](docs/windows-acceptance-spec.md)，[0.1.2 验证记录](docs/windows-verification-0.1.2.md) 只适用于当时的安装包；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
 
 测试包含规则拒绝、Key 不回传、错误脱敏、取消、素材方案隔离、Windows/POSIX 路径，以及真实 FFmpeg 与本地模拟 API 的端到端处理。真实媒体测试缺少引擎或字体时会明确跳过。CI 配置覆盖 Ubuntu 与 Windows 的静态检查和测试；本地模拟服务测试不代表商业服务商已验证。`node scripts/cover-toggle-smoke.mjs` 用隔离 Chrome 验证覆盖开关、保存状态和装饰模式互不影响，不调用模型或修改用户项目。
 

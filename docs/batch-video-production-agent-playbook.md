@@ -496,7 +496,7 @@ WA 文档不强求做 CPU 限速；只在需要复刻 Linux 的固定核行为�
 
 ### WA.6 闸口
 
-- W21–W29 同样适用；任一 FAIL/BLOCKED/NOT_RUN 不能宣布「Windows Agent 验证完成」。
+- 当前 [Windows 验收清单](windows-acceptance-spec.md) 的 W21–W33 同样适用；任一适用项 FAIL/BLOCKED/NOT_RUN，不能宣布「Windows Agent 验证完成」。其中 W30–W33 为后续增补，不能用 W21–W29 的旧设计规格代替执行证据。
 - `verify.py` 的 ffprobe 在 Windows 上改用 `ffprobe.exe`，从 `JIANJI_FFPROBE_PATH` 取绝对路径；不能用 `which ffprobe`。
 - 残留临时文件：`Remove-Item -Force -Recurse` 删 `*.partial.mp4` 与 `.jianji-*.txt`；与 `verify.py` §file-set mismatch 检查一致。
 
