@@ -25,7 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - run: npm run ${{ matrix.package-script }}
+      - run: npm run ${{ matrix.package-script }} -- --publish never
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
