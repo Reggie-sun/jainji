@@ -11,7 +11,3 @@ coverage/
 .agent/harness/.generated/
 .agent/harness/runs/
 /.codex/codegraph-index.json*
-/.aoci/
-/aoci.txt
-/aoci.meta.txt
-/aoci.code.txt

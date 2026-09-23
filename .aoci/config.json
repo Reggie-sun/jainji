@@ -1,0 +1,374 @@
+{
+  "version": 2,
+  "locale": "zh-CN",
+  "index_path": "aoci.txt",
+  "exclude_dirs": [
+    "node_modules",
+    "vendor",
+    "dist",
+    "build",
+    "target",
+    ".next",
+    "coverage",
+    "tmp",
+    "uploads",
+    "backup",
+    "backups",
+    "artifacts",
+    ".output",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".tox",
+    ".nox",
+    "htmlcov"
+  ],
+  "exclude_files": [
+    "*.backup.*",
+    "*.bak",
+    ".coverage"
+  ],
+  "exclude_exts": [],
+  "curation_exclude": [],
+  "hook_strict": false,
+  "ledger_enabled": true,
+  "line_ending_tolerance": true,
+  "cognition_refresh_threshold": 30,
+  "overview_delivery": {
+    "chunk_tokens": 8000
+  },
+  "managed_scope": {
+    "version": "managed-scope-policy/v2",
+    "profile": "production",
+    "observe_change_policy": "informational",
+    "approval_mode": "inherit",
+    "approval_thresholds": {
+      "entry_removal_count": 25,
+      "entry_removal_percent": 25
+    },
+    "rules": [
+      {
+        "rule_id": "bundled-sticker-assets",
+        "action": "observe",
+        "pattern": "resources/stickers",
+        "pattern_kind": "directory",
+        "reason": "Bundled art changes may affect rendering but do not need one semantic Entry per image.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "design-and-governance-clues",
+        "action": "observe",
+        "pattern": "*.md",
+        "pattern_kind": "glob",
+        "reason": "Top-level product and design prose is contextual evidence; AGENTS authority is retained explicitly.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "fonts-assets",
+        "action": "exclude",
+        "pattern": "resources/fonts",
+        "pattern_kind": "directory",
+        "reason": "Bundled font binary assets have no per-file semantic Entry.",
+        "decision_basis": "generated_asset",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "generated-asset-manifest",
+        "action": "observe",
+        "pattern": "src/shared/asset-manifest.json",
+        "pattern_kind": "file",
+        "reason": "Generated sticker manifest is content data; source modules own selection behavior.",
+        "decision_basis": "generated_asset",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "historical-docs",
+        "action": "observe",
+        "pattern": "docs",
+        "pattern_kind": "directory",
+        "reason": "Documentation gives context but does not establish current implementation truth.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "historical-workflow",
+        "action": "observe",
+        "pattern": ".workflow",
+        "pattern_kind": "directory",
+        "reason": "Historical spec artifacts are design clues, not current implementation authority.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "impeccable-observe",
+        "action": "observe",
+        "pattern": ".impeccable",
+        "pattern_kind": "directory",
+        "reason": "Design tool metadata is not core application semantics.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "local-codex-state",
+        "action": "exclude",
+        "pattern": ".codex",
+        "pattern_kind": "directory",
+        "reason": "Machine-specific MCP config and CodeGraph cache are operational state; formal semantics belong to source and AGENTS.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "lockfile-observe",
+        "action": "observe",
+        "pattern": "package-lock.json",
+        "pattern_kind": "file",
+        "reason": "Dependency lockfile is version evidence; package.json owns scripting and dependency intent.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "project-migration-backups",
+        "action": "exclude",
+        "pattern": "*.json.migration-*.backup",
+        "pattern_kind": "glob",
+        "reason": "Local migration safety copies are user project data, not repository architecture.",
+        "decision_basis": "public_private_boundary",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "project-output-json",
+        "action": "exclude",
+        "pattern": "*.jianji-project.json*",
+        "pattern_kind": "glob",
+        "reason": "Local user project state and backup outputs are not repository architecture cognition.",
+        "decision_basis": "public_private_boundary",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "root-config-observe",
+        "action": "observe",
+        "pattern": ".github",
+        "pattern_kind": "directory",
+        "reason": "CI and hooks are verification infrastructure; package scripts summarize applicable checks.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "sample-product-state-a",
+        "action": "exclude",
+        "pattern": "舒鼻膏.json",
+        "pattern_kind": "file",
+        "reason": "Untracked user project state is not repository architecture cognition.",
+        "decision_basis": "public_private_boundary",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "sample-product-state-b",
+        "action": "exclude",
+        "pattern": "蝴蝶贴.json",
+        "pattern_kind": "file",
+        "reason": "Untracked user project state is not repository architecture cognition.",
+        "decision_basis": "public_private_boundary",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "scripts-operations",
+        "action": "observe",
+        "pattern": "scripts",
+        "pattern_kind": "directory",
+        "reason": "Scripts are operational verification and packaging helpers; core semantics reside in src and package scripts.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "sticker-library-assets",
+        "action": "exclude",
+        "pattern": "resources/sticker-library",
+        "pattern_kind": "directory",
+        "reason": "Vendored sticker image bytes have no per-file architecture semantics; selection behavior lives in source modules.",
+        "decision_basis": "generated_asset",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "styles-observe",
+        "action": "observe",
+        "pattern": "src/renderer/*.css",
+        "pattern_kind": "glob",
+        "reason": "Styles are visual implementation details; renderer component entries identify ownership.",
+        "decision_basis": "semantic_density",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "temporary-json",
+        "action": "exclude",
+        "pattern": "*.json.tmp-*",
+        "pattern_kind": "glob",
+        "reason": "Temporary project persistence artifacts are local runtime data.",
+        "decision_basis": "public_private_boundary",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "test-evidence",
+        "action": "observe",
+        "pattern": "tests",
+        "pattern_kind": "directory",
+        "reason": "Tests are executable evidence; behavioral meaning is retained in implementation entries and representative contract references.",
+        "decision_basis": "test_responsibility_delegation",
+        "source": "user",
+        "created_by": "human",
+        "order": 0,
+        "enabled": true
+      },
+      {
+        "rule_id": "agents-authority",
+        "action": "index",
+        "pattern": "AGENTS.md",
+        "pattern_kind": "file",
+        "reason": "AGENTS is the current project rule authority; cognition only points to it.",
+        "decision_basis": "maintainer_direction",
+        "source": "user",
+        "created_by": "human",
+        "order": 1000,
+        "enabled": true
+      }
+    ]
+  },
+  "cognition_budget": {
+    "version": "cognition-budget-policy/v1",
+    "mode": "enforce",
+    "whole_index": {
+      "target_tokens": 200000,
+      "warning_tokens": 300000,
+      "max_tokens": 400000
+    },
+    "r": [
+      {
+        "min_c": 1,
+        "max_c": 4,
+        "target_tokens": 25,
+        "max_tokens": 50
+      },
+      {
+        "min_c": 5,
+        "max_c": 7,
+        "target_tokens": 45,
+        "max_tokens": 90
+      },
+      {
+        "min_c": 8,
+        "max_c": 8,
+        "target_tokens": 70,
+        "max_tokens": 140
+      },
+      {
+        "min_c": 9,
+        "max_c": 9,
+        "target_tokens": 90,
+        "max_tokens": 180
+      }
+    ],
+    "s": [
+      {
+        "min_c": 1,
+        "max_c": 4,
+        "target_tokens": 20,
+        "max_tokens": 40
+      },
+      {
+        "min_c": 5,
+        "max_c": 7,
+        "target_tokens": 40,
+        "max_tokens": 80
+      },
+      {
+        "min_c": 8,
+        "max_c": 8,
+        "target_tokens": 70,
+        "max_tokens": 140
+      },
+      {
+        "min_c": 9,
+        "max_c": 9,
+        "target_tokens": 100,
+        "max_tokens": 200
+      }
+    ]
+  },
+  "installed_agents": [
+    "codex"
+  ],
+  "automation": {
+    "mode": "auto"
+  },
+  "ai": {
+    "enabled": false,
+    "provider": "openai-compatible",
+    "base_url": "",
+    "model": "",
+    "api_key_env": "",
+    "timeout_seconds": 0,
+    "max_concurrency": 0,
+    "max_input_tokens": 0,
+    "token_accounting": "auto",
+    "prompt_snapshot": "redacted"
+  }
+}
