@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AssetLibrary, bundledStickerDirectory } from "../src/main/asset-library";
-import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
+import type { BuiltinStickerAssets, StickerAssets } from "../src/main/builtin-stickers";
 import type { LibraryAsset } from "../src/shared/asset-library";
 import { DecorationSchema } from "../src/shared/decorations";
 import { LIBRARY_FONTS, LIBRARY_STICKERS } from "../src/shared/asset-library";
@@ -115,5 +115,25 @@ describe("verified asset cache", () => {
     const stickers = template.layers.filter((layer) => layer.type === "sticker");
     expect(new Set(stickers.map((layer) => layer.assetFingerprint)).size).toBe(4);
     expect(offline).not.toHaveBeenCalled();
+  });
+  it("keeps only verified uploads in the random pool and ignores saved manual choices", async () => {
+    const root = await directory();
+    const validId = `uploaded-${"a".repeat(64)}`;
+    const staleId = `uploaded-${"b".repeat(64)}`;
+    const changedId = `uploaded-${"c".repeat(64)}`;
+    const validPath = path.join(root, "valid.png");
+    const changedPath = path.join(root, "changed.png");
+    await writeFile(validPath, contents);
+    await writeFile(changedPath, "changed");
+    const builtins = {
+      [validId]: { assetPath: validPath, assetFingerprint: `sha256:${createHash("sha256").update(contents).digest("hex")}` },
+      [staleId]: { assetPath: path.join(root, "missing.png"), assetFingerprint: "sha256:stale" },
+      [changedId]: { assetPath: changedPath, assetFingerprint: `sha256:${createHash("sha256").update(contents).digest("hex")}` },
+    } as StickerAssets;
+    const options = DecorationSchema.parse({ mode: "random", corners: { "top-left": { type: "sticker", sticker: staleId } } });
+    const prepared = await new AssetLibrary(await directory()).prepare(options, builtins);
+    expect(prepared[validId]).toEqual(builtins[validId]);
+    expect(prepared[staleId]).toBeUndefined();
+    expect(prepared[changedId]).toBeUndefined();
   });
 });

@@ -126,20 +126,29 @@ export class AssetLibrary {
   }
 
   async prepare(options: DecorationOptions, builtins: StickerAssets): Promise<StickerAssets> {
-    for (const id of decorationStickerIds(options).filter(isUploadedStickerId)) {
+    const selectedIds = options.mode === "random" ? [] : decorationStickerIds(options);
+    for (const id of selectedIds.filter(isUploadedStickerId)) {
       const asset = builtins[id];
       if (!asset || await fingerprintFile(asset.assetPath) !== asset.assetFingerprint) throw new Error("上传的贴纸缺失或已变化，请重新上传。");
+    }
+    const assets = { ...builtins };
+    if (options.mode === "random") for (const id of Object.keys(assets).filter(isUploadedStickerId)) {
+      const asset = assets[id];
+      try {
+        if (asset && await fingerprintFile(asset.assetPath) === asset.assetFingerprint) continue;
+      } catch { /* A missing upload is not a random candidate. */ }
+      delete assets[id];
     }
     for (const family of decorationFontFamilies(options)) {
       const font = [...this.entries.values()].find((entry) => entry.kind === "font" && entry.family === family);
       if (font) await this.ensure(font.id);
     }
     const stickerIds = options.mode === "random"
-      ? [...new Set([...decorationStickerIds(options), ...[...this.entries.keys()].filter(isAutomaticStickerAllowed)])]
-      : decorationStickerIds(options);
+      ? [...this.entries.keys()].filter(isAutomaticStickerAllowed)
+      : selectedIds;
     const selected = await Promise.all(stickerIds
       .filter((id) => this.entries.has(id))
       .map(async (id) => [id, await this.ensure(id)] as const));
-    return selected.length ? { ...builtins, ...Object.fromEntries(selected) } : builtins;
+    return selected.length ? { ...assets, ...Object.fromEntries(selected) } : assets;
   }
 }
