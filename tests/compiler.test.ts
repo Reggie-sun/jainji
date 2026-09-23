@@ -22,6 +22,19 @@ describe("TemplateCompiler", () => {
     expect(command.args.slice(command.args.indexOf("-stream_loop"), command.args.indexOf("-stream_loop") + 2)).toEqual(["-stream_loop", "-1"]);
   });
 
+  it.each(["sticker.png", "sticker.jpg", "sticker.jpeg"])("decodes the still %s input once while keeping the overlay", async (name) => {
+    const stickerPath = `/tmp/${name}`;
+    const template = createDefaultTemplate();
+    template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: stickerPath, assetFingerprint: "fixture", x: 0.04, y: 0.04, width: 0.12, rotationDeg: 0, opacity: 1, zIndex: 0, visible: true });
+    const command = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, {
+      ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused",
+    });
+    expect(command.args).not.toContain("-stream_loop");
+    expect(command.args.filter((arg) => arg === "-i")).toHaveLength(2);
+    expect(command.args[command.args.lastIndexOf("-i") + 1]).toBe(stickerPath);
+    expect(command.args[command.args.indexOf("-filter_complex") + 1]).toContain("[base0][sticker1]overlay=");
+  });
+
   it.each([[540, 960], [1080, 1920]])("preserves %i x %i dimensions with explicit source resolution", async (width, height) => {
     const command = await new TemplateCompiler().compile(createDefaultTemplate(), { ...media, width, height }, { ...DEFAULT_PRESET, resolutionMode: "source" }, {
       ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused",
@@ -94,8 +107,8 @@ describe("TemplateCompiler", () => {
       ffmpegPath: "/usr/bin/ffmpeg", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused.txt",
     });
     const graph = command.args[command.args.indexOf("-filter_complex") + 1];
-    expect(command.args.slice(command.args.indexOf("-stream_loop"), command.args.indexOf("-stream_loop") + 4)).toEqual(["-stream_loop", "-1", "-i", "/tmp/square.png"]);
-    expect(command.args.slice(command.args.indexOf("-stream_loop") - 2, command.args.indexOf("-stream_loop"))).toEqual(["-t", "1.000"]);
+    expect(command.args).not.toContain("-stream_loop");
+    expect(command.args[command.args.lastIndexOf("-i") + 1]).toBe("/tmp/square.png");
     expect(graph).toContain("scale=256:115:force_original_aspect_ratio=decrease");
     expect(graph).toContain("overlay=x=main_w-overlay_w-main_w*0.04000:y=main_h-overlay_h-main_h*0.04000");
   });

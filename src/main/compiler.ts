@@ -163,9 +163,10 @@ export class TemplateCompiler {
         continue;
       }
 
-      // Bound looping inputs too: output -t alone can leave sticker decoding
-      // running and buffering indefinitely when the main video reaches EOF.
-      args.push(...threadArgs, "-t", durationSeconds.toFixed(3), "-stream_loop", "-1", "-i", layer.assetPath);
+      // Overlay repeats the last frame of a still image, so decode it only once.
+      // GIFs and unknown formats retain their animation and bounded input loop.
+      const stillImage = /\.(png|jpe?g)$/i.test(layer.assetPath);
+      args.push(...threadArgs, ...(stillImage ? [] : ["-t", durationSeconds.toFixed(3), "-stream_loop", "-1"]), "-i", layer.assetPath);
       const stickerIndex = inputIndex;
       inputIndex += 1;
       const sourceLabel = `sticker${stickerIndex}src`;
