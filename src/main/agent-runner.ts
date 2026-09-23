@@ -207,10 +207,12 @@ export class AgentRunner {
             audit[index].stage = "enqueue";
             const previewPath = this.dependencies.placement!.previewPath?.(template);
             const published = Boolean(previewPath && this.dependencies.publishApproved);
-            item.taskId = await this.dependencies.placement!.enqueue(source, template, signal, () =>
+            const taskId = await this.dependencies.placement!.enqueue(source, template, signal, () =>
               published
                 ? this.dependencies.publishApproved!(template, source, previewPath!, signal)
                 : this.dependencies.enqueue(template, source, signal));
+            signal.throwIfAborted();
+            item.taskId = taskId;
             if (previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, previewPath);
             item.summary = `近似覆盖样片检查通过，${published ? "已发布到输出目录；位置已冻结，下次仍需检查样片" : "已提交导出；位置已冻结，下次仍需检查样片"}`;
           }
