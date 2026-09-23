@@ -50,7 +50,8 @@ describe("decoration display timing", () => {
     expect(graph).toContain("gte(t,1)*lt(t,5)");
     expect(graph.match(/lt\(t,5\)/g)?.length ?? 0).toBe(displayMode?.startsWith("first-") ? 4 : 2);
     expect(graph).not.toContain("lt(t,3)");
-    expect(graph).not.toContain("fade=t=out");
+    expect(graph.match(/\[base\d+Text\]fade=t=out/g)?.length ?? 0).toBe(displayMode?.startsWith("first-") ? 2 : 0);
+    expect(graph).not.toContain("sticker1Faded");
     expect(await new TemplateCompiler().compile(JSON.parse(JSON.stringify(template)), media, DEFAULT_PRESET, options)).toEqual(compiled);
     const legacy = JSON.parse(JSON.stringify(template)); delete legacy.stickerDisplayMode;
     if (displayMode?.startsWith("first-")) legacy.decorationDisplayMode = "first-3s";

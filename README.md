@@ -122,7 +122,7 @@ Agent 自动覆盖的近似位置不是源贴纸事实，不写入源知识库�
 
 ## Build And Verification
 
-Windows 0.1.2 安装包在 main `2d1ecb4` 基线上的功能与内置运行环境验证，见 [Windows 0.1.2 验证记录](docs/windows-verification-0.1.2.md)。
+最新 main `9464a10` 加上 Windows 修复的 0.1.3 安装包验证，见 [Windows 0.1.3 验证记录](docs/windows-verification-0.1.3.md)。
 
 ### Validation Harness
 
@@ -150,6 +150,6 @@ Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包，当前 Windo
 
 测试包含规则拒绝、Key 不回传、错误脱敏、取消、素材方案隔离、Windows/POSIX 路径，以及真实 FFmpeg 与本地模拟 API 的端到端处理。真实媒体测试缺少引擎或字体时会明确跳过。CI 配置覆盖 Ubuntu 与 Windows 的静态检查和测试；本地模拟服务测试不代表商业服务商已验证。`node scripts/cover-toggle-smoke.mjs` 用隔离 Chrome 验证覆盖开关、保存状态和装饰模式互不影响，不调用模型或修改用户项目。
 
-桌面交互 smoke 使用真实 Electron、IPC 和 FFmpeg，模型服务、OAuth App Server、CC Switch 数据库与文件选择器使用隔离 fixture。先构建，再在有图形环境的终端运行 `node scripts/desktop-smoke.mjs`；无显示的 Linux 可运行 `xvfb-run -a node scripts/desktop-smoke.mjs`。验证登录/取消/退出、CC Switch 导入及 Anthropic 图片请求、手动 API、素材导入、模板选择、自动导出、Key 不回传与窄窗口布局。另有真实 Codex 二进制初始化、独立登录目录和禁用工具配置测试，不发起真实登录或模型推理。真实账号授权和商业模型出片尚需用户登录后验证。
+桌面交互 smoke 使用真实 Electron、IPC 和 FFmpeg；账号登录与文件选择器使用隔离 fixture。先构建，再在有图形环境的终端运行 `node scripts/desktop-smoke.mjs`。当前默认验证登录与取消、素材导入及零模型请求的本地随机出片，检查原片未被改动和渲染异常；旧版其他 smoke scope 尚需按新版界面更新。反馈 smoke 另运行 `node scripts/feedback-smoke.mjs`，使用本地中继和 GitHub fixture，验证提交回执及正常退出后的恢复。真实账号授权和商业模型出片仍需用户登录后验证。
 
 接口依据：[Codex App Server](https://learn.chatgpt.com/docs/app-server)、[Codex authentication](https://learn.chatgpt.com/docs/auth)、[MiniMax Messages API](https://platform.minimax.io/docs/api-reference/text-chat-anthropic)、[OpenAI Images and vision](https://developers.openai.com/api/docs/guides/images-vision)。实际图片能力取决于所选模型与服务商。

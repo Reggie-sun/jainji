@@ -31,6 +31,39 @@ async function setup() {
 afterEach(async () => { await Promise.all(directories.splice(0).map((p) => rm(p, { recursive: true, force: true }))); });
 
 describe("managed ChatGPT session", () => {
+  it("does not start browser login after cancellation during account lookup", async () => {
+    const { rpc, session, browser } = await setup();
+    let finish!: (value: unknown) => void;
+    rpc.request.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    const login = session.login();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await session.cancelLogin();
+    finish({ account: null });
+    await login;
+    expect(session.status().status).toBe("signed-out");
+    expect(rpc.request.mock.calls.some(([method]) => method === "account/login/start")).toBe(false);
+    expect(browser).not.toHaveBeenCalled();
+    await session.dispose();
+  });
+  it("cancels a late login start response without opening the browser", async () => {
+    const { rpc, session, browser } = await setup();
+    let finish!: (value: unknown) => void;
+    rpc.request.mockImplementation(async (method: string, params: unknown) => {
+      if (method === "account/login/start") return new Promise((resolve) => { finish = resolve; });
+      if (method === "account/read") return { account: rpc.account };
+      if (method === "account/logout") rpc.account = null;
+      return {};
+    });
+    const login = session.login();
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    await session.cancelLogin();
+    finish({ type: "chatgpt", loginId: "late", authUrl: "https://auth.openai.com/authorize?state=fake" });
+    await login;
+    expect(rpc.request).toHaveBeenCalledWith("account/login/cancel", { loginId: "late" });
+    expect(session.status().status).toBe("signed-out");
+    expect(browser).not.toHaveBeenCalled();
+    await session.dispose();
+  });
   it("uses the isolated completion runtime for model turns", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-chatgpt-split-")); directories.push(directory);
     const accountRpc = new FakeRpc(); accountRpc.account = { type: "chatgpt" };

@@ -5,6 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { createAutomaticOutputDirectory } from "../src/main/automatic-output-directory";
 
 const directories: string[] = [];
+const timeSeparator = process.platform === "win32" ? "：" : ":";
 afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
 
 async function temporaryRoot(): Promise<string> {
@@ -18,13 +19,13 @@ it("creates a timestamped video directory beside the material directory", async 
   const source = path.join(root, "肥皂", "素材", "分组", "素材一.mp4");
   const created = await createAutomaticOutputDirectory([source], new Date(2026, 8, 18, 9, 7));
 
-  expect(created).toBe(path.join(root, "肥皂", "视频", "9.18 09:07"));
+  expect(created).toBe(path.join(root, "肥皂", "视频", `9.18 09${timeSeparator}07`));
   expect((await stat(created)).isDirectory()).toBe(true);
 });
 
 it("reserves a new directory when the same minute already exists", async () => {
   const root = await temporaryRoot();
-  const existing = path.join(root, "马油膏布", "视频", "9.18 20:02");
+  const existing = path.join(root, "马油膏布", "视频", `9.18 20${timeSeparator}02`);
   await mkdir(existing, { recursive: true });
 
   const created = await createAutomaticOutputDirectory(
@@ -40,11 +41,11 @@ it("reserves a new directory when the same minute already exists", async () => {
 it("reuses only an existing automatic directory for the same product", async () => {
   const root = await temporaryRoot();
   const source = path.join(root, "蝴蝶贴", "素材", "素材一.mp4");
-  const existing = path.join(root, "蝴蝶贴", "视频", "9.17 20:03");
+  const existing = path.join(root, "蝴蝶贴", "视频", `9.17 20${timeSeparator}03`);
   await mkdir(existing, { recursive: true });
 
   await expect(createAutomaticOutputDirectory([source], new Date(), existing)).resolves.toBe(existing);
-  await expect(createAutomaticOutputDirectory([source], new Date(), path.join(root, "马油膏布", "视频", "9.17 20:03"))).rejects.toThrow("不匹配");
+  await expect(createAutomaticOutputDirectory([source], new Date(), path.join(root, "马油膏布", "视频", `9.17 20${timeSeparator}03`))).rejects.toThrow("不匹配");
 });
 
 it("rejects sources that do not identify one product root", async () => {

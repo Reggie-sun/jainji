@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createServer } from "node:http";
@@ -128,8 +128,8 @@ try {
     await pause(80);
   };
   await send("Runtime.enable");
-  await waitFor("document.body.innerText.includes('反馈问题')");
-  await click("反馈问题");
+  await waitFor("document.body.innerText.includes('反馈')");
+  await click("反馈");
   await waitFor("document.querySelector('dialog').open");
   assert.equal(await evaluate("document.querySelector('.feedback-dialog button.button.primary').disabled"), true);
   assert.equal(await evaluate("Boolean(document.querySelector('#feedback-token'))"), false);
@@ -170,7 +170,7 @@ try {
   const receiptImage = await send("Page.captureScreenshot", { format: "png" });
   await writeFile(path.join(directory, "feedback-receipt.png"), Buffer.from(receiptImage.data, "base64"));
   await evaluate("document.querySelector('button[aria-label=\"关闭问题反馈\"]').click()");
-  await click("反馈问题");
+  await click("反馈");
   assert.equal(await evaluate("document.querySelector('dialog').innerText.includes('已提交 Issue #42')"), true);
   await click("再反馈一个问题");
   await fill("feedback-description", "结果不明后的重启恢复检查", "HTMLTextAreaElement");
@@ -178,8 +178,11 @@ try {
   await click("提交到 GitHub");
   await waitFor("document.querySelector('dialog').innerText.includes('反馈服务暂时无法确认')");
   assert.equal(posts.length, 3);
+  const exited = once(child, "exit");
+  socket.send(JSON.stringify({ id: ++sequence, method: "Runtime.evaluate", params: { expression: "window.close()" } }));
+  assert.equal((await exited)[0], 0, "normal close completes before restart");
+  await assert.rejects(access(path.join(directory, "source-sticker-knowledge", "owner.lock")), { code: "ENOENT" });
   socket.close();
-  const exited = once(child, "exit"); child.kill("SIGKILL"); await exited;
   child = launch();
   target = undefined;
   for (let attempt = 0; attempt < 400; attempt++) {
@@ -193,8 +196,8 @@ try {
   await new Promise((resolve, reject) => { socket.addEventListener("open", resolve, { once: true }); socket.addEventListener("error", reject, { once: true }); });
   socket.addEventListener("message", handleMessage);
   await send("Runtime.enable");
-  await waitFor("document.body.innerText.includes('反馈问题')");
-  await click("反馈问题");
+  await waitFor("document.body.innerText.includes('反馈')");
+  await click("反馈");
   await waitFor("document.querySelector('.feedback-history')?.innerText.includes('恢复 / 核对反馈')");
   await click("恢复 / 核对反馈");
   await waitFor("document.querySelector('dialog').innerText.includes('已提交 Issue #43')");

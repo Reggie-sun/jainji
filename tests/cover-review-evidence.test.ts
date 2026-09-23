@@ -129,7 +129,7 @@ describe("cover review evidence", () => {
     await expect(store.verify([evidence])).rejects.toThrow(/校验/);
   });
 
-  it("rejects an evidence symlink that resolves outside the controlled root", async () => {
+  it.skipIf(process.platform === "win32")("rejects an evidence symlink that resolves outside the controlled root", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "jianji-evidence-root-"));
     const outside = path.join(await mkdtemp(path.join(tmpdir(), "jianji-evidence-outside-")), "frame.png");
     await writeFile(outside, "frame");

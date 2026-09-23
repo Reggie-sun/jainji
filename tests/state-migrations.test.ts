@@ -164,7 +164,7 @@ describe("state migrations", () => {
     if (beforeBackup !== undefined) expect(await readFile(`${filePath}.bak`, "utf8")).toBe(beforeBackup);
   });
 
-  it("reports a migration backup I/O failure without isolating or replacing the primary", async () => {
+  it.skipIf(process.platform === "win32")("reports a migration backup I/O failure without isolating or replacing the primary", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-migration-io-"));
     const filePath = path.join(directory, "project.json");
     const project = createDefaultProject();
@@ -180,7 +180,7 @@ describe("state migrations", () => {
     }
   });
 
-  it("does not silently skip a job when its migration persistence is unavailable", async () => {
+  it.skipIf(process.platform === "win32")("does not silently skip a job when its migration persistence is unavailable", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-load-all-io-"));
     const project = createDefaultProject();
     const batch = legacyBatch(project);

@@ -16,7 +16,7 @@ const directory = await mkdtemp(path.join(tmpdir(), "jianji-desktop-smoke-"));
 const source = path.join(directory, "测试素材.mp4");
 const output = path.join(directory, "output");
 const collectionFile = path.join(directory, "夏季新品.jianji-project.json");
-const smokeScope = process.env.JIANJI_SMOKE_SCOPE;
+const smokeScope = process.env.JIANJI_SMOKE_SCOPE ?? "windows-retest";
 const knowledgeFixture = knowledgeProviderFixture();
 if (smokeScope === "knowledge") await symlink(path.join(root, "resources"), path.join(directory, "resources"), "junction");
 execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "testsrc=size=1280x720:rate=24", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
@@ -224,7 +224,7 @@ desktopSmoke: try {
   };
   const waitFor = async (expression) => {
     for (let attempt = 0; attempt < 200; attempt++) { if (await evaluate(expression)) return; await pause(100); }
-    throw new Error(`Timed out: ${expression}`);
+    throw new Error(`Timed out: ${expression}; page: ${await evaluate("document.body?.innerText.slice(0, 500)")}; exceptions: ${exceptions.join(" | ")}`);
   };
   const click = async (text) => {
     const selector = `[...document.querySelectorAll('button')].find(button => button.textContent.includes(${JSON.stringify(text)}))`;
@@ -238,7 +238,7 @@ desktopSmoke: try {
     await writeFile(path.join(directory, `${name}.png`), Buffer.from(image.data, "base64"));
   };
   await send("Runtime.enable");
-  await waitFor("document.body?.innerText.includes('接入你的创作搭档')");
+  await waitFor("document.body?.innerText.includes('连接模型')");
   if (smokeScope === "knowledge") {
     await runKnowledgeSmoke({ evaluate, click, waitFor, send, screenshot, apiPort, directory, fixture: knowledgeFixture });
     assert.deepEqual(exceptions, []);
@@ -246,7 +246,7 @@ desktopSmoke: try {
     break desktopSmoke;
   }
   assert.equal(await evaluate("document.body.innerText.includes('已保存项目列表暂时无法读取')"), true, "a corrupt index must not prevent desktop startup");
-  await click("上传贴纸");
+  await click("贴纸库");
   await waitFor("document.body.innerText.includes('还没有上传贴纸')");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '选择图片上传' && !button.disabled)"), true, "standalone sticker library is available without a model or video");
   await screenshot("00-sticker-library-empty");
@@ -256,7 +256,7 @@ desktopSmoke: try {
   await click("选择图片上传");
   await waitFor("document.querySelector('[role=alert]')?.textContent.includes('上传失败')");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '选择图片上传' && !button.disabled)"), true, "invalid upload can be retried");
-  await click("模型与 API");
+  await click("制作");
   const duplicate = spawn(require("electron"), [bootstrap], { cwd: root, env: environment, stdio: "ignore" });
   const duplicateExit = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => { duplicate.kill(); reject(new Error("Second instance failed to exit")); }, 5000);
@@ -270,13 +270,37 @@ desktopSmoke: try {
   assert.equal(await evaluate("[...document.querySelectorAll('.manual-connection input')].some(input => input.value === 'Qwen/Qwen3-VL-8B-Instruct')"), true);
   await click("ChatGPT 登录");
   await click("使用 ChatGPT 登录");
-  await waitFor("document.body.innerText.includes('取消登录')");
-  await screenshot("01a-login-pending");
+  await waitFor("[...document.querySelectorAll('button')].some(button => button.textContent.includes('取消登录') && !button.disabled)");
+  if (smokeScope !== "windows-retest") await screenshot("01a-login-pending");
   await click("取消登录");
   await waitFor("document.body.innerText.includes('使用 ChatGPT 登录')");
   await click("使用 ChatGPT 登录");
   await waitFor("document.body.innerText.includes('smoke@example.test')");
   assert.equal((await evaluate("window.jianji.getState()")).connection.source, "chatgpt");
+  if (smokeScope === "windows-retest") {
+    await click("开始创作");
+    await waitFor("document.body.innerText.includes('选择本地素材')");
+    await click("选择本地素材");
+    await waitFor("document.body.innerText.includes('测试素材.mp4')");
+    await click("下一步，设置制作规则");
+    await waitFor("document.querySelector('#product-price') !== null");
+    await click("本地随机");
+    await evaluate("const price = document.querySelector('#product-price'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(price, '春日新品'); price.dispatchEvent(new Event('input', { bubbles: true }))");
+    await evaluate("const count = document.querySelector('#production-count'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(count, '1'); count.dispatchEvent(new Event('input', { bubbles: true }))");
+    await evaluate("document.querySelector('.directory-picker').click()");
+    await waitFor("document.querySelector('.directory-picker')?.textContent.includes('output')");
+    await click("交给 Agent，制作 1 条成片");
+    await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
+    const state = await evaluate("window.jianji.getState()");
+    const completed = state.queue.batches.flatMap(({ batch }) => batch.tasks).find((task) => task.status === "completed");
+    assert.ok(completed?.outputPath, "local random export is completed");
+    assert.equal(requests, 0, "local random export makes no model request");
+    assert.deepEqual(await readFile(source), sourceBytes, "export preserves the source");
+    assert.deepEqual(exceptions, [], "renderer has no runtime exceptions");
+    await screenshot("windows-retest-completed");
+    console.log(JSON.stringify({ result: "PASS", scope: smokeScope, output: completed.outputPath, screenshotDirectory: directory, providerRequests: requests, runtimeExceptions: exceptions }, null, 2));
+    break desktopSmoke;
+  }
   assert.deepEqual(await evaluate("[...document.querySelector('.model-picker select').options].map(option => option.value)"), ["", "smoke-codex-vision", "smoke-codex-next"]);
   await evaluate("document.querySelector('.model-picker select').value = 'smoke-codex-next'; document.querySelector('.model-picker select').dispatchEvent(new Event('change', { bubbles: true }))");
   await waitFor("document.body.innerText.includes('创作模型已切换并保存')");
