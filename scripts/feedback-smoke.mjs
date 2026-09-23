@@ -211,7 +211,15 @@ try {
   console.log(JSON.stringify({ status: "PASS", relay: "real local service", github: "local fixture only", posts: posts.length, screenshotDirectory: directory, runtimeExceptions: exceptions }, null, 2));
 } catch (error) { console.error(processLog.slice(-2000)); throw error; }
 finally {
-  socket?.close(); child.kill("SIGKILL");
+  if (child.exitCode === null && socket?.readyState === WebSocket.OPEN) {
+    socket.send(JSON.stringify({ id: 999999, method: "Runtime.evaluate", params: { expression: "window.close()" } }));
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 5_000);
+      child.once("exit", () => { clearTimeout(timeout); resolve(); });
+    });
+  }
+  socket?.close();
+  if (child.exitCode === null) child.kill("SIGKILL");
   relay.closeAllConnections(); await new Promise((resolve) => relay.close(resolve));
   server.closeAllConnections(); await new Promise((resolve) => server.close(resolve));
 }
