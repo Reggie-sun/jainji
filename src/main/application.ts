@@ -56,6 +56,7 @@ export class ApplicationService {
   private projectFile?: ProjectStore;
   private dirty = true;
   private mutationVersion = 0;
+  private blankProjectVersion = 0;
   private queueSyncWork?: Promise<void>;
   private pendingQueueSave?: { project: Project; snapshot: Project; store: ProjectStore; version: number };
   private projectSaveWork?: Promise<void>;
@@ -71,6 +72,7 @@ export class ApplicationService {
 
   get currentProject(): Project { return this.project; }
   get hasUnsavedChanges(): boolean { return this.dirty; }
+  get hasUnsavedContent(): boolean { return this.dirty && (Boolean(this.projectFile) || this.mutationVersion !== this.blankProjectVersion); }
   get projectPath(): string | undefined { return this.projectFile?.path; }
 
   recoverInterruptedReviews(): void {
@@ -130,6 +132,7 @@ export class ApplicationService {
     this.migrationBackupPath = undefined;
     this.dirty = true;
     this.mutationVersion += 1;
+    this.blankProjectVersion = this.mutationVersion;
     return structuredClone(this.project);
   }
 

@@ -23,6 +23,28 @@ async function fixture() {
 }
 
 describe("named material collections", () => {
+  it("does not treat an untouched new project as content that needs a save prompt", async () => {
+    const { directory, service, createService } = await fixture();
+    const blank = createService();
+    expect(blank.hasUnsavedChanges).toBe(true);
+    expect(blank.hasUnsavedContent).toBe(false);
+    expect(service.hasUnsavedContent).toBe(true);
+
+    service.newProject();
+    expect(service.hasUnsavedContent).toBe(false);
+    service.setProductPriceDraft("19.9元");
+    expect(service.hasUnsavedContent).toBe(true);
+    service.newProject();
+    expect(service.hasUnsavedContent).toBe(false);
+    service.renameProject("我的草稿");
+    expect(service.hasUnsavedContent).toBe(true);
+
+    await service.saveProject(path.join(directory, "draft.json"));
+    expect(service.hasUnsavedContent).toBe(false);
+    service.setProductPriceDraft("19.9元");
+    expect(service.hasUnsavedContent).toBe(true);
+  });
+
   it("keeps collection name and media references after saving and reopening in a fresh service", async () => {
     const { directory, source, service, media, createService } = await fixture();
     const file = path.join(directory, "collection.json");

@@ -315,7 +315,7 @@ function registerHandlers(): void {
   });
   ipcMain.handle("project.new", async (event) => {
     assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
-    if (service.hasUnsavedChanges) {
+    if (service.hasUnsavedContent) {
       const choice = await dialog.showMessageBox(mainWindow!, {
         type: "question",
         title: "新建项目",
@@ -341,7 +341,7 @@ function registerHandlers(): void {
       if (result.canceled || !result.filePaths[0]) return null;
       filePath = result.filePaths[0];
     }
-    if (service.hasUnsavedChanges && (service.currentProject.mediaItems.length || service.projectPath)) {
+    if (service.hasUnsavedContent) {
       const choice = await dialog.showMessageBox(mainWindow!, {
         type: "question", title: "打开项目", message: "当前项目有尚未保存的更改。",
         detail: "请先取消并保存当前项目，或继续打开并放弃这些更改。",
@@ -684,7 +684,7 @@ async function shutdownServices(): Promise<void> {
 async function requestQuit(): Promise<void> {
   if (quitting || closingPrompt) return;
   if (!queue) { quitting = true; try { await shutdownServices(); } finally { app.exit(0); } return; }
-  if (!service?.hasUnsavedChanges || !mainWindow) {
+  if (!service?.hasUnsavedContent || !mainWindow) {
     quitting = true;
     try { await shutdownServices(); } finally { app.exit(0); }
     return;
