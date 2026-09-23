@@ -15,7 +15,7 @@ export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleI
     const layers = input.coverTracks !== undefined ? automaticCoverLayers(input.coverSticker, input.source, dimensions, input.coverTracks, { preserveMotion: input.preserveCoverMotion }) : manualCoverLayers(input.coverSticker, input.source, dimensions, input.version);
     template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers.map((layer) => ({ ...layer, cover: { ...layer.cover!, selection: { runId: input.runId, round: input.version } } }))] });
   }
-  if (input.decorations?.mode === "agent") {
+  if (input.decorations?.mode === "agent" || input.decorations?.mode === "random") {
     // Original corner identity is relative to the source; export padding must not create a second sticker beside it.
     const sourceTracks = input.sourceStickerTracks?.map(({ track }) => track);
     template = EditTemplateSchema.parse({ ...template, layers: fillUncoveredCorners(template.layers, input.source.durationMs, sourceTracks) });

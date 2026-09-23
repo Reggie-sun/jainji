@@ -24,7 +24,7 @@ export function CornerDecorationPicker({ value, onChange, disabled, selected, on
       <button type="button" disabled={disabled} aria-pressed={!automatic && value.mode !== "random"} onClick={() => onChange({ ...value, mode: "manual" })}>自己设置</button>
       <button type="button" disabled={disabled} aria-pressed={value.mode === "random"} onClick={() => { onChange({ ...value, mode: "random" }); onSelect(undefined); }}>本地随机</button>
     </div>
-    {automatic ? <div className="card corner-settings"><h2>Agent 四角贴纸安排</h2><p>根据每条视频选择价格花字与贴纸，保留已有角落贴纸，只补齐空缺。</p><p>开启下方“覆盖原贴纸”后，已有贴纸的角落由覆盖层优先占位，其余角落和没有覆盖层的时段自动补齐。关闭覆盖时，通过独立视觉模型识别原贴纸，已有贴纸的角落和时段不再加一张；四角都有时不新增装饰贴纸。贴纸从内置素材和用户上传素材中选用；切回“自己设置”保留原有手动选择。</p></div> : random ? <div className="card corner-settings"><h2>四角贴纸 · 本地随机</h2><p>每个素材版本从本地贴纸库中随机选 4 款不同的贴纸，分别放在四角；价格花字也按素材独立随机。无需手动选择，零模型调用。</p></div> : <>
+    {automatic ? <div className="card corner-settings"><h2>Agent 四角贴纸安排</h2><p>根据每条视频选择价格花字与贴纸，保留已有角落贴纸，只补齐空缺。</p><p>开启下方“覆盖原贴纸”后，已有贴纸的角落由覆盖层优先占位，其余角落和没有覆盖层的时段自动补齐。关闭覆盖时，通过独立视觉模型识别原贴纸，已有贴纸的角落和时段不再加一张；四角都有时不新增装饰贴纸。贴纸从内置素材和用户上传素材中选用；切回“自己设置”保留原有手动选择。</p></div> : random ? <div className="card corner-settings"><h2>四角贴纸 · 本地随机</h2><p>每个素材版本从本地贴纸库随机选款。开启手动覆盖时，每个覆盖框使用不同贴纸，覆盖占位的角落不叠加普通随机贴纸；价格花字也独立随机。若覆盖方式选择 Agent 识别，仍需视觉模型。</p></div> : <>
     <div className="corner-tabs" role="group" aria-label="选择编辑角落">
       <button type="button" disabled={disabled} aria-pressed={!selected} onClick={() => onSelect(undefined)}>默认样式</button>
       {CORNERS.map((corner) => <button type="button" key={corner} disabled={disabled} aria-pressed={selected === corner} onClick={() => onSelect(corner)}>{CORNER_LABELS[corner]}</button>)}

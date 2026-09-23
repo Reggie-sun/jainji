@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { DEFAULT_COVER_STICKER, CoverStickerSchema, isCoverPoolStickerId, manualCoverRegions, type CoverRectangle, type CoverRegion, type CoverSticker } from "../shared/cover-sticker.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
 import type { ExportBatch, StickerLayer } from "./domain.js";
@@ -21,9 +21,15 @@ interface FrozenCoverPlacement extends CoverArtwork {
 export interface FrozenCoverSticker extends FrozenCoverPlacement {
   regions?: FrozenCoverPlacement[];
   mediaRegions?: Record<string, FrozenCoverPlacement[]>;
+  randomSelection?: { pool: CoverArtwork[]; offsets: Record<string, number>; step: number };
 }
 
-export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[], mediaIds?: readonly string[]): FrozenCoverSticker | undefined {
+function greatestCommonDivisor(left: number, right: number): number {
+  while (right) [left, right] = [right, left % right];
+  return left;
+}
+
+export function resolveCoverSticker(settings: CoverSticker | undefined, assets: Readonly<Record<string, BuiltinStickerAsset | undefined>>, history: readonly ExportBatch[], mediaIds?: readonly string[], randomizeRegions = false): FrozenCoverSticker | undefined {
   const options = CoverStickerSchema.parse(settings ?? DEFAULT_COVER_STICKER);
   if (!options.enabled) return undefined;
   if (options.trackingMode === "assisted") throw new Error("半自动覆盖必须经过审阅和批准。");
@@ -36,28 +42,42 @@ export function resolveCoverSticker(settings: CoverSticker | undefined, assets: 
     return undefined;
   }
   const assigned = regions.flatMap((region) => (region.stickerId ? [region.stickerId] : []));
-  if (assigned.some((id) => !assets[id])) throw new Error("覆盖贴纸已删除或不可用，请重新选择自己的贴纸。");
+  if (!randomizeRegions && assigned.some((id) => !assets[id])) throw new Error("覆盖贴纸已删除或不可用，请重新选择自己的贴纸。");
   // The unified-cover pool is every bundled and uploaded sticker currently available; new stickers enter automatically.
   const candidates = Object.keys(assets).filter((id) => isCoverPoolStickerId(id) && assets[id]).sort();
-  if (regions.some((region) => !region.stickerId) && !candidates.length) throw new Error("仍有覆盖框使用统一款，请先上传贴纸或选用本地贴纸库。");
-  const previous = previousCoverStickerId(history, true);
+  if (randomizeRegions) {
+    const required = layouts ? Math.max(...Object.values(layouts).map((items) => items.length)) : regions.length;
+    if (candidates.length < required) throw new Error(`本地随机覆盖需要至少 ${required} 款可用贴纸，请添加贴纸后重试。`);
+  } else if (regions.some((region) => !region.stickerId) && !candidates.length) throw new Error("仍有覆盖框使用统一款，请先上传贴纸或选用本地贴纸库。");
+  const randomPool = randomizeRegions ? candidates.map((id) => ({ stickerId: id, ...assets[id]! })) : undefined;
+  if (randomPool) for (let index = randomPool.length - 1; index > 0; index--) {
+    const other = randomInt(index + 1);
+    [randomPool[index], randomPool[other]] = [randomPool[other], randomPool[index]];
+  }
+  const offsets: Record<string, number> = {};
+  let stride = 0;
+  for (const [id, items] of Object.entries(layouts ?? {})) { offsets[id] = stride; stride += items.length; }
+  let step = stride || regions.length;
+  if (randomPool) while (greatestCommonDivisor(step, randomPool.length) !== 1) step++;
+  const randomSelection = randomPool ? { pool: randomPool, offsets, step } : undefined;
+  const previous = randomizeRegions ? undefined : previousCoverStickerId(history, true);
   const freeze = (region: CoverRegion, mediaId?: string): FrozenCoverPlacement => {
     const tracks = mediaId ? region.tracks?.[mediaId] ? { [mediaId]: region.tracks[mediaId] } : undefined : region.tracks;
-    const available = region.stickerId ? [region.stickerId, ...candidates.filter((id) => id !== region.stickerId)] : candidates;
-    const last = region.stickerId ? previousCoverStickerId(history, false, { id: region.id, mediaId }) : previous;
+    const available = randomPool ? [randomPool[0].stickerId] : region.stickerId ? [region.stickerId, ...candidates.filter((id) => id !== region.stickerId)] : candidates;
+    const last = randomPool ? undefined : region.stickerId ? previousCoverStickerId(history, false, { id: region.id, mediaId }) : previous;
     const start = (available.indexOf(last ?? "") + 1) % available.length;
     const cycleIds = [...available.slice(start), ...available.slice(0, start)];
     const stickerId = cycleIds[0];
     return { stickerId, ...assets[stickerId]!, ...(cycleIds.length > 1 ? { artworkCycle: cycleIds.map((id) => ({ stickerId: id, ...assets[id]! })) } : {}), rectangle: structuredClone(region.rectangle), ...(tracks ? { tracks: structuredClone(tracks) } : {}),
-      ...(options.regions || layouts ? { regionId: region.id, ...(!region.stickerId ? { sharedSticker: true as const } : {}) } : {}) };
+      ...(options.regions || layouts ? { regionId: region.id, ...(!region.stickerId && !randomizeRegions ? { sharedSticker: true as const } : {}) } : {}) };
   };
   if (layouts) {
     const mediaRegions = Object.fromEntries(Object.entries(layouts).map(([id, items]) => [id, items.map((region) => freeze(region, id))]));
     const first = Object.values(mediaRegions).find((items) => items.length)![0];
-    return { ...first, regions: [], mediaRegions };
+    return { ...first, regions: [], mediaRegions, ...(randomSelection ? { randomSelection } : {}) };
   }
   const placements = regions.map((region) => freeze(region));
-  return { ...placements[0], ...(options.regions ? { regions: placements } : {}), ...(options.trackingMode === "agent" ? { automatic: true } : {}) };
+  return { ...placements[0], ...(options.regions ? { regions: placements } : {}), ...(options.trackingMode === "agent" ? { automatic: true } : {}), ...(randomSelection ? { randomSelection } : {}) };
 }
 
 // Queue insertion order can differ from round order when plans finish concurrently.
@@ -83,7 +103,12 @@ export function unusedCoverStickerIds(eligible: readonly string[], selected: rea
 }
 
 export function manualCoverLayers(frozen: FrozenCoverSticker, source: { id?: string; width: number; height: number }, output: { width: number; height: number }, version = 1): StickerLayer[] {
-  return ((source.id && frozen.mediaRegions?.[source.id]) || frozen.regions || [frozen]).map((placement) => coverLayerForMedia({ ...placement, ...placement.artworkCycle?.[(version - 1) % placement.artworkCycle.length] }, source, output));
+  return ((source.id && frozen.mediaRegions?.[source.id]) || frozen.regions || [frozen]).map((placement, index) => {
+    const random = frozen.randomSelection;
+    const artwork = random ? random.pool[((random.offsets[source.id ?? ""] ?? 0) + (version - 1) * random.step + index) % random.pool.length]
+      : placement.artworkCycle?.[(version - 1) % placement.artworkCycle.length];
+    return coverLayerForMedia({ ...placement, ...artwork }, source, output);
+  });
 }
 
 const MAX_STATIC_COVER_DRIFT = 0.02;

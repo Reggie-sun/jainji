@@ -44,7 +44,7 @@ function cornerRanges(motion: CoverTrack, occupied: Map<Corner, Range[]>): void 
   }
 }
 
-/** Only called for new automatic plans. Persist the gap ranges; retries never recalculate them. */
+/** Only called for new plans. Persist the gap ranges; retries never recalculate them. */
 export function fillUncoveredCorners(layers: readonly Layer[], durationMs: number, sourceTracks: readonly CoverTrack[] = []): Layer[] {
   const occupied = new Map<Corner, Range[]>(CORNERS.map(corner => [corner, []]));
   for (const track of sourceTracks) cornerRanges(track, occupied);

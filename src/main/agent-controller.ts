@@ -146,10 +146,10 @@ export class AgentController {
       }
       if ((automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
       if (supervised && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于主管 Agent 修正与样片检查。");
-      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, this.stickerAssets, history, parsed.mediaIds);
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover)) : undefined;
       const autoCatalog = decorations.mode === "agent" ? { ...availableCatalog!, stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)) } : undefined;
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets) };
+      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, parsed.mediaIds, randomPath);
       this.preparingController.signal.throwIfAborted();
       for (const family of decorationFontFamilies(decorations)) {
         const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
@@ -289,7 +289,7 @@ export class AgentController {
           return source.disposition === "no_cover" ? [] : source.segments.map(segment => ({ targetId: segment.id, track: segment.track }));
         } : undefined,
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
-        frames: (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
+        frames: randomPath && !automaticCover ? async () => [] : (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
           // Local-random path: pick filter/intensity from the rule without any creative call.
           if (randomPath) {
