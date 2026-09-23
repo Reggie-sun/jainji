@@ -230,6 +230,7 @@ function geometryChanged(before: SourceFacts, after: SourceFacts, ranges: readon
   });
 }
 export type KnowledgeEvidence = z.infer<typeof KnowledgeEvidenceSchema>;
+export type SourcePixelMask = z.infer<typeof SourcePixelMaskSchema>;
 export type KnowledgeCandidate = z.infer<typeof KnowledgeCandidateSchema>;
 export type KnowledgePublicationProof = z.infer<typeof KnowledgePublicationProofSchema>;
 export type KnowledgeDispute = z.infer<typeof KnowledgeDisputeSchema>;
