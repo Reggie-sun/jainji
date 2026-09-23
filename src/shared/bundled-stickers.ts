@@ -78,7 +78,7 @@ export const BUNDLED_STICKERS = [
   { id: "local-custom-059", label: "自定义 59", fileName: "custom-059.png", mimeType: "image/png", animated: false, sha256: "f9f5e1e47f9ca43572f7421b31c7cc1814dd410aae1d2eaaaccaec8fc6d110d2" },
   { id: "local-custom-060", label: "自定义 60", fileName: "custom-060.png", mimeType: "image/png", animated: false, sha256: "b7df829711fb4ca27bf53cfe032b47afe8ffb4e7f8ec5a6def1c5c5cd0ada26f" },
   { id: "local-custom-061", label: "自定义 61", fileName: "custom-061.png", mimeType: "image/png", animated: false, sha256: "f9582ecfd2a0975c8252847487217c28e7330f50f7447954ce75683f1c828f6f" },
-  { id: "local-custom-062", label: "自定义 62", fileName: "custom-062.png", mimeType: "image/png", animated: false, sha256: "8280cc314027c2b1b3c994c5ec98c04f20d42798be889af74df7313635804251" },
+  { id: "local-custom-062", label: "自定义 62", fileName: "custom-062.png", mimeType: "image/png", animated: false, sha256: "43c7364f533ac90f5b89dfe3912cee1fa17a529443a1e4d4014008099df62db1" },
   { id: "local-custom-063", label: "自定义 63", fileName: "custom-063.png", mimeType: "image/png", animated: false, sha256: "c0aeae9977e68e0c498e0fb6d78508c11abfeed52597f7bcc564af02e4d52fd9" },
   { id: "local-custom-064", label: "自定义 64", fileName: "custom-064.png", mimeType: "image/png", animated: false, sha256: "882996b0fb28224a482346dbe5652fd64c3cc320fc5467b62caf2b95ee60d866" },
   { id: "local-custom-065", label: "自定义 65", fileName: "custom-065.png", mimeType: "image/png", animated: false, sha256: "a95fb27f4f9f6fcb542a4cdefb45bcc375547d4c96b087efd3e9373e7e6976af" },

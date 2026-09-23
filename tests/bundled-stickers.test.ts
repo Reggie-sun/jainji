@@ -1,4 +1,5 @@
 import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -9,8 +10,14 @@ import { BUNDLED_STICKERS } from "../src/shared/bundled-stickers";
 import { DecorationSchema } from "../src/shared/decorations";
 
 const resourceDirectory = path.resolve("resources/stickers/downloaded");
+const ffmpeg = process.env.JIANJI_FFMPEG_PATH || "ffmpeg";
+const canDecode = spawnSync(ffmpeg, ["-version"], { stdio: "ignore" }).status === 0;
 
 describe("bundled downloaded stickers", () => {
+  it.skipIf(!canDecode)("decodes the custom sticker with corrected EXIF metadata", () => {
+    const result = spawnSync(ffmpeg, ["-v", "error", "-i", path.join(resourceDirectory, "custom-062.png"), "-frames:v", "1", "-f", "null", "-"], { encoding: "utf8" });
+    expect(result.status, result.stderr).toBe(0);
+  });
   it("loads pinned PNG and GIF files with matching fingerprints", async () => {
     const assets = await loadBundledStickerAssets(resourceDirectory);
     expect(BUNDLED_STICKERS.length).toBeGreaterThanOrEqual(18);
