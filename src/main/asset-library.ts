@@ -5,6 +5,7 @@ import { LIBRARY_ASSETS, LIBRARY_STICKERS, LIBRARY_LICENSES, type LibraryAsset, 
 import { CORNERS, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
 import { fingerprintFile } from "./paths.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
+import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 
@@ -133,7 +134,10 @@ export class AssetLibrary {
       const font = [...this.entries.values()].find((entry) => entry.kind === "font" && entry.family === family);
       if (font) await this.ensure(font.id);
     }
-    const selected = await Promise.all(decorationStickerIds(options)
+    const stickerIds = options.mode === "random"
+      ? [...new Set([...decorationStickerIds(options), ...[...this.entries.keys()].filter(isAutomaticStickerAllowed)])]
+      : decorationStickerIds(options);
+    const selected = await Promise.all(stickerIds
       .filter((id) => this.entries.has(id))
       .map(async (id) => [id, await this.ensure(id)] as const));
     return selected.length ? { ...builtins, ...Object.fromEntries(selected) } : builtins;

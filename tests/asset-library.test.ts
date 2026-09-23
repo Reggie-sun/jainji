@@ -8,6 +8,8 @@ import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import type { LibraryAsset } from "../src/shared/asset-library";
 import { DecorationSchema } from "../src/shared/decorations";
 import { LIBRARY_FONTS, LIBRARY_STICKERS } from "../src/shared/asset-library";
+import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
+import { materializePlan } from "../src/main/agent-provider";
 
 const contents = Buffer.from("89504e470d0a1a0a0000000049484452", "hex");
 const blob = createHash("sha1").update(`blob ${contents.length}\0`).update(contents).digest("hex");
@@ -100,5 +102,18 @@ describe("verified asset cache", () => {
     expect(prepared.heart).toMatchObject({ assetPath: expect.stringMatching(/\.png$/) });
     await expect(library.resolveFont("Noto Serif CJK SC")).resolves.toBeNull();
     await expect(library.resolveFont("Noto Sans CJK SC")).resolves.toBeNull();
+  });
+  it("prepares the reviewed local library for random decoration", async () => {
+    const offline = vi.fn(async (): Promise<Response> => { throw new Error("offline"); });
+    const library = new AssetLibrary(await directory(), offline);
+    const builtins = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
+    const options = DecorationSchema.parse({ mode: "random" });
+    const prepared = await library.prepare(options, builtins);
+    expect(AUTOMATIC_STICKERS.every(({ id }) => Boolean(prepared[id]))).toBe(true);
+    expect(Object.keys(prepared).length).toBeGreaterThan(4);
+    const template = materializePlan({ summary: "随机", captions: [], filter: "warm", intensity: 0.4 }, "black-gold", { width: 640, height: 480 }, prepared, options);
+    const stickers = template.layers.filter((layer) => layer.type === "sticker");
+    expect(new Set(stickers.map((layer) => layer.assetFingerprint)).size).toBe(4);
+    expect(offline).not.toHaveBeenCalled();
   });
 });
