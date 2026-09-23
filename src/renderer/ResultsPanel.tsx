@@ -32,8 +32,9 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, 
       setAppendError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "无法读取源批次信息。");
     }
   };
-  const tasks = state.queue.batches.flatMap(({ batch }) => batch.tasks);
   const planned = state.agentRun?.items ?? [];
+  const currentTaskIds = new Set(planned.flatMap((item) => item.taskId ? [item.taskId] : []));
+  const tasks = state.queue.batches.flatMap(({ batch }) => batch.tasks).filter((task) => !state.agentRun || currentTaskIds.has(task.id));
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   const unqueued = planned.filter((item) => !item.taskId || !tasks.some((task) => task.id === item.taskId));
   const completed = planned.filter((item) => item.taskId && taskById.get(item.taskId)?.status === "completed").length;
