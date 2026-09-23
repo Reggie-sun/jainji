@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { access, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -67,7 +67,17 @@ try {
   assert.equal(state.capabilities.fonts, true);
   assert.equal(state.capabilities.h264Encoder, true);
   assert.equal(state.capabilities.aacEncoder, true);
-  console.log(`PASS: installed app ready with bundled ${state.capabilities.videoEncoder}; FFmpeg, ffprobe and Chinese font render verified without PATH.`);
+  const owner = (await readdir(scratch, { recursive: true, withFileTypes: true })).find((entry) => entry.name === "owner.lock");
+  assert.ok(owner, "installed app acquired a knowledge owner under the isolated profile");
+  const ownerLock = path.join(owner.parentPath, owner.name);
+  const exited = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("Installed app did not exit cleanly")), 20_000);
+    child.once("exit", (code) => { clearTimeout(timeout); resolve(code); });
+  });
+  socket.send(JSON.stringify({ id: 2, method: "Runtime.evaluate", params: { expression: "window.close()" } }));
+  assert.equal(await exited, 0, "normal window close exits successfully");
+  await assert.rejects(access(ownerLock), { code: "ENOENT" }, "normal exit releases the knowledge owner");
+  console.log("PASS: installed app ready with bundled FFmpeg, ffprobe and Chinese font; normal exit released the knowledge owner.");
 } finally {
   socket?.close();
   if (child && child.exitCode === null) child.kill();

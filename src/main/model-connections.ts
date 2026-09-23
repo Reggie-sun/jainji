@@ -144,7 +144,12 @@ export class ModelConnections {
     }).catch(() => undefined);
   }
   async login(): Promise<void> { await this.exclusive(async () => { await this.store.select("chatgpt"); this.wantChatGPT = true; this.provider.clear(); await this.chatgpt.login(); }); }
-  async cancelLogin(): Promise<void> { if (this.pending) throw new ProviderError("连接正在处理中，请稍后取消。"); this.wantChatGPT = false; this.provider.clear(); await this.chatgpt.cancelLogin(); }
+  async cancelLogin(): Promise<void> {
+    if (this.pending && !["starting", "logging-in"].includes(this.chatgpt.status().status)) throw new ProviderError("连接正在处理中，请稍后取消。");
+    this.wantChatGPT = false;
+    this.provider.clear();
+    await this.chatgpt.cancelLogin();
+  }
   async refreshLogin(): Promise<void> {
     if (this.pending) throw new ProviderError("连接正在处理中，请稍后刷新。");
     this.pending = true;

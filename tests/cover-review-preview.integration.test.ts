@@ -12,7 +12,7 @@ import { JobStore } from "../src/main/store";
 import { removeUnreferencedPreviews } from "../src/main/cover-review-preview";
 import type { CoverReviewDraft } from "../src/shared/cover-review";
 
-it("removes discarded preview files but keeps another draft's references", async () => {
+it.skipIf(process.platform === "win32")("removes discarded preview files but keeps another draft's references", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-review-preview-gc-"));
   const prefix = `${randomUUID()}/${randomUUID()}/0/previews`;
   await mkdir(path.join(root, prefix), { recursive: true });

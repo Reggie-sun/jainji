@@ -155,9 +155,19 @@ export class TemplateCompiler {
             layer.textAlign === "center" ? `x=w*${(layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
             `y=h*${(layer.y + index * layer.fontSizeRatio * PRICE_LINE_HEIGHT).toFixed(5)}`,
             "fix_bounds=1",
-            ...(displayLimit ? [`enable='${displayLimit}'`, `alpha='clip((${fadeEnd}-t)/${fadeDuration},0,1)'`] : []),
           ].join(":");
-          graph.push(`[${baseLabel}]${drawtext}[${nextLabel}]`);
+          if (displayLimit) {
+            const main = `${nextLabel}Main`, clock = `${nextLabel}Clock`, blank = `${nextLabel}Blank`, text = `${nextLabel}Text`, faded = `${nextLabel}Faded`;
+            // Fade the whole text layer, including its box, border and shadow.
+            // drawtext's alpha option only fades glyphs and leaves boxcolor opaque.
+            graph.push(`[${baseLabel}]split[${main}][${clock}]`);
+            graph.push(`[${clock}]format=rgba,colorchannelmixer=aa=0[${blank}]`);
+            graph.push(`[${blank}]${drawtext}[${text}]`);
+            graph.push(`[${text}]fade=t=out:st=${fadeStart}:d=${fadeDuration}:alpha=1[${faded}]`);
+            graph.push(`[${main}][${faded}]overlay=0:0:enable='${displayLimit}':format=auto[${nextLabel}]`);
+          } else {
+            graph.push(`[${baseLabel}]${drawtext}[${nextLabel}]`);
+          }
           baseLabel = nextLabel;
         }
         continue;
