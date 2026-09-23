@@ -70,7 +70,8 @@
         "deb"
       ],
       "category": "AudioVideo",
-      "maintainer": "jianji@localhost"
+      "maintainer": "jianji@localhost",
+      "artifactName": "jianji-${version}.${ext}"
     },
     "win": {
       "signAndEditExecutable": false,
@@ -87,6 +88,9 @@
       "target": [
         "nsis"
       ]
+    },
+    "nsis": {
+      "artifactName": "jianji-setup-${version}.${ext}"
     },
     "asarUnpack": [
       "node_modules/@openai/codex-*/vendor/**/*"
