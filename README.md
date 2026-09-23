@@ -122,7 +122,7 @@ Agent 自动覆盖的近似位置不是源贴纸事实，不写入源知识库�
 
 ## Build And Verification
 
-最新 main `9464a10` 加上 Windows 修复的 0.1.3 安装包验证，见 [Windows 0.1.3 验证记录](docs/windows-verification-0.1.3.md)。
+最新 main `fce917d` 加上 Windows 修复的 0.1.4 安装包验证，见 [Windows 0.1.4 验证记录](docs/windows-verification-0.1.4.md)。
 
 ### Validation Harness
 

@@ -156,7 +156,7 @@ try {
   assert.ok(!JSON.stringify(posts).includes(imageBase64));
   assert.ok(posts[1].body.includes("https://feedback.example.test/api/feedback/"));
   const id = posts[1].body.match(/bug-feedback-id:([a-f0-9-]+)/)[1];
-  const input = { feedbackId: id, description, page: "connection", screenshot: { contentType: "image/png", dataBase64: imageBase64 } };
+  const input = { feedbackId: id, description, page: "import", screenshot: { contentType: "image/png", dataBase64: imageBase64 } };
   assert.equal((await evaluate(`await window.jianji.submitFeedback(${JSON.stringify(input)})`)).issueNumber, 42);
   assert.equal(posts.length, 2, "duplicate submission returns the saved receipt");
   await click("打开 Issue #42");

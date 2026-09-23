@@ -238,7 +238,7 @@ desktopSmoke: try {
     await writeFile(path.join(directory, `${name}.png`), Buffer.from(image.data, "base64"));
   };
   await send("Runtime.enable");
-  await waitFor("document.body?.innerText.includes('连接模型')");
+  await waitFor("document.body?.innerText.includes('选择本地素材')");
   if (smokeScope === "knowledge") {
     await runKnowledgeSmoke({ evaluate, click, waitFor, send, screenshot, apiPort, directory, fixture: knowledgeFixture });
     assert.deepEqual(exceptions, []);
@@ -256,7 +256,7 @@ desktopSmoke: try {
   await click("选择图片上传");
   await waitFor("document.querySelector('[role=alert]')?.textContent.includes('上传失败')");
   assert.equal(await evaluate("[...document.querySelectorAll('button')].some(button => button.textContent === '选择图片上传' && !button.disabled)"), true, "invalid upload can be retried");
-  await click("制作");
+  await click("模型");
   const duplicate = spawn(require("electron"), [bootstrap], { cwd: root, env: environment, stdio: "ignore" });
   const duplicateExit = await new Promise((resolve, reject) => {
     const timeout = setTimeout(() => { duplicate.kill(); reject(new Error("Second instance failed to exit")); }, 5000);
@@ -289,7 +289,7 @@ desktopSmoke: try {
     await evaluate("const count = document.querySelector('#production-count'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(count, '1'); count.dispatchEvent(new Event('input', { bubbles: true }))");
     await evaluate("document.querySelector('.directory-picker').click()");
     await waitFor("document.querySelector('.directory-picker')?.textContent.includes('output')");
-    await click("交给 Agent，制作 1 条成片");
+    await click("本地制作，制作 1 条成片");
     await waitFor("document.querySelector('.result-row .status-tag.completed') !== null");
     const state = await evaluate("window.jianji.getState()");
     const completed = state.queue.batches.flatMap(({ batch }) => batch.tasks).find((task) => task.status === "completed");
