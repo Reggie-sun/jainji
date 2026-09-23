@@ -64,7 +64,8 @@
 <!-- aoci:begin -->
 ## AOCI Cognition
 
-- 本文件是项目规则来源；`aoci.txt`、`aoci.meta.txt`、`aoci.code.txt` 是项目级语义索引，不建立第二套产品规则。复杂或跨模块任务可先用 AOCI 理解职责、关系与约束；小型局部任务按需跳过。
+- 本文件是项目规则来源；`aoci.txt`、`aoci.meta.txt`、`aoci.code.txt` 是项目级语义索引，不建立第二套产品规则。AOCI cognition 永远不是 `source of truth`，只能提供待核对的线索。
+- 复杂或跨模块任务可按需使用 AOCI 理解职责、关系与约束；简单任务禁止仅为了流程完整而机械调用 AOCI。
 - 具体 symbol、调用与依赖关系用 CodeGraph 核对，当前实现以源码为准，行为以测试与 `verification-before-completion` 为准。AOCI 与本文件或当前源码冲突时，重新调查并刷新相应 cognition，不静默采用旧索引。
 - 受管理对象变更达到稳定状态后，按当前 AOCI Guide 与工具合同维护受影响条目；本仓 cognition 暂仅留本机，不提交含机器路径的索引、`.aoci/` 运行状态、缓存、日志或机器专用 MCP 路径。
 <!-- aoci:end -->
