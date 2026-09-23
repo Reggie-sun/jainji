@@ -94,7 +94,6 @@ export class AgentRunner {
     const pendingCoverStickers = new Map<number, Promise<FrozenCoverSticker>>();
     const selectedCoverIds: string[] = [];
     const reviewed = new Map<number, { index: number; version: KnowledgeVersion; binding: KnowledgeBinding; source: MediaItem }>();
-    const placed = new Map<number, { index: number; template: EditTemplate; source: MediaItem }>();
     const coverForVersion = (version: number, frames: string[]): Promise<FrozenCoverSticker> => {
       let pending = pendingCoverStickers.get(version);
       if (!pending) {
@@ -204,11 +203,23 @@ export class AgentRunner {
           }
           if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
           else if (version && binding) reviewed.set(index, { index, version, binding, source });
-          else if (placement) placed.set(index, { index, template, source });
+          else if (placement) {
+            audit[index].stage = "enqueue";
+            const previewPath = this.dependencies.placement!.previewPath?.(template);
+            const published = Boolean(previewPath && this.dependencies.publishApproved);
+            item.taskId = await this.dependencies.placement!.enqueue(source, template, signal, () =>
+              published
+                ? this.dependencies.publishApproved!(template, source, previewPath!, signal)
+                : this.dependencies.enqueue(template, source, signal));
+            if (previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, previewPath);
+            item.summary = `近似覆盖样片检查通过，${published ? "已发布到输出目录；位置已冻结，下次仍需检查样片" : "已提交导出；位置已冻结，下次仍需检查样片"}`;
+          }
           else item.taskId = await this.dependencies.enqueue(template, source, signal);
-          item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
-          if (version || placement) item.summary += " · 主管样片检查通过，正在提交导出";
-          item.status = this.dependencies.prepared || version || placement ? "prepared" : "exporting";
+          if (!placement) {
+            item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
+            if (version) item.summary += " · 主管样片检查通过，正在提交导出";
+          }
+          item.status = this.dependencies.prepared || version ? "prepared" : "exporting";
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           stopKnowledgeProgress(item, signal.aborted, "本版创作或样片准备未完成，未提交导出；请查看本条失败原因。");
@@ -259,28 +270,6 @@ export class AgentRunner {
           stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
           item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "主管样片检查通过，但正式导出提交失败，请重试。";
         }
-        audit[index].finished = Date.now(); this.dependencies.onChange();
-      }
-      for (const { index, template, source } of indices.flatMap(index => placed.get(index) ? [placed.get(index)!] : [])) {
-        const item = run.items[index];
-        try {
-          audit[index].stage = "enqueue";
-          const previewPath = this.dependencies.placement!.previewPath?.(template);
-          const published = Boolean(previewPath && this.dependencies.publishApproved);
-          item.taskId = await this.dependencies.placement!.enqueue(source, template, signal, () =>
-            published
-              ? this.dependencies.publishApproved!(template, source, previewPath!, signal)
-              : this.dependencies.enqueue(template, source, signal));
-          item.status = signal.aborted ? "cancelled" : "exporting";
-          if (!signal.aborted && previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, previewPath);
-          item.summary = `近似覆盖样片检查通过，${published ? "已发布到输出目录；位置已冻结，下次仍需检查样片" : "已提交导出；位置已冻结，下次仍需检查样片"}`;
-        } catch (error) {
-          item.status = signal.aborted ? "cancelled" : "failed";
-          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "覆盖样片已检查，但源校验或导出提交失败，请重试。";
-        }
-        if (item.coverDiagnostics) new CoverDiagnostics(() => this.dependencies.onChange(), item.coverDiagnostics)
-          .record("lifecycle", item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "failed" : "ok",
-            { reason: item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "stage-failed" : "accepted" });
         audit[index].finished = Date.now(); this.dependencies.onChange();
       }
     };

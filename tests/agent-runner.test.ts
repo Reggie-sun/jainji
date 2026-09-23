@@ -10,6 +10,7 @@ import { executionLimits } from "../src/main/execution-limits";
 import { knowledgeFixture } from "./helpers/knowledge-session";
 import type { KnowledgeOutcome } from "../src/shared/source-sticker-knowledge-audit";
 import { PreviewReviewSession } from "../src/main/supervised-preview";
+import type { CoverPlacementSession } from "../src/main/cover-placement-session";
 
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
@@ -124,6 +125,31 @@ describe("supervisor production admission", () => {
     expect(retainPreview).toHaveBeenCalledWith(expect.any(String), expect.any(String), expect.stringMatching(/\/tmp\/.*-supervisor-preview\.mp4$/));
     expect(runner.snapshot()?.items[0].previewUrl).toMatch(/^jianji-agent-preview:\/\/[0-9a-f-]+\/[0-9a-f-]+$/);
     expect(JSON.stringify(runner.snapshot())).not.toContain("/tmp/");
+  });
+  it("publishes each approved automatic cover before reviewing the next version", async () => {
+    const events: string[] = [];
+    const placement = {
+      acquire: async () => ({ tracks: [] }),
+      review: async (_source: MediaItem, _placement: unknown, template: EditTemplate) => {
+        events.push("review");
+        return template;
+      },
+      previewPath: () => "/tmp/accepted-supervisor-preview.mp4",
+      enqueue: async (_source: MediaItem, _template: EditTemplate, _signal: AbortSignal, submit: () => Promise<string>) => {
+        events.push("admit");
+        return submit();
+      },
+      close: async () => {},
+    } as unknown as NonNullable<ConstructorParameters<typeof AgentRunner>[0]["placement"]>;
+    const publishApproved = vi.fn(async () => { events.push("publish"); return crypto.randomUUID(); });
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), enqueue: async () => { throw new Error("unexpected render"); },
+      publishApproved, placement, coverSticker: { stickerId: "heart", assetPath: "/tmp/heart.png", assetFingerprint: "sha256:heart",
+        rectangle: { x: 0.8, y: 0.8, width: 0.1, height: 0.1 }, automatic: true }, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("one")], 2);
+    await runner.settled();
+    expect(events).toEqual(["review", "admit", "publish", "review", "admit", "publish"]);
+    expect(publishApproved).toHaveBeenCalledTimes(2);
+    expect(runner.snapshot()?.items.every(item => item.taskId && item.status === "exporting" && item.summary?.includes("已发布到输出目录"))).toBe(true);
   });
   it("exposes the final preview after same-source reconciliation and finalizes unused previews", async () => {
     const initial = "/tmp/initial-supervisor-preview.mp4", reconciled = "/tmp/reconciled-supervisor-preview.mp4";
