@@ -8,9 +8,11 @@ import {
   ProjectSchema,
   type EditTemplate,
   type ExportBatch,
+  LatestProductionSchema,
   type MediaItem,
   type Project,
 } from "./domain.js";
+import type { AgentRun } from "../shared/agent.js";
 import { FfmpegAdapter } from "./ffmpeg.js";
 import { MediaCatalog, toMediaView, type MediaView } from "./media.js";
 import { pathsEqual, validateTemplateResources, type FontResolver } from "./paths.js";
@@ -41,6 +43,7 @@ export interface AppState {
     hasUnsavedChanges: boolean;
     updatedAt: string;
     mediaItems: MediaView[];
+    latestProduction?: Project["latestProduction"];
     template: EditTemplate;
     coverSticker?: CoverSticker;
     reviewDrafts?: CoverReviewDraft[];
@@ -223,6 +226,39 @@ export class ApplicationService {
     return true;
   }
 
+  async rememberLatestProduction(run: AgentRun): Promise<void> {
+    if (run.projectId !== this.project.id) return;
+    const latest = LatestProductionSchema.parse({
+      id: run.id,
+      items: run.items.map(({ id, mediaId, version, name, status, taskId, error }) => ({
+        id, mediaId, version, name, taskId,
+        status: status === "failed" || status === "cancelled" ? status : taskId ? "exporting" : "waiting",
+        error: status === "failed" ? error : undefined,
+      })),
+    });
+    if (JSON.stringify(latest) === JSON.stringify(this.project.latestProduction)) return;
+    this.project.latestProduction = latest;
+    this.touch();
+    await this.persistCurrentProject();
+  }
+
+  async rememberExportProduction(batches: readonly ExportBatch[]): Promise<void> {
+    if (!batches.length || batches.some((batch) => batch.projectId !== this.project.id)) return;
+    this.project.latestProduction = LatestProductionSchema.parse({
+      id: randomUUID(),
+      items: batches.flatMap((batch) => batch.tasks.map((task) => ({
+        id: task.id,
+        mediaId: task.mediaId,
+        version: 1,
+        name: this.project.mediaItems.find((media) => media.id === task.mediaId)?.displayName ?? "视频素材",
+        status: "exporting" as const,
+        taskId: task.id,
+      }))),
+    });
+    this.touch();
+    await this.persistCurrentProject();
+  }
+
   async templateReadiness(template = this.activeTemplate): Promise<{ ready: boolean; missing: string[] }> {
     const missing = await validateTemplateResources(template, this.fontResolver);
     return { ready: missing.length === 0, missing };
@@ -339,6 +375,7 @@ export class ApplicationService {
         hasUnsavedChanges: this.dirty,
         updatedAt: this.project.updatedAt,
         mediaItems: this.project.mediaItems.map(toMediaView),
+        latestProduction: this.project.latestProduction && structuredClone(this.project.latestProduction),
         template: cloneTemplate(this.activeTemplate),
         coverSticker: this.project.coverSticker && structuredClone(this.project.coverSticker),
         reviewDrafts: this.project.reviewDrafts && structuredClone(this.project.reviewDrafts),

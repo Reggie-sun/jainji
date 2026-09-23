@@ -49,6 +49,34 @@ it("keeps project export rows available when there is no current Agent run", () 
   expect(html).toContain("已保存的导出任务");
 });
 
+it("shows only the saved production after reopening a project", () => {
+  const projectId = crypto.randomUUID();
+  const currentTaskId = crypto.randomUUID();
+  const historicalTaskId = crypto.randomUUID();
+  const html = renderToStaticMarkup(createElement(ResultsPanel, {
+    state: {
+      project: { id: projectId, mediaItems: [], latestProduction: { id: crypto.randomUUID(), items: [
+        { id: crypto.randomUUID(), version: 1, mediaId: crypto.randomUUID(), name: "本轮作品", status: "exporting", taskId: currentTaskId },
+        { id: crypto.randomUUID(), version: 1, mediaId: crypto.randomUUID(), name: "未提交作品", status: "waiting" },
+      ] } },
+      queue: { batches: [
+        { batch: { tasks: [{ id: historicalTaskId, mediaId: crypto.randomUUID(), status: "completed", progress: 1, errorMessage: "历史作品" }] } },
+        { batch: { tasks: [{ id: currentTaskId, mediaId: crypto.randomUUID(), status: "completed", progress: 1 }] } },
+      ] },
+      agentRun: { id: crypto.randomUUID(), projectId, ruleId: "clean", status: "finished", items: [
+        { id: crypto.randomUUID(), version: 1, mediaId: crypto.randomUUID(), name: "过时的制作", status: "exporting", taskId: historicalTaskId },
+      ] },
+    } as unknown as DesktopState,
+    busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+  }));
+  expect(html).toContain("<span>本轮制作</span><strong>2<small>条</small></strong>");
+  expect(html).toContain("本轮作品");
+  expect(html).toContain("未提交作品");
+  expect(html).toContain("已停止");
+  expect(html).not.toContain("历史作品");
+  expect(html).not.toContain("过时的制作");
+});
+
 it("makes an accepted supervisor preview playable while formal export is waiting", () => {
   const taskId = crypto.randomUUID();
   const itemId = crypto.randomUUID();

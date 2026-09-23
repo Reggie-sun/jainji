@@ -5,6 +5,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApplicationService } from "../src/main/application";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
 import { ProjectStore } from "../src/main/store";
+import type { ExportBatch } from "../src/main/domain";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ResultsPanel } from "../src/renderer/ResultsPanel";
+import type { DesktopState } from "../src/shared/desktop";
 
 const directories: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
@@ -60,6 +65,44 @@ describe("named material collections", () => {
     await reopened.saveProject(file);
     await service.loadProject(file);
     expect(service.currentProject.name).toBe("新品细节素材集");
+  });
+
+  it("persists only the latest production membership for the reopened project", async () => {
+    const { directory, service, media, createService } = await fixture();
+    const file = path.join(directory, "collection.json");
+    await service.saveProject(file);
+    const firstTaskId = crypto.randomUUID();
+    const latestTaskId = crypto.randomUUID();
+    const run = (id: string, taskId: string) => ({
+      id, projectId: service.currentProject.id, ruleId: "clean" as const, status: "finished" as const,
+      items: [{ id: crypto.randomUUID(), mediaId: media.id, version: 1, name: "本轮作品", status: "exporting" as const, taskId }],
+    });
+    await service.rememberLatestProduction(run(crypto.randomUUID(), firstTaskId));
+    const latest = run(crypto.randomUUID(), latestTaskId);
+    await service.rememberLatestProduction(latest);
+
+    const reopened = createService();
+    await reopened.loadProject(file);
+    expect(reopened.currentProject.latestProduction).toMatchObject({ id: latest.id, items: [{ taskId: latestTaskId }] });
+    expect(JSON.stringify(reopened.currentProject)).not.toContain(firstTaskId);
+    expect(reopened.view({ revision: 0, batches: [] }).project.latestProduction?.items[0].taskId).toBe(latestTaskId);
+    const historicalTaskId = crypto.randomUUID();
+    const queue = { revision: 0, batches: [historicalTaskId, latestTaskId].map((taskId) => ({
+      revision: 0, updatedAt: service.currentProject.updatedAt,
+      batch: { id: crypto.randomUUID(), projectId: service.currentProject.id, status: "active", tasks: [{ id: taskId, mediaId: media.id, status: "completed", progress: 1, errorMessage: taskId === historicalTaskId ? "历史作品" : undefined }] },
+    })) };
+    const html = renderToStaticMarkup(createElement(ResultsPanel, {
+      state: reopened.view(queue as Parameters<typeof reopened.view>[0]) as DesktopState,
+      busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+    }));
+    expect(html).toContain("本轮作品");
+    expect(html).not.toContain("历史作品");
+
+    const manualTaskId = crypto.randomUUID();
+    await reopened.rememberExportProduction([{ projectId: reopened.currentProject.id, tasks: [{ id: manualTaskId, mediaId: media.id }] } as ExportBatch]);
+    const reopenedAgain = createService();
+    await reopenedAgain.loadProject(file);
+    expect(reopenedAgain.currentProject.latestProduction?.items.map((item) => item.taskId)).toEqual([manualTaskId]);
   });
 
   it("persists the editable display text in the active template", async () => {

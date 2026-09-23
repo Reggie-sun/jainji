@@ -441,6 +441,19 @@ export const ExportBatchSchema = z.object({
 }).strict();
 export type ExportBatch = z.infer<typeof ExportBatchSchema>;
 
+export const LatestProductionSchema = z.object({
+  id: z.string().uuid(),
+  items: z.array(z.object({
+    id: z.string().uuid(),
+    mediaId: z.string().uuid(),
+    version: z.number().int().positive(),
+    name: z.string().min(1),
+    status: z.enum(["waiting", "analyzing", "prepared", "exporting", "failed", "cancelled"]),
+    taskId: z.string().uuid().optional(),
+    error: z.string().optional(),
+  }).strict()).max(1000),
+}).strict();
+
 export const ProjectSchema = z.object({
   schemaVersion: z.literal(PROJECT_SCHEMA_VERSION),
   id: z.string().uuid(),
@@ -449,6 +462,7 @@ export const ProjectSchema = z.object({
   templates: z.array(EditTemplateSchema).max(100),
   activeTemplateId: z.string().uuid(),
   exportBatches: z.array(ExportBatchSchema),
+  latestProduction: LatestProductionSchema.optional(),
   coverSticker: CoverStickerSchema.optional(),
   reviewDrafts: z.array(CoverReviewDraftSchema).optional(),
   workspaceDraft: ProjectWorkspaceSchema.optional(),

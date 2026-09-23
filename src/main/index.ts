@@ -95,6 +95,8 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 
 async function publicState(): Promise<DesktopState> {
   const snapshot = currentState();
+  const run = agent.snapshot();
+  if (run && run.id === service.currentProject.latestProduction?.id) await service.rememberLatestProduction(run);
   const state = await service.state(snapshot);
   const outputDirectory = state.project.workspaceDraft?.outputDirectory;
   if (outputDirectory) {
@@ -102,7 +104,7 @@ async function publicState(): Promise<DesktopState> {
     if (!approved) delete state.project.workspaceDraft!.outputDirectory;
   }
   const sourceKnowledgeRisks = await projectKnowledgeRisks({ ...snapshot, batches: snapshot.batches.filter(({ batch }) => batch.projectId === state.project.id) }, sourceKnowledge);
-  return { ...state, sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: agent.snapshot(), recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
+  return { ...state, sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: run, recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
 let notifying = false, notificationPending = false;
@@ -226,7 +228,9 @@ function registerHandlers(): void {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
     coverReview?.assertIdle(); connections.assertIdle();
-    await agent.start(input, approvedOutputDirectories); return publicState();
+    await agent.start(input, approvedOutputDirectories);
+    await service.rememberLatestProduction(agent.snapshot()!);
+    return publicState();
   });
   ipcMain.handle("agent.cancel", async (event) => { assertTrustedSender(event); await agent.cancel(); return publicState(); });
   ipcMain.handle("media.selectAndProbe", async (event) => {
@@ -443,6 +447,7 @@ function registerHandlers(): void {
     const outputDirectory = await canonicalPath(parsed.outputDirectory);
     if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
     const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: parsed.mediaIds, mediaItems: service.currentProject.mediaItems, outputDirectory, preset });
+    await service.rememberExportProduction([batch]);
     void queue.start(batch.id);
     return { batchId: batch.id, taskIds: batch.tasks.map((task) => task.id) };
   });
@@ -472,6 +477,7 @@ function registerHandlers(): void {
       .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && entry[0] !== "template" && entry[0] !== "none")
       .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
     const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
+    await service.rememberExportProduction(batches);
     for (const batch of batches) void queue.start(batch.id);
     return { batchIds: batches.map((batch) => batch.id), outputDirectory };
   });

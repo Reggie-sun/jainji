@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { DesktopState } from "../shared/desktop";
+import type { AgentItem } from "../shared/agent";
 import type { PublicExportBatch } from "../main/application";
 import { AppendProductionDialog } from "./AppendProductionDialog";
 import { SourceStickerKnowledgeDetails } from "./SourceStickerKnowledgeDetails";
@@ -32,9 +33,13 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, 
       setAppendError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "无法读取源批次信息。");
     }
   };
-  const planned = state.agentRun?.items ?? [];
+  const liveRun = state.agentRun?.id === state.project.latestProduction?.id || !state.project.latestProduction ? state.agentRun : undefined;
+  const allTasks = state.queue.batches.flatMap(({ batch }) => batch.tasks);
+  const planned: AgentItem[] = liveRun?.items ?? state.project.latestProduction?.items.map((item) =>
+    !item.taskId && !["failed", "cancelled"].includes(item.status)
+      ? { ...item, status: "cancelled" as const } : item) ?? [];
   const currentTaskIds = new Set(planned.flatMap((item) => item.taskId ? [item.taskId] : []));
-  const tasks = state.queue.batches.flatMap(({ batch }) => batch.tasks).filter((task) => !state.agentRun || currentTaskIds.has(task.id));
+  const tasks = allTasks.filter((task) => (!liveRun && !state.project.latestProduction) || currentTaskIds.has(task.id));
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   const unqueued = planned.filter((item) => !item.taskId || !tasks.some((task) => task.id === item.taskId));
   const completed = planned.filter((item) => item.taskId && taskById.get(item.taskId)?.status === "completed").length;
@@ -43,7 +48,7 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, 
     return item.status === "failed" || item.status === "cancelled" || taskStatus === "failed" || taskStatus === "interrupted" || taskStatus === "cancelled";
   }).length;
   const processing = planned.length - completed - failed;
-  const canCancelAll = state.agentRun?.status === "running" || tasks.some((task) => ["queued", "validating", "running", "verifying"].includes(task.status));
+  const canCancelAll = liveRun?.status === "running" || tasks.some((task) => ["queued", "validating", "running", "verifying"].includes(task.status));
   return <>
     <Heading title="作品与导出">跟进分析与导出进度；完成后播放成片验收。</Heading>
     <div className="result-stats"><div><span>本轮制作</span><strong>{planned.length}<small>条</small></strong></div><div><span>正在处理</span><strong>{processing.toString().padStart(2, "0")}</strong></div><div><span>已完成</span><strong className="green-text">{completed.toString().padStart(2, "0")}</strong></div><div><span>需要处理</span><strong className={failed ? "red-text" : ""}>{failed.toString().padStart(2, "0")}</strong></div></div>
