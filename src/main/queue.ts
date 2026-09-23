@@ -498,7 +498,7 @@ export class ExportQueue {
       const state = this.states.get(batchId)!;
       for (const task of state.batch.tasks) {
         if (this.activeTasks.size >= this.limits.exports) return;
-        if (task.status !== "queued" || this.activeTasks.has(task.id)) continue;
+        if (task.status !== "queued" || this.activeTasks.has(task.id) || this.cancelRequested.has(task.id)) continue;
         const freeThreads = this.limits.threads - [...this.activeTasks.values()].reduce((sum, active) => sum + active.threads, 0);
         if (freeThreads <= 0) return;
         const media = this.mediaFor(state, task);
@@ -549,6 +549,22 @@ export class ExportQueue {
       if (task.status === "running" || task.status === "verifying") await this.transition(state, task, "cancelling");
       const controller = this.controllers.get(taskId);
       if (controller) await controller.cancel();
+    }
+  }
+
+  async cancelAll(projectId: string): Promise<void> {
+    const tasks = [...this.states.values()]
+      .filter((state) => state.batch.projectId === projectId)
+      .flatMap((state) => state.batch.tasks);
+    const queued = tasks.filter((task) => task.status === "queued");
+    for (const task of queued) this.cancelRequested.add(task.id);
+    try {
+      for (const task of queued) await this.cancel(task.id);
+    } finally {
+      for (const task of queued) this.cancelRequested.delete(task.id);
+    }
+    for (const task of tasks) {
+      if (task.status === "validating" || task.status === "running" || task.status === "verifying") await this.cancel(task.id);
     }
   }
 

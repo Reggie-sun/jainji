@@ -447,6 +447,12 @@ function registerHandlers(): void {
     return { batchId: batch.id, taskIds: batch.tasks.map((task) => task.id) };
   });
   ipcMain.handle("export.cancel", async (event, input: unknown) => { assertTrustedSender(event); await queue.cancel(taskSchema.parse(input).taskId); return publicState(); });
+  ipcMain.handle("export.cancelAll", async (event) => {
+    assertTrustedSender(event);
+    if (agent.snapshot()?.status === "running") await agent.cancel();
+    await queue.cancelAll(service.currentProject.id);
+    return publicState();
+  });
   ipcMain.handle("export.retry", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await queue.retry(retrySchema.parse(input).taskIds); return publicState(); });
   ipcMain.handle("export.appendPrefill", async (event, input: unknown) => {
     assertTrustedSender(event);

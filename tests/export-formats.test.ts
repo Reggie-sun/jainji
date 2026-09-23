@@ -60,7 +60,7 @@ describe("export format selection", () => {
     expect(persisted.batch.preset.container).toBe(format);
     const markup = renderToStaticMarkup(createElement(ResultsPanel, {
       state: { queue: { batches: [persisted] }, project: { mediaItems: [media] } } as unknown as DesktopState,
-      busy: false, retryingIds: [], onCancel: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+      busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
     }));
     expect(markup).toContain("独立包装 · 成片");
     expect(markup).not.toContain("MP4 成片");

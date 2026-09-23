@@ -91,7 +91,7 @@ async function queueFixture(cores = 6, videoEncoder: H264Capability = { kind: "h
     videoEncoder,
     ...(verifiedSlots === undefined ? {} : { executionLimits: { ...limits.executionLimits(cores, underlyingEncoder), exports: verifiedSlots } }),
   });
-  const batch = (count = 1) => queue.createBatch({ template: createDefaultTemplate(), mediaIds: Array.from({ length: count }, () => item.id), mediaItems: [item], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
+  const batch = (count = 1, projectId?: string) => queue.createBatch({ template: createDefaultTemplate(), projectId, mediaIds: Array.from({ length: count }, () => item.id), mediaItems: [item], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
   return { queue, batch, commands, jobStore, compile, peak: () => peak };
 }
 
@@ -379,6 +379,31 @@ describe("global export concurrency", () => {
     await Promise.all(f.commands.slice(1).map((command) => command.finish()));
     await running;
     expect(f.queue.snapshot().batches[0].batch.tasks.map((task) => task.status)).toEqual(["cancelled", "completed", "completed"]);
+  });
+
+  it("cancels all unfinished exports in one project without starting its queued work or touching another project", async () => {
+    const f = await queueFixture();
+    const targetProjectId = crypto.randomUUID();
+    const completed = await f.batch(1, targetProjectId);
+    const completedRunning = f.queue.start(completed.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    await f.commands[0].finish();
+    await completedRunning;
+    const target = await f.batch(4, targetProjectId);
+    const other = await f.batch(1, crypto.randomUUID());
+    const targetRunning = f.queue.start(target.id);
+    const otherRunning = f.queue.start(other.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(3));
+
+    await f.queue.cancelAll(targetProjectId);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(4));
+    await f.commands[3].finish();
+    await Promise.all([targetRunning, otherRunning]);
+
+    expect(f.queue.snapshot().batches.find(({ batch }) => batch.id === completed.id)?.batch.tasks[0].status).toBe("completed");
+    expect(f.queue.snapshot().batches.find(({ batch }) => batch.id === target.id)?.batch.tasks.map((task) => task.status)).toEqual(Array(4).fill("cancelled"));
+    expect(f.queue.snapshot().batches.find(({ batch }) => batch.id === other.id)?.batch.tasks[0].status).toBe("completed");
+    expect(f.commands).toHaveLength(4);
   });
 
   it("retries a failed task while its peer is still running without exceeding the limit", async () => {

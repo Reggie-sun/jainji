@@ -61,6 +61,7 @@ const api = {
   selectOutputDirectory: (): Promise<string | null> => ipcRenderer.invoke("output.selectDirectory"),
   createAutomaticOutputDirectory: (mediaIds: string[], existingDirectory?: string): Promise<string> => ipcRenderer.invoke("output.createAutomaticDirectory", { mediaIds, ...(existingDirectory ? { existingDirectory } : {}) }),
   cancelExport: (taskId: string): Promise<DesktopState> => ipcRenderer.invoke("export.cancel", { taskId }),
+  cancelAllExports: (): Promise<DesktopState> => ipcRenderer.invoke("export.cancelAll"),
   retryExport: (taskIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("export.retry", { taskIds }),
   appendProductionPrefill: (batchId: string): Promise<{ productPrice: string; mediaCount: number }> => ipcRenderer.invoke("export.appendPrefill", { batchId }),
   appendProduction: (input: AppendProductionInput): Promise<{ batchIds: string[]; outputDirectory: string }> => ipcRenderer.invoke("export.append", input),

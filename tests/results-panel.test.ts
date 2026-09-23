@@ -28,7 +28,7 @@ it("counts only the latest production run in the results summary", () => {
         ],
       },
     } as unknown as DesktopState,
-    busy: false, retryingIds: [], onCancel: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+    busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
   }));
 
   expect(html).toContain("<span>本轮制作</span><strong>3<small>条</small></strong>");
@@ -51,7 +51,7 @@ it("makes an accepted supervisor preview playable while formal export is waiting
         previewUrl,
       }] },
     } as unknown as DesktopState,
-    busy: false, retryingIds: [], onCancel: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+    busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
   }));
 
   expect(html).toContain(`aria-label="播放 已通过样片 的主管样片"`);
@@ -74,7 +74,23 @@ it("offers append production on rows of completed batches only", () => {
         { batch: { id: activeBatchId, status: "active", mediaIds: [], tasks: [{ id: crypto.randomUUID(), batchId: activeBatchId, mediaId: crypto.randomUUID(), status: "running", progress: 0.4 }] } },
       ] },
     } as unknown as DesktopState,
-    busy: false, retryingIds: [], onCancel: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+    busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
   }));
   expect(html.match(/追加制作/g)).toHaveLength(1);
+});
+
+it("offers bulk cancel only while this project's work can still be stopped", () => {
+  const render = (statuses: string[], agentStatus?: string, busy = false) => renderToStaticMarkup(createElement(ResultsPanel, {
+    state: {
+      project: { mediaItems: [] },
+      queue: { batches: [{ batch: { tasks: statuses.map((status) => ({ id: crypto.randomUUID(), mediaId: crypto.randomUUID(), status, progress: 0 })) } }] },
+      agentRun: agentStatus ? { status: agentStatus, items: [] } : undefined,
+    } as unknown as DesktopState,
+    busy, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+  }));
+
+  expect(render(["completed", "failed", "cancelled", "interrupted"])).not.toContain("批量取消");
+  expect(render([], "running")).toContain("批量取消");
+  expect(render(["running", "queued"])).toContain("批量取消");
+  expect(render(["running"], undefined, true)).toContain('disabled=""');
 });

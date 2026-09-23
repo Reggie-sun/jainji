@@ -74,6 +74,7 @@ button{color:inherit}
 .card-header h2{font-size:14px;font-weight:650;display:flex;align-items:center;gap:10px}
 .card-header h2>span{font-size:12px;background:var(--line-2);color:var(--ink-2);border-radius:3px;padding:2px 7px;font-variant-numeric:tabular-nums}
 .card-header>span{font-size:12px;color:var(--ink-3)}
+.result-header-actions{display:flex;align-items:center;gap:16px}.result-header-actions>span{font-size:12px;color:var(--ink-3)}
 .small-tag{font-size:12px;display:inline-flex;gap:5px;align-items:center}
 .icon-tile{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;border:1px solid var(--line);background:var(--paper);border-radius:8px;color:var(--seal)}
 
