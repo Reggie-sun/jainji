@@ -169,13 +169,10 @@ export default function App() {
   const encoderLabel = !capability ? "本地编码"
     : capability.kind === "hardware" ? hardwareLabels[capability.encoder]
     : "CPU 编码";
-  // Three-state classification: `hardware` is the happy path; `software-fallback`
-  // means ffmpeg lists a HW encoder but the runtime probe failed (typical:
-  // vLLM/Qwen holding the GPU). `software-only` means ffmpeg has no HW encoder
-  // compiled in. Both still encode — the dot is just a hint to free the GPU
-  // before kicking off a big batch.
+  // A listed GPU encoder can fail its runtime probe for several reasons,
+  // including an incompatible driver or insufficient available resources.
   const engineWarning = !capability ? undefined
-    : capability.kind === "software-fallback" ? { kind: "fallback" as const, message: "GPU 显存被其他进程占用,渲染会显著变慢" }
+    : capability.kind === "software-fallback" ? { kind: "fallback" as const, message: "GPU 编码试运行未通过；可能是驱动不兼容、资源不足或设备被占用。已改用 CPU 编码。" }
     : capability.kind === "software-only" ? { kind: "only" as const, message: "未检测到硬件编码器,使用 CPU 软编码" }
     : undefined;
   const engineLabel = state.capabilities.ready ? `${encoderLabel} · ${state.capabilities.executionLimits?.exports ?? 1} 路` : "引擎待配置";

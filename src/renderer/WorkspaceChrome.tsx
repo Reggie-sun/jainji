@@ -64,7 +64,7 @@ export function WorkspaceHeader({ step, section, projectName, projectDirty, engi
         </div>
       </details>
       <span className={engineReady ? "engine-status" : "engine-status unavailable"}><i />{engineLabel}</span>
-      {engineWarning && <span className={`engine-warning ${engineWarning.kind}`} title={engineWarning.message} aria-label={engineWarning.message}><i />{engineWarning.kind === "fallback" ? "GPU 被占用" : "无硬件编码器"}</span>}
+      {engineWarning && <span className={`engine-warning ${engineWarning.kind}`} title={engineWarning.message} aria-label={engineWarning.message}><i />{engineWarning.kind === "fallback" ? "GPU 编码不可用" : "无硬件编码器"}</span>}
       <div className="header-project-actions">
         <button className="button secondary compact" type="button" disabled={disabled} onClick={onOpenProject}><Icon name="folder" size={16} />打开</button>
         <button className="button primary compact" type="button" disabled={saveDisabled} onClick={onSaveProject}><Icon name="download" size={16} />保存项目</button>

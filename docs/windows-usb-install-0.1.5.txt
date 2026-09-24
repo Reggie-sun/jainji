@@ -1,0 +1,11 @@
+简辑 0.1.5 — Windows 10/11 x64 安装说明
+
+1. 关闭正在运行的简辑，再双击“jianji-setup-0.1.5.exe”安装。本包未签名，请先用 SHA256SUMS.txt 核对文件。安装包内置 FFmpeg、ffprobe、中文字体、Electron/Node.js 运行时与 Codex；无需另行配置 PATH。安装完成后打开简辑，确认本地编码引擎就绪。
+2. 本地随机模式在关闭覆盖或使用手动覆盖时无需模型连接。Agent 制作则需登录自己的 ChatGPT 账号，或配置模型 API 与 Key。展示文字必须手动填写，最多两行、每行 12 字。安装包不含账号、API Key 或用户视频；在线模型需要网络和账号额度。
+3. GPU 加速需要可用显卡和与内置 FFmpeg 兼容的驱动。若显示“GPU 编码不可用”，软件会改用 CPU 编码，仍能出片；本机 546.30 NVIDIA 驱动与此包所需 NVENC API 不兼容。若本地导出引擎整体缺失，请重新安装完整安装包。
+
+本包基于 main fce917d，包含 Windows 修复及准确的 GPU 回退提示。从本 U 盘静默升级已有 0.1.4 安装、安装版双素材本地随机出片、包内环境和正常退出释放知识库锁已验证；详见 windows-verification-0.1.5.md。交互式安装、真实模型、目标电脑 GPU 和成片全程人工观看仍需按 windows-acceptance-spec.md 验收。
+
+如启动时提示“源贴纸知识库需要恢复”，先确认没有另一个简辑实例在运行；不要手动删除 owner.lock。异常中断后可按弹窗选择“安全重建”，它会保留旧知识库副本；已有导出和项目不受影响，新自动制作会重新识别源贴纸。
+
+U 盘中的 ffmpeg-release-essentials.zip 是维护人员备用原始包，安装时无需解压。CC Switch 官方安装包、Reggie-sun fork 源码及其离线依赖保留在“CC Switch”目录；简辑本身不要求安装 CC Switch。
