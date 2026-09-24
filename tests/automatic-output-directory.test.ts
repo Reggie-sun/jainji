@@ -22,6 +22,18 @@ it("creates a timestamped video directory beside the material directory", async 
   expect((await stat(created)).isDirectory()).toBe(true);
 });
 
+it("accepts a numbered material directory beside the product video directory", async () => {
+  const root = await temporaryRoot();
+  const sources = [
+    path.join(root, "眼贴", "素材", "素材一.mp4"),
+    path.join(root, "眼贴", "素材2", "分组", "素材二.mp4"),
+  ];
+  const created = await createAutomaticOutputDirectory(sources, new Date(2026, 8, 24, 9, 7));
+
+  expect(created).toBe(path.join(root, "眼贴", "视频", "9.24 09:07"));
+  expect((await stat(created)).isDirectory()).toBe(true);
+});
+
 it("reserves a new directory when the same minute already exists", async () => {
   const root = await temporaryRoot();
   const existing = path.join(root, "马油膏布", "视频", "9.18 20:02");
@@ -55,5 +67,8 @@ it("rejects sources that do not identify one product root", async () => {
   ])).rejects.toThrow("不同产品目录");
   await expect(createAutomaticOutputDirectory([
     path.join(root, "肥皂", "原片", "a.mp4"),
+  ])).rejects.toThrow("产品/素材");
+  await expect(createAutomaticOutputDirectory([
+    path.join(root, "肥皂", "素材备份", "a.mp4"),
   ])).rejects.toThrow("产品/素材");
 });
