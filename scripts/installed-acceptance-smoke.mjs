@@ -7,6 +7,8 @@ import path from "node:path";
 
 const install = path.resolve(process.argv[2] || path.join(process.env.LOCALAPPDATA, "Programs", "jianji"));
 const evidenceRoot = path.resolve(process.argv[3] || "work/windows-installed-acceptance");
+const mode = process.argv[4] || "random";
+assert.ok(mode === "random" || mode === "manual", `Unknown decoration mode: ${mode}`);
 const executable = path.join(install, "简辑.exe");
 const ffmpeg = path.join(install, "resources", "ffmpeg", "ffmpeg.exe");
 const ffprobe = path.join(install, "resources", "ffmpeg", "ffprobe.exe");
@@ -91,7 +93,10 @@ try {
   state = await evaluate(`window.jianji.addAndProbe(${JSON.stringify([damaged])})`);
   assert.equal(state.project.mediaItems.find((item) => item.displayName === path.basename(damaged))?.probeStatus, "invalid");
   const output = await evaluate(`window.jianji.createAutomaticOutputDirectory(${JSON.stringify(media.map(({ id }) => id))})`);
-  const request = { ruleId: "clean", mediaIds: media.map(({ id }) => id), outputDirectory: output, brief: "", decorations: { mode: "random", productPrice: "测试文字", sticker: "template", fontFamily: "Noto Sans CJK SC" } };
+  const decorations = mode === "random"
+    ? { mode, productPrice: "测试文字", sticker: "template", fontFamily: "Noto Sans CJK SC" }
+    : { mode, productPrice: "自己设置测试", priceStyle: "comic", sticker: "heart", fontFamily: "Noto Sans CJK SC", corners: { "top-left": { type: "sticker", sticker: "heart" }, "top-right": { type: "sticker", sticker: "arrow" }, "bottom-left": { type: "none" }, "bottom-right": { type: "sticker", sticker: "sparkle" } } };
+  const request = { ruleId: "clean", mediaIds: media.map(({ id }) => id), outputDirectory: output, brief: "", decorations };
   for (const invalid of ["", "   ", "第一行\n第二行\n第三行", "1234567890123"]) {
     const response = await evaluate(`(async () => { try { await window.jianji.startAgent(${JSON.stringify({ ...request, decorations: { ...request.decorations, productPrice: invalid } })}); return "unexpected"; } catch (error) { return String(error); } })()`);
     assert.notEqual(response, "unexpected", `Invalid display text was admitted: ${JSON.stringify(invalid)}`);
@@ -139,7 +144,7 @@ try {
   socket.send(JSON.stringify({ id: ++sequence, method: "Runtime.evaluate", params: { expression: "window.close()" } }));
   assert.equal(await exited, 0);
   await assert.rejects(access(path.join(owner.parentPath, owner.name)), { code: "ENOENT" });
-  const report = { result: "PASS", install, directory, outputDirectory: output, encoder: state.capabilities.videoEncoder, executionLimits: state.capabilities.executionLimits, modelConfigured: state.connection.configured, damagedMediaRejected: true, invalidDisplayTextRejected: 4, sources: sources.map((source, index) => ({ ...source, sha256: sourceHashes[index] })), outputs, runtimeExceptions: exceptions };
+  const report = { result: "PASS", mode, decorations, install, directory, outputDirectory: output, encoder: state.capabilities.videoEncoder, executionLimits: state.capabilities.executionLimits, modelConfigured: state.connection.configured, damagedMediaRejected: true, invalidDisplayTextRejected: 4, sources: sources.map((source, index) => ({ ...source, sha256: sourceHashes[index] })), outputs, runtimeExceptions: exceptions };
   await writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally {
