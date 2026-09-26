@@ -75,6 +75,37 @@ Native `code_mapper` 只读核查原 queue 的创建、样片直发、恢复/重
 
 当前 AOCI Guide 与一次 `aoci_maintain` 仍返回 `blocked/stopped`、没有机器签发的可写候选：5 个新 owner（含 M4-B1 两个）缺 entry，`domain.ts` 等 managed source 有 drift，且既有正式 `aoci.code.txt` 与 baseline 不一致 (`code_volume_unbaselined`)。没有绕过 governed Scope Change、手写正式索引或扩大到其他模块修复。本轮不修改 AOCI 托管字节；不能声称索引对齐，后续维护仍有阻塞。
 
+# AOCI Attribution Audit
+
+2026-09-27 按用户要求重新执行官方 `verify --json`、`check --json`、`index agent guide --agent codex --json`，没有把上面的记录当作归因结论。运行版本为 `0.1.0-rc14`，capability commit 为 `92c78bc48a3e431ff8ae67fabb05270cc7129fe7`。比较对象为 M4-B2 开始前 `5b95024`、完成后 `f4b6341` 及当前工作树；历史对象由 `git archive <commit>` 解包到独立临时目录，再用同一二进制的 `aoci --repo <snapshot> ...` 检查，没有创建 worktree 或修改实际 checkout。archive 缺少未跟踪的两个 `.impeccable` observe 文件，故其 observe removed 与当前树不同；下面归因只使用 code drift、正式资产和源码字节，不把此环境差异当成 M4-B2 回归。
+
+| Official Fact | Before M4-B2 | After M4-B2 / Current | Attribution |
+| --- | --- | --- | --- |
+| `code_drift.stale` | 13 | 14 | 新增 `src/main/domain.ts` |
+| `code_drift.missing` | 2 | 5 | 新增 `src/main/shape-cover-freeze.ts`、`src/main/shape-cover-render.ts`、`src/shared/shape-cover.ts` |
+| `code_drift.unbaselined` | 2 | 5 | 同上三个新 owner；这是 source baseline 缺失，与 Volume baseline 不一致分别计数 |
+| `code_drift.orphan` | 0 | 0 | 没有新增 orphan |
+| `code_volume_unbaselined` | 存在 | 存在 | 相同历史 Volume 完整性 blocker，没有新增或改变 Volume 字节 |
+| `structure_valid` / `governance_aligned` | `true` / `false` | `true` / `false` | 正式结构可解析，但治理未对齐 |
+| Verify / Check / Guide | exit 1 / exit 1 / `blocked` | exit 1 / exit 1 / `blocked` | Guide 命令 exit 0 不表示健康；须读取其 `stage` |
+
+集合差之外还存在本切片的维护问题：`compiler.ts`、`queue.ts` 原来已经 stale，但 M4-B2 又修改了它们；M4-B1 的 `shape-cover-alpha.ts`、`shape-cover-candidates.ts` 原来已经 missing/unbaselined，本切片也继续修改了它们。连同新 stale 的 `domain.ts` 和三个新 owner，M4-B2 的八个受管 source 均未完成对应 cognition 维护。不能因为其中四个路径在旧 drift 集合中，就宣称本切片 source/cognition 已一致。源码逐文件核对当前字节与 `f4b6341` 相等；当前 CodeGraph 重新索引并查询 `TemplateCompiler`、`assertShapeCoverExportReady`，结合源码确认新增 schema、PNG 字节消费及正式输出阻断。正式索引现有 `domain.ts`、`compiler.ts`、`queue.ts` Entry 没有覆盖这些新增契约，五个 shape owner 没有 Entry；没有将旧 cognition 当作实现事实。
+
+`aoci.txt`、`aoci.meta.txt`、`aoci.code.txt`、`.aoci/config.json`、`.aoci/baseline.json` 在前后 commit 与当前工作树中逐字节相同。Volume 实际 SHA-256 为 `da194c07d1777ea0a6b91544d1c8653a5b85470e8d586371351cd018fb5395d9`，baseline 记录为 `1a982948df6fd2fdd2ebfe43029f72d3e3f792424db7a64ed8bcf2994b610cb9`，因此历史 blocker 已通过快照重跑确认；M4-B2 没有引入这项 Volume mismatch。baseline 文件 SHA-256 为 `ede0bc24401a956cb0f71dbc3ab5849f18bb7b969babcc1687efa0f7dde6e342`，本审计不改变它。
+
+本次一次 `aoci_maintain` 返回 `status: stopped`、`result: blocked`、空 `candidates` / `orphan_remove_candidates`，没有签发可写批次。当前 Guide 的安全停点为 `blocked`；官方 `update-entry --help` 要求维护工具返回的 source binding，并复用 baseline 完整性防线。工具给出的 Volume 修复方向是恢复既有字节或通过 governed Scope Change 重新建立 cognition，不能在本次禁止修历史 baseline 的范围内假装成窄增量修复。没有提交伪造 candidate、手写正式 Entry、改变 scope、恢复其他 owner 字节、运行 scan 或 apply/approve baseline；没有扩大到整仓历史 debt。
+
+独立复跑 `npm run typecheck` exit 0；`npm test -- --maxWorkers=4 --minWorkers=4` exit 0，127 文件 PASS / 1 skipped，1095 PASS / 3 skipped，32.26 秒。测试与当前源码一致，保留用户 `氨糖膏.jianji-project.json` 和 `.bak` 的删除改动。原始官方检查与本次测试日志保存在临时 `/tmp/jianji-aoci-audit-utpv3sn6/evidence/`，持久结论及复跑方式见本节；临时日志不代替上述源码、commit 和可重放命令。
+
+本次状态明确区分为：
+
+- **M4-B2 functional acceptance: PASS**，仅冻结/预览切片，不是生产输出或内容安全准入。
+- **AOCI repository health: BLOCKED by pre-existing baseline drift**，同时保留本切片新增 maintenance debt。
+- **Regression introduced by M4-B2: YES for cognition maintenance drift**：新增 1 stale、3 missing、3 unbaselined（missing/unbaselined 指向同一组三个路径）；没有新增 orphan 或 Volume mismatch。测试未发现本切片功能回归，不能据此写 cognition regression 为 NO。
+- **M4-B2 source/cognition alignment: NOT MAINTAINED**；修复未完成，工具未提供可执行窄写入候选。
+- **AOCI debt remains open and must not be silently baselined away**；正式 cognition 和 baseline 均未修改。
+- **Next milestone: M4-B3, NOT STARTED**。用户本轮要求先修复 M4-B2 新增 drift；该先决条件尚未满足，因此停止在真实 maintenance blocker，不把“历史债务不应阻塞功能”解释为跳过新增债务。需先取得符合此范围的官方受治理修复路径。
+
 # Remaining Boundary And Next One Thing
 
 `geometry-only` 和 `contentSafety: NOT_EVALUATED` 继续明确保留。没有成功 shape 正式入队/导出，不证明独立内容安全、全片或未知时段的 coverage、用户星形素材验收、Windows 或大批量性能；source-mask-only 只证明源事实。冻结 PNG 的全画布几何不能直接当作四角占位区域，后续选款整合须使用实际 placement/轮廓绑定。
