@@ -56,3 +56,19 @@ spec: shape-matched-cover-spec.md
 未来实施需运行 `npm run typecheck`、受影响测试、跨制作/导出集成测试，并用真实 FFmpeg 导出与配对截图核对输出；在声称通过、commit 或 PR 前执行 `verification-before-completion`。测试文件与命令以实际实现确定，不把尚未创建的测试列作已运行证据。文档本次只检查链接、合同与当前源码的一致性。
 
 实施时保留现有未提交文件；修改前重新核对 `git status` 和目标文件 ownership。代码变更的提交、审查及运行证据按当时有效仓库规则执行。本 plan 的 `draft-not-executed` 状态不得解释为实施授权或通过验收。
+
+# Active Slice — M4-B1
+
+2026-09-27 用户授权直接实现本子步骤；沿用上方路线，不重做 M1–M5。通过 `superpowers:writing-plans` 将窄执行合同补入现有 plan，完成后回到 Native Codex execution。
+
+**Goal / Scope:** 对明确列出的全部 intended target/segment/range，先从既有 `SourceStickerKnowledgeStore` 取得匹配当前源身份和指定 head revision 的 admitted mask；全部准入后枚举本地候选，使用真实 FFmpeg alpha 对 `candidate × target × output setting` 执行 M3 final-pixel gate，求整组共同几何合格集合。
+
+**Files / Owners:** 新建 `src/main/shape-cover-candidates.ts` 负责整轮源准入、矩阵与求交；新建 `src/main/shape-cover-alpha.ts` 负责有界真实媒体栅格读取与测量；新建 `tests/shape-cover-candidates.test.ts`，用真实媒体和 canonical admission/store 验证；记录到 `docs/shape-matched-cover-m4b1.md`。不复制 knowledge owner、像素算法、模型选择器或队列。
+
+**Input Contract:** intended targets 独立于查到的 mask 列表，包含精确 source identity/path、expected revision、target/segment ID 和半开 required range；统一 output settings 为现有 `ExportSettings`，每个 target 必须为每种设置提供一个静态最终像素 placement。不自动找框或搜索无限摆放。候选为已有本地 sticker ID、asset path/fingerprint；首版只证明单帧静态图案，动画明确拒绝。输出的 source scale/pad 用当前 FFmpeg 测量，不能由调用者伪造。
+
+**Invariants / Compatibility:** 任何缺 mask、审核、有效时段、源字节/修订绑定、output placement 或知识完整性即整轮 `UNSAFE`，在读取候选 alpha 前停止。实际 alpha 必须匹配资产指纹，像素上限与轮廓阈值沿用 M3；全透明或仅半透明不等于不透明覆盖。候选必须通过全部矩阵单元才进入共同集合；没有共同候选为 `UNSAFE`。返回 source revision、mask/asset/alpha 摘要、设置、测量、placement、算法版本及各单元结果；不能跨 segment 或 output setting 借 PASS。
+
+**Acceptance / Verification:** 缺任一 intended target、第二目标排除首目标候选、空交集、各设置独立拒绝、真实透明 alpha、源/证据/资产篡改、修订变化、取消与非法几何均可执行验证。运行相关 M3/M4-A 测试、`npm run typecheck` 和全套测试；在 commit 前执行 `verification-before-completion`，检查最终 diff。需要真实 FFmpeg 的测试不得用合成 alpha 冒充媒体读取。
+
+**Out of Scope:** 不接 AgentRunner/Controller、UI、选款调用、compiler/renderer、图层冻结或正式导出；不证明内容安全或全片 PTS/成片验收。结果标记 `geometry-only` 与 `contentSafety: NOT_EVALUATED`，不会成为生产 PASS。下一阶段仍须冻结实际图层、逐帧时序复核、原队列样片与独立内容安全检查。
