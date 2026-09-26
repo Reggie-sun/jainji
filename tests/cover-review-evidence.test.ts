@@ -66,7 +66,7 @@ describe("cover review evidence", () => {
     expect(selectionSizes.length).toBeGreaterThan(1);
     expect(Math.max(...selectionSizes)).toBeLessThanOrEqual(64);
     expect(extracted.evidence).toHaveLength(selectionSizes.reduce((total, count) => total + count, 0));
-  });
+  }, 60000); // Real FFmpeg extraction and image I/O exceed the default 5s on Windows.
 
   it("normalizes a shifted first decoded PTS while retaining its raw evidence timestamp", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-shifted-"));

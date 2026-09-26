@@ -56,3 +56,17 @@ it("cleans up already launched sessions if a later launch throws", async () => {
   await expect(probeConcurrentEncodes(args, 2, start)).rejects.toThrow("spawn failed");
   expect(f.sessions[0].kill).toHaveBeenCalledOnce();
 });
+
+it("probes CPU lanes using moving 720p input and their actual thread allocation", async () => {
+  vi.useFakeTimers();
+  const f = fixture();
+  const softwareArgs = args.map((arg) => arg === "h264_nvenc" ? "libx264" : arg);
+  const result = probeConcurrentEncodes(softwareArgs, 3, f.start, 5_000, 4);
+  const probeArgs = f.start.mock.calls[0][0];
+  expect(probeArgs[probeArgs.indexOf("-i") + 1]).toBe("testsrc2=size=1280x720:rate=30");
+  expect(probeArgs.flatMap((arg, i) => arg === "-threads" ? [probeArgs[i + 1]] : [])).toEqual(["4", "4"]);
+  expect(probeArgs[probeArgs.indexOf("-filter_threads") + 1]).toBe("4");
+  for (const session of f.sessions) session.progress({ progress: 100000, outTimeMs: 100000 });
+  await vi.advanceTimersByTimeAsync(201);
+  expect(await result).toBe(true);
+});

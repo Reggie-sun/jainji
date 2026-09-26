@@ -4,8 +4,8 @@ import { basename, join } from "node:path";
 import { FONT_CHOICES } from "../shared/decorations.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import { binaryCandidates, windowsFontCandidates } from "./platform.js";
-import { selectH264Capability, type H264Capability, type H264Encoder } from "./video-encoder.js";
-import { executionLimits, verifiedExportCount, type ExecutionLimits } from "./execution-limits.js";
+import { selectH264Capability, videoEncodingArgs, type H264Capability, type H264Encoder } from "./video-encoder.js";
+import { executionLimits, exportThreads, verifiedExportCount, type ExecutionLimits } from "./execution-limits.js";
 import { probeConcurrentEncodes } from "./hardware-probe.js";
 
 export interface CommandResult {
@@ -211,7 +211,21 @@ export async function checkCapabilities(appDataDirectory: string, fontResolver: 
     probedHardware = encoder;
     return true;
   });
-  if (!probedHardware) status.executionLimits = executionLimits(undefined, "libx264");
+  if (!probedHardware && status.videoEncoder) {
+    const limits = executionLimits(undefined, "libx264");
+    // Hardware probing must not consume the CPU fallback's own admission budget.
+    const softwareDeadline = Date.now() + 15_000;
+    const args = ["-hide_banner", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=1280x720:rate=30",
+      "-frames:v", "2", ...videoEncodingArgs("libx264", "balanced"), "-pix_fmt", "yuv420p", "-f", "null", "-"];
+    const exports = await verifiedExportCount(limits.exports, (count) => {
+      const remaining = Math.min(5_000, softwareDeadline - Date.now());
+      return remaining > 0
+        ? probeConcurrentEncodes(args, count, (probeArgs, onProgress) => runCommand(ffmpegPath, probeArgs, onProgress), remaining, exportThreads({ ...limits, exports: count }))
+        : Promise.resolve(false);
+    });
+    status.executionLimits = { ...limits, exports };
+    if (!exports) status.videoEncoder = undefined;
+  }
   status.h264Encoder = status.videoEncoder !== undefined;
   status.videoEncoderReason = status.videoEncoder?.kind === "software-fallback"
     ? "fallback"

@@ -3,11 +3,15 @@ import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { access, mkdir, mkdtemp, readFile, readdir, writeFile } from "node:fs/promises";
 import { createServer } from "node:net";
+import { availableParallelism, freemem, totalmem } from "node:os";
 import path from "node:path";
 
 const install = path.resolve(process.argv[2] || path.join(process.env.LOCALAPPDATA, "Programs", "jianji"));
 const evidenceRoot = path.resolve(process.argv[3] || "work/windows-installed-acceptance");
 const mode = process.argv[4] || "random";
+const machine = { cores: availableParallelism(), totalBytes: totalmem(), availableBytes: freemem() };
+const driver = spawnSync("nvidia-smi", ["--query-gpu=name,driver_version", "--format=csv,noheader"], { encoding: "utf8", windowsHide: true });
+const gpuDriver = driver.status === 0 ? driver.stdout.trim() : undefined;
 assert.ok(mode === "random" || mode === "manual", `Unknown decoration mode: ${mode}`);
 const executable = path.join(install, "简辑.exe");
 const ffmpeg = path.join(install, "resources", "ffmpeg", "ffmpeg.exe");
@@ -52,7 +56,7 @@ let socket;
 try {
   child = spawn(executable, [`--user-data-dir=${path.join(directory, "profile")}`, `--remote-debugging-port=${port}`, "--remote-debugging-address=127.0.0.1"], { cwd: install, env: environment, stdio: "ignore", windowsHide: true });
   let page;
-  for (let attempt = 0; attempt < 200; attempt++) {
+  for (let attempt = 0; attempt < 400; attempt++) {
     if (child.exitCode !== null) throw new Error(`Installed app exited: ${child.exitCode}`);
     try { page = (await (await fetch(`http://127.0.0.1:${port}/json`)).json()).find((target) => target.type === "page"); } catch { /* starting */ }
     if (page) break;
@@ -102,17 +106,21 @@ try {
     assert.notEqual(response, "unexpected", `Invalid display text was admitted: ${JSON.stringify(invalid)}`);
   }
   assert.equal((await evaluate("window.jianji.getState()")).queue.batches.length, 0, "invalid text created a queue batch");
+  const exportStarted = Date.now();
   state = await evaluate(`window.jianji.startAgent(${JSON.stringify(request)})`);
   let tasks = [];
+  let observedPeakRunning = 0;
   for (let attempt = 0; attempt < 360; attempt++) {
     state = await evaluate("window.jianji.getState()");
     tasks = state.queue.batches.flatMap(({ batch }) => batch.tasks);
+    observedPeakRunning = Math.max(observedPeakRunning, tasks.filter((task) => task.status === "running").length);
     if (tasks.length === sources.length && tasks.every((task) => ["completed", "failed", "cancelled", "interrupted"].includes(task.status))) break;
     if (state.agentRun?.items.some((item) => item.status === "failed")) throw new Error(JSON.stringify(state.agentRun.items));
     await pause(500);
   }
   assert.equal(tasks.length, sources.length, JSON.stringify(state.agentRun));
   assert.ok(tasks.every((task) => task.status === "completed"), JSON.stringify(tasks));
+  const exportElapsedMs = Date.now() - exportStarted;
   const mediaById = new Map(media.map((item) => [item.id, item]));
   const outputs = [];
   for (const task of tasks) {
@@ -124,6 +132,7 @@ try {
     assert.ok(original, `Unknown media ${task.mediaId}`);
     const video = probe.streams.find((stream) => stream.codec_type === "video");
     assert.deepEqual([video.width, video.height], original.size === "640x360" ? [1280, 720] : [720, 1280]);
+    assert.equal(video.r_frame_rate, `${original.rate}/1`);
     assert.equal(probe.streams.some((stream) => stream.codec_type === "audio"), original.audio);
     assert.ok(Math.abs(Number(probe.format.duration) - 4) < 0.1, probe.format.duration);
     const decode = spawnSync(ffmpeg, ["-v", "error", "-i", task.outputPath, "-f", "null", "-"], { encoding: "utf8", windowsHide: true });
@@ -144,7 +153,7 @@ try {
   socket.send(JSON.stringify({ id: ++sequence, method: "Runtime.evaluate", params: { expression: "window.close()" } }));
   assert.equal(await exited, 0);
   await assert.rejects(access(path.join(owner.parentPath, owner.name)), { code: "ENOENT" });
-  const report = { result: "PASS", mode, decorations, install, directory, outputDirectory: output, encoder: state.capabilities.videoEncoder, executionLimits: state.capabilities.executionLimits, modelConfigured: state.connection.configured, damagedMediaRejected: true, invalidDisplayTextRejected: 4, sources: sources.map((source, index) => ({ ...source, sha256: sourceHashes[index] })), outputs, runtimeExceptions: exceptions };
+  const report = { result: "PASS", mode, decorations, install, directory, outputDirectory: output, machine, gpuDriver, ffmpegVersion: state.capabilities.ffmpegVersion, encoder: state.capabilities.videoEncoder, executionLimits: state.capabilities.executionLimits, observedPeakRunning, exportElapsedMs, modelConfigured: state.connection.configured, damagedMediaRejected: true, invalidDisplayTextRejected: 4, sources: sources.map((source, index) => ({ ...source, sha256: sourceHashes[index] })), outputs, runtimeExceptions: exceptions };
   await writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report, null, 2));
 } finally {
