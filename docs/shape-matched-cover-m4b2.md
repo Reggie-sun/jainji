@@ -106,6 +106,54 @@ Native `code_mapper` 只读核查原 queue 的创建、样片直发、恢复/重
 - **AOCI debt remains open and must not be silently baselined away**；正式 cognition 和 baseline 均未修改。
 - **Next milestone: M4-B3, NOT STARTED**。用户本轮要求先修复 M4-B2 新增 drift；该先决条件尚未满足，因此停止在真实 maintenance blocker，不把“历史债务不应阻塞功能”解释为跳过新增债务。需先取得符合此范围的官方受治理修复路径。
 
+# AOCI Candidate Gate Diagnosis
+
+本节续接 `59a9837` 的归因，任务仅解除 M4-B2 新增维护债务，不进入 M4-B3。2026-09-27 fresh 官方 Verify / Check 仍 exit 1，Guide exit 0 但 `stage: blocked`；Doctor exit 0、离线 AI 未启用，Capabilities 为 `0.1.0-rc14`、commit `92c78bc48a3e431ff8ae67fabb05270cc7129fe7`。实际 repository source、正式 cognition、config 和 baseline 均与任务开始时相同，用户两个项目文件的删除继续保留。
+
+## Frozen Finding Scope
+
+7 个 finding 对应 **4 个 source / cognition object**；三个新 source 的 missing 与 unbaselined 会由同一次合法 Entry create 与 source binding 处理，不是七次独立作者化。所有对象的 Volume 均为 `code` / `aoci.code.txt`，canonical object identity 均为 `code:<source path>`，均在 `5b95024..f4b6341` 的 source 修改范围内。
+
+| Finding | Source / Object Path | Existing Entry | Source Baseline Binding | Governance Classification |
+| --- | --- | --- | --- | --- |
+| `code_stale` | `src/main/domain.ts` | 存在，`domain.ts[AB8L]` | 存在，SHA `8f34c13f51264bb46accb676d6da0e95324ad3fd13a15e3c8078c5c787a96505` | existing Entry update；不是 Missing curation 工作 |
+| `code_missing` | `src/main/shape-cover-freeze.ts` | 无 | 无 | ActionableMissing create |
+| `code_unbaselined` | `src/main/shape-cover-freeze.ts` | 无 | 无 | 合并到同 source 的 Missing create |
+| `code_missing` | `src/main/shape-cover-render.ts` | 无 | 无 | ActionableMissing create |
+| `code_unbaselined` | `src/main/shape-cover-render.ts` | 无 | 无 | 合并到同 source 的 Missing create |
+| `code_missing` | `src/shared/shape-cover.ts` | 无 | 无 | ActionableMissing create |
+| `code_unbaselined` | `src/shared/shape-cover.ts` | 无 | 无 | 合并到同 source 的 Missing create |
+
+逐 source 执行 `aoci --repo . scope explain <path> --json`，四项均返回 `role: index`、`rule_source: default`、`reason: default production role`、`safe_inventory_allowed`、`git_status: tracked`、`reads_content: true`、`enters_whole_index: true`。不是 observe、held source、code_skipped 或 curation_excluded。当前 `curation_exclude: []`，没有正式 curation decision 文件；下面保持相同 source/config 的官方 candidate 试验进一步证明三个 Missing 均进入 create，而非 pending curation 或 stale curation decision。没有为了消除 finding 改分类或排除 source。
+
+## Direct Gate And Machine Control
+
+Guide 的 `executable_targets: 25` 是 finding 层的计数，包含同 source 的 Missing/Unbaselined 重复和 Volume blocker，不是 25 个可写对象。`next_action: blocked`，`commands` 只有 guide、header_show、verify；未签发 remediation `next_commands` 或 `interaction_required` 字段。Maintain 返回 `status: stopped`、`result: blocked`、`candidates: []`、无 `code_plan`、`sets.write: []`；其 logical plan 有 `total_targets: 19`、`included: 0`、`remaining: 19`、`complete_candidate_set_for_current_batch: false`。空候选结果里的通用 `author_complete_current_machine_batch` 字符串不是 authoring 许可或可用 Code batch receipt。
+
+直接 gate 已由当前发布版本的[官方源码](https://github.com/aoci-spec/aoci-code/blob/92c78bc48a3e431ff8ae67fabb05270cc7129fe7/internal/volumegovernance/facts.go)和[Maintain 实现](https://github.com/aoci-spec/aoci-code/blob/92c78bc48a3e431ff8ae67fabb05270cc7129fe7/internal/mcptools/tools_maintain_volumes.go)核对：`CodeAuthoringWorkFor` 保留 actionable Missing，再加入有现存 Entry 的 Stale/Unbaselined 并按 path 去重，因此当前共有 5 create + 14 update = 19 targets，M4-B2 四个 source 没有在这里丢失。`finalize` 把真实 `code_volume_unbaselined` 判为 hard `ResultBlocked`；`handleVolumeMaintain` 仅在 facts 不是 blocked/evidence_required 时调用 `buildVolumeCodeCandidates`。故 candidate count 0 是 **全域正式 Volume 完整性 gate 在签发之前截断**，不是这七项不可作者化或被分类过滤。`blockedNextCommands` 没有 `code_volume_unbaselined` 的命令分支，故本状态只给出 finding 的文字 repair action，没有具体可执行修复命令。
+
+Managed Scope policy identity 与 active identity 都为 `2a992109f182c0dce169a21f8533a6e44fe0e0bd6493b914fa4ae506d6fb01de`，`aligned: true`、`scope_change_required: false`、`observed_pending_review: 0`；不是过期 scope receipt。`scope show` 只核对 policy/budget，不能用它的 `stage: aligned` 代替 cognition 健康；该命令不做 drift 分支，`authoring_targets: 0` 也不是不存在作者化工作。`scope status --json` 和只读 `scope plan --json` 都 exit 2，明确返回 `managed_scope_formal_volume_baseline_drift: aoci.code.txt`。因此 Guide 建议中的 governed Scope Change 也不能直接跨过同一个真实 Volume guard。
+
+`pending_transactions: 0`、`recovery_pending: false`、`third_party_conflict: false`。本地只有已归档的 Entries transactions 和完成 receipts，没有未完成 apply。最后成功 receipt 为 `52c3cf3a5be494dcf5cdd025c1d53aa0e12b5f086d5c40b3dfe785e164188dbd`，transaction 为 `db51fa969d1533e6b3eeb651b733da0d0e4fec9b30cc843ae126ac3e10aa8896`，`completed_at: 2026-09-23T17:50:43.628297589Z`；不重新 apply、resume 或 rollback 这项成功历史工作。
+
+## Historical Volume Provenance And Bounded Experiment
+
+Git 中 `6aa35a5` 的 Volume/baseline 相等；`1bf2501` 已出现 CPU/export cognition 更新后 Volume 与旧 binding 不一致；`1f2c69f` 记录当前 Volume `da194c07...` 和最后成功 source-mask 阶段的 `1a982948...` binding，后续 M4-B1/M4-B2 未改变这两个正式资产。当前 Volume 与该已批准 postimage 的差异恰为 `execution-limits.ts`、`ffmpeg.ts`、`hardware-probe.ts`、`queue.ts` 四个历史 Entry；不是行尾差异。这里能够归因到历史 Entry 字节变化，但不猜测具体 writer 或称其为未完成 transaction。
+
+从最后 transaction 的已保存 Code preimage 校验 SHA `75f786b1c3dcaec5bbc00cae337ba058ccff6e810a3eb69b76b5acba2352d1af`，结合其唯一 `code:AGENTS.md` update 及当前保留的该 Entry，重构字节 SHA 为 `1a982948df6fd2fdd2ebfe43029f72d3e3f792424db7a64ed8bcf2994b610cb9`，精确等于 transaction post SHA 与 baseline Volume binding。这只是对已有 approved 字节的验证，没有创作新语义或接受 current Volume。
+
+在 `git archive HEAD` 的临时副本中**仅**替换为该已批准 Code Volume，baseline、Root、Meta、config 和全部产品 source 保持原字节；没有 worktree、scan、baseline apply 或产品调用。使用同一个官方二进制执行 Verify、Guide，再启动该临时根的官方 MCP server（serverInfo `aoci-code / 0.1.0-rc14`）调用 Maintain：Verify 仍 exit 1，但 facts 从 `blocked` 转为 `authoring_required`；Guide 同样转为 `authoring_required`；Maintain 为 `repair_required / authoring_required`，合法签发完整 **19** 项 Code candidates，其中上述四个 M4-B2 source 分别为 1 update、3 create。所有 source drift 集合仍为 14 stale / 5 missing / 5 unbaselined / 0 orphan。这个控制变量试验证明 historical Volume mismatch 是此前无 candidates 的直接原因，且恢复 Volume 完整性无需把历史 source drift baselined away。它不代表实际仓库已恢复或新增 debt 已收敛。
+
+## Narrow Maintenance Boundary
+
+当前官方 Maintain 的正常模式仅支持 domain scope，不支持按上述四个 source 签发 batch；`object_refs` 只用于已 aligned 的 cognition optimization。当前候选 limit 为 20，临时恢复后的 19 项同属一个完整批次，包含 15 个本轮不允许维护的历史 source。[当前 runtime 合同](https://github.com/aoci-spec/aoci-code/blob/92c78bc48a3e431ff8ae67fabb05270cc7129fe7/textassets/zh-CN/contracts/runtime-rules.txt)要求提交完整签发集合；[Code receipt validator](https://github.com/aoci-spec/aoci-code/blob/92c78bc48a3e431ff8ae67fabb05270cc7129fe7/internal/codebatch/receipt.go)以 `code_candidate_batch_incomplete` 拒绝子集。不能把其它十五项原 Entry 连同当前 source hash 原样回填：那也会接受未经本任务语义审查的历史 source baseline，偷偷清掉历史 stale。没有通过缩 scope、调整批次上限/顺序、删 cognition、伪造 receipt 或拆开机器批次规避边界。
+
+官方文档及 `tools_write_volume_test.go` 确认独立 single-object compatibility 仍存在，writer 在没有 candidate/batch ID 时也保留兼容路径；不能将“技术上能单写”误报为“没有单对象 API”。但在上述恢复试验已签发 19 项批次的状态下，runtime 合同要求整批提交，没有授权通过省略 IDs 或兼容单写拆开该批次。另一个只读 native `code_mapper` 聚焦核对这一差别、完整批次校验和 scope 限制，没有写文件、测试或 paid/Kimi 调用；parent 直接核对对应当前源码和官方文档后裁决，没有将 mapper 结论当作 completion authority。
+
+实际仓库只做官方检查及维护诊断，没有执行 formal remediation、cognition authoring 或 baseline 写入。既已证明直接 Volume gate 和恢复后的完整批次范围冲突，本轮保留实际 Volume 原字节，避免只撤回四个历史 Entry 却仍无法合法完成窄维护。此时需要的是官方能签发并绑定四个授权 source、保留其他 source baseline 的受治理 authoring 路径；不能将接口兼容性或手工筛选当作这项权限。
+
+机器原始证据保存于临时 `/tmp/jianji-m4b2-aoci-remediation-bmhvvlod/evidence/`（含 frozen-scope、fresh 官方命令、scope explain/status/plan、actual Maintain、历史 receipt/preimage 与 restored-volume experiment）；当前版本官方源码按 capability commit 只读取得于同一临时目录。持久结论以本节、Git 对比和官方命令为准，不依赖临时目录长期存在。本轮没有修改产品源码，不重新制造全套产品测试。最终实际 debt 仍为历史 13 stale / 2 missing / 2 unbaselined / 0 orphan / 1 Volume mismatch，加 M4-B2 新增 1 stale / 3 missing / 3 unbaselined；未归零，M4-B3 进入条件不满足。
+
 # Remaining Boundary And Next One Thing
 
 `geometry-only` 和 `contentSafety: NOT_EVALUATED` 继续明确保留。没有成功 shape 正式入队/导出，不证明独立内容安全、全片或未知时段的 coverage、用户星形素材验收、Windows 或大批量性能；source-mask-only 只证明源事实。冻结 PNG 的全画布几何不能直接当作四角占位区域，后续选款整合须使用实际 placement/轮廓绑定。
