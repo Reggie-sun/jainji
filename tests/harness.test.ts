@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { setTimeout as delay } from "node:timers/promises";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { runCodeChecks } from "../src/harness/code.js";
 import { HarnessRun, runProcess } from "../src/harness/run.js";
 import { aggregateOutcome, HarnessPolicySchema, type HarnessPolicy } from "../src/harness/types.js";
@@ -72,6 +73,36 @@ function reportScript(overrides: Record<string, unknown> = {}): string {
   return `const fs=require('node:fs');const path=require('node:path');const a=process.argv.find(v=>v.startsWith('--outputFile='));const r=${JSON.stringify(report)};for(const t of r.testResults){if(t.name==='TEST_FILE')t.name=path.resolve('tests/harness.test.ts')}fs.mkdirSync(path.dirname(a.slice(13)),{recursive:true});fs.writeFileSync(a.slice(13),JSON.stringify(r));`;
 }
 
+function pidExists(pid: number): boolean {
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error(`Invalid fixture PID: ${pid}`);
+  try { process.kill(pid, 0); return true; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    throw error;
+  }
+}
+
+async function processSnapshot(pid: number): Promise<unknown> {
+  if (process.platform !== "linux") return { pid, exists: pidExists(pid) };
+  try {
+    const raw = await readFile(`/proc/${pid}/stat`, "utf8");
+    const fields = raw.slice(raw.lastIndexOf(")") + 2).split(" ");
+    return { pid, state: fields[0], ppid: Number(fields[1]), pgid: Number(fields[2]) };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { pid, exists: false };
+    throw error;
+  }
+}
+
+async function waitForFixture(check: () => Promise<boolean>): Promise<boolean> {
+  // Real OS scheduling stays separate from the controlled harness timeout clock.
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (await check()) return true;
+    await delay(10);
+  }
+  return false;
+}
+
 describe("video validation harness runner", () => {
   it("rejects duplicate checks and invalid tolerances", () => {
     const raw = { schemaVersion: 1, codeChecks: [
@@ -96,22 +127,60 @@ describe("video validation harness runner", () => {
     expect(command.code).not.toBe(0);
   });
 
-  it("settles timed-out process trees whether or not descendants inherit pipes", async () => {
-    for (const stdio of ["inherit", "ignore"]) {
-      const script = `const {spawn}=require('node:child_process');const child=spawn(process.execPath,['-e','process.on("SIGINT",()=>{});setInterval(()=>{},1000)'],{stdio:'${stdio}'});console.log(child.pid);process.on('SIGINT',()=>process.exit(0));setInterval(()=>{},1000);`;
+  it.each(["inherit", "ignore"])("settles ready timed-out process trees with %s pipes", async (stdio) => {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-harness-tree-"));
+    temporaryRoots.push(root);
+    const readyPath = path.join(root, "ready.json");
+    const signalsPath = path.join(root, "signals.log");
+    const descendantScript = `const fs=require('node:fs');process.on('SIGINT',()=>fs.appendFileSync(${JSON.stringify(signalsPath)},'descendant SIGINT\\n'));process.send('ready');setInterval(()=>{},1000);`;
+    // Delay readiness beyond the old 50ms startup assumption, then acknowledge
+    // the descendant's installed signal handler over IPC before starting timeout.
+    const script = `const fs=require('node:fs');const {spawn}=require('node:child_process');process.on('SIGINT',()=>{fs.appendFileSync(${JSON.stringify(signalsPath)},'root SIGINT\\n');process.exit(0)});setTimeout(()=>{const child=spawn(process.execPath,['-e',${JSON.stringify(descendantScript)}],{stdio:['ignore','${stdio}','${stdio}','ipc']});child.once('message',()=>{console.log(child.pid);fs.writeFileSync(${JSON.stringify(readyPath)},JSON.stringify({root:process.pid,descendant:child.pid}))})},100);setInterval(()=>{},1000);`;
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const pending = runProcess("node", ["-e", script], { cwd: process.cwd(), timeoutMs: 50 });
+    try {
+      const ready = await waitForFixture(async () => {
+        try { JSON.parse(await readFile(readyPath, "utf8")); return true; }
+        catch (error) {
+          if ((error as NodeJS.ErrnoException).code === "ENOENT" || error instanceof SyntaxError) return false;
+          throw error;
+        }
+      });
+      expect(ready, "root and descendant must acknowledge readiness before timeout").toBe(true);
+      const pids = JSON.parse(await readFile(readyPath, "utf8")) as { root: number; descendant: number };
+      for (const pid of [pids.root, pids.descendant]) expect(pidExists(pid)).toBe(true);
+      const before = await Promise.all([pids.root, pids.descendant].map(processSnapshot));
+      if (process.platform === "linux") {
+        for (const snapshot of before) expect(snapshot).toMatchObject({ pgid: pids.root });
+      }
       const started = Date.now();
-      const command = await runProcess("node", ["-e", script], { cwd: process.cwd(), timeoutMs: 50 });
+      await vi.advanceTimersByTimeAsync(50);
+      if (process.platform !== "win32") {
+        expect(await waitForFixture(async () => {
+          try { return (await readFile(signalsPath, "utf8")).includes("descendant SIGINT"); }
+          catch (error) {
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+            throw error;
+          }
+        }), "descendant must survive graceful group termination and require SIGKILL").toBe(true);
+        expect(await waitForFixture(async () => !pidExists(pids.root)), "root must exit before the force timer despite a surviving descendant").toBe(true);
+        expect(pidExists(pids.descendant)).toBe(true);
+      }
+      // taskkill is asynchronous on Windows; let stop() install escalation first.
+      expect(await waitForFixture(async () => vi.getTimerCount() === 2), "force and hard-stop timers must be armed").toBe(true);
+      await vi.advanceTimersByTimeAsync(1_000);
+      const command = await pending;
       expect(command.timedOut).toBe(true);
       expect(Date.now() - started).toBeLessThan(3_500);
-      const descendantPid = Number(command.stdout.trim().split(/\s+/)[0]);
-      expect(Number.isInteger(descendantPid)).toBe(true);
-      let alive = true;
-      for (let attempt = 0; attempt < 20 && alive; attempt += 1) {
-        try { process.kill(descendantPid, 0); }
-        catch { alive = false; }
-        if (alive) await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-      expect(alive).toBe(false);
+      expect(command.stdout.trim()).toBe(String(pids.descendant));
+      const gone = await waitForFixture(async () => !pidExists(pids.root) && !pidExists(pids.descendant));
+      const after = await Promise.all([pids.root, pids.descendant].map(processSnapshot));
+      // A zombie still has a PID and fails this gate; do not relax to state != Z.
+      expect(gone, JSON.stringify({ before, after, command })).toBe(true);
+    } finally {
+      await vi.runAllTimersAsync();
+      vi.useRealTimers();
+      await pending;
     }
   });
 

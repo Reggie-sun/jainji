@@ -1,7 +1,7 @@
 ---
 title: Shape-Matched Cover M4-A Source Mask Admission
 status: one-real-segment-published-in-isolated-store
-date: 2026-09-24
+date: 2026-09-26
 spec: shape-matched-cover-spec.md
 plan: shape-matched-cover-plan.md
 ---
@@ -31,8 +31,48 @@ node /tmp/jianji-cover-m1-20260924/shape-cover-admit-source-mask.mjs --source '/
 
 `tests/source-mask-admission.test.ts` 用真实 FFmpeg 生成短素材，验证源专用发布、重启读取、审阅档案持久化及篡改拒绝；测试中的合成 receipt 只验证机制，不冒充人工视觉审阅。另逐项改变源哈希、片段范围、mask 字节、收据和发布前原帧证据，断言入口返回 `UNSAFE` 且知识库没有新 revision。原知识库、session 和监督证据测试用于检查兼容性。
 
-`74ef062` 检查点的全套测试曾为 1048 通过、2 失败、3 跳过。覆盖并发的 `resolved-cancel` 失败属于 enqueue 返回后取消信号未再次检查；`74ef062` 没修改 runner 或该测试，后续独立提交 `fce917d` 在保存 task ID 前补上检查。当前单文件 10/10、全套运行均通过该断言，旧测试合同仍有效，无需改断言。harness 的进程树超时断言曾在全套并发运行时失败，单独运行及后续全套运行通过；具体调度条件尚未定位，保留为时序波动风险，不把一次全绿当作稳定性证明。
+`74ef062` 检查点的全套测试曾为 1048 通过、2 失败、3 跳过。覆盖并发的 `resolved-cancel` 失败属于 enqueue 返回后取消信号未再次检查；`74ef062` 没修改 runner 或该测试，后续独立提交 `fce917d` 在保存 task ID 前补上检查。9 月 24 日的单文件 10/10、全套运行均通过该断言，旧测试合同仍有效，无需改断言。harness 的进程树超时断言当时在全套并发运行时失败，单独运行及后续全套运行通过；当时未定位具体调度条件，未把一次全绿当作稳定性证明。
 
-新增负向测试后，本次 `npm run typecheck` 通过、`npm test` 为 1055 通过、3 跳过。M4-A 的源事实发布目标成立；harness 波动尚未收敛，仓库验证状态暂不记为稳定全绿。生产形状匹配切换和 M4-B 均保持阻断。
+`92b4c12` 新增负向测试后，9 月 24 日的 `npm run typecheck` 通过、`npm test` 为 1055 通过、3 跳过；这些是历史证据，不是后续 checkout 的 fresh verification。M4-A 的源事实发布目标成立；当时 harness 波动尚未收敛。生产形状匹配切换和 M4-B 均保持阻断。
+
+# Harness Timeout Attribution — 2026-09-26
+
+## Boundary And Reproduction
+
+本轮从 `ecb5be0c30344435662c0bff0d0ca3bccce6d67d` 继续 bounded debugging，只修 `tests/harness.test.ts` 和本记录，不修改 `src/harness/run.ts`、compiler、renderer 或生产选款。写入前两目标文件均无 dirty changes，无其他 writer 拥有这些路径；原有未提交文件保留。独立 native `code_mapper` 仅核查源代码，运行复现与最终裁决由 parent 完成。按当前用户限制未调用产品 Agent、付费模型或 Kimi review。
+
+对未修改的 `runProcess` 执行三轮探针，每轮 24 次、最多 4 路并发，交替使用后代 `stdio=inherit/ignore`。第一轮普通负载、第二轮单核 affinity、第三轮单核加 4 个最长 20 秒的 CPU 负载进程。记录 spawn PID、实际 `/proc/<pid>/stat` 的 PID/PPID/PGID/state、`SIGINT/SIGKILL`、根进程 `exit/close` 和最终进程组成员。第三轮一次在输出后代 PID 前被 timeout 终止：
+
+| Event | Observed evidence |
+| --- | --- |
+| spawn | PID/PGID `510273`，探针时间 `6807ms` |
+| SIGINT | `6915ms`，组内只有根进程，state `R` |
+| exit / close | `7061ms` / `7167ms`，`code=null, signal=SIGINT`，组内为空 |
+| force / result | `7950ms`，`SIGKILL` 返回 `ESRCH`；stdout 为空、`timedOut=true`、duration `1160ms` |
+| old assertion | `Number("") === 0` 且 `Number.isInteger(0) === true`；`process.kill(0, 0)` 查调用者进程组，错误报告仍存活 |
+
+这复现了旧断言的失败机制，属于测试启动竞争和 PID 判断错误。另用 100ms 延迟输出的 fixture 重放旧判断，确定得到 `pid=0, alive=true` 和原 `alive=false` 断言失败（exit 1）。三轮共 72 次探针的最终进程组均为空；状态采样未见 `Z`，不代表从未有瞬时 zombie。后代忽略 `SIGINT` 时，根进程先退出、后代留在原 PGID，再被 `SIGKILL` 终止；`stdio=ignore` 下根进程 `close` 可以先发生，不能单独证明树已清理。强杀发送后 Promise 返回时仍可能瞬时看到后代 PID，最终清理另行检查；本轮没有观察到持续泄漏，也没有证据要求修改实现 owner。
+
+本机诊断材料位于 `/tmp/jianji-harness-timeout-20260926-{run,probe,load}.mjs`、`/tmp/jianji-harness-timeout-20260926-trace.jsonl` 和 `...-legacy-red.log`，不提交 Git，不作为可移植验收材料。仓库内的回归测试保留可重放机制。
+
+## Correction And Verification
+
+进程树测试现在故意延迟启动 100ms，并通过后代 IPC `ready` 与根进程 ready 文件确认 PID 和 signal handler 已建立，再推进仅控制 harness `setTimeout/clearTimeout` 的假时钟。真实 OS 调度与文件读取仍用真实计时。timeout 仍为 50ms，强杀仍推进原有 1000ms grace；实现中的等待、3500ms settle 上限和最终最多约 1000ms 的清理轮询均未放宽。Linux 核对根/后代属于同一 PGID，确认 graceful signal 已到达且后代仍需强杀；根与后代 PID 最终必须都不存在，`Z` 仍视作残留并使测试失败。失败消息保留前后 `/proc` 状态和命令结果。Windows 异步 `taskkill` 先完成并安装 escalation timer 后才推进测试时钟；本轮没有 Windows 实机证据。
+
+已执行当前 `verification-before-completion` skill。最终测试候选为上述 HEAD 加本轮测试 diff，`tests/harness.test.ts` SHA-256 为 `153ca519862ac53f16aeaeef100d6211a758a85c74de5964dbbda16771e4192f`。本轮最终验证均在该测试字节上执行：
+
+| Command / condition | Fresh result |
+| --- | --- |
+| `npm run typecheck` | exit 0 |
+| `npm test -- tests/harness.test.ts tests/harness-media.integration.test.ts tests/source-mask-admission.test.ts` | 3 文件、26 PASS，exit 0 |
+| `npm test -- --maxWorkers=4 --minWorkers=4` | 126 文件 PASS、1 文件 skipped；1072 PASS、3 skipped，exit 0 |
+| 单核 affinity + 4 个有界 CPU 负载进程，harness 单文件 | 8 PASS，exit 0；两种管道均无根/后代 PID 残留 |
+| `git diff --check` | exit 0 |
+
+收敛期间另一次默认并发 `npm test` 为 1072 PASS、3 skipped；它在最后加入等待异步 `taskkill` 安装 escalation timer 的测试断言前运行，不替代上表最终候选证据。验证输入包含预先存在、未提交的 `tests/tmp-repro-sticker-size.test.ts`；该文件不属于本任务，不修改或提交。全套通过/跳过数因此不能直接与 9 月 24 日比较。本机日志为 `/tmp/jianji-harness-timeout-20260926-{typecheck,focused,final-suite,final-loaded}.log`。
+
+本轮为测试 owner 修正，无生产逻辑或 durable state 变更；本机复现、真实进程测试及全套验证覆盖具体失败路径，未发现重大后果加实质验证缺口的 review trigger，`KIMI_REVIEW_NOT_REQUIRED`。仓库没有专用 session-record/capture skill owner，本记录承载本次 checkpoint，不另建 phase ledger。结论限于已复现的 Linux 启动竞争；不宣称任意负载、Windows 进程清理或成片质量均已验收。
+
+本轮已归因并收敛所复现的 harness 测试波动，停在 M4-A 验证 checkpoint。下一步按既有 spec/plan 单独处理 M4-B；本轮不进入该阶段，生产形状匹配仍未启用。
 
 下一步 M4-B 必须按每个 source revision、输出设置、摆放和轮廓版本独立计算整轮共同候选，预览和正式队列消费同一冻结图层字节；缺 mask、源修订不匹配、coverage 非 100% 或内容安全未通过一律 `UNSAFE`。本阶段没有执行这些门槛，也没有调用产品 Agent、付费模型、Kimi 或 `delogo`。
