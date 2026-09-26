@@ -3,10 +3,10 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖、构建输出、日志、Harness回执及CodeGraph本机索引 | R:code:AGENTS.md | A:正式AOCI文件不在根目录忽略表中；.aoci目录由自身白名单排除运行资产 | S:-
-AGENTS.md[SC9T]: F:项目长期规则、产品不变量、职责归属及完成门禁的权威入口 | R:code:src/shared/agent.ts,code:src/main/agent-controller.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:规则优先于AOCI索引；源码和测试核对实现；规定源mask准入与形状匹配覆盖的安全边界 | S:source-mask-only仅证明源事实，不是选款或输出安全PASS；新形状匹配须全轮共同候选、冻结图层字节及逐输出规格100%覆盖，缺任一证据为UNSAFE且不回退白底；旧冻结任务按元数据解释
+AGENTS.md[SC9T]: F:规定项目权威、产品不变量、领域归属及交付门禁 | R:code:src/shared/agent.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:规则优先于语义索引；变更须按Guide维护索引并以当前源码和fresh验证交付 | S:source-mask-only不证明候选或输出安全；形状覆盖须全轮共同候选、冻结字节、逐输出100%覆盖与独立内容安全，缺证据UNSAFE且不回退白底；旧任务按冻结元数据解释
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
-package.json[FV7T]: F:定义Electron、React、TypeScript依赖、构建打包与验证脚本 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx | A:typecheck、vitest、Harness和Linux/Windows打包均从这里进入 | S:打包产物只含构建目录和显式资源，不把AOCI runtime装入产品
+package.json[FV7T]: F:声明桌面应用依赖、验证脚本和Linux及Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx | A:typecheck、Vitest、Harness、构建与安装包入口 | S:Windows包携带FFmpeg与字体，Codex平台二进制通过asarUnpack解包；打包清单不包含AOCI运行状态
 tsconfig.json[AB5T]: F:严格TypeScript编译约束并包含src tests和Vite配置 | R:code:src/main/index.ts | A:类型检查配置不代表运行行为 | S:noEmit且模块按Bundler解析
 vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | R:code:src/renderer/main.tsx | A:前端构建入口 | S:相对base适配本地Electron加载
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
@@ -30,7 +30,7 @@ agent-controller.ts[AW9M]: F:准入并编排逐素材制作，按装饰与覆盖
 agent-frames.ts[IA6T]: F:校验源素材指纹并为创作模型抽取临时联系帧 | R:code:src/main/ffmpeg.ts,code:src/main/domain.ts | A:将抽帧路径交给主进程调用者，结束后清理临时目录 | S:源文件指纹变化时拒绝继续分析
 agent-preview-store.ts[RB6T]: F:登记主管样片的临时路径并经专用协议安全解析 | R:code:src/main/agent-controller.ts,code:src/main/paths.ts | A:以run和item身份生成预览URL，结束时清理目录 | S:仅当前运行及受登记目录内的文件可解析
 agent-provider.ts[AA9L]: F:调用创作、视觉和复核连接，校验模型方案并生成本地图层模板 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/domain.ts,code:src/main/api-transport.ts | A:validatePlan和materializePlan执行模型输出的本地约束；选择贴纸与价格外观 | S:模型不能生成或改写展示文字；普通四角与覆盖专用贴纸选材边界不同；非法方案明确失败
-agent-runner.ts[AW9M]: F:按素材和版本执行创作、覆盖轨迹、样片复核及正式入队 | R:code:src/main/agent-template-preparation.ts,code:src/main/automatic-cover-tracks.ts,code:src/main/source-sticker-knowledge-session.ts,code:src/main/cover-placement-session.ts | A:冻结逐版本模板；近似覆盖通过样片检查后在该版本内提交或发布，并记录任务与预览状态 | S:重试复用冻结方案和轨迹；模型、知识或主管证据失败不能静默回退
+agent-runner.ts[AW9M]: F:编排逐素材逐版本创作、源知识核查、覆盖样片和正式提交 | R:code:src/main/agent-template-preparation.ts,code:src/main/source-sticker-knowledge-session.ts,code:src/main/cover-placement-session.ts | A:AgentRunner提供start、cancel、settled和snapshot；同源组协调修订，选款逐轮共享，渲染槽限制准备并发 | S:近似覆盖不能用于源占位；修订重建保留用户冻结文字；placement提交后须检查取消再发布任务身份；失败不得静默回退
 agent-template-preparation.ts[AB7T]: F:把制作方案与覆盖轨迹组装为经Schema校验的冻结模板 | R:code:src/main/agent-provider.ts,code:src/main/automatic-corner-layout.ts,code:src/main/cover-sticker.ts,code:src/main/domain.ts | A:按输出尺寸物化方案，附加覆盖层并为Agent和本地随机补齐空缺角落时段 | S:角落覆盖有效时段优先占位，普通四角贴纸只补未覆盖时段
 api-request-scheduler.ts[RP6T]: F:按连接凭据共享模型请求的起始间隔与并发上限 | R:code:src/main/agent-provider.ts,code:src/shared/agent.ts | A:相同baseUrl和Key合并为一个lane，等待与请求均支持取消 | S:凭据仅参与哈希分组，不写入日志或索引
 api-transport.ts[IN8T]: F:为Chat Completions、Anthropic和Responses组装视觉请求并规范化文本响应 | R:code:src/shared/agent.ts,code:src/main/agent-provider.ts | A:completeApi封装协议、认证、超时、错误脱敏与输出上限 | S:API Key不得出现在返回内容；失败不自动换连接或重试
@@ -39,16 +39,16 @@ artifact.ts[RR8T]: F:用文件状态与FFprobe验证FFmpeg产物的可读性和�
 asset-library.ts[IB6S]: F:加载内置贴纸库与授权元数据，按装饰方案解析安全资源 | R:code:src/shared/asset-library.ts,code:src/main/builtin-stickers.ts,code:src/shared/automatic-stickers.ts | A:为模板和Agent选材提供本地文件与可用性检查 | S:只有校验过的本地资源可以进入选材目录
 automatic-corner-layout.ts[KB8T]: F:按原贴纸轨迹和角落覆盖层计算普通四角贴纸的可见空档 | R:code:src/shared/layout-policy.ts,code:src/shared/cover-sticker.ts,code:src/main/agent-template-preparation.ts | A:fillUncoveredCorners返回按activeRanges裁剪的贴纸层 | S:角落覆盖在有效时段优先占位；中部覆盖不替代四角
 automatic-cover-tracks.ts[KA8T]: F:把识别帧整理成有限、带安全余量的覆盖轨迹 | R:code:src/shared/automatic-cover.ts,code:src/shared/cover-sticker.ts,code:src/main/agent-runner.ts | A:轨迹按目标分段、插值约束化并经CoverTrackSchema校验 | S:渲染余量不能写回源贴纸知识；超出轨迹上限明确失败
-automatic-output-directory.ts[RR5T]: F:根据素材目录建立本轮视频输出目录 | R:code:src/main/agent-controller.ts | A:按日期命名并检查路径状态，供自动输出选址 | S:不得复用非目录或覆盖已有用户文件
+automatic-output-directory.ts[RR5T]: F:从素材所在产品目录建立自动成片目录 | R:code:src/main/agent-controller.ts | A:createAutomaticOutputDirectory识别素材及编号素材祖先目录，在产品视频目录建立分钟名称；可核查复用既有目录 | S:不同产品源不能共同推断目录；Windows名称使用全角冒号；冲突建编号目录，不覆盖已有文件
 bug-feedback-ipc.ts[EM5T]: F:向受信任renderer注册Bug反馈提交和历史查询IPC | R:code:src/main/bug-feedback.ts,code:src/shared/bug-feedback.ts | A:先校验IPC发送方，再调用本地反馈服务 | S:renderer不得直接取得中继令牌
 bug-feedback.ts[IN6S]: F:管理本地Bug反馈提交、回执历史和安全重试 | R:code:src/shared/bug-feedback.ts,code:src/main/store.ts,code:src/main/bug-feedback-ipc.ts | A:校验描述与截图后调用反馈端点并原子保存历史 | S:错误和记录需脱敏；不把未经确认的提交当成功
 builtin-stickers.ts[IB5S]: F:程序化生成基础PNG贴纸并确保本地资源存在 | R:code:src/shared/agent.ts,code:src/main/asset-library.ts | A:返回带指纹的内置贴纸资源供模板引用 | S:生成图案不含Agent创作文字
 bundled-stickers.ts[IB5T]: F:读取随应用打包的贴纸并计算资源指纹 | R:code:src/shared/bundled-stickers.ts,code:src/main/builtin-stickers.ts | A:loadBundledStickerAssets提供内置资源映射 | S:缺失资源应失败，不凭目录名伪造贴纸
 cc-switch.ts[II7S]: F:只读解析CC Switch数据库里的Claude和Codex连接候选 | R:code:src/shared/agent.ts,code:src/main/model-connections.ts | A:列出提供商与模型，选择时重新读取并校验当前记录 | S:数据库繁忙时拒绝读取；OAuth token不能复制为API Key，也不能回写外部库
-chatgpt-session.ts[II8M]: F:在应用独立登录目录管理ChatGPT App Server会话与受限模型调用 | R:code:src/main/codex-rpc.ts,code:src/main/api-transport.ts,code:src/shared/agent.ts | A:登录状态、模型请求和取消经隔离RPC交互 | S:禁用命令工具、网页搜索和多Agent能力；不得读写全局Codex登录状态
+chatgpt-session.ts[II8M]: F:管理ChatGPT登录、模型发现及独立请求会话生命周期 | R:code:src/main/codex-rpc.ts,code:src/main/model-connections.ts,code:src/main/api-transport.ts | A:ChatGPTSession支持登录刷新取消、模型档位选择和结构化完成请求；generation阻止旧会话异步回写 | S:登录地址仅允许受信HTTPS域；账户刷新关闭执行runtime；网络读取失败不擦除既有登录；临时只读thread禁止工具，取消interrupt并unsubscribe；不自动换模型
 codex-rpc.ts[IN7T]: F:以JSON-RPC管理应用内Codex子进程、请求响应和通知 | R:code:src/main/chatgpt-session.ts,code:src/main/api-transport.ts | A:启动并关闭独立RPC进程，向会话层交付事件 | S:进程错误和取消必须向调用者收敛，不执行模型返回的工具命令
 collaborative-cover.ts[AA8T]: F:执行原贴纸识别与主管有上限的事实修正回合 | R:code:src/main/cover-track-provider.ts,code:src/main/supervisor-protocol.ts,code:src/main/supervisor-evidence.ts | A:对齐目标、请求补充证据并返回校验后的识别帧 | S:非法或未改变有效画面的修订不能通过；不确定时失败关闭
-compiler.ts[KB9M]: F:把冻结模板编译为FFmpeg滤镜、输入和输出命令 | R:code:src/main/domain.ts,code:src/shared/layout-policy.ts,code:src/main/video-encoder.ts,code:src/main/cover-motion.ts | A:TemplateCompiler执行缩放补边、图层时序、文字和贴纸渲染；静态贴纸单次解码，动图限时循环 | S:编译前校验价格唯一来源；原片时长、顺序和音频语义由导出链维护
+compiler.ts[KB9M]: F:把冻结模板编译为FFmpeg输入、滤镜和编码参数 | R:code:src/main/domain.ts,code:src/main/shape-cover-render.ts,code:src/main/cover-motion.ts,code:src/main/video-encoder.ts | A:TemplateCompiler返回命令、文字文件及冻结PNG字节副本；实现补边、时序、文字、贴纸和滤镜 | S:形状图层消费校验后的最终PNG字节，在0:0原尺寸叠加；30fps转换先于启停判断；编译不代表输出准入；矩形白底与旧透明任务继续按原元数据渲染
 connection-store.ts[PI8T]: F:在应用私有目录持久化创作、视觉和复核模型连接 | R:code:src/shared/connections.ts,code:src/shared/agent.ts,code:src/main/model-connections.ts | A:快照去除API Key，提交时原子替换本地配置 | S:Key仅从主进程get返回给调用逻辑，不写入项目或renderer状态；损坏旧文件保留
 cover-candidates.ts[AA7T]: F:把识别结果转换为需人工决定的半自动覆盖候选草稿 | R:code:src/shared/automatic-cover.ts,code:src/shared/cover-review.ts,code:src/main/cover-review-controller.ts | A:绑定抽帧证据和候选身份，标记未抽样时段的不确定性 | S:算法观察不能证明不存在贴纸，也不能直接成为可执行覆盖轨迹
 cover-diagnostics.ts[OQ6T]: F:记录自动覆盖各阶段的受限诊断事件与证据摘要 | R:code:src/shared/cover-diagnostics.ts,code:src/main/agent-runner.ts | A:将补帧、轨迹和失败原因汇总为可展示诊断 | S:诊断体量受上限约束，不能代替主管通过或真实样片验收
@@ -66,20 +66,20 @@ cover-review-session.ts[AB7T]: F:定义assisted命令与草稿版本状态变换
 cover-sticker.ts[AB7T]: F:解析覆盖贴纸并生成各素材版本的冻结覆盖层 | R:code:src/shared/cover-sticker.ts,code:src/main/agent-template-preparation.ts | A:手动与自动轮换保留；本地随机从有效池分配各框不同图案并逐版本轮换 | S:候选不足时拒绝；随机不沿用草稿指定图案；重试沿用冻结模板
 cover-track-provider.ts[AB7T]: F:检测对齐源贴纸帧形成跟随轨迹 | R:code:src/main/source-sticker-recognition.ts | A:源事实观测不同于近似覆盖 | S:不确定时显式失败
 development-lifecycle.ts[AB7T]: F:开发模式父进程断开时等待启动完成再退出Electron | R:code:src/main/index.ts | A:开发生命周期辅助 | S:不控制生产恢复
-domain.ts[AB8L]: F:定义媒体、图层模板、导出任务与项目持久数据的Schema | R:code:src/main/compiler.ts,code:src/main/application.ts,code:src/main/store.ts | A:ProjectSchema可选保存latestProduction及本轮item和task身份，供重启后恢复作品范围 | S:历史项目缺少latestProduction仍可读取；冻结模板与队列任务必须保留原有校验
+domain.ts[DB8L]: F:定义媒体、图层、模板、项目和持久导出状态的Schema及克隆规则 | R:code:src/shared/shape-cover.ts,code:src/main/compiler.ts,code:src/main/queue.ts,code:src/main/store.ts | A:校验模板与任务；提供默认值、冻结克隆、追加及随机克隆摘要和任务状态派生 | S:形状覆盖必须保留全画布几何和单一时段绑定，不能混入近似placement或sampled源知识；执行文字须匹配用户展示内容；历史项目允许缺latestProduction
 errors.ts[AB7T]: F:分类底层异常并提供恢复建议 | R:code:src/main/domain.ts | A:统一错误呈现辅助 | S:不得回传敏感错误细节
-execution-limits.ts[AB7T]: F:按核心内存估算CPU/GPU并行度并均分线程 | R:code:src/main/queue.ts,code:src/main/ffmpeg.ts | A:运行容量策略辅助 | S:未验证容量不超额承诺
-ffmpeg.ts[AB7M]: F:发现媒体引擎字体并实测CPU/GPU并发容量 | R:code:src/main/queue.ts,code:src/main/hardware-probe.ts | A:媒体命令与依赖能力边界 | S:进程成功不代表产物发布
+execution-limits.ts[RP7T]: F:按CPU与内存估算并发容量并探测可运行导出路数 | R:code:src/main/ffmpeg.ts,code:src/main/queue.ts,code:src/main/hardware-probe.ts | A:executionLimits分配分析、导出和线程预算；exportThreads均分线程；verifiedExportCount递减测试容量 | S:单次编码成功不能证明并发容量；全部探测失败返回零
+ffmpeg.ts[IB8M]: F:封装媒体子进程、能力发现、编码并发探测与字体解析 | R:code:src/main/video-encoder.ts,code:src/main/execution-limits.ts,code:src/main/hardware-probe.ts,code:src/main/platform.ts | A:FfmpegAdapter提供probe和run；checkCapabilities返回引擎及容量；refreshFontCapabilities只更新字体就绪状态 | S:硬件和CPU回退均须真实同时编码探测；CPU有独立探测预算；刷新字体不重选队列引擎；进程退出不代表产物已验证发布
 gpu-memory.ts[AB7T]: F:解析空闲显存并估算NVENC需求 | R:code:src/main/execution-limits.ts | A:硬件容量辅助 | S:探测不可用不得推定容量
-hardware-probe.ts[AB7T]: F:用动态CPU画面或GPU画面验证存活重叠的编码会话 | R:code:src/main/execution-limits.ts | A:运行容量探测 | S:超时或失败不证明并发
+hardware-probe.ts[KH7T]: F:用持续编码进程验证指定路数的同时运行能力 | R:code:src/main/ffmpeg.ts,code:src/main/execution-limits.ts | A:probeConcurrentEncodes等待每路输出帧及持续重叠，超时或提前退出返回失败 | S:探测输入保持开放；任何提前退出使容量无效；结束必须杀死仍运行进程并等待全部promise
 index.ts[EG8L]: F:启动Electron主进程并注册可信IPC，连接应用、队列、模型和知识恢复 | R:code:src/main/application.ts,code:src/main/agent-controller.ts,code:src/main/queue.ts | A:制作开始、状态刷新及手动或追加导出时持久化最近一次制作身份 | S:IPC先校验发送者；退出时取消运行任务；最近一次制作不从历史队列反推
 media-response.ts[AB7T]: F:对本地媒体请求返回可范围读取的Response | R:code:src/main/index.ts | A:受控媒体协议辅助 | S:仅按受信路径提供媒体
 media.ts[AB7T]: F:探测导入媒体属性并构造去源路径的视图 | R:code:src/main/ffmpeg.ts | A:素材目录owner | S:无效媒体不进入制作
-model-connections.ts[AB7T]: F:隔离创作识别复核连接及ChatGPT运行会话 | R:code:src/main/connection-store.ts | A:模型角色与凭据主进程owner | S:凭据不回传界面或写项目
+model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独立Codex登录与执行runtime | R:code:src/main/connection-store.ts,code:src/main/chatgpt-session.ts,code:src/main/codex-rpc.ts,code:src/main/api-request-scheduler.ts | A:ModelConnections持久选择、激活各角色、导入连接与关闭；启动参数和执行凭据由主进程构造 | S:登录和执行目录分离，执行auth.json必须缺席；凭据仅经允许的环境传给子进程；禁用工具、搜索和多Agent；不读写全局Codex登录，凭据不回传界面
 paths.ts[AB7T]: F:文件指纹安全输出目录文件名分配与模板资源校验 | R:code:src/main/queue.ts | A:输出路径安全辅助 | S:不得覆盖源视频或现有输出
 platform.ts[AB7T]: F:跨Linux和Windows解析命令及字体候选路径 | R:code:src/main/ffmpeg.ts | A:平台路径辅助 | S:保留各平台路径语义
 preload.ts[AB7T]: F:以contextBridge向renderer暴露受限DesktopApi与事件监听 | R:code:src/main/index.ts | A:Electron IPC显式边界 | S:renderer不直接持有主进程能力
-queue.ts[AB7L]: F:持久导出任务状态机，编译渲染校验并安全发布输出 | R:code:src/main/compiler.ts,code:src/main/execution-limits.ts | A:消费实测并发与均分线程的导出生命周期owner | S:partial经FFmpeg退出与ffprobe校验再无覆盖发布
+queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-render.ts | A:ExportQueue创建幂等批次、渲染预览、直发批准样片、恢复重试与取消；按CPU线程和GPU内存共享槽位 | S:形状预览须前后核查源mask，正式创建、重放、直发和恢复执行均拒绝未准入形状；partial验证后无覆盖发布；重试沿用冻结模板和设置
 recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:code:src/main/application.ts | A:项目入口历史辅助 | S:不承担工作区或模板状态
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
 source-sticker-knowledge-session.ts[AB7T]: F:按源身份管理识别候选、多版本样片复核及修订传播 | R:code:src/main/source-sticker-knowledge-store.ts | A:源贴纸事实生命周期owner | S:不接纳近似覆盖位置作为事实
@@ -98,6 +98,10 @@ uploaded-stickers.ts[AB7T]: F:校验导入图像尺寸与格式并管理用户�
 video-encoder.ts[AB7T]: F:探测H264软硬件编码能力并生成编码参数 | R:code:src/main/ffmpeg.ts | A:编码策略辅助 | S:不可用编码器回退需真实探测
 shape-cover-pixel-gate.ts[KB7S]: F:校验静态源像素掩码、输出像素轮廓覆盖及逐帧时域完整性 | R:code:src/shared/source-sticker-knowledge.ts | A:导出版本化像素阈值合同；解码带哈希的掩码并投影源像素，比较不透明轮廓的有限膨胀 | S:无有效像素、超出面积或跨度预算、任一源贴纸帧未被覆盖均返回UNSAFE；本模块尚未接入正式导出链
 source-mask-admission.ts[IB7S]: F:将人工PASS的静态源像素掩码和真实媒体证据准入知识库 | R:code:src/shared/source-sticker-knowledge.ts,code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-pixel-gate.ts | A:核对探针、联系图、审核收据、源字节、PTS和首末原帧后发布源专用修订，拒绝统一返回UNSAFE | S:仅接纳30至100帧连续静态片段、未旋转且可精确映射的源；源掩码通过不代表输出覆盖或内容安全通过
+shape-cover-alpha.ts[KB8S]: F:读取目录绑定贴纸并用真实FFmpeg生成输出空间alpha及RGBA | R:code:src/main/shape-cover-candidates.ts,code:src/main/shape-cover-freeze.ts,code:src/shared/shape-cover.ts | A:测量源缩放补边；栅格化静态PNG或JPEG；编码及解码冻结PNG | S:按指纹读取字节后通过stdin解码，禁止重开可变素材路径；保留部分透明alpha；旋转或多帧贴纸不支持；尺寸、字节和命令耗时均有界
+shape-cover-candidates.ts[KB8S]: F:计算整轮候选与全部目标及输出设置的共同几何安全集合 | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-alpha.ts,code:src/main/shape-cover-pixel-gate.ts | A:readAdmittedShapeCoverTarget读取当前准入mask；computeCommonShapeCoverCandidates评估完整矩阵并复查源与资产绑定 | S:打开任何候选前全部目标必须具备对应segment及时段mask；返回geometry-only且内容安全NOT_EVALUATED；空共同集合或绑定漂移UNSAFE，不写源知识
+shape-cover-freeze.ts[AB8S]: F:将共同安全选款冻结为每个目标及输出规格的最终PNG图层 | R:code:src/main/shape-cover-candidates.ts,code:src/main/shape-cover-alpha.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/shape-cover-render.ts | A:freezeShapeCoverCandidate重算整轮、生成有限不透明轮廓、核验PNG往返像素并绑定图层摘要 | S:冻结仍仅几何PASS，内容安全未评估；发布前后复查源与候选；文件无覆盖发布到独占操作目录，失败或取消只清理该操作文件
+shape-cover-render.ts[IB8T]: F:校验形状冻结绑定并为编译读取不可变PNG字节 | R:code:src/shared/shape-cover.ts,code:src/main/shape-cover-candidates.ts,code:src/main/compiler.ts,code:src/main/queue.ts | A:计算绑定摘要；核查当前准入源事实、媒体、输出设置和PNG指纹及尺寸 | S:assertShapeCoverExportReady当前一律拒绝形状正式输出；冻结字节校验和预览成功均不能代替逐帧coverage及独立内容安全准入
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -107,7 +111,7 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7M]: F:协调项目、素材、装饰草稿、模型设置、制作及导出界面状态 | R:code:src/main/preload.ts,code:src/renderer/TemplatePanel.tsx,code:src/renderer/ResultsPanel.tsx | A:按项目工作区恢复导航；本地模式允许无模型连接导入与制作，Agent模式仍交由主进程准入 | S:开始制作前用共享Schema校验手动展示文字；界面状态不能替代主进程校验
+App.tsx[AU7M]: F:协调桌面工作区、素材、包装草稿、模型配置及作品界面 | R:code:src/main/preload.ts,code:src/renderer/TemplatePanel.tsx,code:src/renderer/ResultsPanel.tsx,code:src/renderer/WorkspaceChrome.tsx | A:恢复项目草稿与手动展示文字；调用主进程制作、导出重试和项目管理；展示实测引擎及并发能力 | S:界面可用状态不代表主进程准入；制作发送用户草稿；自动目录按所选素材失效；硬件探测失败与无硬件分别提示
 AppendProductionDialog.tsx[AB7T]: F:追加制作时预填并校验源批次手动文字和数量 | R:code:src/renderer/App.tsx | A:追加制作输入界面 | S:不由Agent改写展示文字
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
@@ -131,7 +135,7 @@ StickerLibraryPanel.tsx[AB7T]: F:显示上传贴纸库并触发导入移除 | R:
 TemplatePanel.tsx[EU6T]: F:编辑展示文字、贴纸、数量、导出设置和开始制作入口 | R:code:src/shared/agent.ts,code:src/renderer/App.tsx | A:按是否使用模型展示本地制作说明，保留共同的数量与文字校验 | S:本地制作无需模型连接；手动展示文字为空仍禁止开始
 TemplatePreview.tsx[AB7T]: F:用Canvas绘制模板静态示意文字与贴纸 | R:code:src/shared/layout-policy.ts | A:示意预览不等于成片 | S:不能据此证明主体避让
 VisionConnectionPanel.tsx[AB7T]: F:分别配置识别或复核模型连接 | R:code:src/renderer/ModelSettingsDrawer.tsx | A:视觉角色设置界面 | S:与创作连接分开
-WorkspaceChrome.tsx[AB7T]: F:呈现项目工作流导航和包装分区 | R:code:src/renderer/workspace-flow.ts | A:界面导航壳 | S:不拥有制作业务规则
+WorkspaceChrome.tsx[AU5T]: F:呈现工作区导航、项目操作及引擎状态 | R:code:src/renderer/workspace-flow.ts,code:src/renderer/App.tsx | A:WorkspaceRail、WorkspaceHeader和WorkspaceSubnav接收状态及回调显示工作步骤、项目和包装分区 | S:硬件试运行失败与无硬件是不同提示；导航不拥有制作准入规则
 cover-review-geometry.ts[AB7T]: F:换算assisted证据图像和覆盖框的界面坐标 | R:code:src/renderer/CoverReviewBox.tsx | A:人工交互几何辅助 | S:持久框仍经共享schema验证
 main.tsx[AB7T]: F:挂载React App并导入全局样式 | R:code:src/renderer/App.tsx | A:renderer入口 | S:业务状态在App
 ui.tsx[AB7T]: F:通用图标标题与尺寸时长显示函数 | R:code:src/renderer/App.tsx | A:纯展示组件 | S:不决定领域状态
@@ -161,6 +165,7 @@ price-styles.ts[AB7T]: F:定义展示文字花字风格及字体尺寸策略 | R
 project-workspace.ts[AB7T]: F:校验可恢复工作区步骤素材外观数量导出设置 | R:code:src/main/application.ts | A:工作区草稿合同 | S:不重复持久化展示文字
 source-sticker-knowledge-audit.ts[AB7T]: F:定义源知识查询原因制作阶段复核结果的审计schema | R:code:src/main/source-sticker-knowledge-session.ts | A:进度与审计合同 | S:风险和失败显式记录
 source-sticker-knowledge.ts[DB8M]: F:定义源身份、事实、静态像素掩码、审核档案及两类发布证明Schema | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/source-mask-admission.ts | A:约束mask边界与跨时间原帧证据，区分源专用证明和样片证明 | S:掩码须有至少两张不同PTS且间隔至少1秒的原图证据；source-mask-only不能解释成预览或输出安全通过
+shape-cover.ts[DB8T]: F:定义最终像素形状覆盖的冻结数据合同和资源上限 | R:code:src/main/domain.ts,code:src/main/shape-cover-freeze.ts,code:src/main/shape-cover-render.ts | A:FrozenShapeCoverBindingSchema和FrozenShapeCoverSchema绑定源修订、目标时段、候选、输出设置、轮廓版本及像素摘要 | S:策略固定geometry-only和NOT_EVALUATED；严格拒绝越界投影、摆放、时段及过大栅格；冻结合同不是正式输出或内容安全证明
 
 ===/home/reggie/vscode_folder/jianji/src/types/===
 sql-asm.d.ts[AB7T]: F:声明sql-asm模块的TypeScript类型 | R:code:src/main/source-sticker-knowledge-store.ts | A:第三方类型桥接 | S:不实现持久逻辑

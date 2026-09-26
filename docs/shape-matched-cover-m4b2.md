@@ -154,6 +154,22 @@ Git 中 `6aa35a5` 的 Volume/baseline 相等；`1bf2501` 已出现 CPU/export co
 
 机器原始证据保存于临时 `/tmp/jianji-m4b2-aoci-remediation-bmhvvlod/evidence/`（含 frozen-scope、fresh 官方命令、scope explain/status/plan、actual Maintain、历史 receipt/preimage 与 restored-volume experiment）；当前版本官方源码按 capability commit 只读取得于同一临时目录。持久结论以本节、Git 对比和官方命令为准，不依赖临时目录长期存在。本轮没有修改产品源码，不重新制造全套产品测试。最终实际 debt 仍为历史 13 stale / 2 missing / 2 unbaselined / 0 orphan / 1 Volume mismatch，加 M4-B2 新增 1 stale / 3 missing / 3 unbaselined；未归零，M4-B3 进入条件不满足。
 
+# Authorized Repository Reconciliation — Option A
+
+2026-09-27 用户选择方案 A，明确扩展授权到全部 19 个待维护 Code 对象。此前窄范围诊断保持为历史记录；本节是新的实际仓库终态。
+
+先核对用户删除改动与目标 ownership，备份当前 Code Volume；恢复到上节 transaction、receipt 和 baseline 共同证明的批准字节 `1a982948df6fd2fdd2ebfe43029f72d3e3f792424db7a64ed8bcf2994b610cb9`。此恢复没有改 baseline，也没有重放已成功 transaction。实际官方 Maintain 随即签发完整 19 项批次，`code_plan.batch_id=f703ea44f1b5c101c2bce76c381a4b2c5648d428d541a739db472d265e25aa1c`，14 update / 5 create / remaining 0。
+
+Codex 核对全部对应当前源码、正式 Meta 规则及必要 CodeGraph 关系，维护 Function / Relations / API / Constraints。范围包括 AGENTS.md、package.json、agent-runner、automatic-output-directory、chatgpt-session、compiler、domain、execution-limits、ffmpeg、hardware-probe、model-connections、queue、App、WorkspaceChrome，以及五个 shape-cover 新对象。没有为迁就 cognition 修改产品源码。只读 mapper 辅助核对连接和引擎边界，parent 保留作者化及最终判断；没有调用产品 Agent、付费模型或 Kimi review。
+
+通过官方 `aoci_update_entry` 完整提交当前批次，返回 `status=applied / attempted=19 / applied=19 / remaining=0 / finding_count=0`。一次前置工具 schema 校验拒绝了多余的 item `batch_id` 字段，未进入正式写入；去掉该字段、保留顶层精确 `code_batch_id` 后提交成功。没有盲目 scan、baseline rebuild、scope exclude、删 cognition 或手改治理文件。成功后按工具终态指令直接执行 Verify / Check / Guide，不重复 Maintain 或正式 apply。
+
+Fresh `aoci --repo . verify --json`、`check --json` 均 exit 0；`index agent guide --agent codex --json` exit 0 且 `stage=aligned / complete=true / next_action=none / executable_targets=0`。最终 150 sources / 150 Entries；stale 0 / missing 0 / unbaselined 0 / orphan 0 / Volume mismatch 0；pending transactions 0、recovery false、scope aligned、budget healthy。M4-B2 新增 debt 与历史受管 authoring debt 均归零；observe-only 的文件变化仍被报告，未被冒充 cognition debt 或偷偷接受。
+
+正式 apply 更新 `aoci.code.txt` 及 `.aoci/baseline.json`：逐键 diff 确认仅 19 个已审查 source binding、Code Volume binding 和 `updated_at` 改变，其他 baseline 条目原样保留；全部改变的绑定与当前 SHA 精确相等。Root / Meta / managed scope / curation 未改。最终 Code Volume SHA `20d63b0b17feb740790ee1426bc6ff0ffa6ff96923582f42cfed12fef83d2d31`，Composite identity `a59893b0c7e41524c153b3f4224c677f8f4ffcda77d419c3bb7d60063e0536c5`。
+
+本次仅 cognition 与记录变更，产品源码及既有功能验收状态不变，不制造重复全套产品测试；执行 `verification-before-completion`，检查最终限定 diff。用户已有两个项目文件删除继续保留且不提交。AOCI 进入条件现已满足，下一阶段可以执行 M4-B3；这不把 M4-B2 几何结果升级为输出或内容安全 PASS。
+
 # Remaining Boundary And Next One Thing
 
 `geometry-only` 和 `contentSafety: NOT_EVALUATED` 继续明确保留。没有成功 shape 正式入队/导出，不证明独立内容安全、全片或未知时段的 coverage、用户星形素材验收、Windows 或大批量性能；source-mask-only 只证明源事实。冻结 PNG 的全画布几何不能直接当作四角占位区域，后续选款整合须使用实际 placement/轮廓绑定。
