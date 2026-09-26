@@ -18,6 +18,8 @@ import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
+import { ArtifactVerifier } from "../src/main/artifact";
+import { admitShapeCoverSample, type ShapeCoverReviewInput, type ShapeCoverAdmission } from "../src/main/shape-cover-admission";
 
 const available = ["ffmpeg", "ffprobe"].every(binary => spawnSync(binary, ["-version"], { stdio: "ignore" }).status === 0);
 const roots: string[] = [], stores: SourceStickerKnowledgeStore[] = [];
@@ -32,8 +34,9 @@ afterEach(async () => {
 
 describe.skipIf(!available)("frozen shape pixels through the original compiler and queue", () => {
   const mediaTools = { ffmpegPath: ffmpegBin, ffprobePath: ffprobeBin };
-  async function frozenFixture() {
-    const value = await fixture();
+  async function frozenFixture(fps = 30, frameRateMode: "source" | "30" = "source") {
+    const value = await fixture(64, fps);
+    value.request.outputSettings[0].settings.frameRateMode = frameRateMode;
     const pixels = Buffer.alloc(32 * 32 * 4);
     for (let y = 3; y < 31; y++) for (let x = 3; x < 31; x++) {
       const i = (y * 32 + x) * 4;
@@ -53,9 +56,114 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
       sizeBytes: target.source.byteLength, durationMs: target.source.durationMs, width: target.source.width, height: target.source.height,
       rotation: target.source.rotation, probeStatus: "ready", importedAt: now() };
     const template = { ...createDefaultTemplate(), layers: [layer], decorationDisplayMode: "first-3s" as const };
-    const preset = { ...DEFAULT_PRESET, ...settings };
+    const preset = { ...DEFAULT_PRESET, ...settings, frameRateMode };
     return { ...value, frozen, layer, target, media, template, preset };
   }
+
+  const safeReview = async (input: ShapeCoverReviewInput) => JSON.stringify({ action: "pass", reason: "synthetic independent fixture review",
+    contentSafety: { face: "SAFE", hands: "SAFE", product: "SAFE", subtitles: "SAFE" },
+    evidenceIds: [...new Set(input.evidence.flatMap(image => [image.sourceEvidenceId!, image.previewEvidenceId!, ...image.fullSourceEvidenceId ? [image.fullSourceEvidenceId] : []]))] });
+  async function admissionFixture(review = safeReview, fps = 30, frameRateMode: "source" | "30" = "source") {
+    const value = await frozenFixture(fps, frameRateMode);
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
+    const verifier = new ArtifactVerifier(ffmpeg);
+    const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(value.root, "jobs")), sourceKnowledgeStore: value.store,
+      artifactVerifier: verifier, fontResolver: { resolve: async () => null }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
+    const controller = new AbortController();
+    const input = { ...value, queue, ffmpeg, candidateId: value.request.candidates[0].id, cacheDirectory: path.join(value.root, "admission-preview"),
+      reviewer: { identity: "simulated-independent-fixture", role: "independent-content-safety" as const, review }, signal: controller.signal };
+    return { ...value, queue, input, controller, verifier };
+  }
+
+  it("admits measured output frames and independently checked paired evidence, then publishes only the same sample bytes", async () => {
+    const { root, queue, input, controller, verifier } = await admissionFixture();
+    const result = await admitShapeCoverSample(input);
+    expect(result).toMatchObject({ status: "PASS", frameCount: 90, contentSafety: "PASS" });
+    if (result.status !== "PASS") throw new Error(result.reason);
+    const outputDirectory = path.join(root, "approved"); await mkdir(outputDirectory);
+    const publish = { template: input.template, media: input.media, preset: input.preset, samplePath: result.previewPath, outputDirectory };
+    await expect(queue.publishApprovedSample({ ...publish, shapeAdmission: {} as ShapeCoverAdmission })).rejects.toThrow("UNSAFE");
+    await expect(queue.publishApprovedSample({ ...publish, shapeAdmission: structuredClone(result.admission) })).rejects.toThrow("UNSAFE");
+    await expect(queue.publishApprovedSample({ ...publish, preset: { ...input.preset, quality: "high" }, shapeAdmission: result.admission })).rejects.toThrow("UNSAFE");
+    const admitted = await queue.publishApprovedSample({ ...publish, shapeAdmission: result.admission });
+    expect((await readFile(admitted.outputPath)).equals(await readFile(result.previewPath))).toBe(true);
+    expect(queue.snapshot().batches[0].batch.tasks[0].status).toBe("completed");
+    const verify = verifier.verify.bind(verifier);
+    const corruptCopy = vi.spyOn(verifier, "verify").mockImplementationOnce(async (...args) => {
+      const artifact = await verify(...args);
+      await writeFile(args[0], await readFile(input.media.sourcePath));
+      return artifact;
+    });
+    await expect(queue.publishApprovedSample({ ...publish, shapeAdmission: result.admission })).rejects.toThrow("UNSAFE");
+    corruptCopy.mockRestore();
+    expect(await readdir(outputDirectory)).toEqual([path.basename(admitted.outputPath)]);
+    await expect(queue.createBatch({ template: input.template, mediaIds: [input.media.id], mediaItems: [input.media], preset: input.preset, outputDirectory })).rejects.toThrow("UNSAFE");
+    const original = await readFile(result.previewPath); await writeFile(result.previewPath, "tampered sample");
+    await expect(queue.publishApprovedSample({ ...publish, shapeAdmission: result.admission })).rejects.toThrow("UNSAFE");
+    await writeFile(result.previewPath, original);
+    const assetPath = input.request.candidates[0].asset.assetPath, asset = await readFile(assetPath);
+    await writeFile(assetPath, "changed artwork");
+    await expect(queue.publishApprovedSample({ ...publish, shapeAdmission: result.admission })).rejects.toThrow("UNSAFE");
+    await writeFile(assetPath, asset);
+    const png = await readFile(input.layer.assetPath); await writeFile(input.layer.assetPath, "changed frozen PNG");
+    await expect(queue.publishApprovedSample({ ...publish, shapeAdmission: result.admission })).rejects.toThrow("UNSAFE");
+    await writeFile(input.layer.assetPath, png);
+    controller.abort();
+    await expect(queue.publishApprovedSample({ ...publish, shapeAdmission: result.admission })).rejects.toThrow();
+    await queue.shutdown();
+  }, 30_000);
+
+  it.each(["face", "hands", "product", "subtitles", "unknown", "bare-pass", "stale-evidence"])("rejects geometry PASS with independent safety failure: %s", async concern => {
+    const review = async (input: ShapeCoverReviewInput) => {
+      const pass = JSON.parse(await safeReview(input));
+      if (concern === "bare-pass") return JSON.stringify({ action: "pass", reason: "not evidence" });
+      if (concern === "stale-evidence") pass.evidenceIds = ["old-source", "old-preview"];
+      else pass.contentSafety[concern === "unknown" ? "face" : concern] = concern === "unknown" ? "UNKNOWN" : "UNSAFE";
+      return JSON.stringify(pass);
+    };
+    const checked = vi.fn(review);
+    const { queue, input } = await admissionFixture(checked);
+    expect(await admitShapeCoverSample(input)).toMatchObject({ status: "UNSAFE" });
+    expect(checked).toHaveBeenCalledOnce();
+    expect(queue.snapshot().batches).toEqual([]);
+    await queue.shutdown();
+  }, 30_000);
+
+  it("rejects missing targets, forged queue samples, rebindings and cancellation before issuing authority", async () => {
+    const { queue, input } = await admissionFixture();
+    const missing = { ...input, template: { ...input.template, layers: [] } };
+    expect(await admitShapeCoverSample(missing)).toMatchObject({ status: "UNSAFE" });
+    const fake = path.join(input.root, "not-a-queue-render.mp4"); await writeFile(fake, await readFile(input.media.sourcePath));
+    const render = vi.spyOn(queue, "renderPreview").mockResolvedValueOnce(fake);
+    expect(await admitShapeCoverSample(input)).toMatchObject({ status: "UNSAFE", reason: expect.stringContaining("not rendered by this queue") });
+    render.mockRestore();
+    const controller = new AbortController(); controller.abort();
+    expect(await admitShapeCoverSample({ ...input, signal: controller.signal })).toMatchObject({ status: "UNSAFE", reason: "cancelled" });
+    const source = await readFile(input.media.sourcePath); await writeFile(input.media.sourcePath, "changed source");
+    expect(await admitShapeCoverSample(input)).toMatchObject({ status: "UNSAFE" });
+    await writeFile(input.media.sourcePath, source);
+    const head = input.request.intendedTargets[0];
+    head.revisionId = "old-revision";
+    expect(await admitShapeCoverSample(input)).toMatchObject({ status: "UNSAFE" });
+    await queue.shutdown();
+  }, 30_000);
+
+  it("proves all converted output PTS and refuses a truncated real queue sample before content review", async () => {
+    const review = vi.fn(safeReview);
+    const { queue, input } = await admissionFixture(review, 24, "30");
+    const pass = await admitShapeCoverSample(input);
+    expect(pass).toMatchObject({ status: "PASS", frameCount: 90 });
+    const run = input.ffmpeg.run.bind(input.ffmpeg);
+    vi.spyOn(input.ffmpeg, "run").mockImplementation((args, progress) => {
+      if (!args.includes("-filter_complex")) return run(args, progress);
+      const modified = [...args]; modified[modified.indexOf("-t") + 1] = "1";
+      return run(modified, progress);
+    });
+    review.mockClear();
+    expect(await admitShapeCoverSample(input)).toMatchObject({ status: "UNSAFE", reason: expect.stringContaining("timeline") });
+    expect(review).not.toHaveBeenCalled();
+    await queue.shutdown();
+  }, 30_000);
 
   it("round-trips the real contour PNG and renders its exact pixels and interval through queue preview", async () => {
     const { root, store, request, frozen, layer, target, media, template, preset } = await frozenFixture();

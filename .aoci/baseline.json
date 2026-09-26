@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-26T19:04:50Z",
+  "updated_at": "2026-09-26T19:23:58Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "9f465f7bb3b22f4f20e3767327554e9012d1968cb75877a5277515834e6ccd38",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "20d63b0b17feb740790ee1426bc6ff0ffa6ff96923582f42cfed12fef83d2d31",
-      "size": 39874,
-      "normalized_sha256": "20d63b0b17feb740790ee1426bc6ff0ffa6ff96923582f42cfed12fef83d2d31"
+      "sha256": "7523b1a6da6f8b4b2b51adeec22d25aebe1cf57c7a3a0a0955ca33cfe47af5b4",
+      "size": 40737,
+      "normalized_sha256": "7523b1a6da6f8b4b2b51adeec22d25aebe1cf57c7a3a0a0955ca33cfe47af5b4"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1348,14 +1348,19 @@
       "normalized_sha256": "5a8a70f9c1d5932ff4e62190db803b9372d74999b34365dbcdf733cdd7d056f5"
     },
     "src/main/queue.ts": {
-      "sha256": "9d902b5ef6274fff610ab91c1ec60f7816ef287d3576428152056d11bf91a895",
-      "size": 47166,
-      "normalized_sha256": "9d902b5ef6274fff610ab91c1ec60f7816ef287d3576428152056d11bf91a895"
+      "sha256": "a271941c18554f695f5b4e5b240e717910b2b2c0103064e54be3622924fd3355",
+      "size": 48983,
+      "normalized_sha256": "a271941c18554f695f5b4e5b240e717910b2b2c0103064e54be3622924fd3355"
     },
     "src/main/recent-projects.ts": {
       "sha256": "c5c8f17451efebb725e41ba7651f01bbd867f69ffbd1bd9ee03ce067210e51da",
       "size": 4827,
       "normalized_sha256": "c5c8f17451efebb725e41ba7651f01bbd867f69ffbd1bd9ee03ce067210e51da"
+    },
+    "src/main/shape-cover-admission.ts": {
+      "sha256": "93d1a487c1da5f338648c0a2573b49083d55a2cf60aebb18708b0ca5431eef3b",
+      "size": 16737,
+      "normalized_sha256": "93d1a487c1da5f338648c0a2573b49083d55a2cf60aebb18708b0ca5431eef3b"
     },
     "src/main/shape-cover-alpha.ts": {
       "sha256": "b9f67869131d561ad3165482d56130feabceb643b6e008789a529a11c4db3bc8",

@@ -36,6 +36,12 @@ import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } fro
 import { reviewDigest } from "./cover-review-approval.js";
 import { measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
 import { MAX_AGENT_OUTPUTS } from "../shared/agent.js";
+import { verifyShapeCoverAdmission, type ShapeCoverAdmission } from "./shape-cover-admission.js";
+import { templateDigest } from "./supervisor-knowledge.js";
+
+const shapePreviewReceipts = new WeakMap<ExportQueue, Map<string, string>>();
+const shapePreviewBinding = (template: EditTemplate, media: MediaItem, preset: ExportPreset, fingerprint: string) =>
+  JSON.stringify([templateDigest(template), media, preset, fingerprint]);
 
 export interface QueueSnapshot {
   revision: number;
@@ -204,6 +210,12 @@ export class ExportQueue {
           await verifyFrozenShapeSources(template, media, this.dependencies.sourceKnowledgeStore, signal);
           signal.throwIfAborted();
         });
+        if (template.layers.some(layer => layer.type === "sticker" && layer.cover?.shapeMatched)) {
+          const receipts = shapePreviewReceipts.get(this) ?? new Map<string, string>();
+          receipts.set(output, shapePreviewBinding(template, media, preset, await fingerprintFile(output)));
+          if (receipts.size > 32) receipts.delete(receipts.keys().next().value!);
+          shapePreviewReceipts.set(this, receipts);
+        }
         return output;
       } finally { signal.removeEventListener("abort", abort); this.controllers.delete(id); }
     } catch (error) { await unlink(output).catch(() => undefined); throw error; }
@@ -215,6 +227,11 @@ export class ExportQueue {
     this.limits = { ...(dependencies.executionLimits ?? executionLimits(undefined, this.resolveEncoder())) };
     this.compiler = dependencies.compiler ?? new TemplateCompiler();
     this.verifier = dependencies.artifactVerifier ?? new ArtifactVerifier(dependencies.ffmpeg);
+  }
+
+  async verifyShapePreview(path: string, template: EditTemplate, media: MediaItem, preset: ExportPreset): Promise<void> {
+    const receipt = shapePreviewReceipts.get(this)?.get(path);
+    if (!receipt || receipt !== shapePreviewBinding(template, media, preset, await fingerprintFile(path))) throw new Error("UNSAFE: sample was not rendered by this queue with this binding");
   }
 
   /**
@@ -372,11 +389,13 @@ export class ExportQueue {
    * record the artifact as a completed task. Skips the render pipeline so a
    * supervised version is in the folder the moment the supervisor passes.
    */
-  async publishApprovedSample(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; samplePath: string; outputDirectory: string; projectId?: string }): Promise<{ batchId: string; taskId: string; outputPath: string }> {
+  async publishApprovedSample(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; samplePath: string; outputDirectory: string; projectId?: string; shapeAdmission?: ShapeCoverAdmission }): Promise<{ batchId: string; taskId: string; outputPath: string }> {
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
+    input = { ...input, media: structuredClone(input.media), preset: ExportPresetSchema.parse(input.preset) };
     assertPriceOnlyTemplate(template);
-    assertShapeCoverExportReady(template);
+    const shape = template.layers.some(layer => layer.type === "sticker" && layer.cover?.shapeMatched);
+    if (shape) await verifyShapeCoverAdmission(input.shapeAdmission, template, input.media, input.preset, input.samplePath);
     if (input.media.probeStatus !== "ready") throw new JianjiError("只能发布已审核通过的素材。", "input_invalid", "input", false);
     await assertOutputDirectorySafe(input.outputDirectory, [input.media]);
     if (await fingerprintFile(input.media.sourcePath) !== input.media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
@@ -408,8 +427,10 @@ export class ExportQueue {
     try {
       await copyFile(input.samplePath, partialPath);
       await syncFile(partialPath);
+      if (shape) await verifyShapeCoverAdmission(input.shapeAdmission, template, input.media, parsed, partialPath);
       await this.transition(state, task, "verifying", { progress: 0.99 });
       const artifact = await this.verifier.verify(partialPath, task.id);
+      if (shape) await verifyShapeCoverAdmission(input.shapeAdmission, template, input.media, parsed, partialPath);
       const finalPath = await publishWithoutReplacement(partialPath, outputPath, state.batch.outputDirectory, input.media.sourcePath, [], parsed.container);
       artifact.path = finalPath;
       task.outputPath = finalPath;

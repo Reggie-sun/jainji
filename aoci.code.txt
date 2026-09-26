@@ -79,7 +79,7 @@ model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独�
 paths.ts[AB7T]: F:文件指纹安全输出目录文件名分配与模板资源校验 | R:code:src/main/queue.ts | A:输出路径安全辅助 | S:不得覆盖源视频或现有输出
 platform.ts[AB7T]: F:跨Linux和Windows解析命令及字体候选路径 | R:code:src/main/ffmpeg.ts | A:平台路径辅助 | S:保留各平台路径语义
 preload.ts[AB7T]: F:以contextBridge向renderer暴露受限DesktopApi与事件监听 | R:code:src/main/index.ts | A:Electron IPC显式边界 | S:renderer不直接持有主进程能力
-queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-render.ts | A:ExportQueue创建幂等批次、渲染预览、直发批准样片、恢复重试与取消；按CPU线程和GPU内存共享槽位 | S:形状预览须前后核查源mask，正式创建、重放、直发和恢复执行均拒绝未准入形状；partial验证后无覆盖发布；重试沿用冻结模板和设置
+queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-render.ts,code:src/main/shape-cover-admission.ts | A:ExportQueue创建幂等批次、渲染预览、核验形状样片、直发批准样片、恢复重试与取消；按CPU线程和GPU内存共享槽位 | S:形状预览前后核查源mask并签发私有绑定；形状直发须持有进程内准入，复制后与artifact校验后重查同字节；普通创建、重放、恢复仍拒绝形状；partial验证后无覆盖发布，重试沿用冻结模板设置
 recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:code:src/main/application.ts | A:项目入口历史辅助 | S:不承担工作区或模板状态
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
 source-sticker-knowledge-session.ts[AB7T]: F:按源身份管理识别候选、多版本样片复核及修订传播 | R:code:src/main/source-sticker-knowledge-store.ts | A:源贴纸事实生命周期owner | S:不接纳近似覆盖位置作为事实
@@ -102,6 +102,7 @@ shape-cover-alpha.ts[KB8S]: F:读取目录绑定贴纸并用真实FFmpeg生成�
 shape-cover-candidates.ts[KB8S]: F:计算整轮候选与全部目标及输出设置的共同几何安全集合 | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-alpha.ts,code:src/main/shape-cover-pixel-gate.ts | A:readAdmittedShapeCoverTarget读取当前准入mask；computeCommonShapeCoverCandidates评估完整矩阵并复查源与资产绑定 | S:打开任何候选前全部目标必须具备对应segment及时段mask；返回geometry-only且内容安全NOT_EVALUATED；空共同集合或绑定漂移UNSAFE，不写源知识
 shape-cover-freeze.ts[AB8S]: F:将共同安全选款冻结为每个目标及输出规格的最终PNG图层 | R:code:src/main/shape-cover-candidates.ts,code:src/main/shape-cover-alpha.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/shape-cover-render.ts | A:freezeShapeCoverCandidate重算整轮、生成有限不透明轮廓、核验PNG往返像素并绑定图层摘要 | S:冻结仍仅几何PASS，内容安全未评估；发布前后复查源与候选；文件无覆盖发布到独占操作目录，失败或取消只清理该操作文件
 shape-cover-render.ts[IB8T]: F:校验形状冻结绑定并为编译读取不可变PNG字节 | R:code:src/shared/shape-cover.ts,code:src/main/shape-cover-candidates.ts,code:src/main/compiler.ts,code:src/main/queue.ts | A:计算绑定摘要；核查当前准入源事实、媒体、输出设置和PNG指纹及尺寸 | S:assertShapeCoverExportReady当前一律拒绝形状正式输出；冻结字节校验和预览成功均不能代替逐帧coverage及独立内容安全准入
+shape-cover-admission.ts[AB8M]: F:对原队列形状样片建立最终像素与输出帧时域证明，组织独立内容安全准入 | R:code:src/main/queue.ts,code:src/main/shape-cover-candidates.ts,code:src/main/supervisor-evidence.ts,code:src/main/supervised-preview.ts | A:admitShapeCoverSample返回PASS及私有handle或UNSAFE；verifyShapeCoverAdmission核验当前绑定与样片字节；ShapeCoverReviewInput携带真实配对证据和形状范围 | S:完整矩阵与冻结RGBA重算，不借几何PASS证明安全；四类侵入均须SAFE且引用当前证据；裸pass或未知拒绝；handle不可序列化复原，仅直发同字节样片，取消与源资产设置漂移失效，bbox修订须重新冻结准入
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限

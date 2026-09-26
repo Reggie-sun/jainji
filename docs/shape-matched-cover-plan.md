@@ -88,3 +88,15 @@ spec: shape-matched-cover-spec.md
 **Safety Boundary:** 本切片仍是 `geometry-only / NOT_EVALUATED`，允许原 `renderPreview` 渲染样片，不允许 `createBatch`、`publishApprovedSample` 或恢复/重试执行新策略。不得添加可由调用者填入的假内容安全 PASS。逐输出 PTS、编码后边缘与真实源/成片对照在 fixture 上验证，不外推为用户素材/全片的生产准入；独立内容安全和选款整合留在后续切片。
 
 **Acceptance / Verification:** 用真实 admitted mask、实际 alpha 与带非零半径/透明边缘的 fixture 验证 round→freeze→原 queue preview；核对 PNG round-trip、输出帧时序及配对像素；测试模板/源/设置/资产篡改、冻结期间取消、计算后原候选删除仍可用、快照后冻结文件变化不能改已编译字节、未准入入队/发布/恢复均拒绝。运行 typecheck、M3/M4-A/M4-B1/模板/compiler/queue 相关测试及全套测试；按 `verification-before-completion` gate 在稳定候选检查 final diff、只提交本任务文件，记录到 `docs/shape-matched-cover-m4b2.md`。
+
+# Active Slice — M4-B3
+
+**Goal / Scope:** 在 AOCI 全仓 reconciliation 后，建立逐输出真实样片 coverage 与独立内容安全准入。新增 `src/main/shape-cover-admission.ts` 负责证据计算和不可伪造的进程内准入 handle；复用原 `ExportQueue.renderPreview`、`SupervisorEvidence` 及 `superviseRenderedTemplate`。`queue.ts` 只允许已准入的同字节样片经过原直发路径发布；不允许把样片 PASS 转给重新编码的普通批次、历史恢复或其他输出规格。记录 owner 为 `docs/shape-matched-cover-m4b3.md`，测试复用 `tests/shape-cover-candidates.test.ts` 的真实 admitted-mask fixture。
+
+**Coverage Contract:** 重新核对完整 candidate×target×setting 矩阵及当前选款。当前媒体/输出规格的所有 intended targets 必须逐一对应冻结层，无遗漏、重复或额外 shape 层。重新从当前候选真实 RGBA 与版本化轮廓计算像素，核对冻结 PNG、RGBA/alpha 和绑定；再把 admitted source mask 投影至最终空间，要求每个像素 alpha=255。真实队列样片读取全部 decoded output PTS，拒绝无效或不完整帧流；逐目标检查启停时域。该证明是最终不透明栅格及真实输出时钟的组合，不用编码颜色相似度冒充 alpha；编码后侵入和边缘由实际配对样片检查。
+
+**Independent Safety Contract:** 沿已有最多五轮主管检查/补帧预算，独立 reviewer 明确检查 face、hands、product、subtitles 四类侵入，均须 SAFE，并引用当前真实配对证据 ID；裸 pass、缺项、UNKNOWN、UNSAFE、陈旧证据及无法判断均不签发准入。固定图层修订必须重新走选款/冻结/准入；此切片不让通用 bbox 修订改写冻结 shape。用户未授权真实服务调用，测试使用明确标记的模拟 reviewer，不把它报告成真实模型或人工验收。
+
+**Binding / Lifecycle:** handle 由 module-private WeakMap 绑定完整 request、模板、媒体、输出 preset、样片 SHA 和检查证据；调用者不能通过 JSON 填 PASS。发布前重查当前 source/asset/frozen bindings，复制后核对 partial 与已批准样片相同 SHA，取消或任一漂移为 UNSAFE。handle 不写入源知识或序列化为持久生产 PASS；重启后须重新准入。旧矩形、manual、assisted 路径不变。整轮 Agent 选款接线、持久可重放准入、全片自动覆盖与生产 UI 激活仍在后续切片，本次不调用产品 Agent、付费模型或 Kimi review。
+
+**Acceptance / Verification:** 真实 FFmpeg/原 queue 的 coverage→paired evidence→模拟独立安全→同字节直发正例；几何 PASS 但脸/手/商品/字幕侵入或未知、伪造 handle、源/设置/模板/样片/候选漂移、遗漏目标、冻结像素篡改和取消拒绝；普通入队/恢复仍不能用样片准入放行。运行 typecheck、相关 shape/compiler/domain/queue/supervisor tests 及有限并发全套；完成后官方 AOCI incremental maintenance、Verify / Check / Guide，检查 final diff 并提交限定文件。
