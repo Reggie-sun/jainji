@@ -3,7 +3,7 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖、构建输出、日志、Harness回执及CodeGraph本机索引 | R:code:AGENTS.md | A:正式AOCI文件不在根目录忽略表中；.aoci目录由自身白名单排除运行资产 | S:-
-AGENTS.md[SC9T]: F:项目长期规则、产品不变量、职责归属及完成门禁的权威入口 | R:code:src/shared/agent.ts,code:src/main/agent-controller.ts,code:src/main/queue.ts | A:规则优先于AOCI语义索引；源码和测试核对实现行为；正式AOCI资产经校验可随对应源码入库 | S:本地随机手动覆盖每框不同款且候选不足时拒绝；重试沿用冻结模板；AOCI运行状态、缓存、日志和机器专用MCP配置不得入库
+AGENTS.md[SC9T]: F:项目长期规则、产品不变量、职责归属及完成门禁的权威入口 | R:code:src/shared/agent.ts,code:src/main/agent-controller.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:规则优先于AOCI索引；源码和测试核对实现；规定源mask准入与形状匹配覆盖的安全边界 | S:source-mask-only仅证明源事实，不是选款或输出安全PASS；新形状匹配须全轮共同候选、冻结图层字节及逐输出规格100%覆盖，缺任一证据为UNSAFE且不回退白底；旧冻结任务按元数据解释
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7T]: F:定义Electron、React、TypeScript依赖、构建打包与验证脚本 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx | A:typecheck、vitest、Harness和Linux/Windows打包均从这里进入 | S:打包产物只含构建目录和显式资源，不把AOCI runtime装入产品
@@ -84,7 +84,7 @@ recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:co
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
 source-sticker-knowledge-session.ts[AB7T]: F:按源身份管理识别候选、多版本样片复核及修订传播 | R:code:src/main/source-sticker-knowledge-store.ts | A:源贴纸事实生命周期owner | S:不接纳近似覆盖位置作为事实
 source-sticker-knowledge-startup.ts[AB7T]: F:启动时打开源贴纸知识库并处理恢复失败 | R:code:src/main/source-sticker-knowledge-store.ts | A:恢复门禁辅助 | S:损坏或版本风险不得静默绕过
-source-sticker-knowledge-store.ts[PB8L]: F:按源指纹保存知识修订、证据、争议和原子准入 | R:code:src/shared/source-sticker-knowledge.ts,code:src/main/source-sticker-knowledge-session.ts | A:发布证明检查事实摘要与证据，并核验静态像素掩码字节、哈希及标记数 | S:掩码编码或摘要不一致时拒绝发布；只有精确源身份和有效证据可复用
+source-sticker-knowledge-store.ts[PB8L]: F:按精确源身份原子保存知识修订、证据、争议及源掩码准入 | R:code:src/shared/source-sticker-knowledge.ts,code:src/main/source-sticker-knowledge-session.ts,code:src/main/source-mask-admission.ts | A:校验证明、事实摘要、mask位集和证据原始字节；重启复核源专用或样片证明 | S:源专用证明须恰有一个静态segment、两张完整源帧及probe、联系图、人工收据三份档案；不得声明样片通过
 source-sticker-recognition.ts[AB7T]: F:抽取全片源贴纸观测并形成带证据的事实候选 | R:code:src/main/cover-track-provider.ts | A:识别原视频事实不同于覆盖近似位置 | S:不确定时阻断自动补角
 state-migrations.ts[AB7T]: F:预检并迁移已知项目队列模板历史格式 | R:code:src/main/store.ts | A:持久兼容迁移owner | S:未来版本或未知格式拒绝而非猜测
 sticker-preview.ts[AB7T]: F:用FFmpeg生成内置贴纸预览供界面与模型看图 | R:code:src/main/ffmpeg.ts | A:选材预览辅助 | S:模型只接收预览不接收本地路径
@@ -97,6 +97,7 @@ supervisor-provider.ts[AB7T]: F:构造识别主管和样片主管的视觉模型
 uploaded-stickers.ts[AB7T]: F:校验导入图像尺寸与格式并管理用户贴纸目录 | R:code:src/main/asset-library.ts | A:只有已导入有效文件可进选材 | S:贴纸自带文字不由Agent修改
 video-encoder.ts[AB7T]: F:探测H264软硬件编码能力并生成编码参数 | R:code:src/main/ffmpeg.ts | A:编码策略辅助 | S:不可用编码器回退需真实探测
 shape-cover-pixel-gate.ts[KB7S]: F:校验静态源像素掩码、输出像素轮廓覆盖及逐帧时域完整性 | R:code:src/shared/source-sticker-knowledge.ts | A:导出版本化像素阈值合同；解码带哈希的掩码并投影源像素，比较不透明轮廓的有限膨胀 | S:无有效像素、超出面积或跨度预算、任一源贴纸帧未被覆盖均返回UNSAFE；本模块尚未接入正式导出链
+source-mask-admission.ts[IB7S]: F:将人工PASS的静态源像素掩码和真实媒体证据准入知识库 | R:code:src/shared/source-sticker-knowledge.ts,code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-pixel-gate.ts | A:核对探针、联系图、审核收据、源字节、PTS和首末原帧后发布源专用修订，拒绝统一返回UNSAFE | S:仅接纳30至100帧连续静态片段、未旋转且可精确映射的源；源掩码通过不代表输出覆盖或内容安全通过
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -159,7 +160,7 @@ material-names.ts[AB7T]: F:校验素材或项目显示名称 | R:code:src/main/a
 price-styles.ts[AB7T]: F:定义展示文字花字风格及字体尺寸策略 | R:code:src/main/agent-provider.ts | A:外观枚举不产生文字内容 | S:价格原文保持用户输入
 project-workspace.ts[AB7T]: F:校验可恢复工作区步骤素材外观数量导出设置 | R:code:src/main/application.ts | A:工作区草稿合同 | S:不重复持久化展示文字
 source-sticker-knowledge-audit.ts[AB7T]: F:定义源知识查询原因制作阶段复核结果的审计schema | R:code:src/main/source-sticker-knowledge-session.ts | A:进度与审计合同 | S:风险和失败显式记录
-source-sticker-knowledge.ts[DB8M]: F:定义源身份、事实、证据、静态像素掩码及发布证明的共享Schema | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-pixel-gate.ts | A:掩码仅绑定单关键帧轨迹，校验边界及跨时间原图证据；几何修订检测纳入掩码变化 | S:掩码须有至少两张不同PTS、间隔至少1秒的原图证据，且框位于源轨迹内
+source-sticker-knowledge.ts[DB8M]: F:定义源身份、事实、静态像素掩码、审核档案及两类发布证明Schema | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/source-mask-admission.ts | A:约束mask边界与跨时间原帧证据，区分源专用证明和样片证明 | S:掩码须有至少两张不同PTS且间隔至少1秒的原图证据；source-mask-only不能解释成预览或输出安全通过
 
 ===/home/reggie/vscode_folder/jianji/src/types/===
 sql-asm.d.ts[AB7T]: F:声明sql-asm模块的TypeScript类型 | R:code:src/main/source-sticker-knowledge-store.ts | A:第三方类型桥接 | S:不实现持久逻辑

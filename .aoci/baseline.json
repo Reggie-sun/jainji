@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-23T17:17:48Z",
+  "updated_at": "2026-09-23T17:50:43Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "9f465f7bb3b22f4f20e3767327554e9012d1968cb75877a5277515834e6ccd38",
@@ -223,9 +223,9 @@
       "normalized_sha256": "6368db94f468318e841db836e80ad2d54f0f10822d2cfcb5c7ec1ee1b404fb8c"
     },
     "AGENTS.md": {
-      "sha256": "634e21b13399631a09e167df43b447ffc56aeb5f24a752dea66f881ee6e19dbe",
-      "size": 16485,
-      "normalized_sha256": "634e21b13399631a09e167df43b447ffc56aeb5f24a752dea66f881ee6e19dbe"
+      "sha256": "b76520e86b09a4136d8732d5ceb396c851ff2aef44742ea63f80cd34552d8fa8",
+      "size": 17795,
+      "normalized_sha256": "b76520e86b09a4136d8732d5ceb396c851ff2aef44742ea63f80cd34552d8fa8"
     },
     "CLAUDE.md": {
       "role": "observe",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "6577edb011335d2282bc2d8effc07169a7598246701a7d6dc775d4268d408df8",
-      "size": 34286,
-      "normalized_sha256": "6577edb011335d2282bc2d8effc07169a7598246701a7d6dc775d4268d408df8"
+      "sha256": "1a982948df6fd2fdd2ebfe43029f72d3e3f792424db7a64ed8bcf2994b610cb9",
+      "size": 35051,
+      "normalized_sha256": "1a982948df6fd2fdd2ebfe43029f72d3e3f792424db7a64ed8bcf2994b610cb9"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1362,15 +1362,20 @@
       "size": 8580,
       "normalized_sha256": "6479814720014011a681f447e82b49e1411661e100204b002d5fa956dd0f855b"
     },
+    "src/main/source-mask-admission.ts": {
+      "sha256": "2c57a6308abb770a41f2bbcdea4f805bb578d1c97447abe527d8b5249450ae44",
+      "size": 14113,
+      "normalized_sha256": "2c57a6308abb770a41f2bbcdea4f805bb578d1c97447abe527d8b5249450ae44"
+    },
     "src/main/source-sticker-knowledge-projection.ts": {
       "sha256": "45c476e7a2b9fb29cfad41fa79efc8cd550926112b3ea4b823ca2f45d5ecc30e",
       "size": 1999,
       "normalized_sha256": "45c476e7a2b9fb29cfad41fa79efc8cd550926112b3ea4b823ca2f45d5ecc30e"
     },
     "src/main/source-sticker-knowledge-session.ts": {
-      "sha256": "2c61c6532e8900d879463a3c5481bcd080e69c10c037167ec5fa718f961d9ddb",
-      "size": 22786,
-      "normalized_sha256": "2c61c6532e8900d879463a3c5481bcd080e69c10c037167ec5fa718f961d9ddb"
+      "sha256": "c9acf970d5093d283afdf6fa3e6bbd001d0baf2d4e73d95732097ac5ae1be507",
+      "size": 22841,
+      "normalized_sha256": "c9acf970d5093d283afdf6fa3e6bbd001d0baf2d4e73d95732097ac5ae1be507"
     },
     "src/main/source-sticker-knowledge-startup.ts": {
       "sha256": "c77cab56ad29d6ef6d603d32d3c89c92565fde1893a08ca08c2437c4fdd49da6",
@@ -1378,9 +1383,9 @@
       "normalized_sha256": "c77cab56ad29d6ef6d603d32d3c89c92565fde1893a08ca08c2437c4fdd49da6"
     },
     "src/main/source-sticker-knowledge-store.ts": {
-      "sha256": "eacf68f5f9b5784ec7e00cb10106723dbabea2690bf69e82392c3676b8ff7ef0",
-      "size": 41185,
-      "normalized_sha256": "eacf68f5f9b5784ec7e00cb10106723dbabea2690bf69e82392c3676b8ff7ef0"
+      "sha256": "50f80eab7af4fe3d8c51d9ca09a886116316bef7dd85041b6175c6623a2aaae2",
+      "size": 44641,
+      "normalized_sha256": "50f80eab7af4fe3d8c51d9ca09a886116316bef7dd85041b6175c6623a2aaae2"
     },
     "src/main/source-sticker-recognition.ts": {
       "sha256": "17d25c17d9581b6118072d670d428525867343c853aecc3fd4f03bb74f165b1c",
@@ -1774,9 +1779,9 @@
       "normalized_sha256": "292b9f1873f22b5efc0f2e5285c193a65f3d6e16b44cb5e8d6a98bc4809cf453"
     },
     "src/shared/source-sticker-knowledge.ts": {
-      "sha256": "6ceb3956ce1c0537161dc9769b3ba9562e2320d059aaef88df27243e6ae8f08d",
-      "size": 18465,
-      "normalized_sha256": "6ceb3956ce1c0537161dc9769b3ba9562e2320d059aaef88df27243e6ae8f08d"
+      "sha256": "b4ddc4a45c22cc50538f79fd809719d7008341f8c08d88f9786a199c48c62b96",
+      "size": 19609,
+      "normalized_sha256": "b4ddc4a45c22cc50538f79fd809719d7008341f8c08d88f9786a199c48c62b96"
     },
     "src/types/sql-asm.d.ts": {
       "sha256": "d6b7707bcf8eebb390ec4661c05606dc742a3dbac195e50b1ba44a20cc0d6043",
