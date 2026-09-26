@@ -8,18 +8,20 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const archiveHash = "fec81ae03971d9dd4be3ebe02e263bd2ec1d789483f931bdba5f5715e65da2e9";
+// This build uses NVENC API 13.0 (driver 570+), including the 591.74 target.
+// Newer FFmpeg builds may raise that requirement; pin and verify the engine.
+const archiveHash = "e2aaeaa0fdbc397d4794828086424d4aaa2102cef1fb6874f6ffd29c0b88b673";
 const binaryHashes = {
-  "ffmpeg.exe": "72a489eccd008c2ec2c0a5856c5c75bc3d8bbfa90166c4566865c246445e6aa3",
-  "ffprobe.exe": "19202b23c0043f15ad1b7bce2344f406fd52bd6efd8f995ce02e7392a1cec52f",
+  "ffmpeg.exe": "5af82a0d4fe2b9eae211b967332ea97edfc51c6b328ca35b827e73eac560dc0d",
+  "ffprobe.exe": "192a1d6899059765ac8c39764fc3148d4e6049955956dc2029f81f4bd6a8972d",
 };
-const archiveUrl = "https://github.com/GyanD/codexffmpeg/releases/download/9.0.1/ffmpeg-9.0.1-essentials_build.zip";
-const archivePrefix = "ffmpeg-9.0.1-essentials_build";
+const archiveUrl = "https://github.com/GyanD/codexffmpeg/releases/download/8.0.1/ffmpeg-8.0.1-essentials_build.zip";
+const archivePrefix = "ffmpeg-8.0.1-essentials_build";
 const generatedRoot = path.join(root, "dist-ffmpeg");
 const output = path.join(generatedRoot, "win32-x64");
 const archive = process.env.JIANJI_FFMPEG_ARCHIVE
   ? path.resolve(process.env.JIANJI_FFMPEG_ARCHIVE)
-  : path.join(generatedRoot, "ffmpeg-9.0.1-essentials_build.zip");
+  : path.join(generatedRoot, "ffmpeg-8.0.1-essentials_build.zip");
 
 async function sha256(file) {
   const hash = createHash("sha256");
@@ -56,7 +58,7 @@ async function main() {
         if (await sha256(path.join(output, name)) !== expected) throw new Error(`${name} 校验失败`);
       }
       await Promise.all(["LICENSE", "SOURCE.txt"].map((name) => access(path.join(output, name))));
-      console.log("FFmpeg 9.0.1 已就绪（已校验下载包）。");
+      console.log("FFmpeg 8.0.1 已就绪（已校验下载包）。");
       return;
     }
   } catch { /* regenerate */ }
@@ -76,9 +78,9 @@ async function main() {
       if (await sha256(path.join(output, name)) !== expected) throw new Error(`${name} 解压后 SHA-256 不匹配`);
     }
     await writeFile(path.join(output, "SOURCE.txt"),
-      `FFmpeg 9.0.1 essentials build for Windows x64\nBuild: ${archiveUrl}\nUpstream source: https://github.com/FFmpeg/FFmpeg/tree/n9.0.1\nBuild project: https://github.com/GyanD/codexffmpeg\nLicense: see LICENSE in this directory (GPLv3).\n`, "utf8");
+      `FFmpeg 8.0.1 essentials build for Windows x64\nBuild: ${archiveUrl}\nUpstream source: https://github.com/FFmpeg/FFmpeg/tree/n8.0.1\nBuild project: https://github.com/GyanD/codexffmpeg\nNVENC: API 13.0, NVIDIA driver 570 or newer (includes 591.74).\nLicense: see LICENSE in this directory (GPLv3).\n`, "utf8");
     await writeFile(marker, `${archiveHash}\n`, "utf8");
-    console.log("FFmpeg 9.0.1 已就绪（含 ffmpeg、ffprobe 与许可证）。");
+    console.log("FFmpeg 8.0.1 已就绪（含 ffmpeg、ffprobe 与许可证）。");
   } finally { await rm(extracted, { recursive: true, force: true }); }
 }
 

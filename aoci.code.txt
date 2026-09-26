@@ -68,10 +68,10 @@ cover-track-provider.ts[AB7T]: F:检测对齐源贴纸帧形成跟随轨迹 | R:
 development-lifecycle.ts[AB7T]: F:开发模式父进程断开时等待启动完成再退出Electron | R:code:src/main/index.ts | A:开发生命周期辅助 | S:不控制生产恢复
 domain.ts[AB8L]: F:定义媒体、图层模板、导出任务与项目持久数据的Schema | R:code:src/main/compiler.ts,code:src/main/application.ts,code:src/main/store.ts | A:ProjectSchema可选保存latestProduction及本轮item和task身份，供重启后恢复作品范围 | S:历史项目缺少latestProduction仍可读取；冻结模板与队列任务必须保留原有校验
 errors.ts[AB7T]: F:分类底层异常并提供恢复建议 | R:code:src/main/domain.ts | A:统一错误呈现辅助 | S:不得回传敏感错误细节
-execution-limits.ts[AB7T]: F:估算编码并行度与验证导出容量 | R:code:src/main/queue.ts | A:运行容量策略辅助 | S:未验证容量不超额承诺
-ffmpeg.ts[AB7T]: F:封装媒体子进程能力发现字体取消与脱敏 | R:code:src/main/queue.ts | A:媒体命令与依赖能力边界 | S:进程成功不代表产物发布
+execution-limits.ts[AB7T]: F:按核心内存估算CPU/GPU并行度并均分线程 | R:code:src/main/queue.ts,code:src/main/ffmpeg.ts | A:运行容量策略辅助 | S:未验证容量不超额承诺
+ffmpeg.ts[AB7M]: F:发现媒体引擎字体并实测CPU/GPU并发容量 | R:code:src/main/queue.ts,code:src/main/hardware-probe.ts | A:媒体命令与依赖能力边界 | S:进程成功不代表产物发布
 gpu-memory.ts[AB7T]: F:解析空闲显存并估算NVENC需求 | R:code:src/main/execution-limits.ts | A:硬件容量辅助 | S:探测不可用不得推定容量
-hardware-probe.ts[AB7T]: F:短时并行编码试验 | R:code:src/main/execution-limits.ts | A:运行容量探测 | S:超时或失败不证明并发
+hardware-probe.ts[AB7T]: F:用动态CPU画面或GPU画面验证存活重叠的编码会话 | R:code:src/main/execution-limits.ts | A:运行容量探测 | S:超时或失败不证明并发
 index.ts[EG8L]: F:启动Electron主进程并注册可信IPC，连接应用、队列、模型和知识恢复 | R:code:src/main/application.ts,code:src/main/agent-controller.ts,code:src/main/queue.ts | A:制作开始、状态刷新及手动或追加导出时持久化最近一次制作身份 | S:IPC先校验发送者；退出时取消运行任务；最近一次制作不从历史队列反推
 media-response.ts[AB7T]: F:对本地媒体请求返回可范围读取的Response | R:code:src/main/index.ts | A:受控媒体协议辅助 | S:仅按受信路径提供媒体
 media.ts[AB7T]: F:探测导入媒体属性并构造去源路径的视图 | R:code:src/main/ffmpeg.ts | A:素材目录owner | S:无效媒体不进入制作
@@ -79,7 +79,7 @@ model-connections.ts[AB7T]: F:隔离创作识别复核连接及ChatGPT运行会�
 paths.ts[AB7T]: F:文件指纹安全输出目录文件名分配与模板资源校验 | R:code:src/main/queue.ts | A:输出路径安全辅助 | S:不得覆盖源视频或现有输出
 platform.ts[AB7T]: F:跨Linux和Windows解析命令及字体候选路径 | R:code:src/main/ffmpeg.ts | A:平台路径辅助 | S:保留各平台路径语义
 preload.ts[AB7T]: F:以contextBridge向renderer暴露受限DesktopApi与事件监听 | R:code:src/main/index.ts | A:Electron IPC显式边界 | S:renderer不直接持有主进程能力
-queue.ts[AB7T]: F:持久导出任务状态机，编译渲染校验并安全发布输出 | R:code:src/main/compiler.ts | A:导出生命周期owner | S:partial经FFmpeg退出与ffprobe校验再无覆盖发布
+queue.ts[AB7L]: F:持久导出任务状态机，编译渲染校验并安全发布输出 | R:code:src/main/compiler.ts,code:src/main/execution-limits.ts | A:消费实测并发与均分线程的导出生命周期owner | S:partial经FFmpeg退出与ffprobe校验再无覆盖发布
 recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:code:src/main/application.ts | A:项目入口历史辅助 | S:不承担工作区或模板状态
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
 source-sticker-knowledge-session.ts[AB7T]: F:按源身份管理识别候选、多版本样片复核及修订传播 | R:code:src/main/source-sticker-knowledge-store.ts | A:源贴纸事实生命周期owner | S:不接纳近似覆盖位置作为事实

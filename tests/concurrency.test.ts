@@ -249,19 +249,20 @@ describe("global export concurrency", () => {
     expect(f.queue.snapshot().batches[0].batch.tasks.every((task) => task.status === "completed")).toBe(true);
   });
 
-  it("keeps CPU exports to one lane while giving that export eight threads", async () => {
+  it("runs CPU exports concurrently with a fair thread share and refills a slot", async () => {
     const f = await queueFixture(20, { kind: "software-only" });
-    const batch = await f.batch(2);
+    const batch = await f.batch(6);
     const running = f.queue.start(batch.id);
-    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
-    expect(f.compile.mock.calls[0][3].threads).toBe(8);
-    expect(f.compile.mock.calls[0][3].videoEncoder).toBe("libx264");
+    await vi.waitFor(() => expect(f.commands).toHaveLength(5));
+    expect(f.compile.mock.calls.map((call) => call[3].threads)).toEqual(Array(5).fill(4));
+    expect(f.compile.mock.calls.map((call) => call[3].videoEncoder)).toEqual(Array(5).fill("libx264"));
     await f.commands[0].finish();
-    await vi.waitFor(() => expect(f.commands).toHaveLength(2));
-    expect(f.compile.mock.calls[1][3].threads).toBe(8);
-    await f.commands[1].finish();
+    await vi.waitFor(() => expect(f.commands).toHaveLength(6));
+    expect(f.compile.mock.calls[5][3].threads).toBe(4);
+    await Promise.all(f.commands.slice(1).map((command) => command.finish()));
     await running;
-    expect(f.peak()).toBe(1);
+    expect(f.peak()).toBe(5);
+    expect(f.queue.snapshot().batches[0].batch.tasks.every((task) => task.status === "completed")).toBe(true);
   });
 
   it("keeps CPU budget available so progressive GPU arrivals fill every slot", async () => {
@@ -302,7 +303,7 @@ describe("global export concurrency", () => {
     expect(f.queue.snapshot().batches[0].batch.tasks[0].status).toBe("failed");
   });
 
-  it("renders and verifies real FFmpeg exports up to the hardware concurrency limit", async (context) => {
+  it("renders and verifies two real FFmpeg CPU exports concurrently", async (context) => {
     const [ffmpegPath, ffprobePath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe")]);
     if (!ffmpegPath || !ffprobePath) { context.skip(); return; }
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-parallel-ffmpeg-"));
@@ -321,8 +322,9 @@ describe("global export concurrency", () => {
       return { ...command, promise: command.promise.finally(() => { active--; }) };
     });
     const item = { ...media(), sourcePath: source, fingerprint: await fingerprintFile(source), width: 320, height: 180, durationMs: 2000 };
-    const queue = new ExportQueue({ jobStore: new JobStore(path.join(directory, "jobs")), ffmpeg: adapter, fontResolver: { resolve: async () => null } });
-    const count = limits.executionLimits().exports;
+    const profile = limits.executionLimits(8, "libx264", { totalBytes: 16 * 1024 ** 3, availableBytes: 10 * 1024 ** 3 });
+    const queue = new ExportQueue({ jobStore: new JobStore(path.join(directory, "jobs")), ffmpeg: adapter, executionLimits: profile, fontResolver: { resolve: async () => null } });
+    const count = profile.exports;
     const batch = await queue.createBatch({ template: createDefaultTemplate(), mediaIds: Array.from({ length: count }, () => item.id), mediaItems: [item], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
     await queue.start(batch.id);
     const tasks = queue.snapshot().batches[0].batch.tasks;

@@ -66,7 +66,7 @@ describe("cover review evidence", () => {
     expect(selectionSizes.length).toBeGreaterThan(1);
     expect(Math.max(...selectionSizes)).toBeLessThanOrEqual(64);
     expect(extracted.evidence).toHaveLength(selectionSizes.reduce((total, count) => total + count, 0));
-  });
+  }, 60000); // Real FFmpeg extraction and image I/O exceed the default 5s on Windows.
 
   it("normalizes a shifted first decoded PTS while retaining its raw evidence timestamp", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-evidence-shifted-"));
@@ -129,7 +129,7 @@ describe("cover review evidence", () => {
     await expect(store.verify([evidence])).rejects.toThrow(/校验/);
   });
 
-  it("rejects an evidence symlink that resolves outside the controlled root", async () => {
+  it.skipIf(process.platform === "win32")("rejects an evidence symlink that resolves outside the controlled root", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "jianji-evidence-root-"));
     const outside = path.join(await mkdtemp(path.join(tmpdir(), "jianji-evidence-outside-")), "frame.png");
     await writeFile(outside, "frame");

@@ -169,13 +169,10 @@ export default function App() {
   const encoderLabel = !capability ? "本地编码"
     : capability.kind === "hardware" ? hardwareLabels[capability.encoder]
     : "CPU 编码";
-  // Three-state classification: `hardware` is the happy path; `software-fallback`
-  // means ffmpeg lists a HW encoder but the runtime probe failed (typical:
-  // vLLM/Qwen holding the GPU). `software-only` means ffmpeg has no HW encoder
-  // compiled in. Both still encode — the dot is just a hint to free the GPU
-  // before kicking off a big batch.
+  // A listed GPU encoder can fail its runtime probe for several reasons,
+  // including an incompatible driver or insufficient available resources.
   const engineWarning = !capability ? undefined
-    : capability.kind === "software-fallback" ? { kind: "fallback" as const, message: "GPU 显存被其他进程占用,渲染会显著变慢" }
+    : capability.kind === "software-fallback" ? { kind: "fallback" as const, message: "GPU 编码试运行未通过；可能是驱动不兼容、资源不足或设备被占用。已改用 CPU 编码。" }
     : capability.kind === "software-only" ? { kind: "only" as const, message: "未检测到硬件编码器,使用 CPU 软编码" }
     : undefined;
   const engineLabel = state.capabilities.ready ? `${encoderLabel} · ${state.capabilities.executionLimits?.exports ?? 1} 路` : "引擎待配置";
@@ -342,7 +339,7 @@ export default function App() {
             corners: current.corners && Object.fromEntries(Object.entries(current.corners).map(([corner, selection]) => [corner, selection?.type === "sticker" && selection.sticker === id ? { type: "none" as const } : selection])),
           }));
         }} />}
-        {step === "connection" && <ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => void run(async () => { apply(await window.jianji.loginChatGPT()); })} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); setWorkflowSection("materials"); setStep("import"); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={() => { setWorkflowSection("materials"); setStep("import"); }} />}
+        {step === "connection" && <ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => { setNotice(undefined); void window.jianji.loginChatGPT().then(apply).catch((error) => { const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "登录未完成，请重试。"; setNotice({ error: true, text: message }); }); }} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); setWorkflowSection("materials"); setStep("import"); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={() => { setWorkflowSection("materials"); setStep("import"); }} />}
         {step === "import" && <>
           <Heading title="素材">导入视频，选择要包装的素材。每条素材独立包装，不合并、不裁剪；贴纸与滤镜可以交给 Agent 自主安排。</Heading>
           <MaterialCollection name={collectionName} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} onOpen={(id) => void changeProject(true, id)} onRename={renameSavedCollection} onDelete={removeSavedCollection} recentProjects={state.recentProjects ?? []} activeRecentId={state.activeRecentProjectId} />

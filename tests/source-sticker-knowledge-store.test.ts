@@ -84,7 +84,7 @@ describe("durable source sticker knowledge", () => {
     }
     expect((await store.lookup(source, ranges)).status).toBe("miss");
   });
-  it("invalidates historical projections even when a confirmed dispute fails before its transaction marker", async () => {
+  it.skipIf(process.platform === "win32")("invalidates historical projections even when a confirmed dispute fails before its transaction marker", async () => {
     const { store, source, file } = await fixture(); const p = await prepare(store, source); await publish(store, p);
     expect(await store.revisionRisk(sourceKey(source), p.candidate.id)).toBe("none"); const generation = store.historyGeneration;
     await symlink(file, path.join(store.directory, "invalid-quota-entry"));

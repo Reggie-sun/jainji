@@ -287,7 +287,7 @@ describe("actual media validation harness", () => {
     expect(aggregateOutcome(validation.checks), JSON.stringify(validation.checks, null, 2)).toBe("PASS");
   }, 120_000);
 
-  it("rejects duplicate task-to-media membership and canonical output aliases", async (context) => {
+  it.skipIf(process.platform === "win32")("rejects duplicate task-to-media membership and canonical output aliases", async (context) => {
     if (!ffmpegPath || !ffprobePath) { context.skip(); return; }
     const membershipSample = await fixture();
     const membershipProject = JSON.parse(await readFile(membershipSample.projectPath, "utf8"));

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { checkCapabilities, discoverBinary, refreshFontCapabilities, resolveFont } from "../src/main/ffmpeg";
+import { executionLimits } from "../src/main/execution-limits";
 
 const directories: string[] = [];
 afterEach(async () => {
@@ -10,7 +11,7 @@ afterEach(async () => {
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
-async function fixture(encoders: string, probeWorks: boolean, concurrentWorks = probeWorks) {
+async function fixture(encoders: string, probeWorks: boolean, concurrentWorks = probeWorks, softwareWorks = true) {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-encoder-capabilities-"));
   directories.push(directory);
   const bin = path.join(directory, "tools", "ffmpeg", "bin");
@@ -21,7 +22,8 @@ if (args.includes('-encoders')) console.log(${JSON.stringify(encoders + " aac")}
 else if (args.includes('-filters')) console.log('drawtext overlay');
 else if (args.includes('-version')) console.log('ffmpeg version fixture');
 else if (args.includes('-progress')) {
-  if (!${concurrentWorks}) process.exit(1);
+  const software = args[args.indexOf('-c:v') + 1] === 'libx264';
+  if (software ? !${softwareWorks} : !${concurrentWorks}) process.exit(1);
   setInterval(() => console.log('out_time_ms=100000\\nprogress=continue'), 50);
 }
 else process.exit(${probeWorks ? 0 : 1});
@@ -51,7 +53,8 @@ it.skipIf(process.platform === "win32")("reports the software-fallback route whe
   expect(result.status.ready).toBe(true);
   expect(result.status.videoEncoder).toEqual({ kind: "software-fallback" });
   expect(result.status.videoEncoderReason).toBe("fallback");
-  expect(result.status.executionLimits?.exports).toBe(1);
+  expect(result.status.executionLimits?.exports).toBeGreaterThanOrEqual(1);
+  expect(result.status.executionLimits?.exports).toBeLessThanOrEqual(executionLimits().exports);
 });
 
 it.skipIf(process.platform === "win32")("locks export when neither encoder is usable", async () => {
@@ -68,7 +71,7 @@ it.skipIf(process.platform === "win32")("reports software-only when libx264 is t
   expect(result.status.ready).toBe(true);
   expect(result.status.videoEncoder).toEqual({ kind: "software-only" });
   expect(result.status.videoEncoderReason).toBe("only");
-  expect(result.status.executionLimits?.exports).toBe(1);
+  expect(result.status.executionLimits?.exports).toBeGreaterThanOrEqual(1);
 });
 
 it.skipIf(process.platform === "win32")("does not retain a GPU profile when session validation fails after a single encode succeeds", async () => {
@@ -76,7 +79,15 @@ it.skipIf(process.platform === "win32")("does not retain a GPU profile when sess
   const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
   expect(result.status.videoEncoder).toEqual({ kind: "software-fallback" });
   expect(result.status.videoEncoderReason).toBe("fallback");
-  expect(result.status.executionLimits?.exports).toBe(1);
+  expect(result.status.executionLimits?.exports).toBeGreaterThanOrEqual(1);
+});
+
+it.skipIf(process.platform === "win32")("locks exports if the listed CPU encoder also fails its live probe", async () => {
+  const { directory } = await fixture("libx264", true, true, false);
+  const result = await checkCapabilities(directory, async () => "/fixture/font.ttf");
+  expect(result.status.ready).toBe(false);
+  expect(result.status.videoEncoder).toBeUndefined();
+  expect(result.status.executionLimits?.exports).toBe(0);
 });
 
 it.skipIf(process.platform === "win32")("honors an explicit binary override before the app-local engine", async () => {

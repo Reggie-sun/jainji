@@ -27,7 +27,7 @@ import { type FfmpegAdapter, type RunningCommand } from "./ffmpeg.js";
 import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathWithinDirectory, validateTemplateResources, type FontResolver } from "./paths.js";
 import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
-import { executionLimits } from "./execution-limits.js";
+import { executionLimits, exportThreads } from "./execution-limits.js";
 import type { H264Capability, H264Encoder } from "./video-encoder.js";
 import { outputDimensions } from "../shared/export-settings.js";
 import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } from "./gpu-memory.js";
@@ -485,7 +485,7 @@ export class ExportQueue {
         return;
       }
       gpuBudget -= gpuMemory;
-      const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.resolveEncoder() !== "libx264" ? this.limits.exports : 2))));
+      const maxThreads = exportThreads(this.limits);
       const threads = Math.min(maxThreads, freeThreads);
       this.pendingPreviews.shift();
       preview.signal.removeEventListener("abort", preview.abortListener);
@@ -512,9 +512,9 @@ export class ExportQueue {
         }
         task.errorMessage = undefined;
         gpuBudget -= gpuMemory;
-        // Reserve a fair CPU share for later GPU jobs, which arrive progressively
+        // Reserve a fair CPU share for later jobs, which arrive progressively
         // while the Agent is planning; early exports must not consume all slots' budget.
-        const maxThreads = Math.max(1, Math.min(8, Math.floor(this.limits.threads / (this.resolveEncoder() !== "libx264" ? this.limits.exports : 2))));
+        const maxThreads = exportThreads(this.limits);
         const threads = Math.min(maxThreads, freeThreads);
         const work = this.execute(state, task, threads).catch((error: unknown) => {
           this.executionError ??= error;

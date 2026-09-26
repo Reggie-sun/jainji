@@ -143,13 +143,21 @@ export class ChatGPTSession {
   }
   async login(): Promise<void> {
     if (this.loginId || this.state.status === "starting") throw new ProviderError("登录正在进行中。");
+    const attemptRevision = this.revision;
     this.set({ status: "starting" });
     // A metadata/network failure must not erase an already persisted login.
     try { if (await this.refresh()) return; }
     catch { this.set({ status: "error", message: "账户信息读取失败，请检查网络并刷新登录状态。" }); throw new ProviderError("无法读取 ChatGPT 账户信息，请重试。"); }
+    if (attemptRevision !== this.revision || this.disposed) return;
     try {
       const rpc = await this.client();
+      if (attemptRevision !== this.revision || this.disposed) return;
       const result = z.object({ type: z.literal("chatgpt"), loginId: z.string(), authUrl: z.string() }).parse(await rpc.request("account/login/start", { type: "chatgpt", useHostedLoginSuccessPage: true, appBrand: "chatgpt" }));
+      if (attemptRevision !== this.revision || this.disposed) {
+        await rpc.request("account/login/cancel", { loginId: result.loginId });
+        await rpc.request("account/logout", {});
+        return;
+      }
       this.loginId = result.loginId;
       this.set({ status: "logging-in" });
       this.loginTimer = setTimeout(() => {

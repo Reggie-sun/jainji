@@ -28,11 +28,11 @@ Windows 与 Linux 使用相同命令。开发启动器自动分配本地端口�
 
 ## Local Engine
 
-Windows x64 安装包内置 FFmpeg 9.0.1 essentials 的 `ffmpeg.exe`、`ffprobe.exe`，以及默认中文价格字体 Noto Sans CJK SC；用户无需另装 FFmpeg、字体、Node.js 或 Codex。Linux 仍需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg 和中文字体。启动时按 NVIDIA NVENC → AMD AMF → Intel QSV 顺序实际试编码，选用首个通过检测的硬件编码器；全部不可用时使用 `libx264`，CPU 软件编码始终单路。GPU 加速需要设备本身及匹配驱动；编码器列表或显卡名称不代表实际可用。
+Windows x64 安装包内置 FFmpeg 8.0.1 essentials 的 `ffmpeg.exe`、`ffprobe.exe`，以及默认中文价格字体 Noto Sans CJK SC；用户无需另装 FFmpeg、字体、Node.js 或 Codex。此构建使用 NVENC API 13.0，NVIDIA 驱动最低要求为 570，591.74 满足这一要求（见 [NVIDIA SDK 13.0 要求](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.0/read-me/index.html#system-requirements)）；实际 GPU 加速仍以启动试编码为准。Linux 仍需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg 和中文字体。启动时按 NVIDIA NVENC → AMD AMF → Intel QSV 顺序实际试编码，选用首个通过检测的硬件编码器；全部不可用时检测 `libx264` CPU 软件编码。编码器列表或显卡名称不代表实际可用。
 
-并发在每次启动时自动确定：每约 3 个可用 CPU 逻辑核允许一路 GPU 导出，上限 6 路；再按总内存、启动时可用内存降低上限，预留桌面与制作流程所需空间。程序会同时试编码验证候选路数，失败时逐级减少，全部失败则继续检测下一种编码器。队列与界面共享这份启动配置，界面显示编码器厂商和实际并发路数；换电脑或更新驱动后重启即可重新检测。检测只使用本地生成的测试画面，不请求模型，也不发送用户视频。
+GPU 和 CPU 并发均在每次启动时自动确定：每约 3 个可用 CPU 逻辑核允许一路 GPU 导出，每约 4 核允许一路 CPU 导出，两者上限均为 6 路；再按总内存、启动时可用内存降低上限，预留桌面与制作流程所需空间。程序会同时试编码验证候选路数，失败时逐级减少，GPU 全部失败则检测下一种编码器及 CPU；连一路 CPU 都未通过时锁定导出。CPU 探测使用动态 720p 测试画面和与队列一致的线程分配。队列与界面共享这份启动配置，界面显示编码器厂商和实际并发路数；换电脑或更新驱动后重启即可重新检测。检测只使用本地生成的测试画面，不请求模型，也不发送用户视频。
 
-文字、贴纸与滤镜合成仍使用 CPU；每个 GPU 任务按并发槽位均分线程预算，避免早到的任务占满预算。这是保守的资源与驱动准入策略，不是全素材测速，也不保证所有机器的绝对最快或任意高分辨率任务都不会耗尽资源。运行中不会因其他应用占用资源而重新选择编码器或静默重做失败任务；应结束当前批次后重启，重新检测可用资源。
+文字、贴纸与滤镜合成仍使用 CPU；CPU 和 GPU 任务均按实际并发槽位均分线程预算，避免早到的任务占满预算。低核心数、低可用内存或探测失败时仍可能只准入 1 路。这是保守的资源与驱动准入策略，不是全素材测速，也不保证所有机器的绝对最快或任意高分辨率任务都不会耗尽资源。运行中不会因其他应用占用资源而重新选择编码器或静默重做失败任务；应结束当前批次后重启，重新检测可用资源。
 
 引擎查找顺序为：`JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH` 显式指定的路径、应用用户目录下的 `tools/ffmpeg/bin/`、Windows 安装包内置引擎、系统 `PATH`。Linux 默认用户目录为 `~/.config/jianji`，Windows 为 `%APPDATA%/jianji`。手动覆盖本地引擎时应同时放入 `ffmpeg` 和 `ffprobe`（Windows 使用 `.exe`），保留构建的许可证文件。缺少硬件编码支持时会选用 CPU。
 
@@ -122,7 +122,7 @@ Agent 自动覆盖的近似位置不是源贴纸事实，不写入源知识库�
 
 ## Build And Verification
 
-Windows 0.1.2 安装包在 main `2d1ecb4` 基线上的功能与内置运行环境验证，见 [Windows 0.1.2 验证记录](docs/windows-verification-0.1.2.md)。
+最新 main `fce917d` 加上 Windows 修复的 0.1.5 安装包验证，见 [Windows 0.1.5 安装版验证记录](docs/windows-verification-0.1.5.md)。
 
 ### Validation Harness
 
@@ -146,10 +146,10 @@ npm run package:linux
 npm run package:win
 ```
 
-Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包，当前 Windows 安装文件名为 `jianji-setup-<version>.exe`。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带。Windows 打包脚本从固定版本获取 FFmpeg 并校验 SHA-256；离线构建可设置 `JIANJI_FFMPEG_ARCHIVE` 指向已下载的 `ffmpeg-9.0.1-essentials_build.zip`。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。推送 `v*` tag 会触发 Windows/Linux 打包并上传 GitHub Release；下载后仍需核对文件、安装与成片。当前 Windows 实机用例见 [Windows Acceptance Spec](docs/windows-acceptance-spec.md)，[0.1.2 验证记录](docs/windows-verification-0.1.2.md) 只适用于当时的安装包；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
+Linux 目标为 AppImage / deb，Windows 目标为 NSIS 安装包，当前 Windows 安装文件名为 `jianji-setup-<version>.exe`。安装依赖会下载对应平台的官方 Codex 二进制，并由安装包携带。Windows 打包脚本从固定版本获取 FFmpeg 并校验 SHA-256；离线构建可设置 `JIANJI_FFMPEG_ARCHIVE` 指向已下载的 `ffmpeg-8.0.1-essentials_build.zip`。请分别在对应系统构建并验证，跨系统打包不保证包含目标平台二进制。推送 `v*` tag 会触发 Windows/Linux 打包并上传 GitHub Release；下载后仍需核对文件、安装与成片。当前 Windows 实机用例见 [Windows Acceptance Spec](docs/windows-acceptance-spec.md)，[0.1.2 验证记录](docs/windows-verification-0.1.2.md) 只适用于当时的安装包；正式签名、图标、交互式安装、目标 GPU、真实模型与成片人工观看仍待验收。
 
 测试包含规则拒绝、Key 不回传、错误脱敏、取消、素材方案隔离、Windows/POSIX 路径，以及真实 FFmpeg 与本地模拟 API 的端到端处理。真实媒体测试缺少引擎或字体时会明确跳过。CI 配置覆盖 Ubuntu 与 Windows 的静态检查和测试；本地模拟服务测试不代表商业服务商已验证。`node scripts/cover-toggle-smoke.mjs` 用隔离 Chrome 验证覆盖开关、保存状态和装饰模式互不影响，不调用模型或修改用户项目。
 
-桌面交互 smoke 使用真实 Electron、IPC 和 FFmpeg，模型服务、OAuth App Server、CC Switch 数据库与文件选择器使用隔离 fixture。先构建，再在有图形环境的终端运行 `node scripts/desktop-smoke.mjs`；无显示的 Linux 可运行 `xvfb-run -a node scripts/desktop-smoke.mjs`。验证登录/取消/退出、CC Switch 导入及 Anthropic 图片请求、手动 API、素材导入、模板选择、自动导出、Key 不回传与窄窗口布局。另有真实 Codex 二进制初始化、独立登录目录和禁用工具配置测试，不发起真实登录或模型推理。真实账号授权和商业模型出片尚需用户登录后验证。
+桌面交互 smoke 使用真实 Electron、IPC 和 FFmpeg；账号登录与文件选择器使用隔离 fixture。先构建，再在有图形环境的终端运行 `node scripts/desktop-smoke.mjs`。当前默认验证登录与取消、素材导入及零模型请求的本地随机出片，检查原片未被改动和渲染异常；旧版其他 smoke scope 尚需按新版界面更新。反馈 smoke 另运行 `node scripts/feedback-smoke.mjs`，使用本地中继和 GitHub fixture，验证提交回执及正常退出后的恢复。真实账号授权和商业模型出片仍需用户登录后验证。
 
 接口依据：[Codex App Server](https://learn.chatgpt.com/docs/app-server)、[Codex authentication](https://learn.chatgpt.com/docs/auth)、[MiniMax Messages API](https://platform.minimax.io/docs/api-reference/text-chat-anthropic)、[OpenAI Images and vision](https://developers.openai.com/api/docs/guides/images-vision)。实际图片能力取决于所选模型与服务商。
