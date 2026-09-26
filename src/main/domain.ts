@@ -12,6 +12,7 @@ import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
 import { SourceFactsSchema } from "../shared/source-sticker-knowledge.js";
 import { CoverPlacementSchema } from "../shared/cover-placement.js";
 import { JianjiError } from "./errors.js";
+import { FrozenShapeCoverSchema } from "../shared/shape-cover.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -133,6 +134,7 @@ export const StickerLayerSchema = z.object({
     regionId: z.string().uuid().optional(),
     sharedSticker: z.literal(true).optional(),
     selection: z.object({ runId: z.string().uuid(), round: z.number().int().positive() }).strict().optional(),
+    shapeMatched: FrozenShapeCoverSchema.optional(),
   }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;
@@ -194,6 +196,16 @@ export const EditTemplateSchema = z.object({
       if (layer.rotationDeg !== 0) ctx.addIssue({ code: "custom", path: ["layers", index, "rotationDeg"], message: "覆盖贴纸不支持旋转" });
       if (layer.opacity !== 1) ctx.addIssue({ code: "custom", path: ["layers", index, "opacity"], message: "覆盖贴纸必须完全不透明" });
       if (layer.cover.automatic && (!layer.cover.motion || !layer.cover.targetId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover"], message: "自动覆盖必须有识别目标与轨迹" });
+      const shape = layer.cover.shapeMatched;
+      if (shape) {
+        const motion = layer.cover.motion;
+        const frame = motion?.keyframes[0];
+        if (!layer.visible || layer.x !== 0 || layer.y !== 0 || layer.width !== 1 || layer.cover.height !== 1 || !layer.cover.automatic || layer.cover.opaqueBackground
+          || layer.cover.targetId !== shape.targetId || layer.cover.stickerId !== shape.candidateId || layer.assetFingerprint !== `sha256:${shape.pngSha256}`
+          || !motion || motion.startMs !== shape.range.startMs || motion.endMs !== shape.range.endMs || motion.keyframes.length !== 1 || frame?.timeMs !== shape.range.startMs
+          || frame.rectangle.x !== 0 || frame.rectangle.y !== 0 || frame.rectangle.width !== 1 || frame.rectangle.height !== 1
+          || template.coverPlacement || template.sourceStickerKnowledge) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "shapeMatched"], message: "Frozen shape cover must retain its full-canvas pixel and range binding" });
+      }
     }
     if (layoutPolicy && layer.type === "sticker" && !layer.cover) {
       for (const message of cornerSafeStickerIssues(layer, layoutPolicy)) ctx.addIssue({ code: "custom", path: ["layers", index], message });

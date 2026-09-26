@@ -6,10 +6,11 @@ import { outputDimensions, type ExportSettings } from "../shared/export-settings
 import type { SourceIdentity } from "../shared/source-sticker-knowledge.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
 import type { PixelSize, SourceToOutput } from "./shape-cover-pixel-gate.js";
+import { SHAPE_COVER_ALPHA_VERSION, MAX_FROZEN_SHAPE_BYTES } from "../shared/shape-cover.js";
 
 export interface ShapeCoverPlacement extends PixelSize { x: number; y: number }
 export interface ShapeCoverMediaTools { ffmpegPath: string; ffprobePath: string; signal?: AbortSignal }
-export const SHAPE_COVER_ALPHA_VERSION = "ffmpeg-bicubic-contain-rgba-v1";
+export { SHAPE_COVER_ALPHA_VERSION } from "../shared/shape-cover.js";
 const MAX_PIXELS = 16_777_216;
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;
 const digest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
@@ -78,7 +79,7 @@ const AssetProbe = z.object({ streams: z.array(z.object({ codec_name: z.enum(["p
 })).length(1) });
 
 /** Fully transparent/partial alpha survives decoding; only the pixel gate decides opacity. */
-export async function rasterizeShapeCoverAlpha(bytes: Buffer, output: PixelSize, placement: ShapeCoverPlacement, tools: ShapeCoverMediaTools) {
+async function rasterizeArtwork(bytes: Buffer, output: PixelSize, placement: ShapeCoverPlacement, tools: ShapeCoverMediaTools, includeRgba: boolean) {
   if (![output.width, output.height, placement.width, placement.height].every(value => Number.isSafeInteger(value) && value > 0)
     || ![placement.x, placement.y].every(value => Number.isSafeInteger(value) && value >= 0)
     || output.width * output.height > MAX_PIXELS || placement.x + placement.width > output.width || placement.y + placement.height > output.height) throw new Error("invalid final-pixel placement");
@@ -92,6 +93,32 @@ export async function rasterizeShapeCoverAlpha(bytes: Buffer, output: PixelSize,
     "-frames:v", "1", "-threads", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"], bytes, placement.width * placement.height * 4)).stdout;
   if (raster.length !== placement.width * placement.height * 4) throw new Error("incomplete FFmpeg alpha raster");
   const alpha = new Uint8Array(output.width * output.height);
+  const rgba = includeRgba ? Buffer.alloc(alpha.length * 4) : undefined;
+  if (rgba) for (let y = 0; y < placement.height; y++) raster.copy(rgba, ((placement.y + y) * output.width + placement.x) * 4, y * placement.width * 4, (y + 1) * placement.width * 4);
   for (let y = 0; y < placement.height; y++) for (let x = 0; x < placement.width; x++) alpha[(placement.y + y) * output.width + placement.x + x] = raster[(y * placement.width + x) * 4 + 3];
-  return { alpha, alphaSha256: digest(alpha), rasterVersion: SHAPE_COVER_ALPHA_VERSION, artwork: { width: artworkWidth, height: artworkHeight } };
+  return { rgba, alpha, alphaSha256: digest(alpha), rasterVersion: SHAPE_COVER_ALPHA_VERSION, artwork: { width: artworkWidth, height: artworkHeight } };
+}
+
+export async function rasterizeShapeCoverArtwork(bytes: Buffer, output: PixelSize, placement: ShapeCoverPlacement, tools: ShapeCoverMediaTools) {
+  const result = await rasterizeArtwork(bytes, output, placement, tools, true);
+  return { ...result, rgba: result.rgba! };
+}
+
+export async function rasterizeShapeCoverAlpha(bytes: Buffer, output: PixelSize, placement: ShapeCoverPlacement, tools: ShapeCoverMediaTools) {
+  const { rgba: _rgba, ...result } = await rasterizeArtwork(bytes, output, placement, tools, false);
+  return result;
+}
+
+export async function encodeShapeCoverPng(rgba: Buffer, size: PixelSize, tools: ShapeCoverMediaTools): Promise<Buffer> {
+  if (size.width * size.height > MAX_PIXELS || rgba.length !== size.width * size.height * 4) throw new Error("Invalid frozen RGBA raster");
+  return (await mediaCommand(tools, tools.ffmpegPath, ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${size.width}x${size.height}`,
+    "-i", "pipe:0", "-frames:v", "1", "-threads", "1", "-c:v", "png", "-f", "image2pipe", "pipe:1"], rgba, MAX_FROZEN_SHAPE_BYTES)).stdout;
+}
+
+export async function decodeShapeCoverPng(bytes: Buffer, size: PixelSize, tools: ShapeCoverMediaTools): Promise<Buffer> {
+  if (size.width * size.height > MAX_PIXELS || bytes.length > MAX_FROZEN_SHAPE_BYTES) throw new Error("Oversized frozen shape raster");
+  const rgba = (await mediaCommand(tools, tools.ffmpegPath, ["-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1", "-i", "pipe:0",
+    "-frames:v", "1", "-threads", "1", "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"], bytes, size.width * size.height * 4)).stdout;
+  if (rgba.length !== size.width * size.height * 4) throw new Error("Incomplete frozen shape raster");
+  return rgba;
 }

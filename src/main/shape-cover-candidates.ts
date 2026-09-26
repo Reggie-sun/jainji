@@ -72,7 +72,7 @@ const Request = z.object({
 });
 
 type AdmittedTarget = { target: IntendedShapeCoverTarget; mask: SourcePixelMask; sourceMask: Uint8Array; factsDigest: string };
-async function admittedTarget(target: IntendedShapeCoverTarget, store: SourceStickerKnowledgeStore): Promise<AdmittedTarget> {
+export async function readAdmittedShapeCoverTarget(target: IntendedShapeCoverTarget, store: SourceStickerKnowledgeStore): Promise<AdmittedTarget> {
   await store.verifySource(target.sourcePath, target.source);
   const head = await store.readHead(target.source);
   if (!head || head.revision.id !== target.revisionId || head.revision.state !== "reviewed" || head.revision.sourceKey !== sourceKey(target.source)
@@ -95,7 +95,7 @@ export async function computeCommonShapeCoverCandidates(request: ShapeCoverCandi
     const admitted: AdmittedTarget[] = [];
     for (const target of input.intendedTargets) {
       tools.signal?.throwIfAborted();
-      admitted.push(await admittedTarget(target, store));
+      admitted.push(await readAdmittedShapeCoverTarget(target, store));
     }
     // All intended masks are admitted before any candidate bytes/alpha are opened.
     const cells: Array<{ binding: Omit<ShapeCoverCandidateEvaluation, "candidateId" | "assetFingerprint" | "verdict">; oldFinal: Uint8Array; sourceScale: number }> = [];
@@ -133,7 +133,7 @@ export async function computeCommonShapeCoverCandidates(request: ShapeCoverCandi
     // Read-only computation is not a store transaction: recheck bindings before handing off.
     for (const { target, factsDigest } of admitted) {
       tools.signal?.throwIfAborted();
-      const current = await admittedTarget(target, store);
+      const current = await readAdmittedShapeCoverTarget(target, store);
       if (current.factsDigest !== factsDigest) throw new Error("Source facts changed during candidate evaluation");
     }
     for (const candidate of input.candidates) if (result.commonSafeCandidateIds.includes(candidate.id)) {

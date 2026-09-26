@@ -72,3 +72,19 @@ spec: shape-matched-cover-spec.md
 **Acceptance / Verification:** 缺任一 intended target、第二目标排除首目标候选、空交集、各设置独立拒绝、真实透明 alpha、源/证据/资产篡改、修订变化、取消与非法几何均可执行验证。运行相关 M3/M4-A 测试、`npm run typecheck` 和全套测试；在 commit 前执行 `verification-before-completion`，检查最终 diff。需要真实 FFmpeg 的测试不得用合成 alpha 冒充媒体读取。
 
 **Out of Scope:** 不接 AgentRunner/Controller、UI、选款调用、compiler/renderer、图层冻结或正式导出；不证明内容安全或全片 PTS/成片验收。结果标记 `geometry-only` 与 `contentSafety: NOT_EVALUATED`，不会成为生产 PASS。下一阶段仍须冻结实际图层、逐帧时序复核、原队列样片与独立内容安全检查。
+
+# Active Slice — M4-B2
+
+2026-09-27 用户在 M4-B1 检查点后授权继续。沿用原 plan，以 `superpowers:writing-plans` 固定本切片合同，再由 Native Codex 串行实现；不创建 worktree，不调用产品 Agent、付费模型或 Kimi review。
+
+**Goal / Owners:** `shape-cover-freeze.ts` 从重新核对的 whole-round common candidate 生成带有限不透明轮廓的最终像素 PNG；`shared/shape-cover.ts` 定义显式冻结策略和绑定；`shape-cover-render.ts` 验证模板/源/设置绑定并读取 PNG 快照。`shape-cover-alpha.ts` 复用真实 RGBA 媒体路径，`shape-cover-candidates.ts` 只暴露已存在的 admitted target seam。`domain.ts` 只扩展可选覆盖策略，`compiler.ts` 消费其原尺寸字节，`queue.ts` 沿现有任务文件路径写入/清理该快照，并阻止未准入正式输出；不增加第二 renderer 或队列。
+
+**Freeze Contract:** 调用者给出完整 M4-B1 request 与共同集合内 selected candidate ID。创建前重新计算矩阵；实际贴纸字节/alpha 必须匹配该矩阵，再生成最终 RGBA、无损 PNG，重新解码并核对像素与 100% coverage。每个 target/output 单元独立绑定 source identity/revision/facts/mask、候选原资产指纹、输出设置与 scale/pad、placement、required range、轮廓版本/半径及实际 PNG/RGBA/alpha 摘要。全部有效后以不替换已有文件方式发布；缺 mask、变化、取消、字节/coverage 不符均返回 `UNSAFE`，不产生可消费层。
+
+**Consumption / Compatibility:** 新策略为全输出画布的透明 PNG，compiler 直接 overlay=0:0，按半开 range 启停；不再缩放、crop、补白底、按归一化坐标重新舍入或联合价格渐隐。模板层的普通几何/轨迹字段须与策略一致，源或 preset 不匹配拒绝。compiler 将核对后的图层字节作为任务 binary file 交给原 queue；临时文件在成功、失败、取消时清理。无该策略的手动、assisted、历史冻结任务继续原分支。
+
+新策略的 30fps 转换在 overlay 前建立输出帧时钟，避免输出重采样使已停止覆盖的源帧落到仍需覆盖的输出 PTS。queue preview 须获得 canonical knowledge store，并在渲染前后复核冻结源 revision/mask/facts；缺 store、争议或变化均拒绝返回有效样片。发布使用本次独占的 UUID 子目录，失败只清理本次目录，保留其他 owner 的文件。
+
+**Safety Boundary:** 本切片仍是 `geometry-only / NOT_EVALUATED`，允许原 `renderPreview` 渲染样片，不允许 `createBatch`、`publishApprovedSample` 或恢复/重试执行新策略。不得添加可由调用者填入的假内容安全 PASS。逐输出 PTS、编码后边缘与真实源/成片对照在 fixture 上验证，不外推为用户素材/全片的生产准入；独立内容安全和选款整合留在后续切片。
+
+**Acceptance / Verification:** 用真实 admitted mask、实际 alpha 与带非零半径/透明边缘的 fixture 验证 round→freeze→原 queue preview；核对 PNG round-trip、输出帧时序及配对像素；测试模板/源/设置/资产篡改、冻结期间取消、计算后原候选删除仍可用、快照后冻结文件变化不能改已编译字节、未准入入队/发布/恢复均拒绝。运行 typecheck、M3/M4-A/M4-B1/模板/compiler/queue 相关测试及全套测试；按 `verification-before-completion` gate 在稳定候选检查 final diff、只提交本任务文件，记录到 `docs/shape-matched-cover-m4b2.md`。

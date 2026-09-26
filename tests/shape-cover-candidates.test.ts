@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,6 +9,15 @@ import { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledg
 import { computeCommonShapeCoverCandidates, type ShapeCoverCandidateRequest } from "../src/main/shape-cover-candidates";
 import * as alphaMedia from "../src/main/shape-cover-alpha";
 import type { ExportSettings } from "../src/shared/export-settings";
+import { freezeShapeCoverCandidate } from "../src/main/shape-cover-freeze";
+import { TemplateCompiler } from "../src/main/compiler";
+import { createDefaultTemplate, DEFAULT_PRESET, EditTemplateSchema, now, type MediaItem } from "../src/main/domain";
+import { decodeSourceMask, projectSourceMask, checkOutputFrameCoverage } from "../src/main/shape-cover-pixel-gate";
+import { shapeCoverDigest } from "../src/main/shape-cover-render";
+import { ExportQueue } from "../src/main/queue";
+import { JobStore } from "../src/main/store";
+import { FfmpegAdapter } from "../src/main/ffmpeg";
+import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 
 const available = ["ffmpeg", "ffprobe"].every(binary => spawnSync(binary, ["-version"], { stdio: "ignore" }).status === 0);
 const roots: string[] = [], stores: SourceStickerKnowledgeStore[] = [];
@@ -21,18 +30,284 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
-async function fixture(sourceSize = 64) {
+describe.skipIf(!available)("frozen shape pixels through the original compiler and queue", () => {
+  const mediaTools = { ffmpegPath: ffmpegBin, ffprobePath: ffprobeBin };
+  async function frozenFixture() {
+    const value = await fixture();
+    const pixels = Buffer.alloc(32 * 32 * 4);
+    for (let y = 3; y < 31; y++) for (let x = 3; x < 31; x++) {
+      const i = (y * 32 + x) * 4;
+      pixels[i] = 255;
+      pixels[i + 3] = x === 3 || y === 3 || x === 30 || y === 30 ? 128 : 255;
+    }
+    const assetPath = path.join(value.root, "contour.png");
+    expect(spawnSync(ffmpegBin, ["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "32x32", "-i", "pipe:0", "-frames:v", "1", "-threads", "1", assetPath], { input: pixels }).status).toBe(0);
+    const fingerprint = sha(await readFile(assetPath));
+    value.request.candidates = [{ id: `uploaded-${fingerprint}`, asset: { assetPath, assetFingerprint: `sha256:${fingerprint}` } }];
+    const frozen = await freezeShapeCoverCandidate(value.request, value.request.candidates[0].id, value.store, path.join(value.root, "frozen"), mediaTools);
+    expect(frozen, JSON.stringify(frozen)).toMatchObject({ status: "PASS", verification: "geometry-only", contentSafety: "NOT_EVALUATED" });
+    if (frozen.status !== "PASS") throw new Error("fixture freeze failed");
+    const layer = frozen.layers[0].layer;
+    const target = value.request.intendedTargets[0];
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath: target.sourcePath, displayName: "source", fingerprint: target.source.fingerprint,
+      sizeBytes: target.source.byteLength, durationMs: target.source.durationMs, width: target.source.width, height: target.source.height,
+      rotation: target.source.rotation, probeStatus: "ready", importedAt: now() };
+    const template = { ...createDefaultTemplate(), layers: [layer], decorationDisplayMode: "first-3s" as const };
+    const preset = { ...DEFAULT_PRESET, ...settings };
+    return { ...value, frozen, layer, target, media, template, preset };
+  }
+
+  it("round-trips the real contour PNG and renders its exact pixels and interval through queue preview", async () => {
+    const { root, store, request, frozen, layer, target, media, template, preset } = await frozenFixture();
+    expect(frozen.layers).toHaveLength(2);
+    const binding = layer.cover!.shapeMatched!;
+    expect(binding.radiusPx).toBe(2);
+    const png = await readFile(layer.assetPath);
+    const rgba = await alphaMedia.decodeShapeCoverPng(png, binding.projection, mediaTools);
+    expect(shapeCoverDigest(rgba)).toBe(binding.rgbaSha256);
+    expect(rgba[3]).toBe(0);
+    expect([...rgba.subarray((9 * 64 + 9) * 4, (9 * 64 + 9) * 4 + 4)]).toEqual([255, 127, 127, 255]);
+    const head = (await store.readHead(target.source))!;
+    const mask = head.revision.candidate.facts.targets[0].segments[0].mask!;
+    const oldFinal = projectSourceMask(decodeSourceMask(mask, target.source)!, target.source, binding.projection)!;
+    expect(oldFinal.every((marked, i) => !marked || rgba[i * 4 + 3] === 255)).toBe(true);
+    // Frozen pixels remain independent of the original catalog file.
+    await unlink(request.candidates[0].asset.assetPath);
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
+    const jobStore = new JobStore(path.join(root, "jobs"));
+    const compiler = new TemplateCompiler();
+    const compiledSpy = vi.spyOn(compiler, "compile");
+    const queue = new ExportQueue({ ffmpeg, jobStore, compiler, sourceKnowledgeStore: store, fontResolver: { resolve: async () => null }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
+    const cacheDirectory = path.join(root, "previews");
+    const preview = await queue.renderPreview({ template, media, preset, cacheDirectory, signal: new AbortController().signal });
+    const compiled = await compiledSpy.mock.results[0].value;
+    expect(compiled.binaryFiles[0].content.equals(png)).toBe(true);
+    expect(compiled.args).not.toContain(layer.assetPath);
+    const graph = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
+    expect(graph).toContain("overlay=0:0:enable='gte(t,0)*lt(t,2)'");
+    expect(graph).not.toMatch(/\b(scale|crop|pad|fade)=/);
+    expect((await readdir(cacheDirectory)).filter(file => !file.endsWith(".mp4"))).toEqual([]);
+    expect(queue.snapshot().batches).toEqual([]);
+    expect(await jobStore.loadAll()).toEqual([]);
+    const decoded = spawnSync(ffmpegBin, ["-v", "error", "-threads", "1", "-i", preview, "-f", "rawvideo", "-pix_fmt", "rgb24", "-threads", "1", "pipe:1"], { maxBuffer: 4 * 1024 * 1024 });
+    expect(decoded.status, decoded.stderr.toString()).toBe(0);
+    const pts = spawnSync(ffprobeBin, ["-v", "error", "-select_streams", "v:0", "-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", preview]);
+    expect(pts.status).toBe(0);
+    const times = JSON.parse(pts.stdout.toString()).frames.map((frame: { best_effort_timestamp_time: string }) => Number(frame.best_effort_timestamp_time) * 1000);
+    expect(checkOutputFrameCoverage(times, [binding.range], [layer.cover!.motion!])).toEqual({ status: "PASS" });
+    expect(times.length).toBe(90);
+    for (const [frame, time] of times.entries()) {
+      const offset = frame * 64 * 64 * 3;
+      for (let i = 0; i < oldFinal.length; i++) if (oldFinal[i] && time < 2000) expect(decoded.stdout[offset + i * 3], `frame=${frame}, pixel=${i}`).toBeGreaterThan(180);
+      const center = offset + (13 * 64 + 13) * 3;
+      if (time >= 2000) expect(decoded.stdout[center]).toBeLessThan(30);
+      expect(decoded.stdout[offset]).toBeGreaterThan(230);
+    }
+  });
+
+  it("rejects binding/resource tampering and keeps already compiled bytes immutable", async () => {
+    const { root, layer, media, template, preset } = await frozenFixture();
+    const compiler = new TemplateCompiler();
+    const options = { ffmpegPath: ffmpegBin, fontResolver: { resolve: async () => null }, textFilePath: (id: string) => path.join(root, `${id}.txt`), threads: 1 };
+    const compiled = await compiler.compile(template, media, preset, options);
+    const png = await readFile(layer.assetPath);
+    expect(compiled.binaryFiles![0].content.equals(png)).toBe(true);
+    await writeFile(layer.assetPath, "changed after compile");
+    expect(compiled.binaryFiles![0].content.equals(png)).toBe(true);
+    await expect(compiler.compile(template, media, preset, options)).rejects.toThrow("UNSAFE");
+    await writeFile(layer.assetPath, png);
+    await expect(compiler.compile(template, { ...media, fingerprint: "changed" }, preset, options)).rejects.toThrow("UNSAFE");
+    await expect(compiler.compile(template, media, { ...preset, frameRateMode: "30" }, options)).rejects.toThrow("UNSAFE");
+    for (const mutate of [
+      (copy: typeof template) => { copy.layers[0].x = 0.01; },
+      (copy: typeof template) => { copy.layers[0].cover!.opaqueBackground = true; },
+      (copy: typeof template) => { copy.layers[0].cover!.motion!.endMs = 2100; },
+      (copy: typeof template) => { copy.layers[0].visible = false; },
+    ]) { const copy = structuredClone(template); mutate(copy); expect(EditTemplateSchema.safeParse(copy).success).toBe(false); }
+    const changed = structuredClone(template); changed.layers[0].cover!.shapeMatched!.radiusPx++;
+    await expect(compiler.compile(changed, media, preset, options)).rejects.toThrow("UNSAFE");
+    const fakeSafety = structuredClone(template) as any; fakeSafety.layers[0].cover.shapeMatched.contentSafety = "PASS";
+    expect(EditTemplateSchema.safeParse(fakeSafety).success).toBe(false);
+  });
+
+  it("preserves half-open timing when actual 24fps source pixels are converted to padded 720p/30fps", async () => {
+    const { root, store, request } = await fixture(128, 24);
+    request.candidates = [request.candidates[2]];
+    request.outputSettings.push({ id: "720", settings: { ...settings, resolutionMode: "720p", frameRateMode: "30" } });
+    for (const target of request.intendedTargets) {
+      target.range = { startMs: 517, endMs: 2034 };
+      target.placements.push({ outputSettingId: "720", rectangle: { x: 314, y: 34, width: 210, height: 210 } });
+    }
+    const frozen = await freezeShapeCoverCandidate(request, request.candidates[0].id, store, path.join(root, "frozen"), mediaTools);
+    expect(frozen, JSON.stringify(frozen)).toMatchObject({ status: "PASS" });
+    if (frozen.status !== "PASS") throw new Error("freeze failed");
+    expect(frozen.layers).toHaveLength(4);
+    const target = request.intendedTargets[0];
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath: target.sourcePath, displayName: "24fps", fingerprint: target.source.fingerprint,
+      sizeBytes: target.source.byteLength, durationMs: target.source.durationMs, width: 128, height: 128, rotation: 0, probeStatus: "ready", importedAt: now() };
+    const queue = new ExportQueue({ ffmpeg: new FfmpegAdapter(ffmpegBin, ffprobeBin), jobStore: new JobStore(path.join(root, "jobs")), sourceKnowledgeStore: store,
+      fontResolver: { resolve: async () => null }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
+    const head = (await store.readHead(target.source))!;
+    const sourceMask = decodeSourceMask(head.revision.candidate.facts.targets[0].segments[0].mask!, target.source)!;
+    for (const cell of frozen.layers.filter(item => item.intendedTargetId === target.id)) {
+      const binding = cell.layer.cover!.shapeMatched!, size = binding.projection;
+      const oldFinal = projectSourceMask(sourceMask, target.source, size)!;
+      let left = size.width, right = 0, top = size.height, bottom = 0;
+      for (let i = 0; i < oldFinal.length; i++) if (oldFinal[i]) {
+        const x = i % size.width, y = Math.floor(i / size.width);
+        left = Math.min(left, x); right = Math.max(right, x + 1); top = Math.min(top, y); bottom = Math.max(bottom, y + 1);
+      }
+      const preview = await queue.renderPreview({ template: { ...createDefaultTemplate(), layers: [cell.layer] }, media,
+        preset: { ...DEFAULT_PRESET, ...binding.settings }, cacheDirectory: path.join(root, "previews"), signal: new AbortController().signal });
+      const pts = spawnSync(ffprobeBin, ["-v", "error", "-select_streams", "v:0", "-show_frames", "-show_entries", "frame=best_effort_timestamp_time", "-of", "json", preview]);
+      expect(pts.status).toBe(0);
+      const times: number[] = JSON.parse(pts.stdout.toString()).frames.map((frame: { best_effort_timestamp_time: string }) => Number(frame.best_effort_timestamp_time) * 1000);
+      expect(times).toHaveLength(binding.settings.frameRateMode === "30" ? 90 : 72);
+      expect(checkOutputFrameCoverage(times, [target.range], [cell.layer.cover!.motion!])).toEqual({ status: "PASS" });
+      const width = right - left, height = bottom - top;
+      const rgb = spawnSync(ffmpegBin, ["-v", "error", "-threads", "1", "-i", preview, "-vf", `crop=${width}:${height}:${left}:${top}:exact=1`,
+        "-f", "rawvideo", "-pix_fmt", "rgb24", "-threads", "1", "pipe:1"], { maxBuffer: 4 * 1024 * 1024 });
+      expect(rgb.status, rgb.stderr.toString()).toBe(0);
+      expect(rgb.stdout.length).toBe(times.length * width * height * 3);
+      for (const [frame, time] of times.entries()) {
+        const offset = frame * width * height * 3;
+        if (time >= binding.range.startMs && time < binding.range.endMs) for (let i = 0; i < width * height; i++) expect(rgb.stdout[offset + i * 3], `setting=${cell.outputSettingId}, frame=${frame}, pixel=${i}`).toBeGreaterThan(180);
+        else expect(rgb.stdout[offset + (Math.floor(height / 2) * width + Math.floor(width / 2)) * 3]).toBeLessThan(30);
+      }
+    }
+  });
+
+  it.each(["failure", "cancel", "write-failure"])("cleans task PNG copies after preview %s", async outcome => {
+    const { root, store, layer, media, template, preset } = await frozenFixture();
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
+    const controller = new AbortController();
+    const cancel = vi.fn(async () => undefined);
+    let copy: Buffer | undefined;
+    vi.spyOn(ffmpeg, "run").mockImplementation(args => ({
+      process: {} as any, cancel, promise: (async () => {
+        const copiedPath = args[args.lastIndexOf("-i") + 1];
+        copy = await readFile(copiedPath);
+        if (outcome === "cancel") controller.abort();
+        return { code: 1, stdout: "", stderr: "fixture failure" };
+      })(),
+    }));
+    const compiler = new TemplateCompiler();
+    if (outcome === "write-failure") {
+      const compile = compiler.compile.bind(compiler);
+      vi.spyOn(compiler, "compile").mockImplementation(async (...args) => {
+        const result = await compile(...args);
+        result.binaryFiles![0].path = path.join(root, "missing-directory", "shape.png");
+        return result;
+      });
+    }
+    const queue = new ExportQueue({ ffmpeg, compiler, jobStore: new JobStore(path.join(root, "jobs")), sourceKnowledgeStore: store, fontResolver: { resolve: async () => null } });
+    const cacheDirectory = path.join(root, "previews");
+    await expect(queue.renderPreview({ template, media, preset, cacheDirectory, signal: controller.signal })).rejects.toThrow();
+    if (outcome !== "write-failure") expect(copy?.equals(await readFile(layer.assetPath))).toBe(true);
+    else expect(copy).toBeUndefined();
+    expect(await readdir(cacheDirectory)).toEqual([]);
+    expect(cancel).toHaveBeenCalledTimes(outcome === "cancel" ? 1 : 0);
+  });
+
+  it("blocks enqueue, sample publication, approval replay and recovered execution until safety admission", async () => {
+    const { root, media, template, preset } = await frozenFixture();
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), jobStore = new JobStore(path.join(root, "jobs"));
+    const run = vi.spyOn(ffmpeg, "run");
+    const queue = new ExportQueue({ ffmpeg, jobStore, fontResolver: { resolve: async () => null } });
+    const input = { template, mediaIds: [media.id], mediaItems: [media], preset, outputDirectory: path.join(root, "exports") };
+    await expect(queue.createBatch(input)).rejects.toThrow("UNSAFE");
+    await expect(queue.createBatch({ ...input, submission: { submissionId: crypto.randomUUID(), mediaId: media.id, version: 1, bindingDigest: "0".repeat(64) } })).rejects.toThrow("UNSAFE");
+    await expect(queue.publishApprovedSample({ template, media, preset, samplePath: path.join(root, "fake.mp4"), outputDirectory: input.outputDirectory })).rejects.toThrow("UNSAFE");
+    expect(await jobStore.loadAll()).toEqual([]);
+    // Simulate a persisted task created by an older/experimental writer.
+    const legacy = await queue.createBatch({ ...input, template: createDefaultTemplate() });
+    const state = queue.snapshot().batches[0];
+    state.batch.templateSnapshot = template;
+    await jobStore.save(state);
+    const recovered = new ExportQueue({ ffmpeg, jobStore, fontResolver: { resolve: async () => null } });
+    await recovered.recover();
+    recovered.setMediaLookup(() => media);
+    await recovered.retry([legacy.tasks[0].id]);
+    expect(recovered.snapshot().batches[0].batch.tasks[0]).toMatchObject({ status: "failed", errorCode: "input_invalid" });
+    expect(run).not.toHaveBeenCalled();
+    expect(await readdir(input.outputDirectory)).toEqual([]);
+  });
+
+  it("requires current canonical knowledge both before and after preview rendering", async () => {
+    const { root, store, media, template, preset } = await frozenFixture();
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), jobStore = new JobStore(path.join(root, "jobs"));
+    const run = vi.spyOn(ffmpeg, "run");
+    const input = { template, media, preset, cacheDirectory: path.join(root, "previews"), signal: new AbortController().signal };
+    const missing = new ExportQueue({ ffmpeg, jobStore, fontResolver: { resolve: async () => null } });
+    await expect(missing.renderPreview(input)).rejects.toThrow("UNSAFE");
+    const queue = new ExportQueue({ ffmpeg, jobStore, sourceKnowledgeStore: store, fontResolver: { resolve: async () => null } });
+    const readHead = store.readHead.bind(store);
+    const spy = vi.spyOn(store, "readHead").mockImplementation(async source => {
+      const head = (await readHead(source))!;
+      return { ...head, revision: { ...head.revision, id: "new-head" } };
+    });
+    await expect(queue.renderPreview(input)).rejects.toThrow();
+    expect(run).not.toHaveBeenCalled();
+    let calls = 0;
+    spy.mockImplementation(async source => {
+      const head = (await readHead(source))!;
+      return ++calls === 1 ? head : { ...head, revision: { ...head.revision, id: "new-head" } };
+    });
+    await expect(queue.renderPreview(input)).rejects.toThrow();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(await readdir(input.cacheDirectory)).toEqual([]);
+    expect(await jobStore.loadAll()).toEqual([]);
+  });
+
+  it("cleans only its own published operation on late cancellation", async () => {
+    const { root, store, request } = await fixture();
+    request.candidates = [request.candidates[2]];
+    const destination = path.join(root, "frozen");
+    await mkdir(destination); await writeFile(path.join(destination, "keep.txt"), "other owner");
+    const readAsset = alphaMedia.readShapeCoverAsset;
+    let calls = 0;
+    const controller = new AbortController();
+    vi.spyOn(alphaMedia, "readShapeCoverAsset").mockImplementation(async (...args) => {
+      const bytes = await readAsset(...args);
+      if (++calls === 4) controller.abort();
+      return bytes;
+    });
+    expect(await freezeShapeCoverCandidate(request, request.candidates[0].id, store, destination, { ...mediaTools, signal: controller.signal })).toMatchObject({ status: "UNSAFE", layers: [] });
+    expect(calls).toBe(4);
+    expect(await readdir(destination)).toEqual(["keep.txt"]);
+    expect(await readFile(path.join(destination, "keep.txt"), "utf8")).toBe("other owner");
+  });
+
+  it("returns no layers on stale masks, wrong selection, changed PNG round-trip or cancellation", async () => {
+    const { root, store, request } = await fixture();
+    const destination = path.join(root, "frozen");
+    expect(await freezeShapeCoverCandidate(request, request.candidates[0].id, store, destination, mediaTools)).toMatchObject({ status: "UNSAFE", layers: [] });
+    const decode = alphaMedia.decodeShapeCoverPng;
+    const spy = vi.spyOn(alphaMedia, "decodeShapeCoverPng").mockImplementation(async (...args) => { const rgba = await decode(...args); rgba[0] ^= 1; return rgba; });
+    expect(await freezeShapeCoverCandidate(request, request.candidates[2].id, store, destination, mediaTools)).toMatchObject({ status: "UNSAFE", layers: [] });
+    spy.mockRestore();
+    const controller = new AbortController();
+    const encode = alphaMedia.encodeShapeCoverPng;
+    vi.spyOn(alphaMedia, "encodeShapeCoverPng").mockImplementation(async (...args) => { const png = await encode(...args); controller.abort(); return png; });
+    expect(await freezeShapeCoverCandidate(request, request.candidates[2].id, store, destination, { ...mediaTools, signal: controller.signal })).toMatchObject({ status: "UNSAFE", layers: [] });
+    expect(await readdir(root)).not.toContain("frozen");
+    request.intendedTargets[1].revisionId = "stale";
+    expect(await freezeShapeCoverCandidate(request, request.candidates[2].id, store, destination, mediaTools)).toMatchObject({ status: "UNSAFE", layers: [] });
+  });
+});
+
+async function fixture(sourceSize = 64, fps = 30) {
   const root = await mkdtemp(path.join(os.tmpdir(), "jianji-common-shape-")); roots.push(root);
   const store = await SourceStickerKnowledgeStore.open(root); stores.push(store);
   const targets: ShapeCoverCandidateRequest["intendedTargets"] = [];
   const sheet = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=", "base64");
   for (const [index, x] of [10, 26].entries()) {
     const sourcePath = path.join(root, `source-${index}.mp4`);
-    expect(spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", `color=c=white:s=${sourceSize}x${sourceSize}:r=30:d=3`,
+    expect(spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", `color=c=white:s=${sourceSize}x${sourceSize}:r=${fps}:d=3`,
       "-vf", `drawbox=x=${x}:y=10:w=8:h=8:color=black:t=fill`, "-c:v", "libx264", "-threads", "1", "-pix_fmt", "yuv420p", sourcePath]).status).toBe(0);
     const sourceBytes = await readFile(sourcePath), packedMask = Buffer.alloc(8, 255);
     const probe = { status: "CANDIDATE_REQUIRES_HUMAN_EDGE_REVIEW", reason: null, sourceSha256: sha(sourceBytes), sourceBytes: sourceBytes.length,
-      decodedSize: [sourceSize, sourceSize], roi: [0, 0, sourceSize, sourceSize], fps: 30, frameRange: [0, 60], decodedFrames: 60, sampleFrames: [0, 2, 4, 58],
+      decodedSize: [sourceSize, sourceSize], roi: [0, 0, sourceSize, sourceSize], fps, frameRange: [0, 60], decodedFrames: 60, sampleFrames: [0, 2, 4, 58],
       method: "temporal-max-channel-std-lt20-largest-8-connected-component-dilate-3-v1",
       temporalCore: { checkedFrames: 60, worst: { meanMaxChannelDifference: 0 }, limit: 40 },
       mask: { bboxHalfOpen: [x, 10, x + 8, 18], size: [8, 8], markedPixels: 64, packedFormat: "bitpack-lsb-row-major-v1", packedBytes: 8, packedSha256: sha(packedMask) },

@@ -6,6 +6,7 @@ import { getCornerSafePolicy, nearestStickerCorner } from "../shared/layout-poli
 import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Encoder } from "./video-encoder.js";
 import { coverMotionExpression, coverRasterExpressions } from "./cover-motion.js";
 import { decorationDisplaySeconds } from "../shared/decorations.js";
+import { readFrozenShapeCover } from "./shape-cover-render.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -29,6 +30,7 @@ export interface CompiledCommand {
   binary: string;
   args: string[];
   textFiles: TextFile[];
+  binaryFiles?: Array<{ path: string; content: Buffer }>;
   durationSeconds: number;
 }
 
@@ -91,6 +93,7 @@ export class TemplateCompiler {
     const template = EditTemplateSchema.parse(templateInput);
     assertPriceOnlyTemplate(template);
     const textFiles: TextFile[] = [];
+    const binaryFiles: Array<{ path: string; content: Buffer }> = [];
     const durationSeconds = Math.max(0.01, media.durationMs / 1000);
     const displaySeconds = decorationDisplaySeconds(template.decorationDisplayMode);
     const displayLimit = displaySeconds ? `lt(t,${displaySeconds})` : undefined;
@@ -108,7 +111,9 @@ export class TemplateCompiler {
     const graph: string[] = [];
     const dimensions = outputDimensions(media, preset);
     const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
-    const sourceFilters = ["setpts=PTS-STARTPTS", outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
+    const frozenShape = template.layers.some(layer => layer.type === "sticker" && layer.cover?.shapeMatched);
+    // Shape intervals must run on output PTS, before -r can duplicate/drop frames.
+    const sourceFilters = ["setpts=PTS-STARTPTS", frozenShape && preset.frameRateMode === "30" ? "fps=30" : null, outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
 
     const fadeOnVideoClock = (sticker: string): string => {
@@ -175,13 +180,23 @@ export class TemplateCompiler {
 
       // Overlay repeats the last frame of a still image, so decode it only once.
       // GIFs and unknown formats retain their animation and bounded input loop.
-      const stillImage = /\.(png|jpe?g)$/i.test(layer.assetPath);
-      args.push(...threadArgs, ...(stillImage ? [] : ["-t", durationSeconds.toFixed(3), "-stream_loop", "-1"]), "-i", layer.assetPath);
+      const shape = layer.cover?.shapeMatched;
+      const assetPath = shape ? options.textFilePath(`shape-${layer.id}.png`) : layer.assetPath;
+      if (shape) binaryFiles.push({ path: assetPath, content: await readFrozenShapeCover(layer, media, preset) });
+      const stillImage = !!shape || /\.(png|jpe?g)$/i.test(layer.assetPath);
+      args.push(...threadArgs, ...(stillImage ? [] : ["-t", durationSeconds.toFixed(3), "-stream_loop", "-1"]), "-i", assetPath);
       const stickerIndex = inputIndex;
       inputIndex += 1;
       const sourceLabel = `sticker${stickerIndex}src`;
       const scaledLabel = `sticker${stickerIndex}`;
       const nextLabel = `base${graph.length}`;
+      if (shape) {
+        // Final output pixels are already frozen: do not scale, crop or re-place them.
+        graph.push(`[${stickerIndex}:v]format=rgba,setpts=PTS-STARTPTS[${scaledLabel}]`);
+        graph.push(`[${baseLabel}][${scaledLabel}]overlay=0:0:enable='gte(t,${shape.range.startMs / 1000})*lt(t,${shape.range.endMs / 1000})':format=auto[${nextLabel}]`);
+        baseLabel = nextLabel;
+        continue;
+      }
       if (layer.cover) {
         const motion = layer.cover.motion;
         if (motion && (motion.endMs > media.durationMs || motion.keyframes.some((frame) => frame.timeMs > media.durationMs))) throw new Error("覆盖轨迹时间超出素材时长");
@@ -291,7 +306,7 @@ export class TemplateCompiler {
       "-nostats",
     );
 
-    return { binary: options.ffmpegPath, args, textFiles, durationSeconds };
+    return { binary: options.ffmpegPath, args, textFiles, ...(binaryFiles.length ? { binaryFiles } : {}), durationSeconds };
   }
 }
 

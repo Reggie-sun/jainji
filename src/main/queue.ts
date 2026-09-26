@@ -27,6 +27,8 @@ import { type FfmpegAdapter, type RunningCommand } from "./ffmpeg.js";
 import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathWithinDirectory, validateTemplateResources, type FontResolver } from "./paths.js";
 import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
+import { assertShapeCoverExportReady, verifyFrozenShapeSources } from "./shape-cover-render.js";
+import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import { executionLimits, exportThreads } from "./execution-limits.js";
 import type { H264Capability, H264Encoder } from "./video-encoder.js";
 import { outputDimensions } from "../shared/export-settings.js";
@@ -59,6 +61,7 @@ export interface ExportQueueDependencies {
   compiler?: TemplateCompiler;
   artifactVerifier?: ArtifactVerifier;
   fontResolver: FontResolver;
+  sourceKnowledgeStore?: SourceStickerKnowledgeStore;
   onSnapshot?: (snapshot: QueueSnapshot) => void;
 }
 
@@ -163,6 +166,7 @@ export class ExportQueue {
     signal.throwIfAborted();
     assertPriceOnlyTemplate(template);
     if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new Error("原素材已变化。");
+    await verifyFrozenShapeSources(template, media, this.dependencies.sourceKnowledgeStore, signal);
     const missing = await validateTemplateResources(template, this.dependencies.fontResolver);
     if (missing.length) throw new Error("预览依赖素材不可用。");
     await mkdir(preview.cacheDirectory, { recursive: true });
@@ -173,13 +177,15 @@ export class ExportQueue {
       textFilePath: (layerId) => path.join(directory, `${id}-${layerId}.txt`),
       threads, videoEncoder: this.resolveEncoder(),
     });
+    const files = [...compiled.textFiles, ...compiled.binaryFiles ?? []];
     try {
       if (this.resolveEncoder() === "h264_nvenc") {
         const free = await (this.dependencies.gpuFreeMemory ?? readGpuFreeMemory)();
         const size = outputDimensions(media, preset);
         if (free !== undefined && free - GPU_MEMORY_RESERVE_MIB < estimateNvencMemoryMiB(size.width, size.height)) throw new Error("GPU 显存不足，预览未开始。");
       }
-      await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
+      const written = await Promise.allSettled(files.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
+      for (const item of written) if (item.status === "rejected") throw item.reason;
       signal.throwIfAborted();
       if (this.shuttingDown) throw new Error("预览已停止。");
       let command: RunningCommand | undefined;
@@ -195,12 +201,13 @@ export class ExportQueue {
         });
         await measureCoverStage(preview.diagnostics, "artifact-verify", signal, async () => {
           await this.verifier.verify(output, id);
+          await verifyFrozenShapeSources(template, media, this.dependencies.sourceKnowledgeStore, signal);
           signal.throwIfAborted();
         });
         return output;
       } finally { signal.removeEventListener("abort", abort); this.controllers.delete(id); }
     } catch (error) { await unlink(output).catch(() => undefined); throw error; }
-    finally { await Promise.all(compiled.textFiles.map(({ path }) => unlink(path).catch(() => undefined))); }
+    finally { await Promise.all(files.map(({ path }) => unlink(path).catch(() => undefined))); }
   }
 
   constructor(private readonly dependencies: ExportQueueDependencies) {
@@ -259,6 +266,7 @@ export class ExportQueue {
 
   async createBatch(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
     signal?.throwIfAborted();
+    assertShapeCoverExportReady(input.template);
     if (!input.submission) return this.createBatchNow(input, signal);
     const frozen = structuredClone(input);
     const work = this.submissionChain.catch(() => undefined).then(async () => {
@@ -287,6 +295,7 @@ export class ExportQueue {
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
     assertPriceOnlyTemplate(template);
+    assertShapeCoverExportReady(template);
     const parsedPreset = ExportPresetSchema.parse(input.preset);
     const selected = input.mediaIds.map((id) => input.mediaItems.find((item) => item.id === id));
     if (selected.some((item): item is undefined => !item)) throw new JianjiError("存在未找到的素材。", "input_invalid", "input", false);
@@ -367,6 +376,7 @@ export class ExportQueue {
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
     assertPriceOnlyTemplate(template);
+    assertShapeCoverExportReady(template);
     if (input.media.probeStatus !== "ready") throw new JianjiError("只能发布已审核通过的素材。", "input_invalid", "input", false);
     await assertOutputDirectorySafe(input.outputDirectory, [input.media]);
     if (await fingerprintFile(input.media.sourcePath) !== input.media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
@@ -716,6 +726,7 @@ export class ExportQueue {
     await this.transition(state, task, "validating");
     try {
       assertPriceOnlyTemplate(state.batch.templateSnapshot);
+      assertShapeCoverExportReady(state.batch.templateSnapshot);
       await access(media.sourcePath, constants.R_OK);
       if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
       const missing = await validateTemplateResources(state.batch.templateSnapshot, this.dependencies.fontResolver);
@@ -732,8 +743,10 @@ export class ExportQueue {
         threads,
         videoEncoder: this.resolveEncoder(),
       });
-      temporaryTextFiles = compiled.textFiles.map((file) => file.path);
-      await Promise.all(compiled.textFiles.map((file) => writeFile(file.path, file.content, { encoding: "utf8", mode: 0o600 })));
+      const files = [...compiled.textFiles, ...compiled.binaryFiles ?? []];
+      temporaryTextFiles = files.map((file) => file.path);
+      const written = await Promise.allSettled(files.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
+      for (const item of written) if (item.status === "rejected") throw item.reason;
       if (await this.stopRequested(state, task)) {
         await Promise.all(temporaryTextFiles.map((filePath) => unlink(filePath).catch(() => undefined)));
         return;
@@ -750,7 +763,7 @@ export class ExportQueue {
       if (this.cancelRequested.has(task.id)) await running.cancel();
       const result = await running.promise.catch((error) => { throw error; });
       this.controllers.delete(task.id);
-      await Promise.all(compiled.textFiles.map((file) => unlink(file.path).catch(() => undefined)));
+      await Promise.all(files.map((file) => unlink(file.path).catch(() => undefined)));
       if (this.cancelRequested.delete(task.id)) {
         await unlink(partialPath).catch(() => undefined);
         if (task.status !== "cancelling") await this.transition(state, task, "cancelling");
