@@ -112,3 +112,15 @@ spec: shape-matched-cover-spec.md
 **Persistence / Restart:** 冻结模板与最终 artifact 可沿原 JobStore 保存，仅是可追溯数据；PASS authority 仍仅为 M4-B3 module-private handle。同进程只发布该 handle 绑定的原样片；普通 createBatch、append/retry、重放和重启恢复继续 fail-closed。重启不自动调用任何模型，不恢复 handle，不将 JSON PASS 或重新编码产物借作准入。缓存 PNG/预览为 run-local 文件，不承诺持久重放；对应持久化能力不在本切片实现。
 
 **Verification / Record:** `tests/shape-cover-candidates.test.ts` 增加 Controller→Runner→共同集合→整轮冻结→逐版模拟独立 reviewer→真实 FFmpeg→原队列同字节发布的集成证据；覆盖缺目标/mask、空共同集合、越界选款、未知内容安全、源漂移、取消和跨版本不复用 PASS。补角检查真实 placement/range；相关 controller/runner/provider/template/queue 与 shape 测试、typecheck、有限并发全套及官方 AOCI Verify/Check/Guide。记录到 `docs/shape-matched-cover-m4b4.md`，仅提交本切片文件及官方签发增量维护。用户两个项目文件删除保留。不调用真实产品 Agent、付费模型或 Kimi review；Parent 直接负责合同核查和最终 diff，模拟 reviewer 不等于真实语义/人工/Windows 验收。
+
+# Active Slice — M4-B4 Recovery Contract
+
+**Goal / Scope:** `dc8cd81` 后用户授权继续；本切片补齐持久化/重启合同及可执行恢复拒绝证据，仍属 M4。只修改本 plan、`tests/shape-cover-candidates.test.ts` 与 milestone 记录；不新增可恢复 PASS、持久准入格式、模型调用入口或 queue lifecycle。运行期缓存缺少持久绑定与托管能力，当前不能合法支持 shape 重启重试，明确保持 fail-closed。
+
+**Data / Authority:** JobStore 保存的冻结模板、preset、素材快照和完成 artifact 是可追溯数据；shape JSON 保持 `NOT_EVALUATED`，不能签发、恢复或迁移 opaque handle。序列化 handle、旧进程对象、字段齐全的 JSON PASS、已存在样片或输出文件均不构成新发布许可。准入 module 重新加载后必须拒绝旧 handle，不能只靠恢复 queue 实例验证进程边界。
+
+**Recovery / Crash:** 原 `ExportQueue.recover/hydrate` 只加载状态，将未完成的 queued/执行中任务记为 interrupted，不自动 start、复核或模型调用。已持久 completed 的 shape artifact 可以保留读取，即使运行期 PNG/样片已清理，也不重新渲染。未持久 completed 的任务即使正式路径存在文件也保持 interrupted，不凭文件名或内容猜完成；显式原 retry 继续拒绝 shape，不能重新编码、重选或借旧样片 PASS。已有正式文件不得被删除或覆盖；本切片不自动认领发布与 completed 保存之间的未知结果。
+
+**Future Support Boundary:** 若将来支持显式重试，必须先有受主进程托管、版本化且有大小/路径边界的完整 request、原候选/最终 PNG/真实样片字节及来源/输出绑定；只有源知识或模板 JSON 不够。还必须明确定义精确项目/版本授权、已发布与未知结果的幂等核查、原队列发布原子性、取消、丢失/损坏和清理责任。旧 PASS 仍不恢复 authority；重启后只接受用户明确动作启动 fresh 独立样片准入，不能自动调用模型；新样片只能获得自己字节的 fresh PASS。该能力未在本切片实现或开启，不改变历史矩形重试合同。
+
+**Acceptance / Verification:** 增加真实 FFmpeg 准入结果的 JSON replay 和 fresh-module 拒绝；完成文件经 JobStore 恢复、清理运行期缓存后保留读取，retry 不执行；分别投影 validating/running/verifying 三个持久状态后恢复为 interrupted，显式 retry 失败且旧正式文件保留、无新增输出/FFmpeg/复核调用。持久状态投影不是实际 kill/fsync 或 Windows 掉电测试。执行 typecheck、shape/queue/store/migration/preview 相关测试、有限并发全套及官方只读 Verify/Check/Guide；无受管源码变化不调用 Maintain。记录到 `docs/shape-matched-cover-m4b4-recovery.md`，检查 final diff 并仅提交本切片路径。

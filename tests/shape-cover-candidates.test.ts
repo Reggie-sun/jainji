@@ -151,6 +151,65 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
     await queue.shutdown();
   }, 30_000);
 
+  it("does not restore publication authority from JSON or an admission module loaded after issuance", async () => {
+    const review = vi.fn(safeReview);
+    const { queue, input } = await admissionFixture(review);
+    try {
+      const admitted = await admitShapeCoverSample(input);
+      expect(admitted).toMatchObject({ status: "PASS" });
+      if (admitted.status !== "PASS") throw new Error(admitted.reason);
+      const encoded = JSON.parse(JSON.stringify(admitted));
+      const ffmpeg = vi.spyOn(input.ffmpeg, "run");
+      const { verifyShapeCoverAdmission: currentVerify } = await import("../src/main/shape-cover-admission");
+      await expect(currentVerify(encoded.admission, input.template, input.media, input.preset, admitted.previewPath)).rejects.toThrow("UNSAFE");
+      vi.resetModules();
+      const { verifyShapeCoverAdmission: freshVerify } = await import("../src/main/shape-cover-admission");
+      await expect(freshVerify(admitted.admission, input.template, input.media, input.preset, admitted.previewPath)).rejects.toThrow("UNSAFE");
+      expect(review).toHaveBeenCalledOnce();
+      expect(ffmpeg).not.toHaveBeenCalled();
+      expect(queue.snapshot().batches).toEqual([]);
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it.each(["completed", "validating", "running", "verifying"] as const)("recovers persisted shape %s without restoring authority or replacing a published file", async phase => {
+    const review = vi.fn(safeReview);
+    const { root, queue, input } = await admissionFixture(review);
+    let recovered: ExportQueue | undefined;
+    try {
+      const admitted = await admitShapeCoverSample(input);
+      if (admitted.status !== "PASS") throw new Error(admitted.reason);
+      const outputDirectory = path.join(root, "recover-outputs"); await mkdir(outputDirectory);
+      const published = await queue.publishApprovedSample({ template: input.template, media: input.media, preset: input.preset,
+        samplePath: admitted.previewPath, outputDirectory, shapeAdmission: admitted.admission });
+      const bytes = await readFile(published.outputPath);
+      const jobStore = new JobStore(path.join(root, "jobs"));
+      if (phase !== "completed") {
+        // Project the durable pre-completion windows; this is not an OS crash/fsync test.
+        const state = queue.snapshot().batches[0];
+        state.batch.status = "active";
+        Object.assign(state.batch.tasks[0], { status: phase, progress: 0.5, outputArtifact: undefined, finishedAt: undefined });
+        await jobStore.save(state);
+      }
+      await queue.shutdown();
+      await rm(input.layer.assetPath);
+      await rm(input.cacheDirectory, { recursive: true, force: true });
+      const ffmpeg = vi.spyOn(input.ffmpeg, "run");
+      recovered = new ExportQueue({ ffmpeg: input.ffmpeg, jobStore, sourceKnowledgeStore: input.store,
+        fontResolver: { resolve: async () => null }, executionLimits: { analysis: 1, exports: 1, threads: 1 } });
+      await recovered.recover();
+      const task = () => recovered!.snapshot().batches[0].batch.tasks[0];
+      expect(task().status).toBe(phase === "completed" ? "completed" : "interrupted");
+      expect(ffmpeg).not.toHaveBeenCalled();
+      await recovered.retry([published.taskId]);
+      if (phase === "completed") expect(task()).toMatchObject({ status: "completed", outputPath: published.outputPath, attempt: 1 });
+      else expect(task()).toMatchObject({ status: "failed", errorCode: "input_invalid", attempt: 2 });
+      expect(await readFile(published.outputPath)).toEqual(bytes);
+      expect(await readdir(outputDirectory)).toEqual([path.basename(published.outputPath)]);
+      expect(ffmpeg).not.toHaveBeenCalled();
+      expect(review).toHaveBeenCalledOnce();
+    } finally { await queue.shutdown(); await recovered?.shutdown(); }
+  }, 30_000);
+
   it("rejects missing targets, forged queue samples, rebindings and cancellation before issuing authority", async () => {
     const { queue, input } = await admissionFixture();
     const missing = { ...input, template: { ...input.template, layers: [] } };
