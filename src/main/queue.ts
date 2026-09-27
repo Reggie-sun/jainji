@@ -752,6 +752,7 @@ export class ExportQueue {
       if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
       const missing = await validateTemplateResources(state.batch.templateSnapshot, this.dependencies.fontResolver);
       if (missing.length > 0) throw new JianjiError(`模板资源缺失：${missing.join("、")}`, "resource_missing", "resource", false);
+      await assertOutputDirectorySafe(state.batch.outputDirectory, [media]);
       if (await this.stopRequested(state, task)) return;
       await this.transition(state, task, "running", { attempt: Math.max(1, task.attempt), startedAt: now() });
       if (await this.stopRequested(state, task)) return;
