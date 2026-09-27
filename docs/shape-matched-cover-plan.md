@@ -158,3 +158,13 @@ spec: shape-matched-cover-spec.md
 **Read-Only / Compatibility:** 不写 receipt/intent/manifest/JobStore，不删除或修复任何文件，不构造 handle，不调用 publish、FFmpeg、reviewer 或模型。缺 receipt 的只读 completed observation 不改变旧 publish/completed 的拒绝合同；即使观察成功，同键发布仍被永久 barrier 阻断。只证明既有 completed 的历史绑定与当前正式字节，不签发当前源/候选的 fresh admission；原缓存清理不影响完整 custody 的核对。所有非 shape、历史 retry 和 renderer 语义保留。
 
 **Verification / Record:** 真实 FFmpeg + 模拟独立 reviewer 产生既有发布事实，测试重开与独立 Node 进程的只读核对、返回丢失窗口、缺/坏 receipt、未完成及重复 canonical 匹配、绑定/字节漂移、backup-only/损坏 primary、NO_INTENT 和只读文件不变；验证无再次 queue/模型调用。运行 typecheck、相关 shape/store/queue 集成、有限四路全套、官方 AOCI Guide 增量维护及 Verify/Check/Guide；记录 `docs/shape-matched-cover-m4b7.md` 并仅提交本任务路径。保留无关 dirty 与用户删除，不进入 M5，不支持 restart authority/retry、真实 reviewer/人工全片/Windows/掉电验收。
+
+# Active Slice — M5-A Frozen Layer Renderer Switch
+
+**Goal / Source Correction:** 从已提交 B7 检查点继续。源码已有 `shape-matched-frozen-rgba-v1` 分支：compiler 校验最终 PNG 后复制任务输入并直接全画布 overlay；白色矩形只在非 shape 分支。批准样片由同一个 compiler/queue 生成，B5 托管 PNG 和样片后直接发布原样片。保留该顺序和同字节合同，不新增“准入后再次编码”的正式 renderer 或渲染前 B5 authority。
+
+**Owners / Contract:** `shape-cover-render.ts` 复用 B5 `inspectArtifactFile`，只验证绑定、普通非 symlink 文件、有界读取、读取稳定性、PNG SHA 与尺寸，返回冻结字节；不读取候选 alpha、不重算 contour/coverage。现有 strategy、bindingSha256、template snapshot 和 artifact key/request digest 是唯一身份链，不增加 renderer identity 或迁移格式。缺失、损坏、未知版本、源/输出/模板失配拒绝，无白底或 regenerate fallback。
+
+**Acceptance / Evidence:** `tests/shape-cover-candidates.test.ts` 使用已有真实 admitted-mask fixture、真实 FFmpeg 和明确模拟的独立 reviewer，将 FFmpeg 启动时实际输入文件 SHA、compiler Buffer SHA、冻结 pngSha256、B5 archived layer SHA、reviewed shape identity、canonical template 与最终样片 SHA 连成一项端到端证据；配对像素证明 contour 外透明区保留背景。补 symlink、文件变化、缺失及设置/绑定失配负例。旧 manual/assisted/历史矩形、普通队列、UNKNOWN→authority=none 和 never republish 不变。
+
+**Verification / Boundaries:** red→green targeted tests，typecheck、相关 compiler/shape/legacy/queue/store tests、四路全套及 final diff。按官方 AOCI Guide 维护本轮受管 owner；若完整批次涉及其他进行中源码，报告并保持 ownership gate。记录到 `docs/shape-matched-cover-m5a.md`。不接 IPC/UI，不启用默认自动覆盖，不做 contour redesign、全片 mask、产品模型调用、重启 retry、真实内容安全/人工全片/Windows/掉电验收。只提交本轮文件，保留已有 dirty 工作。

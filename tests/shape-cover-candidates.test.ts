@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +14,7 @@ import { freezeShapeCoverCandidate } from "../src/main/shape-cover-freeze";
 import { TemplateCompiler } from "../src/main/compiler";
 import { createDefaultTemplate, DEFAULT_PRESET, EditTemplateSchema, now, type MediaItem, type StickerLayer } from "../src/main/domain";
 import { decodeSourceMask, projectSourceMask, checkOutputFrameCoverage } from "../src/main/shape-cover-pixel-gate";
-import { shapeCoverDigest } from "../src/main/shape-cover-render";
+import { readFrozenShapeCover, shapeCoverDigest } from "../src/main/shape-cover-render";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
@@ -52,8 +53,8 @@ afterEach(async () => {
 
 describe.skipIf(!available)("frozen shape pixels through the original compiler and queue", () => {
   const mediaTools = { ffmpegPath: ffmpegBin, ffprobePath: ffprobeBin };
-  async function frozenFixture(fps = 30, frameRateMode: "source" | "30" = "source") {
-    const value = await fixture(64, fps);
+  async function frozenFixture(fps = 30, frameRateMode: "source" | "30" = "source", sourceColor = "white") {
+    const value = await fixture(64, fps, sourceColor);
     value.request.outputSettings[0].settings.frameRateMode = frameRateMode;
     const pixels = Buffer.alloc(32 * 32 * 4);
     for (let y = 3; y < 31; y++) for (let x = 3; x < 31; x++) {
@@ -81,8 +82,8 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
   const safeReview = async (input: ShapeCoverReviewInput) => JSON.stringify({ action: "pass", reason: "synthetic independent fixture review",
     contentSafety: { face: "SAFE", hands: "SAFE", product: "SAFE", subtitles: "SAFE" },
     evidenceIds: [...new Set(input.evidence.flatMap(image => [image.sourceEvidenceId!, image.previewEvidenceId!, ...image.fullSourceEvidenceId ? [image.fullSourceEvidenceId] : []]))] });
-  async function admissionFixture(review = safeReview, fps = 30, frameRateMode: "source" | "30" = "source") {
-    const value = await frozenFixture(fps, frameRateMode);
+  async function admissionFixture(review = safeReview, fps = 30, frameRateMode: "source" | "30" = "source", sourceColor = "white") {
+    const value = await frozenFixture(fps, frameRateMode, sourceColor);
     const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
     const verifier = new ArtifactVerifier(ffmpeg);
     const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(value.root, "jobs")), sourceKnowledgeStore: value.store,
@@ -93,8 +94,8 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
     return { ...value, queue, input, controller, verifier };
   }
 
-  async function custodyFixture(selected = false) {
-    const review = vi.fn(safeReview), value = await admissionFixture(review);
+  async function custodyFixture(selected = false, sourceColor = "white") {
+    const review = vi.fn(safeReview), value = await admissionFixture(review, 30, "source", sourceColor);
     const projectId = crypto.randomUUID(), key = { runId: crypto.randomUUID(), mediaId: value.media.id, version: 1 };
     if (selected) {
       const layer = value.template.layers[0];
@@ -111,6 +112,69 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
     const directory = path.join(options.root, projectId, `${key.runId}-${key.mediaId}-${key.version}`);
     return { ...value, admitted, review, options, custody, publish, directory };
   }
+
+  it("rejects a symlink even when it points to the exact frozen shape bytes", async () => {
+    const { root, layer, media, preset } = await frozenFixture();
+    const alias = path.join(root, "shape-alias.png");
+    await symlink(layer.assetPath, alias);
+    await expect(readFrozenShapeCover({ ...layer, assetPath: alias }, media, preset)).rejects.toThrow("UNSAFE");
+  });
+
+  it("reports a missing frozen layer as UNSAFE without a renderer fallback", async () => {
+    const { layer, media, preset } = await frozenFixture();
+    await unlink(layer.assetPath);
+    await expect(readFrozenShapeCover(layer, media, preset)).rejects.toThrow("UNSAFE");
+  });
+
+  it("binds actual FFmpeg layer bytes, approved visual identity, custody and final output without reencoding", async () => {
+    const compiler = vi.spyOn(TemplateCompiler.prototype, "compile");
+    const run = FfmpegAdapter.prototype.run;
+    const consumed: Buffer[] = [];
+    vi.spyOn(FfmpegAdapter.prototype, "run").mockImplementation(function (this: FfmpegAdapter, args) {
+      for (const [index, arg] of args.entries()) if (arg === "-i" && path.basename(args[index + 1]).includes("-shape-")) consumed.push(readFileSync(args[index + 1]));
+      return run.call(this, args);
+    });
+    const value = await custodyFixture(true, "blue");
+    const { layer, media, preset, custody, publish, queue, review } = value;
+    try {
+      const binding = layer.cover!.shapeMatched!;
+      const png = await readFile(layer.assetPath);
+      expect(consumed).toHaveLength(1);
+      expect(sha(consumed[0])).toBe(binding.pngSha256);
+      const compiled = await compiler.mock.results[0].value;
+      expect(sha(compiled.binaryFiles[0].content)).toBe(binding.pngSha256);
+      const graph = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
+      expect(graph).toContain("overlay=0:0");
+      expect(graph).not.toMatch(/color=white|lutrgb|\b(scale|crop|pad|fade)=/);
+      expect(review.mock.calls[0][0].shapes[0].pngSha256).toBe(binding.pngSha256);
+      const result = await custody.publish(publish);
+      expect(compiler).toHaveBeenCalledTimes(1);
+      expect(consumed).toHaveLength(1);
+      const manifest = JSON.parse(await readFile(path.join(value.directory, "manifest.json"), "utf8"));
+      const archived = manifest.files.find((file: { kind: string; index: number }) => file.kind === "layer" && file.index === 0);
+      expect(archived.fingerprint).toBe(`sha256:${binding.pngSha256}`);
+      expect(sha(await readFile(path.join(value.directory, archived.name)))).toBe(sha(consumed[0]));
+      const loaded = await custody.load(publish.key);
+      expect(loaded.authority).toBe("none");
+      const archivedLayer = loaded.template.layers[0];
+      if (archivedLayer.type !== "sticker") throw new Error("missing archived layer");
+      expect(await readFrozenShapeCover(archivedLayer, media, preset)).toEqual(png);
+      const canonical = await value.options.jobStore.readCanonical(result.batchId);
+      expect(canonical.batch.templateSnapshot).toEqual(manifest.data.template);
+      const sampleSha = sha(await readFile(value.admitted.previewPath));
+      expect(sha(await readFile(loaded.samplePath))).toBe(sampleSha);
+      expect(sha(await readFile(result.outputPath))).toBe(sampleSha);
+      expect(await custody.reconcile(publish.key)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result });
+      // Outside the contour but inside its placement, a white rectangle would erase the blue source.
+      const decoded = spawnSync(ffmpegBin, ["-v", "error", "-threads", "1", "-i", result.outputPath, "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-threads", "1", "pipe:1"]);
+      expect(decoded.status, decoded.stderr.toString()).toBe(0);
+      const pixel = (7 * 64 + 7) * 3;
+      expect(decoded.stdout[pixel]).toBeLessThan(60);
+      expect(decoded.stdout[pixel + 2]).toBeGreaterThan(180);
+      const covered = (13 * 64 + 13) * 3;
+      expect(decoded.stdout[covered]).toBeGreaterThan(180);
+    } finally { await queue.shutdown(); }
+  }, 30_000);
 
   it("reconciles restart completed facts without granting authority or writing a missing receipt", async () => {
     const value = await custodyFixture(true);
@@ -829,14 +893,14 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
   });
 });
 
-async function fixture(sourceSize = 64, fps = 30) {
+async function fixture(sourceSize = 64, fps = 30, sourceColor = "white") {
   const root = await mkdtemp(path.join(os.tmpdir(), "jianji-common-shape-")); roots.push(root);
   const store = await SourceStickerKnowledgeStore.open(root); stores.push(store);
   const targets: ShapeCoverCandidateRequest["intendedTargets"] = [];
   const sheet = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lXcAAAAASUVORK5CYII=", "base64");
   for (const [index, x] of [10, 26].entries()) {
     const sourcePath = path.join(root, `source-${index}.mp4`);
-    expect(spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", `color=c=white:s=${sourceSize}x${sourceSize}:r=${fps}:d=3`,
+    expect(spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "lavfi", "-i", `color=c=${sourceColor}:s=${sourceSize}x${sourceSize}:r=${fps}:d=3`,
       "-vf", `drawbox=x=${x}:y=10:w=8:h=8:color=black:t=fill`, "-c:v", "libx264", "-threads", "1", "-pix_fmt", "yuv420p", sourcePath]).status).toBe(0);
     const sourceBytes = await readFile(sourcePath), packedMask = Buffer.alloc(8, 255);
     const probe = { status: "CANDIDATE_REQUIRES_HUMAN_EDGE_REVIEW", reason: null, sourceSha256: sha(sourceBytes), sourceBytes: sourceBytes.length,

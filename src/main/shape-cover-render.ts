@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { open } from "node:fs/promises";
 import { outputDimensions } from "../shared/export-settings.js";
 import { FrozenShapeCoverBindingSchema, FrozenShapeCoverSchema, MAX_FROZEN_SHAPE_BYTES, type FrozenShapeCover } from "../shared/shape-cover.js";
 import type { EditTemplate, ExportPreset, MediaItem, StickerLayer } from "./domain.js";
 import { JianjiError } from "./errors.js";
 import { readAdmittedShapeCoverTarget } from "./shape-cover-candidates.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
+import { inspectArtifactFile } from "./shape-cover-artifact-io.js";
 
 export const shapeCoverDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 export function shapeCoverBindingDigest(binding: unknown): string {
@@ -49,16 +49,12 @@ export async function readFrozenShapeCover(layer: StickerLayer, media: MediaItem
     || media.rotation !== source.rotation || media.durationMs !== source.durationMs
     || settings.resolutionMode !== preset.resolutionMode || settings.frameRateMode !== preset.frameRateMode || settings.quality !== preset.quality
     || projection.width !== size.width || projection.height !== size.height || layer.assetFingerprint !== `sha256:${binding.pngSha256}`) throw new Error("UNSAFE: frozen shape binding mismatch");
-  const file = await open(layer.assetPath, "r");
   try {
-    const info = await file.stat();
-    if (!info.isFile() || info.size < 33 || info.size > MAX_FROZEN_SHAPE_BYTES) throw new Error("UNSAFE: invalid frozen shape PNG");
-    const bytes = Buffer.alloc(info.size + 1);
-    const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
-    const frozen = bytes.subarray(0, bytesRead);
-    if (bytesRead !== info.size || shapeCoverDigest(frozen) !== binding.pngSha256
+    const asset = await inspectArtifactFile(layer.assetPath, MAX_FROZEN_SHAPE_BYTES, undefined, undefined, true);
+    const frozen = asset.content;
+    if (asset.bytes < 33 || asset.fingerprint !== layer.assetFingerprint
       || !frozen.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10])) || frozen.toString("ascii", 12, 16) !== "IHDR"
       || frozen.readUInt32BE(16) !== size.width || frozen.readUInt32BE(20) !== size.height) throw new Error("UNSAFE: frozen shape bytes mismatch");
     return frozen;
-  } finally { await file.close(); }
+  } catch { throw new Error("UNSAFE: frozen shape asset unavailable or invalid"); }
 }
