@@ -48,7 +48,7 @@ export type UploadState = z.infer<typeof UploadStateSchema>;
 export const PublishOutcomeSchema = z.enum(["NOT_SUBMITTED", "MAY_HAVE_SUBMITTED", "ACCEPTED", "REJECTED_KNOWN"]);
 export const UploadFailureSchema = z.object({
   category: z.enum(["input", "store", "browser", "page", "account", "publish", "cancel"]),
-  code: z.enum(["ARTIFACT_CHANGED", "INPUT_CONFLICT", "UNSUPPORTED_FORMAT", "ARTIFACT_UNAVAILABLE", "EXPORT_NOT_COMMITTED", "STORE_UNAVAILABLE", "CDP_UNAVAILABLE", "NAVIGATION_FAILED", "PAGE_CONTRACT_CHANGED", "PAGE_CONTRACT_UNVERIFIED", "LOGIN_REQUIRED", "ACCOUNT_UNCONFIRMED", "CHALLENGE_REQUIRED", "CAPTION_REQUIRED", "CONTENT_REJECTED", "PUBLISH_OUTCOME_UNKNOWN", "PUBLISH_CONFIRMATION_UNAVAILABLE", "STOPPED", "TIMEOUT"]),
+  code: z.enum(["ARTIFACT_CHANGED", "INPUT_CONFLICT", "UNSUPPORTED_FORMAT", "ARTIFACT_UNAVAILABLE", "EXPORT_NOT_COMMITTED", "STORE_UNAVAILABLE", "CDP_UNAVAILABLE", "NAVIGATION_FAILED", "PAGE_CONTRACT_CHANGED", "PAGE_CONTRACT_UNVERIFIED", "LOGIN_REQUIRED", "ACCOUNT_UNCONFIRMED", "CHALLENGE_REQUIRED", "CAPTION_REQUIRED", "CONTENT_REJECTED", "PUBLISH_OUTCOME_UNKNOWN", "PUBLISH_CONFIRMATION_UNAVAILABLE", "UPLOAD_OUTCOME_UNKNOWN", "CAPACITY_INSUFFICIENT", "ACCOUNT_CONFIG_CHANGED", "ACCOUNT_CONFIG_UNAVAILABLE", "STOPPED", "TIMEOUT"]),
   retryable: z.boolean(), requires_human: z.boolean(), message: z.string().max(500), next_action: z.string().max(500),
 }).strict();
 export type UploadFailure = z.infer<typeof UploadFailureSchema>;
@@ -68,7 +68,12 @@ export const UploadResultSchema = UploadIdentitySchema.extend({
     (value.retryable && value.publish_outcome !== "NOT_SUBMITTED")) ctx.addIssue({ code: "custom", message: "非法上传结果组合。" });
 });
 export type UploadResult = z.infer<typeof UploadResultSchema>;
-export interface DouyinUploadStatus { config: DouyinUploadConfig; ready: boolean; message: string; tasks: UploadResult[]; }
+export interface DouyinUploadStatus {
+  config: Omit<QianchuanUploadConfig, "accountConfigPath">;
+  configSelected: boolean;
+  accounts: import("./qianchuan-account.js").QianchuanAccountSummary[];
+  ready: boolean; message: string; tasks: QianchuanUploadResult[]; legacyTasks: UploadResult[];
+}
 
 export class UploadError extends Error {
   constructor(readonly failure: UploadFailure) { super(failure.message); this.name = "UploadError"; }
@@ -110,7 +115,7 @@ export const QianchuanUploadResultSchema = UploadIdentitySchema.extend({
 }).strict().superRefine((value, ctx) => {
   if ((value.state === "WAITING_FOR_CONFIRMATION") !== Boolean(value.readyEvidence) ||
     (value.upload_outcome === "READY") !== Boolean(value.readyEvidence) ||
-    value.readyEvidence && (value.readyEvidence.advertiserId !== value.advertiserId || value.readyEvidence.adId !== value.adId || value.readyEvidence.fileName !== value.file_name || value.failure) ||
+    value.readyEvidence && (value.readyEvidence.advertiserId !== value.advertiserId || value.readyEvidence.adId !== value.adId || !value.duplicate_of && value.readyEvidence.fileName !== value.file_name || value.failure) ||
     value.retryable && value.upload_outcome !== "NOT_SELECTED") ctx.addIssue({ code: "custom", message: "非法千川上传结果组合。" });
 });
 export type QianchuanUploadResult = z.infer<typeof QianchuanUploadResultSchema>;

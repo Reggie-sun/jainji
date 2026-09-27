@@ -32,7 +32,7 @@ import { superviseRenderedTemplate } from "./supervised-preview.js";
 import { CoverPlacementSession, completedCoverPlacements } from "./cover-placement-session.js";
 import { proposeCoverPlacement } from "./cover-placement-proposal.js";
 import { AgentPreviewStore } from "./agent-preview-store.js";
-import type { DouyinUploadSelection } from "../shared/douyin-upload.js";
+import type { QianchuanUploadSelection as DouyinUploadSelection, UploadAuthorization } from "../shared/douyin-upload.js";
 import { ShapeCoverProduction } from "./shape-cover-production.js";
 import type { ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
 
@@ -46,7 +46,7 @@ export class AgentController {
   private briefController?: AbortController;
   private pendingOperation?: Promise<void>;
   private readonly previews = new AgentPreviewStore();
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore, private readonly registerUpload?: (batch: ExportBatchIdentity, selection?: DouyinUploadSelection) => Promise<void>) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore, private readonly registerUpload?: (batch: ExportBatchIdentity, selection?: DouyinUploadSelection, authorization?: UploadAuthorization) => Promise<void>, private readonly preflightUpload?: (selection: DouyinUploadSelection, count: number) => Promise<UploadAuthorization | undefined>) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -134,6 +134,9 @@ export class AgentController {
     this.pendingOperation = new Promise<void>((resolve) => { settle = resolve; });
     try {
       const parsed = AgentStartSchema.parse(input);
+      if (parsed.douyinUpload && (assisted || parsed.exportFormat && parsed.exportFormat !== "mp4")) throw new Error("千川上传仅支持普通正式 MP4 制作。");
+      const uploadAuthorization = parsed.douyinUpload ? await this.preflightUpload?.(parsed.douyinUpload, new Set(parsed.mediaIds).size * (parsed.multiplier ?? 1)) : undefined;
+      if (parsed.douyinUpload && !uploadAuthorization) throw new Error("千川账号预检不可用，请重新选择账号。");
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const project = this.service.currentProject;
       if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted) throw new Error("半自动覆盖必须先审阅、预览和批准。");
@@ -276,7 +279,7 @@ export class AgentController {
         this.previews.retainDirectory(directory);
         shape = new ShapeCoverProduction({ request: shapeRequest, store: this.knowledgeStore!, ffmpeg: this.ffmpeg, queue: this.queue, preset, directory,
           artifacts: await this.queue.createShapeCoverArtifactStore(projectId), outputDirectory,
-          onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve(),
+          onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload, uploadAuthorization) ?? Promise.resolve(),
           reviewerIdentity: this.reviewerProvider.status().model, review: (context, signal) => this.reviewerProvider.superviseShapePreview(context, signal) });
         this.preparingController.signal.throwIfAborted();
       }
@@ -357,7 +360,7 @@ export class AgentController {
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
           const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
-          try { await this.registerUpload?.({ id: batch.id, projectId: batch.projectId, tasks: batch.tasks.map(task => ({ id: task.id })) }, parsed.douyinUpload); } catch { this.onChange(); }
+          try { await this.registerUpload?.({ id: batch.id, projectId: batch.projectId, tasks: batch.tasks.map(task => ({ id: task.id })) }, parsed.douyinUpload, uploadAuthorization); } catch { this.onChange(); }
           if (signal.aborted) await this.queue.cancel(batch.tasks[0].id);
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
@@ -365,7 +368,7 @@ export class AgentController {
         publishApproved: async (template, item, samplePath, signal) => {
           signal.throwIfAborted();
           const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
-          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, outputDirectory, onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve() });
+          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, outputDirectory, onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload, uploadAuthorization) ?? Promise.resolve() });
           this.onChange();
           return taskId;
         },

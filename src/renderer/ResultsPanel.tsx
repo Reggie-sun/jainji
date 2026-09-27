@@ -70,7 +70,7 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, 
     </div>
     {preview && <SupervisorPreviewDialog preview={preview} onClose={() => setPreview(undefined)} />}
     {appendError && <p className="notice error" role="alert">{appendError}</p>}
-    {appendTarget && <AppendProductionDialog batch={appendTarget.batch} prefill={appendTarget.prefill} mediaLabel={appendTarget.batch.mediaIds.map((id) => state.project.mediaItems.find((item) => item.id === id)?.displayName ?? "历史素材").join("、")} onClose={() => setAppendTarget(undefined)} />}
+    {appendTarget && <AppendProductionDialog accounts={state.douyinUpload?.accounts} batch={appendTarget.batch} prefill={appendTarget.prefill} mediaLabel={appendTarget.batch.mediaIds.map((id) => state.project.mediaItems.find((item) => item.id === id)?.displayName ?? "历史素材").join("、")} onClose={() => setAppendTarget(undefined)} />}
     <div className="result-footnote"><Icon name="shield" size={16} /><span>重试导出会复用已生成的方案，不重新调用模型。分析中的任务退出后不会自动恢复。</span></div>
   </>;
 }

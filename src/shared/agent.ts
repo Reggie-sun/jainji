@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DouyinUploadSelectionSchema } from "./douyin-upload.js";
+import { QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema } from "./douyin-upload.js";
 import { DecorationSchema, ProductionDecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
 import { ExportSettingsSchema } from "./export-settings.js";

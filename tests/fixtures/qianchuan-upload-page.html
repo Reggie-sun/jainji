@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Offline upload fixture</title>
+  <style>
+    [hidden] { display: none !important; }
+    body { font: 16px sans-serif; margin: 2rem; }
+    #qianchuan-drawer, #upload-modal { border: 1px solid #555; padding: 1rem; margin: 1rem 0; }
+    .upload-row { padding: .5rem; border-top: 1px solid #ddd; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Offline upload fixture</h1>
+    <section id="qianchuan-drawer" aria-label="计划">
+      <div id="account-id">ID：123456</div>
+      <div id="plan-id">ID：987654</div>
+      <button type="button" id="assets-button">素材</button>
+    </section>
+    <section id="assets-panel" hidden>
+      <button type="button" id="add-video-button">添加视频</button>
+    </section>
+    <section id="video-panel" hidden>
+      <button type="button" id="upload-video-button">上传视频</button>
+    </section>
+    <section id="upload-modal" role="dialog" aria-label="上传视频" hidden>
+      <h2>上传视频</h2>
+      <p id="selected-count">已选择 0/10</p>
+      <input id="video-files" type="file" accept="video/mp4" multiple>
+      <div id="upload-rows"></div>
+      <p id="upload-failure" hidden>上传失败</p>
+      <div id="upload-actions"></div>
+      <button type="button" id="confirm-button" disabled>确定</button>
+      <button type="button" id="settings-button">广告设置</button>
+    </section>
+    <p id="login-required" hidden>需要登录</p>
+    <p id="challenge-required" hidden>需要验证</p>
+  </main>
+  <script>
+    const state = { controls: {}, files: [] };
+    const postEvent = (event) => fetch('/events', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(event) });
+    const setVisible = (node, visible) => { node.hidden = !visible; };
+    const applyControls = () => {
+      const c = state.controls;
+      document.querySelector('#account-id').textContent = `ID：${c.wrongAdvertiser ? '999999' : '123456'}`;
+      document.querySelector('#plan-id').textContent = `ID：${c.wrongPlan ? '999998' : '987654'}`;
+      setVisible(document.querySelector('#login-required'), c.screen === 'login');
+      setVisible(document.querySelector('#challenge-required'), c.screen === 'challenge');
+      setVisible(document.querySelector('#upload-failure'), c.failure === true);
+      const capacity = Number.isSafeInteger(c.capacity) && c.capacity > 0 ? c.capacity : 10;
+      document.querySelector('#selected-count').textContent = `已选择 ${state.files.length}/${capacity}`;
+      const rows = document.querySelector('#upload-rows');
+      rows.replaceChildren(...state.files.map((file, index) => {
+        const row = document.createElement('div');
+        row.className = 'upload-row';
+        row.dataset.fileName = c.drift && index === 0 ? 'tampered.mp4' : file.name;
+        row.dataset.uploadState = c.readyState || 'ready';
+        row.textContent = row.dataset.fileName;
+        return row;
+      }));
+      const ready = state.files.length > 0 && (c.readyState || 'ready') === 'ready';
+      document.querySelector('#confirm-button').disabled = !ready;
+      const actions = document.querySelector('#upload-actions');
+      actions.replaceChildren();
+      if (state.files.length > 0 && !ready) {
+        const cancel = document.createElement('button');
+        cancel.type = 'button'; cancel.id = 'cancel-upload'; cancel.textContent = '取消上传';
+        actions.append(cancel);
+      }
+      document.querySelectorAll('[data-fixture-duplicate="upload"]').forEach(node => node.remove());
+      document.querySelectorAll('[data-fixture-duplicate="confirm"]').forEach(node => node.remove());
+      if (c.duplicateUpload) {
+        const duplicate = document.createElement('button');
+        duplicate.type = 'button'; duplicate.dataset.fixtureDuplicate = 'upload'; duplicate.textContent = '上传视频';
+        document.querySelector('#video-panel').append(duplicate);
+      }
+      if (c.duplicateConfirm && !document.querySelector('#upload-modal').hidden) {
+        const duplicate = document.createElement('button');
+        duplicate.type = 'button'; duplicate.dataset.fixtureDuplicate = 'confirm'; duplicate.textContent = '确定';
+        document.querySelector('#upload-modal').append(duplicate);
+      }
+    };
+    document.querySelector('#assets-button').addEventListener('click', event => { postEvent({ type: 'click', control: '素材' }); setVisible(document.querySelector('#assets-panel'), true); });
+    document.querySelector('#add-video-button').addEventListener('click', () => { postEvent({ type: 'click', control: '添加视频' }); setVisible(document.querySelector('#video-panel'), true); });
+    document.querySelector('#upload-video-button').addEventListener('click', () => { postEvent({ type: 'click', control: '上传视频' }); setVisible(document.querySelector('#upload-modal'), true); applyControls(); });
+    document.querySelector('#video-files').addEventListener('change', event => {
+      state.files.push(...Array.from(event.target.files || []));
+      postEvent({ type: 'files', names: Array.from(event.target.files || []).map(file => file.name) });
+      applyControls();
+    });
+    document.querySelector('#confirm-button').addEventListener('click', () => postEvent({ type: 'confirm' }));
+    document.querySelector('#settings-button').addEventListener('click', () => postEvent({ type: 'settings' }));
+    document.querySelector('#upload-rows').addEventListener('click', event => {
+      const row = event.target.closest('.upload-row');
+      if (row) { postEvent({ type: 'row-click', name: row.dataset.fileName }); state.files = state.files.filter(file => file.name !== row.dataset.fileName); applyControls(); }
+    });
+    const refresh = async () => {
+      try { const response = await fetch('/controls', { cache: 'no-store' }); state.controls = await response.json(); applyControls(); }
+      catch { /* The isolated fixture server may be shutting down. */ }
+    };
+    applyControls(); void refresh(); setInterval(refresh, 100);
+  </script>
+</body>
+</html>

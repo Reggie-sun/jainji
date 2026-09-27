@@ -31,7 +31,7 @@ import { AssetLibrary } from "./asset-library.js";
 import { UploadedStickers } from "./uploaded-stickers.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
-import { DouyinUploadConfigSchema, DouyinUploadSelectionSchema, UploadIdSchema, UploadSuccessSchema } from "../shared/douyin-upload.js";
+import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema, UploadIdSchema, UploadSuccessSchema } from "../shared/douyin-upload.js";
 import { DouyinUploadStore } from "./douyin-upload-store.js";
 import { DouyinUploadService } from "./douyin-upload-service.js";
 import { DouyinCdpUploader, douyinReadiness } from "./douyin-cdp-uploader.js";
@@ -143,11 +143,18 @@ function registerHandlers(): void {
     const task = douyinUpload.store.task(ref.uploadTaskId);
     if (ref.projectId !== service.currentProject.id || !task || task.input.project_id !== ref.projectId) throw new Error("上传任务不属于当前项目。");
   };
-  ipcMain.handle("douyinUpload.configure", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.configure(DouyinUploadConfigSchema.parse(input)); return publicState(); });
+  ipcMain.handle("douyinUpload.configure", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.configure(QianchuanUploadConfigSchema.omit({ accountConfigPath: true }).parse(input)); return publicState(); });
+  ipcMain.handle("douyinUpload.selectConfig", async (event) => {
+    assertTrustedSender(event);
+    const selected = await dialog.showOpenDialog(mainWindow!, { properties: ["openFile"], filters: [{ name: "千川账号配置", extensions: ["json"] }] });
+    if (!selected.canceled && selected.filePaths.length === 1) await douyinUpload.chooseConfig(selected.filePaths[0]);
+    return publicState();
+  });
+  ipcMain.handle("douyinUpload.refreshAccounts", async (event) => { assertTrustedSender(event); await douyinUpload.refreshAccounts(); return publicState(); });
   ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); void douyinUpload.resume(ref.uploadTaskId).catch(() => notifyState()); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
-  ipcMain.handle("douyinUpload.caption", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ caption: z.string().max(4096) }).parse(input); assertUploadProject(ref); await douyinUpload.reviseCaption(ref.uploadTaskId, ref.caption); return publicState(); });
-  ipcMain.handle("douyinUpload.confirm", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ success: UploadSuccessSchema }).parse(input); assertUploadProject(ref); await douyinUpload.confirm(ref.uploadTaskId, ref.success); return publicState(); });
+  ipcMain.handle("douyinUpload.caption", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ caption: z.string().max(4096) }).parse(input); assertUploadProject(ref); throw new Error("千川任务不接受发布文案。"); });
+  ipcMain.handle("douyinUpload.confirm", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ success: UploadSuccessSchema }).parse(input); assertUploadProject(ref); throw new Error("千川任务只能由用户在 Chrome 确认，应用不提交或登记平台接受。"); });
   const reviewRef = z.object({ id: uuidSchema, revision: z.number().int().nonnegative() }).strict();
   ipcMain.handle("coverReview.create", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.create(z.array(uuidSchema).min(1).max(250).parse(input)); return publicState(); });
   ipcMain.handle("coverReview.edit", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.edit(input); return publicState(); });
@@ -348,6 +355,7 @@ function registerHandlers(): void {
       if (choice.response !== 0) return publicState();
     }
     coverReview?.assertIdle(); agent.assertIdle();
+    await douyinUpload.stop();
     service.newProject();
     activeRecentProjectId = undefined;
     return publicState();
@@ -370,6 +378,7 @@ function registerHandlers(): void {
       if (choice.response !== 0) return null;
     }
     coverReview?.assertIdle(); agent.assertIdle();
+    await douyinUpload.stop();
     try { await service.loadProject(filePath); }
     catch (error) {
       if (input === undefined) throw error;
@@ -420,7 +429,7 @@ function registerHandlers(): void {
     const backupPath = `${filePath}.bak`;
     if (await pathExists(backupPath)) await shell.trashItem(backupPath).catch(() => undefined);
     await recentProjects.forget(recentId);
-    if (active) { service.newProject(); activeRecentProjectId = undefined; }
+    if (active) { await douyinUpload.stop(); service.newProject(); activeRecentProjectId = undefined; }
     return publicState();
   });
   ipcMain.handle("output.selectDirectory", async (event) => {
@@ -459,12 +468,14 @@ function registerHandlers(): void {
     agent.assertIdle();
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const parsed = exportCreateSchema.parse(input);
+    if (parsed.douyinUpload && parsed.preset.container !== "mp4") throw new Error("千川上传仅支持 MP4。");
+    const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, new Set(parsed.mediaIds).size);
     const preset = parsed.preset as ExportPreset;
     const outputDirectory = await canonicalPath(parsed.outputDirectory);
     if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
     const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: parsed.mediaIds, mediaItems: service.currentProject.mediaItems, outputDirectory, preset });
     await service.rememberExportProduction([batch]);
-    await douyinUpload.registerBatch(batch, parsed.douyinUpload);
+    await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
     void queue.start(batch.id);
     return { batchId: batch.id, taskIds: batch.tasks.map((task) => task.id) };
   });
@@ -488,6 +499,11 @@ function registerHandlers(): void {
     agent.assertIdle();
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const parsed = AppendProductionSchema.parse(input);
+    const prefill = await queue.appendPrefill(parsed.batchId, service.currentProject.id);
+    if (!prefill) throw new Error("找不到属于当前项目的已完成批次。");
+    const sourceBatch = queue.snapshot().batches.find(value => value.batch.id === parsed.batchId)?.batch ?? service.currentProject.exportBatches.find(batch => batch.id === parsed.batchId);
+    if (parsed.douyinUpload && (!sourceBatch || sourceBatch.preset.container !== "mp4")) throw new Error("千川上传仅支持 MP4 追加制作。");
+    const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, prefill.mediaCount * parsed.count);
     const outputDirectory = await canonicalPath(parsed.outputDirectory);
     if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
     const stickerPool = Object.entries(stickerAssets)
@@ -495,7 +511,7 @@ function registerHandlers(): void {
       .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
     const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
     await service.rememberExportProduction(batches);
-    for (const batch of batches) await douyinUpload.registerBatch(batch, parsed.douyinUpload);
+    for (const batch of batches) await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
     for (const batch of batches) void queue.start(batch.id);
     return { batchIds: batches.map((batch) => batch.id), outputDirectory };
   });
@@ -637,6 +653,7 @@ async function bootstrap(): Promise<void> {
     loadBatch: async id => { const loaded = await uploadJobs.load(id); if (loaded.source !== "primary") throw new Error("Export recovery needs reconciliation"); return loaded.state; },
     browser: () => new DouyinCdpUploader(), readiness: douyinReadiness, changed: notifyState,
   });
+  await douyinUpload.restoreConfig();
   const builtins = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
   const bundledDirectory = app.isPackaged
     ? path.join(process.resourcesPath, "stickers", "downloaded")
@@ -650,7 +667,7 @@ async function bootstrap(): Promise<void> {
   stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection) => douyinUpload.registerBatch(batch, selection));
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection, authorization) => douyinUpload.registerBatch(batch, selection, authorization), (selection, count) => douyinUpload.preflight(selection, count));
   protocol.handle("jianji-agent-preview", async (request) => {
     try {
       const url = new URL(request.url);

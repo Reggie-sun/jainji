@@ -124,17 +124,21 @@ Agent 自动覆盖的近似位置不是源贴纸事实，不写入源知识库�
 
 最新 main `fce917d` 加上 Windows 修复的 0.1.5 安装包验证，见 [Windows 0.1.5 安装版验证记录](docs/windows-verification-0.1.5.md)。
 
-### Douyin Upload
+### Qianchuan Upload
 
-本次制作和追加制作可单独选择“完成后自动上传抖音”，默认关闭；选中意味着这些成片将上传并提交发布，文案必须手工填写，与展示文字 / 价格独立。结果页提供本机配置和独立上传状态；上传失败不影响已完成导出，也不会重渲染。全局开启不授权历史视频，本次选择不写入可分享项目；重启后需要明确继续。
+在结果页“千川上传任务”中，通过系统文件选择器授权六产品账号 JSON，再启用全局上传。Linux 文件必须属于当前用户、为普通文件、权限不宽于 `0600`、不超过 64 KiB，路径不能经过符号链接。账号格式及人工 CDP 历史见 [千川记录](docs/qianchuan-cdp-test.md)。刷新只重读人工配置，不自动发现账号或计划。
 
-**当前真实抖音页面合同尚未核实，生产上传/发布保持阻断。** 不连接用户 Chrome、不保存猜测路由；准备状态和任务会明确显示原因。下一步需核实专用 Chrome/profile 的上传页、账号信号、必填项和稳定内容 ID 的管理页接受证据，然后在获得一条指定 MP4 的明确发布授权后做真实验收。离线 fixture 通过不代表平台发布可用，详情见 [页面合同与验收边界](docs/douyin-upload-page-contract.md)。
+每次制作和追加默认关闭上传；选中后必须手动选择一个可用产品账号，普通正式 MP4 导出完成后才可上传到其已有计划。账号目标冻结到本次任务，配置后续更改不会替换旧目标。切换项目和提交制作会清空本次选择。全局开启不授权历史视频，也不把账号写进分享项目或发送给模型。
 
-后续生产前置条件由用户准备：Chrome 使用专用非默认 `--user-data-dir`，调试端口只监听 literal `127.0.0.1` 或 `[::1]`，由用户手工登录唯一目标账号。应用只 attach 既有 default context；不启动用户浏览器、不读取 profile/cookie，不处理验证码。提交前持久化不可覆盖 marker；提交未知只核查，不重新发布。不要删除 `userData/douyin-upload/` 中的任务或 marker 来“重试”。关闭功能保留去重历史。
+上传停在“确定”前，结果为“上传完成，待在 Chrome 确认”；请核查该任务页面并自行确认。应用不点击确定、不提交发布、不修改广告设置。浏览器关闭或弹窗被人工处理后，草稿可能丢失。上传问题不改变已完成的本地导出，也不重渲染。
 
-隔离回归使用 `npx vitest run tests/douyin-*.test.ts`，并纳入 code Harness。构建后运行 `xvfb-run -a node scripts/douyin-upload-smoke.mjs`（已有显示环境可省略 xvfb）；只使用合成视频、本地网页、独立 Electron userData 和独立测试 Chrome profile。缺少 Chrome/FFmpeg/显示环境须报告未验证，不能替换成真实账号试发。Windows 的目录持久化和 ACL 尚未实机核实，当前发布屏障 fail closed。
+**生产页面合同尚未核实，当前自动上传保持阻断。** 已有六账号人工 CDP 上传记录不能替代应用页面定位验收。有限定位合同未核实前，请求在制作/入队前拒绝上传选项，不连接真实 Chrome；可关闭本次上传继续本地制作。真实验收需另行授权指定账号和正式 MP4；本轮没有新增真实上传。
 
-Linux 打包后可用 `JIANJI_SMOKE_ELECTRON="$PWD/dist/linux-unpacked/jianji" xvfb-run -a node scripts/douyin-upload-smoke.mjs --packaged` 检查实际打包入口及包内 Playwright 的 CDP attach。两种 smoke 均支持 `JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH`；引擎必须同时支持 `drawtext`、`overlay` 和 `-fps_mode`。
+本轮接入、隔离桌面与打包验证，以及尚未完成的生产/Windows/AOCI 检查见 [接入 checkpoint](docs/qianchuan-upload-integration-2026-09-27.md)。
+
+应用只 attach 用户已经登录的对应 loopback Chrome，不启动或修改用户浏览器、不读取 cookie、不处理验证码。同批共用专用 tab，全局逐条上传；文件选择前永久保存 selection fence。屏障之后未知仅能只读核查原页面，不自动重传。不要删除 `userData/douyin-upload/` 中的记录或屏障来重试。v1 创作者中心历史保留原字节和旧 markers，只读显示，不迁移发布授权；v2 默认关闭。Windows 的目录同步及 ACL 尚未实机核实，自动上传继续阻断。
+
+隔离回归使用 `npx vitest run tests/douyin-*.test.ts tests/qianchuan-*.test.ts`，并纳入 code Harness。构建后运行 `xvfb-run -a node scripts/douyin-upload-smoke.mjs`；只用合成视频、本地页面、独立 Electron userData 和独立 Chrome profile。测试 bundle 中的 fixture 定位不进入生产配置。Linux 打包后可追加 `--packaged` 检查实际包内 Playwright attach；它不证明生产账号上传可用。smoke 支持 `JIANJI_SMOKE_ELECTRON`、`JIANJI_FFMPEG_PATH`、`JIANJI_FFPROBE_PATH`；引擎必须支持 `drawtext`、`overlay` 和 `-fps_mode`。
 
 ### Validation Harness
 
