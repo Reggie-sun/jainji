@@ -43,7 +43,7 @@ stable implementation snapshot 的 identity 为 `dc516e1fc6731d6d24af1fa28acb0fd
 
 # Production Blocker
 
-`PRODUCTION_QIANCHUAN_CONTRACT` 仍为 `undefined`。本轮只读探测六个已配置 loopback Chrome 端口，全部不可达，因此无法核实真实 `/uni-prom` 的有限 drawer/modal/list/ready 定位。新上传选项在制作或入队前拒绝；生产 adapter 不连接 Chrome 或选文件。
+`PRODUCTION_QIANCHUAN_CONTRACT` 仍为 `undefined`。实现 checkpoint 时只读探测六个已配置 loopback Chrome 端口，全部不可达。用户随后授权开启端口，五个 profile 已恢复并核对真实账户和计划；肥皂正在运行但无 CDP，重启决定待用户回复。空面板观察发现真实 tab、drawer、数量文案及文件选择入口与 fixture 不同，尚不能核实完整 list/ready 合同，见 [端口复验](qianchuan-cdp-test.md#chrome-port-reopen-verification)。新上传选项仍在制作或入队前拒绝；生产 adapter 不连接 Chrome 或选文件。
 
 既有六账号人工 CDP 上传记录保留为历史证据；本轮没有新增真实视频上传，没有点击确定，没有修改广告设置。M5 的应用到真实千川 ready 验收仍未完成，需有可观察的目标 Chrome 页面及另行指定产品、正式 MP4 和上传授权。
 

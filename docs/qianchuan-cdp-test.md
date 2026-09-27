@@ -46,3 +46,22 @@ npm run typecheck
 累计六个账户各完成一次对应视频的上传测试，均停在确认前。此证据不证明审核通过、正式投放或简辑桌面应用自动上传已接入千川。普通 launcher 再次启动 Chrome 时仍可能没有 CDP；本次开启端口不等于永久修改 launcher。
 
 早期 `/tmp/jianji-qianchuan-six-account-upload-only-report.json` 已不在当前临时目录；本轮最小报告为 `/tmp/jianji-qianchuan-final-two.json`，只记录最后两个账户的文件、校验与页面摘要，不保存完整 DOM、网络报文或凭据。临时报告不能作为持久证据 owner。当前 repository 没有专用 session-record/capture skill，本文件记录此稳定 checkpoint，未写入全局 memory。
+
+# Chrome Port Reopen Verification
+
+2026-09-27 23:55（Asia/Hong_Kong），用户授权开启 Chrome 端口验证。根据当前 profile registry 与 desktop launcher 核对产品映射，复用五个未运行的既有 profile，临时添加 loopback CDP 启动参数；没有改写 launcher、registry 或真实账号配置。热敷贴继续使用舒鼻膏 profile。
+
+| Product | Port | Current evidence |
+| --- | --- | --- |
+| 蝴蝶贴 | 9222 | `/json/version` 可达，账户和计划可见 ID 与配置一致 |
+| 氨糖膏 | 9223 | `/json/version` 可达，账户和计划可见 ID 与配置一致 |
+| 滴耳康 | 9224 | `/json/version` 可达，账户和计划可见 ID 与配置一致 |
+| 眼贴 | 9225 | `/json/version` 可达，账户和计划可见 ID 与配置一致 |
+| 肥皂 | 9226 | 既有 profile 正在运行但没有 CDP；保留窗口，重启决定待用户回复 |
+| 热敷贴 | 9227 | `/json/version` 可达，账户和计划可见 ID 与配置一致 |
+
+`ss -ltnp` 核对五个监听均为 `127.0.0.1`，浏览器报告 `Chrome/149.0.7827.53`。五次项目诊断 CLI `--open` 均返回 `account_and_plan_visible/submitted:false`；各自使用独立 CLI session 和新 tab，没有覆盖原页面。肥皂 profile 重启可能丢失未确认的上传弹窗，因此未终止其进程，已向用户请求单独决定。
+
+在蝴蝶贴的诊断 tab，按真实 snapshot 依次打开“素材”“添加视频”“上传视频”，只检查空面板。它显示 `已选择 0/64：`，独立“确定”按钮禁用。观察到以下 fixture 与真实结构差异：素材/上传视频为无 button role 的 tab；添加面板是另一层 `.ovui-drawer`；数量文案含尾部中文冒号；当前空上传面板及已检查 frame 没有 `input[type=file]`，只有“点击上传”入口。未点击该选文件入口，未选择新视频、未点击确定、未修改广告设置。
+
+这些观察只证明端口、目标身份和空面板可访问，不能证明上传后 row、processing、ready 或生产 adapter 已适配。`PRODUCTION_QIANCHUAN_CONTRACT` 继续为空，不能把 fixture 定位直接写成生产合同。后续必须适配真实控件和文件选择协议，并验证 ready 证据后才可解除生产阻断。临时最小端口报告为 `/tmp/jianji-qianchuan-port-verification.json`；本节保存持久结论，不以临时文件作为 acceptance owner。
