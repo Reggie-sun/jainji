@@ -148,3 +148,13 @@ spec: shape-matched-cover-spec.md
 **Compatibility / Verification:** 非 shape 的 publishApproved、manual/assisted/旧冻结与历史 retry 保持原路径。上传 task-created 回调只在 owner 首次调用原 queue 时转发，重复与 unknown 不再注册。以真实 FFmpeg 和模拟独立服务验证 Controller→runner→custody→queue→completed receipt，逐版本 manifest/字节、同键重入、unknown 窗口、绑定漂移和取消；保留既有拒绝/兼容测试。运行 typecheck、相关集成及有限四路全套，官方完整增量维护与 Verify/Check/Guide；记录 `docs/shape-matched-cover-m4b6.md`，只提交本任务 hunks。
 
 **Boundaries / Ownership:** 用户明确选 A 授权 Parent 串行修改 controller/runner；预先存在的 usesModel hunks 保留且排除提交。其余 dirty 文件和两个用户删除不接管。无 UI/IPC、M5、重启重试/authority recovery、moving mask、delogo、真实产品 Agent、付费模型、Kimi、掉电或 Windows 验收。
+
+# Active Slice — M4-B7 Restart Read-Only Reconciliation
+
+**Goal / Owners:** 在 ArtifactStore 增加显式 `reconcile(key)`，仅观察 durable intent、完整托管快照、canonical JobStore primary 与正式输出字节。JobStore 提供有界 primary-only 只读读取/枚举；不得调用会迁移、恢复备份、隔离损坏或创建目录的 load/loadAll/recover/hydrate。Controller/runner、启动、IPC/UI 不接线，不改变 B5/B6 发布状态机。
+
+**Proof / States:** 无 intent 返回 NO_INTENT，但不授予新许可。有效 intent 进入只读核对；receipt 存在时须有效且绑定一致，不能绕过损坏 receipt。缺 receipt 时仅从 canonical primary 唯一匹配的原 batch/task 核对：project、run/media/version、完整冻结模板（含源修订/候选/输出绑定）、preset、素材快照、输出目录、完成 metadata 和正式 SHA/大小。此发现路径要求 shape 层明确携带原 run/version selection；历史快照缺该绑定保持 UNKNOWN。零匹配、多匹配、损坏/未知版本、未完成、失配、丢失或路径别名均 UNKNOWN；不凭存在正式文件推断完成。COMPLETED_VERIFIED 只返回原 canonical identity/path，始终 authority=none。INTENT_DURABLE 是核对前提，不代表“尚未发布”。
+
+**Read-Only / Compatibility:** 不写 receipt/intent/manifest/JobStore，不删除或修复任何文件，不构造 handle，不调用 publish、FFmpeg、reviewer 或模型。缺 receipt 的只读 completed observation 不改变旧 publish/completed 的拒绝合同；即使观察成功，同键发布仍被永久 barrier 阻断。只证明既有 completed 的历史绑定与当前正式字节，不签发当前源/候选的 fresh admission；原缓存清理不影响完整 custody 的核对。所有非 shape、历史 retry 和 renderer 语义保留。
+
+**Verification / Record:** 真实 FFmpeg + 模拟独立 reviewer 产生既有发布事实，测试重开与独立 Node 进程的只读核对、返回丢失窗口、缺/坏 receipt、未完成及重复 canonical 匹配、绑定/字节漂移、backup-only/损坏 primary、NO_INTENT 和只读文件不变；验证无再次 queue/模型调用。运行 typecheck、相关 shape/store/queue 集成、有限四路全套、官方 AOCI Guide 增量维护及 Verify/Check/Guide；记录 `docs/shape-matched-cover-m4b7.md` 并仅提交本任务路径。保留无关 dirty 与用户删除，不进入 M5，不支持 restart authority/retry、真实 reviewer/人工全片/Windows/掉电验收。

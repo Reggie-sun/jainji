@@ -30,7 +30,7 @@ export async function writeArtifactJson(filePath: string, value: unknown): Promi
 /** Fixed-size streaming I/O: neither growth nor symlinks can bypass the byte budget. */
 export async function inspectArtifactFile(source: string, maxBytes: number, signal?: AbortSignal, destination?: string, collect = false): Promise<{ fingerprint: string; bytes: number; content: Buffer }> {
   signal?.throwIfAborted();
-  const input = await open(source, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  const input = await open(source, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   let output: Awaited<ReturnType<typeof open>> | undefined;
   try {
     const before = await input.stat();

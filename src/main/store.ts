@@ -1,4 +1,5 @@
-import { copyFile, mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { copyFile, lstat, mkdir, open, opendir, readFile, realpath, rename, unlink, writeFile } from "node:fs/promises";
+import { constants } from "node:fs";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
@@ -10,6 +11,7 @@ import {
   type QueueState,
   type Project,
   QueueStateSchema,
+  ExportBatchSchema,
   ProjectSchema,
 } from "./domain.js";
 import {
@@ -184,6 +186,52 @@ export class ProjectStore {
 
 export class JobStore {
   constructor(private readonly jobsDirectory: string) {}
+
+  private async canonicalDirectory(): Promise<void> {
+    if (!(await lstat(this.jobsDirectory)).isDirectory() || await realpath(this.jobsDirectory) !== path.resolve(this.jobsDirectory)) {
+      throw new StoreError("unavailable", "Canonical job directory required");
+    }
+  }
+
+  /** Primary-only observation: no backups, migrations, quarantine, mkdir or lifecycle changes. */
+  async readCanonical(batchId: string): Promise<QueueState> {
+    ExportBatchSchema.shape.id.parse(batchId);
+    await this.canonicalDirectory();
+    const file = this.pathFor(batchId), limit = 4 * 1024 * 1024;
+    const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    try {
+      const before = await handle.stat();
+      if (!before.isFile() || before.size <= 0 || before.size > limit || (await lstat(file)).isSymbolicLink()) throw new StoreError("corrupt", "Invalid canonical job file");
+      const buffer = Buffer.alloc(before.size + 1);
+      let bytes = 0;
+      while (bytes < buffer.length) {
+        const observed = await handle.read(buffer, bytes, buffer.length - bytes, null);
+        if (observed.bytesRead === 0) break;
+        bytes += observed.bytesRead;
+      }
+      const after = await handle.stat(), current = await lstat(file);
+      if (bytes !== before.size || after.size !== before.size || after.mtimeMs !== before.mtimeMs || current.isSymbolicLink()
+        || current.dev !== before.dev || current.ino !== before.ino || current.size !== before.size || current.mtimeMs !== before.mtimeMs) throw new StoreError("corrupt", "Canonical job changed while reading");
+      const state = QueueStateSchema.parse(JSON.parse(buffer.subarray(0, bytes).toString("utf8")));
+      if (state.batch.id !== batchId || state.batch.tasks.some(task => task.batchId !== batchId)) throw new StoreError("corrupt", "Canonical job identity mismatch");
+      return state;
+    } finally { await handle.close(); }
+  }
+
+  /** Bounded primary inventory. Invalid entries cannot be skipped when proving uniqueness. */
+  async canonicalBatchIds(): Promise<string[]> {
+    await this.canonicalDirectory();
+    const ids: string[] = [];
+    let entries = 0;
+    for await (const entry of await opendir(this.jobsDirectory)) {
+      if (++entries > 16_384) throw new StoreError("unavailable", "Canonical job inventory limit");
+      if (!entry.name.endsWith(".json")) continue;
+      const id = ExportBatchSchema.shape.id.parse(entry.name.slice(0, -5));
+      if (!entry.isFile() || ids.length >= 4096) throw new StoreError("corrupt", "Invalid canonical job inventory");
+      ids.push(id);
+    }
+    return ids.sort();
+  }
 
   async save(state: QueueState, signal?: AbortSignal): Promise<void> {
     await atomicWriteJson(this.pathFor(state.batch.id), QueueStateSchema.parse(state), signal);

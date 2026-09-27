@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,14 @@ const roots: string[] = [], stores: SourceStickerKnowledgeStore[] = [];
 const sha = (bytes: Buffer) => createHash("sha256").update(bytes).digest("hex");
 const settings: ExportSettings = { resolutionMode: "source", frameRateMode: "source", quality: "balanced" };
 const placement = { x: 6, y: 6, width: 32, height: 32 };
+async function fileSnapshot(root: string): Promise<unknown[]> {
+  const entries: unknown[] = [];
+  for (const name of (await readdir(root)).sort()) {
+    const file = path.join(root, name), stat = await lstat(file);
+    entries.push([file, stat.mtimeMs, stat.isSymbolicLink() ? await readlink(file) : stat.isDirectory() ? await fileSnapshot(file) : stat.isFile() ? sha(await readFile(file)) : "special"]);
+  }
+  return entries;
+}
 afterEach(async () => {
   vi.restoreAllMocks();
   for (const store of stores.splice(0)) await store.close();
@@ -85,11 +93,16 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
     return { ...value, queue, input, controller, verifier };
   }
 
-  async function custodyFixture() {
+  async function custodyFixture(selected = false) {
     const review = vi.fn(safeReview), value = await admissionFixture(review);
+    const projectId = crypto.randomUUID(), key = { runId: crypto.randomUUID(), mediaId: value.media.id, version: 1 };
+    if (selected) {
+      const layer = value.template.layers[0];
+      if (layer.type !== "sticker" || !layer.cover) throw new Error("missing shape layer");
+      value.template.layers = [{ ...layer, cover: { ...layer.cover, selection: { runId: key.runId, round: key.version } } }];
+    }
     const admitted = await admitShapeCoverSample(value.input);
     if (admitted.status !== "PASS") throw new Error(admitted.reason);
-    const projectId = crypto.randomUUID(), key = { runId: crypto.randomUUID(), mediaId: value.media.id, version: 1 };
     const outputDirectory = path.join(value.root, "custody-outputs"); await mkdir(outputDirectory);
     const options = { root: path.join(value.root, "custody"), projectId, jobStore: new JobStore(path.join(value.root, "jobs")) };
     const custody = new ShapeCoverArtifactStore(options);
@@ -98,6 +111,159 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
     const directory = path.join(options.root, projectId, `${key.runId}-${key.mediaId}-${key.version}`);
     return { ...value, admitted, review, options, custody, publish, directory };
   }
+
+  it("reconciles restart completed facts without granting authority or writing a missing receipt", async () => {
+    const value = await custodyFixture(true);
+    const { custody, publish, queue, options, review, directory, input } = value;
+    try {
+      let completed: Awaited<ReturnType<ExportQueue["publishApprovedSample"]>> | undefined;
+      const original = queue.publishApprovedSample.bind(queue);
+      const dispatch = vi.spyOn(queue, "publishApprovedSample").mockImplementation(async request => {
+        completed = await original(request); throw new Error("lost-return");
+      });
+      await expect(custody.publish(publish)).rejects.toThrow("lost-return");
+      const { build } = await import("esbuild");
+      const restart = path.join(value.root, "restart-reconcile.cjs");
+      await build({ stdin: { contents: `import { ShapeCoverArtifactStore } from "./src/main/shape-cover-artifacts.ts";
+        import { JobStore } from "./src/main/store.ts";
+        const store = new ShapeCoverArtifactStore({ root: ${JSON.stringify(options.root)}, projectId: ${JSON.stringify(options.projectId)}, jobStore: new JobStore(${JSON.stringify(path.join(value.root, "jobs"))}) });
+        store.reconcile(${JSON.stringify(publish.key)}).then(result => console.log(JSON.stringify(result))).catch(() => process.exit(1));`, resolveDir: process.cwd() },
+        bundle: true, platform: "node", format: "cjs", outfile: restart, logLevel: "silent" });
+      const before = await fileSnapshot(value.root);
+      const render = vi.spyOn(input.ffmpeg, "run");
+      const recovered = new ShapeCoverArtifactStore(options);
+      expect(await recovered.reconcile(publish.key)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result: completed });
+      const child = spawnSync(process.execPath, [restart], { encoding: "utf8", timeout: 10_000 });
+      expect(child.status, child.stderr).toBe(0);
+      expect(JSON.parse(child.stdout)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result: completed });
+      expect(await recovered.reconcile(publish.key)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result: completed });
+      expect(await fileSnapshot(value.root)).toEqual(before);
+      expect(await readdir(directory)).not.toContain("publication-receipt.json");
+      await expect(recovered.completed(publish.key)).rejects.toThrow();
+      await expect(recovered.publish(publish)).rejects.toThrow();
+      expect(dispatch).toHaveBeenCalledOnce(); expect(review).toHaveBeenCalledOnce(); expect(render).not.toHaveBeenCalled();
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it.each(["receipt", "no-receipt"])("reads canonical completion after cache cleanup (%s)", async mode => {
+    const value = await custodyFixture(true);
+    try {
+      const result = await value.custody.publish(value.publish);
+      if (mode === "no-receipt") await unlink(path.join(value.directory, "publication-receipt.json"));
+      await rm(value.input.cacheDirectory, { recursive: true });
+      await unlink(value.publish.request.candidates[0].asset.assetPath);
+      const before = await fileSnapshot(value.root);
+      expect(await new ShapeCoverArtifactStore(value.options).reconcile(value.publish.key)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result });
+      expect(await fileSnapshot(value.root)).toEqual(before);
+    } finally { await value.queue.shutdown(); }
+  }, 30_000);
+
+  it.each(["corrupt-primary", "backup-only", "incomplete", "duplicate", "bad-receipt", "bad-intent", "output-bytes", "asset-bytes", "selection", "metadata", "job-alias"])("restart reconciliation is read-only and UNKNOWN for %s", async failure => {
+    const value = await custodyFixture(true);
+    try {
+      const result = await value.custody.publish(value.publish);
+      const jobPath = value.options.jobStore.pathFor(result.batchId);
+      const bytes = await readFile(jobPath), state = JSON.parse(bytes.toString());
+      await unlink(path.join(value.directory, "publication-receipt.json"));
+      if (failure === "corrupt-primary" || failure === "backup-only") {
+        await writeFile(`${jobPath}.bak`, bytes);
+        if (failure === "backup-only") await unlink(jobPath); else await writeFile(jobPath, "{broken");
+      }
+      if (failure === "incomplete") { state.batch.tasks[0].status = "verifying"; state.batch.status = "active"; await writeFile(jobPath, JSON.stringify(state)); }
+      if (failure === "duplicate") {
+        const duplicate = structuredClone(state); duplicate.batch.id = crypto.randomUUID(); duplicate.batch.tasks[0].batchId = duplicate.batch.id; duplicate.batch.tasks[0].id = crypto.randomUUID(); duplicate.batch.tasks[0].outputArtifact.taskId = duplicate.batch.tasks[0].id;
+        await writeFile(value.options.jobStore.pathFor(duplicate.batch.id), JSON.stringify(duplicate));
+      }
+      if (failure === "bad-receipt") await writeFile(path.join(value.directory, "publication-receipt.json"), "{broken");
+      if (failure === "bad-intent") await writeFile(path.join(value.directory, "publication-intent.json"), "{broken");
+      if (failure === "output-bytes") await writeFile(result.outputPath, "changed output");
+      if (failure === "asset-bytes") await writeFile(path.join(value.directory, "asset-0.bin"), "changed candidate");
+      if (failure === "selection") { state.batch.templateSnapshot.layers[0].cover.selection.round = 2; await writeFile(jobPath, JSON.stringify(state)); }
+      if (failure === "metadata") { state.batch.tasks[0].outputArtifact.taskId = crypto.randomUUID(); await writeFile(jobPath, JSON.stringify(state)); }
+      if (failure === "job-alias") { await unlink(jobPath); await writeFile(`${jobPath}.bak`, bytes); await symlink(`${jobPath}.bak`, jobPath); }
+      const before = await fileSnapshot(value.root);
+      const dispatch = vi.spyOn(value.queue, "publishApprovedSample"), render = vi.spyOn(value.input.ffmpeg, "run");
+      expect(await new ShapeCoverArtifactStore(value.options).reconcile(value.publish.key)).toMatchObject({ state: "UNKNOWN", authority: "none" });
+      expect(await fileSnapshot(value.root)).toEqual(before);
+      expect(dispatch).not.toHaveBeenCalled(); expect(render).not.toHaveBeenCalled(); expect(value.review).toHaveBeenCalledOnce();
+    } finally { await value.queue.shutdown(); }
+  }, 30_000);
+
+  it("NO_INTENT does not create a directory or grant authority", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "shape-reconcile-")); roots.push(root);
+    const options = { root: path.join(root, "missing-custody"), projectId: crypto.randomUUID(), jobStore: new JobStore(path.join(root, "missing-jobs")) };
+    const before = await fileSnapshot(root);
+    expect(await new ShapeCoverArtifactStore(options).reconcile({ runId: crypto.randomUUID(), mediaId: crypto.randomUUID(), version: 1 })).toEqual({ state: "NO_INTENT", authority: "none" });
+    expect(await fileSnapshot(root)).toEqual(before);
+  });
+
+  it("does not infer a run/version from a legacy snapshot without receipt", async () => {
+    const value = await custodyFixture();
+    try {
+      await value.custody.publish(value.publish);
+      await unlink(path.join(value.directory, "publication-receipt.json"));
+      const before = await fileSnapshot(value.root);
+      expect(await new ShapeCoverArtifactStore(value.options).reconcile(value.publish.key)).toEqual({ state: "UNKNOWN", authority: "none" });
+      expect(await fileSnapshot(value.root)).toEqual(before);
+    } finally { await value.queue.shutdown(); }
+  }, 30_000);
+
+  it("rejects restart binding drift, unsupported metadata and unproven canonical identity without repairs", async () => {
+    const value = await custodyFixture(true);
+    try {
+      const result = await value.custody.publish(value.publish);
+      const manifestPath = path.join(value.directory, "manifest.json"), receiptPath = path.join(value.directory, "publication-receipt.json"), intentPath = path.join(value.directory, "publication-intent.json"), jobPath = value.options.jobStore.pathFor(result.batchId);
+      const originals = new Map(await Promise.all([manifestPath, receiptPath, intentPath, jobPath].map(async file => [file, await readFile(file)] as const)));
+      const cases: Array<[string, string, (value: any) => void]> = [
+        ["request", manifestPath, data => { data.data.request.outputSettings[0].settings.quality = "high"; }],
+        ["key", manifestPath, data => { data.data.key.version = 2; }],
+        ["source revision", manifestPath, data => { data.data.request.intendedTargets[0].revisionId = "different-revision"; }],
+        ["manifest version", manifestPath, data => { data.schemaVersion = 2; }],
+        ["intent digest", intentPath, data => { data.bindingDigest = "0".repeat(64); }],
+        ["receipt digest", receiptPath, data => { data.bindingDigest = "0".repeat(64); }],
+        ["job version", jobPath, data => { data.schemaVersion += 1; }],
+        ["job identity", jobPath, data => { data.batch.id = crypto.randomUUID(); }],
+        ["project", jobPath, data => { data.batch.projectId = crypto.randomUUID(); }],
+        ["settings", jobPath, data => { data.batch.preset.quality = "high"; }],
+        ["media", jobPath, data => { data.batch.mediaSnapshots[0].fingerprint = `sha256:${"0".repeat(64)}`; }],
+        ["output", jobPath, data => { data.batch.tasks[0].outputPath = value.publish.samplePath; }],
+      ];
+      const recovered = new ShapeCoverArtifactStore(value.options);
+      const load = vi.spyOn(value.options.jobStore, "load"), loadAll = vi.spyOn(value.options.jobStore, "loadAll"), save = vi.spyOn(value.options.jobStore, "save");
+      for (const [name, file, mutate] of cases) {
+        const data = JSON.parse(originals.get(file)!.toString()); mutate(data); await writeFile(file, JSON.stringify(data));
+        const before = await fileSnapshot(value.root);
+        expect(await recovered.reconcile(value.publish.key), name).toEqual({ state: "UNKNOWN", authority: "none" });
+        expect(await fileSnapshot(value.root), name).toEqual(before);
+        await writeFile(file, originals.get(file)!);
+      }
+      await unlink(receiptPath); await unlink(jobPath);
+      const before = await fileSnapshot(value.root);
+      expect(await recovered.reconcile(value.publish.key)).toEqual({ state: "UNKNOWN", authority: "none" });
+      expect(await fileSnapshot(value.root)).toEqual(before);
+      await writeFile(jobPath, Buffer.alloc(4 * 1024 * 1024 + 1));
+      await expect(value.options.jobStore.readCanonical(result.batchId)).rejects.toThrow("Invalid canonical job file");
+      expect(load).not.toHaveBeenCalled(); expect(loadAll).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+    } finally { await value.queue.shutdown(); }
+  }, 30_000);
+
+  it.skipIf(process.platform !== "linux")("refuses FIFO metadata without blocking on open or repairing files", async () => {
+    const value = await custodyFixture(true);
+    try {
+      const result = await value.custody.publish(value.publish);
+      const jobPath = value.options.jobStore.pathFor(result.batchId), bytes = await readFile(jobPath);
+      await unlink(jobPath); expect(spawnSync("mkfifo", [jobPath]).status).toBe(0);
+      const before = await fileSnapshot(value.root);
+      expect(await new ShapeCoverArtifactStore(value.options).reconcile(value.publish.key)).toEqual({ state: "UNKNOWN", authority: "none" });
+      expect(await fileSnapshot(value.root)).toEqual(before);
+      await unlink(jobPath); await writeFile(jobPath, bytes);
+      const manifestPath = path.join(value.directory, "manifest.json");
+      await unlink(manifestPath); expect(spawnSync("mkfifo", [manifestPath]).status).toBe(0);
+      const manifestBefore = await fileSnapshot(value.root);
+      expect(await new ShapeCoverArtifactStore(value.options).reconcile(value.publish.key)).toEqual({ state: "UNKNOWN", authority: "none" });
+      expect(await fileSnapshot(value.root)).toEqual(manifestBefore);
+    } finally { await value.queue.shutdown(); }
+  }, 30_000);
 
   it("retains complete data without authority and publishes a concurrent identical key only once", async () => {
     const value = await custodyFixture();

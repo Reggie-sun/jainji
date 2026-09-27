@@ -1,7 +1,7 @@
 import { mkdir, rm, lstat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { EditTemplateSchema, ExportPresetSchema, MediaItemSchema, type EditTemplate, type ExportPreset, type MediaItem } from "./domain.js";
+import { EditTemplateSchema, ExportPresetSchema, MediaItemSchema, type EditTemplate, type ExportPreset, type MediaItem, type ExportBatch } from "./domain.js";
 import { ShapeCoverCandidateRequestSchema, type ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
 import { verifyShapeCoverAdmission, type ShapeCoverAdmission } from "./shape-cover-admission.js";
 import { MAX_FROZEN_SHAPE_BYTES } from "../shared/shape-cover.js";
@@ -26,6 +26,10 @@ const Intent = z.object({ schemaVersion: z.literal(1), bindingDigest: Digest }).
 const Receipt = z.object({ schemaVersion: z.literal(1), bindingDigest: Digest, batchId: z.string().uuid(), taskId: z.string().uuid(),
   outputPath: z.string().min(1).max(4096).refine(path.isAbsolute), outputFingerprint: Fingerprint }).strict();
 type ArtifactManifest = z.infer<typeof Manifest>;
+export type ShapeCoverReconciliation = { authority: "none" } & (
+  { state: "NO_INTENT" } | { state: "UNKNOWN" } |
+  { state: "COMPLETED_VERIFIED"; result: { batchId: string; taskId: string; outputPath: string } }
+);
 interface CaptureInput {
   key: ShapeCoverArtifactKey; request: ShapeCoverCandidateRequest; template: EditTemplate; media: MediaItem; preset: ExportPreset;
   outputDirectory: string; samplePath: string; admission: ShapeCoverAdmission; signal: AbortSignal;
@@ -155,16 +159,75 @@ export class ShapeCoverArtifactStore {
       || receipt.outputFingerprint !== manifest.data.sampleFingerprint) artifactUnsafe("publication binding mismatch");
     return this.verifyCompleted(manifest, receipt);
   }
+
+  /** Restart observation only. A discovered result never creates a receipt or publication permission. */
+  async reconcile(key: ShapeCoverArtifactKey): Promise<ShapeCoverReconciliation> {
+    try {
+      const directory = this.directory(key), intentPath = path.join(directory, "publication-intent.json");
+      for (const parent of [this.root, path.dirname(directory), directory]) {
+        if (!await exists(parent)) return { state: "NO_INTENT", authority: "none" };
+        await artifactDirectory(parent);
+      }
+      if (!await exists(intentPath)) return { state: "NO_INTENT", authority: "none" };
+      const manifest = await this.loadManifest(key);
+      const intent = Intent.parse(await readArtifactJson(intentPath));
+      if (intent.bindingDigest !== manifest.bindingDigest) artifactUnsafe("intent binding mismatch");
+      const receiptPath = path.join(directory, "publication-receipt.json");
+      const receiptPresent = await exists(receiptPath);
+      let receipt: z.infer<typeof Receipt>;
+      if (receiptPresent) {
+        receipt = Receipt.parse(await readArtifactJson(receiptPath));
+        if (receipt.bindingDigest !== manifest.bindingDigest || receipt.outputFingerprint !== manifest.data.sampleFingerprint) artifactUnsafe("receipt binding mismatch");
+      } else {
+        // B5 snapshots without explicit run/version selection cannot support receipt-less discovery.
+        const shapes = manifest.data.template.layers.filter(layer => layer.type === "sticker" && layer.cover?.shapeMatched);
+        if (!shapes.length || shapes.some(layer => layer.type !== "sticker" || layer.cover?.selection?.runId !== key.runId
+          || layer.cover.selection.round !== key.version)) artifactUnsafe("missing production identity");
+        const ids = await this.jobStore.canonicalBatchIds();
+        const matches: ExportBatch[] = [];
+        const observed: Array<{ id: string; digest: string }> = [];
+        for (const id of ids) {
+          const state = await this.jobStore.readCanonical(id), { batch } = state;
+          observed.push({ id, digest: reviewDigest(state) });
+          if (this.matchesBatch(manifest, batch)) matches.push(batch);
+          if (matches.length > 1) artifactUnsafe("ambiguous canonical completion");
+        }
+        if (matches.length !== 1) artifactUnsafe("canonical completion unproven");
+        const batch = matches[0], task = batch.tasks[0];
+        receipt = Receipt.parse({ schemaVersion: 1, bindingDigest: manifest.bindingDigest, batchId: batch.id, taskId: task.id,
+          outputPath: task.outputPath, outputFingerprint: manifest.data.sampleFingerprint });
+        for (const item of observed) if (item.digest !== reviewDigest(await this.jobStore.readCanonical(item.id))) artifactUnsafe("canonical job changed during discovery");
+        if (reviewDigest(ids) !== reviewDigest(await this.jobStore.canonicalBatchIds())) artifactUnsafe("canonical inventory changed");
+      }
+      const result = await this.verifyCompleted(manifest, receipt);
+      // Detect drift in the durable bindings during observation; never repair it.
+      if (reviewDigest(intent) !== reviewDigest(Intent.parse(await readArtifactJson(intentPath)))
+        || reviewDigest(manifest) !== reviewDigest(await this.loadManifest(key))) artifactUnsafe("custody changed during reconciliation");
+      if (receiptPresent ? reviewDigest(receipt) !== reviewDigest(Receipt.parse(await readArtifactJson(receiptPath))) : await exists(receiptPath)) artifactUnsafe("receipt changed during reconciliation");
+      return { state: "COMPLETED_VERIFIED", authority: "none", result };
+    } catch { return { state: "UNKNOWN", authority: "none" }; }
+  }
+
+  private matchesBatch(manifest: ArtifactManifest, batch: ExportBatch): boolean {
+    return batch.projectId === this.projectId && batch.tasks.length === 1
+      && batch.tasks[0].mediaId === manifest.data.key.mediaId && reviewDigest(batch.mediaIds) === reviewDigest([manifest.data.key.mediaId])
+      && batch.outputDirectory === manifest.data.outputDirectory
+      && reviewDigest(batch.templateSnapshot) === reviewDigest(manifest.data.template) && reviewDigest(batch.preset) === reviewDigest(manifest.data.preset)
+      && reviewDigest(batch.mediaSnapshots) === reviewDigest([manifest.data.media]);
+  }
   private async verifyCompleted(manifest: ArtifactManifest, receipt: z.infer<typeof Receipt>) {
-    const { batch } = (await this.jobStore.load(receipt.batchId)).state;
+    const state = await this.jobStore.readCanonical(receipt.batchId), { batch } = state;
     const task = batch.tasks.find(task => task.id === receipt.taskId);
-    if (batch.projectId !== this.projectId || batch.tasks.length !== 1 || !task || task.status !== "completed"
+    if (!this.matchesBatch(manifest, batch) || batch.status !== "completed" || !task || task.status !== "completed"
+      || task.progress !== 1 || task.attempt < 1 || !task.startedAt || !task.finishedAt || task.errorCode || task.errorMessage
+      || task.outputArtifact?.taskId !== task.id || task.outputArtifact.sizeBytes <= 0
       || task.mediaId !== manifest.data.key.mediaId || task.outputPath !== receipt.outputPath || task.outputArtifact?.path !== receipt.outputPath
       || batch.outputDirectory !== manifest.data.outputDirectory || path.dirname(receipt.outputPath) !== manifest.data.outputDirectory
-      || reviewDigest(batch.templateSnapshot) !== reviewDigest(manifest.data.template) || reviewDigest(batch.preset) !== reviewDigest(manifest.data.preset)
-      || reviewDigest(batch.mediaSnapshots) !== reviewDigest([manifest.data.media])) artifactUnsafe("completed queue fact mismatch");
+      || path.extname(receipt.outputPath) !== `.${manifest.data.preset.container}`) artifactUnsafe("completed queue fact mismatch");
+    await artifactDirectory(manifest.data.outputDirectory);
     const output = await inspectArtifactFile(receipt.outputPath, SHAPE_ARTIFACT_SAMPLE_BYTES);
     if (output.fingerprint !== receipt.outputFingerprint || output.bytes !== task.outputArtifact?.sizeBytes) artifactUnsafe("completed output changed");
+    if (reviewDigest(state) !== reviewDigest(await this.jobStore.readCanonical(receipt.batchId))) artifactUnsafe("completed queue fact changed");
     return { batchId: receipt.batchId, taskId: receipt.taskId, outputPath: receipt.outputPath };
   }
 
