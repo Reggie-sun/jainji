@@ -196,3 +196,17 @@ spec: shape-matched-cover-spec.md
 **Verification / Evidence:** 新 schema 和真实 controller 入口测试先 red 后 green；覆盖默认关闭、非法组合、未知字段、缺价格、assisted/显式接缝防绕过、无 intent 的旧准入及拒绝后 idle/cancel。运行 `npm run typecheck`、activation/agent/controller/provider/price 与现有 shape/compiler/queue/store 集成。稳定候选按 Risk Gate 判断，保留 M5-A 文件 SHA。AOCI 官方维护须先解决其两个已 dirty 索引文件的 ownership；只提交本轮 hunks，不接管其他工作。完整产品 activation 正例、全片/真实语义/Windows 验收不在本次完成声明内。
 
 **Verified Checkpoint:** 默认关闭 guard 已实施；typecheck PASS，相关14 files /334 tests PASS（含新增28 tests），M5-A frozen SHA 未变。用户确认原 AOCI owner 完成后已串行维护本轮3项完整批次，Verify/Check/Guide aligned。状态 `ENTRY_GUARD_VERIFIED / PRODUCT_DISABLED`；这是入口拒绝切片，M5-B 真正产品激活仍需可信 assembler、全片 source horizon 与 M5 真实媒体验收。证据及 review risk 裁决见 [M5-B record](shape-matched-cover-m5b.md#default-closed-guard-evidence)。
+
+# Active Slice — M5-C Trusted Request Assembler Boundary
+
+**Goal / Sequence:** 按用户要求固定 `C → D → E → Activation`，M5-B guard 保持锁定。本轮实施 [M5-C contract](shape-matched-cover-m5c.md) 的 canonical source 收集及默认拒绝切片；不是完整 request issuer 的上线验收。完整 C 的签发支路依赖 D 与可信 placement，当前不得制造正例。
+
+**Owner / Files:** 新 `src/main/shape-cover-request-assembler.ts` 独占产品准备边界，参数只接 strict AgentStart intent，dependencies 使用主进程 ApplicationService/knowledge store/FFmpeg。复用已有 sourceIdentity、readHead、readAdmittedShapeCoverTarget，输出设置用现有 preset owner 规范化。新 `tests/shape-cover-request-assembler.test.ts` 覆盖拒绝和实际 canonical source fixture。本轮不修改已有 dirty controller/runner/shared，不接产品 entry、不改 M4 fixture seam。
+
+**Contract / No Issuance:** 所有选中素材须属于当前项目且 probe ready，逐个验证精确源、当前 reviewed mask revision 和全部已记录 segments；检查本身不证明全片 completeness。assembler 缺 D 直接 UNSAFE，返回 Promise<never>，不泄露 partial request，不添加 fake issuer、complete callback 或 bbox placement。M4 继续独占共同候选、coverage/freeze、样片独立 content-safety 和发布 handle；assembler 不提前填 PASS。
+
+**Remaining C/D/E:** 完整 C 需 trusted placement、D 的全片源事实 authority 与不可伪造、不可变、重新核验绑定的 prepared request consumer。D 在已有 source-fact owner 证明完整 horizon 分区/穷尽目标/全部 admitted masks/无 unverifiedIntervals，不能升级短 segment 或 sampled ABSENT。E 验证真实批量遮盖、语义、切镜、规格、性能、Windows 与 CPU-only。各门分别验收；三者未满足不改 M5-B。
+
+**Verification / Stop:** red→green assembler negatives，npm run typecheck、assembler/activation/source-mask/shape/controller 回归、Parent diff/Risk Gate、官方 AOCI 完整增量维护；仅提交当前任务文件，保留其他 staged/dirty。本轮可收口的是 fail-closed preparation boundary；真实 immutable production request 签发与产品激活仍 blocked。使用 milestone 记录维护 session evidence，不另建生命周期 owner。
+
+**Boundary Checkpoint:** 本轮新增 assembler 20 tests、相关5 files /164 tests 与 typecheck PASS，最后入口55 tests fresh重跑；AOCI 1项完整批次与 Verify/Check/Guide aligned。状态 `PREPARATION_BOUNDARY_VERIFIED / REQUEST_ISSUANCE_BLOCKED / PRODUCT_DISABLED`，完整 C 尚未完成。证据、冻结 SHA、Risk Gate、Kimi 无有效终态与索引提交依赖见 [M5-C record](shape-matched-cover-m5c.md#verified-boundary-checkpoint)。
