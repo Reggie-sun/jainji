@@ -5,6 +5,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
 import { PRICE_STYLES } from "../src/shared/price-styles";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
+import type { ShapeCoverReviewInput } from "../src/main/shape-cover-admission";
 
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
 const plan = { summary: "保留主体", captions: [], filter: "warm", intensity: 0.4 };
@@ -14,6 +15,26 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("sends paired shape evidence and all four independent safety categories through the reviewer connection", async () => {
+    const complete = vi.fn().mockResolvedValue('{"action":"stop","reason":"simulated uncertainty"}');
+    const provider = new AgentProvider(); provider.useChatGPT("simulated-independent", complete);
+    const input = { purpose: "shape-cover-content-safety", durationMs: 3000, revision: 0, remainingRevisions: 4,
+      shapes: [{ targetId: "target", range: { startMs: 0, endMs: 2000 }, placement: { x: 6, y: 6, width: 32, height: 32 }, pngSha256: "a".repeat(64) }],
+      feedback: "prior concern", history: [{ turn: 1, revision: 0, action: "inspect", reason: "need edges" }], issues: [],
+      evidence: [{ timeMs: 0, previewTimeMs: 0, sourceEvidenceId: "source-current", previewEvidenceId: "preview-current", fullSourceEvidenceId: "full-current",
+        sourceUrl: "data:image/png;base64,c291cmNl", previewUrl: "data:image/png;base64,cHJldmlldw==", fullSourceUrl: "data:image/png;base64,ZnVsbA==", fullPreviewUrl: "data:image/png;base64,ZnVsbC1wcmV2aWV3" }],
+    } as unknown as ShapeCoverReviewInput;
+    await expect(provider.superviseShapePreview(input, new AbortController().signal)).resolves.toContain("stop");
+    expect(complete).toHaveBeenCalledOnce();
+    const messages = complete.mock.calls[0][0];
+    for (const category of ["face", "hands", "product", "subtitles", "UNKNOWN", "inspect", "stop"]) expect(messages[0].content).toContain(category);
+    const context = JSON.parse(messages[1].content[0].text);
+    expect(context).toMatchObject({ evidenceIds: ["source-current", "preview-current", "full-current"], feedback: "prior concern", history: input.history, shapes: input.shapes });
+    expect(messages[1].content.filter((item: { type: string }) => item.type === "image_url").map((item: { image_url: { url: string } }) => item.image_url.url)).toEqual([
+      input.evidence[0].sourceUrl, input.evidence[0].previewUrl, input.evidence[0].fullSourceUrl, input.evidence[0].fullPreviewUrl,
+    ]);
+  });
+
   it("spaces successive API request starts", async () => {
     vi.useFakeTimers();
     try {

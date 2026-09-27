@@ -33,6 +33,8 @@ import { CoverPlacementSession, completedCoverPlacements } from "./cover-placeme
 import { proposeCoverPlacement } from "./cover-placement-proposal.js";
 import { AgentPreviewStore } from "./agent-preview-store.js";
 import type { DouyinUploadSelection } from "../shared/douyin-upload.js";
+import { ShapeCoverProduction } from "./shape-cover-production.js";
+import type { ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -85,7 +87,7 @@ export class AgentController {
     return previews;
   }
 
-  private async autoCatalog(signal: AbortSignal, cover = false): Promise<AgentDecorationCatalog> {
+  private async autoCatalog(signal: AbortSignal, cover = false, deferPreviews = false): Promise<AgentDecorationCatalog> {
     const builtins = cover ? [...AUTOMATIC_STICKERS, ...BUNDLED_STICKERS, ...LIBRARY_STICKERS] : AUTOMATIC_STICKERS;
     const libraryIds = new Set(LIBRARY_STICKERS.map(({ id }) => id));
     const stickers = [
@@ -93,7 +95,7 @@ export class AgentController {
       ...Object.keys(this.stickerAssets).filter(isUploadedStickerId).map((id) => ({ id, label: `用户上传贴纸 ${id.slice(9, 17)}` })),
     ];
     const previews = [];
-    for (const { id } of stickers.filter(({ id }) => isUploadedStickerId(id))) {
+    for (const { id } of stickers.filter(({ id }) => !deferPreviews && isUploadedStickerId(id))) {
       signal.throwIfAborted();
       previews.push({ id, url: await stickerPreview(this.ffmpeg, this.stickerAssets[id]!, signal) });
     }
@@ -114,7 +116,12 @@ export class AgentController {
     return this.startInternal(input, approvedDirectories);
   }
 
-  private async startInternal(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, assisted?: { draft: CoverReviewDraft; prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void> }): Promise<void> {
+  /** Explicit in-process M4-B4 entry; intentionally absent from IPC and persistent request schemas. */
+  async startShapeMatched(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, request: ShapeCoverCandidateRequest): Promise<void> {
+    return this.startInternal(input, approvedDirectories, undefined, structuredClone(request));
+  }
+
+  private async startInternal(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, assisted?: { draft: CoverReviewDraft; prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void> }, shapeRequest?: ShapeCoverCandidateRequest): Promise<void> {
     this.assertIdle();
     if (this.queue.snapshot().batches.some(({ batch }) => batch.tasks.some((task) =>
       ["validating", "running", "verifying", "cancelling"].includes(task.status) ||
@@ -132,6 +139,7 @@ export class AgentController {
       if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted) throw new Error("半自动覆盖必须先审阅、预览和批准。");
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
       const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
+      if (shapeRequest && (!automaticCover || assisted || parsed.sourceStickerRefresh)) throw new ProviderError("UNSAFE: 形状接缝仅用于已准入静态源事实的显式自动覆盖，不支持重新识别或半自动草稿。");
       if ((decorations.mode === "agent" || automaticCover) && !this.provider.status().configured) throw new Error("请先接入模型。");
       const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
       // Local-random path: stickers / price style / cover selection are all decided without the
@@ -145,9 +153,9 @@ export class AgentController {
         if (!supervised) throw new Error("重新检查原贴纸仅用于自动识别模式，不改变手动或半自动草稿。");
         if (parsed.mediaIds.some(id => !project.mediaItems.some(item => item.id === id && item.probeStatus === "ready"))) throw new Error("重新检查的素材不属于当前项目或已不可用。");
       }
-      if ((automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
+      if (!shapeRequest && (automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
       if (supervised && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于主管 Agent 修正与样片检查。");
-      const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover)) : undefined;
+      const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover), Boolean(shapeRequest)) : undefined;
       const autoCatalog = decorations.mode === "agent" ? { ...availableCatalog!, stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)) } : undefined;
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets) };
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, parsed.mediaIds, randomPath);
@@ -224,7 +232,7 @@ export class AgentController {
           } finally { await evidence.dispose(); if (!retained) await rm(directory, { recursive: true, force: true }); }
         },
       }) : undefined;
-      const placement = automaticCover && !assisted ? new CoverPlacementSession({
+      const placement = automaticCover && !assisted && !shapeRequest ? new CoverPlacementSession({
         refreshMediaIds,
         store: this.knowledgeStore!,
         cached: completedCoverPlacements(history),
@@ -257,7 +265,20 @@ export class AgentController {
         },
       }) : undefined;
       await this.previews.clear();
+      let shape: ShapeCoverProduction | undefined;
+      if (shapeRequest) {
+        for (const candidate of shapeRequest.candidates) {
+          const asset = stickerAssets[candidate.id];
+          if (!availableCatalog!.stickers.some(entry => entry.id === candidate.id) || !asset
+            || asset.assetPath !== candidate.asset.assetPath || asset.assetFingerprint !== candidate.asset.assetFingerprint) throw new ProviderError("UNSAFE: 形状候选不属于当前已导入本地目录。");
+        }
+        const directory = await mkdtemp(path.join(tmpdir(), "jianji-shape-production-"));
+        this.previews.retainDirectory(directory);
+        shape = new ShapeCoverProduction({ request: shapeRequest, store: this.knowledgeStore!, ffmpeg: this.ffmpeg, queue: this.queue, preset, directory,
+          reviewerIdentity: this.reviewerProvider.status().model, review: (context, signal) => this.reviewerProvider.superviseShapePreview(context, signal) });
+      }
       this.runner = new AgentRunner({
+        shape,
         knowledge,
         placement,
         recordOutcome: knowledge ? outcome => this.knowledgeStore!.recordOutcome(outcome) : undefined,
@@ -267,13 +288,14 @@ export class AgentController {
         coverSticker,
         preserveSourceStickers,
         selectCoverSticker: automaticCover ? async (frames, signal, previousSelections) => {
-          const eligible = availableCatalog!.stickers;
+          const eligible = availableCatalog!.stickers.filter(({ id }) => !shape || shape.commonSafeCandidateIds.includes(id));
           const candidateIds = unusedCoverStickerIds(eligible.map(({ id }) => id), previousSelections, previousCoverId);
           const stickers = eligible.filter(({ id }) => candidateIds.includes(id));
-          const catalog = { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };
+          const catalog = shape ? await prepareCandidates(stickers.map(entry => entry.id), availableCatalog!, signal)
+            : { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };
           if (!stickers.length) throw new ProviderError("没有可用的自动覆盖贴纸，请检查本地素材库。");
           creativeRequests++;
-          const ids = await this.provider.shortlist(parsed.ruleId, `${decorationTimingContext(decorations?.displayMode)}为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，使用白色不透明底板。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
+          const ids = await this.provider.shortlist(parsed.ruleId, `${decorationTimingContext(decorations?.displayMode)}为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，${shape ? "仅从整轮共同几何合格目录选款，使用冻结形状轮廓，仍须独立内容安全准入" : "使用白色不透明底板"}。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
           const stickerId = ids[0];
           if (!stickerId || !catalog.stickers.some((entry) => entry.id === stickerId)) throw new ProviderError("覆盖初筛没有返回有效候选，本轮已停止。");
           if (!stickerAssets[stickerId]) {
@@ -337,10 +359,10 @@ export class AgentController {
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
         },
-        publishApproved: async (template, item, samplePath, signal) => {
+        publishApproved: async (template, item, samplePath, signal, shapeAdmission) => {
           signal.throwIfAborted();
           const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
-          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, outputDirectory, onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve() });
+          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, shapeAdmission, outputDirectory, onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve() });
           this.onChange();
           return taskId;
         },

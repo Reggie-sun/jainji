@@ -11,7 +11,7 @@ import * as alphaMedia from "../src/main/shape-cover-alpha";
 import type { ExportSettings } from "../src/shared/export-settings";
 import { freezeShapeCoverCandidate } from "../src/main/shape-cover-freeze";
 import { TemplateCompiler } from "../src/main/compiler";
-import { createDefaultTemplate, DEFAULT_PRESET, EditTemplateSchema, now, type MediaItem } from "../src/main/domain";
+import { createDefaultTemplate, DEFAULT_PRESET, EditTemplateSchema, now, type MediaItem, type StickerLayer } from "../src/main/domain";
 import { decodeSourceMask, projectSourceMask, checkOutputFrameCoverage } from "../src/main/shape-cover-pixel-gate";
 import { shapeCoverDigest } from "../src/main/shape-cover-render";
 import { ExportQueue } from "../src/main/queue";
@@ -20,6 +20,13 @@ import { FfmpegAdapter } from "../src/main/ffmpeg";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ArtifactVerifier } from "../src/main/artifact";
 import { admitShapeCoverSample, type ShapeCoverReviewInput, type ShapeCoverAdmission } from "../src/main/shape-cover-admission";
+import { AgentController } from "../src/main/agent-controller";
+import { ApplicationService } from "../src/main/application";
+import { resolveFont } from "../src/main/ffmpeg";
+import * as agentFrames from "../src/main/agent-frames";
+import { prepareAgentTemplate } from "../src/main/agent-template-preparation";
+import type { StickerAssets } from "../src/main/builtin-stickers";
+import { getRule } from "../src/shared/agent";
 
 const available = ["ffmpeg", "ffprobe"].every(binary => spawnSync(binary, ["-version"], { stdio: "ignore" }).status === 0);
 const roots: string[] = [], stores: SourceStickerKnowledgeStore[] = [];
@@ -74,6 +81,21 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
       reviewer: { identity: "simulated-independent-fixture", role: "independent-content-safety" as const, review }, signal: controller.signal };
     return { ...value, queue, input, controller, verifier };
   }
+
+  it("fills only the actual occupied corner intervals instead of treating the transparent shape canvas as four corners", async () => {
+    const { layer, media, request } = await frozenFixture();
+    const id = request.candidates[0].id;
+    const corners = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
+    const template = prepareAgentTemplate({ plan: { summary: "simulated corners", captions: [], filter: "none", intensity: 0, priceStyle: "classic",
+      stickers: corners.map(corner => ({ corner, sticker: id, width: 0.08, rotationDeg: 0 })) }, ruleId: "clean", source: media, resolutionMode: "source",
+      stickerAssets: { [id]: request.candidates[0].asset } as StickerAssets, catalog: { fonts: [], stickers: [{ id, label: "fixture" }] },
+      decorations: { mode: "agent", sticker: "template", fontFamily: "Noto Sans CJK SC", productPrice: "手动展示" }, shapeCoverLayers: [layer], runId: crypto.randomUUID(), version: 1 });
+    const stickers = template.layers.filter((layer): layer is StickerLayer => layer.type === "sticker" && !layer.cover);
+    expect(stickers).toHaveLength(4);
+    expect(stickers[0]).toMatchObject({ activeRanges: [{ startMs: 2000, endMs: 3000 }] });
+    expect(stickers.slice(1).every(layer => !layer.activeRanges)).toBe(true);
+    expect(template.layers.filter(layer => layer.type === "sticker" && layer.cover)).toEqual([layer]);
+  });
 
   it("admits measured output frames and independently checked paired evidence, then publishes only the same sample bytes", async () => {
     const { root, queue, input, controller, verifier } = await admissionFixture();
@@ -444,6 +466,108 @@ async function fixture(sourceSize = 64, fps = 30) {
   return { root, store, request: { intendedTargets: targets, outputSettings: [{ id: "source", settings }], candidates } satisfies ShapeCoverCandidateRequest };
 }
 const tools = { ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" };
+
+describe.skipIf(!available)("M4-B4 original production entry", () => {
+  async function productionFixture() {
+    const value = await fixture();
+    value.request.candidates = value.request.candidates.slice(0, 3);
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
+    const font = await resolveFont("Noto Sans CJK SC");
+    if (!font) throw new Error("real FFmpeg text fixture requires font");
+    const service = new ApplicationService(ffmpeg, { resolve: async () => font });
+    const media: MediaItem[] = value.request.intendedTargets.map(target => ({ id: crypto.randomUUID(), sourcePath: target.sourcePath, displayName: target.id,
+      fingerprint: target.source.fingerprint, sizeBytes: target.source.byteLength, width: target.source.width, height: target.source.height,
+      rotation: target.source.rotation, durationMs: target.source.durationMs, probeStatus: "ready", importedAt: now() }));
+    service.currentProject.mediaItems.push(...media);
+    service.currentProject.coverSticker = { enabled: true, trackingMode: "agent", stickerIds: [], rectangle: { x: 0.1, y: 0.1, width: 0.5, height: 0.5 } };
+    const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(value.root, "production-jobs")), sourceKnowledgeStore: value.store,
+      fontResolver: { resolve: async () => font }, executionLimits: { analysis: 2, exports: 2, threads: 1 } });
+    const assets = Object.fromEntries(value.request.candidates.map(candidate => [candidate.id, candidate.asset])) as StickerAssets;
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, value.store);
+    controller.provider.configure({ apiKey: "unused-mock-only", model: "simulated-creative", baseUrl: "https://example.test/v1" });
+    controller.reviewerProvider.configure({ apiKey: "unused-mock-only", model: "simulated-independent", baseUrl: "https://example.test/v1" });
+    const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
+    const rule = getRule("clean");
+    const plan = vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "mock creative", captions: [], filter: rule.filters[0], intensity: rule.minIntensity });
+    const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog) => {
+      expect(catalog!.stickers.map(sticker => sticker.id)).toEqual([value.request.candidates[2].id]);
+      return [catalog!.stickers[0].id];
+    });
+    const safe = async (context: ShapeCoverReviewInput) => JSON.stringify({ action: "pass", reason: "simulated independent production fixture",
+      contentSafety: { face: "SAFE", hands: "SAFE", product: "SAFE", subtitles: "SAFE" },
+      evidenceIds: [...new Set(context.evidence.flatMap(image => [image.sourceEvidenceId!, image.previewEvidenceId!, ...image.fullSourceEvidenceId ? [image.fullSourceEvidenceId] : []]))] });
+    const review = vi.spyOn(controller.reviewerProvider, "superviseShapePreview").mockImplementation(safe);
+    const createBatch = vi.spyOn(queue, "createBatch");
+    const publish = vi.spyOn(queue, "publishApprovedSample");
+    const outputDirectory = path.join(value.root, "production-outputs"); await mkdir(outputDirectory);
+    const input = { ruleId: "clean" as const, brief: "", mediaIds: media.map(item => item.id), outputDirectory, exportSettings: { ...settings },
+      decorations: { mode: "manual" as const, productPrice: "手动展示", sticker: "none", fontFamily: "Noto Sans CJK SC" } };
+    const start = async (multiplier = 1) => {
+      await controller.startShapeMatched({ ...input, multiplier }, new Set([outputDirectory]), value.request);
+      await vi.waitFor(() => expect(controller.busy).toBe(false), { timeout: 60_000, interval: 50 });
+    };
+    return { ...value, ffmpeg, service, media, queue, controller, frames, plan, shortlist, review, safe, createBatch, publish, input, start };
+  }
+
+  it("intersects the whole round before selection, independently admits every version and publishes the same bytes", async () => {
+    const value = await productionFixture();
+    try {
+      await value.start(2);
+      expect(value.controller.snapshot()?.items.map(item => item.status), JSON.stringify(value.controller.snapshot())).toEqual(["exporting", "exporting", "exporting", "exporting"]);
+      expect(value.shortlist).toHaveBeenCalledTimes(2);
+      expect(value.review).toHaveBeenCalledTimes(4);
+      expect(value.createBatch).not.toHaveBeenCalled();
+      expect(value.publish).toHaveBeenCalledTimes(4);
+      const batches = value.queue.snapshot().batches;
+      expect(batches).toHaveLength(4);
+      expect(new Set(value.publish.mock.calls.map(([input]) => input.shapeAdmission)).size).toBe(4);
+      for (const { batch } of batches) {
+        const task = batch.tasks[0]; expect(task.status).toBe("completed");
+        const run = value.controller.snapshot()!, item = run.items.find(item => item.taskId === task.id)!;
+        const samplePath = await value.controller.previewPath(run.id, item.id);
+        expect(await readFile(task.outputPath!)).toEqual(await readFile(samplePath));
+        expect(batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content)).toEqual(["手动展示"]);
+        const shape = batch.templateSnapshot.layers.find(layer => layer.type === "sticker" && layer.cover?.shapeMatched);
+        expect(shape).toMatchObject({ cover: { stickerId: value.request.candidates[2].id, selection: { runId: run.id, round: item.version }, shapeMatched: { contentSafety: "NOT_EVALUATED" } } });
+        await expect(value.queue.createBatch({ template: batch.templateSnapshot, mediaIds: batch.mediaIds, mediaItems: value.media, preset: batch.preset, outputDirectory: value.input.outputDirectory })).rejects.toThrow("UNSAFE");
+      }
+    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+  }, 60_000);
+
+  it.each(["missing-target", "missing-mask", "empty-common", "setting", "range", "asset"])("rejects %s before any creative or reviewer invocation", async fault => {
+    const value = await productionFixture();
+    try {
+      if (fault === "missing-target") value.request.intendedTargets.pop();
+      if (fault === "missing-mask") value.request.intendedTargets[1].segmentId = "missing";
+      if (fault === "empty-common") value.request.candidates.pop();
+      if (fault === "setting") value.request.outputSettings[0].settings.quality = "high";
+      if (fault === "range") value.request.intendedTargets[1].range.endMs = 1000;
+      if (fault === "asset") value.request.candidates[0].asset = { ...value.request.candidates[0].asset, assetPath: path.join(value.root, "foreign.png") };
+      if (fault === "asset") await expect(value.start()).rejects.toThrow("UNSAFE");
+      else { await value.start(); expect(value.controller.snapshot()?.items.every(item => item.status === "failed" && item.error?.includes("UNSAFE"))).toBe(true); }
+      expect(value.frames).not.toHaveBeenCalled(); expect(value.shortlist).not.toHaveBeenCalled();
+      expect(value.plan).not.toHaveBeenCalled(); expect(value.review).not.toHaveBeenCalled(); expect(value.publish).not.toHaveBeenCalled();
+    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+  }, 30_000);
+
+  it.each(["selection", "source-drift", "unknown", "cancel"])("does not publish a version after %s", async fault => {
+    const value = await productionFixture();
+    try {
+      if (fault === "selection") value.shortlist.mockResolvedValue([value.request.candidates[0].id]);
+      if (fault === "source-drift") value.shortlist.mockImplementation(async () => {
+        await writeFile(value.media[0].sourcePath, "changed source"); return [value.request.candidates[2].id];
+      });
+      if (fault === "unknown") value.review.mockImplementation(async context => {
+        const result = JSON.parse(await value.safe(context)); result.contentSafety.hands = "UNKNOWN"; return JSON.stringify(result);
+      });
+      if (fault === "cancel") value.review.mockImplementation(async context => { void value.controller.cancel(); return value.safe(context); });
+      await value.start();
+      expect(value.controller.snapshot()?.items.every(item => fault === "cancel" ? item.status === "cancelled" : item.status === "failed")).toBe(true);
+      if (fault === "unknown" || fault === "cancel") expect(value.review).toHaveBeenCalled();
+      expect(value.publish).not.toHaveBeenCalled(); expect(value.createBatch).not.toHaveBeenCalled(); expect(value.queue.snapshot().batches).toEqual([]);
+    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+  }, 60_000);
+});
 
 describe.skipIf(!available)("whole-round shape candidate geometry", () => {
   it("uses real alpha and intersects every intended target rather than the first", async () => {

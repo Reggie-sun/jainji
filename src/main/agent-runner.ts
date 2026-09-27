@@ -15,12 +15,15 @@ import type { KnowledgeBinding, KnowledgeVersion, SourceStickerKnowledgeSession 
 import type { KnowledgeOutcome, KnowledgeProductionStage } from "../shared/source-sticker-knowledge-audit.js";
 import type { CoverPlacementSession } from "./cover-placement-session.js";
 import { CoverDiagnostics } from "./cover-diagnostics.js";
+import type { ShapeCoverProduction } from "./shape-cover-production.js";
+import type { ShapeCoverAdmission } from "./shape-cover-admission.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
   plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog, selection?: AgentSelectionContext): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
-  publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal): Promise<string>;
+  publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal, shapeAdmission?: ShapeCoverAdmission): Promise<string>;
+  shape?: ShapeCoverProduction;
   /** Real render slots from the export queue (encoder-aware); defaults to the legacy cap when absent. */
   renderSlots?(): number;
   prepared?(template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal): Promise<void>;
@@ -101,7 +104,7 @@ export class AgentRunner {
         pending = previous.then(async () => {
           signal.throwIfAborted();
           // The first eligible source supplies the round's reference; all peers
-          // share this selection, without depending on a failed/blocked source.
+          // share this selection. Shape mode has already gated every intended target.
           const selected = await this.dependencies.selectCoverSticker!(frames, signal, [...selectedCoverIds]);
           selectedCoverIds.push(selected.stickerId);
           return selected;
@@ -154,7 +157,7 @@ export class AgentRunner {
           if (placement) {
             if (!coverSticker?.automatic || this.dependencies.preserveSourceStickers) throw new ProviderError("近似覆盖方案不能用于原贴纸占位判断。");
             coverTracks = placement.tracks;
-          } else if (coverSticker?.automatic || this.dependencies.preserveSourceStickers) {
+          } else if (!this.dependencies.shape && (coverSticker?.automatic || this.dependencies.preserveSourceStickers)) {
             if (!binding && (!this.dependencies.prepared || !this.dependencies.detectCoverTracks)) throw new ProviderError("源贴纸知识检查不可用，本条已停止。");
             const tracks = binding ? await knowledge!.tracks(binding) : await this.dependencies.detectCoverTracks!(source, signal, onStage);
             if (this.dependencies.preserveSourceStickers) sourceStickerTracks = tracks;
@@ -174,7 +177,8 @@ export class AgentRunner {
           const preparation = { plan, ruleId: run.ruleId, source, resolutionMode: this.dependencies.resolutionMode,
             stickerAssets: this.dependencies.stickerAssets, decorations: this.dependencies.decorations, catalog: this.dependencies.autoCatalog,
             coverSticker, coverTracks, sourceStickerTracks, preserveCoverMotion: Boolean(this.dependencies.prepared), runId: run.id, version: item.version };
-          let template = prepareAgentTemplate(preparation);
+          const shapeCoverLayers = this.dependencies.shape ? await this.dependencies.shape.layers(item.version, coverSticker!.stickerId, source, run.id, signal) : undefined;
+          let template = prepareAgentTemplate({ ...preparation, shapeCoverLayers });
           let version: KnowledgeVersion | undefined;
           if ((knowledge && binding || placement) && !this.dependencies.prepared) {
             const original = template;
@@ -201,7 +205,16 @@ export class AgentRunner {
             for (const { sticker } of plan.stickers) stickerUsage.set(sticker, (stickerUsage.get(sticker) ?? 0) + 1);
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
-          if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
+          if (this.dependencies.shape) {
+            if (!this.dependencies.publishApproved) throw new ProviderError("UNSAFE: 形状覆盖同字节发布不可用。");
+            audit[index].stage = "preview";
+            const admitted = await this.dependencies.shape.admit(template, source, signal);
+            audit[index].stage = "enqueue";
+            item.taskId = await this.dependencies.publishApproved(template, source, admitted.previewPath, signal, admitted.admission);
+            signal.throwIfAborted();
+            if (this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, admitted.previewPath);
+          }
+          else if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);
           else if (version && binding) reviewed.set(index, { index, version, binding, source });
           else if (placement) {
             audit[index].stage = "enqueue";
@@ -220,6 +233,7 @@ export class AgentRunner {
           if (!placement) {
             item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
             if (version) item.summary += " · 主管样片检查通过，正在提交导出";
+            if (this.dependencies.shape) item.summary += " · 独立形状样片检查通过，已同字节发布";
           }
           item.status = this.dependencies.prepared || version ? "prepared" : "exporting";
         } catch (error) {
@@ -283,9 +297,16 @@ export class AgentRunner {
       }
     };
     try {
+      if (this.dependencies.shape) await this.dependencies.shape.prepare(media, signal);
       const concurrency = this.dependencies.prepared ? 1
-        : Math.min(executionLimits().analysis, this.dependencies.placement || this.dependencies.knowledge ? Math.min(this.dependencies.renderSlots?.() ?? 3, 6) : Infinity, groupsToRun.length);
+        : Math.min(executionLimits().analysis, this.dependencies.placement || this.dependencies.knowledge || this.dependencies.shape ? Math.min(this.dependencies.renderSlots?.() ?? 3, 6) : Infinity, groupsToRun.length);
       await Promise.all(Array.from({ length: concurrency }, () => worker()));
+    } catch (error) {
+      if (!this.dependencies.shape) throw error;
+      for (const item of run.items) if (!item.taskId) {
+        item.status = signal.aborted ? "cancelled" : "failed";
+        item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "UNSAFE: 本轮形状覆盖准备失败。";
+      }
     } finally {
       pendingFrames.clear();
       await this.dependencies.knowledge?.close();

@@ -100,3 +100,15 @@ spec: shape-matched-cover-spec.md
 **Binding / Lifecycle:** handle 由 module-private WeakMap 绑定完整 request、模板、媒体、输出 preset、样片 SHA 和检查证据；调用者不能通过 JSON 填 PASS。发布前重查当前 source/asset/frozen bindings，复制后核对 partial 与已批准样片相同 SHA，取消或任一漂移为 UNSAFE。handle 不写入源知识或序列化为持久生产 PASS；重启后须重新准入。旧矩形、manual、assisted 路径不变。整轮 Agent 选款接线、持久可重放准入、全片自动覆盖与生产 UI 激活仍在后续切片，本次不调用产品 Agent、付费模型或 Kimi review。
 
 **Acceptance / Verification:** 真实 FFmpeg/原 queue 的 coverage→paired evidence→模拟独立安全→同字节直发正例；几何 PASS 但脸/手/商品/字幕侵入或未知、伪造 handle、源/设置/模板/样片/候选漂移、遗漏目标、冻结像素篡改和取消拒绝；普通入队/恢复仍不能用样片准入放行。运行 typecheck、相关 shape/compiler/domain/queue/supervisor tests 及有限并发全套；完成后官方 AOCI incremental maintenance、Verify / Check / Guide，检查 final diff 并提交限定文件。
+
+# Active Slice — M4-B4
+
+**Goal / Entry:** 在原 `AgentController` / `AgentRunner` 增加进程内显式 `startShapeMatched` 接缝；默认 `start`、IPC、UI 和旧矩形路径保持不变，不进入 M5。入口消费显式 intended targets / placements / output settings，候选必须来自本次已有合法本地目录，源/素材集合和当前输出设置必须一致。缺任一素材或源事实 segment、范围不全、重复目标、目录外资产均拒绝；不从 bbox 或旧轨迹生成 mask。
+
+**Owners / Sequence:** 新 `shape-cover-production.ts` 只编排现有 M4-B1/B2/B3 owner：先为全部素材验证完整源事实集合并计算 candidate×target×setting 共同几何候选；再允许原选款回调收到共同集合内的轮换子集。按版本共享同一选款与整轮冻结，逐素材版本独立创作、样片准入；`agent-template-preparation.ts` 将冻结 shape 图层加入同一模板，并按实际 placement/range 调用现有补角 owner。`AgentRunner` 在全部 masks/共同集合通过前不抽模型帧、不调用创作/选款；安全 UNKNOWN/UNSAFE、coverage/绑定漂移或取消不发布该版本。原 `publishApproved` 回调传递 opaque handle，复用 queue 同字节直发，不新增 renderer/queue。
+
+**Reviewer / Compatibility:** 独立 `reviewerProvider` 使用专用 shape 内容安全协议，明确 face/hands/product/subtitles 和当前真实配对 evidence IDs，只允许 inspect/stop/pass；不调用视觉识别生成近似框，不回退旧矩形。缺独立复核连接在模型调用前拒绝。manual、assisted、关闭覆盖和历史冻结任务继续原解释。新接缝没有 IPC/产品 UI 接线，不启用全片自动覆盖。
+
+**Persistence / Restart:** 冻结模板与最终 artifact 可沿原 JobStore 保存，仅是可追溯数据；PASS authority 仍仅为 M4-B3 module-private handle。同进程只发布该 handle 绑定的原样片；普通 createBatch、append/retry、重放和重启恢复继续 fail-closed。重启不自动调用任何模型，不恢复 handle，不将 JSON PASS 或重新编码产物借作准入。缓存 PNG/预览为 run-local 文件，不承诺持久重放；对应持久化能力不在本切片实现。
+
+**Verification / Record:** `tests/shape-cover-candidates.test.ts` 增加 Controller→Runner→共同集合→整轮冻结→逐版模拟独立 reviewer→真实 FFmpeg→原队列同字节发布的集成证据；覆盖缺目标/mask、空共同集合、越界选款、未知内容安全、源漂移、取消和跨版本不复用 PASS。补角检查真实 placement/range；相关 controller/runner/provider/template/queue 与 shape 测试、typecheck、有限并发全套及官方 AOCI Verify/Check/Guide。记录到 `docs/shape-matched-cover-m4b4.md`，仅提交本切片文件及官方签发增量维护。用户两个项目文件删除保留。不调用真实产品 Agent、付费模型或 Kimi review；Parent 直接负责合同核查和最终 diff，模拟 reviewer 不等于真实语义/人工/Windows 验收。
