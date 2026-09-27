@@ -1,5 +1,31 @@
 import { describe, expect, it } from "vitest";
 import { DouyinUploadConfigSchema, DouyinUploadSelectionSchema, FinalArtifactInputSchema, UploadResultSchema, isLoopbackUrl } from "../src/shared/douyin-upload";
+import { QianchuanUploadSelectionSchema, QianchuanUploadConfigSchema, FrozenAccountSchema, QianchuanUploadResultSchema } from "../src/shared/douyin-upload";
+
+describe("Qianchuan v2 request and frozen contracts", () => {
+  it("requires an explicit product and refuses legacy captions or arbitrary target fields", () => {
+    expect(QianchuanUploadSelectionSchema.parse({ enabled: true, accountProduct: "眼贴" })).toEqual({ enabled: true, accountProduct: "眼贴" });
+    for (const input of [{ enabled: true }, { enabled: true, caption: "manual" }, { enabled: true, accountProduct: "unknown" }, { enabled: true, accountProduct: "眼贴", advertiserId: "123" }]) {
+      expect(QianchuanUploadSelectionSchema.safeParse(input).success).toBe(false);
+    }
+  });
+  it("defaults disabled and prohibits global browser routes", () => {
+    expect(QianchuanUploadConfigSchema.parse({}).enabled).toBe(false);
+    for (const input of [{ cdpEndpoint: "http://127.0.0.1:9222" }, { uploadPageUrl: "https://qianchuan.jinritemai.com/uni-prom" }, { accountConfigPath: "relative.json" }]) {
+      expect(QianchuanUploadConfigSchema.safeParse(input).success).toBe(false);
+    }
+  });
+  it("requires complete IDs and a bound digest for a frozen account", () => {
+    const target = { product: "眼贴", cdpEndpoint: "http://127.0.0.1:9225", advertiserId: "9007199254740993", adId: "123", configDigest: "a".repeat(64) };
+    expect(FrozenAccountSchema.parse(target).advertiserId).toBe("9007199254740993");
+    expect(FrozenAccountSchema.safeParse({ ...target, adId: "" }).success).toBe(false);
+    expect(FrozenAccountSchema.safeParse({ ...target, configDigest: "bad" }).success).toBe(false);
+  });
+  it("cannot turn a creator success or weak ready assertion into a Qianchuan result", () => {
+    expect(QianchuanUploadResultSchema.safeParse({ state: "SUCCEEDED" }).success).toBe(false);
+    expect(QianchuanUploadResultSchema.safeParse({ state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY" }).success).toBe(false);
+  });
+});
 
 describe("Douyin upload contracts", () => {
   it("defaults disabled, preserves manual caption and rejects renderer browser commands", () => {

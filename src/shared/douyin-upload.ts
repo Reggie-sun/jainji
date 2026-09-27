@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { QianchuanAccountSchema, QianchuanProductSchema, accountAvailable } from "./qianchuan-account.js";
 
 export const DouyinUploadSelectionSchema = z.object({ enabled: z.literal(true), caption: z.string().max(4096).optional() }).strict();
 export type DouyinUploadSelection = z.infer<typeof DouyinUploadSelectionSchema>;
@@ -75,3 +76,41 @@ export class UploadError extends Error {
 export function uploadFailure(code: UploadFailure["code"], category: UploadFailure["category"], message: string, next_action: string, requires_human = false, retryable = false): UploadError {
   return new UploadError({ code, category, message, next_action, requires_human, retryable });
 }
+
+export const QianchuanUploadSelectionSchema = z.object({ enabled: z.literal(true), accountProduct: QianchuanProductSchema }).strict();
+export type QianchuanUploadSelection = z.infer<typeof QianchuanUploadSelectionSchema>;
+export const QianchuanUploadConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  accountConfigPath: z.string().min(1).max(4096).refine(value => !value.includes("\0") && (value.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(value))).optional(),
+  timeouts: UploadTimeoutsSchema.default({}), captureFailureDiagnostics: z.boolean().default(false),
+}).strict();
+export type QianchuanUploadConfig = z.infer<typeof QianchuanUploadConfigSchema>;
+export const FrozenAccountSchema = QianchuanAccountSchema.innerType().extend({ configDigest: UploadIdSchema }).strict().refine(accountAvailable, "请选择包含账户和计划 ID 的账号。");
+export const UploadAuthorizationSchema = z.object({
+  target: FrozenAccountSchema, pageBatchId: z.string().uuid(), expectedCount: z.number().int().min(1).max(250),
+}).strict();
+export type UploadAuthorization = z.infer<typeof UploadAuthorizationSchema>;
+export const PageOwnershipSchema = z.object({
+  targetId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/), pageBatchId: z.string().uuid(), modalSessionId: z.string().uuid(),
+}).strict();
+export type PageOwnership = z.infer<typeof PageOwnershipSchema>;
+export const ReadyEvidenceSchema = z.object({
+  advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/), adId: z.string().regex(/^[1-9][0-9]{0,19}$/),
+  fileName: z.string().min(1).max(255), selectedCount: z.number().int().min(1).max(250), observedAt: z.string().datetime(), pageOwnership: PageOwnershipSchema,
+}).strict();
+export type ReadyEvidence = z.infer<typeof ReadyEvidenceSchema>;
+export const QianchuanUploadStateSchema = z.enum(["PENDING", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE", "WAITING_FOR_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "NEEDS_HUMAN", "CANCELLED"]);
+export const QianchuanUploadOutcomeSchema = z.enum(["NOT_SELECTED", "MAY_HAVE_UPLOADED", "READY"]);
+export const QianchuanUploadResultSchema = UploadIdentitySchema.extend({
+  upload_task_id: UploadIdSchema, artifact_sha256: UploadIdSchema, file_name: z.string().min(1).max(255),
+  accountProduct: QianchuanProductSchema, advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/), adId: z.string().regex(/^[1-9][0-9]{0,19}$/),
+  state: QianchuanUploadStateSchema, upload_outcome: QianchuanUploadOutcomeSchema,
+  retryable: z.boolean(), retry_count: z.number().int().nonnegative(), attempt_count: z.number().int().nonnegative(), timestamp: z.string().datetime(),
+  readyEvidence: ReadyEvidenceSchema.optional(), failure: UploadFailureSchema.optional(), duplicate_of: UploadIdSchema.optional(),
+}).strict().superRefine((value, ctx) => {
+  if ((value.state === "WAITING_FOR_CONFIRMATION") !== Boolean(value.readyEvidence) ||
+    (value.upload_outcome === "READY") !== Boolean(value.readyEvidence) ||
+    value.readyEvidence && (value.readyEvidence.advertiserId !== value.advertiserId || value.readyEvidence.adId !== value.adId || value.readyEvidence.fileName !== value.file_name || value.failure) ||
+    value.retryable && value.upload_outcome !== "NOT_SELECTED") ctx.addIssue({ code: "custom", message: "非法千川上传结果组合。" });
+});
+export type QianchuanUploadResult = z.infer<typeof QianchuanUploadResultSchema>;
