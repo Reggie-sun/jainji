@@ -16,13 +16,12 @@ import type { KnowledgeOutcome, KnowledgeProductionStage } from "../shared/sourc
 import type { CoverPlacementSession } from "./cover-placement-session.js";
 import { CoverDiagnostics } from "./cover-diagnostics.js";
 import type { ShapeCoverProduction } from "./shape-cover-production.js";
-import type { ShapeCoverAdmission } from "./shape-cover-admission.js";
 
 interface RunnerDependencies {
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
   plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog, selection?: AgentSelectionContext): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
-  publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal, shapeAdmission?: ShapeCoverAdmission): Promise<string>;
+  publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal): Promise<string>;
   shape?: ShapeCoverProduction;
   /** Real render slots from the export queue (encoder-aware); defaults to the legacy cap when absent. */
   renderSlots?(): number;
@@ -206,12 +205,13 @@ export class AgentRunner {
             priceStyleUsage.set(plan.priceStyle, (priceStyleUsage.get(plan.priceStyle) ?? 0) + 1);
           }
           if (this.dependencies.shape) {
-            if (!this.dependencies.publishApproved) throw new ProviderError("UNSAFE: 形状覆盖同字节发布不可用。");
             audit[index].stage = "preview";
             const admitted = await this.dependencies.shape.admit(template, source, signal);
             audit[index].stage = "enqueue";
-            item.taskId = await this.dependencies.publishApproved(template, source, admitted.previewPath, signal, admitted.admission);
+            const published = await this.dependencies.shape.publish({ template, media: source, runId: run.id, version: item.version,
+              samplePath: admitted.previewPath, admission: admitted.admission, signal });
             signal.throwIfAborted();
+            item.taskId = published.taskId;
             if (this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, admitted.previewPath);
           }
           else if (this.dependencies.prepared) await this.dependencies.prepared(template, source, item.version, signal);

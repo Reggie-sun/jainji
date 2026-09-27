@@ -29,6 +29,7 @@ import type { StickerAssets } from "../src/main/builtin-stickers";
 import { getRule } from "../src/shared/agent";
 import { ShapeCoverArtifactStore } from "../src/main/shape-cover-artifacts";
 import * as artifactIo from "../src/main/shape-cover-artifact-io";
+import { ShapeCoverProduction } from "../src/main/shape-cover-production";
 
 const available = ["ffmpeg", "ffprobe"].every(binary => spawnSync(binary, ["-version"], { stdio: "ignore" }).status === 0);
 const roots: string[] = [], stores: SourceStickerKnowledgeStore[] = [];
@@ -719,7 +720,8 @@ describe.skipIf(!available)("M4-B4 original production entry", () => {
     const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(value.root, "production-jobs")), sourceKnowledgeStore: value.store,
       fontResolver: { resolve: async () => font }, executionLimits: { analysis: 2, exports: 2, threads: 1 } });
     const assets = Object.fromEntries(value.request.candidates.map(candidate => [candidate.id, candidate.asset])) as StickerAssets;
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, value.store);
+    const registerUpload = vi.fn(async () => undefined);
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, value.store, registerUpload);
     controller.provider.configure({ apiKey: "unused-mock-only", model: "simulated-creative", baseUrl: "https://example.test/v1" });
     controller.reviewerProvider.configure({ apiKey: "unused-mock-only", model: "simulated-independent", baseUrl: "https://example.test/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
@@ -742,18 +744,20 @@ describe.skipIf(!available)("M4-B4 original production entry", () => {
       await controller.startShapeMatched({ ...input, multiplier }, new Set([outputDirectory]), value.request);
       await vi.waitFor(() => expect(controller.busy).toBe(false), { timeout: 60_000, interval: 50 });
     };
-    return { ...value, ffmpeg, service, media, queue, controller, frames, plan, shortlist, review, safe, createBatch, publish, input, start };
+    return { ...value, ffmpeg, service, media, queue, controller, frames, plan, shortlist, review, safe, createBatch, publish, input, start, registerUpload };
   }
 
   it("intersects the whole round before selection, independently admits every version and publishes the same bytes", async () => {
     const value = await productionFixture();
     try {
+      const custody = vi.spyOn(ShapeCoverArtifactStore.prototype, "publish");
       await value.start(2);
       expect(value.controller.snapshot()?.items.map(item => item.status), JSON.stringify(value.controller.snapshot())).toEqual(["exporting", "exporting", "exporting", "exporting"]);
       expect(value.shortlist).toHaveBeenCalledTimes(2);
       expect(value.review).toHaveBeenCalledTimes(4);
       expect(value.createBatch).not.toHaveBeenCalled();
       expect(value.publish).toHaveBeenCalledTimes(4);
+      expect(custody).toHaveBeenCalledTimes(4);
       const batches = value.queue.snapshot().batches;
       expect(batches).toHaveLength(4);
       expect(new Set(value.publish.mock.calls.map(([input]) => input.shapeAdmission)).size).toBe(4);
@@ -761,12 +765,105 @@ describe.skipIf(!available)("M4-B4 original production entry", () => {
         const task = batch.tasks[0]; expect(task.status).toBe("completed");
         const run = value.controller.snapshot()!, item = run.items.find(item => item.taskId === task.id)!;
         const samplePath = await value.controller.previewPath(run.id, item.id);
+        const directory = path.join(value.root, "production-jobs", "shape-cover-artifacts", run.projectId, `${run.id}-${item.mediaId}-${item.version}`);
+        const manifest = JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"));
+        expect(manifest).toMatchObject({ schemaVersion: 1, authority: "none", data: { key: { runId: run.id, mediaId: item.mediaId, version: item.version }, projectId: run.projectId } });
+        expect(manifest.data.request).toEqual(value.request);
+        expect(JSON.parse(await readFile(path.join(directory, "publication-receipt.json"), "utf8"))).toMatchObject({ batchId: batch.id, taskId: task.id, outputPath: task.outputPath });
+        expect(await readFile(path.join(directory, `sample.${batch.preset.container}`))).toEqual(await readFile(samplePath));
+        expect(value.publish.mock.calls.find(([input]) => input.template.id === batch.templateSnapshot.id)?.[0].samplePath).toBe(path.join(directory, `sample.${batch.preset.container}`));
         expect(await readFile(task.outputPath!)).toEqual(await readFile(samplePath));
         expect(batch.templateSnapshot.layers.filter(layer => layer.type === "text").map(layer => layer.content)).toEqual(["手动展示"]);
         const shape = batch.templateSnapshot.layers.find(layer => layer.type === "sticker" && layer.cover?.shapeMatched);
         expect(shape).toMatchObject({ cover: { stickerId: value.request.candidates[2].id, selection: { runId: run.id, round: item.version }, shapeMatched: { contentSafety: "NOT_EVALUATED" } } });
         await expect(value.queue.createBatch({ template: batch.templateSnapshot, mediaIds: batch.mediaIds, mediaItems: value.media, preset: batch.preset, outputDirectory: value.input.outputDirectory })).rejects.toThrow("UNSAFE");
       }
+    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+  }, 60_000);
+
+  it("reenters the production publish callback with the same key without a second queue task or registration", async () => {
+    const value = await productionFixture();
+    try {
+      await expect(value.queue.createShapeCoverArtifactStore("../invalid-project")).rejects.toThrow();
+      expect(await readdir(value.root)).not.toContain("shape-cover-artifacts");
+      const seam = vi.spyOn(ShapeCoverProduction.prototype, "publish");
+      await value.start();
+      expect(value.controller.snapshot()?.items.every(item => item.status === "exporting")).toBe(true);
+      expect(seam).toHaveBeenCalledTimes(2);
+      const input = seam.mock.calls[0][0], owner = seam.mock.contexts[0] as ShapeCoverProduction;
+      const completed = value.queue.snapshot().batches.find(({ batch }) => batch.mediaIds[0] === input.media.id)!.batch;
+      expect(await owner.publish(input)).toEqual({ batchId: completed.id, taskId: completed.tasks[0].id, outputPath: completed.tasks[0].outputPath });
+      expect(value.publish).toHaveBeenCalledTimes(2);
+      expect(value.registerUpload).toHaveBeenCalledTimes(2);
+      expect(value.review).toHaveBeenCalledTimes(2);
+      await expect(owner.publish({ ...input, version: input.version + 1 })).rejects.toThrow("production key mismatch");
+      await expect(owner.publish({ ...input, admission: {} as ShapeCoverAdmission })).rejects.toThrow("UNSAFE");
+      expect(value.publish).toHaveBeenCalledTimes(2);
+      expect(value.registerUpload).toHaveBeenCalledTimes(2);
+    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+  }, 60_000);
+
+  it("keeps a lost production publication return closed on callback reentry", async () => {
+    const value = await productionFixture();
+    try {
+      const seam = vi.spyOn(ShapeCoverProduction.prototype, "publish");
+      value.publish.mockImplementationOnce(async input => {
+        await ExportQueue.prototype.publishApprovedSample.call(value.queue, input);
+        throw new Error("simulated lost production return");
+      });
+      await value.start();
+      expect(value.controller.snapshot()?.items.filter(item => item.status === "failed")).toHaveLength(1);
+      expect(value.queue.snapshot().batches.every(({ batch }) => batch.tasks[0].status === "completed")).toBe(true);
+      const input = seam.mock.calls[0][0], owner = seam.mock.contexts[0] as ShapeCoverProduction;
+      const before = await readdir(value.input.outputDirectory);
+      await expect(owner.publish(input)).rejects.toThrow();
+      expect(await readdir(value.input.outputDirectory)).toEqual(before);
+      expect(value.publish).toHaveBeenCalledTimes(2);
+      expect(value.registerUpload).toHaveBeenCalledTimes(2);
+      expect(value.review).toHaveBeenCalledTimes(2);
+      const artifacts = await value.queue.createShapeCoverArtifactStore(value.controller.snapshot()!.projectId);
+      await expect(artifacts.completed({ runId: input.runId, mediaId: input.media.id, version: input.version })).rejects.toThrow();
+      expect((await artifacts.load({ runId: input.runId, mediaId: input.media.id, version: input.version })).authority).toBe("none");
+    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+  }, 60_000);
+
+  it("cancels during production custody setup before starting the runner", async () => {
+    const value = await productionFixture();
+    try {
+      const original = value.queue.createShapeCoverArtifactStore;
+      vi.spyOn(value.queue, "createShapeCoverArtifactStore").mockImplementationOnce(async projectId => {
+        const artifacts = await original.call(value.queue, projectId);
+        void value.controller.cancel();
+        return artifacts;
+      });
+      await expect(value.start()).rejects.toThrow();
+      expect(value.controller.busy).toBe(false);
+      expect(value.controller.snapshot()).toBeUndefined();
+      expect(value.plan).not.toHaveBeenCalled();
+      expect(value.review).not.toHaveBeenCalled();
+      expect(value.publish).not.toHaveBeenCalled();
+      expect(value.registerUpload).not.toHaveBeenCalled();
+    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+  }, 30_000);
+
+  it("cancels after production intent without publishing or recovering authority", async () => {
+    const value = await productionFixture();
+    try {
+      const original = artifactIo.writeArtifactJson;
+      vi.spyOn(artifactIo, "writeArtifactJson").mockImplementation(async (file, contents) => {
+        await original(file, contents);
+        if (path.basename(file) === "publication-intent.json") void value.controller.cancel();
+      });
+      await value.start();
+      expect(value.controller.snapshot()?.items.every(item => item.status === "cancelled")).toBe(true);
+      expect(value.publish).not.toHaveBeenCalled();
+      expect(value.registerUpload).not.toHaveBeenCalled();
+      expect(await readdir(value.input.outputDirectory)).toEqual([]);
+      const run = value.controller.snapshot()!;
+      const directory = path.join(value.root, "production-jobs", "shape-cover-artifacts", run.projectId);
+      const entries = await readdir(directory);
+      expect(entries.length).toBeGreaterThan(0);
+      expect((await Promise.all(entries.map(entry => readdir(path.join(directory, entry))))).some(files => files.includes("publication-intent.json"))).toBe(true);
     } finally { await value.controller.cancel(); await value.queue.shutdown(); }
   }, 60_000);
 

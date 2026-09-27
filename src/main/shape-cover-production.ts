@@ -4,10 +4,11 @@ import { EditTemplateSchema, type EditTemplate, type ExportPreset, type MediaIte
 import { ProviderError } from "./agent-provider.js";
 import { computeCommonShapeCoverCandidates, readAdmittedShapeCoverTarget, type ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
 import { freezeShapeCoverCandidate, type FrozenShapeCoverResult } from "./shape-cover-freeze.js";
-import { admitShapeCoverSample, type ShapeCoverReviewInput } from "./shape-cover-admission.js";
+import { admitShapeCoverSample, type ShapeCoverAdmission, type ShapeCoverReviewInput } from "./shape-cover-admission.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
-import type { ExportQueue } from "./queue.js";
+import type { ExportBatchIdentity, ExportQueue } from "./queue.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
+import type { ShapeCoverArtifactStore } from "./shape-cover-artifacts.js";
 
 const unsafe = (reason: string): never => { throw new ProviderError(`UNSAFE: ${reason}`); };
 
@@ -19,6 +20,8 @@ export class ShapeCoverProduction {
   constructor(private readonly input: {
     request: ShapeCoverCandidateRequest; store: SourceStickerKnowledgeStore; ffmpeg: FfmpegAdapter;
     queue: ExportQueue; preset: ExportPreset; directory: string;
+    artifacts: ShapeCoverArtifactStore; outputDirectory: string;
+    onTaskCreated?: (batch: ExportBatchIdentity) => Promise<void>;
     review(context: ShapeCoverReviewInput, signal: AbortSignal): Promise<string>; reviewerIdentity: string;
   }) { this.request = structuredClone(input.request); }
 
@@ -79,5 +82,14 @@ export class ShapeCoverProduction {
     signal.throwIfAborted();
     if (result.status !== "PASS") return unsafe(result.reason);
     return result;
+  }
+
+  /** Orchestration only: custody, authority and publication outcomes belong to the artifact owner. */
+  publish(input: { template: EditTemplate; media: MediaItem; runId: string; version: number;
+    samplePath: string; admission: ShapeCoverAdmission; signal: AbortSignal }) {
+    return this.input.artifacts.publish({ key: { runId: input.runId, mediaId: input.media.id, version: input.version },
+      request: this.request, template: input.template, media: input.media, preset: this.input.preset,
+      samplePath: input.samplePath, admission: input.admission, signal: input.signal, outputDirectory: this.input.outputDirectory,
+      queue: { publishApprovedSample: request => this.input.queue.publishApprovedSample({ ...request, onTaskCreated: this.input.onTaskCreated }) } });
   }
 }

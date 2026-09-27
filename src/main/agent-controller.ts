@@ -275,7 +275,10 @@ export class AgentController {
         const directory = await mkdtemp(path.join(tmpdir(), "jianji-shape-production-"));
         this.previews.retainDirectory(directory);
         shape = new ShapeCoverProduction({ request: shapeRequest, store: this.knowledgeStore!, ffmpeg: this.ffmpeg, queue: this.queue, preset, directory,
+          artifacts: await this.queue.createShapeCoverArtifactStore(projectId), outputDirectory,
+          onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve(),
           reviewerIdentity: this.reviewerProvider.status().model, review: (context, signal) => this.reviewerProvider.superviseShapePreview(context, signal) });
+        this.preparingController.signal.throwIfAborted();
       }
       this.runner = new AgentRunner({
         shape,
@@ -359,10 +362,10 @@ export class AgentController {
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
         },
-        publishApproved: async (template, item, samplePath, signal, shapeAdmission) => {
+        publishApproved: async (template, item, samplePath, signal) => {
           signal.throwIfAborted();
           const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
-          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, shapeAdmission, outputDirectory, onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve() });
+          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, outputDirectory, onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve() });
           this.onChange();
           return taskId;
         },

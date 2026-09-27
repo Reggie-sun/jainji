@@ -39,6 +39,7 @@ import { measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js
 import { MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 import { verifyShapeCoverAdmission, type ShapeCoverAdmission } from "./shape-cover-admission.js";
 import { templateDigest } from "./supervisor-knowledge.js";
+import { ShapeCoverArtifactStore } from "./shape-cover-artifacts.js";
 
 const shapePreviewReceipts = new WeakMap<ExportQueue, Map<string, string>>();
 const shapePreviewBinding = (template: EditTemplate, media: MediaItem, preset: ExportPreset, fingerprint: string) =>
@@ -285,6 +286,14 @@ export class ExportQueue {
 
   /** Concurrent render slots shared by exports and review previews. */
   get renderSlots(): number { return this.limits.exports; }
+
+  /** Main-process shape custody uses this queue's canonical JobStore, never a caller-selected ledger. */
+  async createShapeCoverArtifactStore(projectId: string): Promise<ShapeCoverArtifactStore> {
+    const root = path.join(path.dirname(this.dependencies.jobStore.pathFor(projectId)), "shape-cover-artifacts");
+    const artifacts = new ShapeCoverArtifactStore({ root, projectId, jobStore: this.dependencies.jobStore });
+    await mkdir(root, { recursive: true, mode: 0o700 });
+    return artifacts;
+  }
 
   async createBatch(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
     signal?.throwIfAborted();

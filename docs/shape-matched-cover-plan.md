@@ -138,3 +138,13 @@ spec: shape-matched-cover-spec.md
 **Compatibility / Boundaries:** 新 owner 不接入启动恢复、不恢复旧 PASS、不新增模型选择器/队列。正常旧矩形/manual/assisted 路径不变。快照的重定位模板只可供后续显式 fresh 准入，不能配旧 handle；本切片仍不实现该后续入口或 Windows 持久发布验收。未完成 intent 不自动清理；普通失败且尚未开始发布的本次独占快照可以清理。存在正式 manifest 的快照不被取消删除；再次请求时既有快照缺 intent 一律拒绝，不能判断为尚未发布后重新生成屏障。托管目录没有自动清理或迁移入口；整个项目托管根被外部删除/回滚的灾难恢复不在本切片支持范围，不能据空目录自动恢复旧请求。
 
 **Verification / Record:** 真实 admitted-mask/FFmpeg/模拟独立reviewer验证托管字节、缓存清理后重开只读、JSON无authority、同键并发只发布一次、跨store重复已完成结果；篡改/丢失资源、路径穿越/符号链接、未知版本/伪PASS、不同键绑定、取消、队列失败和receipt丢失/损坏必须拒绝且不重复发布。执行typecheck、相关shape/queue/store测试、有限并发全套与官方AOCI完整增量维护及Verify/Check/Guide；记录 `docs/shape-matched-cover-m4b5.md`，仅提交本切片owners、测试和官方维护文件，保留其他dirty工作。
+
+# Active Slice — M4-B6 Production Seam Wiring
+
+**Goal / Owners:** 从 `eff644a` 将现有进程内 `startShapeMatched` 的发布接到 B5 owner。`ShapeCoverProduction.publish` 只将私有完整 request、当前模板/样片/handle、实际 run/media/version 交给 ArtifactStore；runner 的 shape 分支调用该方法，退出通用 publishApproved 回调。Controller 组装固定项目、输出目录及原 onTaskCreated 回调；queue 只提供基于其 canonical JobStore 目录的 store factory，不复制任何准入、SHA、intent、幂等或 completed 逻辑。B5 owner、renderer、store 格式不重新设计。
+
+**Authority / Reentry:** 逐版本仍先 fresh admission；同进程相同输入重入由 B5 判断 completed/unknown/首次发布。未知结果不 catch 后重发、不删 intent、不重新准入以恢复同键许可。缓存清理后只读 completed；重启不恢复 handle 或自动调用模型。新的 Controller.start 生成新 run，不能将它当作同键重试。project 来自当前主进程项目，run/version 来自 runner，原选款、源和输出绑定仍由现有 admission/ArtifactStore 核查。
+
+**Compatibility / Verification:** 非 shape 的 publishApproved、manual/assisted/旧冻结与历史 retry 保持原路径。上传 task-created 回调只在 owner 首次调用原 queue 时转发，重复与 unknown 不再注册。以真实 FFmpeg 和模拟独立服务验证 Controller→runner→custody→queue→completed receipt，逐版本 manifest/字节、同键重入、unknown 窗口、绑定漂移和取消；保留既有拒绝/兼容测试。运行 typecheck、相关集成及有限四路全套，官方完整增量维护与 Verify/Check/Guide；记录 `docs/shape-matched-cover-m4b6.md`，只提交本任务 hunks。
+
+**Boundaries / Ownership:** 用户明确选 A 授权 Parent 串行修改 controller/runner；预先存在的 usesModel hunks 保留且排除提交。其余 dirty 文件和两个用户删除不接管。无 UI/IPC、M5、重启重试/authority recovery、moving mask、delogo、真实产品 Agent、付费模型、Kimi、掉电或 Windows 验收。
