@@ -65,3 +65,15 @@ npm run typecheck
 在蝴蝶贴的诊断 tab，按真实 snapshot 依次打开“素材”“添加视频”“上传视频”，只检查空面板。它显示 `已选择 0/64：`，独立“确定”按钮禁用。观察到以下 fixture 与真实结构差异：素材/上传视频为无 button role 的 tab；添加面板是另一层 `.ovui-drawer`；数量文案含尾部中文冒号；当前空上传面板及已检查 frame 没有 `input[type=file]`，只有“点击上传”入口。未点击该选文件入口，未选择新视频、未点击确定、未修改广告设置。
 
 这些观察只证明端口、目标身份和空面板可访问，不能证明上传后 row、processing、ready 或生产 adapter 已适配。`PRODUCTION_QIANCHUAN_CONTRACT` 继续为空，不能把 fixture 定位直接写成生产合同。后续必须适配真实控件和文件选择协议，并验证 ready 证据后才可解除生产阻断。临时最小端口报告为 `/tmp/jianji-qianchuan-port-verification.json`；本节保存持久结论，不以临时文件作为 acceptance owner。
+
+# Butterfly Single Video Upload
+
+2026-09-28 00:14（Asia/Hong_Kong），用户明确授权用蝴蝶贴上传一条以前的视频，仍停在确定前。使用现有 9222 的诊断 tab，重新核对配置对应账户 `1876024170199244`、已有计划 `1876036593854788` 及可见 ID；上传面板起始为 `已选择 0/64：`。
+
+选择本地成片 `/home/reggie/电商/蝴蝶贴/视频/9.27 23:12 (2)/2651703a55fd63d114819104666a3315_edited_2.mp4`。ffprobe 显示 H.264/AAC、720×1280、37.105011 秒、10,235,070 bytes。复制为权限 `0400` 的临时快照，保留原文件名；原件和快照 SHA-256 均为 `b63b4717466870ac45b73497e008bcabac10eca03533679573e6ec6dc37c01d7`，完成后再次核对一致。
+
+CLI `upload_file` 对“点击上传”文字入口返回没有触发 file chooser；随后只读检查确认面板仍为 0 条，没有所选文件。改用页面明确支持的拖拽入口 `[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]`；核对归属、空列表及可见区域，在私有临时记录中保存并同步 selection fence 和原 targetId 后，通过当前 Chrome 协议的 `Input.dispatchDragEvent` 仅放入一个文件、一次 drop。之后只读观察，无再次选择或重传。
+
+观察到文件进入“取消上传”处理进度，随后变为精确文件名可见、`已选择 1/64：`、无“取消上传”、唯一“确定”按钮可用且无上传错误。后续独立 snapshot 与 DOM 读取再次确认账户/计划、文件名、数量及按钮状态。保留原 Chrome/tab/弹窗，没有点击确定，没有提交素材到计划、修改预算或其他广告设置。
+
+本次是用户授权的浏览器辅助上传，未走简辑自动 upload service，不证明桌面自动上传已经启用、平台审核通过或开始投放。真实拖拽入口及 `.oc-upload-table-name-text` 文件名区域提供了后续生产合同适配线索，`PRODUCTION_QIANCHUAN_CONTRACT` 继续为空。临时最小结果位于 `/tmp/jianji-butterfly-upload-one-zz_3xbk0/result.json`；本节保存持久结论，不依赖该临时路径长期存在。Repository 无专用 capture skill，本节作为本次 live proof 记录，未写全局 memory。
