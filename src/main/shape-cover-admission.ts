@@ -210,9 +210,10 @@ export async function admitShapeCoverSample(input: {
 }
 
 /** Only an issued handle and the exact approved sample bytes can cross the queue publication boundary. */
-export async function verifyShapeCoverAdmission(admission: ShapeCoverAdmission | undefined, template: EditTemplate, media: MediaItem, preset: ExportPreset, samplePath: string): Promise<void> {
+export async function verifyShapeCoverAdmission(admission: ShapeCoverAdmission | undefined, template: EditTemplate, media: MediaItem, preset: ExportPreset, samplePath: string, request?: ShapeCoverCandidateRequest): Promise<void> {
   const binding = admission && issued.get(admission);
   if (!binding || digestJson(template) !== digestJson(binding.template) || digestJson(media) !== digestJson(binding.media)
-    || digestJson(preset) !== digestJson(binding.preset) || await fingerprintFile(samplePath) !== binding.sampleSha256) unsafe("missing or mismatched shape admission");
+    || digestJson(preset) !== digestJson(binding.preset) || (request !== undefined && digestJson(request) !== digestJson(binding.request))
+    || await fingerprintFile(samplePath) !== binding.sampleSha256) unsafe("missing or mismatched shape admission");
   await checkRaster(binding);
 }

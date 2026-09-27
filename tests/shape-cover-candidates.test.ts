@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, unlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -27,6 +27,8 @@ import * as agentFrames from "../src/main/agent-frames";
 import { prepareAgentTemplate } from "../src/main/agent-template-preparation";
 import type { StickerAssets } from "../src/main/builtin-stickers";
 import { getRule } from "../src/shared/agent";
+import { ShapeCoverArtifactStore } from "../src/main/shape-cover-artifacts";
+import * as artifactIo from "../src/main/shape-cover-artifact-io";
 
 const available = ["ffmpeg", "ffprobe"].every(binary => spawnSync(binary, ["-version"], { stdio: "ignore" }).status === 0);
 const roots: string[] = [], stores: SourceStickerKnowledgeStore[] = [];
@@ -81,6 +83,181 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
       reviewer: { identity: "simulated-independent-fixture", role: "independent-content-safety" as const, review }, signal: controller.signal };
     return { ...value, queue, input, controller, verifier };
   }
+
+  async function custodyFixture() {
+    const review = vi.fn(safeReview), value = await admissionFixture(review);
+    const admitted = await admitShapeCoverSample(value.input);
+    if (admitted.status !== "PASS") throw new Error(admitted.reason);
+    const projectId = crypto.randomUUID(), key = { runId: crypto.randomUUID(), mediaId: value.media.id, version: 1 };
+    const outputDirectory = path.join(value.root, "custody-outputs"); await mkdir(outputDirectory);
+    const options = { root: path.join(value.root, "custody"), projectId, jobStore: new JobStore(path.join(value.root, "jobs")) };
+    const custody = new ShapeCoverArtifactStore(options);
+    const publish = { key, request: value.request, template: value.template, media: value.media, preset: value.preset, outputDirectory,
+      samplePath: admitted.previewPath, admission: admitted.admission, signal: value.controller.signal, queue: value.queue };
+    const directory = path.join(options.root, projectId, `${key.runId}-${key.mediaId}-${key.version}`);
+    return { ...value, admitted, review, options, custody, publish, directory };
+  }
+
+  it("retains complete data without authority and publishes a concurrent identical key only once", async () => {
+    const value = await custodyFixture();
+    const { custody, publish, queue, options, review, input, admitted, directory } = value;
+    try {
+      const dispatch = vi.spyOn(queue, "publishApprovedSample");
+      const [first, second] = await Promise.all([custody.publish(publish), custody.publish(publish)]);
+      expect(second).toEqual(first);
+      expect(await new ShapeCoverArtifactStore(options).publish(publish)).toEqual(first);
+      expect(dispatch).toHaveBeenCalledOnce();
+      const before = await custody.load(publish.key);
+      expect(before.authority).toBe("none");
+      expect("admission" in before).toBe(false);
+      expect(before.request.intendedTargets).toEqual(publish.request.intendedTargets);
+      expect(before.request.outputSettings).toEqual(publish.request.outputSettings);
+      expect(await readFile(before.request.candidates[0].asset.assetPath)).toEqual(await readFile(publish.request.candidates[0].asset.assetPath));
+      const layer = before.template.layers[0];
+      if (layer.type !== "sticker") throw new Error("missing shape layer");
+      expect(await readFile(layer.assetPath)).toEqual(await readFile(input.layer.assetPath));
+      expect(await readFile(first.outputPath)).toEqual(await readFile(admitted.previewPath));
+      const { verifyShapeCoverAdmission } = await import("../src/main/shape-cover-admission");
+      await expect(verifyShapeCoverAdmission(admitted.admission, before.template, before.media, before.preset, before.samplePath)).rejects.toThrow("UNSAFE");
+      await expect(queue.createBatch({ template: before.template, mediaIds: [before.media.id], mediaItems: [before.media], preset: before.preset, outputDirectory: publish.outputDirectory })).rejects.toThrow("UNSAFE");
+      await rm(input.layer.assetPath);
+      await rm(publish.request.candidates[0].asset.assetPath);
+      await rm(input.cacheDirectory, { recursive: true, force: true });
+      const ffmpeg = vi.spyOn(input.ffmpeg, "run");
+      const reopened = new ShapeCoverArtifactStore(options);
+      expect(await reopened.completed(publish.key)).toEqual(first);
+      expect(await reopened.load(publish.key)).toEqual(before);
+      expect(ffmpeg).not.toHaveBeenCalled();
+      expect(review).toHaveBeenCalledOnce();
+      expect(await readdir(publish.outputDirectory)).toEqual([path.basename(first.outputPath)]);
+      expect(JSON.parse(await readFile(path.join(directory, "manifest.json"), "utf8"))).toMatchObject({ schemaVersion: 1, authority: "none" });
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it.each(["before-side-effect", "lost-return"])("keeps an unknown %s publication permanently closed", async failure => {
+    const { custody, publish, queue, options, review } = await custodyFixture();
+    try {
+      const original = queue.publishApprovedSample.bind(queue);
+      const dispatch = vi.spyOn(queue, "publishApprovedSample").mockImplementation(async input => {
+        if (failure === "lost-return") await original(input);
+        throw new Error("simulated publication failure");
+      });
+      await expect(custody.publish(publish)).rejects.toThrow("simulated publication failure");
+      await expect(custody.publish(publish)).rejects.toThrow();
+      await expect(new ShapeCoverArtifactStore(options).publish(publish)).rejects.toThrow();
+      await expect(new ShapeCoverArtifactStore(options).completed(publish.key)).rejects.toThrow();
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(review).toHaveBeenCalledOnce();
+      expect(await readdir(publish.outputDirectory)).toHaveLength(failure === "lost-return" ? 1 : 0);
+      expect((await custody.load(publish.key)).authority).toBe("none");
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it("arbitrates independent stores and refuses a changed binding at the same key", async () => {
+    const { custody, publish, queue, options } = await custodyFixture();
+    try {
+      const dispatch = vi.spyOn(queue, "publishApprovedSample");
+      const results = await Promise.allSettled([custody.publish(publish), new ShapeCoverArtifactStore(options).publish(publish)]);
+      expect(results.some(result => result.status === "fulfilled")).toBe(true);
+      const first = await custody.completed(publish.key);
+      expect(dispatch).toHaveBeenCalledOnce();
+      await expect(custody.publish({ ...publish, outputDirectory: path.join(path.dirname(publish.outputDirectory), "different-output") })).rejects.toThrow("different content");
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(await readdir(publish.outputDirectory)).toEqual([path.basename(first.outputPath)]);
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it("refuses publication when the permanent intent cannot be durably synced", async () => {
+    const { custody, publish, queue, directory } = await custodyFixture();
+    try {
+      const original = artifactIo.writeArtifactJson;
+      vi.spyOn(artifactIo, "writeArtifactJson").mockImplementation(async (file, value) => {
+        await original(file, value);
+        if (path.basename(file) === "publication-intent.json") throw new Error("simulated intent sync failure");
+      });
+      const dispatch = vi.spyOn(queue, "publishApprovedSample");
+      await expect(custody.publish(publish)).rejects.toThrow("intent sync failure");
+      expect(await readdir(directory)).toContain("publication-intent.json");
+      await expect(custody.publish(publish)).rejects.toThrow();
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(await readdir(publish.outputDirectory)).toEqual([]);
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it.each(["request", "media-key", "production-key", "cancelled", "root-symlink"])("refuses custody %s before queue publication", async failure => {
+    const { custody, publish, queue, options, controller, root, input } = await custodyFixture();
+    try {
+      const dispatch = vi.spyOn(queue, "publishApprovedSample");
+      if (failure === "request") publish.request = { ...publish.request, intendedTargets: [] };
+      if (failure === "media-key") publish.key = { ...publish.key, mediaId: crypto.randomUUID() };
+      if (failure === "production-key") {
+        // Issue a valid handle for a production-selected template, then use the wrong archive version.
+        const layer = publish.template.layers[0];
+        if (layer.type !== "sticker" || !layer.cover) throw new Error("missing layer");
+        publish.template = { ...publish.template, layers: [{ ...layer, cover: { ...layer.cover, selection: { runId: publish.key.runId, round: 2 } } }] };
+        const fresh = await admitShapeCoverSample({ ...input, template: publish.template, cacheDirectory: path.join(root, "fresh-preview") });
+        if (fresh.status !== "PASS") throw new Error(fresh.reason);
+        publish.admission = fresh.admission; publish.samplePath = fresh.previewPath;
+      }
+      if (failure === "cancelled") controller.abort();
+      if (failure === "root-symlink") await symlink(root, options.root);
+      await expect(custody.publish(publish)).rejects.toThrow();
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(await readdir(publish.outputDirectory)).toEqual([]);
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it("preserves the barrier and snapshot on cancellation after durable publication intent", async () => {
+    const { custody, publish, queue, directory, controller } = await custodyFixture();
+    try {
+      const original = artifactIo.writeArtifactJson;
+      vi.spyOn(artifactIo, "writeArtifactJson").mockImplementation(async (file, value) => {
+        await original(file, value);
+        if (path.basename(file) === "publication-intent.json") controller.abort();
+      });
+      const dispatch = vi.spyOn(queue, "publishApprovedSample");
+      await expect(custody.publish(publish)).rejects.toThrow();
+      expect(await readdir(directory)).toContain("publication-intent.json");
+      expect((await custody.load(publish.key)).authority).toBe("none");
+      await expect(custody.completed(publish.key)).rejects.toThrow();
+      expect(dispatch).not.toHaveBeenCalled();
+    } finally { await queue.shutdown(); }
+  }, 30_000);
+
+  it.each(["missing-asset", "tampered-asset", "tampered-layer", "missing-sample", "symlink-asset", "version", "authority", "traversal", "oversized-manifest", "missing-intent", "missing-intent-and-receipt", "missing-receipt", "tampered-receipt", "changed-output", "queue-fact"])("refuses persisted %s without repeating publication", async failure => {
+    const { custody, publish, queue, options, directory } = await custodyFixture();
+    try {
+      const dispatch = vi.spyOn(queue, "publishApprovedSample");
+      const first = await custody.publish(publish);
+      const manifestPath = path.join(directory, "manifest.json"), receiptPath = path.join(directory, "publication-receipt.json");
+      const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+      const assetPath = path.join(directory, manifest.files[0].name);
+      if (failure === "missing-asset") await rm(assetPath);
+      if (failure === "tampered-asset") await writeFile(assetPath, "tampered");
+      if (failure === "tampered-layer") await writeFile(path.join(directory, manifest.files.find((file: { kind: string }) => file.kind === "layer").name), "tampered layer");
+      if (failure === "missing-sample") await rm(path.join(directory, `sample.${publish.preset.container}`));
+      if (failure === "symlink-asset") { await rm(assetPath); await symlink(publish.request.candidates[0].asset.assetPath, assetPath); }
+      if (failure === "version") manifest.schemaVersion = 2;
+      if (failure === "authority") manifest.authority = "PASS";
+      if (failure === "traversal") manifest.files[0].name = "../outside.png";
+      if (["version", "authority", "traversal"].includes(failure)) await writeFile(manifestPath, JSON.stringify(manifest));
+      if (failure === "oversized-manifest") await writeFile(manifestPath, Buffer.alloc(artifactIo.SHAPE_ARTIFACT_METADATA_BYTES + 1, 32));
+      if (failure === "missing-receipt") await rm(receiptPath);
+      if (failure.startsWith("missing-intent")) await rm(path.join(directory, "publication-intent.json"));
+      if (failure === "missing-intent-and-receipt") await rm(receiptPath);
+      if (failure === "tampered-receipt") await writeFile(receiptPath, "{}");
+      if (failure === "changed-output") await writeFile(first.outputPath, "tampered output");
+      if (failure === "queue-fact") {
+        const state = queue.snapshot().batches[0]; state.batch.projectId = crypto.randomUUID();
+        await options.jobStore.save(state);
+      }
+      const reopened = new ShapeCoverArtifactStore(options);
+      await expect(reopened.completed(publish.key)).rejects.toThrow();
+      await expect(reopened.publish(publish)).rejects.toThrow();
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(await readdir(publish.outputDirectory)).toEqual([path.basename(first.outputPath)]);
+    } finally { await queue.shutdown(); }
+  }, 30_000);
 
   it("fills only the actual occupied corner intervals instead of treating the transparent shape canvas as four corners", async () => {
     const { layer, media, request } = await frozenFixture();

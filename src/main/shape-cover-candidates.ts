@@ -56,7 +56,7 @@ export interface CommonShapeCoverCandidates {
 const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/);
 const Pixel = z.number().int().nonnegative().safe();
 const Placement = z.object({ x: Pixel, y: Pixel, width: Pixel.positive(), height: Pixel.positive() }).strict();
-const Request = z.object({
+export const ShapeCoverCandidateRequestSchema = z.object({
   intendedTargets: z.array(z.object({ id: Id, sourcePath: z.string().min(1), source: SourceIdentitySchema, revisionId: Id, targetId: Id, segmentId: Id,
     range: ReviewedRangeSchema, placements: z.array(z.object({ outputSettingId: Id, rectangle: Placement }).strict()).min(1),
   }).strict()).min(1),
@@ -91,7 +91,7 @@ export async function computeCommonShapeCoverCandidates(request: ShapeCoverCandi
   try {
     tools.signal?.throwIfAborted();
     // Parse into detached inputs before I/O so caller mutation cannot change this round.
-    const input = Request.parse(request);
+    const input = ShapeCoverCandidateRequestSchema.parse(request);
     const admitted: AdmittedTarget[] = [];
     for (const target of input.intendedTargets) {
       tools.signal?.throwIfAborted();

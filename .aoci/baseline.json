@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-27T09:35:53Z",
+  "updated_at": "2026-09-27T10:48:14Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "7a53e18620449181777ec40f72b512ebc627807336860e74a32534640d86fb33",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "ce599a6ec791016874b0df31b21aa84229278f8f8a4fc043a5546266e674e038",
-      "size": 45118,
-      "normalized_sha256": "ce599a6ec791016874b0df31b21aa84229278f8f8a4fc043a5546266e674e038"
+      "sha256": "f47f938fea4393f5f2d8b53784d856b4d7efede9396a63572f1082afe2d4b2ed",
+      "size": 46259,
+      "normalized_sha256": "f47f938fea4393f5f2d8b53784d856b4d7efede9396a63572f1082afe2d4b2ed"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1373,19 +1373,29 @@
       "normalized_sha256": "c5c8f17451efebb725e41ba7651f01bbd867f69ffbd1bd9ee03ce067210e51da"
     },
     "src/main/shape-cover-admission.ts": {
-      "sha256": "93d1a487c1da5f338648c0a2573b49083d55a2cf60aebb18708b0ca5431eef3b",
-      "size": 16737,
-      "normalized_sha256": "93d1a487c1da5f338648c0a2573b49083d55a2cf60aebb18708b0ca5431eef3b"
+      "sha256": "1dd1f5e71708c59e8b09356be91e196243f8470c17f71c6f7af72f622801af2f",
+      "size": 16861,
+      "normalized_sha256": "1dd1f5e71708c59e8b09356be91e196243f8470c17f71c6f7af72f622801af2f"
     },
     "src/main/shape-cover-alpha.ts": {
       "sha256": "b9f67869131d561ad3165482d56130feabceb643b6e008789a529a11c4db3bc8",
       "size": 9646,
       "normalized_sha256": "b9f67869131d561ad3165482d56130feabceb643b6e008789a529a11c4db3bc8"
     },
+    "src/main/shape-cover-artifact-io.ts": {
+      "sha256": "2135a48b2a99729812d71c0a984679129000a1ff8eb932eb03794b881d53149e",
+      "size": 3799,
+      "normalized_sha256": "2135a48b2a99729812d71c0a984679129000a1ff8eb932eb03794b881d53149e"
+    },
+    "src/main/shape-cover-artifacts.ts": {
+      "sha256": "99a272184d1912a0f0585e53cfdfa373f61bfae16845e5236a8eabfce83cab53",
+      "size": 14757,
+      "normalized_sha256": "99a272184d1912a0f0585e53cfdfa373f61bfae16845e5236a8eabfce83cab53"
+    },
     "src/main/shape-cover-candidates.ts": {
-      "sha256": "fc7afd40b1e72d1d643d3a0dfb8d224914c2d00060ea05d52ae718970719145c",
-      "size": 9855,
-      "normalized_sha256": "fc7afd40b1e72d1d643d3a0dfb8d224914c2d00060ea05d52ae718970719145c"
+      "sha256": "2ffd9d91bbb876e0a9b757e35e5514aec8467e975a81c825b6ddb3fb32980666",
+      "size": 9912,
+      "normalized_sha256": "2ffd9d91bbb876e0a9b757e35e5514aec8467e975a81c825b6ddb3fb32980666"
     },
     "src/main/shape-cover-freeze.ts": {
       "sha256": "83de760eaba0d2d1a207d564f6e47bd2c86c47d4487833238a99a314816713d4",

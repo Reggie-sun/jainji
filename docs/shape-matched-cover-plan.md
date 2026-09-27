@@ -124,3 +124,17 @@ spec: shape-matched-cover-spec.md
 **Future Support Boundary:** 若将来支持显式重试，必须先有受主进程托管、版本化且有大小/路径边界的完整 request、原候选/最终 PNG/真实样片字节及来源/输出绑定；只有源知识或模板 JSON 不够。还必须明确定义精确项目/版本授权、已发布与未知结果的幂等核查、原队列发布原子性、取消、丢失/损坏和清理责任。旧 PASS 仍不恢复 authority；重启后只接受用户明确动作启动 fresh 独立样片准入，不能自动调用模型；新样片只能获得自己字节的 fresh PASS。该能力未在本切片实现或开启，不改变历史矩形重试合同。
 
 **Acceptance / Verification:** 增加真实 FFmpeg 准入结果的 JSON replay 和 fresh-module 拒绝；完成文件经 JobStore 恢复、清理运行期缓存后保留读取，retry 不执行；分别投影 validating/running/verifying 三个持久状态后恢复为 interrupted，显式 retry 失败且旧正式文件保留、无新增输出/FFmpeg/复核调用。持久状态投影不是实际 kill/fsync 或 Windows 掉电测试。执行 typecheck、shape/queue/store/migration/preview 相关测试、有限并发全套及官方只读 Verify/Check/Guide；无受管源码变化不调用 Maintain。记录到 `docs/shape-matched-cover-m4b4-recovery.md`，检查 final diff 并仅提交本切片路径。
+
+# Active Slice — M4-B5 Artifact Custody and Publication Barrier
+
+**Goal / Entry:** 用户在 recovery 检查点后确认继续。建立显式进程内产物托管及一次性发布屏障，仍属 M4；不激活 Controller/IPC/UI，不支持自动恢复模型或普通 shape retry。新 `shape-cover-artifacts.ts` 独占只读快照/屏障，`shape-cover-artifact-io.ts` 提供有界私有文件操作；原 queue 仍唯一拥有任务状态、渲染与正式发布。将 `shape-cover-candidates.ts` 现有 request Schema 导出供快照复用；`shape-cover-admission.ts` 增加可选完整 request 绑定核对，保持原队列调用合同，不复制 mask/几何/准入合同。
+
+**Snapshot Contract:** store 由主进程固定 root/projectId，键为 runId/mediaId/version。保存完整 request、原模板/preset/素材身份、输出目录及全部候选、模板贴纸、批准样片的原字节；源视频和知识库继续由原身份/修订 owner 管理，不复制源视频或凭据。保存前后必须核验当前 M4-B3 handle，逐文件核对 fingerprint。manifest 版本固定1，`authority=none`；最多1MiB metadata、1024个资源、单资产沿现行形状冻结字节上限、单样片1GiB、总量2GiB。有界流式复制与SHA、取消、NOFOLLOW/真实目录检查，无覆盖独占写入、文件和目录sync；不忽略持久化失败，不自动从旧副本恢复或修复损坏快照。加载只读取托管的规范文件名，核对全部字节，返回重定位的模板/request和样片路径，但绝不返回 handle 或可执行 PASS。
+
+**Publication / Idempotence:** 原始模板绑定及样片字节由 snapshot digest 固定；同键不同内容拒绝。同 store 调用按键串行，跨实例/进程由exclusive永久 intent屏障避免再次副作用。首次发布前必须有效 handle、当前源/候选/冻结绑定及所有快照字节；intent文件和目录sync成功后仅调用一次原 `publishApprovedSample`，不重新编码。返回结果只在JobStore已completed且project/media/template/preset/output及正式文件SHA均匹配后保存exclusive receipt；重复同键返回原队列身份和文件，不重复任务/上传通知。屏障存在但receipt丢失、写入失败或正式结果未知时保持UNSAFE，不自动认领、删除文件或重新调用队列；此选择宁可阻断，也不建立第二套任务恢复状态机。
+
+`publish` 重复调用仍须有效进程内 handle 与原始输入绑定；缓存清理或重启后的结果核对仅调用只读 `completed`，不会转为恢复发布许可。
+
+**Compatibility / Boundaries:** 新 owner 不接入启动恢复、不恢复旧 PASS、不新增模型选择器/队列。正常旧矩形/manual/assisted 路径不变。快照的重定位模板只可供后续显式 fresh 准入，不能配旧 handle；本切片仍不实现该后续入口或 Windows 持久发布验收。未完成 intent 不自动清理；普通失败且尚未开始发布的本次独占快照可以清理。存在正式 manifest 的快照不被取消删除；再次请求时既有快照缺 intent 一律拒绝，不能判断为尚未发布后重新生成屏障。托管目录没有自动清理或迁移入口；整个项目托管根被外部删除/回滚的灾难恢复不在本切片支持范围，不能据空目录自动恢复旧请求。
+
+**Verification / Record:** 真实 admitted-mask/FFmpeg/模拟独立reviewer验证托管字节、缓存清理后重开只读、JSON无authority、同键并发只发布一次、跨store重复已完成结果；篡改/丢失资源、路径穿越/符号链接、未知版本/伪PASS、不同键绑定、取消、队列失败和receipt丢失/损坏必须拒绝且不重复发布。执行typecheck、相关shape/queue/store测试、有限并发全套与官方AOCI完整增量维护及Verify/Check/Guide；记录 `docs/shape-matched-cover-m4b5.md`，仅提交本切片owners、测试和官方维护文件，保留其他dirty工作。
