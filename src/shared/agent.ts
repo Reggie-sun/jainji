@@ -62,6 +62,7 @@ export function calculateProductionQuantity(sourceCount: number, requestedCount:
 }
 
 const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof DecorationSchema>, z.ZodTypeDef, unknown>) => z.object({
+  coverStrategy: z.literal("shape-matched-static-v1").optional(),
   douyinUpload: DouyinUploadSelectionSchema.optional(),
   sourceStickerRefresh: z.object({ projectId: z.string().uuid(), mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS) }).strict().optional(),
   multiplier: ProductionMultiplierSchema.optional(),

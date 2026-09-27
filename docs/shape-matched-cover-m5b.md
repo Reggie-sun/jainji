@@ -2,7 +2,7 @@
 
 ## Status and Authority
 
-2026-09-28，从 M5-A 实现 `746bb51` 与 NVENC 收口记录 `a44524b` 继续。现有 [Plan](shape-matched-cover-plan.md) 尚未定义 M5-B，本记录将下一切片具体化。状态为 `BOUNDARY_PROPOSED / PRODUCT_DISABLED`：调用链核查与合同细化已经执行，下面的目标接口及测试尚未实施，不能解释为产品已启用或获得生产 PASS。
+2026-09-28，从 M5-A 实现 `746bb51` 与 NVENC 收口记录 `a44524b` 继续。边界与 Plan 已在 `6192080` 定义，用户选择 A 授权实现默认关闭的入口 guard。当前状态为 `ENTRY_GUARD_VERIFIED / PRODUCT_DISABLED`：版本化 intent 与拒绝边界已有可执行证据，可信产品 request assembler、全片源事实证明及真实启用验收仍未完成，不能解释为产品已启用或获得生产 PASS。
 
 用户要求关注哪些任务可以使用 shape、完整 admission、feature/version gating 和历史兼容。M5-A renderer、轮廓、coverage、M4 custody/publish-once/restart authority 保持原合同；Qwen 服务停止状态不属于本切片的代码或 feature gate。
 
@@ -11,7 +11,8 @@
 | Surface | Current behavior / source |
 | --- | --- |
 | 产品请求 | `preload.ts / startAgent` → `index.ts / agent.start` → `AgentController.start` → `startInternal`，不传 shape request。 |
-| 请求 schema | `shared/agent.ts / createAgentStartSchema` 是 strict object，没有 shape intent 字段；普通和 frozen request 复用它。当前加入未知 shape 字段会被拒绝。 |
+| 请求 schema | `shared/agent.ts / createAgentStartSchema` 是 strict object，普通和 frozen request 复用 optional literal `coverStrategy: "shape-matched-static-v1"`；缺字段保持历史解释，未知版本及 caller authority 字段拒绝。 |
+| 产品 guard | `AgentController.startInternal` 在 schema parse 后调用 `assertShapeCoverProductEntry`；正常制作、assisted 准备和显式 M4 接缝都经过它。明确 intent 在上传 preflight、模型与队列之前拒绝。 |
 | M4 接缝 | `AgentController.startShapeMatched` 显式传入 detached `ShapeCoverCandidateRequest`；仅自动覆盖、非 assisted、非 sourceStickerRefresh 可进入。CodeGraph 找到的调用者为测试 fixture；rg/源码确认无 IPC 产品调用者。 |
 | 请求准备 | `ShapeCoverProduction.prepare` 核对全部制作素材、该 revision 的全部 target/segment/range、单一 preset 和共同候选；`AgentRunner.execute` 在抽模型帧及选款前调用它。 |
 | 源事实 | `readAdmittedShapeCoverTarget` 核对 canonical store、精确源字节、当前 head、source-mask-only proof、目标/range/mask；当前明确拒绝 rotation 非 0。 |
@@ -39,7 +40,7 @@ explicit new-request intent + main-process availability
 
 复用 `AgentStartSchema` owner，新增可选、明确版本化的 `coverStrategy: "shape-matched-static-v1"`。字段缺失继续旧解释；不复用 `opaqueBackground`，不从已有 mask、自动覆盖开关、模板或上一次运行推断用户选择了 shape。未知字符串/版本由 strict schema 拒绝，不能被丢弃后执行旧路径。
 
-availability 由主进程启动依赖独占，默认关闭；不能接受 IPC、项目 JSON、模型响应中的 `enabled`、`approved`、`PASS` 或 rollout 参数。该依赖只允许/拒绝新的请求，不是持久 authority。现有 M4 显式测试接缝仍作为 bounded integration seam 使用，不借它绕过产品 gate；产品正常入口必须先经过 gate 才能委托该接缝。
+availability 由主进程独占。当前 `shape-cover-activation.ts` 固定关闭；缺可信 assembler 和全片证明时不提供可置 true 的依赖、env/config 或 readiness boolean。未来接入启动依赖也只能允许/拒绝新的尝试，不能接受 IPC、项目 JSON、模型响应中的 `enabled`、`approved`、`PASS` 或 rollout 参数，不能变成持久 authority。现有无 intent 的 M4 显式测试接缝保持 bounded integration seam；明确产品 intent 不能借它绕过 guard。
 
 产品 intent 只表达选择，不携带 source identity、revision、mask、asset path/hash 或可伪造的 candidate PASS。主进程必须依据当前项目、当前知识 head、本地合法素材目录、当前输出 preset，以及明确来源的摆放决定准备完整 request，再交给既有 M4 owner 验证。当前没有这样的产品 request assembler；未取得它的结果时明确 BLOCKED/UNSAFE，不生成默认 placement、不把人工框或近似框变成 mask。
 
@@ -82,9 +83,9 @@ availability 由主进程启动依赖独占，默认关闭；不能接受 IPC、
 
 ## Ownership and Handoff
 
-本轮允许写入的文件为本记录及现有 Plan。源码调查时 `agent-controller.ts`、`agent-runner.ts`、`shared/agent.ts`、`index.ts`、`preload.ts`、`domain.ts` 等已有不属于本任务的未提交工作；其中 controller/runner/shared 的 usesModel 改动已读出并保留。按 global Working-Tree Safety，任何同文件实现写入前必须由用户明确决定 ownership/执行顺序。不能因改动行不同自行接管。
+源码调查时 `agent-controller.ts`、`agent-runner.ts`、`shared/agent.ts`、`index.ts`、`preload.ts`、`domain.ts` 等已有不属于本任务的未提交工作。用户选择 A 授权 Parent 串行修改 controller/shared；只提交 guard import/call 与 optional literal，保留并排除原 usesModel 改动。去除本轮 hunks 后，两文件逐字节等于保存的 preimage。runner 等其余源码未由本轮修改。AOCI 两文件的同文件 ownership 另由用户选择 A：原 owner 完成后才允许 Parent 串行维护，只提交本轮增量。
 
-M5-B 的自然停止点是具体、可评审的激活边界与该 ownership 决定；不是 renderer 再次切换。后续实现从本合同出发，保留 M5-A SHA 和未相关 dirty 文件。Self-Review：区分 attempt/publish、disabled/legacy/UNSAFE、局部/全片证据；与 Spec REQ-01–10 和 M5 总阶段保持一致，没有授权 default-on 或绕过 M4。session-record 评估使用本 milestone 记录，不新建第二阶段 owner。
+本次自然停止点是默认关闭入口 guard 的验证与 scoped checkpoint。后续激活继续受本合同约束，保留 M5-A SHA 和无关 dirty 文件。Self-Review：区分 attempt/publish、disabled/legacy/UNSAFE、局部/全片证据；与 Spec REQ-01–10 和 M5 总阶段保持一致，没有授权 default-on 或绕过 M4。session-record 评估使用本 milestone 记录，不新建第二阶段 owner。
 
 ## Investigation Evidence
 
@@ -92,4 +93,18 @@ M5-B 的自然停止点是具体、可评审的激活边界与该 ownership 决�
 
 预算 180s wall / 120s idle / 5 requests / 8MiB output；receipt 为 `OUTCOME_UNKNOWN`，process reason=timeout，实际2次 wire requests。observed_reads 记录 production/candidates/admission 三份完整源码，已完成 observation 记录 K3/max 身份；没有终态报告，不采纳 partial findings、不宣称独立核查完成、不自动重试。它不是 required implementation reviewer。Parent 已直接核对本记录的关键源码结论。
 
-本次只编写 proposed boundary/plan，不改变行为；按 repository `verification-before-completion` 读取并执行文档 gate，检查本任务 Markdown 链接、引用 symbol、Spec/Plan 合同、diff，以及 M5-A renderer/shape 测试 SHA。不把既有 tests 当作本切片实施证据；未运行产品模型、媒体导出、Windows 或人工观看。
+`6192080` 只编写 proposed boundary/plan；其文档 gate 不作为后续实施证据。
+
+## Default-Closed Guard Evidence
+
+新增 guard 不读取 mask、不推导 contour/coverage、不创建 production request、不签发 handle、不写入 Queue/JobStore。缺 intent 立即返回旧流程；明确 intent 校验模式、refresh、MP4、random/upload 组合后报告缺可信完整 request 与全片源证明。guard 在共享入口阻断，取消后仍为 idle。
+
+`tests/shape-cover-activation.test.ts` 经 red→green，最终 28 tests PASS。真实 controller fixture 覆盖三个入口、防 caller authority/未知版本、旧请求准入、价格校验与取消，拒绝后观察模型、upload preflight、样片、artifact store 和发布调用均为 0。测试不伪造全片 shape PASS。
+
+2026-09-28 本轮 fresh verification：`npm run typecheck` exit 0；activation/controller/runner/provider/price、两项 agent integration、assisted preview、shape candidates/compiler/queue/store/migrations/local-random 共 14 files / 334 tests PASS，0 failed / 0 skipped。该组含既有真实 FFmpeg fixture 与模拟 reviewer；它证明技术路径回归，不代表真实模型、Windows、全片产品激活或人工观看验收。日志：`/tmp/jianji-m5b-typecheck.log`、`/tmp/jianji-m5b-activation-green.log`、`/tmp/jianji-m5b-related.log`。运行前后的 318 个源码/测试/配置文件 SHA 无变化。
+
+M5-A frozen SHA 保持：`shape-cover-render.ts`=`15e307dedb8698900a22d4b0db4ecfb7383a413bd4a7a08d074f4fdc35838da7`；`shape-cover-candidates.test.ts`=`997def30786e2c49a6568b198a2fc8ceb960dec58d65bd841ded4a88a07732f7`；Spec=`b2bf7538f4ee54a5ab68b8cbd156c3026385f90b47cdbe7302448a35a08a26e2`。没有修改 renderer 或重跑 NVENC gate。
+
+Implementation Review Risk Gate：Parent 裁决 `NOT_REQUIRED`。本候选只新增拒绝，没有启用支路、credential 操作、发布或持久 authority 变更；关键入口顺序及缺 intent 回归有直接源码与集成证据，没有需 adversarial reviewer 缩小的剩余 guard 验证缺口。完整产品激活的缺口明确保留为 release blockers，不能以此裁决视为已验收。前述 Kimi explorer 无终态结果，不作为 review PASS。
+
+用户确认原 owner 完成后，Parent 用官方 Maintain/Update 原子提交完整 3 项批次 `f5f6fd9f4ffe3fff65742716e34d4beda833655ac45b44bbadf61d0d3a6477ea`，applied=3 / remaining=0。随后依次 Verify、Aggregate Check、Guide 均 exit 0；structure_valid/governance_aligned=true，Check findings=[]，Guide complete=true / next_action=none，165 个 Code entries。controller 从399行增至401行后保留原 AW9M 标签，工具报告 E 规模档位应为 L 的非阻断 warning；没有为该 warning 再次正式写入。认知 attestation 未取得可靠终态，不宣称完整系统认知；本轮判断与维护绑定当前源码。

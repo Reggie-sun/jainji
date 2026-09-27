@@ -35,6 +35,7 @@ import { AgentPreviewStore } from "./agent-preview-store.js";
 import type { QianchuanUploadSelection as DouyinUploadSelection, UploadAuthorization } from "../shared/douyin-upload.js";
 import { ShapeCoverProduction } from "./shape-cover-production.js";
 import type { ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
+import { assertShapeCoverProductEntry } from "./shape-cover-activation.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -134,6 +135,7 @@ export class AgentController {
     this.pendingOperation = new Promise<void>((resolve) => { settle = resolve; });
     try {
       const parsed = AgentStartSchema.parse(input);
+      assertShapeCoverProductEntry(parsed, this.service.currentProject.coverSticker, Boolean(assisted));
       if (parsed.douyinUpload && (assisted || parsed.exportFormat && parsed.exportFormat !== "mp4")) throw new Error("千川上传仅支持普通正式 MP4 制作。");
       const uploadAuthorization = parsed.douyinUpload ? await this.preflightUpload?.(parsed.douyinUpload, new Set(parsed.mediaIds).size * (parsed.multiplier ?? 1)) : undefined;
       if (parsed.douyinUpload && !uploadAuthorization) throw new Error("千川账号预检不可用，请重新选择账号。");

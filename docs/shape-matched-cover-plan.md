@@ -184,3 +184,15 @@ spec: shape-matched-cover-spec.md
 **Acceptance / Verification:** 新 `tests/shape-cover-activation.test.ts` 覆盖 legacy 路由、主进程关闭/caller 伪造开启、未知版本、非法模式/格式/组合、缺可信 request、部分 horizon、绑定变化及取消。controller 拒绝须证明模型/上传/发布调用为 0；受控 M4 fixture 仍走原安全准入和同字节发布，不能伪造全片产品正例。保留历史矩形兼容及 shape restart 无 authority。实施后 typecheck、相关 activation/agent/controller/shape/queue/store 与实际接线集成；纯文档本次只验证链接、合同、source identity 和 diff，不制造媒体验收。
 
 **Ownership / Stop Condition:** 本次只写 Plan 与 M5-B milestone，Self-Review 已区分入口尝试和发布 authority、缺 intent 的 legacy 与明确 intent 的 UNSAFE、局部与全片证明。controller/shared 等当前有无关 dirty 工作，按 Working-Tree Safety 在同文件写入前请求用户明确 ownership/执行顺序；未决定前不实施源码接线。所有后续变更保留 M5-A renderer，既有 M4 publish-once 与旧任务规则。
+
+## Active Implementation — Default-Closed Entry Guard
+
+用户选择 A，批准上述边界并授权 Parent 串行修改 `src/main/agent-controller.ts` 与 `src/shared/agent.ts`，保留且排除提交原 usesModel 改动。使用 `superpowers:writing-plans` 将本次可完成实现固定为默认关闭的入口 guard；其余激活条件仍是后续工作的约束，不在本次添加可用产品正例。
+
+**Single Owner / Files:** 新 `src/main/shape-cover-activation.ts` 只处理产品 intent 的模式/版本/格式/组合拒绝与关闭状态。`shared/agent.ts` 新增 optional literal intent；`AgentController.startInternal` 在 schema parse 后、任何 upload preflight/模型/素材准备前调用 guard。新 `tests/shape-cover-activation.test.ts` 验证实际 controller 拒绝及零外部调用。M4 无 intent 的显式接缝保持原解释，renderer/runner/queue/admission 不改。
+
+**Concrete Closed State:** 当前没有可信产品 request assembler 和全片源事实证明，guard 最后无条件报告产品未启用及该缺口。暂不添加可置 true 的启动依赖、env/config 开关或 readiness boolean；这是目标 availability 的当前固定关闭实现，避免先提供可绕过真实缺口的 enable surface。新 intent 在全部 controller 入口都被 guard 约束；无 intent 返回原流程。未知版本 strict reject，调用者不能传 enabled/PASS/paths 绕过。未来添加启用依赖仍须按 M5-B/M5 的完整条件另行接线验收。
+
+**Verification / Evidence:** 新 schema 和真实 controller 入口测试先 red 后 green；覆盖默认关闭、非法组合、未知字段、缺价格、assisted/显式接缝防绕过、无 intent 的旧准入及拒绝后 idle/cancel。运行 `npm run typecheck`、activation/agent/controller/provider/price 与现有 shape/compiler/queue/store 集成。稳定候选按 Risk Gate 判断，保留 M5-A 文件 SHA。AOCI 官方维护须先解决其两个已 dirty 索引文件的 ownership；只提交本轮 hunks，不接管其他工作。完整产品 activation 正例、全片/真实语义/Windows 验收不在本次完成声明内。
+
+**Verified Checkpoint:** 默认关闭 guard 已实施；typecheck PASS，相关14 files /334 tests PASS（含新增28 tests），M5-A frozen SHA 未变。用户确认原 AOCI owner 完成后已串行维护本轮3项完整批次，Verify/Check/Guide aligned。状态 `ENTRY_GUARD_VERIFIED / PRODUCT_DISABLED`；这是入口拒绝切片，M5-B 真正产品激活仍需可信 assembler、全片 source horizon 与 M5 真实媒体验收。证据及 review risk 裁决见 [M5-B record](shape-matched-cover-m5b.md#default-closed-guard-evidence)。
