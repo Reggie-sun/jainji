@@ -139,7 +139,7 @@ const mainContext = await context({
   bundle: true,
   platform: "node",
   format: "cjs",
-  external: ["electron", "sql.js/*"],
+  external: ["electron", "playwright-core", "sql.js/*"],
   outfile: path.join(root, "dist-electron/main.cjs"),
   plugins: [mainReload.plugin],
 });
