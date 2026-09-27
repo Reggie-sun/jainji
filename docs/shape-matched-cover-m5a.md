@@ -4,7 +4,7 @@
 
 从 B7 提交 `1fda2b9` 后的 HEAD `bf01b95` 开始。HEAD 中三个 B7 owner、原测试、Spec、Plan 的 SHA 与 B7 Candidate Identity 一致。用户本轮明确选择 A：保留现有发布合同，补 renderer 校验与端到端 same-bytes 证据。
 
-源码纠正了“新 shape 路径仍用白底”的前提：M4-B2 已有 `shape-matched-frozen-rgba-v1` 编译分支，B3/B5/B6 正式发布的是该分支生成并批准的原样片。本轮收敛这条现有路径，不增加准入后重编码或渲染前的新 custody 合同。SCOPED_VERIFIED；全局真实 NVENC gate 的环境限制见下文。
+源码纠正了“新 shape 路径仍用白底”的前提：M4-B2 已有 `shape-matched-frozen-rgba-v1` 编译分支，B3/B5/B6 正式发布的是该分支生成并批准的原样片。本轮收敛这条现有路径，不增加准入后重编码或渲染前的新 custody 合同。M5-A SCOPED_COMPLETE；此前全局真实 NVENC gate 的环境限制已由下文冻结候选上的 fresh gate 解除。
 
 ## Source Findings
 
@@ -76,4 +76,22 @@ Spec SHA 保持 B7 的 `b2bf7538f4ee54a5ab68b8cbd156c3026385f90b47cdbe7302448a35
 
 相关project-native gate后，Parent对上述稳定候选判定 `KIMI_REVIEW_NOT_REQUIRED`：用户未要求该snapshot的Kimi review；只复用只读IO并增加证据，没有凭据、跨项目许可或durable-state修改/恢复/发布语义的关键级破坏路径。hash、symlink、真实合成/托管/发布链已有执行证据；全局NVENC设备资源缺口不会被adversarial源码review解决，因此不触发“重大后果+实质验证缺口+独立增益”的组合条件。无required review blocker；不把失败的Kimi报告算作验收。
 
-已评估session-record要求；本仓未声明独立capture skill，本milestone保存实际证据与限制。未接IPC/UI、未激活默认自动覆盖、未设计新contour/coverage、未做真实产品模型/内容安全、全片mask、Windows、掉电或人工观看验收。只提交本轮renderer owner、测试、plan、本记录及官方两个AOCI文件；旧任务和无关dirty不接管。全局NVENC gate仍需在设备资源可用时核验。
+已评估session-record要求；本仓未声明独立capture skill，本milestone保存实际证据与限制。未接IPC/UI、未激活默认自动覆盖、未设计新contour/coverage、未做真实产品模型/内容安全、全片mask、Windows、掉电或人工观看验收。只提交本轮renderer owner、测试、plan、本记录及官方两个AOCI文件；旧任务和无关dirty不接管。此前遗留的全局NVENC gate已补验，见下文。
+
+## Frozen Candidate NVENC Closure
+
+用户明确要求冻结 M5-A candidate、不再修改 shape 代码，授权清出 GPU 资源后补最后一个 NVENC fresh gate。实现候选保持提交 `746bb51`；上表 renderer、shape 测试与 Plan SHA，以及 Spec SHA 均未改变。本次只更新本记录，不修改源码、测试、超时或 GPU 准入逻辑。
+
+核对 GPU 进程的 PID、父进程和 cgroup 后，确认约 25 GiB 占用来自用户级 `jianji-qwen3-vl.service`；服务监听 localhost:8000，检查时未发现活动 TCP 连接。通过 `systemctl --user stop jianji-qwen3-vl.service` 正常停止，核验 inactive/dead、MainPID=0。可用显存从 1009 MiB 增至 26254 MiB；保留桌面及其他 FFmpeg 进程。服务保持停止，可由用户通过 `systemctl --user start jianji-qwen3-vl.service` 恢复。
+
+重新读取并执行 `superpowers:verification-before-completion`，运行：
+
+```bash
+npm test -- tests/gpu-export.integration.test.ts --maxWorkers=1 --minWorkers=1
+```
+
+2026-09-28 本地 00:32:44 开始，exit 0；1 file / 1 test PASS，0 skipped，测试 10.00s、总计 10.86s。真实 `h264_nvenc` 完成 6 个队列导出，验证各正式文件唯一、completed、无错误，H.264 / 640×360、音轨存在、时长至少 1900ms。不是硬件能力不足后的 skip，也不是软件编码替代。
+
+日志为 `/tmp/jianji-m5a-nvenc-fresh.log`，测试前快照为 `/tmp/jianji-m5a-nvenc-fresh-snapshot.json`。fresh gate 前后 315 个源码/测试/config SHA 全部一致，HEAD 仍为 `746bb51`。相比上一轮全套快照，另一任务已修改 `tests/helpers/douyin-cdp-fixture.ts` 和 `tests/qianchuan-page-contract.test.ts`，本次未修改或接管；它们不参与本 gate。没有重跑或宣称当前所有无关工作上的 full suite PASS；此前全套唯一失败项在冻结 M5-A 实现上现已单独通过。
+
+M5-A 的相关 shape gate、typecheck、same-bytes 证据和最后一个 NVENC gate 均已满足，限定阶段可以收口。该 NVENC 测试证明原队列真实 GPU 导出，不另行声称 shape fixture 使用了 NVENC；也不代表整个 Shape-Matched Cover V1、Windows、真实语义模型或人工播放验收完成。本次属于冻结候选上的资源释放与现有 gate 执行，没有新增独立 implementation/review scope；原风险判定不变。session-record 评估沿用本 milestone owner。
