@@ -79,7 +79,7 @@ model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独�
 paths.ts[AB7T]: F:文件指纹安全输出目录文件名分配与模板资源校验 | R:code:src/main/queue.ts | A:输出路径安全辅助 | S:不得覆盖源视频或现有输出
 platform.ts[AB7T]: F:跨Linux和Windows解析命令及字体候选路径 | R:code:src/main/ffmpeg.ts | A:平台路径辅助 | S:保留各平台路径语义
 preload.ts[EU7T]: F:经contextBridge暴露受限DesktopApi与状态订阅 | R:code:src/main/index.ts,code:src/shared/desktop.ts | A:显式桥接工作区草稿、账号文件选择和摘要刷新、上传继续停止以及历史接口 | S:只暴露固定IPC；账号文件由主进程对话框选择，renderer不传路径；旧caption和confirm接口存在不代表主进程接受
-queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-admission.ts,code:src/main/shape-cover-artifacts.ts | A:创建批次、渲染核验、直发批准样片、恢复重试及取消；托管factory绑定canonical JobStore及其目录；创建回调只传身份，正式完成保存后独立通知 | S:形状预览绑定源mask，直发需进程内准入且复制后重查；普通路径拒绝形状；partial验证后无覆盖发布；重试沿用冻结设置；通知失败不回滚completed，也不占渲染槽；factory不恢复handle或发布
+queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-admission.ts,code:src/main/shape-cover-artifacts.ts | A:创建批次、渲染核验、直发批准样片、恢复重试及取消；合并各批次待写进度，生命周期转换独立等待持久化；托管factory绑定canonical JobStore及其目录；创建回调只传身份，正式完成保存后独立通知 | S:形状预览绑定源mask，直发需进程内准入且复制后重查；普通路径拒绝形状；partial验证后无覆盖发布；重试沿用冻结设置；通知失败不回滚completed，也不占渲染槽；factory不恢复handle或发布
 recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:code:src/main/application.ts | A:项目入口历史辅助 | S:不承担工作区或模板状态
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
 source-sticker-knowledge-session.ts[AB7T]: F:按源身份管理识别候选、多版本样片复核及修订传播 | R:code:src/main/source-sticker-knowledge-store.ts | A:源贴纸事实生命周期owner | S:不接纳近似覆盖位置作为事实

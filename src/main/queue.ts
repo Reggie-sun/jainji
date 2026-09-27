@@ -142,6 +142,7 @@ export class ExportQueue {
   private readonly compiler: TemplateCompiler;
   private readonly verifier: ArtifactVerifier;
   private persistChain: Promise<void> = Promise.resolve();
+  private readonly pendingProgressSaves = new Set<string>();
   private submissionChain: Promise<void> = Promise.resolve();
 
   async renderPreview(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; cacheDirectory: string; signal: AbortSignal; diagnostics?: CoverDiagnostics }): Promise<string> {
@@ -794,7 +795,7 @@ export class ExportQueue {
         const value = event.progress === 1 ? 1 : event.outTimeMs === undefined ? task.progress : Math.min(0.99, event.outTimeMs / (compiled.durationSeconds * 1_000_000));
         if (value - task.progress >= 0.01 || value === 1) {
           task.progress = Math.max(task.progress, value);
-          void this.persist(state);
+          this.persistProgress(state);
         }
         this.emit();
       });
@@ -889,6 +890,14 @@ export class ExportQueue {
     task.status = to;
     state.batch.status = deriveBatchStatus(state.batch.tasks);
     await this.persist(state);
+  }
+
+  private persistProgress(state: QueueState): void {
+    if (this.pendingProgressSaves.has(state.batch.id)) return;
+    this.pendingProgressSaves.add(state.batch.id);
+    // Progress is mutable; one pending save captures the latest value. Lifecycle
+    // transitions still await their own durable save after the progress write.
+    void this.persist(state).finally(() => this.pendingProgressSaves.delete(state.batch.id)).catch(() => undefined);
   }
 
   private async persist(state: QueueState): Promise<void> {

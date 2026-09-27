@@ -10,6 +10,42 @@ import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 
 describe("ExportQueue", () => {
+  it("does not queue a disk write for every progress event before verifying", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-progress-backlog-"));
+    const sourcePath = path.join(directory, "input.mp4");
+    await writeFile(sourcePath, "input");
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "input.mp4", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 5, durationMs: 1_000, width: 10, height: 10, rotation: 0, probeStatus: "ready", importedAt: now() };
+    const jobStore = new JobStore(path.join(directory, "jobs"));
+    const save = jobStore.save.bind(jobStore);
+    let saves = 0;
+    jobStore.save = async (state) => { saves += 1; await save(state); };
+    let savesAtVerification = 0;
+    const ffmpeg = {
+      ffmpegPath: "/fake/ffmpeg",
+      run: (args: string[], progress: (event: { progress: number; outTimeMs: number }) => void) => ({
+        process: {},
+        promise: (async () => {
+          for (let index = 1; index <= 90; index += 1) progress({ progress: index * 11_000, outTimeMs: index * 11_000 });
+          progress({ progress: 1, outTimeMs: 1_000_000 });
+          await writeFile(args[args.length - 1], "encoded");
+          return { code: 0, stdout: "", stderr: "" };
+        })(),
+        cancel: async () => undefined,
+      }),
+    } as unknown as FfmpegAdapter;
+    const verifier = { verify: async (filePath: string, taskId: string): Promise<OutputArtifact> => {
+      savesAtVerification = saves;
+      return { taskId, path: filePath, sizeBytes: 7, durationMs: 1_000, createdAt: now() };
+    } } as ArtifactVerifier;
+    const queue = new ExportQueue({ jobStore, ffmpeg, compiler: { compile: async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }) } as any, artifactVerifier: verifier, fontResolver: { resolve: async () => null } });
+    queue.setMediaLookup(() => media);
+    const batch = await queue.createBatch({ template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
+    await queue.start(batch.id);
+    expect(savesAtVerification).toBeLessThanOrEqual(6);
+    expect(queue.snapshot().batches[0].batch.tasks[0].status).toBe("completed");
+    expect((await jobStore.load(batch.id)).state.batch.tasks[0]).toMatchObject({ status: "completed", progress: 1 });
+  });
+
   it("isolates one failed task and publishes a later task", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-queue-"));
     const output = path.join(directory, "output");
