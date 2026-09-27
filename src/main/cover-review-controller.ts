@@ -183,6 +183,7 @@ export class CoverReviewController {
     });
   }
   async prepare(id: string, revision: number, input: AgentStartInput, directories: ReadonlySet<string>): Promise<void> {
+    if (input.douyinUpload) throw new Error("半自动审阅暂不支持抖音上传，请勿将发布文案写入项目草稿。");
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
       if (draft.status !== "needs_human") throw new Error("请先完成人工审阅。");
@@ -293,6 +294,7 @@ export class CoverReviewController {
     }
   }
   async approve(id: string, revision: number, input: AgentStartInput, directories: ReadonlySet<string>): Promise<void> {
+    if (input.douyinUpload) throw new Error("半自动审阅暂不支持抖音上传，请勿将发布文案写入项目草稿。");
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
       this.assertEnabled();

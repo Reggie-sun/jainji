@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Offline upload fixture</title>
+    <style>
+      body { margin: 2rem; font: 16px sans-serif; color: #17212b; }
+      main { max-width: 42rem; margin: auto; }
+      label { display: block; margin: 1rem 0 .4rem; }
+      textarea { display: block; width: 100%; min-height: 5rem; }
+      [hidden] { display: none !important; }
+      #accepted { padding: 1rem; border: 1px solid #21854a; }
+      #challenge { color: #9a381f; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>离线发布流程测试页</h1>
+      <p id="account">offline-fixture-account</p>
+      <p id="login" hidden>登录占位状态</p>
+      <p id="challenge" hidden>离线验证挑战</p>
+      <p id="rejected" hidden>离线拒绝状态</p>
+      <label for="video-file">选择视频</label>
+      <input id="video-file" type="file" accept="video/mp4">
+      <p id="ready" hidden>文件处理完成</p>
+      <label for="caption">发布文案</label>
+      <textarea id="caption"></textarea>
+      <button id="publish" type="button" disabled>提交发布</button>
+      <p id="accepted" hidden data-content-id="" data-status="">内容已接受</p>
+      <p id="management-evidence" hidden>管理页同 ID 详情</p>
+      <output id="fixture-state">fixture ready</output>
+    </main>
+    <script>
+      const fileInput = document.querySelector("#video-file");
+      const caption = document.querySelector("#caption");
+      const publish = document.querySelector("#publish");
+      const ready = document.querySelector("#ready");
+      const accepted = document.querySelector("#accepted");
+      const challenge = document.querySelector("#challenge");
+      const rejected = document.querySelector("#rejected");
+      const pathParts = location.pathname.split("/").filter(Boolean);
+      const managementId = pathParts[0] === "management" ? pathParts[1] : undefined;
+      let selectedFile = false;
+
+      fileInput.addEventListener("change", async () => {
+        selectedFile = fileInput.files.length === 1;
+        if (selectedFile) {
+          await fetch("/events/file-selected", { method: "POST", body: JSON.stringify({ name: fileInput.files[0].name, size: fileInput.files[0].size }) });
+        }
+      });
+      caption.addEventListener("input", () => { publish.disabled = !caption.value.trim() || !ready.checkVisibility(); });
+      publish.addEventListener("click", async () => {
+        if (publish.disabled) return;
+        publish.disabled = true;
+        const response = await fetch("/publish", { method: "POST" });
+        const body = await response.json();
+        if (!response.ok) { document.querySelector("#fixture-state").value = body.error; return; }
+        document.querySelector("#fixture-state").value = "publish-request-recorded";
+      });
+
+      async function refreshFixtureState() {
+        const state = await fetch("/state", { cache: "no-store" }).then(response => response.json());
+        challenge.hidden = state.mode !== "challenge";
+        rejected.hidden = state.mode !== "rejection";
+        ready.hidden = !selectedFile || state.mode === "waiting" || state.mode === "challenge" || state.mode === "rejection";
+        publish.disabled = !caption.value.trim() || ready.hidden || state.mode === "challenge" || state.mode === "rejection";
+        if (managementId && state.acceptedId === managementId) {
+          accepted.dataset.contentId = state.acceptedId;
+          accepted.dataset.status = "reviewing";
+          accepted.hidden = false;
+          document.querySelector("#management-evidence").hidden = false;
+        } else if (!managementId && state.mode !== "unknown" && state.acceptedId) {
+          accepted.dataset.contentId = state.acceptedId;
+          accepted.dataset.status = "reviewing";
+          accepted.hidden = false;
+        }
+      }
+      void refreshFixtureState();
+      setInterval(() => { void refreshFixtureState(); }, 100);
+    </script>
+  </body>
+</html>

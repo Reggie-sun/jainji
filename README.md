@@ -124,6 +124,18 @@ Agent 自动覆盖的近似位置不是源贴纸事实，不写入源知识库�
 
 最新 main `fce917d` 加上 Windows 修复的 0.1.5 安装包验证，见 [Windows 0.1.5 安装版验证记录](docs/windows-verification-0.1.5.md)。
 
+### Douyin Upload
+
+本次制作和追加制作可单独选择“完成后自动上传抖音”，默认关闭；选中意味着这些成片将上传并提交发布，文案必须手工填写，与展示文字 / 价格独立。结果页提供本机配置和独立上传状态；上传失败不影响已完成导出，也不会重渲染。全局开启不授权历史视频，本次选择不写入可分享项目；重启后需要明确继续。
+
+**当前真实抖音页面合同尚未核实，生产上传/发布保持阻断。** 不连接用户 Chrome、不保存猜测路由；准备状态和任务会明确显示原因。下一步需核实专用 Chrome/profile 的上传页、账号信号、必填项和稳定内容 ID 的管理页接受证据，然后在获得一条指定 MP4 的明确发布授权后做真实验收。离线 fixture 通过不代表平台发布可用，详情见 [页面合同与验收边界](docs/douyin-upload-page-contract.md)。
+
+后续生产前置条件由用户准备：Chrome 使用专用非默认 `--user-data-dir`，调试端口只监听 literal `127.0.0.1` 或 `[::1]`，由用户手工登录唯一目标账号。应用只 attach 既有 default context；不启动用户浏览器、不读取 profile/cookie，不处理验证码。提交前持久化不可覆盖 marker；提交未知只核查，不重新发布。不要删除 `userData/douyin-upload/` 中的任务或 marker 来“重试”。关闭功能保留去重历史。
+
+隔离回归使用 `npx vitest run tests/douyin-*.test.ts`，并纳入 code Harness。构建后运行 `xvfb-run -a node scripts/douyin-upload-smoke.mjs`（已有显示环境可省略 xvfb）；只使用合成视频、本地网页、独立 Electron userData 和独立测试 Chrome profile。缺少 Chrome/FFmpeg/显示环境须报告未验证，不能替换成真实账号试发。Windows 的目录持久化和 ACL 尚未实机核实，当前发布屏障 fail closed。
+
+Linux 打包后可用 `JIANJI_SMOKE_ELECTRON="$PWD/dist/linux-unpacked/jianji" xvfb-run -a node scripts/douyin-upload-smoke.mjs --packaged` 检查实际打包入口及包内 Playwright 的 CDP attach。两种 smoke 均支持 `JIANJI_FFMPEG_PATH` / `JIANJI_FFPROBE_PATH`；引擎必须同时支持 `drawtext`、`overlay` 和 `-fps_mode`。
+
 ### Validation Harness
 
 开发回归和指定成片共用 [policy](.agent/harness/policy.json)，每次运行在 `.agent/harness/runs/<run-id>/` 创建独立的本地回执、日志和输入快照；该目录不会提交 Git，也不会自动上传或清理。

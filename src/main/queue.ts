@@ -18,6 +18,7 @@ import {
   type ExportPreset,
   type ExportTask,
   type MediaItem,
+  type OutputArtifact,
   type QueueState,
   type RandomStickerPoolEntry,
 } from "./domain.js";
@@ -58,7 +59,11 @@ export interface CreateBatchInput {
   submission?: ExportBatch["submission"];
 }
 
+export type ExportBatchIdentity = Pick<ExportBatch, "id" | "projectId"> & { tasks: Pick<ExportTask, "id">[] };
+
 export interface ExportQueueDependencies {
+  onFinalArtifactCommitted?: (fact: { projectId: string; batchId: string; taskId: string; artifact: OutputArtifact }) => void | Promise<void>;
+  onFinalArtifactNotificationError?: () => void;
   gpuFreeMemory?: () => Promise<number | undefined>;
   videoEncoder?: H264Capability;
   executionLimits?: ReturnType<typeof executionLimits>;
@@ -389,7 +394,7 @@ export class ExportQueue {
    * record the artifact as a completed task. Skips the render pipeline so a
    * supervised version is in the folder the moment the supervisor passes.
    */
-  async publishApprovedSample(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; samplePath: string; outputDirectory: string; projectId?: string; shapeAdmission?: ShapeCoverAdmission }): Promise<{ batchId: string; taskId: string; outputPath: string }> {
+  async publishApprovedSample(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; samplePath: string; outputDirectory: string; projectId?: string; shapeAdmission?: ShapeCoverAdmission; onTaskCreated?: (batch: ExportBatchIdentity) => Promise<void> }): Promise<{ batchId: string; taskId: string; outputPath: string }> {
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
     input = { ...input, media: structuredClone(input.media), preset: ExportPresetSchema.parse(input.preset) };
@@ -423,6 +428,8 @@ export class ExportQueue {
     const partialPath = path.join(state.batch.outputDirectory, `.${path.basename(outputPath)}.${batchId}.${task.id}.1.partial.${parsed.container}`);
 
     await this.transition(state, task, "validating");
+    try { await input.onTaskCreated?.({ id: state.batch.id, projectId: state.batch.projectId, tasks: state.batch.tasks.map(task => ({ id: task.id })) }); }
+    catch { try { this.dependencies.onFinalArtifactNotificationError?.(); } catch { /* Diagnostic only. */ } }
     await this.transition(state, task, "running", { attempt: Math.max(1, task.attempt), startedAt: now() });
     try {
       await copyFile(input.samplePath, partialPath);
@@ -436,6 +443,7 @@ export class ExportQueue {
       task.outputPath = finalPath;
       task.outputArtifact = artifact;
       await this.transition(state, task, "completed", { progress: 1, finishedAt: now(), errorCode: undefined, errorMessage: undefined });
+      this.finalArtifactCommitted(state, task);
       return { batchId: batch.id, taskId: task.id, outputPath: finalPath };
     } catch (error) {
       await unlink(partialPath).catch(() => undefined);
@@ -827,6 +835,7 @@ export class ExportQueue {
       task.outputPath = finalPath;
       task.outputArtifact = artifact;
       await this.transition(state, task, "completed", { progress: 1, finishedAt: now(), errorCode: undefined, errorMessage: undefined });
+      this.finalArtifactCommitted(state, task);
     } catch (error) {
       this.controllers.delete(task.id);
       await Promise.all(temporaryTextFiles.map((filePath) => unlink(filePath).catch(() => undefined)));
@@ -837,6 +846,15 @@ export class ExportQueue {
       }
       await this.fail(state, task, classifyError(error));
     }
+  }
+
+  private finalArtifactCommitted(state: QueueState, task: ExportTask): void {
+    if (!state.batch.projectId || !task.outputArtifact) return;
+    // Detached notification cannot hold a render slot or enter the render failure catch.
+    try {
+      const work = this.dependencies.onFinalArtifactCommitted?.({ projectId: state.batch.projectId, batchId: state.batch.id, taskId: task.id, artifact: structuredClone(task.outputArtifact) });
+      void Promise.resolve(work).catch(() => { try { this.dependencies.onFinalArtifactNotificationError?.(); } catch { /* Diagnostic only. */ } });
+    } catch { try { this.dependencies.onFinalArtifactNotificationError?.(); } catch { /* Diagnostic only. */ } }
   }
 
   private async fail(state: QueueState, task: ExportTask, error: JianjiError): Promise<void> {

@@ -3,6 +3,8 @@ import { MAX_AGENT_OUTPUTS } from "../shared/agent";
 import { PRODUCT_PRICE_HELP, PRODUCT_PRICE_MAX_LENGTH, RequiredProductPriceSchema } from "../shared/decorations";
 import type { PublicExportBatch } from "../main/application";
 import { Icon } from "./ui";
+import type { DouyinUploadSelection } from "../shared/douyin-upload";
+import { DouyinUploadControls } from "./DouyinUploadControls";
 
 export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCount, onClose }: {
   batch: PublicExportBatch;
@@ -15,12 +17,14 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
   const [count, setCount] = useState(initialCount ?? 1);
   const [manualDirectory, setManualDirectory] = useState<string>();
   const [useManualDirectory, setUseManualDirectory] = useState(false);
+  const [douyinUploadSelection, setDouyinUploadSelection] = useState<DouyinUploadSelection>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const maxCount = Math.max(1, Math.floor(MAX_AGENT_OUTPUTS / prefill.mediaCount));
   const priceValid = RequiredProductPriceSchema.safeParse(productPrice).success;
   const countValid = Number.isInteger(count) && count >= 1 && count <= maxCount;
   const submit = async () => {
+    const uploadSelection = douyinUploadSelection;
     setBusy(true);
     setError("");
     try {
@@ -29,7 +33,7 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
       if (!countValid) throw new Error(`请填写 1 到 ${maxCount} 之间的整数条数。`);
       const outputDirectory = useManualDirectory ? manualDirectory : await window.jianji.createAutomaticOutputDirectory(batch.mediaIds);
       if (!outputDirectory) throw new Error("请选择成片保存目录。");
-      await window.jianji.appendProduction({ batchId: batch.id, count, productPrice: parsed.data, outputDirectory });
+      await window.jianji.appendProduction({ batchId: batch.id, count, productPrice: parsed.data, outputDirectory, ...(uploadSelection ? { douyinUpload: uploadSelection } : {}) });
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "追加制作失败，请重试。");
@@ -47,6 +51,7 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
     <label htmlFor="append-count">追加条数</label>
     <input id="append-count" type="number" min={1} max={maxCount} step={1} value={count} disabled={busy} onChange={(event) => setCount(event.target.valueAsNumber)} />
     {count > 1 && <p role="note">同一批次追加多条将随机搭配不同贴纸和滤镜，布局保持不变。</p>}
+    <DouyinUploadControls idPrefix="append-douyin-upload" value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />
     <label htmlFor="append-directory">成片保存到</label>
     <button id="append-directory" type="button" className="directory-picker" disabled={busy} onClick={() => void window.jianji.selectOutputDirectory().then((selected) => { if (selected) { setManualDirectory(selected); setUseManualDirectory(true); } })}><Icon name="folder" /><span>{useManualDirectory && manualDirectory ? manualDirectory : "自动创建 视频/M.D HH:MM"}</span></button>
     {useManualDirectory && <button type="button" className="text-button" disabled={busy} onClick={() => { setUseManualDirectory(false); setManualDirectory(undefined); }}>改为自动创建目录</button>}

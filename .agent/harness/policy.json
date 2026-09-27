@@ -37,6 +37,15 @@
       "timeoutMs": 300000
     },
     {
+      "id": "douyin-upload",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/douyin-upload-contract.test.ts", "tests/douyin-upload-store.test.ts", "tests/douyin-upload-service.test.ts", "tests/douyin-upload-integration.test.ts", "tests/douyin-cdp-uploader.test.ts", "tests/douyin-upload-ui.test.ts"],
+      "timeoutMs": 300000
+    },
+    {
       "id": "cover-contracts",
       "kind": "vitest",
       "required": true,

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { DouyinUploadSelectionSchema } from "./douyin-upload.js";
 import { DecorationSchema, ProductionDecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
 import { ExportSettingsSchema } from "./export-settings.js";
@@ -46,6 +47,7 @@ export interface ChatGPTStatus { status: "signed-out" | "starting" | "logging-in
 export const MAX_AGENT_OUTPUTS = 250;
 export const ProductionMultiplierSchema = z.number().int().min(1).max(MAX_AGENT_OUTPUTS);
 export const AppendProductionSchema = z.object({
+  douyinUpload: DouyinUploadSelectionSchema.optional(),
   batchId: z.string().uuid(),
   count: z.number().int().min(1).max(MAX_AGENT_OUTPUTS),
   productPrice: RequiredProductPriceSchema,
@@ -60,6 +62,7 @@ export function calculateProductionQuantity(sourceCount: number, requestedCount:
 }
 
 const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof DecorationSchema>, z.ZodTypeDef, unknown>) => z.object({
+  douyinUpload: DouyinUploadSelectionSchema.optional(),
   sourceStickerRefresh: z.object({ projectId: z.string().uuid(), mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS) }).strict().optional(),
   multiplier: ProductionMultiplierSchema.optional(),
   exportFormat: ExportFormatSchema.optional(),

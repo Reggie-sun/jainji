@@ -20,6 +20,8 @@ import { Heading, Icon, duration, sizeLabel } from "./ui";
 import { ModelSettingsDrawer } from "./ModelSettingsDrawer";
 import { WorkspaceHeader, WorkspaceRail, WorkspaceSubnav } from "./WorkspaceChrome";
 import { resolveWorkflowTarget, templateSectionForWorkflow, workflowForTemplateSection, type Step, type TemplateSectionId, type WorkflowId } from "./workspace-flow";
+import type { DouyinUploadSelection } from "../shared/douyin-upload";
+import { DouyinUploadControls } from "./DouyinUploadControls";
 
 export default function App() {
   const [state, setState] = useState<DesktopState>();
@@ -46,6 +48,7 @@ export default function App() {
   const [automaticOutputFor, setAutomaticOutputFor] = useState("");
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
   const [exportFormat, setExportFormat] = useState<ExportFormat>(DEFAULT_EXPORT_FORMAT);
+  const [douyinUploadSelection, setDouyinUploadSelection] = useState<DouyinUploadSelection>();
   const [dragOver, setDragOver] = useState(false);
   const [previewId, setPreviewId] = useState<string>();
   const [retryingIds, setRetryingIds] = useState<string[]>([]);
@@ -61,6 +64,7 @@ export default function App() {
     const workspace = next.project.workspaceDraft;
     if (projectChanged) {
       projectId.current = next.project.id;
+      setDouyinUploadSelection(undefined);
       setCollectionName(next.project.name);
       knownMedia.current.clear();
       setRule(workspace?.ruleId ?? "black-gold");
@@ -258,18 +262,24 @@ export default function App() {
     setAutomaticOutputFor(automaticSelectionKey);
     return directory;
   };
-  const start = () => void (async () => {
-    await run(async () => {
-    if (coverStickerDirty) throw new Error("请先保存覆盖设置后再开始制作。");
-    const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
-    if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`请填写有效的制作条数，向上取整后不能超过 ${MAX_AGENT_OUTPUTS} 条。`);
-    setWorkflowSection("results");
-    setStep("results");
-    window.scrollTo({ top: 0, behavior: "smooth" });
-    const resolvedOutputDirectory = await resolveOutputDirectory();
-    apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier }));
-    });
-  })();
+  const start = () => {
+    const uploadSelection = douyinUploadSelection;
+    const startProjectId = state.project.id;
+    return void (async () => {
+      await run(async () => {
+        if (coverStickerDirty) throw new Error("请先保存覆盖设置后再开始制作。");
+        const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
+        if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`请填写有效的制作条数，向上取整后不能超过 ${MAX_AGENT_OUTPUTS} 条。`);
+        setWorkflowSection("results");
+        setStep("results");
+        window.scrollTo({ top: 0, behavior: "smooth" });
+        const resolvedOutputDirectory = await resolveOutputDirectory();
+        if (projectId.current !== startProjectId) throw new Error("项目已切换，请在当前项目重新开始制作。");
+        setDouyinUploadSelection(undefined);
+        apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(uploadSelection ? { douyinUpload: uploadSelection } : {}) }));
+      });
+    })();
+  };
   const generateBrief = () => void run(async () => {
     setGeneratingBrief(true);
     try { setBrief(await window.jianji.generateBrief({ ruleId: rule, decorations, brief })); }
@@ -354,9 +364,9 @@ export default function App() {
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
-        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={state.connection.configured ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={state.connection.configured ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={locked || exporting} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}
-        {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}
+        {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}
       </main>
       <footer className="app-footer"><span>简辑 · 本地视频包装</span><span><i /> 本地渲染，原片保留</span></footer>
     </div>

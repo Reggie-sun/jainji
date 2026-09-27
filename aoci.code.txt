@@ -6,13 +6,13 @@
 AGENTS.md[SC9T]: F:规定项目权威、产品不变量、领域归属及交付门禁 | R:code:src/shared/agent.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:规则优先于语义索引；变更须按Guide维护索引并以当前源码和fresh验证交付 | S:source-mask-only不证明候选或输出安全；形状覆盖须全轮共同候选、冻结字节、逐输出100%覆盖与独立内容安全，缺证据UNSAFE且不回退白底；旧任务按冻结元数据解释
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
-package.json[FV7T]: F:声明桌面应用依赖、验证脚本和Linux及Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx | A:typecheck、Vitest、Harness、构建与安装包入口 | S:Windows包携带FFmpeg与字体，Codex平台二进制通过asarUnpack解包；打包清单不包含AOCI运行状态
+package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx | A:typecheck、Vitest、Harness与安装包入口；Playwright作为固定运行依赖external | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态
 tsconfig.json[AB5T]: F:严格TypeScript编译约束并包含src tests和Vite配置 | R:code:src/main/index.ts | A:类型检查配置不代表运行行为 | S:noEmit且模块按Bundler解析
 vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | R:code:src/renderer/main.tsx | A:前端构建入口 | S:相对base适配本地Electron加载
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7T]: F:定义代码回归与媒体核验的必需检查、超时和容差 | R:code:src/harness/types.ts,code:src/harness/cli.ts,code:src/harness/media.ts | A:Harness 读取此策略执行固定检查并生成独立回执 | S:必需检查缺证据不可记为PASS
+policy.json[FQ7T]: F:定义代码回归与媒体核验的必需检查、超时和容差 | R:code:src/harness/types.ts,code:src/harness/cli.ts,code:src/harness/media.ts | A:Harness读取策略生成独立回执；douyin-upload组只执行离线合同测试 | S:必需检查缺证据不可记为PASS；离线PASS不授权真实账号发布
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -26,7 +26,7 @@ run.ts[RQ8M]: F:管理Harness独立运行目录、进程超时中断、日志和
 types.ts[CQ7T]: F:定义Harness策略、检查结果与三态聚合Schema | R:code:src/harness/code.ts,code:src/harness/media.ts,code:src/harness/run.ts | A:PASS、FAIL、NOT_EVALUATED映射退出码0、1、2 | S:必需项有NOT_EVALUATED时聚合结果不能PASS
 
 ===/home/reggie/vscode_folder/jianji/src/main/===
-agent-controller.ts[AW9M]: F:准入并编排逐素材制作，按装饰与覆盖模式选择模型或本地随机路径 | R:code:src/main/agent-runner.ts,code:src/main/agent-provider.ts,code:src/main/source-sticker-knowledge-session.ts,code:src/main/cover-placement-session.ts | A:校验请求、资源和输出目录后启动runner；本地随机从有效资源池选贴纸并跳过无用抽帧 | S:Agent装饰或自动覆盖才要求创作连接；自动识别仍要求独立视觉与复核连接；运行中不换连接
+agent-controller.ts[AW9M]: F:准入并编排逐素材制作，按装饰与覆盖模式选择模型或本地随机路径 | R:code:src/main/agent-runner.ts,code:src/main/agent-provider.ts,code:src/main/source-sticker-knowledge-session.ts,code:src/main/cover-placement-session.ts,code:src/main/queue.ts | A:校验请求后启动runner；本地随机跳过无用抽帧；在正式任务执行前以项目批次任务身份注册本次上传授权 | S:Agent装饰或自动覆盖才要求创作连接；自动识别要求独立视觉与复核连接；运行中不换连接；上传注册失败不改变导出
 agent-frames.ts[IA6T]: F:校验源素材指纹并为创作模型抽取临时联系帧 | R:code:src/main/ffmpeg.ts,code:src/main/domain.ts | A:将抽帧路径交给主进程调用者，结束后清理临时目录 | S:源文件指纹变化时拒绝继续分析
 agent-preview-store.ts[RB6T]: F:登记主管样片的临时路径并经专用协议安全解析 | R:code:src/main/agent-controller.ts,code:src/main/paths.ts | A:以run和item身份生成预览URL，结束时清理目录 | S:仅当前运行及受登记目录内的文件可解析
 agent-provider.ts[AA9L]: F:调用创作、视觉和复核连接，校验模型方案并生成本地图层模板 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/domain.ts,code:src/main/api-transport.ts | A:validatePlan和materializePlan执行模型输出的本地约束；选择贴纸与价格外观 | S:模型不能生成或改写展示文字；普通四角与覆盖专用贴纸选材边界不同；非法方案明确失败
@@ -57,7 +57,7 @@ cover-placement-proposal.ts[AB7T]: F:按精确源身份提出近似自动覆盖�
 cover-placement-provider.ts[AB7T]: F:构造近似覆盖提案的模型输入消息 | R:code:src/main/cover-placement-proposal.ts | A:输入协议不拥有源知识 | S:只传约定抽帧与元数据
 cover-placement-session.ts[AB7T]: F:管理自动覆盖提案、样片复核与位置复用 | R:code:src/main/cover-placement-proposal.ts | A:使用源知识准入锁但不发布源事实 | S:复核失败不得通过
 cover-review-approval.ts[AB7T]: F:校验assisted草稿摘要与显式批准前提 | R:code:src/main/cover-review-controller.ts | A:批准绑定当前版本冻结预览 | S:编辑作废旧批准
-cover-review-controller.ts[AB7T]: F:编排assisted草稿证据复核预览批准和队列提交 | R:code:src/main/cover-review-session.ts | A:半自动人工决定生命周期owner | S:所有版本冻结并明确批准才提交
+cover-review-controller.ts[AB7M]: F:编排assisted草稿、证据复核、预览批准和队列提交 | R:code:src/main/cover-review-session.ts,code:src/main/cover-review-approval.ts,code:src/main/queue.ts | A:保存人工决定、冻结预览与批准后提交收据 | S:所有版本冻结并明确批准才提交；拒绝上传选项，避免私有发布文案进入可分享项目草稿
 cover-review-evidence.ts[AB7T]: F:提取带时间与坐标映射的assisted原始证据 | R:code:src/main/cover-review-controller.ts | A:证据与源媒体可追溯 | S:路径限定项目目录并可取消
 cover-review-input.ts[AB7T]: F:将草稿证据候选转为独立复核输入 | R:code:src/main/cover-review-provider.ts | A:适配输入而不作草稿决定 | S:只读取已登记证据
 cover-review-preview.ts[AB7T]: F:计算预览摘要并清理无引用预览 | R:code:src/main/cover-review-controller.ts | A:预览生命周期辅助 | S:保留仍被草稿引用的预览
@@ -72,14 +72,14 @@ execution-limits.ts[RP7T]: F:按CPU与内存估算并发容量并探测可运行
 ffmpeg.ts[IB8M]: F:封装媒体子进程、能力发现、编码并发探测与字体解析 | R:code:src/main/video-encoder.ts,code:src/main/execution-limits.ts,code:src/main/hardware-probe.ts,code:src/main/platform.ts | A:FfmpegAdapter提供probe和run；checkCapabilities返回引擎及容量；refreshFontCapabilities只更新字体就绪状态 | S:硬件和CPU回退均须真实同时编码探测；CPU有独立探测预算；刷新字体不重选队列引擎；进程退出不代表产物已验证发布
 gpu-memory.ts[AB7T]: F:解析空闲显存并估算NVENC需求 | R:code:src/main/execution-limits.ts | A:硬件容量辅助 | S:探测不可用不得推定容量
 hardware-probe.ts[KH7T]: F:用持续编码进程验证指定路数的同时运行能力 | R:code:src/main/ffmpeg.ts,code:src/main/execution-limits.ts | A:probeConcurrentEncodes等待每路输出帧及持续重叠，超时或提前退出返回失败 | S:探测输入保持开放；任何提前退出使容量无效；结束必须杀死仍运行进程并等待全部promise
-index.ts[EG8L]: F:启动Electron主进程并注册可信IPC，连接应用、队列、模型和知识恢复 | R:code:src/main/application.ts,code:src/main/agent-controller.ts,code:src/main/queue.ts | A:制作开始、状态刷新及手动或追加导出时持久化最近一次制作身份 | S:IPC先校验发送者；退出时取消运行任务；最近一次制作不从历史队列反推
+index.ts[EG8L]: F:启动Electron并注册可信IPC，连接应用、导出队列、模型、知识和上传恢复 | R:code:src/main/application.ts,code:src/main/agent-controller.ts,code:src/main/queue.ts,code:src/main/douyin-upload-service.ts | A:持久化制作身份；将正式完成通知送入独立uploader；投影当前项目上传状态 | S:IPC校验发送者与上传任务项目归属；renderer不能传路径或selector；退出先停止上传；启动恢复不触发浏览器副作用
 media-response.ts[AB7T]: F:对本地媒体请求返回可范围读取的Response | R:code:src/main/index.ts | A:受控媒体协议辅助 | S:仅按受信路径提供媒体
 media.ts[AB7T]: F:探测导入媒体属性并构造去源路径的视图 | R:code:src/main/ffmpeg.ts | A:素材目录owner | S:无效媒体不进入制作
 model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独立Codex登录与执行runtime | R:code:src/main/connection-store.ts,code:src/main/chatgpt-session.ts,code:src/main/codex-rpc.ts,code:src/main/api-request-scheduler.ts | A:ModelConnections持久选择、激活各角色、导入连接与关闭；启动参数和执行凭据由主进程构造 | S:登录和执行目录分离，执行auth.json必须缺席；凭据仅经允许的环境传给子进程；禁用工具、搜索和多Agent；不读写全局Codex登录，凭据不回传界面
 paths.ts[AB7T]: F:文件指纹安全输出目录文件名分配与模板资源校验 | R:code:src/main/queue.ts | A:输出路径安全辅助 | S:不得覆盖源视频或现有输出
 platform.ts[AB7T]: F:跨Linux和Windows解析命令及字体候选路径 | R:code:src/main/ffmpeg.ts | A:平台路径辅助 | S:保留各平台路径语义
-preload.ts[AB7T]: F:以contextBridge向renderer暴露受限DesktopApi与事件监听 | R:code:src/main/index.ts | A:Electron IPC显式边界 | S:renderer不直接持有主进程能力
-queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-render.ts,code:src/main/shape-cover-admission.ts | A:ExportQueue创建幂等批次、渲染预览、核验形状样片、直发批准样片、恢复重试与取消；按CPU线程和GPU内存共享槽位 | S:形状预览前后核查源mask并签发私有绑定；形状直发须持有进程内准入，复制后与artifact校验后重查同字节；普通创建、重放、恢复仍拒绝形状；partial验证后无覆盖发布，重试沿用冻结模板设置
+preload.ts[AB7T]: F:以contextBridge暴露受限DesktopApi与事件监听 | R:code:src/main/index.ts,code:src/shared/desktop.ts | A:显式IPC边界包含上传设置、继续、停止、文案修订和人工接受确认 | S:renderer不直接持有主进程能力，上传操作仅传business fields
+queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-render.ts,code:src/main/shape-cover-admission.ts | A:创建批次、渲染核验、直发批准样片、恢复重试及取消；创建回调只传身份；正式完成保存后发出独立通知 | S:形状预览绑定源mask，直发需进程内准入且复制后重查；普通路径拒绝形状；partial验证后无覆盖发布；重试沿用冻结设置；通知失败不回滚completed，也不占渲染槽
 recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:code:src/main/application.ts | A:项目入口历史辅助 | S:不承担工作区或模板状态
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
 source-sticker-knowledge-session.ts[AB7T]: F:按源身份管理识别候选、多版本样片复核及修订传播 | R:code:src/main/source-sticker-knowledge-store.ts | A:源贴纸事实生命周期owner | S:不接纳近似覆盖位置作为事实
@@ -103,6 +103,9 @@ shape-cover-candidates.ts[KB8S]: F:计算整轮候选与全部目标及输出设
 shape-cover-freeze.ts[AB8S]: F:将共同安全选款冻结为每个目标及输出规格的最终PNG图层 | R:code:src/main/shape-cover-candidates.ts,code:src/main/shape-cover-alpha.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/shape-cover-render.ts | A:freezeShapeCoverCandidate重算整轮、生成有限不透明轮廓、核验PNG往返像素并绑定图层摘要 | S:冻结仍仅几何PASS，内容安全未评估；发布前后复查源与候选；文件无覆盖发布到独占操作目录，失败或取消只清理该操作文件
 shape-cover-render.ts[IB8T]: F:校验形状冻结绑定并为编译读取不可变PNG字节 | R:code:src/shared/shape-cover.ts,code:src/main/shape-cover-candidates.ts,code:src/main/compiler.ts,code:src/main/queue.ts | A:计算绑定摘要；核查当前准入源事实、媒体、输出设置和PNG指纹及尺寸 | S:assertShapeCoverExportReady当前一律拒绝形状正式输出；冻结字节校验和预览成功均不能代替逐帧coverage及独立内容安全准入
 shape-cover-admission.ts[AB8M]: F:对原队列形状样片建立最终像素与输出帧时域证明，组织独立内容安全准入 | R:code:src/main/queue.ts,code:src/main/shape-cover-candidates.ts,code:src/main/supervisor-evidence.ts,code:src/main/supervised-preview.ts | A:admitShapeCoverSample返回PASS及私有handle或UNSAFE；verifyShapeCoverAdmission核验当前绑定与样片字节；ShapeCoverReviewInput携带真实配对证据和形状范围 | S:完整矩阵与冻结RGBA重算，不借几何PASS证明安全；四类侵入均须SAFE且引用当前证据；裸pass或未知拒绝；handle不可序列化复原，仅直发同字节样片，取消与源资产设置漂移失效，bbox修订须重新冻结准入
+douyin-cdp-uploader.ts[IN8S]: F:按有限源码页面合同连接现有Chrome并执行上传、一次提交及同ID接受核查 | R:code:src/main/douyin-upload-service.ts,code:src/main/douyin-upload-store.ts,code:src/shared/douyin-upload.ts | A:验证HTTP与WS loopback，经本地relay附着default context；唯一控件及账号复验 | S:生产合同未核实则在discovery前拒绝；fixture合同仅测试注入；停止保留Chrome和tab，中继启动期间取消也禁止迟到attach；重连没有提交页面归属则人工核查，禁止重新上传
+douyin-upload-service.ts[AW8M]: F:独占上传准入、串行执行、有限重试、停止恢复与人工确认 | R:code:src/main/douyin-upload-store.ts,code:src/main/douyin-cdp-uploader.ts,code:src/main/store.ts,code:src/main/paths.ts,code:src/shared/douyin-upload.ts | A:重读正式完成记录，冻结hash私有快照；各阶段有deadline；按字节去重并独立展示结果 | S:启动不自动唤醒历史pending；停止期间完成的准入不能重新获执行许可；有marker仅VERIFYING；发布前同步屏障；未知结果暂停账号队列；手工修正文案仅提交前；失败不回写导出状态
+douyin-upload-store.ts[PR8S]: F:持久保存上传配置、精确授权、冻结任务与永久提交屏障 | R:code:src/main/store.ts,code:src/shared/douyin-upload.ts | A:串行原子保存账本；先读取marker再校验identity与digest；提交exclusive create并同步文件和目录 | S:损坏记录、未知版本、孤立marker或旧备份不能恢复发布许可；marker永不清除；写入失败阻断副作用；Windows目录持久化未核实，发布fail closed
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -112,8 +115,8 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7M]: F:协调桌面工作区、素材、包装草稿、模型配置及作品界面 | R:code:src/main/preload.ts,code:src/renderer/TemplatePanel.tsx,code:src/renderer/ResultsPanel.tsx,code:src/renderer/WorkspaceChrome.tsx | A:恢复项目草稿与手动展示文字；调用主进程制作、导出重试和项目管理；展示实测引擎及并发能力 | S:界面可用状态不代表主进程准入；制作发送用户草稿；自动目录按所选素材失效；硬件探测失败与无硬件分别提示
-AppendProductionDialog.tsx[AB7T]: F:追加制作时预填并校验源批次手动文字和数量 | R:code:src/renderer/App.tsx | A:追加制作输入界面 | S:不由Agent改写展示文字
+App.tsx[AU7M]: F:协调桌面素材、包装草稿、模型配置、制作和作品界面 | R:code:src/main/preload.ts,code:src/renderer/TemplatePanel.tsx,code:src/renderer/ResultsPanel.tsx,code:src/renderer/WorkspaceChrome.tsx,code:src/renderer/DouyinUploadControls.tsx | A:恢复用户草稿并启动制作；本次上传选择独立传入主进程 | S:界面状态不替代主进程准入；自动目录按素材失效；上传选择在项目切换或发送后清除，不写入价格或制作模型上下文
+AppendProductionDialog.tsx[AB7T]: F:追加制作时预填并校验手动展示文字、数量与独立上传选择 | R:code:src/renderer/App.tsx,code:src/renderer/DouyinUploadControls.tsx | A:追加制作输入界面 | S:不由Agent改写展示文字；上传默认关闭，发布文案不从价格或旧批次继承
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
 CornerDecorationPicker.tsx[AB7T]: F:编辑manual agent random角落装饰选项 | R:code:src/shared/decorations.ts | A:表单说明本地随机覆盖逐框选不同贴纸并避免角落重叠 | S:自动模式不改写手动文字
@@ -129,11 +132,11 @@ MaterialCollection.tsx[AB7T]: F:管理项目名称及已保存项目打开重命
 ModelPicker.tsx[AB7T]: F:选择创作模型连接型号与推理档位 | R:code:src/renderer/ModelSettingsDrawer.tsx | A:创作角色选择界面 | S:凭据不在组件持久化
 ModelSettingsDrawer.tsx[AB7T]: F:汇总创作识别复核三种角色设置 | R:code:src/renderer/VisionConnectionPanel.tsx | A:角色设置面板 | S:角色连接独立
 PriceStylePicker.tsx[AB7T]: F:预览并选择手动展示文字的花字风格 | R:code:src/shared/decorations.ts | A:只选外观不改文字 | S:保留用户输入原文
-ResultsPanel.tsx[EU7T]: F:展示最近一次制作的分析状态、导出任务、取消重试和追加入口 | R:code:src/renderer/App.tsx,code:src/main/domain.ts | A:优先使用匹配的实时Agent run，重启后按项目保存的item和task身份过滤历史队列 | S:旧项目没有latestProduction时保留历史列表兼容行为；任务完成仍需播放确认
+ResultsPanel.tsx[EU7T]: F:展示最近一次制作的导出状态与独立上传任务及操作入口 | R:code:src/renderer/App.tsx,code:src/main/domain.ts,code:src/renderer/DouyinUploadPanel.tsx | A:按实时Agent run或保存的制作身份过滤导出历史；上传状态单独投影 | S:旧项目无latestProduction保持兼容；上传失败不改变导出完成或本轮数量；成片仍需播放确认
 SavedConnectionsPanel.tsx[AB7T]: F:编辑选择删除API连接及CC Switch导入界面 | R:code:src/renderer/App.tsx | A:连接管理界面 | S:不显示已保存密钥
 SourceStickerKnowledgeDetails.tsx[AB7T]: F:展示源贴纸知识识别复核进度和风险细节 | R:code:src/shared/source-sticker-knowledge.ts | A:只读进度呈现 | S:不把风险提示变成批准
 StickerLibraryPanel.tsx[AB7T]: F:显示上传贴纸库并触发导入移除 | R:code:src/main/uploaded-stickers.ts | A:贴纸管理界面 | S:只引用已校验导入素材
-TemplatePanel.tsx[EU6T]: F:编辑展示文字、贴纸、数量、导出设置和开始制作入口 | R:code:src/shared/agent.ts,code:src/renderer/App.tsx | A:按是否使用模型展示本地制作说明，保留共同的数量与文字校验 | S:本地制作无需模型连接；手动展示文字为空仍禁止开始
+TemplatePanel.tsx[EU6T]: F:编辑展示文字、贴纸、数量、导出设置及本次上传选择入口 | R:code:src/shared/agent.ts,code:src/renderer/App.tsx | A:按模型使用方式展示制作说明并保留共同校验；上传控件由调用方注入 | S:本地制作无需模型；手动展示文字为空仍禁止开始
 TemplatePreview.tsx[AB7T]: F:用Canvas绘制模板静态示意文字与贴纸 | R:code:src/shared/layout-policy.ts | A:示意预览不等于成片 | S:不能据此证明主体避让
 VisionConnectionPanel.tsx[AB7T]: F:分别配置识别或复核模型连接 | R:code:src/renderer/ModelSettingsDrawer.tsx | A:视觉角色设置界面 | S:与创作连接分开
 WorkspaceChrome.tsx[AU5T]: F:呈现工作区导航、项目操作及引擎状态 | R:code:src/renderer/workspace-flow.ts,code:src/renderer/App.tsx | A:WorkspaceRail、WorkspaceHeader和WorkspaceSubnav接收状态及回调显示工作步骤、项目和包装分区 | S:硬件试运行失败与无硬件是不同提示；导航不拥有制作准入规则
@@ -141,9 +144,11 @@ cover-review-geometry.ts[AB7T]: F:换算assisted证据图像和覆盖框的界�
 main.tsx[AB7T]: F:挂载React App并导入全局样式 | R:code:src/renderer/App.tsx | A:renderer入口 | S:业务状态在App
 ui.tsx[AB7T]: F:通用图标标题与尺寸时长显示函数 | R:code:src/renderer/App.tsx | A:纯展示组件 | S:不决定领域状态
 workspace-flow.ts[AB7T]: F:定义工作区步骤与包装子区段导航映射 | R:code:src/renderer/App.tsx | A:导航状态合同 | S:不改项目制作请求
+DouyinUploadControls.tsx[EU6T]: F:提供本次制作的显式上传发布选择及手工文案输入 | R:code:src/shared/douyin-upload.ts,code:src/renderer/App.tsx,code:src/renderer/AppendProductionDialog.tsx | A:与展示文字分开的默认关闭控件 | S:选择授权本次成片上传并提交发布，不授权历史视频；文案不由模型代填
+DouyinUploadPanel.tsx[EU7S]: F:展示当前项目上传状态、设置与显式恢复或人工接受确认 | R:code:src/main/preload.ts,code:src/shared/douyin-upload.ts,code:src/renderer/ResultsPanel.tsx | A:提交前允许修正文案；停止后可继续；去重别名只展示原结果 | S:可能提交后仅提供只读核查与具体ID人工证据，不能重新发布或清屏障；审核中接受不等于公开发布；未核实页面明确未就绪
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===
-agent.ts[AB7T]: F:定义制作请求容量数量冻结输入与共享准入schema | R:code:src/main/agent-controller.ts | A:制作入口数据合同owner | S:必填用户展示文字在模型调用前拒绝
+agent.ts[AB7T]: F:定义制作容量、数量、冻结输入与共享准入schema | R:code:src/main/agent-controller.ts,code:src/shared/douyin-upload.ts | A:制作及追加入口数据合同owner；上传选择为独立可选字段 | S:用户展示文字缺失在模型调用前拒绝；旧请求缺上传字段仍有效
 asset-library.ts[AB7T]: F:将资源manifest暴露为贴纸字体及许可证目录 | R:code:src/main/asset-library.ts | A:内置资源描述 | S:只有受审素材可供自动选择
 automatic-cover.ts[AB7T]: F:定义自动源贴纸检测帧和抽样常量schema | R:code:src/main/cover-track-provider.ts | A:检测结果合同 | S:模型响应须本地校验
 automatic-stickers.ts[AB7T]: F:列出经审阅可自动使用的内置贴纸ID | R:code:src/main/agent-provider.ts | A:自动选材白名单 | S:上传贴纸须另经有效ID校验
@@ -157,7 +162,7 @@ cover-sticker.ts[AB7T]: F:覆盖开关模式逐素材区域轨迹和旧单框兼
 curated-stickers.ts[AB7T]: F:精选内置贴纸搜索条目与标签映射 | R:code:src/shared/asset-library.ts | A:浏览目录筛选描述 | S:不扩充自动选材白名单
 decorations.ts[AB7T]: F:手动展示文字和角落装饰模式样式schema | R:code:src/shared/agent.ts | A:展示文字校验唯一共享owner | S:Agent不能生成或改写文字
 defaults.ts[AB7T]: F:定义默认展示文字字体族 | R:code:src/shared/decorations.ts | A:共享默认常量 | S:字体由本地解析
-desktop.ts[AB7T]: F:定义主进程返回renderer的状态投影类型 | R:code:src/main/preload.ts | A:UI读模型合同 | S:不含原始密钥
+desktop.ts[AB7T]: F:定义主进程返回renderer的桌面状态与可选上传投影 | R:code:src/main/preload.ts,code:src/shared/douyin-upload.ts | A:UI读模型合同 | S:不含原始密钥，上传结果只暴露文件名与业务证据
 export-format.ts[AB7T]: F:定义mp4 mov mkv容器格式schema及默认值 | R:code:src/shared/export-settings.ts | A:输出容器合同 | S:输出须经文件校验
 export-settings.ts[AB7T]: F:定义分辨率帧率画质schema及输出尺寸计算 | R:code:src/main/compiler.ts | A:导出设置合同owner | S:默认按方向720p保留源帧率
 layout-policy.ts[AB7T]: F:定义角落贴纸安全区域锚定检查及预览几何 | R:code:src/main/agent-provider.ts | A:四角布局约束owner | S:覆盖贴纸单独例外
@@ -167,6 +172,7 @@ project-workspace.ts[AB7T]: F:校验可恢复工作区步骤素材外观数量�
 source-sticker-knowledge-audit.ts[AB7T]: F:定义源知识查询原因制作阶段复核结果的审计schema | R:code:src/main/source-sticker-knowledge-session.ts | A:进度与审计合同 | S:风险和失败显式记录
 source-sticker-knowledge.ts[DB8M]: F:定义源身份、事实、静态像素掩码、审核档案及两类发布证明Schema | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/source-mask-admission.ts | A:约束mask边界与跨时间原帧证据，区分源专用证明和样片证明 | S:掩码须有至少两张不同PTS且间隔至少1秒的原图证据；source-mask-only不能解释成预览或输出安全通过
 shape-cover.ts[DB8T]: F:定义最终像素形状覆盖的冻结数据合同和资源上限 | R:code:src/main/domain.ts,code:src/main/shape-cover-freeze.ts,code:src/main/shape-cover-render.ts | A:FrozenShapeCoverBindingSchema和FrozenShapeCoverSchema绑定源修订、目标时段、候选、输出设置、轮廓版本及像素摘要 | S:策略固定geometry-only和NOT_EVALUATED；严格拒绝越界投影、摆放、时段及过大栅格；冻结合同不是正式输出或内容安全证明
+douyin-upload.ts[CB8T]: F:独占上传选择、配置、identity、typed结果及接受证据校验 | R:code:src/main/douyin-upload-store.ts,code:src/main/douyin-upload-service.ts,code:src/main/douyin-cdp-uploader.ts | A:strict schema拒绝任意字段；限制loopback、creator URL、caption和有限超时 | S:生产上传route列表为空直至侦察核实；caption原样保留；成功需稳定ID及同ID定位证据；可能提交的任务不得标为可重试
 
 ===/home/reggie/vscode_folder/jianji/src/types/===
 sql-asm.d.ts[AB7T]: F:声明sql-asm模块的TypeScript类型 | R:code:src/main/source-sticker-knowledge-store.ts | A:第三方类型桥接 | S:不实现持久逻辑

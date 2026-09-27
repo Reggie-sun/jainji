@@ -11,7 +11,7 @@ import { AgentProvider, ProviderError, type AgentDecorationCatalog } from "./age
 import { AgentRunner } from "./agent-runner.js";
 import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
-import type { ExportQueue } from "./queue.js";
+import type { ExportBatchIdentity, ExportQueue } from "./queue.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema, decorationTimingContext, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
@@ -32,6 +32,7 @@ import { superviseRenderedTemplate } from "./supervised-preview.js";
 import { CoverPlacementSession, completedCoverPlacements } from "./cover-placement-session.js";
 import { proposeCoverPlacement } from "./cover-placement-proposal.js";
 import { AgentPreviewStore } from "./agent-preview-store.js";
+import type { DouyinUploadSelection } from "../shared/douyin-upload.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -43,7 +44,7 @@ export class AgentController {
   private briefController?: AbortController;
   private pendingOperation?: Promise<void>;
   private readonly previews = new AgentPreviewStore();
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore, private readonly registerUpload?: (batch: ExportBatchIdentity, selection?: DouyinUploadSelection) => Promise<void>) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -331,6 +332,7 @@ export class AgentController {
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
           const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
+          try { await this.registerUpload?.({ id: batch.id, projectId: batch.projectId, tasks: batch.tasks.map(task => ({ id: task.id })) }, parsed.douyinUpload); } catch { this.onChange(); }
           if (signal.aborted) await this.queue.cancel(batch.tasks[0].id);
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });
           return batch.tasks[0].id;
@@ -338,7 +340,7 @@ export class AgentController {
         publishApproved: async (template, item, samplePath, signal) => {
           signal.throwIfAborted();
           const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
-          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, outputDirectory });
+          const { taskId } = await this.queue.publishApprovedSample({ projectId, template, media: item, preset, samplePath, outputDirectory, onTaskCreated: batch => this.registerUpload?.(batch, parsed.douyinUpload) ?? Promise.resolve() });
           this.onChange();
           return taskId;
         },

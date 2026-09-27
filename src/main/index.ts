@@ -31,6 +31,10 @@ import { AssetLibrary } from "./asset-library.js";
 import { UploadedStickers } from "./uploaded-stickers.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
+import { DouyinUploadConfigSchema, DouyinUploadSelectionSchema, UploadIdSchema, UploadSuccessSchema } from "../shared/douyin-upload.js";
+import { DouyinUploadStore } from "./douyin-upload-store.js";
+import { DouyinUploadService } from "./douyin-upload-service.js";
+import { DouyinCdpUploader, douyinReadiness } from "./douyin-cdp-uploader.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
 import { RecentProjects } from "./recent-projects.js";
 import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
@@ -41,6 +45,7 @@ const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolu
 const uuidSchema = z.string().uuid();
 const outputDirectorySchema = z.string().refine((value) => path.isAbsolute(value), "path must be absolute");
 const exportCreateSchema = z.object({
+  douyinUpload: DouyinUploadSelectionSchema.optional(),
   mediaIds: z.array(uuidSchema).min(1).max(1000),
   outputDirectory: outputDirectorySchema,
   preset: ExportPresetSchema,
@@ -60,6 +65,7 @@ let service: ApplicationService;
 let recentProjects: RecentProjects;
 let activeRecentProjectId: string | undefined;
 let queue: ExportQueue;
+let douyinUpload: DouyinUploadService;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
 let agent: AgentController;
@@ -104,7 +110,7 @@ async function publicState(): Promise<DesktopState> {
     if (!approved) delete state.project.workspaceDraft!.outputDirectory;
   }
   const sourceKnowledgeRisks = await projectKnowledgeRisks({ ...snapshot, batches: snapshot.batches.filter(({ batch }) => batch.projectId === state.project.id) }, sourceKnowledge);
-  return { ...state, sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: run, recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
+  return { ...state, douyinUpload: douyinUpload?.status(state.project.id), sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: run, recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
 let notifying = false, notificationPending = false;
@@ -132,6 +138,16 @@ function publish(snapshot: QueueSnapshot): void {
 }
 
 function registerHandlers(): void {
+  const uploadRef = z.object({ projectId: uuidSchema, uploadTaskId: UploadIdSchema }).strict();
+  const assertUploadProject = (ref: z.infer<typeof uploadRef>) => {
+    const task = douyinUpload.store.task(ref.uploadTaskId);
+    if (ref.projectId !== service.currentProject.id || !task || task.input.project_id !== ref.projectId) throw new Error("上传任务不属于当前项目。");
+  };
+  ipcMain.handle("douyinUpload.configure", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.configure(DouyinUploadConfigSchema.parse(input)); return publicState(); });
+  ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); void douyinUpload.resume(ref.uploadTaskId).catch(() => notifyState()); return publicState(); });
+  ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
+  ipcMain.handle("douyinUpload.caption", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ caption: z.string().max(4096) }).parse(input); assertUploadProject(ref); await douyinUpload.reviseCaption(ref.uploadTaskId, ref.caption); return publicState(); });
+  ipcMain.handle("douyinUpload.confirm", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ success: UploadSuccessSchema }).parse(input); assertUploadProject(ref); await douyinUpload.confirm(ref.uploadTaskId, ref.success); return publicState(); });
   const reviewRef = z.object({ id: uuidSchema, revision: z.number().int().nonnegative() }).strict();
   ipcMain.handle("coverReview.create", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.create(z.array(uuidSchema).min(1).max(250).parse(input)); return publicState(); });
   ipcMain.handle("coverReview.edit", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.edit(input); return publicState(); });
@@ -448,6 +464,7 @@ function registerHandlers(): void {
     if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
     const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: parsed.mediaIds, mediaItems: service.currentProject.mediaItems, outputDirectory, preset });
     await service.rememberExportProduction([batch]);
+    await douyinUpload.registerBatch(batch, parsed.douyinUpload);
     void queue.start(batch.id);
     return { batchId: batch.id, taskIds: batch.tasks.map((task) => task.id) };
   });
@@ -478,6 +495,7 @@ function registerHandlers(): void {
       .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
     const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
     await service.rememberExportProduction(batches);
+    for (const batch of batches) await douyinUpload.registerBatch(batch, parsed.douyinUpload);
     for (const batch of batches) void queue.start(batch.id);
     return { batchIds: batches.map((batch) => batch.id), outputDirectory };
   });
@@ -603,6 +621,8 @@ async function bootstrap(): Promise<void> {
   service = new ApplicationService(ffmpeg, fontResolver);
   queue = new ExportQueue({
     jobStore: new JobStore(path.join(userData, "jobs")),
+    onFinalArtifactCommitted: fact => douyinUpload.committed({ project_id: fact.projectId, batch_id: fact.batchId, export_task_id: fact.taskId }),
+    onFinalArtifactNotificationError: () => safeLog("upload notification failed; formal export remains completed"),
     ffmpeg,
     videoEncoder: capabilities.videoEncoder,
     executionLimits: capabilities.executionLimits,
@@ -610,6 +630,13 @@ async function bootstrap(): Promise<void> {
     onSnapshot: publish,
   });
   queue.setMediaLookup((id) => service.getMedia(id));
+  const uploadStore = new DouyinUploadStore(path.join(userData, "douyin-upload"));
+  await uploadStore.load().catch(() => safeLog("upload store unavailable; upload disabled"));
+  const uploadJobs = new JobStore(path.join(userData, "jobs"));
+  douyinUpload = new DouyinUploadService(uploadStore, {
+    loadBatch: async id => { const loaded = await uploadJobs.load(id); if (loaded.source !== "primary") throw new Error("Export recovery needs reconciliation"); return loaded.state; },
+    browser: () => new DouyinCdpUploader(), readiness: douyinReadiness, changed: notifyState,
+  });
   const builtins = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
   const bundledDirectory = app.isPackaged
     ? path.join(process.resourcesPath, "stickers", "downloaded")
@@ -623,7 +650,7 @@ async function bootstrap(): Promise<void> {
   stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge);
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection) => douyinUpload.registerBatch(batch, selection));
   protocol.handle("jianji-agent-preview", async (request) => {
     try {
       const url = new URL(request.url);
@@ -657,7 +684,7 @@ async function bootstrap(): Promise<void> {
   const windowReady = createWindow();
   // Replay history in the background so it blocks neither the window nor a
   // graceful quit; recover() publishes a snapshot when done.
-  void queue.recover().catch((error) => console.error("queue recover failed", error));
+  void queue.recover().then(() => douyinUpload.reconcile()).catch((error) => console.error("queue recover failed", error));
   await windowReady;
   void connections.restore();
 }
@@ -675,6 +702,7 @@ function safeLog(...args: unknown[]): void {
 }
 
 async function shutdownServices(): Promise<void> {
+  await douyinUpload?.stop().catch(() => safeLog("uploader safely blocked during shutdown"));
   const shutdownStart = Date.now();
   const mark = (stage: string) => safeLog(`[shutdown] ${stage} done +${Date.now() - shutdownStart}ms`);
   try { await coverReview?.shutdown(); mark("coverReview"); }

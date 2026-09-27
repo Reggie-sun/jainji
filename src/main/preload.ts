@@ -9,6 +9,7 @@ import type { LibraryAssetPreview } from "../shared/asset-library.js";
 import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shared/bug-feedback.js";
 import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
+import type { DouyinUploadConfig, UploadSuccess } from "../shared/douyin-upload.js";
 
 const api = {
   createCoverReview: (mediaIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("coverReview.create", mediaIds),
@@ -65,6 +66,11 @@ const api = {
   retryExport: (taskIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("export.retry", { taskIds }),
   appendProductionPrefill: (batchId: string): Promise<{ productPrice: string; mediaCount: number }> => ipcRenderer.invoke("export.appendPrefill", { batchId }),
   appendProduction: (input: AppendProductionInput): Promise<{ batchIds: string[]; outputDirectory: string }> => ipcRenderer.invoke("export.append", input),
+  saveDouyinUploadConfig: (input: DouyinUploadConfig): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.configure", input),
+  resumeDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.resume", { projectId, uploadTaskId }),
+  stopDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.stop", { projectId, uploadTaskId }),
+  reviseDouyinUploadCaption: (projectId: string, uploadTaskId: string, caption: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.caption", { projectId, uploadTaskId, caption }),
+  confirmDouyinUpload: (projectId: string, uploadTaskId: string, success: UploadSuccess): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.confirm", { projectId, uploadTaskId, success }),
   openArtifact: (taskId: string): Promise<boolean> => ipcRenderer.invoke("artifact.open", { taskId }),
   revealArtifact: (taskId: string): Promise<boolean> => ipcRenderer.invoke("artifact.reveal", { taskId }),
   onExportSnapshot: (listener: (state: DesktopState) => void): (() => void) => {
