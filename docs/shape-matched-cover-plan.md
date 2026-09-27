@@ -168,3 +168,19 @@ spec: shape-matched-cover-spec.md
 **Acceptance / Evidence:** `tests/shape-cover-candidates.test.ts` 使用已有真实 admitted-mask fixture、真实 FFmpeg 和明确模拟的独立 reviewer，将 FFmpeg 启动时实际输入文件 SHA、compiler Buffer SHA、冻结 pngSha256、B5 archived layer SHA、reviewed shape identity、canonical template 与最终样片 SHA 连成一项端到端证据；配对像素证明 contour 外透明区保留背景。补 symlink、文件变化、缺失及设置/绑定失配负例。旧 manual/assisted/历史矩形、普通队列、UNKNOWN→authority=none 和 never republish 不变。
 
 **Verification / Boundaries:** red→green targeted tests，typecheck、相关 compiler/shape/legacy/queue/store tests、四路全套及 final diff。按官方 AOCI Guide 维护本轮受管 owner；若完整批次涉及其他进行中源码，报告并保持 ownership gate。记录到 `docs/shape-matched-cover-m5a.md`。不接 IPC/UI，不启用默认自动覆盖，不做 contour redesign、全片 mask、产品模型调用、重启 retry、真实内容安全/人工全片/Windows/掉电验收。只提交本轮文件，保留已有 dirty 工作。
+
+# Proposed Slice — M5-B Product Activation Boundary
+
+2026-09-28 用户要求继续查看 M5-B；原 Plan 尚无该子阶段定义。本次完成源码调查并具体化 [M5-B boundary](shape-matched-cover-m5b.md)，使用 `superpowers:writing-plans` 补入既有 owner。当前为 `BOUNDARY_PROPOSED / PRODUCT_DISABLED`，不把下列目标当作已实现；M5-A candidate `746bb51` 与 NVENC 收口 `a44524b` 保持冻结。
+
+**Goal / Current Behavior:** 正常 `agent.start` 仍调用 `AgentController.start` 的旧路径；`startShapeMatched` 只有显式主进程 M4 接缝。界定新的产品请求何时可以尝试 shape，拒绝越界 intent，正式发布继续依赖全部 M4 admission，不改变 renderer。没有 shape intent 的请求继续原行为；明确 shape intent 的失败为 BLOCKED/UNSAFE，不回退矩形。
+
+**Contract / Owners:** `shared/agent.ts` owner 增加可选版本 intent `coverStrategy: "shape-matched-static-v1"`，缺字段历史请求继续旧解释，未知版本 strict reject。新 `shape-cover-activation.ts` 只负责 attempt routing/rejection；主进程 availability 默认关闭，caller/项目 JSON/模型不能开启或填 PASS。`AgentController.start` 在外部请求前调用该 gate。可信完整 request 的准备属于主进程，仍消费当前项目、canonical source revision、合法本地候选、preset 和有 owner 的显式 placement；缺 assembler/完整源 horizon 证明就阻断，不能接收 IPC 提供的 mask/asset path/authority。source、共同候选、freeze、样片、独立安全、custody、publish-once 继续现有 M4 owners。
+
+**Eligibility / Compatibility:** 只允许新的显式自动覆盖尝试，当前限定 rotation=0、MP4；覆盖关闭/manual/assisted/refresh/不支持的格式与版本拒绝 shape intent。千川上传及 local-random 自动覆盖组合不在首个受控激活范围。无 intent 时这些现有模式保持原合同。旧 frozen template、retry、append 与重启不可根据 availability 迁移或恢复 shape authority；B7 read-only/UNKNOWN/never republish 不变。保存 intent 只是 fresh request 的选择，不是可恢复许可。
+
+**Release Boundary:** M4 prepare 只核对当前 revision 已记录的全部 segments，source-mask-only 只证明核查 range，不证明全片目标穷尽。真实整片制作须由 canonical 源事实覆盖整个 horizon，包括明确无贴纸的时段；本切片不改 source admission、自动生成 mask/placement 或扩张 contour 来填补缺口。Plan M5 的真实留出集、独立语义检查、配对查看和长片成本证据仍未验收，产品 availability 保持关闭。入口 guard 的单元/集成 PASS 不允许宣布 default-on 或 V1 上线。
+
+**Acceptance / Verification:** 新 `tests/shape-cover-activation.test.ts` 覆盖 legacy 路由、主进程关闭/caller 伪造开启、未知版本、非法模式/格式/组合、缺可信 request、部分 horizon、绑定变化及取消。controller 拒绝须证明模型/上传/发布调用为 0；受控 M4 fixture 仍走原安全准入和同字节发布，不能伪造全片产品正例。保留历史矩形兼容及 shape restart 无 authority。实施后 typecheck、相关 activation/agent/controller/shape/queue/store 与实际接线集成；纯文档本次只验证链接、合同、source identity 和 diff，不制造媒体验收。
+
+**Ownership / Stop Condition:** 本次只写 Plan 与 M5-B milestone，Self-Review 已区分入口尝试和发布 authority、缺 intent 的 legacy 与明确 intent 的 UNSAFE、局部与全片证明。controller/shared 等当前有无关 dirty 工作，按 Working-Tree Safety 在同文件写入前请求用户明确 ownership/执行顺序；未决定前不实施源码接线。所有后续变更保留 M5-A renderer，既有 M4 publish-once 与旧任务规则。
