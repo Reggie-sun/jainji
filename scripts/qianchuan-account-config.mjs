@@ -1,61 +1,20 @@
 import { readFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { pathToFileURL } from "node:url";
+import { pathToFileURL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { build } from "esbuild";
 
-const products = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂", "热敷贴"];
 const run = promisify(execFile);
-const idPattern = /^[1-9][0-9]{0,19}$/;
-
-// This file owns only the manual CDP test's account mapping, not production uploads.
-export function parseAccountConfig(value) {
-  if (!value || value.version !== 1 || !Array.isArray(value.accounts) || value.accounts.length !== products.length) {
-    throw new Error("配置需要 version: 1 和六条 accounts。");
-  }
-  const seenProducts = new Set();
-  const seenPorts = new Set();
-  const seenAccounts = new Set();
-  return value.accounts.map((entry) => {
-    if (!entry || !products.includes(entry.product) || seenProducts.has(entry.product)) {
-      throw new Error("产品名称缺失、不支持或重复。");
-    }
-    seenProducts.add(entry.product);
-    if (typeof entry.cdpEndpoint !== "string" || !/^http:\/\/127\.0\.0\.1:[0-9]{1,5}$/.test(entry.cdpEndpoint)) {
-      throw new Error(`${entry.product}：CDP 地址必须为 http://127.0.0.1:端口。`);
-    }
-    const port = Number(new URL(entry.cdpEndpoint).port);
-    if (port < 1 || port > 65535 || seenPorts.has(port)) {
-      throw new Error(`${entry.product}：CDP 端口无效或重复。`);
-    }
-    seenPorts.add(port);
-    for (const key of ["advertiserId", "adId"]) {
-      if (typeof entry[key] !== "string" || (entry[key] !== "" && !idPattern.test(entry[key]))) {
-        throw new Error(`${entry.product}：${key} 必须是带双引号的数字字符串；未填写时保留空字符串。`);
-      }
-    }
-    if (entry.adId && !entry.advertiserId) throw new Error(`${entry.product}：填写计划 ID 前必须填写广告账户 ID。`);
-    if (entry.advertiserId && seenAccounts.has(entry.advertiserId)) throw new Error("六个产品的广告账户 ID 不能重复。");
-    if (entry.advertiserId) seenAccounts.add(entry.advertiserId);
-    return {
-      product: entry.product,
-      cdpEndpoint: entry.cdpEndpoint,
-      advertiserId: entry.advertiserId,
-      adId: entry.adId,
-    };
-  });
-}
+// Diagnostic-only: bundle the shared TS owner in memory, never into desktop runtime.
+const bundle = await build({
+  entryPoints: [fileURLToPath(new URL("../src/shared/qianchuan-account.ts", import.meta.url))],
+  bundle: true, write: false, platform: "node", format: "esm", logLevel: "silent",
+});
+export const { parseAccountConfig, accountPageUrl } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text).toString("base64")}`);
 
 export async function readAccountConfig(filePath) {
   return parseAccountConfig(JSON.parse(await readFile(filePath, "utf8")));
-}
-
-export function accountPageUrl(account) {
-  if (!account.advertiserId || !account.adId) throw new Error(`${account.product}：先填写 advertiserId 和 adId，不能猜测账户或计划。`);
-  const url = new URL("https://qianchuan.jinritemai.com/uni-prom");
-  url.searchParams.set("aavid", account.advertiserId);
-  url.searchParams.set("adId", account.adId);
-  return url.href;
 }
 
 export function assertSelectedPage(page, account) {

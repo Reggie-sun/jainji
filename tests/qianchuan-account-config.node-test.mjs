@@ -33,6 +33,9 @@ test("incomplete mappings cannot open a guessed account or plan", () => {
 
 test("rejects ambiguous products, duplicate accounts and invalid or remote CDP endpoints", () => {
   for (const mutate of [
+    c => { c.extra = true; },
+    c => { c.accounts[0].url = "https://example.com"; },
+    c => { c.version = 2; },
     c => { c.accounts.pop(); },
     c => { c.accounts[1].product = "蝴蝶贴"; },
     c => { c.accounts[0].advertiserId = 1876024170199244; },

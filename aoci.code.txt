@@ -109,6 +109,7 @@ douyin-upload-store.ts[PR8S]: F:持久保存上传配置、精确授权、冻结
 shape-cover-production.ts[AB8T]: F:在原制作流程协调全轮形状候选门禁、逐轮冻结、逐版本准入和托管发布 | R:code:src/main/shape-cover-candidates.ts,code:src/main/shape-cover-freeze.ts,code:src/main/shape-cover-admission.ts,code:src/main/shape-cover-artifacts.ts | A:prepare核对全部素材及canonical segments并计算共同集合；layers同轮共享冻结；admit调用原队列独立样片门禁；publish将私有request及fresh绑定交ArtifactStore，转发原任务注册 | S:仅支持匹配制作preset的单设置；缺mask、空共同集合或绑定漂移UNSAFE；不复制hash、intent、重试或completed逻辑；源事实与run-local请求及冻结JSON均不携带发布authority
 shape-cover-artifact-io.ts[PR7T]: F:执行形状产物托管的有界流式SHA复制和独占持久JSON读写 | R:code:src/main/shape-cover-artifacts.ts | A:inspectArtifactFile固定缓冲读取并核对大小和mtime；metadata限1MiB、样片1GiB、总量2GiB；writeArtifactJson同步文件及目录 | S:目录须为真实规范路径；拒绝符号链接、文件增长和短写；不忽略目录sync失败或平台不支持，不覆盖已有文件
 shape-cover-artifacts.ts[PR8S]: F:托管完整形状请求及候选图层样片字节，以永久屏障约束原队列只发布一次 | R:code:src/main/shape-cover-artifact-io.ts,code:src/main/shape-cover-admission.ts,code:src/main/shape-cover-production.ts,code:src/main/queue.ts,code:src/main/store.ts | A:固定project及run/media/version键；publish核验handle后归档并独占写intent；completed核对JobStore及输出SHA；load重定位所有资源 | S:manifest固定v1且authority=none，加载不恢复handle；既有快照缺intent或发布receipt缺失损坏未知均拒绝，不认领或重发；同键不同内容拒绝；进程内shape制作已接入，启动不恢复authority
+qianchuan-account-config.ts[IC7S]: F:读取主进程授权的私有千川账号文件并冻结目标 | R:code:src/shared/qianchuan-account.ts | A:限制64KiB读取并核验权限与文件身份；公开摘要；预检及冻结重读digest | S:只有可信对话框或设置路径调用授权方法；renderer不提供digest；Windows未qualification阻断；文件变化拒绝新冻结，旧快照不变
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -176,6 +177,7 @@ source-sticker-knowledge-audit.ts[AB7T]: F:定义源知识查询原因制作阶�
 source-sticker-knowledge.ts[DB8M]: F:定义源身份、事实、静态像素掩码、审核档案及两类发布证明Schema | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/source-mask-admission.ts | A:约束mask边界与跨时间原帧证据，区分源专用证明和样片证明 | S:掩码须有至少两张不同PTS且间隔至少1秒的原图证据；source-mask-only不能解释成预览或输出安全通过
 shape-cover.ts[DB8T]: F:定义最终像素形状覆盖的冻结数据合同和资源上限 | R:code:src/main/domain.ts,code:src/main/shape-cover-freeze.ts,code:src/main/shape-cover-render.ts | A:FrozenShapeCoverBindingSchema和FrozenShapeCoverSchema绑定源修订、目标时段、候选、输出设置、轮廓版本及像素摘要 | S:策略固定geometry-only和NOT_EVALUATED；严格拒绝越界投影、摆放、时段及过大栅格；冻结合同不是正式输出或内容安全证明
 douyin-upload.ts[CB8T]: F:独占上传选择、配置、identity、typed结果及接受证据校验 | R:code:src/main/douyin-upload-store.ts,code:src/main/douyin-upload-service.ts,code:src/main/douyin-cdp-uploader.ts | A:strict schema拒绝任意字段；限制loopback、creator URL、caption和有限超时 | S:生产上传route列表为空直至侦察核实；caption原样保留；成功需稳定ID及同ID定位证据；可能提交的任务不得标为可重试
+qianchuan-account.ts[CC7T]: F:独占六产品人工账号映射的严格解析与可用性规则 | R:code:src/main/qianchuan-account-config.ts | A:拒绝未知字段及重复产品端口账户；保留字符串ID；构造有限千川计划URL | S:CLI通过内存bundle复用本owner；空ID可保留但不能选用；URL不构成页面身份或上传许可
 
 ===/home/reggie/vscode_folder/jianji/src/types/===
 sql-asm.d.ts[AB7T]: F:声明sql-asm模块的TypeScript类型 | R:code:src/main/source-sticker-knowledge-store.ts | A:第三方类型桥接 | S:不实现持久逻辑
