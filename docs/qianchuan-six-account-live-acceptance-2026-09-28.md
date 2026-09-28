@@ -6,6 +6,8 @@
 
 本轮程序没有点击“确定”、发布、修改广告设置、清除 fence 或重传未知文件。应用验收实例已退出，浏览器任务页面保留；用户原来的简辑实例未由本轮重启或覆盖安装。
 
+2026-09-29 复核已将氨糖膏阻碍定位到页面明确提示的抖音号全域投放权限，并补齐当前源码的 Linux packaged fixture 验证；真实结果仍为 4/6，required review 仍阻塞。详见文末 Linux Recovery Checkpoint。
+
 ## Authority And Target
 
 用户依次授权“开始真实验收”“6个都验证,对了滴耳康的品换了”“换计划都确认”。本轮为六个指定现有项目各制作 10 条，保留项目中已有的手动展示文字，通过应用制作/追加入口、原导出队列及现有上传 owner 执行。每组至多 9 条，前组全部 ready 且持久保存后才继续，最终停在“确定”前。
@@ -105,4 +107,41 @@ Service 源码 hash 从 `88f62391ce94ef671b8da981002d030aa552a02b412fdad4bfaa9af
 
 私有、Git 忽略的 `.agent/harness/runs/20260928-qianchuan-six-live/` 保存各次授权、配置原字节备份、两个 runtime snapshots、GUI reports、只读 audits、driver、项目副本、正式 MP4、JobStore 与逐文件 fence。后三账号的主要证据为 `runtime-resume-serial-snapshot.json`、`remaining-three-validated-report.json`、`eye-post-observer-stop-audit.json`、`remaining-two-report.json`、`remaining-two-final-audit.json` 和三个原页面截图；DISPLAY/启动提示归一化的失败回执也保留。原执行/各次继续启动 marker 均不可覆盖保留。后续不得盲目重跑新制作脚本，最终事实以 fresh 持久 JobStore/ledger 和只读 audit 为准。
 
-剩余：处理氨糖膏原计划的页面归属失效、人工核查一条根未知结果；required re-review、Windows 和当前后续源码版本验收分别待处理。Repository 没有专用 session-record/capture Skill；本文件保存实质真实验收和 genuine blocker，不写全局 memory，不改 roadmap 或产品规则。
+截至本节原 checkpoint，剩余为氨糖膏原计划恢复、一条根未知结果、required re-review 和后续版本的应用交付验证。2026-09-29 的核查及用户排除 Windows 的新范围见下节。Repository 没有专用 session-record/capture Skill；本文件保存实质真实验收和 genuine blocker，不写全局 memory，不改 roadmap 或产品规则。
+
+## Linux Recovery Checkpoint — 2026-09-29
+
+### Authority And Result
+
+用户要求修复四项剩余问题、排除 Windows，并明确选择“保留审查阻塞，先修其它项”。没有追加 implementation reviewer，也没有重置三轮预算。用户随后授权“允许仅重启氨糖膏 Chrome”；本轮只优雅退出该 profile 的主进程，再以现有登录目录、原计划 URL 和 loopback CDP `9223` 启动。没有修改启动器、登录数据或其他 Chrome profile。
+
+真实结果仍为 **PARTIAL：4/6 READY**。氨糖膏已恢复 CDP，并通过最新冻结字节的 Linux packaged 应用“安全继续”入口尝试原十条任务，未重新制作、换计划或选文件。页面“添加视频”按钮禁用；只读 hover 显示“当前账户无该抖音号的全域投放权限，不支持添加素材”。这是本次直接观察到的权限阻碍，不能将其解释为容量不足，也不能用应用放宽校验、强制点击或更换计划来消除。需有权限的人先处理该抖音号授权。应用记录仍为 `PAGE_CONTRACT_CHANGED`，本轮没有修改错误分类或账户权限。
+
+一条根原 target `AD5197C7B3B6E75FFADC8D826D070E93` 的 fresh 只读观察为原 advertiser、空 `adId`、零上传 modal；原页面证据已经不足以建立 READY 或未投递结论。其永久 fence 保留，1 条仍 `MAY_HAVE_UPLOADED`，其余 9 条未选文件。本轮不启动恢复投递、不清除屏障、不创建替代 batch。
+
+恢复后独立审计：60 条记录、40 READY、1 MAY_HAVE_UPLOADED、19 NOT_SELECTED，仍为 41 个永久 fence；氨糖膏十条均未选择、零 fence。其他五十条记录逐项相同，既有四十一个 fence 字节相同，账号配置 SHA256 保持授权值。只恢复了一条氨糖膏旧任务的尝试；首次前置检查因 symlink 不满足 private directory 合同而阻断，零浏览器投递，随后使用 packaged Electron 的 `--user-data-dir` 指向原私有验收目录。没有移动、复制改写或手修 ledger。两次启动均只关闭本轮实例，用户日常简辑实例继续运行。
+
+### Current Linux Candidate And Verification
+
+在独立构建目录冻结 HEAD `9f4dd46f6a7b223c5722a5a6b39e2dd9245e4281` 及当前未提交源码；这是构建输入快照，不是 worktree。3,689 个输入 hash 在验证结束后与工作树全部相同。其他任务的未提交代码明确包含在候选中，本轮未编辑、stage 或 commit 这些代码。没有覆盖仓库构建输出或日常安装目录。
+
+fresh `npm run typecheck` exit 0；上传相关五文件 89/89、补充 schema/account/UI 三文件 50/50 PASS。完整 code harness `20260928T162206Z-93f24044` 为 PASS：七个 required checks、399 个测试全部通过、零跳过，含十项 real-media 检查；前后 source identity 均为 `sha256:ae43534ada79a8534ec98357e3d676ca80ef1c1c8dc0e06bf7dc382d49d67e25`。人工成片观看仍 `NOT_EVALUATED`，没有真实模型调用。
+
+`npm run build` 与 Linux AppImage/deb 构建 exit 0。开发桌面 fixture smoke PASS；未修改 production bundle 的 packaged fixture smoke PASS，实际组为 `1+9+2`，验证十二条正式 FFmpeg 输出和逐文件 fence，以及独立追加制作、preload、有限原生对话框、严格 IPC 拒绝、默认关闭、切换项目/提交后重置、重启不自动选文件。打包内 `playwright-core` 实际 attach 成功；确认点击为零，真实账号未用于 fixture。首次 packaged smoke 在追加制作检查超时，原失败报告保留；临时 driver 只将默认观察预算从 120 秒延长为 600 秒并增加只读等待日志，随后通过。日志记录了等待 GPU 编码会话释放，没有修改应用、强制编码或停止用户导出。另一次 driver 调用遗漏 `--packaged`，在 runtime 类型断言前置失败，不计应用通过证据。
+
+氨糖膏真实恢复运行实际 `app.isPackaged=true` 的应用主进程、preload、前端与 production adapter；因上述账号权限而停止。此证据证明最新 packaged 入口与旧任务读取/准入/停止路径，**不能证明该账号上传成功或六账号端到端通过**。
+
+AppImage 与 deb 内部 `app.asar` 均与测试用 linux-unpacked payload 完全相同，SHA256 为 `5053379d928f58060f2dac96b731b72155e5cb4d35cae28f6ee7100c8c6af11e`。main/preload bundle 分别为 `e99909b848a86050e00d571da774d3534cbe3b0006c79ad2d7ca7a12c79d3821`、`7fe22eecf48fb1b721130120425652dcd668593213a3acf71c56afcd88588a21`。候选包保存在 `/home/reggie/Applications/jianji-candidates/20260929-qianchuan-9f4dd46/`，附 `candidate.json`、输入快照及验证报告；没有覆盖日常应用或更改启动器。其 manifest 明确为 `VALIDATED_LINUX_CANDIDATE_REVIEW_BLOCKED`，不宣称正式发行交付。
+
+| Candidate file | SHA256 |
+| --- | --- |
+| `jianji-0.1.6.AppImage` | `408af3c225c806505c179c4b30bdf5709df7bfa653945be976a12f84bbf1e7d6` |
+| `jianji-0.1.6.deb` | `9ad6f1a5dde1fe701dc000e044e6e440790de5ef86fec9b00fd53b1dd281836f` |
+
+### Operational Delegation And Remaining Gates
+
+受管 Kimi invocation `91d84e1c-64a8-41d0-97b2-512e933a601f` 是 bounded、read-only operational mapping，worker route `27ba7e0c-32b1-41a9-8210-4f49474e0a30`，canonical receipt 为 `PARSED`。三项实际 Read 与封存 hash 一致。Parent 核对其结论：重启不会将旧 pending 自动恢复为 eligible，应通过明确“安全继续”；丢失原 owned modal 不能消除 UNKNOWN；Ng 页面实际原因必须用真实观察验证。该结果没有审查最终 implementation，也不构成第四轮 review、验收批准或原审查的替代。
+
+私有 `.agent/harness/runs/20260929-qianchuan-repair/` 保存重启回执、Kimi receipt/report、两次 Ng GUI 启动报告、禁用控件及权限 tooltip 观察、最终五十条/四十一个 fence 审计、构建快照、smoke 原始成功/失败记录和日志。原六账号验收目录与未知 fence 保持。Windows 按用户要求为 out of scope。
+
+实际剩余 gate：氨糖膏原账号的抖音号全域投放权限；一条根原页面证据丢失导致的未知结果；用户明确保留的 `REVIEW_ESCALATION_REQUIRED`。Linux 构建及 packaged fixture 验证已补齐，但日常安装切换与正式发行没有完成，当前仍只能交付受阻候选。
