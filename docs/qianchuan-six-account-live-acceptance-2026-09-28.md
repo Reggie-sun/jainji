@@ -8,6 +8,8 @@
 
 2026-09-29 复核已将氨糖膏阻碍定位到页面明确提示的抖音号全域投放权限，并补齐当前源码的 Linux packaged fixture 验证；真实结果仍为 4/6，required review 仍阻塞。详见文末 Linux Recovery Checkpoint。
 
+后续用户确认一条根已人工处理，并要求直接接入软件。现已将 Linux 候选接入本机桌面启动器，正常退出重开生效；安装后隔离 smoke PASS。没有追加真实上传或改变未知 fence，required review 保留，正式发行仍未验收。详见 Local Application Activation。
+
 ## Authority And Target
 
 用户依次授权“开始真实验收”“6个都验证,对了滴耳康的品换了”“换计划都确认”。本轮为六个指定现有项目各制作 10 条，保留项目中已有的手动展示文字，通过应用制作/追加入口、原导出队列及现有上传 owner 执行。每组至多 9 条，前组全部 ready 且持久保存后才继续，最终停在“确定”前。
@@ -155,3 +157,27 @@ AppImage 与 deb 内部 `app.asar` 均与测试用 linux-unpacked payload 完全
 十条正式产物均通过 JobStore completed、实际路径、文件 SHA256 及私有快照核对；全六十条 ledger 原字节与四十一个 fence 原字节均保持，新增导出、选择 fence、浏览器 tab 均为零。未知文件仍为 `竞品详情-抖音电商罗盘 - 2026-09-28T174400.525_edited.mp4`，其余九条未选文件。需要用户提供该条在千川的人工处理结果，以确定是否存在符合现有合同的恢复依据；回复前不推断已收到、已取消或可重新上传。
 
 私有证据 `.agent/harness/runs/20260929-oneroot-app-readonly/` 保存 source-bound GUI driver、runtime、前后任务行、精确目标/fence、终结 BLOCKED 报告及日志。实例已退出，现有 Chrome 页面与日常简辑未关闭；Windows 与新增真实制作均未执行。
+
+## Local Application Activation — 2026-09-29
+
+### Authority And Installed Behavior
+
+用户回复一条根未知文件“已手动确认”，随后明确“直接接入简辑软件就好已经通了”。本 checkpoint 按新范围停止追加真实验收，将已有应用候选接入本机桌面启动入口。人工回复记录为用户处理结果，不将机器 UNKNOWN 改成 READY；私有验收 ledger 和永久 fence 未被清除、导入日常应用或用于重传。氨糖膏继续排除，Windows 不验证，required implementation review 继续阻塞。
+
+已有应用源码包含制作/追加入口、正式导出完成通知、上传 service/store、production adapter 与结果面板；本轮没有新增第二上传队列、调用历史 native CDP driver 或修改源码。安装采用上节冻结的 Linux candidate，payload `app.asar` SHA256 仍为 `5053379d928f58060f2dac96b731b72155e5cb4d35cae28f6ee7100c8c6af11e`，不声明包含后来其他任务继续开发的全部功能。
+
+候选复制至 `/home/reggie/Applications/jianji/releases/qianchuan-20260929-9f4dd46/`。桌面文件保持原样，`/home/reggie/Applications/jianji/launch.sh` 仅将最终 `exec` 目标切换为该目录的 `jianji`，保留原 PATH、FFmpeg/FFprobe、LD_LIBRARY_PATH、Electron 环境与参数转发。原安装目录保留，启动器使用原字节/inode 核对后原子替换；随后 readback、`sh -n`、0775 权限与桌面入口核对通过。3,384 个安装文件的 SHA256 和权限均与原冻结 linux-unpacked 一致。
+
+没有关闭或重启当前日常简辑，也没有用真实日常 userData 启动候选；当前窗口仍使用其原运行字节。用户正常退出后，再从桌面图标打开才使用候选。上传默认关闭：在作品页“千川上传任务”中选择 `/home/reggie/电商/千川账号配置.json`、启用并保存，新制作或追加制作时显式选择本批账号。只处理该批正式验证产物，不扫描历史成片；每组至多九条，前组全部 READY 且持久保存后继续，最终停在“确定”前。
+
+切换前备份了日常 jobs、upload、batch、cover、source knowledge 与 recent-projects 的 10,626 个 JSON 元数据文件，以及原启动器，目录为 `/home/reggie/Applications/jianji/.backups/20260929-qianchuan-9f4dd46/`。逐文件复制前后核对 hash；该备份是 `PER_FILE_VERIFIED_NOT_TRANSACTIONAL`，不包含凭据、浏览器目录或媒体，不证明旧版本能读取候选运行后可能写出的所有数据，也不执行自动恢复。
+
+### Fresh Verification And Remaining Gates
+
+在永久安装目录实际运行 packaged 应用，以独立临时 HOME/userData 和本地拦截页面完成 fresh fixture smoke，结果 PASS。沿原启动器 FFmpeg 6.1.1 环境完成十二条正式输出和十二个逐文件 fence，实际组为 `1+9+2`；独立追加制作、严格 IPC 拒绝、默认关闭、项目/提交状态重置和重启不选文件均通过。`playwright-core` 从永久安装目录的 `app.asar` 内解析并实际 attach。零确认点击、零真实账号使用。该证据验证安装后应用功能，不能扩展为日常 userData 启动、六账号全部通过或正式发行通过。
+
+受管 Kimi operational QA invocation `6569f4b2-312b-41d9-b6f0-51111ddd10b0` 为 `PARSED`，两个 authenticated worker 请求、三项完整 Read 与封存 hash 相同。它只核查启动器切换、环境保留与授权边界，不是第四轮 implementation review。Parent 对未进入 reviewer 三文件范围的安装 hash/权限、smoke 与实际原子切换独立验证，并以上述有限元数据备份处理共享日常 userData 的迁移风险；不声明已验证版本回退兼容性。
+
+fresh AOCI Verify/Check exit 1，结构有效但未对齐；Guide exit 0、`authoring_required / complete:false`。缺少 Entry/基线的对象为 `source-fact-ai-compare.ts`、`source-fact-ai-contract.ts`、`source-fact-ai-input.ts`、`source-fact-ai-run.ts`；stale 为 `batch-production-controller.ts`、`index.ts`、`preload.ts`、`BatchProductionPanel.tsx`，均属于其他开发任务。本轮未修改这些源码或接管正式共享索引；本文为 observed 记录，不制造 Entry。AOCI 对齐尚未完成，不能以 Guide exit 0 宣称通过。
+
+私有 `.agent/harness/runs/20260929-qianchuan-app-install/` 保存安装 hash、原/候选启动器、激活回执、fresh smoke 报告、Kimi receipt 和 Parent 裁决，以及最终安装/AOCI 审计。Repository 无专用 session-record/capture Skill，本节作为该实质部署 checkpoint 的记录 owner。本机状态为 `LOCAL_CANDIDATE_LAUNCHER_ACTIVATED`；正式发行 acceptance 仍为 false，`REVIEW_ESCALATION_REQUIRED` 保留，不自动追加 review。
