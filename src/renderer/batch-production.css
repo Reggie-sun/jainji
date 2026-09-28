@@ -1,6 +1,7 @@
-.batch-production-intro { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin-bottom: 16px; }
-.batch-production-intro p { margin: 4px 0; color: var(--text-muted, #697b76); }
-.batch-production-intro small, .batch-template-controls small { color: var(--text-muted, #697b76); line-height: 1.45; font-size: 12px; font-weight: 400; }
+.batch-production-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.batch-production-heading .section-heading { min-width: 0; margin-bottom: 0; }
+.batch-production-heading > .button { flex-shrink: 0; }
+.batch-template-controls small { color: var(--text-muted, #697b76); line-height: 1.45; font-size: 12px; font-weight: 400; }
 .batch-production-list { display: grid; gap: 12px; }
 .batch-mode-select { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 0; }
 .batch-template-row .batch-mode-select .button { min-height: 32px; padding: 5px 12px; font-size: 12px; }
@@ -39,7 +40,7 @@
   .batch-template-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); }
 }
 @media (max-width: 700px) {
-  .batch-production-intro { align-items: flex-start; flex-wrap: wrap; }
+  .batch-production-heading { align-items: flex-start; flex-wrap: wrap; }
   .batch-template-controls { grid-template-columns: minmax(0, 1fr); }
   .batch-template-row .batch-mode-select .button, .batch-template-controls input[type="number"], .batch-template-controls select, .batch-output .text-button { min-height: 44px; }
 }

@@ -80,8 +80,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   if (!visible) return null;
   if (detail) return <BatchProductionDetails request={detail} name={detail.name} onBack={() => setDetail(undefined)} />;
   return <>
-    <Heading title="批量制作">选择不同商品的已保存模板，按列表顺序逐项制作。上一项全部导出并校验后才开始下一项；失败会记录原因并继续。</Heading>
-    <div className="card batch-production-intro"><div><strong>每个商品单独设置，统一开始</strong><p>逐项选择制作模式；覆盖方式、位置和导出画质沿用模板。价格显示时段只控制后期展示文字，贴纸保留原有时序。</p><small>使用已保存内容，当前项目未保存的修改不参与本批。{running ? "现在编辑下方设置只影响下一批。" : "自动保存到各商品的“视频”目录，也可以逐项选择文件夹。"}</small></div><button className="button secondary compact" disabled={loading || busy} onClick={() => setRevision(value => value + 1)}><Icon name="folder" size={16} />刷新模板</button></div>
+    <div className="batch-production-heading"><Heading title="批量制作">选择不同商品的已保存模板，按列表顺序逐项制作。上一项全部导出并校验后才开始下一项；失败会记录原因并继续。</Heading><button className="button secondary compact" disabled={loading || busy} onClick={() => setRevision(value => value + 1)}><Icon name="folder" size={16} />刷新模板</button></div>
     {error && <div className="notice error" role="alert">{error}</div>}
     {state.batchProductionWarning && <div className="notice error" role="alert">{state.batchProductionWarning}</div>}
     {loading && <p role="status">正在读取已保存模板…</p>}
