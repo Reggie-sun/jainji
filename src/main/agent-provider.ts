@@ -8,7 +8,7 @@ import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { CORNERS, CORNER_LABELS, formatProductPrice, ProductionDecorationSchema, decorationTimingContext, isUploadedStickerId, type Corner, type DecorationDisplayMode } from "../shared/decorations.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
-import { getPriceStyle, PRICE_STYLES, PriceStyleIdSchema, priceFontSizeRatio, priceStyleAppearance, type PriceStyleId } from "../shared/price-styles.js";
+import { getPriceStyle, PRICE_STYLES, PriceStyleIdSchema, priceFontSizeRatio, priceStyleAppearance, priceTextGeometry, type PriceStyleId } from "../shared/price-styles.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
@@ -236,6 +236,10 @@ export function validatePlan(input: unknown, ruleId: RuleId, catalog?: AgentDeco
 
 export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { width: number; height: number }, stickerAssets: StickerAssets, decorations?: unknown, catalog?: AgentDecorationCatalog): EditTemplate {
   const options = ProductionDecorationSchema.parse(decorations ?? {});
+  const productPrice = options.displayText?.enabled === false ? undefined : options.productPrice;
+  const geometry = productPrice && options.displayText ? priceTextGeometry(dimensions.width, dimensions.height, formatProductPrice(productPrice), options.displayText) : undefined;
+  const displayText = options.displayText && { ...options.displayText, ...(geometry ? { x: geometry.x, y: geometry.y } : {}) };
+  const templateBase = (name: string) => ({ ...createDefaultTemplate(name), displayText });
   if (options.mode === "agent" && !catalog) throw new Error("Agent 装饰目录不可用，请重新开始。");
   const plan = validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
   const rule = getRule(ruleId);
@@ -252,11 +256,12 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
       width: safeWidth, rotationDeg, opacity: 0.94, zIndex: index, visible: true,
     };
   };
-  const priceLayers: Layer[] = options.productPrice ? [{
-    id: randomUUID(), type: "text", content: formatProductPrice(options.productPrice), fontFamily: DEFAULT_TEXT_FONT_FAMILY,
+  const priceLayers: Layer[] = productPrice ? [{
+    id: randomUUID(), type: "text", content: formatProductPrice(productPrice), fontFamily: DEFAULT_TEXT_FONT_FAMILY,
     opacity: 1, zIndex: 100, visible: true,
-    x: 0.1, y: 0.13, width: 0.8, textAlign: "center",
-    fontSizeRatio: priceFontSizeRatio(dimensions.width, dimensions.height, options.productPrice ? formatProductPrice(options.productPrice) : ""),
+    x: displayText?.x ?? 0.1, y: displayText?.y ?? 0.13, width: 0.8, textAlign: "center",
+    textAnchor: options.displayText ? "center-top" : undefined,
+    fontSizeRatio: priceFontSizeRatio(dimensions.width, dimensions.height, formatProductPrice(productPrice)),
     ...priceStyleAppearance(getPriceStyle(priceStyle)),
   }] : [];
   if (options.mode === "agent") {
@@ -268,9 +273,9 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
       layers.push(stickerLayer(selection.corner, sticker, layers.length, selection.width, selection.rotationDeg));
     }
     return EditTemplateSchema.parse({
-      ...createDefaultTemplate("Agent 自主包装"),
+      ...templateBase("Agent 自主包装"),
       layoutPolicy: CORNER_SAFE_POLICY.id,
-      productPrice: options.productPrice || undefined,
+      productPrice: productPrice || undefined,
       decorationDisplayMode: options.displayMode,
       stickerDisplayMode: "full",
       filter: { presetId: autoPlan.filter, intensity: autoPlan.intensity },
@@ -296,9 +301,9 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
       layers.push(stickerLayer(corner, sticker, layers.length));
     }
     return EditTemplateSchema.parse({
-      ...createDefaultTemplate("本地随机包装"),
+      ...templateBase("本地随机包装"),
       layoutPolicy: CORNER_SAFE_POLICY.id,
-      productPrice: options.productPrice || undefined,
+      productPrice: productPrice || undefined,
       decorationDisplayMode: options.displayMode,
       stickerDisplayMode: "full",
       filter: { presetId: legacyPlan.filter, intensity: legacyPlan.intensity },
@@ -317,9 +322,9 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const sticker = stickerCorner && options.sticker !== "none" ? stickerAssets[options.sticker === "template" ? rule.sticker : options.sticker] : undefined;
   if (stickerCorner && options.sticker !== "none" && !sticker) throw new Error("所选贴纸尚未下载，请重新选择。");
   return EditTemplateSchema.parse({
-    ...createDefaultTemplate(rule.name),
+    ...templateBase(rule.name),
     layoutPolicy: CORNER_SAFE_POLICY.id,
-    productPrice: options.productPrice || undefined,
+    productPrice: productPrice || undefined,
     decorationDisplayMode: options.displayMode,
     stickerDisplayMode: "full",
     filter: { presetId: legacyPlan.filter, intensity: legacyPlan.intensity },

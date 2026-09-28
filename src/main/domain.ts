@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { CORNER_SAFE_POLICY, LEGACY_CORNER_SAFE_POLICY, cornerSafeStickerIssues, getCornerSafePolicy } from "../shared/layout-policy.js";
 import { isAbsolutePath } from "./platform.js";
 import { DEFAULT_EXPORT_FORMAT, ExportFormatSchema } from "../shared/export-format.js";
-import { DecorationDisplayModeSchema, ProductPriceSchema, RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
+import { DecorationDisplayModeSchema, DisplayTextSchema, ProductPriceSchema, RequiredProductPriceSchema, formatProductPrice } from "../shared/decorations.js";
 import { CoverStickerIdSchema, CoverStickerSchema, CoverTrackSchema, coverSettingsMediaIssue, MAX_MANUAL_COVERS } from "../shared/cover-sticker.js";
 import { MAX_AUTOMATIC_COVER_TRACKS } from "../shared/automatic-cover.js";
 import { CoverReviewDraftSchema } from "../shared/cover-review.js";
@@ -94,6 +94,7 @@ export const TextLayerSchema = z.object({
   ...LayerBase,
   type: z.literal("text"),
   textAlign: z.enum(["left", "center"]).optional(),
+  textAnchor: z.literal("center-top").optional(),
   content: z.string().min(1).max(500),
   fontFamily: z.string().min(1).max(200),
   fontSizeRatio: z.number().finite().gt(0).lte(0.5),
@@ -159,6 +160,7 @@ export const EditTemplateSchema = z.object({
   filter: FilterConfigSchema,
   layoutPolicy: z.enum([LEGACY_CORNER_SAFE_POLICY.id, CORNER_SAFE_POLICY.id]).optional(),
   productPriceDraft: ProductPriceSchema.optional(),
+  displayText: DisplayTextSchema.optional(),
   decorationDisplayMode: DecorationDisplayModeSchema.optional(),
   // Absent on historical exports: their stickers retain the legacy shared timing.
   stickerDisplayMode: z.literal("full").optional(),
@@ -181,7 +183,7 @@ export const EditTemplateSchema = z.object({
   template.layers.forEach((layer, index) => {
     if (ids.has(layer.id)) ctx.addIssue({ code: "custom", path: ["layers", index, "id"], message: "layer id must be unique" });
     ids.add(layer.id);
-    if (layer.x + layer.width > 1 + (layer.type === "sticker" && layer.cover ? 1e-9 : 0)) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "layer exceeds the right edge" });
+    if (!(layer.type === "text" && layer.textAnchor === "center-top") && layer.x + layer.width > 1 + (layer.type === "sticker" && layer.cover ? 1e-9 : 0)) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "layer exceeds the right edge" });
     if (layer.y >= 1) ctx.addIssue({ code: "custom", path: ["layers", index, "y"], message: "layer must start inside the frame" });
     if (layer.type === "sticker" && layer.cover) {
       if (layer.activeRanges) ctx.addIssue({ code: "custom", path: ["layers", index, "activeRanges"], message: "覆盖层只能使用自身轨迹时段" });
@@ -227,10 +229,16 @@ export type EditTemplate = z.infer<typeof EditTemplateSchema>;
 // Historical templates remain readable; execution must obey the current text rule.
 export function assertPriceOnlyTemplate(template: EditTemplate): void {
   const text = template.layers.filter((layer) => layer.type === "text");
-  if (text.length === 0 && template.productPrice === undefined) return;
+  if (template.displayText?.enabled === false) {
+    if (text.length || template.productPrice !== undefined) throw new JianjiError("已关闭展示文字的模板不能包含价格文字图层。", "input_invalid", "input", false);
+    return;
+  }
+  if (text.length === 0 && template.productPrice === undefined && !template.displayText) return;
   const price = RequiredProductPriceSchema.safeParse(template.productPrice);
+  const placement = template.displayText;
   if (!price.success || text.length !== 1 || text[0].content !== formatProductPrice(price.data) ||
-      text[0].textAlign !== "center" || text[0].x !== 0.1 || text[0].y !== 0.13 || text[0].width !== 0.8 || !text[0].visible) {
+      text[0].textAlign !== "center" || text[0].x !== (placement?.x ?? 0.1) || text[0].y !== (placement?.y ?? 0.13) ||
+      text[0].textAnchor !== (placement ? "center-top" : undefined) || text[0].width !== 0.8 || !text[0].visible) {
     throw new JianjiError("模板包含非手动价格文字或旧版文字布局，请手动填写价格并重新制作；不能重试旧文字方案。", "input_invalid", "input", false);
   }
 }

@@ -29,6 +29,20 @@ export const ProductPriceSchema = z.string().trim().transform((value) => value.r
   return value === "" || (lines.length <= 2 && lines.every((line) => line.length <= 12 && line.trim().length > 0 && !/[\u0000-\u001f\u007f-\u009f\u2028\u2029]/.test(line)));
 }, PRODUCT_PRICE_HELP));
 export const RequiredProductPriceSchema = ProductPriceSchema.refine((value) => value.length > 0, "请手动填写产品价格，Agent 不能代填或改写。");
+export const DisplayTextSchema = z.object({
+  enabled: z.boolean(),
+  // Horizontal center and visible top, normalized to the output frame.
+  x: z.number().finite().min(0).max(1),
+  y: z.number().finite().min(0).max(1),
+}).strict();
+export type DisplayTextSettings = z.infer<typeof DisplayTextSchema>;
+export const DEFAULT_DISPLAY_TEXT: Readonly<DisplayTextSettings> = { enabled: true, x: 0.5, y: 0.13 };
+export function displayTextSettings(options?: { displayText?: DisplayTextSettings; displayTextByMedia?: Record<string, DisplayTextSettings> }, mediaId?: string): DisplayTextSettings {
+  return { ...(mediaId && options?.displayTextByMedia?.[mediaId] || options?.displayText || DEFAULT_DISPLAY_TEXT) };
+}
+export function requiresDisplayText(options: Parameters<typeof displayTextSettings>[0], mediaIds?: readonly string[]): boolean {
+  return mediaIds?.length ? mediaIds.some(id => displayTextSettings(options, id).enabled) : displayTextSettings(options).enabled;
+}
 export function formatProductPrice(price: string): string {
   const value = RequiredProductPriceSchema.parse(price);
   return value.split("\n").map((line) => /^\d{1,6}(?:\.\d{1,2})?$/.test(line) ? `¥ ${line}` : line).join("\n");
@@ -48,6 +62,8 @@ export const DecorationSchema = z.preprocess((input) => {
   return input;
 }, z.object({
   productPrice: ProductPriceSchema.optional(),
+  displayText: DisplayTextSchema.optional(),
+  displayTextByMedia: z.record(z.string().uuid(), DisplayTextSchema).refine(value => Object.keys(value).length <= 1000, "逐素材展示文字设置过多。").optional(),
   displayMode: DecorationDisplayModeSchema.optional(),
   priceStyle: PriceStyleIdSchema.optional(),
   mode: z.enum(["manual", "agent", "random"]).optional(),

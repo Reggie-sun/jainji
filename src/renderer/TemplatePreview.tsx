@@ -1,16 +1,32 @@
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
+import type { MediaView } from "../main/media";
 import type { RuleTemplate } from "../shared/agent";
 import { LIBRARY_STICKERS } from "../shared/asset-library";
-import { CORNERS, CORNER_LABELS, decorationTimingContext, formatProductPrice, ProductPriceSchema, type Corner, type DecorationOptions } from "../shared/decorations";
+import { CORNERS, CORNER_LABELS, decorationTimingContext, displayTextSettings, formatProductPrice, ProductPriceSchema, type Corner, type DecorationOptions, type DisplayTextSettings } from "../shared/decorations";
 import { constrainedStickerPreviewGeometry, CORNER_SAFE_POLICY } from "../shared/layout-policy";
-import { getPriceStyle, PRICE_LINE_HEIGHT, priceFontSizeRatio } from "../shared/price-styles";
+import { getPriceStyle, PRICE_LINE_HEIGHT, priceFontSizeRatio, priceTextGeometry } from "../shared/price-styles";
 import "./template-preview.css";
 
-export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect, disabled }: { rule: RuleTemplate; options: DecorationOptions; selectedCorner?: Corner; onCornerSelect?(corner: Corner): void; disabled?: boolean }) {
+export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect, disabled, media, dimensions = { width: 900, height: 1600 }, onDisplayTextChange }: { rule: RuleTemplate; options: DecorationOptions; selectedCorner?: Corner; onCornerSelect?(corner: Corner): void; disabled?: boolean; media?: MediaView; dimensions?: { width: number; height: number }; onDisplayTextChange?(value: DisplayTextSettings): void }) {
   const automatic = options.mode === "agent";
   const previewPriceStyle = getPriceStyle(automatic ? undefined : options.priceStyle);
   const canvas = useRef<HTMLCanvasElement>(null);
+  const stage = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ pointerId: number; x: number; y: number; settings: DisplayTextSettings }>();
+  const placement = displayTextSettings(options);
+  const validText = Boolean(options.productPrice?.trim() && ProductPriceSchema.safeParse(options.productPrice).success);
+  const geometry = priceTextGeometry(dimensions.width, dimensions.height, validText ? formatProductPrice(options.productPrice!) : "", placement);
+  const move = (x: number, y: number) => {
+    const next = priceTextGeometry(dimensions.width, dimensions.height, formatProductPrice(options.productPrice!), { x, y });
+    onDisplayTextChange?.({ enabled: placement.enabled, x: next.x, y: next.y });
+  };
+  const movePointer = (event: PointerEvent<HTMLButtonElement>) => {
+    const current = drag.current, bounds = stage.current?.getBoundingClientRect();
+    if (!current || current.pointerId !== event.pointerId || !bounds || disabled) return;
+    move(current.settings.x + (event.clientX - current.x) / bounds.width, current.settings.y + (event.clientY - current.y) / bounds.height);
+  };
+  useEffect(() => { drag.current = undefined; }, [media?.id, disabled, placement.enabled]);
   const [assets, setAssets] = useState<Record<string, HTMLImageElement>>({});
   const [failed, setFailed] = useState<string[]>([]);
   const stickerId = options.sticker === "template" ? rule.sticker : options.sticker;
@@ -45,7 +61,9 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
     const draw = () => {
       const context = canvas.current?.getContext("2d");
       if (!context) return;
-      const width = 900, height = 1600;
+      const { width, height } = dimensions;
+      context.clearRect(0, 0, width, height);
+      if (!media) {
       const background = context.createLinearGradient(0, 0, width, height);
       background.addColorStop(0, "#ece9e2"); background.addColorStop(1, "#bfc9bf");
       context.fillStyle = background; context.fillRect(0, 0, width, height);
@@ -57,15 +75,16 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
       context.fillStyle = "#eeeede"; context.fillRect(360, 710, 180, 155);
       context.fillStyle = "#526550"; context.textBaseline = "top";
       context.font = '24px sans-serif'; context.fillText("DAILY", 411, 765);
+      }
 
-      if (options.productPrice?.trim() && ProductPriceSchema.safeParse(options.productPrice).success) {
+      if (placement.enabled && options.productPrice?.trim() && ProductPriceSchema.safeParse(options.productPrice).success) {
         const style = previewPriceStyle;
         const cssColor = (color: typeof style.color) => `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
         const lines = formatProductPrice(options.productPrice).split("\n");
         const fontSize = height * priceFontSizeRatio(width, height, lines.join("\n"));
         const border = Math.round(style.strokeWidthRatio * height);
         for (const [index, text] of lines.entries()) {
-          const x = width / 2, y = height * 0.13 + index * fontSize * PRICE_LINE_HEIGHT;
+          const x = width * geometry.x, y = height * geometry.y + index * fontSize * PRICE_LINE_HEIGHT;
           context.save();
           context.textAlign = "center";
           context.font = `${fontSize}px "${DEFAULT_TEXT_FONT_FAMILY}", sans-serif`;
@@ -111,17 +130,23 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
       }
     };
     draw();
-  }, [rule, options, previewPriceStyle, assetKey, assets, failed]);
+  }, [rule, options, previewPriceStyle, assetKey, assets, failed, dimensions.width, dimensions.height, media?.id]);
 
   return <section className="template-preview card" aria-label="整体模板预览">
-    <div className="template-preview-picture"><canvas ref={canvas} width={900} height={1600} role="img" aria-label={automatic ? "Agent 贴纸安排示例：上方居中显示手动价格" : `${rule.name}排版示例：上方居中显示手动价格，四角可独立选择贴纸`} />
+    <div className="template-preview-picture" ref={stage}>
+      {media && <video key={media.id} src={media.previewUrl} muted preload="auto" aria-label={`${media.displayName} · 原视频首帧`} />}
+      <canvas ref={canvas} width={dimensions.width} height={dimensions.height} role="img" aria-label={`${media?.displayName ?? rule.name} · 展示文字位置与贴纸预览`} />
+      {placement.enabled && validText && onDisplayTextChange && <button type="button" className="display-text-drag" aria-label="拖动展示文字位置" disabled={disabled} style={{ left: `${(geometry.x - geometry.width / 2) * 100}%`, top: `${(geometry.y - 0.01) * 100}%`, width: `${geometry.width * 100}%`, height: `${geometry.height * 100}%` }}
+        onPointerDown={event => { if (event.button !== 0) return; event.preventDefault(); event.currentTarget.setPointerCapture(event.pointerId); drag.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, settings: { ...placement, x: geometry.x, y: geometry.y } }; }}
+        onPointerMove={movePointer} onPointerUp={event => { movePointer(event); drag.current = undefined; }} onPointerCancel={() => { drag.current = undefined; }}
+        onKeyDown={event => { const step = event.shiftKey ? 0.05 : 0.01; if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return; event.preventDefault(); move(geometry.x + (event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0), geometry.y + (event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0)); }}><span>拖动文字</span></button>}
       {!automatic && onCornerSelect && CORNERS.map((corner) => <button type="button" key={corner} className={`corner-slot ${corner}`} aria-label={`编辑${CORNER_LABELS[corner]}`} aria-pressed={selectedCorner === corner} disabled={disabled} onClick={() => { onCornerSelect(corner); document.getElementById("corner-decoration-editor")?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }}><span>{CORNER_LABELS[corner]} · {options.corners?.[corner]?.type === "sticker" ? "贴纸" : options.corners?.[corner]?.type === "none" ? "留空" : "选择内容"}</span></button>)}
     </div>
     <div className="template-preview-info"><h2>{automatic ? "Agent 自主安排" : `${rule.name} · 整体预览`}</h2>{automatic ? <p>开始出片后，Agent 为四角准备候补贴纸。关闭覆盖时保留原贴纸，只补空缺角落和时段；开启覆盖时优先显示覆盖层，其余时段补齐。具体选款和时段将在识别后确定。</p> : <><p>先看一眼贴纸放在一起的效果，再开始制作。</p><dl><div><dt>贴纸</dt><dd>{stickerId === "none" ? "不加贴纸" : `宽度不超过画面的 ${(previewStickerWidth * 100).toFixed(0)}%`}</dd></div></dl></>}
       <p>{automatic ? "价格花字由 Agent 自主选择；当前仅以经典红白示例展示。" : `价格花字 · ${getPriceStyle(options.priceStyle).name}。此处为排版与花字示例；成片颜色会随所选滤镜变化。`}</p>
       <p>{decorationTimingContext(options.displayMode)}此处为显示期间的静态示例。</p>
       {failed.length > 0 ? <p role="alert">贴纸预览加载失败，请重新选择贴纸。</p> : stickerSlots.some(({ id }) => !assets[id]) && <p role="status">正在加载贴纸预览…</p>}
-      <small>{automatic ? "此处仅展示示意背景和默认花字，不代表 Agent 已作出选择。Agent 从现有 8 款中按画面选择，同批会参考使用记录减少重复，但不保证每版不同。中间仅显示手动填写的价格，开始制作前必须填写。" : "点击四角分别选择贴纸，所选内容会用于成片。中间仅显示手动填写的价格，开始制作前必须填写。未设置的角落按默认贴纸与模板规则安排；此处为 9:16 静态示例。"}</small>
+      <small>{media ? "以当前素材首帧和导出画布预览文字位置；未应用导出滤镜。" : "此处使用示意背景预览排版。"}开启展示文字的素材只使用手动输入内容；关闭时不添加文字。{automatic ? "Agent 花字与贴纸仅为示意，具体选择以冻结模板为准。" : "点击四角可分别选择贴纸。"}静态预览不代表最终成片已验收。</small>
     </div>
   </section>;
 }

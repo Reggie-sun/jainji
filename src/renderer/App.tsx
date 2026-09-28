@@ -10,7 +10,7 @@ import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { StickerLibraryPanel } from "./StickerLibraryPanel";
 import { CoverReviewPanel } from "./CoverReviewPanel";
 import { CoverStickerPanel } from "./CoverStickerPanel";
-import { DecorationAppearanceSchema, DecorationSchema, ProductPriceSchema, type DecorationOptions, type Corner } from "../shared/decorations";
+import { DecorationAppearanceSchema, DecorationSchema, ProductPriceSchema, type DisplayTextSettings, type DecorationOptions, type Corner } from "../shared/decorations";
 import type { CoverSticker } from "../shared/cover-sticker";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace";
@@ -232,7 +232,7 @@ export default function App() {
       selectedMediaIds: selected,
       ruleId: rule,
       brief,
-      decorations: DecorationAppearanceSchema.parse(appearance),
+      decorations: DecorationAppearanceSchema.parse({ ...appearance, productPrice: undefined }),
       ...(Number.isInteger(requestedCount) ? { requestedCount } : {}),
       exportFormat,
       exportSettings,
@@ -253,6 +253,16 @@ export default function App() {
     const next = await window.jianji.saveProject(name, workspace);
     if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "项目已保存，下次可从已保存项目列表继续。" }); }
   });
+  const changeDisplayText = (settings: DisplayTextSettings | undefined, mediaId?: string) => {
+    const next = { ...decorations };
+    if (mediaId) {
+      next.displayTextByMedia = { ...next.displayTextByMedia };
+      if (settings) next.displayTextByMedia[mediaId] = settings;
+      else delete next.displayTextByMedia[mediaId];
+    } else next.displayText = settings;
+    setDecorations(next);
+    setState(current => current && ({ ...current, project: { ...current.project, hasUnsavedChanges: true } }));
+  };
   const renameSavedCollection = async (recentId: string, name: string): Promise<boolean> => run(async () => {
     const next = await window.jianji.renameSavedProject(recentId, name);
     apply(next);
@@ -402,7 +412,7 @@ export default function App() {
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={busy || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
-        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel selectedMedia={selectedMedia} onDisplayText={changeDisplayText} onSaveDisplayText={saveCollection} onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}
         <BatchProductionPanel state={state} visible={step === "batch"} onState={apply} />
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema } from "./douyin-upload.js";
-import { DecorationSchema, ProductionDecorationSchema, RequiredProductPriceSchema } from "./decorations.js";
+import { DecorationSchema, ProductionDecorationSchema, RequiredProductPriceSchema, requiresDisplayText } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
 import { ExportSettingsSchema } from "./export-settings.js";
 import type { SourceKnowledgeProgress } from "./source-sticker-knowledge.js";
@@ -68,7 +68,13 @@ export function calculateExactProductionQuantity(sourceCount: number, requestedC
   return { total: requestedCount, versions: Array.from({ length: Math.min(sourceCount, requestedCount) }, (_, index) => completeRounds + Number(index < remainder)) };
 }
 
-const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof DecorationSchema>, z.ZodTypeDef, unknown>) => z.object({
+const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof DecorationSchema>, z.ZodTypeDef, unknown>) => z.preprocess((input) => {
+  if (!input || typeof input !== "object" || !("decorations" in input) || !("mediaIds" in input)) return input;
+  if (!input.decorations || typeof input.decorations !== "object" || !Array.isArray(input.mediaIds) || !input.mediaIds.every(id => typeof id === "string")) return input;
+  const mediaIds = input.mediaIds.slice(0, "requestedCount" in input && typeof input.requestedCount === "number" ? input.requestedCount : undefined);
+  const options = input.decorations as z.infer<typeof DecorationSchema>;
+  return requiresDisplayText(options, mediaIds) ? input : { ...input, decorations: { ...input.decorations, productPrice: undefined } };
+}, z.object({
   coverStrategy: z.literal("shape-matched-static-v1").optional(),
   douyinUpload: DouyinUploadSelectionSchema.optional(),
   sourceStickerRefresh: z.object({ projectId: z.string().uuid(), mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS) }).strict().optional(),
@@ -85,9 +91,9 @@ const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof Decoration
   path: ["requestedCount"], message: "制作条数与制作倍数不能同时指定。",
 }).refine(input => !input.sourceStickerRefresh || (new Set(input.sourceStickerRefresh.mediaIds).size === input.sourceStickerRefresh.mediaIds.length && input.sourceStickerRefresh.mediaIds.every(id => input.mediaIds.includes(id))), {
   path: ["sourceStickerRefresh"], message: "重新检查的素材必须属于本次制作，且不能重复。",
-}).refine((input) => RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
+}).refine((input) => !requiresDisplayText(input.decorations, input.mediaIds.slice(0, input.requestedCount)) || RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
   path: ["decorations", "productPrice"], message: "请手动填写产品价格，Agent 不能代填或改写。",
-});
+}));
 export const AgentStartSchema = createAgentStartSchema(ProductionDecorationSchema);
 export const FrozenAgentStartSchema = createAgentStartSchema(DecorationSchema);
 export type AgentStartInput = z.infer<typeof AgentStartSchema>;

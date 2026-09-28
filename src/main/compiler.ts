@@ -157,7 +157,7 @@ export class TemplateCompiler {
               `boxcolor=${color(layer.backgroundColor, layer.opacity)}`,
               `boxborderw=${Math.round((layer.backgroundPaddingRatio ?? 0.006) * dimensions.height)}`,
             ] : []),
-            layer.textAlign === "center" ? `x=w*${(layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
+            layer.textAlign === "center" ? `x=w*${(layer.textAnchor === "center-top" ? layer.x : layer.x + layer.width / 2).toFixed(5)}-text_w/2` : `x=w*${layer.x.toFixed(5)}`,
             `y=h*${(layer.y + index * layer.fontSizeRatio * PRICE_LINE_HEIGHT).toFixed(5)}`,
             "fix_bounds=1",
           ].join(":");

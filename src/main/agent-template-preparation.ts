@@ -1,6 +1,6 @@
 import { outputDimensions, type ExportSettings } from "../shared/export-settings.js";
 import type { RuleId } from "../shared/agent.js";
-import type { DecorationOptions } from "../shared/decorations.js";
+import { displayTextSettings, type DecorationOptions } from "../shared/decorations.js";
 import { EditTemplateSchema, type MediaItem, type StickerLayer } from "./domain.js";
 import { materializePlan, type PackagingPlan, type AgentDecorationCatalog } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -10,7 +10,9 @@ import { fillUncoveredCorners } from "./automatic-corner-layout.js";
 
 export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleId; source: MediaItem; resolutionMode?: ExportSettings["resolutionMode"]; stickerAssets: StickerAssets; decorations?: DecorationOptions; catalog?: AgentDecorationCatalog; coverSticker?: FrozenCoverSticker; shapeCoverLayers?: StickerLayer[]; coverTracks?: AutomaticCoverTrack[]; sourceStickerTracks?: AutomaticCoverTrack[]; preserveCoverMotion?: boolean; runId: string; version: number }) {
   const dimensions = outputDimensions(input.source, { resolutionMode: input.resolutionMode ?? "source" });
-  let template = materializePlan(input.plan, input.ruleId, dimensions, input.stickerAssets, input.decorations, input.catalog);
+  const decorations = input.decorations && (input.decorations.displayText || input.decorations.displayTextByMedia)
+    ? { ...input.decorations, displayText: displayTextSettings(input.decorations, input.source.id) } : input.decorations;
+  let template = materializePlan(input.plan, input.ruleId, dimensions, input.stickerAssets, decorations, input.catalog);
   if (input.coverSticker && !input.shapeCoverLayers) {
     const layers = input.coverTracks !== undefined ? automaticCoverLayers(input.coverSticker, input.source, dimensions, input.coverTracks, { preserveMotion: input.preserveCoverMotion }) : manualCoverLayers(input.coverSticker, input.source, dimensions, input.version);
     template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers.map((layer) => ({ ...layer, cover: { ...layer.cover!, selection: { runId: input.runId, round: input.version } } }))] });

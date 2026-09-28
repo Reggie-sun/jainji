@@ -51,3 +51,14 @@ export function priceFontSizeRatio(width: number, height: number, text = ""): nu
   const longestLine = Math.max(1, ...text.split("\n").map((line) => [...line].length));
   return Math.min(0.08 * width / height, 0.14, 0.78 * width / height / longestLine);
 }
+
+// Include the largest supported border, shadow and label padding in the drag bounds.
+export function priceTextGeometry(width: number, height: number, text: string, position = { x: 0.5, y: 0.13 }) {
+  const lines = text.split("\n");
+  const fontSizeRatio = priceFontSizeRatio(width, height, text);
+  const margin = 0.01;
+  const boxWidth = Math.min(1, Math.max(1, ...lines.map(line => [...line].length)) * fontSizeRatio * height / width + 2 * margin * height / width);
+  const boxHeight = Math.min(1, fontSizeRatio * (1 + (lines.length - 1) * PRICE_LINE_HEIGHT) + 2 * margin);
+  return { x: Math.max(boxWidth / 2, Math.min(1 - boxWidth / 2, position.x)),
+    y: Math.max(margin, Math.min(1 - boxHeight + margin, position.y)), width: boxWidth, height: boxHeight, fontSizeRatio };
+}
