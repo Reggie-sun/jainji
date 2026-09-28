@@ -4,6 +4,7 @@ import type { RuleTemplate } from "../shared/agent";
 import { displayTextSettings, type Corner, type DecorationOptions, type DisplayTextSettings } from "../shared/decorations";
 import { outputDimensions, type ExportSettings } from "../shared/export-settings";
 import { TemplatePreview } from "./TemplatePreview";
+import { MediaSelector } from "./MediaSelector";
 
 export function DisplayTextEditor({ rule, options, media, exportSettings, selectedCorner, onCornerSelect, disabled, onChange, onSave }: {
   rule: RuleTemplate; options: DecorationOptions; media: readonly MediaView[]; exportSettings: ExportSettings;
@@ -18,7 +19,7 @@ export function DisplayTextEditor({ rule, options, media, exportSettings, select
   return <>
     <div className="card brief-card display-text-settings">
       <label htmlFor="display-text-media">展示文字位置 · 逐素材设置</label>
-      {media.length > 0 && <select id="display-text-media" value={selected?.id} disabled={disabled} onChange={event => setSelectedId(event.target.value)}>{media.map(item => <option key={item.id} value={item.id}>{item.displayName}</option>)}</select>}
+      <MediaSelector id="display-text-media" label="展示文字素材" media={media} value={selected?.id} disabled={disabled} onChange={setSelectedId} />
       <label><input type="checkbox" checked={settings.enabled} disabled={disabled || !onChange} onChange={event => update({ enabled: event.target.checked })} />{selected ? "此素材显示展示文字 / 价格" : "显示展示文字 / 价格"}</label>
       <div className="display-text-coordinates">
         {(["x", "y"] as const).map(axis => <label key={axis}>{axis === "x" ? "横向位置（%）" : "纵向位置（%）"}<input type="number" aria-label={axis === "x" ? "文字横向位置" : "文字纵向位置"} min={0} max={100} step={1} value={Math.round(settings[axis] * 100)} disabled={disabled || !settings.enabled || !onChange} onChange={event => { const value = event.target.valueAsNumber; if (Number.isFinite(value)) update({ [axis]: Math.max(0, Math.min(1, value / 100)) }); }} /></label>)}
