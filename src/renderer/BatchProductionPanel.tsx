@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import type { DesktopState } from "../shared/desktop";
-import { BatchProductionStartSchema, type BatchProductionEntry, type BatchProjectOption } from "../shared/batch-production";
+import { BatchProductionStartSchema, type BatchProjectOption } from "../shared/batch-production";
 import { calculateExactProductionQuantity, MAX_AGENT_OUTPUTS } from "../shared/agent";
 import { PRODUCT_PRICE_MAX_LENGTH } from "../shared/decorations";
 import { Heading, Icon } from "./ui";
 import { BatchProductionDetails } from "./BatchProductionDetails";
+import { DouyinUploadControls, type UploadSelectionDraft } from "./DouyinUploadControls";
 import "./batch-production.css";
 
-type Row = BatchProjectOption & { selected: boolean; outputDirectory?: string };
+type Row = BatchProjectOption & { selected: boolean; outputDirectory?: string; douyinUpload?: UploadSelectionDraft };
 const labels = { queued: "等待制作", preparing: "检查模板", producing: "正在制作", exporting: "正在导出", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const modeLabels = { manual: "自己设置", agent: "全部交给 Agent", random: "本地随机" };
 
@@ -21,6 +22,9 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   const [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState<{ runId: string; jobId: string; name: string }>();
   useEffect(() => { setDetail(undefined); }, [state.batchProduction?.id]);
+  useEffect(() => {
+    if (!state.douyinUpload?.config.enabled) setRows(current => current.map(row => ({ ...row, douyinUpload: undefined })));
+  }, [state.douyinUpload?.config.enabled]);
   const projectKey = (state.recentProjects ?? []).map(item => `${item.id}:${item.name}:${item.mediaCount}`).join("|");
   useEffect(() => {
     if (!visible) return;
@@ -30,19 +34,21 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
       if (active) setRows(current => projects.map(project => {
         const draft = current.find(row => row.recentProjectId === project.recentProjectId);
         return { ...project, selected: draft?.selected ?? false, ...(draft ? { requestedCount: draft.requestedCount,
-          productPrice: draft.productPrice, coverEnabled: draft.coverEnabled, displayMode: draft.displayMode, mode: draft.mode, outputDirectory: draft.outputDirectory } : {}) };
+          productPrice: draft.productPrice, coverEnabled: draft.coverEnabled, displayMode: draft.displayMode, mode: draft.mode, outputDirectory: draft.outputDirectory,
+          douyinUpload: draft.douyinUpload } : {}) };
       }));
     }).catch(value => { if (active) setError(message(value)); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [projectKey, revision, visible]);
   const update = (id: string, next: Partial<Row>) => setRows(current => current.map(row => row.recentProjectId === id ? { ...row, ...next } : row));
   const selected = rows.filter(row => row.selected);
-  const entries: BatchProductionEntry[] = selected.map(row => ({ recentProjectId: row.recentProjectId, requestedCount: row.requestedCount,
+  const entries = selected.map(row => ({ recentProjectId: row.recentProjectId, requestedCount: row.requestedCount,
     productPrice: row.productPrice, coverEnabled: row.coverEnabled, displayMode: row.displayMode, mode: row.mode,
+    ...(row.douyinUpload ? { douyinUpload: row.douyinUpload } : {}),
     ...(row.outputDirectory ? { outputDirectory: row.outputDirectory } : {}) }));
   const valid = BatchProductionStartSchema.safeParse({ entries }).success && selected.every(row => {
     const quantity = calculateExactProductionQuantity(row.sourceCount, row.requestedCount);
-    return !row.error && quantity && quantity.total <= MAX_AGENT_OUTPUTS;
+    return !row.error && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!row.douyinUpload || state.douyinUpload?.accounts.some(account => account.product === row.douyinUpload?.accountProduct && account.available));
   });
   const run = state.batchProduction;
   const running = run?.status === "running" || run?.status === "cancelling";
@@ -50,7 +56,10 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   const start = async () => {
     if (!valid || busy || running) return;
     setBusy(true); setError("");
-    try { onState(await window.jianji.startBatchProduction({ entries })); }
+    try {
+      onState(await window.jianji.startBatchProduction(BatchProductionStartSchema.parse({ entries })));
+      setRows(current => current.map(row => ({ ...row, douyinUpload: undefined })));
+    }
     catch (value) { setError(message(value)); }
     finally { setBusy(false); }
   };
@@ -81,6 +90,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   if (detail) return <BatchProductionDetails request={detail} name={detail.name} onBack={() => setDetail(undefined)} />;
   return <>
     <div className="batch-production-heading"><Heading title="批量制作">选择不同商品的已保存模板，按列表顺序逐项制作。上一项全部导出并校验后才开始下一项；失败会记录原因并继续。</Heading><button className="button secondary compact" disabled={loading || busy} onClick={() => setRevision(value => value + 1)}><Icon name="folder" size={16} />刷新模板</button></div>
+    <p>{state.douyinUpload?.config.enabled ? "如需自动上传，为对应模板选择千川产品账号；每组最多 9 条，成功后继续，停在确定前。" : "如需自动上传，请先在作品页设置账号并启用千川上传。"}</p>
     {error && <div className="notice error" role="alert">{error}</div>}
     {state.batchProductionWarning && <div className="notice error" role="alert">{state.batchProductionWarning}</div>}
     {loading && <p role="status">正在读取已保存模板…</p>}
@@ -101,6 +111,8 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
               <label htmlFor={`${prefix}-price`}>展示文字 / 价格<textarea id={`${prefix}-price`} rows={2} value={row.productPrice} maxLength={PRODUCT_PRICE_MAX_LENGTH} disabled={busy} onChange={event => update(row.recentProjectId, { productPrice: event.target.value })} placeholder="手动填写，最多 2 行、每行 12 字" /></label>
               <label htmlFor={`${prefix}-timing`}>价格显示时段<select id={`${prefix}-timing`} value={row.displayMode} disabled={busy} onChange={event => update(row.recentProjectId, { displayMode: event.target.value as Row["displayMode"] })}><option value="full">全程显示</option><option value="first-5s">仅前 5 秒（渐隐）</option></select></label>
               <label className="batch-cover-toggle"><span>覆盖原贴纸</span><span><input type="checkbox" aria-label={`${row.name}开启覆盖`} checked={row.coverEnabled} disabled={busy} onChange={event => update(row.recentProjectId, { coverEnabled: event.target.checked })} />开启</span></label>
+              <DouyinUploadControls compact idPrefix={`${prefix}-upload`} accounts={state.douyinUpload?.accounts} value={row.douyinUpload}
+                onChange={douyinUpload => update(row.recentProjectId, { douyinUpload })} disabled={busy || !state.douyinUpload?.config.enabled} />
             </div>
             <div className="batch-output"><button type="button" className="icon-button" aria-label="选择目录" title={row.outputDirectory || "选择目录"} disabled={busy} onClick={() => void selectOutput(row)}><Icon name="folder" size={16} /></button>{row.outputDirectory && <button type="button" className="text-button" aria-label="改为自动保存" title="改为自动保存" disabled={busy} onClick={() => update(row.recentProjectId, { outputDirectory: undefined })}>自动</button>}</div>
           </>}

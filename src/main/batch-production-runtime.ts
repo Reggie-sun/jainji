@@ -15,11 +15,13 @@ import type { BatchProjectOption } from "../shared/batch-production.js";
 import { DecorationSchema } from "../shared/decorations.js";
 import { createAutomaticOutputDirectory } from "./automatic-output-directory.js";
 import { BatchProductionController } from "./batch-production-controller.js";
+import type { DouyinUploadService } from "./douyin-upload-service.js";
 
 export function createBatchProductionRuntime(input: {
   root: string; registry: RecentProjects; queue: ExportQueue; ffmpeg: FfmpegAdapter;
   fontResolver: FontResolver; library: AssetLibrary; stickers: StickerAssets; connections: ModelConnections;
   knowledgeStore?: SourceStickerKnowledgeStore; approvedDirectories: Set<string>; changed(): void;
+  upload?: DouyinUploadService;
 }) {
   const controller = new BatchProductionController(path.join(input.root, "batch-production"), {
     name: id => input.registry.list().find(item => item.id === id)?.name ?? "已保存模板",
@@ -28,6 +30,12 @@ export function createBatchProductionRuntime(input: {
     taskStatuses: () => input.queue.taskStatuses(),
     cancelExport: id => input.queue.cancel(id),
     changed: input.changed,
+    preflightUpload: (selection, count) => input.upload?.preflight(selection, count) ?? Promise.resolve(undefined),
+    uploadStatus: (projectId, taskIds) => {
+      const status = input.upload?.status(projectId);
+      return status ? { message: status.message, tasks: status.tasks.filter(task => taskIds.includes(task.export_task_id)) } : undefined;
+    },
+    cancelUploads: (projectId, taskIds) => input.upload?.cancelExports(projectId, taskIds) ?? Promise.resolve(),
     outputDirectory: async (project, ids, requested) => {
       if (requested) {
         const directory = await canonicalPath(requested);
@@ -39,12 +47,17 @@ export function createBatchProductionRuntime(input: {
       input.approvedDirectories.add(approved);
       return approved;
     },
-    session: async projectPath => {
+    session: async (projectPath, authorization) => {
       // A private copy gives the canonical services a stable project without switching the editor.
       const service = new ApplicationService(input.ffmpeg, input.fontResolver);
       await service.loadProject(projectPath);
       const agent = new AgentController(service, input.queue, input.ffmpeg, () => { controller.wake(); input.changed(); }, input.stickers,
-        input.library, input.connections.provider, input.connections.visionProvider, input.connections.reviewerProvider, input.knowledgeStore);
+        input.library, input.connections.provider, input.connections.visionProvider, input.connections.reviewerProvider, input.knowledgeStore,
+        (batch, selection, frozen) => input.upload?.registerBatch(batch, selection, frozen) ?? Promise.resolve(),
+        async (selection, count) => {
+          if (!authorization || selection.accountProduct !== authorization.target.product || count !== authorization.expectedCount) throw new Error("批量上传授权与本项制作不一致。");
+          return authorization;
+        });
       return {
         get busy() { return agent.busy; },
         start: request => agent.start(request, input.approvedDirectories),

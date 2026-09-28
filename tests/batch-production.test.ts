@@ -11,6 +11,7 @@ import { DEFAULT_EXPORT_SETTINGS } from "../src/shared/export-settings";
 import type { AgentRun, AgentStartInput } from "../src/shared/agent";
 import type { QueueSnapshot } from "../src/main/queue";
 import { ProjectStore } from "../src/main/store";
+import type { QianchuanUploadSelection, UploadAuthorization } from "../src/shared/douyin-upload";
 
 const entry = () => ({ recentProjectId: crypto.randomUUID(), requestedCount: 5, productPrice: "手动文字", coverEnabled: false, displayMode: "full" as const });
 const directories: string[] = [];
@@ -51,7 +52,11 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
     taskStatuses: () => new Map(tasks.map(task => [task.id, task.status])),
     cancelExport: vi.fn(async (id: string) => { const task = tasks.find(task => task.id === id)!; if (task.status === "running") task.status = "cancelled"; }),
     changed: vi.fn(),
-    session: vi.fn(async (file: string): Promise<BatchProductionSession> => {
+    preflightUpload: vi.fn(async (selection: QianchuanUploadSelection, count: number): Promise<UploadAuthorization> => ({ target: { product: selection.accountProduct,
+      cdpEndpoint: "http://127.0.0.1:9222", advertiserId: "123456", adId: "987654", configDigest: "a".repeat(64) }, pageBatchId: crypto.randomUUID(), expectedCount: count })),
+    uploadStatus: vi.fn((_projectId: string, _taskIds: string[]) => ({ message: "fixture upload", tasks: [] })),
+    cancelUploads: vi.fn(async (_projectId: string, _taskIds: string[]) => undefined),
+    session: vi.fn(async (file: string, _authorization?: UploadAuthorization): Promise<BatchProductionSession> => {
       const value = await new ProjectStore(file).readSnapshot(); frozen.push(value);
       let run: AgentRun | undefined;
       let busy = false;
@@ -81,6 +86,73 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it("accepts only an explicit product selection and rejects forged upload authority", () => {
+    const row = entry();
+    expect(BatchProductionStartSchema.safeParse({ entries: [{ ...row, douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }] }).success).toBe(true);
+    for (const douyinUpload of [{ enabled: true }, { enabled: true, caption: "legacy" },
+      { enabled: true, accountProduct: "unknown" }, { enabled: true, accountProduct: "蝴蝶贴", advertiserId: "123456" }]) {
+      expect(BatchProductionStartSchema.safeParse({ entries: [{ ...row, douyinUpload }] }).success).toBe(false);
+    }
+  });
+
+  it("preflights every selected account before production and keeps authorization out of saved projects", async () => {
+    const f = await fixture({ allComplete: true });
+    const selection = { enabled: true as const, accountProduct: "蝴蝶贴" as const };
+    const start = f.dependencies.session.getMockImplementation()!;
+    f.dependencies.session.mockImplementation(async (file, authorization) => {
+      expect(f.dependencies.preflightUpload).toHaveBeenCalledTimes(2);
+      return start(file, authorization);
+    });
+    const run = await f.controller.start({ entries: f.entries.map(row => ({ ...row, douyinUpload: selection })) });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.starts.map(request => request.douyinUpload)).toEqual([selection, selection]);
+    expect(f.dependencies.preflightUpload.mock.calls.map(call => call[1])).toEqual([1, 1]);
+    const authorizations = f.dependencies.session.mock.calls.map(call => call[1]);
+    expect(authorizations[0]!.pageBatchId).not.toBe(authorizations[1]!.pageBatchId);
+    expect(f.controller.snapshot()?.jobs.map(job => job.accountProduct)).toEqual(["蝴蝶贴", "蝴蝶贴"]);
+    for (const job of run.jobs) {
+      const saved = await readFile(path.join(f.root, run.id, `${job.id}.json`), "utf8");
+      expect(saved).not.toContain("douyinUpload"); expect(saved).not.toContain("pageBatchId"); expect(saved).not.toContain("cdpEndpoint");
+    }
+  });
+
+  it("leaves ordinary export-only batches without upload preflight", async () => {
+    const f = await fixture({ allComplete: true });
+    await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.dependencies.preflightUpload).not.toHaveBeenCalled();
+    expect(f.starts.every(request => !request.douyinUpload)).toBe(true);
+  });
+
+  it.each(["preflight", "format"])("rejects upload %s failure before producing that item", async boundary => {
+    const f = await fixture({ allComplete: true });
+    if (boundary === "preflight") f.dependencies.preflightUpload.mockRejectedValueOnce(new Error("fixture missing account"));
+    else f.projects[0].workspaceDraft!.exportFormat = "mov";
+    await f.controller.start({ entries: [{ ...f.entries[0], douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }, f.entries[1]] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs.map(job => job.status)).toEqual(["failed", "completed"]);
+    expect(f.starts).toHaveLength(1); expect(f.starts[0].douyinUpload).toBeUndefined();
+  });
+
+  it("projects uploads using only the chosen job's project and task IDs", async () => {
+    const f = await fixture({ allComplete: true });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    const detail = await f.controller.details({ runId: run.id, jobId: run.jobs[0].id });
+    expect(f.dependencies.uploadStatus).toHaveBeenCalledWith(f.projects[0].id, [f.tasks[0].id]);
+    expect(detail.upload).toEqual({ message: "fixture upload", tasks: [] });
+  });
+
+  it("cancels only the selected job's upload tasks while preserving the other job", async () => {
+    const f = await fixture();
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.jobs[0].status).toBe("exporting"));
+    await f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.dependencies.cancelUploads.mock.calls.every(([projectId, ids]) => projectId === f.projects[0].id && ids.length === 1 && ids[0] === f.tasks[0].id)).toBe(true);
+    expect(f.dependencies.cancelUploads).toHaveBeenCalled();
+  });
+
   it.each(["random", "manual", "agent"] as const)("freezes the explicitly chosen %s mode without changing saved templates", async mode => {
     const f = await fixture({ allComplete: true });
     f.projects[0].workspaceDraft!.decorations.mode = "agent";

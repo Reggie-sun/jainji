@@ -3,6 +3,8 @@ import { MAX_AGENT_OUTPUTS } from "./agent.js";
 import type { AgentItem } from "./agent.js";
 import type { ExportTask } from "../main/domain.js";
 import { RequiredProductPriceSchema } from "./decorations.js";
+import { QianchuanUploadSelectionSchema, type DouyinUploadStatus } from "./douyin-upload.js";
+import { QianchuanProductSchema } from "./qianchuan-account.js";
 
 export const BatchProductionEntrySchema = z.object({
   recentProjectId: z.string().uuid(),
@@ -12,6 +14,7 @@ export const BatchProductionEntrySchema = z.object({
   displayMode: z.enum(["full", "first-5s"]),
   mode: z.enum(["manual", "agent", "random"]).optional(),
   outputDirectory: z.string().min(1).max(4096).optional(),
+  douyinUpload: QianchuanUploadSelectionSchema.optional(),
 }).strict();
 export type BatchProductionEntry = z.infer<typeof BatchProductionEntrySchema>;
 
@@ -44,6 +47,7 @@ export const BatchProductionJobSchema = z.object({
   coverEnabled: z.boolean(),
   displayMode: z.enum(["full", "first-5s"]),
   mode: z.enum(["manual", "agent", "random"]).optional(),
+  accountProduct: QianchuanProductSchema.optional(),
   status: z.enum(["queued", "preparing", "producing", "exporting", "completed", "failed", "cancelled", "interrupted"]),
   taskIds: z.array(z.string().uuid()).max(MAX_AGENT_OUTPUTS),
   completedTaskIds: z.array(z.string().uuid()).max(MAX_AGENT_OUTPUTS).optional(),
@@ -72,4 +76,5 @@ export interface BatchProductionDetail {
   usesModel?: boolean;
   items: AgentItem[];
   tasks: ExportTask[];
+  upload?: Pick<DouyinUploadStatus, "message" | "tasks">;
 }

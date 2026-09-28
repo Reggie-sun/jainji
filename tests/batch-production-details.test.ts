@@ -28,4 +28,15 @@ describe("batch works presentation", () => {
     expect(base).toContain("正在准备制作");
     expect(base).not.toContain(">播放<");
   });
+
+  it("keeps export completion separate from upload ready and unknown outcomes", () => {
+    const base = { id: "job", recentProjectId: "recent", name: "蝴蝶贴", requestedCount: 2, actualCount: 2, productPrice: "手动价格", coverEnabled: true,
+      displayMode: "full" as const, status: "completed" as const, taskIds: [], completedCount: 2, failedCount: 0, accountProduct: "蝴蝶贴" as const };
+    const html = render({ job: base, upload: { message: "fixture upload", tasks: [
+      { upload_task_id: "ready", file_name: "ready.mp4", advertiserId: "123", adId: "456", state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY" },
+      { upload_task_id: "unknown", file_name: "unknown.mp4", advertiserId: "123", adId: "456", state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" },
+    ] as NonNullable<BatchProductionDetail["upload"]>["tasks"] } });
+    expect(html).toContain("已上传 1 / 2 条"); expect(html).toContain("待在 Chrome 确认"); expect(html).toContain("结果未知，禁止重新上传");
+    expect(html).not.toContain("已发布"); expect(html).not.toContain(">确定<");
+  });
 });

@@ -121,6 +121,18 @@ spec_sha256: 3873866c4089b8fd41354ffa6cec7b87dd6263bfaf084da07035a2bc1e79fdca
 
 **Verification:** `npm run typecheck`；`npx vitest run tests/douyin-upload-ui.test.ts tests/douyin-upload-integration.test.ts tests/agent-controller.test.ts tests/append-production-queue.test.ts`；`npm run build`；隔离 Electron smoke 实际选择账号 → FFmpeg 正式完成 → 本地千川 ready，确认计数零；核对切项目、追加、配置更改、恢复/停止。Chrome MCP 验证实际界面交互，默认不接真实账号。
 
+## M4 Addendum: Cross-template Batch Upload
+
+**Goal / Current → Target:** 用户已授权将批量制作接入千川；当前批量只导出，目标为逐模板显式选产品账号、正式成片自动上传并停在确定前。
+
+**Owners / Files:** `src/shared/batch-production.ts` 增加 strict 可选 selection 及只读结果类型；`src/main/batch-production-controller.ts` 在整批冻结时预检并只在内存保留授权，过滤详情 task，取消转交既有上传 owner；`src/main/batch-production-runtime.ts` 向各项既有 AgentController 注入原 register/preflight seam；`src/main/index.ts` 装配同一 service。现有 `douyin-upload-service.ts` 增加仅主进程可调用的按 project/task 停止接缝，阻断取消后的迟到通知，不改 durable identity/fence。`src/renderer/BatchProductionPanel.tsx` 复用上传控件的简洁账号下拉框、提交后清空选择；`BatchProductionDetails.tsx` 展示本项上传状态；普通和批量结果共用 `qianchuan-upload-status.ts` 的状态文案。不修改其他任务拥有的 shared agent/controller/runner/ResultsPanel，不增上传队列或页面逻辑。
+
+**Contracts / Compatibility:** 每项独立 pageBatchId、冻结目标及精确 expectedCount；旧请求/记录无选择则不上传。整批预检先于首次模型/入队；非 MP4 和失败预检拒绝该项。授权不进入保存项目或模型。后续 mapping 改变仍由 registerBatch digest guard 拒绝，不重选新目标。状态投影限定 projectId 及该项 taskIds，不新增跨项目继续/确认 API；取消只停止本项上传，ready/fence 保留。原上传暂停和未知零重传不变，制作完成不代表上传完成。
+
+**Acceptance / Verification:** schema 拒绝伪造目标/未知账号/旧 caption；controller 测试无选择零预检、全项先预检、失败项零制作、只读 task 过滤、独立授权及取消/恢复；runtime integration 使用原 service/store 和实际 FFmpeg 正式通知。运行相关 batch/upload tests、`npm run typecheck`、`npm run build`、`npm run harness -- code`；隔离 Electron 实际勾选两模板、选择账号、10 条跨组上传、零确认/广告设置、未知阻断及重启防重传。仅 fixture，无真实视频新增上传、无 Windows 验证。稳定修改后维护 AOCI，并单独判断新接缝风险；原生产 adapter 的 `REVIEW_ESCALATION_REQUIRED` 不被本次证据清除。
+
+**Self-Review:** 对照 spec §1 批量扩展及 §5–9，保持原导出与上传 owner；实施和验证仍须使用当前源码，旧 implementation metadata 不代表现状。
+
 ## M5: Regression, Packaging And Authorized Live Acceptance
 
 **Dependencies:** M1–M4；真实测试须指定产品/正式 MP4 和上传授权。

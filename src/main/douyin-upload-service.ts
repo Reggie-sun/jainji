@@ -41,6 +41,7 @@ export class DouyinUploadService {
   private summaries: QianchuanAccountSummary[] = [];
   private readonly eligible = new Set<string>();
   private readonly currentIntents = new Set<string>();
+  private readonly cancelledIntents = new Set<string>();
   private readonly sessions = new Map<string, UploadBrowserPort>();
   private controlGeneration = 0;
   private readonly accounts: QianchuanAccountConfigReader;
@@ -147,6 +148,7 @@ export class DouyinUploadService {
       await strictSyncDirectory(snapshotDirectory); await strictSyncDirectory(snapshots);
       const record: UploadTaskRecord = { input, inputDigest: frozenInputDigest(input, intent.authorization), config: intent.config, authorization: intent.authorization, snapshotPath,
         result: { ...identity, upload_task_id: id, artifact_sha256: hash, file_name: path.basename(resolved), accountProduct: target.product, advertiserId: target.advertiserId, adId: target.adId, state: "PENDING", upload_outcome: "NOT_SELECTED", retryable: false, retry_count: 0, attempt_count: 0, timestamp: timestamp() } };
+      if (this.cancelledIntents.has(intentKey(identity))) record.result.state = "CANCELLED";
       await this.snapshotValid(record); await this.store.saveTask(record);
       if (!recovery && this.currentIntents.has(intentKey(identity)) && generation === this.controlGeneration && !this.stopping && !this.stopped && !this.paused) this.eligible.add(id);
       this.changed(); return record;
@@ -205,6 +207,19 @@ export class DouyinUploadService {
     if (task.result.state === "WAITING_FOR_CONFIRMATION" || task.result.duplicate_of) return;
     task.result = { ...task.result, state: this.store.hasMarker(id) ? "NEEDS_HUMAN" : "CANCELLED", upload_outcome: this.store.hasMarker(id) ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", readyEvidence: undefined, retryable: false, failure: this.store.hasMarker(id) ? unknown().failure : uploadFailure("STOPPED", "cancel", "上传已停止。", "明确继续才会处理。", false).failure };
     await this.save(task);
+  }
+  /** Called only by the main-process production owner after capturing this job's task IDs. */
+  async cancelExports(projectId: string, taskIds: readonly string[]): Promise<void> {
+    const ids = new Set(taskIds);
+    for (const intent of this.store.intents()) if (intent.project_id === projectId && ids.has(intent.export_task_id)) {
+      const key = intentKey(intent); this.cancelledIntents.add(key); this.currentIntents.delete(key);
+    }
+    const owned = () => this.store.tasks().filter(task => task.input.project_id === projectId && ids.has(task.input.export_task_id));
+    for (const task of owned()) this.eligible.delete(task.result.upload_task_id);
+    const active = owned().find(task => this.active?.ids.includes(task.result.upload_task_id));
+    if (active) await this.cancel(active.result.upload_task_id);
+    await this.admission.catch(() => undefined);
+    for (const task of owned()) await this.cancel(task.result.upload_task_id);
   }
   async stop(): Promise<void> {
     this.controlGeneration++; this.stopping = true; this.stopped = true; this.eligible.clear(); this.currentIntents.clear(); this.active?.controller.abort();

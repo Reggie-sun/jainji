@@ -156,6 +156,41 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  it("scopes batch-production cancellation to exact project/task IDs, including late admission", async () => {
+    const f = await fixture(); await f.authorize();
+    const cancelled = await f.createBatch(["cancelled-late"]);
+    const other = await f.createBatch(["unrelated-ready"]);
+    await f.register(cancelled); await f.register(other);
+    await f.service.cancelExports(cancelled.projectId, [...cancelled.identities, ...other.identities].map(item => item.export_task_id));
+    await f.service.committed(cancelled.identities[0]);
+    await f.service.committed(other.identities[0]); await f.service.runPending();
+    expect(f.service.status(cancelled.projectId).tasks[0].state).toBe("CANCELLED");
+    expect(f.service.status(other.projectId).tasks[0].state).toBe("WAITING_FOR_CONFIRMATION");
+    expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(1);
+  });
+
+  it("removes cancelled eligibility before a delayed formal admission can become runnable", async () => {
+    const f = await fixture(); await f.authorize(); const batch = await f.createBatch(["delayed"]); await f.register(batch);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const create = f.store.saveTask.bind(f.store);
+    vi.spyOn(f.store, "saveTask").mockImplementationOnce(async task => { await gate; return create(task); });
+    const committed = f.service.committed(batch.identities[0]);
+    await vi.waitFor(() => expect(f.store.saveTask).toHaveBeenCalled());
+    const cancel = f.service.cancelExports(batch.projectId, batch.identities.map(item => item.export_task_id));
+    release(); await Promise.all([committed, cancel]); await f.service.runPending();
+    expect(f.service.status(batch.projectId).tasks[0].state).toBe("CANCELLED"); expect(f.events).toEqual([]);
+  });
+
+  it("retains ready evidence and permanent fences when its production job is cancelled", async () => {
+    const f = await fixture(); await f.authorize(); const batch = await f.createBatch(["already-ready"]); await f.register(batch);
+    await f.service.committed(batch.identities[0]); await f.service.runPending();
+    const before = f.store.tasks()[0]; const calls = [...f.events];
+    await f.service.cancelExports(batch.projectId, batch.identities.map(item => item.export_task_id));
+    expect(f.store.tasks()[0]).toEqual(before); expect(f.events).toEqual(calls);
+    expect(f.store.hasMarker(before.result.upload_task_id)).toBe(true);
+  });
+
   async function nativeFixture() {
     const f = await fixture();
     const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, async () => "http://127.0.0.1:9225"), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });

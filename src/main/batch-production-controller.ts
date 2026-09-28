@@ -9,6 +9,7 @@ import { DEFAULT_EXPORT_SETTINGS } from "../shared/export-settings.js";
 import type { ExportTask, Project } from "./domain.js";
 import type { QueueSnapshot } from "./queue.js";
 import { ProjectStore, atomicWriteJson } from "./store.js";
+import type { QianchuanUploadSelection, UploadAuthorization } from "../shared/douyin-upload.js";
 
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
 
@@ -24,14 +25,17 @@ interface Dependencies {
   name(recentProjectId: string): string;
   loadProject(recentProjectId: string): Promise<Project>;
   outputDirectory(project: Project, mediaIds: string[], requested?: string): Promise<string>;
-  session(projectPath: string): Promise<BatchProductionSession>;
+  session(projectPath: string, authorization?: UploadAuthorization): Promise<BatchProductionSession>;
+  preflightUpload?(selection: QianchuanUploadSelection, count: number): Promise<UploadAuthorization | undefined>;
+  uploadStatus?(projectId: string, taskIds: string[]): BatchProductionDetail["upload"];
+  cancelUploads?(projectId: string, taskIds: string[]): Promise<void>;
   queue(projectId?: string): QueueSnapshot;
   taskStatuses(): ReadonlyMap<string, ExportTask["status"]>;
   cancelExport(taskId: string): Promise<void>;
   changed(): void;
 }
 
-interface FrozenJob { job: BatchProductionJob; projectPath: string; input: Omit<AgentStartInput, "outputDirectory">; project: Project; requestedOutput?: string; }
+interface FrozenJob { job: BatchProductionJob; projectPath: string; input: Omit<AgentStartInput, "outputDirectory">; project: Project; requestedOutput?: string; authorization?: UploadAuthorization; }
 
 /** Cross-project sequencing only; all export state and verification stay in ExportQueue. */
 export class BatchProductionController {
@@ -86,7 +90,8 @@ export class BatchProductionController {
       .filter(({ batch }) => batch.projectId === job.projectId).flatMap(({ batch }) => batch.tasks).filter(task => ids.has(task.id)) : [];
     const items = structuredClone(production?.items ?? []).map(item =>
       !live && !item.taskId && !["failed", "cancelled"].includes(item.status) ? { ...item, status: "cancelled" as const } : item);
-    return { runId, job, usesModel: production?.usesModel, items, tasks };
+    return { runId, job, usesModel: production?.usesModel, items, tasks,
+      upload: job.projectId ? this.dependencies.uploadStatus?.(job.projectId, [...ids]) : undefined };
   }
 
   async restore(): Promise<void> {
@@ -115,6 +120,7 @@ export class BatchProductionController {
       id: randomUUID(), status: "running", createdAt: at, updatedAt: at,
       jobs: entries.map(entry => ({ id: randomUUID(), recentProjectId: entry.recentProjectId, name: this.dependencies.name(entry.recentProjectId),
         requestedCount: entry.requestedCount, actualCount: 0, productPrice: entry.productPrice, coverEnabled: entry.coverEnabled, displayMode: entry.displayMode, mode: entry.mode,
+        ...(entry.douyinUpload ? { accountProduct: entry.douyinUpload.accountProduct } : {}),
         status: "queued", taskIds: [], completedCount: 0, failedCount: 0 })),
     };
     this.executing = true;
@@ -171,12 +177,16 @@ export class BatchProductionController {
     template.productPriceDraft = entry.productPrice;
     const decorations = DecorationSchema.parse({ ...workspace?.decorations, ...(entry.mode ? { mode: entry.mode } : {}), productPrice: entry.productPrice, displayMode: entry.displayMode });
     const input = { mediaIds, ruleId: workspace?.ruleId ?? "black-gold" as const, brief: workspace?.brief ?? "", decorations,
-      exportFormat: workspace?.exportFormat ?? "mp4" as const, exportSettings: workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS, requestedCount: quantity.total };
+      exportFormat: workspace?.exportFormat ?? "mp4" as const, exportSettings: workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS, requestedCount: quantity.total,
+      ...(entry.douyinUpload ? { douyinUpload: entry.douyinUpload } : {}) };
     AgentStartSchema.parse({ ...input, outputDirectory: "/pending" });
+    if (entry.douyinUpload && input.exportFormat !== "mp4") throw new Error("千川上传仅支持 MP4，请先修改该模板的导出格式。");
+    const authorization = entry.douyinUpload ? await this.dependencies.preflightUpload?.(entry.douyinUpload, quantity.total) : undefined;
+    if (entry.douyinUpload && !authorization) throw new Error("千川账号预检不可用，请检查上传设置。");
     const projectPath = path.join(this.root, this.run!.id, `${job.id}.json`);
     await new ProjectStore(projectPath).save(project);
     job.projectId = project.id; job.name = project.name; job.actualCount = quantity.total; job.mode = decorations.mode ?? "manual";
-    return { job, projectPath, project, input, requestedOutput: entry.outputDirectory };
+    return { job, projectPath, project, input, requestedOutput: entry.outputDirectory, authorization };
   }
 
   private async execute(entries: BatchProductionEntry[], signal: AbortSignal, initialSave: Promise<void>): Promise<void> {
@@ -229,7 +239,7 @@ export class BatchProductionController {
     try {
       job.outputDirectory = await this.dependencies.outputDirectory(item.project, item.input.mediaIds, item.requestedOutput);
       if (signal.aborted) return;
-      session = await this.dependencies.session(item.projectPath);
+      session = await this.dependencies.session(item.projectPath, item.authorization);
       this.activeSession = session;
       if (signal.aborted) return;
       job.status = "producing";
@@ -249,9 +259,16 @@ export class BatchProductionController {
       }
       job.status = "exporting";
       await this.persist();
+      let uploadCancellation: Promise<void> | undefined;
+      const cancelUploads = () => {
+        if (signal.aborted) uploadCancellation ??= this.dependencies.cancelUploads?.(item.project.id, job.taskIds) ?? Promise.resolve();
+        return uploadCancellation;
+      };
+      await cancelUploads();
       if (signal.aborted) await Promise.all(job.taskIds.map(id => this.dependencies.cancelExport(id)));
       // Agent completion is not export completion. Drain exactly this item's original queue tasks.
       while (true) {
+        await cancelUploads();
         const tasks = this.dependencies.taskStatuses();
         if (job.taskIds.some(id => !tasks.has(id))) throw new Error("无法确认当前批量项的导出记录，整批已停止。");
         if (job.taskIds.every(id => terminal.has(tasks.get(id)!))) break;

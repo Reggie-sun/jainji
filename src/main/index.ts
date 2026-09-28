@@ -699,7 +699,7 @@ async function bootstrap(): Promise<void> {
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection, authorization) => douyinUpload.registerBatch(batch, selection, authorization), (selection, count) => douyinUpload.preflight(selection, count));
   batchRuntime = createBatchProductionRuntime({ root: userData, registry: recentProjects, queue, ffmpeg, fontResolver,
-    library, stickers: stickerAssets, connections, knowledgeStore: sourceKnowledge, approvedDirectories: approvedOutputDirectories, changed: notifyState });
+    library, stickers: stickerAssets, connections, knowledgeStore: sourceKnowledge, approvedDirectories: approvedOutputDirectories, changed: notifyState, upload: douyinUpload });
   await batchRuntime.controller.restore();
   protocol.handle("jianji-agent-preview", async (request) => {
     try {
