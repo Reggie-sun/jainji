@@ -4,7 +4,7 @@
 
 2026-09-28 按用户要求先将 D contract/prototype 四路径独立提交为 `ab28ea2`，fresh 151 tests 与 typecheck PASS 后开始 D1。实际 Git operation 成功取代此前 mount 诊断作为当前写能力证据；没有删除 lock、改权限或 remount。D1 与该提交分开保存，保留其他任务 staged/dirty 和用户项目文件删除。
 
-D1 实施 canonical deterministic census，状态为 `CENSUS_IMPLEMENTED / SEMANTIC_AUTHORITY_BLOCKED / PRODUCT_DISABLED`。输出固定 `authority=none / semanticReview=NOT_EVALUATED / eligible=false`。完整 M5-D 尚未成立；不增加 C 成功 issuer、placement、产品入口接线、知识持久化、schema migration 或 FullSourceAdmissionHandle，不修改 M4 authority、M5-A renderer 或 M5-B guard。
+D1 实施 canonical deterministic census；下文保留候选及 blocker 的历史记录，当前完成状态见 [AOCI Recovery and D1 Completion](#aoci-recovery-and-d1-completion)。输出固定 `authority=none / semanticReview=NOT_EVALUATED / eligible=false`。完整 M5-D 尚未成立；不增加 C 成功 issuer、placement、产品入口接线、知识持久化、schema migration 或 FullSourceAdmissionHandle，不修改 M4 authority、M5-A renderer 或 M5-B guard。
 
 ## Canonical Owners
 
@@ -133,3 +133,27 @@ Session-record 本次仍使用既有 milestone/Plan，保存复现、单变量�
 恢复需由宿主端允许正常审批，再恢复此会话。CLI `codex resume --help` 已确认可用的形式是 `codex -C /home/reggie/vscode_folder/jianji -s workspace-write -a on-request resume`，从 picker 选择此任务；此命令是用户在宿主执行的下一步，本轮没有运行，也没有证明 launcher 是否还会覆盖策略。桌面宿主应使用对应的会话权限设置。保持 sandbox，不关闭审批；若 managed host 继续覆盖为 never，必须由该 host 的 policy owner 处理。
 
 恢复后的验收仍需真实官方 `aoci_rules` 成功、稳定源码快照及索引 ownership 核对、完整 Maintain 批次、Verify/Check/Guide 与 scoped commit；不能用 Doctor 的 PASS 替代。当前只完成诊断，AOCI 修复与 D1 formal PASS 仍 blocked。Session-record 使用本 milestone；documentation-only 风险不触发额外 implementation review，未改任何 production authority。
+
+## AOCI Recovery and D1 Completion
+
+2026-09-28 用户确认其他索引 owner 已完成，授权 Parent 串行维护完整官方批次，保留其他源码及暂存工作。当前宿主实际允许 AOCI/CodeGraph MCP 调用；有效 approval policy 仍为 never，未将用户截图中的 config 值当作 runtime 已切换策略的证据。本轮未修改宿主配置、D1 源码或任何 shape 实现。
+
+Parent 基于完整源码与正式 Meta 创作机器签发的完整批次，官方原子 Apply 依次为20/20、4/4；随后共享树的千川页面 owner 增加单次 DOM snapshot 绑定，重新核对完整源码并通过第三批1/1。未截取批次、生成语义脚本、手工编辑索引或 baseline，也未减小 managed scope。最终索引172条，missing/stale/orphan/unbaselined 均为空；无 recovery 或第三方正式字节冲突。共享树未提交源码也参与 baseline 绑定；此对齐结论属于当前 working tree，不能外推为该提交单独 checkout 后整个项目同样 aligned。
+
+| Gate | Fresh result and evidence |
+| --- | --- |
+| Frozen candidate | 上表五个 D1 source/test SHA 与 `d2f80db` 一致；A renderer、B guard、C assembler 及已提交 stdio 修复后的 shape fixture SHA 均未变化 |
+| npm run typecheck | 最终全项目 exit0；`/tmp/jianji-d1-typecheck-final.log`，在最后一次共享页面源码变更后重跑 |
+| D1 related tests | 12 files /262 tests PASS，0 failed/0 skipped，22.05s；`/tmp/jianji-d1-related-final.log`；使用原 related 文件列表，maxWorkers=2/minWorkers=1 |
+| shape-cover-candidates regression | 1 file /101 tests PASS，0 failed/0 skipped，232.04s；`/tmp/jianji-d1-aoci-restored-shape.log`；maxWorkers=1/minWorkers=1，外层300s |
+| AOCI Verify | exit0，governance_aligned=true；`/tmp/jianji-d1-aoci-verify-final.json` |
+| AOCI Aggregate Check | exit0，governance_aligned=true、next_action=none；`/tmp/jianji-d1-aoci-check-final.json` |
+| AOCI Guide | exit0，mode=complete、stage=aligned、complete=true、next_action=none；`/tmp/jianji-d1-aoci-guide-final.json` |
+| git diff --check | 全共享树 exit0；提交仅包含获授权的正式 Code 索引、baseline 与本 milestone/Plan，其余源码和暂存路径保留 |
+| Full suite / product acceptance | 未运行 full suite；当前 D1 合同要求的受影响及制作/导出集成已覆盖。未进行 D2 人工语义审阅、Windows 或 M5-E 成片验收 |
+
+最终 Code SHA=`9d5c6deb7dc582eab3ecaf1494c0e4aef95d13e4c246b1307e03ac32c1ca2077`，Composite=`3e5b9f58eed082c74f26e9fe6db127dc9da8cfdb423e3f94cb62b5704dc2c67b`。Root/Meta 保持不变。完整 Overview 交付172/172条、3块、约18980 tokens，Host 交付确认、Challenge10/10；该认知收据绑定第二批后的旧 Code 身份，第三批后的治理结果独立由上述官方 gate 证明，不将旧认知收据冒充最终索引的完整系统认知证明。
+
+本轮 managed Kimi 使用 [external-subagent](../../../.agents/skills/external-subagent/SKILL.md) 的 sealed read-only explorer contract，Docker containment qualified；canonical invocation=`704aa43b-3f0c-4ec9-9ddc-379d26ef83c7`，seal=`a3438bfb75d3bcaf348d381f7f526f2113d85a073e668da01ba40b52fcdf88d8`，终态 PARSED/exit0，实际 api.kimi.ai/k3-256k/high，2 requests，无截断。Parent 核对 receipt、完整阅读绑定及无源码写入；这是 owner mapping evidence，不替代测试或 semantic acceptance。其关于“±0.5ms 应改为半个时基 tick”的意见未采纳：源码 `abs(duration_ts*num*1000-durationMs*den)*2 <= den` 除以 den 后就是 ±0.5ms，与 timebase tick 长度无关；现有文档与实现一致。
+
+Parent completion Risk Gate 为 `KIMI_REVIEW_NOT_REQUIRED`：本轮只维护索引及记录，未改变运行或 authority 语义，不叠加 reviewer。Session-record 继续由本 milestone 和 Plan 保存；不创建第二生命周期 owner。工程和当前共享树治理 gates 已满足，D1 可标 `M5-D1 PASS / SEMANTIC_AUTHORITY_BLOCKED / PRODUCT_DISABLED`。D1 证明完整像素枚举，不证明 T(f)、verified-no-sticker interval 或 exhaustive semantic acceptance；本轮不开始 D2，也不回 C 增加成功 issuer。
