@@ -40,6 +40,7 @@ import { MAX_AGENT_OUTPUTS } from "../shared/agent.js";
 import { verifyShapeCoverAdmission, type ShapeCoverAdmission } from "./shape-cover-admission.js";
 import { templateDigest } from "./supervisor-knowledge.js";
 import { ShapeCoverArtifactStore } from "./shape-cover-artifacts.js";
+import { NvencAdmission, type NvencPermit } from "./nvenc-admission.js";
 
 const shapePreviewReceipts = new WeakMap<ExportQueue, Map<string, string>>();
 const shapePreviewBinding = (template: EditTemplate, media: MediaItem, preset: ExportPreset, fingerprint: string) =>
@@ -66,6 +67,7 @@ export interface ExportQueueDependencies {
   onFinalArtifactCommitted?: (fact: { projectId: string; batchId: string; taskId: string; artifact: OutputArtifact }) => void | Promise<void>;
   onFinalArtifactNotificationError?: () => void;
   gpuFreeMemory?: () => Promise<number | undefined>;
+  nvencAdmission?: Pick<NvencAdmission, "acquire">;
   videoEncoder?: H264Capability;
   executionLimits?: ReturnType<typeof executionLimits>;
   jobStore: JobStore;
@@ -122,6 +124,7 @@ function immutableSnapshot(template: EditTemplate): EditTemplate {
 export class ExportQueue {
   private readonly limits: ReturnType<typeof executionLimits>;
   private readonly videoEncoder: H264Capability;
+  private readonly nvencAdmission: Pick<NvencAdmission, "acquire">;
   private readonly states = new Map<string, QueueState>();
   private readonly controllers = new Map<string, RunningCommand>();
   private readonly cancelRequested = new Set<string>();
@@ -175,7 +178,7 @@ export class ExportQueue {
     });
   }
 
-  private async executePreview(preview: PendingPreview, threads: number): Promise<string> {
+  private async executePreview(preview: PendingPreview, threads: number, permit?: NvencPermit): Promise<string> {
     const { id, template, media, preset, signal } = preview;
     signal.throwIfAborted();
     assertPriceOnlyTemplate(template);
@@ -206,8 +209,15 @@ export class ExportQueue {
       const abort = () => { void command?.cancel(); };
       signal.addEventListener("abort", abort, { once: true });
       try {
+        let encoderStarted = false;
         await measureCoverStage(preview.diagnostics, "full-render", signal, async () => {
-          command = this.dependencies.ffmpeg.run([...compiled.args, output]);
+          permit?.assertValid();
+          command = this.dependencies.ffmpeg.run([...compiled.args, output], event => {
+            if (permit && !encoderStarted && (event.outTimeMs ?? 0) > 0) {
+              encoderStarted = true;
+              void permit.started().then(() => this.pump());
+            }
+          });
           this.controllers.set(id, command);
           const result = await command.promise;
           signal.throwIfAborted();
@@ -233,6 +243,7 @@ export class ExportQueue {
   constructor(private readonly dependencies: ExportQueueDependencies) {
     this.videoEncoder = dependencies.videoEncoder ?? { kind: "software-only" };
     this.limits = { ...(dependencies.executionLimits ?? executionLimits(undefined, this.resolveEncoder())) };
+    this.nvencAdmission = dependencies.nvencAdmission ?? new NvencAdmission();
     this.compiler = dependencies.compiler ?? new TemplateCompiler();
     this.verifier = dependencies.artifactVerifier ?? new ArtifactVerifier(dependencies.ffmpeg);
   }
@@ -497,18 +508,37 @@ export class ExportQueue {
     if (this.probingMemory) { this.pumpRequested = true; return; }
     if (this.resolveEncoder() !== "h264_nvenc" || this.shuttingDown) { this.pumpReady(); return; }
     this.probingMemory = true;
-    void Promise.resolve().then(this.dependencies.gpuFreeMemory ?? readGpuFreeMemory).catch(() => undefined).then((free) => {
+    void Promise.resolve().then(this.dependencies.gpuFreeMemory ?? readGpuFreeMemory).catch(() => undefined).then(async (free) => {
       // A transient telemetry failure must not bypass a previously observed
       // memory constraint. Single-slot fallback is only for unsupported hosts.
       if (free !== undefined) this.gpuMemoryObserved = true;
-      this.pumpReady(free ?? (this.gpuMemoryObserved ? 0 : undefined));
+      const hasQueued = this.pendingPreviews.length > 0 || [...this.pendingStarts].some(id => this.states.get(id)?.batch.tasks.some(task => task.status === "queued" && !this.activeTasks.has(task.id) && !this.cancelRequested.has(task.id)));
+      let permit: NvencPermit | undefined;
+      if (!this.shuttingDown && hasQueued && this.activeTasks.size < this.limits.exports) {
+        let coordinationFailed = false;
+        permit = await this.nvencAdmission.acquire(this.limits.exports).catch(() => { coordinationFailed = true; return undefined; });
+        if (!permit && !this.shuttingDown) {
+          let changed = false;
+          for (const id of this.pendingStarts) {
+            for (const task of this.states.get(id)?.batch.tasks ?? []) {
+              const message = coordinationFailed ? "GPU 编码协调不可用，导出未开始。请检查临时目录权限，可停止此任务。" : "等待 GPU 编码会话释放后继续导出，可停止此任务。";
+              if (task.status === "queued" && !this.activeTasks.has(task.id) && task.errorMessage !== message) { task.errorMessage = message; changed = true; }
+            }
+          }
+          if (changed) this.emit();
+          this.memoryTimer = setTimeout(() => this.pump(), 2000);
+          return;
+        }
+      }
+      const started = this.pumpReady(free ?? (this.gpuMemoryObserved ? 0 : undefined), permit);
+      if (!started) await permit?.release();
     }).finally(() => {
       this.probingMemory = false;
       if (this.pumpRequested) { this.pumpRequested = false; this.pump(); }
     });
   }
 
-  private pumpReady(freeGpuMiB?: number): void {
+  private pumpReady(freeGpuMiB?: number, permit?: NvencPermit): boolean | void {
     if (this.shuttingDown) {
       this.pendingStarts.clear();
       while (this.pendingPreviews.length) {
@@ -537,6 +567,7 @@ export class ExportQueue {
       if (freeThreads <= 0) return;
       const dimensions = outputDimensions(preview.media, preview.preset);
       const gpuMemory = this.resolveEncoder() === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
+      if (gpuMemory && !permit) return;
       if (gpuMemory && (freeGpuMiB === undefined ? this.activeTasks.size > 0 : gpuBudget < gpuMemory)) {
         this.memoryTimer = setTimeout(() => this.pump(), 2000);
         return;
@@ -547,9 +578,10 @@ export class ExportQueue {
       this.pendingPreviews.shift();
       preview.signal.removeEventListener("abort", preview.abortListener);
       preview.diagnostics?.finish(preview.queueWait, preview.signal, false);
-      const tracked = this.executePreview(preview, threads).then(preview.resolve, preview.reject).then(() => undefined, () => undefined);
+      const tracked = this.executePreview(preview, threads, permit).then(preview.resolve, preview.reject).then(() => undefined, () => undefined)
+        .finally(async () => { await permit?.release(); this.activeTasks.delete(preview.id); this.pump(); });
       this.activeTasks.set(preview.id, { work: tracked, threads, gpuMemory });
-      void tracked.finally(() => { this.activeTasks.delete(preview.id); this.pump(); });
+      if (permit) { this.pumpRequested = true; return true; }
     }
     for (const batchId of this.pendingStarts) {
       const state = this.states.get(batchId)!;
@@ -561,6 +593,7 @@ export class ExportQueue {
         const media = this.mediaFor(state, task);
         const dimensions = media ? outputDimensions(media, state.batch.preset) : { width: 1280, height: 720 };
         const gpuMemory = this.resolveEncoder() === "h264_nvenc" ? estimateNvencMemoryMiB(dimensions.width, dimensions.height) : 0;
+        if (gpuMemory && !permit) return;
         if (gpuMemory && (freeGpuMiB === undefined ? this.activeTasks.size > 0 : gpuBudget < gpuMemory)) {
           const message = "等待 GPU 显存释放后继续导出，可停止此任务。";
           if (task.errorMessage !== message) { task.errorMessage = message; this.emit(); }
@@ -573,13 +606,15 @@ export class ExportQueue {
         // while the Agent is planning; early exports must not consume all slots' budget.
         const maxThreads = exportThreads(this.limits);
         const threads = Math.min(maxThreads, freeThreads);
-        const work = this.execute(state, task, threads).catch((error: unknown) => {
+        const work = this.execute(state, task, threads, permit).catch((error: unknown) => {
           this.executionError ??= error;
-        }).finally(() => {
+        }).finally(async () => {
+          await permit?.release();
           this.activeTasks.delete(task.id);
           this.pump();
         });
         this.activeTasks.set(task.id, { work, threads, gpuMemory });
+        if (permit) { this.pumpRequested = true; return true; }
       }
       this.pendingStarts.delete(batchId);
     }
@@ -761,7 +796,7 @@ export class ExportQueue {
 
   setMediaLookup(lookup: (mediaId: string) => MediaItem | undefined): void { this.mediaLookup = lookup; }
 
-  private async execute(state: QueueState, task: ExportTask, threads: number): Promise<void> {
+  private async execute(state: QueueState, task: ExportTask, threads: number, permit?: NvencPermit): Promise<void> {
     const media = this.mediaFor(state, task);
     if (!media) { await this.fail(state, task, new JianjiError("找不到导出素材。", "input_invalid", "input", false)); return; }
     if (!task.outputPath || !isPathWithinDirectory(state.batch.outputDirectory, task.outputPath)) {
@@ -799,7 +834,13 @@ export class ExportQueue {
         await Promise.all(temporaryTextFiles.map((filePath) => unlink(filePath).catch(() => undefined)));
         return;
       }
+      permit?.assertValid();
+      let encoderStarted = false;
       const running = this.dependencies.ffmpeg.run([...compiled.args, partialPath], (event) => {
+        if (permit && !encoderStarted && (event.outTimeMs ?? 0) > 0) {
+          encoderStarted = true;
+          void permit.started().then(() => this.pump());
+        }
         const value = event.progress === 1 ? 1 : event.outTimeMs === undefined ? task.progress : Math.min(0.99, event.outTimeMs / (compiled.durationSeconds * 1_000_000));
         if (value > task.progress && (value - task.progress >= 0.01 || value === 1)) {
           task.progress = Math.max(task.progress, value);
@@ -823,6 +864,8 @@ export class ExportQueue {
       }
       if (result.code !== 0) throw new JianjiError(result.stderr.includes("CUDA_ERROR_OUT_OF_MEMORY")
         ? "GPU 显存不足，无法启动硬件编码。请释放显存后重试导出。"
+        : result.stderr.includes("OpenEncodeSessionEx failed: incompatible client key (21)")
+          ? "无法申请 NVENC 编码会话（error 21）。请等待其他硬件编码任务结束后重试；若仍失败，请检查显卡驱动。"
         : redactResult(result.stderr), "ffmpeg_failed", "process", true);
       await this.transition(state, task, "verifying", { progress: 0.99 });
       if (this.cancelRequested.delete(task.id)) {

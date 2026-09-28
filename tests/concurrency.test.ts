@@ -15,6 +15,7 @@ import { JobStore } from "../src/main/store";
 import type { H264Capability, H264Encoder } from "../src/main/video-encoder";
 import { DecorationSchema } from "../src/shared/decorations";
 import * as limits from "../src/main/execution-limits";
+import type { NvencAdmission, NvencPermit } from "../src/main/nvenc-admission";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -54,7 +55,8 @@ describe("AgentRunner concurrency", () => {
   });
 });
 
-async function queueFixture(cores = 6, videoEncoder: H264Capability = { kind: "hardware", encoder: "h264_nvenc" }, verifiedSlots?: number, gpuFreeMemory = async (): Promise<number | undefined> => 32_000) {
+const permit = (): NvencPermit => ({ assertValid() {}, started: async () => {}, release: async () => {} });
+async function queueFixture(cores = 6, videoEncoder: H264Capability = { kind: "hardware", encoder: "h264_nvenc" }, verifiedSlots?: number, gpuFreeMemory = async (): Promise<number | undefined> => 32_000, nvencAdmission: Pick<NvencAdmission, "acquire"> = { acquire: async () => permit() }) {
   const underlyingEncoder: H264Encoder = videoEncoder.kind === "hardware" ? videoEncoder.encoder : "libx264";
   const originalExecutionLimits = limits.executionLimits;
   vi.spyOn(limits, "executionLimits").mockImplementation((_cpuCount, encoder) => originalExecutionLimits(cores, encoder, { totalBytes: 64 * 1024 ** 3, availableBytes: 48 * 1024 ** 3 }));
@@ -63,12 +65,12 @@ async function queueFixture(cores = 6, videoEncoder: H264Capability = { kind: "h
   const source = path.join(directory, "input.mp4");
   await writeFile(source, "input");
   const item = { ...media(), sourcePath: source, fingerprint: await fingerprintFile(source) };
-  const commands: { finish(code?: number, stderr?: string): Promise<void> }[] = [];
+  const commands: { finish(code?: number, stderr?: string): Promise<void>; progress(outTimeMs: number): void }[] = [];
   let active = 0;
   let peak = 0;
   const ffmpeg = {
     ffmpegPath: "/fake",
-    run(args: string[]) {
+    run(args: string[], onProgress?: (event: { progress: number; outTimeMs: number }) => void) {
       const result = deferred<{ code: number; stdout: string; stderr: string }>();
       const marker = `encoded-${commands.length}`;
       active++;
@@ -77,14 +79,14 @@ async function queueFixture(cores = 6, videoEncoder: H264Capability = { kind: "h
         if (code === 0) await writeFile(args.at(-1)!, marker);
         result.resolve({ code, stdout: "", stderr });
       };
-      commands.push({ finish });
+      commands.push({ finish, progress: outTimeMs => onProgress?.({ progress: outTimeMs, outTimeMs }) });
       return { process: {}, promise: result.promise.finally(() => { active--; }), cancel: () => finish(130) };
     },
   } as unknown as FfmpegAdapter;
   const jobStore = new JobStore(path.join(directory, "jobs"));
   const compile = vi.fn<TemplateCompiler["compile"]>(async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }));
   const queue = new ExportQueue({
-    jobStore, ffmpeg, gpuFreeMemory,
+    jobStore, ffmpeg, gpuFreeMemory, nvencAdmission,
     compiler: { compile } as unknown as TemplateCompiler,
     artifactVerifier: { verify: async (file: string, taskId: string) => ({ taskId, path: file, sizeBytes: (await readFile(file)).length, durationMs: 1000, createdAt: now() }) } as ArtifactVerifier,
     fontResolver: { resolve: async () => null },
@@ -92,10 +94,116 @@ async function queueFixture(cores = 6, videoEncoder: H264Capability = { kind: "h
     ...(verifiedSlots === undefined ? {} : { executionLimits: { ...limits.executionLimits(cores, underlyingEncoder), exports: verifiedSlots } }),
   });
   const batch = (count = 1, projectId?: string) => queue.createBatch({ template: createDefaultTemplate(), projectId, mediaIds: Array.from({ length: count }, () => item.id), mediaItems: [item], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
-  return { queue, batch, commands, jobStore, compile, peak: () => peak };
+  return { queue, batch, commands, jobStore, compile, item, directory, peak: () => peak };
 }
 
 describe("global export concurrency", () => {
+  it("blocks and cancels a hardware preview while encoder sessions are occupied", async () => {
+    const acquire = vi.fn(async () => undefined);
+    const f = await queueFixture(6, { kind: "hardware", encoder: "h264_nvenc" }, 2, async () => 32_000, { acquire });
+    const cancellation = new AbortController();
+    const preview = f.queue.renderPreview({ template: createDefaultTemplate(), media: f.item, preset: DEFAULT_PRESET, cacheDirectory: path.join(f.directory, "cache"), signal: cancellation.signal });
+    const rejected = expect(preview).rejects.toThrow();
+    await vi.waitFor(() => expect(acquire).toHaveBeenCalled());
+    expect(f.commands).toHaveLength(0);
+    cancellation.abort();
+    await rejected;
+    await f.queue.shutdown();
+  });
+
+  it("shares the startup permit with hardware previews and releases it on failure", async () => {
+    const acquired = { ...permit(), started: vi.fn(async () => {}), release: vi.fn(async () => {}) };
+    const f = await queueFixture(3, { kind: "hardware", encoder: "h264_nvenc" }, 1, async () => 32_000, { acquire: async () => acquired });
+    const preview = f.queue.renderPreview({ template: createDefaultTemplate(), media: f.item, preset: DEFAULT_PRESET, cacheDirectory: path.join(f.directory, "cache"), signal: new AbortController().signal });
+    const rejected = expect(preview).rejects.toThrow("动态预览渲染失败");
+    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    f.commands[0].progress(40_000);
+    f.commands[0].progress(80_000);
+    await vi.waitFor(() => expect(acquired.started).toHaveBeenCalledOnce());
+    await f.commands[0].finish(1);
+    await rejected;
+    await f.queue.shutdown();
+    expect(acquired.release).toHaveBeenCalled();
+  });
+
+  it("waits for NVENC sessions despite free VRAM and resumes without changing the frozen encoder", async () => {
+    let occupied = true;
+    const acquire = vi.fn(async () => occupied ? undefined : permit());
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, async () => 32_000, { acquire });
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    try {
+      await vi.waitFor(() => expect(acquire).toHaveBeenCalled());
+      expect(f.commands).toHaveLength(0);
+      expect(f.queue.snapshot().batches[0].batch.tasks[0]).toMatchObject({ status: "queued", attempt: 0, errorMessage: expect.stringContaining("编码会话") });
+      occupied = false;
+      await f.queue.start(batch.id);
+      await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+      expect(f.compile.mock.calls[0][3].videoEncoder).toBe("h264_nvenc");
+      await f.commands[0].finish();
+      await running;
+    } finally { await f.queue.shutdown(); }
+  });
+
+  it.each(["cancel", "shutdown"])("settles a session-blocked queue on %s without starting FFmpeg", async action => {
+    const acquire = vi.fn(async () => undefined);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, async () => 32_000, { acquire });
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(acquire).toHaveBeenCalled());
+    if (action === "cancel") await f.queue.cancel(batch.tasks[0].id);
+    else await f.queue.shutdown();
+    await running;
+    expect(f.commands).toHaveLength(0);
+    await f.queue.shutdown();
+  });
+
+  it("releases a pending startup permit when shutdown races session admission", async () => {
+    const reading = deferred<NvencPermit>();
+    const acquired = { ...permit(), release: vi.fn(async () => {}) };
+    const acquire = vi.fn(() => reading.promise);
+    const f = await queueFixture(20, { kind: "hardware", encoder: "h264_nvenc" }, 6, async () => 32_000, { acquire });
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(acquire).toHaveBeenCalledOnce());
+    const shutdown = f.queue.shutdown();
+    reading.resolve(acquired);
+    await Promise.all([running, shutdown]);
+    await vi.waitFor(() => expect(acquired.release).toHaveBeenCalledOnce());
+    expect(f.commands).toHaveLength(0);
+  });
+
+  it("releases startup serialization on encoded progress and releases again safely at exit", async () => {
+    const acquired = { ...permit(), started: vi.fn(async () => {}), release: vi.fn(async () => {}) };
+    const f = await queueFixture(3, { kind: "hardware", encoder: "h264_nvenc" }, 1, async () => 32_000, { acquire: async () => acquired });
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    try {
+      await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+      f.commands[0].progress(0);
+      expect(acquired.started).not.toHaveBeenCalled();
+      f.commands[0].progress(40_000);
+      f.commands[0].progress(80_000);
+      await vi.waitFor(() => expect(acquired.started).toHaveBeenCalledOnce());
+      await f.commands[0].finish(1);
+      await running;
+      expect(acquired.release).toHaveBeenCalled();
+    } finally { await f.queue.shutdown(); }
+  });
+
+  it("reports NVENC error 21 without an automatic retry or a software fallback", async () => {
+    const f = await queueFixture();
+    const batch = await f.batch();
+    const running = f.queue.start(batch.id);
+    await vi.waitFor(() => expect(f.commands).toHaveLength(1));
+    await f.commands[0].finish(1, "OpenEncodeSessionEx failed: incompatible client key (21): (no details)");
+    await running;
+    expect(f.queue.snapshot().batches[0].batch.tasks[0]).toMatchObject({ status: "failed", errorMessage: expect.stringContaining("error 21") });
+    expect(f.commands).toHaveLength(1);
+    expect(f.compile.mock.calls[0][3].videoEncoder).toBe("h264_nvenc");
+    await f.queue.shutdown();
+  });
+
   it("keeps waiting if telemetry fails after reporting low VRAM", async () => {
     let free: number | undefined = 100;
     const probe = vi.fn(async () => free);

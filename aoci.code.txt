@@ -6,7 +6,7 @@
 AGENTS.md[SC9T]: F:规定项目权威、产品不变量、领域归属及交付门禁 | R:code:src/shared/agent.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:规则优先于索引；每次修改稳定后自动维护并运行Verify、Check、Guide，阻断须报告；交付要求源码核对及fresh验证；跨模板按请求条数制作，覆盖默认开启可逐项关闭 | S:源mask不证明选款或输出安全；形状须全轮共同候选、同一冻结字节、逐输出100%覆盖和独立内容安全，缺证据UNSAFE不回退；旧冻结任务保持原解释；AOCI对齐不替代行为验证，按需读取不免除维护
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
-package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx | A:typecheck、Vitest、Harness与安装包入口；Playwright作为固定运行依赖external | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态
+package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx,code:src/main/nvenc-admission.ts | A:typecheck、Vitest、Harness与安装包入口；Playwright固定运行依赖external；proper-lockfile提供跨进程启动锁 | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态
 tsconfig.json[AB5T]: F:严格TypeScript编译约束并包含src tests和Vite配置 | R:code:src/main/index.ts | A:类型检查配置不代表运行行为 | S:noEmit且模块按Bundler解析
 vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | R:code:src/renderer/main.tsx | A:前端构建入口 | S:相对base适配本地Electron加载
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
@@ -79,7 +79,7 @@ model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独�
 paths.ts[IB7S]: F:提供有界文件指纹、输出路径分配及模板资源校验 | R:code:src/main/queue.ts,code:src/main/source-fact-census.ts,code:src/main/source-sticker-knowledge-store.ts | A:fingerprintFile支持AbortSignal和maxBytes，保留sha256前缀；分配不冲突文件名，校验模板资源指纹 | S:指纹须等待EOF与stream close，取消或超预算不返回部分摘要；输出不能覆盖源视频或现有文件
 platform.ts[AB7T]: F:跨Linux和Windows解析命令及字体候选路径 | R:code:src/main/ffmpeg.ts | A:平台路径辅助 | S:保留各平台路径语义
 preload.ts[EU7T]: F:经contextBridge暴露受限DesktopApi及状态订阅 | R:code:src/main/index.ts,code:src/shared/desktop.ts,code:src/shared/batch-production.ts | A:固定IPC桥接批量列表、开始、停止及既有制作、审阅、账号和导出操作 | S:账号文件仅由主进程对话框授权；旧caption与confirm接口存在不表示主进程接受；不暴露shape成功入口
-queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-admission.ts,code:src/main/shape-cover-artifacts.ts | A:创建批次、渲染核验、直发批准样片及恢复取消；snapshot支持项目过滤，taskStatuses轻量投影；合并进度写入，生命周期独立等待持久化；托管factory绑定canonical JobStore | S:形状预览绑定源mask，直发需进程内准入且复制后重查；普通路径拒绝形状；partial验证后无覆盖发布；重试沿用冻结设置；通知失败不回滚completed或占渲染槽；factory不恢复handle或发布
+queue.ts[AW9L]: F:拥有持久导出生命周期、共享渲染调度、样片及安全发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/store.ts,code:src/main/shape-cover-admission.ts,code:src/main/shape-cover-artifacts.ts,code:src/main/nvenc-admission.ts | A:批次创建、渲染核验、批准样片直发、恢复取消；项目过滤snapshot与轻量taskStatuses；合并进度持久化；NVENC等待提示合并通知，error21可读报告；托管factory绑定canonical JobStore | S:形状预览绑定源mask，直发需进程内准入且复制后重查；普通路径拒绝形状；partial验证后无覆盖发布；重试沿用冻结设置；通知失败不回滚completed或占渲染槽；factory不恢复handle或发布；导出与样片共用NVENC启动许可，等待时可取消，退出释放
 recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:code:src/main/application.ts | A:项目入口历史辅助 | S:不承担工作区或模板状态
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
 source-sticker-knowledge-session.ts[AB7T]: F:按源身份管理识别候选、多版本样片复核及修订传播 | R:code:src/main/source-sticker-knowledge-store.ts | A:源贴纸事实生命周期owner | S:不接纳近似覆盖位置作为事实
@@ -122,6 +122,7 @@ source-fact-review-evidence.ts[IA8S]: F:为完整画布人工审阅托管与D1�
 source-fact-review-session.ts[DA8S]: F:记录完整原画布逐帧人工目标声明并冻结无authority收据 | R:code:src/main/source-fact-review-evidence.ts,code:scripts/source-fact-review.mjs,code:scripts/source-fact-review.html | A:begin绑定ordinal、PTS及像素SHA到一次presentation；acknowledge检查尺寸和摘要；严格TARGETS、EMPTY、UNKNOWN命令；finish要求所有帧且fresh复核证据，深冻结全体绑定与receiptDigest | S:EMPTY必须明确确认，空数组或缺帧不能推断为空；移动动画及不确定目标保留；客户端呈现只是CLIENT_REPORTED；方法NOT_EVALUATED，authority=none且eligible=false，canonical unverifiedIntervals始终覆盖全horizon
 source-fact-qualification-compare.ts[KA8M]: F:只读校验D2资格审阅绑定并计算逐目标逐帧错误与覆盖指标 | R:code:src/main/source-fact-qualification-contract.ts,code:src/main/source-fact-review-session.ts | A:校验原D2收据摘要及补集；独立逐帧映射比较身份与时域；首个false EMPTY立即失败 | S:离线匹配仍为INCOMPLETE且无资格记录；缺映射或冻结证据不通过；样本不足不判断5%可用性，硬语义错误不被平均抵消
 source-fact-qualification-contract.ts[DA8S]: F:定义独立真值资格数据包、冻结标准、逐帧对应及记录形状 | R:code:src/main/source-fact-census.ts,code:src/main/source-fact-review-session.ts,code:src/shared/source-sticker-knowledge.ts | A:固定18类覆盖与零容忍标准；校验source、census、逐帧SHA和真值身份；资格资产用独立规范摘要 | S:记录schema不签发或恢复资格authority；未知真值单独保留；creation/review版本随包追溯，真值作者不能资格审阅自己的数据
+nvenc-admission.ts[RH7T]: F:协调跨简辑进程的NVENC启动准入并读取全设备会话占用 | R:code:src/main/queue.ts,code:package.json | A:共享用户临时目录锁；会话数解析与查询；acquire签发许可，编码开始或退出释放 | S:预算使用启动实测分配而非驱动最大值；无遥测锁保持至退出，已观测后查询失败阻断；正输出时间戳才解除启动串行
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
