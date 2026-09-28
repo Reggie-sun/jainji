@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { lstat, mkdir, mkdtemp, readFile, readdir, readlink, rm, symlink, unlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, open, readFile, readdir, readlink, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -63,7 +63,13 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
       pixels[i + 3] = x === 3 || y === 3 || x === 30 || y === 30 ? 128 : 255;
     }
     const assetPath = path.join(value.root, "contour.png");
-    expect(spawnSync(ffmpegBin, ["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "32x32", "-i", "pipe:0", "-frames:v", "1", "-threads", "1", assetPath], { input: pixels }).status).toBe(0);
+    const rawPath = path.join(value.root, "contour.rgba");
+    // A finite file gives the decoder EOF without depending on spawnSync stdin shutdown.
+    await writeFile(rawPath, pixels);
+    const encoded = spawnSync(ffmpegBin, ["-v", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "32x32", "-i", rawPath, "-frames:v", "1", "-threads", "1", assetPath],
+      { stdio: ["ignore", "pipe", "pipe"], timeout: 10_000, killSignal: "SIGKILL" });
+    expect(encoded.error, encoded.stderr?.toString()).toBeUndefined();
+    expect(encoded.status, encoded.stderr?.toString()).toBe(0);
     const fingerprint = sha(await readFile(assetPath));
     value.request.candidates = [{ id: `uploaded-${fingerprint}`, asset: { assetPath, assetFingerprint: `sha256:${fingerprint}` } }];
     const frozen = await freezeShapeCoverCandidate(value.request, value.request.candidates[0].id, value.store, path.join(value.root, "frozen"), mediaTools);
@@ -197,9 +203,18 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
       const render = vi.spyOn(input.ffmpeg, "run");
       const recovered = new ShapeCoverArtifactStore(options);
       expect(await recovered.reconcile(publish.key)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result: completed });
-      const child = spawnSync(process.execPath, [restart], { encoding: "utf8", timeout: 10_000 });
-      expect(child.status, child.stderr).toBe(0);
-      expect(JSON.parse(child.stdout)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result: completed });
+      // Keep harness output outside the tree whose read-only custody is checked below.
+      const observationRoot = await mkdtemp(path.join(os.tmpdir(), "shape-restart-observation-")); roots.push(observationRoot);
+      const stdoutPath = path.join(observationRoot, "result.json"), stderrPath = path.join(observationRoot, "stderr.log");
+      const stdout = await open(stdoutPath, "wx"), stderr = await open(stderrPath, "wx");
+      let child: ReturnType<typeof spawnSync>;
+      try {
+        child = spawnSync(process.execPath, [restart], { stdio: ["ignore", stdout.fd, stderr.fd], timeout: 10_000, killSignal: "SIGKILL" });
+      } finally { await stdout.close(); await stderr.close(); }
+      const diagnostics = await readFile(stderrPath, "utf8");
+      expect(child.error, diagnostics).toBeUndefined();
+      expect(child.status, diagnostics).toBe(0);
+      expect(JSON.parse(await readFile(stdoutPath, "utf8"))).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result: completed });
       expect(await recovered.reconcile(publish.key)).toEqual({ state: "COMPLETED_VERIFIED", authority: "none", result: completed });
       expect(await fileSnapshot(value.root)).toEqual(before);
       expect(await readdir(directory)).not.toContain("publication-receipt.json");
@@ -926,7 +941,12 @@ async function fixture(sourceSize = 64, fps = 30, sourceColor = "white") {
       pixels[i + 3] = kind === "empty" ? 0 : kind === "partial" ? 128 : kind === "left" && x >= 16 || kind === "right" && x < 16 ? 0 : 255;
     }
     const assetPath = path.join(root, `${kind}.png`);
-    expect(spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "32x32", "-i", "pipe:0", "-frames:v", "1", "-threads", "1", assetPath], { input: pixels }).status).toBe(0);
+    const rawPath = path.join(root, `${kind}.rgba`);
+    await writeFile(rawPath, pixels);
+    const encoded = spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", "32x32", "-i", rawPath, "-frames:v", "1", "-threads", "1", assetPath],
+      { stdio: ["ignore", "pipe", "pipe"], timeout: 10_000, killSignal: "SIGKILL" });
+    expect(encoded.error, encoded.stderr?.toString()).toBeUndefined();
+    expect(encoded.status, encoded.stderr?.toString()).toBe(0);
     const fingerprint = sha(await readFile(assetPath));
     candidates.push({ id: `uploaded-${fingerprint}`, asset: { assetPath, assetFingerprint: `sha256:${fingerprint}` } });
   }

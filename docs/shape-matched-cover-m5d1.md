@@ -73,3 +73,49 @@ Session-record 评估：本轮有 substantive production source 与真实 decode
 ## Remaining Gates
 
 D2 逐帧审阅所有可见旧贴纸的完整 T(f) 或 UNKNOWN，必须建立合格原画布 session/acceptance；未审阅与不确定不能写空集合。连续明确空集合帧才能形成 verified-no-sticker interval。D3 验证统一 revision 下全目标/全活动 segments/masks；moving/animated/无法静态 mask/身份不确定目标必须保留，导致 V1 UNSAFE。D4 才在全部事实、方法、mask 与 freshness/disputes 成立后私有签发 FullSourceAdmissionHandle。未通过这些门不回 C 签发，不改 B 默认关闭；E 仍独立验收真实批量效果、平台与性能。
+
+## Checkpoint Recovery — Fixture Input EOF
+
+用户要求先清理工程 blockers，不进入 D2，也不改 D1。候选 `d2f80db` 中上表五个 source/test SHA 全部保持不变。此次只修复既有 shape fixture 的 raw RGBA 输入交付和记录实际 fresh gates，不能自动提升 semanticReview/eligibility、生成 no-sticker interval 或给 C 增加 issuer。
+
+根因调查采用当前 Node v22.21.0 /libuv 1.51.0 和同一 app FFmpeg，不加载 D1 code。单进程串行对比，所有案例独立临时文件，原始 RGBA 均为 32×32×4=4096 bytes；捕获 stdout/stderr，分别比较 input pipe/file、spawnSync/异步 spawn、output file/image2pipe。结果：
+
+| Launch and input | PNG file output | PNG pipe output |
+| --- | --- | --- |
+| spawnSync + Buffer stdin | 2500ms ETIMEDOUT，PNG 已写出 | 2500ms ETIMEDOUT，PNG 已读出 |
+| spawnSync + finite RGBA file | 13ms exit0 | 11ms exit0 |
+| async spawn + stdin.end(Buffer) | 15ms exit0 | 10ms exit0 |
+| async spawn + finite RGBA file | 10ms exit0 | 12ms exit0 |
+
+同一种输出方式下，超时产出的完整 PNG 与正常退出 PNG 的 SHA 相同：file=`c57ed0cbf436eee7503df524c77146766a266e765116742f7dc4f4a7cf52fd0c`、image2pipe=`d89e921ae123a8ab6e3ff1eaf6ff4183e9d01e6a23feb90e65ae5f63f1baea15`。因此超时不是画面生成失败，也不是 stdout/stderr backpressure：file output 仍超时，pipe output 已被读出且量很小。fixture 临时路径及输出句柄不是区分条件；每个串行案例的资源与输入尺寸相同，没有并发/GPU 前提。此前添加 nostdin、input/filter threads 都未解决；不能以这些参数猜测修复。
+
+独立 Node `spawnSync('/bin/cat', [], {input: Buffer.alloc(4096), timeout: 1000, killSignal: 'SIGKILL'})` 已输出全部4096 bytes，但仍 ETIMEDOUT；wc 同样等不到 stdin EOF。更直接的有限诊断让 Python child 将 fd0 设为 nonblocking 后读取250ms：同步 child 已读4096 bytes，却 `eof=false /wouldBlock=25`；异步 stdin.end child 为 `eof=true /wouldBlock=0`。这将稳定归因收敛到**当前 runtime/sandbox 下同步 stdin 的 EOF 交付边界**，不是 Vitest worker 或 shape 函数。FFmpeg 已完成编码/写出，但其输入生命周期未正常结束，不能把磁盘 PNG 存在当作 child 成功。
+
+strace 被 PTRACE_TRACEME EPERM 拒绝，直接 AF_UNIX socketpair 也被环境拒绝。尚不能区分 Node/libuv 内部实现与当前 containment 的具体 syscall 原因；不声称所有 Node v22 环境都有该问题，不旁路 ptrace/网络权限。上游 host/runtime 修复不是当前 scope。可重复本地证据保存在 `/tmp/jianji-png-matrix.mjs`、`/tmp/jianji-png-matrix.log`、`/tmp/jianji-stdin-eof.py`、`/tmp/jianji-stdin-eof.mjs`；这些是诊断 artifact，不进入 production 或 Git。
+
+最小修复在 `tests/shape-cover-candidates.test.ts` 两处 PNG fixture：将原 pixels 先完整 writeFile 到 fixture root 的 `.rgba` 文件，再让真实 FFmpeg 按相同尺寸/格式读取有限文件；stdin 显式 ignore，保留原 encoder/PNG 输出，不改变形状算法、mask、选款、admission、compiler、queue 或 renderer。command 加10s timeout/SIGKILL，并断言无 spawn error 及 exit0，防止成功写文件但 child 未退出仍算通过。RGBA 文件归原 root 所有，由现有 afterEach 清理，不新增用户素材或跨 fixture 共享句柄。
+
+原首个 symlink 测试 fresh red 为15s有界 timeout/exit124；修复后同一测试1项 PASS（其余100项按 filter skipped），fixture约466ms，整个run1.48s；这只证明原卡点恢复，不能冒充整个 regression PASS。证据 `/tmp/jianji-checkpoint-fixture-red.log`、`/tmp/jianji-checkpoint-fixture-green.log`。整体 gate 以实际完整回归终态为准。
+
+首次整个 shape 回归100项 PASS，另1项 restart child JSON 为空，仍为 suite FAIL（`/tmp/jianji-checkpoint-shape-regression.log`）。没有修改生产 reconcile；独立 Node child 用 writeFile marker 证明已经执行，比较 sync/async × stdout pipe/file：两种 launch 的 pipe stdout 均为空、file stdout 均得到 `child-result`，全部 exit0。直接 fd write 可被 pipe 捕获，JS stream/console 则未被捕获，故不是“reconciliation 没跑”或任意 JSON/authority failure 的证据；stdio 输送异常不能被 exit0 隐藏。尚无权限检查 syscall 路径，因此只记录当前 runtime 的可复现 transport 边界，不推定全平台 Node 缺陷。
+
+restart fixture 只将 stdout/stderr 接入普通文件，10s有界 spawnSync 后关闭两只 FileHandle，再校验 spawn error、exit0 和完整结果 JSON。观察文件保存在单独 `shape-restart-observation-*` 临时 root，归 harness 所有并由现有 afterEach 清理；它不在 artifact/canonical JobStore/输出/custody tree 内，不是 publication receipt。原 `fileSnapshot(value.root)` 前后相等、无 receipt 写入、authority=none、never republish、零 render/reviewer 二次调用全部保留。独立 Node/esbuild 重启仍真实执行，没有 mock reconciliation 或将 UNKNOWN 改 PASS。该测试单独 fresh1项 PASS（约1.99s）；证据 `/tmp/jianji-restart-diagnosis.log`、`/tmp/jianji-restart-green.log`。此次执行的 child script 与原实现相同，临时 timer/trace 调查代码已移除。
+
+本轮重新按 standing route 使用 external-subagent skill 检查 managed Kimi；`/tmp/jianji-d1-checkpoint-subagent` doctor 仍 exit2 /BLOCKED_CAPABILITY，未发 upstream request。CodeGraph/AOCI rules、Maintain 实际仍返回 requires approval /policy never；不能获取后续 Verify/Check/Guide 的合格结果，不使用 CLI 旁路，不改其他任务 staged 索引。治理 gate 保持 blocked，不能正式标 M5-D1 PASS。
+
+## Fresh Recovery Gates
+
+共享树其他 writer 已提交 batch 工作 `845f914`；本轮 source freeze 与测试范围在该检查点上核对。D1 source/test 五个 SHA 与 `d2f80db` 及上表一致；A renderer、B guard、C assembler SHA 也未改变。仅 shape fixture 的测试文件 SHA 更新为 `8e4fe433811e7b39911991679c0b5dac98e89585f45741bae20d579317d4ae0d`，对应 PNG 输入与 child stdio 的 harness 修复，没有 production source 修改。
+
+| Gate | Fresh result and evidence |
+| --- | --- |
+| npm run typecheck | exit0，`/tmp/jianji-checkpoint-typecheck-final.log`；此前其他 writer 的类型错误已消失，本轮未接管该文件 |
+| D1 related tests | 12 files /261 tests PASS，0 failed/0 skipped，15.98s；`/tmp/jianji-checkpoint-d1-related-final.log`，同上述 related 文件列表，maxWorkers=2/minWorkers=1 |
+| shape-cover-candidates regression | 1 file /101 tests PASS，0 failed/0 skipped，160.64s；`/tmp/jianji-checkpoint-shape-final.log`，maxWorkers=1/minWorkers=1，外层300s有界，不放宽单项测试 timeout |
+| git diff --check | 全共享树 exit0；只提交本轮三路径，其余 staged/dirty/用户删除保留 |
+| full suite | 未运行；当前 AGENTS/Plan 的 D1 与本次 test-only recovery 合同要求 typecheck、受影响测试及相关制作/导出集成，已执行上述362 tests。历史 M4/M5-A 的全套要求不自动升级本次 scope；不声称 full-suite PASS |
+| AOCI Maintain / Verify / Check / Guide | BLOCKED：rules/Maintain 调用被 approval policy=never 拒绝，没有合格后续 evidence，也不宣称 governance aligned |
+
+Parent final diff /Implementation Review Risk Gate 对此 exact fixture SHA 与 unchanged D1 SHA 判定 `KIMI_REVIEW_NOT_REQUIRED`：用户未要求独立 reviewer；仅 test harness stdio/临时文件改变，无 publication/knowledge/production authority 或不可恢复状态写；真实同字节发布、独立进程只读、UNKNOWN/never republish 与全部原 assertion 均有完整 regression PASS。没有具体重大 consequence 与 reviewer 可补实质缺口的组合；runtime 最底层 syscall 原因与治理能力限制如实记录，不由 reviewer 投票替代。
+
+Session-record 本次仍使用既有 milestone/Plan，保存复现、单变量矩阵、首轮失败、新暴露的 child transport 问题、修复及 final gates，不创建第二 owner。scope 仅工程恢复；状态为 `ENGINEERING_VERIFIED / GOVERNANCE_BLOCKED / SEMANTIC_AUTHORITY_BLOCKED / PRODUCT_DISABLED`。AOCI 合同恢复并完成官方维护/校验前，不正式标 M5-D1 PASS，也不开始 D2。D1 只证明全像素枚举，未生成任何 no-sticker interval 或 exhaustive semantic acceptance。
