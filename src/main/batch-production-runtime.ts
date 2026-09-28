@@ -68,7 +68,7 @@ export function createBatchProductionRuntime(input: {
         const sourceCount = workspace?.selectedMediaIds.length ?? project.mediaItems.filter(media => media.probeStatus === "ready").length;
         const decorations = DecorationSchema.parse({ ...workspace?.decorations, productPrice: template.productPriceDraft ?? "" });
         return { recentProjectId: item.id, name: project.name, sourceCount, requestedCount: workspace?.requestedCount ?? Math.max(1, sourceCount),
-          productPrice: decorations.productPrice ?? "", coverEnabled: project.coverSticker?.enabled ?? false,
+          productPrice: decorations.productPrice ?? "", coverEnabled: true,
           displayMode: decorations.displayMode === "full" ? "full" as const : "first-5s" as const, mode: decorations.mode ?? "manual",
           coverMode: project.coverSticker?.trackingMode };
       } catch {

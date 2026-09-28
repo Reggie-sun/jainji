@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-28T13:08:25Z",
+  "updated_at": "2026-09-28T13:22:27Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -223,9 +223,9 @@
       "normalized_sha256": "6368db94f468318e841db836e80ad2d54f0f10822d2cfcb5c7ec1ee1b404fb8c"
     },
     "AGENTS.md": {
-      "sha256": "1fc6cdff6bb19c572b4f09ab922902b65f77e3221079474e9af824ad7012e4e6",
-      "size": 19037,
-      "normalized_sha256": "1fc6cdff6bb19c572b4f09ab922902b65f77e3221079474e9af824ad7012e4e6"
+      "sha256": "abf3d020507207f405d35144432f4dafda5caae9d986ff3f74e7ba13bc593f3b",
+      "size": 19100,
+      "normalized_sha256": "abf3d020507207f405d35144432f4dafda5caae9d986ff3f74e7ba13bc593f3b"
     },
     "CLAUDE.md": {
       "role": "observe",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "4987a126cacec0ddbce25a797868b615bf204e7445ccd48e4cb35554899004fe",
-      "size": 57345,
-      "normalized_sha256": "4987a126cacec0ddbce25a797868b615bf204e7445ccd48e4cb35554899004fe"
+      "sha256": "d32ec83ee98453f23338c3b19358729bfb7e3fa018ec7485c5236bdc92a77696",
+      "size": 57402,
+      "normalized_sha256": "d32ec83ee98453f23338c3b19358729bfb7e3fa018ec7485c5236bdc92a77696"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1158,9 +1158,9 @@
       "normalized_sha256": "53a64ac6db601bfecaa39252a65c43bd4de5ab0568489060b04bd3e5e42a469b"
     },
     "src/main/batch-production-runtime.ts": {
-      "sha256": "c8fc8b6bd4c8873ddfc5d822ee268b5e06c12aa6b5ea3a8ad7e19591ebafd88f",
-      "size": 4862,
-      "normalized_sha256": "c8fc8b6bd4c8873ddfc5d822ee268b5e06c12aa6b5ea3a8ad7e19591ebafd88f"
+      "sha256": "ab85d509ba099844f6d8848b81dfd80d68f246264173b6595da9d2dd132796a2",
+      "size": 4828,
+      "normalized_sha256": "ab85d509ba099844f6d8848b81dfd80d68f246264173b6595da9d2dd132796a2"
     },
     "src/main/bug-feedback-ipc.ts": {
       "sha256": "3a7f4c243eae9448b93c5fd2652b9e730b154fe6510bee0788508df047b57c6b",

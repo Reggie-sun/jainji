@@ -87,9 +87,12 @@ if (process.type === "browser") {
   await page.getByRole("heading", { name: "批量制作", exact: true }).waitFor();
   const row = name => page.getByRole("region", { name: `${name}制作设置`, exact: true });
   for (const name of products) {
+    assert.equal(await page.getByRole("checkbox", { name: `${name}开启覆盖`, exact: true }).isChecked(), true);
     await page.getByRole("checkbox", { name: `选择模板 ${name}`, exact: true }).check();
     await row(name).getByLabel("想制作的视频条数", { exact: true }).fill("2");
   }
+  await page.getByRole("checkbox", { name: "蝴蝶贴开启覆盖", exact: true }).uncheck();
+  report.checks.push("cover defaults on even for saved cover-off templates; manual off survives refresh and navigation");
   await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("100");
   await row("蝴蝶贴").getByText("实际制作 100 条（使用 33 条素材）", { exact: true }).waitFor();
   report.checks.push("33 sources / requested 100 visibly plans exactly 100");
