@@ -2,6 +2,11 @@
 .batch-production-intro p { margin: 8px 0; color: var(--text-muted, #697b76); }
 .batch-production-intro small, .batch-template-controls small { color: var(--text-muted, #697b76); line-height: 1.6; }
 .batch-production-list { display: grid; gap: 18px; }
+.batch-mode-select { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.batch-template-row .batch-mode-select .button.secondary.active { color: #087d70; border-color: #087d70; background: #e7f4ef; }
+.batch-mode-select small { flex-basis: 100%; color: #697b76; line-height: 1.6; }
+.batch-result-name { font-weight: 600; font-size: inherit; }
+.batch-details-back { margin-bottom: 20px; }
 .batch-template-row { padding: 24px; border: 1px solid transparent; }
 .batch-template-row.selected { border-color: var(--accent, #397c69); }
 .batch-template-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }

@@ -41,7 +41,8 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
   const tasks: ExportTask[] = [];
   const starts: AgentStartInput[] = [];
   const frozen: Project[] = [];
-  const queue = () => ({ revision: 0, batches: [{ batch: { tasks } }] } as unknown as QueueSnapshot);
+  const queue = () => ({ revision: 0, batches: projects.map(project => ({ batch: { projectId: project.id,
+    tasks: tasks.filter(task => project.mediaItems.some(media => media.id === task.mediaId)) } })) } as unknown as QueueSnapshot);
   const dependencies = {
     name: (id: string) => projects[entries.findIndex(entry => entry.recentProjectId === id)].name,
     loadProject: vi.fn(async (id: string) => { events.push(`load:${id}`); return projects[entries.findIndex(entry => entry.recentProjectId === id)]; }),
@@ -62,14 +63,16 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
           busy = Boolean(options.holding);
           const status = options.allComplete || starts.length > 1 ? "completed" : "running";
           const items = Array.from({ length: input.requestedCount ?? input.mediaIds.length * (input.multiplier ?? 1) }, (_, index) => {
-            const id = crypto.randomUUID(); tasks.push({ id, status } as ExportTask);
+            const id = crypto.randomUUID(); tasks.push({ id, status, mediaId: input.mediaIds[index % input.mediaIds.length], progress: 0.37 } as ExportTask);
             return { id: crypto.randomUUID(), mediaId: input.mediaIds[index % input.mediaIds.length], version: Math.floor(index / input.mediaIds.length) + 1, name: value.name, taskId: id, status: "exporting" as const };
           });
           run = { id: crypto.randomUUID(), projectId: value.id, ruleId: "clean", status: busy ? "running" : "finished", items };
           if (options.startThrows && starts.length === 1) throw new Error("fixture preparation failed after enqueue");
         },
         cancel: async () => { busy = false; if (run) run.status = "cancelled"; for (const item of run?.items ?? []) await dependencies.cancelExport(item.taskId!); },
-        persist: vi.fn(async () => undefined),
+        persist: vi.fn(async () => {
+          if (run) { value.latestProduction = { id: run.id, items: run.items }; await new ProjectStore(file).save(value); }
+        }),
       };
     }),
   };
@@ -78,6 +81,65 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it.each(["random", "manual", "agent"] as const)("freezes the explicitly chosen %s mode without changing saved templates", async mode => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0].workspaceDraft!.decorations.mode = "agent";
+    const saved = structuredClone(f.projects[0]);
+    await f.controller.start({ entries: [{ ...f.entries[0], mode }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.starts[0].decorations?.mode).toBe(mode);
+    expect(f.controller.snapshot()?.jobs[0].mode).toBe(mode);
+    expect(f.projects[0]).toEqual(saved);
+  });
+
+  it("rejects unsupported modes before creating any production session", async () => {
+    const f = await fixture();
+    await expect(f.controller.start({ entries: [{ ...f.entries[0], mode: "fast" }] })).rejects.toThrow();
+    expect(f.dependencies.session).not.toHaveBeenCalled();
+  });
+
+  it("observes the active job and waiting job without switching projects or starting sessions", async () => {
+    const f = await fixture({ holding: true });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.tasks).toHaveLength(1));
+    const first = await f.controller.details({ runId: run.id, jobId: run.jobs[0].id });
+    expect(first.items).toHaveLength(1);
+    expect(first.tasks).toHaveLength(1);
+    expect(first.tasks[0].progress).toBe(0.37);
+    const waiting = await f.controller.details({ runId: run.id, jobId: run.jobs[1].id });
+    expect(waiting.items).toEqual([]); expect(waiting.tasks).toEqual([]);
+    expect(f.dependencies.session).toHaveBeenCalledTimes(1);
+    expect(f.dependencies.loadProject).toHaveBeenCalledTimes(2);
+  });
+
+  it("limits completed and restored details to this job's own tasks, excluding project history", async () => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0].latestProduction = { id: crypto.randomUUID(), items: [{ id: crypto.randomUUID(), mediaId: f.projects[0].mediaItems[0].id,
+      name: "旧批作品", version: 1, status: "failed" }] };
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    f.tasks.push({ id: crypto.randomUUID(), mediaId: f.projects[0].mediaItems[0].id, status: "completed" } as ExportTask);
+    for (const controller of [f.controller, new BatchProductionController(f.root, f.dependencies)]) {
+      if (controller !== f.controller) await controller.restore();
+      const detail = await controller.details({ runId: run.id, jobId: run.jobs[0].id });
+      expect(detail.items.map(item => item.name)).toEqual(["蝴蝶贴"]);
+      expect(detail.tasks.map(task => task.id)).toEqual([f.tasks[0].id]);
+    }
+    expect(f.dependencies.session).toHaveBeenCalledTimes(2);
+  });
+
+  it("rejects foreign or stale detail identifiers", async () => {
+    const f = await fixture({ allComplete: true });
+    const run = await f.controller.start({ entries: f.entries });
+    await expect(f.controller.details({ runId: run.id, jobId: crypto.randomUUID() })).rejects.toThrow("重新选择");
+    await expect(f.controller.details({ runId: crypto.randomUUID(), jobId: run.jobs[0].id })).rejects.toThrow("重新选择");
+    await expect(f.controller.details({ runId: "../latest", jobId: run.jobs[0].id })).rejects.toThrow();
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    await waitFor(() => expect(f.controller.busy).toBe(false));
+    await f.controller.start({ entries: f.entries });
+    await expect(f.controller.details({ runId: run.id, jobId: run.jobs[0].id })).rejects.toThrow("重新选择");
+  });
+
   it("counts and waits for exports without reading full queue snapshots", async () => {
     const f = await fixture();
     await f.controller.start({ entries: f.entries });

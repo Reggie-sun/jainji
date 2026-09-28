@@ -146,6 +146,7 @@ function publish(snapshot: QueueSnapshot): void {
 
 function registerHandlers(): void {
   ipcMain.handle("batchProduction.projects", async event => { assertTrustedSender(event); return batchRuntime.listProjects(); });
+  ipcMain.handle("batchProduction.details", async (event, input: unknown) => { assertTrustedSender(event); await queueReady; return batchRuntime.controller.details(input); });
   ipcMain.handle("batchProduction.start", async (event, input: unknown) => {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");

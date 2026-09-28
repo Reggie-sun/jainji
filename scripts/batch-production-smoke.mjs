@@ -35,6 +35,9 @@ if (process.type === "browser") {
   dialog.showSaveDialog = async (_window, options) => ({ canceled: false, filePath: path.join(${JSON.stringify(directory)}, path.basename(options.defaultPath)) });
   dialog.showMessageBox = async () => ({ response: 0 });
   shell.openExternal = async () => undefined;
+  globalThis.fixtureArtifacts = [];
+  shell.openPath = async file => { globalThis.fixtureArtifacts.push({ action: "play", file }); return ""; };
+  shell.showItemInFolder = file => { globalThis.fixtureArtifacts.push({ action: "folder", file }); };
   require(${JSON.stringify(path.join(root, "dist-electron/main.cjs"))});
 }
 `);
@@ -71,7 +74,7 @@ if (process.type === "browser") {
         rectangle: { x: 0.02, y: 0.02, width: 0.12, height: 0.12 },
         regions: [{ id: crypto.randomUUID(), rectangle: { x: 0.02, y: 0.02, width: 0.12, height: 0.12 } }] });
       await window.jianji.saveProject(name, { step: "templates", selectedMediaIds: state.project.mediaItems.map(item => item.id),
-        ruleId: "clean", brief: "", decorations: { mode: "random", displayMode: "full" }, requestedCount: 1, exportFormat: "mp4",
+        ruleId: "clean", brief: "", decorations: { mode: name === "蝴蝶贴" ? "agent" : "random", displayMode: "full" }, requestedCount: 1, exportFormat: "mp4",
         exportSettings: { resolutionMode: "720p", frameRateMode: "source", quality: "balanced" }, outputDirectoryMode: "automatic" });
     }, { name, materialPaths });
     projectFiles.push(path.join(directory, `${name}.jianji-project.json`));
@@ -86,6 +89,10 @@ if (process.type === "browser") {
   await page.getByRole("button", { name: "批量制作", exact: true }).click();
   await page.getByRole("heading", { name: "批量制作", exact: true }).waitFor();
   const row = name => page.getByRole("region", { name: `${name}制作设置`, exact: true });
+  assert.equal(await row("蝴蝶贴").getByRole("button", { name: "全部交给 Agent", exact: true }).getAttribute("aria-pressed"), "true");
+  await row("蝴蝶贴").getByRole("button", { name: "自己设置", exact: true }).click();
+  await row("蝴蝶贴").getByRole("button", { name: "本地随机", exact: true }).click();
+  await page.waitForFunction(() => getComputedStyle(document.querySelector('[aria-label="蝴蝶贴制作设置"] button[aria-pressed="true"]')).backgroundColor === "rgb(231, 244, 239)");
   for (const name of products) {
     assert.equal(await page.getByRole("checkbox", { name: `${name}开启覆盖`, exact: true }).isChecked(), true);
     await page.getByRole("checkbox", { name: `选择模板 ${name}`, exact: true }).check();
@@ -100,6 +107,7 @@ if (process.type === "browser") {
   await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("2");
   await page.getByRole("button", { name: "刷新模板", exact: true }).click();
   await row("蝴蝶贴").getByText("实际制作 2 条（使用 1 条素材）", { exact: true }).waitFor();
+  assert.equal(await row("蝴蝶贴").getByRole("button", { name: "本地随机", exact: true }).getAttribute("aria-pressed"), "true");
   await row("氨糖膏").getByLabel("想制作的视频条数", { exact: true }).fill("3");
   await row("氨糖膏").getByText("实际制作 3 条（使用 2 条素材）", { exact: true }).waitFor();
   await row("氨糖膏").getByLabel("价格显示时段").selectOption("first-5s");
@@ -110,16 +118,39 @@ if (process.type === "browser") {
   await page.screenshot({ path: path.join(directory, "batch-settings.png"), fullPage: true });
   await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
   await waitForState(state => state.batchProduction?.status === "running");
+  const live = await waitForState(state => state.batchProduction?.jobs.some(job => job.taskIds.length));
+  const liveJob = live.batchProduction.jobs.find(job => job.taskIds.length);
+  await page.getByRole("button", { name: `查看 ${liveJob.name} 作品`, exact: true }).click();
+  await page.getByRole("heading", { name: `${liveJob.name} · 作品与导出`, exact: true }).waitFor();
+  const liveDetails = await page.evaluate(async request => window.jianji.batchProductionDetails(request), { runId: live.batchProduction.id, jobId: liveJob.id });
+  assert.ok(liveDetails.items.length > 0);
+  assert.ok(liveDetails.tasks.every(task => liveDetails.items.some(item => item.taskId === task.id)));
+  assert.equal((await page.evaluate(() => window.jianji.getState())).project.id, activeId);
+  await page.getByRole("button", { name: "← 返回批量列表", exact: true }).click();
   await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("3");
   assert.equal(await row("蝴蝶贴").getByLabel("展示文字 / 价格").isEnabled(), true);
   await page.getByRole("button", { name: "制作", exact: true }).click();
   await page.getByRole("button", { name: "批量制作", exact: true }).click();
   assert.equal(await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).inputValue(), "3");
+  assert.equal(await row("蝴蝶贴").getByRole("button", { name: "本地随机", exact: true }).getAttribute("aria-pressed"), "true");
   const state = await waitForState(state => ["finished", "interrupted"].includes(state.batchProduction?.status));
   assert.equal(state.batchProduction.status, "finished", JSON.stringify(state.batchProduction));
   assert.deepEqual(state.batchProduction.jobs.map(job => job.status), ["completed", "completed"], JSON.stringify(state.batchProduction));
   assert.deepEqual(state.batchProduction.jobs.map(job => job.completedCount), [3, 2]);
   assert.equal(state.project.id, activeId);
+  for (const job of state.batchProduction.jobs) {
+    assert.equal(job.mode, "random");
+    await page.getByRole("button", { name: `查看 ${job.name} 作品`, exact: true }).click();
+    const works = page.getByRole("region", { name: `${job.name}作品与任务`, exact: true });
+    await works.getByRole("button", { name: "播放", exact: true }).first().waitFor();
+    assert.equal(await works.locator(".result-row").count(), job.requestedCount);
+    await works.getByRole("button", { name: "播放", exact: true }).first().click();
+    await works.getByRole("button", { name: /成片文件夹/ }).first().click();
+    await page.screenshot({ path: path.join(directory, `${job.name}-works.png`), fullPage: true });
+    await page.getByRole("button", { name: "← 返回批量列表", exact: true }).click();
+  }
+  assert.equal((await electron.evaluate(() => globalThis.fixtureArtifacts)).length, 4);
+  report.checks.push("saved Agent mode explicitly overridden to local random without any network calls", "mode drafts survive refresh and navigation", "live and completed job works display only their own tasks without switching editor", "completed video play and folder actions verified with shell stubs");
   const jobsDirectory = path.join(directory, "userData", "jobs");
   const allBatches = await Promise.all((await readdir(jobsDirectory)).filter(file => file.endsWith(".json")).map(async file => JSON.parse(await readFile(path.join(jobsDirectory, file), "utf8")).batch));
   for (const job of state.batchProduction.jobs) {

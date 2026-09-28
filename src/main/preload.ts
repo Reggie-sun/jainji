@@ -10,10 +10,11 @@ import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shar
 import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
 import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
-import type { BatchProductionStart, BatchProjectOption } from "../shared/batch-production.js";
+import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest } from "../shared/batch-production.js";
 
 const api = {
   batchProductionProjects: (): Promise<BatchProjectOption[]> => ipcRenderer.invoke("batchProduction.projects"),
+  batchProductionDetails: (input: BatchProductionDetailRequest): Promise<BatchProductionDetail> => ipcRenderer.invoke("batchProduction.details", input),
   startBatchProduction: (input: BatchProductionStart): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.start", input),
   cancelBatchProduction: (): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.cancel"),
   createCoverReview: (mediaIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("coverReview.create", mediaIds),

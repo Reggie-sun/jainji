@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-28T15:05:17Z",
+  "updated_at": "2026-09-28T16:00:44Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "357da7a692e270076662ed6d2509e18094337ebd5fda1e1883f9b364f5f2e8ad",
-      "size": 58023,
-      "normalized_sha256": "357da7a692e270076662ed6d2509e18094337ebd5fda1e1883f9b364f5f2e8ad"
+      "sha256": "fe16c95b771f5c0af5ff56417e53f0d0d800c71231166b03faff91d91d1c9335",
+      "size": 58663,
+      "normalized_sha256": "fe16c95b771f5c0af5ff56417e53f0d0d800c71231166b03faff91d91d1c9335"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1153,9 +1153,9 @@
       "normalized_sha256": "d31b4b0e17ad21a5bfb6e720809bbd4898a4bee13f9e2bf4473f42f912f504f2"
     },
     "src/main/batch-production-controller.ts": {
-      "sha256": "53a64ac6db601bfecaa39252a65c43bd4de5ab0568489060b04bd3e5e42a469b",
-      "size": 13557,
-      "normalized_sha256": "53a64ac6db601bfecaa39252a65c43bd4de5ab0568489060b04bd3e5e42a469b"
+      "sha256": "7ab4f2ea3b233d134a0ff8e7ada27bc883eef826ca06a080e944d706ed4826bf",
+      "size": 15497,
+      "normalized_sha256": "7ab4f2ea3b233d134a0ff8e7ada27bc883eef826ca06a080e944d706ed4826bf"
     },
     "src/main/batch-production-runtime.ts": {
       "sha256": "ab85d509ba099844f6d8848b81dfd80d68f246264173b6595da9d2dd132796a2",
@@ -1343,9 +1343,9 @@
       "normalized_sha256": "455c1b8529cb903ad1c696c7a6cb3aac0e9746477c6d097d782da24ba4fda49d"
     },
     "src/main/index.ts": {
-      "sha256": "fe1b0d0b4ccfe764389376a6a61acdea1cf5b7d6315c9cb0afce0dba6cdfe426",
-      "size": 52698,
-      "normalized_sha256": "fe1b0d0b4ccfe764389376a6a61acdea1cf5b7d6315c9cb0afce0dba6cdfe426"
+      "sha256": "7130ebee93b55d54bd3ce0e1cf55b355635c13c9de9acbaf9d690c847a3aea69",
+      "size": 52874,
+      "normalized_sha256": "7130ebee93b55d54bd3ce0e1cf55b355635c13c9de9acbaf9d690c847a3aea69"
     },
     "src/main/media-response.ts": {
       "sha256": "4632d377643da645a9ebefdd09451d4a3d308b91ff0879a1ccde2ea5f6977188",
@@ -1378,9 +1378,9 @@
       "normalized_sha256": "99c1170b35920f6d12779b041c5c6718305373fa4bf14d0cfca59add10bce6a7"
     },
     "src/main/preload.ts": {
-      "sha256": "fbf0d09c96478033414f042e1874185255405a59ea60c27a92e7c0e106b6f8d0",
-      "size": 9589,
-      "normalized_sha256": "fbf0d09c96478033414f042e1874185255405a59ea60c27a92e7c0e106b6f8d0"
+      "sha256": "4e7ad3134049e02c7fa06842934ff08b8a66a6f7643256ebf8d1a51a19cb8dc9",
+      "size": 9795,
+      "normalized_sha256": "4e7ad3134049e02c7fa06842934ff08b8a66a6f7643256ebf8d1a51a19cb8dc9"
     },
     "src/main/qianchuan-account-config.ts": {
       "sha256": "4786a6ae0bfd81cca047cac19b7003beb6b5ac8e700ce565dda9dc6729f3a6ff",
@@ -1592,10 +1592,15 @@
       "size": 5316,
       "normalized_sha256": "18fed9468f68b1b81e0a2f1b90f2402756d79bae5074fadfec50de283973075e"
     },
+    "src/renderer/BatchProductionDetails.tsx": {
+      "sha256": "72907de9574a7135bbe896a2c540ca898a7bab78476b8ebbc858d865b582c38f",
+      "size": 6458,
+      "normalized_sha256": "72907de9574a7135bbe896a2c540ca898a7bab78476b8ebbc858d865b582c38f"
+    },
     "src/renderer/BatchProductionPanel.tsx": {
-      "sha256": "eeb1ccf25035a5ce49e2d6fab7305357420e44efd3e2798e8675005188572806",
-      "size": 11686,
-      "normalized_sha256": "eeb1ccf25035a5ce49e2d6fab7305357420e44efd3e2798e8675005188572806"
+      "sha256": "563c5d642e7faf3c8e44e9b8bbbd9bbf611b107e25f5ed7fda9a35fa6faf6953",
+      "size": 13295,
+      "normalized_sha256": "563c5d642e7faf3c8e44e9b8bbbd9bbf611b107e25f5ed7fda9a35fa6faf6953"
     },
     "src/renderer/BugFeedbackDialog.tsx": {
       "sha256": "4efc9e78614026b3ecfeeec6613c46d0132fee9e7c4c02687b7e47b8287886b7",
@@ -1829,9 +1834,9 @@
       "normalized_sha256": "6f3934884460ce52190977537b3690d742d945d4d9b463eb737d04b44edb7b9a"
     },
     "src/shared/batch-production.ts": {
-      "sha256": "9cab5594136b966944c08b748a82579d4d23ff2f5cdfa288bf73673bf0ef9ea2",
-      "size": 2598,
-      "normalized_sha256": "9cab5594136b966944c08b748a82579d4d23ff2f5cdfa288bf73673bf0ef9ea2"
+      "sha256": "bd62ab7de313b736e965b262b73082997d5228e91b54c980e3a36b0ebdefd905",
+      "size": 3188,
+      "normalized_sha256": "bd62ab7de313b736e965b262b73082997d5228e91b54c980e3a36b0ebdefd905"
     },
     "src/shared/bug-feedback.ts": {
       "sha256": "99d4cfbdb9b180d61a3cd3af1d28753e5c27935944c0939529a3b6d82f77de50",

@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { MAX_AGENT_OUTPUTS } from "./agent.js";
+import type { AgentItem } from "./agent.js";
+import type { ExportTask } from "../main/domain.js";
 import { RequiredProductPriceSchema } from "./decorations.js";
 
 export const BatchProductionEntrySchema = z.object({
@@ -8,6 +10,7 @@ export const BatchProductionEntrySchema = z.object({
   productPrice: RequiredProductPriceSchema,
   coverEnabled: z.boolean(),
   displayMode: z.enum(["full", "first-5s"]),
+  mode: z.enum(["manual", "agent", "random"]).optional(),
   outputDirectory: z.string().min(1).max(4096).optional(),
 }).strict();
 export type BatchProductionEntry = z.infer<typeof BatchProductionEntrySchema>;
@@ -40,6 +43,7 @@ export const BatchProductionJobSchema = z.object({
   productPrice: RequiredProductPriceSchema,
   coverEnabled: z.boolean(),
   displayMode: z.enum(["full", "first-5s"]),
+  mode: z.enum(["manual", "agent", "random"]).optional(),
   status: z.enum(["queued", "preparing", "producing", "exporting", "completed", "failed", "cancelled", "interrupted"]),
   taskIds: z.array(z.string().uuid()).max(MAX_AGENT_OUTPUTS),
   completedTaskIds: z.array(z.string().uuid()).max(MAX_AGENT_OUTPUTS).optional(),
@@ -59,3 +63,13 @@ export const BatchProductionRunSchema = z.object({
   error: z.string().optional(),
 }).strict();
 export type BatchProductionRun = z.infer<typeof BatchProductionRunSchema>;
+
+export const BatchProductionDetailRequestSchema = z.object({ runId: z.string().uuid(), jobId: z.string().uuid() }).strict();
+export type BatchProductionDetailRequest = z.infer<typeof BatchProductionDetailRequestSchema>;
+export interface BatchProductionDetail {
+  runId: string;
+  job: BatchProductionJob;
+  usesModel?: boolean;
+  items: AgentItem[];
+  tasks: ExportTask[];
+}

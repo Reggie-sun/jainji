@@ -4,7 +4,7 @@ import path from "node:path";
 import { AgentStartSchema, calculateExactProductionQuantity, MAX_AGENT_OUTPUTS, type AgentRun, type AgentStartInput } from "../shared/agent.js";
 import { DecorationSchema } from "../shared/decorations.js";
 import { CoverStickerSchema, DEFAULT_COVER_STICKER } from "../shared/cover-sticker.js";
-import { BatchProductionStartSchema, BatchProductionRunSchema, type BatchProductionEntry, type BatchProductionJob, type BatchProductionRun } from "../shared/batch-production.js";
+import { BatchProductionStartSchema, BatchProductionRunSchema, BatchProductionDetailRequestSchema, type BatchProductionDetail, type BatchProductionEntry, type BatchProductionJob, type BatchProductionRun } from "../shared/batch-production.js";
 import { DEFAULT_EXPORT_SETTINGS } from "../shared/export-settings.js";
 import type { ExportTask, Project } from "./domain.js";
 import type { QueueSnapshot } from "./queue.js";
@@ -39,6 +39,7 @@ export class BatchProductionController {
   private controller?: AbortController;
   private pending?: Promise<void>;
   private activeSession?: BatchProductionSession;
+  private activeJobId?: string;
   private executing = false;
   private restorationError?: string;
   private readonly waiters = new Set<() => void>();
@@ -68,6 +69,24 @@ export class BatchProductionController {
     return run;
   }
 
+  /** Observe one frozen job without switching the editor or starting a production session. */
+  async details(input: unknown): Promise<BatchProductionDetail> {
+    const { runId, jobId } = BatchProductionDetailRequestSchema.parse(input);
+    const job = this.snapshot()?.jobs.find(job => this.run?.id === runId && job.id === jobId);
+    if (!job) throw new Error("该批量制作记录已更新，请返回批量列表重新选择。");
+    const live = this.activeJobId === jobId ? this.activeSession?.snapshot() : undefined;
+    const saved = !live && job.projectId && !["queued", "preparing"].includes(job.status)
+      ? (await new ProjectStore(path.join(this.root, runId, `${jobId}.json`)).readSnapshot()).latestProduction : undefined;
+    if (this.run?.id !== runId) throw new Error("该批量制作记录已更新，请返回批量列表重新选择。");
+    const production = live && live.projectId === job.projectId ? live : saved;
+    const ids = new Set([...job.taskIds, ...(live && live.projectId === job.projectId ? live.items.flatMap(item => item.taskId ? [item.taskId] : []) : [])]);
+    const tasks = job.projectId ? this.dependencies.queue(job.projectId).batches
+      .filter(({ batch }) => batch.projectId === job.projectId).flatMap(({ batch }) => batch.tasks).filter(task => ids.has(task.id)) : [];
+    const items = structuredClone(production?.items ?? []).map(item =>
+      !live && !item.taskId && !["failed", "cancelled"].includes(item.status) ? { ...item, status: "cancelled" as const } : item);
+    return { runId, job, usesModel: production?.usesModel, items, tasks };
+  }
+
   async restore(): Promise<void> {
     try {
       this.run = BatchProductionRunSchema.parse(JSON.parse(await readFile(path.join(this.root, "latest.json"), "utf8")));
@@ -93,7 +112,7 @@ export class BatchProductionController {
     this.run = {
       id: randomUUID(), status: "running", createdAt: at, updatedAt: at,
       jobs: entries.map(entry => ({ id: randomUUID(), recentProjectId: entry.recentProjectId, name: this.dependencies.name(entry.recentProjectId),
-        requestedCount: entry.requestedCount, actualCount: 0, productPrice: entry.productPrice, coverEnabled: entry.coverEnabled, displayMode: entry.displayMode,
+        requestedCount: entry.requestedCount, actualCount: 0, productPrice: entry.productPrice, coverEnabled: entry.coverEnabled, displayMode: entry.displayMode, mode: entry.mode,
         status: "queued", taskIds: [], completedCount: 0, failedCount: 0 })),
     };
     this.executing = true;
@@ -115,6 +134,7 @@ export class BatchProductionController {
 
   private async freeze(entry: BatchProductionEntry, job: BatchProductionJob): Promise<FrozenJob> {
     const project = structuredClone(await this.dependencies.loadProject(entry.recentProjectId));
+    delete project.latestProduction;
     const workspace = project.workspaceDraft;
     const selectedIds = workspace?.selectedMediaIds ?? project.mediaItems.filter(item => item.probeStatus === "ready").map(item => item.id);
     const mediaIds = [...new Set(selectedIds)].slice(0, entry.requestedCount);
@@ -125,13 +145,13 @@ export class BatchProductionController {
     if (entry.coverEnabled && project.coverSticker.trackingMode === "assisted") throw new Error("半自动覆盖需要单独预览和人工批准；请在制作页面完成审阅，或关闭该项覆盖。");
     const template = project.templates.find(item => item.id === project.activeTemplateId) ?? project.templates[0];
     template.productPriceDraft = entry.productPrice;
-    const decorations = DecorationSchema.parse({ ...workspace?.decorations, productPrice: entry.productPrice, displayMode: entry.displayMode });
+    const decorations = DecorationSchema.parse({ ...workspace?.decorations, ...(entry.mode ? { mode: entry.mode } : {}), productPrice: entry.productPrice, displayMode: entry.displayMode });
     const input = { mediaIds, ruleId: workspace?.ruleId ?? "black-gold" as const, brief: workspace?.brief ?? "", decorations,
       exportFormat: workspace?.exportFormat ?? "mp4" as const, exportSettings: workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS, requestedCount: quantity.total };
     AgentStartSchema.parse({ ...input, outputDirectory: "/pending" });
     const projectPath = path.join(this.root, this.run!.id, `${job.id}.json`);
     await new ProjectStore(projectPath).save(project);
-    job.projectId = project.id; job.name = project.name; job.actualCount = quantity.total;
+    job.projectId = project.id; job.name = project.name; job.actualCount = quantity.total; job.mode = decorations.mode ?? "manual";
     return { job, projectPath, project, input, requestedOutput: entry.outputDirectory };
   }
 
@@ -161,7 +181,7 @@ export class BatchProductionController {
       for (const job of this.run!.jobs) if (!["completed", "failed", "cancelled"].includes(job.status)) job.status = "interrupted";
       try { await this.activeSession?.cancel(); } catch { /* Preserve the original persistence or custody failure. */ }
       try { await this.persist(); } catch { this.dependencies.changed(); }
-    } finally { this.activeSession = undefined; this.executing = false; this.wake(); this.dependencies.changed(); }
+    } finally { this.activeSession = undefined; this.activeJobId = undefined; this.executing = false; this.wake(); this.dependencies.changed(); }
   }
 
   private capture(job: BatchProductionJob, session: BatchProductionSession): boolean {
@@ -182,6 +202,7 @@ export class BatchProductionController {
       if (signal.aborted) return;
       session = await this.dependencies.session(item.projectPath);
       this.activeSession = session;
+      this.activeJobId = job.id;
       if (signal.aborted) return;
       job.status = "producing";
       await this.persist();
@@ -222,6 +243,7 @@ export class BatchProductionController {
       } else job.status = "completed";
       if (session) { await session.persist(this.dependencies.queue(item.project.id)); await session.cancel(); }
       this.activeSession = undefined;
+      this.activeJobId = undefined;
       await this.persist();
     }
   }
