@@ -69,7 +69,9 @@ describe("explicit full-canvas commands", () => {
   });
 });
 
-describe("D1 to full-canvas evidence and manual declarations", () => {
+// Canonical evidence rehashes the shipped engines and fully decodes again at freeze.
+// Match the existing real-media test budget so cold I/O or host load does not skip assertions.
+describe("D1 to full-canvas evidence and manual declarations", { timeout: 30000 }, () => {
   it.each([false, true])("binds every decoded frame and preserves exact VFR ordinals: %s", async vfr => {
     const { asset, session } = await sessionFixture(vfr);
     const flashOrdinal = vfr ? 1 : 2;

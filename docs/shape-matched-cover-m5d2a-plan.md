@@ -42,9 +42,9 @@ AI 声明只能 TARGETS（非空无重复 UUID、描述、category、原像素�
 
 ### 4. Route Capability and Formal Qualification Gate
 
-先验证当前两条路线的无损image输入、真实身份、fresh隔离上下文、无文件/搜索/工具/nested delegation、有限预算、请求payload/response证据。独立probe不使用holdout。Kimi只能sealed contract、qualified route、Docker、canonical receipt，不能host claude -p。Codex需要新的隔离视觉执行路线，当前聊天不具备actor资格。
+先验证当前两条路线的无损image输入、真实身份、fresh隔离上下文、无文件/搜索/工具/nested delegation、有限预算、请求payload/response证据。独立probe不使用holdout。Kimi只能sealed contract、qualified route、Docker、canonical receipt，不能host claude -p。Codex需要新的隔离视觉执行路线，当前聊天不具备actor资格。2026-09-29 用户追加“修复blocker”，并明确选择包含 `/home/reggie/vscode_folder/agent-subagent-router` 扩展和安装；该外部仓库的安全合同修改另受其 accepted Spec V3 管理。
 
-任一路线不支持图片传递、隔离或route证明时记录实际阻断INCOMPLETE，停止正式请求；不修外部router或静默更换provider。条件真实成立后冻结config/inputPlan/envelope/budgets，正式run一次，post-freeze B映射一次，再独立truth correspondence与deterministic三方比较。正式record需可信controlled execution owner来源核验；当前工程seam不提供成功issuer。
+任一路线不支持图片传递、隔离或route证明时记录实际阻断INCOMPLETE，停止正式请求；初始范围不修外部router，追加授权后允许按外部仓库合同修复，不静默更换provider。条件真实成立后冻结config/inputPlan/envelope/budgets，正式run一次，post-freeze B映射一次，再独立truth correspondence与deterministic三方比较。正式record需可信controlled execution owner来源核验；当前工程seam不提供成功issuer。
 
 ### 5. Verification, Governance and Checkpoint
 
@@ -59,6 +59,8 @@ AI 声明只能 TARGETS（非空无重复 UUID、描述、category、原像素�
 Milestones1–2已有工程candidate和58项fresh tests PASS、typecheck PASS。Milestone3已冻结新synthetic54 clips/648帧、18场景及完整inputPlan，独立verify及PNG篡改否定检查完成；真实媒体层NOT_EVALUATED。
 
 Milestone4因受管接口缺少可验证无文件工具视觉actor及隔离阻断，probe/formal requests=0，正式配置、成本批准、可信execution/receipts/issuer未成立，qualification INCOMPLETE。Milestone5原human回归11项5000ms超时，Risk Gate为BLOCKED_NATIVE_VERIFICATION；四个AI AOCI entries已维护，其他会话继续维护后，最终Verify/Check/Guide均exit0且governance_aligned=true；正式资产混合归属仍dirty，不纳入本任务commit。保存未验收candidate checkpoint，不宣称implementation或M5-D2A完成。详细证据和剩余工作由 [record](shape-matched-cover-m5d2a.md) 独占，全部生产guards保持BLOCKED。
+
+上述是019e345历史checkpoint。追加blocker修复后，human media suite仅调整测试timeout，全部345项相关回归、107项shape regression及fresh typecheck已通过；engineering Risk Gate更新为KIMI_REVIEW_NOT_REQUIRED，正式qualification仍INCOMPLETE。外部router扩展范围已获授权，新的image contract exact SHA尚待其V3 approval，不将准备好的合同当作已实施路线；formal/probe请求仍0。共享AOCI新增其他任务11项治理findings，test/docs为observe且AI managed source未变，实际owner维护前不声明全仓对齐。当前证据、状态和remaining work以record新增Blocker Repair章节为准，历史失败不删除。
 
 ## Self-Review
 

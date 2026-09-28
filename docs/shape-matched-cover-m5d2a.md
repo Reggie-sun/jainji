@@ -73,6 +73,24 @@ Implementation Review Risk Gate为 `BLOCKED_NATIVE_VERIFICATION`：适用原huma
 
 共享HEAD从85c97f7被其他任务推进，全部无关dirty保留。checkpoint只提交本任务13个明确所属路径，不stage混合归属AOCI资产、业务代码、项目删除或其他tests。commit只封存未验收candidate及阻断事实，不证明工程或资格完成。substantial record owner为本文件及plan；未发现适用repository session-capture skill，不写外部memory。
 
-## Stop and Remaining Work
+## Historical Checkpoint Stop and Remaining Work
 
 停止原因是受管路线缺少可验证的隔离及无文件工具视觉actor接口，另有原human回归超时和共享AOCI资产commit ownership阻断。正式qualification INCOMPLETE，工程completion/review gate未通过，不能声明M5-D2A PASS。剩余需真实受管A/B route、独立非holdout probe、身份/隔离/有限成本证据，随后冻结methodConfig/inputPlan/budgets，实现可信formal execution/receipt/correspondence/issuer，再运行一次blinded qualification；还需解决原回归超时、判断final Review Risk Gate并由明确owner提交已对齐的正式AOCI资产。可验证false EMPTY或其他硬错误立即NOT_QUALIFIED并停止后续正式请求，历史结果保留。D2 Production Qualified Review超出本次自动授权。
+
+## Blocker Repair Authorization and Current Evidence
+
+2026-09-29 用户追加“修复blocker”，并明确选择“包含 router 扩展，保留 sealed contract、Docker 和资格门”。此次允许处理独立 `/home/reggie/vscode_folder/agent-subagent-router` 的 image route extension/installation；不是 source admission、产品启用、无限调用或正式预算批准。该仓库 accepted architecture Spec V3 要求 semantic revision 的新 exact SHA 批准后才可实施。独立扩展合同已写好并 Self-Review：`docs/superpowers/specs/2026-09-29-image-only-route-design.md`，SHA=`c1169a61ba8573a2c4ce442b321683a65b800230d3e8620e069e388a6d97c0f1`，`EXACT_SHA_APPROVAL_PENDING`；不伪称范围批准已接受这份新 bytes。批准问题已提交，等待期间继续独立修复及验证。
+
+旧 human suite 原样 fresh baseline 28 tests PASS（21.40s），完整13 files/345 tests baseline PASS（58.38s）；说明历史超时不是本次每次都失败，不改写旧失败。仅将 `tests/source-fact-review.test.ts` 的完整解码/evidence suite timeout 从Vitest默认5000ms调整到已有real-media tests采用的30000ms。全部断言保持；未改变human method/schema/presentation/acknowledge/receipt/digest/拒绝行为或D1/D2实现，没有把真人资格标为完成。修改后同13 files/345 tests全部PASS（80.50s），另shape candidate/pixel gate 2 files/107 tests PASS（198.23s），fresh typecheck exit0、scripts node --check和git diff --check exit0。
+
+最后typecheck/shape回归开始和结束343个TS/TSX/config paths的SHA完全相同，snapshot digest=`832593a77beccd8b1517b85be2b88c4d233abe1e163366c4b05f33d386be30b7`。原9个AI工程文件与上一checkpoint字节相同；加入本次human test budget后的10-file snapshot SHA=`1b3e4511103b98ab981de8cbfa0f806d1dbcccae8f1c930f5b5d2edbb39280da`。原census/human production/qualification/tool owners diff为空。现有human collector只读进程核对未见运行实例；未提交语义选择、重启或挪用它。
+
+本次受管 Kimi mapping只读router `contracts.py`、`adapters/project_claude.py`、`cli.py`，seal=`6d6918d940146296cf663c3cf72484993de481d3c8cfdac3ddd61bed2d2c50f8`、invocation=`5208fa9e-fdb5-4c2f-bd84-aabf15bf8cb7`、qualified route=`27ba7e0c-32b1-41a9-8210-4f49474e0a30`。Parent已机械核验全部Read/SHA、artifact SHA/size、Docker qualification、两个实际`api.kimi.ai / k3-256k / high` HTTP200、generation4096、exit0/55.72s、无截断。report SHA=`91b06ed5ca427028420bd23d91d0944cc8c221f3e9334a2d8805a68d24c0aa27`。这不是视觉probe或implementation review，不接触holdout/truth。另native code_mapper只读核对现有Codex图片RPC/环境限制及router缺失Codexbroker，未调用账号或模型，未改文件；Parent核对实际调用边界后据此准备独立合同。
+
+新发现的router原有FINAL_REPORT工具拒绝测试在未改源码baseline中真实失败：2 failed/313 passed/20 skipped；缩小复现2 failed，JSON和SSE的tool_use都被错误HTTP200交付。源码的诊断`phase`覆盖预算phase，`allow_tools=phase != 'FINAL_REPORT'`永远为true。独立现有合同修复读取owned observation的`budget_phase`，不修改新image协议或旧报告schema；同全部offline tests随后315 PASS/20 conformance显式skip。实际native/containment验证与安装状态由router record独占，本记录不提前宣称其完成。
+
+Jianji stable engineering candidate按SUBAGENTS.md判断 `KIMI_REVIEW_NOT_REQUIRED`：用户没有要求review这个snapshot；本次仅测试time budget，AI工程仍无产品consumer/credential/semantic authority/成功issuer；媒体字节/拒绝行为全部断言及真实CPU回归已通过，没有会导致关键凭据泄露、跨项目authority或难恢复生产状态损坏的具体failure path。尚缺真实视觉语义证据是正式qualification gate，不能由review替代。此判断只解除此前BLOCKED_NATIVE_VERIFICATION，不签发M5-D2A或生产资格。
+
+执行AOCI Verify/Check/Guide后，当前shared governance未对齐：11 findings均属于其他上传任务的missing/stale/unbaselined owners，本次test/docs属于既有observe scope，四个AI managed source未改。完整索引三块交付已host-confirmed，strictattestation fail/uncertain且治理stale，仅做source-bound工程；不声称完整系统认知。正式`aoci.code.txt`/`.aoci/baseline.json`混合归属保持，未有ownership决定，不写/stage/commit，也不处理其他业务路径。现阶段不能宣称全仓AOCI对齐；需其实际owner完成维护。
+
+独占证据目录 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-blocker-repair-20260929` 保存14份日志/快照/receipt与manifest，manifest SHA=`01ba1891e3796357db9bf5cfecfbc0a982f54e4637d16a6489e328c7841bcbbf`。原frozen holdout/criteria/truth/inputPlan及历史失败保持原字节，正式视觉probe=0、formal requests=0，所有语义指标仍null/NOT_EVALUATED。当前剩余为批准并实施真实router视觉扩展、资格/有限预算/config/inputPlan freeze、可信receipt/correspondence/issuer，以及正式盲审；全过程PRODUCT_DISABLED与全部生产BLOCKED guards保持。
