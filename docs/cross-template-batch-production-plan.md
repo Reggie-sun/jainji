@@ -7,8 +7,8 @@
 ## Scope
 
 - 每行选择模板、期望条数、用户手动展示文字、覆盖开关、价格显示时段（全程 / 前 5 秒）与保存位置。其余包装、覆盖位置、分辨率、帧率与格式沿用已保存项目。
-- 条数按现有 `calculateProductionQuantity` 向上取整，单项沿用 `MAX_AGENT_OUTPUTS`。
-- 用户再次确认保留完整轮次：33 条素材可以填写目标 100 条，实际制作 132 条。每项明确显示“想制作的视频条数”，目标与实际数量分别展示。
+- 条数严格按用户填写的 `requestedCount` 制作，单项沿用 `MAX_AGENT_OUTPUTS`（250 条）。版本尽量均匀分配，最后一轮只制作余数所需素材；少于素材数量时仅使用列表前面的所需素材。
+- 用户最新要求覆盖此前完整轮次选择：33 条素材填写 100 条，实际制作 100 条，其中第 1 条素材 4 版、其余 32 条各 3 版。共享 `calculateExactProductionQuantity` 规划实际版本；原单项目 `multiplier` 路径保留完整轮次，入口不能同时指定数量和倍数。
 - `RecentProjects` 提供项目身份；`ProjectStore` 读取和校验项目；每项使用私有项目副本和现有 `ApplicationService` / `AgentController`。不自动切换或覆盖当前编辑项目，不把批量选择写回商品模板。
 - 所有实际成片继续由唯一 `ExportQueue` / `JobStore` / `ArtifactVerifier` 执行和验证。新协调器只管理跨项目顺序和关联的原队列 task IDs，不另建渲染、导出、重试或文件验证生命周期。
 - 批量结果页面直接展示各项进度、失败原因及成片操作；原模板文件保留，已生成的导出仍由原队列持久化。
@@ -31,7 +31,7 @@
 
 ## Acceptance And Verification
 
-- 两个不同模板可以一次选中，各项实际条数与向上取整展示一致，各自保留素材、价格、覆盖和输出设置。
+- 两个不同模板可以一次选中，各项实际条数严格等于填写数量，各自保留素材、价格、覆盖和输出设置。
 - 第二项不能在第一项仍 `queued` / `running` / `verifying` / `cancelling` 时启动；首项失败会完成清理再继续。
 - 参数编辑不改变已冻结任务；当前项目与原 saved-project 文件的创作配置不被批量入口改写。
 - 模型 / 覆盖 / 输出目录准入继续由主进程和原 owners 拒绝非法组合；取消、重复启动和重启不会产生额外制作。
@@ -41,7 +41,7 @@
 
 自动发布、跨项目混合素材、生成价格、自动重试、半自动覆盖的自动批准、改变原素材、修改当前模板默认值。
 
-## Verification Evidence
+## Previous Verification Evidence (Rounded Quantity)
 
 - 2026-09-28：`npm run build`（含 `npm run typecheck`）通过；相关 11 个测试文件共 188 项通过，其中批量协调器 14 项覆盖串行、失败继续、取消、准入、恢复、只读快照和持久化失败。
 - `node scripts/production-interaction-smoke.mjs` 通过：制作 / 导出期间可编辑下一轮，已开始请求保持不变，重复开始被阻止。
@@ -49,10 +49,24 @@
 - 使用应用已安装的 `tools/ffmpeg/bin/ffmpeg` 与 `ffprobe`。系统 PATH 的旧 FFmpeg 不支持原编译器所需的 `-fps_mode`，该引擎的失败未作为通过证据。
 - Chrome MCP 的现有 profile 被占用，未终止用户浏览器；交互使用独立 Playwright Chrome / Electron。未调用商业模型、未测试 Windows 实机，合成素材验证不代表用户成片画面已验收。
 
-## Review Decision
+## Previous Review Decision
 
 - 最终候选以当前工作区源码及验证报告绑定；机器可核验快照记录在 `/tmp/jianji-batch-review-decision.json`。Native Codex 保留实现与裁决职责。
 - `KIMI_REVIEW_NOT_REQUIRED`：用户未指定本轮 Kimi 终审；新增调度没有凭据、发布或源文件破坏路径，项目身份 / 目录授权 / 价格准入继续由原 owners 校验；取消、中断、任务归属丢失和已入队后失败已有可执行覆盖。没有已知重大后果且仍未覆盖的语义缺口触发额外终审。
 - 受管 Kimi `deep` 生命周期调查已调用，receipt 为 `ad5fc571-2e2b-491b-8fd4-d4f991d52dc7`，终态 `UPSTREAM_GENERATION_LIMIT`；未采纳不完整输出，父线程依据当前源码完成调查。
 - `aoci.code.txt` 与 `.aoci/baseline.json` 存在其他任务的未提交改动。用户明确选择本轮保留索引、只提交批量功能；不覆盖这些索引字节。
 - 无 repository 专用 session-capture skill；普通功能工作不触发 `agent-memory-capture`，不写入 bug memory 或全局记忆。
+
+## Exact-count Verification Evidence
+
+- 用户最新要求为严格数量；33 条素材填写 100 条时只准备、独立设计并入队 100 个版本，250 条上限按实际输出计数，填写少于素材数时只使用所需素材。原 `multiplier` 调用保持兼容。
+- 回归测试先复现旧行为，再验证精确数量、版本连续且分配均匀、价格必填、数量与倍数互斥、超限在外部预检之前拒绝；现工作区 12 个相关测试文件 203 项通过。
+- 当前工作区 `npm run typecheck` 被其他任务未提交的 `tests/douyin-upload-service.test.ts` 分组端口签名变更阻断。未修改该文件；本次提交源码投影到独立普通目录 `/tmp/jianji-exact-candidate-fbrf9vnh`，排除其他任务改动后，`npm run build`（包含 typecheck）通过，12 个相关测试文件 200 项通过。
+- Chrome MCP 实际操作本地 React 页面：选择 33 条素材的模板、填写 100、开始提交，页面显示和请求均为 100；桥接为离线模拟，没有真实模型调用。证据 `/tmp/jianji-exact-count-chrome-proof.json`、`/tmp/jianji-exact-count-chrome-snapshot.txt`。
+- 工作区与提交投影均通过真实 Electron / FFmpeg smoke：两个模板总计 5 个正式成片，其中 2 条素材请求 3 条只导出 3 条；串行导出校验、覆盖 / 价格时序冻结、失败继续、取消、草稿编辑和原模板保持通过。投影报告 `/tmp/jianji-batch-smoke-B97CVX/report.json`；工作区报告 `/tmp/jianji-batch-smoke-95lTjR/report.json`。未调用商业模型，未验证 Windows 实机或用户成片视觉质量。
+
+## Exact-count Review Decision
+
+- `KIMI_REVIEW_NOT_REQUIRED`；本次候选的 base、源码 byte hashes 与证据绑定在 `/tmp/jianji-exact-count-review-decision.json`。有界数量分配与准入没有新增破坏源文件、凭据或跨项目授权路径；精确入队数量、容量、旧倍数兼容与导出生命周期已有相关可执行覆盖，没有已知重大后果且仍未覆盖的语义缺口。
+- 按受管 `external-subagent` route 调用了 `deep` 数量边界调查，receipt `67f6c22c-525f-4f2b-86f7-c2bf363f52ec` 为 `OUTCOME_UNKNOWN`，一次上游请求、没有已核验 Read 或可用报告。未采纳输出、未自动重试，由父线程依据源码和验证裁决。
+- 保留原索引与其他任务字节，仅提交本次修改；普通功能调整不生成 bug memory 或全局记忆。

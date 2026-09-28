@@ -9,6 +9,15 @@ import type { StickerAssets } from "../src/main/builtin-stickers";
 
 const input = { ruleId: "clean" as const, brief: "价格由 Agent 猜测", mediaIds: [crypto.randomUUID()], outputDirectory: "/tmp/output" };
 
+it("accepts bounded exact counts without mixing them with legacy multipliers", () => {
+  const request = { ...input, decorations: { productPrice: "手动文字" } };
+  expect(AgentStartSchema.parse({ ...request, requestedCount: 100 }).requestedCount).toBe(100);
+  expect(AgentStartSchema.parse({ ...request, requestedCount: 250 }).requestedCount).toBe(250);
+  for (const requestedCount of [0, -1, 1.5, 251, NaN]) expect(AgentStartSchema.safeParse({ ...request, requestedCount }).success).toBe(false);
+  expect(AgentStartSchema.safeParse({ ...request, requestedCount: 100, multiplier: 4 }).success).toBe(false);
+  expect(AgentStartSchema.safeParse({ ...input, requestedCount: 100 }).success).toBe(false);
+});
+
 it.each(["manual", "agent"])("preserves two manual price lines in %s mode", (mode) => {
   const productPrice = "9.9元到手5卷\n19.9元拍一发三";
   expect(AgentStartSchema.parse({ ...input, decorations: { mode, productPrice } }).decorations?.productPrice).toBe(productPrice);

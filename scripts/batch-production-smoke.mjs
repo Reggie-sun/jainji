@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -58,9 +58,14 @@ if (process.type === "browser") {
   };
   const projectFiles = [];
   for (const [index, name] of products.entries()) {
-    await page.evaluate(async ({ source, name }) => {
+    const materialPaths = [sources[index]];
+    if (index === 1) {
+      const secondSource = path.join(path.dirname(sources[index]), "second.mp4");
+      await copyFile(sources[index], secondSource); materialPaths.push(secondSource);
+    }
+    await page.evaluate(async ({ materialPaths, name }) => {
       await window.jianji.newProject();
-      let state = await window.jianji.addAndProbe([source]);
+      let state = await window.jianji.addAndProbe(materialPaths);
       state = await window.jianji.setProductPriceDraft(state.project.id, `${name}手动文字`);
       await window.jianji.setCoverSticker({ enabled: false, trackingMode: "manual", stickerIds: [],
         rectangle: { x: 0.02, y: 0.02, width: 0.12, height: 0.12 },
@@ -68,7 +73,7 @@ if (process.type === "browser") {
       await window.jianji.saveProject(name, { step: "templates", selectedMediaIds: state.project.mediaItems.map(item => item.id),
         ruleId: "clean", brief: "", decorations: { mode: "random", displayMode: "full" }, requestedCount: 1, exportFormat: "mp4",
         exportSettings: { resolutionMode: "720p", frameRateMode: "source", quality: "balanced" }, outputDirectoryMode: "automatic" });
-    }, { name, source: sources[index] });
+    }, { name, materialPaths });
     projectFiles.push(path.join(directory, `${name}.jianji-project.json`));
   }
   const original = await Promise.all(projectFiles.map(file => readFile(file, "utf8").then(JSON.parse)));
@@ -86,12 +91,14 @@ if (process.type === "browser") {
     await row(name).getByLabel("想制作的视频条数", { exact: true }).fill("2");
   }
   await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("100");
-  await row("蝴蝶贴").getByText("目标 100 条 → 实际 132 条（33 条素材 × 4 版）", { exact: true }).waitFor();
-  report.checks.push("33 sources accept target 100 and visibly round to 132");
+  await row("蝴蝶贴").getByText("实际制作 100 条（使用 33 条素材）", { exact: true }).waitFor();
+  report.checks.push("33 sources / requested 100 visibly plans exactly 100");
   await writeFile(projectFiles[0], JSON.stringify(original[0]));
   await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("2");
   await page.getByRole("button", { name: "刷新模板", exact: true }).click();
-  await row("蝴蝶贴").getByText("目标 2 条 → 实际 2 条（1 条素材 × 2 版）", { exact: true }).waitFor();
+  await row("蝴蝶贴").getByText("实际制作 2 条（使用 1 条素材）", { exact: true }).waitFor();
+  await row("氨糖膏").getByLabel("想制作的视频条数", { exact: true }).fill("3");
+  await row("氨糖膏").getByText("实际制作 3 条（使用 2 条素材）", { exact: true }).waitFor();
   await row("氨糖膏").getByLabel("价格显示时段").selectOption("first-5s");
   await page.getByRole("checkbox", { name: "氨糖膏开启覆盖", exact: true }).check();
   await row("蝴蝶贴").getByLabel("展示文字 / 价格").fill(" ");
@@ -108,15 +115,16 @@ if (process.type === "browser") {
   const state = await waitForState(state => ["finished", "interrupted"].includes(state.batchProduction?.status));
   assert.equal(state.batchProduction.status, "finished", JSON.stringify(state.batchProduction));
   assert.deepEqual(state.batchProduction.jobs.map(job => job.status), ["completed", "completed"], JSON.stringify(state.batchProduction));
-  assert.deepEqual(state.batchProduction.jobs.map(job => job.completedCount), [2, 2]);
+  assert.deepEqual(state.batchProduction.jobs.map(job => job.completedCount), [3, 2]);
   assert.equal(state.project.id, activeId);
   const jobsDirectory = path.join(directory, "userData", "jobs");
   const allBatches = await Promise.all((await readdir(jobsDirectory)).filter(file => file.endsWith(".json")).map(async file => JSON.parse(await readFile(path.join(jobsDirectory, file), "utf8")).batch));
   for (const job of state.batchProduction.jobs) {
-    assert.equal(job.actualCount, 2);
+    assert.equal(job.actualCount, job.requestedCount);
     assert.ok(job.outputDirectory.startsWith(path.join(directory, job.name, "视频")));
     const exports = allBatches.filter(batch => batch.tasks.some(task => job.taskIds.includes(task.id)));
-    assert.equal(exports.length, 2);
+    assert.equal(exports.length, job.requestedCount);
+    if (job.name === "氨糖膏") assert.deepEqual(exports.map(batch => batch.tasks[0].mediaId).sort(), [original[1].mediaItems[0].id, original[1].mediaItems[0].id, original[1].mediaItems[1].id].sort());
     for (const batch of exports) {
       assert.equal(batch.templateSnapshot.productPrice, job.productPrice);
       assert.equal(batch.templateSnapshot.decorationDisplayMode, job.displayMode);
@@ -140,7 +148,7 @@ if (process.type === "browser") {
     assert.deepEqual(saved.coverSticker, original[index].coverSticker);
     assert.equal(saved.templates[0].productPriceDraft, original[index].templates[0].productPriceDraft);
   }
-  report.checks.push("two products / four real FFmpeg exports", "serial verified exports", "cover on/off and full/first-5s frozen independently", "editing and navigation preserve next batch settings", "active editor and original template settings preserved", "duration and audio preserved");
+  report.checks.push("two products / five real FFmpeg exports, two sources request 3 yields exactly 3", "serial verified exports", "cover on/off and full/first-5s frozen independently", "editing and navigation preserve next batch settings", "active editor and original template settings preserved", "duration and audio preserved");
   await page.screenshot({ path: path.join(directory, "batch-results.png"), fullPage: true });
   // Reuse only these isolated fixtures to exercise failure continuation through the real IPC path.
   await unlink(sources[1]);

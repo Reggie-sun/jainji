@@ -135,9 +135,12 @@ export class AgentController {
     this.pendingOperation = new Promise<void>((resolve) => { settle = resolve; });
     try {
       const parsed = AgentStartSchema.parse(input);
+      const ids = [...new Set(parsed.mediaIds)].slice(0, parsed.requestedCount);
+      const outputCount = parsed.requestedCount ?? ids.length * (parsed.multiplier ?? 1);
+      if (outputCount > MAX_AGENT_OUTPUTS) throw new Error(`本轮成片数量不能超过 ${MAX_AGENT_OUTPUTS} 条，请减少制作条数。`);
       assertShapeCoverProductEntry(parsed, this.service.currentProject.coverSticker, Boolean(assisted));
       if (parsed.douyinUpload && (assisted || parsed.exportFormat && parsed.exportFormat !== "mp4")) throw new Error("千川上传仅支持普通正式 MP4 制作。");
-      const uploadAuthorization = parsed.douyinUpload ? await this.preflightUpload?.(parsed.douyinUpload, new Set(parsed.mediaIds).size * (parsed.multiplier ?? 1)) : undefined;
+      const uploadAuthorization = parsed.douyinUpload ? await this.preflightUpload?.(parsed.douyinUpload, outputCount) : undefined;
       if (parsed.douyinUpload && !uploadAuthorization) throw new Error("千川账号预检不可用，请重新选择账号。");
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const project = this.service.currentProject;
@@ -163,7 +166,7 @@ export class AgentController {
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover), Boolean(shapeRequest)) : undefined;
       const autoCatalog = decorations.mode === "agent" ? { ...availableCatalog!, stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)) } : undefined;
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets) };
-      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, parsed.mediaIds, randomPath);
+      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, ids, randomPath);
       this.preparingController.signal.throwIfAborted();
       for (const family of decorationFontFamilies(decorations)) {
         const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
@@ -172,8 +175,6 @@ export class AgentController {
       if (!path.isAbsolute(parsed.outputDirectory)) throw new Error("请选择有效的输出目录。");
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedDirectories.has(outputDirectory)) throw new Error("请通过系统对话框选择输出目录。");
-      const ids = [...new Set(parsed.mediaIds)];
-      if (ids.length * (parsed.multiplier ?? 1) > MAX_AGENT_OUTPUTS) throw new Error(`本轮成片数量不能超过 ${MAX_AGENT_OUTPUTS} 条，请减少制作倍数。`);
       const media = ids.map((id) => this.service.getMedia(id));
       if (media.some((item) => !item || item.probeStatus !== "ready")) throw new Error("所选素材不可用，请重新导入。");
       await assertOutputDirectorySafe(outputDirectory, media as MediaItem[]);
@@ -382,7 +383,7 @@ export class AgentController {
         finalizePreviews: () => this.previews.prune(),
         onChange: this.onChange,
       });
-      this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[], parsed.multiplier ?? 1);
+      this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[], parsed.multiplier ?? 1, parsed.requestedCount);
     } finally { this.preparing = false; this.preparingController = undefined; this.pendingOperation = undefined; settle(); }
   }
 

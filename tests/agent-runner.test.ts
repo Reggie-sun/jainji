@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { calculateProductionQuantity } from "../src/shared/agent";
+import { calculateExactProductionQuantity, calculateProductionQuantity } from "../src/shared/agent";
 import { AgentRunner } from "../src/main/agent-runner";
 import { DEFAULT_PRESET, type EditTemplate, type MediaItem, now } from "../src/main/domain";
 import { TemplateCompiler } from "../src/main/compiler";
@@ -322,6 +322,29 @@ describe("agent run lifecycle", () => {
     expect(provider).toHaveBeenCalledTimes(6);
     expect(new Set(enqueue.mock.calls.map(([template]) => template.id)).size).toBe(6);
     expect(enqueue.mock.calls.every(([template]) => template.layers.some((layer: { content?: string }) => layer.content === "¥ 19.90"))).toBe(true);
+  });
+
+  it.each([[33, 100], [33, 250], [33, 5], [2, 3]])("plans exactly %i sources / %i requested outputs", async (sourceCount, requestedCount) => {
+    const sources = Array.from({ length: sourceCount }, (_, index) => media(`${index}.mp4`));
+    const provider = vi.fn().mockResolvedValue(plan("包装"));
+    const enqueue = vi.fn().mockImplementation(async () => crypto.randomUUID());
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", sources, 1, requestedCount);
+    await runner.settled();
+    const items = runner.snapshot()!.items;
+    expect(items).toHaveLength(requestedCount);
+    expect(provider).toHaveBeenCalledTimes(requestedCount);
+    expect(enqueue).toHaveBeenCalledTimes(requestedCount);
+    const expected = sources.flatMap((source, index) => Array.from({ length: Math.floor(requestedCount / sourceCount) + Number(index < requestedCount % sourceCount) }, (_, version) => ({ mediaId: source.id, version: version + 1 })));
+    expect(items.map(({ mediaId, version }) => ({ mediaId, version }))).toEqual(expected);
+    expect(calculateExactProductionQuantity(sourceCount, requestedCount)?.total).toBe(requestedCount);
+  });
+
+  it("rejects invalid exact counts before calling the model", () => {
+    const provider = vi.fn();
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue: vi.fn(), stickerAssets, onChange: () => {} });
+    for (const count of [0, -1, 1.5, 251, NaN]) expect(() => runner.start("project", "clean", "", [media("a")], 1, count)).toThrow();
+    expect(provider).not.toHaveBeenCalled();
   });
 
   it("rejects invalid multipliers and excessive output counts before calling the model", () => {

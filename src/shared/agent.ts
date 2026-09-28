@@ -61,11 +61,19 @@ export function calculateProductionQuantity(sourceCount: number, requestedCount:
   return { multiplier, total: sourceCount * multiplier };
 }
 
+export function calculateExactProductionQuantity(sourceCount: number, requestedCount: number): { versions: number[]; total: number } | undefined {
+  if (!Number.isInteger(sourceCount) || sourceCount < 1 || !ProductionMultiplierSchema.safeParse(requestedCount).success) return undefined;
+  const completeRounds = Math.floor(requestedCount / sourceCount);
+  const remainder = requestedCount % sourceCount;
+  return { total: requestedCount, versions: Array.from({ length: Math.min(sourceCount, requestedCount) }, (_, index) => completeRounds + Number(index < remainder)) };
+}
+
 const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof DecorationSchema>, z.ZodTypeDef, unknown>) => z.object({
   coverStrategy: z.literal("shape-matched-static-v1").optional(),
   douyinUpload: DouyinUploadSelectionSchema.optional(),
   sourceStickerRefresh: z.object({ projectId: z.string().uuid(), mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS) }).strict().optional(),
   multiplier: ProductionMultiplierSchema.optional(),
+  requestedCount: ProductionMultiplierSchema.optional(),
   exportFormat: ExportFormatSchema.optional(),
   exportSettings: ExportSettingsSchema.optional(),
   decorations: decorations.optional(),
@@ -73,7 +81,9 @@ const createAgentStartSchema = (decorations: z.ZodType<z.infer<typeof Decoration
   mediaIds: z.array(z.string().uuid()).min(1).max(MAX_AGENT_OUTPUTS),
   outputDirectory: z.string().min(1),
   brief: z.string().trim().max(1000),
-}).strict().refine(input => !input.sourceStickerRefresh || (new Set(input.sourceStickerRefresh.mediaIds).size === input.sourceStickerRefresh.mediaIds.length && input.sourceStickerRefresh.mediaIds.every(id => input.mediaIds.includes(id))), {
+}).strict().refine(input => input.requestedCount === undefined || input.multiplier === undefined, {
+  path: ["requestedCount"], message: "制作条数与制作倍数不能同时指定。",
+}).refine(input => !input.sourceStickerRefresh || (new Set(input.sourceStickerRefresh.mediaIds).size === input.sourceStickerRefresh.mediaIds.length && input.sourceStickerRefresh.mediaIds.every(id => input.mediaIds.includes(id))), {
   path: ["sourceStickerRefresh"], message: "重新检查的素材必须属于本次制作，且不能重复。",
 }).refine((input) => RequiredProductPriceSchema.safeParse(input.decorations?.productPrice).success, {
   path: ["decorations", "productPrice"], message: "请手动填写产品价格，Agent 不能代填或改写。",

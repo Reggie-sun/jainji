@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { AgentStartSchema, calculateProductionQuantity, MAX_AGENT_OUTPUTS, type AgentRun, type AgentStartInput } from "../shared/agent.js";
+import { AgentStartSchema, calculateExactProductionQuantity, MAX_AGENT_OUTPUTS, type AgentRun, type AgentStartInput } from "../shared/agent.js";
 import { DecorationSchema } from "../shared/decorations.js";
 import { CoverStickerSchema, DEFAULT_COVER_STICKER } from "../shared/cover-sticker.js";
 import { BatchProductionStartSchema, BatchProductionRunSchema, type BatchProductionEntry, type BatchProductionJob, type BatchProductionRun } from "../shared/batch-production.js";
@@ -115,9 +115,10 @@ export class BatchProductionController {
   private async freeze(entry: BatchProductionEntry, job: BatchProductionJob): Promise<FrozenJob> {
     const project = structuredClone(await this.dependencies.loadProject(entry.recentProjectId));
     const workspace = project.workspaceDraft;
-    const mediaIds = workspace?.selectedMediaIds ?? project.mediaItems.filter(item => item.probeStatus === "ready").map(item => item.id);
-    const quantity = calculateProductionQuantity(mediaIds.length, entry.requestedCount);
-    if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`当前模板的素材和条数无效，向上取整后最多 ${MAX_AGENT_OUTPUTS} 条。`);
+    const selectedIds = workspace?.selectedMediaIds ?? project.mediaItems.filter(item => item.probeStatus === "ready").map(item => item.id);
+    const mediaIds = [...new Set(selectedIds)].slice(0, entry.requestedCount);
+    const quantity = calculateExactProductionQuantity(mediaIds.length, entry.requestedCount);
+    if (!quantity) throw new Error(`当前模板的素材和条数无效，最多 ${MAX_AGENT_OUTPUTS} 条。`);
     if (mediaIds.some(id => !project.mediaItems.some(item => item.id === id && item.probeStatus === "ready"))) throw new Error("模板所选素材已失效，请先重新打开模板检查。");
     project.coverSticker = CoverStickerSchema.parse({ ...(project.coverSticker ?? DEFAULT_COVER_STICKER), enabled: entry.coverEnabled });
     if (entry.coverEnabled && project.coverSticker.trackingMode === "assisted") throw new Error("半自动覆盖需要单独预览和人工批准；请在制作页面完成审阅，或关闭该项覆盖。");
@@ -125,7 +126,7 @@ export class BatchProductionController {
     template.productPriceDraft = entry.productPrice;
     const decorations = DecorationSchema.parse({ ...workspace?.decorations, productPrice: entry.productPrice, displayMode: entry.displayMode });
     const input = { mediaIds, ruleId: workspace?.ruleId ?? "black-gold" as const, brief: workspace?.brief ?? "", decorations,
-      exportFormat: workspace?.exportFormat ?? "mp4" as const, exportSettings: workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS, multiplier: quantity.multiplier };
+      exportFormat: workspace?.exportFormat ?? "mp4" as const, exportSettings: workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS, requestedCount: quantity.total };
     AgentStartSchema.parse({ ...input, outputDirectory: "/pending" });
     const projectPath = path.join(this.root, this.run!.id, `${job.id}.json`);
     await new ProjectStore(projectPath).save(project);

@@ -19,6 +19,23 @@ import { controllerKnowledge } from "./helpers/controller-knowledge";
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("AgentController queue admission", () => {
+  it("authorizes exactly the requested count and rejects excess capacity before external preflight", async () => {
+    const ffmpeg = new FfmpegAdapter("unused", "unused");
+    const service = new ApplicationService(ffmpeg, { resolve: async () => null });
+    const queue = { snapshot: () => ({ batches: [] }) } as unknown as ExportQueue;
+    const preflight = vi.fn(async () => { throw new Error("fixture stop before production"); });
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, stickerAssets, undefined, undefined, undefined, undefined, undefined, undefined, preflight);
+    const input = { ruleId: "clean" as const, brief: "", mediaIds: Array.from({ length: 33 }, () => crypto.randomUUID()), outputDirectory: "/tmp/output",
+      decorations: { productPrice: "手动文字", sticker: "template", fontFamily: "Noto Sans CJK SC" }, douyinUpload: { enabled: true as const, accountProduct: "眼贴" as const } };
+    await expect(controller.start({ ...input, requestedCount: 100 }, new Set())).rejects.toThrow("fixture stop before production");
+    expect(preflight).toHaveBeenCalledWith(input.douyinUpload, 100);
+    preflight.mockClear();
+    await expect(controller.start({ ...input, requestedCount: 251 }, new Set())).rejects.toThrow();
+    await expect(controller.start({ ...input, multiplier: 8 }, new Set())).rejects.toThrow("不能超过");
+    expect(preflight).not.toHaveBeenCalled();
+    expect(controller.busy).toBe(false);
+  });
+
   it.each(["start", "brief"])("waits for uploaded preview cleanup when cancelling %s", async (operation) => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });

@@ -59,10 +59,12 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
         start: async input => {
           starts.push(input); events.push(`start:${value.name}`);
           busy = Boolean(options.holding);
-          const id = crypto.randomUUID();
           const status = options.allComplete || starts.length > 1 ? "completed" : "running";
-          tasks.push({ id, status } as ExportTask);
-          run = { id: crypto.randomUUID(), projectId: value.id, ruleId: "clean", status: busy ? "running" : "finished", items: [{ id: crypto.randomUUID(), mediaId: input.mediaIds[0], version: 1, name: value.name, taskId: id, status: "exporting" }] };
+          const items = Array.from({ length: input.requestedCount ?? input.mediaIds.length * (input.multiplier ?? 1) }, (_, index) => {
+            const id = crypto.randomUUID(); tasks.push({ id, status } as ExportTask);
+            return { id: crypto.randomUUID(), mediaId: input.mediaIds[index % input.mediaIds.length], version: Math.floor(index / input.mediaIds.length) + 1, name: value.name, taskId: id, status: "exporting" as const };
+          });
+          run = { id: crypto.randomUUID(), projectId: value.id, ruleId: "clean", status: busy ? "running" : "finished", items };
           if (options.startThrows && starts.length === 1) throw new Error("fixture preparation failed after enqueue");
         },
         cancel: async () => { busy = false; if (run) run.status = "cancelled"; for (const item of run?.items ?? []) await dependencies.cancelExport(item.taskId!); },
@@ -150,16 +152,31 @@ describe("cross-template batch admission", () => {
     expect(f.controller.snapshot()?.jobs[0].error).toContain("after enqueue");
   });
 
-  it("rounds per-project quantity and rejects assisted cover without bypassing approval", async () => {
+  it("uses exact per-project quantity and rejects assisted cover without bypassing approval", async () => {
     const f = await fixture({ allComplete: true });
     f.projects[0] = project("蝴蝶贴", 2);
     f.projects[1].coverSticker = { ...DEFAULT_COVER_STICKER, trackingMode: "assisted" };
     await f.controller.start({ entries: [{ ...f.entries[0], requestedCount: 3 }, { ...f.entries[1], coverEnabled: true }] });
     await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
-    expect(f.starts[0].multiplier).toBe(2);
-    expect(f.controller.snapshot()?.jobs[0].actualCount).toBe(4);
+    expect(f.starts[0].requestedCount).toBe(3);
+    expect(f.starts[0].multiplier).toBeUndefined();
+    expect(f.controller.snapshot()?.jobs[0].actualCount).toBe(3);
+    expect(f.controller.snapshot()?.jobs[0].completedCount).toBe(3);
     expect(f.controller.snapshot()?.jobs[1].error).toContain("人工批准");
     expect(f.starts).toHaveLength(1);
+  });
+
+  it.each([100, 250, 5])("makes exactly %i outputs from 33 sources", async requestedCount => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0] = project("蝴蝶贴", 33);
+    await f.controller.start({ entries: [{ ...f.entries[0], requestedCount }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    const job = f.controller.snapshot()!.jobs[0];
+    expect(job.status).toBe("completed");
+    expect(job.actualCount).toBe(requestedCount);
+    expect(job.completedCount).toBe(requestedCount);
+    expect(f.starts[0].mediaIds).toHaveLength(Math.min(33, requestedCount));
+    expect(f.tasks).toHaveLength(requestedCount);
   });
 
   it("rejects a second batch and active unrelated exports", async () => {

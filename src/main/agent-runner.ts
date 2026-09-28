@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type ExportSettings } from "../shared/export-settings.js";
-import { MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
+import { calculateExactProductionQuantity, MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
 import { type EditTemplate, type MediaItem } from "./domain.js";
 import { ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -53,16 +53,18 @@ export class AgentRunner {
   snapshot(): AgentRun | undefined { return this.run && structuredClone(this.run); }
   get running(): boolean { return this.run?.status === "running"; }
 
-  start(projectId: string, ruleId: RuleId, brief: string, media: readonly MediaItem[], multiplier = 1): AgentRun {
+  start(projectId: string, ruleId: RuleId, brief: string, media: readonly MediaItem[], multiplier = 1, requestedCount?: number): AgentRun {
     if (this.running) throw new Error("Agent 正在处理，请等待完成或停止当前任务。");
     if (media.length === 0 || media.some((item) => item.probeStatus !== "ready")) throw new Error("请先导入有效素材。");
     ProductionMultiplierSchema.parse(multiplier);
-    if (media.length * multiplier > MAX_AGENT_OUTPUTS) throw new Error(`本轮成片数量不能超过 ${MAX_AGENT_OUTPUTS} 条，请减少制作倍数。`);
-    const versions = structuredClone(media).flatMap((source) => Array.from({ length: multiplier }, (_, index) => ({ source, version: index + 1 })));
+    if (requestedCount !== undefined) ProductionMultiplierSchema.parse(requestedCount);
+    const counts = requestedCount === undefined ? Array.from({ length: media.length }, () => multiplier) : calculateExactProductionQuantity(media.length, requestedCount)!.versions;
+    if (counts.reduce((sum, count) => sum + count, 0) > MAX_AGENT_OUTPUTS) throw new Error(`本轮成片数量不能超过 ${MAX_AGENT_OUTPUTS} 条，请减少制作条数。`);
+    const versions = structuredClone(media.slice(0, counts.length)).flatMap((source, sourceIndex) => Array.from({ length: counts[sourceIndex] }, (_, index) => ({ source, version: index + 1 })));
     this.controller = new AbortController();
     this.run = {
       id: randomUUID(), projectId, ruleId, status: "running",
-      items: versions.map(({ source, version }) => ({ id: randomUUID(), mediaId: source.id, version, name: multiplier === 1 ? source.displayName : `${source.displayName} · 第 ${version} 版`, status: "waiting" })),
+      items: versions.map(({ source, version }) => ({ id: randomUUID(), mediaId: source.id, version, name: counts.every(count => count === 1) ? source.displayName : `${source.displayName} · 第 ${version} 版`, status: "waiting" })),
     };
     const frozen = versions.map(({ source }) => source);
     this.pending = this.execute(this.run, brief, frozen, this.controller.signal);
