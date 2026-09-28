@@ -145,3 +145,13 @@ AppImage 与 deb 内部 `app.asar` 均与测试用 linux-unpacked payload 完全
 私有 `.agent/harness/runs/20260929-qianchuan-repair/` 保存重启回执、Kimi receipt/report、两次 Ng GUI 启动报告、禁用控件及权限 tooltip 观察、最终五十条/四十一个 fence 审计、构建快照、smoke 原始成功/失败记录和日志。原六账号验收目录与未知 fence 保持。Windows 按用户要求为 out of scope。
 
 实际剩余 gate：氨糖膏原账号的抖音号全域投放权限；一条根原页面证据丢失导致的未知结果；用户明确保留的 `REVIEW_ESCALATION_REQUIRED`。Linux 构建及 packaged fixture 验证已补齐，但日常安装切换与正式发行没有完成，当前仍只能交付受阻候选。
+
+### One-Root Application Read-Only Follow-Up
+
+用户随后明确“氨糖高不用管,一条根验证”：当前后续验收只处理一条根，不再尝试氨糖膏。Parent 复用上述已完成的 bounded Kimi 恢复合同调查，核对 service/page 源码 hash 仍匹配封存值，并通过 CodeGraph 与当前源码核对 `resume -> execute / runPending`；没有追加 implementation review，也不声称 Kimi 审过本次 GUI driver。
+
+本次实际启动同一 Linux packaged candidate，沿打开既有一条根项目、作品面板、精确未知任务的“只读核查页面”按钮执行。结果为 **BLOCKED**，不是上传 PASS：同 advertiser 另有未选文件的 `NEEDS_HUMAN` 任务，现有 `DouyinUploadService.resume()` 在执行前拒绝继续，未知任务的 attempt 未增加。直接只读观察原 target 也再次确认空 `adId`、零计划 drawer、零 owned modal，不能恢复该文件的 READY 证据。本轮没有停止或取消另一任务以绕过阻断，也没有打开新上传弹窗。
+
+十条正式产物均通过 JobStore completed、实际路径、文件 SHA256 及私有快照核对；全六十条 ledger 原字节与四十一个 fence 原字节均保持，新增导出、选择 fence、浏览器 tab 均为零。未知文件仍为 `竞品详情-抖音电商罗盘 - 2026-09-28T174400.525_edited.mp4`，其余九条未选文件。需要用户提供该条在千川的人工处理结果，以确定是否存在符合现有合同的恢复依据；回复前不推断已收到、已取消或可重新上传。
+
+私有证据 `.agent/harness/runs/20260929-oneroot-app-readonly/` 保存 source-bound GUI driver、runtime、前后任务行、精确目标/fence、终结 BLOCKED 报告及日志。实例已退出，现有 Chrome 页面与日常简辑未关闭；Windows 与新增真实制作均未执行。
