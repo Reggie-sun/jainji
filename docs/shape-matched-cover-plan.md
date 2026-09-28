@@ -210,3 +210,28 @@ spec: shape-matched-cover-spec.md
 **Verification / Stop:** red→green assembler negatives，npm run typecheck、assembler/activation/source-mask/shape/controller 回归、Parent diff/Risk Gate、官方 AOCI 完整增量维护；仅提交当前任务文件，保留其他 staged/dirty。本轮可收口的是 fail-closed preparation boundary；真实 immutable production request 签发与产品激活仍 blocked。使用 milestone 记录维护 session evidence，不另建生命周期 owner。
 
 **Boundary Checkpoint:** 本轮新增 assembler 20 tests、相关5 files /164 tests 与 typecheck PASS，最后入口55 tests fresh重跑；AOCI 1项完整批次与 Verify/Check/Guide aligned。状态 `PREPARATION_BOUNDARY_VERIFIED / REQUEST_ISSUANCE_BLOCKED / PRODUCT_DISABLED`，完整 C 尚未完成。证据、冻结 SHA、Risk Gate、Kimi 无有效终态与索引提交依赖见 [M5-C record](shape-matched-cover-m5c.md#verified-boundary-checkpoint)。
+
+# Active Slice — M5-D Full-Source-Fact Proof Definition
+
+**Goal / Scope:** 定义并验证 verified-no-sticker interval 与 exhaustive target set 的证明义务。区分全量解码帧清单、集合/时间分区一致性、可信语义审阅和最终 admission；结构完整不能签发语义 PASS。本切片只写 [M5-D contract](shape-matched-cover-m5d.md)、test-only 合同原型与真实 FFmpeg 合成反例，不创建 production proof issuer 或新的知识持久化 owner。
+
+**Files / Owners:** `docs/shape-matched-cover-m5d.md` 保存 D 合同和本轮证据；`tests/helpers/full-source-fact-contract.ts` 仅检查测试候选与独立帧清单的一致性；`tests/source-fact-completeness.test.ts` 验证首尾/中间缺口、PTS/源/修订/原图绑定、同时与重现目标、伪造空集合及一帧闪现。原型所有结果固定 `authority=none / eligible=false / semanticReview=NOT_EVALUATED`，不被 src import，不替代 source-fact owner。
+
+**Proof Contract:** 完整解码 horizon 使用连续 ordinal 和原 PTS/duration 的半开帧区间，拒绝缺失/丢弃帧、时钟缺口和未知尾帧；逐帧完整目标集合与全局目录/segment 必须精确相等。无贴纸时段要求全部原画布帧的可信完整空集合审阅，不能升级抽样 ABSENT、缩略图、局部 ROI、mask range 或 manual no-cover。未审阅帧由 owner 计算 complement，caller 不可填写空 unverifiedIntervals。语义信任、mask admission、freshness/dispute 与持久化 proof 仍须由原知识 owner 建立，raw JSON 不获得 D authority。
+
+**Acceptance / Verification:** 用明确真值的 CPU lossless 合成短片证明端点抽样会漏掉中部单帧及同时目标；全解码只证明帧枚举，不能自动知道旧贴纸语义。运行 prototype tests、既有 source knowledge/store 与 C/B 入口回归、typecheck；核对 M5-A renderer、M5-C assembler、M5-B guard 未变，检查引用及最终 diff。保持所有无关 dirty/staged，测试/文档不触发受管理 src 索引维护。本轮状态最多为 `CONTRACT_VALIDATED / SEMANTIC_AUTHORITY_BLOCKED / PRODUCT_DISABLED`；C 成功 issuer、D 完整 admission、E 和 Activation 另行验收。
+
+**Definition Checkpoint:** 原型与反例41 tests、相关6 files /151 tests 及 typecheck PASS。full decode + 两侧集合同时漏目标的反例证明语义 authority 不能由 schema/hash 签发；所有 prototype 结果仍 eligible=false。冻结 C/B/A/M4 SHA 未变，证据和受限环境能力见 [M5-D record](shape-matched-cover-m5d.md#verified-definition-checkpoint)。下一步须先建立已有 source-fact owner 的合格 full-canvas review 与版本化全目标 mask proof，不给 C 增加成功 issuer，也不打开 B。
+
+## Next Stages — Git Checkpoint Before Production D1
+
+用户明确要求留在 D，先独立提交本轮四个 contract/prototype 路径，再实施 production D1，禁止混成一个 commit。只读 mount 核查已确认 `.git` 独立挂载 ro、repository 和底层 ext4 rw、无 index.lock；当前执行环境的授权写能力未恢复，Git gate 为 blocked，不尝试删除 lock、chmod、remount 或旁路。诊断见 [Git mount record](shape-matched-cover-m5d.md#git-mount-diagnosis-and-next-gate)。
+
+| Stage | Contract and owner boundary | Acceptance and stop condition |
+| --- | --- | --- |
+| D1 Production Full-Decode Census | 已有 source-fact domain 内独占 census；复用 SourceIdentity 校验。从原视频完整解码所有 full-canvas bytes，保留每帧 ordinal/原 PTS/可信 endPTS/SHA，形成绑定 interpretation 的完整 digest。源身份前后重核；不抽样、缩放、丢坏记录、猜 FPS/尾帧或推断语义。 | 可执行 full decode 正例和坏帧/缺口/重叠/未知尾帧/VFR/源漂移/取消拒绝；所有 census 输出仍 authority=none，不提前创建 FullSourceAdmissionHandle。先过 Git checkpoint 才实施。 |
+| D2 Semantic Review Session + Acceptance | source-fact owner 绑定 census、原画布证据和合格审阅 session；逐帧完整 T(f) 或 UNKNOWN，不能只检查某目标或角落。 | 漏审阅/不完整集合/不确定事实保持 unverified；仅连续明确空集合形成可信 no-sticker interval；session/method 未 qualification 时不能接受语义完整性。 |
+| D3 Multi-target / Multi-segment Mask Proof | 现有 knowledge/mask owners 接受同源、统一修订的全部目标/时域/mask 证据组合；不新建 parallel store，不升级旧 sampled/source-mask-only 为全片 PASS。 | 每个活动 segment 均有可信 mask；moving/animated/无法静态 mask/身份不确定目标不能从目录删除，其存在使 V1 eligibility UNSAFE。 |
+| D4 Opaque FullSourceAdmissionHandle | 仅已有 source-fact owner 在 census、合格语义、全目标 mask、当前 source/revision/disputes 均通过后私有签发并消费 capability。 | caller JSON、复制对象、旧进程和 serialized PASS 不获 authority；消费时再验 freshness，恢复只读。全部门成立前保持 blocked。 |
+
+D1→D2→D3→D4 后才回到 C 完成 request issuer；可信 placement、M5-E 和 Activation 不在当前切片。C 成功支路、M5-B guard 和 M5-A renderer 保持冻结。本阶段细化仅固定后续边界，不声称任何 production D 子阶段已经实现。
