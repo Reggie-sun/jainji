@@ -34,6 +34,15 @@ it("projects unknown selected uploads as read-only without publish, caption or a
   for (const forbidden of ["提交发布", "修正文案", "人工确认平台已接受", "creator.douyin.com", "CDP 地址"]) expect(html).not.toContain(forbidden);
   expect(html).toContain("选择账号配置文件"); expect(html).toContain("千川生产页面合同尚未核实。");
 });
+it("keeps technical settings collapsed and recovery actions available outside them", () => {
+  const html = panel(task());
+  const advanced = html.match(/<details[^>]*><summary>高级设置<\/summary>[\s\S]*?<\/details>/)?.[0];
+  expect(advanced).toBeDefined(); expect(advanced).not.toMatch(/<details[^>]*\bopen(?:\s|=|>)/);
+  expect(advanced).toContain("操作时限"); expect(advanced).toContain("保存有限本机诊断");
+  const main = html.replace(advanced!, "");
+  expect(main).not.toContain('type="number"'); expect(main).toContain("选择账号配置文件");
+  expect(main).toContain("保存上传设置"); expect(main).toContain("只读核查页面"); expect(main).toContain("停止任务");
+});
 it("hands ready uploads back to Chrome without a confirmation action", () => {
   const html = panel(task({ state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: { advertiserId: "123", adId: "456", fileName: "成片.mp4", selectedCount: 1, observedAt: "2026-09-27T00:00:00.000Z", pageOwnership: { targetId: "owned", pageBatchId: projectId, modalSessionId: projectId } } }));
   expect(html).toContain("自行确认"); expect(html).toContain("只读核查页面"); expect(html).not.toContain("停止任务"); expect(html).not.toMatch(/<button[^>]*>确定</);

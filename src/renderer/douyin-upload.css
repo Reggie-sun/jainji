@@ -1,0 +1,10 @@
+.douyin-upload-panel .douyin-upload-actions{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px}
+.douyin-upload-panel .douyin-upload-actions small{font-size:12px;color:var(--ink-3)}
+.douyin-upload-panel .douyin-upload-advanced{border-top:1px solid var(--line-2);margin-top:18px;padding-top:12px}
+.douyin-upload-panel .douyin-upload-advanced summary{cursor:pointer;font-size:13px;color:var(--ink-2);width:fit-content}
+.douyin-upload-panel .douyin-upload-advanced p{font-size:12px;color:var(--ink-3);margin-top:8px}
+.douyin-upload-panel .douyin-upload-advanced fieldset{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;max-width:760px;border:1px solid var(--line);border-radius:5px;padding:12px;margin:12px 0}
+.douyin-upload-panel .douyin-upload-advanced legend{font-size:12px;color:var(--ink-3)}
+.douyin-upload-panel .douyin-upload-advanced fieldset label{font-size:12px;color:var(--ink-2)}
+.douyin-upload-panel .douyin-upload-advanced fieldset input{margin-top:6px}
+.douyin-upload-panel .douyin-upload-advanced>label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}

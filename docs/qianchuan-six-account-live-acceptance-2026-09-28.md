@@ -181,3 +181,19 @@ AppImage 与 deb 内部 `app.asar` 均与测试用 linux-unpacked payload 完全
 fresh AOCI Verify/Check exit 1，结构有效但未对齐；Guide exit 0、`authoring_required / complete:false`。缺少 Entry/基线的对象为 `source-fact-ai-compare.ts`、`source-fact-ai-contract.ts`、`source-fact-ai-input.ts`、`source-fact-ai-run.ts`；stale 为 `batch-production-controller.ts`、`index.ts`、`preload.ts`、`BatchProductionPanel.tsx`，均属于其他开发任务。本轮未修改这些源码或接管正式共享索引；本文为 observed 记录，不制造 Entry。AOCI 对齐尚未完成，不能以 Guide exit 0 宣称通过。
 
 私有 `.agent/harness/runs/20260929-qianchuan-app-install/` 保存安装 hash、原/候选启动器、激活回执、fresh smoke 报告、Kimi receipt 和 Parent 裁决，以及最终安装/AOCI 审计。Repository 无专用 session-record/capture Skill，本节作为该实质部署 checkpoint 的记录 owner。本机状态为 `LOCAL_CANDIDATE_LAUNCHER_ACTIVATED`；正式发行 acceptance 仍为 false，`REVIEW_ESCALATION_REQUIRED` 保留，不自动追加 review。
+
+## Upload Panel Simplification — 2026-09-29
+
+用户指出上传页有过多面向实现的设置，并明确选择将超时与诊断参数“收入默认折叠的高级设置”。本轮修改仅限 `DouyinUploadPanel.tsx`、其独立样式及相关 UI 测试：六项超时和诊断开关默认隐藏，账号文件选择、上传开关、保存和任务操作保持可见；说明改为制作时选账号、每组至多九条、完成后自行确认。有本地未保存修改时才显示提醒，不新增自动保存。原配置值、保存 IPC、busy guard、UNKNOWN 只读动作和逐批授权保持，主进程上传执行合同不变。
+
+新增回归先 RED，旧组件没有高级设置；修改后工作树相关 UI/contract/service 三文件 42/42 PASS。工作树 `npm run typecheck` 当次因其他任务新增的未跟踪 `tests/display-text.test.ts` 与尚未同步的展示文字 API 不匹配而 exit 2，未修改该任务文件，也不宣称完整工作树验证通过。另从原安装的冻结源码建立独立构建目录，仅替换上述两个前端源文件，源码 delta 核对相同；该隔离快照 fresh typecheck、前端构建及同组 42 个测试通过。
+
+Chrome MCP 因其专用浏览器 profile 已由另一会话占用而不可用，未关闭它。本轮改用隔离 Chrome 测试真实组件及 fixture IPC：默认隐藏、键盘展开、展开修改后收起保存、其他时限保持、busy guard、未知任务只读动作均 PASS。再以独立 HOME/userData 启动实际 packaged Electron，通过作品页操作和真实 preload/IPC 保存一次关闭上传的测试配置，核对仅指定超时改变、任务为零、无授权账号，结果 PASS。两者均不使用真实账号，不上传或确认文件。测试 driver 的固定默认时限预期、初始 page 等待，以及重包时的 unpack 匹配问题在前置验证中暴露并修正；失败运行先退出，修正后重新验证，未将失败候选接入启动器。
+
+受管 Kimi usability mapping invocation `5f724286-8a55-491b-b842-e216c24ade7e` 为 `PARSED`，两项完整 Read 的封存 hash 与当时组件和上下文相同。Parent 采纳默认折叠和条件未保存提醒；原状态标签/恢复动作文案不在本轮扩大修改。该 mapping 没有审查修改后的实现；本轮展示调整经 executable verification 后未触发新增 implementation review，原 `REVIEW_ESCALATION_REQUIRED` 继续保留。
+
+永久候选目录为 `/home/reggie/Applications/jianji/releases/qianchuan-20260929-ui/`，`app.asar` SHA256 `99f3845f35f46bce014e49ecdb5f43684580b4bdfe8b0714c142e0bd3cca53d8`。包内 2,158 个非前端文件、外部 3,383 个安装文件与原候选一致，main/preload hash 不变；只有 `dist` 前端资源更新。实际 packaged UI smoke 通过后，以原字节/inode 核对、原子替换并 readback 启动器目标，`sh -n` 通过。保留旧版本与启动器原字节，没有重启当前日常窗口或写入其 userData；正常退出后从桌面图标重开生效。该候选沿用原已验证安装的其余字节，不包含同期其他任务尚未稳定的展示文字等新功能。
+
+本轮 fresh AOCI Verify/Check 仍 exit 1，Guide `authoring_required / complete:false`；当前共享索引的上传面板 Entry 已包含高级设置，其他 owner 的索引改动未被本轮 stage。无参数 Maintain 返回的完整十二对象批次均为其他展示文字任务的源文件，包含 provider、模板编译/领域、App/Batch/Template 界面及共享文字 Schema。源码仍在改动，不能接管完整批次或提交子集；整体 AOCI 尚未对齐，后续由其 owner 稳定后维护。私有 `.agent/harness/runs/20260929-qianchuan-upload-ui/` 保存封存调用、源码 delta、组件和 packaged 验证、截图、包字节审计及启动切换回执。本节为既有 session record owner；正式发行与原审查阻塞状态不变。
+
+末次 Verify/Check/Guide 又观察到该任务更新 `AGENTS.md` 的展示文字规则、对应基线 stale；Parent 读取差异确认不改变本轮上传面板边界，未覆盖或提交其规则/索引。整体对齐仍未通过，不能将此前收到的十二项批次当作已稳定终态。
