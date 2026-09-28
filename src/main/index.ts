@@ -40,6 +40,7 @@ import { RecentProjects } from "./recent-projects.js";
 import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
 import { createAutomaticOutputDirectory } from "./automatic-output-directory.js";
+import { createBatchProductionRuntime } from "./batch-production-runtime.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -58,6 +59,7 @@ const templateUpdateSchema = z.object({ template: EditTemplateSchema }).strict()
 const productPriceDraftSchema = z.object({ projectId: uuidSchema, productPrice: ProductPriceSchema }).strict();
 const savedProjectRenameSchema = z.object({ recentId: uuidSchema, name: MaterialNameSchema }).strict();
 const projectSaveSchema = z.object({ name: MaterialNameSchema.optional(), workspaceDraft: ProjectWorkspaceSchema.optional() }).strict();
+const projectWorkspaceSchema = z.object({ projectId: uuidSchema, workspaceDraft: ProjectWorkspaceSchema }).strict();
 const automaticOutputSchema = z.object({ mediaIds: z.array(uuidSchema).min(1).max(1000), existingDirectory: outputDirectorySchema.optional() }).strict();
 
 let mainWindow: BrowserWindow | undefined;
@@ -74,6 +76,8 @@ let connections: ModelConnections;
 let library: AssetLibrary;
 let uploadedStickers: UploadedStickers;
 let stickerAssets: StickerAssets;
+let batchRuntime: ReturnType<typeof createBatchProductionRuntime>;
+let queueReady: Promise<void> = Promise.resolve();
 let stickerMutation = false;
 let quitting = false;
 let closingPrompt = false;
@@ -94,6 +98,8 @@ protocol.registerSchemesAsPrivileged([
 
 function currentState(): QueueSnapshot { return queue.snapshot(); }
 
+function assertProductionIdle(): void { batchRuntime?.controller.assertIdle(); agent.assertIdle(); }
+
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("untrusted IPC sender");
   if (quitting) throw new Error("应用正在退出，请等待下次启动。");
@@ -110,7 +116,7 @@ async function publicState(): Promise<DesktopState> {
     if (!approved) delete state.project.workspaceDraft!.outputDirectory;
   }
   const sourceKnowledgeRisks = await projectKnowledgeRisks({ ...snapshot, batches: snapshot.batches.filter(({ batch }) => batch.projectId === state.project.id) }, sourceKnowledge);
-  return { ...state, douyinUpload: douyinUpload?.status(state.project.id), sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: run, recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
+  return { ...state, batchProduction: batchRuntime?.controller.snapshot(), batchProductionWarning: batchRuntime?.controller.warning, douyinUpload: douyinUpload?.status(state.project.id), sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: run, recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
 let notifying = false, notificationPending = false;
@@ -133,11 +139,22 @@ function notifyState(): void {
 }
 
 function publish(snapshot: QueueSnapshot): void {
+  batchRuntime?.controller.wake();
   void service.syncQueue(snapshot).catch((error) => console.error("queue project sync failed", error));
   notifyState();
 }
 
 function registerHandlers(): void {
+  ipcMain.handle("batchProduction.projects", async event => { assertTrustedSender(event); return batchRuntime.listProjects(); });
+  ipcMain.handle("batchProduction.start", async (event, input: unknown) => {
+    assertTrustedSender(event);
+    if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
+    await queueReady;
+    coverReview.assertIdle(); connections.assertIdle(); assertProductionIdle();
+    await batchRuntime.controller.start(input);
+    return publicState();
+  });
+  ipcMain.handle("batchProduction.cancel", async event => { assertTrustedSender(event); await batchRuntime.controller.cancel(); return publicState(); });
   const uploadRef = z.object({ projectId: uuidSchema, uploadTaskId: UploadIdSchema }).strict();
   const assertUploadProject = (ref: z.infer<typeof uploadRef>) => {
     const task = douyinUpload.store.task(ref.uploadTaskId);
@@ -158,22 +175,22 @@ function registerHandlers(): void {
   const reviewRef = z.object({ id: uuidSchema, revision: z.number().int().nonnegative() }).strict();
   ipcMain.handle("coverReview.create", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.create(z.array(uuidSchema).min(1).max(250).parse(input)); return publicState(); });
   ipcMain.handle("coverReview.edit", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.edit(input); return publicState(); });
-  ipcMain.handle("coverReview.analyze", async (event, input: unknown) => { assertTrustedSender(event); connections.assertIdle(); const ref = reviewRef.parse(input); await coverReview.analyze(ref.id, ref.revision); return publicState(); });
-  ipcMain.handle("coverReview.review", async (event, input: unknown) => { assertTrustedSender(event); coverReview.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ selection: SelectModelSchema, enabled: z.literal(true) }).parse(input); await coverReview.review(ref.id, ref.revision, ref.selection, connections.reviewProvider(ref.selection)); return publicState(); });
-  ipcMain.handle("coverReview.prepare", async (event, input: unknown) => { assertTrustedSender(event); connections.assertIdle(); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.prepare(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
-  ipcMain.handle("coverReview.approve", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ input: FrozenAgentStartSchema }).parse(input); await coverReview.approve(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
+  ipcMain.handle("coverReview.analyze", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); connections.assertIdle(); const ref = reviewRef.parse(input); await coverReview.analyze(ref.id, ref.revision); return publicState(); });
+  ipcMain.handle("coverReview.review", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); coverReview.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ selection: SelectModelSchema, enabled: z.literal(true) }).parse(input); await coverReview.review(ref.id, ref.revision, ref.selection, connections.reviewProvider(ref.selection)); return publicState(); });
+  ipcMain.handle("coverReview.prepare", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.prepare(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
+  ipcMain.handle("coverReview.approve", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); const ref = reviewRef.extend({ input: FrozenAgentStartSchema }).parse(input); await coverReview.approve(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
   ipcMain.handle("coverReview.viewed", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ mediaId: uuidSchema, version: z.number().int().positive() }).parse(input); await coverReview.viewed(ref.id, ref.revision, ref.mediaId, ref.version); return publicState(); });
   ipcMain.handle("coverReview.cancel", async (event) => { assertTrustedSender(event); await coverReview.cancel(); return publicState(); });
   registerBugFeedbackHandlers(assertTrustedSender);
   ipcMain.handle("decorations.import", async (event) => {
     assertTrustedSender(event);
-    coverReview?.assertIdle(); agent.assertIdle();
+    coverReview?.assertIdle(); assertProductionIdle();
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: "上传贴纸", properties: ["openFile"],
       filters: [{ name: "静态贴纸图片", extensions: ["png", "jpg", "jpeg"] }],
     });
     if (result.canceled || !result.filePaths.length) return null;
-    coverReview?.assertIdle(); agent.assertIdle();
+    coverReview?.assertIdle(); assertProductionIdle();
     if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
     stickerMutation = true;
     try {
@@ -184,7 +201,7 @@ function registerHandlers(): void {
     finally { stickerMutation = false; }
   });
   ipcMain.handle("decorations.remove", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const id = z.string().refine(isUploadedStickerId, "只能删除用户上传的贴纸。").parse(input);
     if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
     const asset = stickerAssets[id];
@@ -224,58 +241,58 @@ function registerHandlers(): void {
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
   ipcMain.handle("connection.save", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.save(input); return publicState();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.save(input); return publicState();
   });
-  ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
-  ipcMain.handle("connection.model.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectModel(input); return publicState(); });
-  ipcMain.handle("connection.vision.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectVision(input); return publicState(); });
-  ipcMain.handle("connection.reviewer.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.selectReviewer(input); return publicState(); });
-  ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
+  ipcMain.handle("connection.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.select(uuidSchema.parse(input)); return publicState(); });
+  ipcMain.handle("connection.model.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.selectModel(input); return publicState(); });
+  ipcMain.handle("connection.vision.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.selectVision(input); return publicState(); });
+  ipcMain.handle("connection.reviewer.select", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.selectReviewer(input); return publicState(); });
+  ipcMain.handle("connection.remove", async (event, input: unknown) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.remove(uuidSchema.parse(input)); return publicState(); });
   ipcMain.handle("agent.disconnect", async (event) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.disconnect(); return publicState();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.disconnect(); return publicState();
   });
-  ipcMain.handle("connection.chatgpt.login", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.login(); return publicState(); });
-  ipcMain.handle("connection.chatgpt.refresh", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.refreshLogin(); return publicState(); });
-  ipcMain.handle("connection.chatgpt.cancel", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle(); await connections.cancelLogin(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.login", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.login(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.refresh", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.refreshLogin(); return publicState(); });
+  ipcMain.handle("connection.chatgpt.cancel", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle(); await connections.cancelLogin(); return publicState(); });
   ipcMain.handle("connection.ccswitch.list", async (event) => { assertTrustedSender(event); return connections.listCCSwitch(); });
   ipcMain.handle("connection.ccswitch.import", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const selected = z.object({ id: z.string().min(1).max(200), appType: z.enum(["claude", "codex"]) }).strict().parse(input);
     await connections.importCCSwitch(selected.id, selected.appType); return publicState();
   });
-  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); coverReview?.assertIdle(); connections.assertIdle(); await agent.test(); return true; });
+  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle(); await agent.test(); return true; });
   ipcMain.handle("agent.generateBrief", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); connections.assertIdle(); return agent.generateBrief(input);
+    assertTrustedSender(event); batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle(); return agent.generateBrief(input);
   });
   ipcMain.handle("agent.start", async (event, input) => {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
-    coverReview?.assertIdle(); connections.assertIdle();
+    batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle();
     await agent.start(input, approvedOutputDirectories);
     await service.rememberLatestProduction(agent.snapshot()!);
     return publicState();
   });
   ipcMain.handle("agent.cancel", async (event) => { assertTrustedSender(event); await agent.cancel(); return publicState(); });
   ipcMain.handle("media.selectAndProbe", async (event) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const result = await dialog.showOpenDialog(mainWindow!, {
       title: "导入原始素材",
       properties: ["openFile", "multiSelections"],
       filters: [{ name: "视频", extensions: ["mp4", "mov", "mkv", "webm"] }],
     });
     if (result.canceled) return publicState();
-    coverReview?.assertIdle(); agent.assertIdle();
+    coverReview?.assertIdle(); assertProductionIdle();
     await service.addMedia(result.filePaths);
     return publicState();
   });
   ipcMain.handle("media.addAndProbe", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const paths = pathListSchema.parse(input);
     await service.addMedia(paths);
     return publicState();
   });
   ipcMain.handle("media.remove", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const id = uuidSchema.parse(input);
     service.removeMedia(id);
     return publicState();
@@ -311,37 +328,43 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("project.rename", (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     service.renameProject(MaterialNameSchema.parse(input));
   });
   ipcMain.handle("project.productPriceDraft", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const { projectId, productPrice } = productPriceDraftSchema.parse(input);
     if (service.currentProject.id !== projectId) throw new Error("项目已切换，展示文字未保存。");
     service.setProductPriceDraft(productPrice);
     await service.persistCurrentProject();
     return publicState();
   });
+  ipcMain.handle("project.workspaceDraft", async (event, input: unknown) => {
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
+    const { projectId, workspaceDraft } = projectWorkspaceSchema.parse(input);
+    await service.setWorkspaceDraft(projectId, workspaceDraft);
+    return publicState();
+  });
   ipcMain.handle("project.coverSticker", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     service.setCoverSticker(input);
     return publicState();
   });
   ipcMain.handle("project.save", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const parsed = projectSaveSchema.parse(input ?? {});
     const name = parsed.name ?? service.currentProject.name;
     const fileName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
     const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目", defaultPath: service.projectPath ?? `${fileName}.jianji-project.json` });
     if (result.canceled || !result.filePath) return null;
-    coverReview?.assertIdle(); agent.assertIdle();
+    coverReview?.assertIdle(); assertProductionIdle();
     await service.saveProject(result.filePath, name, parsed.workspaceDraft);
     await recentProjects.remember(result.filePath, service.currentProject);
     activeRecentProjectId = await recentProjects.idForPath(result.filePath);
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     if (service.hasUnsavedContent) {
       const choice = await dialog.showMessageBox(mainWindow!, {
         type: "question",
@@ -354,14 +377,14 @@ function registerHandlers(): void {
       });
       if (choice.response !== 0) return publicState();
     }
-    coverReview?.assertIdle(); agent.assertIdle();
+    coverReview?.assertIdle(); assertProductionIdle();
     await douyinUpload.stop();
     service.newProject();
     activeRecentProjectId = undefined;
     return publicState();
   });
   ipcMain.handle("project.load", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     let filePath: string;
     if (input !== undefined) filePath = recentProjects.resolve(uuidSchema.parse(input));
     else {
@@ -377,7 +400,7 @@ function registerHandlers(): void {
       });
       if (choice.response !== 0) return null;
     }
-    coverReview?.assertIdle(); agent.assertIdle();
+    coverReview?.assertIdle(); assertProductionIdle();
     await douyinUpload.stop();
     try { await service.loadProject(filePath); }
     catch (error) {
@@ -390,7 +413,7 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("project.saved.rename", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const { recentId, name } = savedProjectRenameSchema.parse(input);
     const filePath = recentProjects.resolve(recentId);
     const active = service.projectPath ? await pathsEqual(service.projectPath, filePath) : false;
@@ -409,7 +432,7 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("project.saved.remove", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); agent.assertIdle();
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const recentId = uuidSchema.parse(input);
     const entry = recentProjects.list().find((item) => item.id === recentId);
     if (!entry) throw new Error("找不到该项目，请刷新列表后重试。");
@@ -452,20 +475,21 @@ function registerHandlers(): void {
   });
   ipcMain.handle("proof.render", async (event, input: unknown) => {
     assertTrustedSender(event);
-    agent.assertIdle();
+    assertProductionIdle();
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const { mediaId } = proofSchema.parse(input);
     const media = service.getMedia(mediaId);
     if (!media) throw new Error("media not found");
     const proofDirectory = path.join(app.getPath("userData"), "proofs");
     await mkdir(proofDirectory, { recursive: true });
+    assertProductionIdle();
     const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: [mediaId], mediaItems: service.currentProject.mediaItems, outputDirectory: proofDirectory, preset: DEFAULT_PRESET });
     void queue.start(batch.id);
     return { taskId: batch.tasks[0].id };
   });
   ipcMain.handle("export.create", async (event, input: unknown) => {
     assertTrustedSender(event);
-    agent.assertIdle();
+    assertProductionIdle();
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const parsed = exportCreateSchema.parse(input);
     if (parsed.douyinUpload && parsed.preset.container !== "mp4") throw new Error("千川上传仅支持 MP4。");
@@ -473,6 +497,7 @@ function registerHandlers(): void {
     const preset = parsed.preset as ExportPreset;
     const outputDirectory = await canonicalPath(parsed.outputDirectory);
     if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
+    assertProductionIdle();
     const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: parsed.mediaIds, mediaItems: service.currentProject.mediaItems, outputDirectory, preset });
     await service.rememberExportProduction([batch]);
     await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
@@ -486,7 +511,7 @@ function registerHandlers(): void {
     await queue.cancelAll(service.currentProject.id);
     return publicState();
   });
-  ipcMain.handle("export.retry", async (event, input: unknown) => { assertTrustedSender(event); agent.assertIdle(); await queue.retry(retrySchema.parse(input).taskIds); return publicState(); });
+  ipcMain.handle("export.retry", async (event, input: unknown) => { assertTrustedSender(event); assertProductionIdle(); await queue.retry(retrySchema.parse(input).taskIds); return publicState(); });
   ipcMain.handle("export.appendPrefill", async (event, input: unknown) => {
     assertTrustedSender(event);
     const { batchId } = appendPrefillSchema.parse(input);
@@ -496,7 +521,7 @@ function registerHandlers(): void {
   });
   ipcMain.handle("export.append", async (event, input: unknown) => {
     assertTrustedSender(event);
-    agent.assertIdle();
+    assertProductionIdle();
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const parsed = AppendProductionSchema.parse(input);
     const prefill = await queue.appendPrefill(parsed.batchId, service.currentProject.id);
@@ -509,6 +534,7 @@ function registerHandlers(): void {
     const stickerPool = Object.entries(stickerAssets)
       .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && entry[0] !== "template" && entry[0] !== "none")
       .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
+    assertProductionIdle();
     const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
     await service.rememberExportProduction(batches);
     for (const batch of batches) await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
@@ -668,6 +694,9 @@ async function bootstrap(): Promise<void> {
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection, authorization) => douyinUpload.registerBatch(batch, selection, authorization), (selection, count) => douyinUpload.preflight(selection, count));
+  batchRuntime = createBatchProductionRuntime({ root: userData, registry: recentProjects, queue, ffmpeg, fontResolver,
+    library, stickers: stickerAssets, connections, knowledgeStore: sourceKnowledge, approvedDirectories: approvedOutputDirectories, changed: notifyState });
+  await batchRuntime.controller.restore();
   protocol.handle("jianji-agent-preview", async (request) => {
     try {
       const url = new URL(request.url);
@@ -701,7 +730,8 @@ async function bootstrap(): Promise<void> {
   const windowReady = createWindow();
   // Replay history in the background so it blocks neither the window nor a
   // graceful quit; recover() publishes a snapshot when done.
-  void queue.recover().then(() => douyinUpload.reconcile()).catch((error) => console.error("queue recover failed", error));
+  queueReady = queue.recover().then(() => douyinUpload.reconcile());
+  void queueReady.catch((error) => console.error("queue recover failed", error));
   await windowReady;
   void connections.restore();
 }
@@ -719,6 +749,7 @@ function safeLog(...args: unknown[]): void {
 }
 
 async function shutdownServices(): Promise<void> {
+  await batchRuntime?.controller.cancel().catch(() => safeLog("batch production cancellation failed during shutdown"));
   await douyinUpload?.stop().catch(() => safeLog("uploader safely blocked during shutdown"));
   const shutdownStart = Date.now();
   const mark = (stage: string) => safeLog(`[shutdown] ${stage} done +${Date.now() - shutdownStart}ms`);

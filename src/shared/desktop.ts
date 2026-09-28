@@ -3,8 +3,11 @@ import type { CapabilityStatus } from "../main/ffmpeg";
 import type { AgentRun, ConnectionStatus, ChatGPTStatus } from "./agent";
 import type { ConnectionLibrary } from "./connections";
 import type { DouyinUploadStatus } from "./douyin-upload";
+import type { BatchProductionRun } from "./batch-production";
 
 export type DesktopState = AppState & {
+  batchProduction?: BatchProductionRun;
+  batchProductionWarning?: string;
   capabilities: CapabilityStatus;
   connection: ConnectionStatus;
   visionConnection?: ConnectionStatus;

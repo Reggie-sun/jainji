@@ -15,6 +15,7 @@ import type { CoverSticker } from "../shared/cover-sticker";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace";
 import { ResultsPanel } from "./ResultsPanel";
+import { BatchProductionPanel } from "./BatchProductionPanel";
 import { BugFeedbackDialog } from "./BugFeedbackDialog";
 import { Heading, Icon, duration, sizeLabel } from "./ui";
 import { ModelSettingsDrawer } from "./ModelSettingsDrawer";
@@ -145,7 +146,7 @@ export default function App() {
 
   useEffect(() => {
     const pending = pendingProductPrice.current;
-    if (!pending || busy || state?.agentRun?.status === "running") return;
+    if (!pending || busy || state?.agentRun?.status === "running" || ["running", "cancelling"].includes(state?.batchProduction?.status ?? "")) return;
     if (state?.project.id !== pending.projectId) {
       pendingProductPrice.current = undefined;
       return;
@@ -156,7 +157,7 @@ export default function App() {
     }).catch(() => {
       if (projectId.current === pending.projectId) setNotice({ error: true, text: "下一轮展示文字未能保存，请重新填写后重试。" });
     });
-  }, [busy, state?.agentRun?.status, state?.project.id]);
+  }, [busy, state?.agentRun?.status, state?.batchProduction?.status, state?.project.id]);
 
   const run = async (action: () => Promise<void>, success?: string): Promise<boolean> => {
     if (operation.current) return false;
@@ -177,7 +178,9 @@ export default function App() {
   const agentRunning = state.agentRun?.status === "running";
   const exportTasks = state.queue.batches.flatMap(({ batch }) => batch.tasks);
   const exporting = exportTasks.some((task) => !["completed", "failed", "cancelled", "interrupted"].includes(task.status));
-  const locked = busy || agentRunning;
+  const batchRunning = state.batchProduction?.status === "running" || state.batchProduction?.status === "cancelling";
+  const productionRunning = agentRunning || batchRunning;
+  const locked = busy || productionRunning;
   const selectedMedia = state.project.mediaItems.filter((item) => selected.includes(item.id));
   const ready = state.project.mediaItems.filter((item) => item.probeStatus === "ready");
   const preview = ready.find((item) => item.id === previewId) ?? ready[0];
@@ -272,7 +275,7 @@ export default function App() {
     if (!parsed.success) return;
     const currentId = state.project.id;
     setState((current) => current?.project.id === currentId ? { ...current, project: { ...current.project, hasUnsavedChanges: true, template: { ...current.project.template, productPriceDraft: parsed.data } } } : current);
-    if (agentRunning) {
+    if (productionRunning) {
       pendingProductPrice.current = { projectId: currentId, productPrice: parsed.data };
       return;
     }
@@ -365,9 +368,9 @@ export default function App() {
   };
 
   return <div className="app-shell">
-    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onStickerLibrary={() => navigate("stickers")} onResults={() => navigateWorkflow("results")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
+    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onBatch={() => navigate("batch")} onStickerLibrary={() => navigate("stickers")} onResults={() => navigateWorkflow("results")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
     {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
-    <BugFeedbackDialog open={feedbackOpen} page={step === "stickers" ? "templates" : step} onClose={() => setFeedbackOpen(false)} />
+    <BugFeedbackDialog open={feedbackOpen} page={step === "stickers" ? "templates" : step === "batch" ? "results" : step} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">
       <WorkspaceHeader step={step} section={workflowSection} projectName={collectionName} projectDirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} engineReady={state.capabilities.ready} engineLabel={engineLabel} engineWarning={engineWarning} disabled={locked || exporting} saveDisabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onWorkflow={navigateWorkflow} onNewProject={() => void changeProject(false)} onOpenProject={() => void changeProject(true)} onSaveProject={saveCollection} onProjectManager={openProjectManager} />
       <main className="content">
@@ -399,8 +402,9 @@ export default function App() {
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={busy || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
-        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !agentRunning ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={agentRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}
+        <BatchProductionPanel state={state} visible={step === "batch"} onState={apply} />
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}
       </main>
       <footer className="app-footer"><span>简辑 · 本地视频包装</span><span><i /> 本地渲染，原片保留</span></footer>

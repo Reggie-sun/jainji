@@ -10,8 +10,12 @@ import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shar
 import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
 import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
+import type { BatchProductionStart, BatchProjectOption } from "../shared/batch-production.js";
 
 const api = {
+  batchProductionProjects: (): Promise<BatchProjectOption[]> => ipcRenderer.invoke("batchProduction.projects"),
+  startBatchProduction: (input: BatchProductionStart): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.start", input),
+  cancelBatchProduction: (): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.cancel"),
   createCoverReview: (mediaIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("coverReview.create", mediaIds),
   editCoverReview: (command: CoverReviewCommand): Promise<DesktopState> => ipcRenderer.invoke("coverReview.edit", command),
   analyzeCoverReview: (id: string, revision: number): Promise<DesktopState> => ipcRenderer.invoke("coverReview.analyze", { id, revision }),
@@ -53,6 +57,7 @@ const api = {
   removeMedia: (mediaId: string): Promise<DesktopState> => ipcRenderer.invoke("media.remove", mediaId),
   renameProject: (name: string): Promise<void> => ipcRenderer.invoke("project.rename", name),
   setProductPriceDraft: (projectId: string, productPrice: string): Promise<DesktopState> => ipcRenderer.invoke("project.productPriceDraft", { projectId, productPrice }),
+  setWorkspaceDraft: (projectId: string, workspaceDraft: ProjectWorkspace): Promise<DesktopState> => ipcRenderer.invoke("project.workspaceDraft", { projectId, workspaceDraft }),
   setCoverSticker: (input: CoverSticker): Promise<DesktopState> => ipcRenderer.invoke("project.coverSticker", input),
   saveProject: (name?: string, workspaceDraft?: ProjectWorkspace): Promise<DesktopState | null> => ipcRenderer.invoke("project.save", { name, workspaceDraft }),
   loadProject: (recentId?: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.load", recentId),

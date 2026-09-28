@@ -226,6 +226,13 @@ export class ApplicationService {
     return true;
   }
 
+  async setWorkspaceDraft(projectId: string, input: ProjectWorkspace): Promise<void> {
+    if (this.project.id !== projectId) throw new Error("项目已切换，制作模式未保存。");
+    this.project.workspaceDraft = ProjectWorkspaceSchema.parse(input);
+    this.touch();
+    await this.persistCurrentProject();
+  }
+
   async rememberLatestProduction(run: AgentRun): Promise<void> {
     if (run.projectId !== this.project.id) return;
     const latest = LatestProductionSchema.parse({

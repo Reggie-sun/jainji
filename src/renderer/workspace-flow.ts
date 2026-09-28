@@ -1,4 +1,4 @@
-export type Step = "connection" | "import" | "templates" | "stickers" | "results";
+export type Step = "connection" | "import" | "templates" | "stickers" | "results" | "batch";
 export type WorkflowId = "materials" | "packaging" | "cover" | "export" | "results";
 export type TemplateSectionId = "template" | "corners" | "cover" | "timing" | "export";
 

@@ -160,6 +160,15 @@ export async function readValidatedJson<T>(
 export class ProjectStore {
   constructor(private readonly filePath: string) {}
 
+  /** Inspect a saved template without migration writes, backup recovery or quarantine. */
+  async readSnapshot(): Promise<Project> {
+    const raw = await readJson(this.filePath);
+    return ProjectSchema.parse(migrateProjectState(raw, {
+      project: PROJECT_SCHEMA_VERSION, queue: QUEUE_SCHEMA_VERSION,
+      batch: BATCH_SCHEMA_VERSION, template: TEMPLATE_SCHEMA_VERSION,
+    }).value);
+  }
+
   async save(project: Project): Promise<void> {
     await atomicWriteJson(this.filePath, ProjectSchema.parse(project));
   }
