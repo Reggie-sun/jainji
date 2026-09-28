@@ -277,3 +277,31 @@ session 绑定 SourceIdentity、censusDigest、frame count、reviewer identity �
 使用真实 FFmpeg 两目标一帧闪现 fixture；TDD 先验证严格命令负例与绑定，再验证 evidence/session 集成和本地页面交互。运行 `npm run typecheck`、D2/D1/D contract/C/B/knowledge/mask 受影响测试，冻结 D1/A/B/C SHA 核对、Parent final diff/Risk Gate、AOCI 官方完整批次及 Verify/Check/Guide、git diff --check、specific-path commit。无知识持久化迁移、opaque full-source handle、placement、candidate selection、模型语义批准、产品接线或 activation。Self-Review：每个用户绑定与禁项均映射到 evidence/session/tool 或明确 acceptance stop；没有用结构完整或测试 PASS 代替 semantic truth。
 
 **D2 Engineering Checkpoint:** 原画布 evidence/session、本地人工工具和28个新测试已形成稳定候选；fresh typecheck、相关8 files /244 tests、真实 CPU decode 与独占 Chrome 原尺寸 Canvas transport 检查均通过，AOCI 完整7项 Apply 和 Verify/Check/Guide aligned。D1/A/B/C SHA 不变。receipt 固定 NOT_EVALUATED/RECORDED_NOT_QUALIFIED、authority=none/eligible=false，canonical unverifiedIntervals 仍覆盖全 horizon。证据、exact hashes、Review Risk Gate、共享树提交边界和剩余人工 qualification 见 [D2 candidate record](shape-matched-cover-m5d2.md)。本轮仅提交 engineering checkpoint，D2 acceptance 和 semantic authority 继续 blocked；下一项是合格人工方法/真实人工审阅验收，不进入 D3/D4/C 或 activation。
+
+## Active Slice — M5-D2Q Human Method Qualification
+
+### Goal and Boundaries
+
+按用户完整 D2Q 合同，为 `explicit-human-full-canvas/v1` 建立独立真值资格验证。工程工具、比较结果与真实人工资格分别记录。D1、D2 presentation/acknowledge/声明及 receipt 的固定 NOT_EVALUATED 不变；不接产品、不签发 no-sticker intervals、FullSourceAdmissionHandle 或 C request。即使 D2Q QUALIFIED，D3/D4/C/B/E 仍各自阻断，下一项仅为另行授权的 D2 Production Qualified Review。
+
+### Owners and Contracts
+
+新 `source-fact-qualification-contract.ts` 管理 dataset/truth/criteria/逐帧 correspondence 的严格、有界 schema、digest 与固定 criteria version。新 `source-fact-qualification-compare.ts` 只读 deterministic comparator，校验原 source/census/ordinal/PTS/endPTS/RGBA binding、原 D2 schema 与 receiptDigest；不修改 receipt，不接受 qualified boolean。新独立 `scripts/source-fact-qualification.mjs` 与 fixture helper 管理无覆盖 dataset freeze、盲审准备/运行和离线诊断；继续启动原 D2 工具，reviewer 页面不得出现场景标签、真值、分数或资格判定。正式冻结资产与私有 truth 不进入 reviewer HTTP surface。
+
+真值按完整 frame 保存，区分 known T(f) 和 TRUTH_AMBIGUOUS；每个 target 有独立 identity/category/state，绑定 author/version/source/decode。reviewer 自行创建 UUID，不能以 UUID 字面相等匹配 truth。run 前固定 correspondence protocol：冻结 review receipt 后由不同于 reviewer 的 truth author 逐 ordinal 将 reviewer UUID 对应到 truth target，保留无匹配 false positives；无法唯一对应保留 INCOMPLETE，不猜、不按 label/fuzzy match 自动通过。映射可表达错误 merge/split；比较器检查映射完备和每帧一一对应，并计算全时域身份一致性。
+
+qualification record 的严格数据形状已定义；当前没有正式 qualified record issuer。runner 只收集原 D2 receipt 和失败分类，离线比较即使指标匹配也固定正式状态 INCOMPLETE、record=null。自报 reviewerId、JSON digest 和 transport 不能认证真实人、独立性或盲审；这些事实尚须 Parent 根据独立证据裁决，不能加 caller boolean 代替。后续受控 qualification owner 只有在冻结 package、当前 snapshot、完整 D2 receipt、独立身份/盲审/human provenance、correspondence 及全部门槛成立时才可生成 authority=none 的正式记录。当前停止在设计/测试和真实人工条件准备 gate。
+
+### Criteria and Dataset
+
+run 前冻结 criteriaVersion/digest。falseEmpty、missedTargetFrames、multiTargetMiss、boundaryError、singleFrameAppearanceMiss、bridgedAbsence、missedUnknown、falsePositiveTargetFrames、identityMerge/identitySplit 全部零容忍；unnecessaryUnknownRate≤5%。clear-frame usability denominator 固定至少100帧，低于该数不声称合理支持该门槛。已观察到 false EMPTY 立即锁定 NOT_QUALIFIED，不继续资格采集以稀释；可离线保留诊断，不能改判。
+
+dataset 至少3个独立构造组、100帧、10 EMPTY、20有目标、5并发帧、3单帧 case、3切镜 case、3 moving/animated case、3真歧义 case，并覆盖用户18类场景。初版全为明确标记的 synthetic controlled fixtures，用不同背景/布局/种子/clip 独立构造；不把合成数据外推为真实媒体。truth、coverage case anchors、生成 recipe、source identity、D1 digest 与逐帧像素由同一冻结包追溯。真实媒体 truth fixtures 尚未独立核查时不伪造补齐。
+
+### Verification and Exit
+
+新增 qualification tests 验证每个 hard gate、真歧义、5%边界/小样本、不完整/篡改/source/method/version/criteria timing、identity merge/split、缺首中尾/一帧闪现/再现、false EMPTY不可抵消和无 authority。fixture 用真实 CPU FFmpeg 和 canonical D1；自动填入声明只属于 comparator/session engineering tests，绝非 human qualification。运行 typecheck、D2/D1/D contract/knowledge/mask/C/B 相关 tests 与既有 shape regression，核对冻结 SHA、diff、AOCI 官方完整 Maintain/Verify/Check/Guide，specific-path commit。
+
+终态仅 QUALIFIED/NOT_QUALIFIED/INCOMPLETE；全部用户24项退出条件真实满足才 M5-D2Q PASS。当前先完成设计、schema、dataset与测试；独立 truth author、人类 reviewer、run 前freeze与盲审条件准备好之前不宣称 qualification 开始。需要真实人操作时给出精确命令、URL与步骤并停止自动语义填写。Self-Review：所有门槛与禁止项映射到合同、比较器、外层工具或人工 stop gate；不以代码/自动化 PASS替代人工资格。
+
+**Engineering Checkpoint:** 数据/criteria 已独占冻结，真实 canonical D1 bytes 和全量 coverage 检查通过；43项 qualification/transport tests、244项既有相关回归、101项 shape regression 与 typecheck 通过。正式 human run NOT_STARTED，qualification INCOMPLETE，未实现正式 qualified record issuer。源码调用、证据限界、作者侧包身份和真实 reviewer 下一步见 [D2Q candidate record](shape-matched-cover-m5d2q.md)。保持所有 production guards，不进入 D2 production semantic review。

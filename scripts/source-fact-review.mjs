@@ -18,6 +18,24 @@ const controller = new AbortController();
 let evidence;
 let server;
 let publishing = false;
+let exporting = false;
+// Optional parent-only IPC export. It does not change any D2 presentation or command semantics.
+async function exportCheckpoint(kind, data) {
+  if (!process.send) return;
+  const checkpointId = randomUUID();
+  exporting = true;
+  try { await new Promise((resolveCheckpoint, reject) => {
+    const cleanup = () => { clearTimeout(timer); process.off("message", acknowledgeExport); controller.signal.removeEventListener("abort", abortExport); };
+    const abortExport = () => { cleanup(); reject(new Error("UNSAFE: parent receipt export cancelled")); };
+    const acknowledgeExport = message => {
+      if (message?.kind === "D2_EXPORT_ACK" && message.checkpointId === checkpointId) { cleanup(); resolveCheckpoint(); }
+    };
+    const timer = setTimeout(() => { cleanup(); reject(new Error("UNSAFE: parent receipt export interrupted")); }, 30000);
+    process.on("message", acknowledgeExport);
+    controller.signal.addEventListener("abort", abortExport, { once: true });
+    process.send({ kind, checkpointId, data }, error => { if (error) { cleanup(); reject(error); } });
+  }); } finally { exporting = false; }
+}
 const close = async () => {
   controller.abort(); server?.close();
   await evidence?.close(); await rm(root, { recursive: true, force: true });
@@ -41,6 +59,8 @@ try {
     durationMs: Math.round(Number(stream.duration) * 1000), timeBase: stream.time_base, timeOriginPts: Number(stream.start_pts), interpretationVersion: 1 });
   evidence = await owner.prepareFullCanvasReviewEvidence({ sourcePath: resolve(sourceFile), source, ffmpeg: { ffmpegPath, ffprobePath }, signal: controller.signal });
   const session = owner.createFullCanvasReviewSession(evidence, reviewerId);
+  await exportCheckpoint("D2_SESSION", session.snapshot());
+  let presentedBinding;
   const token = randomUUID();
   const page = await readFile(new URL("./source-fact-review.html", import.meta.url), "utf8");
   server = createServer(async (request, response) => {
@@ -55,20 +75,27 @@ try {
       if (request.method === "GET" && action === "") {
         response.setHeader("Content-Type", "text/html; charset=utf-8"); response.end(page); return;
       }
-      if (request.method !== "POST" || publishing) throw new Error("UNSAFE: review request unavailable");
+      if (request.method !== "POST" || publishing || exporting) throw new Error("UNSAFE: review request unavailable");
       let length = 0; const chunks = [];
       for await (const chunk of request) { length += chunk.length; if (length > 65536) throw new Error("UNSAFE: review input too large"); chunks.push(chunk); }
       const input = JSON.parse(Buffer.concat(chunks).toString());
       let result;
       if (action === "frame") {
         if (Object.keys(input).join() !== "ordinal") throw new Error("UNSAFE: invalid frame request");
-        const frame = await session.begin(input.ordinal); result = { ...frame, bytes: frame.bytes.toString("base64"), session: session.snapshot() };
+        const frame = await session.begin(input.ordinal); presentedBinding = frame.binding;
+        result = { ...frame, bytes: frame.bytes.toString("base64"), session: session.snapshot() };
       } else if (action === "ack") { session.acknowledge(input); result = {}; }
-      else if (action === "record") { session.record(input); result = session.snapshot(); }
+      else if (action === "record") {
+        session.record(input); result = session.snapshot();
+        await exportCheckpoint("D2_RECORD", { binding: presentedBinding, result: owner.FullCanvasReviewCommandSchema.parse(input) });
+      }
       else if (action === "finish") {
         if (Object.keys(input).length) throw new Error("UNSAFE: caller cannot supply a receipt");
         publishing = true;
-        try { result = await session.finish(); await writeFile(resolve(output), JSON.stringify(result, null, 2), { flag: "wx", mode: 0o600 }); }
+        try {
+          result = await session.finish(); await writeFile(resolve(output), JSON.stringify(result, null, 2), { flag: "wx", mode: 0o600 });
+          await exportCheckpoint("D2_RECEIPT", result);
+        }
         catch (error) { publishing = false; throw error; }
       } else throw new Error("UNSAFE: unknown review action");
       response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(result));

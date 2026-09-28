@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-28T12:42:17Z",
+  "updated_at": "2026-09-28T13:08:25Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "2be3b2ac14bba12b50cd159e8f351f5766d73829f9afc2d985626d0c312c7bda",
-      "size": 56310,
-      "normalized_sha256": "2be3b2ac14bba12b50cd159e8f351f5766d73829f9afc2d985626d0c312c7bda"
+      "sha256": "4987a126cacec0ddbce25a797868b615bf204e7445ccd48e4cb35554899004fe",
+      "size": 57345,
+      "normalized_sha256": "4987a126cacec0ddbce25a797868b615bf204e7445ccd48e4cb35554899004fe"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1461,6 +1461,16 @@
       "sha256": "4c590e47ca0697e3aabffc8a9770f91985d60c0a904a8f1fd217fb571c694609",
       "size": 10002,
       "normalized_sha256": "4c590e47ca0697e3aabffc8a9770f91985d60c0a904a8f1fd217fb571c694609"
+    },
+    "src/main/source-fact-qualification-compare.ts": {
+      "sha256": "c4c9347cdc522d9f92495aff08b7943e05d4afc08d5db1f545ea7c44a23688bd",
+      "size": 18857,
+      "normalized_sha256": "c4c9347cdc522d9f92495aff08b7943e05d4afc08d5db1f545ea7c44a23688bd"
+    },
+    "src/main/source-fact-qualification-contract.ts": {
+      "sha256": "a162d98d6d40a8e9f33b2f6079d2b242a7fa4e803659e3c2b7598ad02d3e7315",
+      "size": 10731,
+      "normalized_sha256": "a162d98d6d40a8e9f33b2f6079d2b242a7fa4e803659e3c2b7598ad02d3e7315"
     },
     "src/main/source-fact-review-evidence.ts": {
       "sha256": "2ec3ab9f4cb1ce7ad5694d0ce91b873ad43c25c3dc79d4bd3ad8287cf08751fa",
