@@ -162,3 +162,15 @@ Stable AOCI Verify/Check/Guide仍有11项foreign-owner missing/stale/unbaselined
 ## Checkpoint Ownership Repair
 
 Parent曾在读取staged清单后未暂停核验，普通commit错误纳入另一会话刚stage的18个文件。没有push；立即核对HEAD仍为本次错误commit，使用独立temporary index构造仅含本任务两个docs的tree、commit-tree及compare-and-swap update-ref，修正为 `da2b23b`。未使用reset/stash、未修改任何foreign文件或共享index；修正前后index SHA和20个相关文件SHA完全一致，18个foreign路径恢复原staged状态。完整bad/corrected commit、parent、path清单及SHA保存于同一证据目录的 `git-checkpoint-repair.json`。后续提交使用显式 `git commit --only <owned-path>`，避免共享staging被纳入本任务提交。该事故不归因其他writer，工程/资格状态保持INCOMPLETE。
+
+## Installation Continuation and Second Review Failure
+
+用户随后要求“安装”，Parent按现有授权继续。先核对router clean HEAD ec1567f、所有executable source与既有548 PASS时SHA一致，再调查第一轮OUTCOME_UNKNOWN/TLS_ERROR/CONNECT。一次同api.kimi.ai端点的无凭据/无HTTP、12秒有界TLS-only握手成功，Kimi doctor再次验证20项OS及native工具边界；没有将这些检查当visual capability。根据当前新证据和安装续行指令，仅显式启动一次有限round2，保持同read-only reviewer、required evidence、scope及安全门，没有自动重试循环。
+
+Round2 seal=`50b170e46531bd7a2bfe16e511d0d1cd7a4c250c4227c99190e55973c288afb7`，canonical invocation=`dbd52980-2e47-4b06-9ff3-f6609a89a90f`，结果OUTCOME_UNKNOWN/native exit1/364.56s。首次actual Kimi/k3/max请求HTTP200、input121193/output482，仅产生探索；第二次请求HTTP200并接收1652092 upstream bytes后，在RESPONSE_BODY发生CONNECTION_ERROR，336.43s、无完整usage/model/terminal proof。Parent只读核对该进程曾持续接收数据，没有因一次wait提前中断；native最终Request timed out/is_error=true不能覆盖canonical process.reason=exited。两轮失败均保留、actual cost未知为null；无完整report或可采纳verdict，未追加第三轮、换provider或降低标准。
+
+38个frozen路径至receipt核验逐SHA一致；源程序2d1c3976…保持。新15项独占archive=`/home/reggie/.local/state/agent-subagent-router/image-route-install-20260929`，manifest SHA=`9282e929c7007169a5eb9895e713e8f03a6dace1380aaf96b6cd52ab3aaa9642`，TLS/doctor、sealed scope/source、canonical receipts/raw artifacts及既有installation manifest由外部同一API record解释。官方 `_check_existing`核验现有entry/Skill匹配223da83安装；本任务未运行installation owner、未改installed tree/wrapper或sandbox配置。当前安装未替换，真实stop为required-review重复transport failure，底层网络原因尚未证明，不能声称已修复。
+
+本轮Jianji只更新原两个docs，未修改产品/AI/human/source/admission代码或测试；没有新增typecheck/Vitest执行，不把前轮129 PASS伪称本轮重跑。按verification-before-completion执行fresh receipt/managed installation/source SHA、diff ownership核验。AOCI本轮Verify/Check/Guide均exit0，governance_aligned=true、Check ok=true、Guide complete=true，findings=0；此前11项为历史状态，本轮未修改正式索引或baseline，不把其他owner的维护认作本任务修改。结果保存于 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-install-continuation-20260929`；docs属observe，自身AI managed source未改。Repository无适用专用capture skill，由现有phase/plan及router record保存真实blocker，具体路径提交，保留无关working tree。
+
+安装必须先有有效required review与Parent裁决；之后才官方clean-source安装及installed验证。独立OpenAI API credential/current额度/accounting仍缺，visual probe/formal请求0，formal预算USD0。M5-D2A继续INCOMPLETE、authority=none、eligible=false，未评估指标null/NOT_EVALUATED；human资格INCOMPLETE、real-media NOT_EVALUATED。PRODUCT_DISABLED；M5-B activation、M5-C issuer、M5-D3、M5-D4、verified-no-sticker production issuance全部BLOCKED；本次“安装”不授权产品启用或D2 Production Qualified Review。

@@ -87,3 +87,9 @@ Milestone4仍INCOMPLETE：当前没有独立OpenAI API credential reference、�
 Router required review第一轮invocation `5d46f112-ba0e-48ae-afa0-10b2b1640d9a` 已真实执行，canonical OUTCOME_UNKNOWN：第一次HTTP200仅为工具探索，第二次TLS_ERROR/CONNECT，缺完整审查report/verdict。Parent核验封存源码与receipts，未采用部分结果、未自动retry/fallback；失败保留并计入round1。按approved API Spec，缺有效review不得安装新可运行路线，故外部candidate未安装。当前自然停止于真实review transport blocker及独立API账户证据缺口，Milestone4/正式资格仍INCOMPLETE；保存未验收engineering checkpoint，不把commit当作PASS。
 
 本轮Jianji只修改两个plan/record owner。Fresh typecheck PASS；六个实际AI/human/qualification tests共129 PASS。首个测试命令遗漏AI文件和首轮typecheck期间foreign renderer修改均已记录，随后补跑并核对379路径SHA一致。AOCI尚有其他owner的11项findings，docs属observe，自己AI managed源码未改；不覆盖foreign索引或声明全仓对齐。最终证据与remaining work由 [phase record](shape-matched-cover-m5d2a.md) 和外部router canonical record独占。
+
+## Installation Continuation
+
+用户随后“安装”，已继续执行前置门而非免除安全合同。Router current clean ec1567f源码与548 PASS时SHA一致；Parent调查round1失败、取得当前TLS-only及doctor成功证据后，显式进行一次有限第二轮required review。Canonical invocation `dbd52980-2e47-4b06-9ff3-f6609a89a90f`仍OUTCOME_UNKNOWN：第二次请求HTTP200后RESPONSE_BODY连接中断，无完整report。两轮已消耗，未自动开启第三轮、换provider或采用partial输出。外部Spec禁止缺有效review安装，official installer本次未运行；既有223da83安装核验未变。Milestone4仍INCOMPLETE，visual/formal请求0，所有production BLOCKED保持；更底层transport原因、有效review、官方安装及live准备仍为remaining work。
+
+本轮fresh AOCI Verify/Check/Guide均exit0、findings=0、governance_aligned/ok/complete均true；此前foreign findings是历史状态。本任务没有修改正式索引/baseline或source，不把其他owner的维护归为自身结果。未新增typecheck/Vitest，实际new receipt/source/installed-entry checks及文档diff核验由phase record保存。治理通过不替代required review或M5-D2A资格。
