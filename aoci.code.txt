@@ -3,7 +3,7 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖、构建输出、日志、Harness回执及CodeGraph本机索引 | R:code:AGENTS.md | A:正式AOCI文件不在根目录忽略表中；.aoci目录由自身白名单排除运行资产 | S:-
-AGENTS.md[SC9T]: F:规定项目权威、产品不变量、领域归属及交付门禁 | R:code:src/shared/agent.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:规则优先于索引；交付要求源码核对、fresh验证及Guide维护；跨模板按请求条数制作 | S:源mask不证明选款或输出安全；形状须全轮共同候选、同一冻结字节、逐输出100%覆盖和独立内容安全，缺证据UNSAFE不回退；旧冻结任务保持原解释
+AGENTS.md[SC9T]: F:规定项目权威、产品不变量、领域归属及交付门禁 | R:code:src/shared/agent.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:规则优先于索引；每次修改稳定后自动维护并运行Verify、Check、Guide，阻断须报告；交付要求源码核对及fresh验证；跨模板按请求条数制作 | S:源mask不证明选款或输出安全；形状须全轮共同候选、同一冻结字节、逐输出100%覆盖和独立内容安全，缺证据UNSAFE不回退；旧冻结任务保持原解释；AOCI对齐不替代行为验证，按需读取不免除维护
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx | A:typecheck、Vitest、Harness与安装包入口；Playwright作为固定运行依赖external | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态

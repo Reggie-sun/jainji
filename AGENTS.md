@@ -68,7 +68,9 @@
 ## AOCI Cognition
 
 - 本文件是项目规则来源；`aoci.txt`、`aoci.meta.txt`、`aoci.code.txt` 是项目级语义索引，不建立第二套产品规则。AOCI cognition 永远不是 `source of truth`，只能提供待核对的线索。
-- 复杂或跨模块任务可按需使用 AOCI 理解职责、关系与约束；简单任务禁止仅为了流程完整而机械调用 AOCI。
+- 修改前读取 AOCI 理解职责、关系与约束仍按任务需要决定；简单任务不必为流程完整读取全量认知。这不免除修改后的强制维护。
 - 具体 symbol、调用与依赖关系用 CodeGraph 核对，当前实现以源码为准，行为以测试与 `verification-before-completion` 为准。AOCI 与本文件或当前源码冲突时，重新调查并刷新相应 cognition，不静默采用旧索引。
-- 受管理对象变更达到稳定状态后，按当前 AOCI Guide 与工具合同维护受影响条目。正式索引 `aoci.txt`、`aoci.meta.txt`、`aoci.code.txt` 及必要的 `.aoci/` 配置与基线可以随对应源码提交 Git；提交前核对路径内容、受管理源码快照并完成当前 Guide 要求的校验。`.aoci/` 运行状态、缓存、日志及机器专用 MCP 配置不得提交。
+- 每次完成文件修改（代码、测试、配置、文档或规则）并达到稳定状态后，MUST 自动按当前 AOCI Guide 与工具合同执行维护，更新受影响条目及源码基线，并在提交或最终交付前运行 Verify、Check、Guide 核对对齐状态；无需用户另行提醒，本文件的修改也适用。没有受管理对象变化或已经对齐时，不制造条目或扩大索引范围。维护后再次修改受管理对象，MUST 在新的稳定状态重新维护。AOCI 校验只证明索引与基线对齐，不替代行为验证或 `verification-before-completion`。
+- 工具不可用、源码未稳定或存在所有权冲突导致维护无法完成时，MUST 明确报告未更新对象、阻碍及剩余工作；不得静默跳过，或宣称 AOCI 已更新、已对齐。
+- 正式索引 `aoci.txt`、`aoci.meta.txt`、`aoci.code.txt` 及必要的 `.aoci/` 配置与基线可以随对应源码提交 Git；提交前核对路径内容、受管理源码快照并完成当前 Guide 要求的校验。`.aoci/` 运行状态、缓存、日志及机器专用 MCP 配置不得提交。
 <!-- aoci:end -->
