@@ -75,3 +75,15 @@ Milestone4仍 INCOMPLETE：Codex原始八图传递、fresh输入和actual tools=
 ## Generation Budget Repair Boundary
 
 用户要求先修复blocker再安装后，已继续 actual request/schema/versioned source 调查；现有 Codex subscription 路线没有可验证的硬生成上限。Router已准备 API amendment SHA `14e10cad0f3afc44f0f3796c2ae86c45e161c8a17ab2d54801c8c261a81df272`，改变 endpoint、API credential 和 billing，base V3 exact-SHA approval pending。该新边界不能由原 router 范围批准推定通过；此前已批准 image-input implementation 保持。批准后自动更新 router existing plan并继续 implementation/required review/official installation，不另要求“继续”。当前M4及正式资格仍INCOMPLETE，installed route未替换，所有production guards保持；最新证据由 [phase record](shape-matched-cover-m5d2a.md) 与 router canonical record独占。
+
+## Approved API Implementation Progress
+
+用户随后“批准”明确接受上段API amendment exact SHA；pending是历史状态。按writing-plans更新外部router计划后，已继续实际实现fixed OpenAI api-bounded channel、原native body到sealed generation cap的唯一映射、private credential边界、source=None新Docker入口、完整native终态/原始证据/typed capability owners与CLI。新Kimi/Codex实际八图native/fake及OS检查已通过，全套offline524 PASS/27 skip，全套显式native/fake+containment548 PASS/3 skip；均是工程证据。Required managed Kimi deep只读审查已封存并启动，安装待该门真实满足，不以tests或用户认可代替review/视觉资格。
+
+Milestone4仍INCOMPLETE：当前没有独立OpenAI API credential reference、当前额度和冻结成本accounting证据，故新视觉Provider请求0；原subscription接口缺hard cap的事实未改写。本聊天不充当blind actor。Capability授权仍两backend各最多1次、OpenAI USD1、每次generation2048/wall180/idle90；formalCostAuthorizationUSD=0，formal请求0。Scope内下一步继续required review、官方clean安装及installed核验；条件缺失保存可信INCOMPLETE，原独立holdout/criteria/inputPlan与全部生产BLOCKED保持。
+
+## Required Review and Installation Blocker
+
+Router required review第一轮invocation `5d46f112-ba0e-48ae-afa0-10b2b1640d9a` 已真实执行，canonical OUTCOME_UNKNOWN：第一次HTTP200仅为工具探索，第二次TLS_ERROR/CONNECT，缺完整审查report/verdict。Parent核验封存源码与receipts，未采用部分结果、未自动retry/fallback；失败保留并计入round1。按approved API Spec，缺有效review不得安装新可运行路线，故外部candidate未安装。当前自然停止于真实review transport blocker及独立API账户证据缺口，Milestone4/正式资格仍INCOMPLETE；保存未验收engineering checkpoint，不把commit当作PASS。
+
+本轮Jianji只修改两个plan/record owner。Fresh typecheck PASS；六个实际AI/human/qualification tests共129 PASS。首个测试命令遗漏AI文件和首轮typecheck期间foreign renderer修改均已记录，随后补跑并核对379路径SHA一致。AOCI尚有其他owner的11项findings，docs属observe，自己AI managed源码未改；不覆盖foreign索引或声明全仓对齐。最终证据与remaining work由 [phase record](shape-matched-cover-m5d2a.md) 和外部router canonical record独占。
