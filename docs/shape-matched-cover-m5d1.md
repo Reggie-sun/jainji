@@ -119,3 +119,17 @@ restart fixture 只将 stdout/stderr 接入普通文件，10s有界 spawnSync �
 Parent final diff /Implementation Review Risk Gate 对此 exact fixture SHA 与 unchanged D1 SHA 判定 `KIMI_REVIEW_NOT_REQUIRED`：用户未要求独立 reviewer；仅 test harness stdio/临时文件改变，无 publication/knowledge/production authority 或不可恢复状态写；真实同字节发布、独立进程只读、UNKNOWN/never republish 与全部原 assertion 均有完整 regression PASS。没有具体重大 consequence 与 reviewer 可补实质缺口的组合；runtime 最底层 syscall 原因与治理能力限制如实记录，不由 reviewer 投票替代。
 
 Session-record 本次仍使用既有 milestone/Plan，保存复现、单变量矩阵、首轮失败、新暴露的 child transport 问题、修复及 final gates，不创建第二 owner。scope 仅工程恢复；状态为 `ENGINEERING_VERIFIED / GOVERNANCE_BLOCKED / SEMANTIC_AUTHORITY_BLOCKED / PRODUCT_DISABLED`。AOCI 合同恢复并完成官方维护/校验前，不正式标 M5-D1 PASS，也不开始 D2。D1 只证明全像素枚举，未生成任何 no-sticker interval 或 exhaustive semantic acceptance。
+
+## AOCI Capability Diagnosis — 2026-09-28
+
+用户要求修复 AOCI。本轮只调查调用能力，不改冻结 D1、renderer、B guard、C issuer 或他人 staged/dirty 索引。五个 D1 source/test SHA 与上表逐字节相同；没有重新运行或扩大 production gate。
+
+当前 `/home/reggie/.local/bin/aoci` 为 `0.1.0-rc14`、commit `92c78bc48a3e431ff8ae67fabb05270cc7129fe7`。CLI Doctor exit0，配置加载成功，索引解析为166条目、0警告，baseline 与 Codex 注册存在；`capabilities --json` exit0，声明 volumes-v1 与9个 MCP tools。这只是安装/配置/解析证据，不证明 active MCP 调用、freshness 或 governance aligned。该版本 `status --deep --json` exit3，报兼容路径不支持 Volumes v1；不把此命令当作 Verify/Check/Guide，也不因此重建索引。
+
+真实 `aoci_rules` 与 CodeGraph `list_file_entities` 均返回 `MCP tool call requires approval, but approval policy is never`。两个不同服务在相同宿主审批层被拒绝，未取得服务器执行结果；这不是已证明的 AOCI 索引损坏。项目 `.codex/config.toml` 的 AOCI command/args 正确，项目信任为 trusted，没有显式 server/tool approval override。本地 Codex 源码 `codex-rs/core/src/mcp_tool_call.rs` 的 request approval 分支在 `AskForApproval::Never` 时返回同一错误；该源码 checkout 只是分支解释线索，不冒充当前 daemon 的 exact build/annotation 证明。
+
+当前 runtime 强制 approval policy=never，并将项目 `.codex` 与全局配置路径设为只读；没有可用的会话策略修改/重连工具。修改 `.aoci/config.json` 的 managed-scope approval 不会修复这层宿主拒绝。本轮未将工具改成自动批准，未通过直接 stdio/CLI 调用被拒绝的 rules/Maintain/update 操作，也未启动绕过当前权限的另一个 Codex。外部 Kimi 调查 preflight `/tmp/jianji-aoci-repair-subagent` doctor exit2，containment 未合格、Docker image unavailable、零 upstream request；Parent 保留诊断与裁决。
+
+恢复需由宿主端允许正常审批，再恢复此会话。CLI `codex resume --help` 已确认可用的形式是 `codex -C /home/reggie/vscode_folder/jianji -s workspace-write -a on-request resume`，从 picker 选择此任务；此命令是用户在宿主执行的下一步，本轮没有运行，也没有证明 launcher 是否还会覆盖策略。桌面宿主应使用对应的会话权限设置。保持 sandbox，不关闭审批；若 managed host 继续覆盖为 never，必须由该 host 的 policy owner 处理。
+
+恢复后的验收仍需真实官方 `aoci_rules` 成功、稳定源码快照及索引 ownership 核对、完整 Maintain 批次、Verify/Check/Guide 与 scoped commit；不能用 Doctor 的 PASS 替代。当前只完成诊断，AOCI 修复与 D1 formal PASS 仍 blocked。Session-record 使用本 milestone；documentation-only 风险不触发额外 implementation review，未改任何 production authority。
