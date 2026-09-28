@@ -17,6 +17,7 @@ const api = {
   batchProductionDetails: (input: BatchProductionDetailRequest): Promise<BatchProductionDetail> => ipcRenderer.invoke("batchProduction.details", input),
   startBatchProduction: (input: BatchProductionStart): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.start", input),
   cancelBatchProduction: (): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.cancel"),
+  cancelBatchProductionJob: (input: BatchProductionDetailRequest): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.cancelJob", input),
   createCoverReview: (mediaIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("coverReview.create", mediaIds),
   editCoverReview: (command: CoverReviewCommand): Promise<DesktopState> => ipcRenderer.invoke("coverReview.edit", command),
   analyzeCoverReview: (id: string, revision: number): Promise<DesktopState> => ipcRenderer.invoke("coverReview.analyze", { id, revision }),

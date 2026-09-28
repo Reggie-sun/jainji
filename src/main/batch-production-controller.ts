@@ -40,6 +40,8 @@ export class BatchProductionController {
   private pending?: Promise<void>;
   private activeSession?: BatchProductionSession;
   private activeJobId?: string;
+  private activeJobController?: AbortController;
+  private activeCancellation?: Promise<void>;
   private executing = false;
   private restorationError?: string;
   private readonly waiters = new Set<() => void>();
@@ -128,8 +130,30 @@ export class BatchProductionController {
     this.run!.status = "cancelling";
     this.controller?.abort();
     this.dependencies.changed(); this.wake();
-    try { await this.activeSession?.cancel(); }
+    try { await this.cancelActiveSession(); }
     finally { await this.pending; }
+  }
+
+  async cancelJob(input: unknown): Promise<void> {
+    const { runId, jobId } = BatchProductionDetailRequestSchema.parse(input);
+    const job = this.run?.id === runId ? this.run.jobs.find(value => value.id === jobId) : undefined;
+    if (!job) throw new Error("该批量制作记录已更新，请返回批量列表重新选择。");
+    if (terminal.has(job.status)) return;
+    if (this.run!.status === "cancelling") { await this.pending; return; }
+    if (this.activeJobId === jobId) {
+      this.activeJobController?.abort();
+      this.dependencies.changed(); this.wake();
+      await this.cancelActiveSession();
+      while (this.activeJobId === jobId && this.executing) await this.wait();
+    } else {
+      job.status = "cancelled";
+      await this.persist();
+    }
+  }
+
+  private cancelActiveSession(): Promise<void> | undefined {
+    if (this.activeSession) this.activeCancellation ??= this.activeSession.cancel();
+    return this.activeCancellation;
   }
 
   private async freeze(entry: BatchProductionEntry, job: BatchProductionJob): Promise<FrozenJob> {
@@ -163,12 +187,14 @@ export class BatchProductionController {
       for (const [index, entry] of entries.entries()) {
         if (signal.aborted) break;
         const job = this.run!.jobs[index];
+        if (job.status === "cancelled") continue;
         try { frozen.push(await this.freeze(entry, job)); }
-        catch (error) { job.status = "failed"; job.error = message(error); }
+        catch (error) { if (this.run!.jobs[index].status !== "cancelled") { job.status = "failed"; job.error = message(error); } }
         await this.persist();
       }
       for (const item of frozen) {
         if (signal.aborted) break;
+        if (item.job.status === "cancelled") continue;
         await this.executeJob(item, signal);
       }
       if (signal.aborted) {
@@ -179,9 +205,9 @@ export class BatchProductionController {
     } catch (error) {
       this.run!.status = "interrupted"; this.run!.error = message(error);
       for (const job of this.run!.jobs) if (!["completed", "failed", "cancelled"].includes(job.status)) job.status = "interrupted";
-      try { await this.activeSession?.cancel(); } catch { /* Preserve the original persistence or custody failure. */ }
+      try { await this.cancelActiveSession(); } catch { /* Preserve the original persistence or custody failure. */ }
       try { await this.persist(); } catch { this.dependencies.changed(); }
-    } finally { this.activeSession = undefined; this.activeJobId = undefined; this.executing = false; this.wake(); this.dependencies.changed(); }
+    } finally { this.activeSession = undefined; this.activeJobId = undefined; this.activeJobController = undefined; this.activeCancellation = undefined; this.executing = false; this.wake(); this.dependencies.changed(); }
   }
 
   private capture(job: BatchProductionJob, session: BatchProductionSession): boolean {
@@ -191,8 +217,11 @@ export class BatchProductionController {
     return changed;
   }
 
-  private async executeJob(item: FrozenJob, signal: AbortSignal): Promise<void> {
+  private async executeJob(item: FrozenJob, batchSignal: AbortSignal): Promise<void> {
     const { job } = item;
+    this.activeJobId = job.id;
+    this.activeJobController = new AbortController();
+    const signal = AbortSignal.any([batchSignal, this.activeJobController.signal]);
     let session: BatchProductionSession | undefined;
     let failure: string | undefined;
     job.status = "preparing";
@@ -202,10 +231,10 @@ export class BatchProductionController {
       if (signal.aborted) return;
       session = await this.dependencies.session(item.projectPath);
       this.activeSession = session;
-      this.activeJobId = job.id;
       if (signal.aborted) return;
       job.status = "producing";
       await this.persist();
+      if (signal.aborted) return;
       await session.start(AgentStartSchema.parse({ ...item.input, outputDirectory: job.outputDirectory }));
       while (session.busy && !signal.aborted) {
         if (this.capture(job, session)) await this.persist();
@@ -215,7 +244,7 @@ export class BatchProductionController {
     } catch (error) { failure = message(error); }
     finally {
       if (session) {
-        if (signal.aborted || failure) await session.cancel();
+        if (signal.aborted || failure) await this.cancelActiveSession();
         this.capture(job, session);
       }
       job.status = "exporting";
@@ -241,10 +270,13 @@ export class BatchProductionController {
         job.status = "failed";
         job.error = failure ?? failed?.error ?? exportFailure?.errorMessage ?? `完成 ${job.completedCount} / ${job.actualCount} 条，部分制作或导出未成功。`;
       } else job.status = "completed";
-      if (session) { await session.persist(this.dependencies.queue(item.project.id)); await session.cancel(); }
+      if (session) { await session.persist(this.dependencies.queue(item.project.id)); await this.cancelActiveSession(); }
+      await this.persist();
       this.activeSession = undefined;
       this.activeJobId = undefined;
-      await this.persist();
+      this.activeJobController = undefined;
+      this.activeCancellation = undefined;
+      this.wake();
     }
   }
 

@@ -184,6 +184,31 @@ if (process.type === "browser") {
   }
   report.checks.push("two products / five real FFmpeg exports, two sources request 3 yields exactly 3", "serial verified exports", "cover on/off and full/first-5s frozen independently", "editing and navigation preserve next batch settings", "active editor and original template settings preserved", "duration and audio preserved");
   await page.screenshot({ path: path.join(directory, "batch-results.png"), fullPage: true });
+  // Cancel one active product through its row and verify the next product still exports.
+  await row("氨糖膏").getByLabel("想制作的视频条数", { exact: true }).fill("75");
+  await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("1");
+  await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+  const singleRun = await waitForState(value => value.batchProduction?.id !== state.batchProduction.id && value.batchProduction?.jobs[0].taskIds.length > 0);
+  await page.getByRole("button", { name: "取消 氨糖膏 制作", exact: true }).click();
+  const singleFinished = await waitForState(value => value.batchProduction?.id === singleRun.batchProduction.id && ["finished", "interrupted"].includes(value.batchProduction?.status));
+  assert.equal(singleFinished.batchProduction.status, "finished", JSON.stringify(singleFinished.batchProduction));
+  assert.deepEqual(singleFinished.batchProduction.jobs.map(job => job.status), ["cancelled", "completed"]);
+  assert.equal(singleFinished.batchProduction.jobs[1].completedCount, 1);
+  const cancelledDetail = await page.evaluate(request => window.jianji.batchProductionDetails(request), { runId: singleFinished.batchProduction.id, jobId: singleFinished.batchProduction.jobs[0].id });
+  assert.ok(cancelledDetail.tasks.every(task => ["completed", "failed", "cancelled", "interrupted"].includes(task.status)));
+  report.checks.push("single active product cancellation drains only its own real exports and continues next product");
+  // Waiting product cancellation does not stop the active product; whole-batch stop remains available.
+  await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+  const queuedRun = await waitForState(value => value.batchProduction?.id !== singleRun.batchProduction.id && value.batchProduction?.jobs[0].taskIds.length > 0);
+  await page.getByRole("button", { name: "取消 蝴蝶贴 制作", exact: true }).click();
+  const queuedStopped = await waitForState(value => value.batchProduction?.id === queuedRun.batchProduction.id && value.batchProduction?.jobs[1].status === "cancelled");
+  assert.equal(queuedStopped.batchProduction.status, "running");
+  assert.equal(queuedStopped.batchProduction.jobs[1].taskIds.length, 0);
+  await page.getByRole("button", { name: "停止整批", exact: true }).click();
+  await waitForState(value => value.batchProduction?.status === "cancelled");
+  report.checks.push("waiting product cancellation skips only that product and whole-batch stop remains usable");
+  await row("氨糖膏").getByLabel("想制作的视频条数", { exact: true }).fill("3");
+  await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("3");
   // Reuse only these isolated fixtures to exercise failure continuation through the real IPC path.
   await unlink(sources[1]);
   await page.getByRole("button", { name: "开始批量制作", exact: true }).click();

@@ -156,6 +156,7 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("batchProduction.cancel", async event => { assertTrustedSender(event); await batchRuntime.controller.cancel(); return publicState(); });
+  ipcMain.handle("batchProduction.cancelJob", async (event, input: unknown) => { assertTrustedSender(event); await batchRuntime.controller.cancelJob(input); return publicState(); });
   const uploadRef = z.object({ projectId: uuidSchema, uploadTaskId: UploadIdSchema }).strict();
   const assertUploadProject = (ref: z.infer<typeof uploadRef>) => {
     const task = douyinUpload.store.task(ref.uploadTaskId);

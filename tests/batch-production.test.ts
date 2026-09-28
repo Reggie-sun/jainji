@@ -60,7 +60,7 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
         snapshot: () => run,
         start: async input => {
           starts.push(input); events.push(`start:${value.name}`);
-          busy = Boolean(options.holding);
+          busy = Boolean(options.holding && starts.length === 1);
           const status = options.allComplete || starts.length > 1 ? "completed" : "running";
           const items = Array.from({ length: input.requestedCount ?? input.mediaIds.length * (input.multiplier ?? 1) }, (_, index) => {
             const id = crypto.randomUUID(); tasks.push({ id, status, mediaId: input.mediaIds[index % input.mediaIds.length], progress: 0.37 } as ExportTask);
@@ -215,6 +215,140 @@ describe("cross-template batch admission", () => {
     expect(f.controller.snapshot()?.status).toBe("cancelled");
     expect(f.controller.snapshot()?.jobs.map(job => job.status)).toEqual(["cancelled", "cancelled"]);
     expect(f.tasks[0].status).toBe("cancelled"); expect(f.starts).toHaveLength(1);
+  });
+
+  it.each([false, true])("cancels only the active product and continues after its tasks drain (preparing runner: %s)", async holding => {
+    const f = await fixture({ holding });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.tasks).toHaveLength(1));
+    await f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.tasks.map(task => task.status)).toEqual(["cancelled", "completed"]);
+    expect(f.controller.snapshot()?.jobs.map(job => job.status)).toEqual(["cancelled", "completed"]);
+  });
+
+  it("skips a cancelled waiting product without cancelling the active export", async () => {
+    const f = await fixture();
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.jobs[0].status).toBe("exporting"));
+    await f.controller.cancelJob({ runId: run.id, jobId: run.jobs[1].id });
+    expect(f.tasks[0].status).toBe("running");
+    expect(f.dependencies.cancelExport).not.toHaveBeenCalled();
+    f.tasks[0].status = "completed"; f.controller.wake();
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.starts).toHaveLength(1);
+    expect(f.controller.snapshot()?.jobs.map(job => job.status)).toEqual(["completed", "cancelled"]);
+  });
+
+  it("rejects stale or malformed cancellation references before stopping any work", async () => {
+    const f = await fixture();
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.tasks).toHaveLength(1));
+    for (const input of [{ runId: crypto.randomUUID(), jobId: run.jobs[0].id },
+      { runId: run.id, jobId: crypto.randomUUID() }, { runId: run.id, jobId: "../job" },
+      { runId: run.id, jobId: run.jobs[0].id, all: true }]) {
+      await expect(f.controller.cancelJob(input)).rejects.toThrow();
+    }
+    expect(f.dependencies.cancelExport).not.toHaveBeenCalled();
+    expect(f.tasks[0].status).toBe("running");
+  });
+
+  it.each(["outputDirectory", "session"] as const)("cancels during %s preparation before starting the runner", async boundary => {
+    const f = await fixture({ allComplete: true });
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const original = f.dependencies[boundary].getMockImplementation()!;
+    if (boundary === "outputDirectory") f.dependencies.outputDirectory.mockImplementationOnce(async (...args) => {
+      await gate; return (original as typeof f.dependencies.outputDirectory)(...args);
+    });
+    else f.dependencies.session.mockImplementationOnce(async (...args) => {
+      await gate; return (original as typeof f.dependencies.session)(...args);
+    });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.dependencies[boundary]).toHaveBeenCalledTimes(1));
+    const cancellation = f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
+    release(); await cancellation;
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.events.filter(event => event.startsWith("start:"))).toEqual(["start:氨糖膏"]);
+    expect(f.controller.snapshot()?.jobs.map(job => job.status)).toEqual(["cancelled", "completed"]);
+  });
+
+  it("keeps a cancellation made while a template is still being frozen", async () => {
+    const f = await fixture({ allComplete: true });
+    let reject!: (error: Error) => void;
+    f.dependencies.loadProject.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.dependencies.loadProject).toHaveBeenCalledTimes(1));
+    await f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
+    reject(new Error("late read failure"));
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs.map(job => job.status)).toEqual(["cancelled", "completed"]);
+    expect(f.controller.snapshot()?.jobs[0].error).toBeUndefined();
+    expect(f.starts).toHaveLength(1);
+  });
+
+  it("waits for cancellation to drain, preserves completed artifacts and does not cancel unrelated task IDs", async () => {
+    const f = await fixture();
+    const run = await f.controller.start({ entries: [{ ...f.entries[0], requestedCount: 2 }, f.entries[1]] });
+    await waitFor(() => expect(f.controller.snapshot()?.jobs[0].status).toBe("exporting"));
+    f.tasks[0].status = "completed";
+    f.tasks[1].status = "verifying";
+    const unrelated = { id: crypto.randomUUID(), status: "running" } as ExportTask;
+    f.tasks.push(unrelated);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    f.dependencies.cancelExport.mockImplementation(async id => {
+      const task = f.tasks.find(task => task.id === id)!;
+      if (["running", "verifying"].includes(task.status)) { task.status = "cancelling"; await gate; task.status = "cancelled"; }
+    });
+    let settled = false;
+    const cancellation = f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id }).then(() => { settled = true; });
+    const repeat = f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
+    await waitFor(() => expect(f.tasks[1].status).toBe("cancelling"));
+    expect(f.starts).toHaveLength(1); expect(settled).toBe(false);
+    release(); await Promise.all([cancellation, repeat]);
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.tasks[0].status).toBe("completed"); expect(unrelated.status).toBe("running");
+    expect(f.controller.snapshot()?.jobs[0].completedTaskIds).toEqual([f.tasks[0].id]);
+    expect(f.dependencies.cancelExport.mock.calls.flat()).not.toContain(unrelated.id);
+    f.dependencies.cancelExport.mockClear();
+    await f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
+    await f.controller.cancelJob({ runId: run.id, jobId: run.jobs[1].id });
+    expect(f.dependencies.cancelExport).not.toHaveBeenCalled();
+  });
+
+  it("whole batch cancellation wins over a concurrent single-product cancellation", async () => {
+    const f = await fixture({ holding: true });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.tasks).toHaveLength(1));
+    await Promise.all([f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id }), f.controller.cancel()]);
+    expect(f.controller.snapshot()?.status).toBe("cancelled");
+    expect(f.controller.snapshot()?.jobs.map(job => job.status)).toEqual(["cancelled", "cancelled"]);
+    expect(f.starts).toHaveLength(1);
+  });
+
+  it("captures and drains partial tasks created while start is settling, cancelling the session only once", async () => {
+    const f = await fixture();
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const original = f.dependencies.session.getMockImplementation()!;
+    const cancelling = vi.fn();
+    f.dependencies.session.mockImplementationOnce(async file => {
+      const session = await original(file);
+      const start = session.start, cancel = session.cancel;
+      session.start = async input => { await gate; await start(input); };
+      session.cancel = async () => { cancelling(); await gate; await cancel(); };
+      return session;
+    });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.jobs[0].status).toBe("producing"));
+    const cancelled = f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
+    await waitFor(() => expect(cancelling).toHaveBeenCalledTimes(1));
+    release(); await cancelled;
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(cancelling).toHaveBeenCalledTimes(1);
+    expect(f.tasks.map(task => task.status)).toEqual(["cancelled", "completed"]);
+    expect(f.controller.snapshot()?.jobs[0].taskIds).toEqual([f.tasks[0].id]);
   });
 
   it("drains a partial enqueue when preparation fails before continuing", async () => {
