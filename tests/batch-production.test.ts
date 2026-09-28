@@ -333,15 +333,16 @@ describe("cross-template batch admission", () => {
     const gate = new Promise<void>(resolve => { release = resolve; });
     const original = f.dependencies.session.getMockImplementation()!;
     const cancelling = vi.fn();
+    const starting = vi.fn();
     f.dependencies.session.mockImplementationOnce(async file => {
       const session = await original(file);
       const start = session.start, cancel = session.cancel;
-      session.start = async input => { await gate; await start(input); };
+      session.start = async input => { starting(); await gate; await start(input); };
       session.cancel = async () => { cancelling(); await gate; await cancel(); };
       return session;
     });
     const run = await f.controller.start({ entries: f.entries });
-    await waitFor(() => expect(f.controller.snapshot()?.jobs[0].status).toBe("producing"));
+    await waitFor(() => expect(starting).toHaveBeenCalledTimes(1));
     const cancelled = f.controller.cancelJob({ runId: run.id, jobId: run.jobs[0].id });
     await waitFor(() => expect(cancelling).toHaveBeenCalledTimes(1));
     release(); await cancelled;

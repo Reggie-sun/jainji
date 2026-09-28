@@ -1,25 +1,28 @@
-.batch-production-intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px; margin-bottom: 24px; }
-.batch-production-intro p { margin: 8px 0; color: var(--text-muted, #697b76); }
-.batch-production-intro small, .batch-template-controls small { color: var(--text-muted, #697b76); line-height: 1.6; }
-.batch-production-list { display: grid; gap: 18px; }
-.batch-mode-select { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+.batch-production-intro { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; margin-bottom: 16px; }
+.batch-production-intro p { margin: 4px 0; color: var(--text-muted, #697b76); }
+.batch-production-intro small, .batch-template-controls small { color: var(--text-muted, #697b76); line-height: 1.45; font-size: 12px; font-weight: 400; }
+.batch-production-list { display: grid; gap: 12px; }
+.batch-mode-select { display: flex; align-items: center; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin: 0; }
+.batch-template-row .batch-mode-select .button { min-height: 32px; padding: 5px 12px; font-size: 12px; }
 .batch-template-row .batch-mode-select .button.secondary.active { color: #087d70; border-color: #087d70; background: #e7f4ef; }
-.batch-mode-select small { flex-basis: 100%; color: #697b76; line-height: 1.6; }
+.batch-mode-select small { flex-basis: 100%; color: #697b76; line-height: 1.45; font-size: 12px; text-align: right; }
 .batch-result-name { font-weight: 600; font-size: inherit; }
 .batch-details-back { margin-bottom: 20px; }
-.batch-template-row { padding: 24px; border: 1px solid transparent; }
+.batch-template-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 12px 16px; padding: 16px; border: 1px solid transparent; }
 .batch-template-row.selected { border-color: var(--accent, #397c69); }
-.batch-template-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
-.batch-template-title label { display: flex; align-items: center; gap: 12px; cursor: pointer; }
+.batch-template-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 0; align-self: start; min-height: 32px; }
+.batch-template-title label { display: flex; align-items: center; gap: 8px; cursor: pointer; min-height: 32px; }
 .batch-template-title input, .batch-cover-toggle input { width: 18px; height: 18px; accent-color: #397c69; }
 .batch-order { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #edf4f0; color: #397c69; font-size: 13px; flex-shrink: 0; }
-.batch-template-controls { display: grid; grid-template-columns: minmax(130px, .75fr) minmax(220px, 1.5fr) minmax(160px, 1fr) minmax(180px, 1fr); gap: 20px; }
-.batch-template-controls label { display: flex; flex-direction: column; gap: 9px; font-size: 13px; font-weight: 600; }
-.batch-template-controls input[type="number"], .batch-template-controls textarea, .batch-template-controls select { width: 100%; box-sizing: border-box; border: 1px solid #dbe5df; border-radius: 9px; padding: 10px 12px; background: #fff; color: inherit; font: inherit; }
-.batch-template-controls textarea { resize: vertical; min-height: 76px; }
+.batch-template-row .batch-order { width: 24px; height: 24px; font-size: 12px; }
+.batch-template-controls { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(120px, .8fr) minmax(180px, 1.5fr) minmax(160px, 1fr) minmax(160px, 1fr); gap: 12px; }
+.batch-template-controls label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; font-weight: 600; }
+.batch-template-controls input[type="number"], .batch-template-controls textarea, .batch-template-controls select { width: 100%; min-height: 34px; box-sizing: border-box; border: 1px solid #dbe5df; border-radius: 5px; padding: 6px 10px; background: #fff; color: inherit; font: inherit; line-height: 1.4; }
+.batch-template-controls textarea { resize: vertical; min-height: 52px; }
 .batch-template-controls input:focus, .batch-template-controls textarea:focus, .batch-template-controls select:focus { outline: 2px solid #a3c8b8; outline-offset: 2px; }
-.batch-cover-toggle > span:nth-child(2) { display: flex; align-items: center; gap: 9px; min-height: 39px; }
-.batch-output { display: flex; align-items: center; gap: 16px; margin-top: 18px; padding-top: 16px; border-top: 1px solid #edf1ed; font-size: 12px; }
+.batch-cover-toggle > span:nth-child(2) { display: flex; align-items: center; gap: 8px; min-height: 34px; }
+.batch-output { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; padding-top: 8px; border-top: 1px solid #edf1ed; font-size: 12px; }
+.batch-output .text-button { min-height: 32px; white-space: nowrap; }
 .batch-output > span { display: flex; align-items: center; gap: 8px; flex: 1; overflow-wrap: anywhere; color: #697b76; }
 .batch-production-results { margin-top: 28px; padding: 24px; }
 .batch-result-row { display: flex; align-items: center; gap: 16px; padding: 18px 0; border-bottom: 1px solid #edf1ed; }
@@ -28,4 +31,15 @@
 .batch-result-info p { margin: 7px 0; font-size: 13px; color: #697b76; }
 .batch-result-info small { display: block; overflow-wrap: anywhere; color: #697b76; line-height: 1.6; }
 .batch-error, .batch-result-info .batch-error { color: #b14444; }
-@media (max-width: 1250px) { .batch-template-controls { grid-template-columns: 1fr 1.5fr; } }
+.batch-template-row > .batch-error { grid-column: 1 / -1; margin: 0; }
+@media (max-width: 1100px) {
+  .batch-template-row { grid-template-columns: minmax(0, 1fr); }
+  .batch-mode-select { justify-content: flex-start; }
+  .batch-mode-select small { text-align: left; }
+  .batch-template-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); }
+}
+@media (max-width: 700px) {
+  .batch-production-intro { align-items: flex-start; flex-wrap: wrap; }
+  .batch-template-controls { grid-template-columns: minmax(0, 1fr); }
+  .batch-template-row .batch-mode-select .button, .batch-template-controls input[type="number"], .batch-template-controls select, .batch-output .text-button { min-height: 44px; }
+}
