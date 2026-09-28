@@ -96,3 +96,31 @@ Jianji stable engineering candidate按SUBAGENTS.md判断 `KIMI_REVIEW_NOT_REQUIR
 执行AOCI Verify/Check/Guide后，当前shared governance未对齐：11 findings均属于其他上传任务的missing/stale/unbaselined owners，本次test/docs属于既有observe scope，四个AI managed source未改。完整索引三块交付已host-confirmed，strictattestation fail/uncertain且治理stale，仅做source-bound工程；不声称完整系统认知。正式`aoci.code.txt`/`.aoci/baseline.json`混合归属保持，未有ownership决定，不写/stage/commit，也不处理其他业务路径。现阶段不能宣称全仓AOCI对齐；需其实际owner完成维护。
 
 独占证据目录 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-blocker-repair-20260929` 保存14份日志/快照/receipt与manifest，manifest SHA=`01ba1891e3796357db9bf5cfecfbc0a982f54e4637d16a6489e328c7841bcbbf`。原frozen holdout/criteria/truth/inputPlan及历史失败保持原字节，正式视觉probe=0、formal requests=0，所有语义指标仍null/NOT_EVALUATED。当前剩余为批准并实施真实router视觉扩展、资格/有限预算/config/inputPlan freeze、可信receipt/correspondence/issuer，以及正式盲审；全过程PRODUCT_DISABLED与全部生产BLOCKED guards保持。
+
+## Image Input Implementation and Current Blocker
+
+2026-09-29 用户随后明确“那继续实现啊”，批准此前展示的router image supplement exact SHA `c1169a61ba8573a2c4ce442b321683a65b800230d3e8620e069e388a6d97c0f1`。实际approval binding由router `docs/records/architecture-spec-acceptance.md`维护；先前APPROVAL_PENDING与DESIGN_ONLY为历史，不伪称更早实施。按writing-plans编写 `docs/superpowers/plans/2026-09-29-image-only-routes.md`、Self-Review后已继续代码实施，不停在plan。
+
+Router新代码建立独立strict image-task/v1、finite budgets、PNG完整性/no-follow读取、private immutable image-seal/v1、有序原字节SHA、独立Kimi native stream-json projection、严格actual wire guard、禁工具响应、raw exchange callback、strict JSON_OBJECT/v1，以及无商业调用的source CLI inspect-images。旧schema/Budgets/project工具/report协议兼容。未建立第二个source identity/knowledge/admission owner，没有操作human session。
+
+Codex 0.154.0 pinned binary的模型请求诊断只在新local Docker diagnostic image执行；host仅运行无账号调用的版本/help/schema核对。无host project/home/auth/recipe/truth mount、external model请求或global auth读取。实际有效native控制已清除skills、request_user_input、update_plan及环境/permissions额外输入；八张原PNG首中末SHA/顺序与相同像素不同identity均保留，actual tools=[]、user-only输入通过fake验证。但设置model_max_output_tokens=2048后实际wire仍没有生成token上限，IMAGE_GENERATION_BOUND_UNPROVEN为当前可复现blocker。该helper只捕获fixed-loopback fake请求后终止，不能证明turn.completed、最终JSON、真实视觉身份、账号额度或语义能力。
+
+未新增可信authenticated Codex broker/relay、完整image execution/typed qualification owner、32MiB transport admission或成功issuer，未替换现有安装；当前安装仍为原reporting修复。预算门未通过时不试探性付费调用、不注入未经支持证明的参数、不改变provider、不用host或text连通性替代视觉proof。完整实现/安装与正式controlled qualification均INCOMPLETE。真实视觉probe=0、formal requests=0、actor原/mapping/joint receipts=0；全部未评估语义指标null/NOT_EVALUATED。没有已证明actor硬错误，因此不捏造NOT_QUALIFIED。
+
+Fresh router full offline397 PASS/25 skip，显式native/fake+containment420 PASS/2 skip、ruff PASS，113个source/test/script路径start/end SHA完全一致，snapshot digest=`2e5b8b0ad8afac70efd92a5517bccb780a8d62e11f3bacbc7de0d6b310b61b65`。实际source CLI分别封存8个匿名synthetic image IDs并verify，qualified_route=null、formal_execution=BLOCKED。这些不是live visual或truth qualification。外部canonical证据owner为 `/home/reggie/vscode_folder/agent-subagent-router/docs/records/image-input-engineering-2026-09-29.md`；独占60项证据目录 `/home/reggie/.local/state/agent-subagent-router/image-input-engineering-20260929` 的manifest SHA=`63626da93666721b0ccc305b3a735afdda2b55462e0aa1f1fe7ffd14cc4c8e47`。
+
+受管Kimi deep/max独立安全mapping seal=`bdbfe78cc4bd3f52b8a06ca9ac9a967af10d4ad436b44dab7605bebadd37944a`、qualified route=`4f2d5dc8-4234-4665-b382-e82f1ad6cc00`、invocation=`fcef80d3-1a7f-4c6c-a394-cfacef10c3ba`。Parent核验canonical artifacts/Read SHA及actual api.kimi.ai /k3 /max的两次HTTP200；generation4096上限截断，exit1/UPSTREAM_GENERATION_LIMIT，未采用报告、未重试。这是工程mapping实际请求2，不是视觉probe、正式actor或final reviewer；失败保留。
+
+当前input-only router checkpoint按base G2记录KIMI_REVIEW_NOT_REQUIRED，详细consequence/gap/value及snapshot判断由其record独占；没有新credential/relay/live consumer/成功issuer或production修改。完整capability门仍blocked，该判断不为未来关键凭据或authority路径豁免审查。Jianji本次仅更新自身plan/record，不改AI/human生产源码，不签任何source权限。
+
+新鲜Jianji typecheck及AI/human四文件86项tests曾全部通过；共享HEAD被其他上传任务继续推进，不拿旧全仓snapshot冒充当前状态。交付前重新核验当前相关tests/typecheck/source状态和AOCI Verify/Check/Guide。当前AOCI初次检查出现其他任务19项missing/stale/unbaselined findings；自身AI四个managed source未改，docs属observe scope，正式索引/baseline为foreign mixed ownership，无权限覆盖/stage/commit，不宣称全仓治理对齐。最终检查与本轮Jianji证据在下一节记录。
+
+自然停止门为已证实的生成预算缺口；剩余需要受支持且可验证的actual finite-generation路线、完整authenticated transport/终态/receipt/capability owner、必要review与official installation，然后有限router-owned probe和对应envelope。两actual routes、完整inputPlan与正式cost/criteria/config/budget提前冻结和可信execution/mapping/correspondence/issuer全部成立后才一次正式truth-vs-review。8图proof不推出648图mapping或真实用户媒体泛化。原independent synthetic holdout未交给任何delegated agent/actor；real-media层仍NOT_EVALUATED。PRODUCT_DISABLED、M5-B/M5-C/M5-D3/M5-D4及verified-no-sticker production issuance始终BLOCKED，D2 Production Qualified Review超出本次自动授权。
+
+## Image Input Delivery Verification
+
+Router已specific-path提交input-only engineering checkpoint `ea05c07`（22个本任务路径），没有push、worktree或受管新安装。Jianji本次仅自身两个plan/record路径变化；src及tests保持，原human生产/测试与AI四managed source diff为空。共享HEAD推进至其他上传任务的0439ac0后，重新实际运行npm run typecheck exit0及四个AI/human tests：4 files/86 tests全部PASS（18.81s）；343个TS/TSX/config/script路径start/end逐SHA相同，snapshot digest=`d5ead4d1d0b41b8fa8410a769afb526b3ea3fed5903ef2f7dfeb11e546f0d057`。没有用前一共享snapshot覆盖此次状态。
+
+Stable AOCI官方Verify exit1/governance_aligned=false、Check exit1/ok=false、Guide exit0/complete=false。19 findings全部为其他任务的missing/stale/unbaselined，未包含AI managed source；Guide exit0不代表治理通过。本次docs属observe scope，无受管理source变更，不制造条目或改写foreign mixed正式资产。全仓治理维护仍需其owner完成；当前不可声明AOCI对齐或整体完成。交付再次读取并执行verification-before-completion，核对diff与所有权，只提交本任务两个docs，保留无关dirty/delete/untracked/staged工作。
+
+当前Jianji独占证据目录 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-image-input-20260929` 保存fresh typecheck/tests、start/end source SHA和交付AOCI Verify/Check/Guide及逐文件SHA manifest。与router独占60项证据分开，明确qualification INCOMPLETE、authority=none、eligible=false。没有适用session-capture skill，substantial record由本phase owner与router canonical record承接，不写外部memory。停止原因为真实Codex generation预算门，另有foreign AOCI alignment/ownership缺口；稳定checkpoint不等于M5-D2A PASS或可上生产。

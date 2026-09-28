@@ -65,3 +65,9 @@ Milestone4因受管接口缺少可验证无文件工具视觉actor及隔离阻�
 ## Self-Review
 
 已将spec的method/config、独立真值/18类coverage、whole-frame PNG与packet、独立A/B→mapping→joint、truth对应、全部指标/null、单调停止/预算、可信来源、human兼容及产品禁项映射到上述milestones。不存在把旧human plan、双模型一致或transport成功当作AI资格的步骤。
+
+## Image Route Implementation Checkpoint
+
+用户随后明确“那继续实现啊”，批准已展示且未修改的 router image supplement exact SHA；上一段批准待定为历史状态。外部router已建立durable implementation plan并继续实际实施，独立image-task/seal、Kimi native图片projection/wire guard、source inspect-images和Codex Docker/native诊断输入已有代码与离线证据。
+
+Milestone4仍 INCOMPLETE：Codex原始八图传递、fresh输入和actual tools=[]已在Docker fake验证；即使配置model_max_output_tokens=2048，实际请求仍缺生成token上限，IMAGE_GENERATION_BOUND_UNPROVEN阻断live调用。完整authenticated Codex channel、image execution/typed receipt/qualification owner及新安装尚未完成；不以诊断helper捕获请求当成功turn或视觉能力。正式probe/formal requests=0，不降低预算标准、不切换provider。原holdout与全部生产guards保持。详细代码/测试/冻结证据及剩余工作见 [current phase record](shape-matched-cover-m5d2a.md) 的Image Input Implementation章节和外部router canonical record。
