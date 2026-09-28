@@ -7,6 +7,7 @@ import type { ExportBatchIdentity } from "./queue.js";
 import { fingerprintFile, isPathWithinDirectory, pathsEqual } from "./paths.js";
 import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory, strictSyncDirectory, uploadTaskId, sameTargetBytes, type UploadTaskRecord } from "./douyin-upload-store.js";
 import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
+import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type QianchuanUploadResult } from "../shared/douyin-upload.js";
 
@@ -44,7 +45,7 @@ export class DouyinUploadService {
   private controlGeneration = 0;
   private readonly accounts: QianchuanAccountConfigReader;
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
-    this.accounts = dependencies.accounts ?? new QianchuanAccountConfigReader();
+    this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
     this.paused = store.tasks().some(task => task.result.state === "NEEDS_HUMAN");
   }
   status(projectId: string): DouyinUploadStatus {
@@ -59,16 +60,24 @@ export class DouyinUploadService {
   }
   private changed(): void { this.dependencies.changed?.(); }
   async restoreConfig(): Promise<void> {
-    if (this.store.config.accountConfigPath) {
-      try { this.summaries = await this.accounts.authorizeFile(this.store.config.accountConfigPath); }
-      catch { this.summaries = []; this.initializationFailure = "账号配置不可用，请重新通过文件选择器授权。"; }
-    }
+    const savedPath = this.store.config.accountConfigPath;
+    try {
+      const summaries = this.accounts instanceof QianchuanAccountSettings ? await this.accounts.restore(savedPath) : savedPath ? await this.accounts.authorizeFile(savedPath) : [];
+      if (summaries.length && this.accounts instanceof QianchuanAccountSettings && savedPath !== this.accounts.file) await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
+      this.summaries = summaries; this.initializationFailure = undefined;
+    } catch { this.summaries = []; this.initializationFailure = "账号设置不可用，请检查已保存的配置。"; }
   }
   /** Only the trusted main-process file dialog may call this with a path. */
   async chooseConfig(file: string): Promise<void> {
     const summary = await this.accounts.authorizeFile(file);
-    await this.store.setConfig({ ...this.store.config, accountConfigPath: file });
+    await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts instanceof QianchuanAccountSettings ? this.accounts.file : file });
     this.summaries = summary; this.initializationFailure = undefined; this.changed();
+  }
+  async saveAccount(input: unknown): Promise<void> {
+    if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持软件内设置。");
+    const summaries = await this.accounts.savePlan(input);
+    await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
+    this.summaries = summaries; this.initializationFailure = undefined; this.changed();
   }
   async refreshAccounts(): Promise<void> {
     try { this.summaries = await this.accounts.refresh(); this.initializationFailure = undefined; }

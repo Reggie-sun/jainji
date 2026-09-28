@@ -170,6 +170,7 @@ function registerHandlers(): void {
     return publicState();
   });
   ipcMain.handle("douyinUpload.refreshAccounts", async (event) => { assertTrustedSender(event); await douyinUpload.refreshAccounts(); return publicState(); });
+  ipcMain.handle("douyinUpload.saveAccount", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.saveAccount(input); return publicState(); });
   ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); void douyinUpload.resume(ref.uploadTaskId).catch(() => notifyState()); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.caption", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ caption: z.string().max(4096) }).parse(input); assertUploadProject(ref); throw new Error("千川任务不接受发布文案。"); });

@@ -54,16 +54,16 @@ CodeGraph 已查询 service 的 entity 和 execute 关系，实际源代码确�
 
 # 4. Account Configuration Contract
 
-本机人工 JSON 仍为唯一账号映射来源，结构保持 `{ version: 1, accounts: [...] }`，每项仅含 `product / cdpEndpoint / advertiserId / adId`。六个产品固定为蝴蝶贴、氨糖膏、滴耳康、眼贴、肥皂、热敷贴；热敷贴沿用原舒鼻膏 profile。不根据用户粘贴链接的排列顺序填映射。
+2026-09-29 用户明确修订为软件内账号设置：用户点选产品并粘贴千川计划链接，程序识别账户和计划，明确保存后供以后制作选择。原六账号 JSON 保持原格式，只作为一次性导入来源，不再要求用户日常编辑外部文件。六产品枚举保持现状，不根据链接顺序、当前页面或模型推测产品和浏览器绑定。
 
-- 配置必须恰有六项；产品、CDP 端口、非空 advertiserId 不能重复；未知字段、非法 JSON、未知版本拒绝。
-- ID 为带引号的十进制字符串，不经 Number 转换。未填写项可以保留空字符串，但该账号不可选择上传；不猜 plan。
-- CDP 使用现有文件格式的 `http://127.0.0.1:端口`，拒绝凭据、路径、query/fragment、LAN、公网、redirect；返回 WS 另行校验 loopback。
-- 全局设置只保存用户经文件选择器授权的 `accountConfigPath`，不硬编码本机绝对路径。读取私有普通文件，拒绝 symlink、权限不安全或超出 64 KiB；POSIX 文件 0600 或更严格。Windows 未通过权限/持久化验证时上传保持阻断。
-- 设置、制作预检和保存 intent 前重新读取文件；新任务冻结 `product / cdpEndpoint / advertiserId / adId` 与配置内容 digest。浏览器执行只使用冻结映射，后来修改配置不重定向旧任务。
-- 一次制作请求的预检摘要保留在主进程执行上下文，不传模型；注册批次时若文件 digest 已变化，上传初始化失败并要求重新选择，不能在制作期间静默换目标。同批所有 intent 必须消费同一份已核验映射快照。
-- renderer 只提交产品枚举，不提交 ID、endpoint、任意 path 或 URL；主进程从授权配置解析并冻结。公开状态显示产品、账户/计划 ID 和必要连接状态，不返回 profile 内容、凭据或内部文件路径。
-- 解析规则放在共享 `src/shared/qianchuan-account.ts`，受授权文件的读/权限检查放在 `src/main/qianchuan-account-config.ts`。现有测试 CLI 改为消费同一解析规则，避免两套不一致的规则；CLI 是诊断入口，不成为 runtime dependency。
+- 导入文件仍必须恰有六项；软件内私有设置可按产品逐项添加，最多六项。两者复用产品、CDP 端口、非空 advertiserId 唯一性和 strict 字段校验；缺少完整配置的产品不可选择上传。
+- 计划链接仅接受 `https://qianchuan.jinritemai.com/uni-prom`，拒绝用户信息、其他 origin/path、重复 `aavid` / `adId`、空值及非法 ID。从 query 中各取唯一的十进制字符串，不经 Number 转换；其余 query/fragment 不保存、不导航、不作为操作授权。
+- 链接不包含浏览器登录或 CDP 绑定。已有产品保留原 loopback 端口；首次设置由用户填写对应已登录 Chrome 的调试端口。软件不猜 profile、不登录或自动启动 Chrome。生成的 endpoint 仍为 `http://127.0.0.1:端口`；浏览器连接的 WS/redirect 等原校验不变。
+- 软件内 mapping 由 `QianchuanAccountSettings` 独占，保存在 userData 下的私有上传目录；原 reader 继续负责有限读取、普通文件/当前用户/0600 或更严格/symlink 检查及 digest。Windows 未通过权限/持久化验证时上传保持阻断。
+- 新安装不扫描磁盘、不消费账号环境变量。已授权外部路径在软件内 mapping 不存在时沿原 reader 读取并导入；软件内设置存在时优先使用它，损坏或已保存文件丢失时阻断，不回退外部文件。导入不改原文件；修改只写软件内 mapping。保存采用独占 writer lock、私有临时文件、fsync、原子替换和目录同步，结果不确定时阻断后续配置使用；不自动清除残留 lock。
+- 账号保存入口为 trusted main IPC 的 strict `{ product, planUrl, browserPort? }`；browserPort 仅为本机 loopback 端口，拒绝任意 path、endpoint、独立 ID 或额外字段。renderer 显示识别预览，main 独立重新解析校验并保存。公开状态可返回必要的端口，不返回 profile、凭据、内部路径或原长 URL。该入口只维护设置，不授权上传。
+- 制作入口仍只提交产品枚举；设置、制作预检和 intent 准入均读取当前私有映射。冻结 `product / cdpEndpoint / advertiserId / adId` 与内容 digest；预检到 intent 之间变化则上传初始化失败，同批消费同一份主进程快照。已注册的旧批次仍使用旧冻结目标，不被新计划重定向。
+- 共享 schema 与 URL 解析由 `src/shared/qianchuan-account.ts` 独占；`qianchuan-account-config.ts` 负责安全读取，`qianchuan-account-settings.ts` 负责内部持久化和一次性导入。原诊断 CLI 的六项导入格式不变，不成为桌面 runtime dependency。全局与每批上传默认关闭、显式选择、永久 fence、UNKNOWN 零重传及停在确定前均不变。
 
 # 5. Selection And Final Artifact Contract
 
@@ -131,7 +131,7 @@ fence 后断线、崩溃、timeout、取消或 ready 保存失败，只能对原
 
 # 9. Public Surface And Safety
 
-全局设置：enabled 默认 false、经文件选择器授权的 accountConfigPath、既有有限 timeouts 和默认关闭的诊断。账号文件是映射 owner，UI 不另外维护可漂移 ID 副本。UI 可显示六产品及可用/缺配置状态，配置变化只影响新选择。
+全局设置：enabled 默认 false、主进程持有软件内 mapping 的 accountConfigPath、既有有限 timeouts 和默认关闭的诊断。软件内账号设置是唯一映射 owner，UI 只编辑尚未保存的计划链接并展示解析预览。用户点产品、粘贴链接、保存账号；导入旧 JSON、时限与诊断默认收纳到高级设置。配置变化只影响新批次选择。
 
 制作/追加控件写清“成片上传至所选千川计划，停在确定前”，取消 creator caption 和“提交发布”措辞。结果行显示文件名、产品、账户/计划 ID、状态与明确 reason；已完成上传提供“在 Chrome 中检查并确认”的说明，允许停止/安全继续/只读核查，不提供提交按钮、任意浏览器控制或清除 fence 按钮。
 
@@ -143,7 +143,7 @@ IPC 遵循可信 sender 和 strict schema，task 必须属于当前项目；新�
 
 | Requirement | Decisive evidence |
 | --- | --- |
-| 六账号配置与冻结 | 严格解析、缺 ID 禁用、数字精度、文件授权/权限、改配置不改旧任务、主进程拒绝任意 ID/URL |
+| 六账号配置与冻结 | 严格链接/setup 解析、缺绑定禁用、字符串 ID 精度、私有导入及保存/恢复、原文件不变、改配置不改旧 intent、主进程拒绝独立 ID/任意 URL/path/endpoint |
 | 本次制作授权 | 默认关闭/不选账号、重置、追加独立选择、字段不进入模型/项目；旧 caption 请求拒绝 |
 | 最终产物 | 两条 completed save 后通知、失败零上传、实际路径/hash、MP4、私有快照、导出并发及失败隔离 |
 | 页面与整批 | 本地千川 fixture：同批共用 tab、容量不足零选文件、多个完成逐条串行、错账号/计划/弹窗归属停止、重复文件名不误认 |

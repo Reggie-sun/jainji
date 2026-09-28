@@ -10,6 +10,7 @@ import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shar
 import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
 import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
+import type { QianchuanAccountSetup } from "../shared/qianchuan-account.js";
 import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest } from "../shared/batch-production.js";
 
 const api = {
@@ -75,6 +76,7 @@ const api = {
   appendProduction: (input: AppendProductionInput): Promise<{ batchIds: string[]; outputDirectory: string }> => ipcRenderer.invoke("export.append", input),
   saveDouyinUploadConfig: (input: DouyinUploadStatus["config"]): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.configure", input),
   selectQianchuanAccountConfig: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.selectConfig"),
+  saveQianchuanAccount: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.saveAccount", input),
   refreshQianchuanAccounts: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.refreshAccounts"),
   resumeDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.resume", { projectId, uploadTaskId }),
   stopDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.stop", { projectId, uploadTaskId }),

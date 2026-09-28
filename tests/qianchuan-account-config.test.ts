@@ -67,7 +67,7 @@ describe.skipIf(process.platform === "win32")("authorized local configuration", 
     await expect(reader.authorizeFile("relative.json")).rejects.toMatchObject({ code: "CONFIG_PATH_INVALID" });
     const summary = await reader.authorizeFile(file);
     expect(summary).toHaveLength(6);
-    expect(summary[0]).toEqual({ product: "蝴蝶贴", advertiserId: "9007199254740993", adId: "1876036593854788", available: true });
+    expect(summary[0]).toEqual({ product: "蝴蝶贴", advertiserId: "9007199254740993", adId: "1876036593854788", available: true, browserPort: 9222 });
     expect(JSON.stringify(summary)).not.toContain(file);
     expect(JSON.stringify(summary)).not.toContain("cdpEndpoint");
   });

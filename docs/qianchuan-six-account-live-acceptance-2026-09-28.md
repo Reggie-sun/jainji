@@ -197,3 +197,33 @@ Chrome MCP 因其专用浏览器 profile 已由另一会话占用而不可用，
 本轮 fresh AOCI Verify/Check 仍 exit 1，Guide `authoring_required / complete:false`；当前共享索引的上传面板 Entry 已包含高级设置，其他 owner 的索引改动未被本轮 stage。无参数 Maintain 返回的完整十二对象批次均为其他展示文字任务的源文件，包含 provider、模板编译/领域、App/Batch/Template 界面及共享文字 Schema。源码仍在改动，不能接管完整批次或提交子集；整体 AOCI 尚未对齐，后续由其 owner 稳定后维护。私有 `.agent/harness/runs/20260929-qianchuan-upload-ui/` 保存封存调用、源码 delta、组件和 packaged 验证、截图、包字节审计及启动切换回执。本节为既有 session record owner；正式发行与原审查阻塞状态不变。
 
 末次 Verify/Check/Guide 又观察到该任务更新 `AGENTS.md` 的展示文字规则、对应基线 stale；Parent 读取差异确认不改变本轮上传面板边界，未覆盖或提交其规则/索引。整体对齐仍未通过，不能将此前收到的十二项批次当作已稳定终态。
+
+## Native Account Settings — 2026-09-29
+
+### Authority And Behavior
+
+用户修订账号入口：账号配置应在简辑软件内维护，粘贴千川计划链接自动识别账户与计划；已有 `/home/reggie/电商/千川账号配置.json` 用于首次导入。未激活的环境变量引导原型撤回，正式源码不消费该变量、不扫描账号文件。用户另明确选择“先交付账号设置，AOCI 等其他任务完成”。
+
+软件内 `QianchuanAccountSettings` 为映射唯一 owner，复用安全 reader、共享 strict schema/digest 及原上传 service/store。原六项 JSON 只读导入；内部可逐产品配置。新 trusted IPC 只接受产品、计划链接和可选 loopback 浏览器端口，main 独立重新解析；不接受独立 ID、任意路径或 endpoint。URL 中 IDs 保留十进制字符串，拒绝错误 origin/path、用户信息、重复参数与非法 ID；多余 query/fragment 不保存或导航。既有端口沿用，首次绑定显式填写；链接不能识别 Chrome 登录/profile。六产品名称保持既有 slot，不自动重命名滴耳康。
+
+作品页点产品后粘贴链接、查看识别结果并“保存账号”；浏览器连接仅首次填写或在折叠项中修改。六账号导入、详细摘要、时限与诊断放入高级设置。保存到本机私有 mapping，采用独占 lock、私有临时文件、文件和目录同步、原子替换；不确定写入阻断使用，损坏内部文件不 fallback，丢失已保存 mapping 不自动重建，残留 lock 不清除。账号设置不是批次上传许可：默认关闭，仍逐制作/追加显式选择产品，预检 digest 变化阻止 intent，已注册旧批次保持原目标。逐文件永久 fence、九件分组、全组 READY 后继续、未知零重传及停在确定前均不变。
+
+### Verification And Package
+
+当前工作树 fresh typecheck exit 0；账号设置、reader、service、UI、模拟集成、store、共享上传合同七文件 **122/122 PASS**，含新安装按链接建档、原文件不变、导入后移除外部来源、旧授权迁入内部、损坏/不安全/锁/丢失/同步失败阻断、并发串行、旧 intent 不换计划和新 digest 拒绝准入。上传 adapter/页面的隔离 Chrome 回归另 **43/43 PASS**，没有真实千川动作。
+
+构建目录 `/tmp/jianji-qianchuan-native-settings-20260929/` 使用冻结 HEAD `019e345993bd99f1a0fb17a8a1fec6923758cc7c` 加本轮十四个代码/测试源文件，排除其他任务一般 dirty 改动。初次 frozen HEAD typecheck 发现已提交 batch controller 依赖尚未提交的 `LatestProductionSchema.usesModel` 和 `AgentRun.usesModel`；只读复制其他 owner 的这两个 optional boolean 定义，未编辑、stage 或 commit 它们。此明确输入快照重新 typecheck PASS、前端/main/preload 构建 PASS，同组 122 tests PASS；十四个 owned 源文件仍与工作树相同，main 重编译 SHA 与包内一致。此包不声明包含其他任务的全部工作树实现。
+
+实际 packaged Electron 使用独立 HOME/userData 验证两条路径：空安装手工绑定一账号；通过同一 owner 只读导入实际六账号 JSON 后启动。两者均沿真实 UI→preload→IPC 粘贴长链接、识别、保存、换计划且保留端口、退出重启读回；默认关闭，任务和 intent 为零，未连接任何账号 Chrome。补充真实 UI lock 失败测试确认错误可见、草稿保留、原 mapping 字节不变。私有 smoke 首次因无 DISPLAY 退出，随后使用 Xvfb；另一次因 driver 未考虑 accessible name 的空格而超时，修正 driver 后通过；不将这些失败记作产品 PASS。源 JSON SHA256 始终 `01e00b80a148f655d91573aebd164a6f10c651f4ddce6ff3d91f6a1c02e10ff8`。
+
+本机候选为 `/home/reggie/Applications/jianji/releases/qianchuan-20260929-native-settings/`，asar SHA256 `2168d37e9015ef891c36f1a975db94bbe5e1893026edb3f966a9b5db6d271eb6`，main `a264c9abff4d0196859554f9cc5b7ec1533b6d40465f2645837d0a0976e3309d`，preload `725104e0cfb869db6ac6f1705dfc4f7e876e64e0f5ffbe31ede03dd48976a3ef`。包内其余 2,156 个非 renderer 文件与前候选一致，解包标记保持。验证后首次导入六账号到日常 userData 新的 `douyin-upload/accounts/mapping.json`，其 SHA 与源文件相同；没有创建或修改日常 upload ledger，没有导入历史任务/fence。若目标 mapping/ledger 已出现则安装 driver 拒绝覆盖。启动器仅切换 exec 目标，保留环境、FFmpeg 路径和参数，原字节/inode CAS、原子替换、readback 及 `sh -n` 通过；旧候选保留。当前日常窗口没有关闭/重启，需用户正常退出后从桌面图标重开生效。
+
+### Delegation, Risk Gate And Deferred Cognition
+
+本轮初始 bounded startup mapping 的 Kimi worker invocation `e93858f2-9fce-40f9-b837-e12c62219888` 为 PARSED，但未审查最终 native 设置。新增配置边界的 bounded、read-only Kimi deep investigation `d56c6024-5fc1-4431-8c31-9c1834ff5cda` 通过 route `4f2d5dc8-4234-4665-b382-e82f1ad6cc00` 发出两个 authenticated 请求，四项实际 Read 完整、hash 对应封存源码；终结为 **EVIDENCE_INCOMPLETE**，报告漏引用必需 reader evidence，不能作为接受回执，不自动重试。它不是原 adapter 第四轮 review。
+
+Parent 对其未接受报告的三个候选问题直接调查：端口沿用是本轮明确合同，换 advertiser 仍须浏览器双 ID 校验，清除/删除账号不在本轮范围；保存 rejection 由父 upload panel 的 perform 捕获，新增 packaged UI lock 实测证明错误可见且草稿不丢；部分内部 mapping 的直接 restore 已通过，外部导入仍刻意只接受原六项格式，不提供内部设置文件的导出/再导入协议。没有依赖该报告宣布验收。
+
+本轮设置 Risk Gate 为 **KIMI_REVIEW_NOT_REQUIRED**：未要求新的 implementation review；改动不读取凭据、删除上传状态或授予上传/发布 authority，内部映射可重新核查，旧任务永久冻结；strict 解析、私有读写、错误注入及真实 packaged 交互覆盖此局部设置行为，没有具体关键级后果或重大后果加未解决验证缺口。此判断不扩展至 production adapter，原 **REVIEW_ESCALATION_REQUIRED** 保留，正式发行 acceptance 仍 false。Windows、新真实上传和真实日常 userData 启动没有验收。
+
+fresh AOCI Verify/Check exit 1、Guide exit 0 且 `authoring_required / complete:false`：新增 main/renderer settings 两条 Entry 和基线缺失，七个既有账号/上传/IPC条目 stale。共享 `aoci.code.txt`、`.aoci/baseline.json` 有其他 owner 未提交修改；按用户明确选择不写入或 stage，AOCI 维护待其完成，不能宣称已对齐。私有 `.agent/harness/runs/20260929-qianchuan-native-settings/` 保存 source snapshot、package audit、成功/失败 smoke、真实 JSON 只读导入、安装回执、Kimi receipt 与 AOCI 检查；本节为既有 session record owner。

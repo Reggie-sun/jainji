@@ -15,7 +15,8 @@ export function DouyinUploadControls({ value, onChange, accounts = [], disabled 
         <option value="">请选择一个产品账号</option>
         {QIANCHUAN_PRODUCTS.map(product => { const account = accounts.find(item => item.product === product); return <option key={product} value={product} disabled={!account?.available}>{product}{account?.available ? "" : "（缺少可用配置）"}</option>; })}
       </select>
-      {!value.accountProduct && <p role="alert">请选择产品账号后再开始制作。账号配置在结果页的千川上传设置中授权。</p>}
+      {!value.accountProduct && <p role="alert">请选择产品账号后再开始制作。</p>}
+      {!accounts.some(account => account.available) && <small>请先在作品页的账号设置中粘贴千川计划链接。</small>}
     </>}
   </section>;
 }

@@ -7,7 +7,7 @@ import { accountAvailable, accountSummary, parseAccountConfig, QianchuanProductS
 const MAX_CONFIG_BYTES = 64 * 1024;
 type ConfigErrorCode = "CONFIG_NOT_AUTHORIZED" | "CONFIG_PATH_INVALID" | "CONFIG_FILE_UNSAFE" | "CONFIG_TOO_LARGE" | "CONFIG_INVALID" | "CONFIG_UNAVAILABLE" | "CONFIG_CHANGED" | "ACCOUNT_UNAVAILABLE" | "PLATFORM_UNQUALIFIED";
 const messages: Record<ConfigErrorCode, string> = {
-  CONFIG_NOT_AUTHORIZED: "请通过文件选择器授权千川账号配置。",
+  CONFIG_NOT_AUTHORIZED: "请先在简辑中设置千川账号。",
   CONFIG_PATH_INVALID: "账号配置需要有效的本机绝对路径。",
   CONFIG_FILE_UNSAFE: "账号配置必须是当前用户拥有的私有普通文件，不能使用符号链接。",
   CONFIG_TOO_LARGE: "账号配置不能超过 64 KiB。",
@@ -21,7 +21,7 @@ export class QianchuanAccountConfigError extends Error {
   constructor(readonly code: ConfigErrorCode) { super(messages[code]); this.name = "QianchuanAccountConfigError"; }
 }
 export type FrozenQianchuanAccount = Readonly<QianchuanAccount & { configDigest: string }>;
-interface ConfigSnapshot { accounts: QianchuanAccount[]; digest: string; }
+export interface ConfigSnapshot { accounts: QianchuanAccount[]; digest: string; }
 
 function assertPrivateFile(info: Stats): void {
   if (!info.isFile() || info.isSymbolicLink() || (info.mode & 0o7777 & ~0o600) || info.uid !== process.getuid!()) {
@@ -33,7 +33,7 @@ function sameFile(left: Stats, right: Stats): boolean {
   return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs && left.mode === right.mode && left.uid === right.uid;
 }
 
-async function readPrivateConfig(file: string): Promise<ConfigSnapshot> {
+export async function readPrivateConfig(file: string, parse = parseAccountConfig): Promise<ConfigSnapshot> {
   if (process.platform === "win32" || !process.getuid) throw new QianchuanAccountConfigError("PLATFORM_UNQUALIFIED");
   try {
     const before = await lstat(file);
@@ -61,7 +61,7 @@ async function readPrivateConfig(file: string): Promise<ConfigSnapshot> {
       }
       const content = bytes.subarray(0, length);
       try {
-        const accounts = parseAccountConfig(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(content)));
+        const accounts = parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(content)));
         return { accounts, digest: createHash("sha256").update(content).digest("hex") };
       } catch { throw new QianchuanAccountConfigError("CONFIG_INVALID"); }
     } finally { await handle.close(); }
@@ -77,20 +77,21 @@ async function readPrivateConfig(file: string): Promise<ConfigSnapshot> {
  */
 export class QianchuanAccountConfigReader {
   private authorizedPath?: string;
+  constructor(private readonly parse = parseAccountConfig) {}
 
   async authorizeFile(file: string): Promise<QianchuanAccountSummary[]> {
     if (typeof file !== "string" || !file || file.length > 4096 || file.includes("\0") || !path.isAbsolute(file)) {
       throw new QianchuanAccountConfigError("CONFIG_PATH_INVALID");
     }
     const normalized = path.resolve(file);
-    const snapshot = await readPrivateConfig(normalized);
+    const snapshot = await readPrivateConfig(normalized, this.parse);
     this.authorizedPath = normalized;
     return snapshot.accounts.map(accountSummary);
   }
   private async read(): Promise<ConfigSnapshot> {
     const file = this.authorizedPath;
     if (!file) throw new QianchuanAccountConfigError("CONFIG_NOT_AUTHORIZED");
-    const snapshot = await readPrivateConfig(file);
+    const snapshot = await readPrivateConfig(file, this.parse);
     if (this.authorizedPath !== file) throw new QianchuanAccountConfigError("CONFIG_CHANGED");
     return snapshot;
   }

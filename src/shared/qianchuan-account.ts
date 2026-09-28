@@ -13,9 +13,7 @@ export const QianchuanAccountSchema = z.object({
   product: QianchuanProductSchema, cdpEndpoint: endpoint, advertiserId: accountId, adId: accountId,
 }).strict().refine(value => !value.adId || Boolean(value.advertiserId), "填写计划 ID 前必须填写广告账户 ID。");
 export type QianchuanAccount = z.infer<typeof QianchuanAccountSchema>;
-export const QianchuanAccountConfigSchema = z.object({
-  version: z.literal(1), accounts: z.array(QianchuanAccountSchema).length(QIANCHUAN_PRODUCTS.length),
-}).strict().superRefine((value, ctx) => {
+const uniqueBindings = (value: { accounts: QianchuanAccount[] }, ctx: z.RefinementCtx) => {
   const products = new Set<string>();
   const ports = new Set<string>();
   const accounts = new Set<string>();
@@ -26,13 +24,38 @@ export const QianchuanAccountConfigSchema = z.object({
     products.add(account.product); ports.add(account.cdpEndpoint);
     if (account.advertiserId) accounts.add(account.advertiserId);
   }
-});
+};
+export const QianchuanAccountConfigSchema = z.object({
+  version: z.literal(1), accounts: z.array(QianchuanAccountSchema).length(QIANCHUAN_PRODUCTS.length),
+}).strict().superRefine(uniqueBindings);
+// Internal settings can be filled one product at a time; the six-account import stays strict.
+export const QianchuanAccountSettingsSchema = z.object({
+  version: z.literal(1), accounts: z.array(QianchuanAccountSchema).max(QIANCHUAN_PRODUCTS.length),
+}).strict().superRefine(uniqueBindings);
+export const QianchuanAccountSetupSchema = z.object({
+  product: QianchuanProductSchema, planUrl: z.string().trim().min(1).max(16384),
+  browserPort: z.number().int().min(1).max(65535).optional(),
+}).strict();
+export type QianchuanAccountSetup = z.infer<typeof QianchuanAccountSetupSchema>;
+
+export function parseQianchuanPlanUrl(input: string): { advertiserId: string; adId: string } {
+  const message = "请粘贴含账户和计划 ID 的千川计划链接。";
+  if (typeof input !== "string" || input.length > 16384) throw new Error(message);
+  let url: URL;
+  try { url = new URL(input.trim()); } catch { throw new Error(message); }
+  if (url.origin !== "https://qianchuan.jinritemai.com" || url.pathname !== "/uni-prom" || url.username || url.password) throw new Error(message);
+  const advertiserIds = url.searchParams.getAll("aavid"), adIds = url.searchParams.getAll("adId");
+  const validId = (value: string | undefined) => Boolean(value && /^[1-9][0-9]{0,19}$/.test(value));
+  if (advertiserIds.length !== 1 || adIds.length !== 1 || !validId(advertiserIds[0]) || !validId(adIds[0])) throw new Error(message);
+  return { advertiserId: advertiserIds[0], adId: adIds[0] };
+}
 
 export interface QianchuanAccountSummary {
   product: QianchuanProduct;
   advertiserId: string;
   adId: string;
   available: boolean;
+  browserPort?: number;
 }
 
 /** The diagnostic CLI and main process share this strict mapping owner. */
@@ -41,7 +64,7 @@ export function parseAccountConfig(value: unknown): QianchuanAccount[] {
 }
 export function accountAvailable(account: QianchuanAccount): boolean { return Boolean(account.advertiserId && account.adId); }
 export function accountSummary(account: QianchuanAccount): QianchuanAccountSummary {
-  return { product: account.product, advertiserId: account.advertiserId, adId: account.adId, available: accountAvailable(account) };
+  return { product: account.product, advertiserId: account.advertiserId, adId: account.adId, available: accountAvailable(account), browserPort: Number(new URL(account.cdpEndpoint).port) };
 }
 export function accountPageUrl(value: QianchuanAccount): string {
   const account = QianchuanAccountSchema.parse(value);

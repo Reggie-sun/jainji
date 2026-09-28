@@ -6,7 +6,7 @@ date: 2026-09-27
 source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 spec_path: docs/douyin-auto-upload-spec.md
 spec_version: 0.2
-spec_sha256: 919b3791fb6e7f22ceee680bbff1afcaaf556133b7a977c569a8480bddf9dd1a
+spec_sha256: 3873866c4089b8fd41354ffa6cec7b87dd6263bfaf084da07035a2bc1e79fdca
 ---
 
 # Goal
@@ -65,9 +65,17 @@ spec_sha256: 919b3791fb6e7f22ceee680bbff1afcaaf556133b7a977c569a8480bddf9dd1a
 
 **Files:** shared/qianchuan-account、main/qianchuan-account-config、shared/douyin-upload、诊断 CLI 与账号/contract tests。
 
-**Contract:** spec §4–5、§9。六项人工文件保持现有格式；strict 产品/端口/字符串 ID 校验，空 ID 不可选。只保存经对话框授权路径，有限读取及私有普通文件检查。冻结 target/config digest，renderer 只选择 accountProduct。CLI 用相同解析器，不成为桌面 runtime。
+**Contract:** spec §4–5、§9。原六项 JSON 导入格式和 strict 私有读取保持；2026-09-29 用户修订为简辑软件内设置，日常点产品、粘贴计划链接、识别并保存。原 M1 已实现，不重新开始该 milestone。
 
-**Acceptance:** 错 JSON/重复/未知字段/数字精度/超限文件/路径授权失败停止；不存在可保存任意 URL/ID 的 IPC。预检与 registerBatch 之间文件变化拒绝初始化，同批消费同一快照；已冻结任务不受更新影响。caption-only 请求不变成千川上传许可。
+**2026-09-29 Native Account Settings Addendum**
+
+- **Goal / Current → Target:** 原来必须选择外部配置文件且不能在软件内换计划；改为内部持久设置，已有文件一次性导入，新产品填写 loopback Chrome 端口，后续更换计划只粘贴链接并保存。
+- **Owners / Files:** 共享 `qianchuan-account.ts` 定义 URL/setup/partial internal schema；现有 `qianchuan-account-config.ts` 保留安全读取；新增 `qianchuan-account-settings.ts` 独占内部映射及导入/原子保存；service 复用该来源及原 store/configPath；index/preload 只增加 trusted 账号设置 IPC。新增 renderer `QianchuanAccountSettings.tsx`，现有 upload panel/controls/CSS 接入；不编辑其他 owner 的 ResultsPanel/App/agent files。
+- **Compatibility / Invariants:** 六产品和外部六项格式不变；旧授权路径一次性导入，内部 mapping 存在时为唯一来源，损坏不 fallback。旧 intent/任务目标不变，预检 digest 改变拒绝新 intent。账号管理不选文件上传、不自动启用或选择每批账号、不改永久 fence。未实施的环境变量引导候选撤回，不作为正式 runtime path。
+- **Acceptance:** 长链接精确识别字符串 IDs；假 origin/credentials/重复参数/非法 ID/非loopback或重复绑定均拒绝；保存后重启读回，删除外部文件不影响内部设置，原文件字节不变；原已注册批次使用旧计划，保存前后无真实浏览器动作。
+- **Verification:** 账号设置/shared reader/service/UI/store/contract/integration tests 与 typecheck；隔离 Linux Electron 实际 UI→preload→IPC 保存、关闭再启动恢复，默认关闭且任务为零。真实 JSON 只读导入可核对，真实上传与 Windows out of scope。required production-adapter review 继续 `REVIEW_ESCALATION_REQUIRED`，不重置原三轮预算。
+
+**Acceptance:** 错 JSON、重复绑定、权限/大小/symlink、非法链接、未绑定浏览器均拒绝；main 重新校验设置输入。预检与 registerBatch 之间 mapping 变化拒绝初始化，已冻结任务保持原目标。caption-only 请求不变成千川上传许可。
 
 **Verification:** `npm run typecheck`；`npx vitest run tests/qianchuan-account-config.test.ts tests/douyin-upload-contract.test.ts`；`node --test tests/qianchuan-account-config.node-test.mjs`。主进程正常 import TS 解析器；诊断 CLI 使用已安装 esbuild 的内存 bundle（`write:false`）载入同一解析器，不落盘编译产物，不额外引入 runtime dependency。
 

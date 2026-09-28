@@ -8,3 +8,16 @@
 .douyin-upload-panel .douyin-upload-advanced fieldset label{font-size:12px;color:var(--ink-2)}
 .douyin-upload-panel .douyin-upload-advanced fieldset input{margin-top:6px}
 .douyin-upload-panel .douyin-upload-advanced>label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
+.douyin-upload-panel .qianchuan-account-settings{margin-top:16px}
+.douyin-upload-panel .qianchuan-account-settings p>small{margin-left:8px;color:var(--ink-3);font-size:12px}
+.douyin-upload-panel .qianchuan-account-products{display:flex;flex-wrap:wrap;gap:8px}
+.douyin-upload-panel .qianchuan-account-products button{display:flex;align-items:center;gap:10px}
+.douyin-upload-panel .qianchuan-account-products button small{font-size:11px;color:var(--ink-3)}
+.douyin-upload-panel .qianchuan-account-products button[aria-pressed=true]{border-color:var(--seal)}
+.douyin-upload-panel .qianchuan-account-editor{max-width:760px;border:1px solid var(--line);border-radius:5px;padding:16px;margin-top:12px}
+.douyin-upload-panel .qianchuan-account-editor label{display:block;font-size:13px;margin-top:10px}
+.douyin-upload-panel .qianchuan-account-editor textarea{width:100%;margin-top:6px;resize:vertical;overflow-wrap:anywhere}
+.douyin-upload-panel .qianchuan-account-editor input{max-width:220px;margin:6px 0}
+.douyin-upload-panel .qianchuan-account-editor>small{display:block;color:var(--ink-3);font-size:12px;margin-top:8px}
+.douyin-upload-panel .qianchuan-account-editor details{margin-top:12px}
+.douyin-upload-panel .qianchuan-account-editor summary{cursor:pointer;font-size:12px}

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -13,6 +13,7 @@ import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity,
 const selection = (accountProduct: QianchuanProduct): QianchuanUploadSelection => ({ enabled: true, accountProduct });
 const temporaryRoots = new Set<string>();
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all([...temporaryRoots].map(root => rm(root, { recursive: true, force: true })));
   temporaryRoots.clear();
 });
@@ -154,6 +155,47 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  async function nativeFixture() {
+    const f = await fixture();
+    const service = new DouyinUploadService(f.store, { loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
+    await service.restoreConfig(); return { ...f, service };
+  }
+  it("imports into app settings and restores without enabling upload, browser operations or an external dependency", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    expect(f.store.config.accountConfigPath).not.toBe(f.configPath); expect(f.service.status("unused").accounts).toHaveLength(6);
+    await rm(f.configPath);
+    const reloaded = new DouyinUploadStore(f.store.root); await reloaded.load();
+    const service = new DouyinUploadService(reloaded, { loadBatch: async id => f.states.get(id)!, browser: () => f.port });
+    await service.restoreConfig(); expect(service.status("unused").accounts).toHaveLength(6);
+    expect(reloaded.config.enabled).toBe(false); expect(reloaded.tasks()).toEqual([]); expect(reloaded.intents()).toEqual([]); expect(f.events).toEqual([]);
+  });
+  it("sets up an account from a link while requiring explicit global and per-batch enablement", async () => {
+    const f = await nativeFixture();
+    await f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=9007199254740993&adId=9007199254740995", browserPort: 9225 });
+    await expect(f.service.preflight(selection("眼贴"), 1)).rejects.toThrow("启用千川上传");
+    await f.service.configure({ enabled: true }); expect(await f.service.preflight(undefined, 1)).toBeUndefined();
+    expect((await f.service.preflight(selection("眼贴"), 1))?.target).toMatchObject({ advertiserId: "9007199254740993", adId: "9007199254740995", cdpEndpoint: "http://127.0.0.1:9225" });
+    expect(f.events).toEqual([]); expect(f.store.tasks()).toEqual([]);
+  });
+  it("keeps already admitted intents on their frozen plan after changing the software account settings", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const batch = await f.createBatch(["native settings frozen bytes"]);
+    const authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=9999" });
+    expect(f.store.intents()[0].authorization.target.adId).toBe("2003");
+    expect((await f.service.preflight(selection("眼贴"), 1))?.target.adId).toBe("9999");
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ adId: "2003", state: "WAITING_FOR_CONFIRMATION" });
+  });
+  it("rejects changed mapping between preflight and admission without saving intents or opening browsers", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const batch = await f.createBatch(["changed native mapping"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=9999" });
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    expect(f.store.intents()).toEqual([]); expect(f.events).toEqual([]);
+  });
+
   async function groupedFixture(contents = Array.from({ length: 21 }, (_, index) => `grouped formal bytes ${index}`), options: { processingTimeout?: number } = {}) {
     const f = await fixture();
     await f.authorize();
