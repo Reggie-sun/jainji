@@ -2,9 +2,9 @@
 
 ## Status and Authorization
 
-2026-09-29，`DRAFT / DESIGN_ONLY / NOT_IMPLEMENTED / NOT_QUALIFIED`。用户批准设计一套可由模型执行的审阅验证合同；本文件尚不是获准实施的 written spec，也没有冻结新 qualification package、启动正式 AI qualification 或签发任何资格记录。下一次实施须基于认可后的本合同编写 implementation plan，不能把本轮“可以设计”解释为已批准尚未写出的实现。
+2026-09-29，`AUTHORIZED / ENGINEERING_CANDIDATE / QUALIFICATION_INCOMPLETE / PRODUCT_DISABLED`。用户收到本合同后明确要求“开始”，授权进入 implementation planning 和本合同范围内执行；[AI implementation plan](shape-matched-cover-m5d2a-plan.md) 已编写，工程与准备证据见 [M5-D2A record](shape-matched-cover-m5d2a.md)。正式 AI qualification 尚未启动，没有资格记录。设计提交 `c9515ca` 时的 `DRAFT / DESIGN_ONLY / NOT_IMPLEMENTED / NOT_QUALIFIED` 保留为历史事实，不再当作当前授权门禁；下文 Historical Design Record 只描述当时工作。
 
-本候选方法为 `dual-ai-full-canvas/v1`，criteria 候选为 `ai-full-canvas-qualification/v1`，presentation 候选为 `ai-full-canvas-lossless-image/v1`，review schema 候选为 `ai-full-canvas-declaration/v1`。版本名在本合同中定义；对应代码、digest 和可信 issuer 当前均不存在。
+本候选方法为 `dual-ai-full-canvas/v1`，criteria 为 `ai-full-canvas-qualification/v1`，presentation 为 `ai-full-canvas-lossless-image/v1`，review schema 为 `ai-full-canvas-declaration/v1`。当前已有独立工程合同、输入和比较机制；正式视觉 routes、methodConfig freeze、可信资格 issuer 与受控语义 qualification 尚未成立。工程测试不能改变本合同资格状态。
 
 这不是 `explicit-human-full-canvas/v1` 的修订、资格补录或 D2Q PASS。[Human D2Q](shape-matched-cover-m5d2q.md) 保持 INCOMPLETE；用户“第7和8帧有星星，其它一样”和“可以通过”的意见仅为已保存的人工口述，不自动转换成 ordinal、EMPTY、完整 target identity 或原 D2 receipt。
 
@@ -118,7 +118,7 @@ correspondence 证据充分且出现其它硬错误或超过已冻结5%门槛时
 
 单元/fixture/模拟 transport tests 只证明工程机制。正式退出必须另有两条实际视觉路线的 qualification run、原 bytes/input receipts、独立 truth/盲审隔离/提前冻结、完整 A/B/joint/correspondence、全部指标通过与 owner来源校验；再完成 typecheck、related/regression tests、git diff --check、AOCI Verify/Check/Guide，以及适用 Implementation Review Risk Gate。任一缺失不能声明 M5-D2A PASS。
 
-## Design Checkpoint and Next Gate
+## Historical Design Record
 
 本轮只新增本合同；D1/D2、human qualification、renderer、activation、knowledge/admission、产品IPC/UI均不修改，没有执行AI视觉资格实验。Self-Review核对了新方法身份、旧方法兼容、两模型一致不等于真值、holdout污染与独立性、全部冻结硬门、UNKNOWN、category、逐帧绑定、双原始结果保留、record来源和无authority边界。
 

@@ -305,3 +305,9 @@ dataset 至少3个独立构造组、100帧、10 EMPTY、20有目标、5并发帧
 终态仅 QUALIFIED/NOT_QUALIFIED/INCOMPLETE；全部用户24项退出条件真实满足才 M5-D2Q PASS。当前先完成设计、schema、dataset与测试；独立 truth author、人类 reviewer、run 前freeze与盲审条件准备好之前不宣称 qualification 开始。需要真实人操作时给出精确命令、URL与步骤并停止自动语义填写。Self-Review：所有门槛与禁止项映射到合同、比较器、外层工具或人工 stop gate；不以代码/自动化 PASS替代人工资格。
 
 **Engineering Checkpoint:** 数据/criteria 已独占冻结，真实 canonical D1 bytes 和全量 coverage 检查通过；43项 qualification/transport tests、244项既有相关回归、101项 shape regression 与 typecheck 通过。正式 human run NOT_STARTED，qualification INCOMPLETE，未实现正式 qualified record issuer。源码调用、证据限界、作者侧包身份和真实 reviewer 下一步见 [D2Q candidate record](shape-matched-cover-m5d2q.md)。保持所有 production guards，不进入 D2 production semantic review。
+
+## Active Slice — M5-D2A AI Method Qualification
+
+2026-09-29 用户认可 [AI spec](shape-matched-cover-m5d2a-spec.md) 后要求开始，进入 [独立 AI implementation plan](shape-matched-cover-m5d2a-plan.md) 的工程执行与新 holdout 准备。旧 human D2Q plan/资格状态不转移；历史 DESIGN_ONLY 不再作为当前授权状态。
+
+当前 `ENGINEERING_CANDIDATE / QUALIFICATION_INCOMPLETE / PRODUCT_DISABLED`。machine declarations、owned 完整原画布 PNG/inputPlan、单调停止工程 transport、A/B/joint 独立真值比较与 synthetic 准备工具已实现；正式受管无文件工具视觉路线尚未成立，不启动正式请求或签发资格记录。实际验证、冻结数据、route blocker、Review Risk Gate 与剩余工作由 [M5-D2A record](shape-matched-cover-m5d2a.md) 独占。M5-B/C/D3/D4 与 verified-no-sticker production issuance 保持 BLOCKED。

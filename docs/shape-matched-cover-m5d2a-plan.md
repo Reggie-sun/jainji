@@ -1,0 +1,65 @@
+# M5-D2A Implementation Plan
+
+## Goal and Authorization
+
+2026-09-29 用户在收到 [AI spec](shape-matched-cover-m5d2a-spec.md) 后明确要求“开始”，并要求本窗口直接执行。授权进入 implementation planning、工程实现、否定测试、有限 capability preparation 与条件满足后的受控资格；旧 DESIGN_ONLY 为历史设计状态，不是当前阻断。Native Codex 负责串行执行，使用当前 working tree，不创建 worktree。
+
+验证 `dual-ai-full-canvas/v1` 的 truth-vs-review 完整性；工程候选、受控资格、生产资格分别报告。原 human D2Q plan 和记录不变，human qualification 仍 INCOMPLETE。
+
+## Scope and Owners
+
+复用 `source-fact-census.ts` / `source-fact-census-clock.ts`、`SourceIdentitySchema` / `identifySource`、owned `source-fact-review-evidence.ts`。新增独立 `source-fact-ai-contract.ts`（machine declarations、固定 criteria、AI package）、`source-fact-ai-compare.ts`（A/B/joint 逐帧指标与对应）、`source-fact-ai-input.ts`（原 RGBA→无损 PNG、inputPlan）、`source-fact-ai-run.ts`（工程 transport、单调停止与不可编辑 receipts）。独立 scripts 准备新的作者侧数据与检查 route readiness；不复用 human session、confirmation、acknowledge 或原 receipt。
+
+`docs/shape-matched-cover-m5d2a.md` 为本阶段 evidence/session record owner；本 plan 保存实施顺序，既有总体 plan 只链接当前切片。代码/tests 是实现事实；图谱只作定位，已核对 evidence→canonical census 关系，通用名字的图谱误连不作证据。
+
+## Invariants and Compatibility
+
+全过程 `authority=none / eligible=false / PRODUCT_DISABLED`。M5-B activation、M5-C issuer、M5-D3、M5-D4、verified-no-sticker production issuance BLOCKED。无 source admission、FullSourceAdmissionHandle、knowledge 写入、placement/candidate/coverage/renderer/产品IPC/UI接线。原 D1、human schema/session/tool/HTML/digest 与拒绝行为逐字节保留；不修改交接列出的 dirty files。
+
+AI 声明只能 TARGETS（非空无重复 UUID、描述、category、原像素整数 bbox）、显式 EMPTY 或带原因 UNKNOWN；拒绝工具、未知字段、partial/truncated/重复/绑定错输入。相同像素的 ordinal 均独立保留，PNG SHA 与 RGBA SHA 分开。原声明一经接受不可编辑，不修复成 EMPTY，不重试或换模型。
+
+## Major Milestones
+
+### 1. Independent Contract and Deterministic Comparison
+
+新 AI package 复用既有严格 manifest/truth/frame shapes 及其绑定验证思想，但 criteria/method/schema独立，不修改 human literals。criteria 冻结全部18类及 spec minimum；增加 categoryMismatchTargetFrames。A/B/joint 分别比较 truth correspondence，未评估字段 null，显式保存分母。false EMPTY 或其他已证明硬错误优先于 coverage不足；5%以整数交叉乘法比较且至少100 clear frames。纯离线匹配只能 diagnostic comparison，正式 qualification 仍 INCOMPLETE，无可伪造 qualified 开关或成功恢复入口。
+
+**Verification:** `tests/source-fact-ai.test.ts` 覆盖 actor 双漏仍一致、另一方正确/joint UNKNOWN不抵消、身份merge/split、边界/再现/单帧/并发/category/歧义/误报、5%与99 clear、不完整correspondence/criteria/旧包/借帧；原qualification tests回归。
+
+### 2. Owned Lossless Input and Monotonic Engineering Run
+
+`source-fact-ai-input.ts` 从活跃 evidence 读取全部帧，使用现有FFmpeg PNG能力，有界命令、取消等待close、无resize，decode回RGBA逐字节核对。固定最多8连续ordinal/packet，保存匿名fixture、source/census/原clock/PNG与RGBA绑定，输出完整inputPlan digest。
+
+`source-fact-ai-run.ts` 的 injectable transport 只用于工程验证，收据标为 ENGINEERING_ONLY；不能通过caller route/probe JSON进入正式 run。每个packet一次请求，generation/payload/request/wall/idle有限。接受完整packet后逐ordinal追加；作者侧立即检测false EMPTY并撤销剩余请求，迟到输出隔离。保持完整raw response摘要、sent input与原声明，fresh核对后freeze；mapping必须在两份全部原receipt之后，不许改原结果；双射/category/活动ordinals失败为joint UNKNOWN。
+
+**Verification:** 真CPU D1/D2/PNG往返、首中末/重复像素、伪造evidence/输入、atomic拒绝partial、取消与迟到、budget/truncation/tool注入、不继续请求和冻结后编辑拒绝。
+
+### 3. New Author-Side Holdout and Preparation
+
+新recipe不导入旧 `d2q-controlled-3x18x8/v1` 或诊断答案。至少三个结构不同背景/来源构造组，覆盖18类和全部minimum，随机匿名fixture，完整canonical decode绑定truth与独立构造版本。作者侧私有目录exclusive发布，不给actor recipe、truth或场景标签。明确SYNTHETIC_CONTROLLED；REAL_MEDIA_HUMAN_TRUTH未提供时报告NOT_EVALUATED。
+
+提前保存criteria、输入packet与有限预算草案；source/tool/engine/dataset/truth freeze使用实际SHA。正式methodConfig与applicability envelope必须在真实capability gate后冻结，草案不能冒充正式配置。作者实例不得担任actor，本聊天不得充当盲审上下文。
+
+### 4. Route Capability and Formal Qualification Gate
+
+先验证当前两条路线的无损image输入、真实身份、fresh隔离上下文、无文件/搜索/工具/nested delegation、有限预算、请求payload/response证据。独立probe不使用holdout。Kimi只能sealed contract、qualified route、Docker、canonical receipt，不能host claude -p。Codex需要新的隔离视觉执行路线，当前聊天不具备actor资格。
+
+任一路线不支持图片传递、隔离或route证明时记录实际阻断INCOMPLETE，停止正式请求；不修外部router或静默更换provider。条件真实成立后冻结config/inputPlan/envelope/budgets，正式run一次，post-freeze B映射一次，再独立truth correspondence与deterministic三方比较。正式record需可信controlled execution owner来源核验；当前工程seam不提供成功issuer。
+
+### 5. Verification, Governance and Checkpoint
+
+读取 `verification-before-completion`；fresh typecheck、新AI tests与D1/D2/qualification/knowledge/mask/C/B回归、必要shape regression、diff --check、原文件SHA。stable snapshot判断 `/home/reggie/.codex/SUBAGENTS.md` Risk Gate；站立Kimi分工只核对复用边界，不充当盲审actor或final reviewer。AOCI官方Maintain完整batch与Verify/Check/Guide；仅commit本任务路径及官方索引baseline，保留无关changes。
+
+## Acceptance and Stop Contract
+
+全部真实退出证据满足才声明M5-D2A PASS。工程机制通过不代表视觉语义qualification。缺route/probe/独立性/正式freeze/原receipts/mapping/correspondence/可信issuer时INCOMPLETE；任何已证明硬错误NOT_QUALIFIED，历史失败永久保留。遇到真实能力阻断时保存可验证工程checkpoint、阻断证据与remaining work，无需用户再次回复“继续”。下一阶段D2 Production Qualified Review超出授权。
+
+## Execution Checkpoint
+
+Milestones1–2已有工程candidate和58项fresh tests PASS、typecheck PASS。Milestone3已冻结新synthetic54 clips/648帧、18场景及完整inputPlan，独立verify及PNG篡改否定检查完成；真实媒体层NOT_EVALUATED。
+
+Milestone4因受管接口缺少可验证无文件工具视觉actor及隔离阻断，probe/formal requests=0，正式配置、成本批准、可信execution/receipts/issuer未成立，qualification INCOMPLETE。Milestone5原human回归11项5000ms超时，Risk Gate为BLOCKED_NATIVE_VERIFICATION；四个AI AOCI entries已维护，其他会话继续维护后，最终Verify/Check/Guide均exit0且governance_aligned=true；正式资产混合归属仍dirty，不纳入本任务commit。保存未验收candidate checkpoint，不宣称implementation或M5-D2A完成。详细证据和剩余工作由 [record](shape-matched-cover-m5d2a.md) 独占，全部生产guards保持BLOCKED。
+
+## Self-Review
+
+已将spec的method/config、独立真值/18类coverage、whole-frame PNG与packet、独立A/B→mapping→joint、truth对应、全部指标/null、单调停止/预算、可信来源、human兼容及产品禁项映射到上述milestones。不存在把旧human plan、双模型一致或transport成功当作AI资格的步骤。
