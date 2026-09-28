@@ -223,6 +223,56 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks().every(task => task.result.state === "WAITING_FOR_CONFIRMATION")).toBe(true);
   });
 
+  it("keeps newly completed exports pending until an explicit resume is READY and durably saved", async () => {
+    const f = await fixture();
+    await f.authorize();
+    const batch = await f.createBatch(["resumed formal output", "later formal output one", "later formal output two"]);
+    await f.register(batch);
+    const first = await f.service.enqueueFinalArtifact(batch.identities[0]!, true);
+    expect(first).toBeDefined();
+    const open = vi.spyOn(f.port, "open");
+    let releaseReady!: () => void;
+    const readyGate = new Promise<void>(resolve => { releaseReady = resolve; });
+    const ready = f.port.ready;
+    f.port.ready = async (tasks, signal) => {
+      if (tasks[0]!.result.upload_task_id === first!.result.upload_task_id) await readyGate;
+      return ready(tasks, signal);
+    };
+    let releaseSave!: () => void;
+    const saveGate = new Promise<void>(resolve => { releaseSave = resolve; });
+    const saveTask = f.store.saveTask.bind(f.store);
+    let savingReady = false;
+    f.store.saveTask = async task => {
+      if (task.result.upload_task_id === first!.result.upload_task_id && task.result.state === "WAITING_FOR_CONFIRMATION") {
+        savingReady = true;
+        await saveGate;
+      }
+      await saveTask(task);
+    };
+    const resumed = f.service.resume(first!.result.upload_task_id);
+    try {
+      await vi.waitFor(() => expect(f.store.task(first!.result.upload_task_id)!.result.state).toBe("WAITING_UPLOAD_COMPLETE"));
+      await f.service.committed(batch.identities[1]!);
+      await f.service.committed(batch.identities[2]!);
+      await f.service.runPending();
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(1);
+      releaseReady();
+      await vi.waitFor(() => expect(savingReady).toBe(true));
+      expect(open).toHaveBeenCalledTimes(1);
+      expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(1);
+      releaseSave();
+      await resumed;
+      expect(open.mock.calls.map(([tasks]) => tasks.length)).toEqual([1, 2]);
+      expect(f.store.tasks().every(task => task.result.state === "WAITING_FOR_CONFIRMATION")).toBe(true);
+      expect(f.store.tasks().map(task => f.store.fence(task.result.upload_task_id)!.selectedIndex).sort()).toEqual([1, 2, 3]);
+    } finally {
+      releaseReady(); releaseSave();
+      await resumed;
+      await f.service.runPending();
+    }
+  });
+
   it.each([1, 5, 9])("a failure saving fence %i prevents the entire group delivery and preserves every earlier fence", async position => {
     const f = await groupedFixture();
     const mark = f.store.markSelecting.bind(f.store); let calls = 0;

@@ -154,7 +154,7 @@ export class DouyinUploadService {
   }
   runPending(): Promise<void> {
     if (this.runner) return this.runner;
-    if (this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
+    if (this.active || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
     this.runner = (async () => {
       while (!this.stopped && !this.stopping && !this.paused && this.store.config.enabled && !this.store.unavailable) {
         const available = this.store.tasks().filter(value => value.result.state === "PENDING" && this.eligible.has(value.result.upload_task_id));
