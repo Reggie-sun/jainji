@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ArtifactVerifier } from "../src/main/artifact";
 import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem, type OutputArtifact } from "../src/main/domain";
 import { FfmpegAdapter } from "../src/main/ffmpeg";
@@ -20,6 +20,8 @@ describe("ExportQueue", () => {
     let saves = 0;
     jobStore.save = async (state) => { saves += 1; await save(state); };
     let savesAtVerification = 0;
+    const snapshots: number[] = [];
+    let snapshotsAtVerification = 0;
     const ffmpeg = {
       ffmpegPath: "/fake/ffmpeg",
       run: (args: string[], progress: (event: { progress: number; outTimeMs: number }) => void) => ({
@@ -35,15 +37,70 @@ describe("ExportQueue", () => {
     } as unknown as FfmpegAdapter;
     const verifier = { verify: async (filePath: string, taskId: string): Promise<OutputArtifact> => {
       savesAtVerification = saves;
+      snapshotsAtVerification = snapshots.length;
       return { taskId, path: filePath, sizeBytes: 7, durationMs: 1_000, createdAt: now() };
     } } as ArtifactVerifier;
-    const queue = new ExportQueue({ jobStore, ffmpeg, compiler: { compile: async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }) } as any, artifactVerifier: verifier, fontResolver: { resolve: async () => null } });
+    const queue = new ExportQueue({ jobStore, ffmpeg, compiler: { compile: async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }) } as any, artifactVerifier: verifier, fontResolver: { resolve: async () => null }, onSnapshot: snapshot => snapshots.push(snapshot.revision) });
     queue.setMediaLookup(() => media);
     const batch = await queue.createBatch({ template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
     await queue.start(batch.id);
     expect(savesAtVerification).toBeLessThanOrEqual(6);
+    expect(snapshotsAtVerification).toBeLessThanOrEqual(6);
     expect(queue.snapshot().batches[0].batch.tasks[0].status).toBe("completed");
     expect((await jobStore.load(batch.id)).state.batch.tasks[0]).toMatchObject({ status: "completed", progress: 1 });
+  });
+
+  it("does not publish unchanged progress and still publishes verified completion", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-unchanged-progress-"));
+    const sourcePath = path.join(directory, "input.mp4");
+    await writeFile(sourcePath, "input");
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "input.mp4", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 5, durationMs: 1_000, width: 10, height: 10, rotation: 0, probeStatus: "ready", importedAt: now() };
+    const onSnapshot = vi.fn();
+    let unchangedNotifications = 0;
+    const ffmpeg = { ffmpegPath: "/fake", run: (args: string[], progress: (event: { progress: number; outTimeMs: number }) => void) => ({
+      process: {}, cancel: async () => undefined, promise: (async () => {
+        const before = onSnapshot.mock.calls.length;
+        for (let index = 0; index < 100; index++) progress({ progress: 5_000, outTimeMs: 5_000 });
+        unchangedNotifications = onSnapshot.mock.calls.length - before;
+        await writeFile(args[args.length - 1], "encoded");
+        return { code: 0, stdout: "", stderr: "" };
+      })(),
+    }) } as unknown as FfmpegAdapter;
+    const queue = new ExportQueue({ jobStore: new JobStore(path.join(directory, "jobs")), ffmpeg, compiler: { compile: async () => ({ binary: "/fake", args: [], textFiles: [], durationSeconds: 1 }) } as any,
+      artifactVerifier: { verify: async (filePath: string, taskId: string) => ({ taskId, path: filePath, sizeBytes: 7, durationMs: 1_000, createdAt: now() }) } as ArtifactVerifier,
+      fontResolver: { resolve: async () => null }, onSnapshot });
+    const batch = await queue.createBatch({ template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
+    await queue.start(batch.id);
+    expect(unchangedNotifications).toBe(0);
+    expect(onSnapshot.mock.calls.at(-1)?.[0].batches[0].batch.tasks[0]).toMatchObject({ status: "completed", progress: 1 });
+  });
+
+  it("scopes subscriber and requested snapshots without dropping other projects or exposing mutable task status", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-project-snapshots-"));
+    const sourcePath = path.join(directory, "input.mp4");
+    await writeFile(sourcePath, "input");
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "input.mp4", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 5, durationMs: 1_000, width: 10, height: 10, rotation: 0, probeStatus: "ready", importedAt: now() };
+    const firstProject = crypto.randomUUID(), secondProject = crypto.randomUUID();
+    let selectedProject = firstProject;
+    const onSnapshot = vi.fn();
+    const queue = new ExportQueue({ jobStore: new JobStore(path.join(directory, "jobs")), ffmpeg: new FfmpegAdapter("unused", "unused"), fontResolver: { resolve: async () => null }, onSnapshot, snapshotProjectId: () => selectedProject });
+    const create = (projectId: string) => queue.createBatch({ projectId, template: createDefaultTemplate(), mediaIds: [media.id], mediaItems: [media], outputDirectory: path.join(directory, "output"), preset: DEFAULT_PRESET });
+    const first = await create(firstProject), second = await create(secondProject);
+    expect(onSnapshot.mock.calls.at(-1)?.[0].batches.map(({ batch }: { batch: { id: string } }) => batch.id)).toEqual([first.id]);
+    selectedProject = secondProject;
+    const third = await create(secondProject);
+    expect(onSnapshot.mock.calls.at(-1)?.[0].batches.map(({ batch }: { batch: { id: string } }) => batch.id)).toEqual([second.id, third.id]);
+    const scoped = queue.snapshot(firstProject);
+    expect(scoped.batches.map(({ batch }) => batch.id)).toEqual([first.id]);
+    scoped.batches[0].batch.tasks[0].progress = 0.5;
+    const statuses = queue.taskStatuses();
+    expect(statuses.size).toBe(3);
+    expect(statuses.get(first.tasks[0].id)).toBe("queued");
+    expect(statuses.has("missing-task")).toBe(false);
+    (statuses as Map<string, string>).set(first.tasks[0].id, "completed");
+    expect(queue.taskStatuses().get(first.tasks[0].id)).toBe("queued");
+    expect(queue.snapshot().batches).toHaveLength(3);
+    expect(queue.snapshot().batches[0].batch.tasks[0].progress).toBe(0);
   });
 
   it("isolates one failed task and publishes a later task", async () => {

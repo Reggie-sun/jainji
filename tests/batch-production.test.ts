@@ -47,6 +47,7 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
     loadProject: vi.fn(async (id: string) => { events.push(`load:${id}`); return projects[entries.findIndex(entry => entry.recentProjectId === id)]; }),
     outputDirectory: vi.fn(async (value: Project) => `/output/${value.name}`),
     queue,
+    taskStatuses: () => new Map(tasks.map(task => [task.id, task.status])),
     cancelExport: vi.fn(async (id: string) => { const task = tasks.find(task => task.id === id)!; if (task.status === "running") task.status = "cancelled"; }),
     changed: vi.fn(),
     session: vi.fn(async (file: string): Promise<BatchProductionSession> => {
@@ -77,6 +78,17 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it("counts and waits for exports without reading full queue snapshots", async () => {
+    const f = await fixture();
+    await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.jobs[0].status).toBe("exporting"));
+    const queueReads = vi.spyOn(f.dependencies, "queue");
+    expect(f.controller.snapshot()?.jobs[0]).toMatchObject({ completedCount: 0, failedCount: 0 });
+    f.controller.wake();
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(queueReads).not.toHaveBeenCalled();
+    queueReads.mockRestore();
+  });
   it("requires manual display text and unique saved project references", () => {
     const row = entry();
     expect(BatchProductionStartSchema.safeParse({ entries: [{ ...row, productPrice: " " }] }).success).toBe(false);

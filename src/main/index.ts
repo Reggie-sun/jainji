@@ -106,7 +106,7 @@ function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
 }
 
 async function publicState(): Promise<DesktopState> {
-  const snapshot = currentState();
+  const snapshot = queue.snapshot(service.currentProject.id);
   const run = agent.snapshot();
   if (run && run.id === service.currentProject.latestProduction?.id) await service.rememberLatestProduction(run);
   const state = await service.state(snapshot);
@@ -670,6 +670,7 @@ async function bootstrap(): Promise<void> {
     executionLimits: capabilities.executionLimits,
     fontResolver,
     onSnapshot: publish,
+    snapshotProjectId: () => service.currentProject.id,
   });
   queue.setMediaLookup((id) => service.getMedia(id));
   const uploadStore = new DouyinUploadStore(path.join(userData, "douyin-upload"));

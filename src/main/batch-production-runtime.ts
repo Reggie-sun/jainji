@@ -24,7 +24,8 @@ export function createBatchProductionRuntime(input: {
   const controller = new BatchProductionController(path.join(input.root, "batch-production"), {
     name: id => input.registry.list().find(item => item.id === id)?.name ?? "已保存模板",
     loadProject: id => new ProjectStore(input.registry.resolve(id)).readSnapshot(),
-    queue: () => input.queue.snapshot(),
+    queue: projectId => input.queue.snapshot(projectId),
+    taskStatuses: () => input.queue.taskStatuses(),
     cancelExport: id => input.queue.cancel(id),
     changed: input.changed,
     outputDirectory: async (project, ids, requested) => {

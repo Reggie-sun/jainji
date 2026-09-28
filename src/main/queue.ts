@@ -75,6 +75,7 @@ export interface ExportQueueDependencies {
   fontResolver: FontResolver;
   sourceKnowledgeStore?: SourceStickerKnowledgeStore;
   onSnapshot?: (snapshot: QueueSnapshot) => void;
+  snapshotProjectId?: () => string;
 }
 
 interface PendingPreview {
@@ -281,8 +282,15 @@ export class ExportQueue {
     return this.snapshot();
   }
 
-  snapshot(): QueueSnapshot {
-    return { revision: this.globalRevision, batches: [...this.states.values()].map((state) => structuredClone(state)) };
+  snapshot(projectId?: string): QueueSnapshot {
+    const states = [...this.states.values()].filter(state => projectId === undefined || state.batch.projectId === projectId);
+    return { revision: this.globalRevision, batches: states.map((state) => structuredClone(state)) };
+  }
+
+  taskStatuses(): ReadonlyMap<string, ExportTask["status"]> {
+    const statuses = new Map<string, ExportTask["status"]>();
+    for (const { batch } of this.states.values()) for (const task of batch.tasks) statuses.set(task.id, task.status);
+    return statuses;
   }
 
   /** Concurrent render slots shared by exports and review previews. */
@@ -793,11 +801,10 @@ export class ExportQueue {
       }
       const running = this.dependencies.ffmpeg.run([...compiled.args, partialPath], (event) => {
         const value = event.progress === 1 ? 1 : event.outTimeMs === undefined ? task.progress : Math.min(0.99, event.outTimeMs / (compiled.durationSeconds * 1_000_000));
-        if (value - task.progress >= 0.01 || value === 1) {
+        if (value > task.progress && (value - task.progress >= 0.01 || value === 1)) {
           task.progress = Math.max(task.progress, value);
           this.persistProgress(state);
         }
-        this.emit();
       });
       this.controllers.set(task.id, running);
       if (this.cancelRequested.has(task.id)) await running.cancel();
@@ -922,7 +929,7 @@ export class ExportQueue {
     return undefined;
   }
 
-  private emit(): void { this.dependencies.onSnapshot?.(this.snapshot()); }
+  private emit(): void { this.dependencies.onSnapshot?.(this.snapshot(this.dependencies.snapshotProjectId?.())); }
 }
 
 function redactResult(stderr: string): string {

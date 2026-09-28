@@ -6,7 +6,7 @@ import { DecorationSchema } from "../shared/decorations.js";
 import { CoverStickerSchema, DEFAULT_COVER_STICKER } from "../shared/cover-sticker.js";
 import { BatchProductionStartSchema, BatchProductionRunSchema, type BatchProductionEntry, type BatchProductionJob, type BatchProductionRun } from "../shared/batch-production.js";
 import { DEFAULT_EXPORT_SETTINGS } from "../shared/export-settings.js";
-import type { Project } from "./domain.js";
+import type { ExportTask, Project } from "./domain.js";
 import type { QueueSnapshot } from "./queue.js";
 import { ProjectStore, atomicWriteJson } from "./store.js";
 
@@ -25,7 +25,8 @@ interface Dependencies {
   loadProject(recentProjectId: string): Promise<Project>;
   outputDirectory(project: Project, mediaIds: string[], requested?: string): Promise<string>;
   session(projectPath: string): Promise<BatchProductionSession>;
-  queue(): QueueSnapshot;
+  queue(projectId?: string): QueueSnapshot;
+  taskStatuses(): ReadonlyMap<string, ExportTask["status"]>;
   cancelExport(taskId: string): Promise<void>;
   changed(): void;
 }
@@ -51,11 +52,11 @@ export class BatchProductionController {
   snapshot(): BatchProductionRun | undefined {
     if (!this.run) return undefined;
     const run = structuredClone(this.run);
-    const tasks = new Map(this.dependencies.queue().batches.flatMap(({ batch }) => batch.tasks).map(task => [task.id, task]));
+    const tasks = this.dependencies.taskStatuses();
     for (const job of run.jobs) {
-      job.completedTaskIds = job.taskIds.filter(id => tasks.get(id)?.status === "completed");
-      job.completedCount = job.taskIds.filter(id => tasks.get(id)?.status === "completed").length;
-      job.failedCount = job.taskIds.filter(id => ["failed", "cancelled", "interrupted"].includes(tasks.get(id)?.status ?? "")).length;
+      job.completedTaskIds = job.taskIds.filter(id => tasks.get(id) === "completed");
+      job.completedCount = job.completedTaskIds.length;
+      job.failedCount = job.taskIds.filter(id => ["failed", "cancelled", "interrupted"].includes(tasks.get(id) ?? "")).length;
       if (job.status === "completed" && job.failedCount) {
         job.status = "failed";
         job.error = "部分已完成成片的文件已失效，请检查原导出记录。";
@@ -86,7 +87,7 @@ export class BatchProductionController {
     this.assertIdle();
     if (this.restorationError) throw new Error(this.restorationError);
     const { entries } = BatchProductionStartSchema.parse(input);
-    if (this.dependencies.queue().batches.some(({ batch }) => batch.tasks.some(task => !terminal.has(task.status)))) throw new Error("请等待当前导出完成，或先停止已有任务。");
+    if ([...this.dependencies.taskStatuses().values()].some(status => !terminal.has(status))) throw new Error("请等待当前导出完成，或先停止已有任务。");
     this.controller = new AbortController();
     const at = new Date().toISOString();
     this.run = {
@@ -201,9 +202,9 @@ export class BatchProductionController {
       if (signal.aborted) await Promise.all(job.taskIds.map(id => this.dependencies.cancelExport(id)));
       // Agent completion is not export completion. Drain exactly this item's original queue tasks.
       while (true) {
-        const tasks = new Map(this.dependencies.queue().batches.flatMap(({ batch }) => batch.tasks).map(task => [task.id, task]));
+        const tasks = this.dependencies.taskStatuses();
         if (job.taskIds.some(id => !tasks.has(id))) throw new Error("无法确认当前批量项的导出记录，整批已停止。");
-        if (job.taskIds.every(id => terminal.has(tasks.get(id)!.status))) break;
+        if (job.taskIds.every(id => terminal.has(tasks.get(id)!))) break;
         if (signal.aborted) await Promise.all(job.taskIds.map(id => this.dependencies.cancelExport(id)));
         this.dependencies.changed();
         await this.wait();
@@ -212,14 +213,14 @@ export class BatchProductionController {
       const current = this.snapshot()!.jobs.find(value => value.id === job.id)!;
       job.completedCount = current.completedCount; job.failedCount = current.failedCount;
       const failed = run?.items.find(value => value.status === "failed");
-      const exportFailure = this.dependencies.queue().batches.flatMap(({ batch }) => batch.tasks)
+      const exportFailure = this.dependencies.queue(item.project.id).batches.flatMap(({ batch }) => batch.tasks)
         .find(task => job.taskIds.includes(task.id) && ["failed", "interrupted", "cancelled"].includes(task.status));
       if (signal.aborted) job.status = "cancelled";
       else if (failure || failed || job.completedCount !== job.actualCount) {
         job.status = "failed";
         job.error = failure ?? failed?.error ?? exportFailure?.errorMessage ?? `完成 ${job.completedCount} / ${job.actualCount} 条，部分制作或导出未成功。`;
       } else job.status = "completed";
-      if (session) { await session.persist(this.dependencies.queue()); await session.cancel(); }
+      if (session) { await session.persist(this.dependencies.queue(item.project.id)); await session.cancel(); }
       this.activeSession = undefined;
       await this.persist();
     }
