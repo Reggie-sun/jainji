@@ -158,3 +158,7 @@ Required managed Kimi review第一轮 canonical invocation=`5d46f112-ba0e-48ae-a
 Stable AOCI Verify/Check/Guide仍有11项foreign-owner missing/stale/unbaselined（batch production、Douyin/Qianchuan上传相关）；Verify/Check exit1，Guide exit0但complete=false。本任务两个docs属observe且四个AI managed source未变，无自身索引维护对象；正式索引/baseline的mixed ownership不能覆盖、stage或commit。共享治理保持未对齐，具体final JSON及fresh typecheck/tests/source snapshot保存于 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-api-engineering-20260929`。git diff --check及最终具体path ownership核验后，只提交本任务两个docs，保留所有无关dirty/delete/untracked工作。
 
 自然停止原因为真实required-review transport blocker及Codex独立API credential/current额度/accounting缺口；另有foreign AOCI maintenance缺口。剩余为有效required review、官方clean-source安装与installed验证、满足真实账户证据后的两条有限owned视觉capability，以及本spec要求的所有正式config/envelope/预算/actor/raw/mapping/joint/correspondence/可信issuer与truth-vs-review。正式预算仍USD0，无formal requests，不重试或换provider直到通过。M5-D2A INCOMPLETE、authority=none、eligible=false、未评估指标null/NOT_EVALUATED；synthetic不能推出real-media PASS。所有production guards与下一阶段未授权边界保持。
+
+## Checkpoint Ownership Repair
+
+Parent曾在读取staged清单后未暂停核验，普通commit错误纳入另一会话刚stage的18个文件。没有push；立即核对HEAD仍为本次错误commit，使用独立temporary index构造仅含本任务两个docs的tree、commit-tree及compare-and-swap update-ref，修正为 `da2b23b`。未使用reset/stash、未修改任何foreign文件或共享index；修正前后index SHA和20个相关文件SHA完全一致，18个foreign路径恢复原staged状态。完整bad/corrected commit、parent、path清单及SHA保存于同一证据目录的 `git-checkpoint-repair.json`。后续提交使用显式 `git commit --only <owned-path>`，避免共享staging被纳入本任务提交。该事故不归因其他writer，工程/资格状态保持INCOMPLETE。
