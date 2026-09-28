@@ -65,3 +65,7 @@ Parent 在封存期间以独立合成 DOM 复现：`visibility:collapse` 时 Pla
 # Authorized Candidate Commit
 
 用户随后明确要求“commit然后维护aoci”，授权将上述候选作为 checkpoint 提交，再执行 AOCI 维护。该授权只改变提交决定和维护顺序；`REVIEW_ESCALATION_REQUIRED`、真实账号应用端到端与 Windows 未验收状态继续保留，不将 commit 当作 required review 通过，也不新增 review、真实上传、确认、发布或广告设置操作。只提交本任务 14 个精确路径；其他 working-tree 改动及用户项目删除保留。
+
+候选已提交 `a4e0a94`。提交前重新运行 typecheck 和 5 个相关测试文件，88/88 PASS，source/test/smoke snapshot 仍为 `04e44794b7217ade88bad2d47985a814cf55b1edbb1184d224cea2d715811250`。提交后按用户要求执行 AOCI Maintain：`status:applied / result:aligned / candidates:[] / semantic_generated:false`，无需本任务写入正式 Entry。提交前 Guide 中的 AGENTS/runtime 两项漂移在并发 owner 更新后已消失；其 `aoci.code.txt` 和 `.aoci/baseline.json` 未提交字节保留，不接管或 stage。
+
+提交后 AOCI Verify、Check、Guide 均 exit 0；Guide 为 `complete:true / stage:aligned / next_action:none`，missing/stale/unbaselined/orphan 均为空。机器结果只证明当前索引与源码基线对齐，不宣称 required review、完整系统认知或真实应用验收完成。本轮为已有候选的授权 Git checkpoint 和维护收尾，不形成新的 implementation review scope，不绕过三轮预算。
