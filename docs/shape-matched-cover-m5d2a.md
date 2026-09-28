@@ -1,5 +1,15 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Generation Repair Boundary
+
+2026-09-29 用户要求“先修复blocker然后安装新路线”，继续 actual budget investigation。Pinned Codex 0.154.0 Docker请求缺generation cap，effective config与RPC schema没有已证明 setter；对应官方版本request结构也无该字段。本轮native/fake单项1 PASS仅证明八图/tools=[]及IMAGE_GENERATION_BOUND_UNPROVEN拒绝有效，不能写成blocker已修复或视觉能力。新visual probe/formal requests仍0，全部未评估语义指标null/NOT_EVALUATED，整体INCOMPLETE、PRODUCT_DISABLED，所有既有production BLOCKED guards保持。
+
+可审阅修复在 `/home/reggie/vscode_folder/agent-subagent-router/docs/superpowers/specs/2026-09-29-codex-image-api-budget-design.md`，SHA `14e10cad0f3afc44f0f3796c2ae86c45e161c8a17ab2d54801c8c261a81df272`，Self-Review完成、exact-SHA approval pending。推荐新增明确OpenAI Responses API profile、独立应用API Key及原native请求到hard cap的单字段映射；新endpoint/credential/billing需base V3批准，原router范围授权不能推定新费用已批准。提出最多一次新增OpenAI capability probe、USD1 cap且有actual payload/cost/quota preflight；formalCostAuthorizationUSD=0保持。批准后持续实施/required review/official installation；当前未批准、未实现API修订、未替换原bba0563安装。原image supplement的批准和input-only代码仍有效，不改写历史授权。
+
+受管Kimi deep/max安装边界mapping实际invocation `458263c6-9b67-493e-86cf-e77be7e57ef6`：第一个authenticated HTTP200、第二个CONNECT TLS_ERROR，canonical OUTCOME_UNKNOWN、exit1、descendants_terminated=false，未采用报告、无重试/fallback。Parent已核对Read/source SHA及canonical artifacts；无holdout/truth泄露，该mapping不是视觉actor/final review。Router当前另有其他任务source/budget dirty，保留且不安装混合source。完整证据由其 `docs/records/generation-budget-blocker-2026-09-29.md`维护，独占13项archive manifest SHA `ae3ae436755c0b0f60d2a3765a524884a360ce1bdb84be5d4f51a11af6caaf80`。本轮Jianji仅自身plan/phase docs，不改AI/human/source/production owners；共享HEAD已由其他任务推进至d941627，旧AOCI未对齐结论属历史，需当前检查确认，不倒写旧记录。
+
+本轮稳定文档检查：git diff --check通过；当前AOCI Verify/Check exit0、governance_aligned=true/findings=[]，Guide使用显式agent后exit0、complete=true/next_action=none。首次Guide缺少--agent返回config/exit3，已纠正，不当作通过证据。说明其他owner已完成原治理缺口，不由本任务改写正式索引或baseline。自身docs是observe scope、managed source未改，无维护条目。三个实际JSON独占保存于 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-generation-boundary-20260929`，manifest SHA `e2c5023b3464315fb79303364675d5950c4d3390ad4f50b2c95d142d937c7c31`。本轮仅文档/调查，不制造产品typecheck或把旧tests当本轮新证据；新API实施仍受approval gate。substantial record由当前phase/plan及router record承接，无适用capture skill，不写外部memory。
+
 ## Status and Authorization
 
 2026-09-29 用户在收到 [AI spec](shape-matched-cover-m5d2a-spec.md) 后明确要求开始，执行 [AI implementation plan](shape-matched-cover-m5d2a-plan.md)。`c9515ca` 的 DESIGN_ONLY 为历史状态；本次并非重新设计或 next-window 交接。

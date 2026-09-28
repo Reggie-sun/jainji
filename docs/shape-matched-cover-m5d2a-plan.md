@@ -71,3 +71,7 @@ Milestone4因受管接口缺少可验证无文件工具视觉actor及隔离阻�
 用户随后明确“那继续实现啊”，批准已展示且未修改的 router image supplement exact SHA；上一段批准待定为历史状态。外部router已建立durable implementation plan并继续实际实施，独立image-task/seal、Kimi native图片projection/wire guard、source inspect-images和Codex Docker/native诊断输入已有代码与离线证据。
 
 Milestone4仍 INCOMPLETE：Codex原始八图传递、fresh输入和actual tools=[]已在Docker fake验证；即使配置model_max_output_tokens=2048，实际请求仍缺生成token上限，IMAGE_GENERATION_BOUND_UNPROVEN阻断live调用。完整authenticated Codex channel、image execution/typed receipt/qualification owner及新安装尚未完成；不以诊断helper捕获请求当成功turn或视觉能力。正式probe/formal requests=0，不降低预算标准、不切换provider。原holdout与全部生产guards保持。详细代码/测试/冻结证据及剩余工作见 [current phase record](shape-matched-cover-m5d2a.md) 的Image Input Implementation章节和外部router canonical record。
+
+## Generation Budget Repair Boundary
+
+用户要求先修复blocker再安装后，已继续 actual request/schema/versioned source 调查；现有 Codex subscription 路线没有可验证的硬生成上限。Router已准备 API amendment SHA `14e10cad0f3afc44f0f3796c2ae86c45e161c8a17ab2d54801c8c261a81df272`，改变 endpoint、API credential 和 billing，base V3 exact-SHA approval pending。该新边界不能由原 router 范围批准推定通过；此前已批准 image-input implementation 保持。批准后自动更新 router existing plan并继续 implementation/required review/official installation，不另要求“继续”。当前M4及正式资格仍INCOMPLETE，installed route未替换，所有production guards保持；最新证据由 [phase record](shape-matched-cover-m5d2a.md) 与 router canonical record独占。
