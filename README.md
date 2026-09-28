@@ -132,13 +132,13 @@ Agent 自动覆盖的近似位置不是源贴纸事实，不写入源知识库�
 
 上传停在“确定”前，结果为“上传完成，待在 Chrome 确认”；请核查该任务页面并自行确认。应用不点击确定、不提交发布、不修改广告设置。浏览器关闭或弹窗被人工处理后，草稿可能丢失。上传问题不改变已完成的本地导出，也不重渲染。
 
-**生产页面合同尚未核实，当前自动上传保持阻断。** 已有六账号人工 CDP 上传记录不能替代应用页面定位验收。有限定位合同未核实前，请求在制作/入队前拒绝上传选项，不连接真实 Chrome；可关闭本次上传继续本地制作。真实验收需另行授权指定账号和正式 MP4；本轮没有新增真实上传。
+Linux 已接入有限千川页面合同：正式 MP4 完成并验证后，应用可连接所选账号的 Chrome，每组最多选择 9 条，整组 ready 且逐文件结果保存后继续。真实蝴蝶贴空面板准备及隔离桌面链路已有证据；应用自动导出后上传至真实账号的完整验收仍未执行，不能把之前的人工上传等同于该验收。真实页面有变化、身份/数量不符或处理结果未知时停止，禁止自动重传。
 
-本轮接入、隔离桌面与打包验证，以及尚未完成的生产/Windows/AOCI 检查见 [接入 checkpoint](docs/qianchuan-upload-integration-2026-09-27.md)。
+当前九条分组及应用验证边界见 [分组接入 checkpoint](docs/qianchuan-nine-file-groups-2026-09-28.md)；页面适配的历史审查状态见 [生产 adapter checkpoint](docs/qianchuan-production-adapter-2026-09-28.md)，之前的离线接入见 [历史接入 checkpoint](docs/qianchuan-upload-integration-2026-09-27.md)。
 
-应用只 attach 用户已经登录的对应 loopback Chrome，不启动或修改用户浏览器、不读取 cookie、不处理验证码。同批共用专用 tab，全局逐条上传；文件选择前永久保存 selection fence。屏障之后未知仅能只读核查原页面，不自动重传。不要删除 `userData/douyin-upload/` 中的记录或屏障来重试。v1 创作者中心历史保留原字节和旧 markers，只读显示，不迁移发布授权；v2 默认关闭。Windows 的目录同步及 ACL 尚未实机核实，自动上传继续阻断。
+应用只 attach 用户已经登录的对应 loopback Chrome，不启动或修改用户浏览器、不读取 cookie、不处理验证码。同批共用专用 tab，全局串行处理文件组；组内每个文件的永久 selection fence 全部保存后才选择文件。屏障之后未知仅能只读核查原页面，不自动重传。不要删除 `userData/douyin-upload/` 中的记录或屏障来重试。v1 创作者中心历史保留原字节和旧 markers，只读显示，不迁移发布授权；v2 默认关闭。Windows 的目录同步及 ACL 尚未实机核实，自动上传继续阻断。
 
-隔离回归使用 `npx vitest run tests/douyin-*.test.ts tests/qianchuan-*.test.ts`，并纳入 code Harness。构建后运行 `xvfb-run -a node scripts/douyin-upload-smoke.mjs`；只用合成视频、本地页面、独立 Electron userData 和独立 Chrome profile。测试 bundle 中的 fixture 定位不进入生产配置。Linux 打包后可追加 `--packaged` 检查实际包内 Playwright attach；它不证明生产账号上传可用。smoke 支持 `JIANJI_SMOKE_ELECTRON`、`JIANJI_FFMPEG_PATH`、`JIANJI_FFPROBE_PATH`；引擎必须支持 `drawtext`、`overlay` 和 `-fps_mode`。
+隔离回归使用 `npx vitest run tests/douyin-*.test.ts tests/qianchuan-*.test.ts`，并纳入 code Harness。构建后运行 `xvfb-run -a node scripts/douyin-upload-smoke.mjs`；只用合成视频、本地页面、独立 Electron userData 和独立 Chrome profile。测试 bundle 中的 fixture 定位不进入生产配置。Linux 打包后可追加 `--packaged`；测试 driver 在独立 profile 中将千川导航截获到本地 fixture，验证未修改的包内 adapter 和原生文件拖拽，不访问真实账号。它不证明生产账号上传已验收。smoke 支持 `JIANJI_SMOKE_ELECTRON`、`JIANJI_FFMPEG_PATH`、`JIANJI_FFPROBE_PATH`；引擎必须支持 `drawtext`、`overlay` 和 `-fps_mode`。
 
 ### Validation Harness
 

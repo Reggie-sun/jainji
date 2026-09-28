@@ -1,3 +1,5 @@
+> 本文保留 2026-09-27 阻断生产上传时的历史 checkpoint。2026-09-28 的生产页面适配、当前能力和验证边界见 [最新记录](qianchuan-production-adapter-2026-09-28.md)。
+
 # Scope And Checkpoint
 
 依据 Spec 0.2 与五里程碑 plan，实现共享账号准入、v2 ledger、千川 upload-only service/browser port，以及既有制作、追加、preload 与结果页接入。M1 已提交 `49c394c`、`c4da2de`；后续代码在当前 working tree 实施，没有创建 worktree。

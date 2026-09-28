@@ -6,7 +6,7 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { DouyinCdpUploader } from "../../src/main/douyin-cdp-uploader.js";
-import type { QianchuanPageContract } from "../../src/main/qianchuan-page-contract.js";
+import { PRODUCTION_QIANCHUAN_CONTRACT, type QianchuanPageContract } from "../../src/main/qianchuan-page-contract.js";
 import { frozenInputDigest, uploadTaskId, type UploadTaskRecord } from "../../src/main/douyin-upload-store.js";
 import { now, type QueueState } from "../../src/main/domain.js";
 import { QianchuanUploadConfigSchema } from "../../src/shared/douyin-upload.js";
@@ -36,6 +36,19 @@ export interface QianchuanFixtureControls {
   screen?: "normal" | "login" | "challenge";
   capacity?: number;
   readyState?: "ready" | "processing" | "failed";
+  processingDelayMs?: number;
+  rowAppearanceDelayMs?: number;
+  pendingName?: string;
+  successVisibility?: "hidden" | "collapse";
+  reorderRows?: boolean;
+  unknownName?: string;
+  extraRow?: boolean;
+  removeName?: string;
+  selectedCountOverride?: number;
+  wrongDrawerPlan?: boolean;
+  wrongGlobalPlan?: boolean;
+  duplicateAddButton?: boolean;
+  duplicateDropTarget?: boolean;
   wrongAdvertiser?: boolean;
   wrongPlan?: boolean;
   duplicateUpload?: boolean;
@@ -43,7 +56,10 @@ export interface QianchuanFixtureControls {
   drift?: boolean;
   failure?: boolean;
 }
-export interface QianchuanFixtureEvent { type: string; control?: string; names?: string[]; name?: string; }
+export interface QianchuanFixtureEvent {
+  type: string; control?: string; names?: string[]; name?: string; scope?: string; selectedCount?: string;
+  rows?: Array<{ name: string; ready: boolean }>; cancelVisible?: boolean; confirmEnabled?: boolean;
+}
 export interface QianchuanFixture {
   contract: QianchuanPageContract;
   cdpEndpoint: string;
@@ -54,7 +70,7 @@ export interface QianchuanFixture {
   inspect(): Promise<{ chromeRunning: boolean; pages: Array<{ id: string; type: string; url: string }>; events: QianchuanFixtureEvent[] }>;
   stop(): Promise<void>;
 }
-interface StartFixtureOptions { tempRoot: string; chromeExecutable?: string; fixtureHtml?: string; }
+export interface StartFixtureOptions { tempRoot: string; chromeExecutable?: string; fixtureHtml?: string; production?: boolean; }
 
 async function bodyText(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -126,7 +142,9 @@ async function stopChrome(child: ChildProcess): Promise<void> {
 export async function startQianchuanFixture(options: StartFixtureOptions): Promise<QianchuanFixture> {
   const chromeExecutable = await resolveChromeExecutable(options.chromeExecutable);
   const html = await readFile(options.fixtureHtml ?? path.resolve("tests/fixtures/qianchuan-upload-page.html"), "utf8");
-  const controls: QianchuanFixtureControls = { ...defaultControls };
+  const production = options.production === true;
+  const initialControls: QianchuanFixtureControls = { ...defaultControls, ...(production ? { capacity: 64 } : {}) };
+  const controls: QianchuanFixtureControls = { ...initialControls };
   const events: QianchuanFixtureEvent[] = [];
   const server = http.createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -137,7 +155,7 @@ export async function startQianchuanFixture(options: StartFixtureOptions): Promi
         events.push(value); response.writeHead(204).end(); return;
       }
       if (request.method === "GET" && ["/uni-prom", "/upload"].includes(url.pathname)) {
-        const pageHtml = html.replace("const state = { controls: {}, files: [] };", `const state = { controls: ${JSON.stringify(controls)}, files: [] };`);
+        const pageHtml = html.replace(/const state = \{ controls: \{\}, (files|uploads): \[\] \};/, (_match, collection: string) => `const state = { controls: ${JSON.stringify(controls)}, ${collection}: [] };`);
         response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); response.end(pageHtml); return;
       }
       response.writeHead(404).end("not found");
@@ -155,14 +173,19 @@ export async function startQianchuanFixture(options: StartFixtureOptions): Promi
     cdpEndpoint: chrome.endpoint,
     originalTargetId: chrome.originalTargetId,
     uploadUrl: `${origin}/upload`,
-    contract: {
+    contract: production ? {
+      ...PRODUCTION_QIANCHUAN_CONTRACT,
+      origin,
+      fixtureUrl: `${origin}/uni-prom`,
+    } : {
+      kind: "fixture",
       version: "qianchuan-local-fixture/2", origin, route: "/uni-prom", fixtureUrl: `${origin}/uni-prom`,
       drawer: "#qianchuan-drawer", modal: "#upload-modal", count: "#selected-count", row: ".upload-row",
       fileNameAttribute: "data-file-name", stateAttribute: "data-upload-state", login: "#login-required", challenge: "#challenge-required", failure: "#upload-failure",
       fileSelectionDoesNotConfirm: true,
     },
     setControls(value) { Object.assign(controls, value); },
-    reset() { for (const key of Object.keys(controls) as (keyof QianchuanFixtureControls)[]) delete controls[key]; Object.assign(controls, defaultControls); events.length = 0; },
+    reset() { for (const key of Object.keys(controls) as (keyof QianchuanFixtureControls)[]) delete controls[key]; Object.assign(controls, initialControls); events.length = 0; },
     async inspect() {
       const pages = await fetch(`${chrome.endpoint}/json/list`).then(response => response.json()) as Array<{ id: string; type: string; url: string }>;
       return { chromeRunning: chrome.child.exitCode === null, pages, events: structuredClone(events) };
@@ -221,10 +244,10 @@ export async function runDouyinCdpFixture(options: {
     uploader = new DouyinCdpUploader(fixture.contract);
     const signal = new AbortController().signal;
     await uploader.connect(task, signal);
-    const prepared = await uploader.open(task, [], signal);
+    const prepared = await uploader.open([task], [], signal);
     task.result = { ...task.result, upload_outcome: "MAY_HAVE_UPLOADED", state: "UPLOADING" };
-    await uploader.upload(task, signal);
-    const readyEvidence = await uploader.ready(task, signal);
+    await uploader.upload([task], signal);
+    const readyEvidence = (await uploader.ready([task], signal))[0]!;
     assert.equal(readyEvidence.advertiserId, task.authorization.target.advertiserId);
     assert.equal(readyEvidence.adId, task.authorization.target.adId);
     assert.equal(readyEvidence.fileName, task.result.file_name);

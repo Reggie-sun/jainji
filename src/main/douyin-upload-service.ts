@@ -10,12 +10,13 @@ import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type QianchuanUploadResult } from "../shared/douyin-upload.js";
 
-export interface BatchSelectedFile { fileName: string; index: number; }
+export interface BatchSelectedFile { fileName: string; index: number; ready?: boolean; }
+export const MAX_UPLOAD_GROUP_SIZE = 9;
 export interface UploadBrowserPort {
   connect(task: UploadTaskRecord, signal: AbortSignal): Promise<void>;
-  open(task: UploadTaskRecord, selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }>;
-  upload(task: UploadTaskRecord, signal: AbortSignal): Promise<void>;
-  ready(task: UploadTaskRecord, signal: AbortSignal): Promise<ReadyEvidence>;
+  open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }>;
+  upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
+  ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]>;
   readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence>;
   stop(): Promise<void>;
 }
@@ -30,7 +31,7 @@ const unknown = () => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "上传结
 export class DouyinUploadService {
   private admission: Promise<unknown> = Promise.resolve();
   private control: Promise<unknown> = Promise.resolve();
-  private active?: { id: string; controller: AbortController; port: UploadBrowserPort };
+  private active?: { ids: string[]; controller: AbortController; port: UploadBrowserPort };
   private runner?: Promise<void>;
   private paused = false;
   private stopped = false;
@@ -156,8 +157,17 @@ export class DouyinUploadService {
     if (this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
     this.runner = (async () => {
       while (!this.stopped && !this.stopping && !this.paused && this.store.config.enabled && !this.store.unavailable) {
-        const task = this.store.tasks().find(value => value.result.state === "PENDING" && this.eligible.has(value.result.upload_task_id)); if (!task) break;
-        this.eligible.delete(task.result.upload_task_id); await this.execute(task.result.upload_task_id);
+        const available = this.store.tasks().filter(value => value.result.state === "PENDING" && this.eligible.has(value.result.upload_task_id));
+        const first = available[0]; if (!first) break;
+        const group: UploadTaskRecord[] = [];
+        if (this.duplicate(first)) group.push(first);
+        else for (const task of available) {
+          if (task.authorization.pageBatchId !== first.authorization.pageBatchId || this.duplicate(task) || group.some(other => sameTargetBytes(task, other))) continue;
+          group.push(task); if (group.length === MAX_UPLOAD_GROUP_SIZE) break;
+        }
+        const ids = group.map(task => task.result.upload_task_id);
+        for (const id of ids) this.eligible.delete(id);
+        await this.execute(ids);
       }
     })().finally(() => { this.runner = undefined; if (this.eligible.size && !this.paused && !this.stopped && !this.stopping && !this.store.unavailable) void this.runPending().catch(() => this.changed()); });
     return this.runner;
@@ -168,16 +178,18 @@ export class DouyinUploadService {
       if (generation !== this.controlGeneration || this.stopping || this.store.unavailable || !this.store.config.enabled || this.active) return;
       const task = this.requireTask(id);
       if (task.result.duplicate_of || task.result.state === "FAILED_TERMINAL") return;
-      if (this.store.tasks().some(other => other.result.upload_task_id !== id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of)) throw new Error("该账号存在未解决的任务，请先核查原页面。");
+      const fenced = this.store.hasMarker(id);
+      if (this.store.tasks().some(other => other.result.upload_task_id !== id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (!fenced || other.authorization.pageBatchId !== task.authorization.pageBatchId || !this.store.hasMarker(other.result.upload_task_id)))) throw new Error("该账号存在未解决的任务，请先核查原页面。");
       this.stopped = false; this.paused = false;
-      await this.execute(id); await this.runPending();
+      const unresolved = fenced ? this.store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId && this.store.hasMarker(other.result.upload_task_id) && other.result.state !== "WAITING_FOR_CONFIRMATION") : [];
+      await this.execute(unresolved.length ? unresolved.map(other => other.result.upload_task_id) : [id]); await this.runPending();
     }); this.control = work; return work;
   }
   async cancel(id: string): Promise<void> {
     const task = this.requireTask(id); this.eligible.delete(id);
-    if (this.active?.id === id) {
-      this.active.controller.abort();
-      await this.bounded(() => this.active!.port.stop(), 5000, new AbortController().signal).catch(() => { this.paused = true; });
+    if (this.active?.ids.includes(id)) {
+      const active = this.active; active.controller.abort();
+      await this.bounded(() => active.port.stop(), 5000, new AbortController().signal).catch(() => { this.paused = true; });
       await this.bounded(async () => { await this.runner; }, 15000, new AbortController().signal).catch(() => { this.paused = true; });
       return;
     }
@@ -196,45 +208,69 @@ export class DouyinUploadService {
   private async save(task: UploadTaskRecord): Promise<void> { await this.store.saveTask(task); this.changed(); if (task.config.captureFailureDiagnostics) await this.log(task).catch(() => undefined); }
   private async phase(task: UploadTaskRecord, state: QianchuanUploadResult["state"]): Promise<void> { task.result = { ...task.result, state, readyEvidence: undefined, failure: undefined, retryable: false, timestamp: timestamp() }; await this.save(task); }
   private selectedFiles(task: UploadTaskRecord): BatchSelectedFile[] {
-    return this.store.tasks().filter(value => value.authorization.pageBatchId === task.authorization.pageBatchId && this.store.hasMarker(value.result.upload_task_id)).map(value => ({ fileName: value.result.file_name, index: this.store.fence(value.result.upload_task_id)!.selectedIndex })).sort((a, b) => a.index - b.index);
+    return this.store.tasks().filter(value => value.authorization.pageBatchId === task.authorization.pageBatchId && this.store.hasMarker(value.result.upload_task_id)).map(value => ({ fileName: value.result.file_name, index: this.store.fence(value.result.upload_task_id)!.selectedIndex, ready: value.result.upload_outcome === "READY" })).sort((a, b) => a.index - b.index);
   }
-  private async execute(id: string): Promise<void> {
-    let task = this.requireTask(id);
-    if (!this.store.hasMarker(id)) {
-      const duplicate = this.store.tasks().find(other => other.result.upload_task_id !== id && sameTargetBytes(task, other) && this.store.hasMarker(other.result.upload_task_id));
+  private duplicate(task: UploadTaskRecord): UploadTaskRecord | undefined {
+    return this.store.tasks().find(other => other.result.upload_task_id !== task.result.upload_task_id && sameTargetBytes(task, other) && this.store.hasMarker(other.result.upload_task_id));
+  }
+  private async execute(ids: string[]): Promise<void> {
+    let tasks = ids.map(id => this.requireTask(id));
+    const first = tasks[0]; if (!first) return;
+    if (!this.store.hasMarker(first.result.upload_task_id)) {
+      const duplicate = this.duplicate(first);
       if (duplicate) {
-        task.result = { ...task.result, duplicate_of: duplicate.result.upload_task_id, state: duplicate.result.state === "WAITING_FOR_CONFIRMATION" ? "WAITING_FOR_CONFIRMATION" : "NEEDS_HUMAN", upload_outcome: duplicate.result.state === "WAITING_FOR_CONFIRMATION" ? "READY" : "MAY_HAVE_UPLOADED", readyEvidence: duplicate.result.readyEvidence, failure: duplicate.result.readyEvidence ? undefined : unknown().failure };
-        await this.save(task); if (!duplicate.result.readyEvidence) { this.paused = true; this.eligible.clear(); } return;
+        first.result = { ...first.result, duplicate_of: duplicate.result.upload_task_id, state: duplicate.result.state === "WAITING_FOR_CONFIRMATION" ? "WAITING_FOR_CONFIRMATION" : "NEEDS_HUMAN", upload_outcome: duplicate.result.state === "WAITING_FOR_CONFIRMATION" ? "READY" : "MAY_HAVE_UPLOADED", readyEvidence: duplicate.result.readyEvidence, failure: duplicate.result.readyEvidence ? undefined : unknown().failure };
+        await this.save(first); if (!duplicate.result.readyEvidence) { this.paused = true; this.eligible.clear(); } return;
       }
     }
-    const controller = new AbortController(), key = task.authorization.pageBatchId;
-    const port = this.sessions.get(key) ?? this.dependencies.browser(); this.sessions.set(key, port); this.active = { id, controller, port };
+    const controller = new AbortController(), key = first.authorization.pageBatchId;
+    const port = this.sessions.get(key) ?? this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
     try {
-      const t = task.config.timeouts;
-      if (!this.store.hasMarker(id)) { task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER"); }
-      await this.bounded(signal => port.connect(task, signal), t.connect, controller.signal);
-      let evidence: ReadyEvidence;
-      if (this.store.hasMarker(id)) {
-        const fence = this.store.fence(id)!;
-        evidence = await this.bounded(signal => port.readOnlyCheck(task, fence.pageOwnership, this.selectedFiles(task), signal), t.confirmation, controller.signal);
+      const t = first.config.timeouts, recovery = this.store.hasMarker(first.result.upload_task_id);
+      if (tasks.length > MAX_UPLOAD_GROUP_SIZE || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
+      if (!recovery) for (const task of tasks) { task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER"); }
+      await this.bounded(signal => port.connect(first, signal), t.connect, controller.signal);
+      let evidence: ReadyEvidence[];
+      if (recovery) {
+        evidence = await this.bounded(async signal => {
+          const results: ReadyEvidence[] = [];
+          for (const task of tasks) results.push(await port.readOnlyCheck(task, this.store.fence(task.result.upload_task_id)!.pageOwnership, this.selectedFiles(task), signal));
+          return results;
+        }, t.confirmation, controller.signal);
       } else {
-        await this.phase(task, "OPENING_UPLOAD_PAGE");
-        const prepared = await this.bounded(signal => port.open(task, this.selectedFiles(task), signal), t.navigation, controller.signal);
-        await this.snapshotValid(task); controller.signal.throwIfAborted();
-        await this.store.markSelecting(id, prepared.pageOwnership, prepared.selectedIndex); task = this.requireTask(id); this.changed(); controller.signal.throwIfAborted();
-        await this.bounded(signal => port.upload(task, signal), t.fileInput, controller.signal);
-        await this.phase(task, "WAITING_UPLOAD_COMPLETE");
-        evidence = await this.bounded(signal => port.ready(task, signal), t.processing, controller.signal);
+        for (const task of tasks) await this.phase(task, "OPENING_UPLOAD_PAGE");
+        const prepared = await this.bounded(signal => port.open(tasks, this.selectedFiles(first), signal), t.navigation, controller.signal);
+        for (const task of tasks) { await this.snapshotValid(task); controller.signal.throwIfAborted(); }
+        for (let index = 0; index < tasks.length; index++) {
+          await this.store.markSelecting(tasks[index]!.result.upload_task_id, prepared.pageOwnership, prepared.selectedIndex + index);
+          this.changed(); controller.signal.throwIfAborted();
+        }
+        tasks = ids.map(id => this.requireTask(id));
+        await this.bounded(signal => port.upload(tasks, signal), t.fileInput, controller.signal);
+        for (const task of tasks) { controller.signal.throwIfAborted(); await this.phase(task, "WAITING_UPLOAD_COMPLETE"); }
+        evidence = await this.bounded(signal => port.ready(tasks, signal), t.processing, controller.signal);
       }
-      await this.snapshotValid(task); controller.signal.throwIfAborted();
-      task.result = { ...task.result, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: ReadyEvidenceSchema.parse(evidence), failure: undefined, retryable: false, timestamp: timestamp() };
-      await this.save(task);
+      if (evidence.length !== tasks.length) throw unknown();
+      const parsed = evidence.map(item => ReadyEvidenceSchema.parse(item));
+      for (let index = 0; index < tasks.length; index++) {
+        const task = tasks[index]!, item = parsed[index]!;
+        if (item.fileName !== task.result.file_name || item.selectedCount !== this.selectedFiles(first).length || JSON.stringify(item.pageOwnership) !== JSON.stringify(this.store.fence(task.result.upload_task_id)!.pageOwnership)) throw unknown();
+        await this.snapshotValid(task); controller.signal.throwIfAborted();
+      }
+      for (let index = 0; index < tasks.length; index++) {
+        controller.signal.throwIfAborted(); const task = tasks[index]!;
+        task.result = { ...task.result, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: parsed[index], failure: undefined, retryable: false, timestamp: timestamp() };
+        await this.save(task);
+      }
     } catch (error) {
-      const fenced = this.store.hasMarker(id), failure = fenced ? unknown().failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
-      task = this.requireTask(id);
-      task.result = { ...task.result, state: fenced || failure.requires_human ? "NEEDS_HUMAN" : controller.signal.aborted ? "CANCELLED" : failure.retryable ? "FAILED_RETRYABLE" : "FAILED_TERMINAL", upload_outcome: fenced ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", readyEvidence: undefined, failure, retryable: !fenced && failure.retryable, timestamp: timestamp() };
       this.paused = true; this.eligible.clear();
-      if (!this.store.unavailable) await this.save(task); else { this.initializationFailure = "上传存储失败；保留屏障，上传结果按未知处理。"; this.changed(); }
+      for (const id of ids) {
+        const task = this.requireTask(id); if (task.result.state === "WAITING_FOR_CONFIRMATION") continue;
+        const fenced = this.store.hasMarker(id), failure = fenced ? unknown().failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
+        task.result = { ...task.result, state: fenced || failure.requires_human ? "NEEDS_HUMAN" : controller.signal.aborted ? "CANCELLED" : failure.retryable ? "FAILED_RETRYABLE" : "FAILED_TERMINAL", upload_outcome: fenced ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", readyEvidence: undefined, failure, retryable: !fenced && failure.retryable, timestamp: timestamp() };
+        if (!this.store.unavailable) await this.save(task);
+      }
+      if (this.store.unavailable) { this.initializationFailure = "上传存储失败；保留屏障，上传结果按未知处理。"; this.changed(); }
       await this.bounded(() => port.stop(), 5000, new AbortController().signal).catch(() => undefined); this.sessions.delete(key);
     } finally { if (this.active?.port === port) this.active = undefined; }
   }

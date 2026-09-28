@@ -15,9 +15,9 @@ const source = path.join(tempRoot, "offline-source.mp4"), output = path.join(tem
 const accountFile = path.join(tempRoot, "accounts.json"), projectFile = path.join(tempRoot, "offline.jianji-project.json");
 const fixtureHome = path.join(tempRoot, "home"), userData = path.join(tempRoot, "userData");
 const reportPath = path.join(tempRoot, "report.json");
-const report = { result: "UNVERIFIED", reportPath, productionPage: "BLOCKED_UNVERIFIED", realAccountsUsed: false };
+const report = { result: "UNVERIFIED", reportPath, productionPage: "SOURCE_QUALIFIED_LIVE_APP_UPLOAD_NOT_EVALUATED", realAccountsUsed: false };
 const ffmpeg = process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ffprobe = process.env.JIANJI_FFPROBE_PATH || "ffprobe";
-let app, fixture, helperPath;
+let app, fixture, helperPath, fixtureRoutingBrowser;
 async function state(page) { return page.evaluate(() => window.jianji.getState()); }
 async function until(page, predicate, timeout = 120_000) {
   const deadline = Date.now() + timeout;
@@ -43,17 +43,33 @@ try {
   helperPath = path.join(tempRoot, "douyin-cdp-fixture.mjs");
   await require("esbuild").build({ entryPoints: [path.join(root, "tests/helpers/douyin-cdp-fixture.ts")], bundle: true, platform: "node", format: "esm", outfile: helperPath, external: ["playwright-core"] });
   const helper = await import(pathToFileURL(helperPath).href);
-  fixture = await helper.startQianchuanFixture({ tempRoot, chromeExecutable: await helper.resolveChromeExecutable(process.env.JIANJI_CHROME_PATH), fixtureHtml: path.join(root, "tests/fixtures/qianchuan-upload-page.html") });
+  fixture = await helper.startQianchuanFixture({ tempRoot, production: true, chromeExecutable: await helper.resolveChromeExecutable(process.env.JIANJI_CHROME_PATH), fixtureHtml: path.join(root, "tests/fixtures/qianchuan-production-page.html") });
+  // Keep the first group processing while further formal exports finish, exercising accumulated groups.
+  fixture.setControls({ processingDelayMs: 10_000 });
+  if (packaged) {
+    // Test-only network interception in a fresh profile; package source remains unchanged.
+    fixtureRoutingBrowser = await require("playwright-core").chromium.connectOverCDP(fixture.cdpEndpoint);
+    await fixtureRoutingBrowser.contexts()[0].route("https://qianchuan.jinritemai.com/**", async route => {
+      const requestUrl = new URL(route.request().url());
+      if (!["/uni-prom", "/controls", "/events"].includes(requestUrl.pathname)) { await route.abort(); return; }
+      const local = new URL(requestUrl.pathname, fixture.contract.origin); local.search = requestUrl.search;
+      const method = route.request().method(), body = route.request().postData();
+      const response = await fetch(local, { method, ...(body ? { body, headers: { "content-type": "application/json" } } : {}) });
+      await route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "text/plain", body: await response.text() });
+    });
+    report.packagedProductionOriginInterceptedLocally = true;
+  }
   const products = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂", "热敷贴"];
   const fixturePort = new URL(fixture.cdpEndpoint).port;
   const basePort = Number(fixturePort) >= 9300 && Number(fixturePort) < 9306 ? 9400 : 9300;
   await writeFile(accountFile, JSON.stringify({ version: 1, accounts: products.map((product, i) => ({ product, cdpEndpoint: product === "眼贴" ? fixture.cdpEndpoint.replace(/\/$/, "") : `http://127.0.0.1:${basePort + i}`, advertiserId: product === "眼贴" ? "123456" : String(100 + i), adId: product === "眼贴" ? "987654" : String(200 + i) })) }), { mode: 0o600 });
   const productionSource = await readFile(path.join(root, "src/main/qianchuan-page-contract.ts"), "utf8");
-  assert.match(productionSource, /PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract \| undefined = undefined;/);
+  const contractPattern = /export const PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract = \{[\s\S]*?\n\};/;
+  assert.match(productionSource, contractPattern);
   // This temporary bundle changes only the finite contract. It is outside dist and never packaged.
   const fixtureMain = path.join(tempRoot, "fixture-main.cjs");
   if (!packaged) await require("esbuild").build({ entryPoints: [path.join(root, "src/main/index.ts")], bundle: true, platform: "node", format: "cjs", outfile: fixtureMain, external: ["electron", "playwright-core", "sql.js/*"], plugins: [{ name: "isolated-contract", setup(build) {
-    build.onLoad({ filter: /qianchuan-page-contract\.ts$/ }, async args => ({ loader: "ts", contents: (await readFile(args.path, "utf8")).replace("PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract | undefined = undefined;", `PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract | undefined = ${JSON.stringify(fixture.contract)};`) }));
+    build.onLoad({ filter: /qianchuan-page-contract\.ts$/ }, async args => ({ loader: "ts", contents: (await readFile(args.path, "utf8")).replace(contractPattern, `export const PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract = ${JSON.stringify(fixture.contract)};`) }));
   } }] });
   const bootstrap = path.join(tempRoot, "bootstrap.cjs");
   await writeFile(bootstrap, `if (process.type === "browser") {
@@ -90,7 +106,7 @@ try {
   await page.getByLabel("启用千川上传",{exact:true}).check();
   await page.getByRole("button",{name:"保存上传设置",exact:true}).click();
   await until(page, value => value.douyinUpload.config.enabled);
-  assert.equal((await state(page)).douyinUpload.ready, !packaged);
+  assert.equal((await state(page)).douyinUpload.ready, true);
   await page.getByRole("button",{name:"制作",exact:true}).click();
   await page.getByRole("button",{name:"选择本地素材",exact:true}).click();
   await page.locator(".media-list").getByText("offline-source.mp4",{exact:true}).waitFor();
@@ -105,28 +121,42 @@ try {
   await page.getByRole("button",{name:"选择本地素材",exact:true}).click();
   await page.locator(".media-list").getByText("offline-source.mp4",{exact:true}).waitFor();
   await page.getByRole("button",{name:"下一步，设置制作规则"}).click(); assert.equal(await choice().isChecked(), false);
-  await page.getByRole("button",{name:"本地随机",exact:true}).click(); await page.locator("#product-price").fill("离线12.3元"); await page.locator("#production-count").fill("1");
+  await page.getByRole("button",{name:"本地随机",exact:true}).click(); await page.locator("#product-price").fill("离线12.3元"); await page.locator("#production-count").fill("12");
   await page.locator(".directory-picker").click(); await choice().check();
   await page.locator("#douyin-upload-product").selectOption("眼贴");
-  if (packaged) {
-    await page.getByRole("button",{name:/本地制作，制作 1 条成片/}).click();
-    await until(page, value => value.agentRun?.status !== "running");
-    assert.equal((await state(page)).queue.batches.length, 0, "production preflight blocks before export");
-    await page.getByRole("button",{name:"包装",exact:true}).click(); if(await choice().isChecked()) await choice().uncheck();
-  }
-  await page.getByRole("button",{name:/本地制作，制作 1 条成片/}).click();
-  const completedState = await until(page, value => value.queue.batches.some(({batch}) => batch.tasks.some(task => task.status === "completed")) && (packaged || value.douyinUpload.tasks.some(task => task.state === "WAITING_FOR_CONFIRMATION")));
+  await page.getByRole("button",{name:/本地制作，制作 12 条成片/}).click();
+  const completedState = await until(page, value => {
+    const tasks = value.queue.batches.filter(({batch}) => batch.projectId === value.project.id).flatMap(({batch}) => batch.tasks);
+    return tasks.length === 12 && tasks.every(task => task.status === "completed") && value.douyinUpload.tasks.length === 12 && value.douyinUpload.tasks.every(task => task.state === "WAITING_FOR_CONFIRMATION");
+  });
   const completedBatch = completedState.queue.batches.find(({batch}) => batch.tasks.some(task => task.status === "completed"));
   const completed = completedBatch.batch.tasks.find(task=>task.status === "completed");
   assert.ok(Number(execFileSync(ffprobe,["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",completed.outputPath],{encoding:"utf8"})) > 0);
   assert.deepEqual(await readFile(source), original); assert.equal(completedState.connection.configured,false);
-  if (!packaged) {
+  {
     const result = completedState.douyinUpload.tasks[0]; assert.equal(result.upload_outcome,"READY"); assert.equal(result.accountProduct,"眼贴");
-    const inspected = await fixture.inspect(); assert.equal(inspected.events.filter(event => event.type === "confirm" || event.type === "settings").length,0); assert.equal(inspected.events.filter(event => event.type === "files").length,1);
+    const inspected = await fixture.inspect(); assert.equal(inspected.events.filter(event => event.type === "confirm" || event.type === "settings").length,0);
+    const groups = inspected.events.filter(event => event.type === "files").map(event => event.names);
+    assert.ok(groups.every(group => group.length >= 1 && group.length <= 9));
+    assert.ok(groups.some(group => group.length > 1), "desktop path must exercise a multiple-file group");
     const ledger = JSON.parse(await readFile(path.join(runtime.userData,"douyin-upload/state.json"),"utf8"));
     assert.equal(ledger.tasks[0].authorization.target.advertiserId,"123456"); assert.ok(ledger.tasks[0].result.readyEvidence); assert.equal(ledger.version,2);
+    const selected = ledger.tasks.filter(task => !task.result.duplicate_of);
+    assert.deepEqual(new Set(groups.flat()),new Set(selected.map(task => task.result.file_name)));
+    assert.equal(groups.flat().length,selected.length);
+    let cumulative = 0;
+    for (const group of groups) {
+      cumulative += group.length;
+      for (const name of group) {
+        const task = selected.find(task => task.result.file_name === name);
+        assert.equal(task.result.readyEvidence.selectedCount,cumulative);
+        const fence = JSON.parse(await readFile(path.join(runtime.userData,"douyin-upload/selection-fences",`${task.result.upload_task_id}.json`),"utf8"));
+        assert.deepEqual(fence.pageOwnership,task.result.readyEvidence.pageOwnership);
+      }
+    }
+    report.groupSizes = groups.map(group => group.length); report.formalOutputs = 12; report.perFileFences = selected.length;
   }
-  if (!packaged) {
+  {
     const ref = completedState.douyinUpload.tasks[0];
     const rejected = await page.evaluate(async ref => {
       const refused = async action => { try { await action(); return false; } catch { return true; } };
@@ -139,15 +169,17 @@ try {
     },ref);
     assert.deepEqual(rejected,{crossProject:true,arbitraryPath:true,caption:true,confirm:true});
     report.strictIpc = rejected;
-    await page.getByRole("button",{name:"追加制作",exact:true}).click();
+    // Each completed version has its own append action; explicitly choose the first.
+    await page.getByRole("button",{name:"追加制作",exact:true}).first().click();
     const append = page.getByRole("dialog",{name:"追加制作",exact:true}); await append.waitFor();
     const appendChoice = append.locator('section[aria-labelledby="append-douyin-upload-title"] input[type="checkbox"]');
     assert.equal(await appendChoice.isChecked(),false); await appendChoice.check();
     assert.equal(await append.locator("#append-douyin-upload-product").inputValue(),"");
     await append.locator("#append-douyin-upload-product").selectOption("眼贴");
+    await append.locator("#append-count").fill("1");
     await append.locator("#append-directory").click();
     await append.getByRole("button",{name:"追加 1 条并开始渲染",exact:true}).click();
-    await until(page,value=>value.douyinUpload.tasks.length===2 && value.douyinUpload.tasks.every(task=>task.state === "WAITING_FOR_CONFIRMATION"));
+    await until(page,value=>value.douyinUpload.tasks.length===13 && value.douyinUpload.tasks.every(task=>task.state === "WAITING_FOR_CONFIRMATION"));
     assert.equal((await fixture.inspect()).events.filter(event=>event.type === "confirm" || event.type === "settings").length,0);
     report.appendIndependentChoice = true;
   }
@@ -156,13 +188,13 @@ try {
   const beforeRestart = await fixture.inspect(); await closeApp(); page = await launch(); await delay(1000);
   const reopened = await page.evaluate(id=>window.jianji.loadProject(id),saved.activeRecentProjectId); assert.equal(reopened.project.id,saved.project.id);
   assert.equal((await fixture.inspect()).events.filter(event=>event.type === "files").length,beforeRestart.events.filter(event=>event.type === "files").length,"restart/reopen never selects files");
-  if (!packaged) assert.equal(reopened.douyinUpload.tasks[0].state,"WAITING_FOR_CONFIRMATION");
+  assert.equal(reopened.douyinUpload.tasks[0].state,"WAITING_FOR_CONFIRMATION");
   if (packaged) report.packagedAttach = await app.evaluate(async ({app},input)=>{
     const runtimeRequire=process.mainModule.require("node:module").createRequire(`${app.getAppPath()}/package.json`);
     const browser=await runtimeRequire("playwright-core").chromium.connectOverCDP(input.endpoint,{timeout:8000,noDefaults:true});
     try { const page=await browser.contexts()[0].newPage(); await page.goto(input.url); if(await page.title()!=="Offline upload fixture") throw new Error("fixture title mismatch"); await page.close(); return {playwrightPath:runtimeRequire.resolve("playwright-core"),attached:true}; } finally {await browser.close();}
   },{endpoint:fixture.cdpEndpoint,url:fixture.uploadUrl});
   await closeApp();
-  Object.assign(report,{result:"PASS",runtime,formalFfmpegOutput:true,desktopFixtureUpload:!packaged,productionPreflightBlocked:packaged,preload:true,nativeDialogBoundary:true,defaultOff:true,projectSwitchReset:true,submissionReset:true,restartNoSelection:true,confirmClicks:(await fixture.inspect()).events.filter(event=>event.type === "confirm").length});
+  Object.assign(report,{result:"PASS",runtime,formalFfmpegOutput:true,desktopFixtureUpload:true,productionNativeDrop:true,preload:true,nativeDialogBoundary:true,defaultOff:true,projectSwitchReset:true,submissionReset:true,restartNoSelection:true,confirmClicks:(await fixture.inspect()).events.filter(event=>event.type === "confirm").length});
 } catch(error) { report.result = error.message?.startsWith("UNVERIFIED:") ? "UNVERIFIED" : "FAIL"; report.failure=error.message; process.exitCode=1; console.error(error); }
-finally { await closeApp(); await fixture?.stop(); if(helperPath) await rm(helperPath,{force:true}); await writeFile(reportPath,JSON.stringify(report,null,2)+"\n"); console.log(JSON.stringify(report,null,2)); if(process.env.JIANJI_SMOKE_KEEP!=="1") await rm(tempRoot,{recursive:true,force:true}); }
+finally { await closeApp(); await fixtureRoutingBrowser?.close(); await fixture?.stop(); if(helperPath) await rm(helperPath,{force:true}); await writeFile(reportPath,JSON.stringify(report,null,2)+"\n"); console.log(JSON.stringify(report,null,2)); if(process.env.JIANJI_SMOKE_KEEP!=="1") await rm(tempRoot,{recursive:true,force:true}); }

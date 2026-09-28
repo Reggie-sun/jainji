@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Offline upload fixture</title>
+  <style>
+    [hidden] { display: none !important; }
+    body { font: 16px sans-serif; margin: 2rem; }
+    .ovui-drawer { border: 1px solid #555; padding: 1rem; margin: 1rem 0; }
+    .ovui-tabs { display: flex; gap: 1rem; }
+    .ovui-tabs__tab { cursor: pointer; padding: .5rem; }
+    .ovui-tabs__tab-active { border-bottom: 2px solid #1677ff; }
+    .production-drop-target { border: 2px dashed #888; min-height: 7rem; padding: 2rem; margin: 1rem 0; }
+    .ovui-tr { border-top: 1px solid #ddd; }
+    .ovui-tr td { padding: .5rem; }
+    .oc-upload-table-name-progress-success { display: inline-block; width: 14px; height: 14px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Offline upload fixture</h1>
+    <section id="legacy-global-plan-list" aria-label="旧计划列表">
+      <div class="legacy-plan-row"><span>旧计划</span><span>ID：987654</span></div>
+    </section>
+    <aside class="ovui-drawer ovui-drawer--no-maskable" id="plan-drawer">
+      <div class="ad-drawer-body">
+        <div id="plan-advertiser-id">ID： 123456 </div>
+        <div id="plan-ad-id">ID：987654</div>
+        <div class="ovui-tabs">
+          <div class="ovui-tabs__tab ovui-tabs__tab-active" role="tab" id="plan-materials-tab">素材</div>
+        </div>
+        <button type="button" id="add-video-button" hidden>添加视频</button>
+      </div>
+    </aside>
+    <aside class="ovui-drawer" id="upload-drawer" hidden>
+      <div class="ad-drawer-body">
+        <div class="ovui-tabs" role="tablist">
+          <div class="ovui-tabs__tab" role="tab" id="material-tab">素材</div>
+          <div class="ovui-tabs__tab ovui-tabs__tab-active" role="tab" id="upload-video-tab">上传视频</div>
+        </div>
+        <div class="oc-create-material-submit-bar-count">已选择 0/64：</div>
+        <section id="upload-video-panel">
+          <div class="production-drop-target" data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo" tabindex="0">拖拽视频到此处上传</div>
+          <div class="oc-create-upload-table-wrapper">
+            <div id="production-upload-failure" hidden>上传失败</div>
+            <table><tbody></tbody></table>
+          </div>
+          <button type="button" id="cancel-upload" hidden>取消上传</button>
+          <button type="button" id="confirm-button" disabled>确定</button>
+          <button type="button" id="settings-button">广告设置</button>
+        </section>
+      </div>
+    </aside>
+    <input id="login-required" type="password" aria-label="登录密码" hidden>
+    <iframe id="challenge-required" title="安全验证" src="https://captcha.fixture.invalid/" hidden></iframe>
+  </main>
+  <script>
+    const state = { controls: {}, uploads: [] };
+    let lastDomReport = "";
+    const postEvent = event => fetch('/events', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(event), keepalive: true,
+    });
+    const planDrawer = document.querySelector('#plan-drawer');
+    const uploadDrawer = document.querySelector('#upload-drawer');
+    const dropTarget = document.querySelector('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]');
+    const makeRow = upload => {
+      const row = document.createElement('tr');
+      row.className = 'ovui-tr';
+      row.dataset.fixtureFileName = upload.name;
+      const nameCell = document.createElement('td');
+      nameCell.className = 'oc-upload-table-name-text';
+      const name = document.createElement('span');
+      name.className = 'oc-typography-value-int';
+      name.textContent = upload.visibleName;
+      nameCell.append(name);
+      const stateCell = document.createElement('td');
+      if (upload.status === 'ready') {
+        const success = document.createElement('span');
+        success.className = 'oc-upload-table-name-progress-success';
+        success.style.visibility = state.controls.successVisibility ?? 'visible';
+        success.setAttribute('aria-label', '上传成功');
+        stateCell.append(success);
+      }
+      const progress = document.createElement('div');
+      progress.className = upload.status === 'ready' ? 'ovui-progress ovui-progress--success' : 'ovui-progress';
+      progress.style.height = '20px';
+      progress.style.visibility = state.controls.successVisibility ?? 'visible';
+      stateCell.append(progress);
+      row.append(nameCell, stateCell);
+      return row;
+    };
+    const render = () => {
+      const c = state.controls;
+      document.querySelector('#plan-advertiser-id').textContent = ` ID： ${c.wrongAdvertiser ? '999999' : '123456'} `;
+      document.querySelector('#plan-ad-id').textContent = `ID：${c.wrongPlan || c.wrongDrawerPlan ? '999998' : '987654'}`;
+      document.querySelector('#legacy-global-plan-list .legacy-plan-row span:last-child').textContent = `ID：${c.wrongPlan || c.wrongGlobalPlan ? '999998' : '987654'}`;
+      document.querySelector('#login-required').hidden = c.screen !== 'login';
+      document.querySelector('#challenge-required').hidden = c.screen !== 'challenge';
+      const duplicateUploadTab = document.querySelector('#duplicate-upload-tab');
+      duplicateUploadTab?.remove();
+      if (c.duplicateUpload) {
+        const duplicate = document.querySelector('#upload-video-tab').cloneNode(true);
+        duplicate.id = 'duplicate-upload-tab';
+        document.querySelector('#upload-video-tab').after(duplicate);
+      }
+      const duplicateAddButton = document.querySelector('#duplicate-add-video-button');
+      duplicateAddButton?.remove();
+      if (c.duplicateAddButton) {
+        const duplicate = document.querySelector('#add-video-button').cloneNode(true);
+        duplicate.id = 'duplicate-add-video-button';
+        duplicate.hidden = false;
+        document.querySelector('#add-video-button').after(duplicate);
+      }
+      const duplicateDropTarget = document.querySelector('#duplicate-drop-target');
+      duplicateDropTarget?.remove();
+      if (c.duplicateDropTarget) {
+        const duplicate = document.querySelector('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]').cloneNode(true);
+        duplicate.id = 'duplicate-drop-target';
+        document.querySelector('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]').after(duplicate);
+      }
+      const duplicateConfirm = document.querySelector('#duplicate-confirm-button');
+      duplicateConfirm?.remove();
+      if (c.duplicateConfirm) {
+        const duplicate = document.querySelector('#confirm-button').cloneNode(true);
+        duplicate.id = 'duplicate-confirm-button';
+        document.querySelector('#confirm-button').after(duplicate);
+      }
+      const rows = document.querySelector('.oc-create-upload-table-wrapper tbody');
+      const shown = state.uploads.filter(upload => upload.rendered && upload.name !== c.removeName).map(upload => ({ ...upload, status: upload.name === c.pendingName ? 'processing' : upload.status }));
+      if (c.reorderRows) shown.reverse();
+      rows.replaceChildren(...shown.map(upload => makeRow({
+        ...upload,
+        visibleName: c.drift ? `drifted-${upload.name}` : c.unknownName === upload.name ? 'unknown-file.mp4' : upload.name,
+      })));
+      if (c.extraRow) rows.append(makeRow({ name: 'unexpected-extra.mp4', visibleName: 'unexpected-extra.mp4', status: 'ready' }));
+      document.querySelector('#production-upload-failure').hidden = c.failure !== true;
+      const readyCount = shown.filter(upload => upload.status === 'ready').length;
+      const count = Number.isSafeInteger(c.selectedCountOverride) ? c.selectedCountOverride : readyCount;
+      const capacity = Number.isSafeInteger(c.capacity) && c.capacity > 0 ? c.capacity : 64;
+      document.querySelector('.oc-create-material-submit-bar-count').textContent = `已选择 ${count}/${capacity}：`;
+      const pending = state.uploads.some(upload => upload.status === 'processing' || upload.name === c.pendingName);
+      document.querySelector('#cancel-upload').hidden = !pending;
+      document.querySelector('#confirm-button').disabled = pending || readyCount !== state.uploads.length || count !== readyCount || state.uploads.length === 0;
+      const snapshot = {
+        type: 'dom',
+        selectedCount: document.querySelector('.oc-create-material-submit-bar-count').textContent,
+        rows: Array.from(rows.querySelectorAll(':scope > tr.ovui-tr')).map(row => ({
+          name: row.querySelector('.oc-upload-table-name-text .oc-typography-value-int')?.textContent || '',
+          ready: Boolean(row.querySelector('.oc-upload-table-name-progress-success') && row.querySelector('.ovui-progress--success')),
+        })),
+        cancelVisible: !document.querySelector('#cancel-upload').hidden,
+        confirmEnabled: !document.querySelector('#confirm-button').disabled,
+      };
+      const signature = JSON.stringify(snapshot);
+      if (signature !== lastDomReport) { lastDomReport = signature; postEvent(snapshot); }
+    };
+    document.querySelector('#plan-materials-tab').addEventListener('click', () => {
+      postEvent({ type: 'click', control: '素材', scope: 'plan-drawer' });
+      document.querySelector('#add-video-button').hidden = false;
+    });
+    document.querySelector('#add-video-button').addEventListener('click', () => {
+      postEvent({ type: 'click', control: '添加视频', scope: 'plan-drawer' });
+      uploadDrawer.hidden = false;
+      render();
+    });
+    document.querySelector('#material-tab').addEventListener('click', () => postEvent({ type: 'click', control: '素材', scope: 'upload-drawer' }));
+    document.querySelector('#upload-video-tab').addEventListener('click', () => {
+      postEvent({ type: 'click', control: '上传视频', scope: 'upload-drawer' });
+      document.querySelector('#upload-video-panel').hidden = false;
+    });
+    for (const eventName of ['dragenter', 'dragover']) dropTarget.addEventListener(eventName, event => { event.preventDefault(); });
+    dropTarget.addEventListener('drop', event => {
+      event.preventDefault();
+      const files = Array.from(event.dataTransfer?.files || []);
+      postEvent({ type: 'drop', names: files.map(file => file.name) });
+      postEvent({ type: 'files', control: 'native-drop', names: files.map(file => file.name) });
+      const created = files.map(file => ({ name: file.name, status: 'processing', rendered: !state.controls.rowAppearanceDelayMs }));
+      state.uploads.push(...created);
+      render();
+      for (const upload of created) {
+        if (!upload.rendered) setTimeout(() => { upload.rendered = true; render(); }, state.controls.rowAppearanceDelayMs);
+        setTimeout(() => { upload.status = 'ready'; render(); }, state.controls.processingDelayMs ?? 160);
+      }
+    });
+    document.querySelector('#confirm-button').addEventListener('click', () => postEvent({ type: 'confirm' }));
+    document.querySelector('#settings-button').addEventListener('click', () => postEvent({ type: 'settings' }));
+    const refresh = async () => {
+      try {
+        const response = await fetch('/controls', { cache: 'no-store' });
+        state.controls = await response.json();
+        render();
+      } catch { /* The isolated fixture server may be shutting down. */ }
+    };
+    render(); void refresh(); setInterval(refresh, 100);
+  </script>
+</body>
+</html>

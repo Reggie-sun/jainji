@@ -3,7 +3,7 @@ import http from "node:http";
 import type { Socket } from "node:net";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { isLoopbackUrl, uploadFailure, type PageOwnership, type ReadyEvidence, type QianchuanUploadConfig } from "../shared/douyin-upload.js";
-import type { UploadBrowserPort, BatchSelectedFile } from "./douyin-upload-service.js";
+import { MAX_UPLOAD_GROUP_SIZE, type UploadBrowserPort, type BatchSelectedFile } from "./douyin-upload-service.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { QianchuanPageSession, PRODUCTION_QIANCHUAN_CONTRACT, qianchuanReadiness, type QianchuanPageContract } from "./qianchuan-page-contract.js";
 export const douyinReadiness = (_config: QianchuanUploadConfig) => qianchuanReadiness();
@@ -84,7 +84,8 @@ export class DouyinCdpUploader implements UploadBrowserPort {
     const session = await page.context().newCDPSession(page);
     try { return (await session.send("Target.getTargetInfo")).targetInfo.targetId; } finally { await session.detach(); }
   }
-  async open(task: UploadTaskRecord, selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }> {
+  async open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }> {
+    const task = tasks[0]; if (!task || tasks.length > MAX_UPLOAD_GROUP_SIZE) throw new Error("Invalid upload group");
     const contract = this.pageContract();
     return this.action(signal, async () => {
       if (!this.page) {
@@ -94,11 +95,11 @@ export class DouyinCdpUploader implements UploadBrowserPort {
         this.session = new QianchuanPageSession(this.page, contract, this.check);
         await this.page.goto(this.session.url(task), { timeout: task.config.timeouts.navigation, waitUntil: "domcontentloaded" }); this.check(signal);
       }
-      return this.session!.prepare(task, selected, await this.targetId(this.page), signal);
+      return this.session!.prepare(tasks, selected, await this.targetId(this.page), signal);
     });
   }
-  async upload(task: UploadTaskRecord, signal: AbortSignal): Promise<void> { await this.action(signal, () => this.session!.upload(task, signal)); }
-  async ready(task: UploadTaskRecord, signal: AbortSignal): Promise<ReadyEvidence> { return this.action(signal, () => this.session!.ready(task, signal)); }
+  async upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> { await this.action(signal, () => this.session!.upload(tasks, signal)); }
+  async ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]> { return this.action(signal, () => this.session!.ready(tasks, signal)); }
   async readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence> {
     return this.action(signal, async () => {
       const contract = this.pageContract(), pages = this.browser?.contexts()[0]?.pages() ?? [], matches: Page[] = [];

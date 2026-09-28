@@ -40,7 +40,8 @@ async function fixture(saveGate?: (status: string) => Promise<void>) {
   const ownershipByBatch = new Map<string, PageOwnership>();
   const browser: UploadBrowserPort = {
     connect: async (_task, signal) => { signal.throwIfAborted(); events.push("connect"); },
-    open: async (task, selected, signal) => {
+    open: async (tasks, selected, signal) => {
+      const task = tasks[0]!;
       signal.throwIfAborted(); events.push("open");
       let ownership = ownershipByBatch.get(task.authorization.pageBatchId);
       if (!ownership) {
@@ -49,8 +50,9 @@ async function fixture(saveGate?: (status: string) => Promise<void>) {
       }
       return { pageOwnership: ownership, selectedIndex: selected.length + 1 };
     },
-    upload: async (task, signal) => {
+    upload: async (tasks, signal) => {
       signal.throwIfAborted();
+      for (const task of tasks) {
       const fencePath = path.join(store.root, "selection-fences", `${task.result.upload_task_id}.json`);
       const fence = JSON.parse(await readFile(fencePath, "utf8")) as { upload_task_id: string; pageOwnership: PageOwnership };
       expect(fence.upload_task_id).toBe(task.result.upload_task_id);
@@ -58,12 +60,16 @@ async function fixture(saveGate?: (status: string) => Promise<void>) {
       expect((await stat(fencePath)).mode & 0o777).toBe(0o600);
       expect(store.hasMarker(task.result.upload_task_id)).toBe(true);
       expect(await readFile(task.snapshotPath)).toEqual(await readFile(task.input.video_path));
+      }
       events.push("file-input");
     },
-    ready: async task => {
+    ready: async tasks => {
       events.push("ready");
-      const fence = store.fence(task.result.upload_task_id)!;
-      return evidenceFor(task, fence.pageOwnership, fence.selectedIndex);
+      return tasks.map(task => {
+        const fence = store.fence(task.result.upload_task_id)!;
+        const count = store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId && store.hasMarker(other.result.upload_task_id)).length;
+        return evidenceFor(task, fence.pageOwnership, count);
+      });
     },
     readOnlyCheck: async (task, ownership, selected) => {
       events.push("readonly");
@@ -109,7 +115,7 @@ async function fixture(saveGate?: (status: string) => Promise<void>) {
   return { queue, jobs, uploader, store, input, media, sample, callback, facts, events, preflight, waitUntilReady };
 }
 
-function evidenceFor(task: Parameters<UploadBrowserPort["ready"]>[0], pageOwnership: PageOwnership, selectedCount: number): ReadyEvidence {
+function evidenceFor(task: Parameters<UploadBrowserPort["ready"]>[0][number], pageOwnership: PageOwnership, selectedCount: number): ReadyEvidence {
   return {
     advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId,
     fileName: task.result.file_name, selectedCount, observedAt: new Date().toISOString(), pageOwnership,
