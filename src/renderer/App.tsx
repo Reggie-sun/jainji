@@ -57,6 +57,7 @@ export default function App() {
   const knownMedia = useRef(new Set<string>());
   const projectId = useRef("");
   const operation = useRef(false);
+  const pendingProductPrice = useRef<{ projectId: string; productPrice: string }>();
 
   const apply = useCallback((next: DesktopState, restoreProductPrice = false) => {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
@@ -142,6 +143,21 @@ export default function App() {
     }
   }, [automaticOutputFor, automaticSelectionKey, outputDirectoryMode]);
 
+  useEffect(() => {
+    const pending = pendingProductPrice.current;
+    if (!pending || busy || state?.agentRun?.status === "running") return;
+    if (state?.project.id !== pending.projectId) {
+      pendingProductPrice.current = undefined;
+      return;
+    }
+    pendingProductPrice.current = undefined;
+    void window.jianji.setProductPriceDraft(pending.projectId, pending.productPrice).then((next) => {
+      if (projectId.current === pending.projectId) setState(next);
+    }).catch(() => {
+      if (projectId.current === pending.projectId) setNotice({ error: true, text: "下一轮展示文字未能保存，请重新填写后重试。" });
+    });
+  }, [busy, state?.agentRun?.status, state?.project.id]);
+
   const run = async (action: () => Promise<void>, success?: string): Promise<boolean> => {
     if (operation.current) return false;
     operation.current = true; setBusy(true); setNotice(undefined);
@@ -206,21 +222,31 @@ export default function App() {
       setState((current) => current?.project.id === currentId ? { ...current, project: { ...current.project, name: parsed.data, hasUnsavedChanges: true } } : current);
     }).catch(() => setNotice({ error: true, text: "项目名称未能更新，请重试。" }));
   };
-  const saveCollection = () => void run(async () => {
-    const name = MaterialNameSchema.parse(collectionName);
+  const workspaceDraft = (appearance = decorations) => {
     const resumeStep = step === "templates" || step === "results" ? step : step === "import" ? "import" : state.project.workspaceDraft?.step ?? (selected.length ? "templates" : "import");
-    const workspace = ProjectWorkspaceSchema.parse({
+    return ProjectWorkspaceSchema.parse({
       step: resumeStep,
       selectedMediaIds: selected,
       ruleId: rule,
       brief,
-      decorations: DecorationAppearanceSchema.parse(decorations),
+      decorations: DecorationAppearanceSchema.parse(appearance),
       ...(Number.isInteger(requestedCount) ? { requestedCount } : {}),
       exportFormat,
       exportSettings,
       outputDirectoryMode,
       ...(outputDirectoryMode === "manual" && outputDirectory ? { outputDirectory } : {}),
     });
+  };
+  const changeDecorations = (next: DecorationOptions) => {
+    if (operation.current) return;
+    setDecorations(next);
+    if (next.mode !== decorations.mode) void run(async () => {
+      apply(await window.jianji.setWorkspaceDraft(state.project.id, workspaceDraft(next)));
+    });
+  };
+  const saveCollection = () => void run(async () => {
+    const name = MaterialNameSchema.parse(collectionName);
+    const workspace = workspaceDraft();
     const next = await window.jianji.saveProject(name, workspace);
     if (next) { apply(next); setCollectionName(next.project.name); setNotice({ error: false, text: "项目已保存，下次可从已保存项目列表继续。" }); }
   });
@@ -246,6 +272,10 @@ export default function App() {
     if (!parsed.success) return;
     const currentId = state.project.id;
     setState((current) => current?.project.id === currentId ? { ...current, project: { ...current.project, hasUnsavedChanges: true, template: { ...current.project.template, productPriceDraft: parsed.data } } } : current);
+    if (agentRunning) {
+      pendingProductPrice.current = { projectId: currentId, productPrice: parsed.data };
+      return;
+    }
     void window.jianji.setProductPriceDraft(currentId, parsed.data).then((next) => {
       if (projectId.current === currentId) setState(next);
     }).catch(() => {
@@ -264,21 +294,24 @@ export default function App() {
     return directory;
   };
   const start = () => {
+    if (locked || exporting || !canCreate) return;
     const uploadSelection = douyinUploadSelection;
     const startProjectId = state.project.id;
+    const productionDecorations = structuredClone(decorations);
     return void (async () => {
       await run(async () => {
         const parsedUploadSelection = uploadSelection ? QianchuanUploadSelectionSchema.parse(uploadSelection) : undefined;
         if (coverStickerDirty) throw new Error("请先保存覆盖设置后再开始制作。");
         const quantity = calculateProductionQuantity(selected.length, requestedCount ?? selected.length);
         if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) throw new Error(`请填写有效的制作条数，向上取整后不能超过 ${MAX_AGENT_OUTPUTS} 条。`);
+        await window.jianji.setWorkspaceDraft(startProjectId, workspaceDraft(productionDecorations));
         setWorkflowSection("results");
         setStep("results");
         window.scrollTo({ top: 0, behavior: "smooth" });
         const resolvedOutputDirectory = await resolveOutputDirectory();
         if (projectId.current !== startProjectId) throw new Error("项目已切换，请在当前项目重新开始制作。");
         setDouyinUploadSelection(undefined);
-        apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(parsedUploadSelection ? { douyinUpload: parsedUploadSelection } : {}) }));
+        apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations: productionDecorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(parsedUploadSelection ? { douyinUpload: parsedUploadSelection } : {}) }));
       });
     })();
   };
@@ -342,7 +375,7 @@ export default function App() {
         {state.project.migrationBackupPath && <div className="notice" role="status">项目已升级；降级副本保存在：{state.project.migrationBackupPath}</div>}
         {notice && <div className={notice.error ? "notice error" : "notice success"} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "close" : "check"} size={17} /><span>{notice.text}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setNotice(undefined)}><Icon name="close" size={16} /></button></div>}
         {!state.capabilities.ready && step !== "connection" && step !== "stickers" && <div className="capability-banner" role="status"><Icon name="settings" /><div><strong>本地导出引擎需要配置</strong><p>{state.capabilities.message} Windows 安装版：请重新安装完整的简辑安装包；Linux：安装 FFmpeg、fontconfig 与 Noto CJK 字体。配置完成后重启应用。</p></div></div>}
-        {agentRunning && <div className="activity-banner" role="status"><span className="activity-orb"><Icon name="spark" size={17} /></span><div><strong>Agent 正在逐条创作</strong><span>当前任务使用已冻结的素材与规则。</span></div><button className="text-button" disabled={busy} onClick={() => void run(async () => { apply(await window.jianji.cancelAgent()); })}>停止本轮任务</button></div>}
+        {agentRunning && <div className="activity-banner" role="status"><span className="activity-orb"><Icon name="spark" size={17} /></span><div><strong>Agent 正在逐条创作</strong><span>可继续浏览和编辑下一轮设置，当前任务使用已冻结的素材与规则。</span></div><button className="text-button" disabled={busy} onClick={() => void run(async () => { apply(await window.jianji.cancelAgent()); })}>停止本轮任务</button></div>}
         {step === "stickers" && <StickerLibraryPanel disabled={locked || exporting} revision={stickerRevision} onRemoved={(id) => {
           setStickerRevision((current) => current + 1);
           setDecorations((current) => ({
@@ -359,19 +392,19 @@ export default function App() {
             <div className={"drop-zone" + (dragOver ? " drag-over" : "")} onDragOver={(event) => { event.preventDefault(); if (!locked) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={dropMedia}>
               <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>
             </div>
-            <div className="card media-list"><div className="card-header"><h2>素材清单 <span>{state.project.mediaItems.length}</span></h2><button className="text-button" disabled={locked || !ready.length} onClick={() => setSelected(selected.length === ready.length ? [] : ready.map((item) => item.id))}>{selected.length === ready.length && ready.length ? "取消全选" : "选择全部"}</button></div>
-              {state.project.mediaItems.length === 0 ? <div className="empty-material"><Icon name="film" size={26} /><p>你的素材即将在这里就位</p><small>导入后自动检查格式、时长与画面尺寸</small></div> : state.project.mediaItems.map((item) => <div className={"media-row" + (preview?.id === item.id ? " previewing" : "")} key={item.id}><input type="checkbox" aria-label={"选择 " + item.displayName} checked={selected.includes(item.id)} disabled={locked || item.probeStatus !== "ready"} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} /><button className="media-thumb" aria-label={"预览 " + item.displayName} disabled={item.probeStatus !== "ready"} onClick={() => setPreviewId(item.id)}><Icon name="film" /></button><div className="media-info"><strong>{item.displayName}</strong><small>{item.probeStatus === "ready" ? item.width + " × " + item.height + " · " + duration(item.durationMs) + " · " + sizeLabel(item.sizeBytes) : item.errorMessage || "素材不可读取"}</small></div><span className={item.probeStatus === "ready" ? "status-tag completed" : "status-tag failed"}>{item.probeStatus === "ready" ? "就绪" : "需处理"}</span><button className="icon-button" aria-label={"移除 " + item.displayName} disabled={locked} onClick={() => void run(async () => { apply(await window.jianji.removeMedia(item.id)); })}><Icon name="close" size={16} /></button></div>)}
+            <div className="card media-list"><div className="card-header"><h2>素材清单 <span>{state.project.mediaItems.length}</span></h2><button className="text-button" disabled={busy || !ready.length} onClick={() => setSelected(selected.length === ready.length ? [] : ready.map((item) => item.id))}>{selected.length === ready.length && ready.length ? "取消全选" : "选择全部"}</button></div>
+              {state.project.mediaItems.length === 0 ? <div className="empty-material"><Icon name="film" size={26} /><p>你的素材即将在这里就位</p><small>导入后自动检查格式、时长与画面尺寸</small></div> : state.project.mediaItems.map((item) => <div className={"media-row" + (preview?.id === item.id ? " previewing" : "")} key={item.id}><input type="checkbox" aria-label={"选择 " + item.displayName} checked={selected.includes(item.id)} disabled={busy || item.probeStatus !== "ready"} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} /><button className="media-thumb" aria-label={"预览 " + item.displayName} disabled={item.probeStatus !== "ready"} onClick={() => setPreviewId(item.id)}><Icon name="film" /></button><div className="media-info"><strong>{item.displayName}</strong><small>{item.probeStatus === "ready" ? item.width + " × " + item.height + " · " + duration(item.durationMs) + " · " + sizeLabel(item.sizeBytes) : item.errorMessage || "素材不可读取"}</small></div><span className={item.probeStatus === "ready" ? "status-tag completed" : "status-tag failed"}>{item.probeStatus === "ready" ? "就绪" : "需处理"}</span><button className="icon-button" aria-label={"移除 " + item.displayName} disabled={locked} onClick={() => void run(async () => { apply(await window.jianji.removeMedia(item.id)); })}><Icon name="close" size={16} /></button></div>)}
             </div>
           </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>原片</span></div><div className="source-preview">{preview ? <video key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><Icon name="play" size={27} /><p>暂无预览</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "尚未选择素材"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "导入素材后可在这里预览。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。发送抽帧供 Agent 分析；自动覆盖开启时，还会逐段发送追踪抽帧。</p></div></aside></div>
-          <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={locked || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
+          <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={busy || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
-        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={state.connection.configured ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={setDecorations} disabled={locked || exporting} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked || exporting} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={locked || exporting} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !agentRunning ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={agentRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}
       </main>
       <footer className="app-footer"><span>简辑 · 本地视频包装</span><span><i /> 本地渲染，原片保留</span></footer>
     </div>
-    <ModelSettingsDrawer open={modelsOpen} state={state} disabled={locked || exporting} onClose={() => setModelsOpen(false)} onManageConnections={() => { setModelsOpen(false); setStep("connection"); }} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onSelectModel={(input) => run(async () => { if (input.connectionId !== "chatgpt" && state.connections?.selected !== input.connectionId) apply(await window.jianji.selectConnection(input.connectionId)); apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} onSelectVision={(input) => run(async () => { apply(await window.jianji.selectVisionConnection(input)); }, "视觉识别模型设置已保存。")} onSelectReviewer={(input) => run(async () => { apply(await window.jianji.selectReviewerConnection(input)); }, "复核模型设置已保存。")} />
+    <ModelSettingsDrawer open={modelsOpen} state={state} disabled={locked} onClose={() => setModelsOpen(false)} onManageConnections={() => { setModelsOpen(false); setStep("connection"); }} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onSelectModel={(input) => run(async () => { if (input.connectionId !== "chatgpt" && state.connections?.selected !== input.connectionId) apply(await window.jianji.selectConnection(input.connectionId)); apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} onSelectVision={(input) => run(async () => { apply(await window.jianji.selectVisionConnection(input)); }, "视觉识别模型设置已保存。")} onSelectReviewer={(input) => run(async () => { apply(await window.jianji.selectReviewerConnection(input)); }, "复核模型设置已保存。")} />
   </div>;
 }
