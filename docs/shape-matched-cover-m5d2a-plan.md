@@ -1,5 +1,11 @@
 # M5-D2A Implementation Plan
 
+## Current Native Fallback Checkpoint
+
+用户指令已使工程reviewer从两次真实失败的managed Kimi route切换至一个named native reviewer。Router完成三轮native review及范围内修正，最后semantic fix后fresh native/fake+containment601 PASS/2 skip；该修正尚未re-review且三轮上限已满，milestone4仍REVIEW_ESCALATION_REQUIRED / FINAL_INSTALLATION_BLOCKED。当前dirty managed登记不作clean安装验收，当前phase record维护证据。工程持续到真实review/budget gate，未扩大付费、正式actor或生产scope。
+
+本轮fresh Jianji typecheck与129项AI/human-review/qualification回归通过。工程fallback逻辑已生效，formal requests=0、qualification INCOMPLETE，仍缺独立OpenAI credential/account/cost及后续正式冻结/receipt/issuer。产品所有BLOCKED guards保持，下一阶段Production Qualified Review不在自动授权内。
+
 ## Goal and Authorization
 
 2026-09-29 用户在收到 [AI spec](shape-matched-cover-m5d2a-spec.md) 后明确要求“开始”，并要求本窗口直接执行。授权进入 implementation planning、工程实现、否定测试、有限 capability preparation 与条件满足后的受控资格；旧 DESIGN_ONLY 为历史设计状态，不是当前阻断。Native Codex 负责串行执行，使用当前 working tree，不创建 worktree。

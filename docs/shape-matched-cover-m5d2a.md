@@ -1,5 +1,13 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Native Fallback and Installation Gate
+
+2026-09-29 用户要求Kimi持续故障时使用原生子代理。Router按两个既有canonical transport failures改由一个named `reviewer_max`接手工程required review，global SUBAGENTS为详细owner；原accepted Specs、旧失败、Provider/blinded actor与产品边界不变。三轮native review推动修正receipt反射、SSE/native output绑定、delivery/revoke竞态、sealed PNG源path依赖。最后一轮仍发现NR-IMAGE-005跨delta/part拼接凭据，Parent已以8个red负例确认并修正；fresh router全套601 PASS/2 skipped。最后semantic fix尚未独立复核、三轮预算已满，REVIEW_ESCALATION_REQUIRED / FINAL_INSTALLATION_BLOCKED，不自动启动第四轮。
+
+实读当前managed installation为router9f271cc、source_dirty_at_install=true、package52b1…，未含最新修正；较早223da83为历史snapshot，dirty登记不作clean安装验收。最新program SHA `12271d7f073e40c3727d1142bd958d573b004b380b7c07d21d1b82f907b1617d`；exact snapshots/findings/安装证据和私有archive由router既有 [API record](/home/reggie/vscode_folder/agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md#current-native-fallback-checkpoint) 独占。工程fallback不使Kimi/Claude视觉身份成立，不让本聊天成为actor。
+
+本轮Jianji源码/human/holdout未改；fresh typecheck exit0、6个AI/review/qualification suites共129 PASS，仅为工程证据。无global Codex auth读取或真实visual/formal请求。独立OpenAI应用credential reference与current account/cost材料仍缺，正式criteria/config/inputPlan/budgets、actor raw/mapping/joint/correspondence/可信issuer门未全部成立。整体INCOMPLETE，未评估指标null/NOT_EVALUATED，synthetic/real-media分层不变，authority=none/eligible=false、PRODUCT_DISABLED及全部生产guards BLOCKED。
+
 ## Current Generation Repair Boundary
 
 2026-09-29 用户要求“先修复blocker然后安装新路线”，继续 actual budget investigation。Pinned Codex 0.154.0 Docker请求缺generation cap，effective config与RPC schema没有已证明 setter；对应官方版本request结构也无该字段。本轮native/fake单项1 PASS仅证明八图/tools=[]及IMAGE_GENERATION_BOUND_UNPROVEN拒绝有效，不能写成blocker已修复或视觉能力。新visual probe/formal requests仍0，全部未评估语义指标null/NOT_EVALUATED，整体INCOMPLETE、PRODUCT_DISABLED，所有既有production BLOCKED guards保持。
