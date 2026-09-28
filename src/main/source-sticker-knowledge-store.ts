@@ -8,7 +8,7 @@ import {
   SourceIdentitySchema, coversRanges, sourceGeometryChanged, type KnowledgeCandidate, type KnowledgeDispute, type KnowledgeEvidence,
   type KnowledgePublicationProof, type SourceMaskAdmissionProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
 } from "../shared/source-sticker-knowledge.js";
-import { fingerprintFile } from "./paths.js";
+import { fingerprintFile, type FingerprintReadOptions } from "./paths.js";
 import { KnowledgeOutcomeSchema, type KnowledgeOutcome } from "../shared/source-sticker-knowledge-audit.js";
 
 const DEFAULT_QUOTA_BYTES = 256 * 1024 * 1024;
@@ -53,10 +53,13 @@ export function sourceKey(source: SourceIdentity): string { return digest(canoni
 export function factsDigest(facts: SourceFacts): string { return digest(canonical(facts)); }
 
 /** Uses the existing byte fingerprint owner. Stat checks detect a source replaced during hashing. */
-export async function identifySource(file: string, interpretation: Omit<SourceIdentity, "fingerprint" | "byteLength">): Promise<SourceIdentity> {
+export async function identifySource(file: string, interpretation: Omit<SourceIdentity, "fingerprint" | "byteLength">, options: FingerprintReadOptions = {}): Promise<SourceIdentity> {
+  options.signal?.throwIfAborted();
   const before = await stat(file, { bigint: true });
-  const fingerprint = await fingerprintFile(file);
+  if (!before.isFile()) throw new KnowledgeStoreError("source_changed");
+  const fingerprint = await fingerprintFile(file, options);
   const after = await stat(file, { bigint: true });
+  options.signal?.throwIfAborted();
   if (!before.isFile() || before.size !== after.size || before.ino !== after.ino || before.dev !== after.dev || before.mtimeNs !== after.mtimeNs || before.ctimeNs !== after.ctimeNs) throw new KnowledgeStoreError("source_changed");
   return SourceIdentitySchema.parse({ ...interpretation, fingerprint, byteLength: Number(after.size) });
 }

@@ -235,3 +235,17 @@ spec: shape-matched-cover-spec.md
 | D4 Opaque FullSourceAdmissionHandle | 仅已有 source-fact owner 在 census、合格语义、全目标 mask、当前 source/revision/disputes 均通过后私有签发并消费 capability。 | caller JSON、复制对象、旧进程和 serialized PASS 不获 authority；消费时再验 freshness，恢复只读。全部门成立前保持 blocked。 |
 
 D1→D2→D3→D4 后才回到 C 完成 request issuer；可信 placement、M5-E 和 Activation 不在当前切片。C 成功支路、M5-B guard 和 M5-A renderer 保持冻结。本阶段细化仅固定后续边界，不声称任何 production D 子阶段已经实现。
+
+## Active Implementation — D1 Production Full-Decode Census
+
+**Entry / Scope:** 用户要求 commit 后开始，原四路径已独立提交 `ab28ea2`（151 tests/typecheck fresh PASS），以实际成功的 Git operation 为写能力证据，不再用只读 findmnt 视图推断所有 Git operation 必然失败。D1 新建 canonical census owner，不进入 D2–D4、C、placement 或产品接线。
+
+**Files / Single Owner:** 新 `src/main/source-fact-census-clock.ts` 严格核对全 probe 的每条记录、显示时钟和解释；新 `src/main/source-fact-census.ts` 复用 identifySource/sourceKey，进行前后 hash/stat 核验、CPU FFmpeg full-canvas RGBA 流式 SHA、exact ordinal binding 及 census digest。既有 `paths.ts` fingerprintFile 与 `source-sticker-knowledge-store.ts` identifySource 仅增加 optional AbortSignal/byte budget，保持原 SHA 与默认调用方式，避免另建 hash owner。`tests/source-fact-census.test.ts` 负责实际引擎与坏输入验证；`docs/shape-matched-cover-m5d1.md` 保存 evidence。test-only helper 不进入 production；旧 SupervisorEvidence 抽样路径保持原用途，不改写它为 census。
+
+**Contract / Bounds:** 主进程 API 接受严格 SourceIdentity、可信 engine 路径、sourcePath 与 AbortSignal；没有 caller completeness/nominal FPS/mask/PASS 输入。首个 profile 限定 FFmpeg MOV-family demuxer 的 H.264、interpretationVersion=1、rotation=0、square pixels、progressive 8-bit SDR、原 dimensions 固定、无 decode crop 和非支持的 side data。使用 nofillin，要求每帧原 pts 与 best_effort_timestamp 相等，并与唯一原 packet 的 PTS、明确 duration、position/size 对应；B-frame 按 packet identity 绑定，不以 packet 枚举顺序代替显示顺序。stream start/duration 与全部半开帧区间精确相接，尾帧有显式 duration；任何缺字段/缺口/重叠/源漂移/失败/超额/取消均 UNSAFE。不采样、不 scale/select、不补帧；raw output 为 passthrough，每个 RGBA 字节都参与对应 ordinal SHA，帧数/字节数与 probe 一致。固定 quotas 保证 metadata、源文件、总解码 bytes、frame count 和 command wall 有界，超额不返回 partial census。
+
+**Output / Compatibility:** 只返回 deeply frozen source/engine/clock/profile/frames 和完整 census digest，固定 authority=none /semanticReview=NOT_EVALUATED /eligible=false。不持久化知识、不返回 FullSourceAdmissionHandle、不签发无贴纸区间；D2 仍需要原画布可信语义审阅，D3 全目标 mask，D4 私有签发。既有 source hash、store proof、M4 renderer/admission/queue 与历史任务不改。
+
+**Verification / Completion:** Clock negatives 先 red→green；真实 CPU lossless CFR/VFR/raw SHA 一致性、源前后验证/漂移/恢复同字节但 generation 改变、取消/坏引擎/缺失及字节短长拒绝；typecheck、D contract/C/B/knowledge/mask 相关 tests，Parent final diff/Risk Gate。CodeGraph/AOCI MCP 当前 requires approval（policy never），受管 Kimi doctor BLOCKED_CAPABILITY，不绕过；索引官方维护能力未恢复时明确列作剩余治理 blocker，源码 checkpoint 不混入其他任务索引。只提交 D1 owned paths，与 `ab28ea2` 分开。
+
+**Candidate Checkpoint:** D1 新增64 tests，相关12 files /261 tests fresh PASS，scoped source/tests tsc PASS，source/engine/clock/bytes frozen census 已实施；固定 authority=none、eligible=false。最终全项目 typecheck 因其他任务 batch-production-runtime.ts 的类型错误 exit2；旧 shape fixture 的独立同步 raw→PNG 命令阻塞，shape 整体回归未通过；AOCI 官方维护仍被 runtime 拒绝。只保存 D1 独立候选，不宣称完整 gate 收口，不进入 D2/C 或 activation。细节、exact SHA、Risk Gate 和 session record 见 [D1 evidence](shape-matched-cover-m5d1.md#verification-and-governance)。

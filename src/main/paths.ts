@@ -5,14 +5,25 @@ import path from "node:path";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format.js";
 
-export async function fingerprintFile(filePath: string): Promise<string> {
+export interface FingerprintReadOptions { signal?: AbortSignal; maxBytes?: number }
+
+export async function fingerprintFile(filePath: string, options: FingerprintReadOptions = {}): Promise<string> {
+  options.signal?.throwIfAborted();
+  if (options.maxBytes !== undefined && (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < 1)) throw new Error("Invalid fingerprint byte budget");
   const hash = createHash("sha256");
   await new Promise<void>((resolve, reject) => {
-    const stream = createReadStream(filePath);
-    stream.on("data", (chunk: Buffer) => hash.update(chunk));
-    stream.once("error", reject);
-    stream.once("end", resolve);
+    const stream = createReadStream(filePath, { signal: options.signal });
+    let bytes = 0; let ended = false; let failure: Error | undefined;
+    stream.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (options.maxBytes !== undefined && bytes > options.maxBytes) { stream.destroy(new Error("Fingerprint byte budget exceeded")); return; }
+      hash.update(chunk);
+    });
+    stream.once("error", error => { failure = error; });
+    stream.once("end", () => { ended = true; });
+    stream.once("close", () => failure ? reject(failure) : ended ? resolve() : reject(new Error("Fingerprint stream closed before EOF")));
   });
+  options.signal?.throwIfAborted();
   return `sha256:${hash.digest("hex")}`;
 }
 
