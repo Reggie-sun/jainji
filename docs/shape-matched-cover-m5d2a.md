@@ -89,6 +89,8 @@ Implementation Review Risk Gate为 `BLOCKED_NATIVE_VERIFICATION`：适用原huma
 
 新发现的router原有FINAL_REPORT工具拒绝测试在未改源码baseline中真实失败：2 failed/313 passed/20 skipped；缩小复现2 failed，JSON和SSE的tool_use都被错误HTTP200交付。源码的诊断`phase`覆盖预算phase，`allow_tools=phase != 'FINAL_REPORT'`永远为true。独立现有合同修复读取owned observation的`budget_phase`，不修改新image协议或旧报告schema；同全部offline tests随后315 PASS/20 conformance显式skip。实际native/containment验证与安装状态由router record独占，本记录不提前宣称其完成。
 
+Router后续实际native/fake+containment 333 PASS/2 skip，explicit通用container另1 PASS；reporting修复已在其clean source commit `bba0563`受管安装，安装后原budget reporting tests 10 PASS、零商业请求doctor的20项OS/native工具边界通过。完整记录为 `/home/reggie/vscode_folder/agent-subagent-router/docs/records/image-route-blocker-repair-2026-09-29.md`。这只是原拒绝门修复；新image/Codex协议仍待exact SHA批准，尚未实施/安装或视觉qualified。
+
 Jianji stable engineering candidate按SUBAGENTS.md判断 `KIMI_REVIEW_NOT_REQUIRED`：用户没有要求review这个snapshot；本次仅测试time budget，AI工程仍无产品consumer/credential/semantic authority/成功issuer；媒体字节/拒绝行为全部断言及真实CPU回归已通过，没有会导致关键凭据泄露、跨项目authority或难恢复生产状态损坏的具体failure path。尚缺真实视觉语义证据是正式qualification gate，不能由review替代。此判断只解除此前BLOCKED_NATIVE_VERIFICATION，不签发M5-D2A或生产资格。
 
 执行AOCI Verify/Check/Guide后，当前shared governance未对齐：11 findings均属于其他上传任务的missing/stale/unbaselined owners，本次test/docs属于既有observe scope，四个AI managed source未改。完整索引三块交付已host-confirmed，strictattestation fail/uncertain且治理stale，仅做source-bound工程；不声称完整系统认知。正式`aoci.code.txt`/`.aoci/baseline.json`混合归属保持，未有ownership决定，不写/stage/commit，也不处理其他业务路径。现阶段不能宣称全仓AOCI对齐；需其实际owner完成维护。
