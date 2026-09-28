@@ -251,3 +251,29 @@ Chrome MCP 因其 profile 被占用而不可用，没有关闭该浏览器。以
 本轮展示与测试 candidate `5270fe0b7e8f18a377a062643db5fd3cd41d0ebb1ababb5bbe23395847e72aec`（五项实现/测试/smoke 路径按 `path<TAB>SHA256<LF>` 排序散列）的 Risk Gate 为 **KIMI_REVIEW_NOT_REQUIRED**：没有要求新 review，未改变执行/持久化/权限 owner，无新增关键级损坏或严重越权路径；60 项相关测试和当前组件/桌面实测覆盖本轮显示行为，没有具体重大后果加剩余实质验证缺口。原 adapter **REVIEW_ESCALATION_REQUIRED** 与正式发行 acceptance false 保留；不能用本轮标记展示或 fixture PASS 解除。实现 snapshot/hash、package、桌面报告和回执保存在 `.agent/harness/runs/20260929-qianchuan-upload-markers/`。
 
 按用户既有“先交付账号设置，AOCI 等其他任务完成”决定，未写入共享 `aoci.code.txt` / `.aoci/baseline.json`。fresh Verify/Check exit 1，结构有效而未对齐，Guide exit 0、complete false；本轮两个 renderer 条目 stale，先前 native settings 及其他 owner 条目仍待维护，不能宣称 AOCI 已完成。仓库无专用 capture Skill，本节继续作为现有 session record owner。
+
+## Automatic Browser Binding — 2026-09-29
+
+### Scope And Contract
+
+用户明确指出端口不应由用户填写。本轮在当前 working tree 串行修改干净的账号设置 owner，strict 保存输入收窄为 `{ product, planUrl }`，界面移除所有端口输入。已有同账户绑定沿用原 endpoint；首次绑定或更换 advertiser 时，由新增 `qianchuan-browser-discovery.ts` 读取当前用户可识别的 Chrome/Chromium 主进程调试元数据，并有界读取 loopback `/json/list`，只接受唯一匹配千川 aavid 的浏览器。原配置导入、mapping/frozen target 格式、service/store、永久 fence、九条分组及 UNKNOWN 零重传保持原合同。候选 URL 不授予上传权限，正式上传仍由原 uploader 核对可见账户/计划和原页面归属。
+
+不扫描固定端口，不读登录数据，不修改 Chrome 启动器，不启动或重启用户 Chrome。普通 Chrome 没有调试连接时无法凭计划链接直接附加；程序明确提示未找到可连接浏览器，不要求用户填写端口。多个匹配、非法元数据、重定向、超时及超限拒绝保存，原 mapping 与编辑草稿保留。运行进程上限4096、端点上限16、每端点HTTP deadline 1500ms、body 256KiB、tab 256项，进程参数与 DevToolsActivePort 分别限64KiB和1KiB。不可识别的非dumpable进程不作为Chrome候选；Chrome在0700私有profile内生成的0664元数据可读，公开可写元数据、symlink和hardlink仍拒绝。
+
+### Fresh Verification And Local Activation
+
+首次自动设置和换账户失败保留设置的断言先失败，修复后五文件 **104/104 PASS**；包含真实loopback HTTP redirect和停滞body deadline、UID/主进程筛选、有限元数据、同账户换计划零发现调用、严格拒绝伪造端口，以及九条分组/fence回归。fresh `npm run build` exit 0，内含 `npm run typecheck`；冻结候选构建也 exit 0。CodeGraph在改前检查 settings实体与关系、改后重新index；其粗粒度调用匹配不能替代实际源码判断。
+
+Chrome MCP 的profile占用，未关闭它。新增 `scripts/qianchuan-account-settings-smoke.mjs` 通过 `xvfb-run -a node scripts/qianchuan-account-settings-smoke.mjs` 验证真实Linux Electron UI→preload→IPC，独立Chrome使用动态port-zero及虚拟千川页面。开发桌面和实际安装候选均 **PASS**：首次不传端口自动保存；UI无端口input；缺匹配及重复浏览器拒绝且mapping不变；同账户浏览器关闭后仍可换计划；伪造端口拒绝；重启恢复；全局关闭、task/intent均零。首次未提供DISPLAY和测试driver过早取page的失败保留为未通过；真实桌面另揭示非dumpable进程和Chrome元数据umask差异，修正后才取得上述PASS。全程零视频、零上传、零确认、零广告设置修改；发现阶段只读调试元数据，没有真实账号CDP附加或真实上传验收。
+
+本机候选 `/home/reggie/Applications/jianji/releases/qianchuan-20260929-auto-connection/` 使用上次已声明的冻结源码作为base，仅叠加本轮owned文件，不纳入其他任务dirty功能。asar SHA256 `19e5c01315cc2d9cfae7304ac8f59a4a885bb4f5ecf35627c74f726dac8a029e`，main SHA256 `27313a80ca2d8437f5f1f3dea75d6c35632df448bd4955b52a607b2c5ac0d206`；只替换renderer和main，preload及其余2157个文件保持字节相同，7个unpacked文件保留。安装候选实测通过后原子切换启动器exec，readback和`sh -n`通过；旧候选、环境与参数保留，日常userData及全部账号/上传记录不写，日常窗口未重启。正常退出简辑再从桌面图标打开生效。
+
+### Delegation And Remaining Gates
+
+受管read-only Kimi deep边界调查 invocation `59ffcc70-99a8-4bd3-b858-c9c110a5d882`，实际完整读取4个绑定材料，首请求identity verified；第二请求response-body连接错误并达到180s预算，canonical receipt **OUTCOME_UNKNOWN**。没有有效终结报告，不采纳partial输出，不自动重试；这不是原adapter第四轮review。Parent直接裁决当前源码、测试和桌面证据。
+
+本轮candidate `3253a2cce4cf4456323f3ed4b012fb8b3fd79877cad8442b00fcb084ef7a1d10` 的Risk Gate为 **KIMI_REVIEW_NOT_REQUIRED**：用户没有要求新review；连接元数据不读取凭据、授予上传/发布authority或改写旧批次，误定位仍被原可见身份/页面归属检查阻断；有限HTTP、歧义、持久错误及真实隔离UI已验证，没有具体关键级后果或重大后果加剩余实质验证缺口。原生产adapter **REVIEW_ESCALATION_REQUIRED**、正式发行acceptance false保留；Windows和新真实应用上传未验收。当前spec/plan同步本轮合同，既有session record继续承载证据；无专用capture Skill。source/package/activation/smoke及风险裁决见 `.agent/harness/runs/20260929-qianchuan-auto-connection/`。AOCI按用户已授予的共享文件统一ownership在本轮稳定状态维护，校验结果以本轮最终Verify/Check/Guide回执为准。
+
+### Full Harness Limits
+
+全量 `npm run harness -- code` 首次408项测试及typecheck均通过，但运行期间将本轮三个新增源码文件从untracked变为staged，workspace identity变化使run `20260928T212907Z-a3aea0e2` 为 **NOT_EVALUATED**，不采用为全量通过证据。在固定index状态重跑run `20260928T213118Z-1ec6d81d`，workspace一致且407/408通过；唯一失败是既有 `douyin-cdp-uploader.test.ts` 的 previous-ready-row disappearance 测试等待fixture事件超时。单独运行该项随后1/1通过（其余39项因 `-t` 未运行）；该项在首次全量也通过，说明存在运行间波动，不能把独立复测写成全量通过。未改动uploader、page-contract或共享fixture来掩盖失败。本轮104项账号/上传相关验证和两次真实隔离桌面PASS保持有效；全量Harness未取得有效PASS，以及原required review继续作为整体交付限制，需后续单独收敛。

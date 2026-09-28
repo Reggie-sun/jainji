@@ -34,7 +34,6 @@ export const QianchuanAccountSettingsSchema = z.object({
 }).strict().superRefine(uniqueBindings);
 export const QianchuanAccountSetupSchema = z.object({
   product: QianchuanProductSchema, planUrl: z.string().trim().min(1).max(16384),
-  browserPort: z.number().int().min(1).max(65535).optional(),
 }).strict();
 export type QianchuanAccountSetup = z.infer<typeof QianchuanAccountSetupSchema>;
 

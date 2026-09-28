@@ -13,7 +13,8 @@ async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-settings-")); roots.push(root);
   const source = path.join(root, "external.json");
   await writeFile(source, JSON.stringify({ version: 1, accounts: QIANCHUAN_PRODUCTS.map((product, i) => ({ product, cdpEndpoint: `http://127.0.0.1:${9222 + i}`, advertiserId: `${1876024170199244n + BigInt(i)}`, adId: "1876036593854788" })) }), { mode: 0o600 });
-  return { root, source, settings: new QianchuanAccountSettings(path.join(root, "app")) };
+  const discover = vi.fn(async (advertiserId: string) => `http://127.0.0.1:${advertiserId === "9007199254740993" ? 9230 : 9222 + Number(BigInt(advertiserId) - 1876024170199244n)}`);
+  return { root, source, discover, settings: new QianchuanAccountSettings(path.join(root, "app"), discover) };
 }
 
 it("extracts exact decimal strings from a pasted plan URL without carrying tracking or fragment state", () => {
@@ -27,8 +28,8 @@ it.each([
 ])("rejects ambiguous or unsupported plan URLs: %s", url => { expect(() => parseQianchuanPlanUrl(url)).toThrow(); });
 it("supports a fresh installation entirely within the application without choosing JSON or guessing a browser", async () => {
   const f = await fixture(); expect(await f.settings.restore()).toEqual([]);
-  await expect(f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl() })).rejects.toThrow("浏览器端口");
-  const summaries = await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), browserPort: 9222 });
+  const summaries = await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl() });
+  expect(f.discover).toHaveBeenCalledTimes(1); expect(f.discover).toHaveBeenCalledWith("1876024170199244");
   expect(summaries).toEqual([{ product: "蝴蝶贴", advertiserId: "1876024170199244", adId: "1876036593854788", browserPort: 9222, available: true }]);
   const reloaded = new QianchuanAccountSettings(path.join(f.root, "app")); expect(await reloaded.restore()).toEqual(summaries);
   expect((await stat(f.settings.file)).mode & 0o777).toBe(0o600);
@@ -42,6 +43,7 @@ it("imports existing six-account configuration once, preserving source bytes and
   await f.settings.savePlan({ product: "蝴蝶贴", planUrl: `${planUrl(old.advertiserId, "9007199254740993")}&utm_source=ignored#ignored` });
   expect(await readFile(f.source)).toEqual(bytes);
   expect((await f.settings.preflight("蝴蝶贴"))).toMatchObject({ adId: "9007199254740993", cdpEndpoint: old.cdpEndpoint });
+  expect(f.discover).not.toHaveBeenCalled();
   await expect(f.settings.freeze("蝴蝶贴", old.configDigest)).rejects.toThrow("已变化");
   expect(old.adId).toBe("1876036593854788");
   const saved = await readFile(f.settings.file, "utf8"); expect(saved).not.toContain("utm_source"); expect(saved).not.toContain("planUrl");
@@ -65,8 +67,8 @@ it("rejects unsafe import, duplicate bindings and forged fields without changing
 });
 it("serializes edits so saving two products preserves both mappings", async () => {
   const f = await fixture(); await Promise.all([
-    f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), browserPort: 9222 }),
-    f.settings.savePlan({ product: "眼贴", planUrl: planUrl("9007199254740993"), browserPort: 9223 }),
+    f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl() }),
+    f.settings.savePlan({ product: "眼贴", planUrl: planUrl("9007199254740993") }),
   ]); expect(await f.settings.refresh()).toHaveLength(2);
 });
 it("keeps lost, unsafe and locked settings blocked without erasing their evidence", async () => {
@@ -80,7 +82,18 @@ it("keeps lost, unsafe and locked settings blocked without erasing their evidenc
   await rm(f.settings.file);
   const reloaded = new QianchuanAccountSettings(path.join(f.root, "app"));
   await expect(reloaded.restore(f.settings.file)).rejects.toThrow("丢失");
-  await expect(reloaded.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), browserPort: 9222 })).rejects.toThrow("丢失");
+  await expect(reloaded.savePlan({ product: "蝴蝶贴", planUrl: planUrl() })).rejects.toThrow("丢失");
+});
+it("rediscovers changed advertisers, preserving frozen targets and leaving the mapping untouched on discovery failure", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const old = await f.settings.preflight("蝴蝶贴"), before = await readFile(f.settings.file);
+  f.discover.mockRejectedValueOnce(new Error("未找到该账户的可连接浏览器"));
+  await expect(f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl("9007199254740993") })).rejects.toThrow("未找到");
+  expect(await readFile(f.settings.file)).toEqual(before);
+  expect((await f.settings.preflight("蝴蝶贴")).cdpEndpoint).toBe(old.cdpEndpoint);
+  await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl("9007199254740993") });
+  expect(await f.settings.preflight("蝴蝶贴")).toMatchObject({ advertiserId: "9007199254740993", cdpEndpoint: "http://127.0.0.1:9230" });
+  expect(old).toMatchObject({ advertiserId: "1876024170199244", cdpEndpoint: "http://127.0.0.1:9222" });
 });
 it("blocks configuration use after an uncertain directory-sync failure", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);

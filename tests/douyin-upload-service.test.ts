@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DouyinUploadStore, type UploadTaskRecord } from "../src/main/douyin-upload-store";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
+import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
@@ -157,7 +158,7 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 describe("Qianchuan upload service", () => {
   async function nativeFixture() {
     const f = await fixture();
-    const service = new DouyinUploadService(f.store, { loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
+    const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, async () => "http://127.0.0.1:9225"), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
     await service.restoreConfig(); return { ...f, service };
   }
   it("imports into app settings and restores without enabling upload, browser operations or an external dependency", async () => {
@@ -171,7 +172,7 @@ describe("Qianchuan upload service", () => {
   });
   it("sets up an account from a link while requiring explicit global and per-batch enablement", async () => {
     const f = await nativeFixture();
-    await f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=9007199254740993&adId=9007199254740995", browserPort: 9225 });
+    await f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=9007199254740993&adId=9007199254740995" });
     await expect(f.service.preflight(selection("眼贴"), 1)).rejects.toThrow("启用千川上传");
     await f.service.configure({ enabled: true }); expect(await f.service.preflight(undefined, 1)).toBeUndefined();
     expect((await f.service.preflight(selection("眼贴"), 1))?.target).toMatchObject({ advertiserId: "9007199254740993", adId: "9007199254740995", cdpEndpoint: "http://127.0.0.1:9225" });

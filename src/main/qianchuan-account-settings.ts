@@ -3,6 +3,7 @@ import { lstat, open, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { QianchuanAccountConfigReader, readPrivateConfig, type FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
+import { discoverQianchuanBrowser } from "./qianchuan-browser-discovery.js";
 import { parseQianchuanPlanUrl, QianchuanAccountSettingsSchema, QianchuanAccountSetupSchema, type QianchuanAccount, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
@@ -14,7 +15,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private writes: Promise<unknown> = Promise.resolve();
   private blocked = false;
   private hasMapping = false;
-  constructor(root: string) {
+  constructor(root: string, private readonly discoverBrowser: (advertiserId: string) => Promise<string> = discoverQianchuanBrowser) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
   }
@@ -75,8 +76,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     return this.edit(async () => {
       const accounts = await this.exists() ? (await readPrivateConfig(this.file, parseSettings)).accounts : [];
       const old = accounts.find(account => account.product === parsed.product);
-      const cdpEndpoint = parsed.browserPort ? `http://127.0.0.1:${parsed.browserPort}` : old?.cdpEndpoint;
-      if (!cdpEndpoint) throw new Error("首次设置该账号时，请填写已登录 Chrome 的浏览器端口。");
+      const cdpEndpoint = old?.advertiserId === ids.advertiserId ? old.cdpEndpoint : await this.discoverBrowser(ids.advertiserId);
       const account: QianchuanAccount = { product: parsed.product, cdpEndpoint, ...ids };
       return this.save(old ? accounts.map(value => value.product === parsed.product ? account : value) : [...accounts, account]);
     });

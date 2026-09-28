@@ -69,11 +69,18 @@ spec_sha256: 3873866c4089b8fd41354ffa6cec7b87dd6263bfaf084da07035a2bc1e79fdca
 
 **2026-09-29 Native Account Settings Addendum**
 
-- **Goal / Current → Target:** 原来必须选择外部配置文件且不能在软件内换计划；改为内部持久设置，已有文件一次性导入，新产品填写 loopback Chrome 端口，后续更换计划只粘贴链接并保存。
+- **Goal / Current → Target:** 原来必须选择外部配置文件且不能在软件内换计划；改为内部持久设置，已有文件一次性导入。用户只点产品、粘贴计划链接；端口由程序识别，不需要用户填写。
 - **Owners / Files:** 共享 `qianchuan-account.ts` 定义 URL/setup/partial internal schema；现有 `qianchuan-account-config.ts` 保留安全读取；新增 `qianchuan-account-settings.ts` 独占内部映射及导入/原子保存；service 复用该来源及原 store/configPath；index/preload 只增加 trusted 账号设置 IPC。新增 renderer `QianchuanAccountSettings.tsx`，现有 upload panel/controls/CSS 接入；不编辑其他 owner 的 ResultsPanel/App/agent files。
 - **Compatibility / Invariants:** 六产品和外部六项格式不变；旧授权路径一次性导入，内部 mapping 存在时为唯一来源，损坏不 fallback。旧 intent/任务目标不变，预检 digest 改变拒绝新 intent。账号管理不选文件上传、不自动启用或选择每批账号、不改永久 fence。未实施的环境变量引导候选撤回，不作为正式 runtime path。
 - **Acceptance:** 长链接精确识别字符串 IDs；假 origin/credentials/重复参数/非法 ID/非loopback或重复绑定均拒绝；保存后重启读回，删除外部文件不影响内部设置，原文件字节不变；原已注册批次使用旧计划，保存前后无真实浏览器动作。
 - **Verification:** 账号设置/shared reader/service/UI/store/contract/integration tests 与 typecheck；隔离 Linux Electron 实际 UI→preload→IPC 保存、关闭再启动恢复，默认关闭且任务为零。真实 JSON 只读导入可核对，真实上传与 Windows out of scope。required production-adapter review 继续 `REVIEW_ESCALATION_REQUIRED`，不重置原三轮预算。
+
+**2026-09-29 Automatic Browser Binding Addendum**
+
+- **Owner / Files:** `qianchuan-account-settings.ts` 继续独占保存；新增 `src/main/qianchuan-browser-discovery.ts` 只负责有界、只读连接识别。共享 setup schema 与 renderer 删除端口输入；原 mapping/frozen target 格式不变。tests 使用隔离进程元数据和本机 HTTP fixture。
+- **Contract:** 同账户已绑定产品保留原 endpoint；首次绑定或账户改变时识别当前用户 Chrome/Chromium 主进程的显式调试端口或其 DevToolsActivePort，有限读取 loopback `/json/list`，以唯一千川 aavid 选连接。URL 仅定位候选，不能替代 uploader 可见身份检查。零匹配、重复匹配、超时、非 loopback、重定向及非法元数据拒绝，不保存猜测结果。
+- **Boundaries:** 不读取登录文件，不启动或重启真实 Chrome，不扫描固定端口，不改 uploader/queue/fence，不重定向旧批次。未启用调试连接的浏览器明确提示不可连接；本轮无真实上传或 Windows 验证。
+- **Acceptance / Verification:** 首次保存不传端口且自动得到唯一连接；同账户换计划无需浏览器动作；换账户重识别；歧义及无连接保持原 mapping 字节；伪造端口输入拒绝。运行 discovery/settings/UI/service tests、typecheck/build，以及隔离 Chrome/Electron 实际点击和保存；AOCI 在稳定状态对齐。
 
 **Acceptance:** 错 JSON、重复绑定、权限/大小/symlink、非法链接、未绑定浏览器均拒绝；main 重新校验设置输入。预检与 registerBatch 之间 mapping 变化拒绝初始化，已冻结任务保持原目标。caption-only 请求不变成千川上传许可。
 
