@@ -105,11 +105,13 @@ if (process.type === "browser") {
   assert.equal(await row("蝴蝶贴").locator(".batch-template-controls small, .batch-mode-select small").count(), 0);
   const controlHeights = await row("蝴蝶贴").locator('.batch-template-controls input[type="number"], .batch-template-controls textarea, .batch-template-controls select').evaluateAll(controls => controls.map(control => control.getBoundingClientRect().height));
   assert.deepEqual(controlHeights, [40, 40, 40]);
+  assert.equal(await row("蝴蝶贴").evaluate(element => getComputedStyle(element).gridTemplateRows.split(" ").length), 1);
+  assert.equal(await row("蝴蝶贴").getByText("自动保存到该商品的 视频/M.D HH:MM", { exact: true }).count(), 0);
   report.checks.push("33 sources / requested 100 visibly plans exactly 100");
   await writeFile(projectFiles[0], JSON.stringify(original[0]));
   await row("蝴蝶贴").getByLabel("想制作的视频条数", { exact: true }).fill("2");
   await page.getByRole("button", { name: "刷新模板", exact: true }).click();
-  await row("蝴蝶贴").getByText("本地随机 · 1 条素材", { exact: true }).waitFor();
+  await row("蝴蝶贴").getByText("1 条素材", { exact: true }).waitFor();
   assert.equal(await row("蝴蝶贴").getByRole("button", { name: "本地随机", exact: true }).getAttribute("aria-pressed"), "true");
   await row("氨糖膏").getByLabel("想制作的视频条数", { exact: true }).fill("3");
   await page.getByText("已选择 2 个模板，共制作 5 条视频", { exact: true }).waitFor();
