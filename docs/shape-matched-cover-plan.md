@@ -251,3 +251,29 @@ D1→D2→D3→D4 后才回到 C 完成 request issuer；可信 placement、M5-E
 **Candidate Checkpoint:** D1 候选 `d2f80db` 的五个 source/test SHA 保持不变，source/engine/clock/bytes frozen census 固定 authority=none、eligible=false。后续仅修复既有 shape fixture 的同步 stdin EOF 及 restart stdout transport：PNG 使用有限 RGBA 文件，真实 restart child 使用 custody tree 外的普通文件输出，全部原准入/同字节/只读断言保留。在共享树 `845f914` 上 fresh 全项目 typecheck PASS、D1 相关12 files /261 tests PASS、shape regression101 tests PASS、git diff --check PASS。AOCI rules/Maintain 仍被 runtime 拒绝，未取得 Verify/Check/Guide 的合格结果；因此保存工程恢复检查点，暂不正式标 M5-D1 PASS，不进入 D2/C 或 activation。历史失败、恢复归因、exact SHA、Risk Gate 和 session record 见 [D1 recovery evidence](shape-matched-cover-m5d1.md#fresh-recovery-gates)。
 
 **D1 Completion Checkpoint:** 宿主恢复真实 MCP 调用后，用户授权 Parent 接手完整索引批次；官方20+4+1原子 Apply、Verify/Check/Guide 均通过，当前共享 working tree governance_aligned=true，Guide complete=true/next_action=none。D1 五个冻结 source/test SHA 未变，最终全项目 typecheck PASS、相关12 files /262 tests PASS、shape regression101 tests PASS；本轮只维护正式 Code 索引/baseline 和记录，保留其他源码及其暂存工作。`M5-D1 PASS / SEMANTIC_AUTHORITY_BLOCKED / PRODUCT_DISABLED`；此治理证明绑定含他人未提交源码的共享树，不声称独立 checkout 已完整 aligned。完整 evidence、最终索引身份及受管 Kimi mapping 裁决见 [D1 completion evidence](shape-matched-cover-m5d1.md#aoci-recovery-and-d1-completion)。本轮到此停止，不开始 D2、不添加 C issuer、不改变 B guard；后续须单独建立完整原画布逐帧语义 session/acceptance。
+
+## Active Implementation — D2 Full-Canvas Manual Review
+
+### Goal and Scope
+
+按本轮用户要求，建立独立的主进程 source-fact 人工审阅 session 和本地审阅工具，为每帧保存所有可见旧贴纸的显式 TARGETS、EMPTY 或 UNKNOWN。复用 D1 API，不修改 census、mask/schema/store、M4/M5 renderer、C issuer 或 B guard。既有 assisted 的 no_cover/confirm_geometry 只证明覆盖决定，不能作为全画布空集合。
+
+### Owners and Contract Surfaces
+
+新 `src/main/source-fact-review-evidence.ts` 独占原画布证据准备：调用 canonical D1，使用同 profile 原尺寸 raw RGBA decode，逐帧核对 D1 bytes SHA，前后重核源/引擎和 censusDigest；专属临时目录、固定32GiB证据存储预算、失败清理，不返回 partial evidence。新 `src/main/source-fact-review-session.ts` 独占 presentation token、严格 review commands、修订、逐 ordinal 完整性和 deeply frozen receipt；不接受 caller source/census/PTS/complete/qualification 字段。新 `scripts/source-fact-review.mjs` 提供独立 loopback 人工页面及可信工具 glue，不接 Electron production IPC，不修改其他 writer 拥有的产品页面。
+
+session 绑定 SourceIdentity、censusDigest、frame count、reviewer identity 和固定 method/version。每次只登记一个完整原画布 presentation，绑定 ordinal、原 PTS/endPTS、RGBA SHA 和唯一 evidence identity；提交须引用当前 token。TARGETS 必须为非空、无重复完整集合，每个目标保留 static/moving/animated/unresolved 描述；EMPTY 必须选择专用动作并逐字确认“这一帧完整画布不存在任何旧贴纸。”；空数组、没框、跳过、超时和 UNKNOWN 均不能变为 EMPTY。所有 ordinal 都有显式结果才允许冻结；UNKNOWN 的诊断区间由 owner 计算为 unknownIntervals。方法未 qualification 时 canonical unverifiedIntervals 覆盖完整 horizon，即使全部结果均为 EMPTY 也不得返回空 complement；不生成 verified-no-sticker interval 或 eligibility。
+
+页面用原尺寸 RGBA Canvas，不用 thumbnail/ROI/scale；确认前核对 readback SHA、全画布在 viewport 内及明确 scope。原尺寸放不下屏幕时阻止 TARGETS/EMPTY，保留 UNKNOWN；不在本版偷偷缩小或用未证明覆盖的滚动/tiles 代替。页面回报 bytes/viewport 只能作为 transport 声明，不能证明人的注意力或语义正确。receipt 固定 authority=none、eligible=false、methodQualification=NOT_EVALUATED、semanticReview=RECORDED_NOT_QUALIFIED；没有 caller qualified=true 或自动 acceptance issuer。合格人工方法和真实人工 acceptance 是独立剩余门，不能用 browser automation 的点击充当人工完整性验收。
+
+### Milestones and Acceptance
+
+1. **Bound Evidence:** 新 evidence owner 的真实 CPU decode 与 D1 所有帧 SHA 一致；坏字节、源/引擎漂移、取消、short/extra output、超预算拒绝。只读获取证据仍没有 semantic authority。
+2. **Explicit Session:** 新 owner 和 `tests/source-fact-review.test.ts` 验证 EMPTY 注入、空 TARGETS、失配 presentation、ordinal 遗漏、重复像素不同 ordinal、同时目标、moving/animated、UNKNOWN 与冻结后编辑拒绝。JSON/复制对象/其他 session 不获得活跃 presentation 或成功 authority；完成记录不等于资格批准。
+3. **Manual Tool and Completion:** 本地工具真实原画布呈现与 frozen receipt；受控浏览器验证按钮、Canvas readback SHA、失败边界及 raw truth fixture 的所有目标记录。保存 `docs/shape-matched-cover-m5d2.md` 的 fresh gates、exact hashes 和 qualification 缺口；技术候选可以提交，未有人类完整审阅与方法 qualification 时保持 D2 acceptance blocked。
+
+### Verification and Compatibility
+
+使用真实 FFmpeg 两目标一帧闪现 fixture；TDD 先验证严格命令负例与绑定，再验证 evidence/session 集成和本地页面交互。运行 `npm run typecheck`、D2/D1/D contract/C/B/knowledge/mask 受影响测试，冻结 D1/A/B/C SHA 核对、Parent final diff/Risk Gate、AOCI 官方完整批次及 Verify/Check/Guide、git diff --check、specific-path commit。无知识持久化迁移、opaque full-source handle、placement、candidate selection、模型语义批准、产品接线或 activation。Self-Review：每个用户绑定与禁项均映射到 evidence/session/tool 或明确 acceptance stop；没有用结构完整或测试 PASS 代替 semantic truth。
+
+**D2 Engineering Checkpoint:** 原画布 evidence/session、本地人工工具和28个新测试已形成稳定候选；fresh typecheck、相关8 files /244 tests、真实 CPU decode 与独占 Chrome 原尺寸 Canvas transport 检查均通过，AOCI 完整7项 Apply 和 Verify/Check/Guide aligned。D1/A/B/C SHA 不变。receipt 固定 NOT_EVALUATED/RECORDED_NOT_QUALIFIED、authority=none/eligible=false，canonical unverifiedIntervals 仍覆盖全 horizon。证据、exact hashes、Review Risk Gate、共享树提交边界和剩余人工 qualification 见 [D2 candidate record](shape-matched-cover-m5d2.md)。本轮仅提交 engineering checkpoint，D2 acceptance 和 semantic authority 继续 blocked；下一项是合格人工方法/真实人工审阅验收，不进入 D3/D4/C 或 activation。

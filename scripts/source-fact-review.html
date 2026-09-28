@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>完整原画布逐帧审阅</title>
+<style>
+body{font:16px system-ui;margin:20px;background:#172027;color:#fff}button,input,select{font:inherit;margin:4px;padding:8px}button:disabled{opacity:.4}canvas{display:block;border:0;max-width:none;max-height:none}#message{white-space:pre-wrap;color:#fbd187}#targets{display:flex;flex-wrap:wrap;gap:8px}.target{padding:4px;border:1px solid #777}p{max-width:900px}
+</style>
+<h1>逐帧完整画布审阅</h1>
+<p>请判断这一帧所有可见旧贴纸，包括中部、移动和动画贴纸；目标身份或贴纸类别不确定时选择 UNKNOWN。没有添加目标不等于没有贴纸。原尺寸画布必须完整可见才能确认目标或 EMPTY。</p>
+<p>这是人工审阅记录工具。审阅方法资格尚未验收；保存记录不会开启自动形状覆盖。</p>
+<div><label>帧 ordinal <input id="ordinal" type="number" min="0" value="0"></label><button id="load">展示该帧</button><span id="binding"></span></div>
+<canvas id="frame"></canvas>
+<div id="targets"></div>
+<div><input id="label" placeholder="旧贴纸描述"><select id="kind"><option value="static">静态</option><option value="moving">移动</option><option value="animated">动画</option><option value="unresolved">身份或类型不确定</option></select><button id="add">添加新目标</button></div>
+<div><input id="existing" placeholder="复用目标 UUID"><button id="reuse">加入已有目标</button></div>
+<label><input id="scope" type="checkbox">我已检查完整原画布，确认下面的结果涉及所有可见旧贴纸。</label>
+<div><button id="nonempty" disabled>确认完整目标集合</button><button id="empty" disabled>这一帧完整画布不存在任何旧贴纸。</button><input id="reason" placeholder="UNKNOWN 原因"><button id="unknown" disabled>UNKNOWN</button></div>
+<button id="finish" disabled>冻结全部逐帧记录</button><div id="message" role="status"></div>
+<script>
+const $=id=>document.getElementById(id);let current;let selected=[];let catalog=new Map();let loaded=false;let frozen=false;let busy=false;
+async function api(action,value){const r=await fetch(location.pathname+action,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});const j=await r.json();if(!r.ok)throw Error(j.error);return j;}
+function fullyVisible(){const r=$('frame').getBoundingClientRect();return loaded&&r.left>=0&&r.top>=0&&r.right<=innerWidth&&r.bottom<=innerHeight&&r.width===current.width&&r.height===current.height;}
+function controls(){const can=fullyVisible()&&$('scope').checked&&!busy&&!frozen;$('nonempty').disabled=!can||!selected.length;$('empty').disabled=!can||selected.length>0;$('unknown').disabled=!loaded||busy||frozen;$('load').disabled=busy||frozen;$('add').disabled=busy||frozen;$('reuse').disabled=busy||frozen;}
+function showTargets(){const root=$('targets');root.replaceChildren();for(const t of selected){const b=document.createElement('button');b.className='target';b.textContent=t.label+' ['+t.kind+'] '+t.id;b.onclick=()=>{selected=selected.filter(x=>x.id!==t.id);showTargets();};root.append(b);}controls();}
+async function action(fn){if(busy)return;busy=true;controls();try{await fn();}catch(e){$('message').textContent=e.message;}finally{busy=false;controls();}}
+async function load(){loaded=false;current=undefined;selected=[];$('scope').checked=false;showTargets();$('finish').disabled=true;const frame=await api('frame',{ordinal:Number($('ordinal').value)});current=frame;
+ const raw=Uint8Array.from(atob(frame.bytes),c=>c.charCodeAt(0));const canvas=$('frame');canvas.width=frame.width;canvas.height=frame.height;
+ const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.putImageData(new ImageData(new Uint8ClampedArray(raw),frame.width,frame.height),0,0);
+ const bytes=ctx.getImageData(0,0,frame.width,frame.height).data;const digest=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),v=>v.toString(16).padStart(2,'0')).join('');
+ if(digest!==frame.binding.pixelSha256)throw Error('UNSAFE: Canvas readback 与 census 不一致');await api('ack',{presentationId:frame.presentationId,pixelSha256:digest,width:canvas.width,height:canvas.height});loaded=true;
+ $('binding').textContent='PTS '+frame.binding.pts+' / endPTS '+frame.binding.endPts+'；'+frame.session.recordedOrdinals.length+'/'+frame.session.frameCount+' 已记录';
+ $('message').textContent='请审阅全画布。重复像素的每个 ordinal 仍需单独确认。';controls();}
+async function record(type){const value={type,presentationId:current.presentationId};if(type==='TARGETS'){value.targets=selected;value.confirmation='已枚举这一帧完整画布中所有可见旧贴纸。';}if(type==='EMPTY')value.confirmation='这一帧完整画布不存在任何旧贴纸。';if(type==='UNKNOWN')value.reason=$('reason').value;
+ const state=await api('record',value);loaded=false;const next=state.recordedOrdinals.length===state.frameCount; $('finish').disabled=!next;
+ if(next){$('message').textContent='全部 ordinal 已有记录，可以冻结。UNKNOWN 和未验收方法仍保持阻断。';}else{$('ordinal').value=String(Number($('ordinal').value)+1);await load();}controls();}
+$('load').onclick=()=>action(load);$('scope').onchange=controls;addEventListener('resize',controls);addEventListener('scroll',controls);
+$('add').onclick=()=>{const label=$('label').value.trim();if(!label)return;const t={id:crypto.randomUUID(),label,kind:$('kind').value};catalog.set(t.id,t);selected.push(t);$('label').value='';showTargets();};
+$('reuse').onclick=()=>{const t=catalog.get($('existing').value.trim());if(t&&!selected.some(x=>x.id===t.id)){selected.push(t);showTargets();}};
+$('nonempty').onclick=()=>action(()=>record('TARGETS'));$('empty').onclick=()=>action(()=>record('EMPTY'));$('unknown').onclick=()=>action(()=>record('UNKNOWN'));
+$('finish').onclick=()=>action(async()=>{const receipt=await api('finish',{});frozen=true;$('finish').disabled=true;$('message').textContent='记录已冻结并保存；semanticReview='+receipt.semanticReview+'，authority=none，eligible=false。';});action(load);
+</script>
+</html>
