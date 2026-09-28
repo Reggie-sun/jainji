@@ -56,6 +56,27 @@ it("shows available products without making file configuration a daily step", ()
 it("hands ready uploads back to Chrome without a confirmation action", () => {
   const html = panel(task({ state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: { advertiserId: "123", adId: "456", fileName: "成片.mp4", selectedCount: 1, observedAt: "2026-09-27T00:00:00.000Z", pageOwnership: { targetId: "owned", pageBatchId: projectId, modalSessionId: projectId } } }));
   expect(html).toContain("自行确认"); expect(html).toContain("只读核查页面"); expect(html).not.toContain("停止任务"); expect(html).not.toMatch(/<button[^>]*>确定</);
+  expect(html).toContain("已上传，待确认");
+  expect(html).toContain("已保存上传记录；同一视频在本账号、本计划下不会重复上传，重启后仍有效。");
+});
+it("explains automatic final-output upload without requiring individual video selection", () => {
+  const html = renderToStaticMarkup(createElement(DouyinUploadControls, { value: { enabled: true, accountProduct: "眼贴" }, onChange: () => {} }));
+  expect(html).toContain("本次成片导出完成后自动上传");
+  expect(html).toContain("无需逐条选择视频"); expect(html).toContain("每组最多 9 条");
+});
+it("counts only current-project persisted outcomes and never calls unknown results uploaded", () => {
+  const html = renderToStaticMarkup(createElement(DouyinUploadPanel, {
+    projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: false, accounts: [], ready: false, message: "自动上传已关闭。", tasks: [
+      task({ upload_task_id: "1".repeat(64), state: "PENDING", upload_outcome: "NOT_SELECTED" }),
+      task({ upload_task_id: "2".repeat(64), state: "UPLOADING" }),
+      task({ upload_task_id: "3".repeat(64) }),
+      task({ upload_task_id: "4".repeat(64), state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY" }),
+      task({ project_id: "99999999-9999-4999-8999-999999999999", file_name: "其他项目.mp4", state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY" }),
+    ], legacyTasks: [] }, onState: () => {},
+  }));
+  expect(html).toContain("已上传 1 / 4 条"); expect(html).toContain("待上传 1 条"); expect(html).toContain("处理中 1 条"); expect(html).toContain("需处理 1 条");
+  expect(html).toContain("已保存防重传记录；结果未知，禁止重新上传，请核查原页面。");
+  expect(html).not.toContain("其他项目.mp4");
 });
 it("allows safe continuation only before selection and no actions on duplicate aliases", () => {
   expect(panel(task({ state: "CANCELLED", upload_outcome: "NOT_SELECTED" }))).toContain("安全继续");

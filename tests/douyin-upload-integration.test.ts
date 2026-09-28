@@ -166,6 +166,50 @@ describe("formal export to Qianchuan upload boundary", () => {
     expect(f.events).toEqual([]);
   });
 
+  it("automatically uploads formal output once and keeps its marker across restart, repeated notification and same-byte new output", async () => {
+    const f = await fixture();
+    const batch = await f.queue.createBatch(f.input);
+    await f.uploader.registerBatch(batch, uploadSelection, await f.preflight(batch.tasks.length));
+    await f.queue.start(batch.id);
+    await f.waitUntilReady();
+    const first = f.store.tasks()[0]!;
+    const fencePath = path.join(f.store.root, "selection-fences", `${first.result.upload_task_id}.json`);
+    const fenceBytes = await readFile(fencePath);
+    const identity = { project_id: batch.projectId!, batch_id: batch.id, export_task_id: batch.tasks[0]!.id };
+    await f.uploader.stop();
+
+    const reopenedStore = new DouyinUploadStore(f.store.root); await reopenedStore.load();
+    const browserFactory = vi.fn((): UploadBrowserPort => { throw new Error("already uploaded bytes must never open a browser"); });
+    const recovered = new DouyinUploadService(reopenedStore, {
+      loadBatch: async id => (await f.jobs.load(id)).state, browser: browserFactory,
+      accounts: new QianchuanAccountConfigReader(), readiness: () => undefined,
+    });
+    await recovered.restoreConfig(); await recovered.reconcile();
+    await recovered.committed(identity); await recovered.runPending();
+    expect(reopenedStore.tasks()).toHaveLength(1);
+    expect(reopenedStore.task(first.result.upload_task_id)?.result).toEqual(first.result);
+    expect(await readFile(fencePath)).toEqual(fenceBytes);
+
+    f.callback.mockImplementation(async fact => {
+      await recovered.committed({ project_id: fact.projectId, batch_id: fact.batchId, export_task_id: fact.taskId });
+    });
+    const nextBatch = await f.queue.createBatch(f.input);
+    const authorization = await recovered.preflight(uploadSelection, nextBatch.tasks.length);
+    await recovered.registerBatch(nextBatch, uploadSelection, authorization);
+    await f.queue.start(nextBatch.id);
+    await vi.waitFor(() => expect(reopenedStore.tasks()).toHaveLength(2));
+    await recovered.runPending();
+    const duplicate = reopenedStore.tasks().find(task => task.input.batch_id === nextBatch.id)!;
+    expect(duplicate.result).toMatchObject({ state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", duplicate_of: first.result.upload_task_id });
+    expect(duplicate.input.video_path).not.toBe(first.input.video_path);
+    expect(duplicate.input.artifact_sha256).toBe(first.input.artifact_sha256);
+    expect(reopenedStore.hasMarker(first.result.upload_task_id)).toBe(true);
+    expect(reopenedStore.hasMarker(duplicate.result.upload_task_id)).toBe(false);
+    expect(browserFactory).not.toHaveBeenCalled();
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    await recovered.stop();
+  });
+
   it("registers a frozen target for an approved sample but uploads only the committed formal output", async () => {
     const f = await fixture();
     const authorization = await f.preflight(1);

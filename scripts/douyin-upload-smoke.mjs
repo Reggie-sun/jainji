@@ -99,7 +99,8 @@ try {
   const runtime = await app.evaluate(({app}) => ({packaged:app.isPackaged,appPath:app.getAppPath(),userData:app.getPath("userData")}));
   assert.equal(runtime.packaged, packaged);
   await page.getByRole("button", {name:"作品",exact:true}).click();
-  await page.getByRole("button", {name:"选择账号配置文件",exact:true}).click();
+  await page.getByText("高级设置",{exact:true}).click();
+  await page.getByRole("button", {name:"导入已有账号配置",exact:true}).click();
   const accounts = (await until(page, value => value.douyinUpload.accounts.length === 6, 15_000)).douyinUpload;
   assert.equal(accounts.accounts.length, 6); assert.equal(accounts.configSelected, true);
   assert.equal(JSON.stringify(accounts).includes(accountFile), false); assert.equal(JSON.stringify(accounts).includes(fixture.cdpEndpoint), false);
@@ -131,6 +132,8 @@ try {
   });
   const completedBatch = completedState.queue.batches.find(({batch}) => batch.tasks.some(task => task.status === "completed"));
   const completed = completedBatch.batch.tasks.find(task=>task.status === "completed");
+  await page.getByRole("status",{name:"上传进度",exact:true}).filter({hasText:"已上传 12 / 12 条"}).waitFor();
+  assert.equal(await page.getByText("上传记录已保存 · 本计划不会重复上传",{exact:true}).count(),12);
   assert.ok(Number(execFileSync(ffprobe,["-v","error","-show_entries","format=duration","-of","default=noprint_wrappers=1:nokey=1",completed.outputPath],{encoding:"utf8"})) > 0);
   assert.deepEqual(await readFile(source), original); assert.equal(completedState.connection.configured,false);
   {
@@ -189,6 +192,10 @@ try {
   const reopened = await page.evaluate(id=>window.jianji.loadProject(id),saved.activeRecentProjectId); assert.equal(reopened.project.id,saved.project.id);
   assert.equal((await fixture.inspect()).events.filter(event=>event.type === "files").length,beforeRestart.events.filter(event=>event.type === "files").length,"restart/reopen never selects files");
   assert.equal(reopened.douyinUpload.tasks[0].state,"WAITING_FOR_CONFIRMATION");
+  await page.getByRole("button",{name:"作品",exact:true}).click();
+  await page.getByRole("status",{name:"上传进度",exact:true}).filter({hasText:"已上传 13 / 13 条"}).waitFor();
+  assert.equal(await page.getByText("上传记录已保存 · 本计划不会重复上传",{exact:true}).count(),13);
+  report.persistedUploadMarkersVisible = true;
   if (packaged) report.packagedAttach = await app.evaluate(async ({app},input)=>{
     const runtimeRequire=process.mainModule.require("node:module").createRequire(`${app.getAppPath()}/package.json`);
     const browser=await runtimeRequire("playwright-core").chromium.connectOverCDP(input.endpoint,{timeout:8000,noDefaults:true});

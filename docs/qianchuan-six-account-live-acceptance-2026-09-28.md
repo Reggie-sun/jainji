@@ -227,3 +227,27 @@ Parent 对其未接受报告的三个候选问题直接调查：端口沿用是�
 本轮设置 Risk Gate 为 **KIMI_REVIEW_NOT_REQUIRED**：未要求新的 implementation review；改动不读取凭据、删除上传状态或授予上传/发布 authority，内部映射可重新核查，旧任务永久冻结；strict 解析、私有读写、错误注入及真实 packaged 交互覆盖此局部设置行为，没有具体关键级后果或重大后果加未解决验证缺口。此判断不扩展至 production adapter，原 **REVIEW_ESCALATION_REQUIRED** 保留，正式发行 acceptance 仍 false。Windows、新真实上传和真实日常 userData 启动没有验收。
 
 fresh AOCI Verify/Check exit 1、Guide exit 0 且 `authoring_required / complete:false`：新增 main/renderer settings 两条 Entry 和基线缺失，七个既有账号/上传/IPC条目 stale。共享 `aoci.code.txt`、`.aoci/baseline.json` 有其他 owner 未提交修改；按用户明确选择不写入或 stage，AOCI 维护待其完成，不能宣称已对齐。私有 `.agent/harness/runs/20260929-qianchuan-native-settings/` 保存 source snapshot、package audit、成功/失败 smoke、真实 JSON 只读导入、安装回执、Kimi receipt 与 AOCI 检查；本节为既有 session record owner。
+
+## Automatic Upload Markers — 2026-09-29
+
+### Scope And Ownership
+
+用户明确要求自动选择本次成片、由程序上传，并标记避免下次重复上传。核对当前源码后确认：`ExportQueue.finalArtifactCommitted` → `DouyinUploadService.committed` 已是自动执行入口；现有 `DouyinUploadStore` 独占持久任务、逐文件永久 selection fence 和目标去重。上传只消费已授权本次制作/追加的正式 MP4，核实 durable completed、正式路径、大小和 SHA-256；不扫描目录或补传历史文件，不需要模型 Agent 或新的队列。重复判定为相同视频字节加相同 advertiser/plan，另一个目标仍须独立授权。未知状态不重传；READY 只表示上传面板成功，未点击确定或证明平台已接受。
+
+本轮复用上述核心 owner，仅修改干净的 `DouyinUploadControls.tsx`、`DouyinUploadPanel.tsx`、两项上传 UI/正式导出集成测试及原桌面 smoke。制作入口明确“导出完成后自动上传、无需逐条选择”；作品页按当前项目显示已上传/待上传/处理中/需处理数量，并显示逐文件“上传记录已保存 · 本计划不会重复上传”。UNKNOWN 明确提示禁止重传及原页核查。UI 只投影既有 main 结果，不写标记、不授予上传权限。其他任务 dirty 文件、ResultsPanel、原 service/store/adapter、账号映射和全部历史 fence 保留。
+
+### Fresh Verification
+
+三项 UI 断言先 RED，修改后 UI、service、store、正式导出集成四文件 **60/60 PASS**，fresh `npm run typecheck` exit 0；本轮 renderer 构建 exit 0。新增 integration 使用原 ExportQueue 和私有 JobStore，完成一次正式输出后自动上传；重新加载 ledger 后再次收到完成通知不选文件，新正式输出路径不同但字节相同、目标相同也只关联既有 READY，browser factory 零调用，原 fence 字节不变。
+
+Chrome MCP 因其 profile 被占用而不可用，没有关闭该浏览器。以独立 headless Chrome 加当前真实 React 组件验证制作开关/账号选择、折叠设置、成功与 UNKNOWN 标记及进度，并查看截图；其状态为合成 fixture。真实隔离 Electron 开发桌面进一步制作十二条合成 MP4，经原生 CDP 向本地生产 DOM fixture 上传，实际分组 `1+9+2`，每组不超过九条；追加一条后关闭再打开，十三条标记仍在，零再次文件选择、零确认、零广告设置操作。默认全局/每批关闭、显式产品选择、strict IPC 和正式 FFmpeg/ffprobe 校验同时通过。首次 smoke 使用系统 FFmpeg 时缺少所需滤镜，明确 UNVERIFIED；改用启动器已有 FFmpeg 6.1.1 环境重新运行才 PASS。以上不是新真实千川上传或 Windows 验收。
+
+本机候选 `/home/reggie/Applications/jianji/releases/qianchuan-20260929-upload-markers/` 的 actual packaged Electron 完成同一十二条加一条、重启标记显示及零重选验收，PASS；生产 origin 仅在独立测试 Chrome 拦截到本地 fixture，未修改包内 adapter。候选使用 native-settings 已声明的冻结构建目录，仅替换本轮两个 renderer 文件；asar SHA256 `47dcc65269ff610783d7c49c22ce4184bb746fbd1509fa0b0daf9881253c47e2`，其余 2,158 个包内非 renderer 文件（含 main/preload）与前候选字节相同，unpacked 标记保持。通过后仅原子切换启动器 exec，readback 和 `sh -n` PASS，环境与参数、旧候选保留；未重启日常窗口，未改日常 userData 或账号/上传记录。正常退出后从桌面图标重开生效。此局部候选不包含同期其他 owner 的新 dirty 功能，不是解除原 review gate 的正式发行。
+
+### Delegation And Remaining Gates
+
+受管只读 Kimi deep 测试覆盖调查 invocation `528fc2d2-f8bc-4058-a268-52f6526e3adf`，qualification `4f2d5dc8-4234-4665-b382-e82f1ad6cc00`；两个 authenticated 请求、相关源码/测试及合同实际 Read 完整，最终 **UPSTREAM_GENERATION_LIMIT**，没有可接受报告。已核对 canonical receipt；不采用截断输出、不自动重试，测试设计与裁决由 Parent 直接完成。该调用不是原 production adapter 的第四轮 review。
+
+本轮展示与测试 candidate `5270fe0b7e8f18a377a062643db5fd3cd41d0ebb1ababb5bbe23395847e72aec`（五项实现/测试/smoke 路径按 `path<TAB>SHA256<LF>` 排序散列）的 Risk Gate 为 **KIMI_REVIEW_NOT_REQUIRED**：没有要求新 review，未改变执行/持久化/权限 owner，无新增关键级损坏或严重越权路径；60 项相关测试和当前组件/桌面实测覆盖本轮显示行为，没有具体重大后果加剩余实质验证缺口。原 adapter **REVIEW_ESCALATION_REQUIRED** 与正式发行 acceptance false 保留；不能用本轮标记展示或 fixture PASS 解除。实现 snapshot/hash、package、桌面报告和回执保存在 `.agent/harness/runs/20260929-qianchuan-upload-markers/`。
+
+按用户既有“先交付账号设置，AOCI 等其他任务完成”决定，未写入共享 `aoci.code.txt` / `.aoci/baseline.json`。fresh Verify/Check exit 1，结构有效而未对齐，Guide exit 0、complete false；本轮两个 renderer 条目 stale，先前 native settings 及其他 owner 条目仍待维护，不能宣称 AOCI 已完成。仓库无专用 capture Skill，本节继续作为现有 session record owner。
