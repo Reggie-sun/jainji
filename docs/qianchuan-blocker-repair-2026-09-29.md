@@ -55,3 +55,23 @@ Repository 无专用 session-record skill，本记录保存修复、审查和分
 两套 smoke 均为独立 userData、Chrome profile、合成视频及本地 fixture；不等同于六个真实账号全量上传验收。真实桌面验证使用临时 loopback CDP 参数，未写入 launcher；没有点击上传继续、确认或发布。
 
 最终 `app.asar` SHA-256：`fd04404e0d3d770246984ea0c2721f942aafe42448be2815fe0565d442ff6c5e`；主 bundle SHA-256：`a00c222a524eb19de33fccec4189e68dcdcbb86efedd9dcb2264787345bba2b3`。归档差异证据 `/tmp/jianji-release-fd56869-package.json`；普通/批量报告分别为 `/tmp/jianji-qianchuan-smoke-qMQ87r/report.json`、`/tmp/jianji-batch-upload-smoke-5Pz3FW/report.json`；真实运行报告 `/tmp/jianji-fd56869-installed-verification.json` 与项目恢复报告 `/tmp/jianji-fd56869-restored-project.json`。本次无新源码语义，沿用上节有效审查与精确差异证明，没有增加 Kimi 或 native review 轮次。完整源码独立打包仍需其他任务完成其类型提交；已交付安装修复不依赖该未提交代码。
+
+# Real Account Acceptance
+
+随后用户要求逐账号真实上传，并明确授权氨糖膏、滴耳康用各自已保存项目新制作一轮。2026-09-29 19:22（UTC+8）通过已安装简辑的批量制作界面，仅选择滴耳康 20 条、氨糖膏 10 条，保留各自展示文字、本地随机、手动覆盖及前五秒显示设置。run ID 为 `b765c8f8-00e4-4c7b-ace2-a9400caa6457`。两项正式 FFmpeg 导出均完成，零导出失败，未调用模型。
+
+| Account | Production | Real upload result |
+| --- | --- | --- |
+| 滴耳康 | 20/20；`/home/reggie/电商/滴耳康/视频/9.29 19:22` | 10 READY、1 MAY_HAVE_UPLOADED、9 NOT_SELECTED；11 个永久 fence |
+| 氨糖膏 | 10/10；`/home/reggie/电商/氨糖膏/视频/9.29 19:23` | 全部 NOT_SELECTED；首条 NEEDS_HUMAN / PAGE_CONTRACT_CHANGED，零 fence |
+| 蝴蝶贴、眼贴、肥皂、热敷贴 | 本轮未制作 | 原上传弹窗丢失；用户明确要求保留旧任务阻塞。肥皂 1 条、热敷贴 9 条历史未知未重传 |
+
+滴耳康与氨糖膏的新正式产物已由应用创建上传记录，但历史 NEEDS_HUMAN 使服务启动时 paused；暂停期间入账的产物未加入 `eligible`。界面一次“安全继续”只执行所选任务，没有恢复本次其余待传任务。因此滴耳康前十条是通过真实软件逐条点击“安全继续”完成，并非应用自动九条分组整批成功；没有使用独立脚本代替上传 service，也没有直接选文件或修改 ledger。此项暴露暂停后整批恢复的交付缺口，尚未修复。
+
+滴耳康第十一条 `竞品详情-抖音电商罗盘 - 2026-09-15T234613.318_edited.mp4` 已选择文件，但原千川弹窗一直只显示十条。超过三分钟观察后，因实际 processing 配置为 1800000ms，Parent 通过应用“停止任务”终止这次等待。服务保存 UPLOAD_OUTCOME_UNKNOWN 与 fence；未重传，也未继续剩余九条。原因尚未定位，不能把未出现行解释成没有提交。该任务 ID 为 `5ef1a4f75eb6f5446f27483c9df7d2882ec45bb689b17148521784473de8f744`。
+
+氨糖膏随后通过应用独立继续一次；真实计划 `1876052012647452` 的“添加视频”按钮具有原生 `disabled` 属性。应用在文件选择前拒绝，未改计划、权限或广告设置；按钮禁用的业务原因未在本轮确认。
+
+本轮零确认、零发布、零广告设置修改。真实验收结论为部分成功、有阻塞，不是六账号全部通过，也不证明成片人工观看验收。最终应用详情与持久 ledger/fence 对照为 `/tmp/qianchuan-new-round-final.json`，启动冻结参数为 `/tmp/qianchuan-new-round-start.json`，界面逐条继续观察为 `/tmp/qianchuan-dierkang-app-resume.json`，氨糖膏按钮证据为 `/tmp/qianchuan-antang-live-blocker.json`。临时证据可能被清理；本节保存主要结果。未改生产源码，本节是当前验收的记录，不增加实现审查轮次。
+
+本轮记录后的 AOCI Verify / Check 返回 `code_stale`，Guide 为 `authoring_required`：其他并行任务正在修改 `src/main/qianchuan-account-settings.ts`、`src/renderer/DouyinUploadControls.tsx`、`src/renderer/DouyinUploadPanel.tsx`、`src/renderer/QianchuanAccountSettings.tsx`、`src/shared/qianchuan-account.ts`。这些源码不是本轮写入，尚未稳定，未接管或刷新其认知基线。本记录属于 observe-only 文档，无需新增代码条目；全局 AOCI 对齐仍需该源码任务稳定后维护。上述实时验收绑定已安装包，不把并行 working-tree 修改计入实际运行版本。
