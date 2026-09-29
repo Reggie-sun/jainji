@@ -1,5 +1,29 @@
 # M5-D2A Implementation Plan
 
+## Installed Engineering Route and Remaining Live Gates
+
+Milestone4外部router工程slice已通过latest required完整native review及Parent裁决，clean commit `1f0c11d`经官方owner安装；installed Codex/Kimi owned八图native/fake与各14项OS checks通过、容器清理成立。Scope内blocker修复与安装已落实，不再停于旧permission/review transport门。Fresh router779项full工程回归与Jianji129项相关回归、current typecheck通过；均不代替视觉语义资格。
+
+当前入口为真实credential/account/canonical budget门：独立API凭据、当前认证额度及future actual payload冻结缺失，visual/formal请求保持0。已准备基于实际7442-byte Codex API payload的accounting草案（AWAITING_AUTHENTICATED_ACCOUNT），不伪造AUTHORIZED receipt或available credit。条件真实成立才各一次live capability，再冻结正式methodConfig/inputPlan/budgets/qualified envelope并完成A/B/raw/mapping/joint/correspondence/可信owner执行；现有Jianji run仍ENGINEERING_ONLY，无formal collect成功入口。
+
+独立新54 clips/648帧/18场景数量门再次成立，real-media层及human qualification仍NOT_EVALUATED/INCOMPLETE。M5-D2A INCOMPLETE、authority=none/eligible=false，全部production BLOCKED不变；Production Qualified Review不在自动授权内。当前installed receipts、外部材料阻碍和AOCI归属由[phase record](shape-matched-cover-m5d2a.md#current-installed-engineering-route-and-live-readiness)维护；下方为历史，继续同一任务而不生成next-window prompt或增加“继续”许可门。
+
+## Restored Runtime Continuation
+
+权限及Node同步FFmpeg工程阻碍已在当前runtime恢复：fresh129项AI/human-review/qualification回归与typecheck通过；外部router current typed/初始及畸形response fields修复后offline688 PASS、native/fake+containment713 PASS、Ruff/diffcheck通过。Milestone4继续exact round12 required engineering review、Parent裁决、clean官方安装及installed dual native/OS/fake验证，随后以实际probe input/payload准备accounting。不得以review或安装通过替代真实视觉能力。
+
+Milestone3新独立54 clips/648帧/18场景数量门复核成立，REAL_MEDIA_HUMAN_TRUTH仍NOT_EVALUATED。缺独立API credential/current authenticated account/成本材料时，visual/formal请求保持0。正式config/inputPlan/budgets、隔离A/B、原始/映射/joint receipts、correspondence/可信issuer仍须真实完成；M5-D2A INCOMPLETE、authority=none/eligible=false和全部production BLOCKED。当前状态由[phase record](shape-matched-cover-m5d2a.md#current-restored-runtime-and-engineering-gate)独占，下方restricted/旧安装阻碍为历史，不重新生成next-window prompt或追加用户“继续”门。
+
+## Current Bounded Repair and Permission Gate
+
+最新用户global rules授权Parent自主评估、记录和验证任务内有限契约/修复/复核预算变化；不扩大原视觉各一次/总两次、OpenAI USD1、正式费用0及产品禁止。Router既有acceptance/plan owners已Self-Review最多两次附加native工程复核（累计round5/6，各900秒），四轮历史及两次Kimi失败不重置。
+
+NR-IMAGE-005的thinking和失败响应分段泄露已由11个red失败确认，transport新增共享decoded-fragment guard；非法/不完整原响应只保存hash/长度/分类，正常已验证wire原字节和脱敏HTTP诊断保持。Fresh router offline588 PASS/27 skip、native/fake+containment613 PASS/2 skip，Ruff/diffcheck通过。Round5绑定164路径、program `e78a8581a5bca15378f5f2cc03172978e084f33cbf9b90065c71d73312e13e64`；runtime切换后agent变为pending_init，经两次health request仍无新progress/report，有界等待后Parent interrupt（previous_status=pending_init），不是已完成review或crash证明。该dispatch历史保留、实际执行/费用未知，required review仍未满足。
+
+当前runtime随后切换restricted：只允许Jianji及/tmp写入，router/install目录与Jianji.git只读，approval policy=never。因此clean scoped commit、official installation和installed probes暂时BLOCKED_PERMISSION；这是执行能力限制，不是缺少重复用户授权。下一步保持同一目标：收齐review → 核对exact hashes/裁决 → 权限允许后提交本任务路径、official install、installed双native/OS/fake核验 → 独立凭据/account/cost门成立后才进行真实capability。不能用未安装candidate、fake probe或本聊天替代视觉资格。实际证据与后续状态由phase record维护。
+
+Restricted fresh typecheck exit0；同一343文件摘要下fresh回归128 PASS/1 FAIL，单独复现确认Node `spawnSync ... EPERM`，不能以旧129 PASS作为当前全绿。先恢复真实执行能力，再重跑该失败suite及必要相关回归；不忽略error、改human合同或换测试引擎。
+
 ## Current Native Fallback Checkpoint
 
 用户指令已使工程reviewer从两次真实失败的managed Kimi route切换至一个named native reviewer。Router完成三轮native review及范围内修正，最后semantic fix后fresh native/fake+containment601 PASS/2 skip；该修正尚未re-review且三轮上限已满，milestone4仍REVIEW_ESCALATION_REQUIRED / FINAL_INSTALLATION_BLOCKED。当前dirty managed登记不作clean安装验收，当前phase record维护证据。工程持续到真实review/budget gate，未扩大付费、正式actor或生产scope。

@@ -1,5 +1,60 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Installed Engineering Route and Live Readiness
+
+2026-09-29 用户已授权的blocker修复和受管安装工程slice已完成，M5-D2A正式资格仍INCOMPLETE。Router同一named read-only `reviewer_max`的round15完整critical scope finding set为空，193/193 frozen hashes前后一致；Parent据真实ReceiptStore否定/正常测试、fresh完整回归及exact source裁决后，以clean commit `1f0c11dc8249a6682476753244df6e3661259e9f`运行官方installer。66-source program `33e4512773ad0a56d2c617193633bf46ba3a067e920570b51b3918bc9823e904`、package `e89dbd601be3a21aa35c26e5f2425d96ab76c427ff403c52f0012990f90cc47b`、manifest `bde87fae43ecb489b86f4f21a5f3018298a8889aa07577c880396b93e5a8d46b`，dirty_at_install=false。Entry/Skill/完整package与source核验一致，原default config、旧包及receipts保留；没有擅改host installed tree。两次Kimi失败及native1–15全部历史和真实消费保持，工程fallback不替换blinded actor。
+
+最新router focused310 PASS、offline754 PASS/27 skip、native/fake+containment779 PASS/2 skip、Ruff/diffcheck exit0。Jianji实际六个AI/human-review/qualification suites129 PASS（28.08s）检查时345 paths不漂移；之后无关上传任务变更的3个files不属于AI/human/qualification依赖，本任务source未变。Current fresh typecheck exit0，345源码/测试/config hashes在检查前后及交付核验一致。没有修改human method/schema/session/acknowledgement/receipt/digest或挪用collector，也无产品IPC/UI接线。
+
+Installed CLI实际owned probe和canonical receipts：
+
+| Backend | Owned probe | Native/OS conformance | Linked native invocation |
+| --- | --- | --- | --- |
+| Codex | `e06d2550-9890-4421-a520-c459d59d4cbd` | `31dcf896-e910-4e2d-9eef-89c30e708b52` | `ccae88c1-3fe4-478b-815e-a9930913dabf` |
+| Kimi | `649b608e-eb13-4b00-aea4-a552a12c9164` | `9e553956-93c5-453a-8117-f10d7c3ba85f` | `b4e6e9cb-5855-4cdf-b3b8-e9faded53054` |
+
+两条各14项真实OS检查全部成立，八张128×128完整PNG及distinct IDs（含同像素不同ID）、fresh context/no tools绑定和container cleanup验证成立，source=None。Conformance为ENGINEERING_CONFORMANCE_COMPLETE；linked native为ENGINEERING_NATIVE_COMPLETE/synthetic-upstream/fake wire1。商业visual requests=0、formal requests=0，semantic_metrics=null/NOT_EVALUATED、authority=none/eligible=false。这不是QUALIFIED路线或A/B正式审阅。Kimi实际路线仍Kimi/Claude Code runtime，不称为已验证Anthropic Claude；本聊天不充当actor。
+
+Actual Codex mapped API body7442 bytes已冻结为engineering accounting草案；保守input upper48402、generation2048，观察的public standard价格下该payload成本上界USD0.151725。草案AWAITING_AUTHENTICATED_ACCOUNT、credential/account/available quota均null，不是canonical AUTHORIZED预算，也不授权未来未观察payload。仍缺独立OpenAI应用API credential reference、当前认证账号额度/匹配fingerprint，以及Kimi当前额度与canonical image预算；global Codex登录不能代替。原capability每backend一次/总两次、Codex USD1和formalCostAuthorizationUSD0不变，未重置host计数、retry或switch provider。具体全部安装/审查/原始artifacts与价格来源由router[API record](/home/reggie/vscode_folder/agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md#current-engineering-installation-and-live-readiness)独占，private archive为`~/.local/state/agent-subagent-router/image-route-final-install-20260929`。
+
+独立holdout重新verify-preparation exit0：54 clips/648 frames，18类齐全，609 clear、270 empty、339 present、36 multi、9 single、6 cuts、6 motion、18 ambiguous，数量门sufficient=true。Formal NOT_STARTED、A/B/joint正式指标均null/NOT_EVALUATED，synthetic准备不推出real-media泛化；REAL_MEDIA_HUMAN_TRUTH=NOT_EVALUATED，human explicit qualification保持INCOMPLETE，旧54/432只作诊断。
+
+当前Jianji AOCI managed AI source未变，两份本任务docs为observe。交付Verify/Check均exit1、structure_valid=true/governance_aligned=false；Guide exit0但complete=false/stage=authoring_required，报告foreign `src/main/douyin-upload-service.ts`、`src/main/qianchuan-page-contract.ts`两项code_stale。未接管无关owner的正式索引/baseline，不宣称whole-repo对齐；实际JSON/stderr保存在上述archive内`jianji-d2a-aoci-final-20260929-{verify,check,guide}`。仅stage/commit本任务两docs，用户原有dirty、删除及未跟踪工作保留。
+
+交付前installed owners重新核验原始receipts/artifacts/probe/seal及5份accepted refs，当前193/193 review paths、66-source package/entry/Skill/default config均无漂移；Parent工程观察保存在archive内`final-installed-integrity-observation-20260929.json`。最终`final-checkpoint-manifest-20260929.json`记录归档SHA和提交来源，既不替代canonical Provider receipts，也不签发qualification。
+
+状态：ENGINEERING_ROUTE_INSTALLED_AND_NATIVE_VERIFIED / QUALIFICATION_INCOMPLETE / FORMAL_RUN_NOT_STARTED / PRODUCT_DISABLED。自然停止于缺失真实credential/account/budget材料；之后仍须真实capability、正式methodConfig/inputPlan/budget/route envelope冻结、isolated A/B execution与raw/mapping/joint/correspondence/可信issuer来源核验，不能用injectable ENGINEERING_ONLY transport造formal成功。M5-B activation、M5-C issuer、M5-D3、M5-D4及verified-no-sticker production issuance全部BLOCKED，即使未来受控QUALIFIED也authority=none/eligible=false。下一阶段Production Qualified Review不属于本次自动授权。下方所有pending安装/permission/review描述为历史，不重新生成next-window prompt或要求回复“继续”。
+
+## Current Restored Runtime and Engineering Gate
+
+2026-09-29 当前runtime已实际恢复danger-full-access，历史permission/Node同步FFmpeg blocker已不再复现。恢复后的fresh六个AI/human-review/qualification suites共129 PASS（95.66s），新typecheck exit0、343条源码/测试/config hashes在该次检查前后一致。无关上传任务继续修改其files；仅此phase/plan归本任务，没有挪用human collector或修改human协议。下方restricted及pending round5均为历史，不能覆盖本节。
+
+Router required engineering review按用户指令，在两次canonical Kimi运行故障后由同一named read-only native profile接手，保留全部轮次。当前source program `0a433b27b7e6e0dc5e6d4485b15e881ba7e4a11ceb49b0a889370dfd3f74ec15`修复响应分片/typed及初始/畸形语义字段、native/upstream正文关联、revoke交付与sealed PNG边界。实际ReceiptStore负例确认后修正，fresh router offline688 PASS/27 skip、native/fake+containment713 PASS/2 skip、Ruff/diffcheck通过。Round12 exact full review已封存dispatch（157 paths、900秒），有效review/Parent裁决前final clean官方安装仍待执行。具体规则/历史/证据由router [API record](/home/reggie/vscode_folder/agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md)独占，工程native fallback不替换视觉actor。
+
+独立新holdout再次verify-preparation exit0：54 clips/648 frames、18场景、609 clear frames，coverage数量门满足；SYNTHETIC_CONTROLLED层准备成立，REAL_MEDIA_HUMAN_TRUTH=NOT_EVALUATED。真实visual/formal请求0，A/B/joint全部正式指标仍null/NOT_EVALUATED。尚缺独立OpenAI应用credential reference、current authenticated account/额度及完整成本冻结；原global Codex登录不是该API凭据。
+
+当前M5-D2A仍 `QUALIFICATION_INCOMPLETE / FORMAL_RUN_NOT_STARTED / PRODUCT_DISABLED`，authority=none/eligible=false。M5-B activation、M5-C issuer、M5-D3、M5-D4、verified-no-sticker production issuance全部BLOCKED。继续同一授权的clean安装/installed双路线工程验证及actual probe accounting；真实capability、正式冻结/预算、隔离actor与完整raw/mapping/joint/correspondence/可信owner签发来源成立前不得启动盲审或生产。
+
+## Current Response Repair and Restricted Runtime
+
+2026-09-29 用户先批准一次额外native复核，随后替换global instructions，明确任务内共享契约、有限预算和恢复规则由Agent自主评估/记录/实施/验证，无需逐项批准。Router当前acceptance/plan owners已Self-ReviewNR-IMAGE-005剩余修复，最多两个附加native rounds（累计5/6、各900秒），历史Kimi两次与native四轮全部保留，不重置真实调用或预算。
+
+Round4确认thinking、error/truncated Kimi响应与incomplete Codex响应的分段key可绕过原检查；Parent新否定测试真实11 failed/1 passed。该轮代码未变，但global AGENTS在审查期间被当前用户规则替换，仅159/160冻结paths匹配，不能作完整immutable gate。原snapshot SHA `dff635c10f431d5bc14cabd6baaf156049f917ba2401978c7b65304bf689e745`与Parent裁决保存在router私有`authorized-native-final-review-20260929`，不倒写旧结果。
+
+Parent修复共享`transport/response_secrets.py`、双broker的交付/持久化边界：协议status/terminal验收前核对已解码JSON/SSE字段分段；验证失败的原响应只保存quarantine hash/长度/分类，真实HTTP错误分类及已脱敏诊断保留。正常已验证原wire不改，原credential/ReceiptStore/lifecycle owners不变。Fresh router offline588 PASS/27 skip（8.00s）、native/fake+containment613 PASS/2 skip（65.07s）、Ruff及diffcheck通过；没有执行商业live资格，不代表视觉能力。新round5 snapshot SHA `dcae2c9c8a17451a56acbf2367944b12af0071d9f2a4a30fb38ea86749e8a637`，164路径/program `e78a8581a5bca15378f5f2cc03172978e084f33cbf9b90065c71d73312e13e64`；同一read-only named `reviewer_max`已启动，结果尚待裁决。私有candidate/patch/log refs由`bounded-response-repair-review-20260929`保存，未知实际模型/费用不冒充机械attestation。
+
+运行环境随后切换workspace-write/restricted，仅Jianji和/tmp可写；router源码、受管安装目录及Jianji.git不可写，approval policy=never。没有规避限制、尝试越权安装或把“继续”当作权限配置已恢复。当前BLOCKED_PERMISSION阻止clean commit/official installation/installed conformance，修复候选仍uncommitted。实读installation仍为`9f271cc80a24538faec13540f608ae16e76ccc1b`、dirty=true、package `52b1d7779b2a8bbca872028e9e32b216b86562fca73d5029d98bb8d193197305`，manifest SHA `770e7e5b43b099b2f4e0cc28e58cf0e3bbe89973aabbdaa850f5c6104c73d354`；没有最终clean安装。
+
+真实visual/formal requests仍0，capability A/B与所有正式语义指标null/NOT_EVALUATED；缺独立OpenAI应用credential reference、当前已认证account及其actual input成本材料。未读取global Codex auth、未挪用human session、未向reviewer提供holdout/truth，未改变冻结truth/criteria。M5-D2A保持INCOMPLETE、authority=none/eligible=false、PRODUCT_DISABLED和全部production BLOCKED guards。权限恢复后继续同一计划；真实capability和正式可信receipts/issuer门未满足前不得启动盲审或生产。
+
+Restricted后的fresh `npm run typecheck` exit0。此前同一343文件摘要下6 suites/129 tests日志完成PASS，但旧process session在runtime切换后不可恢复，故额外执行已知restricted环境的相同命令：exit1、128 PASS/1 FAIL（103.49s），失败为`source-fact-qualification-tool.test.ts`启动FFmpeg时Node `spawnSync ... EPERM`。单独该suite再次exit1（1 PASS/1 FAIL、992ms），没有放宽timeout、忽略error或换引擎。直接同一FFmpeg `-version` exit0；独立Node `spawnSync -version`重现error.code=EPERM且status=0，故不把二进制不可执行、CPU或业务回归当作已证明根因，保留真实Node同步进程执行边界阻碍。开始/结束343个TS/TSX/config SHA一致，当前Jianji回归不能声明全绿。
+
+Round5 dispatch随后显示`pending_init`，两次focused health requests没有新progress/tool output/report，一次30秒等待到期；Parent因unresponsive状态及已成立权限阻碍interrupt，工具返回previous_status=pending_init。不称健康、crashed或review通过，不自动respawn/reset轮数。它仍为DISPATCHED_NO_USABLE_REPORT，实际是否产生model调用/费用保持未知；final required review、Parent安装验收与M5-D2A资格均未完成。当前全部164 frozen paths机械核验仍一致；新规则快照不重写旧round4漂移记录。
+
+Readonly `_check_existing`核对受管entry/Skill完整性MATCH，installed package仍旧dirty版本；当前candidate与installed真实性分别记录，未运行新installed probes。本任务没有适用repository capture skill，substantial checkpoint由此phase/plan与router已有snapshot承接；新restricted验证日志/AOCI结果保留`/tmp/jianji-d2a-restricted-*`，权限解除后才写router私有最终archive与canonical运行结果。未写外部memory；无关dirty/source删除保持。
+
+本轮止于真实runtime permission/process/review阻碍。新证据临时归档`/tmp/jianji-d2a-restricted-checkpoint-20260929`，只含工程日志、exact source/patch/hash与Parent观察记录，不冒充canonical Provider receipt。Jianji只修改本phase/plan，router修复和授权两docs尚未commit；因.git/外部目录只读无法完成stable checkpoint提交或official安装，不以未提交patch当已部署。后续同一目标需恢复工作所需实际写入/同步进程能力，再完成fresh relevant verification、同一有限review门、scoped commit与installed native/OS/fake gate；缺真实credential/account/cost时仍零视觉调用INCOMPLETE。
+
 ## Current Native Fallback and Installation Gate
 
 2026-09-29 用户要求Kimi持续故障时使用原生子代理。Router按两个既有canonical transport failures改由一个named `reviewer_max`接手工程required review，global SUBAGENTS为详细owner；原accepted Specs、旧失败、Provider/blinded actor与产品边界不变。三轮native review推动修正receipt反射、SSE/native output绑定、delivery/revoke竞态、sealed PNG源path依赖。最后一轮仍发现NR-IMAGE-005跨delta/part拼接凭据，Parent已以8个red负例确认并修正；fresh router全套601 PASS/2 skipped。最后semantic fix尚未独立复核、三轮预算已满，REVIEW_ESCALATION_REQUIRED / FINAL_INSTALLATION_BLOCKED，不自动启动第四轮。
