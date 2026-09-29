@@ -27,6 +27,7 @@ export const PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract = {
 export function qianchuanReadiness(): string | undefined { return undefined; }
 const dropSelector = '[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]';
 const changed = () => uploadFailure("PAGE_CONTRACT_CHANGED", "page", "千川页面结构或批次归属无法唯一确认。", "在 Chrome 核查原页面；程序不会猜测计划或控件。", true);
+const lostModal = () => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "原上传弹窗已丢失、无法唯一确认或归属已改变。", "请人工核查原批次；不能新开弹窗重传，已有文件屏障继续保留。", true);
 export function parseSelectedCount(text: string): { selected: number; capacity: number } {
   const match = /^已选择\s*(\d+)\s*\/\s*(\d+)\s*[：:]?$/.exec(text.trim());
   if (!match) throw changed();
@@ -65,6 +66,7 @@ export class QianchuanPageSession {
   private async visible(selector: string): Promise<boolean> { return (await this.frame!.locator(`${selector}:visible`).count()) > 0; }
   async guard(task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
     this.check(signal);
+    if (this.page.isClosed()) throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "原批次标签页已关闭。", "人工核查；不能新开页面重传。", true);
     const url = new URL(this.page.url()), target = task.authorization.target;
     if (url.origin !== this.contract.origin || url.pathname !== this.contract.route || url.searchParams.get("aavid") !== target.advertiserId || url.searchParams.get("adId") !== target.adId) throw changed();
     if (!this.frame || this.frame.isDetached()) {
@@ -99,15 +101,16 @@ export class QianchuanPageSession {
     }
     await this.unique(accountIdentity, signal); await this.unique(planIdentity, signal);
     if (this.modal) {
-      await this.unique(this.frame.locator(`${this.contract.modal}:visible`), signal);
-      if (await this.modal.getAttribute("data-jianji-upload-session") !== this.ownership?.modalSessionId) throw changed();
+      if (await this.frame.locator(`${this.contract.modal}:visible`).count() !== 1) throw lostModal();
+      if (await this.modal.getAttribute("data-jianji-upload-session") !== this.ownership?.modalSessionId) throw lostModal();
       await this.unique(this.modal.getByRole("button", { name: "确定", exact: true }), signal);
       if (await this.modal.locator(`${this.contract.failure}:visible`).count()) throw uploadFailure("CONTENT_REJECTED", "page", "上传列表显示失败或拒绝。", "在 Chrome 核查；不会重传或自动确认。", true);
     }
     this.check(signal);
   }
-  private async click(control: Locator, task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
+  private async click(control: Locator, task: UploadTaskRecord, signal: AbortSignal, label = "目标控件"): Promise<void> {
     await this.guard(task, signal); const locator = await this.shown(control, task, signal);
+    if (!await locator.isEnabled()) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", `千川“${label}”按钮已禁用，平台业务原因尚未确认。`, "请在 Chrome 人工核查计划状态、操作权限及平台提示；程序不会修改计划或广告设置。处理后仅对尚未选文件的任务安全继续。", true);
     this.check(signal); await locator.click({ timeout: task.config.timeouts.action }); this.check(signal);
   }
   private group(tasks: UploadTaskRecord[]): UploadTaskRecord {
@@ -125,7 +128,7 @@ export class QianchuanPageSession {
       const material = this.contract.kind === "qianchuan" ? drawer.locator(".ovui-tabs__tab").filter({ hasText: /^素材$/ }) : drawer.getByRole("button", { name: "素材", exact: true });
       await this.click(material, task, signal);
       const addScope = this.contract.kind === "qianchuan" ? drawer : this.frame!;
-      await this.click(addScope.getByRole("button", { name: "添加视频", exact: true }), task, signal);
+      await this.click(addScope.getByRole("button", { name: "添加视频", exact: true }), task, signal, "添加视频");
       if (this.contract.kind === "fixture") await this.click(this.frame!.getByRole("button", { name: "上传视频", exact: true }), task, signal);
       this.modal = await this.shown(this.frame!.locator(this.contract.modal), task, signal);
       this.ownership = { targetId, pageBatchId: task.authorization.pageBatchId, modalSessionId: randomUUID() };
@@ -142,7 +145,7 @@ export class QianchuanPageSession {
     this.prepared = { taskIds: tasks.map(value => value.result.upload_task_id), index: selected.length + 1 };
     return { pageOwnership: this.ownership!, selectedIndex: this.prepared.index };
   }
-  private async observe(task: UploadTaskRecord, signal: AbortSignal): Promise<{ selected: number; capacity: number; ready: boolean }> {
+  private async observe(task: UploadTaskRecord, signal: AbortSignal): Promise<{ selected: number; capacity: number; ready: boolean; missing: number }> {
     await this.guard(task, signal);
     // The list can insert/reorder rows during processing. Read one finite DOM snapshot
     // so a filename and its success markers always belong to the same row.
@@ -172,7 +175,7 @@ export class QianchuanPageSession {
     for (const file of previous) if (!observed.has(file.fileName) || (this.pending.size && !observed.get(file.fileName))) throw changed();
     const confirm = await this.unique(this.modal!.getByRole("button", { name: "确定", exact: true }), signal);
     const complete = size === this.selected.length && parsed.selected === this.selected.length && [...observed.values()].every(Boolean);
-    return { ...parsed, ready: complete && await confirm.isEnabled() && !await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count() };
+    return { ...parsed, missing: this.selected.length - observed.size, ready: complete && await confirm.isEnabled() && !await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count() };
   }
   private async drop(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> {
     const task = this.group(tasks);
@@ -214,9 +217,11 @@ export class QianchuanPageSession {
     const task = this.group(tasks);
     if (tasks.some(value => !this.selected.some(file => file.fileName === value.result.file_name)) || this.ownership?.pageBatchId !== task.authorization.pageBatchId) throw changed();
     const deadline = Date.now() + task.config.timeouts.processing;
+    const rowDeadline = Date.now() + task.config.timeouts.fileInput;
     while (Date.now() < deadline) {
       const observed = await this.observe(task, signal);
       if (observed.ready) { this.pending.clear(); return tasks.map(value => this.evidence(value, observed.selected)); }
+      if (observed.missing && Date.now() >= rowDeadline) throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "已选择的文件未出现在原上传列表，无法确认平台是否收到。", "保留原页面并只读核查；禁止重新选文件，后续成片保持暂停。", true);
       this.check(signal); await this.page.waitForTimeout(Math.min(100, Math.max(1, deadline - Date.now()))); this.check(signal);
     }
     throw uploadFailure("TIMEOUT", "browser", "千川处理未在期限内完成。", "只读核查原页面；禁止重传。", true);
@@ -224,7 +229,9 @@ export class QianchuanPageSession {
   async restore(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], targetId: string, signal: AbortSignal): Promise<ReadyEvidence> {
     if (ownership.targetId !== targetId || ownership.pageBatchId !== task.authorization.pageBatchId) throw changed();
     this.ownership = ownership; await this.guard(task, signal);
-    this.modal = await this.unique(this.frame!.locator(`${this.contract.modal}:visible`), signal); this.selected = selected;
+    const modal = this.frame!.locator(`${this.contract.modal}:visible`);
+    if (await modal.count() !== 1) throw lostModal();
+    this.modal = modal; this.selected = selected;
     const item = selected.find(file => file.fileName === task.result.file_name);
     if (!item || selected.filter(file => file.fileName === task.result.file_name).length !== 1) throw changed();
     this.pending = new Set(selected.filter(file => file.ready === false).map(file => file.fileName));

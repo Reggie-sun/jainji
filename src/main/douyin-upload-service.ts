@@ -27,7 +27,7 @@ interface Dependencies {
   readiness?(config: QianchuanUploadConfig): string | undefined;
 }
 const timestamp = () => new Date().toISOString();
-const unknown = () => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "上传结果未知，禁止重新选文件。", "在 Chrome 核查原批次页面；页面丢失时需人工处理。", true);
+const unknown = (cause?: UploadError) => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", cause ? `上传结果未知：${cause.failure.message}`.slice(0, 500) : "上传结果未知，禁止重新选文件。", cause?.failure.next_action ?? "在 Chrome 核查原批次页面；页面丢失时需人工处理。", true);
 
 export class DouyinUploadService {
   private admission: Promise<unknown> = Promise.resolve();
@@ -35,6 +35,8 @@ export class DouyinUploadService {
   private active?: { ids: string[]; controller: AbortController; port: UploadBrowserPort };
   private runner?: Promise<void>;
   private paused = false;
+  private continuationBatch?: string;
+  private preparingContinuation = false;
   private stopped = false;
   private stopping = false;
   private initializationFailure?: string;
@@ -150,7 +152,7 @@ export class DouyinUploadService {
         result: { ...identity, upload_task_id: id, artifact_sha256: hash, file_name: path.basename(resolved), accountProduct: target.product, advertiserId: target.advertiserId, adId: target.adId, state: "PENDING", upload_outcome: "NOT_SELECTED", retryable: false, retry_count: 0, attempt_count: 0, timestamp: timestamp() } };
       if (this.cancelledIntents.has(intentKey(identity))) record.result.state = "CANCELLED";
       await this.snapshotValid(record); await this.store.saveTask(record);
-      if (!recovery && this.currentIntents.has(intentKey(identity)) && generation === this.controlGeneration && !this.stopping && !this.stopped && !this.paused) this.eligible.add(id);
+      if (!recovery && record.result.state === "PENDING" && this.currentIntents.has(intentKey(identity)) && generation === this.controlGeneration && !this.stopping && !this.stopped && (!this.continuationBatch || this.continuationBatch === record.authorization.pageBatchId)) this.eligible.add(id);
       this.changed(); return record;
     });
     this.admission = work; return work;
@@ -163,20 +165,23 @@ export class DouyinUploadService {
     }
     this.changed();
   }
+  private pendingGroup(): string[] {
+    const available = this.store.tasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch));
+    const first = available[0]; if (!first) return [];
+    const group: UploadTaskRecord[] = [];
+    if (this.duplicate(first)) group.push(first);
+    else for (const task of available) {
+      if (task.authorization.pageBatchId !== first.authorization.pageBatchId || this.duplicate(task) || group.some(other => sameTargetBytes(task, other))) continue;
+      group.push(task); if (group.length === MAX_UPLOAD_GROUP_SIZE) break;
+    }
+    return group.map(task => task.result.upload_task_id);
+  }
   runPending(): Promise<void> {
     if (this.runner) return this.runner;
-    if (this.active || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
+    if (this.active || this.preparingContinuation || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
     this.runner = (async () => {
       while (!this.stopped && !this.stopping && !this.paused && this.store.config.enabled && !this.store.unavailable) {
-        const available = this.store.tasks().filter(value => value.result.state === "PENDING" && this.eligible.has(value.result.upload_task_id));
-        const first = available[0]; if (!first) break;
-        const group: UploadTaskRecord[] = [];
-        if (this.duplicate(first)) group.push(first);
-        else for (const task of available) {
-          if (task.authorization.pageBatchId !== first.authorization.pageBatchId || this.duplicate(task) || group.some(other => sameTargetBytes(task, other))) continue;
-          group.push(task); if (group.length === MAX_UPLOAD_GROUP_SIZE) break;
-        }
-        const ids = group.map(task => task.result.upload_task_id);
+        const ids = this.pendingGroup(); if (!ids.length) break;
         for (const id of ids) this.eligible.delete(id);
         await this.execute(ids);
       }
@@ -185,19 +190,57 @@ export class DouyinUploadService {
   }
   resume(id: string): Promise<void> {
     const generation = this.controlGeneration;
+    const requested = this.store.task(id);
+    if (requested?.result.state === "CANCELLED" && !this.store.hasMarker(id)) this.cancelledIntents.delete(intentKey(requested.input));
     const work = this.control.catch(() => undefined).then(async () => {
+      await this.admission.catch(() => undefined);
       if (generation !== this.controlGeneration || this.stopping || this.store.unavailable || !this.store.config.enabled || this.active) return;
       const task = this.requireTask(id);
       if (task.result.duplicate_of || task.result.state === "FAILED_TERMINAL") return;
       const fenced = this.store.hasMarker(id);
-      if (this.store.tasks().some(other => other.result.upload_task_id !== id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (!fenced || other.authorization.pageBatchId !== task.authorization.pageBatchId || !this.store.hasMarker(other.result.upload_task_id)))) throw new Error("该账号存在未解决的任务，请先核查原页面。");
-      this.stopped = false; this.paused = false;
-      const unresolved = fenced ? this.store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId && this.store.hasMarker(other.result.upload_task_id) && other.result.state !== "WAITING_FOR_CONFIRMATION") : [];
-      await this.execute(unresolved.length ? unresolved.map(other => other.result.upload_task_id) : [id]); await this.runPending();
+      const batch = this.store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId);
+      if (fenced) {
+        const unresolved = batch.filter(other => this.store.hasMarker(other.result.upload_task_id) && other.result.state !== "WAITING_FOR_CONFIRMATION");
+        // The UI labels this action as read-only; it never grants file-selection permission.
+        await this.execute(unresolved.length ? unresolved.map(other => other.result.upload_task_id) : [id]); return;
+      }
+      if (this.store.tasks().some(other => other.result.upload_task_id !== id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (other.authorization.pageBatchId !== task.authorization.pageBatchId || this.store.hasMarker(other.result.upload_task_id)))) throw new Error("该账号存在未解决的任务，请先核查原页面。");
+      this.preparingContinuation = true;
+      try {
+        this.eligible.clear(); this.continuationBatch = task.authorization.pageBatchId; this.stopped = false; this.paused = false;
+        const anchor = batch.find(other => this.store.hasMarker(other.result.upload_task_id));
+        if (anchor) {
+          await this.execute([anchor.result.upload_task_id]);
+          if (this.paused) {
+            if (this.cancelledIntents.has(intentKey(task.input))) return;
+            const failure = this.requireTask(anchor.result.upload_task_id).result.failure;
+            task.result = { ...task.result, state: "NEEDS_HUMAN", readyEvidence: undefined, retryable: false,
+              failure: uploadFailure("PAGE_CONTRACT_CHANGED", "page", "原批次页面无法核查，剩余成片尚未选文件。", failure?.next_action ?? "人工核查原页面；不能重传已选文件或创建替代页面继续。", true).failure };
+            if (!this.store.unavailable) await this.save(task); return;
+          }
+        }
+        for (const pending of batch) {
+          if (generation !== this.controlGeneration || this.stopping || this.stopped || this.store.unavailable || !this.store.config.enabled) return;
+          const other = this.requireTask(pending.result.upload_task_id);
+          if (this.store.hasMarker(other.result.upload_task_id) || this.cancelledIntents.has(intentKey(other.input)) || other.result.duplicate_of || !(other.result.upload_task_id === id || ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(other.result.state))) continue;
+          await this.phase(other, "PENDING");
+          if (this.cancelledIntents.has(intentKey(other.input))) { await this.cancel(other.result.upload_task_id); continue; }
+          if (generation !== this.controlGeneration || this.stopping || this.stopped || this.store.unavailable || !this.store.config.enabled) return;
+          this.eligible.add(other.result.upload_task_id);
+        }
+        if (generation !== this.controlGeneration || this.stopping || this.stopped || this.store.unavailable || !this.store.config.enabled) return;
+        const ids = this.pendingGroup(); for (const pending of ids) this.eligible.delete(pending);
+        await this.execute(ids);
+      } finally {
+        this.preparingContinuation = false;
+        if (this.eligible.size) void this.runPending().catch(() => this.changed());
+      }
+      await this.runPending();
     }); this.control = work; return work;
   }
   async cancel(id: string): Promise<void> {
     const task = this.requireTask(id); this.eligible.delete(id);
+    if (this.active?.ids.includes(id) || (task.result.state !== "WAITING_FOR_CONFIRMATION" && !task.result.duplicate_of)) this.cancelledIntents.add(intentKey(task.input));
     if (this.active?.ids.includes(id)) {
       const active = this.active; active.controller.abort();
       await this.bounded(() => active.port.stop(), 5000, new AbortController().signal).catch(() => { this.paused = true; });
@@ -222,7 +265,7 @@ export class DouyinUploadService {
     for (const task of owned()) await this.cancel(task.result.upload_task_id);
   }
   async stop(): Promise<void> {
-    this.controlGeneration++; this.stopping = true; this.stopped = true; this.eligible.clear(); this.currentIntents.clear(); this.active?.controller.abort();
+    this.controlGeneration++; this.stopping = true; this.stopped = true; this.eligible.clear(); this.currentIntents.clear(); this.continuationBatch = undefined; this.active?.controller.abort();
     try {
       await Promise.all([...this.sessions.values()].map(port => this.bounded(() => port.stop(), 5000, new AbortController().signal).catch(() => { this.paused = true; })));
       this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); }, 15000, new AbortController().signal).catch(() => { this.paused = true; });
@@ -247,10 +290,11 @@ export class DouyinUploadService {
         await this.save(first); if (!duplicate.result.readyEvidence) { this.paused = true; this.eligible.clear(); } return;
       }
     }
-    const controller = new AbortController(), key = first.authorization.pageBatchId;
+    const controller = new AbortController(), key = first.authorization.pageBatchId, recovery = this.store.hasMarker(first.result.upload_task_id);
+    const savedReady = new Set<string>();
     const port = this.sessions.get(key) ?? this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
     try {
-      const t = first.config.timeouts, recovery = this.store.hasMarker(first.result.upload_task_id);
+      const t = first.config.timeouts;
       if (tasks.length > MAX_UPLOAD_GROUP_SIZE || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
       if (!recovery) for (const task of tasks) { task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER"); }
       await this.bounded(signal => port.connect(first, signal), t.connect, controller.signal);
@@ -284,13 +328,13 @@ export class DouyinUploadService {
       for (let index = 0; index < tasks.length; index++) {
         controller.signal.throwIfAborted(); const task = tasks[index]!;
         task.result = { ...task.result, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: parsed[index], failure: undefined, retryable: false, timestamp: timestamp() };
-        await this.save(task);
+        await this.save(task); savedReady.add(task.result.upload_task_id);
       }
     } catch (error) {
       this.paused = true; this.eligible.clear();
       for (const id of ids) {
-        const task = this.requireTask(id); if (task.result.state === "WAITING_FOR_CONFIRMATION") continue;
-        const fenced = this.store.hasMarker(id), failure = fenced ? unknown().failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
+        const task = this.requireTask(id); if (task.result.state === "WAITING_FOR_CONFIRMATION" && (!recovery || savedReady.has(id))) continue;
+        const fenced = this.store.hasMarker(id), failure = fenced ? unknown(error instanceof UploadError ? error : undefined).failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
         task.result = { ...task.result, state: fenced || failure.requires_human ? "NEEDS_HUMAN" : controller.signal.aborted ? "CANCELLED" : failure.retryable ? "FAILED_RETRYABLE" : "FAILED_TERMINAL", upload_outcome: fenced ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", readyEvidence: undefined, failure, retryable: !fenced && failure.retryable, timestamp: timestamp() };
         if (!this.store.unavailable) await this.save(task);
       }
