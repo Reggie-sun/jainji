@@ -50,6 +50,33 @@ it("imports existing six-account configuration once, preserving source bytes and
   await rm(f.source);
   expect(await new QianchuanAccountSettings(path.join(f.root, "app")).restore(f.source)).toHaveLength(6);
 });
+it("renames a product without discovering or changing its Chrome, advertiser or plan, and restores the name", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const old = await f.settings.preflight("蝴蝶贴"), sourceBytes = await readFile(f.source);
+  const summaries = await f.settings.savePlan({ product: "蝴蝶贴", productName: "  新产品  ", planUrl: planUrl() });
+  expect(summaries.find(account => account.product === "蝴蝶贴")).toMatchObject({ productName: "新产品", browserPort: 9222 });
+  expect(f.discover).not.toHaveBeenCalled();
+  expect(await f.settings.preflight("蝴蝶贴")).toMatchObject({ product: old.product, productName: "新产品", cdpEndpoint: old.cdpEndpoint, advertiserId: old.advertiserId, adId: old.adId });
+  expect(old).not.toHaveProperty("productName");
+  await expect(f.settings.freeze("蝴蝶贴", old.configDigest)).rejects.toThrow("已变化");
+  expect(await readFile(f.source)).toEqual(sourceBytes);
+  expect(await new QianchuanAccountSettings(path.join(f.root, "app")).restore()).toEqual(summaries);
+  await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(old.advertiserId, "9999") });
+  expect(await f.settings.preflight("蝴蝶贴")).toMatchObject({ productName: "新产品", cdpEndpoint: old.cdpEndpoint, adId: "9999" });
+});
+it.each(["", "  ", "x".repeat(41), "名称\n换行", "眼贴"])("rejects invalid or ambiguous product names without changing the mapping: %s", async productName => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source); const before = await readFile(f.settings.file);
+  await expect(f.settings.savePlan({ product: "蝴蝶贴", productName, planUrl: planUrl() })).rejects.toThrow();
+  expect(await readFile(f.settings.file)).toEqual(before); expect(f.discover).not.toHaveBeenCalled();
+});
+it("rejects duplicate custom names even when the other account is already renamed", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  await f.settings.savePlan({ product: "蝴蝶贴", productName: "新产品", planUrl: planUrl() });
+  const before = await readFile(f.settings.file);
+  const other = await f.settings.preflight("眼贴");
+  await expect(f.settings.savePlan({ product: "眼贴", productName: "新产品", planUrl: planUrl(other.advertiserId, other.adId) })).rejects.toThrow();
+  expect(await readFile(f.settings.file)).toEqual(before);
+});
 it("migrates a previously authorized external mapping and never falls back from corrupt internal settings", async () => {
   const f = await fixture(); expect(await f.settings.restore(f.source)).toHaveLength(6);
   await writeFile(f.settings.file, "invalid JSON");

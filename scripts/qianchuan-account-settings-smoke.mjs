@@ -16,7 +16,7 @@ const environment = { ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(hom
 delete environment.ELECTRON_RUN_AS_NODE; delete environment.JIANJI_QIANCHUAN_ACCOUNT_CONFIG;
 const accountId = "9007199254740911";
 const plan = (id = accountId, ad = "9007199254740912") => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}&adId=${ad}`;
-let chrome, duplicate, appBrowser, child, exited, log;
+let chrome, duplicate, appBrowser, child, exited, log, productLabel = "蝴蝶贴";
 async function fixtureBrowser(name) {
   const context = await chromium.launchPersistentContext(path.join(home, name), {
     executablePath: process.env.JIANJI_CHROME_PATH || "/usr/bin/google-chrome", headless: true,
@@ -55,9 +55,10 @@ async function until(page, predicate) {
   throw new Error(`Account state did not settle: ${await page.getByRole("alert").allTextContents()}`);
 }
 async function edit(page, value) {
-  await page.locator('.qianchuan-account-products').getByRole("button", { name: /^蝴蝶贴/ }).click();
+  await page.locator('.qianchuan-account-products').getByRole("button", { name: `${productLabel} 已设置` }).or(page.locator('.qianchuan-account-products').getByRole("button", { name: `${productLabel} 未设置` })).click();
   assert.equal(await page.locator("#qianchuan-browser-port").count(), 0);
-  assert.equal(await page.locator(".qianchuan-account-editor input").count(), 0);
+  assert.equal(await page.locator(".qianchuan-account-editor input").count(), 1);
+  assert.equal(await page.getByLabel("产品名称", { exact: true }).inputValue(), productLabel);
   await page.getByLabel("千川计划链接", { exact: true }).fill(value);
 }
 try {
@@ -86,6 +87,24 @@ try {
   assert.match(ambiguity, /多个/); assert.deepEqual(await readFile(mapping), before);
   await duplicate.close(); duplicate = undefined;
   await chrome.close(); chrome = undefined;
+  // Only the display name changes; the browser can remain closed and the target stays fixed.
+  await edit(page, plan());
+  await page.getByLabel("产品名称", { exact: true }).fill("  ");
+  assert.equal(await page.getByRole("button", { name: "保存账号", exact: true }).isEnabled(), false);
+  await page.getByLabel("产品名称", { exact: true }).fill("眼贴");
+  assert.equal(await page.getByRole("button", { name: "保存账号", exact: true }).isEnabled(), false);
+  await page.getByLabel("产品名称", { exact: true }).fill("新产品");
+  await page.getByRole("button", { name: "保存账号", exact: true }).click();
+  productLabel = "新产品";
+  saved = await until(page, s => s.douyinUpload.accounts[0]?.productName === productLabel);
+  assert.equal(saved.douyinUpload.accounts[0].product, "蝴蝶贴");
+  assert.equal(saved.douyinUpload.accounts[0].browserPort, activePort);
+  assert.equal(saved.douyinUpload.accounts[0].advertiserId, accountId);
+  assert.equal(saved.douyinUpload.accounts[0].adId, "9007199254740912");
+  await edit(page, plan());
+  await page.getByLabel("产品名称", { exact: true }).fill("未保存名称");
+  await page.getByRole("button", { name: "取消", exact: true }).click();
+  assert.equal((await page.evaluate(() => window.jianji.getState())).douyinUpload.accounts[0].productName, productLabel);
   // Changing the plan in the same advertiser must work with the browser closed.
   await edit(page, plan(accountId, "9007199254740920"));
   await page.getByRole("button", { name: "保存账号", exact: true }).click();
@@ -102,7 +121,7 @@ try {
   assert.equal(restored.douyinUpload.config.enabled, false); assert.deepEqual(restored.douyinUpload.tasks, []);
   const state = JSON.parse(await readFile(path.join(profile, "douyin-upload/state.json"), "utf8"));
   assert.deepEqual(state.tasks, []); assert.deepEqual(state.intents, []);
-  const report = { result: "PASS", home, executable, automaticPortZeroDiscovery: true, noPortInput: true, actualElectronPreloadIpc: true, failedDiscoveryPreservesDraftAndMapping: true, duplicateBrowserRejected: true, planChangeWithBrowserClosed: true, forgedPortRejected: true, restartRestores: true, uploads: 0, confirmations: 0, adSettingChanges: 0, realAccountAttach: false, browserMetadataReadOnly: true };
+  const report = { result: "PASS", home, executable, automaticPortZeroDiscovery: true, noPortInput: true, actualElectronPreloadIpc: true, failedDiscoveryPreservesDraftAndMapping: true, duplicateBrowserRejected: true, renameWithBrowserClosedKeepsTarget: true, invalidNamesBlocked: true, cancelledNameNotSaved: true, planChangeWithBrowserClosed: true, forgedPortRejected: true, restartRestores: true, uploads: 0, confirmations: 0, adSettingChanges: 0, realAccountAttach: false, browserMetadataReadOnly: true };
   await writeFile(path.join(home, "report.json"), `${JSON.stringify(report, null, 2)}\n`);
   console.log(JSON.stringify(report));
 } finally { await stop(); await duplicate?.close(); await chrome?.close(); }

@@ -56,14 +56,14 @@ CodeGraph 已查询 service 的 entity 和 execute 关系，实际源代码确�
 
 # 4. Account Configuration Contract
 
-2026-09-29 用户明确修订为软件内账号设置：用户点选产品并粘贴千川计划链接，程序识别账户和计划，明确保存后供以后制作选择。原六账号 JSON 保持原格式，只作为一次性导入来源，不再要求用户日常编辑外部文件。六产品枚举保持现状，不根据链接顺序、当前页面或模型推测产品和浏览器绑定。
+2026-09-29 用户明确修订为软件内账号设置：用户点选产品并粘贴千川计划链接，程序识别账户和计划，明确保存后供以后制作选择。产品更换时允许修改显示名称，保留原 Chrome 绑定。六产品枚举作为稳定账号槽位保持现状，新增可选 `productName` 只描述用户填写的显示名称，不根据名称、链接顺序、当前页面或模型重新分配账号。旧六账号 JSON 仍可原样一次性导入，不再要求用户日常编辑外部文件。
 
 - 导入文件仍必须恰有六项；软件内私有设置可按产品逐项添加，最多六项。两者复用产品、CDP 端口、非空 advertiserId 唯一性和 strict 字段校验；缺少完整配置的产品不可选择上传。
 - 计划链接仅接受 `https://qianchuan.jinritemai.com/uni-prom`，拒绝用户信息、其他 origin/path、重复 `aavid` / `adId`、空值及非法 ID。从 query 中各取唯一的十进制字符串，不经 Number 转换；其余 query/fragment 不保存、不导航、不作为操作授权。
 - 链接不包含浏览器登录或 CDP 绑定，但端口属于程序连接细节，用户不填写。已有产品且账户未变时保留原绑定；首次设置或更换账户时，主进程只读识别当前用户正在运行的 Chrome/Chromium 主进程的调试参数，必要时读取该进程指定目录的有限 DevToolsActivePort 元数据，再从 loopback 调试端点的有限 tab URL 列表定位唯一匹配的 aavid。零匹配或多个浏览器匹配时拒绝保存并提示打开对应账户的计划或关闭重复窗口后重新识别；无调试能力时明确报告浏览器连接不可用，不伪称普通 Chrome 可附加连接。软件不扫描固定端口范围、不读登录数据、不猜 profile、不登录、启动或重启 Chrome。URL 匹配只建立候选连接，正式上传仍须可见双 ID 及页面归属核验。
 - 软件内 mapping 由 `QianchuanAccountSettings` 独占，保存在 userData 下的私有上传目录；原 reader 继续负责有限读取、普通文件/当前用户/0600 或更严格/symlink 检查及 digest。Windows 未通过权限/持久化验证时上传保持阻断。
 - 新安装不扫描磁盘、不消费账号环境变量。已授权外部路径在软件内 mapping 不存在时沿原 reader 读取并导入；软件内设置存在时优先使用它，损坏或已保存文件丢失时阻断，不回退外部文件。导入不改原文件；修改只写软件内 mapping。保存采用独占 writer lock、私有临时文件、fsync、原子替换和目录同步，结果不确定时阻断后续配置使用；不自动清除残留 lock。
-- 账号保存入口为 trusted main IPC 的 strict `{ product, planUrl }`，拒绝端口、任意 path、endpoint、独立 ID 或额外字段。renderer 显示识别预览，main 独立重新解析并识别连接后保存；界面不提供端口输入。连接探测限当前用户的运行进程、loopback、请求数量、响应大小和 deadline，拒绝重定向；不返回 profile、凭据、内部路径或原长 URL。该入口只维护设置，不授权上传。
+- 账号保存入口为 trusted main IPC 的 strict `{ product, planUrl, productName? }`，拒绝端口、任意 path、endpoint、独立 ID 或额外字段。`productName` 由共享 schema 去首尾空白、限制 1–40 字符并拒绝控制字符；各槽位的有效显示名称（未设置时沿用默认名称）不得重复。省略该字段的旧调用保留已存名称。设置按钮、制作及批量账号下拉框和高级账号摘要显示有效名称，但提交稳定 `product` 值。仅改名保留原链接及 `cdpEndpoint / advertiserId / adId`，不探测 Chrome；已有冻结目标和上传账本不改写。renderer 显示识别预览，main 独立重新解析并识别连接后保存；界面不提供端口输入。连接探测限当前用户的运行进程、loopback、请求数量、响应大小和 deadline，拒绝重定向；不返回 profile、凭据、内部路径或原长 URL。该入口只维护设置，不授权上传。
 - 制作入口仍只提交产品枚举；设置、制作预检和 intent 准入均读取当前私有映射。冻结 `product / cdpEndpoint / advertiserId / adId` 与内容 digest；预检到 intent 之间变化则上传初始化失败，同批消费同一份主进程快照。已注册的旧批次仍使用旧冻结目标，不被新计划重定向。
 - 共享 schema 与 URL 解析由 `src/shared/qianchuan-account.ts` 独占；`qianchuan-account-config.ts` 负责安全读取，`qianchuan-account-settings.ts` 负责内部持久化和一次性导入。原诊断 CLI 的六项导入格式不变，不成为桌面 runtime dependency。全局与每批上传默认关闭、显式选择、永久 fence、UNKNOWN 零重传及停在确定前均不变。
 
@@ -133,7 +133,7 @@ fence 后断线、崩溃、timeout、取消或 ready 保存失败，只能对原
 
 # 9. Public Surface And Safety
 
-全局设置：enabled 默认 false、主进程持有软件内 mapping 的 accountConfigPath、既有有限 timeouts 和默认关闭的诊断。软件内账号设置是唯一映射 owner，UI 只编辑尚未保存的计划链接并展示解析预览。用户点产品、粘贴链接、保存账号；导入旧 JSON、时限与诊断默认收纳到高级设置。配置变化只影响新批次选择。
+全局设置：enabled 默认 false、主进程持有软件内 mapping 的 accountConfigPath、既有有限 timeouts 和默认关闭的诊断。软件内账号设置是唯一映射 owner，UI 编辑尚未保存的产品显示名称和计划链接并展示解析预览。用户点产品、修改名称或粘贴链接、保存账号；导入旧 JSON、时限与诊断默认收纳到高级设置。配置变化只影响新批次选择。
 
 制作/追加控件写清“成片上传至所选千川计划，停在确定前”，取消 creator caption 和“提交发布”措辞。结果行显示文件名、产品、账户/计划 ID、状态与明确 reason；已完成上传提供“在 Chrome 中检查并确认”的说明，允许停止/安全继续/只读核查，不提供提交按钮、任意浏览器控制或清除 fence 按钮。
 

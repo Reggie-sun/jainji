@@ -50,8 +50,20 @@ it("shows available products without making file configuration a daily step", ()
   }));
   const advanced = html.match(/<details[^>]*><summary>高级设置<\/summary>[\s\S]*?<\/details>/)![0];
   const main = html.replace(advanced, "");
-  expect(main).toContain("千川账号设置"); expect(main).toContain("粘贴千川计划链接即可更换计划"); expect(main).toContain("眼贴<small>已设置"); expect(main).not.toContain("账户 123");
+  expect(main).toContain("千川账号设置"); expect(main).toContain("更换产品名称或千川计划"); expect(main).toContain("眼贴<small>已设置"); expect(main).not.toContain("账户 123");
   expect(advanced).toContain("账户 123 / 计划 456"); expect(main).not.toContain('value="眼贴"');
+});
+it("shows editable product names in account settings and both selectors while retaining stable account values", () => {
+  const accounts = [{ product: "眼贴" as const, productName: "新产品", advertiserId: "123", adId: "456", available: true }];
+  const html = renderToStaticMarkup(createElement(DouyinUploadPanel, {
+    projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts, ready: false, message: "自动上传已关闭。", tasks: [], legacyTasks: [] }, onState: () => {},
+  }));
+  expect(html).toContain("新产品<small>已设置"); expect(html).toContain("新产品 · 账户 123 / 计划 456");
+  for (const compact of [true, false]) {
+    const selector = renderToStaticMarkup(createElement(DouyinUploadControls, { value: { enabled: true, accountProduct: "眼贴" }, accounts, compact, onChange: () => {} }));
+    expect(selector).toContain('<option value="眼贴" selected="">新产品</option>');
+    expect(selector).not.toContain('value="新产品"');
+  }
 });
 it("hands ready uploads back to Chrome without a confirmation action", () => {
   const html = panel(task({ state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: { advertiserId: "123", adId: "456", fileName: "成片.mp4", selectedCount: 1, observedAt: "2026-09-27T00:00:00.000Z", pageOwnership: { targetId: "owned", pageBatchId: projectId, modalSessionId: projectId } } }));

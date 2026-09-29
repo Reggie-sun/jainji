@@ -1,11 +1,11 @@
-import { QIANCHUAN_PRODUCTS, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
+import { qianchuanProductName, QIANCHUAN_PRODUCTS, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
 
 export interface UploadSelectionDraft { enabled: true; accountProduct?: QianchuanProduct; }
 export function DouyinUploadControls({ value, onChange, accounts = [], disabled = false, idPrefix = "douyin-upload", compact = false }: {
   value?: UploadSelectionDraft; onChange(value?: UploadSelectionDraft): void;
   accounts?: QianchuanAccountSummary[]; disabled?: boolean; idPrefix?: string; compact?: boolean;
 }) {
-  const options = QIANCHUAN_PRODUCTS.map(product => { const account = accounts.find(item => item.product === product); return <option key={product} value={product} disabled={!account?.available}>{product}{account?.available ? "" : "（缺少可用配置）"}</option>; });
+  const options = QIANCHUAN_PRODUCTS.map(product => { const account = accounts.find(item => item.product === product); return <option key={product} value={product} disabled={!account?.available}>{qianchuanProductName(product, accounts)}{account?.available ? "" : "（缺少可用配置）"}</option>; });
   if (compact) return <label htmlFor={`${idPrefix}-product`}>千川上传
     <select id={`${idPrefix}-product`} aria-label="千川上传" value={value?.accountProduct ?? ""} disabled={disabled} title="本项成片自动上传；最多 9 条一组，停在确定前"
       onChange={event => onChange(event.target.value ? { enabled: true, accountProduct: event.target.value as QianchuanProduct } : undefined)}>

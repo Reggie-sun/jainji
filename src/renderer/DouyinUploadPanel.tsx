@@ -4,6 +4,7 @@ import { QianchuanUploadConfigSchema, type DouyinUploadStatus, type QianchuanUpl
 import "./douyin-upload.css";
 import { QianchuanAccountSettings } from "./QianchuanAccountSettings";
 import { qianchuanUploadLabels as labels } from "./qianchuan-upload-status";
+import { qianchuanProductName } from "../shared/qianchuan-account";
 const processingStates: QianchuanUploadResult["state"][] = ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"];
 const defaultConfig = QianchuanUploadConfigSchema.parse({});
 export function DouyinUploadPanel({ projectId, status, onState }: { projectId: string; status?: DouyinUploadStatus; onState(state: DesktopState): void; }) {
@@ -33,7 +34,7 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
           <button className="button secondary compact" type="button" disabled={busy} onClick={() => void perform(() => window.jianji.selectQianchuanAccountConfig())}>导入已有账号配置</button>
           <button className="button secondary compact" type="button" disabled={busy || !status?.configSelected} onClick={() => void perform(() => window.jianji.refreshQianchuanAccounts())}>刷新账号摘要</button>
         </div>
-        {status?.accounts.map(account => <p key={account.product}>{account.product} · {account.available ? `账户 ${account.advertiserId} / 计划 ${account.adId}` : "缺少可用配置"}</p>)}
+        {status?.accounts.map(account => <p key={account.product}>{qianchuanProductName(account.product, status.accounts)} · {account.available ? `账户 ${account.advertiserId} / 计划 ${account.adId}` : "缺少可用配置"}</p>)}
         <fieldset disabled={busy}><legend>操作时限（毫秒）</legend>{(Object.keys(config.timeouts) as (keyof typeof config.timeouts)[]).map(field => <label key={field}>{({ connect: "连接", navigation: "页面加载", fileInput: "文件选择", processing: "平台处理", action: "页面操作", confirmation: "只读核查" })[field]}<input type="number" min={1} value={config.timeouts[field]} onChange={event => setConfig(current => ({ ...current, timeouts: { ...current.timeouts, [field]: event.target.valueAsNumber } }))} /></label>)}</fieldset>
         <label><input type="checkbox" checked={config.captureFailureDiagnostics} disabled={busy} onChange={event => setConfig(current => ({ ...current, captureFailureDiagnostics: event.target.checked }))} />保存有限本机诊断</label>
       </details>

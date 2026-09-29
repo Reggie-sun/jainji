@@ -224,6 +224,30 @@ describe("Qianchuan upload service", () => {
     await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
     expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ adId: "2003", state: "WAITING_FOR_CONFIRMATION" });
   });
+  it("keeps frozen authorization and fences across a settings rename, restart and same-byte new batch", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const planUrl = "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=2003";
+    await f.service.saveAccount({ product: "眼贴", productName: "首轮产品", planUrl });
+    const batch = await f.createBatch(["name-stable bytes"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const old = structuredClone(f.store.tasks()[0]!), intents = structuredClone(f.store.intents()), calls = [...f.events];
+    const fencePath = path.join(f.store.root, "selection-fences", `${old.result.upload_task_id}.json`), fence = await readFile(fencePath);
+    await f.service.saveAccount({ product: "眼贴", productName: "后续产品", planUrl });
+    expect(f.store.tasks()[0]).toEqual(old); expect(f.store.intents()).toEqual(intents); expect(await readFile(fencePath)).toEqual(fence);
+    expect((await f.service.preflight(selection("眼贴"), 1))?.target).toMatchObject({ productName: "后续产品", cdpEndpoint: old.authorization.target.cdpEndpoint, advertiserId: "1003", adId: "2003" });
+    const reopened = new DouyinUploadStore(f.store.root); await reopened.load();
+    const restored = new DouyinUploadService(reopened, { accounts: new QianchuanAccountSettings(f.store.root), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
+    await restored.restoreConfig();
+    expect(reopened.task(old.result.upload_task_id)).toEqual(old); expect(reopened.intents()).toEqual(intents);
+    expect(restored.status(batch.projectId).accounts.find(account => account.product === "眼贴")?.productName).toBe("后续产品");
+    expect(f.events).toEqual(calls); expect(await readFile(fencePath)).toEqual(fence);
+    const next = await f.createBatch(["name-stable bytes"]), nextAuthorization = await restored.preflight(selection("眼贴"), 1);
+    await restored.registerBatch(next.batchIdentity, selection("眼贴"), nextAuthorization);
+    await restored.enqueueFinalArtifact(next.identities[0]!); await restored.runPending();
+    expect(restored.status(next.projectId).tasks[0]).toMatchObject({ duplicate_of: old.result.upload_task_id, upload_outcome: "READY" });
+    expect(f.events).toEqual(calls); expect(reopened.task(old.result.upload_task_id)).toEqual(old);
+  });
   it("rejects changed mapping between preflight and admission without saving intents or opening browsers", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
     const batch = await f.createBatch(["changed native mapping"]), authorization = await f.service.preflight(selection("眼贴"), 1);

@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildSync } from "esbuild";
 import { spawnSync } from "node:child_process";
-import { DouyinUploadStore, uploadTaskId, frozenInputDigest, type UploadTaskRecord } from "../src/main/douyin-upload-store";
+import { DouyinUploadStore, uploadTaskId, frozenInputDigest, sameTargetBytes, type UploadTaskRecord } from "../src/main/douyin-upload-store";
 import { legacyTaskId, legacyInputDigest } from "../src/main/douyin-upload-legacy";
-import { DouyinUploadConfigSchema, QianchuanUploadConfigSchema, type PageOwnership } from "../src/shared/douyin-upload";
+import { DouyinUploadConfigSchema, QianchuanUploadConfigSchema, UploadAuthorizationSchema, type PageOwnership } from "../src/shared/douyin-upload";
 
 const roots: string[] = [];
 vi.mock("node:fs/promises", async importOriginal => {
@@ -29,6 +29,25 @@ const ownership = (task: UploadTaskRecord): PageOwnership => ({ targetId: "fixtu
 async function fixture() { const root = await mkdtemp(path.join(tmpdir(), "qianchuan-store-")); roots.push(root); const store = new DouyinUploadStore(root); await store.load(); return { root, store }; }
 
 describe("v2 target-bound selection fences", () => {
+  it("restores named and legacy frozen targets without changing task identity, dedup or permanent fences", async () => {
+    const { root, store } = await fixture(), legacy = makeRecord(), named = makeRecord();
+    named.authorization = UploadAuthorizationSchema.parse({ ...named.authorization, target: { ...named.authorization.target, productName: "新产品" } });
+    named.inputDigest = frozenInputDigest(named.input, named.authorization);
+    const renamed = structuredClone(named); renamed.authorization.target.productName = "下个产品";
+    expect(uploadTaskId(named.input, renamed.authorization.target)).toBe(named.result.upload_task_id);
+    expect(sameTargetBytes(named, renamed)).toBe(true);
+    await saveRecord(store, legacy); await saveRecord(store, named);
+    await store.markSelecting(named.result.upload_task_id, ownership(named), 1);
+    await expect(store.saveTask({ ...named, authorization: renamed.authorization })).rejects.toThrow();
+    const reopened = new DouyinUploadStore(root); await reopened.load();
+    expect(reopened.unavailable).toBe(false);
+    expect(reopened.task(legacy.result.upload_task_id)?.authorization).toEqual(legacy.authorization);
+    expect(reopened.task(named.result.upload_task_id)?.authorization).toEqual(named.authorization);
+    expect(reopened.task(named.result.upload_task_id)?.inputDigest).toBe(named.inputDigest);
+    expect(reopened.task(named.result.upload_task_id)?.result).toMatchObject({ state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false });
+    expect(reopened.hasMarker(named.result.upload_task_id)).toBe(true);
+    await expect(reopened.markSelecting(named.result.upload_task_id, ownership(named), 1)).rejects.toThrow();
+  });
   it("creates and syncs an exclusive selection fence, restoring only read-only permission after restart", async () => {
     const { root, store } = await fixture(), task = makeRecord(); await saveRecord(store, task);
     const page = ownership(task); await store.markSelecting(task.result.upload_task_id, page, 1);

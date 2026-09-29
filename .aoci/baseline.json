@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-29T10:44:03Z",
+  "updated_at": "2026-09-29T11:35:32Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "5e83cfc9141447bb9d8a1f7f7e15a131c5a609e045642c651b1b090c50c1ba34",
-      "size": 65136,
-      "normalized_sha256": "5e83cfc9141447bb9d8a1f7f7e15a131c5a609e045642c651b1b090c50c1ba34"
+      "sha256": "344933ee8712374ca6016e623b6ffc889224986e3da7c5b6bebf1517c3e631da",
+      "size": 65183,
+      "normalized_sha256": "344933ee8712374ca6016e623b6ffc889224986e3da7c5b6bebf1517c3e631da"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1388,9 +1388,9 @@
       "normalized_sha256": "59556bcbab600172edf14b66f906c519a985c6c91713032f0bca43c8e2ec8106"
     },
     "src/main/qianchuan-account-settings.ts": {
-      "sha256": "0cb7ad9c043abbb4cf3ee9856be3243b68c62a5c3b81528e3c91750b15affb34",
-      "size": 5689,
-      "normalized_sha256": "0cb7ad9c043abbb4cf3ee9856be3243b68c62a5c3b81528e3c91750b15affb34"
+      "sha256": "a1a46111c8c42b8e8a670d49021f5c4194beef2082a38f5368af26d9b20e3a9c",
+      "size": 5779,
+      "normalized_sha256": "a1a46111c8c42b8e8a670d49021f5c4194beef2082a38f5368af26d9b20e3a9c"
     },
     "src/main/qianchuan-browser-discovery.ts": {
       "sha256": "055a482aa824ee48cf4c9a5829ed7d2ee57a57fad88f4e49e8257e8e17164c4c",
@@ -1688,14 +1688,14 @@
       "normalized_sha256": "d189b48584ac840378bc2d0cd27c8e5050a4f78916bd78d1482a8fd31fcf0802"
     },
     "src/renderer/DouyinUploadControls.tsx": {
-      "sha256": "b71d7000f52ab5781681ad7f64ab475c968fd4c8692130cb38688fb5a70fc8d1",
-      "size": 2601,
-      "normalized_sha256": "b71d7000f52ab5781681ad7f64ab475c968fd4c8692130cb38688fb5a70fc8d1"
+      "sha256": "690ee818399d7f8d816d7b1e56a14f1be1a04cafc95a595dd17f7c1c6c0f7b03",
+      "size": 2655,
+      "normalized_sha256": "690ee818399d7f8d816d7b1e56a14f1be1a04cafc95a595dd17f7c1c6c0f7b03"
     },
     "src/renderer/DouyinUploadPanel.tsx": {
-      "sha256": "438afa2b74d17154feab9eb3573467bbbcd9996f390fb0dd62366bec24c6589d",
-      "size": 7049,
-      "normalized_sha256": "438afa2b74d17154feab9eb3573467bbbcd9996f390fb0dd62366bec24c6589d"
+      "sha256": "83b8e61f1c2cc9a5282a5d9c7e48250c479ce962697dac5ab492cb024390b48e",
+      "size": 7156,
+      "normalized_sha256": "83b8e61f1c2cc9a5282a5d9c7e48250c479ce962697dac5ab492cb024390b48e"
     },
     "src/renderer/ExportSettingsPanel.tsx": {
       "sha256": "6aa6e9b01329b37278c9dc228aa5f9b931fa0e476a7b214850d3014ed2aac9bf",
@@ -1728,9 +1728,9 @@
       "normalized_sha256": "5dea88820eb25f54eb83aba80e3ed03f9652fdfbd8a01b2c87badfcf433686b2"
     },
     "src/renderer/QianchuanAccountSettings.tsx": {
-      "sha256": "62ca28482678a7bdfd15cfb0c6e259c965199f5cdb9f50714ee0c932b7925742",
-      "size": 2786,
-      "normalized_sha256": "62ca28482678a7bdfd15cfb0c6e259c965199f5cdb9f50714ee0c932b7925742"
+      "sha256": "49cd9641206738c1d70b363c1ae03dc05a42ba3ee8e950c2881c0679424abd72",
+      "size": 3824,
+      "normalized_sha256": "49cd9641206738c1d70b363c1ae03dc05a42ba3ee8e950c2881c0679424abd72"
     },
     "src/renderer/ResultsPanel.tsx": {
       "sha256": "5f3181a886da8dfbbb402d96087f14827720da58bd3cd0a8bdc27db20e93aa48",
@@ -1979,9 +1979,9 @@
       "normalized_sha256": "ccd479e7d0a7cd7cb2777f3554057aac4d4933c36d20781866d61328126c1b5a"
     },
     "src/shared/qianchuan-account.ts": {
-      "sha256": "0e2737f341f4357fa67a8795ce876bf96dff99bc10b46c6397b04b6b1048a3e8",
-      "size": 4515,
-      "normalized_sha256": "0e2737f341f4357fa67a8795ce876bf96dff99bc10b46c6397b04b6b1048a3e8"
+      "sha256": "b320e30dec855eebe3357de48f4dde8706f844b39963844e87547d1153888d96",
+      "size": 5537,
+      "normalized_sha256": "b320e30dec855eebe3357de48f4dde8706f844b39963844e87547d1153888d96"
     },
     "src/shared/shape-cover.ts": {
       "sha256": "8e9c6ca92189a84dc76ee11d96566e0ac5151caf5cc410e91da29f1de71a7796",

@@ -77,7 +77,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       const accounts = await this.exists() ? (await readPrivateConfig(this.file, parseSettings)).accounts : [];
       const old = accounts.find(account => account.product === parsed.product);
       const cdpEndpoint = old?.advertiserId === ids.advertiserId ? old.cdpEndpoint : await this.discoverBrowser(ids.advertiserId);
-      const account: QianchuanAccount = { product: parsed.product, cdpEndpoint, ...ids };
+      const account: QianchuanAccount = { ...old, product: parsed.product, cdpEndpoint, ...ids, ...(parsed.productName !== undefined ? { productName: parsed.productName } : {}) };
       return this.save(old ? accounts.map(value => value.product === parsed.product ? account : value) : [...accounts, account]);
     });
   }

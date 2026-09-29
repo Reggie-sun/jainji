@@ -3,6 +3,7 @@ import { z } from "zod";
 export const QIANCHUAN_PRODUCTS = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂", "热敷贴"] as const;
 export const QianchuanProductSchema = z.enum(QIANCHUAN_PRODUCTS);
 export type QianchuanProduct = z.infer<typeof QianchuanProductSchema>;
+export const QianchuanProductNameSchema = z.string().trim().min(1, "请填写产品名称。").max(40, "产品名称最多 40 个字符。").regex(/^[^\u0000-\u001f\u007f]+$/, "产品名称不能包含换行或控制字符。");
 const accountId = z.string().regex(/^(?:|[1-9][0-9]{0,19})$/, "ID 必须是带引号的十进制字符串，未填写时保留空字符串。");
 const endpoint = z.string().max(64).refine(value => {
   const match = /^http:\/\/127\.0\.0\.1:([1-9][0-9]{0,4})$/.exec(value);
@@ -10,7 +11,7 @@ const endpoint = z.string().max(64).refine(value => {
 }, "CDP 地址必须为 http://127.0.0.1:端口，端口范围为 1–65535。");
 
 export const QianchuanAccountSchema = z.object({
-  product: QianchuanProductSchema, cdpEndpoint: endpoint, advertiserId: accountId, adId: accountId,
+  product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), cdpEndpoint: endpoint, advertiserId: accountId, adId: accountId,
 }).strict().refine(value => !value.adId || Boolean(value.advertiserId), "填写计划 ID 前必须填写广告账户 ID。");
 export type QianchuanAccount = z.infer<typeof QianchuanAccountSchema>;
 const uniqueBindings = (value: { accounts: QianchuanAccount[] }, ctx: z.RefinementCtx) => {
@@ -24,6 +25,8 @@ const uniqueBindings = (value: { accounts: QianchuanAccount[] }, ctx: z.Refineme
     products.add(account.product); ports.add(account.cdpEndpoint);
     if (account.advertiserId) accounts.add(account.advertiserId);
   }
+  const names = QIANCHUAN_PRODUCTS.map(product => qianchuanProductName(product, value.accounts));
+  if (new Set(names).size !== names.length) ctx.addIssue({ code: "custom", message: "产品名称不能重复，请使用不同名称区分账号。" });
 };
 export const QianchuanAccountConfigSchema = z.object({
   version: z.literal(1), accounts: z.array(QianchuanAccountSchema).length(QIANCHUAN_PRODUCTS.length),
@@ -33,7 +36,7 @@ export const QianchuanAccountSettingsSchema = z.object({
   version: z.literal(1), accounts: z.array(QianchuanAccountSchema).max(QIANCHUAN_PRODUCTS.length),
 }).strict().superRefine(uniqueBindings);
 export const QianchuanAccountSetupSchema = z.object({
-  product: QianchuanProductSchema, planUrl: z.string().trim().min(1).max(16384),
+  product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), planUrl: z.string().trim().min(1).max(16384),
 }).strict();
 export type QianchuanAccountSetup = z.infer<typeof QianchuanAccountSetupSchema>;
 
@@ -51,10 +54,16 @@ export function parseQianchuanPlanUrl(input: string): { advertiserId: string; ad
 
 export interface QianchuanAccountSummary {
   product: QianchuanProduct;
+  productName?: string;
   advertiserId: string;
   adId: string;
   available: boolean;
   browserPort?: number;
+}
+
+/** Names are presentation only; the original product remains the stable account slot. */
+export function qianchuanProductName(product: QianchuanProduct, accounts: readonly { product: QianchuanProduct; productName?: string }[]): string {
+  return accounts.find(account => account.product === product)?.productName ?? product;
 }
 
 /** The diagnostic CLI and main process share this strict mapping owner. */
@@ -63,7 +72,7 @@ export function parseAccountConfig(value: unknown): QianchuanAccount[] {
 }
 export function accountAvailable(account: QianchuanAccount): boolean { return Boolean(account.advertiserId && account.adId); }
 export function accountSummary(account: QianchuanAccount): QianchuanAccountSummary {
-  return { product: account.product, advertiserId: account.advertiserId, adId: account.adId, available: accountAvailable(account), browserPort: Number(new URL(account.cdpEndpoint).port) };
+  return { product: account.product, ...(account.productName !== undefined ? { productName: account.productName } : {}), advertiserId: account.advertiserId, adId: account.adId, available: accountAvailable(account), browserPort: Number(new URL(account.cdpEndpoint).port) };
 }
 export function accountPageUrl(value: QianchuanAccount): string {
   const account = QianchuanAccountSchema.parse(value);
