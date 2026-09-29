@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-28T22:14:13Z",
+  "updated_at": "2026-09-29T10:44:03Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "a758375dd41a8d39768573413c93a746af449fcc19d64ed1ea767cf8e52a004f",
-      "size": 65119,
-      "normalized_sha256": "a758375dd41a8d39768573413c93a746af449fcc19d64ed1ea767cf8e52a004f"
+      "sha256": "5e83cfc9141447bb9d8a1f7f7e15a131c5a609e045642c651b1b090c50c1ba34",
+      "size": 65136,
+      "normalized_sha256": "5e83cfc9141447bb9d8a1f7f7e15a131c5a609e045642c651b1b090c50c1ba34"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1398,9 +1398,9 @@
       "normalized_sha256": "055a482aa824ee48cf4c9a5829ed7d2ee57a57fad88f4e49e8257e8e17164c4c"
     },
     "src/main/qianchuan-page-contract.ts": {
-      "sha256": "422394ddff0273f5266a7dcd52e35e73986cab0c2a6341189c873f74a32f52c8",
-      "size": 17937,
-      "normalized_sha256": "422394ddff0273f5266a7dcd52e35e73986cab0c2a6341189c873f74a32f52c8"
+      "sha256": "635d74a425d9030ac370cfd43fbdb618def482739000cab4ebebaf83b6afafbb",
+      "size": 18099,
+      "normalized_sha256": "635d74a425d9030ac370cfd43fbdb618def482739000cab4ebebaf83b6afafbb"
     },
     "src/main/queue.ts": {
       "sha256": "3985aada1b83bb1659cd9cb957ce35a0b29b605a2a8fbd5000fd60e4a556c498",

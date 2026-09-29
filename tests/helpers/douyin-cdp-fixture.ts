@@ -50,6 +50,8 @@ export interface QianchuanFixtureControls {
   duplicateAddButton?: boolean;
   duplicateDropTarget?: boolean;
   wrongAdvertiser?: boolean;
+  unrelatedAdvertiserId?: boolean;
+  duplicateAccount?: boolean;
   wrongPlan?: boolean;
   duplicateUpload?: boolean;
   duplicateConfirm?: boolean;

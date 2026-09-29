@@ -1,5 +1,5 @@
 import { randomUUID, createHash } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
@@ -7,8 +7,11 @@ import { DouyinCdpUploader, douyinReadiness } from "../src/main/douyin-cdp-uploa
 import { PRODUCTION_QIANCHUAN_CONTRACT, type QianchuanPageContract } from "../src/main/qianchuan-page-contract.js";
 import type { QianchuanFixture, QianchuanFixtureControls } from "./helpers/douyin-cdp-fixture.js";
 import { resolveChromeExecutable, startQianchuanFixture } from "./helpers/douyin-cdp-fixture.js";
-import { frozenInputDigest, uploadTaskId, type UploadTaskRecord } from "../src/main/douyin-upload-store.js";
-import { now } from "../src/main/domain.js";
+import { DouyinUploadStore, frozenInputDigest, uploadTaskId, type UploadTaskRecord } from "../src/main/douyin-upload-store.js";
+import { DouyinUploadService } from "../src/main/douyin-upload-service.js";
+import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config.js";
+import { QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account.js";
+import { BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION, DEFAULT_PRESET, createDefaultTemplate, now, type QueueState } from "../src/main/domain.js";
 import { QianchuanUploadConfigSchema } from "../src/shared/douyin-upload.js";
 
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
@@ -417,6 +420,8 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     { controls: { screen: "login" } satisfies QianchuanFixtureControls, code: "LOGIN_REQUIRED" },
     { controls: { screen: "challenge" } satisfies QianchuanFixtureControls, code: "CHALLENGE_REQUIRED" },
     { controls: { wrongAdvertiser: true } satisfies QianchuanFixtureControls, code: "PAGE_CONTRACT_CHANGED" },
+    { controls: { wrongAdvertiser: true, unrelatedAdvertiserId: true } satisfies QianchuanFixtureControls, code: "PAGE_CONTRACT_CHANGED" },
+    { controls: { duplicateAccount: true } satisfies QianchuanFixtureControls, code: "PAGE_CONTRACT_CHANGED" },
     { controls: { wrongDrawerPlan: true } satisfies QianchuanFixtureControls, code: "PAGE_CONTRACT_CHANGED" },
     { controls: { duplicateAddButton: true } satisfies QianchuanFixtureControls, code: "PAGE_CONTRACT_CHANGED" },
     { controls: { duplicateUpload: true } satisfies QianchuanFixtureControls, code: "PAGE_CONTRACT_CHANGED" },
@@ -444,6 +449,61 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     const prepared = await uploader.open([task], [], new AbortController().signal);
     expect(prepared.pageOwnership.pageBatchId).toBe(task.authorization.pageBatchId);
     expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toEqual([]);
+  });
+
+  it("ignores an unrelated matching advertiser id when the unique account region matches", async () => {
+    productionFixture!.setControls({ unrelatedAdvertiserId: true });
+    const task = await productionTask(`scoped-account-${randomUUID()}.mp4`);
+    const uploader = productionUploader(), signal = new AbortController().signal;
+    await uploader.connect(task, signal);
+    expect((await uploader.open([task], [], signal)).selectedIndex).toBe(1);
+    expect((await productionFixture!.inspect()).events.filter(event => event.type === "drop" || event.type === "confirm" || event.type === "settings")).toEqual([]);
+  });
+
+  it("retains permanent fences and blocks later groups when a newly dropped row never appears, including read-only recovery", async () => {
+    const source = productionFixture!;
+    const batchId = randomUUID(), projectId = randomUUID(), pageBatchId = randomUUID();
+    const tasks = await Promise.all(Array.from({ length: 21 }, (_, i) => productionTask(`missing-new-${i}.mp4`, batchId, pageBatchId, 21, projectId)));
+    source.setControls({ removeName: tasks[9]!.result.file_name, processingDelayMs: 100 });
+    const state: QueueState = {
+      schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, updatedAt: now(),
+      batch: { schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [],
+        outputDirectory: tempRoot, preset: DEFAULT_PRESET, status: "completed", estimatedBytes: 0, createdAt: now(),
+        tasks: tasks.map(task => ({ id: task.input.export_task_id, batchId, mediaId: randomUUID(), status: "completed", progress: 1, attempt: 1, attempts: [], createdAt: now(), outputPath: task.input.video_path,
+          outputArtifact: { taskId: task.input.export_task_id, path: task.input.video_path, sizeBytes: task.input.size_bytes, durationMs: 1000, createdAt: now() } })),
+      },
+    };
+    const store = new DouyinUploadStore(path.join(tempRoot, `missing-row-store-${randomUUID()}`));
+    await store.load();
+    const configPath = path.join(tempRoot, `accounts-${randomUUID()}.json`);
+    await writeFile(configPath, JSON.stringify({ version: 1, accounts: QIANCHUAN_PRODUCTS.map((product, i) => ({ product,
+      cdpEndpoint: product === "眼贴" ? source.cdpEndpoint : `http://127.0.0.1:${14000 + i}`,
+      advertiserId: product === "眼贴" ? "123456" : String(200000 + i), adId: product === "眼贴" ? "987654" : String(300000 + i) })) }), { mode: 0o600 });
+    const service = new DouyinUploadService(store, { loadBatch: async () => structuredClone(state), browser: productionUploader, accounts: new QianchuanAccountConfigReader() });
+    try {
+      await service.chooseConfig(configPath);
+      await service.configure({ enabled: true, timeouts: { processing: 1500, confirmation: 3000 } });
+      const selection = { enabled: true as const, accountProduct: "眼贴" as const };
+      await service.registerBatch(state.batch, selection, await service.preflight(selection, 21));
+      for (const task of tasks) await service.enqueueFinalArtifact({ project_id: projectId, batch_id: batchId, export_task_id: task.input.export_task_id });
+      await service.runPending();
+      const records = tasks.map(task => store.tasks().find(record => record.input.export_task_id === task.input.export_task_id)!);
+      expect(records.slice(0, 9).every(task => task.result.upload_outcome === "READY")).toBe(true);
+      expect(records.slice(9, 18).every(task => task.result.state === "NEEDS_HUMAN" && task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
+      expect(records.slice(18).every(task => task.result.upload_outcome === "NOT_SELECTED" && !store.hasMarker(task.result.upload_task_id))).toBe(true);
+      const fencePaths = records.slice(0, 18).map(task => path.join(store.root, "selection-fences", `${task.result.upload_task_id}.json`));
+      const fences = await Promise.all(fencePaths.map(file => readFile(file)));
+      const eventsBefore = (await source.inspect()).events.filter(event => ["drop", "click", "confirm", "settings"].includes(event.type));
+      expect(eventsBefore.filter(event => event.type === "drop").map(event => event.names?.length)).toEqual([9, 9]);
+      await service.resume(records[9]!.result.upload_task_id);
+      await service.runPending();
+      expect((await source.inspect()).events.filter(event => ["drop", "click", "confirm", "settings"].includes(event.type))).toEqual(eventsBefore);
+      expect(eventsBefore.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
+      expect(await Promise.all(fencePaths.map(file => readFile(file)))).toEqual(fences);
+      const reopened = new DouyinUploadStore(store.root); await reopened.load();
+      expect(reopened.tasks().filter(task => reopened.hasMarker(task.result.upload_task_id))).toHaveLength(18);
+      expect(records.slice(9, 18).every(task => reopened.task(task.result.upload_task_id)!.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
+    } finally { await service.stop(); }
   });
 
   it.each(["unknown-name", "extra-row"] as const)("rejects a production upload list containing %s", async kind => {

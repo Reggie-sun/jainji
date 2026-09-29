@@ -88,7 +88,9 @@ export class QianchuanPageSession {
     const drawer = await this.unique(this.frame.locator(`${this.contract.drawer}:visible`), signal);
     if (await this.visible(this.contract.login)) throw uploadFailure("LOGIN_REQUIRED", "account", "千川需要人工登录。", "在 Chrome 登录后明确继续。", true);
     if (await this.visible(this.contract.challenge)) throw uploadFailure("CHALLENGE_REQUIRED", "account", "千川需要人工验证。", "在 Chrome 处理验证；程序不自动重试。", true);
-    const accountIdentity = this.frame.getByText(new RegExp(`^\\s*ID[：:]\\s*${target.advertiserId}\\s*$`)).filter({ visible: true });
+    const accountScope = this.contract.kind === "qianchuan"
+      ? await this.shown(this.frame.locator(".account-info-container"), task, signal) : this.frame;
+    const accountIdentity = accountScope.getByText(new RegExp(`^\\s*ID[：:]\\s*${target.advertiserId}\\s*$`)).filter({ visible: true });
     const planScope = this.contract.kind === "qianchuan" ? drawer : this.frame;
     const planIdentity = planScope.getByText(new RegExp(`^\\s*ID[：:]\\s*${target.adId}\\s*$`)).filter({ visible: true });
     if (!this.identityEstablished) {

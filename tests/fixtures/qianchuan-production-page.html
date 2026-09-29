@@ -20,12 +20,15 @@
 <body>
   <main>
     <h1>Offline upload fixture</h1>
+    <div class="account-info-container"><div class="account-info-box">
+      <div class="shop-name">Fixture account</div>
+      <div class="shop-name gray" id="plan-advertiser-id">ID： 123456 </div>
+    </div></div>
     <section id="legacy-global-plan-list" aria-label="旧计划列表">
       <div class="legacy-plan-row"><span>旧计划</span><span>ID：987654</span></div>
     </section>
     <aside class="ovui-drawer ovui-drawer--no-maskable" id="plan-drawer">
       <div class="ad-drawer-body">
-        <div id="plan-advertiser-id">ID： 123456 </div>
         <div id="plan-ad-id">ID：987654</div>
         <div class="ovui-tabs">
           <div class="ovui-tabs__tab ovui-tabs__tab-active" role="tab" id="plan-materials-tab">素材</div>
@@ -94,7 +97,14 @@
       const c = state.controls;
       document.querySelector('#plan-advertiser-id').textContent = ` ID： ${c.wrongAdvertiser ? '999999' : '123456'} `;
       document.querySelector('#plan-ad-id').textContent = `ID：${c.wrongPlan || c.wrongDrawerPlan ? '999998' : '987654'}`;
-      document.querySelector('#legacy-global-plan-list .legacy-plan-row span:last-child').textContent = `ID：${c.wrongPlan || c.wrongGlobalPlan ? '999998' : '987654'}`;
+      document.querySelector('#legacy-global-plan-list .legacy-plan-row span:last-child').textContent = `ID：${c.unrelatedAdvertiserId ? '123456' : c.wrongPlan || c.wrongGlobalPlan ? '999998' : '987654'}`;
+      document.querySelector('#duplicate-account')?.remove();
+      if (c.duplicateAccount) {
+        const duplicate = document.querySelector('.account-info-container').cloneNode(true);
+        duplicate.id = 'duplicate-account';
+        duplicate.querySelector('#plan-advertiser-id').removeAttribute('id');
+        document.querySelector('.account-info-container').after(duplicate);
+      }
       document.querySelector('#login-required').hidden = c.screen !== 'login';
       document.querySelector('#challenge-required').hidden = c.screen !== 'challenge';
       const duplicateUploadTab = document.querySelector('#duplicate-upload-tab');
