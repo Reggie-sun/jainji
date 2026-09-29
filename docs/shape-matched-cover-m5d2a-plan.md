@@ -1,5 +1,15 @@
 # M5-D2A Implementation Plan
 
+## Current Priority and Provider Selection
+
+2026-09-29 用户要求先保存 [manual region candidate](shape-matched-cover-manual-region-candidate.md)，再优先继续原 M5-D2A；随后明确只用 **MiniMax + GPT**，不要 Kimi。手动候选仅 DESIGN_ONLY，本轮不实施、不启用。后续本任务不调用 Kimi；下方旧双路线安装、Kimi receipts 和失败消费均保持历史原样，不作为 MiniMax 资格。
+
+当前 Milestone4 为 `MINIMAX_ROUTE_AND_ACCOUNT_READINESS_INCOMPLETE`。现有 GPT api-bounded 路线保留，但 installed router image contract 只支持 codex/kimi，MiniMax 尚无可运行的 sealed/qualified image route；不能改名复用 Kimi 的 model、runtime、预算、capability 或 conformance receipt。官方 [OpenAI-compatible image input](https://platform.minimax.io/docs/api-reference/text-openai-api) 列出 MiniMax-M3 的直接图像输入，作为新路线候选，尚未冻结实际可用模型/账号。不能以品牌名、文本 HTTP200、M2.x 兼容接口或 MCP 图片摘要代替独立视觉 actor。
+
+继续顺序：先取得独立 MiniMax/GPT credential reference、当前认证账号及可用模型/额度材料；按现有 router source owner 确定和封存 MiniMax endpoint/model/隔离/图片输入合同，形成其 durable implementation plan并完成工程实现、否定测试、Risk Gate、官方安装与实际 OS/native 核验；随后在各一次的实际输入/账号有限预算门内做新 capability。MiniMax 需要独立实际 input accounting，不能套用旧 Kimi token 预算或 GPT 工程 payload 草案；新增费用未冻结前请求0，正式费用授权仍0。GPT 已授权 cap/历史计数不重置，不自动换 provider 或追加重试。
+
+独立 truth/criteria/inputPlan 的数量准备继续复用且不泄露给 actor；正式 methodConfig 必须冻结为 MiniMax/GPT 的真实 route tuple 后，才能按原 spec 执行 A/B、mapping/joint、correspondence 与可信 owner 资格比较。全部 hard gates、human 兼容、synthetic/real-media 分层和 production BLOCKED 不变。当前可核验材料与阻碍由 [phase record](shape-matched-cover-m5d2a.md#current-manual-candidate-and-minimax-gpt-direction) 独占；此处只规定执行优先级和依赖，不声称新路线已经打通。
+
 ## Installed Engineering Route and Remaining Live Gates
 
 Milestone4外部router工程slice已通过latest required完整native review及Parent裁决，clean commit `1f0c11d`经官方owner安装；installed Codex/Kimi owned八图native/fake与各14项OS checks通过、容器清理成立。Scope内blocker修复与安装已落实，不再停于旧permission/review transport门。Fresh router779项full工程回归与Jianji129项相关回归、current typecheck通过；均不代替视觉语义资格。

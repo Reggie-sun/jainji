@@ -1,5 +1,23 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Manual Candidate and MiniMax GPT Direction
+
+2026-09-29 用户要求把“只画矩形、由本地程序生成贴纸轮廓覆盖”的讨论写成 [candidate design](shape-matched-cover-manual-region-candidate.md)，并优先继续原 AI 路线。候选为 DESIGN_ONLY / NOT_IMPLEMENTED：用户矩形是待遮区域，不能成为旧贴纸源 mask 或完整源语义证据。本轮未改变手动渲染、选材或产品行为。
+
+用户随后明确“模型用minimax和gpt就可以,kimii不要用”。据此本任务后续 Provider 仅 MiniMax/GPT，停止 Kimi 调用；历史 installed Kimi 工程证明和失败不重写，不抵扣或伪造 MiniMax 资格。独立 native `code_mapper` 只读继续 GPT readiness/source mapping，不作为 blinded actor 或重复 implementation reviewer，亦不调用 Provider。
+
+此次 named native task为 `/root/ai_route_readiness_refresh`，dispatch前核对 `code-mapper.toml` 的read-only、gpt-6-luna/xhigh配置；实际authenticated model/provider/费用仍未知，不声称Docker证明。沿用本任务两次真实Kimi失败后的fallback，不发起第三次Kimi。Mapper确认现有GPT入口 `qualify-image-route --live` 经 `require_live_admission`、canonical budget、seal/pins复核和固定reservation后才可发请求；所查manifest/config/五份accepted refs与旧归档一致。Parent另用installed `_check_existing`、完整66 source/Skill package和ReceiptStore/read_probe真实核验GPT既有artifacts/seal/PNG，全部匹配；此处只证明现有工程材料有效。
+
+Parent重新读取 router current clean HEAD `9f597a1`、installation manifest与源码：仍是 source commit `1f0c11d`、66-source program `33e4512773ad0a56d2c617193633bf46ba3a067e920570b51b3918bc9823e904` 的既有安装。当前 image contract/runtime/run/CLI 只支持 codex/kimi；没有 MiniMax backend、模型或独立视觉 tuple。不能把 Kimi config 改名、修改已封存 refs 或复用其资格。官方 [MiniMax SDK reference](https://platform.minimax.io/docs/api-reference/text-openai-api) 列出 MiniMax-M3/M3.1 图像输入，[Chat Completions reference](https://platform.minimax.io/docs/api-reference/text-chat-openai) 提供生成上限；这是新路线可行性来源，不是本账号已开通、实际视觉成功或受管隔离证明。MiniMax-M3 是暂定候选，实际型号/计费类别/route 仍须当前账号材料核实并冻结。
+
+本次 fresh author-side `verify-preparation` exit0：独立 synthetic54 clips/648 frames、18场景、609 clear/270 empty/339 present、36 multi/9 single/6 cuts/6 motion/18 ambiguous，missingScenarios=[]、sufficient=true。Formal NOT_STARTED、qualification INCOMPLETE；未向 native mapper提供 holdout truth/逐 fixture 场景，作者核验不充当盲审。REAL_MEDIA_HUMAN_TRUTH仍NOT_EVALUATED。现行手动45 PASS的工程证据在候选中明确作为先前验证记录，不变成本候选或 AI 资格。
+
+当前缺口为两条所选路线的独立 credential reference、当前认证账号/可用模型/额度及其 actual input budget 材料；本会话未取得可核验路径，未扫描凭据或读取 global Codex auth。已向用户请求路径信息，未索要 Key 或重复安装权限。MiniMax 新路线还需在原 router owners 内按真实账号接口确定合同、实施/否定测试、工程审查和官方安装，不能在材料缺失时把旧安装叫成 MiniMax/GPT 已打通。新的正式预算、隔离 A/B、完整 raw/mapping/joint/correspondence/可信 issuer 都未成立。
+
+本轮 visual/formal requests=0，formal cost authorization=0、actual cost=null，语义指标null/NOT_EVALUATED，authority=none/eligible=false。M5-D2A INCOMPLETE、PRODUCT_DISABLED；M5-B activation、M5-C issuer、M5-D3、M5-D4、verified-no-sticker production issuance全部BLOCKED。自然停止点是所选 Provider 的真实账号/路线材料缺口，不是文档、计划或测试通过；不新增“继续”许可门。下方 GPT/Kimi 当前安装说明在 Provider 选择上已成为历史。
+
+本轮仅三份本任务docs，无实现语义变更；Self-Review和引用/diff验证适用，Implementation Review Risk Gate未触发，不重复工程review。专用capture skill不适用，由现有plan/本phase记录承接。Private continuation evidence为 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-minimax-gpt-continuation-20260929T141559Z`，不改旧final manifest。Fresh AOCI Verify/Check exit1、structure_valid=true/governance_aligned=false；Guide exit0但complete=false，仅foreign `src/main/index.ts` code_stale。三docs属observe、自身managed源未变，不接管该source及索引baseline。先前manual测试的347路径before/after一致，当前仅foreign index.ts相对该快照变化，故未把先前45 PASS宣称成本轮全仓新回归。无关dirty/删除/未跟踪工作继续保留。
+
 ## Current Installed Engineering Route and Live Readiness
 
 2026-09-29 用户已授权的blocker修复和受管安装工程slice已完成，M5-D2A正式资格仍INCOMPLETE。Router同一named read-only `reviewer_max`的round15完整critical scope finding set为空，193/193 frozen hashes前后一致；Parent据真实ReceiptStore否定/正常测试、fresh完整回归及exact source裁决后，以clean commit `1f0c11dc8249a6682476753244df6e3661259e9f`运行官方installer。66-source program `33e4512773ad0a56d2c617193633bf46ba3a067e920570b51b3918bc9823e904`、package `e89dbd601be3a21aa35c26e5f2425d96ab76c427ff403c52f0012990f90cc47b`、manifest `bde87fae43ecb489b86f4f21a5f3018298a8889aa07577c880396b93e5a8d46b`，dirty_at_install=false。Entry/Skill/完整package与source核验一致，原default config、旧包及receipts保留；没有擅改host installed tree。两次Kimi失败及native1–15全部历史和真实消费保持，工程fallback不替换blinded actor。
