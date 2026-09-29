@@ -8,6 +8,8 @@
 
 用户选择 A：原有脏文件仍归其他任务。Parent 只写 `src/main/douyin-upload-service.ts`、`src/main/qianchuan-page-contract.ts`，新增 `tests/douyin-upload-recovery.test.ts`、`tests/qianchuan-upload-diagnostics.test.ts` 与本计划、修复记录。不得修改 service/store/UI 现有测试、spec、账号设置、renderer、AOCI 正式索引和基线。当前 working tree 串行实施，不创建 worktree。页面诊断代理为 read-only，无文件 ownership。
 
+该限制保留源码实施阶段的归属。2026-09-29 用户随后明确要求原任务结束后继续安装，并维护本轮改动的 AOCI 对象。名称任务已提交 `861c11c`，其安装记录明确将两个 stale 上传对象交回本轮。当前授权增加这两个对象在 `aoci.code.txt` 的完整 Entry、对应 `.aoci/baseline.json` 绑定以及组合安装的 `launch.sh`；原有其他任务源码、测试及用户删除文件继续保留。
+
 ## Recovery Contract Addendum
 
 - `resume` 对 NOT_SELECTED 条目的“安全继续”授权同一个 `pageBatchId`、同一项目和冻结目标的待传任务，恢复 PENDING、同批未选文件的可恢复失败；不复活其他取消项、终止失败或 duplicate。使用原 runner，每组最多九条，整组 READY 证据持久保存后才推进。
@@ -36,9 +38,9 @@ Verification：新诊断测试及现有 CDP/page-contract 测试。真实第十�
 
 完成 typecheck、受影响 tests、build、普通/批量 Electron smoke 和适用 Harness。最终 stable snapshot 后判断 Risk Gate，required review 保存 predecessor、历史三次 Kimi receipt 与 native fallback 消费，禁止以新名字重置。当前旧 guard 的 native 第 2/3 轮只覆盖旧 bytes，新候选必须独立审查。
 
-安装包只包含本窗口已验证、已审的语义，保留旧 release 回滚。源码完整 checkout 构建若依赖其他任务未提交代码，明确记录；不得把其他任务代码加入发布包。重启前检查真实制作/上传活动。桌面验证绑定 executable/app.asar hash；fixture 与真实平台验收分开，Windows 按用户要求不验证。
+本轮安装增量只包含已验证、已审的上传语义，组合基线已有模块按已验证身份保留，旧 release 留作回滚。源码完整 checkout 构建若依赖其他任务未提交代码，明确记录；不得把其他任务未提交代码作为本轮新改动发布。重启前检查真实制作/上传活动。桌面验证绑定 executable/app.asar hash；fixture 与真实平台验收分开，Windows 按用户要求不验证。
 
-AOCI 仅运行只读 Verify/Check/Guide，因用户保留其他任务索引和 baseline ownership，不写它们；真实冲突仍存在时记录本轮未维护对象和精确 remaining work。仓库无专用 session-record skill，新增修复记录保存 checkpoint，不修改全局 memory。
+AOCI 在原 ownership 冲突期间只读检查。依最新授权与原任务完成证据，源码稳定后领取机器完整维护批次，只更新本轮两个上传对象及基线，再运行 Verify、Check、Guide。组合安装继承名称任务最终 preserved 包的 schema、renderer、账号模块和其他文件，仅替换已经审查的两个上传模块；绑定独立构建、相关测试与四套实际打包 fixture，再检查真实应用 idle、保留回滚并核对运行身份和旧上传事实。仓库无专用 session-record skill，修复记录保存 checkpoint，不修改全局 memory。
 
 ## Self-Review
 

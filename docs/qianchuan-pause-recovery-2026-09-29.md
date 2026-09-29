@@ -6,6 +6,8 @@
 
 用户明确选择 A：其他任务的既有 service/store/UI 测试、spec、账号设置、renderer 和 AOCI 正式索引、baseline 不由本窗口接管。本轮仅修改 `src/main/douyin-upload-service.ts`、`src/main/qianchuan-page-contract.ts`，新增两个独立回归测试、本计划与本记录。当前 working tree 串行实施，没有 worktree，也没有提交旁人的制作、覆盖或 ResultsPanel 改动。仓库没有专用 session-record skill，本记录保存本轮 checkpoint；没有修改全局 memory。
 
+后续用户明确要求“按你的 ownership 等那个结束了继续……AOCI 为什么没有维护，改了什么维护什么”。名称任务完成提交 `861c11c`，其 [安装记录](qianchuan-product-name-installed-2026-09-29.md) 明确两个 stale 上传对象归本轮维护。依最新授权，本轮接续这两个 AOCI Entry、对应 baseline 与组合安装；没有接管其他任务的源码或测试。
+
 ## Behavior
 
 - 暂停期间正式产物仍持久入账。对尚未选文件条目的“安全继续”恢复其授权 `pageBatchId` 的待传项，按最多九条组成一组，整组 READY 证据保存后才推进。取消项、终止失败和 duplicate 不由批次恢复复活；其他账号、其他批次及重启恢复的旧任务不会被该动作唤醒。
@@ -47,7 +49,7 @@ stable candidate 的 required review 依据是恢复授权失效可让其他批�
 
 原生默认三轮已耗尽。依据上述具体缺陷及 red-green 证据，任务内自主封存一次 full re-review 扩展，最多一轮、八分钟；累计 native 第 4/4 轮，Kimi 仍为历史三次，无额外外部调用。扩展只审核该恢复修复与已有 safety contracts。若仍有未解决 blocker，不继续机械追加。修复后重新运行相关 tests、typecheck/build、Harness 和打包 desktop fixture，完成前仍需本次审查与 Parent 最终裁决。
 
-S2 manifest SHA-256 `5430d6d994847bfdb9936d8568023b57801961d3a57353b5aa4f3c2bd055d47d`，路径 `/tmp/jianji-qianchuan-recovery-review-20260929-r4`，包含最终源码与上表 fresh evidence。同一代理 full re-review 返回 finding set 为空，仅进行只读追踪和证据核对。Parent 根据三项取消失败复现、修复后的 121/119 tests、完整 Harness、实际打包 UI 的二十条恢复及最终 diff，裁决 `QRR-CANCEL-001` 已解决。源码和测试逐字节绑定 S2；不把 empty findings 自动当作 acceptance，也不声明 native 具备 Docker/Kimi route proof。原生 profile 配置为 `reviewer_xhigh`，费用和精确 token 消耗保持未知。本轮工程 required review 的运行阻塞解除，真实平台问题与安装 ownership 阻碍仍保留。
+S2 manifest SHA-256 `5430d6d994847bfdb9936d8568023b57801961d3a57353b5aa4f3c2bd055d47d`，路径 `/tmp/jianji-qianchuan-recovery-review-20260929-r4`，包含最终源码与上表 fresh evidence。同一代理 full re-review 返回 finding set 为空，仅进行只读追踪和证据核对。Parent 根据三项取消失败复现、修复后的 121/119 tests、完整 Harness、实际打包 UI 的二十条恢复及最终 diff，裁决 `QRR-CANCEL-001` 已解决。源码和测试逐字节绑定 S2；不把 empty findings 自动当作 acceptance，也不声明 native 具备 Docker/Kimi route proof。原生 profile 配置为 `reviewer_xhigh`，费用和精确 token 消耗保持未知。本轮工程 required review 的运行阻塞解除；当时仍保留真实平台问题及安装 ownership 阻碍，安装后续见下。
 
 ## Package Candidate
 
@@ -55,7 +57,32 @@ S2 manifest SHA-256 `5430d6d994847bfdb9936d8568023b57801961d3a57353b5aa4f3c2bd05
 
 证据 `/tmp/qianchuan-recovery-package-proof.json`：旧 `app.asar` SHA-256 `fd04404e0d3d770246984ea0c2721f942aafe42448be2815fe0565d442ff6c5e`；最终候选 `app.asar` 为 `d846704693bd5e25cd1168bd8ec930b788737ad1048d0ef631b3d77311a90468`，main 为 `9acd96aadf4cb2680d11d0dea687cb77e2ae6f7252e18b2d3d7db2824b76db64`。这是可核验的定点修复，完整独立旧基线构建的 `usesModel` 类型依赖未被宣称解决。
 
-独立候选位于 `/home/reggie/Applications/jianji/releases/qianchuan-recovery-candidate-20260929-d8467046`，附 `recovery-evidence` 和精确源码。候选尚未替换真实运行包。最后核对发现另一任务已将 `launch.sh` 切至 `product-name-20260929-7c667d3`，本轮不能切回旧基线并撤掉对方新包。已依同文件 ownership 规则请求用户指定组合安装责任；等待答复期间保留启动器，继续不冲突的验证与提交。旧 release 继续保留，真实运行包尚未验收本轮恢复修复。
+独立候选位于 `/home/reggie/Applications/jianji/releases/qianchuan-recovery-candidate-20260929-d8467046`，附 `recovery-evidence` 和精确源码。封存时尚未替换真实运行包：另一任务正在更新 `launch.sh`，本轮依 ownership 规则保留启动器并等待其结束。这个历史候选保留作精确审查及模块来源；最终安装使用下述组合包。
+
+## Combined Installation
+
+名称任务最后安装的是 `product-name-20260929-preserved-7c667d3`，`app.asar` SHA-256 `995a30011d999e561e2bb07501cf0a5baa00baa9b740d4449c7f01ef57bd382e`。本轮核对其旧上传模块与 `fd56869` pristine section 相同，再逐字节插入 S2 审查的 service/page-contract section。反向替换证明 main 其余字节完全相同；2160 个非改动 archive 文件及 unpacked/executable/link 元数据保留，只有 `dist-electron/main.cjs` 改变。现有名称、schema、`usesModel` 和 renderer 均保留。
+
+最终 release 为 `/home/reggie/Applications/jianji/releases/qianchuan-recovery-name-20260929-c5a5dcf9`：`app.asar` SHA-256 `c5a5dcf9e56d2e2924091388fe3c0d17426969d6dcbf481c8abf0029b11c373d`，main SHA-256 `2802cc4d1110e76eae3e24326d56b1e7c931244a9dd98b59e703bda986d9ae78`。来源为恢复提交 `d8491cf` 与名称提交 `7c667d3`，证据 `/tmp/qianchuan-combined-package-proof.json`。
+
+精确本轮源码、AOCI、构建/测试日志、成功和失败的 smoke 记录、归档 proof、source bindings 及 installed identity 保存在 release 的 `recovery-name-evidence`。真实 userData 和完整项目状态只在上述私有备份目录保存。
+
+冻结名称任务的已安装 source context，加 S2 两个源码和两个测试后，独立运行 `npm run build`（含 typecheck）及九个相关文件、159 tests，均 PASS；当前 working tree 另跑 `npm run typecheck` PASS。六个编译模块（两个上传模块、domain、store、两个账号模块）与实际归档 section 完全一致，renderer 也与该构建字节一致，见 `/tmp/qianchuan-combined-source-bindings.json`。不发布完整 dirty working tree。
+
+| Final Packaged Verification | Evidence | Result |
+| --- | --- | --- |
+| 普通制作及上传 | `/tmp/jianji-qianchuan-smoke-PcJmhx/report.json` | 12 正式成片、九条以内分组、永久 fence、追加选择独立、重启零选择、confirm 0 |
+| 跨模板批量 | `/tmp/jianji-batch-upload-smoke-NJgLEH/report.json` | 17 正式成片、12 READY、UNKNOWN 暂停后续账号、重启零重选、confirm/ad settings 0 |
+| 暂停二十条后一次 UI 继续 | `/tmp/jianji-qianchuan-smoke-DLaV7n/report.json` | 初始 disabled 且零选择；一次安全继续按 9/9/2 全部 READY、20 fence、重启零重选、confirm/ad settings 0 |
+| 名称修改保留 | `/tmp/jianji-account-smoke-EFxNMq/report.json` | 已关闭浏览器可仅改名、目标保留、非法名称与重复浏览器阻断、重启恢复、上传/确认/广告设置均 0 |
+
+首次并行普通 smoke 因未达到预期 checkpoint 为 UNVERIFIED，退出时留下十个 completed、两个 cancelled fixture 任务；同包串行复核通过，具体延迟原因未定位，不宣称已修复该环境问题。首次名称 smoke 遇到浏览器发现拒绝；有界只读诊断发现同期 fixture Chrome profile 权限为 `0775`，不满足既有 guard。隔离 fixture 使用 `umask 077` 并串行执行后通过，没有放宽产品浏览器权限校验。失败日志与成功日志一并保留。
+
+组合没有新增源码语义：S2 模块逐字节一致，名称模块及其他已安装字节不变，上述 fresh 组合验证填补运行连接处的检查。Parent 在此 checkpoint 判定无需另起 implementation review；既有 required review 仍绑定 S2，Kimi 三次失败及 native 4/4 历史不重置。
+
+安装前重新确认 queue 仅 155 completed、100 failed，agentRun 为 null、批量为 finished、uploadActive 为 0，原项目无未保存更改。正常 SIGTERM 退出后备份完整 userData、原项目与启动器至 `/home/reggie/Applications/jianji/.backups/qianchuan-recovery-name-20260929-c5a5dcf9`，原 release 保留。启动器原子切换到组合包。首次启动漏带原本的调试参数，CDP 验证连接失败；确认新窗口仍为未操作的空项目、账本不变后正常退出，再以 loopback 动态调试端口启动，没有强制退出或丢弃草稿。
+
+最终真实 PID `1136141` 的 executable 和 renderer URL 均绑定该 release。通过既有应用 owner 重新打开原“氨糖膏”项目，并刷新 renderer 同步界面草稿；十个素材正常，产品名称编辑可见，“一根金”“晚安油”等现有名称保留，未保存账号变更。真实 ledger SHA-256 `26a26c97b364e7b3cec14b907ad9906785fe7754c7101cbf7c25a13d45590c9d`；全部 306 个上传账本、快照及 fence 文件安装前后逐字节不变，原项目除 `updatedAt` 外内容相同，第十一条仍为 MAY_HAVE_UPLOADED。实际桌面证明见 `/tmp/qianchuan-combined-installed-ui.json`、`/tmp/qianchuan-combined-live-after.json` 及备份目录的 viewport 截图；Parent 已实际查看截图。
 
 ## Live Read-only Diagnosis
 
@@ -69,6 +96,6 @@ S2 manifest SHA-256 `5430d6d994847bfdb9936d8568023b57801961d3a57353b5aa4f3c2bd05
 
 ## AOCI And Remaining Limits
 
-按用户 ownership 决定，AOCI 正式索引与 baseline 由原任务维护，本轮没有修改它们。已运行只读 Verify/Check/Guide；结构有效，两个源码条目 stale，`governance_aligned=false`、Guide `authoring_required`。报告为 `/tmp/qianchuan-recovery-aoci-final-{verify,check,guide}.json`。未维护对象为 `src/main/douyin-upload-service.ts` 和 `src/main/qianchuan-page-contract.ts`，须由索引 owner 在源码稳定后更新并重新核验。不得声称 AOCI 已对齐。
+原 ownership 冲突期间只读 Verify/Check/Guide，两个源码条目 stale 的历史报告保留。依最新用户授权与原任务完成证据，已对机器签发的完整两项批次更新 `douyin-upload-service.ts` 与 `qianchuan-page-contract.ts` 的完整 Entry；写入 `aoci.code.txt`，同步对应源码和索引在 `.aoci/baseline.json` 的绑定。机器结果 `attempted=2/applied=2/remaining=0`，无其他对象或 Scope 扩张。Verify、Check exit 0 且 `governance_aligned=true`；Guide `complete=true / next_action=none`，报告 `/tmp/qianchuan-recovery-install-aoci-{verify,check,guide}.json`。新测试和本轮文档属于现有 observe 范围，无须新增 Code Entry。
 
 工程回归、桌面 fixture、真实平台和人工成片验收分别记账。本轮没有真实平台新上传；第十一条根因、氨糖膏平台业务阻塞及四个历史账号仍未解决，未知任务不得重传。Windows 按用户要求不验证。真实整批自动恢复没有用未知文件做破坏性试错，也没有宣称全部生产验收通过。
