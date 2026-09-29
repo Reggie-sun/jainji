@@ -127,7 +127,7 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 
 用户随后明确授权停止上述八条未选文件的历史任务并继续当前新批次；该操作须走应用 owner，复核原项目、目标及无 fence，其他 UNKNOWN 永不重选。真实操作、最终安装身份与剩余阻碍将在执行后记录，不以 fixture 代替真实上传验收。
 
-### Installed And Real Batch Acceptance
+### Installed And Real Batch Evidence
 
 最终 release `/home/reggie/Applications/jianji/releases/qianchuan-paused-status-20260930-ac894ad6` 已替换启动器并正常运行，PID `1914602`、renderer URL 与前述 archive SHA 绑定。动态 CDP 端口由真实 `DevToolsActivePort` 读取，未给用户添加启动参数。安装前 agent/batch 已 finished、queue/upload 活动为零、当前晚安油项目已保存。正常 SIGTERM 退出，旧 release 和启动器保留；备份目录 `/home/reggie/Applications/jianji/.backups/qianchuan-paused-status-20260930-ac894ad6` 保存 userData 和原项目。备份跳过无法复制的运行时 Singleton lock/socket/cookie 链接，其余已复制；464 个上传持久文件另逐字节核验，安装前后完全一致。
 
@@ -136,3 +136,11 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 真实最新批次五十条全部 READY/WAITING_FOR_CONFIRMATION，分组为 `9/9/9/9/9/5`，每组完整 READY 后推进；五十个新永久 fence，全部绑定原 target/modal。应用界面显示“已上传 50 / 158 条 · 待上传 108 条 · 处理中 0 条 · 需处理 0 条”。前一批 `3184d1d6-1663-4abc-b062-2a894b405b20` 的 108 条保持 PENDING，未用最新批次继续授权唤醒。所有其他 task records 和全部 intents 与操作前一致；原有 52 个 fence 字节不变。没有点击确定、发布或修改广告设置。真实证据 `/tmp/jianji-paused-status-real-acceptance.json`、`/tmp/jianji-paused-status-platform-readonly.json`、`/tmp/jianji-paused-status-live-upload.png`；Parent 已实际查看桌面截图。本轮证明最新批真实上传恢复，不代表平台已接受发布，也不替代人工观看成片。
 
 安装后再次运行 AOCI Verify、Check、Guide，exit 0、governance aligned、Guide complete/none；证据 `/tmp/jianji-paused-status-aoci-install-{verify,check,guide}.json`。仅 stage service Entry 和对应 baseline，聚合索引摘要按 staged bytes 绑定；working tree 的其他任务正式条目与 baseline 修改保留未提交。原第十一条根因、氨糖膏平台业务阻塞和其他历史未知任务继续保留，Windows 仍未验证。
+
+### Target Acceptance Correction
+
+用户随后指出本次目标不是当前投放计划。再次只读核查真实 Chrome 9225：上述五十条的原 target `1BD19FA658E7A1AA7F22FAEEDFE163AD` 中，计划 `1876867135606800` 明确显示“已删除”，原上传 modal 此时已不在；另一个现有 target `585BF77F1D763461D5C7A214851B8E93` 的当前计划为 `1877602792264880`，显示“投放中”。最初 commentary 对截图新 ID 的人工辨读有误，以实时 drawer 与 URL 一致的后者为准。删除的具体时间没有核实，不推断上传前后时序。
+
+实时软件账号摘要及 `accounts/mapping.json` 仍保存旧计划；本批授权冻结相同 ID。源码未硬编码这个 ID，实际链路是 `QianchuanAccountSettings` 持久映射 → `preflight/freeze` → task authorization → `accountPageUrl` → 原 uploader。`QianchuanPageSession.guard` 核对账号和计划 ID、登录/验证及 modal 归属，未核对计划“已删除”状态。因此上面的五十条 READY 只证明旧计划临时页的上传就绪，不能作为用户当前计划的上传交付验收。Parent 先前只核验 ID 和 READY、漏核计划状态，本条明确更正，保留历史证据而不改写它。
+
+本次仅只读定位并纠正记录，没有修改映射、冻结目标、ledger 或 fence，没有确认、重新选择或上传。五十条已有永久 fence 且原 modal 丢失，不能通过改 ID 假定旧选择未生效并重传；其平台结果需要原页面/人工核查。前一批未选文件的旧目标也不能仅靠改全局配置自动重绑。删除计划准入阻断与明确的未选文件目标迁移仍需修复和独立验证。用户当前另一项目有活动制作，不能重启打断。
