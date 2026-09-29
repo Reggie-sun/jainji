@@ -2,11 +2,19 @@
 
 ## Current Priority and Provider Selection
 
+### MiniMax Engineering Route Continuation
+
+Milestone4的MiniMax/GPT工程实现与受管安装已完成：完整PNG/生成上限/响应绑定否定测试、fresh router offline807 PASS/28 skip、native/fake+containment831 PASS/4 skip、Ruff/diffcheck exit0，144条source/test/script/Skill绑定前后一致。Round16未取得terminal full report；round17完整critical复核后修复typed关联缺口，按明确有限例外仅一次round18/180秒定向复核，实际111.76秒、211/211一致、finding set为空。Parent裁决后clean `69f9a7d`官方安装，program `527a80ee…`；installed MiniMax/GPT各自14/14实际OS检查、完整native/fake receipts、容器清理及原owner完整性复核成立。工程 gate不再因缺MiniMax backend/图片传递或安装而阻断，不另设“继续”许可门。
+
+原ConnectionStore的Key已用于两次有界官方只读额度GET，均HTTP200/base status0；配置字节/uid/mode未改、无模型生成请求、无自动重试或凭据输出。这是认证请求观察，M3可用额度/API余额仍null，不能签发AUTHORIZED预算；原api.minimaxi.com的TLS观察不替代视觉HTTP证明。实际八图payload已封存（MiniMax5958/GPT7526 bytes），input token/cost上界未评估为null。MiniMax新capability费用授权0、正式费用0；不能因interval count为0推断账户完全无额度。GPT独立API profile仍未找到，应用ChatGPT选择不替代原hard-cap门。当前真实blocker为authenticated account/accounting/canonical预算及GPT实际受管视觉条件；条件成立后安全handoff、各一次真实capability，再冻结正式route/config/inputPlan/budgets及执行A/B/joint。不得提前正式盲审，或从工程安装推出生产资格。Exact证据与后续状态由[phase record](shape-matched-cover-m5d2a.md#current-minimax-engineering-and-account-observation)及router原record承接；本节之后的pending实现/安装描述为历史checkpoint。
+
 ### Existing Application Connection Preparation
 
-用户补充截图并指出软件已实现模型连接后，Parent实际通过原 `ConnectionStore` 只读核对：MiniMax-M3/Responses/`api.minimaxi.com/v1` 已保存且有凭据，vision/reviewer均指向它；另有应用ChatGPT模型选择。先前“缺独立reference”的判断只适用于外部router入口，不等于应用未配置API。当前实施一个独立、只读的 `source-fact-ai-connections.ts` 与 author-side `scripts/source-fact-ai-connections.mjs`，复用ConnectionStore，不写配置、不更改选择、不复制Key、不读OAuth、不调用Provider；仅输出脱敏API/ChatGPT准备状态，qualification永远INCOMPLETE。它不是第二套模型选择器或credential owner。
+用户补充截图并指出软件已实现模型连接后，Parent实际通过原 `ConnectionStore` 只读核对：MiniMax-M3/Responses/`api.minimaxi.com/v1` 已保存且有凭据，vision/reviewer均指向它；另有应用ChatGPT模型选择。先前“缺独立reference”的判断只适用于外部router入口，不等于应用未配置API。独立、只读的 `source-fact-ai-connections.ts` 与 author-side `scripts/source-fact-ai-connections.mjs` 已实施验证，复用ConnectionStore，不写配置、不更改选择、不复制Key、不读OAuth、不调用Provider；仅输出脱敏API/ChatGPT准备状态，qualification永远INCOMPLETE。它不是第二套模型选择器或credential owner。
 
 检查用真实临时ConnectionStore数据和秘密反射/无配置/坏配置否定测试；运行实际本机只读CLI，核对配置bytes/mode前后不变，fresh typecheck和连接/AI回归。保留原holdout准备脚本bytes，避免无关改动使已冻结sourceSnapshot失配。此slice用于自动发现已保存配置，后续受管MiniMax路线从原owner安全handoff；仍需实际route/account/budget/视觉门，GPT登录模型选择不能转换为OpenAI API Key或已证明hard cap。
+
+### Historical Provider Selection Checkpoint
 
 2026-09-29 用户要求先保存 [manual region candidate](shape-matched-cover-manual-region-candidate.md)，再优先继续原 M5-D2A；随后明确只用 **MiniMax + GPT**，不要 Kimi。手动候选仅 DESIGN_ONLY，本轮不实施、不启用。后续本任务不调用 Kimi；下方旧双路线安装、Kimi receipts 和失败消费均保持历史原样，不作为 MiniMax 资格。
 
