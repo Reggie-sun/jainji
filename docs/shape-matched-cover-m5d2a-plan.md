@@ -2,11 +2,17 @@
 
 ## Current Priority and Provider Selection
 
+### Existing Application Connection Preparation
+
+用户补充截图并指出软件已实现模型连接后，Parent实际通过原 `ConnectionStore` 只读核对：MiniMax-M3/Responses/`api.minimaxi.com/v1` 已保存且有凭据，vision/reviewer均指向它；另有应用ChatGPT模型选择。先前“缺独立reference”的判断只适用于外部router入口，不等于应用未配置API。当前实施一个独立、只读的 `source-fact-ai-connections.ts` 与 author-side `scripts/source-fact-ai-connections.mjs`，复用ConnectionStore，不写配置、不更改选择、不复制Key、不读OAuth、不调用Provider；仅输出脱敏API/ChatGPT准备状态，qualification永远INCOMPLETE。它不是第二套模型选择器或credential owner。
+
+检查用真实临时ConnectionStore数据和秘密反射/无配置/坏配置否定测试；运行实际本机只读CLI，核对配置bytes/mode前后不变，fresh typecheck和连接/AI回归。保留原holdout准备脚本bytes，避免无关改动使已冻结sourceSnapshot失配。此slice用于自动发现已保存配置，后续受管MiniMax路线从原owner安全handoff；仍需实际route/account/budget/视觉门，GPT登录模型选择不能转换为OpenAI API Key或已证明hard cap。
+
 2026-09-29 用户要求先保存 [manual region candidate](shape-matched-cover-manual-region-candidate.md)，再优先继续原 M5-D2A；随后明确只用 **MiniMax + GPT**，不要 Kimi。手动候选仅 DESIGN_ONLY，本轮不实施、不启用。后续本任务不调用 Kimi；下方旧双路线安装、Kimi receipts 和失败消费均保持历史原样，不作为 MiniMax 资格。
 
 当前 Milestone4 为 `MINIMAX_ROUTE_AND_ACCOUNT_READINESS_INCOMPLETE`。现有 GPT api-bounded 路线保留，但 installed router image contract 只支持 codex/kimi，MiniMax 尚无可运行的 sealed/qualified image route；不能改名复用 Kimi 的 model、runtime、预算、capability 或 conformance receipt。官方 [OpenAI-compatible image input](https://platform.minimax.io/docs/api-reference/text-openai-api) 列出 MiniMax-M3 的直接图像输入，作为新路线候选，尚未冻结实际可用模型/账号。不能以品牌名、文本 HTTP200、M2.x 兼容接口或 MCP 图片摘要代替独立视觉 actor。
 
-继续顺序：先取得独立 MiniMax/GPT credential reference、当前认证账号及可用模型/额度材料；按现有 router source owner 确定和封存 MiniMax endpoint/model/隔离/图片输入合同，形成其 durable implementation plan并完成工程实现、否定测试、Risk Gate、官方安装与实际 OS/native 核验；随后在各一次的实际输入/账号有限预算门内做新 capability。MiniMax 需要独立实际 input accounting，不能套用旧 Kimi token 预算或 GPT 工程 payload 草案；新增费用未冻结前请求0，正式费用授权仍0。GPT 已授权 cap/历史计数不重置，不自动换 provider 或追加重试。
+继续顺序：先用新的只读CLI发现应用现存配置，再按现有 router source owner 封存 MiniMax endpoint/model/隔离/图片输入合同、继续已有 durable implementation plan并完成工程实现、否定测试、Risk Gate、官方安装与实际 OS/native 核验；安全credential handoff复用原ConnectionStore，不能因外部reference缺失要求用户重填已保存Key。实际capability前仍需当前认证账号及可用模型/额度与各自canonical预算。MiniMax 需要独立实际 input accounting，不能套用旧 Kimi token 预算或 GPT 工程 payload 草案；新增费用未冻结前请求0，正式费用授权仍0。GPT 已授权 cap/历史计数不重置，不自动换 provider 或追加重试。
 
 独立 truth/criteria/inputPlan 的数量准备继续复用且不泄露给 actor；正式 methodConfig 必须冻结为 MiniMax/GPT 的真实 route tuple 后，才能按原 spec 执行 A/B、mapping/joint、correspondence 与可信 owner 资格比较。全部 hard gates、human 兼容、synthetic/real-media 分层和 production BLOCKED 不变。当前可核验材料与阻碍由 [phase record](shape-matched-cover-m5d2a.md#current-manual-candidate-and-minimax-gpt-direction) 独占；此处只规定执行优先级和依赖，不声称新路线已经打通。
 

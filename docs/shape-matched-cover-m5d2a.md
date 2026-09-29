@@ -1,5 +1,21 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Existing Connection Preparation
+
+2026-09-29 用户指出“软件不是已经实现了吗”并提供模型设置截图。Parent随后实际复用canonical `ConnectionStore.load/snapshot/get` 只读核对应用已有连接：MiniMax-M3、Responses、`https://api.minimaxi.com/v1`，saved credential存在，creative/vision/reviewer均指向该profile。应用还保存ChatGPT `gpt-5.6-luna`模型选择；未发现独立OpenAI API profile。先前把外部router reference缺失泛化为应用缺MiniMax凭据的判断不准确，本段纠正；不删除先前调查历史。
+
+新增 `source-fact-ai-connections.ts` 和独立author CLI `node scripts/source-fact-ai-connections.mjs <absolute-application-userData>`。仅从原owner输出官方host的配置元数据/凭据是否存在及原角色选择；所有profiles的已知Key均用于本进程秘密反射拒绝，包含JSON转义和跨profile角色反射。无配置/损坏配置安全返回，第三方gateway名字不推定官方身份；不修改、激活、选择连接，不复制Key、不读取OAuth、不发Provider请求。保存模型选择与认证/生成上限/route资格分别标NOT_EVALUATED，结果始终INCOMPLETE、authority=none、eligible=false。CodeGraph确认新helper调用ConnectionStore，真实调用仍以源码为准；未建立第二credential/model-selection owner或产品IPC。
+
+严格TDD初始stub实际6 failed；新增escape否定测试实际1项行为失败，另1项测试因canonical schema已拒绝query URL而删除，避免重复/impossible场景。修复后8项新tests PASS；fresh11个连接/API/AI/human/qualification suites共175 PASS，371条source/test/config绑定前后一致，fresh typecheck exit0。实际本机CLI CONFIG_FOUND，private配置SHA/uid/mode0600在运行前后不变，visual/formal requests=0；Keys未输出。原holdout preparation脚本不改，verify-preparation仍exit0、648帧/18场景/609 clear、sufficient=true、formal NOT_STARTED。单元测试、CLI发现及数量准备均不是语义资格。
+
+稳定只读helper的Implementation Review Risk Gate为KIMI_REVIEW_NOT_REQUIRED：用户未要求本snapshot的Kimi review且已禁止Kimi；没有新增credential handoff/TLS/写入/产品authority，临时及真实只读配置/完整已知secret反射测试已覆盖该slice，不存在critical durable损坏或验证后重大语义缺口。外部MiniMax新TLS/credential分支另行触发其required review，不复用此决定。Spec/Plan Self-Review与业务/边界核验由Parent负责。
+
+用户选择A，明确将AOCI两shared assets的本次增量维护交给Parent且不提交这两个已有foreign dirty文件。官方Maintain完整批次只有本模块，Apply1/1、remaining0；随后按序fresh Verify/Check/Guide均exit0，governance_aligned=true、Guide complete=true/findings=[]。其他source/index现存改动保留。本slice证据独占于 `/home/reggie/.local/state/jianji-source-fact-qualification/d2a-app-connections-20260929T143815Z`，旧final manifest不改；专用capture skill不适用，现有plan/phase承接。
+
+当前继续MiniMax受管工程路线：router已写新的窄amendment SHA `24bc75a73bf32bde768f6aec13d333b215785fade08cb9b3c81134c9668031ed`、更新原plan/acceptance owner并实施；不是新路线已安装或视觉成功。国内官方文档当前指向`.cn`，应用保存`.minimaxi.com`，不能静默切换；实际原host/账号、safe handoff、input成本上界/canonical预算仍需验证。GPT保存的登录模型不能转换为API Key，原hard-cap blocker事实不改写。本次不再请求重复Key配置，不调用Kimi；后续只有MiniMax/GPT。
+
+M5-D2A仍INCOMPLETE，真实视觉/正式盲审0、费用未知null、formal授权0、语义指标null/NOT_EVALUATED、REAL_MEDIA_HUMAN_TRUTH NOT_EVALUATED。PRODUCT_DISABLED及M5-B activation/M5-C issuer/M5-D3/M5-D4/verified-no-sticker production issuance全部BLOCKED；未改现行手动覆盖或Human证据。该工程checkpoint不是整个任务停止点，继续原授权路线实现。
+
 ## Current Manual Candidate and MiniMax GPT Direction
 
 2026-09-29 用户要求把“只画矩形、由本地程序生成贴纸轮廓覆盖”的讨论写成 [candidate design](shape-matched-cover-manual-region-candidate.md)，并优先继续原 AI 路线。候选为 DESIGN_ONLY / NOT_IMPLEMENTED：用户矩形是待遮区域，不能成为旧贴纸源 mask 或完整源语义证据。本轮未改变手动渲染、选材或产品行为。
