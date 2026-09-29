@@ -85,6 +85,9 @@ const approvedOutputDirectories = new Set<string>();
 
 // A single owner protects saved connections and the managed OAuth callback.
 if (!app.requestSingleInstanceLock()) app.exit(0);
+// Normal desktop launches expose CDP on a dynamic local port; test drivers may select a port.
+app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
+if (!app.commandLine.hasSwitch("remote-debugging-port")) app.commandLine.appendSwitch("remote-debugging-port", "0");
 app.on("second-instance", () => {
   if (mainWindow?.isMinimized()) mainWindow.restore();
   mainWindow?.show(); mainWindow?.focus();
