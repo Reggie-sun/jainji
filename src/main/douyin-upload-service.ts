@@ -53,13 +53,29 @@ export class DouyinUploadService {
   }
   status(projectId: string): DouyinUploadStatus {
     const { accountConfigPath, ...config } = this.store.config;
-    const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : this.initializationFailure ?? (!config.enabled ? "自动上传已关闭。" : this.dependencies.readiness?.(this.store.config) ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : "成片上传至所选计划，停在确定前。"));
+    const readiness = this.dependencies.readiness?.(this.store.config);
+    const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : this.initializationFailure ?? (!config.enabled ? "自动上传已关闭。" : readiness ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : this.paused ? this.pausedMessage(projectId) : this.stopped || this.stopping ? "自动上传已停止，待上传成片保留在队列中。检查对应 Chrome 后，对本批未选文件的任务点击“安全继续”；结果未知的文件只能只读核查原页面。" : "成片上传至所选计划，停在确定前。"));
     const tasks = this.store.tasks().filter(task => task.input.project_id === projectId).map(task => {
       let result = task.result;
       if (this.store.unavailable && this.store.hasMarker(result.upload_task_id) && result.state !== "WAITING_FOR_CONFIRMATION") result = { ...result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, retryable: false, failure: unknown().failure };
       return QianchuanUploadResultSchema.parse(result);
     });
-    return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.store.unavailable && this.summaries.some(account => account.available) && !this.dependencies.readiness?.(this.store.config), message, tasks, legacyTasks: this.store.legacyTasks().filter(task => task.project_id === projectId) };
+    return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.store.unavailable && !this.initializationFailure && !this.paused && !this.stopped && !this.stopping && this.summaries.some(account => account.available) && !readiness, message, tasks, legacyTasks: this.store.legacyTasks().filter(task => task.project_id === projectId) };
+  }
+  private unresolvedAccountTasks(task: UploadTaskRecord): UploadTaskRecord[] {
+    return this.store.tasks().filter(other => other.result.upload_task_id !== task.result.upload_task_id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (other.authorization.pageBatchId !== task.authorization.pageBatchId || this.store.hasMarker(other.result.upload_task_id)));
+  }
+  private blockedAccountMessage(task: UploadTaskRecord, count: number): string {
+    const target = task.authorization.target, name = this.summaries.find(account => account.advertiserId === target.advertiserId)?.productName ?? target.productName ?? target.product;
+    return `${name}（账户 ${target.advertiserId}）有 ${count} 条未解决的任务，待上传成片保留在队列中。请核查该账号原上传页面并处理旧任务；重开浏览器不会解除阻塞，结果未知的文件禁止重传。`;
+  }
+  private pausedMessage(projectId: string): string {
+    for (const task of this.store.tasks().filter(task => task.input.project_id === projectId && task.result.state === "PENDING" && !task.result.duplicate_of)) {
+      const blockers = this.unresolvedAccountTasks(task);
+      if (blockers.length) return `自动上传已暂停：${this.blockedAccountMessage(task, blockers.length)}`;
+    }
+    const count = this.store.tasks().filter(task => task.result.state === "NEEDS_HUMAN" && !task.result.duplicate_of).length;
+    return `自动上传已暂停：存在 ${count} 条需人工核查的任务。请先核查原上传页面；未受阻塞账号或本批未选文件任务需明确点击“安全继续”。结果未知的文件禁止重传。`;
   }
   private changed(): void { this.dependencies.changed?.(); }
   async restoreConfig(): Promise<void> {
@@ -204,7 +220,8 @@ export class DouyinUploadService {
         // The UI labels this action as read-only; it never grants file-selection permission.
         await this.execute(unresolved.length ? unresolved.map(other => other.result.upload_task_id) : [id]); return;
       }
-      if (this.store.tasks().some(other => other.result.upload_task_id !== id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (other.authorization.pageBatchId !== task.authorization.pageBatchId || this.store.hasMarker(other.result.upload_task_id)))) throw new Error("该账号存在未解决的任务，请先核查原页面。");
+      const blockers = this.unresolvedAccountTasks(task);
+      if (blockers.length) throw new Error(this.blockedAccountMessage(task, blockers.length));
       this.preparingContinuation = true;
       try {
         this.eligible.clear(); this.continuationBatch = task.authorization.pageBatchId; this.stopped = false; this.paused = false;

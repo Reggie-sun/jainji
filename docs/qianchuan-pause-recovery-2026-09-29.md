@@ -99,3 +99,40 @@ S2 manifest SHA-256 `5430d6d994847bfdb9936d8568023b57801961d3a57353b5aa4f3c2bd05
 原 ownership 冲突期间只读 Verify/Check/Guide，两个源码条目 stale 的历史报告保留。依最新用户授权与原任务完成证据，已对机器签发的完整两项批次更新 `douyin-upload-service.ts` 与 `qianchuan-page-contract.ts` 的完整 Entry；写入 `aoci.code.txt`，同步对应源码和索引在 `.aoci/baseline.json` 的绑定。机器结果 `attempted=2/applied=2/remaining=0`，无其他对象或 Scope 扩张。Verify、Check exit 0 且 `governance_aligned=true`；Guide `complete=true / next_action=none`，报告 `/tmp/qianchuan-recovery-install-aoci-{verify,check,guide}.json`。新测试和本轮文档属于现有 observe 范围，无须新增 Code Entry。
 
 工程回归、桌面 fixture、真实平台和人工成片验收分别记账。本轮没有真实平台新上传；第十一条根因、氨糖膏平台业务阻塞及四个历史账号仍未解决，未知任务不得重传。Windows 按用户要求不验证。真实整批自动恢复没有用未知文件做破坏性试错，也没有宣称全部生产验收通过。
+
+## Paused Status Follow-up 2026-09-30
+
+用户截图显示新成片已完成但上传始终为零。只读应用及 ledger 核查：晚安油项目 `f50740e1-1b3d-4199-b2fd-c64a31d5fdc9` 初始 108 条 PENDING；同 advertiser `1876294500004864` 有八条历史 NEEDS_HUMAN，全部 NOT_SELECTED、无 fence，来自另一项目。Chrome 9225 与千川页面仍可连接，但没有可见上传 modal，不能推断浏览器关闭原因。构造函数据历史异常暂停整个 uploader，而 status 未检查 paused/stopped，错误地投影 ready=true 和正常文案。用户追加制作又取消后，无活动导出，当前项目入账共 158 条 PENDING，分别为原批 108 条和新批 50 条。
+
+本修复只调整 service 的只读状态说明、ready 与拒绝继续文案；复用原 resume 的相同 advertiser/pageBatch/fence 判定，未改变授权、队列、浏览器或持久状态。既有 UI 已消费 message/ready，无须接管 UI 文件。新增独立回归覆盖同账号跨项目、另一账号、停止、错误优先级和 UNKNOWN；status 与拒绝继续不接触浏览器且 ledger/fence 字节不变。独立 [Plan](superpowers/plans/2026-09-29-qianchuan-paused-status.md) 已 Self-Review。仓库没有专用 session-record skill，本既有记录保存本次 checkpoint，不修改全局 memory。
+
+Kimi `deep/max` 只读 mapping invocation `699685ba-8d93-4323-8d47-d4d623e71168`，sealed contract `e080c9f5-7f1d-42d2-a7fb-7beec31d2033`；canonical receipt 为 PARSED，261.58 秒、两次 provider request，身份核验通过。Parent 核对前四项状态/文案/名称建议及第五项只读边界：状态缺陷和说明缺口确认；拒绝边界保持，报告中“未 fence”的文字以实际 guard 为准；名称按 advertiser 匹配当前 summary 再回退冻结名称，避免账号槽位重配置时错用名称。该 mapping 不冒充最终 adversarial review。CodeGraph 关系核对后仍以当前源码为准，其行号索引存在漂移。
+
+stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972f9a5339d` 的最终 Risk Gate 为 `KIMI_REVIEW_NOT_REQUIRED`：用户未点名对本快照进行 Kimi review；只读说明不写凭据、授权或持久状态，原 resume predicate 完全保留，无关键级破坏路径；主要后果是状态说明错误，相关测试和实际 packaged alert/拒绝操作已覆盖，不存在同时成立的重大后果、实质缺口与新增 reviewer 独立增益。原恢复 review 的历史计数及结论不重置，也不用于审查本次新字节。
+
+| Verification | Evidence | Result And Limit |
+| --- | --- | --- |
+| 独立 red-green 与相关测试 | `/tmp/jianji-paused-status-red.log`、`/tmp/jianji-paused-status-green.log`、`/tmp/jianji-paused-status-diagnostics.log` | 修正 fixture 身份后旧行为 5 fail/1 pass；修复后 34 个不同用例 PASS |
+| Typecheck、Harness、可信构建 | `/tmp/jianji-paused-status-typecheck.log`、`.agent/harness/runs/20260929T155457Z-d7e5fc90/receipt.json`、`/tmp/jianji-paused-status-build.log` | typecheck/build exit 0，Harness 七组 required checks PASS，source identity 前后一致；构建只用可信安装上下文加本 service |
+| 暂停提示实际 packaged UI | `/tmp/jianji-paused-status-desktop-7Fxs0I/report.json` | 八条历史异常、108 PENDING fixture；alert 和拒绝继续说明正确，零浏览器请求，ledger 字节不变 |
+| 普通 packaged 上传 smoke | `/tmp/jianji-paused-status-upload-smoke-r3.log` | 12 正式 FFmpeg fixture 成片，九条以内分组、严格 IPC、追加独立选择、重启零重选；confirm 0 |
+| 批量 packaged 上传 smoke | `/tmp/jianji-batch-upload-smoke-t39acc/report.json` | 17 正式 FFmpeg 成片、12 READY，UNKNOWN 阻断后续账号；confirm/ad settings 0 |
+| 正常启动 CDP | `/tmp/jianji-default-cdp-smoke-tf3sM3/report.json` | 正常启动动态 loopback CDP，通过独立 fixture；用户无须手加启动参数 |
+
+首次普通 driver 使用旧 UI 标签，属于 driver 不匹配；改用当前 driver 后首次未达到 checkpoint。首次批量后半段断言尚未 completed，亦未冒充 PASS。随后 `umask 077`、串行执行当前 driver 均通过；初次延迟具体原因未定位，不能宣称环境问题已修复。失败日志均保留。
+
+安装基底为当前 CDP release `cdp-default-20260929-00e98131`。只有 main.cjs 内 service section 改变，反向替换完全还原基底；2160 个其他 archive 文件及 executable/unpacked metadata 相同。新 app.asar SHA-256 `ac894ad6ec491912153fef23a945e04771508331299ffe849e180a2488e2747e`，main SHA-256 `8955347d4ba6df26c6e8231ad4d6cdd3b81974bd18a2cff28f33aabaca499ad2`。没有发布其他任务 dirty source。
+
+用户明确授权串行更新 service 的一个 AOCI 条目及 baseline。机器批次 `87af247ee119052d72e8b83a841e45726972f8d6d5d819e143eeda7e6112a46b` apply 1/remaining 0；只改变该条目和对应绑定，保留其余外来修改。Verify、Check exit 0，Guide complete=true/next_action=none，证据 `/tmp/jianji-paused-status-aoci-{verify,check,final-guide}.json`。测试和文档仍属 observe 范围，不新增管理对象。
+
+用户随后明确授权停止上述八条未选文件的历史任务并继续当前新批次；该操作须走应用 owner，复核原项目、目标及无 fence，其他 UNKNOWN 永不重选。真实操作、最终安装身份与剩余阻碍将在执行后记录，不以 fixture 代替真实上传验收。
+
+### Installed And Real Batch Acceptance
+
+最终 release `/home/reggie/Applications/jianji/releases/qianchuan-paused-status-20260930-ac894ad6` 已替换启动器并正常运行，PID `1914602`、renderer URL 与前述 archive SHA 绑定。动态 CDP 端口由真实 `DevToolsActivePort` 读取，未给用户添加启动参数。安装前 agent/batch 已 finished、queue/upload 活动为零、当前晚安油项目已保存。正常 SIGTERM 退出，旧 release 和启动器保留；备份目录 `/home/reggie/Applications/jianji/.backups/qianchuan-paused-status-20260930-ac894ad6` 保存 userData 和原项目。备份跳过无法复制的运行时 Singleton lock/socket/cookie 链接，其余已复制；464 个上传持久文件另逐字节核验，安装前后完全一致。
+
+按用户的新授权，通过 `loadProject` 打开旧项目 `b024028b-5470-4d1e-b733-9a124656a98d`，逐条再次检查八条 NOT_SELECTED、同 advertiser、无 fence，调用原 `stopDouyinUpload` owner。结果仅这八条转 CANCELLED/NOT_SELECTED；没有续传旧批另外十条 PENDING，也没有重选旧 UNKNOWN。再用应用 owner 恢复晚安油项目，对最新 `pageBatchId=d4fa2af0-d148-4954-935d-c8157684a096` 的五十条调用一次显式继续。
+
+真实最新批次五十条全部 READY/WAITING_FOR_CONFIRMATION，分组为 `9/9/9/9/9/5`，每组完整 READY 后推进；五十个新永久 fence，全部绑定原 target/modal。应用界面显示“已上传 50 / 158 条 · 待上传 108 条 · 处理中 0 条 · 需处理 0 条”。前一批 `3184d1d6-1663-4abc-b062-2a894b405b20` 的 108 条保持 PENDING，未用最新批次继续授权唤醒。所有其他 task records 和全部 intents 与操作前一致；原有 52 个 fence 字节不变。没有点击确定、发布或修改广告设置。真实证据 `/tmp/jianji-paused-status-real-acceptance.json`、`/tmp/jianji-paused-status-platform-readonly.json`、`/tmp/jianji-paused-status-live-upload.png`；Parent 已实际查看桌面截图。本轮证明最新批真实上传恢复，不代表平台已接受发布，也不替代人工观看成片。
+
+安装后再次运行 AOCI Verify、Check、Guide，exit 0、governance aligned、Guide complete/none；证据 `/tmp/jianji-paused-status-aoci-install-{verify,check,guide}.json`。仅 stage service Entry 和对应 baseline，聚合索引摘要按 staged bytes 绑定；working tree 的其他任务正式条目与 baseline 修改保留未提交。原第十一条根因、氨糖膏平台业务阻塞和其他历史未知任务继续保留，Windows 仍未验证。
