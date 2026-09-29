@@ -35,6 +35,12 @@
 
 稳定候选后按 `/home/reggie/.codex/SUBAGENTS.md` 评估 Risk Gate，记录 snapshot 和理由。按 AOCI Guide 维护受影响代码索引，执行 Verify、Check、Guide；最终检查 diff，仅提交本任务文件。未验证 Windows 实机和真实账户上传必须明确区分。
 
+## Authorized Installed Delivery
+
+2026-09-29 用户明确要求更新当前 Linux 安装版。原安装版不是完整 Git checkout 重建：其冻结基线已支持 `LatestProductionSchema.usesModel`，后续仅定点加入账号 guard。独立重建 `7c667d3` 的旧 schema 会拒绝真实已保存项目，因此该候选不得交付。撤销为独立构建尝试的类型收窄；使用与原安装版 renderer 字节相同的既有冻结源码，保留原包 guard，再叠加本任务五个已提交源码文件。验证包内模块及其余资产差异，保留旧 release、launcher、用户配置及永久上传 fence；不将其他会话当前未提交改动打入安装包，不接管其源码。
+
+验证临时输入的 typecheck、build 和账号/批量详情测试；用候选安装程序运行隔离账号设置 smoke。确认真实应用制作、导出和上传动作空闲后，通过正常退出停止旧版；备份设置与账本，原子更新 launcher，使用同一 userData 启动新版。只打开账号编辑器确认“产品名称”输入框出现，不保存真实账号更名或发起上传。Parent 核对实际进程路径、包内字节、设置及 fence 哈希，保留回退路径并记录安装证据。
+
 ## Self-Review
 
 用户需求由编辑及持久化覆盖；浏览器稳定性由原同账户连接复用和零 discovery 测试覆盖；兼容性通过可选字段及稳定枚举保持。未创建第二映射 owner，未改变旧上传授权或允许自动确认。Parent 已自审并授权本任务内合同修订与实现。
