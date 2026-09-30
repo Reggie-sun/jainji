@@ -47,6 +47,8 @@ Parent在stable candidate判断Risk Gate：没有当前用户要求Kimi review�
 
 AOCI逐项核实本轮6个对象全部为observed_new，没有本轮未维护的managed对象，不扩大scope或改写共享索引。初始Guide complete=true；末检Verify/Check exit1、Guide complete=false，structure_valid=true但全库治理未对齐，5个foreign stale为src/main/batch-production-runtime.ts、src/main/douyin-upload-service.ts、src/renderer/BatchProductionDetails.tsx、src/renderer/DouyinUploadPanel.tsx、src/shared/batch-production.ts。本轮对象不在missing/stale/unbaselined中。保留所属任务的进行中改动，不调用或截断包含foreign对象的完整Maintain batch；这是全库治理的真实剩余工作，本checkpoint不宣称其完成。末检原JSON与实际命令状态保留在R，scope仅本slice的script/spec/plan/record/phase/总plan；其他dirty/staged/删除/未跟踪工作不stage/commit。
 
+**Post-commit refresh:** 其他owner随后自行完成并提交 `f212a76`；本slice工程checkpoint `c1ee3ef7bb2cbfebaac998dbbc0e8c9465ae515e` 精确只含上述6个owned文件，没有共享索引或业务文件。Parent核对9个实际执行源码/合同摘要均未变、foreign文件字节无变化。再次Verify/Check/Guide全部exit0、governance_aligned=true、stale=[]、Guide complete=true/next_action=none，保留postcommit-*.json；此前5项漂移失败仍保留为历史，不继续当作当前blocker。剩余阻碍是上方真实AI/动画条件与正式资格，生产状态不因AOCI恢复而提升。
+
 ## Scope and Result
 
 2026-10-01 用户要求执行“静态贴纸 + 不移动的动画贴纸”，moving 暂不支持。依据 [Spec](shape-matched-cover-stationary-spec.md) 和 [Plan](shape-matched-cover-stationary-plan.md)，实现完整帧绑定的 `stationary-union/v1` geometry candidate 与真实本地 FFmpeg 验证。结果无 source/semantic/production authority；未接产品入口、未安装启用新功能，既有 manual/assisted 与已认可效果不变。
