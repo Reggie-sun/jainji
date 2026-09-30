@@ -293,3 +293,31 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 已交付权限诊断逻辑及可回滚安装；新文案真实呈现的证据来自上述隔离 packaged 桌面，不能宣称停止实测后的真实店铺任务已重新诊断或平台权限恢复。整体真实整批全组 READY/下一组推进仍未验收：晚安油没有其他完整未选批次，氨糖膏真实平台权限拒绝且用户要求停止测试。旧已选、UNKNOWN、其他账号与历史 fence 保留，未知结果没有重传，没有确定或发布。
 
 安装后 AOCI Verify/Check 再次 exit 0/governance_aligned=true，Guide complete=true/next_action=none，证据 `/tmp/jianji-shop-permission-installed-aoci-{verify,check,guide}.json`。上述安装记录属于 observe；没有再次维护已对齐的 source Entry 或纳入其他窗口字节。
+
+### Five Store Acceptance and Batch Verification
+
+用户要求继续其余五店及批量测试，氨糖膏明确排除；仍不新增真实制作、不确认、不发布、不改变广告设置。当前树串行执行，无新 worktree；live agents 仅 Parent。制作相关文件及 AOCI 中其他窗口修改全部保留，本轮只拥有本记录的新增内容。重新读取正常启动 CDP 和 unit，运行包仍为 `qianchuan-shop-permission-20260930-1c886999`，不能把其他窗口未安装源码当作运行行为。
+
+实际 Chrome 观察先核对账号与计划列表，再在唯一匹配计划行点击计划名称打开详情和素材页。第一次点击 ID 文本未打开四店详情，15 秒超时只是观察入口错误，不能归因店铺或应用上传失败；保留 v1 证据，使用已核查 DOM 的计划名称入口完成 v2。肥皂首次详情加载时按钮禁用，稍后 hover/read-only 复核按钮已可用且无权限提示，最终五店均可用，不能把短暂 loading 判为店铺问题。
+
+| Display / Stable Slot | Advertiser | Live Plan | Existing Batch Acceptance |
+| --- | --- | --- | --- |
+| 蝴蝶贴 / 蝴蝶贴 | 1876024170199244 | 1876036593854788 | 添加视频可用；已有 60 条整批 DISCARDED，当前真实批量项制作前失败，没有新增完整未选批次 |
+| 一根金 / 滴耳康 | 1876131703522649 | 1877582409449488 | 添加视频可用；已有 30 条完整 PENDING/NOT_SELECTED，无 fence；同账号旧 1 条 UNKNOWN 阻断 |
+| 晚安油 / 眼贴 | 1876294500004864 | 1877602792264880 | 添加视频可用；原 108 条已删除，50 条旧目标 READY 无原 modal，不能改传或重选；没有完整未选批次 |
+| 肥皂 / 肥皂 | 1876414814643802 | 1876591298030592 | 添加视频最终可用；已有 52 条批次含 10 READY、1 UNKNOWN、41 PENDING，不能拆出未选部分绕过阻断 |
+| 热敷贴 / 热敷贴 | 1876956000684231 | 1877477842671690 | 添加视频可用；已有 54 条及本轮 30 条完整未选批次；同账号旧 9 条 UNKNOWN 阻断 |
+
+真实软件经 `loadProject` / `resumeDouyinUpload` 对热敷贴、滴耳康、肥皂旧 fenced 任务执行原页面只读核查，共 11 条仍为 NEEDS_HUMAN/MAY_HAVE_UPLOADED，错误现在明确为“上传结果未知：无法恢复原批次 tab。”；不新开替代上传页面。随后对热敷贴新 30 条、一条根新 30 条、肥皂已有 PENDING 锚点分别调用应用明确继续入口，实际主进程消息分别显示账号未解决 9、1、1 条并继续暂停，没有获得文件选择权限。肥皂项目还含眼贴历史，项目总 PENDING 计数不等于肥皂批次数量。这里验证的是整批继续被阻断，不是成功恢复、逐条上传或真实 READY。
+
+真实 ledger 仍为 562 tasks、150 fences；只改变上述 11 条旧 UNKNOWN 的诊断及时间戳。逐项对照所有 task 的 input、authorization、snapshotPath、state、outcome、attempt_count、retry_count，其他 task 完全相同；intents/config 相同，氨糖膏全部任务相同。150 个 selection-fence 与当前安装前完整备份逐文件 SHA 相同。最终 state SHA `aa7cc81ce1bb47c1d126eb29e7ae2da1b5449c5aefc243a52bb701bc78baeefe`。证据 `/tmp/jianji-five-store-{final-page-proof,final-ledger-proof,thermal-block-proof,root-block-proof,soap-block-proof}.json`；完整初态保存在忽略的 `.agent/harness/runs/20260930-five-store-acceptance/ledger-before.json`。
+
+实际 `batchProductionDetails` 核查已存在的 run `a7b71c5e-ea01-4929-9b19-01077b15bb2c`：热敷贴、一条根各 requested/actual/completed 30，failed 0，各对应一个完整 30 条上传批次 `2ac93eff-73ba-4ff8-904a-013c54c19e42` / `42d5db2c-f68f-494f-8346-504da9c69a8d`，全部 PENDING/NOT_SELECTED。60 条正式视频和冻结快照逐文件大小、SHA 均匹配入账输入。蝴蝶贴 requested 30，completed 0、taskIds 空，错误“请先接入模型。”；random/coverEnabled 记录本身不足以判定 Agent 覆盖准入是程序缺陷，尚需核查冻结覆盖方式，相关制作 owner 当前由另一窗口修改，不自行接管。该真实 run finished 不能代表三项全部完成，更不能代表五店批量验收。证据 `/tmp/jianji-five-store-{batch-run,batch-details,formal-snapshots-proof}.json`。
+
+对同一实际安装包 fresh 运行 `scripts/batch-qianchuan-upload-smoke.mjs --packaged`，引擎显式使用应用 userData 的 `tools/ffmpeg/bin/{ffmpeg,ffprobe}`。先前 `/usr/bin/ffmpeg` ENOENT、conda 引擎缺 fps_mode 两次环境失败在任何检查或制作前退出，报告分别保留于 `/tmp/jianji-batch-upload-smoke-Jwc3C3`、`/tmp/jianji-batch-upload-smoke-WYnETB`，不计为 PASS。最终 `/tmp/jianji-batch-upload-smoke-aSV2ug/report.json` exit 0/PASS：独立 userData、两个假账号及本地拦截生产 origin；17 条真实 FFmpeg 合成输出、12 READY，组大小第一账号 `[1,9]`、第二账号 `[2]`；验证上组全 READY 才推进、正式成片入账、job 详情、export-only、模板草稿不变、重启零重复选择、注入 UNKNOWN 后暂停后续账号。确定点击及广告设置变更均 0。此测试没有访问真实店铺，不代表真实五店 READY、发布或人工成片验收。Windows 未验证。
+
+按 `external-subagent` Skill 完成有界只读 Kimi QA：doctor fresh、deep/max/k3 sealed scope，invocation `5323e3cc-f072-488c-8f73-d38991db62c5`，canonical receipt PARSED、6 个请求 IDENTITY_VERIFIED、exit 0、无编排重试。Parent 采纳“finished 不能代表五店通过”“蝴蝶贴没有本轮成片”，拒绝“五店都被账号 UNKNOWN 阻断”的过度推断：DISCARDED 历史不进入 unresolvedAccountTasks，真实账号级阻断仅热敷贴/滴耳康/肥皂；晚安油和蝴蝶贴是缺少可用完整未选批次。该 QA 封存首次详情超时结果，未包含之后 v2 及最终页面证据，后者由 Parent 独立核实；Kimi 未全读 ledger，不能替代 Parent 全量对照或充当新代码 review。receipt `/tmp/jianji-five-store-kimi-receipt.json`。
+
+本轮没有源码变更；记录为 AOCI observe，不新增 Entry 或维护其他窗口的对象。fresh Verify、Check exit 0/governance_aligned=true，Guide complete=true/next_action=none，证据 `/tmp/jianji-five-store-aoci-{verify,check,guide}.json`。压缩恢复已完整收到三块 Overview，但 Attestation 字段 Schema 被拒绝，host confirmation 未获得完整收据；不声称完整认知验证通过，仅按源码及实际证据继续本任务。项目无独立 capture Skill，使用本既有 record owner 留存本次实测及阻塞，不生成交接 prompt。
+
+剩余真实验收仍 blocked：11 条旧 UNKNOWN 原页丢失不能安全恢复，旧已选文件不重传；不得用新计划、拆批、删历史或清 fence 绕过。现有其他两店没有可用于当前计划的完整未选批次；新增真实制作未授权。上述三条受阻新/既有批次没有真实 READY；批量逻辑只有本地隔离 PASS，真实三商品批量是两项完成入账、一项制作准入失败。需要明确的旧批次处置或人工平台核查，以及可用批次后才能完成真实九条分组推进验收。
