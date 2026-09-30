@@ -1,5 +1,11 @@
 # M5-D2A Implementation Plan
 
+## Full Acceptance Remaining Work — 2026-10-01
+
+继续原Milestone4，已完成router窄协议修复、required三轮原生复核/Parent裁决、官方clean安装及新tuple完整八图native/14OS检查；一次新MiniMax真实capability仍响应校验拒绝，GPT应用独立认证目录精确6.1sol仍0，不能开始正式盲审。Milestone3因旧source snapshot漂移，已另建并冻结独立54clips/648frames/18场景新候选，通过verify-preparation；旧包/失败现场不改。数量准备没有满足Milestone4–6退出门，当前INCOMPLETE。
+
+剩余次序：定位MiniMax具体cap echo/usage拒绝（当前无token上限，不用提高额度或猜字段修补），取得所选GPT实际image路线证明；两路真实capability成立后再冻结正式methodConfig、applicability/inputPlan/隔离与unrestricted execution policy，接通唯一formal执行owner；完整收集A/B/raw/mapping/joint及独立truth对应、按已冻结全部硬门和≥100clear/≤5% UNKNOWN比较，可信owner签发受控结果。没有证据时停在真实阻断，不自动fallback/重放/追加直到通过；正式指标null/NOT_EVALUATED，生产继续BLOCKED。新preparation的legacy budgetDraft未选用，不作为正式配置或恢复费用前置门。实际证据由[phase](shape-matched-cover-m5d2a.md#full-acceptance-continuation--2026-10-01)及router原record维护。
+
 ## Explicit Model Verification Checkpoint
 
 用户2026-09-30明确“验证”，原router计划按新accepted catalog-only修订自动承接，不重跑旧quota恢复或制造费用门。当前clean `ba795e4`安装及真实一次认证目录观察已完成：7个模型、gpt-6.1-sol匹配0，canonical receipt `b7816587-9d0d-45b5-bdbe-59b8dee07fd1` INCOMPLETE，模型/正式请求0。剩余工作先解决所选模型的真实账号目录证明，不能自动切换；随后两路真实八图能力、正式隔离执行owner/config/inputPlan、raw/mapped/joint/correspondence及truth-vs-review资格。工程/目录检查不能签发M5-D2A PASS或生产，预算限制已取消；完整证据由[phase](shape-matched-cover-m5d2a.md#current-explicit-model-verification)与router原record独占，旧计划段落保留历史。

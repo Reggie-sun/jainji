@@ -8,6 +8,12 @@ plan: shape-matched-cover-plan.md
 
 # Outcome
 
+## Full Acceptance Result — 2026-10-01
+
+本轮“完整验收”结论为 **ENGINEERING_VERIFIED / LIVE_ACCEPTANCE_INCOMPLETE / PRODUCT_DISABLED**。已认可的两段轮廓样例效果保留；没有修改产品效果或现行手动覆盖。Router真实协议blocker修复/审查/官方安装和新holdout准备已推进，但新MiniMax八图真实调用仍HTTP200后被响应校验拒绝，GPT应用独立目录仍缺所选6.1sol证明，正式执行owner/配置和全真值结果未成立。费用/token限制已取消，不要求OpenAI Key或预算材料，不以HTTP成功/工程review/样例认可签发资格。
+
+独立新holdout54clips/648frames、18场景、609clear准备验证通过，只属于synthetic准备。真实多候选Agent选款、独立自然度/安全复核、完整A/B/joint及real-media资格仍NOT_EVALUATED，相关选择/指标null；正式请求0，没有把既有唯一安全候选或本聊天当自动选款/盲审证明。Fresh typecheck、138个AI/human/qualification tests及router1017个完整native工程tests通过，保留4环境skip和旧失败。全部真实receipts、准备freeze、阻碍与剩余工作见[当前phase](shape-matched-cover-m5d2a.md#full-acceptance-continuation--2026-10-01)；下方验收与效果观察保留原范围，不外推生产。
+
 ## Acceptance Refresh — 2026-10-01
 
 用户明确要求“验收”。本轮结论为 **ENGINEERING_VERIFIED / LIVE_ACCEPTANCE_INCOMPLETE / PRODUCT_DISABLED**。用户已认可此前已知片段的轮廓覆盖效果，按原效果保留；这是该样例的人工视觉认可，不签发全片源事实、模型资格或生产准入。本轮不修改产品代码、连接选择、已接受效果及历史冻结结果。

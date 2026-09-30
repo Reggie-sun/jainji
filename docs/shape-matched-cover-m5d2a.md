@@ -1,5 +1,23 @@
 # M5-D2A Engineering and Qualification Record
 
+## Full Acceptance Continuation — 2026-10-01
+
+用户“完整验收”继续已授权执行，结论 **INCOMPLETE / PRODUCT_DISABLED**，未签发PASS或NOT_QUALIFIED。工程修复、官方安装、真实能力尝试与正式语义资格分别记录；用户此前认可的两段轮廓覆盖效果保留，不修改产品代码、手动覆盖或历史冻结任务。
+
+外部router已完成MiniMax documented body-ID兼容与实际header来源、null request_id及header分段secret保护；required三轮原生工程复核、Parent裁决、clean303017c官方安装及69源码核验成立。Installed完整八图fake/14项OS后的一次真实新请求仍HTTP200→IMAGE_GENERATION_LIMIT→INCOMPLETE，输出隔离、Key删除、未追加请求。诊断旧真实请求确认缺request-id header，旧结果不倒填。当前generation_tokens=null，不能把这一分类猜成费用超限；精确安装/receipts与拒绝由[router原owner](../../agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md#full-acceptance-installed-result--2026-10-01)独占。
+
+GPT应用自己的独立登录account/read authenticated=true；model/list（includeHidden=false、分页完成）5项，exact gpt-6.1-sol匹配0、image支持未获证明，provider requests0。既有REST目录7项/匹配0的原receipt保持。没有发现足以放宽parser/alias的实现缺陷；未读取全局Codex登录、未刷新token、未换model，不要求OpenAI Key或额度材料。本聊天及原生工程reviewer不是blind actor。
+
+旧20260929 holdout因source-fact-ai-run.ts快照变化被verify-preparation拒绝，原包保留。新独立 `full-acceptance-20260930T192147Z/independent-holdout-app-engines` 已提前冻结并通过原author工具独立验证：54clips、648frames、3groups、18场景全部满足；clear609、empty270、present339、multi36、single9、cuts6、motion6、ambiguous18。第一次新准备使用PATH旧FFprobe缺严格metadata而失败，现场保留；核对引擎后改用应用安装的FFmpeg/FFprobe，canonical D1/clock不改、不丢帧。Dataset digest `aece4db3f7bb394cca495ba78037ac4bbbed2b55661c9cdcf35ae960b41a0495`，truth `32393c3e426f54989732781461ce8357f7735ef015ea7ba95119f0611d59284a`；criteria/inputPlan/sourceSnapshot及freeze时间在原package/preparation保存。原tool的budgetDraft含历史finite/cost字段，仅未选用草案，不是当前unrestricted正式配置或预算授权，不倒改freeze。
+
+Formal NOT_STARTED、actor delivery0、formal request0。方法config/适用包络/隔离/正式execution owner、A/B raw、mapping/joint、truth correspondence及可信签发来源均未成立；A/B/joint全部语义指标为null/NOT_EVALUATED，包括false EMPTY、漏目标、多目标、边界/闪现/缺席、误报、身份/类别/歧义和unnecessaryUnknownRate，不能填0。Synthetic数量准备不代表real-media；REAL_MEDIA_HUMAN_TRUTH NOT_EVALUATED，human qualification INCOMPLETE。
+
+Fresh本仓库typecheck及7个AI/human/qualification suites138PASS，routeroffline986/full明确native+containment1017PASS（4环境skip），Ruff/diff及required工程review成立；这些不代表真实视觉或语义资格。私有证据根 `/home/reggie/.local/state/jianji-source-fact-qualification/full-acceptance-20260930T192147Z`，包含新包、失败现场、验证日志及安全账号观察；源码snapshot再次核验无漂移。其他任务dirty/staged/删除/未跟踪均保留。本次专用capture skill不适用，由当前phase/plan与原真实视觉record承接。
+
+原canonical compare对新包及空正式reviews返回OFFLINE_AI_COMPARISON_NOT_QUALIFICATION / INCOMPLETE，qualificationRecord=null，A/B/joint全部19项metrics=null、evaluation=NOT_EVALUATED，comparisonDigest `e9b7ef5078153c4fc69e8705a2e7fb979afeddcb9742f3736fc82760fd53a7e0`；这是未运行状态的工程核对，不是正式资格比较。最终再次typecheck exit0。AOCI期间先观察到其他owner的douyin-cdp-uploader.ts过期，保留该失败；其维护完成后fresh Verify/Check/Guide aligned、findings=[]。本任务三docs属observe，无managed source变化，不写或提交混合aoci.code.txt/.aoci/baseline.json。
+
+停止原因为真实路线/所选账号模型条件未满足，不是计划、tests、commit或用户尚未说继续。后续需定位MiniMax具体响应字段拒绝、取得精确GPT图片能力证据，才可冻结最终formal配置并启动隔离A/B/对应/确定性比较；不得盲目追加至通过。Authority=none、eligible=false；M5-B activation、M5-C issuer、M5-D3、M5-D4、verified-no-sticker production issuance全部BLOCKED，即使受控资格成功也不自动授权生产。
+
 ## Current Explicit Model Verification
 
 2026-09-30 用户要求“验证”。Router原owners已新增显式catalog-only检查，clean `ba795e4`官方安装、program `75b65f99252e24ba0d4364243d40762c785a899b755b3cf3640db19267661c65`、source_dirty_at_install=false。Fresh offline959 PASS、full native978 PASS/12环境skip、最终三所选路线真实Docker/native及新CLI否定共24 PASS；Ruff/diff通过。Installed6.1sol新八图probe/native/conformance和14项OS及清理成立；工程证据不构成视觉或语义资格。
