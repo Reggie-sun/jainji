@@ -184,3 +184,13 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 验证期间发现另一窗口新增 `docs/superpowers/plans/2026-09-30-qianchuan-abandon-unknown.md` 及 upload spec 的放弃旧未知合同，明确 target 包含同一 store/service/index/preload/UI。该新任务没有包含在本窗口此前“原任务结束”的归属事实中。遵守 same-file ownership gate，已询问用户决定串行顺序；本窗口暂停共享源码写入、staging/commit 和真实安装，没有接管新任务或自行合并。其他修改和新 Plan 保持。待用户确定本窗口先完成后，仍须检查源码 hashes、当前制作/上传活动和项目保存状态，提交指定路径并备份安装；若另一窗口先执行，旧候选不得覆盖其新字节。
 
 用户随后明确指令“commit然后安装”，本窗口先完成交付。提交前对照封存 manifest，16 个本任务文件字节均一致，最终 archive SHA 相同；没有 staged 外来修改。实时热敷贴项目已保存、agent finished、无 queued/running 导出；安装仍需再次检查全部上传及制作活动。另一任务的新 spec/Plan/abandon test 不属于本提交。
+
+### Installed Plan Target Repair
+
+修复已提交为 `3e79d6d`，18 个明确路径；只提交本任务七项 AOCI Entry 和对应源码绑定及 staged index 摘要，其他任务索引字节保留。随后按用户顺序安装上述最终 release，启动器原子替换为 `/home/reggie/Applications/jianji/releases/qianchuan-plan-target-20260930-797f4b15/jianji`。安装前再次核查热敷贴项目已保存，agent/batch finished，全部 ledger 及当前队列无活动上传、制作或导出。旧 unit 正常停止，未停止 Chrome；旧 release 保留，启动器、项目及完整上传目录备份于 `/home/reggie/Applications/jianji/.backups/qianchuan-plan-target-20260930-797f4b15`。
+
+新运行 PID `469017`，renderer URL、`/proc/<pid>/exe` 和 app.asar SHA 均绑定最终 release。正常启动仅一个 executable 参数，没有调试启动参数；真实 `DevToolsActivePort` 提供动态端口 `35959`，listener 仅 `127.0.0.1`。`retargetDouyinUpload` bridge 实际为 function。经原 `loadProject(recentId)` owner 重新打开安装前的热敷贴项目 `995593c6-b23d-46b3-b29b-7e9569e85680`，27 条素材、原 recent identity 恢复，最终主进程状态已保存、无活动导出。项目保存字节仅 `updatedAt` 因原应用恢复/草稿持久流程更新，其他 JSON 内容完全一致；没有覆盖回旧项目或恢复陈旧草稿。
+
+完整核对 646 个上传持久文件的 SHA，安装前后无新增、删除或变化；502 条任务、141 个永久 fence 及全部快照保持。热敷贴原九条未解决任务仍明确暂停，未执行真实改传、继续、文件选择、确认或广告设置。证据 `/tmp/jianji-plan-target-installed-proof.json`、`/tmp/jianji-plan-target-installed-state-final.json`、`/tmp/jianji-plan-target-installed-project-diff.json`；Parent 实际查看 `/tmp/jianji-plan-target-installed-desktop.png`。本轮交付安装及启动/数据核验，不代表当前正确计划的真实上传验收；历史第十一条、平台禁用按钮和已选旧计划结果仍需分别处理。
+
+安装后的 AOCI Verify/Check/Guide 已运行：结构有效，但七项源码此时已被另一窗口的 discard/abandon 工作继续修改，当前工作树 governance_aligned=false、Guide authoring_required；路径为 service、store、index、preload、DouyinUploadPanel、qianchuan-upload-status、shared/douyin-upload。证据 `/tmp/jianji-plan-target-installed-aoci-{verify,check,guide}.json`。这些新字节不在本提交和安装包中，未自行维护、stage 或纳入候选；须由原任务稳定后完成七项维护，不能宣称整个当前工作树对齐。本次上下文恢复重新完整交付三块 Overview 并确认 body；Attestation 字段被当前 runtime Schema 拒绝，一次纯字段修正亦未通过，未语义重试或声称完整认知可靠；安装判断仅绑定已核对的源码、包及运行证据。
