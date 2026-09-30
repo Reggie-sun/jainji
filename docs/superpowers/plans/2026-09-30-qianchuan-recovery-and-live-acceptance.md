@@ -15,6 +15,8 @@ Self-Review：采用原 store/service/queue 和可信 start seam，不扩展 ren
 
 Current Scope Delivery：四项已完成，软件提交 `57928bb`。实际安装 `qianchuan-current-production-20261001-775d5fbc` 与测试候选 asar 一致；原项目内容及全部 718 个上传文件保留，当前作品页不显示历史上传任务。fresh typecheck、183 tests、可信基线 build/Harness、三项 exact packaged smoke 和独立修订复核通过。安装、备份与证据边界见 [Recovery Record](../../qianchuan-pause-recovery-2026-09-29.md) 的 Installed Current Production Checkpoint。下文历史 Milestone 5 不属于当前完成目标，本轮未执行真实千川上传。
 
+Real Acceptance Follow-up：用户随后要求真实验收，已沿同一安装包一次跨模板 start 完成肥皂、热敷贴各 10 条新成片及真实 READY。实际分组为肥皂 `1+1+1+4+2+1`、热敷贴 `9+1`，全组 READY 保存先于下组 fence；两个原弹窗各保留 10 条并停在确定前。旧 562 tasks、644 intents、150 fences 保持，未处理历史视频。详见 [Recovery Record](../../qianchuan-pause-recovery-2026-09-29.md) 的 Current Production Real Acceptance。本结论限于本轮两个账号，不扩写成五店、Windows、单项目/追加/重启或人工画面质量全面验收。
+
 把单项目及跨模板批量制作后的自动上传交付为可核查、可恢复的功能：正式成片自动入账，每组最多 9 条，全组 READY 后推进，永久防重传，最终停在千川“确定”前。处理历史批次阻塞，使用户能够明确结束不能继续的本地历史批次，再单独继续其他完整未选批次。
 
 ## Status and Authority

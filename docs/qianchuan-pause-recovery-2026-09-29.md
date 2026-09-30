@@ -403,3 +403,24 @@ Risk Gate 判定 REQUIRED：错误 closure 或迁移可能隐藏 UNKNOWN 账号�
 再次流式核对私有上传目录的全部 718 个文件，hash map 与安装前备份完全相同：ledger v3、562 tasks、644 intents、150 selection fences、0 closures。未结束、删除、恢复或重传任何历史批次，未生成真实商业素材，未进行真实千川上传、确定、发布或广告设置修改；工程与安装通过不代表真实平台或 Windows 验收。
 
 本次 release 的 `current-production-evidence/` 保存可信构建 source、candidate/package binding、build/Harness/三项 packaged smoke、AOCI、installed app/data 证明与桌面截图，后续交付可沿该 source 基线排除其他窗口尚未提交的制作改动。观察期临时路径不是唯一保留位置。文档按现有 observe scope 收尾，source Entry 不重复维护；最终 Verify/Check/Guide 单独核对全库治理状态。
+
+## Current Production Real Acceptance (2026-10-01)
+
+用户随后明确要求“真实验收”。本轮有限范围为肥皂、热敷贴两个现有模板各新制作 10 条，共 20 条；沿已保存的本地随机、手动覆盖、手填文字及导出设置，不调用模型、不处理历史视频。应用仍为已安装 `775d5fbc...` 包、source commit `57928bb`，同一 PID `3983651`；验收期间没有重启应用或修改源码。通过实际应用 preload 的一次 `startBatchProduction` 调用启动整轮，run ID `17c565b7-93da-4c37-8e1a-042c8e9ae35d`，两个账号授权位于同一个当前 production 范围。
+
+| Product | Real Outputs / READY | Actual Upload Groups | Output Directory |
+| --- | --- | --- | --- |
+| 肥皂 | 10 / 10 | `1+1+1+4+2+1` | `/home/reggie/电商/肥皂/视频/10.1 03:16` |
+| 热敷贴 | 10 / 10 | `9+1` | `/home/reggie/电商/热敷贴/视频/10.1 03:19` |
+
+实际页面重新核对 advertiser/plan、原 target/modalSessionId、唯一文件行及数量：肥皂计划 `1876591298030592` 为 `已选择 10/289`，热敷贴计划 `1877477842671690` 为 `已选择 10/144`。各自 10 个文件名称与当前正式输出一一对应，原弹窗保留，“确定”仍可用。20 个正式 completed MP4 与上传快照逐文件大小及 SHA 相同，20 个持久 READY/fence 绑定相同 hash、账号、计划、page ownership，attempt=1、retry=0。两个 job 的作品详情各保留本轮 10 个上传成员，没有按 job 开始覆盖另一账号范围。
+
+各组按同一次 READY 的 `observedAt` 和成员 fence/保存时间核对；所有组最多 9 条，下一组首次 fence 均晚于上组全部 READY 的持久保存。热敷贴第二组首次 fence `2026-09-30T19:21:21.846Z` 晚于首组第九个 READY 保存 `2026-09-30T19:21:21.215Z`。肥皂按产物到达时机形成变长组，不能把固定 `9+1` 当作要求。开始约一分钟的独立观察脚本误用不存在的顶层 task id，未记录早期上传列表；已改用 `result.upload_task_id`，未中断应用、重试或改变上传。早期组次以原 fence 和 READY 时间补证，不伪造早期运行观察。
+
+完整逐项比对证明旧 562 tasks、644 intents、config、closures 均保持原值；旧 UNKNOWN 未被恢复、删除或重新选择。与安装前备份核对的 715 个旧上传非 state 文件（含全部 150 fences、既有快照和审计）字节完全相同；对照排除三个 `state.json*` 文件，账本按新增任务正常变化，不宣称全部 718 文件仍相同。当前 ledger 为 v3、582 tasks、664 intents、170 fences、0 closures。界面实际显示两项各 10/10 完成，Parent 已查看安装桌面截图。
+
+自动化与验收操作均没有调用确定、发布或广告设置修改；证据为所持有的动作记录、exact installed adapter 调用路径及两个原上传弹窗仍停在确定前。本次未安装全局页面点击计数器，不将静态审计冒充运行时 `confirmClicks` 测量。结论仅为两个账号本轮应用制作→正式导出→真实千川上传→待人工确认通过；不代表平台已确认/投放，不替代人工观看，不覆盖其他店铺、Windows 或新的单项目/追加/重启 live trial。
+
+只读 QA 核对同一 run、installed IPC 的一次范围切换、两项各 10 READY、旧记录及实际组次。Parent 区分旧保存的 `production.items.status=exporting`（生成/提交快照）和原 queue 的 completed/文件验证，前者不单独判定正在导出；两项完成来自 queue 和真实文件。启动脚本现场从 `batchProductionProjects` 读取原设置再逐值复制，input/frozen job 一致；未记录热敷贴原模板的 pre-run 全文件 SHA，不宣称该模板完整字节级前后比较。执行过的有界验收脚本和 hash 单独封存；QA 不连接浏览器、不修改数据，不替代 Parent 判断。
+
+私有证据位于 `.agent/harness/runs/20261001-current-production-live-acceptance/`：限定范围、input/start receipt、观察时间线、前后账本、两个 job 详情、真实页面只读证明、逐文件/分组 `final-proof.json` 与桌面截图。完整账本与私有输入不提交 Git。按 completion 评估本次 substantive live proof 并续写原 Record；仅文档变更，AOCI 沿 observe scope 收尾，不重复维护已对齐源码，也不把真实上传证据当作新代码审查。
