@@ -1,5 +1,19 @@
 # M5-D2A Engineering and Qualification Record
 
+## Continued Optimization — 2026-10-01
+
+用户“继续优化”延续范围内blocker修复及受管安装。原router先仅增加固定cap/usage诊断，官方安装后一次新sealed真实请求确认CAP_ECHO_NULL；再按新exact accepted-ref/unrestricted/null请求cap的窄合同修复，旧finite/旧seal/非法echo/usage及身份/秘密/工具/关联拒绝保持。Clean4157a48官方安装，69-source program3998a167…、entry/Skill、完整八图fake及14/14OS隔离核对成立；未修改简辑产品代码、配置、手动覆盖、已认可效果或历史冻结任务。
+
+新真实修复验证资格receipt `44871911-cab4-4d5a-a349-2f732c81ad31` / native `8cba6c07-bc4a-4115-a8ce-6a07f3f9e2ac`：固定MiniMax-M3路线、HTTP200、IDENTITY_VERIFIED、IMAGE_NATIVE_COMPLETE，cap回显null可合法解释为未设置数值上限，usage=input677/output305。原始、wire、native和canonical输出的SHA/长度及八图bytes/顺序核验成立，临时Key删除、原ConnectionStore配置未变；该协议blocker已真实修复。
+
+原owner按提前冻结random-shapes-eight/v1真值比较得到 **NOT_QUALIFIED / VISUAL_PROBE_MISMATCH**。Parent复核八项shape/color/ID/顺序正确，但7项position错误，包括首尾相同像素得到不同位置；原图片与rubric明确一致。不能降低标准、倒改旧结果或追加调用至通过。该结果仅是128×128八图capability包络，不是正式source-review比较，不推断已认可真实覆盖效果或其他模型表现。完整Spec/Plan、安装、两个新请求、真实差异和canonical receipt由[router原owner](../../agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md#unset-cap-installed-result--2026-10-01)独占。
+
+M5-D2A正式仍 **INCOMPLETE / PRODUCT_DISABLED**，formal requests0；A/B/joint全部指标null/NOT_EVALUATED，未签M5-D2A PASS或正式NOT_QUALIFIED。独立新54clips/648frames/18场景truth准备及原未运行compare保留；真实媒体/真人资格未补齐。GPT精确6.1sol应用目录缺失沿用上轮证据，本轮目录请求0，不切model、不要求OpenAI Key或预算证明。本聊天和原生工程mapper均非blind actor。
+
+Fresh本仓库typecheck exit0、7相关suite138PASS；router最终offline1014PASS/35环境skip、明确native+containment1045PASS/4环境skip、Ruff/diff通过。Parent按原Risk Gate对两个stable候选分别判断不触发独立review，原27轮与Kimi禁令保持。证据目录 `/home/reggie/.local/state/jianji-source-fact-qualification/response-optimization-20261001`；当前phase/plan及router record承担capture，无专用capture skill或memory写入。
+
+自然停止于已证实capability位置错误及GPT所选实际账号路线条件未满足。剩余需有独立证据支持的视觉质量/输入方案修复和精确GPT能力，另冻结适用新capability合同并保持本次失败原样，再推进正式config/隔离执行owner、A/B raw/mapping/joint/correspondence及全truth-vs-review。authority=none、eligible=false，M5-B activation/M5-C issuer/M5-D3/M5-D4/verified-no-sticker production issuance全部BLOCKED；现有手动覆盖不属于该生产资格开关。
+
 ## Full Acceptance Continuation — 2026-10-01
 
 用户“完整验收”继续已授权执行，结论 **INCOMPLETE / PRODUCT_DISABLED**，未签发PASS或NOT_QUALIFIED。工程修复、官方安装、真实能力尝试与正式语义资格分别记录；用户此前认可的两段轮廓覆盖效果保留，不修改产品代码、手动覆盖或历史冻结任务。

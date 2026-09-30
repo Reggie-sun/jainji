@@ -1,5 +1,11 @@
 # M5-D2A Implementation Plan
 
+## Optimization Checkpoint — 2026-10-01
+
+Milestone4继续：已定位并真实修复MiniMax无上限请求的null cap回显兼容，clean官方安装、新pins八图/14OS和一次真实修复验证成立。该新probe按原frozen真值判为NOT_QUALIFIED（7/8位置错误），不能开始正式盲审或重试至通过。协议修复与能力错误分开；M5-D2A正式INCOMPLETE、正式请求0、所有未评估指标null，GPT精确6.1sol仍无所选账号图片路线证据；费用和OpenAI Key不是blocker。
+
+后续先以独立证据调查当前capability包络中的视觉质量/输入问题，只有有依据的修复与新提前冻结的适用合同才可再评估，原NOT_QUALIFIED不重写；取得精确GPT实际图片能力后，再推进正式methodConfig/inputPlan/隔离及唯一执行owner、完整A/B/raw/mapping/joint/独立truth对应和确定性比较。全部原硬门、≥100clear/≤5% UNKNOWN、synthetic/real-media分层及可信签发来源保持，工程或用户认可不能替代资格。产品继续BLOCKED，手动模式及已认可样片保留。实际证据由[phase](shape-matched-cover-m5d2a.md#continued-optimization--2026-10-01)和router原record承接。
+
 ## Full Acceptance Remaining Work — 2026-10-01
 
 继续原Milestone4，已完成router窄协议修复、required三轮原生复核/Parent裁决、官方clean安装及新tuple完整八图native/14OS检查；一次新MiniMax真实capability仍响应校验拒绝，GPT应用独立认证目录精确6.1sol仍0，不能开始正式盲审。Milestone3因旧source snapshot漂移，已另建并冻结独立54clips/648frames/18场景新候选，通过verify-preparation；旧包/失败现场不改。数量准备没有满足Milestone4–6退出门，当前INCOMPLETE。
