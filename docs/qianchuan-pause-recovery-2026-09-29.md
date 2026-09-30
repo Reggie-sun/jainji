@@ -241,3 +241,15 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 本轮维护只更新 page-contract AOCI Entry 与对应 source binding，原 source-fact-ai-connections Entry 和其他 binding 逐项保持。Verify、Check、Guide 均 aligned、无 findings、next_action=none；共享索引按本轮行及绑定单独 stage，不纳入其他窗口的未提交条目。证据为私有目录下 `current-final-*`、`current-aoci-*`、`current-packed-real-guard.json` 及 `/tmp/jianji-deleted-tag-package-proof.json`。
 
 安装前发现实际应用 16:11 启动另一批制作 `a7b71c5e-ea01-4929-9b19-01077b15bb2c`，一条根仍 exporting。未终止制作、上传或用户进程；候选已准备，切换运行包必须等待活动制作与上传结束并重新核查保存状态。原目标 108 条已失去整批从未选择资格，UNKNOWN 零重传边界继续阻断真实改传与整批恢复验收。
+
+### Installed Deleted Tag Repair
+
+源码、回归测试、既有记录和本轮 scoped AOCI 已提交 `a88324e`。随后观察到上述制作自然 finished，晚安油项目已保存，无 agent、活动导出或上传，再次核验后正常停止旧 unit，原子更新 `launch.sh` 并启动 `jianji-deleted-tag-installed-20260930.service`，没有中断活动制作。当前 PID `1005518`，重新读取动态 CDP `42177`；renderer URL 为 `qianchuan-deleted-tag-20260930-387b2aa4/resources/app.asar/dist/index.html`，asar 与前述候选 SHA 相同。通过原 `loadProject` 恢复晚安油项目，主进程最终 hasUnsavedChanges=false，delete/retarget bridge 均存在。
+
+切换前新制作已使 ledger 增至 562 tasks，非本窗口新建；安装前后完整 717 个上传文件 SHA 一致，150 fences 保留。完整上传目录及旧 launcher 备份位于 `/home/reggie/Applications/jianji/.backups/qianchuan-deleted-tag-20260930-387b2aa4`；旧 `9f62a6c3` release 原样保留，可回滚 launcher。没有安装工作树的无关制作改动。
+
+通过实际安装应用的原 `resumeDouyinUpload` 对有 fence 的 9 条执行一次合同规定的只读核查。CodeGraph 核对原 service owner，源码明确 fenced 分支仅调用 readOnlyCheck，不能进入 open/upload/markSelecting。实际软件诊断更新为“上传结果未知：千川计划 1876867135606800 已删除，已停止自动操作。”；9 条保持 NEEDS_HUMAN/MAY_HAVE_UPLOADED，99 PENDING/NOT_SELECTED、旧 50 WAITING_FOR_CONFIRMATION 均保留。完整差异核对仅 state.json 及其 canonical .bak 改变，9 条只更新 failure/timestamp；其他 553 tasks、全部 intents、冻结输入、快照及 150 fences 字节不变。真实页原 session 和 9 行仍保留，没有新增文件选择、确认、发布或广告设置动作。
+
+安装、只读操作及字节核验证据分别为 `current-installed-data-proof.json`、`current-installed-app-readonly-final.json`、`current-installed-readonly-effects.json`、`current-installed-page-final.json`。此修复已在真实运行包核验；整体当前计划改传、≤9 分组及整批 READY 尚不能验收：原 108 条包含 9 条 UNKNOWN，不具备整批改传资格，不能拆出 99 条、重传 9 条或用新计划绕过。
+
+实际桌面因窗口最小化（document.visibilityState=hidden）首次交互/截图超时；只激活原简辑窗口后，作品页操作及截图成功，Parent 查看 `current-installed-desktop.png`：晚安油已保存、50 待确认、99 待上传、处理 0、需处理 9，明确显示账号阻断。最终 AOCI Verify/Check/Guide 再次 aligned、无 findings、next_action=none；其他窗口的索引行和制作改动继续保留未提交。这里的“50 已上传”是原旧计划历史状态，不能解释为当前计划验收。
