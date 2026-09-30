@@ -223,9 +223,9 @@
       "normalized_sha256": "6368db94f468318e841db836e80ad2d54f0f10822d2cfcb5c7ec1ee1b404fb8c"
     },
     "AGENTS.md": {
-      "sha256": "da201092bd6196f62f472a7519e848902b9b6e39057b125c6a9578e59f85b167",
-      "size": 19360,
-      "normalized_sha256": "da201092bd6196f62f472a7519e848902b9b6e39057b125c6a9578e59f85b167"
+      "sha256": "070d8bbe2cdc1786c98d8eb35e9bbc7a03f7c77e51cdf7f7475f996852788905",
+      "size": 19756,
+      "normalized_sha256": "070d8bbe2cdc1786c98d8eb35e9bbc7a03f7c77e51cdf7f7475f996852788905"
     },
     "CLAUDE.md": {
       "role": "observe",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "8a847ce57bcc11139a6caad1f0f2e2a7136cc3c40b034cbf51879c21c5214b11",
-      "size": 65427,
-      "normalized_sha256": "8a847ce57bcc11139a6caad1f0f2e2a7136cc3c40b034cbf51879c21c5214b11"
+      "sha256": "4fe3ddb43ef40461b82d79f79a05a27aa94485f64dacad3d8f3caa64296f6ae1",
+      "size": 65508,
+      "normalized_sha256": "4fe3ddb43ef40461b82d79f79a05a27aa94485f64dacad3d8f3caa64296f6ae1"
     },
     "aoci.meta.txt": {
       "role": "index",

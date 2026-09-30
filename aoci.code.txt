@@ -3,7 +3,7 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖、构建输出、日志、Harness回执及CodeGraph本机索引 | R:code:AGENTS.md | A:正式AOCI文件不在根目录忽略表中；.aoci目录由自身白名单排除运行资产 | S:-
-AGENTS.md[SC9T]: F:规定项目权威、产品不变量、领域归属及交付门禁 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:展示文字可逐素材开关及移动，内容整批手填；冻结重试不改稿；稳定修改后维护AOCI并运行Verify、Check、Guide；跨模板精确条数 | S:源mask不证明选款或输出安全；形状须全轮共同候选、同一冻结字节、逐输出100%覆盖和独立内容安全，缺证据UNSAFE不回退；旧冻结任务保持原解释；AOCI对齐不替代行为验证；关闭文字不要求输入且不生成文字层
+AGENTS.md[SC9T]: F:规定项目权威、产品不变量、领域归属及交付门禁 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:展示文字逐素材开关及移动，整批手填；冻结重试不改稿；按本轮改动逐项维护AOCI，提交交接前Verify、Check、Guide；跨模板精确条数 | S:源mask不证明选款或输出安全；形状须全轮共同候选、同一冻结字节、逐输出100%覆盖和独立内容安全，缺证据UNSAFE不回退；旧冻结任务保持原解释；关闭文字不要求输入且不生成文字层；无关漂移不豁免本轮维护，完整批次及所有权不可绕过；AOCI对齐不替代行为验证
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx,code:src/main/nvenc-admission.ts | A:typecheck、Vitest、Harness与安装包入口；Playwright固定运行依赖external；proper-lockfile提供跨进程启动锁 | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态
