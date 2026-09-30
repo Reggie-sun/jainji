@@ -56,9 +56,10 @@ it("shows available products without making file configuration a daily step", ()
 it("shows editable product names in account settings and both selectors while retaining stable account values", () => {
   const accounts = [{ product: "眼贴" as const, productName: "新产品", advertiserId: "123", adId: "456", available: true }];
   const html = renderToStaticMarkup(createElement(DouyinUploadPanel, {
-    projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts, ready: false, message: "自动上传已关闭。", tasks: [], legacyTasks: [] }, onState: () => {},
+    projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts, ready: false, message: "自动上传已关闭。", tasks: [task()], legacyTasks: [] }, onState: () => {},
   }));
   expect(html).toContain("新产品<small>已设置"); expect(html).toContain("新产品 · 账户 123 / 计划 456");
+  expect(html).not.toContain("眼贴 · 账户 123 / 计划 456");
   for (const compact of [true, false]) {
     const selector = renderToStaticMarkup(createElement(DouyinUploadControls, { value: { enabled: true, accountProduct: "眼贴" }, accounts, compact, onChange: () => {} }));
     expect(selector).toContain('<option value="眼贴" selected="">新产品</option>');

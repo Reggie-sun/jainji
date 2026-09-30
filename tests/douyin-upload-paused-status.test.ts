@@ -92,6 +92,25 @@ describe("paused Qianchuan status projection", () => {
     expect(f.dependencies.browser).not.toHaveBeenCalled();
   });
 
+  it("keeps exact captured-job records readable after changing production without restoring control authority", async () => {
+    const f = await fixture(), old = await f.batch(1, "眼贴", true, true), pending = await f.batch(1);
+    await f.restart(); const current = await f.batch(1, "肥皂");
+    const id = old.records[0]!.result.upload_task_id, exportId = old.records[0]!.input.export_task_id;
+    const fencePath = path.join(f.store.root, "selection-fences", `${id}.json`);
+    const before = await readFile(path.join(f.store.root, "state.json")), fence = await readFile(fencePath);
+    const detail = f.service.capturedStatus(old.projectId, [exportId, pending.records[0]!.input.export_task_id]);
+    expect(detail).toMatchObject({ historical: true, accounts: expect.arrayContaining([expect.objectContaining({ productName: "晚安油" })]) });
+    expect(detail.message).toContain("此前制作"); expect(detail.tasks).toEqual([f.store.task(id)!.result]);
+    expect(detail).not.toHaveProperty("ready"); expect(detail).not.toHaveProperty("batches");
+    expect(f.service.capturedStatus(old.projectId, [pending.records[0]!.input.export_task_id]).tasks).toEqual([]);
+    expect(f.service.capturedStatus(pending.projectId, [pending.records[0]!.input.export_task_id]).tasks[0]).toMatchObject({ state: "PENDING", upload_outcome: "NOT_SELECTED" });
+    expect(f.service.status(old.projectId).tasks).toEqual([]);
+    await expect(f.service.resume(id)).rejects.toThrow("不属于本次制作");
+    expect(f.service.status(current.projectId).ready).toBe(true);
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before); expect(await readFile(fencePath)).toEqual(fence);
+    expect(f.dependencies.browser).not.toHaveBeenCalled();
+  });
+
   it("reports stopped state and restores normal readiness only when that stop is explicitly released", async () => {
     const f = await fixture(), current = await f.batch(1);
     expect(f.service.status(current.projectId).ready).toBe(true);

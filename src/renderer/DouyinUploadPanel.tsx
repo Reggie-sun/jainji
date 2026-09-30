@@ -60,7 +60,7 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
     </div>)}
     {!!uploaded && <small>已保存上传记录；同一视频在本账号、本计划下不会重复上传，重启后仍有效。</small>}
     <div aria-label="当前项目的千川上传任务">{tasks.map(task => <article key={task.upload_task_id} className="card brief-card">
-      <h3>{task.file_name}</h3><p>{task.accountProduct} · 账户 {task.advertiserId} / 计划 {task.adId}</p><p>{labels[task.state]}</p>
+      <h3>{task.file_name}</h3><p>{qianchuanProductName(task.accountProduct, status?.accounts ?? [])} · 账户 {task.advertiserId} / 计划 {task.adId}</p><p>{labels[task.state]}</p>
       {task.upload_outcome === "READY" && <small>上传记录已保存 · 本计划不会重复上传</small>}
       {currentPlan(task) && <p>本任务保留原计划 {task.adId}；当前保存计划为 {currentPlan(task)}。{task.upload_outcome === "NOT_SELECTED" ? "整批从未选过文件时，可明确改传。" : "已有文件选择记录，不能改传或重传。"}</p>}
       {task.upload_outcome === "MAY_HAVE_UPLOADED" && !processingStates.includes(task.state) && <p>已保存防重传记录；结果未知，禁止重新上传，请核查原页面。</p>}

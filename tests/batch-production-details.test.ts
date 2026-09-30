@@ -39,4 +39,20 @@ describe("batch works presentation", () => {
     expect(html).toContain("已上传 1 / 2 条"); expect(html).toContain("待在 Chrome 确认"); expect(html).toContain("结果未知，禁止重新上传");
     expect(html).not.toContain("已发布"); expect(html).not.toContain(">确定<");
   });
+
+  it("shows the configured account name and explains a partially uploaded completed batch", () => {
+    const job = { id: "job", recentProjectId: "recent", name: "晚安油", requestedCount: 30, actualCount: 30, productPrice: "", coverEnabled: true,
+      displayMode: "full" as const, status: "completed" as const, taskIds: [], completedCount: 30, failedCount: 0, accountProduct: "眼贴" as const };
+    const uploads = [
+      ...Array.from({ length: 12 }, (_, index) => ({ upload_task_id: `ready-${index}`, file_name: `ready-${index}.mp4`, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY" })),
+      ...Array.from({ length: 9 }, (_, index) => ({ upload_task_id: `unknown-${index}`, file_name: `unknown-${index}.mp4`, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" })),
+      ...Array.from({ length: 9 }, (_, index) => ({ upload_task_id: `pending-${index}`, file_name: `pending-${index}.mp4`, state: "PENDING", upload_outcome: "NOT_SELECTED" })),
+    ] as NonNullable<BatchProductionDetail["upload"]>["tasks"];
+    const tasks = Array.from({ length: 30 }, (_, index) => ({ id: `export-${index}`, status: "completed", progress: 1 })) as BatchProductionDetail["tasks"];
+    const html = render({ job, tasks, upload: { message: "此前制作的上传记录", accounts: [{ product: "眼贴", productName: "晚安油", advertiserId: "123", adId: "456", available: true }], tasks: uploads } });
+    expect(html).toContain("千川上传 · 晚安油"); expect(html).not.toContain("千川上传 · 眼贴");
+    expect(html).toContain("已上传 12 / 30 条"); expect(html).toContain("待上传 9 条"); expect(html).toContain("结果未知 9 条");
+    expect(html).toContain("9 条上传结果未知，需核查原 Chrome 上传页面");
+    expect(html).not.toContain("安全继续"); expect(html).not.toContain("重新上传</button>");
+  });
 });

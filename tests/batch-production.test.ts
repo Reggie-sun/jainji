@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -161,6 +161,24 @@ describe("cross-template batch admission", () => {
     const detail = await f.controller.details({ runId: run.id, jobId: run.jobs[0].id });
     expect(f.dependencies.uploadStatus).toHaveBeenCalledWith(f.projects[0].id, [f.tasks[0].id]);
     expect(detail.upload).toEqual({ message: "fixture upload", tasks: [] });
+  });
+
+  it("wires restored job details to captured read-only uploads instead of current-production status", async () => {
+    const f = await fixture({ allComplete: true });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    const saved = f.controller.snapshot()!;
+    const root = path.join(f.root, "batch-production"); await mkdir(path.join(root, run.id), { recursive: true });
+    await writeFile(path.join(root, "latest.json"), JSON.stringify(saved));
+    for (const job of saved.jobs) await copyFile(path.join(f.root, run.id, `${job.id}.json`), path.join(root, run.id, `${job.id}.json`));
+    const capturedStatus = vi.fn(() => ({ message: "此前制作的上传记录", historical: true, accounts: [], tasks: [] }));
+    const status = vi.fn(() => { throw new Error("Current upload status is not a captured-job view"); });
+    const runtime = createBatchProductionRuntime({ root: f.root, queue: { snapshot: f.dependencies.queue, taskStatuses: f.dependencies.taskStatuses },
+      upload: { capturedStatus, status }, changed: () => {} } as unknown as Parameters<typeof createBatchProductionRuntime>[0]);
+    await runtime.controller.restore();
+    const detail = await runtime.controller.details({ runId: run.id, jobId: saved.jobs[0].id });
+    expect(capturedStatus).toHaveBeenCalledWith(f.projects[0].id, [f.tasks[0].id]);
+    expect(detail.upload).toMatchObject({ historical: true, message: "此前制作的上传记录" }); expect(status).not.toHaveBeenCalled();
   });
 
   it("cancels only the selected job's upload tasks while preserving the other job", async () => {

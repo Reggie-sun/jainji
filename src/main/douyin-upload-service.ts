@@ -76,21 +76,38 @@ export class DouyinUploadService {
     const { accountConfigPath, ...config } = this.store.config;
     const readiness = this.dependencies.readiness?.(this.store.config);
     const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : (this.stopFailed ? "旧上传操作未能安全停止，请先关闭应用并核查 Chrome。" : this.initializationFailure) ?? (!config.enabled ? "自动上传已关闭。" : readiness ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : this.paused ? this.pausedMessage(projectId) : this.stopped || this.stopping ? "自动上传已停止，待上传成片保留在队列中。检查对应 Chrome 后，对本批未选文件的任务点击“安全继续”；结果未知的文件只能只读核查原页面。" : "成片上传至所选计划，停在确定前。"));
-    const tasks = this.openTasks().filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => {
-      let result = task.result;
-      if (this.store.unavailable && this.store.hasMarker(result.upload_task_id) && result.state !== "WAITING_FOR_CONFIRMATION") result = { ...result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, retryable: false, failure: unknown().failure };
-      return QianchuanUploadResultSchema.parse(result);
-    });
+    const tasks = this.openTasks().filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => this.taskResult(task));
     const all = this.store.tasks().filter(task => task.input.project_id === projectId);
-    const summary = (pageBatchId: string) => {
-      const batch = all.filter(task => task.authorization.pageBatchId === pageBatchId), first = batch[0]!;
-      return { projectId, pageBatchId, advertiserId: first.authorization.target.advertiserId, adId: first.authorization.target.adId, expectedCount: first.authorization.expectedCount,
-        taskIds: batch.map(task => task.result.upload_task_id).sort(), readyCount: batch.filter(task => task.result.upload_outcome === "READY").length,
-        unknownCount: batch.filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED").length, notSelectedCount: batch.filter(task => task.result.upload_outcome === "NOT_SELECTED").length };
-    };
+    const summary = (pageBatchId: string) => this.batchSummary(projectId, all.filter(task => task.authorization.pageBatchId === pageBatchId));
     const batches = [...new Set(this.openTasks().filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => task.authorization.pageBatchId))].map(pageBatchId => ({ ...summary(pageBatchId), canClose: !this.active && !this.runner && !this.preparingContinuation && !this.retargeting && !this.discarding && !this.closing && !this.stopping && this.store.canCloseBatch(pageBatchId) }));
     const closedBatches = this.store.closedBatches().filter(batch => batch.projectId === projectId && this.inProduction(batch.pageBatchId)).map(batch => ({ ...summary(batch.pageBatchId), closedAt: batch.closedAt, tasks: all.filter(task => task.authorization.pageBatchId === batch.pageBatchId).map(task => task.result) }));
     return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.stopFailed && !this.store.unavailable && !this.initializationFailure && !this.paused && !this.stopped && !this.stopping && this.summaries.some(account => account.available) && !readiness, message, tasks, batches, closedBatches, legacyTasks: this.productionBatches ? [] : this.store.legacyTasks().filter(task => task.project_id === projectId) };
+  }
+  /** Captured job details are read-only; they never restore historical upload permission. */
+  capturedStatus(projectId: string, exportTaskIds: string[]): Pick<DouyinUploadStatus, "accounts" | "message" | "tasks" | "closedBatches"> & { historical: boolean } {
+    const ids = new Set(exportTaskIds);
+    const records = this.store.tasks().filter(task => task.input.project_id === projectId && ids.has(task.input.export_task_id));
+    const historical = records.some(task => !this.inProduction(task.authorization.pageBatchId));
+    const status = this.status(projectId);
+    const closedBatches = this.store.closedBatches().filter(batch => batch.projectId === projectId && batch.taskIds.every(id => records.some(task => task.result.upload_task_id === id)))
+      .map(batch => {
+        const tasks = records.filter(task => task.authorization.pageBatchId === batch.pageBatchId);
+        return { ...this.batchSummary(projectId, tasks), closedAt: batch.closedAt, tasks: tasks.map(task => task.result) };
+      });
+    return { accounts: status.accounts, historical,
+      message: historical ? "这是此前制作的上传记录；自动上传只处理当前制作，旧记录不会自动续传。" : status.message,
+      tasks: records.filter(task => !this.store.isClosed(task.authorization.pageBatchId) && task.result.state !== "DISCARDED").map(task => this.taskResult(task)), closedBatches };
+  }
+  private taskResult(task: UploadTaskRecord): QianchuanUploadResult {
+    let result = task.result;
+    if (this.store.unavailable && this.store.hasMarker(result.upload_task_id) && result.state !== "WAITING_FOR_CONFIRMATION") result = { ...result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, retryable: false, failure: unknown().failure };
+    return QianchuanUploadResultSchema.parse(result);
+  }
+  private batchSummary(projectId: string, batch: UploadTaskRecord[]) {
+    const first = batch[0]!;
+    return { projectId, pageBatchId: first.authorization.pageBatchId, advertiserId: first.authorization.target.advertiserId, adId: first.authorization.target.adId, expectedCount: first.authorization.expectedCount,
+      taskIds: batch.map(task => task.result.upload_task_id).sort(), readyCount: batch.filter(task => task.result.upload_outcome === "READY").length,
+      unknownCount: batch.filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED").length, notSelectedCount: batch.filter(task => task.result.upload_outcome === "NOT_SELECTED").length };
   }
   private unresolvedAccountTasks(task: UploadTaskRecord): UploadTaskRecord[] {
     return this.openTasks().filter(other => other.result.upload_task_id !== task.result.upload_task_id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (other.authorization.pageBatchId !== task.authorization.pageBatchId || this.store.hasMarker(other.result.upload_task_id)));

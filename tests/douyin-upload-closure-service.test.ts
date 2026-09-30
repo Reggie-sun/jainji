@@ -26,6 +26,12 @@ it("closure is offline, preserves results, rejects stale actions, and never wake
   const reopened = new DouyinUploadStore(f.root); await reopened.load();
   const service = new DouyinUploadService(reopened, { browser: f.browser, loadBatch: f.loadBatch });
   await service.reconcile(); await service.runPending();
+  await service.beginProduction();
+  const captured = service.capturedStatus(f.project_id, f.tasks.map(task => task.input.export_task_id));
+  expect(captured.historical).toBe(true); expect(captured.tasks).toEqual([]);
+  expect(captured.closedBatches?.[0]).toMatchObject({ readyCount: 1, unknownCount: 1, notSelectedCount: 1 });
+  expect(captured.closedBatches?.[0]?.tasks).toEqual(before.filter(task => task.input.project_id === f.project_id && task.authorization.pageBatchId === f.tasks[0]!.authorization.pageBatchId).map(task => task.result));
+  expect(service.capturedStatus(f.project_id, [f.tasks[0]!.input.export_task_id]).closedBatches).toEqual([]);
   expect(reopened.tasks()).toEqual(before); expect(f.browser).not.toHaveBeenCalled(); expect(f.loadBatch).not.toHaveBeenCalled();
 });
 it("concurrent resume/retarget/discard/closure refuse; stop generation veto leaves records unclosed", async () => {
