@@ -5,7 +5,7 @@ import path from "node:path";
 import { z } from "zod";
 import { atomicWriteJson } from "./store.js";
 import { LegacyMarkerSchema, validateLegacy } from "./douyin-upload-legacy.js";
-import { FinalArtifactInputSchema, UploadIdentitySchema, UploadIdSchema, QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, QianchuanUploadResultSchema, UploadAuthorizationSchema, PageOwnershipSchema, uploadFailure, type UploadIdentity, type QianchuanUploadConfig, type PageOwnership } from "../shared/douyin-upload.js";
+import { FinalArtifactInputSchema, UploadIdentitySchema, UploadIdSchema, QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, QianchuanUploadResultSchema, UploadAuthorizationSchema, PageOwnershipSchema, uploadFailure, type UploadIdentity, type QianchuanUploadConfig, type PageOwnership, type UploadAuthorization } from "../shared/douyin-upload.js";
 
 export const UploadIntentSchema = UploadIdentitySchema.extend({ selection: QianchuanUploadSelectionSchema, config: QianchuanUploadConfigSchema, authorization: UploadAuthorizationSchema }).strict();
 export type UploadIntent = z.infer<typeof UploadIntentSchema>;
@@ -37,7 +37,7 @@ export async function secureUploadDirectory(directory: string): Promise<void> {
   const info = await lstat(directory);
   if (!info.isDirectory() || info.isSymbolicLink() || info.mode & 0o7077 || info.uid !== process.getuid() || await realpath(directory) !== path.resolve(directory)) throw new Error("Upload directory must be private");
 }
-async function privateBytes(file: string): Promise<Buffer> {
+async function privateBytes(file: string, sync = false): Promise<Buffer> {
   const info = await lstat(file);
   if (!info.isFile() || info.isSymbolicLink() || info.mode & 0o7177 || info.uid !== process.getuid?.()) throw new Error("Upload record must be private");
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -46,6 +46,7 @@ async function privateBytes(file: string): Promise<Buffer> {
     if (!before.isFile() || before.dev !== info.dev || before.ino !== info.ino || before.mode !== info.mode || before.uid !== info.uid || before.size !== info.size) throw new Error("Upload record changed");
     const bytes = await handle.readFile(), after = await handle.stat(), current = await lstat(file);
     if (after.dev !== before.dev || after.ino !== before.ino || after.size !== before.size || after.mtimeMs !== before.mtimeMs || after.ctimeMs !== before.ctimeMs || after.mode !== before.mode || current.dev !== after.dev || current.ino !== after.ino || current.isSymbolicLink() || bytes.length !== before.size) throw new Error("Upload record changed");
+    if (sync) await handle.sync();
     return bytes;
   } finally { await handle.close(); }
 }
@@ -62,6 +63,7 @@ export class DouyinUploadStore {
   constructor(readonly root: string, private readonly durability: { syncDirectory?: (directory: string) => Promise<void> } = {}) {}
   private get statePath(): string { return path.join(this.root, "state.json"); }
   private get fenceDirectory(): string { return path.join(this.root, "selection-fences"); }
+  private get retargetHistoryDirectory(): string { return path.join(this.root, "retarget-history"); }
   private get legacyPath(): string { return path.join(this.root, "legacy-v1.json"); }
   get config(): QianchuanUploadConfig { return structuredClone(this.data.config); }
   intents(): UploadIntent[] { return structuredClone(this.data.intents); }
@@ -90,7 +92,7 @@ export class DouyinUploadStore {
       try { original = await privateBytes(this.statePath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       let data: State; const names = await readdir(this.root);
       if (!original) {
-        if (oldMarkers.size || names.includes("legacy-v1.json") || names.some(name => name.startsWith("state.json")) || (await readdir(this.fenceDirectory)).length) throw new Error("Missing ledger with history");
+        if (oldMarkers.size || names.includes("legacy-v1.json") || names.includes("retarget-history") || names.some(name => name.startsWith("state.json")) || (await readdir(this.fenceDirectory)).length) throw new Error("Missing ledger with history");
         data = empty();
       } else {
         const value = JSON.parse(original.toString("utf8"));
@@ -193,6 +195,74 @@ export class DouyinUploadStore {
         return { ...value, result: { ...value.result, state: task.result.readyEvidence ? "WAITING_FOR_CONFIRMATION" as const : "NEEDS_HUMAN" as const, upload_outcome: task.result.readyEvidence ? "READY" as const : "MAY_HAVE_UPLOADED" as const, readyEvidence: task.result.readyEvidence, failure: task.result.readyEvidence ? undefined : task.result.failure, retryable: false, timestamp: task.result.timestamp } };
       });
       await this.commit({ ...this.data, tasks: [...tasks, task] });
+    });
+  }
+  retargetBatch(id: string, authorization: UploadAuthorization, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
+    return this.serial(async () => {
+      this.assertReady();
+      const nextAuthorization = UploadAuthorizationSchema.parse(authorization), selected = this.data.tasks.find(task => task.result.upload_task_id === id);
+      if (!selected) throw uploadFailure("INPUT_CONFLICT", "account", "找不到待改传任务。", "刷新上传记录后重新选择整批任务。", true);
+      const oldAuthorization = selected.authorization, oldBatchId = oldAuthorization.pageBatchId;
+      const batchTasks = this.data.tasks.filter(task => task.authorization.pageBatchId === oldBatchId);
+      const batchIntents = this.data.intents.filter(intent => intent.authorization.pageBatchId === oldBatchId);
+      const identities = new Set(batchTasks.map(task => intentKey(task.input)));
+      const rejected = () => uploadFailure("INPUT_CONFLICT", "account", "本批任务不满足改传当前计划的条件。", "仅可整批改传同账号、同产品、同 CDP 的未选文件任务；含围栏、别名或目标冲突时需人工核查。", true);
+
+      if (nextAuthorization.expectedCount !== oldAuthorization.expectedCount || nextAuthorization.pageBatchId === oldBatchId ||
+        nextAuthorization.target.product !== oldAuthorization.target.product || nextAuthorization.target.advertiserId !== oldAuthorization.target.advertiserId ||
+        nextAuthorization.target.cdpEndpoint !== oldAuthorization.target.cdpEndpoint || nextAuthorization.target.adId === oldAuthorization.target.adId ||
+        this.data.tasks.some(task => task.authorization.pageBatchId === nextAuthorization.pageBatchId) ||
+        this.data.intents.some(intent => intent.authorization.pageBatchId === nextAuthorization.pageBatchId) ||
+        batchTasks.length !== oldAuthorization.expectedCount || batchIntents.length !== oldAuthorization.expectedCount ||
+        identities.size !== batchTasks.length || batchTasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(oldAuthorization) ||
+          task.result.upload_outcome !== "NOT_SELECTED" || !["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(task.result.state) || task.result.duplicate_of ||
+          this.hasMarker(task.result.upload_task_id)) ||
+        batchIntents.some(intent => JSON.stringify(intent.authorization) !== JSON.stringify(oldAuthorization) || !identities.has(intentKey(intent))) ||
+        [...this.fences.values()].some(fence => fence.pageOwnership.pageBatchId === oldBatchId || batchTasks.some(task => task.result.upload_task_id === fence.upload_task_id || sameTargetBytes(task, this.data.tasks.find(other => other.result.upload_task_id === fence.upload_task_id)!))) ||
+        this.data.tasks.some(task => task.result.duplicate_of && (identities.has(intentKey(task.result)) || batchTasks.some(candidate => task.result.duplicate_of === candidate.result.upload_task_id)))) throw rejected();
+
+      const movedById = new Map<string, UploadTaskRecord>(), newIds = new Set<string>(), newTargetBytes = new Set<string>();
+      for (const task of batchTasks) {
+        const nextId = uploadTaskId(task.input, nextAuthorization.target);
+        const targetBytes = JSON.stringify([task.input.artifact_sha256, nextAuthorization.target.advertiserId, nextAuthorization.target.adId]);
+        const moved: UploadTaskRecord = {
+          ...task, inputDigest: frozenInputDigest(task.input, nextAuthorization), authorization: nextAuthorization,
+          result: { ...task.result, upload_task_id: nextId, accountProduct: nextAuthorization.target.product,
+            advertiserId: nextAuthorization.target.advertiserId, adId: nextAuthorization.target.adId, state: "PENDING",
+            upload_outcome: "NOT_SELECTED", retryable: false, failure: undefined, readyEvidence: undefined, timestamp: new Date().toISOString() },
+        };
+        if (newIds.has(nextId) || newTargetBytes.has(targetBytes) || this.data.tasks.some(other => !identities.has(intentKey(other.input)) &&
+          (other.result.upload_task_id === nextId || sameTargetBytes(moved, other)))) throw rejected();
+        newIds.add(nextId);
+        newTargetBytes.add(targetBytes);
+        movedById.set(task.result.upload_task_id, moved);
+      }
+      const movedIntents = batchIntents.map(intent => ({ ...intent, authorization: nextAuthorization }));
+      const archive = { version: 1 as const, intents: batchIntents, tasks: batchTasks, newAuthorization: nextAuthorization };
+      const archivePath = path.join(this.retargetHistoryDirectory, `${oldBatchId}.json`), archiveBytes = Buffer.from(`${JSON.stringify(archive, null, 2)}\n`);
+      try {
+        await secureUploadDirectory(this.retargetHistoryDirectory);
+        await strictSyncDirectory(this.root);
+        let handle;
+        try {
+          handle = await open(archivePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+          await handle.writeFile(archiveBytes); await handle.sync();
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await privateBytes(archivePath, true)).equals(archiveBytes)) throw error;
+        } finally { await handle?.close(); }
+        await (this.durability.syncDirectory ?? strictSyncDirectory)(this.retargetHistoryDirectory);
+      } catch {
+        this.blocked = true;
+        throw uploadFailure("STORE_UNAVAILABLE", "store", "整批改传历史无法可靠保存，上传记录已停用。", "保留原上传记录和全部文件选择屏障；检查本机存储。", true);
+      }
+      await beforeCommit?.();
+      const next: State = {
+        ...this.data,
+        intents: this.data.intents.map(intent => movedIntents.find(value => intentKey(value) === intentKey(intent)) ?? intent),
+        tasks: this.data.tasks.map(task => movedById.get(task.result.upload_task_id) ?? task),
+      };
+      await this.commit(next);
+      return batchTasks.map(task => structuredClone(movedById.get(task.result.upload_task_id)!));
     });
   }
   markSelecting(id: string, pageOwnership: PageOwnership, selectedIndex: number): Promise<void> {

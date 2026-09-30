@@ -100,6 +100,18 @@ export class QianchuanPageSession {
       this.identityEstablished = true; return this.guard(task, signal);
     }
     await this.unique(accountIdentity, signal); await this.unique(planIdentity, signal);
+    if (this.contract.kind === "qianchuan") {
+      const deleted = await planIdentity.evaluate(element => {
+        const header = element.closest(".oc-promotion-key-info-bar-info-con");
+        if (!header) return null;
+        return Array.from(header.querySelectorAll(".oc-tag-text")).some(tag => {
+        const box = tag.getBoundingClientRect();
+        return tag.textContent?.trim() === "已删除" && box.width > 0 && box.height > 0 && getComputedStyle(tag).visibility === "visible";
+        });
+      });
+      if (deleted === null) throw changed();
+      if (deleted) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", `千川计划 ${target.adId} 已删除，已停止自动操作。`, "保存当前有效计划链接；仅整批从未选过文件的任务可明确“改传当前计划”。已有文件屏障保留，只能人工核查原计划，禁止重传。", true);
+    }
     if (this.modal) {
       if (await this.frame.locator(`${this.contract.modal}:visible`).count() !== 1) throw lostModal();
       if (await this.modal.getAttribute("data-jianji-upload-session") !== this.ownership?.modalSessionId) throw lostModal();

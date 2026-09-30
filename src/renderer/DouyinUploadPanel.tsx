@@ -14,6 +14,7 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
   const uploaded = tasks.filter(task => task.upload_outcome === "READY").length;
   const pending = tasks.filter(task => task.state === "PENDING").length;
   const processing = tasks.filter(task => processingStates.includes(task.state)).length;
+  const currentPlan = (task: QianchuanUploadResult) => status?.accounts.find(account => account.available && account.product === task.accountProduct && account.advertiserId === task.advertiserId && account.adId !== task.adId)?.adId;
   useEffect(() => setConfig(status?.config ?? defaultConfig), [key]);
   const perform = async (action: () => Promise<DesktopState>) => {
     if (busy) return false; setBusy(true); setError("");
@@ -49,11 +50,13 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
     <div aria-label="当前项目的千川上传任务">{tasks.map(task => <article key={task.upload_task_id} className="card brief-card">
       <h3>{task.file_name}</h3><p>{task.accountProduct} · 账户 {task.advertiserId} / 计划 {task.adId}</p><p>{labels[task.state]}</p>
       {task.upload_outcome === "READY" && <small>上传记录已保存 · 本计划不会重复上传</small>}
+      {currentPlan(task) && <p>本任务保留原计划 {task.adId}；当前保存计划为 {currentPlan(task)}。{task.upload_outcome === "NOT_SELECTED" ? "整批从未选过文件时，可明确改传。" : "已有文件选择记录，不能改传或重传。"}</p>}
       {task.upload_outcome === "MAY_HAVE_UPLOADED" && !processingStates.includes(task.state) && <p>已保存防重传记录；结果未知，禁止重新上传，请核查原页面。</p>}
       {task.readyEvidence && <small>已核对文件列表；观察时已选择 {task.readyEvidence.selectedCount} 条。请在任务 Chrome 页面检查并自行确认。浏览器关闭后草稿可能丢失。</small>}
       {task.failure && <><p role="alert">{task.failure.message}</p><small>下一步：{task.failure.next_action}</small></>}
       {task.duplicate_of ? <small>已关联同目标的既有上传记录；没有再次选文件。</small> : <>
-        {!["FAILED_TERMINAL", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state) && <button type="button" disabled={busy} onClick={() => void perform(() => window.jianji.resumeDouyinUpload(projectId, task.upload_task_id))}>{task.upload_outcome === "NOT_SELECTED" ? "安全继续" : "只读核查页面"}</button>}
+        {currentPlan(task) && task.upload_outcome === "NOT_SELECTED" && ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(task.state) && <><button type="button" disabled={busy} onClick={() => void perform(() => window.jianji.retargetDouyinUpload(projectId, task.upload_task_id, currentPlan(task)!))}>本批改传当前计划 {currentPlan(task)}</button><small>更改后仍需点击“安全继续”；已有未知任务的阻塞会保留。</small></>}
+        {!["FAILED_TERMINAL", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state) && <button type="button" disabled={busy || task.upload_outcome === "NOT_SELECTED" && !!currentPlan(task)} onClick={() => void perform(() => window.jianji.resumeDouyinUpload(projectId, task.upload_task_id))}>{task.upload_outcome === "NOT_SELECTED" ? "安全继续" : "只读核查页面"}</button>}
         {task.state !== "WAITING_FOR_CONFIRMATION" && <button type="button" disabled={busy} onClick={() => void perform(() => window.jianji.stopDouyinUpload(projectId, task.upload_task_id))}>停止任务</button>}
       </>}
     </article>)}{!tasks.length && <p>当前项目没有千川上传任务。</p>}</div>

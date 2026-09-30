@@ -144,3 +144,43 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 实时软件账号摘要及 `accounts/mapping.json` 仍保存旧计划；本批授权冻结相同 ID。源码未硬编码这个 ID，实际链路是 `QianchuanAccountSettings` 持久映射 → `preflight/freeze` → task authorization → `accountPageUrl` → 原 uploader。`QianchuanPageSession.guard` 核对账号和计划 ID、登录/验证及 modal 归属，未核对计划“已删除”状态。因此上面的五十条 READY 只证明旧计划临时页的上传就绪，不能作为用户当前计划的上传交付验收。Parent 先前只核验 ID 和 READY、漏核计划状态，本条明确更正，保留历史证据而不改写它。
 
 本次仅只读定位并纠正记录，没有修改映射、冻结目标、ledger 或 fence，没有确认、重新选择或上传。五十条已有永久 fence 且原 modal 丢失，不能通过改 ID 假定旧选择未生效并重传；其平台结果需要原页面/人工核查。前一批未选文件的旧目标也不能仅靠改全局配置自动重绑。删除计划准入阻断与明确的未选文件目标迁移仍需修复和独立验证。用户当前另一项目有活动制作，不能重启打断。
+
+## Plan Target Repair 2026-09-30
+
+用户授权串行接续必要 UI/store/API 和对应 AOCI 条目，保留其他任务修改。独立 [Plan](superpowers/plans/2026-09-30-qianchuan-plan-target-repair.md) 对原冻结规则作窄修订并完成 Self-Review：账号设置变化不自动迁移，只有完整、全部未选文件、无 fence/alias/取消的原 pageBatch，才可显式改传同产品、同 advertiser、同 CDP 的当前保存计划。操作先独占归档原 intents/tasks 并同步，再由原 store 原子提交；文件快照不变，派生新任务身份和 pageBatch，仍需显式继续。任何存储不确定继续 fail closed；已有未知账号阻塞不解除。
+
+页面 guard 只在唯一匹配计划的详情头部识别“已删除”，缺头部也拒绝；其他素材或计划的删除文字不误判。未选批次在浏览器 factory 和 fence 前检查当前映射，陈旧目标阻断并提示“本批改传当前计划”。IPC 使用原 trusted sender/current project/task guard，主进程重新取得目标并校验用户看到的 expectedAdId。已选任务保留旧目标、屏障及只读核查，不迁移或重传。UI 对照新旧计划，陈旧未选任务的继续按钮禁用，明确改传后还需继续。
+
+原 service 测试文件已干净且原任务结束，仅修正一条要求继续旧计划的断言：冻结 ID 保留，但选择被 INPUT_CONFLICT 阻断、零浏览器动作和 fence。完整 Harness 另暴露既有 Chrome 测试等待事件时被旧页面后续事件覆盖的时序问题；只把 laterDom 的最后事件判断改为匹配已收到的空行事件，保留 uploader 必须拒绝和零第二次 drop 断言。失败报告保留，不把测试等待问题宣称为产品缺陷。
+
+| Verification | Evidence | Result And Limit |
+| --- | --- | --- |
+| 删除计划 red-green | `/tmp/jianji-plan-target-red.log`、`/tmp/jianji-plan-target-production.log` | 旧行为三个失败；最终生产页面、诊断及 CDP 54 项通过；仅隔离 Chrome fixture |
+| Store/service/UI 与恢复回归 | `/tmp/jianji-plan-target-final-focused.log` | 67 项通过，包括完整批次迁移/重启、目标冲突、归档故障、停止交错、旧 UNKNOWN 保留与 9/9/2 全组 READY 推进 |
+| Code Harness | `.agent/harness/runs/20260929T171148Z-a4e8aae4/receipt.json` | typecheck 和六测试组共 418 项通过，无 skip，工作区身份前后一致；此前失败和 source_changed 回执保留 |
+| 可信构建及 archive 核对 | `/tmp/jianji-plan-target-trusted-build-final.log`、`/tmp/jianji-plan-target-final-package-proof.json` | 构建 exit 0；可信基底加七个当前源码，未发布其他任务 dirty source；仅 main/preload/renderer 内容变化，metadata 不变 |
+| 普通 packaged 上传 | `/tmp/jianji-plan-target-final-upload-smoke.log` | 正式 FFmpeg fixture 成片、上传分组、IPC 和重启防重传通过；确定 0，非真实账号 |
+
+初始迁移桌面 fixture 在 `/tmp/jianji-paused-status-desktop-pJuvUH/report.json` 证明 108 条改传、八条无关历史不变、快照不变、一份审计、零 fence/浏览器请求，并保留旧账号阻塞。该包早于最终增加的批内重复 hash 拒绝，最终安装包须重新运行对应桌面验证，不把初始结果绑定成最终字节。
+
+### Delegation And Risk Gate
+
+受管 Kimi deep/max mapping invocation `a399ebf3-4eac-409b-989d-077cf3faeb08`、sealed contract `ff3ad4ad-acbd-4834-b9ea-03fc8e534717`，两次 wire request；首请求身份核验通过，第二次 HTTP 200 后 CONNECTION_ERROR，361 秒后 runtime exit 1，canonical outcome `OUTCOME_UNKNOWN`。部分输出隔离，未作为实现或 final review 结论；未机械重试付费请求。独立 native bounded_worker `/root/qianchuan_retarget_store` 仅实施 store 和新 store 回归；Parent 对源码、持久顺序和碰撞拒绝作最终核对。原 guard required review 的三次失败和 native 审查历史不重置，也不代表本次新实现已获审查。
+
+项目验证后，Parent 对七个稳定源码（AOCI 本次 source_sha256 及安装包 proof 绑定）判定 `KIMI_REVIEW_NOT_REQUIRED`。用户未要求本 implementation snapshot 的 Kimi review。具体迁移路径在任何改动前拒绝 fence/alias、不完整批次、跨产品/advertiser/CDP，trusted IPC 限当前项目；只重写无外部文件副作用的整批授权，原字节同步归档，未知存储阻断。没有确认、删除屏障、凭据输出或关键级跨项目 authority 失效路径。错误目标选择的重大后果由 expectedAdId CAS、当前映射重查、快照复核及页面删除 guard 覆盖；针对上述边界已有 executable 和实际 packaged UI 证据，没有同时成立的重大后果、实质验证缺口与 reviewer 独立增益。真实平台接受/发布及旧丢失 modal 属明确未验收事实，reviewer 不能替代人工处理。
+
+本次七项完整机器批次 `714b288cdb6b3bfdab4b7ef1f01cdec1f5c627dcdb17733a942b80921632b5b3` applied=7/remaining=0；AOCI Verify、Check exit 0、governance_aligned=true，Guide complete=true/next_action=none，证据 `/tmp/jianji-plan-target-aoci-{verify,check,guide}.json`。只维护七项对应 Entry 和源码绑定，其余任务条目保留；新测试、Plan 和本记录仍属 observe，不扩大 Scope。
+
+最后真实只读检查时，原删除计划 tab 已关闭，当前 tab 的 adId query 为空、详情未展开。因此新的 source guard 实页调用未能形成唯一目标证据，没有导航、上传或改写 ledger；不能据此宣称当前计划已真实上传通过。安装及最终包的批量、正常 CDP 和迁移桌面验证另记后续结果。Windows 按用户要求不验证。
+
+### Final Package Verification And Ownership Stop
+
+最终包 `/home/reggie/Applications/jianji/releases/qianchuan-plan-target-20260930-797f4b15` 的 app.asar SHA-256 `797f4b153e41b71d8c0a82763612ddc075a5db0c42c4cc6e5f0296a281eb9161`，main SHA-256 `c8810834b577db67921c57909b95fc5fe3a12416ad1d7d58fa4ff5a514e13ca8`，preload SHA-256 `8c65d5174e4c52afbeccaac4a91b75fa000428e1f9e8c4ecc7433258eb8f764d`。未替换当前启动器，原已安装包仍是 paused-status release；不能把候选 fixture 称为实际安装。
+
+- `/tmp/jianji-batch-upload-smoke-YC3qql/report.json`：17 正式 FFmpeg fixture 成片、12 READY，UNKNOWN 阻断；确定/广告设置均 0。
+- `/tmp/jianji-paused-status-desktop-6tAuNp/report.json`：最终包真实 UI 把 108 条整批改传，八条历史不变、快照不变、一份审计、零浏览器请求/selection fence；旧阻塞拒绝继续。Parent 查看 `retarget.png`，新计划与暂停说明实际可见。使用 Electron Playwright 验证实际 bridge；Chrome MCP 自有页为 about:blank，未把它冒充该 Electron 窗口。
+- `/tmp/jianji-default-cdp-smoke-DrVBHn/report.json`：正常启动两次均动态 loopback CDP，独立 profile、API 可用、无上传 task/fence。用户正常启动无需追加调试参数。
+
+验证期间发现另一窗口新增 `docs/superpowers/plans/2026-09-30-qianchuan-abandon-unknown.md` 及 upload spec 的放弃旧未知合同，明确 target 包含同一 store/service/index/preload/UI。该新任务没有包含在本窗口此前“原任务结束”的归属事实中。遵守 same-file ownership gate，已询问用户决定串行顺序；本窗口暂停共享源码写入、staging/commit 和真实安装，没有接管新任务或自行合并。其他修改和新 Plan 保持。待用户确定本窗口先完成后，仍须检查源码 hashes、当前制作/上传活动和项目保存状态，提交指定路径并备份安装；若另一窗口先执行，旧候选不得覆盖其新字节。
+
+用户随后明确指令“commit然后安装”，本窗口先完成交付。提交前对照封存 manifest，16 个本任务文件字节均一致，最终 archive SHA 相同；没有 staged 外来修改。实时热敷贴项目已保存、agent finished、无 queued/running 导出；安装仍需再次检查全部上传及制作活动。另一任务的新 spec/Plan/abandon test 不属于本提交。

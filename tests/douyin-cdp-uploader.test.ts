@@ -564,7 +564,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     productionFixture.setControls({ removeName: first.result.file_name });
     await waitForEvents(events => {
       const laterDom = events.filter(event => event.type === "dom").slice(domCount);
-      return laterDom.length > 0 && laterDom.at(-1)?.rows?.length === 0;
+      return laterDom.some(event => event.rows?.length === 0);
     }, productionFixture);
     await expect(uploader.open([second], [{ fileName: first.result.file_name, index: 1 }], new AbortController().signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
     expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toHaveLength(1);

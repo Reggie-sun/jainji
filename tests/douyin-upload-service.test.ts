@@ -213,7 +213,7 @@ describe("Qianchuan upload service", () => {
     expect((await f.service.preflight(selection("眼贴"), 1))?.target).toMatchObject({ advertiserId: "9007199254740993", adId: "9007199254740995", cdpEndpoint: "http://127.0.0.1:9225" });
     expect(f.events).toEqual([]); expect(f.store.tasks()).toEqual([]);
   });
-  it("keeps already admitted intents on their frozen plan after changing the software account settings", async () => {
+  it("keeps the frozen identity but blocks selection until explicit retarget after settings change", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
     const batch = await f.createBatch(["native settings frozen bytes"]);
     const authorization = await f.service.preflight(selection("眼贴"), 1);
@@ -222,7 +222,9 @@ describe("Qianchuan upload service", () => {
     expect(f.store.intents()[0].authorization.target.adId).toBe("2003");
     expect((await f.service.preflight(selection("眼贴"), 1))?.target.adId).toBe("9999");
     await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
-    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ adId: "2003", state: "WAITING_FOR_CONFIRMATION" });
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ adId: "2003", state: "NEEDS_HUMAN", upload_outcome: "NOT_SELECTED", failure: { code: "INPUT_CONFLICT" } });
+    expect(f.events).toEqual([]);
+    expect(f.store.hasMarker(f.service.status(batch.projectId).tasks[0]!.upload_task_id)).toBe(false);
   });
   it("keeps frozen authorization and fences across a settings rename, restart and same-byte new batch", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });

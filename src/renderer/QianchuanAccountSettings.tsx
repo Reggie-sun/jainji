@@ -37,7 +37,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave }: {
       {ids ? <p role="status">已识别账户 {ids.advertiserId} · 计划 {ids.adId}</p> : link.trim() ? <p role="alert">请粘贴含账户和计划 ID 的千川计划链接。</p> : <small>打开要上传的千川计划，复制地址栏链接。</small>}
       <small>浏览器连接由简辑自动识别。首次设置时，请在已登录 Chrome 中打开对应的千川计划。</small>
       <div className="douyin-upload-actions"><button className="button primary compact" type="button" disabled={busy || !ids || !!nameError} onClick={() => void save()}>保存账号</button><button className="button secondary compact" type="button" disabled={busy} onClick={() => setProduct(undefined)}>取消</button></div>
-      <small>保存到简辑本机设置；已开始的批次继续使用原计划。</small>
+      <small>保存后供新制作使用；旧批次保留原计划。整批从未选过文件时，可在上传任务中明确“改传当前计划”；已有文件选择记录不能改传。</small>
     </div>}
   </div>;
 }
