@@ -9,6 +9,7 @@ import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-sto
 import type { ExportBatchIdentity, ExportQueue } from "./queue.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import type { ShapeCoverArtifactStore } from "./shape-cover-artifacts.js";
+import { prepareShapeCoverSelectionImages, type ShapeCoverSelectionImages } from "./shape-cover-selection.js";
 
 const unsafe = (reason: string): never => { throw new ProviderError(`UNSAFE: ${reason}`); };
 
@@ -16,6 +17,8 @@ const unsafe = (reason: string): never => { throw new ProviderError(`UNSAFE: ${r
 export class ShapeCoverProduction {
   private readonly request: ShapeCoverCandidateRequest;
   private commonIds: string[] = [];
+  private media: MediaItem[] = [];
+  private readonly selectionImages = new Map<string, Promise<ShapeCoverSelectionImages>>();
   private readonly versions = new Map<number, { candidateId: string; frozen: Promise<FrozenShapeCoverResult> }>();
   constructor(private readonly input: {
     request: ShapeCoverCandidateRequest; store: SourceStickerKnowledgeStore; ffmpeg: FfmpegAdapter;
@@ -51,6 +54,32 @@ export class ShapeCoverProduction {
     signal.throwIfAborted();
     if (common.status !== "PASS") unsafe(common.reason ?? "无共同安全候选。");
     this.commonIds = [...common.commonSafeCandidateIds];
+    this.media = [...new Map(media.map(item => [item.sourcePath, structuredClone(item)])).values()];
+  }
+
+  async selectionPreviews(candidateIds: readonly string[], signal: AbortSignal): Promise<ShapeCoverSelectionImages[]> {
+    signal.throwIfAborted();
+    if (!candidateIds.length || new Set(candidateIds).size !== candidateIds.length || candidateIds.some(id => !this.commonIds.includes(id))) unsafe("选款图片目录不属于共同安全集合。");
+    const result: ShapeCoverSelectionImages[] = [];
+    for (const candidateId of candidateIds) {
+      let pending = this.selectionImages.get(candidateId);
+      if (!pending) {
+        pending = (async () => {
+          const frozen = await freezeShapeCoverCandidate(this.request, candidateId, this.input.store, path.join(this.input.directory, "selection"),
+            { ffmpegPath: this.input.ffmpeg.ffmpegPath, ffprobePath: this.input.ffmpeg.ffprobePath, signal });
+          if (frozen.status !== "PASS") return unsafe(frozen.reason);
+          return prepareShapeCoverSelectionImages({ candidateId, frozen, media: this.media, preset: this.input.preset, queue: this.input.queue,
+            ffmpeg: this.input.ffmpeg, directory: this.input.directory, signal });
+        })();
+        this.selectionImages.set(candidateId, pending);
+      }
+      result.push(await pending);
+    }
+    // Cached image data is not permission to use changed source facts or artwork.
+    const common = await computeCommonShapeCoverCandidates(this.request, this.input.store, { ffmpegPath: this.input.ffmpeg.ffmpegPath, ffprobePath: this.input.ffmpeg.ffprobePath, signal });
+    signal.throwIfAborted();
+    if (common.status !== "PASS" || candidateIds.some(id => !common.commonSafeCandidateIds.includes(id))) unsafe("选款图片生成后源事实或资产变化。");
+    return result;
   }
 
   async layers(version: number, candidateId: string, media: MediaItem, runId: string, signal: AbortSignal): Promise<StickerLayer[]> {

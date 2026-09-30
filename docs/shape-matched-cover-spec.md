@@ -9,6 +9,14 @@ date: 2026-09-24
 
 第一版自动覆盖先确认静态旧贴纸及其可信源像素掩膜，再从形状相容的现有贴纸中选择候选，施加有上限的小幅不透明轮廓扩张。只有最终输出像素完全遮住保守旧贴纸掩膜，且独立的内容安全检查通过，才允许输出；其余情况明确 `UNSAFE`。本规格是已确认的**目标设计**，不表示当前白色矩形渲染已经替换或通过成片验收。实施顺序见 [Implementation Plan](shape-matched-cover-plan.md)。
 
+## Active Amendment — Naturalness Selection (2026-09-30)
+
+本任务授权的工程切片沿 REQ-07 复用现有创作 `shortlist(..., "cover")`：本地核验全部 intended targets 后，只交共同几何合格目录及真实冻结轮廓的摆放预览。图片覆盖每个素材/目标时段的原片与成片全图、局部图，明确绑定 candidateId、源修订、轮廓摘要和返回编号；不以裸贴纸、名称或首素材抽帧替代。进程内图片交接缺失、伪造、目录身份不符、空/非法选款或不确定即停止，不默认选第一款。选后仍重新核验并冻结。
+
+现有独立样片 reviewer 的 `pass` 在四项内容安全 `SAFE` 和全部当前配对证据之外，新增严格 `naturalness:{verdict:"NATURAL"|"UNNATURAL"|"UNKNOWN",reason:非空具体观察}`。检查颜色/风格、白色扩边、相对原标大小、贴边截断以及人物/手/商品/字幕可见性；仅 `NATURAL` 可继续。未知可沿现有 `inspect` 补图或 `stop`，不新增审美批准 owner，不允许 bbox 修订跳过冻结或像素门。该字段不改变旧冻结任务解释，也不建立真人或 source receipt。
+
+**Self-Review:** 几何阈值、源准入、内容安全和发行 authority 保持原 owners；图像与自然度只是选款/本轮核查数据。原始候选 bitmap 的解码只能用于诊断，不等于 reviewed mask admission。预览缓存交接前重新验证源及资产，失败不自动重试，单次资源/取消/迟到隔离保留。生产仍 `PRODUCT_DISABLED`，所有 M5 activation/issuer/verified-no-sticker 门保持 `BLOCKED`；工程及已知片段诊断不构成 M5-D2A 资格。
+
 # Evidence And Current Contract
 
 - 本机真实素材实验记录保存在 `/tmp/jianji-cover-visual-20260923/adaptive-experiment/README.md`：叶子候选在约 1.6 倍面积约束下覆盖 64.5%，竖向候选覆盖 96.8%，形状匹配的星形候选在 7px 扩张、1.291 倍面积时覆盖实验掩膜 100%。掩膜由 90 帧像素稳定性提取并人工核查，测试视频仅 1.8 秒；这些结果不能证明产品级掩膜生成、全片安全或跨素材效果。`delogo` 的局部修补仍产生灰痕。该 `/tmp` 记录不属于可移植的仓库验收证据。

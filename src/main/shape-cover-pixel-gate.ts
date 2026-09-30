@@ -25,8 +25,8 @@ function validSize(size: PixelSize): boolean {
   return Number.isSafeInteger(size.width) && Number.isSafeInteger(size.height) && size.width > 0 && size.height > 0;
 }
 
-/** Decode the persisted 1:1 source bitmap. Invalid records cannot become rectangles. */
-export function decodeSourceMask(mask: SourcePixelMask, source: PixelSize): Uint8Array | null {
+/** Decode bitmap bytes only, including diagnostic candidates; this does not admit source facts. */
+export function decodeSourceMask(mask: Pick<SourcePixelMask, "kind" | "encoding" | "bbox" | "dataBase64" | "sha256" | "markedPixels">, source: PixelSize): Uint8Array | null {
   const { bbox } = mask;
   if (mask.kind !== "static-binary-v1" || mask.encoding !== "bitpack-lsb-row-major-v1" || !validSize(source)
     || !Number.isSafeInteger(bbox.x) || !Number.isSafeInteger(bbox.y) || bbox.x < 0 || bbox.y < 0

@@ -18,6 +18,7 @@ import { unlink } from "node:fs/promises";
 const Facet = z.enum(["SAFE", "UNSAFE", "UNKNOWN"]);
 const SafetyPass = z.object({ action: z.literal("pass"), reason: z.string().trim().min(1).max(500),
   contentSafety: z.object({ face: Facet, hands: Facet, product: Facet, subtitles: Facet }).strict(),
+  naturalness: z.object({ verdict: z.enum(["NATURAL", "UNNATURAL", "UNKNOWN"]), reason: z.string().trim().min(1).max(500) }).strict(),
   evidenceIds: z.array(z.string().min(1).max(120)).min(2).max(160),
 }).strict();
 declare const admissionBrand: unique symbol;
@@ -187,6 +188,7 @@ export async function admitShapeCoverSample(input: {
           return JSON.stringify(parsed);
         }
         const pass = SafetyPass.parse(decision);
+        if (pass.naturalness.verdict !== "NATURAL") unsafe(`shape naturalness ${pass.naturalness.verdict}: ${pass.naturalness.reason}`);
         const ids = new Set(captured.evidence.map(item => item.id));
         if (Object.values(pass.contentSafety).some(verdict => verdict !== "SAFE") || pass.evidenceIds.some(id => !ids.has(id))
           || new Set(pass.evidenceIds).size !== ids.size

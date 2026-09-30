@@ -300,9 +300,10 @@ export class AgentController {
           const eligible = availableCatalog!.stickers.filter(({ id }) => !shape || shape.commonSafeCandidateIds.includes(id));
           const candidateIds = unusedCoverStickerIds(eligible.map(({ id }) => id), previousSelections, previousCoverId);
           const stickers = eligible.filter(({ id }) => candidateIds.includes(id));
-          const catalog = shape ? await prepareCandidates(stickers.map(entry => entry.id), availableCatalog!, signal)
+          const catalog: AgentDecorationCatalog = shape ? { fonts: [], stickers }
             : { fonts: [], stickers, previews: availableCatalog!.previews?.filter(({ id }) => stickers.some((entry) => entry.id === id)) };
           if (!stickers.length) throw new ProviderError("没有可用的自动覆盖贴纸，请检查本地素材库。");
+          if (shape) catalog.shapeCoverSelection = await shape.selectionPreviews(stickers.map(entry => entry.id), signal);
           creativeRequests++;
           const ids = await this.provider.shortlist(parsed.ruleId, `${decorationTimingContext(decorations?.displayMode)}为本轮原贴纸覆盖选择图案，同一轮全部素材统一一款，下一轮换款，${shape ? "仅从整轮共同几何合格目录选款，使用冻结形状轮廓，仍须独立内容安全准入" : "使用白色不透明底板"}。${parsed.brief}`, frames, signal, catalog, undefined, "cover");
           const stickerId = ids[0];

@@ -15,6 +15,13 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("rejects an unowned shape selection image handoff before invoking the model", async () => {
+    const complete = vi.fn().mockResolvedValue('{"candidates":[1]}');
+    const provider = new AgentProvider(); provider.useChatGPT("simulated-creative", complete);
+    const catalog = { ...autoCatalog, shapeCoverSelection: {} } as any;
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, catalog, undefined, "cover")).rejects.toThrow("UNSAFE");
+    expect(complete).not.toHaveBeenCalled();
+  });
   it("sends paired shape evidence and all four independent safety categories through the reviewer connection", async () => {
     const complete = vi.fn().mockResolvedValue('{"action":"stop","reason":"simulated uncertainty"}');
     const provider = new AgentProvider(); provider.useChatGPT("simulated-independent", complete);
@@ -27,7 +34,7 @@ describe("agent provider boundary", () => {
     await expect(provider.superviseShapePreview(input, new AbortController().signal)).resolves.toContain("stop");
     expect(complete).toHaveBeenCalledOnce();
     const messages = complete.mock.calls[0][0];
-    for (const category of ["face", "hands", "product", "subtitles", "UNKNOWN", "inspect", "stop"]) expect(messages[0].content).toContain(category);
+    for (const category of ["face", "hands", "product", "subtitles", "UNKNOWN", "inspect", "stop", "naturalness", "NATURAL", "UNNATURAL", "白边"]) expect(messages[0].content).toContain(category);
     const context = JSON.parse(messages[1].content[0].text);
     expect(context).toMatchObject({ evidenceIds: ["source-current", "preview-current", "full-current"], feedback: "prior concern", history: input.history, shapes: input.shapes });
     expect(messages[1].content.filter((item: { type: string }) => item.type === "image_url").map((item: { image_url: { url: string } }) => item.image_url.url)).toEqual([

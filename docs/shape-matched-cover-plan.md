@@ -8,6 +8,22 @@ spec: shape-matched-cover-spec.md
 
 # Goal And Authority
 
+## Active Slice — Agent Naturalness Selection
+
+2026-09-30 当前任务授权实现选款工程与真实效果诊断；HEAD 起点 `6794549`。Parent 只读核对 Controller/Provider/Runner、共同候选与像素 owners，named native `code_mapper` 独立核对冻结及样片复核。原 M1–M5 checkpoint 文字保留历史；本切片不授权生产激活、真实 source admission 或 M5-D2A QUALIFIED。当前用户禁止 Kimi，工程审查按适用 Risk Gate 使用原生职责。
+
+**Current / Target Behavior:** 整轮几何筛选、选后重新核验冻结、原 queue 样片与独立四类内容安全门已实现。当前 cover shortlist 仅收到裸贴纸图片及首素材参考帧，缺最终扩边/摆放；shortlist 未强制图片完备绑定，复核 PASS 未要求自然度。补齐全部 intended target 的配对原图、真实冻结轮廓摆放全图及局部图；现有创作 `shortlist(..., "cover")` 仍唯一选款 owner，不新建 Agent 或默认款。
+
+**Owners / Milestones:** `shape-cover-selection.ts` 仅准备和验证进程内图片交接，复用 freeze、原 queue、SupervisorEvidence；`ShapeCoverProduction` 缓存候选预览并在交接前核验 freshness，选后仍使用原 layers/freeze/admit。`agent-controller.ts` shape 分支接入图片交接；`agent-provider.ts` 沿原 shortlist 使用该交接并要求颜色/风格、扩边、相对大小、截断和保护内容判断。`shape-cover-admission.ts` 沿现有独立 reviewer PASS 增加 `naturalness:{verdict:NATURAL|UNNATURAL|UNKNOWN,reason}`，仅 NATURAL 且四项 SAFE 且当前证据完备才继续；它不替代 coverage 或签发源资格。测试由 `tests/agent-provider.test.ts`、`tests/shape-cover-candidates.test.ts` 承担。
+
+**Ownership / Compatibility:** 用户选择 A，授权 Parent 串行增量修改 controller/provider；已有 usesModel/plan schema 等 hunks 保留且排除提交。Runner、手动、assisted、本地随机、历史策略与重试解释不改。AOCI 正式资产只在当前完整批次合法且 ownership 成立时增量维护，不提交混合资产。
+
+**Verification / Acceptance:** 红→绿验证图片缺失/伪造交接/目录外 ID、空结果、不确定、取消；真实 FFmpeg fixture 验证多个共同候选各自全目标原图/成片图片、扩边冻结身份、缓存、选后重验和自然度拒绝。fresh typecheck、provider/shape/activation/compiler/queue 相关回归、diffcheck、AOCI Verify/Check/Guide、适用 Risk Gate。诊断继续使用已知肥皂片段和现有导入资产，先统计实际共同合格数量；模型视觉条件不足时 live 选款/复核为 INCOMPLETE，不用 mock、硬编码星形或实验 mask 冒充成功。证据追加既有 `shape-matched-cover-real-visual-20260930.md`。
+
+**Self-Review:** 输入只作视觉选款数据，源 mask 与本地像素门继续唯一几何 authority；新增自然度 verdict 只约束既有样片复核，不新增批准/发行 owner。PRODUCT_DISABLED、B/C/D3/D4/verified-no-sticker issuance BLOCKED、authority=none/eligible=false、正式未评估指标 null/NOT_EVALUATED 均不变。单次超时、bytes/取消/迟到隔离保留，无自动重试或连接切换，无金额/token/累计模型调用总量门。
+
+**Checkpoint:** 工程实现及离线否定验证已完成，fresh typecheck/diffcheck、相关229 tests及必要70 regression tests均正常通过。真实上传库69款在既有两段/摆放下共同合格仅1款，因此没有真实多候选Agent选款；所选GPT目录资格缺口及MiniMax真实受控capability/formal owner尚缺，live selection/review为INCOMPLETE。本次真实新样片、播放及逐帧诊断、AOCI本任务6项维护与全库foreign漂移、Risk Gate及剩余证据由[既有real visual record](shape-matched-cover-real-visual-20260930.md#current-selection-slice--2026-09-30)独占。V1顶层历史draft状态不改成生产已执行/已验收。
+
 按 [V1 Spec](shape-matched-cover-spec.md)替换**合格自动覆盖**的白色矩形路径：可信源像素 mask → 同轮安全候选 → 小幅不透明轮廓 → 最终输出像素 coverage → 独立内容安全 → 原队列导出。当前只编写 plan，未实施代码或更改产品规则。用户已排除 `delogo` 和移动旧贴纸；本计划不增加这两项。
 
 # Baseline And Dependencies

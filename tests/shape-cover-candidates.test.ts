@@ -22,6 +22,8 @@ import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ArtifactVerifier } from "../src/main/artifact";
 import { admitShapeCoverSample, type ShapeCoverReviewInput, type ShapeCoverAdmission } from "../src/main/shape-cover-admission";
 import { AgentController } from "../src/main/agent-controller";
+import { AgentProvider } from "../src/main/agent-provider";
+import { shapeCoverSelectionContent } from "../src/main/shape-cover-selection";
 import { ApplicationService } from "../src/main/application";
 import { resolveFont } from "../src/main/ffmpeg";
 import * as agentFrames from "../src/main/agent-frames";
@@ -87,6 +89,7 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
 
   const safeReview = async (input: ShapeCoverReviewInput) => JSON.stringify({ action: "pass", reason: "synthetic independent fixture review",
     contentSafety: { face: "SAFE", hands: "SAFE", product: "SAFE", subtitles: "SAFE" },
+    naturalness: { verdict: "NATURAL", reason: "simulated naturalness for engineering only" },
     evidenceIds: [...new Set(input.evidence.flatMap(image => [image.sourceEvidenceId!, image.previewEvidenceId!, ...image.fullSourceEvidenceId ? [image.fullSourceEvidenceId] : []]))] });
   async function admissionFixture(review = safeReview, fps = 30, frameRateMode: "source" | "30" = "source", sourceColor = "white") {
     const value = await frozenFixture(fps, frameRateMode, sourceColor);
@@ -558,11 +561,13 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
     await queue.shutdown();
   }, 30_000);
 
-  it.each(["face", "hands", "product", "subtitles", "unknown", "bare-pass", "stale-evidence"])("rejects geometry PASS with independent safety failure: %s", async concern => {
+  it.each(["face", "hands", "product", "subtitles", "unknown", "bare-pass", "stale-evidence", "naturalness-missing", "naturalness-unknown", "naturalness-unnatural"])("rejects geometry PASS with independent safety failure: %s", async concern => {
     const review = async (input: ShapeCoverReviewInput) => {
       const pass = JSON.parse(await safeReview(input));
       if (concern === "bare-pass") return JSON.stringify({ action: "pass", reason: "not evidence" });
       if (concern === "stale-evidence") pass.evidenceIds = ["old-source", "old-preview"];
+      else if (concern === "naturalness-missing") delete pass.naturalness;
+      else if (concern.startsWith("naturalness-")) pass.naturalness = { verdict: concern === "naturalness-unknown" ? "UNKNOWN" : "UNNATURAL", reason: "simulated thick border or clipping" };
       else pass.contentSafety[concern === "unknown" ? "face" : concern] = concern === "unknown" ? "UNKNOWN" : "UNSAFE";
       return JSON.stringify(pass);
     };
@@ -955,6 +960,61 @@ async function fixture(sourceSize = 64, fps = 30, sourceColor = "white") {
 const tools = { ffmpegPath: "ffmpeg", ffprobePath: "ffprobe" };
 
 describe.skipIf(!available)("M4-B4 original production entry", () => {
+  it("sends multiple common-safe candidates on every source with real expanded placement images and caches them", async () => {
+    const value = await fixture();
+    const full = value.request.candidates[2];
+    const rgba = await readFile(path.join(value.root, "full.rgba"));
+    for (let i = 0; i < rgba.length; i += 4) { rgba[i] = 0; rgba[i + 1] = 255; }
+    const png = await alphaMedia.encodeShapeCoverPng(rgba, { width: 32, height: 32 }, tools);
+    const assetPath = path.join(value.root, "green.png"); await writeFile(assetPath, png);
+    const other = { id: `uploaded-${sha(png)}`, asset: { assetPath, assetFingerprint: `sha256:${sha(png)}` } };
+    value.request.candidates = [full, other];
+    const media: MediaItem[] = value.request.intendedTargets.map(target => ({ id: crypto.randomUUID(), sourcePath: target.sourcePath, displayName: target.id,
+      fingerprint: target.source.fingerprint, sizeBytes: target.source.byteLength, width: target.source.width, height: target.source.height,
+      rotation: target.source.rotation, durationMs: target.source.durationMs, probeStatus: "ready", importedAt: now() }));
+    const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), preset = { ...DEFAULT_PRESET, ...settings };
+    const queue = new ExportQueue({ ffmpeg, jobStore: new JobStore(path.join(value.root, "selection-jobs")), sourceKnowledgeStore: value.store,
+      executionLimits: { analysis: 1, exports: 1, threads: 1 }, fontResolver: { resolve: async () => null } });
+    const render = vi.spyOn(queue, "renderPreview");
+    const production = new ShapeCoverProduction({ ...value, ffmpeg, queue, preset, directory: path.join(value.root, "selection-images"),
+      artifacts: await queue.createShapeCoverArtifactStore(crypto.randomUUID()), outputDirectory: value.root,
+      reviewerIdentity: "simulated", review: async () => { throw new Error("selection must not call reviewer"); } });
+    const signal = new AbortController().signal;
+    try {
+      await production.prepare(media, signal);
+      expect(production.commonSafeCandidateIds).toEqual([full.id, other.id]);
+      const handles = await production.selectionPreviews([full.id, other.id], signal);
+      expect(render).toHaveBeenCalledTimes(4);
+      expect(await production.selectionPreviews([other.id], signal)).toEqual([handles[1]]);
+      expect(render).toHaveBeenCalledTimes(4);
+      const content = shapeCoverSelectionContent(handles, [full.id, other.id]);
+      const rows = content.filter(item => item.type === "text").map(item => JSON.parse((item as { text: string }).text));
+      expect(rows).toHaveLength(12);
+      for (const candidate of [full, other]) expect(new Set(rows.filter(row => row.candidateId === candidate.id).map(row => row.intendedTargetId))).toEqual(new Set(value.request.intendedTargets.map(target => target.id)));
+      expect(content.filter(item => item.type === "image_url")).toHaveLength(48);
+      expect(() => shapeCoverSelectionContent(handles, [full.id, "heart"])).toThrow("UNSAFE");
+      expect(() => shapeCoverSelectionContent([structuredClone(handles[0])], [full.id])).toThrow("UNSAFE");
+      expect(() => shapeCoverSelectionContent([], [full.id])).toThrow("UNSAFE");
+      const complete = vi.fn().mockResolvedValue('{"candidates":[2]}');
+      const provider = new AgentProvider(); provider.useChatGPT("simulated-creative", complete);
+      const catalog = { fonts: [], stickers: [full, other].map(({ id }) => ({ id, label: "fixture" })), shapeCoverSelection: handles };
+      await expect(provider.shortlist("clean", "", ["must-not-use-first-source-only"], signal, catalog, undefined, "cover")).resolves.toEqual([other.id]);
+      const messages = complete.mock.calls[0][0];
+      expect(messages[1].content).toContain("白边厚度");
+      expect(messages[2].content[1].text).toContain(JSON.stringify([[1, full.id], [2, other.id]]));
+      expect(messages[2].content.slice(2)).toEqual(content);
+      complete.mockResolvedValue('{"candidates":[3]}');
+      await expect(provider.shortlist("clean", "", [], signal, catalog, undefined, "cover")).rejects.toThrow("候选");
+      complete.mockResolvedValue('{"candidates":[]}');
+      await expect(provider.shortlist("clean", "", [], signal, catalog, undefined, "cover")).rejects.toThrow("候选");
+      const aborted = new AbortController(); aborted.abort();
+      await expect(production.selectionPreviews([full.id], aborted.signal)).rejects.toThrow();
+      await writeFile(other.asset.assetPath, "asset changed after cached images");
+      await expect(production.selectionPreviews([other.id], signal)).rejects.toThrow("UNSAFE");
+      expect(queue.snapshot().batches).toEqual([]);
+    } finally { await queue.shutdown(); }
+  }, 60_000);
+
   async function productionFixture() {
     const value = await fixture();
     value.request.candidates = value.request.candidates.slice(0, 3);
@@ -979,10 +1039,12 @@ describe.skipIf(!available)("M4-B4 original production entry", () => {
     const plan = vi.spyOn(controller.provider, "plan").mockResolvedValue({ summary: "mock creative", captions: [], filter: rule.filters[0], intensity: rule.minIntensity });
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog) => {
       expect(catalog!.stickers.map(sticker => sticker.id)).toEqual([value.request.candidates[2].id]);
+      expect(shapeCoverSelectionContent(catalog!.shapeCoverSelection!, catalog!.stickers.map(sticker => sticker.id)).filter(item => item.type === "image_url")).toHaveLength(24);
       return [catalog!.stickers[0].id];
     });
     const safe = async (context: ShapeCoverReviewInput) => JSON.stringify({ action: "pass", reason: "simulated independent production fixture",
       contentSafety: { face: "SAFE", hands: "SAFE", product: "SAFE", subtitles: "SAFE" },
+    naturalness: { verdict: "NATURAL", reason: "simulated naturalness for engineering only" },
       evidenceIds: [...new Set(context.evidence.flatMap(image => [image.sourceEvidenceId!, image.previewEvidenceId!, ...image.fullSourceEvidenceId ? [image.fullSourceEvidenceId] : []]))] });
     const review = vi.spyOn(controller.reviewerProvider, "superviseShapePreview").mockImplementation(safe);
     const createBatch = vi.spyOn(queue, "createBatch");
