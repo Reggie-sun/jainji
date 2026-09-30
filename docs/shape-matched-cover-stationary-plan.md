@@ -32,6 +32,10 @@ Files：维护当前总计划、本plan及新增 `docs/shape-matched-cover-stati
 
 M1/M2/M3全部证据成立仅是 engineering candidate。实际 AI mask提取、stationarity语义审核、独立盲审资格及生产可信issuer缺失时保留 INCOMPLETE。这不是以plan或commit代替继续执行；本轮推进可独立完成的实现和验证直到真实外部gate。
 
+## M4: Original User Source Diagnostic — 2026-10-01
+
+Files：新增 `scripts/shape-cover-real-stationary-diagnostic.ts`，维护本 Spec/Plan/record 及原 phase/总plan指针。直接使用既有肥皂原片中右上角旧标的 [14,17) 与 [90,93) 秒，不添加合成目标。canonical D1 完整解码原片，owned D2 按原 ordinal/PTS 读取两段共180帧；将历史 raw temporal mask 明确作为未审核静态声明输入新 envelope。共同几何门通过才生成一个固定上传星形 PNG；两段完整源时钟与原始像素绑定保存，不伪造 per-frame AI mask。导出原片/轮廓对照并核对帧数、PTS、音频、PNG及全部候选像素 coverage，播放真实样片；未知真实动画与 AI 语义仍 NOT_EVALUATED。只读 native mapper 定位当前实际路线门，Parent核对事实，不切换模型、不重试至成功。Fresh typecheck、envelope/pixel回归、diff检查与适用 AOCI 检查；本地效果与正式资格分开记录。Self-Review：M4逐项对应 Real Source Extension；没有新产品 consumer、正式 actor 或 authority。
+
 ## Self-Review
 
 Spec各项映射M1/M2/M3；没有额外工作树、产品开关或新source owner；未把候选provider当qualified reviewer。来源逐帧完整和语义正确分别验证，受控合成与真实媒体分层。

@@ -336,4 +336,6 @@ dataset 至少3个独立构造组、100帧、10 EMPTY、20有目标、5并发帧
 
 ## Active Slice — Static and Stationary Animation Engineering
 
+用户继续要求“真实测试”的M4增量已执行：原片完整6990帧census，两个真实静态目标片段180帧的新envelope与FFmpeg导出；没有注入目标、没有AI调用或生产准入。最新实际证据/当前模型门/播放诊断见 [原片record](shape-matched-cover-stationary-record.md#original-user-source-diagnostic--2026-10-01)；固定动画真实媒体和正式AI资格仍未评估。
+
 2026-10-01 用户明确排除移动贴纸并要求执行，按 [stationary spec](shape-matched-cover-stationary-spec.md) 与 [implementation plan](shape-matched-cover-stationary-plan.md) 推进完整原帧轮廓并集和固定本地遮盖。geometry receipt独立于原static source mask，不改变human/manual/assisted或任何源知识准入；当前受控合成static/animation各36帧实际FFmpeg验证为0未覆盖、0目标移除reference差异、PCM一致。最终verification、scope和真实AI blocker由 [stationary record](shape-matched-cover-stationary-record.md)记录。M5-D2A资格标准及所有生产BLOCKED保持，工程并集不成为真实动画AI/生产PASS。

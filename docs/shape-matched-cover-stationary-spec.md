@@ -29,3 +29,7 @@ human collector/method/schema/receipt、旧静态 mask、manual/assisted、源�
 ## Self-Review
 
 已按当前源码 owners 核对；完整来源记录独立于 static mask 的512个 evidenceIds，不扩张知识 schema。固定 anchor 声明不能证明真正不移动，故不给语义准入；实际生产仍由原 owner 拒绝。用户的执行授权覆盖该工程增量，未授权的新生产阶段不进入。
+
+## Real Source Diagnostic Extension — 2026-10-01
+
+用户继续要求“真实测试”。新增诊断必须直接使用用户原始视频中的旧目标，不注入、移动或替换待遮目标。对原文件收集 canonical 完整 census，再读取已知两个片段的每一个原始 ordinal；保留原 source/PTS/RGBA 绑定。既有 temporal 候选 mask 只能作为显式未审核的静态几何输入，逐帧复用不等于逐帧语义识别、动画来源或新 holdout。真实输出使用有效上传贴纸及同一冻结 PNG，核对全部输出帧、时间和音频，生成实际播放及边缘观察材料。没有真正的 stationary-animation 原片时该层保持 NOT_EVALUATED；模型路线不能满足时真实 AI 请求保持零且报告 gate，而不是模拟模型输出。Self-Review：本次只扩展本地真实媒体诊断，原语义、知识、准入与产品禁止项不变。

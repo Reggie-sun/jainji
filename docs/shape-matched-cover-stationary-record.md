@@ -1,5 +1,52 @@
 # Stationary Shape Cover Engineering Record
 
+## Original User Source Diagnostic — 2026-10-01
+
+用户继续要求“真实测试”，执行 [Spec extension](shape-matched-cover-stationary-spec.md#real-source-diagnostic-extension--2026-10-01) / [M4 plan](shape-matched-cover-stationary-plan.md#m4-original-user-source-diagnostic--2026-10-01)，结论为 **REAL_MEDIA_GEOMETRY_DIAGNOSTIC / AI_LIVE_ACCEPTANCE_INCOMPLETE / PRODUCT_DISABLED**。本节直接检查真实原片右上“国货之光”静态旧标；下方原controlled composite记录保留，真实固定动画尚未核实。
+
+Evidence owner：`/home/reggie/.local/state/jianji-source-fact-qualification/real-stationary-20261001`（R），入口 `scripts/shape-cover-real-stationary-diagnostic.ts`。原片SHA `a18f7e4e5fc02e5db977d9074be35ce82a296d247194205e9cf88e1ac76fc0bf`，54,577,917 bytes、720×1280/30fps、视频233秒；没有注入或移动旧目标。替换仍为现有有效上传星形 `uploaded-ad676bcdf2e3e23e253fd918209a5fb778916a74b6ba00a75e410d6abf7b786e`，保留自带文字，摆放601/0、119×78。只导出两个3秒原时段节选，未导出或验收完整233秒覆盖片。
+
+canonical D1完整解码原片**6990帧**，census `cc01bcbc9c4c700e4fef68ab8d6faf7e6e9a5052ff20ea1d9f4a0fdaf806029e`、clock0..3578880、timeBase1/15360；owned D2按原ordinal读取 [420,510)、[2700,2790)。新envelope保存全部180条原PTS/endPTS/RGBA SHA。Parent逐条与完整census核对来源/摘要一致，9个source/script/contract快照前后相同；约24GiB临时spool由原evidence.close清理，没有操作其他spool/collector。
+
+**Semantic limitation:** 各片段复用历史 temporal raw候选mask，原状态仍CANDIDATE_REQUIRES_HUMAN_EDGE_REVIEW；provider明确为historical-temporal-candidate-unreviewed-not-ai。逐帧复用只证明完整消费和几何声明，不证明AI逐帧提取或合格静态/边缘审核。envelope authority=none、eligible=false、semantic/mask/motion review=NOT_EVALUATED；reviewedSourceFrames=0，6990帧census不等于6990帧语义审阅。
+
+| Segment | Original ordinals | Raw / projected pixels | Actual output | Conditional gaps |
+| --- | --- | --- | --- | ---: |
+| 14–17秒 | 420–509 | 3259 / 3555 | 720×1280、30fps、90帧、3秒 | 0 |
+| 90–93秒 | 2700–2789 | 3371 / 3672 | 同上 | 0 |
+
+两段消费同一PNG、共同半径7输出像素，PNG往返RGBA一致，SHA `9cc30e49af02ed63f50b2d2497e769cc147415e3d65c855924776a4e2666664d`。全部输出PTS与原相对PTS一致；FFmpeg完整解码无错误；候选投影像素全部alpha255。覆盖版与同原时段、同编码对照版的解码PCM相同（AAC重新编码），未听音验收。coverage依赖未审核mask，不能证明mask外无漏目标。
+
+成片SHA：14–17秒 `682d12709abc4c0c1888d520bdcae3477e966527ee3ede0bd163fd4369a2af83`；90–93秒 `17357784d84f24f7dbc45df7abc18b93fe698c358a31cd4b4d28c49efc6088da`。每段保存original.mp4、covered.mp4、comparison.mp4（左原片/右覆盖）、comparison.png、original/covered-all-frames.png、envelope.json、verification.json；root保存完整census、inputs、commands、源码快照及Parent完整性证据。
+
+Parent实际查看两段原/成片全部90格边缘联系表及配对全画面：所查右上旧标未见外露，图层固定、无矩形白底；白边仍偏厚，顶部/右侧贴边。两幅全画面中主要操作区域及中央字幕仍可见。这是局部真实观察，不是独立自然度或内容安全资格，不涉及其他角落原图案。
+
+Chrome MCP因共享profile占用拒绝启动，未停止其浏览器；改用独立临时headless Chrome。首次六片顺序播放记录5次正常结束（含两个covered.mp4），均90帧、playbackRate1、dropped/corrupted0；最后90–93秒comparison guard失败且未记录该次quality，保留playback.log/first-playback-observation.json，不算通过、不猜原因。仅对该对比片在独立单video页做一次定向诊断，实际3304.7ms播放至3秒结束、90帧、dropped/corrupted0，见comparison-playback.json/截图；不覆盖首次失败。全部播放muted、listeningReview=NOT_EVALUATED。
+
+### Fresh Route Observation
+
+只读named native code_mapper `/root/unmetered_route_mapping` 定位当前入口，非blind actor，遵守用户禁止Kimi。Parent复用external-subagent的sealed image contract、官方program SHA `3998a1676c9f8ff378e628713696cc80c49aba1115e94b28a86584de17342317`、Docker/native conformance、canonical receipt；没有修改router源码或安装。
+
+初次prepare遗漏显式image sandbox配置，IMAGE_RUNTIME_CONFIG_REQUIRED、零provider requests；保留preflight/state，核对官方当前codex.json后更正配置。新owned probe `db114c11-d328-4d79-92dd-2aa6a1ec116d`、conformance `5d97b72b-a996-45b8-8b81-c1e79d6fb7e5` 为ENGINEERING_CONFORMANCE_COMPLETE、商业generation0。随后仅一次observe-image-subscription --verify-model：应用独立认证reference、固定catalog GET，不登录/refresh token/读global Codex auth/查quota。
+
+真实canonical receipt `ea337c8c-084b-4c90-9cf0-cfed66948c09`：2026-09-30T23:11:56.365765Z，authenticated=true、catalog_model_count7、精确gpt-6.1-sol matched_model_count0、input_modalities=[]、image_input_supported=false、INCOMPLETE；account_queries1、provider_requests0、actual_cost_usd=null。仅说明当前账号/时间/目录条件，不宣称模型永久无视觉能力；未换别名或模型。MiniMax旧八图probe NOT_QUALIFIED（位置7/8错误）保留，未追加商业请求。
+
+Parent按当前image_run.py::require_live_admission及CLI核对：unrestricted正式原片请求无admitted execution owner，IMAGE_FORMAL_EXECUTION_UNAVAILABLE；随机probe不能挪用发原片。实际AI识别、AI选款、独立样片复核请求均0，选款/自然度/安全NOT_EVALUATED。停止AI单元是当前GPT图像条件、MiniMax已证明probe错误和formal owner gate；不是额度、Key或用户未回复继续。
+
+### Verification and Decision
+
+执行current verification-before-completion：fresh typecheck exit0；envelope/pixel/full-canvas review共3 suites、54 tests PASS（230.57秒）；真实原片/PNG/时钟/音频/播放证据如上。新CLI由实际本地执行验证，未新增重复实现细节的单测；其他任务并行dirty变化保留。
+
+Parent在stable candidate判断Risk Gate：没有当前用户要求Kimi review；独立diagnostic无production consumer、源知识写入或credential实现变更，失败后果为隔离诊断错误，不能造成重大authority/credential或不可恢复state损坏；完整来源/几何/真实渲染已验证，语义缺口固定NOT_EVALUATED且原生产门隔离。因此KIMI_REVIEW_NOT_REQUIRED，不新增重复reviewer。各新增/修改script/docs按当前AOCI observe范围核对，没有managed源码增量，不写/提交共享索引；最后fresh typecheck/diff及Verify/Check/Guide在Delivery Verification保存。
+
+当前没有专用session capture skill，本节与原phase/plan保存checkpoint，不写外部memory。正式M5-D2A仍INCOMPLETE，formal requests0，A/B/joint null/NOT_EVALUATED；真实固定动画、合格mask/motion、双路线选款/复核及生产资格仍缺。PRODUCT_DISABLED；M5-B activation、M5-C issuer、M5-D3、M5-D4、verified-no-sticker production issuance全部BLOCKED，authority=none/eligible=false。原人工认可效果与现行manual/assisted不变。
+
+### Delivery Verification
+
+恢复中断后先核对当前HEAD `50ed06b27c48adf30c0753e76ddd06539920cd1c`、现有dirty/owned paths、真实MP4摘要、6990帧census和已完成目录/播放收据，未重发已执行请求或导出。再次fresh typecheck exit0（resumed-typecheck-result.json），git diff --check通过，本轮5份文档的本地引用存在；脚本SHA `2f2ae33121cab370cf1a24b0aed3c19cafac4a1ad84715553eb36631348bc526` 与实际运行快照一致，原相关owner源码未变。
+
+AOCI逐项核实本轮6个对象全部为observed_new，没有本轮未维护的managed对象，不扩大scope或改写共享索引。初始Guide complete=true；末检Verify/Check exit1、Guide complete=false，structure_valid=true但全库治理未对齐，5个foreign stale为src/main/batch-production-runtime.ts、src/main/douyin-upload-service.ts、src/renderer/BatchProductionDetails.tsx、src/renderer/DouyinUploadPanel.tsx、src/shared/batch-production.ts。本轮对象不在missing/stale/unbaselined中。保留所属任务的进行中改动，不调用或截断包含foreign对象的完整Maintain batch；这是全库治理的真实剩余工作，本checkpoint不宣称其完成。末检原JSON与实际命令状态保留在R，scope仅本slice的script/spec/plan/record/phase/总plan；其他dirty/staged/删除/未跟踪工作不stage/commit。
+
 ## Scope and Result
 
 2026-10-01 用户要求执行“静态贴纸 + 不移动的动画贴纸”，moving 暂不支持。依据 [Spec](shape-matched-cover-stationary-spec.md) 和 [Plan](shape-matched-cover-stationary-plan.md)，实现完整帧绑定的 `stationary-union/v1` geometry candidate 与真实本地 FFmpeg 验证。结果无 source/semantic/production authority；未接产品入口、未安装启用新功能，既有 manual/assisted 与已认可效果不变。

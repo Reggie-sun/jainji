@@ -1,5 +1,11 @@
 # M5-D2A Engineering and Qualification Record
 
+## Original User Media Check — 2026-10-01
+
+用户要求“真实测试”后，直接使用原始233秒肥皂视频收集完整6990帧canonical census，以新stationary envelope读取两个原片静态目标片段共180帧并实际导出。局部旧标未见外露，候选像素coverage及原时段音频/PTS核对通过；没有注入旧目标、没有AI mask/selection/review请求，也没有把完整census当语义审阅。实际证据及播放失败/定向诊断由 [stationary record](shape-matched-cover-stationary-record.md#original-user-source-diagnostic--2026-10-01) 独占。
+
+一次新受管GPT目录观察：当前应用账号authenticated=true，7个catalog models中精确gpt-6.1-sol匹配0、商业generation0。MiniMax历史视觉probe错误及formal execution owner gate未解除。M5-D2A INCOMPLETE、A/B/joint null/NOT_EVALUATED、PRODUCT_DISABLED及全部生产BLOCKED不变；真实固定动画仍NOT_EVALUATED。
+
 ## Stationary Target Engineering — 2026-10-01
 
 用户将当前覆盖实现目标收窄为静态与位置固定的动画，并明确“执行”。已在独立geometry slice实现逐原帧的保守轮廓并集、完整来源/摘要和固定遮盖本地验证；static及stationary-animation controlled composite各36帧，0未覆盖像素、0目标移除reference差异、原PTS与PCM一致，provider requests0。完整Scope/Spec/Plan、真实FFmpeg证据、测试/Risk Gate/AOCI及剩余工作见 [stationary engineering record](shape-matched-cover-stationary-record.md)。这不改变原资格合同、raw/mapping/joint receipts、18场景holdout或旧否定结果，不代表AI能够从真实媒体生成合格mask，不接生产issuer或入口。
