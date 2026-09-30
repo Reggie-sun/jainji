@@ -3,17 +3,20 @@ import { z } from "zod";
 import { AIDeclarationSchema, aiDigest, freezeAI, type AIDeclaration } from "./source-fact-ai-contract.js";
 import { assertOwnedAIInput, type AIInput } from "./source-fact-ai-input.js";
 
-export const AI_ENGINEERING_BUDGET = Object.freeze({ requestLimit: 64, wallMs: 600_000, idleMs: 60_000,
-  responseBytes: 1024 * 1024, payloadBytes: 32 * 1024 * 1024, generationTokens: 4096 });
+export type AIEngineeringLimits = { requestLimit: number | null; wallMs: number; idleMs: number;
+  responseBytes: number; payloadBytes: number; generationTokens: number | null };
+export const AI_ENGINEERING_BUDGET: Readonly<AIEngineeringLimits> = Object.freeze({ requestLimit: null, wallMs: 600_000, idleMs: 60_000,
+  responseBytes: 1024 * 1024, payloadBytes: 32 * 1024 * 1024, generationTokens: null });
 export type AIEngineeringTransport = (payload: { requestId: string; actor: "A" | "B"; fixtureId: string; inputManifestDigest: string;
-  methodConfigDigest: string; frames: unknown; images: Buffer[]; catalog: unknown; generationTokens: number }, signal: AbortSignal)
+  methodConfigDigest: string; frames: unknown; images: Buffer[]; catalog: unknown; generationTokens: number | null }, signal: AbortSignal)
   => Promise<{ text: string; providerRequestId: string; stopReason: "complete" | "truncated"; toolRequests: number }>;
 
 /** Testable engineering seam only. No supplied provider claim can enable a formal actor or issuer. */
 export function createAIEngineeringRun(input: AIInput, actor: "A" | "B", transport: AIEngineeringTransport, configDigest: string,
   inspectAccepted: (declaration: AIDeclaration) => "FALSE_EMPTY" | undefined, budget = AI_ENGINEERING_BUDGET) {
   assertOwnedAIInput(input);
-  if (!["A", "B"].includes(actor) || !/^[a-f0-9]{64}$/.test(configDigest) || Object.values(budget).some(n => !Number.isSafeInteger(n) || n <= 0)) throw Error("INCOMPLETE: run configuration/budget");
+  if (!["A", "B"].includes(actor) || !/^[a-f0-9]{64}$/.test(configDigest)
+    || Object.entries(budget).some(([key, n]) => n === null ? !["requestLimit", "generationTokens"].includes(key) : !Number.isSafeInteger(n) || n <= 0)) throw Error("INCOMPLETE: run configuration/budget");
   const limits = Object.freeze({ ...budget }), controller = new AbortController(), runId = randomUUID();
   const declarations: AIDeclaration[] = [], requests: unknown[] = [], quarantine: unknown[] = [];
   let status: "READY" | "RUNNING" | "NOT_QUALIFIED" | "INCOMPLETE" | "FROZEN" = "READY";
@@ -24,7 +27,7 @@ export function createAIEngineeringRun(input: AIInput, actor: "A" | "B", transpo
     const createdAt = new Date().toISOString(), started = Date.now();
     const wall = setTimeout(() => terminate("INCOMPLETE"), limits.wallMs);
     try {
-      if (input.manifest.packets.length > limits.requestLimit) throw Error("insufficient request budget");
+      if (limits.requestLimit !== null && input.manifest.packets.length > limits.requestLimit) throw Error("insufficient request budget");
       const catalog = new Map<string, { description: string; category: string }>();
       for (const p of input.manifest.packets) {
         if (controller.signal.aborted || Date.now() - started >= limits.wallMs) throw Error("cancelled or wall budget");
@@ -69,7 +72,7 @@ export function createAIEngineeringRun(input: AIInput, actor: "A" | "B", transpo
       }
       await input.verifyFresh(); if (controller.signal.aborted) throw Error("cancelled before freeze");
       const body = { runId, actor, authority: "none", eligible: false, evidenceClass: "ENGINEERING_ONLY_NOT_FORMAL_AI_REVIEW",
-        methodId: "dual-ai-full-canvas/v1", methodConfigDigest: configDigest, inputPlan: input.manifest, createdAt, frozenAt: new Date().toISOString(), declarations, requests };
+        methodId: "dual-ai-full-canvas/v1", methodConfigDigest: configDigest, inputPlan: input.manifest, executionLimits: limits, createdAt, frozenAt: new Date().toISOString(), declarations, requests };
       receipt = freezeAI({ ...body, receiptDigest: aiDigest(body) }); status = "FROZEN";
     } catch (error) {
       terminate("INCOMPLETE"); requests.push({ failure: error instanceof Error ? error.message : "transport failed" });

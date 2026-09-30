@@ -1,5 +1,17 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Unrestricted Spending Policy
+
+2026-09-30用户明确“预算不用管,也不应该设限制”。新M5-D2A MiniMax+gpt-6.1-sol请求采用spending_policy=unrestricted；luna仍独立可选。不再要求账户余额/价格/input accounting/费用budget receipt，不设金额/token/任务累计调用总量上限。原spec预算段只在spending层被router[accepted修订](../../agent-subagent-router/docs/superpowers/specs/2026-09-30-image-unrestricted-spending.md)替代，旧sealed请求/receipt/ledger/失败保留历史，不伪造费用0。单次超时、bytes/内存、Docker/秘密/身份、取消/迟到隔离及未知结果no-replay继续，不能把它们称为财务限制。
+
+原 `source-fact-ai-run.ts` engineering seam默认requestLimit/generationTokens改为null，transport与receipt冻结真实executionLimits；完整10 ordinals真实canonical decode的新测试先red1 FAIL/23 PASS，再与原false EMPTY/取消/截断/identity/owned-input回归通过。Default不限制累计packets，显式旧finite配置只保留compatibility；transport仍ENGINEERING_ONLY，不调用Provider、签发formal record或写human证据。Fresh typecheck exit0、12 suites **265 PASS（32.71s）**，两个repo diffcheck/Ruff通过。官方AOCI维护仅该模块条目及source baseline，Verify/Check/Guide exit0/aligned/complete；已有混合dirty索引/baseline保持未提交，其他owner工作保留。
+
+Router费用门真实red8/7确认后实施新policy；offline938 PASS/full native968 PASS/4环境skip，最后CLI help/Skill非语义增量后当前三route Docker再3 PASS。Parent按canonical Risk Gate核对具体consequence/coverage判定本次KIMI_REVIEW_NOT_REQUIRED，没有因预算变更制造新的审批/重复审查；named原生mapper只读核对消费者，Kimi2/native1–24历史保留，未追加Kimi。Clean `458e9f25bcd50931fe6ac9d41ed1d19190a1edc4`官方安装，69-source program `550e606a49816640625aa0716697e62813bf9583e9b2e1c3749cfbb235d8aa66`，source_dirty_at_install=false；installed MiniMax/6.1sol/luna各14项真实OS检查、完整八图native/fake、tools=[]、无max_output_tokens和container cleanup成立。Exact安装/receipts/raw与Risk Gate由router[record](../../agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md#current-unrestricted-image-spending)独占。
+
+Installed实际费用准入核对：MiniMax无余额/费用receipt可通过spending门；GPT重新读取原canonical evidence仍 **SUBSCRIPTION_MODEL_UNVERIFIED**，这是图片权限问题，与额度/预算无关。原6.1sol authenticated/quota available观察保持真实，image支持尚未证明；不把图片目录未证明称为一定不支持，不改模型或追加GET。本次新account queries/真实visual/formal requests0，capability NOT_EVALUATED，actual_cost_usd/全部未评估语义指标null。MiniMax原应用Key配置存在，真实credential handoff/probe尚未完成，不以fake八图代替模型资格。
+
+费用政策修复与安装已完成；继续条件现为所选GPT实际image证明、两真实视觉probe、正式隔离/冻结route/config/inputPlan/可信execution及独立truth的完整A/B/joint/raw/mapping/correspondence比较。新54 clips/648 frames/18场景synthetic准备、609 clear数量门不代替正式资格；human INCOMPLETE、real-media NOT_EVALUATED。M5-D2A INCOMPLETE、authority=none/eligible=false、PRODUCT_DISABLED；M5-B activation、M5-C issuer、M5-D3/D4、verified-no-sticker production issuance仍BLOCKED。当前手动覆盖不变，下一阶段Production Qualified Review仍超出授权；停止原因不再包括预算材料。原phase/plan及router record承接checkpoint，无额外capture或memory写入。
+
 ## Current Codex Subscription and GPT 6.1 Selection
 
 2026-09-30 用户要求应用独立ChatGPT登录，并将正式搭配定为 **MiniMax + `gpt-6.1-sol`**；`gpt-6-luna`仅单独可选，无自动fallback，未追加Kimi调用。此次授权承接原implementation，DESIGN_ONLY、旧6sol/API/Kimi结果均保持历史；没有将旧模型资格改名。现行手动白框覆盖及manual region候选不受本次路线实现影响。

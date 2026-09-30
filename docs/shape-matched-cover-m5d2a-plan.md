@@ -2,6 +2,14 @@
 
 ## Current Priority and Provider Selection
 
+### User Directed Unrestricted Spending
+
+2026-09-30最新用户明确不设预算限制。新请求按router[accepted费用修订](../../agent-subagent-router/docs/superpowers/specs/2026-09-30-image-unrestricted-spending.md)实施：取消余额/成本/accounting及budget receipt前置门，不设金额/token/任务累计请求上限，旧seal/receipt保留。单次超时、内存/bytes边界、取消/未知结果不重放和真实image/semantic gates继续。原spec预算段只在spending层被该修订替代，无产品启用授权。
+
+本次工程owner仍为router原image modules；原plan承接实现、red-green、fresh完整工程验证、Risk Gate、clean官方安装与installed proof。完成后不再将MiniMax费用授权0或GPT额度证明作为blocker；所选6.1sol image权限未证明、正式隔离/包络/可信owner及独立truth退出门仍各自判断，不能移除预算就声称qualified。
+
+同步原 `source-fact-ai-run.ts` engineering seam默认requestLimit/generationTokens改为null，transport类型和receipt冻结真实executionLimits；不接入真实Provider或formal issuer。显式旧finite limits仍可解释历史/诊断，wall/idle/payload/response技术门保持。`tests/source-fact-ai-input.test.ts`以真实canonical decode验证null默认、完整packet、one-shot及原false EMPTY/取消/截断回归。完成后按官方AOCI owner仅维护本模块条目与baseline，保留其他任务增量且不提交混合治理资产。
+
 ### User Directed GPT 6.1 Selection
 
 2026-09-30 用户已在应用内重新登录，并明确把正式GPT actor从`gpt-6-sol`改为`gpt-6.1-sol`。当前组合为 **MiniMax + `gpt-6.1-sol`**，`gpt-6-luna`仍可单独选择，无自动fallback。Router订阅profile、原owners及新model的native framing已经实施并经clean官方安装；installed Docker/fake八图和14项OS检查成立。应用独立登录的真实认证与额度检查成立，但认证catalog未能确认所选`gpt-6.1-sol`的image输入，当前 `SELECTED_MODEL_IMAGE_ENTITLEMENT_UNVERIFIED`，不能签发live预算或启动真实capability。Exact证据由[phase owner](shape-matched-cover-m5d2a.md#current-codex-subscription-and-gpt-61-selection)维护。

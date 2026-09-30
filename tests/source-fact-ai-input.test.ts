@@ -45,6 +45,17 @@ describe("real CPU canonical decode and PNG transport, never qualification", () 
     expect(result.accepted).toHaveLength(10); await expect(run.execute()).rejects.toThrow(/one-shot/);
     expect(Object.isFrozen(result.receipt)).toBe(true);
   });
+  it("does not impose a token or total request cap on the new default run", async () => {
+    expect(AI_ENGINEERING_BUDGET.requestLimit).toBeNull();
+    expect(AI_ENGINEERING_BUDGET.generationTokens).toBeNull();
+    const run = createAIEngineeringRun(input, "A", async (p, s) => {
+      expect(p.generationTokens).toBeNull(); return reply(p, s);
+    }, digest, () => undefined);
+    const result = await run.execute();
+    expect(result.status).toBe("FROZEN"); expect(result.accepted).toHaveLength(10);
+    expect(result.receipt).toMatchObject({ executionLimits: { requestLimit: null, generationTokens: null } });
+    expect(result.qualificationStatus).toBe("INCOMPLETE");
+  });
   it.each([0,4,9])("false EMPTY %i stops further requests and preserves negative evidence", async ordinal => {
     let count = 0; const run = createAIEngineeringRun(input, "B", async (p, s) => { count++; return reply(p, s); }, digest, d => d.ordinal === ordinal ? "FALSE_EMPTY" : undefined);
     const r = await run.execute(); expect(r.status).toBe("NOT_QUALIFIED"); expect(count).toBe(ordinal < 8 ? 1 : 2);
