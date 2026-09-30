@@ -35,6 +35,8 @@ spec: shape-matched-cover-spec.md
 
 ## M3 — Shape And Final-Pixel Gate
 
+2026-09-30 用户要求真实覆盖效果测试，已完成既有静态样例两个 3 秒片段的 fresh 720p 样片及矩形/轮廓对照，证据由 [Real Visual Diagnostic](shape-matched-cover-real-visual-20260930.md) 独占。所试星形遮住目标，但描边与贴边仍有视觉限制；不改变 M5 资格或产品启用状态。
+
 **Work:** 在聚焦模块实现候选 alpha 栅格、形状预筛、有限轮廓扩张、源 mask 到输出像素的保守变换，以及逐帧逻辑 coverage。按当前真实 FFmpeg 缩放/补边和像素舍入处理；相同栅格状态可缓存，时序必须逐输出帧证明。冻结所需的算法版本、参数、贴纸资产指纹、输出设置及 coverage 结果。无新依赖或 GPU 要求，优先 CPU bitmask 与已有 FFmpeg 能力。
 
 **Convergence:** 像素测试覆盖 AC-03；真实星形素材在不同输出设置中得到可重算的通过/拒绝结果。叶子、竖向及边缘不足的候选不能因 bbox 相交或 alpha>0 而通过。对实际 FFmpeg 图层/导出帧进行配对核对，发现计算与渲染不一致即停止。

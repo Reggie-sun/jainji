@@ -42,4 +42,6 @@ FFmpeg 的 alpha 栅格与 PIL 缩图不同：同一 119×78 星形，FFmpeg 有
 
 # M3 Decision
 
+2026-09-30 重新从原片生成两段 720p 原片/矩形/轮廓样片，复核实际栅格、180 个输出帧、正常速度播放及负例；见 [Real Visual Diagnostic](shape-matched-cover-real-visual-20260930.md)。这是已知样例的工程与视觉诊断复现，不增加 source admission、独立 holdout 或 AI qualification。
+
 **M3 对该静态旧标与 720p 星形候选的像素核心有界收敛，可进入 M4 集成。** 1080p 当前所试候选被明确拒绝，没有按输出设置放宽上限。生产模板尚未冻结算法、贴纸资产指纹、输出设置与 coverage 结果；正式 FFmpeg 编译器未消费同一个轮廓栅格；内容安全邻近样本、长片多素材成本和原队列样片尚未验证。继续保持现行白底路径。M4 写入前必须核对目标文件的当前 ownership；如发生同文件占用，由用户决定写入顺序。
