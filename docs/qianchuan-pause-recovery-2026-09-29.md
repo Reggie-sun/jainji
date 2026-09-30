@@ -253,3 +253,31 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 安装、只读操作及字节核验证据分别为 `current-installed-data-proof.json`、`current-installed-app-readonly-final.json`、`current-installed-readonly-effects.json`、`current-installed-page-final.json`。此修复已在真实运行包核验；整体当前计划改传、≤9 分组及整批 READY 尚不能验收：原 108 条包含 9 条 UNKNOWN，不具备整批改传资格，不能拆出 99 条、重传 9 条或用新计划绕过。
 
 实际桌面因窗口最小化（document.visibilityState=hidden）首次交互/截图超时；只激活原简辑窗口后，作品页操作及截图成功，Parent 查看 `current-installed-desktop.png`：晚安油已保存、50 待确认、99 待上传、处理 0、需处理 9，明确显示账号阻断。最终 AOCI Verify/Check/Guide 再次 aligned、无 findings、next_action=none；其他窗口的索引行和制作改动继续保留未提交。这里的“50 已上传”是原旧计划历史状态，不能解释为当前计划验收。
+
+## Authorized Continuation And Shop Permission Blocker
+
+重新核实晚安油当前有效计划为 `1877602792264880`、账号 `1876294500004864`，通过真实软件账号设置保存该计划链接；六槽中仅眼贴对应的晚安油映射变化，冻结历史目标、整本上传 state 和 150 fences 未变。旧 50 条的目标仍为已删除计划，原 modal 丢失，不重选或改传。
+
+用户随后明确授权“删除这整个 108 条本地上传批次，保留全部历史和 fence；不删除视频、不重传”。在已安装软件依次点击“删除本批上传任务”和“确认删除整批”，原 pageBatch `3184d1d6-1663-4abc-b062-2a894b405b20` 的 108 tasks 全部成为 DISCARDED；九条 MAY_HAVE_UPLOADED 的结果、原失败诊断和永久 fence 保留。原批次归档 `discard-history/3184d1d6-1663-4abc-b062-2a894b405b20.json` SHA-256 为 `8c2aa7ecc4159976d623bd1c362f55e448f118e04f128977c023061a9c25e851`。其他 454 tasks、全部 intents、150 fences 以及 562 个 snapshot 的身份/stat 均保持；正常重启后完整 ledger SHA 仍为 `b2d02b6ff964415bf9be80d25b8cea3dd4430e131476b9bdc3636351c86d77a4`，删除状态未恢复。没有删除视频、平台素材或未知上传结果。
+
+晚安油剩余既有批次均已选过文件或未完整准入，无法继续真实分组验收。用户明确允许使用已有氨糖膏 10 条批次 `09d84af5-7587-4f78-a04d-9538a5595c3a`，先核实账号和有效计划，不新增制作。实测前完整 tasks/intents/expectedCount=10，全部 NOT_SELECTED、无 fence/alias，十个冻结视频 SHA 均匹配。真实页面的账号 `1876036793517065`、计划 `1876052012647452`、URL 与详情 ID 一致，计划显示投放中，没有修改平台设置。
+
+通过应用对该批次执行一次“安全继续”：首组九条进入准备，第十条保持 PENDING；千川“添加视频”真实 disabled，首组九条转 NEEDS_HUMAN/NOT_SELECTED。完整差异核对：其他 552 tasks 不变，150 fences 未变，十条仍全部 NOT_SELECTED、零新增文件屏障。这个结果只能证明首组大小九及文件动作前阻断，不能证明全组 READY 后下一组推进。按钮 hover 后真实平台明确提示“当前账户无该抖音号的全域投放权限，不支持添加素材”，故此处是店铺投放授权问题。私有截图 `antang-disabled-page.png` 已实际查看，当前计划投放中与权限拒绝同时存在；不能把投放状态当作素材上传权限。
+
+用户继而明确停止测试氨糖膏店，并要求增加逻辑说明店铺问题。此后没有对该店继续、选文件、确认或重新核验权限；原九条通用失败作为历史保留，没有改写真实任务来伪造新的诊断。已有页面文本和截图用作软件修复依据，平台权限由店铺管理员处理。
+
+### Diagnostic Repair And Verification
+
+唯一实现 owner 为 `src/main/qianchuan-page-contract.ts` 的 `QianchuanPageSession.click`，CodeGraph 核对其与 CDP/service 和页面测试的原调用关系。生产“添加视频”禁用时有界 hover；只有新出现、唯一、可见、贴近按钮且文字精确匹配的权限 tooltip 才返回 `ACCOUNT_UNCONFIRMED/account`，说明“店铺权限问题（非简辑程序故障）”并提示管理员核查全域投放授权。已存在、隐藏、远处或未明确的提示保留原通用诊断。不新增槽位/生产 ID、队列、IPC 或持久格式；guard、fence、UNKNOWN 零重传及确定前停止规则保留。既有 Plan 已补充范围与 Self-Review。
+
+- Red：新精确权限用例在旧实现 1 failed/8 passed，仍错误显示“平台业务原因尚未确认”。修复中一次 fixture 提前读取 hidden 按钮几何造成失败，改为 hover 时读取已显示位置；未把该测试搭建错误当作平台故障。
+- Green：相关 19 个上传测试文件 258 tests PASS，fresh `npm run typecheck` exit 0。源码 SHA-256 `a0ad7e57ee52711fa665007eb168fd6540852fcad553a41d7030dec85756f48a`，诊断测试 SHA-256 `694f408ae78372ea409dd736a58a017918745485dac63284f62cd61a7dd38dce`；证据 `/tmp/jianji-shop-permission-tests.json`。
+- 精确打包验证：可信源基线重建 main 与已安装 `387b2aa4` 完全相同，新 main diff 仅为上述诊断逻辑。main SHA-256 `32abfedaca0f7fd6f26e226406278d08655a8d91a422a879bc227cfd0f75ff0a`；候选 asar SHA-256 `1c8869996578b07f39cbd5ac67a89ccbcc8d0b83ffeda29877ebffec25d555b0`，只替换 main，其余 2153 packed files 及 metadata 保持。
+- 从候选 asar 提取精确 page-owner bytes，在隔离 Chrome HTML 验证明确权限及三种反例，四例均零文件动作/零按钮点击。初次私有 HTML 缺 charset 导致 guard 无法匹配 ID，补正 fixture 后通过；不作为产品缺陷。证据 `/tmp/jianji-shop-permission-packed-fixture.json`。
+- 候选 packaged Electron 隔离桌面显示完整店铺权限提示，Parent 查看 `shop-permission.png`；同时原取消、整批删除、跨项目拒绝、重启和 fence 保留 smoke PASS，零真实账号。证据 `/tmp/jianji-discard-smoke-jOYBPw/report.json`；最初私有脚本的模块解析失败保留为 NOT_EVALUATED，修正脚本依赖根后才形成 PASS。
+
+本次整体任务已使用受管 Kimi operational QA invocation `e2b2f86f-c0b8-45ee-8cd7-e0c5dda36fce`，此前实际请求身份和 canonical receipt 已核实；该旧报告不代表审查了本次新字节。对以上 exact source/main 稳定候选，Parent 判定 `KIMI_REVIEW_NOT_REQUIRED`：用户未要求本 snapshot review；错误归因最多使具体平台问题回退为人工核查，两个分支均在文件动作前拒绝，没有凭据泄露、关键越权或 durable 损坏路径。focused tests、精确包字节与实际隔离 UI 覆盖提示归因；没有同时成立的重大后果、实质验证缺口与 reviewer 独立增益。平台权限恢复和真实 READY 仍为外部未验收事实，不能用 reviewer 或历史测试替代。
+
+单项 AOCI 完整机器批次 `48ec6d7d6d6ce6a93a9608cce5db7bf538768b6a6fa92ee6230fb2a8cf203b11` applied=1/remaining=0，只更新 page-contract Entry/binding，保留其他窗口 source-fact 条目。Verify、Check exit 0/governance_aligned=true，Guide complete=true/next_action=none，证据 `/tmp/jianji-shop-permission-aoci-{verify,check,guide}.json`。本次压缩恢复完整读取三块 Overview 并确认交付；Attestation Schema 拒绝以及一次字段修正失败保留，不声称完整认知验证成功。记录采用既有 recovery owner，没有项目专用 capture skill，不生成新的交接 prompt。
+
+上述真实操作证据均在 `/tmp/jianji-plan-target-live-evidence-20260930`：`continuation-settings-*`、`authorized-discard-108-*`、`antang-resume-*`、`antang-app-events.json`、`antang-disabled-detail.json`。旧 modal 页面观察器未覆盖应用新建的页面，不能把空 pageEvents 当作完整发布审计；文件动作前 disabled、NOT_SELECTED 和零新 fence 是此次阻断的可核验依据。Windows 不验证。

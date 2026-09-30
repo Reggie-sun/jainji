@@ -26,3 +26,13 @@ Self-Review：上述授权只修改从未产生文件副作用的整批冻结目
 ## Compatibility And Remaining Limits
 
 保留 strict v2 ledger schema，旧程序只能看到已完整提交的新授权，审计不会被当作 active task。未知文件及丢失弹窗不能改传；不自动确认、发布、修改计划或广告设置。Windows 按用户要求不验证。记录使用现有修复记录；没有项目专用 session-capture skill。
+
+## Shop Permission Diagnostic Amendment
+
+用户要求停止氨糖膏店实测，并准确显示其无法上传是店铺权限问题。已有真实页面明确提示“当前账户无该抖音号的全域投放权限，不支持添加素材”；不再对该店继续、选文件或重新验证权限。
+
+单一 owner 仍为 `QianchuanPageSession.click`：在生产合同的“添加视频”按钮禁用时，有界 hover 观察本次新出现、唯一、可见且贴近该按钮的精确权限提示，返回既有 `ACCOUNT_UNCONFIRMED/account`，文案说明“店铺权限问题（非简辑程序故障）”并指向店铺管理员核查授权。没有明确证据、提示已存在/隐藏/远离按钮时保留原未知业务原因诊断。只替换明确原因的错误文案路径，不新增账号 ID、队列、IPC、持久格式或授权来源。
+
+验证使用 `tests/qianchuan-upload-diagnostics.test.ts` 的生产 selector 隔离 Chrome fixture，覆盖明确权限归因及上述反例、零文件拖放和零确定；运行 typecheck 和相关上传回归。可信打包只替换 main，保留其他窗口已安装的删除及 UNKNOWN 合同。安装前检查已保存和无活动制作/上传，备份完整账本、fence 和启动器；安装后只核查包身份与持久数据，不实测该店。
+
+Self-Review：诊断只解释平台已明确拒绝的原因，所有 ID/详情/modal guards 保留，依然在 fence 与文件动作前失败。不能将任意 disabled 控件归咎于店铺，也不把软件提示交付宣称为平台权限已恢复或真实分组 READY 验收。

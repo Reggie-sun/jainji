@@ -122,8 +122,33 @@ export class QianchuanPageSession {
   }
   private async click(control: Locator, task: UploadTaskRecord, signal: AbortSignal, label = "目标控件"): Promise<void> {
     await this.guard(task, signal); const locator = await this.shown(control, task, signal);
-    if (!await locator.isEnabled()) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", `千川“${label}”按钮已禁用，平台业务原因尚未确认。`, "请在 Chrome 人工核查计划状态、操作权限及平台提示；程序不会修改计划或广告设置。处理后仅对尚未选文件的任务安全继续。", true);
+    if (!await locator.isEnabled()) {
+      if (label === "添加视频" && this.contract.kind === "qianchuan" && await this.shopPermissionBlocked(locator, task, signal)) {
+        throw uploadFailure("ACCOUNT_UNCONFIRMED", "account", "店铺权限问题（非简辑程序故障）：千川提示“当前账户无该抖音号的全域投放权限，不支持添加素材”，已在选文件前停止。", "请店铺管理员核查该抖音号的全域投放授权。权限恢复后，仅对尚未选文件的任务明确安全继续；程序不会修改广告设置或自动重传。", true);
+      }
+      throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", `千川“${label}”按钮已禁用，平台业务原因尚未确认。`, "请在 Chrome 人工核查计划状态、操作权限及平台提示；程序不会修改计划或广告设置。处理后仅对尚未选文件的任务安全继续。", true);
+    }
     this.check(signal); await locator.click({ timeout: task.config.timeouts.action }); this.check(signal);
+  }
+  private async shopPermissionBlocked(button: Locator, task: UploadTaskRecord, signal: AbortSignal): Promise<boolean> {
+    const tips = this.frame!.locator('[role="tooltip"]:visible,.ovui-tooltip:visible,.ovui-popover:visible')
+      .filter({ hasText: /^\s*当前账户无该抖音号的全域投放权限，不支持添加素材\s*$/ });
+    const before = await tips.elementHandles();
+    try {
+      this.check(signal);
+      try { await button.hover({ timeout: Math.min(task.config.timeouts.action, 1000) }); }
+      catch { await this.guard(task, signal); return false; }
+      const deadline = Date.now() + Math.min(task.config.timeouts.action, 500);
+      do {
+        await this.guard(task, signal);
+        if (await tips.count() === 1 && !await tips.evaluate((tip, existing) => existing.includes(tip), before)) {
+          const tip = await tips.boundingBox(), control = await button.boundingBox();
+          if (tip && control && tip.x < control.x + control.width + 40 && tip.x + tip.width > control.x - 40 && tip.y < control.y + control.height + 40 && tip.y + tip.height > control.y - 40) return true;
+        }
+        await this.page.waitForTimeout(50); this.check(signal);
+      } while (Date.now() < deadline);
+      return false;
+    } finally { await Promise.all(before.map(handle => handle.dispose())); }
   }
   private group(tasks: UploadTaskRecord[]): UploadTaskRecord {
     const task = tasks[0];

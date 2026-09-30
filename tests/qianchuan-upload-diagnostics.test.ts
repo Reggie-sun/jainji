@@ -53,6 +53,39 @@ async function zeroConfirmation(expectedDrops: number) {
 }
 
 describe("finite upload blocker diagnostics", () => {
+  const permissionReason = "当前账户无该抖音号的全域投放权限，不支持添加素材";
+  async function permissionTooltip(page: Page, mode: "hover" | "existing" | "hidden" | "distant") {
+    await page.locator("#add-video-button").evaluate((element, { reason, mode }) => {
+      element.setAttribute("disabled", "");
+      const tip = document.createElement("div"); tip.setAttribute("role", "tooltip"); tip.textContent = reason;
+      const box = element.getBoundingClientRect();
+      Object.assign(tip.style, { position: "fixed", left: `${mode === "distant" ? 800 : box.left}px`, top: `${mode === "distant" ? 600 : box.top - 30}px`, display: mode === "existing" ? "block" : "none" });
+      document.body.append(tip);
+      if (mode !== "hidden") element.addEventListener("mouseenter", () => {
+        if (mode === "hover") { const visibleBox = element.getBoundingClientRect(); tip.style.left = `${visibleBox.left}px`; tip.style.top = `${visibleBox.top - 30}px`; }
+        tip.style.display = "block";
+      });
+    }, { reason: permissionReason, mode });
+  }
+
+  it("identifies the shop permission reason revealed by hovering the disabled add button before file actions", async () => {
+    const value = await task(), prepared = await session(value);
+    await permissionTooltip(prepared.page, "hover");
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toMatchObject({ failure: {
+      code: "ACCOUNT_UNCONFIRMED", category: "account", message: expect.stringContaining("店铺权限问题（非简辑程序故障）"), next_action: expect.stringContaining("店铺管理员"),
+    } });
+    await zeroConfirmation(0);
+  });
+
+  it.each(["existing", "hidden", "distant"] as const)("does not attribute a %s permission tooltip to the disabled add button", async mode => {
+    const value = await task(), prepared = await session(value);
+    await permissionTooltip(prepared.page, mode);
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toMatchObject({ failure: {
+      code: "PAGE_CONTRACT_CHANGED", message: expect.stringContaining("平台业务原因尚未确认"),
+    } });
+    await zeroConfirmation(0);
+  });
+
   it("explains a platform-disabled 添加视频 before any file action without guessing a business reason", async () => {
     const value = await task(), prepared = await session(value);
     await prepared.page.locator("#add-video-button").evaluate(element => element.setAttribute("disabled", ""));
