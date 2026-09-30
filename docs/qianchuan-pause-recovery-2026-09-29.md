@@ -281,3 +281,15 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 单项 AOCI 完整机器批次 `48ec6d7d6d6ce6a93a9608cce5db7bf538768b6a6fa92ee6230fb2a8cf203b11` applied=1/remaining=0，只更新 page-contract Entry/binding，保留其他窗口 source-fact 条目。Verify、Check exit 0/governance_aligned=true，Guide complete=true/next_action=none，证据 `/tmp/jianji-shop-permission-aoci-{verify,check,guide}.json`。本次压缩恢复完整读取三块 Overview 并确认交付；Attestation Schema 拒绝以及一次字段修正失败保留，不声称完整认知验证成功。记录采用既有 recovery owner，没有项目专用 capture skill，不生成新的交接 prompt。
 
 上述真实操作证据均在 `/tmp/jianji-plan-target-live-evidence-20260930`：`continuation-settings-*`、`authorized-discard-108-*`、`antang-resume-*`、`antang-app-events.json`、`antang-disabled-detail.json`。旧 modal 页面观察器未覆盖应用新建的页面，不能把空 pageEvents 当作完整发布审计；文件动作前 disabled、NOT_SELECTED 和零新 fence 是此次阻断的可核验依据。Windows 不验证。
+
+### Installed Shop Permission Diagnostic
+
+本轮六个明确路径提交 `a3efa24`，AOCI 只 stage 本项行、源码 binding 和 staged index digest，其他窗口的 source-fact 行及制作修改保留。安装前真实项目已保存，agent=null、batch finished，无活动导出/上传，完整 ledger 也无运行状态；旧 `jianji-deleted-tag-installed-20260930.service` 停止后 MainPID=0/Result=success，没有中断制作或停止 Chrome。
+
+已安装 `/home/reggie/Applications/jianji/releases/qianchuan-shop-permission-20260930-1c886999`，launcher 原子切换；完整 718 个上传文件、旧 launcher 和摘要备份于 `/home/reggie/Applications/jianji/.backups/qianchuan-shop-permission-20260930-1c886999`。备份与已停止应用的目录逐文件 SHA 全部匹配，旧 release 保留，回滚可恢复 launcher。新 unit `jianji-shop-permission-installed-20260930.service` 的 PID `1367754`、`/proc/<pid>/exe`、renderer URL 均绑定此 release，asar SHA 与候选 `1c886999...` 完全相同。重新读取正常启动动态 CDP `42951`；初次调用曾碰到尚未更新的旧端口而拒绝连接，待启动后重新读取成功，没有沿用旧端口执行操作。
+
+通过原 `loadProject` 只恢复安装前保存的项目，未调用其上传动作；首次返回时队列同步尚未完成，最终主进程 hasUnsavedChanges=false，agent=null、batch finished、活动导出/上传均 0，delete/retarget bridge 保留。安装前后全部 718 个上传持久文件 SHA 完全相同：562 tasks、150 fences、原 108 DISCARDED、氨糖膏 10 NOT_SELECTED（9 NEEDS_HUMAN/1 PENDING）保持，state SHA 为 `f7df83a2967122730cb099a4213c1345bd023fbc30dc4da31278c0c429cd18ac`。证据 `/tmp/jianji-shop-permission-install-before.json`、`/tmp/jianji-shop-permission-installed-{app,data}-proof.json`。
+
+已交付权限诊断逻辑及可回滚安装；新文案真实呈现的证据来自上述隔离 packaged 桌面，不能宣称停止实测后的真实店铺任务已重新诊断或平台权限恢复。整体真实整批全组 READY/下一组推进仍未验收：晚安油没有其他完整未选批次，氨糖膏真实平台权限拒绝且用户要求停止测试。旧已选、UNKNOWN、其他账号与历史 fence 保留，未知结果没有重传，没有确定或发布。
+
+安装后 AOCI Verify/Check 再次 exit 0/governance_aligned=true，Guide complete=true/next_action=none，证据 `/tmp/jianji-shop-permission-installed-aoci-{verify,check,guide}.json`。上述安装记录属于 observe；没有再次维护已对齐的 source Entry 或纳入其他窗口字节。
