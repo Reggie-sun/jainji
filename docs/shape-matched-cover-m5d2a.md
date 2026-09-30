@@ -1,5 +1,15 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Explicit Model Verification
+
+2026-09-30 用户要求“验证”。Router原owners已新增显式catalog-only检查，clean `ba795e4`官方安装、program `75b65f99252e24ba0d4364243d40762c785a899b755b3cf3640db19267661c65`、source_dirty_at_install=false。Fresh offline959 PASS、full native978 PASS/12环境skip、最终三所选路线真实Docker/native及新CLI否定共24 PASS；Ruff/diff通过。Installed6.1sol新八图probe/native/conformance和14项OS及清理成立；工程证据不构成视觉或语义资格。
+
+当前应用独立登录的真实目录GET在UTC09:37:57完成，canonical receipt `b7816587-9d0d-45b5-bdbe-59b8dee07fd1`：authenticated=true、目录7个模型、gpt-6.1-sol exact匹配0，image_input_supported=false、classification=INCOMPLETE。这是当前账号目录未列出所选模型，不是预算不足，也不证明永久不支持。原安装owner/ReceiptStore/seal/pins重新核验一致，模型准入真实拒绝SUBSCRIPTION_MODEL_UNVERIFIED。本次只查catalog1、quota0、生成0/正式0；无自动重查、刷新、模型/provider切换或global Codex认证读取，费用null。详细合同/receipt/工程证明独占于[router record](../../agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md#current-explicit-model-verification)，私有archive `~/.local/state/agent-subagent-router/explicit-model-verification-20260930`。
+
+自然停止于当前所选模型账号目录缺口；MiniMax实际capability、正式execution owner、冻结config/inputPlan、独立A/B完整raw/mapping/joint/correspondence和可信比较证据仍缺。M5-D2A INCOMPLETE、formal NOT_STARTED、语义指标null/NOT_EVALUATED、human qualification INCOMPLETE、real-media NOT_EVALUATED。authority=none/eligible=false，PRODUCT_DISABLED，M5-B activation/M5-C issuer/M5-D3/M5-D4/verified-no-sticker production issuance全部BLOCKED；现有手动覆盖不变。未产生本仓库managed source变化，两task docs属observe；专用capture skill不适用，此phase/原plan承接稳定checkpoint。
+
+本次两docs为observe对象，没有新增或修改managed source，故不制造索引/baseline写入。最终AOCI Verify/Check/Guide均exit0，structure_valid/governance_aligned=true、Guide complete=true/stage=aligned/findings=[]；首次使用不存在的顶层guide命令失败后，按CLI帮助改为正式 `aoci index agent guide --agent codex --json`取得上述结果，失败日志保留。Foreign16项status/bytes保留，不stage/commit混合索引或无关代码。仅本任务phase/plan提交checkpoint，不以工程或治理检查宣布资格通过。
+
 ## Current Unrestricted Spending Policy
 
 2026-09-30用户明确“预算不用管,也不应该设限制”。新M5-D2A MiniMax+gpt-6.1-sol请求采用spending_policy=unrestricted；luna仍独立可选。不再要求账户余额/价格/input accounting/费用budget receipt，不设金额/token/任务累计调用总量上限。原spec预算段只在spending层被router[accepted修订](../../agent-subagent-router/docs/superpowers/specs/2026-09-30-image-unrestricted-spending.md)替代，旧sealed请求/receipt/ledger/失败保留历史，不伪造费用0。单次超时、bytes/内存、Docker/秘密/身份、取消/迟到隔离及未知结果no-replay继续，不能把它们称为财务限制。

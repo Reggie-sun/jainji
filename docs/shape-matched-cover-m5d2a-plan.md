@@ -1,5 +1,9 @@
 # M5-D2A Implementation Plan
 
+## Explicit Model Verification Checkpoint
+
+用户2026-09-30明确“验证”，原router计划按新accepted catalog-only修订自动承接，不重跑旧quota恢复或制造费用门。当前clean `ba795e4`安装及真实一次认证目录观察已完成：7个模型、gpt-6.1-sol匹配0，canonical receipt `b7816587-9d0d-45b5-bdbe-59b8dee07fd1` INCOMPLETE，模型/正式请求0。剩余工作先解决所选模型的真实账号目录证明，不能自动切换；随后两路真实八图能力、正式隔离执行owner/config/inputPlan、raw/mapped/joint/correspondence及truth-vs-review资格。工程/目录检查不能签发M5-D2A PASS或生产，预算限制已取消；完整证据由[phase](shape-matched-cover-m5d2a.md#current-explicit-model-verification)与router原record独占，旧计划段落保留历史。
+
 ## Current Priority and Provider Selection
 
 ### User Directed Unrestricted Spending
