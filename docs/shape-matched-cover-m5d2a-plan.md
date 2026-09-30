@@ -2,6 +2,22 @@
 
 ## Current Priority and Provider Selection
 
+### User Directed GPT 6.1 Selection
+
+2026-09-30 用户已在应用内重新登录，并明确把正式GPT actor从`gpt-6-sol`改为`gpt-6.1-sol`。当前组合为 **MiniMax + `gpt-6.1-sol`**，`gpt-6-luna`仍可单独选择，无自动fallback。Router订阅profile、原owners及新model的native framing已经实施并经clean官方安装；installed Docker/fake八图和14项OS检查成立。应用独立登录的真实认证与额度检查成立，但认证catalog未能确认所选`gpt-6.1-sol`的image输入，当前 `SELECTED_MODEL_IMAGE_ENTITLEMENT_UNVERIFIED`，不能签发live预算或启动真实capability。Exact证据由[phase owner](shape-matched-cover-m5d2a.md#current-codex-subscription-and-gpt-61-selection)维护。
+
+Scope内工程修复、审查与安装已完成，不需要用户再次授权“继续”。一次显式quota投影恢复已用完：累计两个quota GET和一个catalog GET，原失败receipt/host计数保留；不追加GET、自动刷新登录、重试或换model。真实visual/formal请求0、capability NOT_EVALUATED；没有可用新外部证据时，这是Milestone4的真实停止条件。后续还需所选model实际image权限、MiniMax authenticated accounting/canonical预算、两条真实capability，再提前冻结正式tuple/config/inputPlan/budgets及可信正式execution，完成全部A/B/joint原始与映射receipt、correspondence和truth比较。独立synthetic准备不替代这些门或real-media层。
+
+下方6sol选择与工程证据为历史，不迁移为6.1视觉资格。Subscription upstream生成token硬上限仍null、observed output limit2048，真实capability最多一次；原API预算不转移，MiniMax live/formal预算及全部产品禁止不变。
+
+### Codex Subscription and Explicit Model Selection
+
+2026-09-30 用户明确没有 OpenAI Key、要求使用 Codex，并选择正式组合 **MiniMax + `gpt-6-sol`**；`gpt-6-luna` 可单独选择。当前按 router [subscription amendment](../../agent-subagent-router/docs/superpowers/specs/2026-09-30-codex-subscription-image-design.md) 和原 implementation plan 接通应用独立登录到受管 image broker；不再将新增 OpenAI API Key 作为 Codex 路线的前提。原 API 安装、费用门和历史证据保留，不能静默重命名或迁移。
+
+先完成显式 subscription profile、private credential projection、fixed endpoint、null upstream generation cap/2048 observed output limit、有限 account/catalog observation 与 canonical once budget 的实现和否定测试；随后 fresh native/fake/OS、required critical review、clean official installation及 installed proof。实际 authenticated model catalog 与图片 capability 成立后才冻结 MiniMax/GPT正式 config；`gpt-6-luna` 的单独选项不等于 automatic fallback 或额外正式actor。
+
+应用登录文件存在仅是 metadata，不证明有效认证、订阅额度或视觉能力。Codex capability最多一次，formal仍0；MiniMax未补齐实际accounting/canonical预算时请求0。新 profile 无法预先施加生成token硬上限的事实明确为null，不通过wall/bytes或事后usage伪造2048硬门。M5-D2A真实semantic标准、人类兼容和全部产品禁止不变；最新证据由phase owner记录。
+
 ### MiniMax Engineering Route Continuation
 
 Milestone4的MiniMax/GPT工程实现与受管安装已完成：完整PNG/生成上限/响应绑定否定测试、fresh router offline807 PASS/28 skip、native/fake+containment831 PASS/4 skip、Ruff/diffcheck exit0，144条source/test/script/Skill绑定前后一致。Round16未取得terminal full report；round17完整critical复核后修复typed关联缺口，按明确有限例外仅一次round18/180秒定向复核，实际111.76秒、211/211一致、finding set为空。Parent裁决后clean `69f9a7d`官方安装，program `527a80ee…`；installed MiniMax/GPT各自14/14实际OS检查、完整native/fake receipts、容器清理及原owner完整性复核成立。工程 gate不再因缺MiniMax backend/图片传递或安装而阻断，不另设“继续”许可门。

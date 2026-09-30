@@ -1,5 +1,23 @@
 # M5-D2A Engineering and Qualification Record
 
+## Current Codex Subscription and GPT 6.1 Selection
+
+2026-09-30 用户要求应用独立ChatGPT登录，并将正式搭配定为 **MiniMax + `gpt-6.1-sol`**；`gpt-6-luna`仅单独可选，无自动fallback，未追加Kimi调用。此次授权承接原implementation，DESIGN_ONLY、旧6sol/API/Kimi结果均保持历史；没有将旧模型资格改名。现行手动白框覆盖及manual region候选不受本次路线实现影响。
+
+Router新增显式subscription-bounded profile，复用原credential/ReceiptStore/broker/Docker/qualification owners。仅读取应用独立auth；JWT账号关联、固定HTTPS endpoint、完整八图、fresh context、禁工具、request_limit=1、wall180/idle90和原退出隔离均实际校验。Subscription无法预先施加生成token硬上限，记录null，2048仅observed output limit；原API硬cap及USD1预算不迁移。初次quota GET被秘密反射门拒绝，receipt `f287b749-4246-4cf0-9b40-61b8fe8bd7b5`永久保留，原响应未持久化，无法断言其具体反射字段。新的独立投影合同先验证固定quota顶层account_id匹配，再移除该字段并扫描其余内容；其余秘密/错身份/catalog反射仍拒绝，image正文门不放宽。明确一次恢复不重置原host ledger，不允许未知结果重试。
+
+Fresh router offline **910 PASS/31 deselected**、native/fake+containment **937 PASS/4环境skip**、Ruff/diffcheck exit0；projection原负例5 FAIL/4 PASS与修复后19 PASS保留。Critical native工程review继续同一named reviewer，累计Kimi2/native1–24不重置；round24 frozen210路径及副本420 hashes一致，69源码program一致，实际513.63秒terminal finding set为空。Parent结合red-green、最终diff与fresh verification裁决后，以clean `2f1e52b833403436d1be5ac32c56fc5af287a7e5`运行官方installer，source_dirty_at_install=false。Program `24e17d2d2e29da97876e974bb6e68e5079d16cd5702266bb87cd8ebd0a8d42db`，entry/Skill/69源码核验一致；旧包/config/receipts保持。实际MiniMax、旧API、6.1sol、luna各14项OS检查成立，八图native/fake、container_removed=true；这是ENGINEERING_CONFORMANCE_COMPLETE，不是视觉资格。全部安装、raw/artifact、review证据由router[canonical record](../../agent-subagent-router/docs/records/image-api-engineering-2026-09-29.md#current-codex-subscription-and-gpt-61-installation)独占。
+
+Installed CLI按先冻结的投影恢复合同执行唯一一次真实恢复：UTC08:00:31–08:00:34，canonical account receipt `ad63d78c-5bbc-4a0c-a9ec-ced6bd1acacb`，authenticated=true、quota_available=true、model=`gpt-6.1-sol`、image_input_supported=false、classification=INCOMPLETE。这是所选模型image权限未获认证目录证明，不能断言远端一定不支持。累计quota GET2/catalog GET1；没有生成模型内容，未签发AUTHORIZED budget，真实capability NOT_EVALUATED、provider/formal requests0、actual_cost_usd=null。登录或额度缺失已不再是当前GPT blocker，也不再要求OpenAI Key；当前为 `SELECTED_MODEL_IMAGE_ENTITLEMENT_UNVERIFIED`。No further GET/retry/refresh/model switch。
+
+MiniMax已有应用配置及两次认证只读额度观察保留，但M3可用额度/input accounting/canonical budget未证明，live授权仍0。独立synthetic holdout54 clips/648 frames/18场景/609 clear准备成立；正式route/config/inputPlan/budgets、双真实capability、隔离A/B和raw/mapping/joint/correspondence/可信执行owner尚未成立。Formal NOT_STARTED；所有A/B/joint语义指标null/NOT_EVALUATED，REAL_MEDIA_HUMAN_TRUTH NOT_EVALUATED，human qualification INCOMPLETE。本聊天及工程reviewer不充当盲审actor。
+
+自然停止点是当前认证catalog无法证明所选模型image权限，以及MiniMax真实accounting/预算等外部资格门；不是计划、测试或commit完成。M5-D2A **INCOMPLETE**，authority=none/eligible=false，PRODUCT_DISABLED；M5-B activation、M5-C issuer、M5-D3、M5-D4、verified-no-sticker production issuance全部BLOCKED。即使后续受控资格通过也不授权生产，Production Qualified Review不在本次自动范围。此次checkpoint由本phase/plan与router原record承接，无额外capture或memory写入。
+
+Final fresh Jianji typecheck exit0，12个AI/census/human-review/qualification/connection suites **264 PASS（44.14s）**，git diff --check exit0；未修改本仓库source/test、human collector或产品入口。AOCI Verify/Check exit1、structure_valid=true/governance_aligned=false；Guide实际完整命令exit0、complete=false/stage=authoring_required，仅foreign `src/main/qianchuan-page-contract.ts` code_stale。两task docs属observe、managed AI源码未变，不扩大index scope或覆盖其他owner的AOCI/代码。Guide首次缺--agent被工具拒绝exit3，原失败保存，修正调用后取得真实上述结果，不伪称全仓AOCI对齐。Foreign source/tests/docs、两项目删除及未跟踪工作继续保留，不stage/commit；本任务仅两docs checkpoint。
+
+随后其他owner已维护其过期对象；stable交付检查重新运行AOCI Verify/Check/Guide均exit0、governance_aligned=true、Guide complete=true/stage=aligned、findings=[]。原未对齐结果是较早观察，不删除；本任务未修改或提交该owner索引/baseline。Private `projection-repair/stable-aoci-*.json`保存新的原始结果。AOCI对齐不解除上述真实视觉与正式预算blocker。
+
 ## Current MiniMax Engineering and Account Observation
 
 2026-09-29 本任务继续MiniMax+GPT，未追加Kimi。Router新增显式 `minimax / responses-bounded / MiniMax-M3 / provider-default`，只发一次固定 `api.minimaxi.com/v1/responses`；完整有序PNG、fresh context、禁工具、store/stream=false和sealed generation≤2048绑定。Pinned Python runner在新的immutable image中通过原Docker relay执行，复用既有Responses broker、credential loader、secret scanner、ReceiptStore与cleanup，不伪造Codex thread/turn IDs或MiniMax cap echo。原始响应由独立broker captured wire与native envelope精确关联；未知backend及缺预算拒绝。MiniMax当前预算硬拒绝为IMAGE_MINIMAX_BUDGET_NOT_AUTHORIZED，不继承Kimi/GPT旧receipt或消费。
