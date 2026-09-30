@@ -105,8 +105,8 @@ export class QianchuanPageSession {
         const header = element.closest(".oc-promotion-key-info-bar-info-con");
         if (!header) return null;
         return Array.from(header.querySelectorAll(".oc-tag-text")).some(tag => {
-        const box = tag.getBoundingClientRect();
-        return tag.textContent?.trim() === "已删除" && box.width > 0 && box.height > 0 && getComputedStyle(tag).visibility === "visible";
+        const text = document.createRange(); text.selectNodeContents(tag);
+        return tag.textContent?.trim() === "已删除" && Array.from(text.getClientRects()).some(box => box.width > 0 && box.height > 0) && getComputedStyle(tag).visibility === "visible";
         });
       });
       if (deleted === null) throw changed();

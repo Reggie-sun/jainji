@@ -194,3 +194,50 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 完整核对 646 个上传持久文件的 SHA，安装前后无新增、删除或变化；502 条任务、141 个永久 fence 及全部快照保持。热敷贴原九条未解决任务仍明确暂停，未执行真实改传、继续、文件选择、确认或广告设置。证据 `/tmp/jianji-plan-target-installed-proof.json`、`/tmp/jianji-plan-target-installed-state-final.json`、`/tmp/jianji-plan-target-installed-project-diff.json`；Parent 实际查看 `/tmp/jianji-plan-target-installed-desktop.png`。本轮交付安装及启动/数据核验，不代表当前正确计划的真实上传验收；历史第十一条、平台禁用按钮和已选旧计划结果仍需分别处理。
 
 安装后的 AOCI Verify/Check/Guide 已运行：结构有效，但七项源码此时已被另一窗口的 discard/abandon 工作继续修改，当前工作树 governance_aligned=false、Guide authoring_required；路径为 service、store、index、preload、DouyinUploadPanel、qianchuan-upload-status、shared/douyin-upload。证据 `/tmp/jianji-plan-target-installed-aoci-{verify,check,guide}.json`。这些新字节不在本提交和安装包中，未自行维护、stage 或纳入候选；须由原任务稳定后完成七项维护，不能宣称整个当前工作树对齐。本次上下文恢复重新完整交付三块 Overview 并确认 body；Attestation 字段被当前 runtime Schema 拒绝，一次纯字段修正亦未通过，未语义重试或声称完整认知可靠；安装判断仅绑定已核对的源码、包及运行证据。
+
+## Live Deleted Plan Regression 2026-09-30
+
+本窗口按用户要求直接操作已安装软件，无新制作、新计划、交接 prompt 或 worktree。初始重新读取 `DevToolsActivePort`、进程与 app.asar：PID `469017`，动态 loopback 端口 `35959`，实际归档仍为上节 `797f4b15` release。热敷贴项目主进程 `hasUnsavedChanges=false`、无活动导出，batch finished；随后通过原 `loadProject(recentId)` 打开晚安油项目 `f50740e1-1b3d-4199-b2fd-c64a31d5fdc9`，没有放弃未保存项目或改动制作设置。renderer 的“未保存”提示与主进程状态曾不同，未凭提示推断真实保存状态。
+
+初始 ledger 为 502 tasks、584 intents、141 fences。原 pageBatch `3184d1d6-1663-4abc-b062-2a894b405b20` 仍有完整 108 tasks/intents，全部 PENDING/NOT_SELECTED、无 fence/alias；`d4fa2af0-d148-4954-935d-c8157684a096` 的 50 tasks 为 READY/WAITING_FOR_CONFIRMATION，原 modal 已丢失，保留旧目标与 fence。真实 Chrome PID `2375361` 的 loopback `9225` 仍匹配账号；在唯一包含当前计划行的现有 tab 打开详情，URL、可见账号 `1876294500004864`、计划 `1877602792264880` 与“投放中”一致。只打开详情，没有修改广告设置。软件映射此时仍为旧计划 `1876867135606800`。
+
+### Incident And Frozen Effects
+
+通过实际 `window.jianji.resumeDouyinUpload` 对原 108 条批次请求一次旧计划准入核验，预期已安装删除 guard 在文件动作前阻断。实测否定这一预期：首组 9 个文件被送到旧计划，新增 9 个永久 fence。该页详情仍明确“已删除”；原上传 modal 保留，9 个精确文件行可见，但当时 selected count 为 8/489，仍有处理中的行，未形成完整 READY 证据。程序与本窗口均未点击“确定”，没有确认、发布、删除列表项或改变广告设置。
+
+香港时间 15:15:20，journal 明确显示 `jianji-plan-target-desktop-acceptance-20260930.service` 先进入 Stopping，随后应用退出过程中出现 GPU fatal，最终 code-dumped/status=4/ILL。不能将其描述为无外部停止动作的自发 crash，也不能据 journal 确认是谁发起停止。CDP 此后拒绝连接，未自行重启。持久状态留下 9 UPLOADING/MAY_HAVE_UPLOADED 与 99 PENDING/NOT_SELECTED；这里的 UPLOADING 是中断后的旧持久状态，不是仍有活 runner 的证明。9 条禁止重新选文件，原 108 条已不满足整批改传条件，不能拆出 99 条或建立新计划规避合同。
+
+初始 141 个 fence 的 SHA 全部不变，旧 50 条 task 原字节不变，账号 mapping 原字节不变，任务与 intent 总数不变。另一个非目标账号的既有 NEEDS_HUMAN task 诊断也发生变化，未将其归为本窗口工作或改回旧值。私有初始/中断 ledger、原 fence 摘要、mapping 副本及实时几何证据位于 `/tmp/jianji-plan-target-live-evidence-20260930`，权限 0700，ledger/mapping 副本 0600。Chrome 原页保留；页面列表丢失或计数不完整都不能证明平台未收到文件。
+
+### Root Cause And Candidate Verification
+
+根因在原 page owner 的删除状态可见性判断：真实 `.oc-tag-text` 为 `display:block / line-height:0px`，文字是“已删除”，元素 box 为 width=36、height=0，文字 Range 却为 width=36、height=13。旧 guard 以元素 height>0 判断可见，漏掉真实状态。实际安装 main 中存在该 guard，未把此问题误判为安装缺失或目标 ID 硬编码。
+
+修复只修改 `src/main/qianchuan-page-contract.ts`，用文字 Range 的非空绘制矩形核对删除标签，保留唯一目标头部、visibility、ID、modal 归属与所有外部动作边界；对应 `tests/qianchuan-plan-target.test.ts` 增加零高度实况与 display:none/visibility:hidden 反例。上述两个文件及本记录在写入前均 clean，不在另一窗口声明的 service/store/index/preload/UI/shared ownership 内。没有接管 discard、修改真实 ledger 或清除 fence。
+
+- Red：正确限定目标标签后，旧实现 1 failed/7 passed，零高度用例错误地打开 modal；之前一次测试 selector 同时匹配两个标签的失败保留，不作为产品复现证据。
+- Green：四个受影响测试文件 60 tests PASS；fresh `npm run typecheck` exit 0。含真实隔离 Chrome fixture、现有 CDP 和未知恢复诊断，不是新的平台上传验收。
+- 真实只读合同核验：编译后的候选 `QianchuanPageSession.guard` 在仍保留的旧计划页准确返回 PAGE_CONTRACT_CHANGED/“已删除”；只调用 guard，没有 prepare/upload/file 动作，原 modal session 与 9 行保留。
+- 精确候选编译：复制上节可信源上下文到临时验证目录，不创建 Git worktree。旧 main 编译只校正依赖路径标签后与已安装 main 逐字节一致；加入本轮 source 后，完整 main diff 仅为删除标签 predicate。候选 main SHA-256 `4ad2a8793a26875fafa1908789db2a6d97a676296afab74a159671322a23260f`，源码 SHA-256 `1ce955f5431c2ce9479fc34126d2292f672e484d1cb47707348558346aeb7d06`，语法检查通过，尚未安装。
+
+所有日志和 candidate proof 保留在上述私有证据目录。候选尚未替换实际软件；另一窗口同时拥有安装/运行操作时，本窗口不自行重启或覆盖其新 release。
+
+### Delegation And Completion Boundary
+
+受管 Kimi deep/max 的独立只读 operational QA 为 invocation `e2b2f86f-c0b8-45ee-8cd7-e0c5dda36fce`、contract `ce59c492-8433-473e-af67-184ce1184e35`、qualified route `4f2d5dc8-4234-4665-b382-e82f1ad6cc00`；两次 wire request 均核验身份，完整读取 frozen preflight/accepted-plan，canonical receipt 为 PARSED，317.7 秒，无重试。它不是 implementation reviewer，不重置原三次 Kimi failure/native review 历史。Parent 已通过真实详情解决其“缺详情身份”提醒；其“缺少区别新旧计划的另一 plan-level identifier”判断不成立，adId 本身就是计划身份且 frozen snapshot 已分别记录旧 ID 与当前列表 ID。旧 50 条只能保留的提醒继续适用，不能用该报告宣布 acceptance。
+
+本轮稳定候选 Risk Gate 为 KIMI_REVIEW_NOT_REQUIRED：未针对该 implementation snapshot 点名 Kimi review；更改只加强原 guard 的绘制文字识别，没有新的凭据、跨项目授权或持久 mutation；零高度复现、隐藏反例、60 tests、真实页只读 guard 与完整 main diff 直接覆盖此窄修复，没有同时成立的重大后果、剩余实质语义缺口及 reviewer 独立增益。未完成的整批平台验收与未知选择不由 reviewer 或测试代替。
+
+仓库没有专用 session-record/capture skill，按用户要求更新本既有记录，不写全局 memory。真实自动恢复、108 条改传与当前计划 READY 尚未通过；Windows 按要求不验证。AOCI 正式索引/baseline 已有其他窗口改动，其同文件归属需先明确，本轮不自行写入；已执行只读 Verify/Check，结构有效但本轮 page-contract 为 stale，不能宣称整个工作树 aligned。运行归属、AOCI 写入与最后 scoped commit/安装须在具体所有权决定后继续，9 条未知选择永不盲目重传。
+
+### Repair Delivery Continuation
+
+用户随后明确“修复”。重新核查另一窗口已提交 `ca2b93b`、`5588a70`、`06b648d` 并安装 `qianchuan-batch-deletion-20260930-9f62a6c3`；本轮从该最新 release 叠加修复，不覆盖它的 discard 或 UNKNOWN 恢复。9 条现为 NEEDS_HUMAN/MAY_HAVE_UPLOADED，99 条仍未选，旧 50 条保留。
+
+当前相关 19 个测试文件共 254 tests PASS，fresh typecheck exit 0。可信源码重建的基线 main 与最新已安装 main 逐字节相等；新 main 完整 diff 仅含零高度删除标签修复，SHA-256 `c8d279e477918609379c1cb5bfe008e34273404d5294aef790301bd8d012b303`。归档只替换 `dist-electron/main.cjs`，其余 2153 packed files 字节和原 metadata 保留，asar SHA-256 `387b2aa4e4f5762adec1b0490ac58920d9beb2047a48af5b9b0c59390e7e210c`，候选目录 `/home/reggie/Applications/jianji/releases/qianchuan-deleted-tag-20260930-387b2aa4`。
+
+隔离 packaged Electron 删除/取消/跨项目拒绝/重启/fence smoke PASS；初次缺 DISPLAY 的启动失败完整保留，使用隔离 Xvfb 后成功，没有关闭用户 Chrome。直接从新 asar 提取原 page-owner 字节，仅执行真实旧页 guard，准确返回 PAGE_CONTRACT_CHANGED/“已删除”，原 modal session 与 9 行保留。该证据证明打包 guard，不冒充实际应用整批继续或当前计划 READY。
+
+本轮维护只更新 page-contract AOCI Entry 与对应 source binding，原 source-fact-ai-connections Entry 和其他 binding 逐项保持。Verify、Check、Guide 均 aligned、无 findings、next_action=none；共享索引按本轮行及绑定单独 stage，不纳入其他窗口的未提交条目。证据为私有目录下 `current-final-*`、`current-aoci-*`、`current-packed-real-guard.json` 及 `/tmp/jianji-deleted-tag-package-proof.json`。
+
+安装前发现实际应用 16:11 启动另一批制作 `a7b71c5e-ea01-4929-9b19-01077b15bb2c`，一条根仍 exporting。未终止制作、上传或用户进程；候选已准备，切换运行包必须等待活动制作与上传结束并重新核查保存状态。原目标 108 条已失去整批从未选择资格，UNKNOWN 零重传边界继续阻断真实改传与整批恢复验收。

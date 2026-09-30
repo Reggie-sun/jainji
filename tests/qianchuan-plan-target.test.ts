@@ -66,6 +66,23 @@ describe("target plan availability", () => {
     await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED", message: expect.stringContaining("987654 已删除"), next_action: expect.stringContaining("改传当前计划") } });
     expect(await prepared.page.locator(fixture.contract.modal).isVisible()).toBe(false); await zeroConfirmation(0);
   });
+  it("rejects visible deleted text in a zero-height status badge before opening an upload modal", async () => {
+    const value = await task(), prepared = await session(value); await deleted(prepared);
+    const geometry = await prepared.page.locator(".oc-tag-text").filter({ hasText: /^已删除$/ }).evaluate(element => {
+      (element as HTMLElement).style.lineHeight = "0px";
+      const text = document.createRange(); text.selectNodeContents(element);
+      return { badgeHeight: element.getBoundingClientRect().height, textHeight: text.getBoundingClientRect().height };
+    });
+    expect(geometry.badgeHeight).toBe(0); expect(geometry.textHeight).toBeGreaterThan(0);
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED", message: expect.stringContaining("987654 已删除") } });
+    expect(await prepared.page.locator(fixture.contract.modal).isVisible()).toBe(false); await zeroConfirmation(0);
+  });
+  it.each(["display: none", "visibility: hidden"])("ignores deleted text hidden by %s in the target header", async style => {
+    const value = await task(), prepared = await session(value); await deleted(prepared);
+    await prepared.page.locator(".oc-tag-text").filter({ hasText: /^已删除$/ }).evaluate((element, value) => element.setAttribute("style", value), style);
+    await select(value, prepared);
+    expect((await prepared.port.ready([value], signal))[0]!.adId).toBe("987654"); await zeroConfirmation(1);
+  });
   it("rejects deletion after preparation without selecting a file", async () => {
     const value = await task(), prepared = await session(value);
     await prepared.port.prepare([value], [], prepared.targetId, signal); await deleted(prepared);
