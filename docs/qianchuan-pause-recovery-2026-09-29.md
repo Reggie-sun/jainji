@@ -462,3 +462,29 @@ Fresh project Harness 使用原 policy 的 typecheck 与 douyin-upload 两个检
 在打开项目并等待其写入后重新核对备份：账本完整 JSON 相同，642 tasks、724 intents、230 selection fences 保留，878 个上传文件逐项 SHA 相同、0 个改变。真实本轮 60 个正式输出与上传快照、fence 的文件身份逐项一致；两账号分别 `9+9+9+3`，下组首次 fence 均晚于上组全部 READY 的持久保存。重启后只读附加原 target，再核对原 modalSessionId、账号/计划、完整文件名列表：肥皂仍 `已选择 30/289`、一条根（账号槽位滴耳康）仍 `已选择 30/193`，各 30 行，确定可用，未点击确定。
 
 最终私有证明为同一 recovery run 下的 `final-artifact-group-proof.json`、`installed-app-proof.json`、`installed-data-final-proof.json`、`installed-project-delta.json`、`installed-original-pages-proof.json`。安装与最新真实证明一并续封存到实际 release 的 `foreground-evidence/`。真实 60 条恢复证明与新包的 fixture/Harness/安装证明分别保留：新代码尚未进行下一轮真实账号制作上传，不把辅助恢复冒充新包的无辅助真实上传验收。
+
+## Installed Foreground Unaided Acceptance (2026-10-01)
+
+用户随后要求“新包验证下”。实际安装 `c9936fcb...`、source `3e60d55` 上通过原 preload 一次跨模板 `startBatchProduction` 启动 run `7c2dc789-f0e7-4ec1-aebe-26907dba3fca`：肥皂、一条根各新制作 10 条，分别选择肥皂、滴耳康稳定账号槽位。一条根当前 advertiser `1876131703522649`、plan `1877582409449488`，肥皂 advertiser `1876414814643802`、plan `1876591298030592`；沿 fresh mapping 冻结，不把一条根旧计划写回。原手填文字分别为“肥皂19.9元拍一发三”“一条根19.9元到手100贴”，沿保存的 random、手动覆盖、first-5s 设置，没有调用模型或处理历史视频。
+
+20 个原 queue 正式输出全部 completed，并经真实 adapter 上传达到持久 READY；产物、上传快照、fence、READY 的文件名、大小和 SHA 一致，attempt=1、retry=0。输出目录为 `/home/reggie/电商/肥皂/视频/10.1 05:41`、`/home/reggie/电商/一条根/视频/10.1 05:45`。当时队列单路，成片逐条到达，两账号各形成 10 个单条组；全部组不超过 9 条，下组 fence 均晚于上组 READY 保存，不宣称本轮实际分组为 `9+1`。
+
+本轮没有前台辅助脚本或手动继续，页面准备由安装包自身 adapter 执行。只读观察捕获一条根新 target 准备时 visible/focused、随后原 modal 出现；肥皂观察开始时新 tab 已建立，没有捕获其最早前后台转换。最终一条根原弹窗显示 `10/193`、10 行成功且确定可用。肥皂已记录 10 READY，最后只读核对发现 modal/drawer 关闭；用户明确回复“是我关闭的”，记录为 `USER_CLOSED`，没有重新打开、恢复或重传，关闭后的平台状态不额外推断。验收操作没有点击确定、发布或修改广告设置；未安装全局点击计数器，不把动作审计冒充全局运行测量。
+
+原 642 tasks、724 intents、config、closures 完整对象相同；875 个旧非 state 上传文件（含 230 fences）逐项 SHA 相同，21 个历史 MAY/UNKNOWN 保持。原 60 条弹窗在新轮启动后及结束时分别仍为肥皂 `30/289`、一条根 `30/193`，owner、target、modal、计数与行数一致；这两次页面快照未保存旧逐行文件名，不扩张成该时段每行字节证明。新账本为 662 tasks、744 intents、250 fences。模板全文件 hash 的采集晚于 accepted start；前置选项与 frozen input 可比对，但不能声称两个模板都取得 pre-start 全文件 SHA。
+
+私有证据 `.agent/harness/runs/20261001-foreground-installed-live-acceptance/` 保留 input/start receipt、前后完整账本、job details、真实页面、逐文件和分组 `final-proof.json`、旧文件 hash 及截图。只读 native QA 沿本任务两次 Kimi runtime 故障的既有 fallback，绑定 8 份证据 hash，复核 20 READY、分组及页面边界；未重新读取所有历史原始比较输入，历史逐项不变仍由 Parent 的完整比较证明负责。本次仅证明两个账号的新包制作→正式导出→真实上传待确认，不代表平台发布、Windows 或人工画面质量验收。
+
+## Export Capacity Recovery (2026-10-01)
+
+用户观察“单个串行……cpu非常慢”。实际应用编码器为 `h264_nvenc`，运行 FFmpeg 也使用 NVENC，不能从 CPU 占用约 223% 判断为软件编码。源码旧预算为桌面保留 `max(2 GiB, totalMemory × 15%)`；本机约 93.8 GiB 总内存、12.8–14.1 GiB 可用时，约 14.1 GiB reserve 把预算压到不足一个完整槽。启动时原始内存与逐档 probe 未保存，不能断言最初单路只有这一种原因；fresh 内存预算复现与 canonical 六路 NVENC probe 通过支持修正该预算。
+
+单一 owner `src/main/execution-limits.ts` 将 reserve 限为 2–4 GiB。导出预算仍不超过总内存一半，保留每路 1 GiB、CPU 限制、最多六路、启动时真实同时编码探测、显存检查及跨进程 NVENC admission；遥测未知和取消保护不变。新增大内存/5、6、10、12 GiB 可用内存的测试先在旧策略下出现 3 个预期失败，修复后五个相关文件 65 tests PASS、0 skipped，working-tree typecheck 和可信基线 build PASS。Harness `20260930T215440Z-3889d231` 使用原入口的 typecheck/export-capacity 检查投影，65 tests PASS；不修改仓库 policy，不宣称完整无关检查通过。真实 canonical probe 证明六个持续编码进程共同报告正帧进度。
+
+软件提交 `1748c01`，仅新预算、对应测试及自身 AOCI 条目/基线。可信 source 从上一安装包构建基线复制，只覆盖这两份业务文件；asar 只替换 main，其余 2154 个文件逐字节相同。实际安装 `/home/reggie/Applications/jianji/releases/export-capacity-20261001-29b36c25`，asar SHA `29b36c25268f188fe4d0558a7754f1cdf1f08629c60592b96732236b2b8e6770`、main SHA `447033bb5fc5f5f923d309520ce6f34512d3c49388e5e9177498a2154d9736e7`；launcher 指向该 release，服务 `jianji-export-capacity-installed-20261001.service` active，核对时 PID `832412`。在项目已保存、无运行操作时正常停止旧应用，完整备份 userData、项目和 launcher 至 `/home/reggie/Applications/jianji/.backups/export-capacity-20261001-29b36c25`，保留用户 Chrome、旧包及沙箱。
+
+Exact installed package 沿原应用批量入口完成肥皂 6 条真实导出，run `5e69634d-9bc3-44a2-9284-b67758894ded`、job `a69e3077-7f81-4621-9e40-e9fbc1171bde`，不选择上传、不调用模型。启动 capability 实测准入上限为 6，本轮实际 process/queue 观察最大同时 4 路 FFmpeg，全部 completed、0 failed，可信 start 至全部完成 82.487 秒；不称六路正式渲染都曾同时运行。对应相同六个 source media ID 的旧单路任务时长合计 138.201 秒，新轮最早 startedAt 至最后 finishedAt 为 75.812 秒，粗略约 1.8 倍；随机贴纸图层可能不同，不是同冻结图层质量基准。旧六任务首尾跨度 202.047 秒包含其他未选任务，不得用其比值宣称约 2.7 倍提升。
+
+两个验收 helper 的前置失败完整保留：首次 project.load 的短暂 unsaved 状态在 start 前阻断；第二次无效 `douyinUpload:{enabled:false}` 在共享 schema 被拒绝，无 controller/production receipt；第三次按合同省略可选上传字段，只有一次被接受的制作启动。没有真实上传重试。完成后账本完整 JSON 与安装备份相同，662 tasks、744 intents、250 fences；全部 918 个上传文件重新流式核对 SHA 相同。项目完整 JSON 仅 `updatedAt` 变化，去除时间后相同，不称项目文件 SHA 不变。
+
+Stable candidate 的三项 Risk Gate 均未触发：无用户指定 Kimi review、无关键级 durable-state/authority 破坏路径，原资源及未知结果门禁、65 项验证和真实 probe/安装输出覆盖本轮风险；结果 `KIMI_REVIEW_NOT_REQUIRED`。证据随实际 release 的 `capacity-evidence/` 封存，原 c993 上传证明与新 29b 的六条导出证明保持分别绑定。按 substantive code/live-proof completion 续写本 Record；本轮 source 已完成 AOCI 条目及基线维护，test/record 沿 observe scope。最终 Verify/Check/Guide 区分本轮对象和全库状态：另一任务新增 `src/main/shape-cover-stationary-envelope.ts` 尚缺 Entry/基线时，不越权维护该对象，也不宣称全库 aligned。
