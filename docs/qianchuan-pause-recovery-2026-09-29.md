@@ -354,3 +354,13 @@ Risk Gate 判定 REQUIRED：错误 closure 或迁移可能隐藏 UNKNOWN 账号�
 本轮 AOCI 十个源码对象完整机器批次 `52e0343356e3ca9d9706548092e45d9ccad527e26cc36b7e744e9bda920481ca` applied=10、remaining=0；Verify/Check governance_aligned=true，Guide complete/none。测试、scripts、Spec/Plan 与本记录按原 scope 为 observe，不扩索引；共享索引仅 stage 本轮条目及对应 binding，保留其他窗口行。store E scale 有非阻断提示，不宣称其为行为错误。压缩恢复 Overview 宿主输出截断后停止该认知链，不声称完整认知或 Challenge 成功；工程及维护结论基于源字节、可执行测试和机器治理证据。无项目专用 capture Skill，按既有 record owner 记录本次 substantial implementation 和 live 只读检查。
 
 原生 independent review 已结束，无 blocking finding。先前 resume/close 同 tick 竞争疑点被 reviewer 撤回：closing 同步使尚未开始的 resume 拒绝，active/preparing 又使已开始的上传拒绝闭批。`CR-01` 为 CONFIRMED/non_blocking：新批次同目标同 hash 命中 closed NOT_SELECTED 历史时，初始请求可先接收，后台 execute 随后记 NEEDS_HUMAN；浏览器与选文件均 0，store 另有独立禁选屏障。界面明确接收不代表完成，保留这个反馈时序限制；没有为了获取空 findings 修改 snapshot。Parent 最终 diff 及 source hashes 核对完成，决定记录 `/tmp/jianji-closure-review-snapshot/decision.json`，审查不代替真实上传验收。
+
+#### Installed Closure Checkpoint
+
+软件及 scoped AOCI 提交 `5646878`。安装前再次核实真实肥皂项目已保存、agent 为空、batch finished、全部活动导出/上传为 0，旧 PID `1367754` 与原 asar 身份一致。正常停止旧 unit，完整 userData、当前项目、launcher 备份至 `/home/reggie/Applications/jianji/.backups/qianchuan-closure-20260930-a2bc03d9`，运行时 Singleton links/socket 明确跳过，718 个上传文件逐文件 SHA 与静止原目录匹配。备份保存私有完整数据，不随 Git 或 release 证据分发。
+
+原子切换 launcher 后新 unit `jianji-closure-installed-20260930.service` 正常运行，PID `2558132`、executable、renderer URL 与 asar SHA `a2bc03d9...` 均绑定已测试候选。启动首次验证发现新建空项目 dirty，脚本先停止；确认它为默认名称、零素材、无 recent identity、无 agent 后，经原 `loadProject` owner 恢复原肥皂项目并刷新 renderer，没有绕过 `hasUnsavedContent` guard 或放弃用户项目。最终项目 id `b024028b-5470-4d1e-b733-9a124656a98d`、26 素材、已保存、活动制作/导出/上传均 0，动态 CDP `35325`；Parent 查看实际 viewport，完整 52 条候选显示 READY 10/UNKNOWN 1/未选 41，另一个部分准入候选结束按钮禁用。未点击任何真实结束/继续/平台按钮。
+
+迁移后为 v3、562 tasks、644 intents、150 fences、`closedBatches=[]`。完整对照证明 config/intents/tasks 与备份结构一致；718 个文件只有 `state.json` 及其 `.bak` 因版本迁移改变，其他全部 SHA 保持；当前项目仅 `updatedAt` 改变，氨糖膏十条及其他历史原结果未变。证据 `/tmp/jianji-closure-installed-{app,data}-proof.json`、私有备份 manifest 和 `installed-upload-viewport.png`。release 的 `closure-evidence` 保存 scoped source、可重建的可信完整构建源码、Harness receipt、build/smoke/失败日志、review decision 及 package binding。
+
+旧 v2 release 与备份保留，但它不能读取当前 v3；切回旧 launcher 不等于安全回滚。当前已测试 v3 release 和源快照作为后续代码回滚基点，保留当前数据和全部 fence。此次只有版本迁移、无 closure/新入账/选择，恢复旧数据也必须先重新证明全量未变化，不能在新处置后回灌旧 ledger。Milestone 1–4 的软件与安装证据已形成，Milestone 5 仍 BLOCKED：三个旧完整批次的不可恢复结束、现有新批次真实继续及缺批次店铺的有限制作尚未明确授权；没有把工程 PASS 写成真实五店通过。

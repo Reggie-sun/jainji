@@ -8,6 +8,8 @@
 
 2026-09-30 用户明确要求实现本计划，软件实施及相关工程验证已授权。Parent 已将 v3 closure 窄修订写入原 Spec 并完成 Self-Review，继续沿本计划实施；下文最初 docs-only 状态保留为历史。真实处置、新制作和真实继续的单独权限边界仍有效。
 
+Implementation checkpoint：软件提交 `5646878`，Milestone 1–4 已形成诊断、v3 closure、独立审查、隔离 packaged 验证及实际安装证据，详见原 [Recovery Record](../../qianchuan-pause-recovery-2026-09-29.md) 的 Local Batch Closure Implementation / Installed Closure Checkpoint。真实 ledger 为 v3、562 tasks、150 fences、0 closures，原结果和其他上传文件保持。Milestone 5 尚为 BLOCKED，等待精确真实批次处置/继续和缺批次店铺制作授权；工程验证不代表五店 READY 或真实批量验收通过。
+
 本文件响应用户“写一个 plan 来处理”，本轮只编写、核查和提交计划，不执行新的真实删除、结束批次、制作、上传或安装。后续实现采用当前树串行开发，不创建 worktree。
 
 现有账号测试授权覆盖除氨糖膏外的五店；氨糖膏停止真实测试。原 108 条批次的删除授权已经执行，不能扩大为其他批次的处置授权。“允许结束历史批次”的软件能力与“结束哪个真实批次”的用户决定分开；后者必须明确到项目、账号、冻结计划、pageBatchId、完整成员数量及不可恢复的影响。不得仅凭批准本计划推断真实处置或新增制作授权。
