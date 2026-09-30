@@ -31,6 +31,12 @@ describe("hardware execution limits", () => {
     expect(executionLimits(20, "h264_nvenc", { totalBytes: 96 * 1024 ** 3, availableBytes: 2 * 1024 ** 3 }).exports).toBe(1);
   });
 
+  it.each([[5, 1], [6, 2], [10, 6], [12, 6]])("retains desktop headroom without reserving most of %i GiB available on a large machine", (availableGiB, slots) => {
+    const memory = { totalBytes: 96 * 1024 ** 3, availableBytes: availableGiB * 1024 ** 3 };
+    expect(executionLimits(20, "h264_nvenc", memory).exports).toBe(slots);
+    expect(executionLimits(20, "libx264", memory).exports).toBe(Math.min(5, slots));
+  });
+
   it("reduces CPU concurrency for memory pressure and invalid core counts", () => {
     expect(executionLimits(12, "libx264", { totalBytes: 16 * 1024 ** 3, availableBytes: 4 * 1024 ** 3 }).exports).toBe(1);
     expect(executionLimits(12, "libx264", { totalBytes: 16 * 1024 ** 3, availableBytes: 5 * 1024 ** 3 }).exports).toBe(2);

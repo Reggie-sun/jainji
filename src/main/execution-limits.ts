@@ -9,8 +9,9 @@ export interface MemoryCapacity {
 export function executionLimits(cpuCount = availableParallelism(), videoEncoder: H264Encoder = "libx264", memory: MemoryCapacity = { totalBytes: totalmem(), availableBytes: freemem() }) {
   const cores = Math.max(1, Math.floor(cpuCount));
   const gib = 1024 ** 3;
-  // Keep room for the desktop and planning, and never budget more than half of RAM.
-  const memoryBudget = Math.max(0, Math.min(memory.totalBytes / 2, memory.availableBytes - Math.max(2 * gib, memory.totalBytes * 0.15)));
+  // Keep 2–4 GiB for the desktop and planning, and never budget more than half of RAM.
+  const memoryReserve = Math.max(2 * gib, Math.min(4 * gib, memory.totalBytes * 0.15));
+  const memoryBudget = Math.max(0, Math.min(memory.totalBytes / 2, memory.availableBytes - memoryReserve));
   const memorySlots = Math.max(1, Math.floor(memoryBudget / gib));
   const coresPerExport = videoEncoder === "libx264" ? 4 : 3;
   const exports = Math.min(6, Math.max(1, Math.floor(cores / coresPerExport)), memorySlots);
