@@ -143,7 +143,7 @@ try {
     assert.ok(groups.every(group => group.length >= 1 && group.length <= 9));
     assert.ok(groups.some(group => group.length > 1), "desktop path must exercise a multiple-file group");
     const ledger = JSON.parse(await readFile(path.join(runtime.userData,"douyin-upload/state.json"),"utf8"));
-    assert.equal(ledger.tasks[0].authorization.target.advertiserId,"123456"); assert.ok(ledger.tasks[0].result.readyEvidence); assert.equal(ledger.version,2);
+    assert.equal(ledger.tasks[0].authorization.target.advertiserId,"123456"); assert.ok(ledger.tasks[0].result.readyEvidence); assert.equal(ledger.version,3); assert.deepEqual(ledger.closedBatches,[]);
     const selected = ledger.tasks.filter(task => !task.result.duplicate_of);
     assert.deepEqual(new Set(groups.flat()),new Set(selected.map(task => task.result.file_name)));
     assert.equal(groups.flat().length,selected.length);

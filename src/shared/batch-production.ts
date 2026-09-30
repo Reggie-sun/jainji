@@ -76,5 +76,5 @@ export interface BatchProductionDetail {
   usesModel?: boolean;
   items: AgentItem[];
   tasks: ExportTask[];
-  upload?: Pick<DouyinUploadStatus, "message" | "tasks">;
+  upload?: Pick<DouyinUploadStatus, "message" | "tasks" | "closedBatches">;
 }

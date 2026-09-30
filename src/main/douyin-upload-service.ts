@@ -39,6 +39,7 @@ export class DouyinUploadService {
   private preparingContinuation = false;
   private retargeting = false;
   private discarding = false;
+  private closing = false;
   private stopped = false;
   private stopping = false;
   private initializationFailure?: string;
@@ -51,32 +52,43 @@ export class DouyinUploadService {
   private readonly accounts: QianchuanAccountConfigReader;
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
-    this.paused = store.tasks().some(task => task.result.state === "NEEDS_HUMAN");
+    this.paused = this.openTasks().some(task => task.result.state === "NEEDS_HUMAN");
   }
+  private openTasks(): UploadTaskRecord[] { return this.store.tasks().filter(task => !this.store.isClosed(task.authorization.pageBatchId)); }
   status(projectId: string): DouyinUploadStatus {
     const { accountConfigPath, ...config } = this.store.config;
     const readiness = this.dependencies.readiness?.(this.store.config);
     const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : this.initializationFailure ?? (!config.enabled ? "自动上传已关闭。" : readiness ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : this.paused ? this.pausedMessage(projectId) : this.stopped || this.stopping ? "自动上传已停止，待上传成片保留在队列中。检查对应 Chrome 后，对本批未选文件的任务点击“安全继续”；结果未知的文件只能只读核查原页面。" : "成片上传至所选计划，停在确定前。"));
-    const tasks = this.store.tasks().filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => {
+    const tasks = this.openTasks().filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => {
       let result = task.result;
       if (this.store.unavailable && this.store.hasMarker(result.upload_task_id) && result.state !== "WAITING_FOR_CONFIRMATION") result = { ...result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, retryable: false, failure: unknown().failure };
       return QianchuanUploadResultSchema.parse(result);
     });
-    return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.store.unavailable && !this.initializationFailure && !this.paused && !this.stopped && !this.stopping && this.summaries.some(account => account.available) && !readiness, message, tasks, legacyTasks: this.store.legacyTasks().filter(task => task.project_id === projectId) };
+    const all = this.store.tasks().filter(task => task.input.project_id === projectId);
+    const summary = (pageBatchId: string) => {
+      const batch = all.filter(task => task.authorization.pageBatchId === pageBatchId), first = batch[0]!;
+      return { projectId, pageBatchId, advertiserId: first.authorization.target.advertiserId, adId: first.authorization.target.adId, expectedCount: first.authorization.expectedCount,
+        taskIds: batch.map(task => task.result.upload_task_id).sort(), readyCount: batch.filter(task => task.result.upload_outcome === "READY").length,
+        unknownCount: batch.filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED").length, notSelectedCount: batch.filter(task => task.result.upload_outcome === "NOT_SELECTED").length };
+    };
+    const batches = [...new Set(this.openTasks().filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => task.authorization.pageBatchId))].map(pageBatchId => ({ ...summary(pageBatchId), canClose: !this.active && !this.runner && !this.preparingContinuation && !this.retargeting && !this.discarding && !this.closing && !this.stopping && this.store.canCloseBatch(pageBatchId) }));
+    const closedBatches = this.store.closedBatches().filter(batch => batch.projectId === projectId).map(batch => ({ ...summary(batch.pageBatchId), closedAt: batch.closedAt, tasks: all.filter(task => task.authorization.pageBatchId === batch.pageBatchId).map(task => task.result) }));
+    return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.store.unavailable && !this.initializationFailure && !this.paused && !this.stopped && !this.stopping && this.summaries.some(account => account.available) && !readiness, message, tasks, batches, closedBatches, legacyTasks: this.store.legacyTasks().filter(task => task.project_id === projectId) };
   }
   private unresolvedAccountTasks(task: UploadTaskRecord): UploadTaskRecord[] {
-    return this.store.tasks().filter(other => other.result.upload_task_id !== task.result.upload_task_id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (other.authorization.pageBatchId !== task.authorization.pageBatchId || this.store.hasMarker(other.result.upload_task_id)));
+    return this.openTasks().filter(other => other.result.upload_task_id !== task.result.upload_task_id && other.authorization.target.advertiserId === task.authorization.target.advertiserId && other.result.state === "NEEDS_HUMAN" && !other.result.duplicate_of && (other.authorization.pageBatchId !== task.authorization.pageBatchId || this.store.hasMarker(other.result.upload_task_id)));
   }
   private blockedAccountMessage(task: UploadTaskRecord, count: number): string {
     const target = task.authorization.target, name = this.summaries.find(account => account.advertiserId === target.advertiserId)?.productName ?? target.productName ?? target.product;
-    return `${name}（账户 ${target.advertiserId}）有 ${count} 条未解决的任务，待上传成片保留在队列中。请核查该账号原上传页面并处理旧任务；重开浏览器不会解除阻塞，结果未知的文件禁止重传。`;
+    const batches = [...new Map(this.unresolvedAccountTasks(task).map(other => [other.authorization.pageBatchId, other.input.project_id])).entries()].map(([batchId, projectId]) => `项目 ${projectId} / 批次 ${batchId}`).join("；");
+    return `${name}（账户 ${target.advertiserId}）有 ${count} 条未解决的任务，待上传成片保留在队列中。阻塞来自：${batches}。请核查该账号原上传页面并处理旧任务；重开浏览器不会解除阻塞，结果未知的文件禁止重传。`;
   }
   private pausedMessage(projectId: string): string {
-    for (const task of this.store.tasks().filter(task => task.input.project_id === projectId && task.result.state === "PENDING" && !task.result.duplicate_of)) {
+    for (const task of this.openTasks().filter(task => task.input.project_id === projectId && task.result.state === "PENDING" && !task.result.duplicate_of)) {
       const blockers = this.unresolvedAccountTasks(task);
       if (blockers.length) return `自动上传已暂停：${this.blockedAccountMessage(task, blockers.length)}`;
     }
-    const count = this.store.tasks().filter(task => task.result.state === "NEEDS_HUMAN" && !task.result.duplicate_of).length;
+    const count = this.openTasks().filter(task => task.result.state === "NEEDS_HUMAN" && !task.result.duplicate_of).length;
     return `自动上传已暂停：存在 ${count} 条需人工核查的任务。请先核查原上传页面；未受阻塞账号或本批未选文件任务需明确点击“安全继续”。结果未知的文件禁止重传。`;
   }
   private changed(): void { this.dependencies.changed?.(); }
@@ -151,6 +163,7 @@ export class DouyinUploadService {
     const work = this.admission.catch(() => undefined).then(async () => {
       identity = UploadIdentitySchema.parse(identity);
       const intent = this.store.intents().find(value => intentKey(value) === intentKey(identity)); if (!intent) return undefined;
+      if (this.store.isClosed(intent.authorization.pageBatchId)) return this.store.tasks().find(task => intentKey(task.input) === intentKey(identity));
       const state = await this.dependencies.loadBatch(identity.batch_id).catch(() => { throw uploadFailure("EXPORT_NOT_COMMITTED", "input", "无法重读正式导出记录。", "检查本机导出记录。", true); });
       const task = state.batch.tasks.find(value => value.id === identity.export_task_id), artifact = task?.outputArtifact;
       if (state.batch.projectId !== identity.project_id || !task || task.status !== "completed" || !artifact || artifact.taskId !== task.id || !task.outputPath || !(await pathsEqual(artifact.path, task.outputPath)) || !isPathWithinDirectory(state.batch.outputDirectory, artifact.path)) throw uploadFailure("EXPORT_NOT_COMMITTED", "input", "仅允许已保存完成的正式成片。", "等待正式导出完成。", false);
@@ -180,6 +193,7 @@ export class DouyinUploadService {
   }
   async reconcile(): Promise<void> {
     for (const intent of this.store.intents()) {
+      if (this.store.isClosed(intent.authorization.pageBatchId)) continue;
       if (this.store.tasks().some(value => intentKey(value.input) === intentKey(intent))) continue;
       try { await this.enqueueFinalArtifact(UploadIdentitySchema.parse({ project_id: intent.project_id, batch_id: intent.batch_id, export_task_id: intent.export_task_id }), true); }
       catch (error) { if (!(error instanceof UploadError) || error.failure.code !== "EXPORT_NOT_COMMITTED") this.initializationFailure = "部分已授权任务无法恢复准入，请检查本机记录。"; }
@@ -187,7 +201,7 @@ export class DouyinUploadService {
     this.changed();
   }
   private pendingGroup(): string[] {
-    const available = this.store.tasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch));
+    const available = this.openTasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch));
     const first = available[0]; if (!first) return [];
     const group: UploadTaskRecord[] = [];
     if (this.duplicate(first)) group.push(first);
@@ -199,7 +213,7 @@ export class DouyinUploadService {
   }
   runPending(): Promise<void> {
     if (this.runner) return this.runner;
-    if (this.active || this.preparingContinuation || this.retargeting || this.discarding || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
+    if (this.active || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
     this.runner = (async () => {
       while (!this.stopped && !this.stopping && !this.paused && this.store.config.enabled && !this.store.unavailable) {
         const ids = this.pendingGroup(); if (!ids.length) break;
@@ -209,27 +223,36 @@ export class DouyinUploadService {
     })().finally(() => { this.runner = undefined; if (this.eligible.size && !this.paused && !this.stopped && !this.stopping && !this.store.unavailable) void this.runPending().catch(() => this.changed()); });
     return this.runner;
   }
-  resume(id: string): Promise<void> {
+  requestResume(id: string): Promise<void> {
+    return new Promise((resolve, reject) => { void this.resume(id, resolve).then(resolve, error => { reject(error); this.changed(); }); });
+  }
+  resume(id: string, accepted?: () => void): Promise<void> {
+    if (this.closing) return Promise.reject(new Error("正在结束本批本地上传，请等待记录保存。"));
     if (this.discarding) return Promise.reject(new Error("正在删除本批上传任务，请等待记录保存。"));
     if (this.retargeting) return Promise.reject(new Error("正在改传本批计划，请等待记录保存。"));
     const generation = this.controlGeneration;
     const requested = this.store.task(id);
-    if (requested?.result.state === "CANCELLED" && !this.store.hasMarker(id)) this.cancelledIntents.delete(intentKey(requested.input));
+    if (requested && this.store.isClosed(requested.authorization.pageBatchId)) return Promise.reject(new Error("本批本地上传已结束，不能恢复。"));
     const work = this.control.catch(() => undefined).then(async () => {
       await this.admission.catch(() => undefined);
-      if (generation !== this.controlGeneration || this.stopping || this.store.unavailable || !this.store.config.enabled || this.active) return;
+      if (generation !== this.controlGeneration || this.stopping || this.closing || this.discarding || this.retargeting || this.store.unavailable || !this.store.config.enabled || this.active) throw new Error("上传控制已变化、仍在运行或不可用，本次继续未接收。");
       const task = this.requireTask(id);
+      if (this.store.isClosed(task.authorization.pageBatchId)) throw new Error("本批本地上传已结束，不能恢复。");
       if (task.result.state === "DISCARDED") throw new Error("本批上传任务已删除，不能恢复。");
-      if (task.result.duplicate_of || task.result.state === "FAILED_TERMINAL") return;
+      if (task.result.duplicate_of || task.result.state === "FAILED_TERMINAL") throw new Error("本任务不能继续；别名及终止记录不授予文件选择权限。");
       const fenced = this.store.hasMarker(id);
       const batch = this.store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId);
       if (fenced) {
         const unresolved = batch.filter(other => this.store.hasMarker(other.result.upload_task_id) && other.result.state !== "WAITING_FOR_CONFIRMATION");
         // The UI labels this action as read-only; it never grants file-selection permission.
-        await this.execute(unresolved.length ? unresolved.map(other => other.result.upload_task_id) : [id]); return;
+        accepted?.(); await this.execute(unresolved.length ? unresolved.map(other => other.result.upload_task_id) : [id]); return;
       }
       const blockers = this.unresolvedAccountTasks(task);
       if (blockers.length) throw new Error(this.blockedAccountMessage(task, blockers.length));
+      if (accepted) await this.currentTarget(task);
+      if (generation !== this.controlGeneration || this.stopping || this.closing || this.discarding || this.retargeting) throw new Error("上传控制已变化，本次继续未接收。");
+      if (requested?.result.state === "CANCELLED") this.cancelledIntents.delete(intentKey(task.input));
+      accepted?.();
       this.preparingContinuation = true;
       try {
         this.eligible.clear(); this.continuationBatch = task.authorization.pageBatchId; this.stopped = false; this.paused = false;
@@ -264,6 +287,7 @@ export class DouyinUploadService {
     }); this.control = work; return work;
   }
   retarget(id: string, expectedAdId: string): Promise<void> {
+    if (this.closing) return Promise.reject(new Error("正在结束本批本地上传，请等待记录保存。"));
     if (this.discarding) return Promise.reject(new Error("正在删除本批上传任务，请等待记录保存。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再改传计划。"));
     this.retargeting = true;
@@ -289,7 +313,7 @@ export class DouyinUploadService {
     this.control = work; return work;
   }
   discard(id: string): Promise<void> {
-    if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再删除本批任务。"));
+    if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再删除本批任务。"));
     this.discarding = true;
     const generation = this.controlGeneration;
     const work = this.control.catch(() => undefined).then(async () => {
@@ -304,15 +328,16 @@ export class DouyinUploadService {
         this.eligible.delete(other.result.upload_task_id); this.currentIntents.delete(intentKey(other.input)); this.cancelledIntents.add(intentKey(other.input));
       }
       if (this.continuationBatch === batchId) this.continuationBatch = undefined;
-      this.paused = this.store.tasks().some(other => other.result.state === "NEEDS_HUMAN");
+      this.paused = this.openTasks().some(other => other.result.state === "NEEDS_HUMAN");
       this.changed();
     }).finally(() => { this.discarding = false; });
     this.control = work; return work;
   }
   async cancel(id: string): Promise<void> {
+    if (this.closing) throw new Error("正在结束本批本地上传，请等待记录保存。");
     if (this.discarding) throw new Error("正在删除本批上传任务，请等待记录保存。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存后停止任务。");
-    const task = this.requireTask(id); this.eligible.delete(id);
+    const task = this.requireTask(id); if (this.store.isClosed(task.authorization.pageBatchId)) return; this.eligible.delete(id);
     if (this.active?.ids.includes(id) || (task.result.state !== "WAITING_FOR_CONFIRMATION" && !task.result.duplicate_of)) this.cancelledIntents.add(intentKey(task.input));
     if (this.active?.ids.includes(id)) {
       const active = this.active; active.controller.abort();
@@ -344,6 +369,23 @@ export class DouyinUploadService {
       this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); }, 15000, new AbortController().signal).catch(() => { this.paused = true; });
     } finally { this.stopping = false; }
   }
+  closeBatch(id: string): Promise<void> {
+    if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再结束本批本地上传。"));
+    this.closing = true;
+    const generation = this.controlGeneration;
+    const work = this.control.catch(() => undefined).then(async () => {
+      await this.admission.catch(() => undefined);
+      const check = async () => { if (generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，本批未结束。"); };
+      await check(); const task = this.requireTask(id), batchId = task.authorization.pageBatchId;
+      await this.store.closeBatch(id, check);
+      for (const other of this.store.tasks().filter(value => value.authorization.pageBatchId === batchId)) {
+        this.eligible.delete(other.result.upload_task_id); this.currentIntents.delete(intentKey(other.input));
+      }
+      this.eligible.clear(); this.currentIntents.clear(); this.continuationBatch = undefined; this.stopped = true;
+      this.paused = this.openTasks().some(other => other.result.state === "NEEDS_HUMAN"); this.changed();
+    }).finally(() => { this.closing = false; this.changed(); });
+    this.control = work; return work;
+  }
   private requireTask(id: string): UploadTaskRecord { const task = this.store.task(id); if (!task) throw new Error("找不到千川上传任务。"); return task; }
   private async save(task: UploadTaskRecord): Promise<void> { await this.store.saveTask(task); this.changed(); if (task.config.captureFailureDiagnostics) await this.log(task).catch(() => undefined); }
   private async phase(task: UploadTaskRecord, state: QianchuanUploadResult["state"]): Promise<void> { task.result = { ...task.result, state, readyEvidence: undefined, failure: undefined, retryable: false, timestamp: timestamp() }; await this.save(task); }
@@ -360,11 +402,13 @@ export class DouyinUploadService {
   }
   private async execute(ids: string[]): Promise<void> {
     let tasks = ids.map(id => this.requireTask(id));
+    if (tasks.some(task => this.store.isClosed(task.authorization.pageBatchId))) throw new Error("本批本地上传已结束，不能执行。");
     const first = tasks[0]; if (!first) return;
     const controller = new AbortController(), key = first.authorization.pageBatchId, recovery = this.store.hasMarker(first.result.upload_task_id);
     const savedReady = new Set<string>();
     let port: UploadBrowserPort | undefined;
     try {
+      if (!recovery && tasks.some(task => this.store.tasks().some(other => this.store.isClosed(other.authorization.pageBatchId) && sameTargetBytes(task, other) && !this.store.hasMarker(other.result.upload_task_id)))) throw uploadFailure("INPUT_CONFLICT", "input", "同目标视频属于已结束的本地上传批次，禁止重新上传。", "保留原批次历史；结束后的未选成员也不能取得新选择权限。", true);
       if (!recovery) await this.currentTarget(first);
       if (!recovery) {
         const duplicate = this.duplicate(first);

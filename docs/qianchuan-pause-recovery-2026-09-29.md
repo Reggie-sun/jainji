@@ -329,3 +329,28 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 按 writing-plans 完成 Parent Self-Review、引用和既有 owner 路径核查，独立 Kimi 调查只映射四个源码/测试文件，receipt `dbcaef76-78d9-4372-9b41-e59ae12d65dc` 保留，错误 schema 建议已由 Parent 拒绝，不作为 Plan 审核通过。新增 Plan 与本记录按 AOCI 当前 scope 处理为 observe，不新增 Entry、不改其他窗口索引；不为文档任务运行上传或制作测试。当前查阅的弃置 Plan 文件已不存在，以实际 batch-deletion Plan/Checkpoint 和当前代码为准，不从旧引用恢复或执行删除合同。
 
 最终 AOCI Verify/Check exit 1，Guide exit 0 但 governance_aligned=false、要求维护：另一窗口的 `agent-controller.ts`、`agent-provider.ts`、`shape-cover-admission.ts`、`shape-cover-production.ts` stale，`shape-cover-selection.ts` missing。本轮 Plan/Record 均经机器识别为 observe，没有未维护的本轮受管理对象；不领取含他人修改的创作批次或改共享索引，不声称全库对齐。证据 `/tmp/jianji-recovery-plan-final-aoci-{verify,check,guide}.json`；其他窗口稳定后由其 owner 完成对应维护。
+
+### Local Batch Closure Implementation
+
+用户于 2026-09-30 明确要求实现上述 Plan；原 Spec 的 v3 closure 窄修订由 Parent Self-Review，软件实施与工程验证继续执行。用户明确允许本窗口串行维护共享 AOCI 文件、保留已有改动且只提交本轮条目。未获得旧 81/20/52 条真实批次结束、新制作或新批次真实继续授权，以下测试不扩大这些权限。
+
+原 store 增加 v3 `closedBatches`，task identity 与永久 fence 继续使用 v2。完整混合 READY/UNKNOWN/未选批次经可信当前项目 IPC、明确整批确认、私有原始 intents/tasks 归档及文件/目录同步后关闭；归档 hash、成员与双 ID 在 load 和每次 commit 核验。原结果、READY 证据、failure、输入及 fence 保留，closed 成员的写入、恢复、选文件及调度均拒绝，历史仍参与同目标 hash 防重传。其他批次不会因闭批自动继续。普通作品页和批量详情分别显示活动任务与只读结束历史，继续请求返回初始接收或拒绝，不等待后台整批上传、不把接收显示为 READY。
+
+Fresh 只读基线仍为 v2、562 tasks、644 intents、150 fences。热敷贴旧 81 条为 10 READY/9 UNKNOWN/62 未选；滴耳康旧 20 条为 10/1/9；肥皂旧 52 条为 10/1/41，原 fenced target 在各自 CDP 的 `/json/list` 均不存在。未导航、重建页面、选择文件或处理历史批次。蝴蝶贴原冻结批量项为 random 装饰且开启 Agent 覆盖，对应视觉模型准入失败符合现有合同；没有静默关闭覆盖或修改另一窗口的制作 owner。晚安油 50/108 的部分准入继续拒绝结束。证据 `/tmp/jianji-closure-live-baseline.json`、`/tmp/jianji-closure-original-tabs-readonly.json`。
+
+#### Engineering Evidence
+
+- 原冻结 store 上的修正 red 用例在 fixture 合法入账后因缺少 `closeBatch` 失败，见 `/tmp/jianji-closure-corrected-red.log`；最初 fixture 的 authorization 属性顺序导致 digest 失配，不当作产品 red。
+- 新 store/service/UI 11 tests PASS；完整相关 24 files 的 315 个断言通过，但两次 fixture 清理报 `ENOTEMPTY`，完整 run 保留为失败。对应 `qianchuan-plan-target.test.ts` 单独复跑 8/8、exit 0，证据 `/tmp/jianji-closure-final-new-tests.log`、`/tmp/jianji-closure-all-tests-serial-final.log`、`/tmp/jianji-closure-plan-target-recheck.log`。没有隐去失败或修改平台 guard 以取得 PASS。
+- 当前树 typecheck/build 有 fresh 成功证据；共享树 Harness 因其他源码变化为 NOT_EVALUATED。独立可信候选的 build/typecheck 和 Harness code 均 PASS，receipt `20260930T113723Z-2bb6bc8f` 的 before/after source identity 一致；不把共享树回执改写成 PASS。
+- 新闭批 packaged Electron fixture PASS：取消、可信整批确认、跨项目拒绝、重启保持原结果与 fence、只读历史及 stale resume 明确拒绝。Parent 查看 `closed-history.png`。Chrome MCP 的共享 profile 已在运行，未强行接管；实际交互采用 Playwright Electron。原 upload packaged smoke PASS，v3 断言及空 closure 校验已更新；原 batch packaged smoke PASS，17 合成成片、12 READY、两假账号与 export-only、重启及注入 UNKNOWN 后零重传。三份日志 `/tmp/jianji-closure-packed-{closure,upload-final,batch-final}.log`，确认及投放设置操作均 0，真实账号未使用。
+
+#### Candidate Binding And Review
+
+干净 `a19eb36` 单独重建发现已提交 controller 读取 `usesModel`、schema 补充尚未提交，未将另一窗口在途改动加入安装包。改用前次封存的 installed 源基线：依赖模块路径标记归一化后 main 与当前安装字节完全一致，renderer JS/CSS 也逐字节相同，再叠加本轮精确源码。新包保留原 executable、unpacked 和其他资源；候选 main SHA `6478dc570be0db06bd250f44043280533e4e156d6798f6bbb2e994a1e544ea33`，asar SHA `a2bc03d91e10675303ff2214d0d253fc4382b419b28fc020ed25bb201505f5f1`。封存在 `/home/reggie/Applications/jianji/releases/qianchuan-closure-20260930-a2bc03d9`，精确 sources/hashes、baseline、构建与 archive proof 见 `/tmp/jianji-closure-candidate.json`、`/tmp/jianji-closure-base-proof.json`、`/tmp/jianji-closure-package-proof.json`。尚未用旧 v2 launcher 宣称可回滚 v3 数据。
+
+Risk Gate 判定 REQUIRED：错误 closure 或迁移可能隐藏 UNKNOWN 账号阻断并让后续批次取得不可逆文件选择，独立检查所有 mutator、并发控制及跨模块 authority 有增益。受管 Kimi mapping attempt `3e3bc867-b2ed-4ac3-89c6-724d818e693e` 在第二请求 HTTP 200 后 RESPONSE_BODY CONNECTION_ERROR、OUTCOME_UNKNOWN；有限缩短输出后的 `0ee50a0e-29c0-4ebb-b9f7-531f004d64fb` exit 0 但 canonical receipt EVIDENCE_INCOMPLETE，findings 结构及 evidence 不合格。两者均未采用部分报告。按 SUBAGENTS fallback 用只读原生 `code_mapper` 完成同一四文件映射；其后在稳定候选与 native verification 上由单个 `reviewer_xhigh` `/root/closure_review_fallback` 独立审查，三轮预算保留，Parent 裁决。上述 route 故障不伪称 Kimi review PASS，也不把 native 证据当 Docker receipt。
+
+本轮 AOCI 十个源码对象完整机器批次 `52e0343356e3ca9d9706548092e45d9ccad527e26cc36b7e744e9bda920481ca` applied=10、remaining=0；Verify/Check governance_aligned=true，Guide complete/none。测试、scripts、Spec/Plan 与本记录按原 scope 为 observe，不扩索引；共享索引仅 stage 本轮条目及对应 binding，保留其他窗口行。store E scale 有非阻断提示，不宣称其为行为错误。压缩恢复 Overview 宿主输出截断后停止该认知链，不声称完整认知或 Challenge 成功；工程及维护结论基于源字节、可执行测试和机器治理证据。无项目专用 capture Skill，按既有 record owner 记录本次 substantial implementation 和 live 只读检查。
+
+原生 independent review 已结束，无 blocking finding。先前 resume/close 同 tick 竞争疑点被 reviewer 撤回：closing 同步使尚未开始的 resume 拒绝，active/preparing 又使已开始的上传拒绝闭批。`CR-01` 为 CONFIRMED/non_blocking：新批次同目标同 hash 命中 closed NOT_SELECTED 历史时，初始请求可先接收，后台 execute 随后记 NEEDS_HUMAN；浏览器与选文件均 0，store 另有独立禁选屏障。界面明确接收不代表完成，保留这个反馈时序限制；没有为了获取空 findings 修改 snapshot。Parent 最终 diff 及 source hashes 核对完成，决定记录 `/tmp/jianji-closure-review-snapshot/decision.json`，审查不代替真实上传验收。

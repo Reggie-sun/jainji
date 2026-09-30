@@ -89,9 +89,9 @@ describe("explicit current-plan target authorization", () => {
   it("blocks old frozen target before browser operations when the saved plan changed", async () => {
     const f = await fixture(), batch = await f.batch(12), records = await f.admit(batch); await f.mapping();
     const browser = vi.spyOn(f.dependencies, "browser");
-    await f.service.resume(records[0]!.result.upload_task_id);
+    await expect(f.service.requestResume(records[0]!.result.upload_task_id)).rejects.toThrow(/改传当前计划/);
     expect(f.groups).toEqual([]); expect(f.store.tasks().some(t => f.store.hasMarker(t.result.upload_task_id))).toBe(false);
-    expect(f.store.task(records[0]!.result.upload_task_id)!.result.failure?.message).toContain("改传当前计划");
+    expect(f.store.task(records[0]!.result.upload_task_id)).toEqual(records[0]);
     expect(browser).not.toHaveBeenCalled();
   });
   it("retargets only this complete unselected batch without browser actions then explicitly resumes 9/9/2", async () => {

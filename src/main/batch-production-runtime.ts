@@ -33,7 +33,8 @@ export function createBatchProductionRuntime(input: {
     preflightUpload: (selection, count) => input.upload?.preflight(selection, count) ?? Promise.resolve(undefined),
     uploadStatus: (projectId, taskIds) => {
       const status = input.upload?.status(projectId);
-      return status ? { message: status.message, tasks: status.tasks.filter(task => taskIds.includes(task.export_task_id)) } : undefined;
+      return status ? { message: status.message, tasks: status.tasks.filter(task => taskIds.includes(task.export_task_id)),
+        closedBatches: status.closedBatches?.filter(batch => batch.tasks.some(task => taskIds.includes(task.export_task_id))) } : undefined;
     },
     cancelUploads: (projectId, taskIds) => input.upload?.cancelExports(projectId, taskIds) ?? Promise.resolve(),
     outputDirectory: async (project, ids, requested) => {

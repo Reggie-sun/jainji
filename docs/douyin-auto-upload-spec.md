@@ -126,12 +126,22 @@ fence 后断线、崩溃、timeout、取消或 ready 保存失败，只能对原
 
 用户明确删除整个旧上传批次时，主进程可将完整且未在执行的批次标为不可逆的 `DISCARDED`，从界面任务列表和待处理计数中移除，解除该批次的人工处理阻塞。所有原 intent/task、目标、快照身份、上传结果、失败诊断和 selection fence 保留；结果未知仍为 `MAY_HAVE_UPLOADED`，不得宣称未上传或成功。同账户/计划下的同 hash 防重传继续有效。删除前保存不可覆盖、已同步的原批次审计，再由唯一 store owner 原子提交整批状态；任何不确定写入均停用上传。仅允许已经完整准入、无 READY 或正在运行任务的批次；删除不依赖浏览器、账号当前映射或文件是否仍存在，不产生新选文件权限，不删除本地视频，不自动启动其他任务。重启保留删除状态，旧任务不得恢复、改传或再次选文件。
 
-仍由 `DouyinUploadStore` 一个 ledger owner 管理，state 升为 v2：
+### Explicit Local Batch Closure
+
+用户明确确认“结束本批本地上传”时，允许完整、非运行、未处置且无成员 alias 的 READY/UNKNOWN/未选混合批次结束。此操作不可恢复，全部未选成员也永久失去本批上传资格；原 result/outcome、READY 证据、failure、attempt/retry、冻结输入和目标、快照及 fence 保持不变，不表示平台接受或拒绝。部分准入、成员/目标/项目不一致、重复结束、DISCARDED 批次及并发上传/控制冲突拒绝。关闭不依赖当前 mapping 或浏览器，不启动或继续其他批次。
+
+唯一 store 的 v3 state 增加 strict `closedBatches`，绑定 store 重读的 projectId/pageBatchId/advertiserId/adId/expectedCount、排序完整 taskIds、原整批 intents/tasks 归档的 archiveSha256 和 closedAt。`batch-closure-history/<pageBatchId>.json` 私有独占归档经文件及目录 sync、control generation 复查后，才原子提交 closure。引用缺失或不一致、未知版本及写入/同步不确定均 STORE_UNAVAILABLE；孤立归档不自动重放。已结束任务加载时跳过恢复改写，所有更新、选文件、继续、改传、删除和准入回填入口均不得激活。活动阻塞/调度排除 closed，但永久 duplicate/sameTargetBytes/fence 检查遍历全部历史；别批引用 closed 原任务的 alias 保留原证据且没有新选择权。
+
+可信 `closeDouyinUploadBatch(projectId, uploadTaskId)` 只接受当前项目任务锚点，renderer 不提交成员列表或 hash。UI 在确认前显示项目、账号、冻结计划、pageBatchId、完整总数及 READY/UNKNOWN/未选分布，说明未选成员也终结、视频和历史保留、平台结果不变。普通与批量详情分别展示活跃任务和只读结束历史。继续 IPC 返回准入接收或拒绝，不等待上传完成；接收不是 READY。
+
+Parent Self-Review：以上窄修订沿用单一 store/service/queue，不放宽 DISCARDED/READY schema，不授予真实批次处置、新制作、重传或发布权限。实施与验收顺序见 [Recovery and Live Acceptance Plan](superpowers/plans/2026-09-30-qianchuan-recovery-and-live-acceptance.md)。
+
+仍由 `DouyinUploadStore` 一个 ledger owner 管理，state 升为 v3，task identity/fence 仍为 v2：
 - 新 state 保存千川 settings/intents/tasks/selection fences 的引用，默认 enabled=false。
-- v1 首次加载先严格验证旧 state 和全部 creator markers，保存不可覆盖、相同原字节的 `legacy-v1.json`，再原子保存 v2。旧 marker 目录和旧记录保留；步骤不确定、旧记录损坏/冲突/孤立 marker、未知版本则阻断，不能清空后继续。
+- v2 严格验证后以空 `closedBatches` 升级 v3，原任务、授权和 fence 不变，启动零浏览器操作。v1 首次加载先严格验证旧 state 和全部 creator markers，保存不可覆盖、相同原字节的 `legacy-v1.json`，再原子保存 v3。旧 marker 目录和旧记录保留；步骤不确定、旧记录损坏/冲突/孤立 marker、未知版本则阻断，不能清空后继续。
 - v1 内容仅作为 legacy 只读记录，不重新编号、不转成千川任务、不运行旧 pending、不把旧 SUCCEEDED 转成待确认。不消费旧全局开启或 caption 作为新授权。
 - 不做通用 migration framework，不创建第二套 service/store/queue。旧 creator adapter 生产仍阻断，新运行路径只选择有限千川合同。
-- POSIX 私有目录 0700、状态/fence 0600、快照 0400；不能证明权限及目录 durability 的平台阻断。回滚只停新动作，保留所有旧/new fences；旧程序遇到 v2 应拒绝，不能自动恢复 v1 backup 继续发布。
+- POSIX 私有目录 0700、状态/fence 0600、快照 0400；不能证明权限及目录 durability 的平台阻断。v2 程序不能读取 v3；回滚代码须继续兼容 v3，保留全部 closure 和新旧 fence。新处置/入账/选择后不得恢复旧 ledger；只有无新数据且逐项相同才可完整恢复数据，不能自动恢复 backup 授权重传。
 
 # 9. Public Surface And Safety
 

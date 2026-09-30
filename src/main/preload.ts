@@ -82,6 +82,7 @@ const api = {
   retargetDouyinUpload: (projectId: string, uploadTaskId: string, expectedAdId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.retarget", { projectId, uploadTaskId, expectedAdId }),
   stopDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.stop", { projectId, uploadTaskId }),
   discardDouyinUploadBatch: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.discard", { projectId, uploadTaskId }),
+  closeDouyinUploadBatch: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.closeBatch", { projectId, uploadTaskId }),
   reviseDouyinUploadCaption: (projectId: string, uploadTaskId: string, caption: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.caption", { projectId, uploadTaskId, caption }),
   confirmDouyinUpload: (projectId: string, uploadTaskId: string, success: UploadSuccess): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.confirm", { projectId, uploadTaskId, success }),
   openArtifact: (taskId: string): Promise<boolean> => ipcRenderer.invoke("artifact.open", { taskId }),

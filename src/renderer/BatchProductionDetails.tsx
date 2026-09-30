@@ -3,6 +3,7 @@ import type { BatchProductionDetail, BatchProductionDetailRequest } from "../sha
 import { SourceStickerKnowledgeDetails } from "./SourceStickerKnowledgeDetails";
 import { Heading, Icon } from "./ui";
 import { qianchuanUploadLabels } from "./qianchuan-upload-status";
+import { QianchuanUploadHistory } from "./QianchuanUploadHistory";
 
 const labels: Record<string, string> = { queued: "等待导出", validating: "检查素材", running: "正在渲染", verifying: "校验成片", cancelling: "正在停止", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
@@ -59,6 +60,7 @@ export function BatchProductionWorkList({ detail, onArtifact }: { detail: BatchP
           {task.upload_outcome === "MAY_HAVE_UPLOADED" && <small>结果未知，禁止重新上传，请核查原页面。</small>}
         </div>
       </div>)}
+      <QianchuanUploadHistory batches={detail.upload?.closedBatches} />
     </section>}
     <section className="card result-list" aria-label={`${job.name}作品与任务`}>
       <div className="card-header"><h2>作品与任务</h2><span>{completed} / {total} 条完成</span></div>
