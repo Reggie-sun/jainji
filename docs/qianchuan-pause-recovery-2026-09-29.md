@@ -321,3 +321,11 @@ stable service SHA-256 `b9f9ffd4791d1f9b60b41bd54346a787e5963ee103609a803225f972
 本轮没有源码变更；记录为 AOCI observe，不新增 Entry 或维护其他窗口的对象。fresh Verify、Check exit 0/governance_aligned=true，Guide complete=true/next_action=none，证据 `/tmp/jianji-five-store-aoci-{verify,check,guide}.json`。压缩恢复已完整收到三块 Overview，但 Attestation 字段 Schema 被拒绝，host confirmation 未获得完整收据；不声称完整认知验证通过，仅按源码及实际证据继续本任务。项目无独立 capture Skill，使用本既有 record owner 留存本次实测及阻塞，不生成交接 prompt。
 
 剩余真实验收仍 blocked：11 条旧 UNKNOWN 原页丢失不能安全恢复，旧已选文件不重传；不得用新计划、拆批、删历史或清 fence 绕过。现有其他两店没有可用于当前计划的完整未选批次；新增真实制作未授权。上述三条受阻新/既有批次没有真实 READY；批量逻辑只有本地隔离 PASS，真实三商品批量是两项完成入账、一项制作准入失败。需要明确的旧批次处置或人工平台核查，以及可用批次后才能完成真实九条分组推进验收。
+
+### Recovery Plan Checkpoint
+
+用户要求编写处理计划，已新增 [Recovery and Live Acceptance Plan](superpowers/plans/2026-09-30-qianchuan-recovery-and-live-acceptance.md)。计划提议在原 store 的 v3 ledger 中记录明确的本地批次结束，保持 READY/UNKNOWN 原结果和所有 fence；现有 discard 拒绝 READY 的合同继续保留，部分准入不能结束。顺序为冻结诊断、软件能力和操作反馈、制作准入及结果说明、fresh verification/可回滚安装、已有批次真实整批恢复，再补五店及真实批量的缺失证据。本轮只规划，真实 ledger 仍为 v2/562 tasks，没有处置、重新制作、上传或安装；真实批次结束及新增制作分别保留用户授权边界。
+
+按 writing-plans 完成 Parent Self-Review、引用和既有 owner 路径核查，独立 Kimi 调查只映射四个源码/测试文件，receipt `dbcaef76-78d9-4372-9b41-e59ae12d65dc` 保留，错误 schema 建议已由 Parent 拒绝，不作为 Plan 审核通过。新增 Plan 与本记录按 AOCI 当前 scope 处理为 observe，不新增 Entry、不改其他窗口索引；不为文档任务运行上传或制作测试。当前查阅的弃置 Plan 文件已不存在，以实际 batch-deletion Plan/Checkpoint 和当前代码为准，不从旧引用恢复或执行删除合同。
+
+最终 AOCI Verify/Check exit 1，Guide exit 0 但 governance_aligned=false、要求维护：另一窗口的 `agent-controller.ts`、`agent-provider.ts`、`shape-cover-admission.ts`、`shape-cover-production.ts` stale，`shape-cover-selection.ts` missing。本轮 Plan/Record 均经机器识别为 observe，没有未维护的本轮受管理对象；不领取含他人修改的创作批次或改共享索引，不声称全库对齐。证据 `/tmp/jianji-recovery-plan-final-aoci-{verify,check,guide}.json`；其他窗口稳定后由其 owner 完成对应维护。
