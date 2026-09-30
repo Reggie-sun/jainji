@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { chromium } from "playwright-core";
 import { DouyinCdpUploader, douyinReadiness } from "../src/main/douyin-cdp-uploader.js";
 import { PRODUCTION_QIANCHUAN_CONTRACT, type QianchuanPageContract } from "../src/main/qianchuan-page-contract.js";
 import type { QianchuanFixture, QianchuanFixtureControls } from "./helpers/douyin-cdp-fixture.js";
@@ -159,6 +160,37 @@ describe("千川 CDP upload-only adapter", () => {
     expect(observed.events.filter(event => event.type === "files").map(event => event.names)).toEqual([["first.mp4"], ["second.mp4"]]);
     expect(observed.events.filter(event => ["confirm", "settings"].includes(event.type))).toEqual([]);
     expect(observed.events.filter(event => event.type === "click").map(event => event.control)).toEqual(["素材", "添加视频", "上传视频"]);
+  });
+
+  it("foregrounds the original batch page when another tab is active before the next group", async () => {
+    const pageBatchId = randomUUID(), batchId = randomUUID();
+    const first = await makeTask({ name: "foreground-first.mp4", pageBatchId, batchId, expectedCount: 2 });
+    const second = await makeTask({ name: "foreground-second.mp4", pageBatchId, batchId, expectedCount: 2 });
+    const uploader = makeUploader(), signal = new AbortController().signal;
+    const prepared = await openAndFence(uploader, first);
+    await uploader.upload([first], signal); await uploader.ready([first], signal);
+    const observer = await chromium.connectOverCDP(fixture.cdpEndpoint, { noDefaults: true });
+    let other;
+    try {
+      let original;
+      for (const page of observer.contexts()[0]!.pages()) {
+        const session = await page.context().newCDPSession(page);
+        try {
+          if ((await session.send("Target.getTargetInfo")).targetInfo.targetId === prepared.pageOwnership.targetId) original = page;
+        } finally { await session.detach(); }
+      }
+      expect(original).toBeDefined();
+      other = await observer.contexts()[0]!.newPage(); await other.bringToFront();
+      expect(await original!.evaluate(() => document.visibilityState)).toBe("hidden");
+      const next = await uploader.open([second], [{ fileName: first.result.file_name, index: 1 }], signal);
+      expect(next.pageOwnership).toEqual(prepared.pageOwnership);
+      expect(await original!.evaluate(() => document.visibilityState)).toBe("visible");
+      second.result = { ...second.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
+      await uploader.upload([second], signal); await uploader.ready([second], signal);
+      const events = (await fixture.inspect()).events;
+      expect(events.filter(event => event.type === "files").map(event => event.names)).toEqual([[first.result.file_name], [second.result.file_name]]);
+      expect(events.filter(event => ["confirm", "settings"].includes(event.type))).toEqual([]);
+    } finally { await other?.close(); await observer.close(); }
   });
 
   it("checks whole-batch capacity before the first file selection", async () => {

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-30T18:40:07Z",
+  "updated_at": "2026-09-30T20:29:52Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -1298,9 +1298,9 @@
       "normalized_sha256": "c513ef0724e67827a1274034a2dd858e9dafc863219c9438c43ec9064112b494"
     },
     "src/main/douyin-cdp-uploader.ts": {
-      "sha256": "10846b483135551128932ff9612c171f3db0a6e9f6cffb26d566583232de3c60",
-      "size": 9439,
-      "normalized_sha256": "10846b483135551128932ff9612c171f3db0a6e9f6cffb26d566583232de3c60"
+      "sha256": "749510286d34d6773a2c29875970fb74cc6da42c237f0a6e74d30af407ad35aa",
+      "size": 9583,
+      "normalized_sha256": "749510286d34d6773a2c29875970fb74cc6da42c237f0a6e74d30af407ad35aa"
     },
     "src/main/douyin-upload-legacy.ts": {
       "sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4",

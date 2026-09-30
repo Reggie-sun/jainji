@@ -95,6 +95,8 @@ export class DouyinCdpUploader implements UploadBrowserPort {
         this.session = new QianchuanPageSession(this.page, contract, this.check);
         await this.page.goto(this.session.url(task), { timeout: task.config.timeouts.navigation, waitUntil: "domcontentloaded" }); this.check(signal);
       }
+      // Background tabs can suspend animation frames used by click stability checks.
+      await this.page.bringToFront(); this.check(signal);
       return this.session!.prepare(tasks, selected, await this.targetId(this.page), signal);
     });
   }

@@ -424,3 +424,31 @@ Risk Gate 判定 REQUIRED：错误 closure 或迁移可能隐藏 UNKNOWN 账号�
 只读 QA 核对同一 run、installed IPC 的一次范围切换、两项各 10 READY、旧记录及实际组次。Parent 区分旧保存的 `production.items.status=exporting`（生成/提交快照）和原 queue 的 completed/文件验证，前者不单独判定正在导出；两项完成来自 queue 和真实文件。启动脚本现场从 `batchProductionProjects` 读取原设置再逐值复制，input/frozen job 一致；未记录热敷贴原模板的 pre-run 全文件 SHA，不宣称该模板完整字节级前后比较。执行过的有界验收脚本和 hash 单独封存；QA 不连接浏览器、不修改数据，不替代 Parent 判断。
 
 私有证据位于 `.agent/harness/runs/20261001-current-production-live-acceptance/`：限定范围、input/start receipt、观察时间线、前后账本、两个 job 详情、真实页面只读证明、逐文件/分组 `final-proof.json` 与桌面截图。完整账本与私有输入不提交 Git。按 completion 评估本次 substantive live proof 并续写原 Record；仅文档变更，AOCI 沿 observe scope 收尾，不重复维护已对齐源码，也不把真实上传证据当作新代码审查。
+
+## User Batch Background Tab Recovery (2026-10-01)
+
+用户的新截图来自另一轮真实制作 `55af6564-d849-482e-8ce7-094664409a52`，肥皂、一条根各 30 条。首条肥皂任务 `b5b090df...` 在页面准备阶段报通用 `PAGE_CONTRACT_CHANGED`，结果为 `NOT_SELECTED`、attempt=1，没有 selection fence；本次暂停来自当前批次，不是历史 UNKNOWN。原页面账号、计划、drawer 唯一正确，仍在“数据”tab，未打开上传 modal。原异常未保存，因此不能断言首次失败的底层异常与后续复现完全相同。
+
+Parent 对原页“素材”控件做无点击的 `trial:true`：控件唯一、可见、启用，点击点无遮挡，但后台 `document.visibilityState=hidden` 时 actionability 等待 visible/enabled/stable 超时。仅执行 `bringToFront` 后，同一控件的 trial 立即通过，visibility=visible。修复由原 CDP adapter 独占：每组 `open` 在 `prepare` 前把自己的 Page 置前台，再检查取消；不采用 force click，不放宽身份、modal、容量、READY、fence 或确定边界，原页只读恢复行为不变。
+
+### Live Recovery Result
+
+对肥皂本批未选 anchor 通过原应用可信 `resumeDouyinUpload` 接收一次继续；临时前台辅助没有提交文件或点击素材，实际选文件仍由运行中的原 adapter 完成。原有导出始终继续，应用没有重启。30 条肥皂按 `9+9+9+3` 达到持久 `WAITING_FOR_CONFIRMATION/READY`，同一原 target `95450DB2EFC49CE77302416FDEE1A650`、modal `2ba34f76-4104-4d31-9c21-c5c4e01b0e94` 显示 `已选择 30/289`，唯一 30 行逐文件名对应，确定可用且留给用户。父任务没有确认、发布或修改投放设置。
+
+前台观察辅助的首次新 target 发现用 URL 找 Page，在同 URL 多 tab 时可能选到原失败页；随后用实际 CDP targetId 核对并置前新批次页。该辅助并非新软件包的执行证据；正式回归测试严格按 pageOwnership.targetId 找 Page。肥皂未选 anchor 原 attempt=1，本次明确继续增加尝试，不包装成一次无失败的上传。旧 582 个任务完整对象与恢复前账本一致，未清理或重试历史任务。
+
+20:28 UTC 检查时，一条根本轮 30 条导出完成、0 失败，上传仍为 `PENDING/NOT_SELECTED`。安全继续只恢复对应 pageBatchId，其他账号既有 eligible 被清空；从肥皂工作区继续一条根被可信 IPC 明确拒绝“上传任务不属于当前项目”。随后 fresh 状态显示肥皂已保存，沿原 project.load 打开一条根，保留当前 production 范围，并由其原工作区明确继续同批 30 条；没有新制作或 standalone 上传。该批 `9+9+9+3` 全部 READY，原 target `0EBC8773EE8D73FCD109AE45A2BCC744` 显示 `已选择 30/193`、30 行且确定可用。两个原弹窗分别核对后，这轮合计 60 READY，旧 582 个任务完整对象仍一致；跨项目继续需要先打开已保存的对应项目，批量详情尚无直接继续入口。
+
+私有证据在 `.agent/harness/runs/20261001-user-batch-background-recovery/`：恢复前后账本、实际观察、一次肥皂继续、target 前台辅助记录、终态 job/upload 分布、原肥皂 modal 核对。旧记录一致是任务对象层证明，不额外声称本次逐个旧 fence 文件已重算 hash；此前 20 条验收的文件级证据保持独立。
+
+### Engineering Candidate And Delivery Boundary
+
+真实 Chrome fixture 的新增回归先在旧 adapter 上因页面仍为 hidden 失败；修复后验证换到其他 tab，再准备下组会回到原 target、保留同一 modal、两次独立文件选择且零确认/设置。初次测试实现遗漏第二个 fixture task 的 MAY_HAVE_UPLOADED 标记，已修正；完整并行测试还出现已有时间预算超时，保留失败结果。最终可信构建 source 上串行运行四个相关文件，96 tests PASS；fresh build 含 typecheck PASS。没有放宽测试或生产超时。
+
+候选以已安装 `775d5fbc...` 的可信完整源码为基线，仅覆盖本次 adapter/test。asar 只替换 `dist-electron/main.cjs`，其余 2154 个文件逐字节保持；候选 SHA `c9936fcb916776ff8f2230416799e819a54505c3735bbc455626affdae347850`，main SHA `8b19c071fb464029ca324491f785ffb7906c01edf71c46aa57c9cc4aeaf74f70`。Exact packaged upload/append/restart smoke PASS，12 个合成 FFmpeg 输出及追加一条、私有账本保留 13 个 READY，零确认，假账号本地拦截；报告 `/tmp/jianji-qianchuan-smoke-Kj70bF/report.json`。最初 DISPLAY 缺失及错误 FFmpeg 能力两次预检失败不计通过，随后用 Xvfb 与应用 runtime FFmpeg 验证。
+
+本次只有自身 Page 的前台切换，没有新的数据或选择 authority，取消和 fail-closed 保持；相关真实浏览器测试、原权限/UNKNOWN/防重传测试和 packaged proof 覆盖该责任，未发现关键级后果或残余重大验证缺口，Risk Gate 为 `KIMI_REVIEW_NOT_REQUIRED`。独立只读诊断沿同任务两次 Kimi 故障的已记录 fallback，复用 `current_production_live_qa` / `test_analyzer`；Parent 核对前后台 trial 和实际结果，不把 agent 推测当成原异常证明。
+
+Fresh project Harness 使用原 policy 的 typecheck 与 douyin-upload 两个检查投影，未修改仓库 policy，也未宣称运行无关制作/覆盖检查。回执 `20260930T203432Z-78001a85` 为 PASS：typecheck、8 个上传相关 test 文件的 169 tests、0 skipped。它绑定可信构建 source 的独立文件身份，完整 policy/日志/结构化测试报告一并封存。
+
+真实恢复阶段仍运行旧安装包，依靠受控前台辅助，不作为新候选的实际运行证明。候选及可重建 source、Harness、保留的第二次 exact packaged smoke 报告封存于 `/home/reggie/Applications/jianji/candidates/qianchuan-foreground-20261001-c9936fcb/foreground-evidence/`；第一次 smoke 默认清理临时目录，第二次显式 KEEP=1，实际组 `1+9+2`、追加后 13 READY、零确认。计划要求安装前项目已保存；fresh install preflight 已证明一条根无未保存更改，全部制作与上传操作结束。一次多余的保存 IPC 打开原生保存对话框，未选择保存；只关闭 PID 3983651 的唯一“保存项目”子窗口，项目文件保留，随后重新核对干净状态。完成本次 substantive code/live-proof 的 record 评估，AOCI 维护 adapter、按 observe scope 核对 test/record，并运行 Verify、Check、Guide。安装字节及重启后的保留证明另行记录，不能以候选 PASS 冒充安装交付。
