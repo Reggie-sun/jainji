@@ -182,7 +182,10 @@ try {
     await append.locator("#append-count").fill("1");
     await append.locator("#append-directory").click();
     await append.getByRole("button",{name:"追加 1 条并开始渲染",exact:true}).click();
-    await until(page,value=>value.douyinUpload.tasks.length===13 && value.douyinUpload.tasks.every(task=>task.state === "WAITING_FOR_CONFIRMATION"));
+    await until(page,value=>value.douyinUpload.tasks.length===1 && value.douyinUpload.tasks.every(task=>task.state === "WAITING_FOR_CONFIRMATION"));
+    const ledger = JSON.parse(await readFile(path.join(runtime.userData,"douyin-upload/state.json"),"utf8"));
+    assert.equal(ledger.tasks.length,13,"prior production remains in the private ledger");
+    report.currentProductionOnly = true;
     assert.equal((await fixture.inspect()).events.filter(event=>event.type === "confirm" || event.type === "settings").length,0);
     report.appendIndependentChoice = true;
   }
@@ -191,11 +194,12 @@ try {
   const beforeRestart = await fixture.inspect(); await closeApp(); page = await launch(); await delay(1000);
   const reopened = await page.evaluate(id=>window.jianji.loadProject(id),saved.activeRecentProjectId); assert.equal(reopened.project.id,saved.project.id);
   assert.equal((await fixture.inspect()).events.filter(event=>event.type === "files").length,beforeRestart.events.filter(event=>event.type === "files").length,"restart/reopen never selects files");
-  assert.equal(reopened.douyinUpload.tasks[0].state,"WAITING_FOR_CONFIRMATION");
+  assert.equal(reopened.douyinUpload.tasks.length,0,"restart does not reactivate historical production");
   await page.getByRole("button",{name:"作品",exact:true}).click();
-  await page.getByRole("status",{name:"上传进度",exact:true}).filter({hasText:"已上传 13 / 13 条"}).waitFor();
-  assert.equal(await page.getByText("上传记录已保存 · 本计划不会重复上传",{exact:true}).count(),13);
-  report.persistedUploadMarkersVisible = true;
+  await page.getByText("当前项目没有千川上传任务。",{exact:true}).waitFor();
+  const persisted = JSON.parse(await readFile(path.join(runtime.userData,"douyin-upload/state.json"),"utf8"));
+  assert.equal(persisted.tasks.length,13); assert.ok(persisted.tasks.every(task=>task.result.upload_outcome === "READY"));
+  report.persistedUploadMarkersRetained = true;
   if (packaged) report.packagedAttach = await app.evaluate(async ({app},input)=>{
     const runtimeRequire=process.mainModule.require("node:module").createRequire(`${app.getAppPath()}/package.json`);
     const browser=await runtimeRequire("playwright-core").chromium.connectOverCDP(input.endpoint,{timeout:8000,noDefaults:true});

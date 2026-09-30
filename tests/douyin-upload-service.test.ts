@@ -156,6 +156,152 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  it("isolates old UNKNOWN while preserving its result and fence, then stops on current UNKNOWN", async () => {
+    const f = await fixture(); await f.authorize();
+    const old = await f.createBatch(["old unknown"]); await f.register(old);
+    f.port.ready = async () => { throw new Error("unknown original page"); };
+    await f.service.enqueueFinalArtifact(old.identities[0]!); await f.service.runPending();
+    const original = f.store.tasks()[0]!, fence = f.store.fence(original.result.upload_task_id);
+    expect(original.result.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+    await f.service.beginProduction();
+    const current = await f.createBatch(["new unknown", "later unselected"]); await f.register(current);
+    await f.service.enqueueFinalArtifact(current.identities[0]!); await f.service.runPending();
+    await f.service.enqueueFinalArtifact(current.identities[1]!); await f.service.runPending();
+    expect(f.service.status(current.projectId).tasks.map(task => task.upload_outcome)).toEqual(["MAY_HAVE_UPLOADED", "NOT_SELECTED"]);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(2);
+    expect(f.store.task(original.result.upload_task_id)).toEqual(original);
+    expect(f.store.fence(original.result.upload_task_id)).toEqual(fence);
+    expect(f.service.status(old.projectId).tasks).toEqual([]);
+    await expect(f.service.requestResume(original.result.upload_task_id)).rejects.toThrow("不属于本次制作");
+  });
+
+  it("admits multiple accounts and queue chunks into one production and clears historical pause", async () => {
+    const f = await fixture(); await f.authorize();
+    const old = await f.createBatch(["old failed"]); await f.register(old);
+    f.port.ready = async () => { throw new Error("old unknown"); };
+    await f.service.enqueueFinalArtifact(old.identities[0]!); await f.service.runPending();
+    const ready = async (tasks: UploadTaskRecord[]) => tasks.map(task => evidenceFor(task, f.store.fence(task.result.upload_task_id)!.pageOwnership, f.store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId && f.store.hasMarker(other.result.upload_task_id)).length));
+    f.port.ready = ready;
+    await f.service.beginProduction();
+    const a = await f.createBatch(["a first"]), b = await f.createBatch(["b new"], { product: "肥皂" }), chunk = await f.createBatch(["a second"]);
+    chunk.batchIdentity.projectId = a.projectId; chunk.identities[0]!.project_id = a.projectId; f.states.get(chunk.batchId)!.batch.projectId = a.projectId;
+    const authorization = await f.service.preflight(selection("眼贴"), 2);
+    await f.service.registerBatch(a.batchIdentity, selection("眼贴"), authorization);
+    await f.service.registerBatch(chunk.batchIdentity, selection("眼贴"), authorization);
+    await f.register(b);
+    for (const identity of [...a.identities, ...chunk.identities, ...b.identities]) await f.service.enqueueFinalArtifact(identity);
+    await f.service.runPending();
+    expect(f.service.status(a.projectId).tasks).toHaveLength(2);
+    expect(f.service.status(b.projectId).tasks[0]!.upload_outcome).toBe("READY");
+    expect(f.service.status(a.projectId).tasks.every(task => task.upload_outcome === "READY")).toBe(true);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(3);
+  });
+
+  it("keeps historical same-target UNKNOWN bytes fenced across production boundaries", async () => {
+    const f = await fixture(); await f.authorize();
+    const old = await f.createBatch(["same bytes"]); await f.register(old);
+    f.port.ready = async () => { throw new Error("old unknown"); };
+    await f.service.enqueueFinalArtifact(old.identities[0]!); await f.service.runPending();
+    const original = f.store.tasks()[0]!;
+    await f.service.beginProduction(); const before = [...f.events];
+    const current = await f.createBatch(["same bytes"]); await f.register(current);
+    await f.service.enqueueFinalArtifact(current.identities[0]!); await f.service.runPending();
+    expect(f.service.status(current.projectId).tasks[0]).toMatchObject({ duplicate_of: original.result.upload_task_id, upload_outcome: "MAY_HAVE_UPLOADED" });
+    expect(f.events).toEqual(before);
+    expect(f.store.task(original.result.upload_task_id)).toEqual(original);
+  });
+
+  it("refuses a new production if stopping a prior browser fails", async () => {
+    const f = await fixture(); await f.authorize();
+    const old = await f.createBatch(["ready old"]); await f.register(old);
+    await f.service.enqueueFinalArtifact(old.identities[0]!); await f.service.runPending();
+    f.port.stop = async () => { throw new Error("detach failed"); };
+    await expect(f.service.beginProduction()).rejects.toThrow("未能安全停止");
+    f.port.stop = async () => {};
+    await expect(f.service.beginProduction()).rejects.toThrow("未能安全停止");
+    expect(f.service.status(old.projectId).ready).toBe(false);
+  });
+
+  it("keeps failed detach fenced when enabling uploads and continuing pending members", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["ready anchor", "pending later"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const pending = await f.service.enqueueFinalArtifact(batch.identities[1]!);
+    f.port.stop = async () => { throw new Error("detach failed"); };
+    await expect(f.service.beginProduction()).rejects.toThrow("未能安全停止");
+    await f.service.configure({ enabled: true }); const before = [...f.events];
+    await expect(f.service.requestResume(pending!.result.upload_task_id)).rejects.toThrow("未能安全停止");
+    await f.service.runPending(); expect(f.events).toEqual(before);
+    expect(f.service.status(batch.projectId).ready).toBe(false);
+    expect(f.store.hasMarker(pending!.result.upload_task_id)).toBe(false);
+  });
+
+  it("clears admission errors from a prior production without retrying its media", async () => {
+    const f = await fixture(); await f.authorize();
+    const old = await f.createBatch(["old failed admission"], { completed: false }); await f.register(old);
+    await f.service.committed(old.identities[0]!);
+    expect(f.service.status(old.projectId).ready).toBe(false);
+    await f.service.beginProduction();
+    const current = await f.createBatch(["new valid admission"]); await f.register(current);
+    expect(f.service.status(current.projectId).ready).toBe(true);
+    await f.service.enqueueFinalArtifact(current.identities[0]!); await f.service.runPending();
+    expect(f.service.status(current.projectId).tasks[0]!.upload_outcome).toBe("READY");
+    expect(f.store.tasks()).toHaveLength(1);
+  });
+
+  it("rejects continuation racing an automatic runner whose detach fails during target preflight", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["automatic first", "manual second"]); await f.register(batch);
+    const first = await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const second = await f.service.enqueueFinalArtifact(batch.identities[1]!);
+    let releaseAuto!: () => void, releaseResume!: () => void, calls = 0;
+    const autoGate = new Promise<void>(resolve => { releaseAuto = resolve; });
+    const resumeGate = new Promise<void>(resolve => { releaseResume = resolve; });
+    const preflight = f.accounts.preflight.bind(f.accounts);
+    vi.spyOn(f.accounts, "preflight").mockImplementation(async product => { calls++; if (calls === 1) await autoGate; else if (calls === 2) await resumeGate; return preflight(product); });
+    f.port.open = async () => { throw new Error("page failed"); };
+    f.port.stop = async () => { throw new Error("detach failed"); };
+    const running = f.service.runPending(); await vi.waitFor(() => expect(calls).toBe(1));
+    const continuation = f.service.requestResume(second!.result.upload_task_id).then(() => "accepted", () => "rejected");
+    await new Promise(resolve => setTimeout(resolve, 10)); releaseAuto(); await running;
+    const before = [...f.events]; releaseResume();
+    expect(await continuation).toBe("rejected"); expect(f.events).toEqual(before);
+    expect(f.store.hasMarker(first!.result.upload_task_id)).toBe(false);
+  });
+
+  it.each(["failure", "cancel"])("does not forget failed detach after %s removes the browser session", async mode => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["selected uncertain"]); await f.register(batch);
+    let release!: () => void, waiting = false;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    f.port.ready = async () => { waiting = true; if (mode === "cancel") await gate; throw new Error("cannot observe ready"); };
+    f.port.stop = async () => { throw new Error("detach failed"); };
+    const task = await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const running = f.service.runPending();
+    if (mode === "cancel") { await vi.waitFor(() => expect(waiting).toBe(true)); await f.service.cancel(task!.result.upload_task_id); release(); }
+    await running; const before = [...f.events];
+    await expect(f.service.beginProduction()).rejects.toThrow("未能安全停止");
+    await expect(f.service.preflight(selection("眼贴"), 1)).rejects.toThrow("未能安全停止");
+    expect(f.events).toEqual(before); expect(f.store.tasks()[0]!.result.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+  });
+
+  it("does not scan old media on startup and rejects preflight that crosses the production boundary", async () => {
+    const f = await fixture(); await f.authorize();
+    const old = await f.createBatch(["old never admitted"]); await f.register(old);
+    const restarted = new DouyinUploadService(f.store, { accounts: f.accounts, browser: vi.fn(), loadBatch: vi.fn(() => { throw new Error("must not read old queue"); }) });
+    await restarted.restoreConfig(); await restarted.beginProduction(); await restarted.reconcile();
+    expect(restarted.status(old.projectId).tasks).toEqual([]); expect(f.store.tasks()).toEqual([]);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const preflight = f.accounts.preflight.bind(f.accounts);
+    vi.spyOn(f.accounts, "preflight").mockImplementationOnce(async product => { await gate; return preflight(product); });
+    const stale = restarted.preflight(selection("眼贴"), 1);
+    const rejection = expect(stale).rejects.toThrow("上传控制已变化");
+    await restarted.beginProduction(); release(); await rejection;
+    await restarted.registerBatch(old.batchIdentity, selection("眼贴"), f.store.intents()[0]!.authorization);
+    await restarted.committed(old.identities[0]!); expect(f.store.tasks()).toEqual([]);
+  });
+
   it("scopes batch-production cancellation to exact project/task IDs, including late admission", async () => {
     const f = await fixture(); await f.authorize();
     const cancelled = await f.createBatch(["cancelled-late"]);
@@ -803,7 +949,7 @@ describe("Qianchuan upload service", () => {
     expect(reopenedStore.task(oldRecord!.result.upload_task_id)?.result.state).toBe("WAITING_FOR_CONFIRMATION");
   });
 
-  it("keeps a prior project's late completion pending after stop and a new batch authorization", async () => {
+  it("ignores prior production callbacks and registration after beginning a fresh production", async () => {
     const f = await fixture();
     await f.authorize();
 
@@ -818,7 +964,7 @@ describe("Qianchuan upload service", () => {
     expect(f.store.intents()).toHaveLength(1);
     expect(f.store.tasks()).toHaveLength(0);
 
-    await f.service.stop();
+    await f.service.beginProduction();
 
     const newBatch = await f.createBatch(["new project final bytes"], { product: "肥皂" });
     const newSelection = selection("肥皂");
@@ -835,9 +981,12 @@ describe("Qianchuan upload service", () => {
     oldExport.outputArtifact = { taskId: oldExport.id, path: oldExport.outputPath!, sizeBytes: Buffer.byteLength("old project final bytes"), durationMs: 1000, createdAt: now() };
     await f.service.committed(oldBatch.identities[0]!);
 
+    await f.service.registerBatch(oldBatch.batchIdentity, oldSelection, oldAuthorization);
+    await f.service.committed(oldBatch.identities[0]!);
+
     const oldRecord = f.store.tasks().find(task => task.input.export_task_id === oldBatch.identities[0]!.export_task_id);
-    expect(oldRecord?.result.state).toBe("PENDING");
-    expect(oldRecord?.result.upload_outcome).toBe("NOT_SELECTED");
+    expect(oldRecord).toBeUndefined();
+    expect(f.service.status(oldBatch.projectId).tasks).toEqual([]);
     expect(f.events).toEqual(afterNewBatch);
     expect(f.events.filter(event => event === "connect")).toHaveLength(1);
     expect(f.events.filter(event => event === "file-input")).toHaveLength(1);

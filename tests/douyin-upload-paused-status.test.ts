@@ -28,7 +28,7 @@ async function fixture() {
   let service = new DouyinUploadService(store, dependencies); await service.chooseConfig(file); await service.configure({ enabled: true });
   async function batch(count: number, product: QianchuanProduct = "眼贴", blocked = false, fenced = false) {
     const projectId = randomUUID(), batchId = randomUUID();
-    const authorization: UploadAuthorization = { target: await accounts.preflight(product), pageBatchId: randomUUID(), expectedCount: count };
+    const authorization: UploadAuthorization = (await service.preflight({ enabled: true, accountProduct: product }, count))!;
     const records: UploadTaskRecord[] = [];
     for (let index = 0; index < count; index++) {
       const identity = { project_id: projectId, batch_id: batchId, export_task_id: randomUUID() };
@@ -50,43 +50,44 @@ async function fixture() {
     }
     return { projectId, records };
   }
-  async function restart() { service = new DouyinUploadService(store, dependencies); await service.restoreConfig(); return service; }
+  async function restart() { service = new DouyinUploadService(store, dependencies); await service.restoreConfig(); await service.beginProduction(); return service; }
   return { root, store, port, dependencies, batch, restart, get service() { return service; }, readiness: (value: string | undefined) => { readiness = value; } };
 }
 
 describe("paused Qianchuan status projection", () => {
-  it("shows same-account historical blockers in a new project's existing panel without changing durable state", async () => {
-    const f = await fixture(), old = await f.batch(8, "眼贴", true), current = await f.batch(12); await f.restart();
+  it("shows only current production without same-account historical blockers or durable changes", async () => {
+    const f = await fixture(), old = await f.batch(8, "眼贴", true); await f.restart(); const current = await f.batch(12);
     const before = await readFile(path.join(f.store.root, "state.json"));
     const status = f.service.status(current.projectId);
-    expect(status.ready).toBe(false);
-    expect(status.message).toContain("暂停"); expect(status.message).toContain("晚安油"); expect(status.message).toContain("8 条"); expect(status.message).toContain("原上传页面");
+    expect(status.ready).toBe(true);
+    expect(status.message).not.toContain("暂停"); expect(status.message).toContain("停在确定前");
     expect(status.tasks).toHaveLength(12); expect(status.tasks.every(task => task.state === "PENDING" && task.upload_outcome === "NOT_SELECTED")).toBe(true);
     expect(status.tasks.some(task => task.project_id === old.projectId)).toBe(false);
     const html = renderToStaticMarkup(createElement(DouyinUploadPanel, { projectId: current.projectId, status, onState: () => {} }));
-    expect(html).toContain('role="alert"'); expect(html).toContain(status.message); expect(html).toContain("待上传 12 条");
+    expect(html).toContain(status.message); expect(html).toContain("待上传 12 条");
+    expect(f.service.status(old.projectId).tasks).toEqual([]);
     await f.service.runPending(); expect(f.dependencies.browser).not.toHaveBeenCalled();
     expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before);
   });
 
-  it("rejects new-batch continue with the blocked account name, count and recovery direction", async () => {
-    const f = await fixture(); await f.batch(2, "眼贴", true); const current = await f.batch(1); await f.restart();
-    await expect(f.service.resume(current.records[0]!.result.upload_task_id)).rejects.toThrow(/晚安油.*2 条.*原上传页面/);
+  it("rejects historical continue without touching the current batch", async () => {
+    const f = await fixture(), old = await f.batch(2, "眼贴", true); await f.restart(); const current = await f.batch(1);
+    await expect(f.service.resume(old.records[0]!.result.upload_task_id)).rejects.toThrow("不属于本次制作");
     expect(f.dependencies.browser).not.toHaveBeenCalled(); expect(f.service.status(current.projectId).tasks[0]!.state).toBe("PENDING");
   });
 
-  it("explains global pause for another account without asserting that account is itself blocked", async () => {
-    const f = await fixture(); await f.batch(2, "肥皂", true); const current = await f.batch(1); await f.restart();
+  it("does not inherit historical pause from another account", async () => {
+    const f = await fixture(); await f.batch(2, "肥皂", true); await f.restart(); const current = await f.batch(1);
     const status = f.service.status(current.projectId);
-    expect(status.ready).toBe(false); expect(status.message).toContain("暂停"); expect(status.message).toContain("2 条"); expect(status.message).toContain("安全继续");
+    expect(status.ready).toBe(true); expect(status.message).not.toContain("暂停"); expect(status.message).not.toContain("2 条");
     expect(status.message).not.toContain("晚安油（账户"); expect(f.dependencies.browser).not.toHaveBeenCalled();
   });
 
   it("preserves unknown outcome, original failure and selection fence bytes during repeated status reads", async () => {
-    const f = await fixture(), old = await f.batch(1, "眼贴", true, true), current = await f.batch(1); await f.restart();
+    const f = await fixture(), old = await f.batch(1, "眼贴", true, true); await f.restart(); const current = await f.batch(1);
     const id = old.records[0]!.result.upload_task_id, fencePath = path.join(f.store.root, "selection-fences", `${id}.json`);
     const before = await readFile(fencePath), result = f.store.task(id)!.result;
-    for (let index = 0; index < 3; index++) expect(f.service.status(current.projectId).message).toContain("禁止重传");
+    for (let index = 0; index < 3; index++) expect(f.service.status(current.projectId).ready).toBe(true);
     expect(await readFile(fencePath)).toEqual(before); expect(f.store.task(id)!.result).toEqual(result);
     expect(f.dependencies.browser).not.toHaveBeenCalled();
   });

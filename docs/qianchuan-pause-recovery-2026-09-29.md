@@ -364,3 +364,30 @@ Risk Gate 判定 REQUIRED：错误 closure 或迁移可能隐藏 UNKNOWN 账号�
 迁移后为 v3、562 tasks、644 intents、150 fences、`closedBatches=[]`。完整对照证明 config/intents/tasks 与备份结构一致；718 个文件只有 `state.json` 及其 `.bak` 因版本迁移改变，其他全部 SHA 保持；当前项目仅 `updatedAt` 改变，氨糖膏十条及其他历史原结果未变。证据 `/tmp/jianji-closure-installed-{app,data}-proof.json`、私有备份 manifest 和 `installed-upload-viewport.png`。release 的 `closure-evidence` 保存 scoped source、可重建的可信完整构建源码、Harness receipt、build/smoke/失败日志、review decision 及 package binding。
 
 旧 v2 release 与备份保留，但它不能读取当前 v3；切回旧 launcher 不等于安全回滚。当前已测试 v3 release 和源快照作为后续代码回滚基点，保留当前数据和全部 fence。此次只有版本迁移、无 closure/新入账/选择，恢复旧数据也必须先重新证明全量未变化，不能在新处置后回灌旧 ledger。Milestone 1–4 的软件与安装证据已形成，Milestone 5 仍 BLOCKED：三个旧完整批次的不可恢复结束、现有新批次真实继续及缺批次店铺的有限制作尚未明确授权；没有把工程 PASS 写成真实五店通过。
+
+## Current Production Scope Implementation (2026-10-01)
+
+用户明确收窄目标：“这个 cdp 上传就管这一批生成的就可以之前的不管”。本节取代原五店历史处置/验收作为本轮完成目标；本轮不结束、不删除、不恢复、不重传真实历史批次，也不生成测试用的真实商业素材。按 repository completion 要求评估记录：未声明 dedicated capture Skill，本次 substantive 软件变更与安装证据由本原 Recovery Record 承接。
+
+### Behavior And Ownership
+
+- `DouyinUploadService.beginProduction` 有界排空原浏览器、runner、admission 和 control，再建立运行内新范围。可信 IPC 在启动及单项目、跨模板整批、手动导出、追加制作开始时调用；跨模板多个 pageBatchId 和同授权多个 queue chunk 均属于本轮。
+- 历史 UNKNOWN、失败及 PENDING 不再污染本轮暂停、准入诊断或操作列表。旧完成回调、旧授权重新注册、启动 reconcile 不取得本轮资格；操作旧 task 明确拒绝。重启后的范围为空，历史结果仍在原 ledger。
+- 原 store、任务 identity、fence、同目标/hash 去重、九条分组、全组 READY 推进及停在“确定”前不变。相同字节若命中旧 UNKNOWN，仅记录去重结果并停止本轮，不重新选文件。
+- 各停止路径的 detach 失败锁存；开关、继续、新制作均不能清除。预检返回后复查 generation、停止状态及 runner，避免手动继续与自动 runner 的预检竞争。停止失败后需关闭应用并人工核查 Chrome。
+- 只修改原上传 service/index 与相关测试、smoke、文档；制作/模板/ResultsPanel 等另一任务改动保留。部署候选以现有已安装 closure 的可信 source 为基线，仅覆盖本轮 owner，不包含其他窗口尚未交付的包装改动。
+
+### Verification And Review
+
+- 当前 working tree `npm run typecheck` PASS；相关 16 文件 / 183 tests PASS。新测试 red→green 证明旧迟到回调、旧 UNKNOWN、多账号/多 chunk、同字节去重、旧诊断清理、过期 preflight、失败 detach 与自动/手动 preflight 竞争。
+- 可信基线候选 `npm run build` PASS；Harness PASS，receipt `20260930T183837Z-e55a7595`，候选源码 SHA 由 source manifest 绑定。
+- Exact packaged current-production smoke PASS：旧 UNKNOWN/READY/PENDING 混合批不出现在当前界面，历史 resume/closure 被可信 IPC 拒绝；原 results/intents/fence 字节保留。
+- Exact packaged 普通上传/追加/restart smoke PASS：12 正式 FFmpeg 输出及追加独立授权；追加时当前列表仅 1 条，私有账本保留 13 条 READY；重启零历史选择。
+- Exact packaged 跨模板上传 smoke PASS：17 正式 FFmpeg 输出、两个授权账号 12 READY，含 export-only 项与本轮 UNKNOWN 停止后续账号；confirm 0，广告设置修改 0。均为隔离本机页面 fixture，未使用真实商业账号，不能声明真实千川上传验收。
+- 扩展尝试的普通 `batch-production-smoke` 在参数输入次数断言失败（40 输入记录多一次），发生在开始制作之前；它不属于本轮上传接缝验证，也不修改该另一功能测试。正式跨模板上传专用 smoke 上述 PASS。
+- 按上传权限及 UNKNOWN recovery Risk Gate 触发独立审查，沿同任务已封存的两次 Kimi 失败使用 native read-only fallback。三轮审查绑定 exact candidate，CP-01、CP-04 均由 Parent 失败测试确认后修复；CP-02、CP-03 同步修复；最终 targeted re-review 无 unresolved blocking finding。审查 verdict 不替代原测试或平台验收。
+- AOCI 本轮受管理对象为 service/index 两项；完整机器批次及后续 service 稳定修订已应用。Verify / Aggregate Check 的 `governance_aligned=true`，Guide `complete=true,next_action=none`；docs/tests/scripts 按现有 observe scope 处理。只提交本轮条目与源码绑定，保留其他任务的 working indexes。
+
+### Candidate Identity
+
+候选 asar SHA-256 `775d5fbcba48e020430984c29444dbff5fde0be53c2eddbd3bbb819b5215c6c2`；main SHA-256 `43c1f8012c1bfb3d28d3e328566cbe004ae9eed40e2b636ae2956d02d5495d07`；preload 保持 `2241f41168042a2b36abaefb6817c880b1b4e26909fd52cef65e0c544bba023f`。下节单独记录实际安装与原私有数据保全核对；候选 PASS 不自动代表安装。

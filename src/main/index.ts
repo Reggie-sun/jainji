@@ -155,6 +155,7 @@ function registerHandlers(): void {
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
     await queueReady;
     coverReview.assertIdle(); connections.assertIdle(); assertProductionIdle();
+    await douyinUpload.beginProduction();
     await batchRuntime.controller.start(input);
     return publicState();
   });
@@ -277,6 +278,7 @@ function registerHandlers(): void {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
     batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle();
+    assertProductionIdle(); await douyinUpload.beginProduction();
     await agent.start(input, approvedOutputDirectories);
     await service.rememberLatestProduction(agent.snapshot()!);
     return publicState();
@@ -502,6 +504,7 @@ function registerHandlers(): void {
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const parsed = exportCreateSchema.parse(input);
     if (parsed.douyinUpload && parsed.preset.container !== "mp4") throw new Error("千川上传仅支持 MP4。");
+    await douyinUpload.beginProduction();
     const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, new Set(parsed.mediaIds).size);
     const preset = parsed.preset as ExportPreset;
     const outputDirectory = await canonicalPath(parsed.outputDirectory);
@@ -537,6 +540,7 @@ function registerHandlers(): void {
     if (!prefill) throw new Error("找不到属于当前项目的已完成批次。");
     const sourceBatch = queue.snapshot().batches.find(value => value.batch.id === parsed.batchId)?.batch ?? service.currentProject.exportBatches.find(batch => batch.id === parsed.batchId);
     if (parsed.douyinUpload && (!sourceBatch || sourceBatch.preset.container !== "mp4")) throw new Error("千川上传仅支持 MP4 追加制作。");
+    await douyinUpload.beginProduction();
     const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, prefill.mediaCount * parsed.count);
     const outputDirectory = await canonicalPath(parsed.outputDirectory);
     if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
@@ -690,6 +694,7 @@ async function bootstrap(): Promise<void> {
     browser: () => new DouyinCdpUploader(), readiness: douyinReadiness, changed: notifyState,
   });
   await douyinUpload.restoreConfig();
+  await douyinUpload.beginProduction();
   const builtins = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));
   const bundledDirectory = app.isPackaged
     ? path.join(process.resourcesPath, "stickers", "downloaded")

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-30T11:26:10Z",
+  "updated_at": "2026-09-30T18:40:07Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "0e9da05934d9157e5624ee301a3180c6c8ba13aa69c66cd28a5a6a699f5f18bc",
-      "size": 65196,
-      "normalized_sha256": "0e9da05934d9157e5624ee301a3180c6c8ba13aa69c66cd28a5a6a699f5f18bc"
+      "sha256": "b721f1c75594d5e62799f4f440d99bc355311c6dd10224778e96a3828264100c",
+      "size": 65316,
+      "normalized_sha256": "b721f1c75594d5e62799f4f440d99bc355311c6dd10224778e96a3828264100c"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1308,9 +1308,9 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "d3e427ebdf3c5ee1479b137f20a602544c403b4bd14b189c300c24b3ab1b7afe",
-      "size": 46042,
-      "normalized_sha256": "d3e427ebdf3c5ee1479b137f20a602544c403b4bd14b189c300c24b3ab1b7afe"
+      "sha256": "586199e50c3dc249a454a6ad7c10d68e7f451d7cc1bb7671322d8de7339f1d30",
+      "size": 50093,
+      "normalized_sha256": "586199e50c3dc249a454a6ad7c10d68e7f451d7cc1bb7671322d8de7339f1d30"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "527b6bcb75269e6ebec5d77d0f24fa0f452f4bb0b1c37984d515385f9d2865f9",
@@ -1343,9 +1343,9 @@
       "normalized_sha256": "455c1b8529cb903ad1c696c7a6cb3aac0e9746477c6d097d782da24ba4fda49d"
     },
     "src/main/index.ts": {
-      "sha256": "5571e4e0dea9ec2e3ddbd2892dfdf623fd1fe19f78e7309543c6dcd47354f2d5",
-      "size": 54316,
-      "normalized_sha256": "5571e4e0dea9ec2e3ddbd2892dfdf623fd1fe19f78e7309543c6dcd47354f2d5"
+      "sha256": "30869091ce9df7712ea8491db274f09412be871d28000ff9d82564d3bf1050b8",
+      "size": 54548,
+      "normalized_sha256": "30869091ce9df7712ea8491db274f09412be871d28000ff9d82564d3bf1050b8"
     },
     "src/main/media-response.ts": {
       "sha256": "4632d377643da645a9ebefdd09451d4a3d308b91ff0879a1ccde2ea5f6977188",

@@ -2,6 +2,17 @@
 
 ## Goal
 
+2026-10-01 Current Scope Override：用户明确要求“这个 cdp 上传就管这一批生成的就可以之前的不管”。本轮实施 [Spec Current Production Scope Amendment](../../douyin-auto-upload-spec.md)：按可信制作开始入口隔离运行内上传范围，旧任务不影响本轮调度、不出现在本轮操作列表，不重新处理旧媒体；历史结果及防重传保留。原历史闭批和五店 live acceptance 不属于本轮待完成工作。
+
+## Current Scope Implementation
+
+1. 在原 service 建立运行内范围；开始新制作前有界排空旧操作，预检授权绑定 generation。范围容纳多个账号/pageBatchId 和同授权多个导出 chunk，禁止旧注册、迟到回调或启动扫描取得资格。
+2. 原可信 IPC 在单项目、跨模板、手动导出及追加入口切换范围；正常状态仅投影当前成员。显式继续只能作用于当前范围，范围切换不修改旧结果或 fence。
+3. 回归测试证明旧 UNKNOWN 不阻塞新字节、本轮 UNKNOWN 仍停止、旧同字节零重传、同轮多授权/多 chunk 均可执行、旧异步通知及失败的排空不会越权。运行 typecheck、相关测试与隔离 packaged smoke，再按 Risk Gate 独立审查。
+4. 维护本轮 AOCI 条目、保留另一任务改动并仅提交本轮内容；按可信安装基线构建并验证交付。更新原 Recovery Record，明确工程证据和未进行真实上传。
+
+Self-Review：采用原 store/service/queue 和可信 start seam，不扩展 renderer authority，不修改另一窗口的制作 owner；不以新范围重置历史 fence。本轮可执行验证即可证明范围逻辑，不需要处置任何真实历史批次。
+
 把单项目及跨模板批量制作后的自动上传交付为可核查、可恢复的功能：正式成片自动入账，每组最多 9 条，全组 READY 后推进，永久防重传，最终停在千川“确定”前。处理历史批次阻塞，使用户能够明确结束不能继续的本地历史批次，再单独继续其他完整未选批次。
 
 ## Status and Authority
