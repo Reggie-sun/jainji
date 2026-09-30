@@ -391,3 +391,15 @@ Risk Gate 判定 REQUIRED：错误 closure 或迁移可能隐藏 UNKNOWN 账号�
 ### Candidate Identity
 
 候选 asar SHA-256 `775d5fbcba48e020430984c29444dbff5fde0be53c2eddbd3bbb819b5215c6c2`；main SHA-256 `43c1f8012c1bfb3d28d3e328566cbe004ae9eed40e2b636ae2956d02d5495d07`；preload 保持 `2241f41168042a2b36abaefb6817c880b1b4e26909fd52cef65e0c544bba023f`。下节单独记录实际安装与原私有数据保全核对；候选 PASS 不自动代表安装。
+
+### Installed Current Production Checkpoint
+
+软件提交 `57928bb`。launcher 已切至 `/home/reggie/Applications/jianji/releases/qianchuan-current-production-20261001-775d5fbc`，重新读取的 asar SHA 与上述 exact packaged 候选一致。正常桌面 unit `jianji-current-production-installed-20261001.service` 为 active，检查时 PID `3983651`、应用 CDP 端口 `42505`；这些值仅为本次观察。使用应用自己的 preload/CDP 交互打开原肥皂项目并进入作品页，没有调用真实千川浏览器或上传接口。
+
+安装前已证明没有运行中的制作、导出或上传，并备份 launcher、已保存项目和完整应用私有目录至 `/home/reggie/Applications/jianji/.backups/qianchuan-current-production-20261001-775d5fbc`。旧 closure release 保留。安装复制时 sandbox helper 的 symlink 被解引用，首轮启动因此拒绝；已恢复原安装方式的 `chrome-sandbox -> /opt/google/chrome/chrome-sandbox`，核对 root/4755 权限和相同 helper 字节后正常启动，未禁用 sandbox。
+
+安装后的原项目 ID `b024028b-5470-4d1e-b733-9a124656a98d`、26 个素材、既有完成记录和六个账号保留；无活动 agent/export，既有批量 run 为 finished。作品页显示“当前项目没有千川上传任务。”，当前 scope 的 tasks/batches/closedBatches 均为空。打开项目时的异步状态稳定后核对 saved 状态；进入作品页属于现有工作区导航。项目文件和备份的 JSON 只有 `updatedAt` 从 `2026-09-30T11:57:34.186Z` 更新为 `2026-09-30T18:51:27.914Z`，其余字段完整相同，不宣称项目文件 SHA 未变化。
+
+再次流式核对私有上传目录的全部 718 个文件，hash map 与安装前备份完全相同：ledger v3、562 tasks、644 intents、150 selection fences、0 closures。未结束、删除、恢复或重传任何历史批次，未生成真实商业素材，未进行真实千川上传、确定、发布或广告设置修改；工程与安装通过不代表真实平台或 Windows 验收。
+
+本次 release 的 `current-production-evidence/` 保存可信构建 source、candidate/package binding、build/Harness/三项 packaged smoke、AOCI、installed app/data 证明与桌面截图，后续交付可沿该 source 基线排除其他窗口尚未提交的制作改动。观察期临时路径不是唯一保留位置。文档按现有 observe scope 收尾，source Entry 不重复维护；最终 Verify/Check/Guide 单独核对全库治理状态。
