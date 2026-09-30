@@ -2,8 +2,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { BatchProductionStartSchema } from "../src/shared/batch-production";
+import { BatchProductionStartSchema, batchRequiresDisplayText } from "../src/shared/batch-production";
 import { BatchProductionController, type BatchProductionSession } from "../src/main/batch-production-controller";
+import { createBatchProductionRuntime } from "../src/main/batch-production-runtime";
 import { createDefaultProject, type ExportTask, type Project } from "../src/main/domain";
 import { ProjectWorkspaceSchema } from "../src/shared/project-workspace";
 import { DEFAULT_COVER_STICKER } from "../src/shared/cover-sticker";
@@ -86,6 +87,25 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it("projects saved per-media text switches in the same selection order used for production", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-batch-options-")); directories.push(root);
+    const value = project("无文字模板", 2);
+    const [first, second] = value.mediaItems;
+    value.templates[0].productPriceDraft = "";
+    value.workspaceDraft!.selectedMediaIds = [second.id, first.id, second.id];
+    value.workspaceDraft!.decorations.displayText = { enabled: false, x: 0.5, y: 0.13 };
+    value.workspaceDraft!.decorations.displayTextByMedia = { [first.id]: { enabled: true, x: 0.2, y: 0.4 } };
+    const file = path.join(root, "saved.json"); await new ProjectStore(file).save(value);
+    const recentProjectId = crypto.randomUUID();
+    const runtime = createBatchProductionRuntime({ root, registry: { list: () => [{ id: recentProjectId, name: value.name }], resolve: () => file },
+      changed: () => undefined } as unknown as Parameters<typeof createBatchProductionRuntime>[0]);
+    const [option] = await runtime.listProjects();
+    expect(option).toMatchObject({ sourceCount: 2, productPrice: "", displayTextRequiredByMedia: [false, true] });
+    expect(batchRequiresDisplayText({ ...option, requestedCount: 1 })).toBe(false);
+    expect(batchRequiresDisplayText({ ...option, requestedCount: 2 })).toBe(true);
+    expect(batchRequiresDisplayText({ requestedCount: 1 })).toBe(true);
+  });
+
   it("accepts only an explicit product selection and rejects forged upload authority", () => {
     const row = entry();
     expect(BatchProductionStartSchema.safeParse({ entries: [{ ...row, douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }] }).success).toBe(true);
@@ -223,18 +243,52 @@ describe("cross-template batch admission", () => {
     expect(queueReads).not.toHaveBeenCalled();
     queueReads.mockRestore();
   });
-  it("requires manual display text and unique saved project references", () => {
+  it("accepts blank batch drafts and still requires unique saved project references", () => {
     const row = entry();
-    expect(BatchProductionStartSchema.safeParse({ entries: [{ ...row, productPrice: " " }] }).success).toBe(false);
+    expect(BatchProductionStartSchema.parse({ entries: [{ ...row, productPrice: " " }] }).entries[0].productPrice).toBe("");
     expect(BatchProductionStartSchema.safeParse({ entries: [row, row] }).success).toBe(false);
     expect(BatchProductionStartSchema.parse({ entries: [row, entry()] }).entries).toHaveLength(2);
     expect(BatchProductionController).toBeDefined();
   });
 
-  it("rejects blank text before opening any template or starting a session", async () => {
-    const f = await fixture();
-    await expect(f.controller.start({ entries: [{ ...f.entries[0], productPrice: " " }] })).rejects.toThrow();
-    expect(f.dependencies.loadProject).not.toHaveBeenCalled(); expect(f.dependencies.session).not.toHaveBeenCalled();
+  it("rejects blank text for an enabled saved template before upload preflight or production", async () => {
+    const f = await fixture({ allComplete: true });
+    await f.controller.start({ entries: [{ ...f.entries[0], productPrice: " ", douyinUpload: { enabled: true, accountProduct: "肥皂" } }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs[0]).toMatchObject({ status: "failed", completedCount: 0 });
+    expect(f.controller.snapshot()?.jobs[0].error).toContain("请手动填写");
+    expect(f.dependencies.session).not.toHaveBeenCalled(); expect(f.dependencies.preflightUpload).not.toHaveBeenCalled();
+    expect(f.dependencies.outputDirectory).not.toHaveBeenCalled();
+  });
+
+  it("inherits disabled display text, exports a blank-price batch and restores its completed record", async () => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0].workspaceDraft!.decorations.displayText = { enabled: false, x: 0.4, y: 0.2 };
+    f.projects[0].templates[0].productPriceDraft = "";
+    const original = structuredClone(f.projects[0]);
+    await f.controller.start({ entries: [{ ...f.entries[0], productPrice: "" }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs[0]).toMatchObject({ status: "completed", completedCount: 1, productPrice: "" });
+    expect(f.starts[0].decorations).toMatchObject({ displayText: { enabled: false, x: 0.4, y: 0.2 } });
+    expect(f.starts[0].decorations?.productPrice).toBeUndefined();
+    expect(f.projects[0]).toEqual(original);
+    await f.controller.restore();
+    expect(f.controller.warning).toBeUndefined();
+    expect(f.controller.snapshot()?.jobs[0].status).toBe("completed");
+  });
+
+  it.each([1, 2])("uses only the first %i selected sources when checking per-media text", async requestedCount => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0] = project("蝴蝶贴", 2);
+    const [first, second] = f.projects[0].mediaItems;
+    f.projects[0].workspaceDraft!.decorations.displayText = { enabled: true, x: 0.5, y: 0.13 };
+    f.projects[0].workspaceDraft!.decorations.displayTextByMedia = {
+      [first.id]: { enabled: false, x: 0.2, y: 0.3 }, [second.id]: { enabled: true, x: 0.6, y: 0.4 },
+    };
+    await f.controller.start({ entries: [{ ...f.entries[0], requestedCount, productPrice: "" }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs[0].status).toBe(requestedCount === 1 ? "completed" : "failed");
+    expect(f.starts).toHaveLength(requestedCount === 1 ? 1 : 0);
   });
 
   it("freezes every template and waits for actual verified export completion before the next product", async () => {

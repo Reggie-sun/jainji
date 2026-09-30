@@ -12,7 +12,7 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import type { ModelConnections } from "./model-connections.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import type { BatchProjectOption } from "../shared/batch-production.js";
-import { DecorationSchema } from "../shared/decorations.js";
+import { DecorationSchema, requiresDisplayText } from "../shared/decorations.js";
 import { createAutomaticOutputDirectory } from "./automatic-output-directory.js";
 import { BatchProductionController } from "./batch-production-controller.js";
 import type { DouyinUploadService } from "./douyin-upload-service.js";
@@ -79,12 +79,14 @@ export function createBatchProductionRuntime(input: {
         const project = await new ProjectStore(input.registry.resolve(item.id)).readSnapshot();
         const workspace = project.workspaceDraft;
         const template = project.templates.find(template => template.id === project.activeTemplateId) ?? project.templates[0];
-        const sourceCount = workspace?.selectedMediaIds.length ?? project.mediaItems.filter(media => media.probeStatus === "ready").length;
+        const mediaIds = [...new Set(workspace?.selectedMediaIds ?? project.mediaItems.filter(media => media.probeStatus === "ready").map(media => media.id))];
+        const sourceCount = mediaIds.length;
         const decorations = DecorationSchema.parse({ ...workspace?.decorations, productPrice: template.productPriceDraft ?? "" });
         return { recentProjectId: item.id, name: project.name, sourceCount, requestedCount: workspace?.requestedCount ?? Math.max(1, sourceCount),
           productPrice: decorations.productPrice ?? "", coverEnabled: true,
           displayMode: decorations.displayMode === "full" ? "full" as const : "first-5s" as const, mode: decorations.mode ?? "manual",
-          coverMode: project.coverSticker?.trackingMode };
+          coverMode: project.coverSticker?.trackingMode,
+          displayTextRequiredByMedia: mediaIds.map(id => requiresDisplayText(decorations, [id])) };
       } catch {
         return { recentProjectId: item.id, name: item.name, sourceCount: 0, requestedCount: 1, productPrice: "", coverEnabled: false,
           displayMode: "full" as const, mode: "random" as const, error: "项目文件无法读取，请先在制作页面重新打开或导入。" };

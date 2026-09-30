@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-09-30T21:53:26Z",
+  "updated_at": "2026-09-30T22:45:42Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "52d44ddc5dfc1c83d6322d905f08ac64a44a10599955d4dbf02b70a405d6f661",
@@ -1153,14 +1153,14 @@
       "normalized_sha256": "d31b4b0e17ad21a5bfb6e720809bbd4898a4bee13f9e2bf4473f42f912f504f2"
     },
     "src/main/batch-production-controller.ts": {
-      "sha256": "65b10cf1388a5b5d8abd0c965c6ec8f1e14c58e44570786ae63d9fb5cfd35037",
-      "size": 18581,
-      "normalized_sha256": "65b10cf1388a5b5d8abd0c965c6ec8f1e14c58e44570786ae63d9fb5cfd35037"
+      "sha256": "1d5d5858cc776b3e78948c8ae6e611b4b8d089becf66d94aa5c3fd8e8d9a6865",
+      "size": 18620,
+      "normalized_sha256": "1d5d5858cc776b3e78948c8ae6e611b4b8d089becf66d94aa5c3fd8e8d9a6865"
     },
     "src/main/batch-production-runtime.ts": {
-      "sha256": "f6878ed41b2bdb3bcbc9aa2e0a4f59b830d35396f44c533b9c0cab9656fc65f9",
-      "size": 5940,
-      "normalized_sha256": "f6878ed41b2bdb3bcbc9aa2e0a4f59b830d35396f44c533b9c0cab9656fc65f9"
+      "sha256": "1206ae767bf5b17d6d8f54722dadd52f65cab3d3a2b6a5c1a4ebb19ad6df3577",
+      "size": 6124,
+      "normalized_sha256": "1206ae767bf5b17d6d8f54722dadd52f65cab3d3a2b6a5c1a4ebb19ad6df3577"
     },
     "src/main/bug-feedback-ipc.ts": {
       "sha256": "3a7f4c243eae9448b93c5fd2652b9e730b154fe6510bee0788508df047b57c6b",
@@ -1628,9 +1628,9 @@
       "normalized_sha256": "f71ccf0eeab8b659e61e57ee8f2952c589629329e696c5fbad36794cc801953b"
     },
     "src/renderer/BatchProductionPanel.tsx": {
-      "sha256": "e8501a2974c9958bae4f8cc26e0f1b469ecaea5d4b3008dc14ca0b79b4165636",
-      "size": 14183,
-      "normalized_sha256": "e8501a2974c9958bae4f8cc26e0f1b469ecaea5d4b3008dc14ca0b79b4165636"
+      "sha256": "cf0f83098c273145f175cfa11f5b65807d48af65c836502778fca4fcf2af02bc",
+      "size": 14861,
+      "normalized_sha256": "cf0f83098c273145f175cfa11f5b65807d48af65c836502778fca4fcf2af02bc"
     },
     "src/renderer/BugFeedbackDialog.tsx": {
       "sha256": "4efc9e78614026b3ecfeeec6613c46d0132fee9e7c4c02687b7e47b8287886b7",
@@ -1884,9 +1884,9 @@
       "normalized_sha256": "6f3934884460ce52190977537b3690d742d945d4d9b463eb737d04b44edb7b9a"
     },
     "src/shared/batch-production.ts": {
-      "sha256": "c435054bbcd89231210dd75016f4d44de7652585e47ee86ac656472033cc11ef",
-      "size": 3535,
-      "normalized_sha256": "c435054bbcd89231210dd75016f4d44de7652585e47ee86ac656472033cc11ef"
+      "sha256": "04ce38d25c97db48c37e3a45979491adb18fd1c2caab2d269f5cc711020c2114",
+      "size": 3793,
+      "normalized_sha256": "04ce38d25c97db48c37e3a45979491adb18fd1c2caab2d269f5cc711020c2114"
     },
     "src/shared/bug-feedback.ts": {
       "sha256": "99d4cfbdb9b180d61a3cd3af1d28753e5c27935944c0939529a3b6d82f77de50",

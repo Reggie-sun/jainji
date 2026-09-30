@@ -179,14 +179,14 @@ export class BatchProductionController {
     const input = { mediaIds, ruleId: workspace?.ruleId ?? "black-gold" as const, brief: workspace?.brief ?? "", decorations,
       exportFormat: workspace?.exportFormat ?? "mp4" as const, exportSettings: workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS, requestedCount: quantity.total,
       ...(entry.douyinUpload ? { douyinUpload: entry.douyinUpload } : {}) };
-    AgentStartSchema.parse({ ...input, outputDirectory: "/pending" });
+    const validatedInput = AgentStartSchema.parse({ ...input, outputDirectory: "/pending" });
     if (entry.douyinUpload && input.exportFormat !== "mp4") throw new Error("千川上传仅支持 MP4，请先修改该模板的导出格式。");
     const authorization = entry.douyinUpload ? await this.dependencies.preflightUpload?.(entry.douyinUpload, quantity.total) : undefined;
     if (entry.douyinUpload && !authorization) throw new Error("千川账号预检不可用，请检查上传设置。");
     const projectPath = path.join(this.root, this.run!.id, `${job.id}.json`);
     await new ProjectStore(projectPath).save(project);
     job.projectId = project.id; job.name = project.name; job.actualCount = quantity.total; job.mode = decorations.mode ?? "manual";
-    return { job, projectPath, project, input, requestedOutput: entry.outputDirectory, authorization };
+    return { job, projectPath, project, input: validatedInput, requestedOutput: entry.outputDirectory, authorization };
   }
 
   private async execute(entries: BatchProductionEntry[], signal: AbortSignal, initialSave: Promise<void>): Promise<void> {

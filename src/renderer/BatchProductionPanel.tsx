@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import type { DesktopState } from "../shared/desktop";
-import { BatchProductionStartSchema, type BatchProjectOption } from "../shared/batch-production";
+import { BatchProductionStartSchema, batchRequiresDisplayText, type BatchProjectOption } from "../shared/batch-production";
 import { calculateExactProductionQuantity, MAX_AGENT_OUTPUTS } from "../shared/agent";
-import { PRODUCT_PRICE_MAX_LENGTH } from "../shared/decorations";
+import { PRODUCT_PRICE_MAX_LENGTH, PRODUCT_PRICE_HELP, RequiredProductPriceSchema } from "../shared/decorations";
 import { Heading, Icon } from "./ui";
 import { BatchProductionDetails } from "./BatchProductionDetails";
 import { DouyinUploadControls, type UploadSelectionDraft } from "./DouyinUploadControls";
@@ -43,12 +43,12 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   const update = (id: string, next: Partial<Row>) => setRows(current => current.map(row => row.recentProjectId === id ? { ...row, ...next } : row));
   const selected = rows.filter(row => row.selected);
   const entries = selected.map(row => ({ recentProjectId: row.recentProjectId, requestedCount: row.requestedCount,
-    productPrice: row.productPrice, coverEnabled: row.coverEnabled, displayMode: row.displayMode, mode: row.mode,
+    productPrice: batchRequiresDisplayText(row) ? row.productPrice : "", coverEnabled: row.coverEnabled, displayMode: row.displayMode, mode: row.mode,
     ...(row.douyinUpload ? { douyinUpload: row.douyinUpload } : {}),
     ...(row.outputDirectory ? { outputDirectory: row.outputDirectory } : {}) }));
   const valid = BatchProductionStartSchema.safeParse({ entries }).success && selected.every(row => {
     const quantity = calculateExactProductionQuantity(row.sourceCount, row.requestedCount);
-    return !row.error && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!row.douyinUpload || state.douyinUpload?.accounts.some(account => account.product === row.douyinUpload?.accountProduct && account.available));
+    return !row.error && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!batchRequiresDisplayText(row) || RequiredProductPriceSchema.safeParse(row.productPrice).success) && (!row.douyinUpload || state.douyinUpload?.accounts.some(account => account.product === row.douyinUpload?.accountProduct && account.available));
   });
   const run = state.batchProduction;
   const running = run?.status === "running" || run?.status === "cancelling";
@@ -99,6 +99,8 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
       {rows.map((row, index) => {
         const quantity = calculateExactProductionQuantity(row.sourceCount, row.requestedCount);
         const invalidQuantity = !quantity || quantity.total > MAX_AGENT_OUTPUTS;
+        const needsText = batchRequiresDisplayText(row);
+        const invalidText = needsText && !RequiredProductPriceSchema.safeParse(row.productPrice).success;
         const prefix = `batch-${row.recentProjectId}`;
         return <section className={`card batch-template-row${row.selected ? " selected" : ""}`} key={row.recentProjectId} aria-label={`${row.name}制作设置`}>
           <div className="batch-template-title"><label><input type="checkbox" aria-label={`选择模板 ${row.name}`} checked={row.selected} disabled={busy || Boolean(row.error)} onChange={event => update(row.recentProjectId, { selected: event.target.checked })} /><span className="batch-order">{index + 1}</span><span className="batch-template-name"><strong title={row.name}>{row.name}</strong><span className="small-tag">{row.sourceCount} 条素材</span></span></label></div>
@@ -108,7 +110,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
             </div>
             <div className="batch-template-controls">
               <label htmlFor={`${prefix}-count`}>条数<input id={`${prefix}-count`} aria-label="想制作的视频条数" type="number" min={1} max={MAX_AGENT_OUTPUTS} step={1} placeholder="例如 100" value={Number.isFinite(row.requestedCount) ? row.requestedCount : ""} disabled={busy} onChange={event => update(row.recentProjectId, { requestedCount: event.target.valueAsNumber })} />{invalidQuantity && <small className="batch-error" role="alert">请填写有效条数，最多 {MAX_AGENT_OUTPUTS} 条</small>}</label>
-              <label htmlFor={`${prefix}-price`}>展示文字 / 价格<textarea id={`${prefix}-price`} rows={2} value={row.productPrice} maxLength={PRODUCT_PRICE_MAX_LENGTH} disabled={busy} onChange={event => update(row.recentProjectId, { productPrice: event.target.value })} placeholder="手动填写，最多 2 行、每行 12 字" /></label>
+              <label htmlFor={`${prefix}-price`}>展示文字 / 价格<textarea id={`${prefix}-price`} rows={2} value={row.productPrice} maxLength={PRODUCT_PRICE_MAX_LENGTH} required={needsText} aria-invalid={row.selected && invalidText} disabled={busy || !needsText} onChange={event => update(row.recentProjectId, { productPrice: event.target.value })} placeholder={needsText ? "手动填写，最多 2 行、每行 12 字" : "模板已关闭展示文字"} />{!needsText && <small>沿用模板：本轮素材不显示文字</small>}{row.selected && invalidText && <small className="batch-error" role="alert">{PRODUCT_PRICE_HELP}</small>}</label>
               <label htmlFor={`${prefix}-timing`}>价格显示时段<select id={`${prefix}-timing`} value={row.displayMode} disabled={busy} onChange={event => update(row.recentProjectId, { displayMode: event.target.value as Row["displayMode"] })}><option value="full">全程显示</option><option value="first-5s">仅前 5 秒（渐隐）</option></select></label>
               <label className="batch-cover-toggle"><span>覆盖原贴纸</span><span><input type="checkbox" aria-label={`${row.name}开启覆盖`} checked={row.coverEnabled} disabled={busy} onChange={event => update(row.recentProjectId, { coverEnabled: event.target.checked })} />开启</span></label>
               <DouyinUploadControls compact idPrefix={`${prefix}-upload`} accounts={state.douyinUpload?.accounts} value={row.douyinUpload}

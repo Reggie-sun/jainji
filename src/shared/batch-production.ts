@@ -2,14 +2,14 @@ import { z } from "zod";
 import { MAX_AGENT_OUTPUTS } from "./agent.js";
 import type { AgentItem } from "./agent.js";
 import type { ExportTask } from "../main/domain.js";
-import { RequiredProductPriceSchema } from "./decorations.js";
+import { ProductPriceSchema } from "./decorations.js";
 import { QianchuanUploadSelectionSchema, type DouyinUploadStatus } from "./douyin-upload.js";
 import { QianchuanProductSchema } from "./qianchuan-account.js";
 
 export const BatchProductionEntrySchema = z.object({
   recentProjectId: z.string().uuid(),
   requestedCount: z.number().int().min(1).max(MAX_AGENT_OUTPUTS),
-  productPrice: RequiredProductPriceSchema,
+  productPrice: ProductPriceSchema,
   coverEnabled: z.boolean(),
   displayMode: z.enum(["full", "first-5s"]),
   mode: z.enum(["manual", "agent", "random"]).optional(),
@@ -33,7 +33,12 @@ export interface BatchProjectOption {
   displayMode: "full" | "first-5s";
   mode: "manual" | "agent" | "random";
   coverMode?: "manual" | "agent" | "assisted";
+  displayTextRequiredByMedia?: boolean[];
   error?: string;
+}
+
+export function batchRequiresDisplayText(project: Pick<BatchProjectOption, "requestedCount" | "displayTextRequiredByMedia">): boolean {
+  return project.displayTextRequiredByMedia?.slice(0, project.requestedCount).some(Boolean) ?? true;
 }
 
 export const BatchProductionJobSchema = z.object({
@@ -43,7 +48,7 @@ export const BatchProductionJobSchema = z.object({
   projectId: z.string().uuid().optional(),
   requestedCount: z.number().int().positive(),
   actualCount: z.number().int().nonnegative(),
-  productPrice: RequiredProductPriceSchema,
+  productPrice: ProductPriceSchema,
   coverEnabled: z.boolean(),
   displayMode: z.enum(["full", "first-5s"]),
   mode: z.enum(["manual", "agent", "random"]).optional(),
