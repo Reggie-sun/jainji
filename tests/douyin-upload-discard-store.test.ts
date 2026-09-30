@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DouyinUploadStore, frozenInputDigest, uploadTaskId } from "../src/main/douyin-upload-store.js";
-import { QianchuanUploadConfigSchema, type UploadAuthorization } from "../src/shared/douyin-upload.js";
+import { QianchuanUploadConfigSchema, uploadFailure, type UploadAuthorization } from "../src/shared/douyin-upload.js";
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -27,7 +27,7 @@ async function fixture(count = 60) {
   }
   const [selected, blocked] = store.tasks();
   await store.markSelecting(selected!.result.upload_task_id, { targetId: "original-tab", pageBatchId: authorization.pageBatchId, modalSessionId: randomUUID() }, 1);
-  const unknown = store.task(selected!.result.upload_task_id)!; unknown.result.state = "NEEDS_HUMAN"; await store.saveTask(unknown);
+  const unknown = store.task(selected!.result.upload_task_id)!; unknown.result.state = "NEEDS_HUMAN"; unknown.result.failure = uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "具体原页面错误", "核查原页", true).failure; await store.saveTask(unknown);
   const failed = store.task(blocked!.result.upload_task_id)!;
   failed.result = { ...failed.result, state: "NEEDS_HUMAN", failure: { category: "page", code: "PAGE_CONTRACT_CHANGED", message: "原页面不可核查", next_action: "人工核查", requires_human: true, retryable: false } };
   await store.saveTask(failed);
@@ -35,6 +35,11 @@ async function fixture(count = 60) {
 }
 
 describe("explicit deletion of an unknown Qianchuan batch", () => {
+  it("preserves existing unknown diagnostics when loading another batch for deletion", async () => {
+    const f = await fixture(3), before = f.store.tasks();
+    const reopened = new DouyinUploadStore(f.root); await reopened.load();
+    expect(reopened.tasks()).toEqual(before);
+  });
   it("discards all 60 tasks while preserving outcomes and fence bytes across restart", async () => {
     const { root, store, authorization, selected } = await fixture();
     const before = store.tasks(), fenceBefore = await readFile(path.join(root, "selection-fences", `${selected}.json`));

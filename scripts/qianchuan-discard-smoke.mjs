@@ -7,14 +7,15 @@ import path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url), directory = await mkdtemp(path.join(os.tmpdir(), "jianji-discard-smoke-"));
-const userData = path.join(directory, "userData"), home = path.join(directory, "home");
-await mkdir(home); await mkdir(userData);
+const packaged = process.argv.includes("--packaged"), home = path.join(directory, "home");
+const userData = packaged ? path.join(home, ".config/jianji") : path.join(directory, "userData");
+await mkdir(home); await mkdir(userData, { recursive: true });
 const bootstrap = path.join(directory, "bootstrap.cjs");
 await writeFile(bootstrap, `if(process.type === "browser") { const {app}=require("electron"); app.setPath("userData",${JSON.stringify(userData)}); app.setPath("documents",${JSON.stringify(directory)}); app.getAppPath=()=>${JSON.stringify(root)}; process.resourcesPath=${JSON.stringify(path.join(root,"resources"))}; require(${JSON.stringify(path.join(root,"dist-electron/main.cjs"))}); }`);
 const environment = { PATH: process.env.PATH, DISPLAY: process.env.DISPLAY, ...(process.env.XAUTHORITY ? {XAUTHORITY:process.env.XAUTHORITY}:{}), HOME: home, NODE_PATH: path.join(root,"node_modules"), LANG:"C.UTF-8", XDG_CONFIG_HOME: path.join(home,".config"), XDG_CACHE_HOME: path.join(home,".cache"), XDG_DATA_HOME:path.join(home,".local/share") };
 let app;
 async function launch() {
-  app = await require("playwright-core")._electron.launch({ executablePath: require("electron"), args:[bootstrap], cwd:root, env:environment });
+  app = await require("playwright-core")._electron.launch({ executablePath: process.env.JIANJI_SMOKE_ELECTRON || require("electron"), args:packaged ? [] : [bootstrap], cwd:root, env:environment });
   const page = await app.firstWindow(); await page.waitForFunction(() => !!window.jianji);
   return page;
 }

@@ -125,6 +125,7 @@ export class DouyinUploadStore {
       for (const task of data.tasks) {
         if (task.result.state === "DISCARDED") continue;
         const fence = fences.get(task.result.upload_task_id);
+        if (fence && task.result.state === "NEEDS_HUMAN" && task.result.upload_outcome === "MAY_HAVE_UPLOADED" && !task.result.retryable) continue;
         if (fence && task.result.state !== "WAITING_FOR_CONFIRMATION") task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false, readyEvidence: undefined,
           failure: uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "存在文件选择记录，上传结果需要人工核查。", "只读核查原任务页面；禁止重新选文件。", true).failure };
         else if (!fence && !task.result.duplicate_of && !["PENDING", "FAILED_TERMINAL", "CANCELLED", "NEEDS_HUMAN", "FAILED_RETRYABLE"].includes(task.result.state)) {
