@@ -8,6 +8,26 @@ plan: shape-matched-cover-plan.md
 
 # Outcome
 
+## Acceptance Refresh — 2026-10-01
+
+用户明确要求“验收”。本轮结论为 **ENGINEERING_VERIFIED / LIVE_ACCEPTANCE_INCOMPLETE / PRODUCT_DISABLED**。用户已认可此前已知片段的轮廓覆盖效果，按原效果保留；这是该样例的人工视觉认可，不签发全片源事实、模型资格或生产准入。本轮不修改产品代码、连接选择、已接受效果及历史冻结结果。
+
+**Fresh Engineering Verification:** 起始 HEAD `b86f8c9`，选款实现为 `d489dba`；在保留共享树已有改动的状态下，`npm run typecheck` exit0，provider、shape candidates、activation、pixel、compiler、controller、runner、queue、supervisor evidence integration、local random 共10 suites / **299 tests PASS**，145.23秒，exit0。其模型返回为模拟，部分队列/像素 fixture 使用真实 CPU FFmpeg；不是商业视觉成功。测试后426个源/测试/脚本/config快照仅发现另一任务的 `douyin-upload-service.ts`、`index.ts` 及对应 service test 变化，shape 路径未变；随后再次运行全项目 typecheck，exit0。实际上传库重新扫描69款，两段已知候选 mask、既有规格和摆放下共同安全集合仍只有1款、未覆盖像素0；没有多候选真实 Agent 选款结果。
+
+**Actual Codex Account Observation:** 当前 active router program SHA `75b65f99252e24ba0d4364243d40762c785a899b755b3cf3640db19267661c65`，安装来源 `ba795e4`。独立新 probe `71438bef-630b-437f-a850-d86c3fc37001` 的 Docker/native conformance 已完成，随后只做一次应用独立 ChatGPT 登录的认证目录 GET；未读取全局 Codex 登录、未要求 OpenAI Key、未查询费用或配额。真实 receipt `f771a4a7-0bf4-49bb-892d-198b05282cdb`：2026-09-30 18:17:38 UTC，authenticated=true，目录7项，exact `gpt-6.1-sol` 匹配0，image_input_supported=false，classification=INCOMPLETE；account_queries=1，provider_requests=0。这个结果只说明该时间、该账号与当前受管目录条件不满足，不证明此模型永久不可用，也不使用本聊天或原生工程子代理冒充独立视觉 actor。
+
+**Actual MiniMax Image Attempt:** 从 canonical `ConnectionStore` 读取应用已有 `MiniMax-M3` / responses / `https://api.minimaxi.com/v1` 连接，仅向私有临时 credential reference 交接，应用配置 SHA 前后相同，不输出 Key。准备脚本前两次本地失败均未发请求；定位并更正私有脚本误用的连接目录后交接成功，不修改应用 owner。新 probe `02042a26-7e77-421a-ab1d-0aa0c3a45df7` 完成 Docker/native conformance，按已接受 unrestricted spending 合同只发出一次8张128×128随机图的 capability 请求。
+
+正式 canonical receipt `c5ab6f78-77a0-4441-83a6-fcf609369cfb` 及 native receipt `5abe5c8b-9d58-40c2-8c35-eaf266fe2cc9`：provider_requests=1、wire_requests=1、HTTP 200、实际请求摘要与 native 请求摘要相同；返回在 broker 被判 **IDENTITY_UNVERIFIED**，隔离保留其2771 bytes的摘要，不放行模型输出。native exit1，上层 `IMAGE_NATIVE_EXECUTION_INCOMPLETE`，classification=INCOMPLETE，容器已移除。actual_cost_usd=null；不把null当零，不追加请求、不重放、不切换模型。尚不能判断身份拒绝的具体远端原因，HTTP 200不能替代模型身份、成功识图或资格。
+
+**Execution Blocker:** 当前 router `image_run.py::require_live_admission` 对非 owned probe 的 unrestricted 请求仍拒绝 `IMAGE_FORMAL_EXECUTION_UNAVAILABLE`，没有正式项目图像执行 owner。即使随机图 probe 合格，也不能用于发送实际48张选款/样片图片或冒充正式 full-canvas run。真实素材选款与独立样片复核请求仍为0、选款=null、自然度/安全复核=NOT_EVALUATED；新独立 holdout、A/B/joint正式指标和完整源资格仍未评估。模型回复/目录门或工程 conformance 不能替代 truth-vs-review qualification。本次因此停在真实路线 blocker，不是预算、用户未回复“继续”或样片审美未认可。
+
+**Evidence / Boundaries:** 私有证据目录 `/home/reggie/.local/state/jianji-source-fact-qualification/acceptance-20260930T180803Z` 保存命令日志、source stability、connection metadata、frozen refs、conformance和live投影；canonical router receipts仍由各原 state/runs owner保管。临时 Key在完成请求后删除，仅保留非秘密交接观察。复用 `external-subagent` 的 sealed contract、qualified route、Docker containment、canonical receipt机制，未调用 Kimi；独立原生 mapper仅核对实际 owners/安装，不充当正式 actor。没有产品代码修改，本轮不触发新增 implementation snapshot review；Parent核对证据与最终diff。仓库无专用 session capture skill，使用本 record 和原 plan维护检查点，未写 memory。
+
+**AOCI / Final Checks:** 本轮两个 docs 均为 observe，未新增或修改 managed source，不制造索引条目。实际 Verify/Check/Guide均返回结构有效、全库未对齐：仅 `src/main/douyin-upload-service.ts`、`src/main/index.ts` 两个其他任务对象 stale，Check `ok=false / exit_code=1`、Guide `authoring_required`；本任务 shape 对象无finding。保留已有混合 `aoci.code.txt`/baseline及并发 owner，不越权维护其源码；全库AOCI收尾由该owner完成。本轮最终快照另见5个千川 source/test/script变化，shape源及本轮299项测试对象保持相同，fresh typecheck正常退出；`git diff --check`通过。只提交本轮record/plan增量。
+
+M5-D2A保持 **INCOMPLETE**、正式未评估指标=null/NOT_EVALUATED、authority=none、eligible=false。PRODUCT_DISABLED；M5-B activation、M5-C issuer、M5-D3、M5-D4及verified-no-sticker production issuance全部BLOCKED；既有手动/assisted/矩形生产行为不因此判为不可用。要完成这条新形状匹配路径，仍须真实路线身份/视觉能力和项目执行 owner、真实选款/独立复核、独立完整源资格及原有生产 gates，不以用户样例认可放宽。
+
 ## Current Selection Slice — 2026-09-30
 
 本次工程已接通“共同候选 → 全目标真实扩边摆放图片 → 现有创作 shortlist → 选后重验冻结 → 原队列真实样片独立复核”。真实选款及复核仍 **INCOMPLETE**，未调用外部模型，未选定生产款式；下面旧星形观察是历史诊断，不能解释为 Agent 自动选款。

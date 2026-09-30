@@ -8,6 +8,10 @@ spec: shape-matched-cover-spec.md
 
 # Goal And Authority
 
+## Acceptance Checkpoint — 2026-10-01
+
+用户要求验收，Parent完成fresh typecheck、10 suites /299 tests及69款已知片段几何诊断，工程链路已验证；此前样例效果已获用户认可并保持不变。当前受管 Codex认证目录查询仍无 exact `gpt-6.1-sol`，MiniMax实际8图请求虽HTTP 200却因 `IDENTITY_UNVERIFIED` 隔离，两个路线均未完成视觉资格；正式项目 image execution owner仍缺失。实际选款/独立复核及M5-D2A为INCOMPLETE，产品保持关闭。新 receipts、零重试/零切换、真实请求计数、共享树验证边界和后续缺口由[验收刷新记录](shape-matched-cover-real-visual-20260930.md#acceptance-refresh--2026-10-01)独占。本次验收不修改实现、生产许可或历史结果，不能将用户对样例的认可或299项测试转为新功能完结。
+
 ## Active Slice — Agent Naturalness Selection
 
 2026-09-30 当前任务授权实现选款工程与真实效果诊断；HEAD 起点 `6794549`。Parent 只读核对 Controller/Provider/Runner、共同候选与像素 owners，named native `code_mapper` 独立核对冻结及样片复核。原 M1–M5 checkpoint 文字保留历史；本切片不授权生产激活、真实 source admission 或 M5-D2A QUALIFIED。当前用户禁止 Kimi，工程审查按适用 Risk Gate 使用原生职责。
