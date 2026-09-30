@@ -10,10 +10,11 @@ const defaultConfig = QianchuanUploadConfigSchema.parse({});
 export function DouyinUploadPanel({ projectId, status, onState }: { projectId: string; status?: DouyinUploadStatus; onState(state: DesktopState): void; }) {
   const [config, setConfig] = useState<DouyinUploadStatus["config"]>(status?.config ?? defaultConfig);
   const key = JSON.stringify(status?.config ?? defaultConfig), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const tasks = status?.tasks.filter(task => task.project_id === projectId) ?? [];
+  const tasks = status?.tasks.filter(task => task.project_id === projectId && task.state !== "DISCARDED") ?? [];
   const uploaded = tasks.filter(task => task.upload_outcome === "READY").length;
   const pending = tasks.filter(task => task.state === "PENDING").length;
   const processing = tasks.filter(task => processingStates.includes(task.state)).length;
+  const [deleting, setDeleting] = useState<string>();
   const currentPlan = (task: QianchuanUploadResult) => status?.accounts.find(account => account.available && account.product === task.accountProduct && account.advertiserId === task.advertiserId && account.adId !== task.adId)?.adId;
   useEffect(() => setConfig(status?.config ?? defaultConfig), [key]);
   const perform = async (action: () => Promise<DesktopState>) => {
@@ -58,6 +59,8 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
         {currentPlan(task) && task.upload_outcome === "NOT_SELECTED" && ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(task.state) && <><button type="button" disabled={busy} onClick={() => void perform(() => window.jianji.retargetDouyinUpload(projectId, task.upload_task_id, currentPlan(task)!))}>本批改传当前计划 {currentPlan(task)}</button><small>更改后仍需点击“安全继续”；已有未知任务的阻塞会保留。</small></>}
         {!["FAILED_TERMINAL", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state) && <button type="button" disabled={busy || task.upload_outcome === "NOT_SELECTED" && !!currentPlan(task)} onClick={() => void perform(() => window.jianji.resumeDouyinUpload(projectId, task.upload_task_id))}>{task.upload_outcome === "NOT_SELECTED" ? "安全继续" : "只读核查页面"}</button>}
         {task.state !== "WAITING_FOR_CONFIRMATION" && <button type="button" disabled={busy} onClick={() => void perform(() => window.jianji.stopDouyinUpload(projectId, task.upload_task_id))}>停止任务</button>}
+        {["PENDING", "NEEDS_HUMAN", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"].includes(task.state) && <button type="button" disabled={busy} onClick={() => setDeleting(task.upload_task_id)}>删除本批上传任务</button>}
+        {deleting === task.upload_task_id && <div role="group" aria-label="确认删除本批上传任务"><p>永久删除这一整批上传任务，不能恢复。本地成片保留；结果未知文件的防重传记录仍有效。</p><button type="button" disabled={busy} onClick={() => void perform(() => window.jianji.discardDouyinUploadBatch(projectId, task.upload_task_id)).then(done => { if (done) setDeleting(undefined); })}>确认删除整批</button><button type="button" disabled={busy} onClick={() => setDeleting(undefined)}>保留任务</button></div>}
       </>}
     </article>)}{!tasks.length && <p>当前项目没有千川上传任务。</p>}</div>
     {!!status?.legacyTasks.length && <details><summary>旧创作者中心记录（只读）</summary>{status.legacyTasks.map(task => <p key={task.upload_task_id}>{task.file_name} · {task.state} · {task.publish_outcome}</p>)}</details>}

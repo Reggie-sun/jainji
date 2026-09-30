@@ -64,6 +64,7 @@ export class DouyinUploadStore {
   private get statePath(): string { return path.join(this.root, "state.json"); }
   private get fenceDirectory(): string { return path.join(this.root, "selection-fences"); }
   private get retargetHistoryDirectory(): string { return path.join(this.root, "retarget-history"); }
+  private get discardHistoryDirectory(): string { return path.join(this.root, "discard-history"); }
   private get legacyPath(): string { return path.join(this.root, "legacy-v1.json"); }
   get config(): QianchuanUploadConfig { return structuredClone(this.data.config); }
   intents(): UploadIntent[] { return structuredClone(this.data.intents); }
@@ -92,7 +93,7 @@ export class DouyinUploadStore {
       try { original = await privateBytes(this.statePath); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       let data: State; const names = await readdir(this.root);
       if (!original) {
-        if (oldMarkers.size || names.includes("legacy-v1.json") || names.includes("retarget-history") || names.some(name => name.startsWith("state.json")) || (await readdir(this.fenceDirectory)).length) throw new Error("Missing ledger with history");
+        if (oldMarkers.size || names.includes("legacy-v1.json") || names.includes("retarget-history") || names.includes("discard-history") || names.some(name => name.startsWith("state.json")) || (await readdir(this.fenceDirectory)).length) throw new Error("Missing ledger with history");
         data = empty();
       } else {
         const value = JSON.parse(original.toString("utf8"));
@@ -122,6 +123,7 @@ export class DouyinUploadStore {
       }
       this.validate(data, fences);
       for (const task of data.tasks) {
+        if (task.result.state === "DISCARDED") continue;
         const fence = fences.get(task.result.upload_task_id);
         if (fence && task.result.state !== "WAITING_FOR_CONFIRMATION") task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false, readyEvidence: undefined,
           failure: uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "存在文件选择记录，上传结果需要人工核查。", "只读核查原任务页面；禁止重新选文件。", true).failure };
@@ -189,9 +191,10 @@ export class DouyinUploadStore {
     return this.serial(async () => {
       this.assertReady(); const id = task.result.upload_task_id, old = this.data.tasks.find(value => value.result.upload_task_id === id);
       if (old && (old.inputDigest !== task.inputDigest || JSON.stringify(old.authorization) !== JSON.stringify(task.authorization) || JSON.stringify(old.config) !== JSON.stringify(task.config))) throw new Error("Frozen task changed");
+      if (task.result.state === "DISCARDED" && old?.result.state !== "DISCARDED" || old?.result.state === "DISCARDED" && JSON.stringify(old) !== JSON.stringify(task)) throw new Error("Discarded tasks can only be set by whole-batch deletion and cannot be restored");
       if (this.hasMarker(id) && (task.result.upload_outcome === "NOT_SELECTED" || old?.result.attempt_count !== task.result.attempt_count)) throw new Error("Selection fence cannot be reversed");
       const tasks = this.data.tasks.filter(value => value.result.upload_task_id !== id).map(value => {
-        if (value.result.duplicate_of !== id) return value;
+        if (value.result.duplicate_of !== id || value.result.state === "DISCARDED") return value;
         return { ...value, result: { ...value.result, state: task.result.readyEvidence ? "WAITING_FOR_CONFIRMATION" as const : "NEEDS_HUMAN" as const, upload_outcome: task.result.readyEvidence ? "READY" as const : "MAY_HAVE_UPLOADED" as const, readyEvidence: task.result.readyEvidence, failure: task.result.readyEvidence ? undefined : task.result.failure, retryable: false, timestamp: task.result.timestamp } };
       });
       await this.commit({ ...this.data, tasks: [...tasks, task] });
@@ -265,10 +268,40 @@ export class DouyinUploadStore {
       return batchTasks.map(task => structuredClone(movedById.get(task.result.upload_task_id)!));
     });
   }
+  discardBatch(id: string, beforeCommit?: () => Promise<void>): Promise<void> {
+    return this.serial(async () => {
+      this.assertReady();
+      const selected = this.task(id);
+      if (!selected) throw new Error("找不到待删除的上传任务。");
+      const batchId = selected.authorization.pageBatchId;
+      const tasks = this.data.tasks.filter(task => task.authorization.pageBatchId === batchId);
+      const intents = this.data.intents.filter(intent => intent.authorization.pageBatchId === batchId);
+      if (tasks.length !== selected.authorization.expectedCount || intents.length !== tasks.length ||
+        tasks.some(task => !["PENDING", "NEEDS_HUMAN", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"].includes(task.result.state))) throw new Error("仅可删除完整准入且未在运行、未上传完成的整批任务。");
+      const archiveBytes = Buffer.from(`${JSON.stringify({ version: 1, action: "discard-batch", intents, tasks }, null, 2)}\n`);
+      const archivePath = path.join(this.discardHistoryDirectory, `${batchId}.json`);
+      try {
+        await secureUploadDirectory(this.discardHistoryDirectory); await strictSyncDirectory(this.root);
+        let handle;
+        try {
+          handle = await open(archivePath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
+          await handle.writeFile(archiveBytes); await handle.sync();
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await privateBytes(archivePath, true)).equals(archiveBytes)) throw error;
+        } finally { await handle?.close(); }
+        await (this.durability.syncDirectory ?? strictSyncDirectory)(this.discardHistoryDirectory);
+      } catch {
+        this.blocked = true;
+        throw uploadFailure("STORE_UNAVAILABLE", "store", "删除历史无法可靠保存，上传记录已停用。", "保留上传账本和全部防重传记录；检查磁盘。", true);
+      }
+      await beforeCommit?.();
+      await this.commit({ ...this.data, tasks: this.data.tasks.map(task => task.authorization.pageBatchId === batchId ? { ...task, result: { ...task.result, state: "DISCARDED" as const, retryable: false } } : task) });
+    });
+  }
   markSelecting(id: string, pageOwnership: PageOwnership, selectedIndex: number): Promise<void> {
     return this.serial(async () => {
       this.assertReady(); const task = this.task(id);
-      if (!task || task.result.upload_outcome !== "NOT_SELECTED" || task.result.duplicate_of || this.hasMarker(id) || this.data.tasks.some(other => other.result.upload_task_id !== id && sameTargetBytes(task, other) && this.hasMarker(other.result.upload_task_id))) throw new Error("File selection permission unavailable");
+      if (!task || task.result.state === "DISCARDED" || task.result.upload_outcome !== "NOT_SELECTED" || task.result.duplicate_of || this.hasMarker(id) || this.data.tasks.some(other => other.result.upload_task_id !== id && sameTargetBytes(task, other) && this.hasMarker(other.result.upload_task_id))) throw new Error("File selection permission unavailable");
       const fence = FenceSchema.parse({ version: 2, upload_task_id: id, artifact_sha256: task.input.artifact_sha256, input_digest: task.inputDigest,
         advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId, pageOwnership, selectedIndex, attempt: task.result.attempt_count, timestamp: new Date().toISOString() });
       if (pageOwnership.pageBatchId !== task.authorization.pageBatchId || selectedIndex > task.authorization.expectedCount) throw new Error("Batch selection binding mismatch");

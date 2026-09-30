@@ -124,6 +124,8 @@ fence 后断线、崩溃、timeout、取消或 ready 保存失败，只能对原
 
 启动只载入/补齐已授权本地 task，不连接 Chrome。新任务完成不能唤醒重启留下的旧 pending。WAITING_FOR_CONFIRMATION 重复通知保持原记录，不重传；显式“核查页面”只读更新当时 ready 证据，丢失则人工处理。同批未知、挑战或身份失配阻断本批及该账号后续任务；其他账号需用户明确继续，不能在失败后自动切账号绕过。
 
+用户明确删除整个旧上传批次时，主进程可将完整且未在执行的批次标为不可逆的 `DISCARDED`，从界面任务列表和待处理计数中移除，解除该批次的人工处理阻塞。所有原 intent/task、目标、快照身份、上传结果、失败诊断和 selection fence 保留；结果未知仍为 `MAY_HAVE_UPLOADED`，不得宣称未上传或成功。同账户/计划下的同 hash 防重传继续有效。删除前保存不可覆盖、已同步的原批次审计，再由唯一 store owner 原子提交整批状态；任何不确定写入均停用上传。仅允许已经完整准入、无 READY 或正在运行任务的批次；删除不依赖浏览器、账号当前映射或文件是否仍存在，不产生新选文件权限，不删除本地视频，不自动启动其他任务。重启保留删除状态，旧任务不得恢复、改传或再次选文件。
+
 仍由 `DouyinUploadStore` 一个 ledger owner 管理，state 升为 v2：
 - 新 state 保存千川 settings/intents/tasks/selection fences 的引用，默认 enabled=false。
 - v1 首次加载先严格验证旧 state 和全部 creator markers，保存不可覆盖、相同原字节的 `legacy-v1.json`，再原子保存 v2。旧 marker 目录和旧记录保留；步骤不确定、旧记录损坏/冲突/孤立 marker、未知版本则阻断，不能清空后继续。

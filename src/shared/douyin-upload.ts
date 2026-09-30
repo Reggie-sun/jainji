@@ -104,7 +104,7 @@ export const ReadyEvidenceSchema = z.object({
   fileName: z.string().min(1).max(255), selectedCount: z.number().int().min(1).max(250), observedAt: z.string().datetime(), pageOwnership: PageOwnershipSchema,
 }).strict();
 export type ReadyEvidence = z.infer<typeof ReadyEvidenceSchema>;
-export const QianchuanUploadStateSchema = z.enum(["PENDING", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE", "WAITING_FOR_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "NEEDS_HUMAN", "CANCELLED"]);
+export const QianchuanUploadStateSchema = z.enum(["PENDING", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE", "WAITING_FOR_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "NEEDS_HUMAN", "CANCELLED", "DISCARDED"]);
 export const QianchuanUploadOutcomeSchema = z.enum(["NOT_SELECTED", "MAY_HAVE_UPLOADED", "READY"]);
 export const QianchuanUploadResultSchema = UploadIdentitySchema.extend({
   upload_task_id: UploadIdSchema, artifact_sha256: UploadIdSchema, file_name: z.string().min(1).max(255),
@@ -116,6 +116,6 @@ export const QianchuanUploadResultSchema = UploadIdentitySchema.extend({
   if ((value.state === "WAITING_FOR_CONFIRMATION") !== Boolean(value.readyEvidence) ||
     (value.upload_outcome === "READY") !== Boolean(value.readyEvidence) ||
     value.readyEvidence && (value.readyEvidence.advertiserId !== value.advertiserId || value.readyEvidence.adId !== value.adId || !value.duplicate_of && value.readyEvidence.fileName !== value.file_name || value.failure) ||
-    value.retryable && value.upload_outcome !== "NOT_SELECTED") ctx.addIssue({ code: "custom", message: "非法千川上传结果组合。" });
+    value.retryable && (value.upload_outcome !== "NOT_SELECTED" || value.state === "DISCARDED")) ctx.addIssue({ code: "custom", message: "非法千川上传结果组合。" });
 });
 export type QianchuanUploadResult = z.infer<typeof QianchuanUploadResultSchema>;

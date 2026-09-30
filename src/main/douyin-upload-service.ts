@@ -38,6 +38,7 @@ export class DouyinUploadService {
   private continuationBatch?: string;
   private preparingContinuation = false;
   private retargeting = false;
+  private discarding = false;
   private stopped = false;
   private stopping = false;
   private initializationFailure?: string;
@@ -56,7 +57,7 @@ export class DouyinUploadService {
     const { accountConfigPath, ...config } = this.store.config;
     const readiness = this.dependencies.readiness?.(this.store.config);
     const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : this.initializationFailure ?? (!config.enabled ? "自动上传已关闭。" : readiness ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : this.paused ? this.pausedMessage(projectId) : this.stopped || this.stopping ? "自动上传已停止，待上传成片保留在队列中。检查对应 Chrome 后，对本批未选文件的任务点击“安全继续”；结果未知的文件只能只读核查原页面。" : "成片上传至所选计划，停在确定前。"));
-    const tasks = this.store.tasks().filter(task => task.input.project_id === projectId).map(task => {
+    const tasks = this.store.tasks().filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => {
       let result = task.result;
       if (this.store.unavailable && this.store.hasMarker(result.upload_task_id) && result.state !== "WAITING_FOR_CONFIRMATION") result = { ...result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, retryable: false, failure: unknown().failure };
       return QianchuanUploadResultSchema.parse(result);
@@ -198,7 +199,7 @@ export class DouyinUploadService {
   }
   runPending(): Promise<void> {
     if (this.runner) return this.runner;
-    if (this.active || this.preparingContinuation || this.retargeting || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
+    if (this.active || this.preparingContinuation || this.retargeting || this.discarding || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
     this.runner = (async () => {
       while (!this.stopped && !this.stopping && !this.paused && this.store.config.enabled && !this.store.unavailable) {
         const ids = this.pendingGroup(); if (!ids.length) break;
@@ -209,6 +210,7 @@ export class DouyinUploadService {
     return this.runner;
   }
   resume(id: string): Promise<void> {
+    if (this.discarding) return Promise.reject(new Error("正在删除本批上传任务，请等待记录保存。"));
     if (this.retargeting) return Promise.reject(new Error("正在改传本批计划，请等待记录保存。"));
     const generation = this.controlGeneration;
     const requested = this.store.task(id);
@@ -217,6 +219,7 @@ export class DouyinUploadService {
       await this.admission.catch(() => undefined);
       if (generation !== this.controlGeneration || this.stopping || this.store.unavailable || !this.store.config.enabled || this.active) return;
       const task = this.requireTask(id);
+      if (task.result.state === "DISCARDED") throw new Error("本批上传任务已删除，不能恢复。");
       if (task.result.duplicate_of || task.result.state === "FAILED_TERMINAL") return;
       const fenced = this.store.hasMarker(id);
       const batch = this.store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId);
@@ -261,6 +264,7 @@ export class DouyinUploadService {
     }); this.control = work; return work;
   }
   retarget(id: string, expectedAdId: string): Promise<void> {
+    if (this.discarding) return Promise.reject(new Error("正在删除本批上传任务，请等待记录保存。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再改传计划。"));
     this.retargeting = true;
     const generation = this.controlGeneration;
@@ -284,7 +288,29 @@ export class DouyinUploadService {
     }).finally(() => { this.retargeting = false; });
     this.control = work; return work;
   }
+  discard(id: string): Promise<void> {
+    if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再删除本批任务。"));
+    this.discarding = true;
+    const generation = this.controlGeneration;
+    const work = this.control.catch(() => undefined).then(async () => {
+      await this.admission.catch(() => undefined);
+      if (generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，本批未删除。");
+      const task = this.requireTask(id), batchId = task.authorization.pageBatchId;
+      const batch = this.store.tasks().filter(other => other.authorization.pageBatchId === batchId);
+      await this.store.discardBatch(id, async () => {
+        if (generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，本批未删除。");
+      });
+      for (const other of batch) {
+        this.eligible.delete(other.result.upload_task_id); this.currentIntents.delete(intentKey(other.input)); this.cancelledIntents.add(intentKey(other.input));
+      }
+      if (this.continuationBatch === batchId) this.continuationBatch = undefined;
+      this.paused = this.store.tasks().some(other => other.result.state === "NEEDS_HUMAN");
+      this.changed();
+    }).finally(() => { this.discarding = false; });
+    this.control = work; return work;
+  }
   async cancel(id: string): Promise<void> {
+    if (this.discarding) throw new Error("正在删除本批上传任务，请等待记录保存。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存后停止任务。");
     const task = this.requireTask(id); this.eligible.delete(id);
     if (this.active?.ids.includes(id) || (task.result.state !== "WAITING_FOR_CONFIRMATION" && !task.result.duplicate_of)) this.cancelledIntents.add(intentKey(task.input));
@@ -294,7 +320,7 @@ export class DouyinUploadService {
       await this.bounded(async () => { await this.runner; }, 15000, new AbortController().signal).catch(() => { this.paused = true; });
       return;
     }
-    if (task.result.state === "WAITING_FOR_CONFIRMATION" || task.result.duplicate_of) return;
+    if (task.result.state === "DISCARDED" || task.result.state === "WAITING_FOR_CONFIRMATION" || task.result.duplicate_of) return;
     task.result = { ...task.result, state: this.store.hasMarker(id) ? "NEEDS_HUMAN" : "CANCELLED", upload_outcome: this.store.hasMarker(id) ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", readyEvidence: undefined, retryable: false, failure: this.store.hasMarker(id) ? unknown().failure : uploadFailure("STOPPED", "cancel", "上传已停止。", "明确继续才会处理。", false).failure };
     await this.save(task);
   }
