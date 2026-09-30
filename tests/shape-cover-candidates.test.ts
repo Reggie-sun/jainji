@@ -1117,16 +1117,28 @@ describe.skipIf(!available)("M4-B4 original production entry", () => {
 
   it("keeps a lost production publication return closed on callback reentry", async () => {
     const value = await productionFixture();
+    let releaseFirst = () => {};
     try {
-      const seam = vi.spyOn(ShapeCoverProduction.prototype, "publish");
+      const originalPublish = ShapeCoverProduction.prototype.publish;
+      const queueEntered = new Promise<void>(resolve => { releaseFirst = resolve; });
+      let entered = 0;
+      const seam = vi.spyOn(ShapeCoverProduction.prototype, "publish").mockImplementation(async function (this: ShapeCoverProduction, input) {
+        // Reverse these stages deterministically: first production entry reaches the queue second.
+        if (entered++ === 0) await queueEntered;
+        return originalPublish.call(this, input);
+      });
       value.publish.mockImplementationOnce(async input => {
+        releaseFirst();
         await ExportQueue.prototype.publishApprovedSample.call(value.queue, input);
         throw new Error("simulated lost production return");
       });
       await value.start();
       expect(value.controller.snapshot()?.items.filter(item => item.status === "failed")).toHaveLength(1);
       expect(value.queue.snapshot().batches.every(({ batch }) => batch.tasks[0].status === "completed")).toBe(true);
-      const input = seam.mock.calls[0][0], owner = seam.mock.contexts[0] as ShapeCoverProduction;
+      const lostMediaId = value.publish.mock.calls[0][0].media.id;
+      const lostCall = seam.mock.calls.findIndex(([input]) => input.media.id === lostMediaId);
+      expect(lostCall).toBe(1);
+      const input = seam.mock.calls[lostCall][0], owner = seam.mock.contexts[lostCall] as ShapeCoverProduction;
       const before = await readdir(value.input.outputDirectory);
       await expect(owner.publish(input)).rejects.toThrow();
       expect(await readdir(value.input.outputDirectory)).toEqual(before);
@@ -1136,7 +1148,7 @@ describe.skipIf(!available)("M4-B4 original production entry", () => {
       const artifacts = await value.queue.createShapeCoverArtifactStore(value.controller.snapshot()!.projectId);
       await expect(artifacts.completed({ runId: input.runId, mediaId: input.media.id, version: input.version })).rejects.toThrow();
       expect((await artifacts.load({ runId: input.runId, mediaId: input.media.id, version: input.version })).authority).toBe("none");
-    } finally { await value.controller.cancel(); await value.queue.shutdown(); }
+    } finally { releaseFirst(); await value.controller.cancel(); await value.queue.shutdown(); }
   }, 60_000);
 
   it("cancels during production custody setup before starting the runner", async () => {

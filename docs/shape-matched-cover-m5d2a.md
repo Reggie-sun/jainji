@@ -1,5 +1,11 @@
 # M5-D2A Engineering and Qualification Record
 
+## Stationary Target Engineering — 2026-10-01
+
+用户将当前覆盖实现目标收窄为静态与位置固定的动画，并明确“执行”。已在独立geometry slice实现逐原帧的保守轮廓并集、完整来源/摘要和固定遮盖本地验证；static及stationary-animation controlled composite各36帧，0未覆盖像素、0目标移除reference差异、原PTS与PCM一致，provider requests0。完整Scope/Spec/Plan、真实FFmpeg证据、测试/Risk Gate/AOCI及剩余工作见 [stationary engineering record](shape-matched-cover-stationary-record.md)。这不改变原资格合同、raw/mapping/joint receipts、18场景holdout或旧否定结果，不代表AI能够从真实媒体生成合格mask，不接生产issuer或入口。
+
+M5-D2A仍INCOMPLETE/PRODUCT_DISABLED，A/B/joint指标null/NOT_EVALUATED、formal requests0、authority=none/eligible=false。现有MiniMax位置probe NOT_QUALIFIED及GPT精确模型image条件缺口保持；manual、assisted与用户已认可效果不受影响。该目标收窄不将unsupported moving场景从正式资格中删除，仍需明确识别与拒绝。
+
 ## Continued Optimization — 2026-10-01
 
 用户“继续优化”延续范围内blocker修复及受管安装。原router先仅增加固定cap/usage诊断，官方安装后一次新sealed真实请求确认CAP_ECHO_NULL；再按新exact accepted-ref/unrestricted/null请求cap的窄合同修复，旧finite/旧seal/非法echo/usage及身份/秘密/工具/关联拒绝保持。Clean4157a48官方安装，69-source program3998a167…、entry/Skill、完整八图fake及14/14OS隔离核对成立；未修改简辑产品代码、配置、手动覆盖、已认可效果或历史冻结任务。

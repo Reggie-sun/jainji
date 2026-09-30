@@ -333,3 +333,7 @@ dataset 至少3个独立构造组、100帧、10 EMPTY、20有目标、5并发帧
 2026-09-29 用户认可 [AI spec](shape-matched-cover-m5d2a-spec.md) 后要求开始，进入 [独立 AI implementation plan](shape-matched-cover-m5d2a-plan.md) 的工程执行与新 holdout 准备。旧 human D2Q plan/资格状态不转移；历史 DESIGN_ONLY 不再作为当前授权状态。
 
 当前 `ENGINEERING_CANDIDATE / QUALIFICATION_INCOMPLETE / PRODUCT_DISABLED`。machine declarations、owned 完整原画布 PNG/inputPlan、单调停止工程 transport、A/B/joint 独立真值比较与 synthetic 准备工具已实现；正式受管无文件工具视觉路线尚未成立，不启动正式请求或签发资格记录。实际验证、冻结数据、route blocker、Review Risk Gate 与剩余工作由 [M5-D2A record](shape-matched-cover-m5d2a.md) 独占。M5-B/C/D3/D4 与 verified-no-sticker production issuance 保持 BLOCKED。
+
+## Active Slice — Static and Stationary Animation Engineering
+
+2026-10-01 用户明确排除移动贴纸并要求执行，按 [stationary spec](shape-matched-cover-stationary-spec.md) 与 [implementation plan](shape-matched-cover-stationary-plan.md) 推进完整原帧轮廓并集和固定本地遮盖。geometry receipt独立于原static source mask，不改变human/manual/assisted或任何源知识准入；当前受控合成static/animation各36帧实际FFmpeg验证为0未覆盖、0目标移除reference差异、PCM一致。最终verification、scope和真实AI blocker由 [stationary record](shape-matched-cover-stationary-record.md)记录。M5-D2A资格标准及所有生产BLOCKED保持，工程并集不成为真实动画AI/生产PASS。
