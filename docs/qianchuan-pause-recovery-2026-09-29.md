@@ -452,3 +452,13 @@ Parent 对原页“素材”控件做无点击的 `trial:true`：控件唯一、
 Fresh project Harness 使用原 policy 的 typecheck 与 douyin-upload 两个检查投影，未修改仓库 policy，也未宣称运行无关制作/覆盖检查。回执 `20260930T203432Z-78001a85` 为 PASS：typecheck、8 个上传相关 test 文件的 169 tests、0 skipped。它绑定可信构建 source 的独立文件身份，完整 policy/日志/结构化测试报告一并封存。
 
 真实恢复阶段仍运行旧安装包，依靠受控前台辅助，不作为新候选的实际运行证明。候选及可重建 source、Harness、保留的第二次 exact packaged smoke 报告封存于 `/home/reggie/Applications/jianji/candidates/qianchuan-foreground-20261001-c9936fcb/foreground-evidence/`；第一次 smoke 默认清理临时目录，第二次显式 KEEP=1，实际组 `1+9+2`、追加后 13 READY、零确认。计划要求安装前项目已保存；fresh install preflight 已证明一条根无未保存更改，全部制作与上传操作结束。一次多余的保存 IPC 打开原生保存对话框，未选择保存；只关闭 PID 3983651 的唯一“保存项目”子窗口，项目文件保留，随后重新核对干净状态。完成本次 substantive code/live-proof 的 record 评估，AOCI 维护 adapter、按 observe scope 核对 test/record，并运行 Verify、Check、Guide。安装字节及重启后的保留证明另行记录，不能以候选 PASS 冒充安装交付。
+
+### Installed Foreground Checkpoint
+
+源码修复已提交 `3e60d55`。安装前完整备份应用私有数据及当前项目到 `/home/reggie/Applications/jianji/.backups/qianchuan-foreground-20261001-c9936fcb/`，正常停止原应用服务，保留全部 Chrome；launcher 已指向 `/home/reggie/Applications/jianji/releases/qianchuan-foreground-20261001-c9936fcb/`，`jianji-foreground-installed-20261001.service` 启动新包。实际运行 renderer URL 位于该 release 的 `app.asar`，读取的 asar SHA 与上述候选完全相同。原 runtime FFmpeg、沙箱及其余 asar 内容保持，未打包其他任务的未提交源码。
+
+新应用启动及通过原 project.load 打开一条根后，活动上传列表均为 0，证明重启没有重新准入历史任务。公开项目的 id、name、mediaItems、template、coverSticker、workspaceDraft、latestProduction 与安装前逐字段一致。打开项目后的持久文件只有 `updatedAt` 从 `2026-09-30T20:44:10.009Z` 更新为 `2026-09-30T21:01:36.510Z`；去掉该时间字段的完整 JSON 相同，不能继续声称项目全文件 SHA 未变。多余保存 IPC 在旧应用退出前没有正常返回，不将关闭保存对话框作为保存成功证据。
+
+在打开项目并等待其写入后重新核对备份：账本完整 JSON 相同，642 tasks、724 intents、230 selection fences 保留，878 个上传文件逐项 SHA 相同、0 个改变。真实本轮 60 个正式输出与上传快照、fence 的文件身份逐项一致；两账号分别 `9+9+9+3`，下组首次 fence 均晚于上组全部 READY 的持久保存。重启后只读附加原 target，再核对原 modalSessionId、账号/计划、完整文件名列表：肥皂仍 `已选择 30/289`、一条根（账号槽位滴耳康）仍 `已选择 30/193`，各 30 行，确定可用，未点击确定。
+
+最终私有证明为同一 recovery run 下的 `final-artifact-group-proof.json`、`installed-app-proof.json`、`installed-data-final-proof.json`、`installed-project-delta.json`、`installed-original-pages-proof.json`。安装与最新真实证明一并续封存到实际 release 的 `foreground-evidence/`。真实 60 条恢复证明与新包的 fixture/Harness/安装证明分别保留：新代码尚未进行下一轮真实账号制作上传，不把辅助恢复冒充新包的无辅助真实上传验收。
