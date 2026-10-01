@@ -124,7 +124,7 @@ async function accountVisible(endpoint: string, advertiserId: string, request: t
     if (tab.type !== "page") continue;
     let url: URL;
     try { url = new URL(tab.url); } catch { continue; }
-    if (url.origin !== "https://qianchuan.jinritemai.com" || url.pathname !== "/uni-prom" || url.username || url.password) continue;
+    if (url.origin !== "https://qianchuan.jinritemai.com" || !["/uni-prom", "/home"].includes(url.pathname) || url.username || url.password) continue;
     const ids = url.searchParams.getAll("aavid");
     if (ids.length === 1 && ids[0] === advertiserId) matched = true;
   }

@@ -10,7 +10,7 @@ const browserUnavailable = "账号浏览器未能启动。请安装 Google Chrom
 const accountUrl = (id: string) => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}`;
 
 export function accountChromeArguments(profile: string, advertiserId: string): string[] {
-  return [`--user-data-dir=${profile}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check", accountUrl(advertiserId)];
+  return [`--user-data-dir=${profile}`, "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check", "--start-maximized", accountUrl(advertiserId)];
 }
 
 async function launchChrome(profile: string, advertiserId: string): Promise<void> {

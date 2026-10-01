@@ -80,5 +80,6 @@ export function accountPageUrl(value: QianchuanAccount): string {
   const url = new URL("https://qianchuan.jinritemai.com/uni-prom");
   url.searchParams.set("aavid", account.advertiserId);
   url.searchParams.set("adId", account.adId);
+  url.hash = "umg=1";
   return url.href;
 }

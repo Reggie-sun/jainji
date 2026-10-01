@@ -346,6 +346,23 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     return { prepared, evidence: (await uploader.ready([task], new AbortController().signal))[0]! };
   }
 
+  it("maximizes a reused narrow account window before preparing a new upload, without selecting files", async () => {
+    const task = await productionTask("narrow-window.mp4");
+    const browser = await chromium.connectOverCDP(task.authorization.target.cdpEndpoint, { noDefaults: true });
+    const control = await browser.newBrowserCDPSession();
+    try {
+      const target = (await control.send("Target.getTargets")).targetInfos.find(value => value.type === "page")!;
+      const { windowId } = await control.send("Browser.getWindowForTarget", { targetId: target.targetId });
+      await control.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } });
+      await control.send("Browser.setWindowBounds", { windowId, bounds: { width: 600, height: 600 } });
+      const uploader = productionUploader(), signal = new AbortController().signal;
+      await uploader.connect(task, signal);
+      await uploader.open([task], [], signal);
+      expect((await control.send("Browser.getWindowBounds", { windowId })).bounds.windowState).toBe("maximized");
+      expect((await productionFixture!.inspect()).events.filter(event => ["drop", "confirm", "settings"].includes(event.type))).toEqual([]);
+    } finally { await control.detach(); await browser.close(); }
+  });
+
   it("delivers 21 production snapshots in 9+9+3 groups, allowing late rows but waiting for the last member before advancing", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset(); productionFixture.setControls({ processingDelayMs: 250, rowAppearanceDelayMs: 80, reorderRows: true });

@@ -34,7 +34,7 @@ describe("shared account mapping", () => {
     value.accounts[1].advertiserId = ""; value.accounts[1].adId = "";
     const accounts = parseAccountConfig(value);
     expect(accounts[0].advertiserId).toBe("9007199254740993");
-    expect(accountPageUrl(accounts[0])).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=9007199254740993&adId=1876036593854788");
+    expect(accountPageUrl(accounts[0])).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=9007199254740993&adId=1876036593854788#umg=1");
     expect(() => accountPageUrl(accounts[1])).toThrow();
   });
 

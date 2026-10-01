@@ -59,6 +59,13 @@ export class DouyinCdpUploader implements UploadBrowserPort {
         if (selected.length) throw new Error("Missing original task page");
         const context = this.browser?.contexts()[0]; if (!context) throw new Error("Not connected");
         this.check(signal); this.page = await context.newPage(); this.check(signal);
+        if (contract.kind === "qianchuan") {
+          const window = await this.browser!.newBrowserCDPSession();
+          try {
+            const { windowId } = await window.send("Browser.getWindowForTarget", { targetId: await this.targetId(this.page) }); this.check(signal);
+            await window.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "maximized" } }); this.check(signal);
+          } finally { await window.detach(); }
+        }
         this.session = new QianchuanPageSession(this.page, contract, this.check);
         await this.page.goto(this.session.url(task), { timeout: task.config.timeouts.navigation, waitUntil: "domcontentloaded" }); this.check(signal);
       }

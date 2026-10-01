@@ -18,5 +18,5 @@ it("builds the exact production account URL from frozen account fields without l
   const task = {
     authorization: { target: { product: "眼贴", cdpEndpoint: "http://127.0.0.1:9222", advertiserId: "123456", adId: "987654", configDigest: "d".repeat(64) } },
   } as UploadTaskRecord;
-  expect(session.url(task)).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=123456&adId=987654");
+  expect(session.url(task)).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=123456&adId=987654#umg=1");
 });

@@ -17,3 +17,9 @@ Linux 已安装 Chrome；每个 advertiser 独立应用私有 profile，启动�
 ## Self-Review
 
 唯一 profile/启动 owner 不拥有上传 authority；renderer 只能传既有 strict 设置数据。目录和端口不出界，启动无任意参数；旧 browser WebSocket 适配保留供历史 attach，不是新制作默认回退。首次登录未完成则真实验收未完成，隔离测试不能代替平台验收。
+
+## First Login Follow-up
+
+真实制作三条完成后，新 profile 默认进入推直播间导致上传未选文件即超时；登录主页未被发现，以及窄窗口隐藏账号区也已复现。共享 `accountPageUrl` 固定推商品路由 `#umg=1`；discovery 接受精确 `/home?aavid=...` 元数据；manager 启动最大化，uploader 在新建生产 tab 时最大化所在窗口。保留原可见账号/计划校验、历史页只读和所有 fence。
+
+修改四个 owner 及对应 account-config、discovery、manager、CDP tests；先证明四项失败，再修复并运行 typecheck、上传 Harness 与 build。从真实软件启动新的本地随机三条，核对全部正式输出、原上传列表 READY、正确双 ID 及零确认。失败的第一批保留，不重传旧任务。Parent Self-Review：只读主页发现不授上传权；路由和窗口准备发生在选文件前，不改变广告设置或其他浏览器。

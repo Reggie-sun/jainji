@@ -24,6 +24,12 @@ it("matches only a unique browser for the exact advertiser without requiring a p
   expect(await discover([tab(), tab()])).toBe(endpoint);
   await expect(discover([tab()], [endpoint, "http://127.0.0.1:9322"])).rejects.toThrow("多个");
 });
+it("recognizes the first-login account home without granting upload authority", async () => {
+  expect(await discover([{ ...tab(), url: "https://qianchuan.jinritemai.com/home?aavid=123" }])).toBe(endpoint);
+  for (const suffix of ["?aavid=124", "?aavid=123&aavid=123", "", "?aavid=0123"]) {
+    await expect(discover([{ ...tab(), url: `https://qianchuan.jinritemai.com/home${suffix}` }])).rejects.toThrow("未找到");
+  }
+});
 it("discovers browser-internal remote debugging over websocket without HTTP metadata", async () => {
   const fetch = vi.fn(), targets = vi.fn(async () => [tab()]);
   expect(await discoverQianchuanBrowser("123", { endpoints: async () => [socket], fetch, targets })).toBe(endpoint);

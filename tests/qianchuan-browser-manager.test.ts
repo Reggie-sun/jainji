@@ -34,6 +34,7 @@ it("uses loopback dynamic debugging from process startup, without a shell or use
   const args = accountChromeArguments("/private/account profile", "123");
   expect(args).toContain("--remote-debugging-address=127.0.0.1");
   expect(args).toContain("--remote-debugging-port=0");
+  expect(args).toContain("--start-maximized");
   expect(args[0]).toBe("--user-data-dir=/private/account profile");
   expect(args.at(-1)).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=123");
 });
