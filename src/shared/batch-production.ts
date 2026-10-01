@@ -41,6 +41,12 @@ export function batchRequiresDisplayText(project: Pick<BatchProjectOption, "requ
   return project.displayTextRequiredByMedia?.slice(0, project.requestedCount).some(Boolean) ?? true;
 }
 
+export function batchLocalCoverError(project: Pick<BatchProjectOption, "mode" | "coverEnabled" | "coverMode">): string | undefined {
+  if (project.mode === "random" && project.coverEnabled && project.coverMode === "agent") {
+    return "本地随机不会调用模型；该模板仍使用 Agent 自动覆盖。请先在制作页面保存手动覆盖框，或关闭本项覆盖后开始。";
+  }
+}
+
 export const BatchProductionJobSchema = z.object({
   id: z.string().uuid(),
   recentProjectId: z.string().uuid(),

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { DesktopState } from "../shared/desktop";
-import { BatchProductionStartSchema, batchRequiresDisplayText, type BatchProjectOption } from "../shared/batch-production";
+import { BatchProductionStartSchema, batchRequiresDisplayText, batchLocalCoverError, type BatchProjectOption } from "../shared/batch-production";
 import { calculateExactProductionQuantity, MAX_AGENT_OUTPUTS } from "../shared/agent";
 import { PRODUCT_PRICE_MAX_LENGTH, PRODUCT_PRICE_HELP, RequiredProductPriceSchema } from "../shared/decorations";
 import { Heading, Icon } from "./ui";
@@ -48,7 +48,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
     ...(row.outputDirectory ? { outputDirectory: row.outputDirectory } : {}) }));
   const valid = BatchProductionStartSchema.safeParse({ entries }).success && selected.every(row => {
     const quantity = calculateExactProductionQuantity(row.sourceCount, row.requestedCount);
-    return !row.error && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!batchRequiresDisplayText(row) || RequiredProductPriceSchema.safeParse(row.productPrice).success) && (!row.douyinUpload || state.douyinUpload?.accounts.some(account => account.product === row.douyinUpload?.accountProduct && account.available));
+    return !row.error && !batchLocalCoverError(row) && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!batchRequiresDisplayText(row) || RequiredProductPriceSchema.safeParse(row.productPrice).success) && (!row.douyinUpload || state.douyinUpload?.accounts.some(account => account.product === row.douyinUpload?.accountProduct && account.available));
   });
   const run = state.batchProduction;
   const running = run?.status === "running" || run?.status === "cancelling";
@@ -101,6 +101,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
         const invalidQuantity = !quantity || quantity.total > MAX_AGENT_OUTPUTS;
         const needsText = batchRequiresDisplayText(row);
         const invalidText = needsText && !RequiredProductPriceSchema.safeParse(row.productPrice).success;
+        const coverError = batchLocalCoverError(row);
         const prefix = `batch-${row.recentProjectId}`;
         return <section className={`card batch-template-row${row.selected ? " selected" : ""}`} key={row.recentProjectId} aria-label={`${row.name}制作设置`}>
           <div className="batch-template-title"><label><input type="checkbox" aria-label={`选择模板 ${row.name}`} checked={row.selected} disabled={busy || Boolean(row.error)} onChange={event => update(row.recentProjectId, { selected: event.target.checked })} /><span className="batch-order">{index + 1}</span><span className="batch-template-name"><strong title={row.name}>{row.name}</strong><span className="small-tag">{row.sourceCount} 条素材</span></span></label></div>
@@ -116,6 +117,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
               <DouyinUploadControls compact idPrefix={`${prefix}-upload`} accounts={state.douyinUpload?.accounts} value={row.douyinUpload}
                 onChange={douyinUpload => update(row.recentProjectId, { douyinUpload })} disabled={busy || !state.douyinUpload?.config.enabled} />
             </div>
+            {coverError && <p className="batch-error" role="alert">{coverError}</p>}
             <div className="batch-output"><button type="button" className="icon-button" aria-label="选择目录" title={row.outputDirectory || "选择目录"} disabled={busy} onClick={() => void selectOutput(row)}><Icon name="folder" size={16} /></button>{row.outputDirectory && <button type="button" className="text-button" aria-label="改为自动保存" title="改为自动保存" disabled={busy} onClick={() => update(row.recentProjectId, { outputDirectory: undefined })}>自动</button>}</div>
           </>}
         </section>;

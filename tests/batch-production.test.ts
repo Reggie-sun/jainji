@@ -136,6 +136,20 @@ describe("cross-template batch admission", () => {
     }
   });
 
+  it("rejects saved Agent cover in local random before creating a session or upload authorization", async () => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0].coverSticker = { ...DEFAULT_COVER_STICKER, enabled: true, trackingMode: "agent" };
+    await f.controller.start({ entries: [{ ...f.entries[0], mode: "random", coverEnabled: true,
+      douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }, f.entries[1]] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    const [blocked, completed] = f.controller.snapshot()!.jobs;
+    expect(blocked).toMatchObject({ status: "failed", taskIds: [], error: expect.stringContaining("本地随机不会调用模型") });
+    expect(completed.status).toBe("completed");
+    expect(f.dependencies.preflightUpload).not.toHaveBeenCalled();
+    expect(f.dependencies.session).toHaveBeenCalledTimes(1);
+    expect(f.projects[0].coverSticker.trackingMode).toBe("agent");
+  });
+
   it("leaves ordinary export-only batches without upload preflight", async () => {
     const f = await fixture({ allComplete: true });
     await f.controller.start({ entries: f.entries });

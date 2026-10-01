@@ -4,7 +4,7 @@ import path from "node:path";
 import { AgentStartSchema, calculateExactProductionQuantity, MAX_AGENT_OUTPUTS, type AgentRun, type AgentStartInput } from "../shared/agent.js";
 import { DecorationSchema } from "../shared/decorations.js";
 import { CoverStickerSchema, DEFAULT_COVER_STICKER } from "../shared/cover-sticker.js";
-import { BatchProductionStartSchema, BatchProductionRunSchema, BatchProductionDetailRequestSchema, type BatchProductionDetail, type BatchProductionEntry, type BatchProductionJob, type BatchProductionRun } from "../shared/batch-production.js";
+import { BatchProductionStartSchema, BatchProductionRunSchema, BatchProductionDetailRequestSchema, batchLocalCoverError, type BatchProductionDetail, type BatchProductionEntry, type BatchProductionJob, type BatchProductionRun } from "../shared/batch-production.js";
 import { DEFAULT_EXPORT_SETTINGS } from "../shared/export-settings.js";
 import type { ExportTask, Project } from "./domain.js";
 import type { QueueSnapshot } from "./queue.js";
@@ -176,6 +176,8 @@ export class BatchProductionController {
     const template = project.templates.find(item => item.id === project.activeTemplateId) ?? project.templates[0];
     template.productPriceDraft = entry.productPrice;
     const decorations = DecorationSchema.parse({ ...workspace?.decorations, ...(entry.mode ? { mode: entry.mode } : {}), productPrice: entry.productPrice, displayMode: entry.displayMode });
+    const coverError = batchLocalCoverError({ mode: decorations.mode ?? "manual", coverEnabled: entry.coverEnabled, coverMode: project.coverSticker.trackingMode });
+    if (coverError) throw new Error(coverError);
     const input = { mediaIds, ruleId: workspace?.ruleId ?? "black-gold" as const, brief: workspace?.brief ?? "", decorations,
       exportFormat: workspace?.exportFormat ?? "mp4" as const, exportSettings: workspace?.exportSettings ?? DEFAULT_EXPORT_SETTINGS, requestedCount: quantity.total,
       ...(entry.douyinUpload ? { douyinUpload: entry.douyinUpload } : {}) };

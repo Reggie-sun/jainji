@@ -10,6 +10,7 @@ import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
+import { uploadFailure } from "../src/shared/douyin-upload";
 
 const selection = (accountProduct: QianchuanProduct): QianchuanUploadSelection => ({ enabled: true, accountProduct });
 const temporaryRoots = new Set<string>();
@@ -947,6 +948,93 @@ describe("Qianchuan upload service", () => {
     expect(events.filter(event => event === "readonly")).toHaveLength(1);
     expect(maximumActive).toBe(1);
     expect(reopenedStore.task(oldRecord!.result.upload_task_id)?.result.state).toBe("WAITING_FOR_CONFIRMATION");
+  });
+
+  it("isolates an unknown group to its account while other current accounts finish nine-file groups", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const blocked = await f.createBatch(Array.from({ length: 10 }, (_, i) => `blocked-${i}`));
+    const sameAccount = await f.createBatch(["same-account-other-project"]);
+    const other = await f.createBatch(Array.from({ length: 10 }, (_, i) => `other-${i}`), { product: "热敷贴" });
+    for (const batch of [blocked, sameAccount, other]) {
+      await f.register(batch);
+      for (const identity of batch.identities) await f.service.enqueueFinalArtifact(identity);
+    }
+    const originalReady = f.port.ready;
+    const groups: string[][] = [];
+    f.port.ready = async (tasks, signal) => {
+      groups.push(tasks.map(task => task.input.export_task_id));
+      if (tasks[0]!.input.project_id === blocked.projectId) throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "fixture unknown", "check original page", true);
+      return originalReady(tasks, signal);
+    };
+    await f.service.runPending();
+    expect(groups.map(group => group.length)).toEqual([9, 9, 1]);
+    expect(groups.slice(1).flat()).toEqual(other.identities.map(identity => identity.export_task_id));
+    expect(f.service.status(other.projectId)).toMatchObject({ ready: true, message: "成片上传至所选计划，停在确定前。" });
+    expect(f.service.status(other.projectId).tasks.every(task => task.upload_outcome === "READY")).toBe(true);
+    expect(f.service.status(blocked.projectId).ready).toBe(false);
+    expect(f.service.status(blocked.projectId).tasks.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(9);
+    expect(f.service.status(sameAccount.projectId).tasks[0]).toMatchObject({ state: "PENDING", upload_outcome: "NOT_SELECTED", attempt_count: 0 });
+    const unknown = f.store.tasks().find(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")!;
+    const fencePath = path.join(f.store.root, "selection-fences", `${unknown.result.upload_task_id}.json`);
+    const fence = await readFile(fencePath), result = structuredClone(unknown.result);
+    await f.service.runPending();
+    expect(groups.map(group => group.length)).toEqual([9, 9, 1]);
+    expect(await readFile(fencePath)).toEqual(fence); expect(f.store.task(unknown.result.upload_task_id)!.result).toEqual(result);
+    await expect(f.service.resume(f.service.status(sameAccount.projectId).tasks[0]!.upload_task_id)).rejects.toThrow("未解决");
+  });
+
+  it("uploads a later completed artifact for a different account after an account pause", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const blocked = await f.createBatch(["unknown"], { product: "眼贴" }); await f.register(blocked);
+    await f.service.enqueueFinalArtifact(blocked.identities[0]!);
+    const originalReady = f.port.ready;
+    f.port.ready = async (tasks, signal) => {
+      if (tasks[0]!.input.project_id === blocked.projectId) throw new Error("fixture modal lost");
+      return originalReady(tasks, signal);
+    };
+    await f.service.runPending();
+    const other = await f.createBatch(["late artifact"], { product: "热敷贴" }); await f.register(other);
+    await f.service.committed(other.identities[0]!);
+    await vi.waitFor(() => expect(f.service.status(other.projectId).tasks[0]?.upload_outcome).toBe("READY"));
+    expect(f.service.status(blocked.projectId).tasks[0]!.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+  });
+
+  it("drains a cancelled group before scheduling a different account without waiting for that account", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const cancelled = await f.createBatch(["cancelled bytes"]);
+    const other = await f.createBatch(["unrelated account bytes"], { product: "热敷贴" });
+    for (const batch of [cancelled, other]) {
+      await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    }
+    let firstStarted = false, release!: () => void;
+    const holdOther = new Promise<void>(resolve => { release = resolve; });
+    const ready = f.port.ready;
+    f.port.ready = async (tasks, signal) => {
+      if (tasks[0]!.input.project_id === cancelled.projectId) { firstStarted = true; await new Promise(() => {}); }
+      else await holdOther;
+      return ready(tasks, signal);
+    };
+    const work = f.service.runPending();
+    await vi.waitFor(() => expect(firstStarted).toBe(true));
+    const id = f.service.status(cancelled.projectId).tasks[0]!.upload_task_id;
+    const cancellation = f.service.cancel(id);
+    try {
+      expect(await Promise.race([cancellation.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 500))])).toBe(true);
+    } finally { release(); await cancellation; await work; await f.service.runPending(); }
+    expect(f.service.status(other.projectId).tasks[0]!.upload_outcome).toBe("READY");
+    expect(f.service.status(cancelled.projectId).tasks[0]!.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+  });
+
+  it("clears a legacy global pause after explicitly discarding its only unselected blocker", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["unselected blocker"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    f.port.open = async () => { throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "fixture unavailable", "check page", true); };
+    await f.service.runPending();
+    const task = f.service.status(batch.projectId).tasks[0]!;
+    expect(task).toMatchObject({ state: "NEEDS_HUMAN", upload_outcome: "NOT_SELECTED" });
+    await f.service.discard(task.upload_task_id);
+    expect(f.service.status(batch.projectId).ready).toBe(true);
   });
 
   it("ignores prior production callbacks and registration after beginning a fresh production", async () => {
