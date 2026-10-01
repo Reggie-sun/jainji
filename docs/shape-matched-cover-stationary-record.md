@@ -1,5 +1,48 @@
 # Stationary Shape Cover Engineering Record
 
+## Automatic Contour Development Checkpoint — 2026-10-01
+
+用户明确要求实现 [Automatic contour plan](shape-matched-cover-auto-contour-plan.md)。本次完成该计划允许在M1阻断时推进的M2本地工程与M3比较器；结论为 **AUTO_CONTOUR_DEVELOPMENT_ONLY / REAL_AUTOMATIC_CHAIN_INCOMPLETE / PRODUCT_DISABLED**。没有将计划全部标为完成，也没有重做既有预选星形180帧样例。
+
+Evidence owner：`/home/reggie/.local/state/jianji-source-fact-qualification/auto-contour-implementation-20261001-m6o0x_tm`（R）。本轮模型/账号请求0，不读取或更新凭据、源知识、真人collector或产品准入。用户选择保留已有改动，并授权接续必要的provider及共享AOCI文件；实际没有修改provider，其字节与本轮初始副本相同。其他制作、上传、renderer、项目删除和未跟踪工作保留，不进入本任务commit。
+
+### Implementation and Support Envelope
+
+`source-mask-auto-extraction.ts` 从canonical owned D2读取每个原ordinal，核对source/census、ordinal、PTS/endPTS、RGBA字节数及SHA，并消费完整绑定的原AI declaration schema。声明明确标为UNQUALIFIED_ENGINEERING_DECLARATIONS，不是实际AI结果；调用者不能传mask。搜索ROI保持原1:1整数坐标，bbox不直接成为mask。源码生成最小半开bbox和LSB bitmap，原声明、逐帧候选、配置、输入及receipt摘要分别保留。漏首中末、错绑定、moving声明、身份或搜索原点变化、UNKNOWN、静态变化、源变化、取消和技术预算耗尽明确拒绝或INCOMPLETE；活跃原对象以WeakMap绑定，JSON不恢复ownership。完整候选复用原stationary-envelope owner，不复制并集算法或source admission。
+
+方法只支持 `controlled-uniform-exterior-development/v1`：ROI边界必须精确同色，内部与边界不同的解码RGBA贡献全部计入，阈值0保留低对比细尖。非均匀边界、无法分离目标返回UNKNOWN。**这不是一般视频背景分割、遮挡/半透明边界或真实motion资格**；与背景同色的贡献无法由该方法识别，固定搜索原点也不能证明不移动。真实自动mask能力仍不足，不能把receipt CANDIDATE称为合格方法。
+
+第二方法 `temporal-stable-exterior-difference/v1` 使用同一逐帧提取，至少3帧且轮廓/可见性完全稳定才保留候选；变化时全部置UNKNOWN。这是新的零变化开发对照，未复现或认证历史Python temporal算法，也不是对历史方法优劣的正式结论。尚未冻结唯一qualified extractor，没有新增分割依赖。
+
+`source-mask-auto-qualification.ts` 在提取开始前冻结truth、criteria、方法配置及范围，独立truth只能进入比较器。私有时间顺序、owned evidence、exact source/census/config/frame binding均核查；结果绑定truth、freeze、candidate及criteria摘要。控制构造中的已知像素/有效帧/identity遗漏、moving误接纳和category错误为NOT_QUALIFIED；过度覆盖单独统计，不能签SAFE/NATURAL。未知像素truth或候选使像素指标null，未知motion保留INCOMPLETE；未经独立审核的REAL_MEDIA truth全部NOT_EVALUATED，不产生硬语义结论。两个作者字符串仅是开发包元数据，不能证明正式actor隔离或独立审阅资格。
+
+`scripts/shape-cover-auto-contour-diagnostic.ts` 严格接收作者侧manifest，在新独占0700目录以0600/wx保存输入、原census、两方法预冻结truth、候选、比较、并集及最终报告。独立truth在两方法提取前冻结；无truth则比较未评估。硬比较失败后不生成envelope。无贴纸ID、预填mask、qualified/verdict、mock知识head、Provider callback或production handle接缝；不做选材、渲染替换层或发布，故它只是M2/M3开发工具，尚未实现M4真实链。失败保存INCOMPLETE，取消不签成功结果，owned临时spool由原evidence.close清理。
+
+### Controlled Execution Evidence
+
+实际执行本地CLI，使用提前编写的32×32/6fps、6帧lossless H264受控源，两个独立目标，共11个可见target/frame贡献、33个所需像素贡献。动画目标含低对比细尖、frame2闪烁缺席及最后frame5新增两个像素；静态目标在全部6帧可见。truth由构造recipe生成，不读取候选mask；这些开发材料已经暴露，不能进入never-exposed正式holdout，不满足真实来源数量要求。
+
+| Development method | Candidate / comparison | Known omitted pixels / frames | Unknown candidate frames | Usable envelopes |
+| --- | --- | --- | ---: | ---: |
+| per-frame exterior difference | CANDIDATE / DEVELOPMENT_MATCH | 0 / 0 | 0 | 2 |
+| temporal stable exterior difference | INCOMPLETE / INCOMPLETE | null / null | 6 | 0 |
+
+逐帧动画并集7像素，静态并集1像素；保留所有原PTS/endPTS及RGBA SHA，不渲染真实替换成片。实际diagnostic wall7942.565ms，Node进程maxRSS107044KiB（进程峰值，非分离阶段内存）；modelRequests0、selectedMethod=null、qualifiedExtractor=null。全部AI识别、选款、独立样片、真实mask及真实固定动画为NOT_EVALUATED；formalQualification=INCOMPLETE。CLI首次从私有目录执行因外部zod依赖解析失败、尚未产生fixture；保留cli-0.log，给私有bundle使用现有仓库node_modules链接后独立执行成功，无新依赖安装，见cli-corrected-*及development-run/result.json。
+
+### Verification and Ownership
+
+已读取current `verification-before-completion`，最终源码摘要在final-source-snapshot.json，fresh `npm run typecheck` exit0；六个suite共**84 tests PASS**：新extractor17、comparator9、diagnostic4；原envelope20、pixel6、full-canvas review28。文件串行执行只为避免测试进程争资源，未更改产品并发；final-related-tests.log保留完整命令结果，90.80秒。新增extractor先因模块缺失可靠RED；本轮移动负例实际证明比较NOT_QUALIFIED后仍发两份envelope，修复脚本后进入最终完整GREEN，未放宽moving断言。独立CLI使用相同稳定源码，完成真实canonical FFmpeg解码而不是模拟像素输入；该证据不等于替换视频导出、商业模型或人工播放。
+
+Native `code_mapper` `/root/visual_route_dependencies` 仅只读定位路线；`bounded_worker` `/root/contour_pixel_motion_comparator` 只写comparator及其test，Parent接收后独立检查完整实现、修正无用变量和诊断硬失败出口，运行上述fresh验证。两者均不是blind actor或正式reviewer；遵守本计划禁止Kimi。Parent在稳定验证后判断KIMI_REVIEW_NOT_REQUIRED：该变更没有生产消费者、持久源知识、credential或可发布authority路径，结果误差被固定非权威字段与原产品拒绝隔离，未出现重大后果加未解决工程验证缺口的组合。最终diff及commit scope仍由Parent负责，不以worker verdict作为验收。
+
+AOCI逐项核对两个新managed模块，extraction当前基线已对齐；本轮官方机器批次仅comparator1项，完整Apply1/1、remaining0，source SHA `ea42ee47df856e1dbeb7844f8449c75fbbc8aa1adc5352dac884ca852697e19a`。源码、tests/helper、script和两份文档分别按managed/observe策略处理，不扩scope；随后Verify、Check均exit0、missing/stale/unbaselined=[]，Guide complete=true/next_action=none。已有混合dirty aoci.code.txt及baseline保留在working tree，不stage其他任务索引内容。本轮维护已完成，不把旧全库失败当当前blocker。AOCI上下文刷新完整交付193条/4块，严格Challenge10/10；治理结论仍以维护后的fresh JSON为准。没有repository专用session capture skill，本节承接稳定checkpoint，不写外部memory。
+
+### Actual Blockers and Remaining Milestones
+
+Parent核查现存canonical MiniMax probe receipt `response-optimization-20261001/unset-live-result.json`：probe `5dcf462d-7485-4911-b512-b865423fef2d`、invocation `44871911-cab4-4d5a-a349-2f732c81ad31`、MiniMax-M3、NOT_QUALIFIED / VISUAL_PROBE_MISMATCH，旧失败保持。当前GPT目录receipt `ea337c8c-084b-4c90-9cf0-cfed66948c09`仍精确gpt-6.1-sol匹配0，未发新catalog/probe请求，不能说永久无视觉。Parent结合router当前`require_live_admission`核对正式原片入口仍IMAGE_FORMAL_EXECUTION_UNAVAILABLE；随机probe不是原片执行owner。router由其repo合同独占且本计划不修改它，本轮没有证据足以归因MiniMax错误并授权一次有依据的修复probe，不盲重试或换模型。
+
+因此M1未就绪；M2只有受控本地工程，没有合格真实分割方法；M3真实静态/固定动画各3个独立来源、各≥100明确原帧及独立审核truth缺失。M4实际识别→共同筛选→看摆放图选款→冻结→独立SAFE/NATURAL样片尚未执行，M5正式actor delivery/requests0，A/B/joint和真实层指标null/NOT_EVALUATED。不能用84个工程测试或一个受控源补齐AC-01–06。M6仍OUTSIDE_CURRENT_AUTHORIZATION；所有既有生产BLOCKED门、authority=none/eligible=false、PRODUCT_DISABLED、human及manual/assisted合同保持。
+
 ## Original User Source Diagnostic — 2026-10-01
 
 用户继续要求“真实测试”，执行 [Spec extension](shape-matched-cover-stationary-spec.md#real-source-diagnostic-extension--2026-10-01) / [M4 plan](shape-matched-cover-stationary-plan.md#m4-original-user-source-diagnostic--2026-10-01)，结论为 **REAL_MEDIA_GEOMETRY_DIAGNOSTIC / AI_LIVE_ACCEPTANCE_INCOMPLETE / PRODUCT_DISABLED**。本节直接检查真实原片右上“国货之光”静态旧标；下方原controlled composite记录保留，真实固定动画尚未核实。

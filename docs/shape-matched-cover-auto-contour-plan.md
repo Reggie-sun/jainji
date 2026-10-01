@@ -6,6 +6,8 @@
 
 2026-10-01 本次为 **PLAN_ONLY**：用户要求编写 spec 和 plan，不执行新实现、服务请求、安装或产品启用。此前工程授权及历史证据保留，本计划不扩大生产授权。以下里程碑是剩余工作，不是新完成记录。
 
+**Subsequent execution authorization — 2026-10-01:** 用户随后明确要求实现本计划，故上述 `PLAN_ONLY` 仅描述最初文档交付。本次按原依赖和停止合同推进工程；用户选择保留已有改动并授权接续必要共享文件，只提交本任务内容。当前真实状态与新证据仍写入 [Stationary record](shape-matched-cover-stationary-record.md)，M6的单独授权要求保持。
+
 **Current / Target Behavior:** 当前可以消费给定候选 mask 生成局部真实覆盖样片；目标是在声明支持的原视频范围内自动取得可核查 mask，再通过原选款和独立成片核查。模型声明 bbox、完整遍历或渲染 coverage不能替代这项自动来源验证。
 
 **Contract Surfaces:** canonical D1/D2/frame binding、独立 machine mask provenance、静态/固定动画状态、qualified image route、原 shortlist 图片交接、冻结图层与输出时钟、独立样片协议。源知识和生产 contract 由原 owners 独占。
@@ -151,3 +153,9 @@ M0承接现有渲染，M1覆盖REQ-01–02，M2覆盖REQ-03–05，M3覆盖REQ-0
 本次只新增Spec/Plan及总plan指针，Parent核对目标枚举、像素候选和source/production authority边界；named native `code_mapper` 仅只读核对源码和相邻tests，未运行模型、测试或担任qualification actor。Spec/Plan依Parent Self-Review收尾，不制造implementation review或产品批准。没有适用的repository专用session capture skill，文档范围及交付说明由本计划承接，不写外部memory。
 
 三份文档按现行AOCI均为observed_new，没有本轮未维护managed对象，不写共享索引/baseline。文档引用/占位符/合同覆盖与`git diff --check`检查，实际Verify/Check/Guide及源码快照核对保存在私有 `auto-contour-docs-20261001-a8lohkgl` 目录；最终机器状态以该次检查为准，不由文档声称取代。纯文档未重跑typecheck、Vitest、媒体导出或商业服务，不能新增任何运行验收结论。
+
+## Development Execution Checkpoint — 2026-10-01
+
+按后续实现授权新增M2本地development extractor、M3提前冻结的独立像素/运动比较器，以及同名diagnostic脚本的**作者侧开发用途**；该脚本尚不是M4真实自动链。完整来源、方法对比、实际CLI/FFmpeg、fresh verification及剩余条件保存于 [Stationary record](shape-matched-cover-stationary-record.md#automatic-contour-development-checkpoint--2026-10-01)。
+
+M1仍被当前真实视觉receipt及正式execution owner缺口阻断。本地逐帧和时域稳定方法仅验证均匀背景受控包络，没有选择qualified extractor；M2能力收敛和M3真实独立留出材料仍未完成。M4/M5保持INCOMPLETE，M6保持OUTSIDE_CURRENT_AUTHORIZATION。工程测试、开发CLI及AOCI对齐不满足AC-01–06，不改变PRODUCT_DISABLED。
