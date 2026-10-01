@@ -77,6 +77,7 @@ const api = {
   saveDouyinUploadConfig: (input: DouyinUploadStatus["config"]): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.configure", input),
   selectQianchuanAccountConfig: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.selectConfig"),
   saveQianchuanAccount: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.saveAccount", input),
+  openQianchuanAccountBrowser: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.openAccountBrowser", input),
   refreshQianchuanAccounts: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.refreshAccounts"),
   resumeDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.resume", { projectId, uploadTaskId }),
   retargetDouyinUpload: (projectId: string, uploadTaskId: string, expectedAdId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.retarget", { projectId, uploadTaskId, expectedAdId }),

@@ -5,6 +5,8 @@ import path from "node:path";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { chromium } from "playwright-core";
 import { DouyinCdpUploader, douyinReadiness } from "../src/main/douyin-cdp-uploader.js";
+import * as discovery from "../src/main/qianchuan-browser-discovery.js";
+import { readChromeTargets } from "../src/main/local-cdp-transport.js";
 import { PRODUCTION_QIANCHUAN_CONTRACT, type QianchuanPageContract } from "../src/main/qianchuan-page-contract.js";
 import type { QianchuanFixture, QianchuanFixtureControls } from "./helpers/douyin-cdp-fixture.js";
 import { resolveChromeExecutable, startQianchuanFixture } from "./helpers/douyin-cdp-fixture.js";
@@ -98,6 +100,29 @@ async function openAndFence(uploader: DouyinCdpUploader, task: UploadTaskRecord,
 }
 
 describe("千川 CDP upload-only adapter", () => {
+  it("reads browser metadata through the guarded WebSocket without closing tabs", async () => {
+    const info = await (await fetch(`${fixture.cdpEndpoint}/json/version`)).json();
+    const before = await fixture.inspect();
+    const targets = await readChromeTargets(info.webSocketDebuggerUrl);
+    expect(Array.isArray(targets)).toBe(true);
+    expect((targets as Array<{ type: string }>).some(target => target.type === "page")).toBe(true);
+    expect((await fixture.inspect()).events).toEqual(before.events);
+  });
+
+  it("uses running-profile WebSocket metadata when Chrome has no HTTP discovery endpoint", async () => {
+    const info = await (await fetch(`${fixture.cdpEndpoint}/json/version`)).json();
+    const resolve = vi.spyOn(discovery, "browserWebSocketForEndpoint").mockResolvedValue(info.webSocketDebuggerUrl);
+    const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404 }));
+    try {
+      const uploader = makeUploader();
+      await uploader.connect(await makeTask({ name: "internal-debugging.mp4" }), new AbortController().signal);
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(resolve).toHaveBeenCalledWith(fixture.cdpEndpoint);
+      await uploader.stop();
+    } finally { request.mockRestore(); resolve.mockRestore(); }
+    expect((await fixture.inspect()).events.filter(event => event.type === "file-input")).toHaveLength(0);
+  });
+
   it("fails closed before CDP discovery when the finite page contract is absent", async () => {
     const task = await makeTask({ name: "readiness.mp4" });
     const fetchSpy = vi.spyOn(globalThis, "fetch");

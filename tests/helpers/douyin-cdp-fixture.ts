@@ -72,7 +72,7 @@ export interface QianchuanFixture {
   inspect(): Promise<{ chromeRunning: boolean; pages: Array<{ id: string; type: string; url: string }>; events: QianchuanFixtureEvent[] }>;
   stop(): Promise<void>;
 }
-export interface StartFixtureOptions { tempRoot: string; chromeExecutable?: string; fixtureHtml?: string; production?: boolean; }
+export interface StartFixtureOptions { tempRoot: string; chromeExecutable?: string; fixtureHtml?: string; production?: boolean; profileDirectory?: string; }
 
 async function bodyText(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -93,7 +93,7 @@ async function waitFor<T>(read: () => T | undefined | Promise<T | undefined>, de
   throw new Error(`UNVERIFIED: timed out waiting for ${description}`);
 }
 async function startChrome(executable: string, profile: string): Promise<{ child: ChildProcess; endpoint: string; originalTargetId: string }> {
-  await mkdir(profile, { recursive: true });
+  await mkdir(profile, { recursive: true, mode: 0o700 });
   const args = [
     "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", `--user-data-dir=${profile}`,
     "--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
@@ -168,7 +168,7 @@ export async function startQianchuanFixture(options: StartFixtureOptions): Promi
   assert.ok(address && typeof address !== "string");
   const origin = `http://127.0.0.1:${address.port}`;
   let chrome: Awaited<ReturnType<typeof startChrome>>;
-  try { chrome = await startChrome(chromeExecutable, path.join(options.tempRoot, "chrome-profile")); }
+  try { chrome = await startChrome(chromeExecutable, options.profileDirectory ?? path.join(options.tempRoot, "chrome-profile")); }
   catch (error) { await new Promise<void>(resolve => server.close(() => resolve())); throw error; }
   let stopped = false;
   return {

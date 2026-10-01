@@ -44,7 +44,9 @@ try {
     const fixtureRoot = path.join(directory, `browser-${index}`); await mkdir(fixtureRoot);
     const fixtureHtml = path.join(fixtureRoot, "page.html");
     await writeFile(fixtureHtml, html.replaceAll("123456", ids[index].advertiserId).replaceAll("987654", ids[index].adId));
-    const fixture = await helper.startQianchuanFixture({ tempRoot: fixtureRoot, production: true, fixtureHtml });
+    const browserData = packaged ? path.join(home, ".config", "jianji") : path.join(directory, "userData");
+    const fixture = await helper.startQianchuanFixture({ tempRoot: fixtureRoot, production: true, fixtureHtml,
+      profileDirectory: path.join(browserData, "douyin-upload", "account-browsers", ids[index].advertiserId) });
     fixture.setControls({ processingDelayMs: index ? 50 : 8000 }); fixtures.push(fixture);
     const browser = await require("playwright-core").chromium.connectOverCDP(fixture.cdpEndpoint); routing.push(browser);
     await browser.contexts()[0].route("https://qianchuan.jinritemai.com/**", async route => {
@@ -55,6 +57,7 @@ try {
       const response = await fetch(local, { method, ...(body ? { body, headers: { "content-type": "application/json" } } : {}) });
       await route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "text/plain", body: await response.text() });
     });
+    await browser.contexts()[0].pages()[0].goto(`https://qianchuan.jinritemai.com/uni-prom?aavid=${ids[index].advertiserId}&adId=${ids[index].adId}`);
   }
   const accountFile = path.join(directory, "accounts.json");
   const products = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂", "热敷贴"];
@@ -151,7 +154,9 @@ try {
   const firstTask = ready[0].tasks[0];
   assert.ok(Number(execFileSync(ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", firstTask.outputPath], { encoding: "utf8" })) > 0);
   await page.getByRole("button", { name: "查看 商品甲 作品", exact: true }).click();
-  await page.getByRole("region", { name: "本项千川上传" }).getByText("已上传 10 / 10 条 · 停在确定前", { exact: true }).waitFor();
+  const progress = page.getByRole("region", { name: "本项千川上传" }).getByRole("status", { name: "本项上传进度" });
+  await progress.waitFor();
+  assert.match(await progress.innerText(), /已上传 10 \/ 10 条 · 待上传 0 条 · 处理中 0 条 · 结果未知 0 条 · 需处理 0 条 · 停在确定前/);
   await page.screenshot({ path: path.join(directory, "batch-ready.png"), fullPage: true });
   await page.getByRole("button", { name: "← 返回批量列表", exact: true }).click();
   report.checks.push("UI selection/reset", "two frozen accounts", "formal FFmpeg outputs", "group limit and per-file fences", "job-scoped ready details", "export-only item", "saved template drafts unchanged");
@@ -175,14 +180,14 @@ try {
   await until(() => fixtures[0].inspect(), value => value.events.filter(event => event.type === "files").length > countBefore[0]);
   fixtures[0].setControls({ failure: true });
   const fault = await until(() => state(page), value => value.batchProduction?.id !== recovered.batchProduction.id && value.batchProduction?.status === "finished");
-  const stopped = await until(() => details(fault.batchProduction), values => values[0].upload.tasks.some(task => task.upload_outcome === "MAY_HAVE_UPLOADED") && values[1].upload.tasks.length === 2);
+  const stopped = await until(() => details(fault.batchProduction), values => values[0].upload.tasks.some(task => task.upload_outcome === "MAY_HAVE_UPLOADED") && values[1].upload.tasks.length === 2 && values[1].upload.tasks.every(task => task.upload_outcome === "READY"));
   assert.ok(stopped.every(value => value.job.status === "completed"));
-  assert.ok(stopped[1].upload.tasks.every(task => task.state === "PENDING" && task.upload_outcome === "NOT_SELECTED"));
+  assert.ok(stopped[1].upload.tasks.every(task => task.state === "WAITING_FOR_CONFIRMATION" && task.upload_outcome === "READY"));
   const finalInspection = await Promise.all(fixtures.map(fixture => fixture.inspect()));
-  assert.equal(finalInspection[1].events.filter(event => event.type === "files").length, countBefore[1]);
+  assert.ok(finalInspection[1].events.filter(event => event.type === "files").length > countBefore[1]);
   assert.equal(finalInspection.flatMap(value => value.events).filter(event => event.type === "confirm" || event.type === "settings").length, 0);
-  report.checks.push("unknown pauses later account without changing completed exports");
-  Object.assign(report, { result: "PASS", runtime, formalOutputs: 17, uploadedReady: 12, confirmClicks: 0, adSettingsChanges: 0, productionOriginInterceptedLocally: true });
+  report.checks.push("unknown pauses only its account without changing completed exports");
+  Object.assign(report, { result: "PASS", runtime, formalOutputs: 17, uploadedReady: 12 + stopped.flatMap(value => value.upload.tasks).filter(task => task.upload_outcome === "READY").length, confirmClicks: 0, adSettingsChanges: 0, productionOriginInterceptedLocally: true });
 } catch (error) {
   report.result = "FAIL"; report.failure = String(error.stack ?? error).slice(0, 4000); process.exitCode = 1;
   if (app) { const page = await app.firstWindow(); await page.screenshot({ path: path.join(directory, "failure.png"), fullPage: true }).catch(() => undefined); }

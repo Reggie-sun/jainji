@@ -14,6 +14,7 @@ vi.mock("node:fs/promises", async importOriginal => {
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const endpoint = "http://127.0.0.1:9321";
+const socket = "ws://127.0.0.1:9321/devtools/browser/owned";
 const tab = (id = "123") => ({ type: "page", url: `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}&adId=456` });
 const discover = (tabs: unknown, endpoints = [endpoint]) => discoverQianchuanBrowser("123", {
   endpoints: async () => endpoints, fetch: vi.fn(async () => new Response(JSON.stringify(tabs))),
@@ -22,6 +23,24 @@ const discover = (tabs: unknown, endpoints = [endpoint]) => discoverQianchuanBro
 it("matches only a unique browser for the exact advertiser without requiring a port or matching the old plan", async () => {
   expect(await discover([tab(), tab()])).toBe(endpoint);
   await expect(discover([tab()], [endpoint, "http://127.0.0.1:9322"])).rejects.toThrow("多个");
+});
+it("discovers browser-internal remote debugging over websocket without HTTP metadata", async () => {
+  const fetch = vi.fn(), targets = vi.fn(async () => [tab()]);
+  expect(await discoverQianchuanBrowser("123", { endpoints: async () => [socket], fetch, targets })).toBe(endpoint);
+  expect(fetch).not.toHaveBeenCalled(); expect(targets).toHaveBeenCalledWith(socket);
+  await expect(discoverQianchuanBrowser("123", { endpoints: async () => [socket, "ws://127.0.0.1:9322/devtools/browser/other"], targets })).rejects.toThrow("多个");
+  for (const value of ["ws://example.com:9321/devtools/browser/owned", socket + "?redirect=1", "ws://127.0.0.1:9321/devtools/page/owned"]) {
+    targets.mockClear();
+    await expect(discoverQianchuanBrowser("123", { endpoints: async () => [value], targets })).rejects.toThrow();
+    expect(targets).not.toHaveBeenCalled();
+  }
+});
+it("reads browser-internal debugging metadata without a command-line debugging flag", async () => {
+  const f = await processes(), profile = path.join(f.root, "profile"); await mkdir(profile, { mode: 0o700 });
+  await f.add([`--user-data-dir=${profile}`]);
+  expect(await runningChromeEndpoints(f.proc)).toEqual([]);
+  await writeFile(path.join(profile, "DevToolsActivePort"), "9321\n/devtools/browser/owned\n", { mode: 0o600 });
+  expect(await runningChromeEndpoints(f.proc)).toEqual([socket]);
 });
 it.each([
   [], [tab("124")], [{ ...tab(), type: "iframe" }],
@@ -40,10 +59,10 @@ it("uses only discovered loopback endpoints and never follows redirects", async 
 });
 it("rejects incomplete discovery, redirects, malformed or oversized metadata", async () => {
   for (const response of [new Response("[]", { status: 302 }), new Response("{}"), new Response("x".repeat(262145)), new Response(JSON.stringify(Array(257).fill(tab())))]) {
-    await expect(discoverQianchuanBrowser("123", { endpoints: async () => [endpoint], fetch: async () => response })).rejects.toThrow("无法完整识别");
+    await expect(discoverQianchuanBrowser("123", { endpoints: async () => [endpoint], fetch: async () => response })).rejects.toThrow("无法完整连接");
   }
   await expect(discoverQianchuanBrowser("123", { endpoints: async () => Array.from({ length: 17 }, (_, i) => `http://127.0.0.1:${9300 + i}`) })).rejects.toThrow();
-  await expect(discoverQianchuanBrowser("123", { endpoints: async () => [endpoint], fetch: async () => { throw new Error("private payload"); } })).rejects.toThrow("无法完整识别");
+  await expect(discoverQianchuanBrowser("123", { endpoints: async () => [endpoint], fetch: async () => { throw new Error("private payload"); } })).rejects.toThrow("无法完整连接");
 });
 it("bounds actual loopback HTTP reads and never follows an HTTP redirect", async () => {
   const visited: string[] = [];
@@ -57,10 +76,10 @@ it("bounds actual loopback HTTP reads and never follows an HTTP redirect", async
   const address = server.address() as { port: number };
   const endpoints = async () => [`http://127.0.0.1:${address.port}`];
   try {
-    await expect(discoverQianchuanBrowser("123", { endpoints })).rejects.toThrow("无法完整识别");
+    await expect(discoverQianchuanBrowser("123", { endpoints })).rejects.toThrow("无法完整连接");
     expect(visited).toEqual(["/json/list"]);
     mode = "stall";
-    await expect(discoverQianchuanBrowser("123", { endpoints })).rejects.toThrow("无法完整识别");
+    await expect(discoverQianchuanBrowser("123", { endpoints })).rejects.toThrow("无法完整连接");
   } finally { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
 });
 async function processes() {
@@ -105,4 +124,14 @@ it("ignores a process whose executable cannot be identified instead of blocking 
   const f = await processes(); await f.add([]); await f.add(["--remote-debugging-port=9321"]);
   vi.mocked(filesystem.readlink).mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EACCES" }));
   expect(await runningChromeEndpoints(f.proc)).toEqual([endpoint]);
+});
+it("recognizes a desktop Chrome process title and ignores a pipe-only MCP browser", async () => {
+  const f = await processes();
+  const desktopProfile = path.join(f.root, "desktop profile"); await mkdir(desktopProfile, { mode: 0o700 });
+  await writeFile(path.join(desktopProfile, "DevToolsActivePort"), "9321\n/devtools/browser/owned\n", { mode: 0o600 });
+  await f.add([]);
+  await writeFile(path.join(f.proc, "10", "cmdline"), `/opt/google/chrome/chrome --user-data-dir=${desktopProfile} --profile-directory=Profile 1 --class=account\0`);
+  const profile = path.join(f.root, "pipe-profile"); await mkdir(profile, { mode: 0o775 });
+  await f.add(["--remote-debugging-pipe", `--user-data-dir=${profile}`]);
+  expect(await runningChromeEndpoints(f.proc)).toEqual([socket]);
 });

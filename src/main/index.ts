@@ -175,6 +175,7 @@ function registerHandlers(): void {
   });
   ipcMain.handle("douyinUpload.refreshAccounts", async (event) => { assertTrustedSender(event); await douyinUpload.refreshAccounts(); return publicState(); });
   ipcMain.handle("douyinUpload.saveAccount", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.saveAccount(input); return publicState(); });
+  ipcMain.handle("douyinUpload.openAccountBrowser", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.openAccountBrowser(input); return publicState(); });
   ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });

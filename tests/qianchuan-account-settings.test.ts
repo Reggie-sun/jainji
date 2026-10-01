@@ -16,6 +16,38 @@ async function fixture() {
   const discover = vi.fn(async (advertiserId: string) => `http://127.0.0.1:${advertiserId === "9007199254740993" ? 9230 : 9222 + Number(BigInt(advertiserId) - 1876024170199244n)}`);
   return { root, source, discover, settings: new QianchuanAccountSettings(path.join(root, "app"), discover) };
 }
+it("prepares current browser bindings without changing the persisted mapping or earlier frozen batches", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const bytes = await readFile(f.settings.file), old = await f.settings.preflight("蝴蝶贴");
+  f.discover.mockImplementation(async id => id === old.advertiserId ? "http://127.0.0.1:41001" : "http://127.0.0.1:41002");
+  const first = await f.settings.prepare("蝴蝶贴"), second = await f.settings.prepare("眼贴");
+  expect(first).toMatchObject({ ...old, cdpEndpoint: "http://127.0.0.1:41001" });
+  expect(await f.settings.freeze("蝴蝶贴", first.configDigest)).toEqual(first);
+  expect(await f.settings.freeze("眼贴", second.configDigest)).toEqual(second);
+  expect(await readFile(f.settings.file)).toEqual(bytes);
+  expect(old.cdpEndpoint).toBe("http://127.0.0.1:9222");
+  f.discover.mockRejectedValueOnce(new Error("ambiguous browser"));
+  await expect(f.settings.prepare("蝴蝶贴")).rejects.toThrow("ambiguous");
+  expect(await f.settings.preflight("蝴蝶贴")).toEqual(first);
+  await f.settings.savePlan({ product: "蝴蝶贴", productName: "改显示名", planUrl: planUrl(old.advertiserId, old.adId) });
+  expect(await f.settings.preflight("蝴蝶贴")).toMatchObject({ cdpEndpoint: first.cdpEndpoint, productName: "改显示名" });
+});
+it("rejects browser-opening inputs with arbitrary paths or endpoints before starting Chrome", async () => {
+  const f = await fixture();
+  for (const extra of [{ profile: "/tmp/arbitrary" }, { cdpEndpoint: "http://127.0.0.1:1" }, { args: ["--no-sandbox"] }]) {
+    await expect(f.settings.openBrowser({ product: "蝴蝶贴", planUrl: planUrl(), ...extra })).rejects.toThrow();
+  }
+  await expect(f.settings.openBrowser({ product: "蝴蝶贴", planUrl: "https://example.com/" })).rejects.toThrow();
+});
+it("rejects mapping changes during browser discovery and never freezes a stale prepared binding", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  f.discover.mockImplementationOnce(async () => {
+    await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl("1876024170199244", "9999") });
+    return "http://127.0.0.1:41001";
+  });
+  await expect(f.settings.prepare("蝴蝶贴")).rejects.toThrow("已变化");
+  expect(await f.settings.preflight("蝴蝶贴")).toMatchObject({ adId: "9999", cdpEndpoint: "http://127.0.0.1:9222" });
+});
 
 it("extracts exact decimal strings from a pasted plan URL without carrying tracking or fragment state", () => {
   expect(parseQianchuanPlanUrl(` ${planUrl()}&awemeId=&dr=2026-09-28%2C2026-09-28#uni=%7B%22ad%22%3A%22ignored%22%7D `)).toEqual({ advertiserId: "1876024170199244", adId: "1876036593854788" });

@@ -405,7 +405,7 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks()[0]).toEqual(old); expect(f.store.intents()).toEqual(intents); expect(await readFile(fencePath)).toEqual(fence);
     expect((await f.service.preflight(selection("眼贴"), 1))?.target).toMatchObject({ productName: "后续产品", cdpEndpoint: old.authorization.target.cdpEndpoint, advertiserId: "1003", adId: "2003" });
     const reopened = new DouyinUploadStore(f.store.root); await reopened.load();
-    const restored = new DouyinUploadService(reopened, { accounts: new QianchuanAccountSettings(f.store.root), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
+    const restored = new DouyinUploadService(reopened, { accounts: new QianchuanAccountSettings(f.store.root, async () => "http://127.0.0.1:9225"), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
     await restored.restoreConfig();
     expect(reopened.task(old.result.upload_task_id)).toEqual(old); expect(reopened.intents()).toEqual(intents);
     expect(restored.status(batch.projectId).accounts.find(account => account.product === "眼贴")?.productName).toBe("后续产品");

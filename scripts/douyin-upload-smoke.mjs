@@ -43,10 +43,11 @@ try {
   helperPath = path.join(tempRoot, "douyin-cdp-fixture.mjs");
   await require("esbuild").build({ entryPoints: [path.join(root, "tests/helpers/douyin-cdp-fixture.ts")], bundle: true, platform: "node", format: "esm", outfile: helperPath, external: ["playwright-core"] });
   const helper = await import(pathToFileURL(helperPath).href);
-  fixture = await helper.startQianchuanFixture({ tempRoot, production: true, chromeExecutable: await helper.resolveChromeExecutable(process.env.JIANJI_CHROME_PATH), fixtureHtml: path.join(root, "tests/fixtures/qianchuan-production-page.html") });
+  fixture = await helper.startQianchuanFixture({ tempRoot, production: true, chromeExecutable: await helper.resolveChromeExecutable(process.env.JIANJI_CHROME_PATH), fixtureHtml: path.join(root, "tests/fixtures/qianchuan-production-page.html"),
+    profileDirectory: path.join(packaged ? path.join(fixtureHome, ".config", "jianji") : userData, "douyin-upload", "account-browsers", "123456") });
   // Keep the first group processing while further formal exports finish, exercising accumulated groups.
   fixture.setControls({ processingDelayMs: 10_000 });
-  if (packaged) {
+  {
     // Test-only network interception in a fresh profile; package source remains unchanged.
     fixtureRoutingBrowser = await require("playwright-core").chromium.connectOverCDP(fixture.cdpEndpoint);
     await fixtureRoutingBrowser.contexts()[0].route("https://qianchuan.jinritemai.com/**", async route => {
@@ -58,6 +59,7 @@ try {
       await route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "text/plain", body: await response.text() });
     });
     report.packagedProductionOriginInterceptedLocally = true;
+    await fixtureRoutingBrowser.contexts()[0].pages()[0].goto("https://qianchuan.jinritemai.com/uni-prom?aavid=123456&adId=987654");
   }
   const products = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂", "热敷贴"];
   const fixturePort = new URL(fixture.cdpEndpoint).port;

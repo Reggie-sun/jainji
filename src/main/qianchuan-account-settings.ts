@@ -3,7 +3,7 @@ import { lstat, open, rename, unlink } from "node:fs/promises";
 import path from "node:path";
 import { QianchuanAccountConfigReader, readPrivateConfig, type FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
-import { discoverQianchuanBrowser } from "./qianchuan-browser-discovery.js";
+import { QianchuanBrowserManager } from "./qianchuan-browser-manager.js";
 import { parseQianchuanPlanUrl, QianchuanAccountSettingsSchema, QianchuanAccountSetupSchema, type QianchuanAccount, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
@@ -15,9 +15,19 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private writes: Promise<unknown> = Promise.resolve();
   private blocked = false;
   private hasMapping = false;
-  constructor(root: string, private readonly discoverBrowser: (advertiserId: string) => Promise<string> = discoverQianchuanBrowser) {
+  private readonly preparedBrowsers = new Map<QianchuanProduct, { advertiserId: string; endpoint: string }>();
+  private readonly browsers: QianchuanBrowserManager;
+  private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
+  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
+    this.browsers = new QianchuanBrowserManager(root);
+    this.discoverBrowser = discoverBrowser ?? (id => this.browsers.prepare(id));
+  }
+  async openBrowser(input: unknown): Promise<void> {
+    this.assertAvailable();
+    const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
+    await this.browsers.open(ids.advertiserId, true);
   }
   private async exists(): Promise<boolean> {
     try { await lstat(this.file); return true; }
@@ -69,8 +79,22 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   }
   private assertAvailable(): void { if (this.blocked) throw new Error("账号设置保存结果未知，请重启简辑核查。"); }
   override async refresh(): Promise<QianchuanAccountSummary[]> { this.assertAvailable(); return super.refresh(); }
-  override async preflight(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return super.preflight(product); }
-  override async freeze(product: QianchuanProduct, digest: string): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return super.freeze(product, digest); }
+  private withPreparedBrowser(target: FrozenQianchuanAccount): FrozenQianchuanAccount {
+    const prepared = this.preparedBrowsers.get(target.product);
+    return prepared?.advertiserId === target.advertiserId ? Object.freeze({ ...target, cdpEndpoint: prepared.endpoint }) : target;
+  }
+  override async preflight(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.preflight(product)); }
+  override async freeze(product: QianchuanProduct, digest: string): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.freeze(product, digest)); }
+  /** Only new production discovers live connections; frozen and historical tasks retain their target. */
+  override async prepare(product: QianchuanProduct): Promise<FrozenQianchuanAccount> {
+    this.assertAvailable();
+    const target = await super.preflight(product);
+    const endpoint = await this.discoverBrowser(target.advertiserId);
+    this.assertAvailable();
+    await super.freeze(product, target.configDigest);
+    this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
+    return this.withPreparedBrowser(target);
+  }
   async savePlan(input: unknown): Promise<QianchuanAccountSummary[]> {
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
     return this.edit(async () => {

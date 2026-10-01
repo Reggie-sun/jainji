@@ -9,6 +9,14 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## Managed Account Browser Amendment (2026-10-01)
+
+用户明确要求普通使用者无需点击远程调试许可。新制作默认使用简辑管理的账号 Chrome，覆盖下文“仅 attach、不能启动 Chrome”限制；不修改用户桌面启动器、不接管或关闭既有个人浏览器。主进程按严格 advertiserId 在应用私有目录派生独立 profile，使用已安装 Chrome，以 loopback 和动态端口启动。首次由用户登录；登录态仅由 Chrome 在该 profile 保存，程序不读取、复制或导出 cookie/token。没有 Chrome、平台未资格、目录不安全、启动超时或登录不可确认时明确阻断，不回退到需要临时授权的任意浏览器。
+
+只有可信账号设置中的“打开账号浏览器”和用户明确选择上传的新制作可以启动；应用启动、刷新摘要和历史恢复不启动浏览器。账号设置入口沿用 strict product/planUrl/productName 输入，不接收路径、命令行或端口。运行中复用同一 advertiser 的专用进程；新制作发现当前端口后冻结，配置 digest 变化拒绝。不改写已冻结任务的地址、目标、页面归属或永久 fence；旧页面只读恢复仍 attach 原地址。停止和退出仅 detach，保留 Chrome、登录和待确认页面；不自动确认或发布。当前只资格 Linux，Windows 原阻断不变。
+
+Self-Review：专用浏览器只拥有启动和连接准备，不建立第二上传队列；最终账号及计划仍由原 page contract 验证。目录按账号隔离，不从显示名称或旧端口推导归属；新 profile 可能需要首次登录，不能把旧浏览器登录态直接搬入。自动重连仍仅适用于未选文件，未知结果禁止重传。
+
 ## Current Production Scope Amendment (2026-10-01)
 
 用户明确要求 CDP 上传只管理本次生成的一批，之前生成的任务不再处理。本修订覆盖下文历史账号阻塞和全局暂停的跨制作含义；同一制作范围内的暂停、九条分组、原页只读恢复及永久防重传仍有效。

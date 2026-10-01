@@ -174,6 +174,10 @@ export class DouyinUploadService {
     catch { this.summaries = []; this.initializationFailure = "账号配置不可用，请检查文件权限和映射。"; }
     this.changed();
   }
+  async openAccountBrowser(input: unknown): Promise<void> {
+    if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持打开浏览器。");
+    await this.accounts.openBrowser(input);
+  }
   async configure(input: unknown): Promise<void> {
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     const publicSettings = QianchuanUploadConfigSchema.omit({ accountConfigPath: true }).parse(input);
@@ -191,7 +195,7 @@ export class DouyinUploadService {
     if (!this.store.config.enabled || this.store.unavailable) throw new Error("请先启用千川上传并授权账号配置。");
     if (this.dependencies.readiness?.(this.store.config)) throw new Error(this.dependencies.readiness(this.store.config));
     const generation = this.controlGeneration;
-    const target = await this.accounts.preflight(parsed.accountProduct);
+    const target = await this.accounts.prepare(parsed.accountProduct);
     if (generation !== this.controlGeneration || this.stopping || !this.store.config.enabled) throw new Error("上传控制已变化，请重新开始本次制作。");
     const authorization = UploadAuthorizationSchema.parse({ target, pageBatchId: randomUUID(), expectedCount });
     this.productionBatches?.add(authorization.pageBatchId);

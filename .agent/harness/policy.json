@@ -42,7 +42,7 @@
       "required": true,
       "command": "node",
       "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/qianchuan-account-config.test.ts", "tests/qianchuan-page-contract.test.ts", "tests/douyin-upload-contract.test.ts", "tests/douyin-upload-store.test.ts", "tests/douyin-upload-service.test.ts", "tests/douyin-upload-integration.test.ts", "tests/douyin-cdp-uploader.test.ts", "tests/douyin-upload-ui.test.ts"],
+      "testFiles": ["tests/qianchuan-account-config.test.ts", "tests/qianchuan-account-settings.test.ts", "tests/qianchuan-browser-discovery.test.ts", "tests/qianchuan-browser-manager.test.ts", "tests/qianchuan-page-contract.test.ts", "tests/douyin-upload-contract.test.ts", "tests/douyin-upload-store.test.ts", "tests/douyin-upload-service.test.ts", "tests/douyin-upload-integration.test.ts", "tests/douyin-cdp-uploader.test.ts", "tests/douyin-upload-ui.test.ts"],
       "timeoutMs": 300000
     },
     {

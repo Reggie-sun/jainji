@@ -138,7 +138,9 @@ Linux 已接入有限千川页面合同：正式 MP4 完成并验证后，应用
 
 当前九条分组及应用验证边界见 [分组接入 checkpoint](docs/qianchuan-nine-file-groups-2026-09-28.md)；页面适配的历史审查状态见 [生产 adapter checkpoint](docs/qianchuan-production-adapter-2026-09-28.md)，之前的离线接入见 [历史接入 checkpoint](docs/qianchuan-upload-integration-2026-09-27.md)。
 
-应用只 attach 用户已经登录的对应 loopback Chrome，不启动或修改用户浏览器、不读取 cookie、不处理验证码。同批共用专用 tab，全局串行处理文件组；组内每个文件的永久 selection fence 全部保存后才选择文件。屏障之后未知仅能只读核查原页面，不自动重传。不要删除 `userData/douyin-upload/` 中的记录或屏障来重试。v1 创作者中心历史保留原字节和旧 markers，只读显示，不迁移发布授权；v2 默认关闭。Windows 的目录同步及 ACL 尚未实机核实，自动上传继续阻断。
+首次使用在作品页的账号设置中粘贴计划链接，点击“打开账号浏览器 / 登录”，在简辑打开的专用 Chrome 中登录千川，然后保存账号。每个账号的登录状态独立保留；之后明确选择上传的新制作会自动打开或连接该窗口，无需配置 MCP、端口或点击远程调试许可。需要安装 Google Chrome；此路径目前仅资格 Linux。程序不复制个人 Chrome 的登录数据，不修改桌面启动器，不处理验证码；退出简辑保留账号 Chrome 和待确认页面。
+
+同批共用专用 tab，全局串行处理文件组；组内每个文件的永久 selection fence 全部保存后才选择文件。屏障之后未知仅能只读核查原页面，不自动重传。应用启动不自动打开账号浏览器或恢复旧上传。不要删除 `userData/douyin-upload/` 中的记录或屏障来重试。旧冻结任务继续绑定原 Chrome，不迁移到新专用窗口；v1 创作者中心历史只读保留，不迁移发布授权。Windows 的目录同步及 ACL 尚未实机核实，自动上传继续阻断。
 
 隔离回归使用 `npx vitest run tests/douyin-*.test.ts tests/qianchuan-*.test.ts`，并纳入 code Harness。构建后运行 `xvfb-run -a node scripts/douyin-upload-smoke.mjs`；只用合成视频、本地页面、独立 Electron userData 和独立 Chrome profile。测试 bundle 中的 fixture 定位不进入生产配置。Linux 打包后可追加 `--packaged`；测试 driver 在独立 profile 中将千川导航截获到本地 fixture，验证未修改的包内 adapter 和原生文件拖拽，不访问真实账号。它不证明生产账号上传已验收。smoke 支持 `JIANJI_SMOKE_ELECTRON`、`JIANJI_FFMPEG_PATH`、`JIANJI_FFPROBE_PATH`；引擎必须支持 `drawtext`、`overlay` 和 `-fps_mode`。
 
