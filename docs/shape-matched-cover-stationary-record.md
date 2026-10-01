@@ -1,5 +1,17 @@
 # Stationary Shape Cover Engineering Record
 
+## Full Execution Continuation and Review Observation Seam — 2026-10-01
+
+用户要求完整完成自动轮廓计划，并允许选择应用账号实际 image-enabled GPT；授权和实际路线诊断由 [AI record](shape-matched-cover-m5d2a.md#account-model-selection-and-native-projection-diagnosis--2026-10-01) 承接。本节仅记录 M4 所需无 authority 复核观察接缝，不声称真实自动链完成。Evidence owner 为私有 `auto-contour-full-20261001-51kctk6d`。
+
+原 `shape-cover-admission.ts` 提供共享严格 `parseShapeCoverReviewObservation`：四项内容安全、自然度、原因及证据 IDs 保持原 schema；inspect/stop 沿原协议，裸 pass、缺 facet、bbox revise、extra authority 等拒绝。输出深冻结并固定 authority=none/eligible=false。原真实 admission 使用同一解析器后仍核验 SAFE/NATURAL、当前成对证据、coverage/source/output/sample bytes，私有 WeakMap handle issuer 未改变。诊断观察或 JSON 副本均不能恢复正式 handle，不引入第二 reviewer/renderer/queue。
+
+新增 11 个观察及 authority 负例；初始不存在 parser 的可靠 RED 后 GREEN。Parent 首次 fresh typecheck exit0，原 candidates 105 与新观察 11 共116 PASS（141.20s），包含真实原队列/FFmpeg回归；这些是工程证据，没有实际模型复核或真实素材自然度验收。后续 working tree 出现与本任务无关的 development-lifecycle 修改后，交付前重新验证；最终结果随本节追加。AOCI 本轮 admission 官方完整批次1/1已应用，source SHA c976dc0e13c6ff437d18687c49a79b875fcd64f646596d014d96a0e26076e227，随后 Verify/Check/Guide exit0、Guide complete=true。共享索引保留，未 stage 其他任务内容；后续全库漂移须与本轮已维护对象分开报告。
+
+本接缝未接 AI transport、源事实 issuer 或正式发布；M1真实路线、M2真实自动分割、M3独立真实truth、M4实际选款及样片、M5正式资格均继续缺对应证据。Native worker 仅实现接缝与测试，Parent 审查完整 diff 并运行验证，不把 worker verdict 或 tests PASS 当成 acceptance。计划禁止 Kimi 保持，M6仍 OUTSIDE_CURRENT_AUTHORIZATION/PRODUCT_DISABLED。
+
+最终 continuation verification：在已观察到的 development-lifecycle 无关改动保留状态下，再次 `npm run typecheck` exit0；上述两个 suite **116/116 PASS**，139.70s，未再修改接缝源码。fresh AOCI Verify/Check exit0、missing/stale/unbaselined/orphan=[]，Guide 加 `--agent codex` 后 exit0、complete=true/next_action=none；第一次漏 agent 的 Guide 拒绝保留而非算作通过。共享 AOCI 后续索引由其他任务更新，仍未 stage 混合文件。Parent stable Risk Gate 为 KIMI_REVIEW_NOT_REQUIRED：接缝只产生严格 schema 的不可变观察，原 issuer、private handle、内容门和持久发布屏障均未扩权；authority/JSON replay 负例及原真实队列回归覆盖具体风险，未发现 critical consequence 或重大后果加未解决验证缺口的组合。真实成片及模型缺口保持单独阻断。
+
 ## Automatic Contour Development Checkpoint — 2026-10-01
 
 用户明确要求实现 [Automatic contour plan](shape-matched-cover-auto-contour-plan.md)。本次完成该计划允许在M1阻断时推进的M2本地工程与M3比较器；结论为 **AUTO_CONTOUR_DEVELOPMENT_ONLY / REAL_AUTOMATIC_CHAIN_INCOMPLETE / PRODUCT_DISABLED**。没有将计划全部标为完成，也没有重做既有预选星形180帧样例。

@@ -21,6 +21,40 @@ const SafetyPass = z.object({ action: z.literal("pass"), reason: z.string().trim
   naturalness: z.object({ verdict: z.enum(["NATURAL", "UNNATURAL", "UNKNOWN"]), reason: z.string().trim().min(1).max(500) }).strict(),
   evidenceIds: z.array(z.string().min(1).max(120)).min(2).max(160),
 }).strict();
+type ObservedDecision = z.infer<typeof SafetyPass> | Extract<z.infer<typeof PreviewDecisionSchema>, { action: "inspect" | "stop" }>;
+type DeepReadonly<T> = T extends readonly (infer Item)[] ? readonly DeepReadonly<Item>[]
+  : T extends object ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> } : T;
+export type ShapeCoverReviewObservation = DeepReadonly<{
+  purpose: "shape-cover-review-observation/v1";
+  authority: "none";
+  eligible: false;
+  decision: ObservedDecision;
+}>;
+
+function freezeDeep<T>(value: T): DeepReadonly<T> {
+  if (value && typeof value === "object") {
+    for (const child of Object.values(value)) freezeDeep(child);
+    Object.freeze(value);
+  }
+  return value as DeepReadonly<T>;
+}
+
+/** Parse reviewer output as observation data without creating or restoring admission authority. */
+export function parseShapeCoverReviewObservation(raw: string): ShapeCoverReviewObservation {
+  const decoded: unknown = JSON.parse(raw);
+  let decision: ObservedDecision;
+  if (decoded && typeof decoded === "object" && !Array.isArray(decoded)
+    && "action" in decoded && decoded.action === "pass") {
+    decision = SafetyPass.parse(decoded);
+  } else {
+    const parsed = PreviewDecisionSchema.parse(decoded);
+    if (parsed.action !== "inspect" && parsed.action !== "stop") unsafe("frozen shape cannot use bbox revisions");
+    decision = parsed;
+  }
+  return freezeDeep({ purpose: "shape-cover-review-observation/v1" as const, authority: "none" as const,
+    eligible: false as const, decision });
+}
+
 declare const admissionBrand: unique symbol;
 /** Authority is held privately, never reconstructed from serialized PASS fields. */
 export interface ShapeCoverAdmission { readonly [admissionBrand]: true }
@@ -181,13 +215,12 @@ export async function admitShapeCoverSample(input: {
         if (captured.source.fingerprint !== binding.media.fingerprint || review.evidence.some(image => !image.previewEvidenceId)) unsafe("paired evidence unavailable");
         const raw = await input.reviewer.review({ ...review, purpose: "shape-cover-content-safety", shapes: shapes.map(({ targetId, range, placement, pngSha256 }) => ({ targetId, range, placement, pngSha256 })) }, signal);
         signal.throwIfAborted();
-        const decision = JSON.parse(raw);
+        const observation = parseShapeCoverReviewObservation(raw);
+        const decision = observation.decision;
         if (decision.action !== "pass") {
-          const parsed = PreviewDecisionSchema.parse(decision);
-          if (parsed.action !== "inspect" && parsed.action !== "stop") unsafe("frozen shape cannot use bbox revisions");
-          return JSON.stringify(parsed);
+          return JSON.stringify(decision);
         }
-        const pass = SafetyPass.parse(decision);
+        const pass = decision;
         if (pass.naturalness.verdict !== "NATURAL") unsafe(`shape naturalness ${pass.naturalness.verdict}: ${pass.naturalness.reason}`);
         const ids = new Set(captured.evidence.map(item => item.id));
         if (Object.values(pass.contentSafety).some(verdict => verdict !== "SAFE") || pass.evidenceIds.some(id => !ids.has(id))

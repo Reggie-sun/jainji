@@ -1,5 +1,13 @@
 # M5-D2A Engineering and Qualification Record
 
+## Account Model Selection and Native Projection Diagnosis — 2026-10-01
+
+用户明确允许核验并选择应用独立账号实际支持图片的 GPT 型号。原应用无活动制作时，一次原 `ChatGPTSession.readAccount` refresh 返回 ready，目录中 image-enabled 型号为 gpt-6-astra、gpt-5.6-sol、gpt-5.6-terra、gpt-5.6-luna、gpt-5.5；应用原选中的 gpt-5.6-luna 未修改，generation=0。Parent 选择并冻结 codex/subscription-bounded/gpt-6-astra/high，仍须原 HTTP catalog owner 证明 exact unique image 能力，RPC 目录不能替代该 gate。旧 gpt-6.1-sol 零匹配保留。
+
+Evidence owner：`/home/reggie/.local/state/jianji-source-fact-qualification/auto-contour-full-20261001-51kctk6d`。Router 原 owner 的目录投影及 exact 新 tuple 在 clean commit `bbf09348d45f52ee33988e52bda7580cb84cffe5` 官方安装；fresh offline suite 1061 PASS、35 environmental SKIP，不代表 native/live。新 probe `d5d6245f-6668-45af-829d-f3983367e969` 的实际 Docker native conformance `4c112824-79fc-4ee6-afcb-7ebd798f65a5` 为 IMAGE_NATIVE_EXECUTION_INCOMPLETE，14 OS checks true、container_removed=true，但 native request 被 IMAGE_PROJECTION_MISMATCH 拒绝，provider_requests=0。此时尚未调用新的 HTTP catalog 或真实能力请求。
+
+两个只用本地 fake upstream 的定向诊断和 Rust owner mapping 说明：Astra model metadata 选择 Responses Lite，system 与空 tools 移入 input，并加入两段固定 runtime multi-agent 指令；这与原 classic shape 假设不符。诊断不是新能力资格，不重放旧 live。必要协议修订在 router 原 mapper 内进行，须新的 exact Spec/source/install seal、本地 native 及单次目录/能力证据后才可推进。MiniMax 原 NOT_QUALIFIED/VISUAL_PROBE_MISMATCH 保持；正式 execution 仍未就绪，M5-D2A/A/B/joint 仍 INCOMPLETE/null，PRODUCT_DISABLED。
+
 ## Original User Media Check — 2026-10-01
 
 用户要求“真实测试”后，直接使用原始233秒肥皂视频收集完整6990帧canonical census，以新stationary envelope读取两个原片静态目标片段共180帧并实际导出。局部旧标未见外露，候选像素coverage及原时段音频/PTS核对通过；没有注入旧目标、没有AI mask/selection/review请求，也没有把完整census当语义审阅。实际证据及播放失败/定向诊断由 [stationary record](shape-matched-cover-stationary-record.md#original-user-source-diagnostic--2026-10-01) 独占。

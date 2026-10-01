@@ -8,6 +8,8 @@
 
 **Subsequent execution authorization — 2026-10-01:** 用户随后明确要求实现本计划，故上述 `PLAN_ONLY` 仅描述最初文档交付。本次按原依赖和停止合同推进工程；用户选择保留已有改动并授权接续必要共享文件，只提交本任务内容。当前真实状态与新证据仍写入 [Stationary record](shape-matched-cover-stationary-record.md)，M6的单独授权要求保持。
 
+**Account model selection authorization — 2026-10-01:** 用户明确允许核验并选择应用独立账号实际支持图片的 GPT 型号。原应用目录用于选择待核验的精确型号；沿 router 原合同先冻结该型号的 probe 并通过本地 native conformance，再由 canonical subscription catalog owner 取得唯一匹配及显式 `image` 能力记录，满足后才允许单次真实能力请求。目录证据不是视觉资格，失败不自动换型号或重试。必要的 M1 router 变更、验证和官方安装沿 router 自身合同执行，保留旧失败和 once/no-replay 门。
+
 **Current / Target Behavior:** 当前可以消费给定候选 mask 生成局部真实覆盖样片；目标是在声明支持的原视频范围内自动取得可核查 mask，再通过原选款和独立成片核查。模型声明 bbox、完整遍历或渲染 coverage不能替代这项自动来源验证。
 
 **Contract Surfaces:** canonical D1/D2/frame binding、独立 machine mask provenance、静态/固定动画状态、qualified image route、原 shortlist 图片交接、冻结图层与输出时钟、独立样片协议。源知识和生产 contract 由原 owners 独占。
@@ -62,9 +64,9 @@
 
 **Status:** 剩余工作；对应REQ-01–02、AC-02。
 
-**Files / owners:** [AI plan](shape-matched-cover-m5d2a-plan.md) 的路线/正式资格阶段；外部router现有 `src/agent_subagent_router/image_run.py`、`image_contract.py`、`image_qualification.py`、`codex_image_wire.py`、`minimax_image_wire.py` 及相邻unit/conformance tests。源码和安装只由该repo的合同管理，本轮不修改它。
+**Files / owners:** [AI plan](shape-matched-cover-m5d2a-plan.md) 的路线/正式资格阶段；外部router现有 `src/agent_subagent_router/image_run.py`、`image_contract.py`、`image_qualification.py`、`codex_image_wire.py`、`minimax_image_wire.py`、`subscription_account.py`、`cli.py` 及相邻unit/conformance tests。源码和安装只由该repo的合同管理，后续完整执行授权包含完成 M1 必要的原 owner 变更。
 
-**Contract:** MiniMax-M3与应用独立Codex订阅 `gpt-6.1-sol` 分别证明真实图像输入、身份、无工具隔离、完整响应与取消收敛。调查MiniMax位置错误是否源于输入/编码/坐标表达或能力，不能先假定是某个原因；依据已证明原因修复，保留旧NOT_QUALIFIED。精确GPT模型条件缺失时记录实际账号/目录证据，不静默换别名、模型或全局登录。
+**Contract:** MiniMax-M3与应用独立Codex订阅经真实目录核验后冻结的 GPT 型号分别证明真实图像输入、身份、无工具隔离、完整响应与取消收敛。原 `gpt-6.1-sol` 目录零匹配记录保留。调查MiniMax位置错误是否源于输入/编码/坐标表达或能力，不能先假定是某个原因；依据已证明原因修复，保留旧NOT_QUALIFIED。精确GPT模型条件缺失时记录实际账号/目录证据，不静默换别名、模型或全局登录。
 
 在原router execution owner内分别定义受管原片开发诊断与正式blinded用途，原probe保持once/no-replay。正式 execution 与可信qualification来源沿原AI合同完成；删除费用门不代替该owner。任何scope内安全合同修订先Self-Review，保持原Docker、seals、credential/receipt规则。
 
