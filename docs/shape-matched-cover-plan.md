@@ -8,6 +8,10 @@ spec: shape-matched-cover-spec.md
 
 # Goal And Authority
 
+## Next Scope — Automatic Contour and Real AI Chain
+
+2026-10-01 用户要求把当前五个环节写成规格和计划，见 [Automatic contour Spec](shape-matched-cover-auto-contour-spec.md) 与 [Implementation plan](shape-matched-cover-auto-contour-plan.md)。本次仅文档：复用已有轮廓渲染与选款工程，后续补自动像素轮廓、真实静态/固定动画和独立AI链验收；不要求用户描边，不改变M5-D2A INCOMPLETE或生产BLOCKED。运行证据仍由原stationary/AI records独占，生产准入另行授权。
+
 ## Acceptance Checkpoint — 2026-10-01
 
 用户要求验收，Parent完成fresh typecheck、10 suites /299 tests及69款已知片段几何诊断，工程链路已验证；此前样例效果已获用户认可并保持不变。当前受管 Codex认证目录查询仍无 exact `gpt-6.1-sol`，MiniMax实际8图请求虽HTTP 200却因 `IDENTITY_UNVERIFIED` 隔离，两个路线均未完成视觉资格；正式项目 image execution owner仍缺失。实际选款/独立复核及M5-D2A为INCOMPLETE，产品保持关闭。新 receipts、零重试/零切换、真实请求计数、共享树验证边界和后续缺口由[验收刷新记录](shape-matched-cover-real-visual-20260930.md#acceptance-refresh--2026-10-01)独占。本次验收不修改实现、生产许可或历史结果，不能将用户对样例的认可或299项测试转为新功能完结。
