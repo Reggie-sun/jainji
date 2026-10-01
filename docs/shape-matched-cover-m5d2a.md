@@ -1,12 +1,39 @@
 # M5-D2A Engineering and Qualification Record
 
+## Fixed Model Catalog Followthrough — 2026-10-01
+
+用户按 `AGENTS.md` / `a0f27ce` 固定覆盖任务为精确 `gpt-6.1-sol` 和 `gpt-6-luna`，包括fake诊断、能力及正式执行；MiniMax/Astra只保留历史。当前receipt根 `auto-contour-full-20261001-51kctk6d`，本次只读核验及新本地development证据保存于 `/home/reggie/.local/state/jianji-source-fact-qualification/auto-contour-catalog-followthrough-20261001`（F）。没有因换窗口追加GET、认证refresh、真实图片或正式请求。
+
+| Exact model | Existing native conformance | Existing authenticated catalog | Current facts |
+| --- | --- | --- | --- |
+| `gpt-6.1-sol` | `eda8f663-8dfe-4531-967f-aa269b422254`，native `2bb77ac2-4e40-49c3-a1c1-5824f89da6a2` | `7e05275d-3f3a-485a-86b7-7dc2219564cc` | conformance complete、14 OS checks、tools=[]、8图；目录7项、exact0、image未证明 |
+| `gpt-6-luna` | `11bbba2a-89d9-4eaf-a49c-1a4646df56f6`，native `de276fe0-ac78-4e76-a6b7-8798a3c60f0b` | `a7a518aa-5aad-49b5-8ef0-5740fa02f79d` | 同上；目录7项、exact0、image未证明 |
+
+两份目录观察分别为UTC13:55:56.147327 / 13:55:57.854744，catalog SHA同为 `a6c8e85904c4816ca11c2e86e7fb8a03498322aa69dcc28ca0d58941bb7d2a02`。Parent重新逐项核对上述六份canonical receipt及所有列出的artifact SHA/size，见F/catalog-receipt-audit.json。目录零匹配只约束这些观察，不等于永久不支持；native隔离通过不等于真实图片资格。Astra旧非空工具拒绝不是两个固定型号的当前阻断。
+
+只读追踪 `ChatGPTSession.readAccount` → `CodexRpc.request` 及 `codexRuntimeLaunch`：应用用bundled `@openai/codex=0.154.0`、`model/list` / includeHidden=false和cursor分页，仅接纳显式image且非hidden条目；选择按model字符串精确相等。Router `subscription_account.py` 固定GET `/backend-api/codex/models?client_version=0.154.0`、User-Agent `codex_cli_rs/0.154.0`，按slug精确匹配且恰好一项/显式image，不按hidden过滤。版本一致，应用hidden过滤不能解释Router原catalog exact0；已有RPC投影也未列出固定两型号。缓存实际内容/内部过滤和服务端目录原因尚未证明，不把binary cache字串当作根因，没有足以修改matcher或降级准入的证据。
+
+Named read-only `code_mapper` `/root/catalog_source_comparison`（`gpt-6-luna` / xhigh）只核对源码及已保存脱敏记录，非blind actor/reviewer；Parent用实际源码、CodeGraph与原artifact再次核验重要结论。没有读取/改写全局Codex登录或输出凭据。正式execution仍由原Router/AI owner的 `IMAGE_FORMAL_EXECUTION_UNAVAILABLE` 门隔离，不用random probe或ENGINEERING_ONLY callback冒充正式执行。
+
+M1仍INCOMPLETE，当前两项缺口为固定型号精确目录/image准入和可信正式execution owner。M2/M3新真实development与材料核查由 [Stationary record](shape-matched-cover-stationary-record.md#real-contour-method-comparison-and-source-inventory--2026-10-01) 承接；M4/M5未运行。实际识别/选款/样片复核及formal请求0；全部未评估语义指标null/NOT_EVALUATED，authority=none/eligible=false/PRODUCT_DISABLED，M6单独授权边界保持。
+
 ## Account Model Selection and Native Projection Diagnosis — 2026-10-01
 
 用户明确允许核验并选择应用独立账号实际支持图片的 GPT 型号。原应用无活动制作时，一次原 `ChatGPTSession.readAccount` refresh 返回 ready，目录中 image-enabled 型号为 gpt-6-astra、gpt-5.6-sol、gpt-5.6-terra、gpt-5.6-luna、gpt-5.5；应用原选中的 gpt-5.6-luna 未修改，generation=0。Parent 选择并冻结 codex/subscription-bounded/gpt-6-astra/high，仍须原 HTTP catalog owner 证明 exact unique image 能力，RPC 目录不能替代该 gate。旧 gpt-6.1-sol 零匹配保留。
 
 Evidence owner：`/home/reggie/.local/state/jianji-source-fact-qualification/auto-contour-full-20261001-51kctk6d`。Router 原 owner 的目录投影及 exact 新 tuple 在 clean commit `bbf09348d45f52ee33988e52bda7580cb84cffe5` 官方安装；fresh offline suite 1061 PASS、35 environmental SKIP，不代表 native/live。新 probe `d5d6245f-6668-45af-829d-f3983367e969` 的实际 Docker native conformance `4c112824-79fc-4ee6-afcb-7ebd798f65a5` 为 IMAGE_NATIVE_EXECUTION_INCOMPLETE，14 OS checks true、container_removed=true，但 native request 被 IMAGE_PROJECTION_MISMATCH 拒绝，provider_requests=0。此时尚未调用新的 HTTP catalog 或真实能力请求。
 
-两个只用本地 fake upstream 的定向诊断和 Rust owner mapping 说明：Astra model metadata 选择 Responses Lite，system 与空 tools 移入 input，并加入两段固定 runtime multi-agent 指令；这与原 classic shape 假设不符。诊断不是新能力资格，不重放旧 live。必要协议修订在 router 原 mapper 内进行，须新的 exact Spec/source/install seal、本地 native 及单次目录/能力证据后才可推进。MiniMax 原 NOT_QUALIFIED/VISUAL_PROBE_MISMATCH 保持；正式 execution 仍未就绪，M5-D2A/A/B/joint 仍 INCOMPLETE/null，PRODUCT_DISABLED。
+两个只用本地 fake upstream 的定向诊断和 Rust owner mapping 说明：Astra 使用 Responses Lite，将 system 和工具集放入 input，并加入两段固定 runtime multi-agent 指令；这与原 classic shape 假设不符。先前从缺少 top-level tools 推断空工具不成立，随后完整观察实际发现九个工具。诊断不是新能力资格，不重放旧 live。必要协议修订在 router 原 mapper 内进行，须新的 exact Spec/source/install seal、本地 native 及单次目录/能力证据后才可推进。MiniMax 原 NOT_QUALIFIED/VISUAL_PROBE_MISMATCH 保持；正式 execution 仍未就绪，M5-D2A/A/B/joint 仍 INCOMPLETE/null，PRODUCT_DISABLED。
+
+### Current Native No-Tools Blocker
+
+本小节是Astra路线的历史失败，当前固定两型号的conformance及目录阻断由上方Fixed Model Catalog Followthrough维护；不得继续以本小节断言它们的native gate失败。
+
+Router 原 owner 已实现严格 Lite 投影及三个显式 runtime 禁用设置，分别 clean `5c8dae0`、`d632e16` 官方安装。最终已运行 offline suite **1076 PASS / 35 SKIP**，source_dirty_at_install=false；不是 native/live。新镜像 `1e92bf56…d5d745` 及 probe `5dc8ac29-637b-4345-87d7-8138b3ed56f2` 的 canonical conformance `4de80ccf-cfce-49a5-8684-f0c53c31ae9b` 仍 IMAGE_NATIVE_EXECUTION_INCOMPLETE，14项OS检查成立且清理成功，provider requests0。
+
+实际关闭 agents.enabled 后，六个 collaboration tools 和两段控制指令已消失，但三项 input 中仍暴露 exec/wait/request_user_input_async。同一隔离 app-server 的 config/read 确认 code_mode、code_mode_only、multi_agent、current_time_reminder、unified_exec 等关闭；正式 driver 加 strict-config 未报配置错误。这只证明配置被接受，不能证明空工具。完整诊断、历史错误、更正及 exact安装/receipt/source身份由 [router record](../../agent-subagent-router/docs/records/image-model-selection-2026-10-01.md#installed-native-result-and-effective-configuration) 独占。
+
+该历史checkpoint当时没有已经证明有效的Astra runtime全工具关闭入口；没有弱化空工具门、裁掉工具定义、改模型元数据伪装或自动换型号。当时该路线新的HTTP catalog和真实GPT图片请求均0，未读取credential/全局登录、查quota或重放旧失败；MiniMax原视觉失败、正式source execution owner、真实独立truth及完整自动链仍分别阻断。随后固定两型号的native通过、认证目录exact0及当前请求历史由上方Fixed Model Catalog Followthrough维护。M1/M4/M5仍 **INCOMPLETE**，formal actor delivery0、A/B/joint null/NOT_EVALUATED，M6继续单独授权且PRODUCT_DISABLED。
 
 ## Original User Media Check — 2026-10-01
 

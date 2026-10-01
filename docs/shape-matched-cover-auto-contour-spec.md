@@ -49,9 +49,9 @@ CodeGraph 只辅助定位。通用 `.get` / `.set` 的误连不能用作源码�
 
 ## Route and Execution Contract
 
-**REQ-01 — Actual visual routes.** 当前组合为 MiniMax-M3 与 Codex 订阅 `gpt-6.1-sol`；`gpt-6-luna` 仅作用户可独立选择的配置，无自动 fallback。禁止 Kimi。复用应用已保存连接和应用独立 ChatGPT 登录，不要求 OpenAI Key、不读取全局 Codex auth。两条路线的真实视觉输入、实际身份、隔离与 receipt 必须分别验证；原生工程 subagent 和本聊天不能充当正式 blinded actor。
+**REQ-01 — Actual visual routes.** 用户最新限制以 `AGENTS.md` 的 `a0f27ce` 为准：本覆盖任务只使用精确 `gpt-6.1-sol` 和 `gpt-6-luna`，包括假服务诊断、能力核验、开发及正式调用；不使用 Kimi、MiniMax、Astra 或别名，不自动 fallback。复用应用已保存连接和应用独立 ChatGPT 登录，不要求 OpenAI Key、不读取全局 Codex auth。两条路线的真实视觉输入、实际身份、隔离与 receipt 必须分别验证；原生工程 subagent 和本聊天不能充当正式 blinded actor。原 MiniMax/Astra 配置及失败仅为历史，不重写或迁移资格。
 
-最近收据中的 GPT 精确模型未匹配、MiniMax 八图位置7/8错误及 `IMAGE_FORMAL_EXECUTION_UNAVAILABLE` 是分别需要解决的依赖，不能由文本连接正常或 HTTP200抵消。不宣称模型永久不可用；未来执行先核对最新真实证据，有具体修复理由才创建新版本 probe。旧失败不可重写，不重复同一 probe 到通过。
+固定两型号的已有 native conformance 均通过，已有认证目录收据各返回7个条目、精确匹配0；当前目录准入及 `IMAGE_FORMAL_EXECUTION_UNAVAILABLE` 仍是依赖，不能由文本连接正常或 HTTP200抵消。完整收据与只读来源追踪见 [AI record](shape-matched-cover-m5d2a.md#fixed-model-catalog-followthrough--2026-10-01)。MiniMax 八图位置7/8错误及 Astra 非空工具失败保留历史。不宣称型号永久不可用，不因换窗口重发 GET；未来有具体修复依据才冻结新 probe，旧失败不可重写，不重复同一 probe 到通过。
 
 **REQ-02 — Managed execution.** 受管视觉路线继续使用 sealed contract、qualified route、Docker containment 和 canonical receipt。必须区分 capability probe、原片开发诊断、正式 blinded qualification 三种输入用途；不得把随机 probe 入口挪用为原片通道。正式执行 owner 按原 AI spec 收集完整 raw/input/A/B/mapping/joint/correspondence 证据，不以 injectable engineering transport 伪装真实路线。
 

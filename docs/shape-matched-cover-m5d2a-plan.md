@@ -1,5 +1,11 @@
 # M5-D2A Implementation Plan
 
+## Current Fixed Models and Catalog Followthrough — 2026-10-01
+
+最新用户约束只允许精确 `gpt-6.1-sol` / `gpt-6-luna`，并保留“不要Kimi”；下方MiniMax、Astra及旧预算/安装阻断均为各自历史checkpoint，不是继续调用的授权。两个固定型号的已有 native conformance 均ENGINEERING_CONFORMANCE_COMPLETE，但认证目录各7项、exact匹配0，真实图片/正式请求仍0。只读追踪未证实版本、hidden过滤或matcher缺陷，未追加GET、refresh或别名请求。完整收据、当前缺口和后续唯一正式owner义务由 [AI record](shape-matched-cover-m5d2a.md#fixed-model-catalog-followthrough--2026-10-01) 维护。
+
+继续自动轮廓计划允许的M2真实development及M3作者侧材料核查；它们不替代两条真实capability、提前冻结的正式config、blinded A/B/raw/mapped/joint、独立truth对应和可信owner执行。费用/token/任务累计预算已取消；单次技术门、once/no-replay、取消、unknown-outcome及全部原语义/产品门保持。没有新的正式receipt，未评估指标仍null/NOT_EVALUATED，PRODUCT_DISABLED。
+
 ## Optimization Checkpoint — 2026-10-01
 
 Milestone4继续：已定位并真实修复MiniMax无上限请求的null cap回显兼容，clean官方安装、新pins八图/14OS和一次真实修复验证成立。该新probe按原frozen真值判为NOT_QUALIFIED（7/8位置错误），不能开始正式盲审或重试至通过。协议修复与能力错误分开；M5-D2A正式INCOMPLETE、正式请求0、所有未评估指标null，GPT精确6.1sol仍无所选账号图片路线证据；费用和OpenAI Key不是blocker。

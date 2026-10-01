@@ -10,6 +10,8 @@
 
 **Account model selection authorization — 2026-10-01:** 用户明确允许核验并选择应用独立账号实际支持图片的 GPT 型号。原应用目录用于选择待核验的精确型号；沿 router 原合同先冻结该型号的 probe 并通过本地 native conformance，再由 canonical subscription catalog owner 取得唯一匹配及显式 `image` 能力记录，满足后才允许单次真实能力请求。目录证据不是视觉资格，失败不自动换型号或重试。必要的 M1 router 变更、验证和官方安装沿 router 自身合同执行，保留旧失败和 once/no-replay 门。
 
+**Current fixed-model amendment — 2026-10-01:** 上述可选型号授权已被用户最新限制收窄：只使用精确 `gpt-6.1-sol` / `gpt-6-luna`，假服务、能力及正式执行均适用。MiniMax/Astra 和下方非空工具诊断是历史，禁止沿其路线继续或通过 alias 代替固定型号。固定两型号已有 native conformance 通过；当前真实阻断为各7项认证目录精确匹配0及正式 execution owner 缺口。只读追踪与实际轮廓 development 由原 [AI record](shape-matched-cover-m5d2a.md#fixed-model-catalog-followthrough--2026-10-01) 和 [Stationary record](shape-matched-cover-stationary-record.md#real-contour-method-comparison-and-source-inventory--2026-10-01) 承接；M1阻断时继续M2/M3独立工作，不重发既有 GET。
+
 **Current / Target Behavior:** 当前可以消费给定候选 mask 生成局部真实覆盖样片；目标是在声明支持的原视频范围内自动取得可核查 mask，再通过原选款和独立成片核查。模型声明 bbox、完整遍历或渲染 coverage不能替代这项自动来源验证。
 
 **Contract Surfaces:** canonical D1/D2/frame binding、独立 machine mask provenance、静态/固定动画状态、qualified image route、原 shortlist 图片交接、冻结图层与输出时钟、独立样片协议。源知识和生产 contract 由原 owners 独占。
@@ -66,7 +68,7 @@
 
 **Files / owners:** [AI plan](shape-matched-cover-m5d2a-plan.md) 的路线/正式资格阶段；外部router现有 `src/agent_subagent_router/image_run.py`、`image_contract.py`、`image_qualification.py`、`codex_image_wire.py`、`minimax_image_wire.py`、`subscription_account.py`、`cli.py` 及相邻unit/conformance tests。源码和安装只由该repo的合同管理，后续完整执行授权包含完成 M1 必要的原 owner 变更。
 
-**Contract:** MiniMax-M3与应用独立Codex订阅经真实目录核验后冻结的 GPT 型号分别证明真实图像输入、身份、无工具隔离、完整响应与取消收敛。原 `gpt-6.1-sol` 目录零匹配记录保留。调查MiniMax位置错误是否源于输入/编码/坐标表达或能力，不能先假定是某个原因；依据已证明原因修复，保留旧NOT_QUALIFIED。精确GPT模型条件缺失时记录实际账号/目录证据，不静默换别名、模型或全局登录。
+**Contract:** 应用独立Codex订阅的精确 `gpt-6.1-sol` 和 `gpt-6-luna` 分别证明真实图像输入、身份、无工具隔离、完整响应与取消收敛。两个型号的目录零匹配记录均保留；先以已保存证据核对目录来源、参数与 exact matching，有具体实现缺陷才修复。精确型号条件缺失时记录实际账号/目录证据，不静默换别名、模型或全局登录。MiniMax位置错误及其旧NOT_QUALIFIED只保留历史，本次不再调查或请求该路线。
 
 在原router execution owner内分别定义受管原片开发诊断与正式blinded用途，原probe保持once/no-replay。正式 execution 与可信qualification来源沿原AI合同完成；删除费用门不代替该owner。任何scope内安全合同修订先Self-Review，保持原Docker、seals、credential/receipt规则。
 
@@ -161,3 +163,11 @@ M0承接现有渲染，M1覆盖REQ-01–02，M2覆盖REQ-03–05，M3覆盖REQ-0
 按后续实现授权新增M2本地development extractor、M3提前冻结的独立像素/运动比较器，以及同名diagnostic脚本的**作者侧开发用途**；该脚本尚不是M4真实自动链。完整来源、方法对比、实际CLI/FFmpeg、fresh verification及剩余条件保存于 [Stationary record](shape-matched-cover-stationary-record.md#automatic-contour-development-checkpoint--2026-10-01)。
 
 M1仍被当前真实视觉receipt及正式execution owner缺口阻断。本地逐帧和时域稳定方法仅验证均匀背景受控包络，没有选择qualified extractor；M2能力收敛和M3真实独立留出材料仍未完成。M4/M5保持INCOMPLETE，M6保持OUTSIDE_CURRENT_AUTHORIZATION。工程测试、开发CLI及AOCI对齐不满足AC-01–06，不改变PRODUCT_DISABLED。
+
+## Full Execution Continuation — 2026-10-01
+
+此节保留Astra历史checkpoint；最新固定型号状态见上方Current fixed-model amendment。
+
+用户要求完整完成后，原router已实现账号目录安全投影、冻结gpt-6-astra/high、严格Lite投影与显式禁用配置，clean安装并执行新的真实Docker/native诊断；原admission提供无authority复核观察解析器并保留生产门，Jianji接缝提交 `8f8fdec`。实际116项本地回归与1076项router offline回归分别通过，不能升级为真实模型或语义验收。
+
+当时Astra canonical native仍暴露exec/wait/request_user_input_async，配置被原app-server接受仍不满足tools=[]；该路线当时新HTTP目录/真实图片/正式actor请求0。这一历史失败不作为固定两型号的当前native blocker。固定型号收据、M2真实开发结果与M3材料核查由上方Current fixed-model amendment所指原records维护。M4真实自动链和M5正式资格仍INCOMPLETE，M6单独授权边界不变；本计划不标记完整完成。

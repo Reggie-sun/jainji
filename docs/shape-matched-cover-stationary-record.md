@@ -1,5 +1,31 @@
 # Stationary Shape Cover Engineering Record
 
+## Real Contour Method Comparison and Source Inventory — 2026-10-01
+
+按用户要求连续执行auto-contour计划，M1先以既有收据只读追踪；固定两型号已通过native conformance，但认证目录exact0，详见 [AI record](shape-matched-cover-m5d2a.md#fixed-model-catalog-followthrough--2026-10-01)。本节记录M1阻断时独立推进的M2真实development与M3材料准备，**REAL_AUTOMATIC_CHAIN_INCOMPLETE / PRODUCT_DISABLED**。证据根 `/home/reggie/.local/state/jianji-source-fact-qualification/auto-contour-catalog-followthrough-20261001`（F），不重做预选星形导出、不伪造truth或生产准入。
+
+复用原用户233秒原片SHA `a18f7e4e5fc02e5db977d9074be35ce82a296d247194205e9cf88e1ac76fc0bf`，使用原canonical D1/owned D2重新完整解码6990帧；census仍 `cc01bcbc9c4c700e4fef68ab8d6faf7e6e9a5052ff20ea1d9f4a0fdaf806029e`。作者侧development范围为原ordinals420–599（14–20秒）共180帧，逐帧RGBA/PTS/endPTS绑定成立。ROI615/0/100/90仅为明确标记UNQUALIFIED_ENGINEERING_DECLARATIONS的搜索范围，不是AI识别、mask或truth。运行前冻结真实源、方法源码SHA、参数/范围；后核对8项源码SHA无漂移，owned spool按原close清理。
+
+| Method | Actual real development result | Qualification consequence |
+| --- | --- | --- |
+| per-frame exterior difference | 180/180 UNKNOWN / EXTERIOR_NOT_UNIFORM，mask0、envelope0 | 均匀背景支持包络不能处理本真实原片 |
+| temporal stable exterior difference | 180/180 UNKNOWN / EXTERIOR_NOT_UNIFORM，mask0、envelope0 | 此TypeScript方法仍复用均匀边界提取，不是历史temporal算法 |
+| 原 `shape-cover-mask-probe.py` temporal std/component方法 | 同范围180/180逐帧采样和core检查；3260像素、81×59候选，worst core差8.224 | CANDIDATE_REQUIRES_HUMAN_EDGE_REVIEW，未审核；OpenCV probe不提供canonical逐帧RGBA provenance |
+
+前两方法实际CLI耗时182342.65ms，进程maxRSS284456KiB；比较metrics仍null、mask/motion truth NOT_EVALUATED、selectedMethod/qualifiedExtractor=null。第三方法单独提前冻结script SHA、参数和输入，没有改阈值或用候选作truth。Parent查看其六帧edge sheet，只能观察轮廓位置，不能证明180帧无漏边、独立motion或最终SAFE/NATURAL。没有将它导入human admission或真实选款链。以上都是开发比较，不是新的正式holdout或qualified extractor。
+
+M3作者侧实际清点 `/home/reggie/电商/肥皂/素材`：26个MP4、18个不同文件SHA，保存每项源字节摘要/长度/FFprobe元数据。不同SHA不证明独立来源；六份候选的first/mid/tail联系图中存在相同人物、场景及复用片段，source independence/静态或固定动画类别均保持NOT_EVALUATED。抽样图只为作者清点，不冒充D1原ordinal或完整motion证明，没有凑成“3静态+3真实动画”。未登记新的正式holdout，独立pixel/motion truth未补齐。
+
+用户随后要求查看最近session；本轮按只读、有界路径核查已存在真实材料/审核，而非要求普通用户描边。Named code_mapper核对近期相关sessions `01a0f75b-45bf-70e3-b5eb-d033fcda3c9b`、`01a0f6c9-6987-7de1-87c7-16a46bbdb0e9`、`01a0f7d1-3973-7d80-9de1-caebca9899f1`、`01a0f7d4-17e4-7da3-a479-5c9263b2b4fc` 及其材料路径，Parent再次读取并核对原JSON SHA/size与关键字段，保存F/recent-session-artifact-audit.json。原real-stationary的两段共180帧仍同源，reviewedSourceFrames=0、mask/motion/semantic review均NOT_EVALUATED；已找到的两个truth-freeze均为6帧CONTROLLED_CONSTRUCTION，不是真实留出。此次有界检索未找到满足M3的独立真实pixel/motion truth或固定动画审核收据，不据此声称全盘材料绝对不存在。
+
+没有把历史mask、controlled动画或口述认可改名为独立真实truth。M4识别→共同候选筛选→看实际摆放图选款→冻结/真实输出→独立SAFE/NATURAL/播放以及M5正式blinded A/B/raw/mapped/joint/18类truth比较仍未执行。本地工程/资料准备不满足完整任务验收；当前停止原因是固定型号目录/image与正式owner缺口，加上没有合格真实extractor和独立truth，M6保持OUTSIDE_CURRENT_AUTHORIZATION。
+
+### Delivery Verification
+
+本轮没有修改executable source、配置、测试或模型连接，只更新本任务原spec/plan/records；实际执行已保存的M2开发入口，没有新增renderer、选款Agent或验收框架。fresh `npm run typecheck` exit0。三个最近suite首次29 PASS/1 timeout：qualification9和extraction17通过，diagnostic一项在30000ms技术门超时；原失败日志保留于F/related-tests.log。未改源码、测试或timeout后单次复跑diagnostic完整suite，4/4 PASS（48.48s），见F/diagnostic-recheck.log。该复跑不改变真实方法UNKNOWN、目录阻断或正式资格。代码快照按冻结SHA复核；文档引用和最终diff另外检查。
+
+本次五份owned docs逐项核对AOCI scope为observe对象，无需改managed cognition或共享baseline。最终Verify/Check/Guide均exit0，governance_aligned=true、findings=[]、missing/stale/unbaselined/orphan=[]，Guide complete=true/next_action=none；初期四项foreign stale观察另保留，未以它阻断本任务observe维护，也未修改或提交其他任务索引。结果保存于F/final-verify.json、final-check.json、final-guide.json。86项文档引用及两库owned diffcheck通过；真实原片及8项开发源码SHA无漂移。父Agent Self-Review确认修改只收窄当前型号、澄清历史及记录实际开发/缺口；没有implementation扩权，未触发新增implementation adversarial review。工程mapper不是独立truth审核或正式actor。Repository没有专用session-capture skill，以上canonical records与私有原收据作为本轮capture；未写外部memory。
+
 ## Full Execution Continuation and Review Observation Seam — 2026-10-01
 
 用户要求完整完成自动轮廓计划，并允许选择应用账号实际 image-enabled GPT；授权和实际路线诊断由 [AI record](shape-matched-cover-m5d2a.md#account-model-selection-and-native-projection-diagnosis--2026-10-01) 承接。本节仅记录 M4 所需无 authority 复核观察接缝，不声称真实自动链完成。Evidence owner 为私有 `auto-contour-full-20261001-51kctk6d`。
@@ -11,6 +37,10 @@
 本接缝未接 AI transport、源事实 issuer 或正式发布；M1真实路线、M2真实自动分割、M3独立真实truth、M4实际选款及样片、M5正式资格均继续缺对应证据。Native worker 仅实现接缝与测试，Parent 审查完整 diff 并运行验证，不把 worker verdict 或 tests PASS 当成 acceptance。计划禁止 Kimi 保持，M6仍 OUTSIDE_CURRENT_AUTHORIZATION/PRODUCT_DISABLED。
 
 最终 continuation verification：在已观察到的 development-lifecycle 无关改动保留状态下，再次 `npm run typecheck` exit0；上述两个 suite **116/116 PASS**，139.70s，未再修改接缝源码。fresh AOCI Verify/Check exit0、missing/stale/unbaselined/orphan=[]，Guide 加 `--agent codex` 后 exit0、complete=true/next_action=none；第一次漏 agent 的 Guide 拒绝保留而非算作通过。共享 AOCI 后续索引由其他任务更新，仍未 stage 混合文件。Parent stable Risk Gate 为 KIMI_REVIEW_NOT_REQUIRED：接缝只产生严格 schema 的不可变观察，原 issuer、private handle、内容门和持久发布屏障均未扩权；authority/JSON replay 负例及原真实队列回归覆盖具体风险，未发现 critical consequence 或重大后果加未解决验证缺口的组合。真实成片及模型缺口保持单独阻断。
+
+本接缝及当时三份task docs已提交 `8f8fdec`。随后Astra runtime no-tools调查中，配置修正真实移除协作工具，但exec/wait/request_user_input_async仍暴露，canonical native IMAGE_NATIVE_EXECUTION_INCOMPLETE；该路线当时新HTTP目录/图片、识别、选款、样片模型及formal请求均0。历史原因、exact receipts和配置诊断见 [AI record](shape-matched-cover-m5d2a.md#current-native-no-tools-blocker)。最新固定两型号的native已通过、目录exact0，以上方Fixed Model Catalog Followthrough为准；不将1076项router offline测试或116项本地工程回归当成完整M1–M5验收。
+
+完整计划的剩余工作仍为：固定两型号实际image及正式执行路线、真正支持目标类别的自动mask方法、真实静态/固定动画各3个独立来源及各≥100明确原帧和独立提前冻结truth、实际识别/选材/成片SAFE与NATURAL/播放，以及正式blinded A/B/joint比较。M6在当前授权之外。Astra运行时准入阻断只保留历史；当前固定型号目录及M2/M3真实缺口见本record首节，**REAL_AUTOMATIC_CHAIN_INCOMPLETE / PRODUCT_DISABLED**；不把阶段代码提交称为完整任务完成。
 
 ## Automatic Contour Development Checkpoint — 2026-10-01
 
