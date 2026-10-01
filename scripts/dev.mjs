@@ -71,8 +71,8 @@ function scheduleElectronRestart(bundle) {
   restartTimer = setTimeout(() => {
     if (stopping) return;
     restartRequested = true;
-    console.log(`[dev] ${bundle} rebuilt; requesting normal Electron exit. Save or cancel in the app if prompted.`);
-    try { requestDevelopmentQuit(electron); }
+    console.log(`[dev] ${bundle} rebuilt; waiting for production, exports and uploads to finish before restarting Electron.`);
+    try { requestDevelopmentQuit(electron, { restart: true }); }
     catch (error) { restartRequested = false; console.error(`[dev] ${error.message}`); }
   }, 100);
 }

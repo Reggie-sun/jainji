@@ -1,6 +1,49 @@
 import { EventEmitter } from "node:events";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { installDevelopmentQuit } from "../src/main/development-lifecycle";
+
+afterEach(() => vi.useRealTimers());
+
+it("coalesces rebuilds and waits until production is idle before restarting", async () => {
+  vi.useFakeTimers();
+  const parent = Object.assign(new EventEmitter(), { env: { JIANJI_DEV_SERVER_URL: "http://localhost" }, send: vi.fn() });
+  let busy = true;
+  const quit = vi.fn();
+  installDevelopmentQuit(parent, Promise.resolve(), quit, () => !busy);
+  parent.emit("message", { type: "jianji-dev-restart" });
+  parent.emit("message", { type: "jianji-dev-restart" });
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(quit).not.toHaveBeenCalled();
+  busy = false;
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(quit).toHaveBeenCalledOnce();
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(quit).toHaveBeenCalledOnce();
+});
+
+it("explicit quit cancels a deferred restart and does not wait for production", async () => {
+  vi.useFakeTimers();
+  const parent = Object.assign(new EventEmitter(), { env: { JIANJI_DEV_SERVER_URL: "http://localhost" }, send: vi.fn() });
+  const quit = vi.fn();
+  installDevelopmentQuit(parent, Promise.resolve(), quit, () => false);
+  parent.emit("message", { type: "jianji-dev-restart" });
+  await vi.advanceTimersByTimeAsync(1000);
+  parent.emit("message", { type: "jianji-dev-quit" });
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(quit).toHaveBeenCalledOnce();
+});
+
+it("does not restart when the idle check fails", async () => {
+  const parent = Object.assign(new EventEmitter(), { env: { JIANJI_DEV_SERVER_URL: "http://localhost" }, send: vi.fn() });
+  const quit = vi.fn(), log = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    installDevelopmentQuit(parent, Promise.resolve(), quit, () => { throw new Error("unavailable"); });
+    parent.emit("message", { type: "jianji-dev-restart" });
+    await Promise.resolve();
+    expect(quit).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalled();
+  } finally { log.mockRestore(); }
+});
 
 it("waits for bootstrap before using the normal quit path, never bypassing cleanup", async () => {
   let ready!: () => void;

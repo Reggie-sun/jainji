@@ -32,7 +32,7 @@ function accountDocument() {
   };
 }
 
-async function fixture() {
+async function fixture(browser?: () => UploadBrowserPort) {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-service-"));
   temporaryRoots.add(root);
   const outputDirectory = path.join(root, "formal-output");
@@ -93,7 +93,7 @@ async function fixture() {
       if (!state) throw new Error("fixture batch missing");
       return structuredClone(state);
     },
-    browser: () => port,
+    browser: browser ?? (() => port),
     accounts,
     readiness: () => undefined,
   });
@@ -157,6 +157,25 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  it("stays busy through queued artifact admission and returns idle after rejection", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["busy admission"]); await f.register(batch);
+    expect(f.service.busy).toBe(false);
+    const first = f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const second = f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const admissionBusy = f.service.busy;
+    await Promise.all([first, second]);
+    expect(admissionBusy).toBe(true);
+    expect(f.service.busy).toBe(false);
+    const run = f.service.runPending();
+    expect(f.service.busy).toBe(true);
+    await run;
+    expect(f.service.busy).toBe(false);
+    const invalid = f.service.enqueueFinalArtifact({ ...batch.identities[0]!, export_task_id: "invalid" });
+    expect(f.service.busy).toBe(true);
+    await expect(invalid).rejects.toThrow();
+    expect(f.service.busy).toBe(false);
+  });
   it("isolates old UNKNOWN while preserving its result and fence, then stops on current UNKNOWN", async () => {
     const f = await fixture(); await f.authorize();
     const old = await f.createBatch(["old unknown"]); await f.register(old);
@@ -948,6 +967,128 @@ describe("Qianchuan upload service", () => {
     expect(events.filter(event => event === "readonly")).toHaveLength(1);
     expect(maximumActive).toBe(1);
     expect(reopenedStore.task(oldRecord!.result.upload_task_id)?.result.state).toBe("WAITING_FOR_CONFIRMATION");
+  });
+
+  it("reconnects unselected files with fresh ports and selects the group only once", async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    const ports: UploadBrowserPort[] = [], stopped = new Set<UploadBrowserPort>();
+    f = await fixture(() => {
+      const port: UploadBrowserPort = { ...f.port, connect: async () => {
+        expect(stopped.has(port)).toBe(false);
+        if (ports.length < 3) throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true);
+      }, stop: async () => { stopped.add(port); } };
+      ports.push(port); return port;
+    });
+    await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["first bytes", "second bytes"]); await f.register(batch);
+    for (const id of batch.identities) await f.service.enqueueFinalArtifact(id);
+    await f.service.runPending();
+    expect(ports).toHaveLength(3); expect(stopped.size).toBe(2);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "READY" && task.retry_count === 2 && task.attempt_count === 1)).toBe(true);
+  });
+
+  it("exhausts three connection attempts without selecting files and keeps other accounts running", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const blocked = await f.createBatch(["offline bytes"]), other = await f.createBatch(["online bytes"], { product: "热敷贴" });
+    const connect = f.port.connect;
+    const attempts: string[] = [];
+    f.port.connect = async (task, signal) => {
+      attempts.push(task.input.project_id);
+      if (task.input.project_id === blocked.projectId) throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true);
+      await connect(task, signal);
+    };
+    for (const batch of [blocked, other]) { await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!); }
+    await f.service.runPending(); await f.service.runPending();
+    expect(attempts.filter(id => id === blocked.projectId)).toHaveLength(3);
+    const task = f.service.status(blocked.projectId).tasks[0]!;
+    expect(task).toMatchObject({ state: "FAILED_RETRYABLE", upload_outcome: "NOT_SELECTED", retry_count: 2, failure: { message: expect.stringContaining("3 次") } });
+    expect(f.store.hasMarker(task.upload_task_id)).toBe(false);
+    expect(f.service.status(other.projectId).tasks[0]!.upload_outcome).toBe("READY");
+  });
+
+  it("cancels during reconnect backoff without a late reconnect or file selection", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["cancel backoff"]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const connect = vi.fn(async () => { throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true); });
+    f.port.connect = connect;
+    const work = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(f.service.status(batch.projectId).tasks[0]?.failure?.message).toContain("自动重连"));
+    } finally { await f.service.cancel(f.service.status(batch.projectId).tasks[0]!.upload_task_id); await work; }
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ state: "CANCELLED", upload_outcome: "NOT_SELECTED", retry_count: 0 });
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("reconnects a timed-out pre-selection connection only after stopping its port", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.configure({ enabled: true, timeouts: { connect: 20 } }); await f.service.beginProduction();
+    const batch = await f.createBatch(["connection timeout"]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    let calls = 0, stopCompleted = false;
+    f.port.stop = async () => { stopCompleted = true; };
+    f.port.connect = async (_task, signal) => {
+      if (++calls === 1) await new Promise<void>((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+      else expect(stopCompleted).toBe(true);
+    };
+    await f.service.runPending();
+    expect(calls).toBe(2); expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "READY", retry_count: 1 });
+  });
+
+  it.each(["ACCOUNT_UNCONFIRMED", "PAGE_CONTRACT_UNVERIFIED"] as const)("does not retry %s from connect", async code => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch([code]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const connect = vi.fn(async () => { throw uploadFailure(code, code === "ACCOUNT_UNCONFIRMED" ? "account" : "page", "fixture rejected", "check target", true); }); f.port.connect = connect;
+    await f.service.runPending();
+    expect(connect).toHaveBeenCalledTimes(1); expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ state: "NEEDS_HUMAN", retry_count: 0 });
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("rechecks the frozen target after backoff and refuses a changed plan", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["target drift"]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const connect = vi.fn(async () => { throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true); }); f.port.connect = connect;
+    const work = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(f.service.status(batch.projectId).tasks[0]?.failure?.message).toContain("自动重连"));
+      const document = accountDocument(); document.accounts.find(account => account.product === batch.product)!.adId = "999999";
+      await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 }); await work;
+      expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ retry_count: 0, failure: { code: "INPUT_CONFLICT" } });
+    } finally { await f.service.cancel(f.service.status(batch.projectId).tasks[0]!.upload_task_id); await work; }
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("never reconnects after a failed detach and latches the global stop guard", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["failed detach"]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const connect = vi.fn(async () => { throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true); });
+    f.port.connect = connect; f.port.stop = async () => { throw new Error("fixture detach failed"); };
+    await f.service.runPending(); await f.service.runPending();
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(f.service.status(batch.projectId)).toMatchObject({ ready: false, message: expect.stringContaining("未能安全停止") });
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it.each(["open", "ready"] as const)("does not retry a connection-shaped error from %s", async phase => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch([`failure at ${phase}`]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    f.port[phase] = async () => { throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture later error", "check page", false, true); };
+    await f.service.runPending(); await f.service.runPending();
+    expect(f.events.filter(event => event === "connect")).toHaveLength(1);
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: phase === "ready" ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", retry_count: 0 });
+  });
+
+  it("does not automatically reconnect a fenced read-only recovery", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["unknown bytes"]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    f.port.ready = async () => { throw new Error("fixture unknown"); }; await f.service.runPending();
+    const task = f.service.status(batch.projectId).tasks[0]!, fence = await readFile(path.join(f.store.root, "selection-fences", `${task.upload_task_id}.json`));
+    const connect = vi.fn(async () => { throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true); }); f.port.connect = connect;
+    await f.service.resume(task.upload_task_id);
+    expect(connect).toHaveBeenCalledTimes(1);
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "MAY_HAVE_UPLOADED", retry_count: 0, retryable: false });
+    expect(await readFile(path.join(f.store.root, "selection-fences", `${task.upload_task_id}.json`))).toEqual(fence);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
   });
 
   it("isolates an unknown group to its account while other current accounts finish nine-file groups", async () => {

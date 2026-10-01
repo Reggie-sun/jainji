@@ -847,5 +847,7 @@ const bootStart = Date.now();
 process.on("SIGTERM", () => { safeLog(`[shutdown] sigterm received +${Date.now() - bootStart}ms after boot`); void requestQuit(); });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 const startup = bootstrap();
-installDevelopmentQuit(process, startup, () => app.quit());
+installDevelopmentQuit(process, startup, () => app.quit(), () =>
+  !batchRuntime?.controller.busy && !agent?.busy && !coverReview?.busy && !douyinUpload?.busy &&
+  [...queue.taskStatuses().values()].every(status => ["completed", "failed", "cancelled", "interrupted"].includes(status)));
 void startup.catch((error) => { console.error(error); app.quit(); });

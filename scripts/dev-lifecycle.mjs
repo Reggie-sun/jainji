@@ -1,8 +1,8 @@
 /** Ask the app to save/close through its normal lifecycle. Never force-kill it. */
-export function requestDevelopmentQuit(child) {
+export function requestDevelopmentQuit(child, { restart = false } = {}) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   if (!child.connected) throw new Error("Electron parent IPC unavailable; close the application normally before restarting.");
-  child.send({ type: "jianji-dev-quit" }, error => {
+  child.send({ type: restart ? "jianji-dev-restart" : "jianji-dev-quit" }, error => {
     if (error) console.error("[dev] Could not request a normal quit; close Electron manually.");
   });
 }

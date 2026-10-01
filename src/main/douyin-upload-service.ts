@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { appendFile, chmod, copyFile, lstat, open, realpath, readdir, stat, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import path from "node:path";
 import type { QueueState } from "./domain.js";
 import type { ExportBatchIdentity } from "./queue.js";
@@ -31,6 +32,7 @@ const unknown = (cause?: UploadError) => uploadFailure("UPLOAD_OUTCOME_UNKNOWN",
 
 export class DouyinUploadService {
   private admission: Promise<unknown> = Promise.resolve();
+  private pendingAdmissions = 0;
   private control: Promise<unknown> = Promise.resolve();
   private active?: { ids: string[]; controller: AbortController; port: UploadBrowserPort };
   private runner?: Promise<void>;
@@ -55,6 +57,9 @@ export class DouyinUploadService {
   private beginningProduction = false;
   private stopFailed = false;
   private readonly accounts: QianchuanAccountConfigReader;
+  get busy(): boolean {
+    return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping || this.cancelling || this.beginningProduction);
+  }
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
     this.refreshAccountPauses();
@@ -218,6 +223,7 @@ export class DouyinUploadService {
   }
   enqueueFinalArtifact(identity: UploadIdentity, recovery = false): Promise<UploadTaskRecord | undefined> {
     const generation = this.controlGeneration;
+    this.pendingAdmissions++;
     const work = this.admission.catch(() => undefined).then(async () => {
       identity = UploadIdentitySchema.parse(identity);
       const intent = this.store.intents().find(value => intentKey(value) === intentKey(identity)); if (!intent) return undefined;
@@ -247,7 +253,8 @@ export class DouyinUploadService {
       if (!recovery && record.result.state === "PENDING" && this.currentIntents.has(intentKey(identity)) && generation === this.controlGeneration && !this.stopping && !this.stopped && (!this.continuationBatch || this.continuationBatch === record.authorization.pageBatchId)) this.eligible.add(id);
       this.changed(); return record;
     });
-    this.admission = work; return work;
+    const tracked = work.finally(() => { this.pendingAdmissions--; });
+    this.admission = tracked; return tracked;
   }
   async reconcile(): Promise<void> {
     for (const intent of this.store.intents()) {
@@ -497,7 +504,26 @@ export class DouyinUploadService {
       const t = first.config.timeouts;
       if (tasks.length > MAX_UPLOAD_GROUP_SIZE || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
       if (!recovery) for (const task of tasks) { task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER"); }
-      await this.bounded(signal => port!.connect(first, signal), t.connect, controller.signal);
+      for (let retry = 0; ; retry++) {
+        try { await this.bounded(signal => port!.connect(first, signal), t.connect, controller.signal); break; }
+        catch (error) {
+          const reconnectable = error instanceof UploadError && error.failure.category === "browser" &&
+            (error.failure.code === "CDP_UNAVAILABLE" && error.failure.retryable || error.failure.code === "TIMEOUT");
+          if (!reconnectable || recovery || controller.signal.aborted || tasks.some(task => task.result.upload_outcome !== "NOT_SELECTED" || this.store.hasMarker(task.result.upload_task_id))) throw error;
+          if (retry === 2) throw new UploadError({ ...error.failure, message: `自动连接已尝试 3 次：${error.failure.message}`.slice(0, 500) });
+          await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; throw error; });
+          this.sessions.delete(key);
+          for (const task of tasks) {
+            task.result = { ...task.result, failure: { ...error.failure, message: `Chrome 连接失败，正在自动重连（${retry + 1}/2）。`, next_action: "稍候自动重连；可停止本批上传。" }, timestamp: timestamp() };
+            await this.save(task);
+          }
+          await delay(1000 * (retry + 1), undefined, { signal: controller.signal });
+          await this.currentTarget(first); controller.signal.throwIfAborted();
+          if (this.stopFailed || this.store.unavailable || generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，自动重连已停止。");
+          port = this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
+          for (const task of tasks) { task.result.retry_count++; await this.save(task); }
+        }
+      }
       let evidence: ReadyEvidence[];
       if (recovery) {
         evidence = await this.bounded(async signal => {

@@ -3,6 +3,13 @@ import { expect, it, vi } from "vitest";
 
 const helperPath = new URL("../scripts/dev-lifecycle.mjs", import.meta.url).href;
 
+it("distinguishes a rebuild restart from explicit shutdown", async () => {
+  const { requestDevelopmentQuit } = await import(helperPath);
+  const child = { exitCode: null, signalCode: null, connected: true, send: vi.fn() };
+  requestDevelopmentQuit(child, { restart: true });
+  expect(child.send).toHaveBeenCalledWith({ type: "jianji-dev-restart" }, expect.any(Function));
+});
+
 it("requests application cleanup over parent IPC without killing a running child", async () => {
   const { requestDevelopmentQuit } = await import(helperPath);
   const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, connected: true, send: vi.fn(), kill: vi.fn() });
