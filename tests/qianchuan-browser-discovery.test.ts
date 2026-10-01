@@ -4,7 +4,7 @@ import path from "node:path";
 import { createServer } from "node:http";
 import * as filesystem from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
-import { discoverQianchuanBrowser, runningChromeEndpoints } from "../src/main/qianchuan-browser-discovery";
+import { discoverQianchuanBrowser, runningChromeBrowsers, runningChromeEndpoints } from "../src/main/qianchuan-browser-discovery";
 
 vi.mock("node:fs/promises", async importOriginal => {
   const original = await importOriginal<typeof import("node:fs/promises")>();
@@ -45,6 +45,7 @@ it("reads browser-internal debugging metadata without a command-line debugging f
   const f = await processes(), profile = path.join(f.root, "profile"); await mkdir(profile, { mode: 0o700 });
   await f.add([`--user-data-dir=${profile}`]);
   expect(await runningChromeEndpoints(f.proc)).toEqual([]);
+  expect(await runningChromeBrowsers(f.proc)).toEqual([{ profile }]);
   await writeFile(path.join(profile, "DevToolsActivePort"), "9321\n/devtools/browser/owned\n", { mode: 0o600 });
   expect(await runningChromeEndpoints(f.proc)).toEqual([socket]);
 });
@@ -140,4 +141,5 @@ it("recognizes a desktop Chrome process title and ignores a pipe-only MCP browse
   const profile = path.join(f.root, "pipe-profile"); await mkdir(profile, { mode: 0o775 });
   await f.add(["--remote-debugging-pipe", `--user-data-dir=${profile}`]);
   expect(await runningChromeEndpoints(f.proc)).toEqual([socket]);
+  expect(await runningChromeBrowsers(f.proc)).toEqual([{ endpoint: socket, profile: desktopProfile, profileDirectory: "Profile 1", windowClass: "account" }]);
 });

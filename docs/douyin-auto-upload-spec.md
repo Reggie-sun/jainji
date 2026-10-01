@@ -9,6 +9,16 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## Original Account Profile Reuse Amendment (2026-10-02)
+
+用户明确要求复用已登录的原账号窗口，并授权修复原六账号启动器的 CDP 参数。本修订覆盖下面“只使用应用独立 profile”和“不修改 launcher”的限制。主进程在新制作或显式打开账号时，优先从当前用户运行 Chrome 的常规 loopback CDP、有限 tab URL 元数据识别唯一匹配的原 profile；仅核验成功后，在应用私有目录独占持久化 advertiserId、规范 profile 路径、profile-directory 和窗口 class。不读取或复制登录数据，不消费 Codex MCP 配置，不接受 renderer 提供路径。名字、图标、旧端口不能决定账号归属。同一原 profile 不得绑定多个 advertiser。
+
+后续只连接该原 profile 的当前动态端口；关闭后可由程序用相同 profile、profile-directory 和 class 启动已安装 Chrome。绑定损坏、丢失、目录别名、重复匹配、账号页面失配及仍需许可的 WS 均明确阻断，不能回退新 profile。没有原窗口或绑定时仍可使用应用独立 profile；存在未启用常规 CDP 的原窗口且无法识别目标时，要求正常重启原窗口，不另开登录窗口。不自动关闭、重启或迁移原 Chrome。
+
+本机原六启动器仅以 opt-in 名单增加 `--remote-debugging-address=127.0.0.1 --remote-debugging-port=0`；保留原 profile-directory、桌面身份、图标和登录目录。常规 CDP 必须在主进程启动时启用，修改 launcher 对已运行进程不生效；激活重启必须先处理待确认上传页面。软件停止仅 detach，启动/restore 不接浏览器。新端口只供新制作冻结，所有原任务、页面身份、UNKNOWN 和永久 fence 保持不变，仍由 page contract 核验可见双 ID，停在确定前。
+
+Parent Self-Review：原 profile 与上传授权分属 browser manager 和原 service/store，不引入第二上传生命周期。绑定仅由主进程的当前调试元数据产生，私有独占保存拒绝别名及不确定结果；CDP 元数据只能建立连接候选，不能证明上传资格。一次正常重启是 Chrome 的技术条件，不能以自动点击许可或强杀窗口代替。
+
 ## Managed Account Browser Amendment (2026-10-01)
 
 用户明确要求普通使用者无需点击远程调试许可。新制作默认使用简辑管理的账号 Chrome，覆盖下文“仅 attach、不能启动 Chrome”限制；不修改用户桌面启动器、不接管或关闭既有个人浏览器。主进程按严格 advertiserId 在应用私有目录派生独立 profile，使用已安装 Chrome，以 loopback 和动态端口启动。首次由用户登录；登录态仅由 Chrome 在该 profile 保存，程序不读取、复制或导出 cookie/token。没有 Chrome、平台未资格、目录不安全、启动超时或登录不可确认时明确阻断，不回退到需要临时授权的任意浏览器。

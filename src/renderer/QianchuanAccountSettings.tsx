@@ -35,7 +35,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
       <label htmlFor="qianchuan-plan-link">千川计划链接</label>
       <textarea id="qianchuan-plan-link" rows={3} maxLength={16384} value={link} disabled={busy} placeholder="粘贴浏览器地址栏中的千川计划链接" onChange={event => setLink(event.target.value)} />
       {ids ? <p role="status">已识别账户 {ids.advertiserId} · 计划 {ids.adId}</p> : link.trim() ? <p role="alert">请粘贴含账户和计划 ID 的千川计划链接。</p> : <small>打开要上传的千川计划，复制地址栏链接。</small>}
-      <small>首次使用请打开专用账号浏览器并登录千川。登录状态会保留，之后制作时自动连接，无需配置端口或允许远程调试。</small>
+      <small>已绑定的原账号浏览器会自动复用，关闭后也会打开同一账号窗口。首次没有可用账号窗口时，请打开浏览器并登录千川；登录状态会保留。</small>
       <button className="button secondary compact" type="button" disabled={busy || !ids || !!nameError} onClick={() => product && void onOpenBrowser({ product, productName: name.trim(), planUrl: link })}>打开账号浏览器 / 登录</button>
       <div className="douyin-upload-actions"><button className="button primary compact" type="button" disabled={busy || !ids || !!nameError} onClick={() => void save()}>保存账号</button><button className="button secondary compact" type="button" disabled={busy} onClick={() => setProduct(undefined)}>取消</button></div>
       <small>保存后供新制作使用；旧批次保留原计划。整批从未选过文件时，可在上传任务中明确“改传当前计划”；已有文件选择记录不能改传。</small>
