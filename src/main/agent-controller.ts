@@ -288,6 +288,7 @@ export class AgentController {
       }
       this.runner = new AgentRunner({
         shape,
+        usesModel: decorations.mode === "agent" || Boolean(automaticCover),
         knowledge,
         placement,
         recordOutcome: knowledge ? outcome => this.knowledgeStore!.recordOutcome(outcome) : undefined,

@@ -18,6 +18,7 @@ import { CoverDiagnostics } from "./cover-diagnostics.js";
 import type { ShapeCoverProduction } from "./shape-cover-production.js";
 
 interface RunnerDependencies {
+  usesModel?: boolean;
   frames(media: MediaItem, signal: AbortSignal): Promise<string[]>;
   plan(ruleId: RuleId, brief: string, frames: string[], signal: AbortSignal, catalog?: AgentDecorationCatalog, selection?: AgentSelectionContext): Promise<PackagingPlan>;
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
@@ -64,6 +65,7 @@ export class AgentRunner {
     this.controller = new AbortController();
     this.run = {
       id: randomUUID(), projectId, ruleId, status: "running",
+      usesModel: this.dependencies.usesModel,
       items: versions.map(({ source, version }) => ({ id: randomUUID(), mediaId: source.id, version, name: counts.every(count => count === 1) ? source.displayName : `${source.displayName} · 第 ${version} 版`, status: "waiting" })),
     };
     const frozen = versions.map(({ source }) => source);

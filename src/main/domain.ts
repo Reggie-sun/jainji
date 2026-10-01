@@ -463,6 +463,7 @@ export type ExportBatch = z.infer<typeof ExportBatchSchema>;
 
 export const LatestProductionSchema = z.object({
   id: z.string().uuid(),
+  usesModel: z.boolean().optional(),
   items: z.array(z.object({
     id: z.string().uuid(),
     mediaId: z.string().uuid(),

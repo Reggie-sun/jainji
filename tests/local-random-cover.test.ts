@@ -66,7 +66,7 @@ describe("local random with corner covers", () => {
     expect(() => resolveCoverSticker(settings, Object.fromEntries(Object.entries(assets).slice(0, 3)), [], [first.id], true)).toThrow(/4/);
   });
 
-  it("queues random versions without extracting unused Agent frames or calling the creative model", async () => {
+  it.each([false, true])("queues random versions without frames or model calls, configured=%s", async (configured) => {
     const outputDirectory = await mkdtemp(path.join(tmpdir(), "jianji-random-cover-"));
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
@@ -78,20 +78,24 @@ describe("local random with corner covers", () => {
     const library = { prepare: async () => assets, resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary;
     const controller = new AgentController(service, queue, ffmpeg, () => {}, assets, library);
     expect(controller.provider.status().configured).toBe(false);
+    if (configured) controller.provider.configure({ apiKey: "fixture", model: "fixture", baseUrl: "http://127.0.0.1:1/v1" });
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockImplementation(async () => { throw new Error("random mode must not extract frames"); });
     const plan = vi.spyOn(controller.provider, "plan");
+    const shortlist = vi.spyOn(controller.provider, "shortlist");
     try {
       await controller.start({ ruleId: "clean", brief: "", mediaIds: sources.map(({ id }) => id), outputDirectory,
         decorations: { mode: "random", productPrice: "手动文字", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([outputDirectory]));
       await vi.waitFor(() => expect(createBatch).toHaveBeenCalledTimes(2));
       expect(frames).not.toHaveBeenCalled();
       expect(plan).not.toHaveBeenCalled();
+      expect(shortlist).not.toHaveBeenCalled();
+      expect(controller.snapshot()?.usesModel).toBe(false);
       for (const [input] of createBatch.mock.calls) {
         const covers = input.template.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []);
         expect(covers).toHaveLength(4);
         expect(new Set(covers).size).toBe(4);
         expect(input.template.layers.filter((layer) => layer.type === "sticker" && !layer.cover)).toHaveLength(0);
       }
-    } finally { frames.mockRestore(); plan.mockRestore(); await controller.cancel(); await rm(outputDirectory, { recursive: true, force: true }); }
+    } finally { frames.mockRestore(); plan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); await rm(outputDirectory, { recursive: true, force: true }); }
   });
 });

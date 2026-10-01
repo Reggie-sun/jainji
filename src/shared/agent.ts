@@ -122,6 +122,7 @@ export interface AgentRun {
   id: string;
   projectId: string;
   ruleId: RuleId;
+  usesModel?: boolean;
   status: "running" | "finished" | "cancelled";
   items: AgentItem[];
 }

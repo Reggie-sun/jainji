@@ -237,6 +237,7 @@ export class ApplicationService {
     if (run.projectId !== this.project.id) return;
     const latest = LatestProductionSchema.parse({
       id: run.id,
+      usesModel: run.usesModel,
       items: run.items.map(({ id, mediaId, version, name, status, taskId, error }) => ({
         id, mediaId, version, name, taskId,
         status: status === "failed" || status === "cancelled" ? status : taskId ? "exporting" : "waiting",
@@ -253,6 +254,7 @@ export class ApplicationService {
     if (!batches.length || batches.some((batch) => batch.projectId !== this.project.id)) return;
     this.project.latestProduction = LatestProductionSchema.parse({
       id: randomUUID(),
+      usesModel: false,
       items: batches.flatMap((batch) => batch.tasks.map((task) => ({
         id: task.id,
         mediaId: task.mediaId,

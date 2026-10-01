@@ -4,6 +4,19 @@ import { expect, it } from "vitest";
 import { ResultsPanel, SupervisorPreviewDialog } from "../src/renderer/ResultsPanel";
 import type { DesktopState } from "../src/shared/desktop";
 
+it.each([false, true, undefined])("describes failed production using frozen model usage %s", (usesModel) => {
+  const latestProduction = { id: crypto.randomUUID(), usesModel, items: [{ id: crypto.randomUUID(), mediaId: crypto.randomUUID(), version: 1, name: "失败项", status: "failed", error: "fixture" }] };
+  for (const restored of [true, false]) {
+    const html = renderToStaticMarkup(createElement(ResultsPanel, {
+      state: { project: { mediaItems: [], latestProduction: restored ? latestProduction : undefined, workspaceDraft: { decorations: { mode: usesModel === false ? "agent" : "random" } } },
+        queue: { batches: [] }, agentRun: restored ? undefined : { ...latestProduction, projectId: crypto.randomUUID(), ruleId: "clean", status: "finished" } } as unknown as DesktopState,
+      busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+    }));
+    expect(html.includes("本次会再次调用模型")).toBe(usesModel === true);
+    if (usesModel === false) { expect(html).toContain("本地制作不调用模型"); expect(html).toContain("制作失败"); }
+  }
+});
+
 it("counts only the latest production run in the results summary", () => {
   const completedTaskId = crypto.randomUUID();
   const failedTaskId = crypto.randomUUID();

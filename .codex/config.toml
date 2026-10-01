@@ -17,3 +17,39 @@ CODEGRAPH_INDEX_PATH = ".codex/codegraph-index.json"
 [mcp_servers.aoci]
 command = "/home/reggie/.local/bin/aoci"
 args = ["--repo", "/home/reggie/vscode_folder/jianji", "mcp"]
+
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = ["chrome-devtools-mcp@1.10.1", "--autoConnect", "--userDataDir=/home/reggie/.config/chrome-profiles/cp-acfd83ab25d8", "--experimentalPageIdRouting", "--no-usage-statistics", "--no-performance-crux"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+
+[mcp_servers.feige-02]
+command = "npx"
+args = ["chrome-devtools-mcp@1.10.1", "--autoConnect", "--userDataDir=/home/reggie/.config/chrome-profiles/cp-cd057bf702ed", "--experimentalPageIdRouting", "--no-usage-statistics", "--no-performance-crux"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+
+[mcp_servers.feige-03]
+command = "npx"
+args = ["chrome-devtools-mcp@1.10.1", "--autoConnect", "--userDataDir=/home/reggie/.config/chrome-profiles/cp-5edde22d254f", "--experimentalPageIdRouting", "--no-usage-statistics", "--no-performance-crux"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+
+[mcp_servers.feige-04]
+command = "npx"
+args = ["chrome-devtools-mcp@1.10.1", "--autoConnect", "--userDataDir=/home/reggie/.config/chrome-profiles/cp-6b970cb99ac4", "--experimentalPageIdRouting", "--no-usage-statistics", "--no-performance-crux"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+
+[mcp_servers.feige-05]
+command = "npx"
+args = ["chrome-devtools-mcp@1.10.1", "--autoConnect", "--userDataDir=/home/reggie/.config/chrome-profiles/cp-ef7f88d75759", "--experimentalPageIdRouting", "--no-usage-statistics", "--no-performance-crux"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+
+[mcp_servers.feige-06]
+command = "npx"
+args = ["chrome-devtools-mcp@1.10.1", "--autoConnect", "--userDataDir=/home/reggie/.config/chrome-profiles/cp-f05a3c16be1e", "--experimentalPageIdRouting", "--no-usage-statistics", "--no-performance-crux"]
+startup_timeout_sec = 60
+tool_timeout_sec = 120
