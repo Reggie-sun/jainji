@@ -15,6 +15,8 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 后续只连接该原 profile 的当前动态端口；关闭后可由程序用相同 profile、profile-directory 和 class 启动已安装 Chrome。绑定损坏、丢失、目录别名、重复匹配、账号页面失配及仍需许可的 WS 均明确阻断，不能回退新 profile。没有原窗口或绑定时仍可使用应用独立 profile；存在未启用常规 CDP 的原窗口且无法识别目标时，要求正常重启原窗口，不另开登录窗口。不自动关闭、重启或迁移原 Chrome。
 
+原 Chrome 的 `user-data-dir` 必须是当前用户拥有、规范路径且无 group/world 权限的真实目录。其直接 `profile-directory` 同样核验所属用户、真实目录与规范路径，但允许 Chrome 原有的 0755/0775 等权限：外层私有目录已阻止其他用户进入；程序不改目录权限或读取登录内容。外层非私有、任一层目录别名或所属用户不符仍在保存绑定、启动及上传前拒绝。Parent Self-Review：此兼容修正只移除内层重复的权限限制，不放宽外层隐私、绑定文件保护或上传授权。
+
 本机原六启动器仅以 opt-in 名单增加 `--remote-debugging-address=127.0.0.1 --remote-debugging-port=0`；保留原 profile-directory、桌面身份、图标和登录目录。常规 CDP 必须在主进程启动时启用，修改 launcher 对已运行进程不生效；激活重启必须先处理待确认上传页面。软件停止仅 detach，启动/restore 不接浏览器。新端口只供新制作冻结，所有原任务、页面身份、UNKNOWN 和永久 fence 保持不变，仍由 page contract 核验可见双 ID，停在确定前。
 
 Parent Self-Review：原 profile 与上传授权分属 browser manager 和原 service/store，不引入第二上传生命周期。绑定仅由主进程的当前调试元数据产生，私有独占保存拒绝别名及不确定结果；CDP 元数据只能建立连接候选，不能证明上传资格。一次正常重启是 Chrome 的技术条件，不能以自动点击许可或强杀窗口代替。

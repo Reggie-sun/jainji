@@ -19,13 +19,13 @@ const StateSchema = z.object({ version: z.literal(1), bindings: z.array(BindingS
 });
 export type QianchuanBrowserBinding = z.infer<typeof BindingSchema>;
 
-/** Checks directories only; never opens Chrome login state. */
+/** A private user-data root protects its owned direct child; never opens Chrome login state. */
 export async function verifyOriginalProfile(binding: QianchuanBrowserBinding): Promise<void> {
   try {
     BindingSchema.parse(binding);
     for (const directory of [binding.profile, path.join(binding.profile, binding.profileDirectory)]) {
       const info = await lstat(directory);
-      if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid?.() || (info.mode & 0o077) || await realpath(directory) !== directory) throw new Error(unavailable);
+      if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid?.() || (directory === binding.profile && (info.mode & 0o077)) || await realpath(directory) !== directory) throw new Error(unavailable);
     }
   } catch { throw new Error(unavailable); }
 }

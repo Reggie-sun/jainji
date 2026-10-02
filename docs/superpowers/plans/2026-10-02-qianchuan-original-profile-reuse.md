@@ -20,6 +20,8 @@
 
 添加有意义的 red-green tests，覆盖原窗口优先、端口变化、重启后同目录/class、重复账号/跨账号绑定、旧许可式窗口、绑定丢失/损坏/不安全目录及零 fallback。复用 canonical discovery 和安全目录/同步约束，不暴露任意路径 IPC。
 
+原目录权限兼容由 `qianchuan-browser-bindings.ts` 的 `verifyOriginalProfile` 独占：外层私有且两层均为当前用户的规范真实目录时允许 Chrome 内层原有权限，不修改登录目录。`qianchuan-browser-manager.test.ts` 覆盖内层 0755/0775 可复用且权限不变、外层 0775 仍阻断及已有别名拒绝；完成 typecheck、相关上传测试和开发版真实三模板新批量验收。
+
 ### 2. Opt-in Launcher Repair
 
 补丁仅增加常规 CDP 参数读取及 opt-in 名单。隔离临时 manager 测试 enabled/disabled、动态 loopback、异常配置和保留 argv；运行 host 原生测试。备份并核对原文件 SHA 后安装窄补丁；不修改正在运行的 Chrome。

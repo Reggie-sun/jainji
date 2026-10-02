@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
@@ -103,6 +103,21 @@ it("prefers a verified original account over an app profile, persists only metad
   f.browser.endpoint = "http://127.0.0.1:9423";
   const reloaded = new QianchuanBrowserManager(f.root, { launch: f.launch, browsers: f.browsers });
   expect(await reloaded.open("123")).toBe(f.browser.endpoint);
+  expect(f.launch).not.toHaveBeenCalled();
+});
+
+it.each([0o755, 0o775])("reuses an owned original profile-directory with mode %s inside a private user-data root", async mode => {
+  const f = await originalFixture(), directory = path.join(f.original, "Profile 9");
+  await chmod(directory, mode);
+  expect(await f.manager.prepare("123")).toBe(f.browser.endpoint);
+  expect((await lstat(directory)).mode & 0o777).toBe(mode);
+  expect(f.launch).not.toHaveBeenCalled();
+});
+
+it("rejects a non-private original user-data root even when its profile-directory is private", async () => {
+  const f = await originalFixture(); await chmod(f.original, 0o775);
+  await expect(f.manager.open("123")).rejects.toThrow("绑定");
+  await expect(lstat(f.binding)).rejects.toMatchObject({ code: "ENOENT" });
   expect(f.launch).not.toHaveBeenCalled();
 });
 
