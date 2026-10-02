@@ -1,5 +1,11 @@
 # M2-E Real Static Holdout & Independent Truth Acquisition
 
+## Current Applicability — M2 Boundary Course Correction
+
+2026-10-02追加：根据 [M2 boundary audit](shape-matched-cover-v1-simplification-audit.md#m2-qualification-boundary-course-correction--2026-10-02) 与 [Delta Spec §6](shape-matched-cover-v1-simplification-spec.md#optional-m2-e-high-assurance-truth-qualification)，本计划及工具保留为**可选offline high-assurance truth qualification**。下文是M2-E实施时的协议，不再独占默认V1 static工程验收。其≥3独立unseen真实来源、两位blind真人author/QA、原像素标签、冻结/不可调参和SOURCE_QUALIFIED解释不放宽；当前HOLDOUT_INSUFFICIENT仍是该模式的真实结果。
+
+默认M2改按 [§6 engineering acceptance](shape-matched-cover-v1-simplification-spec.md#default-m2-static-engineering-acceptance) 收敛：已知truth反例、完整确认目标时域、真实保守边界及支持/拒绝包络。≥3独立真实来源保留为M5批量验证下限，development/reuse不能冒充unseen。没有真实truth不填写精确miss/excess，geometry不补签边缘完整性；旧receipt/拒绝不迁移为新PASS。tools/tests无需改弱或删除。本轮不运行新holdout triage、不收集真人truth、不进入M3，guard保持PRODUCT_DISABLED。
+
 ## Goal and Accepted Boundary
 
 Native Codex 为 primary，`superpowers:writing-plans` 保存计划。依据 [Delta Spec](shape-matched-cover-v1-simplification-spec.md) §6、[主计划](shape-matched-cover-v1-simplification-plan.md)、[record](shape-matched-cover-stationary-record.md)。完成 inventory、metadata registry、风险采样和 blind ROI truth 工具；真人标注不由 Agent 代做。

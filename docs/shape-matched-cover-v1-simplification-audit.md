@@ -1,5 +1,49 @@
 # Shape-Matched Cover V1 Course Correction Audit
 
+## M2 Qualification Boundary Course Correction — 2026-10-02
+
+本节是 M1-A → M2-E 实施后的追加审计；下方首次 course-correction 的判断与证据保持历史解释。用户指定基线 `2e4274b09ea8d21e7eae3ea700b74844a229d0c1` 的实际 diff 为 10 个文件、1295 行新增：inventory、registry、blind truth 工具、controls 和四份文档，没有修改产品源码。开始实际 HEAD 为 `582f8f6`，其后千川提交与 Shape 算法无关；审计期间另有项目规则提交 `2581291`，按当前规则执行。未运行新 holdout triage、真实媒体实验或 M3。
+
+**结论：M2-E 工具本身值得保留，但把其完整真人资格协议升级为默认 V1 static 的唯一验收门发生了第二次 scope drift。** 三个独立真实来源具有多样性验证价值；“never-exposed + 双盲独立真人 + 压缩视频逐像素 truth”是更强的实验协议，不能仅因工具存在就成为所有 M2 工程工作的 blocker。取消该默认依赖不等于当前 mask 已完整，也不把旧失败改成通过。
+
+### Source and Call-Path Evidence
+
+| Owner | Current implementation | Boundary judgment |
+| --- | --- | --- |
+| `source-fact-discovery-evidence.ts` / `shape-cover-stationary-discovery.ts` | 最多96精确原帧，CPU统计、全部components、原像素ROI复核；无ROI/mask预填 | M1-A真实自动发现已成立；候选不签身份、mask或全片absence。 |
+| `source-mask-static-target.ts` / `source-mask-static-extraction.ts` | 显式身份/范围确认、完整ROI流式绑定；temporal support及3px外扩；RGB样本包络超24拒绝 | M2-A有保守开发候选；判据不核查support之外的完整边界，不能因3px外扩自动合格。 |
+| `shape-cover-static-anomalies.py` / `shape-cover-static-geometry.py` | 重放133异常；独立持久梯度landmarks全范围核查 | M2-B不能把RGB异常直接解释为运动；M2-C支持声明灵敏度内geometry，不证明mask外缘或低alpha贡献完整。 |
+| `source-mask-static-qualification.ts::qualifyStaticMask` / `shape-cover-required-pixel-truth.py::compare` | 已知构造truth可比较；真实/缺truth保持INCOMPLETE或null | 独立pixel comparator有效；准确miss/excess需要独立分母，不需要把任何可操作工程评估都伪装为这个强声明。 |
+| `shape-cover-static-holdout.py::Registry.freeze_truth/accept_actual_evidence/compare` | 两个人类声明、真实身份核实、冻结truth及candidate pin；调用者为truth脚本/tests | 是离线强真值协议，没有生产consumer；保留原拒绝与SOURCE_QUALIFIED解释，不增加默认产品依赖。 |
+| `shape-cover-production.ts` / `shape-cover-activation.ts` / assembler | 生产消费canonical admitted masks、共同矩阵、freeze/admission/custody；guard/assembler固定拒绝 | 不读取M2-E registry/reviewer/holdout资格。未来目标proof仍有真实接线缺口，本轮不开放或绕过。 |
+
+CodeGraph已核对 `qualifyStaticMask`、`Registry.freeze_truth`、`Registry.compare` 的caller/callee；跨语言边界和未显示关系由imports及精确caller搜索核实，未把“图中没有边”单独当无依赖证明。
+
+### Evidence Levels
+
+| Level | Required evidence | Claim and stop |
+| --- | --- | --- |
+| Product runtime | 非空确认集合、源/范围/方法绑定、保守mask与完整目标时域核查；每输出实际alpha255全覆盖；SAFE/NATURAL、冻结同字节、原queue/custody | 确认集合内全部安全覆盖；不证明未检出目标不存在。缺证据UNSAFE，产品仍关闭。 |
+| Default offline engineering | 独立已知truth的受控正反例；真实development全范围geometry与边界风险检查；明确方法、支持包络、取消/失配/超限拒绝；多来源真实批量验证在M5收敛 | 只声明对应工程检查通过及已检查范围的边界观察；不能填无分母的pixel指标或宣称全片真实零漏。 |
+| Optional research / high assurance | 未曝光且可核查独立来源、candidate-blind人工truth、双人QA、freeze/no-adaptive-tuning与comparator | 原M2-E最多ZERO_MISS_ON_FROZEN_TRUTH_SET；协议不完整仍HOLDOUT_INSUFFICIENT/SOURCE_INCOMPLETE，不传播成默认M2唯一blocker。 |
+
+仅凭压缩后的RGB不能唯一恢复原贴纸alpha、抗锯齿或编码串色来源；两名真人也不能制造不可观测真值。默认验收需要可解释的保守包含依据：原始alpha/已知构造提供精确分母；真实源使用原像素与候选边界配对核查、完整目标范围异常证据及明确支持包络。无法被有限安全余量包含的边界歧义仍拒绝；不允许用geometry、算法自身mask、一个较大bbox或主观“看起来一样”填补。
+
+### Disposition and Current Stop
+
+- **KEEP**：M1发现、M2-A开发mask、M2-B/C异常与geometry、M2-D comparator、M2-E inventory/registry/truth工具及全部失败/receipts。
+- **SIMPLIFY**：默认M2验收改为 [Delta Spec §6](shape-matched-cover-v1-simplification-spec.md#6-conservative-mask-contract) 的工程检查与限定声明；至少3个独立真实来源保留为M5批量验收下限，开发/验收使用情况如实记录，不强制全部never-exposed。
+- **RESEARCH_ONLY**：双人blind pixel-truth资格、严格unseen holdout来源协议及其更强比较声明；自愿使用时原协议不放宽。
+- **DEPRECATE_FROM_V1_PATH**：将HOLDOUT_INSUFFICIENT/valid reviewers=0自动当作默认M2所有工程工作或M3研究代码的永久技术依赖；不删除任何guard或赋予新authority。
+
+当前M2仍INCOMPLETE：3395px mask尚缺按新边界完成的真实边界工程评估；M2-A RGB拒绝与M2-C geometry职责分离尚未形成新的可消费目标proof；canonical knowledge/admission接线也未完成。唯一后续候选slice是**以既有development材料收敛static mask边界与异常解释的工程验收**，不是新holdout triage或M3。本轮只修订合同、计划与记录，不执行该slice，不将旧SOURCE_QUALIFIED/null结果迁移成新PASS。
+
+### Independent Investigation and Parent Decision
+
+受管Kimi deep只读调查6个合同/实现文件，invocation `d7f6f116-f79f-4634-a0a5-2d788caa7064`，seal `84f65c846ae0b509c91b6c59941f2d26d12926b41e229281240487dd1a8fcd90`，qualified route `4f2d5dc8-4234-4665-b382-e82f1ad6cc00`；4 wire requests、199.786s、PARSED、无orchestration retry。Parent核对canonical receipt、4个artifact SHA及7项完整observed reads，封存期间未改任何frozen文件。初次inspect因instruction precedence缺CLAUDE.md而零请求拒绝，修正后新seal正常执行，preflight原因保留。
+
+接受其三项源码判断：运行时不消费M2-E资格；旧Spec确实已把三重门槛写成默认资格条件；风险采样不等于全片逐帧pixel truth。**不采用其“沿用旧B方案就是唯一可行纠偏”的建议**：它回答了现有合同要求什么，没有提供两位真人/严格unseen数为何对当前V1风险必需的技术证据。其封存包未含M2-B/C、M2-D comparator实现及历史record，这些source audit由Parent补齐。当前任务明确要求重新判断这些新增要求，任务内合同修订由Parent完成scope/self-review，不额外请求批准，也不静默放宽工具的原SOURCE_QUALIFIED含义。研究审计不是final implementation review、真人truth或验收authority。
+
 ## Decision and Scope
 
 2026-10-02，`SOURCE_AUDITED / DOCUMENTATION_ONLY / PRODUCT_DISABLED`。结论：**默认发布路线确实发生 scope drift；confirmed-target-only 是自洽且更贴近本轮产品目标的合同。** 不应继续以 D2Q→D3→D4→FullSourceAdmissionHandle 为 V1 主线。保留像素、冻结、画面安全与托管基础，优先补真实 CPU detector 和保守 mask。

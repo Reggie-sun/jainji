@@ -52,23 +52,32 @@
 
 首次建 mask 后，按目标 ROI 对整个承诺时域流式核验运动、边缘和异常，不要求逐帧语义枚举整个画布。静态 mask / 固定动画 union 必须保守界定其完整有效范围；代表帧没有反例不证明未观察时域安全。无法处理的切镜、遮挡、闪烁或外扩明确失败，或仅对有证据的范围重新确认；禁止在不告知用户的情况下缩短承诺范围。
 
-mask 无漏失的测试分母是独立核查的 required pixels；运行时须有适用方法和完整目标范围核查，不能把“mask 被覆盖100%”当作“mask 本身完整”。独立开发/holdout 评估属于必要质量工作，逐帧像素 truth 可用于离线工程验收，不能成为普通用户操作步骤。
+精确漏失指标的测试分母是独立核查的 required pixels；运行时须有适用的保守方法、边界依据和完整目标范围核查，不能把“mask 被覆盖100%”当作“mask 本身完整”。独立构造反例及真实来源验证属于必要工程工作；holdout 和逐帧像素 truth 可增加证据强度，不能成为普通用户操作步骤，也不自动成为默认 M2 唯一验收路线。
 
 当前 `source-mask-only-v1` 仅支持单 target/segment、30–100 帧 probe 人工凭据；当前 `stationary-union/v1` 仅是无 authority 的几何候选。后续在原 knowledge/schema/admission owners 中增加**目标范围明确**的版本化 proof，禁止将这些旧凭据改名为新证明或复用研究 receipt 签发许可。源争议、store/evidence integrity 未知和 freshness 检查保留；这里的完整性指字节/记录/确认目标证据完整，不重引入全画布目标穷尽义务。不得解除其他功能原有知识阻断。
 
-### M2-E Offline Static Qualification Boundary
+### Default M2 Static Engineering Acceptance
 
-static engineering qualification 使用 **B：冻结风险覆盖 truth set + 完整目标范围 geometry verification + 冻结保守 mask 方法**。§6 的逐帧 pixel truth 是可选离线证据，不要求每帧人工描边；真实输出 visual acceptance 仍由 M4/M5 独立完成，本边界不提前给予输出或产品资格。
+根据 [M2 boundary source audit](shape-matched-cover-v1-simplification-audit.md#m2-qualification-boundary-course-correction--2026-10-02)，默认 M2 从 M2-E 的形式化真人资格协议中分离。这里修订的是未来工程验收义务，不改写已有 receipt，不将 development/INCOMPLETE 改名为 qualified。真实输出与视觉验收仍在 M3–M5。
 
-每类至少 **3 个独立、未用于方法开发的真实来源**，数量要求不变。不同 SHA、重新编码、裁剪、复制、同一下载或复用原片不能增加来源数；`INDEPENDENCE_UNKNOWN` 不计数。233 秒 `a18f7e4e…fc0bf` 永久为 development source。仅被机械 inventory/hash/similarity 检查的素材仍可为 candidate unseen；历史展示给算法作者的原像素/contact sheet 保守登记 development-exposed。
+| Evidence | Acceptance obligation | Claim limit |
+| --- | --- | --- |
+| Independent controlled truth | 从原始alpha/构造recipe建立分母，不从candidate产生truth；验证细尖、AA/低alpha、孔洞、单帧/尾帧外扩与1px漏失；移动、闪烁、局部形变和未知边界必须拒绝或明确不支持 | 已知truth上的零漏与必要反例拒绝；不外推真实压缩源全部required pixels。 |
+| Real confirmed-target temporal verification | 绑定source/target/method/原PTS/像素SHA，核查完整承诺ROI范围、首尾、运动/切镜/可见性与异常；保留RGB异常与geometry的不同意义 | 只支持版本化方法灵敏度内的时域/几何结论；geometry不证明mask完整。 |
+| Real conservative-boundary inspection | 在原像素与candidate边界配对证据上检查首中尾、既有异常、geometry/背景/edge极值、细尖、描边、贴边和可见透明边；记录实际检查ordinal、问题和有限余量依据，不必逐像素标整个ROI | 可核验的边界工程观察，不签真实精确pixel zero-miss；未查范围和盲点必须写明。 |
+| Supported envelope and engineering decision | 冻结方法/配置、边界余量与拒绝规则，核对受控灵敏度及真实反例；保留取消、漂移、漏帧、超限失败。一次技术复核可由Parent直接完成，不要求两位blind真人或method资格issuer | 方法适用范围内工程验收；缺关键证据INCOMPLETE，不签source/output/production authority。 |
 
-每个来源先冻结 provenance/source/method，再冻结 deterministic truth frame plan，完成两位独立人类的 ROI 原像素 required-pixel 标注和复核，最后冻结 truth package，才执行比较。作者/复核者均不得参与 mask 算法、查看 candidate/comparator 或接收预期像素提示；只签 required pixels 和 truth QA，不签 candidate PASS。所有声明需有实际可核对证据，metadata 不替真人执行。
+边界检查必须能够说明目标可见贡献为何被保守包含；不能只看bbox、fill ROI、geometry landmarks或算法自身support。压缩视频不能唯一恢复原贴纸alpha，逐像素人工标签也不天然成为真实ground truth。可辨可见贡献不得遗漏；有界边缘歧义只能在有实证的有限安全余量内保守纳入。范围不明、低alpha贡献无法界定或有限余量不能合理包含时，目标仍UNSAFE；不要求无限恢复编码前的隐藏像素。mask面积/跨度限制和独立画面安全仍成立，不用任意扩大mask替代评估。
 
-计划覆盖首尾、时间锚点、切镜上下文、原像素 edge/RGB/background 极值、geometry metric 极值、可见性歧义和固定 seed 留存样本，不能读取 candidate mask/support 或 comparison。完整风险输入缺项、超过有界人工预算、边界/低 alpha 无法辨明、未知 morphology 或 geometry 未成立则 `SOURCE_INCOMPLETE`，不能删帧取得通过。详见 [M2-E plan](shape-matched-cover-m2e-plan.md)。
+已有M1-A、M2-A/B/C/D证据允许复用，但各自支持的结论保持原范围。当前233秒source没有真正pixel ground truth，精确miss/excess保持null；M2-A的133异常和REJECTED不撤销，M2-C的0geometry issues不覆盖它。若后续改变异常准入或可消费proof，须在原owner新增明确版本、保留旧失败并做相关可执行验证，不能仅改本文使旧candidate变成功。本轮默认M2验收尚未执行完成，不进入M3。
 
-`SOURCE_QUALIFIED` 只表示独立来源/审核成立、计划全部 truth 完整非空、UNKNOWN 不污染指标范围、冻结方法一致、完整范围 geometry 无问题、全部 frozen truth required pixels 零漏。任何 1px miss 为 `SOURCE_NOT_QUALIFIED`；额外像素不抵消漏失。最多声明 **ZERO_MISS_ON_FROZEN_TRUTH_SET**，不声明 ZERO_MISS_FULL_RANGE/6990，也不从几何一致性推导未标帧 pixel truth。多个来源通过仍不自动解锁 M3、source admission、knowledge revision 或 activation。
+M5保留每个声明支持类别至少3个独立真实来源的批量验收下限；来源必须有可核查履历，different SHA或派生/复用片不增加数量，UNKNOWN不计数。该下限用于多样性验证，不证明统计普适性，也不要求所有来源never-development-exposed。开发源可用于具名development/回归，但不能改成unseen holdout；真实失败与支持限制公开。不把来源不足作为开发本地M2工程检查的唯一停止条件，activation仍需完成M5。
 
-`HOLDOUT_FROZEN` 后发现反例保持失败；不能根据它修改 detector/mask/geometry/dilation。新算法版本须保存旧结果并另取新 unseen 来源。所有离线 registry、plan、truth、comparison 固定 `authority=none / eligible=false`，JSON clone/reload 不恢复 capability。普通产品用户没有 truth/reviewer/三来源/holdout 操作义务。
+### Optional M2-E High-Assurance Truth Qualification
+
+[M2-E plan](shape-matched-cover-m2e-plan.md) 保留 **B：冻结风险truth set + full-range geometry + 冻结保守方法** 的强比较协议与全部工具；仅当主动执行该可选模式、需要其 `SOURCE_QUALIFIED` 声明时，才适用never-exposed来源、两位独立blind人类author/QA、原像素required-pixel标注、freeze/no-adaptive-tuning及真实身份核实。它未要求完整视频每帧人工描边，但即使≤192帧，其完整ROI真人标注也不是默认M2工程验收必需步骤。
+
+原协议的任何1px miss仍SOURCE_NOT_QUALIFIED，UNKNOWN/缺truth/缺审核仍SOURCE_INCOMPLETE；当前HOLDOUT_INSUFFICIENT、confirmed independent unseen static sources=0、valid reviewers=0全部保留。该模式最多签 **ZERO_MISS_ON_FROZEN_TRUTH_SET**，不签ZERO_MISS_FULL_RANGE/6990；不得凭metadata、算法candidate、geometry或代码review补签真人truth，失败holdout不调到通过。默认工程检查不能伪造此模式的成功或复用其JSON恢复capability。所有离线输出仍authority=none / eligible=false；普通产品用户没有truth/reviewer/三来源/holdout操作义务。
 
 ## 7. Shape Matching Contract
 
@@ -120,11 +129,11 @@ D1 的源字节/帧时钟/解码拒绝工程仍可复用，full-canvas census �
 
 按新 [M0–M6 plan](shape-matched-cover-v1-simplification-plan.md) 完成以下条件后，才可另行实施 activation：
 
-1. 真实静态 detector 和 target confirmation 可用，独立留出证明声明支持范围内 required pixels 零漏失，失败类别明确；固定动画单独合格才开放。
+1. 真实静态detector与target confirmation可用，完成§6默认M2工程验收：独立已知truth反例、完整确认范围核查、真实保守边界依据及明确支持/拒绝包络；不能将geometry或无分母的指标当真实mask完整性。固定动画单独验收才开放。可选M2-E强truth协议不作为唯一前置。
 2. 原 knowledge/admission/store 支持版本化 confirmed-target proof，确认集合冻结、集合完整消费、争议/freshness、取消及防 JSON 伪造验证成立。
 3. 原 assembler 提供可信 placement 和 prepared request，原生产链消费全部确认目标，不提前制造 coverage/SAFE 或出版许可。
 4. 每个输出规格真实覆盖100%，实际摆放样片 SAFE/NATURAL；同 PNG 字节进入 compiler，批准样片经 custody 同字节发布且 publish-once 不变。
-5. 多个真实来源/失败案例、CPU-only、Windows/Linux、性能/内存和 legacy 回归完成；未验收类别保持拒绝。若启用 Agent 选款/复核，验证实际允许连接，缺能力就使用已实现的人类确认路线或拒绝，不能 mock 成功。
+5. M5每支持类别至少3个可核查独立真实来源及失败案例、CPU-only、Windows/Linux、性能/内存和legacy回归完成；开发/回归与可选unseen holdout分列，未验收类别保持拒绝。若启用Agent选款/复核，验证实际允许连接，缺能力就使用已实现的人类确认路线或拒绝，不能mock成功。
 6. 最后独立修改产品入口并做真实交互/安装验证。本轮 guard 继续关闭，没有环境开关、fake issuer 或 bypass。
 
 不需要 D2Q→D3→D4→旧 C issuer，也不需要零目标素材的全片无贴纸证明。新的可信 request 准备责任仍保留于原 assembler；撤掉 exhaustive 前提不等于可把 raw M4 fixture request 直接开放给 IPC。

@@ -1,5 +1,36 @@
 # Stationary Shape Cover Engineering Record
 
+## M2 Qualification Boundary Course Correction — 2026-10-02
+
+本轮为 `SOURCE_AUDITED / CONTRACT_CORRECTION / DOCUMENTATION_ONLY / PRODUCT_DISABLED`。依据 [追加audit](shape-matched-cover-v1-simplification-audit.md#m2-qualification-boundary-course-correction--2026-10-02)、[Delta Spec §6](shape-matched-cover-v1-simplification-spec.md#default-m2-static-engineering-acceptance) 和 [更新Plan](shape-matched-cover-v1-simplification-plan.md#current-bounded-follow-up--m2-engineering-boundary)，不运行新holdout triage、不进入M3、不修改算法/mask/guard，不删除M2-E工具或历史失败。下方M1-A至M2-E全部原文保持；其中当时的Need/Stop是历史模式条件，当前适用关系由本节及Spec解释。
+
+### Preserved Evidence
+
+| Slice | Unchanged fact |
+| --- | --- |
+| M1-A | real CPU automatic discovery已成立；候选无authority，不签absence。 |
+| M2-A | development mask3395px，bbox628/1/81/59，SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893`；旧REJECTED/FULL_RANGE_STATIC_CONTRADICTION保留。 |
+| M2-B | 133 RGB anomalies；不能直接解释为运动，也不能全部补签编码噪声。 |
+| M2-C | full[0,6990)，DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED，geometry issues0；不证明mask完整。 |
+| M2-D | independent pixel comparator工程实现有效；当前真实233s源无真正pixel ground truth，真实miss/excess仍null。 |
+| M2-E | inventory/registry/truth tooling已实现；255真实video files、218unique SHA、210candidate-unseen SHA、76suspected candidate groups、confirmed independent unseen static sources0、valid reviewers0、HOLDOUT_INSUFFICIENT；历史Harness FAIL不变。 |
+
+### Corrected Acceptance and Current Stop
+
+产品仍需非空确认集合、保守mask与完整目标时域、逐输出opaque覆盖100%、SAFE/NATURAL、冻结/custody/原queue。默认offline M2采用独立已知truth受控反例、真实全范围geometry/边界工程检查、明确方法和支持/拒绝包络；精确pixel指标无分母不填0。多来源下限仍为M5每支持类别≥3可核查独立真实来源，但不强制都是never-exposed。
+
+M2-E的双人blind逐像素truth与严格unseen资格保留为可选high-assurance路线，其工具拒绝/强声明不放宽。HOLDOUT_INSUFFICIENT/reviewers0继续描述该路线，不再自动成为默认M2的唯一blocker。工程观察不签SOURCE_QUALIFIED或真实全6990帧pixel零漏。
+
+当前M2仍INCOMPLETE：按新合同的真实保守边界评估尚未完成；M2-A/C结果的可消费proof与canonical knowledge/admission接线也未完成。当前M3仍BLOCKED，且本轮明确不进入；未重新qualification、未新媒体decode/export或truth标注，shape媒体modelRequests0。唯一后续候选为已有development材料的static mask边界/异常工程收敛，本轮未执行。
+
+### Source Audit and Delivery Evidence
+
+核对用户指定`2e4274b`的10文件diff、实际开始HEAD `582f8f6`及后续foreign规则/千川变化；Shape实现从指定基线到本轮字节不变。读取本轮6份指定文档、M1-A→M2-E owners，CodeGraph关系结合imports/callers裁决。受管Kimi只读调查invocation `d7f6f116-f79f-4634-a0a5-2d788caa7064`、seal `84f65c846ae0b509c91b6c59941f2d26d12926b41e229281240487dd1a8fcd90`、deep/max，4wire requests、199.786s、PARSED；4artifact/7完整Read由Parent核对。Parent裁决见audit，不用模型意见补真值或签验收。
+
+Evidence根R=`~/.local/state/jianji-source-fact-qualification/m2-boundary-correction-20261002`：before快照、原文、24项实现SHA、canonical receipt及Parent裁决；本轮仅5份owned文档，旧record suffix逐字节核对。按current verification-before-completion运行owned scope与当前policy选定的checks及verify，结果以R和对应`.agent/harness/runs/`原receipt为准，不预写PASS、不覆盖旧M2-E FAIL。AOCI逐项核对role并执行官方Verify/Check/Guide；本轮对象与foreign全库drift分列，不抢共享索引或截断机器批次。
+
+没有repository专用session-capture Skill，本节保存durable checkpoint，不更新外部memory。Spec/Plan由Parent Self-Review，本轮没有implementation diff，不触发额外implementation reviewer；工具/source/admission guard原字节不变。共享索引、规则、renderer及其他会话改动保留，只stage/commit本轮文档。
+
 ## M2-E Real Static Holdout & Independent Truth Acquisition — 2026-10-02
 
 依据 [M2-E plan](shape-matched-cover-m2e-plan.md)、[Delta Spec](shape-matched-cover-v1-simplification-spec.md) 与 [主计划](shape-matched-cover-v1-simplification-plan.md)，本轮建立只读素材审计、offline metadata registry、冻结风险truth plan、candidate-blind original ROI raster editor、two-pass human QA与既有M2-D comparator接缝。**停止状态：HOLDOUT_INSUFFICIENT / INDEPENDENT_REAL_STATIC_SOURCE_INSUFFICIENT / REAL_STATIC_QUALIFICATION_BLOCKED_BY_HOLDOUT。** 工具不能补签缺少的真人或材料。
