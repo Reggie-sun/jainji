@@ -1,5 +1,71 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-C Static Geometry Verification v2 — 2026-10-02
+
+依据 [M2-C plan](shape-matched-cover-m2c-plan.md) 和当前 course-correction，本轮只建立 **cpu-static-geometry-development/v2**，只核查已确认右上“国货之光”的完整 `[0,6990)`。新 receipt 状态 **DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED / REAL_MEDIA_QUALIFICATION_INCOMPLETE / PRODUCT_DISABLED**。其意思是：在下述 development 方法和灵敏度内，全范围未检出超过冻结门限的位置漂移、landmark 消失或明显局部结构变化；不是任意精度的静态证明，更不是 mask 完整性或 source/production authority。
+
+**RGB appearance stability != screen-coordinate geometric stationarity。** 旧 M2-A `FULL_RANGE_STATIC_CONTRADICTION` 永久保留，没有改为 PASS；旧 mask 3395px、bbox628/1/81/59、SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893`、完整范围和133异常均不变。M2-B的61 strict clusters、78 distinct pixels、506 violations、492 boundary-layer-1、除内部小例外外距离≤3、6990帧±2px integer search全0/0、cause unqualified、tolerance24、parameter revisions0也原样保留于下文及原 evidence。本轮没有独立 required-pixel truth，也未进入M3。
+
+### Method and Ownership
+
+新增离线 `scripts/shape-cover-static-geometry.py`，使用本机已有 NumPy/OpenCV/Pillow，纯CPU，不增加产品依赖。复用 M2-B `decode` 的应用FFmpeg单进程、原ROI615/0/105/76、rawvideo与独立framehash双pipe、每个ordinal/PTS/endPTS/RGBA SHA核验。JSON只读取历史绑定，不恢复原private evidence owner或许可；新结果固定authority=none、eligible=false。
+
+几何参考只来自原96代表帧在确认粗ROI内的**持久有向灰度梯度 landmarks**：Gaussian sigma0.6，Sobel/8，梯度幅度≥8，方向cosine≥0.9且至少90%样本达共识，sample gradient strength ratio0.5–2；3×3分块，各块最多48点、至少8点，至少6块及双轴跨度至少粗框50%。不使用旧mask、2082px support或RGB min/max作几何参考/required pixels。旧mask仅核对固定摘要，完全不修改。
+
+固定参考逐帧对齐，避免滚动参考累计漂移。全局搜索±4px，局部±2px，整数粗搜后0.25px双线性细搜；全局超过0.5px、局部超过0.75px则拒绝。归一化有向梯度correlation须全局≥0.9/局部≥0.8；相距至少1.5px的竞争峰gap≥0.02，搜索触边或歧义明确unresolved；gradient energy ratio0.45–2.25，低于参考35%的landmark比例不得超过15%。这些是受控development门限，先于真实运行冻结，不是普适motion资格。没有跨帧平滑，不忽略单帧或尾帧。
+
+所有逐帧metrics、各分块偏移/相关/歧义、landmark原坐标/向量、配置/源码/依赖版本、参考和frameMetrics digest、严格连续issue ranges及旧133帧交叉表可重算。source与全部历史inputs/原方法源码/引擎前后SHA核对；取消、绑定失配、范围缺项、预算或freshness失败不写成功result。
+
+### Full-Range Development Evidence
+
+最终证据根 `~/.local/state/jianji-source-fact-qualification/m2c-geometry-20261002-accounted-final`（R）。此前v1、final与cancelled独占目录都保留，同级 `m2c-geometry-20261002-*`；sealed任务、运行和verification日志在repo `runs/shape-cover-m2c-20261002`，并归档R/engineering。不读取holdout，不调用产品模型，不修改M1/M2-A/M2-B实现、配置、mask或旧receipt。
+
+| Measurement | Fresh result | Limit |
+| --- | --- | --- |
+| 原源 | SHA `a18f7e4e5fc02e5db977d9074be35ce82a296d247194205e9cf88e1ac76fc0bf`，54,577,917 bytes，720×1280 | 原字节未变。 |
+| 完整时域 | 6990/6990帧，含0与6989；PTS `[0,3578880)`，timeBase1/15360 | 不缩承诺范围，不丢异常帧。 |
+| 参考 | 286 landmarks，9个分块 | 这些是几何观察点，不是目标全部required pixels。 |
+| 全局offset | 每帧均0/0；最低correlation0.9789520481，最低distinct-peak gap0.6432205750 | 有限搜索和阈值内支持位置稳定；非无穷精度证明。 |
+| 存在性/强度 | 最大lost fraction0.0174825175；energy ratio0.9957012834–1.0328719723 | 未检出明显landmark丢失，不签语义/alpha资格。 |
+| 局部结构 | 最低correlation0.9782030429；最大offset分量0.75px | **182帧在cell8出现(-0.75,-0.25)**，其余也存在亚像素拟合偏移；不能写成所有局部位置严格0/0。这些仍在预冻结0.75px上限内，不独立判定为物理位移或编码因果。 |
+| 新geometry issues | 0帧、0 issue ranges；旧133 RGB异常对应geometry issues0 | 旧RGB REJECTED不因此撤销。 |
+| 新结果 | `DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED` | qualification仍INCOMPLETE；maskCompleteness/coverage NOT_EVALUATED；required/missed pixels为null。 |
+
+配置digest `33ef2267b762a7cef277413d35b95ada15baba184fd8456d632892bebd92b598`；参考digest `50e57704e606bd11189e8c6e6c794748e70fc1d3d269df991e1e3805f39d88c3`；全6990帧metrics digest `cfb8a722078a7dde62f8400dd93623052287950d93ef6b24ade41fe3dda88e53`；新receipt digest `a58259f86945ad19c93fac4fef5bb138c116549e151b45280d418118c29e28a0`。v1和final两次完整运行的result逐字段相同；随后修正内存计数，再用最终源码完整重跑，以上digest和全逐帧metrics仍完全相同。**几何CONFIG在真实观察后修订0次**。
+
+Parent实际查看10个首/中/尾及历史异常原ROI的landmark联系图，并完整统计全部local metrics；`parent-extreme-audit.json`保留182帧及分块证据。人工spot-check只辅助理解，不能代替6990帧机器核查或独立truth。
+
+### Controls, Performance and Failures
+
+13项新增Python tests验证静态重算、noise/通道偏置/超24的亮度变化、四向整数位移、0.75px位移、声明的0.5px灵敏度边界、整体/局部消失、局部形变、单帧与尾帧、无纹理、时域不稳定、周期歧义、搜索边界、错extent/type/box及工作集预算。初始缺模块red、语法错误和颜色对照实际只差13的test失败日志保留；修正test输入后通过，均先于真实参数冻结。
+
+另针对真实目标ordinal0及冻结286 landmarks，显式构造11项development干预：原样/亮度+35保持0/0；四向1px、0.75px、消失、局部2px warp、1.1倍缩放、5度旋转均明确拒绝或unresolved。记录在 `target-intervention-checks.json`；可重算脚本随engineering归档。**这些只是同一已知开发ROI的受控变换，不是新的真实运动样本、独立来源或required-pixel truth。** 最终method SHA与原帧binding均绑定报告。
+
+| CPU / memory | Final actual measurement |
+| --- | --- |
+| Host | 同Linux开发主机；未测Windows/低端CPU。 |
+| Overall / representative decode / model | 40,733.020 / 8,408.208 / 70.335ms。 |
+| Full-range decode + geometry / geometry kernel | 31,520.258 / 31,200.981ms；流水重叠，不把差值当精确独立decode耗时。 |
+| Parent / child peak RSS | 155,336,704 / 110,985,216 bytes；Linux getrusage分别高水位，非同时进程总峰值。 |
+| Model accounting / receipt reserve | 73,543,680 / 268,435,456 bytes，合计小于512MiB；估算/预留不是实际RSS。 |
+| Scratch / artifacts | RGBA scratch0，不spool全片；结果、逐帧metrics和附加审计约25.34MB，不含engineering归档。 |
+
+首次memory字段按40bytes/sample-pixel误称upper bound，没有充分包含NumPy临时数组与receipt工作集。Parent在最终审查中纠正为保守96bytes/sample-pixel估算及256MiB receipt预留，超工作集在分配gradient stack前拒绝，并增加大ROI预算负例；几何数学、CONFIG和结果未变，旧计数记录保留。最终accounted运行重新完整核验当前源码，不将旧快照冒充最终。
+
+实际SIGTERM取消于完整验证运行阶段，11,158.481ms返回exit1，仅method-freeze/landmark-reference/failure，无result，无成功receipt；失败保留在cancelled目录。source/math与取消路径未变，随后只加强内存计数和提前预算拒绝。没有重试外部unknown请求。
+
+### Verification, Delegation and Governance
+
+按current `verification-before-completion`，13项新geometry tests及6项复用诊断/真实FFmpeg错SHA/PTS tests均PASS；原static/activation **2 suites / 38 tests PASS**，不新制作独立pixel truth。首次全仓typecheck遇到另一窗口尚未创建的harness/governance.ts，exit2；原日志保留。其owner完成该文件后fresh `npm run typecheck` exit0；没有修改foreign文件修测试。最终diff/文档引用/历史前缀外原字节和method-source-freeze逐项核查，specific-files commit。
+
+受管Kimi只读核查原stream seam与新几何方法的盲点/controls，不读取本轮新实现、不当最终review：invocation `c464bd6a-1318-445f-a01d-97620ac0edfb`，seal `aad28d59767f34ab918360663b6e5e9c6e7eca4e11dc5dba9ba5f8a9164e5d6b`，qualified route `4f2d5dc8-4234-4665-b382-e82f1ad6cc00`；deep/max、3 wire requests、151.097s、PARSED、无retry。Parent核对canonical receipt、5个完整observed Reads及4个artifact摘要，采用其源绑定/盲点建议。其“只能沿用旧candidate status/16MiB预算”是原M2-A接缝约束，不能覆盖当前用户授权的新版本development receipt与本M2-C独立64MiB artifact预算；离线route/不共享旧extractor消费由Parent决定。Kimi没有真实图像或最终implementation验收authority。
+
+Final candidate Risk Gate：**KIMI_REVIEW_NOT_REQUIRED**。用户未要求本snapshot的final Kimi review；新代码只在自有独占诊断目录写无authority的development记录，无凭据、产品连接、业务持久化/准入或不可恢复生产后果。project-native验证后不存在“重大后果 + 实质残留运行缺口 + reviewer可独立补齐”的组合；独立truth缺口保留，不能用reviewer verdict补签。exact源码/test/plan/record与相关旧owner/accepted refs摘要保存R/engineering/source-snapshot.json。
+
+四个本轮业务对象逐项AOCI按当前scope均为observe，未出现在missing/stale/unbaselined中，无本轮managed对象待维护；不扩大索引范围、不重复写正式索引。Verify/Check/Guide完整执行，全库仍有其他窗口Harness/Qianchuan/布局业务及runs的missing/stale/unbaselined，故不是governance aligned；精确列表与本轮scope裁决随R保存。完整机器批次含未授权且正在变动的foreign对象，不调用/截断Maintain、不越权维护。初始Overview响应在host输出被截断，未补答Challenge或声称完整系统认知可靠；继续source-bound的本slice。既有dirty共享索引和所有foreign changes保留，不stage/commit。
+
+Repository无专用session-capture Skill；本节与R承接稳定checkpoint，不修改外部memory。停止在M2-C：新的几何development evidence成立于声明灵敏度；真实mask资格仍 **INCOMPLETE / INDEPENDENT_REQUIRED_PIXEL_TRUTH_MISSING**。未抽样/未参与landmarks的边缘、半透明贡献、低纹理或容限内形变仍有盲点；后续独立truth qualification另行处理。本轮没有M3、required-pixel truth、mask变更、输出覆盖或activation。
+
 ## M2-B Static Range / Anomaly Classification — 2026-10-02
 
 依据 [M2-B plan](shape-matched-cover-m2b-plan.md)，本轮只回答M2-A的133个异常意味着什么。状态 **ANOMALIES_REPRODUCED / STATIC_GEOMETRY_OBSERVED_WITH_APPEARANCE_ANOMALIES / CAUSE_NOT_QUALIFIED / PRODUCT_DISABLED**。完整承诺仍为 `[0,6990)`；M1/M2-A源码、config、原receipt和3395px mask全部保持原字节。容差仍24，参数修订0，不缩范围、不做M3或mask qualification。
