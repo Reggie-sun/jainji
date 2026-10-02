@@ -1,5 +1,57 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-D Independent Required-Pixel Truth — 2026-10-02
+
+依据 [M2-D plan](shape-matched-cover-m2d-plan.md) 和当前course-correction，新增离线逐像素comparator及独立构造反例；**真实目标资格仍 `INCOMPLETE / INDEPENDENT_REQUIRED_PIXEL_TRUTH_MISSING / PRODUCT_DISABLED`**。本轮没有建立该原片真正独立的required-pixel truth，因此不能回答3395px mask是否包含全部required pixels，也不能把三个指标填零。这是M2-D的真实证据blocker，不是M3入口。
+
+M1无预填ROI/mask/stickerId的发现结果，M2-A3395px、bbox628/1/81/59、SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893`、`[0,6990)`、133异常及 `FULL_RANGE_STATIC_CONTRADICTION`，M2-B61 clusters/97.23% boundary/cause未知，M2-C6990帧/0 geometry issues/全局0/0/有界局部亚像素拟合及 `DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED`，均保持旧结论和旧字节。原源码、mask、阈值、收据及下方历史章节未改。
+
+### Prior Session and Artifact Investigation
+
+用户要求“在之前的session找下”，Parent实际回查M1-A/M2-A/M2-B/M2-C/course-correction session、M4-A memory指向的原session记录和当前留存artifact，不只使用memory结论。搜索当前qualification evidence树的479份JSON（明确排除route runs、snapshot、inputs及engineering目录，0 oversized跳过），匹配truth/requiredPixels/reviewer声明并核对来源；精确paths/SHA/命中和排除范围保存R/engineering/prior-artifact-audit.json与prior-session-audit.json。结论仅针对已检查范围，不宣称全机不存在truth。
+
+| Found evidence | Actual identity and scope | M2-D judgment |
+| --- | --- | --- |
+| `real-cover-visual-20260930/segment-90-93/result.json`及bitset | 同原片SHA；2700–2789；3371px，bbox628/1/81/60，SHA `415c72e6…bc7ba53`；方法 `temporal-max-channel-std-lt20-largest-8-connected-component-dilate-3-v1` | 旧算法candidate，不是独立required-pixel truth。M4-A人工审核绑定此候选且仅90帧，不产生全6990帧独立分母；原`/tmp` probe/store此时已不存在，未重造旧receipt。 |
+| 同目录14–17秒candidate | 420–509，3259px，SHA `7bfde65d…253838`；同temporal方法 | 同样不能移作truth。 |
+| `auto-contour-implementation-20261001-*/development-run/method-0/1-truth-freeze.json` | `CONTROLLED_CONSTRUCTION`，范围0–5，sourceKey `8bda080b…f2f48` | 其他受控源，不能挪用给原片目标。 |
+| `auto-contour-catalog-followthrough-20261001/development-freeze.json` | 原片SHA正确；`AUTHOR_SIDE_UNQUALIFIED_ROI_NOT_TRUTH`，`truth=null` | 仅ROI线索；其原recent-session audit也明确未找到真实pixel/motion truth。 |
+| 旧D2Q/D2A/independent-holdout packages | 合成媒体/目标声明、构造truth；未绑定此原片required pixels | 不启动研究资格链、不将其当当前static truth。 |
+| M2-A/M2-C session final messages | 原资格INCOMPLETE、真实独立truth缺失 | 未发现被遗忘的真实通过结果。 |
+
+没有找到原始贴纸alpha、同帧无贴纸参考或本目标完整范围的独立像素标注和实际独立审核。仅由压缩RGB不能唯一界定抗锯齿、半透明和编码边缘贡献；另一种分割算法、landmarks、旧support或较大的候选mask不能补签独立truth。Parent没有代填人类作者/审核身份、生成虚假审核或改写旧qualification。
+
+### Comparator and Fresh Real Diagnostic
+
+`scripts/shape-cover-required-pixel-truth.py`只读冻结mask，复用M2-B的`decode`，不执行`reconstruct`/detector/geometry。truth packet绑定完整source/target/confirmation/ROI/range及每帧ordinal/PTS/endPTS/RGBA SHA；在完整核查ROI比较，不能裁到candidate bbox。标签0明确非required、1required、2UNKNOWN。来源与不同author/reviewer仅记录声明，JSON不恢复private owner或证明实际独立审核；REAL_MEDIA声明即使数值零漏仍 `INCOMPLETE / REAL_MEDIA_INDEPENDENCE_AND_REVIEW_NOT_VERIFIED`，不开放原qualification owner。
+
+逐帧记录差集及源坐标；`missedRequiredPixels`与`excessPixels`为pixel-frame occurrences，`missingRequiredFrames`是存在至少一个required漏像素的帧数，另列unique坐标。UNKNOWN、未界定ROI边界、空target或非static时exact指标null，known差集只作observed下界。任何单像素/尾帧漏失不被平均抵消。truth缺失时无observed分母，更无假零；额外像素不能抵消漏失。
+
+真实诊断根 `~/.local/state/jianji-source-fact-qualification/m2d-truth-20261002-missing`（R）。使用原source SHA `a18f7e4e…fc0bf`、应用FFmpeg SHA `f8e3453a…816a2d`，完整CPU双pipe核验原ROI615/0/105/76及6990/6990帧RGBA SHA、PTS/endPTS、首尾，timeBase1/15360；源/engine/所有输入/脚本前后SHA相同。原mask位集/像素数/bbox/range核查相同，没有新extractor或mask修订。
+
+| Measurement | Fresh result |
+| --- | --- |
+| Original frames bound | 6990/6990；truth frames compared=0 |
+| `missedRequiredPixels` | null — independent truth missing |
+| `missingRequiredFrames` | null — independent truth missing |
+| `excessPixels` | null — independent truth missing |
+| Time / parent RSS / child RSS | 12.671s / 60,551,168 / 70,119,424 bytes；Linux独立高水位，非同时进程总峰值 |
+| RGBA scratch | 0；无全片spool |
+
+### Verification, Delegation and Stop
+
+按current `verification-before-completion`，10项新Python controls PASS：先定义明确alpha（含alpha1细尖和孔洞）再独立构造candidate，覆盖完全包含、bbox外漏失、孔洞额外像素、单尾帧、UNKNOWN、缺truth、REAL_MEDIA伪审核声明、错源/时钟/SHA/漏帧/循环来源、未界定边界/运动及分配前预算拒绝。6项复用M2-B tests（含真实FFmpeg错SHA/PTS拒绝）PASS。static/activation **2 suites / 38 tests PASS**；typecheck exit0。初次Vitest只指定maxWorkers1导致min/max冲突、0 tests，保留失败；显式min/max均1后完整运行137.81s通过，不改测试断言。
+
+受管Kimi只读调查原qualification与M2-C/spec的truth边界，invocation `5e5ece99-fa2f-45fb-8dbc-53ea269e5c18`，seal `952721e7bed8b845c6afbbcc1adaadf655049916833d8061b26663818fe854f9`，qualified route `4f2d5dc8-4234-4665-b382-e82f1ad6cc00`；deep/max、3 wire requests、246.500s、PARSED、无retry。Parent逐项核对artifact摘要和3项完整observed Reads，接受“metadata不证明独立审核/REAL_MEDIA当前关闭”。其把missingRequiredFrames解释为缺truth记录被Parent纠正：本轮按用户要求定义为**有required漏像素的帧数**，缺帧本身直接拒绝。其逐帧人工描边建议不升级为普通用户流程，不通过模型意见产生truth。不是最终implementation review或真实图像审核。
+
+Final candidate Risk Gate：`KIMI_REVIEW_NOT_REQUIRED`；无用户指定final review，无凭据、产品请求、source知识或持久业务写入，离线记录错误不产生重大production/authority后果。comparison语义由明确构造反例与原完整解码绑定核验；真实truth缺口固定INCOMPLETE，review不能补齐。source/test/plan及旧owner摘要、fresh logs和final diff绑定R/engineering。
+
+四个owned业务对象均按AOCI现行scope为observe，不新增正式Entry/baseline；Verify/Check/Guide及精确foreign drift结果随R保存，本轮对象与全库状态分开核对，不越权领取包含foreign active对象的创作批次。封存runs归档时曾出现4项orphan，后续官方校验已无这些条目；本轮对象未出现missing/stale/unbaselined，全库仍有其他窗口的未对齐对象。首次AOCI全4块交付已确认，strict attestation未通过；context-compaction刷新在第2块返回overview_snapshot_changed，停止该认知链，继续源码绑定工作，不宣称当前完整系统认知可靠。没有专用session-capture Skill，本节与R承接stable checkpoint，不修改外部memory。
+
+当前AGENTS增加scoped Harness gate后，本轮以script/test/plan/record四项精确before/after SHA建立 `harness-task-scope/v1`，执行policy路由的code检查及只读verify；scope与实际receipt/log在R/engineering归档。receipt若有FAIL、NOT_EVALUATED或快照变化就不能声明Harness PASS，不能借既有Python/typecheck结果覆盖它，也不修改其他窗口正在维护的policy/owner。仅限定本轮四文件提交，保留其他窗口改动；真实truth仍是独立的qualification blocker。
+
+**Stop:** comparator工程已验证，真实M2-D尚未完成。仍需要本原片目标独立像素依据及实际独立审核，随后才可计算真实三项指标；当前不能给mask完整性PASS。无mask优化、M3、输出coverage、画面安全或product activation。
+
 ## M2-C Static Geometry Verification v2 — 2026-10-02
 
 依据 [M2-C plan](shape-matched-cover-m2c-plan.md) 和当前 course-correction，本轮只建立 **cpu-static-geometry-development/v2**，只核查已确认右上“国货之光”的完整 `[0,6990)`。新 receipt 状态 **DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED / REAL_MEDIA_QUALIFICATION_INCOMPLETE / PRODUCT_DISABLED**。其意思是：在下述 development 方法和灵敏度内，全范围未检出超过冻结门限的位置漂移、landmark 消失或明显局部结构变化；不是任意精度的静态证明，更不是 mask 完整性或 source/production authority。
