@@ -149,6 +149,7 @@ function publish(snapshot: QueueSnapshot): void {
 
 function registerHandlers(): void {
   ipcMain.handle("batchProduction.projects", async event => { assertTrustedSender(event); return batchRuntime.listProjects(); });
+  ipcMain.handle("batchProduction.saveUploadAccount", async (event, input: unknown) => { assertTrustedSender(event); return batchRuntime.saveUploadAccount(input); });
   ipcMain.handle("batchProduction.details", async (event, input: unknown) => { assertTrustedSender(event); await queueReady; return batchRuntime.controller.details(input); });
   ipcMain.handle("batchProduction.start", async (event, input: unknown) => {
     assertTrustedSender(event);

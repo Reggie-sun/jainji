@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { lstat, open, rename, unlink } from "node:fs/promises";
 import path from "node:path";
-import { QianchuanAccountConfigReader, readPrivateConfig, type FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+import { QianchuanAccountConfigReader, readPrivateConfig, readPrivateJson, type FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+import { TemplateAccountBindingSchema, TemplateAccountSettingsSchema, type TemplateAccountBinding } from "../shared/batch-upload.js";
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
 import { QianchuanBrowserManager } from "./qianchuan-browser-manager.js";
 import type { RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
@@ -16,6 +17,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private writes: Promise<unknown> = Promise.resolve();
   private blocked = false;
   private hasMapping = false;
+  private hasTemplateAccounts = false;
   private readonly preparedBrowsers = new Map<QianchuanProduct, { advertiserId: string; endpoint: string }>();
   private readonly browsers: QianchuanBrowserManager;
   private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
@@ -46,7 +48,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     try { await lstat(this.file); return true; }
     catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
   }
-  private edit(action: () => Promise<QianchuanAccountSummary[]>): Promise<QianchuanAccountSummary[]> {
+  private edit<T>(action: () => Promise<T>): Promise<T> {
     const pending = this.writes.catch(() => undefined).then(async () => {
       if (this.blocked) throw new Error("账号设置保存结果未知，请重启简辑核查。");
       await secureUploadDirectory(this.directory);
@@ -63,15 +65,50 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   }
   private async save(accounts: QianchuanAccount[]): Promise<QianchuanAccountSummary[]> {
     const value = QianchuanAccountSettingsSchema.parse({ version: 1, accounts });
-    const temporary = path.join(this.directory, `mapping-${randomUUID()}.tmp`);
+    await this.savePrivateJson(this.file, value);
+    try { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return summaries; }
+    catch (error) { this.blocked = true; throw error; }
+  }
+  private async savePrivateJson(file: string, value: unknown): Promise<void> {
+    const content = `${JSON.stringify(value, null, 2)}\n`;
+    if (Buffer.byteLength(content) > 64 * 1024) throw new Error("设置内容超过 64 KiB，请减少模板关联。");
+    const temporary = path.join(this.directory, `settings-${randomUUID()}.tmp`);
     let published = false;
     try {
       const handle = await open(temporary, "wx", 0o600);
-      try { await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`); await handle.sync(); } finally { await handle.close(); }
-      await rename(temporary, this.file); published = true; await strictSyncDirectory(this.directory);
-      const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return summaries;
+      try { await handle.writeFile(content); await handle.sync(); } finally { await handle.close(); }
+      await rename(temporary, file); published = true; await strictSyncDirectory(this.directory);
     } catch (error) { if (published) this.blocked = true; throw error; }
     finally { await unlink(temporary).catch(() => undefined); }
+  }
+  private async templateAccounts(): Promise<TemplateAccountBinding[]> {
+    this.assertAvailable();
+    const file = path.join(this.directory, "template-accounts.json");
+    try { await lstat(file); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (this.hasTemplateAccounts) throw new Error("已保存的模板账号关联丢失，请人工核查。");
+      return [];
+    }
+    this.hasTemplateAccounts = true;
+    return (await readPrivateJson(file, value => TemplateAccountSettingsSchema.parse(value))).value.bindings;
+  }
+  async templateAccount(recentProjectId: string, projectId: string): Promise<TemplateAccountBinding | undefined> {
+    const binding = (await this.templateAccounts()).find(binding => binding.recentProjectId === recentProjectId);
+    if (binding && binding.projectId !== projectId) throw new Error("模板项目已变化，请在本行重新选择上传账号。");
+    return binding;
+  }
+  async saveTemplateAccount(input: unknown): Promise<TemplateAccountBinding> {
+    const binding = TemplateAccountBindingSchema.parse(input);
+    return this.edit(async () => {
+      const target = await super.preflight(binding.accountProduct);
+      if (target.advertiserId !== binding.advertiserId) throw new Error("广告账户已变化，请重新选择账号。");
+      const bindings = (await this.templateAccounts()).filter(value => value.recentProjectId !== binding.recentProjectId);
+      const value = TemplateAccountSettingsSchema.parse({ version: 1, bindings: [...bindings, binding] });
+      await this.savePrivateJson(path.join(this.directory, "template-accounts.json"), value);
+      this.hasTemplateAccounts = true;
+      return binding;
+    });
   }
   override async authorizeFile(source: string): Promise<QianchuanAccountSummary[]> {
     // Validate through the original strict, private six-account import boundary.

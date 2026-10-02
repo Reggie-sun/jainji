@@ -14,6 +14,7 @@ import type { QueueSnapshot } from "../src/main/queue";
 import { ProjectStore } from "../src/main/store";
 import type { QianchuanUploadSelection, UploadAuthorization } from "../src/shared/douyin-upload";
 import type { QianchuanAccountSummary } from "../src/shared/qianchuan-account";
+import type { TemplateAccountBinding } from "../src/shared/batch-upload";
 
 const entry = () => ({ recentProjectId: crypto.randomUUID(), requestedCount: 5, productPrice: "手动文字", coverEnabled: false, displayMode: "full" as const });
 const directories: string[] = [];
@@ -54,6 +55,7 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
     taskStatuses: () => new Map(tasks.map(task => [task.id, task.status])),
     cancelExport: vi.fn(async (id: string) => { const task = tasks.find(task => task.id === id)!; if (task.status === "running") task.status = "cancelled"; }),
     changed: vi.fn(),
+    uploadBinding: vi.fn(async (_recentProjectId: string, _projectId: string): Promise<TemplateAccountBinding | undefined> => undefined),
     uploadAccounts: vi.fn((_projectId: string): QianchuanAccountSummary[] => [
       { product: "蝴蝶贴", advertiserId: "123456", adId: "987654", available: true },
       { product: "氨糖膏", advertiserId: "223456", adId: "887654", available: true },
@@ -95,6 +97,56 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it("freezes shared explicit bindings for differently named templates before next-batch edits", async () => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0].name = "新眼贴模板"; f.projects[1].name = "眼贴2";
+    let product: "蝴蝶贴" | "氨糖膏" = "蝴蝶贴";
+    f.dependencies.uploadBinding.mockImplementation(async (recentProjectId, projectId) => ({ recentProjectId, projectId, accountProduct: product,
+      advertiserId: product === "蝴蝶贴" ? "123456" : "223456" }));
+    const session = f.dependencies.session.getMockImplementation()!;
+    f.dependencies.session.mockImplementation(async (file, authorization) => {
+      product = "氨糖膏"; // All entries must already have their original authorization.
+      return session(file, authorization);
+    });
+    await f.controller.start({ entries: f.entries.map(entry => ({ ...entry, douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } })) });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs.every(job => job.status === "completed")).toBe(true);
+    expect(f.dependencies.session.mock.calls.map(call => call[1]?.target.advertiserId)).toEqual(["123456", "123456"]);
+    expect(f.starts.map(request => request.douyinUpload?.accountProduct)).toEqual(["蝴蝶贴", "蝴蝶贴"]);
+  });
+  it.each(["binding", "advertiser", "plan"])("rejects explicit %s drift during preflight", async change => {
+    const f = await fixture({ allComplete: true });
+    let binding = { recentProjectId: f.entries[0].recentProjectId, projectId: f.projects[0].id, accountProduct: "蝴蝶贴" as const, advertiserId: "123456" };
+    f.dependencies.uploadBinding.mockImplementation(async () => binding);
+    const preflight = f.dependencies.preflightUpload.getMockImplementation()!;
+    f.dependencies.preflightUpload.mockImplementation(async (selection, count) => {
+      const authorization = await preflight(selection, count);
+      if (change === "binding") binding = { ...binding, advertiserId: "333456" };
+      else f.dependencies.uploadAccounts.mockReturnValue([{ product: "蝴蝶贴", advertiserId: change === "advertiser" ? "333456" : "123456",
+        adId: change === "plan" ? "333654" : "987654", available: true }]);
+      return authorization;
+    });
+    await f.controller.start({ entries: [{ ...f.entries[0], douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs[0].error).toContain("预检期间已变化");
+    expect(f.dependencies.session).not.toHaveBeenCalled(); expect(f.dependencies.outputDirectory).not.toHaveBeenCalled();
+  });
+  it("checks the actual project identity and strict renderer selection before saving a binding", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-template-binding-")); directories.push(root);
+    const value = project("自定义模板"), file = path.join(root, "saved.json");
+    await new ProjectStore(file).save(value);
+    const recentProjectId = crypto.randomUUID();
+    const saveTemplateAccount = vi.fn(async (binding: TemplateAccountBinding) => binding);
+    const runtime = createBatchProductionRuntime({ root, registry: { list: () => [{ id: recentProjectId, name: value.name }],
+      resolve: (id: string) => { if (id !== recentProjectId) throw new Error("unknown"); return file; } },
+      upload: { templateAccount: async () => undefined, saveTemplateAccount }, changed: () => undefined } as unknown as Parameters<typeof createBatchProductionRuntime>[0]);
+    const selection = { recentProjectId, expectedProjectId: value.id, accountProduct: "蝴蝶贴", expectedAdvertiserId: "123456" };
+    await expect(runtime.saveUploadAccount(selection)).resolves.toEqual({ recentProjectId, projectId: value.id, accountProduct: "蝴蝶贴", advertiserId: "123456" });
+    expect((await runtime.listProjects())[0].projectId).toBe(value.id);
+    for (const invalid of [{ ...selection, expectedProjectId: crypto.randomUUID() }, { ...selection, recentProjectId: crypto.randomUUID() },
+      { ...selection, cdpEndpoint: "http://127.0.0.1:1" }, { ...selection, projectId: value.id }]) await expect(runtime.saveUploadAccount(invalid)).rejects.toThrow();
+    expect(saveTemplateAccount).toHaveBeenCalledTimes(1);
+  });
   it.each(["name", "target"])("rejects an account %s change during preflight before production", async change => {
     const f = await fixture({ allComplete: true });
     const preflight = f.dependencies.preflightUpload.getMockImplementation()!;

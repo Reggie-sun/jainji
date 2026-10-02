@@ -6,6 +6,7 @@ import { PRODUCT_PRICE_MAX_LENGTH, PRODUCT_PRICE_HELP, RequiredProductPriceSchem
 import { Heading, Icon } from "./ui";
 import { BatchProductionDetails } from "./BatchProductionDetails";
 import { resolveBatchUploadAccount } from "../shared/batch-upload";
+import type { QianchuanProduct } from "../shared/qianchuan-account";
 import "./batch-production.css";
 
 type Row = BatchProjectOption & { selected: boolean; outputDirectory?: string; uploadEnabled: boolean };
@@ -39,9 +40,13 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   }, [projectKey, revision, visible]);
   const update = (id: string, next: Partial<Row>) => setRows(current => current.map(row => row.recentProjectId === id ? { ...row, ...next } : row));
   const selected = rows.filter(row => row.selected);
+  const bindingReady = typeof window.jianji.saveBatchUploadAccount === "function";
+  const accountFor = (row: Row) => row.uploadBindingError
+    ? { error: row.uploadBindingError, accountProduct: undefined }
+    : resolveBatchUploadAccount(row.name, state.douyinUpload?.accounts ?? [], row.uploadBinding);
   const uploadSelection = (row: Row) => {
     if (!row.uploadEnabled || !state.douyinUpload?.config.enabled) return undefined;
-    const account = resolveBatchUploadAccount(row.name, state.douyinUpload.accounts ?? []);
+    const account = accountFor(row);
     return account.accountProduct ? { enabled: true as const, accountProduct: account.accountProduct } : undefined;
   };
   const entries = selected.map(row => ({ recentProjectId: row.recentProjectId, requestedCount: row.requestedCount,
@@ -50,7 +55,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
     ...(row.outputDirectory ? { outputDirectory: row.outputDirectory } : {}) }));
   const valid = BatchProductionStartSchema.safeParse({ entries }).success && selected.every(row => {
     const quantity = calculateExactProductionQuantity(row.sourceCount, row.requestedCount);
-    const uploadValid = !row.uploadEnabled || !state.douyinUpload?.config.enabled || !resolveBatchUploadAccount(row.name, state.douyinUpload.accounts ?? []).error;
+    const uploadValid = !row.uploadEnabled || !state.douyinUpload?.config.enabled || !accountFor(row).error;
     return !row.error && !batchLocalCoverError(row) && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!batchRequiresDisplayText(row) || RequiredProductPriceSchema.safeParse(row.productPrice).success) && uploadValid;
   });
   const run = state.batchProduction;
@@ -83,6 +88,17 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
     catch (value) { setError(message(value)); }
     finally { setBusy(false); }
   };
+  const selectAccount = async (row: Row, product: QianchuanProduct) => {
+    const account = state.douyinUpload?.accounts?.find(account => account.product === product && account.available);
+    if (!account || !row.projectId || busy) return;
+    setBusy(true); setError("");
+    try {
+      const uploadBinding = await window.jianji.saveBatchUploadAccount({ recentProjectId: row.recentProjectId, expectedProjectId: row.projectId,
+        accountProduct: product, expectedAdvertiserId: account.advertiserId });
+      update(row.recentProjectId, { uploadBinding, uploadBindingError: undefined });
+    } catch (value) { setError(message(value)); }
+    finally { setBusy(false); }
+  };
   const artifact = async (id: string, reveal: boolean) => {
     try { if (reveal) await window.jianji.revealArtifact(id); else await window.jianji.openArtifact(id); }
     catch (value) { setError(message(value)); }
@@ -92,7 +108,8 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   if (detail) return <BatchProductionDetails request={detail} name={detail.name} onBack={() => setDetail(undefined)} />;
   return <>
     <div className="batch-production-heading"><Heading title="批量制作">选择不同商品的已保存模板，按列表顺序逐项制作。上一项全部导出并校验后才开始下一项；失败会记录原因并继续。</Heading><button className="button secondary compact" disabled={loading || busy} onClick={() => setRevision(value => value + 1)}><Icon name="folder" size={16} />刷新模板</button></div>
-    <p>{state.douyinUpload?.config.enabled ? "默认自动上传，按模板名称绑定同名千川商品账号；每组最多 9 条，成功后继续，停在确定前。" : "全局千川上传已关闭；在作品页启用后，将按模板名称自动绑定同名商品账号。"}</p>
+    <p>每个模板选择上传账号后会自动保存；多个模板可以使用同一个账号。{state.douyinUpload?.config.enabled ? "每组最多 9 条，成功后继续，停在确定前。" : "全局千川上传已关闭；仍可先保存模板与账号的关联。"}</p>
+    {!bindingReady && <p role="status">账号关联功能等待当前制作结束后加载，请保留正在进行的任务。</p>}
     {error && <div className="notice error" role="alert">{error}</div>}
     {state.batchProductionWarning && <div className="notice error" role="alert">{state.batchProductionWarning}</div>}
     {loading && <p role="status">正在读取已保存模板…</p>}
@@ -105,7 +122,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
         const invalidText = needsText && !RequiredProductPriceSchema.safeParse(row.productPrice).success;
         const coverError = batchLocalCoverError(row);
         const prefix = `batch-${row.recentProjectId}`;
-        const uploadAccount = resolveBatchUploadAccount(row.name, state.douyinUpload?.accounts ?? []);
+        const uploadAccount = accountFor(row);
         const uploadError = row.uploadEnabled && state.douyinUpload?.config.enabled ? uploadAccount.error : undefined;
         return <section className={`card batch-template-row${row.selected ? " selected" : ""}`} key={row.recentProjectId} aria-label={`${row.name}制作设置`}>
           <div className="batch-template-title"><label><input type="checkbox" aria-label={`选择模板 ${row.name}`} checked={row.selected} disabled={busy || Boolean(row.error)} onChange={event => update(row.recentProjectId, { selected: event.target.checked })} /><span className="batch-order">{index + 1}</span><span className="batch-template-name"><strong title={row.name}>{row.name}</strong><span className="small-tag">{row.sourceCount} 条素材</span></span></label></div>
@@ -118,7 +135,14 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
               <label htmlFor={`${prefix}-price`}>展示文字 / 价格<textarea id={`${prefix}-price`} rows={2} value={row.productPrice} maxLength={PRODUCT_PRICE_MAX_LENGTH} required={needsText} aria-invalid={row.selected && invalidText} disabled={busy || !needsText} onChange={event => update(row.recentProjectId, { productPrice: event.target.value })} placeholder={needsText ? "手动填写，最多 2 行、每行 12 字" : "模板已关闭展示文字"} />{!needsText && <small>沿用模板：本轮素材不显示文字</small>}{row.selected && invalidText && <small className="batch-error" role="alert">{PRODUCT_PRICE_HELP}</small>}</label>
               <label htmlFor={`${prefix}-timing`}>价格显示时段<select id={`${prefix}-timing`} value={row.displayMode} disabled={busy} onChange={event => update(row.recentProjectId, { displayMode: event.target.value as Row["displayMode"] })}><option value="full">全程显示</option><option value="first-5s">仅前 5 秒（渐隐）</option></select></label>
               <label className="batch-cover-toggle"><span>覆盖原贴纸</span><span><input type="checkbox" aria-label={`${row.name}开启覆盖`} checked={row.coverEnabled} disabled={busy} onChange={event => update(row.recentProjectId, { coverEnabled: event.target.checked })} />开启</span></label>
-              <label className="batch-upload-toggle"><span>千川上传</span><span title={uploadError ?? (row.uploadEnabled ? row.name : "本项仅导出，不上传")}><input type="checkbox" aria-label={`${row.name}开启千川上传`} checked={row.uploadEnabled} disabled={busy || !state.douyinUpload?.config.enabled} onChange={event => update(row.recentProjectId, { uploadEnabled: event.target.checked })} /><span>{!state.douyinUpload?.config.enabled ? "全局已关闭" : !row.uploadEnabled ? "不上传" : uploadAccount.error ? "未绑定账号" : `自动 · ${row.name}`}</span></span></label>
+              <div className="batch-upload-account">
+                <label className="batch-upload-toggle"><span>千川上传</span><span><input type="checkbox" aria-label={`${row.name}开启千川上传`} checked={row.uploadEnabled} disabled={busy || !state.douyinUpload?.config.enabled} onChange={event => update(row.recentProjectId, { uploadEnabled: event.target.checked })} /><span>{!state.douyinUpload?.config.enabled ? "全局已关闭" : row.uploadEnabled ? "自动上传" : "不上传"}</span></span></label>
+                <select aria-label={`${row.name}上传账号`} value={uploadAccount.error ? "" : uploadAccount.accountProduct ?? ""} disabled={busy || !bindingReady} onChange={event => void selectAccount(row, event.target.value as QianchuanProduct)}>
+                  <option value="" disabled>请选择上传账号</option>
+                  {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{account.productName ?? account.product} · {account.advertiserId || "未配置"}{!account.available && "（不可用）"}</option>)}
+                </select>
+                {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}
+              </div>
             </div>
             {coverError && <p className="batch-error" role="alert">{coverError}</p>}
             {uploadError && <p className="batch-error" role="alert">{uploadError}</p>}

@@ -9,6 +9,7 @@ import { fingerprintFile, isPathWithinDirectory, pathsEqual } from "./paths.js";
 import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory, strictSyncDirectory, uploadTaskId, sameTargetBytes, type UploadTaskRecord } from "./douyin-upload-store.js";
 import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
+import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type QianchuanUploadResult } from "../shared/douyin-upload.js";
 
@@ -65,6 +66,13 @@ export class DouyinUploadService {
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
     this.refreshAccountPauses();
+  }
+  async templateAccount(recentProjectId: string, projectId: string): Promise<TemplateAccountBinding | undefined> {
+    return this.accounts instanceof QianchuanAccountSettings ? this.accounts.templateAccount(recentProjectId, projectId) : undefined;
+  }
+  async saveTemplateAccount(binding: TemplateAccountBinding): Promise<TemplateAccountBinding> {
+    if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持保存模板关联。");
+    return this.accounts.saveTemplateAccount(binding);
   }
   private inProduction(pageBatchId: string): boolean { return !this.productionBatches || this.productionBatches.has(pageBatchId); }
   private openTasks(): UploadTaskRecord[] { return this.store.tasks().filter(task => this.inProduction(task.authorization.pageBatchId) && !this.store.isClosed(task.authorization.pageBatchId)); }

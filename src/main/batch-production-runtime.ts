@@ -16,6 +16,7 @@ import { DecorationSchema, requiresDisplayText } from "../shared/decorations.js"
 import { createAutomaticOutputDirectory } from "./automatic-output-directory.js";
 import { BatchProductionController } from "./batch-production-controller.js";
 import type { DouyinUploadService } from "./douyin-upload-service.js";
+import { TemplateAccountSelectionSchema } from "../shared/batch-upload.js";
 
 export function createBatchProductionRuntime(input: {
   root: string; registry: RecentProjects; queue: ExportQueue; ffmpeg: FfmpegAdapter;
@@ -32,6 +33,7 @@ export function createBatchProductionRuntime(input: {
     changed: input.changed,
     preflightUpload: (selection, count) => input.upload?.preflight(selection, count) ?? Promise.resolve(undefined),
     uploadAccounts: projectId => input.upload?.status(projectId).accounts ?? [],
+    uploadBinding: (recentProjectId, projectId) => input.upload?.templateAccount(recentProjectId, projectId) ?? Promise.resolve(undefined),
     uploadStatus: (projectId, taskIds) => input.upload?.capturedStatus(projectId, taskIds),
     cancelUploads: (projectId, taskIds) => input.upload?.cancelExports(projectId, taskIds) ?? Promise.resolve(),
     outputDirectory: async (project, ids, requested) => {
@@ -74,15 +76,19 @@ export function createBatchProductionRuntime(input: {
     return Promise.all(input.registry.list().map(async item => {
       try {
         const project = await new ProjectStore(input.registry.resolve(item.id)).readSnapshot();
+        let uploadBinding: BatchProjectOption["uploadBinding"], uploadBindingError: string | undefined;
+        try { uploadBinding = await input.upload?.templateAccount(item.id, project.id); }
+        catch (error) { uploadBindingError = error instanceof Error ? error.message : "模板账号关联无法读取，请核查账号设置。"; }
         const workspace = project.workspaceDraft;
         const template = project.templates.find(template => template.id === project.activeTemplateId) ?? project.templates[0];
         const mediaIds = [...new Set(workspace?.selectedMediaIds ?? project.mediaItems.filter(media => media.probeStatus === "ready").map(media => media.id))];
         const sourceCount = mediaIds.length;
         const decorations = DecorationSchema.parse({ ...workspace?.decorations, productPrice: template.productPriceDraft ?? "" });
-        return { recentProjectId: item.id, name: project.name, sourceCount, requestedCount: workspace?.requestedCount ?? Math.max(1, sourceCount),
+        return { recentProjectId: item.id, projectId: project.id, name: project.name, sourceCount, requestedCount: workspace?.requestedCount ?? Math.max(1, sourceCount),
           productPrice: decorations.productPrice ?? "", coverEnabled: true,
           displayMode: decorations.displayMode === "full" ? "full" as const : "first-5s" as const, mode: decorations.mode ?? "manual",
           coverMode: project.coverSticker?.trackingMode,
+          uploadBinding, uploadBindingError,
           displayTextRequiredByMedia: mediaIds.map(id => requiresDisplayText(decorations, [id])) };
       } catch {
         return { recentProjectId: item.id, name: item.name, sourceCount: 0, requestedCount: 1, productPrice: "", coverEnabled: false,
@@ -90,5 +96,13 @@ export function createBatchProductionRuntime(input: {
       }
     }));
   }
-  return { controller, listProjects };
+  async function saveUploadAccount(value: unknown) {
+    const selection = TemplateAccountSelectionSchema.parse(value);
+    const project = await new ProjectStore(input.registry.resolve(selection.recentProjectId)).readSnapshot();
+    if (project.id !== selection.expectedProjectId) throw new Error("模板项目已变化，请刷新模板后重新选择账号。");
+    if (!input.upload) throw new Error("千川账号设置不可用。");
+    return input.upload.saveTemplateAccount({ recentProjectId: selection.recentProjectId, projectId: project.id,
+      accountProduct: selection.accountProduct, advertiserId: selection.expectedAdvertiserId });
+  }
+  return { controller, listProjects, saveUploadAccount };
 }

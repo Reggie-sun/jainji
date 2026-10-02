@@ -11,7 +11,7 @@ import type { QueueSnapshot } from "./queue.js";
 import { ProjectStore, atomicWriteJson } from "./store.js";
 import type { QianchuanUploadSelection, UploadAuthorization } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
-import { resolveBatchUploadAccount } from "../shared/batch-upload.js";
+import { resolveBatchUploadAccount, type TemplateAccountBinding } from "../shared/batch-upload.js";
 
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
 
@@ -30,6 +30,7 @@ interface Dependencies {
   session(projectPath: string, authorization?: UploadAuthorization): Promise<BatchProductionSession>;
   preflightUpload?(selection: QianchuanUploadSelection, count: number): Promise<UploadAuthorization | undefined>;
   uploadAccounts?(projectId: string): QianchuanAccountSummary[];
+  uploadBinding?(recentProjectId: string, projectId: string): Promise<TemplateAccountBinding | undefined>;
   uploadStatus?(projectId: string, taskIds: string[]): BatchProductionDetail["upload"];
   cancelUploads?(projectId: string, taskIds: string[]): Promise<void>;
   queue(projectId?: string): QueueSnapshot;
@@ -187,19 +188,25 @@ export class BatchProductionController {
     const validatedInput = AgentStartSchema.parse({ ...input, outputDirectory: "/pending" });
     if (entry.douyinUpload && input.exportFormat !== "mp4") throw new Error("千川上传仅支持 MP4，请先修改该模板的导出格式。");
     const uploadAccounts = entry.douyinUpload ? this.dependencies.uploadAccounts?.(project.id) ?? [] : [];
+    const binding = entry.douyinUpload ? await this.dependencies.uploadBinding?.(entry.recentProjectId, project.id) : undefined;
     if (entry.douyinUpload) {
-      const account = resolveBatchUploadAccount(project.name, uploadAccounts);
+      const account = resolveBatchUploadAccount(project.name, uploadAccounts, binding);
       if (account.error) throw new Error(account.error);
-      if (entry.douyinUpload.accountProduct !== account.accountProduct) throw new Error("模板商品与千川自动绑定账号不一致，请刷新模板后重新开始。");
+      if (entry.douyinUpload.accountProduct !== account.accountProduct) throw new Error("模板与已保存的千川账号关联不一致，请刷新模板后重新开始。");
     }
     const authorization = entry.douyinUpload ? await this.dependencies.preflightUpload?.(entry.douyinUpload, quantity.total) : undefined;
     if (entry.douyinUpload && !authorization) throw new Error("千川账号预检不可用，请检查上传设置。");
     if (entry.douyinUpload && authorization) {
       const selectedAccount = uploadAccounts.find(account => account.product === entry.douyinUpload!.accountProduct)!;
-      const currentAccount = resolveBatchUploadAccount(project.name, this.dependencies.uploadAccounts?.(project.id) ?? []);
+      const currentAccounts = this.dependencies.uploadAccounts?.(project.id) ?? [];
+      const currentBinding = await this.dependencies.uploadBinding?.(entry.recentProjectId, project.id);
+      const currentAccount = resolveBatchUploadAccount(project.name, currentAccounts, currentBinding);
+      const currentTarget = currentAccounts.find(account => account.product === selectedAccount.product);
       if (currentAccount.accountProduct !== selectedAccount.product || authorization.target.product !== selectedAccount.product
+        || JSON.stringify(binding) !== JSON.stringify(currentBinding)
+        || currentTarget?.advertiserId !== selectedAccount.advertiserId || currentTarget?.adId !== selectedAccount.adId
         || authorization.target.advertiserId !== selectedAccount.advertiserId || authorization.target.adId !== selectedAccount.adId) {
-        throw new Error("千川自动绑定配置在预检期间已变化，请刷新模板后重新开始。");
+        throw new Error("千川账号关联或计划在预检期间已变化，请刷新模板后重新开始。");
       }
     }
     const projectPath = path.join(this.root, this.run!.id, `${job.id}.json`);

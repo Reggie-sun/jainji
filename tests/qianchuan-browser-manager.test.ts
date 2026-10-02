@@ -252,16 +252,19 @@ it("attaches repeatedly to real isolated Chrome without remote-debugging permiss
   const browsers = async () => (await runningChromeBrowsers("/proc", process.getuid?.(), path.join(f.root, "account-browsers", "123"))).filter(browser => browser.profile?.startsWith(f.root + path.sep));
   const manager = new QianchuanBrowserManager(f.root, { browsers, launch: async (profile, id) => {
     const args = accountChromeArguments(profile, id); args[args.length - 1] = "about:blank";
-    child = spawn(executable, [...args, "--headless=new", "--no-sandbox", "--disable-gpu"], { stdio: "ignore" });
+    child = spawn(executable, [...args, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-extensions"], { stdio: "ignore" });
     await new Promise<void>((resolve, reject) => { child!.once("spawn", resolve); child!.once("error", reject); });
   } });
   try {
     const endpoint = await manager.open("123");
     const response = await fetch(`${endpoint}/json/version`); expect(response.status).toBe(200);
     const info = await response.json();
-    const first = await readChromeTargets(info.webSocketDebuggerUrl);
-    const second = await readChromeTargets(info.webSocketDebuggerUrl);
-    expect((second as Array<{ targetId: string }>).map(x => x.targetId)).toEqual((first as Array<{ targetId: string }>).map(x => x.targetId));
+    const first = await readChromeTargets(info.webSocketDebuggerUrl) as Array<{ type: string; targetId: string }>;
+    const second = await readChromeTargets(info.webSocketDebuggerUrl) as Array<{ type: string; targetId: string }>;
+    // Extension background workers can appear while Chrome starts; preserve actual page tabs.
+    const pages = first.filter(target => target.type === "page").map(target => target.targetId).sort();
+    expect(pages.length).toBeGreaterThan(0);
+    expect(second.filter(target => target.type === "page").map(target => target.targetId).sort()).toEqual(pages);
     expect(await new QianchuanBrowserManager(f.root, { browsers }).open("123")).toBe(endpoint);
   } finally {
     if (child && child.exitCode === null) { const closed = new Promise(resolve => child!.once("close", resolve)); child.kill("SIGTERM"); await closed; }
@@ -278,7 +281,7 @@ it("controls a real isolated original Chrome, including non-CDP restart, while p
   const stop = async () => { if (child && child.exitCode === null) { const closed = new Promise(resolve => child!.once("close", resolve)); child.kill("SIGTERM"); await closed; } };
   const launch = vi.fn(async (profile: string, id: string, settings?: { profileDirectory: string; windowClass?: string }) => {
     const args = accountChromeArguments(profile, id, settings); args[args.length - 1] = "about:blank";
-    child = spawn(executable, [...args, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-sync"], { stdio: "ignore" });
+    child = spawn(executable, [...args, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-sync", "--disable-extensions"], { stdio: "ignore" });
     await new Promise<void>((resolve, reject) => { child!.once("spawn", resolve); child!.once("error", reject); });
   });
   const browsers = async () => (await runningChromeBrowsers("/proc", process.getuid?.(), original)).filter(browser => browser.profile === original);
@@ -295,9 +298,11 @@ it("controls a real isolated original Chrome, including non-CDP restart, while p
     } finally { await browser.close(); }
     const manager = new QianchuanBrowserManager(root, { launch, browsers });
     expect(await manager.prepare("123")).toBe(endpoint); expect(launch).toHaveBeenCalledTimes(1);
-    const before = (await fetch(`${endpoint}/json/list`).then(response => response.json())).map((tab: { id: string }) => tab.id);
+    const pageIds = async () => (await fetch(`${endpoint}/json/list`).then(response => response.json()) as Array<{ type: string; id: string }>)
+      .filter(target => target.type === "page").map(target => target.id).sort();
+    const before = await pageIds(); expect(before.length).toBeGreaterThan(0);
     expect(await manager.prepare("123")).toBe(endpoint);
-    expect((await fetch(`${endpoint}/json/list`).then(response => response.json())).map((tab: { id: string }) => tab.id)).toEqual(before);
+    expect(await pageIds()).toEqual(before);
     await manager.control("123", "restart");
     const reopened = await manager.open("123");
     expect((await fetch(`${reopened}/json/version`)).ok).toBe(true);
@@ -305,7 +310,7 @@ it("controls a real isolated original Chrome, including non-CDP restart, while p
     expect(await readFile(marker, "utf8")).toBe("preserved");
     await manager.control("123", "close"); expect(await browsers()).toEqual([]);
     const noDebugArgs = accountChromeArguments(original, "123", options).filter(arg => !arg.startsWith("--remote-debugging-")); noDebugArgs[noDebugArgs.length - 1] = "about:blank";
-    child = spawn(executable, [...noDebugArgs, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-background-networking"], { stdio: "ignore" });
+    child = spawn(executable, [...noDebugArgs, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-background-networking", "--disable-extensions"], { stdio: "ignore" });
     await vi.waitFor(async () => expect((await browsers()).some(browser => browser.processId === child!.pid)).toBe(true), { timeout: 10_000 });
     await manager.control("123", "restart");
     expect((await fetch(`${await manager.open("123")}/json/version`)).ok).toBe(true);

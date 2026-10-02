@@ -7,12 +7,18 @@ const accounts: QianchuanAccountSummary[] = [
   { product: "眼贴", productName: "晚安油", advertiserId: "789", adId: "987", available: true },
 ];
 describe("automatic batch upload account binding", () => {
+  it("uses the saved advertiser for different template names and allows shared accounts", () => {
+    const binding = { accountProduct: "眼贴" as const, advertiserId: "789" };
+    for (const name of ["新眼贴模板", "眼贴2", "晚安油"]) expect(resolveBatchUploadAccount(name, accounts, binding)).toEqual({ accountProduct: "眼贴" });
+    expect(resolveBatchUploadAccount("蝴蝶贴", accounts, { ...binding, advertiserId: "123" }).error).toContain("已变化");
+    expect(resolveBatchUploadAccount("蝴蝶贴", accounts.slice(0, 1), binding).error).toContain("不可用");
+  });
   it("matches the exact saved display name and returns the stable slot", () => {
     expect(resolveBatchUploadAccount(" 蝴蝶贴 ", accounts)).toEqual({ accountProduct: "蝴蝶贴" });
     expect(resolveBatchUploadAccount("晚安油", accounts)).toEqual({ accountProduct: "眼贴" });
   });
   it.each(["眼贴", "晚安", "晚安油模板", "", "  "])("never guesses or uses a renamed slot as fallback: %s", name => {
-    expect(resolveBatchUploadAccount(name, accounts)).toEqual({ error: "未找到同名千川商品账号，请在账号设置中核对商品名称，或关闭本项上传。" });
+    expect(resolveBatchUploadAccount(name, accounts)).toEqual({ error: "请选择此模板的上传账号；也可以关闭本项上传。" });
   });
   it("rejects unavailable and ambiguous matching accounts instead of selecting another", () => {
     expect(resolveBatchUploadAccount("晚安油", accounts.map(a => ({ ...a, available: false })))).toEqual({ error: "对应千川商品账号配置不可用，请先保存有效计划链接，或关闭本项上传。" });

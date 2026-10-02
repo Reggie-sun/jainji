@@ -14,10 +14,10 @@ afterEach(async () => { await Promise.all(directories.splice(0).map(root => rm(r
 const account: QianchuanAccountSummary = { product: "眼贴", productName: "晚安油", advertiserId: "123", adId: "456", available: true };
 it.each([
   { title: "wrong stable slot", name: "晚安油", product: "蝴蝶贴", accounts: [account], message: "不一致" },
-  { title: "missing account", name: "晚安油", product: "眼贴", accounts: [], message: "未找到" },
+  { title: "missing account", name: "晚安油", product: "眼贴", accounts: [], message: "请选择" },
   { title: "unavailable account", name: "晚安油", product: "眼贴", accounts: [{ ...account, available: false }], message: "不可用" },
   { title: "ambiguous account", name: "晚安油", product: "眼贴", accounts: [account, { ...account, product: "蝴蝶贴" }], message: "不唯一" },
-  { title: "renamed slot fallback", name: "眼贴", product: "眼贴", accounts: [account], message: "未找到" },
+  { title: "renamed slot fallback", name: "眼贴", product: "眼贴", accounts: [account], message: "请选择" },
 ])("rejects $title against the loaded project before preflight or production", async ({ name, product, accounts, message }) => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-auto-upload-admission-")); directories.push(root);
   const project = createDefaultProject(name);

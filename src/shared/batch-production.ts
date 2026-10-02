@@ -5,6 +5,7 @@ import type { ExportTask } from "../main/domain.js";
 import { ProductPriceSchema } from "./decorations.js";
 import { QianchuanUploadSelectionSchema, type DouyinUploadStatus } from "./douyin-upload.js";
 import { QianchuanProductSchema } from "./qianchuan-account.js";
+import type { TemplateAccountBinding } from "./batch-upload.js";
 
 export const BatchProductionEntrySchema = z.object({
   recentProjectId: z.string().uuid(),
@@ -25,6 +26,7 @@ export type BatchProductionStart = z.infer<typeof BatchProductionStartSchema>;
 
 export interface BatchProjectOption {
   recentProjectId: string;
+  projectId?: string;
   name: string;
   sourceCount: number;
   requestedCount: number;
@@ -34,6 +36,8 @@ export interface BatchProjectOption {
   mode: "manual" | "agent" | "random";
   coverMode?: "manual" | "agent" | "assisted";
   displayTextRequiredByMedia?: boolean[];
+  uploadBinding?: TemplateAccountBinding;
+  uploadBindingError?: string;
   error?: string;
 }
 

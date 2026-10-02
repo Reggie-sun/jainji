@@ -10,6 +10,48 @@ import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const planUrl = (advertiserId = "1876024170199244", adId = "1876036593854788") => `https://qianchuan.jinritemai.com/uni-prom?aavid=${advertiserId}&adId=${adId}`;
+it("persists multiple template bindings independently without invalidating account digests", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const before = await readFile(f.settings.file), old = await f.settings.preflight("蝴蝶贴");
+  const first = { recentProjectId: crypto.randomUUID(), projectId: crypto.randomUUID(), accountProduct: "蝴蝶贴", advertiserId: old.advertiserId };
+  const second = { ...first, recentProjectId: crypto.randomUUID(), projectId: crypto.randomUUID() };
+  await Promise.all([f.settings.saveTemplateAccount(first), f.settings.saveTemplateAccount(second)]);
+  expect(await readFile(f.settings.file)).toEqual(before);
+  expect(await f.settings.freeze("蝴蝶贴", old.configDigest)).toEqual(old);
+  const reloaded = new QianchuanAccountSettings(path.join(f.root, "app")); await reloaded.restore();
+  expect(await reloaded.templateAccount(first.recentProjectId, first.projectId)).toEqual(first);
+  expect(await reloaded.templateAccount(second.recentProjectId, second.projectId)).toEqual(second);
+  await expect(reloaded.templateAccount(first.recentProjectId, crypto.randomUUID())).rejects.toThrow("项目已变化");
+  await expect(reloaded.saveTemplateAccount({ ...first, advertiserId: "123" })).rejects.toThrow("已变化");
+  expect(f.discover).not.toHaveBeenCalled();
+});
+it("preserves corrupt and lost template bindings instead of falling back to name matching", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const binding = { recentProjectId: crypto.randomUUID(), projectId: crypto.randomUUID(), accountProduct: "蝴蝶贴", advertiserId: "1876024170199244" };
+  await f.settings.saveTemplateAccount(binding);
+  const file = path.join(path.dirname(f.settings.file), "template-accounts.json");
+  expect((await stat(file)).mode & 0o777).toBe(0o600);
+  await writeFile(file, "broken");
+  await expect(f.settings.templateAccount(binding.recentProjectId, binding.projectId)).rejects.toThrow();
+  await expect(f.settings.saveTemplateAccount(binding)).rejects.toThrow();
+  expect(await readFile(file, "utf8")).toBe("broken");
+  await rm(file);
+  await expect(f.settings.templateAccount(binding.recentProjectId, binding.projectId)).rejects.toThrow("关联丢失");
+});
+it("keeps template preference writes behind the same private-file and exclusive-writer boundary", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const binding = { recentProjectId: crypto.randomUUID(), projectId: crypto.randomUUID(), accountProduct: "蝴蝶贴", advertiserId: "1876024170199244" };
+  const file = path.join(path.dirname(f.settings.file), "template-accounts.json"), lock = path.join(path.dirname(file), "write.lock");
+  await writeFile(lock, "other writer", { mode: 0o600 });
+  await expect(f.settings.saveTemplateAccount(binding)).rejects.toThrow("正在保存");
+  await rm(lock); await f.settings.saveTemplateAccount(binding);
+  await chmod(file, 0o644);
+  await expect(f.settings.templateAccount(binding.recentProjectId, binding.projectId)).rejects.toThrow();
+  await expect(f.settings.saveTemplateAccount(binding)).rejects.toThrow();
+  await rm(file); await symlink(f.source, file);
+  await expect(f.settings.saveTemplateAccount(binding)).rejects.toThrow();
+  expect(f.discover).not.toHaveBeenCalled();
+});
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-settings-")); roots.push(root);
   const source = path.join(root, "external.json");

@@ -9,6 +9,14 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## Per-Template Account Binding Amendment (2026-10-02)
+
+用户选择 A：每个已保存模板可直接选择并记住上传账号，多个不同名模板可共用同一账号。模板名不再决定显式关联；没有保存关联的旧模板仍兼容唯一同名匹配，缺匹配时提示在本行选择账号。关联在本机 QianchuanAccountSettings 下单独私有保存，不写入项目/模板文件或 mapping.json，不改变账号配置 digest、原 Chrome profile 或已有上传授权。
+
+主进程从 RecentProjects 解析实际 ProjectStore，关联绑定 recentProjectId、实际 projectId、稳定 accountProduct 与用户选择时的 advertiserId。advertiserId 是期望身份断言，不是第二账号配置来源；账号槽换到另一 advertiser、项目被替换、关联损坏或预检期间变化时拒绝，不能回退同名猜测。新制作解析当前计划并由原 service 冻结授权；改关联只作用于后续制作，不改运行中的批次、重试、UNKNOWN 或 fence，也不点击确定。
+
+Parent Self-Review：设置 owner 的独占锁、私有文件验证与原子保存复用；独立关联文件避免偏好编辑使账号配置 digest 变化。直接写项目文件会与 ApplicationService 的内存快照竞争，因此不采用；项目跨机分享不携带本机账号关联。Kimi mapping 的模板字段建议未覆盖此内存写入和上传隐私边界；只存槽位会在槽位换 advertiser 后静默改目标，因此增加期望身份核验。
+
 ## In-App Browser Controls Amendment (2026-10-02)
 
 用户明确要求浏览器的打开、关闭和必要重启由软件完成。本修订覆盖下面要求用户在系统中手动关闭重开已绑定原窗口的操作方式。账号设置提供打开、关闭及重启并连接；关闭和重启只接受已保存的稳定账号槽，不接受路径、PID、端口、任意 URL 或命令。按钮先说明该账号全部窗口及未保存页面会关闭，用户在软件内明确执行；启动与恢复仍不自动关闭任何窗口。

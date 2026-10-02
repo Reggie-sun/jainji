@@ -33,7 +33,7 @@ function sameFile(left: Stats, right: Stats): boolean {
   return left.dev === right.dev && left.ino === right.ino && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs && left.mode === right.mode && left.uid === right.uid;
 }
 
-export async function readPrivateConfig(file: string, parse = parseAccountConfig): Promise<ConfigSnapshot> {
+export async function readPrivateJson<T>(file: string, parse: (input: unknown) => T): Promise<{ value: T; digest: string }> {
   if (process.platform === "win32" || !process.getuid) throw new QianchuanAccountConfigError("PLATFORM_UNQUALIFIED");
   try {
     const before = await lstat(file);
@@ -61,8 +61,8 @@ export async function readPrivateConfig(file: string, parse = parseAccountConfig
       }
       const content = bytes.subarray(0, length);
       try {
-        const accounts = parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(content)));
-        return { accounts, digest: createHash("sha256").update(content).digest("hex") };
+        const value = parse(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(content)));
+        return { value, digest: createHash("sha256").update(content).digest("hex") };
       } catch { throw new QianchuanAccountConfigError("CONFIG_INVALID"); }
     } finally { await handle.close(); }
   } catch (error) {
@@ -70,6 +70,11 @@ export async function readPrivateConfig(file: string, parse = parseAccountConfig
     if ((error as NodeJS.ErrnoException).code === "ELOOP") throw new QianchuanAccountConfigError("CONFIG_FILE_UNSAFE");
     throw new QianchuanAccountConfigError("CONFIG_UNAVAILABLE");
   }
+}
+
+export async function readPrivateConfig(file: string, parse = parseAccountConfig): Promise<ConfigSnapshot> {
+  const snapshot = await readPrivateJson(file, parse);
+  return { accounts: snapshot.value, digest: snapshot.digest };
 }
 
 /** Main-process owner: only the trusted file-dialog/settings path may authorize a file.
