@@ -10,6 +10,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ResultsPanel } from "../src/renderer/ResultsPanel";
 import type { DesktopState } from "../src/shared/desktop";
+import { ProjectWorkspaceSchema } from "../src/shared/project-workspace";
 
 const directories: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
@@ -65,6 +66,31 @@ describe("named material collections", () => {
     await reopened.saveProject(file);
     await service.loadProject(file);
     expect(service.currentProject.name).toBe("新品细节素材集");
+  });
+
+  it("saves a filtered material list and preserves both original files after reopening", async () => {
+    const { directory, source, service, media, createService } = await fixture();
+    const otherSource = path.join(directory, "keep.mp4");
+    await writeFile(otherSource, "keep original bytes");
+    const [kept] = await service.addMedia([otherSource]);
+    const file = path.join(directory, "collection.json");
+    await service.saveProject(file, "筛选素材");
+    service.removeMedia(media.id);
+    expect(service.hasUnsavedChanges).toBe(true);
+    await service.saveProject(file, undefined, ProjectWorkspaceSchema.parse({
+      step: "import", selectedMediaIds: [kept.id], ruleId: "clean", brief: "",
+      decorations: { mode: "manual" }, exportFormat: "mp4",
+      exportSettings: { resolutionMode: "720p", frameRateMode: "source", quality: "balanced" },
+    }));
+
+    const reopened = createService();
+    await reopened.loadProject(file);
+    expect(reopened.currentProject.mediaItems.map(item => item.id)).toEqual([kept.id]);
+    expect(reopened.getMedia(kept.id)).toMatchObject({ sourcePath: otherSource, fingerprint: kept.fingerprint, probeStatus: "ready" });
+    expect(reopened.currentProject.workspaceDraft?.selectedMediaIds).toEqual([kept.id]);
+    expect(JSON.parse(await readFile(file, "utf8")).mediaItems.map((item: { id: string }) => item.id)).toEqual([kept.id]);
+    expect(await readFile(source, "utf8")).toBe("original video bytes");
+    expect(await readFile(otherSource, "utf8")).toBe("keep original bytes");
   });
 
   it("persists only the latest production membership for the reopened project", async () => {

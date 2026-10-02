@@ -150,7 +150,7 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7L]: F:协调桌面项目草稿、包装、批量制作及作品界面 | R:code:src/main/preload.ts,code:src/renderer/BatchProductionPanel.tsx,code:src/renderer/ResultsPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:逐素材文字设置写入工作区并经原项目保存入口持久化；制作冻结装饰，运行中价格延后保存 | S:界面不替代准入；上传选择不进入模型或持久草稿；shape无产品激活
+App.tsx[AU7L]: F:协调桌面项目草稿、素材筛选、包装、批量制作及作品界面 | R:code:src/main/preload.ts,code:src/renderer/SourceMediaList.tsx,code:src/renderer/BatchProductionPanel.tsx,code:src/renderer/ResultsPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:清单移除及保存复用原IPC；逐素材文字写入工作区并经项目保存持久化；制作冻结装饰，运行中价格延后保存 | S:界面不替代准入；上传选择不进入模型或持久草稿；shape无产品激活
 AppendProductionDialog.tsx[EU7T]: F:追加制作时校验手动展示文字、数量和本次千川账号选择 | R:code:src/renderer/App.tsx,code:src/renderer/DouyinUploadControls.tsx,code:src/shared/agent.ts | A:从原批次预填手动文字，按容量约束追加；严格解析本次账号选择并提交目录 | S:不由模型改写文字；上传默认关闭且不继承原批次授权；选择只允许上传至计划并停在确定前
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
@@ -188,6 +188,7 @@ MediaSelector.tsx[EU5T]: F:提供按素材ID选择的可访问下拉列表及前
 QianchuanAccountSettings.tsx[EU6T]: F:编辑产品名称计划链接并提供账号浏览器入口 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/DouyinUploadPanel.tsx | A:六槽编辑及双ID预览；strict输入保存和打开；说明原窗口复用及首次登录，不输入端口 | S:名称不决定目标；保存只供新制作；已选文件不可改传；失败保留草稿，主进程独占准入
 qianchuan-upload-status.ts[CU4T]: F:统一普通和批量作品页的千川状态展示文案 | R:code:src/shared/douyin-upload.ts,code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/BatchProductionDetails.tsx | A:以结果状态类型约束完整映射，DISCARDED显示已删除上传任务 | S:-
 QianchuanUploadHistory.tsx[EU6T]: F:呈现整批本地结束确认与原结果只读历史 | R:code:src/shared/douyin-upload.ts,code:src/renderer/qianchuan-upload-status.ts | A:确认显示项目账号计划批次完整数量及结果分布；历史保留失败与READY观察证据，无操作按钮 | S:结束包含全部未选成员且不可恢复；视频及防重传历史保留，平台结果不变；summary不签发处置授权
+SourceMediaList.tsx[EU5T]: F:展示逐素材选择预览移除及清单保存入口 | R:code:src/renderer/App.tsx,code:src/shared/desktop.ts | A:原生dialog播放原片并前后导航；移除成功转相邻就绪素材，失败保留当前项，末项移除关闭 | S:移除只经回调移出项目，不删磁盘原片；清单保存交回项目owner
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===
 agent.ts[CB7S]: F:定义制作容量、数量分配及共享请求准入Schema | R:code:src/main/agent-controller.ts,code:src/main/agent-runner.ts,code:src/shared/douyin-upload.ts,code:src/shared/decorations.ts | A:按本次素材开关校验手动文字，全关闭则忽略文字草稿；数量支持整轮与精确分配；Frozen保留旧时序 | S:开启且缺文字先于模型拒绝；requestedCount与multiplier互斥；shape intent不是admission

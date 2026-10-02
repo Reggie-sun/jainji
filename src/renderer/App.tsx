@@ -5,6 +5,7 @@ import { calculateProductionQuantity, MAX_AGENT_OUTPUTS, type RuleId } from "../
 import { ConnectionPanel } from "./ConnectionPanel";
 import { MaterialNameSchema } from "../shared/material-names";
 import { MaterialCollection } from "./MaterialCollection";
+import { SourceMediaList } from "./SourceMediaList";
 import { TemplatePanel } from "./TemplatePanel";
 import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { StickerLibraryPanel } from "./StickerLibraryPanel";
@@ -17,7 +18,7 @@ import { ProjectWorkspaceSchema } from "../shared/project-workspace";
 import { ResultsPanel } from "./ResultsPanel";
 import { BatchProductionPanel } from "./BatchProductionPanel";
 import { BugFeedbackDialog } from "./BugFeedbackDialog";
-import { Heading, Icon, duration, sizeLabel } from "./ui";
+import { Heading, Icon } from "./ui";
 import { ModelSettingsDrawer } from "./ModelSettingsDrawer";
 import { WorkspaceHeader, WorkspaceRail, WorkspaceSubnav } from "./WorkspaceChrome";
 import { resolveWorkflowTarget, templateSectionForWorkflow, workflowForTemplateSection, type Step, type TemplateSectionId, type WorkflowId } from "./workspace-flow";
@@ -52,6 +53,7 @@ export default function App() {
   const [douyinUploadSelection, setDouyinUploadSelection] = useState<UploadSelectionDraft>();
   const [dragOver, setDragOver] = useState(false);
   const [previewId, setPreviewId] = useState<string>();
+  const sourcePreviewVideo = useRef<HTMLVideoElement>(null);
   const [retryingIds, setRetryingIds] = useState<string[]>([]);
   const retrying = useRef(new Set<string>());
   const initialized = useRef(false);
@@ -405,10 +407,8 @@ export default function App() {
             <div className={"drop-zone" + (dragOver ? " drag-over" : "")} onDragOver={(event) => { event.preventDefault(); if (!locked) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={dropMedia}>
               <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>
             </div>
-            <div className="card media-list"><div className="card-header"><h2>素材清单 <span>{state.project.mediaItems.length}</span></h2><button className="text-button" disabled={busy || !ready.length} onClick={() => setSelected(selected.length === ready.length ? [] : ready.map((item) => item.id))}>{selected.length === ready.length && ready.length ? "取消全选" : "选择全部"}</button></div>
-              {state.project.mediaItems.length === 0 ? <div className="empty-material"><Icon name="film" size={26} /><p>你的素材即将在这里就位</p><small>导入后自动检查格式、时长与画面尺寸</small></div> : state.project.mediaItems.map((item) => <div className={"media-row" + (preview?.id === item.id ? " previewing" : "")} key={item.id}><input type="checkbox" aria-label={"选择 " + item.displayName} checked={selected.includes(item.id)} disabled={busy || item.probeStatus !== "ready"} onChange={() => setSelected((current) => current.includes(item.id) ? current.filter((id) => id !== item.id) : [...current, item.id])} /><button className="media-thumb" aria-label={"预览 " + item.displayName} disabled={item.probeStatus !== "ready"} onClick={() => setPreviewId(item.id)}><Icon name="film" /></button><div className="media-info"><strong>{item.displayName}</strong><small>{item.probeStatus === "ready" ? item.width + " × " + item.height + " · " + duration(item.durationMs) + " · " + sizeLabel(item.sizeBytes) : item.errorMessage || "素材不可读取"}</small></div><span className={item.probeStatus === "ready" ? "status-tag completed" : "status-tag failed"}>{item.probeStatus === "ready" ? "就绪" : "需处理"}</span><button className="icon-button" aria-label={"移除 " + item.displayName} disabled={locked} onClick={() => void run(async () => { apply(await window.jianji.removeMedia(item.id)); })}><Icon name="close" size={16} /></button></div>)}
-            </div>
-          </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>原片</span></div><div className="source-preview">{preview ? <video key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><Icon name="play" size={27} /><p>暂无预览</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "尚未选择素材"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "导入素材后可在这里预览。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。发送抽帧供 Agent 分析；自动覆盖开启时，还会逐段发送追踪抽帧。</p></div></aside></div>
+            <SourceMediaList key={state.project.id} items={state.project.mediaItems} selected={selected} previewId={preview?.id} disabled={locked} saveDisabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onSelected={setSelected} onPreview={id => { sourcePreviewVideo.current?.pause(); setPreviewId(id); }} onRemove={id => run(async () => { apply(await window.jianji.removeMedia(id)); }, "已移出素材清单，原视频保留。请保存筛选结果。") } onSave={saveCollection} />
+          </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>原片</span></div><div className="source-preview">{preview ? <video ref={sourcePreviewVideo} key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><Icon name="play" size={27} /><p>暂无预览</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "尚未选择素材"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "导入素材后可在这里预览。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。发送抽帧供 Agent 分析；自动覆盖开启时，还会逐段发送追踪抽帧。</p></div></aside></div>
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={busy || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
