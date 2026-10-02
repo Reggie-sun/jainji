@@ -8,6 +8,7 @@ import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
+import { QianchuanVideoLibrary } from "../src/main/qianchuan-video-library";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
@@ -359,11 +360,103 @@ describe("Qianchuan upload service", () => {
     expect(f.store.hasMarker(before.result.upload_task_id)).toBe(true);
   });
 
-  async function nativeFixture() {
+  async function nativeFixture(discover: (id: string) => Promise<string> = async () => "http://127.0.0.1:9225") {
     const f = await fixture();
-    const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, async () => "http://127.0.0.1:9225"), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
+    const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, discover), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
     await service.restoreConfig(); return { ...f, service };
   }
+  it("clears each requested saved account through the library owner without changing upload records", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    const before = f.store.tasks();
+    const clear = vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async (target, guard) => {
+      await guard();
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 20, message: "empty" };
+    });
+    const results = await f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }, { product: "肥皂", expectedAdvertiserId: "1004" }] });
+    expect(results.map(result => result.advertiserId)).toEqual(["1003", "1004"]);
+    expect(clear).toHaveBeenCalledTimes(2); expect(f.store.tasks()).toEqual(before); expect(f.events).toEqual([]);
+    await expect(f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "9999" }] })).rejects.toThrow("已变化");
+    expect(clear).toHaveBeenCalledTimes(2);
+  });
+  it("excludes new production, account edits and browser controls while library deletion is active", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    let release!: () => void, entered!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+    vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async (target, guard) => {
+      entered(); await pending; await guard();
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 0, message: "empty" };
+    });
+    const run = f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }] });
+    await started;
+    try {
+      await expect(f.service.beginProduction()).rejects.toThrow("账号浏览器操作");
+      await expect(f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=2003" })).rejects.toThrow("账号浏览器操作");
+      await expect(f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "restart" })).rejects.toThrow("仍在运行");
+      await expect(f.service.preflight(selection("眼贴"), 1)).rejects.toThrow("账号浏览器操作");
+    } finally { release(); }
+    expect((await run)[0].state).toBe("CLEARED"); expect(f.service.busy).toBe(false);
+  });
+  it("reports the actual account connection rejection without starting library deletion", async () => {
+    const f = await nativeFixture(async () => { throw new Error("原账号浏览器进程不唯一"); });
+    await f.service.chooseConfig(f.configPath);
+    const clear = vi.spyOn(QianchuanVideoLibrary.prototype, "clear");
+    const results = await f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }] });
+    expect(results[0]).toMatchObject({ state: "BLOCKED", deletedCount: 0, message: "原账号浏览器进程不唯一" });
+    expect(clear).not.toHaveBeenCalled(); expect(f.events).toEqual([]);
+  });
+  it("aborts library transport and drains an in-flight account guard before stop returns", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    const original = QianchuanAccountConfigReader.prototype.freeze;
+    let armed = false, entered!: () => void, release!: () => void, signal: AbortSignal | undefined, confirmations = 0, stopped = false;
+    const waiting = new Promise<void>(resolve => { entered = resolve; }), hold = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(QianchuanAccountConfigReader.prototype, "freeze").mockImplementation(async function (this: QianchuanAccountConfigReader, ...args) {
+      if (armed) { entered(); await hold; }
+      return original.apply(this, args);
+    });
+    vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async (target, guard, parentSignal) => {
+      signal = parentSignal; armed = true; await guard(); confirmations++;
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 1, message: "empty" };
+    });
+    const work = f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }] });
+    await waiting;
+    const stopping = f.service.stop().then(result => { stopped = true; return result; });
+    try { await Promise.resolve(); expect(signal?.aborted).toBe(true); expect(stopped).toBe(false); }
+    finally { release(); }
+    expect(await stopping).toBe(true); expect(confirmations).toBe(0);
+    expect((await work)[0].state).toBe("BLOCKED"); expect(f.service.busy).toBe(false);
+  });
+  it("rejects actual proof and retry IPC handlers before queue side effects during deletion", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    let entered!: () => void, release!: () => void;
+    const waiting = new Promise<void>(resolve => { entered = resolve; }), hold = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async (target, guard) => {
+      entered(); await hold; await guard(); return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 0, message: "empty" };
+    });
+    const work = f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }] });
+    await waiting;
+    const { default: ts } = await import("typescript"), { runInNewContext } = await import("node:vm"), { z } = await import("zod");
+    const source = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+    const tree = ts.createSourceFile("index.ts", source, ts.ScriptTarget.Latest, true);
+    const registration = tree.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "registerHandlers")!;
+    const handlers = new Map<string, (event: unknown, input: unknown) => Promise<unknown>>();
+    const queue = { retry: vi.fn(async () => {}), createBatch: vi.fn(async () => ({ id: "batch", tasks: [{ id: "task" }] })), start: vi.fn() }, createDirectory = vi.fn(async () => {});
+    runInNewContext(ts.transpileModule(registration.getText(tree), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText + "\nregisterHandlers();", {
+      ipcMain: { handle: (name: string, handler: (event: unknown, input: unknown) => Promise<unknown>) => handlers.set(name, handler) },
+      z, uuidSchema: z.string().uuid(), UploadIdSchema: z.string(), registerBugFeedbackHandlers() {}, assertTrustedSender() {}, assertProductionIdle() {},
+      capabilities: { ready: true }, proofSchema: z.object({ mediaId: z.string().uuid() }), retrySchema: z.object({ taskIds: z.array(z.string().uuid()) }),
+      douyinUpload: f.service, queue, service: { currentProject: { id: randomUUID(), mediaItems: [] }, activeTemplate: {}, getMedia: () => ({}) },
+      app: { getPath: () => f.store.root }, path, mkdir: createDirectory, DEFAULT_PRESET, publicState: async () => ({}),
+    });
+    try {
+      await expect(handlers.get("proof.render")!({}, { mediaId: randomUUID() })).rejects.toThrow("账号浏览器操作");
+      await expect(handlers.get("export.retry")!({}, { taskIds: [randomUUID()] })).rejects.toThrow("账号浏览器操作");
+      expect(queue.retry).not.toHaveBeenCalled(); expect(queue.createBatch).not.toHaveBeenCalled(); expect(queue.start).not.toHaveBeenCalled(); expect(createDirectory).not.toHaveBeenCalled();
+    } finally { release(); await work; }
+    await expect(handlers.get("proof.render")!({}, { mediaId: randomUUID() })).resolves.toEqual({ taskId: "task" });
+    await expect(handlers.get("export.retry")!({}, { taskIds: [randomUUID()] })).resolves.toEqual({});
+    expect(queue.createBatch).toHaveBeenCalledTimes(1); expect(queue.start).toHaveBeenCalledTimes(1); expect(queue.retry).toHaveBeenCalledTimes(1);
+    expect(f.service.busy).toBe(false);
+  });
   it.each(["http://127.0.0.1:9225", "ws://127.0.0.1:9225/devtools/browser/original", undefined])("protects another advertiser's old fenced upload in the same original process (%s)", async endpoint => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
     const batch = await f.createBatch(["legacy advertiser draft"]), authorization = await f.service.preflight(selection("眼贴"), 1);

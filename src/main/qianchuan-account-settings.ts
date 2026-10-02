@@ -7,6 +7,7 @@ import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-stor
 import { QianchuanBrowserManager } from "./qianchuan-browser-manager.js";
 import type { RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
 import { parseQianchuanPlanUrl, QianchuanAccountSettingsSchema, QianchuanAccountSetupSchema, QianchuanBrowserControlSchema, type QianchuanAccount, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
+import { QianchuanLibraryClearSchema } from "../shared/qianchuan-video-library.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -42,6 +43,28 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       this.preparedBrowsers.delete(parsed.product);
       await this.browsers.control(target.advertiserId, parsed.action, browser => guard(target.advertiserId, browser));
       return super.refresh();
+    });
+  }
+  async withVideoLibraryTargets<T>(input: unknown, action: (targets: FrozenQianchuanAccount[], fresh: () => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>) => Promise<T>): Promise<T> {
+    this.assertAvailable();
+    const parsed = QianchuanLibraryClearSchema.parse(input);
+    return this.edit(async () => {
+      const targets = await Promise.all(parsed.accounts.map(async account => {
+        const target = await super.preflight(account.product);
+        if (target.advertiserId !== account.expectedAdvertiserId) throw new Error("账号设置已变化，未删除视频，请重新选择账号。");
+        return target;
+      }));
+      const fresh = async () => {
+        this.assertAvailable();
+        for (const target of targets) await super.freeze(target.product, target.configDigest);
+      };
+      await fresh();
+      // Resolve per account so one unavailable Chrome does not hide other results.
+      return action(targets, fresh, async target => {
+        const cdpEndpoint = await this.discoverBrowser(target.advertiserId);
+        await fresh();
+        return Object.freeze({ ...target, cdpEndpoint });
+      });
     });
   }
   private async exists(): Promise<boolean> {

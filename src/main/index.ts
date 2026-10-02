@@ -184,6 +184,11 @@ function registerHandlers(): void {
     if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未关闭账号浏览器。");
     await douyinUpload.controlAccountBrowser(input); return publicState();
   });
+  ipcMain.handle("douyinUpload.clearVideoLibraries", async (event, input: unknown) => {
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
+    if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未删除视频库素材。");
+    return douyinUpload.clearVideoLibraries(input);
+  });
   ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
@@ -503,12 +508,14 @@ function registerHandlers(): void {
     const { mediaId } = proofSchema.parse(input);
     const media = service.getMedia(mediaId);
     if (!media) throw new Error("media not found");
-    const proofDirectory = path.join(app.getPath("userData"), "proofs");
-    await mkdir(proofDirectory, { recursive: true });
-    assertProductionIdle();
-    const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: [mediaId], mediaItems: service.currentProject.mediaItems, outputDirectory: proofDirectory, preset: DEFAULT_PRESET });
-    void queue.start(batch.id);
-    return { taskId: batch.tasks[0].id };
+    return douyinUpload.withExportAdmission(async () => {
+      const proofDirectory = path.join(app.getPath("userData"), "proofs");
+      await mkdir(proofDirectory, { recursive: true });
+      assertProductionIdle();
+      const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: [mediaId], mediaItems: service.currentProject.mediaItems, outputDirectory: proofDirectory, preset: DEFAULT_PRESET });
+      void queue.start(batch.id);
+      return { taskId: batch.tasks[0].id };
+    });
   });
   ipcMain.handle("export.create", async (event, input: unknown) => {
     assertTrustedSender(event);
@@ -537,7 +544,11 @@ function registerHandlers(): void {
     await queue.cancelAll(service.currentProject.id);
     return publicState();
   });
-  ipcMain.handle("export.retry", async (event, input: unknown) => { assertTrustedSender(event); assertProductionIdle(); await queue.retry(retrySchema.parse(input).taskIds); return publicState(); });
+  ipcMain.handle("export.retry", async (event, input: unknown) => {
+    assertTrustedSender(event); assertProductionIdle();
+    await douyinUpload.withExportAdmission(() => queue.retry(retrySchema.parse(input).taskIds));
+    return publicState();
+  });
   ipcMain.handle("export.appendPrefill", async (event, input: unknown) => {
     assertTrustedSender(event);
     const { batchId } = appendPrefillSchema.parse(input);

@@ -59,6 +59,31 @@ async function fixture() {
   const discover = vi.fn(async (advertiserId: string) => `http://127.0.0.1:${advertiserId === "9007199254740993" ? 9230 : 9222 + Number(BigInt(advertiserId) - 1876024170199244n)}`);
   return { root, source, discover, settings: new QianchuanAccountSettings(path.join(root, "app"), discover) };
 }
+it("binds library clearing to the saved advertiser before browser discovery and holds the existing account writer lock", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const bytes = await readFile(f.settings.file);
+  const account = { product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244" };
+  const input = { confirmation: "DELETE_ALL_VIDEOS", accounts: [account] };
+  await expect(f.settings.withVideoLibraryTargets({ ...input, accounts: [{ ...account, expectedAdvertiserId: "999" }] }, async () => {})).rejects.toThrow("已变化");
+  expect(f.discover).not.toHaveBeenCalled();
+  f.discover.mockResolvedValue("http://127.0.0.1:41001");
+  await f.settings.withVideoLibraryTargets(input, async (targets, fresh, connect) => {
+    expect(targets[0].advertiserId).toBe(account.expectedAdvertiserId);
+    expect((await connect(targets[0])).cdpEndpoint).toBe("http://127.0.0.1:41001");
+    expect((await stat(path.join(path.dirname(f.settings.file), "write.lock"))).isFile()).toBe(true);
+    await fresh();
+  });
+  expect(await readFile(f.settings.file)).toEqual(bytes);
+});
+it("rejects out-of-process mapping drift before the library deletion guard can succeed", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const input = { confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244" }] };
+  await f.settings.withVideoLibraryTargets(input, async (_targets, fresh) => {
+    const value = JSON.parse(await readFile(f.settings.file, "utf8")); value.accounts[0].advertiserId = "999";
+    await writeFile(f.settings.file, JSON.stringify(value));
+    await expect(fresh()).rejects.toThrow("已变化");
+  });
+});
 it("prepares current browser bindings without changing the persisted mapping or earlier frozen batches", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);
   const bytes = await readFile(f.settings.file), old = await f.settings.preflight("蝴蝶贴");

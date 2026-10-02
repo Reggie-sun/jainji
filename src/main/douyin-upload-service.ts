@@ -11,6 +11,8 @@ import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
+import type { QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
+import { QianchuanVideoLibrary } from "./qianchuan-video-library.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type QianchuanUploadResult } from "../shared/douyin-upload.js";
 
 export interface BatchSelectedFile { fileName: string; index: number; ready?: boolean; }
@@ -57,6 +59,7 @@ export class DouyinUploadService {
   private productionBatches?: Set<string>;
   private beginningProduction = false;
   private managingBrowser = false;
+  private libraryOperation?: { controller: AbortController; done: Promise<void> };
   private browserPreparations = 0;
   private stopFailed = false;
   private readonly accounts: QianchuanAccountConfigReader;
@@ -210,6 +213,35 @@ export class DouyinUploadService {
         if (protectedTasks.length || preparing) throw new Error("该账号仍有制作中、待上传、待确认或结果未知的任务，未关闭浏览器。请先核查原上传页面并明确结束对应本地批次；上传记录和防重传屏障会保留。");
       });
     } finally { this.managingBrowser = false; this.changed(); }
+  }
+  async clearVideoLibraries(input: unknown): Promise<QianchuanLibraryResult[]> {
+    if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未删除视频。");
+    if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持视频库删除。");
+    this.managingBrowser = true;
+    let completed!: () => void;
+    const operation = { controller: new AbortController(), done: new Promise<void>(resolve => { completed = resolve; }) };
+    this.libraryOperation = operation;
+    const generation = this.controlGeneration;
+    try {
+      await this.control.catch(() => undefined);
+      return await this.accounts.withVideoLibraryTargets(input, async (targets, fresh, connect) => {
+        const check = () => {
+          operation.controller.signal.throwIfAborted();
+          if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction) throw new Error("上传控制已变化，已停止删除视频。");
+        };
+        const guard = async () => {
+          check();
+          await fresh();
+          check();
+        };
+        const library = new QianchuanVideoLibrary(this.store.root), results: QianchuanLibraryResult[] = [];
+        for (const target of targets) {
+          try { await guard(); results.push(await library.clear(await connect(target), guard, operation.controller.signal)); }
+          catch (error) { results.push({ product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }); }
+        }
+        return results;
+      });
+    } finally { this.libraryOperation = undefined; this.managingBrowser = false; completed(); this.changed(); }
   }
   async configure(input: unknown): Promise<void> {
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后修改上传设置。");
@@ -493,10 +525,12 @@ export class DouyinUploadService {
   }
   async stop(): Promise<boolean> {
     let drained = true;
+    const libraryOperation = this.libraryOperation;
+    libraryOperation?.controller.abort();
     this.controlGeneration++; this.stopping = true; this.stopped = true; this.eligible.clear(); this.currentIntents.clear(); this.continuationBatch = undefined; this.active?.controller.abort();
     try {
       await Promise.all([...this.sessions.values()].map(port => this.bounded(() => port.stop(), 5000, new AbortController().signal).catch(() => { drained = false; this.paused = true; })));
-      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
+      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); await libraryOperation?.done; }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
     } finally { this.stopping = false; }
     if (!drained || this.active) this.stopFailed = true;
     return !this.stopFailed;

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { QianchuanVideoLibraryActions } from "./QianchuanVideoLibraryActions";
 import { parseQianchuanPlanUrl, qianchuanProductName, QIANCHUAN_PRODUCTS, QianchuanProductNameSchema, type QianchuanAccountSetup, type QianchuanAccountSummary, type QianchuanProduct, type QianchuanBrowserControl } from "../shared/qianchuan-account";
 
 export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBrowser, onControlBrowser, initialProduct, expectedAdvertiserId }: {
@@ -35,6 +36,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
     <div className="qianchuan-account-products">{QIANCHUAN_PRODUCTS.map(value => <button className="button secondary compact" type="button" key={value} disabled={busy} aria-pressed={product === value} onClick={() => edit(value)}>
       {qianchuanProductName(value, accounts)}<small>{accounts.find(item => item.product === value)?.available ? "已设置" : "未设置"}</small>
     </button>)}</div>
+    <QianchuanVideoLibraryActions accounts={accounts} busy={busy} />
     {product && <div className="qianchuan-account-editor">
       <h3>{qianchuanProductName(product, accounts)} · 账号设置</h3>
       {recoveryAccount && <p>账户 {recoveryAccount} 保持不变；填写新产品名称，粘贴新千川计划链接。保存新计划不会自动重传旧任务。</p>}

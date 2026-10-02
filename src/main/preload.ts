@@ -11,6 +11,7 @@ import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
 import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/qianchuan-account.js";
+import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest } from "../shared/batch-production.js";
 import type { TemplateAccountBinding, TemplateAccountSelection } from "../shared/batch-upload.js";
 
@@ -81,6 +82,7 @@ const api = {
   saveQianchuanAccount: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.saveAccount", input),
   openQianchuanAccountBrowser: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.openAccountBrowser", input),
   controlQianchuanAccountBrowser: (input: QianchuanBrowserControl): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.controlAccountBrowser", input),
+  clearQianchuanVideoLibraries: (input: QianchuanLibraryClear): Promise<QianchuanLibraryResult[]> => ipcRenderer.invoke("douyinUpload.clearVideoLibraries", input),
   refreshQianchuanAccounts: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.refreshAccounts"),
   resumeDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.resume", { projectId, uploadTaskId }),
   retargetDouyinUpload: (projectId: string, uploadTaskId: string, expectedAdId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.retarget", { projectId, uploadTaskId, expectedAdId }),
