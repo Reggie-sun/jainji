@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-01T17:15:25Z",
+  "updated_at": "2026-10-02T09:49:46Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "81b974b88e9ed40cc03029afc9f4fb5cb084f1024b2dbfed7f40daec72135c6f",
@@ -223,9 +223,9 @@
       "normalized_sha256": "6368db94f468318e841db836e80ad2d54f0f10822d2cfcb5c7ec1ee1b404fb8c"
     },
     "AGENTS.md": {
-      "sha256": "a55cac7376da90bf050a5500095de7fa5c55abcbcea725ce42812387bb2fa144",
-      "size": 20727,
-      "normalized_sha256": "a55cac7376da90bf050a5500095de7fa5c55abcbcea725ce42812387bb2fa144"
+      "sha256": "ebee11fe38a651aa0c496d0618de08179062c824c1d699d62d27e908f2a5af79",
+      "size": 20945,
+      "normalized_sha256": "ebee11fe38a651aa0c496d0618de08179062c824c1d699d62d27e908f2a5af79"
     },
     "CLAUDE.md": {
       "role": "observe",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "9a27339d627cd914faa35ec6c439dc4ae8f77dbd4892a8ad1b00824887d15205",
-      "size": 70173,
-      "normalized_sha256": "9a27339d627cd914faa35ec6c439dc4ae8f77dbd4892a8ad1b00824887d15205"
+      "sha256": "2e18a29946b9947aa34c8a6e3711bc6eddd8b5d9ea2fb1ad5e2a7601b5eb2b07",
+      "size": 70276,
+      "normalized_sha256": "2e18a29946b9947aa34c8a6e3711bc6eddd8b5d9ea2fb1ad5e2a7601b5eb2b07"
     },
     "aoci.meta.txt": {
       "role": "index",
