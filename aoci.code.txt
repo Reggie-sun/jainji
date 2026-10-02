@@ -3,7 +3,7 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖、构建输出、日志、Harness回执及CodeGraph本机索引 | R:code:AGENTS.md | A:正式AOCI文件不在根目录忽略表中；.aoci目录由自身白名单排除运行资产 | S:-
-AGENTS.md[SC9T]: F:规定项目权威、任务聚焦、模型选择、产品不变量及交付门禁 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:展示文字逐素材开关及移动，整批手填；冻结重试不改稿；按本轮改动逐项维护AOCI，提交交接前Verify、Check、Guide；跨模板精确条数；覆盖围绕实际效果，仅必要工程验证；make frontend沟通修复验收不提安装包、重装或包更新，用户明确打包发布除外 | S:源mask只证明源像素；形状须全轮共同候选、同冻结字节、逐输出100%覆盖和独立内容安全，缺证据UNSAFE不回退；旧冻结解释不变；文字关闭无输入或图层；无关漂移不免本轮AOCI，完整批次及所有权不可绕过；AOCI不代替行为验证；用户变更前开发覆盖仅用gpt-6.1-sol和gpt-6-luna，含假服务诊断；账号核验不扩型号，框架、测试、提交不代替交付
+AGENTS.md[SC9T]: F:规定项目权威、任务聚焦、模型选择、产品不变量及交付门禁 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:展示文字整批手填、逐素材开关位置；冻结重试不改稿；变更session直接维护对应AOCI条目基线，不询问用户，交付前Verify/Check/Guide；跨模板精确条数；覆盖只做必要工程验证；make frontend验收不讨论安装包，用户要求打包发布除外 | S:源mask不授输出准入；形状须全轮共同候选、同冻结字节、逐输出100%覆盖及内容安全，缺证据UNSAFE不回退；关闭文字无图层；共享索引必要更新已授权，CAS及有界恢复保留他session结果，不授权改其业务文件；完整批次不可截断，无关漂移不免本轮维护；覆盖仅gpt-6.1-sol/gpt-6-luna，核验不扩型号；测试提交不代替交付
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx,code:src/main/nvenc-admission.ts | A:typecheck、Vitest、Harness与安装包入口；Playwright固定运行依赖external；proper-lockfile提供跨进程启动锁 | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态
