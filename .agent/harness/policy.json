@@ -1,12 +1,17 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "codeChecks": [
     {
       "id": "typecheck",
       "kind": "command",
       "required": true,
       "command": "node",
-      "args": ["node_modules/typescript/bin/tsc", "--noEmit", "--pretty", "false"],
+      "args": [
+        "node_modules/typescript/bin/tsc",
+        "--noEmit",
+        "--pretty",
+        "false"
+      ],
       "timeoutMs": 180000
     },
     {
@@ -14,8 +19,21 @@
       "kind": "vitest",
       "required": true,
       "command": "node",
-      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/harness.test.ts", "tests/harness-media.integration.test.ts"],
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/harness.test.ts",
+        "tests/harness-media.integration.test.ts",
+        "tests/harness-scope.test.ts",
+        "tests/harness-routing.test.ts",
+        "tests/harness-governance.test.ts",
+        "tests/harness-completion.test.ts"
+      ],
       "timeoutMs": 300000
     },
     {
@@ -23,8 +41,19 @@
       "kind": "vitest",
       "required": true,
       "command": "node",
-      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/product-price.test.ts", "tests/price-only.test.ts", "tests/agent-provider.test.ts"],
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/product-price.test.ts",
+        "tests/display-text.test.ts",
+        "tests/price-only.test.ts",
+        "tests/agent-provider.test.ts"
+      ],
       "timeoutMs": 300000
     },
     {
@@ -32,8 +61,24 @@
       "kind": "vitest",
       "required": true,
       "command": "node",
-      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/agent-controller.test.ts", "tests/agent-runner.test.ts", "tests/queue.test.ts"],
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/agent-controller.test.ts",
+        "tests/agent-runner.test.ts",
+        "tests/batch-production.test.ts",
+        "tests/batch-production-details.test.ts",
+        "tests/queue.test.ts",
+        "tests/cover-placement-session.test.ts",
+        "tests/knowledge-startup.test.ts",
+        "tests/batch-upload.test.ts",
+        "tests/batch-upload-admission.test.ts"
+      ],
       "timeoutMs": 300000
     },
     {
@@ -41,8 +86,27 @@
       "kind": "vitest",
       "required": true,
       "command": "node",
-      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/qianchuan-account-config.test.ts", "tests/qianchuan-account-settings.test.ts", "tests/qianchuan-browser-discovery.test.ts", "tests/qianchuan-browser-manager.test.ts", "tests/qianchuan-page-contract.test.ts", "tests/douyin-upload-contract.test.ts", "tests/douyin-upload-store.test.ts", "tests/douyin-upload-service.test.ts", "tests/douyin-upload-integration.test.ts", "tests/douyin-cdp-uploader.test.ts", "tests/douyin-upload-ui.test.ts"],
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/qianchuan-account-config.test.ts",
+        "tests/qianchuan-account-settings.test.ts",
+        "tests/qianchuan-browser-discovery.test.ts",
+        "tests/qianchuan-browser-manager.test.ts",
+        "tests/qianchuan-page-contract.test.ts",
+        "tests/douyin-upload-contract.test.ts",
+        "tests/douyin-upload-store.test.ts",
+        "tests/douyin-upload-service.test.ts",
+        "tests/douyin-upload-integration.test.ts",
+        "tests/douyin-cdp-uploader.test.ts",
+        "tests/douyin-upload-ui.test.ts",
+        "tests/qianchuan-browser-process.test.ts"
+      ],
       "timeoutMs": 300000
     },
     {
@@ -50,8 +114,27 @@
       "kind": "vitest",
       "required": true,
       "command": "node",
-      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/automatic-cover.test.ts", "tests/cover-track-provider.test.ts", "tests/four-corner-coverage.test.ts", "tests/cover-review-approval.test.ts"],
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/automatic-cover.test.ts",
+        "tests/cover-track-provider.test.ts",
+        "tests/cover-review-approval.test.ts",
+        "tests/supervisor-knowledge.test.ts",
+        "tests/source-sticker-knowledge.test.ts",
+        "tests/source-sticker-knowledge-store.test.ts",
+        "tests/cover-review-commands.test.ts",
+        "tests/cover-review-schema.test.ts",
+        "tests/cover-review-budget.test.ts",
+        "tests/cover-placement-proposal.test.ts",
+        "tests/supervised-preview.test.ts",
+        "tests/source-sticker-knowledge-session.test.ts"
+      ],
       "timeoutMs": 300000
     },
     {
@@ -59,22 +142,342 @@
       "kind": "vitest",
       "required": true,
       "command": "node",
-      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/agent-pipeline.integration.test.ts", "tests/ffmpeg.integration.test.ts", "tests/four-corner-render.integration.test.ts"],
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/agent-pipeline.integration.test.ts",
+        "tests/ffmpeg.integration.test.ts"
+      ],
       "timeoutMs": 600000
+    },
+    {
+      "id": "local-random",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "timeoutMs": 600000,
+      "testFiles": [
+        "tests/local-random-cover.test.ts"
+      ]
+    },
+    {
+      "id": "layout",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "timeoutMs": 600000,
+      "testFiles": [
+        "tests/decoration-display.test.ts",
+        "tests/decoration-display.integration.test.ts",
+        "tests/display-text-render.integration.test.ts",
+        "tests/four-corner-coverage.test.ts",
+        "tests/four-corner-render.integration.test.ts",
+        "tests/compiler.test.ts"
+      ]
+    },
+    {
+      "id": "output-publication",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "timeoutMs": 600000,
+      "testFiles": [
+        "tests/queue-output-directory.test.ts",
+        "tests/queue-output-directory.integration.test.ts"
+      ]
+    },
+    {
+      "id": "credential-boundaries",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "timeoutMs": 600000,
+      "testFiles": [
+        "tests/connection-store.test.ts",
+        "tests/chatgpt-session.test.ts",
+        "tests/vision-connections.test.ts",
+        "tests/vision-connection-ui.test.ts",
+        "tests/api-transport.test.ts",
+        "tests/cc-switch.test.ts",
+        "tests/connection-defaults.test.ts",
+        "tests/codex-runtime.test.ts"
+      ]
+    },
+    {
+      "id": "shape-boundaries",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "timeoutMs": 600000,
+      "testFiles": [
+        "tests/source-mask-admission.test.ts",
+        "tests/shape-cover-request-assembler.test.ts",
+        "tests/shape-cover-pixel-gate.test.ts",
+        "tests/shape-cover-activation.test.ts",
+        "tests/shape-cover-candidates.test.ts",
+        "tests/shape-cover-stationary-envelope.test.ts"
+      ]
+    },
+    {
+      "id": "extended-regressions",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/agent-plan-contract.test.ts",
+        "tests/agent-preview-store.test.ts",
+        "tests/api-request-scheduler.test.ts",
+        "tests/append-production-dialog.test.ts",
+        "tests/append-production-queue.test.ts",
+        "tests/append-production.test.ts",
+        "tests/asset-library.test.ts",
+        "tests/assisted-cover-vfr.integration.test.ts",
+        "tests/assisted-cover.integration.test.ts",
+        "tests/auto-decoration-options.test.ts",
+        "tests/automatic-cover.integration.test.ts",
+        "tests/automatic-encoder-capabilities.test.ts",
+        "tests/automatic-output-directory.test.ts",
+        "tests/automatic-stickers.test.ts",
+        "tests/bug-feedback.test.ts",
+        "tests/builtin-stickers.test.ts",
+        "tests/bundled-stickers.test.ts",
+        "tests/collaborative-cover.test.ts",
+        "tests/concurrency.test.ts",
+        "tests/corner-render.integration.test.ts",
+        "tests/cover-accuracy.integration.test.ts",
+        "tests/cover-candidates.test.ts",
+        "tests/cover-diagnostics.test.ts",
+        "tests/cover-frame-quality.integration.test.ts",
+        "tests/cover-output-budget.test.ts",
+        "tests/cover-placement-concurrency.test.ts",
+        "tests/cover-placement-provider.test.ts",
+        "tests/cover-preview-queue-diagnostics.test.ts",
+        "tests/cover-render.integration.test.ts",
+        "tests/cover-render.test.ts",
+        "tests/cover-review-evidence.test.ts",
+        "tests/cover-review-geometry.test.ts",
+        "tests/cover-review-input.test.ts",
+        "tests/cover-review-preview.integration.test.ts",
+        "tests/cover-review-provider.test.ts",
+        "tests/cover-save-agent.test.ts",
+        "tests/cover-selection-provider.test.ts",
+        "tests/cover-sticker.test.ts",
+        "tests/cover-track.integration.test.ts",
+        "tests/cover-track.test.ts",
+        "tests/curated-stickers.test.ts",
+        "tests/decorations.test.ts",
+        "tests/dev-launcher.test.ts",
+        "tests/development-lifecycle.test.ts",
+        "tests/domain.test.ts",
+        "tests/douyin-upload-closure-service.test.ts",
+        "tests/douyin-upload-closure-store.test.ts",
+        "tests/douyin-upload-closure-ui.test.ts",
+        "tests/douyin-upload-discard-service.test.ts",
+        "tests/douyin-upload-discard-store.test.ts",
+        "tests/douyin-upload-paused-status.test.ts",
+        "tests/douyin-upload-recovery.test.ts",
+        "tests/douyin-upload-retarget-service.test.ts",
+        "tests/douyin-upload-retarget-store.test.ts",
+        "tests/douyin-upload-retarget-ui.test.ts",
+        "tests/execution-limits.test.ts",
+        "tests/export-formats.test.ts",
+        "tests/export-settings.test.ts",
+        "tests/feedback-server.test.ts",
+        "tests/font-admission.test.ts",
+        "tests/gpu-export.integration.test.ts",
+        "tests/gpu-memory.test.ts",
+        "tests/hardware-probe.test.ts",
+        "tests/layout-agent.test.ts",
+        "tests/manual-cover-regions.integration.test.ts",
+        "tests/manual-cover-regions.test.ts",
+        "tests/material-collection.test.ts",
+        "tests/media-response.test.ts",
+        "tests/model-server.test.ts",
+        "tests/nvenc-admission.test.ts",
+        "tests/per-media-cover.test.ts",
+        "tests/platform.test.ts",
+        "tests/price-styles.integration.test.ts",
+        "tests/price-styles.test.ts",
+        "tests/production-quantity.test.ts",
+        "tests/project-sync.test.ts",
+        "tests/project-workspace.test.ts",
+        "tests/qianchuan-plan-target.test.ts",
+        "tests/qianchuan-upload-diagnostics.test.ts",
+        "tests/recent-projects.test.ts",
+        "tests/results-panel.test.ts",
+        "tests/shape-cover-auto-contour-diagnostic.test.ts",
+        "tests/shape-cover-review-observation.test.ts",
+        "tests/shape-cover-stationary-discovery.test.ts",
+        "tests/source-corner-occupancy.test.ts",
+        "tests/source-corner-render.integration.test.ts",
+        "tests/source-fact-ai-connections.test.ts",
+        "tests/source-fact-ai-input.test.ts",
+        "tests/source-fact-ai-package.test.ts",
+        "tests/source-fact-ai.test.ts",
+        "tests/source-fact-census.test.ts",
+        "tests/source-fact-completeness.test.ts",
+        "tests/source-fact-qualification-tool.test.ts",
+        "tests/source-fact-qualification.test.ts",
+        "tests/source-fact-review.test.ts",
+        "tests/source-mask-auto-extraction.test.ts",
+        "tests/source-mask-auto-qualification.test.ts",
+        "tests/source-mask-static.test.ts",
+        "tests/source-sticker-knowledge-audit.test.ts",
+        "tests/source-sticker-knowledge-projection.test.ts",
+        "tests/source-sticker-knowledge-startup.test.ts",
+        "tests/source-sticker-knowledge.integration.test.ts",
+        "tests/source-sticker-recognition.test.ts",
+        "tests/source-sticker-refresh.test.ts",
+        "tests/state-migrations.test.ts",
+        "tests/sticker-preview.test.ts",
+        "tests/sticker-scale.integration.test.ts",
+        "tests/store.test.ts",
+        "tests/supervised-agent.integration.test.ts",
+        "tests/supervisor-evidence.integration.test.ts",
+        "tests/tmp-repro-sticker-size.test.ts",
+        "tests/uploaded-stickers.test.ts",
+        "tests/video-encoder.test.ts",
+        "tests/workspace-flow.test.ts"
+      ],
+      "timeoutMs": 1800000
+    },
+    {
+      "id": "live-library",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/asset-library.integration.test.ts"
+      ],
+      "timeoutMs": 1800000
+    },
+    {
+      "id": "platform-engine",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/ffmpeg-capabilities.test.ts"
+      ],
+      "timeoutMs": 1800000
+    },
+    {
+      "id": "shape-static-holdout",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/shape-cover-static-holdout.test.ts"
+      ],
+      "timeoutMs": 300000
     }
   ],
   "media": {
     "checks": [
-      { "id": "membership", "required": true },
-      { "id": "source-identity", "required": true },
-      { "id": "decode", "required": true },
-      { "id": "output-spec", "required": true },
-      { "id": "duration", "required": true },
-      { "id": "frame-rate", "required": true },
-      { "id": "audio", "required": true },
-      { "id": "template-text", "required": true },
-      { "id": "visual-evidence", "required": true }
+      {
+        "id": "membership",
+        "required": true
+      },
+      {
+        "id": "source-identity",
+        "required": true
+      },
+      {
+        "id": "decode",
+        "required": true
+      },
+      {
+        "id": "output-spec",
+        "required": true
+      },
+      {
+        "id": "duration",
+        "required": true
+      },
+      {
+        "id": "frame-rate",
+        "required": true
+      },
+      {
+        "id": "audio",
+        "required": true
+      },
+      {
+        "id": "template-text",
+        "required": true
+      },
+      {
+        "id": "visual-evidence",
+        "required": true
+      }
     ],
     "commandTimeoutMs": 120000,
     "durationMinimumToleranceMs": 100,
@@ -82,5 +485,669 @@
     "frameRateToleranceRatio": 0.001,
     "audioDurationToleranceMs": 100,
     "thumbnailWidth": 480
-  }
+  },
+  "controlChecks": [
+    {
+      "id": "documents",
+      "kind": "command",
+      "required": true,
+      "command": "node",
+      "args": [
+        "scripts/run-harness.mjs",
+        "control",
+        "documents"
+      ],
+      "timeoutMs": 180000
+    },
+    {
+      "id": "owned-aoci",
+      "kind": "command",
+      "required": true,
+      "command": "node",
+      "args": [
+        "scripts/run-harness.mjs",
+        "control",
+        "owned-aoci"
+      ],
+      "timeoutMs": 180000
+    }
+  ],
+  "routes": [
+    {
+      "id": "docs-and-rules",
+      "paths": [
+        "docs/**",
+        "*.md",
+        ".workflow/**"
+      ],
+      "checkIds": [
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "source-baseline",
+      "paths": [
+        "src/**"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "conservative-entry",
+      "paths": [
+        "src/shared/**",
+        "src/harness/**",
+        "src/main/compiler.ts",
+        "src/main/queue.ts",
+        "src/main/index.ts",
+        "src/main/preload.ts",
+        ".agent/harness/policy.json",
+        "scripts/run-harness.mjs"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "text-and-plan",
+        "lifecycle",
+        "douyin-upload",
+        "cover-contracts",
+        "real-media",
+        "local-random",
+        "layout",
+        "output-publication",
+        "credential-boundaries",
+        "shape-boundaries",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "configuration-and-resources",
+      "paths": [
+        "*.json",
+        "*.ts",
+        "*.html",
+        "Makefile",
+        ".gitignore",
+        ".gitattributes",
+        ".github/**",
+        ".impeccable/**",
+        "resources/**",
+        "scripts/**",
+        ".aoci/config.json"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "text-and-plan",
+        "lifecycle",
+        "douyin-upload",
+        "cover-contracts",
+        "real-media",
+        "local-random",
+        "layout",
+        "output-publication",
+        "credential-boundaries",
+        "shape-boundaries",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-harness",
+      "paths": [
+        "tests/harness.test.ts",
+        "tests/harness-media.integration.test.ts",
+        "tests/harness-scope.test.ts",
+        "tests/harness-routing.test.ts",
+        "tests/harness-governance.test.ts",
+        "tests/harness-completion.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-text-and-plan",
+      "paths": [
+        "src/main/agent-provider.ts",
+        "src/renderer/*Text*",
+        "src/renderer/*Price*",
+        "src/renderer/Template*",
+        "tests/product-price.test.ts",
+        "tests/display-text.test.ts",
+        "tests/price-only.test.ts",
+        "tests/agent-provider.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "text-and-plan",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/decoration-production-contract.md"
+      ]
+    },
+    {
+      "id": "domain-lifecycle",
+      "paths": [
+        "src/main/agent-*.ts",
+        "src/main/batch-production*",
+        "src/main/cover-placement*",
+        "src/renderer/BatchProduction*",
+        "tests/agent-controller.test.ts",
+        "tests/agent-runner.test.ts",
+        "tests/batch-production.test.ts",
+        "tests/batch-production-details.test.ts",
+        "tests/queue.test.ts",
+        "tests/cover-placement-session.test.ts",
+        "tests/knowledge-startup.test.ts",
+        "tests/batch-upload.test.ts",
+        "tests/batch-upload-admission.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "lifecycle",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/decoration-production-contract.md"
+      ]
+    },
+    {
+      "id": "domain-douyin-upload",
+      "paths": [
+        "src/main/douyin-*",
+        "src/main/qianchuan-*",
+        "src/main/local-cdp-*",
+        "src/renderer/*Upload*",
+        "src/renderer/*Qianchuan*",
+        "src/renderer/qianchuan-*",
+        "tests/qianchuan-account-config.test.ts",
+        "tests/qianchuan-account-settings.test.ts",
+        "tests/qianchuan-browser-discovery.test.ts",
+        "tests/qianchuan-browser-manager.test.ts",
+        "tests/qianchuan-page-contract.test.ts",
+        "tests/douyin-upload-contract.test.ts",
+        "tests/douyin-upload-store.test.ts",
+        "tests/douyin-upload-service.test.ts",
+        "tests/douyin-upload-integration.test.ts",
+        "tests/douyin-cdp-uploader.test.ts",
+        "tests/douyin-upload-ui.test.ts",
+        "tests/qianchuan-browser-process.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "douyin-upload",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-cover-contracts",
+      "paths": [
+        "src/main/*cover*",
+        "src/main/*supervisor*",
+        "src/main/source-sticker-*",
+        "src/renderer/CoverReview*",
+        "src/renderer/SourceSticker*",
+        "tests/automatic-cover.test.ts",
+        "tests/cover-track-provider.test.ts",
+        "tests/cover-review-approval.test.ts",
+        "tests/supervisor-knowledge.test.ts",
+        "tests/source-sticker-knowledge.test.ts",
+        "tests/source-sticker-knowledge-store.test.ts",
+        "tests/cover-review-commands.test.ts",
+        "tests/cover-review-schema.test.ts",
+        "tests/cover-review-budget.test.ts",
+        "tests/cover-placement-proposal.test.ts",
+        "tests/supervised-preview.test.ts",
+        "tests/source-sticker-knowledge-session.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "cover-contracts",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/shape-matched-cover-spec.md",
+        "docs/shape-matched-cover-v1-simplification-spec.md",
+        "docs/source-sticker-knowledge-spec.md",
+        "docs/semi-automatic-cover-review-spec.md"
+      ]
+    },
+    {
+      "id": "domain-real-media",
+      "paths": [
+        "src/main/ffmpeg.ts",
+        "src/main/video-encoder.ts",
+        "src/main/hardware-probe.ts",
+        "src/main/nvenc-admission.ts",
+        "src/main/execution-limits.ts",
+        "tests/agent-pipeline.integration.test.ts",
+        "tests/ffmpeg.integration.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "real-media",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-local-random",
+      "paths": [
+        "src/main/cover-sticker.ts",
+        "src/renderer/*Decoration*",
+        "src/renderer/CoverStickerPanel.tsx",
+        "tests/local-random-cover.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "local-random",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/decoration-production-contract.md"
+      ]
+    },
+    {
+      "id": "domain-layout",
+      "paths": [
+        "src/main/automatic-corner-layout.ts",
+        "src/main/cover-motion.ts",
+        "src/main/agent-template-preparation.ts",
+        "src/renderer/TemplatePreview.tsx",
+        "tests/decoration-display.test.ts",
+        "tests/decoration-display.integration.test.ts",
+        "tests/display-text-render.integration.test.ts",
+        "tests/four-corner-coverage.test.ts",
+        "tests/four-corner-render.integration.test.ts",
+        "tests/compiler.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "layout",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/decoration-production-contract.md"
+      ]
+    },
+    {
+      "id": "domain-output-publication",
+      "paths": [
+        "src/main/artifact.ts",
+        "src/main/paths.ts",
+        "src/main/store.ts",
+        "src/main/state-migrations.ts",
+        "tests/queue-output-directory.test.ts",
+        "tests/queue-output-directory.integration.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "output-publication",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/decoration-production-contract.md"
+      ]
+    },
+    {
+      "id": "domain-credential-boundaries",
+      "paths": [
+        "src/main/*connection*",
+        "src/main/chatgpt-session.ts",
+        "src/main/codex-rpc.ts",
+        "src/main/api-*.ts",
+        "src/main/cc-switch.ts",
+        "src/model-server/**",
+        "src/renderer/*Connection*",
+        "src/renderer/Model*",
+        "src/renderer/SavedConnectionsPanel.tsx",
+        "tests/connection-store.test.ts",
+        "tests/chatgpt-session.test.ts",
+        "tests/vision-connections.test.ts",
+        "tests/vision-connection-ui.test.ts",
+        "tests/api-transport.test.ts",
+        "tests/cc-switch.test.ts",
+        "tests/connection-defaults.test.ts",
+        "tests/codex-runtime.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "credential-boundaries",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-shape-boundaries",
+      "paths": [
+        "src/main/shape-cover-*.ts",
+        "src/main/source-mask-*.ts",
+        "src/main/source-fact-*.ts",
+        "tests/source-mask-admission.test.ts",
+        "tests/shape-cover-request-assembler.test.ts",
+        "tests/shape-cover-pixel-gate.test.ts",
+        "tests/shape-cover-activation.test.ts",
+        "tests/shape-cover-candidates.test.ts",
+        "tests/shape-cover-stationary-envelope.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "shape-boundaries",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/shape-matched-cover-spec.md",
+        "docs/shape-matched-cover-v1-simplification-spec.md",
+        "docs/source-sticker-knowledge-spec.md",
+        "docs/semi-automatic-cover-review-spec.md"
+      ]
+    },
+    {
+      "id": "domain-extended-regressions",
+      "paths": [
+        "tests/agent-plan-contract.test.ts",
+        "tests/agent-preview-store.test.ts",
+        "tests/api-request-scheduler.test.ts",
+        "tests/append-production-dialog.test.ts",
+        "tests/append-production-queue.test.ts",
+        "tests/append-production.test.ts",
+        "tests/asset-library.test.ts",
+        "tests/assisted-cover-vfr.integration.test.ts",
+        "tests/assisted-cover.integration.test.ts",
+        "tests/auto-decoration-options.test.ts",
+        "tests/automatic-cover.integration.test.ts",
+        "tests/automatic-encoder-capabilities.test.ts",
+        "tests/automatic-output-directory.test.ts",
+        "tests/automatic-stickers.test.ts",
+        "tests/bug-feedback.test.ts",
+        "tests/builtin-stickers.test.ts",
+        "tests/bundled-stickers.test.ts",
+        "tests/collaborative-cover.test.ts",
+        "tests/concurrency.test.ts",
+        "tests/corner-render.integration.test.ts",
+        "tests/cover-accuracy.integration.test.ts",
+        "tests/cover-candidates.test.ts",
+        "tests/cover-diagnostics.test.ts",
+        "tests/cover-frame-quality.integration.test.ts",
+        "tests/cover-output-budget.test.ts",
+        "tests/cover-placement-concurrency.test.ts",
+        "tests/cover-placement-provider.test.ts",
+        "tests/cover-preview-queue-diagnostics.test.ts",
+        "tests/cover-render.integration.test.ts",
+        "tests/cover-render.test.ts",
+        "tests/cover-review-evidence.test.ts",
+        "tests/cover-review-geometry.test.ts",
+        "tests/cover-review-input.test.ts",
+        "tests/cover-review-preview.integration.test.ts",
+        "tests/cover-review-provider.test.ts",
+        "tests/cover-save-agent.test.ts",
+        "tests/cover-selection-provider.test.ts",
+        "tests/cover-sticker.test.ts",
+        "tests/cover-track.integration.test.ts",
+        "tests/cover-track.test.ts",
+        "tests/curated-stickers.test.ts",
+        "tests/decorations.test.ts",
+        "tests/dev-launcher.test.ts",
+        "tests/development-lifecycle.test.ts",
+        "tests/domain.test.ts",
+        "tests/douyin-upload-closure-service.test.ts",
+        "tests/douyin-upload-closure-store.test.ts",
+        "tests/douyin-upload-closure-ui.test.ts",
+        "tests/douyin-upload-discard-service.test.ts",
+        "tests/douyin-upload-discard-store.test.ts",
+        "tests/douyin-upload-paused-status.test.ts",
+        "tests/douyin-upload-recovery.test.ts",
+        "tests/douyin-upload-retarget-service.test.ts",
+        "tests/douyin-upload-retarget-store.test.ts",
+        "tests/douyin-upload-retarget-ui.test.ts",
+        "tests/execution-limits.test.ts",
+        "tests/export-formats.test.ts",
+        "tests/export-settings.test.ts",
+        "tests/feedback-server.test.ts",
+        "tests/font-admission.test.ts",
+        "tests/gpu-export.integration.test.ts",
+        "tests/gpu-memory.test.ts",
+        "tests/hardware-probe.test.ts",
+        "tests/layout-agent.test.ts",
+        "tests/manual-cover-regions.integration.test.ts",
+        "tests/manual-cover-regions.test.ts",
+        "tests/material-collection.test.ts",
+        "tests/media-response.test.ts",
+        "tests/model-server.test.ts",
+        "tests/nvenc-admission.test.ts",
+        "tests/per-media-cover.test.ts",
+        "tests/platform.test.ts",
+        "tests/price-styles.integration.test.ts",
+        "tests/price-styles.test.ts",
+        "tests/production-quantity.test.ts",
+        "tests/project-sync.test.ts",
+        "tests/project-workspace.test.ts",
+        "tests/qianchuan-plan-target.test.ts",
+        "tests/qianchuan-upload-diagnostics.test.ts",
+        "tests/recent-projects.test.ts",
+        "tests/results-panel.test.ts",
+        "tests/shape-cover-auto-contour-diagnostic.test.ts",
+        "tests/shape-cover-review-observation.test.ts",
+        "tests/shape-cover-stationary-discovery.test.ts",
+        "tests/source-corner-occupancy.test.ts",
+        "tests/source-corner-render.integration.test.ts",
+        "tests/source-fact-ai-connections.test.ts",
+        "tests/source-fact-ai-input.test.ts",
+        "tests/source-fact-ai-package.test.ts",
+        "tests/source-fact-ai.test.ts",
+        "tests/source-fact-census.test.ts",
+        "tests/source-fact-completeness.test.ts",
+        "tests/source-fact-qualification-tool.test.ts",
+        "tests/source-fact-qualification.test.ts",
+        "tests/source-fact-review.test.ts",
+        "tests/source-mask-auto-extraction.test.ts",
+        "tests/source-mask-auto-qualification.test.ts",
+        "tests/source-mask-static.test.ts",
+        "tests/source-sticker-knowledge-audit.test.ts",
+        "tests/source-sticker-knowledge-projection.test.ts",
+        "tests/source-sticker-knowledge-startup.test.ts",
+        "tests/source-sticker-knowledge.integration.test.ts",
+        "tests/source-sticker-recognition.test.ts",
+        "tests/source-sticker-refresh.test.ts",
+        "tests/state-migrations.test.ts",
+        "tests/sticker-preview.test.ts",
+        "tests/sticker-scale.integration.test.ts",
+        "tests/store.test.ts",
+        "tests/supervised-agent.integration.test.ts",
+        "tests/supervisor-evidence.integration.test.ts",
+        "tests/tmp-repro-sticker-size.test.ts",
+        "tests/uploaded-stickers.test.ts",
+        "tests/video-encoder.test.ts",
+        "tests/workspace-flow.test.ts",
+        "tests/helpers/**",
+        "tests/fixtures/**",
+        "tests/*.py",
+        "tests/*.mjs",
+        "src/main/source-fact-*",
+        "src/main/source-mask-auto-*",
+        "src/main/source-mask-static-*",
+        "src/main/shape-cover-stationary-discovery.ts",
+        "scripts/source-fact-*",
+        "scripts/shape-cover-*"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "extended-regressions",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "live-library",
+      "paths": [
+        "tests/asset-library.integration.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "live-library",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "platform-engine",
+      "paths": [
+        "tests/ffmpeg-capabilities.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "platform-engine",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "shape-static-holdout",
+      "paths": [
+        "scripts/shape-cover-static-holdout.py",
+        "scripts/shape-cover-static-truth-tool.py",
+        "scripts/shape-cover-media-inventory.py",
+        "tests/shape-cover-static-holdout.test.py",
+        "tests/shape-cover-static-truth-tool.test.py",
+        "tests/shape-cover-static-holdout.test.ts",
+        "docs/shape-matched-cover-m2e-plan.md",
+        "docs/shape-matched-cover-stationary-record.md"
+      ],
+      "checkIds": [
+        "typecheck",
+        "shape-static-holdout",
+        "shape-boundaries",
+        "extended-regressions",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "docs/shape-matched-cover-v1-simplification-spec.md",
+        "docs/shape-matched-cover-v1-simplification-plan.md",
+        "docs/shape-matched-cover-m2e-plan.md"
+      ]
+    }
+  ],
+  "defaultCheckIds": [
+    "typecheck",
+    "harness",
+    "text-and-plan",
+    "lifecycle",
+    "douyin-upload",
+    "cover-contracts",
+    "real-media",
+    "local-random",
+    "layout",
+    "output-publication",
+    "credential-boundaries",
+    "shape-boundaries"
+  ]
 }

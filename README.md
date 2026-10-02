@@ -150,11 +150,19 @@ Linux 已接入有限千川页面合同：正式 MP4 完成并验证后，应用
 
 ```bash
 npm run harness -- code
+npm run harness -- code --scope .agent/harness/runs/<task>/scope.json
+npm run harness -- verify --scope .agent/harness/runs/<task>/scope.json --receipt .agent/harness/runs/<run-id>/receipt.json
 npm run harness -- media --project /absolute/path/project.json --batch <batch-id> [--batch <batch-id> ...]
 npm run harness -- media --queue /absolute/path/queue-state.json
 ```
 
-`code` 顺序运行固定的 typecheck、harness 自测、核心规则和真实 FFmpeg 测试组，不等于完整发布或桌面验收。`media` 只读解析当前 schema 的项目或 QueueState，只检查显式批次及冻结的 `mediaSnapshots`，不会迁移项目、入队、重导出或调用模型；缺少冻结快照时返回 `NOT_EVALUATED`，不会使用当前素材补齐历史证据。
+`code` 顺序运行 policy 的默认核心检查，不等于完整发布或桌面验收；专项注册不代表每次都运行研究或平台实验。`code --scope` 校验声明的 Git 前像、当前后像，按完整 policy routes 选择必需检查及关联文档；纯文档只运行文档和 owned AOCI 控制。scope 声明不证明作者归属，空/未分类/未注册路径与必需 skip 不可通过。
+
+scope 使用 `schemaVersion: "harness-task-scope/v1"`、`sessionId`、完整 `baseCommit` 和非空 `ownedChanges`。每项含 `path`、`change`（add/modify/delete）、`beforeSha256` / `afterSha256`（`sha256:<64 lowercase hex>`，不存在为 null）；rename 写成 delete + add。路径须规范、仓库内且不是 symlink，不能放凭据或用户数据；详细形状见 [Scope Contract](docs/superpowers/specs/2026-10-02-agents-harness-governance-design.md#r02--task-scope-is-a-declaration-not-attribution-proof)。保存到忽略的 runs 目录，不把临时 scope 放进正式索引范围。
+
+`verify` 复核已完成 scoped code v2 receipt 的原始报告、policy/scope、源码与合同字节，重新检查文档和官方 owned AOCI，生成独立 receipt；不重跑测试、修改旧回执、调用模型、维护 AOCI 或执行 Git mutation。旧 v1 receipt 可读但不能通过新 completion。`ownedAoci` 与 `repositoryAoci` 分开报告，本次对齐不代表全库无漂移；维护仍由 session 按官方 Guide 执行。
+
+`media` 只读解析当前 schema 的项目或 QueueState，只检查显式批次及冻结的 `mediaSnapshots`，不会迁移项目、入队、重导出或调用模型；缺少冻结快照时返回 `NOT_EVALUATED`，不会使用当前素材补齐历史证据。
 
 结果为 `PASS`、`FAIL` 或 `NOT_EVALUATED`，退出码分别为 `0`、`1`、`2`。必需检查的 skip、超时、缺少报告、VFR 无法可靠判定、工具不可用和证据缺失都不能通过。media 会执行文件身份、完整解码、规格、时长、逐帧时间戳、音轨与模板文字检查，并生成首/中/尾源片和成片定位帧；这些自动证据不等于观看验收，回执始终保留 `visualReview=NOT_EVALUATED`。详细合同见 [Spec](docs/video-validation-harness-spec.md)，实施边界见 [Plan](docs/video-validation-harness-plan.md)。
 

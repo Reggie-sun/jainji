@@ -1,8 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { chmod, mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { aggregateOutcome, type HarnessCheckResult, type HarnessOutcome } from "./types.js";
+import type { HarnessTaskScope } from "./types.js";
+import { captureScopedIdentity, type ScopedIdentity } from "./scope.js";
 
 export interface WorkspaceIdentity {
   gitHead?: string;
@@ -23,10 +25,10 @@ export interface ProcessResult {
   error?: string;
 }
 
-interface Receipt {
-  schemaVersion: 1;
+export interface Receipt {
+  schemaVersion: 1 | 2;
   runId: string;
-  mode: "code" | "media";
+  mode: "code" | "media" | "verify";
   startedAt: string;
   finishedAt?: string;
   status: HarnessOutcome | "RUNNING";
@@ -37,11 +39,23 @@ interface Receipt {
   checks: HarnessCheckResult[];
   inputs?: Record<string, unknown>;
   error?: { category: string; message: string };
+  scoped?: {
+    scope: HarnessTaskScope;
+    scopePath: string;
+    scopeFileSha256: string;
+    selectedCheckIds: string[];
+    routeIds: string[];
+    documentRefs: string[];
+    includeSources: boolean;
+    identityBefore: ScopedIdentity;
+    identityAfter?: ScopedIdentity;
+  };
+  artifacts?: Record<string, string>;
 }
 
 const SOURCE_PATH = /^(?:src|tests|scripts)\//;
 
-function sha256(value: string | Buffer): string {
+export function sha256(value: string | Buffer): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
 }
 
@@ -208,6 +222,8 @@ export class HarnessRun {
   readonly framesDirectory: string;
   private receipt: Receipt;
 
+  get scopePath(): string | undefined { return this.receipt.scoped?.scopePath; }
+
   private constructor(readonly repoRoot: string, readonly directory: string, receipt: Receipt, readonly policyBytes: Buffer) {
     this.receipt = receipt;
     this.receiptPath = path.join(directory, "receipt.json");
@@ -215,7 +231,7 @@ export class HarnessRun {
     this.framesDirectory = path.join(directory, "frames");
   }
 
-  static async create(repoRoot: string, mode: "code" | "media", policyPath: string): Promise<HarnessRun> {
+  static async create(repoRoot: string, mode: "code" | "media" | "verify", policyPath: string): Promise<HarnessRun> {
     const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
     const runId = `${stamp}-${randomUUID().slice(0, 8)}`;
     const runsRoot = path.join(repoRoot, ".agent", "harness", "runs");
@@ -253,6 +269,19 @@ export class HarnessRun {
     this.receipt.environment.tools = { ...this.receipt.environment.tools, ...tools };
   }
 
+  async configureScoped(scope: HarnessTaskScope, scopePath: string, selection: { checks: Array<{ id: string; kind: string }>; routeIds: string[]; documentRefs: string[] }): Promise<void> {
+    const includeSources = selection.checks.some((check) => !["documents", "owned-aoci"].includes(check.id));
+    const identityBefore = await captureScopedIdentity(this.repoRoot, scope, selection.documentRefs, includeSources);
+    this.receipt.schemaVersion = 2;
+    this.receipt.scoped = {
+      scope, scopePath: path.resolve(scopePath), scopeFileSha256: sha256(await readFile(scopePath)),
+      selectedCheckIds: selection.checks.map((check) => check.id), routeIds: selection.routeIds,
+      documentRefs: selection.documentRefs, includeSources, identityBefore,
+    };
+    await atomicJson(path.join(this.directory, "scope.json"), scope);
+    await atomicJson(this.receiptPath, this.receipt);
+  }
+
   async command(id: string, command: string, args: readonly string[], timeoutMs: number, signal?: AbortSignal): Promise<ProcessResult> {
     const result = await runProcess(command, args, { cwd: this.repoRoot, timeoutMs, signal });
     const prefix = path.join(this.logsDirectory, safeLogId(id));
@@ -269,7 +298,23 @@ export class HarnessRun {
     options: { error?: { category: string; message: string }; inputs?: Record<string, unknown> } = {},
   ): Promise<HarnessOutcome> {
     const workspaceAfter = await captureWorkspaceIdentity(this.repoRoot);
-    if (workspaceAfter.sourceIdentitySha256 !== this.receipt.workspaceBefore.sourceIdentitySha256) {
+    const scoped = this.receipt.scoped;
+    let changed = workspaceAfter.sourceIdentitySha256 !== this.receipt.workspaceBefore.sourceIdentitySha256;
+    if (scoped) {
+      try {
+        scoped.identityAfter = await captureScopedIdentity(this.repoRoot, scoped.scope, scoped.documentRefs, scoped.includeSources);
+        changed = JSON.stringify(scoped.identityBefore) !== JSON.stringify(scoped.identityAfter) ||
+          sha256(await readFile(scoped.scopePath)) !== scoped.scopeFileSha256;
+      } catch (error) {
+        changed = true;
+        checks.push({ id: "scoped-identity", required: true, status: "NOT_EVALUATED", category: "source_changed", message: String(error) });
+      }
+      const present = new Set(checks.filter((check) => check.required).map((check) => check.id));
+      if (scoped.selectedCheckIds.some((id) => !present.has(id))) checks.push({
+        id: "required-checks", required: true, status: "NOT_EVALUATED", category: "missing_checks", message: "Selected required checks were not all evaluated.",
+      });
+    }
+    if (changed) {
       checks.push({
         id: "workspace-identity",
         required: true,
@@ -290,6 +335,13 @@ export class HarnessRun {
       ...(options.error ? { error: options.error } : {}),
     };
     await writeFile(path.join(this.directory, "summary.md"), summary.endsWith("\n") ? summary : `${summary}\n`, { encoding: "utf8", mode: 0o600 });
+    if (scoped) {
+      const artifacts: Record<string, string> = {};
+      for (const name of ["policy.json", "scope.json", "summary.md", ...(await readdir(this.logsDirectory)).map((file) => `logs/${file}`)]) {
+        artifacts[name] = sha256(await readFile(path.join(this.directory, name)));
+      }
+      this.receipt.artifacts = artifacts;
+    }
     await atomicJson(this.receiptPath, this.receipt);
     return status;
   }
@@ -299,6 +351,7 @@ export function outcomeForProcess(result: ProcessResult): Pick<HarnessCheckResul
   if (result.interrupted) return { status: "NOT_EVALUATED", category: "interrupted", message: "Command was interrupted." };
   if (result.timedOut) return { status: "NOT_EVALUATED", category: "timeout", message: "Command timed out." };
   if (result.error) return { status: "NOT_EVALUATED", category: "tool_unavailable", message: result.error };
+  if (result.outputTruncated) return { status: "NOT_EVALUATED", category: "output_truncated", message: "Command output exceeded its evidence budget." };
   if (result.code !== 0) return { status: "FAIL", category: "command_failed", message: `Command exited with code ${result.code}.` };
   return { status: "PASS", message: "Command completed successfully." };
 }

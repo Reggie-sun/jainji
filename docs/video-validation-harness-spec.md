@@ -13,6 +13,20 @@ baseline: 20c270f
 
 本文件是已实现合同；实现 owner 位于 `src/harness/`、`scripts/run-harness.mjs` 与 `.agent/harness/policy.json`。是否通过仍只由某次独立 run 的 `receipt.json` 及其绑定证据决定，本文状态不代表任意用户成片已验收。
 
+## Scoped Governance Delta
+
+2026-10-02 的 [Governance Delta](superpowers/specs/2026-10-02-agents-harness-governance-design.md) 修订任务路由、源码身份和 completion；首版下文的固定集合、全 tracked diff 身份及“不按路径选测试”只解释旧 `code` / `media` 与 v1 receipt。专项当前 owner 导航见 [Contract Index](agent-contract-index.md)，可执行检查清单仅由 [policy](../.agent/harness/policy.json) 保存。
+
+新增 `code --scope <scope.json>` 与只读 `verify --scope <scope.json> --receipt <receipt.json>`。scope 的 `schemaVersion` 固定为 `harness-task-scope/v1`；`sessionId`、完整 `baseCommit`、非空 `ownedChanges` 是声明而非作者证明。每个 change 为 add / modify / delete，SHA-256 使用 `sha256:<64 lowercase hex>`，不存在的前/后像为 null；rename 表示 delete + add。Git blob 前像和当前文件后像必须吻合，路径须规范、无逃逸；不支持符号链接对象。scope 建议存于忽略的 `.agent/harness/runs/`，不能含凭据、用户项目或媒体。
+
+policy v2 保留旧 code/media 定义，增加固定 Node command `controlChecks` 和 paths/checkIds/documentRefs routes；可用 `defaultCheckIds` 指定无 scope 的 required 核心集合，缺字段保持全部 code checks 的解释。scoped 检查从完整 registry 路由，不能由 default 集合缩小；未分类路径、未注册的新增测试、必需 skip 或缺证据均非 PASS。新增测试需同时登记其执行文件与 route。删除的测试仍以旧路径匹配关联检查，须同步移除执行清单中的已删除文件并保留非空关联回归；不能将全删除后的空测试集合当通过。
+
+v2 scoped code receipt 分别绑定当前 policy/scope、实际参与的 source/config/resources、owned bytes、关联合同和原始 logs/reports。共享工作树中其他稳定 dirty 源码参与测试；其他源码变化使证据失效。无关文档与 AOCI 索引字节不混入 code identity。相同已验证字节的 commit 不伪造新运行，也不单凭 HEAD 变化作废；v1 receipt 可读但不能满足 scoped completion。
+
+`verify` 不重跑 tests、模型、队列、AOCI Apply 或 Git mutation，只复核原 receipt 与当前字节，重新核对适用文档及官方 owned AOCI，并保存独立 completion receipt。AOCI 只消费已识别版本的官方 Verify / Check / Guide、scope 和 source facts；`ownedAoci` 与 `repositoryAoci` 分开报告，缺工具、未知结构、本次 stale/missing、恢复风险均不能通过。维护仍由产生改动的 session 按官方完整批次/CAS/恢复合同完成。
+
+所有新增证据仅证明工程检查及文档治理；开发型号、真实 provider 资格、Windows 实机和人工观看仍遵守各自授权与验收 owner。fixture 中的定位帧、音轨和批次数量不得升级为整片 coverage、内容一致或 requestedCount 已满足。旧媒体接口与已冻结任务解释保持原合同，不迁移生产数据。
+
 # Evidence And Ownership
 
 基线来自当前代码检查，而非历史方案的实现声明：

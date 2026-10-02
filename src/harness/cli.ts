@@ -4,6 +4,23 @@ import { codeSummary, runCodeChecks } from "./code.js";
 import { loadMediaSelection, mediaSummary, validateMediaSelection, type MediaInputOptions } from "./media.js";
 import { HarnessRun } from "./run.js";
 import { exitCodeFor, HarnessPolicySchema, type HarnessCheckResult } from "./types.js";
+import { loadScope } from "./scope.js";
+import { selectChecks } from "./routing.js";
+import { verifyReceipt } from "./completion.js";
+import { checkDocuments, checkOwnedAoci } from "./governance.js";
+
+function parseScopedArgs(args: string[], verify = false): { scope?: string; receipt?: string } {
+  const result: { scope?: string; receipt?: string } = {};
+  for (let index = 0; index < args.length; index += 2) {
+    const flag = args[index]; const value = args[index + 1];
+    if (!value || value.startsWith("--") || !["--scope", ...(verify ? ["--receipt"] : [])].includes(flag)) throw new Error(`Invalid scoped argument: ${flag}`);
+    const key = flag === "--scope" ? "scope" : "receipt";
+    if (result[key]) throw new Error(`Duplicate ${flag}`);
+    result[key] = value;
+  }
+  if (verify && (!result.scope || !result.receipt)) throw new Error("verify requires --scope and --receipt.");
+  return result;
+}
 
 function parseMediaArgs(args: string[]): MediaInputOptions {
   let project: string | undefined;
@@ -54,12 +71,25 @@ function failureCheck(error: unknown): HarnessCheckResult {
 
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   const [mode, ...args] = argv;
-  if (mode !== "code" && mode !== "media") {
-    console.error("Usage: npm run harness -- code | media (--project <project.json> --batch <id>... | --queue <queue-state.json>)");
-    return 2;
+  if (mode === "control") {
+    try {
+      const [id, ...flags] = args;
+      const { scope: scopePath } = parseScopedArgs(flags);
+      if (!scopePath || !["documents", "owned-aoci"].includes(id)) throw new Error("Invalid governance control invocation.");
+      const scope = await loadScope(process.cwd(), scopePath);
+      const policy = loadPolicy(await readFile(path.join(process.cwd(), ".agent/harness/policy.json")));
+      const selection = selectChecks(policy, scope);
+      const check = id === "documents"
+        ? await checkDocuments(process.cwd(), scope.ownedChanges.filter((change) => change.change !== "delete" && change.path.endsWith(".md")).map((change) => change.path), selection.documentRefs)
+        : await checkOwnedAoci(process.cwd(), scope.ownedChanges);
+      console.log(JSON.stringify(check));
+      return exitCodeFor(check.status);
+    } catch (error) {
+      console.error(String(error)); return 2;
+    }
   }
-  if (mode === "code" && args.length > 0) {
-    console.error("code does not accept additional arguments.");
+  if (mode !== "code" && mode !== "media" && mode !== "verify") {
+    console.error("Usage: npm run harness -- code [--scope <scope.json>] | verify --scope <scope.json> --receipt <receipt.json> | media (--project <project.json> --batch <id>... | --queue <queue-state.json>)");
     return 2;
   }
   const repoRoot = process.cwd();
@@ -72,20 +102,33 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
     run = await HarnessRun.create(repoRoot, mode, policyPath);
     const policy = loadPolicy(run.policyBytes);
+    const scopedArgs = mode === "media" ? {} : parseScopedArgs(args, mode === "verify");
+    let selection: ReturnType<typeof selectChecks> | undefined;
+    if (scopedArgs.scope) {
+      const scope = await loadScope(repoRoot, scopedArgs.scope);
+      selection = selectChecks(policy, scope);
+      await run.configureScoped(scope, scopedArgs.scope, selection);
+    }
+    if (mode === "verify") {
+      const checks = await verifyReceipt(repoRoot, scopedArgs.scope!, scopedArgs.receipt!);
+      const status = await run.finish(checks, codeSummary(checks, run), { inputs: { receiptPath: path.resolve(scopedArgs.receipt!) } });
+      console.log(`${status} ${run.directory}`);
+      return exitCodeFor(status);
+    }
     const packageJson = JSON.parse(await readFile(path.join(repoRoot, "package.json"), "utf8")) as { devDependencies?: Record<string, string> };
     run.setTools({ typescript: packageJson.devDependencies?.typescript ?? null, vitest: packageJson.devDependencies?.vitest ?? null });
     if (mode === "code") {
-      const checks = await runCodeChecks(policy, run, abort.signal);
+      const checks = await runCodeChecks(policy, run, abort.signal, selection?.checks);
       const status = await run.finish(checks, codeSummary(checks, run));
       console.log(`${status} ${run.directory}`);
       return exitCodeFor(status);
     }
     const options = parseMediaArgs(args);
-    const selection = await loadMediaSelection(options);
-    await run.writeInputs(selection.inputsSnapshot);
-    const validation = await validateMediaSelection(policy, run, selection, abort.signal);
+    const mediaSelection = await loadMediaSelection(options);
+    await run.writeInputs(mediaSelection.inputsSnapshot);
+    const validation = await validateMediaSelection(policy, run, mediaSelection, abort.signal);
     const status = await run.finish(validation.checks, mediaSummary(run, validation.checks, validation.tasks), {
-      inputs: { snapshot: "inputs.json", inputPath: selection.inputPath, beforeSha256: selection.inputSha256, afterSha256: validation.inputAfterSha256 },
+      inputs: { snapshot: "inputs.json", inputPath: mediaSelection.inputPath, beforeSha256: mediaSelection.inputSha256, afterSha256: validation.inputAfterSha256 },
     });
     console.log(`${status} ${run.directory}`);
     return exitCodeFor(status);

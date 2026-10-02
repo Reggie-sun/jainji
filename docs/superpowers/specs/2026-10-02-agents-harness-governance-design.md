@@ -73,6 +73,8 @@ Parent 基于当前授权、任务初始快照和真实 owned files 创作 scope
 
 policy 升级为 schemaVersion=2，保留 `codeChecks` / `media`，增加 `controlChecks` 与 `routes`。`controlChecks` 复用固定 Node argv 的 command check；`routes` 项仅包含唯一 `id`、仓库相对路径 `paths`、`checkIds` 和 `documentRefs`。多项匹配取检查并集，同一检查只运行一次；所有 ID、路径与引用必须有效。
 
+实施核对发现，注册全部专项 tests 不等于每次运行全部专项实验；例如 Windows 专项断言在 Linux 上必须保留未评估。v2 因此允许 policy 自己定义非空、唯一的 `defaultCheckIds`，只引用 required code checks，指定无 scope `code` 的核心集合；缺此字段兼容原来的全部 `codeChecks`。scoped 路由仍从完整 registry 求并集，不受 default 集合限制，相关必需 skip 仍不能通过。该收敛不改变产品或测试断言，也不授予跳过实际 scope 检查的 CLI 开关。
+
 所有生产源码变更至少执行 typecheck 与 Harness 自测，再执行路由关联测试；共享入口/schema、compiler/queue 或 Harness / policy 变更采用保守的完整相关集合。测试改动必须路由到自身及适用 domain。新增、删除与重命名不得只看仍存在的文件。
 
 未分类路径不得返回 completion PASS：报告 `unmapped_path`，执行保守集合可用于调查，但不能掩盖路由缺失。文档 / 规则、配置与资源有显式类别；“纯文档无需代码测试”必须由完整 scoped change 分类证明。scope 涉及的必需检查不得被 CLI flag、空集合或 policy 的 required=false 静默绕过。
@@ -123,7 +125,7 @@ npm run harness -- media --project <project.json> --batch <id> [...]
 npm run harness -- media --queue <queue-state.json>
 ```
 
-`code` 无 scope 时继续执行完整 code 集合。scoped run 保存 v2 回执，绑定 scope / policy / selected checks / 实际源码 / docs / 输出报告的 hash；旧 v1 policy 和 receipt 保持可读，v1 receipt 不能满足新 scoped completion gate。
+`code` 无 scope 时执行 policy 的完整默认核心集合；缺 `defaultCheckIds` 保留全部 code checks 的旧解释。scoped run 保存 v2 回执，绑定 scope / policy / selected checks / 实际源码 / docs / 输出报告的 hash；旧 v1 policy 和 receipt 保持可读，v1 receipt 不能满足新 scoped completion gate。
 
 `verify` 不重跑测试、不调用模型、不维护 AOCI、不入队、不提交或发布；它复核回执是否结束、必需检查是否齐全、检查身份与当前字节是否匹配，并运行必要的当前 owned AOCI 和文档引用检查。运行后产生独立 completion 回执，不改旧 receipt。缺项、RUNNING、旧字节、skip 和无法核实时非 PASS。
 

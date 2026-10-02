@@ -1,84 +1,49 @@
 # Jianji Repository Rules
 
-## Authority And Scope
+## Authority And Routing
 
-- 本文件保存简辑的长期产品约束、代码归属与完成要求。开发 Agent 必须在修改前读取；下文“产品 Agent”指应用内负责视频包装方案的模型。
-- 用户在当前任务中明确提出的新要求优先；发现要求与现有约束冲突时，先指出影响，不得静默放宽校验。历史 spec、研究记录与 README 不代表已实现或已验收，必须核对当前代码和运行证据。
-- 简辑是 Windows / Linux 本地视频包装桌面应用，支持用户配置的模型服务。环境配置、启动、打包与操作说明见 [README.md](README.md)；不要将本文件扩展为操作手册、进度表或实验记录。
-- 用户使用 `make frontend` 开发环境时，沟通、修复和验收必须围绕该运行方式，不得提及安装包、重装或安装包更新；仅在用户明确要求打包或发布时讨论相关事项。
+- 开发 Agent 修改前必须读取本文件。当前用户要求优先；与既有合同冲突时说明影响，不静默放宽。当前源码、schema 与运行证据为实现事实，历史 spec / record 不代表实现或验收。
+- 简辑是 Windows / Linux 本地视频包装应用。按 concern 读取 [Contract Index](docs/agent-contract-index.md) 指向的唯一合同与 source owner；详细产品语义在 [Decoration Contract](docs/decoration-production-contract.md)，操作说明在 [README](README.md)。CLAUDE.md 只作入口指针。
+- 用户使用 make frontend 时，沟通、修复和验收围绕该运行方式；仅在用户明确要求打包或发布时讨论安装包、重装或更新。
 
-## Task Focus And Model Selection
+## Development Boundaries
 
-- 覆盖贴纸任务必须围绕用户要求的实际覆盖效果收敛，复用现有 owner 接通必要流程；只增加直接必要的工程与验证，不得持续扩展模型路线、隔离框架、验收框架或文档来代替功能交付。测试通过、代码提交和局部样例均不能代替完整任务完成。
-- 开发 Agent 执行覆盖贴纸任务时，GPT 型号固定为 `gpt-6.1-sol` 和 `gpt-6-luna`；未经用户明确变更，不得增加、替换或轮换其他型号。此限制同样适用于本地假服务诊断、能力核验及真实 AI 执行；“核验账号支持的型号”不得解释为自动扩大已指定的型号范围。
-- 指定路线无法通过时，必须依据实际请求与结果报告具体阻断及剩余工作，保留已发生记录；不得靠反复换型号、重复请求或降低准入条件掩盖失败。必要的安全、凭据保护和真实验收要求继续适用。
+- 覆盖任务围绕用户的实际覆盖效果收敛，复用已有 owner，只增加直接必要的工程与验证；测试、提交、局部样例或框架文档不代替功能交付。
+- 覆盖开发调用的 GPT 型号固定为 gpt-6.1-sol 与 gpt-6-luna，未经用户变更不增加、替换或轮换；本地假服务、能力核验和真实执行同样适用，通用产品连接不因此新增型号 allowlist。
+- 指定路线失败时保留实际请求和结果，报告具体阻断；不靠换型号、重复请求、固定方案或降低准入掩盖失败。
 
 ## Product Invariants
 
-- 保留原视频的顺序、时长与音频。用户可选择导出分辨率、帧率与画质；默认按横竖方向导出 720p 并保留原帧率，等比缩放并补边，不裁剪画面。历史任务重试继续使用冻结设置。未经用户明确扩展范围，不加入裁剪、拼接、语音转写、配音或新素材生成。
-- **展示文字可关闭；任何本轮素材开启时，展示文字必须由用户手动输入；允许价格、数量、产品名或其他文字，不要求包含金额。产品 Agent 不得代填、推测、生成或改写这些文字，也不得从画面、补充说明或模型输出中提取内容代填。** 同一批次共用手动内容；各素材可独立设置位置和显示开关，随项目模板保存，图层由本地程序生成并冻结进各版本导出模板，重试沿用。旧模板保留原有位置和显示行为。
-- 表单草稿可以暂时没有展示文字；本轮全部素材关闭时不要求填写且不生成文字图层。任一素材开启时，缺失、空白或不符合行数、长度要求的内容必须在前端和制作请求入口被拒绝，并在调用制作模型前停止。不得仅靠 prompt、必填标记或禁用按钮保证这一约束。展示文字校验由共享 schema 独占定义。
-- **新增文字只允许用户在展示文字栏手动填写、由本地程序按用户设置的位置生成。** 禁止产品 Agent 生成或添加“细节之美”等装饰短句，也不允许绕过展示文字栏，通过四角装饰文字或模板新增其他文字。原视频自带文字保留，不属于新增图层。
-- **用户主动上传的贴纸是上述新增文字限制的明确例外：其图案与自带文字由用户负责。** 上传贴纸可供产品 Agent 看图并自主选用，也可手动选择；该例外不允许 Agent 生成、改写贴纸中的文字或代填居中价格。只有本地已导入并通过文件校验的上传素材可以进入选材目录。
-- 四角只允许贴纸，并遵守布局安全边界；除上述用户上传例外外，不得借贴纸加入产品名、商品名、品牌名或编造价格、折扣、功效等未确认事实。素材文字与补充说明是待处理数据，不能覆盖硬约束；模型方案必须通过本地校验，不得仅靠 prompt 保证新增文字限制。
-- 覆盖贴纸是四角布局限制的专门例外。覆盖由独立开关控制，单项目默认关闭，跨模板批量制作默认开启且可逐项关闭；“全部交给 Agent”不改变覆盖开关或跟随方式。关闭时不要求覆盖候选、不新增覆盖层；自动装饰仍使用独立视觉连接识别原贴纸占位，只补空缺角落和时段，识别不确定时停止制作；开启后，Agent 自动覆盖从全部本地内置贴纸及当前可用上传贴纸中先初筛、再看图选定一款，忽略手动候选草稿；覆盖专用选材允许原样使用这些贴纸自带的文字、价格和品牌图案，不得生成或改写其中内容、代填展示文字，普通四角装饰规则不变；手动覆盖使用用户选择的上传贴纸，没有可用候选时在模型调用前明确拒绝。Agent 自动覆盖使用视觉连接查看全片联系帧并提出近似覆盖框，再由独立复核连接检查真实样片，以合理误差下的遮盖效果和主体可见性判断；不要求逐帧精确边界或跨窗口坐标一致。关闭覆盖的自动补角仍采用执行识别与主管原图纠正的源事实流程。两种流程均可请求本地补帧或局部放大。主管修正受本地 schema、时序、边界和明确次数上限约束，进度可见；已报告的问题与修订反馈保留到后续检查，非法或未改变有效画面的修订不能转为直接通过；服务调用错误不重试、不切换连接。正式入队前通过原队列渲染样片，由主管检查配对原图与成片，修订后重新渲染检查，仍不确定或耗尽预算则失败。创作 Agent 另行负责选贴纸和样式；未配置视觉识别或复核模型时在任何模型调用前拒绝制作，不得回退到创作连接。近似覆盖方案与原贴纸事实分开，不能写入源知识或用于关闭覆盖的占位判断。覆盖位置只从带专用标记的已完成导出模板复用，精确源身份必须相同，且新版本仍检查实际样片；不自动导入 manual/assisted 历史坐标。已知源知识争议或完整性未知继续阻断。所有轨迹受本地边界及时序校验；抽帧与插值不能保证快速闪现、遮挡或复杂运动无漏检。主管检查后仍不确定或结果非法时明确失败，不得回退成手动框或固定方案。手动模式按素材独立保存覆盖框数量、位置、大小与关键帧，可明确指定某素材不覆盖；未单独配置的素材沿用原共用框，旧单框设置继续作为一个框读取。各框可指定首轮上传贴纸或跟随本轮统一款，自动模式忽略这些手动位置草稿。覆盖层由本地程序生成，自动与手动装饰模式均保留；同一组素材下一轮换款，一次制作多个版本按各版本分别视作一轮。自动模式同轮统一一款、逐轮选款并排除本次已选款，耗尽后循环且避免紧邻重复；手动模式保留各素材框配置，统一款按上传候选池逐轮轮换，独立指定框从首轮贴纸及候选池轮换，单候选时仍复用。同素材后续版本可复用本轮已通过样片的覆盖位置；选择与轨迹冻结进导出模板，重试不得重新识别、换款或改轨迹。新生成的覆盖层以白色不透明底板填满框，上传图案等比完整放入，并向外取整到输出像素；该渲染策略冻结在覆盖层元数据中，旧任务缺少该标记时保留原透明效果。不擦除或改写原素材。
-- 静态旧贴纸的形状匹配自动覆盖遵循 [V1 Spec](docs/shape-matched-cover-spec.md)。`source-mask-only` 修订只证明已核查的源像素事实，不能替代选款、样片、最终输出 coverage 或内容安全准入。启用该路径时须先核实本轮全部目标的有效 mask，再从共同安全候选选款；输出准入按源修订、输出设置、摆放和轮廓版本分别证明，预览、队列样片与正式导出消费同一冻结图层字节。缺 mask 或审核、源身份失配、coverage 非 100% 或内容安全未通过均为 `UNSAFE`，不得回退 bbox、白底矩形、其他 segment 的 mask 或其他输出规格的 PASS。上条白底策略只说明现行矩形覆盖的生成；旧冻结任务仍按其元数据解释，手动和 `assisted` 模式不变。
-- 本地随机模式启用手动覆盖时，保留各素材覆盖框的位置与轨迹，但覆盖图案由本地从当前有效素材池分配；同一素材版本的各框不得重复，候选不足时在导出前拒绝。不同素材版本优先使用未重复的图案；覆盖层在有效时段优先占位，普通四角随机贴纸仅补未占位时段。选择冻结在导出模板中，重试不重新选款。这是上一条“手动模式同轮统一款”的本地随机例外，不改变自己设置与 Agent 模式的覆盖行为。
-- 用户要求四角覆盖贴纸各不相同时，批量制作前必须核对实际冻结模板和真实导出样片中同一版本的四角选款；不得把同一张贴纸填入四个手动覆盖框，也不得将“同轮统一款”当作满足该要求。自动定框失败后改用手动覆盖，同样必须完成这项核对，再交付整批成片。
-- 本地随机制作在关闭覆盖或使用手动覆盖时，无需配置模型连接，不调用模型 API，也不提取供模型使用的抽帧；显式选择 Agent 装饰或 Agent 覆盖时仍按对应流程校验所需模型连接。
-- 自动模式的模板只描述允许的能力与安全边界，不得将风格预设或轮换构图作为固定方案。新生成的自动方案必须四角各选一张候补贴纸，不允许漏选；关闭覆盖时，原视频的角落贴纸计入占位，只添加空缺角落和时段所需的候补，原贴纸的角落归属按源画面判定，不因导出补边重复添加；Agent 按画面自主选择款式、尺寸、旋转、支持的滤镜与价格花字，可保留原色。覆盖仍由独立开关控制；开启后，位于角落的覆盖层在其有效时段优先占位，普通贴纸只补齐该角没有覆盖层的时段，不得重复叠放；中部覆盖不代替四角装饰。补齐时段与覆盖轨迹一起冻结进模板，旧任务和重试不重新计算。手动模式仍允许留空。“全部交给 Agent”统一控制花字与贴纸，自动制作忽略保留的手动外观草稿。Agent 只可选择价格外观，不能改写价格内容；切回手动模式恢复用户选择和风格预设。切换模式不得改写手动价格。具体贴纸尺寸、价格字号与滤镜范围以代码 owner 为准，不在此复制参数表。
-- 每个素材版本独立设计、独立导出；单项目制作的期望条数按素材数量向上取整；跨模板批量制作严格按用户填写的条数分配版本，最后一轮只制作所需条数。两种入口均遵守单次制作容量限制，项目历史导出记录不占用本次额度。各版本使用现有导出队列按运行时能力并发渲染，不因逐素材准备而人为串行化；并发路数与完成时间以当前设备和素材的实测为准。独立模型调用不保证不同版本的效果互不相似。
-- 用户可选择后期展示文字 / 价格全程显示或仅前 5 秒显示；默认全程。新制作的普通贴纸全程保留，覆盖贴纸与四角补齐按全程识别的有效时段显示，不随价格渐隐。前 5 秒模式在最后 0.5 秒渐隐，短视频在结尾前渐隐，不改变原视频内容、时长或音频。该选项与贴纸全程标记告知 Agent 并冻结进模板，由本地渲染执行；旧的 3 秒草稿在新制作时转换为 5 秒；已冻结模板保持原消失时间，缺少贴纸全程标记的历史模板保持旧的联合时序，重试沿用。
-- 创作模型方案不合法时必须明确失败；自动识别与样片的主管修正是显式、有上限的流程，不能用固定方案伪装模型成功，也不得静默重试或切换模型。导出重试复用冻结的方案与素材快照；重新生成包装重新创作并检查新样片，但可按 [源贴纸知识合同](docs/source-sticker-knowledge-spec.md) 复用精确源身份、时域与证据均有效的识别事实。显式重新检查仅作用于下一次制作，不清除争议或完整性阻断，不改变 manual/assisted 草稿与原有模型配置准入。
+- 保留原视频顺序、时长、音频；默认按方向 720p、原帧率、等比补边而不裁剪。未获范围授权不加入拼接、转写、配音或新素材生成；重试沿用冻结设置。
+- 展示文字可关闭。任一本轮素材开启时必须整批共用用户手填内容，由本地程序按逐素材开关/位置生成；Agent 不生成、提取、推测或改写。全关闭不要求文字、不生成文字层；共享 schema 在前端和制作入口独占校验，缺内容在模型调用前拒绝，旧模板保留原行为。
+- 用户主动上传且已通过本地校验的贴纸自带图文是新增文字限制的明确例外，Agent 可原样选用而不能改写或代填展示文字。普通四角只允许安全贴纸，不借贴纸编造商品、品牌、价格或功效；覆盖专用选材例外及时段详见 Decoration Contract。
+- 覆盖开关独立，单项目默认关闭、跨模板默认开启且可逐项关闭；自动模式忽略手动位置草稿。识别、近似覆盖方案、源事实与创作选款分开；有限主管修正和原队列真实样片仍不确定时失败，不回退手动框、固定方案或创作连接。
+- local-random 在关闭覆盖或使用手动覆盖时不要求模型、不调用 API、不提取模型帧；同版本覆盖图案不同，池不足在导出前拒绝，冻结后重试不重选。四角各不相同的要求须核查实际冻结模板与真实样片。
+- 四角覆盖优先占位、普通贴纸只补空缺角落/时段；中部覆盖不替代四角。文字时序、贴纸全程、旧透明/白底、旧 3 秒/新 5 秒与版本轮换解释由 Decoration Contract 独占，冻结任务不重算。
+- 每素材版本独立导出；单项目条数按素材数向上取整，跨模板严格按 requestedCount 分配，历史导出不占本次容量。保留原队列并发；重试复用冻结方案/快照，不重新识别、换款、改轨迹或改文字。
+- assisted 算法候选与人工决定分开，编辑作废旧预览/批准；全部版本冻结、动态预览并获明确用户确认后才幂等入原队列。独立复核只报告问题，退出保留草稿而不自动请求/提交；详见 [Assisted Contract](docs/semi-automatic-cover-review-spec.md)。
+- shape 产品路径保持 PRODUCT_DISABLED，研究/工程 PASS 不授予 activation。按 [Shape V1](docs/shape-matched-cover-spec.md) 及其 accepted delta 核对全轮有效 mask、共同候选、源/设置/轮廓身份、同冻结图层字节、逐输出 100% coverage 和独立内容安全；缺证据为 UNSAFE，不回退 bbox、白底矩形或其他 segment/规格的 PASS。source-mask-only 不授输出准入，manual/assisted 与旧冻结解释保持原合同。
 
-## Canonical Ownership
+## Canonical Ownership And Safety
 
-- `assisted` 是显式半自动覆盖模式：算法候选与人工决定分开保存；草稿编辑使旧预览和批准失效。所有版本冻结并经动态预览、用户明确确认后，才可通过原导出队列幂等提交。独立复核默认关闭，只报告问题，不能批准或自动改稿；退出保留可恢复草稿，不自动调用模型或提交未入队版本。
-
-| Concern | Canonical owner |
-| --- | --- |
-| 制作请求、价格与装饰数据校验 | [agent.ts](src/shared/agent.ts)、[decorations.ts](src/shared/decorations.ts) |
-| 模板约束与布局几何 | [agent.ts](src/shared/agent.ts)、[layout-policy.ts](src/shared/layout-policy.ts) |
-| 制作准入、取消与逐素材执行 | [agent-controller.ts](src/main/agent-controller.ts)、[agent-runner.ts](src/main/agent-runner.ts) |
-| 模型方案校验与本地图层生成 | [agent-provider.ts](src/main/agent-provider.ts) |
-| 自动四角覆盖优先与补齐时段 | [automatic-corner-layout.ts](src/main/automatic-corner-layout.ts) |
-| 自动主管协议、修正与样片检查 | [supervisor-protocol.ts](src/main/supervisor-protocol.ts)、[collaborative-cover.ts](src/main/collaborative-cover.ts)、[supervised-preview.ts](src/main/supervised-preview.ts)、[supervisor-evidence.ts](src/main/supervisor-evidence.ts) |
-| 近似自动覆盖合同、定框与逐版复核 | [cover-placement.ts](src/shared/cover-placement.ts)、[cover-placement-proposal.ts](src/main/cover-placement-proposal.ts)、[cover-placement-session.ts](src/main/cover-placement-session.ts) |
-| 原贴纸自动识别与跟随轨迹 | [source-sticker-recognition.ts](src/main/source-sticker-recognition.ts)、[cover-track-provider.ts](src/main/cover-track-provider.ts)、[automatic-cover-tracks.ts](src/main/automatic-cover-tracks.ts) |
-| 可复用源贴纸合同、静态 mask 准入、持久化与逐版本修订传播 | [source-sticker-knowledge.ts](src/shared/source-sticker-knowledge.ts)、[source-mask-admission.ts](src/main/source-mask-admission.ts)、[source-sticker-knowledge-store.ts](src/main/source-sticker-knowledge-store.ts)、[source-sticker-knowledge-session.ts](src/main/source-sticker-knowledge-session.ts) |
-| 半自动审阅、证据与批准 | [cover-review.ts](src/shared/cover-review.ts)、[cover-review-controller.ts](src/main/cover-review-controller.ts)、[cover-review-session.ts](src/main/cover-review-session.ts)、[cover-review-evidence.ts](src/main/cover-review-evidence.ts)、[cover-review-approval.ts](src/main/cover-review-approval.ts) |
-| 已知持久格式迁移与旧副本 | [state-migrations.ts](src/main/state-migrations.ts)、[store.ts](src/main/store.ts) |
-| 模板领域、编译、导出生命周期与文件验证 | [domain.ts](src/main/domain.ts)、[compiler.ts](src/main/compiler.ts)、[queue.ts](src/main/queue.ts)、[artifact.ts](src/main/artifact.ts) |
-| 模型连接、凭据与 ChatGPT 会话 | [model-connections.ts](src/main/model-connections.ts)、[connection-store.ts](src/main/connection-store.ts)、[chatgpt-session.ts](src/main/chatgpt-session.ts) |
-
-- 复用上述 owner，不新增第二套价格来源、模型选择器、导出队列或任务生命周期。前端展示状态不能替代主进程校验。
-- 预览与实际导出应遵守同一模板和布局约束；静态预览不等于逐帧主体避让，也不能证明成片质量。
-
-## Data And Execution Boundaries
-
-- 本地渲染通过现有 FFmpeg 队列执行。先写临时输出并验证，再以不替换已有文件的方式发布；不得覆盖源视频或用户已有输出，不得把未验证产物标为完成。
-- 模型请求仅发送现有约定的抽帧和创作上下文，不发送原视频、本地文件路径或凭据。API Key 不回传界面、不写入项目或浏览器存储，不在日志和错误消息中泄露。
-- ChatGPT 登录状态使用应用独立目录；不得读取或改写全局 Codex 登录状态。CC Switch 迁移只读，不能复制 OAuth token 充当 API Key，也不能写回外部数据库。
-- 产品 Agent 只返回方案，不得执行其发出的工具、命令或权限请求。保持现有禁用工具和隔离会话边界；升级 Codex runtime 时必须核验真实运行时的工具暴露情况。
-- 运行中的模型请求不得切换连接。取消与退出必须停止对应任务；重启不能自动恢复尚未完成分析的任务并发起模型请求。测试不能擅自使用用户真实账号或商业服务额度。
+- 复用 Contract Index 的 canonical owners：共享 schema 准入、原制作生命周期、源知识 store、模板 compiler、原导出 queue 与 ArtifactVerifier；不建立第二套文字来源、模型选择器、队列、批准或任务生命周期。前端状态不代替主进程校验，预览与导出遵守同一冻结模板。
+- 原视频不擦除改写；输出先写临时文件并验证，再无覆盖发布。不得覆盖源片/已有输出，失败产物不得标 completed。
+- 模型只接收约定抽帧与创作上下文，不发送原视频、本地路径或凭据。Key 不进 renderer、项目、浏览器存储、日志或错误；ChatGPT 使用应用独立目录，不读写全局 Codex 登录。CC Switch 只读，OAuth token 不当 API Key，不回写外部库。
+- 产品 Agent 只返回方案，不执行其工具、命令或权限请求；保持禁用工具及隔离会话。升级 Codex runtime 必须核验真实工具暴露；运行中不切换连接，取消/退出停止对应请求，重启不自动恢复未完成分析。测试不得擅用真实账号或额度。
+- 已知源知识争议、完整性未知、非法/无效主管修订和 unknown outcome 均失败关闭；显式重新检查不清争议、不变 manual/assisted 草稿或绕过模型准入。[Source Knowledge](docs/source-sticker-knowledge-spec.md) 独占源事实复用合同。
 
 ## Verification And Completion
 
-- 在声称工作已完成、问题已修复或检查已通过，以及执行 commit 或创建 PR 前，MUST 显式读取并执行 current runtime 提供的 `verification-before-completion` skill；所有结论必须基于与当前 working-tree/runtime 状态一致的 fresh verification evidence。若该 skill 不可用，仍 MUST 执行同等 gate 并明确报告缺失能力。
-- 行为变更必须提供相关可执行证据；价格准入优先检查 [product-price.test.ts](tests/product-price.test.ts)，价格图层与模型文字边界检查 [agent-provider.test.ts](tests/agent-provider.test.ts)。跨制作与导出流程的变更还需相关 integration tests。
-- 代码变更运行 `npm run typecheck` 和受影响测试；构建、打包或 Electron 集成变更运行相应检查。非微小界面行为变更应验证实际交互，桌面 smoke 的运行方式见 README。
-- 区分 schema/unit tests、模拟服务集成、真实模型调用、真实 FFmpeg 导出与人工观看。缺少引擎、字体、平台或账号时明确报告跳过与未验证部分；测试通过不能代表商业服务、Windows 实机或成片质量已验收。
-- “已完成”仅证明输出与文件校验完成，文案事实和最终画面效果仍需播放确认。
-- 交付前检查最终 diff，仅提交当前任务文件，保留无关改动；说明修改内容、实际验证与剩余限制。文档修改检查引用与规则一致性，不为纯文档变更制造无关测试或运行记录。
+- 声称完成/修复/通过、commit 或 PR 前必须读取并执行 current runtime 的 verification-before-completion；证据须对应当前工作树/运行状态。行为变更做相关可执行验证，代码变更跑 typecheck 与受影响测试；非微小 UI 验证实际交互，构建/集成跑对应检查。
+- [Harness Contract](docs/video-validation-harness-spec.md) 与 [policy](.agent/harness/policy.json) 独占检查路由、命令及回执。使用 owned scope 与对应 receipt 做 completion；unknown/unmapped、缺/旧证据、必需 skip 或 required=false 不能 PASS，声明 scope 不证明作者归属。验证器只读，不自动维护、请求模型或提交生产任务。
+- 区分 schema/unit、假服务、真实模型、FFmpeg fixture、Windows 实机、平台行为及人工观看。自动帧/音轨/文件验证不证明整片 coverage、音频内容或视觉验收；“完成”只证明输出文件验证，最终画面与文案仍需播放确认。缺环境明确未评估。
+- 交付检查最终 diff，保留其他会话改动，仅 stage/commit 本任务文件或对应 owned hunks，并报告内容、实际证据和限制；纯文档检查引用与语义，不制造无关测试/运行记录。
 
 <!-- aoci:begin -->
 ## AOCI Cognition
 
-- 本文件是项目规则来源；`aoci.txt`、`aoci.meta.txt`、`aoci.code.txt` 是项目级语义索引，不建立第二套产品规则。AOCI cognition 永远不是 `source of truth`，只能提供待核对的线索。
-- 修改前读取 AOCI 理解职责、关系与约束仍按任务需要决定；简单任务不必为流程完整读取全量认知。这不免除修改后的强制维护。
-- 具体 symbol、调用与依赖关系用 CodeGraph 核对，当前实现以源码为准，行为以测试与 `verification-before-completion` 为准。AOCI 与本文件或当前源码冲突时，重新调查并刷新相应 cognition，不静默采用旧索引。
-- 每次修改代码后，MUST 以本轮实际修改、新增或删除的文件清单逐项核对 AOCI；受管理对象在该轮修改稳定后立即按当前 AOCI Guide 与工具合同维护对应条目和源码基线，并在提交、最终交付或交接前完成 Verify、Check、Guide。测试、配置、文档和规则修改同样适用，包括本文件；无需用户提醒。再次修改受管理对象，MUST 重新维护。observe/exclude 对象按现有 scope 处理，不擅自扩大索引范围；已对齐对象不制造重复写入。AOCI 校验不替代行为验证或 `verification-before-completion`。
-- AOCI 维护归属于产生变更的 session：哪个 session 的 Agent 修改、新增或删除了文件，就 MUST 由该 session 的 Agent 直接维护对应 AOCI 条目与源码基线，不得推给用户或其他 session，也不得询问用户是否维护、是否授权或由谁维护。对应共享索引与基线的必要更新已获授权，不因它们属于共享文件而触发用户确认；Agent MUST 按工具合同的 CAS、原子写入与恢复流程自行处理并发，冲突时重新读取并在有界预算内重新领取批次，不得覆盖其他 session 的维护结果。此授权仅适用于对应 AOCI 维护，不允许修改其他 session 的业务文件。
-- MUST 分别逐项核实本轮修改对象的维护结果与全库治理状态；MUST NOT 仅因无关文件存在漂移、其他任务未结束或全库检查失败，就跳过、延后或以「已运行维护命令」替代本轮维护。维护仍须遵守当前工具合同的完整机器批次、CAS 和文件所有权。确有工具不可用、本轮源码未稳定、完整批次含未授权对象或共享索引写入冲突等真实阻碍时，MUST 明确列出尚未维护的本轮对象、阻碍与剩余工作；不得越权写入、截断批次、静默跳过或宣称已对齐。
-- 正式索引 `aoci.txt`、`aoci.meta.txt`、`aoci.code.txt` 及必要的 `.aoci/` 配置与基线可以随对应源码提交 Git；提交前核对路径内容、受管理源码快照并完成当前 Guide 要求的校验。`.aoci/` 运行状态、缓存、日志及机器专用 MCP 配置不得提交。
+- aoci.txt / aoci.meta.txt / aoci.code.txt 只是语义索引，不建立规则 owner。关系用 CodeGraph 核对，认知冲突时调查刷新，不静默用旧索引。
+- 每次代码、测试、配置、文档或规则变更稳定后，产生变更的 session 必须逐项核对 AOCI role，直接维护 indexed 对象的 Entry / baseline；observe/exclude 按当前 scope 处理，不扩大索引。再次改动则重新维护，不能推给用户或其他 session，已对齐不重复写。
+- 对应共享索引/基线维护已授权，按当前官方 Guide、完整机器批次、CAS、原子写入及有界恢复保留其他会话结果；不得截断批次或越权改业务文件。本轮对象逐项证明与全库治理分别报告，无关 drift 不免本轮维护；未知版本、恢复/冲突、工具不可用或真实 ownership 阻断须列明未维护对象和剩余工作，不假称对齐。
+- 提交/交付/交接前完成官方 Verify、Check、Guide。正式索引及必要配置/基线可随对应源码提交，运行状态、缓存、日志和机器 MCP 配置不提交。
 <!-- aoci:end -->

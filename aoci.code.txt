@@ -3,7 +3,7 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖、构建输出、日志、Harness回执及CodeGraph本机索引 | R:code:AGENTS.md | A:正式AOCI文件不在根目录忽略表中；.aoci目录由自身白名单排除运行资产 | S:-
-AGENTS.md[SC9T]: F:规定项目权威、任务聚焦、模型选择、产品不变量及交付门禁 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/source-mask-admission.ts,code:src/main/queue.ts | A:展示文字整批手填、逐素材开关位置；冻结重试不改稿；变更session直接维护对应AOCI条目基线，不询问用户，交付前Verify/Check/Guide；跨模板精确条数；覆盖只做必要工程验证；make frontend验收不讨论安装包，用户要求打包发布除外 | S:源mask不授输出准入；形状须全轮共同候选、同冻结字节、逐输出100%覆盖及内容安全，缺证据UNSAFE不回退；关闭文字无图层；共享索引必要更新已授权，CAS及有界恢复保留他session结果，不授权改其业务文件；完整批次不可截断，无关漂移不免本轮维护；覆盖仅gpt-6.1-sol/gpt-6-luna，核验不扩型号；测试提交不代替交付
+AGENTS.md[SC9T]: F:规定项目权威、产品不变量、canonical owner及交付边界 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/queue.ts,code:.agent/harness/policy.json | A:按Contract Index路由详细合同；手填文字、本地随机无模型、冻结重试；make frontend沟通；owned scope及receipt完成；变更session直接维护AOCI | S:shape保持PRODUCT_DISABLED且缺证据UNSAFE，不回退其他输出证明；覆盖开发GPT仅gpt-6.1-sol/gpt-6-luna；共享索引已授权但完整批次/CAS保护其他会话，不授业务写入；工程证据不替代真实平台或人工验收
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx,code:src/main/nvenc-admission.ts | A:typecheck、Vitest、Harness与安装包入口；Playwright固定运行依赖external；proper-lockfile提供跨进程启动锁 | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态
@@ -12,18 +12,22 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7T]: F:定义代码回归与媒体核验的必需检查、超时和容差 | R:code:src/harness/types.ts,code:src/harness/cli.ts,code:src/harness/media.ts | A:Harness读取策略生成回执；上传组覆盖账号设置、专用浏览器、页面及持久合同 | S:必需项缺证据不可PASS；隔离通过不授权真实上传或确认
+policy.json[FQ7L]: F:声明代码媒体治理检查与任务路径路由 | R:code:src/harness/types.ts,code:src/harness/routing.ts,code:src/harness/code.ts,code:src/harness/cli.ts | A:v1兼容；v2按defaultCheckIds执行核心组，scoped从全registry取必需并集及合同 | S:研究及平台检查按实际路径触发；必需skip或缺证据非PASS，回执不授生产或人工验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
 service.ts[IN7M]: F:验证、限流并持久化Bug反馈，再向GitHub Issues提交或核对结果 | R:code:src/shared/bug-feedback.ts,code:src/feedback-server/index.ts | A:GET health和截图、POST反馈；按feedbackId与指纹保持幂等 | S:上游提交结果不明时保留pending并查询既有Issue，不盲目重发；令牌和错误需脱敏
 
 ===/home/reggie/vscode_folder/jianji/src/harness/===
-cli.ts[EQ6S]: F:解析Harness code/media命令、加载策略并生成本轮结果 | R:code:src/harness/code.ts,code:src/harness/media.ts,code:src/harness/run.ts,code:src/harness/types.ts | A:从仓库策略与显式媒体输入启动单次运行，返回聚合退出码 | S:输入错误与缺证据归NOT_EVALUATED
-code.ts[TQ7S]: F:运行固定typecheck和Vitest组并核验报告中的文件与断言 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:逐项产出含命令与测试报告的检查证据 | S:必需测试未发现、skip或报告不一致不可PASS
+cli.ts[EQ6S]: F:解析Harness code/media/control/verify入口并保存结果 | R:code:src/harness/code.ts,code:src/harness/media.ts,code:src/harness/run.ts,code:src/harness/routing.ts,code:src/harness/completion.ts | A:可按显式scope选检查；control返回治理证据；verify核验已有回执而不重跑命令 | S:输入错误与缺证据归NOT_EVALUATED
+code.ts[TQ7S]: F:执行选定代码检查并核验结构化Vitest与治理结果 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:固定命令绑定日志与退出信息；核对文件集、断言及控制回执 | S:必需测试缺失、skip或报告不一致不可PASS
 media.ts[TQ8L]: F:按冻结批次检查源片和成片的身份、解码、规格、时长、帧率、音轨与文字 | R:code:src/harness/run.ts,code:src/harness/types.ts,code:src/main/domain.ts | A:只读解析项目或队列并输出源片与成片定位帧 | S:VFR或时间戳不可靠时NOT_EVALUATED；定位帧不等于人工观看
-run.ts[RQ8M]: F:管理Harness独立运行目录、进程超时中断、日志和原子回执 | R:code:src/harness/types.ts,code:src/harness/cli.ts | A:捕获工作区身份并将策略快照与命令证据绑定到run | S:所有回执的visualReview固定NOT_EVALUATED；中断或工具缺失不得PASS
-types.ts[CQ7T]: F:定义Harness策略、检查结果与三态聚合Schema | R:code:src/harness/code.ts,code:src/harness/media.ts,code:src/harness/run.ts | A:PASS、FAIL、NOT_EVALUATED映射退出码0、1、2 | S:必需项有NOT_EVALUATED时聚合结果不能PASS
+run.ts[RQ8M]: F:管理Harness运行目录、进程预算、日志与冻结回执 | R:code:src/harness/types.ts,code:src/harness/scope.ts,code:src/harness/cli.ts | A:保存策略与scope字节，绑定检查产物，运行前后验证参与身份 | S:visualReview固定NOT_EVALUATED；中断、工具缺失或参与源码变化不可PASS
+types.ts[CQ7M]: F:定义三态结果、版本化检查策略、文件scope与路由Schema | R:code:src/harness/code.ts,code:src/harness/routing.ts,code:src/harness/run.ts | A:校验路径、前后像类型、唯一检查与路由引用；聚合必需项退出码0/1/2 | S:缺失或未知结果不可PASS；已知必需失败仍为FAIL
+completion.ts[TQ7S]: F:只读重验scope回执与当前源码、策略、合同和产物 | R:code:src/harness/scope.ts,code:src/harness/routing.ts,code:src/harness/governance.ts,code:src/harness/code.ts | A:核对选择检查及命令、哈希、报告；刷新文档与本轮AOCI证明 | S:不执行回执内命令；缺冻结产物或字节失配拒绝完成
+governance.ts[TQ7L]: F:核验本轮文档引用与AOCI治理证据 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:检查本地引用及GitHub锚点；调用官方scope、manifest、Verify、Check、Guide；区分本轮对象与全库漂移 | S:治理快照不一致或recovery时不证明本轮对齐；observe与exclude不伪造索引
+routing.ts[CQ6T]: F:按本轮文件集合匹配策略中的必需检查和合同 | R:code:src/harness/types.ts,code:src/harness/cli.ts | A:聚合全部匹配路由并保持策略顺序；校验改动测试被选定Vitest覆盖 | S:未映射路径、空检查或可选检查直接拒绝
+scope.ts[CQ7M]: F:验证任务拥有文件的Git前后像并捕获参与证据身份 | R:code:src/harness/types.ts,code:src/harness/run.ts | A:拒绝越界和符号链接；冻结声明；绑定源码、合同与策略，源码树排除Python缓存目录 | S:不从全库dirty状态推断ownership；声明字节须匹配baseCommit和当前磁盘
 
 ===/home/reggie/vscode_folder/jianji/src/main/===
 agent-controller.ts[AW9L]: F:准入并编排制作和显式进程内形状覆盖入口 | R:code:src/main/agent-runner.ts,code:src/main/shape-cover-production.ts,code:src/main/shape-cover-activation.ts,code:src/main/queue.ts,code:src/main/agent-provider.ts | A:startInternal验证输入及目录、按requestedCount选素材；本地或模型准备；shape过滤共同目录后取得真实摆放图片交shortlist | S:shape产品入口关闭且先于外部请求；显式接缝无IPC；全部mask先于预览；本地manual和random无需模型；不采用目录外或空选款，上传失败不回滚导出
@@ -216,3 +220,6 @@ batch-production.ts[CW6T]: F:定义跨模板输入运行记录与商品作品详
 
 ===/home/reggie/vscode_folder/jianji/src/types/===
 sql-asm.d.ts[AB7T]: F:声明sql-asm模块的TypeScript类型 | R:code:src/main/source-sticker-knowledge-store.ts | A:第三方类型桥接 | S:不实现持久逻辑
+
+===/home/reggie/vscode_folder/jianji/runs/20261002-agents-harness-implementation/===
+task.json[FQ4T]: F:封装产品规则断言覆盖调查 | R:code:.agent/harness/policy.json | A:限定测试及设计阅读，查实际断言而非文件名，parent裁决 | S:-

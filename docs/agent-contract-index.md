@@ -63,7 +63,7 @@
 | P13 | [Decoration P13](decoration-production-contract.md#p13) | contract-owner；可执行部分按 policy |
 | P14 | [Decoration P14](decoration-production-contract.md#p14) | contract-owner；可执行部分按 policy |
 | P15 | [Decoration P15](decoration-production-contract.md#p15) | contract-owner；可执行部分按 policy |
-| O01–O04 | Production Owners / AGENTS ownership | contract-owner / keep-root |
+| O01–O03 | Production Owners / AGENTS ownership | contract-owner / keep-root |
 | D01–D05 | AGENTS Safety Boundaries | keep-root |
 | V01–V06 | AGENTS Completion / Harness contract | keep-root / executable-check |
 | C01–C07 | AGENTS AOCI / 官方 Guide | keep-root / executable-check；不复制 machine contract |

@@ -11,6 +11,7 @@ const electron = vi.hoisted(() => ({
 }));
 vi.mock("electron", () => ({
   app: { requestSingleInstanceLock: () => true, whenReady: async () => {}, getPath: () => electron.directory,
+    commandLine: { appendSwitch: vi.fn(), hasSwitch: () => false },
     on: (name: string, callback: (event: { preventDefault(): void }) => void) => { electron.events.set(name, callback); },
     quit: () => electron.events.get("before-quit")?.({ preventDefault() {} }), exit: electron.exit },
   protocol: { registerSchemesAsPrivileged() {} }, BrowserWindow: class {}, dialog: { showMessageBox: electron.showMessageBox }, ipcMain: {}, nativeImage: {}, shell: {},

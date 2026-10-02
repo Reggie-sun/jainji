@@ -1,19 +1,19 @@
 ---
 title: AGENTS Rule Reduction And Harness Governance Implementation Plan
-status: planned
-execution: not_started
-version: 1.0
+status: blocked
+execution: blocked_concurrent_source_writes
+version: 1.1
 date: 2026-10-02
 baseline: 7d4c7a8ed45e1e1734ed7344456af01fdde18983
 ---
 
 # Goal And Scope
 
-按 [Spec](../specs/2026-10-02-agents-harness-governance-design.md) 分阶段接通规则的工程检查与任务证据，最后将 `AGENTS.md` 减重。当前仅交付 Spec / Plan，六个 milestone 均未实施；后续获得实现指令后才执行。
+按 [Spec](../specs/2026-10-02-agents-harness-governance-design.md) 分阶段接通规则的工程检查与任务证据，最后将 `AGENTS.md` 减重。用户于 2026-10-02 明确要求完成本 Plan，实施已获授权；实际 checkpoint 与证据见 Execution Record。
 
 **Contract Surfaces:** 现有 code/media CLI、policy v1 兼容、新 scoped code / verify CLI、scope v1、receipt v2、AOCI 官方结构化证据、根规则与产品合同导航。
 
-**Invariants:** schema / production owners 不变；零真实模型请求；保留原视频、冻结重试、未知结果停止、凭据隔离、PRODUCT_DISABLED、AOCI session 自行维护及用户上传贴纸例外；不把技术测试升级成视觉/平台验收。
+**Invariants:** schema / production owners 不变；零真实产品模型请求；受管开发委托沿用既有 standing authorization；保留原视频、冻结重试、未知结果停止、凭据隔离、PRODUCT_DISABLED、AOCI session 自行维护及用户上传贴纸例外；不把技术测试升级成视觉/平台验收。
 
 **Current / Target Behavior:** 当前依靠长根规则与固定测试集合；目标是短根入口、单一产品合同 owner、按 owned change 路由检查、当前源码对应的回执及只读 completion verification。
 
@@ -73,6 +73,8 @@ baseline: 7d4c7a8ed45e1e1734ed7344456af01fdde18983
 **Contract:** 实现 Spec R02、R03、R04 与 R08 的 scoped code 部分；暂不开放 `verify`。policy v2 按固定检查 ID、paths、documentRefs 选择，v1 无 scope 运行保持兼容。源码快照与 ownedChanges 分开，不将其他 session 的参与源码隐藏，也不因无关文档/AOCI 时间戳改变使代码证据自动失效。
 
 **Implementation:** 为所有当前 source / test / script / policy / config / docs / rule / resource 类别设置路由；共享 schema、compiler/queue、Harness 本身采用保守组合。路径标准化与 NUL Git 输出读取正确处理空格、Unicode、add、delete、rename 和 untracked。必需集合非空且 caller 无权缩小；未知路径显式未通过。
+
+**Scoped / Core Selection:** v2 `defaultCheckIds` 是 policy 独占的 required 核心 ID 集合；缺字段时兼容全部 code checks。完整 registry 中的研究 / 平台专项仍按实际路径触发，scoped 并集不受默认集合限制。完整核心检查不声称 Windows 专项已运行，相关必需 skip 继续失败关闭。
 
 **Acceptance:** 相同 scope/policy 得到确定的 selected checks；多路匹配只运行一次；空 scope、伪 hash、越界、遗漏类型、未知 check ID、unmapped、selected required=false 均拒绝。运行中的参与源码变化无效；无关 docs/index 改动不误称 source_changed。旧 CLI 与 v1 policy 用 fixture 验证。
 
@@ -158,10 +160,37 @@ Parent 比较最终 diff 与迁移清单，读取并执行 `verification-before-
 
 # Execution And Handoff
 
-后续执行始终在当前工作树内，先检查 Git 与精确 target ownership；每阶段维护本次 AOCI、做相关 verification、task-only commit。源码未稳定或必要证据缺失时不标该阶段完成。阶段记录更新本 Plan 的状态与对应 receipt 路径，不复制完整运行日志；运行证据仍由既有 Harness runs 与相关官方 receipt 保存。
+执行始终在当前工作树内，先检查 Git 与精确 target ownership；每阶段维护本次 AOCI、做相关 verification、task-only commit。源码未稳定或必要证据缺失时不标该阶段完成。阶段记录更新本 Plan 的状态与对应 receipt 路径，不复制完整运行日志；运行证据仍由既有 Harness runs 与相关官方 receipt 保存。
 
-本轮仅规划，仓库未发现专用 session-record/capture skill；不制造实施记录、假 PASS 回执或无关运行任务。后续若规则/技能环境变化，按当前 completion contract 再评估。无需为既有 Spec/Plan self-review增加独立 reviewer；后续实现 review遵守风险 gate。
+仓库未发现专用 session-record/capture skill；实施证据由本 Plan 和原 Harness / AOCI receipts 承接。无需为既有 Spec/Plan self-review增加独立 reviewer；implementation review遵守风险 gate。
+
+# Execution Record
+
+- M0：`05a4a3d` 承接迁移前全部 15 条 Product Invariants，建立合同导航；原 `AGENTS.md` 完整保留。逐条语义与相对链接检查完成。
+- M1 / M4 的共享 CLI、receipt 与 control 接缝同时实现，避免存在可输出 scoped PASS 却没有治理控制的中间入口；里程碑仍分别按合同验收。
+- 受管 Kimi mapping：invocation `194ce4b5-d595-4993-94ec-cfc1e6dda60f`，qualified Docker `deep` route，机械观察为 `k3[1m] / max`。这是测试调查，不是 implementation review 或 acceptance。Parent 核对实际断言：文字、random、数量、冻结/取消、主管预算、批准幂等、独立 auth/runtime 隔离已有对应 tests；limited readset 的缺口建议不等于仓库缺测试。
+- M1：scope v1 校验真实 Git blob / 当前后像、add/modify/delete、rename 双项、Unicode/空格路径、symlink 和越界拒绝；policy v2 按全部匹配项求必需并集。当前全部 TypeScript tests 已登记，新增测试必须选择包含自身的 Vitest 组。无 scope 的核心默认集合与研究/平台专项 registry 分开，相关必需 skip 继续非 PASS；该 refinement 已同步 Spec 与 self-review。
+- M2 / M3：核心文字、数量、冻结/取消、随机、四角时段、原队列输出、凭据隔离与 shape 拒绝检查已接入。扩大 registry 实跑保留失败回执 `20261002T115322Z-88b97216`：暴露的旧 `knowledge-startup` Electron mock 缺少 `app.commandLine`，经真实失败重现后只补 mock，未改 production owner；Linux 上的 live-library / Windows 三项 skip 未伪装通过，专项按实际路径触发。
+- M4：真实只读 docs code / verify 回执 `20261002T120319Z-e1beb176` / `20261002T120344Z-b564caa0` 验证入口；后续文档变化使旧证据需要刷新。completion tests 包含 v1/RUNNING/缺证据、scope/policy/source/report 字节失配与相同字节 commit、文档-only / mixed-source、截断 control JSON、无写入/无重跑的 CLI 反例。官方审计产生的 exclude inventory 数量变化不再伪造 source drift，结构/policy/源身份变化仍阻断。
+- M5：15 条 Product Invariants 完整迁移，仅调整相对链接；root 为 28 条、7,991 bytes，CLAUDE 为指针。用户授权 README 只更新 Harness 说明，千川段落保留。parent 已核对最终业务 diff、migration ledger、产品例外、旧冻结解释及唯一 owner。
+- 正式 AOCI：已按完整机器批次维护并通过官方 Verify / Check / Guide，Guide complete 且无待处理 recovery；本轮 indexed 对象逐项核对，observe/exclude 不扩 scope。用户已授权完整批次中其他会话对象仅读取并维护 Entry / baseline，业务改动保持原样。Git 仅投影本轮 Entry 与对应源码 baseline hunks，不提交其他会话业务或条目；正式工作树资产由官方工具维护。
+- 旧无 scope 核心实跑 `20261002T121503Z-46729a0a`：typecheck 及 1,133 个测试逐项 PASS、零 skip，但运行期间另一会话提交使旧 Git 身份变化，最终为 NOT_EVALUATED。不把逐项 PASS 改写成该回执完成；本轮继续使用绑定参与源码实际字节的 scoped 证据。
+- mixed-source 冻结实跑 `20261002T122812Z-d5e426cf`：核心 typecheck / 1,133 tests PASS，完整回执 FAIL。运行中 `governance.ts` / `harness-governance.test.ts` 新增字节使 scope 与官方 source manifest 失效；原 checker 将标题的多个空格合并，误拒绝 README 的正确 GitHub anchor。随后工作树中的 checker 已保留逐个空格，真实 docs control 重新核对 7 份文档 PASS。仍须确认这两个文件的最终写入归属、核对新增改动、完成对应 AOCI 维护并冻结新 snapshot；不得复用前述失败回执宣布 completion。
 
 # Self-Review
+
+## Current Verification Checkpoint
+
+用户已授权本轮接管 `governance.ts` / `harness-governance.test.ts` 的新增 anchor 修复，保留并逐行核对；也已授权保留另一会话新增 policy 路由并仅提交本轮 Harness 改动。`20261002T123954Z-1b0e700c` 保留 FAIL：千川进程断言失败、shape 检查超时以及运行期间 policy/source 变化；`20261002T124905Z-fb7422cf` 因 README 后像改变而在执行前拒绝，`20261002T124941Z-901d994e` 在新的参与源码变更后显式中断，终态 NOT_EVALUATED。它们均不是 completion 证据。千川进程定向复跑 9/9，但不替代完整稳定快照的测试。
+
+`20261002T131150Z-7a25d336` 和 `20261002T132117Z-50da341d` 的参与源码分别被千川/shape 后续写入改变，均仅中断本轮拥有的 Harness 进程、保留 NOT_EVALUATED 回执；未停止用户应用、导出或其他会话检查。稳定窗口后启动的第三个最终候选为 `implementation-candidate-v6-scope.json`，其前像仍绑定 M0 commit，后像为实际共同工作树字节；不得使用之前的失效回执批准该候选。完成仍须完整 code 及独立 verify 证明。
+
+最终候选 `20261002T132746Z-ded5f130` 又遇到 `shape-cover-static-holdout.py`、`shape-cover-static-truth-tool.py` 及两项 Python tests 的后续写入。typecheck 和已结束的 955 个核心断言零失败、零 skip；shape 检查显式中断、治理控制未执行，receipt 为 NOT_EVALUATED。第三次最终窗口失效后停止重复全量测试，不扩大读取/写入权、不降低依赖快照或 gate、不停止其他会话任务。M0–M4 实现与 M5 入口修改可保存为 implementation checkpoint，M5 最终验收未完成。
+
+Implementation Review Risk Gate 暂缓至 project-native 完整验证成功；Kimi mapping 不替代 final review，不对未通过 completion 的快照制造 reviewer acceptance。剩余工作是：参与源码稳定后冻结新的 owned scope，完整 code PASS、只读 verify PASS，再按 stable candidate 判断 Risk Gate、更新本 Plan 完成状态。当前根入口仍保留全部长期红线与唯一合同导航，源码变动会使完成证据失效。
+
+Checkpoint 收尾重新运行 typecheck 和 6 个 Harness suites（81/81，零 skip），报告位于 `manual-governance-proof/native-checkpoint/vitest.report.json`。真实 readonly `owned-aoci` 重新逐项证明 20 个 scope 对象 PASS，官方 Verify / Check / Guide 的本轮证据位于同目录 `owned-aoci.json`；没有以其他会话变化为由跳过本轮维护。真实 verify `20261002T133826Z-1fbc64c9` 正确拒绝最后的 NOT_EVALUATED code receipt。这里只是验证 checkpoint 和 fail-closed 行为，不能升级为完整 code / completion PASS。
+
+缓存回归已 red/green：新建或改变 `scripts/` / `tests/` 的 `__pycache__` 不再改变 scoped source identity，真实 `.py` 内容改变仍使身份失效；符号链接和 owned 路径校验保持原拒绝条件。typecheck 通过，scope 套件 14/14。另一会话新增专项曾重复登记 3 个既有测试，导致 6 个 Harness 套件中 13 项失败；用户随后明确授权本轮修复并随 Harness 提交。新专项保留新增测试，路由复用既有 shape / extended 检查 ID，原四项测试仍必需，未放宽 schema。修复后 6 个 Harness 套件 81/81、零 skip；AOCI 两个候选完整 Apply aligned，官方 Verify / Check aligned、Guide complete / none。全库批次因另一会话维护发生 CAS 零写入拒绝时重新读取领取，没有覆盖共享结果。
 
 已覆盖全部 R01–R09 与 AC01–AC10；每阶段有精确职责、依赖、验收、verification 和 rollback。先承接合同与检查，最后减重；旧入口、shared dirty tree、AOCI ownership、开发/产品模型边界及人工验收均有明确处理。没有把计划完成、Kimi mapping、测试文件名或未来 gate 当成已实施/已验收。

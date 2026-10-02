@@ -34,14 +34,14 @@ function resolvedTestFiles(repoRoot: string, files: readonly string[]): Set<stri
   return new Set(files.map((file) => path.resolve(repoRoot, file)));
 }
 
-async function evaluateVitest(
+export async function evaluateVitest(
   check: Extract<CodeCheckPolicy, { kind: "vitest" }>,
   reportPath: string,
   processResult: Awaited<ReturnType<HarnessRun["command"]>>,
   repoRoot: string,
 ): Promise<Pick<HarnessCheckResult, "status" | "category" | "message" | "evidence">> {
   const processOutcome = outcomeForProcess(processResult);
-  if (processResult.timedOut || processResult.interrupted || processResult.error) return processOutcome;
+  if (processResult.timedOut || processResult.interrupted || processResult.error || processResult.outputTruncated) return processOutcome;
   let report: z.infer<typeof VitestReportSchema>;
   try {
     report = VitestReportSchema.parse(JSON.parse(await readFile(reportPath, "utf8")));
@@ -114,24 +114,35 @@ async function evaluateVitest(
   return { status: "PASS", message: `${counts.passed} tests passed with no skipped tests.`, evidence };
 }
 
-export async function runCodeChecks(policy: HarnessPolicy, run: HarnessRun, signal?: AbortSignal): Promise<HarnessCheckResult[]> {
+export async function runCodeChecks(policy: HarnessPolicy, run: HarnessRun, signal?: AbortSignal, selectedChecks: readonly CodeCheckPolicy[] =
+  policy.schemaVersion === 2 && policy.defaultCheckIds
+    ? policy.codeChecks.filter((check) => policy.defaultCheckIds!.includes(check.id)) : policy.codeChecks,
+): Promise<HarnessCheckResult[]> {
   const results: HarnessCheckResult[] = [];
-  for (const check of policy.codeChecks) {
+  for (const check of selectedChecks) {
     const reportPath = check.kind === "vitest" ? path.join(run.logsDirectory, `${check.id}.report.json`) : undefined;
     const args = check.kind === "vitest"
       ? [...check.args, ...check.testFiles, "--reporter=json", `--outputFile=${reportPath}`, "--pool=threads"]
-      : [...check.args];
+      : [...check.args, ...(["documents", "owned-aoci"].includes(check.id) && run.scopePath ? ["--scope", run.scopePath] : [])];
     const processResult = await run.command(check.id, check.command, args, check.timeoutMs, signal);
-    const outcome: Pick<HarnessCheckResult, "status" | "category" | "message" | "evidence"> = check.kind === "vitest" && reportPath
+    let outcome: Pick<HarnessCheckResult, "status" | "category" | "message" | "evidence"> = check.kind === "vitest" && reportPath
       ? await evaluateVitest(check, reportPath, processResult, run.repoRoot)
       : outcomeForProcess(processResult);
+    if (["documents", "owned-aoci"].includes(check.id) && !processResult.timedOut && !processResult.interrupted && !processResult.error && !processResult.outputTruncated) {
+      try {
+        const control = z.object({ id: z.literal(check.id), required: z.literal(true), status: z.enum(["PASS", "FAIL", "NOT_EVALUATED"]), message: z.string(), category: z.string().optional(), evidence: z.record(z.unknown()).optional() }).parse(JSON.parse(processResult.stdout));
+        if (processResult.code !== (control.status === "PASS" ? 0 : control.status === "FAIL" ? 1 : 2)) throw new Error("Control exit status is inconsistent.");
+        outcome = control;
+      } catch (error) { outcome = { status: "NOT_EVALUATED", category: "control_report_invalid", message: String(error) }; }
+    }
     results.push({
       id: check.id,
       required: check.required,
       ...outcome,
       durationMs: processResult.durationMs,
       command: { executable: check.command, args },
-      evidence: { ...commandEvidence(check, args, reportPath), ...outcome.evidence },
+      evidence: { ...commandEvidence(check, args, reportPath), ...outcome.evidence,
+        process: { code: processResult.code, timedOut: processResult.timedOut, interrupted: processResult.interrupted, outputTruncated: processResult.outputTruncated, ...(processResult.error ? { error: processResult.error } : {}) } },
     });
     if (signal?.aborted) break;
   }
