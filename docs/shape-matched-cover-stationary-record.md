@@ -1,5 +1,59 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-B Static Range / Anomaly Classification — 2026-10-02
+
+依据 [M2-B plan](shape-matched-cover-m2b-plan.md)，本轮只回答M2-A的133个异常意味着什么。状态 **ANOMALIES_REPRODUCED / STATIC_GEOMETRY_OBSERVED_WITH_APPEARANCE_ANOMALIES / CAUSE_NOT_QUALIFIED / PRODUCT_DISABLED**。完整承诺仍为 `[0,6990)`；M1/M2-A源码、config、原receipt和3395px mask全部保持原字节。容差仍24，参数修订0，不缩范围、不做M3或mask qualification。
+
+### Measurement and Exact Replay
+
+新离线 `scripts/shape-cover-static-anomalies.py` 在本机工程环境使用NumPy/OpenCV/Pillow，不进入产品、不发行mask或authority。从原96代表帧按冻结算法重建 **2082px undilated support**、min/max与3px dilation；后者生成mask的bbox628/1/81/59、3395px及bitpack SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893`逐字节一致。算法重放是诊断接缝，不是独立边缘truth或新extractor。
+
+同应用FFmpeg（SHA `f8e3453ae7b5681ad659d880a9b58b1afe87c0952e94c5db4023cdb2a8816a2d`）CPU-only解码原ROI615/0/105/76。96建模帧与完整6990帧分别双pipe核对RGBA SHA、framehash、ordinal、PTS/endPTS与timeBase1/15360；源SHA `a18f7e4e5fc02e5db977d9074be35ce82a296d247194205e9cf88e1ac76fc0bf`前后不变。全部133个异常的ordinal、changedSupportPixels与worstDifference与M2-A完全相同。
+
+异常条件为每个support像素RGB超出**代表样本**逐通道min/max后，最大通道越界量>24。它不是目标位移、遮挡或mask漏失检测器；3px dilation ring及未进入support的像素不参与该判据。下述“边界/内部”均指support的棋盘距离，不能等同独立target alpha边界。
+
+### Temporal and Spatial Classification
+
+| Observation | Fresh result | Meaning |
+| --- | --- | --- |
+| 全范围 | 6990帧；133异常 / 6857无异常 | 无异常只表示没有违反冻结RGB判据，不签static范围PASS。 |
+| 严格连续异常段 | 61段；41单帧、9双帧、3三帧、2四帧、2六帧、其余9/10/11/15帧各一段 | 最长15帧即0.5s；不把分散异常合成目标失效区间。 |
+| 不同异常support像素 | 78px，共506次像素越界 | 不是133个目标移动/遮挡事件，也不是506个漏覆盖像素。 |
+| support边界第一层 | 72不同像素、492/506次（97.23%） | 变化主要集中在被算法纳入support的边缘位置。 |
+| 边界第二/三层 | 3/2不同像素，3/2次 | 共124帧全部异常像素距support边界≤3。 |
+| support第四层 | 同一个像素652/39，9帧 | `[3756,3765)` RGB恒为247/105/102；样本max222/117/96，R越界25、B越界6，只R超过24。 |
+| 局部整数位移观察 | 全6990帧、401px support core；25种±2px offset均以0/0最佳 | 有限平移假设下未见整数位移反证；不能证明无subpixel位移、形变、alpha变化或完整motion qualification。 |
+| 原始首尾异常 | ordinal233 / 3764 | PTS为119296 / 1927168，起点约7.7667s / 125.4667s。 |
+| 最后无异常观察段 | `[3765,6990)`，3225帧 | 107.5s观察段，不自动缩原233s承诺。 |
+
+`anomalies.json`逐帧保存全部超阈值源坐标、RGB、样本min/max、通道越界量与support距离；`ranges.json`保存全部61异常段及无异常补集，带精确PTS；每项causalClassification仍UNKNOWN。`support-traces.npz`保留2082px完整原RGB轨迹与sourceXY，`pixel-observations.json`保留78px完整min/max；这些都不作为required pixels。
+
+ordinal710：23px全部位于support边界第一层，worst57；ordinal715：17px也全部位于第一层，worst89。715最强点656/56实际RGB224/153/83、样本min173/170/172，B越界89；另一个强点631/31的B越界85。这些点在原图白色外轮廓/底缘附近呈现暖背景相关的偏色，未伴随联系图中贴纸位置或文字图案整体改变。**这是颜色与背景同时变化的观察，不能据此独立分解压缩串色、抗锯齿、半透明或背景贡献。**
+
+### Visual Inspection and Parent Judgment
+
+Parent实际检查全部16张original/overlay联系图，覆盖133异常及前后1帧、首中尾，共251原ROI观察；保留原PNG，并用nearest-neighbor放大帮助定位，不拿放大图当原像素truth。各异常段的文字、轮廓和位置保持近似相同，背景颜色/画面经常改变；未观察到目标被前景遮住、闪烁消失、持续位移或持续轮廓扩张。第二次final运行的全部16联系图与已检查v1逐字节一致。
+
+**结论：133帧直接证明冻结的稀疏RGB样本包络在完整范围内被违反；主要是固定图案边缘的局部颜色越界，加一个持续9帧的内部单像素轻微越界。当前证据不支持把它们直接分类成133帧目标移动/遮挡，也不足以全部认定为编码噪声。** 原static product定义允许编码外观变化，而这个development判据混合观察颜色与几何，不能独自决定target类别。STATIC_GEOMETRY_OBSERVED是限定观察，不是完整static资格。
+
+不批准缩短范围：原confirmation保留完整 `[0,6990)`。61异常段和无异常补集不恢复可用mask，不自动分segment，不删除失败帧。M2-A `REJECTED / FULL_RANGE_STATIC_CONTRADICTION`和REAL_MEDIA `INCOMPLETE / INDEPENDENT_REQUIRED_PIXEL_TRUTH_MISSING`保持；独立required/missed指标仍null。未观察到明显运动不证明required边缘完整，亦不解锁M3。
+
+如果后续继续，问题应限定为独立区分几何/边缘贡献与RGB外观变化的观测合同；任何判据修订都属于后续显式development版本，保留本轮失败，不能调24→40→80使本片过关。本轮到这里停止，不实施后续版本或资格。
+
+### Evidence, Verification and Boundaries
+
+本机Evidence根 `~/.local/state/jianji-source-fact-qualification/m2b-anomalies-20261002-final`（R），v1保留在同级 `m2b-anomalies-20261002-v1`。final诊断18.232s，parent peak RSS144,941,056 bytes（138.23MiB）、child peak100,687,872 bytes（96.02MiB，Linux wait4高水位），support轨迹内存43,659,540 bytes，无全片RGBA持久spool；诊断artifact约17.45MB。未测Windows、低端CPU或产品运行；不调用产品模型、不读取holdout、不做真实导出。
+
+受管Kimi deep只读核查冻结metric的语义、盲点与诊断边界；invocation `8c1cb97c-99cd-40ce-ab98-9ebb104c5005`，seal `def4d8fb903d29644da936995b050366928e3ee1446e829e18c831b7b2319c7a`、qualified route `4f2d5dc8-4234-4665-b382-e82f1ad6cc00`，PARSED、3 wire requests、277.178s、无retry。Parent核对三项observed Reads及report artifact SHA；接受“sample envelope不等于运动/遮挡”的源码结论。报告所称“diagnostic未存在”只发生在封存的3文件最小包，不能当host不存在；“static core”措辞按源码修正为undilated support（含边缘），未让其升级真实媒体因果判断。未追加最终review。
+
+按current verification-before-completion，fresh typecheck exit0，原static/activation **2 suites / 38 tests PASS**；新增Python诊断 **6 tests PASS**，含严格24/25边界、非矩形support、半开range不跨正常帧、构造整数位移、真实FFmpeg错SHA/PTS拒绝。Linux开发媒体完整绑定及上述两轮真实诊断成立；不得提升为mask资格或产品验收。
+
+Implementation Risk Gate **KIMI_REVIEW_NOT_REQUIRED**：无用户指定final review，无凭据/商业请求/production/durable业务写入；诊断错误受mask字节、全帧绑定和原异常逐项重放约束，不具有重大生产后果。剩余真实pixel/alpha因果缺口明确UNKNOWN，review不能替代truth；exact稳定脚本/test/doc hash随R保存。
+
+开始已有 `.aoci/baseline.json` / `aoci.code.txt` dirty及另一task的runs，期间另一窗口增加并提交Harness plan/spec，均保留。四个本轮业务对象逐项按现有AOCI scope为observe，不需正式Entry；本轮自有runs仅加本机Git ignore并在R保留，封存仍在repo runs，不增加runtime catalog。完整Verify/Check各exit1、Guide（`--agent codex`）complete=false，唯一blocking对象为foreign `runs/20261002-agents-harness-audit/task.json` missing/unbaselined；完整机器批次包含非本轮授权对象，故不越权创作或截断该批次，不把全库治理称aligned。原共享索引字节保留，不stage/commit。
+
+Repository无专用session-capture Skill；本节及R承接本轮stable checkpoint，不更新外部memory。交付只完成M2-B诊断；qualification和product依旧关闭。
+
 ## M2-A Static Target Mask Development — 2026-10-02
 
 按 [course-correction](shape-matched-cover-v1-simplification-spec.md) 和本轮 [M2-A plan](shape-matched-cover-m2a-plan.md)，状态为 **ENGINEERING_DEVELOPMENT / REAL_STATIC_QUALIFICATION_INCOMPLETE / PRODUCT_DISABLED**。用户本轮明确确认 233 秒原片右上“国货之光”、完整0–233秒；确认只确定身份与承诺范围，不确认mask或运动。本轮没有M1阈值修订、D2Q、动画、shape matching、placement、输出coverage、visual safety或activation。
