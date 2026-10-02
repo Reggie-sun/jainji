@@ -13,6 +13,7 @@ import type { AgentRun, AgentStartInput } from "../src/shared/agent";
 import type { QueueSnapshot } from "../src/main/queue";
 import { ProjectStore } from "../src/main/store";
 import type { QianchuanUploadSelection, UploadAuthorization } from "../src/shared/douyin-upload";
+import type { QianchuanAccountSummary } from "../src/shared/qianchuan-account";
 
 const entry = () => ({ recentProjectId: crypto.randomUUID(), requestedCount: 5, productPrice: "手动文字", coverEnabled: false, displayMode: "full" as const });
 const directories: string[] = [];
@@ -53,8 +54,15 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
     taskStatuses: () => new Map(tasks.map(task => [task.id, task.status])),
     cancelExport: vi.fn(async (id: string) => { const task = tasks.find(task => task.id === id)!; if (task.status === "running") task.status = "cancelled"; }),
     changed: vi.fn(),
-    preflightUpload: vi.fn(async (selection: QianchuanUploadSelection, count: number): Promise<UploadAuthorization> => ({ target: { product: selection.accountProduct,
-      cdpEndpoint: "http://127.0.0.1:9222", advertiserId: "123456", adId: "987654", configDigest: "a".repeat(64) }, pageBatchId: crypto.randomUUID(), expectedCount: count })),
+    uploadAccounts: vi.fn((_projectId: string): QianchuanAccountSummary[] => [
+      { product: "蝴蝶贴", advertiserId: "123456", adId: "987654", available: true },
+      { product: "氨糖膏", advertiserId: "223456", adId: "887654", available: true },
+    ]),
+    preflightUpload: vi.fn(async (selection: QianchuanUploadSelection, count: number): Promise<UploadAuthorization> => {
+      const account = dependencies.uploadAccounts("").find(account => account.product === selection.accountProduct)!;
+      return { target: { product: selection.accountProduct, cdpEndpoint: "http://127.0.0.1:9222", advertiserId: account.advertiserId,
+        adId: account.adId, configDigest: "a".repeat(64) }, pageBatchId: crypto.randomUUID(), expectedCount: count };
+    }),
     uploadStatus: vi.fn((_projectId: string, _taskIds: string[]) => ({ message: "fixture upload", tasks: [] })),
     cancelUploads: vi.fn(async (_projectId: string, _taskIds: string[]) => undefined),
     session: vi.fn(async (file: string, _authorization?: UploadAuthorization): Promise<BatchProductionSession> => {
@@ -87,6 +95,42 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it.each(["name", "target"])("rejects an account %s change during preflight before production", async change => {
+    const f = await fixture({ allComplete: true });
+    const preflight = f.dependencies.preflightUpload.getMockImplementation()!;
+    f.dependencies.preflightUpload.mockImplementation(async (selection, count) => {
+      if (change === "target") f.dependencies.uploadAccounts.mockReturnValue([{ product: "蝴蝶贴", advertiserId: "333333", adId: "444444", available: true }]);
+      const authorization = await preflight(selection, count);
+      if (change === "name") f.dependencies.uploadAccounts.mockReturnValue([{ product: "蝴蝶贴", productName: "其他商品", advertiserId: "123456", adId: "987654", available: true }]);
+      return authorization;
+    });
+    await f.controller.start({ entries: [{ ...f.entries[0], douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs[0].error).toContain("预检期间已变化");
+    expect(f.dependencies.session).not.toHaveBeenCalled(); expect(f.dependencies.outputDirectory).not.toHaveBeenCalled();
+  });
+
+  it("binds a renamed display name to its stable account slot before production", async () => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0].name = "晚安油";
+    f.dependencies.uploadAccounts.mockReturnValue([{ product: "眼贴", productName: "晚安油", advertiserId: "123456", adId: "987654", available: true }]);
+    const selection = { enabled: true as const, accountProduct: "眼贴" as const };
+    await f.controller.start({ entries: [{ ...f.entries[0], douyinUpload: selection }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.starts[0].douyinUpload).toEqual(selection);
+    expect(f.controller.snapshot()?.jobs[0]).toMatchObject({ name: "晚安油", accountProduct: "眼贴", status: "completed" });
+  });
+
+  it("lets separate templates with the same product name use the same matched account", async () => {
+    const f = await fixture({ allComplete: true });
+    f.projects[1].name = f.projects[0].name;
+    const selection = { enabled: true as const, accountProduct: "蝴蝶贴" as const };
+    await f.controller.start({ entries: f.entries.map(row => ({ ...row, douyinUpload: selection })) });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.starts.map(request => request.douyinUpload)).toEqual([selection, selection]);
+    expect(f.controller.snapshot()?.jobs.every(job => job.status === "completed")).toBe(true);
+  });
+
   it("projects saved per-media text switches in the same selection order used for production", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "jianji-batch-options-")); directories.push(root);
     const value = project("无文字模板", 2);
@@ -117,19 +161,19 @@ describe("cross-template batch admission", () => {
 
   it("preflights every selected account before production and keeps authorization out of saved projects", async () => {
     const f = await fixture({ allComplete: true });
-    const selection = { enabled: true as const, accountProduct: "蝴蝶贴" as const };
+    const selections = ["蝴蝶贴", "氨糖膏"].map(accountProduct => ({ enabled: true as const, accountProduct })) as QianchuanUploadSelection[];
     const start = f.dependencies.session.getMockImplementation()!;
     f.dependencies.session.mockImplementation(async (file, authorization) => {
       expect(f.dependencies.preflightUpload).toHaveBeenCalledTimes(2);
       return start(file, authorization);
     });
-    const run = await f.controller.start({ entries: f.entries.map(row => ({ ...row, douyinUpload: selection })) });
+    const run = await f.controller.start({ entries: f.entries.map((row, index) => ({ ...row, douyinUpload: selections[index] })) });
     await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
-    expect(f.starts.map(request => request.douyinUpload)).toEqual([selection, selection]);
+    expect(f.starts.map(request => request.douyinUpload)).toEqual(selections);
     expect(f.dependencies.preflightUpload.mock.calls.map(call => call[1])).toEqual([1, 1]);
     const authorizations = f.dependencies.session.mock.calls.map(call => call[1]);
     expect(authorizations[0]!.pageBatchId).not.toBe(authorizations[1]!.pageBatchId);
-    expect(f.controller.snapshot()?.jobs.map(job => job.accountProduct)).toEqual(["蝴蝶贴", "蝴蝶贴"]);
+    expect(f.controller.snapshot()?.jobs.map(job => job.accountProduct)).toEqual(["蝴蝶贴", "氨糖膏"]);
     for (const job of run.jobs) {
       const saved = await readFile(path.join(f.root, run.id, `${job.id}.json`), "utf8");
       expect(saved).not.toContain("douyinUpload"); expect(saved).not.toContain("pageBatchId"); expect(saved).not.toContain("cdpEndpoint");

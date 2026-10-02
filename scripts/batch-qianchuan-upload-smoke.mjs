@@ -38,6 +38,12 @@ try {
   const helperFile = path.join(directory, "helper.mjs");
   await require("esbuild").build({ entryPoints: [path.join(root, "tests/helpers/douyin-cdp-fixture.ts")], bundle: true, platform: "node", format: "esm", outfile: helperFile, external: ["playwright-core"] });
   const helper = await import(pathToFileURL(helperFile).href);
+  const fixtureChrome = path.join(directory, "fixture-chrome");
+  const chromeExecutable = await helper.resolveChromeExecutable();
+  await writeFile(fixtureChrome, `#!/bin/sh\nexec '${chromeExecutable.replaceAll("'", "'\\''")}' --profile-directory=Default "$@"\n`, { mode: 0o700 });
+  const bindingsFile = path.join(directory, "bindings.cjs");
+  await require("esbuild").build({ entryPoints: [path.join(root, "src/main/qianchuan-browser-bindings.ts")], bundle: true, platform: "node", format: "cjs", outfile: bindingsFile });
+  const { QianchuanBrowserBindings } = require(bindingsFile);
   const html = await readFile(path.join(root, "tests/fixtures/qianchuan-production-page.html"), "utf8");
   const ids = [{ advertiserId: "123456", adId: "987654" }, { advertiserId: "223456", adId: "887654" }];
   for (let index = 0; index < 2; index++) {
@@ -45,7 +51,7 @@ try {
     const fixtureHtml = path.join(fixtureRoot, "page.html");
     await writeFile(fixtureHtml, html.replaceAll("123456", ids[index].advertiserId).replaceAll("987654", ids[index].adId));
     const browserData = packaged ? path.join(home, ".config", "jianji") : path.join(directory, "userData");
-    const fixture = await helper.startQianchuanFixture({ tempRoot: fixtureRoot, production: true, fixtureHtml,
+    const fixture = await helper.startQianchuanFixture({ tempRoot: fixtureRoot, production: true, fixtureHtml, chromeExecutable: fixtureChrome,
       profileDirectory: path.join(browserData, "douyin-upload", "account-browsers", ids[index].advertiserId) });
     fixture.setControls({ processingDelayMs: index ? 50 : 8000 }); fixtures.push(fixture);
     const browser = await require("playwright-core").chromium.connectOverCDP(fixture.cdpEndpoint); routing.push(browser);
@@ -58,6 +64,9 @@ try {
       await route.fulfill({ status: response.status, contentType: response.headers.get("content-type") ?? "text/plain", body: await response.text() });
     });
     await browser.contexts()[0].pages()[0].goto(`https://qianchuan.jinritemai.com/uni-prom?aavid=${ids[index].advertiserId}&adId=${ids[index].adId}`);
+    const uploadRoot = path.join(browserData, "douyin-upload");
+    await new QianchuanBrowserBindings(uploadRoot).save({ advertiserId: ids[index].advertiserId,
+      profile: path.join(uploadRoot, "account-browsers", ids[index].advertiserId), profileDirectory: "Default" });
   }
   const accountFile = path.join(directory, "accounts.json");
   const products = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂", "热敷贴"];
@@ -66,7 +75,7 @@ try {
   const accounts = products.map((product, index) => {
     const fixtureIndex = product === "蝴蝶贴" ? 0 : product === "眼贴" ? 1 : -1;
     while (usedPorts.has(sparePort)) sparePort++;
-    return { product, cdpEndpoint: fixtureIndex < 0 ? `http://127.0.0.1:${sparePort++}` : fixtures[fixtureIndex].cdpEndpoint,
+    return { product, ...(fixtureIndex < 0 ? {} : { productName: fixtureIndex ? "商品乙" : "商品甲" }), cdpEndpoint: fixtureIndex < 0 ? `http://127.0.0.1:${sparePort++}` : fixtures[fixtureIndex].cdpEndpoint,
       ...(fixtureIndex < 0 ? { advertiserId: String(100 + index), adId: String(200 + index) } : ids[fixtureIndex]) };
   });
   await writeFile(accountFile, JSON.stringify({ version: 1, accounts }), { mode: 0o600 });
@@ -117,10 +126,12 @@ try {
     await row(name).getByRole("checkbox", { name: `选择模板 ${name}`, exact: true }).check();
     await row(name).getByRole("checkbox", { name: `${name}开启覆盖`, exact: true }).uncheck();
     await row(name).getByRole("spinbutton").fill(String([10, 2, 1][index]));
-    assert.equal(await row(name).getByLabel("千川上传", { exact: true }).inputValue(), "");
+    assert.equal(await row(name).getByRole("checkbox", { name: `${name}开启千川上传`, exact: true }).isChecked(), true);
+    if (index === 2) await row(name).getByRole("checkbox", { name: `${name}开启千川上传`, exact: true }).uncheck();
   }
-  await row("商品甲").getByLabel("千川上传", { exact: true }).selectOption("蝴蝶贴");
-  await row("商品乙").getByLabel("千川上传", { exact: true }).selectOption("眼贴");
+  assert.equal(await page.locator(".batch-template-controls select[aria-label=\"千川上传\"]").count(), 0);
+  await row("商品甲").getByText("自动 · 商品甲", { exact: true }).waitFor();
+  await row("商品乙").getByText("自动 · 商品乙", { exact: true }).waitFor();
   await page.screenshot({ path: path.join(directory, "batch-settings.png"), fullPage: true });
   await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
   const finished = await until(() => state(page), value => value.batchProduction?.status === "finished");
@@ -129,7 +140,7 @@ try {
   const ready = await until(() => details(finished.batchProduction), values => values[0].upload?.tasks.length === 10 && values[1].upload?.tasks.length === 2 && values.slice(0, 2).every(value => value.upload.tasks.every(task => task.state === "WAITING_FOR_CONFIRMATION")));
   assert.equal(ready[2].upload.tasks.length, 0);
   assert.ok(ready.slice(0, 2).every((value, index) => value.upload.tasks.every(task => task.advertiserId === ids[index].advertiserId && task.adId === ids[index].adId && value.job.taskIds.includes(task.export_task_id))));
-  for (const name of names) assert.equal(await row(name).getByLabel("千川上传", { exact: true }).inputValue(), "");
+  for (const [index, name] of names.entries()) assert.equal(await row(name).getByRole("checkbox", { name: `${name}开启千川上传`, exact: true }).isChecked(), index !== 2);
   for (const [index, file] of projectFiles.entries()) {
     const saved = JSON.parse(await readFile(file, "utf8"));
     const original = JSON.parse(originals[index].toString("utf8"));
@@ -173,7 +184,7 @@ try {
     await row(name).getByRole("checkbox", { name: `${name}开启覆盖`, exact: true }).uncheck();
     await row(name).getByRole("spinbutton").fill("2");
     await row(name).getByRole("textbox").fill("故障验证文字");
-    await row(name).getByLabel("千川上传", { exact: true }).selectOption(index ? "眼贴" : "蝴蝶贴");
+    assert.equal(await row(name).getByRole("checkbox", { name: `${name}开启千川上传`, exact: true }).isChecked(), true);
   }
   fixtures[0].setControls({ processingDelayMs: 8000 });
   await page.getByRole("button", { name: "开始批量制作", exact: true }).click();

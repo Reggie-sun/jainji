@@ -31,6 +31,7 @@ export function createBatchProductionRuntime(input: {
     cancelExport: id => input.queue.cancel(id),
     changed: input.changed,
     preflightUpload: (selection, count) => input.upload?.preflight(selection, count) ?? Promise.resolve(undefined),
+    uploadAccounts: projectId => input.upload?.status(projectId).accounts ?? [],
     uploadStatus: (projectId, taskIds) => input.upload?.capturedStatus(projectId, taskIds),
     cancelUploads: (projectId, taskIds) => input.upload?.cancelExports(projectId, taskIds) ?? Promise.resolve(),
     outputDirectory: async (project, ids, requested) => {
