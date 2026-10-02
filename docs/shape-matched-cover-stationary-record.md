@@ -1,5 +1,55 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-A Static Target Mask Development — 2026-10-02
+
+按 [course-correction](shape-matched-cover-v1-simplification-spec.md) 和本轮 [M2-A plan](shape-matched-cover-m2a-plan.md)，状态为 **ENGINEERING_DEVELOPMENT / REAL_STATIC_QUALIFICATION_INCOMPLETE / PRODUCT_DISABLED**。用户本轮明确确认 233 秒原片右上“国货之光”、完整0–233秒；确认只确定身份与承诺范围，不确认mask或运动。本轮没有M1阈值修订、D2Q、动画、shape matching、placement、输出coverage、visual safety或activation。
+
+### Ownership and Evidence
+
+M1 discovery owner原样重算候选，resultDigest仍 `c1ff778bab42c834459b5b515e1f5ef6dcfff577e139745406e6cd426ea865f4`，7 candidates / 41 components。原ROI627/3/83/61仅作候选搜索线索；用户确认冻结targetId `a766722b-d663-48a3-bd86-3d242d327a87`、精确sourceKey、discovery/result digest、确认来源和ordinals[0,6990)。不接caller mask，不把ROI填满作为mask。
+
+新 `source-mask-static-target.ts` 复用原identity/sourceKey、严格packet/frame clock和CPU FFmpeg双pipe；在source整数网格先format=rgba再crop，目标ROI只扩大搜索12px，不是覆盖几何。每个原ordinal绑定PTS/endPTS/字节数/ROI SHA，独立framehash pipe复核真实解码PTS/duration/SHA，首尾不能遗漏。源与引擎前后freshness、单decode、取消、五分钟和512MiB预算拒绝保持；目标路径不持久spool全片RGBA，M1原96代表帧scratch仍保留其真实成本。确认和evidence只认活跃私有对象，JSON不恢复ownership。
+
+新 `source-mask-static-extraction.ts` 采用原像素RGB temporal std≤20、连通组件≥8px及差18边缘，全部合适component进入支持，不采用旧Python最大组件mask。3px保守候选外扩是明确development假设，不能证明任意未知透明边缘；支持碰搜索边界或外扩截断拒绝。之后流式检查完整范围，每个支持像素须处在代表样本min/max加24容差内；完整验证失败不缩范围，不删除失败帧。该检查仅为static像素包络一致性观察，不是独立mask/motion资格。
+
+新 `source-mask-static-qualification.ts` 在提取开始前冻结独立required pixels、原ROI/时钟/SHA和method digest，绑定私有chronology；逐帧独立重解码并比较真实required pixels与候选mask。construction truth来自媒体构造几何，不能从算法mask导出；零漏只为DEVELOPMENT_MATCH。REAL_MEDIA未经独立审核、缺truth均INCOMPLETE，required/missed/excess/compared指标null。原extractor/qualification仅增加exports，旧D2/fullcanvas/均匀背景方法和拒绝不改；不写knowledge/schema/admission/store，不签产品proof或source authority。
+
+Parent用CodeGraph核对原clock/stream/extractor关系，再按imports/receiver裁决通用短成员误配。受管Kimi只做上述stream边界只读核查：deep/max，invocation `dda9597f-2817-430f-a95a-cd15b647d3ac`、seal `6507c2f17de073bdbbee80ae83d9af68b58a4cc0b82864ff2cb4c4d27e904403`；canonical receipt第三个wire请求RESPONSE_BODY CONNECTION_ERROR，OUTCOME_UNKNOWN，3 wire requests、366.884s、observed_reads为空。前两次上游身份核验不构成可用报告，部分输出未采用；不自动重试，不将其称独立像素审阅或最终review。Parent直接核验实现及媒体。
+
+### Real Full-Range Development
+
+Evidence根 `~/.local/state/jianji-source-fact-qualification/m2a-static-20261002-app-engine`（R）；exact method-source-freeze和执行日志在repo仅本轮忽略的 `runs/shape-cover-m2a-20261002`，交付时另存R。原视频SHA `a18f7e4e5fc02e5db977d9074be35ce82a296d247194205e9cf88e1ac76fc0bf`，54,577,917 bytes、720×1280、6990帧；最终原字节hash不变。确认范围完整[0,6990)、PTS[0,3578880)，timeBase1/15360，全部clock binding复核一致。method源码6项及参数冻结后均未变，真实参数修订0次，没有读取holdout。
+
+实际产生mask **3395px / bbox628/1/81/59**，SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893`；不是历史Python3260px mask，bbox相同不能等同证据。完整6990帧检查有 **133帧STATIC_SUPPORT_CHANGED_OR_OCCLUDED**，状态INCOMPLETE / FULL_RANGE_STATIC_CONTRADICTION。最早ordinal233，一像素差26；ordinal710有23个支持像素超容差，worst57；ordinal715 worst89（17px）；最后异常3764。不得把此结论改写成目标确实移动、动画或遮挡，也不能无独立证据认定只是编码噪声。
+
+Parent查看首中尾原ROI和mask，并对233/234/710/715/1247/3764六帧另行独立重解码，原ROI SHA逐项匹配完整range receipt，PNG/绑定存R/anomaly-inspection.json。抽看的原图目标外观相近、背景变化；这不是required-pixel truth，不能证明全部6990帧边缘保守。最终independent qualification为INCOMPLETE / INDEPENDENT_REQUIRED_PIXEL_TRUTH_MISSING，指标null，非零漏结论、非真实qualified oldStickerMask。
+
+| CPU measurement | Actual result |
+| --- | --- |
+| Host | Linux / Intel Core Ultra 7 265K；未测低端CPU或Windows |
+| Overall diagnostic | 45,110.406ms，包含原M196帧发现及目标准备 |
+| Discovery identity / clock / sampled decode | 434.230 / 9,238.224 / 9,239.870ms |
+| Target prepare / mask / full range verification | 10,450.490 / 1,012.060 / 11,261.649ms |
+| Parent peak RSS | 294,158,336 bytes（280.531MiB） |
+| Observed child peak | 70,377,472 bytes（67.117MiB）；25ms /proc VmHWM采样下界，不是精确全进程峰值 |
+| Accounted target working set / target scratch | 3,066,240 bytes / 0；不是全流程RSS或整个M1scratch为零 |
+| M1 representative scratch | 353,894,400 bytes（337.5MiB），close清理；无全片24GiB spool |
+| Models / remaining product stages | modelRequests0；matching/outputCoverage/visualSafety NOT_EVALUATED，PRODUCT_DISABLED |
+
+前两次本地CLI失败也保留：误传不存在/usr/bin引擎（4.086ms），随后误用旧conda引擎（10,213.450ms）被原discovery拒绝；都未产生确认、成功candidate或mask。最终使用应用现有引擎，SHA与M1相同；未改算法或准入以绕过旧引擎拒绝。R/../m2a-static-20261002-development和-engine-corrected保存failure JSON。
+
+### Verification, AOCI and Stop
+
+读取并执行current verification-before-completion。fresh typecheck、scripts单独strict tsc和esbuild均exit0；最终6 suites **87 tests PASS**：新static10、原discovery17、extraction17、qualification9、activation28、pixel6。覆盖不规则mask/细尖、已知低alpha构造边缘、独立分母、尾帧外扩遗漏、未采样闪烁与移动、全范围首尾、错源/错绑定、克隆/迟到truth、取消/源漂移/预算及旧拒绝。首次9个fixture因未声明方像素被严格clock拒绝；只补setsar=1后通过，失败日志保留，M1实现未改。
+
+Implementation Risk Gate为 **KIMI_REVIEW_NOT_REQUIRED**：用户未指定最终Kimi review；所有新增结果无authority，无凭据/商业API/production/durable-state写路径，具体失败被限制在development拒绝与自有只读媒体证据；项目验证后未发现重大后果与残留验证缺口的组合。真实资格缺口明确保留，不靠adversarial verdict补齐。exact final source/test/script和accepted docs SHA存R/source-snapshot.json；Parent拥有最终diff及claim裁决。
+
+开始时有千川foreign dirty；其session先后提交e491e43/d225393，本轮保留。e491e43新增本session直接AOCI维护授权，故取消此前依旧规则提出的索引归属问题并自行维护；未改其他任务业务源码。当前完整机器批次9/9应用，含本轮5个managed对象、M1遗留3项及已提交千川binding的索引漂移。完整批次/CAS按当前合同执行，没有截断；scope里的docs/script/tests为observe，不扩scope。最终Verify/Check/Guide均exit0，governance_aligned=true、findings=[]、missing/stale/unbaselined/orphan=[]，Guide complete=true/next_action=none。Apply有两项E规模档位warning（旧binding应T、discovery应S），不伪称warning为0；按成功批次不得重复写入的工具合同停止正式写入。
+
+用户随后对先前问题明确选择 **A：由另一窗口统一维护全部索引，本轮提交M2代码与维护交接**。该回复到达时完整批次已应用；保留已维护共享字节，不回滚或再写，也不stage/commit `aoci.code.txt` 和 `.aoci/baseline.json`，由另一窗口统一承接提交。本轮五个managed对象已逐项维护，不将提交交接混称维护未执行。source SHA及批次/校验收据随R保存。
+
+Repository无专用session-capture skill；本节与原私有证据承接稳定checkpoint，不更新外部memory。停止在真实M2资格blocker：冻结static方法全范围不一致，且真实required-pixel边缘truth未独立审核。未调M1、未扩大模型/动画或D2Q、未改guard，未把测试、commit、抽样图片或3395px候选当作M2真实资格完成。
+
 ## M1-A Bounded CPU Stationary Discovery — 2026-10-02
 
 依据已提交 [course-correction audit](shape-matched-cover-v1-simplification-audit.md)、[Delta Spec](shape-matched-cover-v1-simplification-spec.md)、[Plan](shape-matched-cover-v1-simplification-plan.md) 和本轮 [implementation plan](shape-matched-cover-m1a-plan.md)，实现 **CPU_DETECTOR_DEVELOPMENT / NO_TARGET_CONFIRMED / PRODUCT_DISABLED**。不继续 D2Q→D3→D4，不建 FullSourceAdmissionHandle，不执行mask qualification、source admission、视觉审阅或activation；以下历史记录保持原状态。

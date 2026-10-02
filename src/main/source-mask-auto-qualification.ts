@@ -7,6 +7,8 @@ import { AutoContourBindingSchema, AutoContourBitmapSchema, AutoContourConfigSch
 import { decodeSourceMask } from "./shape-cover-pixel-gate.js";
 import { sourceKey } from "./source-sticker-knowledge-store.js";
 
+export { freezeStaticPixelTruth, qualifyStaticMask } from "./source-mask-static-qualification.js";
+
 const hash = (value: Uint8Array | string) => createHash("sha256").update(value).digest("hex");
 const Id = z.string().trim().min(1).max(160);
 const RangeSchema = z.object({ startFrame: z.number().int().nonnegative().safe(), endFrame: z.number().int().positive().safe() }).strict();

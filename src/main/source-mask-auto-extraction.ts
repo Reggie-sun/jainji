@@ -7,6 +7,8 @@ import { decodeSourceMask } from "./shape-cover-pixel-gate.js";
 import { buildStationaryShapeEnvelope, type StationaryShapeEnvelope } from "./shape-cover-stationary-envelope.js";
 import type { FullSourceCensus } from "./source-fact-census.js";
 
+export { extractStaticConservativeMask, STATIC_MASK_CONFIG } from "./source-mask-static-extraction.js";
+
 const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const integer = z.number().int().nonnegative().safe();
