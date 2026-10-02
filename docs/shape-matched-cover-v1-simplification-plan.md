@@ -73,6 +73,10 @@ Verification：source/frame绑定、统计/组件/多目标/负例可执行tests
 
 Acceptance：支持包络内mask真实零漏与运动分类有独立依据；包络外失败可解释；证明不包含全画布absence。固定动画失败可以只开放static。Verification运行受影响extractor/qualification/stationary/knowledge/admission tests与真实holdout；把错一个尖角、尾帧扩大、moving误接受作为必要负例。
 
+### M2-E — Real Static Holdout and Independent Truth Acquisition
+
+当前执行边界见 [M2-E plan](shape-matched-cover-m2e-plan.md) 和 [Delta Spec](shape-matched-cover-v1-simplification-spec.md) §6：≥3独立never-development-exposed真实来源，冻结风险truth set的requiredPixels零漏、完整目标范围geometry一致、无unsupported morphology证据、保守mask方法冻结。不要求每帧人画mask；只签 ZERO_MISS_ON_FROZEN_TRUTH_SET，不推导6990帧pixel零漏。真实输出visual acceptance继续留M4/M5；M3在M2仍INCOMPLETE时BLOCKED。holdout不足不减少数量要求，truth/reviewer工具仅离线研发。
+
 ### M3 — Shape Matching and Minimal Contour
 
 复用原matrix、actual alpha与最小轮廓；为已确认目标在允许geometry内准备可信placement，原assembler绑定源/target/preset，不允许caller填安全PASS。先共同筛再选款；逐版复核实际冻结RGBA。

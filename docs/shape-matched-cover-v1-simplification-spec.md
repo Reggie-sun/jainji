@@ -56,6 +56,20 @@ mask 无漏失的测试分母是独立核查的 required pixels；运行时须�
 
 当前 `source-mask-only-v1` 仅支持单 target/segment、30–100 帧 probe 人工凭据；当前 `stationary-union/v1` 仅是无 authority 的几何候选。后续在原 knowledge/schema/admission owners 中增加**目标范围明确**的版本化 proof，禁止将这些旧凭据改名为新证明或复用研究 receipt 签发许可。源争议、store/evidence integrity 未知和 freshness 检查保留；这里的完整性指字节/记录/确认目标证据完整，不重引入全画布目标穷尽义务。不得解除其他功能原有知识阻断。
 
+### M2-E Offline Static Qualification Boundary
+
+static engineering qualification 使用 **B：冻结风险覆盖 truth set + 完整目标范围 geometry verification + 冻结保守 mask 方法**。§6 的逐帧 pixel truth 是可选离线证据，不要求每帧人工描边；真实输出 visual acceptance 仍由 M4/M5 独立完成，本边界不提前给予输出或产品资格。
+
+每类至少 **3 个独立、未用于方法开发的真实来源**，数量要求不变。不同 SHA、重新编码、裁剪、复制、同一下载或复用原片不能增加来源数；`INDEPENDENCE_UNKNOWN` 不计数。233 秒 `a18f7e4e…fc0bf` 永久为 development source。仅被机械 inventory/hash/similarity 检查的素材仍可为 candidate unseen；历史展示给算法作者的原像素/contact sheet 保守登记 development-exposed。
+
+每个来源先冻结 provenance/source/method，再冻结 deterministic truth frame plan，完成两位独立人类的 ROI 原像素 required-pixel 标注和复核，最后冻结 truth package，才执行比较。作者/复核者均不得参与 mask 算法、查看 candidate/comparator 或接收预期像素提示；只签 required pixels 和 truth QA，不签 candidate PASS。所有声明需有实际可核对证据，metadata 不替真人执行。
+
+计划覆盖首尾、时间锚点、切镜上下文、原像素 edge/RGB/background 极值、geometry metric 极值、可见性歧义和固定 seed 留存样本，不能读取 candidate mask/support 或 comparison。完整风险输入缺项、超过有界人工预算、边界/低 alpha 无法辨明、未知 morphology 或 geometry 未成立则 `SOURCE_INCOMPLETE`，不能删帧取得通过。详见 [M2-E plan](shape-matched-cover-m2e-plan.md)。
+
+`SOURCE_QUALIFIED` 只表示独立来源/审核成立、计划全部 truth 完整非空、UNKNOWN 不污染指标范围、冻结方法一致、完整范围 geometry 无问题、全部 frozen truth required pixels 零漏。任何 1px miss 为 `SOURCE_NOT_QUALIFIED`；额外像素不抵消漏失。最多声明 **ZERO_MISS_ON_FROZEN_TRUTH_SET**，不声明 ZERO_MISS_FULL_RANGE/6990，也不从几何一致性推导未标帧 pixel truth。多个来源通过仍不自动解锁 M3、source admission、knowledge revision 或 activation。
+
+`HOLDOUT_FROZEN` 后发现反例保持失败；不能根据它修改 detector/mask/geometry/dilation。新算法版本须保存旧结果并另取新 unseen 来源。所有离线 registry、plan、truth、comparison 固定 `authority=none / eligible=false`，JSON clone/reload 不恢复 capability。普通产品用户没有 truth/reviewer/三来源/holdout 操作义务。
+
 ## 7. Shape Matching Contract
 
 复用 `shape-cover-candidates.ts`、实际候选 alpha、`shape-cover-pixel-gate.ts` 与原合法素材目录。整轮共同候选为 `candidate × confirmed target/segment × output setting` 的交集；保留同轮统一款、轮换和冻结重试规则。

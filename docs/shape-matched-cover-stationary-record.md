@@ -1,5 +1,83 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-E Real Static Holdout & Independent Truth Acquisition — 2026-10-02
+
+依据 [M2-E plan](shape-matched-cover-m2e-plan.md)、[Delta Spec](shape-matched-cover-v1-simplification-spec.md) 与 [主计划](shape-matched-cover-v1-simplification-plan.md)，本轮建立只读素材审计、offline metadata registry、冻结风险truth plan、candidate-blind original ROI raster editor、two-pass human QA与既有M2-D comparator接缝。**停止状态：HOLDOUT_INSUFFICIENT / INDEPENDENT_REAL_STATIC_SOURCE_INSUFFICIENT / REAL_STATIC_QUALIFICATION_BLOCKED_BY_HOLDOUT。** 工具不能补签缺少的真人或材料。
+
+### Current Media Inventory and Exposure
+
+私有证据根R=`~/.local/state/jianji-source-fact-qualification/m2e-holdout-20261002`。只读扫描11个`/home/reggie/电商/*/素材`、repository媒体（排除依赖/构建/运行目录）、qualification private evidence；没有移动/改写素材或自动登记holdout。R/inventory.json、exposure.json、historical-session-audit.json与private-truth-audit.json保存paths、SHA、范围及分类证据。
+
+| Inventory | Current evidence |
+| --- | --- |
+| Physical video files | 574：用户源视频255、private controlled/derived/evidence媒体319；repository指定扫描范围未发现其他来源。private媒体不能补来源数。 |
+| Unique user SHA | 218；37份exact-byte重复文件。overall unique SHA442，不等于真实独立来源。 |
+| Suspected source groups | 83；8个sparse原帧dHash/亮度样本发现725条可能复用pair。组是保守疑似，不能证明同拍摄或相互独立。 |
+| Confirmed development exposure | 7个真实SHA：当前233s原片反复用于M1/M2参数开发；另6个曾在historical source inventory的author-side contact sheets显示原像素，不冒充never-exposed。 |
+| Conservatively excluded | 7个已曝光SHA加1个疑似关联派生SHA；相似度组内传播曝光风险，不声称额外1个已证明被看过。 |
+| Candidate unseen | 210个SHA / 76个疑似组；没有证据证明static target、无复用或完整来源履历。 |
+| Confirmed static target | 1：原233s DEVELOPMENT SOURCE；不属于最终holdout。其他217个独特用户SHA未确认static target。 |
+| Confirmed independent unseen static sources | 0。218个用户SHA的raw recording/download/overlap详细provenance当前UNKNOWN；NO_STRONG_MATCH不自动转ACCEPTED。 |
+| Existing valid human truth/reviewer evidence | 0。当前478份有界private JSON审计的8处truth/reviewer命中均非此static holdout有效接受；精确回查5个historical sessions，没有把旧controlled/D2Q/算法candidate挪成真值。 |
+
+不能用different SHA推导independence。疑似组33/11/11/10/8/7等较大簇仅提示可能素材复用，后续需要raw/download身份、派生/帧重叠说明及证据digest。稀疏审计可能误报和漏报，不是版权识别或全视频相等证明。
+
+### Accepted Static Qualification Boundary
+
+原合同每支持类别至少3个独立真实来源，Spec未明确要求逐帧human pixel truth。依本轮授权先在现有Spec/Plan显式写入M2-E Delta：多独立holdout、预冻结风险truth set全部required pixels零漏、full-range geometry consistency、无不支持morphology证据、保守方法/config/source/runtime冻结；只授`ZERO_MISS_ON_FROZEN_TRUTH_SET`。没有从121帧推导`ZERO_MISS_FULL_6990`，不增加full-canvas absence、D2Q、T(f)、EMPTY或dual-AI review。真实output visual acceptance仍在M4/M5，不制作输出也不进入M3。
+
+数量保留≥3，1px miss即SOURCE_NOT_QUALIFIED；UNKNOWN、漏帧、source/target/PTS/方法变化、未完成geometry、无实际independence与human身份核实均SOURCE_INCOMPLETE，exact指标null。旧M2-D原片missedRequiredPixels / missingRequiredFrames / excessPixels仍null，旧133 RGB anomalies、M2-C6990/6990与0geometry issues不被改写。
+
+### Frozen Truth Frame Plan and Reviewer Workflow
+
+策略`static-risk-truth-plan/v2`：首尾、16 temporal anchors、16 fingerprint+版本seed随机reserved、original edge/chroma/RGB/difference/background及geometry scalar extrema（earliest/latest tie）和±1；完整scene event inventory先冻结，再最多12个事件分位点±1；全部geometry visibility ambiguity上下文。实际N由源数据确定，硬上限192，超预算SOURCE_INCOMPLETE；不能删难帧直到通过。该工程风险采样不提供统计全范围pixel proof。半透明/AA语义歧义由真人标UNKNOWN，不凭geometry代替边缘truth。
+
+首版对development原片将66个scene cuts全部±1纳入而超192预算，失败日志永久保留。没有human开始或unseen holdout冻结；v2只将切镜人工观察改为明确的预冻结事件分层，保留全部ambiguity，不改detector/mask/geometry门限。对未来新来源仅复用strategy，不复用旧ordinal答案。
+
+原片DEVELOPMENT_TOOLING_ONLY package：**121帧**，first0/last6989，original ROI615/0/105/76、原像素1:1/整数zoom；plan SHA `ab68308ebc014334bd75dbbac529d3c100d30346970599d2a9747e29b6b78f2a`。R/development-review-v2（原版本）与development-review-v4（最终editor）只含original PNG、blind manifest和editor；method/risk/geometry/selection sidecars在另一个private目录，不交reviewer。没有candidate mask、support、component、landmarks、miss/excess或expected pixel hints，没有生成真人truth。
+
+顺序：source/method freeze → 风险观察与frame plan freeze → Pass A truth → Pass B独立QA → truth/declarations freeze → 冻结版本candidate comparison。required包含visible fill/outline/AA/thin tips/text/可辨low-alpha贡献，未标默认UNKNOWN。两位不同真人均需reviewerId和四项independence声明；QA只看original+human truth overlay，可APPROVE/REQUEST_CORRECTION/UNKNOWN，不能答candidate是否pass。负责人实际核实来源历史与两位真人身份后才可授离线接受；JSON声明/模型意见不能恢复进程内freeze handle或任何产品authority。
+
+真正holdout冻结后禁止调detector/mask/geometry/dilation。失败保持失败；下一方法版本需保留旧结果并换新的unseen holdout。本轮registry未自动纳入候选用户素材，正式holdout packages=0、已开始真人标注=0、合格reviewers=0；不能伪装自己为independent human reviewer。
+
+### Candidate Freeze, Controls and Performance
+
+R/candidate-method-freeze.json绑定现有detector `cpu-stationary-components/v1`、extractor `cpu-static-conservative-mask-development/v1`、geometry `cpu-static-geometry-development/v2`的exact configs、8个源码/FFmpeg SHA、Python/NumPy/OpenCV/Pillow/Node/FFmpeg/TypeScript/Vitest版本。所有既有算法与guard保持原字节；3395px、bbox628/1/81/59、mask SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893` 不变。method freeze不是想法的证明，源码/runtime变化不能复用旧接受。
+
+| Offline measurement | Evidence |
+| --- | --- |
+| Media inventory | 17.200s；JSON1,712,934 bytes |
+| Sparse similarity audit | 604.214s；CPU-only、每unique源8帧缩略样本 |
+| Development risk/source decode and package process | 56.046s；6990帧原ROI full-range clock/hash核验；未创建全片RGBAspool |
+| Selected original reviewer package | v2：121帧，3,602,358 bytes、package-only0.169s；最终v4复用相同冻结plan/原PNG、121帧、3,602,523 bytes、0.160s |
+| Real truth comparator | NOT_EVALUATED：没有真实合法truth；controlled比较记录per-run comparatorSeconds，不挪成真实时长 |
+
+37项新增Python controls（30 registry/workflow + 7 truth/similarity）实际PASS，覆盖用户22类并增加共享raw ID伪分组、late development exposure、同人QA、real metadata伪接受、持久CLI comparator与no-overwrite、bounded risk和candidate-blind package。既有comparator/geometry/anomaly回归通过Vitest bridge原命令执行；M2 extraction、M1 discovery、activation由本轮focused与policy专项回归执行。fresh typecheck、Harness code/verify及官方AOCI Verify/Check/Guide的最终实际结果以R/engineering日志和`.agent/harness/runs/20261002-shape-static-holdout/`scope关联的receipt为准，未成功/过期/skip不能写PASS。
+
+Chrome MCP在独立context验证offline editor：controlled8×8点击/paint、整数zoom、帧切换、QA只读、unchecked声明、canonical truth digest；实际121帧package只读查看确认source SHA、original105×76和所有像素默认UNKNOWN，candidate字段为空、身份空。Parent另发现canvas border计入绘笔坐标可能导致边缘点击错1px，已修正；在controlled8×8页面4倍zoom最后一列像素正确、邻列仍UNKNOWN，QA不可画、1:1 content尺寸正确。真实原像素/plan不变，没有human开始。递归拒绝source/ROI/range/binding中的额外candidate字段，保留原SourceIdentity rotation/clock interpretation字段；rapid frame navigation以generation核对避免旧图异步覆盖新ordinal，controlled不同颜色帧实测最新原RGBA SHA正确。首次比较同时绑定candidate/geometry和truth digest，private pin跨CLI重启保留；1px失败后改candidate再试的反例已拒绝。修正及foreign source失效时显式取消旧owned Harness run并保留非PASS回执，最终scope和检查重新冻结运行。未操作千川tabs，没有真人truth或model生成标注。
+
+受管Kimi只作text/code接缝mapping，invocation `eef6d2fe-e81b-48aa-a6de-e9e4c9484486`，seal `f4acd8476ee74fa7ebbc3e272a3afd51582828d74de447dee38b3ae63cb2fb9a`，qualified route `4f2d5dc8-4234-4665-b382-e82f1ad6cc00`，deep/max、2 wire requests、238.291s、PARSED、无orchestration retry；4个artifact SHA和3个完整observed reads由Parent核对。仅复用既有pure comparator，不把工程意见当truth/验收。stable implementation Risk Gate为KIMI_REVIEW_NOT_REQUIRED：offline新owner无生产/凭据/源知识authority，fail-closed real acceptance还有真实材料与human gate，parent负责最终diff与project-native检查。媒体modelRequests=0。
+
+### Governance, Owned Scope and Stop
+
+用户明确允许在foreign dirty `.agent/harness/policy.json`上仅追加M2-E check/route，其他staged/dirty Harness与千川业务改动保留。新增scripts/tests/docs按当前AOCI role为observe；policy为indexed，逐项核实当前source binding；官方Maintain返回aligned、0 candidates，fresh Verify/Check/Guide exit0。没有领取/截取foreign active创作批次。own transient sealed task/receipt归档R/engineering后，经官方orphan治理移除本轮3个已归档runtime Entry；未删除业务源码。context-compaction全量读取发生host截断，停止认知链，继续source-bound工作，不声称完整系统认知可靠。官方fresh治理结果和本轮对象/foreign drift分别保存在R。无专用session-capture Skill，本节保存checkpoint，不改external memory。
+
+### Final Verification Blocker
+
+最终code receipt `.agent/harness/runs/20261002T133633Z-4adb7d60/receipt.json` 为 **FAIL**，不是completion PASS。typecheck、M2-E bridge（30+7新Python controls以及10 comparator/13 geometry/6 anomaly，共66）、shape187项及owned AOCI11个对象均PASS且无skip；extended940 PASS / 11 timeout FAIL。超时分布：原M2-A static extraction7项、旧auto-contour diagnostic2项、GPU export1项、upload retarget1项，分别原30s/5s预算；没有修改测试上限、算法或关闭必需检查。此前focused4 suites/60 tests PASS保留，但不能覆盖这个最终失败。
+
+Source identity实际变化为另一会话新增`src/renderer/SourceMediaList.tsx`和`scripts/material-preview-smoke.mjs`，修改`src/renderer/App.tsx`、`src/renderer/styles.css`及`tests/material-collection.test.ts`；不属于本轮，未抢归属或修改。documents10处失败全部来自未修改的历史`docs/shape-matched-cover-m5d2a.md`跨repo引用（repository_escape）；本轮四份Shape文档未有broken link。不能为了PASS删必需route或静默改旧research record。当前shared Harness registration已由owner在`7ced285`提交，本轮仅提交独立业务文件。
+
+因此工具实现及controlled validation ready，**正式Harness completion BLOCKED**；SOURCE/material qualification仍独立为HOLDOUT_INSUFFICIENT。需其他会话稳定实际参与源码，并由适用owner处理历史document route/reference及11项超时后重新完整code+verify。当前verify实际非PASS、fresh typecheck/目标回归/AOCI和owned diff结果在R/engineering保存；不会以Python tests、AOCI aligned或commit替代Harness。全树diff check还报告foreign `aoci.code.txt` EOF空行，本轮owned业务diff无该问题。
+
+最终focused四组实际为51 PASS / 9 FAIL，359.91s：M2-E bridge5（66 Python controls）、M1 discovery17与activation28全PASS；M2-A extraction1 PASS / 9个30s timeout，不能报告该回归通过。正式verify receipt `20261002T141649Z-785141fd` FAIL，拒绝原code FAIL receipt。交付前官方AOCI Verify/Check报告10个foreign batch/account/index对象stale，Guide为authoring_required；本轮11个owned对象此前实际PASS，当前全库治理不声称aligned，未接管其他会话机器批次。压缩后Whole-Index续读因overview_snapshot_changed中止，保持source-bound调查，不声称完整系统认知可靠。
+
+随后final checkpoint官方Verify/Check均exit0、governance_aligned=true、stale=[]，Guide complete/aligned/next_action=none；该治理状态已由共享owner收敛，不是本轮接管批次。之前stale及认知续读中止作为历史失败保留，治理PASS不恢复完整认知声明，也不覆盖Harness FAIL。fresh typecheck exit0、本轮10业务文件staged diff check PASS；原mask和guard字节未改。最终实际日志使用R/engineering/*final-checkpoint*，最终scope刷新后仍对保留的FAIL code receipt执行verify，不伪造新的PASS。
+
+**Need:** 3个可接受的、未用于开发的独立真实static sticker来源；也可对现有210候选补充target/provenance证据后由负责人逐项接受，无需为了SHA数量重新编码。提供原下载/拍摄身份、派生/重叠/先前使用说明及可核查证据。另需2位符合四项声明的不同真人author+QA；每source实际N≤192，先冻结计划/package再开始。若出现unknown/预算/失败则不能继续qualification，不要求6990帧逐帧人工mask。普通产品用户不负责truth/reviewer/3source/holdout研发工作。
+
+**Status:** TRUTH_ACQUISITION_PIPELINE_READY（工具实现及controlled验证；正式Harness completion BLOCKED，不代表整体工程完成、真人或真实资格） / HOLDOUT_INSUFFICIENT。M2仍INCOMPLETE，M3仍BLOCKED，PRODUCT_DISABLED，guard unchanged，modelRequests=0。
+
 ## M2-D Independent Required-Pixel Truth — 2026-10-02
 
 依据 [M2-D plan](shape-matched-cover-m2d-plan.md) 和当前course-correction，新增离线逐像素comparator及独立构造反例；**真实目标资格仍 `INCOMPLETE / INDEPENDENT_REQUIRED_PIXEL_TRUTH_MISSING / PRODUCT_DISABLED`**。本轮没有建立该原片真正独立的required-pixel truth，因此不能回答3395px mask是否包含全部required pixels，也不能把三个指标填零。这是M2-D的真实证据blocker，不是M3入口。
