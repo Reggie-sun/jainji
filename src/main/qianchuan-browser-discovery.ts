@@ -31,7 +31,7 @@ async function boundedRead(file: string, limit: number, owner?: { uid: number; p
 }
 
 /** Read debugging metadata only from this user's running Chrome main processes. */
-export interface RunningChromeBrowser { endpoint?: string; profile?: string; profileDirectory?: string; windowClass?: string; processId?: number; startedAt?: string; }
+export interface RunningChromeBrowser { endpoint?: string; profile?: string; profileDirectory?: string; windowClass?: string; processId?: number; startedAt?: string; connectionIssue?: "METADATA_UNAVAILABLE"; }
 export async function runningChromeBrowsers(procRoot = "/proc", uid = process.getuid?.(), exactProfile?: string): Promise<RunningChromeBrowser[]> {
   if (process.platform !== "linux" || uid === undefined) throw new Error("当前系统暂不支持自动识别浏览器连接。");
   const pids = (await readdir(procRoot)).filter(name => /^[1-9][0-9]*$/.test(name));
@@ -39,6 +39,7 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
   const endpoints = new Map<string, RunningChromeBrowser>();
   for (const pid of pids) {
     const directory = path.join(procRoot, pid);
+    let metadata: RunningChromeBrowser | undefined;
     try {
       const info = await lstat(directory);
       if (!info.isDirectory() || info.uid !== uid) continue;
@@ -57,15 +58,20 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       const profile = flag(args, "--user-data-dir");
       // A bound account must not inspect another application's debugging metadata.
       if (exactProfile !== undefined && profile !== exactProfile) continue;
+      metadata = { profile, processId: Number(pid) };
       const address = flag(args, "--remote-debugging-address");
-      if (address && !["127.0.0.1", "localhost"].includes(address)) continue;
+      if (address && !["127.0.0.1", "localhost"].includes(address)) {
+        if (profile) throw new Error(unavailable);
+        continue;
+      }
       if (args.includes("--remote-debugging-pipe")) continue;
       const declared = flag(args, "--remote-debugging-port");
       const stat = await boundedRead(path.join(directory, "stat"), 4096);
       const startedAt = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
       if (!startedAt || !/^[0-9]+$/.test(startedAt)) throw new Error(unavailable);
-      const metadata = { profile, profileDirectory: flag(args, "--profile-directory"), windowClass: flag(args, "--class"), processId: Number(pid), startedAt };
+      metadata = { ...metadata, profileDirectory: flag(args, "--profile-directory"), windowClass: flag(args, "--class"), startedAt };
       let port = portNumber(declared);
+      if (declared !== undefined && declared !== "0" && !port) throw new Error(unavailable);
       let socket: string | undefined;
       if (declared === "0" || declared === undefined && flag(args, "--user-data-dir")) {
         if (!profile || !path.isAbsolute(profile) || await realpath(profile) !== path.resolve(profile)) throw new Error(unavailable);
@@ -92,8 +98,18 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       }
       if (endpoints.size > maxEndpoints) throw new Error(unavailable);
     } catch (error) {
-      // A process can exit while its metadata is read; all other incomplete reads fail closed.
-      if (!["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) throw new Error(unavailable);
+      // A vanished process is different from an unreadable profile of a still-running browser.
+      if (["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) {
+        if (!metadata) continue;
+        try { await lstat(directory); }
+        catch (current) {
+          if (["ENOENT", "ESRCH"].includes((current as NodeJS.ErrnoException).code ?? "")) continue;
+          throw new Error(unavailable);
+        }
+      }
+      if (exactProfile !== undefined || !metadata?.profile || endpoints.size > maxEndpoints) throw new Error(unavailable);
+      endpoints.set(`process:${pid}`, { ...metadata, connectionIssue: "METADATA_UNAVAILABLE" });
+      if (endpoints.size > maxEndpoints) throw new Error(unavailable);
     }
   }
   return [...endpoints.values()];
@@ -146,12 +162,13 @@ async function accountVisible(endpoint: string, advertiserId: string, request: t
 /** Conventional startup CDP only: discovery never initiates a browser permission prompt. */
 export async function discoverQianchuanProfile(advertiserId: string, browsers: RunningChromeBrowser[]): Promise<RunningChromeBrowser | undefined> {
   if (!/^[1-9][0-9]{0,19}$/.test(advertiserId) || browsers.length > maxEndpoints) throw new Error(unavailable);
-  const candidates = browsers.filter((browser): browser is RunningChromeBrowser & { endpoint: string } => !!browser.profile && !!browser.profileDirectory && !!browser.endpoint && /^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(browser.endpoint) && !!portNumber(new URL(browser.endpoint).port));
-  let visible: boolean[];
-  try { visible = await Promise.all(candidates.map(browser => accountVisible(browser.endpoint, advertiserId, fetch, readChromeTargets))); }
-  catch { throw new Error(unavailable); }
-  const matches = candidates.filter((_, index) => visible[index]);
+  const candidates = browsers.filter((browser): browser is RunningChromeBrowser & { endpoint: string } => !browser.connectionIssue && !!browser.profile && !!browser.profileDirectory && !!browser.endpoint && /^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(browser.endpoint) && !!portNumber(new URL(browser.endpoint).port));
+  const results = await Promise.allSettled(candidates.map(browser => accountVisible(browser.endpoint, advertiserId, fetch, readChromeTargets)));
+  const matches = candidates.filter((_, index) => results[index].status === "fulfilled" && results[index].value);
   if (matches.length > 1) throw new Error("该账户在多个原浏览器中打开，请检查重复窗口后重试。");
+  if (!matches.length && (results.some(result => result.status === "rejected") || browsers.some(browser => browser.connectionIssue))) throw new Error(unavailable);
+  if (matches.length && browsers.filter(browser => browser.profile === matches[0].profile).length > 1) throw new Error("账号浏览器连接不唯一，请检查原窗口。");
+  if (matches.length && candidates.some((browser, index) => browser !== matches[0] && browser.endpoint === matches[0].endpoint && !(results[index].status === "fulfilled" && results[index].value))) throw new Error(unavailable);
   return matches[0];
 }
 
@@ -162,10 +179,19 @@ export async function discoverQianchuanBrowser(advertiserId: string, dependencie
   if (!/^[1-9][0-9]{0,19}$/.test(advertiserId)) throw new Error(unavailable);
   let matches: string[];
   try {
-    const endpoints = [...new Set(await (dependencies.endpoints ?? runningChromeEndpoints)())];
+    const browsers = dependencies.endpoints ? undefined : await runningChromeBrowsers();
+    const endpoints = [...new Set(browsers ? browsers.flatMap(browser => !browser.connectionIssue && browser.endpoint ? [browser.endpoint] : []) : await dependencies.endpoints!())];
     if (endpoints.length > maxEndpoints || endpoints.some(value => !/^(?:http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}|ws:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}\/devtools\/browser\/[A-Za-z0-9-]+)$/.test(value) || !portNumber(new URL(value).port))) throw new Error(unavailable);
-    const visible = await Promise.all(endpoints.map(endpoint => accountVisible(endpoint, advertiserId, dependencies.fetch ?? fetch, dependencies.targets ?? readChromeTargets)));
-    matches = endpoints.filter((_, index) => visible[index]).map(value => `http://${new URL(value).host}`);
+    const results = await Promise.allSettled(endpoints.map(endpoint => accountVisible(endpoint, advertiserId, dependencies.fetch ?? fetch, dependencies.targets ?? readChromeTargets)));
+    const positives = endpoints.filter((_, index) => results[index].status === "fulfilled" && results[index].value);
+    if (!positives.length && (results.some(result => result.status === "rejected") || browsers?.some(browser => browser.connectionIssue))) throw new Error(unavailable);
+    for (const positive of positives) {
+      const host = new URL(positive).host;
+      if (endpoints.some((value, index) => new URL(value).host === host && !(results[index].status === "fulfilled" && results[index].value))) throw new Error(unavailable);
+      const selected = browsers?.filter(browser => browser.endpoint === positive) ?? [];
+      if (selected.some(browser => browser.profile && browsers!.filter(other => other.profile === browser.profile).length > 1)) throw new Error(unavailable);
+    }
+    matches = positives.map(value => `http://${new URL(value).host}`);
   } catch { throw new Error(unavailable); }
   if (matches.length === 0) throw new Error(missing);
   if (matches.length > 1) throw new Error("该账户在多个可连接浏览器中打开，请关闭重复的浏览器后重试。");

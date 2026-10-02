@@ -9,6 +9,7 @@ import { secureUploadDirectory } from "./douyin-upload-store.js";
 import { shutdownAccountChrome } from "./qianchuan-browser-process.js";
 
 const browserUnavailable = "账号浏览器未能启动。请安装 Google Chrome，并检查是否已有异常的账号窗口；不要删除登录目录。";
+const metadataUnavailable = "账号浏览器连接元数据无效，请核查原窗口和目录安全性；不会另开登录目录。";
 const accountUrl = (id: string) => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}`;
 
 type OriginalProfileOptions = Pick<QianchuanBrowserBinding, "profileDirectory" | "windowClass">;
@@ -59,6 +60,7 @@ export class QianchuanBrowserManager {
     const matches = (await this.browsers(profile)()).filter(browser => browser.profile === profile);
     if (matches.length > 1) throw new Error("账号浏览器连接不唯一，请检查专用窗口。");
     if (!matches.length) return undefined;
+    if (matches[0].connectionIssue) throw new Error(metadataUnavailable);
     if (!matches[0].endpoint) {
       if (starting) return undefined;
       throw new Error("账号浏览器需要重新连接，请在账号设置中点击“重启并连接”；登录目录会保留。");
@@ -121,6 +123,7 @@ export class QianchuanBrowserManager {
       const browsers = this.browsers(profile);
       const matches = (await browsers()).filter(browser => browser.profile === profile);
       if (matches.length > 1) throw new Error("账号浏览器连接不唯一，未关闭任何窗口。");
+      if (matches.some(browser => browser.connectionIssue)) throw new Error(metadataUnavailable);
       if (binding && matches.some(browser => browser.profileDirectory !== binding.profileDirectory || browser.windowClass !== binding.windowClass)) throw new Error("原账号浏览器目录或窗口身份已变化，未关闭任何窗口。");
       if (matches.length) {
         beforeShutdown?.(matches[0]);

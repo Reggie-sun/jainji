@@ -4,7 +4,7 @@ import path from "node:path";
 import { createServer } from "node:http";
 import * as filesystem from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
-import { discoverQianchuanBrowser, runningChromeBrowsers, runningChromeEndpoints } from "../src/main/qianchuan-browser-discovery";
+import { discoverQianchuanBrowser, discoverQianchuanProfile, runningChromeBrowsers, runningChromeEndpoints } from "../src/main/qianchuan-browser-discovery";
 import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 
@@ -133,12 +133,14 @@ it("reads a bounded DevToolsActivePort only from the running port-zero browser's
   await chmod(path.join(profile, "DevToolsActivePort"), 0o664);
   expect(await runningChromeEndpoints(f.proc)).toEqual([endpoint]);
   await chmod(profile, 0o755);
-  await expect(runningChromeEndpoints(f.proc)).rejects.toThrow();
+  expect(await runningChromeEndpoints(f.proc)).toEqual([]);
+  await expect(runningChromeBrowsers(f.proc, process.getuid!(), profile)).rejects.toThrow();
   await chmod(profile, 0o700);
   await rm(path.join(profile, "DevToolsActivePort"));
   const other = path.join(f.root, "other"); await writeFile(other, "9322\n/devtools/browser/other\n");
   await symlink(other, path.join(profile, "DevToolsActivePort"));
-  await expect(runningChromeEndpoints(f.proc)).rejects.toThrow();
+  expect(await runningChromeEndpoints(f.proc)).toEqual([]);
+  await expect(runningChromeBrowsers(f.proc, process.getuid!(), profile)).rejects.toThrow();
 });
 it("ignores a process whose executable cannot be identified instead of blocking every readable Chrome", async () => {
   const f = await processes(); await f.add([]); await f.add(["--remote-debugging-port=9321"]);
@@ -163,7 +165,10 @@ it("scopes bound-profile discovery before reading unrelated unsafe debugging met
   const unrelated = `${profile}-other`; await mkdir(unrelated); await chmod(unrelated, 0o775);
   await writeFile(path.join(unrelated, "DevToolsActivePort"), "malformed\n", { mode: 0o664 });
   await f.add(["--remote-debugging-port=0", `--user-data-dir=${unrelated}`]);
-  await expect(runningChromeBrowsers(f.proc)).rejects.toThrow("无法完整连接");
+  expect(await runningChromeBrowsers(f.proc)).toEqual([
+    { endpoint, profile, processId: 10, startedAt: "123" },
+    { profile: unrelated, processId: 11, startedAt: "123", connectionIssue: "METADATA_UNAVAILABLE" },
+  ]);
   expect(await runningChromeBrowsers(f.proc, process.getuid!(), profile)).toEqual([{ endpoint, profile, processId: 10, startedAt: "123" }]);
   await writeFile(path.join(profile, "DevToolsActivePort"), "malformed\n");
   await expect(runningChromeBrowsers(f.proc, process.getuid!(), profile)).rejects.toThrow("无法完整连接");
@@ -189,4 +194,88 @@ it("prepares an already bound account using only its exact original profile", as
   expect(runningChromeBrowsers).toHaveBeenLastCalledWith("/proc", process.getuid!(), profile);
   expect(request).toHaveBeenCalledWith(`${endpoint}/json/list`, expect.anything());
   expect(launch).not.toHaveBeenCalled();
+});
+it.each(["network", "malformed", "redirect"])("isolates an unrelated %s probe failure in both discovery paths", async mode => {
+  const other = "http://127.0.0.1:9322";
+  vi.spyOn(globalThis, "fetch").mockImplementation(async url => {
+    if (String(url).startsWith(endpoint)) return new Response(JSON.stringify([tab()]));
+    if (mode === "network") throw new Error("private payload");
+    return mode === "redirect" ? new Response("[]", { status: 302 }) : new Response("{}");
+  });
+  const target = { endpoint, profile: "/target", profileDirectory: "Default" };
+  expect(await discoverQianchuanBrowser("123", { endpoints: async () => [other, endpoint] })).toBe(endpoint);
+  expect(await discoverQianchuanProfile("123", [{ endpoint: other, profile: "/other", profileDirectory: "Default" }, target])).toEqual(target);
+  await expect(discoverQianchuanBrowser("124", { endpoints: async () => [other, endpoint] })).rejects.toThrow("无法完整连接");
+  await expect(discoverQianchuanProfile("124", [{ endpoint: other, profile: "/other", profileDirectory: "Default" }, target])).rejects.toThrow("无法完整连接");
+});
+it("retains failed metadata without using it as proof that an original browser is absent", async () => {
+  const f = await processes(), profile = path.join(f.root, "unsafe"); await mkdir(profile, { mode: 0o700 });
+  await writeFile(path.join(profile, "DevToolsActivePort"), "malformed\n");
+  await f.add(["--remote-debugging-port=0", `--user-data-dir=${profile}`, "--profile-directory=Default"]);
+  const browsers = await runningChromeBrowsers(f.proc);
+  expect(browsers).toEqual([{ profile, profileDirectory: "Default", processId: 10, startedAt: "123", connectionIssue: "METADATA_UNAVAILABLE" }]);
+  const launch = vi.fn(), manager = new QianchuanBrowserManager(path.join(f.root, "app"), { browsers: async () => browsers, launch });
+  await expect(manager.open("123")).rejects.toThrow("无法完整连接");
+  expect(launch).not.toHaveBeenCalled();
+});
+it("keeps unassignable failures and browser-count limits fail closed", async () => {
+  const f = await processes(); await f.add(["--user-data-dir=/one", "--user-data-dir=/two", "--remote-debugging-port=0"]);
+  await expect(runningChromeBrowsers(f.proc)).rejects.toThrow("无法完整连接");
+  const many = await processes();
+  for (let i = 0; i < 17; i++) await many.add([`--user-data-dir=${many.root}/missing-${i}`, "--remote-debugging-port=0"]);
+  await expect(runningChromeBrowsers(many.proc)).rejects.toThrow("无法完整连接");
+});
+it.each(["--remote-debugging-port=invalid", "--remote-debugging-address=0.0.0.0"])("retains a known original with invalid debugging configuration %s", async flag => {
+  const f = await processes(), profile = path.join(f.root, "original");
+  await f.add([`--user-data-dir=${profile}`, flag]);
+  expect(await runningChromeBrowsers(f.proc)).toEqual([expect.objectContaining({ profile, connectionIssue: "METADATA_UNAVAILABLE" })]);
+  expect(await runningChromeEndpoints(f.proc)).toEqual([]);
+  await expect(runningChromeBrowsers(f.proc, process.getuid!(), profile)).rejects.toThrow("无法完整连接");
+});
+it("rejects same-profile ambiguity and conflicting probes of the same listening port", async () => {
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify([tab()])));
+  const target = { endpoint, profile: "/target", profileDirectory: "Default" };
+  await expect(discoverQianchuanProfile("123", [target, { profile: target.profile, connectionIssue: "METADATA_UNAVAILABLE" }])).rejects.toThrow("不唯一");
+  await expect(discoverQianchuanProfile("123", [target, { ...target, endpoint: "http://127.0.0.1:9322" }])).rejects.toThrow("多个");
+  await expect(discoverQianchuanProfile("123", [{ ...target, connectionIssue: "METADATA_UNAVAILABLE" }])).rejects.toThrow("无法完整连接");
+  await expect(discoverQianchuanBrowser("123", { endpoints: async () => [endpoint, socket], targets: async () => { throw new Error("failed"); } })).rejects.toThrow("无法完整连接");
+  await expect(discoverQianchuanBrowser("123", { endpoints: async () => [endpoint, socket], targets: async () => [tab("124")] })).rejects.toThrow("无法完整连接");
+});
+it("binds the exact original on first connection despite unrelated unsafe metadata", async () => {
+  const f = await processes(), profile = path.join(f.root, "original"), root = path.join(f.root, "app");
+  await mkdir(path.join(profile, "Profile 11"), { recursive: true, mode: 0o700 });
+  await f.add(["--remote-debugging-port=9321", `--user-data-dir=${profile}`, "--profile-directory=Profile 11", "--class=account"]);
+  const unrelated = path.join(f.root, "unrelated"); await mkdir(unrelated, { mode: 0o700 });
+  await writeFile(path.join(unrelated, "DevToolsActivePort"), "malformed\n");
+  await f.add(["--remote-debugging-port=0", `--user-data-dir=${unrelated}`]);
+  const original = await vi.importActual<typeof import("../src/main/qianchuan-browser-discovery")>("../src/main/qianchuan-browser-discovery");
+  vi.mocked(runningChromeBrowsers).mockImplementation((_proc, uid, selected) => original.runningChromeBrowsers(f.proc, uid, selected));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify([tab()])));
+  const launch = vi.fn();
+  expect(await new QianchuanBrowserManager(root, { launch }).prepare("123")).toBe(endpoint);
+  expect(await new QianchuanBrowserBindings(root).get("123")).toEqual({ advertiserId: "123", profile, profileDirectory: "Profile 11", windowClass: "account" });
+  expect(launch).not.toHaveBeenCalled();
+});
+it("refuses a blocked bound target before launch or shutdown", async () => {
+  const f = await processes(), profile = path.join(f.root, "original"), root = path.join(f.root, "app");
+  await mkdir(path.join(profile, "Default"), { recursive: true, mode: 0o700 });
+  await new QianchuanBrowserBindings(root).save({ advertiserId: "123", profile, profileDirectory: "Default" });
+  const launch = vi.fn(), shutdown = vi.fn();
+  const manager = new QianchuanBrowserManager(root, { launch, shutdown, browsers: async () => [{ profile, profileDirectory: "Default", connectionIssue: "METADATA_UNAVAILABLE" }] });
+  await expect(manager.open("123")).rejects.toThrow("元数据");
+  await expect(manager.control("123", "restart")).rejects.toThrow("元数据");
+  expect(launch).not.toHaveBeenCalled(); expect(shutdown).not.toHaveBeenCalled();
+});
+it("keeps a real unrelated HTTP redirect isolated while finding the target", async () => {
+  const visits: string[] = [];
+  const failed = createServer((request, response) => { visits.push(request.url!); response.writeHead(302, { location: "/never" }); response.end(); });
+  const target = createServer((_request, response) => { response.end(JSON.stringify([tab()])); });
+  await Promise.all([failed, target].map(server => new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve))));
+  const url = (server: typeof target) => `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  try {
+    expect(await discoverQianchuanBrowser("123", { endpoints: async () => [url(failed), url(target)] })).toBe(url(target));
+    expect(visits).toEqual(["/json/list"]);
+  } finally {
+    await Promise.all([failed, target].map(server => { server.closeAllConnections(); return new Promise<void>(resolve => server.close(() => resolve())); }));
+  }
 });
