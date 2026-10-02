@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-02T15:18:37Z",
+  "updated_at": "2026-10-02T17:20:45Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "13f5a51ed195046ad910beb07e257520ce2451f94d878cc1bb0d6bfe5bbefd3c",
@@ -264,9 +264,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "be82c2ec516639b49c4d9e74b71cf39d0f59502ed9c4aa4555cae3f9486cc73b",
-      "size": 71962,
-      "normalized_sha256": "be82c2ec516639b49c4d9e74b71cf39d0f59502ed9c4aa4555cae3f9486cc73b"
+      "sha256": "ad1f3ec41ddfea9bf6be61a0c2504bcbf0e3537bdf32c40b3fe27e223630a41f",
+      "size": 76676,
+      "normalized_sha256": "ad1f3ec41ddfea9bf6be61a0c2504bcbf0e3537bdf32c40b3fe27e223630a41f"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1759,9 +1759,9 @@
       "normalized_sha256": "690ee818399d7f8d816d7b1e56a14f1be1a04cafc95a595dd17f7c1c6c0f7b03"
     },
     "src/renderer/DouyinUploadPanel.tsx": {
-      "sha256": "c7f470eeb35db160acb70cb759885810600fdbd912cf0597a8785dc85a98f4c1",
-      "size": 10420,
-      "normalized_sha256": "c7f470eeb35db160acb70cb759885810600fdbd912cf0597a8785dc85a98f4c1"
+      "sha256": "4aed22872abac61e3e518250dff38b18d837a13d25d7c8a11fb1fbb9ecb02b30",
+      "size": 11952,
+      "normalized_sha256": "4aed22872abac61e3e518250dff38b18d837a13d25d7c8a11fb1fbb9ecb02b30"
     },
     "src/renderer/ExportSettingsPanel.tsx": {
       "sha256": "6aa6e9b01329b37278c9dc228aa5f9b931fa0e476a7b214850d3014ed2aac9bf",
@@ -1794,9 +1794,9 @@
       "normalized_sha256": "5dea88820eb25f54eb83aba80e3ed03f9652fdfbd8a01b2c87badfcf433686b2"
     },
     "src/renderer/QianchuanAccountSettings.tsx": {
-      "sha256": "e3b208d613951711d7078b7d1aa3aa853bf1a8cd924a4e43b32f4c1d40523757",
-      "size": 4327,
-      "normalized_sha256": "e3b208d613951711d7078b7d1aa3aa853bf1a8cd924a4e43b32f4c1d40523757"
+      "sha256": "d47a918c351c690512f900189c2a02155fcf0b027cf51850e07334d872b631fb",
+      "size": 7589,
+      "normalized_sha256": "d47a918c351c690512f900189c2a02155fcf0b027cf51850e07334d872b631fb"
     },
     "src/renderer/QianchuanUploadHistory.tsx": {
       "sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5",
