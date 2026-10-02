@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import * as persistence from "../src/main/douyin-upload-store";
 import { parseQianchuanPlanUrl, QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
+import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -38,6 +39,27 @@ it("rejects browser-opening inputs with arbitrary paths or endpoints before star
     await expect(f.settings.openBrowser({ product: "蝴蝶贴", planUrl: planUrl(), ...extra })).rejects.toThrow();
   }
   await expect(f.settings.openBrowser({ product: "蝴蝶贴", planUrl: "https://example.com/" })).rejects.toThrow();
+});
+it("controls only the saved account, clears its prepared connection and keeps mapping and frozen targets unchanged", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  f.discover.mockResolvedValue("http://127.0.0.1:41001");
+  const old = await f.settings.prepare("蝴蝶贴"), before = await readFile(f.settings.file);
+  const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+  const guard = vi.fn();
+  await f.settings.controlBrowser({ product: "蝴蝶贴", expectedAdvertiserId: old.advertiserId, action: "restart" }, guard);
+  expect(guard).toHaveBeenCalledWith(old.advertiserId); expect(control).toHaveBeenCalledWith(old.advertiserId, "restart", expect.any(Function));
+  expect(await readFile(f.settings.file)).toEqual(before);
+  expect((await f.settings.preflight("蝴蝶贴")).cdpEndpoint).toBe("http://127.0.0.1:9222");
+  expect(old.cdpEndpoint).toBe("http://127.0.0.1:41001");
+});
+it("rejects changed account identity, unsafe control input and upload protection before any shutdown", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+  const input = { product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244", action: "close" };
+  await expect(f.settings.controlBrowser({ ...input, expectedAdvertiserId: "123" }, () => {})).rejects.toThrow("已变化");
+  for (const extra of [{ pid: 42 }, { profile: "/tmp/other" }, { cdpEndpoint: "http://127.0.0.1:1" }]) await expect(f.settings.controlBrowser({ ...input, ...extra }, () => {})).rejects.toThrow();
+  await expect(f.settings.controlBrowser(input, () => { throw new Error("pending upload"); })).rejects.toThrow("pending upload");
+  expect(control).not.toHaveBeenCalled();
 });
 it("rejects mapping changes during browser discovery and never freezes a stale prepared binding", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);

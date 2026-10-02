@@ -9,6 +9,20 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## In-App Browser Controls Amendment (2026-10-02)
+
+用户明确要求浏览器的打开、关闭和必要重启由软件完成。本修订覆盖下面要求用户在系统中手动关闭重开已绑定原窗口的操作方式。账号设置提供打开、关闭及重启并连接；关闭和重启只接受已保存的稳定账号槽，不接受路径、PID、端口、任意 URL 或命令。按钮先说明该账号全部窗口及未保存页面会关闭，用户在软件内明确执行；启动与恢复仍不自动关闭任何窗口。
+
+原 browser manager 独占同 profile 生命周期；原 service/store 核验账号映射、上传存储、运行中制作/上传，以及该账号所有尚未结束的选择记录，历史记录同样参与保护。有待确认、UNKNOWN 或永久 fence 尚未明确结束的批次时拒绝关闭/重启，不替用户确认、结束批次或清除记录。生命周期操作与制作预检、继续及文件动作互斥，防止检查后出现新上传。缺少常规 CDP 的已绑定窗口可在软件内重启；未能确认原绑定时不猜账号、不关闭其他窗口。
+
+退出前 manager 必须把当前匹配进程的实际连接交回原 service guard。旧任务可能在同一进程中属于另一个 advertiser，保护按实际 loopback 端口同时核对所有历史授权，HTTP 与 WS 只是同连接的不同表示；端口重用可保守阻断，不能推断旧任务安全。当前进程缺调试连接而无法排除其他账号草稿时，任何尚未结束的受保护任务都阻断退出。Chrome 更新后的 `exe (deleted)` 仍按当前 PID、启动时间与 pidfd 身份识别，不把未发现调试端口当作进程退出。
+
+关闭仅对当前用户的唯一匹配 Chrome 主进程执行正常退出，重核 PID、启动身份及 profile-directory/class，有限等待退出；不使用进程名批量 kill、不发 SIGKILL、不删除 Singleton 文件、profile 或登录数据。未退出、进程身份变化或不确定时停止，不追加终止或启动替代窗口。重启必须先确认原进程退出，再以同 profile 启动并等待 loopback `/json/version` 就绪；当前动态端口仅供下一轮新制作，旧任务保持冻结目标且不自动续传。
+
+Linux 退出必须先取得绑定具体进程实例的 pidfd，再重查 UID、Chrome 主进程、目录/class 与启动时间后发送一次 SIGTERM；不使用数值 PID 信号作为回退。当前桥接要求 `/usr/bin/python3` 的 Python 3.9+ 和内核 pidfd 支持，缺能力时在信号前拒绝。制作启动及手动导出/追加从预检到入队、上传意图登记的整个异步交接持有浏览器保护，失败也释放保护。
+
+Parent Self-Review：软件按钮解决用户手动操作浏览器的缺口；登录仍由用户完成。关闭原 profile 会影响其全部窗口，因此在软件内明确告知并由 service 的全账号记录保护，而不能用本轮 UI 无任务或当前保存 advertiser 来推断历史页面安全。旧待确认窗口还存活时，其冻结端口仍属该进程；退出前重核实际连接补足 binding 引入前的跨账号归属保护。缺连接时保守拒绝，不能猜测分离。pidfd 防止身份扫描后 PID 复用把信号送给另一进程。Windows 不扩大资格，关闭软件仍仅 detach。
+
 ## Original Account Profile Reuse Amendment (2026-10-02)
 
 用户明确要求复用已登录的原账号窗口，并授权修复原六账号启动器的 CDP 参数。本修订覆盖下面“只使用应用独立 profile”和“不修改 launcher”的限制。主进程在新制作或显式打开账号时，优先从当前用户运行 Chrome 的常规 loopback CDP、有限 tab URL 元数据识别唯一匹配的原 profile；仅核验成功后，在应用私有目录独占持久化 advertiserId、规范 profile 路径、profile-directory 和窗口 class。不读取或复制登录数据，不消费 Codex MCP 配置，不接受 renderer 提供路径。名字、图标、旧端口不能决定账号归属。同一原 profile 不得绑定多个 advertiser。

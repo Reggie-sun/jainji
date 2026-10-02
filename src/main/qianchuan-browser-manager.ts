@@ -6,6 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { discoverQianchuanBrowser, discoverQianchuanProfile, runningChromeBrowsers, type RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
 import { QianchuanBrowserBindings, verifyOriginalProfile, type QianchuanBrowserBinding } from "./qianchuan-browser-bindings.js";
 import { secureUploadDirectory } from "./douyin-upload-store.js";
+import { shutdownAccountChrome } from "./qianchuan-browser-process.js";
 
 const browserUnavailable = "账号浏览器未能启动。请安装 Google Chrome，并检查是否已有异常的账号窗口；不要删除登录目录。";
 const accountUrl = (id: string) => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}`;
@@ -34,15 +35,17 @@ async function browserReady(endpoint: string): Promise<boolean> {
   } catch { return false; }
 }
 
-/** Owns browser startup only. Chrome retains login data; uploads keep their original authority owner. */
+/** Owns explicit browser lifecycle. Upload authority remains with the service/store. */
 export class QianchuanBrowserManager {
   private readonly pending = new Map<string, Promise<string>>();
+  private readonly controlling = new Set<string>();
   private readonly bindings: QianchuanBrowserBindings;
   constructor(private readonly root: string, private readonly dependencies: {
     launch?: typeof launchChrome;
     browsers?: () => Promise<RunningChromeBrowser[]>;
     startupMs?: number;
     ready?: typeof browserReady;
+    shutdown?: typeof shutdownAccountChrome;
   } = {}) { this.bindings = new QianchuanBrowserBindings(root); }
 
   private profile(advertiserId: string): string {
@@ -55,10 +58,10 @@ export class QianchuanBrowserManager {
     if (!matches.length) return undefined;
     if (!matches[0].endpoint) {
       if (starting) return undefined;
-      throw new Error("已打开的原账号浏览器没有常规 CDP，请正常关闭并重新打开原窗口；不会另开登录目录。");
+      throw new Error("账号浏览器需要重新连接，请在账号设置中点击“重启并连接”；登录目录会保留。");
     }
     if (original && (matches[0].profileDirectory !== original.profileDirectory || matches[0].windowClass !== original.windowClass)) throw new Error("原账号浏览器目录或窗口身份已变化，请核查绑定。");
-    if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(matches[0].endpoint) || Number(new URL(matches[0].endpoint).port) > 65535) throw new Error("请正常关闭该专用账号窗口，再从简辑打开；当前窗口不是简辑启动的连接方式。");
+    if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(matches[0].endpoint) || Number(new URL(matches[0].endpoint).port) > 65535) throw new Error("账号浏览器需要重新连接，请在账号设置中点击“重启并连接”；当前窗口不是简辑启动的连接方式。");
     return matches[0].endpoint;
   }
   private async ensure(advertiserId: string, show: boolean): Promise<string> {
@@ -70,7 +73,7 @@ export class QianchuanBrowserManager {
       if (original) {
         binding = { advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) };
         await this.bindings.save(binding);
-      } else if (originalBrowsers.some(browser => !browser.endpoint || browser.endpoint.startsWith("ws:"))) throw new Error("原账号 Chrome 尚未启用常规连接，请正常关闭并重新打开原窗口；不会另开登录目录。");
+      } else if (originalBrowsers.some(browser => !browser.endpoint || browser.endpoint.startsWith("ws:"))) throw new Error("尚未建立原账号浏览器绑定，无法安全识别或重启原窗口；不会另开登录目录。");
     }
     const profile = binding?.profile ?? this.profile(advertiserId);
     const original = binding ? { profileDirectory: binding.profileDirectory, ...(binding.windowClass ? { windowClass: binding.windowClass } : {}) } : undefined;
@@ -95,11 +98,36 @@ export class QianchuanBrowserManager {
   /** Explicit user action or new-production preflight only; restore never calls this. */
   open(advertiserId: string, show = false): Promise<string> {
     this.profile(advertiserId);
+    if (this.controlling.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后重试。");
     const existing = this.pending.get(advertiserId);
     if (existing) return existing;
     const pending = this.ensure(advertiserId, show).finally(() => { this.pending.delete(advertiserId); });
     this.pending.set(advertiserId, pending);
     return pending;
+  }
+  /** Called only after the service has protected uploads and explicit UI consent. */
+  async control(advertiserId: string, action: "close" | "restart", beforeShutdown?: (browser: RunningChromeBrowser) => void): Promise<void> {
+    const managed = this.profile(advertiserId);
+    if (this.pending.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后重试。");
+    this.controlling.add(advertiserId);
+    const pending = (async () => {
+      if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
+      const binding = await this.bindings.get(advertiserId), profile = binding?.profile ?? managed;
+      if (binding) await verifyOriginalProfile(binding);
+      else { await secureUploadDirectory(path.resolve(this.root)); await secureUploadDirectory(path.dirname(profile)); await secureUploadDirectory(profile); }
+      const browsers = this.dependencies.browsers ?? runningChromeBrowsers;
+      const matches = (await browsers()).filter(browser => browser.profile === profile);
+      if (matches.length > 1) throw new Error("账号浏览器连接不唯一，未关闭任何窗口。");
+      if (binding && matches.some(browser => browser.profileDirectory !== binding.profileDirectory || browser.windowClass !== binding.windowClass)) throw new Error("原账号浏览器目录或窗口身份已变化，未关闭任何窗口。");
+      if (matches.length) {
+        beforeShutdown?.(matches[0]);
+        await (this.dependencies.shutdown ?? shutdownAccountChrome)(matches[0], browsers);
+      }
+      if ((await browsers()).some(browser => browser.profile === profile)) throw new Error("账号浏览器关闭未完成，未重新启动。");
+      return action === "restart" ? this.ensure(advertiserId, true) : "";
+    })().finally(() => { this.pending.delete(advertiserId); this.controlling.delete(advertiserId); });
+    this.pending.set(advertiserId, pending);
+    await pending;
   }
   async prepare(advertiserId: string): Promise<string> {
     const endpoint = await this.open(advertiserId);

@@ -4,7 +4,8 @@ import path from "node:path";
 import { QianchuanAccountConfigReader, readPrivateConfig, type FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
 import { QianchuanBrowserManager } from "./qianchuan-browser-manager.js";
-import { parseQianchuanPlanUrl, QianchuanAccountSettingsSchema, QianchuanAccountSetupSchema, type QianchuanAccount, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
+import type { RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
+import { parseQianchuanPlanUrl, QianchuanAccountSettingsSchema, QianchuanAccountSetupSchema, QianchuanBrowserControlSchema, type QianchuanAccount, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -28,6 +29,18 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     this.assertAvailable();
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
     await this.browsers.open(ids.advertiserId, true);
+  }
+  async controlBrowser(input: unknown, guard: (advertiserId: string, browser?: RunningChromeBrowser) => void): Promise<void> {
+    this.assertAvailable();
+    const parsed = QianchuanBrowserControlSchema.parse(input);
+    await this.edit(async () => {
+      const target = await super.preflight(parsed.product);
+      if (target.advertiserId !== parsed.expectedAdvertiserId) throw new Error("账号设置已变化，未关闭任何浏览器，请重新选择账号。");
+      guard(target.advertiserId);
+      this.preparedBrowsers.delete(parsed.product);
+      await this.browsers.control(target.advertiserId, parsed.action, browser => guard(target.advertiserId, browser));
+      return super.refresh();
+    });
   }
   private async exists(): Promise<boolean> {
     try { await lstat(this.file); return true; }

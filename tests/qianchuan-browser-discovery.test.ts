@@ -45,7 +45,7 @@ it("reads browser-internal debugging metadata without a command-line debugging f
   const f = await processes(), profile = path.join(f.root, "profile"); await mkdir(profile, { mode: 0o700 });
   await f.add([`--user-data-dir=${profile}`]);
   expect(await runningChromeEndpoints(f.proc)).toEqual([]);
-  expect(await runningChromeBrowsers(f.proc)).toEqual([{ profile }]);
+  expect(await runningChromeBrowsers(f.proc)).toEqual([{ profile, processId: 10, startedAt: "123" }]);
   await writeFile(path.join(profile, "DevToolsActivePort"), "9321\n/devtools/browser/owned\n", { mode: 0o600 });
   expect(await runningChromeEndpoints(f.proc)).toEqual([socket]);
 });
@@ -97,6 +97,7 @@ async function processes() {
     const directory = path.join(proc, String(pid++)); await mkdir(directory);
     await symlink(executable, path.join(directory, "exe"));
     await writeFile(path.join(directory, "cmdline"), [executable, ...args, ""].join("\0"));
+    await writeFile(path.join(directory, "stat"), `${pid - 1} (chrome) S ${Array(18).fill("0").join(" ")} 123 0`);
   };
   return { root, proc, add };
 }
@@ -110,6 +111,11 @@ it("discovers current-user Chrome main processes only, with loopback debug flags
   await f.add([]);
   expect(await runningChromeEndpoints(f.proc)).toEqual([endpoint, "http://127.0.0.1:9322"]);
   expect(await runningChromeEndpoints(f.proc, process.getuid!() + 1)).toEqual([]);
+});
+it("retains a running Chrome instance after its executable is replaced by an update", async () => {
+  const f = await processes(), profile = path.join(f.root, "profile"); await mkdir(profile, { mode: 0o700 });
+  await f.add(["--remote-debugging-port=9321", `--user-data-dir=${profile}`, "--profile-directory=Default"], "/opt/google/chrome/chrome (deleted)");
+  expect(await runningChromeBrowsers(f.proc)).toEqual([{ endpoint, profile, profileDirectory: "Default", processId: 10, startedAt: "123" }]);
 });
 it("reads a bounded DevToolsActivePort only from the running port-zero browser's exact profile", async () => {
   const f = await processes(), profile = path.join(f.root, "profile"); await mkdir(profile, { mode: 0o700 });
@@ -141,5 +147,5 @@ it("recognizes a desktop Chrome process title and ignores a pipe-only MCP browse
   const profile = path.join(f.root, "pipe-profile"); await mkdir(profile, { mode: 0o775 });
   await f.add(["--remote-debugging-pipe", `--user-data-dir=${profile}`]);
   expect(await runningChromeEndpoints(f.proc)).toEqual([socket]);
-  expect(await runningChromeBrowsers(f.proc)).toEqual([{ endpoint: socket, profile: desktopProfile, profileDirectory: "Profile 1", windowClass: "account" }]);
+  expect(await runningChromeBrowsers(f.proc)).toEqual([{ endpoint: socket, profile: desktopProfile, profileDirectory: "Profile 1", windowClass: "account", processId: 10, startedAt: "123" }]);
 });

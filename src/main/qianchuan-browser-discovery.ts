@@ -31,7 +31,7 @@ async function boundedRead(file: string, limit: number, owner?: { uid: number; p
 }
 
 /** Read debugging metadata only from this user's running Chrome main processes. */
-export interface RunningChromeBrowser { endpoint?: string; profile?: string; profileDirectory?: string; windowClass?: string; }
+export interface RunningChromeBrowser { endpoint?: string; profile?: string; profileDirectory?: string; windowClass?: string; processId?: number; startedAt?: string; }
 export async function runningChromeBrowsers(procRoot = "/proc", uid = process.getuid?.()): Promise<RunningChromeBrowser[]> {
   if (process.platform !== "linux" || uid === undefined) throw new Error("当前系统暂不支持自动识别浏览器连接。");
   const pids = (await readdir(procRoot)).filter(name => /^[1-9][0-9]*$/.test(name));
@@ -43,7 +43,7 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       const info = await lstat(directory);
       if (!info.isDirectory() || info.uid !== uid) continue;
       let executable: string;
-      try { executable = path.basename(await readlink(path.join(directory, "exe"))); }
+      try { executable = path.basename(await readlink(path.join(directory, "exe"))).replace(/ \(deleted\)$/, ""); }
       catch (error) {
         // Linux may deny exe metadata for unrelated non-dumpable processes owned by this user.
         if ((error as NodeJS.ErrnoException).code === "EACCES") continue;
@@ -59,7 +59,10 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       if (args.includes("--remote-debugging-pipe")) continue;
       const declared = flag(args, "--remote-debugging-port");
       const profile = flag(args, "--user-data-dir");
-      const metadata = { profile, profileDirectory: flag(args, "--profile-directory"), windowClass: flag(args, "--class") };
+      const stat = await boundedRead(path.join(directory, "stat"), 4096);
+      const startedAt = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+      if (!startedAt || !/^[0-9]+$/.test(startedAt)) throw new Error(unavailable);
+      const metadata = { profile, profileDirectory: flag(args, "--profile-directory"), windowClass: flag(args, "--class"), processId: Number(pid), startedAt };
       let port = portNumber(declared);
       let socket: string | undefined;
       if (declared === "0" || declared === undefined && flag(args, "--user-data-dir")) {
@@ -68,7 +71,7 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
         try { await lstat(path.join(profile, "DevToolsActivePort")); }
         catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-          endpoints.set(`profile:${profile}`, metadata);
+          endpoints.set(`process:${pid}`, metadata);
           if (endpoints.size > maxEndpoints) throw new Error(unavailable);
           continue;
         }
@@ -83,7 +86,7 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       }
       if (port) {
         const endpoint = socket ?? `http://127.0.0.1:${port}`;
-        endpoints.set(endpoint, { endpoint, ...metadata });
+        endpoints.set(`process:${pid}`, { endpoint, ...metadata });
       }
       if (endpoints.size > maxEndpoints) throw new Error(unavailable);
     } catch (error) {

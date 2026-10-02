@@ -55,10 +55,12 @@ export class DouyinUploadService {
   private controlGeneration = 0;
   private productionBatches?: Set<string>;
   private beginningProduction = false;
+  private managingBrowser = false;
+  private browserPreparations = 0;
   private stopFailed = false;
   private readonly accounts: QianchuanAccountConfigReader;
   get busy(): boolean {
-    return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping || this.cancelling || this.beginningProduction);
+    return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations);
   }
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
@@ -68,6 +70,7 @@ export class DouyinUploadService {
   private openTasks(): UploadTaskRecord[] { return this.store.tasks().filter(task => this.inProduction(task.authorization.pageBatchId) && !this.store.isClosed(task.authorization.pageBatchId)); }
   /** Trusted production boundaries revoke old runtime permission without changing history. */
   async beginProduction(): Promise<void> {
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
     if (this.beginningProduction || this.stopping || this.closing || this.discarding || this.retargeting || this.preparingContinuation) throw new Error("上传控制仍在运行，请等待停止后开始本次制作。");
     this.beginningProduction = true;
     try {
@@ -157,12 +160,14 @@ export class DouyinUploadService {
   }
   /** Only the trusted main-process file dialog may call this with a path. */
   async chooseConfig(file: string): Promise<void> {
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     const summary = await this.accounts.authorizeFile(file);
     await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts instanceof QianchuanAccountSettings ? this.accounts.file : file });
     this.summaries = summary; this.initializationFailure = undefined; this.changed();
   }
   async saveAccount(input: unknown): Promise<void> {
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持软件内设置。");
     const summaries = await this.accounts.savePlan(input);
@@ -170,15 +175,36 @@ export class DouyinUploadService {
     this.summaries = summaries; this.initializationFailure = undefined; this.changed();
   }
   async refreshAccounts(): Promise<void> {
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后刷新账号。");
     try { this.summaries = await this.accounts.refresh(); this.initializationFailure = undefined; }
     catch { this.summaries = []; this.initializationFailure = "账号配置不可用，请检查文件权限和映射。"; }
     this.changed();
   }
   async openAccountBrowser(input: unknown): Promise<void> {
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后重试。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持打开浏览器。");
     await this.accounts.openBrowser(input);
   }
+  async controlAccountBrowser(input: unknown): Promise<void> {
+    if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未关闭浏览器。");
+    if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持管理浏览器。");
+    this.managingBrowser = true;
+    try {
+      await this.control.catch(() => undefined);
+      await this.accounts.controlBrowser(input, (advertiserId, browser) => {
+        if (this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction) throw new Error("上传控制已变化，未关闭浏览器。");
+        // A legacy draft may belong to another advertiser in this same process.
+        const sharesBrowser = (target: UploadAuthorization["target"]) => target.advertiserId === advertiserId || browser &&
+          (!browser.endpoint || new URL(browser.endpoint).host === new URL(target.cdpEndpoint).host);
+        const protectedTasks = this.store.tasks().filter(task => sharesBrowser(task.authorization.target) && !this.store.isClosed(task.authorization.pageBatchId) &&
+          (this.store.hasMarker(task.result.upload_task_id) || task.result.upload_outcome !== "NOT_SELECTED" || this.eligible.has(task.result.upload_task_id)));
+        const preparing = this.store.intents().some(intent => sharesBrowser(intent.authorization.target) && this.currentIntents.has(intentKey(intent)) && !this.cancelledIntents.has(intentKey(intent)) && !this.store.tasks().some(task => intentKey(task.input) === intentKey(intent)));
+        if (protectedTasks.length || preparing) throw new Error("该账号仍有制作中、待上传、待确认或结果未知的任务，未关闭浏览器。请先核查原上传页面并明确结束对应本地批次；上传记录和防重传屏障会保留。");
+      });
+    } finally { this.managingBrowser = false; this.changed(); }
+  }
   async configure(input: unknown): Promise<void> {
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后修改上传设置。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     const publicSettings = QianchuanUploadConfigSchema.omit({ accountConfigPath: true }).parse(input);
     if (!publicSettings.enabled) await this.stop();
@@ -187,19 +213,30 @@ export class DouyinUploadService {
     await this.store.setConfig(config); if (config.enabled) this.stopped = false;
     this.changed();
   }
+  /** Hold browser protection through the export handoff, not only its preflight. */
+  async withExportAdmission<T>(action: () => Promise<T>): Promise<T> {
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
+    this.browserPreparations++;
+    try { return await action(); }
+    finally { this.browserPreparations--; }
+  }
   async preflight(selection: QianchuanUploadSelection | undefined, expectedCount: number): Promise<UploadAuthorization | undefined> {
     if (!selection) return undefined;
-    if (this.stopFailed) throw new Error("旧上传操作未能安全停止，请先关闭应用并核查 Chrome。");
-    if (this.beginningProduction) throw new Error("正在切换本次制作范围，请等待上传控制停止。");
-    const parsed = QianchuanUploadSelectionSchema.parse(selection);
-    if (!this.store.config.enabled || this.store.unavailable) throw new Error("请先启用千川上传并授权账号配置。");
-    if (this.dependencies.readiness?.(this.store.config)) throw new Error(this.dependencies.readiness(this.store.config));
-    const generation = this.controlGeneration;
-    const target = await this.accounts.prepare(parsed.accountProduct);
-    if (generation !== this.controlGeneration || this.stopping || !this.store.config.enabled) throw new Error("上传控制已变化，请重新开始本次制作。");
-    const authorization = UploadAuthorizationSchema.parse({ target, pageBatchId: randomUUID(), expectedCount });
-    this.productionBatches?.add(authorization.pageBatchId);
-    return authorization;
+    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
+    this.browserPreparations++;
+    try {
+      if (this.stopFailed) throw new Error("旧上传操作未能安全停止，请先关闭应用并核查 Chrome。");
+      if (this.beginningProduction) throw new Error("正在切换本次制作范围，请等待上传控制停止。");
+      const parsed = QianchuanUploadSelectionSchema.parse(selection);
+      if (!this.store.config.enabled || this.store.unavailable) throw new Error("请先启用千川上传并授权账号配置。");
+      if (this.dependencies.readiness?.(this.store.config)) throw new Error(this.dependencies.readiness(this.store.config));
+      const generation = this.controlGeneration;
+      const target = await this.accounts.prepare(parsed.accountProduct);
+      if (generation !== this.controlGeneration || this.stopping || !this.store.config.enabled) throw new Error("上传控制已变化，请重新开始本次制作。");
+      const authorization = UploadAuthorizationSchema.parse({ target, pageBatchId: randomUUID(), expectedCount });
+      this.productionBatches?.add(authorization.pageBatchId);
+      return authorization;
+    } finally { this.browserPreparations--; }
   }
   async registerBatch(batch: ExportBatchIdentity, selection?: QianchuanUploadSelection, authorization?: UploadAuthorization): Promise<void> {
     if (!selection) return;
@@ -284,7 +321,7 @@ export class DouyinUploadService {
   runPending(): Promise<void> {
     if (this.stopFailed) return Promise.resolve();
     if (this.runner) return this.runner;
-    if (this.active || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.cancelling || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
+    if (this.managingBrowser || this.active || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.cancelling || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
     this.runner = (async () => {
       while (!this.stopFailed && !this.cancelling && !this.stopped && !this.stopping && !this.paused && this.store.config.enabled && !this.store.unavailable) {
         const ids = this.pendingGroup(); if (!ids.length) break;
@@ -298,6 +335,7 @@ export class DouyinUploadService {
     return new Promise((resolve, reject) => { void this.resume(id, resolve).then(resolve, error => { reject(error); this.changed(); }); });
   }
   resume(id: string, accepted?: () => void): Promise<void> {
+    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后继续上传。"));
     if (this.stopFailed) return Promise.reject(new Error("旧上传操作未能安全停止，请先关闭应用并核查 Chrome。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.closing) return Promise.reject(new Error("正在结束本批本地上传，请等待记录保存。"));
@@ -308,7 +346,7 @@ export class DouyinUploadService {
     if (requested && this.store.isClosed(requested.authorization.pageBatchId)) return Promise.reject(new Error("本批本地上传已结束，不能恢复。"));
     const work = this.control.catch(() => undefined).then(async () => {
       await this.admission.catch(() => undefined);
-      if (this.stopFailed || generation !== this.controlGeneration || this.stopping || this.closing || this.discarding || this.retargeting || this.store.unavailable || !this.store.config.enabled || this.active || this.runner) throw new Error("上传控制已变化、仍在运行或不可用，本次继续未接收。");
+      if (this.managingBrowser || this.stopFailed || generation !== this.controlGeneration || this.stopping || this.closing || this.discarding || this.retargeting || this.store.unavailable || !this.store.config.enabled || this.active || this.runner) throw new Error("上传控制已变化、仍在运行或不可用，本次继续未接收。");
       const task = this.requireTask(id);
       if (this.store.isClosed(task.authorization.pageBatchId)) throw new Error("本批本地上传已结束，不能恢复。");
       if (task.result.state === "DISCARDED") throw new Error("本批上传任务已删除，不能恢复。");
@@ -361,6 +399,7 @@ export class DouyinUploadService {
     }); this.control = work; return work;
   }
   retarget(id: string, expectedAdId: string): Promise<void> {
+    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后改传计划。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.closing) return Promise.reject(new Error("正在结束本批本地上传，请等待记录保存。"));
     if (this.discarding) return Promise.reject(new Error("正在删除本批上传任务，请等待记录保存。"));
@@ -390,6 +429,7 @@ export class DouyinUploadService {
     this.control = work; return work;
   }
   discard(id: string): Promise<void> {
+    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后处理上传任务。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再删除本批任务。"));
     this.discarding = true;
@@ -454,6 +494,7 @@ export class DouyinUploadService {
     return !this.stopFailed;
   }
   closeBatch(id: string): Promise<void> {
+    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后结束本批上传。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再结束本批本地上传。"));
     this.closing = true;

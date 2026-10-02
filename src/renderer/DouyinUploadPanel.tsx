@@ -32,7 +32,7 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
     <div className="brief-card">
       <label><input type="checkbox" checked={config.enabled} disabled={busy} onChange={event => setConfig(current => ({ ...current, enabled: event.target.checked }))} />启用千川上传</label>
       <small>选好本次账号，正式成片导出后由程序自动上传；每组最多 9 条，全部成功后继续。</small>
-      <QianchuanAccountSettings accounts={status?.accounts} busy={busy} onSave={input => perform(() => window.jianji.saveQianchuanAccount(input))} onOpenBrowser={input => perform(() => window.jianji.openQianchuanAccountBrowser(input))} />
+      <QianchuanAccountSettings accounts={status?.accounts} busy={busy} onSave={input => perform(() => window.jianji.saveQianchuanAccount(input))} onOpenBrowser={input => perform(() => window.jianji.openQianchuanAccountBrowser(input))} onControlBrowser={input => perform(() => window.jianji.controlQianchuanAccountBrowser(input))} />
       <details className="douyin-upload-advanced"><summary>高级设置</summary>
         <p>通常无需调整，遇到上传问题时再使用。</p>
         <div className="douyin-upload-actions">

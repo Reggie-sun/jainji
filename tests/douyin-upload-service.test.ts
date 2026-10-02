@@ -7,6 +7,7 @@ import { DouyinUploadStore, type UploadTaskRecord } from "../src/main/douyin-upl
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
+import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
@@ -16,6 +17,7 @@ const selection = (accountProduct: QianchuanProduct): QianchuanUploadSelection =
 const temporaryRoots = new Set<string>();
 afterEach(async () => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   await Promise.all([...temporaryRoots].map(root => rm(root, { recursive: true, force: true })));
   temporaryRoots.clear();
 });
@@ -362,6 +364,106 @@ describe("Qianchuan upload service", () => {
     const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, async () => "http://127.0.0.1:9225"), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
     await service.restoreConfig(); return { ...f, service };
   }
+  it.each(["http://127.0.0.1:9225", "ws://127.0.0.1:9225/devtools/browser/original", undefined])("protects another advertiser's old fenced upload in the same original process (%s)", async endpoint => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const batch = await f.createBatch(["legacy advertiser draft"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const records = f.store.tasks(), fence = f.store.fence(records[0].result.upload_task_id);
+    await f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=7777&adId=8888" });
+    const shutdown = vi.fn();
+    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async (_id, _action, ...extra: unknown[]) => {
+      (extra[0] as ((browser: { endpoint?: string; profile: string }) => void) | undefined)?.({ endpoint, profile: "/original/shared" });
+      shutdown();
+    });
+    const input = { product: "眼贴", expectedAdvertiserId: "7777", action: "close" };
+    await expect(f.service.controlAccountBrowser(input)).rejects.toThrow("待确认或结果未知");
+    expect(shutdown).not.toHaveBeenCalled(); expect(f.store.tasks()).toEqual(records); expect(f.store.fence(records[0].result.upload_task_id)).toEqual(fence);
+    control.mockImplementation(async (_id, _action, ...extra: unknown[]) => {
+      (extra[0] as ((browser: { endpoint: string; profile: string }) => void) | undefined)?.({ endpoint: "http://127.0.0.1:9226", profile: "/original/separate" });
+      shutdown();
+    });
+    await f.service.controlAccountBrowser(input); expect(shutdown).toHaveBeenCalledTimes(1);
+  });
+  it("protects READY and UNKNOWN original-account windows across a new production boundary, without changing fences", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+    const batch = await f.createBatch(["protected browser bytes"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const before = f.store.tasks(), fence = f.store.fence(before[0].result.upload_task_id);
+    const input = { product: "眼贴", expectedAdvertiserId: "1003", action: "close" };
+    await expect(f.service.controlAccountBrowser(input)).rejects.toThrow("待确认或结果未知");
+    await f.service.beginProduction(); expect(f.service.status(batch.projectId).tasks).toEqual([]);
+    await expect(f.service.controlAccountBrowser({ ...input, action: "restart" })).rejects.toThrow("待确认或结果未知");
+    expect(control).not.toHaveBeenCalled(); expect(f.store.tasks()).toEqual(before); expect(f.store.fence(before[0].result.upload_task_id)).toEqual(fence);
+    const unknown = { ...before[0], result: { ...before[0].result, state: "NEEDS_HUMAN" as const, upload_outcome: "MAY_HAVE_UPLOADED" as const, readyEvidence: undefined } };
+    await f.store.saveTask(unknown);
+    await expect(f.service.controlAccountBrowser(input)).rejects.toThrow("待确认或结果未知");
+    expect(control).not.toHaveBeenCalled(); expect(f.store.fence(before[0].result.upload_task_id)).toEqual(fence);
+    await f.service.controlAccountBrowser({ product: "肥皂", expectedAdvertiserId: "1004", action: "close" });
+    expect(control).toHaveBeenCalledWith("1004", "close", expect.any(Function));
+  });
+  it("refuses browser controls while an account is preparing or producing unadmitted exports", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+    const prepare = QianchuanAccountSettings.prototype.prepare;
+    let release!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(QianchuanAccountSettings.prototype, "prepare").mockImplementation(async function (this: QianchuanAccountSettings, product) { await wait; return prepare.call(this, product); });
+    const preflight = f.service.preflight(selection("眼贴"), 1);
+    await expect(f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "restart" })).rejects.toThrow("仍在运行");
+    release(); const authorization = await preflight;
+    const batch = await f.createBatch(["export awaiting notification"]);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await expect(f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "restart" })).rejects.toThrow("制作中");
+    expect(control).not.toHaveBeenCalled(); expect(f.events).toEqual([]);
+  });
+  it("protects the export admission gap after preflight and releases it after failure", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+    let release!: () => void;
+    const pathCheck = new Promise<void>(resolve => { release = resolve; });
+    const preflightDone = vi.fn();
+    const work = f.service.withExportAdmission(async () => {
+      await f.service.beginProduction();
+      await f.service.preflight(selection("眼贴"), 1);
+      preflightDone();
+      await pathCheck;
+      throw new Error("output directory refused");
+    });
+    const failed = expect(work).rejects.toThrow("output directory refused");
+    await vi.waitFor(() => expect(preflightDone).toHaveBeenCalledTimes(1));
+    await expect(f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "restart" })).rejects.toThrow("仍在运行");
+    expect(control).not.toHaveBeenCalled(); expect(f.store.intents()).toEqual([]);
+    release(); await failed;
+    await f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "close" });
+    expect(control).toHaveBeenCalledTimes(1);
+  });
+  it("holds the upload control during browser shutdown and permits explicit close after local batch closure", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const batch = await f.createBatch(["locally closed browser bytes"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    await f.service.closeBatch(f.store.tasks()[0].result.upload_task_id);
+    const records = f.store.tasks(), fence = f.store.fence(records[0].result.upload_task_id), events = [...f.events];
+    let release!: () => void;
+    const wait = new Promise<void>(resolve => { release = resolve; });
+    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async () => { await wait; });
+    const work = f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "close" });
+    await vi.waitFor(() => expect(control).toHaveBeenCalledTimes(1));
+    expect(f.service.busy).toBe(true);
+    const admit = vi.fn();
+    await expect(f.service.withExportAdmission(admit)).rejects.toThrow("浏览器操作");
+    expect(admit).not.toHaveBeenCalled();
+    await expect(f.service.preflight(selection("眼贴"), 1)).rejects.toThrow("浏览器操作");
+    await expect(f.service.beginProduction()).rejects.toThrow("浏览器操作");
+    await expect(f.service.resume(records[0].result.upload_task_id)).rejects.toThrow("浏览器操作");
+    await expect(f.service.controlAccountBrowser({ product: "肥皂", expectedAdvertiserId: "1004", action: "restart" })).rejects.toThrow("仍在运行");
+    await f.service.runPending(); expect(f.events).toEqual(events);
+    release(); await work;
+    expect(f.service.busy).toBe(false); expect(f.store.tasks()).toEqual(records); expect(f.store.fence(records[0].result.upload_task_id)).toEqual(fence);
+  });
   it("imports into app settings and restores without enabling upload, browser operations or an external dependency", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     expect(f.store.config.accountConfigPath).not.toBe(f.configPath); expect(f.service.status("unused").accounts).toHaveLength(6);

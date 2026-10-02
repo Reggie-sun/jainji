@@ -39,6 +39,11 @@ export const QianchuanAccountSetupSchema = z.object({
   product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), planUrl: z.string().trim().min(1).max(16384),
 }).strict();
 export type QianchuanAccountSetup = z.infer<typeof QianchuanAccountSetupSchema>;
+export const QianchuanBrowserControlSchema = z.object({
+  product: QianchuanProductSchema, action: z.enum(["close", "restart"]),
+  expectedAdvertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/),
+}).strict();
+export type QianchuanBrowserControl = z.infer<typeof QianchuanBrowserControlSchema>;
 
 export function parseQianchuanPlanUrl(input: string): { advertiserId: string; adId: string } {
   const message = "请粘贴含账户和计划 ID 的千川计划链接。";

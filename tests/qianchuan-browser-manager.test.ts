@@ -129,10 +129,58 @@ it("reopens a closed bound original profile with its exact profile-directory and
   expect(f.launch).toHaveBeenCalledWith(f.original, "123", { profileDirectory: "Profile 9", windowClass: "cp-original" });
 });
 
+it("closes and restarts a bound non-CDP original inside the manager without replacing its login profile", async () => {
+  const f = await originalFixture(); await f.manager.prepare("123");
+  f.browser.endpoint = undefined as unknown as string;
+  const shutdown = vi.fn(async () => { f.running.splice(0); });
+  f.launch.mockImplementation(async profile => { f.running.push({ ...f.browser, profile, endpoint: "http://127.0.0.1:9499" }); });
+  const manager = new QianchuanBrowserManager(f.root, { launch: f.launch, browsers: f.browsers, ready: f.ready, shutdown, startupMs: 200 });
+  await manager.control("123", "restart");
+  expect(shutdown).toHaveBeenCalledWith(expect.objectContaining({ profile: f.original }), f.browsers);
+  expect(f.launch).toHaveBeenCalledWith(f.original, "123", { profileDirectory: "Profile 9", windowClass: "cp-original" });
+  expect(await manager.open("123")).toBe("http://127.0.0.1:9499");
+  await manager.control("123", "close");
+  expect(f.running).toEqual([]); expect(f.launch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(await readFile(f.binding, "utf8")).bindings[0].profile).toBe(f.original);
+});
+
+it("rechecks shared-process upload protection before shutdown using the live browser endpoint", async () => {
+  const f = await originalFixture(); await f.manager.prepare("123");
+  const shutdown = vi.fn(), guard = vi.fn(() => { throw new Error("protected old advertiser"); });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: f.browsers, launch: f.launch, shutdown });
+  await expect(manager.control("123", "restart", guard)).rejects.toThrow("protected old advertiser");
+  expect(guard).toHaveBeenCalledWith(f.browser); expect(shutdown).not.toHaveBeenCalled(); expect(f.launch).not.toHaveBeenCalled();
+});
+
+it("does not launch after uncertain shutdown, or terminate ambiguous or changed original identities", async () => {
+  const f = await originalFixture(); await f.manager.prepare("123");
+  const shutdown = vi.fn(async () => { throw new Error("关闭未完成"); });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: f.browsers, launch: f.launch, shutdown });
+  await expect(manager.control("123", "restart")).rejects.toThrow("关闭未完成");
+  expect(f.launch).not.toHaveBeenCalled(); shutdown.mockClear();
+  f.running.push({ ...f.browser, endpoint: "http://127.0.0.1:9499" });
+  await expect(manager.control("123", "close")).rejects.toThrow("不唯一"); expect(shutdown).not.toHaveBeenCalled();
+  f.running.pop(); f.browser.profileDirectory = "Profile 10";
+  await expect(manager.control("123", "close")).rejects.toThrow("身份"); expect(shutdown).not.toHaveBeenCalled();
+});
+
+it("rejects opening or another control while shutdown owns the account", async () => {
+  const f = await originalFixture(); await f.manager.prepare("123");
+  let release!: () => void;
+  const wait = new Promise<void>(resolve => { release = resolve; });
+  const shutdown = vi.fn(async () => { await wait; f.running.splice(0); });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: f.browsers, launch: f.launch, shutdown });
+  const work = manager.control("123", "close");
+  await vi.waitFor(() => expect(shutdown).toHaveBeenCalledTimes(1));
+  await expect(manager.control("123", "restart")).rejects.toThrow("操作");
+  expect(() => manager.open("123")).toThrow("操作");
+  release(); await work; expect(f.launch).not.toHaveBeenCalled();
+});
+
 it("does not launch a replacement when a bound original requires permission or has a different profile-directory", async () => {
   const f = await originalFixture(); await f.manager.prepare("123");
   f.browser.endpoint = "ws://127.0.0.1:9421/devtools/browser/permission";
-  await expect(f.manager.open("123")).rejects.toThrow("正常关闭");
+  await expect(f.manager.open("123")).rejects.toThrow("重启并连接");
   f.browser.endpoint = "http://127.0.0.1:9421"; f.browser.profileDirectory = "Profile 10";
   await expect(f.manager.open("123")).rejects.toThrow("目录");
   expect(f.launch).not.toHaveBeenCalled();
@@ -147,7 +195,7 @@ it("blocks unconfigured original windows without opening another login profile",
 it("does not forward a launch to an already running bound original with debugging disabled", async () => {
   const f = await originalFixture(); await f.manager.prepare("123");
   f.running.splice(0, 1, { profile: f.original, profileDirectory: "Profile 9", windowClass: "cp-original" });
-  await expect(f.manager.open("123")).rejects.toThrow("没有常规 CDP"); expect(f.launch).not.toHaveBeenCalled();
+  await expect(f.manager.open("123")).rejects.toThrow("重启并连接"); expect(f.launch).not.toHaveBeenCalled();
 });
 
 it("rejects ambiguous original accounts and never uses their order or a cached app port", async () => {
@@ -220,7 +268,7 @@ it("attaches repeatedly to real isolated Chrome without remote-debugging permiss
   }
 }, 30_000);
 
-it("binds and restarts a real isolated original profile, preserving its directory, class and local data", async () => {
+it("controls a real isolated original Chrome, including non-CDP restart, while preserving its directory, class and local data", async () => {
   const f = await fixture(), executable = await resolveChromeExecutable();
   const original = path.join(f.root, "original"), root = path.join(f.root, "app");
   const options = { profileDirectory: "Profile 9", windowClass: "cp-isolated" };
@@ -250,10 +298,19 @@ it("binds and restarts a real isolated original profile, preserving its director
     const before = (await fetch(`${endpoint}/json/list`).then(response => response.json())).map((tab: { id: string }) => tab.id);
     expect(await manager.prepare("123")).toBe(endpoint);
     expect((await fetch(`${endpoint}/json/list`).then(response => response.json())).map((tab: { id: string }) => tab.id)).toEqual(before);
-    await stop();
-    const reopened = await new QianchuanBrowserManager(root, { launch, browsers }).open("123");
+    await manager.control("123", "restart");
+    const reopened = await manager.open("123");
     expect((await fetch(`${reopened}/json/version`)).ok).toBe(true);
     expect(launch).toHaveBeenLastCalledWith(original, "123", options);
     expect(await readFile(marker, "utf8")).toBe("preserved");
+    await manager.control("123", "close"); expect(await browsers()).toEqual([]);
+    const noDebugArgs = accountChromeArguments(original, "123", options).filter(arg => !arg.startsWith("--remote-debugging-")); noDebugArgs[noDebugArgs.length - 1] = "about:blank";
+    child = spawn(executable, [...noDebugArgs, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-background-networking"], { stdio: "ignore" });
+    await vi.waitFor(async () => expect((await browsers()).some(browser => browser.processId === child!.pid)).toBe(true), { timeout: 10_000 });
+    await manager.control("123", "restart");
+    expect((await fetch(`${await manager.open("123")}/json/version`)).ok).toBe(true);
+    expect(await readFile(marker, "utf8")).toBe("preserved");
+    await manager.control("123", "close"); expect(await browsers()).toEqual([]);
   } finally { await stop(); }
-}, 30_000);
+// Four exits (each bounded by 10s) plus Chrome startups must fit under load.
+}, 120_000);

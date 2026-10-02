@@ -155,8 +155,10 @@ function registerHandlers(): void {
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
     await queueReady;
     coverReview.assertIdle(); connections.assertIdle(); assertProductionIdle();
-    await douyinUpload.beginProduction();
-    await batchRuntime.controller.start(input);
+    await douyinUpload.withExportAdmission(async () => {
+      await douyinUpload.beginProduction();
+      await batchRuntime.controller.start(input);
+    });
     return publicState();
   });
   ipcMain.handle("batchProduction.cancel", async event => { assertTrustedSender(event); await batchRuntime.controller.cancel(); return publicState(); });
@@ -176,6 +178,11 @@ function registerHandlers(): void {
   ipcMain.handle("douyinUpload.refreshAccounts", async (event) => { assertTrustedSender(event); await douyinUpload.refreshAccounts(); return publicState(); });
   ipcMain.handle("douyinUpload.saveAccount", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.saveAccount(input); return publicState(); });
   ipcMain.handle("douyinUpload.openAccountBrowser", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.openAccountBrowser(input); return publicState(); });
+  ipcMain.handle("douyinUpload.controlAccountBrowser", async (event, input: unknown) => {
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
+    if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未关闭账号浏览器。");
+    await douyinUpload.controlAccountBrowser(input); return publicState();
+  });
   ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
@@ -279,8 +286,11 @@ function registerHandlers(): void {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
     batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle();
-    assertProductionIdle(); await douyinUpload.beginProduction();
-    await agent.start(input, approvedOutputDirectories);
+    assertProductionIdle();
+    await douyinUpload.withExportAdmission(async () => {
+      await douyinUpload.beginProduction();
+      await agent.start(input, approvedOutputDirectories);
+    });
     await service.rememberLatestProduction(agent.snapshot()!);
     return publicState();
   });
@@ -505,17 +515,19 @@ function registerHandlers(): void {
     if (!capabilities.ready) throw new Error(capabilities.message ?? "FFmpeg capability is not ready");
     const parsed = exportCreateSchema.parse(input);
     if (parsed.douyinUpload && parsed.preset.container !== "mp4") throw new Error("千川上传仅支持 MP4。");
-    await douyinUpload.beginProduction();
-    const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, new Set(parsed.mediaIds).size);
-    const preset = parsed.preset as ExportPreset;
-    const outputDirectory = await canonicalPath(parsed.outputDirectory);
-    if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
-    assertProductionIdle();
-    const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: parsed.mediaIds, mediaItems: service.currentProject.mediaItems, outputDirectory, preset });
-    await service.rememberExportProduction([batch]);
-    await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
-    void queue.start(batch.id);
-    return { batchId: batch.id, taskIds: batch.tasks.map((task) => task.id) };
+    return douyinUpload.withExportAdmission(async () => {
+      await douyinUpload.beginProduction();
+      const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, new Set(parsed.mediaIds).size);
+      const preset = parsed.preset as ExportPreset;
+      const outputDirectory = await canonicalPath(parsed.outputDirectory);
+      if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
+      assertProductionIdle();
+      const batch = await queue.createBatch({ projectId: service.currentProject.id, template: service.activeTemplate, mediaIds: parsed.mediaIds, mediaItems: service.currentProject.mediaItems, outputDirectory, preset });
+      await service.rememberExportProduction([batch]);
+      await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
+      void queue.start(batch.id);
+      return { batchId: batch.id, taskIds: batch.tasks.map((task) => task.id) };
+    });
   });
   ipcMain.handle("export.cancel", async (event, input: unknown) => { assertTrustedSender(event); await queue.cancel(taskSchema.parse(input).taskId); return publicState(); });
   ipcMain.handle("export.cancelAll", async (event) => {
@@ -541,19 +553,21 @@ function registerHandlers(): void {
     if (!prefill) throw new Error("找不到属于当前项目的已完成批次。");
     const sourceBatch = queue.snapshot().batches.find(value => value.batch.id === parsed.batchId)?.batch ?? service.currentProject.exportBatches.find(batch => batch.id === parsed.batchId);
     if (parsed.douyinUpload && (!sourceBatch || sourceBatch.preset.container !== "mp4")) throw new Error("千川上传仅支持 MP4 追加制作。");
-    await douyinUpload.beginProduction();
-    const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, prefill.mediaCount * parsed.count);
-    const outputDirectory = await canonicalPath(parsed.outputDirectory);
-    if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
-    const stickerPool = Object.entries(stickerAssets)
-      .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && entry[0] !== "template" && entry[0] !== "none")
-      .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
-    assertProductionIdle();
-    const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
-    await service.rememberExportProduction(batches);
-    for (const batch of batches) await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
-    for (const batch of batches) void queue.start(batch.id);
-    return { batchIds: batches.map((batch) => batch.id), outputDirectory };
+    return douyinUpload.withExportAdmission(async () => {
+      await douyinUpload.beginProduction();
+      const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, prefill.mediaCount * parsed.count);
+      const outputDirectory = await canonicalPath(parsed.outputDirectory);
+      if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
+      const stickerPool = Object.entries(stickerAssets)
+        .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && entry[0] !== "template" && entry[0] !== "none")
+        .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
+      assertProductionIdle();
+      const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
+      await service.rememberExportProduction(batches);
+      for (const batch of batches) await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);
+      for (const batch of batches) void queue.start(batch.id);
+      return { batchIds: batches.map((batch) => batch.id), outputDirectory };
+    });
   });
   ipcMain.handle("artifact.open", async (event, input: unknown) => {
     assertTrustedSender(event);
