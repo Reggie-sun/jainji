@@ -8,7 +8,7 @@
 .batch-template-row .batch-mode-select .button.secondary.active { color: #087d70; border-color: #087d70; background: #e7f4ef; }
 .batch-result-name { font-weight: 600; font-size: inherit; }
 .batch-details-back { margin-bottom: 20px; }
-.batch-template-row { display: grid; grid-template-columns: minmax(120px, .6fr) auto minmax(552px, 2fr) auto; align-items: center; gap: 8px; padding: 10px; border: 1px solid transparent; }
+.batch-template-row { display: grid; grid-template-columns: minmax(120px, .6fr) auto minmax(568px, 2fr) auto; align-items: center; gap: 8px; padding: 10px; border: 1px solid transparent; }
 .batch-template-row.selected { border-color: var(--accent, #397c69); }
 .batch-template-title { min-width: 0; }
 .batch-template-title label { display: flex; align-items: center; gap: 6px; cursor: pointer; min-height: 40px; }
