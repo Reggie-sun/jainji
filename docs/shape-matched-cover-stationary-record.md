@@ -1,5 +1,83 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-F Static Mask Boundary Engineering Acceptance — 2026-10-03
+
+本轮依据最新 [Course Correction](shape-matched-cover-v1-simplification-audit.md#m2-qualification-boundary-course-correction--2026-10-02)、[Delta Spec](shape-matched-cover-v1-simplification-spec.md#default-m2-static-engineering-acceptance)、[主Plan](shape-matched-cover-v1-simplification-plan.md) 与 [M2-F plan](shape-matched-cover-m2f-plan.md)，建立有限 offline `StaticMaskEngineeringEvidence/v1`。当前结果 **ENGINEERING_REJECTED / CONTROLLED_EXACT_NOT_QUALIFIED**：分离组件构造 case 漏失480个pixel-frame occurrences。用户实际查看冻结包后答复“过关我看了可以.”，真实边界整体观察记录为 **NO_VISIBLE_RESIDUAL_OBSERVED**，不能覆盖controlled失败。未调用视觉模型补观察，未签M2 product proof，M3 BLOCKED，PRODUCT_DISABLED，guard unchanged，modelRequests=0。
+
+### Current HEAD Audit and Historical Freeze
+
+开始HEAD `12462718b52d8bee2eb6e4541e872a8fc2eaa0f6`。保留 foreign dirty 千川/上传源码、tests、policy、AOCI及未跟踪文件；本轮不创建worktree，不修改foreign文件。读取现行AGENTS/合同、M2-A→E records、原target/extraction/qualification、M2-B/C diagnostic、M2-D comparator、stationary-envelope、source identity及canonical clock owners；CodeGraph核对extractor关系，通用 `set` 被错连ChatGPTSession的关系按实际WeakMap receiver裁决，不构成模型调用。
+
+真实3395px mask先对原96代表帧计算每像素最大RGB channel std≤20，筛选与确认sourceBox相交、至少8px且存在≥18对比边缘的8-connected stable components。support2082px；半径3的7×7方形（Chebyshev）扩张增加1313px，得到3395px。扩张只围绕已选support，不提供alpha、目标身份或未知边界完整性证明，不任意纳入未相交component。全范围RGB min/max±24为appearance criterion；133异常保留，不能补签为编码噪声或false positive。
+
+M2-B保留133 anomalies、61 strict clusters、506 violations、97.23% support第一层边界、cause NOT_QUALIFIED。M2-C独立持久梯度landmarks全6990帧证明冻结灵敏度内无新geometry issues，不能证明mask完整或exact motion truth。M2-D/E comparator与blind/two-human tooling不删除、不放宽，仍为OPTIONAL / HIGH-ASSURANCE，其历史INCOMPLETE/HOLDOUT_INSUFFICIENT/Harness FAIL全部原文保留于本节之后。
+
+原3395px / bbox628/1/81/59 / range[0,6990) / SHA **fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893** 未改；未dilate/erode/patch/redraw/re-extract真实mask。源 `a18f7e4e5fc02e5db977d9074be35ce82a296d247194205e9cf88e1ac76fc0bf` 始终 **DEVELOPMENT SOURCE**，未读取210 unseen素材，不新holdout triage，不进入M3。
+
+### Controlled Exact Alpha Corpus
+
+owner `scripts/shape-cover-static-engineering-corpus.ts` 只编排现有application discovery/confirmation/extractor。`static-exact-alpha-corpus/v1`：19个正例×30帧，128×96，H264 qp0 yuv444p；专门reencode case另执行CRF18 yuv420p。每例在任何decode/discovery/extraction之前先由固定recipe构造alpha与required mask，alpha>0含alpha1；原alpha bytes、每帧digest与construction-truth保留。candidate从原extractor生成，不从candidate构造truth，也未修改M2-A方法。
+
+Cases：opaque irregular、anti-aliased contour、alpha=1、1px tip、2px stroke、holes、disconnected components、light-on-light、dark-on-dark、chroma-heavy edge、corner target、edge target、changing background、high-motion background、scene cut、H264 reencode、first frame、last frame、adverse one-frame edge state；另有exactly-one-required-pixel negative。
+
+独立full-canvas controlled decode逐帧核对extractor原ROI SHA，然后复用M2-D comparator在完整128×96分母比较，不能裁truth到candidate bbox或ROI。聚合只供报告；任一帧1px miss即失败，不平均。
+
+| Metric | Actual result |
+| --- | --- |
+| executed positive cases / frames | 19 / 570，全部完成，无skip |
+| requiredPixels | **183693** pixel-frame occurrences |
+| missedRequiredPixels | **480** |
+| missingRequiredFrames | **30** |
+| excessPixels | 190077，不是qualification分数 |
+| worst case / maxMissPerFrame / worstFrame | disconnected-components / 16 / ordinal0（30帧各漏16px） |
+| other18 cases | 每例missedRequiredPixels=0、missingRequiredFrames=0；不外推真实源 |
+| corpus digest | `308e9b7db747d66826e657548e17aa80663f3c915f76db7f9f7c708836f4dc6d` |
+| intentional1px negative | required313，missed1，missingFrames1，maxMiss1，worstFrame0；CONTROLLED_EXACT_NOT_QUALIFIED，正确拒绝 |
+
+分离component为construction recipe中x83..86/y41..44的4×4 opaque区域；位于ROI39/17/53/53内，但不与确认sourceBox51/29/29/29相交，当前extractor排除该component。candidate仍649px，没有覆盖这16px。sourceBox由原owner固定12px padding及未裁截ROI解释核对；不凭一次RGB外观反推alpha。失败说明当前方法不能对该构造的整个已声明目标签零漏；不删除case、缩truth、平均或调算法到通过。单源边界观察即使随后无明显残留，也不能覆盖此controlled失败。
+
+### Frozen Real Development Review Set
+
+复用既有M2-B anomalies、M2-C全部frames及M2-E已曝光development risk sidecar。新owner `scripts/shape-cover-static-engineering.py` 是窄离线组合接缝，复用M2-B strict decoder、M2-D comparator及existing original ROI risk function；不建立production qualification framework、第二source owner或真人pixel-truth链。
+
+重新实际解码全部6990帧，ordinal/PTS/endPTS/原ROI RGBA SHA与历史candidate/geometry逐项一致；七项original RGB/edge/background risk scalar逐帧重算一致，source/engine/method/历史artifact前后SHA核对。M2-C receipt仍valid：**DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED**，geometry issues0，旧133 RGB anomaly对应geometry issues0。receipt digest **a58259f86945ad19c93fac4fef5bb138c116549e151b45280d418118c29e28a0**，frameMetrics digest `cfb8a722078a7dde62f8400dd93623052287950d93ef6b24ade41fe3dda88e53`，config `33ef2267b762a7cef277413d35b95ada15baba184fd8456d632892bebd92b598`；未重解释为exact motion truth。
+
+review set共 **70帧**，digest **bd812f36716ed9a58aeddc3001777516b9be46f30f7c75c195590ca8b5842414**。预声明signature是2×2 spatial sector、support depth1/2/3/interior及超24的RGB channel bitset之exact set，共39种；每种取worstDifference最大、继而changedSupportPixels最大、最早tie。仅signature代表就需39帧，故超过偏好32；全部保留，不事后合并或截掉难帧。这不是独立因果或像素truth分类。总预算128，超限INCOMPLETE；没有重建192帧双人truth流程。
+
+| Frozen risk reason | Ordinals |
+| --- | --- |
+| first / last / required historical anchors | 0、6989、233、710、715、3764 |
+| representative normal（非133 anomaly列表的1/4、1/2、3/4分位） | 1791、3551、5275 |
+| all39 anomaly-signature representatives | 234、235、237、468、469、576、578、580、588、652、709、710、715、728、864、867、1193、1228、1247、1250、1284、1288、1464、1469、1486、1497、1522、2037、2047、2096、2101、2267、2271、2542、2634、2985、2986、2990、3756 |
+| strongest count / difference | 710 / 715 |
+| local-offset signed min/max（9 cells×2 axes，earliest tie） | 0、15、42、241、586 |
+| edge/chroma/RGB/background/difference及geometry scalar min/max | 0、15、42、275、285、286、308、452、578、899、945、2090、2429、2511、3008、3554、3562 |
+| scene contexts（原66 cut inventory首/中/末事件±1） | 41、42、43、1497、1498、1499、4188、4189、4190 |
+
+以上取并集即70。`review-set.json`保存逐帧完整binding、每条exact reason与assets digest；不宣称覆盖所有66 scene cuts或所有6990帧像素边界。
+
+### Boundary Package, Actual Observation and Receipt
+
+Evidence根R=`~/.local/state/jianji-source-fact-qualification/m2f-engineering-20261003`。`controlled-v1/`保存原construction/alpha/media/candidate，`real-review-v5/`为最终稳定源码package：每帧original ROI105×76、original+内部mask边界overlay、inside/outside清晰色图、6倍nearest-neighbor原图/边界配对；source ordinal/PTS及机器risk reason可见。没有expected PASS/FAIL、confidence或“应该没漏”提示，candidate可见是本工程检查的明确模式，不伪装为blind truth authoring。用户所看v3、UI验证v4和最终v5的review-set/asset digest完全相同；版本更新只绑定最终receipt处理源码，未改变mask、风险选择或图像。
+
+只有一个具名真人engineering reviewer需要回答“当前mask外，是否能看到明显属于旧贴纸的视觉贡献？”。每帧默认UNKNOWN；实际观察缺失、AA/透明/归属歧义或dispute直接UNKNOWN，可升级second review，但不默认双人。用户对明确绑定70帧package的问题实际答复“过关我看了可以.”；reviewerId记录为`user-of-current-Codex-session`，provenance=ACTUAL_USER_MESSAGE，scope=FROZEN_REVIEW_SET，整体观察NO_VISIBLE_RESIDUAL_OBSERVED。R/actual-user-boundary-observation.json保留原话、问题、set digest及ordinals；没有伪造70条独立逐帧答案，也不推测未看范围或逐像素truth。此为用户对冻结包的整体观察解释，不是独立blind资格。Browser synthetic input只验证页面interaction，明确SYNTHETIC_UI_TEST_NOT_ACTUAL_REVIEW，不写入实际观察文件或真实receipt。
+
+最终统一receipt为R/`real-review-v5/final-receipt.json`，digest **a07c601510c4002695915b57604c5250f76a7fe627fd2b6930a9952cfdbd78db**，绑定source/target/range、detector/extractor/source/config digest、candidate bitmap、controlled corpus digest/metrics、M2-C receipt、review-set/asset digests、实际观察、旧M2-A/B refs与limitations。状态**ENGINEERING_REJECTED**，真实观察**NO_VISIBLE_RESIDUAL_OBSERVED**，authority=none / eligible=false / claims=[]；不能用真实包的有限肯定观察覆盖known controlled失败。原initial UNKNOWN receipts和build failures保留，不称真实pixel零漏，不生成SOURCE_QUALIFIED/MASK_ADMITTED/PRODUCTION_READY。
+
+旧 `FULL_RANGE_STATIC_CONTRADICTION` 明确作为 `historicalAppearanceCriterion=REJECTED` 引用：它测量RGB sample-envelope，是历史appearance判断，不是新geometry owner；**not used as sole static decision criterion**。133异常/61 clusters/506 violations和cause未知均绑定，未删除、重命名为PASS或false positive。
+
+### Performance, Verification and Completion Boundary
+
+controlled corpus实际459285.952ms；真实package build16.423s，package写完前统计3721515bytes，parent peakRSS223670272bytes。artifactBytes是当时已写文件计数，另有最终package/receipt及engineering日志，不伪称全目录总量。只记录，不优化算法。
+
+fresh `npm run typecheck` 与corpus脚本单独strict tsc均exit0。首次focused **3 suites / 44 Vitest checks PASS，无skip**：M2-A extraction10、activation28和Python bridge6；bridge内79项Python controls（新M2-F13、旧holdout30/truth7/comparator10/geometry13/anomaly6）全部PASS。用户实际观察到达后增加保留aggregate原话而不制造逐帧答案的control，新M2-F为14项；最后代码修改后的fresh typecheck/同三suite最终结果存R/engineering/*final*，不借旧结果补签。controlled19例真实执行及其480px failure是工程验收失败，不混称unit失败，也不被tests PASS覆盖。Chrome MCP独立context验证70 sections、280 PNG全部载入、original105×76、6倍edge1260×456、默认UNKNOWN、空reviewer拒绝与逐帧JSON导出；浏览器自动操作没有给真实human verdict。首次并发image.decode出现EncodingError，随后DOM核对全部已载入；原失败不冒充观察。
+
+owned Harness按current foreign policy与6项before/after SHA执行，最终actual code/verify receipt及每项结果见R/engineering/harness-*.log、harness-result.json和其引用的`.agent/harness/runs/`。首个run在用户实际观察到达、需要刷新最终receipt与record时显式终止，保留NOT_EVALUATED/cancelled回执并使用最终scope重新运行，不掩盖旧结果。此处不预写Harness PASS；其失败/过期/foreign/global blocker不被focused tests或AOCI覆盖。全库`git diff --check`发现foreign `aoci.code.txt` EOF blank-line，未修；本轮owned diff另行核对。没有调foreign timeout、GPU export、upload、千川或历史M5D2A链接。
+
+逐项官方scope核对本轮6对象均observe，不扩indexed范围；Maintain为aligned/0 candidates，Verify/Check/Guide按最终稳定状态执行，actual收据存R/engineering/aoci-*。shared indexed/baseline字节属于foreign session，不stage。首次Whole-Index传输被host截断，认知链停止，当前只作source-bound工程，不声称完整系统认知可靠；治理aligned不修复此认知声明或任何Harness失败。无repository dedicated capture skill，本节和R保存稳定checkpoint；不修改外部memory。显式modelRequests0优先于通常委派路线，不运行Kimi/native视觉或adversarial模型补验收；Parent负责最终diff和工程拒绝裁决。
+
+**Next boundary：** 当前controlled分离组件失败不允许进入target-proof接线。唯一下一候选slice是针对已保留disconnected-components反例，在新方法版本中修复/明确拒绝确认目标内分离组件的完整性，再重新执行本M2-F corpus及冻结真实边界工程检查；本轮不实施该算法修复，不调当前mask到通过。M2 product proof未签发，M3仍BLOCKED，PRODUCT_DISABLED，guard unchanged，modelRequests=0。
+
 ## M2 Qualification Boundary Course Correction — 2026-10-02
 
 本轮为 `SOURCE_AUDITED / CONTRACT_CORRECTION / DOCUMENTATION_ONLY / PRODUCT_DISABLED`。依据 [追加audit](shape-matched-cover-v1-simplification-audit.md#m2-qualification-boundary-course-correction--2026-10-02)、[Delta Spec §6](shape-matched-cover-v1-simplification-spec.md#default-m2-static-engineering-acceptance) 和 [更新Plan](shape-matched-cover-v1-simplification-plan.md#current-bounded-follow-up--m2-engineering-boundary)，不运行新holdout triage、不进入M3、不修改算法/mask/guard，不删除M2-E工具或历史失败。下方M1-A至M2-E全部原文保持；其中当时的Need/Stop是历史模式条件，当前适用关系由本节及Spec解释。

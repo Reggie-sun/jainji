@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 // A Harness-owned Vitest seam runs the offline controls; it does not qualify real media.
 describe("offline static holdout and human truth acquisition", () => {
   for (const file of [
+    "tests/shape-cover-static-engineering.test.py",
     "tests/shape-cover-static-holdout.test.py",
     "tests/shape-cover-static-truth-tool.test.py",
     "tests/shape-cover-required-pixel-truth.test.py",
