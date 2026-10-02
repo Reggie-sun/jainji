@@ -1,5 +1,56 @@
 # Stationary Shape Cover Engineering Record
 
+## M1-A Bounded CPU Stationary Discovery — 2026-10-02
+
+依据已提交 [course-correction audit](shape-matched-cover-v1-simplification-audit.md)、[Delta Spec](shape-matched-cover-v1-simplification-spec.md)、[Plan](shape-matched-cover-v1-simplification-plan.md) 和本轮 [implementation plan](shape-matched-cover-m1a-plan.md)，实现 **CPU_DETECTOR_DEVELOPMENT / NO_TARGET_CONFIRMED / PRODUCT_DISABLED**。不继续 D2Q→D3→D4，不建 FullSourceAdmissionHandle，不执行mask qualification、source admission、视觉审阅或activation；以下历史记录保持原状态。
+
+### Ownership and Method
+
+从 `91ecc55` 干净工作树开始；期间另一任务提交 `6549217`（make frontend沟通规则与对应索引），本轮保留其提交。Parent实际读取clock、D2 evidence、extractor/comparator、envelope、pixel/alpha以及FFmpeg和source identity owner，使用CodeGraph核对；CodeGraph将普通 `set` / `now` 错连到其他模块时按实际receiver/import裁决，不将错误关联当模型调用。旧extractor需要caller声明/ROI，envelope需要caller mask，两者均没有自动发现职责。
+
+新 `source-fact-discovery-evidence.ts` 复用 `source-fact-census.ts` 抽出的原严格metadata/packet clock与子进程；`parseFullDecodeClock`、`identifySource`、`sourceKey`、`fingerprintFile`不变。最多96个uniform-PTS代表ordinal，包含首尾；FFmpeg CPU-only、单解码进程，将选定原RGBA与独立framehash pipe逐一绑定PTS、duration、字节数和SHA。仅代表帧进入私有临时文件；闭合清理，不调用full census/D2全片spool，不写知识或语义session。源/引擎前后核验、读取摘要、所有权、取消与总5min期限保持拒绝。输入包络继续采用既有H.264/MP4、SDR、无旋转、精确一对一packet/clock等严格条件，不承诺任意视频格式。
+
+新 `shape-cover-stationary-discovery.ts` 全画布最长边360格，RGB max-channel std≤20、相邻差≤30的consensus≥0.8、持久边缘差≥18；全部8连通稳定component分别处理，最小12格/4个持久边缘，过大稳定区域标背景歧义。component上限4096、候选上限128，超限整体INCOMPLETE而非截断成功。映射为整数cell origin与向外取整ROI；从每个稳定cell内部最多3×3原像素重算支持稳定率并逐帧hash原ROI。ROI、confidence与固定坐标相邻一致性都是候选信号，不是target identity、完整运动证明或保守mask。模型/预填mask/用户ROI/贴纸ID均不参与发现。
+
+每个component保留统计、映射、拒绝及背景/字幕/商品印字歧义；候选固定 `authority=none / eligible=false`，confirmation、mask、motion、source admission、coverage、visual safety全部NOT_EVALUATED。不足3帧/1秒为INCOMPLETE；没有可用候选为NO_CONFIRMED_TARGET并保留NO_ABSENCE_CLAIM。没有返回EMPTY或confirmed集合，没有隐式传入原提取/union/生产链。
+
+### Real Source Development
+
+独立入口 `scripts/shape-cover-discovery-diagnostic.ts` 参数为source path、原identity JSON、新独占输出目录与应用FFmpeg/FFprobe路径；不接受ROI/mask。Evidence根：`/home/reggie/.local/state/jianji-source-fact-qualification/m1a-discovery-20261002-final`（R），前两次保存在同级 `m1a-discovery-20261002-v1`、`-v2`；repo内封存task与执行日志位于仅本轮runtime忽略目录 `runs/shape-cover-m1a-20261002`，最终日志和receipt另存R。未读取holdout，真实运行前冻结方法参数，真实运行后参数修订0次。
+
+原用户233s素材SHA `a18f7e4e5fc02e5db977d9074be35ce82a296d247194205e9cf88e1ac76fc0bf`、54,577,917 bytes、720×1280、6990帧、timeBase1/15360、PTS0..3578880；最后重新hash原字节不变。96个原ordinal的PTS/endPTS/byteLength/RGBA SHA逐项与历史canonical D1 census相同（96/96）；历史D1这里只是独立pixel binding对照，不是本轮运行依赖，更不是语义审阅。
+
+三次全画布运行均产生 **41 components / 7 CANDIDATE**，deterministic resultDigest均为 `c1ff778bab42c834459b5b515e1f5ef6dcfff577e139745406e6cd426ea865f4`。Parent查看原第一帧和candidate-0原像素裁图：右上“国货之光”自动ROI为x627/y3/w83/h61，130个稳定grid pixels，原支持稳定率0.8692；全片发现没有注入历史框或mask。底部持久文字形成其余6个候选，均保留字幕/印字歧义；左上贴纸所在区域原支持稳定率0.7031，明确UNKNOWN / ORIGINAL_PIXEL_STABILITY_CONTRADICTION。**有候选不表示全部旧贴纸检出或贴纸身份已确认。**
+
+历史Python需要ROI615/0/100/90、指定14–20s或3秒段，并只取最大component/dilate后得到约81×59 mask。本轮从整233s全画布自动发现返回83×61粗ROI，不输出mask；y3不能替代历史y1边缘数据。mask边缘、漏像素、alpha、透明度/闪烁、完整目标时域及运动资格全部留M2，不能将此ROI填进mask proof。对照控制媒体的负例属于development，不是独立真实holdout。
+
+| Final CPU measurement | Actual evidence |
+| --- | --- |
+| Host | Linux，Intel Core Ultra 7 265K；未测低端CPU或Windows |
+| Overall diagnostic | 19,332.956ms；前两次21,243.897 / 20,567.593ms |
+| Identity / clock metadata / representative decode | 301.202 / 8,685.085 / 8,337.482ms；clock包含原FFprobe frame解码，未计入detector纯计算 |
+| Temporal statistics / components / original pixels | 529.835 / 12.697 / 283.497ms |
+| Parent peak RSS | 249,368,576 bytes，237.816MiB，Node resourceUsage实际进程峰值 |
+| Decoder/probe child observed peak | 69,148,672 bytes，65.945MiB；Linux /proc VmHWM每25ms采样，是所观测峰值/真实峰值下界，不伪称精确child峰值；其他平台null |
+| Algorithm accounted working buffers / scratch | 13,444,128 / 353,894,400 bytes（337.5MiB scratch）；buffer accounting非全进程RSS；仅96原帧，无全片约24GiB spool，close清理 |
+| Models / qualification / matching / preview / export | detector modelRequests0；其他阶段NOT_EVALUATED；不声称编码主要耗时或整产品性能验收 |
+
+### Verification and Decision
+
+读并执行current `verification-before-completion`；fresh `npm run typecheck`、diagnostic单独strict tsc与esbuild、真实FFmpeg CLI均exit0。最终8 suites **189 tests PASS**：新discovery17、原census64、D2 review28、extractor17、comparator9、stationary envelope20、pixel6、activation28；完整命令/输出保留R及repo runtime日志，101.85秒。新tests覆盖全画布较小非角落多目标、确定性复算、原像素ROI、旧full census绑定、錯source/PTS/duration/hash/timeBase/tail、无authority、fake/closed evidence、pre/live cancellation、wall/scratch/frame/候选/component限额、stable background/blank/moving/blinking/cut、字幕/印字歧义。
+
+保留开发失败日志：首轮test仅用了PATH名称导致realpath失败，改为原discoverBinary；随后错误import修正到ffmpeg owner。原像素对照最初扩到component外邻居，错误拒绝小目标；改为cell内部支持采样，保留此前3个行为失败，不降低0.8准入。这些修复均先于真实方法冻结或仅修test/metadata绑定，非holdout调参。diagnostic不在完整freshness与取消检查前写成功result。
+
+额外真实CLI取消对照保存同级 `m1a-discovery-20261002-cancelled`：SIGTERM在运行中取消，962.172ms返回exit2，只有input/failure JSON，没有成功result或候选产物。未重试unknown外部请求；取消只停止本地只读解码。
+
+stable snapshot见R/source-snapshot.json（各source/test/script与accepted refs完整SHA）。Implementation Risk Gate为 **KIMI_REVIEW_NOT_REQUIRED**：仅无authority候选与自有临时证据，无凭据/产品/durable-state写路径；共享census抽取的风险由64+28及依赖回归覆盖，没有具体重大后果且残留验证缺口的触发证据。Kimi只做原源码职责核查，invocation `d0032e89-e3d2-4ce3-b2fb-3faebd21b3e8`、seal `f374218aad13697e6a44c15d6402dfb6bfb6f3fe26fd17f0797c2e88411bbc34`、deep/max、真实上游身份与Read/receipt可核验；PARSED不是implementation acceptance。Parent拒绝其泛化到输出CONFIRMED集合的建议，本轮只产candidate。
+
+### AOCI and Remaining Boundaries
+
+初始Overview因另一任务更新正式索引返回overview_snapshot_changed，未补答或声称完整系统认知可靠，继续source-bound工作。用户本轮明确选择 **B：本轮只提交业务代码，共享索引交对方统一维护**；故不调用Maintain/Apply、不写或提交aoci.code.txt/.aoci/baseline.json。只读核对scope与Verify/Check/当前 `index agent guide`；结构valid但governance未aligned。需要对方维护本轮三个managed对象：`src/main/source-fact-census.ts`（stale），`src/main/source-fact-discovery-evidence.ts`与`src/main/shape-cover-stationary-discovery.ts`（missing/unbaselined）；docs、scripts、tests按现有observe scope，无索引扩scope。精确source SHA和语义交接见R/source-snapshot.json及本文ownership段。旧一次错误的root guide命令日志保留，最终使用当前CLI正确入口；不把命令运行等同治理通过。
+
+无repository专用capture skill，本节承接稳定checkpoint与真实外部媒体证据，不更新外部memory。此次仅称CPU detector development已实现；mask完整性、固定动画、motion qualification、目标确认交互、独立真实holdout、低端CPU/Windows、视觉安全与production activation仍未完成。原product guards、fullcanvas研究合同、renderer/custody、manual/assisted、queue与历史解释均未改；待维护AOCI按用户指定交接，不宣称V1已完成。
+
 ## Real Contour Method Comparison and Source Inventory — 2026-10-01
 
 按用户要求连续执行auto-contour计划，M1先以既有收据只读追踪；固定两型号已通过native conformance，但认证目录exact0，详见 [AI record](shape-matched-cover-m5d2a.md#fixed-model-catalog-followthrough--2026-10-01)。本节记录M1阻断时独立推进的M2真实development与M3材料准备，**REAL_AUTOMATIC_CHAIN_INCOMPLETE / PRODUCT_DISABLED**。证据根 `/home/reggie/.local/state/jianji-source-fact-qualification/auto-contour-catalog-followthrough-20261001`（F），不重做预选星形导出、不伪造truth或生产准入。

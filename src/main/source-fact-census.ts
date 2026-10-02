@@ -28,23 +28,28 @@ export interface FullSourceCensusInput {
 }
 function unsafe(reason: string): never { throw new JianjiError(`UNSAFE: full-decode census ${reason}`, "input_invalid", "input", false); }
 
-async function streamCommand(binary: string, args: string[], signal: AbortSignal, deadline: number, consume: (chunk: Buffer) => void): Promise<void> {
+export async function streamSourceFactCommand(binary: string, args: string[], signal: AbortSignal, deadline: number, consume: (chunk: Buffer) => void,
+  consumeBinding?: (chunk: Buffer) => void): Promise<void> {
   signal.throwIfAborted();
   if (Date.now() >= deadline) unsafe("wall budget exceeded");
   await new Promise<void>((resolve, reject) => {
-    const child = spawn(binary, args, { shell: false, windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(binary, args, { shell: false, windowsHide: true, stdio: consumeBinding ? ["ignore", "pipe", "pipe", "pipe"] : ["ignore", "pipe", "pipe"] });
     let failure: Error | undefined;
     const stop = (reason: Error) => { failure ??= reason; child.kill("SIGKILL"); };
     const abort = () => stop(new Error("UNSAFE: full-decode census cancelled"));
     const timer = setTimeout(() => stop(new Error("UNSAFE: full-decode census wall budget exceeded")), Math.max(1, deadline - Date.now()));
     signal.addEventListener("abort", abort, { once: true });
     if (signal.aborted) abort();
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout!.on("data", (chunk: Buffer) => {
       if (failure) return;
       try { consume(chunk); } catch (error) { stop(error instanceof Error ? error : new Error("UNSAFE: full-decode census stream failed")); }
     });
+    if (consumeBinding) child.stdio[3]!.on("data", (chunk: Buffer) => {
+      if (failure) return;
+      try { consumeBinding(chunk); } catch (error) { stop(error instanceof Error ? error : new Error("INCOMPLETE: discovery binding failed")); }
+    });
     // -v error: even an exit-0 decode reporting errors cannot certify a complete census.
-    child.stderr.on("data", () => stop(new Error("UNSAFE: full-decode census engine reported an error")));
+    child.stderr!.on("data", () => stop(new Error("UNSAFE: full-decode census engine reported an error")));
     child.once("error", error => { failure ??= error; });
     child.once("close", code => {
       clearTimeout(timer); signal.removeEventListener("abort", abort);
@@ -52,6 +57,29 @@ async function streamCommand(binary: string, args: string[], signal: AbortSignal
       else resolve();
     });
   });
+}
+
+/** Shared strict metadata/packet clock; bounded discovery does not issue a full census. */
+export async function probeSourceDecodeClock(sourcePath: string, source: SourceIdentity, engines: FullSourceCensusInput["ffmpeg"], signal: AbortSignal, deadline: number) {
+  const { ffprobePath } = engines;
+  const chunks: Buffer[] = []; let probeBytes = 0;
+  await streamSourceFactCommand(ffprobePath, ["-v", "error", "-fflags", "+nofillin", "-err_detect", "explode", "-select_streams", "v:0", "-show_streams", "-show_format", "-show_frames", "-show_entries",
+    "format=format_name:stream=index,codec_name,width,height,time_base,start_pts,duration_ts,pix_fmt,sample_aspect_ratio,field_order,color_range,color_space,color_primaries,color_transfer,tags,side_data_list:frame=stream_index,pts,best_effort_timestamp,duration,pkt_duration,pkt_pos,pkt_size,width,height,pix_fmt,sample_aspect_ratio,interlaced_frame,crop_top,crop_bottom,crop_left,crop_right,color_range,color_space,color_primaries,color_transfer,side_data_list",
+    "-of", "json", sourcePath], signal, deadline, chunk => {
+    probeBytes += chunk.length; if (probeBytes > FULL_CENSUS_LIMITS.probeBytes) unsafe("probe metadata budget exceeded");
+    chunks.push(chunk);
+  });
+  const probe = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  chunks.length = 0;
+  await streamSourceFactCommand(ffprobePath, ["-v", "error", "-fflags", "+nofillin", "-err_detect", "explode", "-select_streams", "v:0", "-show_packets", "-show_entries",
+    "packet=stream_index,pts,dts,duration,pos,size", "-of", "json", sourcePath], signal, deadline, chunk => {
+    probeBytes += chunk.length; if (probeBytes > FULL_CENSUS_LIMITS.probeBytes) unsafe("probe metadata budget exceeded");
+    chunks.push(chunk);
+  });
+  const packetProbe = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  const clock = parseFullDecodeClock({ ...probe, packets: packetProbe.packets }, source);
+  chunks.length = 0;
+  return clock;
 }
 
 /** Canonical deterministic census only. No semantic review, knowledge write or admission handle. */
@@ -82,26 +110,10 @@ export async function collectFullSourceCensus(input: FullSourceCensusInput): Pro
     await verify();
     for (const file of [ffmpegPath, ffprobePath]) if (!(await stat(file)).isFile()) unsafe("engine is not a regular file");
     const ffmpegFingerprint = await fingerprintFile(ffmpegPath, engineRead); const ffprobeFingerprint = await fingerprintFile(ffprobePath, engineRead);
-    const chunks: Buffer[] = []; let probeBytes = 0;
-    await streamCommand(ffprobePath, ["-v", "error", "-fflags", "+nofillin", "-err_detect", "explode", "-select_streams", "v:0", "-show_streams", "-show_format", "-show_frames", "-show_entries",
-      "format=format_name:stream=index,codec_name,width,height,time_base,start_pts,duration_ts,pix_fmt,sample_aspect_ratio,field_order,color_range,color_space,color_primaries,color_transfer,tags,side_data_list:frame=stream_index,pts,best_effort_timestamp,duration,pkt_duration,pkt_pos,pkt_size,width,height,pix_fmt,sample_aspect_ratio,interlaced_frame,crop_top,crop_bottom,crop_left,crop_right,color_range,color_space,color_primaries,color_transfer,side_data_list",
-      "-of", "json", sourcePath], signal, deadline, chunk => {
-      probeBytes += chunk.length; if (probeBytes > FULL_CENSUS_LIMITS.probeBytes) unsafe("probe metadata budget exceeded");
-      chunks.push(chunk);
-    });
-    const probe = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    chunks.length = 0;
-    await streamCommand(ffprobePath, ["-v", "error", "-fflags", "+nofillin", "-err_detect", "explode", "-select_streams", "v:0", "-show_packets", "-show_entries",
-      "packet=stream_index,pts,dts,duration,pos,size", "-of", "json", sourcePath], signal, deadline, chunk => {
-      probeBytes += chunk.length; if (probeBytes > FULL_CENSUS_LIMITS.probeBytes) unsafe("probe metadata budget exceeded");
-      chunks.push(chunk);
-    });
-    const packetProbe = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-    const clock = parseFullDecodeClock({ ...probe, packets: packetProbe.packets }, source);
-    chunks.length = 0;
+    const clock = await probeSourceDecodeClock(sourcePath, source, { ffmpegPath, ffprobePath }, signal, deadline);
     const frames: { index: number; pts: number; endPts: number; byteLength: number; pixelSha256: string }[] = [];
     let bytesInFrame = 0; let hash = createHash("sha256");
-    await streamCommand(ffmpegPath, ["-hide_banner", "-v", "error", "-nostdin", "-xerror", "-fflags", "+nofillin", "-err_detect", "explode", "-hwaccel", "none", "-threads", "1", "-noautorotate", "-copyts", "-i", sourcePath,
+    await streamSourceFactCommand(ffmpegPath, ["-hide_banner", "-v", "error", "-nostdin", "-xerror", "-fflags", "+nofillin", "-err_detect", "explode", "-hwaccel", "none", "-threads", "1", "-noautorotate", "-copyts", "-i", sourcePath,
       "-map", `0:${clock.streamIndex}`, "-an", "-sn", "-dn", "-fps_mode", "passthrough", "-enc_time_base", "demux", "-pix_fmt", "rgba", "-c:v", "rawvideo", "-threads", "1", "-f", "rawvideo", "pipe:1"], signal, deadline, chunk => {
       let offset = 0;
       while (offset < chunk.length) {
