@@ -32,7 +32,7 @@ async function boundedRead(file: string, limit: number, owner?: { uid: number; p
 
 /** Read debugging metadata only from this user's running Chrome main processes. */
 export interface RunningChromeBrowser { endpoint?: string; profile?: string; profileDirectory?: string; windowClass?: string; processId?: number; startedAt?: string; }
-export async function runningChromeBrowsers(procRoot = "/proc", uid = process.getuid?.()): Promise<RunningChromeBrowser[]> {
+export async function runningChromeBrowsers(procRoot = "/proc", uid = process.getuid?.(), exactProfile?: string): Promise<RunningChromeBrowser[]> {
   if (process.platform !== "linux" || uid === undefined) throw new Error("当前系统暂不支持自动识别浏览器连接。");
   const pids = (await readdir(procRoot)).filter(name => /^[1-9][0-9]*$/.test(name));
   if (pids.length > 4096) throw new Error(unavailable);
@@ -54,11 +54,13 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       // Desktop Chrome can rewrite argv as one space-joined process title.
       const args = rawArgs.length === 1 ? rawArgs[0].split(/ (?=--)/).flatMap(arg => arg.startsWith("--") && !arg.includes("=") ? arg.split(" ") : [arg]) : rawArgs;
       if (args.some(value => value === "--type" || value.startsWith("--type="))) continue;
+      const profile = flag(args, "--user-data-dir");
+      // A bound account must not inspect another application's debugging metadata.
+      if (exactProfile !== undefined && profile !== exactProfile) continue;
       const address = flag(args, "--remote-debugging-address");
       if (address && !["127.0.0.1", "localhost"].includes(address)) continue;
       if (args.includes("--remote-debugging-pipe")) continue;
       const declared = flag(args, "--remote-debugging-port");
-      const profile = flag(args, "--user-data-dir");
       const stat = await boundedRead(path.join(directory, "stat"), 4096);
       const startedAt = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
       if (!startedAt || !/^[0-9]+$/.test(startedAt)) throw new Error(unavailable);

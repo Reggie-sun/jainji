@@ -249,7 +249,7 @@ it("rejects an original profile-directory alias before persisting or starting a 
 
 it("attaches repeatedly to real isolated Chrome without remote-debugging permission or closing its tabs", async () => {
   const f = await fixture(), executable = await resolveChromeExecutable(); let child: ChildProcess | undefined;
-  const browsers = async () => (await runningChromeBrowsers()).filter(browser => browser.profile?.startsWith(f.root + path.sep));
+  const browsers = async () => (await runningChromeBrowsers("/proc", process.getuid?.(), path.join(f.root, "account-browsers", "123"))).filter(browser => browser.profile?.startsWith(f.root + path.sep));
   const manager = new QianchuanBrowserManager(f.root, { browsers, launch: async (profile, id) => {
     const args = accountChromeArguments(profile, id); args[args.length - 1] = "about:blank";
     child = spawn(executable, [...args, "--headless=new", "--no-sandbox", "--disable-gpu"], { stdio: "ignore" });
@@ -281,7 +281,7 @@ it("controls a real isolated original Chrome, including non-CDP restart, while p
     child = spawn(executable, [...args, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-background-networking", "--disable-component-update", "--disable-sync"], { stdio: "ignore" });
     await new Promise<void>((resolve, reject) => { child!.once("spawn", resolve); child!.once("error", reject); });
   });
-  const browsers = async () => (await runningChromeBrowsers()).filter(browser => browser.profile === original);
+  const browsers = async () => (await runningChromeBrowsers("/proc", process.getuid?.(), original)).filter(browser => browser.profile === original);
   try {
     await launch(original, "123", options);
     const deadline = Date.now() + 15_000; let endpoint: string | undefined;

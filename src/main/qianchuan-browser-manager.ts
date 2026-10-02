@@ -52,8 +52,11 @@ export class QianchuanBrowserManager {
     if (!/^[1-9][0-9]{0,19}$/.test(advertiserId)) throw new Error("无效的千川账号。");
     return path.resolve(this.root, "account-browsers", advertiserId);
   }
+  private browsers(profile?: string): () => Promise<RunningChromeBrowser[]> {
+    return this.dependencies.browsers ?? (() => runningChromeBrowsers("/proc", process.getuid?.(), profile));
+  }
   private async endpoint(profile: string, original?: OriginalProfileOptions, starting = false): Promise<string | undefined> {
-    const matches = (await (this.dependencies.browsers ?? runningChromeBrowsers)()).filter(browser => browser.profile === profile);
+    const matches = (await this.browsers(profile)()).filter(browser => browser.profile === profile);
     if (matches.length > 1) throw new Error("账号浏览器连接不唯一，请检查专用窗口。");
     if (!matches.length) return undefined;
     if (!matches[0].endpoint) {
@@ -68,7 +71,7 @@ export class QianchuanBrowserManager {
     if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
     let binding = await this.bindings.get(advertiserId);
     if (!binding) {
-      const originalBrowsers = (await (this.dependencies.browsers ?? runningChromeBrowsers)()).filter(browser => browser.profile && !browser.profile.startsWith(`${path.resolve(this.root)}${path.sep}`));
+      const originalBrowsers = (await this.browsers()()).filter(browser => browser.profile && !browser.profile.startsWith(`${path.resolve(this.root)}${path.sep}`));
       const original = await discoverQianchuanProfile(advertiserId, originalBrowsers);
       if (original) {
         binding = { advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) };
@@ -115,7 +118,7 @@ export class QianchuanBrowserManager {
       const binding = await this.bindings.get(advertiserId), profile = binding?.profile ?? managed;
       if (binding) await verifyOriginalProfile(binding);
       else { await secureUploadDirectory(path.resolve(this.root)); await secureUploadDirectory(path.dirname(profile)); await secureUploadDirectory(profile); }
-      const browsers = this.dependencies.browsers ?? runningChromeBrowsers;
+      const browsers = this.browsers(profile);
       const matches = (await browsers()).filter(browser => browser.profile === profile);
       if (matches.length > 1) throw new Error("账号浏览器连接不唯一，未关闭任何窗口。");
       if (binding && matches.some(browser => browser.profileDirectory !== binding.profileDirectory || browser.windowClass !== binding.windowClass)) throw new Error("原账号浏览器目录或窗口身份已变化，未关闭任何窗口。");

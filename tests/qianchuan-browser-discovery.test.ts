@@ -5,6 +5,13 @@ import { createServer } from "node:http";
 import * as filesystem from "node:fs/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import { discoverQianchuanBrowser, runningChromeBrowsers, runningChromeEndpoints } from "../src/main/qianchuan-browser-discovery";
+import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
+
+vi.mock("../src/main/qianchuan-browser-discovery", async importOriginal => {
+  const original = await importOriginal<typeof import("../src/main/qianchuan-browser-discovery")>();
+  return { ...original, runningChromeBrowsers: vi.fn(original.runningChromeBrowsers) };
+});
 
 vi.mock("node:fs/promises", async importOriginal => {
   const original = await importOriginal<typeof import("node:fs/promises")>();
@@ -148,4 +155,38 @@ it("recognizes a desktop Chrome process title and ignores a pipe-only MCP browse
   await f.add(["--remote-debugging-pipe", `--user-data-dir=${profile}`]);
   expect(await runningChromeEndpoints(f.proc)).toEqual([socket]);
   expect(await runningChromeBrowsers(f.proc)).toEqual([{ endpoint: socket, profile: desktopProfile, profileDirectory: "Profile 1", windowClass: "account", processId: 10, startedAt: "123" }]);
+});
+it("scopes bound-profile discovery before reading unrelated unsafe debugging metadata", async () => {
+  const f = await processes(), profile = path.join(f.root, "account"); await mkdir(profile, { mode: 0o700 });
+  await writeFile(path.join(profile, "DevToolsActivePort"), "9321\n/devtools/browser/owned\n", { mode: 0o600 });
+  await f.add(["--remote-debugging-port=0", `--user-data-dir=${profile}`]);
+  const unrelated = `${profile}-other`; await mkdir(unrelated); await chmod(unrelated, 0o775);
+  await writeFile(path.join(unrelated, "DevToolsActivePort"), "malformed\n", { mode: 0o664 });
+  await f.add(["--remote-debugging-port=0", `--user-data-dir=${unrelated}`]);
+  await expect(runningChromeBrowsers(f.proc)).rejects.toThrow("无法完整连接");
+  expect(await runningChromeBrowsers(f.proc, process.getuid!(), profile)).toEqual([{ endpoint, profile, processId: 10, startedAt: "123" }]);
+  await writeFile(path.join(profile, "DevToolsActivePort"), "malformed\n");
+  await expect(runningChromeBrowsers(f.proc, process.getuid!(), profile)).rejects.toThrow("无法完整连接");
+});
+it("retains duplicate processes for the exact bound profile instead of selecting the first", async () => {
+  const f = await processes(), profile = path.join(f.root, "account"); await mkdir(profile, { mode: 0o700 });
+  await f.add(["--remote-debugging-port=9321", `--user-data-dir=${profile}`]);
+  await f.add(["--remote-debugging-port=9322", `--user-data-dir=${profile}`]);
+  expect(await runningChromeBrowsers(f.proc, process.getuid!(), profile)).toHaveLength(2);
+});
+it("prepares an already bound account using only its exact original profile", async () => {
+  const f = await processes(), profile = path.join(f.root, "original"), root = path.join(f.root, "app");
+  await mkdir(path.join(profile, "Profile 11"), { recursive: true, mode: 0o700 });
+  await f.add(["--remote-debugging-port=9321", `--user-data-dir=${profile}`, "--profile-directory=Profile 11", "--class=account"]);
+  const unrelated = path.join(f.root, "unrelated"); await mkdir(unrelated); await chmod(unrelated, 0o775);
+  await writeFile(path.join(unrelated, "DevToolsActivePort"), "malformed\n");
+  await f.add(["--remote-debugging-port=0", `--user-data-dir=${unrelated}`]);
+  await new QianchuanBrowserBindings(root).save({ advertiserId: "123", profile, profileDirectory: "Profile 11", windowClass: "account" });
+  const original = await vi.importActual<typeof import("../src/main/qianchuan-browser-discovery")>("../src/main/qianchuan-browser-discovery");
+  vi.mocked(runningChromeBrowsers).mockImplementationOnce((_proc, uid, selected) => original.runningChromeBrowsers(f.proc, uid, selected));
+  const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify([tab()]))), launch = vi.fn();
+  expect(await new QianchuanBrowserManager(root, { launch }).prepare("123")).toBe(endpoint);
+  expect(runningChromeBrowsers).toHaveBeenLastCalledWith("/proc", process.getuid!(), profile);
+  expect(request).toHaveBeenCalledWith(`${endpoint}/json/list`, expect.anything());
+  expect(launch).not.toHaveBeenCalled();
 });
