@@ -17,10 +17,10 @@
 .batch-template-title input, .batch-cover-toggle input, .batch-upload-toggle input { width: 18px; height: 18px; accent-color: #397c69; flex-shrink: 0; }
 .batch-order { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 50%; background: #edf4f0; color: #397c69; font-size: 13px; flex-shrink: 0; }
 .batch-template-row .batch-order { width: 24px; height: 24px; font-size: 12px; }
-.batch-template-controls { display: grid; grid-template-columns: 60px minmax(144px, 1fr) 128px 76px minmax(112px, .8fr); gap: 8px; min-width: 0; }
+.batch-template-controls { display: grid; grid-template-columns: 60px 160px 128px 76px minmax(112px, 1fr); gap: 8px; min-width: 0; }
 .batch-template-controls label { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 13px; font-weight: 600; }
 .batch-template-controls input[type="number"], .batch-template-controls textarea, .batch-template-controls select { width: 100%; height: 40px; min-height: 40px; box-sizing: border-box; border: 1px solid #dbe5df; border-radius: 5px; padding: 3px 10px; background: #fff; color: inherit; font: inherit; line-height: 1.2; }
-.batch-template-controls textarea { resize: vertical; }
+.batch-template-controls textarea { resize: vertical; white-space: pre; overflow-x: auto; }
 .batch-template-controls input:focus, .batch-template-controls textarea:focus, .batch-template-controls select:focus { outline: 2px solid #a3c8b8; outline-offset: 2px; }
 .batch-cover-toggle > span:nth-child(2), .batch-upload-toggle > span:nth-child(2) { display: flex; align-items: center; gap: 8px; min-height: 40px; }
 .batch-upload-toggle > span:nth-child(2) > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
