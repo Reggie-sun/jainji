@@ -1,5 +1,54 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-HC Confirmed-Target Proof Correctness Closure — 2026-10-04
+
+### Scope and Pre-Fix Evidence
+
+用户 accepted contract 仅关闭 `33ef8ea9518d3226e68f3572f59b28787371ad89` 的两个 P1。开始 HEAD `b5c47a2f8012bbfd5556c22cf7457057763ed241`；先读取真实 commit diff、现行 owners 与合同，保存源码 SHA 后复现，未先改代码。执行中其他 session 提交千川，保留其工作，commit 只包含本 slice。R=`~/.local/state/jianji-source-fact-qualification/m2hc-20261004`；原 v1 private evidence 不删除，统一解释为 **HISTORICAL_DEVELOPMENT_PROOF / KNOWN_CORRECTNESS_LIMITATIONS**，不是 READY。
+
+Blocker A 实际 canonical FFmpeg controlled source `[0,6990)`：A 全范围在旧 issuer 签发 v1；B `[1000,3000)`、C 同时 `[1000,3000)` / `[4000,6000)` 的旧 geometry 都 supported/0 issues，随后 issuer 确实拒绝 `range boundary original evidence missing`。R/pre-fix-controlled-boundaries.json、对应 log/bundle 保存未修复证据。真实233s全范围签发成功，但中段先被旧 geometry 拒绝，因此真实中段不冒充 boundary-only 复现。原96个实际 representative ordinals（real/controlled 相同）如下，四个所需边界1000/2999/4000/5999都缺失：
+
+```text
+0,74,147,221,294,368,441,515,589,662,736,809,883,956,1030,1104,
+1177,1251,1324,1398,1471,1545,1619,1692,1766,1839,1913,1986,2060,2133,2207,2281,
+2354,2428,2501,2575,2648,2722,2796,2869,2943,3016,3090,3163,3237,3311,3384,3458,
+3531,3605,3678,3752,3826,3899,3973,4046,4120,4193,4267,4341,4414,4488,4561,4635,
+4708,4782,4856,4929,5003,5076,5150,5223,5297,5370,5444,5518,5591,5665,5738,5812,
+5885,5959,6033,6106,6180,6253,6327,6400,6474,6548,6621,6695,6768,6842,6915,6989
+```
+
+Blocker B 原 M2-C kernel 实际运行三例：大静态A+detached小B移动1px、B完全消失、弱A/B+中间高对比PRICE/SALE背景且A移动1px，全部旧 union geometry **STATIC_GEOMETRY_OBSERVED**，432 landmarks，B landmarks=0。冻结原 RGBA 构造 NPZ、config、boxes 与旧结果于 R/pre-fix-components.json 和 component-counterexamples.npz；注册测试直接重放这份相同字节，不依赖 mock。
+
+### Exact Frame and Component Geometry Owners
+
+没有可复用的 arbitrary full-original ordinal owner；原 `streamRange` 仅 target ROI。新增窄 [exact frame owner](../src/main/source-fact-exact-frames.ts)，复用 canonical clock/probe、source identity、stream decode 与独立 framehash 验证。核对传入 FullDecodeClock 后顺序decode按ordinal select，无seek近似；绑定 sourceKey、ordinal、PTS/endPTS、length/pixelSHA、dimensions、完整source interpretation、FFmpeg/FFprobe fingerprint、clock digest；256帧/512MiB/300秒，去重，取消，源/引擎generation与前后hash，getter只给copy。不改 `prepareDiscoveryEvidence` / `selectDiscoveryOrdinals` 或任何旧receipt。
+
+新 issuer 首尾 original evidence 仅来自 exact owner；每target另将 full-frame crop 与 extractor 原首尾ROI SHA绑定。支持全范围、中段、不同双range四边界与共享ordinal两个target各自binding，M1继续只提供candidate identity。`[1000,1003)` 的reader可读1000/1002，但 extractor仍 `INSUFFICIENT_ORIGINAL_REPRESENTATIVES` 且缺mask，proof拒绝；没有放宽mask support envelope。
+
+[component worker](../scripts/shape-cover-static-geometry-components.py) 共享一次representative ROI decode及一次完整range ROI decode；每 `confirmedSourceBox` 独立构建原 persistent-gradient/correlation/translation/presence 核。landmark中心严格在该box内，不自由借用 union envelope 强梯度；referencePadding=0，原Gaussian/Sobel邻域半径3、有限搜索support半径8显式记录。candidate mask不是geometry真值。每component保存candidateId/componentDigest/sourceBox/method/referenceDigest/metricsDigest/frameCount/status/issues/ranges/summary。logical target支持当且仅当ALL components SUPPORTED。
+
+选择 **Option A**：4×4 contribution / 约8×8 sourceBox不能满足原3×3/minimum cells/landmarks时，明确 `COMPONENT_GEOMETRY_UNOBSERVABLE`，whole target INCOMPLETE；没有新增small method、借RGB容差或偷偷略过。三个冻结反例新结果全部INCOMPLETE；弱目标不能借PRICE背景。另有两个足够信号且断开的stable components全部supported、只移动一个component的四方向1px与消失拒绝、small noise/channel bias不过度拒绝、单component旧灵敏度回归。全部数值沿用原kernel，未针对真实233s调参。
+
+### Versioned Archive and Fresh Real Replay
+
+geometry **cpu-static-geometry/v2**；proof **confirmed-target-static-v2**；新issuer不能创建v1。独立不可变 v1/v2 Schema/checker 和 `CONFIRMED_STATIC_METHOD_V1/V2` 分发历史解释；旧方法配置与原kernel SHA固定。v1 PNG artifact版本1保留；v2 artifact版本2保存有界原始RGBA及exact descriptor，使历史replay无需当前图片decoder、source文件、FFmpeg、Python或当前implementation源码。issuance/publication仍检查当前全部freshness/取消/争议/ownership。旧真实private v1与pre-fix签发fixture都保留；归档parse不恢复publication authority。
+
+`KNOWLEDGE_SCHEMA_VERSION=1` 未变；没有downgrade承诺，old reader不能消费新proof variants，必须fail closed/unusable，不能silent reinterpret/overwrite。unknown variant、v1冒充v2 artifact、clone/new issue都有回归。v2 durable reopen在current source字节改变后仍可按历史身份读取；corruption拒绝。原sampled/source-mask-only branches保持。
+
+最后源码稳定后的 R/real-v2-final 完整233s：single logical target / single confirmed component，6990帧，geometry **DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED** / issues0，原133 RGB anomalies完整保留。mask **3395px / bbox628/1/81/59 / SHA fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893**。与旧 R=../m2h-20261004/real-proof-v3 的reference、每帧metrics、summary/issues/clock比较532689数值全部差0，286 landmarks相同；R/geometry-v2-final-equivalence.json。private issued/published/reopen artifacts保存于独立knowledge root，不写用户production目录。
+
+### Verification, Governance and Completion Boundary
+
+后续稳定源码的完整 Harness `20261004T160317Z-8103628a` 保留实际 FAIL：上传组3个等待断言失败，extended 978/979通过而单target proof roundtrip触及30秒测试timeout，文档组发现旧M5-D2A的10个仓库外Markdown引用；kernel controls及owned AOCI通过，未以focused结果替代。上传3项一次隔离复查全部通过（仅diagnostic，其他72项未选）；proof roundtrip此前独立用时10.508秒，现将这一集成测试预算设为90秒，application owner原300秒预算、算法及全部threshold不变。10个外部文件确实存在，引用改为明确的仓库外历史路径表示，逐项保留原路径/anchors及周围全部历史结论；不迁移或重写M5合同。scope增加这一机械文档修复，最终仍需完整fresh Harness和只读verification，结果绑定R/final-delivery.json。
+
+exact decode wrong ordinal pixels、PTS/endPTS、source/engine解码中变化和cancel均拒绝；proof覆盖all-component denominator、omit/extra/digest/issue/unobservable、clone/tamper/reload/cancel-before-manifest/dispute。首轮综合测试两项断言失败保留：短range在缺mask处先拒绝，consumer在source变化后先报source_changed；修正测试分别验证实际mask reason和源变化前consumer barrier，没有改变产品判据。fresh最终typecheck/tests及18项v1/v2 Python controls保存 R；完整必需Harness按 R/owned-scope.json运行code/只读verify，不能用focused tests替代。最终闭合判定、各检查状态与exact commit绑定在 R/final-delivery.json；缺任一exit/required receipt即BLOCKED，不预写PASS。
+
+AOCI按官方完整机器批次维护。初次CAS因foreign千川source变化而零写入，保留现场后有界重Plan并重新阅读，12项完整批次原子成功/applied12/remaining0；共享index维护不授foreign业务写入。官方Verify/Check/Guide与各owned path index/observe角色由Harness治理receipt绑定；混合foreign索引/基线不整体stage。Overview host输出截断后停止该认知链，不声称完整系统认知可靠；source-bound工作与官方维护证据独立。Parent保留final diff/authority/claim裁决；native只读mapping确认exact owner缺口，explicit modelRequests=0不请求Kimi或产品视觉模型。无repository dedicated session-capture skill，本节主动记录stable checkpoint，不更新外部memory。
+
+仅满足本节与 [M2-HC plan](shape-matched-cover-m2h-plan.md#m2-hc-correctness-closure-contract) 全部exit才 **M2-HC CORRECTNESS_CLOSED**，绝不等于PRODUCT_READY。Linux/python3/NumPy2.2.6/OpenCV4.12.0依然 **NOT PRODUCT PORTABLE**；没有Windows打包/installer能力。M2-G已有边界观察仅method-level development evidence，本轮没有新source人工review，不签human-reviewed-real-source、SAFE/NATURAL或REAL_PIXEL_ZERO_MISS。
+
+本节覆盖旧M2-H“下一唯一slice M3”建议：consumer前仍需独立解决 **Windows/product geometry runtime策略** 和 **per-source boundary applicability合同**，本轮不选择其方案。M3 consumer unchanged，M3 BLOCKED，PRODUCT_DISABLED，guard unchanged，modelRequests=0；production/assembler/activation/Controller/Runner/compiler/queue/artifact store未改；不查看210 unseen。
+
 ## M2-H Versioned Confirmed-Target Static Proof — 2026-10-04
 
 ### Source Audit and Geometry Ownership

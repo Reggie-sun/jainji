@@ -62,6 +62,18 @@ baseline: ef74adf
 
 ### Confirmed Static Target Proof Delta
 
+#### M2-HC Versioned Correctness Delta
+
+当前新issuer仅创建 `confirmed-target-static-v2`，geometry仅为 `cpu-static-geometry/v2`。下文v1及其private receipts保留为 `HISTORICAL_DEVELOPMENT_PROOF / KNOWN_CORRECTNESS_LIMITATIONS`：其任意range首尾依赖M1 representatives，union-envelope geometry可能由背景主导；它们不作为corrected proof或未来新consumer准入。M3 consumer本轮不改，仍BLOCKED。
+
+v2 range首尾来自窄application owner `source-fact-exact-frames.ts` 的canonical exact ordinal decode，独立核对SourceIdentity、FullDecodeClock、PTS/endPTS、RGBA hash、FFmpeg/FFprobe fingerprints及前后freshness。M1 frozen receipt不补帧，仍只负责bounded discovery和candidate identity。v2 source artifacts明确保存有限首尾的full-canvas原始 `rgba` 字节（不是PNG编码），proof内每target边界描述绑定source/ordinal/PTS/endPTS/尺寸/解释/engine/clock；同ordinal可共享artifact，target binding不可混。v1原PNG解释不变。没有全片RGBA spool。
+
+union envelope只供ROI decode、预算或展示，既不是component membership，也不是component geometry unit。v2对每个explicitly confirmed sourceBox独立构建persistent-gradient reference并观察完整target range；所有component supported才支持logical target。landmark中心只在该box内部，Gaussian/Sobel及有限search使用已记录的局部邻域；不自由借用envelope中间商品文字。小component信号不足返回COMPONENT_GEOMETRY_UNOBSERVABLE，整target INCOMPLETE，不静默忽略、不调mask阈值或回退RGB tolerance。
+
+`CONFIRMED_STATIC_METHOD_V1` / `CONFIRMED_STATIC_METHOD_V2` 与各proof版本一一绑定，分别由不可变的v1/v2 archive contract/checker核验；新增算法须新增版本。issuance必须current source/engine/method/runtime fresh，historical replay仅核验archived artifacts/固定版本validator，不检查当前source文件或当前算法。schemaVersion仍为1；没有downgrade承诺，old reader无法消费新variant，downgrade unsupported，unknown proof必须fail closed/unusable，不能reinterpret成legacy或覆盖原文件。
+
+该实现仍为Linux/Python/固定NumPy/OpenCV internal development proof，NOT PRODUCT PORTABLE。Windows/product runtime策略与per-source boundary applicability合同留给后续独立slice；本轮不新增human review或选择review policy，M2-G real observation仍仅method-level development evidence，不宣称human-reviewed-real-source、REAL_PIXEL_ZERO_MISS、SAFE/NATURAL或PRODUCT_READY。详见 [M2-HC plan](shape-matched-cover-m2h-plan.md#m2-hc-correctness-closure-contract)。
+
 [M2-H plan](shape-matched-cover-m2h-plan.md) 的内部静态路径新增 `confirmed-target-static-v1` proof 和 `verification=confirmed-target-static`，顶层 schemaVersion 仍为1；`sampled` 与 `source-mask-only-v1` 的历史解释不变。新 variant 只证明冻结已确认集合 C 内 target/segment 的明确 ordinal range，不能证明未知目标不存在或全源穷尽。一个 logical target 可绑定多个显式确认的 disconnected discovery components；candidate IDs、component digests、sourceBoxes 同序唯一且确定排序，envelope 只作 ROI/geometry metadata，不决定 membership。
 
 首次发布必须取得 owned confirmation、mask candidate、完整 range geometry 和 live issuer proof，通过新 `publishConfirmedStaticTargets` 进入既有 run/source/baseRevision/dispute/append owner。proof targets 必须与 candidate facts targets/segments 精确一一对应；不能遗漏、多出、重复或暗中删除失败项。caller geometry JSON、工程 receipt 的 status、digest/path 或 serialized proof 不能签发新修订。reload 验证已经持久化的 versioned artifact bytes/digests，不恢复 live ownership。

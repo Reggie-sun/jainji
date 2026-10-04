@@ -1,12 +1,13 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, appendFile, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, appendFile, readFile, readdir, writeFile, copyFile } from "node:fs/promises";
+import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { discoverBinary } from "../src/main/ffmpeg.js";
 import { identifySource, SourceStickerKnowledgeStore, factsDigest } from "../src/main/source-sticker-knowledge-store.js";
-import { prepareDiscoveryEvidence, type DiscoveryBinding } from "../src/main/source-fact-discovery-evidence.js";
+import { prepareDiscoveryEvidence, discoveryHash, selectDiscoveryOrdinals, type DiscoveryBinding } from "../src/main/source-fact-discovery-evidence.js";
 import { discoverStationaryTargets } from "../src/main/shape-cover-stationary-discovery.js";
 import { confirmStaticDiscoveryTarget, prepareStaticTargetEvidence, type StaticTargetEvidence } from "../src/main/source-mask-static-target.js";
 import { extractStaticConservativeMask } from "../src/main/source-mask-auto-extraction.js";
@@ -18,17 +19,20 @@ import { readAdmittedShapeCoverTarget } from "../src/main/shape-cover-candidates
 import { verifyStaticTargetGeometry, readOwnedStaticGeometry } from "../src/main/source-mask-static-geometry.js";
 import { freezeConfirmedStaticTargetSet, issueConfirmedTargetStaticProof, checkConfirmedStaticProof, confirmedStaticSetDigest,
   classifyStaticCandidateForProof } from "../src/main/source-mask-static-proof.js";
-import { ConfirmedTargetStaticProofSchema, KnowledgeCandidateSchema } from "../src/shared/source-sticker-knowledge.js";
+import { ConfirmedTargetStaticProofSchema, ConfirmedTargetStaticProofV1Schema, KnowledgeRevisionProofSchema, KnowledgeCandidateSchema, KNOWLEDGE_SCHEMA_VERSION } from "../src/shared/source-sticker-knowledge.js";
+
+import { readExactSourceFrames } from "../src/main/source-fact-exact-frames.js";
+import * as census from "../src/main/source-fact-census.js";
 
 const cleanup: (() => Promise<void>)[] = [];
-afterEach(async () => { while (cleanup.length) await cleanup.pop()!(); });
+afterEach(async () => { vi.restoreAllMocks(); while (cleanup.length) await cleanup.pop()!(); });
 function run(binary: string, args: string[], input?: Buffer) {
   const result = spawnSync(binary, args, { input, timeout: 20000, maxBuffer: 8 * 1024 ** 2 });
   if (result.error || result.status) throw result.error ?? Error(result.stderr.toString()); return result.stdout;
 }
 type Kind = "static" | "blink" | "move" | "tail" | "thin" | "alpha" | "group" | "group-edge" | "group-margin" | "geometry" | "geometry-move" | "geometry-group" | "geometry-rgb";
-async function fixture(kind: Kind = "static") {
-  const width = 128, height = 96, count = 30, root = await mkdtemp(join(tmpdir(), "jianji-static-mask-"));
+async function fixture(kind: Kind = "static", count = 30) {
+  const width = 128, height = 96, root = await mkdtemp(join(tmpdir(), "jianji-static-mask-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
   const ffmpeg = { ffmpegPath: (await discoverBinary("ffmpeg"))!, ffprobePath: (await discoverBinary("ffprobe"))! };
   const raw = Buffer.alloc(width * height * 3 * count), required: Uint8Array[] = [];
@@ -62,12 +66,12 @@ async function fixture(kind: Kind = "static") {
     required.push(points);
   }
   const sourcePath = join(root, "source.mp4");
-  run(ffmpeg.ffmpegPath, ["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${width}x${height}`, "-r", "10", "-i", "pipe:0",
+  run(ffmpeg.ffmpegPath, ["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${width}x${height}`, "-r", count > 30 ? "30" : "10", "-i", "pipe:0",
     "-vf", "setsar=1", "-c:v", "libx264", "-qp", "0", "-bf", "0", "-pix_fmt", "yuv444p", "-video_track_timescale", "10000", "-n", sourcePath], raw);
   const probe = JSON.parse(run(ffmpeg.ffprobePath, ["-v", "error", "-show_streams", "-of", "json", sourcePath]).toString());
-  const source = await identifySource(sourcePath, { width, height, rotation: 0, durationMs: 3000, timeBase: probe.streams[0].time_base, timeOriginPts: 0, interpretationVersion: 1 });
+  const source = await identifySource(sourcePath, { width, height, rotation: 0, durationMs: Math.round(count / (count > 30 ? 30 : 10) * 1000), timeBase: probe.streams[0].time_base, timeOriginPts: 0, interpretationVersion: 1 });
   const input = { sourcePath, source, ffmpeg, signal: new AbortController().signal };
-  const discovery = await prepareDiscoveryEvidence(input, { frames: 4 }); cleanup.push(() => discovery.close());
+  const discovery = await prepareDiscoveryEvidence(input, { frames: count > 30 ? 96 : 4 }); cleanup.push(() => discovery.close());
   const result = await discoverStationaryTargets(discovery, input.signal), component = result.components.find(c => c.state === "CANDIDATE");
   expect(component).toBeDefined();
   const selection = { candidateId: component!.id, targetId: randomUUID(), confirmedBy: "controlled-target-confirmation", description: "constructed diamond",
@@ -89,11 +93,121 @@ async function truthFor(evidence: StaticTargetEvidence, required: Uint8Array[], 
 }
 
 describe("static confirmed-target mask development", () => {
+  it("replays an immutable pre-fix v1 archive without source/runtime files and never publishes its clone", async () => {
+    const archive = JSON.parse(await readFile(new URL("./fixtures/confirmed-target-static-v1.json", import.meta.url), "utf8"));
+    const candidate = KnowledgeCandidateSchema.parse(archive.candidate), proof = ConfirmedTargetStaticProofV1Schema.parse(archive.proof);
+    const blobs = new Map<string, Buffer>(archive.blobs.map(([digest, bytes]: [string, string]) => [digest, Buffer.from(bytes, "base64")]));
+    expect(proof.mode).toBe("confirmed-target-static-v1");
+    expect(() => checkConfirmedStaticProof(candidate, proof, blobs)).not.toThrow();
+    const relabelled = structuredClone(candidate);
+    for (const e of relabelled.evidence) if (e.kind === "confirmed-target-proof") e.version = 2;
+    expect(() => checkConfirmedStaticProof(relabelled, proof, blobs)).toThrow(/artifact bytes/);
+    const root = await mkdtemp(join(tmpdir(), "jianji-v1-historical-")); cleanup.push(() => rm(root, { recursive: true, force: true }));
+    const store = await SourceStickerKnowledgeStore.open(root); cleanup.push(() => store.close());
+    const token = await store.beginRun(candidate.source, new AbortController().signal);
+    await expect(store.publishConfirmedStaticTargets(token, candidate, proof, blobs)).rejects.toThrow(/historical v1|unowned/);
+    await store.endRun(token);
+    expect(KNOWLEDGE_SCHEMA_VERSION).toBe(1);
+    expect(KnowledgeRevisionProofSchema.safeParse({ ...proof, mode: "confirmed-target-static-v999" }).success).toBe(false);
+    expect(ConfirmedTargetStaticProofV1Schema.safeParse({ ...proof, mode: "confirmed-target-static-v2" }).success).toBe(false);
+  });
+  it("exact reader binds source, engine, clock, ordinal, PTS/endPTS and pixels independently of discovery", async () => {
+    const { input, evidence, discovery } = await fixture("geometry");
+    const exact = await readExactSourceFrames(input, evidence.clock, [5, 9, 5]);
+    expect(exact.bindings.map(f => f.index)).toEqual([5, 9]);
+    for (const f of exact.bindings) {
+      expect(f.source).toEqual(input.source); expect(f.sourceKey).toBe(discovery.receipt.sourceKey);
+      expect(f.clockDigest).toBe(discovery.receipt.clockDigest); expect(f.ffmpegFingerprint).toBe(discovery.receipt.decode.ffmpegFingerprint);
+      expect(f.ffprobeFingerprint).toBe(discovery.receipt.decode.ffprobeFingerprint);
+      expect({ index: f.index, pts: f.pts, endPts: f.endPts }).toEqual(evidence.clock.frames[f.index]);
+      expect(f.pixelSha256).toBe(discoveryHash(exact.readFrame(f.index))); expect(f.byteLength).toBe(128 * 96 * 4);
+    }
+    const bytes = exact.readFrame(5); bytes.fill(0); expect(exact.readFrame(5)).not.toEqual(bytes);
+    expect(() => exact.readFrame(6)).toThrow(/unrequested/);
+    for (const key of ["pts", "endPts"] as const) {
+      const wrong = structuredClone(evidence.clock); wrong.frames[5][key]++;
+      await expect(readExactSourceFrames(input, wrong, [5, 9])).rejects.toThrow(/clock mismatch/);
+    }
+    await expect(readExactSourceFrames(input, evidence.clock, Array(257).fill(5))).rejects.toThrow(/budget/);
+    await expect(readExactSourceFrames(input, evidence.clock, [5], Date.now() - 1)).rejects.toThrow(/budget/);
+  }, 30000);
+  it("rejects wrong ordinal pixel bytes against independent FFmpeg framehash", async () => {
+    const { input, evidence } = await fixture("geometry"), original = census.streamSourceFactCommand;
+    vi.spyOn(census, "streamSourceFactCommand").mockImplementation(async (...args) => {
+      if (!args[5]) return original(...args);
+      const chunks: Buffer[] = [], consume = args[4];
+      const forwarded: Parameters<typeof original> = [...args];
+      forwarded[4] = bytes => { chunks.push(Buffer.from(bytes)); };
+      await original(...forwarded);
+      const bytes = Buffer.concat(chunks), n = evidence.clock.byteLengthPerFrame;
+      // Real FFmpeg emits 5 and 9; return their pixel buffers under swapped ordinals.
+      consume(Buffer.concat([bytes.subarray(n), bytes.subarray(0, n)]));
+    });
+    await expect(readExactSourceFrames(input, evidence.clock, [5, 9])).rejects.toThrow(/pixel binding mismatch/);
+  }, 30000);
+  it("rejects source/engine changes and cancellation DURING exact decode", async () => {
+    for (const change of ["source", "engine", "cancel"] as const) {
+      const { input, evidence } = await fixture("geometry"), controller = new AbortController(), original = census.streamSourceFactCommand;
+      const engines = { ...input.ffmpeg };
+      if (change === "engine") {
+        engines.ffprobePath = join(await mkdtemp(join(tmpdir(), "jianji-exact-engine-")), "ffprobe");
+        const directory = join(engines.ffprobePath, ".."); cleanup.push(() => rm(directory, { recursive: true, force: true }));
+        await copyFile(input.ffmpeg.ffprobePath, engines.ffprobePath);
+      }
+      vi.spyOn(census, "streamSourceFactCommand").mockImplementation(async (...args) => {
+        if (!args[5]) return original(...args);
+        const consume = args[4]; let changed = false;
+        args[4] = bytes => { consume(bytes); if (!changed) {
+          changed = true;
+          if (change === "cancel") controller.abort();
+          else appendFileSync(change === "source" ? input.sourcePath : engines.ffprobePath, "generation-change");
+        } };
+        await original(...args);
+      });
+      await expect(readExactSourceFrames({ ...input, ffmpeg: engines, signal: controller.signal }, evidence.clock, [5, 9])).rejects.toThrow(/changed|cancel|aborted/);
+      vi.restoreAllMocks();
+    }
+  }, 60000);
+  it("issues full, arbitrary middle and multiple ranges with exact unsampled boundaries and shared ordinal deduplication", async () => {
+    const { input, discovery, selection, evidence } = await fixture("geometry", 6990);
+    const representatives = selectDiscoveryOrdinals(evidence.clock, 96);
+    expect(representatives).toEqual(discovery.receipt.frames.map(f => f.index));
+    for (const ordinal of [1000, 2999, 4000, 5999]) expect(representatives).not.toContain(ordinal);
+    const pairs = [];
+    for (const [i, [startFrame, endFrame]] of [[0, 6990], [1000, 3000], [4000, 6000], [1000, 3000]].entries()) {
+      const target = await confirmStaticDiscoveryTarget(discovery, { ...selection, targetId: randomUUID(), range: { startFrame, endFrame } }, input.signal);
+      const targetEvidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => targetEvidence.close());
+      const candidate = await extractStaticConservativeMask(targetEvidence, input.signal), geometry = await verifyStaticTargetGeometry(input, targetEvidence, candidate);
+      expect(geometry.receipt.status).toBe("DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED");
+      pairs.push({ target, segmentId: `range-${i}`, candidate, geometry });
+    }
+    for (const selected of [[pairs[0]], [pairs[1]], [pairs[1], pairs[2]], [pairs[1], pairs[3]]]) {
+      const issued = await issueConfirmedTargetStaticProof(input, { id: randomUUID() }, freezeConfirmedStaticTargetSet(selected), selected);
+      for (const t of issued.proof.targets) {
+        expect(t.boundaryFrames.map(f => f.index)).toEqual([t.range.startFrame, t.range.endFrame - 1]);
+        for (const [i, f] of t.boundaryFrames.entries()) {
+          expect({ index: f.index, pts: f.pts, endPts: f.endPts }).toEqual(evidence.clock.frames[f.index]);
+          const e = issued.candidate.evidence.find(e => e.id === t.sourceEvidenceIds[i])!;
+          expect(discoveryHash(issued.blobs.get(e.digest)!)).toBe(f.pixelSha256);
+        }
+      }
+      expect(issued.proof.sourceEvidenceIds).toHaveLength(new Set(selected.flatMap(p => [p.target.receipt.range.startFrame, p.target.receipt.range.endFrame - 1])).size);
+      expect(() => checkConfirmedStaticProof(issued.candidate, issued.proof, issued.blobs)).not.toThrow();
+    }
+    const exactShort = await readExactSourceFrames(input, evidence.clock, [1000, 1002]);
+    expect(exactShort.bindings.map(f => f.index)).toEqual([1000, 1002]);
+    const target = await confirmStaticDiscoveryTarget(discovery, { ...selection, range: { startFrame: 1000, endFrame: 1003 } }, input.signal);
+    const shortEvidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => shortEvidence.close());
+    const shortMask = await extractStaticConservativeMask(shortEvidence, input.signal);
+    expect(shortMask.receipt.reasons).toContain("INSUFFICIENT_ORIGINAL_REPRESENTATIVES");
+    expect(() => classifyStaticCandidateForProof(shortMask.receipt)).toThrow(/INCOMPLETE: static mask/);
+  }, 240000);
+
   it("owns frozen full-range geometry, rejects clones and cancellation, and detects source staleness", async () => {
     const { input, evidence } = await fixture("geometry"), candidate = await extractStaticConservativeMask(evidence, input.signal);
     const geometry = await verifyStaticTargetGeometry(input, evidence, candidate), owner = readOwnedStaticGeometry(geometry);
     expect(geometry.receipt.status).toBe("DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED");
-    expect(geometry.receipt.frameCount).toBe(30); expect(geometry.receipt.method).toBe("cpu-static-geometry/v1");
+    expect(geometry.receipt.frameCount).toBe(30); expect(geometry.receipt.method).toBe("cpu-static-geometry/v2");
     expect(owner.evidence).toBe(evidence); expect(owner.candidate).toBe(candidate);
     expect(Object.isFrozen(owner)).toBe(true); expect(Object.isFrozen(owner.data)).toBe(true);
     expect(() => Object.assign(owner, { verifyFresh: async () => {} })).toThrow();
@@ -109,7 +223,7 @@ describe("static confirmed-target mask development", () => {
     const root = await mkdtemp(join(tmpdir(), "jianji-static-proof-store-")); cleanup.push(() => rm(root, { recursive: true, force: true }));
     const store = await SourceStickerKnowledgeStore.open(root); cleanup.push(() => store.close());
     const run = await store.beginRun(input.source, input.signal), issued = await issueConfirmedTargetStaticProof(input, run, set, [{ segmentId: "segment", candidate, geometry }]);
-    expect(issued.proof.mode).toBe("confirmed-target-static-v1"); expect(issued.proof.authority).toBe("none"); expect(issued.proof.eligible).toBe(false);
+    expect(issued.proof.mode).toBe("confirmed-target-static-v2"); expect(issued.proof.authority).toBe("none"); expect(issued.proof.eligible).toBe(false);
     expect(issued.proof.targets[0].confirmation.confirmedCandidateIds).toEqual(target.receipt.confirmedCandidateIds);
     expect(() => checkConfirmedStaticProof(issued.candidate, issued.proof, issued.blobs)).not.toThrow();
     await expect(store.publishConfirmedStaticTargets(run, issued.candidate, JSON.parse(JSON.stringify(issued.proof)), issued.blobs)).rejects.toThrow(/unowned/);
@@ -123,15 +237,17 @@ describe("static confirmed-target mask development", () => {
     const head = await reopened.readHead(input.source); expect(head!.revision).toEqual(revision); expect(head!.blobs).toEqual(issued.blobs);
     await expect(readAdmittedShapeCoverTarget({ id: "consumer-barrier", sourcePath: input.sourcePath, source: input.source,
       revisionId: revision.id, targetId: target.receipt.targetId, segmentId: "segment", range: issued.candidate.requiredRanges[0], placements: [] }, reopened)).rejects.toThrow(/not admitted/);
+    await appendFile(input.sourcePath, "current-source-changed-after-archive");
+    expect((await reopened.readHead(input.source))!.revision).toEqual(revision);
     const events = join(reopened.directory, "sources", revision.sourceKey, "events"), [event] = await readdir(events);
     await writeFile(join(events, event, "evidence", issued.proof.targets[0].artifacts.geometry), "corrupted geometry");
     await expect(reopened.readHead(input.source)).rejects.toThrow(/digest/);
-  }, 30000);
+  }, 90000);
   it("rejects every changed proof binding and retains the complete confirmed-set denominator", async () => {
     const { input, target, evidence } = await fixture("geometry"), candidate = await extractStaticConservativeMask(evidence, input.signal);
     const geometry = await verifyStaticTargetGeometry(input, evidence, candidate), run = { id: randomUUID() }, set = freezeConfirmedStaticTargetSet([{ target, segmentId: "segment" }]);
     const issued = await issueConfirmedTargetStaticProof(input, run, set, [{ segmentId: "segment", candidate, geometry }]);
-    const changes = ["confirmationDigest", "componentDigest", "maskSha", "configDigest", "geometryDigest", "frameCount", "firstPts", "lastPts", "range", "empty", "extra", "duplicate", "source"];
+    const changes = ["confirmationDigest", "componentDigest", "maskSha", "configDigest", "geometryDigest", "frameCount", "firstPts", "lastPts", "range", "empty", "extra", "duplicate", "source", "boundaryPts", "boundaryEndPts", "boundaryPixel", "boundaryOrdinal", "geometryComponentDigest", "geometryComponentOmitted", "geometryComponentExtra"];
     for (const change of changes) {
       const proof = structuredClone(issued.proof), t = proof.targets[0];
       if (change === "confirmationDigest") t.confirmation.confirmationDigest = "a".repeat(64);
@@ -147,6 +263,13 @@ describe("static confirmed-target mask development", () => {
       if (change === "extra") proof.targets.push({ ...structuredClone(t), targetId: randomUUID(), segmentId: "extra" });
       if (change === "duplicate") proof.targets.push(structuredClone(t));
       if (change === "source") proof.sourceKey = "a".repeat(64);
+      if (change === "boundaryPts") t.boundaryFrames[0].pts++;
+      if (change === "boundaryEndPts") t.boundaryFrames[0].endPts++;
+      if (change === "boundaryPixel") t.boundaryFrames[0].pixelSha256 = "a".repeat(64);
+      if (change === "boundaryOrdinal") t.boundaryFrames[0].index++;
+      if (change === "geometryComponentDigest") t.geometry.components[0].componentDigest = "a".repeat(64);
+      if (change === "geometryComponentOmitted") t.geometry.components = [];
+      if (change === "geometryComponentExtra") t.geometry.components.push(structuredClone(t.geometry.components[0]));
       proof.confirmedSetDigest = confirmedStaticSetDigest(proof.targets);
       expect(() => checkConfirmedStaticProof(issued.candidate, proof, issued.blobs), change).toThrow();
     }
@@ -219,6 +342,21 @@ describe("static confirmed-target mask development", () => {
       kind: "incomplete_boundary", reason: "original source boundary objection", evidence: fresh.candidate.evidence.filter(e => e.kind === "source"), at: new Date().toISOString() }, fresh.blobs);
     expect((await store.lookup(input.source, fresh.candidate.facts.reviewedRanges)).status).toBe("disputed");
     await store.endRun(next);
+  }, 30000);
+  it("keeps a small confirmed component unobservable in the owned logical result and rejects its proof", async () => {
+    const { input, discovery, result, selection } = await fixture("group");
+    const left = result.components.find(c => c.state === "CANDIDATE" && c.sourceBox.x < 40)!;
+    const small = result.components.find(c => c.state === "CANDIDATE" && c.sourceBox.x >= 90)!;
+    expect(small.sourceBox.width).toBeLessThanOrEqual(8);
+    const { candidateId: _id, ...identity } = selection;
+    const target = await confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: [left.id, small.id] }, input.signal);
+    const evidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => evidence.close());
+    const candidate = await extractStaticConservativeMask(evidence, input.signal), geometry = await verifyStaticTargetGeometry(input, evidence, candidate);
+    expect(geometry.receipt.components).toHaveLength(2);
+    expect(geometry.receipt.components.find(c => c.candidateId === small.id)!.status).toBe("COMPONENT_GEOMETRY_UNOBSERVABLE");
+    expect(geometry.receipt.status).toBe("INCOMPLETE_GEOMETRY_CONTRADICTION_OR_UNRESOLVED");
+    await expect(issueConfirmedTargetStaticProof(input, { id: randomUUID() }, freezeConfirmedStaticTargetSet([{ target, segmentId: "small" }]),
+      [{ candidate, geometry, segmentId: "small" }])).rejects.toThrow(/unsupported geometry/);
   }, 30000);
   it("keeps an unsampled geometry contradiction in the full-range owned evidence", async () => {
     const { input, evidence } = await fixture("geometry-move"), candidate = await extractStaticConservativeMask(evidence, input.signal);

@@ -55,7 +55,7 @@ const SourceMaskReviewArtifactSchema = z.object({
   digest: Digest, byteLength: z.number().int().positive().max(8 * 1024 * 1024),
 }).strict();
 export const ConfirmedTargetProofArtifactSchema = z.object({
-  id: Id, kind: z.literal("confirmed-target-proof"), version: z.literal(1),
+  id: Id, kind: z.literal("confirmed-target-proof"), version: z.union([z.literal(1), z.literal(2)]),
   artifact: z.enum(["target-confirmation", "mask-extraction", "full-range-geometry", "engineering-method"]),
   digest: Digest, byteLength: z.number().int().positive().max(8 * 1024 * 1024),
 }).strict();
@@ -181,7 +181,7 @@ export const SourceMaskAdmissionProofSchema = z.object({
 }).strict();
 const StaticProofBox = z.object({ x: Ms, y: Ms, width: z.number().int().positive().max(512), height: z.number().int().positive().max(512) }).strict();
 const StaticProofRange = z.object({ startFrame: Ms, endFrame: Ms }).strict().refine(v => v.endFrame > v.startFrame);
-export const ConfirmedTargetStaticProofSchema = z.object({
+export const ConfirmedTargetStaticProofV1Schema = z.object({
   mode: z.literal("confirmed-target-static-v1"), authority: z.literal("none"), eligible: z.literal(false),
   candidateId: Id, runId: Id, sourceKey: Digest, factsDigest: Digest, confirmedSetDigest: Digest,
   sourceEvidenceIds: z.array(Id).min(2).max(512), methodArtifactDigest: Digest,
@@ -210,6 +210,45 @@ export const ConfirmedTargetStaticProofSchema = z.object({
       || t.geometry.endPts <= t.geometry.lastPts) issue("Invalid full-range geometry clock");
   }
 });
+export type ConfirmedTargetStaticProofV1 = z.infer<typeof ConfirmedTargetStaticProofV1Schema>;
+const V1Shape = ConfirmedTargetStaticProofV1Schema.innerType().shape;
+export const ExactBoundaryFrameSchema = z.object({
+  sourceKey: Digest, index: Ms, pts: z.number().int().safe(), endPts: z.number().int().safe(), byteLength: z.number().int().positive().max(8 * 1024 ** 2), pixelSha256: Digest,
+  width: z.number().int().positive(), height: z.number().int().positive(), source: SourceIdentitySchema, pixelFormat: z.literal("rgba"),
+  inputInterpretation: z.object({ pixelFormat: z.string(), colorRange: z.string(), colorSpace: z.string(), colorPrimaries: z.string(), colorTransfer: z.string() }).strict(),
+  ffmpegFingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/), ffprobeFingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/), clockDigest: Digest,
+}).strict();
+const V2ComponentBinding = z.object({ candidateId: Digest, componentDigest: Digest, sourceBox: StaticProofBox,
+  method: z.literal("component-local-persistent-gradients/v2"), referenceDigest: Digest, metricsDigest: Digest,
+  frameCount: z.number().int().positive().max(20000), status: z.literal("SUPPORTED") }).strict();
+export const ConfirmedTargetStaticProofV2Schema = z.object({ ...V1Shape, mode: z.literal("confirmed-target-static-v2"),
+  targets: z.array(V1Shape.targets.element.extend({
+    geometry: V1Shape.targets.element.shape.geometry.extend({ method: z.literal("cpu-static-geometry/v2"), components: z.array(V2ComponentBinding).min(1).max(128) }).strict(),
+    boundaryFrames: z.tuple([ExactBoundaryFrameSchema, ExactBoundaryFrameSchema]),
+  }).strict()).min(1).max(MAX_AUTOMATIC_COVER_TRACKS),
+}).strict().superRefine((proof, ctx) => {
+  const issue = (message: string) => ctx.addIssue({ code: "custom", message });
+  const keys = proof.targets.map(t => `${t.targetId}:${t.range.startFrame.toString().padStart(8, "0")}:${t.segmentId}`);
+  if (new Set(proof.targets.map(t => t.segmentId)).size !== proof.targets.length || keys.some((k, i) => i > 0 && k <= keys[i - 1])) issue("Duplicate or noncanonical confirmed set");
+  if (new Set(proof.sourceEvidenceIds).size !== proof.sourceEvidenceIds.length) issue("Duplicate source evidence");
+  for (const t of proof.targets) {
+    const c = t.confirmation, ids = c.confirmedCandidateIds, geometry = t.geometry;
+    if (ids.length !== c.confirmedComponentDigests.length || ids.length !== c.confirmedSourceBoxes.length || ids.length !== geometry.components.length
+      || ids.some((id, i) => i > 0 && id <= ids[i - 1])) issue("Invalid canonical component bindings");
+    geometry.components.forEach((g, i) => {
+      if (g.candidateId !== ids[i] || g.componentDigest !== c.confirmedComponentDigests[i]
+        || JSON.stringify(g.sourceBox) !== JSON.stringify(c.confirmedSourceBoxes[i]) || g.frameCount !== geometry.frameCount) issue("Component geometry omitted/extra/mismatched");
+    });
+    if (geometry.frameCount !== t.range.endFrame - t.range.startFrame || geometry.firstPts > geometry.lastPts || geometry.endPts <= geometry.lastPts) issue("Invalid full-range geometry clock");
+    t.boundaryFrames.forEach((f, i) => {
+      if (f.sourceKey !== proof.sourceKey || f.index !== (i ? t.range.endFrame - 1 : t.range.startFrame)
+        || f.pts !== (i ? geometry.lastPts : geometry.firstPts) || f.endPts <= f.pts || i === 1 && f.endPts !== geometry.endPts
+        || f.clockDigest !== geometry.clockDigest || f.byteLength !== f.width * f.height * 4) issue("Exact boundary binding mismatch");
+    });
+  }
+});
+export type ConfirmedTargetStaticProofV2 = z.infer<typeof ConfirmedTargetStaticProofV2Schema>;
+export const ConfirmedTargetStaticProofSchema = z.union([ConfirmedTargetStaticProofV1Schema, ConfirmedTargetStaticProofV2Schema]);
 export type ConfirmedTargetStaticProof = z.infer<typeof ConfirmedTargetStaticProofSchema>;
 export const KnowledgeRevisionProofSchema = z.union([KnowledgePublicationProofSchema, SourceMaskAdmissionProofSchema, ConfirmedTargetStaticProofSchema]);
 export const KnowledgeDisputeSchema = z.object({

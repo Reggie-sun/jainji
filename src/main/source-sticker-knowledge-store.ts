@@ -121,7 +121,7 @@ async function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublica
   if (proof.sourceEvidenceIds.some((id) => !sourceIds.has(id)) || candidate.facts.observations.some((o) => !proof.sourceEvidenceIds.includes(o.evidenceId))) throw new KnowledgeStoreError("integrity", "Unreviewed source observations");
   const factEvidence = [...candidate.changes, ...candidate.facts.exclusions, ...candidate.facts.targets.flatMap((t) => t.segments)].flatMap((item) => item.evidenceIds);
   if (factEvidence.some((id) => !proof.sourceEvidenceIds.includes(id))) throw new KnowledgeStoreError("integrity", "Unreviewed fact correction/geometry evidence");
-  if ("mode" in proof && proof.mode === "confirmed-target-static-v1") {
+  if ("mode" in proof && (proof.mode === "confirmed-target-static-v1" || proof.mode === "confirmed-target-static-v2")) {
     // Load only this variant: legacy discovery/AI contracts already depend on the store.
     const { checkConfirmedStaticProof } = await import("./source-mask-static-proof.js");
     checkConfirmedStaticProof(candidate, proof, blobs); return;
@@ -295,7 +295,7 @@ export class SourceStickerKnowledgeStore {
       for (const frame of evidence) {
         const blob = await readSafe(path.join(eventDirectory, "evidence", frame.digest), 8 * 1024 * 1024);
         if (blob.length !== frame.byteLength || digest(blob) !== frame.digest) throw new KnowledgeStoreError("integrity", "Evidence digest mismatch");
-        if (record.type === "revision" && "mode" in record.proof && record.proof.mode === "confirmed-target-static-v1") proofBlobs.set(frame.digest, blob);
+        if (record.type === "revision" && "mode" in record.proof && (record.proof.mode === "confirmed-target-static-v1" || record.proof.mode === "confirmed-target-static-v2")) proofBlobs.set(frame.digest, blob);
         if (includeHeadEvidence && record.type === "revision" && record.candidate.id === manifest.currentRevisionId) headBlobs.set(frame.digest, blob);
       }
       if (record.type === "revision") {
@@ -303,7 +303,7 @@ export class SourceStickerKnowledgeStore {
         if (sourceKey(candidate.source) !== sourceKey(source) || candidate.baseRevisionId !== head || revisions.has(candidate.id)) throw new KnowledgeStoreError("integrity", "Broken revision ancestry");
         this.checkResolution(candidate, disputes, revisions.get(head ?? ""));
         for (const id of candidate.resolvedDisputeIds) disputes.delete(id);
-        revisions.set(candidate.id, { id: candidate.id, sourceKey: sourceKey(source), state: "reviewed", verification: "mode" in record.proof ? record.proof.mode === "confirmed-target-static-v1" ? "confirmed-target-static" : "source-mask-only" : "sampled", factsDigest: factsDigest(candidate.facts), candidate, proof: record.proof }); head = candidate.id;
+        revisions.set(candidate.id, { id: candidate.id, sourceKey: sourceKey(source), state: "reviewed", verification: "mode" in record.proof ? (record.proof.mode === "confirmed-target-static-v1" || record.proof.mode === "confirmed-target-static-v2") ? "confirmed-target-static" : "source-mask-only" : "sampled", factsDigest: factsDigest(candidate.facts), candidate, proof: record.proof }); head = candidate.id;
       } else {
         if (sourceKey(record.source) !== sourceKey(source) || disputes.has(record.dispute.id)) throw new KnowledgeStoreError("integrity");
         this.checkDispute(source, record.dispute, revisions);

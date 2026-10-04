@@ -127,5 +127,76 @@ class StaticGeometryTest(unittest.TestCase):
         self.assertEqual([i for i, state in enumerate(states) if state != "STATIC_GEOMETRY_OBSERVED"], [3, 6])
 
 
+class ComponentGeometryV2Test(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("components", Path(__file__).parents[1] / "scripts/shape-cover-static-geometry-components.py")
+        cls.components = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(cls.components)
+        cls.counterexamples = np.load(Path(__file__).parent / "fixtures/static-component-counterexamples.npz")
+
+    def observe(self, base, current, boxes):
+        results = []
+        for box in boxes:
+            try:
+                model = self.components.build_component_model(np.stack([base] * 4), box)
+                # Explicitly enforce centers inside the confirmed component, never envelope background.
+                for x, y in model["xy"]:
+                    self.assertTrue(box["x"] <= x < box["x"] + box["width"] and box["y"] <= y < box["y"] + box["height"])
+                result = geometry.measure_frame(current, model)
+                results.append("SUPPORTED" if result["state"] == "STATIC_GEOMETRY_OBSERVED" else "ISSUE")
+            except ValueError:
+                results.append("COMPONENT_GEOMETRY_UNOBSERVABLE")
+        return results
+
+    def test_three_fixed_union_false_acceptances_fail_closed(self):
+        boxes = [{"x": 20, "y": 30, "width": 60, "height": 60}, {"x": 220, "y": 52, "width": 8, "height": 8}]
+        envelope = {"x": 20, "y": 30, "width": 208, "height": 60}
+        for original, changed in [("frame", "move"), ("frame", "lost"), ("weak", "shift")]:
+            with self.subTest(original=original, changed=changed):
+                base, current = self.counterexamples[original], self.counterexamples[changed]
+                old = geometry.build_model(np.stack([base] * 4), envelope)
+                self.assertEqual(geometry.measure_frame(current, old)["state"], "STATIC_GEOMETRY_OBSERVED")
+                self.assertNotEqual(self.observe(base, current, boxes), ["SUPPORTED", "SUPPORTED"])
+                self.assertEqual(self.observe(base, current, boxes)[1], "COMPONENT_GEOMETRY_UNOBSERVABLE")
+
+    def test_stable_disconnected_observable_components_and_one_component_motion(self):
+        frame = np.full((100, 220, 4), 90, np.uint8); frame[..., 3] = 255
+        boxes = [{"x": 20, "y": 18, "width": 60, "height": 44}, {"x": 140, "y": 18, "width": 60, "height": 44}]
+        pattern = target()[18:62, 20:80]
+        for box in boxes:
+            frame[18:62, box["x"]:box["x"] + 60] = pattern
+        self.assertEqual(self.observe(frame, frame, boxes), ["SUPPORTED", "SUPPORTED"])
+        for displacement in [(1, 0), (-1, 0), (0, 1), (0, -1)]:
+            changed = frame.copy(); changed[18:62, 140:200, :3] = 90
+            dx, dy = displacement
+            changed[18+dy:62+dy, 140+dx:200+dx] = pattern
+            self.assertEqual(self.observe(frame, changed, boxes), ["SUPPORTED", "ISSUE"])
+        changed = frame.copy(); changed[18:62, 140:200, :3] = 90
+        self.assertEqual(self.observe(frame, changed, boxes), ["SUPPORTED", "ISSUE"])
+        # Frozen structure/presence method tolerates small noise and channel bias.
+        changed = frame.copy()
+        changed[..., :3] = np.clip(changed[..., :3].astype(np.int16) + [-30, 20, 15], 0, 255).astype(np.uint8)
+        self.assertEqual(self.observe(frame, changed, boxes), ["SUPPORTED", "SUPPORTED"])
+
+    def test_small_stable_component_is_not_silently_ignored(self):
+        base = self.counterexamples["frame"]
+        result = self.observe(base, base, [{"x": 20, "y": 30, "width": 60, "height": 60}, {"x": 220, "y": 52, "width": 8, "height": 8}])
+        self.assertEqual(result[0], "SUPPORTED")
+        self.assertEqual(result[1], "COMPONENT_GEOMETRY_UNOBSERVABLE")
+
+    def test_weak_component_cannot_borrow_intervening_PRICE_background(self):
+        frame = self.counterexamples["weak"]
+        results = self.observe(frame, frame, [{"x": 20, "y": 30, "width": 60, "height": 60}, {"x": 220, "y": 52, "width": 8, "height": 8}])
+        self.assertEqual(results, ["COMPONENT_GEOMETRY_UNOBSERVABLE", "COMPONENT_GEOMETRY_UNOBSERVABLE"])
+
+    def test_single_component_preserves_v1_sensitivity(self):
+        base = target(); box = {"x": 20, "y": 18, "width": 60, "height": 44}
+        self.assertEqual(self.observe(base, base, [box]), ["SUPPORTED"])
+        for dx, dy in [(1, 0), (-1, 0), (0, 1), (0, -1), (3, -2)]:
+            changed = cv2.warpAffine(base, np.float32([[1, 0, dx], [0, 1, dy]]), (100, 80), borderMode=cv2.BORDER_REPLICATE)
+            self.assertEqual(self.observe(base, changed, [box]), ["ISSUE"])
+
+
 if __name__ == "__main__":
     unittest.main()

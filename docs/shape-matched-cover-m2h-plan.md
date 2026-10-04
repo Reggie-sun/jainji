@@ -1,5 +1,25 @@
 # M2-H Versioned Confirmed-Target Static Proof
 
+## M2-HC Correctness Closure Contract
+
+本节依据2026-10-04用户 accepted M2-HC contract，覆盖下文旧 M2-H 的下一slice建议，实施仍由 Native Codex 主线程负责。基线 `33ef8ea` 的 v1 仅为 `HISTORICAL_DEVELOPMENT_PROOF / KNOWN_CORRECTNESS_LIMITATIONS`，不再新签发。目标仅关闭 arbitrary-range boundary sampling 依赖和 union-envelope geometry false acceptance。
+
+### Ownership and Milestones
+
+1. 修改前保存真实/controlled [0,6990)、[1000,3000)、双range issuer结果和96个实际ordinal；原M2-C kernel实际运行三个背景主导反例。新增窄 `source-fact-exact-frames.ts`，复用canonical clock/FFmpeg stream/freshness owners，重新核对传入clock，顺序解码按ordinal select，只返回有界full-frame RGBA，不修改M1抽样或receipt。返回source/engine/clock/PTS/endPTS/ordinal/pixel绑定，有限count/bytes/wall、取消及前后generation/hash复核。
+2. 新 `cpu-static-geometry/v2` 共享ROI decode，逐confirmedSourceBox独立使用原M2-C梯度/correlation/translation/presence阈值。参考landmarks仅来自sourceBox内部；卷积和search只使用有界邻域。每component保留identity/reference/metrics/range/issues/summary，ALL supported才支持logical target。选择Option A：原3×3/minimum-cell method不能观察的小component明确COMPONENT_GEOMETRY_UNOBSERVABLE，整target INCOMPLETE；不新增小component算法，不降低阈值。
+3. 新issuer只创建 `confirmed-target-static-v2`。首尾original evidence来自exact reader，v2将有界原始RGBA字节作为source artifact归档并绑定完整frame描述，避免历史replay依赖当前PNG decoder/FFmpeg。v1仍保留原PNG合同；M1仅提供candidate identity。归档版本各自dispatch不可变validator、mask/geometry配置及CONFIRMED_STATIC_METHOD_V1/V2；只有issuance检查current source/method/runtime freshness。schemaVersion保持1，不迁移旧store；old reader无法消费新variant，downgrade unsupported且必须拒绝、不能reinterpret/overwrite。
+
+### Verification and Exit
+
+新增exact boundary tests覆盖非样本1000/2999、四边界、多target共享ordinal、PTS/endPTS/bytes错误、source/engine漂移、取消。短range reader可用与mask代表帧不足分别验证。geometry v1 historical controls、v2逐component controls及三个pre-fix反例，证明stable disconnected可支持、1px/disappearance/unobservable不能PASS。固定历史v1 fixture可replay但不可new issue；v2 roundtrip/clone/tamper/cancel/dispute及unknown variant拒绝。真实233s仍单target/单component，mask3395px/bbox628/1/81/59/SHA fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893不变，并对旧M2-C建立可解释geometry equivalence。
+
+最后源码修改后fresh typecheck和相关tests；current owned scope Harness code/verify；diff review/diff --check；AOCI Maintain/Verify/Check/Guide及逐path role；Parent Risk Gate，单slice commit。全部exit成立才M2-HC CORRECTNESS_CLOSED，不称PRODUCT_READY。
+
+### Boundaries and Self-Review
+
+M3 consumer、production、assembler、activation、Controller/Runner/compiler/queue/artifact store及upload均不改；M1/M2 mask thresholds不改，不读取210 unseen。Linux/Python/固定NumPy/OpenCV仅development/internal，NOT PRODUCT PORTABLE；Windows runtime策略及per-source boundary applicability留下一slice决策，M3 BLOCKED、PRODUCT_DISABLED、guard unchanged、modelRequests=0。不新增人工review，不声称human-reviewed-real-source、SAFE/NATURAL或REAL_PIXEL_ZERO_MISS。确认集合不缩小；union envelope只供decode/budget/visualization，不是component geometry unit。Self-review已对照用户exit和当前owner，历史v1语义与当前issuance明确分离。
+
 ## Goal and Authority
 
 依据用户本轮 accepted contract，将 confirmed-target-only、target-range-bound static 证据接入既有 knowledge schema/store。Native Codex 串行执行，current working tree，保留 foreign 千川/AOCI 改动；explicit modelRequests=0 优先于通常委派。不修改 M3 consumer、production、assembler、activation、queue 或 artifact store。

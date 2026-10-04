@@ -34,6 +34,8 @@
 
 `targetEnvelopeBox=union(confirmedSourceBoxes)` 仅限定 ROI decode、预算或展示；**union envelope != component membership**。extractor 只允许与至少一个明确确认 sourceBox 相交的 stable component 提供 support，不吞并 envelope 内未确认的背景、字幕或商品文字。ROI != mask != required pixels；边界或有限余量 extent unresolved 仍 INCOMPLETE。本阶段不增加 UI 或自动 grouping 算法。
 
+M2-HC进一步规定 **union envelope != component geometry proof**。corrected `cpu-static-geometry/v2` 必须为每个confirmed component提供自己的local observability/presence证据，全部supported才支持logical target；任一component移动、消失、unobservable或缺项均不允许target PASS。`confirmed-target-static-v2` 首尾original evidence由canonical exact ordinal reader取得，不依赖M1采样偶然命中。v1保留历史解释但已知correctness limitations，不新签发、不授corrected consumer支持；版本与downgrade、runtime和per-source boundary review边界由 [Source Knowledge delta](source-sticker-knowledge-spec.md#m2-hc-versioned-correctness-delta) 独占。
+
 **absence of detected target != proof that no target exists**。
 
 **V1 success = all confirmed targets safely covered**，即非空 `C` 中每个目标在承诺有效范围内都有保守 mask、对应输出像素全覆盖、画面安全和一致冻结/发布证据；**不要求穷尽证明全部可能旧贴纸**。

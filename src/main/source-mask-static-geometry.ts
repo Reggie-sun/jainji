@@ -12,59 +12,14 @@ import { assertStaticTargetEvidence, assertConfirmedStaticTarget, staticIncomple
 import { readStaticMaskCandidate, type StaticMaskCandidate } from "./source-mask-static-extraction.js";
 import type { FullSourceCensusInput } from "./source-fact-census.js";
 
-/** Exact M2-C v2 parameters; the owned method wraps, never retunes, its CPU kernel. */
-export const STATIC_GEOMETRY_CONFIG = freezeAI({ method: "cpu-static-geometry-development/v2", gaussianSigma: 0.6,
-  minimumGradient: 8, sampleDirectionCosine: 0.9, sampleConsensus: 0.9, sampleStrengthRatio: [0.5, 2], grid: [3, 3],
-  landmarksPerCell: 48, minimumLandmarksPerCell: 8, minimumCells: 6, minimumSpatialSpan: 0.5,
-  searchRadius: 4, localSearchRadius: 2, subpixelStep: 0.25, maximumOffset: 0.5, maximumLocalOffset: 0.75,
-  minimumCorrelation: 0.9, minimumCellCorrelation: 0.8, ambiguityDistance: 1.5, ambiguityCorrelationGap: 0.02,
-  landmarkPresenceRatio: 0.35, maximumLostFraction: 0.15, energyRatio: [0.45, 2.25], boxPadding: 3 });
-const KERNELS = { "scripts/shape-cover-static-geometry.py": "d8860f2ff885424e579314fb039f71a6a6116226ba85a92705257c1e71465266",
-  "scripts/shape-cover-static-anomalies.py": "888dc35506a69236e544515b876bed8d548ea8fe492ba330fad0be660d9d82e0" };
-const NumberValue = z.number().finite(), Offset = z.tuple([NumberValue, NumberValue]);
-const Digest = z.string().regex(/^[a-f0-9]{64}$/);
-const Fit = z.object({ offset: Offset, correlation: NumberValue.min(-1).max(1), zeroCorrelation: NumberValue.min(-1).max(1),
-  distinctPeakGap: NumberValue.nullable(), boundary: z.boolean(), ambiguous: z.boolean() }).strict();
-const Frame = z.object({ index: z.number().int().nonnegative(), pts: z.number().int().safe(), endPts: z.number().int().safe(),
-  byteLength: z.number().int().positive(), pixelSha256: z.string().regex(/^[a-f0-9]{64}$/), state: z.enum(["STATIC_GEOMETRY_OBSERVED", "GEOMETRY_CONTRADICTION_OR_UNRESOLVED"]),
-  reasons: z.array(z.string()).max(6), globalOffset: Offset, globalAlignment: Fit, gradientEnergyRatio: NumberValue.nonnegative(),
-  lostLandmarkFraction: NumberValue.min(0).max(1), cells: z.array(Fit.extend({ cell: z.number().int().min(0).max(8), landmarks: z.number().int().min(8).max(48) }).strict()).min(6).max(9), oldRgbAnomaly: z.boolean() }).strict();
-const Reference = z.object({ extent: z.tuple([z.number().int().positive(), z.number().int().positive()]),
-  box: z.object({ x: z.number().int().nonnegative(), y: z.number().int().nonnegative(), width: z.number().int().positive(), height: z.number().int().positive() }).strict(),
-  sampleCount: z.number().int().min(3).max(96), landmarks: z.array(z.object({ sourceX: z.number().int(), sourceY: z.number().int(),
-    cell: z.number().int().min(0).max(8), gradient: Offset }).strict()).min(48).max(432),
-  origin: z.literal("PERSISTENT_GRADIENT_LANDMARKS_NOT_MASK_OR_REQUIRED_PIXELS") }).strict();
-export const StaticGeometryArtifactSchema = z.object({ type: z.literal("owned-static-geometry/v1"),
-  receipt: z.object({ method: z.literal("cpu-static-geometry/v1"), kernelMethod: z.literal("cpu-static-geometry-development/v2"), authority: z.literal("none"), eligible: z.literal(false),
-    sourceKey: z.string().regex(/^[a-f0-9]{64}$/), confirmationDigest: z.string().regex(/^[a-f0-9]{64}$/), targetId: z.string().uuid(),
-    range: z.object({ startFrame: z.number().int().nonnegative(), endFrame: z.number().int().positive() }).strict(),
-    evidenceDigest: Digest, clockDigest: Digest, bindingDigest: Digest, configDigest: Digest, referenceDigest: Digest, frameMetricsDigest: Digest,
-    frameCount: z.number().int().positive().max(20000), firstPts: z.number().int().safe(), lastPts: z.number().int().safe(), endPts: z.number().int().safe(),
-    status: z.enum(["DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED", "INCOMPLETE_GEOMETRY_CONTRADICTION_OR_UNRESOLVED"]), issueFrames: z.array(z.number().int()).max(20000),
-    issueRanges: z.array(z.object({ startFrame: z.number().int(), endFrame: z.number().int() }).strict()).max(20000),
-    summary: z.object({ maximumGlobalOffset: NumberValue, minimumGlobalCorrelation: NumberValue, minimumDistinctPeakGap: NumberValue,
-      maximumLostLandmarkFraction: NumberValue, gradientEnergyRatio: z.tuple([NumberValue, NumberValue]), minimumLocalCorrelation: NumberValue, maximumLocalOffset: NumberValue }).strict(),
-    methodSources: z.record(z.string(), Digest).refine(v => Object.keys(v).length === 4
-      && ["scripts/shape-cover-static-geometry-worker.py", "src/main/source-mask-static-geometry.ts"].every(p => p in v)
-      && Object.entries(KERNELS).every(([p, d]) => v[p] === d)),
-    runtime: z.object({ pythonFingerprint: z.string().regex(/^sha256:[a-f0-9]{64}$/), numpy: z.literal("2.2.6"), opencv: z.literal("4.12.0") }).strict(),
-    geometryDigest: z.string().regex(/^[a-f0-9]{64}$/),
-  }).strict(), reference: Reference,
-}).strict();
+import { STATIC_COMPONENT_GEOMETRY_CONFIG, STATIC_GEOMETRY_CONFIG, StaticGeometryArtifactSchema, Frame, Reference, Box, Digest, KERNELS } from "./source-mask-static-geometry-v2.js";
+export { STATIC_COMPONENT_GEOMETRY_CONFIG, STATIC_GEOMETRY_CONFIG, StaticGeometryArtifactSchema } from "./source-mask-static-geometry-v2.js";
 export type StaticGeometryFrame = z.infer<typeof Frame>;
-type GeometryData = { reference: z.infer<typeof Reference>; frames: StaticGeometryFrame[] };
-export interface OwnedStaticGeometryEvidence {
-  readonly receipt: Readonly<{ method: "cpu-static-geometry/v1"; kernelMethod: string; authority: "none"; eligible: false;
-    sourceKey: string; confirmationDigest: string; targetId: string; range: Readonly<{ startFrame: number; endFrame: number }>;
-    evidenceDigest: string; clockDigest: string; bindingDigest: string; configDigest: string; referenceDigest: string;
-    frameMetricsDigest: string; frameCount: number; firstPts: number; lastPts: number; endPts: number;
-    status: "DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED" | "INCOMPLETE_GEOMETRY_CONTRADICTION_OR_UNRESOLVED";
-    issueFrames: readonly number[]; issueRanges: readonly { startFrame: number; endFrame: number }[];
-    summary: Readonly<{ maximumGlobalOffset: number; minimumGlobalCorrelation: number; minimumDistinctPeakGap: number;
-      maximumLostLandmarkFraction: number; gradientEnergyRatio: readonly number[]; minimumLocalCorrelation: number; maximumLocalOffset: number }>;
-    methodSources: Readonly<Record<string, string>>; runtime: Readonly<{ pythonFingerprint: string; numpy: string; opencv: string }>;
-    geometryDigest: string }>;
-}
+type ComponentData = { candidateId: string; componentDigest: string; sourceBox: z.infer<typeof Box>;
+  reference: z.infer<typeof Reference> | null; unobservableReason: "COMPONENT_GEOMETRY_UNOBSERVABLE" | null; frames: StaticGeometryFrame[] };
+type GeometryData = { components: ComponentData[]; references: (z.infer<typeof Reference> | null)[];
+  reference: z.infer<typeof Reference> | null; frames: StaticGeometryFrame[] };
+export interface OwnedStaticGeometryEvidence { readonly receipt: Readonly<z.infer<typeof StaticGeometryArtifactSchema>["receipt"]> }
 const owners = new WeakMap<OwnedStaticGeometryEvidence, { evidence: StaticTargetEvidence; candidate: StaticMaskCandidate;
   data: GeometryData; inputBinding: Readonly<{ sourcePath: string; ffmpegPath: string; ffprobePath: string }>;
   verifyFresh: () => Promise<void>; checkFresh: () => void }>();
@@ -124,7 +79,7 @@ export async function verifyStaticTargetGeometry(input: FullSourceCensusInput, e
   if (!pythonPath) staticIncomplete("missing geometry Python runtime");
   const runtimePath = pythonPath;
   const pythonFingerprint = await fingerprintFile(pythonPath, { signal, maxBytes: 512 * 1024 ** 2 });
-  const methodPaths = [...Object.keys(KERNELS), "scripts/shape-cover-static-geometry-worker.py", "src/main/source-mask-static-geometry.ts"];
+  const methodPaths = [...Object.keys(KERNELS), "scripts/shape-cover-static-geometry-worker.py", "src/main/source-mask-static-geometry.ts", "src/main/source-mask-static-geometry-v1.ts", "scripts/shape-cover-static-geometry-components.py", "src/main/source-mask-static-geometry-v2.ts"];
   const methodSources = Object.fromEntries(await Promise.all(methodPaths.map(async p => [p, hash(await readFile(p))])));
   for (const [p, expected] of Object.entries(KERNELS)) if (methodSources[p] !== expected) staticIncomplete("frozen geometry kernel changed");
   const generation = await stat(pythonPath, { bigint: true });
@@ -156,39 +111,75 @@ export async function verifyStaticTargetGeometry(input: FullSourceCensusInput, e
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-owned-geometry-"));
   let data: GeometryData;
   try {
-    const manifest = { sourcePath, ffmpegPath, roi: evidence.roi, envelope: target.targetEnvelopeBox, bindings: candidate.receipt.frames,
+    const manifest = { method: "cpu-static-geometry/v2", sourcePath, ffmpegPath, roi: evidence.roi,
+      components: target.confirmedCandidateIds.map((candidateId, i) => ({ candidateId, componentDigest: target.confirmedComponentDigests[i], sourceBox: target.confirmedSourceBoxes[i] })), bindings: candidate.receipt.frames,
       sampleOrdinals: candidate.receipt.sampleOrdinals, timeBase: input.source.timeBase,
       historicalRgbOrdinals: candidate.receipt.anomalies.map(a => a.index), remainingSeconds: Math.max(0.001, (evidence.deadline - Date.now()) / 1000) };
     const file = path.join(directory, "input.json"); await writeFile(file, JSON.stringify(manifest), { flag: "wx", mode: 0o600 });
     const output = JSON.parse((await worker(pythonPath, ["-B", path.resolve("scripts/shape-cover-static-geometry-worker.py"), file], signal, evidence.deadline)).toString("utf8"));
-    if (JSON.stringify(output.config) !== JSON.stringify(STATIC_GEOMETRY_CONFIG) || output.dependencies.numpy !== "2.2.6" || output.dependencies.opencv !== "4.12.0") staticIncomplete("geometry config/runtime version changed");
-    data = { reference: Reference.parse(output.reference), frames: z.array(Frame).min(1).max(20000).parse(output.frames) };
+    if (JSON.stringify(output.config) !== JSON.stringify(STATIC_COMPONENT_GEOMETRY_CONFIG) || output.dependencies.numpy !== "2.2.6" || output.dependencies.opencv !== "4.12.0") staticIncomplete("geometry config/runtime version changed");
+    const components = z.array(z.object({ candidateId: Digest, componentDigest: Digest, sourceBox: Box,
+      reference: Reference.nullable(), unobservableReason: z.literal("COMPONENT_GEOMETRY_UNOBSERVABLE").nullable(), frames: z.array(Frame).max(20000) }).strict()).min(1).max(128).parse(output.components);
+    data = { components, references: components.map(c => c.reference), reference: components[0].reference, frames: components[0].frames };
   } finally { await rm(directory, { recursive: true, force: true }); }
-  for (const [i, f] of data.frames.entries()) {
-    const expected = candidate.receipt.frames[i], clock = evidence.clock.frames[target.range.startFrame + i];
-    if (!expected || ["index", "pts", "endPts", "byteLength", "pixelSha256"].some(k => f[k as keyof typeof f] !== expected[k as keyof typeof expected])
-      || f.index !== clock.index || f.pts !== clock.pts || f.endPts !== clock.endPts || f.endPts <= f.pts
-      || JSON.stringify(f.globalOffset) !== JSON.stringify(f.globalAlignment.offset) || JSON.stringify(f.reasons) !== JSON.stringify(frameReasons(f))
-      || f.state !== (f.reasons.length ? "GEOMETRY_CONTRADICTION_OR_UNRESOLVED" : "STATIC_GEOMETRY_OBSERVED")
-      || new Set(f.cells.map(c => c.cell)).size !== f.cells.length) staticIncomplete("geometry full frame binding/decision mismatch");
+  if (data.components.length !== target.confirmedCandidateIds.length) staticIncomplete("missing/extra component geometry");
+  for (const [i, component] of data.components.entries()) {
+    if (component.candidateId !== target.confirmedCandidateIds[i] || component.componentDigest !== target.confirmedComponentDigests[i]
+      || JSON.stringify(component.sourceBox) !== JSON.stringify(target.confirmedSourceBoxes[i])) staticIncomplete("component geometry identity mismatch");
+    if (component.unobservableReason) {
+      if (component.reference !== null || component.frames.length) staticIncomplete("unobservable component carries evidence");
+      continue;
+    }
+    const reference = component.reference, box = component.sourceBox;
+    if (!reference || JSON.stringify(reference.box) !== JSON.stringify({ ...box, x: box.x - evidence.roi.x, y: box.y - evidence.roi.y })
+      || JSON.stringify(reference.extent) !== JSON.stringify([evidence.roi.width, evidence.roi.height])
+      || reference.sampleCount !== candidate.receipt.sampleOrdinals.length
+      || reference.landmarks.some(l => l.sourceX < box.x || l.sourceX >= box.x + box.width || l.sourceY < box.y || l.sourceY >= box.y + box.height)) staticIncomplete("component reference outside sourceBox");
+    for (const [j, f] of component.frames.entries()) {
+      const expected = candidate.receipt.frames[j], clock = evidence.clock.frames[target.range.startFrame + j];
+      if (!expected || ["index", "pts", "endPts", "byteLength", "pixelSha256"].some(k => f[k as keyof typeof f] !== expected[k as keyof typeof expected])
+        || f.index !== clock.index || f.pts !== clock.pts || f.endPts !== clock.endPts || f.endPts <= f.pts
+        || JSON.stringify(f.globalOffset) !== JSON.stringify(f.globalAlignment.offset) || JSON.stringify(f.reasons) !== JSON.stringify(frameReasons(f))
+        || f.state !== (f.reasons.length ? "GEOMETRY_CONTRADICTION_OR_UNRESOLVED" : "STATIC_GEOMETRY_OBSERVED")
+        || new Set(f.cells.map(c => c.cell)).size !== f.cells.length) staticIncomplete("geometry full frame binding/decision mismatch");
+    }
+    if (component.frames.length !== candidate.receipt.frames.length) staticIncomplete("geometry missing component full range");
   }
-  if (data.frames.length !== candidate.receipt.frames.length) staticIncomplete("geometry missing full range");
   await verifyFresh();
-  const issues = data.frames.filter(f => f.reasons.length).map(f => f.index), issueRanges: { startFrame: number; endFrame: number }[] = [];
-  for (const index of issues) { const last = issueRanges.at(-1); if (last?.endFrame === index) last.endFrame++; else issueRanges.push({ startFrame: index, endFrame: index + 1 }); }
-  const minimum = (f: (v: StaticGeometryFrame) => number) => data.frames.reduce((a, v) => Math.min(a, f(v)), Infinity);
-  const maximum = (f: (v: StaticGeometryFrame) => number) => data.frames.reduce((a, v) => Math.max(a, f(v)), -Infinity);
-  const body = { method: "cpu-static-geometry/v1" as const, kernelMethod: STATIC_GEOMETRY_CONFIG.method, authority: "none" as const, eligible: false as const,
-    sourceKey: target.sourceKey, confirmationDigest: target.confirmationDigest, targetId: target.targetId, range: target.range,
-    evidenceDigest: evidence.evidenceDigest, clockDigest: discovery.receipt.clockDigest, bindingDigest: hash(JSON.stringify(candidate.receipt.frames)),
-    configDigest: hash(JSON.stringify(STATIC_GEOMETRY_CONFIG)), referenceDigest: hash(JSON.stringify(data.reference)), frameMetricsDigest: hash(JSON.stringify(data.frames)),
-    frameCount: data.frames.length, firstPts: data.frames[0].pts, lastPts: data.frames.at(-1)!.pts, endPts: data.frames.at(-1)!.endPts,
-    status: issues.length ? "INCOMPLETE_GEOMETRY_CONTRADICTION_OR_UNRESOLVED" as const : "DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED" as const,
-    issueFrames: issues, issueRanges, summary: { maximumGlobalOffset: maximum(f => Math.max(...f.globalOffset.map(Math.abs))),
+  const ranges = (indices: readonly number[]) => {
+    const result: { startFrame: number; endFrame: number }[] = [];
+    for (const index of indices) { const last = result.at(-1); if (last?.endFrame === index) last.endFrame++; else result.push({ startFrame: index, endFrame: index + 1 }); }
+    return result;
+  };
+  const summary = (frames: StaticGeometryFrame[]) => {
+    if (!frames.length) return null;
+    const minimum = (f: (v: StaticGeometryFrame) => number) => frames.reduce((a, v) => Math.min(a, f(v)), Infinity);
+    const maximum = (f: (v: StaticGeometryFrame) => number) => frames.reduce((a, v) => Math.max(a, f(v)), -Infinity);
+    return { maximumGlobalOffset: maximum(f => Math.max(...f.globalOffset.map(Math.abs))),
       minimumGlobalCorrelation: minimum(f => f.globalAlignment.correlation), minimumDistinctPeakGap: minimum(f => f.globalAlignment.distinctPeakGap ?? 0),
       maximumLostLandmarkFraction: maximum(f => f.lostLandmarkFraction), gradientEnergyRatio: [minimum(f => f.gradientEnergyRatio), maximum(f => f.gradientEnergyRatio)],
-      minimumLocalCorrelation: minimum(f => Math.min(...f.cells.map(c => c.correlation))), maximumLocalOffset: maximum(f => Math.max(...f.cells.flatMap(c => c.offset.map(Math.abs)))) },
-    methodSources, runtime: { pythonFingerprint, numpy: "2.2.6", opencv: "4.12.0" } };
-  const geometry = freezeAI({ receipt: { ...body, geometryDigest: hash(JSON.stringify(body)) } });
+      minimumLocalCorrelation: minimum(f => Math.min(...f.cells.map(c => c.correlation))), maximumLocalOffset: maximum(f => Math.max(...f.cells.flatMap(c => c.offset.map(Math.abs)))) };
+  };
+  const components = data.components.map(c => {
+    const issueFrames = c.unobservableReason ? candidate.receipt.frames.map(f => f.index) : c.frames.filter(f => f.reasons.length).map(f => f.index);
+    return { candidateId: c.candidateId, componentDigest: c.componentDigest, sourceBox: c.sourceBox,
+      method: "component-local-persistent-gradients/v2" as const, referencePadding: 0 as const,
+      referenceDigest: hash(JSON.stringify(c.reference)), metricsDigest: hash(JSON.stringify(c.frames)), frameCount: candidate.receipt.frames.length,
+      status: c.unobservableReason ? "COMPONENT_GEOMETRY_UNOBSERVABLE" as const : issueFrames.length ? "GEOMETRY_CONTRADICTION_OR_UNRESOLVED" as const : "SUPPORTED" as const,
+      issueFrames, issueRanges: ranges(issueFrames), summary: summary(c.frames) };
+  });
+  const issues = [...new Set(components.flatMap(c => c.issueFrames))].sort((a, b) => a - b), bindings = candidate.receipt.frames;
+  const body = { method: "cpu-static-geometry/v2" as const, kernelMethod: STATIC_GEOMETRY_CONFIG.method, authority: "none" as const, eligible: false as const,
+    sourceKey: target.sourceKey, confirmationDigest: target.confirmationDigest, targetId: target.targetId, range: target.range,
+    evidenceDigest: evidence.evidenceDigest, clockDigest: discovery.receipt.clockDigest, bindingDigest: hash(JSON.stringify(bindings)),
+    configDigest: hash(JSON.stringify(STATIC_COMPONENT_GEOMETRY_CONFIG)), referenceDigest: hash(JSON.stringify(data.references)),
+    frameMetricsDigest: hash(JSON.stringify(components.map(c => c.metricsDigest))), components,
+    frameCount: bindings.length, firstPts: bindings[0].pts, lastPts: bindings.at(-1)!.pts, endPts: bindings.at(-1)!.endPts,
+    status: components.every(c => c.status === "SUPPORTED") ? "DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED" as const : "INCOMPLETE_GEOMETRY_CONTRADICTION_OR_UNRESOLVED" as const,
+    issueFrames: issues, issueRanges: ranges(issues), summary: summary(data.components.flatMap(c => c.frames)),
+    methodSources, runtime: { pythonFingerprint, numpy: "2.2.6" as const, opencv: "4.12.0" as const } };
+  const { geometryDigest: _placeholder, ...canonicalBody } = StaticGeometryArtifactSchema.shape.receipt.parse({ ...body, geometryDigest: "0".repeat(64) });
+  const receipt = { ...canonicalBody, geometryDigest: hash(JSON.stringify(canonicalBody)) };
+  const geometry = freezeAI({ receipt });
   owners.set(geometry, Object.freeze({ evidence, candidate, data: freezeAI(data), inputBinding, verifyFresh, checkFresh })); return geometry;
 }
