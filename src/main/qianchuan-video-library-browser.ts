@@ -2,6 +2,7 @@ import { chromium, type Browser } from "playwright-core";
 import { guardedTransport } from "./local-cdp-transport.js";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import { QianchuanVideoLibraryPage } from "./qianchuan-video-library-page.js";
+import { VIDEO_LIBRARY_ROUTE } from "../shared/qianchuan-video-library.js";
 
 export async function connectVideoLibrary(endpoint: string, advertiserId: string, signal: AbortSignal): Promise<{
   page: QianchuanVideoLibraryPage; close(): Promise<void>;
@@ -19,11 +20,19 @@ export async function connectVideoLibrary(endpoint: string, advertiserId: string
     browser = await chromium.connectOverCDP(relay.url, { timeout: 10000, noDefaults: true });
     signal.throwIfAborted();
     if (browser.contexts().length !== 1) throw new Error("无法唯一核对视频库浏览器。");
-    const page = await browser.contexts()[0].newPage();
+    const context = browser.contexts()[0];
+    const existing = context.pages().find(page => {
+      try {
+        const url = new URL(page.url());
+        return !page.isClosed() && url.origin === "https://qianchuan.jinritemai.com" && url.pathname === VIDEO_LIBRARY_ROUTE &&
+          url.searchParams.getAll("aavid").length === 1 && url.searchParams.get("aavid") === advertiserId;
+      } catch { return false; }
+    });
+    const page = existing ?? await context.newPage();
     page.setDefaultTimeout(10000);
     return { page: new QianchuanVideoLibraryPage(page, advertiserId, signal), close: async () => {
       await relay.close(); await browser?.close();
-      // Keep the new library tab and every original upload tab for human inspection.
+      // Reuse the same library tab on the next connection; preserve all upload tabs.
     } };
   } catch (error) { await relay.close(); await browser?.close().catch(() => undefined); throw error; }
 }
