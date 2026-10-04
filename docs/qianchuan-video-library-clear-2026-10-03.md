@@ -60,3 +60,5 @@
 ## Committed Recovery and Single Verification Update
 
 检查点已提交 `bae2b9f21545d6946cc4fd91bc4df58be6e1c772`。第七轮只读复审结束，snapshot-7 的 435 项检查及 Harness 均通过，无新增删除阻断；QVL-NATIVE-010 的异步释放期间页面移走窗口通过导航调用前再次同步核对关闭。用户随后要求代码和执行均只验证一次，因此取消额外空库刷新与外部重复浏览器巡检，复用最后一批已有响应与零库存观察；账号、批次核对及 unknown outcome 屏障继续保留。本次简化后的源码未再运行测试，不将旧快照的 PASS 归于新字节。真实清除继续从原蝴蝶贴审计末批接续，其余五账号仍待执行。
+
+14:42 UTC 原软件接续已核验历史两批共 100 条；第三批尚未写 intent，选择 label 被平台 fixed 侧栏拦截而超时。软件改为唯一核对的 DOM label/button 原 UI click，并支持完整 verified 链在下一 intent 前失败后的接续，不复制视频、不全库重复扫描。未知批次的意图不重放。新回归 fixture 已补但按用户要求不运行测试。

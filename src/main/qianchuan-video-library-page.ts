@@ -148,7 +148,7 @@ export class QianchuanVideoLibraryPage {
     const headerLabel = table.locator("thead label.ovui-checkbox");
     if (await header.count() !== 1 || await header.isChecked() || !await header.isEnabled() ||
       await headerLabel.count() !== 1 || await headerLabel.locator('input[type="checkbox"]').count() !== 1) throw changed();
-    await headerLabel.click({ timeout: 10000 });
+    await headerLabel.evaluate(node => (node as HTMLLabelElement).click());
     this.check();
     if (!await header.isChecked()) throw changed();
     const selected = await table.locator('tbody input[type="checkbox"]').evaluateAll(nodes => nodes.map(node => (node as HTMLInputElement).checked));
@@ -156,7 +156,7 @@ export class QianchuanVideoLibraryPage {
       await this.page.getByText(`已选${before.ids.length}个`, { exact: true }).count() !== 1) throw changed();
     const remove = this.page.getByRole("button", { name: "删除", exact: true });
     if (await remove.count() !== 1 || !await remove.isEnabled()) throw changed();
-    await remove.click({ timeout: 10000 });
+    await remove.evaluate(node => (node as HTMLButtonElement).click());
     this.check();
     const modal = this.page.locator(".ovui-modal:visible");
     if (await modal.count() !== 1 || (await modal.innerText()).replace(/\s+/g, "") !==

@@ -63,3 +63,7 @@
 ## Single Verification Delta (2026-10-04)
 
 用户明确要求“一次验证就够了，后面不要验证了，代码里也是”。当前授权替代此前两次独立空库刷新及重复巡检要求：复用最后一批正常刷新返回的已绑定、无筛选零库存快照写 completed；初始已空使用 open 后的同一正常响应快照，不额外 reload。每批删除意图、账号归属、精确数量下降及旧 ID 消失仍必须核对，未知结果仍保留屏障；不重新点击旧确认。清空结束不运行外部浏览器巡检。此前 435 项通过证据仅对应 snapshot-7；此次简化与 QVL-NATIVE-010 导航调用前同步复核由 Parent 检查，不重跑测试或追加 review。Self-review：变更取消重复观察，不更改目标账号、删除授权、审计链或未知结果处理。
+
+## Actual Selection and Settled Chain Recovery
+
+真实 Chrome 的 page-layout-menu-fixed 覆盖表格 checkbox，坐标点击被侧栏拦截。已唯一核对的表头 label 与删除按钮使用 DOM click 触发原 UI；删除 modal 的账户、数量、警告与意图持久化边界不变。若所有历史 intent 已 verified，但下一批选择在新 intent 前失败，解析完整连续链后只核对当前首页与末个 verified.after 一致，从新 batch 接续，不再全库分页。唯一末批未知仍沿原只读恢复，不重放确认。Parent self-review 根据真实原页拦截日志及两批完整审计裁决，不追加测试/复审。

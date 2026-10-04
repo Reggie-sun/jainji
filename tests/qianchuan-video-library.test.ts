@@ -279,3 +279,13 @@ it("reuses the same matching library tab across connections and preserves upload
   for(let i=0;i<2;i++){const connection=await connectVideoLibrary(target.cdpEndpoint,target.advertiserId,new AbortController().signal);await connection.close()}
   expect(newPage).not.toHaveBeenCalled();expect(library.setDefaultTimeout).toHaveBeenCalledTimes(2);expect(close).toHaveBeenCalledTimes(2);
 });
+
+it("resumes an already verified chain after selection failed before the next intent without rescanning inventory", async () => {
+  const f = await fixture();
+  const remove = f.page.deleteBatch.getMockImplementation()!;
+  f.page.deleteBatch.mockImplementationOnce(remove).mockImplementationOnce(async () => { throw new Error("selection blocked"); });
+  expect(await f.library.clear(target, async () => {})).toMatchObject({ state: "BLOCKED", deletedCount: 20 });
+  expect(await f.library.clear(target, async () => {})).toMatchObject({ state: "CLEARED", deletedCount: 45 });
+  expect(f.page.inventory).not.toHaveBeenCalled();
+  expect(f.page.deleteBatch).toHaveBeenCalledTimes(4);
+});

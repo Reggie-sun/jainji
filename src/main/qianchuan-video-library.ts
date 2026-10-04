@@ -38,18 +38,19 @@ export class QianchuanVideoLibrary {
       await secureUploadDirectory(directory);
       await strictSyncDirectory(this.root);
       operation = await open(lock, "wx", 0o600);
-      let recovery: { before: z.infer<typeof snapshotSchema>; initialCount: number; intentDigest: string; batch: number; deletedCount: number; removedIds: string[]; fresh(): Promise<void> } | undefined;
+      let recovery: { before: z.infer<typeof snapshotSchema>; initialCount: number; intentDigest: string; batch: number; deletedCount: number; removedIds: string[]; unresolved: boolean; fresh(): Promise<void> } | undefined;
       try { await this.write(gate, { version: 1, attempt, product: target.product, advertiserId: target.advertiserId, startedAt: now() }); }
       catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-        // Reconcile only the last unresolved intent in a complete audit chain; never replay it.
+        // Resume a fully verified chain, or reconcile its single unresolved last intent; never replay it.
         confirmed = true;
         const pending = await readPrivateJson(gate, input => z.object({ version: z.literal(1), attempt: z.string().uuid(), product: z.literal(target.product), advertiserId: z.literal(target.advertiserId), startedAt: z.string().datetime() }).strict().parse(input));
         attempt = pending.value.attempt;
         const oldAudit = path.join(directory, attempt);
         const names = (await readdir(oldAudit)).sort(), batches = names.filter(name => /^\d+\.intent\.json$/.test(name)).length;
         if (!batches || batches > 1000) throw new Error(unknown);
-        const expected = ["start.json", ...Array.from({ length: batches }, (_, index) => `${index}.intent.json`), ...Array.from({ length: Math.max(0, batches - 1) }, (_, index) => `${index}.verified.json`)].sort();
+        const complete = names.includes(`${batches - 1}.verified.json`);
+        const expected = ["start.json", ...Array.from({ length: batches }, (_, index) => `${index}.intent.json`), ...Array.from({ length: complete ? batches : Math.max(0, batches - 1) }, (_, index) => `${index}.verified.json`)].sort();
         if (JSON.stringify(names) !== JSON.stringify(expected)) throw new Error(unknown);
         const start = await readPrivateJson(path.join(oldAudit, "start.json"), input => z.object({ version: z.literal(1), advertiserId: z.literal(target.advertiserId), configDigest: z.literal(target.configDigest), initialCount: z.number().int().min(1).max(20000), startedAt: z.string().datetime() }).strict().parse(input));
         const records: [string, string][] = [[gate, pending.digest], [path.join(oldAudit, "start.json"), start.digest]], removedIds: string[] = [];
@@ -61,8 +62,8 @@ export class QianchuanVideoLibrary {
           records.push([file, intent.digest]);
           if (intent.value.before.total !== start.value.initialCount - removedIds.length || intent.value.before.ids.some(id => removedIds.includes(id)) ||
             previous && JSON.stringify(previous) !== JSON.stringify(intent.value.before)) throw new Error(unknown);
-          if (index === batches - 1) {
-            recovery = { before: intent.value.before, initialCount: start.value.initialCount, intentDigest: intent.digest, batch: index, deletedCount: removedIds.length, removedIds: [...removedIds, ...intent.value.before.ids], fresh: async () => {
+          if (index === batches - 1 && !complete) {
+            recovery = { before: intent.value.before, initialCount: start.value.initialCount, intentDigest: intent.digest, batch: index, deletedCount: removedIds.length, removedIds: [...removedIds, ...intent.value.before.ids], unresolved: true, fresh: async () => {
               if (JSON.stringify((await readdir(oldAudit)).sort()) !== JSON.stringify(names)) throw new Error(unknown);
               for (const [record, digest] of records) if ((await readPrivateJson(record, value => value)).digest !== digest) throw new Error(unknown);
             } };
@@ -74,6 +75,10 @@ export class QianchuanVideoLibrary {
               verified.value.after.ids.some(id => removedIds.includes(id) || intent.value.before.ids.includes(id)) ||
               (verified.value.reconciled ? verified.value.intentDigest !== intent.digest || !verified.value.inventoryDigest : !!verified.value.intentDigest || !!verified.value.inventoryDigest)) throw new Error(unknown);
             removedIds.push(...verified.value.removedIds); previous = verified.value.after;
+            if (index === batches - 1) recovery = { before: previous, initialCount: start.value.initialCount, intentDigest: intent.digest, batch: index, deletedCount: removedIds.length, removedIds: [...removedIds], unresolved: false, fresh: async () => {
+              if (JSON.stringify((await readdir(oldAudit)).sort()) !== JSON.stringify(names)) throw new Error(unknown);
+              for (const [record, digest] of records) if ((await readPrivateJson(record, value => value)).digest !== digest) throw new Error(unknown);
+            } };
           }
         }
       }
@@ -89,7 +94,12 @@ export class QianchuanVideoLibrary {
       const initialCount = recovery?.initialCount ?? snapshot.total;
       if (initialCount > 20000) throw new Error("视频库超过本次 20000 条删除上限，尚未删除。");
       let firstBatch = 0;
-      if (recovery) {
+      if (recovery && !recovery.unresolved) {
+        phase = "接续已完成批次";
+        if (JSON.stringify(snapshot) !== JSON.stringify(recovery.before)) throw new Error(unknown);
+        await guard(); await recovery.fresh(); signal.throwIfAborted();
+        firstBatch = recovery.batch + 1;
+      } else if (recovery) {
         phase = "只读核对旧批次";
         const inventory = await connection.page.inventory();
         await guard(); signal.throwIfAborted();
