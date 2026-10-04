@@ -21,9 +21,8 @@ try {
       response.end(await server.transformIndexHtml(request.url, `<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main id="root" style="max-width:1050px;margin:auto;padding:24px"></main><script type="module">
         import React from 'react';import {createRoot} from 'react-dom/client';
         import {CoverStickerPanel} from '/src/renderer/CoverStickerPanel.tsx';
-        import {DisplayTextEditor} from '/src/renderer/DisplayTextEditor.tsx';
+        import {TemplatePanel} from '/src/renderer/TemplatePanel.tsx';
         import {DecorationSchema} from '/src/shared/decorations.ts';
-        import {RULE_TEMPLATES} from '/src/shared/agent.ts';
         import {DEFAULT_EXPORT_SETTINGS} from '/src/shared/export-settings.ts';
         import '/src/renderer/styles.css';
         window.jianji={decorationCatalog:async()=>({fonts:[],stickers:[]})};
@@ -34,7 +33,7 @@ try {
           React.useEffect(()=>{const timer=setInterval(()=>setTick(v=>v+1),50);return()=>clearInterval(timer)},[]);
           window.fixture={media,options,cover,tick};window.setFixtureMedia=setMedia;window.setFixtureBusy=setBusy;
           return React.createElement(React.Fragment,null,
-            React.createElement('section',{id:'text-panel'},React.createElement(DisplayTextEditor,{rule:RULE_TEMPLATES[0],options,media:media.map(m=>({...m})),exportSettings:DEFAULT_EXPORT_SETTINGS,disabled:busy,onChange:(settings,id)=>setOptions(o=>({...o,displayTextByMedia:{...o.displayTextByMedia,[id]:settings}})),onSave:()=>{window.savedText=structuredClone(options)}})),
+            React.createElement('section',{id:'text-panel'},React.createElement(TemplatePanel,{selected:'clean',onSelect:()=>{},brief:'',onBrief:()=>{},outputDirectory:'',automaticOutput:true,onOutput:()=>{},onStart:()=>{},count:media.length,disabled:busy,decorationOptions:options,selectedMedia:media.map(m=>({...m})),exportSettings:DEFAULT_EXPORT_SETTINGS,exportFormat:'mp4',onExportFormat:()=>{},usesModel:false,onDisplayText:(settings,id)=>setOptions(o=>id?({...o,displayTextByMedia:{...o.displayTextByMedia,[id]:settings}}):({...o,displayText:settings})),onSaveDisplayText:()=>{window.savedText=structuredClone(options)},onProductPrice:productPrice=>setOptions(o=>({...o,productPrice})),onDisplayMode:displayMode=>setOptions(o=>({...o,displayMode})),onRequestedCount:()=>{}})),
             React.createElement(CoverStickerPanel,{projectId:'fixture',value:structuredClone(cover),selectedMedia:media.map(m=>({...m})),revision:0,disabled:busy,onSave:async v=>{setCover(v);window.savedCover=structuredClone(v)}}));
         }createRoot(document.getElementById('root')).render(React.createElement(Fixture));
       </script></body></html>`));
@@ -52,8 +51,25 @@ try {
   const background = locator => locator.evaluate(el => getComputedStyle(el).backgroundColor);
   assert.equal(await background(text), await background(cover), "both selectors share cover styling");
 
-  await page.getByLabel("文字纵向位置").fill("48");
+  assert.equal(await page.locator('.display-text-settings input[type="number"]').count(), 0, "positions use the preview instead of coordinate inputs");
+  assert.equal(await text.evaluate(el => {
+    const card = el.closest('.card');
+    return card === document.getElementById('product-price').closest('.card') && card === document.getElementById('decoration-display-mode').closest('.card');
+  }), true, "shared text, timing and per-media controls belong to one card");
+  await page.locator('#decoration-display-mode').selectOption('first-5s');
+  assert.equal(await page.evaluate(() => window.fixture.options.displayMode), 'first-5s');
+  const drag = page.getByRole("button", { name: "拖动展示文字位置" });
+  await drag.scrollIntoViewIfNeeded();
+  const box = await drag.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down(); await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2 + 40, { steps: 5 }); await page.mouse.up();
+  const moved = await page.evaluate(() => window.fixture.options.displayTextByMedia[window.fixture.media[0].id]);
+  assert.ok(moved.y > .13, "drag updates the selected material position");
+  await drag.focus(); await page.keyboard.press("ArrowDown");
+  const positioned = await page.evaluate(() => window.fixture.options.displayTextByMedia[window.fixture.media[0].id]);
+  assert.ok(positioned.y > moved.y, "keyboard fine adjustment remains available");
   await page.getByRole("button", { name: "保存文字位置与开关" }).click();
+  assert.deepEqual(await page.evaluate(() => window.savedText.displayTextByMedia[window.fixture.media[0].id]), positioned);
   await text.click();
   const textList = page.getByRole("listbox", { name: "展示文字素材列表" });
   await textList.getByRole("option", { name: "2. 逐个审查视频-2.mp4", exact: true }).hover();
@@ -65,7 +81,7 @@ try {
   assert.equal(await textList.count(), 0);
   await page.getByLabel("此素材显示展示文字 / 价格").uncheck();
   await page.getByRole("button", { name: "上一个展示文字素材" }).click();
-  assert.equal(await page.getByLabel("文字纵向位置").inputValue(), "48");
+  assert.deepEqual(await page.evaluate(() => window.fixture.options.displayTextByMedia[window.fixture.media[0].id]), positioned);
   assert.equal(await page.getByLabel("此素材显示展示文字 / 价格").isChecked(), true);
   await text.focus(); await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown");
   assert.ok((await text.textContent()).includes("视频-1.mp4"));
