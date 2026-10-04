@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, appendFile } from "node:fs/promises";
+import { mkdtemp, rm, appendFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -21,7 +21,7 @@ function run(binary: string, args: string[], input?: Buffer) {
   const result = spawnSync(binary, args, { input, timeout: 20000, maxBuffer: 8 * 1024 ** 2 });
   if (result.error || result.status) throw result.error ?? Error(result.stderr.toString()); return result.stdout;
 }
-type Kind = "static" | "blink" | "move" | "tail" | "thin" | "alpha";
+type Kind = "static" | "blink" | "move" | "tail" | "thin" | "alpha" | "group" | "group-edge" | "group-margin";
 async function fixture(kind: Kind = "static") {
   const width = 128, height = 96, count = 30, root = await mkdtemp(join(tmpdir(), "jianji-static-mask-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
@@ -32,14 +32,19 @@ async function fixture(kind: Kind = "static") {
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       const p = y * width + x, offset = (f * width * height + p) * 3, background = (x * 13 + y * 7 + f * 107) % 230 + 10;
       const sx = x - (kind === "move" && f === 15 ? 9 : 0);
-      let visible = Math.abs(sx - 65) + Math.abs(y - 43) <= 12;
+      const grouped = kind.startsWith("group");
+      let visible = Math.abs(sx - (grouped ? 35 : 65)) + Math.abs(y - 43) <= 12;
+      if (grouped) visible ||= x >= 95 && x <= 98 && y >= 41 && y <= 44;
+      if (kind === "group-edge" || kind === "group-margin") visible ||= x >= (kind === "group-edge" ? 0 : 1) && x <= 4 && y >= 41 && y <= 44;
+      // Independent middle feature and subtitle-like feature are not construction targets.
+      const unrelated = grouped && (x >= 65 && x <= 68 && y >= 41 && y <= 44 || x >= 32 && x <= 43 && y >= 65 && y <= 68);
       if (kind === "thin") visible ||= y === 43 && sx >= 77 && sx <= 86;
       if (kind === "tail" && f === 29) visible ||= x >= 78 && x <= 87 && y === 43;
       if (kind === "alpha" && !visible && Math.abs(sx - 65) + Math.abs(y - 43) <= 14) {
         points[p] = 1; raw.fill(Math.round(background * 0.85 + 235 * 0.15), offset, offset + 3);
       }
       else if (visible && !(kind === "blink" && f === 15)) { points[p] = 1; raw.fill((sx + y) % 3 ? 235 : 25, offset, offset + 3); }
-      else raw.fill(background, offset, offset + 3);
+      else raw.fill(unrelated ? ((x + y) % 3 ? 235 : 25) : background, offset, offset + 3);
     }
     required.push(points);
   }
@@ -56,7 +61,7 @@ async function fixture(kind: Kind = "static") {
     decision: "CONFIRM_STATIC_TARGET_IDENTITY_AND_RANGE_ONLY" as const, range: { startFrame: 0, endFrame: count } };
   const target = await confirmStaticDiscoveryTarget(discovery, selection, input.signal);
   const evidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => evidence.close());
-  return { input, discovery, selection, target, evidence, required, count };
+  return { input, discovery, result, selection, target, evidence, required, count };
 }
 async function truthFor(evidence: StaticTargetEvidence, required: Uint8Array[], moving = false): Promise<StaticPixelTruthInput> {
   const frames: StaticPixelTruthInput["frames"] = [];
@@ -71,6 +76,64 @@ async function truthFor(evidence: StaticTargetEvidence, required: Uint8Array[], 
 }
 
 describe("static confirmed-target mask development", () => {
+  it("explicitly confirms two target components without swallowing middle or subtitle components", async () => {
+    const { input, discovery, result, selection, evidence: old, required } = await fixture("group");
+    const ids = result.components.filter(c => c.state === "CANDIDATE" && (c.gridBox.x === 23 || c.gridBox.x === 95)).map(c => c.id);
+    expect(ids).toHaveLength(2);
+    const { candidateId: _single, ...identity } = selection;
+    const target = await confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: ids.reverse() } as never, input.signal);
+    expect(target.receipt.method).toBe("confirmed-static-target-development/v2");
+    const receipt = target.receipt as unknown as { confirmedCandidateIds: string[]; confirmedSourceBoxes: unknown[] };
+    expect(receipt.confirmedCandidateIds).toEqual([...ids].sort()); expect(receipt.confirmedSourceBoxes).toHaveLength(2);
+    const reordered = await confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: [...ids].reverse() }, input.signal);
+    expect(reordered.receipt).toEqual(target.receipt);
+    const evidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => evidence.close());
+    const truth = await freezeStaticPixelTruth(evidence, await truthFor(evidence, required));
+    const candidate = await extractStaticConservativeMask(evidence, input.signal);
+    expect((await qualifyStaticMask(candidate, truth, input.signal)).metrics.missedRequiredPixels).toBe(0);
+    const raster = decodeSourceMask({ ...candidate.receipt.mask!, kind: "static-binary-v1" }, input.source)!;
+    for (let y = 41; y <= 44; y++) for (let x = 65; x <= 68; x++) expect(raster[y * 128 + x]).toBe(0);
+    for (let y = 65; y <= 68; y++) for (let x = 32; x <= 43; x++) expect(raster[y * 128 + x]).toBe(0);
+    // Omitted logical component is never silently supplemented; exact comparison exposes it.
+    const omittedTruth = await freezeStaticPixelTruth(old, await truthFor(old, required));
+    const omitted = await qualifyStaticMask(await extractStaticConservativeMask(old, input.signal), omittedTruth, input.signal);
+    expect(omitted.status).toBe("NOT_QUALIFIED"); expect(omitted.metrics.missedRequiredPixels).toBe(480);
+  }, 30000);
+  it("normalizes legacy single selections to the identical singleton v2 behavior without a truth dependency", async () => {
+    const { input, discovery, selection, target, evidence } = await fixture(), { candidateId, ...identity } = selection;
+    const grouped = await confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: [candidateId] }, input.signal);
+    expect(grouped.receipt).toEqual(target.receipt);
+    const next = await prepareStaticTargetEvidence(input, grouped); cleanup.push(() => next.close());
+    expect((await extractStaticConservativeMask(next, input.signal)).receipt.mask)
+      .toEqual((await extractStaticConservativeMask(evidence, input.signal)).receipt.mask);
+    for (const file of ["src/main/source-mask-static-target.ts", "src/main/source-mask-static-extraction.ts", "src/main/shape-cover-stationary-discovery.ts"]) {
+      const source = await readFile(file, "utf8");
+      expect(source).not.toMatch(/from\s+["'][^"']*(?:scripts\/|engineering-corpus|construction-truth)/);
+      expect(source).not.toMatch(/constructCase|CONTROLLED_CASES|logicalIdentity/);
+    }
+  }, 30000);
+  it("rejects duplicate, empty, unknown and cross-source groups, authored boxes and serialized v1/clone authority", async () => {
+    const { input, discovery, selection, target } = await fixture();
+    const foreign = await fixture("thin"), { candidateId, ...identity } = selection;
+    for (const candidateIds of [[], [candidateId, candidateId], ["0".repeat(64)], [foreign.selection.candidateId]]) {
+      await expect(confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds } as never, input.signal)).rejects.toThrow();
+    }
+    await expect(confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: [candidateId], sourceBoxes: [] } as never, input.signal)).rejects.toThrow();
+    await expect(confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: [candidateId], mask: {} } as never, input.signal)).rejects.toThrow();
+    await expect(confirmStaticDiscoveryTarget(discovery, { ...selection, method: "confirmed-static-target-development/v1" } as never, input.signal)).rejects.toThrow();
+    await expect(prepareStaticTargetEvidence(input, JSON.parse(JSON.stringify(target)))).rejects.toThrow(/unowned/);
+    for (const range of [{ startFrame: 0, endFrame: 31 }, { startFrame: 1, endFrame: 1 }])
+      await expect(confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: [candidateId], range } as never, input.signal)).rejects.toThrow(/range/);
+  }, 30000);
+  it.each(["group-edge", "group-margin"] as const)("keeps confirmed %s extent fail-closed", async kind => {
+    const { input, discovery, result, selection } = await fixture(kind), { candidateId: _single, ...identity } = selection;
+    const ids = result.components.filter(c => c.state === "CANDIDATE" && c.gridBox.y < 60).map(c => c.id);
+    const target = await confirmStaticDiscoveryTarget(discovery, { ...identity, candidateIds: ids } as never, input.signal);
+    const evidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => evidence.close());
+    const candidate = await extractStaticConservativeMask(evidence, input.signal);
+    expect(candidate.receipt.status).toBe("INCOMPLETE");
+    expect(candidate.receipt.reasons).toContain(kind === "group-edge" ? "STABLE_COMPONENT_EXTENT_UNRESOLVED" : "CONSERVATIVE_MARGIN_EXTENT_UNRESOLVED");
+  }, 30000);
   it("builds an irregular original-pixel mask and checks the complete range against independently frozen construction pixels", async () => {
     const { input, evidence, required, count } = await fixture("thin");
     const truth = await freezeStaticPixelTruth(evidence, await truthFor(evidence, required));

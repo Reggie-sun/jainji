@@ -1,5 +1,54 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-G Explicit Multi-Component Confirmation — 2026-10-04
+
+依据 [M2-G plan](shape-matched-cover-m2g-plan.md) 与本轮用户约束，先复现再修改。开始 HEAD `6c7cfafd35c248f4b77b8502f7d9efde19aa1d63`，指定基线 `6ec48437` 之后两项提交仅为千川。保留其 dirty/staged 工作、共享AOCI及未跟踪文件；不创建worktree、不修改 forbidden product owners。explicit modelRequests=0 优先于通常委派路线，没有 Kimi/native/视觉模型请求。Native Codex 唯一 writer；CodeGraph核对 confirmation 的 discovery/evidence 调用，错误的同名 `set` 关系仍由实际 WeakMap receiver 裁决。
+
+### Actual M1 Component Table
+
+在改产品代码之前，对旧 controlled-v1/disconnected-components/source.mp4 重新运行原 M1，4代表帧 ordinal0/10/19/29，grid128×96，未缩放。完整结果保存 R/discovery.json，R=`~/.local/state/jianji-source-fact-qualification/m2g-20261004`。
+
+| component ID | state | sourceBox x/y/w/h | gridBox x/y/w/h | stablePixels | edgePixels | std / persistence / original stability | construction relationship |
+| --- | --- | --- | --- | ---: | ---: | --- | --- |
+| `22ac9e43270f8211cee29f4f9dbd3b853509e8db369e97096e9c76b1e4ef7b46` | CANDIDATE | 51/29/29/29 | 53/31/25/25 | 313 | 210 | 0 / 1 / support313, std0, fraction1 | 主 diamond，完整包含其logical component；不交detached4×4 |
+| `657afc01600a193b50e7080856918291568c4941540e5a17a59e287831e61888` | CANDIDATE | 81/39/8/8 | 83/41/4/4 | 16 | 13 | 0 / 1 / support16, std0, fraction1 | detached x83..86/y41..44，共16px |
+
+这就是全部 component，没有被隐去的 UNKNOWN。两者 reasons 均为 `STATIONARY_SIGNALS_DO_NOT_ESTABLISH_STICKER_IDENTITY`、`UNSAMPLED_TIME_NOT_VERIFIED`、`BACKGROUND_SUBTITLE_OR_PRODUCT_PRINT_POSSIBLE`；各自原像素4张ROI SHA/PTS完整保留。4×4已超过minimumComponentPixels12与minimumEdgePixels4，未触发 size/edge/persistence/grid rejection。**根因=confirmation-model**：旧corpus只选最大候选，单sourceBox membership依法排除第二个已发现component；不是M1漏检，不是需要扩大dilation的extractor问题。
+
+### New Logical Target Contract
+
+`confirmed-static-target-development/v2` 表达一个logical target绑定非空、唯一、确定排序的 `confirmedCandidateIds[]`、同序 `confirmedComponentDigests[]` / `confirmedSourceBoxes[]`。全部来自同一owned discovery 的 CANDIDATE；另绑定sourceKey/discoveryDigest/resultDigest/targetId/range/confirmation source/confirmationDigest。旧candidateId仅用于fresh selection API适配，内部无第二行为分叉；旧v1 JSON receipt不授新ownership，WeakMap与authority=none/eligible=false保持。
+
+`targetEnvelopeBox` 只用于12px padded ROI、预算或展示。v2 extractor仍以原std20、component8、edge18、dilation3、RGB24执行；membership仅 intersectsAny(confirmedSourceBoxes)，不填envelope、不选最大、不按距离补齐。extent/margin unresolved继续INCOMPLETE。没有UI或自动grouping。
+
+Controlled logical identities在discovery前独占写入logical-identity.json；M1后按预声明component anchor匹配候选并冻结confirmation，再extract，最后才比较construction alpha。alpha/truth原字节与旧19例/570帧全部一致，由R/parent-equivalence-audit.json逐项证明；产品owners没有corpus/construction依赖，不接caller mask/box。不以comparison失败反馈修改IDs。
+
+### Fresh Controlled and Real Evidence
+
+完整controlled-v2实际跑19例、570帧，19/19 complete。requiredPixels **183693**、missedRequiredPixels **0**、missingRequiredFrames **0**，excessPixels192387；disconnected从old480（16×30）到new0，candidate742px。intentional1px仍required313 / missed1 / missingFrames1 / maxMiss1、CONTROLLED_EXACT_NOT_QUALIFIED。corpus digest `574668d9facb190eea7d33a9e679f278188dbbf42af800e871a4088f2bf5f5f0`。truth没有删除detached或扩大容差。
+
+实际canonical FFmpeg测试构造两个选中目标component，另在envelope中间加stable feature、附近加subtitle-like feature；两target全包含，中间16px与字幕48px逐像素全部排除。只确认主component时不自动补第二component，comparator仍暴露480漏失。重复/空/未知/跨source IDs、caller box/mask、v1/clone、源/范围失效与component/margin extent拒绝覆盖于原注册test seam。组排序不同产生相同receipt，single API和singleton group得到相同mask。
+
+真实233s源只重新确认原candidate `0d325a85ab3eb9ef2f1b6588fd594084e4904ab44deb61660986e22536f45f86`。旧/新均 **3395px / bbox628/1/81/59 / SHA fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893**，bitmap整对象、packed bytes完全相同。新方法完整重新decode6990帧，全部ROI SHA/clock/representatives/anomalies与旧证据相同；旧133 RGB anomalies及REJECTED appearance criterion保留，mask candidate自身仍INCOMPLETE/FULL_RANGE_STATIC_CONTRADICTION，不伪改其历史语义。
+
+M2-C旧receipt的自身脚本/config/engine/artifact freeze当前仍fresh；新candidate逐帧ROI/clock、targetId/source/range/mask完全一致，R/real-review-v3/method-rebind.json显式绑定当前v2 confirmation与旧geometry receipt，不编辑旧receipt。状态 **DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED**、issues0，原有限灵敏度不变。
+
+重建70帧包并重新计算全部risk metrics。review-set JSON字节、digest `bd812f36716ed9a58aeddc3001777516b9be46f30f7c75c195590ca8b5842414` 与全部280 asset SHA/字节均与原real-review-v5完全相同，question/scope不变。review-set保存原presentation identity，当前confirmation在新engineering receipt中独立绑定，避免改写原human包或伪造新消息。实际用户原话“过关我看了可以.”、ACTUAL_USER_MESSAGE、原actual-user-boundary-observation.json完整复用；标记 **REUSED_OBSERVATION_ON_BYTE_IDENTICAL_REVIEW_PACKAGE**。任一review字节变化时不接受旧回答，保留UNKNOWN/HUMAN_REVIEW_REFRESH_REQUIRED。
+
+新 `StaticMaskEngineeringEvidence/v2` receipt：R/real-review-v3/final-receipt.json，digest **e52752c3220c5952e22e1a602e229287542338c21ed1ff8ff12c5fbafab0a4df**，**ENGINEERING_ACCEPTED**，全部freshness成立，authority=none/eligible=false。仅三条claims：CONTROLLED_EXACT_ZERO_MISS、REAL_DEVELOPMENT_NO_VISIBLE_RESIDUAL_ON_FROZEN_RISK_SET、FULL_RANGE_GEOMETRY_SUPPORTED_WITHIN_V2_LIMITS。旧M2-F拒绝及本轮较早包/receipt全部保留；不签REAL_PIXEL_ZERO_MISS、SOURCE_QUALIFIED、MASK_ADMITTED或PRODUCTION_READY。
+
+### Performance, Verification and Completion
+
+controlled runtime87.586s、parent peakRSS277463040bytes；真实重新提取41.272s、parent peakRSS279539712bytes、child25ms sampled VmHWM68784128bytes（lower bound），工作集3066240bytes，ROI scratch0，discovery scratch353894400bytes。新review build11.924s、peakRSS227250176bytes。disconnected ROI53×53→62×53，工作集公式额外76320bytes；真实单component ROI/工作集没有增加。artifact总量：controlled8253376、real-regression2153937、最终review5029644bytes，计数时点见Parent audit，不含全部旧包/运行日志。未优化或改预算。
+
+相关tests先red（旧schema拒绝candidateIds）再green；最后源码修改后的typecheck、target/extraction/qualification、M2-F controls、M2-B anomaly、M2-C geometry与activation实际结果保留R/focused-final.log及final verification logs。Harness使用10个owned对象的精确before/after SHA，按current policy执行required scope并保存code/只读verify receipts；实际结果见R/harness-result.json，不预写PASS，不以focused tests覆盖Harness失败。foreign源码变化/timeout/旧链接问题单独记录，不调参数或接管foreign文件。diff最终检查同理区分owned与foreign。
+
+AOCI官方Maintain/Verify/Check/Guide与逐对象role/source绑定保留R/aoci-*。共享索引已有其他session更新，当前owned target/extraction Entry确实表达显式组与envelope边界，Parent逐项核对，不重复写已对齐对象、不stage混合索引、不接管其他machine batch；全库状态与owned proof分别报告。Whole-Index完整传输4块，但Attestation schema未完成，禁止无保留的系统认知可靠声明，继续source-bound工程。未发现repository dedicated capture skill；本节与R主动保存stable checkpoint，不写外部memory。
+
+Final implementation Risk Gate在project-native验证后绑定exact owned snapshot于R/risk-gate.json：无用户指定Kimi final review，无凭据/产品准入/业务持久化变更，离线无authority证据不能造成重大production consequence；未满足重大后果加残留验证缺口的组合，不叠加reviewer。explicit modelRequests0保持。Parent裁决所有结果并检查最终diff，提交仅本轮10文件。
+
+**唯一下一slice：versioned confirmed-target proof。M2 product proof仍NOT_ISSUED，M3仍BLOCKED，PRODUCT_DISABLED，guard unchanged，modelRequests=0。** 本轮止于M2-G/M2-F工程证据，不查看210 unseen、不进入M3、不实现matching/替换/输出coverage/safety/assembler/activation。
+
 ## M2-F Static Mask Boundary Engineering Acceptance — 2026-10-03
 
 本轮依据最新 [Course Correction](shape-matched-cover-v1-simplification-audit.md#m2-qualification-boundary-course-correction--2026-10-02)、[Delta Spec](shape-matched-cover-v1-simplification-spec.md#default-m2-static-engineering-acceptance)、[主Plan](shape-matched-cover-v1-simplification-plan.md) 与 [M2-F plan](shape-matched-cover-m2f-plan.md)，建立有限 offline `StaticMaskEngineeringEvidence/v1`。当前结果 **ENGINEERING_REJECTED / CONTROLLED_EXACT_NOT_QUALIFIED**：分离组件构造 case 漏失480个pixel-frame occurrences。用户实际查看冻结包后答复“过关我看了可以.”，真实边界整体观察记录为 **NO_VISIBLE_RESIDUAL_OBSERVED**，不能覆盖controlled失败。未调用视觉模型补观察，未签M2 product proof，M3 BLOCKED，PRODUCT_DISABLED，guard unchanged，modelRequests=0。

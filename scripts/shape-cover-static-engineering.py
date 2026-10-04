@@ -82,6 +82,19 @@ def controlled_corpus(root, engine):
         recipe, required = construction["recipe"], construction["required"]
         require(recipe["kind"] == kind and len(required) == recipe["count"] == 30, "construction recipe/range")
         paths.append(p / "construction-truth.json")
+        if execution["version"] == "static-exact-alpha-corpus/v2":
+            logical, found, confirmed = [truth.read_json(p / name) for name in ("logical-identity.json", "discovery.json", "confirmation.json")]
+            paths += [p / name for name in ("logical-identity.json", "discovery.json", "confirmation.json")]
+            ids = []
+            for component in logical["components"]:
+                anchor = component["anchor"]
+                matches = [c for c in found["components"] if c["state"] == "CANDIDATE"
+                           and c["gridBox"]["x"] <= anchor["x"] < c["gridBox"]["x"] + c["gridBox"]["width"]
+                           and c["gridBox"]["y"] <= anchor["y"] < c["gridBox"]["y"] + c["gridBox"]["height"]]
+                require(len(matches) == 1, "logical component not independently discovered")
+                ids.append(matches[0]["id"])
+            require(confirmed["method"] == "confirmed-static-target-development/v2"
+                    and sorted(ids) == confirmed["confirmedCandidateIds"] and len(set(ids)) == len(ids), "controlled explicit group changed")
         for f, expected in enumerate(required):
             alpha_path = p / f"alpha-{f}.bin"
             paths.append(alpha_path)
@@ -140,7 +153,7 @@ def controlled_corpus(root, engine):
     complete = all("requiredPixels" in c for c in cases)
     names = ("requiredPixels", "missedRequiredPixels", "missingRequiredFrames", "excessPixels", "comparedFrames")
     totals = {k: sum(c[k] for c in cases) if complete else None for k in names}
-    return {"version": "static-exact-alpha-corpus/v1", "cases": cases, "complete": complete, "metrics": totals,
+    return {"version": execution["version"], "cases": cases, "complete": complete, "metrics": totals,
             "negative": negative, "digest": digest({str(p.relative_to(root)): file_sha(p) for p in paths}),
             "methodFreeze": frozen, "runtimeMs": execution["runtimeMs"], "peakRssBytes": execution["peakRssBytes"]}, paths
 
@@ -311,6 +324,49 @@ const a=document.createElement('a'),url=URL.createObjectURL(new Blob([JSON.strin
     (root / "review.html").write_text(html)
 
 
+def validate_regression(root, repo, historical, confirmation, target, discovery):
+    """Explicit new method execution; historical v1 receipts are never upgraded."""
+    root = Path(root)
+    current = truth.read_json(root / "candidate.json")["receipt"]
+    selected = truth.read_json(root / "confirmation.json")
+    evidence = truth.read_json(root / "target-evidence.json")
+    freeze = truth.read_json(root / "method-freeze.json")
+    require(selected["method"] == "confirmed-static-target-development/v2"
+            and current["method"] == "cpu-static-conservative-mask-development/v2", "regression method version")
+    ids = selected["confirmedCandidateIds"]
+    require(ids == sorted(set(ids)) == [confirmation["candidateId"]]
+            and selected["confirmedSourceBoxes"] == [confirmation["sourceBox"]]
+            and selected["targetEnvelopeBox"] == confirmation["sourceBox"], "single-component identity changed")
+    require(selected["sourceKey"] == discovery["sourceKey"] and selected["targetId"] == historical["targetId"]
+            and selected["range"] == historical["range"] == current["range"]
+            and selected["discoveryDigest"] == confirmation["discoveryDigest"]
+            and selected["resultDigest"] == confirmation["resultDigest"]
+            and selected["confirmationDigest"] == current["confirmationDigest"], "regression source/target/range binding")
+    for receipt, key in ((selected, "confirmationDigest"), (current, "receiptDigest")):
+        require(truth.sha(json.dumps({k: v for k, v in receipt.items() if k != key}, separators=(",", ":"), ensure_ascii=False).encode()) == receipt[key], "regression receipt digest")
+    require(current["mask"] == historical["mask"] and current["mask"]["sha256"] == truth.MASK_SHA, "STOP: single-component mask changed")
+    require(current["frames"] == historical["frames"] and evidence["roi"] == target["roi"]
+            and evidence["clock"] == target["clock"], "regression original frame/clock/ROI changed")
+    expected_evidence = {"confirmation": selected["confirmationDigest"], "clock": discovery["clockDigest"],
+                         "roi": evidence["roi"], "decode": discovery["decode"]}
+    require(evidence["evidenceDigest"] == current["evidenceDigest"] == truth.sha(json.dumps(expected_evidence, separators=(",", ":"), ensure_ascii=False).encode()), "regression evidence binding")
+    require(current["sampleOrdinals"] == historical["sampleOrdinals"] and current["anomalies"] == historical["anomalies"], "regression representatives/anomalies changed")
+    require({k: v for k, v in current["config"].items() if k != "method"} == {k: v for k, v in historical["config"].items() if k != "method"}
+            and freeze["config"] == current["config"] and freeze["source"] == discovery["source"], "regression thresholds/source changed")
+    require(all(file_sha(repo / p) == expected for p, expected in freeze["methods"].items()), "regression method changed")
+    paths = [root / p for p in ("candidate.json", "confirmation.json", "target-evidence.json", "method-freeze.json", "performance.json")]
+    return current, selected, freeze["methods"], paths
+
+
+def identical_review_package(previous_root, review, current_root):
+    previous_root, current_root = Path(previous_root), Path(current_root)
+    previous = truth.read_json(previous_root / "review-set.json")
+    return (digest(previous) == digest(review) and file_sha(previous_root / "review-set.json") == file_sha(current_root / "review-set.json")
+            and previous["assetDigests"] == review["assetDigests"]
+            and all(file_sha(previous_root / name) == file_sha(current_root / name) == expected
+                    for name, expected in review["assetDigests"].items()))
+
+
 def prepare(raw, output):
     started = time.monotonic()
     output = Path(output)
@@ -337,7 +393,12 @@ def prepare(raw, output):
     paths += [geo_root / p for p in ("result.json", "frames.json", "method-freeze.json", "landmark-reference.json", "issues.json")]
     paths += [risk_root / p for p in ("risk.json", "plan.json", "prepare-input.json")]
     method_paths = truth.read_json(previous / "engineering/method-source-freeze.json")
-    require(all(file_sha(repo / p) == expected for p, expected in method_paths.items()), "M2-A method changed")
+    regression = None
+    if "regressionDirectory" in raw:
+        regression = validate_regression(raw["regressionDirectory"], repo, candidate, confirmation, target, discovery)
+        paths += regression[3]
+        method_paths = regression[2]
+    require(all(file_sha(repo / p) == expected for p, expected in method_paths.items()), "M2-A/current regression method changed")
     require(all(file_sha(Path(p)) == expected for p, expected in gm["files"].items()), "M2-C source/engine/artifact/method changed")
     controlled, cpaths = controlled_corpus(corpus_root, engine)
     paths += cpaths + [repo / p for p in controlled["methodFreeze"]["methods"]] + [repo / p for p in method_paths]
@@ -372,16 +433,35 @@ def prepare(raw, output):
     save(output / "review-set.json", review)
     write_html(output, review)
     save(output / "controlled-result.json", controlled)
+    current_candidate, current_confirmation = (regression[0], regression[1]) if regression else (candidate, confirmation)
+    current_context = {**context, "confirmationDigest": current_confirmation["confirmationDigest"]}
+    binding = None
+    if regression:
+        # Retain the actual human package identity; bind new confirmation separately.
+        # No rewriting of the old package or old geometry receipt.
+        binding = {"method": "static-engineering-method-rebind/v2", "historicalConfirmationDigest": confirmation["confirmationDigest"],
+                   "currentConfirmation": current_confirmation, "currentCandidateDigest": current_candidate["receiptDigest"],
+                   "geometryReceiptDigest": gr["receiptDigest"], "fullOriginalFramesByteIdentical": True,
+                   "roiClockMaskByteIdentical": True, "geometryThresholdsUnchanged": True,
+                   "historicalReviewContext": context, "authority": "none", "eligible": False}
+        reuse_root, actual_path = Path(raw["reuseReviewDirectory"]), Path(raw["actualObservation"])
+        same = identical_review_package(reuse_root, review, output)
+        binding["reviewPackageComparison"] = "BYTE_IDENTICAL" if same else "HUMAN_REVIEW_REFRESH_REQUIRED"
+        binding["actualObservationPath"] = str(actual_path)
+        paths = [reuse_root / "review-set.json", actual_path] + [reuse_root / name for name in review["assetDigests"]]
+        pinned.update({str(p): file_sha(p) for p in paths})
+        save(output / "method-rebind.json", binding)
+        pinned[str(output / "method-rebind.json")] = file_sha(output / "method-rebind.json")
     checks = {"sourceFresh": True, "methodFresh": True, "geometryFresh": True, "reviewSetFresh": True, "corpusFresh": True,
               "sourceChanged": False, "maskChanged": False, "configChanged": False,
               "geometryContradiction": gr["geometricIssueFrames"] != 0 or gr["status"] != "DEVELOPMENT_STATIC_GEOMETRY_SUPPORTED"}
     require(all(file_sha(p) == expected for p, expected in pinned.items()), "inputs changed during execution")
-    base = {"context": context, "sourceUsage": "DEVELOPMENT SOURCE", "candidateMaskDigest": truth.MASK_SHA, "candidateMask": candidate["mask"],
-            "identityRefs": {"source": input_doc["sourcePath"], "input": str(inp), "candidate": str(previous / "candidate.json"),
+    base = {"context": current_context, "sourceUsage": "DEVELOPMENT SOURCE", "candidateMaskDigest": truth.MASK_SHA, "candidateMask": current_candidate["mask"],
+            "identityRefs": {"source": input_doc["sourcePath"], "input": str(inp), "candidate": str(Path(raw["regressionDirectory"]) / "candidate.json" if regression else previous / "candidate.json"),
                              "geometry": [str(geo_root / p) for p in ("result.json", "frames.json", "method-freeze.json", "landmark-reference.json", "issues.json")],
                              "corpus": [str(p) for p in cpaths]},
             "detector": {"method": discovery["method"], "sourceDigest": file_sha(repo / "src/main/shape-cover-stationary-discovery.ts")},
-            "extractor": {"method": candidate["method"], "config": candidate["config"], "configDigest": candidate["configDigest"],
+            "extractor": {"method": current_candidate["method"], "config": current_candidate["config"], "configDigest": current_candidate["configDigest"],
                           "sourceDigest": method_paths["src/main/source-mask-static-extraction.ts"]},
             "controlledCorpus": controlled, "geometryReceiptDigest": gr["receiptDigest"], "geometryStatus": gr["status"],
             "reviewSetDigest": digest(review), "reviewFrameCount": len(review["frames"]),
@@ -390,6 +470,8 @@ def prepare(raw, output):
             "inputFreeze": pinned, "checks": checks, "performance": {"packageBuildSeconds": time.monotonic() - started,
               "peakRssBytes": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024,
               "artifactBytes": sum(p.stat().st_size for p in output.iterdir()), "realDecodedFrames": count}}
+    if binding:
+        base["methodRebinding"] = binding
     save(output / "package.json", base)
     save(output / "package-freeze.json", {p: file_sha(output / p) for p in ("package.json", "review-set.json", "controlled-result.json", "review.html")})
     finish(output, None, output / "initial-receipt.json")
@@ -429,12 +511,22 @@ def finish(root, submitted, output):
         checks["reviewSetFresh"] = False
         checks["corpusFresh"] = False
     try:
+        if submitted is not None and "methodRebinding" in base:
+            rebind = base["methodRebinding"]
+            require(rebind["reviewPackageComparison"] == "BYTE_IDENTICAL", "HUMAN_REVIEW_REFRESH_REQUIRED")
+            require(submitted == truth.read_json(rebind["actualObservationPath"]), "original actual user evidence changed")
         observed, actual = observation(review, submitted)
+        if submitted is not None and "methodRebinding" in base:
+            actual = {**actual, "reuseStatus": "REUSED_OBSERVATION_ON_BYTE_IDENTICAL_REVIEW_PACKAGE",
+                      "originalEvidencePath": base["methodRebinding"]["actualObservationPath"]}
     except (ValueError, KeyError, TypeError) as error:
         observed, actual = "UNKNOWN", {"reviewerId": None, "frames": [], "reason": str(error)}
         checks["reviewSetFresh"] = False
     result = {**base, **decide(base["controlledCorpus"], checks, review, observed), "checks": checks,
               "realReviewObservation": observed, "actualEngineeringReview": actual}
+    if "methodRebinding" in base:
+        result["schema"] = "StaticMaskEngineeringEvidence/v2"
+        result["method"] = "static-mask-engineering-evidence/v2"
     result["receiptDigest"] = digest(result)
     save(output, result)
     return result

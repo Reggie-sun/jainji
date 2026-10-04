@@ -5,7 +5,7 @@ import { AutoContourBitmapSchema, type AutoContourBitmap } from "./source-mask-a
 import { assertStaticTargetEvidence, assertConfirmedStaticTarget, staticIncomplete, STATIC_MASK_LIMITS, type StaticTargetEvidence } from "./source-mask-static-target.js";
 
 /** Development envelope; noise tolerances are observations, never independent boundary truth. */
-export const STATIC_MASK_CONFIG = Object.freeze({ method: "cpu-static-conservative-mask-development/v1", maxChannelStd: 20,
+export const STATIC_MASK_CONFIG = Object.freeze({ method: "cpu-static-conservative-mask-development/v2", maxChannelStd: 20,
   minimumComponentPixels: 8, edgeDifference: 18, dilationPixels: 3, originalPixelTolerance: 24, minimumFrames: 3 });
 export interface StaticMaskCandidate {
   readonly receipt: Readonly<{ method: typeof STATIC_MASK_CONFIG.method; authority: "none"; eligible: false;
@@ -68,8 +68,9 @@ export async function extractStaticConservativeMask(evidence: StaticTargetEviden
     let head = 0, tail = 1, edges = 0, intersects = false, touchesBoundary = false; seen[seed] = 1; queue[0] = seed;
     while (head < tail) {
       const p = queue[head++], x = p % roi.width, y = Math.floor(p / roi.width);
-      if (x + roi.x >= target.sourceBox.x && x + roi.x < target.sourceBox.x + target.sourceBox.width
-        && y + roi.y >= target.sourceBox.y && y + roi.y < target.sourceBox.y + target.sourceBox.height) intersects = true;
+      // Decode envelope is not membership: only explicitly confirmed component boxes count.
+      if (target.confirmedSourceBoxes.some(box => x + roi.x >= box.x && x + roi.x < box.x + box.width
+        && y + roi.y >= box.y && y + roi.y < box.y + box.height)) intersects = true;
       if (x === 0 || y === 0 || x === roi.width - 1 || y === roi.height - 1) touchesBoundary = true;
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= roi.width || ny >= roi.height) continue;

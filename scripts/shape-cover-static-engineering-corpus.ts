@@ -1,4 +1,4 @@
-/** M2-F construction-first corpus through the unchanged application extractor. Offline evidence only. */
+/** M2-F construction-first corpus with explicit M2-G logical identity. Offline evidence only. */
 import { spawnSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -72,6 +72,12 @@ export async function runCorpus(output: string, ffmpegPath: string, ffprobePath:
   for (const kind of CONTROLLED_CASES) {
     const directory = join(root, kind); await mkdir(directory, { mode: 0o700 });
     const construction = constructCase(kind);
+    // Frozen logical identity, independent of candidate/comparator results. Not pixel mask input.
+    const { cx, cy } = construction.recipe;
+    const logicalIdentity = { version: "controlled-logical-target-identity/v1", kind,
+      components: [{ id: "main", anchor: { x: cx, y: cy } },
+        ...(kind === "disconnected-components" ? [{ id: "detached", anchor: { x: cx + 18, y: cy - 2 } }] : [])] };
+    await save(join(directory, "logical-identity.json"), logicalIdentity);
     const required = construction.alphas.map(alpha => packStaticMask(Uint8Array.from(alpha, a => a > 0 ? 1 : 0), { x: 0, y: 0, width, height })!);
     // This durable truth is created before media decode, discovery, confirmation and extraction.
     await save(join(directory, "construction-truth.json"), { recipe: construction.recipe, required });
@@ -87,10 +93,16 @@ export async function runCorpus(output: string, ffmpegPath: string, ffprobePath:
     const discovery = await prepareDiscoveryEvidence(input, { frames: 4 });
     try {
       const found = await discoverStationaryTargets(discovery, signal);
-      const component = found.components.filter(c => c.state === "CANDIDATE").sort((a, b) => b.sourceBox.width * b.sourceBox.height - a.sourceBox.width * a.sourceBox.height)[0];
-      if (!component) throw Error("controlled target not discovered");
-      const target = await confirmStaticDiscoveryTarget(discovery, { candidateId: component.id, targetId: randomUUID(), confirmedBy: "construction-recipe",
+      await save(join(directory, "discovery.json"), found);
+      const candidateIds = logicalIdentity.components.map(logical => {
+        const matches = found.components.filter(c => c.state === "CANDIDATE" && logical.anchor.x >= c.gridBox.x
+          && logical.anchor.x < c.gridBox.x + c.gridBox.width && logical.anchor.y >= c.gridBox.y && logical.anchor.y < c.gridBox.y + c.gridBox.height);
+        if (matches.length !== 1) throw Error("M1_DISCOVERY_MISSES_DECLARED_DISCONNECTED_TARGET_COMPONENT: " + logical.id);
+        return matches[0].id;
+      });
+      const target = await confirmStaticDiscoveryTarget(discovery, { candidateIds, targetId: randomUUID(), confirmedBy: "construction-logical-identity",
         description: kind, decision: "CONFIRM_STATIC_TARGET_IDENTITY_AND_RANGE_ONLY", range: { startFrame: 0, endFrame: count } }, signal);
+      await save(join(directory, "confirmation.json"), target.receipt);
       const evidence = await prepareStaticTargetEvidence(input, target);
       try {
         const candidate = await extractStaticConservativeMask(evidence, signal);
@@ -104,7 +116,7 @@ export async function runCorpus(output: string, ffmpegPath: string, ffprobePath:
     } finally { await discovery.close(); }
   }
   for (const [path, expected] of Object.entries(methods)) if (sha(await readFile(path)) !== expected) throw Error("method drift");
-  const result = { version: "static-exact-alpha-corpus/v1", cases: results, runtimeMs: performance.now() - started,
+  const result = { version: "static-exact-alpha-corpus/v2", cases: results, runtimeMs: performance.now() - started,
     peakRssBytes: process.resourceUsage().maxRSS * 1024, authority: "none", eligible: false, modelRequests: 0 };
   await save(join(root, "execution.json"), result); return result;
 }

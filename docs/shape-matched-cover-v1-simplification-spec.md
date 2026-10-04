@@ -30,6 +30,10 @@
 
 冻结本次确认集合 `C`：由真实候选证据和身份确认建立，包含精确 source identity/revision、targetId、有效范围及确认来源。`C` 与 mask 查找结果分开，缺失 mask 不缩小 `C`。自动高置信确认需满足版本化方法与支持包络；不确定身份允许一次用户确认 target/粗 ROI，无需用户描边。
 
+一个 confirmed target 是一个逻辑视觉对象，其 source contribution 可以包含多个不连通 discovery components。多 component 身份只能由版本化自动高置信 grouping 或一次显式 target/coarse-region confirmation 建立，不能仅因空间接近自动并入。当前内部工程 `confirmed-static-target-development/v2` 要求显式非空、唯一、确定排序的 candidate IDs；sourceBoxes 与 component digests 均从同一 owned discovery result 的 CANDIDATE 取得，不接受 caller box/mask。旧 v1 序列化 receipt 不升级 authority。
+
+`targetEnvelopeBox=union(confirmedSourceBoxes)` 仅限定 ROI decode、预算或展示；**union envelope != component membership**。extractor 只允许与至少一个明确确认 sourceBox 相交的 stable component 提供 support，不吞并 envelope 内未确认的背景、字幕或商品文字。ROI != mask != required pixels；边界或有限余量 extent unresolved 仍 INCOMPLETE。本阶段不增加 UI 或自动 grouping 算法。
+
 **absence of detected target != proof that no target exists**。
 
 **V1 success = all confirmed targets safely covered**，即非空 `C` 中每个目标在承诺有效范围内都有保守 mask、对应输出像素全覆盖、画面安全和一致冻结/发布证据；**不要求穷尽证明全部可能旧贴纸**。

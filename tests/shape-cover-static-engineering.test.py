@@ -30,6 +30,41 @@ def evidence():
 
 
 class EngineeringEvidenceTest(unittest.TestCase):
+    def test_review_reuse_requires_exact_set_and_each_old_and_new_asset_byte(self):
+        with tempfile.TemporaryDirectory() as directory:
+            old, new = [Path(directory) / name for name in ("old", "new")]
+            old.mkdir()
+            new.mkdir()
+            for root in (old, new):
+                (root / "original.png").write_bytes(b"synthetic-asset-not-real-review")
+            review = {"frames": [{"binding": {"index": 0}}], "maskSha256": "a" * 64,
+                      "assetDigests": {"original.png": m.file_sha(old / "original.png")}}
+            m.save(old / "review-set.json", review)
+            m.save(new / "review-set.json", review)
+            self.assertTrue(m.identical_review_package(old, review, new))
+            changed = copy.deepcopy(review)
+            changed["maskSha256"] = "b" * 64
+            self.assertFalse(m.identical_review_package(old, changed, new))
+            (new / "original.png").write_bytes(b"different")
+            self.assertFalse(m.identical_review_package(old, review, new))
+            (new / "original.png").write_bytes(b"synthetic-asset-not-real-review")
+            (old / "original.png").write_bytes(b"old-mutated")
+            self.assertFalse(m.identical_review_package(old, review, new))
+
+    def test_omitted_component_comparison_retains_complete_denominator(self):
+        required = np.zeros((96, 128), bool)
+        required[31:56, 53:78] = True
+        required[41:45, 83:87] = True
+        missing = required.copy()
+        missing[41:45, 83:87] = False
+        bindings = [{"index": i, "pts": i * 10, "endPts": (i + 1) * 10,
+                     "byteLength": 128 * 96 * 4, "pixelSha256": "a" * 64} for i in range(30)]
+        result = m.metrics([bitmap(required)] * 30, bitmap(missing), bindings)
+        self.assertEqual(result["missedRequiredPixels"], 480)
+        self.assertEqual(result["missingRequiredFrames"], 30)
+        self.assertEqual(result["maxMissPerFrame"], 16)
+        self.assertEqual(result["status"], "CONTROLLED_EXACT_NOT_QUALIFIED")
+
     def test_exact_shapes_have_independent_alpha_denominator(self):
         for kind in ("opaque", "AA", "low-alpha", "thin-tip", "two-pixel-stroke", "hole", "disconnected", "corner", "edge"):
             with self.subTest(kind=kind):

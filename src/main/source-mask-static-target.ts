@@ -14,25 +14,42 @@ export const STATIC_MASK_LIMITS = Object.freeze({ wallMs: 300_000, roiSide: 512,
   workingBytes: 512 * 1024 ** 2, receiptBytes: 16 * 1024 ** 2 });
 export function staticIncomplete(why: string): never { throw Error(`INCOMPLETE: static mask ${why}`); }
 export const StaticRangeSchema = z.object({ startFrame: z.number().int().nonnegative().safe(), endFrame: z.number().int().positive().safe() }).strict();
-const confirmationSchema = z.object({ candidateId: z.string().regex(/^[a-f0-9]{64}$/), targetId: z.string().uuid(),
+const candidateIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const identitySchema = z.object({ targetId: z.string().uuid(),
   confirmedBy: z.string().trim().min(1).max(160), description: z.string().trim().min(1).max(300),
   decision: z.literal("CONFIRM_STATIC_TARGET_IDENTITY_AND_RANGE_ONLY"), range: StaticRangeSchema }).strict();
+// Compatibility is confined to fresh API selections, never a serialized v1 receipt.
+const confirmationSchema = z.union([identitySchema.extend({ candidateIds: z.array(candidateIdSchema).min(1).max(128)
+  .refine(ids => new Set(ids).size === ids.length, "duplicate candidate IDs") }).strict(),
+identitySchema.extend({ candidateId: candidateIdSchema }).strict()]);
 export type StaticConfirmationInput = z.infer<typeof confirmationSchema>;
+type Box = { x: number; y: number; width: number; height: number };
 export interface ConfirmedStaticTarget {
-  readonly receipt: Readonly<StaticConfirmationInput & { method: "confirmed-static-target-development/v1"; authority: "none"; eligible: false;
-    sourceKey: string; discoveryDigest: string; resultDigest: string; sourceBox: { x: number; y: number; width: number; height: number }; confirmationDigest: string }>;
+  readonly receipt: Readonly<z.infer<typeof identitySchema> & { method: "confirmed-static-target-development/v2"; authority: "none"; eligible: false;
+    sourceKey: string; discoveryDigest: string; resultDigest: string; confirmedCandidateIds: readonly string[];
+    confirmedComponentDigests: readonly string[]; confirmedSourceBoxes: readonly Readonly<Box>[];
+    targetEnvelopeBox: Readonly<Box>; confirmationDigest: string }>;
 }
 const confirmed = new WeakMap<ConfirmedStaticTarget, DiscoveryEvidence>();
 
-/** One explicit identity/range decision; recompute M1 unchanged, never accept caller-authored candidates. */
+/** One explicit logical identity/range decision; M1 boxes are read from owned evidence only. */
 export async function confirmStaticDiscoveryTarget(evidence: DiscoveryEvidence, selection: StaticConfirmationInput, signal: AbortSignal): Promise<ConfirmedStaticTarget> {
   assertOwnedDiscoveryEvidence(evidence);
-  const input = confirmationSchema.parse(selection), result = await discoverStationaryTargets(evidence, signal);
-  const candidate = result.components.find(c => c.id === input.candidateId && c.state === "CANDIDATE");
-  if (!candidate || input.range.endFrame <= input.range.startFrame || input.range.endFrame > evidence.receipt.frameCount) staticIncomplete("missing candidate or invalid confirmed range");
+  const parsed = confirmationSchema.parse(selection);
+  const ids = ("candidateIds" in parsed ? [...parsed.candidateIds] : [parsed.candidateId]).sort();
+  const input = identitySchema.parse({ targetId: parsed.targetId, confirmedBy: parsed.confirmedBy, description: parsed.description,
+    decision: parsed.decision, range: parsed.range });
+  const result = await discoverStationaryTargets(evidence, signal);
+  const candidates = ids.map(id => result.components.find(c => c.id === id && c.state === "CANDIDATE"));
+  if (candidates.some(c => !c) || input.range.endFrame <= input.range.startFrame || input.range.endFrame > evidence.receipt.frameCount) staticIncomplete("missing candidate or invalid confirmed range");
+  const boxes = candidates.map(c => c!.sourceBox);
+  const x = Math.min(...boxes.map(b => b.x)), y = Math.min(...boxes.map(b => b.y));
+  const targetEnvelopeBox = { x, y, width: Math.max(...boxes.map(b => b.x + b.width)) - x, height: Math.max(...boxes.map(b => b.y + b.height)) - y };
   signal.throwIfAborted(); await evidence.verifyFresh();
-  const body = { ...input, method: "confirmed-static-target-development/v1" as const, authority: "none" as const, eligible: false as const,
-    sourceKey: evidence.receipt.sourceKey, discoveryDigest: evidence.receipt.evidenceDigest, resultDigest: result.resultDigest, sourceBox: candidate.sourceBox };
+  const body = { ...input, method: "confirmed-static-target-development/v2" as const, authority: "none" as const, eligible: false as const,
+    sourceKey: evidence.receipt.sourceKey, discoveryDigest: evidence.receipt.evidenceDigest, resultDigest: result.resultDigest,
+    confirmedCandidateIds: ids, confirmedComponentDigests: candidates.map(c => hash(JSON.stringify(c))),
+    confirmedSourceBoxes: boxes, targetEnvelopeBox };
   const target = freezeAI({ receipt: { ...body, confirmationDigest: hash(JSON.stringify(body)) } });
   confirmed.set(target, evidence); return target;
 }
@@ -99,7 +116,7 @@ export async function prepareStaticTargetEvidence(input: FullSourceCensusInput, 
     await verifyFresh();
     const clock = await probeSourceDecodeClock(sourcePath, source, engines, signal, deadline);
     if (hash(JSON.stringify(clock)) !== discovery.receipt.clockDigest) staticIncomplete("clock mismatch");
-    const box = target.receipt.sourceBox, padding = STATIC_MASK_LIMITS.padding;
+    const box = target.receipt.targetEnvelopeBox, padding = STATIC_MASK_LIMITS.padding;
     const x = Math.max(0, box.x - padding), y = Math.max(0, box.y - padding);
     const roi = { x, y, width: Math.min(source.width, box.x + box.width + padding) - x, height: Math.min(source.height, box.y + box.height + padding) - y };
     const bytes = roi.width * roi.height * 4, workingBytes = bytes * 40 + clock.frames.length * 256;

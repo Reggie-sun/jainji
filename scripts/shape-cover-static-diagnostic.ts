@@ -2,6 +2,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { cpus, platform } from "node:os";
+import { createHash } from "node:crypto";
 import { SourceIdentitySchema } from "../src/shared/source-sticker-knowledge.js";
 import { prepareDiscoveryEvidence, type DiscoveryEvidence } from "../src/main/source-fact-discovery-evidence.js";
 import { confirmStaticDiscoveryTarget, prepareStaticTargetEvidence, type StaticTargetEvidence, type StaticConfirmationInput } from "../src/main/source-mask-static-target.js";
@@ -34,7 +35,11 @@ const monitor = setInterval(() => {
 try {
   const document = JSON.parse(await readFile(inputFile, "utf8")), source = SourceIdentitySchema.parse(document.source);
   const selection = JSON.parse(await readFile(confirmationFile, "utf8")) as StaticConfirmationInput;
-  await save("method-freeze.json", { config: STATIC_MASK_CONFIG, selection, source, cpuOnly: true,
+  const paths = ["src/main/source-mask-static-target.ts", "src/main/source-mask-static-extraction.ts",
+    "src/main/shape-cover-stationary-discovery.ts", "src/main/source-fact-discovery-evidence.ts", "src/main/source-fact-census-clock.ts",
+    "scripts/shape-cover-static-diagnostic.ts"];
+  const methods = Object.fromEntries(await Promise.all(paths.map(async p => [p, createHash("sha256").update(await readFile(p)).digest("hex")])));
+  await save("method-freeze.json", { methods, config: STATIC_MASK_CONFIG, selection, source, cpuOnly: true,
     independentPixelTruth: "MISSING", modelRequests: 0, platform: platform(), cpu: cpus()[0]?.model });
   const input = { sourcePath: document.sourcePath as string, source, ffmpeg: { ffmpegPath, ffprobePath }, signal: controller.signal };
   discovery = await prepareDiscoveryEvidence(input);
@@ -60,6 +65,8 @@ try {
   }
   const qualification = await qualifyStaticMask(candidate, null, controller.signal);
   await evidence.verifyFresh(); controller.signal.throwIfAborted();
+  for (const [p, expected] of Object.entries(methods))
+    if (createHash("sha256").update(await readFile(p)).digest("hex") !== expected) throw Error("method changed during extraction");
   await save("candidate.json", candidate);
   await save("performance.json", { wallMs: performance.now() - started, discovery: discovery.metrics, target: evidence.metrics, ...candidate.metrics,
     parentPeakRssBytes: process.resourceUsage().maxRSS * 1024, childSampledPeakRssBytes,
