@@ -147,6 +147,18 @@ CodeGraph 已查询 service 的 entity 和 execute 关系，实际源代码确�
 
 默认独立 deadline：连接 10 秒、导航 45 秒、文件控件/选文件 30 秒、处理 ready 30 分钟、其他固定页面动作 15 秒、恢复只读核查 120 秒。取消或超时停止旧操作，迟到 Promise 不能继续选文件/点击。登录/挑战由人工处理。保留 Chrome/default context/任务 tab，应用退出只 detach，不关闭、杀进程或删除页面。
 
+# 6.1 Continuous File Delivery Delta
+
+2026-10-03 用户明确要求连续上传，不等待上一组完全加载。本增量替代历史九条分组记录中“整组 READY 并保存后才能选择下一组”的推进条件；每次最多 9 条、同一冻结 pageBatchId 的原 tab/modal、整批容量、永久逐文件 fence 和停在“确定”前保持不变。
+
+文件动作返回前必须在原列表看到全部本组选中文件，精确名称、计数、身份与容量一致；可仍处于 processing，确认按钮可禁用。列表接收仅授权继续投递，不生成 READY 证据。已接收旧行消失、改名、重复、失败或归属变化，以及新行在 fileInput 期限内未出现，停止该账号并保留全部 fence；不得补选或重传。
+
+处理中的文件可能尚未计入页面“已选择”完成计数；接收阶段允许该计数处于已持久 READY 数与已观察行数之间，整批占用仍以永久 fence 的实际已选数量计算。完成阶段继续要求精确累计计数和全行成功，不以接收时的暂时计数授 READY。
+
+原单一 runner 在同一页面继续投递已准入的 PENDING 成片，并在页面仍处理时接收后来完成的成片；其他页面不并发。每个文件动作之前仍校验快照并持久保存全部成员 fence。所有已选择文件满足原整体完成条件后，重验快照并逐件保存 WAITING_FOR_CONFIRMATION；中途停止/保存不确定时保留已保存 READY，其余有 fence 的成员为 MAY_HAVE_UPLOADED。启动及显式恢复沿用原页只读核查，不重放文件动作。
+
+一个连续投递窗口的 processing 总期限从首组列表接收且等待状态持久保存后开始，采用既有 processing 配置；每组 navigation/fileInput 仍分别有界，剩余 processing 期限不能被新成片无限延长。既有磁盘格式、ReadyEvidence 语义、SHA-256 准入/防重传及人工确认边界不变。Parent Self-Review：列表接收与平台完成独立，异常及取消覆盖全部本窗口已接收/选中文件，无第二 queue/ledger。工程验证与真实千川吞吐量分别报告。
+
 # 7. State And Ready Evidence
 
 新任务状态：

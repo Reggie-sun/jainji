@@ -95,15 +95,18 @@ describe("finite upload blocker diagnostics", () => {
     await zeroConfirmation(0);
   });
 
-  it("a selected filename absent from the list reaches a separate bounded UNKNOWN diagnosis without waiting thirty minutes", async () => {
+  it("a missing selected filename reports bounded UNKNOWN during delivery and original-page checks", async () => {
     const value = await task("竞品详情-抖音电商罗盘 - 2026-09-15T234613.318_edited.mp4");
     fixture.setControls({ removeName: value.result.file_name });
-    const prepared = await session(value); await select(value, prepared);
+    const prepared = await session(value);
     const started = Date.now();
-    await expect(prepared.port.ready([value], signal)).rejects.toMatchObject({ failure: {
+    await expect(select(value, prepared)).rejects.toMatchObject({ failure: {
       code: "UPLOAD_OUTCOME_UNKNOWN", message: expect.stringContaining("未出现在"), next_action: expect.stringContaining("禁止重新选文件"),
     } });
     expect(Date.now() - started).toBeLessThan(value.config.timeouts.processing);
+    await expect(prepared.port.ready([value], signal)).rejects.toMatchObject({ failure: {
+      code: "UPLOAD_OUTCOME_UNKNOWN", message: expect.stringContaining("未出现在"), next_action: expect.stringContaining("禁止重新选文件"),
+    } });
     await zeroConfirmation(1);
   });
 

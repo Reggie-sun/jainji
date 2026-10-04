@@ -22,6 +22,7 @@ export interface UploadBrowserPort {
   open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }>;
   upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
   ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]>;
+  pollReady(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[] | undefined>;
   readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence>;
   stop(): Promise<void>;
 }
@@ -347,8 +348,8 @@ export class DouyinUploadService {
     }
     this.changed();
   }
-  private pendingGroup(): string[] {
-    const available = this.openTasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && !this.pausedAccounts.has(task.authorization.target.advertiserId) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch));
+  private pendingGroup(pageBatchId?: string): string[] {
+    const available = this.openTasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && !this.pausedAccounts.has(task.authorization.target.advertiserId) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch) && (!pageBatchId || task.authorization.pageBatchId === pageBatchId && !this.duplicate(task)));
     const first = available[0]; if (!first) return [];
     const group: UploadTaskRecord[] = [];
     if (this.duplicate(first)) group.push(first);
@@ -589,7 +590,7 @@ export class DouyinUploadService {
       }
       port = this.sessions.get(key) ?? this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
       const t = first.config.timeouts;
-      if (tasks.length > MAX_UPLOAD_GROUP_SIZE || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
+      if (tasks.length > (recovery ? first.authorization.expectedCount : MAX_UPLOAD_GROUP_SIZE) || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
       if (!recovery) for (const task of tasks) { task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER"); }
       for (let retry = 0; ; retry++) {
         try { await this.bounded(signal => port!.connect(first, signal), t.connect, controller.signal); break; }
@@ -619,18 +620,29 @@ export class DouyinUploadService {
           return results;
         }, t.confirmation, controller.signal);
       } else {
-        for (const task of tasks) await this.phase(task, "OPENING_UPLOAD_PAGE");
-        const prepared = await this.bounded(signal => port!.open(tasks, this.selectedFiles(first), signal), t.navigation, controller.signal);
-        for (const task of tasks) { await this.snapshotValid(task); controller.signal.throwIfAborted(); }
-        await this.currentTarget(first); controller.signal.throwIfAborted();
-        for (let index = 0; index < tasks.length; index++) {
-          await this.store.markSelecting(tasks[index]!.result.upload_task_id, prepared.pageOwnership, prepared.selectedIndex + index);
-          this.changed(); controller.signal.throwIfAborted();
-        }
+        await this.selectGroup(tasks, port, controller.signal);
         tasks = ids.map(id => this.requireTask(id));
-        await this.bounded(signal => port!.upload(tasks, signal), t.fileInput, controller.signal);
-        for (const task of tasks) { controller.signal.throwIfAborted(); await this.phase(task, "WAITING_UPLOAD_COMPLETE"); }
-        evidence = await this.bounded(signal => port!.ready(tasks, signal), t.processing, controller.signal);
+        evidence = await this.bounded(async signal => {
+          while (true) {
+            signal.throwIfAborted();
+            const ready = await port!.pollReady(tasks, signal);
+            if (ready) return ready;
+            const next = this.pendingGroup(key);
+            if (next.length) {
+              ids.push(...next);
+              const group = next.map(id => this.requireTask(id));
+              for (const task of group) {
+                this.eligible.delete(task.result.upload_task_id);
+                if (JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config)) throw unknown();
+                task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER");
+              }
+              await this.selectGroup(group, port!, signal);
+              tasks = ids.map(id => this.requireTask(id));
+              continue;
+            }
+            await delay(100, undefined, { signal });
+          }
+        }, t.processing, controller.signal);
       }
       if (evidence.length !== tasks.length) throw unknown();
       const parsed = evidence.map(item => ReadyEvidenceSchema.parse(item));
@@ -655,6 +667,19 @@ export class DouyinUploadService {
       if (this.store.unavailable) { this.initializationFailure = "上传存储失败；保留屏障，上传结果按未知处理。"; this.changed(); }
       if (port) await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; }); this.sessions.delete(key);
     } finally { if (port && this.active?.port === port) this.active = undefined; }
+  }
+  private async selectGroup(tasks: UploadTaskRecord[], port: UploadBrowserPort, signal: AbortSignal): Promise<void> {
+    const first = tasks[0]!, t = first.config.timeouts;
+    for (const task of tasks) await this.phase(task, "OPENING_UPLOAD_PAGE");
+    const prepared = await this.bounded(inner => port.open(tasks, this.selectedFiles(first), inner), t.navigation, signal);
+    for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }
+    await this.currentTarget(first); signal.throwIfAborted();
+    for (let index = 0; index < tasks.length; index++) {
+      await this.store.markSelecting(tasks[index]!.result.upload_task_id, prepared.pageOwnership, prepared.selectedIndex + index);
+      this.changed(); signal.throwIfAborted();
+    }
+    await this.bounded(inner => port.upload(tasks.map(task => this.requireTask(task.result.upload_task_id)), inner), t.fileInput, signal);
+    for (const task of tasks) { signal.throwIfAborted(); await this.phase(this.requireTask(task.result.upload_task_id), "WAITING_UPLOAD_COMPLETE"); }
   }
   private async snapshotValid(task: UploadTaskRecord): Promise<void> {
     const info = await lstat(task.snapshotPath);

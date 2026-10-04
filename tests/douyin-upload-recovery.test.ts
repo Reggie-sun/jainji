@@ -42,6 +42,7 @@ async function fixture() {
     },
     ready: async tasks => tasks.map(task => evidence(task, browserStore.fence(task.result.upload_task_id)!.pageOwnership,
       browserStore.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId && browserStore.hasMarker(other.result.upload_task_id)).length)),
+    pollReady: async (tasks, signal) => port.ready(tasks, signal),
     readOnlyCheck: async (task, owner, selected) => { checks.push(task.result.upload_task_id); return evidence(task, owner, selected.length); },
     stop: async () => {},
   };

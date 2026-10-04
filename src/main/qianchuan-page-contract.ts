@@ -150,9 +150,9 @@ export class QianchuanPageSession {
       return false;
     } finally { await Promise.all(before.map(handle => handle.dispose())); }
   }
-  private group(tasks: UploadTaskRecord[]): UploadTaskRecord {
+  private group(tasks: UploadTaskRecord[], limit = MAX_UPLOAD_GROUP_SIZE): UploadTaskRecord {
     const task = tasks[0];
-    if (!task || tasks.length > MAX_UPLOAD_GROUP_SIZE || new Set(tasks.map(value => value.result.upload_task_id)).size !== tasks.length || new Set(tasks.map(value => value.result.file_name)).size !== tasks.length || tasks.some(value => JSON.stringify(value.authorization) !== JSON.stringify(task.authorization) || JSON.stringify(value.config) !== JSON.stringify(task.config) || value.input.project_id !== task.input.project_id)) throw changed();
+    if (!task || tasks.length > limit || new Set(tasks.map(value => value.result.upload_task_id)).size !== tasks.length || new Set(tasks.map(value => value.result.file_name)).size !== tasks.length || tasks.some(value => JSON.stringify(value.authorization) !== JSON.stringify(task.authorization) || JSON.stringify(value.config) !== JSON.stringify(task.config) || value.input.project_id !== task.input.project_id)) throw changed();
     return task;
   }
   async prepare(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], targetId: string, signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }> {
@@ -175,7 +175,7 @@ export class QianchuanPageSession {
     if (this.ownership!.pageBatchId !== task.authorization.pageBatchId || this.ownership!.targetId !== targetId) throw changed();
     this.selected = selected; this.pending.clear();
     const observation = await this.observe(task, signal);
-    if (selected.length && !observation.ready) throw changed();
+    if (observation.missing) throw changed();
     if (!selected.length && observation.capacity < task.authorization.expectedCount) throw uploadFailure("CAPACITY_INSUFFICIENT", "page", "千川计划可添加数量不足以容纳本次整批成片。", "人工处理容量后重新选择；程序不截断条数或自动确认腾位置。", true);
     if (selected.length + tasks.length > observation.capacity || selected.length + tasks.length > task.authorization.expectedCount || tasks.some(value => selected.some(file => file.fileName === value.result.file_name))) throw changed();
     await this.unique(this.modal!.locator(this.contract.kind === "qianchuan" ? dropSelector : 'input[type="file"]'), signal);
@@ -203,13 +203,14 @@ export class QianchuanPageSession {
     if (snapshot.countElements !== 1) throw changed();
     const parsed = parseSelectedCount(snapshot.countText), size = snapshot.rows.length;
     const previous = this.selected.filter(file => !this.pending.has(file.fileName)), minimum = previous.length;
-    if (size < minimum || size > this.selected.length || parsed.selected < minimum || parsed.selected > size) throw changed();
+    const confirmed = previous.filter(file => file.ready === true).length;
+    if (size < minimum || size > this.selected.length || this.selected.length > parsed.capacity || parsed.selected < confirmed || parsed.selected > size) throw changed();
     const observed = new Map<string, boolean>();
     for (const row of snapshot.rows) {
       if (!row.valid || ["failed", "cancelled", "rejected"].includes(row.state ?? "") || !row.name || observed.has(row.name) || !this.selected.some(file => file.fileName === row.name)) throw changed();
       observed.set(row.name, row.ready);
     }
-    for (const file of previous) if (!observed.has(file.fileName) || (this.pending.size && !observed.get(file.fileName))) throw changed();
+    for (const file of previous) if (!observed.has(file.fileName) || (file.ready === true && !observed.get(file.fileName))) throw changed();
     const confirm = await this.unique(this.modal!.getByRole("button", { name: "确定", exact: true }), signal);
     const complete = size === this.selected.length && parsed.selected === this.selected.length && [...observed.values()].every(Boolean);
     return { ...parsed, missing: this.selected.length - observed.size, ready: complete && await confirm.isEnabled() && !await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count() };
@@ -245,13 +246,26 @@ export class QianchuanPageSession {
     if (this.contract.kind === "qianchuan") await this.drop(tasks, signal);
     else await (await this.unique(this.modal!.locator('input[type="file"]'), signal)).setInputFiles(tasks.map(value => value.snapshotPath), { timeout: task.config.timeouts.fileInput });
     this.check(signal);
+    const deadline = Date.now() + task.config.timeouts.fileInput;
+    while (Date.now() < deadline) {
+      if (!(await this.observe(task, signal)).missing) { this.pending.clear(); return; }
+      await this.page.waitForTimeout(Math.min(100, Math.max(1, deadline - Date.now()))); this.check(signal);
+    }
+    throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "已选择的文件未出现在原上传列表，无法确认平台是否收到。", "保留原页面并只读核查；禁止重新选文件，后续成片保持暂停。", true);
   }
   private evidence(task: UploadTaskRecord, selectedCount: number): ReadyEvidence {
     return { advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId, fileName: task.result.file_name,
       selectedCount, observedAt: new Date().toISOString(), pageOwnership: this.ownership! };
   }
+  async pollReady(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[] | undefined> {
+    const task = this.group(tasks, 250);
+    if (tasks.some(value => !this.selected.some(file => file.fileName === value.result.file_name)) || this.ownership?.pageBatchId !== task.authorization.pageBatchId) throw changed();
+    const observed = await this.observe(task, signal);
+    if (observed.ready) { this.pending.clear(); return tasks.map(value => this.evidence(value, observed.selected)); }
+    return undefined;
+  }
   async ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]> {
-    const task = this.group(tasks);
+    const task = this.group(tasks, 250);
     if (tasks.some(value => !this.selected.some(file => file.fileName === value.result.file_name)) || this.ownership?.pageBatchId !== task.authorization.pageBatchId) throw changed();
     const deadline = Date.now() + task.config.timeouts.processing;
     const rowDeadline = Date.now() + task.config.timeouts.fileInput;

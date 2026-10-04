@@ -82,7 +82,7 @@ it("trusted continue acceptance returns before browser processing finishes, whil
   vi.spyOn(accounts, "preflight").mockResolvedValue(next.authorization.target);
   let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
   const port: UploadBrowserPort = { connect: async () => { await gate; throw new Error("isolated connection failed"); }, stop: async () => { release(); },
-    open: vi.fn(), upload: vi.fn(), ready: vi.fn(), readOnlyCheck: vi.fn() };
+    open: vi.fn(), upload: vi.fn(), ready: vi.fn(), pollReady: vi.fn(), readOnlyCheck: vi.fn() };
   const service = new DouyinUploadService(f.store, { accounts, browser: () => port, loadBatch: f.loadBatch });
   await service.requestResume(next.result.upload_task_id);
   await vi.waitFor(() => expect(f.store.task(next.result.upload_task_id)!.result.state).toBe("CONNECTING_BROWSER"));

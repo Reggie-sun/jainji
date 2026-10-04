@@ -22,7 +22,7 @@ async function fixture() {
     ...(product === "眼贴" ? { productName: "晚安油" } : {}), advertiserId: `${3000 + index}`, adId: `${4000 + index}`, cdpEndpoint: `http://127.0.0.1:${13000 + index}`,
   })) }), { mode: 0o600 });
   const store = new DouyinUploadStore(path.join(root, "private")); await store.load();
-  const port: UploadBrowserPort = { connect: vi.fn(), open: vi.fn(), upload: vi.fn(), ready: vi.fn(), readOnlyCheck: vi.fn(), stop: vi.fn() };
+  const port: UploadBrowserPort = { connect: vi.fn(), open: vi.fn(), upload: vi.fn(), ready: vi.fn(), pollReady: vi.fn(), readOnlyCheck: vi.fn(), stop: vi.fn() };
   let readiness: string | undefined;
   const dependencies = { accounts, browser: vi.fn(() => port), loadBatch: vi.fn(), readiness: () => readiness };
   let service = new DouyinUploadService(store, dependencies); await service.chooseConfig(file); await service.configure({ enabled: true });

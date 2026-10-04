@@ -83,6 +83,7 @@ async function fixture(browser?: () => UploadBrowserPort) {
         return evidenceFor(task, ownership, count);
       });
     },
+    pollReady: async (tasks, signal) => port.ready(tasks, signal),
     readOnlyCheck: async (task, ownership, files) => {
       events.push("readonly");
       expect(files.some(file => file.fileName === task.result.file_name && file.index === store.fence(task.result.upload_task_id)!.selectedIndex)).toBe(true);
@@ -639,7 +640,7 @@ describe("Qianchuan upload service", () => {
         expect(await readFile(task.snapshotPath)).toEqual(await readFile(task.input.video_path));
       }
       const previous = groups.flat();
-      expect(previous.every(id => f.store.task(id)!.result.state === "WAITING_FOR_CONFIRMATION")).toBe(true);
+      expect(previous.every(id => ["WAITING_UPLOAD_COMPLETE", "WAITING_FOR_CONFIRMATION"].includes(f.store.task(id)!.result.state))).toBe(true);
       groups.push(tasks.map(task => task.result.upload_task_id));
     };
     f.port.ready = async (tasks: UploadTaskRecord[]) => tasks.map(task => evidenceFor(task, owner, groups.flat().length));
@@ -655,28 +656,83 @@ describe("Qianchuan upload service", () => {
     expect(new Set(f.store.tasks().map(task => task.result.readyEvidence!.pageOwnership.targetId))).toEqual(new Set(["grouped-tab"]));
   });
 
-  it("does not select the next group until all nine are ready and all nine READY saves finish", async () => {
+  it("continues selecting 9+9+3 while processing and saves READY only after the whole list finishes", async () => {
     const f = await groupedFixture();
-    let releaseReady!: () => void;
-    const gate = new Promise<void>(resolve => { releaseReady = resolve; });
-    const ready = f.port.ready;
-    f.port.ready = async (tasks, signal) => { if (f.groups.length === 1) await gate; return ready(tasks, signal); };
+    let completed = false;
+    f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
     let releaseSave!: () => void;
     const saveGate = new Promise<void>(resolve => { releaseSave = resolve; });
     const saveTask = f.store.saveTask.bind(f.store);
     let blockedSave = false;
     f.store.saveTask = async task => {
-      if (task.result.state === "WAITING_FOR_CONFIRMATION" && task.result.readyEvidence?.selectedCount === 9 && f.store.fence(task.result.upload_task_id)?.selectedIndex === 9) { blockedSave = true; await saveGate; }
+      if (task.result.state === "WAITING_FOR_CONFIRMATION" && task.result.readyEvidence?.selectedCount === 21 && f.store.fence(task.result.upload_task_id)?.selectedIndex === 9) { blockedSave = true; await saveGate; }
       await saveTask(task);
     };
     const running = f.service.runPending();
-    await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9]));
-    expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
-    releaseReady();
-    await vi.waitFor(() => expect(blockedSave).toBe(true));
-    expect(f.groups.map(group => group.length)).toEqual([9]);
-    releaseSave(); await running;
+    try {
+      await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]));
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
+      completed = true;
+      await vi.waitFor(() => expect(blockedSave).toBe(true));
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(8);
+    } finally { completed = true; releaseSave(); await running; }
     expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
+    expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 21)).toBe(true);
+  });
+
+  it("adds newly completed exports to the same page while previous files are processing", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["initial", "later one", "later two"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    let completed = false;
+    f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(1));
+      await f.service.committed(batch.identities[1]!); await f.service.committed(batch.identities[2]!);
+      await vi.waitFor(() => expect(f.store.tasks().filter(task => task.result.state === "WAITING_UPLOAD_COMPLETE")).toHaveLength(3));
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
+      expect(new Set(f.store.tasks().map(task => f.store.fence(task.result.upload_task_id)!.pageOwnership.targetId)).size).toBe(1);
+    } finally { completed = true; await running; }
+    expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 3)).toBe(true);
+  });
+
+  it.each(["cancel", "timeout"] as const)("preserves every in-flight group's fence after %s and recovers only by reading the original page", async action => {
+    const f = await groupedFixture(undefined, { processingTimeout: 1800 });
+    f.port.pollReady = async () => undefined;
+    const running = f.service.runPending();
+    await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]));
+    if (action === "cancel") await f.service.cancel(f.groups[1]![0]!);
+    await running;
+    expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(21);
+    expect(f.store.tasks().every(task => f.store.hasMarker(task.result.upload_task_id))).toBe(true);
+    const reopened = new DouyinUploadStore(f.store.root); await reopened.load();
+    const checked: string[] = [];
+    const recovery = new DouyinUploadService(reopened, { accounts: f.accounts, loadBatch: async id => f.states.get(id)!, browser: () => ({
+      connect: async () => {}, open: async () => { throw new Error("new page forbidden"); }, upload: async () => { throw new Error("reselection forbidden"); }, ready: async () => { throw new Error("new ready action forbidden"); }, pollReady: async () => { throw new Error("new poll forbidden"); }, stop: async () => {},
+      readOnlyCheck: async (task, owner, selected) => { expect(owner).toEqual(f.owner); expect(selected).toHaveLength(21); checked.push(task.result.upload_task_id); return evidenceFor(task, owner, 21); },
+    }) });
+    await recovery.restoreConfig(); await recovery.reconcile(); await recovery.runPending();
+    expect(checked).toEqual([]);
+    await recovery.resume(f.groups[1]![0]!);
+    expect(checked).toHaveLength(21);
+    expect(reopened.tasks().every(task => task.result.upload_outcome === "READY")).toBe(true);
+    expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
+  });
+
+  it("preserves four saved READY records and all 21 fences if final completion saving fails", async () => {
+    const f = await groupedFixture();
+    f.port.pollReady = async (tasks, signal) => tasks.length === 21 ? f.port.ready(tasks, signal) : undefined;
+    const save = f.store.saveTask.bind(f.store); let count = 0;
+    f.store.saveTask = async task => {
+      if (task.result.state === "WAITING_FOR_CONFIRMATION" && ++count === 5) throw new Error("injected final save failure");
+      await save(task);
+    };
+    await f.service.runPending();
+    expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
+    expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(4);
+    expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(17);
+    expect(f.store.tasks().every(task => f.store.hasMarker(task.result.upload_task_id))).toBe(true);
   });
 
   it("deduplicates identical target bytes within a group before writing selection fences", async () => {
@@ -761,7 +817,7 @@ describe("Qianchuan upload service", () => {
     const reopened = new DouyinUploadStore(f.store.root); await reopened.load();
     const checks: string[] = [];
     const recovery = new DouyinUploadService(reopened, { loadBatch: async id => f.states.get(id)!, accounts: f.accounts, browser: () => ({
-      connect: async () => {}, open: async () => { throw new Error("replacement page forbidden"); }, upload: async () => { throw new Error("reselection forbidden"); }, ready: async () => { throw new Error("new ready action forbidden"); }, stop: async () => {},
+      connect: async () => {}, open: async () => { throw new Error("replacement page forbidden"); }, upload: async () => { throw new Error("reselection forbidden"); }, ready: async () => { throw new Error("new ready action forbidden"); }, pollReady: async () => { throw new Error("new poll forbidden"); }, stop: async () => {},
       readOnlyCheck: async (task, owner, selected) => { expect(owner).toEqual(f.owner); expect(selected).toHaveLength(9); checks.push(task.result.upload_task_id); return evidenceFor(task, owner, 9); },
     }) });
     await recovery.reconcile(); await recovery.runPending(); expect(checks).toEqual([]);
@@ -919,6 +975,7 @@ describe("Qianchuan upload service", () => {
       open: async () => { recoveryEvents.push("open-forbidden"); throw new Error("must not reopen"); },
       upload: async () => { recoveryEvents.push("upload-forbidden"); throw new Error("must not reselect"); },
       ready: async () => { recoveryEvents.push("ready-forbidden"); throw new Error("must use readonly check"); },
+      pollReady: async () => { throw new Error("must use readonly check"); },
       readOnlyCheck: async (recoveredTask, pageOwnership, files) => {
         recoveryEvents.push("readonly"); recoveryOwnership.push(pageOwnership);
         expect(files).toContainEqual(expect.objectContaining({ fileName: recoveredTask.result.file_name, index: 1 }));
@@ -969,6 +1026,7 @@ describe("Qianchuan upload service", () => {
       open: async () => { recoveryEvents.push("open-forbidden"); throw new Error("must not open a replacement modal"); },
       upload: async () => { recoveryEvents.push("upload-forbidden"); throw new Error("must not select the file again"); },
       ready: async () => { recoveryEvents.push("ready-forbidden"); throw new Error("recovery must be read-only"); },
+      pollReady: async () => { throw new Error("recovery must be read-only"); },
       readOnlyCheck: async (task, ownership, files) => {
         recoveryEvents.push("readonly"); recoveredOwnership.push(ownership);
         expect(files).toContainEqual(expect.objectContaining({ fileName: task.result.file_name, index: 1 }));
@@ -1132,6 +1190,7 @@ describe("Qianchuan upload service", () => {
           return evidenceFor(task, fence.pageOwnership, fence.selectedIndex);
         });
       },
+      pollReady: async (tasks, signal) => recoveredPort.ready(tasks, signal),
       readOnlyCheck: async (task, ownership) => {
         await observe("readonly");
         return evidenceFor(task, ownership, reopenedStore.fence(task.result.upload_task_id)!.selectedIndex);

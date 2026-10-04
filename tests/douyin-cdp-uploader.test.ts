@@ -258,16 +258,20 @@ describe("千川 CDP upload-only adapter", () => {
     expect(files).toHaveLength(1);
   });
 
-  it("blocks the next selection while the prior item is still processing", async () => {
+  it("allows the next selection after the prior row appears even while it is processing", async () => {
     fixture.reset(); fixture.setControls({ readyState: "processing" });
-    const pageBatchId = randomUUID(), batchId = randomUUID();
-    const first = await makeTask({ name: "processing.mp4", pageBatchId, batchId, expectedCount: 2 });
-    const second = await makeTask({ name: "must-not-start.mp4", pageBatchId, batchId, expectedCount: 2 });
+    const pageBatchId = randomUUID(), batchId = randomUUID(), projectId = randomUUID();
+    const first = await makeTask({ name: "processing.mp4", pageBatchId, batchId, projectId, expectedCount: 2 });
+    const second = await makeTask({ name: "next.mp4", pageBatchId, batchId, projectId, expectedCount: 2 });
     const uploader = makeUploader(), signal = new AbortController().signal;
     await openAndFence(uploader, first); await uploader.upload([first], signal);
     await waitForEvents(events => events.some(event => event.type === "files"));
-    await expect(uploader.open([second], [{ fileName: "processing.mp4", index: 1 }], signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
-    expect((await fixture.inspect()).events.filter(event => event.type === "files")).toHaveLength(1);
+    const prepared = await uploader.open([second], [{ fileName: "processing.mp4", index: 1, ready: false }], signal);
+    expect(prepared.selectedIndex).toBe(2);
+    second.result = { ...second.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
+    await uploader.upload([second], signal);
+    expect(await uploader.pollReady([first, second], signal)).toBeUndefined();
+    expect((await fixture.inspect()).events.filter(event => event.type === "files")).toHaveLength(2);
   });
 
   it("recovers only the original owned tab and does not select another file", async () => {
@@ -363,7 +367,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     } finally { await control.detach(); await browser.close(); }
   });
 
-  it("delivers 21 production snapshots in 9+9+3 groups, allowing late rows but waiting for the last member before advancing", async () => {
+  it("delivers 21 production snapshots in 9+9+3 groups while earlier rows are still processing", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset(); productionFixture.setControls({ processingDelayMs: 250, rowAppearanceDelayMs: 80, reorderRows: true });
     const batchId = randomUUID(), pageBatchId = randomUUID(), projectId = randomUUID();
@@ -380,23 +384,16 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       expect(prepared.selectedIndex).toBe(index + 1);
       for (const task of group) task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
       await uploader.upload(group, signal);
-      let finished = false;
-      const waiting = uploader.ready(group, signal).then(evidence => { finished = true; return evidence; });
-      if (index === 0) {
-        await waitForEvents(events => events.some(event => event.type === "dom" && event.rows?.length === 9 && event.rows.filter(row => row.ready).length === 8 && event.cancelVisible && !event.confirmEnabled), productionFixture);
-        expect(finished).toBe(false);
-        const next = tasks.slice(9, 18);
-        await expect(uploader.open(next, group.map((task, i) => ({ fileName: task.result.file_name, index: i + 1 })), signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
-        expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toHaveLength(1);
-        productionFixture.setControls({ pendingName: "" });
-      }
-      const evidence = await waiting;
-      expect(evidence.map(item => item.fileName)).toEqual(group.map(task => task.result.file_name));
-      expect(evidence.every(item => item.selectedCount === index + group.length)).toBe(true);
-      selected.push(...group.map((task, i) => ({ fileName: task.result.file_name, index: index + i + 1, ready: true })));
+      selected.push(...group.map((task, i) => ({ fileName: task.result.file_name, index: index + i + 1, ready: false })));
     }
     const observed = await productionFixture.inspect();
     expect(observed.events.filter(event => event.type === "drop").map(event => event.names?.length)).toEqual([9, 9, 3]);
+    expect(observed.events.filter(event => event.type === "dom").at(-1)).toMatchObject({ cancelVisible: true, confirmEnabled: false });
+    expect(await uploader.pollReady(tasks, signal)).toBeUndefined();
+    productionFixture.setControls({ pendingName: "" });
+    const evidence = await uploader.ready(tasks, signal);
+    expect(evidence.map(item => item.fileName)).toEqual(tasks.map(task => task.result.file_name));
+    expect(evidence.every(item => item.selectedCount === 21 && item.pageOwnership.targetId === ownership!.targetId)).toBe(true);
     expect(observed.events.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
   });
 
@@ -538,7 +535,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     const source = productionFixture!;
     const batchId = randomUUID(), projectId = randomUUID(), pageBatchId = randomUUID();
     const tasks = await Promise.all(Array.from({ length: 21 }, (_, i) => productionTask(`missing-new-${i}.mp4`, batchId, pageBatchId, 21, projectId)));
-    source.setControls({ removeName: tasks[9]!.result.file_name, processingDelayMs: 100 });
+    source.setControls({ removeName: tasks[9]!.result.file_name, processingDelayMs: 0 });
     const state: QueueState = {
       schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, updatedAt: now(),
       batch: { schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [],
@@ -556,7 +553,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     const service = new DouyinUploadService(store, { loadBatch: async () => structuredClone(state), browser: productionUploader, accounts: new QianchuanAccountConfigReader() });
     try {
       await service.chooseConfig(configPath);
-      await service.configure({ enabled: true, timeouts: { processing: 1500, confirmation: 3000 } });
+      await service.configure({ enabled: true, timeouts: { fileInput: 500, processing: 1500, confirmation: 3000 } });
       const selection = { enabled: true as const, accountProduct: "眼贴" as const };
       await service.registerBatch(state.batch, selection, await service.preflight(selection, 21));
       for (const task of tasks) await service.enqueueFinalArtifact({ project_id: projectId, batch_id: batchId, export_task_id: task.input.export_task_id });

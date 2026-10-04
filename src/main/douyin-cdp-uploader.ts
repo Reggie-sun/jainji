@@ -76,6 +76,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
   }
   async upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> { await this.action(signal, () => this.session!.upload(tasks, signal)); }
   async ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]> { return this.action(signal, () => this.session!.ready(tasks, signal)); }
+  async pollReady(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[] | undefined> { return this.action(signal, () => this.session!.pollReady(tasks, signal)); }
   async readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence> {
     return this.action(signal, async () => {
       const contract = this.pageContract(), pages = this.browser?.contexts()[0]?.pages() ?? [], matches: Page[] = [];

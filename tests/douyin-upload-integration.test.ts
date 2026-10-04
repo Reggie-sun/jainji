@@ -71,6 +71,7 @@ async function fixture(saveGate?: (status: string) => Promise<void>) {
         return evidenceFor(task, fence.pageOwnership, count);
       });
     },
+    pollReady: async (tasks, signal) => browser.ready(tasks, signal),
     readOnlyCheck: async (task, ownership, selected) => {
       events.push("readonly");
       expect(selected.some(file => file.fileName === task.result.file_name)).toBe(true);
