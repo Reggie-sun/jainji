@@ -7,6 +7,7 @@ import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-stor
 import { QianchuanLibraryScheduleSettingsSchema, type QianchuanLibraryScheduleRun, type QianchuanLibraryScheduleSettings, type QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryAccountSchema, type QianchuanLibraryClear, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
+import type { QianchuanScheduledLaunch } from "./qianchuan-scheduled-launch.js";
 
 const resultSchema = z.object({ product: QianchuanLibraryAccountSchema.shape.product, advertiserId: QianchuanLibraryAccountSchema.shape.expectedAdvertiserId, state: z.enum(["CLEARED", "BLOCKED"]), deletedCount: z.number().int().nonnegative(), message: z.string().max(2000) }).strict();
 const runSchema = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), startedAt: z.string().datetime(), finishedAt: z.string().datetime().optional(),
@@ -16,6 +17,7 @@ interface Dependencies {
   accounts(): QianchuanAccountSummary[];
   clear(input: QianchuanLibraryClear): Promise<QianchuanLibraryResult[]>;
   changed(): void;
+  automaticLaunch?: QianchuanScheduledLaunch;
 }
 export function localScheduleDay(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
@@ -46,7 +48,7 @@ export class QianchuanVideoLibrarySchedule {
   constructor(private readonly root: string, private readonly dependencies: Dependencies) { this.file = path.join(root, "video-library-schedule.json"); }
   snapshot(): QianchuanLibraryScheduleStatus {
     return structuredClone({ settings: this.settings, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      nextRunAt: this.next?.toISOString(), lastRun: this.lastRun, error: this.error });
+      nextRunAt: this.next?.toISOString(), lastRun: this.lastRun, error: this.error, automaticLaunch: this.dependencies.automaticLaunch?.snapshot() });
   }
   async load(): Promise<void> {
     try {
@@ -62,6 +64,16 @@ export class QianchuanVideoLibrarySchedule {
   }
   start(): void {
     this.started = true; this.plan();
+  }
+  initializeAutomaticLaunch(): Promise<void> {
+    return this.serialize(async () => {
+      if (this.error) return;
+      try { await this.dependencies.automaticLaunch?.configure(this.settings); }
+      catch { /* The status exposes OS setup failure; the existing in-app timer remains available. */ }
+    });
+  }
+  async requestSystemLaunch(time: string, receivedAt: Date): Promise<void> {
+    await this.tick({ time, receivedAt });
   }
   stop(): void {
     this.started = false; if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.next = undefined;
@@ -104,16 +116,29 @@ export class QianchuanVideoLibrarySchedule {
           throw new Error("清空账号已变化，请重新选择当前已配置账号。");
         }
       }
-      await this.persist(settings, this.lastRun); this.settings = settings; this.plan(); return this.snapshot();
+      await this.persist(settings, this.lastRun); this.settings = settings;
+      try { await this.dependencies.automaticLaunch?.configure(settings); }
+      finally { this.plan(); }
+      return this.snapshot();
     });
   }
-  async tick(): Promise<void> {
+  async tick(systemRequest?: { time: string; receivedAt: Date }): Promise<void> {
     const claimed = await this.serialize(async () => {
       if (!this.started || !this.settings.enabled || this.error || this.running || !this.next) return false;
       const now = new Date();
+      if (systemRequest) {
+        const { time, receivedAt } = systemRequest;
+        if (!Number.isFinite(receivedAt.getTime()) || time !== this.settings.time) return false;
+        const due = new Date(receivedAt); const [hour, minute] = time.split(":").map(Number);
+        due.setHours(hour!, minute!, 0, 0);
+        if (receivedAt < due || receivedAt.getTime() - due.getTime() > 60000 || now < receivedAt ||
+          now.getTime() - receivedAt.getTime() > 30 * 60000 || localScheduleDay(now) !== localScheduleDay(due) ||
+          (this.lastRun && this.lastRun.day >= localScheduleDay(due))) return false;
+        if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.next = due;
+      }
       if (now < this.next) { this.arm(); return false; }
       const due = this.next;
-      const late = now.getTime() - due.getTime() > 60000 || localScheduleDay(now) !== localScheduleDay(due);
+      const late = (!systemRequest && now.getTime() - due.getTime() > 60000) || localScheduleDay(now) !== localScheduleDay(due);
       const run: QianchuanLibraryScheduleRun = { day: localScheduleDay(due), startedAt: now.toISOString(), state: late ? "SKIPPED" : "RUNNING",
         message: late ? "软件或电脑未在定时时间运行，已跳过；不会补删。" : "正在并行清空定时绑定的账号。", results: [] };
       // The day is durably claimed before any browser mutation; a restart never retries it.

@@ -25,4 +25,6 @@ export interface QianchuanLibraryScheduleStatus {
   nextRunAt?: string;
   lastRun?: QianchuanLibraryScheduleRun;
   error?: string;
+  automaticLaunch?: QianchuanAutomaticLaunchStatus;
 }
+export interface QianchuanAutomaticLaunchStatus { supported: boolean; enabled: boolean; message: string }

@@ -8,8 +8,8 @@ import { requestDevelopmentQuit, waitForDevelopmentQuit } from "./dev-lifecycle.
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
-const npmCli = process.env.npm_execpath;
-if (!npmCli) throw new Error("Run the development launcher through npm run dev.");
+const scheduledArgs = process.argv.slice(2);
+if (scheduledArgs.length && (scheduledArgs.length !== 2 || !/^--jianji-scheduled-clear=([01]\d|2[0-3]):[0-5]\d$/.test(scheduledArgs[0]) || !/^--jianji-scheduled-at=\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(scheduledArgs[1]))) throw new Error("Invalid development launch arguments.");
 const viteCli = path.join(root, "node_modules", "vite", "bin", "vite.js");
 const electronBinary = require("electron");
 const children = new Set();
@@ -161,8 +161,8 @@ try {
   await waitForVite(vite, devServerUrl);
   while (!stopping) {
     // A terminal Ctrl+C must reach the launcher, not kill Electron before cleanup.
-    electron = start(electronBinary, ["."], { stdio: ["inherit", "inherit", "inherit", "ipc"], detached: process.platform !== "win32",
-      env: { ...process.env, JIANJI_DEV_SERVER_URL: devServerUrl } });
+    electron = start(electronBinary, [".", ...scheduledArgs], { stdio: ["inherit", "inherit", "inherit", "ipc"], detached: process.platform !== "win32",
+      env: { ...process.env, JIANJI_DEV_SERVER_URL: devServerUrl, JIANJI_DEV_NODE: process.execPath } });
     const exitCode = await waitForExit(electron);
     if (stopping) break;
     if (restartRequested) {

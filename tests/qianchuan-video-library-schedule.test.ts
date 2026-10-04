@@ -57,3 +57,23 @@ it("does not repeat a claimed day when the production owner is busy", async () =
 it("plans a later local calendar day after changing settings or rolling the clock back", () => {
   expect(nextLibraryClearTime(new Date(2026, 9, 4, 0, 10), "00:30", "2026-10-04")).toEqual(new Date(2026, 9, 5, 0, 30));
 });
+it("accepts a timely system launch after cold startup and fences duplicate wake requests", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 4, 0, 29));
+  const f = await fixture(); await f.owner.save(settings);
+  vi.setSystemTime(new Date(2026, 9, 4, 0, 40));
+  await f.owner.requestSystemLaunch("00:30", new Date(2026, 9, 4, 0, 30));
+  await f.owner.requestSystemLaunch("00:30", new Date(2026, 9, 4, 0, 30));
+  expect(f.clear).toHaveBeenCalledTimes(1); expect(f.owner.snapshot().lastRun?.day).toBe("2026-10-04");
+});
+it("refuses stale, early, invalid or mismatching system wake requests", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 4, 0, 29));
+  const f = await fixture(); await f.owner.save(settings);
+  await f.owner.requestSystemLaunch("00:30", new Date(2026, 9, 4, 0, 29));
+  await f.owner.requestSystemLaunch("00:30", new Date(NaN));
+  vi.setSystemTime(new Date(2026, 9, 4, 0, 40));
+  await f.owner.requestSystemLaunch("00:31", new Date(2026, 9, 4, 0, 30));
+  await f.owner.requestSystemLaunch("00:30", new Date(2026, 9, 4, 0, 35));
+  vi.setSystemTime(new Date(2026, 9, 4, 1, 1));
+  await f.owner.requestSystemLaunch("00:30", new Date(2026, 9, 4, 0, 30));
+  expect(f.clear).not.toHaveBeenCalled();
+});

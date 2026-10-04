@@ -35,7 +35,8 @@ export function QianchuanVideoLibrarySchedule({ accounts, busy }: { accounts: Qi
       <button className="button primary compact" type="button" disabled={!status || busy || saving || running || !configured.length || !time || !!status.error} onClick={() => void save(true)}>{saving ? "正在保存…" : status?.settings.enabled ? "保存定时清空设置" : "启用每日自动清空"}</button>
       <button className="button secondary compact" type="button" disabled={!status?.settings.enabled || saving || running} onClick={() => void save(false)}>关闭定时清空</button>
     </div>
-    <p>请保持简辑和对应 Chrome 打开，最小化不影响执行。软件关闭或电脑休眠错过时间不会补删；正在制作、导出或上传时跳过，当天不自动重试。</p>
+    <p>{status?.automaticLaunch?.enabled ? "到时系统会自动启动简辑；软件已打开时复用现有实例。" : "请保持简辑打开，或保存设置以启用系统定时启动。"}电脑需开机并登录桌面，对应 Chrome 需保持打开。关机或休眠错过时间不会补删；正在制作、导出或上传时跳过，当天不自动重试。</p>
+    {status?.automaticLaunch && <p role={status.settings.enabled && !status.automaticLaunch.enabled ? "alert" : "status"}>{status.automaticLaunch.message}</p>}
     {status && <p role="status">{status.settings.enabled ? `已启用：每天 ${status.settings.time}` : "定时清空未启用"}{status.nextRunAt ? ` · 下次 ${new Date(status.nextRunAt).toLocaleString()}` : ""}</p>}
     {status?.settings.enabled && <p>已绑定账号：{status.settings.accounts.map(target => `${qianchuanProductName(target.product, accounts)}（${target.expectedAdvertiserId}）`).join("、")}</p>}
     {status?.lastRun && <div role="status"><p>上次执行：{new Date(status.lastRun.startedAt).toLocaleString()} · {status.lastRun.message}</p>

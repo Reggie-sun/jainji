@@ -35,6 +35,7 @@ import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema as DouyinUp
 import { DouyinUploadStore } from "./douyin-upload-store.js";
 import { DouyinUploadService } from "./douyin-upload-service.js";
 import { QianchuanVideoLibrarySchedule } from "./qianchuan-video-library-schedule.js";
+import { QianchuanScheduledLaunch, scheduledClearTime, scheduledClearReceivedAt } from "./qianchuan-scheduled-launch.js";
 import { DouyinCdpUploader, douyinReadiness } from "./douyin-cdp-uploader.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
 import { RecentProjects } from "./recent-projects.js";
@@ -85,15 +86,30 @@ let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
 
+let pendingScheduledLaunch = scheduledClearTime(process.argv);
+let scheduledLaunchReceivedAt = scheduledClearReceivedAt(process.argv);
+let scheduledLaunchReady = false;
 // A single owner protects saved connections and the managed OAuth callback.
 if (!app.requestSingleInstanceLock()) app.exit(0);
+else if (process.argv.includes("--jianji-schedule-probe")) { app.releaseSingleInstanceLock(); app.exit(75); }
 // Normal desktop launches expose CDP on a dynamic local port; test drivers may select a port.
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 if (!app.commandLine.hasSwitch("remote-debugging-port")) app.commandLine.appendSwitch("remote-debugging-port", "0");
-app.on("second-instance", () => {
+app.on("second-instance", (_event, argv) => {
+  const time = scheduledClearTime(argv);
+  if (time) {
+    pendingScheduledLaunch = time; scheduledLaunchReceivedAt = scheduledClearReceivedAt(argv);
+    if (scheduledLaunchReady) void deliverScheduledLaunch();
+    return;
+  }
   if (mainWindow?.isMinimized()) mainWindow.restore();
   mainWindow?.show(); mainWindow?.focus();
 });
+
+async function deliverScheduledLaunch(): Promise<void> {
+  const time = pendingScheduledLaunch; pendingScheduledLaunch = undefined;
+  if (time && !quitting) await videoLibrarySchedule.requestSystemLaunch(time, scheduledLaunchReceivedAt).catch(() => safeLog("scheduled launch safely blocked"));
+}
 
 protocol.registerSchemesAsPrivileged([
   { scheme: "jianji-review", privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },
@@ -776,6 +792,8 @@ async function bootstrap(): Promise<void> {
     } catch { return new Response("Preview unavailable", { status: 404 }); }
   });
   videoLibrarySchedule = new QianchuanVideoLibrarySchedule(uploadStore.root, {
+    automaticLaunch: new QianchuanScheduledLaunch({ packaged: app.isPackaged, executable: process.execPath, root: app.getAppPath(),
+      node: process.env.JIANJI_DEV_NODE || process.env.npm_node_execpath }),
     accounts: () => douyinUpload.status(service.currentProject.id).accounts,
     clear: input => clearVideoLibraries(input),
     changed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("videoLibrarySchedule.changed", videoLibrarySchedule.snapshot()); },
@@ -790,7 +808,12 @@ async function bootstrap(): Promise<void> {
   queueReady = queue.recover().then(() => douyinUpload.reconcile());
   void queueReady.catch((error) => console.error("queue recover failed", error));
   await windowReady;
-  void queueReady.then(() => { if (!quitting) videoLibrarySchedule.start(); }).catch(() => safeLog("queue recovery unavailable; scheduled clearing not started"));
+  void queueReady.then(async () => {
+    if (quitting) return;
+    await videoLibrarySchedule.initializeAutomaticLaunch();
+    if (quitting) return;
+    videoLibrarySchedule.start(); scheduledLaunchReady = true; await deliverScheduledLaunch();
+  }).catch(() => safeLog("queue recovery unavailable; scheduled clearing not started"));
   void connections.restore();
 }
 
