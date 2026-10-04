@@ -379,6 +379,21 @@ describe("Qianchuan upload service", () => {
     await expect(f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "9999" }] })).rejects.toThrow("已变化");
     expect(clear).toHaveBeenCalledTimes(2);
   });
+  it("clears independent accounts concurrently while retaining the shared operation until all finish", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    let release!: () => void, entered!: () => void, count = 0;
+    const hold = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+    vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async (target, guard) => {
+      if (++count === 2) entered();
+      await hold; await guard();
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 20, message: "empty" };
+    });
+    const work = f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }, { product: "肥皂", expectedAdvertiserId: "1004" }] });
+    try { await started; expect(f.service.busy).toBe(true); }
+    finally { release(); }
+    expect((await work).map(result => result.advertiserId)).toEqual(["1003", "1004"]);
+    expect(f.service.busy).toBe(false);
+  });
   it("excludes new production, account edits and browser controls while library deletion is active", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     let release!: () => void, entered!: () => void;

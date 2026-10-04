@@ -75,3 +75,9 @@
 ## Current List Clear Owner (Supersedes Prior Audit Recovery)
 
 用户再次明确核对不重要，只要尽快删除且软件功能做好。真实平台逐条异步移除一批视频，total 会在批次内多次变化，精确下降及冻结 snapshot 再读会误阻断。因此 canonical QianchuanVideoLibrary.clear 只建立一次页面/账户准入，随后通过原 UI 连续选择当前第一页、核对唯一删除 modal 并确认；消费同 Document 的正常 DOM 更新进入下一批，无逐批 reload、inventory 扫描、逐 ID 审计或视频备份。仅保存账户 pending 与最终 current_ui 结果；旧审计原字节保留。新显式清空直接读当前剩余列表，不重放旧 modal 或旧 intent 的确认；启动不会自动恢复。数量变化记录为页面净减少，不声称全库逐 ID verified；UI 删除已核验数量文案。平台无任何进展、页面/账号改变、取消、30分钟/1000批/20000条界限仍停止。此段替代先前完整审计末批 gate、current_page digest、自动列表响应等被实际删除吞吐行为否定的候选。Parent self-review 对照实际递减总数和用户最新要求完成；重写相关 fixture 适配现合同，用户要求不再跑测试。
+
+Current UI timing refinement: 真实批次移除期间选择计数会动态变化，不再冻结 expected selectedCount 或二次完整 read。等待正选择计数及唯一可见删除 modal，校验原警告与 1–100 的当前计数；确认前仅核对可见 advertiser，等待 UI 本身更新后续批。取消已无调用者的 inventory 方法与旧测试；新 fixture 测当前列表、部分移除、无进展、显式接续及账号隔离，不重新运行。
+
+## Independent Account Concurrency
+
+为落实用户“越快越好”，全部清空在原 DouyinUploadService.clearVideoLibraries owner 内并发处理最多六个显式选定的独立账号；替代此前串行顺序，不新增 worker、queue 或 lifecycle。一个共享 managingBrowser/edit lock/generation/AbortSignal 持续到所有账号结束，各账号仍各有 operation lock/pending、精确保存 profile 与 advertiser、原标签复用和 30 分钟预算；逐账号失败隔离，Promise.all 保留请求顺序及 stop 排空。CodeGraph 核对 registerHandlers→clearVideoLibraries 与原 guard/changed；generic connect 边按当前 callback 实际解析为账号 browser resolver，不误作上传 connect。Target files 与其他会话不相交；添加并发 fixture 但依用户要求不运行。Self-review：仅已确认账号在原授权内并发，不扩张目标或改上传账本。

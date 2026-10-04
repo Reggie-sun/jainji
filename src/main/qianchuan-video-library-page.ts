@@ -154,32 +154,39 @@ export class QianchuanVideoLibraryPage {
     const headerLabel = table.locator("thead label.ovui-checkbox");
     if (await header.count() !== 1 || !await header.isEnabled() ||
       await headerLabel.count() !== 1 || await headerLabel.locator('input[type="checkbox"]').count() !== 1) throw changed();
-    if (await header.isChecked()) await headerLabel.evaluate(node => (node as HTMLLabelElement).click());
-    await headerLabel.evaluate(node => (node as HTMLLabelElement).click());
+    if (await header.isChecked()) await header.evaluate(node => (node as HTMLInputElement).click());
+    await header.evaluate(node => (node as HTMLInputElement).click());
     this.check();
-    if (!await header.isChecked()) throw changed();
-    const selected = await table.locator('tbody input[type="checkbox"]').evaluateAll(nodes => nodes.map(node => (node as HTMLInputElement).checked));
-    const selectedCount = selected.length;
-    if (!selectedCount || selectedCount > 100 || selected.some(checked => !checked) ||
-      await this.page.getByText(`已选${selectedCount}个`, { exact: true }).count() !== 1) throw changed();
+    await this.page.getByText(/^已选\s*[1-9]\d*\s*个\s*$/, { exact: true }).waitFor({ state: "visible", timeout: 10000 });
     const remove = this.page.getByRole("button", { name: "删除", exact: true });
     if (await remove.count() !== 1 || !await remove.isEnabled()) throw changed();
     await remove.evaluate(node => (node as HTMLButtonElement).click());
     this.check();
     const modal = this.page.locator(".ovui-modal:visible");
-    if (await modal.count() !== 1 || (await modal.innerText()).replace(/\s+/g, "") !==
-      `确认要删除该素材吗？已选择${selectedCount}个视频，${LIBRARY_DELETE_WARNING}取消确认`) throw changed();
+    await this.page.waitForFunction(() => Array.from(document.querySelectorAll(".ovui-modal")).filter(node => !!node.getClientRects().length && getComputedStyle(node).visibility !== "hidden").length === 1, null, { timeout: 10000 });
+    const checkModal = async () => {
+      if (await modal.count() !== 1) throw changed();
+      const text = (await modal.innerText()).replace(/\s+/g, "");
+      const match = /^确认要删除该素材吗？已选择([1-9]\d*)个视频，/.exec(text);
+      if (!match || Number(match[1]) > 100 || text !== `确认要删除该素材吗？已选择${match[1]}个视频，${LIBRARY_DELETE_WARNING}取消确认`) throw changed();
+    };
+    await checkModal();
     // Pending marker and account/config guard precede the irreversible click.
     await beforeConfirm();
     this.check();
-    if (await modal.count() !== 1 ||
-      (await modal.innerText()).replace(/\s+/g, "") !== `确认要删除该素材吗？已选择${selectedCount}个视频，${LIBRARY_DELETE_WARNING}取消确认`) throw changed();
+    await checkModal();
+    if (!await this.page.evaluate(advertiserId => {
+      const headers = Array.from(document.querySelectorAll("header, [role=banner]")).filter(node => !!node.getClientRects().length);
+      const ids = headers.flatMap(node => Array.from(node.textContent?.matchAll(/ID[：:]\s*([1-9][0-9]{0,19})/g) ?? [], match => match[1]));
+      return ids.length === 1 && ids[0] === advertiserId;
+    }, this.advertiserId)) throw changed();
     const confirm = modal.getByRole("button", { name: "确认", exact: true });
     if (await confirm.count() !== 1 || !await confirm.isEnabled()) throw changed();
     this.check();
     await confirm.click({ timeout: 10000 });
     this.mutationObserved = true;
     await modal.waitFor({ state: "hidden", timeout: 30000 });
+    await this.page.getByText(/^已选\s*[1-9]\d*\s*个\s*$/, { exact: true }).waitFor({ state: "hidden", timeout: 30000 });
     await this.page.waitForTimeout(1000);
     await this.page.waitForFunction(({ total, ids }) => {
       const visible = (node: Element) => !!node.getClientRects().length;

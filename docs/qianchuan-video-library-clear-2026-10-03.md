@@ -66,3 +66,9 @@
 第三批实际 UI 总数从 1674 降至 1624，旧程序的整页刷新观察超时。按用户“无需备份、越快越好”要求，软件正常批次改用删除后平台自动列表响应，不额外 reload；历史末批仅记录 current_page 数量观察接续，不再全库扫描，不称为完整 inventory 证明。原账号、Document、modal、一次意图和单次确认边界保持；未重新运行测试。
 
 平台第四批总数 1624→1588；下一批 1588→1543→1542 持续异步递减，原冻结总数及 snapshot 二次一致性会在尚有进展时阻断。最终软件采用当前列表连续清空 owner：一次初始页面/账户准入，同 Document UI 更新续批，不备份、不全库扫描、不逐批重载、不重复空库巡检。旧审计保留，新完成记录明确 observationMode=current_ui；不是旧 1774-ID 全链 verified 证明。UI 不再称已核验数量，结果仅清空/暂停及剩余。相关 fixture 已随当前合同更新，按用户要求未运行。
+
+15:00 UTC 原页剩余 1163 条；固定“已选50个”在批次异步变化时超时。选择改为等待正计数、唯一可见弹窗及动态当前数量，保留可见账户和原素材库警告；确认后沿当前 UI 更新续批，进一步移除冻结计数和重复 read。开发 frontend 的自动重启可能丢失结果 UI，实际执行改调用同一公开 preload API，仍由原 main/service/library owner 完成全部删除，不借浏览器临时删除脚本绕过产品。
+
+Latest AOCI Maintain 返回本轮三个 indexed 对象与其他会话正在修改的九个 shape 对象合并批次；不截取批次、不写正在变化的外部 owner，暂存为真实并发维护阻断。当前三个对象的最新 Entry 尚未维护；按用户“不再验证”要求不追加 Verify/Check/Guide、测试或复审。历史已对齐及 435 PASS 不声称覆盖最新简化字节。
+
+Current checkbox event uses the unique input.click rather than label.click, because actual label activation may show checked without a populated selected bar. Matching accepts the observed trailing whitespace in `bar-num`. 平台旧批处理会异步清除选择栏；确认后等待其释放再进入下一批，避免旧回调抹掉新选择。15:09 UTC 第一账号原页已降至 903 条。全部入口由原 service 以 Promise.all 并发独立账号，共享账号编辑锁/生产互斥/stop 排空保持到全部结束；测试 fixture 已补未运行。

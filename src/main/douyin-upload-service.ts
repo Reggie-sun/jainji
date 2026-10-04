@@ -235,12 +235,11 @@ export class DouyinUploadService {
           await fresh();
           check();
         };
-        const library = new QianchuanVideoLibrary(this.store.root), results: QianchuanLibraryResult[] = [];
-        for (const target of targets) {
-          try { await guard(); results.push(await library.clear(await connect(target), guard, operation.controller.signal)); }
-          catch (error) { results.push({ product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }); }
-        }
-        return results;
+        const library = new QianchuanVideoLibrary(this.store.root);
+        return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
+          try { await guard(); return await library.clear(await connect(target), guard, operation.controller.signal); }
+          catch (error) { return { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
+        }));
       });
     } finally { this.libraryOperation = undefined; this.managingBrowser = false; completed(); this.changed(); }
   }
