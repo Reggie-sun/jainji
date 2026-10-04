@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-04T17:14:07Z",
+  "updated_at": "2026-10-04T17:51:16Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "07492ec82b4bc87b8a8ff358cf1f5c234b174d47375e668d1e8d0bceba4379d3",
@@ -1818,20 +1818,25 @@
       "size": 7589,
       "normalized_sha256": "d47a918c351c690512f900189c2a02155fcf0b027cf51850e07334d872b631fb"
     },
+    "src/renderer/QianchuanCleanupResults.tsx": {
+      "sha256": "a5e7f5bcc25f02763f5e97f657b424f5f3e76be3fc97558c5f4d07895d988838",
+      "size": 1441,
+      "normalized_sha256": "a5e7f5bcc25f02763f5e97f657b424f5f3e76be3fc97558c5f4d07895d988838"
+    },
     "src/renderer/QianchuanUploadHistory.tsx": {
       "sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5",
       "size": 2343,
       "normalized_sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5"
     },
     "src/renderer/QianchuanVideoLibraryActions.tsx": {
-      "sha256": "897c9c594a5283b58551a87d5f7d807c32bc12629de036a8ef54040d3d630911",
-      "size": 4817,
-      "normalized_sha256": "897c9c594a5283b58551a87d5f7d807c32bc12629de036a8ef54040d3d630911"
+      "sha256": "d0e396ef7e2d48d0d8607502d35114d369c51918c0d986727966578425f0ba04",
+      "size": 5924,
+      "normalized_sha256": "d0e396ef7e2d48d0d8607502d35114d369c51918c0d986727966578425f0ba04"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
-      "sha256": "bcd2f83d9ce9d723adca19045623f6d12db8930e03d0505773d2c7d9277e465e",
-      "size": 5539,
-      "normalized_sha256": "bcd2f83d9ce9d723adca19045623f6d12db8930e03d0505773d2c7d9277e465e"
+      "sha256": "978d8bd939862cdec7ccce7c019e0c9a33d3cd5cbc4a556fe0b337b54dd14572",
+      "size": 6811,
+      "normalized_sha256": "978d8bd939862cdec7ccce7c019e0c9a33d3cd5cbc4a556fe0b337b54dd14572"
     },
     "src/renderer/ResultsPanel.tsx": {
       "sha256": "5f3181a886da8dfbbb402d96087f14827720da58bd3cd0a8bdc27db20e93aa48",

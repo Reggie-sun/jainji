@@ -193,8 +193,9 @@ QianchuanAccountSettings.tsx[EU6T]: F:编辑产品名称计划并展示账号浏
 qianchuan-upload-status.ts[CU4T]: F:统一普通和批量作品页的千川状态展示文案 | R:code:src/shared/douyin-upload.ts,code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/BatchProductionDetails.tsx | A:以结果状态类型约束完整映射，DISCARDED显示已删除上传任务 | S:-
 QianchuanUploadHistory.tsx[EU6T]: F:呈现整批本地结束确认与原结果只读历史 | R:code:src/shared/douyin-upload.ts,code:src/renderer/qianchuan-upload-status.ts | A:确认显示项目账号计划批次完整数量及结果分布；历史保留失败与READY观察证据，无操作按钮 | S:结束包含全部未选成员且不可恢复；视频及防重传历史保留，平台结果不变；summary不签发处置授权
 SourceMediaList.tsx[EU5T]: F:展示逐素材选择预览移除及清单保存入口 | R:code:src/renderer/App.tsx,code:src/shared/desktop.ts | A:原生dialog播放原片并前后导航；移除成功转相邻就绪素材，失败保留当前项，末项移除关闭 | S:移除只经回调移出项目，不删磁盘原片；清单保存交回项目owner
-QianchuanVideoLibraryActions.tsx[EU7T]: F:展示视频库和计划三类手动清理入口及结果 | R:code:src/shared/qianchuan-video-library.ts,code:src/main/preload.ts,code:src/renderer/QianchuanVideoLibrarySchedule.tsx | A:库与计划独立确认；计划显示双ID和投放影响；固定API提交冻结预期目标；展示并行结果 | S:加载不删除，执行禁重复；本地视频和上传记录保留
-QianchuanVideoLibrarySchedule.tsx[EU7T]: F:编辑每日清空与可选计划三类清理并展示绑定结果 | R:code:src/main/preload.ts,code:src/shared/qianchuan-video-library-schedule.ts | A:订阅设置；计划默认未勾，显式保存携预期adId；关闭保留绑定；显示时区系统启动及上次结果 | S:加载不启用，旧设置不扩大；换计划须重保存；错误不启用；桌面登录Chrome打开，不补删或同日重试
+QianchuanVideoLibraryActions.tsx[EU7T]: F:提供按账号的即时计划素材及视频库清理界面 | R:code:src/main/preload.ts,code:src/renderer/QianchuanCleanupResults.tsx,code:src/renderer/QianchuanVideoLibrarySchedule.tsx | A:默认勾可用账号及三类计划素材，库默认关闭；单独确认显示双ID；冻结所选目标后提交固定API；汇总结果 | S:勾选不等于删除授权；执行禁重复；本地视频和上传账本保留
+QianchuanVideoLibrarySchedule.tsx[EU7T]: F:编辑每日清空及可选计划素材清理并展示绑定结果 | R:code:src/main/preload.ts,code:src/shared/qianchuan-video-library-schedule.ts,code:src/renderer/QianchuanCleanupResults.tsx | A:订阅设置；三类计划默认关闭；显式保存携预期adId；关闭保留绑定；折叠运行条件及结果明细 | S:加载不启用；旧设置不扩大；换计划须重存；错过时间或繁忙不补删重试
+QianchuanCleanupResults.tsx[EU5T]: F:展示素材清理结果摘要与按账号的展开明细 | R:code:src/shared/qianchuan-video-library.ts,code:src/shared/qianchuan-account.ts | A:汇总BLOCKED数量、账号名称及消息；中文格式化执行时间 | S:展示结果不执行删除
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===
 agent.ts[CB7S]: F:定义制作容量、数量分配及共享请求准入Schema | R:code:src/main/agent-controller.ts,code:src/main/agent-runner.ts,code:src/shared/douyin-upload.ts,code:src/shared/decorations.ts | A:按本次素材开关校验手动文字，全关闭则忽略文字草稿；数量支持整轮与精确分配；Frozen保留旧时序 | S:开启且缺文字先于模型拒绝；requestedCount与multiplier互斥；shape intent不是admission
