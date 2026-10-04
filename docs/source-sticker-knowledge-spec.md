@@ -60,6 +60,16 @@ baseline: ef74adf
 
 **REQ-02 — Qualified verification.** 知识中的“已核查”表示主管基于记录的原帧及配对样片作出判断并通过本地校验，必须标注 `sampled`，不能称为逐帧证明或人工验收。两个角色使用相同模型时记录这一事实，不称为跨模型交叉验证。
 
+### Confirmed Static Target Proof Delta
+
+[M2-H plan](shape-matched-cover-m2h-plan.md) 的内部静态路径新增 `confirmed-target-static-v1` proof 和 `verification=confirmed-target-static`，顶层 schemaVersion 仍为1；`sampled` 与 `source-mask-only-v1` 的历史解释不变。新 variant 只证明冻结已确认集合 C 内 target/segment 的明确 ordinal range，不能证明未知目标不存在或全源穷尽。一个 logical target 可绑定多个显式确认的 disconnected discovery components；candidate IDs、component digests、sourceBoxes 同序唯一且确定排序，envelope 只作 ROI/geometry metadata，不决定 membership。
+
+首次发布必须取得 owned confirmation、mask candidate、完整 range geometry 和 live issuer proof，通过新 `publishConfirmedStaticTargets` 进入既有 run/source/baseRevision/dispute/append owner。proof targets 必须与 candidate facts targets/segments 精确一一对应；不能遗漏、多出、重复或暗中删除失败项。caller geometry JSON、工程 receipt 的 status、digest/path 或 serialized proof 不能签发新修订。reload 验证已经持久化的 versioned artifact bytes/digests，不恢复 live ownership。
+
+每 target 绑定 mask bitset/SHA/config、confirmation digest/component set、source/clock/PTS/range、geometry config/reference/full-range metrics digest及固定 method support。store 只保存 bounded confirmation/extraction/geometry/method artifacts 和 range 首尾原帧，不保存全范围RGBA或完整metrics。唯一允许重新解释的 appearance reason 是 exact extractor v2/config 的 `FULL_RANGE_STATIC_CONTRADICTION`，且必须有 owned supported geometry、没有任何其他 hard/unknown reason；原 anomalies 保留。extent/margin unresolved、不可分离、代表帧不足、source/engine/range/method不匹配仍 fail closed。
+
+proof 自身 `authority=none / eligible=false`；合法 store publication 得到 reviewed canonical source revision，不授 ShapeCoverAdmission、queue 或输出 authority，不声称 REAL_PIXEL_ZERO_MISS、SAFE/NATURAL。M2-H 不接入 M3 consumer；该 consumer 继续只接受旧 source-mask-only-v1。实际支持的 runtime 与本轮验证记录见 [Stationary Record](shape-matched-cover-stationary-record.md)。
+
 # Source Identity And Temporal Coverage
 
 **REQ-03 — Exact source identity.** 复用键 MUST 包含源文件 SHA-256、字节数、解码后方向/尺寸与时间基准解释版本。读取候选后、送入制作前使用现有素材指纹机制校验实际文件；路径、文件名、project/media ID、时长相同均不足以命中。路径只由本地素材 owner 管理，不发送给模型。

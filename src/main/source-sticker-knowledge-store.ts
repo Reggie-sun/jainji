@@ -4,9 +4,9 @@ import { lstat, mkdir, open, readdir, realpath, rename, rm, stat, unlink } from 
 import path from "node:path";
 import { z } from "zod";
 import {
-  KnowledgeCandidateSchema, KnowledgeDisputeSchema, KnowledgePublicationProofSchema, KnowledgeRevisionProofSchema, SourceMaskAdmissionProofSchema, ReviewedRangeSchema,
+  KnowledgeCandidateSchema, KnowledgeDisputeSchema, KnowledgePublicationProofSchema, KnowledgeRevisionProofSchema, SourceMaskAdmissionProofSchema, ConfirmedTargetStaticProofSchema, ReviewedRangeSchema,
   SourceIdentitySchema, coversRanges, sourceGeometryChanged, type KnowledgeCandidate, type KnowledgeDispute, type KnowledgeEvidence,
-  type KnowledgePublicationProof, type SourceMaskAdmissionProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
+  type KnowledgePublicationProof, type SourceMaskAdmissionProof, type ConfirmedTargetStaticProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
 } from "../shared/source-sticker-knowledge.js";
 import { fingerprintFile, type FingerprintReadOptions } from "./paths.js";
 import { KnowledgeOutcomeSchema, type KnowledgeOutcome } from "../shared/source-sticker-knowledge-audit.js";
@@ -105,7 +105,7 @@ async function atomicJson(file: string, value: unknown, beforeCommit?: () => voi
   renameSync(temporary, file);
   await syncDirectory(path.dirname(file));
 }
-function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublicationProof | SourceMaskAdmissionProof): void {
+async function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublicationProof | SourceMaskAdmissionProof | ConfirmedTargetStaticProof, blobs: ReadonlyMap<string, Buffer> = new Map()): Promise<void> {
   for (const target of candidate.facts.targets) for (const segment of target.segments) if (segment.mask) {
     const mask = segment.mask, pixels = mask.bbox.width * mask.bbox.height;
     const packed = Buffer.from(mask.dataBase64, "base64");
@@ -121,6 +121,12 @@ function checkProof(candidate: KnowledgeCandidate, proof: KnowledgePublicationPr
   if (proof.sourceEvidenceIds.some((id) => !sourceIds.has(id)) || candidate.facts.observations.some((o) => !proof.sourceEvidenceIds.includes(o.evidenceId))) throw new KnowledgeStoreError("integrity", "Unreviewed source observations");
   const factEvidence = [...candidate.changes, ...candidate.facts.exclusions, ...candidate.facts.targets.flatMap((t) => t.segments)].flatMap((item) => item.evidenceIds);
   if (factEvidence.some((id) => !proof.sourceEvidenceIds.includes(id))) throw new KnowledgeStoreError("integrity", "Unreviewed fact correction/geometry evidence");
+  if ("mode" in proof && proof.mode === "confirmed-target-static-v1") {
+    // Load only this variant: legacy discovery/AI contracts already depend on the store.
+    const { checkConfirmedStaticProof } = await import("./source-mask-static-proof.js");
+    checkConfirmedStaticProof(candidate, proof, blobs); return;
+  }
+  if (candidate.evidence.some(e => e.kind === "confirmed-target-proof")) throw new KnowledgeStoreError("integrity", "Confirmed-target artifacts require their versioned proof");
   if ("mode" in proof) {
     const segments = candidate.facts.targets.flatMap(target => target.segments);
     const segment = segments[0], mask = segment?.mask;
@@ -284,18 +290,20 @@ export class SourceStickerKnowledgeStore {
       const record = EventSchema.parse(parseJson(bytes));
       if (digest(bytes) !== entry.digest) throw new KnowledgeStoreError("integrity", "Record digest mismatch");
       const evidence = record.type === "revision" ? record.candidate.evidence : record.dispute.evidence;
+      const proofBlobs = new Map<string, Buffer>();
       await directorySafe(path.join(eventDirectory, "evidence"));
       for (const frame of evidence) {
         const blob = await readSafe(path.join(eventDirectory, "evidence", frame.digest), 8 * 1024 * 1024);
         if (blob.length !== frame.byteLength || digest(blob) !== frame.digest) throw new KnowledgeStoreError("integrity", "Evidence digest mismatch");
+        if (record.type === "revision" && "mode" in record.proof && record.proof.mode === "confirmed-target-static-v1") proofBlobs.set(frame.digest, blob);
         if (includeHeadEvidence && record.type === "revision" && record.candidate.id === manifest.currentRevisionId) headBlobs.set(frame.digest, blob);
       }
       if (record.type === "revision") {
-        const candidate = record.candidate; checkProof(candidate, record.proof);
+        const candidate = record.candidate; await checkProof(candidate, record.proof, proofBlobs);
         if (sourceKey(candidate.source) !== sourceKey(source) || candidate.baseRevisionId !== head || revisions.has(candidate.id)) throw new KnowledgeStoreError("integrity", "Broken revision ancestry");
         this.checkResolution(candidate, disputes, revisions.get(head ?? ""));
         for (const id of candidate.resolvedDisputeIds) disputes.delete(id);
-        revisions.set(candidate.id, { id: candidate.id, sourceKey: sourceKey(source), state: "reviewed", verification: "mode" in record.proof ? "source-mask-only" : "sampled", factsDigest: factsDigest(candidate.facts), candidate, proof: record.proof }); head = candidate.id;
+        revisions.set(candidate.id, { id: candidate.id, sourceKey: sourceKey(source), state: "reviewed", verification: "mode" in record.proof ? record.proof.mode === "confirmed-target-static-v1" ? "confirmed-target-static" : "source-mask-only" : "sampled", factsDigest: factsDigest(candidate.facts), candidate, proof: record.proof }); head = candidate.id;
       } else {
         if (sourceKey(record.source) !== sourceKey(source) || disputes.has(record.dispute.id)) throw new KnowledgeStoreError("integrity");
         this.checkDispute(source, record.dispute, revisions);
@@ -395,8 +403,17 @@ export class SourceStickerKnowledgeStore {
     const candidate = KnowledgeCandidateSchema.parse(input), proof = SourceMaskAdmissionProofSchema.parse(proofInput);
     return this.publishRevision(token, candidate, proof, inputBlobs);
   }
-  private async publishRevision(token: KnowledgeRun, candidate: KnowledgeCandidate, proof: KnowledgePublicationProof | SourceMaskAdmissionProof, inputBlobs: ReadonlyMap<string, Buffer>): Promise<KnowledgeRevision> {
-    checkProof(candidate, proof); const blobs = checkBlobs(candidate.evidence, inputBlobs);
+  /** New target-only publication; serialized proof cannot create a new canonical revision. */
+  async publishConfirmedStaticTargets(token: KnowledgeRun, input: KnowledgeCandidate, proofInput: ConfirmedTargetStaticProof, inputBlobs: ReadonlyMap<string, Buffer>): Promise<KnowledgeRevision> {
+    const { authorizeConfirmedStaticProof } = await import("./source-mask-static-proof.js");
+    const authorization = authorizeConfirmedStaticProof(input, proofInput, inputBlobs);
+    const candidate = KnowledgeCandidateSchema.parse(input), proof = ConfirmedTargetStaticProofSchema.parse(proofInput);
+    await authorization.verify();
+    return this.publishRevision(token, candidate, proof, inputBlobs, authorization);
+  }
+  private async publishRevision(token: KnowledgeRun, candidate: KnowledgeCandidate, proof: KnowledgePublicationProof | SourceMaskAdmissionProof | ConfirmedTargetStaticProof,
+    inputBlobs: ReadonlyMap<string, Buffer>, authorization?: { verify: () => Promise<void>; check: () => void }): Promise<KnowledgeRevision> {
+    const blobs = checkBlobs(candidate.evidence, inputBlobs); await checkProof(candidate, proof, blobs);
     return this.exclusive(async () => {
       const run = this.run(token);
       if (candidate.runId !== token.id || sourceKey(candidate.source) !== sourceKey(run.source)) throw new KnowledgeStoreError("conflict", "Candidate run/source mismatch");
@@ -408,7 +425,8 @@ export class SourceStickerKnowledgeStore {
       }
       if (run.publication || candidate.baseRevisionId !== (loaded?.manifest.currentRevisionId ?? null)) throw new KnowledgeStoreError("conflict");
       this.checkResolution(candidate, loaded?.disputes ?? new Map(), loaded?.revisions.get(candidate.baseRevisionId ?? ""));
-      await this.append(run.source, { schemaVersion: 1, type: "revision", candidate, proof }, blobs, loaded, () => this.run(token));
+      await authorization?.verify(); authorization?.check();
+      await this.append(run.source, { schemaVersion: 1, type: "revision", candidate, proof }, blobs, loaded, () => { this.run(token); authorization?.check(); });
       run.publication = candidate.id;
       return (await this.load(run.source))!.revisions.get(candidate.id)!;
     });

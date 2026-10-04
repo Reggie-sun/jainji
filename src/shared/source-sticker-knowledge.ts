@@ -54,7 +54,12 @@ const SourceMaskReviewArtifactSchema = z.object({
   id: Id, kind: z.literal("source-mask-review"), artifact: z.enum(["probe-report", "contact-sheet", "review-receipt"]),
   digest: Digest, byteLength: z.number().int().positive().max(8 * 1024 * 1024),
 }).strict();
-export const KnowledgeEvidenceSchema = z.discriminatedUnion("kind", [SourceFrameEvidenceSchema, PreviewFrameEvidenceSchema, SourceMaskReviewArtifactSchema]);
+export const ConfirmedTargetProofArtifactSchema = z.object({
+  id: Id, kind: z.literal("confirmed-target-proof"), version: z.literal(1),
+  artifact: z.enum(["target-confirmation", "mask-extraction", "full-range-geometry", "engineering-method"]),
+  digest: Digest, byteLength: z.number().int().positive().max(8 * 1024 * 1024),
+}).strict();
+export const KnowledgeEvidenceSchema = z.discriminatedUnion("kind", [SourceFrameEvidenceSchema, PreviewFrameEvidenceSchema, SourceMaskReviewArtifactSchema, ConfirmedTargetProofArtifactSchema]);
 export const SourcePixelMaskSchema = z.object({
   kind: z.literal("static-binary-v1"),
   bbox: z.object({ x: Ms, y: Ms, width: z.number().int().positive().max(512), height: z.number().int().positive().max(512) }).strict(),
@@ -96,7 +101,7 @@ export const KnowledgeCandidateSchema = z.object({
   const refsValid = (ids: string[]) => ids.every((id) => originals.has(id));
   if (new Set(evidence.map((e) => e.id)).size !== evidence.length || new Set(facts.targets.map((t) => t.id)).size !== facts.targets.length) issue("Duplicate evidence or target identity");
   if (!coversRanges(facts.reviewedRanges, candidate.requiredRanges) || [...facts.reviewedRanges, ...candidate.requiredRanges].some((r) => r.endMs > source.durationMs)) issue("Invalid or insufficient reviewed ranges");
-  if (!originals.size || evidence.some((e) => e.kind !== "source-mask-review" && e.timeMs >= source.durationMs)) issue("Missing original evidence or invalid source time");
+  if (!originals.size || evidence.some((e) => (e.kind === "source" || e.kind === "preview") && e.timeMs >= source.durationMs)) issue("Missing original evidence or invalid source time");
   const [numerator, denominator] = source.timeBase.split("/").map(Number);
   for (const frame of originals.values()) {
     const expectedMs = (frame.pts - source.timeOriginPts) * numerator / denominator * 1000;
@@ -174,7 +179,39 @@ export const SourceMaskAdmissionProofSchema = z.object({
   probeSha256: Digest, contactSheetSha256: Digest, reviewReceiptSha256: Digest,
   reviewedFrameRange: z.object({ start: Ms, endExclusive: Ms }).strict().refine(value => value.endExclusive > value.start),
 }).strict();
-export const KnowledgeRevisionProofSchema = z.union([KnowledgePublicationProofSchema, SourceMaskAdmissionProofSchema]);
+const StaticProofBox = z.object({ x: Ms, y: Ms, width: z.number().int().positive().max(512), height: z.number().int().positive().max(512) }).strict();
+const StaticProofRange = z.object({ startFrame: Ms, endFrame: Ms }).strict().refine(v => v.endFrame > v.startFrame);
+export const ConfirmedTargetStaticProofSchema = z.object({
+  mode: z.literal("confirmed-target-static-v1"), authority: z.literal("none"), eligible: z.literal(false),
+  candidateId: Id, runId: Id, sourceKey: Digest, factsDigest: Digest, confirmedSetDigest: Digest,
+  sourceEvidenceIds: z.array(Id).min(2).max(512), methodArtifactDigest: Digest,
+  targets: z.array(z.object({
+    targetId: Id, segmentId: Id, range: StaticProofRange,
+    confirmation: z.object({ method: z.literal("confirmed-static-target-development/v2"), confirmationDigest: Digest,
+      discoveryDigest: Digest, resultDigest: Digest, confirmedCandidateIds: z.array(Digest).min(1).max(128),
+      confirmedComponentDigests: z.array(Digest).min(1).max(128), confirmedSourceBoxes: z.array(StaticProofBox).min(1).max(128), targetEnvelopeBox: StaticProofBox }).strict(),
+    mask: z.object({ method: z.literal("cpu-static-conservative-mask-development/v2"), configDigest: Digest, maskSha256: Digest }).strict(),
+    geometry: z.object({ method: z.literal("cpu-static-geometry/v1"), geometryDigest: Digest, configDigest: Digest,
+      referenceDigest: Digest, frameMetricsDigest: Digest, evidenceDigest: Digest, bindingDigest: Digest, clockDigest: Digest,
+      frameCount: z.number().int().positive().max(20000), firstPts: z.number().int().safe(), lastPts: z.number().int().safe(), endPts: z.number().int().safe() }).strict(),
+    sourceEvidenceIds: z.tuple([Id, Id]),
+    artifacts: z.object({ confirmation: Digest, extraction: Digest, geometry: Digest }).strict(),
+  }).strict()).min(1).max(MAX_AUTOMATIC_COVER_TRACKS),
+}).strict().superRefine((proof, ctx) => {
+  const issue = (message: string) => ctx.addIssue({ code: "custom", message });
+  const keys = proof.targets.map(t => `${t.targetId}:${t.range.startFrame.toString().padStart(8, "0")}:${t.segmentId}`);
+  if (new Set(proof.targets.map(t => t.segmentId)).size !== proof.targets.length || keys.some((k, i) => i > 0 && k <= keys[i - 1])) issue("Duplicate or noncanonical confirmed set");
+  if (new Set(proof.sourceEvidenceIds).size !== proof.sourceEvidenceIds.length) issue("Duplicate source evidence");
+  for (const t of proof.targets) {
+    const c = t.confirmation, ids = c.confirmedCandidateIds;
+    if (ids.length !== c.confirmedComponentDigests.length || ids.length !== c.confirmedSourceBoxes.length
+      || ids.some((id, i) => i > 0 && id <= ids[i - 1])) issue("Invalid canonical component bindings");
+    if (t.geometry.frameCount !== t.range.endFrame - t.range.startFrame || t.geometry.firstPts > t.geometry.lastPts
+      || t.geometry.endPts <= t.geometry.lastPts) issue("Invalid full-range geometry clock");
+  }
+});
+export type ConfirmedTargetStaticProof = z.infer<typeof ConfirmedTargetStaticProofSchema>;
+export const KnowledgeRevisionProofSchema = z.union([KnowledgePublicationProofSchema, SourceMaskAdmissionProofSchema, ConfirmedTargetStaticProofSchema]);
 export const KnowledgeDisputeSchema = z.object({
   schemaVersion: z.literal(KNOWLEDGE_SCHEMA_VERSION), id: Id, revisionId: Id, ranges: Ranges,
   kind: z.enum(["missing_target", "incomplete_boundary", "wrong_semantics", "duplicate_identity", "uncertain_presence"]),
@@ -252,8 +289,8 @@ export interface KnowledgeRevision {
   id: string;
   sourceKey: string;
   state: "reviewed" | "disputed" | "superseded";
-  verification: "sampled" | "source-mask-only";
+  verification: "sampled" | "source-mask-only" | "confirmed-target-static";
   factsDigest: string;
   candidate: KnowledgeCandidate;
-  proof: KnowledgePublicationProof | SourceMaskAdmissionProof;
+  proof: KnowledgePublicationProof | SourceMaskAdmissionProof | ConfirmedTargetStaticProof;
 }

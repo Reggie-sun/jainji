@@ -1,5 +1,35 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-H Versioned Confirmed-Target Static Proof — 2026-10-04
+
+### Source Audit and Geometry Ownership
+
+起点 HEAD `f3a28b11a2aa04d83a5c1cbc06012ef7fb65f02a`；以实际源码确认旧 proof/schema/store/consumer 的限制，见 [M2-H plan](shape-matched-cover-m2h-plan.md)。原 M2-C 只有 Python diagnostic，没有 application-owned geometry evidence。新增 `source-mask-static-geometry.ts` 的 live WeakMap owner 与受控 worker，复用原 M2-C v2 kernel/config，未改变数学、阈值、mask/detector/dilation。caller 不传 geometry JSON；owner自行验证 exact target/evidence/candidate、source/range/clock/逐帧ROI SHA、engine/method/runtime freshness、取消与原300秒预算。ownership 内部对象冻结，durable append 前另有同步 generation fence。缺Linux/Python/指定NumPy/OpenCV/runtime/source files时fail closed，不承诺Windows或安装包能力。
+
+在创建 proof schema 前，真实233s完整6990帧对旧 M2-C 作equivalence：容差1e-12，532681个数值比较全部差0，reference及每帧 offsets/correlations/peak-gap/loss/energy/local fits、issue frames/ranges与summary完全一致，geometry issues0。证据 R/geometry-equivalence.json；R=`~/.local/state/jianji-source-fact-qualification/m2h-20261004`。原算法脚本精确SHA固定；新worker/owner源码与Python executable generation/fingerprint绑定，不把status字符串当authority。
+
+### Canonical Durable Contract
+
+新增 mode `confirmed-target-static-v1`、verification `confirmed-target-static`，顶层KNOWLEDGE_SCHEMA_VERSION保持1，旧sampled/source-mask-only-v1的checkProof branch和receipt语义保留。新issuer先freeze显式confirmed集合C，results与facts的全部target/segment精确一一对应，reject omitted/extra/duplicate。confirmation v2的candidate IDs、component digests、sourceBoxes与digest完全保留，envelope只是ROI/geometry metadata；不新增membership推断。
+
+proof绑定source/run/facts/C digest、逐target range/confirmation、mask bitset/SHA/config、owned geometry/config/reference/metrics/frame-binding/clock/PTS以及固定版本method support。旧M2-G engineering digest只作固定method support，不读取任意final-receipt JSON。四类bounded artifact与首尾original PNG由既有store保存字节/核digest；不保存6990张原图、RGBA spool或完整metrics。proof自身authority=none/eligible=false；只有valid KnowledgeRun和 `publishConfirmedStaticTargets` 的既有append/source/base/dispute owner可建立reviewed canonical source revision。reload严格验证archived bytes/schema/digests，JSON clone不恢复live publication ownership。
+
+`FULL_RANGE_STATIC_CONTRADICTION`只在exact extractor v2/config、唯一reason、owned geometry supported时解释为历史RGB信号，原candidate INCOMPLETE及全部anomalies原样保存。明确switch拒绝TARGET_NOT_SEPARABLE、STABLE_COMPONENT_EXTENT_UNRESOLVED、CONSERVATIVE_MARGIN_EXTENT_UNRESOLVED、INSUFFICIENT_ORIGINAL_REPRESENTATIVES及所有unknown reasons；source/engine/range/config/method/clock错配、geometry issue仍hard fail。
+
+### Real Evidence and Verification
+
+首轮private roundtrip R/real-proof-v1及v2通过；最终store初始化修复后另建R/real-proof-v3，所有旧证据保留。真实单logical target/单candidate，完整[0,6990)，mask3395px/bbox628/1/81/59/SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893`；旧133 RGB anomalies不删除。full-range geometry支持结果与原M2-C逐项复核；issued proof、candidate、revision、close/reopen readHead及artifact bytes均在新的private knowledge root中，不写用户正式production目录。
+
+本轮新controlled测试覆盖single/group/multiple confirmed targets、exact set/segment completeness、全部binding篡改、clone/ownership、RGB signal有/无owned geometry、hard/unknown reason、geometry issue、cancel-before-manifest、base conflict、dispute与reload/corruption。最初受控texture fixture受边界背景干扰确实被拒绝，保留失败；改为有中性边框的静态随机纹理构造，没有改算法/阈值。取消期间evidence已写后，旧store的pending transaction仍阻断读取/重启复用，不清marker或盲重试。旧sampled/source-mask-only-v1及activation相关回归一并运行。最终typecheck、registered tests、owned Harness、AOCI Maintain/Verify/Check/Guide与exact snapshot结果保存在R；foreign改动/全局阻断分开，不修foreign文件或增timeout。
+
+首次完整相关调用224 assertions通过，但两个旧auto-contour suites在collection阶段因新store顶层proof import引出的freezeAI cycle失败，不能把该调用报成PASS。store改为只在新variant分支动态加载owner，26项旧auto-contour regression随后通过，再按最终scope运行完整必需检查。AOCI官方完整3项批次更新owned geometry/proof/store（schema当前Entry已表达新variant并与源码对齐），remaining0；官方Verify/Check治理aligned、Guide complete=true/next_action=none。混合foreign索引/基线不随业务commit提交；最终若其他session再次产生drift，单列真实末检结果。本次Overview输出遭host截断，停止认知链，不宣称当前完整系统认知可靠。
+
+### Scope and Stop Barrier
+
+CodeGraph确认新publisher复用原publishRevision，issuer调用原mask/evidence与owned geometry owner；同名set/at的跨模块假边由实际Map/array receiver排除。Native Codex唯一writer，explicit modelRequests=0优先，未调用模型/子代理；Parent审查权限、freshness、历史schema、发布/取消/争议与最终diff。无repository dedicated session-capture skill，本节主动记录stable checkpoint，不更新外部memory。
+
+M2-H仅建立内部confirmed-target durable contract；不声明未知目标不存在、REAL_PIXEL_ZERO_MISS、PRODUCTION_SAFE或SAFE/NATURAL。M3 consumer源码保持只认旧source-mask-only-v1，新增实际测试确认新revision被它拒绝。M3仍BLOCKED、PRODUCT_DISABLED、guard unchanged；不进入matching/placement/replacement/output coverage/production，modelRequests=0。下一唯一slice：M3 confirmed-target consumer contract。
+
 ## M2-G Explicit Multi-Component Confirmation — 2026-10-04
 
 依据 [M2-G plan](shape-matched-cover-m2g-plan.md) 与本轮用户约束，先复现再修改。开始 HEAD `6c7cfafd35c248f4b77b8502f7d9efde19aa1d63`，指定基线 `6ec48437` 之后两项提交仅为千川。保留其 dirty/staged 工作、共享AOCI及未跟踪文件；不创建worktree、不修改 forbidden product owners。explicit modelRequests=0 优先于通常委派路线，没有 Kimi/native/视觉模型请求。Native Codex 唯一 writer；CodeGraph核对 confirmation 的 discovery/evidence 调用，错误的同名 `set` 关系仍由实际 WeakMap receiver 裁决。
