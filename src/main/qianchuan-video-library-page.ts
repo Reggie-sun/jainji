@@ -74,7 +74,7 @@ export class QianchuanVideoLibraryPage {
     } finally { this.page.off("request", capture); this.page.off("framenavigated", committed); }
   }
   private async preparePage(): Promise<LibrarySnapshot> {
-    const before = await this.read();
+    await this.read();
     const size = this.page.locator(".ovui-page-select .ovui-select__input:visible");
     if (await size.count() === 1) {
       const value = await size.evaluate(node => node instanceof HTMLInputElement ? node.value : node.querySelector("input")?.value);
@@ -84,12 +84,16 @@ export class QianchuanVideoLibraryPage {
         await fifty.waitFor({ state: "visible", timeout: 10000 });
         if (await fifty.count() !== 1) throw changed();
         await fifty.click({ timeout: 30000 });
+        await this.page.waitForFunction(() => {
+          const visible = (node: Element) => !!node.getClientRects().length;
+          const tables = Array.from(document.querySelectorAll("table.ovui-table")).filter(visible);
+          const totals = Array.from(document.querySelectorAll(".ovui-page-total")).filter(visible);
+          const match = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].textContent?.trim() ?? "") : null;
+          return tables.length === 1 && !!match &&
+            tables[0].querySelectorAll('tbody input[type="checkbox"]').length === Math.min(Number(match[1]), 50);
+        }, null, { timeout: 30000 });
+        this.check();
       }
-      await this.page.waitForFunction(expected => {
-        const tables = Array.from(document.querySelectorAll("table.ovui-table")).filter(node => !!node.getClientRects().length);
-        return tables.length === 1 && tables[0].querySelectorAll('tbody input[type="checkbox"]').length === expected;
-      }, Math.min(before.total, 50), { timeout: 30000 });
-      this.check();
     }
     return this.read();
   }

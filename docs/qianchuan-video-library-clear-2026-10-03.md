@@ -1,14 +1,14 @@
-# Qianchuan Video Library Implementation And Live Blocker
+# Qianchuan Video Library Implementation And Live Completion
 
 ## Status And Authorization
 
-用户选择实现功能并实际清空各保存 Chrome 自己绑定的广告账户，随后明确已暂停新增上传，并要求继续删除和复用同一个视频库页。六账户真实清空**未完成**。2026-10-04 已核验首批 50 条；第二批确认后缺少 verified，当前只读完整库存为 1674 条，原 pending 保留。下方 2026-10-03 内容为历史证据，最新状态见 Recovery Update。
+用户选择实现功能并实际清空各保存 Chrome 自己绑定的广告账户，随后明确已暂停新增上传，并要求继续删除、复用同一个视频库页、无需备份及不再重复验证。2026-10-04 15:25:46 UTC，六个账户均已由软件 canonical service 返回 CLEARED。清空终态仅消费本次当前 UI 的零库存观察，不再重载或巡检；不是历史逐 ID 审计链的完整证明。下方 incident/recovery 为历史记录，最新结果见 Final Live Results。
 
 ## Product Change
 
-入口位于作品页的千川账号设置，支持单账号与全部已配置账号清空；确认区列出名称与 advertiserId。主进程复用账号编辑锁、浏览器绑定及制作/导出/上传准入；优先复用原 Chrome 已有、精确匹配该账号的视频库标签，无匹配才创建一个。保存映射与原上传账本不变。
+入口位于作品页的千川账号设置；视频库清理顶部提供主按钮“并行清空全部账号（配置数量）”，下方保留单账号按钮。确认区列出名称与 advertiserId，并行选择使用“确认并行清空”。主进程在原 service 以 Promise.all 同时处理最多六个独立账号，复用账号编辑锁、浏览器绑定及制作/导出/上传准入；优先复用原 Chrome 已有、精确匹配该账号的视频库标签，无匹配才创建一个。保存映射与原上传账本不变。
 
-页面核对固定 origin/route、唯一 aavid、可见账户 ID、无筛选列表、行 ID 和精确删除弹窗。每批确认前 fsync 私有意图，确认后核对精确数量递减与所选 ID 消失，清空终态需独立刷新。确认后异常保留持久屏障，重启不会重放。取消、超时和连接排空沿原服务控制；不关闭原 Chrome 或原上传标签。
+页面保持固定 origin/route、唯一 aavid、可见账户 ID、无筛选列表、主文档绑定和原素材库删除警告。首次确认前持久化账户 pending；通过原 UI 连续选当前页、单次确认，等待旧批次释放选择栏后消费自动更新，不逐批 reload、全库分页、逐 ID 备份或重复空库验证。当前 UI 零库存写 observationMode=current_ui 的 completed 后清 pending；历史审计保留，异常停止，新显式清空仅处理新读的当前列表，不重放旧确认。取消、超时和连接排空沿原服务控制；不关闭原 Chrome 或原上传标签。
 
 ## Engineering Evidence
 
@@ -35,9 +35,9 @@
 
 本次调用前后上传账本 SHA-256 均为 `4084d8de4cdae66773b498c33ad7fa08e268ce28dfec2eb34dc3ddaa474bd3bb`，账号映射均为 `2dd88ee2c5759ffbfdf400465db35c5fb69a79648bf699c715e71685e4234955`。只读观察期间原标签保留；最终保留核对以本次点击前实际捕获的标签 ID 和稳定路由身份为准，不能将早期历史标签快照混作当前证据。
 
-## Remaining Work And Limits
+## Historical Remaining Work And Limits
 
-首个账号真实检查点失败后暂停其余账号的破坏性操作；不得清除 pending、重放已持久意图或将后来数量观察转换成既有完成记录。后续需要处理该未知批次的恢复决策，并补充软件对实际平台核验失败的可诊断性及相关验证，再重新评估真实清空准入。
+这是 2026-10-03 的停止状态，已由下方当前列表 owner 与用户最新授权替代：首个账号真实检查点失败后暂停其余账号的破坏性操作，不得重放已持久意图或将后来数量观察转换成既有完成记录。
 
 本轮证明 Linux 工程与部分真实平台行为；没有证明六账户空库终态、Windows 实机资格、安装包交付或广告/上传发布成功。工程 PASS 与独立复审不覆盖本次真实阻断。
 
@@ -72,3 +72,24 @@
 Latest AOCI Maintain 返回本轮三个 indexed 对象与其他会话正在修改的九个 shape 对象合并批次；不截取批次、不写正在变化的外部 owner，暂存为真实并发维护阻断。当前三个对象的最新 Entry 尚未维护；按用户“不再验证”要求不追加 Verify/Check/Guide、测试或复审。历史已对齐及 435 PASS 不声称覆盖最新简化字节。
 
 Current checkbox event uses the unique input.click rather than label.click, because actual label activation may show checked without a populated selected bar. Matching accepts the observed trailing whitespace in `bar-num`. 平台旧批处理会异步清除选择栏；确认后等待其释放再进入下一批，避免旧回调抹掉新选择。15:09 UTC 第一账号原页已降至 903 条。全部入口由原 service 以 Promise.all 并发独立账号，共享账号编辑锁/生产互斥/stop 排空保持到全部结束；测试 fixture 已补未运行。
+
+## Final Live Results 2026-10-04
+
+15:20:18 UTC，原软件全部入口结束：氨糖膏、一根金、晚安油、肥皂、热敷贴均返回 CLEARED；蝴蝶贴最后一次 snapshot 为 60 条，但平台继续异步移除至 21 条，旧 preparePage 冻结等待 50 行而超时。软件持久修复为仅实际改变每页数量时等待，等待所依据的总数取当前 DOM；已经 50 条/页的最后一页不再等旧总数。新增对应 Chromium fixture，依用户要求未运行。
+
+随后仅对蝴蝶贴调用同一公开 preload API；开始时旧批处理已继续下降，软件结果观察净减少 10 条，15:25:46 UTC 返回 CLEARED。没有重新执行或巡视另外五个已空账户，没有复制视频或关闭 Chrome。真实结果文件分别为 `.agent/harness/runs/qianchuan-video-library-20261002/all-direct-result.json` 与 `direct-result-0.json`。
+
+| Saved Slot / Display Name | Advertiser ID | Final Software Result |
+| --- | --- | --- |
+| 蝴蝶贴 | 1876024170199244 | CLEARED，当前 UI 0 条 |
+| 氨糖膏 | 1876036793517065 | CLEARED，当前 UI 0 条 |
+| 滴耳康 / 一根金 | 1876131703522649 | CLEARED，当前 UI 0 条 |
+| 眼贴 / 晚安油 | 1876294500004864 | CLEARED，当前 UI 0 条 |
+| 肥皂 | 1876414814643802 | CLEARED，当前 UI 0 条 |
+| 热敷贴 | 1876956000684231 | CLEARED，当前 UI 0 条 |
+
+两次 canonical 操作的上传账本 SHA-256 前后均为 `4084d8de4cdae66773b498c33ad7fa08e268ce28dfec2eb34dc3ddaa474bd3bb`，映射前后均为 `2dd88ee2c5759ffbfdf400465db35c5fb69a79648bf699c715e71685e4234955`。数量是当时 UI 观察，不将最初 8446 总数、部分异步变化或 deletedCount 拼成精确逐 ID 删除证明。
+
+当前软件包含前端并行主按钮、原 service 并发及页面时序持久修复；`7b90d54a875a7edc991aaf5fc2eafab2cede2bac` 已提交并发 owner，最后页面及显式前端入口另作最终提交。按用户要求没有在当前简化字节上重复测试、typecheck、Harness 或 review；旧 435 PASS 只属于旧快照。真实清空是上述产品调用的当前 UI 结果，Windows、安装包及新回归 fixture 未评估。
+
+早前 AOCI 混合批次阻断已解除：最终 Maintain 仅签发本轮 service/page/renderer 三个候选，完整原子提交 applied=3、remaining=0、finding_count=0、aligned=true；engine 已为当前 Entry。没有截取旧混合批次或写其他会话业务文件。共享正式索引及 baseline 保留其他会话的维护，不整文件提交；依用户要求没有追加 Verify/Check/Guide，不声称完整治理证明。

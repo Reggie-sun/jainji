@@ -81,3 +81,7 @@ Current UI timing refinement: 真实批次移除期间选择计数会动态变�
 ## Independent Account Concurrency
 
 为落实用户“越快越好”，全部清空在原 DouyinUploadService.clearVideoLibraries owner 内并发处理最多六个显式选定的独立账号；替代此前串行顺序，不新增 worker、queue 或 lifecycle。一个共享 managingBrowser/edit lock/generation/AbortSignal 持续到所有账号结束，各账号仍各有 operation lock/pending、精确保存 profile 与 advertiser、原标签复用和 30 分钟预算；逐账号失败隔离，Promise.all 保留请求顺序及 stop 排空。CodeGraph 核对 registerHandlers→clearVideoLibraries 与原 guard/changed；generic connect 边按当前 callback 实际解析为账号 browser resolver，不误作上传 connect。Target files 与其他会话不相交；添加并发 fixture 但依用户要求不运行。Self-review：仅已确认账号在原授权内并发，不扩张目标或改上传账本。
+
+## Last Page Readiness And Explicit Parallel Button
+
+真实尾页在 read 后从 60 条继续降至 21 条，旧分页准备仍等冻结的 50 行而停止；只在确实切换 50 条/页时等待，行数条件消费当时 DOM 总数，已有 50 条/页直接读取当前列表。依用户明确要求，在原视频库清理顶部显示“并行清空全部账号（配置数量）”主按钮，确认区列账号并使用“确认并行清空”，下方保留单账号入口。原 preload/service 已支持并发，无第二 owner。Self-review：只消除冻结数量等待与入口歧义，授权、目标、取消和原上传边界不变；不追加重复测试或巡检。

@@ -64,6 +64,26 @@ it("waits for a delayed page-size option before requiring its uniqueness", async
     expect(f.confirmations()).toBe(0);
   } finally { await f.context.close(); }
 });
+it("continues a shrinking last page without waiting for an earlier total when page size is already 50", async () => {
+  const f = await fixture({ count: 60, delayedSize: true });
+  try {
+    await f.session.open();
+    await f.session.deleteBatch(await f.session.read(), async () => {});
+    const read = f.session.read.bind(f.session);
+    vi.spyOn(f.session, "read").mockImplementationOnce(async () => {
+      const before = await read();
+      await f.page.evaluate(() => {
+        document.querySelector(".ovui-page-total")!.textContent = "共 21 条记录";
+        document.querySelector("tbody")!.innerHTML = Array.from({ length: 21 }, (_, i) =>
+          `<tr><td><input type="checkbox"></td><td>ID：${7020 + i}</td></tr>`).join("");
+      });
+      return before;
+    });
+    const next = await f.session.refresh();
+    expect(next.total).toBe(21); expect(next.ids).toHaveLength(21);
+    expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
 it("does not accept a loading empty table before the bound unfiltered list response and rows arrive", async () => {
   const context = await browser.newContext(), page = await context.newPage();
   await page.route("https://qianchuan.jinritemai.com/**", async route => {
