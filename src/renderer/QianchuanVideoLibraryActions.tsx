@@ -28,12 +28,12 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
     {selected && <div role="group" aria-label="确认清空视频库">
       <p>将永久删除以下账户素材库中的全部视频：</p>
       {selected.map(account => <p key={account.product}>{qianchuanProductName(account.product, accounts)} · 账户 {account.advertiserId}</p>)}
-      <p>已使用视频的在投创意和计划不受影响。本地视频和原上传记录保留。删除结果不明时停止，不自动重试。</p>
+      <p>已使用视频的在投创意和计划不受影响。本地视频和原上传记录保留，不备份视频。</p>
       <button className="button secondary compact" type="button" disabled={disabled} onClick={() => void clear()}>确认删除全部视频</button>
       <button className="button secondary compact" type="button" disabled={disabled} onClick={() => setSelected(undefined)}>取消清空</button>
     </div>}
-    {running && <p role="status">正在按账户清空视频库，请保持 Chrome 打开，勿同时操作视频库。每批删除后会重新核对。</p>}
+    {running && <p role="status">正在按账户清空视频库，请保持 Chrome 打开。</p>}
     {error && <p role="alert">{error}</p>}
-    {results.map(result => <p key={result.product} role={result.state === "BLOCKED" ? "alert" : "status"}>{qianchuanProductName(result.product, accounts)} · 账户 {result.advertiserId} · 已核验删除 {result.deletedCount} 条 · {result.message}</p>)}
+    {results.map(result => <p key={result.product} role={result.state === "BLOCKED" ? "alert" : "status"}>{qianchuanProductName(result.product, accounts)} · 账户 {result.advertiserId} · {result.message}</p>)}
   </div>;
 }

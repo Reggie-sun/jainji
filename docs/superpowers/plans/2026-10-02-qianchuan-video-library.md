@@ -67,3 +67,11 @@
 ## Actual Selection and Settled Chain Recovery
 
 真实 Chrome 的 page-layout-menu-fixed 覆盖表格 checkbox，坐标点击被侧栏拦截。已唯一核对的表头 label 与删除按钮使用 DOM click 触发原 UI；删除 modal 的账户、数量、警告与意图持久化边界不变。若所有历史 intent 已 verified，但下一批选择在新 intent 前失败，解析完整连续链后只核对当前首页与末个 verified.after 一致，从新 batch 接续，不再全库分页。唯一末批未知仍沿原只读恢复，不重放确认。Parent self-review 根据真实原页拦截日志及两批完整审计裁决，不追加测试/复审。
+
+## Fast Sequential Deletion Delta
+
+用户要求删除优先、无需备份、越快越好。正常删除捕获该 modal 确认后由原 UI 自动发出的同账号无筛选第一页成功响应；Document 不变且 total 精确减少后，下一批直接消费该响应与 DOM 更新，不主动整页 reload。清空只消费最后零结果一次。历史唯一未知末批在启动时以当前第一页与精确数量减少接续，不全库分页；记录明确 `reconciliationMode=current_page` 与 `pageDigest`，绝不冒充 inventoryDigest 或完整旧 ID 全库消失证明。旧 inventoryDigest 记录保持只读兼容。全量清空最终仍需原账户空表与零总数，不重放已写旧 intent 的确认；新批只选当前列表。上述窄修订由当前明确用户要求授权并经 Parent self-review，当前新源码不重复测试或 review。
+
+## Current List Clear Owner (Supersedes Prior Audit Recovery)
+
+用户再次明确核对不重要，只要尽快删除且软件功能做好。真实平台逐条异步移除一批视频，total 会在批次内多次变化，精确下降及冻结 snapshot 再读会误阻断。因此 canonical QianchuanVideoLibrary.clear 只建立一次页面/账户准入，随后通过原 UI 连续选择当前第一页、核对唯一删除 modal 并确认；消费同 Document 的正常 DOM 更新进入下一批，无逐批 reload、inventory 扫描、逐 ID 审计或视频备份。仅保存账户 pending 与最终 current_ui 结果；旧审计原字节保留。新显式清空直接读当前剩余列表，不重放旧 modal 或旧 intent 的确认；启动不会自动恢复。数量变化记录为页面净减少，不声称全库逐 ID verified；UI 删除已核验数量文案。平台无任何进展、页面/账号改变、取消、30分钟/1000批/20000条界限仍停止。此段替代先前完整审计末批 gate、current_page digest、自动列表响应等被实际删除吞吐行为否定的候选。Parent self-review 对照实际递减总数和用户最新要求完成；重写相关 fixture 适配现合同，用户要求不再跑测试。

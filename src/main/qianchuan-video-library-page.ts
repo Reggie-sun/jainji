@@ -9,12 +9,24 @@ export const LIBRARY_DELETE_WARNING = "删除后不影响已使用该视频的�
 export class QianchuanVideoLibraryPage {
   private responseTotal?: number;
   private responseDocument?: JSHandle<Document>;
+  private mutationObserved = false;
   constructor(private readonly page: Page, private readonly advertiserId: string, private readonly signal: AbortSignal) {}
   private check(): void {
     this.signal.throwIfAborted();
     const url = new URL(this.page.url());
     if (url.origin !== "https://qianchuan.jinritemai.com" || url.pathname !== VIDEO_LIBRARY_ROUTE ||
       url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== this.advertiserId) throw changed();
+  }
+  private listRequest(request: Request): boolean {
+    try {
+      const url = new URL(request.url());
+      return request.frame() === this.page.mainFrame() && request.method() === "GET" &&
+        url.origin === "https://qianchuan.jinritemai.com" && url.pathname === "/ad/api/creation/material/video-list" &&
+        url.searchParams.getAll("aavid").length === 1 && url.searchParams.get("aavid") === this.advertiserId &&
+        url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === "1" &&
+        ["queryString", "source", "tags", "imageModes", "analysisType", "auditStatuses", "materialDeliveryStatus"].every(key =>
+          url.searchParams.getAll(key).length === 1 && url.searchParams.get(key) === "");
+    } catch { return false; }
   }
   async open(): Promise<void> {
     this.signal.throwIfAborted();
@@ -32,6 +44,7 @@ export class QianchuanVideoLibraryPage {
   /** Observe only the normal UI request issued by this navigation, including its unfiltered account binding. */
   private async load(navigate: () => Promise<unknown>): Promise<void> {
     this.signal.throwIfAborted();
+    this.mutationObserved = false;
     this.responseTotal = undefined;
     await this.responseDocument?.dispose().catch(() => undefined);
     this.responseDocument = undefined;
@@ -40,14 +53,7 @@ export class QianchuanVideoLibraryPage {
     const committed = (frame: Frame) => { if (frame === this.page.mainFrame()) documentEpoch++; };
     const capture = (request: Request) => {
       if (!documentEpoch) return;
-      try { if (request.frame() !== this.page.mainFrame()) return; } catch { return; }
-      const url = new URL(request.url());
-      if (request.method() === "GET" && url.origin === "https://qianchuan.jinritemai.com" &&
-        url.pathname === "/ad/api/creation/material/video-list" &&
-        url.searchParams.getAll("aavid").length === 1 && url.searchParams.get("aavid") === this.advertiserId &&
-        url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === "1" &&
-        ["queryString", "source", "tags", "imageModes", "analysisType", "auditStatuses", "materialDeliveryStatus"].every(key =>
-          url.searchParams.getAll(key).length === 1 && url.searchParams.get(key) === "")) requests.set(request, documentEpoch);
+      if (this.listRequest(request)) requests.set(request, documentEpoch);
     };
     this.page.on("framenavigated", committed);
     this.page.on("request", capture);
@@ -94,7 +100,7 @@ export class QianchuanVideoLibraryPage {
     do {
       this.check();
       await this.checkDocument();
-      const value = await this.page.evaluate(({ advertiserId, expectedPage, responseTotal }) => {
+      const value = await this.page.evaluate(({ advertiserId, expectedPage, responseTotal, mutationObserved }) => {
         const visible = (node: Element) => !!node.getClientRects().length && getComputedStyle(node).visibility !== "hidden";
         const headers = Array.from(document.querySelectorAll("header, [role=banner]")).filter(visible);
         const accounts = headers.flatMap(node => Array.from(node.textContent?.matchAll(/ID[：:]\s*([1-9][0-9]{0,19})/g) ?? [], match => match[1]));
@@ -110,10 +116,10 @@ export class QianchuanVideoLibraryPage {
         const rows = Array.from(tables[0].querySelectorAll("tbody tr")).filter(row => row.querySelector('input[type="checkbox"]'));
         // The live library removes pagination entirely for an explicitly empty list.
         const empty = Array.from(document.querySelectorAll('.oc-empty[data-e2e="oc_emptyKey_tools/creative-management/video-library__ocSelect_rolling_load__rollingLoad"], .oc-empty[data-e2e="oc_emptyKey_tools/creative-management/video-library__ocTable"]')).filter(visible);
-        if (responseTotal === 0 && !totals.length && !current.length && !rows.length && empty.length === 1 && empty[0].textContent?.trim() === "暂无数据") return { total: 0, ids: [] };
+        if ((mutationObserved || responseTotal === 0) && !totals.length && !current.length && !rows.length && empty.length === 1 && empty[0].textContent?.trim() === "暂无数据") return { total: 0, ids: [] };
         if (!match || current.length !== 1 || current[0].textContent?.trim() !== String(expectedPage)) return null;
         const total = Number(match[1]);
-        if (total !== responseTotal) return null;
+        if (!mutationObserved && total !== responseTotal) return null;
         const ids = rows.map(row => {
           const matches = Array.from(row.textContent?.matchAll(/ID[：:]\s*([1-9][0-9]{0,19})/g) ?? [], match => match[1]);
           return matches.length === 1 ? matches[0] : "";
@@ -121,7 +127,7 @@ export class QianchuanVideoLibraryPage {
         if (!Number.isSafeInteger(total) || total < 0 || ids.some(id => !id) || new Set(ids).size !== ids.length ||
           ids.length > 100 || ids.length > total || total > 0 && !ids.length) return null;
         return { total, ids };
-      }, { advertiserId: this.advertiserId, expectedPage, responseTotal: this.responseTotal }).catch(async error => {
+      }, { advertiserId: this.advertiserId, expectedPage, responseTotal: this.responseTotal, mutationObserved: this.mutationObserved }).catch(async error => {
         if (!(error instanceof Error) || !error.message.includes("Execution context was destroyed")) throw error;
         // Read-only recovery for a normal router navigation, never a delete retry.
         this.check();
@@ -141,67 +147,58 @@ export class QianchuanVideoLibraryPage {
   }
   async deleteBatch(before: LibrarySnapshot, beforeConfirm: () => Promise<void>): Promise<void> {
     this.check();
-    if (!before.ids.length || JSON.stringify(await this.read()) !== JSON.stringify(before)) throw changed();
+    if (!before.ids.length) throw changed();
     const table = this.page.locator("table.ovui-table:visible");
     if (await table.count() !== 1) throw changed();
     const header = table.locator('thead input[type="checkbox"]');
     const headerLabel = table.locator("thead label.ovui-checkbox");
-    if (await header.count() !== 1 || await header.isChecked() || !await header.isEnabled() ||
+    if (await header.count() !== 1 || !await header.isEnabled() ||
       await headerLabel.count() !== 1 || await headerLabel.locator('input[type="checkbox"]').count() !== 1) throw changed();
+    if (await header.isChecked()) await headerLabel.evaluate(node => (node as HTMLLabelElement).click());
     await headerLabel.evaluate(node => (node as HTMLLabelElement).click());
     this.check();
     if (!await header.isChecked()) throw changed();
     const selected = await table.locator('tbody input[type="checkbox"]').evaluateAll(nodes => nodes.map(node => (node as HTMLInputElement).checked));
-    if (selected.length !== before.ids.length || selected.some(checked => !checked) ||
-      await this.page.getByText(`已选${before.ids.length}个`, { exact: true }).count() !== 1) throw changed();
+    const selectedCount = selected.length;
+    if (!selectedCount || selectedCount > 100 || selected.some(checked => !checked) ||
+      await this.page.getByText(`已选${selectedCount}个`, { exact: true }).count() !== 1) throw changed();
     const remove = this.page.getByRole("button", { name: "删除", exact: true });
     if (await remove.count() !== 1 || !await remove.isEnabled()) throw changed();
     await remove.evaluate(node => (node as HTMLButtonElement).click());
     this.check();
     const modal = this.page.locator(".ovui-modal:visible");
     if (await modal.count() !== 1 || (await modal.innerText()).replace(/\s+/g, "") !==
-      `确认要删除该素材吗？已选择${before.ids.length}个视频，${LIBRARY_DELETE_WARNING}取消确认`) throw changed();
-    // Durable intent and account/config guard must succeed before the irreversible click.
+      `确认要删除该素材吗？已选择${selectedCount}个视频，${LIBRARY_DELETE_WARNING}取消确认`) throw changed();
+    // Pending marker and account/config guard precede the irreversible click.
     await beforeConfirm();
     this.check();
-    if (JSON.stringify(await this.read()) !== JSON.stringify(before) || await modal.count() !== 1 ||
-      (await modal.innerText()).replace(/\s+/g, "") !== `确认要删除该素材吗？已选择${before.ids.length}个视频，${LIBRARY_DELETE_WARNING}取消确认`) throw changed();
+    if (await modal.count() !== 1 ||
+      (await modal.innerText()).replace(/\s+/g, "") !== `确认要删除该素材吗？已选择${selectedCount}个视频，${LIBRARY_DELETE_WARNING}取消确认`) throw changed();
     const confirm = modal.getByRole("button", { name: "确认", exact: true });
     if (await confirm.count() !== 1 || !await confirm.isEnabled()) throw changed();
     this.check();
     await confirm.click({ timeout: 10000 });
+    this.mutationObserved = true;
     await modal.waitFor({ state: "hidden", timeout: 30000 });
-    this.check();
+    await this.page.waitForTimeout(1000);
+    await this.page.waitForFunction(({ total, ids }) => {
+      const visible = (node: Element) => !!node.getClientRects().length;
+      const totals = Array.from(document.querySelectorAll(".ovui-page-total")).filter(visible);
+      const current = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].textContent?.trim() ?? "") : null;
+      const rows = Array.from(document.querySelectorAll('table.ovui-table tbody tr')).filter(row => row.querySelector('input[type="checkbox"]'));
+      const first = /ID[：:]\s*([1-9][0-9]{0,19})/.exec(rows[0]?.textContent ?? "")?.[1];
+      const empty = Array.from(document.querySelectorAll('.oc-empty')).filter(visible);
+      return current ? Number(current[1]) !== total || !!first && !ids.includes(first) :
+        !rows.length && empty.some(node => node.textContent?.trim() === "暂无数据");
+    }, { total: before.total, ids: before.ids }, { timeout: 30000 });
+    this.check(); await this.checkDocument();
   }
   async refresh(): Promise<LibrarySnapshot> {
     this.check();
+    if (this.mutationObserved) {
+      return this.preparePage();
+    }
     await this.load(() => { this.check(); return this.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }); });
     return this.preparePage();
-  }
-  /** Complete, unfiltered, stable inventory for read-only reconciliation; never selects videos. */
-  async inventory(): Promise<LibrarySnapshot> {
-    const first = await this.refresh(), ids = [...first.ids];
-    if (first.total > 20000 || first.total && !first.ids.length) throw changed();
-    const pageSize = first.ids.length;
-    let previous = first;
-    for (let number = 2; ids.length < first.total; number++) {
-      this.check();
-      if (number > 1000) throw changed();
-      const next = this.page.locator(".ovui-page-turner__next-icon:visible").locator("..");
-      if (await next.count() !== 1 || (await next.getAttribute("class"))?.includes("--disabled")) throw changed();
-      await next.click({ timeout: 30000 });
-      await this.page.waitForFunction(({ number, oldId, count }) => {
-        const active = Array.from(document.querySelectorAll(".ovui-page-turner__item--active")).filter(n => !!n.getClientRects().length);
-        const tables = Array.from(document.querySelectorAll("table.ovui-table")).filter(n => !!n.getClientRects().length);
-        const rows = tables.length === 1 ? Array.from(tables[0].querySelectorAll("tbody tr")).filter(n => n.querySelector('input[type="checkbox"]')) : [];
-        return active.length === 1 && active[0].textContent?.trim() === String(number) && rows.length === count && /ID[：:]\s*([1-9][0-9]{0,19})/.exec(rows[0]?.textContent ?? "")?.[1] !== oldId;
-      }, { number, oldId: previous.ids[0], count: Math.min(pageSize, first.total - ids.length) }, { timeout: 30000 });
-      const current = await this.read(number);
-      if (current.total !== first.total || current.ids.length !== Math.min(pageSize, first.total - ids.length) || current.ids.some(id => ids.includes(id))) throw changed();
-      ids.push(...current.ids); previous = current;
-    }
-    await this.open();
-    if (ids.length !== first.total || JSON.stringify(await this.read()) !== JSON.stringify(first)) throw changed();
-    return { total: first.total, ids };
   }
 }

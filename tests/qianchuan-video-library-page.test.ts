@@ -20,9 +20,9 @@ function html(ids: string[], headerId: string, warning: string, delayedSize = fa
     <table class="ovui-table"><thead><tr><th><label class="ovui-checkbox"><div class="ovui-checkbox__wrapper"><input id="all" type="checkbox"><div class="ovui-checkbox__inner"></div></div></label></th></tr></thead><tbody>${ids.slice(0,20).map(x=>`<tr><td><input type="checkbox"></td><td>ID：${x}</td></tr>`).join("")}</tbody></table>
     <span id="selected"></span><button id="remove" style="display:none">删除</button><div class="ovui-modal" style="display:none">
     <div>确认要删除该素材吗？</div><div id="warning"></div><button>取消</button><button id="confirm">确认</button></div>
-    <script>fetch(${JSON.stringify(listUrl)});const count=${Math.min(20,ids.length)};document.querySelector('#all').onchange=e=>{document.querySelectorAll('tbody input').forEach(x=>x.checked=e.target.checked);document.querySelector('#selected').textContent=e.target.checked?'已选'+count+'个':'';document.querySelector('#remove').style.display=e.target.checked?'':'none'};
+    <script>fetch(${JSON.stringify(listUrl)});let count=${Math.min(20,ids.length)};document.querySelector('#all').onchange=e=>{document.querySelectorAll('tbody input').forEach(x=>x.checked=e.target.checked);document.querySelector('#selected').textContent=e.target.checked?'已选'+count+'个':'';document.querySelector('#remove').style.display=e.target.checked?'':'none'};
     document.querySelector('#remove').onclick=()=>{document.querySelector('.ovui-modal').style.display='';document.querySelector('#warning').textContent='已选择 '+count+' 个视频，'+${JSON.stringify(warning)}};
-    document.querySelector('#confirm').onclick=async()=>{await fetch('/fixture-delete',{method:'POST'});document.querySelector('.ovui-modal').style.display='none'};
+    document.querySelector('#confirm').onclick=async()=>{const next=await (await fetch('/fixture-delete',{method:'POST'})).json();document.querySelector('.ovui-modal').style.display='none';count=Math.min(20,next.ids.length);document.querySelector('tbody').innerHTML=next.ids.slice(0,20).map(x=>'<tr><td><input type=checkbox></td><td>ID：'+x+'</td></tr>').join('');document.querySelector('#all').checked=false;document.querySelector('#selected').textContent='';document.querySelector('#remove').style.display='none';if(next.ids.length){document.querySelector('.ovui-page-total').textContent='共 '+next.ids.length+' 条记录'}else{document.querySelector('.ovui-page-total')?.remove();document.querySelector('.ovui-page-turner__item--active')?.remove();const empty=document.createElement('div');empty.className='oc-empty';empty.dataset.e2e='oc_emptyKey_tools/creative-management/video-library__ocSelect_rolling_load__rollingLoad';empty.textContent='暂无数据';document.body.append(empty)}};
     if(document.querySelector('#size')){document.querySelector('#size').onclick=()=>${delayedOption ? "setTimeout(()=>document.querySelector('#fifty').style.display='',120)" : "document.querySelector('#fifty').style.display=''"};document.querySelector('#fifty').onclick=()=>{document.querySelector('#fifty').style.display='none';document.querySelector('#size').value='50条/页';setTimeout(()=>document.querySelector('tbody').innerHTML=${JSON.stringify(fiftyRows)},300)}};</script>`;
 }
 async function fixture(options: { count?: number; headerId?: string; warning?: string; delayedSize?: boolean; delayedOption?: boolean; failedList?: boolean } = {}) {
@@ -30,7 +30,7 @@ async function fixture(options: { count?: number; headerId?: string; warning?: s
   let ids = Array.from({length:options.count ?? 25},(_,i)=>`${7000+i}`), confirmations = 0;
   await page.route("https://qianchuan.jinritemai.com/**", async route => {
     if (new URL(route.request().url()).pathname === listRoute) await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: options.failedList ? 7 : 0, data: { total: String(ids.length) } }) });
-    else if (route.request().method() === "POST") { confirmations++; ids=ids.slice(20); await route.fulfill({body:"ok"}); }
+    else if (route.request().method() === "POST") { confirmations++; ids=ids.slice(20); await route.fulfill({contentType:"application/json",body:JSON.stringify({ids})}); }
     else await route.fulfill({ contentType:"text/html", body:html(ids, options.headerId ?? id, options.warning ?? LIBRARY_DELETE_WARNING, options.delayedSize, options.delayedOption) });
   });
   const session = new QianchuanVideoLibraryPage(page, id, new AbortController().signal);
@@ -164,22 +164,4 @@ it("rejects duplicate aavid URLs before reading or selecting", async () => {
   const f=await fixture();
   try { await f.page.goto(videoLibraryUrl(id)+"&aavid="+id); await expect(f.session.read()).rejects.toThrow(); expect(f.confirmations()).toBe(0); }
   finally { await f.context.close(); }
-});
-it("enumerates every page without selection or deletion and restores a freshly loaded first page", async () => {
-  const context = await browser.newContext(), page = await context.newPage();
-  const ids = Array.from({length:45}, (_,i)=>String(8000+i)); let confirmations = 0;
-  await page.route("https://qianchuan.jinritemai.com/**", async route => {
-    if (route.request().method() !== "GET") { confirmations++; throw new Error("inventory must be read-only"); }
-    if (new URL(route.request().url()).pathname === listRoute) { await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: 0, data: { total: "45" } }) }); return; }
-    const body = html(ids, id, LIBRARY_DELETE_WARNING).replace(/共 \d+ 条记录/,"共 45 条记录") +
-      `<ul><li class="ovui-page-turner__item"><div class="ovui-page-turner__next-icon">next</div></li></ul><script>let number=1;const ids=${JSON.stringify(ids)};
-      document.querySelector('.ovui-page-turner__next-icon').parentElement.onclick=async()=>{number++;await fetch(${JSON.stringify(listUrl)}.replace('page=1','page='+number));document.querySelector('.ovui-page-turner__item--active').textContent=number;document.querySelector('tbody').innerHTML=ids.slice((number-1)*20,number*20).map(x=>'<tr><td><input type="checkbox"></td><td>ID：'+x+'</td></tr>').join('')};</script>`;
-    await route.fulfill({contentType:"text/html",body});
-  });
-  const session = new QianchuanVideoLibraryPage(page,id,new AbortController().signal);
-  try {
-    await session.open(); expect(await session.inventory()).toEqual({total:45,ids});
-    expect((await session.read()).ids).toEqual(ids.slice(0,20)); expect(confirmations).toBe(0);
-    expect(await page.locator('thead input').isChecked()).toBe(false);
-  } finally { await context.close(); }
 });
