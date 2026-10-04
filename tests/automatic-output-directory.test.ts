@@ -5,7 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { createAutomaticOutputDirectory } from "../src/main/automatic-output-directory";
 
 const directories: string[] = [];
-const timeSeparator = process.platform === "win32" ? "：" : ":";
+const timeSeparator = "：";
 afterEach(async () => { await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
 
 async function temporaryRoot(): Promise<string> {
@@ -31,7 +31,7 @@ it("accepts a numbered material directory beside the product video directory", a
   ];
   const created = await createAutomaticOutputDirectory(sources, new Date(2026, 8, 24, 9, 7));
 
-  expect(created).toBe(path.join(root, "眼贴", "视频", "9.24 09:07"));
+  expect(created).toBe(path.join(root, "眼贴", "视频", `9.24 09${timeSeparator}07`));
   expect((await stat(created)).isDirectory()).toBe(true);
 });
 
@@ -58,6 +58,28 @@ it("reuses only an existing automatic directory for the same product", async () 
 
   await expect(createAutomaticOutputDirectory([source], new Date(), existing)).resolves.toBe(existing);
   await expect(createAutomaticOutputDirectory([source], new Date(), path.join(root, "马油膏布", "视频", `9.17 20${timeSeparator}03`))).rejects.toThrow("不匹配");
+});
+
+it("creates portable directory names even when running on a POSIX filesystem", async () => {
+  const root = await temporaryRoot();
+  const source = path.join(root, "眼贴", "素材3", "素材一.mp4");
+  const created = await createAutomaticOutputDirectory([source], new Date(2026, 9, 4, 23, 31));
+
+  expect(path.basename(created)).toBe("10.4 23：31");
+  expect(path.basename(created)).not.toMatch(/[<>:"/\\|?*\x00-\x1f]/);
+  await expect(createAutomaticOutputDirectory([source], new Date(), created)).resolves.toBe(created);
+});
+
+it("recognizes legacy ASCII-colon automatic directory names", async () => {
+  const root = await temporaryRoot();
+  const source = path.join(root, "眼贴", "素材3", "素材一.mp4");
+  const existing = path.join(root, "眼贴", "视频", "10.4 23:31 (2)");
+  await expect(createAutomaticOutputDirectory([source], new Date(), existing)).rejects.toThrow("已不存在");
+  if (process.platform === "win32") return;
+  await mkdir(existing, { recursive: true });
+
+  await expect(createAutomaticOutputDirectory([source], new Date(), existing)).resolves.toBe(existing);
+  expect((await stat(existing)).isDirectory()).toBe(true);
 });
 
 it("rejects sources that do not identify one product root", async () => {

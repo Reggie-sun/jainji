@@ -43,7 +43,7 @@ artifact.ts[RR8T]: F:用文件状态与FFprobe验证FFmpeg产物的可读性和�
 asset-library.ts[IB6S]: F:加载内置贴纸库与授权元数据，按装饰方案解析安全资源 | R:code:src/shared/asset-library.ts,code:src/main/builtin-stickers.ts,code:src/shared/automatic-stickers.ts | A:为模板和Agent选材提供本地文件与可用性检查 | S:只有校验过的本地资源可以进入选材目录
 automatic-corner-layout.ts[KB8T]: F:按原贴纸轨迹和角落覆盖层计算普通四角贴纸的可见空档 | R:code:src/shared/layout-policy.ts,code:src/shared/cover-sticker.ts,code:src/main/agent-template-preparation.ts | A:fillUncoveredCorners返回按activeRanges裁剪的贴纸层 | S:角落覆盖在有效时段优先占位；中部覆盖不替代四角
 automatic-cover-tracks.ts[KA8T]: F:把识别帧整理成有限、带安全余量的覆盖轨迹 | R:code:src/shared/automatic-cover.ts,code:src/shared/cover-sticker.ts,code:src/main/agent-runner.ts | A:轨迹按目标分段、插值约束化并经CoverTrackSchema校验 | S:渲染余量不能写回源贴纸知识；超出轨迹上限明确失败
-automatic-output-directory.ts[RR5T]: F:从素材所在产品目录建立自动成片目录 | R:code:src/main/agent-controller.ts | A:createAutomaticOutputDirectory识别素材及编号素材祖先目录，在产品视频目录建立分钟名称；可核查复用既有目录 | S:不同产品源不能共同推断目录；Windows名称使用全角冒号；冲突建编号目录，不覆盖已有文件
+automatic-output-directory.ts[RR5T]: F:从素材所在产品目录建立自动成片目录 | R:code:src/main/index.ts,code:src/main/batch-production-runtime.ts | A:识别素材及编号素材祖先，在产品视频目录建立分钟名称；核查复用旧目录 | S:各平台统一全角冒号以兼容exfat；旧英文冒号目录仍可复用；不同产品拒绝，冲突编号不覆盖
 bug-feedback-ipc.ts[EM5T]: F:向受信任renderer注册Bug反馈提交和历史查询IPC | R:code:src/main/bug-feedback.ts,code:src/shared/bug-feedback.ts | A:先校验IPC发送方，再调用本地反馈服务 | S:renderer不得直接取得中继令牌
 bug-feedback.ts[IN6S]: F:管理本地Bug反馈提交、回执历史和安全重试 | R:code:src/shared/bug-feedback.ts,code:src/main/store.ts,code:src/main/bug-feedback-ipc.ts | A:校验描述与截图后调用反馈端点并原子保存历史 | S:错误和记录需脱敏；不把未经确认的提交当成功
 builtin-stickers.ts[IB5S]: F:程序化生成基础PNG贴纸并确保本地资源存在 | R:code:src/shared/agent.ts,code:src/main/asset-library.ts | A:返回带指纹的内置贴纸资源供模板引用 | S:生成图案不含Agent创作文字

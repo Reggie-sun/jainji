@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-02T17:20:45Z",
+  "updated_at": "2026-10-04T15:41:00Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "13f5a51ed195046ad910beb07e257520ce2451f94d878cc1bb0d6bfe5bbefd3c",
@@ -1174,9 +1174,9 @@
       "normalized_sha256": "ebf6e976590f89895b1a17965252bc835695b1b9a75bf7a0e46cc9be93a32f3a"
     },
     "src/main/automatic-output-directory.ts": {
-      "sha256": "d31b4b0e17ad21a5bfb6e720809bbd4898a4bee13f9e2bf4473f42f912f504f2",
-      "size": 2883,
-      "normalized_sha256": "d31b4b0e17ad21a5bfb6e720809bbd4898a4bee13f9e2bf4473f42f912f504f2"
+      "sha256": "88fbfd586d65f6033f83cb9896593acc35e33095595d83693ac3e42166234230",
+      "size": 2810,
+      "normalized_sha256": "88fbfd586d65f6033f83cb9896593acc35e33095595d83693ac3e42166234230"
     },
     "src/main/batch-production-controller.ts": {
       "sha256": "9f21f5d7ce02fdae9bd95a218223cae05f161cfe8d6872ff4bb71757e2614a4e",

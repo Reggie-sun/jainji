@@ -15,10 +15,9 @@ function productRootForSource(sourcePath: string): string | undefined {
 }
 
 function outputDirectoryName(at: Date): string {
-  const separator = process.platform === "win32" ? "：" : ":";
   const hours = String(at.getHours()).padStart(2, "0");
   const minutes = String(at.getMinutes()).padStart(2, "0");
-  return `${at.getMonth() + 1}.${at.getDate()} ${hours}${separator}${minutes}`;
+  return `${at.getMonth() + 1}.${at.getDate()} ${hours}：${minutes}`;
 }
 
 function automaticVideoRoot(sourcePaths: readonly string[]): string {
