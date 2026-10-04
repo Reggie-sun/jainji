@@ -112,7 +112,7 @@ export class QianchuanVideoLibrarySchedule {
       const settings = QianchuanLibraryScheduleSettingsSchema.parse(input);
       if (settings.enabled) {
         const accounts = this.dependencies.accounts();
-        if (settings.accounts.some(target => !accounts.some(account => account.available && account.product === target.product && account.advertiserId === target.expectedAdvertiserId))) {
+        if (settings.accounts.some(target => !accounts.some(account => account.available && account.product === target.product && account.advertiserId === target.expectedAdvertiserId && (!settings.includePlanMaterials || account.adId === target.expectedAdId)))) {
           throw new Error("清空账号已变化，请重新选择当前已配置账号。");
         }
       }
@@ -148,7 +148,7 @@ export class QianchuanVideoLibrarySchedule {
     }).catch(() => { this.dependencies.changed(); return false; });
     if (!claimed) return;
     try {
-      const results = await this.dependencies.clear({ confirmation: "DELETE_ALL_VIDEOS", accounts: structuredClone(this.settings.accounts) });
+      const results = await this.dependencies.clear({ confirmation: this.settings.includePlanMaterials ? "DELETE_VIDEOS_AND_PLAN_MATERIALS" : "DELETE_ALL_VIDEOS", accounts: structuredClone(this.settings.accounts) });
       this.lastRun = { ...this.lastRun!, finishedAt: new Date().toISOString(), results,
         state: results.every(result => result.state === "CLEARED") ? "COMPLETED" : "BLOCKED",
         message: results.every(result => result.state === "CLEARED") ? "定时清空已完成。" : "部分账号未清空，当天不会自动重试，请查看账号结果。" };

@@ -84,6 +84,15 @@ it("rejects out-of-process mapping drift before the library deletion guard can s
     await expect(fresh()).rejects.toThrow("已变化");
   });
 });
+it("binds plan cleanup to the saved plan before any browser discovery", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const input = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244", expectedAdId: "999" }] };
+  await expect(f.settings.withVideoLibraryTargets(input, async () => {})).rejects.toThrow("已变化");
+  expect(f.discover).not.toHaveBeenCalled();
+  await f.settings.withVideoLibraryTargets({ ...input, accounts: [{ ...input.accounts[0], expectedAdId: "1876036593854788" }] }, async (targets, fresh, connect) => {
+    expect((await connect(targets[0])).adId).toBe("1876036593854788"); await fresh();
+  });
+});
 it("prepares current browser bindings without changing the persisted mapping or earlier frozen batches", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);
   const bytes = await readFile(f.settings.file), old = await f.settings.preflight("蝴蝶贴");

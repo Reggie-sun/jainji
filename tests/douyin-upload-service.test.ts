@@ -9,6 +9,7 @@ import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-conf
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import { QianchuanVideoLibrary } from "../src/main/qianchuan-video-library";
+import { QianchuanPlanMaterials } from "../src/main/qianchuan-plan-materials";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
@@ -393,6 +394,43 @@ describe("Qianchuan upload service", () => {
     finally { release(); }
     expect((await work).map(result => result.advertiserId)).toEqual(["1003", "1004"]);
     expect(f.service.busy).toBe(false);
+  });
+  it("runs only the explicitly requested plan cleanup and stops combined cleanup when its scope is blocked", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    const events: string[] = [];
+    const plans = vi.spyOn(QianchuanPlanMaterials.prototype, "clear").mockImplementation(async (target, guard) => {
+      await guard(); events.push("plan");
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 3, message: "plan empty" };
+    });
+    const library = vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async target => {
+      events.push("library"); return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 8, message: "empty" };
+    });
+    const accounts = [{ product: "眼贴", expectedAdvertiserId: "1003", expectedAdId: "2003" }];
+    expect((await f.service.clearVideoLibraries({ confirmation: "DELETE_PLAN_MATERIALS", accounts }))[0].deletedCount).toBe(3);
+    expect(library).not.toHaveBeenCalled();
+    await f.service.clearVideoLibraries({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts });
+    expect(events).toEqual(["plan", "plan", "library"]);
+    plans.mockImplementationOnce(async target => ({ product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: "unknown" }));
+    expect((await f.service.clearVideoLibraries({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts }))[0].state).toBe("BLOCKED");
+    expect(library).toHaveBeenCalledTimes(1); expect(f.events).toEqual([]);
+  });
+  it("holds production and account edits until an aborted plan cleanup drains", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    let entered!: () => void, release!: () => void, signal: AbortSignal | undefined;
+    const started = new Promise<void>(resolve => { entered = resolve; }), hold = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(QianchuanPlanMaterials.prototype, "clear").mockImplementation(async (target, guard, parentSignal) => {
+      signal = parentSignal; entered(); await hold; await guard();
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 0, message: "empty" };
+    });
+    const work = f.service.clearVideoLibraries({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003", expectedAdId: "2003" }] });
+    await started; let stopped = false;
+    const stopping = f.service.stop().then(value => { stopped = true; return value; });
+    try {
+      await expect(f.service.beginProduction()).rejects.toThrow();
+      await expect(f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=999" })).rejects.toThrow();
+      expect(signal?.aborted).toBe(true); expect(stopped).toBe(false);
+    } finally { release(); }
+    expect(await stopping).toBe(true); expect((await work)[0].state).toBe("BLOCKED"); expect(f.service.busy).toBe(false);
   });
   it("excludes new production, account edits and browser controls while library deletion is active", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);

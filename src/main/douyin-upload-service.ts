@@ -11,8 +11,9 @@ import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
-import type { QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
+import { QianchuanLibraryClearSchema, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import { QianchuanVideoLibrary } from "./qianchuan-video-library.js";
+import { QianchuanPlanMaterials } from "./qianchuan-plan-materials.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type QianchuanUploadResult } from "../shared/douyin-upload.js";
 
 export interface BatchSelectedFile { fileName: string; index: number; ready?: boolean; }
@@ -216,6 +217,7 @@ export class DouyinUploadService {
     } finally { this.managingBrowser = false; this.changed(); }
   }
   async clearVideoLibraries(input: unknown): Promise<QianchuanLibraryResult[]> {
+    const parsed = QianchuanLibraryClearSchema.parse(input);
     if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未删除视频。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持视频库删除。");
     this.managingBrowser = true;
@@ -225,7 +227,7 @@ export class DouyinUploadService {
     const generation = this.controlGeneration;
     try {
       await this.control.catch(() => undefined);
-      return await this.accounts.withVideoLibraryTargets(input, async (targets, fresh, connect) => {
+      return await this.accounts.withVideoLibraryTargets(parsed, async (targets, fresh, connect) => {
         const check = () => {
           operation.controller.signal.throwIfAborted();
           if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction) throw new Error("上传控制已变化，已停止删除视频。");
@@ -236,8 +238,15 @@ export class DouyinUploadService {
           check();
         };
         const library = new QianchuanVideoLibrary(this.store.root);
+        const materials = new QianchuanPlanMaterials(this.store.root);
         return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
-          try { await guard(); return await library.clear(await connect(target), guard, operation.controller.signal); }
+          try {
+            await guard(); const connected = await connect(target);
+            const planResult = parsed.confirmation !== "DELETE_ALL_VIDEOS" ? await materials.clear(connected, guard, operation.controller.signal) : undefined;
+            if (parsed.confirmation === "DELETE_PLAN_MATERIALS" || planResult?.state === "BLOCKED") return planResult!;
+            const libraryResult = await library.clear(connected, guard, operation.controller.signal);
+            return planResult ? { ...libraryResult, message: `${planResult.message} ${libraryResult.message}` } : libraryResult;
+          }
           catch (error) { return { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
         }));
       });

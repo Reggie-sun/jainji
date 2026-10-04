@@ -57,6 +57,21 @@ it("does not repeat a claimed day when the production owner is busy", async () =
 it("plans a later local calendar day after changing settings or rolling the clock back", () => {
   expect(nextLibraryClearTime(new Date(2026, 9, 4, 0, 10), "00:30", "2026-10-04")).toEqual(new Date(2026, 9, 5, 0, 30));
 });
+it("keeps old schedules library-only and adds plan cleanup only with saved explicit plan authorization", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 4, 0, 29));
+  const f = await fixture(); await f.owner.save(settings);
+  vi.setSystemTime(new Date(2026, 9, 4, 0, 30)); await f.owner.tick();
+  expect(f.clear).toHaveBeenLastCalledWith(expect.objectContaining({ confirmation: "DELETE_ALL_VIDEOS" }));
+  vi.setSystemTime(new Date(2026, 9, 5, 0, 29));
+  const opted = { ...settings, includePlanMaterials: true, accounts: [{ ...settings.accounts[0], expectedAdId: "123" }] };
+  await expect(f.owner.save({ ...opted, accounts: [{ ...opted.accounts[0], expectedAdId: "999" }] })).rejects.toThrow("已变化");
+  await expect(f.owner.save({ ...settings, includePlanMaterials: true })).rejects.toThrow();
+  await f.owner.save(opted);
+  vi.setSystemTime(new Date(2026, 9, 5, 0, 30)); await f.owner.tick();
+  expect(f.clear).toHaveBeenLastCalledWith({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: opted.accounts });
+  const saved = JSON.parse(await readFile(path.join(f.root, "video-library-schedule.json"), "utf8"));
+  expect(saved.settings).toEqual(opted);
+});
 it("accepts a timely system launch after cold startup and fences duplicate wake requests", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 4, 0, 29));
   const f = await fixture(); await f.owner.save(settings);

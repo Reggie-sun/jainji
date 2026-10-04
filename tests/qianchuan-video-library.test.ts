@@ -33,6 +33,13 @@ it("requires explicit confirmation and unique saved-account identities", () => {
   expect(() => QianchuanLibraryClearSchema.parse({ ...input, accounts: [...input.accounts, ...input.accounts] })).toThrow();
   expect(() => QianchuanLibraryClearSchema.parse({ ...input, cdpEndpoint: target.cdpEndpoint })).toThrow();
 });
+it("requires the expected saved plan for every plan-material cleanup and keeps legacy library input compatible", () => {
+  const account = { product: target.product, expectedAdvertiserId: target.advertiserId, expectedAdId: target.adId };
+  for (const confirmation of ["DELETE_PLAN_MATERIALS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]) {
+    expect(QianchuanLibraryClearSchema.parse({ confirmation, accounts: [account] })).toEqual({ confirmation, accounts: [account] });
+    expect(() => QianchuanLibraryClearSchema.parse({ confirmation, accounts: [{ product: target.product, expectedAdvertiserId: target.advertiserId }] })).toThrow();
+  }
+});
 it("clears current pages and consumes the final zero once without an extra refresh or video backup", async () => {
   const f = await fixture();
   expect(await f.library.clear(target, async () => {})).toMatchObject({ state: "CLEARED", deletedCount: 45 });

@@ -4,12 +4,14 @@ import { QianchuanProductSchema } from "./qianchuan-account.js";
 export const QianchuanLibraryAccountSchema = z.object({
   product: QianchuanProductSchema,
   expectedAdvertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/),
+  expectedAdId: z.string().regex(/^[1-9][0-9]{0,19}$/).optional(),
 }).strict();
 export const QianchuanLibraryClearSchema = z.object({
-  confirmation: z.literal("DELETE_ALL_VIDEOS"),
+  confirmation: z.enum(["DELETE_ALL_VIDEOS", "DELETE_PLAN_MATERIALS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]),
   accounts: z.array(QianchuanLibraryAccountSchema).min(1).max(6),
 }).strict().refine(value => new Set(value.accounts.map(account => account.product)).size === value.accounts.length &&
-  new Set(value.accounts.map(account => account.expectedAdvertiserId)).size === value.accounts.length, "删除账号不能重复。");
+  new Set(value.accounts.map(account => account.expectedAdvertiserId)).size === value.accounts.length, "删除账号不能重复。")
+  .refine(value => value.confirmation === "DELETE_ALL_VIDEOS" || value.accounts.every(account => account.expectedAdId), "清理计划素材必须明确绑定当前计划 ID。");
 export type QianchuanLibraryClear = z.infer<typeof QianchuanLibraryClearSchema>;
 export interface QianchuanLibraryResult {
   product: z.infer<typeof QianchuanProductSchema>;
@@ -17,6 +19,13 @@ export interface QianchuanLibraryResult {
   state: "CLEARED" | "BLOCKED";
   deletedCount: number;
   message: string;
+}
+
+export const PLAN_MATERIAL_STATUSES = ["审核不通过", "生态审核不通过", "审核通过可优化"] as const;
+export type PlanMaterialStatus = typeof PLAN_MATERIAL_STATUSES[number];
+export function matchesPlanMaterialStatus(text: string, status: PlanMaterialStatus): boolean {
+  const parts = text.trim().split(/\s+/);
+  return status === "审核通过可优化" ? parts[0] === "审核通过" && parts.includes("可优化") : parts[0] === status;
 }
 
 export const VIDEO_LIBRARY_ROUTE = "/tools/creative-management/video-library";

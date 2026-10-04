@@ -3,10 +3,28 @@ import { guardedTransport } from "./local-cdp-transport.js";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import { QianchuanVideoLibraryPage } from "./qianchuan-video-library-page.js";
 import { VIDEO_LIBRARY_ROUTE } from "../shared/qianchuan-video-library.js";
+import { QianchuanPlanMaterialPage } from "./qianchuan-plan-material-page.js";
+import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+import type { Page } from "playwright-core";
 
 export async function connectVideoLibrary(endpoint: string, advertiserId: string, signal: AbortSignal): Promise<{
   page: QianchuanVideoLibraryPage; close(): Promise<void>;
 }> {
+  return connectLibrary(endpoint, advertiserId, signal, url => url.pathname === VIDEO_LIBRARY_ROUTE,
+    page => new QianchuanVideoLibraryPage(page, advertiserId, signal));
+}
+
+export function connectPlanMaterials(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<{
+  page: QianchuanPlanMaterialPage; close(): Promise<void>;
+}> {
+  return connectLibrary(target.cdpEndpoint, target.advertiserId, signal,
+    url => url.pathname === "/uni-prom" && url.searchParams.getAll("adId").length === 1 && url.searchParams.get("adId") === target.adId &&
+      new URLSearchParams(url.hash.slice(1)).get("jianjiCleanup") === "plan-materials",
+    page => new QianchuanPlanMaterialPage(page, target, signal));
+}
+
+async function connectLibrary<T extends object>(endpoint: string, advertiserId: string, signal: AbortSignal,
+  matches: (url: URL) => boolean, create: (page: Page) => T): Promise<{ page: T; close(): Promise<void> }> {
   signal.throwIfAborted();
   if (!isLoopbackUrl(endpoint) || new URL(endpoint).pathname !== "/") throw new Error("视频库浏览器连接无效。");
   const response = await fetch(new URL("/json/version", endpoint), { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]) });
@@ -24,13 +42,15 @@ export async function connectVideoLibrary(endpoint: string, advertiserId: string
     const existing = context.pages().find(page => {
       try {
         const url = new URL(page.url());
-        return !page.isClosed() && url.origin === "https://qianchuan.jinritemai.com" && url.pathname === VIDEO_LIBRARY_ROUTE &&
+        return !page.isClosed() && url.origin === "https://qianchuan.jinritemai.com" && matches(url) &&
           url.searchParams.getAll("aavid").length === 1 && url.searchParams.get("aavid") === advertiserId;
       } catch { return false; }
     });
     const page = existing ?? await context.newPage();
     page.setDefaultTimeout(10000);
-    return { page: new QianchuanVideoLibraryPage(page, advertiserId, signal), close: async () => {
+    const session = create(page);
+    return { page: session, close: async () => {
+      if ("dispose" in session && typeof session.dispose === "function") await session.dispose();
       await relay.close(); await browser?.close();
       // Reuse the same library tab on the next connection; preserve all upload tabs.
     } };
