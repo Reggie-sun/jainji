@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { QianchuanAccountSchema, QianchuanProductSchema, accountAvailable } from "./qianchuan-account.js";
+import { QianchuanPlanOptionSchema } from "./qianchuan-plan-selection.js";
 
 export const DouyinUploadSelectionSchema = z.object({ enabled: z.literal(true), caption: z.string().max(4096).optional() }).strict();
 export type DouyinUploadSelection = z.infer<typeof DouyinUploadSelectionSchema>;
@@ -95,7 +96,7 @@ export function uploadFailure(code: UploadFailure["code"], category: UploadFailu
   return new UploadError({ code, category, message, next_action, requires_human, retryable });
 }
 
-export const QianchuanUploadSelectionSchema = z.object({ enabled: z.literal(true), accountProduct: QianchuanProductSchema }).strict();
+export const QianchuanUploadSelectionSchema = z.object({ enabled: z.literal(true), accountProduct: QianchuanProductSchema, plan: QianchuanPlanOptionSchema.optional() }).strict();
 export type QianchuanUploadSelection = z.infer<typeof QianchuanUploadSelectionSchema>;
 export const QianchuanUploadConfigSchema = z.object({
   enabled: z.boolean().default(false),

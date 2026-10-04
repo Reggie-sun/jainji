@@ -278,7 +278,9 @@ export class DouyinUploadStore {
         newTargetBytes.add(targetBytes);
         movedById.set(task.result.upload_task_id, moved);
       }
-      const movedIntents = batchIntents.map(intent => ({ ...intent, authorization: nextAuthorization }));
+      const movedIntents = batchIntents.map(intent => ({ ...intent, authorization: nextAuthorization, selection: intent.selection.plan ? {
+        ...intent.selection, plan: { advertiserId: nextAuthorization.target.advertiserId, adId: nextAuthorization.target.adId, name: `计划 ${nextAuthorization.target.adId}` },
+      } : intent.selection }));
       const archive = { version: 1 as const, intents: batchIntents, tasks: batchTasks, newAuthorization: nextAuthorization };
       const archivePath = path.join(this.retargetHistoryDirectory, `${oldBatchId}.json`), archiveBytes = Buffer.from(`${JSON.stringify(archive, null, 2)}\n`);
       try {

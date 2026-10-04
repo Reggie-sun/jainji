@@ -29,6 +29,7 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
     setBusy(true);
     setError("");
     try {
+      if (douyinUploadSelection && !douyinUploadSelection.plan) throw new Error("请选择上传计划后再追加制作。");
       const uploadSelection = douyinUploadSelection ? QianchuanUploadSelectionSchema.parse(douyinUploadSelection) : undefined;
       const parsed = RequiredProductPriceSchema.safeParse(productPrice);
       if (!parsed.success) throw new Error(PRODUCT_PRICE_HELP);

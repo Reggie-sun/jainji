@@ -205,7 +205,7 @@ export class BatchProductionController {
       if (currentAccount.accountProduct !== selectedAccount.product || authorization.target.product !== selectedAccount.product
         || JSON.stringify(binding) !== JSON.stringify(currentBinding)
         || currentTarget?.advertiserId !== selectedAccount.advertiserId || currentTarget?.adId !== selectedAccount.adId
-        || authorization.target.advertiserId !== selectedAccount.advertiserId || authorization.target.adId !== selectedAccount.adId) {
+        || authorization.target.advertiserId !== selectedAccount.advertiserId || authorization.target.adId !== (entry.douyinUpload.plan?.adId ?? selectedAccount.adId)) {
         throw new Error("千川账号关联或计划在预检期间已变化，请刷新模板后重新开始。");
       }
     }

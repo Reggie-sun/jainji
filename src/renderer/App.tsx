@@ -311,6 +311,7 @@ export default function App() {
   const start = () => {
     if (locked || exporting || !canCreate) return;
     const uploadSelection = douyinUploadSelection;
+    if (uploadSelection && !uploadSelection.plan) { setNotice({ error: true, text: "请选择上传计划后再开始制作。" }); return; }
     const startProjectId = state.project.id;
     const productionDecorations = structuredClone(decorations);
     return void (async () => {

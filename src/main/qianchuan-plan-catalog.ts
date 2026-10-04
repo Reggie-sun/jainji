@@ -1,0 +1,246 @@
+import { chromium, type Browser, type JSHandle, type Page } from "playwright-core";
+import { guardedTransport } from "./local-cdp-transport.js";
+import { isLoopbackUrl } from "../shared/douyin-upload.js";
+import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+
+export interface QianchuanPlanOption { advertiserId: string; adId: string; name: string; }
+
+const QIANCHUAN_ORIGIN = "https://qianchuan.jinritemai.com";
+const PLAN_PICKER_MARKER = "jianjiPlanPicker";
+const MAX_PAGES = 100;
+const MAX_PLANS = 1000;
+const PAGE_WAIT_MS = 15_000;
+const SAMPLE_INTERVAL_MS = 100;
+const STABLE_SAMPLES = 3;
+const changed = () => new Error("千川计划列表或账号身份无法完整核对，请检查账号浏览器中的计划列表后重试。");
+
+interface PlanRowSnapshot {
+  cellCount: number;
+  names: string[];
+  ids: string[];
+  deletedTags: string[];
+  rowText: string;
+}
+
+interface PageSnapshot {
+  total: number;
+  pageNumber: number;
+  nextDisabled: boolean;
+  rows: PlanRowSnapshot[];
+  rowSignature: string;
+}
+
+interface DomSnapshot {
+  accountContainers: number;
+  accountIds: string[];
+  paginationReady: boolean;
+  totalText?: string;
+  activePageText?: string;
+  nextDisabled?: boolean;
+  rows: PlanRowSnapshot[];
+}
+
+function abortable<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const aborted = () => reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    signal.addEventListener("abort", aborted, { once: true });
+    operation.then(resolve, reject).finally(() => signal.removeEventListener("abort", aborted));
+  });
+}
+
+function pageUrl(advertiserId: string): string {
+  const url = new URL("/uni-prom", QIANCHUAN_ORIGIN);
+  url.searchParams.set("aavid", advertiserId);
+  url.searchParams.set(PLAN_PICKER_MARKER, "1");
+  return url.href;
+}
+
+function checkPage(page: Page, advertiserId: string): void {
+  let url: URL;
+  try { url = new URL(page.url()); } catch { throw changed(); }
+  if (url.origin !== QIANCHUAN_ORIGIN || url.pathname !== "/uni-prom" ||
+    url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== advertiserId ||
+    url.searchParams.getAll(PLAN_PICKER_MARKER).length > 1 ||
+    url.searchParams.has(PLAN_PICKER_MARKER) && url.searchParams.get(PLAN_PICKER_MARKER) !== "1" ||
+    url.searchParams.getAll("adId").some(value => value !== "")) throw changed();
+}
+
+async function observe(page: Page, advertiserId: string, documentHandle: JSHandle<Document>, signal: AbortSignal): Promise<DomSnapshot> {
+  signal.throwIfAborted();
+  checkPage(page, advertiserId);
+  const sameDocument = await abortable(page.evaluate(value => value === window.document, documentHandle).catch(() => false), signal);
+  if (!sameDocument) throw changed();
+  const snapshot = await abortable(page.evaluate(() => {
+    const doc = window.document;
+    const visible = (element: Element) => {
+      const style = getComputedStyle(element);
+      return !!element.getClientRects().length && style.display !== "none" && style.visibility !== "hidden";
+    };
+    const text = (element: Element) => (element as HTMLElement).innerText?.trim() ?? element.textContent?.trim() ?? "";
+    const accounts = Array.from(doc.querySelectorAll(".account-info-container")).filter(visible);
+    const accountIds = accounts.flatMap(account => Array.from(text(account).matchAll(/ID[：:]\s*([1-9][0-9]{0,19})/g), match => match[1]!));
+    const groups = Array.from(doc.querySelectorAll('[data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"]')).filter(visible);
+    const group = groups.length === 1 ? groups[0]! : undefined;
+    const totals = group ? Array.from(group.querySelectorAll(".ovui-page-total")).filter(visible) : [];
+    const activePages = group ? Array.from(group.querySelectorAll(".ovui-page-turner__item--active")).filter(visible) : [];
+    const nextItems = group ? Array.from(group.querySelectorAll("li.ovui-page-turner__item:has(.ovui-page-turner__next-icon)")).filter(visible) : [];
+    const rows = Array.from(doc.querySelectorAll("tr.ovui-tr")).filter(visible).flatMap(row => {
+      const cells = Array.from(row.querySelectorAll(".p-c-ad-name-col")).filter(visible);
+      if (!cells.length) return [];
+      const cell = cells.length === 1 ? cells[0]! : row;
+      const names = Array.from(cell.querySelectorAll(".oc-promotion-product-adinfo-name .oc-typography-value-int")).filter(visible).map(text);
+      const ids = Array.from(cell.querySelectorAll(".oc-promotion-product-adinfo-id-fade")).filter(visible).map(text);
+      const deletedTags = Array.from(row.querySelectorAll(".oc-tag-text")).filter(tag => {
+        if (text(tag) !== "已删除") return false;
+        for (let ancestor: Element | null = tag; ancestor; ancestor = ancestor.parentElement) {
+          const style = getComputedStyle(ancestor);
+          if (style.display === "none" || style.visibility !== "visible") return false;
+          if (ancestor === row) break;
+        }
+        const range = doc.createRange();
+        range.selectNodeContents(tag);
+        return Array.from(range.getClientRects()).some(box => box.width > 0 && box.height > 0);
+      }).map(text);
+      return [{ cellCount: cells.length, names, ids, deletedTags, rowText: text(row) }];
+    });
+    return {
+      accountContainers: accounts.length,
+      accountIds,
+      paginationReady: groups.length === 1 && totals.length === 1 && activePages.length === 1 && nextItems.length === 1,
+      ...(totals.length === 1 ? { totalText: text(totals[0]!) } : {}),
+      ...(activePages.length === 1 ? { activePageText: text(activePages[0]!) } : {}),
+      ...(nextItems.length === 1 ? { nextDisabled: nextItems[0]!.classList.contains("ovui-page-turner__item--disabled") } : {}),
+      rows,
+    };
+  }), signal);
+  checkPage(page, advertiserId);
+  if (snapshot.accountContainers > 1 || snapshot.accountIds.length > 1 ||
+    snapshot.accountIds.length === 1 && snapshot.accountIds[0] !== advertiserId) throw changed();
+  return snapshot;
+}
+
+function completeSnapshot(snapshot: DomSnapshot, expectedPage: number): PageSnapshot | undefined {
+  if (snapshot.accountContainers !== 1 || snapshot.accountIds.length !== 1 || !snapshot.paginationReady ||
+    snapshot.totalText === undefined || snapshot.activePageText === undefined || snapshot.nextDisabled === undefined) return undefined;
+  const totalMatch = /^共\s*(0|[1-9][0-9]*)\s*条记录$/.exec(snapshot.totalText);
+  const pageMatch = /^([1-9][0-9]*)$/.exec(snapshot.activePageText);
+  if (!totalMatch || !pageMatch) throw changed();
+  const total = Number(totalMatch[1]);
+  const pageNumber = Number(pageMatch[1]);
+  if (!Number.isSafeInteger(total) || pageNumber !== expectedPage) return undefined;
+  if (total > MAX_PLANS) throw new Error("千川计划数量超过安全读取上限，请在计划列表中缩小范围后重试。");
+  const rowSignature = JSON.stringify(snapshot.rows.map(row => [row.rowText, row.cellCount, row.names, row.ids, row.deletedTags]));
+  return { total, pageNumber, nextDisabled: snapshot.nextDisabled, rows: snapshot.rows, rowSignature };
+}
+
+async function waitForStablePage(page: Page, advertiserId: string, document: JSHandle<Document>, signal: AbortSignal,
+  expectedPage: number, previousRowSignature?: string): Promise<PageSnapshot> {
+  const deadline = Date.now() + PAGE_WAIT_MS;
+  let previousSample = "";
+  let stableCount = 0;
+  while (Date.now() < deadline) {
+    signal.throwIfAborted();
+    const dom = await observe(page, advertiserId, document, signal);
+    const snapshot = completeSnapshot(dom, expectedPage);
+    if (snapshot && (previousRowSignature === undefined || snapshot.rowSignature !== previousRowSignature) &&
+      !(snapshot.total > 0 && snapshot.rows.length === 0)) {
+      const sample = JSON.stringify(snapshot);
+      if (sample === previousSample) stableCount++;
+      else { previousSample = sample; stableCount = 1; }
+      if (stableCount >= STABLE_SAMPLES) return snapshot;
+    } else { previousSample = ""; stableCount = 0; }
+    await abortable(new Promise<void>(resolve => setTimeout(resolve, SAMPLE_INTERVAL_MS)), signal);
+  }
+  throw changed();
+}
+
+function parseRows(snapshot: PageSnapshot, advertiserId: string, idsSeen: Set<string>): QianchuanPlanOption[] {
+  const plans: QianchuanPlanOption[] = [];
+  for (const row of snapshot.rows) {
+    if (row.cellCount !== 1 || row.names.length !== 1 || row.ids.length !== 1) throw changed();
+    const name = row.names[0]!.trim();
+    const idMatch = /^ID[：:]\s*([1-9][0-9]{0,19})$/.exec(row.ids[0]!.trim());
+    if (!name || !idMatch || row.deletedTags.length > 1) throw changed();
+    const adId = idMatch[1]!;
+    if (idsSeen.has(adId)) throw changed();
+    idsSeen.add(adId);
+    if (!row.deletedTags.includes("已删除")) plans.push({ advertiserId, adId, name });
+  }
+  return plans;
+}
+
+/** Reads all visible plans on the owned picker page and fails closed if pagination is incomplete. */
+export async function readVisibleQianchuanPlans(page: Page, advertiserId: string, signal: AbortSignal): Promise<QianchuanPlanOption[]> {
+  if (!/^[1-9][0-9]{0,19}$/.test(advertiserId)) throw changed();
+  signal.throwIfAborted();
+  checkPage(page, advertiserId);
+  const documentHandle = await abortable(page.evaluateHandle(() => window.document), signal);
+  try {
+    const idsSeen = new Set<string>();
+    const plans: QianchuanPlanOption[] = [];
+    let expectedTotal: number | undefined;
+    let rawRowsSeen = 0;
+    let pageNumber = 1;
+    let previousRowSignature: string | undefined;
+    while (pageNumber <= MAX_PAGES) {
+      const snapshot = await waitForStablePage(page, advertiserId, documentHandle, signal, pageNumber, previousRowSignature);
+      if (expectedTotal === undefined) expectedTotal = snapshot.total;
+      else if (snapshot.total !== expectedTotal) throw changed();
+      rawRowsSeen += snapshot.rows.length;
+      if (rawRowsSeen > snapshot.total || rawRowsSeen > MAX_PLANS) throw changed();
+      plans.push(...parseRows(snapshot, advertiserId, idsSeen));
+      previousRowSignature = snapshot.rowSignature;
+      if (snapshot.nextDisabled) {
+        if (rawRowsSeen !== snapshot.total) throw changed();
+        return plans;
+      }
+      if (rawRowsSeen >= snapshot.total || pageNumber === MAX_PAGES) throw changed();
+      signal.throwIfAborted();
+      checkPage(page, advertiserId);
+      const next = page.locator('[data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"] li.ovui-page-turner__item:has(.ovui-page-turner__next-icon)');
+      if (await abortable(next.count(), signal) !== 1 || await abortable(next.evaluate(element => element.classList.contains("ovui-page-turner__item--disabled")), signal)) throw changed();
+      await abortable(next.click({ timeout: 10_000 }), signal);
+      pageNumber++;
+    }
+    throw changed();
+  } finally { await documentHandle.dispose().catch(() => undefined); }
+}
+
+/** Connects through the guarded loopback relay and touches only a new, marked picker tab. */
+export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<QianchuanPlanOption[]> {
+  signal.throwIfAborted();
+  if (!/^[1-9][0-9]{0,19}$/.test(target.advertiserId) || !isLoopbackUrl(target.cdpEndpoint) || new URL(target.cdpEndpoint).pathname !== "/") throw changed();
+  let relay: Awaited<ReturnType<typeof guardedTransport>> | undefined;
+  let browser: Browser | undefined;
+  let page: Page | undefined;
+  try {
+    const endpoint = new URL(target.cdpEndpoint);
+    const response = await fetch(new URL("/json/version", endpoint), { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
+    if (!response.ok) throw changed();
+    const info = await response.json() as { webSocketDebuggerUrl?: unknown };
+    if (typeof info.webSocketDebuggerUrl !== "string" || !isLoopbackUrl(info.webSocketDebuggerUrl, true) ||
+      new URL(info.webSocketDebuggerUrl).host !== endpoint.host) throw changed();
+    relay = await guardedTransport(info.webSocketDebuggerUrl, signal, 10_000);
+    const connection = chromium.connectOverCDP(relay.url, { timeout: 10_000, noDefaults: true }).then(async connected => {
+      if (signal.aborted) { await connected.close().catch(() => undefined); signal.throwIfAborted(); }
+      return connected;
+    });
+    browser = await abortable(connection, signal);
+    if (browser.contexts().length !== 1) throw changed();
+    const context = browser.contexts()[0]!;
+    const opening = context.newPage().then(async ownedPage => {
+      page = ownedPage;
+      if (signal.aborted) { await ownedPage.close({ runBeforeUnload: false }).catch(() => undefined); signal.throwIfAborted(); }
+      return ownedPage;
+    });
+    page = await abortable(opening, signal);
+    page.setDefaultTimeout(10_000);
+    await abortable(page.goto(pageUrl(target.advertiserId), { waitUntil: "domcontentloaded", timeout: 45_000 }), signal);
+    return await readVisibleQianchuanPlans(page, target.advertiserId, signal);
+  } finally {
+    await page?.close({ runBeforeUnload: false }).catch(() => undefined);
+    await browser?.close().catch(() => undefined);
+    await relay?.close().catch(() => undefined);
+  }
+}

@@ -7,9 +7,11 @@ import { Heading, Icon } from "./ui";
 import { BatchProductionDetails } from "./BatchProductionDetails";
 import { resolveBatchUploadAccount } from "../shared/batch-upload";
 import type { QianchuanProduct } from "../shared/qianchuan-account";
+import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
+import { QianchuanPlanSelect } from "./QianchuanPlanSelect";
 import "./batch-production.css";
 
-type Row = BatchProjectOption & { selected: boolean; outputDirectory?: string; uploadEnabled: boolean };
+type Row = BatchProjectOption & { selected: boolean; outputDirectory?: string; uploadEnabled: boolean; uploadPlan?: QianchuanPlanOption };
 const labels = { queued: "等待制作", preparing: "检查模板", producing: "正在制作", exporting: "正在导出", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const modeLabels = { manual: "自己设置", agent: "全部交给 Agent", random: "本地随机" };
 
@@ -32,7 +34,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
       if (active) setRows(current => projects.map(project => {
         const draft = current.find(row => row.recentProjectId === project.recentProjectId);
         return { ...project, selected: draft?.selected ?? false, uploadEnabled: draft?.uploadEnabled ?? true, ...(draft ? { requestedCount: draft.requestedCount,
-          productPrice: draft.productPrice, coverEnabled: draft.coverEnabled, displayMode: draft.displayMode, mode: draft.mode, outputDirectory: draft.outputDirectory,
+          productPrice: draft.productPrice, coverEnabled: draft.coverEnabled, displayMode: draft.displayMode, mode: draft.mode, outputDirectory: draft.outputDirectory, uploadPlan: draft.uploadPlan,
           } : {}) };
       }));
     }).catch(value => { if (active) setError(message(value)); }).finally(() => { if (active) setLoading(false); });
@@ -47,7 +49,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
   const uploadSelection = (row: Row) => {
     if (!row.uploadEnabled || !state.douyinUpload?.config.enabled) return undefined;
     const account = accountFor(row);
-    return account.accountProduct ? { enabled: true as const, accountProduct: account.accountProduct } : undefined;
+    return account.accountProduct ? { enabled: true as const, accountProduct: account.accountProduct, ...(row.uploadPlan ? { plan: row.uploadPlan } : {}) } : undefined;
   };
   const entries = selected.map(row => ({ recentProjectId: row.recentProjectId, requestedCount: row.requestedCount,
     productPrice: batchRequiresDisplayText(row) ? row.productPrice : "", coverEnabled: row.coverEnabled, displayMode: row.displayMode, mode: row.mode,
@@ -55,7 +57,8 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
     ...(row.outputDirectory ? { outputDirectory: row.outputDirectory } : {}) }));
   const valid = BatchProductionStartSchema.safeParse({ entries }).success && selected.every(row => {
     const quantity = calculateExactProductionQuantity(row.sourceCount, row.requestedCount);
-    const uploadValid = !row.uploadEnabled || !state.douyinUpload?.config.enabled || !accountFor(row).error;
+    const uploadAccount = (state.douyinUpload?.accounts ?? []).find(account => account.product === accountFor(row).accountProduct);
+    const uploadValid = !row.uploadEnabled || !state.douyinUpload?.config.enabled || !accountFor(row).error && row.uploadPlan?.advertiserId === uploadAccount?.advertiserId;
     return !row.error && !batchLocalCoverError(row) && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!batchRequiresDisplayText(row) || RequiredProductPriceSchema.safeParse(row.productPrice).success) && uploadValid;
   });
   const run = state.batchProduction;
@@ -95,7 +98,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
     try {
       const uploadBinding = await window.jianji.saveBatchUploadAccount({ recentProjectId: row.recentProjectId, expectedProjectId: row.projectId,
         accountProduct: product, expectedAdvertiserId: account.advertiserId });
-      update(row.recentProjectId, { uploadBinding, uploadBindingError: undefined });
+      update(row.recentProjectId, { uploadBinding, uploadBindingError: undefined, uploadPlan: undefined });
     } catch (value) { setError(message(value)); }
     finally { setBusy(false); }
   };
@@ -141,6 +144,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
                   <option value="" disabled>请选择上传账号</option>
                   {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{account.productName ?? account.product} · {account.advertiserId || "未配置"}{!account.available && "（不可用）"}</option>)}
                 </select>
+                {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect account={(state.douyinUpload.accounts ?? []).find(account => account.product === uploadAccount.accountProduct)} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })} />}
                 {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}
               </div>
             </div>
