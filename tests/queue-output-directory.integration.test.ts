@@ -1,7 +1,7 @@
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { materializePlan } from "../src/main/agent-provider";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, now, type MediaItem } from "../src/main/domain";
@@ -14,8 +14,9 @@ describe("real FFmpeg output directory recovery", () => {
   it("recreates a removed timestamp directory and publishes text, audio and faststart MP4 through the queue", { timeout: 60_000 }, async (context) => {
     const [ffmpegPath, ffprobePath, fontPath] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
     if (!ffmpegPath || !ffprobePath || !fontPath) { context.skip(); return; }
-    const directory = await mkdtemp(path.join(tmpdir(), "jianji-directory-proof-"));
-    const output = path.join(directory, "视频", process.platform === "win32" ? "9.27 14-17" : "9.27 14:17");
+    const directory = await mkdtemp(path.join(process.env.JIANJI_OUTPUT_TEST_ROOT ?? tmpdir(), "jianji-directory-proof-"));
+    onTestFinished(() => rm(directory, { recursive: true, force: true }));
+    const output = path.join(directory, "视频", "9.27 14：17");
     const sourcePath = path.join(directory, "竞品详情 (27).mp4");
     const source = await runCommand(ffmpegPath, ["-v", "error", "-f", "lavfi", "-i", "testsrc2=s=160x90:r=24:d=1", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", "-c:v", "libx264", "-c:a", "aac", sourcePath]).promise;
     expect(source.code, source.stderr).toBe(0);

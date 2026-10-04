@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { access, constants, mkdir, realpath, stat } from "node:fs/promises";
+import { access, constants, copyFile, link, lstat, mkdir, open, realpath, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { EditTemplate, MediaItem } from "./domain.js";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format.js";
@@ -101,9 +101,48 @@ export async function allocateOutputPath(
   for (let index = 0; ; index += 1) {
     const filename = `${base}${index === 0 ? "" : `_${index}`}.${container}`;
     const candidate = path.resolve(outputDirectory, filename);
-    if (used.has(candidate) || await pathExists(candidate)) continue;
+    if (used.has(candidate)) continue;
+    try { await lstat(candidate); continue; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     if (await pathsEqual(candidate, sourcePath)) continue;
     return candidate;
+  }
+}
+
+export async function syncFile(filePath: string): Promise<void> {
+  const handle = await open(filePath, "r+");
+  try { await handle.sync(); } finally { await handle.close(); }
+}
+
+async function syncDirectory(directory: string): Promise<void> {
+  try {
+    const handle = await open(directory, "r");
+    try { await handle.sync(); } finally { await handle.close(); }
+  } catch {
+    // Directory fsync is unsupported by some filesystems; the file sync remains useful.
+  }
+}
+
+export async function publishWithoutReplacement(partialPath: string, requestedPath: string, outputDirectory: string, sourcePath: string, reserved: readonly string[], container: ExportFormat): Promise<string> {
+  let finalPath = requestedPath;
+  while (true) {
+    try {
+      try { await link(partialPath, finalPath); }
+      catch (error) {
+        if (!["EPERM", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EXDEV"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+        // exFAT has no hard links. Exclusive copy keeps concurrent publishers
+        // from replacing an existing file; its new inode must be synced too.
+        await copyFile(partialPath, finalPath, constants.COPYFILE_EXCL);
+        await syncFile(finalPath);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      finalPath = await allocateOutputPath(outputDirectory, sourcePath, "_edited", [...reserved, finalPath], container);
+      continue;
+    }
+    await unlink(partialPath);
+    await syncDirectory(outputDirectory);
+    return finalPath;
   }
 }
 

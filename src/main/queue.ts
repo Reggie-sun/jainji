@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { access, constants, copyFile, link, open, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
+import { access, constants, copyFile, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
   BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
@@ -25,7 +25,7 @@ import {
 import { ArtifactVerifier } from "./artifact.js";
 import { classifyError, JianjiError } from "./errors.js";
 import { type FfmpegAdapter, type RunningCommand } from "./ffmpeg.js";
-import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathWithinDirectory, validateTemplateResources, type FontResolver } from "./paths.js";
+import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathWithinDirectory, publishWithoutReplacement, syncFile, validateTemplateResources, type FontResolver } from "./paths.js";
 import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
 import { assertShapeCoverExportReady, verifyFrozenShapeSources } from "./shape-cover-render.js";
@@ -977,33 +977,4 @@ export class ExportQueue {
 
 function redactResult(stderr: string): string {
   return stderr.replace(/(?:\/[^\s:'"]+)+/g, "<path>").trim().slice(-2_000) || "FFmpeg 未返回错误详情。";
-}
-
-async function syncFile(filePath: string): Promise<void> {
-  const handle = await open(filePath, "r+");
-  try { await handle.sync(); } finally { await handle.close(); }
-}
-
-async function syncDirectory(directory: string): Promise<void> {
-  try {
-    const handle = await open(directory, "r");
-    try { await handle.sync(); } finally { await handle.close(); }
-  } catch {
-    // Directory fsync is unsupported by some filesystems; the file sync remains useful.
-  }
-}
-
-async function publishWithoutReplacement(partialPath: string, requestedPath: string, outputDirectory: string, sourcePath: string, reserved: readonly string[], container: ExportPreset["container"]): Promise<string> {
-  let finalPath = requestedPath;
-  while (true) {
-    try {
-      await link(partialPath, finalPath);
-      await unlink(partialPath);
-      await syncDirectory(outputDirectory);
-      return finalPath;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
-      finalPath = await allocateOutputPath(outputDirectory, sourcePath, "_edited", [...reserved, finalPath], container);
-    }
-  }
 }
