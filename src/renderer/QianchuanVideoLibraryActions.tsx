@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { qianchuanProductName, type QianchuanAccountSummary } from "../shared/qianchuan-account";
 import type { QianchuanLibraryResult } from "../shared/qianchuan-video-library";
+import { QianchuanVideoLibrarySchedule } from "./QianchuanVideoLibrarySchedule";
 
 export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: QianchuanAccountSummary[]; busy: boolean }) {
   const [selected, setSelected] = useState<QianchuanAccountSummary[]>();
@@ -38,5 +39,6 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
     {running && <p role="status">{selected && selected.length > 1 ? "正在并行清空各账号视频库" : "正在清空视频库"}，请保持 Chrome 打开。</p>}
     {error && <p role="alert">{error}</p>}
     {results.map(result => <p key={result.product} role={result.state === "BLOCKED" ? "alert" : "status"}>{qianchuanProductName(result.product, accounts)} · 账户 {result.advertiserId} · {result.message}</p>)}
+    <QianchuanVideoLibrarySchedule accounts={accounts} busy={disabled} />
   </div>;
 }

@@ -34,6 +34,7 @@ import type { DesktopState } from "../shared/desktop.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema, UploadIdSchema, UploadSuccessSchema } from "../shared/douyin-upload.js";
 import { DouyinUploadStore } from "./douyin-upload-store.js";
 import { DouyinUploadService } from "./douyin-upload-service.js";
+import { QianchuanVideoLibrarySchedule } from "./qianchuan-video-library-schedule.js";
 import { DouyinCdpUploader, douyinReadiness } from "./douyin-cdp-uploader.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
 import { RecentProjects } from "./recent-projects.js";
@@ -68,6 +69,7 @@ let recentProjects: RecentProjects;
 let activeRecentProjectId: string | undefined;
 let queue: ExportQueue;
 let douyinUpload: DouyinUploadService;
+let videoLibrarySchedule: QianchuanVideoLibrarySchedule;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
 let agent: AgentController;
@@ -102,6 +104,13 @@ protocol.registerSchemesAsPrivileged([
 function currentState(): QueueSnapshot { return queue.snapshot(); }
 
 function assertProductionIdle(): void { batchRuntime?.controller.assertIdle(); agent.assertIdle(); }
+
+function clearVideoLibraries(input: unknown) {
+  if (quitting) throw new Error("应用正在退出，已停止清空视频库。");
+  coverReview?.assertIdle(); assertProductionIdle();
+  if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未删除视频库素材。");
+  return douyinUpload.clearVideoLibraries(input);
+}
 
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("untrusted IPC sender");
@@ -185,10 +194,10 @@ function registerHandlers(): void {
     await douyinUpload.controlAccountBrowser(input); return publicState();
   });
   ipcMain.handle("douyinUpload.clearVideoLibraries", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
-    if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未删除视频库素材。");
-    return douyinUpload.clearVideoLibraries(input);
+    assertTrustedSender(event); return clearVideoLibraries(input);
   });
+  ipcMain.handle("videoLibrarySchedule.get", event => { assertTrustedSender(event); return videoLibrarySchedule.snapshot(); });
+  ipcMain.handle("videoLibrarySchedule.save", (event, input: unknown) => { assertTrustedSender(event); return videoLibrarySchedule.save(input); });
   ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
@@ -766,6 +775,12 @@ async function bootstrap(): Promise<void> {
       return await mediaResponse(file, request);
     } catch { return new Response("Preview unavailable", { status: 404 }); }
   });
+  videoLibrarySchedule = new QianchuanVideoLibrarySchedule(uploadStore.root, {
+    accounts: () => douyinUpload.status(service.currentProject.id).accounts,
+    clear: input => clearVideoLibraries(input),
+    changed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("videoLibrarySchedule.changed", videoLibrarySchedule.snapshot()); },
+  });
+  await videoLibrarySchedule.load();
   registerHandlers();
   // Show the window before replaying job history; with large histories recover()
   // can take minutes and the app must not look like it failed to launch.
@@ -775,6 +790,7 @@ async function bootstrap(): Promise<void> {
   queueReady = queue.recover().then(() => douyinUpload.reconcile());
   void queueReady.catch((error) => console.error("queue recover failed", error));
   await windowReady;
+  void queueReady.then(() => { if (!quitting) videoLibrarySchedule.start(); }).catch(() => safeLog("queue recovery unavailable; scheduled clearing not started"));
   void connections.restore();
 }
 
@@ -791,6 +807,7 @@ function safeLog(...args: unknown[]): void {
 }
 
 async function shutdownServices(): Promise<void> {
+  videoLibrarySchedule?.stop();
   await batchRuntime?.controller.cancel().catch(() => safeLog("batch production cancellation failed during shutdown"));
   await douyinUpload?.stop().catch(() => safeLog("uploader safely blocked during shutdown"));
   const shutdownStart = Date.now();

@@ -12,6 +12,7 @@ import type { ProjectWorkspace } from "../shared/project-workspace.js";
 import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/qianchuan-account.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
+import type { QianchuanLibraryScheduleSettings, QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule.js";
 import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest } from "../shared/batch-production.js";
 import type { TemplateAccountBinding, TemplateAccountSelection } from "../shared/batch-upload.js";
 
@@ -83,6 +84,13 @@ const api = {
   openQianchuanAccountBrowser: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.openAccountBrowser", input),
   controlQianchuanAccountBrowser: (input: QianchuanBrowserControl): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.controlAccountBrowser", input),
   clearQianchuanVideoLibraries: (input: QianchuanLibraryClear): Promise<QianchuanLibraryResult[]> => ipcRenderer.invoke("douyinUpload.clearVideoLibraries", input),
+  getQianchuanVideoLibrarySchedule: (): Promise<QianchuanLibraryScheduleStatus> => ipcRenderer.invoke("videoLibrarySchedule.get"),
+  saveQianchuanVideoLibrarySchedule: (input: QianchuanLibraryScheduleSettings): Promise<QianchuanLibraryScheduleStatus> => ipcRenderer.invoke("videoLibrarySchedule.save", input),
+  onQianchuanVideoLibrarySchedule: (listener: (status: QianchuanLibraryScheduleStatus) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: QianchuanLibraryScheduleStatus) => listener(status);
+    ipcRenderer.on("videoLibrarySchedule.changed", handler);
+    return () => ipcRenderer.removeListener("videoLibrarySchedule.changed", handler);
+  },
   refreshQianchuanAccounts: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.refreshAccounts"),
   resumeDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.resume", { projectId, uploadTaskId }),
   retargetDouyinUpload: (projectId: string, uploadTaskId: string, expectedAdId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.retarget", { projectId, uploadTaskId, expectedAdId }),
