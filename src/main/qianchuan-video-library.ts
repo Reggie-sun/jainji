@@ -78,6 +78,7 @@ export class QianchuanVideoLibrary {
         }
       }
       gateOwned = true;
+      if (recovery) result.deletedCount = recovery.deletedCount;
       const audit = path.join(directory, attempt); await secureUploadDirectory(audit);
       await strictSyncDirectory(directory);
       await guard();
@@ -131,7 +132,7 @@ export class QianchuanVideoLibrary {
         result.deletedCount += before.ids.length;
       }
       await guard(); signal.throwIfAborted();
-      const empty = await connection.page.refresh();
+      const empty = snapshot;
       if (empty.total || empty.ids.length || result.deletedCount !== initialCount) throw new Error(unknown);
       await this.write(path.join(audit, "completed.json"), { advertiserId: target.advertiserId, initialCount, deletedCount: result.deletedCount, empty, completedAt: now() });
       verifiedEmpty = true;

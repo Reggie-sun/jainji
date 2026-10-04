@@ -38,18 +38,18 @@ it("requires explicit confirmation and unique saved-account identities, rejects 
   expect(QianchuanLibraryClearSchema.parse(input)).toEqual(input);
   for (const invalid of [{ ...input, confirmation: false }, { ...input, accounts: [...input.accounts, ...input.accounts] }, { ...input, cdpEndpoint: target.cdpEndpoint }, { ...input, accounts: [] }]) expect(() => QianchuanLibraryClearSchema.parse(invalid)).toThrow();
 });
-it("clears shifting first pages once, synchronizes each intent before confirmation and proves an independently refreshed empty library", async () => {
+it("clears shifting first pages once, synchronizes each intent before confirmation and reuses the final refreshed empty result", async () => {
   const f = await fixture();
   const result = await f.library.clear(target, async () => {});
   expect(result).toMatchObject({ state: "CLEARED", deletedCount: 45 });
-  expect(f.page.deleteBatch).toHaveBeenCalledTimes(3); expect(f.page.refresh).toHaveBeenCalledTimes(4);
+  expect(f.page.deleteBatch).toHaveBeenCalledTimes(3); expect(f.page.refresh).toHaveBeenCalledTimes(3);
   expect(f.close).toHaveBeenCalledTimes(1);
   expect((await readdir(path.join(f.root, "video-library-deletions"))).some(name => name.endsWith(".pending.json"))).toBe(false);
 });
 it("records and verifies an empty library without selecting or confirming anything", async () => {
   const f = await fixture(0);
   expect(await f.library.clear(target, async () => {})).toMatchObject({ state: "CLEARED", deletedCount: 0 });
-  expect(f.page.deleteBatch).not.toHaveBeenCalled(); expect(f.page.refresh).toHaveBeenCalledTimes(1);
+  expect(f.page.deleteBatch).not.toHaveBeenCalled(); expect(f.page.refresh).not.toHaveBeenCalled();
 });
 it("synchronizes the deletion directory and audit parent entries before confirmation", async () => {
   const f = await fixture(1), synced: string[] = [];
@@ -148,6 +148,18 @@ it("reconciles only the last unresolved intent after validating the complete pri
   expect(await readFile(path.join(directory, attempt, "1.intent.json"))).toEqual(intent);
   expect(await readFile(path.join(directory, attempt, "0.verified.json"))).toEqual(verified);
   expect(JSON.parse(await readFile(path.join(directory, attempt, "1.verified.json"), "utf8")).reconciled).toBe(true);
+});
+it.each(["page", "inventory"])("preserves prior verified progress when last-batch recovery fails in %s observation", async kind => {
+  const f = await fixture(), remove = f.page.deleteBatch.getMockImplementation()!;
+  f.page.deleteBatch.mockImplementationOnce(remove).mockImplementationOnce(async (before, confirm) => { await remove(before, confirm); throw new Error("lost second response"); });
+  await f.library.clear(target, async () => {});
+  if (kind === "page") f.page.open.mockRejectedValueOnce(new Error("page unavailable"));
+  else f.page.inventory.mockRejectedValueOnce(new Error("inventory unavailable"));
+  expect(await f.library.clear(target, async () => {})).toMatchObject({ state: "BLOCKED", deletedCount: 20 });
+  expect(f.page.deleteBatch).toHaveBeenCalledTimes(2);
+  const directory = path.join(f.root, "video-library-deletions"), attempt = (await readdir(directory)).find(name => !name.includes("."))!;
+  expect(await readdir(path.join(directory, attempt))).not.toContain("1.verified.json");
+  expect(await readdir(directory)).toContain(target.advertiserId + ".pending.json");
 });
 it("refuses a last-batch recovery when a prior verified record disagrees with its intent", async () => {
   const f = await fixture(), remove = f.page.deleteBatch.getMockImplementation()!;

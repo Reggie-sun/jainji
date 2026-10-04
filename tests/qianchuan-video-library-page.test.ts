@@ -89,6 +89,56 @@ it("refuses a failed list response instead of interpreting its visible empty tab
   try { await expect(f.session.open()).rejects.toThrow(); expect(f.confirmations()).toBe(0); }
   finally { await f.context.close(); }
 });
+it("ignores a matching response from the old document before the new navigation commits", async () => {
+  const context = await browser.newContext(), page = await context.newPage();
+  const ids = Array.from({ length: 25 }, (_, i) => String(7000 + i));
+  let initial = true;
+  await page.route("https://qianchuan.jinritemai.com/**", async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname === listRoute) {
+      if (!url.searchParams.has("old")) await new Promise(resolve => setTimeout(resolve, 150));
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: 0, data: { total: url.searchParams.has("old") ? "0" : "25" } }) });
+    } else if (initial) { initial = false; await route.fulfill({ contentType: "text/html", body: "<!doctype html>old document" }); }
+    else await route.fulfill({ contentType: "text/html", body: html(ids, id, LIBRARY_DELETE_WARNING) + `<script>
+      const footer=document.querySelector('.ovui-page-total'),active=document.querySelector('.ovui-page-turner__item--active'),rows=document.querySelector('tbody').innerHTML;
+      footer.remove();active.remove();document.querySelector('tbody').innerHTML='';
+      const empty=document.createElement('div');empty.className='oc-empty';empty.dataset.e2e='oc_emptyKey_tools/creative-management/video-library__ocTable';empty.textContent='暂无数据';document.body.append(empty);
+      setTimeout(()=>{empty.remove();document.body.append(footer,active);document.querySelector('tbody').innerHTML=rows},350);</script>` });
+  });
+  await page.goto(videoLibraryUrl(id));
+  const reload = page.reload.bind(page);
+  const navigation = vi.spyOn(page, "reload").mockImplementationOnce(async options => {
+    await page.evaluate(async url => { await (await fetch(url)).json(); }, listUrl + "&old=1");
+    return reload(options);
+  });
+  try {
+    const session = new QianchuanVideoLibraryPage(page, id, new AbortController().signal);
+    await session.open(); expect((await session.read()).total).toBe(25);
+  } finally { navigation.mockRestore(); await context.close(); }
+});
+it("reloads an existing matching library page while preserving its URL and rejects a moved tab", async () => {
+  const f = await fixture();
+  try {
+    await f.page.goto(videoLibraryUrl(id) + "&x_tt_random=123");
+    const navigate = vi.spyOn(f.page, "goto"), reload = vi.spyOn(f.page, "reload");
+    await f.session.open();
+    expect(navigate).not.toHaveBeenCalled(); expect(reload).toHaveBeenCalledTimes(1);
+    expect(f.page.url()).toBe(videoLibraryUrl(id) + "&x_tt_random=123");
+    await f.page.goto("https://qianchuan.jinritemai.com/uni-prom?aavid=" + id);
+    await expect(f.session.open()).rejects.toThrow("页面");
+    expect(reload).toHaveBeenCalledTimes(1); expect(f.confirmations()).toBe(0);
+    navigate.mockRestore(); reload.mockRestore();
+  } finally { await f.context.close(); }
+});
+it("invalidates response evidence when the same library URL loads a new document", async () => {
+  const f = await fixture({ count: 0 });
+  try {
+    await f.session.open(); expect(await f.session.read()).toEqual({ total: 0, ids: [] });
+    await f.page.reload();
+    await expect(f.session.read()).rejects.toThrow("页面");
+    expect(f.confirmations()).toBe(0);
+  } finally { await f.context.close(); }
+});
 it("rejects a mismatched visible account even when the URL contains the requested ID", async () => {
   const f=await fixture({headerId:"999"});
   try { await expect(f.session.open()).rejects.toThrow("账号"); expect(f.confirmations()).toBe(0); }
@@ -121,9 +171,9 @@ it("enumerates every page without selection or deletion and restores a freshly l
   await page.route("https://qianchuan.jinritemai.com/**", async route => {
     if (route.request().method() !== "GET") { confirmations++; throw new Error("inventory must be read-only"); }
     if (new URL(route.request().url()).pathname === listRoute) { await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: 0, data: { total: "45" } }) }); return; }
-    const number = Number(new URL(route.request().url()).searchParams.get("page") ?? 1);
-    const body = html(ids.slice((number-1)*20), id, LIBRARY_DELETE_WARNING).replace(/共 \d+ 条记录/,"共 45 条记录").replace('item--active">1','item--active">'+number)+
-      `<ul><li class="ovui-page-turner__item"><div class="ovui-page-turner__next-icon">next</div></li></ul><script>document.querySelector('.ovui-page-turner__next-icon').parentElement.onclick=()=>location.href=${JSON.stringify(videoLibraryUrl(id)+"&page="+(number+1))}</script>`;
+    const body = html(ids, id, LIBRARY_DELETE_WARNING).replace(/共 \d+ 条记录/,"共 45 条记录") +
+      `<ul><li class="ovui-page-turner__item"><div class="ovui-page-turner__next-icon">next</div></li></ul><script>let number=1;const ids=${JSON.stringify(ids)};
+      document.querySelector('.ovui-page-turner__next-icon').parentElement.onclick=async()=>{number++;await fetch(${JSON.stringify(listUrl)}.replace('page=1','page='+number));document.querySelector('.ovui-page-turner__item--active').textContent=number;document.querySelector('tbody').innerHTML=ids.slice((number-1)*20,number*20).map(x=>'<tr><td><input type="checkbox"></td><td>ID：'+x+'</td></tr>').join('')};</script>`;
     await route.fulfill({contentType:"text/html",body});
   });
   const session = new QianchuanVideoLibraryPage(page,id,new AbortController().signal);

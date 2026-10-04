@@ -1,4 +1,4 @@
-import type { Page, Request } from "playwright-core";
+import type { Frame, JSHandle, Page, Request } from "playwright-core";
 import { VIDEO_LIBRARY_ROUTE, videoLibraryUrl } from "../shared/qianchuan-video-library.js";
 
 export interface LibrarySnapshot { total: number; ids: string[]; }
@@ -8,6 +8,7 @@ export const LIBRARY_DELETE_WARNING = "删除后不影响已使用该视频的�
 /** The library dialog is separate from upload confirmation and plan controls. */
 export class QianchuanVideoLibraryPage {
   private responseTotal?: number;
+  private responseDocument?: JSHandle<Document>;
   constructor(private readonly page: Page, private readonly advertiserId: string, private readonly signal: AbortSignal) {}
   private check(): void {
     this.signal.throwIfAborted();
@@ -17,7 +18,14 @@ export class QianchuanVideoLibraryPage {
   }
   async open(): Promise<void> {
     this.signal.throwIfAborted();
-    await this.load(() => this.page.goto(videoLibraryUrl(this.advertiserId), { waitUntil: "domcontentloaded", timeout: 30000 }));
+    const existing = this.page.url() !== "about:blank";
+    if (existing) this.check();
+    await this.load(() => {
+      if (existing) this.check();
+      else if (this.page.url() !== "about:blank") throw changed();
+      return existing ? this.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }) :
+        this.page.goto(videoLibraryUrl(this.advertiserId), { waitUntil: "domcontentloaded", timeout: 30000 });
+    });
     await this.page.bringToFront();
     await this.preparePage();
   }
@@ -25,29 +33,39 @@ export class QianchuanVideoLibraryPage {
   private async load(navigate: () => Promise<unknown>): Promise<void> {
     this.signal.throwIfAborted();
     this.responseTotal = undefined;
-    const requests = new Set<Request>();
+    await this.responseDocument?.dispose().catch(() => undefined);
+    this.responseDocument = undefined;
+    let documentEpoch = 0;
+    const requests = new Map<Request, number>();
+    const committed = (frame: Frame) => { if (frame === this.page.mainFrame()) documentEpoch++; };
     const capture = (request: Request) => {
+      if (!documentEpoch) return;
+      try { if (request.frame() !== this.page.mainFrame()) return; } catch { return; }
       const url = new URL(request.url());
       if (request.method() === "GET" && url.origin === "https://qianchuan.jinritemai.com" &&
         url.pathname === "/ad/api/creation/material/video-list" &&
         url.searchParams.getAll("aavid").length === 1 && url.searchParams.get("aavid") === this.advertiserId &&
         url.searchParams.getAll("page").length === 1 && url.searchParams.get("page") === "1" &&
         ["queryString", "source", "tags", "imageModes", "analysisType", "auditStatuses", "materialDeliveryStatus"].every(key =>
-          url.searchParams.getAll(key).length === 1 && url.searchParams.get(key) === "")) requests.add(request);
+          url.searchParams.getAll(key).length === 1 && url.searchParams.get(key) === "")) requests.set(request, documentEpoch);
     };
+    this.page.on("framenavigated", committed);
     this.page.on("request", capture);
     try {
-      const response = this.page.waitForResponse(response => requests.has(response.request()), { timeout: 30000 });
+      const response = this.page.waitForResponse(response => requests.get(response.request()) === documentEpoch, { timeout: 30000 });
       const [loaded] = await Promise.all([response, navigate()]);
       this.check();
       if (loaded.status() !== 200) throw changed();
       const body = await loaded.json();
       if (body?.status_code !== 0 || typeof body.data?.total !== "string" || !/^(0|[1-9]\d*)$/.test(body.data.total)) throw changed();
       const total = Number(body.data.total);
-      if (!Number.isSafeInteger(total)) throw changed();
+      if (!Number.isSafeInteger(total) || requests.get(loaded.request()) !== documentEpoch) throw changed();
       this.signal.throwIfAborted();
+      const document = await this.page.evaluateHandle(() => window.document);
+      if (requests.get(loaded.request()) !== documentEpoch) { await document.dispose(); throw changed(); }
+      this.responseDocument = document;
       this.responseTotal = total;
-    } finally { this.page.off("request", capture); }
+    } finally { this.page.off("request", capture); this.page.off("framenavigated", committed); }
   }
   private async preparePage(): Promise<LibrarySnapshot> {
     const before = await this.read();
@@ -75,6 +93,7 @@ export class QianchuanVideoLibraryPage {
     const deadline = Date.now() + 30000;
     do {
       this.check();
+      await this.checkDocument();
       const value = await this.page.evaluate(({ advertiserId, expectedPage, responseTotal }) => {
         const visible = (node: Element) => !!node.getClientRects().length && getComputedStyle(node).visibility !== "hidden";
         const headers = Array.from(document.querySelectorAll("header, [role=banner]")).filter(visible);
@@ -110,11 +129,15 @@ export class QianchuanVideoLibraryPage {
         return null;
       });
       this.check();
+      await this.checkDocument();
       if (value && "unsafe" in value) throw changed();
       if (value) return value;
       await this.page.waitForTimeout(200);
     } while (Date.now() < deadline);
     throw changed();
+  }
+  private async checkDocument(): Promise<void> {
+    if (!this.responseDocument || !await this.page.evaluate(document => document === window.document, this.responseDocument).catch(() => false)) throw changed();
   }
   async deleteBatch(before: LibrarySnapshot, beforeConfirm: () => Promise<void>): Promise<void> {
     this.check();
@@ -152,7 +175,7 @@ export class QianchuanVideoLibraryPage {
   }
   async refresh(): Promise<LibrarySnapshot> {
     this.check();
-    await this.load(() => this.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }));
+    await this.load(() => { this.check(); return this.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }); });
     return this.preparePage();
   }
   /** Complete, unfiltered, stable inventory for read-only reconciliation; never selects videos. */
