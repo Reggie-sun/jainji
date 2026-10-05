@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明代码媒体治理检查与任务路径路由 | R:code:src/harness/types.ts,code:src/harness/routing.ts,code:src/harness/code.ts,code:src/harness/cli.ts | A:v2按owned scope路由必需并集；Hybrid覆盖H1图片绑定及H2语义分组；上传、静态研究和生产边界保留对应回归 | S:必需skip或缺证据非PASS；回执不授产品或人工验收
+policy.json[FQ7L]: F:声明代码媒体治理检查与任务路径路由 | R:code:src/harness/types.ts,code:src/harness/routing.ts,code:src/harness/code.ts,code:src/harness/cli.ts | A:v2按owned scope路由必需并集；hybrid-vision覆盖旧H1/H2与独立Corner语义及M1图片集成；其他生产边界保留回归 | S:必需skip或缺证据非PASS；回执不授产品或人工验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -151,10 +151,13 @@ qianchuan-plan-reads.ts[AW6T]: F:合并冻结账号的在途计划读取并保�
 
 shape-cover-vision-packet.ts[AA7S]: F:组装绑定源时间像素和M1候选的有界视觉图片包 | R:code:src/main/source-fact-discovery-evidence.ts,code:src/main/shape-cover-stationary-discovery.ts,code:src/main/shape-cover-alpha.ts | A:重放M1仅接CANDIDATE；三时间点full context及同帧crop；最多3组件12图32MiB；preview成对原图和覆盖图 | S:不发送路径或原视频；UNKNOWN不升级；采样不授全时域证明
 shape-cover-vision-provider.ts[IA7T]: F:将Hybrid视觉角色接到现有模型连接与能力核验 | R:code:src/main/model-connections.ts,code:src/main/agent-provider.ts,code:src/main/shape-cover-vision-router.ts | A:优先exact GPT6 Luna及6.1 Sol；缺席时只用H1真实用户授权的5.6；MiniMax官方选中连接单次图片核验；前后验证连接 | S:无额外替代授权；不改持久模型选择；不复制HTTP或凭据存储
-shape-cover-vision-router.ts[AA7S]: F:编排有界Hybrid视觉请求与严格解析回执 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-schema.ts,code:src/main/shape-cover-vision-provider.ts | A:每source Luna4 Sol2 MiniMax1；H2 v2 prompt附全候选框和不可信Luna摘要；回执绑定模型packet候选图片版本；失败取消消费请求 | S:无自动重试或多数投票；H1及preview兼容；视觉不签像素coverage
+shape-cover-vision-router.ts[AA7S]: F:复用单一Hybrid视觉请求生命周期并隔离global与corner语义 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-schema.ts,code:src/main/shape-cover-vision-corner-schema.ts | A:GLOBAL保留4/2/1与旧prompt；CORNER独立4/4/0及每角各1；绑定context/image/receipt；响应hash字节数及parse类别诊断 | S:Corner禁preview与MiniMax；H4预算独立；失败取消消费请求且不重试投票；普通回执不存raw，视觉不授像素coverage
 shape-cover-vision-schema.ts[DA7T]: F:校验候选语义分组及四项预览判断的严格响应 | R:code:src/main/shape-cover-vision-router.ts | A:绑定packet和完整candidate集合；confirmed组恰一次；拒绝编造ID重复或缺项；H2支持跨包疑似关联标记 | S:confidence不授安全；不接模型mask坐标；preview不代替coverage
 shape-cover-vision-semantic.ts[DA7S]: F:完整确认M1候选并形成source-bound逻辑语义目标集合 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-router.ts,code:src/main/shape-cover-stationary-discovery.ts | A:最多12候选；稳定排序原子空间cluster装3成员包；Luna4及Sol2；逐候选confirmed rejected unresolved分区；深冻结摘要回执并verifyFresh | S:空间仅packing提示；跨包疑似关联复杂cluster动变或分歧关闭；漏检UNSAFE；无mask知识发布
 
+shape-cover-vision-corner-policy.ts[DC7T]: F:独占Hybrid四角产品范围与确定性候选分配 | R:code:src/main/shape-cover-stationary-discovery.ts,code:src/main/shape-cover-vision-corner-semantic.ts | A:固定Corner枚举；center和bbox交集比例双门；冻结owned plan及source/policy/candidate摘要 | S:宽高fraction0.30且面积比0.60不随模型调整；非角是scope排除而非视觉reject；UNKNOWN不提案
+shape-cover-vision-corner-schema.ts[DA7T]: F:校验角落独立语义分组响应并定义对应prompt与错误分类 | R:code:src/main/shape-cover-vision-corner-policy.ts,code:src/main/shape-cover-vision-router.ts | A:绑定packet/corner和完整ID；CONFIRM严格组分区；输出JSON schema及bounded parse failure类别 | S:角落风险不改global语义；编造ID全源关闭，语法错只跳角；VLM不授像素准入，不repairJSON
+shape-cover-vision-corner-semantic.ts[DA7S]: F:独立确认四角M1候选并投影fresh逻辑目标供未来H3消费 | R:code:src/main/shape-cover-vision-corner-policy.ts,code:src/main/shape-cover-vision-router.ts,code:src/main/shape-cover-vision-packet.ts | A:每角≤3候选及≤1目标；Luna必要时Sol原图；immutable set绑定回执且verifyFresh；READY EMPTY PARTIAL BLOCKED | S:局部未知复杂动变冲突只跳该角；source/provider/binding错清全源；STABLE不替代算法motion；JSON不恢复ownership，无mask或生产准入
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
 index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/model-server/gateway.ts | A:模型网关进程入口 | S:密钥来自受控环境或文件

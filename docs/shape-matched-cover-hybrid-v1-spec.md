@@ -2,15 +2,49 @@
 
 ## Authority and Goal
 
-2026-10-05 accepted user architecture adjustment. Hybrid V1 supports detected and visually confirmed static overlay targets. Classical CV proposes candidate regions and creates conservative source masks. Visual models classify/group candidates and inspect rendered previews. Deterministic code enforces final mask coverage. Obvious motion, uncertainty, disagreement, or unsafe preview fails closed.
+2026-10-05 accepted user architecture adjustment，随后接受 H2C-Corner 产品收缩。Hybrid V1 默认只自动处理四个角落内的静态后期贴纸/overlay logo。M1 仍全画面发现；Corner filter 决定产品范围；VLM 只确认每角语义及同角 component grouping。算法仍独占 mask、sampled motion、shape matching 与 100% coverage。
 
-模型判断后期overlay语义、component grouping及预览自然度；算法独占mask、时间边界、100% fully opaque coverage及renderer。只处理detected + confirmed集合；absence不是无目标证明，额外疑似overlay返回UNDETECTED_OVERLAY_SUSPECTED。商品原字、字幕、人物、背景稳定feature都允许作为CV proposal，不能仅因角落固定而确认。
+只处理 detected + confirmed corners；absence 不是无目标证明。商品原字、字幕、人物及物理背景可为 M1 proposal，角落固定位置不能替代语义。一个角失败只跳过该角；source stale、provider infrastructure 或 source/candidate/packet/corner binding 错误使全 source 失效。
+
+## Product Default
+
+**DEFAULT PRODUCT PATH: Corner-Scoped Hybrid V1**。
+
+M1 full-frame discovery → Corner Scope Filter → TOP_LEFT / TOP_RIGHT / BOTTOM_LEFT / BOTTOM_RIGHT 各角独立 VLM semantic confirmation/grouping → H3 conservative mask + sampled motion validation + shape matching + 100% coverage → H4 rendered preview + MiniMax QA → Sol escalation → 原 export owners → 独立 Activation。
+
+V1 不处理中间 overlay、底部中间字幕、lower-third、moving/animated sticker 或跨角 logical sticker，不要求任意全画面 candidate completeness 或跨包 global grouping。本轮只 H2C；后续固定 H3 → H4 → Activation，不增加 HC6/HC7/proof v3。PRODUCT_DISABLED，guard unchanged。
+
+## Diagnostics and Future
+
+**GENERALIZED / HIGH-ASSURANCE / DIAGNOSTIC**：旧 full-frame H2 为 GENERALIZED_SEMANTIC_RESEARCH；M1 multi-component、source identity、exact arbitrary frame reader、conservative mask、geometry v1/v2、confirmed-target proof v1/v2、HC2/HC3 及其他既有 HC research、H1 packet/router/schema/provider 全部保留。它们不再是 Corner V1 blocker。旧 H2 的 development BLOCKED 及 receipts 保留原解释；旧 random changing background + 固定 screen-space 矩形另分类为 AMBIGUOUS_SCREEN_SPACE_GRAPHIC diagnostic，不再当明确 BACKGROUND_GRAPHIC acceptance blocker，也不追改历史记录。
+
+## H2C Corner Contract
+
+`shape-cover-vision-corner-policy.ts` 独占 **CornerScopePolicy/v1**。固定 outerWidthFraction=0.30、outerHeightFraction=0.30、minimumAreaInside=0.60。内边界严格 `<0.30W/H` 或 `>0.70W/H`；candidate 的 bbox center 必须在 corner 内，且交集面积/bbox 面积≥0.60。center 唯一分配；歧义为 CORNER_SCOPE_AMBIGUOUS，不自动处理；参数不根据 model 结果调整。real233s 右上目标不满足时 STOP，报告几何原因。
+
+M1 CANDIDATE 的非角对象记 OUT_OF_CORNER_SCOPE，不发送 VLM、不作 REJECT/NOT_STICKER/ABSENT。M1 UNKNOWN 记 UNKNOWN_NOT_PROPOSED，不能升级。每角 0 候选为 NO_CANDIDATE；1 候选 classification；2–3 候选 classification/grouping；>3 仅该角 CORNER_COMPLEX_UNRESOLVED，无 global cluster/partition。每角最多一个 logical overlay；两个以上独立组为 CORNER_MULTIPLE_OVERLAYS_UNSUPPORTED，UNRESOLVED，不选择其中一个。
+
+H1 `buildVisionCandidatePacket()` 每角单包：1–3 IDs，3 个 full context 与每 candidate 首/中/尾 crop。角落、cornerScopeRect、policy/scope digest 通过独立 CornerReviewContext 绑定；receipt 再绑定 contextDigest、packetDigest、有序 image SHA、corner 与候选。新 prompt **hybrid-corner-overlay-semantic/v1** 明确只看该角：其他角及中央 overlay 不设风险。独立 schema 字段 **undetectedCornerOverlaySuspected** 仅指该角内额外疑似 overlay；不 reinterpret 旧 undetectedOverlaySuspected/crossBatchGroupingSuspected。
+
+严格决策：CONFIRM 仅 OVERLAY_STICKER/OVERLAY_LOGO；REJECT 仅 PRODUCT_PRINT/SUBTITLE/BACKGROUND_GRAPHIC/PERSON/OTHER；UNKNOWN 保留。所有 CONFIRM 恰一次出现在 groups（单候选也返回 singleton）；REJECT/UNKNOWN 不进 groups。VLM 不返回坐标、mask/polygon、coverage 或 renderer。不 repair 非法 JSON。
+
+每角 Luna first pass；清晰 classification、group 明确、temporalState=STABLE 即结束（2–3 components 清晰同组不自动消耗 Sol）。UNKNOWN、PRODUCT_PRINT_RISK、TEMPORAL_INCONSISTENCY、group UNCERTAIN、复杂 component/ALGORITHM_CONFLICT 等明确风险才 Sol 一次，重新看原图，Luna summary 为 untrusted context。高风险相反决策/组冲突仅该角 UNRESOLVED，不投票。任一 reviewer 明确 MOVED/DISAPPEARED/CHANGED → UNRESOLVED_FOR_STATIC_V1，不让 Sol 或未来 H3 抹掉；VLM STABLE 绝不替代 H3 sampled algorithm。
+
+Corner session 是原 ShapeCoverVisionSession 的独立 mode，source Luna≤4/Sol≤4/MiniMax=0，每角每角色≤1；取消/失败/timeout 消耗已发请求，零重试。H4 使用独立 preview session。provider 复用原 exact GPT requested 优先及用户已授权 gpt-5.6-luna/gpt-5.6-sol alternates，不增加 fallback。旧 GLOBAL mode prompt/schema/bounds 不变。
+
+`HybridCornerSemanticSet/v1` 深冻结 run-local 对象含 sourceKey、policyVersion/Digest、candidateSetDigest/scopeDigest、所有 assignments、outOfScopeCandidateIds、unknownCandidateIds、四角 status/candidateIds/rejectedCandidates/unresolvedCandidates/confirmedTarget、packetDigests/receiptDigests/receipts、requestCounts、sourceErrors 和 verifyFresh。confirmedTarget 含 logicalTargetId、candidateIds、classification、semanticSource、temporalObservation、riskFlags。JSON 不恢复 ownership/freshness。
+
+每角 NO_CANDIDATE / NO_OVERLAY / CONFIRMED / UNRESOLVED。全 source 有 unresolved 为 CORNER_SEMANTIC_PARTIAL（可有或无 confirmed）；无 unresolved 且有 confirmed 为 READY；无 confirmed 为 EMPTY；source 错误为 BLOCKED 并清 confirmed。NO_OVERLAY 是正常语义结果。`getConfirmedCornerTargets()` 唯一投影 fresh CONFIRMED 角（0–4）及 semantic receipt binding；H3 不解释原 JSON，也不要求全 source 全绿。
+
+失败 observability：rawResponseSha256、rawResponseByteLength、parseFailureCategory（JSON_PARSE / SCHEMA_VALIDATION / PACKET_MISMATCH / GROUP_MISMATCH / MISSING_REQUIRED_FIELD / OTHER），受控 outputFailureCode。普通 receipt/log 不存 raw；development 私有 root 可存 bounded sanitized text。invalid syntax/group 仅角 skip；明确 identity mismatch 全 source BLOCKED。
+
+后续硬门不放宽：**oldMask ⊆ fully opaque newStickerAlpha，100% coverage**。本轮没有 mask acceptance、motion 实现、shape、coverage、preview/export、proof v3 或 activation。
 
 ## Superseded Critical Path
 
 本Delta优先于旧simplification中的strict geometry/proof前置：confirmed-target-static v1/v2、geometry v1/v2、HC2/HC3/HC4/HC5及support/geometry/proof v3属于HIGH_ASSURANCE_RESEARCH / NOT_HYBRID_V1_CRITICAL_PATH。保留历史代码、fixtures和失败，不升级旧JSON或解除源争议。Hybrid不要求4×4可观察geometry proof，不以detector footprint当segmentation。
 
-## Pipeline and Acceptance
+## Historical Generalized Pipeline and Acceptance
 
 CV Proposal → VLM Semantic Confirmation/Grouping → deterministic conservative mask → sampled motion/persistence → shape matching + deterministic 100% coverage → VLM paired Preview QA → original export owners。V1 static only；明显移动/消失拒绝，无白矩形fallback，无训练，无全源absence proof。有限安全margin优先不露旧贴纸，其次不过盖/自然。
 
@@ -30,7 +64,7 @@ preview schema只回答旧overlay残留、误遮挡、明显不自然和temporal
 
 strict schemas、invented/swapped IDs/group、UNKNOWN、不可用route、Luna→Sol/MiniMax role、disagreement、图数/bytes、无path、取消/timeout/stale和existing provider regressions；实际可用route最多一次同packet diagnostic。233s及已授权controlled开发素材，不读210 holdout。classification/grouping/motion/mask/coverage/preview及false-cover的端到端统计留H2–H4，不将H1当产品完成。PRODUCT_DISABLED。
 
-## H2 Semantic Confirmation Contract
+## Historical Generalized H2 Semantic Confirmation Contract
 
 完整M1 CANDIDATE集最多12个；UNKNOWN仅保留diagnostic，builder拒绝升级。稳定sourceBox y/x/ID排序，轴向box gap≤短边12%作空间proposal关联，cluster原子first-fit装入每包≤3、source≤4包；cluster>3返回COMPLEX_GROUPING，atomic packing>4包返回SEMANTIC_BATCH_LIMIT_EXCEEDED，候选>12返回SEMANTIC_CANDIDATE_LIMIT_EXCEEDED。所有failure仍对全部candidate产生UNRESOLVED，不存在截断或topN。H1完整候选数错误及count envelope由[H2 record](shape-matched-cover-hybrid-h2-record.md)保留。
 
@@ -45,3 +79,5 @@ H2 prompt v2先冻结固定construction cases与labels，然后各source一次de
 ## Self Review
 
 本scope不调整生产准入。新语义owner只组装vision任务，provider基础设施仍唯一；strict历史与Hybrid发展路径分离，100% coverage是独立硬门。capability unavailable保持显式；无live证据不能声称三模型routing实测成立。
+
+H2C self-review：只收缩 semantic product scope，保留历史能力、旧 global 语义及失败；固定几何不是视觉真值。局部 skip 不解除 source binding、M1 UNKNOWN 或最终像素硬门。实现/fixture/Harness 是不同证据层；真实开发结果见 [H2C Record](shape-matched-cover-hybrid-h2c-record.md)。

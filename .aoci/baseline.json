@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-05T12:04:29Z",
+  "updated_at": "2026-10-05T13:31:16Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "2e96281c85b88dacc1a774f763bef9a8e3d63642191d8d122058f315be300e1c",
-      "size": 37181,
-      "normalized_sha256": "2e96281c85b88dacc1a774f763bef9a8e3d63642191d8d122058f315be300e1c"
+      "sha256": "37e4d6ee211adb874fd0c85e60eb0be358d22188bf93def9712d647d196a6b3e",
+      "size": 37466,
+      "normalized_sha256": "37e4d6ee211adb874fd0c85e60eb0be358d22188bf93def9712d647d196a6b3e"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -1553,9 +1553,9 @@
       "normalized_sha256": "ca8c24985907c2aac001822bc7af0f461087dde084c71e774387eb9b13192e62"
     },
     "src/main/shape-cover-vision-router.ts": {
-      "sha256": "9588fb6b94ff71ee2c79d5a98036c1edf6f0132f9d0c9b74e3cbf7ca3926f959",
-      "size": 12271,
-      "normalized_sha256": "9588fb6b94ff71ee2c79d5a98036c1edf6f0132f9d0c9b74e3cbf7ca3926f959"
+      "sha256": "6a7a4753081cfba31314ece0a7a686d4cb44b69f0e98079356fdb5f6d9b170cb",
+      "size": 15302,
+      "normalized_sha256": "6a7a4753081cfba31314ece0a7a686d4cb44b69f0e98079356fdb5f6d9b170cb"
     },
     "src/main/shape-cover-vision-schema.ts": {
       "sha256": "fe620e723faadab5cb7939d388bddd5365ffed249ab575f6f22a1e7b77e496ab",
@@ -2967,6 +2967,21 @@
       "sha256": "e7a4dac97f048ab0feb8780fb204b8a5d60d080b51944752041d672f2c53bfc5",
       "size": 15243,
       "normalized_sha256": "e7a4dac97f048ab0feb8780fb204b8a5d60d080b51944752041d672f2c53bfc5"
+    },
+    "src/main/shape-cover-vision-corner-policy.ts": {
+      "sha256": "f6d46d25a505d0b2eb11f5f634a75efa562410085b5320a6f7f0ed7bf6ab9c30",
+      "size": 5995,
+      "normalized_sha256": "f6d46d25a505d0b2eb11f5f634a75efa562410085b5320a6f7f0ed7bf6ab9c30"
+    },
+    "src/main/shape-cover-vision-corner-schema.ts": {
+      "sha256": "764cec5f96d93cdcb3003485fe6ac618cedc337893238fe357ae7ddca598fc63",
+      "size": 7227,
+      "normalized_sha256": "764cec5f96d93cdcb3003485fe6ac618cedc337893238fe357ae7ddca598fc63"
+    },
+    "src/main/shape-cover-vision-corner-semantic.ts": {
+      "sha256": "69f27df94b79dc11a953956c392bdde1df653395a3b0ae3044f3e49313da9ee4",
+      "size": 12015,
+      "normalized_sha256": "69f27df94b79dc11a953956c392bdde1df653395a3b0ae3044f3e49313da9ee4"
     }
   },
   "managed_scope": {
