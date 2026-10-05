@@ -54,7 +54,13 @@ HYBRID_CORNER_H2_READY要求 clear overlay可CONFIRM、已有模型结果的商�
 
 CV Proposal → VLM Semantic Confirmation/Grouping → deterministic conservative mask → sampled motion/persistence → shape matching + deterministic 100% coverage → VLM paired Preview QA → original export owners。V1 static only；明显移动/消失拒绝，无白矩形fallback，无训练，无全源absence proof。有限安全margin优先不露旧贴纸，其次不过盖/自然。
 
-自动继续必须CONFIRM + OVERLAY_STICKER/OVERLAY_LOGO、group resolved、sampled motion supported或Sol明确stable、mask available、oldMask ⊆ fully opaque projected alpha、preview PASS。Sol/MiniMax高风险冲突UNSAFE/NEEDS_REVIEW；不majority vote。模型不得创建candidate、坐标mask/polygon或renderer authority。
+自动继续必须CONFIRM + OVERLAY_STICKER/OVERLAY_LOGO、group resolved、H3 sampled motion supported、mask available、oldMask ⊆ fully opaque projected alpha、preview PASS。Sol明确stable只作辅助，不替代H3 motion。Sol/MiniMax高风险冲突UNSAFE/NEEDS_REVIEW；不majority vote。模型不得创建candidate、坐标mask/polygon或renderer authority。
+
+## H3 Accepted Delta
+
+仅消费 `getConfirmedCornerTargets()` 的 fresh H2 targets。conservative mask 保持既有 M1 默认96张代表帧和原 extractor；每个密集 component 必须唯一且完全处于对应 H2-confirmed component box，否则该角 `MASK_TARGET_AMBIGUOUS`，不能发现/确认额外 target。multi-component 逐成员绑定，不用 union bbox 代替 mask。H2 的16–32张语义帧独立用于每个 component 的 mask interior sampled motion：reference局部对比至少64的可追踪点需≥8，否则UNOBSERVABLE；纯色共同内核RGB不变不能证明整个贴纸未移动。明显移动、消失、变化或不可观察仅跳该角；源码/引擎/语义/目录绑定失效或取消关闭全源。旧 full-range RGB anomalies 保留 diagnostic，仅 `FULL_RANGE_STATIC_CONTRADICTION` 不作 Hybrid motion blocker；不调用 strict geometry/proof，不发布 Knowledge Store。
+
+本地有效 cover pool（内置及已校验上传）按 ID 排序，最多256款、5档等比尺寸、9个小平移位置、1280栅格/11520摆放/180秒。只裁全透明外围，不改变资源图文或部分 alpha。原 pixel gate 的 radius≤8 source px、area≤1.35、span≤1.16 保持；decode 后 oldMask 全部 alpha=255且 uncoveredPixels=0 才冻结。无匹配 `NO_SHAPE_MATCH`，预算耗尽 `HYBRID_SEARCH_LIMIT`；无白矩形fallback。PNG、RGBA、alpha、source、semantic、mask、motion、asset、trim、placement及output绑定冻结，重新读取核对同字节。H3仅提供 geometry-only/NOT_EVALUATED frozen PNG 和 active-owned getter 给后续H4；JSON不恢复authority。H4仍需渲染及视觉/内容安全判断，PRODUCT_DISABLED不变。
 
 ## H1 Infrastructure Contract
 

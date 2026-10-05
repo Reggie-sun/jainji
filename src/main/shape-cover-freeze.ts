@@ -5,7 +5,7 @@ import { FrozenShapeCoverSchema } from "../shared/shape-cover.js";
 import { EditTemplateSchema, createDefaultTemplate, type StickerLayer } from "./domain.js";
 import { decodeShapeCoverPng, encodeShapeCoverPng, rasterizeShapeCoverArtwork, readShapeCoverAsset, type ShapeCoverMediaTools } from "./shape-cover-alpha.js";
 import { computeCommonShapeCoverCandidates, readAdmittedShapeCoverTarget, type ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
-import { growOpaqueContour, projectSourceMask } from "./shape-cover-pixel-gate.js";
+import { growOpaqueContour, projectSourceMask, type PixelSize } from "./shape-cover-pixel-gate.js";
 import { shapeCoverBindingDigest, shapeCoverDigest } from "./shape-cover-render.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 
@@ -13,7 +13,7 @@ type FrozenCell = { intendedTargetId: string; outputSettingId: string; layer: St
 export type FrozenShapeCoverResult = { status: "PASS"; verification: "geometry-only"; contentSafety: "NOT_EVALUATED"; layers: FrozenCell[] }
   | { status: "UNSAFE"; reason: "freeze-invalid-or-stale"; layers: [] };
 
-async function publishPng(directory: string, png: Buffer): Promise<string> {
+export async function publishShapeCoverPng(directory: string, png: Buffer): Promise<string> {
   const destination = path.join(directory, `shape-${shapeCoverDigest(png)}.png`);
   const temporary = path.join(directory, `.${randomUUID()}.partial`);
   try {
@@ -26,6 +26,29 @@ async function publishPng(directory: string, png: Buffer): Promise<string> {
     }
     return destination;
   } finally { await unlink(temporary).catch(() => undefined); }
+}
+
+/** Shared byte freeze seam. Geometry inputs confer no source, content-safety or export authority. */
+export async function freezeShapeCoverRaster(raster: { rgba: Buffer; alpha: Uint8Array }, oldFinal: Uint8Array,
+  size: PixelSize, radius: number, tools: ShapeCoverMediaTools) {
+  const grown = growOpaqueContour(raster.alpha, size, radius);
+  if (!grown || oldFinal.length !== grown.length || !oldFinal.some(Boolean) || raster.rgba.length !== grown.length * 4) throw Error("Invalid shape freeze raster");
+  const rgba = Buffer.from(raster.rgba);
+  for (let i = 0; i < grown.length; i++) if (grown[i]) {
+    const alpha = rgba[i * 4 + 3];
+    for (let channel = 0; channel < 3; channel++) rgba[i * 4 + channel] = Math.round((rgba[i * 4 + channel] * alpha + 255 * (255 - alpha)) / 255);
+    rgba[i * 4 + 3] = 255;
+  }
+  const png = await encodeShapeCoverPng(rgba, size, tools), decoded = await decodeShapeCoverPng(png, size, tools);
+  if (!decoded.equals(rgba)) throw Error("Frozen PNG changed final pixels");
+  const finalAlpha = new Uint8Array(grown.length);
+  let oldPixels = 0, uncoveredPixels = 0;
+  for (let i = 0; i < finalAlpha.length; i++) {
+    finalAlpha[i] = decoded[i * 4 + 3];
+    if (oldFinal[i]) { oldPixels++; if (finalAlpha[i] !== 255) uncoveredPixels++; }
+  }
+  if (uncoveredPixels !== 0) throw Error("Final frozen pixels leave uncovered source mask");
+  return { png, decoded, finalAlpha, coverage: { oldPixels, uncoveredPixels: 0 as const, coverageFraction: 1 as const } };
 }
 
 /** Freeze one shared selection only after rechecking the complete round. */
@@ -47,21 +70,7 @@ export async function freezeShapeCoverCandidate(request: ShapeCoverCandidateRequ
       const radius = evaluation.verdict.status === "PASS" ? evaluation.verdict.radiusPx : undefined;
       const raster = await rasterizeShapeCoverArtwork(bytes, evaluation.projection, evaluation.placement, tools);
       if (!oldFinal || radius === undefined || raster.alphaSha256 !== evaluation.alphaSha256 || admitted.factsDigest !== evaluation.factsDigest) throw new Error("Final shape state changed");
-      const grown = growOpaqueContour(raster.alpha, evaluation.projection, radius)!;
-      const rgba = raster.rgba;
-      for (let i = 0; i < grown.length; i++) if (grown[i]) {
-        const alpha = rgba[i * 4 + 3];
-        for (let channel = 0; channel < 3; channel++) rgba[i * 4 + channel] = Math.round((rgba[i * 4 + channel] * alpha + 255 * (255 - alpha)) / 255);
-        rgba[i * 4 + 3] = 255;
-      }
-      const png = await encodeShapeCoverPng(rgba, evaluation.projection, tools);
-      const decoded = await decodeShapeCoverPng(png, evaluation.projection, tools);
-      if (!decoded.equals(rgba)) throw new Error("Frozen PNG changed final pixels");
-      const finalAlpha = new Uint8Array(grown.length);
-      for (let i = 0; i < finalAlpha.length; i++) {
-        finalAlpha[i] = decoded[i * 4 + 3];
-        if (oldFinal[i] && finalAlpha[i] !== 255) throw new Error("Final frozen pixels leave uncovered source mask");
-      }
+      const { png, decoded, finalAlpha } = await freezeShapeCoverRaster(raster, oldFinal, evaluation.projection, radius, tools);
       const binding = FrozenShapeCoverSchema.parse({ strategy: "shape-matched-frozen-rgba-v1", verification: "geometry-only", contentSafety: "NOT_EVALUATED",
         intendedTargetId: target.id, targetId: target.targetId, segmentId: target.segmentId, source: target.source, sourceRevisionId: target.revisionId,
         factsDigest: admitted.factsDigest, maskSha256: admitted.mask.sha256, range: target.range, candidateId, candidateAssetFingerprint: candidate.asset.assetFingerprint,
@@ -92,7 +101,7 @@ export async function freezeShapeCoverCandidate(request: ShapeCoverCandidateRequ
     operationDirectory = ownedDirectory;
     for (const { cell, png } of buffered) {
       tools.signal?.throwIfAborted();
-      cell.layer.assetPath = await publishPng(operationDirectory, png);
+      cell.layer.assetPath = await publishShapeCoverPng(operationDirectory, png);
     }
     await recheckBindings();
     tools.signal?.throwIfAborted();

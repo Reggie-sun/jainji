@@ -109,6 +109,25 @@ export async function rasterizeShapeCoverAlpha(bytes: Buffer, output: PixelSize,
   return result;
 }
 
+/** Remove only all-transparent outer rows/columns. No opaque or partial-alpha pixel is changed. */
+export async function trimShapeCoverArtwork(bytes: Buffer, tools: ShapeCoverMediaTools) {
+  const probe = AssetProbe.parse(JSON.parse((await mediaCommand(tools, tools.ffprobePath,
+    ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,nb_read_frames,tags,side_data_list", "-of", "json", "pipe:0"], bytes)).stdout.toString("utf8"))).streams[0];
+  const raster = await rasterizeShapeCoverArtwork(bytes, probe, { x: 0, y: 0, width: probe.width, height: probe.height }, tools);
+  let x = probe.width, y = probe.height, right = -1, bottom = -1;
+  for (let p = 0; p < raster.alpha.length; p++) if (raster.alpha[p]) {
+    x = Math.min(x, p % probe.width); y = Math.min(y, Math.floor(p / probe.width));
+    right = Math.max(right, p % probe.width); bottom = Math.max(bottom, Math.floor(p / probe.width));
+  }
+  if (right < 0) throw Error("HYBRID_EMPTY_ARTWORK");
+  const trimBox = { x, y, width: right - x + 1, height: bottom - y + 1 }, rgba = Buffer.alloc(trimBox.width * trimBox.height * 4);
+  for (let row = 0; row < trimBox.height; row++) raster.rgba.copy(rgba, row * trimBox.width * 4,
+    ((y + row) * probe.width + x) * 4, ((y + row) * probe.width + x + trimBox.width) * 4);
+  const trimmed = await encodeShapeCoverPng(rgba, trimBox, tools);
+  if (!(await decodeShapeCoverPng(trimmed, trimBox, tools)).equals(rgba)) throw Error("HYBRID_TRIM_PIXEL_MISMATCH");
+  return { bytes: trimmed, trimBox, sha256: digest(trimmed) };
+}
+
 export async function encodeShapeCoverPng(rgba: Buffer, size: PixelSize, tools: ShapeCoverMediaTools): Promise<Buffer> {
   if (size.width * size.height > MAX_PIXELS || rgba.length !== size.width * size.height * 4) throw new Error("Invalid frozen RGBA raster");
   return (await mediaCommand(tools, tools.ffmpegPath, ["-hide_banner", "-loglevel", "error", "-nostdin", "-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${size.width}x${size.height}`,

@@ -288,6 +288,25 @@
       "timeoutMs": 180000
     },
     {
+      "id": "hybrid-corner-h3",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/shape-cover-hybrid-motion.test.ts",
+        "tests/shape-cover-hybrid-shape.test.ts",
+        "tests/shape-cover-hybrid-h3.integration.test.ts"
+      ],
+      "timeoutMs": 180000
+    },
+    {
       "id": "extended-regressions",
       "kind": "vitest",
       "required": true,
@@ -1191,6 +1210,29 @@
         "typecheck",
         "harness",
         "hybrid-vision",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/shape-matched-cover-hybrid-v1-spec.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-hybrid-corner-h3",
+      "paths": [
+        "src/main/shape-cover-hybrid-*.ts",
+        "tests/shape-cover-hybrid-motion.test.ts",
+        "tests/shape-cover-hybrid-shape.test.ts",
+        "tests/shape-cover-hybrid-h3.integration.test.ts",
+        "scripts/shape-cover-hybrid-h3-diagnostic.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "hybrid-corner-h3",
         "documents",
         "owned-aoci"
       ],
