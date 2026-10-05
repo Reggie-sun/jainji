@@ -380,6 +380,32 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     } finally { await control.detach(); await browser.close(); }
   });
 
+  it.each(["before preparation", "after preparation"] as const)("refuses a disabled upload entrance %s even when the count reports spare capacity", async timing => {
+    const batchId = randomUUID(), pageBatchId = randomUUID(), projectId = randomUUID();
+    const first = await productionTask("capacity-first.mp4", batchId, pageBatchId, 2, projectId);
+    const second = await productionTask("capacity-second.mp4", batchId, pageBatchId, 2, projectId);
+    const uploader = productionUploader(), signal = new AbortController().signal;
+    await uploader.connect(first, signal);
+    const { prepared } = await uploadReady(uploader, first);
+    const selected = [{ fileName: first.result.file_name, index: 1, ready: true }];
+    const observer = await chromium.connectOverCDP(first.authorization.target.cdpEndpoint, { noDefaults: true });
+    try {
+      const original = observer.contexts()[0]!.pages().find(page => new URL(page.url()).searchParams.get("adId") === first.authorization.target.adId)!;
+      if (timing === "after preparation") {
+        await uploader.open([second], selected, signal);
+        second.result = { ...second.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
+      }
+      await original.locator('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]').evaluate(element => element.classList.add("oc-create-upload-select-wrapper-disabled"));
+      const operation = timing === "before preparation" ? uploader.open([second], selected, signal) : uploader.upload([second], signal);
+      await expect(operation).rejects.toMatchObject({ failure: { code: "CAPACITY_INSUFFICIENT", requires_human: true } });
+      expect(second.result.upload_outcome).toBe(timing === "before preparation" ? "NOT_SELECTED" : "MAY_HAVE_UPLOADED");
+      expect((await uploader.ready([first], signal))[0]!.pageOwnership).toEqual(prepared.pageOwnership);
+      const events = (await productionFixture!.inspect()).events;
+      expect(events.filter(event => event.type === "drop").map(event => event.names)).toEqual([[first.result.file_name]]);
+      expect(events.filter(event => ["confirm", "settings"].includes(event.type))).toEqual([]);
+    } finally { await observer.close(); }
+  });
+
   it("delivers 21 production snapshots in 9+9+3 groups while earlier rows are still processing", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset(); productionFixture.setControls({ processingDelayMs: 250, rowAppearanceDelayMs: 80, reorderRows: true });

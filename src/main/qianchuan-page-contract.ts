@@ -221,7 +221,8 @@ export class QianchuanPageSession {
     if (observation.missing) throw changed();
     if (!selected.length && observation.capacity < task.authorization.expectedCount) throw uploadFailure("CAPACITY_INSUFFICIENT", "page", "千川计划可添加数量不足以容纳本次整批成片。", "人工处理容量后重新选择；程序不截断条数或自动确认腾位置。", true);
     if (selected.length + tasks.length > observation.capacity || selected.length + tasks.length > task.authorization.expectedCount || tasks.some(value => selected.some(file => file.fileName === value.result.file_name))) throw changed();
-    await this.unique(this.modal!.locator(this.contract.kind === "qianchuan" ? dropSelector : 'input[type="file"]'), signal);
+    if (this.contract.kind === "qianchuan") await this.uploadEntrance(signal);
+    else await this.unique(this.modal!.locator('input[type="file"]'), signal);
     this.prepared = { taskIds: tasks.map(value => value.result.upload_task_id), index: selected.length + 1 };
     return { pageOwnership: this.ownership!, selectedIndex: this.prepared.index };
   }
@@ -258,6 +259,13 @@ export class QianchuanPageSession {
     const complete = size === this.selected.length && parsed.selected === this.selected.length && [...observed.values()].every(Boolean);
     return { ...parsed, missing: this.selected.length - observed.size, ready: complete && await confirm.isEnabled() && !await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count() };
   }
+  private async uploadEntrance(signal: AbortSignal): Promise<Locator> {
+    const zone = await this.unique(this.modal!.locator(`${dropSelector}:visible`), signal);
+    const disabled = await zone.evaluate(element => element.classList.contains("oc-create-upload-select-wrapper-disabled") || element.getAttribute("aria-disabled") === "true");
+    this.check(signal);
+    if (disabled) throw uploadFailure("CAPACITY_INSUFFICIENT", "page", "千川上传入口已禁用，当前不能继续添加视频。", "在 Chrome 核查可选素材上限或页面提示；未选文件保留，不自动确认、腾位置或重传。", true);
+    return zone;
+  }
   private async drop(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> {
     const task = this.group(tasks);
     if (this.frame !== this.page.mainFrame()) throw changed();
@@ -265,9 +273,10 @@ export class QianchuanPageSession {
     try {
       for (const type of ["dragEnter", "dragOver", "drop"] as const) {
         await this.guard(task, signal);
-        const zone = await this.unique(this.modal!.locator(`${dropSelector}:visible`), signal);
+        const zone = await this.uploadEntrance(signal);
         await zone.scrollIntoViewIfNeeded({ timeout: task.config.timeouts.action });
         await this.guard(task, signal);
+        await this.uploadEntrance(signal);
         const box = await zone.boundingBox(); if (!box) throw changed();
         const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
         // Coordinates transport the drop only after a unique source-owned DOM control and hit test.
@@ -282,6 +291,7 @@ export class QianchuanPageSession {
     const task = this.group(tasks);
     if (tasks.some(value => value.result.upload_outcome !== "MAY_HAVE_UPLOADED") || JSON.stringify(this.prepared?.taskIds) !== JSON.stringify(tasks.map(value => value.result.upload_task_id))) throw changed();
     await this.observe(task, signal); this.check(signal);
+    if (this.contract.kind === "qianchuan") await this.uploadEntrance(signal);
     const firstIndex = this.prepared!.index;
     this.selected = [...this.selected, ...tasks.map((value, index) => ({ fileName: value.result.file_name, index: firstIndex + index }))];
     this.pending = new Set(tasks.map(value => value.result.file_name)); this.prepared = undefined;
