@@ -3,7 +3,7 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖、构建输出、日志、Harness回执及CodeGraph本机索引 | R:code:AGENTS.md | A:正式AOCI文件不在根目录忽略表中；.aoci目录由自身白名单排除运行资产 | S:-
-AGENTS.md[SC9T]: F:规定项目权威、产品不变量、canonical owner及交付边界 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/queue.ts,code:.agent/harness/policy.json | A:所有修复落实软件通用行为并验证同类场景；按Contract Index路由；手填文字、本地随机无模型、冻结重试；make frontend沟通；owned scope及receipt完成，变更session维护AOCI | S:临时止血或单次成功不代替产品交付；shape保持PRODUCT_DISABLED且缺证据UNSAFE；覆盖GPT仅gpt-6.1-sol/gpt-6-luna；共享索引完整批次/CAS不授业务写入；工程证据不代替真实平台或人工验收
+AGENTS.md[SC9T]: F:规定项目权威、产品不变量、canonical owner及交付边界 | R:code:src/shared/agent.ts,code:src/shared/decorations.ts,code:src/main/queue.ts,code:.agent/harness/policy.json | A:所有修复落实软件通用行为并验证同类场景；按Contract Index路由；手填文字、本地随机无模型、冻结重试；make frontend沟通；owned scope及receipt完成，变更session维护AOCI；有变更任务验证后commit/push并核远端HEAD | S:临时止血或单次成功不代替产品交付；shape保持PRODUCT_DISABLED且缺证据UNSAFE；覆盖GPT仅gpt-6.1-sol/gpt-6-luna；共享索引完整批次/CAS不授业务写入；工程证据不代替真实平台或人工验收
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx,code:src/main/nvenc-admission.ts | A:typecheck、Vitest、Harness与安装包入口；Playwright固定运行依赖external；proper-lockfile提供跨进程启动锁 | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态

@@ -35,6 +35,7 @@
 
 ## Verification And Completion
 
+- 每次完成有仓库变更的任务，必须先完成相关验证，再 commit 本任务变更并 push 到当前分支的 upstream，核对远端 HEAD 后交付；无变更不制造空提交，遇到真实阻断须明确报告。
 - 声称完成/修复/通过、commit 或 PR 前必须读取并执行 current runtime 的 verification-before-completion；证据须对应当前工作树/运行状态。行为变更做相关可执行验证，代码变更跑 typecheck 与受影响测试；非微小 UI 验证实际交互，构建/集成跑对应检查。
 - [Harness Contract](docs/video-validation-harness-spec.md) 与 [policy](.agent/harness/policy.json) 独占检查路由、命令及回执。使用 owned scope 与对应 receipt 做 completion；unknown/unmapped、缺/旧证据、必需 skip 或 required=false 不能 PASS，声明 scope 不证明作者归属。验证器只读，不自动维护、请求模型或提交生产任务。
 - 区分 schema/unit、假服务、真实模型、FFmpeg fixture、Windows 实机、平台行为及人工观看。自动帧/音轨/文件验证不证明整片 coverage、音频内容或视觉验收；“完成”只证明输出文件验证，最终画面与文案仍需播放确认。缺环境明确未评估。
