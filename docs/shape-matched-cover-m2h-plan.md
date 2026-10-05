@@ -1,5 +1,15 @@
 # M2-H Versioned Confirmed-Target Static Proof
 
+## M2-HC3 Component Observability Research — 2026-10-05
+
+本轮为research-only，覆盖M2-HC2 stop后的下一方向建议，不修改其历史失败或生产版本。唯一离线入口 [observability diagnostic](../scripts/shape-cover-component-observability.py) 与 [method manifest](../scripts/shape-cover-component-observability-methods.json)；每次运行在真实/冻结suite前保存research-method-freeze.json及全部input SHA。原minimumCells/minimumLandmarks/correlation等阈值不改；occupancy固定25/50/75/100%，不根据真实结果选X。final3395px mask只作展示；detector footprint与construction-domain控制明确分开。
+
+M1 cell实际为sampling-origin stable/component membership；映射1680px是低分辨率detector footprint，不是逐像素segmentation。严格7×7仍有486 owned centers、350 persistent centers、85 stride/bounds候选，却只剩3 usable cells及不足空间跨度；“0 landmarks”是reference不成立，不是没有可用像素。详细统计、286点归因、全range矩阵及限制由 [stationary record](shape-matched-cover-stationary-record.md#m2-hc3-component-observability-research--2026-10-05) 独占。
+
+Self-review结论：**M1 support=PARTIAL；唯一推荐Direction B / New support-internal geometry signal**。internal1/2/3px owned pairs在本轮development real/padded/control suite有前景；数学上的footprint ownership仍不等于pixel identity或产品资格。下一唯一implementation slice名称为 **M2-HC4 — Support-Internal Component Geometry Observation Contract**；本段只命名下一slice，不授权本轮实现geometry/proof/store版本。先补全actual M1-domain旧反例的缺证据，再稳定live observation/participating-pixel binding及ALL-component不可观察语义；不得以本轮construction补充控制冒充旧M1资格，不以计数或status发行proof。
+
+本轮止于research evidence。SC-HC-01仍BLOCKED / research direction established；SC-HC-02仍BLOCKED pending proof v3；M2-HC2 NOT CLOSED。discovery v1、confirmation v2、geometry v2、proof v2保留，M3 consumer unchanged / M3 BLOCKED / PRODUCT_DISABLED / guard unchanged / modelRequests=0。未查看210 unseen，无GPU/model、threshold调优或新proof。
+
 ## M2-HC Correctness Closure Contract
 
 本节依据2026-10-04用户 accepted M2-HC contract，覆盖下文旧 M2-H 的下一slice建议，实施仍由 Native Codex 主线程负责。基线 `33ef8ea` 的 v1 仅为 `HISTORICAL_DEVELOPMENT_PROOF / KNOWN_CORRECTNESS_LIMITATIONS`，不再新签发。目标仅关闭 arbitrary-range boundary sampling 依赖和 union-envelope geometry false acceptance。

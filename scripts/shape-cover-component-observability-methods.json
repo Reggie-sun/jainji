@@ -1,0 +1,19 @@
+{
+  "method": "component-observability-research/v1",
+  "authority": "none",
+  "eligible": false,
+  "modelRequests": 0,
+  "methods": ["strict7", "center", "occupancy25", "occupancy50", "occupancy75", "occupancy100", "attribution", "internal-pairs", "masked-ncc"],
+  "parameterGrid": {
+    "occupancy": [0.25, 0.5, 0.75, 1.0],
+    "gradient": "unchanged historical Gaussian5/Sobel3 CONFIG, center-owned reference; no box padding",
+    "attribution": {"counterfactual": "replace each support pixel by median of non-support pixels in its radius3 window; if empty use per-frame ROI non-support median", "minimumContribution": 8, "minimumRelativeContribution": 0.5, "scope": "reference eligibility only; original-gradient full-range measurement"},
+    "internal-pairs": {"axes": ["horizontal", "vertical"], "distances": [1, 2, 3], "ownership": "all pixels along pair segment belong to detector footprint", "minimumPairs": 8, "minimumReferenceRms": 2},
+    "masked-ncc": {"channels": "RGB, per-channel mean removal over support pixels", "minimumPixels": 8, "minimumSpatialGrayStd": 2},
+    "independentAlignment": {"integerRadius": 2, "maximumOffset": 0.5, "minimumCorrelation": 0.9, "minimumPeakGap": 0.02, "energyRatio": [0.45, 2.25]},
+    "controls": {"seed": 17, "noiseSeed": 5, "translations": [[1,0],[-1,0],[0,1],[0,-1]], "smallNoise": [-2,2], "channelBias": [-30,20,15], "uniformSupport": "construction-owned diagnostic control only; never real segmentation"}
+  },
+  "fixtures": ["real233s development source (all 6990 bound ROI frames)", "tests/fixtures/static-real-component-support.json", "tests/fixtures/static-padded-support-counterexamples.npz", "tests/fixtures/static-component-counterexamples.npz (M1 domain unavailable; supplemental archived-constructor B pixels x222..225/y54..57, separately labeled construction only)", "M2-G controlled-v1/disconnected-components source and original construction support x83..86/y41..44", "deterministic stable/move/disappear/noise/channel-bias/changing-background controls"],
+  "expectedMeasuredFields": ["support morphology and boundary distances", "per-original-landmark attribution", "reference signal count and eligibility rejection stages", "frame status and issue reasons", "finite translation correlations and energy", "133 historical RGB anomaly response", "controlled false rejection denominator", "reference build and per-frame time", "temporary array byte estimate", "input hashes before and after"],
+  "limitations": ["diagnostic statuses are not geometry/proof authority", "detector footprint is not target segmentation", "final mask is visualization only", "no holdout reads", "no thresholds selected from real outcomes"]
+}

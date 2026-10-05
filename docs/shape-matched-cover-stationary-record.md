@@ -1,5 +1,105 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-HC3 Component Observability Research — 2026-10-05
+
+**RESEARCH_DIRECTION_ESTABLISHED / NOT_PRODUCT_QUALIFIED。** Shape checkpoint为d954b9a3db0ea5119e04c39253210c96e3a5afb2；本轮开始HEAD91cd4c8418cf8e314b7d53c8c96a37d942b5974c，期间千川/UI/共享AOCI工作保留。本轮只有离线diagnostic、method manifest及两份Shape文档；没有production geometry/proof/store/schema/consumer/activation变更。明确modelRequests=0优先于通常external delegation route，未调用Kimi、产品或视觉模型；Native Codex主线程拥有计算、逐项裁决和最终diff。CodeGraph的discovery→ChatGPTSession.set同名假边仍由实际Uint8Array receiver排除。
+
+### Support Semantics and Morphology
+
+审读shape-cover-stationary-discovery.ts、source-fact-discovery-evidence.ts、原geometry及support实验：M1每个grid cell读取floor(gx*sourceWidth/gridWidth),floor(gy*sourceHeight/gridHeight)的**一个原像素**，用最多96代表帧的std≤20及adjacent persistence≥0.8产生stable bit，再8-connected分组。没有逐cell全像素target classification。originalPixels只是起点附近至多3×3像素的汇总复查，本例1170检查点、stableFraction0.8692307692；不会逐像素删除不稳定membership。因而原生语义是 **B：sampling-origin stable/component member**，映射bitmap是 **C：低分辨率detector support footprint**，不是A或pixel-accurate target segmentation。
+
+冻结supportDigest2dfc2e5ac5c1c6d2455c73429bcea25ae50361aabfe44331ef1c2e7680a5ac8e，grid202×360，component gridBox178/3/19/13，130 cells。half-open floor-origin partition得到1680px，一个8-connected component，source footprint bbox634/10/68/46；outward未padding box634/10/69/47，padded sourceBox627/3/83/61。floor partition与outward ceil ROI的1px差异是合同规定，不是映射bug。5个洞、552条暴露pixel edges、524 boundary pixels；最大Chebyshev boundary depth8，内部并非全部文字细stroke。图中的孔洞/细部来自detector membership，不能推断真实alpha洞或stroke。
+
+| Distance to support boundary | Source pixels |
+| --- | ---: |
+| ≥0px | 1680 |
+| ≥1px | 1156 |
+| ≥2px | 706 |
+| ≥3px | 486 |
+| ≥4px | 335 |
+
+边界pixel distance定义为0；采用DIST_C-1，square stencil radius3恰对应≥3。Euclidean distance到最近non-support的min/Q1/median/Q3/max为1/1/2/4/10.630146px。该distinction依据 [OpenCV distanceTransform](https://docs.opencv.org/4.12.0/d7/d1b/group__imgproc__misc.html)，不能把distance-to-zero的1当成边界depth0。
+
+严格7×7没有把全部1680px删除：剩486 fully-owned centers，350达到原persistent-gradient条件，85通过原bounds和even stride。原3×3 cell候选数为 **[0,9,0,18,56,2,0,0,0]**；保留每cell≥8并cap48后有75个点，但仅3个usable cells，低于minimumCells6，spatial span也失败。故reference=null、usable reference landmarks=0；不能将其说成“7×7 erosion没有内部”或6990次实测移动。主要瓶颈是erosion令feature集中于中部、失去分布与跨度；sampling footprint的阶梯边界/孔洞参与这一收缩，但无数据支持“文字stroke太细是唯一原因”。
+
+### Original 286 Landmark Attribution
+
+原M2-C/v2冻结286点逐一保存sourceXY、center membership、distance、7×7/3×3 occupancy、candidate-mask membership、unpadded/source box membership和gradient。**178点center在support（62.24%）**，104点center在unpadded component box内但不在support，4点只在padding，sourceBox外0；outside-support共108点，最近support距离最高6.403124px。286点都在final3395px mask中，这只说明mask不能判定feature归属。
+
+| Stencil support occupancy | All 286: 7×7 | Owned-center 178: 7×7 | All 286: 3×3 |
+| --- | ---: | ---: | ---: |
+| [0,25%) | 43 | 0 | 67 |
+| [25,50%) | 53 | 15 | 39 |
+| [50,75%) | 89 | 65 | 44 |
+| [75,100%) | 54 | 51 | 11 |
+| 100% | 47 | 47 | 125 |
+
+7×7 min/Q1/median/Q3/max为0/0.413265/0.622449/0.857143/1。原286并非“大多数center都在背景”，也不能用178个owned centers证明卷积由target贡献。严格规则确实过强地删除分布；center-only则依旧允许outside-context贡献。
+
+### Frozen Methods and Decision Table
+
+R=`~/.local/state/jianji-source-fact-qualification/m2hc3-20261005-v2`。运行前research-method-freeze.json绑定全部源/FFmpeg/脚本/fixture/旧receipt及参数；每次代表帧与完整6990 ROI帧均复用原双pipe decoder核对RGBA SHA、ordinal、PTS/endPTS。v1保留，v2只修正诊断统计（perimeter单计、occupancy整数计数、展示pre-reference eligible points）、有限search越界拒绝和分项计时，并增加有明确构造来源的旧detached B补充控制；没有根据真实结果改任何参数。
+
+Gradient候选沿用原Gaussian5/Sobel3、consensus、strength/correlation/offset/presence、minimumCells/minimumLandmarks/spatialSpan。center与occupancy只是reference eligibility变化。attribution把每个support像素替换成其radius3窗口内non-support luminance median，空窗口用该帧ROI non-support median；原gradient与counterfactual之差norm≥8且relative≥0.5才保留center。它是**reference intervention diagnostic**，full-range仍测原gradient；replacement不是被擦除的真实background，可能制造新的边缘，不证明因果alpha，也不是产品算法。
+
+Internal pairs用horizontal/vertical1/2/3px差分，端点及中间segment全部support-owned，原值不读support外像素；median代表reference，finite±2整数平移只在translated footprint采样。Masked NCC只对support RGB逐channel去均值，与median reference作normalized correlation；其公式参考 [OpenCV masked CCOEFF_NORMED](https://docs.opencv.org/4.12.0/df/dfb/group__imgproc__object.html)。两者使用预声明独立diagnostic cutoff（corr0.9、gap0.02、energy0.45..2.25、offset0.5）；不修改原M2-C。pairs至少8且RMS≥2，NCC至少8px且spatial gray std≥2；不把无信号岛的constant-color pattern改判SUPPORTED。
+
+S=SUPPORTED，U=UNOBSERVABLE，I=ISSUE，均仅research diagnostic。旧CE栏的U指construction-detached B使ALL-required逻辑不可支持；**actual M1-domain全target候选结果仍NOT_EVALUATED**，原因如下。
+
+| Method | Real233s landmarks/signal, status | padding move | padding disappear | PRICE | old component CEs | 133 RGB anomalies | M2-G 4×4 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| strict 7×7 support-owned | 0 valid ref (75 pre-gate), U | U | U | U | U/U/U¹; M1 NE | U, not measured | U |
+| center-owned only | 196, S | U | U | U | U/U/U¹; M1 NE | 0/133 issues | U |
+| occupancy25 | 196, S | U | U | U | U/U/U¹; M1 NE | 0/133 issues | U |
+| occupancy50 | 183, S | U | U | U | U/U/U¹; M1 NE | 0/133 issues | U |
+| occupancy75 | 0 valid ref (125 pre-gate), U | U | U | U | U/U/U¹; M1 NE | U, not measured | U |
+| occupancy100 | 0 valid ref (75 pre-gate), U | U | U | U | U/U/U¹; M1 NE | U, not measured | U |
+| internal1/2/3px pairs | 8424 pairs, S | I | I | I | U/U/U¹; M1 NE | 0/133 issues | S² |
+| masked photometric/NCC | 1680px, I:288 frames | I | I | I | U/U/U¹; M1 NE | 0/133 issues | S² |
+| attribution intervention | 182, S | U | U | U | U/U/U¹; M1 NE | 0/133 issues | U |
+
+¹ 原static-component-counterexamples.npz没有M1 bitmap，不能bbox fill或用变化像素反推support。实际重放原v1三个仍S；原v2每例包含U component，logical target拒绝。另审读旧pre-fix-components.py，取其明文写入的B16px（x222..225/y54..57）作**CONSTRUCTION_ONLY**补充观察；三个case所有方法都U。这防止把flat小component略过，但不是完整M1-domain candidate matrix，不能声称该缺证据已闭合。fixture不重生成或改字节。
+
+² M2-G原controlled-v1/disconnected-components/source.mp4不重编码，decode ordinals0/10/19/29，取构造指定x83..86/y41..44的16px。pairs/NCC在这些原像素有内部contrast，四帧S；不是30帧资格或任意4×4保证。uniform16px岛仅靠boundary contrast时pairs/NCC U，self-check明确验证不得借外部边缘。
+
+### Counterexamples, RGB Response and Tradeoff
+
+static-padded-support-counterexamples.npz保持SHA **8d65b8effd70bfeb178443caaa30a20cb1c28702e16642d83f26860661549432**，同decoded ordinals0/15/29、reference0/0/29/29、same actual1218px support。center/全部occupancy/strict/attribution都不能建立分布reference（U），不是识别到了运动。pairs/NCC能够建立reference；move与PRICE在frame15 offset[1,0]、POSITION_DRIFT，disappear有pattern/energy矛盾及unresolved offset，三个均I。没有“real S且padding S”的组合，所以本轮无该定义下UNSAFE_CANDIDATE；U不得美化成运动灵敏度PASS。
+
+9个固定control observation：4个static-positive（stable、noise±2、channel bias[-30,20,15]、changing background）与5个change（四方向1px、disappear）。所有方法都拒绝5个change。center、occupancy25/50、attribution各对changing-background误拒，false reject **1/4=25%**；strict、occupancy75/100、pairs/NCC为0/4。此finite synthetic率不外推真实总体，也不选择最漂亮的occupancy。
+
+原133 RGB anomaly ordinals仍保留原判据与UNKNOWN cause。可观察gradient候选与pairs在133帧均0新issue，finite offsets无新移动、没有新loss/instability；U methods无法测量，不能报0误拒。masked NCC在133帧也0 issue，却在**另外288帧**corr<0.9报PATTERN_INSTABILITY，offset始终[0,0]，min corr0.852239；不报movement或signal-loss。这仍是photometric敏感性，不能把288重标noise或ground-truth false reject。它不等同M2-A每像素sample min/max±24 envelope（分母、reference、归一化与issue帧不同），但单独承担geometry也会退回appearance/geometry混杂。未做独立compression/AA因果分解；真实H264及synthetic noise/channel-bias是已测边界，其他codec为NOT_EVALUATED。
+
+### Decision and Next Slice
+
+**M1 support最终判断：PARTIAL。唯一推荐Direction B：New support-internal geometry signal。** M1可以绑定confirmed detector component身份和有限observation footprint，却没有资格直接把每个mapped pixel都声明为target；必须把source-space participating-pixel/translated-footprint binding与独立internal measurement写成可审计合同。Internal pair方法消除域外卷积读值，在真实full-range、三个padding反例与background control表现有前景；它仍不能补target segmentation、所有运动类型或source applicability资格。
+
+不选A：放宽reference neighborhood虽恢复真实observability，但center/25/50/attribution对background-only change误拒；counterfactual也没有证明component独有响应，不能据真实S直接放宽产品。75/100仍无法满足真实原分布门。不选C：1680px有486px内部和8424条内部pairs，当前0 reference不是无原像素信息或错误映射；没有证据要求本轮先建segmentation/refinement owner。继续保持grid footprint的非truth边界，不能借B默认宣称不再需要身份核查。
+
+下一唯一implementation slice：**M2-HC4 — Support-Internal Component Geometry Observation Contract**。本轮不实施它、不签新proof；首先补actual M1-domain旧CE观察缺口、冻结participating-source-pixel身份与finite translated-footprint数据绑定，明确flat/unobservable required component失败关闭，再考虑版本化工程owner。性能不优化，不新增GPU/model。
+
+### Performance and Verification Boundary
+
+reference stack3,064,320 bytes；per-method retained arrays：center/25为5488，50为5124，attribution5096，pairs202176，NCC67200 bytes；U reference0。峰值temporary/RSS未测，不能用这些数组之和冒充peak。每次research共享96代表decode和完整6990帧decode，不保存full-frame RGBA spool；全range额外decode=YES。最终分项粗测保存R/performance.json（非portable SLA），不据性能做参数/算法选择。
+
+| Method | Reference build ms | Real per-frame measurement ms |
+| --- | ---: | ---: |
+| strict7 | 211.082 | U，未测 |
+| center | 211.029 | 6.465 |
+| occupancy25 | 211.015 | 5.252 |
+| occupancy50 | 210.954 | 4.738 |
+| occupancy75 | 210.873 | U，未测 |
+| occupancy100 | 210.899 | U，未测 |
+| attribution | 2513.442 | 4.715 |
+| internal pairs | 32.051 | 4.146 |
+| masked NCC | 10.036 | 1.987 |
+
+Gradient build含共享reference计算的单method成本估计，attribution另含counterfactual；per-frame是同一进程顺序观测的粗测，含测量调用开销，不是独占性能benchmark。v1约151.094秒full-range，最终v2为200.478秒（包含所有method、binding、decode与JSONL），没有优化。最终v2及其逐帧结果/性能、原286点明细、7面板PNG、strict pre-reference anchors、morphology和全部input前后SHA均保留R。v1的perimeter双计和100% occupancy浮点展示错误由v2纠正，不掩盖旧运行、不改params；两轮measurement equivalence单列私有receipt。diagnostic artifacts不当proof。
+
+按current verification-before-completion执行self-check（morphology、occupancy、pair/path ownership、hole、uniform island及finite-search拒绝）、原22 Python controls、fresh typecheck、current policy对应owned Harness code/verify与官方AOCI Maintain/Verify/Check/Guide。实际receipt/log位于R及.agent/harness/runs；只报告真实结果，不以focused green或required=false代替Harness。foreign timeout、源码漂移或全库治理问题保留，未调Qianchuan/upload/NVENC或预算。Risk Gate：research程序没有production import/authority/state writes，错误只影响私有research报告，无重大production后果；未触发implementation adversarial review。repository无专用capture skill，本section与R主动保存stable checkpoint，不写外部memory。
+
+**SC-HC-01 still BLOCKED / research direction established；SC-HC-02 still BLOCKED pending proof v3；M2-HC2 NOT CLOSED；M3 consumer unchanged；M3 BLOCKED；PRODUCT_DISABLED；guard unchanged；modelRequests=0。** 通用SourceFrameEvidence64MiB准备不改旧confirmed-target-static-v2的8MiB historical ceiling。本轮不进M3、不看210 unseen、不改变M1/extractor阈值、3395px mask或133 anomalies。
+
 ## M2-HC2 Component-Support Stop Checkpoint — 2026-10-05
 
 **Verdict：BLOCKED。** target基线545a4259a204993f65657813e3589a234d1a9e73，开始HEAD29081b5914dc08d2e902d7aeea15a2ec7838cd0a；中间及working-tree千川/UI/共享AOCI改动是foreign，未算本slice。AGENTS/SUBAGENTS、四份合同与指定source owners已审读。当前M3 consumer/production/assembler/activation/guard仍原字节，PRODUCT_DISABLED，modelRequests=0；本节覆盖之前record的correctness closure声明，不重写历史结果。
