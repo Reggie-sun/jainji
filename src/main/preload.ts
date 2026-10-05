@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
-import type { AgentStartInput, AppendProductionInput, GenerateBriefInput } from "../shared/agent.js";
+import type { AgentStartInput, AppendProductionInput, AppendProductionPrefill, GenerateBriefInput } from "../shared/agent.js";
 import type { SaveConnection, SelectModel } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
 import type { DesktopState } from "../shared/desktop.js";
@@ -77,7 +77,7 @@ const api = {
   cancelExport: (taskId: string): Promise<DesktopState> => ipcRenderer.invoke("export.cancel", { taskId }),
   cancelAllExports: (): Promise<DesktopState> => ipcRenderer.invoke("export.cancelAll"),
   retryExport: (taskIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("export.retry", { taskIds }),
-  appendProductionPrefill: (batchId: string): Promise<{ productPrice: string; mediaCount: number }> => ipcRenderer.invoke("export.appendPrefill", { batchId }),
+  appendProductionPrefill: (batchId: string): Promise<AppendProductionPrefill> => ipcRenderer.invoke("export.appendPrefill", { batchId }),
   appendProduction: (input: AppendProductionInput): Promise<{ batchIds: string[]; outputDirectory: string }> => ipcRenderer.invoke("export.append", input),
   saveDouyinUploadConfig: (input: DouyinUploadStatus["config"]): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.configure", input),
   selectQianchuanAccountConfig: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.selectConfig"),

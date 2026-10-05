@@ -10,12 +10,14 @@ describe("AppendProductionSchema", () => {
   it("accepts a valid append request", () => {
     expect(AppendProductionSchema.parse(valid)).toEqual(valid);
   });
+  it("allows empty text for authoritative source-template validation", () => {
+    expect(AppendProductionSchema.parse({ ...valid, productPrice: "" }).productPrice).toBe("");
+  });
   it.each([
     ["non-uuid batchId", { ...valid, batchId: "not-a-uuid" }],
     ["count 0", { ...valid, count: 0 }],
     ["count above 250", { ...valid, count: 251 }],
     ["fractional count", { ...valid, count: 1.5 }],
-    ["blank display text", { ...valid, productPrice: "" }],
     ["line over 12 chars", { ...valid, productPrice: "一二三四五六七八九十一二三" }],
     ["three lines", { ...valid, productPrice: "一\n二\n三" }],
     ["blank middle line", { ...valid, productPrice: "一\n \n二" }],
@@ -38,6 +40,41 @@ const pricedTemplate = (productPrice: string) => materializePlan(
   ] },
   "black-gold", dimensions, stickerAssets, { mode: "agent", productPrice, sticker: "none" }, automaticCatalog,
 );
+
+// Regression: ISSUE-001 — appending a text-disabled batch required a text layer.
+// Found by /qa on 2026-10-05.
+// Report: .agent/harness/runs/20261005-qa/qa-report.md
+describe("text-disabled append clones", () => {
+  const pool = [{ id: "heart", ...stickerAssets.heart }];
+  const clone = (source: ReturnType<typeof pricedTemplate>, text: string, random: boolean) => random
+    ? cloneTemplateForRandom(source, text, new BalancedStickerPicker(pool))
+    : cloneTemplateForAppend(source, text);
+  it.each([false, true])("preserves explicit text-off settings (random=%s)", (random) => {
+    const source = pricedTemplate("原文字");
+    source.displayText = { enabled: false, x: 0.5, y: 0.13 };
+    source.layers = source.layers.filter((layer) => layer.type !== "text");
+    delete source.productPrice;
+    const before = structuredClone(source);
+    for (const input of ["", "不会新增文字"]) {
+      const cloned = clone(source, input, random);
+      expect(cloned.id).not.toBe(source.id);
+      expect(cloned.displayText).toEqual(source.displayText);
+      expect(cloned.layers.some((layer) => layer.type === "text")).toBe(false);
+      expect(cloned).not.toHaveProperty("productPrice");
+      expect(random ? randomTemplateDigest(cloned) : appendTemplateDigest(cloned)).toBe(random ? randomTemplateDigest(source) : appendTemplateDigest(source));
+      expect(() => assertPriceOnlyTemplate(cloned)).not.toThrow();
+    }
+    expect(source).toEqual(before);
+  });
+  it.each([false, true])("rejects inconsistent text-off sources and empty text-on input (random=%s)", (random) => {
+    const source = pricedTemplate("原文字");
+    expect(() => clone(source, "", random)).toThrow();
+    source.displayText = { enabled: false, x: 0.5, y: 0.13 };
+    expect(() => clone(source, "追加文字", random)).toThrow(/关闭展示文字/);
+    source.layers = source.layers.filter((layer) => layer.type !== "text");
+    expect(() => clone(source, "追加文字", random)).toThrow(/关闭展示文字/);
+  });
+});
 
 describe("cloneTemplateForAppend", () => {
   it("regenerates every id, swaps only the display text, and proves the rest byte-identical", () => {

@@ -265,18 +265,28 @@ export function appendTemplateDigest(template: EditTemplate): string {
   return createHash("sha256").update(canonicalJson(comparable)).digest("hex");
 }
 
-export function cloneTemplateForAppend(template: EditTemplate, productPrice: string): EditTemplate {
+function appendProductPrice(template: EditTemplate, productPrice: string): string | undefined {
+  if (template.displayText?.enabled === false) {
+    assertPriceOnlyTemplate(template);
+    return undefined;
+  }
   const price = RequiredProductPriceSchema.parse(productPrice);
   if (template.layers.filter((layer) => layer.type === "text").length !== 1) {
     throw new JianjiError("源批次不含可复用的展示文字层，无法追加制作。", "input_invalid", "input", false);
   }
+  return price;
+}
+
+export function cloneTemplateForAppend(template: EditTemplate, productPrice: string): EditTemplate {
+  const price = appendProductPrice(template, productPrice);
   const before = appendTemplateDigest(template);
   const cloned = cloneTemplate(template);
   cloned.id = randomUUID();
-  cloned.productPrice = price;
+  if (price === undefined) delete cloned.productPrice;
+  else cloned.productPrice = price;
   for (const layer of cloned.layers) {
     layer.id = randomUUID();
-    if (layer.type === "text") layer.content = formatProductPrice(price);
+    if (layer.type === "text" && price !== undefined) layer.content = formatProductPrice(price);
   }
   if (appendTemplateDigest(cloned) !== before) {
     throw new JianjiError("追加制作克隆校验失败：冻结方案在克隆中发生变化。", "input_invalid", "input", false);
@@ -346,14 +356,12 @@ export class BalancedStickerPicker {
 }
 
 export function cloneTemplateForRandom(template: EditTemplate, productPrice: string, picker: BalancedStickerPicker): EditTemplate {
-  const price = RequiredProductPriceSchema.parse(productPrice);
-  if (template.layers.filter((layer) => layer.type === "text").length !== 1) {
-    throw new JianjiError("源批次不含可复用的展示文字层，无法追加制作。", "input_invalid", "input", false);
-  }
+  const price = appendProductPrice(template, productPrice);
   const before = randomTemplateDigest(template);
   const cloned = cloneTemplate(template);
   cloned.id = randomUUID();
-  cloned.productPrice = price;
+  if (price === undefined) delete cloned.productPrice;
+  else cloned.productPrice = price;
   const preset = RANDOM_FILTER_POOL[Math.floor(Math.random() * RANDOM_FILTER_POOL.length)];
   const intensityRange = RANDOM_FILTER_INTENSITY[preset];
   cloned.filter = { presetId: preset, intensity: intensityRange.min + Math.random() * (intensityRange.max - intensityRange.min) };
@@ -369,7 +377,7 @@ export function cloneTemplateForRandom(template: EditTemplate, productPrice: str
   for (const layer of cloned.layers) {
     layer.id = randomUUID();
     if (layer.type === "text") {
-      layer.content = formatProductPrice(price);
+      if (price !== undefined) layer.content = formatProductPrice(price);
       continue;
     }
     let picked: RandomStickerPoolEntry;

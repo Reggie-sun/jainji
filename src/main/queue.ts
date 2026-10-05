@@ -36,7 +36,7 @@ import { outputDimensions } from "../shared/export-settings.js";
 import { estimateNvencMemoryMiB, GPU_MEMORY_RESERVE_MIB, readGpuFreeMemory } from "./gpu-memory.js";
 import { reviewDigest } from "./cover-review-approval.js";
 import { measureCoverStage, type CoverDiagnostics } from "./cover-diagnostics.js";
-import { MAX_AGENT_OUTPUTS } from "../shared/agent.js";
+import { MAX_AGENT_OUTPUTS, type AppendProductionPrefill } from "../shared/agent.js";
 import { verifyShapeCoverAdmission, type ShapeCoverAdmission } from "./shape-cover-admission.js";
 import { templateDigest } from "./supervisor-knowledge.js";
 import { ShapeCoverArtifactStore } from "./shape-cover-artifacts.js";
@@ -384,10 +384,10 @@ export class ExportQueue {
     return structuredClone(batch);
   }
 
-  async appendPrefill(batchId: string, projectId: string): Promise<{ productPrice: string; mediaCount: number } | undefined> {
+  async appendPrefill(batchId: string, projectId: string): Promise<AppendProductionPrefill | undefined> {
     const source = await this.findAppendSource(batchId);
     if (!source || source.projectId !== projectId) return undefined;
-    return { productPrice: source.templateSnapshot.productPrice ?? "", mediaCount: source.mediaIds.length };
+    return { productPrice: source.templateSnapshot.productPrice ?? "", mediaCount: source.mediaIds.length, displayTextEnabled: source.templateSnapshot.displayText?.enabled !== false };
   }
 
   async appendFromBatch(input: { batchId: string; projectId: string; count: number; productPrice: string; outputDirectory: string }, stickerPool: readonly RandomStickerPoolEntry[], signal?: AbortSignal): Promise<ExportBatch[]> {

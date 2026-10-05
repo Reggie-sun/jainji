@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema } from "./douyin-upload.js";
-import { DecorationSchema, ProductionDecorationSchema, RequiredProductPriceSchema, requiresDisplayText } from "./decorations.js";
+import { DecorationSchema, ProductPriceSchema, ProductionDecorationSchema, RequiredProductPriceSchema, requiresDisplayText } from "./decorations.js";
 import { ExportFormatSchema } from "./export-format.js";
 import { ExportSettingsSchema } from "./export-settings.js";
 import type { SourceKnowledgeProgress } from "./source-sticker-knowledge.js";
@@ -50,10 +50,15 @@ export const AppendProductionSchema = z.object({
   douyinUpload: DouyinUploadSelectionSchema.optional(),
   batchId: z.string().uuid(),
   count: z.number().int().min(1).max(MAX_AGENT_OUTPUTS),
-  productPrice: RequiredProductPriceSchema,
+  productPrice: ProductPriceSchema,
   outputDirectory: z.string().min(1),
 }).strict();
 export type AppendProductionInput = z.infer<typeof AppendProductionSchema>;
+export interface AppendProductionPrefill {
+  productPrice: string;
+  mediaCount: number;
+  displayTextEnabled?: boolean;
+}
 
 export function calculateProductionQuantity(sourceCount: number, requestedCount: number): { multiplier: number; total: number } | undefined {
   if (!Number.isInteger(sourceCount) || sourceCount < 1 || !Number.isInteger(requestedCount) || requestedCount < 1) return undefined;

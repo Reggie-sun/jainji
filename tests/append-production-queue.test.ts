@@ -123,9 +123,55 @@ describe("appendFromBatch", () => {
     const projectId = crypto.randomUUID();
     const source = await completedSource(queue, directory, media, projectId);
 
-    expect(await queue.appendPrefill(source.id, projectId)).toEqual({ productPrice: "19.9元拍一发三", mediaCount: 1 });
+    expect(await queue.appendPrefill(source.id, projectId)).toEqual({ productPrice: "19.9元拍一发三", mediaCount: 1, displayTextEnabled: true });
     expect(await queue.appendPrefill(source.id, crypto.randomUUID())).toBeUndefined();
     expect(await queue.appendPrefill(crypto.randomUUID(), projectId)).toBeUndefined();
+  });
+
+  // Regression: ISSUE-001 — text-off source batches failed before append enqueue.
+  // Found by /qa on 2026-10-05.
+  // Report: .agent/harness/runs/20261005-qa/qa-report.md
+  it("prefills and renders text-off appends using the frozen source, preserving old outputs", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-append-text-off-"));
+    const sourcePath = path.join(directory, "a.mp4");
+    await writeFile(sourcePath, "a");
+    const media = await makeMedia(crypto.randomUUID(), sourcePath);
+    const queue = fakeQueue(directory);
+    const projectId = crypto.randomUUID();
+    const template = manualTemplate("旧文字");
+    template.displayText = { enabled: false, x: 0.5, y: 0.13 };
+    template.layers = template.layers.filter((layer) => layer.type !== "text");
+    delete template.productPrice;
+    const outputDirectory = path.join(directory, "out");
+    const source = await queue.createBatch({ projectId, template, mediaIds: [media.id], mediaItems: [media], outputDirectory, preset: DEFAULT_PRESET });
+    await queue.start(source.id);
+    const frozen = structuredClone(source.templateSnapshot);
+    expect(await queue.appendPrefill(source.id, projectId)).toEqual({ productPrice: "", mediaCount: 1, displayTextEnabled: false });
+    queue.setMediaLookup(() => undefined);
+    const appended = await queue.appendFromBatch({ batchId: source.id, projectId, count: 1, productPrice: "", outputDirectory }, dummyPool);
+    expect(appended).toHaveLength(1);
+    expect(appended[0].templateSnapshot.displayText?.enabled).toBe(false);
+    expect(appended[0].templateSnapshot.layers.some((layer) => layer.type === "text")).toBe(false);
+    expect(appended[0].templateSnapshot).not.toHaveProperty("productPrice");
+    expect(randomTemplateDigest(appended[0].templateSnapshot)).toBe(randomTemplateDigest(frozen));
+    await queue.start(appended[0].id);
+    const states = queue.snapshot().batches.map((state) => state.batch);
+    expect(states.every((batch) => batch.status === "completed")).toBe(true);
+    expect(states.find((batch) => batch.id === source.id)?.templateSnapshot).toEqual(frozen);
+    expect(new Set(states.map((batch) => batch.tasks[0].outputPath)).size).toBe(2);
+    expect((await readdir(outputDirectory)).filter((name) => name.endsWith(".mp4"))).toHaveLength(2);
+  });
+
+  it("rejects empty text for a text-on source without enqueuing a clone", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-append-empty-text-"));
+    const sourcePath = path.join(directory, "a.mp4");
+    await writeFile(sourcePath, "a");
+    const media = await makeMedia(crypto.randomUUID(), sourcePath);
+    const queue = fakeQueue(directory);
+    const projectId = crypto.randomUUID();
+    const source = await completedSource(queue, directory, media, projectId);
+    await expect(queue.appendFromBatch({ batchId: source.id, projectId, count: 1, productPrice: "", outputDirectory: path.join(directory, "out2") }, dummyPool)).rejects.toThrow();
+    expect(queue.snapshot().batches).toHaveLength(1);
   });
 
   it("rejects cross-project, over-capacity, and not-yet-completed appends", async () => {

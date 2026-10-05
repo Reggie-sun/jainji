@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { MAX_AGENT_OUTPUTS } from "../shared/agent";
+import { MAX_AGENT_OUTPUTS, type AppendProductionPrefill } from "../shared/agent";
 import { PRODUCT_PRICE_HELP, PRODUCT_PRICE_MAX_LENGTH, RequiredProductPriceSchema } from "../shared/decorations";
 import type { PublicExportBatch } from "../main/application";
 import { Icon } from "./ui";
@@ -9,7 +9,7 @@ import { DouyinUploadControls, type UploadSelectionDraft } from "./DouyinUploadC
 
 export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCount, accounts, onClose }: {
   batch: PublicExportBatch;
-  prefill: { productPrice: string; mediaCount: number };
+  prefill: AppendProductionPrefill;
   mediaLabel: string;
   initialCount?: number;
   accounts?: QianchuanAccountSummary[];
@@ -23,7 +23,8 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const maxCount = Math.max(1, Math.floor(MAX_AGENT_OUTPUTS / prefill.mediaCount));
-  const priceValid = RequiredProductPriceSchema.safeParse(productPrice).success;
+  const displayTextEnabled = prefill.displayTextEnabled !== false;
+  const priceValid = !displayTextEnabled || RequiredProductPriceSchema.safeParse(productPrice).success;
   const countValid = Number.isInteger(count) && count >= 1 && count <= maxCount;
   const submit = async () => {
     setBusy(true);
@@ -31,7 +32,7 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
     try {
       if (douyinUploadSelection && !douyinUploadSelection.plan) throw new Error("请选择上传计划后再追加制作。");
       const uploadSelection = douyinUploadSelection ? QianchuanUploadSelectionSchema.parse(douyinUploadSelection) : undefined;
-      const parsed = RequiredProductPriceSchema.safeParse(productPrice);
+      const parsed = displayTextEnabled ? RequiredProductPriceSchema.safeParse(productPrice) : { success: true as const, data: "" };
       if (!parsed.success) throw new Error(PRODUCT_PRICE_HELP);
       if (!countValid) throw new Error(`请填写 1 到 ${maxCount} 之间的整数条数。`);
       const outputDirectory = useManualDirectory ? manualDirectory : await window.jianji.createAutomaticOutputDirectory(batch.mediaIds);
@@ -47,10 +48,10 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
   return <div className="result-preview-backdrop" role="presentation" onClick={busy ? undefined : onClose}><section className="result-preview-dialog card" role="dialog" aria-modal="true" aria-label="追加制作" onClick={(event) => event.stopPropagation()}>
     <div className="card-header"><h2>追加制作</h2><button type="button" className="icon-button" aria-label="关闭追加制作" disabled={busy} onClick={onClose}><Icon name="close" size={18} /></button></div>
     <p>源批次：{mediaLabel} · {prefill.mediaCount} 条素材 · 贴纸和滤镜随机搭配，零模型调用。</p>
-    <label htmlFor="append-price">展示文字 / 价格 <span>必填 · 手动输入</span></label>
+    {displayTextEnabled ? <><label htmlFor="append-price">展示文字 / 价格 <span>必填 · 手动输入</span></label>
     <textarea id="append-price" rows={2} required aria-invalid={!priceValid} inputMode="text" maxLength={PRODUCT_PRICE_MAX_LENGTH} disabled={busy} value={productPrice} onChange={(event) => setProductPrice(event.target.value)} />
     <small>预填的是源批次保存的手动文字，可修改；按 Enter 换行，最多2行、每行12字。</small>
-    {!priceValid && <p role="alert">{PRODUCT_PRICE_HELP}</p>}
+    {!priceValid && <p role="alert">{PRODUCT_PRICE_HELP}</p>}</> : <p role="note">源批次已关闭展示文字，追加制作沿用该设置。</p>}
     <label htmlFor="append-count">追加条数</label>
     <input id="append-count" type="number" min={1} max={maxCount} step={1} value={count} disabled={busy} onChange={(event) => setCount(event.target.valueAsNumber)} />
     {count > 1 && <p role="note">同一批次追加多条将随机搭配不同贴纸和滤镜，布局保持不变。</p>}

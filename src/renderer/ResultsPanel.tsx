@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { DesktopState } from "../shared/desktop";
-import type { AgentItem } from "../shared/agent";
+import type { AgentItem, AppendProductionPrefill } from "../shared/agent";
 import type { PublicExportBatch } from "../main/application";
 import { AppendProductionDialog } from "./AppendProductionDialog";
 import { SourceStickerKnowledgeDetails } from "./SourceStickerKnowledgeDetails";
@@ -20,7 +20,7 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, 
   state: DesktopState; busy: boolean; retryingIds: string[]; onCancel(taskId: string): void; onCancelAll(): void; onRetry(taskId: string): void; onOpen(taskId: string): void; onReveal(taskId: string): void; onNew(): void; onState?(state: DesktopState): void;
 }) {
   const [preview, setPreview] = useState<{ url: string; name: string }>();
-  const [appendTarget, setAppendTarget] = useState<{ batch: PublicExportBatch; prefill: { productPrice: string; mediaCount: number } }>();
+  const [appendTarget, setAppendTarget] = useState<{ batch: PublicExportBatch; prefill: AppendProductionPrefill }>();
   const [appendError, setAppendError] = useState("");
   const batchById = new Map(state.queue.batches.map(({ batch }) => [batch.id, batch]));
   const openAppend = async (batchId: string) => {
