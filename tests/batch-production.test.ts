@@ -1,7 +1,10 @@
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { buildSync } from "esbuild";
+import { chromium, type Browser, type Page } from "playwright-core";
+import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 import { BatchProductionStartSchema, batchRequiresDisplayText } from "../src/shared/batch-production";
 import { BatchProductionController, type BatchProductionSession } from "../src/main/batch-production-controller";
 import { createBatchProductionRuntime } from "../src/main/batch-production-runtime";
@@ -703,5 +706,116 @@ describe("cross-template batch admission", () => {
     await expect(new ProjectStore(file).readSnapshot()).rejects.toThrow();
     expect(await readFile(file, "utf8")).toBe("{broken");
     expect(await readFile(`${file}.bak`, "utf8")).toBe(bytes);
+  });
+});
+
+// Regression: ISSUE-003 — selecting a template opened the Qianchuan catalog.
+// Report: .agent/harness/runs/20261005-qa/batch-plan-report.md
+describe("batch plan read intent", () => {
+  let browser: Browser;
+  beforeAll(async () => {
+    browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
+  }, 30000);
+  afterAll(async () => { await browser?.close(); });
+  async function panel(): Promise<Page> {
+    const page = await browser.newPage();
+    await page.route("http://127.0.0.1:3000/batch-plan-intent", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/batch-plan-intent");
+    const script = buildSync({ stdin: { contents: `
+      import React, { useState } from "react";
+      import { createRoot } from "react-dom/client";
+      import { BatchProductionPanel } from "./src/renderer/BatchProductionPanel";
+      const accounts = [{product:"眼贴", productName:"蝴蝶贴", advertiserId:"1000", adId:"2000", available:true},
+        {product:"肥皂", productName:"最新眼贴", advertiserId:"1001", adId:"2001", available:true}];
+      const projects = ["蝴蝶贴", "最新眼贴"].map((name, i) => ({recentProjectId: "00000000-0000-4000-8000-00000000000" + (i + 1),
+        projectId: "10000000-0000-4000-8000-00000000000" + (i + 1), name, sourceCount: i ? 10 : 15, requestedCount: 1,
+        productPrice: "手动文字", coverEnabled:false, displayMode:"full", mode:"random", displayTextRequiredByMedia:[false]}));
+      window.catalogRequests = []; window.cancelledRequests = []; window.batchStarts = [];
+      window.jianji = {batchProductionProjects: async () => projects,
+        saveBatchUploadAccount: async input => ({recentProjectId:input.recentProjectId, projectId:input.expectedProjectId,
+          accountProduct:input.accountProduct, advertiserId:input.expectedAdvertiserId}),
+        listQianchuanPlans: input => new Promise((resolve, reject) => window.catalogRequests.push({input, resolve, reject})),
+        cancelQianchuanPlans: async input => {window.cancelledRequests.push(input);
+          window.catalogRequests.find(request => request.input.requestId === input.requestId)?.reject(new Error("已取消"));},
+        startBatchProduction: async input => {window.batchStarts.push(input); return state;}};
+      const state = {recentProjects:[], queue:{batches:[]}, capabilities:{ready:true}, douyinUpload:{config:{enabled:true}, accounts}};
+      function Fixture() {
+        const [visible, setVisible] = useState(true);
+        return <><button onClick={() => setVisible(value => !value)}>切换页面</button>
+          <BatchProductionPanel state={state} visible={visible} onState={() => {}} /></>;
+      }
+      createRoot(document.getElementById("root")).render(<React.StrictMode><Fixture/></React.StrictMode>);
+    `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic", loader: { ".css": "empty" } }).outputFiles[0]!.text;
+    await page.addScriptTag({ content: script });
+    await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).waitFor();
+    return page;
+  }
+  const requests = (page: Page) => page.evaluate(() => (window as any).catalogRequests.length);
+  const row = (page: Page) => page.locator('[aria-label="蝴蝶贴制作设置"]');
+  async function choose(page: Page) {
+    await page.evaluate(() => {
+      const request = (window as any).catalogRequests.at(-1);
+      request.resolve(["9001", "9002"].map(adId => ({ advertiserId: request.input.expectedAdvertiserId, adId, name: "计划 " + adId })));
+    });
+    await row(page).getByLabel("上传计划", { exact: true }).selectOption("9002");
+  }
+  it("does not read plans when templates are checked, unchecked, refreshed or revisited", async () => {
+    const page = await panel();
+    try {
+      for (const name of ["蝴蝶贴", "最新眼贴"]) await page.getByRole("checkbox", { name: `选择模板 ${name}`, exact: true }).check();
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      expect(await requests(page)).toBe(0);
+      expect(await row(page).getByRole("checkbox", { name: "蝴蝶贴开启千川上传", exact: true }).isChecked()).toBe(true);
+      await page.getByRole("button", { name: "刷新模板", exact: true }).click();
+      await page.getByRole("button", { name: "切换页面", exact: true }).click();
+      await page.getByRole("button", { name: "切换页面", exact: true }).click();
+      const checkbox = page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true });
+      await checkbox.uncheck(); await checkbox.check();
+      expect(await requests(page)).toBe(0);
+      expect(await page.getByRole("button", { name: "开始批量制作", exact: true }).isDisabled()).toBe(true);
+    } finally { await page.close(); }
+  });
+  it("reads only on explicit action and preserves the chosen plan across reselection", async () => {
+    const page = await panel();
+    try {
+      const checkbox = page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true });
+      await checkbox.check();
+      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      expect(await page.getByRole("button", { name: "开始批量制作", exact: true }).isDisabled()).toBe(true);
+      await choose(page);
+      await page.getByRole("button", { name: "开始批量制作", exact: true }).click({ trial: true });
+      await checkbox.uncheck(); await checkbox.check();
+      await row(page).getByLabel("上传计划", { exact: true }).waitFor();
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="蝴蝶贴制作设置"] [aria-label="上传计划"]')?.value === "9002");
+      expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
+      expect(await requests(page)).toBe(1);
+      await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+      expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].douyinUpload)).toEqual({ enabled: true, accountProduct: "眼贴", plan: { advertiserId: "1000", adId: "9002", name: "计划 9002" } });
+      await row(page).getByRole("button", { name: "刷新计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await checkbox.uncheck();
+      await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
+      await checkbox.check();
+      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).waitFor();
+      expect(await requests(page)).toBe(2);
+    } finally { await page.close(); }
+  });
+  it("requires another explicit read after switching the upload account", async () => {
+    const page = await panel();
+    try {
+      await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).check();
+      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      await row(page).getByLabel("蝴蝶贴上传账号", { exact: true }).selectOption("肥皂");
+      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).waitFor();
+      await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
+      expect(await requests(page)).toBe(1);
+      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      expect(await page.evaluate(() => (window as any).catalogRequests[1].input.expectedAdvertiserId)).toBe("1001");
+      await choose(page);
+      expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
+    } finally { await page.close(); }
   });
 });
