@@ -4,7 +4,8 @@ import { mkdtemp, rm, appendFile, readFile, readdir, writeFile, copyFile } from 
 import { appendFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { z } from "zod";
 import { discoverBinary } from "../src/main/ffmpeg.js";
 import { identifySource, SourceStickerKnowledgeStore, factsDigest } from "../src/main/source-sticker-knowledge-store.js";
 import { prepareDiscoveryEvidence, discoveryHash, selectDiscoveryOrdinals, type DiscoveryBinding } from "../src/main/source-fact-discovery-evidence.js";
@@ -23,6 +24,35 @@ import { ConfirmedTargetStaticProofSchema, ConfirmedTargetStaticProofV1Schema, K
 
 import { readExactSourceFrames } from "../src/main/source-fact-exact-frames.js";
 import * as census from "../src/main/source-fact-census.js";
+
+// Frozen failed HC2 experiment descriptor; no production support or confirmation authority.
+const Digest = z.string().regex(/^[a-f0-9]{64}$/);
+const Dimension = z.number().int().positive().max(8192);
+const Body = z.object({ encoding: z.literal("grid-bitpack-lsb-row-major/v1"),
+  mapping: z.literal("integer-cell-origin-partition/v1"), candidateId: Digest, sourceKey: Digest, discoveryDigest: Digest,
+  gridWidth: z.number().int().positive().max(360), gridHeight: z.number().int().positive().max(360),
+  sourceWidth: Dimension, sourceHeight: Dimension, markedCells: z.number().int().positive().max(360 * 360),
+  bitmapSha256: Digest, dataBase64: z.string().max(21600) }).strict();
+type ComponentSupportBody = z.infer<typeof Body>;
+const sha = (v: Buffer | string) => createHash("sha256").update(v).digest("hex");
+const componentSupportDigest = (body: ComponentSupportBody): string => sha(JSON.stringify(Body.parse(body)));
+const ComponentSupportSchema = Body.extend({ supportDigest: Digest, resultDigest: Digest }).strict().superRefine((s, ctx) => {
+  const { supportDigest, resultDigest: _result, ...body } = s;
+  const bytes = Buffer.from(s.dataBase64, "base64"), n = s.gridWidth * s.gridHeight;
+  let count = 0; for (const b of bytes) for (let bit = 0; bit < 8; bit++) count += b >> bit & 1;
+  if (s.gridWidth > s.sourceWidth || s.gridHeight > s.sourceHeight || bytes.length !== Math.ceil(n / 8)
+    || bytes.toString("base64") !== s.dataBase64 || n % 8 && (bytes.at(-1)! >> (n % 8)) !== 0
+    || count !== s.markedCells || sha(bytes) !== s.bitmapSha256 || componentSupportDigest(body) !== supportDigest)
+    ctx.addIssue({ code: "custom", message: "Invalid component support bitmap/digest/mapping" });
+});
+type ComponentSupport = z.infer<typeof ComponentSupportSchema>;
+/** Each grid cell owns [floor(g*size/grid), floor((g+1)*size/grid)); no outward ROI padding. */
+function componentSupportContains(s: ComponentSupport, x: number, y: number, bitmap = Buffer.from(s.dataBase64, "base64")): boolean {
+  if (!Number.isSafeInteger(x) || !Number.isSafeInteger(y) || x < 0 || y < 0 || x >= s.sourceWidth || y >= s.sourceHeight) return false;
+  const gx = Math.floor(((x + 1) * s.gridWidth - 1) / s.sourceWidth);
+  const gy = Math.floor(((y + 1) * s.gridHeight - 1) / s.sourceHeight), p = gy * s.gridWidth + gx;
+  return (bitmap[p >> 3] & (1 << (p & 7))) !== 0;
+}
 
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { vi.restoreAllMocks(); while (cleanup.length) await cleanup.pop()!(); });
@@ -93,12 +123,47 @@ async function truthFor(evidence: StaticTargetEvidence, required: Uint8Array[], 
 }
 
 describe("static confirmed-target mask development", () => {
+  it("validates frozen actual detector support independently of bbox identity", async () => {
+    const support = ComponentSupportSchema.parse(JSON.parse(await readFile(new URL("./fixtures/static-real-component-support.json", import.meta.url), "utf8")));
+    expect(support.markedCells).toBe(130);
+    const bytes = Buffer.from(support.dataBase64, "base64");
+    const points = Array.from({length:support.gridWidth*support.gridHeight},(_,p)=>p).filter(p=>bytes[p>>3]>>(p&7)&1);
+    const gx=points.map(p=>p%support.gridWidth),gy=points.map(p=>Math.floor(p/support.gridWidth));
+    const point=points.find(p=>p%support.gridWidth>Math.min(...gx) && p%support.gridWidth<Math.max(...gx) && Math.floor(p/support.gridWidth)>Math.min(...gy) && Math.floor(p/support.gridWidth)<Math.max(...gy))!;
+    expect(point).toBeDefined(); bytes[point>>3] &= ~(1<<(point&7));
+    const {supportDigest:_digest,resultDigest:_result,...body}=support;
+    const changed={...body,markedCells:body.markedCells-1,bitmapSha256:discoveryHash(bytes),dataBase64:bytes.toString("base64")};
+    expect(componentSupportDigest(changed)).not.toBe(support.supportDigest);
+    expect(ComponentSupportSchema.safeParse({...support,...changed}).success).toBe(false);
+    const x=Math.floor((point%support.gridWidth)*support.sourceWidth/support.gridWidth),y=Math.floor(Math.floor(point/support.gridWidth)*support.sourceHeight/support.gridHeight);
+    expect(componentSupportContains(support,x,y)).toBe(true);
+    expect(componentSupportContains({...support,...changed,supportDigest:componentSupportDigest(changed)},x,y)).toBe(false);
+    expect(componentSupportContains(support,-1,y)).toBe(false);
+    const copy=Buffer.from(support.dataBase64,"base64");copy.fill(0);expect(componentSupportContains(support,x,y)).toBe(true);
+  });
+  it("replays frozen v2 bytes without current source/runtime and preserves the legacy boundary ceiling", async () => {
+    const archive = JSON.parse(await readFile(new URL("./fixtures/confirmed-target-static-v2.json", import.meta.url), "utf8"));
+    const candidate = KnowledgeCandidateSchema.parse(archive.candidate), proof = ConfirmedTargetStaticProofSchema.parse(archive.proof);
+    const blobs = new Map<string, Buffer>(archive.blobs.map(([digest, bytes]: [string,string]) => [digest,Buffer.from(bytes,"base64")]));
+    expect(()=>checkConfirmedStaticProof(candidate,proof,blobs)).not.toThrow();
+    expect(proof.mode).toBe("confirmed-target-static-v2");
+    const oversized=structuredClone(proof);
+    if (oversized.mode === "confirmed-target-static-v2") oversized.targets[0].boundaryFrames[0].byteLength=8*1024**2+1;
+    expect(ConfirmedTargetStaticProofSchema.safeParse(oversized).success).toBe(false);
+  });
+
   it("replays an immutable pre-fix v1 archive without source/runtime files and never publishes its clone", async () => {
     const archive = JSON.parse(await readFile(new URL("./fixtures/confirmed-target-static-v1.json", import.meta.url), "utf8"));
     const candidate = KnowledgeCandidateSchema.parse(archive.candidate), proof = ConfirmedTargetStaticProofV1Schema.parse(archive.proof);
     const blobs = new Map<string, Buffer>(archive.blobs.map(([digest, bytes]: [string, string]) => [digest, Buffer.from(bytes, "base64")]));
     expect(proof.mode).toBe("confirmed-target-static-v1");
     expect(() => checkConfirmedStaticProof(candidate, proof, blobs)).not.toThrow();
+    const larger = structuredClone(candidate), legacyFrame = larger.evidence.find(e => e.id === proof.targets[0].sourceEvidenceIds[0])!;
+    const largeBytes = Buffer.alloc(8 * 1024 ** 2 + 1); blobs.get(legacyFrame.digest)!.copy(largeBytes);
+    legacyFrame.digest = discoveryHash(largeBytes); legacyFrame.byteLength = largeBytes.length;
+    const largeBlobs = new Map(blobs); largeBlobs.set(legacyFrame.digest, largeBytes);
+    expect(KnowledgeCandidateSchema.safeParse(larger).success).toBe(true);
+    expect(() => checkConfirmedStaticProof(larger, proof, largeBlobs)).toThrow(/boundary original evidence mismatch/);
     const relabelled = structuredClone(candidate);
     for (const e of relabelled.evidence) if (e.kind === "confirmed-target-proof") e.version = 2;
     expect(() => checkConfirmedStaticProof(relabelled, proof, blobs)).toThrow(/artifact bytes/);

@@ -2,6 +2,8 @@ import { z } from "zod";
 import { CoverRectangleSchema, CoverTrackSchema, interpolateCoverRectangle } from "./cover-sticker.js";
 import { MAX_AUTOMATIC_COVER_TRACKS } from "./automatic-cover.js";
 import type { KnowledgeLookupReason, KnowledgeOutcome } from "./source-sticker-knowledge-audit.js";
+/** Canonical full-frame RGBA envelope; preview/proof artifacts retain their separate 8MiB limit. */
+export const MAX_SOURCE_FRAME_BYTES = 64 * 1024 ** 2;
 
 export const KNOWLEDGE_SCHEMA_VERSION = 1;
 const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/);
@@ -42,7 +44,7 @@ const frameFields = {
   width: z.number().int().positive(), height: z.number().int().positive(),
 };
 export const SourceFrameEvidenceSchema = z.object({
-  ...frameFields, kind: z.literal("source"),
+  ...frameFields, byteLength: z.number().int().positive().max(MAX_SOURCE_FRAME_BYTES), kind: z.literal("source"),
   crop: z.object({ sourceEvidenceId: Id, rectangle: CoverRectangleSchema }).strict().optional(),
 }).strict();
 const PreviewFrameEvidenceSchema = z.object({

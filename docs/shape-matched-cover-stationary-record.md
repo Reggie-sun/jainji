@@ -1,5 +1,43 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-HC2 Component-Support Stop Checkpoint — 2026-10-05
+
+**Verdict：BLOCKED。** target基线545a4259a204993f65657813e3589a234d1a9e73，开始HEAD29081b5914dc08d2e902d7aeea15a2ec7838cd0a；中间及working-tree千川/UI/共享AOCI改动是foreign，未算本slice。AGENTS/SUBAGENTS、四份合同与指定source owners已审读。当前M3 consumer/production/assembler/activation/guard仍原字节，PRODUCT_DISABLED，modelRequests=0；本节覆盖之前record的correctness closure声明，不重写历史结果。
+
+### Frozen Pre-Fix Evidence
+
+使用实际720×1280 H264 lossless source、canonical discovery/extraction/geometry；M1真实connected component gridBox80/140/12/8，96 stable cells；padding=2映射sourceBox278/490/58/44。实际integer-cell-origin partition support1218源像素，padding强静态gradient不在membership。三例component move1px、disappearance、PRICE/SALE padding+move均 **SUPPORTED /issues0**；landmarks218/218/223，actual support外中心213/213/218，frame15 correlation0.9812765438/0.9851028872/0.9804138726。强背景提供了绝大部分reference，confirmedSourceBox不等于component observation。
+
+新增固定fixture `tests/fixtures/static-padded-support-counterexamples.npz`（75016 bytes，SHA8d65b8effd70bfeb178443caaa30a20cb1c28702e16642d83f26860661549432），保存decoded RGBA三例ordinals0/15/29、actual grid/source membership、padding、boxes、source identities/frame SHA及pre-fix结果。refs取0/0/29/29两相位，与实际M1 sampled backgrounds一致；不是mock，不替换旧static-component-counterexamples.npz。完整私有pre-fix收据位于本机 `~/.local/state/jianji-source-fact-qualification/m2hc2-20261005/pre-fix-a10-run5/`。诊断入口为 `scripts/shape-cover-padded-support-diagnostic.ts`，不触发产品或模型。
+
+### Support Experiment and Stop
+
+实验在M1 live result WeakMap保留queue membership，以LSB bitset表示grid support，digest绑定candidateId/sourceKey/discoveryDigest/grid/source dimensions/mapping/bitmap，resultDigest另绑owner envelope；返回副本、clone/candidate mismatch/closed拒绝。未改变公开discovery body、candidateId或v1阈值；same bbox删除interior support cell会改变supportDigest。grid cell footprint为相邻floor origins之间半开partition，不含outward ROI padding、不由final mask反推。
+
+新未发行的Python `cpu-static-component-geometry/v3` eligibility实验只在support内选anchor，并要求Gaussian5/Sobel3半径3 stencil同属support，防止合法center仍完全借邻接背景梯度。search radius8仍仅局部context；所有原minimumCells/minimumLandmarks/correlation/offset阈值不改。三份固定padding反例均UNOBSERVABLE；observable静止component SUPPORTED，move/disappearance ISSUE；hollow support bbox内背景不产生anchor；两component稳定均SUPPORTED、其一移动则全target不能PASS、其一4×4无信号则UNOBSERVABLE。Python22 controls通过，包括旧v1/v2与旧固定counterexamples。
+
+实际233s完整6990帧运行：M1 support **130 grid cells /1680 source pixels**，supportDigest2dfc2e5ac5c1c6d2455c73429bcea25ae50361aabfe44331ef1c2e7680a5ac8e。新reference未建立，landmarks0，component=COMPONENT_GEOMETRY_UNOBSERVABLE，logical target INCOMPLETE，6990 policy issue markers，reference/summary=null；null reference摘要74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b，不代表有效reference。不能将issue markers说成6990次实测运动。这只证明本次保守eligibility方法不满足真实observability，不证明所有support-bound方法不可行。
+
+mask仍3395px、bbox628/1/81/59、SHA **fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893**，133 RGB anomalies保留。真实source只用已授权233s，没有看210 unseen。私有证据在 `~/.local/state/jianji-source-fact-qualification/m2hc2-20261005/real-geometry-first/`，actual support descriptor另冻结为 `tests/fixtures/static-real-component-support.json`。
+
+按用户“若真实component UNOBSERVABLE：STOP”停止；不降低阈值、不借padding、不尝试调到PASS。实验live WeakMap/confirmation v3/geometry v3切换已撤回，保留纯diagnostic/kernel controls及失败证据；当前discovery v1、confirmation v2、geometry v2、proof v2，没有new proof version、没有durable support-binding。SC-HC-01未关闭，v2仍KNOWN_PADDING_BACKGROUND_LIMITATION。
+
+### Evidence Resolution Preparation
+
+Option A通用source evidence/schema与store读写复验已对齐canonical **64MiB /67,108,864 bytes**；census共用同一constant，不改变其decode envelope。720×1280=3,686,400、1080×1920/1920×1080=8,294,400、1440×2560/2560×1440=14,745,600、3840×2160=33,177,600，以及4096×4096 exact ceiling，均实际publish/reopen通过。ceiling+1、byteLength/SHA错误、truncate/tamper/oversize和quota拒绝测试通过；preview/proof artifacts仍8MiB，record4MiB，defaultquota256MiB。
+
+保留v1 PNG version-local8MiB guard；旧v2 ExactBoundaryFrameSchema原8MiB不改。故本次通用storage准备 **不等于v2 proof支持1440p/4K**；SC-HC-02 canonical proof路径仍未关闭，需新version语义但被真实geometry STOP gate阻断。四个unique64MiB帧加metadata触发默认quota，既有quotaBytes可显式增加总budget，不清旧archive。copy-before-quota使caller256MiB加snapshot256MiB约512MiB，另外issuer/decoder copies仍需计入；不能声称RSS≤256MiB。schemaVersion1、no-downgrade、run/source/base/dispute/publication authority不改。
+
+### Verification and Remaining Gates
+
+SC-HC-02 worker store59/59与Python22 controls通过；fresh typecheck及focused mask/store89/89通过。实际registered owned Harness `20261005T080749Z-d6590721` 为 **FAIL**：16 required checks中15通过，extended980/981；唯一失败是未改动的“双component确认不吞中间/字幕component”测试触及原30秒预算。同源码隔离复查1/1通过、14.505秒，29项未选；这不撤销原FAIL、不证明具体超时根因，不改测试或application预算。其余source-mask-static29项通过，包括arbitrary/multi/shared-boundary exact reader、historical v1/v2 replay、clone/tamper/cancel/dispute；exact-range项158.203秒，原240秒测试预算及300秒application预算不变。
+
+该Harness参与bytes前后相同，documents及16项owned AOCI均PASS；官方维护4个indexed source owners applied4/remaining0，其余observe。全库AOCI另外FAIL，只有foreign `runs/20261005-upload-throughput/` 的7个missing/unbaselined对象；Verify/Check/Guide如实保留该状态，未维护foreign业务。完整索引刷新交付233/233、Challenge10/10，但当前全库治理未对齐，不能宣称完整系统认知可靠。Parent read-only Risk Gate独立复算冻结反例，未发现保留checkpoint新增false acceptance；SC-HC-01/02依然blocking。只读completion verify拒绝非PASS receipt；本段记录结果后仅刷新当前文档/AOCI controls，不将原FAIL重标PASS。最终code/controls receipts保留在 `.agent/harness/runs/`，私有最终checkpoint在上述M2-HC2证据根目录。
+
+focused controls与generic store能力均不代替M2-HC2 exit。固定v1/v2 replay仍独立当前source/runtime；v2冻结fixture来自修改前实际live issuance，serialized clone不恢复发行authority。新proof、durable support-binding、真实geometry observability与canonical proof resolution closure均未完成；**M2-HC2 CORRECTNESS_CLOSED不成立**。
+
+本repository无专用session-capture skill，canonical record及私有receipts保存checkpoint；未更新外部memory。Windows/product runtime和per-source applicability仍须consumer前contract decision；M1 middle-only为M1_SUPPORT_LIMIT；exact-frame重复顺序decode OPTIMIZE_LATER；4×4 mask支持不等于static-proof geometry支持。当前先解决真实support-bound observability blocker，本轮不写新的实现方案，不进入M3。
+
 ## M2-HC Confirmed-Target Proof Correctness Closure — 2026-10-04
 
 ### Scope and Pre-Fix Evidence

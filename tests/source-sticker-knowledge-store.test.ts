@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, writeFile, readdir, rm, copyFile, mkdir, symlink } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, readdir, rm, copyFile, mkdir, symlink, truncate } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { SourceStickerKnowledgeStore, identifySource, sourceKey, factsDigest } from "../src/main/source-sticker-knowledge-store";
-import type { KnowledgeCandidate, SourceIdentity } from "../src/shared/source-sticker-knowledge";
+import { SourceFrameEvidenceSchema, KnowledgeEvidenceSchema, type KnowledgeCandidate, type SourceIdentity } from "../src/shared/source-sticker-knowledge";
 
 const stores: SourceStickerKnowledgeStore[] = [];
 afterEach(async () => { for (const store of stores.splice(0)) await store.close(); });
@@ -56,6 +56,90 @@ function withStaticMask(p: Prepared): Prepared {
 }
 
 describe("durable source sticker knowledge", () => {
+  it.each([[720, 1280], [1080, 1920], [1920, 1080], [1440, 2560], [2560, 1440], [3840, 2160], [4096, 4096]])(
+    "archives and reopens bounded full RGBA source evidence at %i × %i", async (width, height) => {
+      const f = await fixture();
+      try {
+        const source = { ...f.source, width, height };
+        const p = await prepare(f.store, source), bytes = Buffer.alloc(width * height * 4, 17);
+        const original = p.candidate.evidence[0];
+        p.blobs.delete(original.digest);
+        Object.assign(original, { width, height, digest: hash(bytes), byteLength: bytes.length });
+        Object.assign(p.candidate.evidence[1], { width, height });
+        p.blobs.set(original.digest, bytes);
+        expect(SourceFrameEvidenceSchema.parse(original).byteLength).toBe(width * height * 4);
+        await publish(f.store, p); await f.store.close();
+        const reopened = await SourceStickerKnowledgeStore.open(f.directory); stores.push(reopened);
+        const head = await reopened.readHead(source);
+        expect(head?.blobs.get(original.digest)?.length).toBe(bytes.length);
+        expect(hash(head!.blobs.get(original.digest)!)).toBe(original.digest);
+        head!.blobs.get(original.digest)![0] = 0;
+        expect((await reopened.readHead(source))!.blobs.get(original.digest)![0]).toBe(17);
+        await reopened.close();
+      } finally { await f.store.close(); await rm(f.directory, { recursive: true, force: true }); }
+    }, 30000,
+  );
+
+  it("bounds source evidence at 64 MiB without enlarging previews or proof artifacts", async () => {
+    const { store, source } = await fixture(); const p = await prepare(store, source);
+    const original = p.candidate.evidence[0];
+    expect(SourceFrameEvidenceSchema.safeParse({ ...original, byteLength: 64 * 1024 ** 2 }).success).toBe(true);
+    expect(SourceFrameEvidenceSchema.safeParse({ ...original, byteLength: 64 * 1024 ** 2 + 1 }).success).toBe(false);
+    expect(KnowledgeEvidenceSchema.safeParse({ ...p.candidate.evidence[1], byteLength: 8 * 1024 ** 2 + 1 }).success).toBe(false);
+    expect(KnowledgeEvidenceSchema.safeParse({ id: "artifact", kind: "confirmed-target-proof", version: 2,
+      artifact: "full-range-geometry", digest: "a".repeat(64), byteLength: 8 * 1024 ** 2 + 1 }).success).toBe(false);
+  });
+
+  it.each(["length", "sha", "truncated"] as const)("rejects %s damage to full RGBA source evidence before publishing", async damage => {
+    const f = await fixture();
+    try {
+      const p = await prepare(f.store, f.source), bytes = Buffer.alloc(720 * 1280 * 4, 23), original = p.candidate.evidence[0];
+      p.blobs.delete(original.digest); original.digest = hash(bytes); original.byteLength = bytes.length;
+      p.blobs.set(original.digest, damage === "truncated" ? bytes.subarray(0, bytes.length - 1) : bytes);
+      if (damage === "length") original.byteLength--;
+      if (damage === "sha") bytes[0] ^= 255;
+      await expect(publish(f.store, p)).rejects.toMatchObject({ code: "integrity" });
+      expect((await f.store.lookup(f.source, ranges)).status).toBe("miss");
+    } finally { await f.store.close(); await rm(f.directory, { recursive: true, force: true }); }
+  });
+
+  it.each(["tampered", "truncated", "oversized"] as const)("fails closed when a larger archived source frame is %s", async damage => {
+    const f = await fixture();
+    try {
+      const source = { ...f.source, width: 1440, height: 2560 }, p = await prepare(f.store, source);
+      const bytes = Buffer.alloc(source.width * source.height * 4, 31), original = p.candidate.evidence[0];
+      p.blobs.delete(original.digest); Object.assign(original, { width: source.width, height: source.height, digest: hash(bytes), byteLength: bytes.length });
+      Object.assign(p.candidate.evidence[1], { width: source.width, height: source.height }); p.blobs.set(original.digest, bytes);
+      await publish(f.store, p); await f.store.close();
+      const events = path.join(f.store.directory, "sources", sourceKey(source), "events");
+      const eventId = (await readdir(events))[0], actualFile = path.join(events, eventId, "evidence", original.digest);
+      if (damage === "oversized") await truncate(actualFile, 64 * 1024 ** 2 + 1);
+      else { if (damage === "tampered") bytes[0] ^= 255; await writeFile(actualFile, damage === "truncated" ? bytes.subarray(0, bytes.length - 1) : bytes); }
+      const reopened = await SourceStickerKnowledgeStore.open(f.directory); stores.push(reopened);
+      expect((await reopened.lookup(source, ranges)).status).toBe("unusable");
+      await expect(reopened.readHead(source)).rejects.toMatchObject({ code: "integrity" }); await reopened.close();
+    } finally { await f.store.close(); await rm(f.directory, { recursive: true, force: true }); }
+  });
+
+  it("retains the aggregate quota when several individually valid large boundary frames exceed it", async () => {
+    const f = await fixture();
+    try {
+      const source = { ...f.source, width: 4096, height: 4096 }, p = await prepare(f.store, source);
+      p.candidate.evidence.splice(0, 1); p.blobs.clear();
+      for (let i = 0; i < 4; i++) {
+        const bytes = Buffer.alloc(64 * 1024 ** 2, i + 1), digest = hash(bytes), id = `full-${i}`;
+        p.candidate.evidence.push({ id, kind: "source", width: 4096, height: 4096, pts: i * 90000, timeMs: i * 1000, digest, byteLength: bytes.length }); p.blobs.set(digest, bytes);
+      }
+      const preview = p.candidate.evidence[0]; Object.assign(preview, { width: 4096, height: 4096, sourceEvidenceId: "full-0" });
+      p.blobs.set(preview.digest, Buffer.from("rendered frame"));
+      p.candidate.facts.observations = [{ evidenceId: "full-0", presence: "ABSENT" }];
+      p.proof.sourceEvidenceIds = ["full-0", "full-1", "full-2", "full-3"];
+      p.proof.factsDigest = factsDigest(p.candidate.facts); if (preview.kind === "preview") preview.factsDigest = p.proof.factsDigest;
+      await expect(publish(f.store, p)).rejects.toMatchObject({ code: "quota" });
+      expect((await f.store.lookup(source, ranges)).status).toBe("miss");
+    } finally { await f.store.close(); await rm(f.directory, { recursive: true, force: true }); }
+  }, 30000);
+
   it("persists a mask across reopen and rejects changed source identity", async () => {
     const { store, source, directory, file } = await fixture();
     const p = withStaticMask(await prepare(store, source));

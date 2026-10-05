@@ -8,6 +8,14 @@ baseline: ef74adf
 
 # Summary
 
+## M2-HC2 Evidence Envelope and Stop Checkpoint
+
+2026-10-05：通用source evidence及store kind-aware read/write复验对齐canonical RGBA单帧上限 **67,108,864 bytes /64MiB**；decode width/height各≤8192且width×height×4≤64MiB。720×1280=3,686,400；1080×1920与1920×1080=8,294,400；1440×2560与2560×1440=14,745,600；3840×2160=33,177,600 bytes，均经真实schema/publication/reopen测试。preview/proof artifacts仍8MiB，JSON record仍4MiB，default whole-store quota仍256MiB；四个unique64MiB帧加metadata明确quota reject，不能把单帧支持等同无界target集合。既有quotaBytes可显式增加总容量，不自动清档或驱逐。store先复制后quota检查，4×64MiB caller与copy可约512MiB；不声称RSS≤quota。
+
+历史v1 PNG checker保留version-local8MiB边界；v2 ExactBoundaryFrameSchema仍8MiB，v1/v2 archive解释不扩大。schemaVersion仍1、no-downgrade不变。**通用evidence扩容不等于v2 canonical proof支持1440p/4K**：需要新proof variant才能关闭SC-HC-02的整条路径。
+
+SC-HC-01实际复现padding背景代证。新support-bound实验使用M1 connected membership、integer-cell-origin partition bitset及support-owned gradient stencil；真实233s component变为UNOBSERVABLE，触发用户STOP。live confirmation/geometry/proof版本切换已撤回，当前仍v2，尚无durable support-binding或v3 issuer。因此 **M2-HC2 BLOCKED / M3 BLOCKED / PRODUCT_DISABLED**；v2仍有KNOWN_PADDING_BACKGROUND_LIMITATION。禁止把实验controls PASS或通用store扩容称为correctness closure；不授source内容安全、output或activation authority。
+
 为原视频建立可持久保存、按素材内容匹配、经过主管看图核查的贴纸知识。首次制作通过执行 Agent、主管 Agent 与实际样片得到可复用的原贴纸位置和出现时段；后续批次复用这些事实，继续独立创作包装并检查新样片。新证据发现错误时修订知识，避免不同版本反复犯同一个定位错误。
 
 本文件是待实施规格，**不代表功能已实现或验收通过**。本次只编写规格与实施计划；下文 MUST / SHOULD 表示未来实现合同。实现不要求增加 Agent 数量，也不绑定某一家模型。自动模式继续由 Agent 完成检查，不新增逐条人工确认步骤。

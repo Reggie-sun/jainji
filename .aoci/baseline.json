@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-04T17:51:16Z",
+  "updated_at": "2026-10-05T08:04:46Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "07492ec82b4bc87b8a8ff358cf1f5c234b174d47375e668d1e8d0bceba4379d3",
@@ -264,9 +264,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "046dd3a3d9d6fc01840408202fc1d484d5de6108e6a2e40474026ad4c759fb5b",
-      "size": 72333,
-      "normalized_sha256": "046dd3a3d9d6fc01840408202fc1d484d5de6108e6a2e40474026ad4c759fb5b"
+      "sha256": "85b7e6167b624c2a5dd5d00b8b1a283db18c6895a938b1dcaaa6e09d4d7b5431",
+      "size": 76579,
+      "normalized_sha256": "85b7e6167b624c2a5dd5d00b8b1a283db18c6895a938b1dcaaa6e09d4d7b5431"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1564,9 +1564,9 @@
       "normalized_sha256": "3926579baef4fddfa211b7463fbce2e2767323ed0e81d8164f7c461620e4ae7e"
     },
     "src/main/source-fact-census-clock.ts": {
-      "sha256": "edac94e80e4fde83202e8af9f85d6deec76a4c503125bdb6c5f70a294f77cfca",
-      "size": 7139,
-      "normalized_sha256": "edac94e80e4fde83202e8af9f85d6deec76a4c503125bdb6c5f70a294f77cfca"
+      "sha256": "a52637bdce01d9a91d678b52dcd159ec1ad88ac054727e06c7e821f0f3b9db41",
+      "size": 7169,
+      "normalized_sha256": "a52637bdce01d9a91d678b52dcd159ec1ad88ac054727e06c7e821f0f3b9db41"
     },
     "src/main/source-fact-census.ts": {
       "sha256": "4c590e47ca0697e3aabffc8a9770f91985d60c0a904a8f1fd217fb571c694609",
@@ -1624,9 +1624,9 @@
       "normalized_sha256": "c77cab56ad29d6ef6d603d32d3c89c92565fde1893a08ca08c2437c4fdd49da6"
     },
     "src/main/source-sticker-knowledge-store.ts": {
-      "sha256": "35d60b2f45cb65acf344ab9f9caf987f5f7710a7c01cb0c178a9cb3924958900",
-      "size": 44862,
-      "normalized_sha256": "35d60b2f45cb65acf344ab9f9caf987f5f7710a7c01cb0c178a9cb3924958900"
+      "sha256": "fe5c05b71d421a4b2260c20faa4403a3e996e840598587b5e9c35e287de2bdda",
+      "size": 47192,
+      "normalized_sha256": "fe5c05b71d421a4b2260c20faa4403a3e996e840598587b5e9c35e287de2bdda"
     },
     "src/main/source-sticker-recognition.ts": {
       "sha256": "17d25c17d9581b6118072d670d428525867343c853aecc3fd4f03bb74f165b1c",
@@ -2115,9 +2115,9 @@
       "normalized_sha256": "292b9f1873f22b5efc0f2e5285c193a65f3d6e16b44cb5e8d6a98bc4809cf453"
     },
     "src/shared/source-sticker-knowledge.ts": {
-      "sha256": "b4ddc4a45c22cc50538f79fd809719d7008341f8c08d88f9786a199c48c62b96",
-      "size": 19609,
-      "normalized_sha256": "b4ddc4a45c22cc50538f79fd809719d7008341f8c08d88f9786a199c48c62b96"
+      "sha256": "2922b2de7b8a81c67744306e90ce9af98ccf8d4e28288a67c4b8b0f3b0395d62",
+      "size": 27105,
+      "normalized_sha256": "2922b2de7b8a81c67744306e90ce9af98ccf8d4e28288a67c4b8b0f3b0395d62"
     },
     "src/types/sql-asm.d.ts": {
       "sha256": "d6b7707bcf8eebb390ec4661c05606dc742a3dbac195e50b1ba44a20cc0d6043",
@@ -2918,6 +2918,11 @@
       "sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b",
       "size": 8075,
       "normalized_sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b"
+    },
+    "src/main/source-mask-static-proof-v1.ts": {
+      "sha256": "8d64bdfd431a7f8a20cf14f9a817d21e05cd06ea3ac7ee4ed23fdef27410eab4",
+      "size": 14651,
+      "normalized_sha256": "8d64bdfd431a7f8a20cf14f9a817d21e05cd06ea3ac7ee4ed23fdef27410eab4"
     }
   },
   "managed_scope": {

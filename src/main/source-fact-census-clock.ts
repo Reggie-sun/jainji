@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { SourceIdentitySchema, type SourceIdentity } from "../shared/source-sticker-knowledge.js";
+import { MAX_SOURCE_FRAME_BYTES, SourceIdentitySchema, type SourceIdentity } from "../shared/source-sticker-knowledge.js";
 
 export const FULL_CENSUS_LIMITS = Object.freeze({ frames: 100_000, probeBytes: 64 * 1024 * 1024,
-  frameBytes: 64 * 1024 * 1024, decodedBytes: 512 * 1024 ** 3, sourceBytes: 16 * 1024 ** 3, engineBytes: 512 * 1024 * 1024, wallMs: 600_000 });
+  frameBytes: MAX_SOURCE_FRAME_BYTES, decodedBytes: 512 * 1024 ** 3, sourceBytes: 16 * 1024 ** 3, engineBytes: 512 * 1024 * 1024, wallMs: 600_000 });
 const integer = z.union([z.number().int().safe(), z.string().regex(/^-?\d+$/).transform(Number).pipe(z.number().int().safe())]);
 const positive = integer.refine(value => value > 0);
 const colors = { color_range: z.string().optional(), color_space: z.string().optional(), color_primaries: z.string().optional(), color_transfer: z.string().optional() };

@@ -124,7 +124,7 @@ export function checkConfirmedStaticProofV1(candidate: KnowledgeCandidate, raw: 
     for (const [i, id] of t.sourceEvidenceIds.entries()) {
       const frame = candidate.evidence.find(e => e.id === id), bytes = frame ? blobs.get(frame.digest) : undefined;
       if (!frame || frame.kind !== "source" || frame.crop || frame.pts !== (i ? g.lastPts : g.firstPts) || !proof.sourceEvidenceIds.includes(id)
-        || !bytes || bytes.length !== frame.byteLength || hash(bytes) !== frame.digest || bytes.length < 24
+        || !bytes || bytes.length !== frame.byteLength || hash(bytes) !== frame.digest || bytes.length < 24 || bytes.length > 8 * 1024 ** 2
         || !bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
         || bytes.readUInt32BE(16) !== candidate.source.width || bytes.readUInt32BE(20) !== candidate.source.height) fail("boundary original evidence mismatch");
     }

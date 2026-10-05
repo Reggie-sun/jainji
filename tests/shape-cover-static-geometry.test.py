@@ -198,5 +198,67 @@ class ComponentGeometryV2Test(unittest.TestCase):
             self.assertEqual(self.observe(base, changed, [box]), ["ISSUE"])
 
 
+class ComponentSupportGeometryTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        spec = importlib.util.spec_from_file_location("support_geometry", Path(__file__).parents[1] / "scripts/shape-cover-static-geometry-support.py")
+        cls.method = importlib.util.module_from_spec(spec); spec.loader.exec_module(cls.method)
+        spec = importlib.util.spec_from_file_location("historical_components", Path(__file__).parents[1] / "scripts/shape-cover-static-geometry-components.py")
+        cls.historical = importlib.util.module_from_spec(spec); spec.loader.exec_module(cls.historical)
+        cls.frozen = np.load(Path(__file__).with_name("fixtures") / "static-padded-support-counterexamples.npz")
+
+    def observe(self, base, current, box, support):
+        try:
+            model = self.method.build_component_model(np.stack([base] * 4), box, support)
+            for x, y in model["xy"]:
+                self.assertTrue(support[y, x])
+                self.assertTrue(support[y-3:y+4, x-3:x+4].all())
+            return "SUPPORTED" if geometry.measure_frame(current, model)["state"] == "STATIC_GEOMETRY_OBSERVED" else "ISSUE"
+        except ValueError as error:
+            self.assertIn("COMPONENT_GEOMETRY_UNOBSERVABLE", str(error))
+            return "COMPONENT_GEOMETRY_UNOBSERVABLE"
+
+    def test_same_frozen_padding_false_acceptances_cannot_supply_reference(self):
+        box = {"x": 12, "y": 12, "width": 58, "height": 44}
+        support = self.frozen["support_source"][478:546, 266:348].astype(bool)
+        for case in ["move", "disappear", "price"]:
+            frames = self.frozen[case][:, 478:546, 266:348]
+            with self.subTest(case=case):
+                model = self.historical.build_component_model(frames[[0, 0, 2, 2]], box)
+                self.assertEqual(geometry.measure_frame(frames[1], model)["state"], "STATIC_GEOMETRY_OBSERVED")
+                with self.assertRaisesRegex(ValueError, "COMPONENT_GEOMETRY_UNOBSERVABLE"):
+                    self.method.build_component_model(frames[[0, 0, 2, 2]], box, support)
+
+    def test_stable_support_and_moving_or_disappearing_contribution(self):
+        base = target(); box = {"x": 20, "y": 18, "width": 60, "height": 44}
+        support = np.zeros(base.shape[:2], bool); support[18:62, 20:80] = True
+        self.assertEqual(self.observe(base, base, box, support), "SUPPORTED")
+        changed = cv2.warpAffine(base, np.float32([[1, 0, 1], [0, 1, 0]]), (100, 80), borderMode=cv2.BORDER_REPLICATE)
+        self.assertEqual(self.observe(base, changed, box, support), "ISSUE")
+        changed = base.copy(); changed[18:62, 20:80, :3] = 90
+        self.assertEqual(self.observe(base, changed, box, support), "ISSUE")
+
+    def test_hollow_support_excludes_bbox_background(self):
+        base = target(); support = np.zeros(base.shape[:2], bool); support[18:62, 20:80] = True
+        support[32:48, 40:60] = False
+        model = self.method.build_component_model(np.stack([base] * 4), {"x":20,"y":18,"width":60,"height":44}, support)
+        for x, y in model["xy"]:
+            self.assertTrue(support[y, x]); self.assertFalse(40 <= x < 60 and 32 <= y < 48)
+
+    def test_stable_two_components_one_moves_and_one_unobservable(self):
+        base = np.full((100, 220, 4), 90, np.uint8); base[...,3] = 255
+        pattern = target()[18:62,20:80]
+        boxes = [{"x":20,"y":18,"width":60,"height":44},{"x":140,"y":18,"width":60,"height":44}]
+        supports = []
+        for box in boxes:
+            base[18:62, box["x"]:box["x"]+60] = pattern
+            support = np.zeros(base.shape[:2], bool); support[18:62,box["x"]:box["x"]+60] = True; supports.append(support)
+        self.assertEqual([self.observe(base,base,b,s) for b,s in zip(boxes,supports)], ["SUPPORTED","SUPPORTED"])
+        changed=base.copy(); changed[18:62,140:200,:3]=90; changed[18:62,141:201]=pattern
+        self.assertEqual([self.observe(base,changed,b,s) for b,s in zip(boxes,supports)], ["SUPPORTED","ISSUE"])
+        supports[1][:] = False; supports[1][30:34,160:164] = True
+        self.assertEqual([self.observe(base,base,b,s) for b,s in zip(boxes,supports)], ["SUPPORTED","COMPONENT_GEOMETRY_UNOBSERVABLE"])
+
+
 if __name__ == "__main__":
     unittest.main()

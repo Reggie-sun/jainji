@@ -2,6 +2,14 @@
 
 ## Status and Authority
 
+### M2-HC2 Stop Checkpoint — 2026-10-05
+
+`confirmedSourceBox`是padding=2的discovery envelope，不是component membership。冻结真实canonical反例证明：component move1px/disappearance/PRICE背景均能被v2 padding landmarks误判SUPPORTED。新support-bound eligibility实验在相同bytes上全部UNOBSERVABLE，hollow support内部背景不能作anchor；固定阈值与ALL_COMPONENTS_REQUIRED不降。
+
+实际233s component仅130 grid cells /1680 source-cell footprint pixels；要求anchor及Gaussian/Sobel radius3 stencil由membership作证后UNOBSERVABLE，触发用户STOP。未借背景修PASS，未切换live versions或新增v3 proof。mask仍3395px、bbox628/1/81/59、原SHA及133 RGB anomalies。M2-HC2 **BLOCKED**，不是M2-HC CORRECTNESS_CLOSED；v2 known padding limitation与proof8MiB限制仍需关闭。
+
+通用source evidence/store上限已对齐canonical64MiB，六种720p–4K方向与max测试通过；preview/artifacts8MiB及totalquota256MiB保留。历史v1/v2解释不变，新canonical proof的resolution envelope尚未完成。后续contract decisions仍包括Windows/product geometry runtime、per-source applicability；M1 middle-only discovery、exact decode重复成本与small-component geometry能力仍独立follow-up。M3 consumer、production、assembler、activation/guard unchanged，PRODUCT_DISABLED、modelRequests=0。
+
 2026-10-02，`COURSE_CORRECTION / DOCUMENTATION_ONLY / PRODUCT_DISABLED`。本合同根据当前用户明确的产品调整和 [source audit](shape-matched-cover-v1-simplification-audit.md) 制定；实施路线见 [revised plan](shape-matched-cover-v1-simplification-plan.md)。本轮不实施算法、不修改生产准入、不开展 D2Q、D3/D4、正式 AI qualification 或 activation。
 
 本 Delta 覆盖旧 [V1 Spec](shape-matched-cover-spec.md)、[V1 Plan](shape-matched-cover-plan.md) 和 [automatic contour contracts](shape-matched-cover-auto-contour-spec.md) 中将 **全片穷尽目标/无贴纸证明、人类或双 AI 语义资格** 作为默认 V1 发布前置条件的部分。其余源身份、保守 mask、局部完整时域、共同候选、像素覆盖、独立画面安全、冻结和托管合同继续有效。历史 records 及其失败、未评估和授权状态不重写。新路线的 M0–M6 与旧阶段同名不意味着旧阶段重新验收。

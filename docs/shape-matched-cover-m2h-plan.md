@@ -24,6 +24,26 @@ M3 consumer、production、assembler、activation、Controller/Runner/compiler/q
 
 依据用户本轮 accepted contract，将 confirmed-target-only、target-range-bound static 证据接入既有 knowledge schema/store。Native Codex 串行执行，current working tree，保留 foreign 千川/AOCI 改动；explicit modelRequests=0 优先于通常委派。不修改 M3 consumer、production、assembler、activation、queue 或 artifact store。
 
+## M2-HC2 Component-Support Closure Contract
+
+本slice只关闭SC-HC-01 padding背景代证与SC-HC-02归档分辨率隐式收缩。先用545a实现与真实M1 connected component冻结move1px/disappearance/PRICE反例和pre-fix结果，再修改owner；旧counterexample bytes与v1/v2 archive语义不改。
+
+M1保留公开v1算法、sampling、candidateId和resultDigest，在私有WeakMap保存connected queue membership的LSB grid bitset。支持摘要独立绑定candidate/source/discovery/grid/mapping/bitmap；live owner同时绑定resultDigest，getter返回副本，clone/candidate mismatch/closed evidence拒绝。source footprint为相邻integer cell origins之间的半开区间，不包含roiPaddingCells或mask dilation；它描述detector membership，不是required-pixel或semantic truth。
+
+confirmation v3显式绑定有序componentSupportDigests；geometry v3按每component support过滤reference anchors，固定原kernel thresholds、ALL_COMPONENTS_REQUIRED和unobservable fail closed。archived geometry保留compact support bitmap并验证每个anchor membership。新proof v3绑定新confirmation/geometry，v1/v2仅immutable historical replay；new issuance继续live freshness/WeakMap/publication fence，不恢复serialized authority。
+
+源帧选择Option A：单source evidence上限与canonical RGBA frame ceiling 64MiB一致；preview/artifact仍8MiB、record仍4MiB、store默认总quota仍256MiB。v1/v2保留version-local旧限制；四个unique maximal帧加metadata超默认quota时明确拒绝，可由既有quota配置扩大聚合预算，不自动驱逐。copy-backed retained bytes有界，不声明RSS等于store quota。
+
+执行顺序：support owner与support-bound geometry controls；实际233s gate；随后proof/version/store与六种resolution schema/store/archive回归；最后四份owned docs、typecheck、注册tests、required owned Harness、AOCI及Risk Gate。若233s真实component UNOBSERVABLE立即STOP，不借padding、不降threshold、不进入proof扩展。
+
+closure要求用户全部exit criteria和项目completion contract成立，否则BLOCKED。mask必须保持3395px、bbox628/1/81/59、SHA fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893及133 RGB anomalies。M3不实现，consumer/production/assembler/activation/guard原字节不变；Windows runtime与per-source applicability先作后续contract decision。M1 middle-only、exact decode性能和small-component能力留future；modelRequests=0。
+
+Self-review：公开M1语义未变化故不升discovery version；confirmation/geometry/proof evidence含义变化必须升v3。未解决support-bound真实observability或required verification之前，不宣称CORRECTNESS_CLOSED。
+
+### M2-HC2 Stop Checkpoint
+
+实际233s support为130 grid cells /1680 source footprint pixels；固定阈值加support-owned radius3 gradient stencil后reference不能建立，component=COMPONENT_GEOMETRY_UNOBSERVABLE，logical target INCOMPLETE，6990帧issues，reference/summary=null。按用户STOP条款停止版本发行；未借padding、未降threshold。实验live owner/confirmation/geometry切换已撤回，只保存固定反例、support证据和未接入产品的Python v3 eligibility实验。保留current discovery v1、confirmation v2、geometry v2、proof v2，因此旧known padding limitation及v2 exact8MiB限制仍未关闭。source通用evidence/store64MiB准备已验证，不能将其写成新canonical proof能力。M2-HC2 BLOCKED，后续需经明确授权选择可在component实际support上工作的geometry method；本轮不提供implementation plan。
+
 ## Current Source Audit
 
 `SourceMaskAdmissionProofSchema` 仅 source-mask-only-v1；store `checkProof` 的旧 branch 限一个 target/segment、temporal-stability/contact-sheet v1、30–100 帧、两张原图和三份旧审核 artifact。verification 仅 sampled/source-mask-only；`readAdmittedShapeCoverTarget` 和 assembler 仅接旧 proof。M2-C 位于 Python diagnostic，尚无 application-owned geometry object；工程 JSON 不授 source authority。

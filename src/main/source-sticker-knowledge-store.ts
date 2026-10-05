@@ -4,7 +4,7 @@ import { lstat, mkdir, open, readdir, realpath, rename, rm, stat, unlink } from 
 import path from "node:path";
 import { z } from "zod";
 import {
-  KnowledgeCandidateSchema, KnowledgeDisputeSchema, KnowledgePublicationProofSchema, KnowledgeRevisionProofSchema, SourceMaskAdmissionProofSchema, ConfirmedTargetStaticProofSchema, ReviewedRangeSchema,
+  MAX_SOURCE_FRAME_BYTES, KnowledgeCandidateSchema, KnowledgeDisputeSchema, KnowledgePublicationProofSchema, KnowledgeRevisionProofSchema, SourceMaskAdmissionProofSchema, ConfirmedTargetStaticProofSchema, ReviewedRangeSchema,
   SourceIdentitySchema, coversRanges, sourceGeometryChanged, type KnowledgeCandidate, type KnowledgeDispute, type KnowledgeEvidence,
   type KnowledgePublicationProof, type SourceMaskAdmissionProof, type ConfirmedTargetStaticProof, type KnowledgeRevision, type ReviewedRange, type SourceFacts, type SourceIdentity,
 } from "../shared/source-sticker-knowledge.js";
@@ -14,6 +14,7 @@ import { KnowledgeOutcomeSchema, type KnowledgeOutcome } from "../shared/source-
 const DEFAULT_QUOTA_BYTES = 256 * 1024 * 1024;
 const MAX_RECORD_BYTES = 4 * 1024 * 1024;
 const MAX_OUTCOME_BYTES = 2 * 1024 * 1024;
+const evidenceReadLimit = (frame: KnowledgeEvidence) => frame.kind === "source" ? MAX_SOURCE_FRAME_BYTES : 8 * 1024 ** 2;
 const OutcomesSchema = z.object({ schemaVersion: z.literal(1), records: z.array(KnowledgeOutcomeSchema).max(1000) }).strict();
 const Id = z.string().regex(/^[a-zA-Z0-9_-]{1,120}$/);
 const Digest = z.string().regex(/^[a-f0-9]{64}$/);
@@ -293,7 +294,7 @@ export class SourceStickerKnowledgeStore {
       const proofBlobs = new Map<string, Buffer>();
       await directorySafe(path.join(eventDirectory, "evidence"));
       for (const frame of evidence) {
-        const blob = await readSafe(path.join(eventDirectory, "evidence", frame.digest), 8 * 1024 * 1024);
+        const blob = await readSafe(path.join(eventDirectory, "evidence", frame.digest), evidenceReadLimit(frame));
         if (blob.length !== frame.byteLength || digest(blob) !== frame.digest) throw new KnowledgeStoreError("integrity", "Evidence digest mismatch");
         if (record.type === "revision" && "mode" in record.proof && (record.proof.mode === "confirmed-target-static-v1" || record.proof.mode === "confirmed-target-static-v2")) proofBlobs.set(frame.digest, blob);
         if (includeHeadEvidence && record.type === "revision" && record.candidate.id === manifest.currentRevisionId) headBlobs.set(frame.digest, blob);
@@ -500,7 +501,8 @@ export class SourceStickerKnowledgeStore {
       for (const [key, blob] of blobs) await writeDurable(path.join(evidenceDirectory, key), blob);
       await this.options.fault?.("after_evidence");
       // Verify the persisted bytes before making the revision reachable.
-      for (const [key, blob] of blobs) { const saved = await readSafe(path.join(evidenceDirectory, key), 8 * 1024 * 1024); if (saved.length !== blob.length || digest(saved) !== key) throw new KnowledgeStoreError("integrity"); }
+      const evidence = event.type === "revision" ? event.candidate.evidence : event.dispute.evidence;
+      for (const frame of evidence) { const saved = await readSafe(path.join(evidenceDirectory, frame.digest), evidenceReadLimit(frame)); if (saved.length !== frame.byteLength || digest(saved) !== frame.digest) throw new KnowledgeStoreError("integrity"); }
       await writeDurable(path.join(directory, "record.json"), bytes);
       await this.options.fault?.("after_record");
       await atomicJson(path.join(this.sourceDirectory(source), "manifest.json"), ManifestSchema.parse(manifest), beforeCommit);
