@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { MAX_AGENT_OUTPUTS, type AppendProductionPrefill } from "../shared/agent";
 import { PRODUCT_PRICE_HELP, PRODUCT_PRICE_MAX_LENGTH, RequiredProductPriceSchema } from "../shared/decorations";
 import type { PublicExportBatch } from "../main/application";
@@ -15,6 +15,13 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
   accounts?: QianchuanAccountSummary[];
   onClose(): void;
 }) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const element = dialog.current;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
+    element?.showModal();
+    return () => { element?.close(); previousFocus?.focus(); };
+  }, []);
   const [productPrice, setProductPrice] = useState(prefill.productPrice);
   const [count, setCount] = useState(initialCount ?? 1);
   const [manualDirectory, setManualDirectory] = useState<string>();
@@ -45,7 +52,7 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
       setBusy(false);
     }
   };
-  return <div className="result-preview-backdrop" role="presentation" onClick={busy ? undefined : onClose}><section className="result-preview-dialog card" role="dialog" aria-modal="true" aria-label="追加制作" onClick={(event) => event.stopPropagation()}>
+  return <dialog ref={dialog} className="result-preview-dialog append-production-dialog card" aria-label="追加制作" onCancel={(event) => { event.preventDefault(); if (!busy) onClose(); }} onClick={(event) => { if (!busy && event.target === event.currentTarget) onClose(); }}>
     <div className="card-header"><h2>追加制作</h2><button type="button" className="icon-button" aria-label="关闭追加制作" disabled={busy} onClick={onClose}><Icon name="close" size={18} /></button></div>
     <p>源批次：{mediaLabel} · {prefill.mediaCount} 条素材 · 贴纸和滤镜随机搭配，零模型调用。</p>
     {displayTextEnabled ? <><label htmlFor="append-price">展示文字 / 价格 <span>必填 · 手动输入</span></label>
@@ -61,5 +68,5 @@ export function AppendProductionDialog({ batch, prefill, mediaLabel, initialCoun
     {useManualDirectory && <button type="button" className="text-button" disabled={busy} onClick={() => { setUseManualDirectory(false); setManualDirectory(undefined); }}>改为自动创建目录</button>}
     {error && <p className="notice error" role="alert">{error}</p>}
     <div><button type="button" className="text-button" disabled={busy} onClick={onClose}>取消</button><button type="button" className="button primary" disabled={busy || !priceValid || !countValid} onClick={() => void submit()}>{busy ? "正在追加…" : `追加 ${Number.isFinite(count) ? count : ""} 条并开始渲染`}</button></div>
-  </section></div>;
+  </dialog>;
 }

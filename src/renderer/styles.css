@@ -235,6 +235,8 @@ progress::-webkit-progress-value{background:var(--seal);border-radius:3px}
 .result-preview-dialog{width:min(960px,90vw);padding:16px}
 .result-preview-dialog .card-header{margin-bottom:12px}
 .result-preview-dialog video{display:block;width:100%;max-height:75vh;border-radius:5px;background:#101412}
+.append-production-dialog{margin:auto;max-height:calc(100vh - 32px);overflow:auto;color:var(--ink)}
+.append-production-dialog::backdrop{background:#12332e99}
 .empty-state{padding:56px 20px;display:flex;flex-direction:column;align-items:center;text-align:center;color:var(--ink-3);gap:12px}
 .empty-state h3{font-size:15px;font-weight:650;color:var(--ink-2)}
 .empty-state p{font-size:13px;color:var(--ink-3)}
