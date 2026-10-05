@@ -1332,10 +1332,15 @@
       "size": 3520,
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
+    "src/main/douyin-upload-group.ts": {
+      "sha256": "cbae4669db1a0ec55452951c8d1ffb8c7f56f2ee5b17d80e020f152d80e7e02f",
+      "size": 1592,
+      "normalized_sha256": "cbae4669db1a0ec55452951c8d1ffb8c7f56f2ee5b17d80e020f152d80e7e02f"
+    },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "f50ae19f40ed6fc0c3ecba72b57a831289f22b59c84b7d247dea943c55babc78",
-      "size": 68500,
-      "normalized_sha256": "f50ae19f40ed6fc0c3ecba72b57a831289f22b59c84b7d247dea943c55babc78"
+      "sha256": "7346a0bccc2a5acc4ceb6f87a0ca7c3c5b04897d4d5a2d854f979d5778619e4d",
+      "size": 72427,
+      "normalized_sha256": "7346a0bccc2a5acc4ceb6f87a0ca7c3c5b04897d4d5a2d854f979d5778619e4d"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "1cebf58b0d6d71f71c9db27ed71b58bbd41e8e7f6d1a49fd00ba56cfb64439ca",
@@ -1438,9 +1443,9 @@
       "normalized_sha256": "997c7748b9402a2e708aa79e706b743be0f46e7995cd4797749df18a92806c5a"
     },
     "src/main/qianchuan-page-contract.ts": {
-      "sha256": "ccb8e237557dbd247a5f94ca41b5b02e43c12fc10bf64dd44766c29eaa46a6f9",
-      "size": 27063,
-      "normalized_sha256": "ccb8e237557dbd247a5f94ca41b5b02e43c12fc10bf64dd44766c29eaa46a6f9"
+      "sha256": "27731ee66268601594eb2a63fdd5ff9bfa9023e1e66d8cb4eaeaf74b49472701",
+      "size": 27093,
+      "normalized_sha256": "27731ee66268601594eb2a63fdd5ff9bfa9023e1e66d8cb4eaeaf74b49472701"
     },
     "src/main/qianchuan-plan-material-page.ts": {
       "sha256": "aad252c9aa2345e158664368abfc83a629760944ddc3156148319ecfde1fa238",

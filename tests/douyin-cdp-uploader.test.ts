@@ -397,7 +397,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       }
       await original.locator('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]').evaluate(element => element.classList.add("oc-create-upload-select-wrapper-disabled"));
       const operation = timing === "before preparation" ? uploader.open([second], selected, signal) : uploader.upload([second], signal);
-      await expect(operation).rejects.toMatchObject({ failure: { code: "CAPACITY_INSUFFICIENT", requires_human: true } });
+      await expect(operation).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED", requires_human: true } });
       expect(second.result.upload_outcome).toBe(timing === "before preparation" ? "NOT_SELECTED" : "MAY_HAVE_UPLOADED");
       expect((await uploader.ready([first], signal))[0]!.pageOwnership).toEqual(prepared.pageOwnership);
       const events = (await productionFixture!.inspect()).events;
@@ -419,6 +419,17 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       const group = tasks.slice(index, index + 9);
       if (index === 0) productionFixture.setControls({ pendingName: group.at(-1)!.result.file_name });
       const prepared = await uploader.open(group, selected, signal);
+      if (index === 0) {
+        const observer = await chromium.connectOverCDP(tasks[0]!.authorization.target.cdpEndpoint, { noDefaults: true });
+        try {
+          const original = observer.contexts()[0]!.pages().find(page => new URL(page.url()).searchParams.get("adId") === tasks[0]!.authorization.target.adId)!;
+          await original.evaluate(() => {
+            const rows = document.querySelector(".oc-create-upload-table-wrapper tbody")!, entrance = document.querySelector('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]')!;
+            // The currently loaded platform component disables only at cumulative equality.
+            new MutationObserver(() => entrance.classList.toggle("oc-create-upload-select-wrapper-disabled", rows.children.length === 10)).observe(rows, { childList: true });
+          });
+        } finally { await observer.close(); }
+      }
       if (ownership) expect(prepared.pageOwnership).toEqual(ownership); else ownership = prepared.pageOwnership;
       expect(prepared.selectedIndex).toBe(index + 1);
       for (const task of group) task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };

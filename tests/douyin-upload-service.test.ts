@@ -792,6 +792,138 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 3)).toBe(true);
   });
 
+  it("coalesces streamed exports without stopping at the page's cumulative ten-file disabled boundary", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(Array.from({ length: 21 }, (_, index) => `streamed ${index}`)); await f.register(batch);
+    const groups: number[] = [];
+    const open = f.port.open;
+    f.port.open = async (tasks, selected, signal) => {
+      if (selected.length === 10) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "Fixture entrance disabled at ten", "Inspect original page", true);
+      return open(tasks, selected, signal);
+    };
+    const upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { await upload(tasks, signal); groups.push(tasks.length); };
+    let completed = false;
+    f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
+    await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const running = f.service.runPending();
+    try {
+      await new Promise(resolve => setTimeout(resolve, 120));
+      expect(f.events).toEqual([]);
+      for (const identity of batch.identities.slice(1, 10)) await f.service.committed(identity);
+      await vi.waitFor(() => expect(groups).toEqual([9]), { timeout: 3000 });
+      for (const identity of batch.identities.slice(10)) await f.service.committed(identity);
+      await vi.waitFor(() => expect(groups).toEqual([9, 9, 3]), { timeout: 3000 });
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
+      completed = true;
+      await running;
+      expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 21)).toBe(true);
+    } finally { await f.service.stop(); await running; }
+  }, 15_000);
+
+  it.each(["failed", "cancelled", "interrupted"] as const)("flushes a final partial group after an unadmitted export becomes %s", async status => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `tail ${index}`)); await f.register(batch);
+    f.states.get(batch.batchId)!.batch.tasks[10]!.status = "queued";
+    for (const identity of batch.identities.slice(0, 9)) await f.service.enqueueFinalArtifact(identity);
+    const groups: number[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { await upload(tasks, signal); groups.push(tasks.length); };
+    await f.service.runPending();
+    await f.service.enqueueFinalArtifact(batch.identities[9]!);
+    const running = f.service.runPending();
+    try {
+      await new Promise(resolve => setTimeout(resolve, 120));
+      expect(groups).toEqual([9]);
+      expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(9);
+      f.states.get(batch.batchId)!.batch.tasks[10]!.status = status;
+      await running;
+      expect(groups).toEqual([9, 1]);
+      expect(f.store.tasks().every(task => task.result.upload_outcome === "READY")).toBe(true);
+    } finally { await f.service.stop(); await running; }
+  });
+
+  it.each(["stop", "cancel exports", "timeout"] as const)("keeps coalescing files unselected after %s", async action => {
+    const f = await fixture(); await f.authorize();
+    await f.service.configure({ enabled: true, timeouts: { processing: 350 } });
+    const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `held ${index}`)); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    const running = f.service.runPending();
+    await new Promise(resolve => setTimeout(resolve, 120));
+    if (action === "stop") expect(await f.service.stop()).toBe(true);
+    if (action === "cancel exports") await f.service.cancelExports(batch.projectId, [batch.identities[0]!.export_task_id]);
+    await running;
+    const task = f.store.tasks()[0]!;
+    expect(f.store.hasMarker(task.result.upload_task_id)).toBe(false);
+    expect(task.result.upload_outcome).toBe("NOT_SELECTED");
+    expect(f.events.filter(event => event !== "stop")).toEqual([]);
+    expect(task.result.failure?.code).toBe(action === "timeout" ? "TIMEOUT" : "STOPPED");
+    expect(f.service.busy).toBe(false);
+  });
+
+  it("waits for every frozen queue chunk before flushing a short group", async () => {
+    const f = await fixture(); await f.authorize();
+    const first = await f.createBatch(["chunk first", "chunk second", "chunk third"]);
+    const authorization = await f.service.preflight(selection(first.product), 12);
+    await f.service.registerBatch(first.batchIdentity, selection(first.product), authorization);
+    for (const identity of first.identities) await f.service.enqueueFinalArtifact(identity);
+    const groups: number[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { await upload(tasks, signal); groups.push(tasks.length); };
+    const running = f.service.runPending();
+    try {
+      await new Promise(resolve => setTimeout(resolve, 120)); expect(groups).toEqual([]);
+      const chunk = await f.createBatch(Array.from({ length: 9 }, (_, index) => `later chunk ${index}`));
+      chunk.batchIdentity.projectId = first.projectId; f.states.get(chunk.batchId)!.batch.projectId = first.projectId;
+      for (const identity of chunk.identities) identity.project_id = first.projectId;
+      await f.service.registerBatch(chunk.batchIdentity, selection(first.product), authorization);
+      for (const identity of chunk.identities) await f.service.committed(identity);
+      await running;
+      expect(groups).toEqual([9, 3]);
+      expect(new Set(f.store.tasks().map(task => f.store.fence(task.result.upload_task_id)!.pageOwnership.targetId)).size).toBe(1);
+    } finally { await f.service.stop(); await running; }
+  });
+
+  it("does not flush a tail while its final artifact admission is still in progress", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `admission ${index}`)); await f.register(batch);
+    for (const identity of batch.identities.slice(0, 9)) await f.service.enqueueFinalArtifact(identity);
+    const groups: number[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { await upload(tasks, signal); groups.push(tasks.length); };
+    await f.service.runPending();
+    await f.service.enqueueFinalArtifact(batch.identities[9]!);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; }), save = f.store.saveTask.bind(f.store);
+    f.store.saveTask = async task => { await save(task); if (task.input.export_task_id === batch.identities[10]!.export_task_id && task.result.state === "PENDING") await gate; };
+    const admission = f.service.enqueueFinalArtifact(batch.identities[10]!), running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(f.store.tasks()).toHaveLength(11));
+      expect(groups).toEqual([9]);
+      release(); await admission; await running;
+      expect(groups).toEqual([9, 2]);
+      expect(f.store.tasks().every(task => task.result.upload_outcome === "READY")).toBe(true);
+    } finally { release(); await admission; await f.service.stop(); await running; }
+  });
+
+  it("keeps observing the original page while waiting for the next partial group", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `observe ${index}`)); await f.register(batch);
+    for (const identity of batch.identities.slice(0, 9)) await f.service.enqueueFinalArtifact(identity);
+    let observations = 0, failed = false;
+    f.port.pollReady = async () => { observations++; if (failed) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "Original row failed", "Inspect original page", true); return undefined; };
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(observations).toBeGreaterThan(0));
+      await f.service.committed(batch.identities[9]!);
+      const before = observations;
+      await vi.waitFor(() => expect(observations).toBeGreaterThan(before + 1), { timeout: 2000 });
+      failed = true;
+      await running;
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(9);
+      const held = f.store.tasks().find(task => task.input.export_task_id === batch.identities[9]!.export_task_id)!;
+      expect(f.store.hasMarker(held.result.upload_task_id)).toBe(false);
+      expect(held.result.failure?.code).toBe("PAGE_CONTRACT_CHANGED");
+    } finally { await f.service.stop(); await running; }
+  });
+
   it("spaces idle whole-list observations and still cancels during that wait", async () => {
     const f = await groupedFixture(["idle upload"]), observations: number[] = [];
     f.port.pollReady = async () => { observations.push(performance.now()); return undefined; };

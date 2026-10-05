@@ -7,6 +7,7 @@ import type { QueueState } from "./domain.js";
 import type { ExportBatchIdentity } from "./queue.js";
 import { fingerprintFile, isPathWithinDirectory, pathsEqual } from "./paths.js";
 import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory, strictSyncDirectory, uploadTaskId, sameTargetBytes, type UploadTaskRecord } from "./douyin-upload-store.js";
+import { uploadBatchSettled } from "./douyin-upload-group.js";
 import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
@@ -441,8 +442,8 @@ export class DouyinUploadService {
     }
     this.changed();
   }
-  private pendingGroup(pageBatchId?: string): string[] {
-    const available = this.openTasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && !this.pausedAccounts.has(task.authorization.target.advertiserId) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch) && (!pageBatchId || task.authorization.pageBatchId === pageBatchId && !this.duplicate(task)));
+  private pendingGroup(pageBatchId?: string, held: UploadTaskRecord[] = []): string[] {
+    const available = this.openTasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && !held.some(other => sameTargetBytes(task, other)) && !this.pausedAccounts.has(task.authorization.target.advertiserId) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch) && (!pageBatchId || task.authorization.pageBatchId === pageBatchId && !this.duplicate(task)));
     const first = available[0]; if (!first) return [];
     const group: UploadTaskRecord[] = [];
     if (this.duplicate(first)) group.push(first);
@@ -451,6 +452,23 @@ export class DouyinUploadService {
       group.push(task); if (group.length === MAX_UPLOAD_GROUP_SIZE) break;
     }
     return group.map(task => task.result.upload_task_id);
+  }
+  private async coalesceGroup(ids: string[], start: number, signal: AbortSignal, observe?: () => Promise<void>): Promise<void> {
+    const first = this.requireTask(ids[start]!);
+    while (true) {
+      signal.throwIfAborted();
+      if (ids.length - start >= MAX_UPLOAD_GROUP_SIZE || first.authorization.expectedCount <= MAX_UPLOAD_GROUP_SIZE) return;
+      const next = this.pendingGroup(first.authorization.pageBatchId, ids.slice(start).map(id => this.requireTask(id))).slice(0, MAX_UPLOAD_GROUP_SIZE - (ids.length - start));
+      ids.push(...next); for (const id of next) this.eligible.delete(id);
+      if (ids.length - start >= MAX_UPLOAD_GROUP_SIZE) return;
+      if (!this.pendingAdmissions && await uploadBatchSettled(this.store, first, this.cancelledIntents, this.dependencies.loadBatch, signal) && !this.pendingAdmissions) {
+        signal.throwIfAborted();
+        if (!this.pendingGroup(first.authorization.pageBatchId, ids.slice(start).map(id => this.requireTask(id))).length) return;
+        continue;
+      }
+      await observe?.();
+      await delay(500, undefined, { signal });
+    }
   }
   runPending(): Promise<void> {
     if (this.stopFailed) return Promise.resolve();
@@ -686,6 +704,7 @@ export class DouyinUploadService {
       }
       port = this.sessions.get(key) ?? this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
       const t = first.config.timeouts;
+      if (!recovery) { await this.bounded(signal => this.coalesceGroup(ids, 0, signal), t.processing, controller.signal); tasks = ids.map(id => this.requireTask(id)); }
       if (tasks.length > (recovery ? first.authorization.expectedCount : MAX_UPLOAD_GROUP_SIZE) || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
       if (!recovery) for (const task of tasks) { task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER"); }
       for (let retry = 0; ; retry++) {
@@ -725,8 +744,11 @@ export class DouyinUploadService {
             if (ready) return ready;
             const next = this.pendingGroup(key);
             if (next.length) {
+              const start = ids.length;
               ids.push(...next);
-              const group = next.map(id => this.requireTask(id));
+              for (const id of next) this.eligible.delete(id);
+              await this.coalesceGroup(ids, start, signal, async () => { await port!.pollReady(tasks, signal); });
+              const group = ids.slice(start).map(id => this.requireTask(id));
               for (const task of group) {
                 this.eligible.delete(task.result.upload_task_id);
                 if (JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config)) throw unknown();

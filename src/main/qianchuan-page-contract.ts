@@ -263,7 +263,7 @@ export class QianchuanPageSession {
     const zone = await this.unique(this.modal!.locator(`${dropSelector}:visible`), signal);
     const disabled = await zone.evaluate(element => element.classList.contains("oc-create-upload-select-wrapper-disabled") || element.getAttribute("aria-disabled") === "true");
     this.check(signal);
-    if (disabled) throw uploadFailure("CAPACITY_INSUFFICIENT", "page", "千川上传入口已禁用，当前不能继续添加视频。", "在 Chrome 核查可选素材上限或页面提示；未选文件保留，不自动确认、腾位置或重传。", true);
+    if (disabled) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "千川上传入口已禁用，当前不能继续添加视频；这不表示计划容量已满。", "在 Chrome 核查原上传窗口及平台提示；未选文件保留，不自动确认、腾位置或重传。", true);
     return zone;
   }
   private async drop(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> {
