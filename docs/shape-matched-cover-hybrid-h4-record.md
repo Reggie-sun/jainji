@@ -85,3 +85,49 @@ Parent 采纳 archive 不恢复 H3 authority、独立 development renderer、原
 仓库未发现 dedicated session-capture Skill；本轮 substantial implementation/真实 preview/真实 Provider failure 由本 canonical record 留存，私有原始证据不提交。无 hook 或 capture_request_id 不作为跳过记录理由。
 
 当前不是“只剩 Activation”：还需解除 H4 有效视觉 QA 的 schema/精确 Sol capability blocker，并按 exact snapshot 取得有效 verdict；同时完成正式索引资产的 owned Harness/completion 核验。PRODUCT_DISABLED 保持，本轮没有开始 Activation slice。
+
+## QA Closure — 2026-10-06
+
+用户固定基线 `f4158d136cbed6816190ad8367367df70b7b6a0f`，继续已有 `feat/hybrid-corner-h4` 工作区。上述历史失败与回执原样保留。本轮最终真实视觉 verdict **UNSAFE / HYBRID_CORNER_H4_NOT_READY**；已有有效视觉审查，但 MiniMax 高风险 flags 与 Sol PASS 的冲突仍被原规则关闭。PRODUCT_DISABLED、authority=none，不开始 Activation。
+
+### Diagnosis and Software Changes
+
+历史 MiniMax 首答只保存679 bytes/hash/SCHEMA_VALIDATION，原文与字段级 issues 未保存；transport 使用 store=false，没有可恢复的旧 response。因此无法确认历史具体坏字段，更不能将其臆测为视觉 FAIL。可确认的输出契约缺陷：发给模型的 preview JSON schema 未声明 parser 已要求的 shortReason 1–400字符、riskFlags最多7项。本轮补齐这些边界和单字符串说明，strict parser、视觉枚举与安全 resolver 不放宽；receipt 增加无模型值/未知键的安全字段路径与错误 code，私有 diagnostic 保留新 MiniMax 原文。本轮没有再次 schema invalid，不能把新成功倒推为历史根因证明。
+
+H4 移除单独的6.1-only gate，复用原 Hybrid canonical route 优先 gpt-6.1-sol、不可用时仅 gpt-5.6-sol。无有效 schema/JSON 首审时保留 FAILED receipt，让一次独立 Sol 的有效结果进入 result/verdict；不伪造 MiniMax output。有效首审的高风险矛盾仍由原 resolvePreviewReviews 拒绝；错packet、stale、取消、timeout、provider failure 不走无效schema例外。零模型重试循环。
+
+`--qa-only` 校验旧 packet digest、source/H3、preview fingerprint、原12张PNG SHA与候选身份，只去除假 detector signals 并明确 confirmed TOP_RIGHT partial-processing scope；其他未确认角落不因保留旧图形自动失败。没有重新渲染、mask、选款或placement；图层造成的任意人物/商品/重要文字误遮挡仍必须判断。
+
+### Actual Visual Evidence
+
+私有证据根 `/home/reggie/.local/state/jianji-source-fact-qualification/hybrid-h4-closure-20261006`，真实结果 `real233s-qa/result.json`；packet `c7d0fb196056952f924bb986768b12c40eacc07959f882f509ab8dc5b831c14d`。新的 reviewScope/metadata 形成新digest，但图片SHA全部与历史执行相同。
+
+- MiniMax-M3：一次 color capability AVAILABLE、一次 QA；PARSED，四项 PASS，riskFlags=`PRODUCT_PRINT_RISK`、`PERSON_OCCLUSION_RISK`；raw622 bytes，SHA `8958a2dc8356bb70ea5679246ec8a52de8f9e9a11735c90c81f82332406851ba`。理由称没有重叠/残留/漂移，同时对洗发画面靠近人物表示concern；不能删除其结构化高风险flag。
+- gpt-5.6-sol：canonical Hybrid route 实际一次二审，PARSED，四项 PASS、riskFlags=[]；raw466 bytes，SHA `231870d9bca788665cecc897145b1d73d1a9a129c8c9f8d10300ea2b9f483ad3`。未调用gpt-6.1-sol或其他fallback模型。
+- 总计 MiniMax capability1、QA1、Sol1、Luna0；原person-risk conflict规则最终UNSAFE。模型reason与flags不一致不是schema invalid，也不授权将flag抹掉或以Sol投票覆盖。
+
+首次本地入口误指定不存在的 `/usr/bin/ffmpeg`，在archive PNG decode阶段即停止，Provider requests=0；失败目录`real233s`保留。修正为应用已下载工具链后用独立目录执行一次真实QA，不恢复或重放任何已发请求。
+
+`h3-unchanged.json`证明原preview SHA `6cfe8331cab4a378fa4c9f14b336f1503c90b949e0a38e1c569fd749bf8136e7`、12张图片SHA、完整technical回执全部相同；compiler、H3、motion、shape、pixel gate、render、alpha、selection八个源码文件与基线逐字节相同。原PNG/placement/binding、uncoveredPixels=0和233s/6990帧保持；没有新的整片观看验收声明。
+
+### Harness Ownership and Delegation
+
+根因：scope explain 将aoci.code.txt分类为index，business-source-manifest不包含正式索引资产；官方Verify却将其声明为code volume。Harness现在从一致Verify/Check/Guide的root/meta/code/database声明核对正式path/asset_state/SHA及磁盘字节，不要求索引为自身建立Entry。正式资产必须存在、启用、全库对齐、无recovery/conflict；普通source仍要求manifest/baseline，required不变。负向回归覆盖hash/缺文件/漂移/跨快照/删除/无官方声明，未改业务算法。
+
+受管Kimi deep只读diagnosis invocation `38e63bd2-6c1d-497e-9f55-6446ab692050`，seal `e547bd7b93b4498befda3d4609d1b35f1f75f7d94b12a039677f8f07dc8d20e5`；Docker、k3[1m]/max、canonical receipt PARSED，3 wire requests。它只读冻结的历史Harness/官方Verify，并未审最终实现或宣布验收。Parent用实际scope/manifest/当前Verify确认其ownership诊断，采用per-object正式资产binding、独立跨快照hash比较及contract clarification；对其“必须required字段/支持disabled volume deletion”的建议不扩大本轮：缺声明仍不能放行owned正式文件，当前只修present volume modify。
+
+仓库没有dedicated session-capture Skill；本canonical record承担本轮软件修复与真实模型证据的durable closure。原私有证据、历史FAIL、unknown状态均不覆写。
+
+### Verification and Blocked Completion
+
+最终 implementation snapshot：基线 `f4158d136cbed6816190ad8367367df70b7b6a0f`，12个 core owned paths 的逐字节hash封存在私有 `final-implementation-snapshot.json`；scope文件SHA `aadb5d0c2523ef7657e8ce4b7494939f2d599a46df86253623f45cc7c2d06550`。真实QA所绑定的adapter/router/diagnostic源码未在请求后改变。本record独立归入docs-only owned scope，不用record验证冒充core完成。
+
+- `npm run typecheck`、diagnostic独立strict TypeScript检查、8个相关test files的195项测试均PASS，无失败/skip。无效首审/Sol PASS与正式资产ownership先复现失败，再修复通过；不靠降低schema或required。
+- 完整core Harness `.agent/harness/runs/20261005T181848Z-2ce8eb61/receipt.json` **FAIL**：已形成报告的1443项PASS、1项FAIL、0skip；typecheck、H4 fixture、Hybrid vision128、文档17项和owned-aoci十二个dispositions均PASS。H3 fixture在既有120秒上限超时（8PASS/1FAIL）；extended-regressions达到既有1800000ms上限，为required **NOT_EVALUATED**，没有完整report，不能计入通过数。
+- 不改任何H3源码或测试时限，对相同H3组做一次限定CPU范围的有界诊断，仍为8PASS/1个120秒timeout，证据`h3-timeout-investigation.report.json`。观察到宿主load约35–38，但这不是已证明的唯一根因；不以负载解释替代PASS。停止重复测试尝试，不终止或调整其他用户进程。
+- core completion `.agent/harness/runs/20261005T190717Z-f556fc75/receipt.json` **FAIL**；失败的core receipt不能获得completion PASS。原`owned_source_missing_from_manifest`已消除，正式code volume按当前官方path/hash核验实际PASS；剩余验证阻断为上述timeout，不是治理声明不一致。
+- AOCI逐项角色：三个修改源码为index且完整官方批次维护；aoci.code.txt为正式index资产，无self Entry；baseline为exclude；其余spec/plan/tests/diagnostic为observe。最终官方Verify/Check/Guide均exit0、governance_aligned=true，Check ok=true，Guide complete=true/next_action=none/findings=[]；证据`aoci-delivery-verify.json`、`aoci-delivery-check.json`、`aoci-delivery-guide.json`。未修改root/meta/config或全库无关业务对象。
+
+Implementation Review Risk Gate 状态 **PENDING_NATIVE_VERIFICATION**：绑定上述exact snapshot、accepted spec/plan及失败回执。用户没有要求该snapshot的Kimi final review；本开发QA不授生产authority，治理核验不写业务或durable生产状态，未发现关键级凭据/越权/不可恢复损坏路径。第三条件须在project-native verification完成后判定；当前required verification未通过，按SUBAGENTS.md先报告真实blocker，不提前消耗final reviewer请求或声称review acceptance。Kimi只读ownership diagnosis不冒充最终实现review。
+
+本次是有明确阻断的stable checkpoint：真实TOP_RIGHT QA有效但高风险冲突导致UNSAFE，完整Harness/completion也未PASS。因此不授予HYBRID_CORNER_H4_READY，不是只剩Activation；PRODUCT_DISABLED保持，未执行Activation。

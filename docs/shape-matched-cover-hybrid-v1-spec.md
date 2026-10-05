@@ -68,6 +68,8 @@ CV Proposal → VLM Semantic Confirmation/Grouping → deterministic conservativ
 
 H1历史每source共享Luna1/Sol2/MiniMax1请求上限；H2扩展为Luna4/Sol2/MiniMax1（H2 runtime不调用MiniMax）。取消、timeout、失败或未知结果消耗已发请求且不重放。provider错误不semantic retry或fallback；MiniMax preview FAIL/UNKNOWN可Sol一次二审，高风险相反结论仍UNSAFE。confidence仅diagnostic。所有严格JSON响应绑定packetDigest、已提供candidate IDs和有序图片SHA；非结构/未知字段/伪造ID/错packet拒绝。
 
+2026-10-06 H4 QA closure accepted delta：schema/JSON invalid 首答不构成有效第一审，保留原 FAILED receipt，允许 Sol 独立审同 packet 一次；有效 Sol 四项 PASS 且无风险可形成 H4 PASS。有效 MiniMax FAIL/UNKNOWN 仍使用原高风险冲突 resolver，packet mismatch、stale、取消、timeout、provider failure 不走此例外。H4 Sol 复用上述 Hybrid requested/authorized alternate 策略，优先 `gpt-6.1-sol`，不可用才用 `gpt-5.6-sol`；无其他型号与模型重试。H4 只评价当前 confirmed TOP_RIGHT replacement 及其引起的误遮挡，其他未确认角落仍属 V1 partial-processing scope，不把保留的旧图形自动判为本 replacement residual。PRODUCT_DISABLED、无 Activation。
+
 packet最多3个components、12张PNG、8MiB/image、32MiB总量；full context和每candidate crop均必须对应start/middle/end三个时间点。观察输入复用16–32点DiscoveryEvidence（短片取全部），不发送整片。图片绑定sourceKey、ordinal、PTS、原pixel SHA、PNG SHA、crop mapping和candidate IDs；发送体只含匿名ID、几何/时序和图片，无本机path/filename/account/key。generation前后复核源/图片及连接绑定，迟到输出拒绝。超限显式失败，不偷偷删confirmed component。
 
 preview schema只回答旧overlay残留、误遮挡、明显不自然和temporal mismatch；H1不渲染或签发preview acceptance。receipt保留route/provider/exact model、packet/input hashes、prompt/version、structured output或安全failure code、timestamp；现有transport未暴露provider request ID时为null，不猜。无publication proof链。

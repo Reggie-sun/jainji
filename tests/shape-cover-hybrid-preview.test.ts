@@ -57,12 +57,14 @@ it("archived geometry renders exact PNG for the full clock, preserves audio, bin
     expect((await reviewHybridPreview(packet, routes, signal)).verdict).toBe("PASS"); expect(calls).toEqual(["MINIMAX"]);
     calls.length = 0; expect((await reviewHybridPreview(packet, { ...routes, MINIMAX: route("MINIMAX", true) }, signal)).verdict).toBe("PASS"); expect(calls).toEqual(["MINIMAX", "SOL"]);
     const alternate = { ...routes.SOL, model: "gpt-5.6-sol", complete: vi.fn(routes.SOL.complete) };
-    const unavailable = await reviewHybridPreview(packet, { ...routes, MINIMAX: route("MINIMAX", true), SOL: alternate }, signal);
-    expect(unavailable.verdict).toBe("UNSAFE"); expect(alternate.complete).not.toHaveBeenCalled(); expect(unavailable.receipts.at(-1)).toMatchObject({ model: "gpt-6.1-sol", status: "UNAVAILABLE" });
+    const second = await reviewHybridPreview(packet, { ...routes, MINIMAX: route("MINIMAX", true), SOL: alternate }, signal);
+    expect(second.verdict).toBe("PASS"); expect(alternate.complete).toHaveBeenCalledOnce(); expect(second.receipts.at(-1)).toMatchObject({ model: "gpt-5.6-sol", status: "PARSED" });
     const failed = await reviewHybridPreview(packet, { ...routes, MINIMAX: { ...routes.MINIMAX, complete: async () => { throw Error("transport"); } } }, signal);
     expect(failed.verdict).toBe("UNSAFE"); expect(failed.requestCounts).toMatchObject({ MINIMAX: 1, SOL: 0 });
     const invalid = await reviewHybridPreview(packet, { ...routes, MINIMAX: { ...routes.MINIMAX, complete: async () => "{}" }, SOL: alternate }, signal);
-    expect(invalid.verdict).toBe("UNSAFE"); expect(invalid.receipts.map(r => [r.role, r.status])).toEqual([["MINIMAX", "FAILED"], ["SOL", "UNAVAILABLE"]]);
+    expect(invalid.verdict).toBe("PASS"); expect(invalid.receipts.map(r => [r.role, r.status])).toEqual([["MINIMAX", "FAILED"], ["SOL", "PARSED"]]);
+    expect(invalid.requestCounts).toEqual({ LUNA: 0, MINIMAX: 1, SOL: 1 });
+    expect(invalid.result?.sol).toMatchObject({ oldOverlayResidual: "PASS" });
     await appendFile(render.technical.previewPath, Buffer.from([1])); await expect(packet.verifyFresh()).rejects.toThrow("H4_PREVIEW_CHANGED");
     await appendFile(pngPath, Buffer.from([1])); await expect(preview.verifyFresh()).rejects.toThrow(/fingerprint/);
   } finally { await rm(root, { recursive: true, force: true }); }

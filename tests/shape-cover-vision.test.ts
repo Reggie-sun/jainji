@@ -4,6 +4,7 @@ import { createVisionPacket, VISION_PACKET_LIMITS, type VisionImageInput } from 
 import { ShapeCoverVisionSession, type VisionRoute } from "../src/main/shape-cover-vision-router.js";
 import { createHybridVisionRoutes, HYBRID_GPT_MODELS, HYBRID_REQUESTED_GPT_MODELS } from "../src/main/shape-cover-vision-provider.js";
 import type { ModelConnections } from "../src/main/model-connections.js";
+import { reviewHybridPreview } from "../src/main/shape-cover-hybrid-preview.js";
 
 const packetDigest = "a".repeat(64);
 const candidate = (decision = "UNKNOWN") => ({ packetDigest, decisions: [{ candidateId: "c1", decision,
@@ -85,6 +86,32 @@ describe("Hybrid bounded image packets", () => {
 });
 
 describe("Hybrid finite role routing", () => {
+  it.each(["schema", "json", "missing"])("H4 allows one independent Sol PASS after an invalid %s first review", async invalid => {
+    const r = routes((role, digest) => role === "MINIMAX" ? invalid === "schema" ? { ...preview(), packetDigest: digest, shortReason: {} } : {} : { ...preview(), packetDigest: digest });
+    if (invalid === "json") r.MINIMAX.complete = vi.fn(async () => "not JSON");
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal);
+    expect(result.verdict).toBe("PASS"); expect(result.requestCounts).toEqual({ LUNA: 0, MINIMAX: 1, SOL: 1 });
+    expect(result.receipts.map(x => [x.role, x.status])).toEqual([["MINIMAX", "FAILED"], ["SOL", "PARSED"]]);
+    expect(result.receipts[0].output).toBeNull(); expect(result.result?.sol?.shortReason).toBe("clear");
+    if (invalid === "schema") expect(result.receipts[0].schemaIssues).toEqual([{ path: ["shortReason"], code: "invalid_type" }]);
+  });
+  it.each(["FAIL", "UNKNOWN", "invalid", "unavailable", "transport"])("H4 does not pass or retry after Sol %s", async outcome => {
+    const r = routes((role, digest) => role === "MINIMAX" || outcome === "invalid" ? {} : { ...preview(), packetDigest: digest, oldOverlayResidual: outcome });
+    if (outcome === "unavailable") r.SOL.imageCapability = "MODEL_IMAGE_CAPABILITY_UNAVAILABLE";
+    if (outcome === "transport") r.SOL.complete = vi.fn(async () => { throw Error("private"); });
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal);
+    expect(result.verdict).toBe("UNSAFE"); expect(result.receipts).toHaveLength(2);
+    expect(result.requestCounts).toEqual({ LUNA: 0, MINIMAX: 1, SOL: outcome === "unavailable" ? 0 : 1 });
+  });
+  it.each(["packet", "stale", "transport", "cancel"])("H4 does not escalate a first-review %s failure", async failure => {
+    const controller = new AbortController(); let fresh = true;
+    const r = routes((_, digest) => ({ ...preview(), packetDigest: failure === "packet" ? packetDigest : digest }));
+    if (failure === "stale") r.MINIMAX.verifyFresh = async () => { if (!fresh) throw Error("changed"); fresh = false; };
+    if (failure === "transport") r.MINIMAX.complete = vi.fn(async () => { throw Error("private"); });
+    if (failure === "cancel") r.MINIMAX.complete = vi.fn(async () => { controller.abort(); return "{}"; });
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, controller.signal);
+    expect(result.verdict).toBe("UNSAFE"); expect(result.requestCounts.SOL).toBe(0); expect(r.SOL.complete).not.toHaveBeenCalled();
+  });
   it("prefers requested exact GPT6 IDs, using only the explicitly authorized Hybrid alternates when absent", () => {
     const models: { model: string; defaultReasoningEffort: string }[] = Object.values(HYBRID_REQUESTED_GPT_MODELS).map(model => ({ model, defaultReasoningEffort: "high" }));
     const connections = { chatgpt: { assertModel: (model: string) => { if (!models.some(m => m.model === model)) throw Error("absent"); },

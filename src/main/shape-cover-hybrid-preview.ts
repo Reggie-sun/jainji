@@ -15,6 +15,7 @@ import { decodeSourceMask, projectSourceMask, checkOutputFrameCoverage } from ".
 import { readShapeCoverAsset, decodeShapeCoverPng, encodeShapeCoverPng } from "./shape-cover-alpha.js";
 import { createVisionPacket, type VisionImageInput } from "./shape-cover-vision-packet.js";
 import { ShapeCoverVisionSession, type VisionRoute, type VisionRole } from "./shape-cover-vision-router.js";
+import { previewVerdict, type PreviewDecision } from "./shape-cover-vision-schema.js";
 import type { HybridFrozenOverlay } from "./shape-cover-hybrid-h3.js";
 
 export interface HybridPreviewInput {
@@ -157,18 +158,21 @@ export async function buildHybridPreviewPacket(preview: HybridPreviewInput, rend
     images, async () => { await render.verifyFresh(); await source.verifyFresh(); await covered.verifyFresh(); });
 }
 
-/** Exact GPT model gate is H4-local; historical H1/H2 provider behavior stays unchanged. */
+/** H4 uses the canonical Hybrid routes and preserves invalid first-review evidence. */
 export async function reviewHybridPreview(packet: Awaited<ReturnType<typeof buildHybridPreviewPacket>>, routes: Record<VisionRole, VisionRoute>, signal: AbortSignal) {
-  const sol = routes.SOL.model === "gpt-6.1-sol" ? routes.SOL : { provider: "chatgpt", model: "gpt-6.1-sol", imageCapability: "MODEL_IMAGE_CAPABILITY_UNAVAILABLE" as const,
-    verifyFresh: async () => {}, complete: async () => { throw Error("MODEL_IMAGE_CAPABILITY_UNAVAILABLE"); } };
-  const session = new ShapeCoverVisionSession(packet.manifest.sourceKey, { ...routes, SOL: sol });
-  let result: Awaited<ReturnType<ShapeCoverVisionSession["reviewPreview"]>> | undefined, failure: string | undefined;
+  const session = new ShapeCoverVisionSession(packet.manifest.sourceKey, routes);
+  let result: Awaited<ReturnType<ShapeCoverVisionSession["reviewPreview"]>> | { verdict: "PASS" | "UNSAFE"; sol: PreviewDecision } | undefined, failure: string | undefined;
   try { result = await session.reviewPreview(packet, signal); } catch (error) {
     failure = error instanceof Error ? error.message : "H4_QA_FAILED";
-    // Preserve an unparseable first answer as UNKNOWN and try the exact Sol
-    // second opinion once. No MiniMax retry and no PASS from invalid output.
-    if (failure === "VISION_INVALID_OUTPUT" && session.receipts.at(-1)?.role === "MINIMAX") {
-      try { await session.request("SOL", packet, signal); }
+    // No valid first review: Sol independently judges the original packet once.
+    // Packet mismatch, stale bindings, cancellation and transport failure stay closed.
+    const first = session.receipts.at(-1);
+    if (failure === "VISION_INVALID_OUTPUT" && first?.role === "MINIMAX" &&
+        ["JSON_PARSE", "SCHEMA_VALIDATION", "MISSING_REQUIRED_FIELD"].includes(first.parseFailureCategory ?? "")) {
+      try {
+        const sol = await session.request("SOL", packet, signal) as PreviewDecision;
+        result = { verdict: previewVerdict(sol), sol };
+      }
       catch (second) { failure += `; SOL: ${second instanceof Error ? second.message : "H4_QA_FAILED"}`; }
     }
   }

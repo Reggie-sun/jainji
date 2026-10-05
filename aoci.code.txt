@@ -25,7 +25,7 @@ media.ts[TQ8L]: F:按冻结批次检查源片和成片的身份、解码、规�
 run.ts[RQ8M]: F:管理Harness运行目录、进程预算、日志与冻结回执 | R:code:src/harness/types.ts,code:src/harness/scope.ts,code:src/harness/cli.ts | A:保存策略与scope字节，绑定检查产物，运行前后验证参与身份 | S:visualReview固定NOT_EVALUATED；中断、工具缺失或参与源码变化不可PASS
 types.ts[CQ7M]: F:定义三态结果、版本化检查策略、文件scope与路由Schema | R:code:src/harness/code.ts,code:src/harness/routing.ts,code:src/harness/run.ts | A:校验路径、前后像类型、唯一检查与路由引用；聚合必需项退出码0/1/2 | S:缺失或未知结果不可PASS；已知必需失败仍为FAIL
 completion.ts[TQ7S]: F:只读重验scope回执与当前源码、策略、合同和产物 | R:code:src/harness/scope.ts,code:src/harness/routing.ts,code:src/harness/governance.ts,code:src/harness/code.ts | A:核对选择检查及命令、哈希、报告；刷新文档与本轮AOCI证明 | S:不执行回执内命令；缺冻结产物或字节失配拒绝完成
-governance.ts[TQ7L]: F:核验本轮文档引用与AOCI治理证据 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:检查本地引用及GitHub锚点；调用官方scope、manifest、Verify、Check、Guide；区分本轮对象与全库漂移 | S:治理快照不一致或recovery时不证明本轮对齐；observe与exclude不伪造索引
+governance.ts[TQ7L]: F:核验本轮文档引用与AOCI治理证据 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:核对引用与官方scope/manifest/Verify/Check/Guide；正式资产独立绑定path/hash | S:正式索引不要求自身Entry；快照矛盾或恢复冲突关闭；observe/exclude不伪造索引
 routing.ts[CQ6T]: F:按本轮文件集合匹配策略中的必需检查和合同 | R:code:src/harness/types.ts,code:src/harness/cli.ts | A:聚合全部匹配路由并保持策略顺序；校验改动测试被选定Vitest覆盖 | S:未映射路径、空检查或可选检查直接拒绝
 scope.ts[CQ7M]: F:验证任务拥有文件的Git前后像并捕获参与证据身份 | R:code:src/harness/types.ts,code:src/harness/run.ts | A:拒绝越界和符号链接；冻结声明；绑定源码、合同与策略，源码树排除Python缓存目录 | S:不从全库dirty状态推断ownership；声明字节须匹配baseCommit和当前磁盘
 
@@ -151,7 +151,7 @@ qianchuan-plan-reads.ts[AW6T]: F:合并冻结账号的在途计划读取并保�
 
 shape-cover-vision-packet.ts[AA7S]: F:组装绑定源时间像素和候选的有界视觉图片包 | R:code:src/main/source-fact-discovery-evidence.ts,code:src/main/shape-cover-alpha.ts | A:CANDIDATE含grid和真实signals；最多3组件12图32MiB；PREVIEW可只含ID和sourceBox及绑定reviewScope | S:不发送路径或原视频；UNKNOWN不升级；采样不授全时域证明；不伪造归档缺失CV指标
 shape-cover-vision-provider.ts[IA7T]: F:将Hybrid视觉角色接到现有模型连接与能力核验 | R:code:src/main/model-connections.ts,code:src/main/agent-provider.ts,code:src/main/shape-cover-vision-router.ts | A:优先exact GPT6 Luna及6.1 Sol；缺席时只用H1真实用户授权的5.6；MiniMax官方选中连接单次图片核验；前后验证连接 | S:无额外替代授权；不改持久模型选择；不复制HTTP或凭据存储
-shape-cover-vision-router.ts[AA7S]: F:复用单一Hybrid视觉请求生命周期并隔离global与corner语义 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-schema.ts,code:src/main/shape-cover-vision-corner-schema.ts | A:GLOBAL保留4/2/1与旧prompt；CORNER独立4/4/0及每角各1；绑定context/image/receipt；响应hash字节数及parse类别诊断 | S:Corner禁preview与MiniMax；H4预算独立；失败取消消费请求且不重试投票；普通回执不存raw，视觉不授像素coverage
+shape-cover-vision-router.ts[AA7S]: F:绑定Hybrid视觉请求、strict响应与安全诊断回执 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-schema.ts | A:GLOBAL与CORNER独立预算；preview遵守confirmed scope；记录hash/parse类别及安全schema路径 | S:不记录模型值或未知键；Corner禁preview；视觉不证明像素coverage；失败取消不自动重试
 shape-cover-vision-schema.ts[DA7T]: F:校验候选语义分组及四项预览判断的严格响应 | R:code:src/main/shape-cover-vision-router.ts | A:绑定packet和完整candidate集合；confirmed组恰一次；拒绝编造ID重复或缺项；H2支持跨包疑似关联标记 | S:confidence不授安全；不接模型mask坐标；preview不代替coverage
 shape-cover-vision-semantic.ts[DA7S]: F:完整确认M1候选并形成source-bound逻辑语义目标集合 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-router.ts,code:src/main/shape-cover-stationary-discovery.ts | A:最多12候选；稳定排序原子空间cluster装3成员包；Luna4及Sol2；逐候选confirmed rejected unresolved分区；深冻结摘要回执并verifyFresh | S:空间仅packing提示；跨包疑似关联复杂cluster动变或分歧关闭；漏检UNSAFE；无mask知识发布
 
@@ -166,7 +166,7 @@ qianchuan-plan-catalog.ts[IA7M]: F:从账号原浏览器读取完整可见计划
 qianchuan-scheduled-launch.ts[OW6T]: F:安装用户systemd每日启动简辑的timer和service | R:code:src/shared/qianchuan-video-library-schedule.ts | A:校验启动时间；仅更新应用标记单元；保存后启停timer；公开能力状态 | S:只负责OS启动，不授删除授权；Persistent=false且Restart=no
 qianchuan-video-library-page.ts[IB8M]: F:在绑定账号的视频库对话框读取并删除当前批次 | R:code:src/main/qianchuan-video-library.ts | A:账号URL复核；完整分页与显式空列表；确认前调用guard；刷新实际移除结果 | S:删除对话框独立于上传及计划；未知确认不重试；路由恢复只读
 qianchuan-video-library.ts[AW8T]: F:协调显式账号视频库清空并持久化审计 | R:code:src/main/qianchuan-video-library-page.ts,code:src/main/qianchuan-account-config.ts | A:独占账号操作锁；确认前pending标记；逐批fresh列表直到真实空库；有界次数及时间 | S:保留旧unknown审计；新显式操作只消费当前列表，不重放旧确认；不改变上传fences
-shape-cover-hybrid-preview.ts[AA7M]: F:核验归档冻结图层并渲染开发预览及视觉复核 | R:code:src/main/compiler.ts,code:src/main/source-fact-exact-frames.ts,code:src/main/shape-cover-vision-router.ts | A:原mask投影opaque复查；全时钟音频核验；首中尾及低匹配采样成对图片；MiniMax后有条件精确Sol | S:归档不恢复H3或export authority；不重选摆放扩边；未解析首答不能PASS；PRODUCT_DISABLED
+shape-cover-hybrid-preview.ts[AA7S]: F:消费冻结图层生成开发预览并闭合独立视觉QA | R:code:src/main/compiler.ts,code:src/main/shape-cover-vision-router.ts | A:核验mask投影、全时钟和音频；MiniMax首审与有界Sol独立审 | S:无效首审不伪造verdict；Sol有效PASS可闭合；高风险矛盾保持UNSAFE；无生产authority
 shape-cover-stationary-discovery.ts[KA7S]: F:从原画布代表帧提出稳定组件候选 | R:code:src/main/source-fact-discovery-evidence.ts | A:固定CPU参数；计算稳定边缘及邻帧信号；grid映射原像素；冻结结果digest | S:只提候选不授mask或语义；采样不证明全时域；源和owned evidence失效拒绝
 source-fact-discovery-evidence.ts[IA8S]: F:提供绑定源时钟及原像素的有界discovery证据 | R:code:src/main/source-fact-census.ts,code:src/main/source-sticker-knowledge-store.ts | A:精确ordinal选择；framehash绑定RGBA与PTS；有界scratch；只读帧及fresh重核 | S:进程内owner，JSON不恢复；不是全源census或absence证明；取消关闭清理
 source-fact-exact-frames.ts[IA8T]: F:顺序解码指定原帧并绑定原始ordinal及PTS | R:code:src/main/source-fact-census.ts,code:src/main/source-sticker-knowledge-store.ts | A:校验完整canonical clock；select ordinal；RGBA与framehash双管道；源引擎前后重核 | S:无seek缩放或未采样帧spool；有界帧字节wall；少帧额外帧或漂移INCOMPLETE

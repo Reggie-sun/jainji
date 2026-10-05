@@ -25,6 +25,8 @@ v2 scoped code receipt 分别绑定当前 policy/scope、实际参与的 source/
 
 `verify` 不重跑 tests、模型、队列、AOCI Apply 或 Git mutation，只复核原 receipt 与当前字节，重新核对适用文档及官方 owned AOCI，并保存独立 completion receipt。AOCI 只消费已识别版本的官方 Verify / Check / Guide、scope 和 source facts；`ownedAoci` 与 `repositoryAoci` 分开报告，缺工具、未知结构、本次 stale/missing、恢复风险均不能通过。维护仍由产生改动的 session 按官方完整批次/CAS/恢复合同完成。
 
+正式 AOCI root/meta/code/database 资产由一致官方 governance facts 的 path/asset_state/SHA 声明，不属于 business-source manifest，不要求为正式索引自身建立 Entry。owned 正式资产仍须启用且存在、全库 governance aligned、无恢复/冲突，磁盘 exact SHA 与官方事实一致；不是按文件名豁免。普通 owned source 的 manifest/baseline/drift gates 与 required 检查保持。
+
 所有新增证据仅证明工程检查及文档治理；开发型号、真实 provider 资格、Windows 实机和人工观看仍遵守各自授权与验收 owner。fixture 中的定位帧、音轨和批次数量不得升级为整片 coverage、内容一致或 requestedCount 已满足。旧媒体接口与已冻结任务解释保持原合同，不迁移生产数据。
 
 # Evidence And Ownership
