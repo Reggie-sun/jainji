@@ -22,11 +22,13 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly preparedBrowsers = new Map<QianchuanProduct, { advertiserId: string; endpoint: string }>();
   private readonly browsers: QianchuanBrowserManager;
   private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
-  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>) {
+  private readonly discoverExistingBrowser: (advertiserId: string) => Promise<string>;
+  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
     this.browsers = new QianchuanBrowserManager(root);
     this.discoverBrowser = discoverBrowser ?? (id => this.browsers.prepare(id));
+    this.discoverExistingBrowser = discoverExistingBrowser ?? (id => this.browsers.prepareExisting(id));
   }
   async openBrowser(input: unknown): Promise<void> {
     this.assertAvailable();
@@ -164,6 +166,15 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     this.assertAvailable();
     const target = await super.preflight(product);
     const endpoint = await this.discoverBrowser(target.advertiserId);
+    this.assertAvailable();
+    await super.freeze(product, target.configDigest);
+    this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
+    return this.withPreparedBrowser(target);
+  }
+  override async prepareCatalog(product: QianchuanProduct): Promise<FrozenQianchuanAccount> {
+    this.assertAvailable();
+    const target = await super.preflight(product);
+    const endpoint = await this.discoverExistingBrowser(target.advertiserId);
     this.assertAvailable();
     await super.freeze(product, target.configDigest);
     this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });

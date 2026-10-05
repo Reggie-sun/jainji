@@ -10,6 +10,20 @@ import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const planUrl = (advertiserId = "1876024170199244", adId = "1876036593854788") => `https://qianchuan.jinritemai.com/uni-prom?aavid=${advertiserId}&adId=${adId}`;
+it("resolves catalog connections without starting browsers or changing saved settings", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const existing = vi.fn(async () => "http://127.0.0.1:9441");
+  const settings = new QianchuanAccountSettings(path.join(f.root, "app"), f.discover, existing);
+  await settings.restore();
+  const before = await readFile(settings.file);
+  const target = await settings.prepareCatalog("蝴蝶贴");
+  expect(target.cdpEndpoint).toBe("http://127.0.0.1:9441");
+  expect(await settings.freeze(target.product, target.configDigest)).toEqual(target);
+  expect(await readFile(settings.file)).toEqual(before);
+  expect(existing).toHaveBeenCalledWith(target.advertiserId); expect(f.discover).not.toHaveBeenCalled();
+  existing.mockImplementationOnce(async () => { await settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(target.advertiserId, "456") }); return "http://127.0.0.1:9442"; });
+  await expect(settings.prepareCatalog("蝴蝶贴")).rejects.toThrow("已变化");
+});
 it("persists multiple template bindings independently without invalidating account digests", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);
   const before = await readFile(f.settings.file), old = await f.settings.preflight("蝴蝶贴");

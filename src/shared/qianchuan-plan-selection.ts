@@ -7,7 +7,7 @@ export const QianchuanPlanOptionSchema = z.object({
   name: z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/),
 }).strict();
 export type QianchuanPlanOption = z.infer<typeof QianchuanPlanOptionSchema>;
-export const QianchuanPlanListRequestSchema = z.object({ product: QianchuanProductSchema, expectedAdvertiserId: id, requestId: z.string().uuid().optional() }).strict();
+export const QianchuanPlanListRequestSchema = z.object({ product: QianchuanProductSchema, expectedAdvertiserId: id, requestId: z.string().uuid().optional(), refresh: z.boolean().optional() }).strict();
 export const QianchuanPlanCancelSchema = z.object({ requestId: z.string().uuid() }).strict();
 export type QianchuanPlanCancel = z.infer<typeof QianchuanPlanCancelSchema>;
 export type QianchuanPlanListRequest = z.infer<typeof QianchuanPlanListRequestSchema>;

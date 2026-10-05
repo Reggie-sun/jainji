@@ -10,7 +10,7 @@ import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory,
 import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
-import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
+import { QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryClearSchema, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import { QianchuanVideoLibrary } from "./qianchuan-video-library.js";
 import { QianchuanPlanMaterials } from "./qianchuan-plan-materials.js";
@@ -72,6 +72,8 @@ export class DouyinUploadService {
   private readonly accounts: QianchuanAccountConfigReader;
   private readonly planReads: QianchuanPlanReads;
   private readonly planRequests = new Map<string, AbortController>();
+  private planPreloadController?: AbortController;
+  private planPreload: Promise<void> = Promise.resolve();
   get busy(): boolean {
     return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations);
   }
@@ -101,6 +103,7 @@ export class DouyinUploadService {
       if (generation !== this.controlGeneration || this.stopping || this.active) throw new Error("上传控制已变化，本次制作未接收。");
       this.productionBatches = new Set(); this.paused = false; this.pausedAccounts.clear(); this.stopped = false;
       if (this.summaries.some(account => account.available)) this.initializationFailure = undefined;
+      if (this.accounts instanceof QianchuanAccountSettings) this.preloadPlans();
     } finally { this.beginningProduction = false; this.changed(); }
   }
   status(projectId: string): DouyinUploadStatus {
@@ -179,6 +182,7 @@ export class DouyinUploadService {
       if (summaries.length && this.accounts instanceof QianchuanAccountSettings && savedPath !== this.accounts.file) await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
       this.summaries = summaries; this.initializationFailure = undefined;
     } catch { this.summaries = []; this.initializationFailure = "账号设置不可用，请检查已保存的配置。"; }
+    this.preloadPlans();
   }
   /** Only the trusted main-process file dialog may call this with a path. */
   async chooseConfig(file: string): Promise<void> {
@@ -187,6 +191,7 @@ export class DouyinUploadService {
     const summary = await this.accounts.authorizeFile(file);
     await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts instanceof QianchuanAccountSettings ? this.accounts.file : file });
     this.summaries = summary; this.initializationFailure = undefined; this.changed();
+    if (this.accounts instanceof QianchuanAccountSettings) this.preloadPlans();
   }
   async saveAccount(input: unknown): Promise<void> {
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
@@ -195,6 +200,40 @@ export class DouyinUploadService {
     const summaries = await this.accounts.savePlan(input);
     await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
     this.summaries = summaries; this.initializationFailure = undefined; this.changed();
+    this.preloadPlans();
+  }
+  private preloadPlans(): void {
+    this.planPreloadController?.abort();
+    const controller = new AbortController(), accounts = this.summaries.filter(account => account.available);
+    this.planPreloadController = controller;
+    this.planPreload = this.planPreload.then(async () => {
+      if (controller.signal.aborted || this.managingBrowser || this.store.unavailable || this.stopFailed) return;
+      await Promise.all(accounts.map(account => this.catalogPlans(account.product, account.advertiserId, AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)])).catch(() => undefined)));
+    });
+  }
+  private async stopPlanPreload(): Promise<void> {
+    this.planPreloadController?.abort();
+    await this.bounded(() => this.planPreload, 15000, new AbortController().signal);
+  }
+  private async catalogPlans(product: QianchuanProduct, advertiserId: string, signal: AbortSignal, refresh = false): Promise<QianchuanPlanOption[]> {
+    this.browserPreparations++;
+    try {
+      signal.throwIfAborted();
+      const configured = await this.accounts.preflight(product);
+      signal.throwIfAborted();
+      if (configured.advertiserId !== advertiserId) throw new Error("广告账户已变化，请重新选择账号。");
+      const cached = !refresh ? this.planReads.cached(configured) : undefined;
+      if (cached) return cached;
+      const target = await this.accounts.prepareCatalog(product);
+      signal.throwIfAborted();
+      if (target.advertiserId !== advertiserId) throw new Error("广告账户已变化，请重新选择账号。");
+      const plans = await this.planReads.catalog(target, signal, refresh);
+      signal.throwIfAborted();
+      const current = await this.accounts.freeze(target.product, target.configDigest);
+      signal.throwIfAborted();
+      if (current.advertiserId !== target.advertiserId || current.cdpEndpoint !== target.cdpEndpoint) throw new Error("账号连接已变化，请重新读取计划。");
+      return plans;
+    } finally { this.browserPreparations--; }
   }
   async listPlans(input: unknown, senderId = 0): Promise<QianchuanPlanOption[]> {
     const parsed = QianchuanPlanListRequestSchema.parse(input);
@@ -204,18 +243,9 @@ export class DouyinUploadService {
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
     if (key) this.planRequests.set(key, controller);
-    this.browserPreparations++;
     try {
-      const target = await this.accounts.prepare(parsed.product);
-      signal.throwIfAborted();
-      if (target.advertiserId !== parsed.expectedAdvertiserId) throw new Error("广告账户已变化，请重新选择账号。");
-      const plans = await this.readPlans(target, signal);
-      signal.throwIfAborted();
-      const current = await this.accounts.freeze(target.product, target.configDigest);
-      signal.throwIfAborted();
-      if (current.advertiserId !== target.advertiserId || current.cdpEndpoint !== target.cdpEndpoint) throw new Error("账号连接已变化，请重新读取计划。");
-      return plans;
-    } finally { if (key) this.planRequests.delete(key); this.browserPreparations--; }
+      return await this.catalogPlans(parsed.product, parsed.expectedAdvertiserId, signal, parsed.refresh);
+    } finally { if (key) this.planRequests.delete(key); }
   }
   cancelPlanRead(input: unknown, senderId = 0): void {
     const { requestId } = QianchuanPlanCancelSchema.parse(input);
@@ -232,19 +262,23 @@ export class DouyinUploadService {
     try { this.summaries = await this.accounts.refresh(); this.initializationFailure = undefined; }
     catch { this.summaries = []; this.initializationFailure = "账号配置不可用，请检查文件权限和映射。"; }
     this.changed();
+    this.preloadPlans();
   }
   async openAccountBrowser(input: unknown): Promise<void> {
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后重试。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持打开浏览器。");
     await this.accounts.openBrowser(input);
+    this.preloadPlans();
   }
   async controlAccountBrowser(input: unknown): Promise<void> {
+    const parsed = QianchuanBrowserControlSchema.parse(input);
+    await this.stopPlanPreload();
     if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未关闭浏览器。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持管理浏览器。");
     this.managingBrowser = true;
     try {
       await this.control.catch(() => undefined);
-      await this.accounts.controlBrowser(input, (advertiserId, browser) => {
+      await this.accounts.controlBrowser(parsed, (advertiserId, browser) => {
         if (this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction) throw new Error("上传控制已变化，未关闭浏览器。");
         // A legacy draft may belong to another advertiser in this same process.
         const sharesBrowser = (target: UploadAuthorization["target"]) => target.advertiserId === advertiserId || browser &&
@@ -254,10 +288,13 @@ export class DouyinUploadService {
         const preparing = this.store.intents().some(intent => sharesBrowser(intent.authorization.target) && this.currentIntents.has(intentKey(intent)) && !this.cancelledIntents.has(intentKey(intent)) && !this.store.tasks().some(task => intentKey(task.input) === intentKey(intent)));
         if (protectedTasks.length || preparing) throw new Error("该账号仍有制作中、待上传、待确认或结果未知的任务，未关闭浏览器。请先核查原上传页面并明确结束对应本地批次；上传记录和防重传屏障会保留。");
       });
+      this.planReads.invalidate(parsed.product);
+      if (parsed.action === "restart") this.preloadPlans();
     } finally { this.managingBrowser = false; this.changed(); }
   }
   async clearVideoLibraries(input: unknown): Promise<QianchuanLibraryResult[]> {
     const parsed = QianchuanLibraryClearSchema.parse(input);
+    await this.stopPlanPreload();
     if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未删除视频。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持视频库删除。");
     this.managingBrowser = true;
@@ -301,6 +338,7 @@ export class DouyinUploadService {
     if (config.accountConfigPath) this.summaries = await this.accounts.refresh();
     await this.store.setConfig(config); if (config.enabled) this.stopped = false;
     this.changed();
+    if (config.enabled && this.accounts instanceof QianchuanAccountSettings) this.preloadPlans();
   }
   /** Hold browser protection through the export handoff, not only its preflight. */
   async withExportAdmission<T>(action: () => Promise<T>): Promise<T> {
@@ -583,10 +621,11 @@ export class DouyinUploadService {
     let drained = true;
     const libraryOperation = this.libraryOperation;
     libraryOperation?.controller.abort();
+    this.planPreloadController?.abort();
     this.controlGeneration++; this.stopping = true; this.stopped = true; this.eligible.clear(); this.currentIntents.clear(); this.continuationBatch = undefined; this.active?.controller.abort();
     try {
       await Promise.all([...this.sessions.values()].map(port => this.bounded(() => port.stop(), 5000, new AbortController().signal).catch(() => { drained = false; this.paused = true; })));
-      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); await libraryOperation?.done; }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
+      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); await libraryOperation?.done; await this.planPreload; }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
     } finally { this.stopping = false; }
     if (!drained || this.active) this.stopFailed = true;
     return !this.stopFailed;

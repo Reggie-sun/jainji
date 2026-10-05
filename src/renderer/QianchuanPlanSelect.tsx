@@ -3,15 +3,14 @@ import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QianchuanPlanListSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { acquireQianchuanPlans } from "./qianchuan-plan-requests";
 
-export function QianchuanPlanSelect({ account, value, onChange, disabled = false, idPrefix = "qianchuan", compact = false, readOnOpen = false }: {
+export function QianchuanPlanSelect({ account, value, onChange, disabled = false, idPrefix = "qianchuan", compact = false }: {
   account?: QianchuanAccountSummary; value?: QianchuanPlanOption;
-  onChange(value?: QianchuanPlanOption): void; disabled?: boolean; idPrefix?: string; compact?: boolean; readOnOpen?: boolean;
+  onChange(value?: QianchuanPlanOption): void; disabled?: boolean; idPrefix?: string; compact?: boolean;
 }) {
   const [plans, setPlans] = useState<QianchuanPlanOption[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
-  const [requested, setRequested] = useState(false);
   const change = useRef(onChange); change.current = onChange;
   const selected = useRef(value); selected.current = value;
   const product = account?.product, advertiserId = account?.advertiserId;
@@ -26,13 +25,12 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
       setPlans([selected.current]);
       return;
     }
-    if (readOnOpen && !requested) return;
     if (typeof window.jianji.listQianchuanPlans !== "function") {
       setError("计划读取接口尚未加载，请等待当前任务结束后重新打开简辑。");
       return;
     }
     setLoading(true);
-    const request = acquireQianchuanPlans({ product, expectedAdvertiserId: advertiserId });
+    const request = acquireQianchuanPlans({ product, expectedAdvertiserId: advertiserId, ...(revision ? { refresh: true } : {}) });
     void request.promise.then(result => {
       if (!active) return;
       const next = QianchuanPlanListSchema.parse(result);
@@ -45,21 +43,18 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
       setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "读取计划失败，请检查所选 Chrome 的登录状态。");
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; request.release(); };
-  }, [product, advertiserId, available, revision, readOnOpen, requested]);
+  }, [product, advertiserId, available, revision]);
   const chosen = value && value.advertiserId === advertiserId && plans.some(plan => plan.adId === value.adId) ? value.adId : "";
   const chosenPlan = plans.find(plan => plan.adId === chosen);
   const identity = chosenPlan && `${chosenPlan.name} · ID ${chosenPlan.adId}`;
-  const waiting = readOnOpen && !requested && (!value || value.advertiserId !== advertiserId);
   return <div className={`qianchuan-plan-select${compact ? " compact" : ""}`} style={{ gridColumn: compact ? undefined : "1 / -1", minWidth: 0 }}>
     <label htmlFor={`${idPrefix}-plan`}>上传计划</label>
-    <select id={`${idPrefix}-plan`} aria-label="上传计划" title={identity || error || (loading ? "正在读取计划" : "请明确选择上传计划后开始制作")} value={chosen} disabled={disabled || loading || !available || !plans.length && !waiting}
-      onMouseDown={event => { if (waiting && event.button === 0) { event.preventDefault(); setRequested(true); } }}
-      onKeyDown={event => { if (waiting && ["Enter", " ", "ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); setRequested(true); } }}
+    <select id={`${idPrefix}-plan`} aria-label="上传计划" title={identity || error || (loading ? "正在读取计划" : "请明确选择上传计划后开始制作")} value={chosen} disabled={disabled || loading || !available || !plans.length}
       onChange={event => onChange(plans.find(plan => plan.adId === event.target.value))}>
-      <option value="">{loading ? compact ? "正在读取…" : "正在读取 Chrome 账号的计划…" : error ? "读取失败，请重试" : !available ? "请先选择上传账号" : waiting ? "点击选择上传计划" : !plans.length ? "没有可用计划" : "请选择上传计划"}</option>
+      <option value="">{loading ? compact ? "正在准备…" : "正在准备上传计划…" : error ? "读取失败，请重试" : !available ? "请先选择上传账号" : !plans.length ? "没有可用计划" : "请选择上传计划"}</option>
       {plans.map(plan => <option key={plan.adId} value={plan.adId}>{plan.name} · {plan.adId}</option>)}
     </select>
-    <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || !available} onClick={() => { onChange(undefined); setRequested(true); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
+    <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
     {error ? <p role="alert">{error}</p> : !compact && (loading ? <small role="status">只读取计划列表，不上传视频。</small> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>请明确选择计划后开始制作。</small> : null)}
   </div>;
 }

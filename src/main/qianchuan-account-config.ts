@@ -109,6 +109,7 @@ export class QianchuanAccountConfigReader {
   }
   async preflight(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { return this.selected(await this.read(), product); }
   async prepare(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { return this.preflight(product); }
+  async prepareCatalog(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { return this.preflight(product); }
   async freeze(product: QianchuanProduct, expectedDigest: string): Promise<FrozenQianchuanAccount> {
     const snapshot = await this.read();
     if (snapshot.digest !== expectedDigest) throw new QianchuanAccountConfigError("CONFIG_CHANGED");

@@ -170,7 +170,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
                   <option value="" disabled>请选择上传账号</option>
                   {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{account.productName ?? account.product} · {account.advertiserId || "未配置"}{!account.available && "（不可用）"}</option>)}
                 </select>
-                {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact readOnOpen account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })} />}
+                {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })} />}
                 {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}
               </div>
             </div>

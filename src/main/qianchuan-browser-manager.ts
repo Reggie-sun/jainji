@@ -140,4 +140,16 @@ export class QianchuanBrowserManager {
     try { return await discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] }); }
     catch { throw new Error("请先在已绑定的账号浏览器中登录千川并打开该账户，再开始制作。"); }
   }
+  /** Catalog preparation only observes running browsers; never launches or activates Chrome. */
+  async prepareExisting(advertiserId: string): Promise<string> {
+    const managed = this.profile(advertiserId);
+    if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
+    if (this.controlling.has(advertiserId) || this.pending.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
+    const binding = await this.bindings.get(advertiserId);
+    const original = binding ?? await discoverQianchuanProfile(advertiserId, (await this.browsers()()).filter(browser => browser.profile && !browser.profile.startsWith(`${path.resolve(this.root)}${path.sep}`)));
+    if (original) await verifyOriginalProfile({ advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) });
+    const endpoint = await this.endpoint(original?.profile ?? managed, original ? { profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) } : undefined);
+    if (!endpoint) throw new Error("请先打开该账号的千川浏览器，登录后刷新计划。");
+    return discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] });
+  }
 }

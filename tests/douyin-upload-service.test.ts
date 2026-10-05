@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DouyinUploadStore, type UploadTaskRecord } from "../src/main/douyin-upload-store";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
@@ -17,6 +17,9 @@ import { uploadFailure } from "../src/shared/douyin-upload";
 
 const selection = (accountProduct: QianchuanProduct): QianchuanUploadSelection => ({ enabled: true, accountProduct });
 const temporaryRoots = new Set<string>();
+beforeEach(() => {
+  vi.spyOn(QianchuanBrowserManager.prototype, "prepareExisting").mockRejectedValue(new Error("Fixture account browser is closed"));
+});
 afterEach(async () => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();

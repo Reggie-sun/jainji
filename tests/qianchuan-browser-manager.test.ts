@@ -81,6 +81,19 @@ it("requires the selected account page and never probes another browser during p
   expect(await f.manager.prepare("123")).toBe("http://127.0.0.1:9300");
   expect(request.mock.calls.every(call => call[0] === "http://127.0.0.1:9300/json/list")).toBe(true);
 });
+it("prepares catalogs only from existing browsers without launching or creating profiles", async () => {
+  const f = await fixture();
+  await expect(f.manager.prepareExisting("123")).rejects.toThrow("先打开");
+  expect(f.launch).not.toHaveBeenCalled();
+  await expect(lstat(path.join(f.root, "account-browsers"))).rejects.toMatchObject({ code: "ENOENT" });
+  f.running.push({ profile: path.join(f.root, "account-browsers", "123"), endpoint: "http://127.0.0.1:9300" });
+  const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify([{ type: "page", url: "https://qianchuan.jinritemai.com/uni-prom?aavid=123" }])));
+  expect(await f.manager.prepareExisting("123")).toBe("http://127.0.0.1:9300");
+  expect(f.launch).not.toHaveBeenCalled(); expect(request).toHaveBeenCalledOnce();
+  f.running.push({ ...f.running[0], endpoint: "http://127.0.0.1:9301" });
+  await expect(f.manager.prepareExisting("123")).rejects.toThrow("不唯一");
+  expect(f.launch).not.toHaveBeenCalled();
+});
 
 async function originalFixture() {
   const f = await fixture(), original = path.join(f.root, "original");
@@ -93,6 +106,19 @@ async function originalFixture() {
   const request = vi.spyOn(globalThis, "fetch").mockImplementation(async input => new Response(JSON.stringify([{ type: "page", url: `https://qianchuan.jinritemai.com/home?aavid=${String(input).includes(":9421/") ? "123" : "456"}` }])));
   return { ...f, root, manager, original, browser, request, binding: path.join(root, "account-browser-bindings", "bindings.json") };
 }
+it("reads an unbound original browser without writing bindings or activating its window", async () => {
+  const f = await originalFixture();
+  expect(await f.manager.prepareExisting("123")).toBe(f.browser.endpoint);
+  expect(f.launch).not.toHaveBeenCalled();
+  await expect(lstat(f.binding)).rejects.toMatchObject({ code: "ENOENT" });
+  await f.manager.prepare("123");
+  f.browser.endpoint = "http://127.0.0.1:9430";
+  f.request.mockResolvedValue(new Response(JSON.stringify([{ type: "page", url: "https://qianchuan.jinritemai.com/home?aavid=123" }])));
+  expect(await f.manager.prepareExisting("123")).toBe(f.browser.endpoint);
+  f.browser.profileDirectory = "Default";
+  await expect(f.manager.prepareExisting("123")).rejects.toThrow("身份已变化");
+  expect(f.launch).not.toHaveBeenCalled();
+});
 
 it("prefers a verified original account over an app profile, persists only metadata and follows its new port after reload", async () => {
   const f = await originalFixture();

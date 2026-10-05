@@ -111,7 +111,7 @@ describe("explicit upload plan selection", () => {
     await Promise.resolve(); expect(settled).toBe(false);
     cleanup(); await rejection;
   });
-  it("shares simultaneous same-account reads without caching later refreshes", async () => {
+  it("shares display reads and forces a new read for explicit refresh", async () => {
     const f = await fixture();
     let release!: () => void;
     const held = new Promise<void>(resolve => { release = resolve; });
@@ -123,7 +123,66 @@ describe("explicit upload plan selection", () => {
     expect(await first).toEqual([plan()]); expect(await second).toEqual([plan()]);
     expect(f.readPlans).toHaveBeenCalledOnce();
     await f.service.listPlans(request);
+    expect(f.readPlans).toHaveBeenCalledOnce();
+    await f.service.listPlans({ ...request, refresh: true });
     expect(f.readPlans).toHaveBeenCalledTimes(2);
+  });
+  it("drains an active startup read and skips queued accounts when stopped", async () => {
+    const f = await fixture();
+    let cleanup!: () => void, observed!: AbortSignal;
+    const read = vi.fn(async (target: FrozenQianchuanAccount, signal: AbortSignal) => {
+      observed = signal;
+      await new Promise<void>(resolve => { cleanup = resolve; });
+      return [{ ...plan(), advertiserId: target.advertiserId }];
+    });
+    const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountConfigReader(), readPlans: read, loadBatch: async () => { throw new Error("no export"); }, browser: () => { throw new Error("no upload"); } });
+    await service.restoreConfig();
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    let settled = false;
+    const stop = service.stop().then(result => { settled = true; return result; });
+    expect(observed.aborted).toBe(true);
+    await Promise.resolve(); expect(settled).toBe(false);
+    cleanup(); expect(await stop).toBe(true);
+    expect(service.busy).toBe(false); expect(read).toHaveBeenCalledOnce();
+    read.mockResolvedValue([plan()]);
+    expect(await service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000" })).toEqual([plan()]);
+    expect(read).toHaveBeenCalledTimes(2);
+    expect(f.store.intents()).toHaveLength(0);
+  });
+  it("prepares account catalogs on restore before a selector requests them", async () => {
+    const f = await fixture();
+    const read = vi.fn(async (target: FrozenQianchuanAccount) => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const accounts = new QianchuanAccountConfigReader(), prepare = vi.spyOn(accounts, "prepareCatalog");
+    const service = new DouyinUploadService(f.store, { accounts, readPlans: read, loadBatch: async () => { throw new Error("no export"); }, browser: () => { throw new Error("no upload"); } });
+    await service.restoreConfig();
+    await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(6));
+    await vi.waitFor(() => expect(service.busy).toBe(false));
+    expect(await service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000" })).toEqual([plan()]);
+    expect(read).toHaveBeenCalledTimes(6);
+    expect(prepare).toHaveBeenCalledTimes(6);
+    await service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000", refresh: true });
+    expect(read).toHaveBeenCalledTimes(7);
+    expect(prepare).toHaveBeenCalledTimes(7);
+    await expect(service.preflight(selection(), 1)).resolves.toBeDefined();
+    expect(read).toHaveBeenCalledTimes(8);
+  });
+  it("expires display catalogs and isolates config, endpoint and advertiser identities", async () => {
+    const f = await fixture(), target = (await f.service.preflight({ enabled: true, accountProduct: "眼贴" }, 1))!.target;
+    let time = 0;
+    const read = vi.fn(async (value: FrozenQianchuanAccount) => [{ ...plan(), advertiserId: value.advertiserId }]);
+    const reads = new QianchuanPlanReads(read, () => time);
+    const first = await reads.catalog(target);
+    first[0]!.name = "changed by consumer";
+    expect((await reads.catalog(target))[0]!.name).toBe(plan().name);
+    expect(read).toHaveBeenCalledOnce();
+    await reads.request(target); expect(read).toHaveBeenCalledTimes(2);
+    time = 5 * 60_000;
+    await reads.catalog(target); expect(read).toHaveBeenCalledTimes(3);
+    for (const changed of [{ ...target, configDigest: "changed" }, { ...target, cdpEndpoint: "http://127.0.0.1:12000" }, { ...target, advertiserId: "1001" }]) await reads.catalog(changed);
+    expect(read).toHaveBeenCalledTimes(6);
+    read.mockRejectedValueOnce(new Error("refresh failed"));
+    await expect(reads.catalog(target, undefined, true)).rejects.toThrow("refresh failed");
+    await reads.catalog(target); expect(read).toHaveBeenCalledTimes(8);
   });
   it("keeps legacy selection compatible while rejecting duplicate or cross-advertiser catalogs", async () => {
     expect(QianchuanUploadSelectionSchema.parse({ enabled: true, accountProduct: "眼贴" }).plan).toBeUndefined();

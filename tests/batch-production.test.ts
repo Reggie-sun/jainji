@@ -711,7 +711,7 @@ describe("cross-template batch admission", () => {
 
 // Regression: ISSUE-003 — selecting a template opened the Qianchuan catalog.
 // Report: .agent/harness/runs/20261005-qa/batch-plan-report.md
-describe("batch plan read intent", () => {
+describe("batch automatic plan preparation", () => {
   let browser: Browser;
   beforeAll(async () => {
     browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
@@ -752,41 +752,41 @@ describe("batch plan read intent", () => {
   }
   const requests = (page: Page) => page.evaluate(() => (window as any).catalogRequests.length);
   const row = (page: Page) => page.locator('[aria-label="蝴蝶贴制作设置"]');
-  async function choose(page: Page) {
-    await page.evaluate(() => {
-      const request = (window as any).catalogRequests.at(-1);
+  async function choose(page: Page, advertiserId = "1000") {
+    await page.evaluate(advertiserId => {
+      const request = (window as any).catalogRequests.filter((request: any) => request.input.expectedAdvertiserId === advertiserId).at(-1);
       request.resolve(["9001", "9002"].map(adId => ({ advertiserId: request.input.expectedAdvertiserId, adId, name: "计划 " + adId })));
-    });
+    }, advertiserId);
     await row(page).getByLabel("上传计划", { exact: true }).selectOption("9002");
   }
-  it("does not read plans when templates are checked, unchecked, refreshed or revisited", async () => {
+  it("requests prepared plans before any click and does not reread when templates are checked", async () => {
     const page = await panel();
     try {
       expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(2);
       expect(await page.getByRole("button", { name: "读取上传计划", exact: true }).count()).toBe(0);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       for (const name of ["蝴蝶贴", "最新眼贴"]) await page.getByRole("checkbox", { name: `选择模板 ${name}`, exact: true }).check();
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-      expect(await requests(page)).toBe(0);
+      expect(await requests(page)).toBe(2);
       expect(await row(page).getByRole("checkbox", { name: "蝴蝶贴开启千川上传", exact: true }).isChecked()).toBe(true);
+      await choose(page);
+      await page.evaluate(() => (window as any).catalogRequests[1].resolve([{advertiserId:"1001",adId:"9001",name:"计划 9001"}]));
       await page.getByRole("button", { name: "刷新模板", exact: true }).click();
       await page.getByRole("button", { name: "切换页面", exact: true }).click();
       await page.getByRole("button", { name: "切换页面", exact: true }).click();
       const checkbox = page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true });
       await checkbox.uncheck(); await checkbox.check();
       expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(2);
-      expect(await requests(page)).toBe(0);
-      expect(await page.getByRole("button", { name: "开始批量制作", exact: true }).isDisabled()).toBe(true);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
+      expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
     } finally { await page.close(); }
   });
-  it.each(["Enter", " ", "ArrowDown"])("reads on %s and preserves the chosen plan across reselection", async key => {
+  it("preserves explicit choices across reselection and refreshes only on request", async () => {
     const page = await panel();
     try {
       const checkbox = page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true });
       const plan = row(page).getByLabel("上传计划", { exact: true });
-      await plan.focus();
-      expect(await requests(page)).toBe(0);
-      await plan.press(key);
-      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       expect(await page.getByRole("button", { name: "开始批量制作", exact: true }).isDisabled()).toBe(true);
       await choose(page);
       await checkbox.check();
@@ -795,11 +795,12 @@ describe("batch plan read intent", () => {
       await row(page).getByLabel("上传计划", { exact: true }).waitFor();
       await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="蝴蝶贴制作设置"] [aria-label="上传计划"]')?.value === "9002");
       expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
-      expect(await requests(page)).toBe(1);
+      expect(await requests(page)).toBe(2);
       await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
       expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].douyinUpload)).toEqual({ enabled: true, accountProduct: "眼贴", plan: { advertiserId: "1000", adId: "9002", name: "计划 9002" } });
       await row(page).getByRole("button", { name: "刷新计划", exact: true }).click();
-      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
+      expect(await page.evaluate(() => (window as any).catalogRequests[2].input.refresh)).toBe(true);
       await checkbox.uncheck();
       expect(await plan.count()).toBe(1);
       expect(await page.evaluate(() => (window as any).cancelledRequests.length)).toBe(0);
@@ -808,24 +809,21 @@ describe("batch plan read intent", () => {
       await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
       await upload.check();
       await plan.waitFor();
-      expect(await requests(page)).toBe(2);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 4);
     } finally { await page.close(); }
   });
-  it("requires another explicit read after switching the upload account", async () => {
+  it("shares the new account read and clears the old choice when switching accounts", async () => {
     const page = await panel();
     try {
       const plan = row(page).getByLabel("上传计划", { exact: true });
-      await plan.click();
-      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await choose(page);
       await row(page).getByLabel("蝴蝶贴上传账号", { exact: true }).selectOption("肥皂");
       await plan.waitFor();
-      await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
-      expect(await requests(page)).toBe(1);
+      expect(await requests(page)).toBe(2);
       expect(await plan.inputValue()).toBe("");
-      await plan.click();
-      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       expect(await page.evaluate(() => (window as any).catalogRequests[1].input.expectedAdvertiserId)).toBe("1001");
-      await choose(page);
+      await choose(page, "1001");
       expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
     } finally { await page.close(); }
   });
@@ -833,19 +831,18 @@ describe("batch plan read intent", () => {
     const page = await panel();
     try {
       const plan = row(page).getByLabel("上传计划", { exact: true });
-      await plan.click();
-      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       await page.evaluate(() => (window as any).catalogRequests[0].reject(new Error("Chrome 登录已失效")));
       await row(page).getByRole("alert").getByText("Chrome 登录已失效", { exact: true }).waitFor();
       expect(await plan.isDisabled()).toBe(true);
       await row(page).getByRole("button", { name: "刷新计划", exact: true }).click();
-      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
       await page.getByRole("button", { name: "切换页面", exact: true }).click();
-      await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
+      await page.waitForFunction(() => (window as any).cancelledRequests.length === 2);
       await page.getByRole("button", { name: "切换页面", exact: true }).click();
       await plan.waitFor();
-      expect(await plan.isDisabled()).toBe(false);
-      expect(await requests(page)).toBe(2);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 5);
+      expect(await plan.isDisabled()).toBe(true);
     } finally { await page.close(); }
   });
 });
