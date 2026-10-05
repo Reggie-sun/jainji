@@ -3,7 +3,9 @@ import type { SelectModel } from "../shared/connections.js";
 import { discoveryHash } from "./source-fact-discovery-evidence.js";
 import type { VisionRole, VisionRoute } from "./shape-cover-vision-router.js";
 
-// 2026-10-05 explicit user correction to the currently available catalog models.
+export const HYBRID_REQUESTED_GPT_MODELS = Object.freeze({ LUNA: "gpt-6-luna", SOL: "gpt-6.1-sol" });
+// Explicit Hybrid authorization: H1 conversation 01a10b87-61f2-7da2-ab53-4b51c798e728, user reply line 1131.
+// These alternates are not inferred from the catalog; requested exact models take precedence when available.
 export const HYBRID_GPT_MODELS = Object.freeze({ LUNA: "gpt-5.6-luna", SOL: "gpt-5.6-sol" });
 function unavailable(provider: string, model: string): VisionRoute {
   return { provider, model, imageCapability: "MODEL_IMAGE_CAPABILITY_UNAVAILABLE", verifyFresh: async () => {},
@@ -55,6 +57,10 @@ export async function probeMiniMaxVisionRoute(connections: ModelConnections, sel
 }
 
 export function createHybridVisionRoutes(connections: ModelConnections, minimax?: VisionRoute): Record<VisionRole, VisionRoute> {
-  return { LUNA: chatGPTRoute(connections, HYBRID_GPT_MODELS.LUNA), SOL: chatGPTRoute(connections, HYBRID_GPT_MODELS.SOL),
+  const select = (role: "LUNA" | "SOL") => {
+    const requested = chatGPTRoute(connections, HYBRID_REQUESTED_GPT_MODELS[role]);
+    return requested.imageCapability === "AVAILABLE" ? requested : chatGPTRoute(connections, HYBRID_GPT_MODELS[role]);
+  };
+  return { LUNA: select("LUNA"), SOL: select("SOL"),
     MINIMAX: minimax ?? unavailable("minimax", "UNAVAILABLE") };
 }

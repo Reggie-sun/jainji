@@ -7,16 +7,12 @@ AGENTS.md[SC9T]: F:规定项目权威、产品不变量、canonical owner及交�
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7T]: F:声明桌面依赖、验证脚本及Linux和Windows打包资源 | R:code:src/main/index.ts,code:src/main/preload.ts,code:src/renderer/main.tsx,code:src/main/nvenc-admission.ts | A:typecheck、Vitest、Harness与安装包入口；Playwright固定运行依赖external；proper-lockfile提供跨进程启动锁 | S:Windows包携带FFmpeg与字体；Codex平台二进制解包；不下载另一套Chrome，不包含AOCI运行状态
-shape-cover-vision-packet.ts[AA7S]: F:组装绑定源时间像素和候选的有界视觉图片包 | R:code:src/main/source-fact-discovery-evidence.ts,code:src/main/shape-cover-stationary-discovery.ts,code:src/main/shape-cover-alpha.ts | A:真实M1重放校验候选；取首中尾full context及crop；最多3组件12图32MiB；preview要求成对原图和覆盖图 | S:不发送路径或原视频；未采样时间不获证明；packet无mask或publication authority
-shape-cover-vision-provider.ts[IA7T]: F:将Hybrid视觉角色接到现有模型连接与能力核验 | R:code:src/main/model-connections.ts,code:src/main/agent-provider.ts,code:src/main/shape-cover-vision-router.ts | A:用户授权GPT5.6 Luna与Sol；MiniMax官方已选连接单次图片探测；前后校验连接；缺能力显式UNAVAILABLE | S:不改持久模型选择，不换型号，不复制HTTP或凭据存储；开发角色不授产品activation
-shape-cover-vision-router.ts[AA7S]: F:编排Hybrid语义初筛升级和独立预览复核并保存回执 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-schema.ts,code:src/main/shape-cover-vision-provider.ts | A:每source Luna1 Sol2 MiniMax1；严格JSON绑定packet；取消超时消费已发请求；MiniMax高风险FAIL不能被Sol覆盖 | S:无多数投票或错误自动fallback；模型只判语义，不签像素coverage或导出准入
-shape-cover-vision-schema.ts[DA7T]: F:校验候选语义分组及四项预览判断的严格响应 | R:code:src/main/shape-cover-vision-router.ts | A:精确packet和candidate集合；确认组一一覆盖；未知字段或编造ID拒绝；UNKNOWN保留；高风险冲突UNSAFE | S:confidence不授安全；不接受模型mask或坐标；preview PASS不代替确定性100%coverage
 tsconfig.json[AB5T]: F:严格TypeScript编译约束并包含src tests和Vite配置 | R:code:src/main/index.ts | A:类型检查配置不代表运行行为 | S:noEmit且模块按Bundler解析
 vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | R:code:src/renderer/main.tsx | A:前端构建入口 | S:相对base适配本地Electron加载
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明代码媒体治理检查与任务路径路由 | R:code:src/harness/types.ts,code:src/harness/routing.ts,code:src/harness/code.ts,code:src/harness/cli.ts | A:v2按scope路由必需并集；上传含计划和浏览器测试；静态研究含actual-M1反例；Hybrid含vision单元和真实M1图片映射测试 | S:必需skip或缺证据非PASS，回执不授生产或人工验收
+policy.json[FQ7L]: F:声明代码媒体治理检查与任务路径路由 | R:code:src/harness/types.ts,code:src/harness/routing.ts,code:src/harness/code.ts,code:src/harness/cli.ts | A:v2按owned scope路由必需并集；Hybrid覆盖H1图片绑定及H2语义分组；上传、静态研究和生产边界保留对应回归 | S:必需skip或缺证据非PASS；回执不授产品或人工验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -152,6 +148,12 @@ qianchuan-plan-materials.ts[AR8T]: F:持久约束计划三类清理意图并记�
 source-mask-static-proof-v1.ts[DB8S]: F:按不可变v1合同核验历史confirmed-target静态proof归档 | R:code:src/main/source-mask-static-geometry-v1.ts,code:src/shared/source-sticker-knowledge.ts | A:旧PNG及mask/confirmation/geometry字节；固定method与完整集合；PNG显式保留8MiB接受域 | S:v1已知抽样首尾和union geometry限制，仅历史诊断；不读当前source/runtime，不提供新issuer
 qianchuan-plan-reads.ts[AW6T]: F:合并冻结账号的在途计划读取并保留全局串行 | R:code:src/main/qianchuan-account-config.ts,code:src/shared/qianchuan-plan-selection.ts | A:按槽位广告主CDP和配置摘要共享；逐使用者订阅取消；末位取消中止，排队项启动前拒绝；读取60秒有界，结果验身份并独立复制，结束移除 | S:不缓存已完成列表；末位取消活动读须等待原读清理才释放调用者浏览器保护
 
+
+shape-cover-vision-packet.ts[AA7S]: F:组装绑定源时间像素和M1候选的有界视觉图片包 | R:code:src/main/source-fact-discovery-evidence.ts,code:src/main/shape-cover-stationary-discovery.ts,code:src/main/shape-cover-alpha.ts | A:重放M1仅接CANDIDATE；三时间点full context及同帧crop；最多3组件12图32MiB；preview成对原图和覆盖图 | S:不发送路径或原视频；UNKNOWN不升级；采样不授全时域证明
+shape-cover-vision-provider.ts[IA7T]: F:将Hybrid视觉角色接到现有模型连接与能力核验 | R:code:src/main/model-connections.ts,code:src/main/agent-provider.ts,code:src/main/shape-cover-vision-router.ts | A:优先exact GPT6 Luna及6.1 Sol；缺席时只用H1真实用户授权的5.6；MiniMax官方选中连接单次图片核验；前后验证连接 | S:无额外替代授权；不改持久模型选择；不复制HTTP或凭据存储
+shape-cover-vision-router.ts[AA7S]: F:编排有界Hybrid视觉请求与严格解析回执 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-schema.ts,code:src/main/shape-cover-vision-provider.ts | A:每source Luna4 Sol2 MiniMax1；H2 v2 prompt附全候选框和不可信Luna摘要；回执绑定模型packet候选图片版本；失败取消消费请求 | S:无自动重试或多数投票；H1及preview兼容；视觉不签像素coverage
+shape-cover-vision-schema.ts[DA7T]: F:校验候选语义分组及四项预览判断的严格响应 | R:code:src/main/shape-cover-vision-router.ts | A:绑定packet和完整candidate集合；confirmed组恰一次；拒绝编造ID重复或缺项；H2支持跨包疑似关联标记 | S:confidence不授安全；不接模型mask坐标；preview不代替coverage
+shape-cover-vision-semantic.ts[DA7S]: F:完整确认M1候选并形成source-bound逻辑语义目标集合 | R:code:src/main/shape-cover-vision-packet.ts,code:src/main/shape-cover-vision-router.ts,code:src/main/shape-cover-stationary-discovery.ts | A:最多12候选；稳定排序原子空间cluster装3成员包；Luna4及Sol2；逐候选confirmed rejected unresolved分区；深冻结摘要回执并verifyFresh | S:空间仅packing提示；跨包疑似关联复杂cluster动变或分歧关闭；漏检UNSAFE；无mask知识发布
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限

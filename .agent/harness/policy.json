@@ -279,7 +279,9 @@
       ],
       "testFiles": [
         "tests/shape-cover-vision.test.ts",
-        "tests/shape-cover-vision-packet.integration.test.ts"
+        "tests/shape-cover-vision-packet.integration.test.ts",
+        "tests/shape-cover-vision-semantic.test.ts",
+        "tests/shape-cover-vision-semantic.integration.test.ts"
       ],
       "timeoutMs": 180000
     },
@@ -1174,7 +1176,11 @@
       "paths": [
         "src/main/shape-cover-vision-*.ts",
         "tests/shape-cover-vision.test.ts",
-        "tests/shape-cover-vision-packet.integration.test.ts"
+        "tests/shape-cover-vision-packet.integration.test.ts",
+        "tests/shape-cover-vision-semantic.test.ts",
+        "tests/shape-cover-vision-semantic.integration.test.ts",
+        "scripts/shape-cover-hybrid-*.ts",
+        "scripts/shape-cover-hybrid-fixtures.py"
       ],
       "checkIds": [
         "typecheck",

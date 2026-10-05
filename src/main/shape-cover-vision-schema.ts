@@ -24,6 +24,7 @@ export const CandidateDecisionSchema = z.object({
     sameLogicalOverlay: z.union([z.boolean(), z.literal("UNCERTAIN")]),
   }).strict()).max(3),
   undetectedOverlaySuspected: z.boolean(),
+  crossBatchGroupingSuspected: z.boolean().optional(), // Required by H2; optional for historical H1 responses.
 }).strict();
 const Check = z.enum(["PASS", "FAIL", "UNKNOWN"]);
 export const PreviewDecisionSchema = z.object({

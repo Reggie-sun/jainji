@@ -10,6 +10,8 @@
 
 当前应用ChatGPT catalog中的gpt-5.6-luna、gpt-5.6-sol均声明text/image；最初要求的gpt-6-luna/gpt-6.1-sol未在catalog出现。用户根据UI与audit明确授权Hybrid使用当前5.6两条路线，未自动替换。两者后续同包真实调用成功，连接可用与exact model可用分别记录。
 
+H2核查补充：原始会话 `01a10b87-61f2-7da2-ab53-4b51c798e728` 的user message（原rollout第1131行）对exact GPT路线问题明确答复“使用当前可用的 gpt-5.6-luna / gpt-5.6-sol”。这是实际授权证据，不是从catalog推定。H2再次只读catalog仍缺原指定GPT6型号，详见[H2 record](shape-matched-cover-hybrid-h2-record.md)。
+
 MiniMax来自当前应用ConnectionStore，exact model MiniMax-M3，official api.minimaxi.com，Responses协议。官方模型说明确认native multimodality：[MiniMax M3](https://www.minimax.io/models/text/m3)。catalog只有model ID而没有image modalities，不能以catalog或文字连接测试冒充图片能力；实际三色PNG探测返回red/green/blue，随后真实candidate packet成功。
 
 复用AgentProvider、ModelConnections.reviewProvider、现有ChatGPT schema与API transport/scheduler；未复制HTTP client、key store或模型catalog。临时role providers不修改用户持久模型选择。受管Kimi deep只读审计已核对12个provider/image/request owners，canonical invocation 10d8e1ca-e506-4964-aac0-3d87f45d921d，3个engineering wire requests。Parent拒绝将其JPEG-only猜测应用于实际可用PNG codec，也未按建议切换已验证的Responses协议。
@@ -24,7 +26,7 @@ Luna batch first pass；UNKNOWN、风险或复杂分组升Sol；明确motion/额
 
 ## Development Diagnostic
 
-授权233s源，24观察点，当前M1有1个CANDIDATE；发送同一个packet的6张首中尾context/crop，packetDigest e75dede308e306a6034b3a41a2778eee0371cb425168d3bcb8c244620594f90b。
+授权233s源，24观察点，发送1个CANDIDATE、6张首中尾context/crop，packetDigest e75dede308e306a6034b3a41a2778eee0371cb425168d3bcb8c244620594f90b。H2复核发现原record把“发送1个”误写成“M1只有1个”；原development-diagnostic.json实际记录8个CANDIDATE，原脚本按stablePixels选最大组件。H2同sourceKey重放为8个CANDIDATE、36个UNKNOWN；历史请求仍仅单候选，不能证明完整candidate-set语义。
 
 | Route | Exact Model | Structured Result |
 | --- | --- | --- |

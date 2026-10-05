@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { parseCandidateDecision, parsePreviewDecision, previewVerdict, resolvePreviewReviews } from "../src/main/shape-cover-vision-schema.js";
 import { createVisionPacket, VISION_PACKET_LIMITS, type VisionImageInput } from "../src/main/shape-cover-vision-packet.js";
 import { ShapeCoverVisionSession, type VisionRoute } from "../src/main/shape-cover-vision-router.js";
-import { createHybridVisionRoutes, HYBRID_GPT_MODELS } from "../src/main/shape-cover-vision-provider.js";
+import { createHybridVisionRoutes, HYBRID_GPT_MODELS, HYBRID_REQUESTED_GPT_MODELS } from "../src/main/shape-cover-vision-provider.js";
 import type { ModelConnections } from "../src/main/model-connections.js";
 
 const packetDigest = "a".repeat(64);
@@ -68,7 +68,7 @@ describe("Hybrid bounded image packets", () => {
     expect(p.content().filter(i => i.type === "image_url")).toHaveLength(6);
     p.manifest.images[0].pts = 500;
     expect(p.manifest.images[0].pts).toBe(0);
-    const b = packet(); b.images[0].pts++;
+    const b = packet(); b.images[0].pts++; b.images[1].pts++;
     expect(b.build().packetDigest).not.toBe(p.packetDigest);
   });
   it("rejects oversized image/count/aggregate, wrong source/crop and missing context or paired preview", () => {
@@ -85,6 +85,16 @@ describe("Hybrid bounded image packets", () => {
 });
 
 describe("Hybrid finite role routing", () => {
+  it("prefers requested exact GPT6 IDs, using only the explicitly authorized Hybrid alternates when absent", () => {
+    const models: { model: string; defaultReasoningEffort: string }[] = Object.values(HYBRID_REQUESTED_GPT_MODELS).map(model => ({ model, defaultReasoningEffort: "high" }));
+    const connections = { chatgpt: { assertModel: (model: string) => { if (!models.some(m => m.model === model)) throw Error("absent"); },
+      status: () => ({ models, email: "fixture" }) }, reviewProvider: () => ({ completeStructuredVision: vi.fn() }) } as unknown as ModelConnections;
+    expect(createHybridVisionRoutes(connections).LUNA.model).toBe("gpt-6-luna");
+    expect(createHybridVisionRoutes(connections).SOL.model).toBe("gpt-6.1-sol");
+    models.splice(0, 2, ...Object.values(HYBRID_GPT_MODELS).map(model => ({ model, defaultReasoningEffort: "high" })));
+    expect(createHybridVisionRoutes(connections).LUNA.model).toBe("gpt-5.6-luna");
+    expect(createHybridVisionRoutes(connections).SOL.model).toBe("gpt-5.6-sol");
+  });
   it("escalates Luna UNKNOWN to Sol, preserving structured receipts and source bounds", async () => {
     const p = packet().build(), r = routes((role, digest) => ({ ...candidate(), packetDigest: digest,
       decisions: role === "SOL" ? [{ ...candidate("CONFIRM").decisions[0], temporalState: "STABLE" }] : candidate().decisions,
@@ -93,7 +103,10 @@ describe("Hybrid finite role routing", () => {
     expect((await session.classify(p, new AbortController().signal)).decisions[0].decision).toBe("CONFIRM");
     expect(session.modelRequests).toBe(2); expect(session.receipts.map(x => x.role)).toEqual(["LUNA", "SOL"]);
     expect(session.receipts.every(x => x.packetDigest === p.packetDigest && x.requestId === null)).toBe(true);
-    await expect(session.classify(p, new AbortController().signal)).rejects.toThrow(/BOUND/);
+    await session.classify(p, new AbortController().signal);
+    await session.request("LUNA", p, new AbortController().signal);
+    await session.request("LUNA", p, new AbortController().signal);
+    await expect(session.request("LUNA", p, new AbortController().signal)).rejects.toThrow(/BOUND/);
     const history = session.receipts; history[0].model = "other"; expect(session.receipts[0].model).toBe(HYBRID_GPT_MODELS.LUNA);
   });
   it("routes MiniMax preview review and fails high-risk disagreement without majority voting", async () => {
@@ -138,6 +151,8 @@ describe("Hybrid finite role routing", () => {
     const timed = new ShapeCoverVisionSession(sourceKey, r, 5);
     await expect(timed.request("LUNA", packet().build(), new AbortController().signal)).rejects.toThrow(/TIMEOUT/);
     expect(timed.modelRequests).toBe(1);
+    for (let n = 1; n < 4; n++) await expect(timed.request("LUNA", packet().build(), new AbortController().signal)).rejects.toThrow(/TIMEOUT/);
+    expect(timed.modelRequests).toBe(4);
     await expect(timed.request("LUNA", packet().build(), new AbortController().signal)).rejects.toThrow(/BOUND/);
   });
 });

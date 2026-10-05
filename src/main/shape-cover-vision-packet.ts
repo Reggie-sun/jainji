@@ -54,10 +54,11 @@ export function createVisionPacket(input: Omit<z.infer<typeof Manifest>, "versio
   }
   if (manifest.kind === "CANDIDATE") {
     const context = manifest.images.filter(i => i.kind === "CONTEXT");
-    if (context.length < 1 || context.length > 3 || manifest.images.some(i => !["CONTEXT", "CROP"].includes(i.kind))) throw Error("VISION_CONTEXT_REQUIRED");
+    if (context.length !== 3 || new Set(context.map(i => i.ordinal)).size !== 3 || manifest.images.some(i => !["CONTEXT", "CROP"].includes(i.kind))) throw Error("VISION_CONTEXT_REQUIRED");
     for (const id of ids) {
       const crops = manifest.images.filter(i => i.kind === "CROP" && i.candidateIds.includes(id));
       if (crops.length < 3 || crops.length > 6 || new Set(crops.map(i => i.ordinal)).size !== crops.length) throw Error("VISION_TEMPORAL_CROPS_REQUIRED");
+      if (context.some(i => !crops.some(c => c.ordinal === i.ordinal && c.pts === i.pts && c.pixelSha256 === i.pixelSha256))) throw Error("VISION_TEMPORAL_CROPS_REQUIRED");
       const box = manifest.candidates.find(c => c.candidateId === id)!.sourceBox;
       if (crops.some(i => JSON.stringify(i.crop) !== JSON.stringify(box))) throw Error("VISION_CROP_MAPPING");
     }
@@ -84,7 +85,7 @@ export async function buildVisionCandidatePacket(evidence: DiscoveryEvidence, ca
   const result = await discoverStationaryTargets(evidence, signal);
   const candidates = candidateIds.map(candidateId => {
     const component = result.components.find(c => c.id === candidateId);
-    if (!component) throw Error("VISION_CANDIDATE_MISMATCH");
+    if (!component || component.state !== "CANDIDATE") throw Error("VISION_CANDIDATE_MISMATCH");
     return { candidateId, gridBox: component.gridBox, sourceBox: component.sourceBox, signals: component.signals };
   });
   const images: VisionImageInput[] = [];

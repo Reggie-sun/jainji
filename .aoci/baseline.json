@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-05T11:00:57Z",
+  "updated_at": "2026-10-05T12:04:29Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "f731a5116a1770aa186268f30923f2566c7e02e4440bfa01b15ca061c4ead208",
-      "size": 36852,
-      "normalized_sha256": "f731a5116a1770aa186268f30923f2566c7e02e4440bfa01b15ca061c4ead208"
+      "sha256": "2e96281c85b88dacc1a774f763bef9a8e3d63642191d8d122058f315be300e1c",
+      "size": 37181,
+      "normalized_sha256": "2e96281c85b88dacc1a774f763bef9a8e3d63642191d8d122058f315be300e1c"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "6d3b7c14a954c2229ff738d9afda8533ef325ec4f07588201690bc1e8357991a",
-      "size": 80300,
-      "normalized_sha256": "6d3b7c14a954c2229ff738d9afda8533ef325ec4f07588201690bc1e8357991a"
+      "sha256": "b484a1355560cf8d99ce57077e6b65071e5c6004d3404d4e0b6c4717c80ab29f",
+      "size": 80603,
+      "normalized_sha256": "b484a1355560cf8d99ce57077e6b65071e5c6004d3404d4e0b6c4717c80ab29f"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1543,24 +1543,24 @@
       "normalized_sha256": "90eb6df69f20304299fec38c4f601a93b4dde995f0a1993669ce5a1603acd2c6"
     },
     "src/main/shape-cover-vision-packet.ts": {
-      "sha256": "bc82742121298adb743b78f5d6859244d13494640e5ce898d14c5452acf0cfee",
-      "size": 8437,
-      "normalized_sha256": "bc82742121298adb743b78f5d6859244d13494640e5ce898d14c5452acf0cfee"
+      "sha256": "eabf32aa20574a769ee801db69a3cdd63e8f81b952858a20de0ee041ba2fc9d9",
+      "size": 8676,
+      "normalized_sha256": "eabf32aa20574a769ee801db69a3cdd63e8f81b952858a20de0ee041ba2fc9d9"
     },
     "src/main/shape-cover-vision-provider.ts": {
-      "sha256": "ae8df0f8c49c83489e19f87f215b5da1e211f0d81a9ed143f83b1ac945c7578a",
-      "size": 4414,
-      "normalized_sha256": "ae8df0f8c49c83489e19f87f215b5da1e211f0d81a9ed143f83b1ac945c7578a"
+      "sha256": "ca8c24985907c2aac001822bc7af0f461087dde084c71e774387eb9b13192e62",
+      "size": 4837,
+      "normalized_sha256": "ca8c24985907c2aac001822bc7af0f461087dde084c71e774387eb9b13192e62"
     },
     "src/main/shape-cover-vision-router.ts": {
-      "sha256": "0470df125c0d4d24c4a93d89f3d0026fe27501bf27988be642c9caafe75b58ec",
-      "size": 9586,
-      "normalized_sha256": "0470df125c0d4d24c4a93d89f3d0026fe27501bf27988be642c9caafe75b58ec"
+      "sha256": "9588fb6b94ff71ee2c79d5a98036c1edf6f0132f9d0c9b74e3cbf7ca3926f959",
+      "size": 12271,
+      "normalized_sha256": "9588fb6b94ff71ee2c79d5a98036c1edf6f0132f9d0c9b74e3cbf7ca3926f959"
     },
     "src/main/shape-cover-vision-schema.ts": {
-      "sha256": "072055856b0468e4db5150e42bd80d780c5797ae509797f18a83132737b6f4cb",
-      "size": 4282,
-      "normalized_sha256": "072055856b0468e4db5150e42bd80d780c5797ae509797f18a83132737b6f4cb"
+      "sha256": "fe620e723faadab5cb7939d388bddd5365ffed249ab575f6f22a1e7b77e496ab",
+      "size": 4394,
+      "normalized_sha256": "fe620e723faadab5cb7939d388bddd5365ffed249ab575f6f22a1e7b77e496ab"
     },
     "src/main/source-fact-ai-compare.ts": {
       "sha256": "22b979525a59b29099c4e8cb1943f525705a4b369e0b53356a58d4b8a43da7f9",
@@ -2962,6 +2962,11 @@
       "sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b",
       "size": 8075,
       "normalized_sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b"
+    },
+    "src/main/shape-cover-vision-semantic.ts": {
+      "sha256": "e7a4dac97f048ab0feb8780fb204b8a5d60d080b51944752041d672f2c53bfc5",
+      "size": 15243,
+      "normalized_sha256": "e7a4dac97f048ab0feb8780fb204b8a5d60d080b51944752041d672f2c53bfc5"
     }
   },
   "managed_scope": {
