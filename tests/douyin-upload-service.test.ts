@@ -162,6 +162,45 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  it("uses one fresh ledger snapshot for each status without exposing or caching mutable records", async () => {
+    const f = await fixture(); await f.authorize();
+    const current = await f.createBatch(["current"]), other = await f.createBatch(["other"]);
+    for (const batch of [current, other]) { await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!); }
+    const records = vi.spyOn(f.store, "tasks");
+    const first = f.service.status(current.projectId);
+    expect(records).toHaveBeenCalledTimes(1);
+    expect(first.tasks).toHaveLength(1);
+    expect(first.tasks[0].project_id).toBe(current.projectId);
+    const taskId = first.tasks[0].upload_task_id, fileName = first.tasks[0].file_name;
+    first.tasks[0].file_name = "caller mutation"; first.batches![0].taskIds.length = 0;
+    const task = f.store.task(taskId)!;
+    await f.store.saveTask({ ...task, result: { ...task.result, state: "CANCELLED", retryable: false } });
+    records.mockClear();
+    const next = f.service.status(current.projectId);
+    expect(records).toHaveBeenCalledTimes(1);
+    expect(next.tasks[0]).toMatchObject({ state: "CANCELLED", file_name: fileName });
+    expect(next.batches![0].taskIds).toEqual([taskId]);
+    expect(f.events).toEqual([]);
+  });
+
+  it("reuses the status snapshot for a pause caused by UNKNOWN in another project", async () => {
+    const f = await fixture(); await f.authorize();
+    const old = await f.createBatch(["old unknown"]); await f.register(old);
+    f.port.ready = async () => { throw new Error("fixture unknown page"); };
+    await f.service.enqueueFinalArtifact(old.identities[0]!); await f.service.runPending();
+    const current = await f.createBatch(["current pending"]); await f.register(current);
+    await f.service.enqueueFinalArtifact(current.identities[0]!);
+    const before = [...f.events], records = vi.spyOn(f.store, "tasks");
+    const status = f.service.status(current.projectId);
+    expect(records).toHaveBeenCalledTimes(1);
+    expect(status.ready).toBe(false);
+    expect(status.message).toContain(old.projectId);
+    expect(status.message).toContain("结果未知的文件禁止重传");
+    expect(status.tasks).toHaveLength(1);
+    expect(status.tasks[0].upload_outcome).toBe("NOT_SELECTED");
+    expect(f.events).toEqual(before);
+  });
+
   it("stays busy through queued artifact admission and returns idle after rejection", async () => {
     const f = await fixture(); await f.authorize();
     const batch = await f.createBatch(["busy admission"]); await f.register(batch);
