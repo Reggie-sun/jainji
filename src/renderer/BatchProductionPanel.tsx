@@ -55,15 +55,40 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
     productPrice: batchRequiresDisplayText(row) ? row.productPrice : "", coverEnabled: row.coverEnabled, displayMode: row.displayMode, mode: row.mode,
     ...(uploadSelection(row) ? { douyinUpload: uploadSelection(row) } : {}),
     ...(row.outputDirectory ? { outputDirectory: row.outputDirectory } : {}) }));
-  const valid = BatchProductionStartSchema.safeParse({ entries }).success && selected.every(row => {
+  const entryValidation = BatchProductionStartSchema.safeParse({ entries });
+  const rowErrors = selected.flatMap(row => {
     const quantity = calculateExactProductionQuantity(row.sourceCount, row.requestedCount);
-    const uploadAccount = (state.douyinUpload?.accounts ?? []).find(account => account.product === accountFor(row).accountProduct);
-    const uploadValid = !row.uploadEnabled || !state.douyinUpload?.config.enabled || !accountFor(row).error && row.uploadPlan?.advertiserId === uploadAccount?.advertiserId;
-    return !row.error && !batchLocalCoverError(row) && quantity && quantity.total <= MAX_AGENT_OUTPUTS && (!batchRequiresDisplayText(row) || RequiredProductPriceSchema.safeParse(row.productPrice).success) && uploadValid;
+    const account = accountFor(row);
+    const uploadAccount = (state.douyinUpload?.accounts ?? []).find(value => value.product === account.accountProduct);
+    const errors = [row.error, batchLocalCoverError(row)];
+    if (!quantity || quantity.total > MAX_AGENT_OUTPUTS) errors.push(`请填写有效条数，最多 ${MAX_AGENT_OUTPUTS} 条。`);
+    if (batchRequiresDisplayText(row) && !RequiredProductPriceSchema.safeParse(row.productPrice).success) errors.push(PRODUCT_PRICE_HELP);
+    if (row.uploadEnabled && state.douyinUpload?.config.enabled) {
+      if (account.error) errors.push(account.error);
+      else if (!row.uploadPlan) errors.push("尚未选择上传计划，请读取并选择计划，或关闭本项千川上传。");
+      else if (row.uploadPlan.advertiserId !== uploadAccount?.advertiserId) errors.push("上传计划不属于当前账号，请重新选择计划。");
+    }
+    return errors.filter((value): value is string => Boolean(value)).map(message => ({ name: row.name, message }));
   });
+  const valid = entryValidation.success && rowErrors.length === 0;
   const run = state.batchProduction;
   const running = run?.status === "running" || run?.status === "cancelling";
   const exporting = state.queue.batches.some(({ batch }) => batch.tasks.some(task => !["completed", "failed", "cancelled", "interrupted"].includes(task.status)));
+  const startReasons = [
+    ...(busy ? ["正在准备，请稍候。"] : []),
+    ...(loading ? ["正在读取模板，请稍候。"] : []),
+    ...(running ? ["当前批量制作尚未结束，请等待完成或停止整批。"] : []),
+    ...(exporting ? ["仍有视频等待导出或正在导出，请等待完成。"] : []),
+    ...(state.agentRun?.status === "running" ? ["当前 Agent 制作尚未结束，请等待完成。"] : []),
+    ...(!state.capabilities.ready ? ["本地制作环境尚未就绪，请检查页面顶部的环境提示。"] : []),
+    ...(state.batchProductionWarning ? [state.batchProductionWarning] : []),
+    ...(!selected.length ? ["请先选择要制作的模板。"] : rowErrors.map(({ name, message }) => `${name}：${message}`)),
+    ...(!entryValidation.success && selected.length && !rowErrors.length ? ["制作参数无效，请检查所选模板的设置。"] : []),
+  ];
+  const firstRowError = rowErrors[0];
+  const startHint = firstRowError && startReasons[0] === `${firstRowError.name}：${firstRowError.message}`
+    ? `${rowErrors.filter(error => error.message === firstRowError.message).length} 个模板：${firstRowError.message}`
+    : startReasons[0];
   const start = async () => {
     if (!valid || busy || running) return;
     setBusy(true); setError("");
@@ -155,7 +180,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
         </section>;
       })}
     </div>
-    <div className="step-footer"><div><strong>已选择 {selected.length} 个模板，共制作 {total} 条视频</strong><small>开始后仍可编辑下一批参数；当前任务保留开始时的设置。失败项不会自动重试。</small></div><button className="button primary" disabled={busy || loading || running || exporting || state.agentRun?.status === "running" || !state.capabilities.ready || Boolean(state.batchProductionWarning) || !valid} onClick={() => void start()}><Icon name="play" size={18} />{busy ? "正在准备…" : running ? "批量制作中" : "开始批量制作"}</button></div>
+    <div className="step-footer"><div style={{ minWidth: 0 }}><strong>已选择 {selected.length} 个模板，共制作 {total} 条视频</strong><small>开始后仍可编辑下一批参数；当前任务保留开始时的设置。失败项不会自动重试。</small></div><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>{startHint && <small id="batch-start-reasons" role="status" aria-live="polite" title={startReasons.join("\n")} style={{ color: "#b14444", marginTop: 0, maxWidth: 420, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{startHint}</small>}<button className="button primary" style={{ flexShrink: 0 }} aria-describedby={startHint ? "batch-start-reasons" : undefined} disabled={busy || loading || running || exporting || state.agentRun?.status === "running" || !state.capabilities.ready || Boolean(state.batchProductionWarning) || !valid} onClick={() => void start()}><Icon name="play" size={18} />{busy ? "正在准备…" : running ? "批量制作中" : "开始批量制作"}</button></div></div>
     {run && <section className="card batch-production-results" aria-label="批量制作进度"><div className="card-header"><h2>{running ? "批量制作进行中" : run.status === "interrupted" ? "上次批量制作已中断" : run.status === "cancelled" ? "批量制作已停止" : "批量制作结果"}</h2>{running && <button className="button secondary compact" disabled={stopping || run.status === "cancelling"} onClick={() => void stop()}>{stopping || run.status === "cancelling" ? "正在停止…" : "停止整批"}</button>}</div>{run.error && <p className="batch-error">{run.error}</p>}
       {run.jobs.map((job, index) => <div className="batch-result-row" key={job.id}><span className="batch-order">{index + 1}</span><div className="batch-result-info"><button type="button" className="text-button batch-result-name" aria-label={`查看 ${job.name} 作品`} onClick={() => setDetail({ runId: run.id, jobId: job.id, name: job.name })}>{job.name}</button><p>{job.completedCount} / {job.actualCount || job.requestedCount} 条完成{job.mode && ` · ${modeLabels[job.mode]}`} · 覆盖{job.coverEnabled ? "开启" : "关闭"} · 价格{job.displayMode === "full" ? "全程" : "前 5 秒"}</p>{job.error && <small className="batch-error">{job.error}</small>}{job.outputDirectory && <small>{job.outputDirectory}</small>}</div><span className={`status-tag ${job.status}`}>{labels[job.status]}</span>{running && ["queued", "preparing", "producing", "exporting"].includes(job.status) && <button type="button" className="text-button" aria-label={`取消 ${job.name} 制作`} disabled={stopping || run.status === "cancelling" || cancellingJobs.includes(job.id)} onClick={() => void cancelJob(run.id, job.id)}>{cancellingJobs.includes(job.id) ? "正在取消…" : "取消该项"}</button>}<button type="button" className="text-button" onClick={() => setDetail({ runId: run.id, jobId: job.id, name: job.name })}>查看作品</button>{job.completedTaskIds?.[0] && <div className="row-actions"><button className="text-button" onClick={() => void artifact(job.completedTaskIds![0], false)}>播放首条</button><button className="icon-button" aria-label={`打开 ${job.name} 成片文件夹`} onClick={() => void artifact(job.completedTaskIds![0], true)}><Icon name="folder" size={18} /></button></div>}</div>)}
     </section>}
