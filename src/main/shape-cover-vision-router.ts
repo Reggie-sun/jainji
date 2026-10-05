@@ -1,6 +1,6 @@
 import type { CompletionOptions, ModelMessage } from "./api-transport.js";
 import type { VisionPacket } from "./shape-cover-vision-packet.js";
-import { parseCandidateDecision, parsePreviewDecision, previewVerdict, resolvePreviewReviews, type CandidateDecision, type PreviewDecision } from "./shape-cover-vision-schema.js";
+import { parseCandidateDecision, parsePreviewDecision, previewVerdict, previewReviewConsistency, resolvePreviewReviews, type CandidateDecision, type PreviewDecision, type PreviewReviewConsistency } from "./shape-cover-vision-schema.js";
 import { CORNER_POLICY_DIGEST, CORNER_SCOPE_POLICY, assignCandidateCorner, cornerScopeRect, type Corner, type CornerScopeRect } from "./shape-cover-vision-corner-policy.js";
 import { CORNER_PROMPT_VERSION, cornerOutputSchema, cornerSemanticPrompt, parseCornerDecision, parseFailureCategory, type CornerDecision, type ParseFailureCategory } from "./shape-cover-vision-corner-schema.js";
 import { discoveryHash } from "./source-fact-discovery-evidence.js";
@@ -26,6 +26,7 @@ export interface VisionReceipt {
   rawResponseSha256?: string; rawResponseByteLength?: number;
   parseFailureCategory?: ParseFailureCategory; outputFailureCode?: string;
   schemaIssues?: { path: (string | number)[]; code: string }[];
+  previewReviewConsistency?: PreviewReviewConsistency;
 }
 export const VISION_PROMPT_VERSION = Object.freeze({ CANDIDATE: "hybrid-overlay-semantic/v1", PREVIEW: "hybrid-paired-preview/v1" });
 export const H2_PROMPT_VERSION = "hybrid-overlay-semantic/v2";
@@ -123,6 +124,7 @@ export class ShapeCoverVisionSession {
         bounded.addEventListener("abort", abort, { once: true }); if (bounded.aborted) abort();
       });
       receipt.output = await Promise.race([work(), cancelled]); receipt.status = "PARSED";
+      if ("oldOverlayResidual" in receipt.output) receipt.previewReviewConsistency = previewReviewConsistency(receipt.output);
       return structuredClone(receipt.output);
     } catch (error) {
       if ((stage as string) === "OUTPUT") {

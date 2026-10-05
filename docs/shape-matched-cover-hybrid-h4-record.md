@@ -131,3 +131,62 @@ H4 移除单独的6.1-only gate，复用原 Hybrid canonical route 优先 gpt-6.
 Implementation Review Risk Gate 状态 **PENDING_NATIVE_VERIFICATION**：绑定上述exact snapshot、accepted spec/plan及失败回执。用户没有要求该snapshot的Kimi final review；本开发QA不授生产authority，治理核验不写业务或durable生产状态，未发现关键级凭据/越权/不可恢复损坏路径。第三条件须在project-native verification完成后判定；当前required verification未通过，按SUBAGENTS.md先报告真实blocker，不提前消耗final reviewer请求或声称review acceptance。Kimi只读ownership diagnosis不冒充最终实现review。
 
 本次是有明确阻断的stable checkpoint：真实TOP_RIGHT QA有效但高风险冲突导致UNSAFE，完整Harness/completion也未PASS。因此不授予HYBRID_CORNER_H4_READY，不是只剩Activation；PRODUCT_DISABLED保持，未执行Activation。
+
+## QA Consistency Closure — 2026-10-06
+
+用户基线 `479740613c09c79329e778703f6a33e7cb608667`，继续原 `feat/hybrid-corner-h4`，不创建或切换工作区。上述历史 UNSAFE、schema invalid、Harness FAIL/NOT_EVALUATED 原样保留。本轮 real233s 固定 QA validation 的视觉 resolver verdict **PASS**；PRODUCT_DISABLED、authority=none，未开始 Activation。开发 READY 另以本轮 owned verification 为准，不以 replay 单独授予。
+
+### Consistency Contract and Receipt
+
+canonical `previewReviewConsistency` 在严格 parse/packet 校验成功后检查结构化结果，receipt 添加 `hybrid-preview-review-consistency/v1`，不改变旧 status 含义。`PARSED` 表示语法成功；`INCONSISTENT` 表示该审查无效。三个显式映射是 PERSON→unintendedOcclusion、TEMPORAL→temporalMismatch、UNDETECTED_OVERLAY→oldOverlayResidual；flag 存在且对应 verdict=PASS 才矛盾。PRODUCT_PRINT_RISK 等未映射 flag、confidence 和 shortReason 都不靠启发式解释。
+
+完整 output、全部 flags、raw SHA/bytes、source/packet/images 仍保留。四项全部 PASS 的 contradictory MiniMax 审查整体无效，同 packet 的一次独立 Sol 四项 PASS、riskFlags=[]才可形成 PASS；不逐项删除 flag、不多数投票。任何 MiniMax FAIL/UNKNOWN（包括一处矛盾并混有另一处 FAIL/UNKNOWN）仍 UNSAFE；自洽 risk、无效/失败/缺失二审、packet mismatch、stale、timeout 和取消仍关闭。补上旧 resolver 可以覆盖 unnaturalPlacement FAIL/UNKNOWN 及其他 UNKNOWN 的漏洞。
+
+视觉 prompt 及 `hybrid-paired-preview/v1`、JSON schema、provider/model routing、request bounds 不改。H3、motion、shape search、mask、pixel gate、alpha、compiler、renderer 和原 diagnostic 源码均与基线逐字节相同。
+
+### Fixed real233s Validation
+
+私有证据根 `/home/reggie/.local/state/jianji-source-fact-qualification/hybrid-h4-consistency-20261006`；`real233s-replay.json` 明确 `mode=ARCHIVED_RECEIPT_REPLAY`、`liveModelRequests=0`。不是新真实模型调用；复用上一轮已经取得的独立 MiniMax/Sol 真实审查，完整原 receipt 内嵌保留，不覆写历史 `result.json`。
+
+- 原 packet digest `c7d0fb196056952f924bb986768b12c40eacc07959f882f509ab8dc5b831c14d`；重建 digest 相同、12张原PNG的SHA/bytes/序号/图片顺序相同，两个原 receipt 均绑定同 source/packet/image hashes。重核原 MiniMax raw622 bytes/SHA，未修剪或改写响应。
+- MiniMax 四项 PASS、flags=`PRODUCT_PRINT_RISK` / `PERSON_OCCLUSION_RISK`。仅 PERSON flag 对 `unintendedOcclusion=PASS` 建立 contradiction，因此 **INCONSISTENT**。不需要用 shortReason 的“没有明显遮挡/残留/漂移”证明矛盾，PRODUCT flag 保留且不臆造映射。
+- 原真实二审模型 `gpt-5.6-sol`，raw466 bytes/SHA `231870d9bca788665cecc897145b1d73d1a9a129c8c9f8d10300ea2b9f483ad3`；四项 PASS、riskFlags=[]，**CONSISTENT**。本次 replay 的 route 明确标 `archived-receipt-replay`，原真实 provider/model/timestamp/raw hash 保存在 `originalReceipts`，不冒充新 generation。
+- canonical `reviewHybridPreview` replay 各消费一次首/二审 output，最终 **PASS**。source/preview/H3 PNG/binding、完整原技术回执在 replay 前后不变；preview SHA `6cfe8331cab4a378fa4c9f14b336f1503c90b949e0a38e1c569fd749bf8136e7`，233000ms/6990帧/720×1280，uncoveredPixels=0，clock/fullDecode=PASS。重新对完整 preview 解码exit0，音频packet SHA仍 `962d74dedf61670520e9946bf2b1a6e9909295a0b629ad017179eed982e1e199`。
+
+没有重新选款、placement、mask、render、H3 geometry或12图抽帧。仅 confirmed TOP_RIGHT 的现有抽样 QA PASS；未确认角落、整片逐帧视觉验收和内容安全仍不因此获准。
+
+### Development Harness Boundary
+
+原 H3 完整集成测试本轮复查仍120000ms timeout；`h3.report.json` 为8PASS/1FAIL，历史失败保留，不重试或改H3。按用户本轮授权，将原三个注册H3文件拆成互不重复的 required focused motion/shape组和 required完整integration组，原H3 owner route继续包含二者，H4 QA route只要求focused；extended-regressions及所有required设置保持。新增路由回归核验H4范围、全H3仍需integration、注册文件无遗漏/重复、required不降。
+
+H4 development READY 使用 typecheck、vision/H4、H3/H4 focused、owned Harness与scoped verify；全仓最终 completion及完整H3 integration阻断留到Activation集成统一关闭。新focused或scoped PASS不改写旧完整receipt，也不表示Windows实机或人工整片播放验收。
+
+### Delegation and Parent Adjudication
+
+受管Kimi deep只读mapping invocation `b8ad7f9d-381b-4fc3-927f-3961a2b3b078`、seal `7c505fe47e361f04d857ed1c412fd0a5f47501bad4528b9f6a6afa9d21614abd`；Docker containment、k3[1m]/max、canonical receipt PARSED，2 wire requests，实际读取schema/router/preview完整文件。封存到receipt核验期间冻结文件未修改；没有业务写入、模型QA或nested delegation。
+
+Parent用当前源码和回归确认原风险否决、UNKNOWN覆写漏洞、完整receipt与现有单次Sol路径，采纳明确映射、真实FAIL/UNKNOWN保护和schema成功/审查有效性分离。未采纳“须每个flag都可映射才允许关闭”的建议：它会让本轮PRODUCT+PERSON真实例子持续UNSAFE，违背用户对整体invalid review的明确规则。当前实现使整份自相矛盾首审失效而不清除任何flag；若四项存在真实FAIL/UNKNOWN仍独立否决，Sol必须同包四项PASS/无flag。
+
+### AOCI and Session Capture
+
+三个indexed对象（policy、vision schema、router）按官方当前完整机器批次、source SHA/CAS原子维护，3 applied/0remaining/0findings；仅其正式Entry和baseline对应身份改变。aoci.code.txt为正式index资产，不要求self Entry；baseline为exclude；本轮tests/spec/plan/record为observe。官方Verify structure_valid/governance_aligned=true、Check ok=true、Guide complete=true/next_action=none/findings=[]，证据在私有根。没有Root/Meta/layout/scope扩张。
+
+重新检查仓库本地skill路径，未发现dedicated session-capture Skill。本canonical record保存substantial实现、原真实审查再判定、负面集成证据及停止边界；无hook或capture_request_id不作为跳过记录理由。
+
+### Final Verification and Review Risk Gate
+
+稳定implementation基线为 `479740613c09c79329e778703f6a33e7cb608667`；11个core owned paths（含accepted spec/plan）的exact SHA封存在私有 `final-implementation-snapshot.json`，本record另走docs-only scope。core scope SHA `b1a9273beef82bfab329225ab803bb180661b0f93c5e47bca4ae86587a961b69`；测试结束后逐项核对11个文件无变化。
+
+- `npm run typecheck` PASS；10个H4/vision、H3 motion/shape及Harness路由focused文件175 tests PASS、0FAIL/0skip。回归先复现结构化矛盾及旧FAIL/UNKNOWN覆写问题，再修复为PASS；真实固定replay及完整preview decode也PASS。
+- 第一次core Harness `.agent/harness/runs/20261005T201729Z-7c154721/receipt.json` FAIL，唯一失败为既有Qianchuan本地浏览器fixture的modal innerText timeout；其他16项PASS。该测试涉及本地mock而非真实账号删除，相关源码本轮未改。不把可能的时序竞争宣称为已证明或已修复根因。
+- 一次限定该测试的诊断为1PASS/0FAIL/16skip，skip仅属于诊断过滤，不作为完整证据。随后在完全相同core bytes上执行唯一一次有界完整复查：`.agent/harness/runs/20261005T202839Z-cdfeea95/receipt.json` **PASS**，17项required检查全PASS，1468 tests PASS、0FAIL/0skip，包含完整douyin-upload组406PASS、shape-boundaries187PASS、Hybrid vision152PASS、H3 focused8PASS、H4 fixture1PASS。
+- 对应scoped verify `.agent/harness/runs/20261005T203533Z-52deb88d/receipt.json` **PASS**，当前scope/policy/参与source及owned身份匹配，completion-evidence PASS。无extended-regressions或完整H3 integration执行/通过声明；没有required=false、必需skip或改写旧失败。
+- 最终官方AOCI Verify exit0且structure_valid/governance_aligned=true，Check exit0/ok=true/findings=[]，Guide exit0/complete=true/next_action=none/findings=[]；私有 `aoci-delivery-verify.json`、`aoci-delivery-check.json`、`aoci-delivery-guide.json`。正式索引和baseline字节与core receipt一致。
+
+通过project-native verification后，对上述稳定core snapshot判定Implementation Review Risk Gate为 **KIMI_REVIEW_NOT_REQUIRED**。三种触发逐项评估：用户要求受管delegation但未明确要求该snapshot的final Kimi review；本轮不涉及凭据/跨项目authority或production/durable-state写入，PRODUCT_DISABLED、无Activation，不存在具体关键级损坏路径；其余后果为研究预览审查判定，四项真实FAIL/UNKNOWN、未映射risk、混合矛盾、错误packet、缺/失败Sol均有可执行负向回归，完整receipt及同12图真实输出的固定replay覆盖此次语义变化，未发现同时具备重大后果与实质验证缺口、可由额外Kimi adversarial review关闭的具体证据。映射Kimi不是final reviewer；Parent自行核对最终diff、源码、原receipt与所有completion证据。
+
+### Ready and Stop Boundary
+
+本轮开发状态 **HYBRID_CORNER_H4_READY**，real233s H4 verdict **PASS**：MiniMax INCONSISTENT、原独立Sol四项PASS且riskFlags=[]、同preview技术PASS、uncoveredPixels=0。原12图、H3 frozen overlay和所有geometry/placement/render字节不变。
+
+**PRODUCT_DISABLED**，authority=none，不开始Activation。下一milestone仅为Activation集成：届时统一关闭完整H3 integration与全仓completion的既有timeout并取得有效证据，再遵守原activation及真实媒体验收合同。H4开发READY不授产品启用、不证明未确认角落或人工整片视觉/内容安全验收。

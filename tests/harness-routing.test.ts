@@ -55,6 +55,22 @@ function scope(paths: string[]): HarnessTaskScope {
 }
 
 describe("harness policy routing", () => {
+  it("keeps H4 QA development focused while preserving required H3 and extended integration checks", () => {
+    const repositoryPolicy = HarnessPolicySchema.parse(JSON.parse(
+      readFileSync(new URL("../.agent/harness/policy.json", import.meta.url), "utf8"),
+    ));
+    if (repositoryPolicy.schemaVersion !== 2) throw new Error("Expected policy v2");
+    const selected = selectChecks(repositoryPolicy, scope(["src/main/shape-cover-vision-router.ts", "tests/shape-cover-hybrid-preview.test.ts"]));
+    expect(selected.checks.map(c => c.id)).toEqual(expect.arrayContaining(["typecheck", "hybrid-vision", "hybrid-corner-h4", "hybrid-corner-h3-focused", "owned-aoci"]));
+    expect(selected.checks.map(c => c.id)).not.toEqual(expect.arrayContaining(["extended-regressions"]));
+    expect(selected.checks.map(c => c.id)).not.toContain("hybrid-corner-h3");
+    expect(selected.checks.every(c => c.required)).toBe(true);
+    expect(repositoryPolicy.codeChecks.find(c => c.id === "extended-regressions")?.required).toBe(true);
+    expect(repositoryPolicy.codeChecks.find(c => c.id === "hybrid-corner-h3")).toMatchObject({ required: true,
+      testFiles: expect.arrayContaining(["tests/shape-cover-hybrid-h3.integration.test.ts"]) });
+    const h3 = selectChecks(repositoryPolicy, scope(["src/main/shape-cover-hybrid-h3.ts"]));
+    expect(h3.checks.map(c => c.id)).toContain("hybrid-corner-h3");
+  });
   it("does not treat a result set with no required checks as passing", () => {
     expect(aggregateOutcome([])).toBe("NOT_EVALUATED");
     expect(aggregateOutcome([{ id: "optional", required: false, status: "PASS", message: "optional only" }])).toBe("NOT_EVALUATED");

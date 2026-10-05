@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-05T18:18:22Z",
+  "updated_at": "2026-10-05T20:16:45Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "7d94cb67ba4c8f51c78f28b4e4169ca13c7a5ea2f779f60c1940d65c31eff1fc",
-      "size": 40020,
-      "normalized_sha256": "7d94cb67ba4c8f51c78f28b4e4169ca13c7a5ea2f779f60c1940d65c31eff1fc"
+      "sha256": "94bd947b35a2a0a893fbc833dd3cb849c8d7e952b05c81641d31bc39a4c5cc8b",
+      "size": 40411,
+      "normalized_sha256": "94bd947b35a2a0a893fbc833dd3cb849c8d7e952b05c81641d31bc39a4c5cc8b"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "60bc2c973cb6ff60b327cfc16226e8b57842a34f7ace3b06335c2de7f1a218cc",
-      "size": 89854,
-      "normalized_sha256": "60bc2c973cb6ff60b327cfc16226e8b57842a34f7ace3b06335c2de7f1a218cc"
+      "sha256": "f9fd0ce49a98376e26c69a0f840f0bc4eadef2a0cb2067a9ec102302263bfdaa",
+      "size": 89902,
+      "normalized_sha256": "f9fd0ce49a98376e26c69a0f840f0bc4eadef2a0cb2067a9ec102302263bfdaa"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1618,14 +1618,14 @@
       "normalized_sha256": "ca8c24985907c2aac001822bc7af0f461087dde084c71e774387eb9b13192e62"
     },
     "src/main/shape-cover-vision-router.ts": {
-      "sha256": "7dfda2af22e04568d847f8c5443189b54855c84e14e64347fcdf8006a3c6c14e",
-      "size": 16434,
-      "normalized_sha256": "7dfda2af22e04568d847f8c5443189b54855c84e14e64347fcdf8006a3c6c14e"
+      "sha256": "1c78d590fc0f86277c7d55d384c3174d7669f1364600feeb6611325ca56fc1ae",
+      "size": 16673,
+      "normalized_sha256": "1c78d590fc0f86277c7d55d384c3174d7669f1364600feeb6611325ca56fc1ae"
     },
     "src/main/shape-cover-vision-schema.ts": {
-      "sha256": "fe620e723faadab5cb7939d388bddd5365ffed249ab575f6f22a1e7b77e496ab",
-      "size": 4394,
-      "normalized_sha256": "fe620e723faadab5cb7939d388bddd5365ffed249ab575f6f22a1e7b77e496ab"
+      "sha256": "994d4ce31f69662064efe25eeb460c11a89745917d909b3979add38bcefd74b6",
+      "size": 5520,
+      "normalized_sha256": "994d4ce31f69662064efe25eeb460c11a89745917d909b3979add38bcefd74b6"
     },
     "src/main/shape-cover-vision-semantic.ts": {
       "sha256": "e7a4dac97f048ab0feb8780fb204b8a5d60d080b51944752041d672f2c53bfc5",

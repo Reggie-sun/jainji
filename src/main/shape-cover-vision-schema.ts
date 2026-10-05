@@ -39,6 +39,28 @@ export const PreviewDecisionSchema = z.object({
 }).strict();
 export type CandidateDecision = z.infer<typeof CandidateDecisionSchema>;
 export type PreviewDecision = z.infer<typeof PreviewDecisionSchema>;
+const previewChecks = ["oldOverlayResidual", "unintendedOcclusion", "unnaturalPlacement", "temporalMismatch"] as const;
+type PreviewCheck = typeof previewChecks[number];
+const previewRiskChecks: Partial<Record<PreviewDecision["riskFlags"][number], PreviewCheck>> = {
+  PERSON_OCCLUSION_RISK: "unintendedOcclusion",
+  TEMPORAL_INCONSISTENCY: "temporalMismatch",
+  UNDETECTED_OVERLAY_SUSPECTED: "oldOverlayResidual",
+};
+export interface PreviewReviewConsistency {
+  version: "hybrid-preview-review-consistency/v1";
+  status: "CONSISTENT" | "INCONSISTENT";
+  contradictions: { riskFlag: PreviewDecision["riskFlags"][number]; check: PreviewCheck; verdict: "PASS" }[];
+}
+
+/** Structured contradictions only; prose and unmapped risks are never guessed or removed. */
+export function previewReviewConsistency(result: PreviewDecision): PreviewReviewConsistency {
+  const contradictions: PreviewReviewConsistency["contradictions"] = [];
+  for (const riskFlag of result.riskFlags) {
+    const check = previewRiskChecks[riskFlag];
+    if (check && result[check] === "PASS") contradictions.push({ riskFlag, check, verdict: "PASS" });
+  }
+  return { version: "hybrid-preview-review-consistency/v1", status: contradictions.length ? "INCONSISTENT" : "CONSISTENT", contradictions };
+}
 
 function json(text: string): unknown {
   if (text.length > 16_384) throw new Error("VISION_RESPONSE_TOO_LARGE");
@@ -70,15 +92,14 @@ export function parsePreviewDecision(text: string, packetDigest: string): Previe
 }
 
 export function previewVerdict(result: PreviewDecision): "PASS" | "UNSAFE" {
-  return [result.oldOverlayResidual, result.unintendedOcclusion, result.unnaturalPlacement, result.temporalMismatch]
-    .every(check => check === "PASS") && result.riskFlags.length === 0 ? "PASS" : "UNSAFE";
+  return previewChecks.every(check => result[check] === "PASS") && result.riskFlags.length === 0 ? "PASS" : "UNSAFE";
 }
 
 export function resolvePreviewReviews(minimax: PreviewDecision, sol?: PreviewDecision): "PASS" | "UNSAFE" {
+  const consistency = previewReviewConsistency(minimax);
   if (!sol) return previewVerdict(minimax);
   if (sol.packetDigest !== minimax.packetDigest || previewVerdict(sol) !== "PASS") return "UNSAFE";
-  // A second opinion cannot overrule an explicit high-risk visual contradiction.
-  if ([minimax.oldOverlayResidual, minimax.unintendedOcclusion, minimax.temporalMismatch].includes("FAIL") ||
-      minimax.riskFlags.some(flag => ["PERSON_OCCLUSION_RISK", "TEMPORAL_INCONSISTENCY", "UNDETECTED_OVERLAY_SUSPECTED"].includes(flag))) return "UNSAFE";
-  return "PASS";
+  // A contradiction invalidates the review as a whole, never genuine FAIL/UNKNOWN evidence.
+  if (previewChecks.some(check => minimax[check] !== "PASS")) return "UNSAFE";
+  return consistency.status === "INCONSISTENT" ? "PASS" : previewVerdict(minimax);
 }

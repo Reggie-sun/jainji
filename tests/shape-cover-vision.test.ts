@@ -36,7 +36,7 @@ describe("Hybrid vision strict responses", () => {
     expect(previewVerdict(p)).toBe("PASS");
     expect(resolvePreviewReviews({ ...p, oldOverlayResidual: "FAIL" }, p)).toBe("UNSAFE");
     expect(resolvePreviewReviews({ ...p, unintendedOcclusion: "UNKNOWN" }, { ...p, unintendedOcclusion: "UNKNOWN" })).toBe("UNSAFE");
-    expect(resolvePreviewReviews({ ...p, unnaturalPlacement: "UNKNOWN" }, p)).toBe("PASS");
+    expect(resolvePreviewReviews({ ...p, unnaturalPlacement: "UNKNOWN" }, p)).toBe("UNSAFE");
   });
 });
 
@@ -86,6 +86,60 @@ describe("Hybrid bounded image packets", () => {
 });
 
 describe("Hybrid finite role routing", () => {
+  it.each(["oldOverlayResidual", "unintendedOcclusion", "unnaturalPlacement", "temporalMismatch"].flatMap(check =>
+    ["FAIL", "UNKNOWN"].map(verdict => [check, verdict])))("H4 preserves a consistent %s=%s despite Sol PASS", async (check, verdict) => {
+    const r = routes((role, digest) => ({ ...preview(), packetDigest: digest, ...(role === "MINIMAX" ? { [check]: verdict } : {}) }));
+    expect((await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal)).verdict).toBe("UNSAFE");
+  });
+  it.each(["PERSON_OCCLUSION_RISK", "TEMPORAL_INCONSISTENCY", "UNDETECTED_OVERLAY_SUSPECTED"])("H4 invalidates contradictory %s without discarding the first receipt", async flag => {
+    const r = routes((role, digest) => ({ ...preview(), packetDigest: digest,
+      riskFlags: role === "MINIMAX" ? [flag] : [] }));
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal);
+    expect(result.verdict).toBe("PASS");
+    expect(result.requestCounts).toEqual({ LUNA: 0, MINIMAX: 1, SOL: 1 });
+    expect(result.receipts[0]).toMatchObject({ status: "PARSED", output: { riskFlags: [flag] },
+      previewReviewConsistency: { status: "INCONSISTENT", contradictions: [expect.objectContaining({ riskFlag: flag, verdict: "PASS" })] } });
+    expect(result.receipts[0].rawResponseSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.receipts[1]).toMatchObject({ previewReviewConsistency: { status: "CONSISTENT", contradictions: [] } });
+  });
+  it.each(["oldOverlayResidual", "unintendedOcclusion", "temporalMismatch"])("H4 cannot launder a real %s FAIL through an unrelated contradiction", async check => {
+    const flag = check === "unintendedOcclusion" ? "TEMPORAL_INCONSISTENCY" : "PERSON_OCCLUSION_RISK";
+    const r = routes((role, digest) => ({ ...preview(), packetDigest: digest,
+      ...(role === "MINIMAX" ? { [check]: "FAIL", riskFlags: [flag] } : {}) }));
+    expect((await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal)).verdict).toBe("UNSAFE");
+  });
+  it("H4 does not pass an inconsistent first review without a valid independent second review", async () => {
+    const r = routes((_, digest) => ({ ...preview(), packetDigest: digest, riskFlags: ["PERSON_OCCLUSION_RISK"] }));
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal);
+    expect(result.verdict).toBe("UNSAFE"); expect(result.requestCounts.SOL).toBe(1);
+    expect(result.receipts.every(r => r.output && "riskFlags" in r.output && r.output.riskFlags.length === 1)).toBe(true);
+  });
+  it.each(["FAIL", "UNKNOWN", "invalid", "unavailable", "transport", "packet", "risk"])("H4 inconsistent first review remains unsafe after Sol %s", async outcome => {
+    const r = routes((role, digest) => role === "MINIMAX" ? { ...preview(), packetDigest: digest, riskFlags: ["PERSON_OCCLUSION_RISK"] } :
+      outcome === "invalid" ? {} : { ...preview(), packetDigest: outcome === "packet" ? packetDigest : digest,
+        oldOverlayResidual: ["FAIL", "UNKNOWN"].includes(outcome) ? outcome : "PASS", riskFlags: outcome === "risk" ? ["UNCERTAIN"] : [] });
+    if (outcome === "unavailable") r.SOL.imageCapability = "MODEL_IMAGE_CAPABILITY_UNAVAILABLE";
+    if (outcome === "transport") r.SOL.complete = vi.fn(async () => { throw Error("private"); });
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal);
+    expect(result.verdict).toBe("UNSAFE"); expect(result.receipts).toHaveLength(2);
+    expect(result.receipts[0].output).toMatchObject({ riskFlags: ["PERSON_OCCLUSION_RISK"] });
+    expect(result.requestCounts).toEqual({ LUNA: 0, MINIMAX: 1, SOL: outcome === "unavailable" ? 0 : 1 });
+  });
+  it("H4 does not treat an unmapped risk or prose as a contradiction", async () => {
+    const r = routes((role, digest) => ({ ...preview(), packetDigest: digest,
+      riskFlags: role === "MINIMAX" ? ["PRODUCT_PRINT_RISK"] : [], shortReason: "No occlusion or residual or drift." }));
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal);
+    expect(result.verdict).toBe("UNSAFE");
+    expect(result.receipts[0]).toMatchObject({ previewReviewConsistency: { status: "CONSISTENT", contradictions: [] } });
+  });
+  it("H4 invalidates the complete contradictory real233s review while preserving both risk flags", async () => {
+    const flags = ["PRODUCT_PRINT_RISK", "PERSON_OCCLUSION_RISK"];
+    const r = routes((role, digest) => ({ ...preview(), packetDigest: digest, riskFlags: role === "MINIMAX" ? flags : [] }));
+    const result = await reviewHybridPreview(packet("PREVIEW").build(), r, new AbortController().signal);
+    expect(result.verdict).toBe("PASS");
+    expect(result.receipts[0]).toMatchObject({ output: { riskFlags: flags }, previewReviewConsistency: { status: "INCONSISTENT",
+      contradictions: [{ riskFlag: "PERSON_OCCLUSION_RISK", check: "unintendedOcclusion", verdict: "PASS" }] } });
+  });
   it.each(["schema", "json", "missing"])("H4 allows one independent Sol PASS after an invalid %s first review", async invalid => {
     const r = routes((role, digest) => role === "MINIMAX" ? invalid === "schema" ? { ...preview(), packetDigest: digest, shortReason: {} } : {} : { ...preview(), packetDigest: digest });
     if (invalid === "json") r.MINIMAX.complete = vi.fn(async () => "not JSON");

@@ -55,10 +55,10 @@ it("archived geometry renders exact PNG for the full clock, preserves audio, bin
       } });
     const routes = { LUNA: route("LUNA"), SOL: route("SOL"), MINIMAX: route("MINIMAX") };
     expect((await reviewHybridPreview(packet, routes, signal)).verdict).toBe("PASS"); expect(calls).toEqual(["MINIMAX"]);
-    calls.length = 0; expect((await reviewHybridPreview(packet, { ...routes, MINIMAX: route("MINIMAX", true) }, signal)).verdict).toBe("PASS"); expect(calls).toEqual(["MINIMAX", "SOL"]);
+    calls.length = 0; expect((await reviewHybridPreview(packet, { ...routes, MINIMAX: route("MINIMAX", true) }, signal)).verdict).toBe("UNSAFE"); expect(calls).toEqual(["MINIMAX", "SOL"]);
     const alternate = { ...routes.SOL, model: "gpt-5.6-sol", complete: vi.fn(routes.SOL.complete) };
     const second = await reviewHybridPreview(packet, { ...routes, MINIMAX: route("MINIMAX", true), SOL: alternate }, signal);
-    expect(second.verdict).toBe("PASS"); expect(alternate.complete).toHaveBeenCalledOnce(); expect(second.receipts.at(-1)).toMatchObject({ model: "gpt-5.6-sol", status: "PARSED" });
+    expect(second.verdict).toBe("UNSAFE"); expect(alternate.complete).toHaveBeenCalledOnce(); expect(second.receipts.at(-1)).toMatchObject({ model: "gpt-5.6-sol", status: "PARSED" });
     const failed = await reviewHybridPreview(packet, { ...routes, MINIMAX: { ...routes.MINIMAX, complete: async () => { throw Error("transport"); } } }, signal);
     expect(failed.verdict).toBe("UNSAFE"); expect(failed.requestCounts).toMatchObject({ MINIMAX: 1, SOL: 0 });
     const invalid = await reviewHybridPreview(packet, { ...routes, MINIMAX: { ...routes.MINIMAX, complete: async () => "{}" }, SOL: alternate }, signal);

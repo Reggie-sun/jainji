@@ -300,9 +300,25 @@
         "--minWorkers=1"
       ],
       "testFiles": [
-        "tests/shape-cover-hybrid-motion.test.ts",
-        "tests/shape-cover-hybrid-shape.test.ts",
         "tests/shape-cover-hybrid-h3.integration.test.ts"
+      ],
+      "timeoutMs": 180000
+    },
+    {
+      "id": "hybrid-corner-h3-focused",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/shape-cover-hybrid-motion.test.ts",
+        "tests/shape-cover-hybrid-shape.test.ts"
       ],
       "timeoutMs": 180000
     },
@@ -1250,6 +1266,7 @@
         "typecheck",
         "harness",
         "hybrid-corner-h3",
+        "hybrid-corner-h3-focused",
         "documents",
         "owned-aoci"
       ],
@@ -1270,7 +1287,7 @@
       "checkIds": [
         "typecheck",
         "harness",
-        "hybrid-corner-h3",
+        "hybrid-corner-h3-focused",
         "hybrid-corner-h4",
         "hybrid-vision",
         "documents",
