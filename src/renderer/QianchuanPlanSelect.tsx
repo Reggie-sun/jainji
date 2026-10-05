@@ -3,9 +3,9 @@ import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QianchuanPlanListSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { acquireQianchuanPlans } from "./qianchuan-plan-requests";
 
-export function QianchuanPlanSelect({ account, value, onChange, disabled = false, idPrefix = "qianchuan" }: {
+export function QianchuanPlanSelect({ account, value, onChange, disabled = false, idPrefix = "qianchuan", compact = false }: {
   account?: QianchuanAccountSummary; value?: QianchuanPlanOption;
-  onChange(value?: QianchuanPlanOption): void; disabled?: boolean; idPrefix?: string;
+  onChange(value?: QianchuanPlanOption): void; disabled?: boolean; idPrefix?: string; compact?: boolean;
 }) {
   const [plans, setPlans] = useState<QianchuanPlanOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -45,14 +45,16 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
     return () => { active = false; request.release(); };
   }, [product, advertiserId, available, revision]);
   const chosen = value && value.advertiserId === advertiserId && plans.some(plan => plan.adId === value.adId) ? value.adId : "";
-  return <div className="qianchuan-plan-select">
+  const chosenPlan = plans.find(plan => plan.adId === chosen);
+  const identity = chosenPlan && `${chosenPlan.name} · ID ${chosenPlan.adId}`;
+  return <div className={`qianchuan-plan-select${compact ? " compact" : ""}`} style={{ gridColumn: compact ? undefined : "1 / -1", minWidth: 0 }}>
     <label htmlFor={`${idPrefix}-plan`}>上传计划</label>
-    <select id={`${idPrefix}-plan`} aria-label="上传计划" value={chosen} disabled={disabled || loading || !plans.length}
+    <select id={`${idPrefix}-plan`} aria-label="上传计划" title={identity || error || (loading ? "正在读取计划" : "请明确选择上传计划后开始制作")} value={chosen} disabled={disabled || loading || !plans.length}
       onChange={event => onChange(plans.find(plan => plan.adId === event.target.value))}>
-      <option value="">{loading ? "正在读取 Chrome 账号的计划…" : "请选择上传计划"}</option>
+      <option value="">{loading ? compact ? "正在读取…" : "正在读取 Chrome 账号的计划…" : error ? "读取失败，请重试" : available && !plans.length ? "没有可用计划" : "请选择上传计划"}</option>
       {plans.map(plan => <option key={plan.adId} value={plan.adId}>{plan.name} · {plan.adId}</option>)}
     </select>
-    <button type="button" className="text-button" disabled={disabled || loading || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>刷新计划</button>
-    {loading ? <small role="status">只读取计划列表，不上传视频。</small> : error ? <p role="alert">{error}</p> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>请明确选择计划后开始制作。</small> : null}
+    <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
+    {error ? <p role="alert">{error}</p> : !compact && (loading ? <small role="status">只读取计划列表，不上传视频。</small> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>请明确选择计划后开始制作。</small> : null)}
   </div>;
 }

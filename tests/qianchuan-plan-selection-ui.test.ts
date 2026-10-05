@@ -1,12 +1,14 @@
 import { buildSync } from "esbuild";
+import { readFileSync } from "node:fs";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 
-export function planSelectionFixtureScript(options: { strict?: boolean; multiple?: boolean } = {}) {
+export function planSelectionFixtureScript(options: { strict?: boolean; multiple?: boolean; batch?: boolean } = {}) {
   return buildSync({ stdin: { contents: `
     import React, { useState } from "react";
     import { createRoot } from "react-dom/client";
+    import { QianchuanPlanSelect } from "./src/renderer/QianchuanPlanSelect";
     import { DouyinUploadControls } from "./src/renderer/DouyinUploadControls";
     window.catalogRequests = [];
     window.cancelledRequests = [];
@@ -26,7 +28,7 @@ export function planSelectionFixtureScript(options: { strict?: boolean; multiple
       return <><button onClick={() => setCompact(current => !current)}>切换紧凑布局</button>
         <button onClick={() => setMounted(false)}>退出计划选择</button>
         <button onClick={() => respond("plans")}>返回两个计划</button><button onClick={() => respond("empty")}>返回空列表</button><button onClick={() => respond("failure")}>读取失败</button>
-        {mounted && <><DouyinUploadControls value={value} onChange={setValue} accounts={accounts} compact={compact}/>
+        {mounted && <>${options.batch ? '<div className="batch-template-controls"><div className="batch-upload-account" style={{width:360}}><label className="batch-upload-toggle"><span>千川上传</span><span><input type="checkbox" defaultChecked/><span>开启</span></span></label><select aria-label="上传账号"><option>眼贴 · 1000</option></select><QianchuanPlanSelect compact account={accounts[0]} value={value.plan} onChange={plan => setValue({...value, plan})}/></div></div>' : '<DouyinUploadControls value={value} onChange={setValue} accounts={accounts} compact={compact}/>'}
           ${options.multiple ? '<DouyinUploadControls value={value} onChange={setValue} accounts={accounts} compact={compact} idPrefix="another"/>' : ""}</>}
         <output id="selection">{JSON.stringify(value)}</output></>;
     }
@@ -37,7 +39,7 @@ export function planSelectionFixtureScript(options: { strict?: boolean; multiple
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); }, 30000);
 afterAll(async () => { await browser?.close(); });
-async function fixture(options: { strict?: boolean; multiple?: boolean } = {}): Promise<Page> {
+async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: boolean } = {}): Promise<Page> {
   const page = await browser.newPage();
   await page.route("http://127.0.0.1:3000/plan-selector", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
   await page.goto("http://127.0.0.1:3000/plan-selector"); await page.addScriptTag({ content: planSelectionFixtureScript(options) });
@@ -105,6 +107,34 @@ describe("plan selector browser interaction", () => {
       expect((await selected(page)).plan.adId).toBe("9001");
       await page.getByLabel("千川上传", { exact: true }).selectOption("肥皂");
       expect((await selected(page)).plan).toBeUndefined();
+    } finally { await page.close(); }
+  });
+  it("keeps batch account, plan and refresh aligned while preserving choice and visible errors", async () => {
+    const page = await fixture({ batch: true });
+    try {
+      await page.addStyleTag({ content: readFileSync("src/renderer/styles.css", "utf8") + readFileSync("src/renderer/batch-production.css", "utf8") });
+      const height = await page.locator(".batch-upload-account").evaluate(element => element.getBoundingClientRect().height);
+      await page.getByRole("button", { name: "返回两个计划" }).click();
+      expect((await selected(page)).plan).toBeUndefined();
+      await page.getByLabel("上传计划", { exact: true }).selectOption("9002");
+      const geometry = await page.locator(".batch-upload-account").evaluate(element => {
+        const account = element.querySelector('[aria-label="上传账号"]')!.getBoundingClientRect();
+        const plan = element.querySelector('[aria-label="上传计划"]')!.getBoundingClientRect();
+        const refresh = element.querySelector('[aria-label="刷新计划"]')!.getBoundingClientRect();
+        return { height: element.getBoundingClientRect().height, accountY: account.y, planY: plan.y, refreshY: refresh.y,
+          overflow: element.scrollWidth > element.clientWidth };
+      });
+      expect(geometry.planY).toBeCloseTo(geometry.accountY, 0);
+      expect(geometry.refreshY).toBeCloseTo(geometry.accountY, 0);
+      expect(geometry.height).toBeCloseTo(height, 0);
+      expect(geometry.overflow).toBe(false);
+      expect(await page.getByLabel("上传计划", { exact: true }).getAttribute("title")).toContain("计划 9002 · ID 9002");
+      await page.getByRole("button", { name: "刷新计划", exact: true }).click();
+      expect((await selected(page)).plan).toBeUndefined();
+      await page.getByRole("button", { name: "读取失败", exact: true }).click();
+      await page.getByRole("alert").waitFor();
+      expect(await page.getByRole("alert").textContent()).toBe("Chrome 登录已失效");
+      expect(await page.getByLabel("上传计划").isDisabled()).toBe(true);
     } finally { await page.close(); }
   });
 });

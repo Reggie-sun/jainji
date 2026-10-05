@@ -1,4 +1,4 @@
-import { chromium, type Browser, type JSHandle, type Page } from "playwright-core";
+import { chromium, type Browser, type CDPSession, type JSHandle, type Page } from "playwright-core";
 import { guardedTransport } from "./local-cdp-transport.js";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
@@ -214,6 +214,9 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
   let relay: Awaited<ReturnType<typeof guardedTransport>> | undefined;
   let browser: Browser | undefined;
   let page: Page | undefined;
+  let pickerSession: CDPSession | undefined;
+  let pickerTargetId: string | undefined;
+  const transportController = new AbortController();
   try {
     const endpoint = new URL(target.cdpEndpoint);
     const response = await fetch(new URL("/json/version", endpoint), { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
@@ -221,7 +224,9 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
     const info = await response.json() as { webSocketDebuggerUrl?: unknown };
     if (typeof info.webSocketDebuggerUrl !== "string" || !isLoopbackUrl(info.webSocketDebuggerUrl, true) ||
       new URL(info.webSocketDebuggerUrl).host !== endpoint.host) throw changed();
-    relay = await guardedTransport(info.webSocketDebuggerUrl, signal, 10_000);
+    // Keep the relay alive until cancellation has closed this invocation's target.
+    relay = await guardedTransport(info.webSocketDebuggerUrl, transportController.signal, 10_000);
+    signal.throwIfAborted();
     const connection = chromium.connectOverCDP(relay.url, { timeout: 10_000, noDefaults: true }).then(async connected => {
       if (signal.aborted) { await connected.close().catch(() => undefined); signal.throwIfAborted(); }
       return connected;
@@ -229,18 +234,32 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
     browser = await abortable(connection, signal);
     if (browser.contexts().length !== 1) throw changed();
     const context = browser.contexts()[0]!;
-    const opening = context.newPage().then(async ownedPage => {
-      page = ownedPage;
-      if (signal.aborted) { await ownedPage.close({ runBeforeUnload: false }).catch(() => undefined); signal.throwIfAborted(); }
-      return ownedPage;
-    });
+    pickerSession = await browser.newBrowserCDPSession();
+    signal.throwIfAborted();
+    let creating: Promise<{ targetId: string }>;
+    const opening = context.waitForEvent("page", { timeout: 10_000, predicate: async candidate => {
+      const owned = await creating;
+      const candidateSession = await context.newCDPSession(candidate);
+      try { return (await candidateSession.send("Target.getTargetInfo")).targetInfo.targetId === owned.targetId; }
+      finally { await candidateSession.detach().catch(() => undefined); }
+    } });
+    void opening.catch(() => undefined);
+    const creationTimer = setTimeout(() => transportController.abort(), 10_000);
+    try {
+      creating = pickerSession.send("Target.createTarget", { url: "about:blank", background: true });
+      pickerTargetId = (await creating).targetId;
+    } finally { clearTimeout(creationTimer); }
+    signal.throwIfAborted();
     page = await abortable(opening, signal);
     page.setDefaultTimeout(10_000);
     await abortable(page.goto(pageUrl(target.advertiserId), { waitUntil: "domcontentloaded", timeout: 45_000 }), signal);
     return await readVisibleQianchuanPlans(page, target.advertiserId, signal);
   } finally {
     await page?.close({ runBeforeUnload: false }).catch(() => undefined);
+    if (pickerTargetId) await pickerSession?.send("Target.closeTarget", { targetId: pickerTargetId }).catch(() => undefined);
+    await pickerSession?.detach().catch(() => undefined);
     await browser?.close().catch(() => undefined);
+    transportController.abort();
     await relay?.close().catch(() => undefined);
   }
 }

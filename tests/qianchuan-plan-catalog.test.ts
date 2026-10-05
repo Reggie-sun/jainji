@@ -1,3 +1,6 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
@@ -34,8 +37,8 @@ function pageHtml(page: FixturePage, pageNumber: number): string {
   </div><table><tbody>${page.rows.map(rowHtml).join("")}</tbody></table>`;
 }
 
-async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean } = {}): Promise<{ context: BrowserContext; page: Page }> {
-  const context = await browser.newContext();
+async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean; context?: BrowserContext } = {}): Promise<{ context: BrowserContext; page: Page }> {
+  const context = options.context ?? await browser.newContext();
   const page = await context.newPage();
   const pages = options.pages ?? [{ rows: [], total: 0, nextDisabled: true }];
   const html = `<!doctype html><meta charset="utf-8"><div class="account-info-container">ID：${options.accountId ?? advertiserId}</div>
@@ -44,7 +47,7 @@ async function fixture(options: { pages?: FixturePage[]; accountId?: string; upd
       const next=()=>document.querySelector('[data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"] li.ovui-page-turner__item:has(.ovui-page-turner__next-icon)');
       next().addEventListener('click',()=>{${options.holdNext ? "" : `setTimeout(()=>{index++;if(index<values.length)document.querySelector('#catalog').innerHTML=values[index];},${options.updateDelay ?? 50});`}});
     </script>`;
-  await page.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: html }));
+  await context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: html }));
   await page.goto(`${origin}/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`, { waitUntil: "domcontentloaded" });
   return { context, page };
 }
@@ -146,21 +149,55 @@ it("rejects a truncated final page and cancels a stalled page transition", async
   finally { clearTimeout(timer); await stalled.context.close(); }
 });
 
+it.each(["complete", "cancel"])("cleans up its real background target on %s without closing user pages", async outcome => {
+  const profile = await mkdtemp(path.join(tmpdir(), "jianji-plan-target-"));
+  const context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true,
+    args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
+  try {
+    const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
+    const f = await fixture({ context, pages: [{ rows: [{ name: "计划一", id: "7001" }], total: 1, nextDisabled: true }] });
+    const originalPages = context.pages();
+    const controller = new AbortController();
+    let picker: Page | undefined;
+    context.on("page", page => {
+      picker = page;
+      if (outcome === "cancel") page.once("domcontentloaded", () => controller.abort());
+    });
+    const pending = readQianchuanPlans({ ...target, cdpEndpoint: `http://127.0.0.1:${port}` }, controller.signal);
+    if (outcome === "cancel") await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    else await expect(pending).resolves.toEqual([{ advertiserId, adId: "7001", name: "计划一" }]);
+    expect(picker?.isClosed()).toBe(true);
+    expect(context.pages()).toEqual(originalPages);
+    expect(f.page.url()).toBe(`${origin}/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`);
+  } finally { await context.close(); await rm(profile, { recursive: true, force: true }); }
+});
+
 it("uses a new marked picker tab and detaches without touching existing user tabs", async () => {
   const userTab = { url: vi.fn(() => `${origin}/uni-prom?aavid=${advertiserId}`), close: vi.fn(), goto: vi.fn() };
   const uploadTab = { url: vi.fn(() => `${origin}/uni-prom?aavid=${advertiserId}&upload=1`), close: vi.fn(), goto: vi.fn() };
   const ownedTab = { setDefaultTimeout: vi.fn(), close: vi.fn(async () => {}), goto: vi.fn(async () => { throw new Error("fixture stops after navigation"); }) };
-  const context = { pages: vi.fn(() => [userTab, uploadTab]), newPage: vi.fn(async () => ownedTab) };
-  const attachedBrowser = { contexts: vi.fn(() => [context]), close: vi.fn(async () => {}) };
+  const ownedSession = { send: vi.fn(async () => ({ targetInfo: { targetId: "owned-picker" } })), detach: vi.fn(async () => {}) };
+  const pickerSession = { send: vi.fn(async (method: string) => method === "Target.createTarget" ? { targetId: "owned-picker" } : { success: true }), detach: vi.fn(async () => {}) };
+  const concurrentTab = { close: vi.fn(), goto: vi.fn() };
+  const concurrentSession = { send: vi.fn(async () => ({ targetInfo: { targetId: "unrelated-new-tab" } })), detach: vi.fn(async () => {}) };
+  const context = { pages: vi.fn(() => [userTab, uploadTab]), newPage: vi.fn(async () => ownedTab), waitForEvent: vi.fn(async (_event: string, options: { predicate(page: unknown): Promise<boolean> }) => {
+    await Promise.resolve(); expect(await options.predicate(concurrentTab)).toBe(false); expect(await options.predicate(ownedTab)).toBe(true); return ownedTab;
+  }), newCDPSession: vi.fn(async page => page === ownedTab ? ownedSession : concurrentSession) };
+  const attachedBrowser = { newBrowserCDPSession: vi.fn(async () => pickerSession), contexts: vi.fn(() => [context]), close: vi.fn(async () => {}) };
   const relay = { url: "ws://127.0.0.1:42002/relay", close: vi.fn(async () => {}) };
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1:42001/devtools/browser/test" })));
   vi.spyOn(transport, "guardedTransport").mockResolvedValue(relay);
   const connect = vi.spyOn(chromium, "connectOverCDP").mockResolvedValue(attachedBrowser as unknown as Browser);
   await expect(readQianchuanPlans(target, signal)).rejects.toThrow("fixture stops after navigation");
   expect(connect).toHaveBeenCalledWith(relay.url, { timeout: 10_000, noDefaults: true });
-  expect(context.newPage).toHaveBeenCalledTimes(1); expect(context.pages).not.toHaveBeenCalled();
+  expect(context.newPage).not.toHaveBeenCalled(); expect(context.pages).not.toHaveBeenCalled();
+  expect(pickerSession.send).toHaveBeenCalledWith("Target.createTarget", expect.objectContaining({ background: true }));
+  expect(ownedSession.send).toHaveBeenCalledWith("Target.getTargetInfo");
+  expect(ownedSession.detach).toHaveBeenCalledTimes(1); expect(pickerSession.detach).toHaveBeenCalledTimes(1);
   expect(ownedTab.goto).toHaveBeenCalledWith(`${origin}/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`, { waitUntil: "domcontentloaded", timeout: 45_000 });
   expect(ownedTab.close).toHaveBeenCalledTimes(1); expect(attachedBrowser.close).toHaveBeenCalledTimes(1); expect(relay.close).toHaveBeenCalledTimes(1);
   expect(userTab.close).not.toHaveBeenCalled(); expect(userTab.goto).not.toHaveBeenCalled();
+  expect(concurrentTab.close).not.toHaveBeenCalled(); expect(concurrentTab.goto).not.toHaveBeenCalled();
+  expect(concurrentSession.detach).toHaveBeenCalledTimes(1);
   expect(uploadTab.close).not.toHaveBeenCalled(); expect(uploadTab.goto).not.toHaveBeenCalled();
 });
