@@ -70,5 +70,58 @@ it("reads upload plans only for selected templates and cancels an unfinished rea
     await page.getByRole("checkbox", { name: "晚安油开启千川上传", exact: true }).check();
     await page.waitForFunction(() => (window as any).requests.length === 2);
     expect(await page.evaluate(() => (window as any).requests[1].input.expectedAdvertiserId)).toBe("789");
+    await page.evaluate(() => (window as any).requests[1].resolve([{ advertiserId: "789", adId: "987", name: "晚安油计划" }]));
+    await page.getByLabel("上传计划", { exact: true }).selectOption("987");
+    await page.getByRole("checkbox", { name: "选择模板 晚安油", exact: true }).uncheck();
+    await page.getByRole("checkbox", { name: "选择模板 晚安油", exact: true }).check();
+    await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')?.value === "987", undefined, { timeout: 3000 });
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(2);
+    expect(await page.getByLabel("上传计划", { exact: true }).inputValue()).toBe("987");
+  } finally { await browser.close(); }
+}, 30000);
+
+it.each([false, true])("keeps the chosen upload plan when returning to the selector (compact: %s)", async compact => {
+  const browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage();
+    await page.route("http://127.0.0.1:3000/plan-return", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/plan-return");
+    const script = buildSync({ stdin: { contents: `
+      import React, { useState } from "react";
+      import { createRoot } from "react-dom/client";
+      import { DouyinUploadControls } from "./src/renderer/DouyinUploadControls";
+      window.requests = [];
+      window.jianji = { listQianchuanPlans: input => new Promise((resolve, reject) => window.requests.push({input,resolve,reject})), cancelQianchuanPlans: async () => undefined };
+      const accounts = [{product:"眼贴",advertiserId:"789",adId:"987",available:true}, {product:"肥皂",advertiserId:"123",adId:"456",available:true}];
+      function Fixture() {
+        const [mounted, setMounted] = useState(true);
+        const [value, setValue] = useState({enabled:true,accountProduct:"眼贴"});
+        window.selection = value;
+        return <><button onClick={() => setMounted(current => !current)}>离开或返回设置</button>
+          {mounted && <DouyinUploadControls accounts={accounts} value={value} onChange={setValue} compact={${compact}}/>}</>;
+      }
+      createRoot(document.getElementById("root")).render(<React.StrictMode><Fixture/></React.StrictMode>);
+    `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
+    await page.addScriptTag({ content: script });
+    await page.waitForFunction(() => (window as any).requests.length === 1);
+    await page.evaluate(() => (window as any).requests[0].resolve([{ advertiserId: "789", adId: "987", name: "已选计划" }]));
+    await page.getByLabel("上传计划", { exact: true }).selectOption("987");
+    const chosen = await page.evaluate(() => (window as any).selection.plan);
+    await page.getByRole("button", { name: "离开或返回设置" }).click();
+    await page.getByRole("button", { name: "离开或返回设置" }).click();
+    await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')?.value === "987", undefined, { timeout: 3000 });
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).selection.plan)).toEqual(chosen);
+    expect(await page.getByLabel("上传计划", { exact: true }).inputValue()).toBe("987");
+    await page.getByRole("button", { name: "刷新计划", exact: true }).click();
+    await page.waitForFunction(() => (window as any).requests.length === 2);
+    expect(await page.evaluate(() => (window as any).selection.plan)).toBeUndefined();
+    await page.evaluate(() => (window as any).requests[1].reject(new Error("计划已失效")));
+    await page.getByRole("alert").waitFor();
+    expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(true);
+    await page.getByLabel(compact ? "千川上传" : "本次产品账号", { exact: true }).selectOption("肥皂");
+    await page.waitForFunction(() => (window as any).requests.length === 3);
+    expect(await page.evaluate(() => (window as any).requests[2].input.expectedAdvertiserId)).toBe("123");
+    expect(await page.evaluate(() => (window as any).selection.plan)).toBeUndefined();
   } finally { await browser.close(); }
 }, 30000);

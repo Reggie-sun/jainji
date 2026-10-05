@@ -20,6 +20,11 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
     setPlans([]); setError(""); setLoading(false);
     if (selected.current && selected.current.advertiserId !== advertiserId) change.current(undefined);
     if (!product || !advertiserId || !available) return;
+    if (revision === 0 && selected.current?.advertiserId === advertiserId) {
+      // Restore this round's explicit choice; production admission revalidates the plan.
+      setPlans([selected.current]);
+      return;
+    }
     if (typeof window.jianji.listQianchuanPlans !== "function") {
       setError("计划读取接口尚未加载，请等待当前任务结束后重新打开简辑。");
       return;
