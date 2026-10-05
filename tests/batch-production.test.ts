@@ -762,6 +762,8 @@ describe("batch plan read intent", () => {
   it("does not read plans when templates are checked, unchecked, refreshed or revisited", async () => {
     const page = await panel();
     try {
+      expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(2);
+      expect(await page.getByRole("button", { name: "读取上传计划", exact: true }).count()).toBe(0);
       for (const name of ["蝴蝶贴", "最新眼贴"]) await page.getByRole("checkbox", { name: `选择模板 ${name}`, exact: true }).check();
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       expect(await requests(page)).toBe(0);
@@ -771,19 +773,23 @@ describe("batch plan read intent", () => {
       await page.getByRole("button", { name: "切换页面", exact: true }).click();
       const checkbox = page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true });
       await checkbox.uncheck(); await checkbox.check();
+      expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(2);
       expect(await requests(page)).toBe(0);
       expect(await page.getByRole("button", { name: "开始批量制作", exact: true }).isDisabled()).toBe(true);
     } finally { await page.close(); }
   });
-  it("reads only on explicit action and preserves the chosen plan across reselection", async () => {
+  it.each(["Enter", " ", "ArrowDown"])("reads on %s and preserves the chosen plan across reselection", async key => {
     const page = await panel();
     try {
       const checkbox = page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true });
-      await checkbox.check();
-      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).click();
+      const plan = row(page).getByLabel("上传计划", { exact: true });
+      await plan.focus();
+      expect(await requests(page)).toBe(0);
+      await plan.press(key);
       await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
       expect(await page.getByRole("button", { name: "开始批量制作", exact: true }).isDisabled()).toBe(true);
       await choose(page);
+      await checkbox.check();
       await page.getByRole("button", { name: "开始批量制作", exact: true }).click({ trial: true });
       await checkbox.uncheck(); await checkbox.check();
       await row(page).getByLabel("上传计划", { exact: true }).waitFor();
@@ -795,27 +801,51 @@ describe("batch plan read intent", () => {
       await row(page).getByRole("button", { name: "刷新计划", exact: true }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       await checkbox.uncheck();
+      expect(await plan.count()).toBe(1);
+      expect(await page.evaluate(() => (window as any).cancelledRequests.length)).toBe(0);
+      const upload = row(page).getByRole("checkbox", { name: "蝴蝶贴开启千川上传", exact: true });
+      await upload.uncheck();
       await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
-      await checkbox.check();
-      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).waitFor();
+      await upload.check();
+      await plan.waitFor();
       expect(await requests(page)).toBe(2);
     } finally { await page.close(); }
   });
   it("requires another explicit read after switching the upload account", async () => {
     const page = await panel();
     try {
-      await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).check();
-      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).click();
+      const plan = row(page).getByLabel("上传计划", { exact: true });
+      await plan.click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
       await row(page).getByLabel("蝴蝶贴上传账号", { exact: true }).selectOption("肥皂");
-      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).waitFor();
+      await plan.waitFor();
       await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
       expect(await requests(page)).toBe(1);
-      await row(page).getByRole("button", { name: "读取上传计划", exact: true }).click();
+      expect(await plan.inputValue()).toBe("");
+      await plan.click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       expect(await page.evaluate(() => (window as any).catalogRequests[1].input.expectedAdvertiserId)).toBe("1001");
       await choose(page);
       expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
+    } finally { await page.close(); }
+  });
+  it("shows read failures and cancels a pending refresh when leaving the panel", async () => {
+    const page = await panel();
+    try {
+      const plan = row(page).getByLabel("上传计划", { exact: true });
+      await plan.click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      await page.evaluate(() => (window as any).catalogRequests[0].reject(new Error("Chrome 登录已失效")));
+      await row(page).getByRole("alert").getByText("Chrome 登录已失效", { exact: true }).waitFor();
+      expect(await plan.isDisabled()).toBe(true);
+      await row(page).getByRole("button", { name: "刷新计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await page.getByRole("button", { name: "切换页面", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cancelledRequests.length === 1);
+      await page.getByRole("button", { name: "切换页面", exact: true }).click();
+      await plan.waitFor();
+      expect(await plan.isDisabled()).toBe(false);
+      expect(await requests(page)).toBe(2);
     } finally { await page.close(); }
   });
 });

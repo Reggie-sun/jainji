@@ -65,7 +65,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
     if (batchRequiresDisplayText(row) && !RequiredProductPriceSchema.safeParse(row.productPrice).success) errors.push(PRODUCT_PRICE_HELP);
     if (row.uploadEnabled && state.douyinUpload?.config.enabled) {
       if (account.error) errors.push(account.error);
-      else if (!row.uploadPlan) errors.push("尚未选择上传计划，请读取并选择计划，或关闭本项千川上传。");
+      else if (!row.uploadPlan) errors.push("尚未选择上传计划，请点击下拉框选择计划，或关闭本项千川上传。");
       else if (row.uploadPlan.advertiserId !== uploadAccount?.advertiserId) errors.push("上传计划不属于当前账号，请重新选择计划。");
     }
     return errors.filter((value): value is string => Boolean(value)).map(message => ({ name: row.name, message }));
@@ -170,7 +170,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
                   <option value="" disabled>请选择上传账号</option>
                   {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{account.productName ?? account.product} · {account.advertiserId || "未配置"}{!account.available && "（不可用）"}</option>)}
                 </select>
-                {row.selected && row.uploadEnabled && state.douyinUpload?.config.enabled && <BatchUploadPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })} />}
+                {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact readOnOpen account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })} />}
                 {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}
               </div>
             </div>
@@ -186,12 +186,6 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
       {run.jobs.map((job, index) => <div className="batch-result-row" key={job.id}><span className="batch-order">{index + 1}</span><div className="batch-result-info"><button type="button" className="text-button batch-result-name" aria-label={`查看 ${job.name} 作品`} onClick={() => setDetail({ runId: run.id, jobId: job.id, name: job.name })}>{job.name}</button><p>{job.completedCount} / {job.actualCount || job.requestedCount} 条完成{job.mode && ` · ${modeLabels[job.mode]}`} · 覆盖{job.coverEnabled ? "开启" : "关闭"} · 价格{job.displayMode === "full" ? "全程" : "前 5 秒"}</p>{job.error && <small className="batch-error">{job.error}</small>}{job.outputDirectory && <small>{job.outputDirectory}</small>}</div><span className={`status-tag ${job.status}`}>{labels[job.status]}</span>{running && ["queued", "preparing", "producing", "exporting"].includes(job.status) && <button type="button" className="text-button" aria-label={`取消 ${job.name} 制作`} disabled={stopping || run.status === "cancelling" || cancellingJobs.includes(job.id)} onClick={() => void cancelJob(run.id, job.id)}>{cancellingJobs.includes(job.id) ? "正在取消…" : "取消该项"}</button>}<button type="button" className="text-button" onClick={() => setDetail({ runId: run.id, jobId: job.id, name: job.name })}>查看作品</button>{job.completedTaskIds?.[0] && <div className="row-actions"><button className="text-button" onClick={() => void artifact(job.completedTaskIds![0], false)}>播放首条</button><button className="icon-button" aria-label={`打开 ${job.name} 成片文件夹`} onClick={() => void artifact(job.completedTaskIds![0], true)}><Icon name="folder" size={18} /></button></div>}</div>)}
     </section>}
   </>;
-}
-
-function BatchUploadPlanSelect(props: Parameters<typeof QianchuanPlanSelect>[0]) {
-  const [requested, setRequested] = useState(Boolean(props.value && props.value.advertiserId === props.account?.advertiserId));
-  if (requested || props.value && props.value.advertiserId === props.account?.advertiserId) return <QianchuanPlanSelect {...props} />;
-  return <button type="button" className="text-button" style={{ gridColumn: "1 / -1", justifySelf: "start" }} disabled={props.disabled || !props.account?.available} onClick={() => setRequested(true)}>读取上传计划</button>;
 }
 
 function message(value: unknown): string { return value instanceof Error ? value.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "操作未完成，请重试。"; }

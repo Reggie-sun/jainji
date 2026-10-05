@@ -30,7 +30,7 @@ describe("automatic batch upload account binding", () => {
   });
 });
 
-it("reads upload plans only for selected templates and cancels an unfinished read when deselected", async () => {
+it("reads plans independently of template selection and cancels when upload is disabled", async () => {
   const browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
   try {
     const page = await browser.newPage();
@@ -58,16 +58,24 @@ it("reads upload plans only for selected templates and cancels an unfinished rea
     await page.addScriptTag({ content: script });
     await page.getByRole("checkbox", { name: "选择模板 晚安油", exact: true }).waitFor();
     expect(await page.evaluate(() => (window as any).requests.length)).toBe(0);
+    expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(2);
     await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).check();
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(0);
+    await page.locator('[aria-label="蝴蝶贴制作设置"]').getByLabel("上传计划", { exact: true }).click();
     await page.waitForFunction(() => (window as any).requests.length === 1);
     expect(await page.evaluate(() => (window as any).requests[0].input.expectedAdvertiserId)).toBe("123");
     await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).uncheck();
+    expect(await page.evaluate(() => (window as any).cancellations.length)).toBe(0);
+    expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(2);
+    await page.getByRole("checkbox", { name: "蝴蝶贴开启千川上传", exact: true }).uncheck();
     await page.waitForFunction(() => (window as any).cancellations.length === 1);
-    expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(0);
+    expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(1);
     await page.getByRole("checkbox", { name: "晚安油开启千川上传", exact: true }).uncheck();
     await page.getByRole("checkbox", { name: "选择模板 晚安油", exact: true }).check();
     expect(await page.evaluate(() => (window as any).requests.length)).toBe(1);
     await page.getByRole("checkbox", { name: "晚安油开启千川上传", exact: true }).check();
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(1);
+    await page.locator('[aria-label="晚安油制作设置"]').getByLabel("上传计划", { exact: true }).click();
     await page.waitForFunction(() => (window as any).requests.length === 2);
     expect(await page.evaluate(() => (window as any).requests[1].input.expectedAdvertiserId)).toBe("789");
     await page.evaluate(() => (window as any).requests[1].resolve([{ advertiserId: "789", adId: "987", name: "晚安油计划" }]));
