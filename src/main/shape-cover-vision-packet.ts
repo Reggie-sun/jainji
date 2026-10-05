@@ -13,13 +13,16 @@ const Component = z.object({ candidateId: Id, gridBox: Box, sourceBox: Box, sign
   stablePixels: Integer, meanMaxChannelStd: z.number().finite().nonnegative(), edgePixels: Integer,
   meanAdjacentPersistence: z.number().finite().min(0).max(1), sampledScreenCoordinateConsistency: z.number().finite().min(0).max(1),
 }).strict() }).strict();
+// A historical frozen preview has source boxes, not live detector-grid signals.
+const PreviewComponent = Component.pick({ candidateId: true, sourceBox: true });
 const Image = z.object({ sourceKey: Digest, ordinal: Integer, pts: z.number().int().safe(), pixelSha256: Digest,
   crop: Box, candidateIds: z.array(Id).max(3), kind: z.enum(["CONTEXT", "CROP", "ORIGINAL", "COVERED"]),
   imageSha256: Digest, byteLength: Integer.positive(),
 }).strict();
 const Manifest = z.object({ version: z.literal("shape-cover-vision-packet/v1"), kind: z.enum(["CANDIDATE", "PREVIEW"]),
   sourceKey: Digest, sourceWidth: Integer.positive(), sourceHeight: Integer.positive(), timeBase: z.string().regex(/^\d+\/\d+$/),
-  candidates: z.array(Component).min(1).max(3), images: z.array(Image).min(2).max(12),
+  candidates: z.array(z.union([Component, PreviewComponent])).min(1).max(3), images: z.array(Image).min(2).max(12),
+  reviewScope: z.string().min(1).max(2000).optional(),
 }).strict();
 export type VisionComponent = z.infer<typeof Component>;
 export type VisionImageInput = Omit<z.infer<typeof Image>, "imageSha256" | "byteLength"> & { png: Buffer };
@@ -43,6 +46,7 @@ export function createVisionPacket(input: Omit<z.infer<typeof Manifest>, "versio
   const manifest = Manifest.parse({ ...input, version: "shape-cover-vision-packet/v1", images: images.map(({ png, ...binding }) =>
     ({ ...binding, imageSha256: discoveryHash(png), byteLength: png.length })) });
   const ids = manifest.candidates.map(c => c.candidateId);
+  if (manifest.reviewScope && manifest.kind !== "PREVIEW") throw Error("VISION_TASK_MISMATCH");
   if (new Set(ids).size !== ids.length) throw Error("VISION_CANDIDATE_MISMATCH");
   for (const b of [...manifest.candidates.map(c => c.sourceBox), ...manifest.images.map(i => i.crop)]) {
     if (b.x + b.width > manifest.sourceWidth || b.y + b.height > manifest.sourceHeight) throw Error("VISION_IMAGE_MAPPING");
@@ -53,6 +57,7 @@ export function createVisionPacket(input: Omit<z.infer<typeof Manifest>, "versio
     if (image.kind !== "CROP" && (image.crop.x || image.crop.y || image.crop.width !== manifest.sourceWidth || image.crop.height !== manifest.sourceHeight)) throw Error("VISION_CONTEXT_MAPPING");
   }
   if (manifest.kind === "CANDIDATE") {
+    for (const candidate of manifest.candidates) Component.parse(candidate);
     const context = manifest.images.filter(i => i.kind === "CONTEXT");
     if (context.length !== 3 || new Set(context.map(i => i.ordinal)).size !== 3 || manifest.images.some(i => !["CONTEXT", "CROP"].includes(i.kind))) throw Error("VISION_CONTEXT_REQUIRED");
     for (const id of ids) {

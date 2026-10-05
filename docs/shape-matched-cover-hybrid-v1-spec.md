@@ -88,6 +88,14 @@ Luna逐包完整分类；UNKNOWN、riskFlags、非STABLE、group=false/UNCERTAIN
 
 H2 prompt v2先冻结固定construction cases与labels，然后各source一次development执行；wrong/UNKNOWN结果保留，不改prompt重试到正确。MiniMax-M3只固定两项DEVELOPMENT_COMPARISON，不参与semantic runtime，也不投票。H2不调用extractStaticConservativeMask，不授mask acceptance、proof v3、旧M3或activation。
 
+## H4 Accepted Preview Delta
+
+2026-10-06 用户授权从 `000f3e6` 独立 branch/worktree 接 H4，跳过共享 main 的 foreign completion 阻断，不修改 H3 算法。使用既有 archive/PNG 的 source/binding/RGBA/alpha 与原 projected mask 零遗漏复查；archive 不恢复 live H3 ownership。原 compiler 空模板接全画布 PNG 0:0 overlay，完整 preview 核验逐帧 PTS/endPTS、时长和源音频 packet hash。PRODUCT_DISABLED、原 export guard 不变。
+
+PREVIEW v1 兼容允许只含 candidateId/sourceBox 的 frozen candidate，以及进入 digest 的可选 reviewScope；CANDIDATE 仍必须完整 grid/signals，不伪造 archive 中不存在的 CV 指标。仍最多12图/32MiB，首中尾加最多3个 H3 最低 stationaryMatch 位置；不是原133项 legacy anomaly 的完整审查，不增加crop图或预算。原语义包和历史消费者保持约束。
+
+MiniMax-M3 一次 capability probe、一次 QA；FAIL/UNKNOWN 有条件精确 `gpt-6.1-sol` 二审。未解析首答作为 UNKNOWN 保留并尝试二审 gate，但不以无效首答或模型 vote 签发 PASS。精确型号缺失、transport、stale、cancel 等失败关闭，不重试或切换历史 alternate。真实采样 QA 不证明全片逐帧视觉质量，且不替代 H3 uncoveredPixels=0。执行及验证见 [H4 Plan](superpowers/plans/2026-10-06-hybrid-corner-h4-preview.md)。
+
 ## Self Review
 
 本scope不调整生产准入。新语义owner只组装vision任务，provider基础设施仍唯一；strict历史与Hybrid发展路径分离，100% coverage是独立硬门。capability unavailable保持显式；无live证据不能声称三模型routing实测成立。
