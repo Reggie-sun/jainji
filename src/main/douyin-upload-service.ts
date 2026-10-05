@@ -689,7 +689,7 @@ export class DouyinUploadService {
               tasks = ids.map(id => this.requireTask(id));
               continue;
             }
-            await delay(100, undefined, { signal });
+            await delay(500, undefined, { signal });
           }
         }, t.processing, controller.signal);
       }

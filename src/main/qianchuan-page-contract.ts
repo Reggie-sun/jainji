@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Frame, Locator, Page } from "playwright-core";
+import type { ElementHandle, Frame, Locator, Page } from "playwright-core";
 import { accountPageUrl } from "../shared/qianchuan-account.js";
 import { uploadFailure, type PageOwnership, type ReadyEvidence } from "../shared/douyin-upload.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
@@ -27,7 +27,7 @@ export const PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract = {
 export function qianchuanReadiness(): string | undefined { return undefined; }
 const dropSelector = '[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]';
 const changed = () => uploadFailure("PAGE_CONTRACT_CHANGED", "page", "千川页面结构或批次归属无法唯一确认。", "在 Chrome 核查原页面；程序不会猜测计划或控件。", true);
-const lostModal = () => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "原上传弹窗已丢失、无法唯一确认或归属已改变。", "请人工核查原批次；不能新开弹窗重传，已有文件屏障继续保留。", true);
+const lostModal = (reason = "已丢失、无法唯一确认或归属已改变") => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", `原上传弹窗${reason}。`, "请人工核查原批次；不能新开弹窗重传，已有文件屏障继续保留。", true);
 export function parseSelectedCount(text: string): { selected: number; capacity: number } {
   const match = /^已选择\s*(\d+)\s*\/\s*(\d+)\s*[：:]?$/.exec(text.trim());
   if (!match) throw changed();
@@ -39,6 +39,7 @@ export function parseSelectedCount(text: string): { selected: number; capacity: 
 export class QianchuanPageSession {
   private frame?: Frame;
   private modal?: Locator;
+  private modalNode?: ElementHandle<HTMLElement | SVGElement>;
   private ownership?: PageOwnership;
   private selected: BatchSelectedFile[] = [];
   private pending = new Set<string>();
@@ -64,9 +65,31 @@ export class QianchuanPageSession {
     return this.unique(locator.filter({ visible: true }), signal);
   }
   private async visible(selector: string): Promise<boolean> { return (await this.frame!.locator(`${selector}:visible`).count()) > 0; }
-  async guard(task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
+  private async ownedModal(signal: AbortSignal, deadline: number): Promise<boolean> {
+    let waited = false;
+    while (true) {
+      this.check(signal);
+      if (!this.modalNode || !this.frame || this.frame.isDetached()) throw lostModal("的原节点或页面已丢失");
+      let state: "lost" | "hidden" | "visible";
+      try {
+        state = await this.frame.locator(this.contract.modal).evaluateAll((elements, { node, session }) => {
+          if (!node.isConnected || elements.length !== 1 || elements[0] !== node || node.getAttribute("data-jianji-upload-session") !== session) return "lost";
+          const box = node.getBoundingClientRect();
+          return box.width > 0 && box.height > 0 && getComputedStyle(node).visibility === "visible" ? "visible" : "hidden";
+        }, { node: this.modalNode, session: this.ownership!.modalSessionId });
+      } catch { this.check(signal); throw lostModal("的原节点或页面已丢失"); }
+      this.check(signal);
+      if (state === "lost") throw lostModal("的原节点已移除、替换或归属已改变");
+      if (state === "visible") return waited;
+      if (Date.now() >= deadline) throw lostModal("持续不可见，稳定等待已超时");
+      waited = true;
+      await this.page.waitForTimeout(Math.min(50, Math.max(1, deadline - Date.now())));
+    }
+  }
+  async guard(task: UploadTaskRecord, signal: AbortSignal, modalDeadline = Date.now() + Math.min(task.config.timeouts.action, 1000)): Promise<void> {
     this.check(signal);
     if (this.page.isClosed()) throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "原批次标签页已关闭。", "人工核查；不能新开页面重传。", true);
+    if (this.modal) await this.ownedModal(signal, modalDeadline);
     const url = new URL(this.page.url()), target = task.authorization.target;
     if (url.origin !== this.contract.origin || url.pathname !== this.contract.route || url.searchParams.get("aavid") !== target.advertiserId || url.searchParams.get("adId") !== target.adId) throw changed();
     if (!this.frame || this.frame.isDetached()) {
@@ -97,7 +120,7 @@ export class QianchuanPageSession {
     const planIdentity = planScope.getByText(new RegExp(`^\\s*ID[：:]\\s*${target.adId}\\s*$`)).filter({ visible: true });
     if (!this.identityEstablished) {
       await this.shown(accountIdentity, task, signal); await this.shown(planIdentity, task, signal);
-      this.identityEstablished = true; return this.guard(task, signal);
+      this.identityEstablished = true; return this.guard(task, signal, modalDeadline);
     }
     await this.unique(accountIdentity, signal); await this.unique(planIdentity, signal);
     if (this.contract.kind === "qianchuan") {
@@ -113,8 +136,7 @@ export class QianchuanPageSession {
       if (deleted) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", `千川计划 ${target.adId} 已删除，已停止自动操作。`, "保存当前有效计划链接；仅整批从未选过文件的任务可明确“改传当前计划”。已有文件屏障保留，只能人工核查原计划，禁止重传。", true);
     }
     if (this.modal) {
-      if (await this.frame.locator(`${this.contract.modal}:visible`).count() !== 1) throw lostModal();
-      if (await this.modal.getAttribute("data-jianji-upload-session") !== this.ownership?.modalSessionId) throw lostModal();
+      if (await this.ownedModal(signal, modalDeadline)) return this.guard(task, signal, modalDeadline);
       await this.unique(this.modal.getByRole("button", { name: "确定", exact: true }), signal);
       if (await this.modal.locator(`${this.contract.failure}:visible`).count()) throw uploadFailure("CONTENT_REJECTED", "page", "上传列表显示失败或拒绝。", "在 Chrome 核查；不会重传或自动确认。", true);
     }
@@ -168,6 +190,7 @@ export class QianchuanPageSession {
       await this.click(addScope.getByRole("button", { name: "添加视频", exact: true }), task, signal, "添加视频");
       if (this.contract.kind === "fixture") await this.click(this.frame!.getByRole("button", { name: "上传视频", exact: true }), task, signal);
       this.modal = await this.shown(this.frame!.locator(this.contract.modal), task, signal);
+      this.modalNode = await this.modal.elementHandle() ?? undefined;
       this.ownership = { targetId, pageBatchId: task.authorization.pageBatchId, modalSessionId: randomUUID() };
       await this.modal.evaluate((element, session) => element.setAttribute("data-jianji-upload-session", session), this.ownership.modalSessionId);
       if (this.contract.kind === "qianchuan") await this.click(this.modal.locator(".ovui-tabs__tab").filter({ hasText: /^上传视频$/ }), task, signal);
@@ -282,7 +305,9 @@ export class QianchuanPageSession {
     this.ownership = ownership; await this.guard(task, signal);
     const modal = this.frame!.locator(`${this.contract.modal}:visible`);
     if (await modal.count() !== 1) throw lostModal();
-    this.modal = modal; this.selected = selected;
+    this.modal = modal;
+    if (!this.modalNode) this.modalNode = await modal.elementHandle() ?? undefined;
+    this.selected = selected;
     const item = selected.find(file => file.fileName === task.result.file_name);
     if (!item || selected.filter(file => file.fileName === task.result.file_name).length !== 1) throw changed();
     this.pending = new Set(selected.filter(file => file.ready === false).map(file => file.fileName));

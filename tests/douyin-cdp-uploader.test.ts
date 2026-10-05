@@ -33,6 +33,19 @@ beforeAll(async () => {
 });
 afterEach(async () => {
   await Promise.all(uploaders.splice(0).map(uploader => uploader.stop()));
+  for (const source of [fixture, productionFixture]) {
+    if (!source) continue;
+    const browser = await chromium.connectOverCDP(source.cdpEndpoint, { noDefaults: true, timeout: 5000 });
+    try {
+      for (const page of browser.contexts()[0]!.pages()) {
+        const session = await page.context().newCDPSession(page);
+        let targetId: string;
+        try { targetId = (await session.send("Target.getTargetInfo")).targetInfo.targetId; }
+        finally { await session.detach(); }
+        if (targetId !== source.originalTargetId) await page.close();
+      }
+    } finally { await browser.close(); }
+  }
   fixture?.reset();
   productionFixture?.reset();
 });

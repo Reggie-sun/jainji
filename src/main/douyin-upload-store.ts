@@ -154,18 +154,23 @@ export class DouyinUploadStore {
       closedIds.add(closed.pageBatchId);
     }
     const ids = new Set<string>(), identities = new Set<string>(), intents = new Map<string, UploadIntent>();
+    const batches = new Map<string, { projectId: string; authorization: string; count: number }>();
     for (const intent of data.intents) {
       const key = intentKey(intent);
       if (intents.has(key) || intent.selection.accountProduct !== intent.authorization.target.product) throw new Error("Intent binding mismatch");
-      for (const other of intents.values()) if (other.authorization.pageBatchId === intent.authorization.pageBatchId && (other.project_id !== intent.project_id || JSON.stringify(other.authorization) !== JSON.stringify(intent.authorization))) throw new Error("Batch target mismatch");
+      const authorization = JSON.stringify(intent.authorization), batch = batches.get(intent.authorization.pageBatchId);
+      if (batch && (batch.projectId !== intent.project_id || batch.authorization !== authorization)) throw new Error("Batch target mismatch");
+      const count = (batch?.count ?? 0) + 1;
+      if (count > intent.authorization.expectedCount) throw new Error("Batch count mismatch");
+      batches.set(intent.authorization.pageBatchId, { projectId: intent.project_id, authorization, count });
       intents.set(key, intent);
     }
-    for (const intent of intents.values()) if ([...intents.values()].filter(other => other.authorization.pageBatchId === intent.authorization.pageBatchId).length > intent.authorization.expectedCount) throw new Error("Batch count mismatch");
-    const groups = new Map<string, Fence[]>();
+    const groups = new Map<string, Fence[]>(), fenceCounts = new Map<string, number>(), tasksById = new Map<string, UploadTaskRecord>();
+    for (const fence of fences.values()) fenceCounts.set(fence.pageOwnership.pageBatchId, (fenceCounts.get(fence.pageOwnership.pageBatchId) ?? 0) + 1);
     for (const task of data.tasks) {
       const id = task.result.upload_task_id, target = task.authorization.target, intent = intents.get(intentKey(task.input)), fence = fences.get(id);
       if (ids.has(id) || identities.has(intentKey(task.input)) || id !== uploadTaskId(task.input, target) || task.inputDigest !== frozenInputDigest(task.input, task.authorization) || intentKey(task.result) !== intentKey(task.input) || task.result.artifact_sha256 !== task.input.artifact_sha256 || task.result.accountProduct !== target.product || task.result.advertiserId !== target.advertiserId || task.result.adId !== target.adId || !intent || JSON.stringify(intent.authorization) !== JSON.stringify(task.authorization) || JSON.stringify(intent.config) !== JSON.stringify(task.config)) throw new Error("Task binding mismatch");
-      ids.add(id); identities.add(intentKey(task.input));
+      ids.add(id); identities.add(intentKey(task.input)); tasksById.set(id, task);
       if (task.result.file_name !== path.basename(task.input.video_path)) throw new Error("Task filename mismatch");
       if (fence && (fence.input_digest !== task.inputDigest || fence.artifact_sha256 !== task.input.artifact_sha256 || fence.advertiserId !== target.advertiserId || fence.adId !== target.adId || fence.pageOwnership.pageBatchId !== task.authorization.pageBatchId || fence.attempt !== task.result.attempt_count)) throw new Error("Fence binding mismatch");
       if (fence) {
@@ -173,7 +178,7 @@ export class DouyinUploadStore {
         const group = groups.get(task.authorization.pageBatchId) ?? []; group.push(fence); groups.set(task.authorization.pageBatchId, group);
       }
       if (task.result.upload_outcome !== "NOT_SELECTED" && !fence && !task.result.duplicate_of) throw new Error("Missing selection fence");
-      if (task.result.readyEvidence && fence && (JSON.stringify(task.result.readyEvidence.pageOwnership) !== JSON.stringify(fence.pageOwnership) || task.result.readyEvidence.selectedCount < fence.selectedIndex || task.result.readyEvidence.selectedCount > [...fences.values()].filter(other => other.pageOwnership.pageBatchId === fence.pageOwnership.pageBatchId).length)) throw new Error("Ready ownership mismatch");
+      if (task.result.readyEvidence && fence && (JSON.stringify(task.result.readyEvidence.pageOwnership) !== JSON.stringify(fence.pageOwnership) || task.result.readyEvidence.selectedCount < fence.selectedIndex || task.result.readyEvidence.selectedCount > fenceCounts.get(fence.pageOwnership.pageBatchId)!)) throw new Error("Ready ownership mismatch");
     }
     for (const group of groups.values()) {
       group.sort((left, right) => left.selectedIndex - right.selectedIndex);
@@ -181,7 +186,7 @@ export class DouyinUploadStore {
     }
     for (const id of fences.keys()) if (!ids.has(id)) throw new Error("Orphan selection fence");
     for (const task of data.tasks) if (task.result.duplicate_of) {
-      const original = data.tasks.find(other => other.result.upload_task_id === task.result.duplicate_of);
+      const original = tasksById.get(task.result.duplicate_of);
       if (!original || original.result.duplicate_of || !sameTargetBytes(task, original) || !fences.has(original.result.upload_task_id) || task.result.readyEvidence && JSON.stringify(task.result.readyEvidence) !== JSON.stringify(original.result.readyEvidence)) throw new Error("Invalid duplicate evidence");
     }
   }

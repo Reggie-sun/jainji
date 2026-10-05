@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-05T08:04:46Z",
+  "updated_at": "2026-10-05T08:41:46Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "07492ec82b4bc87b8a8ff358cf1f5c234b174d47375e668d1e8d0bceba4379d3",
@@ -264,9 +264,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "85b7e6167b624c2a5dd5d00b8b1a283db18c6895a938b1dcaaa6e09d4d7b5431",
-      "size": 76579,
-      "normalized_sha256": "85b7e6167b624c2a5dd5d00b8b1a283db18c6895a938b1dcaaa6e09d4d7b5431"
+      "sha256": "8dd2e0d0e3c36a16e9eb8587a784a07eb718be9fe98eb5fca7ae73b0226e1c32",
+      "size": 76490,
+      "normalized_sha256": "8dd2e0d0e3c36a16e9eb8587a784a07eb718be9fe98eb5fca7ae73b0226e1c32"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1334,14 +1334,14 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "bfae84cde252629f8a6effe7728795d966eb7029ac97d836f17e3bf8ff4bc949",
-      "size": 64714,
-      "normalized_sha256": "bfae84cde252629f8a6effe7728795d966eb7029ac97d836f17e3bf8ff4bc949"
+      "sha256": "f0fcb7f8c9d0ee65b3a0068c8d853b36aea8aaebac199ab73689d278e5d0dd93",
+      "size": 67859,
+      "normalized_sha256": "f0fcb7f8c9d0ee65b3a0068c8d853b36aea8aaebac199ab73689d278e5d0dd93"
     },
     "src/main/douyin-upload-store.ts": {
-      "sha256": "527b6bcb75269e6ebec5d77d0f24fa0f452f4bb0b1c37984d515385f9d2865f9",
-      "size": 36328,
-      "normalized_sha256": "527b6bcb75269e6ebec5d77d0f24fa0f452f4bb0b1c37984d515385f9d2865f9"
+      "sha256": "1cebf58b0d6d71f71c9db27ed71b58bbd41e8e7f6d1a49fd00ba56cfb64439ca",
+      "size": 36820,
+      "normalized_sha256": "1cebf58b0d6d71f71c9db27ed71b58bbd41e8e7f6d1a49fd00ba56cfb64439ca"
     },
     "src/main/errors.ts": {
       "sha256": "249b2aeb6801896746532541e29c31af192403d73200b363c0f6a7c5d937a12b",
@@ -1439,9 +1439,9 @@
       "normalized_sha256": "997c7748b9402a2e708aa79e706b743be0f46e7995cd4797749df18a92806c5a"
     },
     "src/main/qianchuan-page-contract.ts": {
-      "sha256": "6ea0e25def9c4028ec646c5731c09bd9568230054ef687c4f148d4d864d400f1",
-      "size": 23458,
-      "normalized_sha256": "6ea0e25def9c4028ec646c5731c09bd9568230054ef687c4f148d4d864d400f1"
+      "sha256": "aa7488845ae06f4e6272d8fc91ec231a904400acbb70e8dee2b7ea7fafde2a9a",
+      "size": 25075,
+      "normalized_sha256": "aa7488845ae06f4e6272d8fc91ec231a904400acbb70e8dee2b7ea7fafde2a9a"
     },
     "src/main/qianchuan-plan-material-page.ts": {
       "sha256": "db2b2e2e2647a8969402d65b609ae906706ece49184e542f085d24aa3b6f24e9",

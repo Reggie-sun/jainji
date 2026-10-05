@@ -7,7 +7,7 @@ import { buildSync } from "esbuild";
 import { spawnSync } from "node:child_process";
 import { DouyinUploadStore, uploadTaskId, frozenInputDigest, sameTargetBytes, type UploadTaskRecord } from "../src/main/douyin-upload-store";
 import { legacyTaskId, legacyInputDigest } from "../src/main/douyin-upload-legacy";
-import { DouyinUploadConfigSchema, QianchuanUploadConfigSchema, UploadAuthorizationSchema, type PageOwnership } from "../src/shared/douyin-upload";
+import { DouyinUploadConfigSchema, QianchuanUploadConfigSchema, QianchuanUploadResultSchema, UploadAuthorizationSchema, type PageOwnership } from "../src/shared/douyin-upload";
 
 const roots: string[] = [];
 vi.mock("node:fs/promises", async importOriginal => {
@@ -29,6 +29,34 @@ const ownership = (task: UploadTaskRecord): PageOwnership => ({ targetId: "fixtu
 async function fixture() { const root = await mkdtemp(path.join(tmpdir(), "qianchuan-store-")); roots.push(root); const store = new DouyinUploadStore(root); await store.load(); return { root, store }; }
 
 describe("v2 target-bound selection fences", () => {
+  it.each(["project", "authorization", "capacity"] as const)("rejects batch %s drift even when other batches intervene", async drift => {
+    const { store } = await fixture(), first = makeRecord(), unrelated = makeRecord(), extra = makeRecord();
+    if (drift === "capacity") first.authorization.expectedCount = 1;
+    await store.saveIntents([first, unrelated].map(task => ({ project_id: task.input.project_id, batch_id: task.input.batch_id, export_task_id: task.input.export_task_id,
+      selection: { enabled: true as const, accountProduct: task.authorization.target.product }, authorization: task.authorization, config: task.config })));
+    const intent = { project_id: first.input.project_id, batch_id: extra.input.batch_id, export_task_id: extra.input.export_task_id,
+      selection: { enabled: true as const, accountProduct: first.authorization.target.product }, authorization: structuredClone(first.authorization), config: first.config };
+    if (drift === "project") intent.project_id = extra.input.project_id;
+    if (drift === "authorization") intent.authorization.target.adId = "456";
+    await expect(store.saveIntents([intent])).rejects.toThrow();
+    expect(store.unavailable).toBe(true);
+  });
+
+  it("does not count another batch's fences as READY evidence for this batch", async () => {
+    const { root, store } = await fixture(), first = makeRecord(), other = makeRecord();
+    other.input.artifact_sha256 = "c".repeat(64); other.result.artifact_sha256 = other.input.artifact_sha256;
+    other.inputDigest = frozenInputDigest(other.input, other.authorization); other.result.upload_task_id = uploadTaskId(other.input, other.authorization.target);
+    await saveRecord(store, first); await saveRecord(store, other);
+    const page = ownership(first); await store.markSelecting(first.result.upload_task_id, page, 1);
+    await store.markSelecting(other.result.upload_task_id, ownership(other), 1);
+    const state = JSON.parse(await readFile(path.join(root, "state.json"), "utf8"));
+    state.tasks[0].result = { ...state.tasks[0].result, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY",
+      readyEvidence: { advertiserId: first.result.advertiserId, adId: first.result.adId, fileName: first.result.file_name, selectedCount: 2, pageOwnership: page, observedAt: new Date().toISOString() } };
+    expect(QianchuanUploadResultSchema.safeParse(state.tasks[0].result).success).toBe(true);
+    await writeFile(path.join(root, "state.json"), JSON.stringify(state));
+    await expect(new DouyinUploadStore(root).load()).rejects.toThrow();
+  });
+
   it("restores named and legacy frozen targets without changing task identity, dedup or permanent fences", async () => {
     const { root, store } = await fixture(), legacy = makeRecord(), named = makeRecord();
     named.authorization = UploadAuthorizationSchema.parse({ ...named.authorization, target: { ...named.authorization.target, productName: "新产品" } });

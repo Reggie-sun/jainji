@@ -750,6 +750,18 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 3)).toBe(true);
   });
 
+  it("spaces idle whole-list observations and still cancels during that wait", async () => {
+    const f = await groupedFixture(["idle upload"]), observations: number[] = [];
+    f.port.pollReady = async () => { observations.push(performance.now()); return undefined; };
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(observations.length).toBeGreaterThanOrEqual(2));
+      expect(observations[1]! - observations[0]!).toBeGreaterThanOrEqual(400);
+    } finally { await f.service.stop(); await running; }
+    expect(f.groups.map(group => group.length)).toEqual([1]);
+    expect(f.store.tasks()[0]!.result.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+  });
+
   it.each(["cancel", "timeout"] as const)("preserves every in-flight group's fence after %s and recovers only by reading the original page", async action => {
     const f = await groupedFixture(undefined, { processingTimeout: 1800 });
     f.port.pollReady = async () => undefined;
