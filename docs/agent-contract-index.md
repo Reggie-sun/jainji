@@ -12,6 +12,7 @@
 | 源身份、修订、争议与静态 mask | [Source Knowledge](source-sticker-knowledge-spec.md) | cover-contracts、shape-boundaries |
 | assisted 人工决定、冻结预览与批准 | [Assisted Review](semi-automatic-cover-review-spec.md) | cover-contracts、lifecycle |
 | shape geometry、共同候选与输出准入 | [Shape V1](shape-matched-cover-spec.md)、[Simplification Delta](shape-matched-cover-v1-simplification-spec.md) | shape-boundaries；研究 PASS 无 production authority |
+| Hybrid静态overlay语义与预览QA | [Hybrid V1 Delta](shape-matched-cover-hybrid-v1-spec.md) | hybrid-vision；旧strict proof为研究路径，H1保持PRODUCT_DISABLED |
 | Harness scope、检查和 completion | [Harness Delta](superpowers/specs/2026-10-02-agents-harness-governance-design.md)、[Harness Contract](video-validation-harness-spec.md) | [policy](../.agent/harness/policy.json) 独占路由与命令 |
 | 启动与手动运行 | [README](../README.md) | 当前 runtime 与实际命令 |
 | AOCI 创作与维护 | 当前官方 Guide 与工具合同 | Verify / Check / Guide；本文不复制状态机 |

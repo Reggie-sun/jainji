@@ -266,6 +266,24 @@
       ]
     },
     {
+      "id": "hybrid-vision",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/shape-cover-vision.test.ts",
+        "tests/shape-cover-vision-packet.integration.test.ts"
+      ],
+      "timeoutMs": 180000
+    },
+    {
       "id": "extended-regressions",
       "kind": "vitest",
       "required": true,
@@ -1149,6 +1167,27 @@
         "docs/shape-matched-cover-v1-simplification-spec.md",
         "docs/shape-matched-cover-v1-simplification-plan.md",
         "docs/shape-matched-cover-m2e-plan.md"
+      ]
+    },
+    {
+      "id": "domain-hybrid-vision",
+      "paths": [
+        "src/main/shape-cover-vision-*.ts",
+        "tests/shape-cover-vision.test.ts",
+        "tests/shape-cover-vision-packet.integration.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "hybrid-vision",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/shape-matched-cover-hybrid-v1-spec.md",
+        "docs/video-validation-harness-spec.md"
       ]
     }
   ],

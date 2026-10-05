@@ -2,6 +2,10 @@
 
 ## Status and Authority
 
+### Hybrid V1 Accepted Delta — 2026-10-05
+
+当前默认产品发展路线由 [Hybrid V1 Delta](shape-matched-cover-hybrid-v1-spec.md) 调整：CV proposal、VLM分类/grouping与预览QA、确定性mask/coverage。下方strict geometry/proof要求和HC状态保留为HIGH_ASSURANCE_RESEARCH / NOT_HYBRID_V1_CRITICAL_PATH，不再阻断Hybrid V1；历史代码、receipt与失败不改写。H1仅development infrastructure，PRODUCT_DISABLED，旧M3 strict consumer与guard不变。
+
 ### M2-HC2 Stop Checkpoint — 2026-10-05
 
 `confirmedSourceBox`是padding=2的discovery envelope，不是component membership。冻结真实canonical反例证明：component move1px/disappearance/PRICE背景均能被v2 padding landmarks误判SUPPORTED。新support-bound eligibility实验在相同bytes上全部UNOBSERVABLE，hollow support内部背景不能作anchor；固定阈值与ALL_COMPONENTS_REQUIRED不降。

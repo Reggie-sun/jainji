@@ -515,6 +515,12 @@ export class AgentProvider {
     }
   }
 
+  /** Development structured vision tasks reuse the original credential/transport/scheduler owner. */
+  async completeStructuredVision(messages: ModelMessage[], signal: AbortSignal, options: CompletionOptions): Promise<string> {
+    signal.throwIfAborted();
+    return this.complete(messages, signal, options);
+  }
+
   private async complete(messages: ModelMessage[], signal: AbortSignal, options?: CompletionOptions): Promise<string> {
     if (this.chatgpt) return this.chatgpt.complete(messages, signal, options);
     if (!this.connection) throw new ProviderError("请先接入模型。");
