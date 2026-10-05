@@ -17,6 +17,68 @@ beforeAll(async () => {
   fixture = await startQianchuanFixture({ tempRoot: root, chromeExecutable: await resolveChromeExecutable(), production: true, fixtureHtml: path.resolve("tests/fixtures/qianchuan-production-page.html") });
   browser = await chromium.connectOverCDP(fixture.cdpEndpoint, { noDefaults: true });
 });
+
+async function upgradeTip(page: Page, variant = "known") {
+  await page.evaluate(variant => {
+    const previous = (window as unknown as { promoClicks?: { close: number; activate: number } }).promoClicks;
+    const clicks = previous ?? { close: 0, activate: 0 };
+    (window as unknown as { promoClicks: typeof clicks }).promoClicks = clicks;
+    const wrap = document.createElement("div"); wrap.className = "all-shop-upgrade-modal-wrap";
+    wrap.style.cssText = "position:fixed;inset:0;z-index:99999;background:white";
+    wrap.innerHTML = `<div class="tools-vmok-plugin-modal"><div class="tools-vmok-plugin-modal__close-icon">×</div><div><section class="all-shop-upgrade-modal" role="dialog" aria-labelledby="all-shop-upgrade-title"><div class="upgrade-tag">全店托管重磅升级</div><h2 id="all-shop-upgrade-title">升级介绍</h2><button>立即开启全店托管</button></section></div></div>`;
+    if (variant === "unknown") wrap.querySelector(".upgrade-tag")!.textContent = "其他升级提示";
+    if (variant === "missing-label") wrap.querySelector("section")!.removeAttribute("aria-labelledby");
+    if (variant === "missing-close") wrap.querySelector(".tools-vmok-plugin-modal__close-icon")!.remove();
+    wrap.querySelector(".tools-vmok-plugin-modal__close-icon")?.addEventListener("click", () => { clicks.close++; wrap.remove(); });
+    wrap.querySelector("button")!.addEventListener("click", () => { clicks.activate++; });
+    document.body.append(wrap);
+    if (variant === "duplicate") document.body.append(wrap.cloneNode(true));
+  }, variant);
+}
+async function promoClicks(page: Page) {
+  return page.evaluate(() => (window as unknown as { promoClicks: { close: number; activate: number } }).promoClicks);
+}
+
+describe("known upgrade tip before file selection", () => {
+  it("closes only the known tip once and prepares upload without activating or confirming", async () => {
+    const value = await task(), prepared = await session(value); await upgradeTip(prepared.page);
+    await prepared.port.prepare([value], [], prepared.targetId, signal);
+    expect(await promoClicks(prepared.page)).toEqual({ close: 1, activate: 0 }); await zeroConfirmation(0);
+  });
+  it.each(["unknown", "missing-label", "missing-close", "duplicate"])("does not dismiss an unrecognized or ambiguous %s tip", async variant => {
+    const value = await task(), prepared = await session(value); value.config.timeouts.action = 150;
+    await upgradeTip(prepared.page, variant);
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toThrow();
+    expect(await promoClicks(prepared.page)).toEqual({ close: 0, activate: 0 }); await zeroConfirmation(0);
+  });
+  it("checks the visible advertiser identity before closing a tip", async () => {
+    const value = await task(), prepared = await session(value); value.config.timeouts.action = 150;
+    await upgradeTip(prepared.page);
+    await prepared.page.locator(".account-info-container").evaluate(element => element.textContent = "ID：999999");
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toThrow();
+    expect(await promoClicks(prepared.page)).toEqual({ close: 0, activate: 0 }); await zeroConfirmation(0);
+  });
+  it("refuses a second tip in the same session", async () => {
+    const value = await task(), prepared = await session(value); await upgradeTip(prepared.page);
+    await prepared.port.guard(value, signal); await upgradeTip(prepared.page);
+    await expect(prepared.port.guard(value, signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
+    expect(await promoClicks(prepared.page)).toEqual({ close: 1, activate: 0 }); await zeroConfirmation(0);
+  });
+  it("does not dismiss a tip on a deleted plan", async () => {
+    const value = await task(), prepared = await session(value); await upgradeTip(prepared.page);
+    await prepared.page.locator(".oc-promotion-key-info-bar-info-con").evaluate(element => {
+      const tag = document.createElement("span"); tag.className = "oc-tag-text"; tag.textContent = "已删除"; element.append(tag);
+    });
+    await expect(prepared.port.guard(value, signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
+    expect(await promoClicks(prepared.page)).toEqual({ close: 0, activate: 0 }); await zeroConfirmation(0);
+  });
+  it("does not close a tip that appears after the owned upload modal is established", async () => {
+    const value = await task(), prepared = await session(value);
+    await prepared.port.prepare([value], [], prepared.targetId, signal); await upgradeTip(prepared.page);
+    await prepared.port.guard(value, signal);
+    expect(await promoClicks(prepared.page)).toEqual({ close: 0, activate: 0 }); await zeroConfirmation(0);
+  });
+});
 afterEach(async () => { await Promise.all(pages.splice(0).map(page => page.close().catch(() => undefined))); fixture?.reset(); });
 afterAll(async () => { await browser?.close(); await fixture?.stop(); if (root) await rm(root, { recursive: true, force: true }); });
 

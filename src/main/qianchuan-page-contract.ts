@@ -44,6 +44,7 @@ export class QianchuanPageSession {
   private selected: BatchSelectedFile[] = [];
   private pending = new Set<string>();
   private identityEstablished = false;
+  private upgradeTipDismissed = false;
   private prepared?: { taskIds: string[]; index: number };
   constructor(private readonly page: Page, private readonly contract: QianchuanPageContract, private readonly check: (signal: AbortSignal) => void) {}
   url(task: UploadTaskRecord): string {
@@ -135,12 +136,31 @@ export class QianchuanPageSession {
       if (deleted === null) throw changed();
       if (deleted) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", `千川计划 ${target.adId} 已删除，已停止自动操作。`, "保存当前有效计划链接；仅整批从未选过文件的任务可明确“改传当前计划”。已有文件屏障保留，只能人工核查原计划，禁止重传。", true);
     }
+    if (!this.modal && this.contract.kind === "qianchuan" && await this.dismissUpgradeTip(task, signal)) return this.guard(task, signal, modalDeadline);
     if (this.modal) {
       if (await this.ownedModal(signal, modalDeadline)) return this.guard(task, signal, modalDeadline);
       await this.unique(this.modal.getByRole("button", { name: "确定", exact: true }), signal);
       if (await this.modal.locator(`${this.contract.failure}:visible`).count()) throw uploadFailure("CONTENT_REJECTED", "page", "上传列表显示失败或拒绝。", "在 Chrome 核查；不会重传或自动确认。", true);
     }
     this.check(signal);
+  }
+  private async dismissUpgradeTip(task: UploadTaskRecord, signal: AbortSignal): Promise<boolean> {
+    const tip = this.frame!.locator(".all-shop-upgrade-modal-wrap:visible");
+    if (!await tip.count()) return false;
+    if (this.upgradeTipDismissed) throw changed();
+    await this.unique(tip, signal);
+    const dialog = tip.locator('.all-shop-upgrade-modal[role="dialog"][aria-labelledby="all-shop-upgrade-title"]:visible');
+    await this.unique(dialog, signal);
+    await this.unique(dialog.locator(".upgrade-tag").filter({ hasText: /^全店托管重磅升级$/ }), signal);
+    const close = await this.unique(tip.locator(".tools-vmok-plugin-modal > .tools-vmok-plugin-modal__close-icon:visible"), signal);
+    this.upgradeTipDismissed = true;
+    this.check(signal);
+    try {
+      await close.click({ timeout: task.config.timeouts.action });
+      await tip.waitFor({ state: "hidden", timeout: task.config.timeouts.action });
+    } catch { this.check(signal); throw changed(); }
+    this.check(signal);
+    return true;
   }
   private async click(control: Locator, task: UploadTaskRecord, signal: AbortSignal, label = "目标控件"): Promise<void> {
     await this.guard(task, signal); const locator = await this.shown(control, task, signal);
