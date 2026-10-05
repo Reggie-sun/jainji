@@ -15,6 +15,7 @@ import type { ExportBatchIdentity, ExportQueue } from "./queue.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema, decorationTimingContext, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
+import { isCoverPoolStickerId } from "../shared/cover-sticker.js";
 import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from "./asset-library.js";
 import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
@@ -36,6 +37,8 @@ import type { QianchuanUploadSelection as DouyinUploadSelection, UploadAuthoriza
 import { ShapeCoverProduction } from "./shape-cover-production.js";
 import type { ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
 import { assertShapeCoverProductEntry } from "./shape-cover-activation.js";
+import { createHybridProductionSession, type HybridProductionSession } from "./hybrid-cover-session.js";
+import type { VisionRole, VisionRoute } from "./shape-cover-vision-router.js";
 
 export class AgentController {
   private runner?: AgentRunner;
@@ -47,7 +50,7 @@ export class AgentController {
   private briefController?: AbortController;
   private pendingOperation?: Promise<void>;
   private readonly previews = new AgentPreviewStore();
-  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore, private readonly registerUpload?: (batch: ExportBatchIdentity, selection?: DouyinUploadSelection, authorization?: UploadAuthorization) => Promise<void>, private readonly preflightUpload?: (selection: DouyinUploadSelection, count: number) => Promise<UploadAuthorization | undefined>) {}
+  constructor(private readonly service: ApplicationService, private readonly queue: ExportQueue, private readonly ffmpeg: FfmpegAdapter, private readonly onChange: () => void, private readonly stickerAssets: StickerAssets, private readonly library?: AssetLibrary, readonly provider = new AgentProvider(), readonly visionProvider = new AgentProvider(), readonly reviewerProvider = new AgentProvider(), private readonly knowledgeStore?: SourceStickerKnowledgeStore, private readonly registerUpload?: (batch: ExportBatchIdentity, selection?: DouyinUploadSelection, authorization?: UploadAuthorization) => Promise<void>, private readonly preflightUpload?: (selection: DouyinUploadSelection, count: number) => Promise<UploadAuthorization | undefined>, private readonly hybridRoutes?: (signal: AbortSignal) => Promise<Record<VisionRole, VisionRoute>>, private readonly hybridSession?: HybridProductionSession) {}
 
   get busy(): boolean { return this.preparing || this.testing || this.generatingBrief || Boolean(this.runner?.running); }
   snapshot() { const run = this.runner?.snapshot(); return run?.projectId === this.service.currentProject.id ? run : undefined; }
@@ -135,10 +138,43 @@ export class AgentController {
     this.pendingOperation = new Promise<void>((resolve) => { settle = resolve; });
     try {
       const parsed = AgentStartSchema.parse(input);
+      const savedCover = this.service.currentProject.coverSticker;
+      const savedStrategy = savedCover?.enabled && savedCover.trackingMode === "agent" ? savedCover.coverStrategy : undefined;
+      if (savedStrategy) parsed.coverStrategy = savedStrategy;
       const ids = [...new Set(parsed.mediaIds)].slice(0, parsed.requestedCount);
       const outputCount = parsed.requestedCount ?? ids.length * (parsed.multiplier ?? 1);
       if (outputCount > MAX_AGENT_OUTPUTS) throw new Error(`本轮成片数量不能超过 ${MAX_AGENT_OUTPUTS} 条，请减少制作条数。`);
       assertShapeCoverProductEntry(parsed, this.service.currentProject.coverSticker, Boolean(assisted));
+      if (shapeRequest && parsed.coverStrategy) throw new ProviderError("UNSAFE: Hybrid 产品意图不能借用 strict development 接缝。");
+      if (parsed.coverStrategy) {
+        const outputDirectory = await canonicalPath(parsed.outputDirectory);
+        if (!approvedDirectories.has(outputDirectory)) throw new Error("请通过系统对话框选择输出目录。");
+        const media = ids.map(id => this.service.getMedia(id));
+        if (media.some(item => !item || item.probeStatus !== "ready")) throw new Error("所选素材不可用，请重新导入。");
+        if (!this.knowledgeStore) throw new ProviderError("源贴纸知识库不可用或需要恢复；自动制作已停止。");
+        await assertOutputDirectorySafe(outputDirectory, media as MediaItem[]);
+        const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
+        const decorations = DecorationSchema.parse(parsed.decorations ?? {}), projectId = this.service.currentProject.id;
+        const directory = await mkdtemp(path.join(tmpdir(), "jianji-hybrid-production-"));
+        // Approved PNG/QA assets remain available to the existing queue and same-byte retries.
+        const available = await this.autoCatalog(this.preparingController.signal, true, true);
+        const catalog = { ...available, stickers: available.stickers.filter(c => isCoverPoolStickerId(c.id) || isAutomaticStickerAllowed(c.id)) };
+        const assets = { ...this.stickerAssets };
+        for (const { id } of catalog.stickers) if (!assets[id] && this.library) assets[id] = await this.library.ensure(id);
+        const hybrid = this.hybridSession ?? createHybridProductionSession({ tools: this.ffmpeg, preset, directory, decorations, ruleId: parsed.ruleId, knowledgeStore: this.knowledgeStore,
+          stickerAssets: assets, candidates: catalog.stickers.filter(c => assets[c.id]).map(c => ({ id: c.id, asset: assets[c.id]! })),
+          routes: this.hybridRoutes ?? (async () => { throw new ProviderError("Hybrid 图片连接不可用，请检查模型与 API。"); }) });
+        this.runner = new AgentRunner({ hybrid, usesModel: !this.hybridSession, frames: async () => [], plan: async () => { throw Error("HYBRID_UNEXPECTED_CREATIVE"); },
+          stickerAssets: assets, onChange: this.onChange, renderSlots: () => this.queue.renderSlots,
+          enqueue: async (template, item, signal) => {
+            const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset }, signal);
+            if (signal.aborted) await this.queue.cancel(batch.tasks[0].id);
+            else void this.queue.start(batch.id).catch(() => this.onChange());
+            return batch.tasks[0].id;
+          } });
+        this.runner.start(projectId, parsed.ruleId, parsed.brief, media as MediaItem[], parsed.multiplier ?? 1, parsed.requestedCount);
+        return;
+      }
       if (parsed.douyinUpload && (assisted || parsed.exportFormat && parsed.exportFormat !== "mp4")) throw new Error("千川上传仅支持普通正式 MP4 制作。");
       const uploadAuthorization = parsed.douyinUpload ? await this.preflightUpload?.(parsed.douyinUpload, outputCount) : undefined;
       if (parsed.douyinUpload && !uploadAuthorization) throw new Error("千川账号预检不可用，请重新选择账号。");

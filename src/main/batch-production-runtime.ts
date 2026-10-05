@@ -10,6 +10,7 @@ import type { FfmpegAdapter } from "./ffmpeg.js";
 import type { AssetLibrary } from "./asset-library.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { ModelConnections } from "./model-connections.js";
+import { hybridProductRoutes } from "./hybrid-cover-connections.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import type { BatchProjectOption } from "../shared/batch-production.js";
 import { DecorationSchema, requiresDisplayText } from "../shared/decorations.js";
@@ -57,7 +58,7 @@ export function createBatchProductionRuntime(input: {
         async (selection, count) => {
           if (!authorization || selection.accountProduct !== authorization.target.product || count !== authorization.expectedCount) throw new Error("批量上传授权与本项制作不一致。");
           return authorization;
-        });
+        }, hybridProductRoutes(input.connections, input.ffmpeg));
       return {
         get busy() { return agent.busy; },
         start: request => agent.start(request, input.approvedDirectories),

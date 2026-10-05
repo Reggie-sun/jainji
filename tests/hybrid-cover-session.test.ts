@@ -1,0 +1,69 @@
+import { beforeEach, expect, it, vi } from "vitest";
+import { createHybridProductionSession } from "../src/main/hybrid-cover-session.js";
+import { DEFAULT_PRESET, type MediaItem } from "../src/main/domain.js";
+import { DecorationSchema } from "../src/shared/decorations.js";
+import type { StickerAssets } from "../src/main/builtin-stickers.js";
+
+const mocks = vi.hoisted(() => ({ identity: vi.fn(), close: vi.fn(), semantic: vi.fn(), geometry: vi.fn(), approve: vi.fn(), fresh: vi.fn() }));
+vi.mock("../src/main/supervisor-evidence.js", () => ({ SupervisorEvidence: class {
+  sourceIdentity = mocks.identity; dispose = async () => {};
+} }));
+vi.mock("../src/main/source-fact-discovery-evidence.js", async importOriginal => ({ ...await importOriginal<object>(),
+  prepareDiscoveryEvidence: async () => ({ close: mocks.close }) }));
+vi.mock("../src/main/shape-cover-vision-corner-semantic.js", () => ({ confirmHybridCornerTargets: mocks.semantic }));
+vi.mock("../src/main/shape-cover-hybrid-h3.js", () => ({ prepareHybridCornerOverlays: mocks.geometry,
+  readHybridFrozenOverlay: async (_h3: unknown, corner: string) => ({ overlay: { corner } }) }));
+vi.mock("../src/main/hybrid-cover-production.js", () => ({ approveHybridOverlay: mocks.approve,
+  hybridVideoMedia: async (media: MediaItem) => media,
+  hybridTemplate: (layers: unknown[], base: { layers: unknown[] }) => ({ ...base, layers: [...base.layers.filter((l: any) => l.type === "text"), ...layers] }) }));
+
+const media = { id: "00000000-0000-4000-8000-000000000001", sourcePath: "/fixture.mp4", fingerprint: `sha256:${"a".repeat(64)}`,
+  durationMs: 2000, width: 160, height: 160, rotation: 0, sizeBytes: 1000, probeStatus: "ready", importedAt: new Date().toISOString(), displayName: "fixture" } satisfies MediaItem;
+const source = { fingerprint: media.fingerprint, byteLength: 1000, width: 160, height: 160, durationMs: 2000,
+  rotation: 0, timeBase: "1/6000", timeOriginPts: 0, interpretationVersion: 1 };
+const pass = { id: "00000000-0000-4000-8000-000000000002", type: "sticker", cover: { hybridApproved: { corner: "TOP_RIGHT" } } };
+function fixture(selectedMedia = media) {
+  const routes = vi.fn(async () => ({} as any)), knowledge = { lookup: vi.fn(async (_source?: typeof source) => ({ status: "miss" })) };
+  const session = createHybridProductionSession({ tools: { ffmpegPath: "unused", ffprobePath: "unused" }, preset: DEFAULT_PRESET,
+    directory: "/unused", candidates: [], stickerAssets: {} as StickerAssets, decorations: DecorationSchema.parse({ mode: "agent", displayText: { enabled: false, x: 0.5, y: 0.7 } }),
+    ruleId: "clean", knowledgeStore: knowledge as any, routes });
+  return { session, routes, knowledge, prepare: (version = 0) => session.prepare(selectedMedia, version, "run", new AbortController().signal, () => {}) };
+}
+beforeEach(() => {
+  vi.clearAllMocks();
+  mocks.identity.mockResolvedValue(source); mocks.semantic.mockResolvedValue({ status: "CORNER_SEMANTIC_READY" });
+  mocks.geometry.mockResolvedValue({ status: "READY", corners: [{ corner: "TOP_LEFT", status: "FROZEN" }, { corner: "TOP_RIGHT", status: "FROZEN" }, { corner: "BOTTOM_RIGHT", status: "SKIPPED" }], verifyFresh: mocks.fresh });
+  mocks.approve.mockImplementation(async overlay => { if (overlay.corner === "TOP_LEFT") throw Error("UNSAFE: HYBRID_H4_NOT_PASS"); return pass; });
+});
+it("keeps a safe corner despite local H4 rejection and reuses the same freeze for all versions", async () => {
+  const f = fixture(), a = await f.prepare(), b = await f.prepare(1);
+  expect(a.layers).toEqual([pass]); expect(b.layers).toEqual([pass]);
+  expect(a.name).toContain("TOP_RIGHT"); expect(a.name).toContain("其他角落保持原样");
+  expect(mocks.semantic).toHaveBeenCalledTimes(1); expect(mocks.geometry).toHaveBeenCalledTimes(1); expect(mocks.approve).toHaveBeenCalledTimes(2);
+  expect(mocks.close).toHaveBeenCalledTimes(1);
+});
+it("exports an explicit unchanged result when every corner is unresolved or skipped", async () => {
+  mocks.geometry.mockResolvedValue({ status: "READY", corners: [{ corner: "TOP_RIGHT", status: "SKIPPED" }], verifyFresh: mocks.fresh });
+  const result = await fixture().prepare(); expect(result.layers).toEqual([]); expect(result.name).toContain("已处理 0 个角落");
+  expect(mocks.approve).not.toHaveBeenCalled();
+});
+it("does not convert infrastructure failure into a skipped corner or retry the unknown request", async () => {
+  mocks.approve.mockRejectedValue(Error("UNSAFE: HYBRID_QA_INFRASTRUCTURE"));
+  const f = fixture(); await expect(f.prepare()).rejects.toThrow("QA_INFRASTRUCTURE"); await expect(f.prepare(1)).rejects.toThrow("QA_INFRASTRUCTURE");
+  expect(mocks.approve).toHaveBeenCalledTimes(1); expect(f.routes).toHaveBeenCalledTimes(1); expect(mocks.close).toHaveBeenCalledTimes(1);
+});
+it("stops on a known source dispute before requesting models", async () => {
+  const f = fixture(); f.knowledge.lookup.mockResolvedValue({ status: "disputed" });
+  await expect(f.prepare()).rejects.toThrow("争议"); expect(f.routes).not.toHaveBeenCalled(); expect(mocks.close).toHaveBeenCalledTimes(1);
+});
+it("stops a changed source before discovery or model requests", async () => {
+  mocks.identity.mockResolvedValue({ ...source, fingerprint: `sha256:${"b".repeat(64)}` });
+  const f = fixture(); await expect(f.prepare()).rejects.toThrow("原素材已变化"); expect(f.routes).not.toHaveBeenCalled();
+});
+it("does not lose a legacy container-identity dispute when the video timeline differs", async () => {
+  const f = fixture({ ...media, durationMs: 2013 });
+  f.knowledge.lookup.mockImplementation(async identity => ({ status: identity?.durationMs === 2013 ? "disputed" : "miss" }));
+  await expect(f.prepare()).rejects.toThrow("争议");
+  expect(f.knowledge.lookup.mock.calls.map(([identity]) => identity?.durationMs)).toEqual([2000, 2013]);
+  expect(f.routes).not.toHaveBeenCalled(); expect(mocks.close).toHaveBeenCalledTimes(1);
+});

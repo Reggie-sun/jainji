@@ -7,6 +7,7 @@ import { encoderDeviceArgs, encoderPixelFormat, videoEncodingArgs, type H264Enco
 import { coverMotionExpression, coverRasterExpressions } from "./cover-motion.js";
 import { decorationDisplaySeconds } from "../shared/decorations.js";
 import { readFrozenShapeCover } from "./shape-cover-render.js";
+import { readApprovedHybridCover, assertHybridTemplateReady } from "./hybrid-cover-production.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -91,6 +92,7 @@ function wrapText(content: string, widthRatio: number, fontSizeRatio: number, di
 export class TemplateCompiler {
   async compile(templateInput: EditTemplate, media: MediaItem, preset: ExportPreset, options: CompileOptions): Promise<CompiledCommand> {
     const template = EditTemplateSchema.parse(templateInput);
+    assertHybridTemplateReady(template);
     assertPriceOnlyTemplate(template);
     const textFiles: TextFile[] = [];
     const binaryFiles: Array<{ path: string; content: Buffer }> = [];
@@ -111,7 +113,7 @@ export class TemplateCompiler {
     const graph: string[] = [];
     const dimensions = outputDimensions(media, preset);
     const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
-    const frozenShape = template.layers.some(layer => layer.type === "sticker" && layer.cover?.shapeMatched);
+    const frozenShape = template.layers.some(layer => layer.type === "sticker" && (layer.cover?.shapeMatched || layer.cover?.hybridApproved));
     // Shape intervals must run on output PTS, before -r can duplicate/drop frames.
     const sourceFilters = ["setpts=PTS-STARTPTS", frozenShape && preset.frameRateMode === "30" ? "fps=30" : null, outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
@@ -180,9 +182,10 @@ export class TemplateCompiler {
 
       // Overlay repeats the last frame of a still image, so decode it only once.
       // GIFs and unknown formats retain their animation and bounded input loop.
-      const shape = layer.cover?.shapeMatched;
+      const hybrid = layer.cover?.hybridApproved;
+      const shape = hybrid ?? layer.cover?.shapeMatched;
       const assetPath = shape ? options.textFilePath(`shape-${layer.id}.png`) : layer.assetPath;
-      if (shape) binaryFiles.push({ path: assetPath, content: await readFrozenShapeCover(layer, media, preset) });
+      if (shape) binaryFiles.push({ path: assetPath, content: hybrid ? await readApprovedHybridCover(layer, media, preset) : await readFrozenShapeCover(layer, media, preset) });
       const stillImage = !!shape || /\.(png|jpe?g)$/i.test(layer.assetPath);
       args.push(...threadArgs, ...(stillImage ? [] : ["-t", durationSeconds.toFixed(3), "-stream_loop", "-1"]), "-i", assetPath);
       const stickerIndex = inputIndex;

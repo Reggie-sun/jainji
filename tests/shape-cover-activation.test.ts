@@ -64,11 +64,20 @@ describe("shape product intent schema", () => {
   });
 });
 
-describe("default-closed shape product controller entry", () => {
-  it("blocks a valid explicit choice before any model, upload or publication", async () => {
+describe("Hybrid shape product controller entry", () => {
+  it.each(["agent", "random"] as const)("does not inherit an inactive saved shape choice when coverage is off in %s mode", async mode => {
+    const test = fixture({ ...cover("agent", false), coverStrategy: "shape-matched-static-v1" });
+    try {
+      const request = { ...input(), decorations: { ...input().decorations, mode, productPrice: undefined, displayText: { enabled: false, x: 0.5, y: 0.7 } } };
+      await expect(test.controller.start(request, new Set())).rejects.toThrow(mode === "agent" ? "请先接入模型。" : "请通过系统对话框选择输出目录。");
+      expectNoExecution(test);
+    } finally { vi.restoreAllMocks(); }
+  });
+
+  it("requires the original output directory authorization before any execution", async () => {
     const test = fixture();
     try {
-      await expect(test.controller.start(shapeInput(), new Set())).rejects.toThrow(/UNSAFE:.*产品入口尚未启用/);
+      await expect(test.controller.start(shapeInput(), new Set())).rejects.toThrow(/系统对话框选择输出目录/);
       expectNoExecution(test);
       await test.controller.cancel();
       expectNoExecution(test);
@@ -123,7 +132,7 @@ describe("default-closed shape product controller entry", () => {
   it("cannot borrow the M4 explicit seam to activate a product choice", async () => {
     const test = fixture();
     try {
-      await expect(test.controller.startShapeMatched(shapeInput(), new Set(), { intendedTargets: [], outputSettings: [], candidates: [] } satisfies ShapeCoverCandidateRequest)).rejects.toThrow(/UNSAFE:.*产品入口尚未启用/);
+      await expect(test.controller.startShapeMatched(shapeInput(), new Set(), { intendedTargets: [], outputSettings: [], candidates: [] } satisfies ShapeCoverCandidateRequest)).rejects.toThrow(/UNSAFE:.*strict development/);
       expectNoExecution(test);
     } finally { vi.restoreAllMocks(); }
   });

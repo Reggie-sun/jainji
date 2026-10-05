@@ -12,6 +12,7 @@ import { canonicalPath, fingerprintFile, isPathWithinDirectory, pathExists, path
 import { ExportQueue, type QueueSnapshot } from "./queue.js";
 import { JobStore, ProjectStore } from "./store.js";
 import { ModelConnections } from "./model-connections.js";
+import { hybridProductRoutes } from "./hybrid-cover-connections.js";
 import { CoverReviewController } from "./cover-review-controller.js";
 import { CoverReviewEvidence } from "./cover-review-evidence.js";
 import { analyzeCoverCandidates } from "./cover-candidates.js";
@@ -762,7 +763,7 @@ async function bootstrap(): Promise<void> {
   stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
-  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection, authorization) => douyinUpload.registerBatch(batch, selection, authorization), (selection, count) => douyinUpload.preflight(selection, count));
+  agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection, authorization) => douyinUpload.registerBatch(batch, selection, authorization), (selection, count) => douyinUpload.preflight(selection, count), hybridProductRoutes(connections, ffmpeg));
   batchRuntime = createBatchProductionRuntime({ root: userData, registry: recentProjects, queue, ffmpeg, fontResolver,
     library, stickers: stickerAssets, connections, knowledgeStore: sourceKnowledge, approvedDirectories: approvedOutputDirectories, changed: notifyState, upload: douyinUpload });
   await batchRuntime.controller.restore();

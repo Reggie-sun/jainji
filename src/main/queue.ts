@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, constants, copyFile, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
@@ -29,6 +29,7 @@ import { allocateOutputPath, assertOutputDirectorySafe, fingerprintFile, isPathW
 import { JobStore, StoreError } from "./store.js";
 import { TemplateCompiler } from "./compiler.js";
 import { assertShapeCoverExportReady, verifyFrozenShapeSources } from "./shape-cover-render.js";
+import { verifyApprovedHybridTemplate, verifyHybridOutput } from "./hybrid-cover-production.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import { executionLimits, exportThreads } from "./execution-limits.js";
 import type { H264Capability, H264Encoder } from "./video-encoder.js";
@@ -811,6 +812,7 @@ export class ExportQueue {
       assertShapeCoverExportReady(state.batch.templateSnapshot);
       await access(media.sourcePath, constants.R_OK);
       if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
+      await verifyApprovedHybridTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg);
       const missing = await validateTemplateResources(state.batch.templateSnapshot, this.dependencies.fontResolver);
       if (missing.length > 0) throw new JianjiError(`模板资源缺失：${missing.join("、")}`, "resource_missing", "resource", false);
       await assertOutputDirectorySafe(state.batch.outputDirectory, [media]);
@@ -830,6 +832,14 @@ export class ExportQueue {
       temporaryTextFiles = files.map((file) => file.path);
       const written = await Promise.allSettled(files.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
       for (const item of written) if (item.status === "rejected") throw item.reason;
+      const verifyHybridCopies = async () => {
+        if (!state.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.cover?.hybridApproved)) return;
+        for (const file of compiled.binaryFiles ?? []) {
+          const expected = `sha256:${createHash("sha256").update(file.content).digest("hex")}`;
+          if (await fingerprintFile(file.path) !== expected) throw new Error("UNSAFE: HYBRID_TASK_COPY_CHANGED");
+        }
+      };
+      await verifyHybridCopies();
       if (await this.stopRequested(state, task)) {
         await Promise.all(temporaryTextFiles.map((filePath) => unlink(filePath).catch(() => undefined)));
         return;
@@ -851,6 +861,7 @@ export class ExportQueue {
       if (this.cancelRequested.has(task.id)) await running.cancel();
       const result = await running.promise.catch((error) => { throw error; });
       this.controllers.delete(task.id);
+      if (result.code === 0 && !this.cancelRequested.has(task.id)) await verifyHybridCopies();
       await Promise.all(files.map((file) => unlink(file.path).catch(() => undefined)));
       if (this.cancelRequested.delete(task.id)) {
         await unlink(partialPath).catch(() => undefined);
@@ -880,6 +891,9 @@ export class ExportQueue {
       }
       await syncFile(partialPath);
       const artifact = await this.verifier.verify(partialPath, task.id);
+      await verifyApprovedHybridTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg);
+      await verifyHybridOutput(state.batch.templateSnapshot, partialPath, this.dependencies.ffmpeg);
+      await verifyApprovedHybridTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg);
       if (this.cancelRequested.delete(task.id)) {
         await unlink(partialPath).catch(() => undefined);
         if (task.status !== "cancelling") await this.transition(state, task, "cancelling");

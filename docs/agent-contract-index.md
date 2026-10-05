@@ -12,7 +12,7 @@
 | 源身份、修订、争议与静态 mask | [Source Knowledge](source-sticker-knowledge-spec.md) | cover-contracts、shape-boundaries |
 | assisted 人工决定、冻结预览与批准 | [Assisted Review](semi-automatic-cover-review-spec.md) | cover-contracts、lifecycle |
 | shape geometry、共同候选与输出准入 | [Shape V1](shape-matched-cover-spec.md)、[Simplification Delta](shape-matched-cover-v1-simplification-spec.md) | shape-boundaries；研究 PASS 无 production authority |
-| Hybrid静态overlay语义与预览QA | [Hybrid V1 Delta](shape-matched-cover-hybrid-v1-spec.md) | hybrid-vision；旧strict proof为研究路径，H1保持PRODUCT_DISABLED |
+| Hybrid四角静态overlay、partial生产与预览QA | [Hybrid V1 Delta](shape-matched-cover-hybrid-v1-spec.md#activation-accepted-product-delta) | hybrid-vision、H3/H4与hybrid-activation；旧strict proof为研究路径，启用以当前Activation记录及最终gate为准 |
 | Harness scope、检查和 completion | [Harness Delta](superpowers/specs/2026-10-02-agents-harness-governance-design.md)、[Harness Contract](video-validation-harness-spec.md) | [policy](../.agent/harness/policy.json) 独占路由与命令 |
 | 启动与手动运行 | [README](../README.md) | 当前 runtime 与实际命令 |
 | AOCI 创作与维护 | 当前官方 Guide 与工具合同 | Verify / Check / Guide；本文不复制状态机 |
@@ -30,6 +30,7 @@
 | 自动四角覆盖优先与补齐时段 | [automatic-corner-layout.ts](../src/main/automatic-corner-layout.ts) |
 | 自动主管协议、修正与样片检查 | [supervisor-protocol.ts](../src/main/supervisor-protocol.ts)、[collaborative-cover.ts](../src/main/collaborative-cover.ts)、[supervised-preview.ts](../src/main/supervised-preview.ts)、[supervisor-evidence.ts](../src/main/supervisor-evidence.ts) |
 | 近似自动覆盖合同、定框与逐版复核 | [cover-placement.ts](../src/shared/cover-placement.ts)、[cover-placement-proposal.ts](../src/main/cover-placement-proposal.ts)、[cover-placement-session.ts](../src/main/cover-placement-session.ts) |
+| Hybrid H2→H3→H4 模板准备、批准字节与生产 freshness | [hybrid-cover-session.ts](../src/main/hybrid-cover-session.ts)、[hybrid-cover-production.ts](../src/main/hybrid-cover-production.ts)、[hybrid-cover.ts](../src/shared/hybrid-cover.ts)；数量、队列及发布仍由原 owner 独占 |
 | 原贴纸自动识别与跟随轨迹 | [source-sticker-recognition.ts](../src/main/source-sticker-recognition.ts)、[cover-track-provider.ts](../src/main/cover-track-provider.ts)、[automatic-cover-tracks.ts](../src/main/automatic-cover-tracks.ts) |
 | 可复用源贴纸合同、静态 mask 准入、持久化与逐版本修订传播 | [source-sticker-knowledge.ts](../src/shared/source-sticker-knowledge.ts)、[source-mask-admission.ts](../src/main/source-mask-admission.ts)、[source-sticker-knowledge-store.ts](../src/main/source-sticker-knowledge-store.ts)、[source-sticker-knowledge-session.ts](../src/main/source-sticker-knowledge-session.ts) |
 | 半自动审阅、证据与批准 | [cover-review.ts](../src/shared/cover-review.ts)、[cover-review-controller.ts](../src/main/cover-review-controller.ts)、[cover-review-session.ts](../src/main/cover-review-session.ts)、[cover-review-evidence.ts](../src/main/cover-review-evidence.ts)、[cover-review-approval.ts](../src/main/cover-review-approval.ts) |

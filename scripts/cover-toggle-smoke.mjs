@@ -4,12 +4,17 @@ import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { createServer as createPortProbe } from "node:net";
 import { createServer } from "vite";
 
 const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-toggle-"));
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 let server, chrome, socket;
 try {
+  const portProbe = createPortProbe();
+  await new Promise(resolve => portProbe.listen(0, "127.0.0.1", resolve));
+  const fixturePort = portProbe.address().port;
+  await new Promise(resolve => portProbe.close(resolve));
   server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plugins: [{ name: "cover-toggle-smoke", configureServer(instance) {
     instance.middlewares.use(async (request, response, next) => {
       if (request.url !== "/__cover-toggle") return next();
@@ -32,7 +37,7 @@ try {
         createRoot(document.getElementById('root')).render(React.createElement(Fixture));
       </script></body></html>`));
     });
-  } }], server: { host: "127.0.0.1", port: 0 } });
+  } }], server: { host: "127.0.0.1", port: fixturePort } });
   await server.listen();
   const profile = path.join(directory, "chrome");
   chrome = spawn("google-chrome", ["--headless=new", "--no-first-run", "--no-default-browser-check", `--user-data-dir=${profile}`, "--remote-debugging-port=0", "about:blank"], { stdio: "ignore" });
@@ -74,27 +79,27 @@ try {
   await clickText("保存覆盖设置");
   assert.equal(await evaluate("window.saves.length"), 1, "enabled without a candidate cannot save");
   await evaluate("window.addFixtureSticker()");
-  await waitFor("document.querySelector('.cover-sticker-choice input')");
-  await click(".cover-sticker-choice input");
+  await clickText("添加覆盖框");
   await clickText("手动设置");
   await clickText("保存覆盖设置");
   await waitFor("window.saves.length===2 && !window.fixture.dirty");
   assert.equal(await evaluate("window.fixture.value.trackingMode"), "manual", "full Agent honors manual cover choice");
   await clickText("自己设置"); await clickText("全部交给 Agent");
-  assert.equal(await evaluate("document.querySelector('.cover-tracking-tabs button:nth-child(2)').getAttribute('aria-pressed')"), "true");
+  assert.equal(await evaluate("[...document.querySelectorAll('.cover-tracking-tabs button')].find(button=>button.textContent==='手动设置').getAttribute('aria-pressed')"), "true");
   assert.equal(await evaluate("window.fixture.dirty"), false, "decoration modes do not rewrite cover draft");
-  await clickText("Agent 看图自动覆盖");
-  assert.ok(await evaluate("document.querySelector('.cover-agent-mode').innerText.includes('最多 12 张全片联系帧')"));
+  await clickText("自动形状匹配覆盖");
+  assert.ok(await evaluate("document.querySelector('.cover-agent-mode').innerText.includes('同一 PNG 与位置')"));
   assert.equal(await evaluate("document.querySelector('.cover-agent-mode').innerText.includes('每秒检测 4 帧')"), false);
   await clickText("保存覆盖设置");
   await waitFor("window.saves.length===3 && !window.fixture.dirty");
   assert.equal(await evaluate("window.fixture.value.trackingMode"), "agent");
+  assert.equal(await evaluate("window.fixture.value.coverStrategy"), "shape-matched-static-v1");
   await click(toggle);
   await waitFor("window.fixture.dirty");
   await clickText("保存覆盖设置");
   await waitFor("window.saves.length===4 && !window.fixture.dirty");
   assert.equal(await evaluate("window.fixture.value.enabled"), false);
-  assert.equal(await evaluate("window.fixture.value.stickerIds.length"), 1, "disabling preserves candidate selection");
+  assert.equal(await evaluate("window.fixture.value.mediaRegions['fixture-media'].length"), 1, "disabling preserves the manual draft");
   await evaluate("window.setFixtureDisabled(true)");
   await waitFor(`document.querySelector('${toggle}').disabled`);
   await click(toggle);

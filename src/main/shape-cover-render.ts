@@ -6,6 +6,7 @@ import { JianjiError } from "./errors.js";
 import { readAdmittedShapeCoverTarget } from "./shape-cover-candidates.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import { inspectArtifactFile } from "./shape-cover-artifact-io.js";
+import { assertHybridTemplateReady } from "./hybrid-cover-production.js";
 
 export const shapeCoverDigest = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
 export function shapeCoverBindingDigest(binding: unknown): string {
@@ -15,6 +16,7 @@ export function shapeCoverBindingDigest(binding: unknown): string {
 }
 
 export function assertShapeCoverExportReady(template: EditTemplate): void {
+  assertHybridTemplateReady(template);
   if (template.layers.some(layer => layer.type === "sticker" && layer.cover?.shapeMatched)) {
     throw new JianjiError("UNSAFE: 形状覆盖尚未取得逐帧输出与独立内容安全准入。", "input_invalid", "input", false);
   }

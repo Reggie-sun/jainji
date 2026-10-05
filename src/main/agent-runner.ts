@@ -16,6 +16,7 @@ import type { KnowledgeOutcome, KnowledgeProductionStage } from "../shared/sourc
 import type { CoverPlacementSession } from "./cover-placement-session.js";
 import { CoverDiagnostics } from "./cover-diagnostics.js";
 import type { ShapeCoverProduction } from "./shape-cover-production.js";
+import type { HybridProductionSession } from "./hybrid-cover-session.js";
 
 interface RunnerDependencies {
   usesModel?: boolean;
@@ -24,6 +25,7 @@ interface RunnerDependencies {
   enqueue(template: EditTemplate, media: MediaItem, signal: AbortSignal): Promise<string>;
   publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal): Promise<string>;
   shape?: ShapeCoverProduction;
+  hybrid?: HybridProductionSession;
   /** Real render slots from the export queue (encoder-aware); defaults to the legacy cap when absent. */
   renderSlots?(): number;
   prepared?(template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal): Promise<void>;
@@ -135,6 +137,14 @@ export class AgentRunner {
         audit[index].started = Date.now();
         const creativeBefore = this.dependencies.creativeRequests?.() ?? 0;
         try {
+          if (this.dependencies.hybrid) {
+            const template = await this.dependencies.hybrid.prepare(source, item.version, run.id, signal, onStage);
+            signal.throwIfAborted();
+            item.taskId = await this.dependencies.enqueue(template, source, signal);
+            item.summary = template.name;
+            item.status = "exporting";
+            return;
+          }
           const knowledge = this.dependencies.knowledge;
           audit[index].stage = "knowledge";
           const binding = knowledge ? await knowledge.acquire(source, source.durationMs, signal, onStage,

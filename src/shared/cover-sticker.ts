@@ -50,6 +50,7 @@ export const CoverStickerSchema = z.object({
   rectangle: CoverRectangleSchema,
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
   trackingMode: z.enum(["manual", "agent", "assisted"]).optional(),
+  coverStrategy: z.literal("shape-matched-static-v1").optional(),
   regions: z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS).optional(),
   mediaRegions: z.record(z.string().uuid(), z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS)).optional(),
 }).strict().superRefine((value, ctx) => {

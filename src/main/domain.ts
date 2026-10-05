@@ -13,6 +13,7 @@ import { SourceFactsSchema } from "../shared/source-sticker-knowledge.js";
 import { CoverPlacementSchema } from "../shared/cover-placement.js";
 import { JianjiError } from "./errors.js";
 import { FrozenShapeCoverSchema } from "../shared/shape-cover.js";
+import { HybridCoverBindingSchema } from "../shared/hybrid-cover.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -136,6 +137,7 @@ export const StickerLayerSchema = z.object({
     sharedSticker: z.literal(true).optional(),
     selection: z.object({ runId: z.string().uuid(), round: z.number().int().positive() }).strict().optional(),
     shapeMatched: FrozenShapeCoverSchema.optional(),
+    hybridApproved: HybridCoverBindingSchema.optional(),
   }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;
@@ -199,6 +201,12 @@ export const EditTemplateSchema = z.object({
       if (layer.opacity !== 1) ctx.addIssue({ code: "custom", path: ["layers", index, "opacity"], message: "覆盖贴纸必须完全不透明" });
       if (layer.cover.automatic && (!layer.cover.motion || !layer.cover.targetId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover"], message: "自动覆盖必须有识别目标与轨迹" });
       const shape = layer.cover.shapeMatched;
+      const hybrid = layer.cover.hybridApproved;
+      if (hybrid && (!layer.visible || layer.x !== 0 || layer.y !== 0 || layer.width !== 1 || layer.cover.height !== 1 ||
+          layer.cover.opaqueBackground || layer.cover.motion || layer.cover.shapeMatched || layer.cover.automatic ||
+          layer.assetFingerprint !== `sha256:${hybrid.pngSha256}` || template.coverPlacement || template.sourceStickerKnowledge)) {
+        ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "hybridApproved"], message: "Hybrid approved corner must retain the exact full-canvas frozen binding" });
+      }
       if (shape) {
         const motion = layer.cover.motion;
         const frame = motion?.keyframes[0];

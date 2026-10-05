@@ -645,7 +645,7 @@ desktopSmoke: try {
   await click("自己设置");
   assert.equal(await evaluate("document.querySelector('.cover-sticker-toggle input').checked"), true, "switching modes retains the unsaved manual cover draft");
   await click("全部交给 Agent");
-  await evaluate("[...document.querySelectorAll('.cover-tracking-tabs button')].find(button => button.textContent.includes('Agent')).click()");
+  await evaluate("[...document.querySelectorAll('.cover-tracking-tabs button')].find(button => button.textContent==='自动形状匹配覆盖').click()");
   await waitFor("document.querySelector('.cover-agent-status') !== null");
   assert.equal(await evaluate("document.querySelector('.cover-sticker-toggle input').checked"), true, "full Agent mode retains the independent cover switch");
   assert.equal(await evaluate("document.querySelector('.cover-tracking-tabs') !== null"), true, "tracking mode remains independent");

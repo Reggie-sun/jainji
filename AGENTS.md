@@ -23,7 +23,7 @@
 - 四角覆盖优先占位、普通贴纸只补空缺角落/时段；中部覆盖不替代四角。文字时序、贴纸全程、旧透明/白底、旧 3 秒/新 5 秒与版本轮换解释由 Decoration Contract 独占，冻结任务不重算。
 - 每素材版本独立导出；单项目条数按素材数向上取整，跨模板严格按 requestedCount 分配，历史导出不占本次容量。保留原队列并发；重试复用冻结方案/快照，不重新识别、换款、改轨迹或改文字。
 - assisted 算法候选与人工决定分开，编辑作废旧预览/批准；全部版本冻结、动态预览并获明确用户确认后才幂等入原队列。独立复核只报告问题，退出保留草稿而不自动请求/提交；详见 [Assisted Contract](docs/semi-automatic-cover-review-spec.md)。
-- shape 产品路径保持 PRODUCT_DISABLED，研究/工程 PASS 不授予 activation。按 [Shape V1](docs/shape-matched-cover-spec.md) 及其 accepted delta 核对全轮有效 mask、共同候选、源/设置/轮廓身份、同冻结图层字节、逐输出 100% coverage 和独立内容安全；缺证据为 UNSAFE，不回退 bbox、白底矩形或其他 segment/规格的 PASS。source-mask-only 不授输出准入，manual/assisted 与旧冻结解释保持原合同。
+- shape 产品按 [Hybrid Activation Delta](docs/shape-matched-cover-hybrid-v1-spec.md#activation-accepted-product-delta) 处理四角静态贴纸：仅 H4 PASS 的同 frozen bytes/binding 角落沿原生产路径导出，unresolved/skipped 保持原样，不声明整片所有旧贴纸已处理。源、PNG、binding 与 coverage freshness 失效为 UNSAFE，无白矩形 fallback；完整 Activation gates 才授产品启用。旧 [Shape V1](docs/shape-matched-cover-spec.md) strict/proof 研究保持 PRODUCT_DISABLED，source-mask-only 不授输出准入；manual/assisted 与旧冻结解释保持原合同。
 
 ## Canonical Ownership And Safety
 

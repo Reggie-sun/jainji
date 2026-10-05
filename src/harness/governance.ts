@@ -43,11 +43,19 @@ const DriftSchema = z.object({
   line_ending_only: z.array(z.string()),
 }).passthrough();
 
+const FormalAssetSchema = z.object({
+  enabled: z.boolean(), applicable: z.boolean(), domain_state: z.string().min(1),
+  asset_state: z.enum(["present", "absent", "invalid"]), path: z.string().min(1),
+  sha256: z.string().regex(SHA256).optional(),
+}).passthrough();
+
 const GovernanceFactsSchema = z.object({
   version: z.literal("volumes-governance-facts/v1"),
   structure_valid: z.boolean(),
   governance_aligned: z.boolean(),
   composite_identity: z.string().min(1),
+  root: FormalAssetSchema.optional(), meta: FormalAssetSchema.optional(),
+  code: FormalAssetSchema.optional(), database: FormalAssetSchema.optional(),
   managed_scope: z.object({
     aligned: z.boolean(),
     policy_identity: z.string().min(1),
@@ -535,6 +543,7 @@ function governanceSnapshot(facts: z.infer<typeof GovernanceFactsSchema>): strin
     structureValid: facts.structure_valid,
     governanceAligned: facts.governance_aligned,
     compositeIdentity: facts.composite_identity,
+    formalAssets: { root: facts.root, meta: facts.meta, code: facts.code, database: facts.database },
     managedScope: {
       aligned: facts.managed_scope.aligned,
       policyIdentity: facts.managed_scope.policy_identity,
@@ -667,9 +676,35 @@ export async function checkOwnedAoci(
       });
     }
 
-    const objects = ownedChanges.map((change, index) => {
+    // Formal volumes are not business sources and must never require their own Entry.
+    // Their canonical path/hash comes only from the matching official governance facts.
+    const formalAssets = new Map<string, { domain: string; asset: z.infer<typeof FormalAssetSchema> }>();
+    for (const domain of ["root", "meta", "code", "database"] as const) {
+      const asset = facts[0][domain];
+      if (!asset) continue;
+      if (!validRepoRelativePath(asset.path) || formalAssets.has(asset.path) || manifestPaths.has(asset.path)) throw Error("aoci_formal_asset_identity_invalid");
+      formalAssets.set(asset.path, { domain, asset });
+    }
+    const objects = await Promise.all(ownedChanges.map(async (change, index) => {
       const scope = scopeEvidence[index];
       const driftKinds = hasDriftForPath(facts[0], change.path);
+      const formal = formalAssets.get(change.path);
+      if (formal) {
+        const evidence = { path: change.path, change: change.change, role: scope.role, entryRequired: false, formalAsset: formal.domain };
+        if (change.change === "delete" || !formal.asset.enabled || !formal.asset.applicable || formal.asset.asset_state !== "present" || !formal.asset.sha256 || !facts[0].governance_aligned) {
+          return { ...evidence, status: "FAIL", reason: "formal_asset_not_present_or_aligned" };
+        }
+        const assetPath = path.join(repoRoot, change.path);
+        let currentSha256: string;
+        try {
+          // Do not follow an asset symlink outside the bound repository.
+          if (await realpath(assetPath) !== assetPath) throw Error("formal_asset_symlink");
+          currentSha256 = createHash("sha256").update(await readFile(assetPath)).digest("hex");
+        } catch { return { ...evidence, status: "FAIL", reason: "formal_asset_unreadable" }; }
+        return currentSha256 === formal.asset.sha256
+          ? { ...evidence, status: "PASS", currentSha256, baselineEvidence: "official_verify_check_guide_formal_asset_identity" }
+          : { ...evidence, status: "FAIL", currentSha256, reason: "formal_asset_sha256_mismatch" };
+      }
       if (scope.role === "observe" || scope.role === "exclude") {
         if (driftKinds.length > 0) {
           return { path: change.path, change: change.change, role: scope.role, status: "NOT_EVALUATED", entryRequired: false, driftKinds, reason: "scope_drift_conflict" };
@@ -711,7 +746,7 @@ export async function checkOwnedAoci(
         scopeVersion: scope.version,
         baselineEvidence: "official_verify_check_guide_no_drift_at_bound_source_snapshot",
       };
-    });
+    }));
 
     const objectStatuses = objects.map((object) => object.status);
     const status: HarnessOutcome = objectStatuses.includes("FAIL") ? "FAIL" : objectStatuses.includes("NOT_EVALUATED") ? "NOT_EVALUATED" : "PASS";

@@ -327,7 +327,7 @@ export default function App() {
         const resolvedOutputDirectory = await resolveOutputDirectory();
         if (projectId.current !== startProjectId) throw new Error("项目已切换，请在当前项目重新开始制作。");
         setDouyinUploadSelection(undefined);
-        apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations: productionDecorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(parsedUploadSelection ? { douyinUpload: parsedUploadSelection } : {}) }));
+        apply(await window.jianji.startAgent({ mediaIds: selected, ruleId: rule, brief, outputDirectory: resolvedOutputDirectory, decorations: productionDecorations, exportFormat, exportSettings, multiplier: quantity.multiplier, ...(state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "agent" && state.project.coverSticker.coverStrategy ? { coverStrategy: state.project.coverSticker.coverStrategy } : {}), ...(parsedUploadSelection ? { douyinUpload: parsedUploadSelection } : {}) }));
       });
     })();
   };
