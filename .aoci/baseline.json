@@ -4,9 +4,9 @@
   "updated_at": "2026-10-05T10:19:35Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "07492ec82b4bc87b8a8ff358cf1f5c234b174d47375e668d1e8d0bceba4379d3",
-      "size": 35445,
-      "normalized_sha256": "07492ec82b4bc87b8a8ff358cf1f5c234b174d47375e668d1e8d0bceba4379d3"
+      "sha256": "6cc3192fd4c3760001d6c8b3ceb1ea3077d2f65bd4ddc039f25b0730277b4be6",
+      "size": 35853,
+      "normalized_sha256": "6cc3192fd4c3760001d6c8b3ceb1ea3077d2f65bd4ddc039f25b0730277b4be6"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -264,9 +264,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "0c426c3e6f20cc7001cc1246d3d65706123f9aa5349d3dfe85982353dcbc4d40",
-      "size": 78429,
-      "normalized_sha256": "0c426c3e6f20cc7001cc1246d3d65706123f9aa5349d3dfe85982353dcbc4d40"
+      "sha256": "5ae0b75d54c5499b47bfaff4f497ec603918083e9bba53b271ca551e418f253c",
+      "size": 78447,
+      "normalized_sha256": "5ae0b75d54c5499b47bfaff4f497ec603918083e9bba53b271ca551e418f253c"
     },
     "aoci.meta.txt": {
       "role": "index",

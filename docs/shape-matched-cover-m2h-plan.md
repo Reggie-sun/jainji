@@ -1,5 +1,28 @@
 # M2-H Versioned Confirmed-Target Static Proof
 
+## M2-HC4 Support-Internal Observation Plan — 2026-10-05
+
+本轮accepted user contract只建立support-internal geometry observation，不创建proof v3、不改knowledge/store/M3。Native Codex唯一writer；explicit modelRequests=0覆盖通常external route。Foreign Qianchuan、UI及共享AOCI工作保留。
+
+### Owners and Gates
+
+1. `shape-cover-stationary-discovery.ts` 私有WeakMap保存真实connected queue bitmap；`shape-cover-component-support.ts` 独占compact descriptor、canonical digest和integer-origin partition。公开discovery v1及result body/identity不变；candidateId仍不含形状，后续绑定candidateId + supportDigest。digest包含resultDigest，较HC3旧descriptor变化必须核对bitmap byte identity。
+2. 新controlled companion video/manifest及测试先通过真实prepareDiscoveryEvidence → discoverStationaryTargets冻结support，再仅按HC3 internal pairs评估stable、四方向1px、detached move/disappear、weak island/strong background、outside-background/PRICE、hollow、4×4 textured/uniform。旧NPZ不修改，不以构造像素或bbox替代detector support。任一acceptance失败停止，不建geometry v3 owner。
+3. 前置gate成立后，以真实233s、6990帧核对pair reference/full range与原133 anomalies；mask3395px、bbox628/1/81/59、SHA fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893必须不变。FAIL停止，不调参数。
+4. 两gate成立才新增confirmation v3有序componentSupportDigests和独立geometry v3 owner/worker/archive contract。保留v2 API、receipt、validator及v1/v2 replay。live confirmation/target evidence/mask/support WeakMap共同绑定，clone不能恢复authority；ALL components required，flat/unobservable使logical target INCOMPLETE。
+
+### Frozen Signal and Verification
+
+reference仅horizontal/vertical距离1/2/3、全segment属于detector footprint的灰度差分，代表帧median，source coordinate/axis/distance确定排序；minimumPairs8/RMS2。finite±2整数search明确边界，offset0.5/corr0.9/gap0.02/energy0.45..2.25不调。translated sampling footprint每offset可审计；不称target segmentation，不借padding作reference。
+
+fresh typecheck、actual-M1 controls、owner/confirmation/geometry tests、Python controls、existing static regression及历史v1/v2 replay；实际233s gate；owned Harness及AOCI Maintain/Verify/Check/Guide，foreign failures单列。Parent最终diff及Risk Gate、单slice commit/push/远端HEAD核验。全部exit成立才M2-HC4 GEOMETRY_OBSERVATION_CLOSED；SC-HC-02仍BLOCKED pending proof v3，M2-HC2 NOT CLOSED，M3 BLOCKED/PRODUCT_DISABLED/guard unchanged。Windows portability、per-source applicability、M1_SUPPORT_LIMIT、OPTIMIZE_LATER保持未解决。
+
+Self-review：gate先于新geometry owner；不修改extractor、proof/store或M3；support只承担detector observation identity，实际M1 bitmap在geometry前冻结，失败不重构fixture以争取通过。成功后唯一下一slice M2-HC5 — Confirmed-Target Proof v3 and Evidence Envelope Closure。
+
+### Stop Checkpoint
+
+actual-M1 weak/uniform4×4分别persistent edges1/3<4，UNKNOWN，完整确认拒绝；第一gate BLOCKED。实验private support sidecar虽通过clone/identity tests，却碰到proof v2固定discovery源码SHA，6项existing live issuer回归拒绝。按本slice禁止proof行为修改的边界，生产sidecar/schema撤回并封存私有R/withdrawn-sidecar；原discovery源码及v2 path恢复。不创建confirmation/geometry v3、不运行后续real233s gate、不开始HC5。仅保留12个companion media、实际geometry前queue observation archive、offline重放/拒绝回归和本记录；archive没有live ownership。具体证据由stationary record本轮节独占。
+
 ## M2-HC3 Component Observability Research — 2026-10-05
 
 本轮为research-only，覆盖M2-HC2 stop后的下一方向建议，不修改其历史失败或生产版本。唯一离线入口 [observability diagnostic](../scripts/shape-cover-component-observability.py) 与 [method manifest](../scripts/shape-cover-component-observability-methods.json)；每次运行在真实/冻结suite前保存research-method-freeze.json及全部input SHA。原minimumCells/minimumLandmarks/correlation等阈值不改；occupancy固定25/50/75/100%，不根据真实结果选X。final3395px mask只作展示；detector footprint与construction-domain控制明确分开。

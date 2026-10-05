@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明代码媒体治理检查与任务路径路由 | R:code:src/harness/types.ts,code:src/harness/routing.ts,code:src/harness/code.ts,code:src/harness/cli.ts | A:v2按scope路由必需并集；上传域覆盖视频库、计划三类清理及每日授权 | S:必需skip或缺证据非PASS，回执不授生产或人工验收
+policy.json[FQ7L]: F:声明代码媒体治理检查与任务路径路由 | R:code:src/harness/types.ts,code:src/harness/routing.ts,code:src/harness/code.ts,code:src/harness/cli.ts | A:v2按scope路由必需并集；上传含计划和浏览器测试；静态研究含actual-M1前置反例重放 | S:必需skip或缺证据非PASS，回执不授生产或人工验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动

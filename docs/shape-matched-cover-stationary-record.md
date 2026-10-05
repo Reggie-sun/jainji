@@ -1,5 +1,47 @@
 # Stationary Shape Cover Engineering Record
 
+## M2-HC4 Actual M1 Prerequisite Stop — 2026-10-05
+
+**M2-HC4 BLOCKED / GEOMETRY_OBSERVATION_NOT_CLOSED。** 开始HEAD70b0e2c3b1d3c8f21da5970ac7eba9cce2f17140、Shape上一实现d954b9a；foreign AGENTS/Qianchuan/UI及共享AOCI变化保留。第一actual-M1 gate未成立即STOP：不创建confirmation v3、geometry v3 owner/worker/archive，不进入真实233s后续gate，不签proof v3、不改knowledge/store/M3。Native Codex唯一writer，modelRequests=0覆盖通常external route；Kimi doctor仅本地containment检查、无上游请求。无repository专用session-capture skill，本节及私有R保存blocker；未更新外部memory。
+
+### Live Support Owner
+
+以下owner为**已撤回的实验设计**，当前production discovery原字节未变。实验 `discoverStationaryTargets()` 在真实8-connected queue复用前捕获LSB row-major bitset，仅最终CANDIDATE成为 `OwnedStationaryComponentSupport`。私有WeakMap分别绑定result→candidate support、support→exact DiscoveryEvidence/StationaryDiscoveryResult/candidateId；descriptor深冻结、无buffer写入口。实验tests验证clone、另一轮同摘要result、wrong discovery/candidate和closed evidence均拒绝；UNKNOWN不升级或补发support authority。
+
+实验 `shape-cover-component-support.ts` 独占strict descriptor、digest和half-open integer-cell-origin partition。supportDigest为ordered descriptor body SHA-256，覆盖candidateId/sourceKey/discoveryDigest/**resultDigest**、grid/source dimensions、encoding/mapping、markedCells、bitmapSha256和canonical base64 bytes；same bbox/different bitmap不同。HC3旧descriptor的resultDigest仅为外层字段，新canonicalization纳入hash；本轮未运行real live owner，不能声称其新digest已实测。旧real bitmap文件及bitmap SHA766ad9b4d42a95d88071a6222eee6bf59060786c3264a0ba475580520f9d822b字节不变。代码与owner tests精确快照封存R/withdrawn-sidecar，不进入最终生产提交。
+
+discovery仍 `cpu-stationary-components/v1`：实验没有修改算法、sampling/config、candidateId公式或公开result identity/body，仅增加private sidecar及workingBytes bitset计费，故不应为命名升版本。撤回后源码也完全恢复HC3。candidateId仍由discoveryDigest+gridBox生成，不代表support形状；后续必须绑定candidateId+supportDigest，本slice未实现该consumer。
+
+第二blocker：proof v2 issuer按 `CONFIRMED_STATIC_METHOD_V2.methodSources` 固定discovery源码SHA，实验sidecar使6项existing live proof tests报 `qualified confirmation/mask method changed`。首次focused61项为55 PASS/6 FAIL，属于本轮实验、不是foreign；v1/v2 archive replay本身通过。更改proof pin或validator越出本slice，因此按用户STOP撤回生产experiment，不放宽v2、不留已知live issuer regression。最终只提交companion media、offline diagnostic/archived observation tests及合同记录；source-mask-static-*、proof/store和M3原字节保持。
+
+### Frozen Companion Media and Stop Evidence
+
+新 [companion manifest](../tests/fixtures/static-m1-components/manifest.json) 与12个lossless H264 128×96/10fps/30-frame videos在geometry前一次构造：seed17、4 representatives（0/10/19/29）、intervention15。生成器不读写旧NPZ，geometry后未修改fixture/构造/阈值。construction boxes仅选择身份，不定义membership；实际prepareDiscoveryEvidence → discoverStationaryTargets产生queue bitmap，冻结support/source/result及canonical全range ROI bindings后只运行HC3 internal-pairs。
+
+R=`~/.local/state/jianji-source-fact-qualification/m2hc4-20261005`。首次prerequisite保留12 PASS/2 FAIL（required CANDIDATE集合缺失）；窄失败捕获保存 `prerequisite-failure.json/log` 与实际discovery。实际queue support在geometry前冻结，另存 [offline observations](../tests/fixtures/static-m1-components/observations.json)，明确archive JSON不恢复live support authority。最终replay tests重新运行真实prepare/discover，核对原source/discovery/result identity和全范围ROI pixels/bindings，再只重放这些原bitmap；没有用bbox重建membership。工程tests证明UNKNOWN继续拒绝，summary仍BLOCKED，不以suite绿色关闭gate。
+
+| Companion | Actual detector / internal-pairs result |
+| --- | --- |
+| all stable | 两component SUPPORTED；large896cells/5016pairs、textured4×4 16cells/48pairs，全30帧issues0 |
+| large±1x/±1y | 每例large ISSUE于15、small SUPPORTED；whole ISSUE |
+| small detached +1x / disappears | large SUPPORTED、small ISSUE于15；whole ISSUE |
+| outside-support background / padding PRICE | 两component全30帧SUPPORTED/issues0，无outside-background false reject |
+| hollow support | actual membership保留内部孔洞；两component全30帧SUPPORTED |
+| weak detached shift + strong background | weak4×4 16 stable cells、persistent edges1<4，UNKNOWN；强背景616cells CANDIDATE不能补足required弱组件。完整confirmation拒绝；geometry NOT_EVALUATED |
+| uniform4×4 with external contrast | 16 stable cells、persistent edges3<4，UNKNOWN；confirmation拒绝，actual-M1 geometry NOT_EVALUATED，不声称owned UNOBSERVABLE已证明 |
+
+旧CE actual-M1 gap为 **PARTIALLY_OBSERVED / NOT_CLOSED**：move/disappear/background已补实际观察，weak/uniform缺可确认support。没有以bbox/construction B/changed pixels/final mask补身份，不删小组件。按STOP不调M1 minimumEdgePixels、不重构媒体、不推进geometry v3。uniform岛HC3 construction-only self-check UNOBSERVABLE不升级为actual-M1资格。
+
+### Signal and Verification Boundary
+
+offline观察只复用HC3 horizontal/vertical1/2/3px pairs，全部segment在owned footprint内，median reference；minimumPairs8/RMS2，finite±2、offset0.5/corr0.9/gap0.02/energy0.45..2.25不变。HC3现有ordering确定（distance/axis/row-major）；新application-owned source-coordinate/axis/distance排序及pairSetDigest/referenceDigest尚未实施，不发行geometry artifact。footprint不是target segmentation，reference不借域外背景。
+
+真实233s本轮 **NOT_EVALUATED / prerequisite STOP**，无fresh pairCount/status/issues/anomaly response/wall time。HC3历史supportDigest2dfc2e5ac5c1c6d2455c73429bcea25ae50361aabfe44331ef1c2e7680a5ac8e、8424pairs、SUPPORTED/issues0、0/133 anomaly issues只保留历史。旧mask artifact重新核对3395px/bbox628/1/81/59/SHA fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893；extractor与HC3相同，不构成新的real full-range验收。
+
+fresh typecheck、offline replay/controlled拒绝tests、discovery及existing static regression、历史v1/v2 replay、Python22 geometry tests与8项HC3 self-check以R实际回执为准；实验owner tests与其6项live issuer失败单独保留。新prerequisite test登记current Harness原extended-regressions路由，未缩小required集合；owned scope仅本slice路径。最终Harness/AOCI及foreign failures保存R及`.agent/harness/runs/`，未执行或FAIL不称PASS。Parent final diff/Risk Gate拥有completion裁决，本checkpoint不授geometry closure。
+
+**SC-HC-01 BLOCKED；SC-HC-02 BLOCKED pending proof v3；M2-HC2 NOT CLOSED；no proof v3；M3 consumer unchanged；M3 BLOCKED；PRODUCT_DISABLED；guard unchanged；modelRequests=0。** generic64MiB与proof v2 historical8MiB ceiling不变；Linux/Python NOT PRODUCT PORTABLE、per-source applicability UNDECIDED、M1_SUPPORT_LIMIT和OPTIMIZE_LATER保留。M2-HC5未开始，HC4全部gate成立才进入。
+
 ## M2-HC3 Component Observability Research — 2026-10-05
 
 **RESEARCH_DIRECTION_ESTABLISHED / NOT_PRODUCT_QUALIFIED。** Shape checkpoint为d954b9a3db0ea5119e04c39253210c96e3a5afb2；本轮开始HEAD91cd4c8418cf8e314b7d53c8c96a37d942b5974c，期间千川/UI/共享AOCI工作保留。本轮只有离线diagnostic、method manifest及两份Shape文档；没有production geometry/proof/store/schema/consumer/activation变更。明确modelRequests=0优先于通常external delegation route，未调用Kimi、产品或视觉模型；Native Codex主线程拥有计算、逐项裁决和最终diff。CodeGraph的discovery→ChatGPTSession.set同名假边仍由实际Uint8Array receiver排除。

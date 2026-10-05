@@ -1,0 +1,252 @@
+{
+  "method": "actual-m1-component-companion/v1",
+  "seed": 17,
+  "width": 128,
+  "height": 96,
+  "frameCount": 30,
+  "fps": 10,
+  "discoveryFrames": 4,
+  "changeOrdinal": 15,
+  "cases": [
+    {
+      "name": "stable",
+      "file": "stable.mp4",
+      "sha256": "33bc9260b1cc23820f3936bfba184a4ddd9cd2216fa76917e4e4ba590c01706d",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "SUPPORTED"
+    },
+    {
+      "name": "small-move-x",
+      "file": "small-move-x.mp4",
+      "sha256": "845f162e58894d2392c4184f143631888dab101ac961c2bf63352e7a779b0d65",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "ISSUE"
+    },
+    {
+      "name": "small-disappear",
+      "file": "small-disappear.mp4",
+      "sha256": "59364a12faeef78e19429c9b31f09edb7822c4f3a0a9def63dd0c3929d0c970a",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "ISSUE"
+    },
+    {
+      "name": "weak-shift-strong-background",
+      "file": "weak-shift-strong-background.mp4",
+      "sha256": "eea16efe7f818ccf71e705f90acd5b3f052fd8cfb7c3c79cf81c26d323fca630",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "ISSUE"
+    },
+    {
+      "name": "large-move-x",
+      "file": "large-move-x.mp4",
+      "sha256": "fa974078891daceee636c84ce738b39de24ae46ecfe28db0a14a41cc105e778e",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "ISSUE"
+    },
+    {
+      "name": "large-move-negative-x",
+      "file": "large-move-negative-x.mp4",
+      "sha256": "4aacf930ce3d88038f0b4ae0af84ac058dcb66f2903b172370df38e1a19a290e",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "ISSUE"
+    },
+    {
+      "name": "large-move-y",
+      "file": "large-move-y.mp4",
+      "sha256": "0e7a1948e894b2fc614f3119e9cad4861e20ead1fc4f90d2029dd1cdaef3079a",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "ISSUE"
+    },
+    {
+      "name": "large-move-negative-y",
+      "file": "large-move-negative-y.mp4",
+      "sha256": "a424fd30b0bf1b19c6121c69677166b7d42d0abcae0e270431e77b600d2f272d",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "ISSUE"
+    },
+    {
+      "name": "outside-background",
+      "file": "outside-background.mp4",
+      "sha256": "e8d0dc1d5db16d9557a0e2894a49971ad17cf6064958ae0fd4272da9dbb75642",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "SUPPORTED"
+    },
+    {
+      "name": "outside-price",
+      "file": "outside-price.mp4",
+      "sha256": "6a4c72e96fb3aed462d6d93c2335c7d2155125cb29c40e5a24ecafa94eec2e16",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "SUPPORTED"
+    },
+    {
+      "name": "uniform-island",
+      "file": "uniform-island.mp4",
+      "sha256": "d468eb8464fa8a1b4899f5808e24f89b6620c9c8fafd1aa65593b3af4873e8aa",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "UNOBSERVABLE"
+    },
+    {
+      "name": "hollow",
+      "file": "hollow.mp4",
+      "sha256": "f3715af9b0c7ee9452d1cfb68da0225ce257e8ccdf80150d2ee2f9ba083b06d6",
+      "confirmedConstructionBoxes": [
+        {
+          "x": 12,
+          "y": 14,
+          "width": 32,
+          "height": 28
+        },
+        {
+          "x": 90,
+          "y": 50,
+          "width": 4,
+          "height": 4
+        }
+      ],
+      "expected": "SUPPORTED"
+    }
+  ]
+}
