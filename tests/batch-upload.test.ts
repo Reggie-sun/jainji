@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { buildSync } from "esbuild";
+import { chromium } from "playwright-core";
+import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 import { resolveBatchUploadAccount } from "../src/shared/batch-upload";
 import type { QianchuanAccountSummary } from "../src/shared/qianchuan-account";
 
@@ -26,3 +29,46 @@ describe("automatic batch upload account binding", () => {
     expect(resolveBatchUploadAccount("蝴蝶贴", [])).toHaveProperty("error");
   });
 });
+
+it("reads upload plans only for selected templates and cancels an unfinished read when deselected", async () => {
+  const browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
+  try {
+    const page = await browser.newPage();
+    await page.route("http://127.0.0.1:3000/batch-upload", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/batch-upload");
+    const script = buildSync({ stdin: { contents: `
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BatchProductionPanel } from "./src/renderer/BatchProductionPanel";
+      window.requests = []; window.cancellations = [];
+      const accounts = [{product:"蝴蝶贴",advertiserId:"123",adId:"456",available:true},
+        {product:"眼贴",productName:"晚安油",advertiserId:"789",adId:"987",available:true}];
+      window.jianji = {
+        batchProductionProjects: async () => ["蝴蝶贴", "晚安油"].map((name, index) => ({
+          recentProjectId:String(index), projectId:String(index), name, sourceCount:1, requestedCount:1,
+          productPrice:"", requiresDisplayText:false, coverEnabled:false, displayMode:"full", mode:"random"
+        })),
+        saveBatchUploadAccount: async () => undefined,
+        listQianchuanPlans: input => new Promise((resolve, reject) => window.requests.push({input,resolve,reject})),
+        cancelQianchuanPlans: async input => { window.cancellations.push(input); window.requests.find(r=>r.input.requestId===input.requestId)?.reject(new Error("已取消")); }
+      };
+      const state = {recentProjects:[],queue:{batches:[]},capabilities:{ready:true},douyinUpload:{config:{enabled:true},accounts}};
+      createRoot(document.getElementById("root")).render(<React.StrictMode><BatchProductionPanel state={state} visible={true} onState={()=>{}}/></React.StrictMode>);
+    `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
+    await page.addScriptTag({ content: script });
+    await page.getByRole("checkbox", { name: "选择模板 晚安油", exact: true }).waitFor();
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(0);
+    await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).check();
+    await page.waitForFunction(() => (window as any).requests.length === 1);
+    expect(await page.evaluate(() => (window as any).requests[0].input.expectedAdvertiserId)).toBe("123");
+    await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).uncheck();
+    await page.waitForFunction(() => (window as any).cancellations.length === 1);
+    expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(0);
+    await page.getByRole("checkbox", { name: "晚安油开启千川上传", exact: true }).uncheck();
+    await page.getByRole("checkbox", { name: "选择模板 晚安油", exact: true }).check();
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(1);
+    await page.getByRole("checkbox", { name: "晚安油开启千川上传", exact: true }).check();
+    await page.waitForFunction(() => (window as any).requests.length === 2);
+    expect(await page.evaluate(() => (window as any).requests[1].input.expectedAdvertiserId)).toBe("789");
+  } finally { await browser.close(); }
+}, 30000);

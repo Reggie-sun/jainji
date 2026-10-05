@@ -1743,9 +1743,9 @@
       "normalized_sha256": "e023d856d706f4c5da5d0806fac87bcec0cb2bb4ab366adb13620b14aa34a5ce"
     },
     "src/renderer/BatchProductionPanel.tsx": {
-      "sha256": "3324c262c62077746eae7963a5ef6fd86fdcba5a9682da91b2f282d3da07c887",
-      "size": 15052,
-      "normalized_sha256": "3324c262c62077746eae7963a5ef6fd86fdcba5a9682da91b2f282d3da07c887"
+      "sha256": "534f85ca84b35110b3ae84d5b77f821cfe3eb01df5b2f4de62fb4b853e38c18c",
+      "size": 18364,
+      "normalized_sha256": "534f85ca84b35110b3ae84d5b77f821cfe3eb01df5b2f4de62fb4b853e38c18c"
     },
     "src/renderer/BugFeedbackDialog.tsx": {
       "sha256": "4efc9e78614026b3ecfeeec6613c46d0132fee9e7c4c02687b7e47b8287886b7",
