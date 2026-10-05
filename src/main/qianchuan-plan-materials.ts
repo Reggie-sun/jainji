@@ -27,6 +27,7 @@ export class QianchuanPlanMaterials {
     const timer = setTimeout(() => controller.abort(), 30 * 60 * 1000);
     let operation: Awaited<ReturnType<typeof open>> | undefined, connection: Connection | undefined;
     let intentWritten = false;
+    let stage = "准备清理";
     try {
       await secureUploadDirectory(directory); await strictSyncDirectory(this.root);
       operation = await open(lock, "wx", 0o600);
@@ -35,19 +36,24 @@ export class QianchuanPlanMaterials {
       let hasPending = true;
       try { await lstat(gate); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") hasPending = false; else throw error; }
       if (hasPending) { await readPrivateJson(gate, input => pendingSchema.parse(input)); throw new Error("该计划上次删除结果未知，请先人工核查；不会自动重试。"); }
-      connection = await this.connect(target, signal); await connection.page.open();
+      stage = "连接账号浏览器"; connection = await this.connect(target, signal);
+      stage = "打开计划素材"; await connection.page.open();
+      stage = "筛选计划素材";
       const { skippedEcological } = await connection.page.filter();
+      stage = "核对素材列表";
       let snapshot = await connection.page.read();
       const initialCount = snapshot.total;
       for (let batch = 0; snapshot.total; batch++) {
         signal.throwIfAborted(); await guard();
         if (snapshot.total > 20000 || batch >= 1000 || !snapshot.ids.length) throw new Error("超过计划素材清理上限，已停止。");
         const before = snapshot;
+        stage = "确认计划素材删除";
         await connection.page.deleteBatch(before, async () => {
           await guard(); signal.throwIfAborted();
           await this.write(gate, { version: 1, attempt, advertiserId: target.advertiserId, adId: target.adId, ids: before.ids });
           intentWritten = true; signal.throwIfAborted();
         });
+        stage = "核对删除结果";
         snapshot = await connection.page.read();
         if (snapshot.total >= before.total || snapshot.ids.some(id => before.ids.includes(id))) throw new Error("删除结果未知或列表无进展，已停止。");
         await guard(); signal.throwIfAborted();
@@ -62,7 +68,9 @@ export class QianchuanPlanMaterials {
       await connection.close(); connection = undefined;
       return { ...result, state: "CLEARED", message: `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。` };
     } catch (error) {
-      return { ...result, message: `计划 ${target.adId} 清理已停止。${error instanceof Error ? error.message.split("\n")[0].slice(0, 200) : "操作异常。"}${intentWritten ? " 删除意图保留，结果未知，不自动重试。" : ""}` };
+      const detail = error instanceof Error && error.name === "TimeoutError" ? `${stage}时等待千川页面超时。` :
+        error instanceof Error ? error.message.split("\n")[0].slice(0, 200) : "操作异常。";
+      return { ...result, message: `计划 ${target.adId} 清理已停止。${detail}${intentWritten ? " 删除意图保留，结果未知，不自动重试。" : ""}` };
     } finally {
       clearTimeout(timer); await connection?.close().catch(() => undefined);
       if (operation) {

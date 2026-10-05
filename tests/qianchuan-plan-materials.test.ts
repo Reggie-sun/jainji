@@ -52,12 +52,19 @@ it("stops after cancellation before intent and reports an absent ecological opti
   f.page.filter.mockResolvedValue({ skippedEcological: true });
   expect(await f.owner.clear(target, async () => {})).toMatchObject({ state: "CLEARED", message: expect.stringContaining("已跳过") });
 });
+it("reports the failing cleanup stage for a page timeout without connecting again or writing deletion intent", async () => {
+  const f = await ownerFixture(), timeout = new Error("locator.waitFor: Timeout 10000ms exceeded."); timeout.name = "TimeoutError";
+  f.page.filter.mockRejectedValueOnce(timeout);
+  expect(await f.owner.clear(target, async () => {})).toMatchObject({ state: "BLOCKED", message: expect.stringContaining("筛选计划素材时等待千川页面超时") });
+  expect(f.connect).toHaveBeenCalledTimes(1); expect(f.page.deleteBatch).not.toHaveBeenCalled();
+  expect((await readdir(path.join(f.root, "plan-material-deletions"))).some(name => name.endsWith(".pending.json"))).toBe(false);
+});
 
 let browser: Browser;
 vi.setConfig({ testTimeout: 40000, hookTimeout: 30000 });
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); });
 afterAll(async () => { await browser?.close(); });
-async function pageFixture(options: { noEcological?: boolean; wrongAccount?: boolean; wrongPlan?: boolean; badFilter?: boolean; failedList?: boolean; unsafeRow?: boolean; empty?: boolean } = {}) {
+async function pageFixture(options: { noEcological?: boolean; wrongAccount?: boolean; wrongPlan?: boolean; badFilter?: boolean; failedList?: boolean; unsafeRow?: boolean; empty?: boolean; auditLabel?: boolean; ambiguousStatus?: boolean; titleConfirmation?: boolean } = {}) {
   const context = await browser.newContext(), page = await context.newPage();
   let confirmations = 0, filters = 0;
   const data = [
@@ -70,23 +77,23 @@ async function pageFixture(options: { noEcological?: boolean; wrongAccount?: boo
   const html = `<!doctype html><meta charset="utf-8"><div class="account-info-container">ID：${options.wrongAccount ? "999" : target.advertiserId}</div>
     <div class="ovui-drawer--no-maskable"><div class="ad-drawer-body">计划 ID：${options.wrongPlan ? "999" : target.adId}
       <input placeholder="输入视频名称/ID后回车搜索"><button id="filter">更多筛选</button>
-      <div class="ovui-popover" style="display:none">素材状态<button id="clear">清空</button><div class="config-area">素材状态<input placeholder="请选择">
+      <div class="ovui-popover" style="display:none"><button id="clear">清空</button><div class="config-area"><div class="oc-title">${options.auditLabel ? "审核状态" : "素材状态"}</div><input placeholder="请选择">
       ${PLAN_MATERIAL_STATUSES.filter(status => !options.noEcological || status !== "生态审核不通过").map(status => `<li class="ovui-cascader-panel__selection-item"><input type="checkbox" value="${status}"><div class="ovui-cascader-panel__item-label">${status}</div></li>`).join("")}
-      </div><button id="apply">确定</button><button id="cancelFilter">取消</button></div>
+      </div>${options.ambiguousStatus ? '<div class="config-area"><div class="oc-title">审核状态</div><input placeholder="请选择"></div>' : ""}<button id="apply">确定</button><button id="cancelFilter">取消</button></div>
       <div class="ovui-table__head-wrapper"><table><thead><tr><th><input id="all" type="checkbox"></th></tr></thead></table></div>
       <div class="ovui-table__body-wrapper"><table><tbody></tbody></table></div><div id="footer"></div><span id="selected"></span><button id="remove" style="display:none">删除</button>
     </div></div><div class="ovui-modal" style="display:none">确定要删除视频吗？<button id="cancel">取消</button><button id="confirm">确定</button></div>
     <script>
     let shown=[]; const render=rows=>{shown=rows;document.querySelector('tbody').innerHTML=rows.map(x=>'<tr><td><input type="checkbox"></td><td>素材ID: '+x.id+'</td><td class="oc-promotion-status-card">'+x.status.replaceAll('\\n','<br>')+'</td></tr>').join('');document.querySelector('#footer').innerHTML=rows.length?'<div class="ovui-page-total">共 '+rows.length+' 条记录</div>':'<div class="oc-empty">暂无数据</div>';document.querySelector('#all').checked=false;document.querySelector('#selected').textContent='';document.querySelector('#remove').style.display='none'};
-    const list=async()=>{const values=Array.from(document.querySelectorAll('.config-area input[type=checkbox]:checked')).map(x=>x.value);const expected={query_type:['all'],roi2_material_type_v3:['1001'],marketing_goal:['1'],ad_id:['${target.adId}'],roi2_material_video_type:['11'],material_audit_status:${options.badFilter ? "['1']" : "['4','2']"}};if(!values.includes('生态审核不通过'))expected.material_audit_reject_type=['1'];const response=await fetch('${"/ad/api/pmc/v1/uni-promotion/material/list-required"}?aavid=${target.advertiserId}',{method:'POST',body:JSON.stringify({DataSetKey:'site_promotion_product_post_data_video',PageParams:{Offset:0,Limit:10},Filters:{ConditionRelationshipType:1,Conditions:Object.entries(expected).map(([Field,Values])=>({Field,Values,Operator:7}))}})});const body=await response.json();render(body.data.statsData.rows??[])};
-    document.querySelector('#filter').onclick=()=>document.querySelector('.ovui-popover').style.display='';document.querySelector('#clear').onclick=()=>document.querySelectorAll('.config-area input[type=checkbox]').forEach(x=>x.checked=false);document.querySelectorAll('.ovui-cascader-panel__item-label').forEach(x=>x.onclick=()=>{const input=x.previousElementSibling;input.checked=!input.checked});document.querySelector('#apply').onclick=()=>{document.querySelector('.ovui-popover').style.display='none';list()};document.querySelector('#all').onclick=e=>{document.querySelectorAll('tbody input').forEach(x=>x.checked=e.target.checked);document.querySelector('#selected').textContent=e.target.checked?'已选'+shown.length+'个 视频':'';document.querySelector('#remove').style.display=e.target.checked?'':'none'};document.querySelector('#remove').onclick=()=>document.querySelector('.ovui-modal').style.display='';document.querySelector('#cancel').onclick=()=>document.querySelector('.ovui-modal').style.display='none';document.querySelector('#confirm').onclick=async()=>{await fetch('/fixture-delete',{method:'POST'});document.querySelector('.ovui-modal').style.display='none';await list()};
+    const list=async()=>{const values=Array.from(document.querySelectorAll('.config-area input[type=checkbox]:checked')).map(x=>x.value);const expected={query_type:['all'],roi2_material_type_v3:['1001'],marketing_goal:['1'],ad_id:['${target.adId}'],roi2_material_video_type:['11'],material_audit_status:${options.badFilter ? "['1']" : "['4','2']"}};if(${!options.auditLabel}&&!values.includes('生态审核不通过'))expected.material_audit_reject_type=['1'];const response=await fetch('${"/ad/api/pmc/v1/uni-promotion/material/list-required"}?aavid=${target.advertiserId}',{method:'POST',body:JSON.stringify({DataSetKey:'site_promotion_product_post_data_video',PageParams:{Offset:0,Limit:10},Filters:{ConditionRelationshipType:1,Conditions:Object.entries(expected).map(([Field,Values])=>({Field,Values,Operator:7}))}})});const body=await response.json();render(body.data.statsData.rows??[])};
+    document.querySelector('#filter').onclick=()=>document.querySelector('.ovui-popover').style.display='';document.querySelector('#clear').onclick=()=>document.querySelectorAll('.config-area input[type=checkbox]').forEach(x=>x.checked=false);document.querySelectorAll('.ovui-cascader-panel__item-label').forEach(x=>x.onclick=()=>{const input=x.previousElementSibling;input.checked=!input.checked});document.querySelector('#apply').onclick=()=>{document.querySelector('.ovui-popover').style.display='none';list()};document.querySelector('#all').onclick=e=>{document.querySelectorAll('tbody input').forEach(x=>x.checked=e.target.checked);document.querySelector('#selected').textContent=e.target.checked?'已选'+shown.length+'个 视频':'';document.querySelector('#remove').style.display=e.target.checked?'':'none'};document.querySelector('#remove').onclick=()=>document.querySelector('.ovui-modal').style.display='';document.querySelector('#cancel').onclick=()=>document.querySelector('.ovui-modal').style.display='none';document.querySelector('#confirm').onclick=async()=>{await fetch('/fixture-delete',{method:'POST'});document.querySelector('.ovui-modal').style.display='none';${options.titleConfirmation ? "setTimeout(()=>{const modal=document.createElement('div');modal.className='ovui-modal';modal.innerHTML='确定要删除自选视频吗？部分商品下的自选素材将被清空，需要同步删除以下 13 个自选标题<button id=secondConfirm>确定</button>';modal.querySelector('button').onclick=()=>fetch('/fixture-delete',{method:'POST'});document.body.append(modal)},150)" : "await list()"}};
     </script>`;
   await page.route("https://qianchuan.jinritemai.com/**", async route => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname.endsWith("/material/list-required")) {
       filters++;
       await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: options.failedList ? 9 : 0, data: { statsData: filtered.length ? { totalCount: String(filtered.length), rows: filtered.map(row => ({ ...row, dimensions: { materialId: { value: row.id } } })) } : {} } }) });
-    } else if (pathname === "/fixture-delete") { confirmations++; filtered = []; await route.fulfill({ body: "{}" }); }
+    } else if (pathname === "/fixture-delete") { confirmations++; if (!options.titleConfirmation) filtered = []; await route.fulfill({ body: "{}" }); }
     else await route.fulfill({ contentType: "text/html", body: html });
   });
   return { context, page, session: new QianchuanPlanMaterialPage(page, target, new AbortController().signal), confirmations: () => confirmations, filters: () => filters };
@@ -105,7 +112,28 @@ it("skips just an absent ecological option and still selects both required statu
   try { await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: true }); expect(f.filters()).toBe(1); expect((await f.session.read()).ids).toEqual(["7001", "7003"]); }
   finally { await f.session.dispose(); await f.context.close(); }
 });
-it.each([{ wrongAccount: true }, { wrongPlan: true }, { unsafeRow: true }, { failedList: true }])("rejects mismatching identity, plain approval or failed responses before deletion (%j)", async options => {
+it("supports the live audit-status label without changing the combined filter or admitting plain approval", async () => {
+  const f = await pageFixture({ auditLabel: true, noEcological: true }); f.page.setDefaultTimeout(500);
+  try { await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: true }); expect(f.filters()).toBe(1); expect((await f.session.read()).ids).toEqual(["7001", "7003"]); expect(f.confirmations()).toBe(0); }
+  finally { await f.session.dispose(); await f.context.close(); }
+});
+it("rejects ambiguous status controls before applying a filter or deleting", async () => {
+  const f = await pageFixture({ ambiguousStatus: true });
+  try { await f.session.open(); await expect(f.session.filter()).rejects.toThrow(); expect(f.filters()).toBe(0); expect(f.confirmations()).toBe(0); }
+  finally { await f.session.dispose(); await f.context.close(); }
+});
+it("reports the platform's additional title-deletion boundary without a second confirmation and retains pending intent", async () => {
+  const f = await pageFixture({ titleConfirmation: true }), owner = await ownerFixture();
+  const connect = vi.fn(async () => ({ page: f.session, close: async () => { await f.session.dispose(); } }));
+  try {
+    const result = await new QianchuanPlanMaterials(owner.root, connect).clear(target, async () => {});
+    expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0, message: expect.stringContaining("同步删除自选标题") });
+    expect(f.confirmations()).toBe(1); const bytes = await readFile(owner.gate);
+    expect((await new QianchuanPlanMaterials(owner.root, connect).clear(target, async () => {})).state).toBe("BLOCKED");
+    expect(connect).toHaveBeenCalledTimes(1); expect(await readFile(owner.gate)).toEqual(bytes);
+  } finally { await f.context.close(); }
+});
+it.each([{ wrongAccount: true }, { wrongPlan: true }, { unsafeRow: true }, { failedList: true }, { auditLabel: true, noEcological: true, unsafeRow: true }])("rejects mismatching identity, plain approval or failed responses before deletion (%j)", async options => {
   const f = await pageFixture(options);
   try { await expect((async () => { await f.session.open(); await f.session.filter(); })()).rejects.toThrow(); expect(f.confirmations()).toBe(0); }
   finally { await f.session.dispose(); await f.context.close(); }

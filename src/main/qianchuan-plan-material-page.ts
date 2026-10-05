@@ -15,6 +15,7 @@ export class QianchuanPlanMaterialPage {
   private response?: PlanMaterialSnapshot;
   private fault = false;
   private statuses: PlanMaterialStatus[] = [];
+  private auditStatusFilter = false;
   private revision = 0;
   private readonly requests = new WeakMap<Request, number>();
   private readonly requested = (request: Request) => {
@@ -54,7 +55,7 @@ export class QianchuanPlanMaterialPage {
         body.Filters?.ConditionRelationshipType !== 1) return false;
       const expected: Record<string, string[]> = { query_type: ["all"], roi2_material_type_v3: ["1001"], marketing_goal: ["1"],
         ad_id: [this.target.adId], roi2_material_video_type: ["11"], material_audit_status: ["2", "4"] };
-      if (!this.statuses.includes("生态审核不通过")) expected.material_audit_reject_type = ["1"];
+      if (!this.statuses.includes("生态审核不通过") && !this.auditStatusFilter) expected.material_audit_reject_type = ["1"];
       const conditions = body.Filters.Conditions;
       return Array.isArray(conditions) && conditions.length === Object.keys(expected).length &&
         new Set(conditions.map(condition => condition.Field)).size === conditions.length && conditions.every(condition =>
@@ -99,11 +100,13 @@ export class QianchuanPlanMaterialPage {
     await this.guard();
     if (await this.page.locator(".ovui-modal:visible").count()) throw changed();
     await this.drawer().getByText("更多筛选", { exact: true }).click();
-    const panel = this.page.locator(".ovui-popover:visible").filter({ hasText: "素材状态" });
+    const statusTitle = this.page.locator(".oc-title").filter({ hasText: /^(素材状态|审核状态)$/ });
+    const panel = this.page.locator(".ovui-popover:visible").filter({ has: statusTitle });
     await panel.waitFor(); if (await panel.count() !== 1) throw changed();
-    await panel.getByText("清空", { exact: true }).evaluate(node => (node as HTMLElement).click());
-    const area = panel.locator(".config-area").filter({ hasText: "素材状态" });
+    const area = panel.locator(".config-area").filter({ has: statusTitle });
     if (await area.count() !== 1) throw changed();
+    this.auditStatusFilter = (await area.locator(".oc-title").innerText()).trim() === "审核状态";
+    await panel.getByText("清空", { exact: true }).evaluate(node => (node as HTMLElement).click());
     const input = area.locator('input[placeholder="请选择"]');
     if (await input.count() === 1) await input.click();
     this.statuses = [];
@@ -167,11 +170,22 @@ export class QianchuanPlanMaterialPage {
     await checkModal(); await beforeConfirm(); await checkModal();
     const revision = this.revision;
     await modal.getByRole("button", { name: "确定", exact: true }).click();
-    await modal.waitFor({ state: "hidden", timeout: 30000 });
     const deadline = Date.now() + 30000;
     do {
       await this.guard();
-      if (this.revision > revision && this.response && this.response.total < before.total && !this.response.ids.some(id => before.ids.includes(id))) {
+      const dialogs = this.page.locator(".ovui-modal:visible");
+      const dialogCount = await dialogs.count();
+      if (dialogCount) {
+        if (dialogCount !== 1) throw changed();
+        const text = (await dialogs.innerText()).replace(/\s+/g, "");
+        if (text.startsWith("确定要删除自选视频吗？") && /需要同步删除以下\d+个自选标题/.test(text)) {
+          throw new Error("平台要求同步删除自选标题，已停止；删除结果未知，不会自动再次确认。");
+        }
+        if (text !== "确定要删除视频吗？取消确定") {
+          throw new Error("平台出现额外确认或异常弹窗，已停止；删除结果未知，不会自动再次确认。");
+        }
+      }
+      if (!dialogCount && this.revision > revision && this.response && this.response.total < before.total && !this.response.ids.some(id => before.ids.includes(id))) {
         await this.read(); return;
       }
       await this.page.waitForTimeout(100);
