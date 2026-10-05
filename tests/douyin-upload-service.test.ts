@@ -757,11 +757,11 @@ describe("Qianchuan upload service", () => {
     f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
     let releaseSave!: () => void;
     const saveGate = new Promise<void>(resolve => { releaseSave = resolve; });
-    const saveTask = f.store.saveTask.bind(f.store);
+    const saveTasks = f.store.saveTasks.bind(f.store);
     let blockedSave = false;
-    f.store.saveTask = async task => {
-      if (task.result.state === "WAITING_FOR_CONFIRMATION" && task.result.readyEvidence?.selectedCount === 21 && f.store.fence(task.result.upload_task_id)?.selectedIndex === 9) { blockedSave = true; await saveGate; }
-      await saveTask(task);
+    f.store.saveTasks = async tasks => {
+      if (tasks.every(task => task.result.state === "WAITING_FOR_CONFIRMATION" && task.result.readyEvidence?.selectedCount === 21)) { blockedSave = true; await saveGate; }
+      await saveTasks(tasks);
     };
     const running = f.service.runPending();
     try {
@@ -769,7 +769,7 @@ describe("Qianchuan upload service", () => {
       expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
       completed = true;
       await vi.waitFor(() => expect(blockedSave).toBe(true), { timeout: 3000 });
-      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(8);
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
     } finally { completed = true; releaseSave(); await running; }
     expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
     expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 21)).toBe(true);
@@ -792,7 +792,7 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 3)).toBe(true);
   });
 
-  it("coalesces streamed exports without stopping at the page's cumulative ten-file disabled boundary", async () => {
+  it("starts with one available output and streams up to nine without stopping at cumulative ten", async () => {
     const f = await fixture(); await f.authorize();
     const batch = await f.createBatch(Array.from({ length: 21 }, (_, index) => `streamed ${index}`)); await f.register(batch);
     const groups: number[] = [];
@@ -808,18 +808,52 @@ describe("Qianchuan upload service", () => {
     await f.service.enqueueFinalArtifact(batch.identities[0]!);
     const running = f.service.runPending();
     try {
-      await new Promise(resolve => setTimeout(resolve, 120));
-      expect(f.events).toEqual([]);
+      await vi.waitFor(() => expect(groups).toEqual([1]));
       for (const identity of batch.identities.slice(1, 10)) await f.service.committed(identity);
-      await vi.waitFor(() => expect(groups).toEqual([9]), { timeout: 3000 });
+      await vi.waitFor(() => expect(groups.reduce((sum, count) => sum + count, 0)).toBe(9), { timeout: 3000 });
       for (const identity of batch.identities.slice(10)) await f.service.committed(identity);
-      await vi.waitFor(() => expect(groups).toEqual([9, 9, 3]), { timeout: 3000 });
+      await vi.waitFor(() => expect(groups.reduce((sum, count) => sum + count, 0)).toBe(21), { timeout: 3000 });
+      expect(groups.every(count => count >= 1 && count <= 9)).toBe(true);
+      let selected = 0;
+      expect(groups.map(count => selected += count)).not.toContain(10);
       expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
       completed = true;
       await running;
       expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 21)).toBe(true);
     } finally { await f.service.stop(); await running; }
   }, 15_000);
+
+  it("uploads six available outputs immediately and appends three while the first six are still processing", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `status ${index}`)); await f.register(batch);
+    for (const identity of batch.identities.slice(0, 6)) await f.service.enqueueFinalArtifact(identity);
+    let completed = false;
+    const groups: number[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { await upload(tasks, signal); groups.push(tasks.length); };
+    f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(groups).toEqual([6]));
+      expect(f.service.status(batch.projectId).message).not.toContain("等待本批更多成片");
+      expect(f.store.tasks().every(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
+      for (const identity of batch.identities.slice(6, 9)) await f.service.committed(identity);
+      await vi.waitFor(() => expect(groups.slice(1).reduce((sum, count) => sum + count, 0)).toBe(3), { timeout: 2000 });
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
+      completed = true;
+      await running;
+      expect(f.service.status(batch.projectId).tasks.filter(task => task.upload_outcome === "READY")).toHaveLength(9);
+    } finally { completed = true; await f.service.stop(); await running; }
+  });
+
+  it("persists group phases with 13 ledger commits for 21 files in 9+9+3 groups", async () => {
+    const f = await groupedFixture();
+    f.port.pollReady = async (tasks, signal) => tasks.length === 21 ? f.port.ready(tasks, signal) : undefined;
+    const commit = vi.spyOn(f.store as unknown as { commit: (data: unknown) => Promise<void> }, "commit");
+    await f.service.runPending();
+    expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
+    expect(f.store.tasks().every(task => task.result.upload_outcome === "READY")).toBe(true);
+    expect(commit).toHaveBeenCalledTimes(13);
+  });
 
   it.each(["failed", "cancelled", "interrupted"] as const)("flushes a final partial group after an unadmitted export becomes %s", async status => {
     const f = await fixture(); await f.authorize();
@@ -842,17 +876,19 @@ describe("Qianchuan upload service", () => {
     } finally { await f.service.stop(); await running; }
   });
 
-  it.each(["stop", "cancel exports", "timeout"] as const)("keeps coalescing files unselected after %s", async action => {
+  it.each(["stop", "cancel exports", "timeout"] as const)("keeps the held tenth file unselected after %s", async action => {
     const f = await fixture(); await f.authorize();
     await f.service.configure({ enabled: true, timeouts: { processing: 350 } });
     const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `held ${index}`)); await f.register(batch);
-    await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    for (const identity of batch.identities.slice(0, 9)) await f.service.enqueueFinalArtifact(identity);
+    await f.service.runPending(); f.events.length = 0;
+    await f.service.enqueueFinalArtifact(batch.identities[9]!);
     const running = f.service.runPending();
     await new Promise(resolve => setTimeout(resolve, 120));
     if (action === "stop") expect(await f.service.stop()).toBe(true);
-    if (action === "cancel exports") await f.service.cancelExports(batch.projectId, [batch.identities[0]!.export_task_id]);
+    if (action === "cancel exports") await f.service.cancelExports(batch.projectId, [batch.identities[9]!.export_task_id]);
     await running;
-    const task = f.store.tasks()[0]!;
+    const task = f.store.tasks().find(task => task.input.export_task_id === batch.identities[9]!.export_task_id)!;
     expect(f.store.hasMarker(task.result.upload_task_id)).toBe(false);
     expect(task.result.upload_outcome).toBe("NOT_SELECTED");
     expect(f.events.filter(event => event !== "stop")).toEqual([]);
@@ -860,7 +896,29 @@ describe("Qianchuan upload service", () => {
     expect(f.service.busy).toBe(false);
   });
 
-  it("waits for every frozen queue chunk before flushing a short group", async () => {
+  it("safely continues a never-selected tenth after its wait times out without reselecting the first nine", async () => {
+    const f = await fixture(); await f.authorize();
+    await f.service.configure({ enabled: true, timeouts: { processing: 350 } });
+    const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `continue held ${index}`)); await f.register(batch);
+    const groups: number[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { groups.push(tasks.length); await upload(tasks, signal); };
+    f.port.readOnlyCheck = async (task, owner, files, signal) => { signal.throwIfAborted(); f.events.push("readonly"); return evidenceFor(task, owner, files.length); };
+    for (const identity of batch.identities.slice(0, 9)) await f.service.enqueueFinalArtifact(identity);
+    await f.service.runPending();
+    const fences = f.store.tasks().map(task => f.store.fence(task.result.upload_task_id));
+    const held = await f.service.enqueueFinalArtifact(batch.identities[9]!);
+    await f.service.runPending();
+    expect(f.store.task(held!.result.upload_task_id)?.result).toMatchObject({ state: "NEEDS_HUMAN", upload_outcome: "NOT_SELECTED", failure: { code: "TIMEOUT", requires_human: true } });
+    expect(f.store.hasMarker(held!.result.upload_task_id)).toBe(false);
+    await f.service.committed(batch.identities[10]!);
+    expect(groups).toEqual([9]);
+    await f.service.resume(held!.result.upload_task_id);
+    expect(groups).toEqual([9, 2]);
+    expect(f.store.tasks().every(task => task.result.upload_outcome === "READY")).toBe(true);
+    for (const fence of fences) expect(f.store.fence(fence!.upload_task_id)).toEqual(fence);
+  });
+
+  it("uploads a short group before later frozen queue chunks are registered", async () => {
     const f = await fixture(); await f.authorize();
     const first = await f.createBatch(["chunk first", "chunk second", "chunk third"]);
     const authorization = await f.service.preflight(selection(first.product), 12);
@@ -868,18 +926,22 @@ describe("Qianchuan upload service", () => {
     for (const identity of first.identities) await f.service.enqueueFinalArtifact(identity);
     const groups: number[] = [], upload = f.port.upload;
     f.port.upload = async (tasks, signal) => { await upload(tasks, signal); groups.push(tasks.length); };
+    let completed = false;
+    f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
     const running = f.service.runPending();
     try {
-      await new Promise(resolve => setTimeout(resolve, 120)); expect(groups).toEqual([]);
+      await vi.waitFor(() => expect(groups).toEqual([3]));
       const chunk = await f.createBatch(Array.from({ length: 9 }, (_, index) => `later chunk ${index}`));
       chunk.batchIdentity.projectId = first.projectId; f.states.get(chunk.batchId)!.batch.projectId = first.projectId;
       for (const identity of chunk.identities) identity.project_id = first.projectId;
       await f.service.registerBatch(chunk.batchIdentity, selection(first.product), authorization);
       for (const identity of chunk.identities) await f.service.committed(identity);
+      await vi.waitFor(() => expect(groups.reduce((sum, count) => sum + count, 0)).toBe(12), { timeout: 3000 });
+      completed = true;
       await running;
-      expect(groups).toEqual([9, 3]);
+      expect(groups.every(count => count <= 9)).toBe(true);
       expect(new Set(f.store.tasks().map(task => f.store.fence(task.result.upload_task_id)!.pageOwnership.targetId)).size).toBe(1);
-    } finally { await f.service.stop(); await running; }
+    } finally { completed = true; await f.service.stop(); await running; }
   });
 
   it("does not flush a tail while its final artifact admission is still in progress", async () => {
@@ -959,18 +1021,18 @@ describe("Qianchuan upload service", () => {
     expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
   }, 15_000);
 
-  it("preserves four saved READY records and all 21 fences if final completion saving fails", async () => {
+  it("preserves all 21 fences and no partial READY when the atomic final completion save fails", async () => {
     const f = await groupedFixture();
     f.port.pollReady = async (tasks, signal) => tasks.length === 21 ? f.port.ready(tasks, signal) : undefined;
-    const save = f.store.saveTask.bind(f.store); let count = 0;
-    f.store.saveTask = async task => {
-      if (task.result.state === "WAITING_FOR_CONFIRMATION" && ++count === 5) throw new Error("injected final save failure");
-      await save(task);
+    const save = f.store.saveTasks.bind(f.store);
+    f.store.saveTasks = async tasks => {
+      if (tasks.some(task => task.result.state === "WAITING_FOR_CONFIRMATION")) throw new Error("injected final save failure");
+      await save(tasks);
     };
     await f.service.runPending();
     expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
-    expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(4);
-    expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(17);
+    expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
+    expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(21);
     expect(f.store.tasks().every(task => f.store.hasMarker(task.result.upload_task_id))).toBe(true);
   });
 
@@ -1000,14 +1062,14 @@ describe("Qianchuan upload service", () => {
     };
     let releaseSave!: () => void;
     const saveGate = new Promise<void>(resolve => { releaseSave = resolve; });
-    const saveTask = f.store.saveTask.bind(f.store);
+    const saveTasks = f.store.saveTasks.bind(f.store);
     let savingReady = false;
-    f.store.saveTask = async task => {
-      if (task.result.upload_task_id === first!.result.upload_task_id && task.result.state === "WAITING_FOR_CONFIRMATION") {
+    f.store.saveTasks = async tasks => {
+      if (tasks.some(task => task.result.upload_task_id === first!.result.upload_task_id && task.result.state === "WAITING_FOR_CONFIRMATION")) {
         savingReady = true;
         await saveGate;
       }
-      await saveTask(task);
+      await saveTasks(tasks);
     };
     const resumed = f.service.resume(first!.result.upload_task_id);
     try {
@@ -1035,8 +1097,11 @@ describe("Qianchuan upload service", () => {
 
   it.each([1, 5, 9])("a failure saving fence %i prevents the entire group delivery and preserves every earlier fence", async position => {
     const f = await groupedFixture();
-    const mark = f.store.markSelecting.bind(f.store); let calls = 0;
-    f.store.markSelecting = async (...args) => { if (++calls === position) throw new Error("injected group fence failure"); await mark(...args); };
+    const mark = f.store.markSelecting.bind(f.store);
+    f.store.markSelecting = async (ids, owner, index) => {
+      const group = typeof ids === "string" ? [ids] : ids;
+      for (const [offset, id] of group.entries()) { if (offset + 1 === position) throw new Error("injected group fence failure"); await mark(id, owner, index + offset); }
+    };
     await f.service.runPending();
     expect(f.groups).toEqual([]);
     expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(position - 1);
@@ -1066,20 +1131,20 @@ describe("Qianchuan upload service", () => {
     expect(reopened.tasks().filter(task => task.result.state === "PENDING")).toHaveLength(12);
   });
 
-  it("a fifth READY save failure preserves the first four READY records and all nine fences without advancing", async () => {
+  it("an atomic READY save failure preserves all nine fences without advancing", async () => {
     const f = await groupedFixture();
-    const saveTask = f.store.saveTask.bind(f.store); let readySaves = 0;
-    f.store.saveTask = async task => {
-      if (task.result.state === "WAITING_FOR_CONFIRMATION" && ++readySaves === 5) throw new Error("injected fifth READY save failure");
-      await saveTask(task);
+    const saveTasks = f.store.saveTasks.bind(f.store);
+    f.store.saveTasks = async tasks => {
+      if (tasks.some(task => task.result.state === "WAITING_FOR_CONFIRMATION")) throw new Error("injected atomic READY save failure");
+      await saveTasks(tasks);
     };
     await f.service.runPending();
     expect(f.groups.map(group => group.length)).toEqual([9]);
-    expect(f.store.tasks().filter(task => task.result.state === "WAITING_FOR_CONFIRMATION")).toHaveLength(4);
-    expect(f.store.tasks().filter(task => task.result.state === "NEEDS_HUMAN")).toHaveLength(5);
+    expect(f.store.tasks().filter(task => task.result.state === "WAITING_FOR_CONFIRMATION")).toHaveLength(0);
+    expect(f.store.tasks().filter(task => task.result.state === "NEEDS_HUMAN")).toHaveLength(9);
     expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(9);
     const reopened = new DouyinUploadStore(f.store.root); await reopened.load();
-    expect(reopened.tasks().filter(task => task.result.state === "NEEDS_HUMAN")).toHaveLength(5);
+    expect(reopened.tasks().filter(task => task.result.state === "NEEDS_HUMAN")).toHaveLength(9);
     await f.service.runPending(); expect(f.groups.map(group => group.length)).toEqual([9]);
   });
 
@@ -1241,14 +1306,14 @@ describe("Qianchuan upload service", () => {
     const batch = await f.createBatch(["ready evidence bytes"]);
     await f.register(batch);
     const record = await f.service.enqueueFinalArtifact(batch.identities[0]!);
-    const originalSave = f.store.saveTask.bind(f.store);
+    const originalSave = f.store.saveTasks.bind(f.store);
     let failReadySave = true;
-    f.store.saveTask = async task => {
-      if (task.result.state === "WAITING_FOR_CONFIRMATION" && failReadySave) {
+    f.store.saveTasks = async tasks => {
+      if (tasks.some(task => task.result.state === "WAITING_FOR_CONFIRMATION") && failReadySave) {
         failReadySave = false;
         throw new Error("injected durable READY save failure");
       }
-      return originalSave(task);
+      return originalSave(tasks);
     };
     await f.service.runPending();
 
@@ -1603,7 +1668,7 @@ describe("Qianchuan upload service", () => {
     await f.service.runPending();
     expect(groups.map(group => group.length)).toEqual([9, 9, 1]);
     expect(groups.slice(1).flat()).toEqual(other.identities.map(identity => identity.export_task_id));
-    expect(f.service.status(other.projectId)).toMatchObject({ ready: true, message: "成片上传至所选计划，停在确定前。" });
+    expect(f.service.status(other.projectId)).toMatchObject({ ready: true, message: "成片就绪即上传，每次最多 9 条；处理中继续追加，停在确定前。" });
     expect(f.service.status(other.projectId).tasks.every(task => task.upload_outcome === "READY")).toBe(true);
     expect(f.service.status(blocked.projectId).ready).toBe(false);
     expect(f.service.status(blocked.projectId).tasks.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(9);

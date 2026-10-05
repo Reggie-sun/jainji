@@ -112,7 +112,8 @@ export class DouyinUploadService {
     const readiness = this.dependencies.readiness?.(this.store.config);
     const records = this.store.tasks(), open = this.openTasks(records);
     const paused = this.paused || open.some(task => task.input.project_id === projectId && this.pausedAccounts.has(task.authorization.target.advertiserId));
-    const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : (this.stopFailed ? "旧上传操作未能安全停止，请先关闭应用并核查 Chrome。" : this.initializationFailure) ?? (!config.enabled ? "自动上传已关闭。" : readiness ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : paused ? this.pausedMessage(projectId, open) : this.stopped || this.stopping ? "自动上传已停止，待上传成片保留在队列中。检查对应 Chrome 后，对本批未选文件的任务点击“安全继续”；结果未知的文件只能只读核查原页面。" : "成片上传至所选计划，停在确定前。"));
+    const progress = "成片就绪即上传，每次最多 9 条；处理中继续追加，停在确定前。";
+    const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : (this.stopFailed ? "旧上传操作未能安全停止，请先关闭应用并核查 Chrome。" : this.initializationFailure) ?? (!config.enabled ? "自动上传已关闭。" : readiness ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : paused ? this.pausedMessage(projectId, open) : this.stopped || this.stopping ? "自动上传已停止，待上传成片保留在队列中。检查对应 Chrome 后，对本批未选文件的任务点击“安全继续”；结果未知的文件只能只读核查原页面。" : progress));
     const tasks = open.filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => this.taskResult(task));
     const all = records.filter(task => task.input.project_id === projectId);
     const summary = (pageBatchId: string) => this.batchSummary(projectId, all.filter(task => task.authorization.pageBatchId === pageBatchId));
@@ -453,14 +454,16 @@ export class DouyinUploadService {
     }
     return group.map(task => task.result.upload_task_id);
   }
-  private async coalesceGroup(ids: string[], start: number, signal: AbortSignal, observe?: () => Promise<void>): Promise<void> {
+  private async prepareGroup(ids: string[], start: number, signal: AbortSignal, observe?: () => Promise<void>): Promise<void> {
     const first = this.requireTask(ids[start]!);
+    const selectedCount = this.selectedFiles(first).length;
     while (true) {
       signal.throwIfAborted();
-      if (ids.length - start >= MAX_UPLOAD_GROUP_SIZE || first.authorization.expectedCount <= MAX_UPLOAD_GROUP_SIZE) return;
       const next = this.pendingGroup(first.authorization.pageBatchId, ids.slice(start).map(id => this.requireTask(id))).slice(0, MAX_UPLOAD_GROUP_SIZE - (ids.length - start));
       ids.push(...next); for (const id of next) this.eligible.delete(id);
-      if (ids.length - start >= MAX_UPLOAD_GROUP_SIZE) return;
+      if (selectedCount + ids.length - start !== 10) return;
+      // The current platform disables its entrance only at cumulative count 10.
+      if (ids.length - start > 1) { this.eligible.add(ids.pop()!); return; }
       if (!this.pendingAdmissions && await uploadBatchSettled(this.store, first, this.cancelledIntents, this.dependencies.loadBatch, signal) && !this.pendingAdmissions) {
         signal.throwIfAborted();
         if (!this.pendingGroup(first.authorization.pageBatchId, ids.slice(start).map(id => this.requireTask(id))).length) return;
@@ -668,8 +671,15 @@ export class DouyinUploadService {
     this.control = work; return work;
   }
   private requireTask(id: string): UploadTaskRecord { const task = this.store.task(id); if (!task) throw new Error("找不到千川上传任务。"); if (!this.inProduction(task.authorization.pageBatchId)) throw new Error("本任务不属于本次制作，历史上传不再处理。"); return task; }
-  private async save(task: UploadTaskRecord): Promise<void> { await this.store.saveTask(task); this.changed(); if (task.config.captureFailureDiagnostics) await this.log(task).catch(() => undefined); }
-  private async phase(task: UploadTaskRecord, state: QianchuanUploadResult["state"]): Promise<void> { task.result = { ...task.result, state, readyEvidence: undefined, failure: undefined, retryable: false, timestamp: timestamp() }; await this.save(task); }
+  private async save(task: UploadTaskRecord | UploadTaskRecord[]): Promise<void> {
+    if (Array.isArray(task)) await this.store.saveTasks(task); else await this.store.saveTask(task);
+    this.changed();
+    for (const record of Array.isArray(task) ? task : [task]) if (record.config.captureFailureDiagnostics) await this.log(record).catch(() => undefined);
+  }
+  private async phase(task: UploadTaskRecord | UploadTaskRecord[], state: QianchuanUploadResult["state"]): Promise<void> {
+    for (const record of Array.isArray(task) ? task : [task]) record.result = { ...record.result, state, readyEvidence: undefined, failure: undefined, retryable: false, timestamp: timestamp() };
+    await this.save(task);
+  }
   private selectedFiles(task: UploadTaskRecord): BatchSelectedFile[] {
     return this.store.tasks().filter(value => value.authorization.pageBatchId === task.authorization.pageBatchId && this.store.hasMarker(value.result.upload_task_id)).map(value => ({ fileName: value.result.file_name, index: this.store.fence(value.result.upload_task_id)!.selectedIndex, ready: value.result.upload_outcome === "READY" })).sort((a, b) => a.index - b.index);
   }
@@ -704,9 +714,9 @@ export class DouyinUploadService {
       }
       port = this.sessions.get(key) ?? this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
       const t = first.config.timeouts;
-      if (!recovery) { await this.bounded(signal => this.coalesceGroup(ids, 0, signal), t.processing, controller.signal); tasks = ids.map(id => this.requireTask(id)); }
+      if (!recovery) { await this.bounded(signal => this.prepareGroup(ids, 0, signal), t.processing, controller.signal); tasks = ids.map(id => this.requireTask(id)); }
       if (tasks.length > (recovery ? first.authorization.expectedCount : MAX_UPLOAD_GROUP_SIZE) || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
-      if (!recovery) for (const task of tasks) { task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER"); }
+      if (!recovery) { for (const task of tasks) task.result.attempt_count++; await this.phase(tasks, "CONNECTING_BROWSER"); }
       for (let retry = 0; ; retry++) {
         try { await this.bounded(signal => port!.connect(first, signal), t.connect, controller.signal); break; }
         catch (error) {
@@ -718,13 +728,14 @@ export class DouyinUploadService {
           this.sessions.delete(key);
           for (const task of tasks) {
             task.result = { ...task.result, failure: { ...error.failure, message: `Chrome 连接失败，正在自动重连（${retry + 1}/2）。`, next_action: "稍候自动重连；可停止本批上传。" }, timestamp: timestamp() };
-            await this.save(task);
           }
+          await this.save(tasks);
           await delay(1000 * (retry + 1), undefined, { signal: controller.signal });
           await this.currentTarget(first); controller.signal.throwIfAborted();
           if (this.stopFailed || this.store.unavailable || generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，自动重连已停止。");
           port = this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
-          for (const task of tasks) { task.result.retry_count++; await this.save(task); }
+          for (const task of tasks) task.result.retry_count++;
+          await this.save(tasks);
         }
       }
       let evidence: ReadyEvidence[];
@@ -747,13 +758,14 @@ export class DouyinUploadService {
               const start = ids.length;
               ids.push(...next);
               for (const id of next) this.eligible.delete(id);
-              await this.coalesceGroup(ids, start, signal, async () => { await port!.pollReady(tasks, signal); });
+              await this.prepareGroup(ids, start, signal, async () => { await port!.pollReady(tasks, signal); });
               const group = ids.slice(start).map(id => this.requireTask(id));
               for (const task of group) {
                 this.eligible.delete(task.result.upload_task_id);
                 if (JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config)) throw unknown();
-                task.result.attempt_count++; await this.phase(task, "CONNECTING_BROWSER");
+                task.result.attempt_count++;
               }
+              await this.phase(group, "CONNECTING_BROWSER");
               await this.selectGroup(group, port!, signal);
               tasks = ids.map(id => this.requireTask(id));
               continue;
@@ -772,32 +784,33 @@ export class DouyinUploadService {
       for (let index = 0; index < tasks.length; index++) {
         controller.signal.throwIfAborted(); const task = tasks[index]!;
         task.result = { ...task.result, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: parsed[index], failure: undefined, retryable: false, timestamp: timestamp() };
-        await this.save(task); savedReady.add(task.result.upload_task_id);
       }
+      await this.save(tasks); for (const task of tasks) savedReady.add(task.result.upload_task_id);
     } catch (error) {
       this.pauseAccount(first);
+      const failed: UploadTaskRecord[] = [];
       for (const id of ids) {
         const task = this.requireTask(id); if (task.result.state === "WAITING_FOR_CONFIRMATION" && (!recovery || savedReady.has(id))) continue;
-        const fenced = this.store.hasMarker(id), failure = fenced ? unknown(error instanceof UploadError ? error : undefined).failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
+        const fenced = this.store.hasMarker(id), waitingTimeout = !fenced && task.result.state === "PENDING" && error instanceof UploadError && error.failure.code === "TIMEOUT";
+        const failure = fenced ? unknown(error instanceof UploadError ? error : undefined).failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : waitingTimeout ? uploadFailure("TIMEOUT", "page", "处理期限已到，本文件尚未选择。", "核查原任务页面后点击“安全继续”；已选文件不会重传。", true).failure : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
         task.result = { ...task.result, state: fenced || failure.requires_human ? "NEEDS_HUMAN" : controller.signal.aborted ? "CANCELLED" : failure.retryable ? "FAILED_RETRYABLE" : "FAILED_TERMINAL", upload_outcome: fenced ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", readyEvidence: undefined, failure, retryable: !fenced && failure.retryable, timestamp: timestamp() };
-        if (!this.store.unavailable) await this.save(task);
+        failed.push(task);
       }
+      if (!this.store.unavailable && failed.length) await this.save(failed);
       if (this.store.unavailable) { this.initializationFailure = "上传存储失败；保留屏障，上传结果按未知处理。"; this.changed(); }
       if (port) await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; }); this.sessions.delete(key);
     } finally { if (port && this.active?.port === port) this.active = undefined; }
   }
   private async selectGroup(tasks: UploadTaskRecord[], port: UploadBrowserPort, signal: AbortSignal): Promise<void> {
     const first = tasks[0]!, t = first.config.timeouts;
-    for (const task of tasks) await this.phase(task, "OPENING_UPLOAD_PAGE");
+    await this.phase(tasks, "OPENING_UPLOAD_PAGE");
     const prepared = await this.bounded(inner => port.open(tasks, this.selectedFiles(first), inner), t.navigation, signal);
     for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }
     await this.currentTarget(first); signal.throwIfAborted();
-    for (let index = 0; index < tasks.length; index++) {
-      await this.store.markSelecting(tasks[index]!.result.upload_task_id, prepared.pageOwnership, prepared.selectedIndex + index);
-      this.changed(); signal.throwIfAborted();
-    }
+    await this.store.markSelecting(tasks.map(task => task.result.upload_task_id), prepared.pageOwnership, prepared.selectedIndex);
+    this.changed(); signal.throwIfAborted();
     await this.bounded(inner => port.upload(tasks.map(task => this.requireTask(task.result.upload_task_id)), inner), t.fileInput, signal);
-    for (const task of tasks) { signal.throwIfAborted(); await this.phase(this.requireTask(task.result.upload_task_id), "WAITING_UPLOAD_COMPLETE"); }
+    signal.throwIfAborted(); await this.phase(tasks.map(task => this.requireTask(task.result.upload_task_id)), "WAITING_UPLOAD_COMPLETE");
   }
   private async snapshotValid(task: UploadTaskRecord): Promise<void> {
     const info = await lstat(task.snapshotPath);

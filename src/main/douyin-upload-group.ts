@@ -1,7 +1,7 @@
 import type { QueueState } from "./domain.js";
 import { intentKey, type DouyinUploadStore, type UploadTaskRecord } from "./douyin-upload-store.js";
 
-/** A completed export still needs formal artifact admission before a short tail can flush. */
+/** Only the held tenth file needs proof that no later admission can cross the disabled boundary. */
 export async function uploadBatchSettled(store: DouyinUploadStore, first: UploadTaskRecord, cancelled: ReadonlySet<string>, loadBatch: (id: string) => Promise<QueueState>, signal: AbortSignal): Promise<boolean> {
   signal.throwIfAborted();
   const intents = store.intents().filter(intent => intent.authorization.pageBatchId === first.authorization.pageBatchId);

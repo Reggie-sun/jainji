@@ -109,6 +109,7 @@
         "tests/douyin-upload-contract.test.ts",
         "tests/douyin-upload-store.test.ts",
         "tests/douyin-upload-service.test.ts",
+        "tests/douyin-upload-recovery.test.ts",
         "tests/douyin-upload-integration.test.ts",
         "tests/douyin-cdp-uploader.test.ts",
         "tests/douyin-upload-ui.test.ts",
@@ -370,7 +371,6 @@
         "tests/douyin-upload-discard-service.test.ts",
         "tests/douyin-upload-discard-store.test.ts",
         "tests/douyin-upload-paused-status.test.ts",
-        "tests/douyin-upload-recovery.test.ts",
         "tests/douyin-upload-retarget-service.test.ts",
         "tests/douyin-upload-retarget-store.test.ts",
         "tests/douyin-upload-retarget-ui.test.ts",
@@ -770,6 +770,7 @@
         "tests/douyin-upload-contract.test.ts",
         "tests/douyin-upload-store.test.ts",
         "tests/douyin-upload-service.test.ts",
+        "tests/douyin-upload-recovery.test.ts",
         "tests/douyin-upload-integration.test.ts",
         "tests/douyin-cdp-uploader.test.ts",
         "tests/douyin-upload-ui.test.ts",
@@ -785,7 +786,8 @@
       "documentRefs": [
         "AGENTS.md",
         "docs/agent-contract-index.md",
-        "docs/video-validation-harness-spec.md"
+        "docs/video-validation-harness-spec.md",
+        "docs/douyin-auto-upload-spec.md"
       ]
     },
     {
@@ -1042,7 +1044,6 @@
         "tests/douyin-upload-discard-service.test.ts",
         "tests/douyin-upload-discard-store.test.ts",
         "tests/douyin-upload-paused-status.test.ts",
-        "tests/douyin-upload-recovery.test.ts",
         "tests/douyin-upload-retarget-service.test.ts",
         "tests/douyin-upload-retarget-store.test.ts",
         "tests/douyin-upload-retarget-ui.test.ts",

@@ -4,9 +4,9 @@
   "updated_at": "2026-10-05T17:09:42Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "5ebef9bc296d4ece201d838414d43b044e38225582ef19af39cee4e6462f2b66",
-      "size": 38635,
-      "normalized_sha256": "5ebef9bc296d4ece201d838414d43b044e38225582ef19af39cee4e6462f2b66"
+      "sha256": "c2448b60054bae195fbc41c841f1fb42e4646e4254a0ed96666756b9c874957e",
+      "size": 38678,
+      "normalized_sha256": "c2448b60054bae195fbc41c841f1fb42e4646e4254a0ed96666756b9c874957e"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -1333,19 +1333,19 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-group.ts": {
-      "sha256": "cbae4669db1a0ec55452951c8d1ffb8c7f56f2ee5b17d80e020f152d80e7e02f",
-      "size": 1592,
-      "normalized_sha256": "cbae4669db1a0ec55452951c8d1ffb8c7f56f2ee5b17d80e020f152d80e7e02f"
+      "sha256": "b5405ef1ed791a0eab62aaa9d4cf944d784ea692baceb81ac0f08a817701138f",
+      "size": 1598,
+      "normalized_sha256": "b5405ef1ed791a0eab62aaa9d4cf944d784ea692baceb81ac0f08a817701138f"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "7346a0bccc2a5acc4ceb6f87a0ca7c3c5b04897d4d5a2d854f979d5778619e4d",
-      "size": 72427,
-      "normalized_sha256": "7346a0bccc2a5acc4ceb6f87a0ca7c3c5b04897d4d5a2d854f979d5778619e4d"
+      "sha256": "7b50c8173e424423b07c6d03fe94d9132cf679dc3cfa3db1c0346286581bbae7",
+      "size": 73214,
+      "normalized_sha256": "7b50c8173e424423b07c6d03fe94d9132cf679dc3cfa3db1c0346286581bbae7"
     },
     "src/main/douyin-upload-store.ts": {
-      "sha256": "1cebf58b0d6d71f71c9db27ed71b58bbd41e8e7f6d1a49fd00ba56cfb64439ca",
-      "size": 36820,
-      "normalized_sha256": "1cebf58b0d6d71f71c9db27ed71b58bbd41e8e7f6d1a49fd00ba56cfb64439ca"
+      "sha256": "8d4e6dd4a16d198857bf2b9fbff8efa645e2aff36980fa932c851305f7e6163a",
+      "size": 37879,
+      "normalized_sha256": "8d4e6dd4a16d198857bf2b9fbff8efa645e2aff36980fa932c851305f7e6163a"
     },
     "src/main/errors.ts": {
       "sha256": "249b2aeb6801896746532541e29c31af192403d73200b363c0f6a7c5d937a12b",
