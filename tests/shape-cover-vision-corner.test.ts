@@ -112,6 +112,61 @@ describe("per-corner decisions and partial success", () => {
       expect(r.corners.TOP_RIGHT.status).toBe("UNRESOLVED"); expect(await getConfirmedCornerTargets(r)).toEqual([]);
     }
   });
+  it.each(["merge", "separate", "UNCERTAIN"])("Luna singleton groups escalate once to Sol: %s", async mode => {
+    const s = setup(discovery([box(730, 10), box(780, 10)]), (r, role) => ({ ...r,
+      groups: role === "LUNA" || mode === "separate" ? r.decisions.map(d => ({ candidateIds: [d.candidateId], sameLogicalOverlay: true })) :
+        [{ candidateIds: r.decisions.map(d => d.candidateId), sameLogicalOverlay: mode === "UNCERTAIN" ? "UNCERTAIN" : true }] }));
+    const r = await s.run();
+    expect(s.routes.LUNA.complete).toHaveBeenCalledTimes(1); expect(s.routes.SOL.complete).toHaveBeenCalledTimes(1);
+    expect(r.requestCounts).toEqual({ LUNA: 1, SOL: 1, MINIMAX: 0 });
+    expect(r.corners.TOP_RIGHT.reasons).not.toContain("CORNER_MODEL_DISAGREEMENT");
+    if (mode === "merge") {
+      expect(r.corners.TOP_RIGHT.status).toBe("CONFIRMED");
+      expect(await getConfirmedCornerTargets(r)).toMatchObject([{ corner: "TOP_RIGHT", candidateIds: ["c0", "c1"], semanticSource: "SOL" }]);
+    } else {
+      expect(r.corners.TOP_RIGHT.status).toBe("UNRESOLVED");
+      expect(r.corners.TOP_RIGHT.reasons).toEqual([mode === "separate" ? "CORNER_MULTIPLE_OVERLAYS_UNSUPPORTED" : "CORNER_SEMANTIC_UNRESOLVED"]);
+      expect(await getConfirmedCornerTargets(r)).toEqual([]);
+    }
+  });
+  it("grouping failure preserves a different confirmed corner", async () => {
+    const s = setup(discovery([box(10, 10), box(730, 10), box(780, 10)]), (r, role) => r.corner === "TOP_RIGHT" ? { ...r,
+      groups: role === "LUNA" ? r.decisions.map(d => ({ candidateIds: [d.candidateId], sameLogicalOverlay: true })) :
+        [{ candidateIds: r.decisions.map(d => d.candidateId), sameLogicalOverlay: "UNCERTAIN" }] } : r);
+    const r = await s.run(); expect(r.status).toBe("CORNER_SEMANTIC_PARTIAL");
+    expect(r.corners.TOP_RIGHT.status).toBe("UNRESOLVED"); expect(r.corners.TOP_LEFT.status).toBe("CONFIRMED");
+    expect((await getConfirmedCornerTargets(r)).map(t => t.corner)).toEqual(["TOP_LEFT"]);
+    expect(r.requestCounts).toEqual({ LUNA: 2, SOL: 1, MINIMAX: 0 });
+  });
+  it.each(["risk", "UNKNOWN", "UNCERTAIN", "MOVED"])("Sol merged grouping cannot erase %s", async mode => {
+    const s = setup(discovery([box(730, 10), box(780, 10)]), (r, role) => {
+      if (role === "LUNA") return { ...r, groups: r.decisions.map(d => ({ candidateIds: [d.candidateId], sameLogicalOverlay: true })) };
+      return { ...r, decisions: r.decisions.map(d => ({ ...d, decision: mode === "UNKNOWN" ? "UNKNOWN" : d.decision,
+        class: mode === "UNKNOWN" ? "UNKNOWN" : d.class, temporalState: mode === "UNCERTAIN" || mode === "MOVED" ? mode : "STABLE",
+        riskFlags: mode === "risk" ? ["PRODUCT_PRINT_RISK"] : [] })), groups: mode === "UNKNOWN" ? [] : r.groups };
+    });
+    const r = await s.run(); expect(r.corners.TOP_RIGHT.status).toBe("UNRESOLVED");
+    expect(await getConfirmedCornerTargets(r)).toEqual([]); expect(r.requestCounts).toEqual({ LUNA: 1, SOL: 1, MINIMAX: 0 });
+    expect(r.corners.TOP_RIGHT.reasons).toEqual([mode === "MOVED" ? "UNRESOLVED_FOR_STATIC_V1" : "CORNER_SEMANTIC_UNRESOLVED"]);
+  });
+  it("grouping escalation still rejects semantic class disagreement", async () => {
+    const s = setup(discovery([box(730, 10), box(780, 10)]), (r, role) => ({ ...r,
+      decisions: r.decisions.map(d => ({ ...d, class: role === "LUNA" ? "OVERLAY_LOGO" : "OVERLAY_STICKER" })),
+      groups: role === "LUNA" ? r.decisions.map(d => ({ candidateIds: [d.candidateId], sameLogicalOverlay: true })) : r.groups }));
+    const r = await s.run(); expect(r.corners.TOP_RIGHT.reasons).toEqual(["CORNER_MODEL_DISAGREEMENT"]);
+    expect(await getConfirmedCornerTargets(r)).toEqual([]);
+  });
+  it("grouping escalation with provider failure never creates a confirmed target", async () => {
+    const s = setup(discovery([box(10, 10), box(730, 10), box(780, 10)]), (r, role) => {
+      if (r.corner !== "TOP_RIGHT") return r;
+      if (role === "SOL") throw Error("transport failure");
+      return { ...r, groups: r.decisions.map(d => ({ candidateIds: [d.candidateId], sameLogicalOverlay: true })) };
+    });
+    const r = await s.run(); expect(r.status).toBe("CORNER_SEMANTIC_BLOCKED");
+    expect(r.sourceErrors).toEqual(["VISION_PROVIDER_ERROR"]); expect(await getConfirmedCornerTargets(r)).toEqual([]);
+    expect(CORNERS.every(c => !r.corners[c].confirmedTarget)).toBe(true);
+    expect(r.requestCounts).toEqual({ LUNA: 2, SOL: 1, MINIMAX: 0 });
+  });
   it.each(["PRODUCT_PRINT_RISK", "TEMPORAL_INCONSISTENCY", "COMPLEX_GROUPING", "ALGORITHM_CONFLICT"])("%s escalates once", async flag => {
     const r = await setup(undefined, (r, role) => ({ ...r, decisions: r.decisions.map(d => ({ ...d, riskFlags: role === "LUNA" ? [flag] : [] })) })).run();
     expect(r.requestCounts.SOL).toBe(1); expect(r.corners.TOP_RIGHT.status).toBe("CONFIRMED");
@@ -136,6 +191,13 @@ describe("per-corner decisions and partial success", () => {
     const r = await s.run(); expect(r.requestCounts).toEqual({ LUNA: 4, SOL: 4, MINIMAX: 0 });
     const packet = await s.build(["c0"]); await expect(s.session.request("MINIMAX", packet, signal)).rejects.toThrow();
     expect(s.routes.MINIMAX.complete).not.toHaveBeenCalled();
+  });
+  it("four split corners consume exactly four Luna and four Sol hard grouping requests", async () => {
+    const s = setup(discovery([box(10, 10), box(50, 10), box(730, 10), box(780, 10), box(10, 750), box(50, 750), box(730, 750), box(780, 750)]),
+      (r, role) => role === "LUNA" ? { ...r, groups: r.decisions.map(d => ({ candidateIds: [d.candidateId], sameLogicalOverlay: true })) } : r);
+    const r = await s.run(); expect(r.requestCounts).toEqual({ LUNA: 4, SOL: 4, MINIMAX: 0 });
+    expect(await getConfirmedCornerTargets(r)).toHaveLength(4);
+    expect(CORNERS.every(c => r.corners[c].confirmedTarget?.semanticSource === "SOL" && r.corners[c].confirmedTarget?.candidateIds.length === 2)).toBe(true);
   });
   it("same corner cannot make a second Luna or Sol request even with source budget remaining", async () => {
     const s = setup(undefined, (r, role) => role === "LUNA" ? { ...r, decisions: r.decisions.map(d => ({ ...d, decision: "UNKNOWN", class: "UNKNOWN" })), groups: [] } : r);

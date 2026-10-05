@@ -12,10 +12,13 @@ import { confirmHybridCornerTargets, getConfirmedCornerTargets } from "../src/ma
 import { createHybridVisionRoutes } from "../src/main/shape-cover-vision-provider.js";
 import { ShapeCoverVisionSession } from "../src/main/shape-cover-vision-router.js";
 
-const [root, ffmpegPath, realInputPath, mode] = process.argv.slice(2);
-if (!root || !ffmpegPath || !realInputPath || !["--prepare", "--live", "--continue-unrequested"].includes(mode)) throw Error("Explicit private inputs and mode required");
+const [root, ffmpegPath, realInputPath, mode, lunaModel, solModel] = process.argv.slice(2);
+const finalValidation = mode === "--final-provider-validation";
+if (!root || !ffmpegPath || !realInputPath || !["--prepare", "--live", "--continue-unrequested", "--final-provider-validation"].includes(mode) ||
+    finalValidation && (!lunaModel || !solModel)) throw Error("Explicit private inputs, mode and final validation model IDs required");
 const fixtures = join(root, "fixtures"), construction = JSON.parse(await readFile(join(fixtures, "construction.json"), "utf8"));
-const cases = [...construction.cases.map((c: { case: string }) => c.case), "real233s"];
+const cases: string[] = finalValidation ? ["product-print", "subtitle", "multi-component", "two-overlays"] :
+  [...construction.cases.map((c: { case: string }) => c.case), "real233s"];
 const signal = AbortSignal.timeout(1800000), tools = { ffmpegPath, ffprobePath: ffmpegPath.replace(/ffmpeg$/, "ffprobe"), signal };
 const sourceInput = async (name: string) => JSON.parse(await readFile(name === "real233s" ? realInputPath : join(fixtures, `${name}-input.json`), "utf8"));
 if (mode === "--prepare") {
@@ -43,7 +46,8 @@ if (mode === "--prepare") {
 } else {
   const paths = ["src/main/shape-cover-vision-router.ts", "src/main/shape-cover-vision-corner-policy.ts", "src/main/shape-cover-vision-corner-schema.ts", "src/main/shape-cover-vision-corner-semantic.ts",
     "src/main/shape-cover-vision-packet.ts", "src/main/shape-cover-vision-provider.ts", "scripts/shape-cover-hybrid-corner-fixtures.py", "scripts/shape-cover-hybrid-corner-diagnostic.ts",
-    join(root, "corner-count-audit.json"), join(fixtures, "construction.json"), realInputPath, ...cases.filter(c => c !== "real233s").flatMap(c => [join(fixtures, `${c}.mp4`), join(fixtures, `${c}-input.json`)])];
+    join(root, "corner-count-audit.json"), join(fixtures, "construction.json"), ...(finalValidation ? [] : [realInputPath]),
+    ...cases.filter(c => c !== "real233s").flatMap(c => [join(fixtures, `${c}.mp4`), join(fixtures, `${c}-input.json`)])];
   const continuing = mode === "--continue-unrequested";
   const previous = continuing ? JSON.parse(await readFile(join(root, "semantic-evaluation.json"), "utf8")) : undefined;
   if (previous) {
@@ -55,8 +59,15 @@ if (mode === "--prepare") {
     }
   }
   const frozen = await Promise.all(paths.map(async path => ({ path, sha256: discoveryHash(await readFile(path)) })));
-  const freeze = { promptVersion: CORNER_PROMPT_VERSION, cases, frozen, createdAt: new Date().toISOString(), retry: false };
-  await writeFile(join(root, continuing ? "continue-unrequested-once.json" : "semantic-run-once.json"), JSON.stringify({ ...freeze,
+  const freeze = { promptVersion: CORNER_PROMPT_VERSION, cases, frozen, createdAt: new Date().toISOString(), retry: false,
+    ...(finalValidation ? { validationId: "H2C-final-provider-validation", schemaVersion: "CornerDecisionSchema/v1",
+      schemaSourceSha256: discoveryHash(await readFile("src/main/shape-cover-vision-corner-schema.ts")),
+      modelIds: { LUNA: lunaModel, SOL: solModel }, expectedConstructionSemantics: cases.map(name => {
+        const label = construction.cases.find((c: { case: string }) => c.case === name);
+        if (!label || label.labelSource !== "CONTROLLED_TRUTH") throw Error("CONSTRUCTION_SEMANTICS_REQUIRED");
+        return label;
+      }) } : {}) };
+  await writeFile(join(root, finalValidation ? "final-provider-validation-once.json" : continuing ? "continue-unrequested-once.json" : "semantic-run-once.json"), JSON.stringify({ ...freeze,
     ...(continuing ? { predecessorSha256: discoveryHash(await readFile(join(root, "semantic-evaluation.json"))), consumedCases: previous.evaluations.map((e: { case: string }) => e.case) } : {}) }, null, 2), { flag: "wx", mode: 0o600 });
   const verify = async () => { for (const f of frozen) if (discoveryHash(await readFile(f.path)) !== f.sha256) throw Error("FROZEN_DEVELOPMENT_INPUT_CHANGED"); };
   const connections = new ModelConnections("/home/reggie/.config/jianji", process.cwd(), async () => {}, () => {}), evaluations: unknown[] = [];
@@ -66,6 +77,7 @@ if (mode === "--prepare") {
     await connections.restore();
     if (connections.chatgpt.status().status !== "ready") await connections.chatgpt.refresh();
     const baseRoutes = createHybridVisionRoutes(connections); // No MiniMax capability probe or generation.
+    if (finalValidation && (baseRoutes.LUNA.model !== lunaModel || baseRoutes.SOL.model !== solModel)) throw Error("FROZEN_MODEL_IDS_UNAVAILABLE");
     for (const name of cases) {
       if (previous?.evaluations.some((e: { case: string }) => e.case === name)) continue;
       await verify();
@@ -83,13 +95,15 @@ if (mode === "--prepare") {
       try {
         const result = await confirmHybridCornerTargets(evidence, tools, new ShapeCoverVisionSession(evidence.receipt.sourceKey, routes, 180000, "CORNER"), signal);
         await result.verifyFresh(); await verify();
-        evaluations.push({ case: name, label: construction.cases.find((c: { case: string }) => c.case === name) ?? { labelSource: "DEVELOPMENT_OBSERVATION" },
+        evaluations.push({ case: name, ...(finalValidation ? { validationStatus: result.sourceErrors.includes("VISION_PROVIDER_ERROR") ? "PROVIDER_NOT_EVALUATED" :
+          result.status === "CORNER_SEMANTIC_BLOCKED" ? "NOT_EVALUATED" : "MODEL_RESULT" } : {}),
+          label: construction.cases.find((c: { case: string }) => c.case === name) ?? { labelSource: "DEVELOPMENT_OBSERVATION" },
           result, h3Targets: await getConfirmedCornerTargets(result), routes: Object.fromEntries(Object.entries(baseRoutes).map(([role, r]) => [role, { model: r.model, imageCapability: r.imageCapability }])) });
         await writeFile(join(root, continuing ? "continuation-evaluation.json" : "semantic-evaluation.json"), JSON.stringify({ freeze, evaluations }, null, 2), { mode: 0o600 });
         console.log(JSON.stringify({ case: name, status: result.status, corners: Object.fromEntries(CORNERS.map(c => [c, { status: result.corners[c].status,
           class: result.corners[c].confirmedTarget?.classification, rejected: result.corners[c].rejectedCandidates.map(d => d.classification), reasons: result.corners[c].reasons }])), requests: result.requestCounts }));
         // Infrastructure/binding failure invalidates this source, not independent fixture sources.
-        if (result.status === "CORNER_SEMANTIC_BLOCKED" && !continuing) throw Error("DEVELOPMENT_SOURCE_BLOCKED_STOP");
+        if (result.status === "CORNER_SEMANTIC_BLOCKED" && !continuing && !finalValidation) throw Error("DEVELOPMENT_SOURCE_BLOCKED_STOP");
       } finally { await evidence.close(); }
     }
   } finally { await connections.dispose(); }

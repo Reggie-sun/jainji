@@ -28,7 +28,7 @@ H1 `buildVisionCandidatePacket()` 每角单包：1–3 IDs，3 个 full context 
 
 严格决策：CONFIRM 仅 OVERLAY_STICKER/OVERLAY_LOGO；REJECT 仅 PRODUCT_PRINT/SUBTITLE/BACKGROUND_GRAPHIC/PERSON/OTHER；UNKNOWN 保留。所有 CONFIRM 恰一次出现在 groups（单候选也返回 singleton）；REJECT/UNKNOWN 不进 groups。VLM 不返回坐标、mask/polygon、coverage 或 renderer。不 repair 非法 JSON。
 
-每角 Luna first pass；清晰 classification、group 明确、temporalState=STABLE 即结束（2–3 components 清晰同组不自动消耗 Sol）。UNKNOWN、PRODUCT_PRINT_RISK、TEMPORAL_INCONSISTENCY、group UNCERTAIN、复杂 component/ALGORITHM_CONFLICT 等明确风险才 Sol 一次，重新看原图，Luna summary 为 untrusted context。高风险相反决策/组冲突仅该角 UNRESOLVED，不投票。任一 reviewer 明确 MOVED/DISAPPEARED/CHANGED → UNRESOLVED_FOR_STATIC_V1，不让 Sol 或未来 H3 抹掉；VLM STABLE 绝不替代 H3 sampled algorithm。
+每角 Luna first pass；清晰 classification、group 明确、temporalState=STABLE 即结束（2–3 components 清晰同组不自动消耗 Sol）。UNKNOWN、PRODUCT_PRINT_RISK、TEMPORAL_INCONSISTENCY、group UNCERTAIN、复杂 component/ALGORITHM_CONFLICT 等明确风险交 Sol 一次；同角 CONFIRM candidate 数>1且 Luna groups 数>1也必须交 Sol 一次 hard grouping resolution，重新看原图，Luna summary 为 untrusted context。Luna singleton groups 与 Sol 合并组之间的纯 grouping 差异允许 Sol resolve，不是 CORNER_MODEL_DISAGREEMENT；candidate 的明确 decision/class 相反仍仅该角 UNRESOLVED。最终仍有 UNKNOWN、非 STABLE、risk 或 group UNCERTAIN 为 CORNER_SEMANTIC_UNRESOLVED；Sol 保持多个独立组为 CORNER_MULTIPLE_OVERLAYS_UNSUPPORTED，不进行第三模型投票。Sol 同组、成员均 CONFIRM overlay/STABLE且无risk时形成一个 semanticSource=SOL 的 target。任一 reviewer 明确 MOVED/DISAPPEARED/CHANGED → UNRESOLVED_FOR_STATIC_V1，不让 Sol 或未来 H3 抹掉；VLM STABLE 绝不替代 H3 sampled algorithm。
 
 Corner session 是原 ShapeCoverVisionSession 的独立 mode，source Luna≤4/Sol≤4/MiniMax=0，每角每角色≤1；取消/失败/timeout 消耗已发请求，零重试。H4 使用独立 preview session。provider 复用原 exact GPT requested 优先及用户已授权 gpt-5.6-luna/gpt-5.6-sol alternates，不增加 fallback。旧 GLOBAL mode prompt/schema/bounds 不变。
 
@@ -39,6 +39,12 @@ Corner session 是原 ShapeCoverVisionSession 的独立 mode，source Luna≤4/S
 失败 observability：rawResponseSha256、rawResponseByteLength、parseFailureCategory（JSON_PARSE / SCHEMA_VALIDATION / PACKET_MISMATCH / GROUP_MISMATCH / MISSING_REQUIRED_FIELD / OTHER），受控 outputFailureCode。普通 receipt/log 不存 raw；development 私有 root 可存 bounded sanitized text。invalid syntax/group 仅角 skip；明确 identity mismatch 全 source BLOCKED。
 
 后续硬门不放宽：**oldMask ⊆ fully opaque newStickerAlpha，100% coverage**。本轮没有 mask acceptance、motion 实现、shape、coverage、preview/export、proof v3 或 activation。
+
+### H2C Final Acceptance
+
+2026-10-05 H2C-Final 只关闭 grouping 升级和独立 provider development validation。保持 prompt hybrid-corner-overlay-semantic/v1 与 schema；新的 H2C-final-provider-validation 在任何模型请求前冻结四个既有 construction cases（product-print、subtitle、multi-component、two-overlays）的 fixture hashes、prompt/schema version、exact model IDs与预期语义，各case仅一次正常runtime，不继续或恢复旧run-once。provider transport无模型文本为 PROVIDER_NOT_EVALUATED，不归因prompt/schema/semantic失败，不改算法或重试。负例得到 REJECT对应类/NO_OVERLAY 或 UNKNOWN/UNRESOLVED均安全；误CONFIRM才是semantic blocker。
+
+HYBRID_CORNER_H2_READY要求 clear overlay可CONFIRM、已有模型结果的商品印刷/字幕负例无误CONFIRM、provider错误清confirmed、multi-component具备Luna→Sol hard grouping路径、真正多overlay保持UNRESOLVED、partial成立、real233s右上投影保留及工程tests/owned Harness通过。外部transport一次失败不永久阻断工程READY；controlled grouping若Sol仍未确认则如实记录能力缺口。H2C结束后唯一下一slice是H3 Corner Motion + Mask + Shape + Coverage，产品仍PRODUCT_DISABLED。
 
 ## Superseded Critical Path
 

@@ -157,7 +157,7 @@ shape-cover-vision-semantic.ts[DA7S]: F:完整确认M1候选并形成source-boun
 
 shape-cover-vision-corner-policy.ts[DC7T]: F:独占Hybrid四角产品范围与确定性候选分配 | R:code:src/main/shape-cover-stationary-discovery.ts,code:src/main/shape-cover-vision-corner-semantic.ts | A:固定Corner枚举；center和bbox交集比例双门；冻结owned plan及source/policy/candidate摘要 | S:宽高fraction0.30且面积比0.60不随模型调整；非角是scope排除而非视觉reject；UNKNOWN不提案
 shape-cover-vision-corner-schema.ts[DA7T]: F:校验角落独立语义分组响应并定义对应prompt与错误分类 | R:code:src/main/shape-cover-vision-corner-policy.ts,code:src/main/shape-cover-vision-router.ts | A:绑定packet/corner和完整ID；CONFIRM严格组分区；输出JSON schema及bounded parse failure类别 | S:角落风险不改global语义；编造ID全源关闭，语法错只跳角；VLM不授像素准入，不repairJSON
-shape-cover-vision-corner-semantic.ts[DA7S]: F:独立确认四角M1候选并投影fresh逻辑目标供未来H3消费 | R:code:src/main/shape-cover-vision-corner-policy.ts,code:src/main/shape-cover-vision-router.ts,code:src/main/shape-cover-vision-packet.ts | A:每角≤3候选及≤1目标；Luna必要时Sol原图；immutable set绑定回执且verifyFresh；READY EMPTY PARTIAL BLOCKED | S:局部未知复杂动变冲突只跳该角；source/provider/binding错清全源；STABLE不替代算法motion；JSON不恢复ownership，无mask或生产准入
+shape-cover-vision-corner-semantic.ts[DA7S]: F:确认四角M1语义并投影fresh逻辑目标供H3 | R:code:src/main/shape-cover-vision-corner-policy.ts,code:src/main/shape-cover-vision-router.ts,code:src/main/shape-cover-vision-packet.ts | A:每角≤3候选及≤1目标；Luna多CONFIRM多组交Sol一次；纯grouping由Sol解决，class/decision冲突关闭；immutable set绑定回执并verifyFresh | S:动变不能被Sol抹掉；局部失败保留其他角，provider/binding错清全源；JSON不恢复authority；无mask准入
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
 index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/model-server/gateway.ts | A:模型网关进程入口 | S:密钥来自受控环境或文件

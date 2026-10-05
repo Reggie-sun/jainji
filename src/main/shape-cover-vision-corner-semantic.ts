@@ -30,13 +30,14 @@ export interface HybridCornerSemanticSet {
 }
 const ownedResults = new WeakSet<object>();
 const explicitMotion = (r: CornerDecision) => r.decisions.some(d => ["MOVED", "DISAPPEARED", "CHANGED"].includes(d.temporalState));
-const needsSol = (r: CornerDecision) => r.decisions.some(d => d.decision === "UNKNOWN" || d.temporalState !== "STABLE" || d.riskFlags.length > 0) ||
+const semanticUnresolved = (r: CornerDecision) => r.decisions.some(d => d.decision === "UNKNOWN" || d.temporalState !== "STABLE" || d.riskFlags.length > 0) ||
   r.groups.some(g => g.sameLogicalOverlay === "UNCERTAIN");
+const needsSol = (r: CornerDecision) => semanticUnresolved(r) ||
+  r.decisions.filter(d => d.decision === "CONFIRM").length > 1 && r.groups.length > 1;
 const highRiskDisagreement = (l: CornerDecision, s: CornerDecision) => l.decisions.some(a => s.decisions.some(b => b.candidateId === a.candidateId &&
-  a.decision !== "UNKNOWN" && b.decision !== "UNKNOWN" && (a.decision !== b.decision || a.class !== b.class))) ||
-  // An explicit independent-overlay observation cannot be silently combined by Sol.
-  (l.groups.length > 1 || l.groups.some(g => g.sameLogicalOverlay === false && g.candidateIds.length > 1)) &&
-    s.groups.length === 1 && s.groups[0].sameLogicalOverlay === true;
+  a.decision !== "UNKNOWN" && b.decision !== "UNKNOWN" && (a.decision !== b.decision || a.class !== b.class)));
+// Group partition differences are Sol hard-case resolution, not semantic class/decision disagreement.
+// Explicit motion from either model remains terminal in reviewHybridCornerPlan.
 
 /** Per-corner development owner. No mask, motion algorithm, proof, store, preview or queue calls. */
 export async function reviewHybridCornerPlan(plan: CornerScopePlan, session: ShapeCoverVisionSession,
@@ -81,7 +82,7 @@ export async function reviewHybridCornerPlan(plan: CornerScopePlan, session: Sha
         if (semanticSource === "SOL" && highRiskDisagreement(luna, final)) { unresolved(c, "CORNER_MODEL_DISAGREEMENT"); continue; }
         for (const d of final.decisions) if (d.decision === "REJECT") c.rejectedCandidates.push({ candidateId: d.candidateId,
           classification: d.class, semanticSource, reason: d.shortReason });
-        if (needsSol(final)) { unresolved(c, "CORNER_SEMANTIC_UNRESOLVED"); continue; }
+        if (semanticUnresolved(final)) { unresolved(c, "CORNER_SEMANTIC_UNRESOLVED"); continue; }
         if (!final.groups.length) { c.status = "NO_OVERLAY"; continue; }
         if (final.groups.length > 1 || final.groups[0].sameLogicalOverlay === false && final.groups[0].candidateIds.length > 1) {
           unresolved(c, "CORNER_MULTIPLE_OVERLAYS_UNSUPPORTED"); continue;
