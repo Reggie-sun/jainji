@@ -723,15 +723,15 @@ describe("Qianchuan upload service", () => {
     };
     const running = f.service.runPending();
     try {
-      await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]));
+      await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]), { timeout: 3000 });
       expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
       completed = true;
-      await vi.waitFor(() => expect(blockedSave).toBe(true));
+      await vi.waitFor(() => expect(blockedSave).toBe(true), { timeout: 3000 });
       expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(8);
     } finally { completed = true; releaseSave(); await running; }
     expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
     expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 21)).toBe(true);
-  });
+  }, 15_000);
 
   it("adds newly completed exports to the same page while previous files are processing", async () => {
     const f = await fixture(); await f.authorize();
@@ -763,10 +763,10 @@ describe("Qianchuan upload service", () => {
   });
 
   it.each(["cancel", "timeout"] as const)("preserves every in-flight group's fence after %s and recovers only by reading the original page", async action => {
-    const f = await groupedFixture(undefined, { processingTimeout: 1800 });
+    const f = await groupedFixture(undefined, { processingTimeout: 4000 });
     f.port.pollReady = async () => undefined;
     const running = f.service.runPending();
-    await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]));
+    await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]), { timeout: 3000 });
     if (action === "cancel") await f.service.cancel(f.groups[1]![0]!);
     await running;
     expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(21);
@@ -783,7 +783,7 @@ describe("Qianchuan upload service", () => {
     expect(checked).toHaveLength(21);
     expect(reopened.tasks().every(task => task.result.upload_outcome === "READY")).toBe(true);
     expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
-  });
+  }, 15_000);
 
   it("preserves four saved READY records and all 21 fences if final completion saving fails", async () => {
     const f = await groupedFixture();

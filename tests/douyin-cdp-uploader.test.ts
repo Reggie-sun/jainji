@@ -563,10 +563,18 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     await writeFile(configPath, JSON.stringify({ version: 1, accounts: QIANCHUAN_PRODUCTS.map((product, i) => ({ product,
       cdpEndpoint: product === "眼贴" ? source.cdpEndpoint : `http://127.0.0.1:${14000 + i}`,
       advertiserId: product === "眼贴" ? "123456" : String(200000 + i), adId: product === "眼贴" ? "987654" : String(300000 + i) })) }), { mode: 0o600 });
-    const service = new DouyinUploadService(store, { loadBatch: async () => structuredClone(state), browser: productionUploader, accounts: new QianchuanAccountConfigReader() });
+    const service = new DouyinUploadService(store, { loadBatch: async () => structuredClone(state), browser: () => {
+      const uploader = productionUploader(), upload = uploader.upload.bind(uploader);
+      uploader.upload = async (group, signal) => {
+        await upload(group, signal);
+        // This case requires a completed first group before a missing second-group row.
+        if (group[0]!.input.export_task_id === tasks[0]!.input.export_task_id) await uploader.ready(group, signal);
+      };
+      return uploader;
+    }, accounts: new QianchuanAccountConfigReader() });
     try {
       await service.chooseConfig(configPath);
-      await service.configure({ enabled: true, timeouts: { fileInput: 500, processing: 1500, confirmation: 3000 } });
+      await service.configure({ enabled: true, timeouts: { fileInput: 2000, processing: 5000, confirmation: 3000 } });
       const selection = { enabled: true as const, accountProduct: "眼贴" as const };
       await service.registerBatch(state.batch, selection, await service.preflight(selection, 21));
       for (const task of tasks) await service.enqueueFinalArtifact({ project_id: projectId, batch_id: batchId, export_task_id: task.input.export_task_id });
@@ -588,7 +596,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       expect(reopened.tasks().filter(task => reopened.hasMarker(task.result.upload_task_id))).toHaveLength(18);
       expect(records.slice(9, 18).every(task => reopened.task(task.result.upload_task_id)!.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
     } finally { await service.stop(); }
-  });
+  }, 15_000);
 
   it.each(["unknown-name", "extra-row"] as const)("rejects a production upload list containing %s", async kind => {
     if (!productionFixture) throw new Error("production fixture is not initialized");

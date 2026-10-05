@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-05T08:41:46Z",
+  "updated_at": "2026-10-05T09:24:10Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "07492ec82b4bc87b8a8ff358cf1f5c234b174d47375e668d1e8d0bceba4379d3",
@@ -264,9 +264,9 @@
     },
     "aoci.code.txt": {
       "role": "index",
-      "sha256": "8dd2e0d0e3c36a16e9eb8587a784a07eb718be9fe98eb5fca7ae73b0226e1c32",
-      "size": 76490,
-      "normalized_sha256": "8dd2e0d0e3c36a16e9eb8587a784a07eb718be9fe98eb5fca7ae73b0226e1c32"
+      "sha256": "32f4d8ba55be4dfa7e5113c8a8b922a7ee7a26e2553f359f5b2339571bff79f4",
+      "size": 78375,
+      "normalized_sha256": "32f4d8ba55be4dfa7e5113c8a8b922a7ee7a26e2553f359f5b2339571bff79f4"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1334,9 +1334,9 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "f0fcb7f8c9d0ee65b3a0068c8d853b36aea8aaebac199ab73689d278e5d0dd93",
-      "size": 67859,
-      "normalized_sha256": "f0fcb7f8c9d0ee65b3a0068c8d853b36aea8aaebac199ab73689d278e5d0dd93"
+      "sha256": "1f46f8a5511535669a1e90c71799846befa1f35d0fd133a72fe514d1d3669736",
+      "size": 68412,
+      "normalized_sha256": "1f46f8a5511535669a1e90c71799846befa1f35d0fd133a72fe514d1d3669736"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "1cebf58b0d6d71f71c9db27ed71b58bbd41e8e7f6d1a49fd00ba56cfb64439ca",
@@ -1369,9 +1369,9 @@
       "normalized_sha256": "455c1b8529cb903ad1c696c7a6cb3aac0e9746477c6d097d782da24ba4fda49d"
     },
     "src/main/index.ts": {
-      "sha256": "a16ab1df6644e0ba7250e5741a1b3e5d2e19ace7569f4d1b5e23a175013e1c6e",
-      "size": 54962,
-      "normalized_sha256": "a16ab1df6644e0ba7250e5741a1b3e5d2e19ace7569f4d1b5e23a175013e1c6e"
+      "sha256": "81458abf8d153fe5157579966e61e7fae9a8a5ca13735b4b655085350e21a4cc",
+      "size": 59652,
+      "normalized_sha256": "81458abf8d153fe5157579966e61e7fae9a8a5ca13735b4b655085350e21a4cc"
     },
     "src/main/local-cdp-transport.ts": {
       "sha256": "fb23cfcad8d845112bca0b41434b6e619d63ab19d3263ae8bd95e83b64d8619f",
@@ -1409,9 +1409,9 @@
       "normalized_sha256": "99c1170b35920f6d12779b041c5c6718305373fa4bf14d0cfca59add10bce6a7"
     },
     "src/main/preload.ts": {
-      "sha256": "11558959e5800c71445ccd35372902b9e76a3c7aa4bb31bf82ed67a54d5c94c4",
-      "size": 10847,
-      "normalized_sha256": "11558959e5800c71445ccd35372902b9e76a3c7aa4bb31bf82ed67a54d5c94c4"
+      "sha256": "f4712cd5117c0f9b884c53ede21d42904cd91fbc03fb08234bffa592d0310215",
+      "size": 12788,
+      "normalized_sha256": "f4712cd5117c0f9b884c53ede21d42904cd91fbc03fb08234bffa592d0310215"
     },
     "src/main/qianchuan-account-config.ts": {
       "sha256": "cd794fa79d3cb39ed93ebc4f66ef93575052ff7a38c1ab705f3331ffb8ac58e4",
@@ -2923,6 +2923,26 @@
       "sha256": "8d64bdfd431a7f8a20cf14f9a817d21e05cd06ea3ac7ee4ed23fdef27410eab4",
       "size": 14651,
       "normalized_sha256": "8d64bdfd431a7f8a20cf14f9a817d21e05cd06ea3ac7ee4ed23fdef27410eab4"
+    },
+    "src/main/qianchuan-plan-reads.ts": {
+      "sha256": "d78b2e9c3abdcea3efac378292c47a42e103c6f428f31a7ae80be7f5bf7d442d",
+      "size": 2830,
+      "normalized_sha256": "d78b2e9c3abdcea3efac378292c47a42e103c6f428f31a7ae80be7f5bf7d442d"
+    },
+    "src/renderer/QianchuanPlanSelect.tsx": {
+      "sha256": "719231d33d74dd551735c01f92afa5018173765576629e405ce18de0a8e5fd2d",
+      "size": 4026,
+      "normalized_sha256": "719231d33d74dd551735c01f92afa5018173765576629e405ce18de0a8e5fd2d"
+    },
+    "src/renderer/qianchuan-plan-requests.ts": {
+      "sha256": "215b683e420d518c99dbf4dbb5da0343298ed50ded23ece2edae47c9742ed1a4",
+      "size": 1891,
+      "normalized_sha256": "215b683e420d518c99dbf4dbb5da0343298ed50ded23ece2edae47c9742ed1a4"
+    },
+    "src/shared/qianchuan-plan-selection.ts": {
+      "sha256": "ddda4d1677ae4e5425e926135c869535c81cd8cca3367b36c52a1062381811ad",
+      "size": 1279,
+      "normalized_sha256": "ddda4d1677ae4e5425e926135c869535c81cd8cca3367b36c52a1062381811ad"
     }
   },
   "managed_scope": {

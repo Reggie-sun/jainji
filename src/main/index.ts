@@ -203,7 +203,8 @@ function registerHandlers(): void {
   });
   ipcMain.handle("douyinUpload.refreshAccounts", async (event) => { assertTrustedSender(event); await douyinUpload.refreshAccounts(); return publicState(); });
   ipcMain.handle("douyinUpload.saveAccount", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.saveAccount(input); return publicState(); });
-  ipcMain.handle("douyinUpload.listPlans", async (event, input: unknown) => { assertTrustedSender(event); return douyinUpload.listPlans(input); });
+  ipcMain.handle("douyinUpload.listPlans", async (event, input: unknown) => { assertTrustedSender(event); return douyinUpload.listPlans(input, event.sender.id); });
+  ipcMain.handle("douyinUpload.cancelPlans", async (event, input: unknown) => { assertTrustedSender(event); douyinUpload.cancelPlanRead(input, event.sender.id); });
   ipcMain.handle("douyinUpload.openAccountBrowser", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.openAccountBrowser(input); return publicState(); });
   ipcMain.handle("douyinUpload.controlAccountBrowser", async (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();

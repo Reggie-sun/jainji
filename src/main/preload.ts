@@ -11,7 +11,7 @@ import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
 import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/qianchuan-account.js";
-import type { QianchuanPlanListRequest, QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
+import type { QianchuanPlanListRequest, QianchuanPlanCancel, QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import type { QianchuanLibraryScheduleSettings, QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule.js";
 import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest } from "../shared/batch-production.js";
@@ -83,6 +83,7 @@ const api = {
   selectQianchuanAccountConfig: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.selectConfig"),
   saveQianchuanAccount: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.saveAccount", input),
   listQianchuanPlans: (input: QianchuanPlanListRequest): Promise<QianchuanPlanOption[]> => ipcRenderer.invoke("douyinUpload.listPlans", input),
+  cancelQianchuanPlans: (input: QianchuanPlanCancel): Promise<void> => ipcRenderer.invoke("douyinUpload.cancelPlans", input),
   openQianchuanAccountBrowser: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.openAccountBrowser", input),
   controlQianchuanAccountBrowser: (input: QianchuanBrowserControl): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.controlAccountBrowser", input),
   clearQianchuanVideoLibraries: (input: QianchuanLibraryClear): Promise<QianchuanLibraryResult[]> => ipcRenderer.invoke("douyinUpload.clearVideoLibraries", input),

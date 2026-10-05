@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QianchuanPlanListSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
+import { acquireQianchuanPlans } from "./qianchuan-plan-requests";
 
 export function QianchuanPlanSelect({ account, value, onChange, disabled = false, idPrefix = "qianchuan" }: {
   account?: QianchuanAccountSummary; value?: QianchuanPlanOption;
@@ -24,7 +25,8 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
       return;
     }
     setLoading(true);
-    void window.jianji.listQianchuanPlans({ product, expectedAdvertiserId: advertiserId }).then(result => {
+    const request = acquireQianchuanPlans({ product, expectedAdvertiserId: advertiserId });
+    void request.promise.then(result => {
       if (!active) return;
       const next = QianchuanPlanListSchema.parse(result);
       if (next.some(plan => plan.advertiserId !== advertiserId)) throw new Error("计划列表不属于所选账号，请重新读取。");
@@ -35,7 +37,7 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
       change.current(undefined);
       setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "读取计划失败，请检查所选 Chrome 的登录状态。");
     }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    return () => { active = false; request.release(); };
   }, [product, advertiserId, available, revision]);
   const chosen = value && value.advertiserId === advertiserId && plans.some(plan => plan.adId === value.adId) ? value.adId : "";
   return <div className="qianchuan-plan-select">

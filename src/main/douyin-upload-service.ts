@@ -15,7 +15,8 @@ import { QianchuanLibraryClearSchema, type QianchuanLibraryResult } from "../sha
 import { QianchuanVideoLibrary } from "./qianchuan-video-library.js";
 import { QianchuanPlanMaterials } from "./qianchuan-plan-materials.js";
 import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
-import { QianchuanPlanListRequestSchema, QianchuanPlanListSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
+import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
+import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type QianchuanUploadResult } from "../shared/douyin-upload.js";
 
@@ -69,12 +70,14 @@ export class DouyinUploadService {
   private browserPreparations = 0;
   private stopFailed = false;
   private readonly accounts: QianchuanAccountConfigReader;
-  private catalogReads: Promise<unknown> = Promise.resolve();
+  private readonly planReads: QianchuanPlanReads;
+  private readonly planRequests = new Map<string, AbortController>();
   get busy(): boolean {
     return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations);
   }
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
+    this.planReads = new QianchuanPlanReads(dependencies.readPlans ?? readQianchuanPlans);
     this.refreshAccountPauses();
   }
   async templateAccount(recentProjectId: string, projectId: string): Promise<TemplateAccountBinding | undefined> {
@@ -192,28 +195,32 @@ export class DouyinUploadService {
     await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
     this.summaries = summaries; this.initializationFailure = undefined; this.changed();
   }
-  async listPlans(input: unknown): Promise<QianchuanPlanOption[]> {
+  async listPlans(input: unknown, senderId = 0): Promise<QianchuanPlanOption[]> {
     const parsed = QianchuanPlanListRequestSchema.parse(input);
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
+    const key = parsed.requestId ? `${senderId}:${parsed.requestId}` : undefined;
+    if (key && this.planRequests.has(key)) throw new Error("计划读取请求已存在。");
+    const controller = new AbortController();
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)]);
+    if (key) this.planRequests.set(key, controller);
     this.browserPreparations++;
     try {
       const target = await this.accounts.prepare(parsed.product);
+      signal.throwIfAborted();
       if (target.advertiserId !== parsed.expectedAdvertiserId) throw new Error("广告账户已变化，请重新选择账号。");
-      const plans = await this.readPlans(target);
+      const plans = await this.readPlans(target, signal);
+      signal.throwIfAborted();
       const current = await this.accounts.freeze(target.product, target.configDigest);
+      signal.throwIfAborted();
       if (current.advertiserId !== target.advertiserId || current.cdpEndpoint !== target.cdpEndpoint) throw new Error("账号连接已变化，请重新读取计划。");
       return plans;
-    } finally { this.browserPreparations--; }
+    } finally { if (key) this.planRequests.delete(key); this.browserPreparations--; }
   }
-  private readPlans(target: FrozenQianchuanAccount): Promise<QianchuanPlanOption[]> {
-    const work = this.catalogReads.catch(() => undefined).then(async () => {
-      const plans = QianchuanPlanListSchema.parse(await (this.dependencies.readPlans ?? readQianchuanPlans)(target, AbortSignal.timeout(60000)));
-      if (plans.some(plan => plan.advertiserId !== target.advertiserId)) throw new Error("计划列表不属于所选广告账户。");
-      return plans;
-    });
-    this.catalogReads = work;
-    return work;
+  cancelPlanRead(input: unknown, senderId = 0): void {
+    const { requestId } = QianchuanPlanCancelSchema.parse(input);
+    this.planRequests.get(`${senderId}:${requestId}`)?.abort();
   }
+  private readPlans(target: FrozenQianchuanAccount, signal?: AbortSignal): Promise<QianchuanPlanOption[]> { return this.planReads.request(target, signal); }
   private selectedTarget(target: FrozenQianchuanAccount, selection: QianchuanUploadSelection): FrozenQianchuanAccount {
     if (!selection.plan) return target;
     if (selection.plan.advertiserId !== target.advertiserId) throw new Error("所选计划不属于当前广告账户，请重新选择。");

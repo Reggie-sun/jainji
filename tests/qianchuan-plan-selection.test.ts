@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
 import { DouyinUploadStore } from "../src/main/douyin-upload-store";
-import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
+import { QianchuanAccountConfigReader, type FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
 import { QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account";
 import { QianchuanPlanListSchema, type QianchuanPlanOption } from "../src/shared/qianchuan-plan-selection";
 import { QianchuanUploadSelectionSchema, uploadFailure } from "../src/shared/douyin-upload";
@@ -14,9 +14,11 @@ import { createDefaultProject } from "../src/main/domain";
 import { BatchProductionController } from "../src/main/batch-production-controller";
 import { ProjectWorkspaceSchema } from "../src/shared/project-workspace";
 import { DEFAULT_EXPORT_SETTINGS } from "../src/shared/export-settings";
+import { QianchuanPlanReads } from "../src/main/qianchuan-plan-reads";
+import { acquireQianchuanPlans } from "../src/renderer/qianchuan-plan-requests";
 
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => { vi.useRealTimers(); vi.unstubAllGlobals(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const plan = (adId = "9001"): QianchuanPlanOption => ({ advertiserId: "1000", adId, name: `测试计划 ${adId}` });
 const selection = (adId = "9001") => ({ enabled: true as const, accountProduct: "眼贴" as const, plan: plan(adId) });
 async function fixture() {
@@ -25,7 +27,7 @@ async function fixture() {
   const document = { version: 1, accounts: ["眼贴", ...QIANCHUAN_PRODUCTS.filter(product => product !== "眼贴")].map((product, index) => ({ product, advertiserId: String(1000 + index), adId: String(2000 + index), cdpEndpoint: `http://127.0.0.1:${11000 + index}` })) };
   const save = () => writeFile(configPath, JSON.stringify(document), { mode: 0o600 }); await save();
   const store = new DouyinUploadStore(path.join(root, "private")); await store.load();
-  const readPlans = vi.fn(async () => [plan(), plan("9002")]);
+  const readPlans = vi.fn(async (_target: FrozenQianchuanAccount, _signal: AbortSignal) => [plan(), plan("9002")]);
   const connect = vi.fn(async () => undefined);
   const browser: UploadBrowserPort = { connect, open: async () => { throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "fixture stops before any file action", "fixture", true); },
     upload: async () => { throw new Error("Unexpected file action"); }, ready: async () => [], pollReady: async () => [], readOnlyCheck: async () => { throw new Error("Unexpected recovery"); }, stop: async () => undefined };
@@ -41,6 +43,88 @@ async function fixture() {
 }
 
 describe("explicit upload plan selection", () => {
+  it("scopes cancellation to the initiating IPC sender and stops its active reader", async () => {
+    const f = await fixture(), requestId = randomUUID();
+    let observed!: AbortSignal;
+    f.readPlans.mockImplementation(async (_target, signal) => {
+      observed = signal;
+      return new Promise((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+    });
+    const work = f.service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000", requestId }, 11);
+    const rejection = expect(work).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(f.readPlans).toHaveBeenCalledOnce());
+    f.service.cancelPlanRead({ requestId }, 12); expect(observed.aborted).toBe(false);
+    f.service.cancelPlanRead({ requestId }, 11); await rejection;
+    expect(observed.aborted).toBe(true); expect(f.service.busy).toBe(false);
+    expect(f.store.intents()).toHaveLength(0); expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("shares selector leases through StrictMode replay and cancels only the last released lease", async () => {
+    vi.useFakeTimers();
+    let resolve!: (plans: QianchuanPlanOption[]) => void;
+    const list = vi.fn(() => new Promise<QianchuanPlanOption[]>(done => { resolve = done; }));
+    const cancel = vi.fn(async () => undefined);
+    vi.stubGlobal("window", { jianji: { listQianchuanPlans: list, cancelQianchuanPlans: cancel } });
+    const input = { product: "眼贴" as const, expectedAdvertiserId: "1000" };
+    const strictFirst = acquireQianchuanPlans(input); strictFirst.release();
+    const strictSecond = acquireQianchuanPlans(input), otherRow = acquireQianchuanPlans(input);
+    await vi.runAllTimersAsync(); expect(list).toHaveBeenCalledOnce(); expect(cancel).not.toHaveBeenCalled();
+    strictSecond.release(); await vi.runAllTimersAsync(); expect(cancel).not.toHaveBeenCalled();
+    otherRow.release(); await vi.runAllTimersAsync(); expect(cancel).toHaveBeenCalledOnce();
+    resolve([plan()]); await strictFirst.promise;
+    const refreshed = acquireQianchuanPlans(input); expect(list).toHaveBeenCalledTimes(2);
+    resolve([plan()]); await refreshed.promise; refreshed.release();
+  });
+  it("cancels one subscriber without aborting another subscriber's shared read", async () => {
+    const f = await fixture(), target = (await f.service.preflight({ enabled: true, accountProduct: "眼贴" }, 1))!.target;
+    let release!: () => void, observed!: AbortSignal;
+    const read = vi.fn(async (_target, signal: AbortSignal) => { observed = signal; await new Promise<void>(resolve => { release = resolve; }); return [plan()]; });
+    const reads = new QianchuanPlanReads(read), cancelled = new AbortController();
+    const first = reads.request(target, cancelled.signal), second = reads.request(target);
+    const rejection = expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    cancelled.abort(); await rejection;
+    expect(observed.aborted).toBe(false);
+    release(); expect(await second).toEqual([plan()]);
+  });
+  it("skips all-cancelled queued reads without opening the next account", async () => {
+    const f = await fixture(), target = (await f.service.preflight({ enabled: true, accountProduct: "眼贴" }, 1))!.target;
+    let release!: () => void;
+    const read = vi.fn(async () => { await new Promise<void>(resolve => { release = resolve; }); return [plan()]; });
+    const reads = new QianchuanPlanReads(read), cancelled = new AbortController();
+    const first = reads.request(target), queued = reads.request({ ...target, configDigest: "other-config" }, cancelled.signal);
+    const rejection = expect(queued).rejects.toMatchObject({ name: "AbortError" });
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    cancelled.abort(); await rejection; release(); await first;
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(read).toHaveBeenCalledOnce();
+  });
+  it("waits for owned-tab cleanup on final active cancellation and rejects late success", async () => {
+    const f = await fixture(), target = (await f.service.preflight({ enabled: true, accountProduct: "眼贴" }, 1))!.target;
+    let cleanup!: () => void, observed!: AbortSignal;
+    const read = vi.fn(async (_target, signal: AbortSignal) => { observed = signal; await new Promise<void>(resolve => { cleanup = resolve; }); return [plan()]; });
+    const reads = new QianchuanPlanReads(read), cancelled = new AbortController();
+    const pending = reads.request(target, cancelled.signal);
+    const rejection = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    let settled = false; void pending.catch(() => { settled = true; });
+    await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+    cancelled.abort(); expect(observed.aborted).toBe(true);
+    await Promise.resolve(); expect(settled).toBe(false);
+    cleanup(); await rejection;
+  });
+  it("shares simultaneous same-account reads without caching later refreshes", async () => {
+    const f = await fixture();
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    f.readPlans.mockImplementation(async () => { await held; return [plan()]; });
+    const request = { product: "眼贴", expectedAdvertiserId: "1000" };
+    const first = f.service.listPlans(request), second = f.service.listPlans(request);
+    await vi.waitFor(() => expect(f.readPlans).toHaveBeenCalledOnce());
+    release();
+    expect(await first).toEqual([plan()]); expect(await second).toEqual([plan()]);
+    expect(f.readPlans).toHaveBeenCalledOnce();
+    await f.service.listPlans(request);
+    expect(f.readPlans).toHaveBeenCalledTimes(2);
+  });
   it("keeps legacy selection compatible while rejecting duplicate or cross-advertiser catalogs", async () => {
     expect(QianchuanUploadSelectionSchema.parse({ enabled: true, accountProduct: "眼贴" }).plan).toBeUndefined();
     expect(QianchuanPlanListSchema.safeParse([plan(), plan()]).success).toBe(false);
