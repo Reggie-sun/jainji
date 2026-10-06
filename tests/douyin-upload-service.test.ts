@@ -404,9 +404,9 @@ describe("Qianchuan upload service", () => {
     expect(f.store.hasMarker(before.result.upload_task_id)).toBe(true);
   });
 
-  async function nativeFixture(discover: (id: string) => Promise<string> = async () => "http://127.0.0.1:9225") {
+  async function nativeFixture(discover: (id: string) => Promise<string> = async () => "http://127.0.0.1:9225", readPlans?: NonNullable<ConstructorParameters<typeof DouyinUploadService>[1]>["readPlans"]) {
     const f = await fixture();
-    const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, discover), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined });
+    const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, discover), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined, readPlans });
     await service.restoreConfig(); return { ...f, service };
   }
   it("clears each requested saved account through the library owner without changing upload records", async () => {
@@ -455,6 +455,28 @@ describe("Qianchuan upload service", () => {
     plans.mockImplementationOnce(async target => ({ product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: "unknown" }));
     expect((await f.service.clearVideoLibraries({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts }))[0].state).toBe("BLOCKED");
     expect(library).toHaveBeenCalledTimes(1); expect(f.events).toEqual([]);
+  });
+  it("cleans an explicitly chosen non-default plan only after a fresh catalog check without saving the choice", async () => {
+    const readPlans = vi.fn(async () => [{ advertiserId: "1003", adId: "9002", name: "另一个计划" }]);
+    const f = await nativeFixture(undefined, readPlans); await f.service.chooseConfig(f.configPath);
+    const mapping = path.join(f.store.root, "accounts", "mapping.json"), before = await readFile(mapping);
+    const materials = vi.spyOn(QianchuanPlanMaterials.prototype, "clear").mockImplementation(async (target, guard) => {
+      await guard(); return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 3, message: "empty" };
+    });
+    const library = vi.spyOn(QianchuanVideoLibrary.prototype, "clear");
+    const account = { product: "眼贴", expectedAdvertiserId: "1003", expectedAdId: "9002", plan: { advertiserId: "1003", adId: "9002", name: "另一个计划" } };
+    expect((await f.service.clearVideoLibraries({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [account] }))[0].state).toBe("CLEARED");
+    expect(materials.mock.calls[0][0]).toMatchObject({ advertiserId: "1003", adId: "9002" });
+    expect(readPlans).toHaveBeenCalledTimes(1); expect(library).not.toHaveBeenCalled();
+    expect(await readFile(mapping)).toEqual(before);
+    readPlans.mockResolvedValueOnce([]);
+    const blocked = await f.service.clearVideoLibraries({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: [account] });
+    expect(blocked[0]).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
+    expect(blocked[0].message).toContain("计划已失效");
+    expect(readPlans).toHaveBeenCalledTimes(2); expect(materials).toHaveBeenCalledTimes(1); expect(library).not.toHaveBeenCalled();
+    readPlans.mockResolvedValueOnce([{ advertiserId: "9999", adId: "9002", name: "错误账号" }]);
+    expect((await f.service.clearVideoLibraries({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [account] }))[0].state).toBe("BLOCKED");
+    expect(materials).toHaveBeenCalledTimes(1);
   });
   it("holds production and account edits until an aborted plan cleanup drains", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);

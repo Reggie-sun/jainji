@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "709129e6a3e358f7e49cdeedbf11a94a11aec1c6e5245790cd7233f1148dae70",
-      "size": 92598,
-      "normalized_sha256": "709129e6a3e358f7e49cdeedbf11a94a11aec1c6e5245790cd7233f1148dae70"
+      "sha256": "fe7c775425ba4e82b0f42861dd811e0ea9491c4f12837e14e1b07c7a9fa41105",
+      "size": 92979,
+      "normalized_sha256": "fe7c775425ba4e82b0f42861dd811e0ea9491c4f12837e14e1b07c7a9fa41105"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1353,9 +1353,9 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "7b50c8173e424423b07c6d03fe94d9132cf679dc3cfa3db1c0346286581bbae7",
-      "size": 73214,
-      "normalized_sha256": "7b50c8173e424423b07c6d03fe94d9132cf679dc3cfa3db1c0346286581bbae7"
+      "sha256": "5a5066febf8156b196e73bc899076724e4a6da399b9866e43f896db1220eec21",
+      "size": 73706,
+      "normalized_sha256": "5a5066febf8156b196e73bc899076724e4a6da399b9866e43f896db1220eec21"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "8d4e6dd4a16d198857bf2b9fbff8efa645e2aff36980fa932c851305f7e6163a",
@@ -1453,9 +1453,9 @@
       "normalized_sha256": "bfb44dd2a37b7caaab115e1bbd18f462e75a3a15071fc3f68429095b1c9be05b"
     },
     "src/main/qianchuan-account-settings.ts": {
-      "sha256": "c2a0391fe2d463077b49aee2cb6be460fabadac0416c8786939de90a789a745c",
-      "size": 12522,
-      "normalized_sha256": "c2a0391fe2d463077b49aee2cb6be460fabadac0416c8786939de90a789a745c"
+      "sha256": "e6ffd75080a919135c6e9db2c44bf11eddbfdd485bd18ccedc345b7b00952db2",
+      "size": 12610,
+      "normalized_sha256": "e6ffd75080a919135c6e9db2c44bf11eddbfdd485bd18ccedc345b7b00952db2"
     },
     "src/main/qianchuan-browser-bindings.ts": {
       "sha256": "648c2fd88fc84bda52c937a0a4c459559a9882983250778c982072af258a9754",
@@ -2013,9 +2013,9 @@
       "normalized_sha256": "a5e7f5bcc25f02763f5e97f657b424f5f3e76be3fc97558c5f4d07895d988838"
     },
     "src/renderer/QianchuanPlanSelect.tsx": {
-      "sha256": "5fe2c2c524af721b2ce5da8c356d4e1c31a8b06e9a7b8398748b0a07d85f94b7",
-      "size": 4812,
-      "normalized_sha256": "5fe2c2c524af721b2ce5da8c356d4e1c31a8b06e9a7b8398748b0a07d85f94b7"
+      "sha256": "b97dad7859b50e51d0309b83edf17f49d5ee18d527af48b53a80dd439b35e43f",
+      "size": 5054,
+      "normalized_sha256": "b97dad7859b50e51d0309b83edf17f49d5ee18d527af48b53a80dd439b35e43f"
     },
     "src/renderer/QianchuanUploadHistory.tsx": {
       "sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5",
@@ -2023,9 +2023,9 @@
       "normalized_sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5"
     },
     "src/renderer/QianchuanVideoLibraryActions.tsx": {
-      "sha256": "d0e396ef7e2d48d0d8607502d35114d369c51918c0d986727966578425f0ba04",
-      "size": 5924,
-      "normalized_sha256": "d0e396ef7e2d48d0d8607502d35114d369c51918c0d986727966578425f0ba04"
+      "sha256": "f92ef9285bf54120915ca88b3ae366229c1e42647f14e353ae2617e085e22ba6",
+      "size": 8153,
+      "normalized_sha256": "f92ef9285bf54120915ca88b3ae366229c1e42647f14e353ae2617e085e22ba6"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
       "sha256": "978d8bd939862cdec7ccce7c019e0c9a33d3cd5cbc4a556fe0b337b54dd14572",
@@ -2319,9 +2319,9 @@
       "normalized_sha256": "7d768a1dc5b5961d888c0fd04479f459f42407477ab9af3213da8dc327fdb8ed"
     },
     "src/shared/qianchuan-video-library.ts": {
-      "sha256": "81d8af2d2c2bcd8e9914aa24ad9798bdbf051a9c4019d597f3dd9946bdbdddb4",
-      "size": 2046,
-      "normalized_sha256": "81d8af2d2c2bcd8e9914aa24ad9798bdbf051a9c4019d597f3dd9946bdbdddb4"
+      "sha256": "aa3e59ed2ffe9bfef795244b90c45c3bd2aaa2e446fe968be943fdf55cf99da2",
+      "size": 2543,
+      "normalized_sha256": "aa3e59ed2ffe9bfef795244b90c45c3bd2aaa2e446fe968be943fdf55cf99da2"
     },
     "src/shared/shape-cover.ts": {
       "sha256": "8e9c6ca92189a84dc76ee11d96566e0ac5151caf5cc410e91da29f1de71a7796",

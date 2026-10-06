@@ -50,7 +50,9 @@ it("shows available products without making file configuration a daily step", ()
   }));
   const advanced = html.match(/<details[^>]*><summary>高级设置<\/summary>[\s\S]*?<\/details>/)![0];
   const main = html.replace(advanced, "");
-  expect(main).toContain("千川账号设置"); expect(main).toContain("更换产品名称或千川计划"); expect(main).toContain("眼贴<small>已设置"); expect(main).not.toContain("账户 123");
+  const products = main.match(/<div class="qianchuan-account-products">[\s\S]*?<\/div>/)![0];
+  expect(main).toContain("千川账号设置"); expect(main).toContain("更换产品名称或千川计划"); expect(products).toContain("眼贴<small>已设置"); expect(products).not.toContain("账户 123");
+  expect(main).toContain("清理计划"); expect(main).toContain("眼贴 · 账户 123");
   expect(advanced).toContain("账户 123 / 计划 456"); expect(main).not.toContain('value="眼贴"');
 });
 it("shows editable product names in account settings and both selectors while retaining stable account values", () => {

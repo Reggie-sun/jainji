@@ -40,6 +40,14 @@ it("requires the expected saved plan for every plan-material cleanup and keeps l
     expect(() => QianchuanLibraryClearSchema.parse({ confirmation, accounts: [{ product: target.product, expectedAdvertiserId: target.advertiserId }] })).toThrow();
   }
 });
+it("binds an explicit cleanup choice to both expected IDs and rejects a plan on account-wide clearing", () => {
+  const account = { product: target.product, expectedAdvertiserId: target.advertiserId, expectedAdId: "9002", plan: { advertiserId: target.advertiserId, adId: "9002", name: "第二个计划" } };
+  expect(QianchuanLibraryClearSchema.parse({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [account] }).accounts[0]).toEqual(account);
+  for (const invalid of [{ ...account, expectedAdId: "9001" }, { ...account, plan: { ...account.plan, advertiserId: "9999" } }]) {
+    expect(() => QianchuanLibraryClearSchema.parse({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [invalid] })).toThrow();
+  }
+  expect(() => QianchuanLibraryClearSchema.parse({ confirmation: "DELETE_ALL_VIDEOS", accounts: [account] })).toThrow();
+});
 it("clears current pages and consumes the final zero once without an extra refresh or video backup", async () => {
   const f = await fixture();
   expect(await f.library.clear(target, async () => {})).toMatchObject({ state: "CLEARED", deletedCount: 45 });

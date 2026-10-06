@@ -36,6 +36,28 @@ export function planSelectionFixtureScript(options: { strict?: boolean; multiple
   `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
 }
 
+export function cleanupPlanFixtureScript() {
+  return buildSync({ stdin: { contents: `
+    import React, { useState } from "react";
+    import { createRoot } from "react-dom/client";
+    import { QianchuanVideoLibraryActions } from "./src/renderer/QianchuanVideoLibraryActions";
+    window.catalogRequests = []; window.cleanupRequests = [];
+    window.jianji = {
+      listQianchuanPlans: input => new Promise((resolve, reject) => window.catalogRequests.push({ input, resolve, reject })),
+      cancelQianchuanPlans: async () => {},
+      clearQianchuanVideoLibraries: async input => { window.cleanupRequests.push(input); return []; },
+      onQianchuanVideoLibrarySchedule: () => () => {},
+      getQianchuanVideoLibrarySchedule: async () => ({settings:{enabled:false,time:"00:30",accounts:[]},timeZone:"Asia/Hong_Kong"})
+    };
+    function Fixture() {
+      const [accounts, setAccounts] = useState([{product:"眼贴",advertiserId:"1000",adId:"2000",available:true}]);
+      window.changeCleanupAccount = advertiserId => setAccounts([{...accounts[0],advertiserId}]);
+      return <QianchuanVideoLibraryActions accounts={accounts} busy={false}/>;
+    }
+    createRoot(document.getElementById("root")).render(<Fixture/>);
+  `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
+}
+
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); }, 30000);
 afterAll(async () => { await browser?.close(); });
@@ -158,6 +180,66 @@ describe("plan selector browser interaction", () => {
       await page.getByRole("alert").waitFor();
       expect(await page.getByRole("alert").textContent()).toBe("Chrome 登录已失效");
       expect(await page.getByLabel("上传计划").isDisabled()).toBe(true);
+    } finally { await page.close(); }
+  });
+});
+
+describe("cleanup plan browser interaction", () => {
+  async function cleanupFixture() {
+    const page = await browser.newPage();
+    await page.route("http://127.0.0.1:3000/cleanup", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/cleanup"); await page.addScriptTag({ content: cleanupPlanFixtureScript() });
+    await page.addStyleTag({ content: readFileSync("src/renderer/styles.css", "utf8") + readFileSync("src/renderer/qianchuan-cleanup.css", "utf8") });
+    await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+    return page;
+  }
+  async function respond(page: Page) {
+    await page.evaluate(() => {
+      const request = (window as any).catalogRequests.at(-1);
+      request.resolve(["9001", "9002"].map(adId => ({advertiserId:request.input.expectedAdvertiserId, adId, name:"计划 " + adId, productNames:["叶黄素蒸汽眼罩"]})));
+    });
+    await page.waitForFunction(() => !document.querySelector<HTMLSelectElement>('[aria-label="清理计划"]')!.disabled);
+  }
+  it("requires explicit selection and freezes the non-default plan in confirmation and the deletion request", async () => {
+    const page = await cleanupFixture();
+    try {
+      const start = page.getByRole("button", { name: "清理所选计划（1）", exact: true });
+      expect(await start.isDisabled()).toBe(true); await respond(page);
+      expect(await start.isDisabled()).toBe(true);
+      await page.getByLabel("清理计划", { exact: true }).selectOption("9002");
+      await page.setViewportSize({ width: 420, height: 900 });
+      expect(await page.locator(".qianchuan-cleanup-plan").evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
+      await start.click();
+      expect(await page.getByRole("group", { name: "确认素材清理" }).textContent()).toContain("计划 计划 9002 · ID 9002");
+      expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(0);
+      await page.getByRole("button", { name: "确认删除三类计划素材（1 个账号）", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1000", expectedAdId: "9002", plan: { advertiserId: "1000", adId: "9002", name: "计划 9002", productNames: ["叶黄素蒸汽眼罩"] } }] });
+    } finally { await page.close(); }
+  });
+  it("blocks stale confirmation and failed refresh, while account-wide clearing remains explicit", async () => {
+    const page = await cleanupFixture();
+    try {
+      await respond(page); await page.getByLabel("清理计划", { exact: true }).selectOption("9001");
+      await page.getByRole("button", { name: "清理所选计划（1）", exact: true }).click();
+      await page.evaluate(() => (window as any).changeCleanupAccount("1001"));
+      await page.getByText("账号设置已变化，请取消并重新选择清理范围。", { exact: true }).waitFor();
+      expect(await page.getByRole("button", { name: "确认删除三类计划素材（1 个账号）", exact: true }).isDisabled()).toBe(true);
+      await page.getByRole("button", { name: "取消", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await respond(page); await page.getByLabel("清理计划", { exact: true }).selectOption("9002");
+      await page.getByRole("button", { name: "刷新计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
+      await page.evaluate(() => (window as any).catalogRequests.at(-1).reject(new Error("Chrome 登录已失效")));
+      await page.getByText("Chrome 登录已失效", { exact: true }).waitFor();
+      expect(await page.getByRole("button", { name: "清理所选计划（1）", exact: true }).isDisabled()).toBe(true);
+      await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
+      await page.getByRole("button", { name: "清理所选账号（1）", exact: true }).click();
+      expect(await page.getByRole("group", { name: "确认素材清理" }).textContent()).toContain("不按计划筛选");
+      await page.getByRole("button", { name: "确认删除全部库视频（1 个账号）", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1001" }] });
     } finally { await page.close(); }
   });
 });

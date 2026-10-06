@@ -54,8 +54,8 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       const targets = await Promise.all(parsed.accounts.map(async account => {
         const target = await super.preflight(account.product);
         if (target.advertiserId !== account.expectedAdvertiserId) throw new Error("账号设置已变化，未删除视频，请重新选择账号。");
-        if (parsed.confirmation !== "DELETE_ALL_VIDEOS" && target.adId !== account.expectedAdId) throw new Error("千川计划已变化，未删除素材，请重新选择当前计划。");
-        return target;
+        if (parsed.confirmation !== "DELETE_ALL_VIDEOS" && !account.plan && target.adId !== account.expectedAdId) throw new Error("千川计划已变化，未删除素材，请重新选择当前计划。");
+        return account.plan ? Object.freeze({ ...target, adId: account.plan.adId }) : target;
       }));
       const fresh = async () => {
         this.assertAvailable();

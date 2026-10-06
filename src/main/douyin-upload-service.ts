@@ -321,6 +321,12 @@ export class DouyinUploadService {
         return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
           try {
             await guard(); const connected = await connect(target);
+            const selection = parsed.accounts.find(account => account.product === target.product);
+            if (selection?.plan) {
+              const plans = await this.readPlans(connected, operation.controller.signal);
+              await guard();
+              if (!plans.some(plan => plan.advertiserId === connected.advertiserId && plan.adId === connected.adId)) throw new Error("所选清理计划已失效，请刷新计划列表后重新选择，未删除素材。");
+            }
             const planResult = parsed.confirmation !== "DELETE_ALL_VIDEOS" ? await materials.clear(connected, guard, operation.controller.signal) : undefined;
             if (parsed.confirmation === "DELETE_PLAN_MATERIALS" || planResult?.state === "BLOCKED") return planResult!;
             const libraryResult = await library.clear(connected, guard, operation.controller.signal);
