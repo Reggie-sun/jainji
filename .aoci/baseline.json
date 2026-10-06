@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-06T15:05:50Z",
+  "updated_at": "2026-10-06T15:50:51Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c3bcb870bef8f4d6833f80c2da7d17430ddcbdcba5e79f08fe9f1a8d18f7e101",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "188ca08e55e2d22edcd8e87f73e14518d7e7dacdb343ed453a5c6de2116dd80a",
-      "size": 94269,
-      "normalized_sha256": "188ca08e55e2d22edcd8e87f73e14518d7e7dacdb343ed453a5c6de2116dd80a"
+      "sha256": "53239dd35b8f1a60a6e080587d184b6bdfd5f90642c1a5bdd45d637e3ccfb239",
+      "size": 94263,
+      "normalized_sha256": "53239dd35b8f1a60a6e080587d184b6bdfd5f90642c1a5bdd45d637e3ccfb239"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1198,9 +1198,9 @@
       "normalized_sha256": "61755c14c22c5a41036e74af44be14148738ad8a46c019b607904a43a0dcc7e7"
     },
     "src/main/builtin-frames.ts": {
-      "sha256": "496e89c26ea7a4bfaab95464000f3d8b324ebd151e74499ed3679201c19b79ee",
-      "size": 14565,
-      "normalized_sha256": "496e89c26ea7a4bfaab95464000f3d8b324ebd151e74499ed3679201c19b79ee"
+      "sha256": "f012c6898f1cde24378cf35c796e654f3f83b992e008f20c85d404b2e6a6cd91",
+      "size": 6020,
+      "normalized_sha256": "f012c6898f1cde24378cf35c796e654f3f83b992e008f20c85d404b2e6a6cd91"
     },
     "src/main/builtin-stickers.ts": {
       "sha256": "258fc1196f861921bd8993c86076749f69777276304bed544c90775620bc39c1",
@@ -2274,9 +2274,9 @@
       "normalized_sha256": "056ee298d882bdfb0da05b7695f83b8f08c492c6aa1ea2a54abcbd2b22e4d4f2"
     },
     "src/shared/frames.ts": {
-      "sha256": "19d9cad761c02de720d29c3e86acf0a2d07f44ae7d3cbb345d5b1e6ca56f540b",
-      "size": 1858,
-      "normalized_sha256": "19d9cad761c02de720d29c3e86acf0a2d07f44ae7d3cbb345d5b1e6ca56f540b"
+      "sha256": "4d12fb97f0af2cfba99864e3874a7c823c0f825d54d4eb1368b3709448e3dd1d",
+      "size": 1822,
+      "normalized_sha256": "4d12fb97f0af2cfba99864e3874a7c823c0f825d54d4eb1368b3709448e3dd1d"
     },
     "src/shared/hybrid-cover.ts": {
       "sha256": "185bcc4ef322532a959e737863774ab52898643ffbcce401a18f98bd5ea690fb",

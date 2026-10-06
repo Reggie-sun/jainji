@@ -182,7 +182,7 @@ douyin-upload-group.ts[DW7T]: F:核对冻结上传成员终态以释放最终第
 hybrid-cover-connections.ts[IA7T]: F:将产品Hybrid视觉请求接到canonical连接和能力核验 | R:code:src/main/model-connections.ts,code:src/main/shape-cover-vision-provider.ts,code:src/main/shape-cover-alpha.ts | A:官方MiniMax-M3 Responses连接做单次RGB图片能力核验，交原Hybrid routes并重验连接freshness | S:失败Promise保留不重试；不另存凭据或改模型选择；无配置或图片能力明确失败
 hybrid-cover-production.ts[AB8S]: F:消费H4批准冻结层并核验原生产编码发布准入 | R:code:src/main/shape-cover-hybrid-preview.ts,code:src/main/compiler.ts,code:src/main/queue.ts,code:src/shared/hybrid-cover.ts | A:分验容器及视频轨身份；签进程内approval与模板seal；保留用户文字和frame层并附加批准角；完整解码重核PNG和时钟覆盖 | S:JSON不恢复authority；原PNG binding不变；无白fallback；main-only归档重放原QA包不重判；未知角原样
 hybrid-cover-session.ts[AW7T]: F:将原H2 H3 H4接为逐源Hybrid模板准备适配 | R:code:src/main/shape-cover-vision-corner-semantic.ts,code:src/main/shape-cover-hybrid-h3.ts,code:src/main/hybrid-cover-production.ts,code:src/main/source-sticker-knowledge-store.ts,code:src/main/decoration-frame.ts | A:同指纹共用批准覆盖；边框按素材版本独立冻结并缓存；文字及边框经原materializer追加批准层 | S:容器及视频身份任一知识争议关闭；未知角原样，不补普通角或改滤镜；失败不重试；边框换款不重判批准PNG
-builtin-frames.ts[IB6M]: F:离线生成十三款整圈透明PNG边框及不可变素材文件 | R:code:src/shared/frames.ts,code:src/main/builtin-stickers.ts | A:固定画布RGBA；十款新增主题复用绘图；按SHA命名并核已有文件 | S:原三款字节保持；中央透明；已有同名文件不符拒绝，不覆盖
+builtin-frames.ts[IB6S]: F:离线生成十三款克制电商整圈透明PNG边框 | R:code:src/shared/frames.ts,code:src/main/builtin-stickers.ts | A:窄边细线柔光金属角；固定RGBA画布；按SHA命名并核已有文件 | S:ID稳定，新图另存，旧冻结文件不删除覆盖；中央透明；同名内容损坏拒绝
 decoration-assets-ipc.ts[EU7T]: F:注册贴纸和边框上传删除的受信任IPC | R:code:src/main/uploaded-stickers.ts,code:src/shared/frames.ts,code:src/main/index.ts | A:复用原目录owner；共享mutation锁和idle校验；删除立即取消新制作资格 | S:对话框后重核空闲；失败恢复资源映射；保留冻结文件
 decoration-frame.ts[DB7T]: F:预检边框资源并解析逐素材随机指定关闭设置及底层图层 | R:code:src/main/paths.ts,code:src/main/domain.ts,code:src/shared/frames.ts | A:独立池洗牌轮转且同素材相邻版避重；调用方保留输出冻结设置；核中央透明非空尺寸；全画布zIndex负1000 | S:空随机池或缺失漂移拒绝；不混普通贴纸，不改变覆盖几何
 
@@ -276,7 +276,7 @@ qianchuan-video-library-schedule.ts[CW7T]: F:定义每日清理准入、运行�
 qianchuan-plan-selection.ts[CB7T]: F:定义账号计划选项及共享读取取消refresh请求 | R:code:src/shared/qianchuan-account.ts,code:src/shared/douyin-upload.ts | A:strict选项含广告主计划ID名称及可选1至50商品名；读UUID/refresh取消仅UUID；最多1000项同广告主计划唯一 | S:商品名及计划名不决定上传目标；schema不授上传确认；ID和名称控制字符受限
 batch-upload.ts[CC6T]: F:定义模板账号绑定及批量上传账号解析 | R:code:src/shared/qianchuan-account.ts | A:显式绑定优先；未绑定旧模板仅唯一精确名称匹配；返回账号或错误 | S:名称匹配不替代广告主身份核验；未知或歧义不得自动选账号
 hybrid-cover.ts[CB8T]: F:定义H4批准角落冻结生产层的严格序列化绑定 | R:code:src/main/hybrid-cover-production.ts,code:src/main/domain.ts,code:src/shared/source-sticker-knowledge.ts | A:固定HybridApprovedCorner/v1与UUID、源、设置、PNG binding packet摘要、projection placement及range | S:coverage必须oldPixels正数uncovered0/fraction1；数据不授authority或恢复进程内owner；不声明全源完整性
-frames.ts[CB6T]: F:定义十三款内置边框目录及随机指定关闭设置与逐素材优先级 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:内置或uploaded-frame加64位SHA；严格模式union；素材覆盖优先整批，再legacy frameId，缺字段为none | S:独立命名空间不当普通贴纸
+frames.ts[CB6T]: F:定义十三款电商边框目录及随机指定关闭与逐素材优先级 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:保留既有ID，更新展示名称；uploaded-frame加64位SHA；素材优先整批再legacy，缺字段none | S:边框独立命名空间，不当普通贴纸
 
 
 ===/home/reggie/vscode_folder/jianji/src/types/===
