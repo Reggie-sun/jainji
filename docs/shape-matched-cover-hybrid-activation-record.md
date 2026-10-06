@@ -89,3 +89,31 @@ main 的 batch/upload/Qianchuan及项目保存、文字预览、计划商品显�
 以上native gates后，对该checkpoint作一次 `KIMI_REVIEW_NOT_REQUIRED` 判定：无显式review要求、新关键级凭据/越权/不可恢复状态损坏路径，亦无同时满足重大后果、剩余实质缺口及独立增益的证据。受管Kimi mapping invocation `3b1ae60a-646f-4054-b76f-b8370c6d8145` 是早期只读接线调查，不是final review或验收authority；Parent直接核对最终diff、字节及运行证据。详细判定见私有 `checkpoint-review-risk-gate.json`。
 
 验证期间，其他会话将main推进到 `2227c8804b0627524a6c25b48aceebda561e9676`，并在main继续未提交的装饰边框工作。用户明确选择：原作者先完成并提交，再由本轮合入最新main、重跑全部最终验证并回合并。本checkpoint不包含该后续提交，不能代替下一次合并的最终证据；尚未回合并main，尚不能宣布 `HYBRID_CORNER_V1_PRODUCTION_READY`。本段仅记录已验证checkpoint，记录字节按docs-only documents/owned-aoci路径独立收尾，不改变上述已验证源码。
+
+## Final Mainline Integration with Frames
+
+2026-10-06，原作者的边框提交已进入 `origin/main`：`094497c8fe4ecef4d6e2df6f39902a5c4f5ce463`，包含前序千川深链修复 `2227c880`。本轮从 `b043b7a18d9657a69723b53170c34542d0892abd` 合入该最新 main，得到源码 merge commit `46de88109a7ab925c2ea939fa6c793cceb79d605`，tree `2e4a89cb61e258c982d7fcf45fbce809fe69f541`。旧 b043 验证仅作历史记录，以下证据全部重新执行。私有证据根为 `/home/reggie/.local/state/jianji-hybrid-final-frames-20261006`。
+
+六项冲突为 domain、Harness governance、对应测试、Harness 合同以及 AOCI code/baseline。保留 Hybrid 与 frame 两套 schema；治理保留 Activation 的严格正式资产身份、链接、重复路径及三项官方事实一致性校验，并合入 main 的 artifactRequired 证据字段。两侧测试保留，Volume fixture 补齐真实官方 applicable/domain_state。合同保留 H4 boundary 和唯一正式 Volume 解释。索引冲突保留审计副本，恢复可信配对 preimage 后，按真实合并源码执行官方完整20+5候选批次、CAS与原子维护，未手工拼接索引或伪造 seal。
+
+组合回归实际复现两处边框兼容问题：Hybrid 提前入口跳过所选 frame 文件校验，hybridTemplate 的 text-only filter 丢掉 frame 层。最小修复复用 assertDecorationFrameAsset，在准备及模型调用前核验边框；模板保留用户文字和 frame sticker，再附加批准角落。已有 schema/materializer/compiler 足以处理组合，未新增 owner。缺边框准入、零批准角保留边框，以及真实 FFmpeg 的 frame+Hybrid 原队列导出、主体原色、冻结层与篡改拒绝均有 red-green 及最终 PASS。
+
+H2/H3/H4、mask、motion、shape、placement、coverage 和 Preview QA 算法未改；自动形状入口仍为 H2→H3→H4 PASS→frozen layer→原 compiler/queue/export。只生产批准角落，unresolved/skipped 原样，未增加 H5/H6。25个关键文件直接比对：算法与 b043、main 的 batch/upload/Qianchuan 及边框 canonical owners 与094分别字节相同。bootstrap/batch runtime 仅保留既有 Hybrid routes 接线。原 Hybrid+random/千川上传组合拒绝保持，不将普通上传功能保留解释为新增组合准入。
+
+## Fresh Product Artifact Evidence
+
+当前源码重新完成 real233s 实际 Linux 产品导出：batch `b74b8a86-a88e-4197-a16a-cf980bc32a4f`，task `3f038203-f1a6-407e-9591-2b3bfd329324`，原 AgentController/AgentRunner/compiler/queue/ArtifactVerifier/无覆盖发布链为 PASS。仅 TOP_RIGHT 获批生产，其他角落 UNCHANGED；零新模型请求，按原封存 QA packet 重放既有 H4 收据，不重选、不重摆、不重判。
+
+selected sticker 保持 `local-limited-seckill-go`，asset SHA `77d956dd13e7ce05fe88bbe60c91cbd1d3cad1c44986467b308351a0498e36fc`；placement `626,0,94,61`。实际 PNG SHA `5cf525c17c5121980caba8d34674ea0978a5b964975e3f72efd150e7d1b93896`，binding `d02dfac0c2bc4b63c3f93a69476cbbe6dfd783b95543a75a3bbbbfab8f43e82d`，oldPixels=3681、uncoveredPixels=0、coverageFraction=1；直接复验冻结文件字节、封存 overlay 与实际队列 binding 完全一致。新 MP4 为60,658,660 bytes、SHA `28b1821a411ffe24dbd5affe42d4d70b97c270ccbe6783352c808d5d10d7228c`；不同编码运行的完整 MP4 不要求与历史文件相同。
+
+## Fresh Verification and Completion
+
+typecheck/build PASS。最终 full suite `full-tests-final.json`：205文件通过、2576 PASS、0 FAIL，3项原条件 skip（Windows2、opt-in在线资源1）；不计 required PASS。完整 Harness `20261006T115613Z-d65f26ad`：20/20 required PASS、0 required skip、2562断言 PASS，完整 H3、H4、Activation 与 extended994项均通过；87项 owned AOCI disposition 与官方当前快照对齐。源 completion `20261006T121557Z-7ce052e8` PASS，退出0。
+
+source identity `sha256:fbf907f9d38484048681725feda992020e49c692b2cac0dd67cd8c8463f24570`；scope identity `sha256:9588af0f18bf5f63895c9d98a6beb7ea46663b3b8c5ffbc9870831c76c0af551`；Harness receipt SHA `11fc3d6bde2ad026fe3556e463379ce98efd886fa278c64051f1da0637f7beb0`。官方 AOCI Verify/Check/Guide aligned、next_action=none；Code Volume256条已维护。Chrome MCP 在当前实际组件及隔离本地 API fixture 上验证 shape 保存、partial 提示、frame 选择/模式切换保留及上传/删除交互；不授真实账号或平台行为验收。
+
+全量测试和 Harness 前的兼容修复 RED、旧候选中断及产品脚本 bundling 零执行失败均保留，未当 PASS。最终运行不复用旧候选证据，未调整算法、required、超时、coverage 或 QA 规则。最终 native gates 后对 exact source/tree/scope/receipt 一次判定 KIMI_REVIEW_NOT_REQUIRED：无显式 final review 要求、新关键级凭据/越权/不可恢复状态路径，亦无同时满足重大后果、剩余实质缺口和独立增益的证据；详见 `final-review-risk-gate.json`。
+
+受管 Kimi mapping invocation `73765aaa-f96c-4905-8c00-4f3b6fb3bbdc` 为 deep/k3[1m]/max，实际 wire k3，3次请求、qualified route/Docker containment/canonical receipt、PARSED且无截断。它针对冻结的修复前接线副本调查，不是最终 reviewer。Parent 独立复现并关闭 F1/F2；其上传疑问由产品入口先行拒绝的实际源码和测试排除；不把 PARSED 升为验收。
+
+本节记录已合格源码 checkpoint；此后仅该记录沿 docs-only documents/owned-aoci 路由独立收尾，不改变以上源码、测试、policy 或合同字节。发布须在文档 completion 通过后，push Activation，再将同一历史合回 main、push并核对 origin/main；实际发布 SHA及远端核验保存在本轮私有发布回执。Windows 实机、新 live-provider 全流程、真实千川确认和整片人工观看保持原证据边界。本轮不继续新功能。
