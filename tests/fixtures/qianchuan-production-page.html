@@ -44,7 +44,7 @@
         </div>
         <div class="oc-create-material-submit-bar-count">已选择 0/64：</div>
         <section id="upload-video-panel">
-          <div class="production-drop-target" data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo" tabindex="0">拖拽视频到此处上传</div>
+          <div class="production-drop-target" data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo" tabindex="0"><span class="oc-create-upload-select-upload-text">将文件拖拽到此处，或<span>点击上传</span></span><div class="oc-create-upload-select-loading" hidden>文件正在上传，请稍后</div></div>
           <div class="oc-create-upload-table-wrapper">
             <div id="production-upload-failure" hidden>上传失败</div>
             <table><tbody></tbody></table>
@@ -61,6 +61,9 @@
   <script>
     const state = { controls: {}, uploads: [] };
     let lastDomReport = "";
+    let entranceLoadingUntil = 0;
+    let selections = 0;
+    let chooserOpened = false;
     const postEvent = event => fetch('/events', {
       method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(event), keepalive: true,
     });
@@ -95,8 +98,11 @@
     };
     const render = () => {
       const c = state.controls;
+      const loading = c.entranceLoading || Date.now() < entranceLoadingUntil;
+      dropTarget.querySelector('.oc-create-upload-select-upload-text').hidden = loading;
+      dropTarget.querySelector('.oc-create-upload-select-loading').hidden = !loading;
       document.querySelector('#plan-advertiser-id').textContent = ` ID： ${c.wrongAdvertiser ? '999999' : '123456'} `;
-      document.querySelector('#plan-ad-id').textContent = `ID：${c.wrongPlan || c.wrongDrawerPlan ? '999998' : '987654'}`;
+      document.querySelector('#plan-ad-id').textContent = `ID：${c.wrongPlan || c.wrongDrawerPlan || chooserOpened && c.chooserWrongPlan ? '999998' : '987654'}`;
       document.querySelector('#legacy-global-plan-list .legacy-plan-row span:last-child').textContent = `ID：${c.unrelatedAdvertiserId ? '123456' : c.wrongPlan || c.wrongGlobalPlan ? '999998' : '987654'}`;
       document.querySelector('#duplicate-account')?.remove();
       if (c.duplicateAccount) {
@@ -180,18 +186,36 @@
       document.querySelector('#upload-video-panel').hidden = false;
     });
     for (const eventName of ['dragenter', 'dragover']) dropTarget.addEventListener(eventName, event => { event.preventDefault(); });
-    dropTarget.addEventListener('drop', event => {
-      event.preventDefault();
-      const files = Array.from(event.dataTransfer?.files || []);
-      postEvent({ type: 'drop', names: files.map(file => file.name) });
-      postEvent({ type: 'files', control: 'native-drop', names: files.map(file => file.name) });
+    const blocked = () => state.controls.entranceLoading || Date.now() < entranceLoadingUntil || dropTarget.classList.contains('oc-create-upload-select-wrapper-disabled') || dropTarget.getAttribute('aria-disabled') === 'true';
+    const receive = (files, control) => {
+      postEvent({ type: 'files', control, names: files.map(file => file.name) });
+      selections++;
+      if (state.controls.ignoreSelectionAfter && selections > state.controls.ignoreSelectionAfter) return;
       const created = files.map(file => ({ name: file.name, status: 'processing', rendered: !state.controls.rowAppearanceDelayMs }));
       state.uploads.push(...created);
+      entranceLoadingUntil = Date.now() + (state.controls.entranceLoadingMs ?? 0);
       render();
       for (const upload of created) {
         if (!upload.rendered) setTimeout(() => { upload.rendered = true; render(); }, state.controls.rowAppearanceDelayMs);
         setTimeout(() => { upload.status = 'ready'; render(); }, state.controls.processingDelayMs ?? 160);
       }
+    };
+    dropTarget.addEventListener('drop', event => {
+      event.preventDefault();
+      postEvent({ type: 'drop', names: Array.from(event.dataTransfer?.files || [], file => file.name) });
+      if (!blocked()) receive(Array.from(event.dataTransfer?.files || []), 'native-drop');
+    });
+    // Independent fixture implementation of the platform's detached native input.
+    dropTarget.addEventListener('click', () => {
+      postEvent({ type: 'chooser-open' });
+      if (blocked() || state.controls.chooserMissing) return;
+      chooserOpened = true;
+      const input = document.createElement('input'); input.type = 'file';
+      input.accept = state.controls.chooserAccept ?? 'video/mp4,video/quicktime,video/mp4,video/quicktime';
+      input.multiple = state.controls.chooserMultiple !== false;
+      input.addEventListener('change', () => receive(Array.from(input.files || []), 'native-filechooser'));
+      if (state.controls.chooserWrongPlan) document.querySelector('#plan-ad-id').textContent = 'ID：999998';
+      input.click();
     });
     document.querySelector('#confirm-button').addEventListener('click', () => postEvent({ type: 'confirm' }));
     document.querySelector('#settings-button').addEventListener('click', () => postEvent({ type: 'settings' }));

@@ -44,15 +44,59 @@ async function select(value: UploadTaskRecord, prepared: Awaited<ReturnType<type
   value.result.upload_outcome = "MAY_HAVE_UPLOADED"; await prepared.port.upload([value], signal);
   return owned.pageOwnership;
 }
-async function zeroConfirmation(expectedDrops: number) {
+async function zeroConfirmation(expectedSelections: number) {
   await vi.waitFor(async () => {
     const events = (await fixture.inspect()).events;
     expect(events.filter(event => event.type === "confirm")).toHaveLength(0);
-    expect(events.filter(event => event.type === "drop")).toHaveLength(expectedDrops);
+    expect(events.filter(event => event.type === "files")).toHaveLength(expectedSelections);
   });
 }
 
 describe("finite upload blocker diagnostics", () => {
+  it("refuses an unrecognized click control before preparing a file selection", async () => {
+    const value = await task(), prepared = await session(value);
+    await prepared.page.locator('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]').getByText("点击上传", { exact: true }).evaluate(element => element.textContent = "其他操作");
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
+    expect(value.result.upload_outcome).toBe("NOT_SELECTED");
+    expect((await fixture.inspect()).events.filter(event => ["files", "drop", "chooser-open", "confirm", "settings"].includes(event.type))).toEqual([]);
+  });
+
+  it("stops a persistently loading entrance before a file fence or chooser action", async () => {
+    fixture.setControls({ entranceLoading: true });
+    const value = await task(), prepared = await session(value); value.config.timeouts.action = 200;
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED", message: expect.stringContaining("忙碌") } });
+    expect(value.result.upload_outcome).toBe("NOT_SELECTED");
+    expect((await fixture.inspect()).events.filter(event => ["files", "drop", "chooser-open", "confirm", "settings"].includes(event.type))).toEqual([]);
+  });
+
+  it.each([
+    { chooserAccept: "image/png" }, { chooserMultiple: false }, { chooserWrongPlan: true }, { chooserMissing: true }
+  ])("rejects an invalid or missing native chooser without delivering files: %j", async controls => {
+    fixture.setControls(controls);
+    const value = await task(), prepared = await session(value); value.config.timeouts.action = 300;
+    await prepared.port.prepare([value], [], prepared.targetId, signal);
+    value.result.upload_outcome = "MAY_HAVE_UPLOADED";
+    await expect(prepared.port.upload([value], signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
+    expect(value.result.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+    await zeroConfirmation(0);
+    expect((await fixture.inspect()).events.filter(event => event.type === "files")).toEqual([]);
+    expect((await fixture.inspect()).events.filter(event => event.type === "chooser-open")).toHaveLength(1);
+  });
+
+  it("cancels an outstanding chooser without a delayed file action", async () => {
+    fixture.setControls({ chooserMissing: true });
+    const value = await task(), prepared = await session(value);
+    await prepared.port.prepare([value], [], prepared.targetId, signal); value.result.upload_outcome = "MAY_HAVE_UPLOADED";
+    const cancellation = new AbortController();
+    const operation = prepared.port.upload([value], cancellation.signal);
+    await vi.waitFor(async () => expect((await fixture.inspect()).events.filter(event => event.type === "chooser-open")).toHaveLength(1));
+    cancellation.abort();
+    await expect(operation).rejects.toThrow();
+    expect((await fixture.inspect()).events.filter(event => ["files", "drop", "confirm", "settings"].includes(event.type))).toEqual([]);
+    await prepared.page.waitForTimeout(350);
+    expect((await fixture.inspect()).events.filter(event => event.type === "files")).toEqual([]);
+  });
+
   const permissionReason = "当前账户无该抖音号的全域投放权限，不支持添加素材";
   async function permissionTooltip(page: Page, mode: "hover" | "existing" | "hidden" | "distant") {
     await page.locator("#add-video-button").evaluate((element, { reason, mode }) => {

@@ -351,7 +351,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     return makeUploader(productionContract);
   }
 
-  it("foregrounds the prepared original page before dropping files after a tab switch", async () => {
+  it("foregrounds the prepared original page before selecting files after a tab switch", async () => {
     const task = await productionTask("background-before-drop.mp4");
     const uploader = productionUploader(), signal = new AbortController().signal;
     await uploader.connect(task, signal);
@@ -365,7 +365,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       await uploader.upload([task], signal);
       expect(await original.evaluate(() => document.visibilityState)).toBe("visible");
       const events = (await productionFixture!.inspect()).events;
-      expect(events.filter(event => event.type === "drop").map(event => event.names)).toEqual([[task.result.file_name]]);
+      expect(events.filter(event => event.type === "files").map(event => event.names)).toEqual([[task.result.file_name]]);
       expect(events.filter(event => ["confirm", "settings"].includes(event.type))).toEqual([]);
     } finally { await other.close(); await observer.close(); }
   });
@@ -420,8 +420,47 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       expect(second.result.upload_outcome).toBe(timing === "before preparation" ? "NOT_SELECTED" : "MAY_HAVE_UPLOADED");
       expect((await uploader.ready([first], signal))[0]!.pageOwnership).toEqual(prepared.pageOwnership);
       const events = (await productionFixture!.inspect()).events;
-      expect(events.filter(event => event.type === "drop").map(event => event.names)).toEqual([[first.result.file_name]]);
+      expect(events.filter(event => event.type === "files").map(event => event.names)).toEqual([[first.result.file_name]]);
       expect(events.filter(event => ["confirm", "settings"].includes(event.type))).toEqual([]);
+    } finally { await observer.close(); }
+  });
+
+  it("adds all 30 files through owned choosers while earlier rows process and the entrance scrolls or loads", async () => {
+    productionFixture!.setControls({ entranceLoadingMs: 650, pendingName: "thirty-0.mp4" });
+    const batchId = randomUUID(), pageBatchId = randomUUID(), projectId = randomUUID();
+    const tasks = await Promise.all(Array.from({ length: 30 }, (_, index) => productionTask(`thirty-${index}.mp4`, batchId, pageBatchId, 30, projectId)));
+    const uploader = productionUploader(), signal = new AbortController().signal;
+    await uploader.connect(tasks[0]!, signal);
+    const observer = await chromium.connectOverCDP(tasks[0]!.authorization.target.cdpEndpoint, { noDefaults: true });
+    const selected: Array<{ fileName: string; index: number; ready: boolean }> = [];
+    let ownership;
+    try {
+      for (const start of [0, 9, 18, 27]) {
+        const group = tasks.slice(start, start + 9);
+        const prepared = await uploader.open(group, selected, signal);
+        if (ownership) expect(prepared.pageOwnership).toEqual(ownership); else ownership = prepared.pageOwnership;
+        expect(prepared.selectedIndex).toBe(start + 1);
+        const original = observer.contexts()[0]!.pages().find(page => new URL(page.url()).searchParams.get("adId") === tasks[0]!.authorization.target.adId)!;
+        if (start) {
+          await original.locator("#upload-video-panel").evaluate(element => {
+            element.style.cssText = "height:220px;overflow:auto";
+            (element.querySelector('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]') as HTMLElement).style.height = "1600px";
+            element.scrollTop = 1200;
+          });
+          expect(await uploader.pollReady(tasks.slice(0, start), signal)).toBeUndefined();
+        }
+        for (const task of group) task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
+        await uploader.upload(group, signal);
+        selected.push(...group.map((task, index) => ({ fileName: task.result.file_name, index: start + index + 1, ready: false })));
+      }
+      const events = (await productionFixture!.inspect()).events;
+      const files = events.filter(event => event.type === "files");
+      expect(files.map(event => event.names?.length)).toEqual([9, 9, 9, 3]);
+      expect(files.flatMap(event => event.names)).toEqual(tasks.map(task => task.result.file_name));
+      expect(files.every(event => event.control === "native-filechooser")).toBe(true);
+      expect(events.filter(event => ["drop", "confirm", "settings"].includes(event.type))).toEqual([]);
+      productionFixture!.setControls({ pendingName: "" });
+      expect((await uploader.ready(tasks, signal)).every(item => item.selectedCount === 30 && item.pageOwnership.targetId === ownership!.targetId)).toBe(true);
     } finally { await observer.close(); }
   });
 
@@ -467,7 +506,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       }
     }
     const observed = await productionFixture.inspect();
-    expect(observed.events.filter(event => event.type === "drop").map(event => event.names?.length)).toEqual(sizes);
+    expect(observed.events.filter(event => event.type === "files").map(event => event.names?.length)).toEqual(sizes);
     expect(observed.events.filter(event => event.type === "dom").at(-1)).toMatchObject({ cancelVisible: !previousReady, confirmEnabled: previousReady });
     if (!previousReady) expect(await uploader.pollReady(tasks, signal)).toBeUndefined();
     productionFixture.setControls({ pendingName: "" });
@@ -487,11 +526,11 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     for (const task of tasks) task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
     await uploader.upload(tasks, signal);
     await expect(uploader.ready(tasks, signal)).rejects.toMatchObject({ failure: { code: "TIMEOUT" } });
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toHaveLength(1);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toHaveLength(1);
     expect((await productionFixture.inspect()).events.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
   });
 
-  it("recovers every unknown member of an interrupted nine-file group on the original page without another drop", async () => {
+  it("recovers every unknown member of an interrupted nine-file group on the original page without another selection", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset(); productionFixture.setControls({ processingDelayMs: 160, rowAppearanceDelayMs: 300 });
     const batchId = randomUUID(), pageBatchId = randomUUID(), projectId = randomUUID();
@@ -505,7 +544,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     const selected = tasks.map((task, index) => ({ fileName: task.result.file_name, index: index + 1, ready: false }));
     for (const task of tasks) expect(await recovery.readOnlyCheck(task, prepared.pageOwnership, selected, signal)).toMatchObject({ fileName: task.result.file_name, selectedCount: 9, pageOwnership: prepared.pageOwnership });
     const observed = await productionFixture.inspect();
-    expect(observed.events.filter(event => event.type === "drop")).toHaveLength(1);
+    expect(observed.events.filter(event => event.type === "files")).toHaveLength(1);
     expect(observed.events.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
   });
 
@@ -520,10 +559,10 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     const group = tasks.slice(0, 9); await uploader.open(group, [], signal);
     for (const task of group.slice(0, 8)) task.result = { ...task.result, upload_outcome: "MAY_HAVE_UPLOADED" };
     await expect(uploader.upload(group, signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toEqual([]);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toEqual([]);
   });
 
-  it("drops two snapshots on the actual production selector branch, waits through processing, and matches reordered rows by filename", async () => {
+  it("selects two snapshots on the actual production selector branch, waits through processing, and matches reordered rows by filename", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset();
     productionFixture.setControls({ processingDelayMs: 250, rowAppearanceDelayMs: 80, reorderRows: true });
@@ -549,7 +588,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     expect(secondReady).toMatchObject({ fileName: second.result.file_name, selectedCount: 2, pageOwnership: firstPrepared.pageOwnership });
 
     const events = (await productionFixture.inspect()).events;
-    expect(events.filter(event => event.type === "drop").map(event => event.names)).toEqual([[first.result.file_name], [second.result.file_name]]);
+    expect(events.filter(event => event.type === "files").map(event => event.names)).toEqual([[first.result.file_name], [second.result.file_name]]);
     expect(events.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
     const finalDom = events.filter(event => event.type === "dom").at(-1);
     expect(finalDom).toMatchObject({ selectedCount: "已选择 2/64：", cancelVisible: false, confirmEnabled: true, rows: [
@@ -557,14 +596,14 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     ] });
   });
 
-  it("checks whole-batch capacity before the first production-page drop", async () => {
+  it("checks whole-batch capacity before the first production-page selection", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset(); productionFixture.setControls({ capacity: 1 });
     const task = await productionTask(`capacity-${randomUUID()}.mp4`, randomUUID(), randomUUID(), 2);
     const uploader = productionUploader();
     await uploader.connect(task, new AbortController().signal);
     await expect(uploader.open([task], [], new AbortController().signal)).rejects.toMatchObject({ failure: { code: "CAPACITY_INSUFFICIENT" } });
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toEqual([]);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toEqual([]);
   });
 
   it.each([
@@ -587,7 +626,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     await uploader.connect(task, new AbortController().signal);
     await expect(uploader.open([task], [], new AbortController().signal)).rejects.toMatchObject({ failure: { code } });
     const events = (await productionFixture.inspect()).events;
-    expect(events.filter(event => event.type === "drop")).toEqual([]);
+    expect(events.filter(event => event.type === "files")).toEqual([]);
     expect(events.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
   });
 
@@ -599,7 +638,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     await uploader.connect(task, new AbortController().signal);
     const prepared = await uploader.open([task], [], new AbortController().signal);
     expect(prepared.pageOwnership.pageBatchId).toBe(task.authorization.pageBatchId);
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toEqual([]);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toEqual([]);
   });
 
   it("ignores an unrelated matching advertiser id when the unique account region matches", async () => {
@@ -608,14 +647,18 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     const uploader = productionUploader(), signal = new AbortController().signal;
     await uploader.connect(task, signal);
     expect((await uploader.open([task], [], signal)).selectedIndex).toBe(1);
-    expect((await productionFixture!.inspect()).events.filter(event => event.type === "drop" || event.type === "confirm" || event.type === "settings")).toEqual([]);
+    expect((await productionFixture!.inspect()).events.filter(event => event.type === "files" || event.type === "confirm" || event.type === "settings")).toEqual([]);
   });
 
-  it("retains permanent fences and blocks later groups when a newly dropped row never appears, including read-only recovery", async () => {
+  it.each([
+    { acceptedGroups: 1, firstReady: true, missingWholeGroup: false },
+    { acceptedGroups: 1, firstReady: false, missingWholeGroup: true },
+    { acceptedGroups: 2, firstReady: false, missingWholeGroup: true }
+  ])("retains fences when added rows disappear or a whole group is ignored: %j", async ({ acceptedGroups, firstReady, missingWholeGroup }) => {
     const source = productionFixture!;
     const batchId = randomUUID(), projectId = randomUUID(), pageBatchId = randomUUID();
-    const tasks = await Promise.all(Array.from({ length: 21 }, (_, i) => productionTask(`missing-new-${i}.mp4`, batchId, pageBatchId, 21, projectId)));
-    source.setControls({ removeName: tasks[9]!.result.file_name, processingDelayMs: 0 });
+    const tasks = await Promise.all(Array.from({ length: 30 }, (_, i) => productionTask(`missing-new-${i}.mp4`, batchId, pageBatchId, 30, projectId)));
+    source.setControls(missingWholeGroup ? { ignoreSelectionAfter: acceptedGroups, pendingName: tasks[0]!.result.file_name } : { removeName: tasks[9]!.result.file_name, processingDelayMs: 0 });
     const state: QueueState = {
       schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, updatedAt: now(),
       batch: { schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [],
@@ -634,8 +677,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       const uploader = productionUploader(), upload = uploader.upload.bind(uploader);
       uploader.upload = async (group, signal) => {
         await upload(group, signal);
-        // This case requires a completed first group before a missing second-group row.
-        if (group[0]!.input.export_task_id === tasks[0]!.input.export_task_id) await uploader.ready(group, signal);
+        if (firstReady && group[0]!.input.export_task_id === tasks[0]!.input.export_task_id) await uploader.ready(group, signal);
       };
       return uploader;
     }, accounts: new QianchuanAccountConfigReader() });
@@ -643,25 +685,27 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       await service.chooseConfig(configPath);
       await service.configure({ enabled: true, timeouts: { fileInput: 2000, processing: 5000, confirmation: 3000 } });
       const selection = { enabled: true as const, accountProduct: "眼贴" as const };
-      await service.registerBatch(state.batch, selection, await service.preflight(selection, 21));
+      await service.registerBatch(state.batch, selection, await service.preflight(selection, 30));
       for (const task of tasks) await service.enqueueFinalArtifact({ project_id: projectId, batch_id: batchId, export_task_id: task.input.export_task_id });
       await service.runPending();
       const records = tasks.map(task => store.tasks().find(record => record.input.export_task_id === task.input.export_task_id)!);
-      expect(records.slice(0, 9).every(task => task.result.upload_outcome === "READY")).toBe(true);
-      expect(records.slice(9, 18).every(task => task.result.state === "NEEDS_HUMAN" && task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
-      expect(records.slice(18).every(task => task.result.upload_outcome === "NOT_SELECTED" && !store.hasMarker(task.result.upload_task_id))).toBe(true);
-      const fencePaths = records.slice(0, 18).map(task => path.join(store.root, "selection-fences", `${task.result.upload_task_id}.json`));
+      const fencedCount = (acceptedGroups + 1) * 9, readyCount = firstReady ? 9 : 0;
+      expect(records.slice(0, readyCount).every(task => task.result.upload_outcome === "READY")).toBe(true);
+      expect(records.slice(readyCount, fencedCount).every(task => task.result.state === "NEEDS_HUMAN" && task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
+      expect(records.slice(fencedCount).every(task => task.result.upload_outcome === "NOT_SELECTED" && !store.hasMarker(task.result.upload_task_id))).toBe(true);
+      const fencePaths = records.slice(0, fencedCount).map(task => path.join(store.root, "selection-fences", `${task.result.upload_task_id}.json`));
       const fences = await Promise.all(fencePaths.map(file => readFile(file)));
-      const eventsBefore = (await source.inspect()).events.filter(event => ["drop", "click", "confirm", "settings"].includes(event.type));
-      expect(eventsBefore.filter(event => event.type === "drop").map(event => event.names?.length)).toEqual([9, 9]);
-      await service.resume(records[9]!.result.upload_task_id);
+      const eventsBefore = (await source.inspect()).events.filter(event => ["files", "drop", "chooser-open", "click", "confirm", "settings"].includes(event.type));
+      expect(eventsBefore.filter(event => event.type === "files").map(event => event.names?.length)).toEqual(Array(acceptedGroups + 1).fill(9));
+      expect(eventsBefore.filter(event => ["drop", "confirm", "settings"].includes(event.type))).toEqual([]);
+      await service.resume(records[readyCount]!.result.upload_task_id);
       await service.runPending();
-      expect((await source.inspect()).events.filter(event => ["drop", "click", "confirm", "settings"].includes(event.type))).toEqual(eventsBefore);
+      expect((await source.inspect()).events.filter(event => ["files", "drop", "chooser-open", "click", "confirm", "settings"].includes(event.type))).toEqual(eventsBefore);
       expect(eventsBefore.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
       expect(await Promise.all(fencePaths.map(file => readFile(file)))).toEqual(fences);
       const reopened = new DouyinUploadStore(store.root); await reopened.load();
-      expect(reopened.tasks().filter(task => reopened.hasMarker(task.result.upload_task_id))).toHaveLength(18);
-      expect(records.slice(9, 18).every(task => reopened.task(task.result.upload_task_id)!.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
+      expect(reopened.tasks().filter(task => reopened.hasMarker(task.result.upload_task_id))).toHaveLength(fencedCount);
+      expect(records.slice(readyCount, fencedCount).every(task => reopened.task(task.result.upload_task_id)!.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
     } finally { await service.stop(); }
   }, 15_000);
 
@@ -677,7 +721,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     productionFixture.setControls(kind === "unknown-name" ? { unknownName: task.result.file_name } : { extraRow: true });
     await waitForEvents(events => events.some(event => event.type === "dom" && event.rows?.some(row => row.name === (kind === "unknown-name" ? "unknown-file.mp4" : "unexpected-extra.mp4"))), productionFixture);
     await expect(uploader.ready([task], new AbortController().signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toHaveLength(1);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toHaveLength(1);
     expect((await productionFixture.inspect()).events.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
   });
 
@@ -692,7 +736,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     await uploader.upload([task], new AbortController().signal);
     await expect(uploader.ready([task], new AbortController().signal)).rejects.toMatchObject({ failure: { code: "TIMEOUT" } });
     await waitForEvents(events => events.some(event => event.type === "dom" && event.selectedCount === "已选择 0/64：" && event.rows?.some(row => row.name === task.result.file_name && row.ready)), productionFixture);
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toHaveLength(1);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toHaveLength(1);
   });
 
   it("rejects a renamed prior production row before preparing another snapshot", async () => {
@@ -707,10 +751,10 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     productionFixture.setControls({ drift: true });
     await waitForEvents(events => events.some(event => event.type === "dom" && event.rows?.some(row => row.name === `drifted-${first.result.file_name}`)), productionFixture);
     await expect(uploader.open([second], [{ fileName: first.result.file_name, index: 1 }], new AbortController().signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toHaveLength(1);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toHaveLength(1);
   });
 
-  it("rejects disappearance of a previous ready row before preparing the next drop", async () => {
+  it("rejects disappearance of a previous ready row before preparing the next selection", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset();
     const batchId = randomUUID(), pageBatchId = randomUUID();
@@ -726,10 +770,10 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       return laterDom.some(event => event.rows?.length === 0);
     }, productionFixture);
     await expect(uploader.open([second], [{ fileName: first.result.file_name, index: 1 }], new AbortController().signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
-    expect((await productionFixture.inspect()).events.filter(event => event.type === "drop")).toHaveLength(1);
+    expect((await productionFixture.inspect()).events.filter(event => event.type === "files")).toHaveLength(1);
   });
 
-  it("recovers the original production modal read-only with actual list count and no new drop", async () => {
+  it("recovers the original production modal read-only with actual list count and no new selection", async () => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset();
     const batchId = randomUUID(), pageBatchId = randomUUID();
@@ -748,7 +792,7 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     ], new AbortController().signal);
     expect(evidence).toMatchObject({ fileName: first.result.file_name, selectedCount: 2, pageOwnership: firstUpload.prepared.pageOwnership });
     const events = (await productionFixture.inspect()).events;
-    expect(events.filter(event => event.type === "drop")).toHaveLength(2);
+    expect(events.filter(event => event.type === "files")).toHaveLength(2);
     expect(events.filter(event => event.type === "confirm" || event.type === "settings")).toEqual([]);
   });
 });

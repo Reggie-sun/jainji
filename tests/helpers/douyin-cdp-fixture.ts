@@ -38,6 +38,13 @@ export interface QianchuanFixtureControls {
   readyState?: "ready" | "processing" | "failed";
   processingDelayMs?: number;
   rowAppearanceDelayMs?: number;
+  entranceLoadingMs?: number;
+  entranceLoading?: boolean;
+  ignoreSelectionAfter?: number;
+  chooserAccept?: string;
+  chooserMultiple?: boolean;
+  chooserWrongPlan?: boolean;
+  chooserMissing?: boolean;
   pendingName?: string;
   successVisibility?: "hidden" | "collapse";
   reorderRows?: boolean;

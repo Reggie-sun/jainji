@@ -161,6 +161,18 @@ CodeGraph 已查询 service 的 entity 和 execute 关系，实际源代码确�
 
 一个连续投递窗口的 processing 总期限从首组列表接收且等待状态持久保存后开始，采用既有 processing 配置；每组 navigation/fileInput 仍分别有界，剩余 processing 期限不能被新成片无限延长。既有磁盘格式、ReadyEvidence 语义、SHA-256 准入/防重传及人工确认边界不变。Parent Self-Review：列表接收与平台完成独立，异常及取消覆盖全部本窗口已接收/选中文件，无第二 queue/ledger。工程验证与真实千川吞吐量分别报告。
 
+## Native File Chooser Repair Delta (2026-10-07)
+
+用户要求修复一根金、肥皂同批仅部分进入原上传列表的问题。本修订以已核实的“点击上传”原生 chooser 取代生产 CDP 拖拽投递，不改变连续分组、逐文件永久 fence、列表接收与全窗口 READY、原页只读恢复及人工确定边界。事故证据和验证限制见 [Selection Incident](qianchuan-upload-selection-2026-10-07.md)，实施范围见 [Repair Plan](superpowers/plans/2026-10-07-qianchuan-file-selection-repair.md)。
+
+原 modal 内唯一稳定 `data-e2e` 上传入口中，点击唯一可见的“点击上传”一次；不计算区域中心、不投递拖拽事件、不 force click、不绕开 disabled/loading。入口 loading 在现有 action/fileInput 中较短的期限内等待，同期反复核对原页面、双 ID 与 modal；这不是等待旧组 READY 的准入条件。持续忙碌在 fence 前拒绝新增组，选前已有 fence 的成员保持未知，绝不重放 click 或文件动作。
+
+文件 chooser 观察须在 click 前注册，事件必须唯一并属于本页主 frame。平台动态 input 必须是 detached、空 files、非 directory 的 multiple file input，accept 仅含已核实 `video/mp4` 与 `video/quicktime`（重复项允许）；这只核对控件，不扩大正式 MP4 准入。设文件之前重查原 modal、双 ID、入口及已选行；完成全部永久 fence 后，对精确本组私有快照调用一次 setFiles。chooser 缺失、歧义、类型失配、漂移、取消或超时均停止且不使用其他投递路径。观察/点击/设文件有界并可取消，迟到 chooser 不授文件动作权限。
+
+2026-10-07 真实原账号的独立新建空诊断页确认 click 会产生上述 chooser，未向其 setFiles、未确认；仅关闭自有诊断页，原上传 tabs 保留。该证据限定控件边界；隔离 Chrome 30 条 9+9+9+3 验证不代替真实平台整批上传。一根金 18 个 fence 对应原页 9 条成功行，肥皂 27 个 fence 对应原页 18 条成功行；缺行并不证明未上传，历史未知批次不因修复获得重传或自动成功权限。
+
+Parent Self-Review：复用 canonical page/store/service，无第二队列或恢复 owner；新入口仍停在确定前。原失败动作瞬间未保留完整事件，滚动命中失败与平台 loading 忽略投递是独立可复现场景，不将其宣称为每条历史上传的唯一已证明根因。
+
 ## Throughput Acceptance Delta
 
 2026-10-06 用户再次要求速度：**有多少正式准入成片就立即传多少，每次最多 9 条；不等凑齐、不等上一条或上一组完成。** 此要求取代此前等待凑满九条或全部制作结束才释放尾组的修复。制作尚未完成、后续 queue chunks 尚未登记，以及 completed 尚未完成正式 artifact 准入，均不得延迟当前已经准入且允许选择的成员。

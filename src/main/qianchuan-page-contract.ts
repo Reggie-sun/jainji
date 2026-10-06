@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import type { ElementHandle, Frame, Locator, Page } from "playwright-core";
+import type { ElementHandle, FileChooser, Frame, Locator, Page } from "playwright-core";
 import { accountPageUrl } from "../shared/qianchuan-account.js";
-import { uploadFailure, type PageOwnership, type ReadyEvidence } from "../shared/douyin-upload.js";
+import { UploadError, uploadFailure, type PageOwnership, type ReadyEvidence } from "../shared/douyin-upload.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { MAX_UPLOAD_GROUP_SIZE, type BatchSelectedFile } from "./douyin-upload-service.js";
 
@@ -15,7 +15,7 @@ export type QianchuanPageContract = PageContract & (
   { kind: "fixture"; fileNameAttribute: string; stateAttribute: string } | { kind: "qianchuan" }
 );
 export const PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract = {
-  kind: "qianchuan", version: "qianchuan-upload-only/2026-09-28",
+  kind: "qianchuan", version: "qianchuan-upload-only/2026-10-07",
   origin: "https://qianchuan.jinritemai.com", route: "/uni-prom",
   drawer: ".ovui-drawer--no-maskable .ad-drawer-body",
   modal: ".ovui-drawer:not(.ovui-drawer--no-maskable):has(.oc-create-material-submit-bar-count)",
@@ -25,7 +25,7 @@ export const PRODUCTION_QIANCHUAN_CONTRACT: QianchuanPageContract = {
   fileSelectionDoesNotConfirm: true,
 };
 export function qianchuanReadiness(): string | undefined { return undefined; }
-const dropSelector = '[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]';
+const uploadSelector = '[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]';
 const changed = () => uploadFailure("PAGE_CONTRACT_CHANGED", "page", "千川页面结构或批次归属无法唯一确认。", "在 Chrome 核查原页面；程序不会猜测计划或控件。", true);
 const lostModal = (reason = "已丢失、无法唯一确认或归属已改变") => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", `原上传弹窗${reason}。`, "请人工核查原批次；不能新开弹窗重传，已有文件屏障继续保留。", true);
 export function parseSelectedCount(text: string): { selected: number; capacity: number } {
@@ -256,7 +256,7 @@ export class QianchuanPageSession {
     if (observation.missing) throw changed();
     if (!selected.length && observation.capacity < task.authorization.expectedCount) throw uploadFailure("CAPACITY_INSUFFICIENT", "page", "千川计划可添加数量不足以容纳本次整批成片。", "人工处理容量后重新选择；程序不截断条数或自动确认腾位置。", true);
     if (selected.length + tasks.length > observation.capacity || selected.length + tasks.length > task.authorization.expectedCount || tasks.some(value => selected.some(file => file.fileName === value.result.file_name))) throw changed();
-    if (this.contract.kind === "qianchuan") await this.uploadEntrance(signal);
+    if (this.contract.kind === "qianchuan") await this.uploadEntrance(task, signal);
     else await this.unique(this.modal!.locator('input[type="file"]'), signal);
     this.prepared = { taskIds: tasks.map(value => value.result.upload_task_id), index: selected.length + 1 };
     return { pageOwnership: this.ownership!, selectedIndex: this.prepared.index };
@@ -294,46 +294,65 @@ export class QianchuanPageSession {
     const complete = size === this.selected.length && parsed.selected === this.selected.length && [...observed.values()].every(Boolean);
     return { ...parsed, missing: this.selected.length - observed.size, ready: complete && await confirm.isEnabled() && !await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count() };
   }
-  private async uploadEntrance(signal: AbortSignal): Promise<Locator> {
-    const zone = await this.unique(this.modal!.locator(`${dropSelector}:visible`), signal);
-    const disabled = await zone.evaluate(element => element.classList.contains("oc-create-upload-select-wrapper-disabled") || element.getAttribute("aria-disabled") === "true");
-    this.check(signal);
-    if (disabled) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "千川上传入口已禁用，当前不能继续添加视频；这不表示计划容量已满。", "在 Chrome 核查原上传窗口及平台提示；未选文件保留，不自动确认、腾位置或重传。", true);
-    return zone;
+  private async uploadEntrance(task: UploadTaskRecord, signal: AbortSignal): Promise<Locator> {
+    const deadline = Date.now() + Math.min(task.config.timeouts.action, task.config.timeouts.fileInput);
+    while (true) {
+      await this.guard(task, signal);
+      const zone = await this.unique(this.modal!.locator(`${uploadSelector}:visible`), signal);
+      const disabled = await zone.evaluate(element => element.classList.contains("oc-create-upload-select-wrapper-disabled") || element.getAttribute("aria-disabled") === "true");
+      this.check(signal);
+      if (disabled) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "千川上传入口已禁用，当前不能继续添加视频；这不表示计划容量已满。", "在 Chrome 核查原上传窗口及平台提示；未选文件保留，不自动确认、腾位置或重传。", true);
+      if (!await zone.locator(".oc-create-upload-select-loading:visible").count()) {
+        await this.unique(zone.getByText("点击上传", { exact: true }).filter({ visible: true }), signal);
+        return zone;
+      }
+      if (Date.now() >= deadline) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "千川上传入口持续忙碌，已停止添加视频。", "保留原上传窗口并核查平台提示；不会重选文件或自动确认。", true);
+      await this.page.waitForTimeout(Math.min(50, Math.max(1, deadline - Date.now()))); this.check(signal);
+    }
   }
-  private async drop(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> {
+  private async chooseFiles(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> {
     const task = this.group(tasks);
     if (this.frame !== this.page.mainFrame()) throw changed();
-    const session = await this.page.context().newCDPSession(this.page);
+    await this.guard(task, signal);
+    await this.page.bringToFront(); this.check(signal);
+    const zone = await this.uploadEntrance(task, signal);
+    const control = await this.unique(zone.getByText("点击上传", { exact: true }).filter({ visible: true }), signal);
+    const opened: FileChooser[] = [], record = (chooser: FileChooser) => { opened.push(chooser); };
+    const waiting = new AbortController(), actionSignal = AbortSignal.any([signal, waiting.signal]);
+    const timeout = Math.min(task.config.timeouts.action, task.config.timeouts.fileInput);
+    this.page.on("filechooser", record);
+    const event = this.page.waitForEvent("filechooser", { timeout, signal: actionSignal });
+    void event.catch(() => undefined);
     try {
-      for (const type of ["dragEnter", "dragOver", "drop"] as const) {
-        await this.guard(task, signal);
-        // Another tab can take focus while the permanent selection fence is saved.
-        await this.page.bringToFront(); this.check(signal);
-        const zone = await this.uploadEntrance(signal);
-        await zone.scrollIntoViewIfNeeded({ timeout: task.config.timeouts.action });
-        await this.guard(task, signal);
-        await this.uploadEntrance(signal);
-        const box = await zone.boundingBox(); if (!box) throw changed();
-        const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-        // Coordinates transport the drop only after a unique source-owned DOM control and hit test.
-        if (!await zone.evaluate((element, p) => element.contains(element.ownerDocument.elementFromPoint(p.x, p.y)), point)) throw changed();
-        this.check(signal);
-        await session.send("Input.dispatchDragEvent", { type, ...point, data: { items: [], files: tasks.map(value => value.snapshotPath), dragOperationsMask: 1 } });
-        this.check(signal);
-      }
-    } finally { await session.detach().catch(() => undefined); }
+      // Arm before the sole click: the platform creates a detached native input.
+      await control.click({ timeout, signal: actionSignal });
+      const chooser = await event;
+      await this.guard(task, signal); await this.uploadEntrance(task, signal);
+      const input = chooser.element();
+      const valid = await input.evaluate(element => {
+        if (!(element instanceof HTMLInputElement)) return false;
+        const accept = element.accept.split(",").map(value => value.trim());
+        return element.type === "file" && element.multiple && !element.webkitdirectory && !element.isConnected && element.files?.length === 0 &&
+          accept.includes("video/mp4") && accept.includes("video/quicktime") && accept.every(value => ["video/mp4", "video/quicktime"].includes(value));
+      });
+      if (opened.length !== 1 || chooser.page() !== this.page || !chooser.isMultiple() || await input.ownerFrame() !== this.frame || !valid) throw changed();
+      await this.observe(task, signal); this.check(signal);
+      if (opened.length !== 1) throw changed();
+      await chooser.setFiles(tasks.map(value => value.snapshotPath), { timeout: task.config.timeouts.fileInput, signal: actionSignal });
+      this.check(signal);
+    } catch (error) { this.check(signal); if (error instanceof UploadError) throw error; throw changed(); }
+    finally { waiting.abort(); this.page.off("filechooser", record); }
   }
   async upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> {
     const task = this.group(tasks);
     if (tasks.some(value => value.result.upload_outcome !== "MAY_HAVE_UPLOADED") || JSON.stringify(this.prepared?.taskIds) !== JSON.stringify(tasks.map(value => value.result.upload_task_id))) throw changed();
     await this.observe(task, signal); this.check(signal);
-    if (this.contract.kind === "qianchuan") await this.uploadEntrance(signal);
+    if (this.contract.kind === "qianchuan") await this.uploadEntrance(task, signal);
     const firstIndex = this.prepared!.index;
     this.selected = [...this.selected, ...tasks.map((value, index) => ({ fileName: value.result.file_name, index: firstIndex + index }))];
     this.pending = new Set(tasks.map(value => value.result.file_name)); this.prepared = undefined;
     // Every member's permanent selection fence is durable before this sole group file action.
-    if (this.contract.kind === "qianchuan") await this.drop(tasks, signal);
+    if (this.contract.kind === "qianchuan") await this.chooseFiles(tasks, signal);
     else await (await this.unique(this.modal!.locator('input[type="file"]'), signal)).setInputFiles(tasks.map(value => value.snapshotPath), { timeout: task.config.timeouts.fileInput });
     this.check(signal);
     const deadline = Date.now() + task.config.timeouts.fileInput;

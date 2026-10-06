@@ -44,11 +44,11 @@ async function select(value: UploadTaskRecord, prepared: Awaited<ReturnType<type
   value.result.upload_outcome = "MAY_HAVE_UPLOADED"; await prepared.port.upload([value], signal);
   return owned.pageOwnership;
 }
-async function zeroConfirmation(expectedDrops: number) {
+async function zeroConfirmation(expectedSelections: number) {
   await vi.waitFor(async () => {
     const events = (await fixture.inspect()).events;
     expect(events.filter(event => event.type === "confirm")).toHaveLength(0);
-    expect(events.filter(event => event.type === "drop")).toHaveLength(expectedDrops);
+    expect(events.filter(event => event.type === "files")).toHaveLength(expectedSelections);
   });
 }
 
