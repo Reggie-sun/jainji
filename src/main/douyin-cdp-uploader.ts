@@ -55,6 +55,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
     const task = tasks[0]; if (!task || tasks.length > MAX_UPLOAD_GROUP_SIZE) throw new Error("Invalid upload group");
     const contract = this.pageContract();
     return this.action(signal, async () => {
+      const initial = !this.page;
       if (!this.page) {
         if (selected.length) throw new Error("Missing original task page");
         const context = this.browser?.contexts()[0]; if (!context) throw new Error("Not connected");
@@ -71,6 +72,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
       }
       // Background tabs can suspend animation frames used by click stability checks.
       await this.page.bringToFront(); this.check(signal);
+      if (initial) await this.session!.openInitialPlan(task, signal);
       return this.session!.prepare(tasks, selected, await this.targetId(this.page), signal);
     });
   }

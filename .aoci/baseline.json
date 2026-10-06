@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-05T22:01:39Z",
+  "updated_at": "2026-10-06T10:32:47Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "c2448b60054bae195fbc41c841f1fb42e4646e4254a0ed96666756b9c874957e",
-      "size": 38678,
-      "normalized_sha256": "c2448b60054bae195fbc41c841f1fb42e4646e4254a0ed96666756b9c874957e"
+      "sha256": "189f07b7c125bef8c71ccb2de35ccdfd32e93f4552b83447875a7a638d2614fb",
+      "size": 38784,
+      "normalized_sha256": "189f07b7c125bef8c71ccb2de35ccdfd32e93f4552b83447875a7a638d2614fb"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "8713d966dcba8cd28bf144466afca53b45ff5c7d58a460fd956816c6266cf727",
-      "size": 93311,
-      "normalized_sha256": "8713d966dcba8cd28bf144466afca53b45ff5c7d58a460fd956816c6266cf727"
+      "sha256": "775cc98d5ca521f7ae359ba08a9f04b63a5fe556132f515929a0370a079dd8a2",
+      "size": 93175,
+      "normalized_sha256": "775cc98d5ca521f7ae359ba08a9f04b63a5fe556132f515929a0370a079dd8a2"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1383,9 +1383,9 @@
       "normalized_sha256": "df8385a32005ca70336d63f18408fe1db13a8a0a8ef5084d7bacd1c1a12d4b9a"
     },
     "src/main/douyin-cdp-uploader.ts": {
-      "sha256": "1912b1fba8df405bad1e51a1f9db118c64476f6f00a3b928506fd06c7315c7de",
-      "size": 7511,
-      "normalized_sha256": "1912b1fba8df405bad1e51a1f9db118c64476f6f00a3b928506fd06c7315c7de"
+      "sha256": "0d38acc85a098b3bebd0240ebbdf4962ff36c75e882770b1a0d2437c89b26f3f",
+      "size": 7615,
+      "normalized_sha256": "0d38acc85a098b3bebd0240ebbdf4962ff36c75e882770b1a0d2437c89b26f3f"
     },
     "src/main/douyin-upload-group.ts": {
       "sha256": "b5405ef1ed791a0eab62aaa9d4cf944d784ea692baceb81ac0f08a817701138f",
@@ -1508,9 +1508,9 @@
       "normalized_sha256": "4b7ca0f56e5b488e448500591c02e73ec3a2b18eeb1e2d0eefbc7408291d7cef"
     },
     "src/main/qianchuan-page-contract.ts": {
-      "sha256": "27731ee66268601594eb2a63fdd5ff9bfa9023e1e66d8cb4eaeaf74b49472701",
-      "size": 27093,
-      "normalized_sha256": "27731ee66268601594eb2a63fdd5ff9bfa9023e1e66d8cb4eaeaf74b49472701"
+      "sha256": "93b5231d3e230f6a3eb027e210d97f26e31b246c9415f9e6efe46c974abe1b3e",
+      "size": 29364,
+      "normalized_sha256": "93b5231d3e230f6a3eb027e210d97f26e31b246c9415f9e6efe46c974abe1b3e"
     },
     "src/main/qianchuan-plan-catalog.ts": {
       "sha256": "72cc37336ad4c0cf18b5e0d31a1bdde4deb4c4d3fb2c531362881fde4fec704e",
