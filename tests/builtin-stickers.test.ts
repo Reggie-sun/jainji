@@ -24,6 +24,7 @@ describe("built-in Agent stickers", () => {
       expect(first["frame-stars"].assetPath).not.toBe(historicalPath);
       expect(await readFile(historicalPath)).toEqual(historicalBytes);
       await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).resolves.toBeUndefined();
+      await expect(assertDecorationFrameOptions({ frame: { mode: "auto" } }, first as StickerAssets)).resolves.toBeUndefined();
       expect(Object.keys(first)).toHaveLength(13);
       expect(new Set(Object.values(first).map(asset => asset.assetFingerprint)).size).toBe(13);
       expect(first["frame-stars"].assetFingerprint).not.toBe("sha256:d3e24a0d294f2e3292cc458fd8c4b40037e801e909527e6540f4fd3c42806e5b");
@@ -67,6 +68,7 @@ describe("built-in Agent stickers", () => {
       }
       await writeFile(first["frame-stars"].assetPath, "corrupted");
       await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).rejects.toThrow("边框");
+      await expect(assertDecorationFrameOptions({ frame: { mode: "auto" } }, first as StickerAssets)).rejects.toThrow("边框");
       const mediaId = crypto.randomUUID();
       await expect(assertDecorationFrameOptions({ frame: { mode: "random" }, framesByMedia: { [mediaId]: { mode: "none" } } }, first as StickerAssets, [mediaId])).resolves.toBeUndefined();
       await expect(ensureBuiltinFrameAssets(directory)).rejects.toThrow();

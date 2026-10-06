@@ -38,7 +38,7 @@ export default function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [rule, setRule] = useState<RuleId>("black-gold");
-  const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({ mode: "agent", frame: { mode: "random" } }));
+  const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({ mode: "agent", frame: { mode: "auto" } }));
   const [selectedCorner, setSelectedCorner] = useState<Corner>();
   const [stickerRevision, setStickerRevision] = useState(0);
   const [coverStickerDirty, setCoverStickerDirty] = useState(false);
@@ -110,7 +110,7 @@ export default function App() {
       const appearance = projectChanged ? workspace?.decorations ?? DecorationAppearanceSchema.parse({ mode: "agent" }) : undefined;
       setDecorations((current) => {
         const restored = appearance ?? current;
-        return DecorationSchema.parse({ ...restored, ...(!restored.frame && !restored.frameId ? { frame: { mode: "random" } } : {}), productPrice });
+        return DecorationSchema.parse({ ...restored, ...(!restored.frame && !restored.frameId ? { frame: { mode: "auto" } } : {}), productPrice });
       });
     }
     const additions = ready.filter((item) => !knownMedia.current.has(item.id)).map((item) => item.id);

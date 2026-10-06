@@ -27,6 +27,6 @@ export function DisplayTextEditor({ rule, options, media, exportSettings, select
       <button type="button" className="button secondary compact" disabled={disabled || !onChange} onClick={() => onChange?.(undefined, selected?.id)}>恢复默认位置和开关</button>
       <button type="button" className="button secondary compact" disabled={disabled || !onSave} onClick={onSave}>保存到当前项目</button>
       <small>选择素材后可播放预览、拖动文字，也可用方向键微调。每条素材的位置和开关独立，文字内容与显示时段整批共用。保存会更新当前项目模板，同一素材的所有新版本使用相同设置；首次保存新素材项目才需选择文件位置。</small>
-    <TemplatePreview rule={rule} options={{ ...options, frame, frameId: frame.mode === "manual" ? frame.frameId : frame.mode === "random" ? "frame-stars" : undefined, framesByMedia: undefined, displayText: settings }} media={selected} dimensions={dimensions} selectedCorner={selectedCorner} onCornerSelect={onCornerSelect} disabled={disabled} onDisplayTextChange={value => onChange?.(value, selected?.id)} />
+    <TemplatePreview rule={rule} options={{ ...options, frame, frameId: frame.mode === "manual" ? frame.frameId : frame.mode === "random" || frame.mode === "auto" ? "frame-stars" : undefined, framesByMedia: undefined, displayText: settings }} media={selected} dimensions={dimensions} selectedCorner={selectedCorner} onCornerSelect={onCornerSelect} disabled={disabled} onDisplayTextChange={value => onChange?.(value, selected?.id)} />
   </div>;
 }

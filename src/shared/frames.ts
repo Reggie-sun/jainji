@@ -27,6 +27,7 @@ export function isFrameId(id: string): boolean {
 export const FrameIdSchema = z.string().refine(isFrameId);
 
 export const FrameSettingsSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("auto") }).strict(),
   z.object({ mode: z.literal("none") }).strict(),
   z.object({ mode: z.literal("random") }).strict(),
   z.object({ mode: z.literal("manual"), frameId: FrameIdSchema }).strict(),

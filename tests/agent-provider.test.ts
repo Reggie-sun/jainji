@@ -18,6 +18,34 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("decides optional frames once and keeps forced random frames random across versions", () => {
+    const mediaId = crypto.randomUUID();
+    const assets = { ...stickerAssets, ...Object.fromEntries(["frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) };
+    const optional = DecorationSchema.parse({ mode: "random", frame: { mode: "auto" }, displayText: { enabled: false, x: 0.5, y: 0.13 } });
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.99);
+    try {
+      const resolve = createDecorationFrameResolver(optional, assets, [mediaId]);
+      const omitted = resolve(mediaId);
+      expect(omitted).toMatchObject({ frame: { mode: "none" }, frameId: undefined });
+      random.mockReturnValue(0);
+      const included = resolve(mediaId);
+      expect(included).toMatchObject({ frame: { mode: "random" }, frameId: expect.stringMatching(/^frame-/) });
+      expect(included.framesByMedia).toBeUndefined();
+      for (const frozen of [omitted, included]) {
+        const first = materializePlan({ ...plan, filter: "cool", intensity: 0.3 }, "clean", { width: 720, height: 1280 }, assets, frozen);
+        const second = materializePlan({ ...plan, filter: "cool", intensity: 0.3 }, "clean", { width: 720, height: 1280 }, assets, frozen);
+        expect(first.layers.filter(layer => layer.type === "sticker" && layer.frame).map(layer => layer.type === "sticker" && layer.assetPath))
+          .toEqual(second.layers.filter(layer => layer.type === "sticker" && layer.frame).map(layer => layer.type === "sticker" && layer.assetPath));
+      }
+      const forced = createDecorationFrameResolver(DecorationSchema.parse({ ...optional, framesByMedia: { [mediaId]: { mode: "random" } } }), assets, [mediaId]);
+      random.mockReturnValue(0.99);
+      expect(new Set(Array.from({ length: 3 }, () => forced(mediaId).frameId))).toEqual(new Set(["frame-stars", "frame-hearts", "frame-confetti"]));
+      const disabled = createDecorationFrameResolver(DecorationSchema.parse({ ...optional, framesByMedia: { [mediaId]: { mode: "none" } } }), assets, [mediaId]);
+      expect(disabled(mediaId).frameId).toBeUndefined();
+      expect(() => createDecorationFrameResolver(optional, stickerAssets)).toThrow("边框");
+      expect(() => materializePlan(plan, "clean", { width: 720, height: 1280 }, assets, optional)).toThrow("边框尚未冻结");
+    } finally { random.mockRestore(); }
+  });
   it("resolves independent per-media frames, cycles the frame pool and keeps ordinary stickers separate", () => {
     const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
     const assets = { ...stickerAssets, ...Object.fromEntries(["frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) };

@@ -33,7 +33,7 @@ scope.ts[CQ7M]: F:验证任务拥有文件的Git前后像并捕获参与证据�
 agent-controller.ts[AW9L]: F:准入制作请求并将Hybrid自动覆盖接到原runner和队列 | R:code:src/main/agent-runner.ts,code:src/main/hybrid-cover-session.ts,code:src/main/decoration-frame.ts,code:src/main/queue.ts | A:共享schema先验手填文字；普通和Hybrid按所选素材预检固定及随机边框池；enabled且agent继承shape intent | S:缺知识store在Hybrid准备前拒绝；intent不借strict接缝；组合先于模型准入；main-only资格session无IPC；关闭覆盖保留偏好；manual/random无模型
 agent-frames.ts[IA6T]: F:校验源素材指纹并为创作模型抽取临时联系帧 | R:code:src/main/ffmpeg.ts,code:src/main/domain.ts | A:将抽帧路径交给主进程调用者，结束后清理临时目录 | S:源文件指纹变化时拒绝继续分析
 agent-preview-store.ts[RB6T]: F:登记主管样片的临时路径并经专用协议安全解析 | R:code:src/main/agent-controller.ts,code:src/main/paths.ts | A:以run和item身份生成预览URL，结束时清理目录 | S:仅当前运行及受登记目录内的文件可解析
-agent-provider.ts[AA9L]: F:调用模型校验包装方案并物化本地文字贴纸边框 | R:code:src/shared/agent.ts,code:src/main/domain.ts,code:src/main/decoration-frame.ts,code:src/main/shape-cover-selection.ts | A:各装饰模式消费已冻结边框ID并标记随机或指定来源；手填文字及原shape选款保持 | S:随机缺冻结ID拒绝，不临时选款；缺图伪造交接目录外选款拒绝；shape须四项SAFE及NATURAL；不重试或改写文字；边框不由模型选款
+agent-provider.ts[AA9L]: F:调用模型校验包装方案并物化本地文字贴纸及冻结边框 | R:code:src/shared/agent.ts,code:src/main/domain.ts,code:src/main/decoration-frame.ts,code:src/main/shape-cover-selection.ts | A:消费已解析随机或指定边框ID并标记来源；手填文字及shape选款保持 | S:未解析auto或随机缺冻结ID拒绝，不临时选款；缺图伪造交接目录外选款拒绝；shape须四项SAFE及NATURAL；不重试改写文字或让模型选框
 agent-runner.ts[AW9M]: F:拥有逐素材版本数量、准备、取消和正式提交编排 | R:code:src/main/hybrid-cover-session.ts,code:src/main/agent-template-preparation.ts,code:src/main/decoration-frame.ts,code:src/main/shape-cover-production.ts | A:新轮逐输出冻结边框设置；主管重建共用同款；Hybrid完整template沿原enqueue；requestedCount精确分配 | S:Hybrid不再创作复核冻结层；strict shape走原托管发布；重试不重新获得authority；准备失败不提交该项
 agent-template-preparation.ts[AB7T]: F:组装逐素材文字边框及覆盖层为校验后的冻结模板 | R:code:src/main/agent-provider.ts,code:src/shared/decorations.ts,code:src/shared/frames.ts,code:src/main/automatic-corner-layout.ts,code:src/main/cover-sticker.ts | A:按source.id解析文字和边框覆盖设置；消费冻结随机ID；形状层在普通补角后原样追加 | S:不在主管重建时重选边框；形状占位取placement加有限半径及时段，不把透明PNG全画布视作占满四角
 api-request-scheduler.ts[RP6T]: F:按连接凭据共享模型请求的起始间隔与并发上限 | R:code:src/main/agent-provider.ts,code:src/shared/agent.ts | A:相同baseUrl和Key合并为一个lane，等待与请求均支持取消 | S:凭据仅参与哈希分组，不写入日志或索引
@@ -184,7 +184,7 @@ hybrid-cover-production.ts[AB8S]: F:消费H4批准冻结层并核验原生产编
 hybrid-cover-session.ts[AW7T]: F:将原H2 H3 H4接为逐源Hybrid模板准备适配 | R:code:src/main/shape-cover-vision-corner-semantic.ts,code:src/main/shape-cover-hybrid-h3.ts,code:src/main/hybrid-cover-production.ts,code:src/main/source-sticker-knowledge-store.ts,code:src/main/decoration-frame.ts | A:同指纹共用批准覆盖；边框按素材版本独立冻结并缓存；文字及边框经原materializer追加批准层 | S:容器及视频身份任一知识争议关闭；未知角原样，不补普通角或改滤镜；失败不重试；边框换款不重判批准PNG
 builtin-frames.ts[IB6S]: F:离线生成十三款克制电商整圈透明PNG边框 | R:code:src/shared/frames.ts,code:src/main/builtin-stickers.ts | A:窄边细线柔光金属角；固定RGBA画布；按SHA命名并核已有文件 | S:ID稳定，新图另存，旧冻结文件不删除覆盖；中央透明；同名内容损坏拒绝
 decoration-assets-ipc.ts[EU7T]: F:注册贴纸和边框上传删除的受信任IPC | R:code:src/main/uploaded-stickers.ts,code:src/shared/frames.ts,code:src/main/index.ts | A:复用原目录owner；共享mutation锁和idle校验；删除立即取消新制作资格 | S:对话框后重核空闲；失败恢复资源映射；保留冻结文件
-decoration-frame.ts[DB7T]: F:预检边框资源并解析逐素材随机指定关闭设置及底层图层 | R:code:src/main/paths.ts,code:src/main/domain.ts,code:src/shared/frames.ts | A:独立池洗牌轮转且同素材相邻版避重；调用方保留输出冻结设置；核中央透明非空尺寸；全画布zIndex负1000 | S:空随机池或缺失漂移拒绝；不混普通贴纸，不改变覆盖几何
+decoration-frame.ts[DB7T]: F:预检独立边框池并逐输出冻结自动使用随机指定或关闭决定 | R:code:src/main/paths.ts,code:src/main/domain.ts,code:src/shared/frames.ts | A:auto等概率收敛random或none；平衡池轮转同素材避重；调用方保留冻结设置；核中央透明及全画布底层 | S:auto与random缺池或文件漂移拒绝；不混普通贴纸，不改变覆盖几何；主管重建不重选
 
 qianchuan-cleanup-plans.ts[AW8T]: F:核验确认的账号计划集合并串行清理汇总进展 | R:code:src/main/qianchuan-plan-materials.ts,code:src/main/qianchuan-video-library.ts,code:src/shared/qianchuan-video-library.ts | A:全部显式计划先核新鲜目录；逐计划复用原owner；组合视频库每账号一次；保留已确认计数和逐计划消息；集合总时限30分钟 | S:不加入确认后出现的新计划；任一计划失效在首次删除前拒绝；BLOCKED停止该账号余下计划及清库，不重试未知；旧单计划兼容
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
@@ -195,7 +195,7 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7L]: F:协调项目草稿素材包装批量及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverStickerPanel.tsx,code:src/renderer/CornerDecorationPicker.tsx | A:新草稿默认随机边框；显式重开同一项目恢复完整workspace；逐素材边框保存经原项目owner；保留shape及文字 | S:普通状态通知不重置草稿；旧API缺字段无边框；界面不授main authority；任务冻结；上传授权不入项目或模型
+App.tsx[AU7L]: F:协调项目草稿素材包装批量及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverStickerPanel.tsx,code:src/renderer/CornerDecorationPicker.tsx | A:新草稿默认auto边框；显式重开恢复完整workspace及既有frame模式；逐素材设置保存交原项目；保留shape文字 | S:普通状态通知不重置草稿；旧API缺字段无边框；界面不授main authority；任务冻结；上传授权不入项目或模型
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
@@ -228,7 +228,7 @@ DouyinUploadControls.tsx[EU6T]: F:提供本次制作的千川上传开关和产�
 DouyinUploadPanel.tsx[EU7T]: F:展示千川活动任务、账号设置及整批处置和历史 | R:code:src/main/preload.ts,code:src/renderer/QianchuanAccountSettings.tsx,code:src/renderer/QianchuanUploadHistory.tsx | A:异常任务直达对应槽位换品换计划并聚焦；保存后提示显式整批改传再继续；串行反馈账号操作；计数排除结束历史；整批确认后close | S:main独占准入与成员绑定；保存不自动改传或重传；全局开关不授权批次；closed非平台结果，READY非确认，UNKNOWN不重传
 BatchProductionPanel.tsx[EU6S]: F:呈现批量参数每模板账号计划及作品进度 | R:code:src/shared/batch-production.ts,code:src/renderer/QianchuanPlanSelect.tsx,code:src/main/preload.ts | A:只为启用上传且勾选模板挂载计划；账号关联保存；冻结本轮选择，恢复显式计划免重复初读 | S:缺计划禁启动；账号变化清选择；取消勾选释放租约；旧main加载等空闲；关联错误不静默跳过
 BatchProductionDetails.tsx[EU6T]: F:展示单个批量商品的制作导出上传与结束历史 | R:code:src/shared/batch-production.ts,code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanUploadHistory.tsx | A:轮询run/job；账号共用显示名称；分别计数READY、待上传、处理中和未知并提示原页核查；保留错误播放目录及只读closed历史 | S:切换退出丢弃迟到响应；只有完成成片可播放；READY停在确定前且未知禁止重传；历史详情不授跨项目操作或确认
-DisplayTextEditor.tsx[EU6T]: F:同卡编辑手填文字及逐素材预览开关位置和边框 | R:code:src/shared/decorations.ts,code:src/shared/frames.ts,code:src/renderer/TemplatePreview.tsx,code:src/renderer/MediaSelector.tsx | A:选素材投影文字及边框；随机仅示意星星款；播放拖动与保存沿原回调 | S:文字整批手填，不形成另一来源；随机预览不承诺冻结选款；本卡不授制作或保存路径权限
+DisplayTextEditor.tsx[EU6T]: F:编辑手填文字及逐素材预览开关位置和边框 | R:code:src/shared/decorations.ts,code:src/shared/frames.ts,code:src/renderer/TemplatePreview.tsx,code:src/renderer/MediaSelector.tsx | A:按素材投影文字和边框；auto及random用示意款；播放拖动保存沿原回调 | S:文字整批手填；预览不承诺是否使用及冻结款；不授制作或保存路径权限
 MediaSelector.tsx[EU5T]: F:提供按素材ID选择的可访问下拉列表及前后导航 | R:code:src/renderer/DisplayTextEditor.tsx,code:src/renderer/CoverStickerPanel.tsx | A:combobox与listbox键盘高亮选取；外部点击或失焦关闭；滚动到高亮项；选定回调后恢复焦点；显示序号总数 | S:未知value显示首项但不自动调用onChange；组件不持久化选择
 QianchuanAccountSettings.tsx[EU6T]: F:编辑产品名称计划并展示账号浏览器和素材库控制 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanVideoLibraryActions.tsx | A:任务入口预填槽位名称和计划，核对原advertiser再允许保存或打开；浏览器控制明确确认；清空入口使用已配置账号 | S:保存新计划不授权旧批次迁移；未保存链接不决定关闭目标；main保护待处理任务；登录目录保留
 qianchuan-upload-status.ts[CU4T]: F:统一普通和批量作品页的千川状态展示文案 | R:code:src/shared/douyin-upload.ts,code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/BatchProductionDetails.tsx | A:以结果状态类型约束完整映射，DISCARDED显示已删除上传任务 | S:-
@@ -239,7 +239,7 @@ QianchuanVideoLibrarySchedule.tsx[EU7T]: F:编辑每日清空及可选计划素�
 QianchuanCleanupResults.tsx[EU5T]: F:展示素材清理结果摘要与按账号的展开明细 | R:code:src/shared/qianchuan-video-library.ts,code:src/shared/qianchuan-account.ts | A:汇总BLOCKED数量、账号名称及消息；中文格式化执行时间 | S:展示结果不执行删除
 QianchuanPlanSelect.tsx[EU6T]: F:为上传和清理选择账号计划并展示商品及完整身份 | R:code:src/renderer/qianchuan-plan-requests.ts,code:src/shared/qianchuan-plan-selection.ts | A:purpose区分操作文案；商品优先展示计划名及ID；账号核对；刷新清选择重读；挂载租约卸载释放 | S:不自动选唯一计划；商品名不决定目标；错误清选择，迟到响应失效；旧preload提示等待
 qianchuan-plan-requests.ts[AW6T]: F:共享同账号及refresh类别的在途计划读取租约 | R:code:src/main/preload.ts,code:src/shared/qianchuan-plan-selection.ts | A:UUID标识读请求；引用计数释放；末位延迟一轮取消以承接StrictMode；结束移除 | S:不缓存已完成列表；refresh与普通请求不混用；取消不影响尚挂载使用者；旧preload不传UUID
-FrameDecorationPicker.tsx[EU6S]: F:编辑整批与逐素材随机指定关闭边框及上传删除 | R:code:src/shared/frames.ts,code:src/renderer/MediaSelector.tsx,code:src/main/preload.ts | A:独立素材覆盖与恢复继承；保存交原项目；上传入随机池不自动固定；删除清所有指定引用 | S:卸载隔离迟到响应；mutation独立禁用；历史冻结文件保留；随机预览仅示意
+FrameDecorationPicker.tsx[EU6T]: F:编辑整批及逐素材自动必用随机指定关闭边框 | R:code:src/shared/frames.ts,code:src/renderer/MediaSelector.tsx,code:src/main/preload.ts | A:默认auto可省略；random每条必用随机款；逐素材覆盖及恢复继承；上传入池保存交原项目；删除清指定引用 | S:卸载隔离迟到响应；mutation独立禁用；历史文件保留；自动及随机预览仅示意，重试沿冻结决定
 
 
 QianchuanCleanupPlanSelect.tsx[EU7T]: F:读取账号清理计划并默认全选提供逐项取消 | R:code:src/renderer/qianchuan-plan-requests.ts,code:src/shared/qianchuan-plan-selection.ts | A:复用读取租约；校验广告主；加载和错误清选择；显式刷新重新全选；重挂载保留交集及明确空选择 | S:只读目录不删除；卸载隔离迟到响应；不改变上传计划选择；商品名不决定目标
@@ -276,7 +276,7 @@ qianchuan-video-library-schedule.ts[CW7T]: F:定义每日清理准入、运行�
 qianchuan-plan-selection.ts[CB7T]: F:定义账号计划选项及共享读取取消refresh请求 | R:code:src/shared/qianchuan-account.ts,code:src/shared/douyin-upload.ts | A:strict选项含广告主计划ID名称及可选1至50商品名；读UUID/refresh取消仅UUID；最多1000项同广告主计划唯一 | S:商品名及计划名不决定上传目标；schema不授上传确认；ID和名称控制字符受限
 batch-upload.ts[CC6T]: F:定义模板账号绑定及批量上传账号解析 | R:code:src/shared/qianchuan-account.ts | A:显式绑定优先；未绑定旧模板仅唯一精确名称匹配；返回账号或错误 | S:名称匹配不替代广告主身份核验；未知或歧义不得自动选账号
 hybrid-cover.ts[CB8T]: F:定义H4批准角落冻结生产层的严格序列化绑定 | R:code:src/main/hybrid-cover-production.ts,code:src/main/domain.ts,code:src/shared/source-sticker-knowledge.ts | A:固定HybridApprovedCorner/v1与UUID、源、设置、PNG binding packet摘要、projection placement及range | S:coverage必须oldPixels正数uncovered0/fraction1；数据不授authority或恢复进程内owner；不声明全源完整性
-frames.ts[CB6T]: F:定义十三款电商边框目录及随机指定关闭与逐素材优先级 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:保留既有ID，更新展示名称；uploaded-frame加64位SHA；素材优先整批再legacy，缺字段none | S:边框独立命名空间，不当普通贴纸
+frames.ts[CB6T]: F:定义十三款边框目录及自动随机指定关闭草稿合同 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:strict auto/random/manual/none；素材优先整批再legacy；既有ID及uploaded SHA格式保持，缺字段none | S:边框独立命名空间；random既有每条必用语义保持
 
 
 ===/home/reggie/vscode_folder/jianji/src/types/===

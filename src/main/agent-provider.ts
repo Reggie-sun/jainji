@@ -271,6 +271,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const displayText = options.displayText && { ...options.displayText, ...(geometry ? { x: geometry.x, y: geometry.y } : {}) };
   const templateBase = (name: string) => ({ ...createDefaultTemplate(name), displayText });
   const frame = frameSettings(options);
+  if (frame.mode === "auto") throw new Error("自动边框尚未冻结，请重新开始制作。");
   const frameId = frame.mode === "manual" ? frame.frameId : frame.mode === "random" ? options.frameId : undefined;
   if (frame.mode === "random" && !frameId) throw new Error("随机边框尚未冻结，请重新开始制作。");
   const frameLayers = decorationFrameLayers(frameId, stickerAssets, options.frame ? frame.mode === "random" ? "random" : "manual" : undefined);

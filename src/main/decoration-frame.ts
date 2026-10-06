@@ -13,11 +13,13 @@ export function decorationFramePool(assets: StickerAssets) {
 export function createDecorationFrameResolver(options: DecorationOptions | undefined, assets: StickerAssets, mediaIds?: readonly string[]): (mediaId: string) => DecorationOptions {
   const policies = mediaIds?.length ? mediaIds.map(id => frameSettings(options, id)) : [frameSettings(options), ...Object.values(options?.framesByMedia ?? {})];
   const pool = decorationFramePool(assets);
-  if (policies.some(value => value.mode === "random") && !pool.length) throw new Error("没有可用的边框，请上传边框或关闭随机边框。");
-  const picker = policies.some(value => value.mode === "random") && pool.length ? new BalancedStickerPicker(pool) : undefined;
+  const usesPool = policies.some(value => value.mode === "random" || value.mode === "auto");
+  if (usesPool && !pool.length) throw new Error("没有可用的边框，请上传边框或关闭随机边框。");
+  const picker = usesPool && pool.length ? new BalancedStickerPicker(pool) : undefined;
   const previous = new Map<string, string>();
   return mediaId => {
-    const frame = frameSettings(options, mediaId);
+    const setting = frameSettings(options, mediaId);
+    const frame = setting.mode === "auto" ? { mode: Math.random() < 0.5 ? "random" as const : "none" as const } : setting;
     const frameId = frame.mode === "manual" ? frame.frameId : frame.mode === "random"
       ? picker!.pick(pool.length > 1 && previous.has(mediaId) ? new Set([previous.get(mediaId)!]) : new Set()).id : undefined;
     if (frameId && !assets[frameId]) throw new Error("所选边框不存在或已删除，请重新选择。");
@@ -29,8 +31,8 @@ export function createDecorationFrameResolver(options: DecorationOptions | undef
 export async function assertDecorationFrameOptions(options: Pick<DecorationOptions, "frame" | "frameId" | "framesByMedia">, assets: StickerAssets, mediaIds?: readonly string[]): Promise<void> {
   const policies = mediaIds?.length ? mediaIds.map(id => frameSettings(options, id)) : [frameSettings(options), ...Object.values(options.framesByMedia ?? {})];
   const pool = decorationFramePool(assets);
-  if (policies.some(value => value.mode === "random") && !pool.length) throw new Error("没有可用的边框，请上传边框或关闭随机边框。");
-  const ids = policies.flatMap(value => value.mode === "manual" ? [value.frameId] : value.mode === "random" ? pool.map(entry => entry.id) : []);
+  if (policies.some(value => value.mode === "random" || value.mode === "auto") && !pool.length) throw new Error("没有可用的边框，请上传边框或关闭随机边框。");
+  const ids = policies.flatMap(value => value.mode === "manual" ? [value.frameId] : value.mode === "random" || value.mode === "auto" ? pool.map(entry => entry.id) : []);
   await Promise.all([...new Set(ids)].map(id => assertDecorationFrameAsset(id, assets)));
 }
 
