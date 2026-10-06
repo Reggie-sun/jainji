@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { link, mkdir, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { isUploadedStickerId, type DecorationCatalog } from "../shared/decorations.js";
+import { isUploadedStickerId } from "../shared/decorations.js";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
+import { isUploadedFrameId } from "../shared/frames.js";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const digest = (bytes: Buffer): string => createHash("sha256").update(bytes).digest("hex");
@@ -37,9 +38,13 @@ function assertImageDimensions(bytes: Buffer): void {
 }
 
 export class UploadedStickers {
-  constructor(private readonly root: string, private readonly decodePng: (bytes: Buffer) => Buffer) {}
+  constructor(private readonly root: string, private readonly decodePng: (bytes: Buffer) => Buffer, private readonly kind: "sticker" | "frame" = "sticker") {}
+
+  private validId(id: string): boolean { return this.kind === "frame" ? isUploadedFrameId(id) : isUploadedStickerId(id); }
+  private id(bytes: Buffer): string { return `${this.kind === "frame" ? "uploaded-frame" : "uploaded"}-${digest(bytes)}`; }
 
   async importFile(source: string): Promise<{ id: string; asset: BuiltinStickerAsset }> {
+    if (this.kind === "frame" && !/\.png$/i.test(source)) throw new Error("边框只支持透明 PNG 图片。");
     if (!/\.(png|jpe?g)$/i.test(source)) throw new Error("请选择 PNG 或 JPG 图片。");
     const file = await open(source, "r");
     let bytes: Buffer;
@@ -52,10 +57,11 @@ export class UploadedStickers {
       bytes = bytes.subarray(0, bytesRead);
     } finally { await file.close(); }
     assertImageDimensions(bytes);
+    if (this.kind === "frame" && !bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) throw new Error("边框只支持透明 PNG 图片。");
     const png = this.decodePng(bytes);
     if (!png.length || png.length > MAX_BYTES) throw new Error("图片过大，请缩小后上传。");
     const hash = digest(png);
-    const id = `uploaded-${hash}`;
+    const id = this.id(png);
     await mkdir(this.root, { recursive: true });
     const assetPath = path.join(this.root, `${id}.png`);
     const temporary = path.join(this.root, `${randomUUID()}.part`);
@@ -72,7 +78,7 @@ export class UploadedStickers {
   }
 
   async remove(id: string): Promise<void> {
-    if (!isUploadedStickerId(id)) throw new Error("只能删除用户上传的贴纸。");
+    if (!this.validId(id)) throw new Error("只能删除用户上传的素材。");
     if (!(await stat(path.join(this.root, `${id}.png`))).isFile()) throw new Error("上传贴纸不存在。");
     // Keep the immutable image at its original path for frozen export retries.
     await writeFile(path.join(this.root, `${id}.deleted`), "", { flag: "a" });
@@ -84,19 +90,22 @@ export class UploadedStickers {
     const names = new Set(await readdir(this.root));
     for (const name of [...names].sort()) {
       const id = name.replace(/\.png$/, "");
-      if (name !== `${id}.png` || !isUploadedStickerId(id) || names.has(`${id}.deleted`)) continue;
+      if (name !== `${id}.png` || !this.validId(id) || names.has(`${id}.deleted`)) continue;
       const assetPath = path.join(this.root, name);
       const bytes = await readFile(assetPath);
-      if (bytes.length > MAX_BYTES || `uploaded-${digest(bytes)}` !== id) continue;
+      if (bytes.length > MAX_BYTES || this.id(bytes) !== id) continue;
+      if (this.kind === "frame") {
+        try { assertImageDimensions(bytes); this.decodePng(bytes); } catch { continue; }
+      }
       assets[id] = { assetPath, assetFingerprint: `sha256:${digest(bytes)}` };
     }
     return assets;
   }
 
-  async catalog(): Promise<DecorationCatalog["stickers"]> {
+  async catalog() {
     const assets = await this.load();
     return Promise.all(Object.entries(assets).map(async ([id, asset]) => ({
-      id, label: `我的贴纸 ${id.slice(9, 17)}`, animated: false, source: "uploaded" as const,
+      id, label: this.kind === "frame" ? `我的边框 ${id.slice(15, 23)}` : `我的贴纸 ${id.slice(9, 17)}`, animated: false, source: "uploaded" as const,
       url: `data:image/png;base64,${(await readFile(asset.assetPath)).toString("base64")}`,
     })));
   }

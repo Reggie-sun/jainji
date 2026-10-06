@@ -190,6 +190,12 @@ export class TemplateCompiler {
       const sourceLabel = `sticker${stickerIndex}src`;
       const scaledLabel = `sticker${stickerIndex}`;
       const nextLabel = `base${graph.length}`;
+      if (layer.frame) {
+        graph.push(`[${stickerIndex}:v]format=rgba,scale=${dimensions.width}:${dimensions.height},setpts=PTS-STARTPTS[${scaledLabel}]`);
+        graph.push(`[${baseLabel}][${scaledLabel}]overlay=0:0:format=auto[${nextLabel}]`);
+        baseLabel = nextLabel;
+        continue;
+      }
       if (shape) {
         // Final output pixels are already frozen: do not scale, crop or re-place them.
         graph.push(`[${stickerIndex}:v]format=rgba,setpts=PTS-STARTPTS[${scaledLabel}]`);

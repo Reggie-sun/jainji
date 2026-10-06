@@ -1,0 +1,13 @@
+.frame-decoration-picker{padding:20px;margin:18px 0}
+.frame-decoration-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}
+.frame-decoration-heading h2{font-size:18px;margin:0 0 8px}
+.frame-decoration-picker p,.frame-decoration-picker small{font-size:12px;color:#687780;line-height:1.8}
+.frame-decoration-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:12px;margin-bottom:14px}
+.frame-decoration-choice{display:flex;flex-direction:column;align-items:center;gap:10px;width:100%;border:1px solid #dce5e2;border-radius:8px;padding:10px;background:#fff;color:#425b52;cursor:pointer;font-size:12px}
+.frame-decoration-choice[aria-pressed=true]{border:2px solid #008f80;background:#e4f4ef;padding:9px}
+.frame-decoration-choice img,.frame-decoration-none{width:80px;height:112px;object-fit:fill;background:repeating-conic-gradient(#e9eded 0% 25%,#fff 0% 50%) 50%/12px 12px;border-radius:4px}
+.frame-decoration-none{display:flex;align-items:center;justify-content:center;color:#87909b;font-size:24px}
+.frame-decoration-choice:disabled{opacity:.6;cursor:default}
+.frame-decoration-delete{display:flex;justify-content:center;gap:8px;margin-top:7px}
+.frame-decoration-delete button{border:0;background:transparent;color:#687780;font-size:12px;cursor:pointer}
+@media(max-width:700px){.frame-decoration-heading{align-items:flex-start;flex-direction:column}}

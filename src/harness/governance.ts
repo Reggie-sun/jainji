@@ -43,6 +43,11 @@ const DriftSchema = z.object({
   line_ending_only: z.array(z.string()),
 }).passthrough();
 
+const VolumeAssetSchema = z.object({
+  enabled: z.boolean(), path: z.string().min(1), asset_state: z.string().min(1),
+  sha256: z.string().regex(SHA256).optional(),
+}).passthrough().optional();
+
 const GovernanceFactsSchema = z.object({
   version: z.literal("volumes-governance-facts/v1"),
   structure_valid: z.boolean(),
@@ -61,6 +66,7 @@ const GovernanceFactsSchema = z.object({
   result: z.string().min(1),
   findings: z.array(z.object({ code: z.string().min(1), target: z.string().optional() }).passthrough()),
   network_accessed: z.literal(false).optional(),
+  root: VolumeAssetSchema, meta: VolumeAssetSchema, code: VolumeAssetSchema, database: VolumeAssetSchema,
 }).passthrough();
 
 const AOCI_ROOT_COMMAND_ARGS = (repoRoot: string) => ["--json", "--repo", repoRoot];
@@ -535,6 +541,7 @@ function governanceSnapshot(facts: z.infer<typeof GovernanceFactsSchema>): strin
     structureValid: facts.structure_valid,
     governanceAligned: facts.governance_aligned,
     compositeIdentity: facts.composite_identity,
+    volumeAssets: [facts.root, facts.meta, facts.code, facts.database],
     managedScope: {
       aligned: facts.managed_scope.aligned,
       policyIdentity: facts.managed_scope.policy_identity,
@@ -667,7 +674,7 @@ export async function checkOwnedAoci(
       });
     }
 
-    const objects = ownedChanges.map((change, index) => {
+    const objects = await Promise.all(ownedChanges.map(async (change, index) => {
       const scope = scopeEvidence[index];
       const driftKinds = hasDriftForPath(facts[0], change.path);
       if (scope.role === "observe" || scope.role === "exclude") {
@@ -678,6 +685,19 @@ export async function checkOwnedAoci(
       }
 
       const current = manifestPaths.get(change.path);
+      const volume = [facts[0].root, facts[0].meta, facts[0].code, facts[0].database]
+        .find(asset => asset?.enabled && asset.path === change.path);
+      if (volume && !current) {
+        let currentSha256: string | undefined;
+        try {
+          const root = await realpath(repoRoot), file = await realpath(path.join(root, change.path));
+          if (inside(root, file) && (await stat(file)).isFile()) currentSha256 = createHash("sha256").update(await readFile(file)).digest("hex");
+        } catch { /* Missing or inaccessible formal assets cannot pass. */ }
+        const bound = change.change !== "delete" && volume.asset_state === "present" && Boolean(currentSha256) && currentSha256 === volume.sha256 && !driftKinds.length;
+        return { path: change.path, change: change.change, role: scope.role, status: bound ? "PASS" : "FAIL",
+          entryRequired: false, artifactRequired: true, currentSha256, scopeVersion: scope.version,
+          ...(bound ? { baselineEvidence: "official_verify_check_guide_bound_volume_hash" } : { reason: "owned_volume_not_bound_to_current_bytes" }) };
+      }
       if ((change.change === "delete" && current) || (change.change !== "delete" && !current)) {
         return {
           path: change.path,
@@ -711,7 +731,7 @@ export async function checkOwnedAoci(
         scopeVersion: scope.version,
         baselineEvidence: "official_verify_check_guide_no_drift_at_bound_source_snapshot",
       };
-    });
+    }));
 
     const objectStatuses = objects.map((object) => object.status);
     const status: HarnessOutcome = objectStatuses.includes("FAIL") ? "FAIL" : objectStatuses.includes("NOT_EVALUATED") ? "NOT_EVALUATED" : "PASS";

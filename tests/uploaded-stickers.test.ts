@@ -8,6 +8,8 @@ import { AssetLibrary } from "../src/main/asset-library";
 import { materializePlan } from "../src/main/agent-provider";
 import { DecorationSchema } from "../src/shared/decorations";
 import { isAutomaticStickerAllowed } from "../src/shared/automatic-stickers";
+import { assertFrameBitmap } from "../src/main/decoration-frame";
+import { isUploadedFrameId } from "../src/shared/frames";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))); });
@@ -24,6 +26,36 @@ async function fixture() {
 }
 
 describe("uploaded stickers", () => {
+  it("keeps frames out of sticker pools and preserves deleted frozen files", async () => {
+    const { root, source } = await fixture();
+    const store = new UploadedStickers(path.join(root, "frames"), bytes => bytes, "frame");
+    const imported = await store.importFile(source);
+    expect(isUploadedFrameId(imported.id)).toBe(true);
+    expect(DecorationSchema.safeParse({ sticker: imported.id }).success).toBe(false);
+    expect(DecorationSchema.parse({ mode: "agent", frameId: imported.id }).frameId).toBe(imported.id);
+    expect((await store.catalog())[0]).toMatchObject({ id: imported.id, source: "uploaded" });
+    await expect(store.importFile(source.replace(/png$/, "jpg"))).rejects.toThrow("PNG");
+    await store.remove(imported.id);
+    expect(await store.load()).toEqual({});
+    expect((await readFile(imported.asset.assetPath)).length).toBeGreaterThan(0);
+    await expect(store.importFile(source)).resolves.toEqual(imported);
+  });
+  it("rejects opaque centers and empty frames and validates decoded alpha", () => {
+    const pixels = Buffer.alloc(8 * 8 * 4);
+    pixels[3] = 255;
+    expect(() => assertFrameBitmap(8, 8, pixels)).not.toThrow();
+    pixels[(4 * 8 + 4) * 4 + 3] = 255;
+    expect(() => assertFrameBitmap(8, 8, pixels)).toThrow("透明");
+    expect(() => assertFrameBitmap(8, 8, Buffer.alloc(8 * 8 * 4))).toThrow("空白");
+    expect(() => assertFrameBitmap(8, 8, Buffer.alloc(1))).toThrow();
+  });
+  it("validates frame identity before preparation even in random mode", async () => {
+    const { root, builtins } = await fixture();
+    const library = new AssetLibrary(path.join(root, "library"));
+    for (const mode of ["manual", "random", "agent"] as const) {
+      await expect(library.prepare(DecorationSchema.parse({ mode, frameId: "frame-stars" }), builtins)).rejects.toThrow("边框");
+    }
+  });
   it("removes uploads from the persistent catalog while preserving frozen export files, and restores on reimport", async () => {
     const { root, source, store } = await fixture();
     const imported = await store.importFile(source);

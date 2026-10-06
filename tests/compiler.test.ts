@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EditTemplateSchema } from "../src/main/domain";
 import { createDefaultTemplate, DEFAULT_PRESET, type MediaItem } from "../src/main/domain";
 import { escapeFilterValue, TemplateCompiler } from "../src/main/compiler";
 
@@ -9,6 +10,25 @@ const media: MediaItem = {
 };
 
 describe("TemplateCompiler", () => {
+  it("renders a full-canvas frame below stickers without corner scaling or legacy fading", async () => {
+    const template = createDefaultTemplate();
+    template.layoutPolicy = "corner-safe-v2";
+    template.decorationDisplayMode = "first-3s";
+    const frame = { id: crypto.randomUUID(), type: "sticker" as const, assetPath: "/tmp/frame.png", assetFingerprint: "fixture",
+      x: 0, y: 0, width: 1, rotationDeg: 0, opacity: 1, zIndex: -1000, visible: true, frame: { id: "frame-stars" } };
+    template.layers.push(frame);
+    const options = { ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused" };
+    const command = await new TemplateCompiler().compile(template, media, { ...DEFAULT_PRESET, resolutionMode: "source" }, options);
+    const graph = command.args[command.args.indexOf("-filter_complex") + 1];
+    expect(graph).toContain("scale=1920:1080");
+    expect(graph).toContain("overlay=0:0");
+    expect(graph).not.toContain("fade=");
+    expect(graph).not.toContain("crop=");
+    expect(graph).not.toContain("force_original_aspect_ratio");
+    expect(EditTemplateSchema.safeParse({ ...template, layers: [{ ...frame, width: 0.1 }] }).success).toBe(false);
+    expect(EditTemplateSchema.safeParse({ ...template, layers: [{ ...frame, activeRanges: [{ startMs: 0, endMs: 1 }] }] }).success).toBe(false);
+    expect(EditTemplateSchema.safeParse({ ...template, layers: [frame, { ...frame, id: crypto.randomUUID() }] }).success).toBe(false);
+  });
   it.each([7, -7, 90])("reduces oversized stickers before %i degree rotation without changing animation input", async (rotationDeg) => {
     const template = createDefaultTemplate();
     template.layers.push({ id: crypto.randomUUID(), type: "sticker", assetPath: "/tmp/animated.gif", assetFingerprint: "fixture", x: 0.04, y: 0.04, width: 0.12, rotationDeg, opacity: 1, zIndex: 0, visible: true });

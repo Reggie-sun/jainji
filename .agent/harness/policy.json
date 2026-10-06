@@ -644,7 +644,9 @@
         ".impeccable/**",
         "resources/**",
         "scripts/**",
-        ".aoci/config.json"
+        ".aoci/config.json",
+        ".aoci/baseline.json",
+        "aoci.code.txt"
       ],
       "checkIds": [
         "typecheck",

@@ -29,6 +29,10 @@ import { loadBundledStickerAssets } from "./bundled-stickers.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { AssetLibrary } from "./asset-library.js";
 import { UploadedStickers } from "./uploaded-stickers.js";
+import { ensureBuiltinFrameAssets } from "./builtin-frames.js";
+import { assertFrameBitmap } from "./decoration-frame.js";
+import { registerDecorationAssetHandlers } from "./decoration-assets-ipc.js";
+import { BUILTIN_FRAMES, isFrameId } from "../shared/frames.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
 import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema, UploadIdSchema, UploadSuccessSchema } from "../shared/douyin-upload.js";
@@ -78,10 +82,10 @@ let coverReview: CoverReviewController;
 let connections: ModelConnections;
 let library: AssetLibrary;
 let uploadedStickers: UploadedStickers;
+let uploadedFrames: UploadedStickers;
 let stickerAssets: StickerAssets;
 let batchRuntime: ReturnType<typeof createBatchProductionRuntime>;
 let queueReady: Promise<void> = Promise.resolve();
-let stickerMutation = false;
 let quitting = false;
 let closingPrompt = false;
 const approvedOutputDirectories = new Set<string>();
@@ -233,39 +237,9 @@ function registerHandlers(): void {
   ipcMain.handle("coverReview.viewed", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ mediaId: uuidSchema, version: z.number().int().positive() }).parse(input); await coverReview.viewed(ref.id, ref.revision, ref.mediaId, ref.version); return publicState(); });
   ipcMain.handle("coverReview.cancel", async (event) => { assertTrustedSender(event); await coverReview.cancel(); return publicState(); });
   registerBugFeedbackHandlers(assertTrustedSender);
-  ipcMain.handle("decorations.import", async (event) => {
-    assertTrustedSender(event);
-    coverReview?.assertIdle(); assertProductionIdle();
-    const result = await dialog.showOpenDialog(mainWindow!, {
-      title: "上传贴纸", properties: ["openFile"],
-      filters: [{ name: "静态贴纸图片", extensions: ["png", "jpg", "jpeg"] }],
-    });
-    if (result.canceled || !result.filePaths.length) return null;
-    coverReview?.assertIdle(); assertProductionIdle();
-    if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
-    stickerMutation = true;
-    try {
-      const imported = await uploadedStickers.importFile(result.filePaths[0]);
-      Object.assign(stickerAssets, { [imported.id]: imported.asset });
-      return imported.id;
-    } catch { throw new Error("贴纸上传失败，请选择有效的 PNG/JPG 静态图片（10 MB 以内、宽高不超过 4096 像素），并检查磁盘空间。"); }
-    finally { stickerMutation = false; }
-  });
-  ipcMain.handle("decorations.remove", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
-    const id = z.string().refine(isUploadedStickerId, "只能删除用户上传的贴纸。").parse(input);
-    if (stickerMutation) throw new Error("贴纸正在更新，请稍后重试。");
-    const asset = stickerAssets[id];
-    if (!asset) throw new Error("上传贴纸不存在或已删除。");
-    stickerMutation = true;
-    // Remove eligibility synchronously before another run can take its snapshot.
-    delete (stickerAssets as Record<string, unknown>)[id];
-    try { await uploadedStickers.remove(id); }
-    catch {
-      Object.assign(stickerAssets, { [id]: asset });
-      throw new Error("贴纸删除失败，请检查本地素材目录权限后重试。");
-    } finally { stickerMutation = false; }
-  });
+  registerDecorationAssetHandlers({ window: mainWindow!, assertTrustedSender,
+    assertIdle: () => { coverReview?.assertIdle(); assertProductionIdle(); }, assets: stickerAssets,
+    stickers: uploadedStickers, frames: uploadedFrames });
   ipcMain.handle("library.asset", async (event, input: unknown) => {
     assertTrustedSender(event);
     const id = z.string().min(1).max(100).parse(input);
@@ -288,7 +262,12 @@ function registerHandlers(): void {
       if (!asset) throw new Error(`missing bundled sticker: ${id}`);
       return { id, label, animated, source, url: `data:${mimeType};base64,${(await readFile(asset.assetPath)).toString("base64")}` };
     }));
-    return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers: [...stickers, ...await uploadedStickers.catalog()] };
+    const frames = await Promise.all(BUILTIN_FRAMES.map(async entry => {
+      const asset = stickerAssets[entry.id];
+      if (!asset) throw new Error("内置边框缺失，请重新启动应用。");
+      return { ...entry, source: "builtin" as const, url: `data:image/png;base64,${(await readFile(asset.assetPath)).toString("base64")}` };
+    }));
+    return { fonts: fonts.filter((font): font is NonNullable<typeof font> => font !== null), stickers: [...stickers, ...await uploadedStickers.catalog()], frames: [...frames, ...await uploadedFrames.catalog()] };
   });
   ipcMain.handle("app.state", async (event) => { assertTrustedSender(event); return publicState(); });
   ipcMain.handle("connection.save", async (event, input: unknown) => {
@@ -605,7 +584,7 @@ function registerHandlers(): void {
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
       const stickerPool = Object.entries(stickerAssets)
-        .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && entry[0] !== "template" && entry[0] !== "none")
+        .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && !isFrameId(entry[0]) && entry[0] !== "template" && entry[0] !== "none")
         .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
       assertProductionIdle();
       const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool);
@@ -766,7 +745,15 @@ async function bootstrap(): Promise<void> {
     if (image.isEmpty() || width > 4096 || height > 4096) throw new Error("无效或过大的图片。");
     return image.toPNG();
   });
-  stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load() };
+  uploadedFrames = new UploadedStickers(path.join(userData, "uploaded-frames"), (bytes) => {
+    const image = nativeImage.createFromBuffer(bytes);
+    const { width, height } = image.getSize();
+    if (image.isEmpty()) throw new Error("无效的边框图片。");
+    assertFrameBitmap(width, height, image.toBitmap());
+    return image.toPNG();
+  }, "frame");
+  stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load(),
+    ...await ensureBuiltinFrameAssets(path.join(userData, "frame-assets")), ...await uploadedFrames.load() };
   connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection, authorization) => douyinUpload.registerBatch(batch, selection, authorization), (selection, count) => douyinUpload.preflight(selection, count));

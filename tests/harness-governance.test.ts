@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -173,6 +174,43 @@ describe("harness document governance", () => {
 });
 
 describe("harness owned AOCI governance", () => {
+  it.each([false, true])("binds a formal code volume to official bytes without requiring a self Entry (corrupt=%s)", async corrupt => {
+    const root = await temporaryRoot(), bytes = "#AOCI-CODE-VOLUME: 1\n";
+    await writeFile(path.join(root, "aoci.code.txt"), corrupt ? "changed" : bytes);
+    const sha256 = createHash("sha256").update(bytes).digest("hex");
+    const { runner } = aociFixture({ sourcePaths: [], mutateCommand(command, result) {
+      if (!["verify", "check", "index"].includes(command[0])) return result;
+      const raw = JSON.parse(result.stdout);
+      raw.governance.code = { enabled: true, path: "aoci.code.txt", asset_state: "present", sha256 };
+      return { ...result, stdout: JSON.stringify(raw) };
+    } });
+    const result = await checkOwnedAoci(root, [{ path: "aoci.code.txt", change: "modify" }], { commandRunner: runner });
+    expect(result.status).toBe(corrupt ? "FAIL" : "PASS");
+    expect(result.evidence?.ownedAoci).toMatchObject({ objects: [{ path: "aoci.code.txt", entryRequired: false, artifactRequired: true }] });
+  });
+  it("rejects conflicting volume hashes across the three official commands", async () => {
+    const root = await temporaryRoot();
+    await writeFile(path.join(root, "aoci.code.txt"), "index");
+    const { runner } = aociFixture({ sourcePaths: [], mutateCommand(command, result) {
+      if (!["verify", "check", "index"].includes(command[0])) return result;
+      const raw = JSON.parse(result.stdout);
+      raw.governance.code = { enabled: true, path: "aoci.code.txt", asset_state: "present", sha256: hash(command[0] === "check" ? "b" : "a") };
+      return { ...result, stdout: JSON.stringify(raw) };
+    } });
+    expect(await checkOwnedAoci(root, [{ path: "aoci.code.txt", change: "modify" }], { commandRunner: runner })).toMatchObject({ status: "NOT_EVALUATED", category: "aoci_snapshot_changed" });
+  });
+  it.each(["missing", "delete", "unbound"])("rejects a %s formal Volume", async mode => {
+    const root = await temporaryRoot(), bytes = "index";
+    if (mode !== "missing") await writeFile(path.join(root, "aoci.code.txt"), bytes);
+    const { runner } = aociFixture({ sourcePaths: [], mutateCommand(command, result) {
+      if (!["verify", "check", "index"].includes(command[0])) return result;
+      const raw = JSON.parse(result.stdout);
+      raw.governance.code = { enabled: true, path: "aoci.code.txt", asset_state: "present",
+        ...(mode === "unbound" ? {} : { sha256: createHash("sha256").update(bytes).digest("hex") }) };
+      return { ...result, stdout: JSON.stringify(raw) };
+    } });
+    expect(await checkOwnedAoci(root, [{ path: "aoci.code.txt", change: mode === "delete" ? "delete" : "modify" }], { commandRunner: runner })).toMatchObject({ status: "FAIL" });
+  });
   it("passes owned aligned files while reporting drift in other repository entries separately", async () => {
     const { runner, calls } = aociFixture({ unrelatedDrift: ["src/other-session.ts"] });
     const result = await checkOwnedAoci("/fixture/repo", [{ path: "src/harness/governance.ts", change: "add" }], { commandRunner: runner });

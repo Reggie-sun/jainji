@@ -6,6 +6,8 @@ import { DEFAULT_PRESET, EditTemplateSchema, type EditTemplate, type MediaItem, 
 import { TemplateCompiler } from "../src/main/compiler";
 import { DecorationSchema } from "../src/shared/decorations";
 import type { AutomaticCoverTrack } from "../src/main/automatic-cover-tracks";
+import { fillUncoveredCorners } from "../src/main/automatic-corner-layout";
+import { decorationFrameLayers } from "../src/main/decoration-frame";
 
 const corners = ["top-left", "top-right", "bottom-left", "bottom-right"] as const;
 const asset = { assetPath: "/tmp/heart.png", assetFingerprint: "heart" };
@@ -37,6 +39,13 @@ async function produce(tracks?: AutomaticCoverTrack[], mode: "agent" | "manual" 
 const decorations = (template: EditTemplate) => template.layers.filter((l): l is StickerLayer => l.type === "sticker" && !l.cover);
 
 describe("automatic four-corner coverage", () => {
+  it("retains full-time frames independently of occupied corner intervals", () => {
+    const [frame] = decorationFrameLayers("frame-stars", { ...assets, "frame-stars": asset });
+    const layer = { ...frame, id: crypto.randomUUID(), frame: undefined, width: .08, x: .005, y: .005, zIndex: 0 };
+    const layers = fillUncoveredCorners([frame, layer], 1000, [track(0, 1000).track]);
+    expect(layers).toEqual([frame]);
+    expect(layers[0]).not.toHaveProperty("activeRanges");
+  });
   it.each([0, 1, 2, 3])("rejects a model plan with only %i corners instead of silently filling it", count => {
     expect(() => validatePlan({ ...plan, stickers: plan.stickers.slice(0, count) }, "clean", catalog)).toThrow("四个角落");
   });

@@ -25,6 +25,8 @@ v2 scoped code receipt 分别绑定当前 policy/scope、实际参与的 source/
 
 `verify` 不重跑 tests、模型、队列、AOCI Apply 或 Git mutation，只复核原 receipt 与当前字节，重新核对适用文档及官方 owned AOCI，并保存独立 completion receipt。AOCI 只消费已识别版本的官方 Verify / Check / Guide、scope 和 source facts；`ownedAoci` 与 `repositoryAoci` 分开报告，缺工具、未知结构、本次 stale/missing、恢复风险均不能通过。维护仍由产生改动的 session 按官方完整批次/CAS/恢复合同完成。
 
+正式认知 Volume 是治理产物，不要求在业务 source manifest 中建立自身 Entry。仅当官方三项治理事实一致地声明其启用、路径、存在状态和 SHA-256，且仓库内实际文件字节匹配时，owned 检查才记录其 artifact binding；缺失、损坏、删除、跨命令哈希变化或目录外文件均不能通过。未获官方 Volume 声明的 index 对象仍须满足业务 source manifest 和 Entry/baseline 规则。
+
 所有新增证据仅证明工程检查及文档治理；开发型号、真实 provider 资格、Windows 实机和人工观看仍遵守各自授权与验收 owner。fixture 中的定位帧、音轨和批次数量不得升级为整片 coverage、内容一致或 requestedCount 已满足。旧媒体接口与已冻结任务解释保持原合同，不迁移生产数据。
 
 # Evidence And Ownership

@@ -34,6 +34,7 @@ import { proposeCoverPlacement } from "./cover-placement-proposal.js";
 import { AgentPreviewStore } from "./agent-preview-store.js";
 import type { QianchuanUploadSelection as DouyinUploadSelection, UploadAuthorization } from "../shared/douyin-upload.js";
 import { ShapeCoverProduction } from "./shape-cover-production.js";
+import { assertDecorationFrameAsset } from "./decoration-frame.js";
 import type { ShapeCoverCandidateRequest } from "./shape-cover-candidates.js";
 import { assertShapeCoverProductEntry } from "./shape-cover-activation.js";
 
@@ -165,6 +166,7 @@ export class AgentController {
       if (supervised && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于主管 Agent 修正与样片检查。");
       const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover), Boolean(shapeRequest)) : undefined;
       const autoCatalog = decorations.mode === "agent" ? { ...availableCatalog!, stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)) } : undefined;
+      await assertDecorationFrameAsset(decorations.frameId, this.stickerAssets);
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets) : this.stickerAssets) };
       const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, ids, randomPath);
       this.preparingController.signal.throwIfAborted();

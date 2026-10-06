@@ -40,17 +40,17 @@ function pngChunk(name: string, data = Buffer.alloc(0)): Buffer {
   return chunk;
 }
 
-function encodePng(pixels: Uint8Array): Buffer {
+export function encodeRgbaPng(pixels: Uint8Array, width: number, height: number): Buffer {
   const header = Buffer.alloc(13);
-  header.writeUInt32BE(SIZE, 0);
-  header.writeUInt32BE(SIZE, 4);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
   header[8] = 8;
   header[9] = 6;
-  const scanlines = Buffer.alloc((SIZE * 4 + 1) * SIZE);
-  for (let y = 0; y < SIZE; y += 1) {
-    const row = y * (SIZE * 4 + 1);
+  const scanlines = Buffer.alloc((width * 4 + 1) * height);
+  for (let y = 0; y < height; y += 1) {
+    const row = y * (width * 4 + 1);
     scanlines[row] = 0;
-    scanlines.set(pixels.subarray(y * SIZE * 4, (y + 1) * SIZE * 4), row + 1);
+    scanlines.set(pixels.subarray(y * width * 4, (y + 1) * width * 4), row + 1);
   }
   return Buffer.concat([
     Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
@@ -144,7 +144,7 @@ function stickerPng(id: StickerId): Buffer {
     fillPolygon(pixels, star(128, 128, 96, 67, 12, -Math.PI / 24), [255, 116, 52, 255]);
     fillCircle(pixels, 128, 128, 53, [255, 221, 67, 255]);
   }
-  return encodePng(pixels);
+  return encodeRgbaPng(pixels, SIZE, SIZE);
 }
 
 export async function ensureBuiltinStickerAssets(directory: string): Promise<BuiltinStickerAssets> {

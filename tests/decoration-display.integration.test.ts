@@ -6,6 +6,47 @@ import { materializePlan } from "../src/main/agent-provider";
 import { TemplateCompiler } from "../src/main/compiler";
 import { DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, type MediaItem } from "../src/main/domain";
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
+import { ensureBuiltinFrameAssets } from "../src/main/builtin-frames";
+import { encodeRgbaPng } from "../src/main/builtin-stickers";
+
+it.each([[320, 240], [240, 320]])("renders four frame edges with stickers above and original center/audio on %ix%i", { timeout: 60_000 }, async (width, height) => {
+  const ffmpeg = await discoverBinary("ffmpeg"), ffprobe = await discoverBinary("ffprobe");
+  expect(ffmpeg, "FFmpeg is required for frame acceptance").toBeTruthy(); expect(ffprobe).toBeTruthy();
+  const root = await mkdtemp(path.join(tmpdir(), "jianji-frame-render-"));
+  const run = async (args: string[]) => { const result = await runCommand(ffmpeg!, ["-v", "error", "-y", ...args]).promise; expect(result.code, result.stderr).toBe(0); };
+  const sourcePath = path.join(root, "source.mp4"), stickerPath = path.join(root, "blue.png"), output = path.join(root, "output.mp4");
+  await run(["-f", "lavfi", "-i", `color=c=red:s=${width}x${height}:r=10:d=6`, "-f", "lavfi", "-i", "sine=frequency=440:duration=6", "-t", "6", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", sourcePath]);
+  const blue = Buffer.alloc(16 * 16 * 4);
+  for (let i = 0; i < blue.length; i += 4) { blue[i + 2] = 255; blue[i + 3] = 255; }
+  await writeFile(stickerPath, encodeRgbaPng(blue, 16, 16));
+  const frames = await ensureBuiltinFrameAssets(path.join(root, "frames"));
+  const asset = { assetPath: stickerPath, assetFingerprint: "fixture" };
+  const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "frame fixture", fingerprint: "fixture", sizeBytes: 1, durationMs: 6000, width, height, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
+  const template = materializePlan({ summary: "边框", captions: [], filter: "cool", intensity: .3 }, "clean", media,
+    { heart: asset, sparkle: asset, arrow: asset, burst: asset, ...frames }, { frameId: "frame-stars", sticker: "none", displayMode: "first-5s", displayText: { enabled: false, x: .5, y: .13 }, corners: { "top-left": { type: "sticker", sticker: "heart" } } });
+  template.filter = { presetId: "none", intensity: 0 };
+  const options = { ffmpegPath: ffmpeg!, fontResolver: { resolve: async () => null }, textFilePath: (id: string) => path.join(root, `${id}.txt`), threads: 1 };
+  const compiler = new TemplateCompiler(), preset = { ...DEFAULT_PRESET, resolutionMode: "source" as const };
+  const compiled = await compiler.compile(template, media, preset, options);
+  await run([...compiled.args, output]);
+  const probe = await new FfmpegAdapter(ffmpeg!, ffprobe!).probe(output);
+  expect(Number(probe.format?.duration)).toBeCloseTo(6, 1);
+  expect(probe.streams?.some(stream => stream.codec_type === "audio")).toBe(true);
+  for (const t of [0, 5.8]) {
+    const file = path.join(root, `${t}.rgb`);
+    await run(["-ss", String(t), "-i", output, "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", file]);
+    const pixels = await readFile(file), pixel = (x: number, y: number) => pixels.subarray((y * width + x) * 3, (y * width + x) * 3 + 3);
+    expect(pixels.length).toBe(width * height * 3);
+    for (const [x, y] of [[2, Math.floor(height / 2)], [width - 3, Math.floor(height / 2)], [Math.floor(width * .4), 2], [Math.floor(width * .4), height - 3]]) {
+      const rgb = pixel(x, y); expect(rgb[0]).toBeGreaterThan(210); expect(rgb[1]).toBeGreaterThan(140); expect(rgb[2]).toBeLessThan(50);
+    }
+    const center = pixel(Math.floor(width / 2), Math.floor(height / 2));
+    expect(center[0]).toBeGreaterThan(210); expect(center[1]).toBeLessThan(30); expect(center[2]).toBeLessThan(30);
+    const sticker = pixel(6, 6); expect(sticker[2]).toBeGreaterThan(210); expect(sticker[0]).toBeLessThan(70);
+  }
+  expect(await compiler.compile(JSON.parse(JSON.stringify(template)), media, preset, options)).toEqual(compiled);
+  console.info(`frame render evidence: ${output}`);
+});
 
 for (const { duration, mode, animated } of [{ duration: 6, mode: "first-5s", animated: false }, { duration: 1, mode: "first-5s", animated: false }, { duration: 6, mode: "full", animated: false }, { duration: 6, mode: "first-5s", animated: true }] as const) it(`renders ${mode} with ${animated ? "2fps GIF" : "PNG"} on a ${duration} second source with original content and audio intact`, { timeout: 60_000 }, async context => {
   const [ffmpeg, ffprobe, font] = await Promise.all([discoverBinary("ffmpeg"), discoverBinary("ffprobe"), resolveFont(DEFAULT_TEXT_FONT_FAMILY)]);
