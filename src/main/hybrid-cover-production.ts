@@ -136,7 +136,7 @@ export async function verifyHybridOutput(template: EditTemplate, outputPath: str
 export function hybridTemplate(layers: readonly StickerLayer[], base: EditTemplate): EditTemplate {
   for (const layer of layers) owner(layer);
   const template = EditTemplateSchema.parse({ ...base,
-    filter: { presetId: "none", intensity: 0 }, layers: [...base.layers.filter(l => l.type === "text"), ...layers] });
+    filter: { presetId: "none", intensity: 0 }, layers: [...base.layers.filter(l => l.type === "text" || l.type === "sticker" && l.frame), ...layers] });
   approvedTemplates.add(hash(JSON.stringify(template)));
   return template;
 }

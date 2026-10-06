@@ -56,6 +56,41 @@ export class QianchuanPageSession {
     url.searchParams.set("aavid", task.authorization.target.advertiserId); url.searchParams.set("adId", task.authorization.target.adId);
     return url.href;
   }
+  /** Only the uploader's new, unselected tab may enter a plan from the list. */
+  async openInitialPlan(task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
+    this.check(signal);
+    if (this.modal || this.ownership || this.selected.length || this.prepared || this.identityEstablished) throw changed();
+    const target = task.authorization.target;
+    const assertList = async () => {
+      this.check(signal);
+      const url = new URL(this.page.url());
+      if (url.origin !== this.contract.origin || url.pathname !== this.contract.route || url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== target.advertiserId || url.searchParams.getAll("adId").length > 1 || url.searchParams.get("adId")) throw changed();
+      if (await this.page.locator(`${this.contract.drawer}:visible,${this.contract.modal}:visible`).count()) throw changed();
+      await this.shown(this.page.locator(".account-info-container").getByText(new RegExp(`^\\s*ID[：:]\\s*${target.advertiserId}\\s*$`)).filter({ visible: true }), task, signal);
+    };
+    if (this.contract.kind !== "qianchuan" || new URL(this.page.url()).searchParams.get("adId") === target.adId) return this.guard(task, signal);
+    const deadline = Date.now() + task.config.timeouts.navigation;
+    const rows = this.page.locator(".oc-promotion-product-adinfo:visible").filter({
+      has: this.page.locator(".oc-promotion-product-adinfo-id-fade").filter({ hasText: new RegExp(`^\\s*ID[：:]\\s*${target.adId}\\s*$`) }),
+    });
+    while (!await rows.count()) {
+      await assertList();
+      if (Date.now() >= deadline) throw changed();
+      await this.page.waitForTimeout(50);
+    }
+    await assertList();
+    const row = await this.unique(rows, signal);
+    const material = await this.unique(row.locator(".oc-promotion-product-adinfo-material:visible").filter({ hasText: /^素材$/ }), signal);
+    this.check(signal);
+    try { await material.click({ timeout: task.config.timeouts.action }); }
+    catch { this.check(signal); throw changed(); }
+    while (!new URL(this.page.url()).searchParams.get("adId")) {
+      this.check(signal);
+      if (Date.now() >= deadline) throw changed();
+      await this.page.waitForTimeout(50);
+    }
+    await this.guard(task, signal);
+  }
   private async unique(locator: Locator, signal: AbortSignal): Promise<Locator> {
     this.check(signal); if (await locator.count() !== 1) throw changed(); this.check(signal); return locator;
   }

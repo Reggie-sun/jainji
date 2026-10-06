@@ -17,6 +17,18 @@ import { JobStore } from "../src/main/store.js";
 import { createDefaultTemplate, DEFAULT_PRESET, type MediaItem } from "../src/main/domain.js";
 import { TemplateCompiler } from "../src/main/compiler.js";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin.js";
+import { decorationFrameLayers } from "../src/main/decoration-frame.js";
+import { ensureBuiltinFrameAssets } from "../src/main/builtin-frames.js";
+import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers.js";
+
+it("retains the selected frame when partial Hybrid processing approves no corners", async () => {
+  const root = await mkdtemp(join(tmpdir(), "hybrid-frame-empty-"));
+  try {
+    const frames = decorationFrameLayers("frame-stars", { ...await ensureBuiltinStickerAssets(root), ...await ensureBuiltinFrameAssets(root) });
+    const base = { ...createDefaultTemplate(), layers: frames };
+    expect(hybridTemplate([], base).layers).toEqual(frames);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 it("binds video time separately from the imported container duration without accepting metadata drift", async () => {
   const root = await mkdtemp(join(tmpdir(), "hybrid-video-clock-")), ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin);
@@ -64,7 +76,9 @@ it("H4 approved partial corner uses exact frozen bytes in the original compiler/
     const routes = { LUNA: route("LUNA"), SOL: route("SOL"), MINIMAX: route("MINIMAX") };
     const layer = await approveHybridOverlay(overlay, { sourcePath, source, ffmpeg, signal }, routes, root);
     expect(calls).toEqual(["MINIMAX"]);
-    const template = hybridTemplate([layer], createDefaultTemplate()), preset = { ...DEFAULT_PRESET, ...settings };
+    const frames = decorationFrameLayers("frame-stars", { ...await ensureBuiltinStickerAssets(root), ...await ensureBuiltinFrameAssets(join(root, "frames")) });
+    const template = hybridTemplate([layer], { ...createDefaultTemplate(), layers: frames }), preset = { ...DEFAULT_PRESET, ...settings };
+    expect(template.layers).toEqual([...frames, layer]);
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "fixture.mp4", fingerprint: source.fingerprint, sizeBytes: source.byteLength,
       durationMs: 2000, width: 160, height: 160, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     expect(await readApprovedHybridCover(structuredClone(layer), media, preset)).toEqual(png);
@@ -93,6 +107,7 @@ it("H4 approved partial corner uses exact frozen bytes in the original compiler/
     const frame = spawnSync(ffmpegBin, ["-v", "error", "-i", task.outputPath!, "-frames:v", "1", "-f", "image2pipe", "-c:v", "png", "pipe:1"], { maxBuffer: 4 * 1024 ** 2 });
     const output = await decodeShapeCoverPng(frame.stdout, source, ffmpeg), p = (4 * 160 + 144) * 4;
     expect(output[p]).toBeGreaterThan(220); expect(output[p + 2]).toBeLessThan(30); expect(output[(80 * 160 + 80) * 4 + 2]).toBeGreaterThan(220);
+    expect(output[(80 * 160 + 1) * 4]).toBeGreaterThan(200);
     // Mutation during encode must be detected by queue's post-render guard, before final publication.
     const run = ffmpeg.run.bind(ffmpeg);
     ffmpeg.run = (args, progress) => {

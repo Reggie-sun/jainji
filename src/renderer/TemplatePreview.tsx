@@ -43,7 +43,7 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
     if (slot?.type === "sticker") return [{ corner, id: slot.sticker }];
     return !slot && corner === autoCorner && stickerId !== "none" ? [{ corner, id: stickerId }] : [];
   });
-  const assetKey = JSON.stringify([...new Set(stickerSlots.map(({ id }) => id))].sort());
+  const assetKey = JSON.stringify([...new Set([...stickerSlots.map(({ id }) => id), ...(options.frameId ? [options.frameId] : [])])].sort());
   useEffect(() => {
     let active = true;
     setFailed([]);
@@ -52,7 +52,7 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
       const catalog = ids.length ? await window.jianji.decorationCatalog() : undefined;
       await Promise.all(ids.map(async (id) => {
         try {
-          let url = catalog?.stickers.find((entry) => entry.id === id)?.url;
+          let url = catalog?.stickers.find((entry) => entry.id === id)?.url ?? catalog?.frames?.find(entry => entry.id === id)?.url;
           if (!url && LIBRARY_STICKERS.some((entry) => entry.id === id)) url = (await window.jianji.libraryAsset(id)).url;
           if (!url) throw new Error("missing sticker");
           const image = new Image(); image.src = url; await image.decode();
@@ -82,6 +82,8 @@ export function TemplatePreview({ rule, options, selectedCorner, onCornerSelect,
       context.fillStyle = "#526550"; context.textBaseline = "top";
       context.font = '24px sans-serif'; context.fillText("DAILY", 411, 765);
       }
+
+      if (options.frameId && assets[options.frameId] && !failed.includes(options.frameId)) context.drawImage(assets[options.frameId], 0, 0, width, height);
 
       if (placement.enabled && options.productPrice?.trim() && ProductPriceSchema.safeParse(options.productPrice).success) {
         const style = previewPriceStyle;

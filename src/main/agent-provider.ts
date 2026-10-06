@@ -8,6 +8,7 @@ import { CORNER_SAFE_POLICY } from "../shared/layout-policy.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { CORNERS, CORNER_LABELS, formatProductPrice, ProductionDecorationSchema, decorationTimingContext, isUploadedStickerId, type Corner, type DecorationDisplayMode } from "../shared/decorations.js";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
+import { decorationFrameLayers } from "./decoration-frame.js";
 import { getPriceStyle, PRICE_STYLES, PriceStyleIdSchema, priceFontSizeRatio, priceStyleAppearance, priceTextGeometry, type PriceStyleId } from "../shared/price-styles.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
@@ -268,6 +269,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const geometry = productPrice && options.displayText ? priceTextGeometry(dimensions.width, dimensions.height, formatProductPrice(productPrice), options.displayText) : undefined;
   const displayText = options.displayText && { ...options.displayText, ...(geometry ? { x: geometry.x, y: geometry.y } : {}) };
   const templateBase = (name: string) => ({ ...createDefaultTemplate(name), displayText });
+  const frameLayers = decorationFrameLayers(options.frameId, stickerAssets);
   if (options.mode === "agent" && !catalog) throw new Error("Agent 装饰目录不可用，请重新开始。");
   const plan = validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
   const rule = getRule(ruleId);
@@ -307,7 +309,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
       decorationDisplayMode: options.displayMode,
       stickerDisplayMode: "full",
       filter: { presetId: autoPlan.filter, intensity: autoPlan.intensity },
-      layers: [...layers, ...priceLayers],
+      layers: [...frameLayers, ...layers, ...priceLayers],
     });
   }
   const legacyPlan = plan as LegacyPackagingPlan;
@@ -335,7 +337,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
       decorationDisplayMode: options.displayMode,
       stickerDisplayMode: "full",
       filter: { presetId: legacyPlan.filter, intensity: legacyPlan.intensity },
-      layers: [...layers, ...priceLayers],
+      layers: [...frameLayers, ...layers, ...priceLayers],
     });
   }
   const explicitLayers: Layer[] = [];
@@ -356,7 +358,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
     decorationDisplayMode: options.displayMode,
     stickerDisplayMode: "full",
     filter: { presetId: legacyPlan.filter, intensity: legacyPlan.intensity },
-    layers: [...explicitLayers, ...(sticker ? [stickerLayer(stickerCorner!, sticker, explicitLayers.length)] : []), ...priceLayers],
+    layers: [...frameLayers, ...explicitLayers, ...(sticker ? [stickerLayer(stickerCorner!, sticker, explicitLayers.length)] : []), ...priceLayers],
   });
 }
 

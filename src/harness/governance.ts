@@ -690,7 +690,7 @@ export async function checkOwnedAoci(
       const driftKinds = hasDriftForPath(facts[0], change.path);
       const formal = formalAssets.get(change.path);
       if (formal) {
-        const evidence = { path: change.path, change: change.change, role: scope.role, entryRequired: false, formalAsset: formal.domain };
+        const evidence = { path: change.path, change: change.change, role: scope.role, entryRequired: false, artifactRequired: true, formalAsset: formal.domain };
         if (change.change === "delete" || !formal.asset.enabled || !formal.asset.applicable || formal.asset.asset_state !== "present" || !formal.asset.sha256 || !facts[0].governance_aligned) {
           return { ...evidence, status: "FAIL", reason: "formal_asset_not_present_or_aligned" };
         }

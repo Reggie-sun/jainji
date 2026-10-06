@@ -5,6 +5,17 @@ import { materializePlan } from "../src/main/agent-provider";
 import { formatProductPrice } from "../src/shared/decorations";
 import type { StickerAssets } from "../src/main/builtin-stickers";
 
+it("retains frozen frame bytes through manual and random append while changing ordinary stickers", () => {
+  const asset = { assetPath: "/tmp/frame.png", assetFingerprint: `sha256:${"b".repeat(64)}` };
+  const source = materializePlan({ summary: "边框", captions: [], filter: "cool", intensity: .3 }, "clean", { width: 720, height: 1280 },
+    { sparkle: asset, heart: asset, arrow: asset, burst: asset, "frame-stars": asset }, { frameId: "frame-stars", sticker: "heart", productPrice: "测试" });
+  const frame = source.layers.find(layer => layer.type === "sticker" && layer.frame)!;
+  const picked = { id: "arrow", assetPath: "/tmp/arrow.png", assetFingerprint: "changed" };
+  for (const cloned of [cloneTemplateForAppend(source, "新内容"), cloneTemplateForRandom(source, "新内容", new BalancedStickerPicker([picked]))]) {
+    expect(cloned.layers.find(layer => layer.type === "sticker" && layer.frame)).toEqual({ ...frame, id: expect.any(String) });
+  }
+});
+
 describe("AppendProductionSchema", () => {
   const valid = { batchId: crypto.randomUUID(), count: 2, productPrice: "19.9元拍一发三", outputDirectory: "/tmp/out" };
   it("accepts a valid append request", () => {

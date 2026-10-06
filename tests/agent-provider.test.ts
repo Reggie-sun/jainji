@@ -15,6 +15,16 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it.each(["manual", "agent", "random"] as const)("freezes a full-canvas frame below ordinary stickers in %s mode", mode => {
+    const asset = { assetPath: "/tmp/frame.png", assetFingerprint: `sha256:${"a".repeat(64)}` };
+    const template = materializePlan(mode === "agent" ? autoPlan : { ...plan, filter: "cool", intensity: .3 }, "clean", { width: 720, height: 1280 },
+      { ...stickerAssets, "frame-stars": asset }, { mode, frameId: "frame-stars", displayText: { enabled: false, x: 0.5, y: 0.13 } }, mode === "agent" ? autoCatalog : undefined);
+    const frame = template.layers.find(layer => layer.type === "sticker" && layer.frame);
+    expect(frame).toMatchObject({ type: "sticker", ...asset, frame: { id: "frame-stars" }, x: 0, y: 0, width: 1, opacity: 1, rotationDeg: 0 });
+    expect(template.layers.filter(layer => layer.type === "sticker" && layer.frame)).toHaveLength(1);
+    expect(template.layers.filter(layer => layer !== frame).every(layer => layer.zIndex > frame!.zIndex)).toBe(true);
+    expect(() => materializePlan(plan, "clean", { width: 720, height: 1280 }, stickerAssets, { frameId: "frame-stars" })).toThrow("边框");
+  });
   it("rejects an unowned shape selection image handoff before invoking the model", async () => {
     const complete = vi.fn().mockResolvedValue('{"candidates":[1]}');
     const provider = new AgentProvider(); provider.useChatGPT("simulated-creative", complete);

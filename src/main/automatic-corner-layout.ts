@@ -54,7 +54,7 @@ export function fillUncoveredCorners(layers: readonly Layer[], durationMs: numbe
     }, occupied);
   }
   return layers.flatMap((layer): Layer[] => {
-    if (layer.type !== "sticker" || layer.cover || !layer.visible) return [layer];
+    if (layer.type !== "sticker" || layer.cover || layer.frame || !layer.visible) return [layer];
     const corner = nearestStickerCorner(layer);
     const ranges = occupied.get(`${corner.vertical}-${corner.horizontal}`)!;
     if (!ranges.length) return [layer];

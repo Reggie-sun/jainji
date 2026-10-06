@@ -14,6 +14,7 @@ import { CoverPlacementSchema } from "../shared/cover-placement.js";
 import { JianjiError } from "./errors.js";
 import { FrozenShapeCoverSchema } from "../shared/shape-cover.js";
 import { HybridCoverBindingSchema } from "../shared/hybrid-cover.js";
+import { FrameIdSchema } from "../shared/frames.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -118,6 +119,7 @@ export const StickerLayerSchema = z.object({
   assetPath: AbsolutePath,
   assetFingerprint: z.string().min(1),
   rotationDeg: z.number().finite().min(-360).max(360),
+  frame: z.object({ id: FrameIdSchema }).strict().optional(),
   activeRanges: z.array(z.object({
     startMs: z.number().finite().nonnegative(),
     endMs: z.number().finite().positive(),
@@ -180,6 +182,7 @@ export const EditTemplateSchema = z.object({
   if (template.coverPlacement && template.sourceStickerKnowledge) ctx.addIssue({ code: "custom", message: "Cover placement cannot be represented as source knowledge" });
   const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
   const ids = new Set<string>();
+  let frameCount = 0;
   let coverCount = 0;
   const regionIds = new Set<string>();
   template.layers.forEach((layer, index) => {
@@ -187,6 +190,12 @@ export const EditTemplateSchema = z.object({
     ids.add(layer.id);
     if (!(layer.type === "text" && layer.textAnchor === "center-top") && layer.x + layer.width > 1 + (layer.type === "sticker" && layer.cover ? 1e-9 : 0)) ctx.addIssue({ code: "custom", path: ["layers", index, "width"], message: "layer exceeds the right edge" });
     if (layer.y >= 1) ctx.addIssue({ code: "custom", path: ["layers", index, "y"], message: "layer must start inside the frame" });
+    if (layer.type === "sticker" && layer.frame) {
+      frameCount += 1;
+      if (layer.cover || layer.activeRanges || !layer.visible || layer.x !== 0 || layer.y !== 0 || layer.width !== 1 || layer.rotationDeg !== 0 || layer.opacity !== 1 || layer.zIndex !== -1000) {
+        ctx.addIssue({ code: "custom", path: ["layers", index, "frame"], message: "边框必须全程铺满画布，并位于贴纸下方。" });
+      }
+    }
     if (layer.type === "sticker" && layer.cover) {
       if (layer.activeRanges) ctx.addIssue({ code: "custom", path: ["layers", index, "activeRanges"], message: "覆盖层只能使用自身轨迹时段" });
       coverCount += 1;
@@ -217,15 +226,17 @@ export const EditTemplateSchema = z.object({
           || template.coverPlacement || template.sourceStickerKnowledge) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "shapeMatched"], message: "Frozen shape cover must retain its full-canvas pixel and range binding" });
       }
     }
-    if (layoutPolicy && layer.type === "sticker" && !layer.cover) {
+    if (layoutPolicy && layer.type === "sticker" && !layer.cover && !layer.frame) {
       for (const message of cornerSafeStickerIssues(layer, layoutPolicy)) ctx.addIssue({ code: "custom", path: ["layers", index], message });
     }
   });
+  if (frameCount > 1) ctx.addIssue({ code: "custom", path: ["layers"], message: "每个模板只能有一个整圈边框。" });
+  if (frameCount && template.layers.some(layer => !(layer.type === "sticker" && layer.frame) && layer.zIndex <= -1000)) ctx.addIssue({ code: "custom", path: ["layers"], message: "贴纸和文字必须位于边框上方。" });
   if (coverCount > Math.max(MAX_MANUAL_COVERS, MAX_AUTOMATIC_COVER_TRACKS)) ctx.addIssue({ code: "custom", path: ["layers"], message: "覆盖图层数量超出上限" });
   if (coverCount > 1 && template.layers.some((layer) => layer.type === "sticker" && layer.cover && !layer.cover.automatic && !layer.cover.regionId)) ctx.addIssue({ code: "custom", path: ["layers"], message: "多个手动覆盖框必须各自指定编号" });
   if (layoutPolicy) {
     const areaProxy = template.layers
-      .filter((layer) => layer.type === "sticker" && !layer.cover && layer.visible)
+      .filter((layer) => layer.type === "sticker" && !layer.cover && !layer.frame && layer.visible)
       .reduce((total, layer) => total + layer.width * layer.width, 0);
     if (areaProxy - layoutPolicy.maxTotalStickerAreaProxy > 1e-9) {
       ctx.addIssue({ code: "custom", path: ["layers"], message: `贴纸总面积估算不得超过画面的 ${Math.round(layoutPolicy.maxTotalStickerAreaProxy * 100)}%` });
@@ -328,6 +339,7 @@ export function randomTemplateDigest(template: EditTemplate): string {
     filter: undefined,
     layers: template.layers.map((layer) => {
       if (layer.type === "text") return { ...layer, id: undefined, content: undefined };
+      if (layer.frame) return { ...layer, id: undefined };
       const { id: _layerId, assetPath: _path, assetFingerprint: _fingerprint, ...stickerRest } = layer;
       if (stickerRest.cover) {
         const { stickerId: _stickerId, ...coverRest } = stickerRest.cover;
@@ -388,6 +400,7 @@ export function cloneTemplateForRandom(template: EditTemplate, productPrice: str
       if (price !== undefined) layer.content = formatProductPrice(price);
       continue;
     }
+    if (layer.frame) continue;
     let picked: RandomStickerPoolEntry;
     if (layer.cover?.regionId && layer.cover.sharedSticker) {
       picked = sharedRegionStickers.get(layer.cover.regionId)!;

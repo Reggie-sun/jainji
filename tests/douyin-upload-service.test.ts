@@ -538,7 +538,8 @@ describe("Qianchuan upload service", () => {
     const queue = { retry: vi.fn(async () => {}), createBatch: vi.fn(async () => ({ id: "batch", tasks: [{ id: "task" }] })), start: vi.fn() }, createDirectory = vi.fn(async () => {});
     runInNewContext(ts.transpileModule(registration.getText(tree), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText + "\nregisterHandlers();", {
       ipcMain: { handle: (name: string, handler: (event: unknown, input: unknown) => Promise<unknown>) => handlers.set(name, handler) },
-      z, uuidSchema: z.string().uuid(), UploadIdSchema: z.string(), registerBugFeedbackHandlers() {}, assertTrustedSender() {}, assertProductionIdle() {},
+      z, uuidSchema: z.string().uuid(), UploadIdSchema: z.string(), registerBugFeedbackHandlers() {}, registerDecorationAssetHandlers() {}, assertTrustedSender() {}, assertProductionIdle() {},
+      mainWindow: {}, stickerAssets: {}, uploadedStickers: {}, uploadedFrames: {},
       capabilities: { ready: true }, proofSchema: z.object({ mediaId: z.string().uuid() }), retrySchema: z.object({ taskIds: z.array(z.string().uuid()) }),
       douyinUpload: f.service, queue, service: { currentProject: { id: randomUUID(), mediaItems: [] }, activeTemplate: {}, getMedia: () => ({}) },
       app: { getPath: () => f.store.root }, path, mkdir: createDirectory, DEFAULT_PRESET, publicState: async () => ({}),

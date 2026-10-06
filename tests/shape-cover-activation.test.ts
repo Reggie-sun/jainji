@@ -9,6 +9,10 @@ import type { MediaItem } from "../src/main/domain";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { AgentStartSchema, FrozenAgentStartSchema, type AgentStartInput } from "../src/shared/agent";
 import type { CoverSticker } from "../src/shared/cover-sticker";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
 
 const input = () => ({
   ruleId: "clean" as const, brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: "/unused-output",
@@ -19,7 +23,7 @@ const cover = (trackingMode: CoverSticker["trackingMode"] = "agent", enabled = t
   enabled, trackingMode, stickerIds: [], rectangle: { x: 0.35, y: 0.4, width: 0.3, height: 0.2 },
 });
 
-function fixture(settings: CoverSticker | undefined = cover()) {
+function fixture(settings: CoverSticker | undefined = cover(), knowledge?: SourceStickerKnowledgeStore) {
   const ffmpeg = new FfmpegAdapter("unused", "unused");
   const service = new ApplicationService(ffmpeg, { resolve: async () => null });
   service.currentProject.coverSticker = settings;
@@ -27,7 +31,7 @@ function fixture(settings: CoverSticker | undefined = cover()) {
   const queue = { snapshot: () => ({ revision: 1, batches: [] }), ...calls } as unknown as ExportQueue;
   const register = vi.fn(), preflight = vi.fn();
   const stickers = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map(id => [id, { assetPath: `/unused/${id}.png`, assetFingerprint: `sha256:${"a".repeat(64)}` }])) as BuiltinStickerAssets;
-  const controller = new AgentController(service, queue, ffmpeg, () => {}, stickers, undefined, undefined, undefined, undefined, undefined, register, preflight);
+  const controller = new AgentController(service, queue, ffmpeg, () => {}, stickers, undefined, undefined, undefined, undefined, knowledge, register, preflight);
   const providerCalls = [controller.provider, controller.visionProvider, controller.reviewerProvider].flatMap(provider =>
     [vi.spyOn(provider, "plan"), vi.spyOn(provider, "shortlist"), vi.spyOn(provider, "detectCovers"), vi.spyOn(provider, "superviseShapePreview")]);
   return { controller, service, calls, register, preflight, providerCalls };
@@ -65,6 +69,18 @@ describe("shape product intent schema", () => {
 });
 
 describe("Hybrid shape product controller entry", () => {
+  it("rejects an unavailable selected frame before Hybrid preparation or model calls", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hybrid-frame-admission-"));
+    const test = fixture(cover(), {} as SourceStickerKnowledgeStore), request = shapeInput();
+    test.service.currentProject.mediaItems.push({ id: request.mediaIds[0], sourcePath: join(root, "source.mp4"), displayName: "source.mp4",
+      fingerprint: `sha256:${"a".repeat(64)}`, sizeBytes: 1000, durationMs: 2000, width: 160, height: 160,
+      rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() });
+    try {
+      await expect(test.controller.start({ ...request, outputDirectory: root, decorations: { ...request.decorations, frameId: "frame-stars" } }, new Set([root])))
+        .rejects.toThrow("所选边框缺失或已变化");
+      expectNoExecution(test);
+    } finally { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); }
+  });
   it.each(["agent", "random"] as const)("does not inherit an inactive saved shape choice when coverage is off in %s mode", async mode => {
     const test = fixture({ ...cover("agent", false), coverStrategy: "shape-matched-static-v1" });
     try {

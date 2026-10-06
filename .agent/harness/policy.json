@@ -102,6 +102,7 @@
         "tests/qianchuan-browser-discovery.test.ts",
         "tests/qianchuan-browser-manager.test.ts",
         "tests/qianchuan-page-contract.test.ts",
+        "tests/qianchuan-upload-navigation.test.ts",
         "tests/qianchuan-video-library.test.ts",
         "tests/qianchuan-video-library-page.test.ts",
         "tests/qianchuan-plan-materials.test.ts",
@@ -694,7 +695,9 @@
         ".impeccable/**",
         "resources/**",
         "scripts/**",
-        ".aoci/config.json"
+        ".aoci/config.json",
+        ".aoci/baseline.json",
+        "aoci.code.txt"
       ],
       "checkIds": [
         "typecheck",
@@ -814,6 +817,7 @@
         "tests/qianchuan-browser-discovery.test.ts",
         "tests/qianchuan-browser-manager.test.ts",
         "tests/qianchuan-page-contract.test.ts",
+        "tests/qianchuan-upload-navigation.test.ts",
         "tests/qianchuan-video-library.test.ts",
         "tests/qianchuan-video-library-page.test.ts",
         "tests/qianchuan-plan-materials.test.ts",
