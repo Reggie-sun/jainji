@@ -1478,9 +1478,9 @@
       "normalized_sha256": "4b7ca0f56e5b488e448500591c02e73ec3a2b18eeb1e2d0eefbc7408291d7cef"
     },
     "src/main/qianchuan-page-contract.ts": {
-      "sha256": "93b5231d3e230f6a3eb027e210d97f26e31b246c9415f9e6efe46c974abe1b3e",
-      "size": 29364,
-      "normalized_sha256": "93b5231d3e230f6a3eb027e210d97f26e31b246c9415f9e6efe46c974abe1b3e"
+      "sha256": "27de4f5fd62f2eeeacae950e6902fabe283935e20ecfc711167736e4e2794ce3",
+      "size": 29508,
+      "normalized_sha256": "27de4f5fd62f2eeeacae950e6902fabe283935e20ecfc711167736e4e2794ce3"
     },
     "src/main/qianchuan-plan-catalog.ts": {
       "sha256": "b492548c5e2d1e939ea2b6ec79059b14469ef18a3dd918e93e908b7291c38bfc",

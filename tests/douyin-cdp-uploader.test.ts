@@ -351,6 +351,25 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     return makeUploader(productionContract);
   }
 
+  it("foregrounds the prepared original page before dropping files after a tab switch", async () => {
+    const task = await productionTask("background-before-drop.mp4");
+    const uploader = productionUploader(), signal = new AbortController().signal;
+    await uploader.connect(task, signal);
+    await openAndFence(uploader, task);
+    const observer = await chromium.connectOverCDP(task.authorization.target.cdpEndpoint, { noDefaults: true });
+    const original = observer.contexts()[0]!.pages().find(page => new URL(page.url()).searchParams.get("adId") === task.authorization.target.adId)!;
+    const other = await observer.contexts()[0]!.newPage();
+    try {
+      await other.bringToFront();
+      expect(await original.evaluate(() => document.visibilityState)).toBe("hidden");
+      await uploader.upload([task], signal);
+      expect(await original.evaluate(() => document.visibilityState)).toBe("visible");
+      const events = (await productionFixture!.inspect()).events;
+      expect(events.filter(event => event.type === "drop").map(event => event.names)).toEqual([[task.result.file_name]]);
+      expect(events.filter(event => ["confirm", "settings"].includes(event.type))).toEqual([]);
+    } finally { await other.close(); await observer.close(); }
+  });
+
   async function productionTask(name: string, batchId = randomUUID(), pageBatchId = randomUUID(), expectedCount = 1, projectId = randomUUID()): Promise<UploadTaskRecord> {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     return makeTask({ name, batchId, pageBatchId, expectedCount, projectId, endpoint: productionFixture.cdpEndpoint });

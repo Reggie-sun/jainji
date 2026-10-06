@@ -308,6 +308,8 @@ export class QianchuanPageSession {
     try {
       for (const type of ["dragEnter", "dragOver", "drop"] as const) {
         await this.guard(task, signal);
+        // Another tab can take focus while the permanent selection fence is saved.
+        await this.page.bringToFront(); this.check(signal);
         const zone = await this.uploadEntrance(signal);
         await zone.scrollIntoViewIfNeeded({ timeout: task.config.timeouts.action });
         await this.guard(task, signal);
