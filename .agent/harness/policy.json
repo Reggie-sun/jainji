@@ -204,6 +204,29 @@
       ]
     },
     {
+      "id": "frame-assets",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "timeoutMs": 600000,
+      "testFiles": [
+        "tests/builtin-stickers.test.ts",
+        "tests/uploaded-stickers.test.ts",
+        "tests/decorations.test.ts",
+        "tests/auto-decoration-options.test.ts",
+        "tests/domain.test.ts",
+        "tests/append-production.test.ts",
+        "tests/asset-library.test.ts"
+      ]
+    },
+    {
       "id": "output-publication",
       "kind": "vitest",
       "required": true,
@@ -377,17 +400,13 @@
         "tests/api-request-scheduler.test.ts",
         "tests/append-production-dialog.test.ts",
         "tests/append-production-queue.test.ts",
-        "tests/append-production.test.ts",
-        "tests/asset-library.test.ts",
         "tests/assisted-cover-vfr.integration.test.ts",
         "tests/assisted-cover.integration.test.ts",
-        "tests/auto-decoration-options.test.ts",
         "tests/automatic-cover.integration.test.ts",
         "tests/automatic-encoder-capabilities.test.ts",
         "tests/automatic-output-directory.test.ts",
         "tests/automatic-stickers.test.ts",
         "tests/bug-feedback.test.ts",
-        "tests/builtin-stickers.test.ts",
         "tests/bundled-stickers.test.ts",
         "tests/collaborative-cover.test.ts",
         "tests/concurrency.test.ts",
@@ -413,10 +432,8 @@
         "tests/cover-track.integration.test.ts",
         "tests/cover-track.test.ts",
         "tests/curated-stickers.test.ts",
-        "tests/decorations.test.ts",
         "tests/dev-launcher.test.ts",
         "tests/development-lifecycle.test.ts",
-        "tests/domain.test.ts",
         "tests/douyin-upload-closure-service.test.ts",
         "tests/douyin-upload-closure-store.test.ts",
         "tests/douyin-upload-closure-ui.test.ts",
@@ -483,7 +500,6 @@
         "tests/supervised-agent.integration.test.ts",
         "tests/supervisor-evidence.integration.test.ts",
         "tests/tmp-repro-sticker-size.test.ts",
-        "tests/uploaded-stickers.test.ts",
         "tests/video-encoder.test.ts",
         "tests/workspace-flow.test.ts"
       ],
@@ -629,7 +645,8 @@
         "AGENTS.md",
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md"
-      ]
+      ],
+      "tier": "baseline"
     },
     {
       "id": "source-baseline",
@@ -646,7 +663,8 @@
         "AGENTS.md",
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md"
-      ]
+      ],
+      "tier": "baseline"
     },
     {
       "id": "conservative-entry",
@@ -673,6 +691,7 @@
         "output-publication",
         "credential-boundaries",
         "shape-boundaries",
+        "frame-assets",
         "documents",
         "owned-aoci"
       ],
@@ -680,7 +699,8 @@
         "AGENTS.md",
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md"
-      ]
+      ],
+      "tier": "fallback"
     },
     {
       "id": "configuration-and-resources",
@@ -712,6 +732,7 @@
         "output-publication",
         "credential-boundaries",
         "shape-boundaries",
+        "frame-assets",
         "documents",
         "owned-aoci"
       ],
@@ -719,7 +740,8 @@
         "AGENTS.md",
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md"
-      ]
+      ],
+      "tier": "fallback"
     },
     {
       "id": "domain-harness",
@@ -729,7 +751,10 @@
         "tests/harness-scope.test.ts",
         "tests/harness-routing.test.ts",
         "tests/harness-governance.test.ts",
-        "tests/harness-completion.test.ts"
+        "tests/harness-completion.test.ts",
+        "src/harness/**",
+        ".agent/harness/policy.json",
+        "scripts/run-harness.mjs"
       ],
       "checkIds": [
         "typecheck",
@@ -740,6 +765,54 @@
       "documentRefs": [
         "AGENTS.md",
         "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-frames",
+      "paths": [
+        "src/shared/frames.ts",
+        "src/main/builtin-frames.ts",
+        "src/main/decoration-frame.ts",
+        "src/renderer/FrameDecorationPicker.tsx",
+        "tests/builtin-stickers.test.ts",
+        "tests/uploaded-stickers.test.ts",
+        "tests/decorations.test.ts",
+        "tests/auto-decoration-options.test.ts",
+        "tests/domain.test.ts",
+        "tests/append-production.test.ts",
+        "tests/asset-library.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "documents",
+        "owned-aoci",
+        "frame-assets",
+        "text-and-plan",
+        "lifecycle",
+        "real-media",
+        "layout"
+      ],
+      "testFilesByCheck": {
+        "text-and-plan": [
+          "tests/agent-provider.test.ts"
+        ],
+        "lifecycle": [
+          "tests/agent-controller.test.ts",
+          "tests/agent-runner.test.ts"
+        ],
+        "real-media": [
+          "tests/agent-pipeline.integration.test.ts"
+        ],
+        "layout": [
+          "tests/four-corner-coverage.test.ts",
+          "tests/four-corner-render.integration.test.ts",
+          "tests/compiler.test.ts"
+        ]
+      },
+      "documentRefs": [
+        "docs/decoration-production-contract.md",
         "docs/video-validation-harness-spec.md"
       ]
     },
@@ -1053,17 +1126,13 @@
         "tests/api-request-scheduler.test.ts",
         "tests/append-production-dialog.test.ts",
         "tests/append-production-queue.test.ts",
-        "tests/append-production.test.ts",
-        "tests/asset-library.test.ts",
         "tests/assisted-cover-vfr.integration.test.ts",
         "tests/assisted-cover.integration.test.ts",
-        "tests/auto-decoration-options.test.ts",
         "tests/automatic-cover.integration.test.ts",
         "tests/automatic-encoder-capabilities.test.ts",
         "tests/automatic-output-directory.test.ts",
         "tests/automatic-stickers.test.ts",
         "tests/bug-feedback.test.ts",
-        "tests/builtin-stickers.test.ts",
         "tests/bundled-stickers.test.ts",
         "tests/collaborative-cover.test.ts",
         "tests/concurrency.test.ts",
@@ -1089,10 +1158,8 @@
         "tests/cover-track.integration.test.ts",
         "tests/cover-track.test.ts",
         "tests/curated-stickers.test.ts",
-        "tests/decorations.test.ts",
         "tests/dev-launcher.test.ts",
         "tests/development-lifecycle.test.ts",
-        "tests/domain.test.ts",
         "tests/douyin-upload-closure-service.test.ts",
         "tests/douyin-upload-closure-store.test.ts",
         "tests/douyin-upload-closure-ui.test.ts",
@@ -1159,7 +1226,6 @@
         "tests/supervised-agent.integration.test.ts",
         "tests/supervisor-evidence.integration.test.ts",
         "tests/tmp-repro-sticker-size.test.ts",
-        "tests/uploaded-stickers.test.ts",
         "tests/video-encoder.test.ts",
         "tests/workspace-flow.test.ts",
         "tests/helpers/**",
@@ -1352,6 +1418,7 @@
         "hybrid-corner-h4",
         "hybrid-activation",
         "extended-regressions",
+        "frame-assets",
         "documents",
         "owned-aoci"
       ],
@@ -1391,6 +1458,7 @@
     "layout",
     "output-publication",
     "credential-boundaries",
-    "shape-boundaries"
+    "shape-boundaries",
+    "frame-assets"
   ]
 }

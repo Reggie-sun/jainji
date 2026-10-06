@@ -23,6 +23,10 @@ policy v2 保留旧 code/media 定义，增加固定 Node command `controlChecks
 
 v2 scoped code receipt 分别绑定当前 policy/scope、实际参与的 source/config/resources、owned bytes、关联合同和原始 logs/reports。共享工作树中其他稳定 dirty 源码参与测试；其他源码变化使证据失效。无关文档与 AOCI 索引字节不混入 code identity。相同已验证字节的 commit 不伪造新运行，也不单凭 HEAD 变化作废；v1 receipt 可读但不能满足 scoped completion。
 
+2026-10-06 focused regression boundary：route 可声明 `tier=baseline/domain/fallback`，省略时按旧 domain union 解释。对每个 owned path 分别匹配，baseline 始终保留，存在 domain 才抑制该路径的 fallback；再对所有路径取 union。混合 scope 不能借一个精确路由隐藏另一个文件的保守检查。`testFilesByCheck` 只允许 route 内已选择 Vitest 检查的已登记文件；多个贡献 route 子集取 union，任一完整贡献者要求完整文件集，结果保持 registry 顺序。changed test 必须包含在最终实际执行文件中，未知路径/子集、可选检查、skip、缺报告及源码漂移仍拒绝 PASS。边框独立 registry 与生产接缝由 policy 独占；全量与 Hybrid Activation 保留移动后的全部文件，不用 focused PASS 代替完整集成。
+
+进度写 stderr，不改变 stdout 最终结果接口。每组显示序号、文件数量、完成状态和耗时，Vitest default reporter 提供实时文件进度，JSON reporter 继续作为证据。summary 与结构化 evidence 给出文件耗时及失败案例；执行与 completion 共用命令参数生成，completion 重算实际子集并核对报告文件集合。完整 source/config/resources manifest 和媒体/发布/人工验收边界保持。
+
 `verify` 不重跑 tests、模型、队列、AOCI Apply 或 Git mutation，只复核原 receipt 与当前字节，重新核对适用文档及官方 owned AOCI，并保存独立 completion receipt。AOCI 只消费已识别版本的官方 Verify / Check / Guide、scope 和 source facts；`ownedAoci` 与 `repositoryAoci` 分开报告，缺工具、未知结构、本次 stale/missing、恢复风险均不能通过。维护仍由产生改动的 session 按官方完整批次/CAS/恢复合同完成。
 
 正式 AOCI root/meta/code/database 资产由一致官方 governance facts 的 path/asset_state/SHA 声明，不属于 business-source manifest，不要求为正式索引自身建立 Entry。owned 正式资产仍须启用且存在、全库 governance aligned、无恢复/冲突，磁盘 exact SHA 与官方事实一致；不是按文件名豁免。普通 owned source 的 manifest/baseline/drift gates 与 required 检查保持。

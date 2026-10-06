@@ -51,7 +51,9 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
   const selectedDocumentRefs = new Set<string>();
 
   for (const change of parsedScope.ownedChanges) {
-    const matches = matchingRoutes(parsedPolicy.routes, change.path);
+    const candidates = matchingRoutes(parsedPolicy.routes, change.path);
+    const hasDomain = candidates.some((route) => (route.tier ?? "domain") === "domain");
+    const matches = candidates.filter((route) => route.tier !== "fallback" || !hasDomain);
     if (matches.length === 0) throw new Error(`Unmapped owned path: ${change.path}`);
     for (const route of matches) {
       selectedRouteIds.add(route.id);
@@ -63,7 +65,13 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
   const checks = [
     ...parsedPolicy.codeChecks,
     ...parsedPolicy.controlChecks,
-  ].filter((check) => selectedCheckIds.has(check.id));
+  ].filter((check) => selectedCheckIds.has(check.id)).map((check): CodeCheckPolicy => {
+    if (check.kind !== "vitest") return check;
+    const contributors = parsedPolicy.routes.filter((route) => selectedRouteIds.has(route.id) && route.checkIds.includes(check.id));
+    if (contributors.some((route) => !route.testFilesByCheck?.[check.id])) return check;
+    const files = new Set(contributors.flatMap((route) => route.testFilesByCheck![check.id]));
+    return { ...check, testFiles: check.testFiles.filter((file) => files.has(file)) };
+  });
   if (checks.length === 0) throw new Error("Selected route set is empty; no executable checks cover this scope.");
   const optionalChecks = checks.filter((check) => !check.required).map((check) => check.id);
   if (optionalChecks.length > 0) throw new Error(`Selected checks must be required: ${optionalChecks.join(", ")}`);

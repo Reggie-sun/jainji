@@ -1,25 +1,57 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { fingerprintFile } from "../src/main/paths";
 import { ensureBuiltinFrameAssets } from "../src/main/builtin-frames";
-import { assertDecorationFrameOptions } from "../src/main/decoration-frame";
+import { assertDecorationFrameOptions, createDecorationFrameResolver } from "../src/main/decoration-frame";
+import { FrameIdSchema } from "../src/shared/frames";
+import { DecorationSchema } from "../src/shared/decorations";
 import type { StickerAssets } from "../src/main/builtin-stickers";
 
 describe("built-in Agent stickers", () => {
-  it("generates three immutable full-perimeter frame assets and refuses corrupt replacements", async () => {
+  it("generates thirteen distinct transparent perimeter frames, preserves legacy bytes and admits the full random pool", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-frames-"));
     try {
       const first = await ensureBuiltinFrameAssets(directory);
       await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).resolves.toBeUndefined();
-      expect(Object.keys(first).sort()).toEqual(["frame-confetti", "frame-hearts", "frame-stars"]);
+      expect(Object.keys(first)).toHaveLength(13);
+      expect(new Set(Object.values(first).map(asset => asset.assetFingerprint)).size).toBe(13);
+      expect(first["frame-stars"].assetFingerprint).toBe("sha256:d3e24a0d294f2e3292cc458fd8c4b40037e801e909527e6540f4fd3c42806e5b");
+      expect(first["frame-hearts"].assetFingerprint).toBe("sha256:a3d65b9e10280053dc07ffebd7a2b4883265f20b84db30a9c3de2263001b6513");
+      expect(first["frame-confetti"].assetFingerprint).toBe("sha256:6d0764dbf2db83970e51add5d925a5b036085015c3975354e35ea3dfda1dd473");
+      const resolve = createDecorationFrameResolver(DecorationSchema.parse({ mode: "agent", frame: { mode: "random" } }), first as StickerAssets);
+      expect(new Set(Array.from({ length: 13 }, () => resolve("source").frameId))).toEqual(new Set(Object.keys(first)));
       expect(await ensureBuiltinFrameAssets(directory)).toEqual(first);
-      for (const asset of Object.values(first)) {
+      for (const [id, asset] of Object.entries(first)) {
+        expect(FrameIdSchema.parse(id)).toBe(id);
+        const manual = createDecorationFrameResolver(DecorationSchema.parse({ mode: "agent", frame: { mode: "manual", frameId: id } }), first as StickerAssets);
+        expect(manual("source").frameId).toBe(id);
         const png = await readFile(asset.assetPath);
         expect([png.readUInt32BE(16), png.readUInt32BE(20)]).toEqual([720, 1280]);
         expect(await fingerprintFile(asset.assetPath)).toBe(asset.assetFingerprint);
+        const chunks: Buffer[] = [];
+        for (let offset = 8; offset < png.length;) {
+          const length = png.readUInt32BE(offset);
+          if (png.toString("ascii", offset + 4, offset + 8) === "IDAT") chunks.push(png.subarray(offset + 8, offset + 8 + length));
+          offset += length + 12;
+        }
+        const rows = inflateSync(Buffer.concat(chunks));
+        expect(rows.length).toBe((720 * 4 + 1) * 1280);
+        let opaqueCenter = 0;
+        let missingPerimeter = 0;
+        for (let y = 0; y < 1280; y += 1) {
+          expect(rows[y * (720 * 4 + 1)]).toBe(0);
+          for (let x = 0; x < 720; x += 1) {
+            const alpha = rows[y * (720 * 4 + 1) + 1 + x * 4 + 3];
+            if (x >= 180 && x < 540 && y >= 320 && y < 960 && alpha) opaqueCenter += 1;
+            if ((x === 0 || x === 719 || y === 0 || y === 1279) && alpha !== 255) missingPerimeter += 1;
+          }
+        }
+        expect(opaqueCenter, id).toBe(0);
+        expect(missingPerimeter, id).toBe(0);
       }
       await writeFile(first["frame-stars"].assetPath, "corrupted");
       await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).rejects.toThrow("边框");

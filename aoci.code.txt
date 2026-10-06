@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明生产媒体治理检查与owned路径路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:Hybrid H2/H3/H4及Activation完整检查；普通和边框复用layout及媒体回归；正式索引与基线路由治理 | S:必需skip缺证据非PASS；focused不替代完整H3；工程回执不授平台或视觉验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:边框资源独立登记并选生产接缝；Harness专用检查；正式资产走治理；混合路径保守；Activation含完整集成 | S:完整文件贡献优先于子集；focused不替代全量或视觉验收；源码身份不缩减
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -20,13 +20,13 @@ service.ts[IN7M]: F:验证、限流并持久化Bug反馈，再向GitHub Issues�
 
 ===/home/reggie/vscode_folder/jianji/src/harness/===
 cli.ts[EQ6S]: F:解析Harness code/media/control/verify入口并保存结果 | R:code:src/harness/code.ts,code:src/harness/media.ts,code:src/harness/run.ts,code:src/harness/routing.ts,code:src/harness/completion.ts | A:可按显式scope选检查；control返回治理证据；verify核验已有回执而不重跑命令 | S:输入错误与缺证据归NOT_EVALUATED
-code.ts[TQ7S]: F:执行选定代码检查并核验结构化Vitest与治理结果 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:固定命令绑定日志与退出信息；核对文件集、断言及控制回执 | S:必需测试缺失、skip或报告不一致不可PASS
+code.ts[TQ7S]: F:执行选定回归并核验Vitest和治理报告 | R:code:src/harness/run.ts,code:src/harness/types.ts,code:src/harness/completion.ts | A:共享Vitest参数；stderr实时文件进度；记录案例失败及耗时；绑定日志和实际文件集 | S:进程成功不足以PASS；缺报告、必需skip或截断失败关闭
 media.ts[TQ8L]: F:按冻结批次检查源片和成片的身份、解码、规格、时长、帧率、音轨与文字 | R:code:src/harness/run.ts,code:src/harness/types.ts,code:src/main/domain.ts | A:只读解析项目或队列并输出源片与成片定位帧 | S:VFR或时间戳不可靠时NOT_EVALUATED；定位帧不等于人工观看
-run.ts[RQ8M]: F:管理Harness运行目录、进程预算、日志与冻结回执 | R:code:src/harness/types.ts,code:src/harness/scope.ts,code:src/harness/cli.ts | A:保存策略与scope字节，绑定检查产物，运行前后验证参与身份 | S:visualReview固定NOT_EVALUATED；中断、工具缺失或参与源码变化不可PASS
-types.ts[CQ7M]: F:定义三态结果、版本化检查策略、文件scope与路由Schema | R:code:src/harness/code.ts,code:src/harness/routing.ts,code:src/harness/run.ts | A:校验路径、前后像类型、唯一检查与路由引用；聚合必需项退出码0/1/2 | S:缺失或未知结果不可PASS；已知必需失败仍为FAIL
-completion.ts[TQ7S]: F:只读重验scope回执与当前源码、策略、合同和产物 | R:code:src/harness/scope.ts,code:src/harness/routing.ts,code:src/harness/governance.ts,code:src/harness/code.ts | A:核对选择检查及命令、哈希、报告；刷新文档与本轮AOCI证明 | S:不执行回执内命令；缺冻结产物或字节失配拒绝完成
+run.ts[RQ8M]: F:管理Harness进程预算日志及冻结回执 | R:code:src/harness/types.ts,code:src/harness/scope.ts,code:src/harness/cli.ts | A:保存policy和scope；绑定产物及前后身份；有界stdout回调提供实时进度 | S:visualReview固定NOT_EVALUATED；中断、缺工具、截断或参与源码变化不可PASS；停止进程树包含后代
+types.ts[CQ7M]: F:定义三态结果版本策略scope及分层路由Schema | R:code:src/harness/code.ts,code:src/harness/routing.ts,code:src/harness/run.ts | A:校验唯一登记、规范路径及路由引用；子集仅准已选择Vitest登记文件；聚合退出码0/1/2 | S:缺失或未知结果不可PASS；已知必需失败仍为FAIL
+completion.ts[TQ7S]: F:只读重验scope回执与当前源码策略合同和产物 | R:code:src/harness/scope.ts,code:src/harness/routing.ts,code:src/harness/governance.ts,code:src/harness/code.ts | A:重算路由及子集，复用执行参数核对命令和报告；刷新文档及本轮AOCI证明 | S:不执行回执内命令；缺冻结产物或字节失配拒绝完成
 governance.ts[TQ7L]: F:核验本轮文档引用与官方AOCI治理证据 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:核对scope及三项官方事实；正式Volume绑定path和磁盘SHA并记录artifactRequired | S:正式资产不要求自身Entry；未知声明重复路径链接漂移冲突失败关闭；observe/exclude不伪造索引
-routing.ts[CQ6T]: F:按本轮文件集合匹配策略中的必需检查和合同 | R:code:src/harness/types.ts,code:src/harness/cli.ts | A:聚合全部匹配路由并保持策略顺序；校验改动测试被选定Vitest覆盖 | S:未映射路径、空检查或可选检查直接拒绝
+routing.ts[CQ6T]: F:逐owned路径选取必需检查合同及固定测试子集 | R:code:src/harness/types.ts,code:src/harness/cli.ts | A:baseline保留，domain抑制该路径fallback；跨路径聚合；子集union保持registry顺序，完整贡献优先 | S:缺tier沿用旧union；未映射、可选检查或遗漏changed test拒绝
 scope.ts[CQ7M]: F:验证任务拥有文件的Git前后像并捕获参与证据身份 | R:code:src/harness/types.ts,code:src/harness/run.ts | A:拒绝越界和符号链接；冻结声明；绑定源码、合同与策略，源码树排除Python缓存目录 | S:不从全库dirty状态推断ownership；声明字节须匹配baseCommit和当前磁盘
 
 ===/home/reggie/vscode_folder/jianji/src/main/===
@@ -182,7 +182,7 @@ douyin-upload-group.ts[DW7T]: F:核对冻结上传成员终态以释放最终第
 hybrid-cover-connections.ts[IA7T]: F:将产品Hybrid视觉请求接到canonical连接和能力核验 | R:code:src/main/model-connections.ts,code:src/main/shape-cover-vision-provider.ts,code:src/main/shape-cover-alpha.ts | A:官方MiniMax-M3 Responses连接做单次RGB图片能力核验，交原Hybrid routes并重验连接freshness | S:失败Promise保留不重试；不另存凭据或改模型选择；无配置或图片能力明确失败
 hybrid-cover-production.ts[AB8S]: F:消费H4批准冻结层并核验原生产编码发布准入 | R:code:src/main/shape-cover-hybrid-preview.ts,code:src/main/compiler.ts,code:src/main/queue.ts,code:src/shared/hybrid-cover.ts | A:分验容器及视频轨身份；签进程内approval与模板seal；保留用户文字和frame层并附加批准角；完整解码重核PNG和时钟覆盖 | S:JSON不恢复authority；原PNG binding不变；无白fallback；main-only归档重放原QA包不重判；未知角原样
 hybrid-cover-session.ts[AW7T]: F:将原H2 H3 H4接为逐源Hybrid模板准备适配 | R:code:src/main/shape-cover-vision-corner-semantic.ts,code:src/main/shape-cover-hybrid-h3.ts,code:src/main/hybrid-cover-production.ts,code:src/main/source-sticker-knowledge-store.ts,code:src/main/decoration-frame.ts | A:同指纹共用批准覆盖；边框按素材版本独立冻结并缓存；文字及边框经原materializer追加批准层 | S:容器及视频身份任一知识争议关闭；未知角原样，不补普通角或改滤镜；失败不重试；边框换款不重判批准PNG
-builtin-frames.ts[IB6S]: F:离线生成三款整圈透明PNG边框及不可变素材文件 | R:code:src/shared/frames.ts,code:src/main/builtin-stickers.ts | A:星星爱心彩纸固定画布RGBA；按SHA命名并核已有文件 | S:中央保持透明；已有同名文件不符拒绝，不覆盖
+builtin-frames.ts[IB6M]: F:离线生成十三款整圈透明PNG边框及不可变素材文件 | R:code:src/shared/frames.ts,code:src/main/builtin-stickers.ts | A:固定画布RGBA；十款新增主题复用绘图；按SHA命名并核已有文件 | S:原三款字节保持；中央透明；已有同名文件不符拒绝，不覆盖
 decoration-assets-ipc.ts[EU7T]: F:注册贴纸和边框上传删除的受信任IPC | R:code:src/main/uploaded-stickers.ts,code:src/shared/frames.ts,code:src/main/index.ts | A:复用原目录owner；共享mutation锁和idle校验；删除立即取消新制作资格 | S:对话框后重核空闲；失败恢复资源映射；保留冻结文件
 decoration-frame.ts[DB7T]: F:预检边框资源并解析逐素材随机指定关闭设置及底层图层 | R:code:src/main/paths.ts,code:src/main/domain.ts,code:src/shared/frames.ts | A:独立池洗牌轮转且同素材相邻版避重；调用方保留输出冻结设置；核中央透明非空尺寸；全画布zIndex负1000 | S:空随机池或缺失漂移拒绝；不混普通贴纸，不改变覆盖几何
 
@@ -274,7 +274,7 @@ qianchuan-video-library-schedule.ts[CW7T]: F:定义每日清理准入、运行�
 qianchuan-plan-selection.ts[CB7T]: F:定义账号计划选项及共享读取取消refresh请求 | R:code:src/shared/qianchuan-account.ts,code:src/shared/douyin-upload.ts | A:strict选项含广告主计划ID名称及可选1至50商品名；读UUID/refresh取消仅UUID；最多1000项同广告主计划唯一 | S:商品名及计划名不决定上传目标；schema不授上传确认；ID和名称控制字符受限
 batch-upload.ts[CC6T]: F:定义模板账号绑定及批量上传账号解析 | R:code:src/shared/qianchuan-account.ts | A:显式绑定优先；未绑定旧模板仅唯一精确名称匹配；返回账号或错误 | S:名称匹配不替代广告主身份核验；未知或歧义不得自动选账号
 hybrid-cover.ts[CB8T]: F:定义H4批准角落冻结生产层的严格序列化绑定 | R:code:src/main/hybrid-cover-production.ts,code:src/main/domain.ts,code:src/shared/source-sticker-knowledge.ts | A:固定HybridApprovedCorner/v1与UUID、源、设置、PNG binding packet摘要、projection placement及range | S:coverage必须oldPixels正数uncovered0/fraction1；数据不授authority或恢复进程内owner；不声明全源完整性
-frames.ts[CB6T]: F:定义边框ID目录及随机指定关闭设置与逐素材优先级 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:内置或uploaded-frame加64位SHA；严格模式union；素材覆盖优先整批，再legacy frameId，缺字段为none | S:独立命名空间不当普通贴纸
+frames.ts[CB6T]: F:定义十三款内置边框目录及随机指定关闭设置与逐素材优先级 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:内置或uploaded-frame加64位SHA；严格模式union；素材覆盖优先整批，再legacy frameId，缺字段为none | S:独立命名空间不当普通贴纸
 
 
 ===/home/reggie/vscode_folder/jianji/src/types/===

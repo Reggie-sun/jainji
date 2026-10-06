@@ -86,8 +86,10 @@ export type HarnessTaskScope = z.infer<typeof HarnessTaskScopeSchema>;
 
 const RouteSchema = z.object({
   id: z.string().regex(/^[a-z0-9][a-z0-9-]*$/),
+  tier: z.enum(["baseline", "domain", "fallback"]).optional(),
   paths: z.array(RoutePathSchema).min(1),
   checkIds: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]*$/)).min(1),
+  testFilesByCheck: z.record(z.array(z.string()).min(1)).optional(),
   documentRefs: z.array(DocumentReferenceSchema),
 }).strict();
 export type HarnessPolicyRoute = z.infer<typeof RouteSchema>;
@@ -177,6 +179,13 @@ export const HarnessPolicyV2Schema = HarnessPolicyV2BaseSchema.superRefine((poli
     if (new Set(route.documentRefs).size !== route.documentRefs.length) context.addIssue({ code: "custom", path: ["routes", index, "documentRefs"], message: "duplicate document reference" });
     for (const [checkIndex, checkId] of route.checkIds.entries()) {
       if (!knownCheckIds.has(checkId)) context.addIssue({ code: "custom", path: ["routes", index, "checkIds", checkIndex], message: `unknown route check id: ${checkId}` });
+    }
+    for (const [checkId, files] of Object.entries(route.testFilesByCheck ?? {})) {
+      const check = policy.codeChecks.find((candidate) => candidate.id === checkId);
+      if (!route.checkIds.includes(checkId) || check?.kind !== "vitest" ||
+        new Set(files).size !== files.length || files.some((file) => !check.testFiles.includes(file))) {
+        context.addIssue({ code: "custom", path: ["routes", index, "testFilesByCheck", checkId], message: "subset must contain unique registered files of a Vitest check selected by this route" });
+      }
     }
   }
 });

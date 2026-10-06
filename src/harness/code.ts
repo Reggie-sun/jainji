@@ -17,7 +17,13 @@ const VitestReportSchema = z.object({
   testResults: z.array(z.object({
     name: z.string().min(1),
     status: z.string().min(1),
-    assertionResults: z.array(z.object({ status: z.string().min(1) }).passthrough()),
+    startTime: z.number().finite().nonnegative().optional(),
+    endTime: z.number().finite().nonnegative().optional(),
+    assertionResults: z.array(z.object({
+      status: z.string().min(1),
+      fullName: z.string().optional(),
+      duration: z.number().finite().nonnegative().optional(),
+    }).passthrough()),
   }).passthrough()),
 }).passthrough();
 
@@ -32,6 +38,10 @@ function commandEvidence(check: CodeCheckPolicy, args: string[], reportPath?: st
 
 function resolvedTestFiles(repoRoot: string, files: readonly string[]): Set<string> {
   return new Set(files.map((file) => path.resolve(repoRoot, file)));
+}
+
+export function vitestCommandArgs(check: Extract<CodeCheckPolicy, { kind: "vitest" }>, reportPath: string): string[] {
+  return [...check.args, ...check.testFiles, "--reporter=default", "--reporter=json", `--outputFile=${reportPath}`, "--pool=threads"];
 }
 
 export async function evaluateVitest(
@@ -77,6 +87,15 @@ export async function evaluateVitest(
     missingFiles: missing,
     unexpectedFiles: unexpected,
     duplicateFiles,
+    failedTests: report.testResults.flatMap((file) => file.assertionResults
+      .filter((test) => test.status === "failed")
+      .map((test) => ({ file: path.relative(repoRoot, file.name), name: test.fullName ?? "unnamed assertion" }))),
+    slowestFiles: report.testResults.filter((file) => file.startTime !== undefined && file.endTime !== undefined && file.endTime >= file.startTime)
+      .map((file) => ({ file: path.relative(repoRoot, file.name), durationMs: file.endTime! - file.startTime! }))
+      .sort((left, right) => right.durationMs - left.durationMs).slice(0, 10),
+    slowestTests: report.testResults.flatMap((file) => file.assertionResults.filter((test) => test.duration !== undefined)
+      .map((test) => ({ file: path.relative(repoRoot, file.name), name: test.fullName ?? "unnamed assertion", durationMs: test.duration! })))
+      .sort((left, right) => right.durationMs - left.durationMs).slice(0, 10),
   };
   const hasReportedFailure = processResult.code !== 0 || report.success === false || counts.failed > 0 ||
     Boolean(assertionCounts.failed) || report.testResults.some((result) => result.status === "failed");
@@ -119,12 +138,15 @@ export async function runCodeChecks(policy: HarnessPolicy, run: HarnessRun, sign
     ? policy.codeChecks.filter((check) => policy.defaultCheckIds!.includes(check.id)) : policy.codeChecks,
 ): Promise<HarnessCheckResult[]> {
   const results: HarnessCheckResult[] = [];
-  for (const check of selectedChecks) {
+  for (const [index, check] of selectedChecks.entries()) {
     const reportPath = check.kind === "vitest" ? path.join(run.logsDirectory, `${check.id}.report.json`) : undefined;
     const args = check.kind === "vitest"
-      ? [...check.args, ...check.testFiles, "--reporter=json", `--outputFile=${reportPath}`, "--pool=threads"]
+      ? vitestCommandArgs(check, reportPath!)
       : [...check.args, ...(["documents", "owned-aoci"].includes(check.id) && run.scopePath ? ["--scope", run.scopePath] : [])];
-    const processResult = await run.command(check.id, check.command, args, check.timeoutMs, signal);
+    const progress = `[${index + 1}/${selectedChecks.length}]`;
+    process.stderr.write(`${progress} RUN ${check.id}${check.kind === "vitest" ? ` (${check.testFiles.length} files)` : ""}\n`);
+    const processResult = await run.command(check.id, check.command, args, check.timeoutMs, signal,
+      check.kind === "vitest" ? (chunk) => { process.stderr.write(chunk); } : undefined);
     let outcome: Pick<HarnessCheckResult, "status" | "category" | "message" | "evidence"> = check.kind === "vitest" && reportPath
       ? await evaluateVitest(check, reportPath, processResult, run.repoRoot)
       : outcomeForProcess(processResult);
@@ -135,6 +157,7 @@ export async function runCodeChecks(policy: HarnessPolicy, run: HarnessRun, sign
         outcome = control;
       } catch (error) { outcome = { status: "NOT_EVALUATED", category: "control_report_invalid", message: String(error) }; }
     }
+    process.stderr.write(`${progress} ${outcome.status} ${check.id} (${(processResult.durationMs / 1_000).toFixed(2)}s)\n`);
     results.push({
       id: check.id,
       required: check.required,
@@ -150,11 +173,24 @@ export async function runCodeChecks(policy: HarnessPolicy, run: HarnessRun, sign
 }
 
 export function codeSummary(checks: readonly HarnessCheckResult[], run: HarnessRun): string {
-  const rows = checks.map((check) => `| ${check.id} | ${check.status} | ${check.message.replaceAll("|", "\\|")} |`).join("\n");
+  const escape = (value: string) => value.replaceAll("|", "\\|").replaceAll("\n", " ").replaceAll("\r", " ");
+  const rows = checks.map((check) => `| ${check.id} | ${check.status} | ${check.durationMs === undefined ? "—" : `${(check.durationMs / 1_000).toFixed(2)}s`} | ${escape(check.message)} |`).join("\n");
+  const details = checks.flatMap((check) => {
+    const failed = check.evidence?.failedTests as Array<{ file: string; name: string }> | undefined;
+    const slow = check.evidence?.slowestTests as Array<{ file: string; name: string; durationMs: number }> | undefined;
+    return [...(failed ?? []).map((test) => `| ${check.id} | FAIL | ${escape(test.file)} | ${escape(test.name)} | — |`),
+      ...(slow ?? []).map((test) => `| ${check.id} | duration | ${escape(test.file)} | ${escape(test.name)} | ${test.durationMs.toFixed(0)}ms |`)];
+  }).join("\n");
+  const files = checks.flatMap((check) => {
+    const slow = check.evidence?.slowestFiles as Array<{ file: string; durationMs: number }> | undefined;
+    return (slow ?? []).map((file) => `| ${check.id} | ${escape(file.file)} | ${file.durationMs.toFixed(0)}ms |`);
+  }).join("\n");
   return `# Code Regression Validation\n\n` +
     `Run: \`${path.basename(run.directory)}\`\n\n` +
-    `本结果只覆盖 policy 中固定的核心回归，不代表商业模型、Windows 实机或最终成片视觉验收。\n\n` +
-    `| Check | Status | Evidence boundary |\n| --- | --- | --- |\n${rows}\n\n` +
+    `本结果只覆盖本次 policy 选定的必需回归，不代表商业模型、Windows 实机或最终成片视觉验收。\n\n` +
+    `| Check | Status | Duration | Evidence boundary |\n| --- | --- | --- | --- |\n${rows}\n\n` +
+    (details ? `| Check | Kind | File | Case | Duration |\n| --- | --- | --- | --- | --- |\n${details}\n\n` : "") +
+    (files ? `| Check | File | Duration |\n| --- | --- | --- |\n${files}\n\n` : "") +
     `Visual review: **NOT_EVALUATED**\n\n` +
     `详细 stdout、stderr 与 Vitest JSON 位于 [logs](${relativeEvidencePath(run, run.logsDirectory)}/)。`;
 }

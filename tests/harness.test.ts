@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { afterAll, describe, expect, it, vi } from "vitest";
-import { runCodeChecks } from "../src/harness/code.js";
+import { codeSummary, runCodeChecks } from "../src/harness/code.js";
 import { HarnessRun, runProcess } from "../src/harness/run.js";
 import { aggregateOutcome, HarnessPolicySchema, type HarnessPolicy } from "../src/harness/types.js";
 
@@ -104,6 +104,40 @@ async function waitForFixture(check: () => Promise<boolean>): Promise<boolean> {
 }
 
 describe("video validation harness runner", () => {
+  it("delivers bounded stdout before process completion", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-harness-progress-"));
+    temporaryRoots.push(root);
+    const releasePath = path.join(root, "release");
+    let observed = "";
+    let completed = false;
+    const script = `const fs=require('node:fs');console.log('ready');const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(releasePath)})){clearInterval(timer);console.log('done')}},5);`;
+    const pending = runProcess("node", ["-e", script], {
+      cwd: process.cwd(), timeoutMs: 2_000, maxOutputBytes: 7,
+      onStdout: (chunk) => { expect(completed).toBe(false); observed += chunk.toString(); },
+    });
+    expect(await waitForFixture(async () => observed === "ready\n")).toBe(true);
+    await writeFile(releasePath, "release");
+    const result = await pending;
+    completed = true;
+    expect(observed).toBe(result.stdout);
+    expect(Buffer.byteLength(observed)).toBe(7);
+    expect(result.outputTruncated).toBe(true);
+  });
+
+  it("records failing case names and elapsed file/case times without promoting failure", async () => {
+    const candidate = vitestPolicy(reportScript({ numPassedTests: 0, numFailedTests: 1, success: false,
+      testResults: [{ name: "TEST_FILE", status: "failed", startTime: 100, endTime: 350,
+        assertionResults: [{ status: "failed", fullName: "frame freezes identity", duration: 25 }] }] }));
+    const run = await temporaryRun(candidate);
+    const results = await runCodeChecks(candidate, run);
+    expect(results[0]).toMatchObject({ status: "FAIL", evidence: {
+      failedTests: [{ file: "tests/harness.test.ts", name: "frame freezes identity" }],
+      slowestFiles: [{ file: "tests/harness.test.ts", durationMs: 250 }],
+      slowestTests: [{ file: "tests/harness.test.ts", name: "frame freezes identity", durationMs: 25 }],
+    } });
+    expect(codeSummary(results, run)).toContain("frame freezes identity");
+  });
+
   it("rejects duplicate checks and invalid tolerances", () => {
     const raw = { schemaVersion: 1, codeChecks: [
       { id: "same", kind: "command", required: true, command: "node", args: [], timeoutMs: 1 },

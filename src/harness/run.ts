@@ -83,7 +83,7 @@ async function terminateProcessTree(child: ChildProcess, force = false): Promise
 export async function runProcess(
   command: string,
   args: readonly string[],
-  options: { cwd: string; timeoutMs: number; signal?: AbortSignal; maxOutputBytes?: number },
+  options: { cwd: string; timeoutMs: number; signal?: AbortSignal; maxOutputBytes?: number; onStdout?: (chunk: Buffer) => void },
 ): Promise<ProcessResult> {
   const started = Date.now();
   const executable = executableFor(command);
@@ -112,7 +112,11 @@ export async function runProcess(
       if (chunk.length > maxBytes - current.length) outputTruncated = true;
       return Buffer.concat([current, chunk.subarray(0, maxBytes - current.length)]);
     };
-    child.stdout?.on("data", (chunk: Buffer) => { stdout = append(stdout, chunk); });
+    child.stdout?.on("data", (chunk: Buffer) => {
+      const previousLength = stdout.length;
+      stdout = append(stdout, chunk);
+      if (stdout.length > previousLength) options.onStdout?.(stdout.subarray(previousLength));
+    });
     child.stderr?.on("data", (chunk: Buffer) => { stderr = append(stderr, chunk); });
     const finish = (code: number) => {
       if (settled) return;
@@ -282,8 +286,8 @@ export class HarnessRun {
     await atomicJson(this.receiptPath, this.receipt);
   }
 
-  async command(id: string, command: string, args: readonly string[], timeoutMs: number, signal?: AbortSignal): Promise<ProcessResult> {
-    const result = await runProcess(command, args, { cwd: this.repoRoot, timeoutMs, signal });
+  async command(id: string, command: string, args: readonly string[], timeoutMs: number, signal?: AbortSignal, onStdout?: (chunk: Buffer) => void): Promise<ProcessResult> {
+    const result = await runProcess(command, args, { cwd: this.repoRoot, timeoutMs, signal, onStdout });
     const prefix = path.join(this.logsDirectory, safeLogId(id));
     await Promise.all([
       writeFile(`${prefix}.stdout.log`, result.stdout, { encoding: "utf8", mode: 0o600 }),

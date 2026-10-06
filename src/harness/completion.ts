@@ -1,6 +1,6 @@
 import { lstat, readFile, realpath } from "node:fs/promises";
 import path from "node:path";
-import { evaluateVitest } from "./code.js";
+import { evaluateVitest, vitestCommandArgs } from "./code.js";
 import { selectChecks } from "./routing.js";
 import { captureScopedIdentity, loadScope } from "./scope.js";
 import { sha256, type ProcessResult, type Receipt } from "./run.js";
@@ -67,7 +67,7 @@ export async function verifyReceipt(repoRoot: string, scopePath: string, receipt
       if (["documents", "owned-aoci"].includes(selected.id)) continue;
       const expectedReport = `logs/${selected.id}.report.json`;
       const args = selected.kind === "vitest"
-        ? [...selected.args, ...selected.testFiles, "--reporter=json", `--outputFile=${path.join(directory, expectedReport)}`, "--pool=threads"]
+        ? vitestCommandArgs(selected, path.join(directory, expectedReport))
         : [...selected.args];
       if (result.command?.executable !== selected.command || JSON.stringify(result.command.args) !== JSON.stringify(args)) {
         return rejected(`Command identity changed: ${selected.id}`);

@@ -55,6 +55,52 @@ function scope(paths: string[]): HarnessTaskScope {
 }
 
 describe("harness policy routing", () => {
+  it("selects domain or fallback separately for each owned path while retaining baseline", () => {
+    const candidate = policy({ routes: [
+      { id: "baseline", tier: "baseline", paths: ["src/**"], checkIds: ["typecheck"], documentRefs: [] },
+      { id: "fallback", tier: "fallback", paths: ["src/**"], checkIds: ["policy-check"], documentRefs: [] },
+      { id: "domain", paths: ["src/frame.ts"], checkIds: ["harness-tests"], documentRefs: [] },
+    ] });
+    expect(selectChecks(candidate, scope(["src/frame.ts"])).routeIds).toEqual(["baseline", "domain"]);
+    expect(selectChecks(candidate, scope(["src/frame.ts", "src/entry.ts"])).routeIds).toEqual(["baseline", "fallback", "domain"]);
+  });
+
+  it("unions fixed subsets in registry order and lets a full contributor require every file", () => {
+    const candidate = policy({ routes: [
+      { id: "one", paths: ["src/a.ts"], checkIds: ["harness-tests"], testFilesByCheck: { "harness-tests": ["tests/harness-routing.test.ts"] }, documentRefs: [] },
+      { id: "two", paths: ["src/b.ts"], checkIds: ["harness-tests"], testFilesByCheck: { "harness-tests": ["tests/harness-scope.test.ts"] }, documentRefs: [] },
+      { id: "full", paths: ["src/c.ts"], checkIds: ["harness-tests"], documentRefs: [] },
+    ] });
+    expect(selectChecks(candidate, scope(["src/a.ts"])).checks[0]).toMatchObject({ testFiles: ["tests/harness-routing.test.ts"] });
+    for (const paths of [["src/a.ts", "src/b.ts"], ["src/a.ts", "src/c.ts"]]) {
+      expect(selectChecks(candidate, scope(paths)).checks[0]).toMatchObject({ testFiles: ["tests/harness-scope.test.ts", "tests/harness-routing.test.ts"] });
+    }
+  });
+
+  it("rejects invalid subsets and a changed test omitted by its subset", () => {
+    const valid = policy();
+    for (const subset of [{ "missing": ["tests/harness.test.ts"] }, { typecheck: ["tests/harness.test.ts"] },
+      { "harness-tests": [] }, { "harness-tests": ["tests/foreign.test.ts"] },
+      { "harness-tests": ["tests/harness-scope.test.ts", "tests/harness-scope.test.ts"] }]) {
+      expect(HarnessPolicySchema.safeParse({ ...valid, routes: [{ id: "x", paths: ["tests/**"], checkIds: ["harness-tests", "typecheck"], testFilesByCheck: subset, documentRefs: [] }] }).success).toBe(false);
+    }
+    const candidate = policy({ routes: [{ id: "x", paths: ["tests/**"], checkIds: ["harness-tests"], testFilesByCheck: { "harness-tests": ["tests/harness-scope.test.ts"] }, documentRefs: [] }] });
+    expect(() => selectChecks(candidate, scope(["tests/harness-routing.test.ts"]))).toThrow(/not included/i);
+  });
+
+  it("keeps frame regressions focused, governance-only assets narrow, and unknown shared entries conservative", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(new URL("../.agent/harness/policy.json", import.meta.url), "utf8")));
+    const selected = selectChecks(candidate, scope(["src/shared/frames.ts", "src/main/builtin-frames.ts", "tests/builtin-stickers.test.ts", "aoci.code.txt", ".aoci/baseline.json"]));
+    expect(selected.checks.map(c => c.id)).toEqual(["typecheck", "harness", "text-and-plan", "lifecycle", "real-media", "layout", "frame-assets", "documents", "owned-aoci"]);
+    const files = selected.checks.flatMap(c => c.kind === "vitest" ? c.testFiles : []);
+    expect(files).toHaveLength(20);
+    expect(new Set(files).size).toBe(files.length);
+    expect(files).toEqual(expect.arrayContaining(["tests/agent-controller.test.ts", "tests/agent-runner.test.ts", "tests/compiler.test.ts", "tests/four-corner-render.integration.test.ts", "tests/append-production.test.ts"]));
+    expect(selectChecks(candidate, scope(["aoci.code.txt"])).checks.map(c => c.id)).toEqual(["documents", "owned-aoci"]);
+    expect(selectChecks(candidate, scope(["src/harness/routing.ts", ".agent/harness/policy.json"])).checks.map(c => c.id)).toEqual(["typecheck", "harness", "documents", "owned-aoci"]);
+    expect(selectChecks(candidate, scope(["src/shared/frames.ts", "src/shared/agent.ts"])).checks.map(c => c.id)).toContain("douyin-upload");
+  });
+
   it("requires the complete production suite and H3/H4/extended gates for Hybrid activation", () => {
     const policy = HarnessPolicySchema.parse(JSON.parse(readFileSync(new URL("../.agent/harness/policy.json", import.meta.url), "utf8")));
     if (policy.schemaVersion !== 2) throw Error("Expected policy v2");

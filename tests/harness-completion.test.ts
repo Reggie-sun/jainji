@@ -29,7 +29,7 @@ it("treats missing receipts as absent evidence, not PASS", async () => {
   expect(checks).toEqual(expect.arrayContaining([expect.objectContaining({ status: "NOT_EVALUATED" })]));
 });
 
-async function fixture() {
+async function fixture(vitest = false) {
   const root = await mkdtemp(path.join(tmpdir(), "harness-completion-bound-")); roots.push(root);
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   await mkdir(path.join(root, ".agent/harness"), { recursive: true });
@@ -38,8 +38,11 @@ async function fixture() {
   await writeFile(path.join(root, "src/participating.ts"), "export const value = 1;\n");
   const media = JSON.parse(await readFile(path.join(process.cwd(), ".agent/harness/policy.json"), "utf8")).media;
   const policy = HarnessPolicySchema.parse({ schemaVersion: 2, media,
-    codeChecks: [{ id: "fixture", kind: "command", command: "node", args: ["-e", "console.log('checked')"], required: true, timeoutMs: 5000 }],
-    controlChecks: [], routes: [{ id: "docs", paths: ["docs/**"], checkIds: ["fixture"], documentRefs: ["docs/contract.md"] }],
+    codeChecks: vitest ? [{ id: "fixture", kind: "vitest", command: "node", required: true, timeoutMs: 5000,
+      testFiles: ["tests/one.test.ts", "tests/two.test.ts"], args: ["-e", `const fs=require('node:fs');const path=require('node:path');const out=process.argv.find(v=>v.startsWith('--outputFile=')).slice(13);fs.writeFileSync(out,JSON.stringify({numTotalTests:1,numPassedTests:1,numFailedTests:0,numPendingTests:0,numTodoTests:0,success:true,testResults:[{name:path.resolve('tests/one.test.ts'),status:'passed',assertionResults:[{status:'passed'}]}]}));`] }]
+      : [{ id: "fixture", kind: "command", command: "node", args: ["-e", "console.log('checked')"], required: true, timeoutMs: 5000 }],
+    controlChecks: [], routes: [{ id: "docs", paths: ["docs/**"], checkIds: ["fixture"],
+      ...(vitest ? { testFilesByCheck: { fixture: ["tests/one.test.ts"] } } : {}), documentRefs: ["docs/contract.md"] }],
   });
   const policyPath = path.join(root, ".agent/harness/policy.json");
   await writeFile(policyPath, JSON.stringify(policy));
@@ -53,7 +56,7 @@ async function fixture() {
   await writeFile(scopePath, JSON.stringify(scope));
   const run = await HarnessRun.create(root, "code", policyPath);
   await run.configureScoped(scope, scopePath, selectChecks(policy, scope));
-  const checks = await runCodeChecks(policy, run);
+  const checks = await runCodeChecks(policy, run, undefined, selectChecks(policy, scope).checks);
   expect(await run.finish(checks, "fixture evidence")).toBe("PASS");
   const governance = vi.fn(async () => [
     { id: "documents", required: true, status: "PASS" as const, message: "fixture links checked" },
@@ -61,6 +64,17 @@ async function fixture() {
   ]);
   return { root, run, scopePath, governance };
 }
+
+it("recomputes a fixed Vitest subset for completion and rejects a widened recorded command", async () => {
+  const { run, root, scopePath, governance } = await fixture(true);
+  expect(aggregateOutcome(await verifyReceipt(root, scopePath, run.receiptPath, { governance }))).toBe("PASS");
+  const receipt = JSON.parse(await readFile(run.receiptPath, "utf8"));
+  expect(receipt.checks[0].command.args).toContain("--reporter=default");
+  expect(receipt.checks[0].command.args).not.toContain("tests/two.test.ts");
+  receipt.checks[0].command.args.push("tests/two.test.ts");
+  await writeFile(run.receiptPath, JSON.stringify(receipt));
+  expect(aggregateOutcome(await verifyReceipt(root, scopePath, run.receiptPath, { governance }))).toBe("FAIL");
+});
 
 it("accepts bound evidence read-only; unrelated docs/index changes and identical-byte commits do not stale code", async () => {
   const { root, run, scopePath, governance } = await fixture();
