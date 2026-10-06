@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "5c06e8e286d6581741718fe82c86519c61db18007f6e85eaecd8ce7b5a6c363c",
-      "size": 93202,
-      "normalized_sha256": "5c06e8e286d6581741718fe82c86519c61db18007f6e85eaecd8ce7b5a6c363c"
+      "sha256": "6a2de2081b47ee4401ef21176dc4d8e7c416a2eed856602057ea57823cb89797",
+      "size": 93248,
+      "normalized_sha256": "6a2de2081b47ee4401ef21176dc4d8e7c416a2eed856602057ea57823cb89797"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1483,9 +1483,9 @@
       "normalized_sha256": "93b5231d3e230f6a3eb027e210d97f26e31b246c9415f9e6efe46c974abe1b3e"
     },
     "src/main/qianchuan-plan-catalog.ts": {
-      "sha256": "72cc37336ad4c0cf18b5e0d31a1bdde4deb4c4d3fb2c531362881fde4fec704e",
-      "size": 16994,
-      "normalized_sha256": "72cc37336ad4c0cf18b5e0d31a1bdde4deb4c4d3fb2c531362881fde4fec704e"
+      "sha256": "b492548c5e2d1e939ea2b6ec79059b14469ef18a3dd918e93e908b7291c38bfc",
+      "size": 18662,
+      "normalized_sha256": "b492548c5e2d1e939ea2b6ec79059b14469ef18a3dd918e93e908b7291c38bfc"
     },
     "src/main/qianchuan-plan-material-page.ts": {
       "sha256": "aad252c9aa2345e158664368abfc83a629760944ddc3156148319ecfde1fa238",

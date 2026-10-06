@@ -37,7 +37,7 @@ function pageHtml(page: FixturePage, pageNumber: number): string {
   </div><table><tbody>${page.rows.map(rowHtml).join("")}</tbody></table>`;
 }
 
-async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean; metadata?: unknown; context?: BrowserContext } = {}): Promise<{ context: BrowserContext; page: Page }> {
+async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean; metadata?: unknown; context?: BrowserContext; bootstrapReload?: boolean; bootstrapAdId?: string; reloadNext?: boolean } = {}): Promise<{ context: BrowserContext; page: Page }> {
   const context = options.context ?? await browser.newContext();
   const page = await context.newPage();
   const pages = options.pages ?? [{ rows: [], total: 0, nextDisabled: true }];
@@ -45,10 +45,12 @@ async function fixture(options: { pages?: FixturePage[]; accountId?: string; upd
     <div id="catalog">${pageHtml(pages[0]!, 1)}</div><script>
       const values=${JSON.stringify(pages.map((entry, index) => pageHtml(entry, index + 1)))}; let index=0;
       const next=()=>document.querySelector('[data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"] li.ovui-page-turner__item:has(.ovui-page-turner__next-icon)');
-      next().addEventListener('click',()=>{${options.holdNext ? "" : `setTimeout(()=>{index++;if(index<values.length)document.querySelector('#catalog').innerHTML=values[index];},${options.updateDelay ?? 50});`}});
+      next().addEventListener('click',()=>{${options.reloadNext ? "location.reload();" : options.holdNext ? "" : `setTimeout(()=>{index++;if(index<values.length)document.querySelector('#catalog').innerHTML=values[index];},${options.updateDelay ?? 50});`}});
       ${options.metadata ? "fetch('/ad/api/pmc/v1/uni-promotion/ad/list-optional')" : ""};
     </script>`;
-  await context.route(`${origin}/**`, route => route.fulfill(route.request().url().endsWith("/ad/list-optional") ? { contentType: "application/json", body: JSON.stringify(options.metadata) } : { contentType: "text/html; charset=utf-8", body: html }));
+  let documents = 0;
+  const bootstrap = `<html><body>正在初始化<script>setTimeout(()=>{const url=new URL(location.href);${options.bootstrapAdId ? `url.searchParams.set('adId',${JSON.stringify(options.bootstrapAdId)});` : ""}location.replace(url.href);},150)</script></body></html>`;
+  await context.route(`${origin}/**`, route => route.fulfill(route.request().url().endsWith("/ad/list-optional") ? { contentType: "application/json", body: JSON.stringify(options.metadata) } : { contentType: "text/html; charset=utf-8", body: options.bootstrapReload && ++documents === 1 ? bootstrap : html }));
   await page.goto(`${origin}/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`, { waitUntil: "domcontentloaded" });
   return { context, page };
 }
@@ -72,6 +74,41 @@ it("returns visible active plans, excludes exact deleted tags, and ignores summa
       { advertiserId, adId: "1877947268854204", name: "全域投放二" },
       { advertiserId, adId: "1877947268854205", name: "名称包含已删除字样" },
     ]);
+  } finally { await f.context.close(); }
+});
+
+it("waits through a same-account bootstrap reload before binding the initial catalog document", async () => {
+  const f = await fixture({ bootstrapReload: true, pages: [{ total: 1, nextDisabled: true, rows: [{ name: "初始化后的计划", id: "7001" }] }] });
+  try { await expect(readVisibleQianchuanPlans(f.page, advertiserId, signal)).resolves.toEqual([{ advertiserId, adId: "7001", name: "初始化后的计划" }]); }
+  finally { await f.context.close(); }
+});
+
+it.each(["account", "plan"])("rejects a bootstrap reload that changes the expected %s identity", async identity => {
+  const f = await fixture({ bootstrapReload: true, ...(identity === "account" ? { accountId: "999999" } : { bootstrapAdId: "7001" }),
+    pages: [{ total: 1, nextDisabled: true, rows: [{ name: "不能读取的计划", id: "7001" }] }] });
+  try { await expect(readVisibleQianchuanPlans(f.page, advertiserId, signal)).rejects.toThrow(); }
+  finally { await f.context.close(); }
+});
+
+it("rejects document replacement once catalog pagination has begun", async () => {
+  const f = await fixture({ reloadNext: true, pages: [
+    { total: 2, nextDisabled: false, rows: [{ name: "计划一", id: "7001" }] },
+    { total: 2, nextDisabled: true, rows: [{ name: "计划二", id: "7002" }] },
+  ] });
+  try { await expect(readVisibleQianchuanPlans(f.page, advertiserId, signal)).rejects.toThrow("重新加载"); }
+  finally { await f.context.close(); }
+});
+
+it("cancels an unready initial catalog without closing the caller's page", async () => {
+  const f = await fixture();
+  const controller = new AbortController();
+  try {
+    await f.page.locator("#catalog").evaluate(element => element.remove());
+    const pending = readVisibleQianchuanPlans(f.page, advertiserId, controller.signal);
+    const timer = setTimeout(() => controller.abort(), 150);
+    try { await expect(pending).rejects.toMatchObject({ name: "AbortError" }); }
+    finally { clearTimeout(timer); }
+    expect(f.page.isClosed()).toBe(false);
   } finally { await f.context.close(); }
 });
 

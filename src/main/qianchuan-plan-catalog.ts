@@ -15,6 +15,10 @@ const SAMPLE_INTERVAL_MS = 100;
 const STABLE_SAMPLES = 3;
 const changed = () => new Error("千川计划列表或账号身份无法完整核对，请检查账号浏览器中的计划列表后重试。");
 
+class CatalogDocumentChanged extends Error {
+  constructor() { super("千川计划列表在核对期间重新加载，请重新读取计划。"); }
+}
+
 interface PlanRowSnapshot {
   cellCount: number;
   names: string[];
@@ -71,8 +75,9 @@ async function observe(page: Page, advertiserId: string, documentHandle: JSHandl
   signal.throwIfAborted();
   checkPage(page, advertiserId);
   const sameDocument = await abortable(page.evaluate(value => value === window.document, documentHandle).catch(() => false), signal);
-  if (!sameDocument) throw changed();
-  const snapshot = await abortable(page.evaluate(() => {
+  if (!sameDocument) throw new CatalogDocumentChanged();
+  const snapshot = await abortable(page.evaluate(value => {
+    if (value !== window.document) return undefined;
     const doc = window.document;
     const visible = (element: Element) => {
       const style = getComputedStyle(element);
@@ -114,8 +119,9 @@ async function observe(page: Page, advertiserId: string, documentHandle: JSHandl
       ...(nextItems.length === 1 ? { nextDisabled: nextItems[0]!.classList.contains("ovui-page-turner__item--disabled") } : {}),
       rows,
     };
-  }), signal);
+  }, documentHandle), signal);
   checkPage(page, advertiserId);
+  if (!snapshot) throw new CatalogDocumentChanged();
   if (snapshot.accountContainers > 1 || snapshot.accountIds.length > 1 ||
     snapshot.accountIds.length === 1 && snapshot.accountIds[0] !== advertiserId) throw changed();
   return snapshot;
@@ -135,9 +141,30 @@ function completeSnapshot(snapshot: DomSnapshot, expectedPage: number): PageSnap
   return { total, pageNumber, nextDisabled: snapshot.nextDisabled, rows: snapshot.rows, rowSignature };
 }
 
+async function waitForInitialDocument(page: Page, advertiserId: string, signal: AbortSignal, deadline: number): Promise<JSHandle<Document>> {
+  let document = await abortable(page.evaluateHandle(() => window.document), signal);
+  let bound = false;
+  try {
+    while (Date.now() < deadline) {
+      signal.throwIfAborted();
+      try {
+        const snapshot = completeSnapshot(await observe(page, advertiserId, document, signal), 1);
+        if (snapshot && !(snapshot.total > 0 && snapshot.rows.length === 0)) { bound = true; return document; }
+      } catch (cause) {
+        if (!(cause instanceof CatalogDocumentChanged)) throw cause;
+        await document.dispose().catch(() => undefined);
+        await abortable(page.waitForLoadState("domcontentloaded", { timeout: Math.max(1, deadline - Date.now()) }), signal);
+        checkPage(page, advertiserId);
+        document = await abortable(page.evaluateHandle(() => window.document), signal);
+      }
+      await abortable(new Promise<void>(resolve => setTimeout(resolve, SAMPLE_INTERVAL_MS)), signal);
+    }
+    throw new Error("千川计划列表初始化超时，请检查账号浏览器中的计划列表后重试。");
+  } finally { if (!bound) await document.dispose().catch(() => undefined); }
+}
+
 async function waitForStablePage(page: Page, advertiserId: string, document: JSHandle<Document>, signal: AbortSignal,
-  expectedPage: number, previousRowSignature?: string): Promise<PageSnapshot> {
-  const deadline = Date.now() + PAGE_WAIT_MS;
+  expectedPage: number, previousRowSignature?: string, deadline = Date.now() + PAGE_WAIT_MS): Promise<PageSnapshot> {
   let previousSample = "";
   let stableCount = 0;
   while (Date.now() < deadline) {
@@ -176,7 +203,8 @@ export async function readVisibleQianchuanPlans(page: Page, advertiserId: string
   if (!/^[1-9][0-9]{0,19}$/.test(advertiserId)) throw changed();
   signal.throwIfAborted();
   checkPage(page, advertiserId);
-  const documentHandle = await abortable(page.evaluateHandle(() => window.document), signal);
+  const firstPageDeadline = Date.now() + PAGE_WAIT_MS;
+  const documentHandle = await waitForInitialDocument(page, advertiserId, signal, firstPageDeadline);
   try {
     const idsSeen = new Set<string>();
     const plans: QianchuanPlanOption[] = [];
@@ -185,7 +213,8 @@ export async function readVisibleQianchuanPlans(page: Page, advertiserId: string
     let pageNumber = 1;
     let previousRowSignature: string | undefined;
     while (pageNumber <= MAX_PAGES) {
-      const snapshot = await waitForStablePage(page, advertiserId, documentHandle, signal, pageNumber, previousRowSignature);
+      const snapshot = await waitForStablePage(page, advertiserId, documentHandle, signal, pageNumber, previousRowSignature,
+        pageNumber === 1 ? firstPageDeadline : undefined);
       if (expectedTotal === undefined) expectedTotal = snapshot.total;
       else if (snapshot.total !== expectedTotal) throw changed();
       rawRowsSeen += snapshot.rows.length;
