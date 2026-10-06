@@ -408,14 +408,21 @@ function registerHandlers(): void {
   ipcMain.handle("project.save", async (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const parsed = projectSaveSchema.parse(input ?? {});
+    const projectId = service.currentProject.id;
     const name = parsed.name ?? service.currentProject.name;
-    const fileName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
-    const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目", defaultPath: service.projectPath ?? `${fileName}.jianji-project.json` });
-    if (result.canceled || !result.filePath) return null;
+    let filePath = service.projectPath;
+    if (!filePath) {
+      if (!service.currentProject.mediaItems.length) throw new Error("请先导入素材，再保存新项目。");
+      const fileName = name.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
+      const result = await dialog.showSaveDialog(mainWindow!, { title: "保存项目", defaultPath: `${fileName}.jianji-project.json` });
+      if (result.canceled || !result.filePath) return null;
+      filePath = result.filePath;
+    }
     coverReview?.assertIdle(); assertProductionIdle();
-    await service.saveProject(result.filePath, name, parsed.workspaceDraft);
-    await recentProjects.remember(result.filePath, service.currentProject);
-    activeRecentProjectId = await recentProjects.idForPath(result.filePath);
+    if (service.currentProject.id !== projectId) throw new Error("项目已切换，请在当前项目重新保存。");
+    await service.saveProject(filePath, name, parsed.workspaceDraft);
+    await recentProjects.remember(filePath, service.currentProject);
+    activeRecentProjectId = await recentProjects.idForPath(filePath);
     return publicState();
   });
   ipcMain.handle("project.new", async (event) => {

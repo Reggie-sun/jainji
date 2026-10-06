@@ -52,9 +52,10 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
     <select id={`${idPrefix}-plan`} aria-label="上传计划" title={identity || error || (loading ? "正在读取计划" : "请明确选择上传计划后开始制作")} value={chosen} disabled={disabled || loading || !available || !plans.length}
       onChange={event => onChange(plans.find(plan => plan.adId === event.target.value))}>
       <option value="">{loading ? compact ? "正在准备…" : "正在准备上传计划…" : error ? "读取失败，请重试" : !available ? "请先选择上传账号" : !plans.length ? "没有可用计划" : "请选择上传计划"}</option>
-      {plans.map(plan => <option key={plan.adId} value={plan.adId}>{plan.name} · {plan.adId}</option>)}
+      {plans.map(plan => <option key={plan.adId} value={plan.adId}>{plan.productNames?.length ? `${plan.productNames.join("、")} — ` : ""}{plan.name} · ID {plan.adId}</option>)}
     </select>
     <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
+    {!compact && chosenPlan && <div style={{ overflowWrap: "anywhere" }}><strong>{chosenPlan.productNames?.join("、") ?? "商品信息未读取"}</strong><p>计划名称：{chosenPlan.name}</p><small>计划 ID：{chosenPlan.adId}</small></div>}
     {error ? <p role="alert">{error}</p> : !compact && (loading ? <small role="status">只读取计划列表，不上传视频。</small> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>请明确选择计划后开始制作。</small> : null)}
   </div>;
 }

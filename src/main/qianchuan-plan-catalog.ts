@@ -1,9 +1,10 @@
-import { chromium, type Browser, type CDPSession, type JSHandle, type Page } from "playwright-core";
+import { chromium, type Browser, type CDPSession, type JSHandle, type Page, type Response as BrowserResponse } from "playwright-core";
 import { guardedTransport } from "./local-cdp-transport.js";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+import { QianchuanPlanOptionSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 
-export interface QianchuanPlanOption { advertiserId: string; adId: string; name: string; }
+export type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 
 const QIANCHUAN_ORIGIN = "https://qianchuan.jinritemai.com";
 const PLAN_PICKER_MARKER = "jianjiPlanPicker";
@@ -207,6 +208,24 @@ export async function readVisibleQianchuanPlans(page: Page, advertiserId: string
   } finally { await documentHandle.dispose().catch(() => undefined); }
 }
 
+/** Optional display metadata, bound to the same advertiser, plan ID and source plan name. */
+export function readPlanProductNames(input: unknown, advertiserId: string): Map<string, QianchuanPlanOption> {
+  const result = new Map<string, QianchuanPlanOption>();
+  const data = (input as { data?: { adInfos?: unknown; adGoodsMap?: Record<string, unknown> } } | null)?.data;
+  if (!Array.isArray(data?.adInfos) || data.adInfos.length > MAX_PLANS || !data.adGoodsMap || typeof data.adGoodsMap !== "object") return result;
+  const seen = new Set<string>();
+  for (const info of data.adInfos as { id?: unknown; advId?: unknown; name?: unknown }[]) {
+    if (!info || typeof info.id !== "string" || seen.has(info.id)) return new Map();
+    seen.add(info.id);
+    if (info.advId !== advertiserId) continue;
+    const goods = data.adGoodsMap[info.id];
+    if (!Array.isArray(goods) || !goods.length || goods.length > 50 || goods.some(good => !good || typeof good.id !== "string" || !/^[1-9][0-9]{0,19}$/.test(good.id))) continue;
+    const parsed = QianchuanPlanOptionSchema.safeParse({ advertiserId, adId: info.id, name: info.name, productNames: [...new Set(goods.map(good => good.name))] });
+    if (parsed.success) result.set(info.id, parsed.data);
+  }
+  return result;
+}
+
 /** Connects through the guarded loopback relay and touches only a new, marked picker tab. */
 export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<QianchuanPlanOption[]> {
   signal.throwIfAborted();
@@ -217,6 +236,7 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
   let pickerSession: CDPSession | undefined;
   let pickerTargetId: string | undefined;
   const transportController = new AbortController();
+  let productResponse: ((response: BrowserResponse) => void) | undefined;
   try {
     const endpoint = new URL(target.cdpEndpoint);
     const response = await fetch(new URL("/json/version", endpoint), { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
@@ -252,9 +272,26 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
     signal.throwIfAborted();
     page = await abortable(opening, signal);
     page.setDefaultTimeout(10_000);
+    await abortable(page.setViewportSize({ width: 1600, height: 1000 }), signal);
+    const products = new Map<string, QianchuanPlanOption>();
+    productResponse = response => {
+      const url = new URL(response.url());
+      if (url.origin !== QIANCHUAN_ORIGIN || url.pathname !== "/ad/api/pmc/v1/uni-promotion/ad/list-optional" || !response.ok()) return;
+      void response.body().then(body => {
+        if (signal.aborted || body.length > 2 * 1024 * 1024) return;
+        for (const [id, plan] of readPlanProductNames(JSON.parse(body.toString("utf8")), target.advertiserId)) products.set(id, plan);
+      }).catch(() => undefined);
+    };
+    page.on("response", productResponse);
     await abortable(page.goto(pageUrl(target.advertiserId), { waitUntil: "domcontentloaded", timeout: 45_000 }), signal);
-    return await readVisibleQianchuanPlans(page, target.advertiserId, signal);
+    const plans = await readVisibleQianchuanPlans(page, target.advertiserId, signal);
+    const deadline = Date.now() + 2000;
+    while (plans.some(plan => !products.has(plan.adId)) && Date.now() < deadline) {
+      await abortable(new Promise<void>(resolve => setTimeout(resolve, SAMPLE_INTERVAL_MS)), signal);
+    }
+    return plans.map(plan => products.get(plan.adId)?.name === plan.name ? { ...plan, productNames: products.get(plan.adId)!.productNames } : plan);
   } finally {
+    if (page && productResponse) page.off("response", productResponse);
     await page?.close({ runBeforeUnload: false }).catch(() => undefined);
     if (pickerTargetId) await pickerSession?.send("Target.closeTarget", { targetId: pickerTargetId }).catch(() => undefined);
     await pickerSession?.detach().catch(() => undefined);

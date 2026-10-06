@@ -28,6 +28,10 @@
 2. 同一 H2 historical receipt 严格绑定重放 real233s（新增模型请求=0），重新核对3395px/bbox628,1,81,59/SHA `fb3e2b2f1933c514bdb353e031eb946cbe309cf1570967c715a40d90346c9893`，测 motion、真实 pool/search 与最终 PNG。真实 mask 不同则停止该 real case，保留结果。
 3. typecheck、focused tests、registered owned Harness、AOCI Verify/Check/Guide、Parent Risk Gate、completion receipt、final diff、commit/push/核 remote HEAD。
 
+## Verification Recovery
+
+2026-10-06，用户要求继续验证及commit/push。外部未提交的批量上传界面使用显式“读取上传计划”；干净的旧 `tests/batch-upload.test.ts` 仍等勾选后自动请求而超时。测试在该按钮存在时先核对没有请求再点击；没有按钮的已提交界面保持原读取行为。账号绑定、取消和已选计划复用断言仍必需；分别验证已提交界面和当前界面，不让测试提交依赖外部未提交UI。不修改外部dirty UI/业务/test文件，不skip或放宽timeout。把该测试纳入本轮owned scope，重跑相关测试及完整Harness；H3 mask/motion/search/freeze源字节保持不变。
+
 ## Acceptance and Limits
 
 至少一个 confirmed target 可在真实 FFmpeg 链得到可重复 frozen overlay；移动/消失不能继续；最终 decoded alpha 100% 覆盖。real233s 若 pool 无合适形状，如实 NO_SHAPE_MATCH；预算或工具失败分别报告。sampled motion 不能证明所有未采样帧，coverage 是 mask/PNG 像素关系，不证明视觉自然、内容安全或全片遮挡。

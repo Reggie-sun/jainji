@@ -2,7 +2,7 @@
 
 ## Outcome
 
-2026-10-05开始，2026-10-06（HKT）checkpoint；基线 `8cac9c44d33a64431026df1084103197dcc94d31`。H3 development geometry 链已把 real233s TOP_RIGHT 的 H2 CONFIRMED / OVERLAY_LOGO / STABLE 转成 deterministic frozen PNG，geometry READY / completion BLOCKED（外部batch-plan改动及required Harness，见下）。PRODUCT_DISABLED、authority=none、contentSafety=NOT_EVALUATED；H4 视觉 QA、MiniMax、preview render、export、UI、activation 均未执行。
+2026-10-05开始，2026-10-06（HKT）checkpoint；基线 `8cac9c44d33a64431026df1084103197dcc94d31`。H3 development geometry 链已把 real233s TOP_RIGHT 的 H2 CONFIRMED / OVERLAY_LOGO / STABLE 转成 deterministic frozen PNG，geometry READY / completion BLOCKED（运行期间外部源码继续变化及required Harness，见下）。H3主体提交 `000f3e6251cd4e4b13d531e2cbd32dfb208b4069` 已核对在origin/main；新的验证恢复补充尚未commit/push。PRODUCT_DISABLED、authority=none、contentSafety=NOT_EVALUATED；H4 视觉 QA、MiniMax、preview render、export、UI、activation 均未执行。
 
 ## Implementation
 
@@ -54,7 +54,7 @@ sampled motion不能证明每个未采样帧；100% coverage仅证明原mask与�
 
 仓库没有dedicated session-capture Skill；本轮为substantial implementation/real geometry checkpoint，本record保存durable结果，不将无hook或无capture_request_id作为跳过理由。原H2及strict FAIL/NOT_EVALUATED不改，PRODUCT_DISABLED不变。其他会话22个业务/测试/脚本dirty paths的diff逐字保留；共享AOCI仅提交本轮owned entries/baseline投影。
 
-## Verification and Completion
+## Initial Blocker Checkpoint
 
 2026-10-06（HKT）达到 geometry-ready / completion-blocked checkpoint。本轮12个native验证对象的snapshot `e85e9cacbd024f10e95225502dba80a3e1839560ad474284b81d472e3061aef0` 未改变；正式commit/push尚未执行。待外部会话关闭其batch-plan改动和测试阻断后，必须取得fresh完整owned Harness PASS、重新判断Implementation Review Risk Gate并完成completion核验；不能把以下逐检查PASS当成Harness completion PASS。
 
@@ -67,3 +67,19 @@ sampled motion不能证明每个未采样帧；100% coverage仅证明原mask与�
 - blocker checkpoint最新typecheck PASS，H3 record的documents/owned-aoci二项Harness PASS；这些比例适当的局部证据不授整轮completion。当前15个task paths已按owned对象刷新stage，未commit/push，原外部22路径diff逐字保留，后续外部batch-plan files没有修改或stage。
 
 PNG已经可供H4development接线及Preview QA使用，但HYBRID_CORNER_H3_READY不能无条件作为本轮完成状态交付；H3 geometry READY与completion BLOCKED分别保留。PRODUCT_DISABLED、内容安全/自然度NOT_EVALUATED不变。
+
+## Verification Recovery Checkpoint
+
+用户于2026-10-06要求继续验证、commit/push。已核对本地HEAD及远端main均为 `000f3e6251cd4e4b13d531e2cbd32dfb208b4069`，原H3主体15个paths已提交；原blocked历史不升级为PASS。本轮仅补充干净的旧 `tests/batch-upload.test.ts`、implementation plan和本record，不修改外部dirty业务文件。
+
+旧测试等勾选后自动读取，而外部未提交界面要求显式点击“读取上传计划”。测试仅在按钮存在时核对尚未请求并点击，已提交旧界面沿用原读取；账号绑定、取消、已选计划复用和timeout保持。修正前70PASS/1FAIL；修正后当前两文件71PASS/0FAIL。另用git archive生成私有测试fixture，绑定000f3e6已提交界面及其依赖，读取/取消定向测试1PASS，其他10项未选择；该证据不冒充完整clean-HEAD Harness。当前测试兼容两种已有界面，提交不依赖外部未提交UI。
+
+- `.agent/harness/runs/20261005T161340Z-19db77c1/receipt.json`：外部batch读取按钮grid样式改变source SHA，NOT_EVALUATED；通过精确pidfd/ancestry核对后只中断本轮Harness。
+- `.agent/harness/runs/20261005T161928Z-32686f47/receipt.json`：14项已完成检查PASS、1430 tests PASS；外部 `src/main/qianchuan-page-contract.ts` 和 `tests/qianchuan-page-contract.test.ts` 在运行中改变，整体NOT_EVALUATED。原回执保留，未升级PASS。
+- 两次源码观察间隔144秒无变化后启动下一候选；发现测试提交依赖未提交UI，停止 `20261005T163809Z-f903ebac` 并完成上述已提交界面兼容验证。这次own语义修订重新冻结scope和有限预算，不沿用旧测试SHA。
+- 最终候选 `.agent/harness/runs/20261005T164022Z-25ad4288/receipt.json`：14项已完成检查PASS、1439 tests PASS、0FAIL；运行中外部 `src/renderer/BatchProductionPanel.tsx` 新增制作错误及startReasons，SHA从 `9d97545f0cf31fca1ff191e60fa8504436e2744c3ddb7413fcb801cf383796d3` 变为 `036f72019a564372b99f240bb98eebac7fbc22fce17a8e90e29a05012072a8c8`，随后继续变为 `5b3d78cfaebf6ec3b777f4024d491bdb4c86d97a670c5ed7b5cd55be1621d81c`。再次只中断本轮canonical Harness，整体NOT_EVALUATED；未完成required checks保持NOT_EVALUATED。
+- 最终13个owned验证对象无字节漂移，ownedSha256 `bebc4f06b4552cb74f1123baaf8400beeb27cbd91b69d32fafe712ce999cf3b3`；H3六项indexed源码等于已提交主体，PNG及独立原3395px零漏复核保持。私有 `resume-final-source-blocker.json`、`resume-final-foreign-batch-diff.patch` 保存确切新漂移；外部26个tracked paths未由本轮修改/stage。
+
+最新官方AOCI Verify/Check均governance_aligned=true，Guide complete=true/next_action=none；外部旧stale已由共享治理更新关闭。fresh `control owned-aoci` 对本轮13对象PASS（六项index、七项observe）。本record的documents/owned-aoci及其completion单独PASS，只证明该文档checkpoint，不授整轮H3完成。外部批量制作会话的 `20261005T164823Z-af955aae` 验证scope只拥有BatchProductionPanel和batch smoke脚本，与本轮H3验收分列；未终止或接管其进程。
+
+当前停止条件是反复发生的外部源码写入，不是H3 mask、motion、shape或coverage失败。完整required Harness及completion尚不可证明；Risk Gate仍为PENDING_NATIVE_VERIFICATION，无最终Kimi reviewer声明。原Provider请求=0、PRODUCT_DISABLED及H4边界保持。必须等其他写入会话真正停止，再取得完整fresh owned Harness/completion；本轮不新增补充commit，也不将已有主体commit解释为最终验收。
