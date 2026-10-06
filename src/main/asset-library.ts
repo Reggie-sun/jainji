@@ -8,7 +8,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
-import { assertDecorationFrameAsset } from "./decoration-frame.js";
+import { assertDecorationFrameOptions } from "./decoration-frame.js";
 
 const bundledStickerIds = new Set(LIBRARY_STICKERS.map(({ id }) => id));
 export function bundledStickerDirectory(runtime: { resourcesPath?: string; defaultApp?: boolean } = process as NodeJS.Process & { resourcesPath?: string; defaultApp?: boolean }): string {
@@ -126,8 +126,8 @@ export class AssetLibrary {
     return entry ? await this.cached(entry) ? this.file(entry) : null : resolveFont(family);
   }
 
-  async prepare(options: DecorationOptions, builtins: StickerAssets): Promise<StickerAssets> {
-    await assertDecorationFrameAsset(options.frameId, builtins);
+  async prepare(options: DecorationOptions, builtins: StickerAssets, mediaIds?: readonly string[]): Promise<StickerAssets> {
+    await assertDecorationFrameOptions(options, builtins, mediaIds);
     const selectedIds = options.mode === "random" ? [] : decorationStickerIds(options);
     for (const id of selectedIds.filter(isUploadedStickerId)) {
       const asset = builtins[id];

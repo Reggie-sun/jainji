@@ -5,12 +5,15 @@ import { describe, expect, it } from "vitest";
 import { ensureBuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { fingerprintFile } from "../src/main/paths";
 import { ensureBuiltinFrameAssets } from "../src/main/builtin-frames";
+import { assertDecorationFrameOptions } from "../src/main/decoration-frame";
+import type { StickerAssets } from "../src/main/builtin-stickers";
 
 describe("built-in Agent stickers", () => {
   it("generates three immutable full-perimeter frame assets and refuses corrupt replacements", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-frames-"));
     try {
       const first = await ensureBuiltinFrameAssets(directory);
+      await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).resolves.toBeUndefined();
       expect(Object.keys(first).sort()).toEqual(["frame-confetti", "frame-hearts", "frame-stars"]);
       expect(await ensureBuiltinFrameAssets(directory)).toEqual(first);
       for (const asset of Object.values(first)) {
@@ -19,6 +22,9 @@ describe("built-in Agent stickers", () => {
         expect(await fingerprintFile(asset.assetPath)).toBe(asset.assetFingerprint);
       }
       await writeFile(first["frame-stars"].assetPath, "corrupted");
+      await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).rejects.toThrow("边框");
+      const mediaId = crypto.randomUUID();
+      await expect(assertDecorationFrameOptions({ frame: { mode: "random" }, framesByMedia: { [mediaId]: { mode: "none" } } }, first as StickerAssets, [mediaId])).resolves.toBeUndefined();
       await expect(ensureBuiltinFrameAssets(directory)).rejects.toThrow();
       expect(await readFile(first["frame-stars"].assetPath, "utf8")).toBe("corrupted");
     } finally { await rm(directory, { recursive: true, force: true }); }

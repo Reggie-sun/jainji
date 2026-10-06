@@ -21,6 +21,30 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("supervisor production admission", () => {
+  it("freezes random frames per media/version across supervisor rebuilds and respects independent overrides", async () => {
+    const sources = [media("random"), media("manual"), media("none")];
+    const assets = { ...stickerAssets, ...Object.fromEntries(["frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) };
+    const templates = new Map<string, EditTemplate[]>();
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("设计"), stickerAssets: assets, usesModel: false,
+      decorations: DecorationSchema.parse({ mode: "manual", sticker: "none", displayText: { enabled: false, x: .5, y: .13 }, frame: { mode: "random" }, framesByMedia: {
+        [sources[1].id]: { mode: "manual", frameId: "frame-hearts" }, [sources[2].id]: { mode: "none" },
+      } }),
+      knowledge: knowledgeFixture(undefined, async (template, _source, _tracks, rebuild) => {
+        const frozen = template.layers.find(layer => layer.type === "sticker" && layer.frame);
+        const rebuilt = rebuild({ action: "revise", reason: "仅修正轨迹", tracks: [] });
+        const frame = rebuilt.layers.find(layer => layer.type === "sticker" && layer.frame);
+        if (frozen?.type === "sticker") expect(frame).toMatchObject({ assetPath: frozen.assetPath, frame: frozen.frame });
+        else expect(frame).toBeUndefined();
+        return rebuilt;
+      }),
+      enqueue: async (template, source) => { templates.set(source.id, [...templates.get(source.id) ?? [], template]); return crypto.randomUUID(); }, onChange: () => {} });
+    runner.start("project", "clean", "", sources, 3); await runner.settled();
+    expect(runner.snapshot()?.items.every(item => item.status === "exporting")).toBe(true);
+    const frameIds = (id: string) => templates.get(id)?.map(t => t.layers.find(layer => layer.type === "sticker" && layer.frame)).map(l => l?.type === "sticker" ? l.frame?.id : undefined);
+    expect(new Set(frameIds(sources[0].id)).size).toBe(3);
+    expect(frameIds(sources[1].id)).toEqual(Array(3).fill("frame-hearts"));
+    expect(frameIds(sources[2].id)).toEqual(Array(3).fill(undefined));
+  });
   it.each(["knowledge", "creative", "reconcile", "enqueue", "queued", "cancelled"] as const)("records terminal %s outcomes even without an exported task", async failure => {
     const records: KnowledgeOutcome[] = [];
     const knowledge = knowledgeFixture();

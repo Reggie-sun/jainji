@@ -391,7 +391,7 @@ export class ExportQueue {
     return { productPrice: source.templateSnapshot.productPrice ?? "", mediaCount: source.mediaIds.length, displayTextEnabled: source.templateSnapshot.displayText?.enabled !== false };
   }
 
-  async appendFromBatch(input: { batchId: string; projectId: string; count: number; productPrice: string; outputDirectory: string }, stickerPool: readonly RandomStickerPoolEntry[], signal?: AbortSignal): Promise<ExportBatch[]> {
+  async appendFromBatch(input: { batchId: string; projectId: string; count: number; productPrice: string; outputDirectory: string }, stickerPool: readonly RandomStickerPoolEntry[], signal?: AbortSignal, framePool: readonly RandomStickerPoolEntry[] = []): Promise<ExportBatch[]> {
     const source = await this.findAppendSource(input.batchId);
     if (!source || source.projectId !== input.projectId) throw new JianjiError("只能追加当前项目中的已完成批次。", "input_invalid", "input", false);
     if (source.status !== "completed" && source.status !== "completed_with_errors") throw new JianjiError("只能追加已完成导出的批次。", "input_invalid", "input", false);
@@ -400,9 +400,12 @@ export class ExportQueue {
     if (mediaItems.some((item): item is undefined => !item)) throw new JianjiError("源批次素材已变化，无法追加制作。", "input_invalid", "input", false);
     const media = mediaItems as MediaItem[];
     const picker = new BalancedStickerPicker(stickerPool);
+    const randomFrame = source.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.frame?.selection === "random");
+    if (randomFrame && !framePool.length) throw new JianjiError("没有可用的随机边框资源。", "input_invalid", "input", false);
+    const framePicker = randomFrame ? new BalancedStickerPicker(framePool) : undefined;
     const created: ExportBatch[] = [];
     for (let index = 0; index < input.count; index += 1) {
-      const template = cloneTemplateForRandom(source.templateSnapshot, input.productPrice, picker);
+      const template = cloneTemplateForRandom(source.templateSnapshot, input.productPrice, picker, framePicker);
       created.push(await this.createBatchNow({ template, projectId: source.projectId, mediaIds: [...source.mediaIds], mediaItems: media, outputDirectory: input.outputDirectory, preset: source.preset }, signal));
     }
     return created;

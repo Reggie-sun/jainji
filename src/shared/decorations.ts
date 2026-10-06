@@ -3,7 +3,7 @@ import { DEFAULT_TEXT_FONT_FAMILY } from "./defaults.js";
 import { LIBRARY_FONTS, LIBRARY_STICKERS } from "./asset-library.js";
 import { BUNDLED_STICKERS } from "./bundled-stickers.js";
 import { PriceStyleIdSchema } from "./price-styles.js";
-import { FrameIdSchema, type FrameCatalogEntry } from "./frames.js";
+import { FrameIdSchema, FrameSettingsSchema, type FrameCatalogEntry } from "./frames.js";
 
 export const FONT_CHOICES = [DEFAULT_TEXT_FONT_FAMILY, "Noto Serif CJK SC", "AR PL UKai CN", "AR PL UMing CN", "Microsoft YaHei", "SimHei", "SimSun", "KaiTi", "FangSong"] as const;
 export const FONT_LABELS: Record<typeof FONT_CHOICES[number], string> = {
@@ -68,6 +68,8 @@ export const DecorationSchema = z.preprocess((input) => {
   displayMode: DecorationDisplayModeSchema.optional(),
   priceStyle: PriceStyleIdSchema.optional(),
   frameId: FrameIdSchema.optional(),
+  frame: FrameSettingsSchema.optional(),
+  framesByMedia: z.record(z.string().uuid(), FrameSettingsSchema).refine(value => Object.keys(value).length <= 1000, "逐素材边框设置过多。").optional(),
   mode: z.enum(["manual", "agent", "random"]).optional(),
   sticker: z.string().refine(isStickerId, "unknown sticker").default("template"),
   fontFamily: z.string().refine((family) => fontFamilies.has(family), "unknown font").default(DEFAULT_TEXT_FONT_FAMILY),

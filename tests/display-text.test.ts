@@ -85,7 +85,7 @@ it("reopens the saved project with independent display settings and the shared m
     const createService = () => new ApplicationService(new FfmpegAdapter("unused", "unused"), { resolve: async () => null });
     const service = createService();
     service.setProductPriceDraft("共用手动文字");
-    const workspace = ProjectWorkspaceSchema.parse({ step: "templates", selectedMediaIds: ids, ruleId: "clean", brief: "", decorations: { displayText: off, displayTextByMedia: { [ids[0]]: moved, [ids[1]]: off } }, exportFormat: "mp4", exportSettings: DEFAULT_EXPORT_SETTINGS });
+    const workspace = ProjectWorkspaceSchema.parse({ step: "templates", selectedMediaIds: ids, ruleId: "clean", brief: "", decorations: { frame: { mode: "random" }, framesByMedia: { [ids[0]]: { mode: "manual", frameId: "frame-stars" }, [ids[1]]: { mode: "none" } }, displayText: off, displayTextByMedia: { [ids[0]]: moved, [ids[1]]: off } }, exportFormat: "mp4", exportSettings: DEFAULT_EXPORT_SETTINGS });
     await service.saveProject(file, "文字设置", workspace);
     const reopened = createService();
     await reopened.loadProject(file);

@@ -3,10 +3,11 @@ import { DecorationPicker } from "./DecorationPicker";
 import { useRef } from "react";
 import { FrameDecorationPicker } from "./FrameDecorationPicker";
 
-export function CornerDecorationPicker({ value, onChange, disabled, selected, onSelect, assetMutationDisabled }: {
+export function CornerDecorationPicker({ value, onChange, disabled, selected, onSelect, assetMutationDisabled, media, onSave }: {
   value: DecorationOptions; onChange(value: DecorationOptions): void; disabled: boolean;
   selected?: Corner; onSelect(corner?: Corner): void;
   assetMutationDisabled?: boolean;
+  media?: readonly { id: string; displayName: string }[]; onSave?(): void;
 }) {
   const valueRef = useRef(value);
   valueRef.current = value;
@@ -21,7 +22,7 @@ export function CornerDecorationPicker({ value, onChange, disabled, selected, on
   };
   const pickerValue = selected ? { ...value, sticker: slot?.type === "sticker" ? slot.sticker : "none" } : value;
   return <section id="corner-decoration-editor" aria-label="四角内容设置">
-    <FrameDecorationPicker value={value} onChange={onChange} disabled={disabled} mutationDisabled={assetMutationDisabled ?? disabled} />
+    <FrameDecorationPicker value={value} onChange={onChange} disabled={disabled} mutationDisabled={assetMutationDisabled ?? disabled} media={media} onSave={onSave} />
     <div className="corner-tabs" role="group" aria-label="装饰选择方式">
       <button type="button" disabled={disabled} aria-pressed={automatic} onClick={() => { onChange({ ...value, mode: "agent" }); onSelect(undefined); }}>全部交给 Agent</button>
       <button type="button" disabled={disabled} aria-pressed={!automatic && value.mode !== "random"} onClick={() => onChange({ ...value, mode: "manual" })}>自己设置</button>

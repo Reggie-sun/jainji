@@ -38,7 +38,7 @@ export default function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [rule, setRule] = useState<RuleId>("black-gold");
-  const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({ mode: "agent" }));
+  const [decorations, setDecorations] = useState<DecorationOptions>(() => DecorationSchema.parse({ mode: "agent", frame: { mode: "random" } }));
   const [selectedCorner, setSelectedCorner] = useState<Corner>();
   const [stickerRevision, setStickerRevision] = useState(0);
   const [coverStickerDirty, setCoverStickerDirty] = useState(false);
@@ -62,9 +62,9 @@ export default function App() {
   const operation = useRef(false);
   const pendingProductPrice = useRef<{ projectId: string; productPrice: string }>();
 
-  const apply = useCallback((next: DesktopState, restoreProductPrice = false) => {
+  const apply = useCallback((next: DesktopState, restoreWorkspace = false) => {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
-    const projectChanged = projectId.current !== next.project.id;
+    const projectChanged = restoreWorkspace || projectId.current !== next.project.id;
     if (!next.douyinUpload?.config.enabled) setDouyinUploadSelection(undefined);
     const workspace = next.project.workspaceDraft;
     if (projectChanged) {
@@ -87,7 +87,7 @@ export default function App() {
       setWorkflowSection(workspace?.step === "results" ? "results" : workspace?.step === "templates" ? "packaging" : "materials");
       setTemplateSection("template");
     }
-    if (projectChanged || restoreProductPrice) {
+    if (projectChanged) {
       let productPrice = next.project.template.productPriceDraft ?? "";
       if (next.project.template.productPriceDraft === undefined) {
         const legacyKey = `jianji.productPrice.${next.project.id}`;
@@ -108,7 +108,10 @@ export default function App() {
         }
       }
       const appearance = projectChanged ? workspace?.decorations ?? DecorationAppearanceSchema.parse({ mode: "agent" }) : undefined;
-      setDecorations((current) => DecorationSchema.parse({ ...(appearance ?? current), productPrice }));
+      setDecorations((current) => {
+        const restored = appearance ?? current;
+        return DecorationSchema.parse({ ...restored, ...(!restored.frame && !restored.frameId ? { frame: { mode: "random" } } : {}), productPrice });
+      });
     }
     const additions = ready.filter((item) => !knownMedia.current.has(item.id)).map((item) => item.id);
     knownMedia.current = new Set(next.project.mediaItems.map((item) => item.id));
@@ -413,7 +416,7 @@ export default function App() {
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={busy || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
         </>}
         {step === "templates" && <WorkspaceSubnav active={templateSection} onNavigate={(section, selector) => { setTemplateSection(section); setWorkflowSection(workflowForTemplateSection(section)); scrollAfterRender(selector); }} />}
-        {step === "templates" && <TemplatePanel selectedMedia={selectedMedia} onDisplayText={changeDisplayText} onSaveDisplayText={saveCollection} onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker assetMutationDisabled={locked || exporting} selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
+        {step === "templates" && <TemplatePanel selectedMedia={selectedMedia} onDisplayText={changeDisplayText} onSaveDisplayText={saveCollection} onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker media={selectedMedia} onSave={saveCollection} assetMutationDisabled={locked || exporting} selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
         {step === "templates" && state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && <CoverReviewPanel agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />}
         <BatchProductionPanel state={state} visible={step === "batch"} onState={apply} />
         {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}

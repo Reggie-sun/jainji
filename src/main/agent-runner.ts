@@ -10,6 +10,7 @@ import type { PriceStyleId } from "../shared/price-styles.js";
 import { type FrozenCoverSticker } from "./cover-sticker.js";
 import { expandSourceCoverTracks, type AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 import { prepareAgentTemplate } from "./agent-template-preparation.js";
+import { createDecorationFrameResolver } from "./decoration-frame.js";
 import type { PreviewRevision } from "./supervisor-protocol.js";
 import type { KnowledgeBinding, KnowledgeVersion, SourceStickerKnowledgeSession } from "./source-sticker-knowledge-session.js";
 import type { KnowledgeOutcome, KnowledgeProductionStage } from "../shared/source-sticker-knowledge-audit.js";
@@ -64,6 +65,8 @@ export class AgentRunner {
     const counts = requestedCount === undefined ? Array.from({ length: media.length }, () => multiplier) : calculateExactProductionQuantity(media.length, requestedCount)!.versions;
     if (counts.reduce((sum, count) => sum + count, 0) > MAX_AGENT_OUTPUTS) throw new Error(`本轮成片数量不能超过 ${MAX_AGENT_OUTPUTS} 条，请减少制作条数。`);
     const versions = structuredClone(media.slice(0, counts.length)).flatMap((source, sourceIndex) => Array.from({ length: counts[sourceIndex] }, (_, index) => ({ source, version: index + 1 })));
+    const resolveFrame = createDecorationFrameResolver(this.dependencies.decorations, this.dependencies.stickerAssets, media.map(source => source.id));
+    const frameOptions = versions.map(({ source }) => resolveFrame(source.id));
     this.controller = new AbortController();
     this.run = {
       id: randomUUID(), projectId, ruleId, status: "running",
@@ -71,14 +74,14 @@ export class AgentRunner {
       items: versions.map(({ source, version }) => ({ id: randomUUID(), mediaId: source.id, version, name: counts.every(count => count === 1) ? source.displayName : `${source.displayName} · 第 ${version} 版`, status: "waiting" })),
     };
     const frozen = versions.map(({ source }) => source);
-    this.pending = this.execute(this.run, brief, frozen, this.controller.signal);
+    this.pending = this.execute(this.run, brief, frozen, this.controller.signal, frameOptions);
     return this.snapshot()!;
   }
 
   cancel(): void { this.controller?.abort(); }
   async settled(): Promise<void> { await this.pending; }
 
-  private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal): Promise<void> {
+  private async execute(run: AgentRun, brief: string, media: readonly MediaItem[], signal: AbortSignal, frameOptions: readonly DecorationOptions[]): Promise<void> {
     let next = 0;
     const audit = run.items.map(() => ({ started: Date.now(), finished: undefined as number | undefined, stage: "waiting" as KnowledgeProductionStage, creative: 0 }));
     const knowledgeStarted = new Map<string, number>();
@@ -188,7 +191,7 @@ export class AgentRunner {
           signal.throwIfAborted();
           audit[index].stage = "prepare";
           const preparation = { plan, ruleId: run.ruleId, source, resolutionMode: this.dependencies.resolutionMode,
-            stickerAssets: this.dependencies.stickerAssets, decorations: this.dependencies.decorations, catalog: this.dependencies.autoCatalog,
+            stickerAssets: this.dependencies.stickerAssets, decorations: frameOptions[index], catalog: this.dependencies.autoCatalog,
             coverSticker, coverTracks, sourceStickerTracks, preserveCoverMotion: Boolean(this.dependencies.prepared), runId: run.id, version: item.version };
           const shapeCoverLayers = this.dependencies.shape ? await this.dependencies.shape.layers(item.version, coverSticker!.stickerId, source, run.id, signal) : undefined;
           let template = prepareAgentTemplate({ ...preparation, shapeCoverLayers });

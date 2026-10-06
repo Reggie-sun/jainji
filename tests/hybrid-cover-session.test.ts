@@ -15,7 +15,7 @@ vi.mock("../src/main/shape-cover-hybrid-h3.js", () => ({ prepareHybridCornerOver
   readHybridFrozenOverlay: async (_h3: unknown, corner: string) => ({ overlay: { corner } }) }));
 vi.mock("../src/main/hybrid-cover-production.js", () => ({ approveHybridOverlay: mocks.approve,
   hybridVideoMedia: async (media: MediaItem) => media,
-  hybridTemplate: (layers: unknown[], base: { layers: unknown[] }) => ({ ...base, layers: [...base.layers.filter((l: any) => l.type === "text"), ...layers] }) }));
+  hybridTemplate: (layers: unknown[], base: { layers: unknown[] }) => ({ ...base, layers: [...base.layers.filter((l: any) => l.type === "text" || l.type === "sticker" && l.frame), ...layers] }) }));
 
 const media = { id: "00000000-0000-4000-8000-000000000001", sourcePath: "/fixture.mp4", fingerprint: `sha256:${"a".repeat(64)}`,
   durationMs: 2000, width: 160, height: 160, rotation: 0, sizeBytes: 1000, probeStatus: "ready", importedAt: new Date().toISOString(), displayName: "fixture" } satisfies MediaItem;
@@ -41,6 +41,25 @@ it("keeps a safe corner despite local H4 rejection and reuses the same freeze fo
   expect(a.name).toContain("TOP_RIGHT"); expect(a.name).toContain("其他角落保持原样");
   expect(mocks.semantic).toHaveBeenCalledTimes(1); expect(mocks.geometry).toHaveBeenCalledTimes(1); expect(mocks.approve).toHaveBeenCalledTimes(2);
   expect(mocks.close).toHaveBeenCalledTimes(1);
+});
+it("keeps Hybrid approval bytes cached while resolving and freezing per-version frame overrides", async () => {
+  const assets = Object.fromEntries(["sparkle", "arrow", "heart", "burst", "frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) as StickerAssets;
+  const manualMedia = { ...media, id: crypto.randomUUID() }, offMedia = { ...media, id: crypto.randomUUID() };
+  const session = createHybridProductionSession({ tools: { ffmpegPath: "unused", ffprobePath: "unused" }, preset: DEFAULT_PRESET, directory: "/unused", candidates: [], stickerAssets: assets,
+    decorations: DecorationSchema.parse({ frame: { mode: "random" }, displayText: { enabled: false, x: .5, y: .13 }, framesByMedia: { [manualMedia.id]: { mode: "manual", frameId: "frame-hearts" }, [offMedia.id]: { mode: "none" } } }),
+    ruleId: "clean", routes: async () => ({} as any) });
+  const prepare = (source: MediaItem, version: number) => session.prepare(source, version, "run", new AbortController().signal, () => {});
+  const frames = [];
+  for (let version = 1; version <= 3; version++) {
+    const first = await prepare(media, version), again = await prepare(media, version);
+    const frame = first.layers.find(l => l.type === "sticker" && l.frame);
+    expect(again.layers.find(l => l.type === "sticker" && l.frame)).toMatchObject({ assetPath: frame!.type === "sticker" ? frame!.assetPath : "", frame: frame!.type === "sticker" ? frame!.frame : undefined });
+    frames.push(frame?.type === "sticker" ? frame.frame?.id : undefined);
+  }
+  expect(new Set(frames).size).toBe(3);
+  expect((await prepare(manualMedia, 1)).layers.find(l => l.type === "sticker" && l.frame)).toMatchObject({ frame: { id: "frame-hearts", selection: "manual" } });
+  expect((await prepare(offMedia, 1)).layers.find(l => l.type === "sticker" && l.frame)).toBeUndefined();
+  expect(mocks.geometry).toHaveBeenCalledTimes(1); expect(mocks.approve).toHaveBeenCalledTimes(2);
 });
 it("exports an explicit unchanged result when every corner is unresolved or skipped", async () => {
   mocks.geometry.mockResolvedValue({ status: "READY", corners: [{ corner: "TOP_RIGHT", status: "SKIPPED" }], verifyFresh: mocks.fresh });

@@ -6,6 +6,9 @@ import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
 import { PRICE_STYLES } from "../src/shared/price-styles";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import type { ShapeCoverReviewInput } from "../src/main/shape-cover-admission";
+import { createDecorationFrameResolver } from "../src/main/decoration-frame";
+import { DecorationSchema } from "../src/shared/decorations";
+import { frameSettings } from "../src/shared/frames";
 
 const connection = { baseUrl: "https://example.test/v1/", model: "vision-test", apiKey: "test-secret-not-real" };
 const plan = { summary: "保留主体", captions: [], filter: "warm", intensity: 0.4 };
@@ -15,6 +18,29 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("resolves independent per-media frames, cycles the frame pool and keeps ordinary stickers separate", () => {
+    const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const assets = { ...stickerAssets, ...Object.fromEntries(["frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) };
+    const options = DecorationSchema.parse({ mode: "agent", frame: { mode: "random" }, framesByMedia: {
+      [ids[0]]: { mode: "manual", frameId: "frame-stars" }, [ids[1]]: { mode: "none" },
+    } });
+    const resolve = createDecorationFrameResolver(options, assets);
+    expect(resolve(ids[0]).frameId).toBe("frame-stars");
+    expect(resolve(ids[1]).frameId).toBeUndefined();
+    const picked = Array.from({ length: 3 }, () => resolve(ids[2]));
+    expect(new Set(picked.map(v => v.frameId)).size).toBe(3);
+    for (const frozen of picked) {
+      expect(frozen.framesByMedia).toBeUndefined();
+      const t = materializePlan(autoPlan, "clean", { width: 720, height: 1280 }, assets, frozen, autoCatalog);
+      expect(t.layers.find(layer => layer.type === "sticker" && layer.frame)).toMatchObject({ frame: { id: frozen.frameId, selection: "random" } });
+      expect(materializePlan(autoPlan, "clean", { width: 720, height: 1280 }, assets, frozen, autoCatalog).layers.find(layer => layer.type === "sticker" && layer.frame)).toMatchObject({ assetPath: `/tmp/${frozen.frameId}.png` });
+    }
+    expect(frameSettings({ frameId: "frame-stars" })).toEqual({ mode: "manual", frameId: "frame-stars" });
+    expect(frameSettings({})).toEqual({ mode: "none" });
+    expect(() => createDecorationFrameResolver(DecorationSchema.parse({ frame: { mode: "random" } }), stickerAssets)).toThrow("边框");
+    expect(DecorationSchema.safeParse({ frame: { mode: "manual" } }).success).toBe(false);
+    expect(DecorationSchema.safeParse({ framesByMedia: { bad: { mode: "none" } } }).success).toBe(false);
+  });
   it.each(["manual", "agent", "random"] as const)("freezes a full-canvas frame below ordinary stickers in %s mode", mode => {
     const asset = { assetPath: "/tmp/frame.png", assetFingerprint: `sha256:${"a".repeat(64)}` };
     const template = materializePlan(mode === "agent" ? autoPlan : { ...plan, filter: "cool", intensity: .3 }, "clean", { width: 720, height: 1280 },

@@ -7,11 +7,15 @@ import type { StickerAssets } from "./builtin-stickers.js";
 import { automaticCoverLayers, manualCoverLayers, type FrozenCoverSticker } from "./cover-sticker.js";
 import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 import { fillUncoveredCorners } from "./automatic-corner-layout.js";
+import { frameSettings } from "../shared/frames.js";
 
 export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleId; source: MediaItem; resolutionMode?: ExportSettings["resolutionMode"]; stickerAssets: StickerAssets; decorations?: DecorationOptions; catalog?: AgentDecorationCatalog; coverSticker?: FrozenCoverSticker; shapeCoverLayers?: StickerLayer[]; coverTracks?: AutomaticCoverTrack[]; sourceStickerTracks?: AutomaticCoverTrack[]; preserveCoverMotion?: boolean; runId: string; version: number }) {
   const dimensions = outputDimensions(input.source, { resolutionMode: input.resolutionMode ?? "source" });
-  const decorations = input.decorations && (input.decorations.displayText || input.decorations.displayTextByMedia)
+  const textOptions = input.decorations && (input.decorations.displayText || input.decorations.displayTextByMedia)
     ? { ...input.decorations, displayText: displayTextSettings(input.decorations, input.source.id) } : input.decorations;
+  const frame = frameSettings(textOptions, input.source.id);
+  const decorations = textOptions?.framesByMedia ? { ...textOptions, frame, framesByMedia: undefined,
+    frameId: frame.mode === "manual" ? frame.frameId : frame.mode === "random" ? textOptions.frameId : undefined } : textOptions;
   let template = materializePlan(input.plan, input.ruleId, dimensions, input.stickerAssets, decorations, input.catalog);
   if (input.coverSticker && !input.shapeCoverLayers) {
     const layers = input.coverTracks !== undefined ? automaticCoverLayers(input.coverSticker, input.source, dimensions, input.coverTracks, { preserveMotion: input.preserveCoverMotion }) : manualCoverLayers(input.coverSticker, input.source, dimensions, input.version);

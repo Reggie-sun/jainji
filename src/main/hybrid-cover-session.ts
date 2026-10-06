@@ -17,6 +17,7 @@ import type { HybridStickerCandidate } from "./shape-cover-hybrid-shape.js";
 import { materializePlan, ProviderError } from "./agent-provider.js";
 import type { FullSourceCensusInput } from "./source-fact-census.js";
 import { sourceKey } from "./source-sticker-knowledge-store.js";
+import { createDecorationFrameResolver } from "./decoration-frame.js";
 
 export interface HybridProductionSession {
   prepare(media: MediaItem, version: number, runId: string, signal: AbortSignal, onStage: (message: string) => void): Promise<EditTemplate>;
@@ -28,7 +29,11 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
   knowledgeStore?: SourceStickerKnowledgeStore;
   routes(signal: AbortSignal): Promise<Record<VisionRole, VisionRoute>> }): HybridProductionSession {
   const pending = new Map<string, Promise<{ layers: Awaited<ReturnType<typeof approveHybridOverlay>>[]; summary: string }>>();
-  return { prepare: async (media, _version, _runId, signal, onStage) => {
+  const resolveFrame = createDecorationFrameResolver(deps.decorations, deps.stickerAssets);
+  const frozenOptions = new Map<string, DecorationOptions>();
+  return { prepare: async (media, version, _runId, signal, onStage) => {
+    const outputKey = `${media.id}:${version}`;
+    if (!frozenOptions.has(outputKey)) frozenOptions.set(outputKey, resolveFrame(media.id));
     const key = media.fingerprint;
     let operation = pending.get(key);
     if (!operation) {
@@ -77,7 +82,7 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
     const { layers, summary } = await operation;
     signal.throwIfAborted();
     // User-authored display text uses the original materializer. No extra corner artwork or filter changes.
-    const options = { ...deps.decorations, mode: "manual" as const, sticker: "none" as const, corners: undefined, displayText: displayTextSettings(deps.decorations, media.id) };
+    const options = { ...frozenOptions.get(outputKey)!, mode: "manual" as const, sticker: "none" as const, corners: undefined, displayText: displayTextSettings(deps.decorations, media.id) };
     const rule = getRule(deps.ruleId);
     const base = materializePlan({ summary, captions: [], filter: rule.filters[0], intensity: rule.minIntensity }, deps.ruleId, media, deps.stickerAssets, options);
     return hybridTemplate(layers, { ...base, name: summary });

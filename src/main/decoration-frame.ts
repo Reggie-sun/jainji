@@ -1,7 +1,38 @@
 import { randomUUID } from "node:crypto";
 import type { StickerAssets } from "./builtin-stickers.js";
-import type { StickerLayer } from "./domain.js";
+import { BalancedStickerPicker, type StickerLayer } from "./domain.js";
 import { fingerprintFile } from "./paths.js";
+import type { DecorationOptions } from "../shared/decorations.js";
+import { frameSettings, isFrameId } from "../shared/frames.js";
+
+export function decorationFramePool(assets: StickerAssets) {
+  return Object.entries(assets).flatMap(([id, asset]) => isFrameId(id) && asset ? [{ id, ...asset }] : []);
+}
+
+/** Resolve once per new output; callers retain these options during supervisor rebuilds. */
+export function createDecorationFrameResolver(options: DecorationOptions | undefined, assets: StickerAssets, mediaIds?: readonly string[]): (mediaId: string) => DecorationOptions {
+  const policies = mediaIds?.length ? mediaIds.map(id => frameSettings(options, id)) : [frameSettings(options), ...Object.values(options?.framesByMedia ?? {})];
+  const pool = decorationFramePool(assets);
+  if (policies.some(value => value.mode === "random") && !pool.length) throw new Error("没有可用的边框，请上传边框或关闭随机边框。");
+  const picker = policies.some(value => value.mode === "random") && pool.length ? new BalancedStickerPicker(pool) : undefined;
+  const previous = new Map<string, string>();
+  return mediaId => {
+    const frame = frameSettings(options, mediaId);
+    const frameId = frame.mode === "manual" ? frame.frameId : frame.mode === "random"
+      ? picker!.pick(pool.length > 1 && previous.has(mediaId) ? new Set([previous.get(mediaId)!]) : new Set()).id : undefined;
+    if (frameId && !assets[frameId]) throw new Error("所选边框不存在或已删除，请重新选择。");
+    if (frame.mode === "random" && frameId) previous.set(mediaId, frameId);
+    return { ...options, frame, frameId, framesByMedia: undefined } as DecorationOptions;
+  };
+}
+
+export async function assertDecorationFrameOptions(options: Pick<DecorationOptions, "frame" | "frameId" | "framesByMedia">, assets: StickerAssets, mediaIds?: readonly string[]): Promise<void> {
+  const policies = mediaIds?.length ? mediaIds.map(id => frameSettings(options, id)) : [frameSettings(options), ...Object.values(options.framesByMedia ?? {})];
+  const pool = decorationFramePool(assets);
+  if (policies.some(value => value.mode === "random") && !pool.length) throw new Error("没有可用的边框，请上传边框或关闭随机边框。");
+  const ids = policies.flatMap(value => value.mode === "manual" ? [value.frameId] : value.mode === "random" ? pool.map(entry => entry.id) : []);
+  await Promise.all([...new Set(ids)].map(id => assertDecorationFrameAsset(id, assets)));
+}
 
 export async function assertDecorationFrameAsset(frameId: string | undefined, assets: StickerAssets): Promise<void> {
   if (!frameId) return;
@@ -26,10 +57,10 @@ export function assertFrameBitmap(width: number, height: number, pixels: Buffer)
   if (!visible) throw new Error("边框不能是完全空白的图片。");
 }
 
-export function decorationFrameLayers(frameId: string | undefined, assets: StickerAssets): StickerLayer[] {
+export function decorationFrameLayers(frameId: string | undefined, assets: StickerAssets, selection?: "random" | "manual"): StickerLayer[] {
   if (!frameId) return [];
   const asset = assets[frameId];
   if (!asset) throw new Error("所选边框不存在或已删除，请重新选择。");
-  return [{ id: randomUUID(), type: "sticker", ...asset, frame: { id: frameId },
+  return [{ id: randomUUID(), type: "sticker", ...asset, frame: { id: frameId, ...(selection ? { selection } : {}) },
     x: 0, y: 0, width: 1, rotationDeg: 0, opacity: 1, zIndex: -1000, visible: true }];
 }

@@ -119,7 +119,7 @@ export const StickerLayerSchema = z.object({
   assetPath: AbsolutePath,
   assetFingerprint: z.string().min(1),
   rotationDeg: z.number().finite().min(-360).max(360),
-  frame: z.object({ id: FrameIdSchema }).strict().optional(),
+  frame: z.object({ id: FrameIdSchema, selection: z.enum(["random", "manual"]).optional() }).strict().optional(),
   activeRanges: z.array(z.object({
     startMs: z.number().finite().nonnegative(),
     endMs: z.number().finite().positive(),
@@ -339,7 +339,7 @@ export function randomTemplateDigest(template: EditTemplate): string {
     filter: undefined,
     layers: template.layers.map((layer) => {
       if (layer.type === "text") return { ...layer, id: undefined, content: undefined };
-      if (layer.frame) return { ...layer, id: undefined };
+      if (layer.frame) return layer.frame.selection === "random" ? { ...layer, id: undefined, assetPath: undefined, assetFingerprint: undefined, frame: { ...layer.frame, id: undefined } } : { ...layer, id: undefined };
       const { id: _layerId, assetPath: _path, assetFingerprint: _fingerprint, ...stickerRest } = layer;
       if (stickerRest.cover) {
         const { stickerId: _stickerId, ...coverRest } = stickerRest.cover;
@@ -375,7 +375,7 @@ export class BalancedStickerPicker {
   }
 }
 
-export function cloneTemplateForRandom(template: EditTemplate, productPrice: string, picker: BalancedStickerPicker): EditTemplate {
+export function cloneTemplateForRandom(template: EditTemplate, productPrice: string, picker: BalancedStickerPicker, framePicker?: BalancedStickerPicker): EditTemplate {
   const price = appendProductPrice(template, productPrice);
   const before = randomTemplateDigest(template);
   const cloned = cloneTemplate(template);
@@ -400,7 +400,14 @@ export function cloneTemplateForRandom(template: EditTemplate, productPrice: str
       if (price !== undefined) layer.content = formatProductPrice(price);
       continue;
     }
-    if (layer.frame) continue;
+    if (layer.frame) {
+      if (layer.frame.selection === "random") {
+        if (!framePicker) throw new JianjiError("没有可用的随机边框资源。", "input_invalid", "input", false);
+        const picked = framePicker.pick(new Set([layer.frame.id]));
+        layer.assetPath = picked.assetPath; layer.assetFingerprint = picked.assetFingerprint; layer.frame.id = FrameIdSchema.parse(picked.id);
+      }
+      continue;
+    }
     let picked: RandomStickerPoolEntry;
     if (layer.cover?.regionId && layer.cover.sharedSticker) {
       picked = sharedRegionStickers.get(layer.cover.regionId)!;

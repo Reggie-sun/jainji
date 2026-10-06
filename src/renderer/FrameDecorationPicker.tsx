@@ -1,19 +1,33 @@
 import { useEffect, useRef, useState } from "react";
 import type { DecorationOptions } from "../shared/decorations";
-import type { FrameCatalogEntry } from "../shared/frames";
+import { frameSettings, type FrameSettings, type FrameCatalogEntry } from "../shared/frames";
+import { MediaSelector } from "./MediaSelector";
 import { Icon } from "./ui";
 import "./decoration-frames.css";
 
-export function FrameDecorationPicker({ value, onChange, disabled, mutationDisabled = disabled }: {
+export function FrameDecorationPicker({ value, onChange, disabled, mutationDisabled = disabled, media = [], onSave }: {
   value: DecorationOptions; onChange(value: DecorationOptions): void; disabled: boolean; mutationDisabled?: boolean;
+  media?: readonly { id: string; displayName: string }[]; onSave?(): void;
 }) {
   const [frames, setFrames] = useState<FrameCatalogEntry[]>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string>();
+  const [selectedId, setSelectedId] = useState("");
+  const mediaId = media.some(item => item.id === selectedId) ? selectedId : "";
+  const settings = frameSettings(value, mediaId);
   const mounted = useRef(true);
   const valueRef = useRef(value); valueRef.current = value;
+  const choose = (frame: FrameSettings) => {
+    const current = valueRef.current;
+    onChange({ ...current, frameId: undefined, frame: mediaId ? frameSettings(current) : frame,
+      framesByMedia: mediaId ? { ...current.framesByMedia, [mediaId]: frame } : current.framesByMedia });
+  };
+  const inherit = () => {
+    const framesByMedia = { ...valueRef.current.framesByMedia }; delete framesByMedia[mediaId];
+    onChange({ ...valueRef.current, framesByMedia });
+  };
   useEffect(() => {
     mounted.current = true;
     void window.jianji.decorationCatalog().then(catalog => { if (mounted.current) setFrames(catalog.frames ?? []); })
@@ -29,8 +43,7 @@ export function FrameDecorationPicker({ value, onChange, disabled, mutationDisab
       const catalog = await window.jianji.decorationCatalog();
       if (!mounted.current) return;
       setFrames(catalog.frames ?? []);
-      onChange({ ...valueRef.current, frameId: id });
-      setMessage("边框已上传并选中，自己的四角贴纸会叠在边框上方。");
+      setMessage("边框已加入随机池，也可点击图片手动指定给整批或某条素材。");
     } catch (cause) {
       if (mounted.current) setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "边框上传失败，请检查图片后重试。");
     } finally { if (mounted.current) setBusy(false); }
@@ -40,7 +53,9 @@ export function FrameDecorationPicker({ value, onChange, disabled, mutationDisab
     setBusy(true); setError(""); setMessage("");
     try {
       await window.jianji.removeFrame(id);
-      if (valueRef.current.frameId === id) onChange({ ...valueRef.current, frameId: undefined });
+      const current = valueRef.current, frame = frameSettings(current);
+      onChange({ ...current, frameId: undefined, frame: frame.mode === "manual" && frame.frameId === id ? { mode: "none" } : frame,
+        framesByMedia: Object.fromEntries(Object.entries(current.framesByMedia ?? {}).map(([mediaId, setting]) => [mediaId, setting.mode === "manual" && setting.frameId === id ? { mode: "none" as const } : setting])) });
       if (!mounted.current) return;
       setFrames(current => current?.filter(frame => frame.id !== id));
       setConfirmDelete(undefined);
@@ -52,15 +67,20 @@ export function FrameDecorationPicker({ value, onChange, disabled, mutationDisab
     <div className="frame-decoration-heading"><div><h2>整圈边框</h2><p>先框住四周，再在边框上叠加自己的四角贴纸。</p></div>
       <button type="button" className="button secondary" disabled={mutationDisabled || busy} onClick={() => void importFrame()}><Icon name="upload" size={17} />{busy ? "正在更新…" : "上传透明边框 PNG"}</button>
     </div>
+    <label htmlFor="frame-media">对应素材</label>
+    <MediaSelector id="frame-media" label="边框素材" media={[{ id: "", displayName: "整批设置（默认）" }, ...media]} value={mediaId} disabled={disabled || busy} onChange={setSelectedId} />
+    {mediaId && <><p>{value.framesByMedia?.[mediaId] ? "此素材使用独立边框设置。" : "此素材沿用整批边框设置。"}</p><button type="button" className="button secondary compact" disabled={disabled || busy || !value.framesByMedia?.[mediaId]} onClick={inherit}>此素材沿用整批设置</button></>}
+    <button type="button" className="button secondary compact" disabled={disabled || busy || !onSave} onClick={onSave}>保存边框设置到当前项目</button>
     <div className="frame-decoration-grid" role="group" aria-label="选择整圈边框">
-      <button type="button" className="frame-decoration-choice" aria-pressed={!value.frameId} disabled={disabled || busy} onClick={() => onChange({ ...value, frameId: undefined })}><span className="frame-decoration-none">无</span><span>不加边框</span></button>
-      {frames?.map(frame => <div key={frame.id}><button type="button" className="frame-decoration-choice" aria-pressed={value.frameId === frame.id} disabled={disabled || busy} onClick={() => onChange({ ...value, frameId: frame.id })}><img src={frame.url} alt="" /><span>{frame.label}</span></button>
+      <button type="button" className="frame-decoration-choice" aria-pressed={settings.mode === "random"} disabled={disabled || busy} onClick={() => choose({ mode: "random" })}><span className="frame-decoration-none">↻</span><span>随机边框</span></button>
+      <button type="button" className="frame-decoration-choice" aria-pressed={settings.mode === "none"} disabled={disabled || busy} onClick={() => choose({ mode: "none" })}><span className="frame-decoration-none">无</span><span>不加边框</span></button>
+      {frames?.map(frame => <div key={frame.id}><button type="button" className="frame-decoration-choice" aria-pressed={settings.mode === "manual" && settings.frameId === frame.id} disabled={disabled || busy} onClick={() => choose({ mode: "manual", frameId: frame.id })}><img src={frame.url} alt="" /><span>{frame.label}</span></button>
         {frame.source === "uploaded" && <div className="frame-decoration-delete">{confirmDelete === frame.id ? <><button type="button" disabled={mutationDisabled || busy} onClick={() => void removeFrame(frame.id)}>确认删除</button><button type="button" disabled={busy} onClick={() => setConfirmDelete(undefined)}>取消</button></> : <button type="button" disabled={mutationDisabled || busy} aria-label={`删除 ${frame.label}`} onClick={() => setConfirmDelete(frame.id)}>删除</button>}</div>}
       </div>)}
     </div>
     {!frames && !error && <p role="status">正在读取边框…</p>}
-    {value.frameId && frames && !frames.some(frame => frame.id === value.frameId) && <p role="alert">所选边框已不可用，请重新选择。</p>}
-    <small>边框全程显示，覆盖画面边缘；视频不裁剪。上传 PNG 的中央半宽、半高区域须完全透明，最大 10 MB、宽高不超过 4096 像素。边框完整适配横屏或竖屏画布，选择不会随制作模式切换。</small>
+    {settings.mode === "manual" && frames && !frames.some(frame => frame.id === settings.frameId) && <p role="alert">所选边框已不可用，请重新选择。</p>}
+    <small>默认随机，每条素材的每个新版本从内置及上传边框中选款，也可独立指定或关闭。随机预览为示意，重试保持已冻结的款式。边框全程显示并覆盖画面边缘，视频不裁剪。上传 PNG 中央半宽、半高须完全透明，最大 10 MB、宽高不超过 4096 像素。</small>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
   </section>;
 }

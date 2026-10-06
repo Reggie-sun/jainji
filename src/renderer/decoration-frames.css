@@ -1,4 +1,6 @@
 .frame-decoration-picker{padding:20px;margin:18px 0}
+.frame-decoration-picker>.media-selector{margin:8px 0 12px}
+.frame-decoration-picker>.button{margin:0 8px 14px 0}
 .frame-decoration-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:18px}
 .frame-decoration-heading h2{font-size:18px;margin:0 0 8px}
 .frame-decoration-picker p,.frame-decoration-picker small{font-size:12px;color:#687780;line-height:1.8}
