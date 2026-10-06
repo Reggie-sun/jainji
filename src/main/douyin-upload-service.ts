@@ -15,6 +15,7 @@ import { QianchuanBrowserControlSchema, type QianchuanAccountSummary, type Qianc
 import { QianchuanLibraryClearSchema, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import { QianchuanVideoLibrary } from "./qianchuan-video-library.js";
 import { QianchuanPlanMaterials } from "./qianchuan-plan-materials.js";
+import { clearQianchuanAccountPlans } from "./qianchuan-cleanup-plans.js";
 import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
 import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
@@ -321,16 +322,12 @@ export class DouyinUploadService {
         return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
           try {
             await guard(); const connected = await connect(target);
-            const selection = parsed.accounts.find(account => account.product === target.product);
-            if (selection?.plan) {
-              const plans = await this.readPlans(connected, operation.controller.signal);
-              await guard();
-              if (!plans.some(plan => plan.advertiserId === connected.advertiserId && plan.adId === connected.adId)) throw new Error("所选清理计划已失效，请刷新计划列表后重新选择，未删除素材。");
-            }
-            const planResult = parsed.confirmation !== "DELETE_ALL_VIDEOS" ? await materials.clear(connected, guard, operation.controller.signal) : undefined;
-            if (parsed.confirmation === "DELETE_PLAN_MATERIALS" || planResult?.state === "BLOCKED") return planResult!;
-            const libraryResult = await library.clear(connected, guard, operation.controller.signal);
-            return planResult ? { ...libraryResult, message: `${planResult.message} ${libraryResult.message}` } : libraryResult;
+            const selection = parsed.accounts.find(account => account.product === target.product)!;
+            return clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
+              guard, signal: operation.controller.signal, readPlans: (account, signal) => this.readPlans(account, signal),
+              clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal),
+              clearLibrary: (account, fresh, signal) => library.clear(account, fresh, signal),
+            });
           }
           catch (error) { return { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
         }));

@@ -198,41 +198,62 @@ describe("cleanup plan browser interaction", () => {
       const request = (window as any).catalogRequests.at(-1);
       request.resolve(["9001", "9002"].map(adId => ({advertiserId:request.input.expectedAdvertiserId, adId, name:"计划 " + adId, productNames:["叶黄素蒸汽眼罩"]})));
     });
-    await page.waitForFunction(() => !document.querySelector<HTMLSelectElement>('[aria-label="清理计划"]')!.disabled);
+    await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).waitFor();
   }
-  it("requires explicit selection and freezes the non-default plan in confirmation and the deletion request", async () => {
+  it("defaults to all plans and freezes the complete set before deletion", async () => {
     const page = await cleanupFixture();
     try {
-      const start = page.getByRole("button", { name: "清理所选计划（1）", exact: true });
-      expect(await start.isDisabled()).toBe(true); await respond(page);
-      expect(await start.isDisabled()).toBe(true);
-      await page.getByLabel("清理计划", { exact: true }).selectOption("9002");
+      expect(await page.getByRole("button", { name: "清理所选计划", exact: true }).isDisabled()).toBe(true); await respond(page);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(true);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(true);
       await page.setViewportSize({ width: 420, height: 900 });
       expect(await page.locator(".qianchuan-cleanup-plan").evaluate(element => element.scrollWidth > element.clientWidth)).toBe(false);
-      await start.click();
-      expect(await page.getByRole("group", { name: "确认素材清理" }).textContent()).toContain("计划 计划 9002 · ID 9002");
+      await page.getByRole("button", { name: "清理所选计划（2）", exact: true }).click();
+      const confirmation = await page.getByRole("group", { name: "确认素材清理" }).textContent();
+      expect(confirmation).toContain("2 个计划"); expect(confirmation).toContain("ID 9001"); expect(confirmation).toContain("ID 9002");
       expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(0);
       await page.getByRole("button", { name: "确认删除三类计划素材（1 个账号）", exact: true }).click();
       await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
-      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1000", expectedAdId: "9002", plan: { advertiserId: "1000", adId: "9002", name: "计划 9002", productNames: ["叶黄素蒸汽眼罩"] } }] });
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1000", plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}`, productNames: ["叶黄素蒸汽眼罩"] })) }] });
+    } finally { await page.close(); }
+  });
+  it("allows deselection, preserves an explicit empty choice on remount and submits only the checked subset", async () => {
+    const page = await cleanupFixture();
+    try {
+      await respond(page);
+      await page.getByRole("button", { name: "全选清理计划", exact: true }).click();
+      expect(await page.getByRole("button", { name: "清理所选计划", exact: true }).isDisabled()).toBe(true);
+      await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: /计划内三类素材/ }).check();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2); await respond(page);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(false);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(false);
+      await page.getByRole("button", { name: "全选清理计划", exact: true }).click();
+      await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
+      await page.getByRole("button", { name: "清理所选计划（1）", exact: true }).click();
+      const confirmation = await page.getByRole("group", { name: "确认素材清理" }).textContent();
+      expect(confirmation).toContain("ID 9002"); expect(confirmation).not.toContain("ID 9001");
+      await page.getByRole("button", { name: "确认删除三类计划素材（1 个账号）", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0].accounts[0].plans.map((plan: { adId: string }) => plan.adId))).toEqual(["9002"]);
     } finally { await page.close(); }
   });
   it("blocks stale confirmation and failed refresh, while account-wide clearing remains explicit", async () => {
     const page = await cleanupFixture();
     try {
-      await respond(page); await page.getByLabel("清理计划", { exact: true }).selectOption("9001");
-      await page.getByRole("button", { name: "清理所选计划（1）", exact: true }).click();
+      await respond(page);
+      await page.getByRole("button", { name: "清理所选计划（2）", exact: true }).click();
       await page.evaluate(() => (window as any).changeCleanupAccount("1001"));
       await page.getByText("账号设置已变化，请取消并重新选择清理范围。", { exact: true }).waitFor();
       expect(await page.getByRole("button", { name: "确认删除三类计划素材（1 个账号）", exact: true }).isDisabled()).toBe(true);
       await page.getByRole("button", { name: "取消", exact: true }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
-      await respond(page); await page.getByLabel("清理计划", { exact: true }).selectOption("9002");
+      await respond(page);
       await page.getByRole("button", { name: "刷新计划", exact: true }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
       await page.evaluate(() => (window as any).catalogRequests.at(-1).reject(new Error("Chrome 登录已失效")));
       await page.getByText("Chrome 登录已失效", { exact: true }).waitFor();
-      expect(await page.getByRole("button", { name: "清理所选计划（1）", exact: true }).isDisabled()).toBe(true);
+      expect(await page.getByRole("button", { name: "清理所选计划", exact: true }).isDisabled()).toBe(true);
       await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
       await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
       await page.getByRole("button", { name: "清理所选账号（1）", exact: true }).click();

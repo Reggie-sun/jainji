@@ -48,6 +48,19 @@ it("binds an explicit cleanup choice to both expected IDs and rejects a plan on 
   }
   expect(() => QianchuanLibraryClearSchema.parse({ confirmation: "DELETE_ALL_VIDEOS", accounts: [account] })).toThrow();
 });
+it("binds a nonempty unique plan set to one account without ambiguous single-plan fields", () => {
+  const plans = ["9001", "9002"].map(adId => ({ advertiserId: target.advertiserId, adId, name: `计划 ${adId}` }));
+  const account = { product: target.product, expectedAdvertiserId: target.advertiserId, plans };
+  for (const confirmation of ["DELETE_PLAN_MATERIALS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]) {
+    expect(QianchuanLibraryClearSchema.parse({ confirmation, accounts: [account] }).accounts[0]).toEqual(account);
+    for (const invalid of [{ ...account, plans: [] }, { ...account, plans: [plans[0], plans[0]] },
+      { ...account, plans: [{ ...plans[0], advertiserId: "9999" }] },
+      { ...account, expectedAdId: "9001" }, { ...account, expectedAdId: "9001", plan: plans[0] }]) {
+      expect(() => QianchuanLibraryClearSchema.parse({ confirmation, accounts: [invalid] })).toThrow();
+    }
+  }
+  expect(() => QianchuanLibraryClearSchema.parse({ confirmation: "DELETE_ALL_VIDEOS", accounts: [account] })).toThrow();
+});
 it("clears current pages and consumes the final zero once without an extra refresh or video backup", async () => {
   const f = await fixture();
   expect(await f.library.clear(target, async () => {})).toMatchObject({ state: "CLEARED", deletedCount: 45 });
