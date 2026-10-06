@@ -141,6 +141,20 @@ media 另记录输入文件 hash、批次/task/attempt、冻结 template/preset 
 | AC-07 | 证据可定位，视觉状态不冒充验收 | 缩略帧/索引与文件 hash 核对 |
 | AC-08 | 不改变生产状态及用户文件 | 输入 hash 前后相同、无模型/网络调用、无入队；检查任务 diff |
 
+# Qianchuan Upload Throughput Acceptance
+
+上传性能按 [Continuous Delivery Contract](douyin-auto-upload-spec.md#throughput-acceptance-delta) 验收，执行 owner 为 policy 中既有必需 `douyin-upload` 检查。以下行为回归必须失败，不得仅因最终数量正确而通过：
+
+| Acceptance | Executable evidence |
+| --- | --- |
+| 已有 1 或 6 条立即上传，不等九条或后续制作/chunk 登记 | service 的单条流式、六条立即上传和未登记后续 chunk 场景 |
+| 前组始终 processing 时仍持续投递，每次最多 9 条；前组全部 READY 后仍可在原窗口追加 | service 的 9+9+3 和部分成片流式场景；production DOM / native CDP 的 processing 与全部 READY 场景 |
+| 当前组件累计恰好 10 的禁用边界不会阻断剩余成片 | 单条首组后边界避让；第十条终态、在途准入、取消/超时及原页失败；未选第十条超时后显式安全继续且不重传前九条 |
+| 阶段保存按组执行，去掉随文件数量增长的完整账本重写 | 21 条、9+9+3、同一 processing 窗口恰好 13 次完整账本提交；每组 fence 同步仅一次完整账本提交 |
+| 提速保留全部同步、防重传及恢复边界 | 逐 fence sync、目录 sync 顺序；第 1/5/9 个 fence 故障零投递；原子 READY 保存失败保留全部 fence，重启禁止重新选择 |
+
+断言来自实际 service/store 与隔离 Chrome 行为，不使用真实账号、生产文件或模型。结构化 Vitest report 必须证明这些测试文件执行且无必需 skip。receipt 的 PASS 只证明本轮调度和持久化性能契约；真实千川网络上传/转码速度另行观察，不由固定秒数或 fixture PASS 推定。
+
 # Delivery Boundary
 
 实现完成报告必须区分 harness 自测、核心回归、合成视频验证和用户真实成片验证，列出实际 runs 路径与未执行项。Linux 通过不能代表 Windows 实机通过。首版不以性能承诺作为验收门槛，记录耗时后再决定是否有必要优化。

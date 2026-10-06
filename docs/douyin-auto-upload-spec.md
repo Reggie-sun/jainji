@@ -155,9 +155,19 @@ CodeGraph 已查询 service 的 entity 和 execute 关系，实际源代码确�
 
 处理中的文件可能尚未计入页面“已选择”完成计数；接收阶段允许该计数处于已持久 READY 数与已观察行数之间，整批占用仍以永久 fence 的实际已选数量计算。完成阶段继续要求精确累计计数和全行成功，不以接收时的暂时计数授 READY。
 
-原单一 runner 在同一页面继续投递已准入的 PENDING 成片，并在页面仍处理时接收后来完成的成片；其他页面不并发。每个文件动作之前仍校验快照并持久保存全部成员 fence。所有已选择文件满足原整体完成条件后，重验快照并逐件保存 WAITING_FOR_CONFIRMATION；中途停止/保存不确定时保留已保存 READY，其余有 fence 的成员为 MAY_HAVE_UPLOADED。启动及显式恢复沿用原页只读核查，不重放文件动作。
+原单一 runner 在同一页面继续投递已准入的 PENDING 成片，并在页面仍处理时接收后来完成的成片；其他页面不并发。每个文件动作之前仍校验快照并持久保存全部成员 fence。所有已选择文件满足原整体完成条件后，重验快照并一次原子保存本窗口成员的 WAITING_FOR_CONFIRMATION；中途停止/保存不确定时保留此前窗口已保存 READY，其余有 fence 的成员为 MAY_HAVE_UPLOADED。启动及显式恢复沿用原页只读核查，不重放文件动作。
 
 一个连续投递窗口的 processing 总期限从首组列表接收且等待状态持久保存后开始，采用既有 processing 配置；每组 navigation/fileInput 仍分别有界，剩余 processing 期限不能被新成片无限延长。既有磁盘格式、ReadyEvidence 语义、SHA-256 准入/防重传及人工确认边界不变。Parent Self-Review：列表接收与平台完成独立，异常及取消覆盖全部本窗口已接收/选中文件，无第二 queue/ledger。工程验证与真实千川吞吐量分别报告。
+
+## Throughput Acceptance Delta
+
+2026-10-06 用户再次要求速度：**有多少正式准入成片就立即传多少，每次最多 9 条；不等凑齐、不等上一条或上一组完成。** 此要求取代此前等待凑满九条或全部制作结束才释放尾组的修复。制作尚未完成、后续 queue chunks 尚未登记，以及 completed 尚未完成正式 artifact 准入，均不得延迟当前已经准入且允许选择的成员。
+
+唯一现有平台约束是当前组件累计行数恰好 10 时禁用入口，见 [Incident Evidence](qianchuan-upload-disabled-2026-10-06.md)。若本组会中途停在累计 10，先投递其中可使累计到 9 的成员；第十条只等至少再一条已准入成员后一起投递跨至 11 或以上，每组仍最多 9 条，或在冻结成员全部已准入/可信终止且无在途准入时作为最终一条上传。其他不足九条的组立即发出。此等待使用既有有界 processing 和取消机制；同一连续窗口内等待时继续只读观察原页，不修改平台禁用状态、不确认、不删除或重传。首个文件动作前的等待有独立 processing 上限，尚不连接或观察页面，结束后才沿原准入核验页面；开始递送后的连续窗口沿用 §6.1 的总期限，追加不重置。等待超时的未选成员保持 NOT_SELECTED，进入 NEEDS_HUMAN；用户核查原页后可显式“安全继续”，不得自动重试。已有 fence 的成员仍按未知结果只读恢复。
+
+同组 CONNECTING_BROWSER、OPENING_UPLOAD_PAGE、永久 fence 账本同步、WAITING_UPLOAD_COMPLETE 各只提交一次完整账本；同一窗口最终 READY 原子提交一次。逐文件 fence 仍独占创建并同步，全部文件及其目录同步、整组账本提交成功后，才允许唯一的一次组文件动作。任何部分 fence 故障保留已创建屏障，零文件动作；重启只读恢复未知成员。不能以取消 fsync、放松准入、清除历史或异步未落盘阶段换取速度。
+
+这些要求由 [Harness Throughput Acceptance](video-validation-harness-spec.md#qianchuan-upload-throughput-acceptance) 与 policy 中既有必需上传检查执行。工程验收度量调度等待和完整账本提交次数，不承诺真实平台带宽、转码或审核时长。
 
 # 7. State And Ready Evidence
 

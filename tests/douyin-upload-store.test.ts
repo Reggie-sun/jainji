@@ -28,7 +28,70 @@ export async function saveRecord(store: DouyinUploadStore, task: UploadTaskRecor
 const ownership = (task: UploadTaskRecord): PageOwnership => ({ targetId: "fixture-target", pageBatchId: task.authorization.pageBatchId, modalSessionId: crypto.randomUUID() });
 async function fixture() { const root = await mkdtemp(path.join(tmpdir(), "qianchuan-store-")); roots.push(root); const store = new DouyinUploadStore(root); await store.load(); return { root, store }; }
 
+async function groupFixture() {
+  const f = await fixture(), first = makeRecord(); first.authorization.expectedCount = 9;
+  const tasks = Array.from({ length: 9 }, (_, index) => {
+    const task = makeRecord();
+    task.input = { ...task.input, project_id: first.input.project_id, artifact_sha256: String(index + 1).repeat(64) };
+    task.authorization = structuredClone(first.authorization); task.inputDigest = frozenInputDigest(task.input, task.authorization);
+    task.result = { ...task.result, project_id: first.input.project_id, artifact_sha256: task.input.artifact_sha256, upload_task_id: uploadTaskId(task.input, task.authorization.target) };
+    return task;
+  });
+  for (const task of tasks) await saveRecord(f.store, task);
+  return { ...f, tasks, ids: tasks.map(task => task.result.upload_task_id), page: ownership(tasks[0]!) };
+}
+
 describe("v2 target-bound selection fences", () => {
+  it("syncs every fence and the directory before one group ledger commit", async () => {
+    const f = await groupFixture(), actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    const events: string[] = [];
+    vi.mocked(filesystem.open).mockImplementation(async (...args: Parameters<typeof filesystem.open>) => {
+      const handle = await actual.open(...args);
+      if (String(args[0]).includes("selection-fences") && args[1] === "wx") {
+        const sync = handle.sync.bind(handle);
+        vi.spyOn(handle, "sync").mockImplementation(async () => { await sync(); events.push("fence-sync"); });
+      }
+      return handle;
+    });
+    const store = new DouyinUploadStore(f.root, { syncDirectory: async directory => {
+      const handle = await actual.open(directory, "r"); try { await handle.sync(); events.push("directory-sync"); } finally { await handle.close(); }
+    } }); await store.load();
+    const commit = vi.spyOn(store as unknown as { commit: (data: unknown) => Promise<void> }, "commit");
+    await store.markSelecting(f.ids, f.page, 1);
+    expect(events).toEqual([...Array(9).fill("fence-sync"), "directory-sync"]);
+    expect(commit).toHaveBeenCalledTimes(1);
+    const saved = JSON.parse(await readFile(path.join(f.root, "state.json"), "utf8"));
+    expect(saved.tasks.every((task: UploadTaskRecord) => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toBe(true);
+  });
+
+  it.each([1, 5, 9])("recovers only existing fences after the group fails creating fence %i", async position => {
+    const f = await groupFixture(), before = await readFile(path.join(f.root, "state.json"));
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises"); let created = 0;
+    vi.mocked(filesystem.open).mockImplementation(async (...args: Parameters<typeof filesystem.open>) => {
+      if (String(args[0]).includes("selection-fences") && args[1] === "wx" && ++created === position) throw new Error("injected group fence creation failure");
+      return actual.open(...args);
+    });
+    await expect(f.store.markSelecting(f.ids, f.page, 1)).rejects.toThrow();
+    expect(f.store.unavailable).toBe(true);
+    expect(await readFile(path.join(f.root, "state.json"))).toEqual(before);
+    vi.restoreAllMocks();
+    const reopened = new DouyinUploadStore(f.root); await reopened.load();
+    expect(reopened.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(position - 1);
+    for (const id of f.ids.slice(0, position - 1)) await expect(reopened.markSelecting(id, f.page, 1)).rejects.toThrow();
+    expect(reopened.tasks().filter(task => task.result.upload_outcome === "NOT_SELECTED")).toHaveLength(10 - position);
+  });
+
+  it("validates all group updates before saving any and never reverses a fence", async () => {
+    const f = await groupFixture(); await f.store.markSelecting(f.ids, f.page, 1);
+    const before = await readFile(path.join(f.root, "state.json")), tasks = f.store.tasks();
+    tasks[0]!.result.state = "WAITING_UPLOAD_COMPLETE";
+    tasks[8]!.result.upload_outcome = "NOT_SELECTED";
+    await expect(f.store.saveTasks(tasks)).rejects.toThrow("Selection fence cannot be reversed");
+    expect(await readFile(path.join(f.root, "state.json"))).toEqual(before);
+    expect(f.store.tasks().every(task => task.result.state === "UPLOADING")).toBe(true);
+    expect(f.store.unavailable).toBe(false);
+    await expect(f.store.saveTasks([tasks[0]!, tasks[0]!])).rejects.toThrow("Duplicate task update");
+  });
   it.each(["project", "authorization", "capacity"] as const)("rejects batch %s drift even when other batches intervene", async drift => {
     const { store } = await fixture(), first = makeRecord(), unrelated = makeRecord(), extra = makeRecord();
     if (drift === "capacity") first.authorization.expectedCount = 1;

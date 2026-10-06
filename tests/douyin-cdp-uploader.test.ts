@@ -406,7 +406,11 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     } finally { await observer.close(); }
   });
 
-  it("delivers 21 production snapshots in 9+9+3 groups while earlier rows are still processing", async () => {
+  it.each([
+    { sizes: [9, 9, 3], previousReady: false },
+    { sizes: [6, 3, 2, 9, 1], previousReady: false },
+    { sizes: [9, 9, 3], previousReady: true }
+  ])("delivers 21 production snapshots with $sizes and previousReady=$previousReady", async ({ sizes, previousReady }) => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset(); productionFixture.setControls({ processingDelayMs: 250, rowAppearanceDelayMs: 80, reorderRows: true });
     const batchId = randomUUID(), pageBatchId = randomUUID(), projectId = randomUUID();
@@ -415,9 +419,10 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     await uploader.connect(tasks[0]!, signal);
     const selected: Array<{ fileName: string; index: number; ready: boolean }> = [];
     let ownership;
-    for (let index = 0; index < tasks.length; index += 9) {
-      const group = tasks.slice(index, index + 9);
-      if (index === 0) productionFixture.setControls({ pendingName: group.at(-1)!.result.file_name });
+    let index = 0;
+    for (const size of sizes) {
+      const group = tasks.slice(index, index + size);
+      if (index === 0 && !previousReady) productionFixture.setControls({ pendingName: group.at(-1)!.result.file_name });
       const prepared = await uploader.open(group, selected, signal);
       if (index === 0) {
         const observer = await chromium.connectOverCDP(tasks[0]!.authorization.target.cdpEndpoint, { noDefaults: true });
@@ -435,11 +440,17 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       for (const task of group) task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
       await uploader.upload(group, signal);
       selected.push(...group.map((task, i) => ({ fileName: task.result.file_name, index: index + i + 1, ready: false })));
+      index += size;
+      if (previousReady) {
+        const ready = await uploader.ready(tasks.slice(0, index), signal);
+        expect(ready.every(item => item.selectedCount === index)).toBe(true);
+        for (const file of selected) file.ready = true;
+      }
     }
     const observed = await productionFixture.inspect();
-    expect(observed.events.filter(event => event.type === "drop").map(event => event.names?.length)).toEqual([9, 9, 3]);
-    expect(observed.events.filter(event => event.type === "dom").at(-1)).toMatchObject({ cancelVisible: true, confirmEnabled: false });
-    expect(await uploader.pollReady(tasks, signal)).toBeUndefined();
+    expect(observed.events.filter(event => event.type === "drop").map(event => event.names?.length)).toEqual(sizes);
+    expect(observed.events.filter(event => event.type === "dom").at(-1)).toMatchObject({ cancelVisible: !previousReady, confirmEnabled: previousReady });
+    if (!previousReady) expect(await uploader.pollReady(tasks, signal)).toBeUndefined();
     productionFixture.setControls({ pendingName: "" });
     const evidence = await uploader.ready(tasks, signal);
     expect(evidence.map(item => item.fileName)).toEqual(tasks.map(task => task.result.file_name));

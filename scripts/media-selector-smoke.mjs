@@ -11,11 +11,17 @@ const directory = await mkdtemp(path.join(tmpdir(), "jianji-media-selector-"));
 let server, browser;
 try {
   const video = path.join(directory, "preview.mp4");
-  execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=12", "-t", "4", "-c:v", "libx264", "-pix_fmt", "yuv420p", video]);
+  execFileSync(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=320x180:rate=12", "-t", "8", "-c:v", "libx264", "-pix_fmt", "yuv420p", video]);
   const bytes = await readFile(video);
   server = await createServer({ cacheDir: path.join(directory, "vite-cache"), plugins: [{ name: "media-selector-smoke", configureServer(instance) {
     instance.middlewares.use(async (request, response, next) => {
-      if (request.url?.startsWith("/__video")) { response.setHeader("Content-Type", "video/mp4"); response.end(bytes); return; }
+      if (request.url?.startsWith("/__video")) {
+        response.setHeader("Content-Type", "video/mp4"); response.setHeader("Accept-Ranges", "bytes");
+        const range = /^bytes=(\d+)-(\d*)$/.exec(request.headers.range ?? "");
+        const start = range ? Number(range[1]) : 0, end = range?.[2] ? Math.min(Number(range[2]), bytes.length - 1) : bytes.length - 1;
+        if (range) { response.statusCode = 206; response.setHeader("Content-Range", `bytes ${start}-${end}/${bytes.length}`); }
+        response.setHeader("Content-Length", end - start + 1); response.end(bytes.subarray(start, end + 1)); return;
+      }
       if (request.url !== "/__media-selector") return next();
       response.setHeader("Content-Type", "text/html; charset=utf-8");
       response.end(await server.transformIndexHtml(request.url, `<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><main id="root" style="max-width:1050px;margin:auto;padding:24px"></main><script type="module">
@@ -26,7 +32,7 @@ try {
         import {DEFAULT_EXPORT_SETTINGS} from '/src/shared/export-settings.ts';
         import '/src/renderer/styles.css';
         window.jianji={decorationCatalog:async()=>({fonts:[],stickers:[]})};
-        const initialMedia=Array.from({length:30},(_,i)=>({id:crypto.randomUUID(),displayName:'逐个审查视频-'+(i+1)+'.mp4',width:320,height:180,durationMs:4000,previewUrl:'/__video?id='+i}));
+        const initialMedia=Array.from({length:30},(_,i)=>({id:crypto.randomUUID(),displayName:'逐个审查视频-'+(i+1)+'.mp4',width:320,height:180,durationMs:8000,previewUrl:'/__video?id='+i}));
         function Fixture(){const [media,setMedia]=React.useState(initialMedia);const [busy,setBusy]=React.useState(false);const [tick,setTick]=React.useState(0);
           const [cover,setCover]=React.useState({enabled:true,trackingMode:'manual',stickerIds:[],rectangle:{x:.35,y:.4,width:.3,height:.2},regions:[{id:crypto.randomUUID(),rectangle:{x:.35,y:.4,width:.3,height:.2}}]});
           const [options,setOptions]=React.useState(DecorationSchema.parse({mode:'manual',sticker:'none',productPrice:'手动共用文字'}));
@@ -56,9 +62,21 @@ try {
     const card = el.closest('.card');
     return card === document.getElementById('product-price').closest('.card') && card === document.getElementById('decoration-display-mode').closest('.card');
   }), true, "shared text, timing and per-media controls belong to one card");
+  const textVideo = page.locator('.template-preview video');
+  assert.equal(await textVideo.evaluate(v => v.controls), true, "each selected text material offers video playback controls");
+  assert.equal(await textVideo.evaluate(v => v.closest('.display-text-settings') !== null), true, "selected video preview belongs beside its per-media settings");
+  await textVideo.evaluate(async v => { await v.play(); });
+  await page.waitForFunction(() => document.querySelector('.template-preview video').currentTime > .1);
+  await textVideo.evaluate(v => v.pause());
   await page.locator('#decoration-display-mode').selectOption('first-5s');
   assert.equal(await page.evaluate(() => window.fixture.options.displayMode), 'first-5s');
   const drag = page.getByRole("button", { name: "拖动展示文字位置" });
+  await textVideo.evaluate(v => { v.currentTime = 5.2; });
+  await drag.waitFor({ state: "detached" });
+  await page.locator('#decoration-display-mode').selectOption('full');
+  await drag.waitFor();
+  await textVideo.evaluate(v => { v.currentTime = 0; });
+  await page.locator('#decoration-display-mode').selectOption('first-5s');
   await drag.scrollIntoViewIfNeeded();
   const box = await drag.boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -68,7 +86,7 @@ try {
   await drag.focus(); await page.keyboard.press("ArrowDown");
   const positioned = await page.evaluate(() => window.fixture.options.displayTextByMedia[window.fixture.media[0].id]);
   assert.ok(positioned.y > moved.y, "keyboard fine adjustment remains available");
-  await page.getByRole("button", { name: "保存文字位置与开关" }).click();
+  await page.getByRole("button", { name: "保存到当前项目" }).click();
   assert.deepEqual(await page.evaluate(() => window.savedText.displayTextByMedia[window.fixture.media[0].id]), positioned);
   await text.click();
   const textList = page.getByRole("listbox", { name: "展示文字素材列表" });
@@ -79,6 +97,9 @@ try {
   assert.ok((await text.textContent()).includes("视频-1.mp4"), "highlight does not commit selection");
   await textList.getByRole("option", { name: "2. 逐个审查视频-2.mp4", exact: true }).click();
   assert.equal(await textList.count(), 0);
+  assert.equal(await textVideo.getAttribute("src"), "/__video?id=1");
+  assert.equal(await textVideo.evaluate(v => v.paused && v.currentTime === 0), true, "switching text materials resets playback");
+  assert.ok((await page.locator('.template-preview-info h2').textContent()).includes("视频-2.mp4"), "preview identifies the selected material");
   await page.getByLabel("此素材显示展示文字 / 价格").uncheck();
   await page.getByRole("button", { name: "上一个展示文字素材" }).click();
   assert.deepEqual(await page.evaluate(() => window.fixture.options.displayTextByMedia[window.fixture.media[0].id]), positioned);

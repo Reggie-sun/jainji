@@ -73,3 +73,19 @@ substantive integration 与外部媒体资格触发 proactive record 评估；�
 ## Remaining Boundaries
 
 Windows 实机、新 live-provider 全流程及整片人工播放未由本轮评估；不把 H4 QA、解码/时钟验证当这些验收。额外开启 `JIANJI_LIVE_ASSETS=1` 曾发现旧 main fixture 失败：未传手填文字却假设指定 library font 预加载。`asset-library.ts` 和 fixture 与 d6 无 diff，当前 owner 仅有手填文字时选择默认字体；属于独立旧 fixture，未修、未降低 required gate、不宣称该 opt-in 通过。Hybrid 与 random/千川上传组合仍拒绝；分支完成不代表原 main 已切换运行。
+
+## Mainline Integration Checkpoint
+
+2026-10-06，本轮由 `6664c4b7241c719a1368c6e548c48faacc119246` 合入 main `4a686384fe7a9508189ae6bfd9564924f3caffd5`；其中用户明确移交原 main 的16项未提交工作，本轮保留原字节、核验后提交。业务代码自动合并；冲突仅 `aoci.code.txt` 和 `.aoci/baseline.json`。恢复可信配对 preimage 后，按最终合并源码完成官方11项完整机器批次、CAS及原子维护，保留双方语义，不手工拼接索引或伪造 seal。
+
+main 的 batch/upload/Qianchuan及项目保存、文字预览、计划商品显示改动保留。bootstrap与batch runtime相对该main仅追加既有Hybrid routes接线；H2/H3/H4、mask、motion、shape、placement、coverage与Preview QA源码相对6664无改动。原自动形状入口、逐角批准及frozen layer沿原compiler/queue/export保持；未增加H5/H6或新功能。
+
+该源码重新完成 real233s 产品导出：batch `04f431dd-98fd-4836-b86b-86f74810fc76`，task `511d11fd-462c-4c6c-973b-f2bfdfb511e3`。仅TOP_RIGHT生产，其他角落UNCHANGED；selected sticker仍为 `local-limited-seckill-go`，placement仍为 `626,0,94,61`，PNG SHA与binding完全等于上表，oldPixels=3681、uncoveredPixels=0。最终MP4为60,666,112 bytes，SHA `82d8d75009d16287b0bc2bdaa02360b134c8f56ed41e0f9189911046f51fea29`；冻结artifact完全一致不意味着不同编码运行的整个MP4相同。原H4 seals和实际PNG字节再次核验，无新模型请求或视觉判断。
+
+私有证据根 `/home/reggie/.local/state/jianji-hybrid-final-integration-20261006`。typecheck/build及当前界面交互通过；Hybrid专项13文件合计200 PASS。完整full suite复核 `final-full-tests-recheck.json`：205文件、2543 PASS、0 FAIL、3原条件skip，退出0。完整Harness `20261006T104604Z-38c67d54`：20/20 required PASS、0 required skip、2529断言PASS，含完整H3及extended989项；completion `20261006T110525Z-080ba4e6` PASS。source identity `sha256:84213168630fcc0591fcb7b376e3ef00040ca26bdcd883196ac614b2770c331e`，scope identity `sha256:1dcaff1ab2b990fb11b69830562ee31050b71f750b6755b1a68f897ae25cfb0a`。官方AOCI Verify/Check/Guide对齐；57项owned scope逐项核验。
+
+失败与中断证据保留：主机重启中断运行不作PASS；重启后错误PATH选择无NumPy的其他项目Python，调整本轮验证进程PATH到原有合格Python，NumPy2.2.6/OpenCV4.12.0，未改源码或版本门。早期Harness的千川对话框消失竞态、full suite的隔离Chrome profile收尾ENOTEMPTY均来自未改动的既有文件；对应定向17/17及9/9复核后，完整Harness和完整suite均重新执行并正常通过，未改fixture、required或原超时。原6990帧测试沿240秒上限通过。
+
+以上native gates后，对该checkpoint作一次 `KIMI_REVIEW_NOT_REQUIRED` 判定：无显式review要求、新关键级凭据/越权/不可恢复状态损坏路径，亦无同时满足重大后果、剩余实质缺口及独立增益的证据。受管Kimi mapping invocation `3b1ae60a-646f-4054-b76f-b8370c6d8145` 是早期只读接线调查，不是final review或验收authority；Parent直接核对最终diff、字节及运行证据。详细判定见私有 `checkpoint-review-risk-gate.json`。
+
+验证期间，其他会话将main推进到 `2227c8804b0627524a6c25b48aceebda561e9676`，并在main继续未提交的装饰边框工作。用户明确选择：原作者先完成并提交，再由本轮合入最新main、重跑全部最终验证并回合并。本checkpoint不包含该后续提交，不能代替下一次合并的最终证据；尚未回合并main，尚不能宣布 `HYBRID_CORNER_V1_PRODUCTION_READY`。本段仅记录已验证checkpoint，记录字节按docs-only documents/owned-aoci路径独立收尾，不改变上述已验证源码。

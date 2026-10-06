@@ -97,22 +97,22 @@ describe("explicit Qianchuan batch recovery", () => {
     expect(f.groups.map(group => group.length)).toEqual([9, 9, 2]);
   });
 
-  it("does not advance while the whole first group is processing or its READY saves are incomplete", async () => {
+  it("keeps continuation serialized until the current READY transaction is durable", async () => {
     const f = await fixture(); await f.pause(); const target = await f.batch(12), records = await f.admit(target);
     let releaseReady!: () => void, releaseSave!: () => void;
     const readyGate = new Promise<void>(resolve => { releaseReady = resolve; }), saveGate = new Promise<void>(resolve => { releaseSave = resolve; });
-    const ready = f.port.ready, save = f.store.saveTask.bind(f.store); let saving = false;
+    const ready = f.port.ready, save = f.store.saveTasks.bind(f.store); let saving = false;
     f.port.ready = async (tasks, signal) => { if (f.groups.length === 1) await readyGate; return ready(tasks, signal); };
-    f.store.saveTask = async task => {
-      if (task.result.upload_task_id === records[4]!.result.upload_task_id && task.result.state === "WAITING_FOR_CONFIRMATION") { saving = true; await saveGate; }
-      await save(task);
+    f.store.saveTasks = async tasks => {
+      if (tasks.some(task => task.result.upload_task_id === records[4]!.result.upload_task_id && task.result.state === "WAITING_FOR_CONFIRMATION")) { saving = true; await saveGate; }
+      await save(tasks);
     };
     const resumed = f.service.resume(records[0]!.result.upload_task_id);
     try {
       await vi.waitFor(() => expect(f.groups[0]).toHaveLength(9)); expect(f.groups).toHaveLength(1);
       expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(9);
       releaseReady(); await vi.waitFor(() => expect(saving).toBe(true));
-      expect(f.groups).toHaveLength(1); expect(f.service.status(target.projectId).tasks.filter(task => task.state === "WAITING_FOR_CONFIRMATION")).toHaveLength(4);
+      expect(f.groups).toHaveLength(1); expect(f.service.status(target.projectId).tasks.filter(task => task.state === "WAITING_FOR_CONFIRMATION")).toHaveLength(0);
       releaseSave(); await resumed; expect(f.groups.map(group => group.length)).toEqual([9, 3]);
     } finally { releaseReady(); releaseSave(); await resumed; }
   });

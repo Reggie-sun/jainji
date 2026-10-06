@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 import * as transport from "../src/main/local-cdp-transport";
 import type { FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
-import { readQianchuanPlans, readVisibleQianchuanPlans } from "../src/main/qianchuan-plan-catalog";
+import { readPlanProductNames, readQianchuanPlans, readVisibleQianchuanPlans } from "../src/main/qianchuan-plan-catalog";
 
 const advertiserId = "1876294500004864";
 const origin = "https://qianchuan.jinritemai.com";
@@ -37,7 +37,7 @@ function pageHtml(page: FixturePage, pageNumber: number): string {
   </div><table><tbody>${page.rows.map(rowHtml).join("")}</tbody></table>`;
 }
 
-async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean; context?: BrowserContext } = {}): Promise<{ context: BrowserContext; page: Page }> {
+async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean; metadata?: unknown; context?: BrowserContext } = {}): Promise<{ context: BrowserContext; page: Page }> {
   const context = options.context ?? await browser.newContext();
   const page = await context.newPage();
   const pages = options.pages ?? [{ rows: [], total: 0, nextDisabled: true }];
@@ -46,8 +46,9 @@ async function fixture(options: { pages?: FixturePage[]; accountId?: string; upd
       const values=${JSON.stringify(pages.map((entry, index) => pageHtml(entry, index + 1)))}; let index=0;
       const next=()=>document.querySelector('[data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"] li.ovui-page-turner__item:has(.ovui-page-turner__next-icon)');
       next().addEventListener('click',()=>{${options.holdNext ? "" : `setTimeout(()=>{index++;if(index<values.length)document.querySelector('#catalog').innerHTML=values[index];},${options.updateDelay ?? 50});`}});
+      ${options.metadata ? "fetch('/ad/api/pmc/v1/uni-promotion/ad/list-optional')" : ""};
     </script>`;
-  await context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: html }));
+  await context.route(`${origin}/**`, route => route.fulfill(route.request().url().endsWith("/ad/list-optional") ? { contentType: "application/json", body: JSON.stringify(options.metadata) } : { contentType: "text/html; charset=utf-8", body: html }));
   await page.goto(`${origin}/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`, { waitUntil: "domcontentloaded" });
   return { context, page };
 }
@@ -72,6 +73,55 @@ it("returns visible active plans, excludes exact deleted tags, and ignores summa
       { advertiserId, adId: "1877947268854205", name: "名称包含已删除字样" },
     ]);
   } finally { await f.context.close(); }
+});
+
+it("binds display-only goods to exact advertiser and plan IDs and omits invalid metadata", () => {
+  const metadata = { data: { adInfos: [{ id: "7001", advId: advertiserId, name: "默认计划" }, { id: "7002", advId: "9999", name: "其他账号" }],
+    adGoodsMap: { "7001": [{ id: "8001", name: "蒸汽眼罩" }, { id: "8002", name: "热敷眼贴" }], "7002": [{ id: "8003", name: "错账号商品" }] } } };
+  expect([...readPlanProductNames(metadata, advertiserId).values()]).toEqual([{ advertiserId, adId: "7001", name: "默认计划", productNames: ["蒸汽眼罩", "热敷眼贴"] }]);
+  metadata.data.adGoodsMap["7001"][0]!.name = "\u0000错误";
+  expect(readPlanProductNames(metadata, advertiserId).size).toBe(0);
+  expect(readPlanProductNames(null, advertiserId).size).toBe(0);
+});
+
+it.each(["complete", "cancel"])("cleans up its real background target on %s without closing user pages", async outcome => {
+  const profile = await mkdtemp(path.join(tmpdir(), "jianji-plan-target-"));
+  const context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true,
+    args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
+  try {
+    const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
+    const f = await fixture({ context, pages: [{ rows: [{ name: "计划一", id: "7001" }], total: 1, nextDisabled: true }] });
+    const originalPages = context.pages();
+    const controller = new AbortController();
+    let picker: Page | undefined;
+    context.on("page", page => {
+      picker = page;
+      if (outcome === "cancel") page.once("domcontentloaded", () => controller.abort());
+    });
+    const pending = readQianchuanPlans({ ...target, cdpEndpoint: `http://127.0.0.1:${port}` }, controller.signal);
+    if (outcome === "cancel") await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    else await expect(pending).resolves.toEqual([{ advertiserId, adId: "7001", name: "计划一" }]);
+    expect(picker?.isClosed()).toBe(true);
+    expect(context.pages()).toEqual(originalPages);
+    expect(f.page.url()).toBe(`${origin}/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`);
+  } finally { await context.close(); await rm(profile, { recursive: true, force: true }); }
+});
+
+it("enriches the owned browser list from its response without reading other accounts or stale names", async () => {
+  const profile = await mkdtemp(path.join(tmpdir(), "jianji-plan-background-"));
+  const context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true,
+    args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
+  const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
+  const f = await fixture({ context, pages: [{ total: 2, nextDisabled: true, rows: [{ id: "7001", name: "默认计划" }, { id: "7002", name: "现名称" }] }],
+    metadata: { data: { adInfos: [{ id: "7001", advId: advertiserId, name: "默认计划" }, { id: "7002", advId: advertiserId, name: "旧名称" }],
+      adGoodsMap: { "7001": [{ id: "8001", name: "蒸汽眼罩" }], "7002": [{ id: "8002", name: "不能混入的旧商品" }] } } } });
+  try { expect(await readQianchuanPlans({ ...target, cdpEndpoint: `http://127.0.0.1:${port}` }, signal)).toEqual([
+    { advertiserId, adId: "7001", name: "默认计划", productNames: ["蒸汽眼罩"] },
+    { advertiserId, adId: "7002", name: "现名称" },
+  ]);
+    expect(f.page.isClosed()).toBe(false);
+    expect(context.pages().filter(page => page.url().includes("jianjiPlanPicker"))).toEqual([f.page]);
+  } finally { await context.close(); await rm(profile, { recursive: true, force: true }); }
 });
 
 it("reads all pages only after page number and row signature change", async () => {
@@ -149,33 +199,10 @@ it("rejects a truncated final page and cancels a stalled page transition", async
   finally { clearTimeout(timer); await stalled.context.close(); }
 });
 
-it.each(["complete", "cancel"])("cleans up its real background target on %s without closing user pages", async outcome => {
-  const profile = await mkdtemp(path.join(tmpdir(), "jianji-plan-target-"));
-  const context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true,
-    args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
-  try {
-    const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
-    const f = await fixture({ context, pages: [{ rows: [{ name: "计划一", id: "7001" }], total: 1, nextDisabled: true }] });
-    const originalPages = context.pages();
-    const controller = new AbortController();
-    let picker: Page | undefined;
-    context.on("page", page => {
-      picker = page;
-      if (outcome === "cancel") page.once("domcontentloaded", () => controller.abort());
-    });
-    const pending = readQianchuanPlans({ ...target, cdpEndpoint: `http://127.0.0.1:${port}` }, controller.signal);
-    if (outcome === "cancel") await expect(pending).rejects.toMatchObject({ name: "AbortError" });
-    else await expect(pending).resolves.toEqual([{ advertiserId, adId: "7001", name: "计划一" }]);
-    expect(picker?.isClosed()).toBe(true);
-    expect(context.pages()).toEqual(originalPages);
-    expect(f.page.url()).toBe(`${origin}/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`);
-  } finally { await context.close(); await rm(profile, { recursive: true, force: true }); }
-});
-
 it("uses a new marked picker tab and detaches without touching existing user tabs", async () => {
   const userTab = { url: vi.fn(() => `${origin}/uni-prom?aavid=${advertiserId}`), close: vi.fn(), goto: vi.fn() };
   const uploadTab = { url: vi.fn(() => `${origin}/uni-prom?aavid=${advertiserId}&upload=1`), close: vi.fn(), goto: vi.fn() };
-  const ownedTab = { setDefaultTimeout: vi.fn(), close: vi.fn(async () => {}), goto: vi.fn(async () => { throw new Error("fixture stops after navigation"); }) };
+  const ownedTab = { setDefaultTimeout: vi.fn(), setViewportSize: vi.fn(async () => {}), on: vi.fn(), off: vi.fn(), close: vi.fn(async () => {}), goto: vi.fn(async () => { throw new Error("fixture stops after navigation"); }) };
   const ownedSession = { send: vi.fn(async () => ({ targetInfo: { targetId: "owned-picker" } })), detach: vi.fn(async () => {}) };
   const pickerSession = { send: vi.fn(async (method: string) => method === "Target.createTarget" ? { targetId: "owned-picker" } : { success: true }), detach: vi.fn(async () => {}) };
   const concurrentTab = { close: vi.fn(), goto: vi.fn() };

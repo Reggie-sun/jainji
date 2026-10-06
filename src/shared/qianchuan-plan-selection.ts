@@ -5,6 +5,7 @@ const id = z.string().regex(/^[1-9][0-9]{0,19}$/);
 export const QianchuanPlanOptionSchema = z.object({
   advertiserId: id, adId: id,
   name: z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/),
+  productNames: z.array(z.string().trim().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/)).min(1).max(50).optional(),
 }).strict();
 export type QianchuanPlanOption = z.infer<typeof QianchuanPlanOptionSchema>;
 export const QianchuanPlanListRequestSchema = z.object({ product: QianchuanProductSchema, expectedAdvertiserId: id, requestId: z.string().uuid().optional(), refresh: z.boolean().optional() }).strict();

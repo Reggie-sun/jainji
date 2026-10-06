@@ -229,17 +229,27 @@ export class DouyinUploadStore {
     });
   }
   saveTask(task: UploadTaskRecord): Promise<void> {
+    return this.saveTasks([task]);
+  }
+  saveTasks(records: readonly UploadTaskRecord[]): Promise<void> {
     return this.serial(async () => {
-      this.assertReady(); const id = task.result.upload_task_id, old = this.data.tasks.find(value => value.result.upload_task_id === id);
-      this.assertOpen(task.authorization.pageBatchId); if (old) this.assertOpen(old.authorization.pageBatchId);
-      if (old && (old.inputDigest !== task.inputDigest || JSON.stringify(old.authorization) !== JSON.stringify(task.authorization) || JSON.stringify(old.config) !== JSON.stringify(task.config))) throw new Error("Frozen task changed");
-      if (task.result.state === "DISCARDED" && old?.result.state !== "DISCARDED" || old?.result.state === "DISCARDED" && JSON.stringify(old) !== JSON.stringify(task)) throw new Error("Discarded tasks can only be set by whole-batch deletion and cannot be restored");
-      if (this.hasMarker(id) && (task.result.upload_outcome === "NOT_SELECTED" || old?.result.attempt_count !== task.result.attempt_count)) throw new Error("Selection fence cannot be reversed");
-      const tasks = this.data.tasks.filter(value => value.result.upload_task_id !== id).map(value => {
-        if (value.result.duplicate_of !== id || value.result.state === "DISCARDED" || this.isClosed(value.authorization.pageBatchId)) return value;
+      this.assertReady(); if (!records.length) return;
+      const updates = new Map<string, UploadTaskRecord>(), oldTasks = new Map(this.data.tasks.map(task => [task.result.upload_task_id, task]));
+      for (const task of records) {
+        const id = task.result.upload_task_id, old = oldTasks.get(id);
+        if (updates.has(id)) throw new Error("Duplicate task update");
+        this.assertOpen(task.authorization.pageBatchId); if (old) this.assertOpen(old.authorization.pageBatchId);
+        if (old && (old.inputDigest !== task.inputDigest || JSON.stringify(old.authorization) !== JSON.stringify(task.authorization) || JSON.stringify(old.config) !== JSON.stringify(task.config))) throw new Error("Frozen task changed");
+        if (task.result.state === "DISCARDED" && old?.result.state !== "DISCARDED" || old?.result.state === "DISCARDED" && JSON.stringify(old) !== JSON.stringify(task)) throw new Error("Discarded tasks can only be set by whole-batch deletion and cannot be restored");
+        if (this.hasMarker(id) && (task.result.upload_outcome === "NOT_SELECTED" || old?.result.attempt_count !== task.result.attempt_count)) throw new Error("Selection fence cannot be reversed");
+        updates.set(id, task);
+      }
+      const tasks = [...this.data.tasks.filter(value => !updates.has(value.result.upload_task_id)), ...records].map(value => {
+        const task = value.result.duplicate_of && updates.get(value.result.duplicate_of);
+        if (!task || value.result.state === "DISCARDED" || this.isClosed(value.authorization.pageBatchId)) return value;
         return { ...value, result: { ...value.result, state: task.result.readyEvidence ? "WAITING_FOR_CONFIRMATION" as const : "NEEDS_HUMAN" as const, upload_outcome: task.result.readyEvidence ? "READY" as const : "MAY_HAVE_UPLOADED" as const, readyEvidence: task.result.readyEvidence, failure: task.result.readyEvidence ? undefined : task.result.failure, retryable: false, timestamp: task.result.timestamp } };
       });
-      await this.commit({ ...this.data, tasks: [...tasks, task] });
+      await this.commit({ ...this.data, tasks });
     });
   }
   retargetBatch(id: string, authorization: UploadAuthorization, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
@@ -344,24 +354,32 @@ export class DouyinUploadStore {
       await this.commit({ ...this.data, tasks: this.data.tasks.map(task => task.authorization.pageBatchId === batchId ? { ...task, result: { ...task.result, state: "DISCARDED" as const, retryable: false } } : task) });
     });
   }
-  markSelecting(id: string, pageOwnership: PageOwnership, selectedIndex: number): Promise<void> {
+  markSelecting(ids: string | readonly string[], pageOwnership: PageOwnership, selectedIndex: number): Promise<void> {
     return this.serial(async () => {
-      this.assertReady(); const task = this.task(id);
-      if (task) this.assertOpen(task.authorization.pageBatchId);
-      if (!task || task.result.state === "DISCARDED" || task.result.upload_outcome !== "NOT_SELECTED" || task.result.duplicate_of || this.hasMarker(id) || this.data.tasks.some(other => other.result.upload_task_id !== id && sameTargetBytes(task, other) && (this.hasMarker(other.result.upload_task_id) || this.isClosed(other.authorization.pageBatchId)))) throw new Error("File selection permission unavailable");
-      const fence = FenceSchema.parse({ version: 2, upload_task_id: id, artifact_sha256: task.input.artifact_sha256, input_digest: task.inputDigest,
-        advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId, pageOwnership, selectedIndex, attempt: task.result.attempt_count, timestamp: new Date().toISOString() });
-      if (pageOwnership.pageBatchId !== task.authorization.pageBatchId || selectedIndex > task.authorization.expectedCount) throw new Error("Batch selection binding mismatch");
+      this.assertReady(); const group = typeof ids === "string" ? [ids] : ids;
+      if (!group.length || group.length > 9 || new Set(group).size !== group.length) throw new Error("Invalid selection group");
       const previous = [...this.fences.values()].filter(value => value.pageOwnership.pageBatchId === pageOwnership.pageBatchId);
       if (selectedIndex !== previous.length + 1 || previous.some(value => JSON.stringify(value.pageOwnership) !== JSON.stringify(pageOwnership))) throw new Error("Batch page ownership mismatch");
+      const updates = new Map<string, UploadTaskRecord>(), fences: Fence[] = [];
+      for (const [index, id] of group.entries()) {
+        const task = this.task(id);
+        if (task) this.assertOpen(task.authorization.pageBatchId);
+        if (!task || task.result.state === "DISCARDED" || task.result.upload_outcome !== "NOT_SELECTED" || task.result.duplicate_of || this.hasMarker(id) || [...updates.values()].some(other => sameTargetBytes(task, other)) || this.data.tasks.some(other => other.result.upload_task_id !== id && sameTargetBytes(task, other) && (this.hasMarker(other.result.upload_task_id) || this.isClosed(other.authorization.pageBatchId)))) throw new Error("File selection permission unavailable");
+        const fence = FenceSchema.parse({ version: 2, upload_task_id: id, artifact_sha256: task.input.artifact_sha256, input_digest: task.inputDigest,
+          advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId, pageOwnership, selectedIndex: selectedIndex + index, attempt: task.result.attempt_count, timestamp: new Date().toISOString() });
+        if (pageOwnership.pageBatchId !== task.authorization.pageBatchId || fence.selectedIndex > task.authorization.expectedCount) throw new Error("Batch selection binding mismatch");
+        task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false, failure: undefined, timestamp: fence.timestamp };
+        updates.set(id, task); fences.push(fence);
+      }
       let handle;
       try {
         await strictSyncDirectory(path.dirname(this.root)); await strictSyncDirectory(this.root);
-        handle = await open(path.join(this.fenceDirectory, `${id}.json`), "wx", 0o600); this.fences.set(id, fence);
-        await handle.writeFile(`${JSON.stringify(fence)}\n`); await handle.sync(); await handle.close(); handle = undefined;
+        for (const fence of fences) {
+          handle = await open(path.join(this.fenceDirectory, `${fence.upload_task_id}.json`), "wx", 0o600); this.fences.set(fence.upload_task_id, fence);
+          await handle.writeFile(`${JSON.stringify(fence)}\n`); await handle.sync(); await handle.close(); handle = undefined;
+        }
         await (this.durability.syncDirectory ?? strictSyncDirectory)(this.fenceDirectory);
-        task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false, failure: undefined, timestamp: fence.timestamp };
-        await this.commit({ ...this.data, tasks: this.data.tasks.map(value => value.result.upload_task_id === id ? task : value) });
+        await this.commit({ ...this.data, tasks: this.data.tasks.map(value => updates.get(value.result.upload_task_id) ?? value) });
       } catch { this.blocked = true; throw uploadFailure("STORE_UNAVAILABLE", "store", "文件选择屏障保存或同步失败，禁止选文件。", "保留屏障并人工检查存储。", true); }
       finally { await handle?.close().catch(() => undefined); }
     });

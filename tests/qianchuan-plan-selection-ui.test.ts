@@ -60,6 +60,29 @@ describe("plan selector browser interaction", () => {
       expect(await page.evaluate(() => (window as any).catalogRequests.length)).toBe(1);
     } finally { await page.close(); }
   });
+  it("puts verified product names first and shows the full selected plan identity separately", async () => {
+    const page = await fixture();
+    try {
+      await page.evaluate(() => (window as any).catalogRequests[0].resolve([
+        { advertiserId: "1000", adId: "1877947268854202", name: "2026-10-02_商品全域投放_22:00:07", productNames: ["叶黄素蒸汽眼罩"] },
+        { advertiserId: "1000", adId: "1877947269854202", name: "2026-10-02_商品全域投放_22:00:07", productNames: ["艾草蒸汽眼罩", "热敷眼贴"] },
+      ]));
+      const options = page.getByLabel("上传计划").locator("option");
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')!.options.length === 3);
+      expect((await options.allTextContents())[1]).toMatch(/^叶黄素蒸汽眼罩/);
+      expect((await options.allTextContents())[2]).toMatch(/^艾草蒸汽眼罩、热敷眼贴/);
+      await page.addStyleTag({ content: readFileSync("src/renderer/batch-production.css", "utf8") });
+      await page.locator(".qianchuan-plan-select").evaluate(element => {
+        const grid = document.createElement("div"); grid.className = "batch-upload-account"; grid.style.width = "240px";
+        element.before(grid); grid.append(document.createElement("span"), document.createElement("span"), element);
+      });
+      expect(await page.locator(".qianchuan-plan-select").evaluate(element => element.getBoundingClientRect().width)).toBe(240);
+      await page.getByLabel("上传计划").selectOption("1877947269854202");
+      expect((await selected(page)).plan.adId).toBe("1877947269854202");
+      await page.getByText("计划 ID：1877947269854202", { exact: true }).waitFor();
+      await page.getByText("计划名称：2026-10-02_商品全域投放_22:00:07", { exact: true }).waitFor();
+    } finally { await page.close(); }
+  });
   it("requires an explicit plan, displays name and ID, and clears selection on refresh failure", async () => {
     const page = await fixture();
     try {
@@ -67,7 +90,7 @@ describe("plan selector browser interaction", () => {
       await page.getByRole("button", { name: "返回两个计划" }).click();
       await page.waitForFunction(() => !document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')!.disabled);
       expect((await selected(page)).plan).toBeUndefined();
-      expect(await page.getByLabel("上传计划").locator("option").allTextContents()).toContain("计划 9002 · 9002");
+      expect(await page.getByLabel("上传计划").locator("option").allTextContents()).toContain("计划 9002 · ID 9002");
       await page.getByLabel("上传计划").selectOption("9002");
       expect((await selected(page)).plan).toEqual({ advertiserId: "1000", adId: "9002", name: "计划 9002" });
       await page.getByRole("button", { name: "刷新计划" }).click();
@@ -88,7 +111,7 @@ describe("plan selector browser interaction", () => {
       await page.getByRole("button", { name: "返回两个计划" }).click();
       await page.getByLabel("上传计划").selectOption("9001");
       expect((await selected(page)).plan.advertiserId).toBe("1001");
-      expect(await page.getByLabel("上传计划").locator("option").allTextContents()).not.toContain("旧账号计划 · 7777");
+      expect(await page.getByLabel("上传计划").locator("option").allTextContents()).not.toContain("旧账号计划 · ID 7777");
       await page.getByRole("button", { name: "刷新计划" }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
       await page.getByRole("button", { name: "返回空列表" }).click();

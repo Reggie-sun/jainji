@@ -20,6 +20,7 @@
 .display-text-settings input[type=checkbox]{width:auto;margin-right:8px}
 .display-text-settings .display-text-media-label{margin-top:20px;padding-top:18px;border-top:1px solid var(--line)}
 .display-text-settings>button{margin:12px 8px 0 0}
+.display-text-settings>.template-preview{margin:18px 0 0;padding:18px 0 0;border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none}
 .template-preview-info h2{font-size:21px;margin:9px 0 12px}
 .template-preview-info p{font-size:13px;line-height:1.9;color:#687780}
 .template-preview-info dl{margin:25px 0;display:grid;gap:18px;font-size:12px}
