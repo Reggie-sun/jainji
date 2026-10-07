@@ -102,7 +102,7 @@ try {
   assert.notEqual(await picture(), emptyPricePicture, 'quantity price appears in preview');
   await fillPrice('19.90');
   const initial = await picture();
-  await click(".template-card.clean");
+  await evaluate("{const el=document.querySelector('#legacy-rule');el.value='clean';el.dispatchEvent(new Event('change',{bubbles:true}));}");
   await waitFor("!document.querySelector('.template-preview [role=status]')");
   assert.notEqual(await picture(), initial, "switching template updates picture");
   const clean = await picture();
@@ -116,7 +116,7 @@ try {
   await evaluate("window.failCatalog=false;[...document.querySelectorAll('.sticker-choices button')].find(b=>b.textContent==='跟随模板').click()");
   await waitFor("!document.querySelector('.template-preview [role=status]') && !document.querySelector('.template-preview [role=alert]')");
   for (const name of ["mono", "coral-pop", "mint-fresh", "sunset", "electric", "cream-studio"]) {
-    await click(`.template-card.${name}`);
+    await evaluate(`{const el=document.querySelector('#legacy-rule');el.value=${JSON.stringify(name)};el.dispatchEvent(new Event('change',{bubbles:true}));}`);
     await waitFor("!document.querySelector('.template-preview [role=status]') && !document.querySelector('.template-preview [role=alert]')");
   }
   await click('.corner-slot.bottom-right');
@@ -162,10 +162,10 @@ try {
   await waitFor("![...document.querySelectorAll('[aria-label=装饰选择方式] button')][0].disabled");
   await evaluate("[...document.querySelectorAll('button')].find(b=>b.textContent==='自己设置').click()");
   await waitFor("document.querySelectorAll('.corner-slot').length===4");
-  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12, 'manual mode restores template choices');
+  assert.equal(await evaluate("document.querySelectorAll('#legacy-rule option').length"), 12, 'manual mode retains legacy choices without cards');
   assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 8, 'manual mode restores eight price-style cards');
   assert.equal(await evaluate("document.querySelector('[data-price-style=\"comic\"]').getAttribute('aria-pressed')"), 'true', 'manual mode restores the chosen price style');
-  assert.equal(await evaluate("document.querySelector('.template-card.cream-studio').getAttribute('aria-pressed')"), 'true', 'manual mode restores the chosen template');
+  assert.equal(await evaluate("document.querySelector('#legacy-rule').value"), 'cream-studio', 'manual mode restores the chosen template');
   assert.equal(await evaluate('JSON.stringify(window.fixtureOptions.corners)'), manualSettings, 'returning to manual preserves selections');
   await evaluate("document.querySelector('.template-preview').scrollIntoView({block:'center'})");
   await evaluate("document.querySelector('.export-card').scrollIntoView({block:'center'})");

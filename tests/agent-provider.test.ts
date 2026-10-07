@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { AgentProvider, API_REQUEST_MIN_INTERVAL_MS, ProviderError, materializePlan, validatePlan } from "../src/main/agent-provider";
+import { AgentProvider, API_REQUEST_MIN_INTERVAL_MS, ProviderError, createLocalRandomPlan, materializePlan, validatePlan } from "../src/main/agent-provider";
+import { FilterPresetSchema } from "../src/main/domain";
+import { CORNER_SAFE_POLICY } from "../src/shared/layout-policy";
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
 import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
@@ -18,6 +20,31 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("random packaging uses the full filter range and ignores the saved legacy rule", () => {
+    const random = vi.spyOn(Math, "random");
+    try {
+      for (const [index, filter] of FilterPresetSchema.options.entries()) {
+        random.mockReturnValue(0.5).mockReturnValueOnce((index + 0.5) / FilterPresetSchema.options.length);
+        const randomPlan = createLocalRandomPlan();
+        expect(randomPlan).toMatchObject({ filter, intensity: 0.5, captions: [] });
+        const snapshots = RULE_TEMPLATES.map(rule => {
+          random.mockReturnValue(0.5);
+          const template = materializePlan(randomPlan, rule.id, { width: 720, height: 1280 }, stickerAssets, { mode: "random", productPrice: "手动文字" });
+          expect(template.filter).toEqual({ presetId: filter, intensity: 0.5 });
+          const stickers = template.layers.filter(layer => layer.type === "sticker");
+          expect(stickers).toHaveLength(4);
+          expect(new Set(stickers.map(layer => layer.assetPath)).size).toBe(4);
+          expect(stickers.reduce((sum, layer) => sum + layer.width ** 2, 0)).toBeLessThanOrEqual(CORNER_SAFE_POLICY.maxTotalStickerAreaProxy);
+          return template.layers.map(({ id: _id, ...layer }) => layer);
+        });
+        for (const snapshot of snapshots) expect(snapshot).toEqual(snapshots[0]);
+      }
+      for (const invalid of [{ filter: "invalid" }, { intensity: -0.01 }, { intensity: 1.01 }, { captions: ["不得新增"] }, { extra: true }]) {
+        expect(() => materializePlan({ ...plan, ...invalid }, "black-gold", { width: 720, height: 1280 }, stickerAssets, { mode: "random" })).toThrow();
+      }
+      expect(() => validatePlan({ ...plan, filter: "mono" }, "black-gold")).toThrow();
+    } finally { random.mockRestore(); }
+  });
   it("decides optional frames once and keeps forced random frames random across versions", () => {
     const mediaId = crypto.randomUUID();
     const assets = { ...stickerAssets, ...Object.fromEntries(["frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) };

@@ -16,9 +16,5 @@
 .price-input-card #product-price:focus{outline:2px solid #1d957b;outline-offset:2px}
 .price-input-card #product-price[aria-invalid=true]{border-color:#c38272}
 .price-input-card>p[role=alert]{font-size:12px;line-height:1.6;color:#a64a39;margin-bottom:0}
-.template-card.rose-soft{--scene:#f3dce0;--ink:#88475b;--halo:#db9bab;--product-a:#ba7484;--product-b:#ffe8e7}
-.template-card.ocean-blue{--scene:#daeaf3;--ink:#315f85;--halo:#82b5d2;--product-a:#507fa5;--product-b:#d5f1fb}
-.template-card.candy-pop{--scene:#eee0fb;--ink:#7143a1;--halo:#d2a1ed;--product-a:#af6db6;--product-b:#ffd8ee}
-.template-card.retro-amber{--scene:#4c362b;--ink:#ffe2a1;--halo:#be8c55;--product-a:#a56c36;--product-b:#f1c68a}
 @media(max-width:1200px){.price-style-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:600px){.price-style-heading{align-items:flex-start;flex-direction:column}}

@@ -219,6 +219,14 @@ function priceStyleContext(selection?: AgentSelectionContext): string {
   return `价格花字目录（仅外观，不含价格内容）：${JSON.stringify(styles)}。priceStyle 必须从此目录选择，只决定价格的颜色、描边、投影或底牌，不得返回或修改价格内容。根据画面色彩和可读性自主选择，同等适配时优先目录靠前、批内少用的花字。本批已校验花字使用次数：${JSON.stringify(selection?.priceStyleUsage ?? [])}。`;
 }
 
+export function createLocalRandomPlan(): LegacyPackagingPlan {
+  return {
+    summary: "本地随机包装 · 零模型调用", captions: [],
+    filter: FilterPresetSchema.options[Math.floor(Math.random() * FilterPresetSchema.options.length)],
+    intensity: Math.random(),
+  };
+}
+
 export function validatePlan(input: unknown, ruleId: RuleId, catalog?: AgentDecorationCatalog): PackagingPlan {
   const plan = catalog ? AgentPlanSchema.parse(input) : PlanSchema.parse(input);
   const rule = getRule(ruleId);
@@ -276,7 +284,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   if (frame.mode === "random" && !frameId) throw new Error("随机边框尚未冻结，请重新开始制作。");
   const frameLayers = decorationFrameLayers(frameId, stickerAssets, options.frame ? frame.mode === "random" ? "random" : "manual" : undefined);
   if (options.mode === "agent" && !catalog) throw new Error("Agent 装饰目录不可用，请重新开始。");
-  const plan = validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
+  const plan = options.mode === "random" ? PlanSchema.parse(raw) : validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
   const rule = getRule(ruleId);
   // Local-random path: font color (priceStyle) is picked from the full catalog
   // per material. Manual and agent modes keep their existing sources.
@@ -333,7 +341,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
     for (const [index, corner] of CORNERS.entries()) {
       const sticker = stickerAssets[shuffled[index]];
       if (!sticker) throw new Error("随机选择的贴纸尚未下载，请重新选择。");
-      layers.push(stickerLayer(corner, sticker, layers.length));
+      layers.push(stickerLayer(corner, sticker, layers.length, 0.08, 0));
     }
     return EditTemplateSchema.parse({
       ...templateBase("本地随机包装"),

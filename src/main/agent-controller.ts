@@ -7,7 +7,7 @@ import { AgentStartSchema, GenerateBriefSchema, getRule, MAX_AGENT_OUTPUTS } fro
 import type { ApplicationService } from "./application.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { DEFAULT_PRESET, type MediaItem } from "./domain.js";
-import { AgentProvider, ProviderError, type AgentDecorationCatalog } from "./agent-provider.js";
+import { AgentProvider, ProviderError, createLocalRandomPlan, type AgentDecorationCatalog } from "./agent-provider.js";
 import { AgentRunner } from "./agent-runner.js";
 import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
@@ -364,18 +364,7 @@ export class AgentController {
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
         frames: randomPath && !automaticCover ? async () => [] : (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
-          // Local-random path: pick filter/intensity from the rule without any creative call.
-          if (randomPath) {
-            const rulePreset = getRule(rule);
-            const filter = rulePreset.filters[Math.floor(Math.random() * rulePreset.filters.length)];
-            const intensity = rulePreset.minIntensity + Math.random() * (rulePreset.maxIntensity - rulePreset.minIntensity);
-            return {
-              summary: "本地随机包装 · 零模型调用",
-              captions: [],
-              filter,
-              intensity,
-            };
-          }
+          if (randomPath) return createLocalRandomPlan();
           // Manual mode is fully local: stickers, price style, and brief come from the user; only filter/intensity remain
           // and default to the rule's first allowed preset so we never call the creative model on this path.
           if (decorations?.mode !== "agent" && !catalog && !automaticCover) {

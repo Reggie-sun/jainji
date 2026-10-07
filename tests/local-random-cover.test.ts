@@ -82,6 +82,7 @@ describe("local random with corner covers", () => {
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockImplementation(async () => { throw new Error("random mode must not extract frames"); });
     const plan = vi.spyOn(controller.provider, "plan");
     const shortlist = vi.spyOn(controller.provider, "shortlist");
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
     try {
       await controller.start({ ruleId: "clean", brief: "", mediaIds: sources.map(({ id }) => id), outputDirectory,
         decorations: { mode: "random", productPrice: "手动文字", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([outputDirectory]));
@@ -91,11 +92,12 @@ describe("local random with corner covers", () => {
       expect(shortlist).not.toHaveBeenCalled();
       expect(controller.snapshot()?.usesModel).toBe(false);
       for (const [input] of createBatch.mock.calls) {
+        expect(input.template.filter).toEqual({ presetId: "none", intensity: 0 });
         const covers = input.template.layers.flatMap((layer) => layer.type === "sticker" && layer.cover ? [layer.cover.stickerId] : []);
         expect(covers).toHaveLength(4);
         expect(new Set(covers).size).toBe(4);
         expect(input.template.layers.filter((layer) => layer.type === "sticker" && !layer.cover)).toHaveLength(0);
       }
-    } finally { frames.mockRestore(); plan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); await rm(outputDirectory, { recursive: true, force: true }); }
+    } finally { random.mockRestore(); frames.mockRestore(); plan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); await rm(outputDirectory, { recursive: true, force: true }); }
   });
 });

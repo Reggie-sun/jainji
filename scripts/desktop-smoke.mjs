@@ -339,7 +339,7 @@ desktopSmoke: try {
   if (smokeScope === "saved-project-open") {
     await click("下一步");
     await click("自己设置");
-    await click("海盐蓝调");
+    await evaluate("{const el=document.querySelector('#legacy-rule');el.value='ocean-blue';el.dispatchEvent(new Event('change',{bubbles:true}));}");
     await evaluate("document.querySelector('#decoration-display-mode').value = 'first-5s'; document.querySelector('#decoration-display-mode').dispatchEvent(new Event('change', { bubbles: true }))");
     await evaluate("document.querySelector('#creative-brief').focus()");
     await send("Input.insertText", { text: "恢复做到一半的提示" });
@@ -433,7 +433,8 @@ desktopSmoke: try {
   await waitFor("!document.body.innerText.includes('已保存项目列表暂时无法更新')");
   await screenshot("02-materials");
   await click("下一步");
-  assert.equal(await evaluate("[...document.querySelectorAll('.corner-tabs button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "true", "price-only workflow defaults to automatic decoration");
+  assert.equal(await evaluate("[...document.querySelectorAll('.corner-tabs button')].find(button => button.textContent === '全部交给 Agent').getAttribute('aria-pressed')"), "false", "new projects default to local random decoration");
+  await click("全部交给 Agent");
   assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 0, "automatic decoration does not select a fixed template");
   assert.equal(await evaluate("document.body.innerText.includes('贴纸仅放四角且宽度 ≤ 10%')"), true, "automatic decoration shows the current sticker boundary");
   assert.equal(await evaluate("document.querySelector('#caption-font') === null && document.querySelector('option[value=\"text\"]') === null"), true, "no decorative text controls");
@@ -457,7 +458,7 @@ desktopSmoke: try {
   assert.equal(await evaluate("document.querySelector('.template-preview').textContent.includes('价格花字由 Agent 自主选择')"), true, "automatic preview marks its classic sample as undecided");
   const classicPreview = await evaluate("document.querySelector('.template-preview canvas').toDataURL()");
   await click("自己设置");
-  assert.equal(await evaluate("document.querySelectorAll('.template-card').length"), 12, "manual decoration restores template choices");
+  assert.equal(await evaluate("document.querySelectorAll('#legacy-rule option').length"), 12, "manual decoration retains legacy choices without cards");
   assert.equal(await evaluate("document.querySelectorAll('[data-price-style]').length"), 20, "manual decoration restores all twenty price choices");
   await click("森系奶绿");
   assert.equal(await evaluate("document.querySelector('[data-price-style=forest]').getAttribute('aria-pressed')"), "true");
@@ -465,10 +466,10 @@ desktopSmoke: try {
   assert.notEqual(await evaluate("document.querySelector('.template-preview canvas').toDataURL()"), classicPreview, "new style redraws preview");
   await click("漫画撞色");
   assert.notEqual(await evaluate("document.querySelector('.template-preview canvas').toDataURL()"), classicPreview, "price selection redraws the preview");
-  await click("海盐蓝调");
+  await evaluate("{const el=document.querySelector('#legacy-rule');el.value='ocean-blue';el.dispatchEvent(new Event('change',{bubbles:true}));}");
   assert.equal(await evaluate("document.querySelector('.price-style-option[aria-pressed=true]').textContent.includes('漫画撞色')"), true, "mode and template switches retain price style");
   assert.equal(await evaluate("document.querySelector('#product-price').value"), twoLinePrice, "style changes cannot rewrite price");
-  await click("清爽日常");
+  await evaluate("{const el=document.querySelector('#legacy-rule');el.value='clean';el.dispatchEvent(new Event('change',{bubbles:true}));}");
   assert.deepEqual(await evaluate("[...document.querySelectorAll('.model-picker datalist option')].map(option => option.value)"), ["smoke-vision"], "saved candidates survive trailing slash and legacy default protocol");
   await evaluate("document.querySelector('.model-picker input').focus(); document.querySelector('.model-picker input').select()");
   await send("Input.insertText", { text: "smoke-vision-next" });
@@ -478,7 +479,7 @@ desktopSmoke: try {
   assert.equal((await evaluate("window.jianji.getState()")).connection.model, "smoke-vision-next");
   await evaluate("document.querySelector('.model-picker').scrollIntoView()");
   await screenshot("02a-api-model");
-  assert.equal(await evaluate("document.querySelector('.template-card.clean').getAttribute('aria-pressed')"), "true");
+  assert.equal(await evaluate("document.querySelector('#legacy-rule').value"), "clean");
   await waitFor("document.body.innerText.includes('公主请下单（动效）') && document.body.innerText.includes('特别推荐')");
   assert.equal(await evaluate("document.querySelectorAll('.sticker-choices button').length"), 24);
   assert.equal(await evaluate("document.querySelectorAll('.sticker-choices img[src^=\"data:image/gif\"]').length"), 3);
@@ -697,10 +698,10 @@ desktopSmoke: try {
   await click("规则模板");
   await click("自己设置");
   await waitFor("document.querySelector('.model-picker input') && !document.querySelector('.model-picker input').disabled");
-  assert.equal(await evaluate("[...document.querySelectorAll('.template-card')].every(button => !button.disabled)"), true, "abandoned queued jobs must not lock templates");
+  assert.equal(await evaluate("!document.querySelector('#legacy-rule').disabled"), true, "abandoned queued jobs must not lock templates");
   assert.equal(await evaluate("document.querySelector('.model-picker input').disabled"), false, "abandoned jobs must not lock model selection");
-  await click("清爽日常");
-  assert.equal(await evaluate("document.querySelector('.template-card.clean').getAttribute('aria-pressed')"), "true");
+  await evaluate("{const el=document.querySelector('#legacy-rule');el.value='clean';el.dispatchEvent(new Event('change',{bubbles:true}));}");
+  assert.equal(await evaluate("document.querySelector('#legacy-rule').value"), "clean");
   assert.equal(requests, 2, "opening a saved collection never restarts model work");
   assert.deepEqual(await readFile(source), sourceBytes, "recovery leaves the original video unchanged");
   await screenshot("07-reopened-collection-unlocked");
