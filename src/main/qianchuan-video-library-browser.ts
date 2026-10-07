@@ -6,6 +6,7 @@ import { VIDEO_LIBRARY_ROUTE } from "../shared/qianchuan-video-library.js";
 import { QianchuanPlanMaterialPage } from "./qianchuan-plan-material-page.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import type { Page } from "playwright-core";
+import type { ZeroImpressionsWindow } from "./qianchuan-zero-impressions.js";
 
 export async function connectVideoLibrary(endpoint: string, advertiserId: string, signal: AbortSignal): Promise<{
   page: QianchuanVideoLibraryPage; close(): Promise<void>;
@@ -14,13 +15,13 @@ export async function connectVideoLibrary(endpoint: string, advertiserId: string
     page => new QianchuanVideoLibraryPage(page, advertiserId, signal));
 }
 
-export function connectPlanMaterials(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<{
+export function connectPlanMaterials(target: FrozenQianchuanAccount, signal: AbortSignal, zeroWindow?: ZeroImpressionsWindow): Promise<{
   page: QianchuanPlanMaterialPage; close(): Promise<void>;
 }> {
   return connectLibrary(target.cdpEndpoint, target.advertiserId, signal,
     url => url.pathname === "/uni-prom" && url.searchParams.getAll("adId").length === 1 && url.searchParams.get("adId") === target.adId &&
       new URLSearchParams(url.hash.slice(1)).get("jianjiCleanup") === "plan-materials",
-    page => new QianchuanPlanMaterialPage(page, target, signal));
+    page => new QianchuanPlanMaterialPage(page, target, signal, zeroWindow));
 }
 
 async function connectLibrary<T extends object>(endpoint: string, advertiserId: string, signal: AbortSignal,

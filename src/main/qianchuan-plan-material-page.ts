@@ -2,8 +2,9 @@ import type { JSHandle, Locator, Page, Request, Response } from "playwright-core
 import { accountPageUrl } from "../shared/qianchuan-account.js";
 import { PLAN_MATERIAL_STATUSES, matchesPlanMaterialStatus, type PlanMaterialStatus } from "../shared/qianchuan-video-library.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+import { parseZeroImpressionsRow, type ZeroImpressionsRow, type ZeroImpressionsWindow } from "./qianchuan-zero-impressions.js";
 
-export interface PlanMaterialSnapshot { total: number; ids: string[]; }
+export interface PlanMaterialSnapshot { total: number; ids: string[]; zeroImpressions?: { offset: number; limit: number; rows: ZeroImpressionsRow[] }; }
 export const PLAN_CLEANUP_MARKER = "jianjiCleanup=plan-materials";
 const drawerSelector = ".ovui-drawer--no-maskable .ad-drawer-body:visible";
 const listPath = "/ad/api/pmc/v1/uni-promotion/material/list-required";
@@ -19,12 +20,16 @@ export class QianchuanPlanMaterialPage {
   private revision = 0;
   private readonly requests = new WeakMap<Request, number>();
   private readonly requested = (request: Request) => {
+    if (this.zeroWindow && new URL(request.url()).pathname === listPath) {
+      this.response = undefined;
+      if (!this.matchesRequest(request)) { this.fault = true; return; }
+    }
     if (this.matchesRequest(request)) {
       this.requests.set(request, ++this.revision); this.response = undefined;
     }
   };
   private readonly received = (response: Response) => { void this.capture(response).catch(() => { this.fault = true; }); };
-  constructor(private readonly page: Page, private readonly target: FrozenQianchuanAccount, private readonly signal: AbortSignal) {}
+  constructor(private readonly page: Page, private readonly target: FrozenQianchuanAccount, private readonly signal: AbortSignal, private readonly zeroWindow?: ZeroImpressionsWindow) {}
   private drawer(): Locator { return this.page.locator(drawerSelector); }
   private check(): void {
     this.signal.throwIfAborted();
@@ -45,17 +50,28 @@ export class QianchuanPlanMaterialPage {
       return ids.length === 1 && ids[0] === advertiserId && plan?.[1] === adId && !document.querySelector('input[type="password"],iframe[src*="captcha"]');
     }, { advertiserId: this.target.advertiserId, adId: this.target.adId, drawerSelector });
     this.check(); if (!identity || this.fault) throw changed();
+    if (this.zeroWindow) {
+      const start = this.drawer().getByPlaceholder("请选择开始日期"), end = this.drawer().getByPlaceholder("请选择结束日期");
+      if (await start.count() !== 1 || await end.count() !== 1 || await start.inputValue() !== this.zeroWindow.startTime.slice(0, 10) || await end.inputValue() !== this.zeroWindow.endTime.slice(0, 10)) throw changed();
+    }
   }
   private matchesRequest(request: Request): boolean {
     try {
       const url = new URL(request.url()), body = request.postDataJSON();
       if (request.frame() !== this.page.mainFrame() || request.method() !== "POST" || url.origin !== "https://qianchuan.jinritemai.com" ||
         url.pathname !== listPath || url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== this.target.advertiserId ||
-        body.DataSetKey !== "site_promotion_product_post_data_video" || body.PageParams?.Offset !== 0 || body.PageParams?.Limit < 1 || body.PageParams?.Limit > 100 ||
+        body.DataSetKey !== "site_promotion_product_post_data_video" || !Number.isInteger(body.PageParams?.Limit) || body.PageParams.Limit < 1 || body.PageParams.Limit > 100 ||
+        !Number.isInteger(body.PageParams.Offset) || body.PageParams.Offset < 0 || body.PageParams.Offset > 20000 || body.PageParams.Offset % body.PageParams.Limit !== 0 || !this.zeroWindow && body.PageParams.Offset !== 0 ||
         body.Filters?.ConditionRelationshipType !== 1) return false;
       const expected: Record<string, string[]> = { query_type: ["all"], roi2_material_type_v3: ["1001"], marketing_goal: ["1"],
         ad_id: [this.target.adId], roi2_material_video_type: ["11"], material_audit_status: ["2", "4"] };
       if (!this.statuses.includes("生态审核不通过") && !this.auditStatusFilter) expected.material_audit_reject_type = ["1"];
+      if (this.zeroWindow) {
+        delete expected.material_audit_status; delete expected.material_audit_reject_type;
+        if (body.StartTime !== this.zeroWindow.startTime || body.EndTime !== this.zeroWindow.endTime ||
+          !Array.isArray(body.Metrics) || !body.Metrics.includes("product_show_count_for_roi2") ||
+          !Array.isArray(body.Dimensions) || !body.Dimensions.includes("material_id") || !body.Dimensions.includes("roi2_material_upload_time")) return false;
+      }
       const conditions = body.Filters.Conditions;
       return Array.isArray(conditions) && conditions.length === Object.keys(expected).length &&
         new Set(conditions.map(condition => condition.Field)).size === conditions.length && conditions.every(condition =>
@@ -80,15 +96,21 @@ export class QianchuanPlanMaterialPage {
         ids.some((id: unknown) => typeof id !== "string" || !/^[1-9][0-9]{0,19}$/.test(id)) || new Set(ids).size !== ids.length || total > 0 && !ids.length) throw changed();
       value = { total, ids };
     }
+    if (this.zeroWindow) {
+      const rows = (stats.rows ?? []).map((row: unknown) => parseZeroImpressionsRow(row, this.zeroWindow!));
+      const { Offset: offset, Limit: limit } = response.request().postDataJSON().PageParams;
+      if (rows.length !== Math.min(limit, Math.max(0, value.total - offset)) || value.total > 0 && offset >= value.total) throw changed();
+      value = { total: value.total, ids: rows.filter((row: ZeroImpressionsRow) => row.eligible).map((row: ZeroImpressionsRow) => row.id), zeroImpressions: { offset, limit, rows } };
+    }
     await this.guard();
     if (revision === this.revision) this.response = value;
   }
   async open(): Promise<void> {
     this.signal.throwIfAborted();
-    if (this.page.url() === "about:blank") {
+    if (this.page.url() === "about:blank" || this.zeroWindow) {
       const { product, advertiserId, adId, cdpEndpoint } = this.target;
       const url = new URL(accountPageUrl({ product, advertiserId, adId, cdpEndpoint }));
-      url.hash = `adr=${encodeURIComponent(JSON.stringify({ adDetailTab: "creative", dateRange: [] }))}&umg=1&uniVideoTab=1&${PLAN_CLEANUP_MARKER}`;
+      url.hash = `adr=${encodeURIComponent(JSON.stringify({ adDetailTab: "creative", dateRange: this.zeroWindow ? [this.zeroWindow.startTime.slice(0, 10), this.zeroWindow.endTime.slice(0, 10)] : [] }))}&umg=1&uniVideoTab=1&${PLAN_CLEANUP_MARKER}`;
       await this.page.goto(url.href, { waitUntil: "domcontentloaded", timeout: 45000 });
     } else { this.check(); await this.page.reload({ waitUntil: "domcontentloaded", timeout: 45000 }); }
     await this.drawer().getByPlaceholder("输入视频名称/ID后回车搜索").waitFor({ timeout: 30000 });
@@ -100,6 +122,16 @@ export class QianchuanPlanMaterialPage {
     await this.guard();
     if (await this.page.locator(".ovui-modal:visible").count()) throw changed();
     await this.drawer().getByText("更多筛选", { exact: true }).click();
+    if (this.zeroWindow) {
+      const panel = this.page.locator(".ovui-popover:visible").filter({ has: this.page.getByRole("button", { name: "确定", exact: true }) });
+      if (await panel.count() !== 1) throw changed();
+      await panel.getByText("清空", { exact: true }).evaluate(node => (node as HTMLElement).click());
+      await this.guard();
+      this.page.on("request", this.requested); this.page.on("response", this.received);
+      await panel.getByRole("button", { name: "确定", exact: true }).evaluate(node => (node as HTMLButtonElement).click());
+      await panel.waitFor({ state: "hidden" }); await this.read();
+      return { skippedEcological: false };
+    }
     const statusTitle = this.page.locator(".oc-title").filter({ hasText: /^(素材状态|审核状态)$/ });
     const panel = this.page.locator(".ovui-popover:visible").filter({ has: statusTitle });
     await panel.waitFor(); if (await panel.count() !== 1) throw changed();
@@ -133,6 +165,10 @@ export class QianchuanPlanMaterialPage {
       await this.guard();
       const response = this.response;
       if (response) {
+        if (response.zeroImpressions) {
+          if (await this.zeroRowsMatch(response)) return structuredClone(response);
+          await this.page.waitForTimeout(100); continue;
+        }
         const rows = this.drawer().locator(".ovui-table__body-wrapper tbody tr").filter({ has: this.page.locator('input[type="checkbox"]') });
         const items = await rows.evaluateAll(rows => rows.map(row => ({
           id: /素材ID[：:]\s*([1-9][0-9]{0,19})/.exec((row as HTMLElement).innerText)?.[1],
@@ -149,6 +185,40 @@ export class QianchuanPlanMaterialPage {
     } while (Date.now() < deadline);
     throw changed();
   }
+  private async zeroRowsMatch(snapshot: PlanMaterialSnapshot): Promise<boolean> {
+    const data = snapshot.zeroImpressions!;
+    const table = this.drawer();
+    const items = await table.locator('.ovui-table__body-wrapper tbody tr').filter({ has: this.page.locator('input[type="checkbox"]') }).evaluateAll(rows => rows.map(row => ({
+      id: /素材ID[：:]\s*([1-9][0-9]{0,19})/.exec((row as HTMLElement).innerText)?.[1],
+      cells: Array.from(row.querySelectorAll("td"), cell => (cell as HTMLElement).innerText.trim()),
+    })));
+    if (!snapshot.total && !items.length && await table.locator(".oc-empty:visible").filter({ hasText: "暂无数据" }).count() === 1) return true;
+    const heads = await table.locator(".ovui-table__head-wrapper thead th").allTextContents();
+    const index = (name: string) => heads.filter(head => head.trim() === name).length === 1 ? heads.findIndex(head => head.trim() === name) : -1;
+    const timeIndex = index("创建时间"), countIndex = index("整体展示次数");
+    if (timeIndex < 0 || countIndex < 0) throw changed();
+    const totals = await table.locator(".ovui-page-total:visible").allTextContents();
+    const total = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].trim()) : null;
+    const current = await table.locator(".ovui-page-turner__item--active:visible").allTextContents();
+    return !!total && Number(total[1]) === snapshot.total && current.length === 1 && Number(current[0]) === data.offset / data.limit + 1 &&
+      items.length === data.rows.length && items.every((item, i) => item.id === data.rows[i].id &&
+        item.cells[timeIndex]?.replace(/\s+/g, " ") === data.rows[i].createdAt &&
+        /^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(item.cells[countIndex] ?? "") && Number(item.cells[countIndex].replaceAll(",", "")) === data.rows[i].impressions);
+  }
+  async movePage(first = false): Promise<boolean> {
+    const before = await this.read(), data = before.zeroImpressions;
+    if (!data) throw changed();
+    if (first && !data.offset || !first && data.offset + data.rows.length >= before.total) return false;
+    if (await this.drawer().locator('tbody input[type="checkbox"]:checked').count() || await this.page.locator(".ovui-modal:visible").count()) throw changed();
+    const button = first ? this.drawer().locator(".ovui-page-turner__item").filter({ hasText: /^1$/ }) :
+      this.drawer().locator(".ovui-page-turner__item").filter({ has: this.page.locator(".ovui-page-turner__next-icon") });
+    if (await button.count() !== 1 || (await button.getAttribute("class"))?.includes("--disabled")) throw changed();
+    const revision = this.revision; this.response = undefined;
+    await button.click();
+    const after = await this.read();
+    if (this.revision <= revision || after.total !== before.total || after.zeroImpressions?.offset !== (first ? 0 : data.offset + data.limit) || after.zeroImpressions.limit !== data.limit) throw changed();
+    return true;
+  }
   async deleteBatch(before: PlanMaterialSnapshot, beforeConfirm: () => Promise<void>): Promise<void> {
     await this.guard();
     if (!before.ids.length || JSON.stringify(await this.read()) !== JSON.stringify(before) || await this.page.locator(".ovui-modal:visible").count()) throw changed();
@@ -156,7 +226,12 @@ export class QianchuanPlanMaterialPage {
     if (await selected.count()) throw changed();
     const header = this.drawer().locator('.ovui-table__head-wrapper thead input[type="checkbox"]');
     if (await header.count() !== 1 || !await header.isEnabled()) throw changed();
-    await header.evaluate(node => (node as HTMLInputElement).click());
+    if (before.zeroImpressions) {
+      const rows = this.drawer().locator('.ovui-table__body-wrapper tbody tr').filter({ has: this.page.locator('input[type="checkbox"]') });
+      for (const [index, row] of before.zeroImpressions.rows.entries()) if (before.ids.includes(row.id)) {
+        await rows.nth(index).locator('input[type="checkbox"]').evaluate(node => (node as HTMLInputElement).click());
+      }
+    } else await header.evaluate(node => (node as HTMLInputElement).click());
     if (await selected.count() !== before.ids.length || !await this.drawer().getByText(new RegExp(`^已选${before.ids.length}个\\s*视频$`)).count()) throw changed();
     const remove = this.drawer().getByRole("button", { name: "删除", exact: true });
     if (await remove.count() !== 1 || !await remove.isEnabled()) throw changed();
@@ -166,6 +241,8 @@ export class QianchuanPlanMaterialPage {
       await this.guard();
       if (await modal.count() !== 1 || (await modal.innerText()).replace(/\s+/g, "") !== "确定要删除视频吗？取消确定" ||
         await selected.count() !== before.ids.length || JSON.stringify(await this.read()) !== JSON.stringify(before)) throw changed();
+      const selectedIds = await this.drawer().locator('.ovui-table__body-wrapper tbody tr').filter({ has: this.page.locator('input[type="checkbox"]:checked') }).evaluateAll(rows => rows.map(row => /素材ID[：:]\s*([1-9][0-9]{0,19})/.exec((row as HTMLElement).innerText)?.[1]));
+      if (JSON.stringify(selectedIds) !== JSON.stringify(before.ids)) throw changed();
     };
     await checkModal(); await beforeConfirm(); await checkModal();
     const revision = this.revision;
@@ -185,7 +262,13 @@ export class QianchuanPlanMaterialPage {
           throw new Error("平台出现额外确认或异常弹窗，已停止；删除结果未知，不会自动再次确认。");
         }
       }
-      if (!dialogCount && this.revision > revision && this.response && this.response.total < before.total && !this.response.ids.some(id => before.ids.includes(id))) {
+      if (before.zeroImpressions && !dialogCount && this.revision > revision && this.response &&
+        (before.total - this.response.total !== before.ids.length || !this.response.zeroImpressions || this.response.zeroImpressions.rows.some(row => before.ids.includes(row.id)))) {
+        throw new Error("删除数量或素材身份无法核对，结果未知，已停止；不会自动再次确认。");
+      }
+      if (!dialogCount && this.revision > revision && this.response && this.response.total < before.total &&
+        (!before.zeroImpressions || before.total - this.response.total === before.ids.length) &&
+        !(this.response.zeroImpressions?.rows.map(row => row.id) ?? this.response.ids).some(id => before.ids.includes(id))) {
         await this.read(); return;
       }
       await this.page.waitForTimeout(100);

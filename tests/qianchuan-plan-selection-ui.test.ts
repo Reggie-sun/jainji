@@ -240,6 +240,21 @@ describe("cleanup plan browser interaction", () => {
       expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1000", plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}`, productNames: ["叶黄素蒸汽眼罩"] })) }] });
     } finally { await page.close(); }
   });
+  it("starts zero-impression cleanup once for the frozen plan set without per-page confirmation or library clearing", async () => {
+    const page = await cleanupFixture();
+    try {
+      await respond(page);
+      await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
+      await page.getByLabel("计划素材清理规则").selectOption("zero");
+      expect(await page.getByRole("checkbox", { name: /视频库全部视频/ }).isChecked()).toBe(false);
+      expect(await page.getByRole("checkbox", { name: /视频库全部视频/ }).isDisabled()).toBe(true);
+      await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
+      await page.getByRole("button", { name: "自动删除零展示素材（1）", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.getByRole("group", { name: "确认素材清理" }).count()).toBe(0);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "ZERO_IMPRESSIONS_7D", accounts: [{ expectedAdvertiserId: "1000", plans: [{ adId: "9002" }] }] });
+    } finally { await page.close(); }
+  });
   it("allows deselection, preserves an explicit empty choice on remount and submits only the checked subset", async () => {
     const page = await cleanupFixture();
     try {

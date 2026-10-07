@@ -13,6 +13,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
   const [plans, setPlans] = useState<Partial<Record<QianchuanProduct, QianchuanPlanOption[]>>>({});
   const [planMaterials, setPlanMaterials] = useState(true);
   const [videoLibrary, setVideoLibrary] = useState(false);
+  const [zeroImpressions, setZeroImpressions] = useState(false);
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<QianchuanLibraryResult[]>([]);
   const [error, setError] = useState("");
@@ -25,11 +26,11 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
   const selectionCurrent = !selected || selected.accounts.every(target => configured.some(account => account.product === target.product && account.advertiserId === target.expectedAdvertiserId));
   const selectedPlanMaterials = selected?.confirmation !== "DELETE_ALL_VIDEOS";
   const selectedVideoLibrary = selected?.confirmation !== "DELETE_PLAN_MATERIALS";
-  const clear = async () => {
-    if (!selected || disabled || !selectionCurrent) return;
+  const clear = async (request = selected) => {
+    if (!request || disabled || !selectionCurrent) return;
     setRunning(true); setError(""); setResults([]);
     try {
-      const result = await window.jianji.clearQianchuanVideoLibraries(selected);
+      const result = await window.jianji.clearQianchuanVideoLibraries(request);
       setResults(result); setSelected(undefined);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "素材清理未完成。"); }
     finally { setRunning(false); }
@@ -52,12 +53,17 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
           </div>)}
         </div>}
         <fieldset className="qianchuan-cleanup-options" disabled={disabled}><legend>清理内容</legend>
-          <label><input type="checkbox" checked={planMaterials} onChange={event => setPlanMaterials(event.target.checked)} /><span><strong>计划内三类素材</strong><small>审核不通过、生态审核不通过、审核通过可优化。三类一起筛选，普通审核通过保留。</small></span></label>
-          <label><input type="checkbox" checked={videoLibrary} onChange={event => setVideoLibrary(event.target.checked)} /><span><strong>视频库全部视频</strong><small>清空整个账号素材库，不按计划筛选；已使用视频的在投创意和计划不受影响。</small></span></label>
+          <label><input type="checkbox" checked={planMaterials} onChange={event => { setPlanMaterials(event.target.checked); if (event.target.checked && zeroImpressions) setVideoLibrary(false); }} /><span><strong>{zeroImpressions ? "计划内零展示素材" : "计划内三类素材"}</strong><small>{zeroImpressions ? "仅按下方零展示及48小时保护规则清理。" : "审核不通过、生态审核不通过、审核通过可优化。三类一起筛选，普通审核通过保留。"}</small></span></label>
+          {planMaterials && <label><span>计划素材清理规则</span><select aria-label="计划素材清理规则" value={zeroImpressions ? "zero" : "audit"} onChange={event => { setZeroImpressions(event.target.value === "zero"); if (event.target.value === "zero") setVideoLibrary(false); }}>
+            <option value="audit">三类审核素材</option><option value="zero">近7天零展示，保护加入计划未满48小时的素材</option>
+          </select></label>}
+          {planMaterials && zeroImpressions && <p>将自动删除所选计划中最近7个完整自然日（北京时间）整体展示次数为0、且首次加入计划已满48小时的素材。程序逐页核对并确认，无需逐批操作；日期或数据无法核对时停止。本地视频和上传记录保留。</p>}
+          <label><input type="checkbox" checked={videoLibrary} disabled={planMaterials && zeroImpressions} onChange={event => setVideoLibrary(event.target.checked)} /><span><strong>视频库全部视频</strong><small>清空整个账号素材库，不按计划筛选；已使用视频的在投创意和计划不受影响。</small></span></label>
         </fieldset>
         <div className="qianchuan-cleanup-footer"><small>{plansReady ? "本地视频和上传记录保留。" : "请为每个所选账号选择清理计划。"}</small><button className="button primary" type="button" disabled={disabled || !chosen.length || !plansReady || (!planMaterials && !videoLibrary)} onClick={() => {
-          setSelected({ confirmation: planMaterials ? videoLibrary ? "DELETE_VIDEOS_AND_PLAN_MATERIALS" : "DELETE_PLAN_MATERIALS" : "DELETE_ALL_VIDEOS", accounts: chosen.map(account => ({ product: account.product, expectedAdvertiserId: account.advertiserId, ...(planMaterials ? { plans: chosenPlans(account)! } : {}) })) }); setError("");
-        }}>清理所选{planMaterials ? "计划" : "账号"}{(planMaterials ? planCount : chosen.length) ? `（${planMaterials ? planCount : chosen.length}）` : ""}</button></div>
+          const request: QianchuanLibraryClear = { confirmation: planMaterials ? videoLibrary ? "DELETE_VIDEOS_AND_PLAN_MATERIALS" : "DELETE_PLAN_MATERIALS" : "DELETE_ALL_VIDEOS", ...(planMaterials && zeroImpressions ? { planMaterialRule: "ZERO_IMPRESSIONS_7D" as const } : {}), accounts: chosen.map(account => ({ product: account.product, expectedAdvertiserId: account.advertiserId, ...(planMaterials ? { plans: chosenPlans(account)! } : {}) })) };
+          if (request.planMaterialRule) void clear(request); else setSelected(request); setError("");
+        }}>{planMaterials && zeroImpressions ? "自动删除零展示素材" : `清理所选${planMaterials ? "计划" : "账号"}`}{(planMaterials ? planCount : chosen.length) ? `（${planMaterials ? planCount : chosen.length}）` : ""}</button></div>
       </> : <div className="qianchuan-cleanup-confirm" role="group" aria-label="确认素材清理">
         <h4>确认清理 {selected.accounts.length} 个账号{selectedPlanMaterials ? `、${selected.accounts.reduce((count, account) => count + (account.plans?.length ?? 0), 0)} 个计划` : ""}？</h4>
         <p>将永久删除以下内容，不备份视频：</p>

@@ -325,7 +325,7 @@ export class DouyinUploadService {
             const selection = parsed.accounts.find(account => account.product === target.product)!;
             return clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
               guard, signal: operation.controller.signal, readPlans: (account, signal) => this.readPlans(account, signal),
-              clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal),
+              clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal, parsed.planMaterialRule),
               clearLibrary: (account, fresh, signal) => library.clear(account, fresh, signal),
             });
           }
