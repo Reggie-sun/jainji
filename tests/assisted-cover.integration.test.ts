@@ -78,16 +78,17 @@ it("seeds manual human-region review once and rejects stale input before prepara
   await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow(/手动覆盖/);
 });
 
-it("manual-derived review refuses unset or moving input without storing a new draft", async () => {
+it("manual-derived review accepts unset media as no-cover but refuses moving input", async () => {
   const f = await fixture(); const media = f.service.currentProject.mediaItems[0];
   const settings = { ...DEFAULT_COVER_STICKER, enabled: true, trackingMode: "assisted" as const, assistedArtwork: "human-region-v1" as const, manualRegionInput: true as const };
   f.service.setCoverSticker(settings);
-  await expect(f.controller.create([media.id])).rejects.toThrow(/逐素材/);
-  expect(f.service.currentProject.reviewDrafts).toHaveLength(1);
+  await f.controller.create([media.id]);
+  expect(f.service.currentProject.reviewDrafts).toHaveLength(2);
+  expect(f.service.currentProject.reviewDrafts!.at(-1)!.media[0].disposition).toBe("no_cover");
   f.service.setCoverSticker({ ...settings, mediaRegions: { [media.id]: [{ id: randomUUID(), rectangle: settings.rectangle,
     tracks: { [media.id]: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: settings.rectangle }, { timeMs: 900, rectangle: settings.rectangle }] } } }] } });
   await expect(f.controller.create([media.id])).rejects.toThrow(/固定框/);
-  expect(f.service.currentProject.reviewDrafts).toHaveLength(1);
+  expect(f.service.currentProject.reviewDrafts).toHaveLength(2);
 });
 
 it("keeps upload selection out of preview/project and registers approved tasks before starting", async () => {

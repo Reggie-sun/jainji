@@ -81,8 +81,8 @@ try {
   });
   await writeFile(accountFile, JSON.stringify({ version: 1, accounts }), { mode: 0o600 });
   const sources = [];
-  for (const [index, name] of ["人工覆盖"].entries()) {
-    const source = path.join(directory, name, "素材", "source.mp4"); await mkdir(path.dirname(source), { recursive: true });
+  for (const [index, name] of ["人工覆盖", "无覆盖框"].entries()) {
+    const source = path.join(directory, "人工覆盖", "素材", `${name}.mp4`); await mkdir(path.dirname(source), { recursive: true });
     execFileSync(ffmpeg, ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", `color=c=${["red", "blue", "green"][index]}:size=320x240:rate=10`, "-t", "1", "-c:v", "libx264", "-pix_fmt", "yuv420p", source]);
     sources.push(source);
   }
@@ -108,11 +108,11 @@ try {
   let page = await launch();
   const runtime = await app.evaluate(({ app }) => ({ packaged: app.isPackaged, appPath: app.getAppPath(), userData: app.getPath("userData") })); assert.equal(runtime.packaged, packaged);
   await page.evaluate(async () => { await window.jianji.selectQianchuanAccountConfig(); await window.jianji.saveDouyinUploadConfig({ enabled: true }); });
-  await page.evaluate(async source => {
-    const state = await window.jianji.addAndProbe([source]);
+  await page.evaluate(async sources => {
+    const state = await window.jianji.addAndProbe(sources);
     await window.jianji.setCoverSticker({ stickerIds: [], rectangle: { x: 0, y: 0, width: .1, height: .1 }, ...state.project.coverSticker, enabled: true, trackingMode: "manual", assistedArtwork: undefined, coverStrategy: undefined, regions: [], mediaRegions: {} });
-    await window.jianji.saveProject("人工覆盖上传", { step: "templates", selectedMediaIds: state.project.mediaItems.map(item => item.id), ruleId: "clean", brief: "", decorations: { mode: "manual", sticker: "none", displayText: { enabled: false, x: .5, y: .1 } }, requestedCount: 1, exportFormat: "mp4", exportSettings: { resolutionMode: "source", frameRateMode: "source", quality: "balanced" }, outputDirectoryMode: "automatic" });
-  }, sources[0]);
+    await window.jianji.saveProject("人工覆盖上传", { step: "templates", selectedMediaIds: state.project.mediaItems.map(item => item.id), ruleId: "clean", brief: "", decorations: { mode: "manual", sticker: "none", displayText: { enabled: false, x: .5, y: .1 } }, requestedCount: 2, exportFormat: "mp4", exportSettings: { resolutionMode: "source", frameRateMode: "source", quality: "balanced" }, outputDirectoryMode: "automatic" });
+  }, sources);
   await page.reload();
   const coverSettings = page.getByRole('region', { name: '覆盖原贴纸设置', exact: true });
   await coverSettings.getByRole('button', { name: '添加覆盖框', exact: true }).click();
@@ -146,6 +146,9 @@ try {
   await planSelect.locator('option[value="987654"]').waitFor({ state: 'attached', timeout: 30000 });
   await planSelect.selectOption('987654');
   await page.getByRole('button', { name: '生成预览', exact: true }).click();
+  await page.getByRole('progressbar', { name: '预览准备进度', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: '停止准备', exact: true }).count(), 1);
+  await page.locator('.cover-review-progress').screenshot({ path: path.join(directory, 'preparation-progress.png') });
   await page.getByRole('button', { name: '查看预览', exact: true }).waitFor({ timeout: 150000 });
   assert.equal((await fixtures[0].inspect()).events.filter(event => event.type === 'files').length, 0);
   assert.equal((await state(page)).douyinUpload.tasks.length, 0);
@@ -153,11 +156,19 @@ try {
   await page.locator('.cover-review video').evaluate(video => { video.muted = true; return video.play(); });
   await page.waitForFunction(() => document.querySelector('.cover-review video')?.ended);
   await page.getByRole('button', { name: '我已查看此版动态预览', exact: true }).click();
+  await page.getByRole('button', { name: '下一待查看预览', exact: true }).click();
+  await page.locator('.cover-review video').evaluate(video => { video.muted = true; return video.play(); });
+  await page.waitForFunction(() => document.querySelector('.cover-review video')?.ended);
+  await page.getByRole('button', { name: '我已查看此版动态预览', exact: true }).click();
   await page.screenshot({ path: path.join(directory, 'approved-preview.png'), fullPage: true });
   await page.getByRole('button', { name: '确认全部版本、导出并上传千川', exact: true }).click();
-  const ready = await until(() => state(page), value => value.douyinUpload.tasks.length === 1 && value.douyinUpload.tasks[0].state === 'WAITING_FOR_CONFIRMATION');
+  const ready = await until(() => state(page), value => value.douyinUpload.tasks.length === 2 && value.douyinUpload.tasks.every(task => task.state === 'WAITING_FOR_CONFIRMATION'));
   const draft = ready.project.reviewDrafts.at(-1);
-  assert.equal(draft.approval.receipts.length, 1);
+  assert.equal(draft.approval.receipts.length, 2);
+  assert.deepEqual(draft.media.map(media => media.disposition), ['cover', 'no_cover']);
+  assert.equal(draft.media[1].segments.length, 0);
+  assert.equal(Object.keys(saved.mediaRegions).length, 1);
+  report.checks.push('unframed material exports without a no-cover confirmation', 'human-region preparation shows progress and stop control');
   const originalRegions = Object.values(saved.mediaRegions)[0];
   assert.deepEqual(draft.media[0].segments.map(segment => segment.track), originalRegions.map(region => Object.values(region.tracks)[0]));
   assert.ok(draft.manualRegionsDigest);
@@ -167,12 +178,12 @@ try {
   assert.ok(!JSON.stringify(draft).includes('douyinUpload'));
   const before = await fixtures[0].inspect();
   await page.getByRole('button', { name: '核对并继续未提交版本', exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector('.cover-review').innerText.includes('正在保存或准备'));
+  await page.waitForFunction(() => !document.querySelector('.cover-review').innerText.includes('正在保存'));
   await delay(500);
   assert.equal((await fixtures[0].inspect()).events.filter(event => event.type === 'files').length, before.events.filter(event => event.type === 'files').length);
   assert.equal(before.events.filter(event => event.type === 'confirm' || event.type === 'settings').length, 0);
   const ledger = JSON.parse(await readFile(path.join(runtime.userData, 'douyin-upload/state.json'), 'utf8'));
-  assert.equal(ledger.intents.length, 1); assert.equal(ledger.tasks.length, 1);
+  assert.equal(ledger.intents.length, 2); assert.equal(ledger.tasks.length, 2);
   const task = ledger.tasks[0];
   assert.equal(task.result.advertiserId, '123456'); assert.equal(task.result.adId, '987654');
   assert.ok(!task.input.video_path.includes('previews'));
@@ -203,7 +214,7 @@ try {
   assert.deepEqual(migrated.coverSticker.mediaRegions[legacy.mediaId][0].tracks[legacy.mediaId], legacy.track);
   assert.ok(migrated.reviewDrafts.some(draft => draft.id === legacy.draftId));
   report.checks.push('historical review boxes migrated through manual settings and survive reload', 'changed target cannot reuse prior frozen preview');
-  Object.assign(report, { result: 'PASS', runtime, formalOutput: task.input.video_path, uploadedReady: 1, confirmClicks: 0, productionOriginInterceptedLocally: true });
+  Object.assign(report, { result: 'PASS', runtime, formalOutput: task.input.video_path, uploadedReady: 2, confirmClicks: 0, productionOriginInterceptedLocally: true });
 } catch (error) {
   report.fixturePages = await Promise.all(routing.flatMap(browser => browser.contexts()[0].pages()).map(async page => ({ url: page.url(), html: await page.content().catch(() => '') })));
   report.result = 'FAIL'; report.failure = String(error.stack ?? error).slice(0, 4000); process.exitCode = 1;

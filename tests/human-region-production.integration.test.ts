@@ -18,6 +18,7 @@ import { fingerprintFile } from "../src/main/paths";
 import { verifyHumanRegionTemplate, assertHumanRegionIntent } from "../src/main/human-region-render";
 import { TemplateCompiler } from "../src/main/compiler";
 import { createHumanRegionCover } from "../src/main/human-region-cover";
+import * as shapeSearch from "../src/main/shape-cover-hybrid-shape";
 import type { SourceStickerKnowledgeStore } from "../src/main/source-sticker-knowledge-store";
 import { DouyinUploadStore } from "../src/main/douyin-upload-store";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
@@ -154,8 +155,24 @@ it.each([0, 0.4])("takes human region at %s through local preparation, approval,
     const one = await prepare(media, 1, "test", new AbortController().signal), two = await prepare(media, 2, "test", new AbortController().signal);
     expect(new Set(one.map(l => l.cover!.stickerId)).size).toBe(2);
     expect(two.map(l => l.cover!.stickerId)).toEqual(one.map(l => l.cover!.stickerId).reverse());
+    // Independent random artwork for later media must not delay the first preview.
+    const later = { ...media, id: randomUUID(), sourcePath: path.join(directory, "missing-later.mp4") };
+    const mixed = structuredClone(draft);
+    mixed.media.push({ ...structuredClone(intent), mediaId: later.id });
+    const lazy = createHumanRegionCover({ ...local, draft: mixed, media: [media, later], assets: { ...assets, [secondId]: { assetPath: secondPath, assetFingerprint: secondHash } } });
+    expect(await lazy(media, 1, "test", new AbortController().signal)).toHaveLength(2);
+    await expect(lazy(later, 1, "test", new AbortController().signal)).rejects.toThrow();
     await expect(createHumanRegionCover({ ...local, assets })(media, 1, "test", new AbortController().signal)).rejects.toThrow("没有贴纸");
     await expect(createHumanRegionCover({ ...local, assets })(media, 1, "test", AbortSignal.abort())).rejects.toThrow();
+    const pool = Object.fromEntries(Array.from({ length: 256 }, (_, index) => [`uploaded-${index.toString(16).padStart(64, "0")}`, { assetPath, assetFingerprint }])) as StickerAssets;
+    const peers = Array.from({ length: 3 }, () => ({ ...media, id: randomUUID() }));
+    const budgetDraft = { ...draft, media: peers.map(peer => ({ ...structuredClone(intent), mediaId: peer.id })) };
+    const unavailable = vi.spyOn(shapeSearch, "searchHybridCornerShape").mockResolvedValue(null);
+    try {
+      const independent = createHumanRegionCover({ ...local, draft: budgetDraft, media: peers, assets: pool });
+      for (const peer of peers) await expect(independent(peer, 1, "test", new AbortController().signal)).rejects.toThrow("没有贴纸");
+      expect(unavailable).toHaveBeenCalledTimes(768);
+    } finally { unavailable.mockRestore(); }
     intent.disposition = "no_cover";
     expect(await createHumanRegionCover({ ...local, draft, assets: {} as StickerAssets })(media, 1, "test", new AbortController().signal)).toEqual([]);
   }

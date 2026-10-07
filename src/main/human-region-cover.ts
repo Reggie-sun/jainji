@@ -20,14 +20,15 @@ export function createHumanRegionCover(input: { draft: CoverReviewDraft; media: 
   const draft = structuredClone(input.draft);
   const candidates = Object.keys(input.assets).filter(id => isCoverPoolStickerId(id) && input.assets[id]).sort();
   if (candidates.length > 256) throw Error("人工覆盖本地候选超过 256 款，请缩小贴纸库后重试。");
-  const rounds = new Map<number, Promise<Map<string, StickerLayer[]>>>();
+  const rounds = new Map<string, Promise<Map<string, StickerLayer[]>>>();
   const used = new Map<string, string[]>();
   const cache = new Map<string, StickerLayer | null>();
-  let prepared: Promise<Awaited<ReturnType<typeof targets>>> | undefined;
-  let trials = 0;
-  const targets = async (signal: AbortSignal) => {
+  const prepared = new Map<string, Promise<Awaited<ReturnType<typeof targets>>>>();
+  const trials = new Map<string, number>();
+  const targets = async (signal: AbortSignal, mediaId?: string) => {
     const result = [];
     for (const media of input.media) {
+      if (mediaId && media.id !== mediaId) continue;
       const intent = draft.media.find(m => m.mediaId === media.id);
       if (!intent || intent.sourceFingerprint !== media.fingerprint || intent.disposition === "unresolved") throw Error("人工覆盖范围尚未确认。");
       if (intent.disposition === "no_cover") continue;
@@ -45,7 +46,10 @@ export function createHumanRegionCover(input: { draft: CoverReviewDraft; media: 
   const match = async (target: Awaited<ReturnType<typeof targets>>[number], id: string, signal: AbortSignal): Promise<StickerLayer | null> => {
     const key = `${target.media.id}:${target.segment.id}:${id}`;
     if (cache.has(key)) return cache.get(key)!;
-    if (++trials > 512) throw Error("人工覆盖匹配已达到本轮 512 次候选预算；请调整覆盖框或贴纸库。");
+    const budgetKey = input.random ? target.media.id : "round";
+    const attempts = (trials.get(budgetKey) ?? 0) + 1;
+    trials.set(budgetKey, attempts);
+    if (attempts > 512) throw Error(`人工覆盖匹配已达到${input.random ? "此素材" : "本批"} 512 次候选预算；请调整覆盖框或贴纸库。`);
     const tools = { ...input.tools, signal }, bitmap = humanRegionBitmap(target.target, target.projection);
     const selected = await searchHybridCornerShape([{ id, asset: input.assets[id]! }], bitmap, target.projection,
       { x: -target.projection.width, y: -target.projection.height, width: target.projection.width * 3, height: target.projection.height * 3 },
@@ -66,14 +70,15 @@ export function createHumanRegionCover(input: { draft: CoverReviewDraft; media: 
       cover: { stickerId: id, height: 1, regionId: target.segment.id, humanRegion: binding } };
     cache.set(key, layer); return layer;
   };
-  const round = (version: number, signal: AbortSignal): Promise<Map<string, StickerLayer[]>> => {
-    let pending = rounds.get(version);
+  const round = (version: number, signal: AbortSignal, mediaId?: string): Promise<Map<string, StickerLayer[]>> => {
+    const scope = mediaId ?? "round", key = `${scope}:${version}`;
+    let pending = rounds.get(key);
     if (!pending) {
       pending = (async () => {
-        if (version > 1) await round(version - 1, signal);
+        if (version > 1) await round(version - 1, signal, mediaId);
         const timeout = AbortSignal.timeout(600_000), bounded = AbortSignal.any([signal, timeout]);
-        prepared ??= targets(bounded);
-        const all = await prepared, result = new Map(input.media.map(m => [m.id, [] as StickerLayer[]]));
+        if (!prepared.has(scope)) prepared.set(scope, targets(bounded, mediaId));
+        const all = await prepared.get(scope)!, result = new Map(input.media.map(m => [m.id, [] as StickerLayer[]]));
         const groups = new Map<string, typeof all>();
         for (const target of all) {
           const key = input.random ? `${target.media.id}:${target.segment.identityId}` : "round";
@@ -109,9 +114,9 @@ export function createHumanRegionCover(input: { draft: CoverReviewDraft; media: 
         }
         return result;
       })();
-      rounds.set(version, pending);
+      rounds.set(key, pending);
     }
     return pending;
   };
-  return async (media: MediaItem, version: number, _runId: string, signal: AbortSignal) => (await round(version, signal)).get(media.id)!;
+  return async (media: MediaItem, version: number, _runId: string, signal: AbortSignal) => (await round(version, signal, input.random ? media.id : undefined)).get(media.id)!;
 }

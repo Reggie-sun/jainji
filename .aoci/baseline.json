@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-07T17:40:07Z",
+  "updated_at": "2026-10-07T18:58:46Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "127234335fffa659099780df5a8ac5cadbb262eee7891d2dc90c8ee286d7c820",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "9d1b4126b46cfffbc9849171ce09dbdea32518f8c542313aa36655b19ba43c47",
-      "size": 97094,
-      "normalized_sha256": "9d1b4126b46cfffbc9849171ce09dbdea32518f8c542313aa36655b19ba43c47"
+      "sha256": "dd6f23e683ac33dcee630b721502ec77d7b0e4dac26df6ab3d7f636380046239",
+      "size": 97145,
+      "normalized_sha256": "dd6f23e683ac33dcee630b721502ec77d7b0e4dac26df6ab3d7f636380046239"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1393,9 +1393,9 @@
       "normalized_sha256": "455c1b8529cb903ad1c696c7a6cb3aac0e9746477c6d097d782da24ba4fda49d"
     },
     "src/main/human-region-cover.ts": {
-      "sha256": "4970ba2addb960575a8068e0530baa865d0a5a5fb5b6e548500cfcd12944d9e2",
-      "size": 8707,
-      "normalized_sha256": "4970ba2addb960575a8068e0530baa865d0a5a5fb5b6e548500cfcd12944d9e2"
+      "sha256": "9b468db97bf2730d775df409a7aa87e796a4552957057b98c805fbfc7a978cd2",
+      "size": 9182,
+      "normalized_sha256": "9b468db97bf2730d775df409a7aa87e796a4552957057b98c805fbfc7a978cd2"
     },
     "src/main/human-region-geometry.ts": {
       "sha256": "0e7ae53a8a276d90d95d301d7b38da0d85a3267ac89b09a2c1f7a7cabccf2cad",
@@ -1973,14 +1973,14 @@
       "normalized_sha256": "b0ccd2f60f577ba70d5874d29242515e9a7e5633fc39ad80e3ed3f405dc95eb3"
     },
     "src/renderer/CoverReviewPanel.tsx": {
-      "sha256": "e35b528da124968cd54c4301d8d2a1742c16eca9f9403a16bbaab8fc98bdcb62",
-      "size": 31119,
-      "normalized_sha256": "e35b528da124968cd54c4301d8d2a1742c16eca9f9403a16bbaab8fc98bdcb62"
+      "sha256": "6e034e1f7c90d564cf36a92d450ad98cc0d8ba8cf8cde70f22f6882860c53457",
+      "size": 30884,
+      "normalized_sha256": "6e034e1f7c90d564cf36a92d450ad98cc0d8ba8cf8cde70f22f6882860c53457"
     },
     "src/renderer/CoverReviewProgress.tsx": {
-      "sha256": "85ff09b871475223c2a1f47e2a4e69dcf3887febf1a066b11b7fc5e244b65063",
-      "size": 2271,
-      "normalized_sha256": "85ff09b871475223c2a1f47e2a4e69dcf3887febf1a066b11b7fc5e244b65063"
+      "sha256": "bbba4c424bc00827ef1915de2e2636374d9c15f5c3e81e30cf39ce2339ce7d62",
+      "size": 2672,
+      "normalized_sha256": "bbba4c424bc00827ef1915de2e2636374d9c15f5c3e81e30cf39ce2339ce7d62"
     },
     "src/renderer/CoverReviewTimeline.tsx": {
       "sha256": "2369c16e705d1b1b83df229d4adcdae7bf2792f7402a5cfe444ebf4f6a8cc978",
@@ -1988,9 +1988,9 @@
       "normalized_sha256": "2369c16e705d1b1b83df229d4adcdae7bf2792f7402a5cfe444ebf4f6a8cc978"
     },
     "src/renderer/CoverStickerPanel.tsx": {
-      "sha256": "7f25eccf10631aa4ef2037c64a0701818c26f8263647284d9a94e52f119b6544",
-      "size": 22167,
-      "normalized_sha256": "7f25eccf10631aa4ef2037c64a0701818c26f8263647284d9a94e52f119b6544"
+      "sha256": "a34272307675b995eefa10e7ea5c51a84296b37df4459f53ee41c8521a231c44",
+      "size": 22390,
+      "normalized_sha256": "a34272307675b995eefa10e7ea5c51a84296b37df4459f53ee41c8521a231c44"
     },
     "src/renderer/CoverTrackEditor.tsx": {
       "sha256": "36577e96d21824c15a89ff4b6842aabd48a9d8eed84c1b3d076300f275e0f90d",
@@ -2349,9 +2349,9 @@
       "normalized_sha256": "03e0db5859ccd5f809fb833a7642878496fb83ad3261b866d7bf52f27c0261af"
     },
     "src/shared/manual-cover-review.ts": {
-      "sha256": "886973f3c296c7adea9dabf7fea3666f6c06b2d52887922ac080ce3cae4448d1",
-      "size": 2950,
-      "normalized_sha256": "886973f3c296c7adea9dabf7fea3666f6c06b2d52887922ac080ce3cae4448d1"
+      "sha256": "417e52661b8bb2cf99b87b49a4ed5638ac86dc02048b5bd15ff856fcd5c73c1d",
+      "size": 2761,
+      "normalized_sha256": "417e52661b8bb2cf99b87b49a4ed5638ac86dc02048b5bd15ff856fcd5c73c1d"
     },
     "src/shared/material-names.ts": {
       "sha256": "dba2c07f2675c03ee00bff47dca5158e0b2053fc81f705a6f89a55122288922a",

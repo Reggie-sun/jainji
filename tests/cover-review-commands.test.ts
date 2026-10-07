@@ -5,7 +5,7 @@ import type { MediaItem } from "../src/main/domain";
 import { manualReviewInput, manualReviewMatches, manualSettingsFromReview } from "../src/shared/manual-cover-review";
 import { DEFAULT_COVER_STICKER, type CoverSticker } from "../src/shared/cover-sticker";
 
-it("reuses saved manual boxes and times, while empty defaults and moving tracks fail closed", () => {
+it("reuses saved manual boxes and times, leaves unframed media uncovered, and rejects moving tracks", () => {
   const { draft } = fixture();
   const mediaId = draft.media[0].mediaId;
   const region = { id: randomUUID(), rectangle: { x: 0.1, y: 0.2, width: 0.3, height: 0.1 } };
@@ -15,7 +15,9 @@ it("reuses saved manual boxes and times, while empty defaults and moving tracks 
   expect(manualReviewInput(settings, draft.media)[0].regions.map(region => region.track)).toEqual([
     { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: region.rectangle }] }, track,
   ]);
-  expect(() => manualReviewInput({ ...settings, mediaRegions: undefined }, draft.media)).toThrow(/逐素材/);
+  expect(manualReviewInput({ ...settings, mediaRegions: undefined }, draft.media)[0].disposition).toBe("no_cover");
+  const untouched = { mediaId: randomUUID(), durationMs: 1000 };
+  expect(manualReviewInput(settings, [...draft.media, untouched]).map(item => item.disposition)).toEqual(["cover", "no_cover"]);
   expect(manualReviewInput({ ...settings, mediaRegions: { [mediaId]: [] } }, draft.media)[0].disposition).toBe("no_cover");
   track.keyframes.push({ timeMs: 500, rectangle: region.rectangle });
   expect(() => manualReviewInput(settings, draft.media)).toThrow(/固定框/);

@@ -6,7 +6,6 @@ export function manualReviewInput(settings: CoverSticker, media: readonly { medi
   const parsed = CoverStickerSchema.parse(settings);
   return media.map(({ mediaId, durationMs }) => {
     const regions = manualCoverRegions(parsed, mediaId);
-    if (!regions.length && !Object.prototype.hasOwnProperty.call(parsed.mediaRegions ?? {}, mediaId)) throw new Error("请逐素材添加覆盖框，或明确选择此素材不覆盖。");
     return { mediaId, disposition: regions.length ? "cover" as const : "no_cover" as const, regions: regions.map(region => {
       const track = region.tracks?.[mediaId] ?? { startMs: 0, endMs: durationMs, keyframes: [{ timeMs: 0, rectangle: region.rectangle }] };
       if (track.keyframes.length !== 1) throw new Error("真实贴纸覆盖只接受固定框，请先处理此素材的移动轨迹。");
