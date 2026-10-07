@@ -17,7 +17,7 @@ export const QianchuanLibraryClearSchema = z.object({
   new Set(value.accounts.map(account => account.expectedAdvertiserId)).size === value.accounts.length, "删除账号不能重复。")
   .refine(value => value.confirmation === "DELETE_ALL_VIDEOS" || value.accounts.every(account => account.expectedAdId || account.plans), "清理计划素材必须明确绑定当前计划 ID。")
   .refine(value => value.confirmation !== "DELETE_ALL_VIDEOS" || value.accounts.every(account => !account.plan && !account.plans), "视频库清空作用于整个账号，不能限定计划。")
-  .refine(value => !value.planMaterialRule || value.confirmation === "DELETE_PLAN_MATERIALS", "零展示清理仅限计划素材，不能同时清空视频库。");
+  .refine(value => !value.planMaterialRule || value.confirmation !== "DELETE_ALL_VIDEOS", "计划素材规则必须与计划清理一起使用，不能用于仅清空视频库。");
 export type QianchuanLibraryClear = z.infer<typeof QianchuanLibraryClearSchema>;
 export interface QianchuanLibraryResult {
   product: z.infer<typeof QianchuanProductSchema>;

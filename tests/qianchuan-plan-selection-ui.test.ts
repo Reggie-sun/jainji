@@ -263,12 +263,35 @@ describe("cleanup plan browser interaction", () => {
       await respond(page);
       await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
       expect(await page.getByRole("checkbox", { name: /视频库全部视频/ }).isChecked()).toBe(false);
-      expect(await page.getByRole("checkbox", { name: /视频库全部视频/ }).isDisabled()).toBe(true);
+      expect(await page.getByRole("checkbox", { name: /视频库全部视频/ }).isDisabled()).toBe(false);
       await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
       await page.getByRole("button", { name: "自动删除零展示素材（1）", exact: true }).click();
       await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
       expect(await page.getByRole("group", { name: "确认素材清理" }).count()).toBe(0);
       expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "ZERO_IMPRESSIONS_7D", accounts: [{ expectedAdvertiserId: "1000", plans: [{ adId: "9002" }] }] });
+    } finally { await page.close(); }
+  });
+  it.each(["ZERO_IMPRESSIONS_7D", "AUDIT_AND_ZERO_IMPRESSIONS_7D"])("keeps library selection independent and confirms its separate scope with %s", async planMaterialRule => {
+    const page = await cleanupFixture();
+    try {
+      await respond(page);
+      const library = page.getByRole("checkbox", { name: /视频库全部视频/ });
+      const zero = page.getByRole("checkbox", { name: /近7天零展示素材/ });
+      expect(await library.isChecked()).toBe(false);
+      expect(await library.isDisabled()).toBe(false);
+      await library.check(); await zero.uncheck(); await zero.check();
+      expect(await library.isChecked()).toBe(true);
+      if (planMaterialRule === "ZERO_IMPRESSIONS_7D") await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
+      await page.getByRole("button", { name: "清理所选计划及视频库（1）", exact: true }).click();
+      const confirmation = await page.getByRole("group", { name: "确认素材清理" }).textContent();
+      expect(confirmation).toContain("近7天零展示素材"); expect(confirmation).toContain("不按计划筛选");
+      expect(confirmation?.includes("所选计划内三类素材")).toBe(planMaterialRule === "AUDIT_AND_ZERO_IMPRESSIONS_7D");
+      expect(confirmation).toContain("ID 9002"); expect(confirmation).not.toContain("ID 9001");
+      expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(0);
+      await page.getByRole("button", { name: "确认删除两类内容（1 个账号）", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", planMaterialRule, accounts: [{ expectedAdvertiserId: "1000", plans: [{ adId: "9002" }] }] });
     } finally { await page.close(); }
   });
   it("allows deselection, preserves an explicit empty choice on remount and submits only the checked subset", async () => {

@@ -478,7 +478,7 @@ describe("Qianchuan upload service", () => {
     expect((await f.service.clearVideoLibraries({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [account] }))[0].state).toBe("BLOCKED");
     expect(materials).toHaveBeenCalledTimes(1);
   });
-  it("revalidates all selected plans before serial cleanup and clears the library once after all plans", async () => {
+  it.each([undefined, "ZERO_IMPRESSIONS_7D", "AUDIT_AND_ZERO_IMPRESSIONS_7D"])("revalidates all selected plans before serial cleanup and clears the library once after all plans: %s", async planMaterialRule => {
     const plans = ["9001", "9002", "9003"].map(adId => ({ advertiserId: "1003", adId, name: `计划 ${adId}` }));
     const readPlans = vi.fn(async () => plans);
     const f = await nativeFixture(undefined, readPlans); await f.service.chooseConfig(f.configPath);
@@ -492,15 +492,16 @@ describe("Qianchuan upload service", () => {
       expect(active).toBe(0); events.push("library");
       return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 8, message: "library empty" };
     });
-    const input = { confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003", plans: plans.slice(0, 2) }] };
+    const input = { confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", planMaterialRule, accounts: [{ product: "眼贴", expectedAdvertiserId: "1003", plans: plans.slice(0, 2) }] };
     expect((await f.service.clearVideoLibraries(input))[0]).toMatchObject({ state: "CLEARED", deletedCount: 14 });
     expect(events).toEqual(["9001", "9002", "library"]); expect(readPlans).toHaveBeenCalledTimes(1);
     expect(library).toHaveBeenCalledTimes(1); expect(await readFile(mapping)).toEqual(before);
+    expect(materials.mock.calls.map(call => call[3])).toEqual([planMaterialRule, planMaterialRule]);
     readPlans.mockResolvedValueOnce([plans[0]]);
     expect((await f.service.clearVideoLibraries(input))[0]).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
     expect(materials).toHaveBeenCalledTimes(2); expect(library).toHaveBeenCalledTimes(1);
   });
-  it("retains confirmed progress and stops remaining plans and combined library cleanup on a blocked plan", async () => {
+  it.each([undefined, "ZERO_IMPRESSIONS_7D", "AUDIT_AND_ZERO_IMPRESSIONS_7D"])("retains confirmed progress and stops remaining plans and combined library cleanup on a blocked plan: %s", async planMaterialRule => {
     const plans = ["9001", "9002", "9003"].map(adId => ({ advertiserId: "1003", adId, name: `计划 ${adId}` }));
     const f = await nativeFixture(undefined, async () => plans); await f.service.chooseConfig(f.configPath);
     const materials = vi.spyOn(QianchuanPlanMaterials.prototype, "clear").mockImplementation(async (target, guard) => {
@@ -509,7 +510,7 @@ describe("Qianchuan upload service", () => {
         message: target.adId === "9002" ? "unknown confirmation" : "empty" };
     });
     const library = vi.spyOn(QianchuanVideoLibrary.prototype, "clear");
-    const result = (await f.service.clearVideoLibraries({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003", plans }] }))[0];
+    const result = (await f.service.clearVideoLibraries({ confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", planMaterialRule, accounts: [{ product: "眼贴", expectedAdvertiserId: "1003", plans }] }))[0];
     expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 4 });
     expect(result.message).toContain("9002"); expect(result.message).toContain("unknown confirmation");
     expect(materials.mock.calls.map(call => call[0].adId)).toEqual(["9001", "9002"]); expect(library).not.toHaveBeenCalled();

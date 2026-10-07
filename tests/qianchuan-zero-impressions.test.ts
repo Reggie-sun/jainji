@@ -8,17 +8,21 @@ const row = (count: unknown = 0, time: unknown = "2026-10-05 16:00:00", display:
   dimensions: { materialId: { value: "123" }, roi2MaterialUploadTime: { value: time } },
   metrics: { productShowCountForRoi2: { value: count, valueStr: display } },
 });
-it("admits explicit plan-bound zero-impression cleanup but never combines it with account library clearing", () => {
+it("admits plan-bound zero-impression cleanup with independently selected library clearing", () => {
   const request = { confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "ZERO_IMPRESSIONS_7D", accounts: [{ product: "眼贴", expectedAdvertiserId: "1234", expectedAdId: "5678" }] };
   expect(QianchuanLibraryClearSchema.safeParse(request).success).toBe(true);
-  for (const confirmation of ["DELETE_ALL_VIDEOS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]) expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation }).success).toBe(false);
+  expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS" }).success).toBe(true);
+  expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation: "DELETE_ALL_VIDEOS" }).success).toBe(false);
+  expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1234" }] }).success).toBe(false);
   expect(QianchuanLibraryClearSchema.safeParse({ ...request, planMaterialRule: "ZERO_PLAY" }).success).toBe(false);
   expect(QianchuanLibraryClearSchema.safeParse({ ...request, accounts: [{ product: "眼贴", expectedAdvertiserId: "1234" }] }).success).toBe(false);
 });
-it("admits both selected plan rules but forbids mixing them with the whole video library", () => {
+it("admits both plan rules with independently selected library clearing", () => {
   const request = { confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "AUDIT_AND_ZERO_IMPRESSIONS_7D", accounts: [{ product: "眼贴", expectedAdvertiserId: "1234", expectedAdId: "5678" }] };
   expect(QianchuanLibraryClearSchema.safeParse(request).success).toBe(true);
-  for (const confirmation of ["DELETE_ALL_VIDEOS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]) expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation }).success).toBe(false);
+  expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS" }).success).toBe(true);
+  expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation: "DELETE_ALL_VIDEOS" }).success).toBe(false);
+  expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1234" }] }).success).toBe(false);
 });
 it("freezes seven complete China dates and a precise 48 hour cutoff independently of host timezone", () => {
   expect(createZeroImpressionsWindow(now)).toEqual(window);

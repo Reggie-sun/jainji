@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-07T11:08:27Z",
+  "updated_at": "2026-10-07T11:58:30Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "09c8e4689ded61631325f0ea58eb0ecda120c7f1da8ce9b02035300083351b54",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "23ee455737172e5143c4092548c6b8270fd67f12b11a6f05e13afe2285607c42",
-      "size": 95103,
-      "normalized_sha256": "23ee455737172e5143c4092548c6b8270fd67f12b11a6f05e13afe2285607c42"
+      "sha256": "e09bd6f1a99980b8ad3bc660f089c90b67724be1a587bbb176616daad21e4108",
+      "size": 95109,
+      "normalized_sha256": "e09bd6f1a99980b8ad3bc660f089c90b67724be1a587bbb176616daad21e4108"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2053,9 +2053,9 @@
       "normalized_sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5"
     },
     "src/renderer/QianchuanVideoLibraryActions.tsx": {
-      "sha256": "a43ff9e300d28b0c7d91293030c1dfd3d70250f6013c07cf647ab96999355e20",
-      "size": 9806,
-      "normalized_sha256": "a43ff9e300d28b0c7d91293030c1dfd3d70250f6013c07cf647ab96999355e20"
+      "sha256": "05148e98fa0279f7558c45a22cba2713cfc5e17bce048a84c8b566ca63024419",
+      "size": 10139,
+      "normalized_sha256": "05148e98fa0279f7558c45a22cba2713cfc5e17bce048a84c8b566ca63024419"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
       "sha256": "978d8bd939862cdec7ccce7c019e0c9a33d3cd5cbc4a556fe0b337b54dd14572",
@@ -2349,9 +2349,9 @@
       "normalized_sha256": "7d768a1dc5b5961d888c0fd04479f459f42407477ab9af3213da8dc327fdb8ed"
     },
     "src/shared/qianchuan-video-library.ts": {
-      "sha256": "46dd3412d73fc152d5b3c89278f7de8b98c2c923ec1d39786c68f71baa369f65",
-      "size": 3206,
-      "normalized_sha256": "46dd3412d73fc152d5b3c89278f7de8b98c2c923ec1d39786c68f71baa369f65"
+      "sha256": "a6af961c0d1ebfddffde1547b495a7dec50cacedf249952356194d312f1d3496",
+      "size": 3223,
+      "normalized_sha256": "a6af961c0d1ebfddffde1547b495a7dec50cacedf249952356194d312f1d3496"
     },
     "src/shared/shape-cover.ts": {
       "sha256": "8e9c6ca92189a84dc76ee11d96566e0ac5151caf5cc410e91da29f1de71a7796",
