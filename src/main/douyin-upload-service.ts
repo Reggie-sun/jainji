@@ -174,8 +174,11 @@ export class DouyinUploadService {
       if (blockers.length) return `自动上传已暂停：${this.blockedAccountMessage(task, blockers.length, blockers)}`;
     }
     const advertisers = new Set(open.filter(task => task.input.project_id === projectId).map(task => task.authorization.target.advertiserId));
-    const count = open.filter(task => task.result.state === "NEEDS_HUMAN" && !task.result.duplicate_of && (this.paused || advertisers.has(task.authorization.target.advertiserId))).length;
-    return `本账号自动上传已暂停：存在 ${count} 条需人工核查的任务。其他账号继续处理本轮成片。请核查原上传页面，本账号未选文件需明确点击“安全继续”；结果未知的文件禁止重传。`;
+    const affected = open.filter(task => ["NEEDS_HUMAN", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"].includes(task.result.state) && !task.result.duplicate_of && (this.paused || advertisers.has(task.authorization.target.advertiserId)));
+    const count = (state: QianchuanUploadResult["state"]) => affected.filter(task => task.result.state === state).length;
+    const summary = affected.length ? `存在 ${affected.length} 条需处理的任务（需人工核查 ${count("NEEDS_HUMAN")} 条、可明确继续 ${count("FAILED_RETRYABLE")} 条、终止失败 ${count("FAILED_TERMINAL")} 条、已停止 ${count("CANCELLED")} 条）。` : "待上传成片保留在队列中。";
+    const latest = affected.filter(task => task.result.failure).sort((left, right) => right.result.timestamp.localeCompare(left.result.timestamp))[0]?.result.failure;
+    return `本账号自动上传已暂停：${summary}${latest ? `最近失败原因：${latest.message} 下一步：${latest.next_action} ` : ""}${this.paused ? "" : "其他未暂停账号可继续处理本轮成片。"}请核查对应 Chrome；仅提供“安全继续”的未选文件任务可明确继续，终止失败任务不能继续；结果未知的文件禁止重传。`;
   }
   private changed(): void { this.dependencies.changed?.(); }
   async restoreConfig(): Promise<void> {
@@ -726,7 +729,7 @@ export class DouyinUploadService {
           const reconnectable = error instanceof UploadError && error.failure.category === "browser" &&
             (error.failure.code === "CDP_UNAVAILABLE" && error.failure.retryable || error.failure.code === "TIMEOUT");
           if (!reconnectable || recovery || controller.signal.aborted || tasks.some(task => task.result.upload_outcome !== "NOT_SELECTED" || this.store.hasMarker(task.result.upload_task_id))) throw error;
-          if (retry === 2) throw new UploadError({ ...error.failure, message: `自动连接已尝试 3 次：${error.failure.message}`.slice(0, 500) });
+          if (retry === 2) throw new UploadError({ ...error.failure, retryable: true, message: `自动连接已尝试 3 次：${error.failure.message}`.slice(0, 500), next_action: "文件尚未选择。请检查对应 Chrome 的连接及登录状态，恢复后明确点击“安全继续”；不会自动追加重试。" });
           await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; throw error; });
           this.sessions.delete(key);
           for (const task of tasks) {

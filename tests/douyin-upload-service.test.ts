@@ -1441,6 +1441,11 @@ describe("Qianchuan upload service", () => {
     expect(f.store.task(record!.result.upload_task_id)?.result.upload_outcome).toBe("NOT_SELECTED");
     expect(f.events).not.toContain("file-input");
     expect(f.store.tasks()[0]?.result.state).toBe(mode === "cancel" ? "CANCELLED" : "FAILED_TERMINAL");
+    const status = f.service.status(batch.projectId);
+    expect(status.message).toContain("1 条需处理");
+    expect(status.message).toContain(mode === "cancel" ? "已停止 1 条" : "终止失败 1 条");
+    expect(status.message).toContain(status.tasks[0]!.failure!.message);
+    if (mode === "timeout") await expect(f.service.resume(record!.result.upload_task_id)).rejects.toThrow("终止记录");
   });
 
   it("disabling during a delayed operation aborts it and prevents a late selection or the next batch action", async () => {
@@ -1605,23 +1610,36 @@ describe("Qianchuan upload service", () => {
     expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "READY" && task.retry_count === 2 && task.attempt_count === 1)).toBe(true);
   });
 
-  it("exhausts three connection attempts without selecting files and keeps other accounts running", async () => {
-    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
-    const blocked = await f.createBatch(["offline bytes"]), other = await f.createBatch(["online bytes"], { product: "热敷贴" });
+  it.each(["CDP_UNAVAILABLE", "TIMEOUT"] as const)("exhausts three %s connection attempts and only continues after an explicit request", async code => {
+    const f = await fixture(); await f.authorize(); await f.service.configure({ enabled: true, timeouts: { connect: 20 } }); await f.service.beginProduction();
+    const blocked = await f.createBatch(Array.from({ length: 10 }, (_, index) => `offline bytes ${index}`)), other = await f.createBatch(["online bytes"], { product: "热敷贴" });
     const connect = f.port.connect;
     const attempts: string[] = [];
     f.port.connect = async (task, signal) => {
       attempts.push(task.input.project_id);
-      if (task.input.project_id === blocked.projectId) throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true);
+      if (task.input.project_id === blocked.projectId) {
+        if (code === "TIMEOUT") await new Promise<void>((_resolve, reject) => signal.addEventListener("abort", () => reject(signal.reason), { once: true }));
+        throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true);
+      }
       await connect(task, signal);
     };
-    for (const batch of [blocked, other]) { await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!); }
+    for (const batch of [blocked, other]) { await f.register(batch); for (const identity of batch.identities) await f.service.enqueueFinalArtifact(identity); }
     await f.service.runPending(); await f.service.runPending();
     expect(attempts.filter(id => id === blocked.projectId)).toHaveLength(3);
-    const task = f.service.status(blocked.projectId).tasks[0]!;
-    expect(task).toMatchObject({ state: "FAILED_RETRYABLE", upload_outcome: "NOT_SELECTED", retry_count: 2, failure: { message: expect.stringContaining("3 次") } });
+    const task = f.service.status(blocked.projectId).tasks.find(task => task.state !== "PENDING")!;
+    expect(task).toMatchObject({ state: "FAILED_RETRYABLE", upload_outcome: "NOT_SELECTED", retry_count: 2, failure: { code, retryable: true, message: expect.stringContaining("3 次") } });
+    const status = f.service.status(blocked.projectId);
+    expect(status.ready).toBe(false); expect(status.message).toContain("9 条需处理"); expect(status.message).toContain("3 次");
+    expect(status.message).not.toContain("存在 0 条需人工核查");
+    expect(status.tasks.filter(task => task.state === "FAILED_RETRYABLE")).toHaveLength(9);
+    expect(status.tasks.filter(task => task.state === "PENDING")).toHaveLength(1);
     expect(f.store.hasMarker(task.upload_task_id)).toBe(false);
     expect(f.service.status(other.projectId).tasks[0]!.upload_outcome).toBe("READY");
+    f.port.connect = connect;
+    await f.service.runPending();
+    expect(f.service.status(blocked.projectId).tasks.some(task => task.upload_outcome !== "NOT_SELECTED")).toBe(false);
+    await f.service.resume(task.upload_task_id);
+    expect(f.service.status(blocked.projectId).tasks.every(task => task.upload_outcome === "READY")).toBe(true);
   });
 
   it("cancels during reconnect backoff without a late reconnect or file selection", async () => {
