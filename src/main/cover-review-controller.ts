@@ -12,6 +12,8 @@ import type { AgentProvider } from "./agent-provider.js";
 import type { SelectModel } from "../shared/connections.js";
 import type { IndependentMedia } from "./cover-review-provider.js";
 import type { ExportQueue } from "./queue.js";
+import type { ExportBatch } from "./domain.js";
+import type { QianchuanUploadSelection } from "../shared/douyin-upload.js";
 import { fingerprintFile, isPathWithinDirectory } from "./paths.js";
 import { createCoverReviewDraft, editCoverReviewDraft, assertReviewResolved } from "./cover-review-session.js";
 import { assertApprovable, approvalBinding, reviewDigest } from "./cover-review-approval.js";
@@ -26,6 +28,8 @@ interface ReviewDependencies {
   reviewMedia?(draft: CoverReviewDraft, signal: AbortSignal): Promise<IndependentMedia[]>;
   discardEvidence?(projectId: string, evidence: CoverEvidence[], retained: CoverEvidence[]): Promise<void>;
   changed(): void;
+  registerUploads?(batches: ExportBatch[], selection: QianchuanUploadSelection, signal: AbortSignal): Promise<void>;
+  cancelUploads?(projectId: string, taskIds: string[]): Promise<void>;
 }
 
 export class CoverReviewController {
@@ -112,6 +116,7 @@ export class CoverReviewController {
     for (const existing of this.service.currentProject.reviewDrafts ?? []) {
       if (!["awaiting_approval", "needs_human", "approved"].includes(existing.status)) continue;
       const draft = structuredClone(existing); draft.status = "cancelled";
+      if (draft.approval?.uploadSelectionDigest) await this.dependencies.cancelUploads?.(draft.projectId, draft.approval.receipts.map(receipt => receipt.taskId));
       for (const receipt of draft.approval?.receipts ?? []) await this.queue.cancel(receipt.taskId);
       await this.save(draft, existing.revision);
     }
@@ -300,12 +305,15 @@ export class CoverReviewController {
     }
   }
   async approve(id: string, revision: number, input: AgentStartInput, directories: ReadonlySet<string>): Promise<void> {
-    if (input.douyinUpload) throw new Error("半自动审阅暂不支持抖音上传，请勿将发布文案写入项目草稿。");
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
       this.assertEnabled();
       const frozenRequest = FrozenAgentStartSchema.nullable().parse(JSON.parse(draft.requestJson ?? "null"));
-      const parsed = (frozenRequest?.decorations?.displayMode === "first-3s" ? FrozenAgentStartSchema : AgentStartSchema).parse(input);
+      const { douyinUpload, ...parsed } = (frozenRequest?.decorations?.displayMode === "first-3s" ? FrozenAgentStartSchema : AgentStartSchema).parse(input);
+      if (douyinUpload && (parsed.exportFormat ?? DEFAULT_PRESET.container) !== "mp4") throw new Error("千川上传仅支持 MP4。");
+      if (douyinUpload && !this.dependencies.registerUploads) throw new Error("千川上传交接不可用，请重启应用后重试。");
+      const uploadSelectionDigest = douyinUpload ? reviewDigest(douyinUpload) : undefined;
+      if (draft.approval && draft.approval.uploadSelectionDigest !== uploadSelectionDigest) throw new Error("本次批准的上传选择已冻结，请保持原账号和计划；旧无上传批准不能追加上传。");
       if (parsed.sourceStickerRefresh) throw new Error("半自动审阅不接受原贴纸重新检查意图。");
       if (draft.settingsDigest !== reviewDigest(this.service.currentProject.coverSticker)) throw new Error("覆盖设置已变化，请重新准备预览。");
       if (reviewDigest(parsed) !== reviewDigest(JSON.parse(draft.requestJson ?? "null"))) throw new Error("制作设置已变化，请重新编辑并准备预览。");
@@ -318,9 +326,10 @@ export class CoverReviewController {
         if (draft.assistedArtwork) await this.queue.verifyHumanRegions(template, this.service.getMedia(version.mediaId)!, ExportPresetSchema.parse(JSON.parse(version.presetJson)), signal);
         for (const layer of template.layers) if (layer.type === "sticker" && await fingerprintFile(layer.assetPath) !== layer.assetFingerprint) throw new Error("冻结贴纸已变化，请重新准备预览。");
       }
-      draft.approval ??= { submissionId: randomUUID(), revision, bindingDigest: approvalBinding(draft), approvedAt: new Date().toISOString(), receipts: [] };
+      draft.approval ??= { submissionId: randomUUID(), revision, bindingDigest: approvalBinding(draft), approvedAt: new Date().toISOString(), receipts: [], ...(uploadSelectionDigest ? { uploadSelectionDigest } : {}) };
       draft.status = "approved";
       await this.save(draft, revision);
+      const batches = [];
       for (const version of draft.frozen) {
         signal.throwIfAborted();
         const media = this.service.getMedia(version.mediaId)!;
@@ -332,7 +341,13 @@ export class CoverReviewController {
         try { await this.save(draft, revision); }
         catch (error) { if (signal.aborted && !this.preservingDrafts) await this.queue.cancel(batch.tasks[0].id); throw error; }
         if (signal.aborted) { if (!this.preservingDrafts) await this.queue.cancel(batch.tasks[0].id); signal.throwIfAborted(); }
-        if (batch.tasks[0].status === "queued") void this.queue.start(batch.id).catch(() => this.dependencies.changed());
+        batches.push(batch);
+        if (!douyinUpload && batch.tasks[0].status === "queued") void this.queue.start(batch.id).catch(() => this.dependencies.changed());
+      }
+      if (douyinUpload) {
+        await this.dependencies.registerUploads!(batches, douyinUpload, signal);
+        signal.throwIfAborted();
+        for (const batch of batches) if (batch.tasks[0].status === "queued") void this.queue.start(batch.id).catch(() => this.dependencies.changed());
       }
     });
   }

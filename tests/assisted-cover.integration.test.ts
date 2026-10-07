@@ -51,6 +51,41 @@ function deferred() {
   return { promise, resolve };
 }
 
+it("keeps upload selection out of preview/project and registers approved tasks before starting", async () => {
+  const f = await fixture();
+  const registerUploads = vi.fn(async (batches: unknown[]) => { expect(batches).toHaveLength(1); expect(f.queue.start).not.toHaveBeenCalled(); });
+  const cancelUploads = vi.fn(async () => undefined);
+  const controller = new CoverReviewController(f.service, f.agent, f.queue, { root: f.directory, extract: vi.fn(), analyze: vi.fn(), verify: async () => undefined, changed() {}, registerUploads, cancelUploads });
+  const douyinUpload = { enabled: true as const, accountProduct: "眼贴" as const };
+  await expect(controller.prepare(f.draft.id, f.draft.revision, { ...f.input, douyinUpload }, new Set([f.directory]))).rejects.toThrow(/上传/);
+  expect(registerUploads).not.toHaveBeenCalled();
+  await controller.approve(f.draft.id, f.draft.revision, { ...f.input, douyinUpload }, new Set([f.directory]));
+  expect(registerUploads).toHaveBeenCalledTimes(1);
+  expect(f.queue.start).toHaveBeenCalledTimes(1);
+  const saved = (await new ProjectStore(f.file).load()).project.reviewDrafts![0];
+  expect(saved.requestJson).not.toContain("douyinUpload");
+  expect(JSON.stringify(saved)).not.toContain("眼贴");
+  expect(saved.approval?.uploadSelectionDigest).toBe(reviewDigest(douyinUpload));
+  await expect(controller.approve(f.draft.id, f.draft.revision, f.input, new Set([f.directory]))).rejects.toThrow(/上传选择已冻结/);
+  await expect(controller.approve(f.draft.id, f.draft.revision, { ...f.input, douyinUpload: { ...douyinUpload, accountProduct: "热敷贴" } }, new Set([f.directory]))).rejects.toThrow();
+  await controller.cancel();
+  expect(cancelUploads).toHaveBeenCalledWith(f.draft.projectId, saved.approval!.receipts.map(receipt => receipt.taskId));
+});
+
+it("does not start queued exports when upload registration fails and reuses them on explicit recovery", async () => {
+  const f = await fixture();
+  const registerUploads = vi.fn().mockRejectedValueOnce(new Error("upload ledger unavailable")).mockResolvedValue(undefined);
+  const controller = new CoverReviewController(f.service, f.agent, f.queue, { root: f.directory, extract: vi.fn(), analyze: vi.fn(), verify: async () => undefined, changed() {}, registerUploads });
+  const input = { ...f.input, douyinUpload: { enabled: true as const, accountProduct: "眼贴" as const } };
+  await expect(controller.approve(f.draft.id, f.draft.revision, input, new Set([f.directory]))).rejects.toThrow("upload ledger");
+  expect(f.queue.start).not.toHaveBeenCalled();
+  const first = f.queue.snapshot().batches[0].batch.id;
+  await controller.approve(f.draft.id, f.draft.revision, input, new Set([f.directory]));
+  expect(f.queue.snapshot().batches).toHaveLength(1);
+  expect(f.queue.snapshot().batches[0].batch.id).toBe(first);
+  expect(f.queue.start).toHaveBeenCalledTimes(1);
+});
+
 it("resumes historical three-second approvals without upgrading their frozen request", async () => {
   const f = await fixture();
   const input = { ...f.input, decorations: { ...f.input.decorations, displayMode: "first-3s" as const } };

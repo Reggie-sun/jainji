@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-07T12:33:23Z",
+  "updated_at": "2026-10-07T13:41:28Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "127234335fffa659099780df5a8ac5cadbb262eee7891d2dc90c8ee286d7c820",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "67b4e49922a515ceb94ee35539b904221e786a8b948d40e9ed4af087663a8fd8",
-      "size": 95944,
-      "normalized_sha256": "67b4e49922a515ceb94ee35539b904221e786a8b948d40e9ed4af087663a8fd8"
+      "sha256": "3626c7e50e4f7fd1593d7bd0209eba2b98ab96e56d9215bd6622e342161c920e",
+      "size": 96262,
+      "normalized_sha256": "3626c7e50e4f7fd1593d7bd0209eba2b98ab96e56d9215bd6622e342161c920e"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1278,9 +1278,9 @@
       "normalized_sha256": "5d5033f0a654fb25927048d9deec46f1e117d7c43a7ce0fbcab89eebc1161548"
     },
     "src/main/cover-review-controller.ts": {
-      "sha256": "f88033f283dcde0110958fc896cfd7440215373778128595ef4d0de55edaaa6c",
-      "size": 23892,
-      "normalized_sha256": "f88033f283dcde0110958fc896cfd7440215373778128595ef4d0de55edaaa6c"
+      "sha256": "01691ffa7d2c9e991e0bbbadbb117e9033dec2e796cfc678185b7c2efb3348a7",
+      "size": 25275,
+      "normalized_sha256": "01691ffa7d2c9e991e0bbbadbb117e9033dec2e796cfc678185b7c2efb3348a7"
     },
     "src/main/cover-review-evidence.ts": {
       "sha256": "1d354a020d9670f9c8f3858a74fda25a3d2177c171d13723cfee33f5670518d5",
@@ -1306,6 +1306,11 @@
       "sha256": "bc09ee72fd4ef9826afde88fba8e64a0fa8748cfe085057d3e471bb95affd12e",
       "size": 7515,
       "normalized_sha256": "bc09ee72fd4ef9826afde88fba8e64a0fa8748cfe085057d3e471bb95affd12e"
+    },
+    "src/main/cover-review-upload.ts": {
+      "sha256": "9d526915ae6713a7a03a753868642faba00cfe6feb459db285233858fdde2cae",
+      "size": 2244,
+      "normalized_sha256": "9d526915ae6713a7a03a753868642faba00cfe6feb459db285233858fdde2cae"
     },
     "src/main/cover-sticker.ts": {
       "sha256": "8ee5a213e4e2925e80ed2995f04730ffafaea94fdf50f38846a303635fd72022",
@@ -1353,9 +1358,9 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "55e91cf67d31012210d1f61d850aa2e1cfa3046cdaabc63c4700e7ab172b8a9b",
-      "size": 74292,
-      "normalized_sha256": "55e91cf67d31012210d1f61d850aa2e1cfa3046cdaabc63c4700e7ab172b8a9b"
+      "sha256": "0b82554a81dad426588ff1faf0e317d429c18a57517c30f53d71f9d28a122ca6",
+      "size": 75176,
+      "normalized_sha256": "0b82554a81dad426588ff1faf0e317d429c18a57517c30f53d71f9d28a122ca6"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "8d4e6dd4a16d198857bf2b9fbff8efa645e2aff36980fa932c851305f7e6163a",
@@ -1387,6 +1392,21 @@
       "size": 2194,
       "normalized_sha256": "455c1b8529cb903ad1c696c7a6cb3aac0e9746477c6d097d782da24ba4fda49d"
     },
+    "src/main/human-region-cover.ts": {
+      "sha256": "4970ba2addb960575a8068e0530baa865d0a5a5fb5b6e548500cfcd12944d9e2",
+      "size": 8707,
+      "normalized_sha256": "4970ba2addb960575a8068e0530baa865d0a5a5fb5b6e548500cfcd12944d9e2"
+    },
+    "src/main/human-region-geometry.ts": {
+      "sha256": "0e7ae53a8a276d90d95d301d7b38da0d85a3267ac89b09a2c1f7a7cabccf2cad",
+      "size": 2424,
+      "normalized_sha256": "0e7ae53a8a276d90d95d301d7b38da0d85a3267ac89b09a2c1f7a7cabccf2cad"
+    },
+    "src/main/human-region-render.ts": {
+      "sha256": "df61ac6e1b85c8622eb757dc38568d2592ee796e48668875c88307cb1e5d5820",
+      "size": 7617,
+      "normalized_sha256": "df61ac6e1b85c8622eb757dc38568d2592ee796e48668875c88307cb1e5d5820"
+    },
     "src/main/hybrid-cover-connections.ts": {
       "sha256": "073863baf74b2b0dbad7534764acda6d7cc3d3886dd9b08a4fb4e7115868e195",
       "size": 1725,
@@ -1403,9 +1423,9 @@
       "normalized_sha256": "85a85f376e43cc15b3556c02ac097ac5a9bd7c48548cd9ab7eb81493a6231282"
     },
     "src/main/index.ts": {
-      "sha256": "8e6623863a6832e5daae0be372c6adab19dab0324537612a5004c17e5685a642",
-      "size": 59648,
-      "normalized_sha256": "8e6623863a6832e5daae0be372c6adab19dab0324537612a5004c17e5685a642"
+      "sha256": "4370b8eac8463686dc066b842f25b3b67e2fabf4331a28928f958e5fb628b3b5",
+      "size": 59937,
+      "normalized_sha256": "4370b8eac8463686dc066b842f25b3b67e2fabf4331a28928f958e5fb628b3b5"
     },
     "src/main/local-cdp-transport.ts": {
       "sha256": "fb23cfcad8d845112bca0b41434b6e619d63ab19d3263ae8bd95e83b64d8619f",
@@ -1908,9 +1928,9 @@
       "normalized_sha256": "cbe9ced740aebbe1c0b99e4e2b4d4bca83b6683700ea0318885cda7548cf158a"
     },
     "src/renderer/App.tsx": {
-      "sha256": "133895ddc622082ffb4786d1d5b8ea7eacdd52ca8f9e686142e3337811e0a3a3",
-      "size": 35323,
-      "normalized_sha256": "133895ddc622082ffb4786d1d5b8ea7eacdd52ca8f9e686142e3337811e0a3a3"
+      "sha256": "f5793bc6dd58d28970008b34812afc743b99624bdec42edf0f04443bddd9e32f",
+      "size": 35363,
+      "normalized_sha256": "f5793bc6dd58d28970008b34812afc743b99624bdec42edf0f04443bddd9e32f"
     },
     "src/renderer/AppendProductionDialog.tsx": {
       "sha256": "8f63e6417146fa082b69263e4a6c37fe8b1e7007f69d5b00e10b7fac8ad73902",
@@ -1948,9 +1968,9 @@
       "normalized_sha256": "b0ccd2f60f577ba70d5874d29242515e9a7e5633fc39ad80e3ed3f405dc95eb3"
     },
     "src/renderer/CoverReviewPanel.tsx": {
-      "sha256": "5d46f7c62877447044d21f3146e5b79f55fecdc9a44b35d3c2c47cd424a2384c",
-      "size": 28228,
-      "normalized_sha256": "5d46f7c62877447044d21f3146e5b79f55fecdc9a44b35d3c2c47cd424a2384c"
+      "sha256": "45a0e42bc94bdaed42f735b2209633440e595d7613236e02f3175d7ed81fff98",
+      "size": 29089,
+      "normalized_sha256": "45a0e42bc94bdaed42f735b2209633440e595d7613236e02f3175d7ed81fff98"
     },
     "src/renderer/CoverReviewProgress.tsx": {
       "sha256": "85ff09b871475223c2a1f47e2a4e69dcf3887febf1a066b11b7fc5e244b65063",
@@ -2259,9 +2279,9 @@
       "normalized_sha256": "14b5accea55e576765d43aeac9e7a0b974563ae896926a66140e057e0015e007"
     },
     "src/shared/cover-review.ts": {
-      "sha256": "b8bf35097e6d9f4fd833abb57711fea4c72fbb8afa5380202661cc80f3ad4262",
-      "size": 7640,
-      "normalized_sha256": "b8bf35097e6d9f4fd833abb57711fea4c72fbb8afa5380202661cc80f3ad4262"
+      "sha256": "121b355c72e51c409bc8516d6d11df0b02eda7d67aefbab8a00a0a3a96534a0d",
+      "size": 7684,
+      "normalized_sha256": "121b355c72e51c409bc8516d6d11df0b02eda7d67aefbab8a00a0a3a96534a0d"
     },
     "src/shared/cover-sticker.ts": {
       "sha256": "d331fc6740f9d2e6a129a48e6879186fdc4509ea7c6610313525ce5ecfb2d614",
@@ -2307,6 +2327,11 @@
       "sha256": "757d962c73494647d9657b5c309dba14ad2c0ac9edefd037e85be6dc456f7df0",
       "size": 1872,
       "normalized_sha256": "757d962c73494647d9657b5c309dba14ad2c0ac9edefd037e85be6dc456f7df0"
+    },
+    "src/shared/human-region-cover.ts": {
+      "sha256": "f2629f709bde2a95a008aea0ba2707c8dd5e34bcc812dac7606cfcc1bd405c4b",
+      "size": 2275,
+      "normalized_sha256": "f2629f709bde2a95a008aea0ba2707c8dd5e34bcc812dac7606cfcc1bd405c4b"
     },
     "src/shared/hybrid-cover.ts": {
       "sha256": "185bcc4ef322532a959e737863774ab52898643ffbcce401a18f98bd5ea690fb",
@@ -3167,26 +3192,6 @@
       "sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b",
       "size": 8075,
       "normalized_sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b"
-    },
-    "src/main/human-region-cover.ts": {
-      "sha256": "4970ba2addb960575a8068e0530baa865d0a5a5fb5b6e548500cfcd12944d9e2",
-      "size": 8707,
-      "normalized_sha256": "4970ba2addb960575a8068e0530baa865d0a5a5fb5b6e548500cfcd12944d9e2"
-    },
-    "src/main/human-region-geometry.ts": {
-      "sha256": "0e7ae53a8a276d90d95d301d7b38da0d85a3267ac89b09a2c1f7a7cabccf2cad",
-      "size": 2424,
-      "normalized_sha256": "0e7ae53a8a276d90d95d301d7b38da0d85a3267ac89b09a2c1f7a7cabccf2cad"
-    },
-    "src/main/human-region-render.ts": {
-      "sha256": "df61ac6e1b85c8622eb757dc38568d2592ee796e48668875c88307cb1e5d5820",
-      "size": 7617,
-      "normalized_sha256": "df61ac6e1b85c8622eb757dc38568d2592ee796e48668875c88307cb1e5d5820"
-    },
-    "src/shared/human-region-cover.ts": {
-      "sha256": "f2629f709bde2a95a008aea0ba2707c8dd5e34bcc812dac7606cfcc1bd405c4b",
-      "size": 2275,
-      "normalized_sha256": "f2629f709bde2a95a008aea0ba2707c8dd5e34bcc812dac7606cfcc1bd405c4b"
     }
   },
   "managed_scope": {

@@ -14,6 +14,7 @@ import { JobStore, ProjectStore } from "./store.js";
 import { ModelConnections } from "./model-connections.js";
 import { hybridProductRoutes } from "./hybrid-cover-connections.js";
 import { CoverReviewController } from "./cover-review-controller.js";
+import { registerReviewedCoverUploads } from "./cover-review-upload.js";
 import { CoverReviewEvidence } from "./cover-review-evidence.js";
 import { analyzeCoverCandidates } from "./cover-candidates.js";
 import { prepareIndependentReviewMedia } from "./cover-review-input.js";
@@ -774,6 +775,8 @@ async function bootstrap(): Promise<void> {
   const reviewRoot = path.join(userData, "cover-review");
   coverReview = new CoverReviewController(service, agent, queue, {
     root: reviewRoot,
+    registerUploads: (batches, selection, signal) => registerReviewedCoverUploads(douyinUpload, batches, selection, signal),
+    cancelUploads: (projectId, taskIds) => douyinUpload.cancelExports(projectId, taskIds),
     extract: (media, draft, signal) => new CoverReviewEvidence(path.join(reviewRoot, draft.projectId), ffmpeg).extract(media, draft.id, draft.revision, signal),
     verify: (projectId, evidence) => new CoverReviewEvidence(path.join(reviewRoot, projectId), ffmpeg).verify(evidence),
     images: (projectId, evidence, signal) => new CoverReviewEvidence(path.join(reviewRoot, projectId), ffmpeg).images(evidence, signal),

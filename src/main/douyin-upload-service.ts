@@ -381,23 +381,30 @@ export class DouyinUploadService {
     } finally { this.browserPreparations--; }
   }
   async registerBatch(batch: ExportBatchIdentity, selection?: QianchuanUploadSelection, authorization?: UploadAuthorization): Promise<void> {
-    if (!selection) return;
-    if (authorization && !this.inProduction(authorization.pageBatchId)) return;
+    if (!selection || authorization && !this.inProduction(authorization.pageBatchId)) return;
     const generation = this.controlGeneration;
-    try {
-      const parsed = QianchuanUploadSelectionSchema.parse(selection);
-      if (!batch.projectId || !authorization || parsed.accountProduct !== authorization.target.product) throw new Error("Missing main-process preflight");
-      const target = this.selectedTarget(await this.accounts.freeze(parsed.accountProduct, authorization.target.configDigest), parsed);
-      if (JSON.stringify(target) !== JSON.stringify(authorization.target)) throw new Error("Changed account mapping");
-      const already = this.store.intents().filter(intent => intent.authorization.pageBatchId === authorization.pageBatchId);
-      const newIds = batch.tasks.filter(task => !already.some(intent => intent.export_task_id === task.id && intent.batch_id === batch.id));
-      if (already.length + newIds.length > authorization.expectedCount) throw new Error("Batch count changed");
-      await this.store.saveIntents(batch.tasks.map(task => ({ ...UploadIdentitySchema.parse({ project_id: batch.projectId, batch_id: batch.id, export_task_id: task.id }), selection: parsed, authorization, config: this.store.config })));
-      if (generation === this.controlGeneration && !this.stopping && this.store.config.enabled) {
-        this.stopped = false;
-        for (const task of batch.tasks) this.currentIntents.add(intentKey({ project_id: batch.projectId, batch_id: batch.id, export_task_id: task.id }));
-      }
-    } catch { if (generation === this.controlGeneration) { this.initializationFailure = "上传初始化失败或账号配置已变化；导出继续，未保存授权的任务不会上传。"; this.changed(); } }
+    try { await this.registerBatches([batch], selection, authorization); }
+    catch { if (generation === this.controlGeneration) { this.initializationFailure = "上传初始化失败或账号配置已变化；导出继续，未保存授权的任务不会上传。"; this.changed(); } }
+  }
+  /** Atomically admit all approved versions; callers can keep exports queued on failure. */
+  async registerBatches(batches: ExportBatchIdentity[], selection: QianchuanUploadSelection, authorization?: UploadAuthorization): Promise<void> {
+    const generation = this.controlGeneration;
+    const parsed = QianchuanUploadSelectionSchema.parse(selection);
+    if (!batches.length || batches.some(batch => !batch.projectId || batch.projectId !== batches[0].projectId) || !authorization || !this.inProduction(authorization.pageBatchId) || parsed.accountProduct !== authorization.target.product) throw new Error("Missing main-process preflight");
+    const target = this.selectedTarget(await this.accounts.freeze(parsed.accountProduct, authorization.target.configDigest), parsed);
+    if (JSON.stringify(target) !== JSON.stringify(authorization.target)) throw new Error("Changed account mapping");
+    const intents = batches.flatMap(batch => batch.tasks.map(task => ({ ...UploadIdentitySchema.parse({ project_id: batch.projectId, batch_id: batch.id, export_task_id: task.id }), selection: parsed, authorization, config: this.store.config })));
+    if (!intents.length || new Set(intents.map(intentKey)).size !== intents.length) throw new Error("Duplicate upload identities");
+    const already = this.store.intents().filter(intent => intent.authorization.pageBatchId === authorization.pageBatchId);
+    const newIntents = intents.filter(intent => !already.some(old => intentKey(old) === intentKey(intent)));
+    if (already.length + newIntents.length > authorization.expectedCount) throw new Error("Batch count changed");
+    if (generation !== this.controlGeneration || this.stopping || !this.store.config.enabled) throw new Error("上传控制已变化，请重新确认。");
+    await this.store.saveIntents(intents);
+    if (generation !== this.controlGeneration || this.stopping || !this.store.config.enabled) throw new Error("上传控制已变化，已登记记录保留，请在作品页核查。");
+    if (generation === this.controlGeneration && !this.stopping && this.store.config.enabled) {
+      this.stopped = false;
+      for (const intent of intents) this.currentIntents.add(intentKey(intent));
+    }
   }
   async committed(identity: UploadIdentity): Promise<void> {
     const generation = this.controlGeneration;

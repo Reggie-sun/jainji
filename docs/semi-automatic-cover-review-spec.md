@@ -8,6 +8,16 @@ baseline: 37ed26c
 
 # Summary
 
+## Approved Export Upload Delta
+
+2026-10-07 用户指出人工覆盖尚未接入 CDP 上传，本 Delta 授权补齐既有 assisted 最终批准到千川上传 owner 的交接，优先于下文与 Human Region Delta 的 upload 排除。准备预览仍不接收上传信息、不预检账号、不登记 intent。最终确认可独立选择本次千川产品账号和计划；只支持 MP4，全部版本 viewed、冻结字节与当前制作输入的校验不变。
+
+批准只在项目中保存上传选择的摘要，账号、计划及主进程授权继续仅由原私有上传 store 保存。全部冻结版本先通过原 submission 幂等创建任务，再一次登记全部 upload intents，登记成功才启动这批导出；批次总数量进入同一 pageBatchId。上传仍只消费原队列持久 completed artifact，不上传预览、不点击平台“确定”。未选择上传保持原行为。
+
+重复批准必须保持同一上传选择；既有全部 intents 原样复用，不重新预检、切换生产范围、登记或选文件。登记不完整、内容冲突或存储结果未知时失败关闭，不修补或重发；注册前中断且没有 intent 可由明确再次确认重试。旧无上传批准不能追加上传；重启不自动恢复浏览器权限，已有上传任务沿原“安全继续/只读核查”规则操作。账号或计划选择不会因恢复项目自动出现。
+
+自审：这次增加上传接缝，不改 coverage、H4、compiler、selection fence、UNKNOWN 或平台确认授权；复用原上传 owner 和 store 的原子保存，不另建批准或上传生命周期。验收必须覆盖预览零上传、批准后正式产物准入、批次数量、重复批准/恢复/改计划拒绝、登记失败无导出启动，以及实际界面交互。真实千川上传效果与隔离 CDP fixture 证据分别报告。
+
 ## Human Region Artwork Accepted Delta
 
 2026-10-07 用户在人工区域接入方案后明确要求“实现”。本 Delta 仅授权显式 `assistedArtwork=human-region-v1` 的 assisted 策略，优先于下文该策略的白底要求；缺省及历史 manual/assisted、自动 Hybrid、strict research 保持原解释。

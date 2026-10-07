@@ -7,6 +7,8 @@ import { FrozenAgentStartSchema, type AgentStartInput } from "../shared/agent";
 import { interpolateCoverRectangle } from "../shared/cover-sticker";
 import { HumanRegionBindingSchema, type HumanRegionBinding } from "../shared/human-region-cover";
 import { ExportSettingsSchema, outputDimensions } from "../shared/export-settings";
+import { QianchuanUploadSelectionSchema } from "../shared/douyin-upload";
+import type { UploadSelectionDraft } from "./DouyinUploadControls";
 import type { ConnectionLibrary, SelectModel } from "../shared/connections";
 import type { ChatGPTStatus } from "../shared/agent";
 import { ModelPicker } from "./ModelPicker";
@@ -51,7 +53,7 @@ function frozenOutputSize(presetJson: string | undefined, media: MediaView | und
   }
 }
 
-export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, assistedArtwork, onResolveOutputDirectory, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; assistedArtwork?: HumanRegionArtwork; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onResolveOutputDirectory(existingDirectory?: string): Promise<string>; onState(state: DesktopState): void }) {
+export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, assistedArtwork, uploadSelection, onResolveOutputDirectory, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; assistedArtwork?: HumanRegionArtwork; uploadSelection?: UploadSelectionDraft; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onResolveOutputDirectory(existingDirectory?: string): Promise<string>; onState(state: DesktopState): void }) {
   const selectedIds = new Set(input.mediaIds);
   const eligibleDrafts = drafts.filter((item) => item.assistedArtwork === assistedArtwork);
   const draft = [...eligibleDrafts].reverse().find((item) => item.media.length === selectedIds.size && item.media.every(({ mediaId }) => selectedIds.has(mediaId)));
@@ -77,6 +79,11 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
   const run = async (work: () => Promise<DesktopState>) => { if (running.current) return false; running.current = true; setBusy(true); setError(""); try { onState(await work()); return true; } catch (error) { setError(error instanceof Error ? error.message : "审阅操作失败。"); return false; } finally { running.current = false; setBusy(false); } };
   const priorRequest = (() => { try { return draft?.requestJson ? FrozenAgentStartSchema.safeParse(JSON.parse(draft.requestJson)).data : undefined; } catch { return undefined; } })();
   const resolvedInput = async (): Promise<AgentStartInput> => ({ ...input, outputDirectory: await onResolveOutputDirectory(priorRequest?.outputDirectory) });
+  const approvalInput = async (): Promise<AgentStartInput> => {
+    if (uploadSelection && !uploadSelection.plan) throw new Error("请选择千川产品账号和上传计划后再确认。");
+    const douyinUpload = uploadSelection ? QianchuanUploadSelectionSchema.parse(uploadSelection) : undefined;
+    return { ...await resolvedInput(), ...(douyinUpload ? { douyinUpload } : {}) };
+  };
   if (!draft || !media || !source) return <section className="cover-review"><h3>{humanRegion ? "人工区域贴纸覆盖" : "半自动覆盖审阅"}</h3><p>{eligibleDrafts.length ? `当前选择了 ${selectedIds.size} 条素材，需要为这批素材建立${humanRegion ? "人工区域" : "审阅"}草稿。其他策略的审阅记录已保留。` : humanRegion ? "先保存项目，再建立人工区域草稿。覆盖框由你指定，本地贴纸匹配不会调用模型。" : "先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。"}</p><button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>{busy ? "正在准备素材…" : humanRegion ? "建立人工区域草稿" : "建立人工审阅草稿"}</button>{error && <p role="alert">{error}</p>}</section>;
   const ref = { projectId: draft.projectId, draftId: draft.id, expectedRevision: draft.revision, mediaId: media.mediaId };
   const command = (value: Omit<CoverReviewCommand, keyof typeof ref> & Record<string, unknown>) => run(() => window.jianji.editCoverReview({ ...ref, ...value } as CoverReviewCommand));
@@ -178,7 +185,8 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     {busy && !["draft", "analyzing", "reviewing", "preparing_preview"].includes(draft.status) && <p role="status">正在处理，请稍候…</p>}
     <details><summary>{humanRegion ? "模型调用说明" : "预览费用说明"}</summary><p>{humanRegion ? input.decorations?.mode === "agent" ? "人工框选和本地贴纸匹配：0 次模型调用。Agent 创作装饰仍沿用现有创作模型与预算。" : "人工框选、本地贴纸匹配及手动/本地随机装饰：0 次模型调用。" : `准备每版预计使用 2 次覆盖选材请求，自动装饰另需 2 次创作请求；手动装饰需 1 次创作请求。共 ${draft.media.length * (input.multiplier ?? 1)} 个版本，费用未知。`}</p></details>
     {draft.frozen.length > 0 && <p role="status">预览已生成 · 已查看 {viewedCount}/{draft.frozen.length}。逐版播放并确认后即可导出。</p>}
-    <div className="cover-review-actions">{draft.frozen.length > 0 ? <button className="button primary" type="button" disabled={busy || dirty} onClick={openPreview}>查看预览</button> : <button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(async () => window.jianji.prepareCoverReview(draft.id, draft.revision, await resolvedInput()))}>生成预览</button>}<button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status) || (draft.status === "awaiting_approval" && (!draft.frozen.length || viewedCount < draft.frozen.length))} onClick={() => void run(async () => window.jianji.approveCoverReview(draft.id, draft.revision, await resolvedInput()))}>{draft.status === "approved" ? "核对并继续未提交版本" : "确认全部版本并导出"}</button></div>
+    {uploadSelection && <p>本次确认后，正式 MP4 成片将上传到所选千川计划，停在确定前；预览不会上传。账号和计划仅用于本次操作，不随审阅草稿保存。</p>}
+    <div className="cover-review-actions">{draft.frozen.length > 0 ? <button className="button primary" type="button" disabled={busy || dirty} onClick={openPreview}>查看预览</button> : <button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(async () => window.jianji.prepareCoverReview(draft.id, draft.revision, await resolvedInput()))}>生成预览</button>}<button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status) || (draft.status === "awaiting_approval" && (!draft.frozen.length || viewedCount < draft.frozen.length))} onClick={() => void run(async () => window.jianji.approveCoverReview(draft.id, draft.revision, await approvalInput()))}>{draft.status === "approved" ? "核对并继续未提交版本" : uploadSelection ? "确认全部版本、导出并上传千川" : "确认全部版本并导出"}</button></div>
     <details><summary>重新开始</summary><button type="button" disabled={busy || dirty} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>新建草稿</button></details>
     {error && <p role="alert">{error}</p>}
   </section>;

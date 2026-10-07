@@ -61,7 +61,7 @@ cover-placement-proposal.ts[AB7T]: F:按精确源身份提出近似自动覆盖�
 cover-placement-provider.ts[AB7T]: F:构造近似覆盖提案的模型输入消息 | R:code:src/main/cover-placement-proposal.ts | A:输入协议不拥有源知识 | S:只传约定抽帧与元数据
 cover-placement-session.ts[AB7T]: F:管理自动覆盖提案、样片复核与位置复用 | R:code:src/main/cover-placement-proposal.ts | A:使用源知识准入锁但不发布源事实 | S:复核失败不得通过
 cover-review-approval.ts[AB7T]: F:校验assisted全部冻结版本与批准前提 | R:code:src/main/cover-review-controller.ts | A:摘要绑定人工策略修订素材设置和全部模板 | S:全部预览查看后才能批准；编辑作废旧批准
-cover-review-controller.ts[AB8M]: F:拥有审阅草稿证据预览批准与幂等提交 | R:code:src/main/cover-review-session.ts,code:src/main/cover-review-approval.ts,code:src/main/human-region-render.ts,code:src/main/queue.ts | A:草稿固定人工策略；准备持久PNG；批准前核对目标集合与资源；原队列回执 | S:人工策略不调用自动识别复核；全部版本查看且当前绑定有效才入队；不扩上传
+cover-review-controller.ts[AB8M]: F:拥有审阅草稿预览批准与幂等提交 | R:code:src/main/cover-review-session.ts,code:src/main/cover-review-approval.ts,code:src/main/cover-review-upload.ts,code:src/main/queue.ts | A:全部查看后校验冻结模板；上传选择只存摘要；上传全部登记后启动；取消交原上传owner | S:预览拒绝上传信息；无上传保留原逐版提交；人工不识别复核；旧无上传批准不能追加；失败保留批准任务
 cover-review-evidence.ts[AB7T]: F:提取带时间与坐标映射的assisted原始证据 | R:code:src/main/cover-review-controller.ts | A:证据与源媒体可追溯 | S:路径限定项目目录并可取消
 cover-review-input.ts[AB7T]: F:将草稿证据候选转为独立复核输入 | R:code:src/main/cover-review-provider.ts | A:适配输入而不作草稿决定 | S:只读取已登记证据
 cover-review-preview.ts[AB7T]: F:计算预览摘要并清理无引用预览 | R:code:src/main/cover-review-controller.ts | A:预览生命周期辅助 | S:保留仍被草稿引用的预览
@@ -76,7 +76,7 @@ execution-limits.ts[RP7T]: F:按CPU与内存估算并发容量并探测可运行
 ffmpeg.ts[IB8M]: F:封装媒体子进程、能力发现、编码并发探测与字体解析 | R:code:src/main/video-encoder.ts,code:src/main/execution-limits.ts,code:src/main/hardware-probe.ts,code:src/main/platform.ts | A:FfmpegAdapter提供probe和run；checkCapabilities返回引擎及容量；refreshFontCapabilities只更新字体就绪状态 | S:硬件和CPU回退均须真实同时编码探测；CPU有独立探测预算；刷新字体不重选队列引擎；进程退出不代表产物已验证发布
 gpu-memory.ts[AB7T]: F:解析空闲显存并估算NVENC需求 | R:code:src/main/execution-limits.ts | A:硬件容量辅助 | S:探测不可用不得推定容量
 hardware-probe.ts[KH7T]: F:用持续编码进程验证指定路数的同时运行能力 | R:code:src/main/ffmpeg.ts,code:src/main/execution-limits.ts | A:probeConcurrentEncodes等待每路输出帧及持续重叠，超时或提前退出返回失败 | S:探测输入保持开放；任何提前退出使容量无效；结束必须杀死仍运行进程并等待全部promise
-index.ts[EG8L]: F:启动Electron并接线项目制作Hybrid千川及独立边框素材 | R:code:src/main/hybrid-cover-connections.ts,code:src/main/agent-controller.ts,code:src/main/decoration-assets-ipc.ts,code:src/main/builtin-frames.ts,code:src/main/decoration-frame.ts | A:agent及batch共享Hybrid；随机追加预检独立边框池并交原queue；项目保存及计划读取接原owners | S:trusted sender与空闲重核；启动不恢复上传；无第二队列；边框中央透明校验在主进程
+index.ts[EG8L]: F:启动Electron接线项目制作覆盖和千川 | R:code:src/main/hybrid-cover-connections.ts,code:src/main/agent-controller.ts,code:src/main/cover-review-upload.ts,code:src/main/decoration-assets-ipc.ts | A:人工批准和取消交原上传owner；agent及batch共用Hybrid；正式产物回调上传；随机追加预检边框 | S:trusted sender与空闲重核；启动不恢复上传；无第二队列；边框中央透明在主进程校验
 media-response.ts[AB7T]: F:对本地媒体请求返回可范围读取的Response | R:code:src/main/index.ts | A:受控媒体协议辅助 | S:仅按受信路径提供媒体
 media.ts[AB7T]: F:探测导入媒体属性并构造去源路径的视图 | R:code:src/main/ffmpeg.ts | A:素材目录owner | S:无效媒体不进入制作
 model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独立Codex登录与执行runtime | R:code:src/main/connection-store.ts,code:src/main/chatgpt-session.ts,code:src/main/codex-rpc.ts,code:src/main/api-request-scheduler.ts | A:ModelConnections持久选择、激活各角色、导入连接与关闭；启动参数和执行凭据由主进程构造 | S:登录和执行目录分离，执行auth.json必须缺席；凭据仅经允许的环境传给子进程；禁用工具、搜索和多Agent；不读写全局Codex登录，凭据不回传界面
@@ -108,7 +108,7 @@ shape-cover-freeze.ts[AB8S]: F:冻结形状覆盖的最终不透明PNG并无覆�
 shape-cover-render.ts[IB8T]: F:校验冻结形状与Hybrid模板并提供不可变PNG编译输入 | R:code:src/main/hybrid-cover-production.ts,code:src/main/shape-cover-candidates.ts,code:src/main/shape-cover-artifact-io.ts,code:src/main/compiler.ts | A:原strict binding和准入源核验保持；通用export guard先检查Hybrid进程内owner | S:strict shape普通入队重试仍拒绝；Hybrid不借strict authority；读取冻结字节不授发布许可
 shape-cover-admission.ts[AB8M]: F:核验原队列形状样片的像素与帧时域证明，组织独立内容安全及自然度复核 | R:code:src/main/queue.ts,code:src/main/shape-cover-candidates.ts,code:src/main/supervisor-evidence.ts,code:src/main/supervised-preview.ts | A:共享严格解析器冻结无authority复核观察；admitShapeCoverSample沿原四类SAFE及NATURAL门签发私有handle；verifyShapeCoverAdmission核验绑定和样片字节 | S:诊断观察及JSON副本不能恢复handle；矩阵和冻结RGBA重算；未知、缺字段或裸pass拒绝；须引用当前证据且直发同字节，取消及源资产设置漂移失效
 douyin-cdp-uploader.ts[IN8T]: F:连接冻结Chrome并协调千川连续分组上传及原页只读核查 | R:code:src/main/qianchuan-page-contract.ts,code:src/main/local-cdp-transport.ts | A:本机CDP声明isLocal以原路径递送大文件组；新未选tab深链清除时进入冻结计划；每组置前并pollReady观察全表 | S:限loopback拒redirect；fence先于文件；UNKNOWN仅原页读；不确认发布重开重传；detach保留Chrome
-douyin-upload-service.ts[AW8L]: F:编排千川连续上传、计划准备及账号素材清理 | R:code:src/main/douyin-upload-store.ts,code:src/main/qianchuan-plan-materials.ts,code:src/main/qianchuan-cleanup-plans.ts | A:非空组最多9条立即传；累计10边界等终态；READY原子保存；暂停投影各失败状态及原因；清理规则交原owner | S:选前连接最多三次，耗尽仅显式继续；fence先于文件，UNKNOWN原页只读；终止错误不放行；detach失败锁存；缓存不授上传删除权；清理与制作账号编辑互斥
+douyin-upload-service.ts[AW8L]: F:编排千川上传计划准备与账号清理 | R:code:src/main/douyin-upload-store.ts,code:src/main/qianchuan-plan-materials.ts,code:src/main/qianchuan-cleanup-plans.ts | A:多导出批原子登记且严格报错；旧单批失败提示兼容；最多9条连续上传及READY原子保存 | S:fence先于文件；UNKNOWN原页只读；选前连接最多三次；detach失败锁存；缓存不授上传删除权；清理与制作账号编辑互斥
 douyin-upload-store.ts[PR8L]: F:持久化千川永久屏障及整批改传删除结束审计 | R:code:src/shared/douyin-upload.ts,code:src/main/douyin-upload-legacy.ts,code:src/main/store.ts | A:serial保存v3完整核验；saveTasks原子整组及alias传播；最多9个fence预检逐文件sync再单次账本提交；改传结束先归档复查SHA | S:task及fence仍v2；部分fence故障锁存保留屏障；重启未知只读；closed不恢复，DISCARDED拒绝READY；缺归档或同步未知阻断；Windows未qualified
 shape-cover-production.ts[AB8S]: F:协调全轮共同候选、真实选款图片缓存、逐轮冻结、样片准入及托管发布 | R:code:src/main/shape-cover-candidates.ts,code:src/main/shape-cover-freeze.ts,code:src/main/shape-cover-selection.ts,code:src/main/shape-cover-admission.ts,code:src/main/shape-cover-artifacts.ts | A:prepare核对全部素材和segments；selectionPreviews冻结渲染共同候选并交接前重验；layers共享同轮款；admit及publish沿原owners | S:单preset必须匹配矩阵；缓存图片不携带authority，不重试失败预览；缺mask、空集合、取消或绑定漂移拒绝；run-local及冻结JSON不成为发布许可
 shape-cover-artifact-io.ts[PR7T]: F:执行形状托管的有界流式SHA复制和独占持久JSON读写 | R:code:src/main/shape-cover-artifacts.ts | A:inspectArtifactFile固定缓冲读取；metadata限1MiB、样片1GiB、总量2GiB；writeArtifactJson同步文件及目录 | S:目录须规范；符号链接、非普通文件、增长和短写拒绝；O_NONBLOCK防FIFO阻塞；不忽略sync失败或平台不支持，不覆盖文件
@@ -191,6 +191,7 @@ qianchuan-zero-impressions.ts[DB8T]: F:冻结零展示清理时间窗口并严�
 human-region-cover.ts[AB8S]: F:将人工固定区域匹配为持久透明贴纸层 | R:code:src/main/human-region-geometry.ts,code:src/main/shape-cover-hybrid-shape.ts,code:src/main/shape-cover-freeze.ts | A:源投影；统一款或不同身份组合匹配；逐版轮换；冻结意图及像素摘要 | S:仅本地图库；原alpha全覆盖且零膨胀；无解取消预算耗尽停止；不授H4或队列批准
 human-region-geometry.ts[KB7T]: F:投影人工矩形并核验逐像素完全不透明覆盖 | R:code:src/main/shape-cover-pixel-gate.ts,code:src/shared/human-region-cover.ts | A:测量缩放补边；向外保留滤波支撑；目标位图生成 | S:半透明及孔洞不算覆盖；人工框不是原贴纸alpha
 human-region-render.ts[AB8T]: F:核验人工冻结像素意图和原审阅批准交接 | R:code:src/main/cover-review-approval.ts,code:src/main/shape-cover-alpha.ts,code:src/main/source-sticker-knowledge-store.ts | A:源资源输出绑定；PNG解码覆盖；目标集合修订与提交核对 | S:通用导出不能自授人工批准；coverage只证明指定范围；同时核容器和视频时长源争议
+cover-review-upload.ts[IW8T]: F:交接已批准导出到原千川上传账本 | R:code:src/main/douyin-upload-service.ts,code:src/main/douyin-upload-store.ts | A:核对完整任务集合；新登记共用数量授权并原子保存；全部相同记录直接返回 | S:重复批准不恢复浏览器权限；部分记录或目标冲突拒绝；无登记历史成片不追加；预览不准入
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -200,13 +201,13 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7L]: F:协调项目素材包装审阅及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:无工作区默认随机，已保存模式原样恢复；传递人工策略及审阅入口；保存手填文字与外观 | S:界面不授main权限；不绕过冻结批准；运行输入不随草稿变化
+App.tsx[AU7L]: F:协调项目包装审阅及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:无工作区默认随机；传递人工策略和本次上传选择；保存文字外观 | S:上传选择不随项目保存；界面不授main权限；已保存模式原样恢复；冻结输入不随草稿变化
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
 CornerDecorationPicker.tsx[EU6T]: F:编辑装饰方式和角落选材并承载逐素材边框设置 | R:code:src/renderer/FrameDecorationPicker.tsx,code:src/shared/decorations.ts | A:模式切换保留整批及逐素材边框；传素材与项目保存回调；边框mutation独立禁用 | S:不改手填文字，不把边框当四角贴纸
 CoverReviewBox.tsx[AB7T]: F:绘制assisted覆盖审阅候选框与交互 | R:code:src/renderer/CoverReviewPanel.tsx | A:人工框交互界面 | S:修改草稿后旧批准失效
-CoverReviewPanel.tsx[AU7S]: F:呈现审阅草稿固定框和冻结预览确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/human-region-cover.ts | A:策略隔离草稿；本地准备可取消；目标和可见占用分开展示 | S:人工模式不发识别请求；逐版查看再批准；框外完整性未证明；辅助线不拦截播放
+CoverReviewPanel.tsx[AU7S]: F:呈现人工框冻结预览及最终确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/human-region-cover.ts | A:目标和可见占用分开展示；最终批准单独传千川选择；准备可取消 | S:预览不传上传信息；逐版查看再批准；框外完整性未证明；人工不调用识别
 CoverReviewProgress.tsx[AB7T]: F:展示assisted审阅和独立复核进度 | R:code:src/renderer/CoverReviewPanel.tsx | A:进度呈现组件 | S:复核结果只报告问题
 CoverReviewTimeline.tsx[AB7T]: F:按时间显示assisted候选与证据片段 | R:code:src/renderer/CoverReviewPanel.tsx | A:时间轴交互组件 | S:时域决策留在草稿
 CoverStickerPanel.tsx[EU6S]: F:编辑自动手动assisted和人工图案策略 | R:code:src/shared/cover-sticker.ts,code:src/renderer/MediaSelector.ts | A:独立人工框选入口；保存互斥策略并解释目标及真实占用 | S:切换旧模式清人工策略；不签发批准；不把框当自动轮廓
@@ -258,7 +259,7 @@ bundled-stickers.ts[AB7T]: F:列举随应用打包的内置贴纸ID及固定文�
 connections.ts[AB7T]: F:连接保存输入和模型选择的共享schema | R:code:src/main/model-connections.ts | A:连接公开形状合同 | S:界面快照不含API密钥
 cover-diagnostics.ts[AB7T]: F:覆盖流程诊断事件阶段原因和大小限制schema | R:code:src/main/cover-diagnostics.ts | A:诊断记录合同 | S:限制事件数与字节量
 cover-placement.ts[AB7T]: F:近似自动覆盖目标身份位置与证据绑定schema | R:code:src/main/cover-placement-session.ts | A:近似位置合同不是源事实 | S:时序边界与身份本地校验
-cover-review.ts[DB7T]: F:定义审阅证据片段预览批准持久Schema | R:code:src/main/cover-review-controller.ts,code:src/main/cover-review-session.ts | A:草稿保存显式人工图案策略；版本修订和预览归属约束 | S:缺省仍为旧assisted；持久字段不替代批准验证
+cover-review.ts[DB7T]: F:定义审阅证据预览批准持久Schema | R:code:src/main/cover-review-controller.ts,code:src/main/cover-review-session.ts | A:人工策略与修订归属；批准可保存上传选择摘要 | S:缺省批准无上传；摘要不含账号计划明文；持久字段不替代主进程批准
 cover-sticker.ts[CB7S]: F:定义覆盖模式逐素材区域轨迹及旧单框兼容 | R:code:src/main/cover-sticker.ts,code:src/main/shape-cover-activation.ts,code:src/renderer/CoverStickerPanel.tsx | A:显式人工assistedArtwork与自动shape策略互斥；轨迹范围校验 | S:序列化意图不授执行权；旧缺省不变；空regions表示不覆盖；人工框不是自动alpha
 curated-stickers.ts[CB7S]: F:构造精选图案搜索目录及中文标签 | R:code:src/shared/asset-library.ts | A:概念匹配中性3D资源并追加自定义图 | S:仅约束发现入口；历史完整manifest仍有效；不授自动选材资格
 decorations.ts[CB7S]: F:定义手填文字逐素材开关位置及装饰边框Schema | R:code:src/shared/agent.ts,code:src/shared/frames.ts,code:src/main/agent-template-preparation.ts | A:frame与UUID键framesByMedia校验；模式转换保留边框；legacy frameId兼容；独立frames目录 | S:旧API缺边框字段保持无边框；文字校验唯一owner；缺文字设置默认开启；Agent不生成改写内容

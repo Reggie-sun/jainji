@@ -52,6 +52,7 @@ export const FrozenCoverVersionSchema = z.object({
 }).strict();
 export const CoverApprovalSchema = z.object({
   submissionId: Id, revision: Revision, bindingDigest: Digest, approvedAt: Time,
+  uploadSelectionDigest: Digest.optional(),
   receipts: z.array(z.object({ mediaId: Id, version: z.number().int().positive(), templateDigest: Digest, batchId: Id, taskId: Id }).strict()),
 }).strict();
 const ReviewFindingSchema = CoverIssueSchema.omit({ id: true, origin: true });

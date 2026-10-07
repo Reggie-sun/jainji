@@ -10,6 +10,7 @@ import { fingerprintFile } from "../src/main/paths";
 import type { ArtifactVerifier } from "../src/main/artifact";
 import type { FfmpegAdapter } from "../src/main/ffmpeg";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
+import { registerReviewedCoverUploads } from "../src/main/cover-review-upload";
 import { DouyinUploadStore } from "../src/main/douyin-upload-store";
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
 import { QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account";
@@ -124,6 +125,56 @@ function evidenceFor(task: Parameters<UploadBrowserPort["ready"]>[0][number], pa
 }
 
 describe("formal export to Qianchuan upload boundary", () => {
+  it("atomically registers all reviewed versions, uploads only committed files and replays without browser effects", async () => {
+    const f = await fixture();
+    const batches = [await f.queue.createBatch(f.input), await f.queue.createBatch(f.input)];
+    const preflight = vi.spyOn(f.uploader, "preflight"), save = vi.spyOn(f.store, "saveIntents");
+    await registerReviewedCoverUploads(f.uploader, batches, uploadSelection, new AbortController().signal);
+    expect(preflight).toHaveBeenCalledTimes(1);
+    expect(preflight).toHaveBeenCalledWith(uploadSelection, 2);
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(f.store.intents()).toHaveLength(2);
+    expect(new Set(f.store.intents().map(intent => intent.authorization.pageBatchId)).size).toBe(1);
+    expect(f.store.tasks()).toHaveLength(0);
+    expect(f.events).not.toContain("file-input");
+    await f.queue.start(batches[0].id);
+    await f.waitUntilReady();
+    const events = [...f.events], before = f.store.intents();
+    await registerReviewedCoverUploads(f.uploader, batches, uploadSelection, new AbortController().signal);
+    expect(f.events).toEqual(events);
+    expect(f.store.intents()).toEqual(before);
+    expect(preflight).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledTimes(1);
+    await expect(registerReviewedCoverUploads(f.uploader, batches, { enabled: true, accountProduct: "肥皂" }, new AbortController().signal)).rejects.toThrow(/冲突/);
+    expect(f.store.intents()).toEqual(before);
+  });
+
+  it("refuses partial prior registration, cancelled admission and registration of already produced history", async () => {
+    const f = await fixture();
+    const batches = [await f.queue.createBatch(f.input), await f.queue.createBatch(f.input)];
+    const abort = new AbortController(); abort.abort();
+    await expect(registerReviewedCoverUploads(f.uploader, batches, uploadSelection, abort.signal)).rejects.toThrow();
+    expect(f.store.intents()).toHaveLength(0);
+    await f.uploader.registerBatch(batches[0], uploadSelection, await f.preflight(2));
+    await expect(registerReviewedCoverUploads(f.uploader, batches, uploadSelection, new AbortController().signal)).rejects.toThrow(/不完整/);
+    expect(f.store.intents()).toHaveLength(1);
+    const unrelated = await f.queue.createBatch(f.input);
+    await f.queue.start(unrelated.id);
+    const completed = (await f.jobs.load(unrelated.id)).state.batch;
+    await expect(registerReviewedCoverUploads(f.uploader, [completed], uploadSelection, new AbortController().signal)).rejects.toThrow(/历史成片/);
+  });
+
+  it("does not leave a partial version ledger when the single atomic registration fails", async () => {
+    const f = await fixture();
+    const batches = [await f.queue.createBatch(f.input), await f.queue.createBatch(f.input)];
+    const save = vi.spyOn(f.store, "saveIntents").mockRejectedValueOnce(new Error("disk failure"));
+    await expect(registerReviewedCoverUploads(f.uploader, batches, uploadSelection, new AbortController().signal)).rejects.toThrow("disk failure");
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(f.store.intents()).toHaveLength(0);
+    expect(f.events).not.toContain("file-input");
+    await registerReviewedCoverUploads(f.uploader, batches, uploadSelection, new AbortController().signal);
+    expect(f.store.intents()).toHaveLength(2);
+  });
   it("waits for completed save and binds the collision-resolved formal MP4 path and bytes", async () => {
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
