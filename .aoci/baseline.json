@@ -1338,9 +1338,9 @@
       "normalized_sha256": "9adcbb412576dc4d99d7db622ca12c06da234f10b5bd1eaecea9234ccc78cf9d"
     },
     "src/main/douyin-cdp-uploader.ts": {
-      "sha256": "0d38acc85a098b3bebd0240ebbdf4962ff36c75e882770b1a0d2437c89b26f3f",
-      "size": 7615,
-      "normalized_sha256": "0d38acc85a098b3bebd0240ebbdf4962ff36c75e882770b1a0d2437c89b26f3f"
+      "sha256": "a81cab85b89f0ae8c1ab88e345db7af90936efdb4b6c04bf47c5cea95f6bc2a2",
+      "size": 7630,
+      "normalized_sha256": "a81cab85b89f0ae8c1ab88e345db7af90936efdb4b6c04bf47c5cea95f6bc2a2"
     },
     "src/main/douyin-upload-group.ts": {
       "sha256": "b5405ef1ed791a0eab62aaa9d4cf944d784ea692baceb81ac0f08a817701138f",

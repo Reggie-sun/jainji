@@ -37,7 +37,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
         if (!info) throw new Error("Discovery unavailable");
         if (typeof info.webSocketDebuggerUrl !== "string" || !isLoopbackUrl(info.webSocketDebuggerUrl, true) || new URL(info.webSocketDebuggerUrl).port !== new URL(endpoint).port) throw new Error("Unsafe discovery websocket");
         this.check(signal); this.transport = await guardedTransport(info.webSocketDebuggerUrl, this.controller.signal, task.config.timeouts.connect); this.check(signal);
-        const browser = await chromium.connectOverCDP(this.transport.url, { timeout: task.config.timeouts.connect, noDefaults: true });
+        const browser = await chromium.connectOverCDP(this.transport.url, { timeout: task.config.timeouts.connect, noDefaults: true, isLocal: true });
         if (signal.aborted || this.controller.signal.aborted) { await browser.close(); this.check(signal); }
         this.browser = browser;
         if (browser.contexts().length !== 1) throw uploadFailure("ACCOUNT_UNCONFIRMED", "account", "无法唯一确认 default context。", "人工检查目标 Chrome。", true);

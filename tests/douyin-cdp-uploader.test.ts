@@ -61,9 +61,9 @@ function makeUploader(contract: QianchuanPageContract = fixture.contract): Douyi
   return uploader;
 }
 
-async function makeTask(input: { name: string; content?: string; pageBatchId?: string; expectedCount?: number; batchId?: string; projectId?: string; endpoint?: string }): Promise<UploadTaskRecord> {
+async function makeTask(input: { name: string; content?: string | Buffer; pageBatchId?: string; expectedCount?: number; batchId?: string; projectId?: string; endpoint?: string }): Promise<UploadTaskRecord> {
   const fileName = input.name;
-  const bytes = Buffer.from(input.content ?? `isolated fixture bytes for ${fileName}`);
+  const bytes = Buffer.isBuffer(input.content) ? input.content : Buffer.from(input.content ?? `isolated fixture bytes for ${fileName}`);
   const snapshotPath = path.join(tempRoot, fileName);
   await writeFile(snapshotPath, bytes, { mode: 0o600 });
   const identity = { project_id: input.projectId ?? randomUUID(), batch_id: input.batchId ?? randomUUID(), export_task_id: randomUUID() };
@@ -462,6 +462,31 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
       productionFixture!.setControls({ pendingName: "" });
       expect((await uploader.ready(tasks, signal)).every(item => item.selectedCount === 30 && item.pageOwnership.targetId === ownership!.targetId)).toBe(true);
     } finally { await observer.close(); }
+  });
+
+  it.each([
+    { name: "single large snapshot", sizes: [51 * 1024 * 1024] },
+    { name: "nine snapshots with a large aggregate", sizes: Array(9).fill(6 * 1024 * 1024) as number[] }
+  ])("appends $name over 50 MiB through the same local native chooser", async ({ sizes }) => {
+    const batchId = randomUUID(), pageBatchId = randomUUID(), projectId = randomUUID();
+    const first = await productionTask("large-first.mp4", batchId, pageBatchId, sizes.length + 1, projectId);
+    const tasks = await Promise.all(sizes.map((size, index) => makeTask({
+      name: `large-${index}.mp4`, content: Buffer.alloc(size, index + 1), batchId, pageBatchId,
+      expectedCount: sizes.length + 1, projectId, endpoint: productionFixture!.cdpEndpoint
+    })));
+    const uploader = productionUploader(), signal = new AbortController().signal;
+    await uploader.connect(first, signal);
+    const { prepared } = await uploadReady(uploader, first);
+    const selected = [{ fileName: first.result.file_name, index: 1, ready: true }];
+    const next = await uploader.open(tasks, selected, signal);
+    expect(next.pageOwnership).toEqual(prepared.pageOwnership);
+    expect(next.selectedIndex).toBe(2);
+    for (const task of tasks) task.result = { ...task.result, state: "UPLOADING", upload_outcome: "MAY_HAVE_UPLOADED" };
+    await uploader.upload(tasks, signal);
+    expect((await uploader.ready([first, ...tasks], signal)).map(item => item.selectedCount)).toEqual(Array(sizes.length + 1).fill(sizes.length + 1));
+    const events = (await productionFixture!.inspect()).events;
+    expect(events.filter(event => event.type === "files").map(event => event.names)).toEqual([[first.result.file_name], tasks.map(task => task.result.file_name)]);
+    expect(events.filter(event => ["drop", "confirm", "settings"].includes(event.type))).toEqual([]);
   });
 
   it.each([

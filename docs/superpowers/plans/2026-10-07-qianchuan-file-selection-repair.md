@@ -37,3 +37,13 @@ chooser 必须来自本页主 frame、原 modal 内唯一入口的单次 click�
 ## Self-Review And Limits
 
 此修订在“排查并修复上传问题”授权内，复用唯一 page/store/service，不增加重传、确认或第二任务生命周期。已核实的真实 chooser 未接收文件，因此工程完成必须明确真实 30 条平台上传未评估；两批历史未知结果仍需原页人工核查。Kimi read-only explorer 的 receipt 绑定旧源码，提供拖拽送达与 fixture 盲区分析；parent 核查并裁决，不把 PARSED 当验收。
+
+## Live Acceptance Follow-up
+
+2026-10-07 用户授权使用新成片实传验收。新制作 run `ef730516-3ddc-4692-afa9-bc7246bee39f` 导出肥皂、一条根各 30 条；首个小文件进入各自原 modal，后续大组停止并保留 UNKNOWN。Playwright 1.63.0 在未声明 `isLocal` 的 CDP 连接上把本机 Chrome 视为不同主机，对每组总大小达到 50 MiB 的本地路径拒绝传输；已有小 fixture 没有覆盖该边界。隔离 Chrome 的两个新增大文件回归在原 uploader 上真实失败。
+
+Parent 串行只修改 `src/main/douyin-cdp-uploader.ts` 的同机连接声明、`tests/douyin-cdp-uploader.test.ts` 的单文件 51 MiB 和 9 个 6 MiB 追加回归及本计划/incident record。已校验的 loopback endpoint、拒绝 WS redirect 的原 transport、私有冻结快照、最多 9 条、唯一 chooser、全部 fence、原 modal 和人工确定边界保持；不修改历史 ledger 或重选 UNKNOWN。该参数使用当前安装版本的公开 API，不改依赖或媒体编码。
+
+先完成两个 red-green 回归、typecheck 和 owned-scope Harness，再以一轮新制作（两账号各 30 条，最多 60 个新字节成片）实传复验，沿用原手填文字、账号和计划，本地随机且关闭覆盖，零模型请求，停在确定前。本次复验与首次失败记录分别保存；失败不盲目追加实传次数。完成须分别证明平台精确 30 行全就绪、软件 READY、未知记录保留，并维护 AOCI 和当前 upstream 提交。
+
+Parent Self-Review：单一 uploader 原默认远程解释由准确的本机解释替代，不新增文件入口或重试。两个大小用例覆盖单文件和合计边界，同一 modal 小首组后追加的大组须精确各一次；真实平台结果单独决定验收，测试通过不能替代。
