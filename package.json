@@ -33,6 +33,7 @@
     "react-dom": "18.3.1",
     "smol-toml": "1.6.0",
     "sql.js": "1.14.2",
+    "ws": "8.22.0",
     "zod": "3.24.1"
   },
   "devDependencies": {
@@ -41,6 +42,7 @@
     "@types/react": "18.3.18",
     "@types/react-dom": "18.3.5",
     "@types/sql.js": "1.4.9",
+    "@types/ws": "8.18.1",
     "electron": "33.2.1",
     "electron-builder": "25.1.8",
     "esbuild": "0.24.2",

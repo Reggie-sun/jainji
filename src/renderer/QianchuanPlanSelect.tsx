@@ -3,6 +3,13 @@ import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QianchuanPlanListSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { acquireQianchuanPlans } from "./qianchuan-plan-requests";
 
+function planReadError(cause: unknown): string {
+  const message = cause instanceof Error ? cause.message.replace(/\u001b\[[0-9;]*m/g, "").replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "";
+  if (/connectOverCDP/.test(message) && /timeout/i.test(message)) return "连接账号 Chrome 超时，请检查浏览器后刷新计划。";
+  if (/connectOverCDP|ws:\/\/|Call log:/.test(message) || !message || message.length > 180) return "读取计划失败，请检查所选 Chrome 后刷新计划。";
+  return message;
+}
+
 export function QianchuanPlanSelect({ account, value, onChange, disabled = false, idPrefix = "qianchuan", compact = false, purpose = "upload" }: {
   account?: QianchuanAccountSummary; value?: QianchuanPlanOption;
   onChange(value?: QianchuanPlanOption): void; disabled?: boolean; idPrefix?: string; compact?: boolean; purpose?: "upload" | "cleanup";
@@ -42,7 +49,7 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
     }).catch(cause => {
       if (!active) return;
       change.current(undefined);
-      setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "读取计划失败，请检查所选 Chrome 的登录状态。");
+      setError(planReadError(cause));
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; request.release(); };
   }, [product, advertiserId, available, revision]);

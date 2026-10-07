@@ -1,5 +1,6 @@
 import { chromium, type Browser, type CDPSession, type JSHandle, type Page, type Response as BrowserResponse } from "playwright-core";
 import { guardedTransport } from "./local-cdp-transport.js";
+import { QianchuanPickerTransport } from "./qianchuan-picker-transport.js";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { QianchuanPlanOptionSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
@@ -260,6 +261,7 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
   signal.throwIfAborted();
   if (!/^[1-9][0-9]{0,19}$/.test(target.advertiserId) || !isLoopbackUrl(target.cdpEndpoint) || new URL(target.cdpEndpoint).pathname !== "/") throw changed();
   let relay: Awaited<ReturnType<typeof guardedTransport>> | undefined;
+  let pickerTransport: QianchuanPickerTransport | undefined;
   let browser: Browser | undefined;
   let page: Page | undefined;
   let pickerSession: CDPSession | undefined;
@@ -276,7 +278,9 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
     // Keep the relay alive until cancellation has closed this invocation's target.
     relay = await guardedTransport(info.webSocketDebuggerUrl, transportController.signal, 10_000);
     signal.throwIfAborted();
-    const connection = chromium.connectOverCDP(relay.url, { timeout: 10_000, noDefaults: true }).then(async connected => {
+    pickerTransport = await QianchuanPickerTransport.connect(relay.url, transportController.signal);
+    signal.throwIfAborted();
+    const connection = chromium.connectOverCDP(pickerTransport, { timeout: 10_000, noDefaults: true }).then(async connected => {
       if (signal.aborted) { await connected.close().catch(() => undefined); signal.throwIfAborted(); }
       return connected;
     });
@@ -297,6 +301,8 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
     try {
       creating = pickerSession.send("Target.createTarget", { url: "about:blank", background: true });
       pickerTargetId = (await creating).targetId;
+      signal.throwIfAborted();
+      await abortable(pickerTransport.attach(pickerTargetId), signal);
     } finally { clearTimeout(creationTimer); }
     signal.throwIfAborted();
     page = await abortable(opening, signal);
@@ -320,12 +326,16 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
     }
     return plans.map(plan => products.get(plan.adId)?.name === plan.name ? { ...plan, productNames: products.get(plan.adId)!.productNames } : plan);
   } finally {
+    const cleanupTimer = setTimeout(() => transportController.abort(), 2000);
+    cleanupTimer.unref();
     if (page && productResponse) page.off("response", productResponse);
     await page?.close({ runBeforeUnload: false }).catch(() => undefined);
     if (pickerTargetId) await pickerSession?.send("Target.closeTarget", { targetId: pickerTargetId }).catch(() => undefined);
     await pickerSession?.detach().catch(() => undefined);
     await browser?.close().catch(() => undefined);
     transportController.abort();
+    pickerTransport?.close();
     await relay?.close().catch(() => undefined);
+    clearTimeout(cleanupTimer);
   }
 }

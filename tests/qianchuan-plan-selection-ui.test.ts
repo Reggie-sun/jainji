@@ -70,6 +70,29 @@ async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: 
 }
 async function selected(page: Page) { return page.locator("#selection").textContent().then(value => JSON.parse(value!)); }
 describe("plan selector browser interaction", () => {
+  it("keeps account controls aligned and offers recovery after a raw CDP timeout", async () => {
+    const page = await fixture({ batch: true });
+    try {
+      await page.addStyleTag({ content: readFileSync("src/renderer/styles.css", "utf8") + readFileSync("src/renderer/batch-production.css", "utf8") });
+      await page.evaluate(() => (window as any).catalogRequests[0].reject(new Error("Error invoking remote method 'douyinUpload.listPlans': TimeoutError: browserType.connectOverCDP: Timeout 10000ms exceeded. Call log: \u001b[2m - <ws connected> ws://127.0.0.1:34515/private-session\u001b[22m")));
+      await page.getByRole("alert").waitFor();
+      expect(await page.getByRole("alert").textContent()).toBe("连接账号 Chrome 超时，请检查浏览器后刷新计划。");
+      const geometry = await page.locator(".batch-upload-account").evaluate(element => {
+        const account = element.querySelector('[aria-label="上传账号"]')!.getBoundingClientRect();
+        const plan = element.querySelector('[aria-label="上传计划"]')!.getBoundingClientRect();
+        return { accountY: account.y, planY: plan.y, height: element.getBoundingClientRect().height, overflow: element.scrollWidth > element.clientWidth };
+      });
+      expect(geometry.accountY).toBeCloseTo(geometry.planY, 0);
+      expect(geometry.height).toBeLessThan(140);
+      expect(geometry.overflow).toBe(false);
+      expect(await page.getByLabel("上传计划").isDisabled()).toBe(true);
+      await page.getByRole("button", { name: "刷新计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await page.getByRole("button", { name: "返回两个计划" }).click();
+      await page.getByLabel("上传计划").selectOption("9001");
+      expect((await selected(page)).plan.adId).toBe("9001");
+    } finally { await page.close(); }
+  });
   it("shares StrictMode and multiple selectors and cancels the final lease on exit", async () => {
     const page = await fixture({ strict: true, multiple: true });
     try {

@@ -5,6 +5,8 @@ import { chromium, type Browser, type BrowserContext, type Page } from "playwrig
 import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 import * as transport from "../src/main/local-cdp-transport";
+import { QianchuanPickerTransport } from "../src/main/qianchuan-picker-transport";
+import WebSocket, { WebSocketServer } from "ws";
 import type { FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
 import { readPlanProductNames, readQianchuanPlans, readVisibleQianchuanPlans } from "../src/main/qianchuan-plan-catalog";
 
@@ -251,9 +253,12 @@ it("uses a new marked picker tab and detaches without touching existing user tab
   const relay = { url: "ws://127.0.0.1:42002/relay", close: vi.fn(async () => {}) };
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ webSocketDebuggerUrl: "ws://127.0.0.1:42001/devtools/browser/test" })));
   vi.spyOn(transport, "guardedTransport").mockResolvedValue(relay);
+  const pickerTransport = { attach: vi.fn(async () => {}), close: vi.fn() };
+  vi.spyOn(QianchuanPickerTransport, "connect").mockResolvedValue(pickerTransport as unknown as QianchuanPickerTransport);
   const connect = vi.spyOn(chromium, "connectOverCDP").mockResolvedValue(attachedBrowser as unknown as Browser);
   await expect(readQianchuanPlans(target, signal)).rejects.toThrow("fixture stops after navigation");
-  expect(connect).toHaveBeenCalledWith(relay.url, { timeout: 10_000, noDefaults: true });
+  expect(connect).toHaveBeenCalledWith(pickerTransport, { timeout: 10_000, noDefaults: true });
+  expect(pickerTransport.attach).toHaveBeenCalledWith("owned-picker");
   expect(context.newPage).not.toHaveBeenCalled(); expect(context.pages).not.toHaveBeenCalled();
   expect(pickerSession.send).toHaveBeenCalledWith("Target.createTarget", expect.objectContaining({ background: true }));
   expect(ownedSession.send).toHaveBeenCalledWith("Target.getTargetInfo");
@@ -264,4 +269,94 @@ it("uses a new marked picker tab and detaches without touching existing user tab
   expect(concurrentTab.close).not.toHaveBeenCalled(); expect(concurrentTab.goto).not.toHaveBeenCalled();
   expect(concurrentSession.detach).toHaveBeenCalledTimes(1);
   expect(uploadTab.close).not.toHaveBeenCalled(); expect(uploadTab.goto).not.toHaveBeenCalled();
+});
+
+it("attaches only the owned picker and preserves existing and concurrently opened pages", async () => {
+  const profile = await mkdtemp(path.join(tmpdir(), "jianji-picker-transport-"));
+  const context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true,
+    args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
+  const controller = new AbortController();
+  let relay: Awaited<ReturnType<typeof transport.guardedTransport>> | undefined;
+  let connection: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  let proxy: WebSocketServer | undefined;
+  try {
+    const userPage = context.pages()[0]!;
+    await userPage.goto("data:text/html,<title>Existing user page</title>");
+    const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
+    const info = await (await fetch(`http://127.0.0.1:${port}/json/version`)).json();
+    // Simulate a sleeping user renderer: browser commands answer, page initialization never does.
+    const userSession = await context.newCDPSession(userPage);
+    const userTarget = (await userSession.send("Target.getTargetInfo")).targetInfo.targetId;
+    await userSession.detach();
+    proxy = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+    await new Promise<void>(resolve => proxy!.once("listening", resolve));
+    let stalledCommands = 0;
+    proxy.on("connection", downstream => {
+      const upstream = new WebSocket(info.webSocketDebuggerUrl);
+      const stalled = new Set<string>();
+      const queued: string[] = [];
+      upstream.on("open", () => { for (const message of queued) upstream.send(message); });
+      downstream.on("message", bytes => {
+        const message = JSON.parse(bytes.toString());
+        if (stalled.has(message.sessionId)) { stalledCommands++; return; }
+        if (upstream.readyState === WebSocket.OPEN) upstream.send(bytes.toString()); else queued.push(bytes.toString());
+      });
+      upstream.on("message", bytes => {
+        const message = JSON.parse(bytes.toString());
+        if (message.method === "Target.attachedToTarget" && message.params.targetInfo.targetId === userTarget) stalled.add(message.params.sessionId);
+        if (downstream.readyState === WebSocket.OPEN) downstream.send(bytes.toString());
+      });
+      downstream.on("close", () => upstream.terminate()); upstream.on("close", () => downstream.terminate());
+      upstream.on("error", () => downstream.terminate()); downstream.on("error", () => upstream.terminate());
+    });
+    const address = proxy.address();
+    if (!address || typeof address === "string") throw new Error("Expected local port");
+    relay = await transport.guardedTransport(`ws://127.0.0.1:${address.port}`, controller.signal, 5000);
+    await expect(chromium.connectOverCDP(relay.url, { noDefaults: true, timeout: 500 })).rejects.toThrow("Timeout");
+    expect(stalledCommands).toBeGreaterThan(0);
+    stalledCommands = 0;
+    const pickerTransport = await QianchuanPickerTransport.connect(relay.url, controller.signal);
+    connection = await chromium.connectOverCDP(pickerTransport, { noDefaults: true, timeout: 5000 });
+    expect(connection.contexts()).toHaveLength(1);
+    expect(connection.contexts()[0]!.pages()).toHaveLength(0);
+    const concurrent = await context.newPage();
+    await concurrent.goto("data:text/html,<title>Concurrent user page</title>");
+    expect(connection.contexts()[0]!.pages()).toHaveLength(0);
+    const session = await connection.newBrowserCDPSession();
+    const { targetId } = await session.send("Target.createTarget", { url: "about:blank", background: true });
+    const opening = connection.contexts()[0]!.waitForEvent("page", { timeout: 5000 });
+    await pickerTransport.attach(targetId);
+    const picker = await opening;
+    await picker.goto("data:text/html,<title>Owned picker</title>");
+    expect(await picker.title()).toBe("Owned picker");
+    expect(connection.contexts()[0]!.pages()).toEqual([picker]);
+    await picker.close(); await session.detach(); await connection.close();
+    expect(await userPage.title()).toBe("Existing user page");
+    expect(await concurrent.title()).toBe("Concurrent user page");
+    expect(stalledCommands).toBe(0);
+  } finally {
+    controller.abort(); await relay?.close(); await connection?.close();
+    for (const client of proxy?.clients ?? []) client.terminate();
+    await new Promise<void>(resolve => proxy ? proxy.close(() => resolve()) : resolve());
+    await context.close(); await rm(profile, { recursive: true, force: true });
+  }
+}, 20_000);
+
+it("cancels a pending picker attachment and disconnects its socket", async () => {
+  const server = new WebSocketServer({ port: 0, host: "127.0.0.1" });
+  await new Promise<void>(resolve => server.once("listening", resolve));
+  const controller = new AbortController();
+  try {
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected local port");
+    const pickerTransport = await QianchuanPickerTransport.connect(`ws://127.0.0.1:${address.port}`, controller.signal);
+    const pending = pickerTransport.attach("owned-picker");
+    const rejected = expect(pending).rejects.toThrow("连接已断开");
+    controller.abort();
+    await rejected;
+  } finally {
+    controller.abort();
+    for (const client of server.clients) client.terminate();
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  }
 });
