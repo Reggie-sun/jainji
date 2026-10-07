@@ -12,10 +12,12 @@ const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
 export function BatchProductionDetails({ request, name, onBack }: { request: BatchProductionDetailRequest; name: string; onBack(): void }) {
   const [detail, setDetail] = useState<BatchProductionDetail>();
   const [error, setError] = useState("");
+  const [uploadError, setUploadError] = useState("");
+  const [resuming, setResuming] = useState(false);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
-    setDetail(undefined); setError("");
+    setDetail(undefined); setError(""); setUploadError("");
     const refresh = async () => {
       try {
         const next = await window.jianji.batchProductionDetails({ runId: request.runId, jobId: request.jobId });
@@ -30,15 +32,22 @@ export function BatchProductionDetails({ request, name, onBack }: { request: Bat
     try { if (reveal) await window.jianji.revealArtifact(id); else await window.jianji.openArtifact(id); }
     catch (cause) { setError(message(cause)); }
   };
+  const resumeUpload = async (uploadTaskId: string) => {
+    setResuming(true); setUploadError("");
+    try { await window.jianji.resumeBatchUpload({ ...request, uploadTaskId }); }
+    catch (cause) { setUploadError(message(cause)); }
+    finally { setResuming(false); }
+  };
   return <>
     <button type="button" className="text-button batch-details-back" onClick={onBack}>← 返回批量列表</button>
     <Heading title={`${name} · 作品与导出`}>查看该商品本批每条视频的制作与导出进度；完成后可播放成片。</Heading>
     {error && <p className="notice error" role="alert">{error}</p>}
-    {detail ? <BatchProductionWorkList detail={detail} onArtifact={(id, reveal) => void artifact(id, reveal)} /> : !error && <p role="status">正在读取作品…</p>}
+    {uploadError && <p className="notice error" role="alert">{uploadError}</p>}
+    {detail ? <BatchProductionWorkList detail={detail} onArtifact={(id, reveal) => void artifact(id, reveal)} onResumeUpload={id => void resumeUpload(id)} resuming={resuming} /> : !error && <p role="status">正在读取作品…</p>}
   </>;
 }
 
-export function BatchProductionWorkList({ detail, onArtifact }: { detail: BatchProductionDetail; onArtifact(id: string, reveal: boolean): void }) {
+export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, resuming }: { detail: BatchProductionDetail; onArtifact(id: string, reveal: boolean): void; onResumeUpload?(id: string): void; resuming?: boolean }) {
   const { job, tasks, items, usesModel } = detail;
   const taskById = new Map(tasks.map(task => [task.id, task]));
   const unqueued = items.filter(item => !item.taskId || !taskById.has(item.taskId));
@@ -66,6 +75,8 @@ export function BatchProductionWorkList({ detail, onArtifact }: { detail: BatchP
           {task.upload_outcome === "READY" && <small>上传记录已保存 · 待在 Chrome 确认</small>}
           {task.upload_outcome === "MAY_HAVE_UPLOADED" && <small>结果未知，禁止重新上传，请核查原页面。</small>}
         </div>
+        {onResumeUpload && !detail.upload?.historical && !task.duplicate_of && ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN", "CANCELLED"].includes(task.state) &&
+          <button type="button" className="button secondary compact" disabled={resuming || processing.length > 0 || (unknown > 0 && task.upload_outcome === "NOT_SELECTED")} onClick={() => onResumeUpload(task.upload_task_id)}>{task.upload_outcome === "MAY_HAVE_UPLOADED" ? "核查原上传页" : "安全继续"}</button>}
       </div>)}
       <QianchuanUploadHistory batches={detail.upload?.closedBatches} />
     </section>}

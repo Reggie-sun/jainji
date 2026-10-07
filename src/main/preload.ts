@@ -14,13 +14,14 @@ import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/q
 import type { QianchuanPlanListRequest, QianchuanPlanCancel, QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import type { QianchuanLibraryScheduleSettings, QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule.js";
-import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest } from "../shared/batch-production.js";
+import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest, BatchUploadResume } from "../shared/batch-production.js";
 import type { TemplateAccountBinding, TemplateAccountSelection } from "../shared/batch-upload.js";
 
 const api = {
   batchProductionProjects: (): Promise<BatchProjectOption[]> => ipcRenderer.invoke("batchProduction.projects"),
   saveBatchUploadAccount: (input: TemplateAccountSelection): Promise<TemplateAccountBinding> => ipcRenderer.invoke("batchProduction.saveUploadAccount", input),
   batchProductionDetails: (input: BatchProductionDetailRequest): Promise<BatchProductionDetail> => ipcRenderer.invoke("batchProduction.details", input),
+  resumeBatchUpload: (input: BatchUploadResume): Promise<void> => ipcRenderer.invoke("batchProduction.resumeUpload", input),
   startBatchProduction: (input: BatchProductionStart): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.start", input),
   cancelBatchProduction: (): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.cancel"),
   cancelBatchProductionJob: (input: BatchProductionDetailRequest): Promise<DesktopState> => ipcRenderer.invoke("batchProduction.cancelJob", input),

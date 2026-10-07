@@ -88,6 +88,8 @@ export type BatchProductionRun = z.infer<typeof BatchProductionRunSchema>;
 
 export const BatchProductionDetailRequestSchema = z.object({ runId: z.string().uuid(), jobId: z.string().uuid() }).strict();
 export type BatchProductionDetailRequest = z.infer<typeof BatchProductionDetailRequestSchema>;
+export const BatchUploadResumeSchema = BatchProductionDetailRequestSchema.extend({ uploadTaskId: z.string().regex(/^[a-f0-9]{64}$/) });
+export type BatchUploadResume = z.infer<typeof BatchUploadResumeSchema>;
 export interface BatchProductionDetail {
   runId: string;
   job: BatchProductionJob;

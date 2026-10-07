@@ -175,6 +175,16 @@ Parent Self-Review：复用 canonical page/store/service，无第二队列或恢
 
 ## Throughput Acceptance Delta
 
+### Upload Preparation Recovery Delta (2026-10-08)
+
+用户授权修复上传失败并在下次自动重连。原生 chooser 的打开、唯一性与 input 结构预检在 `markSelecting` 之前完成；此阶段不传文件。通过后才保存永久 fence，再重验冻结控件与页面并调用一次 setFiles。准备失败保持 NOT_SELECTED；不将旧 fence 或 UNKNOWN 迁移为未选。
+
+同一初始上传组的连接及准备阶段，只有 browser 类 CDP_UNAVAILABLE/retryable 或 TIMEOUT 且该批没有任何 fence 时，允许最多三次尝试、1/2 秒退避。每次先停止旧自动化连接，再建新 adapter；停止、取消、归属/快照变化、停止失败均阻断。账号登录、身份、容量及页面结构拒绝不自动重试。已有 fence 的追加组和所有发送结果未知任务不进入此重试分支。该窄修订替代旧“选前均无自动 retry”，不授权发送后重传。
+
+批量详情的“安全继续”和“核查原上传页”以当前 runId/jobId/uploadTaskId 为输入；主进程从原批量 owner 取得冻结项目与捕获 export task 集合，核验实际上传任务归属后调用原 service.requestResume。单项目 IPC 的 currentProject 限制不放宽，renderer 不能指定替代项目或任务成员。未知成员只读核查；未选成员仍受账户级未知阻塞，不能以恢复入口解除。
+
+Self-Review：保留旧磁盘格式、原事实、原快照及唯一 service/store。历史蝴蝶贴未知记录不授重传；空列表不证明未上传。实施及验收见 [Upload Recovery Plan](superpowers/plans/2026-10-08-upload-recovery.md)。
+
 2026-10-06 用户再次要求速度：**有多少正式准入成片就立即传多少，每次最多 9 条；不等凑齐、不等上一条或上一组完成。** 此要求取代此前等待凑满九条或全部制作结束才释放尾组的修复。制作尚未完成、后续 queue chunks 尚未登记，以及 completed 尚未完成正式 artifact 准入，均不得延迟当前已经准入且允许选择的成员。
 
 唯一现有平台约束是当前组件累计行数恰好 10 时禁用入口，见 [Incident Evidence](qianchuan-upload-disabled-2026-10-06.md)。若本组会中途停在累计 10，先投递其中可使累计到 9 的成员；第十条只等至少再一条已准入成员后一起投递跨至 11 或以上，每组仍最多 9 条，或在冻结成员全部已准入/可信终止且无在途准入时作为最终一条上传。其他不足九条的组立即发出。此等待使用既有有界 processing 和取消机制；同一连续窗口内等待时继续只读观察原页，不修改平台禁用状态、不确认、不删除或重传。首个文件动作前的等待有独立 processing 上限，尚不连接或观察页面，结束后才沿原准入核验页面；开始递送后的连续窗口沿用 §6.1 的总期限，追加不重置。等待超时的未选成员保持 NOT_SELECTED，进入 NEEDS_HUMAN；用户核查原页后可显式“安全继续”，不得自动重试。已有 fence 的成员仍按未知结果只读恢复。

@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { buildSync } from "esbuild";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
-import { BatchProductionStartSchema, batchRequiresDisplayText } from "../src/shared/batch-production";
+import { BatchProductionStartSchema, batchRequiresDisplayText, type BatchProductionDetail } from "../src/shared/batch-production";
 import { BatchProductionController, type BatchProductionSession } from "../src/main/batch-production-controller";
 import { createBatchProductionRuntime } from "../src/main/batch-production-runtime";
 import { createDefaultProject, type ExportTask, type Project } from "../src/main/domain";
@@ -68,7 +68,8 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
       return { target: { product: selection.accountProduct, cdpEndpoint: "http://127.0.0.1:9222", advertiserId: account.advertiserId,
         adId: account.adId, configDigest: "a".repeat(64) }, pageBatchId: crypto.randomUUID(), expectedCount: count };
     }),
-    uploadStatus: vi.fn((_projectId: string, _taskIds: string[]) => ({ message: "fixture upload", tasks: [] })),
+    uploadStatus: vi.fn((_projectId: string, _taskIds: string[]): BatchProductionDetail["upload"] => ({ message: "fixture upload", tasks: [] })),
+    resumeUpload: vi.fn(async (_id: string) => undefined),
     cancelUploads: vi.fn(async (_projectId: string, _taskIds: string[]) => undefined),
     session: vi.fn(async (file: string, _authorization?: UploadAuthorization): Promise<BatchProductionSession> => {
       const value = await new ProjectStore(file).readSnapshot(); frozen.push(value);
@@ -100,6 +101,25 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it("resumes only uploads captured by the current run and job without switching projects", async () => {
+    const f = await fixture({ allComplete: true });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.busy).toBe(false));
+    const job = f.controller.snapshot()!.jobs[0];
+    const id = "a".repeat(64);
+    const task = { upload_task_id: id, project_id: job.projectId, export_task_id: job.taskIds[0] };
+    f.dependencies.uploadStatus.mockReturnValue({ tasks: [task] } as BatchProductionDetail["upload"]);
+    await f.controller.resumeUpload({ runId: run.id, jobId: job.id, uploadTaskId: id });
+    expect(f.dependencies.resumeUpload).toHaveBeenCalledWith(id);
+    for (const input of [
+      { runId: crypto.randomUUID(), jobId: job.id, uploadTaskId: id },
+      { runId: run.id, jobId: run.jobs[1].id, uploadTaskId: id },
+      { runId: run.id, jobId: job.id, uploadTaskId: "b".repeat(64) },
+    ]) await expect(f.controller.resumeUpload(input)).rejects.toThrow();
+    f.dependencies.uploadStatus.mockReturnValue({ tasks: [{ ...task, export_task_id: crypto.randomUUID() }] } as BatchProductionDetail["upload"]);
+    await expect(f.controller.resumeUpload({ runId: run.id, jobId: job.id, uploadTaskId: id })).rejects.toThrow("不属于");
+    expect(f.dependencies.resumeUpload).toHaveBeenCalledTimes(1);
+  });
   it("freezes shared explicit bindings for differently named templates before next-batch edits", async () => {
     const f = await fixture({ allComplete: true });
     f.projects[0].name = "新眼贴模板"; f.projects[1].name = "眼贴2";
@@ -730,6 +750,27 @@ describe("batch automatic plan preparation", () => {
     browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
   }, 30000);
   afterAll(async () => { await browser?.close(); });
+  it("executes batch recovery from the rendered details and preserves errors across polling", async () => {
+    const page = await browser.newPage();
+    try {
+      await page.setContent('<div id="root"></div>');
+      const script = buildSync({ stdin: { contents: `
+        import React from "react"; import {createRoot} from "react-dom/client";
+        import {BatchProductionDetails} from "./src/renderer/BatchProductionDetails";
+        window.calls=[];
+        window.jianji={batchProductionDetails:async()=>({runId:"run",job:{id:"job",name:"蝴蝶贴",accountProduct:"蝴蝶贴",requestedCount:1,actualCount:1},tasks:[],items:[],
+          upload:{tasks:[{upload_task_id:"unknown",file_name:"unknown.mp4",state:"NEEDS_HUMAN",upload_outcome:"MAY_HAVE_UPLOADED"}]}}),
+          resumeBatchUpload:async input=>{window.calls.push(input);throw new Error("原页面无法确认，未重传");}};
+        createRoot(document.getElementById("root")).render(<BatchProductionDetails request={{runId:"run",jobId:"job"}} name="蝴蝶贴" onBack={()=>{}}/>);
+      `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic", loader: { ".css": "empty" } }).outputFiles[0]!.text;
+      await page.addScriptTag({ content: script });
+      await page.getByRole("button", { name: "核查原上传页", exact: true }).click();
+      await page.getByText("原页面无法确认，未重传", { exact: true }).waitFor();
+      await page.waitForTimeout(1200);
+      expect(await page.getByText("原页面无法确认，未重传", { exact: true }).isVisible()).toBe(true);
+      expect(await page.evaluate(() => (window as unknown as { calls: unknown[] }).calls)).toEqual([{ runId: "run", jobId: "job", uploadTaskId: "unknown" }]);
+    } finally { await page.close(); }
+  });
   async function panel(): Promise<Page> {
     const page = await browser.newPage();
     await page.route("http://127.0.0.1:3000/batch-plan-intent", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));

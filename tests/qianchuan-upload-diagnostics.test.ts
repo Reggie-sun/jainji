@@ -74,10 +74,8 @@ describe("finite upload blocker diagnostics", () => {
   ])("rejects an invalid or missing native chooser without delivering files: %j", async controls => {
     fixture.setControls(controls);
     const value = await task(), prepared = await session(value); value.config.timeouts.action = 300;
-    await prepared.port.prepare([value], [], prepared.targetId, signal);
-    value.result.upload_outcome = "MAY_HAVE_UPLOADED";
-    await expect(prepared.port.upload([value], signal)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
-    expect(value.result.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+    await expect(prepared.port.prepare([value], [], prepared.targetId, signal)).rejects.toMatchObject({ failure: { code: "chooserMissing" in controls ? "TIMEOUT" : "PAGE_CONTRACT_CHANGED" } });
+    expect(value.result.upload_outcome).toBe("NOT_SELECTED");
     await zeroConfirmation(0);
     expect((await fixture.inspect()).events.filter(event => event.type === "files")).toEqual([]);
     expect((await fixture.inspect()).events.filter(event => event.type === "chooser-open")).toHaveLength(1);
@@ -86,15 +84,39 @@ describe("finite upload blocker diagnostics", () => {
   it("cancels an outstanding chooser without a delayed file action", async () => {
     fixture.setControls({ chooserMissing: true });
     const value = await task(), prepared = await session(value);
-    await prepared.port.prepare([value], [], prepared.targetId, signal); value.result.upload_outcome = "MAY_HAVE_UPLOADED";
     const cancellation = new AbortController();
-    const operation = prepared.port.upload([value], cancellation.signal);
+    const operation = prepared.port.prepare([value], [], prepared.targetId, cancellation.signal);
     await vi.waitFor(async () => expect((await fixture.inspect()).events.filter(event => event.type === "chooser-open")).toHaveLength(1));
     cancellation.abort();
     await expect(operation).rejects.toThrow();
     expect((await fixture.inspect()).events.filter(event => ["files", "drop", "confirm", "settings"].includes(event.type))).toEqual([]);
     await prepared.page.waitForTimeout(350);
     expect((await fixture.inspect()).events.filter(event => event.type === "files")).toEqual([]);
+  });
+
+  it("holds exactly one validated chooser across the durable-fence window", async () => {
+    const value = await task(), prepared = await session(value);
+    const detach = vi.spyOn(prepared.page, "off");
+    await prepared.port.prepare([value], [], prepared.targetId, signal);
+    await zeroConfirmation(0);
+    expect((await fixture.inspect()).events.filter(event => event.type === "chooser-open")).toHaveLength(1);
+    await prepared.page.waitForTimeout(150);
+    value.result.upload_outcome = "MAY_HAVE_UPLOADED";
+    await prepared.port.upload([value], signal);
+    await zeroConfirmation(1);
+    expect((await fixture.inspect()).events.filter(event => event.type === "chooser-open")).toHaveLength(1);
+    expect(detach).toHaveBeenCalledWith("filechooser", expect.any(Function));
+  });
+
+  it("refuses a second chooser during fence persistence without sending files", async () => {
+    const value = await task(), prepared = await session(value);
+    const detach = vi.spyOn(prepared.page, "off");
+    await prepared.port.prepare([value], [], prepared.targetId, signal);
+    await prepared.page.locator('[data-e2e="oc_emptyKey_uni-prom__createMaterialUploadVideo"]').getByText("点击上传", { exact: true }).click();
+    value.result.upload_outcome = "MAY_HAVE_UPLOADED";
+    await expect(prepared.port.upload([value], signal)).rejects.toThrow();
+    await zeroConfirmation(0);
+    expect(detach).toHaveBeenCalledWith("filechooser", expect.any(Function));
   });
 
   const permissionReason = "当前账户无该抖音号的全域投放权限，不支持添加素材";

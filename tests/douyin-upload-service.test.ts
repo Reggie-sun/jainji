@@ -1490,12 +1490,12 @@ describe("Qianchuan upload service", () => {
     expect(f.store.hasMarker(record!.result.upload_task_id)).toBe(false);
     expect(f.store.task(record!.result.upload_task_id)?.result.upload_outcome).toBe("NOT_SELECTED");
     expect(f.events).not.toContain("file-input");
-    expect(f.store.tasks()[0]?.result.state).toBe(mode === "cancel" ? "CANCELLED" : "FAILED_TERMINAL");
+    expect(f.store.tasks()[0]?.result.state).toBe(mode === "cancel" ? "CANCELLED" : "FAILED_RETRYABLE");
     const status = f.service.status(batch.projectId);
     expect(status.message).toContain("1 条需处理");
-    expect(status.message).toContain(mode === "cancel" ? "已停止 1 条" : "终止失败 1 条");
+    expect(status.message).toContain(mode === "cancel" ? "已停止 1 条" : "3 次");
     expect(status.message).toContain(status.tasks[0]!.failure!.message);
-    if (mode === "timeout") await expect(f.service.resume(record!.result.upload_task_id)).rejects.toThrow("终止记录");
+    if (mode === "timeout") expect(status.tasks[0]).toMatchObject({ retryable: true, retry_count: 2 });
   });
 
   it("disabling during a delayed operation aborts it and prevents a late selection or the next batch action", async () => {
@@ -1660,6 +1660,32 @@ describe("Qianchuan upload service", () => {
     expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "READY" && task.retry_count === 2 && task.attempt_count === 1)).toBe(true);
   });
 
+  it("reconnects preparation timeouts before any fence and sends files only once", async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    let opens = 0, stops = 0;
+    f = await fixture(() => ({ ...f.port, open: async (tasks, selected, signal) => {
+      expect(tasks.every(task => !f.store.hasMarker(task.result.upload_task_id))).toBe(true);
+      if (++opens < 3) throw uploadFailure("TIMEOUT", "browser", "chooser timed out before files", "reconnect", false, true);
+      return f.port.open(tasks, selected, signal);
+    }, stop: async () => { stops++; } }));
+    await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["preparation retry"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]); await f.service.runPending();
+    expect(opens).toBe(3); expect(stops).toBeGreaterThanOrEqual(2);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "READY", retry_count: 2 });
+  });
+
+  it("does not retry a file action timeout once the durable fence exists", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const upload = vi.fn(async () => { throw uploadFailure("TIMEOUT", "browser", "file action outcome unknown", "inspect", false, true); });
+    f.port.upload = upload;
+    const batch = await f.createBatch(["uncertain file"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]); await f.service.runPending();
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "MAY_HAVE_UPLOADED", retry_count: 0 });
+  });
+
   it.each(["CDP_UNAVAILABLE", "TIMEOUT"] as const)("exhausts three %s connection attempts and only continues after an explicit request", async code => {
     const f = await fixture(); await f.authorize(); await f.service.configure({ enabled: true, timeouts: { connect: 20 } }); await f.service.beginProduction();
     const blocked = await f.createBatch(Array.from({ length: 10 }, (_, index) => `offline bytes ${index}`)), other = await f.createBatch(["online bytes"], { product: "热敷贴" });
@@ -1754,13 +1780,13 @@ describe("Qianchuan upload service", () => {
     expect(f.events).not.toContain("file-input");
   });
 
-  it.each(["open", "ready"] as const)("does not retry a connection-shaped error from %s", async phase => {
+  it.each(["open", "ready"] as const)("retries %s only before any file selection", async phase => {
     const f = await fixture(); await f.authorize(); await f.service.beginProduction();
     const batch = await f.createBatch([`failure at ${phase}`]); await f.register(batch); await f.service.enqueueFinalArtifact(batch.identities[0]!);
     f.port[phase] = async () => { throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture later error", "check page", false, true); };
     await f.service.runPending(); await f.service.runPending();
-    expect(f.events.filter(event => event === "connect")).toHaveLength(1);
-    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: phase === "ready" ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", retry_count: 0 });
+    expect(f.events.filter(event => event === "connect")).toHaveLength(phase === "open" ? 3 : 1);
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: phase === "ready" ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", retry_count: phase === "open" ? 2 : 0 });
   });
 
   it("does not automatically reconnect a fenced read-only recovery", async () => {

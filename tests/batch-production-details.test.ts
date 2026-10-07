@@ -9,6 +9,19 @@ const render = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMar
     displayMode: "full", status: "producing", taskIds: [], completedCount: 0, failedCount: 0 }, items: [], tasks: [], ...patch }, onArtifact: () => undefined }));
 
 describe("batch works presentation", () => {
+  it("offers bounded resume for unselected tasks and only read-only checks for uncertain uploads", () => {
+    const detail = { runId: "run", job: { id: "job", name: "蝴蝶贴", actualCount: 2, requestedCount: 2, accountProduct: "蝴蝶贴" }, items: [], tasks: [],
+      upload: { tasks: [
+        { upload_task_id: "a", file_name: "unknown.mp4", state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" },
+        { upload_task_id: "b", file_name: "pending.mp4", state: "PENDING", upload_outcome: "NOT_SELECTED" },
+      ] } } as unknown as BatchProductionDetail;
+    const html = renderToStaticMarkup(createElement(BatchProductionWorkList, { detail, onArtifact: () => undefined, onResumeUpload: () => undefined }));
+    expect(html).toContain('>核查原上传页</button>');
+    expect(html).toMatch(/disabled="">安全继续<\/button>/);
+    detail.upload!.tasks.shift();
+    const pending = renderToStaticMarkup(createElement(BatchProductionWorkList, { detail, onArtifact: () => undefined, onResumeUpload: () => undefined }));
+    expect(pending).toContain('>安全继续</button>'); expect(pending).not.toContain('disabled=""');
+  });
   it("shows frozen Hybrid partial outcomes while keeping export errors authoritative", () => {
     const coverSummary = "自动形状匹配 · 已处理 0 个角落；右上：语义未确认；其他角落保持原样";
     const tasks = [{ id: "t1", status: "completed", progress: 1, coverSummary },

@@ -89,6 +89,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
     });
   }
   async stop(): Promise<void> {
+    this.session?.clearChooser();
     this.controller.abort(); await this.transport?.close();
     const browser = this.browser; this.browser = undefined; await browser?.close().catch(() => undefined);
     // Relay detaches automation; Chrome, default context and every task tab remain for the user.
