@@ -37,6 +37,17 @@ it("recognizes the first-login account home without granting upload authority", 
     await expect(discover([{ ...tab(), url: `https://qianchuan.jinritemai.com/home${suffix}` }])).rejects.toThrow("未找到");
   }
 });
+it("recognizes the exact account video library without requiring an open plan tab", async () => {
+  const url = "https://qianchuan.jinritemai.com/tools/creative-management/video-library";
+  expect(await discover([{ ...tab(), url: `${url}?aavid=123` }])).toBe(endpoint);
+  for (const value of [
+    `${url}?aavid=124`, `${url}?aavid=123&aavid=123`, url,
+    `${url}/other?aavid=123`, `${url}-other?aavid=123`,
+    "https://example.com/tools/creative-management/video-library?aavid=123",
+    "https://user@qianchuan.jinritemai.com/tools/creative-management/video-library?aavid=123",
+  ]) await expect(discover([{ ...tab(), url: value }])).rejects.toThrow("未找到");
+  await expect(discover([{ ...tab(), url: `${url}?aavid=123` }], [endpoint, "http://127.0.0.1:9322"])).rejects.toThrow("多个");
+});
 it("discovers browser-internal remote debugging over websocket without HTTP metadata", async () => {
   const fetch = vi.fn(), targets = vi.fn(async () => [tab()]);
   expect(await discoverQianchuanBrowser("123", { endpoints: async () => [socket], fetch, targets })).toBe(endpoint);

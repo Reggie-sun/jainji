@@ -2,9 +2,10 @@ import { constants } from "node:fs";
 import { lstat, open, readdir, readlink, realpath } from "node:fs/promises";
 import path from "node:path";
 import { readChromeTargets } from "./local-cdp-transport.js";
+import { VIDEO_LIBRARY_ROUTE } from "../shared/qianchuan-video-library.js";
 
 const unavailable = "无法完整连接千川浏览器。请保持账号 Chrome 打开；若 Chrome 提示允许远程调试，请先允许后重试。";
-const missing = "未找到该账户的可连接浏览器，请在已登录 Chrome 中打开对应的千川计划。";
+const missing = "未找到该账户的可连接浏览器，请在已登录 Chrome 中打开对应的千川首页、计划或视频库。";
 const maxEndpoints = 16;
 const portNumber = (value: string | undefined) => value && /^[1-9][0-9]{0,4}$/.test(value) && Number(value) <= 65535 ? Number(value) : undefined;
 function flag(args: string[], name: string): string | undefined {
@@ -152,7 +153,7 @@ async function accountVisible(endpoint: string, advertiserId: string, request: t
     if (tab.type !== "page") continue;
     let url: URL;
     try { url = new URL(tab.url); } catch { continue; }
-    if (url.origin !== "https://qianchuan.jinritemai.com" || !["/uni-prom", "/home"].includes(url.pathname) || url.username || url.password) continue;
+    if (url.origin !== "https://qianchuan.jinritemai.com" || !["/uni-prom", "/home", VIDEO_LIBRARY_ROUTE].includes(url.pathname) || url.username || url.password) continue;
     const ids = url.searchParams.getAll("aavid");
     if (ids.length === 1 && ids[0] === advertiserId) matched = true;
   }

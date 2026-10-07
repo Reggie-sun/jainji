@@ -137,8 +137,7 @@ export class QianchuanBrowserManager {
   }
   async prepare(advertiserId: string): Promise<string> {
     const endpoint = await this.open(advertiserId);
-    try { return await discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] }); }
-    catch { throw new Error("请先在已绑定的账号浏览器中登录千川并打开该账户，再开始制作。"); }
+    return discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] });
   }
   /** Catalog preparation only observes running browsers; never launches or activates Chrome. */
   async prepareExisting(advertiserId: string): Promise<string> {

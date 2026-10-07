@@ -76,10 +76,22 @@ it("waits for reachable startup CDP rather than treating a leftover port file as
 it("requires the selected account page and never probes another browser during preparation", async () => {
   const f = await fixture();
   const request = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify([{ type: "page", url: "https://qianchuan.jinritemai.com/uni-prom?aavid=999" }])));
-  await expect(f.manager.prepare("123")).rejects.toThrow("登录千川");
+  await expect(f.manager.prepare("123")).rejects.toThrow("未找到该账户");
   request.mockResolvedValue(new Response(JSON.stringify([{ type: "page", url: "https://qianchuan.jinritemai.com/uni-prom?aavid=123" }])));
   expect(await f.manager.prepare("123")).toBe("http://127.0.0.1:9300");
   expect(request.mock.calls.every(call => call[0] === "http://127.0.0.1:9300/json/list")).toBe(true);
+});
+it("keeps connection failures distinct from missing account pages without exposing transport errors", async () => {
+  const f = await fixture();
+  vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("private transport payload"));
+  await expect(f.manager.prepare("123")).rejects.toThrow("无法完整连接千川浏览器");
+});
+it("prepares the same bound browser when only its account video library remains open", async () => {
+  const f = await originalFixture(); await f.manager.prepare("123");
+  f.request.mockImplementation(async () => new Response(JSON.stringify([{ type: "page", url: "https://qianchuan.jinritemai.com/tools/creative-management/video-library?aavid=123" }])));
+  expect(await f.manager.prepare("123")).toBe(f.browser.endpoint);
+  expect(await f.manager.prepareExisting("123")).toBe(f.browser.endpoint);
+  expect(f.launch).not.toHaveBeenCalled();
 });
 it("prepares catalogs only from existing browsers without launching or creating profiles", async () => {
   const f = await fixture();
@@ -297,7 +309,7 @@ it("attaches repeatedly to real isolated Chrome without remote-debugging permiss
   }
 }, 30_000);
 
-it("controls a real isolated original Chrome, including non-CDP restart, while preserving its directory, class and local data", async () => {
+it("discovers a real isolated library-only Chrome and controls restart while preserving its directory, class and local data", async () => {
   const f = await fixture(), executable = await resolveChromeExecutable();
   const original = path.join(f.root, "original"), root = path.join(f.root, "app");
   const options = { profileDirectory: "Profile 9", windowClass: "cp-isolated" };
@@ -320,7 +332,7 @@ it("controls a real isolated original Chrome, including non-CDP restart, while p
     try {
       const page = browser.contexts()[0].pages()[0];
       await page.route("**/*", route => route.fulfill({ body: "isolated metadata fixture", contentType: "text/html" }));
-      await page.goto("https://qianchuan.jinritemai.com/uni-prom?aavid=123");
+      await page.goto("https://qianchuan.jinritemai.com/tools/creative-management/video-library?aavid=123");
     } finally { await browser.close(); }
     const manager = new QianchuanBrowserManager(root, { launch, browsers });
     expect(await manager.prepare("123")).toBe(endpoint); expect(launch).toHaveBeenCalledTimes(1);
