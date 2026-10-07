@@ -227,6 +227,10 @@ export function createLocalRandomPlan(): LegacyPackagingPlan {
   };
 }
 
+export function pickRandomPriceStyle(): PriceStyleId {
+  return PRICE_STYLES[Math.floor(Math.random() * PRICE_STYLES.length)].id;
+}
+
 export function validatePlan(input: unknown, ruleId: RuleId, catalog?: AgentDecorationCatalog): PackagingPlan {
   const plan = catalog ? AgentPlanSchema.parse(input) : PlanSchema.parse(input);
   const rule = getRule(ruleId);
@@ -288,7 +292,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   const rule = getRule(ruleId);
   // Local-random path: font color (priceStyle) is picked from the full catalog
   // per material. Manual and agent modes keep their existing sources.
-  const randomPriceStyleId: PriceStyleId | undefined = options.mode === "random" ? PRICE_STYLES[Math.floor(Math.random() * PRICE_STYLES.length)].id : undefined;
+  const randomPriceStyleId: PriceStyleId | undefined = options.mode === "random" ? pickRandomPriceStyle() : undefined;
   const priceStyle = options.mode === "agent" ? (plan as AgentPackagingPlan).priceStyle : options.mode === "random" ? randomPriceStyleId : options.priceStyle;
   const stickerLayer = (corner: Corner, sticker: NonNullable<StickerAssets[string]>, index: number, width: number = rule.stickerWidth, rotationDeg: number = rule.stickerRotation): Layer => {
     const safeWidth = Math.min(width, CORNER_SAFE_POLICY.maxStickerWidth);

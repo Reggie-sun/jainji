@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "c44fae61fb6a212dd944bff3d3455d67dfc0e8910eef9742a82182612a47257f",
-      "size": 96581,
-      "normalized_sha256": "c44fae61fb6a212dd944bff3d3455d67dfc0e8910eef9742a82182612a47257f"
+      "sha256": "2fb08f29339c90d30990b9daa9a9082858d163f553cc01ed113dc07272f4c8e7",
+      "size": 96510,
+      "normalized_sha256": "2fb08f29339c90d30990b9daa9a9082858d163f553cc01ed113dc07272f4c8e7"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1123,9 +1123,9 @@
       "normalized_sha256": "08913d142fe1e094d7f464f49f659a4eed93d734651b293a2a80299a07a43662"
     },
     "src/main/agent-provider.ts": {
-      "sha256": "e919e219d748f7134aa55c9958c922eb06edccbf658bf0e15564413495ed4bf2",
-      "size": 45465,
-      "normalized_sha256": "e919e219d748f7134aa55c9958c922eb06edccbf658bf0e15564413495ed4bf2"
+      "sha256": "82a84cfbf7af2214cdb0cabb043922cd1d0961de216072e4ff8d5282699636d1",
+      "size": 45556,
+      "normalized_sha256": "82a84cfbf7af2214cdb0cabb043922cd1d0961de216072e4ff8d5282699636d1"
     },
     "src/main/agent-runner.ts": {
       "sha256": "02bc497a545e14561a4ed5770b7f67ab4751db9ca4b11a708cd32c8de4ec5898",
@@ -1418,9 +1418,9 @@
       "normalized_sha256": "5eed9c1bc8b19b3ac415cf636de92893686b0f044c8b4f24e485d852e3d09e59"
     },
     "src/main/hybrid-cover-session.ts": {
-      "sha256": "85a85f376e43cc15b3556c02ac097ac5a9bd7c48548cd9ab7eb81493a6231282",
-      "size": 7911,
-      "normalized_sha256": "85a85f376e43cc15b3556c02ac097ac5a9bd7c48548cd9ab7eb81493a6231282"
+      "sha256": "4d1c55c8da2fb8c29a591647434faf01a47af0b306b2cb1193f995ae5ed76dc3",
+      "size": 8336,
+      "normalized_sha256": "4d1c55c8da2fb8c29a591647434faf01a47af0b306b2cb1193f995ae5ed76dc3"
     },
     "src/main/index.ts": {
       "sha256": "9a426840c95ebe5d974b12077a69abb2ca05fa38a12a2876463fee948c45ad93",
@@ -1583,9 +1583,9 @@
       "normalized_sha256": "c5c8f17451efebb725e41ba7651f01bbd867f69ffbd1bd9ee03ce067210e51da"
     },
     "src/main/shape-cover-activation.ts": {
-      "sha256": "8bb661156a000146bb7d6907d6e8baabfff013c8fed9ff4bb4ea6e716dde096c",
-      "size": 1392,
-      "normalized_sha256": "8bb661156a000146bb7d6907d6e8baabfff013c8fed9ff4bb4ea6e716dde096c"
+      "sha256": "c41fdf0d8450c2658d75e42e4608b33d7d86d3c71f4167e944828568b69d7983",
+      "size": 1285,
+      "normalized_sha256": "c41fdf0d8450c2658d75e42e4608b33d7d86d3c71f4167e944828568b69d7983"
     },
     "src/main/shape-cover-admission.ts": {
       "sha256": "c976dc0e13c6ff437d18687c49a79b875fcd64f646596d014d96a0e26076e227",
@@ -1968,9 +1968,9 @@
       "normalized_sha256": "82edf1973cd7c108e89b55d4bcd27cd0f1b20660862fd84ea5088c1439d46e92"
     },
     "src/renderer/CornerDecorationPicker.tsx": {
-      "sha256": "9c4f2520ed79c9e75ad9c4cd3a69fb21842fb18eeaff41a126802f413628b3d6",
-      "size": 4562,
-      "normalized_sha256": "9c4f2520ed79c9e75ad9c4cd3a69fb21842fb18eeaff41a126802f413628b3d6"
+      "sha256": "ad6def75050410cab01832f49f411176d94ea35d4093bfd8a8843036282af7e4",
+      "size": 4702,
+      "normalized_sha256": "ad6def75050410cab01832f49f411176d94ea35d4093bfd8a8843036282af7e4"
     },
     "src/renderer/CoverReviewBox.tsx": {
       "sha256": "b0ccd2f60f577ba70d5874d29242515e9a7e5633fc39ad80e3ed3f405dc95eb3",
@@ -2118,14 +2118,14 @@
       "normalized_sha256": "33e8bc37090011bd8f4798b56545bf4684b61713e4399ff40ee835f4aa1de37b"
     },
     "src/renderer/TemplatePanel.tsx": {
-      "sha256": "08da52160f1e2365c6d9635d9bf2b6d1d25c34cc9358a1b1722b9860de0f63b0",
-      "size": 12098,
-      "normalized_sha256": "08da52160f1e2365c6d9635d9bf2b6d1d25c34cc9358a1b1722b9860de0f63b0"
+      "sha256": "5de0251c3b065c5890e17a2a6dfd02f188726f8327dd299d12c17c19b277bda5",
+      "size": 12194,
+      "normalized_sha256": "5de0251c3b065c5890e17a2a6dfd02f188726f8327dd299d12c17c19b277bda5"
     },
     "src/renderer/TemplatePreview.tsx": {
-      "sha256": "575eb110dbbd5fa5a875abf308c371333038768f7ddb2084e8bc50cb36a873f8",
-      "size": 14428,
-      "normalized_sha256": "575eb110dbbd5fa5a875abf308c371333038768f7ddb2084e8bc50cb36a873f8"
+      "sha256": "16dd806c411a634b1ba110b6267679457a84695f2df8fc8e8169286c7a5651e5",
+      "size": 14560,
+      "normalized_sha256": "16dd806c411a634b1ba110b6267679457a84695f2df8fc8e8169286c7a5651e5"
     },
     "src/renderer/VisionConnectionPanel.tsx": {
       "sha256": "a8ed048c483bd14b810978b0c57e597a7af747bd27c87bfdd2688a201cc68cba",

@@ -3,6 +3,7 @@ import { createHybridProductionSession } from "../src/main/hybrid-cover-session.
 import { DEFAULT_PRESET, type MediaItem } from "../src/main/domain.js";
 import { DecorationSchema } from "../src/shared/decorations.js";
 import type { StickerAssets } from "../src/main/builtin-stickers.js";
+import { PRICE_STYLES, priceStyleAppearance } from "../src/shared/price-styles.js";
 
 const mocks = vi.hoisted(() => ({ identity: vi.fn(), close: vi.fn(), discovery: vi.fn(), semantic: vi.fn(), geometry: vi.fn(), approve: vi.fn(), fresh: vi.fn() }));
 vi.mock("../src/main/supervisor-evidence.js", () => ({ SupervisorEvidence: class {
@@ -70,6 +71,37 @@ it("exports an explicit unchanged result when every corner is unresolved or skip
   mocks.geometry.mockResolvedValue({ status: "READY", corners: [{ corner: "TOP_RIGHT", status: "SKIPPED" }], verifyFresh: mocks.fresh });
   const result = await fixture().prepare(); expect(result.layers).toEqual([]); expect(result.name).toContain("已处理 0 个角落");
   expect(mocks.approve).not.toHaveBeenCalled();
+});
+it("randomizes only text appearance per output and freezes exact templates without requiring ordinary corner assets", async () => {
+  const random = vi.spyOn(Math, "random").mockReturnValue(0);
+  const session = createHybridProductionSession({ tools: { ffmpegPath: "unused", ffprobePath: "unused" }, preset: DEFAULT_PRESET,
+    directory: "/unused", candidates: [], stickerAssets: {} as StickerAssets, ruleId: "clean", routes: async () => ({} as any),
+    decorations: DecorationSchema.parse({ mode: "random", productPrice: "用户原文", frame: { mode: "none" }, displayText: { enabled: true, x: .5, y: .7 } }) });
+  const prepare = (version = 0) => session.prepare(media, version, "run", new AbortController().signal, () => {});
+  try {
+    const first = await prepare();
+    expect(first.layers.find(l => l.type === "text")).toMatchObject({ content: "用户原文", ...priceStyleAppearance(PRICE_STYLES[0]) });
+    expect(first.layers.filter(l => l.type === "sticker")).toEqual([pass]);
+    random.mockReturnValue(.99999);
+    expect(await prepare()).toEqual(first);
+    const next = await prepare(1);
+    expect(next.layers.find(l => l.type === "text")).toMatchObject(priceStyleAppearance(PRICE_STYLES.at(-1)!));
+    expect(next.layers.filter(l => l.type === "sticker")).toEqual([pass]);
+    first.layers.length = 0;
+    expect((await prepare()).layers).toHaveLength(2);
+    expect(mocks.geometry).toHaveBeenCalledTimes(1);
+    expect(mocks.approve).toHaveBeenCalledTimes(2);
+  } finally { random.mockRestore(); }
+});
+it("keeps per-media text disabled in random Hybrid and honors cancellation before a cached output", async () => {
+  const session = createHybridProductionSession({ tools: { ffmpegPath: "unused", ffprobePath: "unused" }, preset: DEFAULT_PRESET,
+    directory: "/unused", candidates: [], stickerAssets: {} as StickerAssets, ruleId: "clean", routes: async () => ({} as any),
+    decorations: DecorationSchema.parse({ mode: "random", displayTextByMedia: { [media.id]: { enabled: false, x: .5, y: .7 } }, frame: { mode: "none" } }) });
+  const result = await session.prepare(media, 0, "run", new AbortController().signal, () => {});
+  expect(result.layers).toEqual([pass]);
+  const cancelled = new AbortController(); cancelled.abort();
+  await expect(session.prepare(media, 0, "run", cancelled.signal, () => {})).rejects.toThrow();
+  expect(mocks.geometry).toHaveBeenCalledTimes(1);
 });
 it("does not convert infrastructure failure into a skipped corner or retry the unknown request", async () => {
   mocks.approve.mockRejectedValue(Error("UNSAFE: HYBRID_QA_INFRASTRUCTURE"));

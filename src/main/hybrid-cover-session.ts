@@ -14,7 +14,7 @@ import { ShapeCoverVisionSession, type VisionRole, type VisionRoute } from "./sh
 import { prepareHybridCornerOverlays, readHybridFrozenOverlay } from "./shape-cover-hybrid-h3.js";
 import { approveHybridOverlay, hybridTemplate, hybridVideoMedia } from "./hybrid-cover-production.js";
 import type { HybridStickerCandidate } from "./shape-cover-hybrid-shape.js";
-import { materializePlan, ProviderError } from "./agent-provider.js";
+import { materializePlan, pickRandomPriceStyle, ProviderError } from "./agent-provider.js";
 import type { FullSourceCensusInput } from "./source-fact-census.js";
 import { sourceKey } from "./source-sticker-knowledge-store.js";
 import { createDecorationFrameResolver } from "./decoration-frame.js";
@@ -32,7 +32,9 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
   const pending = new Map<string, Promise<{ layers: Awaited<ReturnType<typeof approveHybridOverlay>>[]; summary: string }>>();
   const resolveFrame = createDecorationFrameResolver(deps.decorations, deps.stickerAssets);
   const frozenOptions = new Map<string, DecorationOptions>();
+  const templates = new Map<string, EditTemplate>();
   return { prepare: async (media, version, _runId, signal, onStage) => {
+    signal.throwIfAborted();
     const outputKey = `${media.id}:${version}`;
     if (!frozenOptions.has(outputKey)) frozenOptions.set(outputKey, resolveFrame(media.id));
     const key = media.fingerprint;
@@ -93,10 +95,16 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
     }
     const { layers, summary } = await operation;
     signal.throwIfAborted();
-    // User-authored display text uses the original materializer. No extra corner artwork or filter changes.
-    const options = { ...frozenOptions.get(outputKey)!, mode: "manual" as const, sticker: "none" as const, corners: undefined, displayText: displayTextSettings(deps.decorations, media.id) };
+    const existing = templates.get(outputKey);
+    if (existing) return structuredClone(existing);
+    // Randomize text only: discovery results do not authorize ordinary corner artwork or new filters.
+    const displayText = displayTextSettings(deps.decorations, media.id);
+    const options = { ...frozenOptions.get(outputKey)!, mode: "manual" as const, sticker: "none" as const, corners: undefined, displayText,
+      ...(deps.decorations.mode === "random" && displayText.enabled ? { priceStyle: pickRandomPriceStyle() } : {}) };
     const rule = getRule(deps.ruleId);
     const base = materializePlan({ summary, captions: [], filter: rule.filters[0], intensity: rule.minIntensity }, deps.ruleId, media, deps.stickerAssets, options);
-    return hybridTemplate(layers, { ...base, name: summary });
+    const template = hybridTemplate(layers, { ...base, name: summary });
+    templates.set(outputKey, template);
+    return structuredClone(template);
   } };
 }

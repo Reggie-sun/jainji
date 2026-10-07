@@ -6,6 +6,8 @@ import type { ExportQueue } from "../src/main/queue";
 import type { ShapeCoverCandidateRequest } from "../src/main/shape-cover-candidates";
 import { createCoverReviewDraft } from "../src/main/cover-review-session";
 import type { MediaItem } from "../src/main/domain";
+import { createDefaultTemplate } from "../src/main/domain";
+import type { HybridProductionSession } from "../src/main/hybrid-cover-session";
 import type { BuiltinStickerAssets } from "../src/main/builtin-stickers";
 import { AgentStartSchema, FrozenAgentStartSchema, type AgentStartInput } from "../src/shared/agent";
 import type { CoverSticker } from "../src/shared/cover-sticker";
@@ -23,15 +25,15 @@ const cover = (trackingMode: CoverSticker["trackingMode"] = "agent", enabled = t
   enabled, trackingMode, stickerIds: [], rectangle: { x: 0.35, y: 0.4, width: 0.3, height: 0.2 },
 });
 
-function fixture(settings: CoverSticker | undefined = cover(), knowledge?: SourceStickerKnowledgeStore) {
+function fixture(settings: CoverSticker | undefined = cover(), knowledge?: SourceStickerKnowledgeStore, hybrid?: HybridProductionSession) {
   const ffmpeg = new FfmpegAdapter("unused", "unused");
   const service = new ApplicationService(ffmpeg, { resolve: async () => null });
   service.currentProject.coverSticker = settings;
-  const calls = { createBatch: vi.fn(), renderPreview: vi.fn(), publishApprovedSample: vi.fn(), createShapeCoverArtifactStore: vi.fn() };
+  const calls = { createBatch: vi.fn(), start: vi.fn(async () => {}), cancel: vi.fn(async () => {}), renderPreview: vi.fn(), publishApprovedSample: vi.fn(), createShapeCoverArtifactStore: vi.fn() };
   const queue = { snapshot: () => ({ revision: 1, batches: [] }), ...calls } as unknown as ExportQueue;
   const register = vi.fn(), preflight = vi.fn();
   const stickers = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map(id => [id, { assetPath: `/unused/${id}.png`, assetFingerprint: `sha256:${"a".repeat(64)}` }])) as BuiltinStickerAssets;
-  const controller = new AgentController(service, queue, ffmpeg, () => {}, stickers, undefined, undefined, undefined, undefined, knowledge, register, preflight);
+  const controller = new AgentController(service, queue, ffmpeg, () => {}, stickers, undefined, undefined, undefined, undefined, knowledge, register, preflight, undefined, hybrid);
   const providerCalls = [controller.provider, controller.visionProvider, controller.reviewerProvider].flatMap(provider =>
     [vi.spyOn(provider, "plan"), vi.spyOn(provider, "shortlist"), vi.spyOn(provider, "detectCovers"), vi.spyOn(provider, "superviseShapePreview")]);
   return { controller, service, calls, register, preflight, providerCalls };
@@ -129,12 +131,32 @@ describe("Hybrid shape product controller entry", () => {
     } finally { vi.restoreAllMocks(); }
   });
 
-  it("keeps local-random shape combinations closed", async () => {
+  it("admits local-random shape intent but retains output directory authorization", async () => {
     const test = fixture(), request = shapeInput();
     try {
-      await expect(test.controller.start({ ...request, decorations: { ...request.decorations, mode: "random" } }, new Set())).rejects.toThrow(/UNSAFE:.*本地随机/);
+      await expect(test.controller.start({ ...request, decorations: { ...request.decorations, mode: "random" } }, new Set())).rejects.toThrow(/系统对话框选择输出目录/);
       expectNoExecution(test);
     } finally { vi.restoreAllMocks(); }
+  });
+
+  it("routes saved Hybrid plus random packaging through the original runner and queue for every requested version", async () => {
+    const root = await mkdtemp(join(tmpdir(), "hybrid-random-entry-"));
+    const template = createDefaultTemplate("已冻结覆盖与随机包装");
+    const prepare = vi.fn(async () => template);
+    const test = fixture({ ...cover(), coverStrategy: "shape-matched-static-v1" }, {} as SourceStickerKnowledgeStore, { prepare });
+    const request = input();
+    test.service.currentProject.mediaItems.push({ id: request.mediaIds[0], sourcePath: join(root, "source.mp4"), displayName: "source.mp4",
+      fingerprint: `sha256:${"a".repeat(64)}`, sizeBytes: 1000, durationMs: 2000, width: 160, height: 160,
+      rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() });
+    test.calls.createBatch.mockImplementation(async () => ({ id: crypto.randomUUID(), tasks: [{ id: crypto.randomUUID() }] }));
+    try {
+      await test.controller.start({ ...request, requestedCount: 2, outputDirectory: root, decorations: { ...request.decorations, mode: "random" } }, new Set([root]));
+      await vi.waitFor(() => expect(test.calls.start).toHaveBeenCalledTimes(2));
+      expect(prepare).toHaveBeenCalledTimes(2);
+      expect(test.calls.createBatch.mock.calls.every(([value]) => value.template === template)).toBe(true);
+      for (const call of test.providerCalls) expect(call).not.toHaveBeenCalled();
+      expect(test.preflight).not.toHaveBeenCalled();
+    } finally { await test.controller.cancel(); vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); }
   });
 
   it("does not run upload preflight for a shape combination", async () => {

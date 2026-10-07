@@ -11,7 +11,9 @@ import { approveHybridOverlay, hybridTemplate, readApprovedHybridCover, assertHy
 import { MediaCatalog } from "../src/main/media.js";
 import type { HybridFrozenOverlay } from "../src/main/shape-cover-hybrid-h3.js";
 import type { VisionRoute, VisionRole } from "../src/main/shape-cover-vision-router.js";
-import { FfmpegAdapter } from "../src/main/ffmpeg.js";
+import { FfmpegAdapter, resolveFont } from "../src/main/ffmpeg.js";
+import { materializePlan, pickRandomPriceStyle } from "../src/main/agent-provider.js";
+import { getRule } from "../src/shared/agent.js";
 import { ExportQueue } from "../src/main/queue.js";
 import { JobStore } from "../src/main/store.js";
 import { createDefaultTemplate, DEFAULT_PRESET, type MediaItem } from "../src/main/domain.js";
@@ -44,7 +46,7 @@ it("binds video time separately from the imported container duration without acc
   } finally { await rm(root, { recursive: true, force: true }); }
 }, 20000);
 
-it("H4 approved partial corner uses exact frozen bytes in the original compiler/queue and rejects tamper before publication", async () => {
+it.each([false, true])("H4 approved partial corner preserves frozen bytes with random text=%s and rejects tamper before publication", async randomText => {
   const root = await mkdtemp(join(tmpdir(), "hybrid-product-")), signal = AbortSignal.timeout(120000);
   const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), sourcePath = join(root, "source.mp4");
   try {
@@ -85,8 +87,13 @@ it("H4 approved partial corner uses exact frozen bytes in the original compiler/
     await writeFile(framePath, framePng);
     const frames = decorationFrameLayers("frame-stars", { ...await ensureBuiltinStickerAssets(root),
       "frame-stars": { assetPath: framePath, assetFingerprint: `sha256:${hash(framePng)}` } });
-    const template = hybridTemplate([layer], { ...createDefaultTemplate(), layers: frames }), preset = { ...DEFAULT_PRESET, ...settings };
-    expect(template.layers).toEqual([...frames, layer]);
+    const rule = getRule("clean");
+    const base = randomText ? materializePlan({ summary: "随机文字加形状覆盖", captions: [], filter: rule.filters[0], intensity: rule.minIntensity }, "clean", source, await ensureBuiltinStickerAssets(root),
+      { mode: "manual", sticker: "none", productPrice: "原文", priceStyle: pickRandomPriceStyle(), frame: { mode: "none" }, displayText: { enabled: true, x: .5, y: .7 } }) : createDefaultTemplate();
+    const template = hybridTemplate([layer], { ...base, layers: [...frames, ...base.layers] }), preset = { ...DEFAULT_PRESET, ...settings };
+    expect(template.layers).toEqual([...frames, ...base.layers, layer]);
+    expect(template.filter).toEqual({ presetId: "none", intensity: 0 });
+    if (randomText) expect(template.layers.find(l => l.type === "text")).toMatchObject({ content: "原文" });
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "fixture.mp4", fingerprint: source.fingerprint, sizeBytes: source.byteLength,
       durationMs: 2000, width: 160, height: 160, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
     expect(await readApprovedHybridCover(structuredClone(layer), media, preset)).toEqual(png);
@@ -102,11 +109,11 @@ it("H4 approved partial corner uses exact frozen bytes in the original compiler/
       { ...layer, cover: { ...layer.cover!, hybridApproved: { ...layer.cover!.hybridApproved!, approvalId: crypto.randomUUID() } } }]) {
       expect(() => assertHybridTemplateReady({ ...template, layers: [altered] })).toThrow("APPROVAL_BINDING");
     }
-    const compiler = new TemplateCompiler(), compiled = await compiler.compile(template, media, preset, { ffmpegPath: ffmpegBin, fontResolver: { resolve: async () => null }, textFilePath: id => join(root, id), threads: 2 });
+    const compiler = new TemplateCompiler(), compiled = await compiler.compile(template, media, preset, { ffmpegPath: ffmpegBin, fontResolver: { resolve: resolveFont }, textFilePath: id => join(root, id), threads: 2 });
     expect(compiled.binaryFiles?.[0].content).toEqual(png);
     expect(compiled.args[compiled.args.indexOf("-filter_complex") + 1]).toContain("overlay=0:0:enable='gte(t,0)*lt(t,2)'");
     expect(compiled.args.join(" ")).not.toContain("color=white");
-    const queue = new ExportQueue({ jobStore: new JobStore(join(root, "jobs")), ffmpeg, fontResolver: { resolve: async () => null }, videoEncoder: { status: "ready", encoder: "libx264" } as any });
+    const queue = new ExportQueue({ jobStore: new JobStore(join(root, "jobs")), ffmpeg, fontResolver: { resolve: resolveFont }, videoEncoder: { status: "ready", encoder: "libx264" } as any });
     queue.setMediaLookup(() => media);
     const batch = await queue.createBatch({ template, mediaIds: [media.id], mediaItems: [media], outputDirectory: join(root, "output"), preset });
     await queue.start(batch.id);

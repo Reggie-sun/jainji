@@ -42,7 +42,7 @@ export function TemplatePanel({ selected, onSelect, brief, onBrief, outputDirect
   const invalidQuantity = !quantity || quantity.total > MAX_AGENT_OUTPUTS;
   const total = quantity?.total ?? 0;
   return <>
-    <Heading title="包装设置">{automatic ? "Agent 可按每条素材选择贴纸；本地只限制位置、尺寸与新增文字。" : random ? "滤镜、强度、四角贴纸与价格花字逐版本本地随机，无需选择模板；展示文字使用你填写的原文。" : "手动设置贴纸和展示文字；已保存的旧模板设置继续保留。"}</Heading>
+    <Heading title="包装设置">{automatic ? "Agent 可按每条素材选择贴纸；本地只限制位置、尺寸与新增文字。" : random ? "普通包装的滤镜、四角贴纸与文字样式逐版本本地随机；组合自动形状匹配时，仅随机文字样式，边框按独立设置，保留原色和未确认角落。展示文字使用你填写的原文。" : "手动设置贴纸和展示文字；已保存的旧模板设置继续保留。"}</Heading>
     {!automatic && !random && <details className="card">
       <summary>旧模板兼容设置</summary>
       <label htmlFor="legacy-rule">手动滤镜与默认贴纸<select id="legacy-rule" value={selected} disabled={disabled} onChange={event => onSelect(event.target.value as RuleId)}>{RULE_TEMPLATES.map(template => <option key={template.id} value={template.id}>{template.name} · {template.filterLabel}</option>)}</select></label>

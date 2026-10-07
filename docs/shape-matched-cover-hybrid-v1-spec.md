@@ -132,6 +132,14 @@ MediaCatalog 的容器时长和 H2/H3/H4 的视频轨时长分别解释；生产
 
 执行计划见 [Activation Plan](superpowers/plans/2026-10-06-hybrid-corner-activation.md)。当前交付状态及确切证据见 [Activation Record](shape-matched-cover-hybrid-activation-record.md)；历史 H4 READY 本身不构成 Activation。
 
+## Local Random Packaging Delta
+
+2026-10-08 用户授权本地随机与自动形状匹配组合。`decorations.mode=random` 不再作为 Hybrid 入口拒绝条件；覆盖仍使用原 H2/H3/H4，随机包装不发起创作选款调用。用户手填展示文字的外观逐素材版本本地随机，逐素材开关、位置、显示时段及边框独立设置沿原 owner 物化；同版本重复准备和导出重试复用完整冻结模板。
+
+四角由 Hybrid 独占；NO_CANDIDATE/NO_OVERLAY 不是空缺或主体安全证明，不补普通随机角落贴纸，未确认角落保持原样。保持原色，不追加随机滤镜。前端说明该组合的有效随机范围；不声称四角均已处理，也不把本地随机解释为自动覆盖无需模型。原 PNG/source/binding、H4 PASS、freshness、取消及 unknown-outcome gates 不变。
+
+执行与验证见 [Local Random Plan](superpowers/plans/2026-10-08-hybrid-local-random.md)。该组合不开放千川上传、其他容器或旧 strict research 路线。
+
 ## Historical H4 Preview Contract
 
 2026-10-06 用户授权从 `000f3e6` 独立 branch/worktree 接 H4，跳过共享 main 的 foreign completion 阻断，不修改 H3 算法。使用既有 archive/PNG 的 source/binding/RGBA/alpha 与原 projected mask 零遗漏复查；archive 不恢复 live H3 ownership。原 compiler 空模板接全画布 PNG 0:0 overlay，完整 preview 核验逐帧 PTS/endPTS、时长和源音频 packet hash。PRODUCT_DISABLED、原 export guard 不变。
