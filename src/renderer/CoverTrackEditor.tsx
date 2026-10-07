@@ -9,12 +9,13 @@ const clamp = (value: number, minimum: number, maximum: number) => Math.min(Math
 type Interaction = { kind: "drag" | "resize"; x: number; y: number; timeMs: number; rectangle: CoverRectangle };
 type PreviewRegion = { id: string; rectangle: CoverRectangle; track?: CoverTrack; sticker?: { id?: string; url: string; label: string } };
 
-export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disabled, onActiveRegionChange, onStaticRectangleChange, onTrackChange }: {
+export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disabled, targetOnly = false, onActiveRegionChange, onStaticRectangleChange, onTrackChange }: {
   media: MediaView;
   regions: readonly PreviewRegion[];
   activeRegionId: string;
   enabled: boolean;
   disabled: boolean;
+  targetOnly?: boolean;
   onActiveRegionChange(id: string): void;
   onStaticRectangleChange(id: string, rectangle: CoverRectangle): void;
   onTrackChange(id: string, track?: CoverTrack): void;
@@ -29,7 +30,8 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
   const active = regions.find((region) => region.id === activeRegionId) ?? regions[0];
   const track = active?.track;
   const staticRectangle = active?.rectangle;
-  const canEdit = enabled && Boolean(active?.sticker) && !disabled;
+  const unsupportedTrack = targetOnly && !!track && track.keyframes.length !== 1;
+  const canEdit = enabled && Boolean(targetOnly ? active : active?.sticker) && !disabled && !unsupportedTrack;
   const visible = (region: PreviewRegion) => !region.track || (timeMs >= region.track.startMs && timeMs < region.track.endMs);
   const rectangle = track && staticRectangle ? interpolateCoverRectangle(track.keyframes, timeMs) : staticRectangle;
 
@@ -42,7 +44,8 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
   useEffect(() => {
     interaction.current = undefined;
     video.current?.pause();
-  }, [activeRegionId]);
+    setNotice("");
+  }, [activeRegionId, targetOnly]);
 
   useEffect(() => {
     const element = video.current;
@@ -82,7 +85,8 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
     if (!active || !rectangle) return;
     if (!track) return updateStatic(next);
     pauseForEdit();
-    const frameTime = interaction.current?.timeMs ?? timeMs;
+    if (unsupportedTrack) return;
+    const frameTime = targetOnly ? track.keyframes[0].timeMs : interaction.current?.timeMs ?? timeMs;
     const index = track.keyframes.findIndex((frame) => frame.timeMs === frameTime);
     if (index === -1 && track.keyframes.length >= 50) { setNotice("每条素材最多记录 50 个关键帧，请删除不需要的帧后再调整。"); return; }
     const keyframes = index === -1
@@ -99,7 +103,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
   };
   const updateScale = (percent: number) => {
     if (!rectangle || !Number.isFinite(percent)) return;
-    if (!track) {
+    if (!track || targetOnly) {
       const width = clamp(percent / 100, minimumSize, 1 - rectangle.x);
       return upsert({ ...rectangle, width });
     }
@@ -108,7 +112,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
     upsert({ ...rectangle, width, height: width / ratio });
   };
   const updateStaticHeight = (percent: number) => {
-    if (!rectangle || !Number.isFinite(percent) || track) return;
+    if (!rectangle || !Number.isFinite(percent) || (track && !targetOnly)) return;
     upsert({ ...rectangle, height: clamp(percent / 100, minimumSize, 1 - rectangle.y) });
   };
   const startInteraction = (event: PointerEvent<HTMLDivElement>, kind: Interaction["kind"]) => {
@@ -123,7 +127,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
     const deltaX = (event.clientX - current.x) / bounds.width;
     const deltaY = (event.clientY - current.y) / bounds.height;
     if (current.kind === "drag") upsert({ ...current.rectangle, x: clamp(current.rectangle.x + deltaX, 0, 1 - current.rectangle.width), y: clamp(current.rectangle.y + deltaY, 0, 1 - current.rectangle.height) });
-    else if (!track) upsert({ ...current.rectangle, width: clamp(current.rectangle.width + deltaX, minimumSize, 1 - current.rectangle.x), height: clamp(current.rectangle.height + deltaY, minimumSize, 1 - current.rectangle.y) });
+    else if (!track || targetOnly) upsert({ ...current.rectangle, width: clamp(current.rectangle.width + deltaX, minimumSize, 1 - current.rectangle.x), height: clamp(current.rectangle.height + deltaY, minimumSize, 1 - current.rectangle.y) });
     else {
       const ratio = (track.keyframes[0]?.rectangle.width ?? current.rectangle.width) / (track.keyframes[0]?.rectangle.height ?? current.rectangle.height);
       const delta = Math.abs(deltaX) >= Math.abs(deltaY * ratio) ? deltaX : deltaY * ratio;
@@ -135,7 +139,7 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
     if (!active || !staticRectangle) return;
     pauseForEdit(); setVideoTime(0);
     onTrackChange(active.id, { startMs: 0, endMs: durationMs, keyframes: [{ timeMs: 0, rectangle: { ...staticRectangle } }] });
-    setNotice("已为当前素材启用轨迹，0 ms 关键帧复制固定覆盖框。");
+    setNotice(targetOnly ? "已启用出现时段；区域在时段内保持固定。" : "已为当前素材启用轨迹，0 ms 关键帧复制固定覆盖框。");
   };
   const updateInterval = (field: "startMs" | "endMs", value: number) => {
     if (!track || !active || !Number.isFinite(value)) return;
@@ -156,23 +160,24 @@ export function CoverTrackEditor({ media, regions, activeRegionId, enabled, disa
       {enabled && regions.map((region, index) => {
         const regionRectangle = region.track ? interpolateCoverRectangle(region.track.keyframes, timeMs) : region.rectangle;
         const activeFrame = region.id === active?.id;
-        return region.sticker && visible(region) && <div key={region.id} className={`cover-sticker-frame${activeFrame ? " active" : ""}`} style={{ zIndex: index + 1, left: `${regionRectangle.x * 100}%`, top: `${regionRectangle.y * 100}%`, width: `${regionRectangle.width * 100}%`, height: `${regionRectangle.height * 100}%` }} onPointerDown={(event) => {
+        return (targetOnly || region.sticker) && visible(region) && <div key={region.id} className={`cover-sticker-frame${targetOnly ? " cover-target-frame" : ""}${activeFrame ? " active" : ""}`} style={{ zIndex: index + 1, left: `${regionRectangle.x * 100}%`, top: `${regionRectangle.y * 100}%`, width: `${regionRectangle.width * 100}%`, height: `${regionRectangle.height * 100}%` }} onPointerDown={(event) => {
           event.preventDefault(); event.stopPropagation(); onActiveRegionChange(region.id);
-        }} aria-label="选择覆盖贴纸">{region.sticker.id !== "unified-placeholder" && <img src={region.sticker.url} alt={region.sticker.label} />}</div>;
+        }} aria-label="选择覆盖贴纸">{!targetOnly && region.sticker && region.sticker.id !== "unified-placeholder" && <img src={region.sticker.url} alt={region.sticker.label} />}</div>;
       })}
-      {enabled && active?.sticker && rectangle && visible(active) && <div className="cover-sticker-selection" style={{ zIndex: regions.length + 1, left: `${rectangle.x * 100}%`, top: `${rectangle.y * 100}%`, width: `${rectangle.width * 100}%`, height: `${rectangle.height * 100}%` }} aria-label="拖动覆盖贴纸" onPointerDown={(event) => startInteraction(event, "drag")}><div className="cover-sticker-handle" aria-label="调整覆盖贴纸尺寸" onPointerDown={(event) => startInteraction(event, "resize")} /></div>}
+      {enabled && active && (targetOnly || active.sticker) && rectangle && visible(active) && <div className="cover-sticker-selection" style={{ zIndex: regions.length + 1, left: `${rectangle.x * 100}%`, top: `${rectangle.y * 100}%`, width: `${rectangle.width * 100}%`, height: `${rectangle.height * 100}%` }} aria-label="拖动覆盖贴纸" onPointerDown={(event) => startInteraction(event, "drag")}><div className="cover-sticker-handle" aria-label="调整覆盖贴纸尺寸" onPointerDown={(event) => startInteraction(event, "resize")} /></div>}
     </div>
     <div className="cover-track-time"><button type="button" className="button secondary compact" aria-label={playing ? "暂停预览" : "播放预览"} aria-pressed={playing} disabled={disabled} onClick={togglePlay}><Icon name={playing ? "pause" : "play"} size={15} />{playing ? "暂停" : "播放"}</button><label>当前时间 <input type="number" min={0} max={durationMs} step={1} value={timeMs} disabled={disabled} onChange={(event) => Number.isFinite(event.target.valueAsNumber) && setVideoTime(event.target.valueAsNumber)} /> ms</label><input aria-label="定位视频时间" type="range" min={0} max={durationMs} step={1} value={timeMs} disabled={disabled} onChange={(event) => setVideoTime(event.target.valueAsNumber)} /></div>
-    {!active ? <p className="cover-sticker-note">添加覆盖框后，可拖动并调整它的位置。</p> : !track ? <div className="cover-track-mode"><div><strong>固定覆盖</strong><p>位置和尺寸只影响当前素材。启用轨迹后只影响此素材的当前覆盖框。</p></div><button type="button" className="button secondary compact" disabled={!canEdit} onClick={enableTrack}>为此素材启用轨迹</button></div> : <>
-      <div className="cover-track-mode"><div><strong>此素材的关键帧轨迹</strong><p>位置和缩放只影响当前覆盖框；拖动、缩放或修改数值会暂停视频并记录当前帧。</p></div><button type="button" className="button secondary compact" disabled={disabled} onClick={() => { onTrackChange(active.id, undefined); setNotice("已移除此素材的轨迹，恢复固定覆盖框。"); }}>移除此素材轨迹</button></div>
+    {!active ? <p className="cover-sticker-note">添加覆盖框后，可拖动并调整它的位置。</p> : !track ? <div className="cover-track-mode"><div><strong>固定覆盖</strong><p>{targetOnly ? "框内是需要盖住的区域，默认全片出现。" : "位置和尺寸只影响当前素材。启用轨迹后只影响此素材的当前覆盖框。"}</p></div><button type="button" className="button secondary compact" disabled={!canEdit} onClick={enableTrack}>{targetOnly ? "设置出现时段" : "为此素材启用轨迹"}</button></div> : <>
+      <div className="cover-track-mode"><div><strong>{targetOnly ? "固定目标区域与时段" : "此素材的关键帧轨迹"}</strong><p>{targetOnly ? "调整位置和尺寸会应用到整个出现时段。" : "位置和缩放只影响当前覆盖框；拖动、缩放或修改数值会暂停视频并记录当前帧。"}</p></div><button type="button" className="button secondary compact" disabled={disabled} onClick={() => { onTrackChange(active.id, undefined); setNotice("已移除此素材的轨迹，恢复固定覆盖框。"); }}>{targetOnly ? "恢复全片固定框" : "移除此素材轨迹"}</button></div>
       <div className="cover-track-interval"><label>出现 <input type="number" min={0} max={durationMs} step={1} value={track.startMs} disabled={disabled} onChange={(event) => updateInterval("startMs", event.target.valueAsNumber)} /> ms</label><label>结束 <input type="number" min={1} max={durationMs} step={1} value={track.endMs} disabled={disabled} onChange={(event) => updateInterval("endMs", event.target.valueAsNumber)} /> ms</label></div>
-      <button type="button" className="button secondary compact" disabled={!canEdit || (track.keyframes.length >= 50 && !track.keyframes.some((frame) => frame.timeMs === timeMs))} onClick={() => rectangle && upsert(rectangle)}>记录当前关键帧</button>
-      {!visible(active) && <p className="cover-sticker-note">当前时间不在出现时段内，当前覆盖框不会显示；仍可通过时间定位和关键帧列表继续编辑轨迹。</p>}
-      <div className="cover-keyframe-list"><strong>关键帧 {track.keyframes.length}/50</strong>{track.keyframes.map((frame) => <div key={frame.timeMs}><button type="button" className={frame.timeMs === timeMs ? "active" : ""} disabled={disabled} onClick={() => setVideoTime(frame.timeMs)}>{frame.timeMs} ms</button><span>左 {Math.round(frame.rectangle.x * 100)}% · 上 {Math.round(frame.rectangle.y * 100)}% · 宽 {Math.round(frame.rectangle.width * 100)}%</span><button type="button" disabled={disabled || track.keyframes.length === 1} onClick={() => deleteFrame(frame.timeMs)}>删除</button></div>)}</div>
+      {!targetOnly && <button type="button" className="button secondary compact" disabled={!canEdit || (track.keyframes.length >= 50 && !track.keyframes.some((frame) => frame.timeMs === timeMs))} onClick={() => rectangle && upsert(rectangle)}>记录当前关键帧</button>}
+      {!visible(active) && <p className="cover-sticker-note">{targetOnly ? "当前时间不在出现时段内；将播放时间移入该时段即可查看目标框。" : "当前时间不在出现时段内，当前覆盖框不会显示；仍可通过时间定位和关键帧列表继续编辑轨迹。"}</p>}
+      {!targetOnly && <div className="cover-keyframe-list"><strong>关键帧 {track.keyframes.length}/50</strong>{track.keyframes.map((frame) => <div key={frame.timeMs}><button type="button" className={frame.timeMs === timeMs ? "active" : ""} disabled={disabled} onClick={() => setVideoTime(frame.timeMs)}>{frame.timeMs} ms</button><span>左 {Math.round(frame.rectangle.x * 100)}% · 上 {Math.round(frame.rectangle.y * 100)}% · 宽 {Math.round(frame.rectangle.width * 100)}%</span><button type="button" disabled={disabled || track.keyframes.length === 1} onClick={() => deleteFrame(frame.timeMs)}>删除</button></div>)}</div>}
     </>}
-    {active && rectangle && <div className="cover-track-numbers"><label>左边 <span><input type="number" min={0} max={100} step={1} value={Math.round(rectangle.x * 100)} disabled={!canEdit} onChange={(event) => updatePosition("x", event.target.valueAsNumber)} />%</span></label><label>上边 <span><input type="number" min={0} max={100} step={1} value={Math.round(rectangle.y * 100)} disabled={!canEdit} onChange={(event) => updatePosition("y", event.target.valueAsNumber)} />%</span></label><label>宽度 <span><input type="number" min={1} max={100} step={1} value={Math.round(rectangle.width * 100)} disabled={!canEdit} onChange={(event) => updateScale(event.target.valueAsNumber)} />%</span></label><label>高度 <span>{track ? `${Math.round(rectangle.height * 100)}%（等比）` : <><input type="number" min={1} max={100} step={1} value={Math.round(rectangle.height * 100)} disabled={!canEdit} onChange={(event) => updateStaticHeight(event.target.valueAsNumber)} />%</>}</span></label></div>}
-    {active && !active.sticker && <p className="cover-sticker-note">为当前覆盖框选择独立贴纸，或选择统一候选款后再编辑位置。</p>}
+    {active && rectangle && <div className="cover-track-numbers"><label>左边 <span><input type="number" min={0} max={100} step={1} value={Math.round(rectangle.x * 100)} disabled={!canEdit} onChange={(event) => updatePosition("x", event.target.valueAsNumber)} />%</span></label><label>上边 <span><input type="number" min={0} max={100} step={1} value={Math.round(rectangle.y * 100)} disabled={!canEdit} onChange={(event) => updatePosition("y", event.target.valueAsNumber)} />%</span></label><label>宽度 <span><input type="number" min={1} max={100} step={1} value={Math.round(rectangle.width * 100)} disabled={!canEdit} onChange={(event) => updateScale(event.target.valueAsNumber)} />%</span></label><label>高度 <span>{track && !targetOnly ? `${Math.round(rectangle.height * 100)}%（等比）` : <><input type="number" min={1} max={100} step={1} value={Math.round(rectangle.height * 100)} disabled={!canEdit} onChange={(event) => updateStaticHeight(event.target.valueAsNumber)} />%</>}</span></label></div>}
+    {active && !targetOnly && !active.sticker && <p className="cover-sticker-note">为当前覆盖框选择独立贴纸，或选择统一候选款后再编辑位置。</p>}
     {!enabled && <p className="cover-sticker-note">先启用覆盖并选择贴纸，才能编辑固定位置或此素材的轨迹。</p>}
+    {unsupportedTrack && <p role="alert">此框含移动轨迹，真实贴纸方式不支持。请切回白底方式处理轨迹，或明确恢复全片固定框后重新设定。</p>}
     {notice && <p className="cover-sticker-success" role="status">{notice}</p>}
   </div>;
 }

@@ -4,6 +4,8 @@ import type { CoverReviewCommand } from "../main/cover-review-session";
 import type { MediaView } from "../main/media";
 import type { DesktopState } from "../shared/desktop";
 import { FrozenAgentStartSchema, type AgentStartInput } from "../shared/agent";
+import { manualReviewMatches } from "../shared/manual-cover-review";
+import type { CoverSticker } from "../shared/cover-sticker";
 import { interpolateCoverRectangle } from "../shared/cover-sticker";
 import { HumanRegionBindingSchema, type HumanRegionBinding } from "../shared/human-region-cover";
 import { ExportSettingsSchema, outputDimensions } from "../shared/export-settings";
@@ -53,9 +55,9 @@ function frozenOutputSize(presetJson: string | undefined, media: MediaView | und
   }
 }
 
-export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, assistedArtwork, uploadSelection, onResolveOutputDirectory, onState }: { library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; assistedArtwork?: HumanRegionArtwork; uploadSelection?: UploadSelectionDraft; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onResolveOutputDirectory(existingDirectory?: string): Promise<string>; onState(state: DesktopState): void }) {
+export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, agentRun, assistedArtwork, manualSettings, uploadSelection, onResolveOutputDirectory, onState }: { manualSettings?: CoverSticker; library: ConnectionLibrary; chatgpt?: ChatGPTStatus; agentRun?: DesktopState["agentRun"]; assistedArtwork?: HumanRegionArtwork; uploadSelection?: UploadSelectionDraft; drafts: CoverReviewDraft[]; mediaItems: MediaView[]; input: AgentStartInput; onResolveOutputDirectory(existingDirectory?: string): Promise<string>; onState(state: DesktopState): void }) {
   const selectedIds = new Set(input.mediaIds);
-  const eligibleDrafts = drafts.filter((item) => item.assistedArtwork === assistedArtwork);
+  const eligibleDrafts = drafts.filter((item) => item.assistedArtwork === assistedArtwork && (!manualSettings || (!!item.manualRegionsDigest && manualReviewMatches(manualSettings, item))));
   const draft = [...eligibleDrafts].reverse().find((item) => item.media.length === selectedIds.size && item.media.every(({ mediaId }) => selectedIds.has(mediaId)));
   const humanRegion = assistedArtwork === "human-region-v1";
   const [mediaId, setMediaId] = useState("");
@@ -84,6 +86,15 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     const douyinUpload = uploadSelection ? QianchuanUploadSelectionSchema.parse(uploadSelection) : undefined;
     return { ...await resolvedInput(), ...(douyinUpload ? { douyinUpload } : {}) };
   };
+  const generateFromManual = () => run(async () => {
+    const request = await resolvedInput();
+    const state = await window.jianji.createCoverReview(input.mediaIds);
+    onState(state);
+    const created = state.project.reviewDrafts?.at(-1);
+    if (!created?.manualRegionsDigest) throw new Error("未能建立手动覆盖快照，请检查已保存设置。");
+    return window.jianji.prepareCoverReview(created.id, created.revision, request);
+  });
+  if (manualSettings && (!draft || !media || !source)) return <section className="cover-review" aria-label="人工区域贴纸覆盖"><h3>真实贴纸预览</h3><p>使用上方已保存的框和时段生成预览，无需再次框选。请包含旧贴纸阴影，并检查最终图案是否挡住需要保留的画面。</p><button type="button" className="button primary" disabled={busy || !input.mediaIds.length} onClick={() => void generateFromManual()}>{busy ? "正在生成预览…" : "生成预览"}</button>{error && <p role="alert">{error}</p>}</section>;
   if (!draft || !media || !source) {
     const firstSource = mediaItems.find(item => selectedIds.has(item.id));
     return <section className="cover-review"><h3>{humanRegion ? "人工区域贴纸覆盖" : "半自动覆盖审阅"}</h3><p>{eligibleDrafts.length ? `当前选择了 ${selectedIds.size} 条素材，需要为这批素材建立${humanRegion ? "人工区域" : "审阅"}草稿。其他策略的审阅记录已保留。` : humanRegion ? "建立人工区域草稿后，即可在视频上新增、拖动和缩放覆盖框。覆盖框由你指定，本地贴纸匹配不会调用模型。" : "先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。"}</p>{humanRegion && firstSource && <div className="cover-review-frame" style={{ aspectRatio: `${firstSource.width}/${firstSource.height}`, width: `min(100%, 640px, ${520 * firstSource.width / firstSource.height}px)` }}><video key={firstSource.id} src={firstSource.previewUrl} controls preload="metadata" /></div>}<button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>{busy ? "正在准备素材…" : humanRegion ? "建立人工区域草稿" : "建立人工审阅草稿"}</button>{error && <p role="alert">{error}</p>}</section>;
@@ -96,7 +107,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     const next = direction > 0 ? frames.find((time) => time > timeMs + 0.01) : [...frames].reverse().find((time) => time < timeMs - 0.01);
     if (next !== undefined) seek(next);
   };
-  const editable = !busy && ["needs_human", "awaiting_approval"].includes(draft.status);
+  const editable = !manualSettings && !busy && ["needs_human", "awaiting_approval"].includes(draft.status);
   const versions = draft.frozen.filter((item) => item.mediaId === media.mediaId);
   const frozen = versions.find((item) => item.version === version);
   const frozenHumanRead = humanRegion && frozen ? readHumanRegionBindings(frozen.templateJson) : { bindings: [], invalid: false };
@@ -149,7 +160,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     {frozen && humanRegion && <div className="human-region-guide-controls"><label><input type="checkbox" checked={showHumanGuides} onChange={(event) => setShowHumanGuides(event.target.checked)} />显示冻结覆盖范围</label><span><i className="human-region-target-key" />待覆盖区域</span><span><i className="human-region-artwork-key" />贴纸实际占用范围</span></div>}
     <div className="cover-review-frame" style={{ aspectRatio: `${outputSize.width}/${outputSize.height}`, width: `min(100%, 640px, ${520 * outputSize.width / outputSize.height}px)` }}>
       <video ref={video} key={`${source.id}:${frozen ? `${version}:${draft.revision}` : "source"}`} controls preload="metadata" onLoadedMetadata={() => { if (!video.current) return; if (frozen) setTimeMs(video.current.currentTime * 1000); else video.current.currentTime = timeMs / 1000; }} src={frozen ? `jianji-review://${draft.id}/${draft.revision}/${source.id}/${version}` : source.previewUrl} onTimeUpdate={() => setTimeMs((video.current?.currentTime ?? 0) * 1000)} />
-      {!frozen && media.segments.map((segment, index) => timeMs >= segment.track.startMs && timeMs < segment.track.endMs && <CoverReviewBox key={`${draft.id}:${media.mediaId}:${segment.id}:${draft.revision}`} rectangle={interpolateCoverRectangle(segment.id === buffer?.id ? buffer.track.keyframes : segment.track.keyframes, timeMs)} selected={activeId === segment.id} disabled={!editable || dirty || (humanRegion && segment.track.keyframes.length !== 1)} keepRatio={segment.track.keyframes.length > 1} label={`覆盖框 ${index + 1}`} onSelect={() => setActiveId(segment.id)} onPause={() => video.current?.pause()} onSave={(rectangle) => run(() => window.jianji.editCoverReview({ ...ref, type: "put_segment", identity: media.identities.find(({ id }) => id === segment.identityId)!, segment: moveCoverSegment(segment, timeMs, rectangle) }))} />)}
+      {!manualSettings && !frozen && media.segments.map((segment, index) => timeMs >= segment.track.startMs && timeMs < segment.track.endMs && <CoverReviewBox key={`${draft.id}:${media.mediaId}:${segment.id}:${draft.revision}`} rectangle={interpolateCoverRectangle(segment.id === buffer?.id ? buffer.track.keyframes : segment.track.keyframes, timeMs)} selected={activeId === segment.id} disabled={!editable || dirty || (humanRegion && segment.track.keyframes.length !== 1)} keepRatio={segment.track.keyframes.length > 1} label={`覆盖框 ${index + 1}`} onSelect={() => setActiveId(segment.id)} onPause={() => video.current?.pause()} onSave={(rectangle) => run(() => window.jianji.editCoverReview({ ...ref, type: "put_segment", identity: media.identities.find(({ id }) => id === segment.identityId)!, segment: moveCoverSegment(segment, timeMs, rectangle) }))} />)}
       {frozen && humanRegion && showHumanGuides && !projectionMismatch && shownHumanBindings.map((binding) => <div className="human-region-guides" key={binding.segmentId} aria-label="冻结人工覆盖范围">
         <div className="human-region-guide human-region-guide-target" style={{ left: `${binding.target.x / binding.projection.width * 100}%`, top: `${binding.target.y / binding.projection.height * 100}%`, width: `${binding.target.width / binding.projection.width * 100}%`, height: `${binding.target.height / binding.projection.height * 100}%` }}><span>待覆盖区域</span></div>
         <div className="human-region-guide human-region-guide-artwork" style={{ left: `${binding.visualBounds.x / binding.projection.width * 100}%`, top: `${binding.visualBounds.y / binding.projection.height * 100}%`, width: `${binding.visualBounds.width / binding.projection.width * 100}%`, height: `${binding.visualBounds.height / binding.projection.height * 100}%` }}><span>贴纸实际占用范围</span></div>
@@ -158,7 +169,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     {frozen && humanRegion && (frozenHumanRead.invalid || projectionMismatch || (media.disposition === "cover" && frozenHumanBindings.length !== media.segments.length)) && <p role="alert">冻结人工覆盖范围与当前预览不匹配，不能据此确认这版覆盖效果。</p>}
     {frozen && humanRegion && media.disposition === "no_cover" && <p>此素材已明确选择不覆盖，没有新增贴纸层。</p>}
     {frozen && humanRegion && media.disposition === "cover" && frozenHumanBindings.length === 0 && <p role="alert">冻结模板中没有可显示的人工覆盖范围，不能据此确认这版覆盖效果。</p>}
-    {!frozen && <p className="cover-review-hint">拖动框移动，拉右下角调整大小，松手自动保存。</p>}
+    {!manualSettings && !frozen && <p className="cover-review-hint">拖动框移动，拉右下角调整大小，松手自动保存。</p>}
     {dirty && <p role="status">数值修改尚未保存。<button type="button" disabled={!editable} onClick={() => void command({ type: "put_segment", identity: media.identities.find(({ id }) => id === buffer.identityId)!, segment: buffer })}>保存此框</button><button type="button" disabled={busy} onClick={() => setBuffer(active && structuredClone(active))}>放弃修改</button></p>}
     <div className="cover-review-actions"><button type="button" onClick={() => step(-1)} disabled={!!frozen}>上一原帧</button><button type="button" onClick={() => step(1)} disabled={!!frozen}>下一原帧</button>{frozen && <><button type="button" disabled={busy || !!frozen.preview?.viewed || draft.status !== "awaiting_approval"} onClick={() => void run(() => window.jianji.viewCoverReview(draft.id, draft.revision, media.mediaId, version))}>{frozen.preview?.viewed ? "此版已查看 ✓" : "我已查看此版动态预览"}</button>{frozen.preview?.viewed && viewedCount < draft.frozen.length && <button type="button" disabled={busy || dirty} onClick={openPreview}>下一待查看预览</button>}</>}</div>
     <CoverReviewTimeline media={media} timeMs={timeMs} onSeek={seek} activeId={activeId} onSelect={(id) => { if (!dirty) setActiveId(id); }} />
@@ -168,14 +179,14 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
       const identity = media.identities.find(({ id }) => id === observation.identityId);
       return <div key={index}><button type="button" onClick={() => { setVersion(0); seek(at); }}>{(at / 1000).toFixed(3)}s · {identity?.label ?? "未确认目标"} · {observation.presence} · {identity?.semantics ?? "unknown"}</button>{observation.rectangle && identity && <button type="button" disabled={!editable || dirty} onClick={() => { const segment: CoverSegment = { id: crypto.randomUUID(), identityId: identity.id, origin: "human", track: { startMs: 0, endMs: media.durationMs, keyframes: [{ timeMs: Math.floor(at), rectangle: observation.rectangle! }] } }; void command({ type: "put_segment", identity, segment }).then((saved) => { if (saved) { setActiveId(segment.id); setVersion(0); seek(segment.track.startMs); } }); }}>从候选人工建框（需调整时段）</button>}</div>;
     })}</details>}
-    <div className="cover-review-actions">
+    {!manualSettings && <div className="cover-review-actions">
       <button type="button" disabled={!editable || dirty} onClick={() => { const identity = { id: crypto.randomUUID(), label: humanRegion ? "人工覆盖区域" : "人工补框", semantics: "sticker" as const, origin: "human" as const }; const segment: CoverSegment = { id: crypto.randomUUID(), identityId: identity.id, origin: "human", track: { startMs: 0, endMs: media.durationMs, keyframes: [{ timeMs: 0, rectangle: { x: 0.3, y: 0.3, width: 0.2, height: 0.2 } }] } }; void command({ type: "put_segment", identity, segment }).then((saved) => { if (saved) { setActiveId(segment.id); setVersion(0); seek(segment.track.startMs); } }); }}>{humanRegion ? "新增人工覆盖区域" : "新增覆盖框"}</button>
       <button type="button" disabled={!editable || dirty} onClick={() => void command({ type: "no_cover" })}>不需要覆盖</button>
       <button type="button" disabled={!editable || dirty || !media.segments.length || unsupportedHumanTrack} onClick={() => void command({ type: "confirm_geometry" })}>确认范围</button>
       {buffer && <button type="button" disabled={!editable || dirty} onClick={() => void command({ type: "delete_segment", segmentId: buffer.id })}>删除选中框</button>}
-    </div>
+    </div>}
     {humanRegion && unsupportedHumanTrack && <p role="alert">人工区域模式只支持固定框；删除含移动关键帧的区间后再确认。</p>}
-    {buffer && <details><summary>精确位置与跟随设置</summary><fieldset disabled={!editable || (humanRegion && buffer.track.keyframes.length !== 1)}><legend>位置与出现时间</legend><div className="cover-review-fields">{(["x", "y", "width", "height"] as const).map((key) => <label key={key}>{({ x: "左侧", y: "顶部", width: "宽", height: "高" })[key]} %<input type="number" min={0} max={100} step={0.1} value={Number(((rect?.[key] ?? 0) * 100).toFixed(3))} onChange={(event) => updateRect(key, Number(event.target.value))} /></label>)}{(["startMs", "endMs"] as const).map((key) => <label key={key}>{key === "startMs" ? "开始毫秒" : "结束毫秒（不含）"}<input type="number" min={0} max={media.durationMs} value={buffer.track[key]} onChange={(event) => setBuffer({ ...buffer, track: { ...buffer.track, [key]: Number(event.target.value) } })} /></label>)}</div>
+    {!manualSettings && buffer && <details><summary>精确位置与跟随设置</summary><fieldset disabled={!editable || (humanRegion && buffer.track.keyframes.length !== 1)}><legend>位置与出现时间</legend><div className="cover-review-fields">{(["x", "y", "width", "height"] as const).map((key) => <label key={key}>{({ x: "左侧", y: "顶部", width: "宽", height: "高" })[key]} %<input type="number" min={0} max={100} step={0.1} value={Number(((rect?.[key] ?? 0) * 100).toFixed(3))} onChange={(event) => updateRect(key, Number(event.target.value))} /></label>)}{(["startMs", "endMs"] as const).map((key) => <label key={key}>{key === "startMs" ? "开始毫秒" : "结束毫秒（不含）"}<input type="number" min={0} max={media.durationMs} value={buffer.track[key]} onChange={(event) => setBuffer({ ...buffer, track: { ...buffer.track, [key]: Number(event.target.value) } })} /></label>)}</div>
       <button type="button" onClick={() => void command({ type: "put_segment", identity: media.identities.find(({ id }) => id === buffer.identityId)!, segment: buffer })}>保存此框</button>
       {!humanRegion && <><button type="button" onClick={() => { if (!rect) return; const at = Math.floor(timeMs); const keyframes = [...buffer.track.keyframes.filter(({ timeMs }) => timeMs !== at), { timeMs: at, rectangle: { ...rect } }].sort((a, b) => a.timeMs - b.timeMs); setBuffer({ ...buffer, track: { ...buffer.track, keyframes } }); }}>记录当前帧关键帧</button>
       <p>关键帧：{buffer.track.keyframes.map((frame) => <button type="button" key={frame.timeMs} onClick={() => seek(frame.timeMs)}>{frame.timeMs}ms</button>)}</p></>}
@@ -190,7 +201,7 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     {draft.frozen.length > 0 && <p role="status">预览已生成 · 已查看 {viewedCount}/{draft.frozen.length}。逐版播放并确认后即可导出。</p>}
     {uploadSelection && <p>本次确认后，正式 MP4 成片将上传到所选千川计划，停在确定前；预览不会上传。账号和计划仅用于本次操作，不随审阅草稿保存。</p>}
     <div className="cover-review-actions">{draft.frozen.length > 0 ? <button className="button primary" type="button" disabled={busy || dirty} onClick={openPreview}>查看预览</button> : <button className="button primary" type="button" disabled={busy || dirty || draft.status !== "needs_human"} onClick={() => void run(async () => window.jianji.prepareCoverReview(draft.id, draft.revision, await resolvedInput()))}>生成预览</button>}<button className="button primary" type="button" disabled={busy || dirty || !["awaiting_approval", "approved"].includes(draft.status) || (draft.status === "awaiting_approval" && (!draft.frozen.length || viewedCount < draft.frozen.length))} onClick={() => void run(async () => window.jianji.approveCoverReview(draft.id, draft.revision, await approvalInput()))}>{draft.status === "approved" ? "核对并继续未提交版本" : uploadSelection ? "确认全部版本、导出并上传千川" : "确认全部版本并导出"}</button></div>
-    <details><summary>重新开始</summary><button type="button" disabled={busy || dirty} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>新建草稿</button></details>
+    {manualSettings ? <p>修改范围请使用上方手动设置，保存后重新生成预览。<button type="button" disabled={busy} onClick={() => void generateFromManual()}>重新生成预览</button></p> : <details><summary>重新开始</summary><button type="button" disabled={busy || dirty} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>新建草稿</button></details>}
     {error && <p role="alert">{error}</p>}
   </section>;
 }

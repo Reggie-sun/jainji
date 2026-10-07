@@ -51,6 +51,45 @@ function deferred() {
   return { promise, resolve };
 }
 
+it("seeds manual human-region review once and rejects stale input before preparation or approval", async () => {
+  const f = await fixture();
+  const media = f.service.currentProject.mediaItems[0];
+  const region = { id: randomUUID(), rectangle: { x: 0.1, y: 0.1, width: 0.2, height: 0.15 } };
+  const track = { startMs: 100, endMs: 800, keyframes: [{ timeMs: 100, rectangle: region.rectangle }] };
+  const settings = { ...DEFAULT_COVER_STICKER, enabled: true, trackingMode: "assisted" as const, assistedArtwork: "human-region-v1" as const, manualRegionInput: true as const,
+    mediaRegions: { [media.id]: [{ ...region, tracks: { [media.id]: track } }] } };
+  f.service.setCoverSticker(settings);
+  const controller = new CoverReviewController(f.service, f.agent, f.queue, { root: f.directory,
+    extract: async () => ({ evidence: [], images: [], frameTimesMs: [] }), analyze: vi.fn(), verify: async () => undefined, changed() {} });
+  await controller.create([media.id]);
+  const draft = f.service.currentProject.reviewDrafts!.at(-1)!;
+  expect(draft.media[0].segments.map(segment => segment.track)).toEqual([track]);
+  expect(draft.media[0].disposition).toBe("cover");
+  expect(draft.manualRegionsDigest).toMatch(/^[a-f0-9]{64}$/);
+  await expect(controller.edit({ projectId: draft.projectId, draftId: draft.id, expectedRevision: draft.revision, mediaId: media.id, type: "no_cover" })).rejects.toThrow(/手动设置/);
+  f.service.setCoverSticker({ ...settings, mediaRegions: { [media.id]: [] } });
+  await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow(/手动覆盖/);
+  await expect(controller.approve(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow(/手动覆盖/);
+  expect(f.queue.snapshot().batches).toHaveLength(0);
+  f.service.setCoverSticker(settings);
+  const corrupted = structuredClone(f.service.currentProject.reviewDrafts!.at(-1)!);
+  corrupted.media[0].segments[0].track.endMs = 700;
+  await f.service.saveReviewDraft(corrupted, corrupted.revision);
+  await expect(controller.prepare(draft.id, draft.revision, f.input, new Set([f.directory]))).rejects.toThrow(/手动覆盖/);
+});
+
+it("manual-derived review refuses unset or moving input without storing a new draft", async () => {
+  const f = await fixture(); const media = f.service.currentProject.mediaItems[0];
+  const settings = { ...DEFAULT_COVER_STICKER, enabled: true, trackingMode: "assisted" as const, assistedArtwork: "human-region-v1" as const, manualRegionInput: true as const };
+  f.service.setCoverSticker(settings);
+  await expect(f.controller.create([media.id])).rejects.toThrow(/逐素材/);
+  expect(f.service.currentProject.reviewDrafts).toHaveLength(1);
+  f.service.setCoverSticker({ ...settings, mediaRegions: { [media.id]: [{ id: randomUUID(), rectangle: settings.rectangle,
+    tracks: { [media.id]: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle: settings.rectangle }, { timeMs: 900, rectangle: settings.rectangle }] } } }] } });
+  await expect(f.controller.create([media.id])).rejects.toThrow(/固定框/);
+  expect(f.service.currentProject.reviewDrafts).toHaveLength(1);
+});
+
 it("keeps upload selection out of preview/project and registers approved tasks before starting", async () => {
   const f = await fixture();
   const registerUploads = vi.fn(async (batches: unknown[]) => { expect(batches).toHaveLength(1); expect(f.queue.start).not.toHaveBeenCalled(); });

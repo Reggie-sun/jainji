@@ -61,12 +61,12 @@ cover-placement-proposal.ts[AB7T]: F:按精确源身份提出近似自动覆盖�
 cover-placement-provider.ts[AB7T]: F:构造近似覆盖提案的模型输入消息 | R:code:src/main/cover-placement-proposal.ts | A:输入协议不拥有源知识 | S:只传约定抽帧与元数据
 cover-placement-session.ts[AB7T]: F:管理自动覆盖提案、样片复核与位置复用 | R:code:src/main/cover-placement-proposal.ts | A:使用源知识准入锁但不发布源事实 | S:复核失败不得通过
 cover-review-approval.ts[AB7T]: F:校验assisted全部冻结版本与批准前提 | R:code:src/main/cover-review-controller.ts | A:摘要绑定人工策略修订素材设置和全部模板 | S:全部预览查看后才能批准；编辑作废旧批准
-cover-review-controller.ts[AB8M]: F:拥有审阅草稿预览批准与幂等提交 | R:code:src/main/cover-review-session.ts,code:src/main/cover-review-approval.ts,code:src/main/cover-review-upload.ts,code:src/main/queue.ts | A:全部查看后校验冻结模板；上传选择只存摘要；上传全部登记后启动；取消交原上传owner | S:预览拒绝上传信息；无上传保留原逐版提交；人工不识别复核；旧无上传批准不能追加；失败保留批准任务
+cover-review-controller.ts[AB8M]: F:拥有审阅预览批准与幂等提交 | R:code:src/main/manual-cover-review.ts,code:src/main/cover-review-session.ts,code:src/main/cover-review-approval.ts,code:src/main/queue.ts | A:创建手动派生快照；准备和批准核对输入；全部查看后冻结导出；上传登记后启动 | S:预览拒绝上传信息；旧无上传批准不能追加；失败保留批准任务；人工不识别复核
 cover-review-evidence.ts[AB7T]: F:提取带时间与坐标映射的assisted原始证据 | R:code:src/main/cover-review-controller.ts | A:证据与源媒体可追溯 | S:路径限定项目目录并可取消
 cover-review-input.ts[AB7T]: F:将草稿证据候选转为独立复核输入 | R:code:src/main/cover-review-provider.ts | A:适配输入而不作草稿决定 | S:只读取已登记证据
 cover-review-preview.ts[AB7T]: F:计算预览摘要并清理无引用预览 | R:code:src/main/cover-review-controller.ts | A:预览生命周期辅助 | S:保留仍被草稿引用的预览
 cover-review-provider.ts[AB7T]: F:分盲审和比较阶段运行独立复核并记录问题 | R:code:src/main/cover-review-input.ts | A:只报告问题不批准 | S:请求有上限失败保持未完成
-cover-review-session.ts[AB7T]: F:定义审阅命令与修订状态变换 | R:code:src/shared/cover-review.ts | A:人工编辑统一origin；新增删除拆分与范围确认 | S:人工图案策略拒绝多关键帧；编辑清冻结预览和批准
+cover-review-session.ts[AB7S]: F:定义审阅命令与修订状态变换 | R:code:src/shared/cover-review.ts | A:人工编辑统一origin；新增删除拆分与范围确认 | S:手动派生快照拒绝编辑；人工图案拒绝多关键帧；编辑清预览批准
 cover-sticker.ts[AB7T]: F:解析覆盖贴纸并生成各素材版本的冻结覆盖层 | R:code:src/shared/cover-sticker.ts,code:src/main/agent-template-preparation.ts | A:手动与自动轮换保留；本地随机从有效池分配各框不同图案并逐版本轮换 | S:候选不足时拒绝；随机不沿用草稿指定图案；重试沿用冻结模板
 cover-track-provider.ts[AB7T]: F:检测对齐源贴纸帧形成跟随轨迹 | R:code:src/main/source-sticker-recognition.ts | A:源事实观测不同于近似覆盖 | S:不确定时显式失败
 development-lifecycle.ts[RW7T]: F:区分开发父进程的自动重启与主动退出请求 | R:code:src/main/index.ts,code:scripts/dev-lifecycle.mjs | A:等待启动完成；合并重启请求并每秒检查空闲后正常退出；主动退出取消等待 | S:仅开发环境且存在父IPC可用；空闲检查异常不退出；不强制超时终止生产
@@ -192,6 +192,7 @@ human-region-cover.ts[AB8S]: F:将人工固定区域匹配为持久透明贴纸�
 human-region-geometry.ts[KB7T]: F:投影人工矩形并核验逐像素完全不透明覆盖 | R:code:src/main/shape-cover-pixel-gate.ts,code:src/shared/human-region-cover.ts | A:测量缩放补边；向外保留滤波支撑；目标位图生成 | S:半透明及孔洞不算覆盖；人工框不是原贴纸alpha
 human-region-render.ts[AB8T]: F:核验人工冻结像素意图和原审阅批准交接 | R:code:src/main/cover-review-approval.ts,code:src/main/shape-cover-alpha.ts,code:src/main/source-sticker-knowledge-store.ts | A:源资源输出绑定；PNG解码覆盖；目标集合修订与提交核对 | S:通用导出不能自授人工批准；coverage只证明指定范围；同时核容器和视频时长源争议
 cover-review-upload.ts[IW8T]: F:交接已批准导出到原千川上传账本 | R:code:src/main/douyin-upload-service.ts,code:src/main/douyin-upload-store.ts | A:核对完整任务集合；新登记共用数量授权并原子保存；全部相同记录直接返回 | S:重复批准不恢复浏览器权限；部分记录或目标冲突拒绝；无登记历史成片不追加；预览不准入
+manual-cover-review.ts[AB7T]: F:将保存手动输入绑定为审阅快照 | R:code:src/shared/manual-cover-review.ts,code:src/main/cover-review-approval.ts | A:播种区域决定及输入摘要；核对当前输入与快照几何 | S:未标记的历史草稿保持原路径；输入摘要不构成最终批准
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -201,17 +202,17 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7L]: F:协调项目包装审阅及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/CoverStickerPanel.tsx | A:覆盖卡片内挂载唯一审阅面板；传本次上传选择；无工作区默认随机 | S:上传选择不随项目保存；界面不授main权限；已保存模式原样恢复；冻结输入不随草稿变化
+App.tsx[AU7L]: F:协调项目包装审阅及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/CoverStickerPanel.tsx | A:卡片挂载唯一审阅面板；传保存手动输入及旧草稿；传本次上传选择 | S:上传选择不随项目保存；界面不授main权限；冻结任务不随草稿变化
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
 CornerDecorationPicker.tsx[EU6T]: F:编辑装饰方式和角落选材并承载逐素材边框设置 | R:code:src/renderer/FrameDecorationPicker.tsx,code:src/shared/decorations.ts | A:模式切换保留整批及逐素材边框；传素材与项目保存回调；边框mutation独立禁用 | S:不改手填文字，不把边框当四角贴纸
 CoverReviewBox.tsx[AB7T]: F:绘制assisted覆盖审阅候选框与交互 | R:code:src/renderer/CoverReviewPanel.tsx | A:人工框交互界面 | S:修改草稿后旧批准失效
-CoverReviewPanel.tsx[AU7S]: F:呈现原片人工框冻结预览及最终确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/human-region-cover.ts | A:未建稿展示原片与显式建稿入口；目标占用分开展示；最终批准单独传上传选择 | S:预览不传上传信息；逐版查看再批准；框外完整性未证明；人工不调用识别
+CoverReviewPanel.tsx[AU7M]: F:展示冻结覆盖预览并收集最终确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/manual-cover-review.ts,code:src/shared/human-region-cover.ts | A:手动输入直接建快照生成预览；旧assisted保留编辑；目标占用分开展示 | S:手动快照隐藏重复框选；逐版查看后批准；预览不传上传信息；框外完整性未证明
 CoverReviewProgress.tsx[AB7T]: F:展示assisted审阅和独立复核进度 | R:code:src/renderer/CoverReviewPanel.tsx | A:进度呈现组件 | S:复核结果只报告问题
 CoverReviewTimeline.tsx[AB7T]: F:按时间显示assisted候选与证据片段 | R:code:src/renderer/CoverReviewPanel.tsx | A:时间轴交互组件 | S:时域决策留在草稿
-CoverStickerPanel.tsx[EU6S]: F:编辑覆盖策略并承载原审阅框选界面 | R:code:src/shared/cover-sticker.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/MediaSelector.ts | A:人工设置保存后定位内嵌框选；assisted隐藏旧manual素材状态 | S:未保存设置不显示旧审阅编辑；切换旧模式清人工策略；不签发批准；不把框当自动轮廓
-CoverTrackEditor.tsx[AB7T]: F:视频上交互编辑覆盖轨迹位置和时段 | R:code:src/renderer/CoverStickerPanel.tsx | A:手动轨迹编辑器 | S:自动模式忽略手动位置草稿
+CoverStickerPanel.tsx[EU6S]: F:编辑逐素材覆盖框时段与覆盖方式 | R:code:src/shared/manual-cover-review.ts,code:src/renderer/CoverTrackEditor.tsx,code:src/renderer/CoverReviewPanel.tsx | A:手动设置内选白底或真实贴纸；保存后生成预览；旧草稿转编辑输入 | S:未保存不显示旧预览；不签发批准；目标框不是自动轮廓
+CoverTrackEditor.tsx[AU7S]: F:视频上编辑覆盖位置尺寸与时段 | R:code:src/shared/cover-sticker.ts,code:src/renderer/CoverStickerPanel.tsx | A:原关键帧轨迹或固定目标编辑；目标显示透明边界 | S:目标模式不自动增加关键帧；移动轨迹须显式处理；旧白底方式保留
 DecorationPicker.tsx[AB7T]: F:浏览贴纸目录和预览供手动选材 | R:code:src/main/asset-library.ts | A:选材界面 | S:仅本地有效素材进入目录
 ExportSettingsPanel.tsx[AB7T]: F:编辑导出分辨率帧率画质 | R:code:src/shared/export-settings.ts | A:导出设置界面 | S:默认方向720p且保持源帧率
 MaterialCollection.tsx[AB7T]: F:管理项目名称及已保存项目打开重命名删除 | R:code:src/renderer/App.tsx | A:项目导航不是素材目录 | S:项目与素材导入分流
@@ -259,8 +260,8 @@ bundled-stickers.ts[AB7T]: F:列举随应用打包的内置贴纸ID及固定文�
 connections.ts[AB7T]: F:连接保存输入和模型选择的共享schema | R:code:src/main/model-connections.ts | A:连接公开形状合同 | S:界面快照不含API密钥
 cover-diagnostics.ts[AB7T]: F:覆盖流程诊断事件阶段原因和大小限制schema | R:code:src/main/cover-diagnostics.ts | A:诊断记录合同 | S:限制事件数与字节量
 cover-placement.ts[AB7T]: F:近似自动覆盖目标身份位置与证据绑定schema | R:code:src/main/cover-placement-session.ts | A:近似位置合同不是源事实 | S:时序边界与身份本地校验
-cover-review.ts[DB7T]: F:定义审阅证据预览批准持久Schema | R:code:src/main/cover-review-controller.ts,code:src/main/cover-review-session.ts | A:人工策略与修订归属；批准可保存上传选择摘要 | S:缺省批准无上传；摘要不含账号计划明文；持久字段不替代主进程批准
-cover-sticker.ts[CB7S]: F:定义覆盖模式逐素材区域轨迹及旧单框兼容 | R:code:src/main/cover-sticker.ts,code:src/main/shape-cover-activation.ts,code:src/renderer/CoverStickerPanel.tsx | A:显式人工assistedArtwork与自动shape策略互斥；轨迹范围校验 | S:序列化意图不授执行权；旧缺省不变；空regions表示不覆盖；人工框不是自动alpha
+cover-review.ts[DB7T]: F:定义审阅证据预览批准持久Schema | R:code:src/main/cover-review-controller.ts,code:src/main/cover-review-session.ts | A:人工策略修订归属；手动输入摘要；批准上传摘要 | S:缺省批准无上传；不保存账号计划明文；持久字段不替代主进程批准
+cover-sticker.ts[CB7S]: F:定义覆盖模式区域轨迹及旧单框兼容 | R:code:src/main/cover-sticker.ts,code:src/renderer/CoverStickerPanel.tsx | A:人工策略与自动shape互斥；手动输入标记仅属人工策略；轨迹校验 | S:序列化意图不授执行权；旧缺省不变；逐素材空数组明确不覆盖；人工框不是自动alpha
 curated-stickers.ts[CB7S]: F:构造精选图案搜索目录及中文标签 | R:code:src/shared/asset-library.ts | A:概念匹配中性3D资源并追加自定义图 | S:仅约束发现入口；历史完整manifest仍有效；不授自动选材资格
 decorations.ts[CB7S]: F:定义手填文字逐素材开关位置及装饰边框Schema | R:code:src/shared/agent.ts,code:src/shared/frames.ts,code:src/main/agent-template-preparation.ts | A:frame与UUID键framesByMedia校验；模式转换保留边框；legacy frameId兼容；独立frames目录 | S:旧API缺边框字段保持无边框；文字校验唯一owner；缺文字设置默认开启；Agent不生成改写内容
 defaults.ts[AB7T]: F:定义默认展示文字字体族 | R:code:src/shared/decorations.ts | A:共享默认常量 | S:字体由本地解析
@@ -284,6 +285,7 @@ batch-upload.ts[CC6T]: F:定义模板账号绑定及批量上传账号解析 | R
 hybrid-cover.ts[CB8T]: F:定义H4批准角落冻结生产层的严格序列化绑定 | R:code:src/main/hybrid-cover-production.ts,code:src/main/domain.ts,code:src/shared/source-sticker-knowledge.ts | A:固定HybridApprovedCorner/v1与UUID、源、设置、PNG binding packet摘要、projection placement及range | S:coverage必须oldPixels正数uncovered0/fraction1；数据不授authority或恢复进程内owner；不声明全源完整性
 frames.ts[CB6T]: F:定义十三款边框目录及自动随机指定关闭草稿合同 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:strict auto/random/manual/none；素材优先整批再legacy；既有ID及uploaded SHA格式保持，缺字段none | S:边框独立命名空间；random既有每条必用语义保持
 human-region-cover.ts[CB8T]: F:定义人工目标和冻结图案绑定schema | R:code:src/shared/cover-sticker.ts,code:src/shared/source-sticker-knowledge.ts,code:src/shared/export-settings.ts | A:源与修订；目标投影时段；图案位置和可见占用；像素摘要 | S:人工意图不冒充自动alpha或H4；图案位置可跨画布但目标与可见范围必须在画布内
+manual-cover-review.ts[DB7T]: F:投影手动覆盖输入及历史人工草稿 | R:code:src/shared/cover-sticker.ts,code:src/shared/cover-review.ts | A:复用手动区域与时段；比较快照；旧草稿恢复为未保存编辑值 | S:未知空白与移动轨迹拒绝；无轨迹为全片；旧手动残留不替代历史人工草稿
 
 
 ===/home/reggie/vscode_folder/jianji/src/types/===

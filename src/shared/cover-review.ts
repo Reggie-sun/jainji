@@ -67,11 +67,13 @@ export const CoverReviewDraftSchema = z.object({
   frozen: z.array(FrozenCoverVersionSchema).max(250), approval: CoverApprovalSchema.optional(),
   requestJson: z.string().min(1).optional(),
   settingsDigest: Digest.optional(),
+  manualRegionsDigest: Digest.optional(),
   assistedArtwork: z.literal("human-region-v1").optional(),
   frameTimes: z.record(Id, z.array(z.number().finite().nonnegative())).optional(),
   requestPlan: z.object({ maxRequests: Revision, usedRequests: Revision }).strict().refine((value) => value.usedRequests <= value.maxRequests).optional(),
   review: IndependentReviewRecordSchema.optional(),
 }).strict().superRefine((draft, ctx) => {
+  if (draft.manualRegionsDigest && !draft.assistedArtwork) ctx.addIssue({ code: "custom", message: "手动区域快照仅用于真实贴纸覆盖" });
   if (new Set(draft.media.map(({ mediaId }) => mediaId)).size !== draft.media.length) ctx.addIssue({ code: "custom", message: "素材编号不得重复" });
   const keys = draft.frozen.map((item) => `${item.mediaId}:${item.version}`);
   if (draft.frozen.some(({ preview }) => preview && !preview.relativePath.startsWith(`${draft.projectId}/${draft.id}/${draft.revision}/previews/`))) ctx.addIssue({ code: "custom", message: "预览归属不匹配" });

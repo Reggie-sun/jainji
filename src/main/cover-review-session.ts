@@ -23,6 +23,7 @@ export function createCoverReviewDraft(projectId: string, media: readonly MediaI
 }
 
 export function editCoverReviewDraft(current: CoverReviewDraft, input: unknown): CoverReviewDraft {
+  if (current.manualRegionsDigest) throw new Error("请在手动设置中修改区域和时段，再重新生成预览。");
   const command = CoverReviewCommandSchema.parse(input);
   if (command.projectId !== current.projectId || command.draftId !== current.id || command.expectedRevision !== current.revision) throw new Error("审阅修订已过期，请刷新后再编辑。");
   if (!["needs_human", "awaiting_approval"].includes(current.status)) throw new Error("请先结束分析或预览，再编辑审阅草稿。");

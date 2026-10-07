@@ -1,4 +1,5 @@
 import { assertHumanRegionIntent } from "./human-region-render.js";
+import { seedManualReview, assertManualReviewCurrent } from "./manual-cover-review.js";
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
@@ -60,6 +61,7 @@ export class CoverReviewController {
     if (!media.length || media.some((item) => !item || item.probeStatus !== "ready")) throw new Error("请选择有效素材。");
     const draft = createCoverReviewDraft(project.id, media as MediaItem[]);
     draft.assistedArtwork = project.coverSticker.assistedArtwork;
+    seedManualReview(draft, project.coverSticker);
     draft.status = "draft";
     await this.save(draft);
     try {
@@ -196,6 +198,7 @@ export class CoverReviewController {
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
       if (draft.status !== "needs_human") throw new Error("请先完成人工审阅。");
+      assertManualReviewCurrent(draft, this.service.currentProject.coverSticker);
       assertReviewResolved(draft);
       const parsed = AgentStartSchema.parse(input);
       if (parsed.sourceStickerRefresh) throw new Error("半自动审阅不接受原贴纸重新检查意图。");
@@ -308,6 +311,7 @@ export class CoverReviewController {
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
       this.assertEnabled();
+      assertManualReviewCurrent(draft, this.service.currentProject.coverSticker);
       const frozenRequest = FrozenAgentStartSchema.nullable().parse(JSON.parse(draft.requestJson ?? "null"));
       const { douyinUpload, ...parsed } = (frozenRequest?.decorations?.displayMode === "first-3s" ? FrozenAgentStartSchema : AgentStartSchema).parse(input);
       if (douyinUpload && (parsed.exportFormat ?? DEFAULT_PRESET.container) !== "mp4") throw new Error("千川上传仅支持 MP4。");
