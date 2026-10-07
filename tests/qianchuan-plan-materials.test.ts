@@ -95,7 +95,7 @@ let browser: Browser;
 vi.setConfig({ testTimeout: 40000, hookTimeout: 30000 });
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); });
 afterAll(async () => { await browser?.close(); });
-async function pageFixture(options: { noEcological?: boolean; wrongAccount?: boolean; wrongPlan?: boolean; badFilter?: boolean; failedList?: boolean; unsafeRow?: boolean; empty?: boolean; auditLabel?: boolean; ambiguousStatus?: boolean; titleConfirmation?: boolean } = {}) {
+async function pageFixture(options: { badDelivery?: string; badDeliveryRow?: string; noEcological?: boolean; wrongAccount?: boolean; wrongPlan?: boolean; badFilter?: boolean; failedList?: boolean; unsafeRow?: boolean; empty?: boolean; auditLabel?: boolean; ambiguousStatus?: boolean; titleConfirmation?: boolean } = {}) {
   const context = await browser.newContext(), page = await context.newPage();
   let confirmations = 0, filters = 0;
   const data = [
@@ -108,22 +108,27 @@ async function pageFixture(options: { noEcological?: boolean; wrongAccount?: boo
   const html = `<!doctype html><meta charset="utf-8"><div class="account-info-container">ID：${options.wrongAccount ? "999" : target.advertiserId}</div>
     <div class="ovui-drawer--no-maskable"><div class="ad-drawer-body">计划 ID：${options.wrongPlan ? "999" : target.adId}
       <input placeholder="输入视频名称/ID后回车搜索"><button id="filter">更多筛选</button>
-      <div class="ovui-popover" style="display:none"><button id="clear">清空</button><div class="config-area"><div class="oc-title">${options.auditLabel ? "审核状态" : "素材状态"}</div><input placeholder="请选择">
+      <div class="ovui-popover" style="display:none"><button id="clear">清空</button><div class="config-area" id="delivery"><div class="oc-title">投放状态</div><input placeholder="请选择" value="已删除" readonly><li class="ovui-cascader-panel__selection-item"><div class="ovui-cascader-panel__item-label">投放中</div></li></div><div class="config-area"><div class="oc-title">${options.auditLabel ? "审核状态" : "素材状态"}</div><input placeholder="请选择">
       ${PLAN_MATERIAL_STATUSES.filter(status => !options.noEcological || status !== "生态审核不通过").map(status => `<li class="ovui-cascader-panel__selection-item"><input type="checkbox" value="${status}"><div class="ovui-cascader-panel__item-label">${status}</div></li>`).join("")}
       </div>${options.ambiguousStatus ? '<div class="config-area"><div class="oc-title">审核状态</div><input placeholder="请选择"></div>' : ""}<button id="apply">确定</button><button id="cancelFilter">取消</button></div>
-      <div class="ovui-table__head-wrapper"><table><thead><tr><th><input id="all" type="checkbox"></th></tr></thead></table></div>
+      <div class="ovui-page-select"><input value="10条/页" readonly></div><div class="ovui-option" style="display:none">100条/页</div><div class="ovui-table__head-wrapper"><table><thead><tr><th><input id="all" type="checkbox"></th></tr></thead></table></div>
       <div class="ovui-table__body-wrapper"><table><tbody></tbody></table></div><div id="footer"></div><span id="selected"></span><button id="remove" style="display:none">删除</button>
     </div></div><div class="ovui-modal" style="display:none">确定要删除视频吗？<button id="cancel">取消</button><button id="confirm">确定</button></div>
     <script>
-    let shown=[]; const render=rows=>{shown=rows;document.querySelector('tbody').innerHTML=rows.map(x=>'<tr><td><input type="checkbox"></td><td>素材ID: '+x.id+'</td><td class="oc-promotion-status-card">'+x.status.replaceAll('\\n','<br>')+'</td></tr>').join('');document.querySelector('#footer').innerHTML=rows.length?'<div class="ovui-page-total">共 '+rows.length+' 条记录</div>':'<div class="oc-empty">暂无数据</div>';document.querySelector('#all').checked=false;document.querySelector('#selected').textContent='';document.querySelector('#remove').style.display='none'};
-    const list=async()=>{const values=Array.from(document.querySelectorAll('.config-area input[type=checkbox]:checked')).map(x=>x.value);const expected={query_type:['all'],roi2_material_type_v3:['1001'],marketing_goal:['1'],ad_id:['${target.adId}'],roi2_material_video_type:['11'],material_audit_status:${options.badFilter ? "['1']" : "['4','2']"}};if(${!options.auditLabel}&&!values.includes('生态审核不通过'))expected.material_audit_reject_type=['1'];const response=await fetch('${"/ad/api/pmc/v1/uni-promotion/material/list-required"}?aavid=${target.advertiserId}',{method:'POST',body:JSON.stringify({DataSetKey:'site_promotion_product_post_data_video',PageParams:{Offset:0,Limit:10},Filters:{ConditionRelationshipType:1,Conditions:Object.entries(expected).map(([Field,Values])=>({Field,Values,Operator:7}))}})});const body=await response.json();render(body.data.statsData.rows??[])};
+    let pageSize=10;
+    document.querySelector('.ovui-page-select input').onclick=()=>document.querySelector('.ovui-option').style.display='';
+    document.querySelector('.ovui-option').onclick=()=>{pageSize=100;document.querySelector('.ovui-page-select input').value='100条/页';document.querySelector('.ovui-option').style.display='none';list()};
+    setTimeout(()=>{document.querySelector('#delivery .ovui-cascader-panel__item-label').onclick=()=>document.querySelector('#delivery input').value='投放中'},0);
+
+    let shown=[]; const render=rows=>{shown=rows;const pager=document.querySelector('.ovui-page-select');if(pager)pager.style.display=rows.length?'':'none';document.querySelector('tbody').innerHTML=rows.map(x=>'<tr><td><input type="checkbox"></td><td>素材ID: '+x.id+'</td><td class="oc-promotion-status-card">'+x.status.replaceAll('\\n','<br>')+'</td></tr>').join('');document.querySelector('#footer').innerHTML=rows.length?'<div class="ovui-page-total">共 '+rows.length+' 条记录</div>':'<div class="oc-empty">暂无数据</div>';document.querySelector('#all').checked=false;document.querySelector('#selected').textContent='';document.querySelector('#remove').style.display='none'};
+    const list=async()=>{const values=Array.from(document.querySelectorAll('.config-area input[type=checkbox]:checked')).map(x=>x.value);const expected={query_type:['all'],roi2_material_type_v3:['1001'],marketing_goal:['1'],ad_id:['${target.adId}'],roi2_material_video_type:['11'],roi2_material_status:[${options.badDelivery ? JSON.stringify(options.badDelivery) : "document.querySelector('#delivery input').value==='投放中'?'1':'2'"}],material_audit_status:${options.badFilter ? "['1']" : "['4','2']"}};if(${!options.auditLabel}&&!values.includes('生态审核不通过'))expected.material_audit_reject_type=['1'];const response=await fetch('${"/ad/api/pmc/v1/uni-promotion/material/list-required"}?aavid=${target.advertiserId}',{method:'POST',body:JSON.stringify({DataSetKey:'site_promotion_product_post_data_video',PageParams:{Offset:0,Limit:pageSize},Filters:{ConditionRelationshipType:1,Conditions:Object.entries(expected).map(([Field,Values])=>({Field,Values,Operator:7}))}})});const body=await response.json();render(body.data.statsData.rows??[])};
     document.querySelector('#filter').onclick=()=>document.querySelector('.ovui-popover').style.display='';document.querySelector('#clear').onclick=()=>document.querySelectorAll('.config-area input[type=checkbox]').forEach(x=>x.checked=false);document.querySelectorAll('.ovui-cascader-panel__item-label').forEach(x=>x.onclick=()=>{const input=x.previousElementSibling;input.checked=!input.checked});document.querySelector('#apply').onclick=()=>{document.querySelector('.ovui-popover').style.display='none';list()};document.querySelector('#all').onclick=e=>{document.querySelectorAll('tbody input').forEach(x=>x.checked=e.target.checked);document.querySelector('#selected').textContent=e.target.checked?'已选'+shown.length+'个 视频':'';document.querySelector('#remove').style.display=e.target.checked?'':'none'};document.querySelector('#remove').onclick=()=>document.querySelector('.ovui-modal').style.display='';document.querySelector('#cancel').onclick=()=>document.querySelector('.ovui-modal').style.display='none';document.querySelector('#confirm').onclick=async()=>{await fetch('/fixture-delete',{method:'POST'});document.querySelector('.ovui-modal').style.display='none';${options.titleConfirmation ? "setTimeout(()=>{const modal=document.createElement('div');modal.className='ovui-modal';modal.innerHTML='确定要删除自选视频吗？部分商品下的自选素材将被清空，需要同步删除以下 13 个自选标题<button id=secondConfirm>确定</button>';modal.querySelector('button').onclick=()=>fetch('/fixture-delete',{method:'POST'});document.body.append(modal)},150)" : "await list()"}};
     </script>`;
   await page.route("https://qianchuan.jinritemai.com/**", async route => {
     const pathname = new URL(route.request().url()).pathname;
     if (pathname.endsWith("/material/list-required")) {
       filters++;
-      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: options.failedList ? 9 : 0, data: { statsData: filtered.length ? { totalCount: String(filtered.length), rows: filtered.map(row => ({ ...row, dimensions: { materialId: { value: row.id } } })) } : {} } }) });
+      await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: options.failedList ? 9 : 0, data: { statsData: filtered.length ? { totalCount: String(filtered.length), rows: filtered.map(row => ({ ...row, dimensions: { materialId: { value: row.id }, roi2MaterialStatus: { value: options.badDeliveryRow ?? "1" } } })) } : {} } }) });
     } else if (pathname === "/fixture-delete") { confirmations++; if (!options.titleConfirmation) filtered = []; await route.fulfill({ body: "{}" }); }
     else await route.fulfill({ contentType: "text/html", body: html });
   });
@@ -133,19 +138,19 @@ it("selects all three options together, sends one filter and deletes only verifi
   const f = await pageFixture();
   try {
     await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: false });
-    expect(f.filters()).toBe(1); const before = await f.session.read(); expect(before.ids).toEqual(["7001", "7002", "7003"]);
+    expect(f.filters()).toBe(2); const before = await f.session.read(); expect(before.ids).toEqual(["7001", "7002", "7003"]);
     await f.session.deleteBatch(before, async () => { expect(f.confirmations()).toBe(0); });
     expect(f.confirmations()).toBe(1); expect(await f.session.read()).toEqual({ total: 0, ids: [] });
   } finally { await f.session.dispose(); await f.context.close(); }
 });
 it("skips just an absent ecological option and still selects both required statuses in one filter", async () => {
   const f = await pageFixture({ noEcological: true });
-  try { await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: true }); expect(f.filters()).toBe(1); expect((await f.session.read()).ids).toEqual(["7001", "7003"]); }
+  try { await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: true }); expect(f.filters()).toBe(2); expect((await f.session.read()).ids).toEqual(["7001", "7003"]); }
   finally { await f.session.dispose(); await f.context.close(); }
 });
 it("supports the live audit-status label without changing the combined filter or admitting plain approval", async () => {
   const f = await pageFixture({ auditLabel: true, noEcological: true }); f.page.setDefaultTimeout(500);
-  try { await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: true }); expect(f.filters()).toBe(1); expect((await f.session.read()).ids).toEqual(["7001", "7003"]); expect(f.confirmations()).toBe(0); }
+  try { await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: true }); expect(f.filters()).toBe(2); expect((await f.session.read()).ids).toEqual(["7001", "7003"]); expect(f.confirmations()).toBe(0); }
   finally { await f.session.dispose(); await f.context.close(); }
 });
 it("rejects ambiguous status controls before applying a filter or deleting", async () => {
@@ -183,4 +188,31 @@ it("rejects document replacement and foreign checked rows before confirmation", 
       await expect(f.session.deleteBatch(before, async () => {})).rejects.toThrow(); expect(f.confirmations()).toBe(0);
     } finally { await f.session.dispose(); await f.context.close(); }
   }
+});
+
+it.each([{ badDelivery: "2" }, { badDelivery: "3" }, { badDelivery: "4" }, { badDeliveryRow: "2" }, { badDeliveryRow: "" }])("rejects non-delivering request or response before selection %j", async options => {
+  const f = await pageFixture(options);
+  try { await f.session.open(); await expect(f.session.filter()).rejects.toThrow(); expect(f.confirmations()).toBe(0); }
+  finally { await f.session.dispose(); await f.context.close(); }
+});
+it.each(["delivery", "pager", "drift"])("rejects missing delivery/pager controls or page-size drift: %s", async mode => {
+  const f = await pageFixture();
+  try {
+    await f.session.open();
+    if (mode === "drift") {
+      await f.session.filter(); const before = await f.session.read();
+      await f.page.locator('.ovui-page-select input').evaluate(node => { (node as HTMLInputElement).value = "10条/页"; });
+      await expect(f.session.deleteBatch(before, async () => {})).rejects.toThrow();
+    } else {
+      await f.page.locator(mode === "delivery" ? "#delivery .oc-title" : ".ovui-page-select").evaluate(node => node.remove());
+      await expect(f.session.filter()).rejects.toThrow();
+    }
+    expect(f.confirmations()).toBe(0);
+  } finally { await f.session.dispose(); await f.context.close(); }
+});
+
+it("accepts an empty delivering filter without a pagination control", async () => {
+  const f = await pageFixture({ empty: true });
+  try { await f.session.open(); await f.session.filter(); expect(await f.session.read()).toEqual({ total: 0, ids: [] }); expect(f.confirmations()).toBe(0); }
+  finally { await f.session.dispose(); await f.context.close(); }
 });

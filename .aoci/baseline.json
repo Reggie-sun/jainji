@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-07T10:15:11Z",
+  "updated_at": "2026-10-07T11:08:27Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "09c8e4689ded61631325f0ea58eb0ecda120c7f1da8ce9b02035300083351b54",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "967f77352d32d6388339562f2114cfd12c0c3f068c730a2ec1eed9925c2c37d0",
-      "size": 95073,
-      "normalized_sha256": "967f77352d32d6388339562f2114cfd12c0c3f068c730a2ec1eed9925c2c37d0"
+      "sha256": "23ee455737172e5143c4092548c6b8270fd67f12b11a6f05e13afe2285607c42",
+      "size": 95103,
+      "normalized_sha256": "23ee455737172e5143c4092548c6b8270fd67f12b11a6f05e13afe2285607c42"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1498,9 +1498,9 @@
       "normalized_sha256": "841b81a8465f7916416016373f571849be735863685054b5950f3e13057740b8"
     },
     "src/main/qianchuan-plan-material-page.ts": {
-      "sha256": "9947dc7f1eac0d83ac001af6b972d9043df1ebae3f84090ae2ba59f4ef33e91c",
-      "size": 21695,
-      "normalized_sha256": "9947dc7f1eac0d83ac001af6b972d9043df1ebae3f84090ae2ba59f4ef33e91c"
+      "sha256": "e15e4cf71332de85eaaab54015d48fd0a303886ee4eccd649edefd5699d8ba3d",
+      "size": 24084,
+      "normalized_sha256": "e15e4cf71332de85eaaab54015d48fd0a303886ee4eccd649edefd5699d8ba3d"
     },
     "src/main/qianchuan-plan-materials.ts": {
       "sha256": "dfb0d9680801b9159c970b8ec5f854bb393ace1ded47463ba0c13e10785dac5b",
@@ -2053,9 +2053,9 @@
       "normalized_sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5"
     },
     "src/renderer/QianchuanVideoLibraryActions.tsx": {
-      "sha256": "34415c24a960290d70c84c5d7600354bcccd31edb2c720feab709524bac0dd95",
-      "size": 9685,
-      "normalized_sha256": "34415c24a960290d70c84c5d7600354bcccd31edb2c720feab709524bac0dd95"
+      "sha256": "a43ff9e300d28b0c7d91293030c1dfd3d70250f6013c07cf647ab96999355e20",
+      "size": 9806,
+      "normalized_sha256": "a43ff9e300d28b0c7d91293030c1dfd3d70250f6013c07cf647ab96999355e20"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
       "sha256": "978d8bd939862cdec7ccce7c019e0c9a33d3cd5cbc4a556fe0b337b54dd14572",

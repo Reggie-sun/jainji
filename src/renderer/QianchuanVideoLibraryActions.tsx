@@ -54,6 +54,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
           </div>)}
         </div>}
         <fieldset className="qianchuan-cleanup-options" disabled={disabled}><legend>清理内容</legend>
+          <p>计划素材仅清理“投放中”的素材，自动切换为100条/页，逐页核对所选规则。</p>
           <label><input type="checkbox" checked={auditMaterials} onChange={event => setAuditMaterials(event.target.checked)} /><span><strong>计划内三类素材</strong><small>审核不通过、生态审核不通过、审核通过可优化。按审核状态清理，不受零展示规则的48小时保护限制。</small></span></label>
           <label><input type="checkbox" checked={zeroImpressions} onChange={event => { setZeroImpressions(event.target.checked); if (event.target.checked) setVideoLibrary(false); }} /><span><strong>近7天零展示素材</strong><small>仅清理首次加入计划已满48小时的素材；可与三类审核素材同时选择，符合任一勾选规则即清理。</small></span></label>
           {planMaterials && zeroImpressions && <p>零展示规则自动删除所选计划中最近7个完整自然日（北京时间）整体展示次数为0、且首次加入计划已满48小时的素材。程序逐页核对并确认，无需逐批操作；日期或数据无法核对时停止。本地视频和上传记录保留。</p>}
