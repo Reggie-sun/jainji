@@ -76,7 +76,7 @@ export class QianchuanPlanMaterialPage {
         delete expected.material_audit_status; delete expected.material_audit_reject_type;
         if (body.StartTime !== this.zeroWindow.startTime || body.EndTime !== this.zeroWindow.endTime ||
           !Array.isArray(body.Metrics) || !body.Metrics.includes("product_show_count_for_roi2") ||
-          !Array.isArray(body.Dimensions) || !body.Dimensions.includes("material_id") || !body.Dimensions.includes("roi2_material_upload_time")) return false;
+          !Array.isArray(body.Dimensions) || !body.Dimensions.includes("material_id")) return false;
       }
       const conditions = body.Filters.Conditions;
       return Array.isArray(conditions) && conditions.length === Object.keys(expected).length &&
@@ -104,7 +104,7 @@ export class QianchuanPlanMaterialPage {
       value = { total, ids };
     }
     if (this.zeroWindow) {
-      const rows = (stats.rows ?? []).map((row: unknown) => parseZeroImpressionsRow(row, this.zeroWindow!));
+      const rows = (stats.rows ?? []).map((row: unknown) => parseZeroImpressionsRow(row));
       const { Offset: offset, Limit: limit } = response.request().postDataJSON().PageParams;
       if (rows.length !== Math.min(limit, Math.max(0, value.total - offset)) || value.total > 0 && offset >= value.total) throw changed();
       value = { total: value.total, ids: rows.filter((row: ZeroImpressionsRow) => row.eligible).map((row: ZeroImpressionsRow) => row.id), zeroImpressions: { offset, limit, rows } };
@@ -232,14 +232,13 @@ export class QianchuanPlanMaterialPage {
     if (!snapshot.total && !items.length && await table.locator(".oc-empty:visible").filter({ hasText: "暂无数据" }).count() === 1) return true;
     const heads = await table.locator(".ovui-table__head-wrapper thead th").allTextContents();
     const index = (name: string) => heads.filter(head => head.trim() === name).length === 1 ? heads.findIndex(head => head.trim() === name) : -1;
-    const timeIndex = index("创建时间"), countIndex = index("整体展示次数");
-    if (timeIndex < 0 || countIndex < 0) throw changed();
+    const countIndex = index("整体展示次数");
+    if (countIndex < 0) throw changed();
     const totals = await table.locator(".ovui-page-total:visible").allTextContents();
     const total = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].trim()) : null;
     const current = await table.locator(".ovui-page-turner__item--active:visible").allTextContents();
     return !!total && Number(total[1]) === snapshot.total && current.length === 1 && Number(current[0]) === data.offset / data.limit + 1 &&
       items.length === data.rows.length && items.every((item, i) => item.id === data.rows[i].id &&
-        item.cells[timeIndex]?.replace(/\s+/g, " ") === data.rows[i].createdAt &&
         /^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(item.cells[countIndex] ?? "") && Number(item.cells[countIndex].replaceAll(",", "")) === data.rows[i].impressions);
   }
   async movePage(first = false): Promise<boolean> {

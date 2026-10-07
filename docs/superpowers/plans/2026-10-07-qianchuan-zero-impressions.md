@@ -55,3 +55,19 @@ Kimi read-only mapping receipt `ded47bfd-b52c-4926-8831-a118dc884704`（deep / k
 复用 `QianchuanVideoLibraryActions` 和共享 schema 作为改动 owner，移除禁用/自动取消与组合请求拒绝，保留仅全库请求拒绝计划规则及计划身份准入。既有 service/cleanup-plans 按计划串行执行后清理库一次，不新增执行路径；计划 BLOCKED 或取消时停止后续库清理，保留分段计数和原因。零候选正常扫描完成返回 CLEARED，仍可进入库阶段。
 
 Parent self-review：保留显式全库选择和范围确认；无凭据、账号范围、删除适配器、pending 恢复或定时语义变更。验证覆盖单/双计划规则加视频库的 schema、UI 勾选持久性、准确范围确认和单次请求，以及 service 规则仅传给计划、库执行一次与计划 BLOCKED 阻断。Chrome MCP 使用真实组件和假桥接请求验证，不实际删除账号视频。运行 typecheck、受影响测试与 owned Harness，再对稳定候选按当前 SUBAGENTS Risk Gate 判断并记录。
+
+## Accepted Thirty-Day Delta
+
+2026-10-08 用户明确选择 A：最近30天整体展示次数为0的投放中素材均删除，取消48小时保护。此修订取代所有前文7天/48小时选择规则。统计窗口为北京时间最近30个完整自然日（不含今天），与截图2026-09-08至2026-10-07一致；不按素材创建/上传年龄筛选，也不要求创建时间列。审核规则和账号视频库范围保持独立。
+
+共享请求改用 `ZERO_IMPRESSIONS_30D` / `AUDIT_AND_ZERO_IMPRESSIONS_30D`，旧7天token拒绝，不静默扩展旧页面授权。窗口只含startTime/endTime；旧pending中的createdBefore仅保留只读兼容，所有pending继续阻断，不迁移或删除。CDP通过原日期hash设置窗口，并继续校验DOM日期、请求日期、素材ID、展示次数及投放中状态；100条分页、仅候选勾选、重扫、逐批核对、取消和未知结果停止不变。
+
+### Milestones And Verification
+
+1. 规则/schema/UI及原owner更新：30天跨月/跨年窗口，最新上传及缺失创建时间不影响零展示资格，非零或缺失指标仍拒绝/保留；旧token拒绝，旧pending不重试。
+2. 原CDP适配器删除创建时间依赖；fixture覆盖稀疏100条分页、最新零展示、无创建列、日期漂移、不同于30天的请求、未知结果和分页位移。真实页面仅只读查看日期，无真实删除验证。
+3. typecheck、相关tests及owned Harness，实际UI请求检查，AOCI逐对象维护；稳定候选按Risk Gate判断受管Kimi只读复核，保留其他会话变更，提交推送main。若共享工作树验证因其他写入失效，保留证据并重验，不把旧回执当PASS。
+
+### Self-Review
+
+原窗口、parser、CDP page、plan owner、共享schema和renderer继续各自独占职责；不新增队列、删除API或恢复路径。移除年龄是用户明确授权的新语义，以新token隔离旧请求；显示“整体展示次数”而非“播放量”。删除不可恢复，需验证30天绑定及新素材资格，开发测试不操作真实素材。

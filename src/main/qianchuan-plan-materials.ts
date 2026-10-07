@@ -11,7 +11,7 @@ import { createZeroImpressionsWindow, type ZeroImpressionsWindow } from "./qianc
 
 type Connection = { page: Pick<QianchuanPlanMaterialPage, "open" | "filter" | "read" | "deleteBatch"> & Partial<Pick<QianchuanPlanMaterialPage, "movePage">>; close(): Promise<void> };
 const pendingSchema = z.object({ version: z.literal(1), attempt: z.string().uuid(), advertiserId: z.string(), adId: z.string(), ids: z.array(z.string()).min(1).max(100),
-  zeroWindow: z.object({ startTime: z.string(), endTime: z.string(), createdBefore: z.string() }).strict().optional(),
+  zeroWindow: z.object({ startTime: z.string(), endTime: z.string(), createdBefore: z.string().optional() }).strict().optional(),
 }).strict();
 
 /** Same production service owns scheduling; this owner only records plan-delete intent and current UI progress. */
@@ -23,15 +23,15 @@ export class QianchuanPlanMaterials {
     await strictSyncDirectory(path.dirname(file));
   }
   async clear(target: FrozenQianchuanAccount, guard: () => Promise<void>, parentSignal?: AbortSignal, rule?: QianchuanLibraryClear["planMaterialRule"]): Promise<QianchuanLibraryResult> {
-    if (rule === "AUDIT_AND_ZERO_IMPRESSIONS_7D") {
+    if (rule === "AUDIT_AND_ZERO_IMPRESSIONS_30D") {
       const timeout = AbortSignal.timeout(30 * 60 * 1000);
       const signal = parentSignal ? AbortSignal.any([timeout, parentSignal]) : timeout;
       const audit = await this.clear(target, guard, signal);
       if (audit.state === "BLOCKED") return audit;
-      const zero = await this.clear(target, guard, signal, "ZERO_IMPRESSIONS_7D");
+      const zero = await this.clear(target, guard, signal, "ZERO_IMPRESSIONS_30D");
       return { ...zero, deletedCount: audit.deletedCount + zero.deletedCount, message: `${audit.message} ${zero.message}` };
     }
-    const zeroWindow = rule === "ZERO_IMPRESSIONS_7D" ? createZeroImpressionsWindow(this.startedAt) : undefined;
+    const zeroWindow = rule === "ZERO_IMPRESSIONS_30D" ? createZeroImpressionsWindow(this.startedAt) : undefined;
     const result: QianchuanLibraryResult = { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: "计划素材清理未开始。" };
     const directory = path.resolve(this.root, "plan-material-deletions"), attempt = randomUUID();
     const gate = path.join(directory, `${target.advertiserId}-${target.adId}.pending.json`), lock = path.join(directory, `${target.advertiserId}.operation.lock`);
@@ -96,7 +96,7 @@ export class QianchuanPlanMaterials {
       const audit = path.join(directory, attempt); await secureUploadDirectory(audit); await strictSyncDirectory(directory);
       await this.write(path.join(audit, "completed.json"), { advertiserId: target.advertiserId, adId: target.adId, initialCount, deletedCount: result.deletedCount, observationMode: zeroWindow ? "zero_impressions_all_pages" : "filtered_current_ui", ...(zeroWindow ? { zeroWindow } : {}), completedAt: new Date().toISOString() });
       await connection.close(); connection = undefined;
-      return { ...result, state: "CLEARED", message: zeroWindow ? `计划 ${target.adId} 已逐页清理 ${zeroWindow.startTime.slice(0, 10)} 至 ${zeroWindow.endTime.slice(0, 10)} 零展示且加入计划满48小时的素材，删除 ${result.deletedCount} 条。` : `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。` };
+      return { ...result, state: "CLEARED", message: zeroWindow ? `计划 ${target.adId} 已逐页清理 ${zeroWindow.startTime.slice(0, 10)} 至 ${zeroWindow.endTime.slice(0, 10)} 零展示素材，删除 ${result.deletedCount} 条。` : `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。` };
     } catch (error) {
       const detail = error instanceof Error && error.name === "TimeoutError" ? `${stage}时等待千川页面超时。` :
         error instanceof Error ? error.message.split("\n")[0].slice(0, 200) : "操作异常。";

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-07T17:16:33Z",
+  "updated_at": "2026-10-07T17:40:07Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "127234335fffa659099780df5a8ac5cadbb262eee7891d2dc90c8ee286d7c820",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "beaae1602de870895976064c30c576f71814db14baefbd4efb9a8146b5737320",
-      "size": 96549,
-      "normalized_sha256": "beaae1602de870895976064c30c576f71814db14baefbd4efb9a8146b5737320"
+      "sha256": "5dd4c1dc331ba57d73086fda0c3daf72dd70c2b2413711298b7e492e29660aae",
+      "size": 96398,
+      "normalized_sha256": "5dd4c1dc331ba57d73086fda0c3daf72dd70c2b2413711298b7e492e29660aae"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1518,14 +1518,14 @@
       "normalized_sha256": "841b81a8465f7916416016373f571849be735863685054b5950f3e13057740b8"
     },
     "src/main/qianchuan-plan-material-page.ts": {
-      "sha256": "e15e4cf71332de85eaaab54015d48fd0a303886ee4eccd649edefd5699d8ba3d",
-      "size": 24084,
-      "normalized_sha256": "e15e4cf71332de85eaaab54015d48fd0a303886ee4eccd649edefd5699d8ba3d"
+      "sha256": "f450d8bed0b8d9d2257638d2da58966fbf24ba67e9e2fe5f9d427aecf023391b",
+      "size": 23874,
+      "normalized_sha256": "f450d8bed0b8d9d2257638d2da58966fbf24ba67e9e2fe5f9d427aecf023391b"
     },
     "src/main/qianchuan-plan-materials.ts": {
-      "sha256": "dfb0d9680801b9159c970b8ec5f854bb393ace1ded47463ba0c13e10785dac5b",
-      "size": 8934,
-      "normalized_sha256": "dfb0d9680801b9159c970b8ec5f854bb393ace1ded47463ba0c13e10785dac5b"
+      "sha256": "0f0f4269783406d3fbcb9593409c410d9fee37dc4e9532df7d688d111e1f3464",
+      "size": 8919,
+      "normalized_sha256": "0f0f4269783406d3fbcb9593409c410d9fee37dc4e9532df7d688d111e1f3464"
     },
     "src/main/qianchuan-plan-reads.ts": {
       "sha256": "64fc0b0b1ec6e54245381061b71fec0c91ac56697e0cbac64e9f1e03f7d080a5",
@@ -1558,9 +1558,9 @@
       "normalized_sha256": "d896a8d7ccf0220728ac8a62cbb35c7cd159fdb50b236ac74d036288fbd7ef5f"
     },
     "src/main/qianchuan-zero-impressions.ts": {
-      "sha256": "f9afd5c174728047cd276e7c77825608c198a687e24ad04a24cf1218c67749d0",
-      "size": 2535,
-      "normalized_sha256": "f9afd5c174728047cd276e7c77825608c198a687e24ad04a24cf1218c67749d0"
+      "sha256": "94cd2e47552fdf84c54df4fa2c3537a91367d7963a55d0e2c4470f34f59cffa4",
+      "size": 1645,
+      "normalized_sha256": "94cd2e47552fdf84c54df4fa2c3537a91367d7963a55d0e2c4470f34f59cffa4"
     },
     "src/main/queue.ts": {
       "sha256": "3f7832089406d472f1f3ce4203a4d083a7ab5c4f18d1e0f253d27b9c630524ed",
@@ -2073,9 +2073,9 @@
       "normalized_sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5"
     },
     "src/renderer/QianchuanVideoLibraryActions.tsx": {
-      "sha256": "05148e98fa0279f7558c45a22cba2713cfc5e17bce048a84c8b566ca63024419",
-      "size": 10139,
-      "normalized_sha256": "05148e98fa0279f7558c45a22cba2713cfc5e17bce048a84c8b566ca63024419"
+      "sha256": "fd9ed3195f103931b5e9f37df3e9c732c1b9d63d41e94b38f3d97b4036876f14",
+      "size": 10018,
+      "normalized_sha256": "fd9ed3195f103931b5e9f37df3e9c732c1b9d63d41e94b38f3d97b4036876f14"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
       "sha256": "978d8bd939862cdec7ccce7c019e0c9a33d3cd5cbc4a556fe0b337b54dd14572",
@@ -2374,9 +2374,9 @@
       "normalized_sha256": "7d768a1dc5b5961d888c0fd04479f459f42407477ab9af3213da8dc327fdb8ed"
     },
     "src/shared/qianchuan-video-library.ts": {
-      "sha256": "a6af961c0d1ebfddffde1547b495a7dec50cacedf249952356194d312f1d3496",
-      "size": 3223,
-      "normalized_sha256": "a6af961c0d1ebfddffde1547b495a7dec50cacedf249952356194d312f1d3496"
+      "sha256": "c474dc0e19b1fef045e32e7b3bd362236cc695bddb92cd84614f7937f2e8a228",
+      "size": 3225,
+      "normalized_sha256": "c474dc0e19b1fef045e32e7b3bd362236cc695bddb92cd84614f7937f2e8a228"
     },
     "src/shared/shape-cover.ts": {
       "sha256": "8e9c6ca92189a84dc76ee11d96566e0ac5151caf5cc410e91da29f1de71a7796",

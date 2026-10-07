@@ -227,7 +227,7 @@ describe("cleanup plan browser interaction", () => {
     const page = await cleanupFixture();
     try {
       expect(await page.getByRole("button", { name: "自动删除所选两类素材", exact: true }).isDisabled()).toBe(true); await respond(page);
-      await page.getByRole("checkbox", { name: /近7天零展示素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: /近30天零展示素材/ }).uncheck();
       expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(true);
       expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(true);
       await page.setViewportSize({ width: 420, height: 900 });
@@ -245,7 +245,7 @@ describe("cleanup plan browser interaction", () => {
     const page = await cleanupFixture();
     try {
       await respond(page);
-      const audit = page.getByRole("checkbox", { name: /计划内三类素材/ }), zero = page.getByRole("checkbox", { name: /近7天零展示素材/ });
+      const audit = page.getByRole("checkbox", { name: /计划内三类素材/ }), zero = page.getByRole("checkbox", { name: /近30天零展示素材/ });
       expect(await audit.isChecked()).toBe(true); expect(await zero.isChecked()).toBe(true);
       expect(await page.getByRole("combobox", { name: "计划素材清理规则" }).count()).toBe(0);
       await audit.uncheck(); await zero.uncheck();
@@ -254,7 +254,7 @@ describe("cleanup plan browser interaction", () => {
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2); await respond(page);
       await page.getByRole("button", { name: "自动删除所选两类素材（2）", exact: true }).click();
       await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
-      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "AUDIT_AND_ZERO_IMPRESSIONS_7D" });
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "AUDIT_AND_ZERO_IMPRESSIONS_30D" });
     } finally { await page.close(); }
   });
   it("starts zero-impression cleanup once for the frozen plan set without per-page confirmation or library clearing", async () => {
@@ -268,25 +268,25 @@ describe("cleanup plan browser interaction", () => {
       await page.getByRole("button", { name: "自动删除零展示素材（1）", exact: true }).click();
       await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
       expect(await page.getByRole("group", { name: "确认素材清理" }).count()).toBe(0);
-      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "ZERO_IMPRESSIONS_7D", accounts: [{ expectedAdvertiserId: "1000", plans: [{ adId: "9002" }] }] });
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "ZERO_IMPRESSIONS_30D", accounts: [{ expectedAdvertiserId: "1000", plans: [{ adId: "9002" }] }] });
     } finally { await page.close(); }
   });
-  it.each(["ZERO_IMPRESSIONS_7D", "AUDIT_AND_ZERO_IMPRESSIONS_7D"])("keeps library selection independent and confirms its separate scope with %s", async planMaterialRule => {
+  it.each(["ZERO_IMPRESSIONS_30D", "AUDIT_AND_ZERO_IMPRESSIONS_30D"])("keeps library selection independent and confirms its separate scope with %s", async planMaterialRule => {
     const page = await cleanupFixture();
     try {
       await respond(page);
       const library = page.getByRole("checkbox", { name: /视频库全部视频/ });
-      const zero = page.getByRole("checkbox", { name: /近7天零展示素材/ });
+      const zero = page.getByRole("checkbox", { name: /近30天零展示素材/ });
       expect(await library.isChecked()).toBe(false);
       expect(await library.isDisabled()).toBe(false);
       await library.check(); await zero.uncheck(); await zero.check();
       expect(await library.isChecked()).toBe(true);
-      if (planMaterialRule === "ZERO_IMPRESSIONS_7D") await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
+      if (planMaterialRule === "ZERO_IMPRESSIONS_30D") await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
       await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
       await page.getByRole("button", { name: "清理所选计划及视频库（1）", exact: true }).click();
       const confirmation = await page.getByRole("group", { name: "确认素材清理" }).textContent();
-      expect(confirmation).toContain("近7天零展示素材"); expect(confirmation).toContain("不按计划筛选");
-      expect(confirmation?.includes("所选计划内三类素材")).toBe(planMaterialRule === "AUDIT_AND_ZERO_IMPRESSIONS_7D");
+      expect(confirmation).toContain("近30天零展示素材"); expect(confirmation).toContain("不按计划筛选");
+      expect(confirmation?.includes("所选计划内三类素材")).toBe(planMaterialRule === "AUDIT_AND_ZERO_IMPRESSIONS_30D");
       expect(confirmation).toContain("ID 9002"); expect(confirmation).not.toContain("ID 9001");
       expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(0);
       await page.getByRole("button", { name: "确认删除两类内容（1 个账号）", exact: true }).click();
@@ -298,7 +298,7 @@ describe("cleanup plan browser interaction", () => {
     const page = await cleanupFixture();
     try {
       await respond(page);
-      await page.getByRole("checkbox", { name: /近7天零展示素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: /近30天零展示素材/ }).uncheck();
       await page.getByRole("button", { name: "全选清理计划", exact: true }).click();
       expect(await page.getByRole("button", { name: "清理所选计划", exact: true }).isDisabled()).toBe(true);
       await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
@@ -320,7 +320,7 @@ describe("cleanup plan browser interaction", () => {
     const page = await cleanupFixture();
     try {
       await respond(page);
-      await page.getByRole("checkbox", { name: /近7天零展示素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: /近30天零展示素材/ }).uncheck();
       await page.getByRole("button", { name: "清理所选计划（2）", exact: true }).click();
       await page.evaluate(() => (window as any).changeCleanupAccount("1001"));
       await page.getByText("账号设置已变化，请取消并重新选择清理范围。", { exact: true }).waitFor();
