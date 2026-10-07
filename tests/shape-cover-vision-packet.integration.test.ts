@@ -1,5 +1,5 @@
 import { it, expect } from "vitest";
-import { mkdtemp, rm, appendFile } from "node:fs/promises";
+import { mkdtemp, rm, appendFile, copyFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -48,4 +48,40 @@ it("builds context and crops from actual M1 frames with deterministic pixel mapp
     await expect(buildVisionCandidatePacket(evidence, [id], { ...tools, signal: AbortSignal.abort() })).rejects.toThrow();
     await appendFile(sourcePath, Buffer.from([1])); await expect(packet.verifyFresh()).rejects.toThrow(/generation/);
   } finally { await evidence?.close(); await rm(root, { recursive: true, force: true }); }
+}, 60000);
+
+it("keeps dense detector identities while using the bounded semantic images and rejects foreign or closed evidence", async () => {
+  const root = await mkdtemp(join(tmpdir(), "jianji-dense-packet-"));
+  const ffmpeg = { ffmpegPath: (await discoverBinary("ffmpeg"))!, ffprobePath: (await discoverBinary("ffprobe"))! };
+  const signal = AbortSignal.timeout(60000), tools = { ...ffmpeg, signal }, width = 64, height = 64, count = 120;
+  const sourcePath = join(root, "source.mp4"), raw = Buffer.alloc(width * height * 3 * count);
+  for (let f = 0; f < count; f++) for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    const stable = x >= 4 && x < 16 && y >= 4 && y < 16;
+    const v = stable ? ((x + y) % 3 ? 240 : 20) : (f * 103 + x * 13 + y * 11) % 230 + 10;
+    const p = ((f * height + y) * width + x) * 3; raw.fill(v, p, p + 3);
+  }
+  let sparse: Awaited<ReturnType<typeof prepareDiscoveryEvidence>> | undefined, dense: typeof sparse;
+  try {
+    expect(spawnSync(ffmpeg.ffmpegPath, ["-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", `${width}x${height}`, "-r", "6", "-i", "pipe:0",
+      "-vf", "setsar=1", "-c:v", "libx264", "-qp", "0", "-bf", "0", "-pix_fmt", "yuv444p", "-video_track_timescale", "6000", "-n", sourcePath], { input: raw, timeout: 20000 }).status).toBe(0);
+    const source = await identifySource(sourcePath, { width, height, rotation: 0, durationMs: 20000, timeBase: "1/6000", timeOriginPts: 0, interpretationVersion: 1 });
+    const input = { sourcePath, source, ffmpeg, signal };
+    sparse = await prepareDiscoveryEvidence(input, { frames: 24 }); dense = await prepareDiscoveryEvidence(input);
+    const component = (await discoverStationaryTargets(dense, signal)).components.find(c => c.state === "CANDIDATE")!;
+    expect(component).toBeDefined();
+    // The same physical sticker gets different receipt-bound IDs with a different sample population.
+    await expect(buildVisionCandidatePacket(sparse, [component.id], tools)).rejects.toThrow("VISION_CANDIDATE_MISMATCH");
+    const packet = await buildVisionCandidatePacket(sparse, [component.id], tools, dense);
+    expect(packet.manifest.candidates[0]).toMatchObject({ candidateId: component.id, sourceBox: component.sourceBox, signals: component.signals });
+    const contexts = packet.manifest.images.filter(i => i.kind === "CONTEXT");
+    expect(contexts.map(i => i.ordinal)).toEqual([sparse.receipt.frames[0].index, sparse.receipt.frames[11].index, sparse.receipt.frames[23].index]);
+    expect(packet.manifest.images).toHaveLength(6);
+    await expect(buildVisionCandidatePacket(sparse, [component.id], tools, { ...dense })).rejects.toThrow(/owned|BINDING/);
+    const foreignPath = join(root, "foreign.mp4"); await copyFile(sourcePath, foreignPath); await appendFile(foreignPath, Buffer.from([1]));
+    const foreignSource = await identifySource(foreignPath, { width, height, rotation: 0, durationMs: 20000, timeBase: "1/6000", timeOriginPts: 0, interpretationVersion: 1 });
+    const foreign = await prepareDiscoveryEvidence({ ...input, sourcePath: foreignPath, source: foreignSource });
+    try { await expect(buildVisionCandidatePacket(sparse, [component.id], tools, foreign)).rejects.toThrow(/BINDING/); }
+    finally { await foreign.close(); }
+    await dense.close(); await expect(packet.verifyFresh()).rejects.toThrow(/owned|BINDING|closed/);
+  } finally { await sparse?.close(); await dense?.close(); await rm(root, { recursive: true, force: true }); }
 }, 60000);

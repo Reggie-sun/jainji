@@ -60,7 +60,8 @@ function run(binary: string, args: string[], input?: Buffer) {
   const result = spawnSync(binary, args, { input, timeout: 20000, maxBuffer: 8 * 1024 ** 2 });
   if (result.error || result.status) throw result.error ?? Error(result.stderr.toString()); return result.stdout;
 }
-type Kind = "static" | "blink" | "move" | "tail" | "thin" | "alpha" | "group" | "group-edge" | "group-margin" | "geometry" | "geometry-move" | "geometry-group" | "geometry-rgb";
+type Kind = "static" | "blink" | "move" | "tail" | "thin" | "alpha" | "group" | "group-edge" | "group-margin" | "geometry" | "geometry-move" | "geometry-group" | "geometry-rgb"
+  | "canvas-tl" | "canvas-tr" | "canvas-bl" | "canvas-br" | "canvas-shadow" | "interior-static-background" | "interior-range-background" | "interior-shadow-background" | "interior-changing-shadow";
 async function fixture(kind: Kind = "static", count = 30) {
   const width = 128, height = 96, root = await mkdtemp(join(tmpdir(), "jianji-static-mask-"));
   cleanup.push(() => rm(root, { recursive: true, force: true }));
@@ -73,8 +74,17 @@ async function fixture(kind: Kind = "static", count = 30) {
     for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       const p = y * width + x, offset = (f * width * height + p) * 3, background = ((kind.startsWith("geometry") ? 0 : x * 13 + y * 7) + f * 107) % 230 + 10;
       const sx = x - ((kind === "move" || kind === "geometry-move") && f === 15 ? 9 : 0);
+      if (kind === "interior-shadow-background") {
+        const distance = Math.max(108 - x, x - 115, 10 - y, y - 17, 0);
+        if (distance <= 8) { points[p] = 1; raw.fill(distance ? 81 + (9 - distance) * 3 : (x + y) % 2 ? 201 : 230, offset, offset + 3); }
+        else raw.fill(x >= 90 && x < 95 && y >= 6 && y < 24 ? (x + y) % 2 ? 245 : 25 : f < 20 ? 81 : background, offset, offset + 3);
+        continue;
+      }
       const grouped = kind.startsWith("group") || kind === "geometry-group";
       let visible = Math.abs(sx - (grouped ? 35 : 65)) + Math.abs(y - 43) <= 12;
+      if (kind.startsWith("canvas-")) visible = (kind.endsWith("tl") || kind.endsWith("bl") ? x < 14 : x >= width - 14)
+        && (kind.endsWith("tl") || kind.endsWith("tr") ? y < 14 : y >= height - 14);
+      if (kind === "canvas-shadow") visible = x < 14 && y < 14;
       if (kind.startsWith("geometry")) visible = y >= 22 && y <= 62 && (kind === "geometry-group" ? sx >= 12 && sx <= 48 || sx >= 78 && sx <= 114 : sx >= 40 && sx <= 90);
       if (grouped && kind !== "geometry-group") visible ||= x >= 95 && x <= 98 && y >= 41 && y <= 44;
       if (kind === "group-edge" || kind === "group-margin") visible ||= x >= (kind === "group-edge" ? 0 : 1) && x <= 4 && y >= 41 && y <= 44;
@@ -82,7 +92,14 @@ async function fixture(kind: Kind = "static", count = 30) {
       const unrelated = grouped && kind !== "geometry-group" && (x >= 65 && x <= 68 && y >= 41 && y <= 44 || x >= 32 && x <= 43 && y >= 65 && y <= 68);
       if (kind === "thin") visible ||= y === 43 && sx >= 77 && sx <= 86;
       if (kind === "tail" && f === 29) visible ||= x >= 78 && x <= 87 && y === 43;
-      if (kind === "alpha" && !visible && Math.abs(sx - 65) + Math.abs(y - 43) <= 14) {
+      if (kind === "canvas-shadow" && !visible && x < 22 && y < 22) {
+        points[p] = 1; raw.fill(Math.round((f % 2 ? 159 : 41) * 0.9), offset, offset + 3);
+      }
+      else if (kind === "interior-changing-shadow" && !visible && Math.abs(sx - 65) + Math.abs(y - 43) <= 20) {
+        // Construction alpha, not temporal stability, defines the required shadow pixels.
+        points[p] = 1; raw.fill(Math.round((f % 2 ? 119 : 81) * 0.9), offset, offset + 3);
+      }
+      else if (kind === "alpha" && !visible && Math.abs(sx - 65) + Math.abs(y - 43) <= 14) {
         points[p] = 1; raw.fill(Math.round(background * 0.85 + 235 * 0.15), offset, offset + 3);
       }
       else if (visible && !(kind === "blink" && f === 15)) {
@@ -91,7 +108,8 @@ async function fixture(kind: Kind = "static", count = 30) {
         const pixel = kind.startsWith("geometry") ? geometryBorder ? 128 : texture[y * width + sx] : (sx + y) % 3 ? 235 : 25;
         raw.fill(pixel + (kind === "geometry-rgb" && f === 15 ? 35 : 0), offset, offset + 3);
       }
-      else raw.fill(unrelated ? ((x + y) % 3 ? 235 : 25) : background, offset, offset + 3);
+      else raw.fill(unrelated ? ((x + y) % 3 ? 235 : 25) : kind === "interior-static-background" || kind === "interior-changing-shadow" ? (f % 2 ? 119 : 81)
+        : kind === "interior-range-background" && f < 20 ? 81 : background, offset, offset + 3);
     }
     required.push(points);
   }
@@ -102,7 +120,8 @@ async function fixture(kind: Kind = "static", count = 30) {
   const source = await identifySource(sourcePath, { width, height, rotation: 0, durationMs: Math.round(count / (count > 30 ? 30 : 10) * 1000), timeBase: probe.streams[0].time_base, timeOriginPts: 0, interpretationVersion: 1 });
   const input = { sourcePath, source, ffmpeg, signal: new AbortController().signal };
   const discovery = await prepareDiscoveryEvidence(input, { frames: count > 30 ? 96 : 4 }); cleanup.push(() => discovery.close());
-  const result = await discoverStationaryTargets(discovery, input.signal), component = result.components.find(c => c.state === "CANDIDATE");
+  const result = await discoverStationaryTargets(discovery, input.signal), component = result.components.find(c => c.state === "CANDIDATE" &&
+    (kind !== "interior-shadow-background" || c.sourceBox.x <= 110 && c.sourceBox.x + c.sourceBox.width > 110 && c.sourceBox.y <= 14 && c.sourceBox.y + c.sourceBox.height > 14));
   expect(component).toBeDefined();
   const selection = { candidateId: component!.id, targetId: randomUUID(), confirmedBy: "controlled-target-confirmation", description: "constructed diamond",
     decision: "CONFIRM_STATIC_TARGET_IDENTITY_AND_RANGE_ONLY" as const, range: { startFrame: 0, endFrame: count } };
@@ -502,6 +521,63 @@ describe("static confirmed-target mask development", () => {
     const candidate = await extractStaticConservativeMask(evidence, input.signal);
     expect(candidate.receipt.status).toBe("INCOMPLETE");
     expect(candidate.receipt.reasons).toContain(kind === "group-edge" ? "STABLE_COMPONENT_EXTENT_UNRESOLVED" : "CONSERVATIVE_MARGIN_EXTENT_UNRESOLVED");
+  }, 30000);
+  it.each(["canvas-tl", "canvas-tr", "canvas-bl", "canvas-br"] as const)("keeps %s unresolved without independent boundary ownership", async kind => {
+    const { input, evidence } = await fixture(kind);
+    const candidate = await extractStaticConservativeMask(evidence, input.signal);
+    expect(candidate.receipt.method).toBe("cpu-static-conservative-mask-development/v2");
+    expect(candidate.receipt.status).toBe("INCOMPLETE");
+    expect(candidate.receipt.reasons).toContain("STABLE_COMPONENT_EXTENT_UNRESOLVED");
+  }, 30000);
+  it("rejects a canvas-edge core whose changing translucent shadow extends beyond dilation", async () => {
+    const { input, evidence, required, count } = await fixture("canvas-shadow");
+    const truth = required.map(points => Buffer.from(points));
+    expect(truth.reduce((sum, frame) => sum + frame.reduce((n, pixel) => n + pixel, 0), 0)).toBe(22 * 22 * count);
+    const candidate = await extractStaticConservativeMask(evidence, input.signal);
+    expect(evidence.roi).toMatchObject({ x: 0, y: 0 });
+    expect(candidate.receipt.status).toBe("INCOMPLETE");
+    expect(candidate.receipt.reasons).toContain("STABLE_COMPONENT_EXTENT_UNRESOLVED");
+  }, 30000);
+  it("does not admit a mask that omits a changing translucent shadow", async () => {
+    const { input, evidence, required } = await fixture("interior-changing-shadow");
+    const truth = required.map(points => Buffer.from(points));
+    const candidate = await extractStaticConservativeMask(evidence, input.signal);
+    const raster = candidate.receipt.mask && decodeSourceMask({ ...candidate.receipt.mask, kind: "static-binary-v1" }, input.source);
+    let missed = 0;
+    for (const frame of truth) for (let p = 0; p < frame.length; p++) if (frame[p] && !raster?.[p]) missed++;
+    expect(missed).toBeGreaterThan(0); // This seam must reject rather than claim a complete shadow mask.
+    expect(candidate.receipt.status).toBe("INCOMPLETE");
+    expect(candidate.receipt.reasons).toContain("STABLE_COMPONENT_EXTENT_UNRESOLVED");
+  }, 30000);
+  it("does not interpret nonpersistent background as proof of interior pixel ownership", async () => {
+    const { input, evidence } = await fixture("interior-static-background");
+    expect(evidence.roi.x).toBeGreaterThan(0); expect(evidence.roi.y).toBeGreaterThan(0);
+    expect(evidence.roi.x + evidence.roi.width).toBeLessThan(128);
+    expect(evidence.roi.y + evidence.roi.height).toBeLessThan(96);
+    const clipped = await extractStaticConservativeMask(evidence, input.signal);
+    expect(clipped.receipt.status).toBe("INCOMPLETE");
+    expect(clipped.receipt.reasons).toContain("STABLE_COMPONENT_EXTENT_UNRESOLVED");
+  }, 30000);
+  it("keeps genuinely persistent support reaching an interior ROI edge unresolved", async () => {
+    const { input, discovery, selection } = await fixture("interior-range-background");
+    const target = await confirmStaticDiscoveryTarget(discovery, { ...selection, range: { startFrame: 0, endFrame: 20 } }, input.signal);
+    const evidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => evidence.close());
+    const extracted = await extractStaticConservativeMask(evidence, input.signal);
+    expect(extracted.receipt.sampleOrdinals).toHaveLength(3);
+    expect(extracted.receipt.status).toBe("INCOMPLETE");
+    expect(extracted.receipt.reasons).toContain("STABLE_COMPONENT_EXTENT_UNRESOLVED");
+    expect(extracted.receipt.mask).toBeNull();
+  }, 30000);
+  it("keeps a sticker with soft shadow merged into stable background unresolved without claiming a complete mask", async () => {
+    const { input, discovery, selection, required } = await fixture("interior-shadow-background");
+    const truth = required.map(pixels => Buffer.from(pixels));
+    const target = await confirmStaticDiscoveryTarget(discovery, { ...selection, range: { startFrame: 0, endFrame: 20 } }, input.signal);
+    const evidence = await prepareStaticTargetEvidence(input, target); cleanup.push(() => evidence.close());
+    const extracted = await extractStaticConservativeMask(evidence, input.signal);
+    expect(truth.slice(0, 20).reduce((count, frame) => count + frame.reduce((sum, value) => sum + value, 0), 0)).toBe(24 * 24 * 20);
+    expect(extracted.receipt.reasons).toContain("STABLE_COMPONENT_EXTENT_UNRESOLVED");
+    expect(extracted.receipt.status).toBe("INCOMPLETE");
+    expect(extracted.receipt.mask).toBeNull();
   }, 30000);
   it("builds an irregular original-pixel mask and checks the complete range against independently frozen construction pixels", async () => {
     const { input, evidence, required, count } = await fixture("thin");

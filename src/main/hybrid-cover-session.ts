@@ -18,6 +18,7 @@ import { materializePlan, ProviderError } from "./agent-provider.js";
 import type { FullSourceCensusInput } from "./source-fact-census.js";
 import { sourceKey } from "./source-sticker-knowledge-store.js";
 import { createDecorationFrameResolver } from "./decoration-frame.js";
+import { CORNERS } from "./shape-cover-vision-corner-policy.js";
 
 export interface HybridProductionSession {
   prepare(media: MediaItem, version: number, runId: string, signal: AbortSignal, onStage: (message: string) => void): Promise<EditTemplate>;
@@ -45,6 +46,7 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
         const input = { sourcePath: media.sourcePath, source: probe, ffmpeg: deps.tools, signal };
         if (probe.fingerprint !== media.fingerprint) throw new ProviderError("UNSAFE: Hybrid 原素材已变化。");
         const evidence = await prepareDiscoveryEvidence(input, { frames: 24 });
+        let candidateEvidence: Awaited<ReturnType<typeof prepareDiscoveryEvidence>> | undefined;
         try {
           const verifySourceKnowledge = async () => { if (deps.knowledgeStore) {
             // Legacy knowledge uses the original catalog/container interpretation of the same bytes.
@@ -54,12 +56,13 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
             }
           } };
           await verifySourceKnowledge();
+          candidateEvidence = await prepareDiscoveryEvidence(input);
           const routes = await deps.routes(signal);
-          const semantic = await confirmHybridCornerTargets(evidence, { ...deps.tools, signal }, new ShapeCoverVisionSession(sourceKey(probe), routes, 180000, "CORNER"), signal);
+          const semantic = await confirmHybridCornerTargets(evidence, { ...deps.tools, signal }, new ShapeCoverVisionSession(sourceKey(probe), routes, 180000, "CORNER"), signal, candidateEvidence);
           if (semantic.status === "CORNER_SEMANTIC_BLOCKED") throw new ProviderError("UNSAFE: Hybrid 源或模型连接绑定失败。");
           onStage("自动形状匹配：冻结轮廓、运动与覆盖");
           const h3 = await prepareHybridCornerOverlays(input, evidence, semantic, deps.candidates,
-            { resolutionMode: deps.preset.resolutionMode, frameRateMode: deps.preset.frameRateMode, quality: deps.preset.quality }, path.join(deps.directory, randomUUID()));
+            { resolutionMode: deps.preset.resolutionMode, frameRateMode: deps.preset.frameRateMode, quality: deps.preset.quality }, path.join(deps.directory, randomUUID()), candidateEvidence);
           if (h3.status === "BLOCKED") throw new ProviderError(`UNSAFE: Hybrid ${h3.sourceErrors.join(";")}`);
           const layers = [];
           for (const c of h3.corners) {
@@ -74,8 +77,17 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
           }
           await h3.verifyFresh();
           const corners = layers.map(l => l.cover!.hybridApproved!.corner);
-          return { layers, summary: `自动形状匹配 · 已处理 ${corners.length} 个角落${corners.length ? `（${corners.join("、")}）` : ""}；其他角落保持原样，未声明全部旧贴纸已处理` };
-        } finally { await evidence.close(); }
+          const labels = { TOP_LEFT: "左上", TOP_RIGHT: "右上", BOTTOM_LEFT: "左下", BOTTOM_RIGHT: "右下" };
+          const reasons: Record<string, string> = { MASK_TARGET_AMBIGUOUS: "候选无法绑定", MASK_UNAVAILABLE: "无可用掩码", NO_SHAPE_MATCH: "无匹配轮廓",
+            HYBRID_SEARCH_LIMIT: "搜索预算耗尽", MOVED: "贴纸移动", DISAPPEARED_OR_CHANGED: "贴纸消失或变化", UNOBSERVABLE: "运动无法确认" };
+          const detail = CORNERS.map(corner => {
+            const geometry = h3.corners.find(c => c.corner === corner), decision = semantic.corners[corner];
+            const reason = corners.includes(corner) ? "已处理" : geometry?.status === "FROZEN" ? "样片未通过" : geometry ? reasons[geometry.reason ?? ""] ?? "安全检查未通过" :
+              decision.status === "NO_CANDIDATE" ? "无可用候选" : decision.status === "NO_OVERLAY" ? "非覆盖贴纸" : "语义未确认";
+            return `${labels[corner]}：${reason}`;
+          }).join("；");
+          return { layers, summary: `自动形状匹配 · 已处理 ${corners.length} 个角落；${detail}；其他角落保持原样` };
+        } finally { try { await candidateEvidence?.close(); } finally { await evidence.close(); } }
       })();
       pending.set(key, operation);
     }

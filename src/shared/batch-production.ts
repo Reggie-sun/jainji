@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { MAX_AGENT_OUTPUTS } from "./agent.js";
 import type { AgentItem } from "./agent.js";
-import type { ExportTask } from "../main/domain.js";
+import type { PublicExportTask } from "../main/application.js";
 import { ProductPriceSchema } from "./decorations.js";
 import { QianchuanUploadSelectionSchema, type DouyinUploadStatus } from "./douyin-upload.js";
 import { QianchuanProductSchema } from "./qianchuan-account.js";
@@ -90,7 +90,7 @@ export interface BatchProductionDetail {
   job: BatchProductionJob;
   usesModel?: boolean;
   items: AgentItem[];
-  tasks: ExportTask[];
+  tasks: PublicExportTask[];
   upload?: Pick<DouyinUploadStatus, "message" | "tasks" | "closedBatches"> & {
     accounts?: DouyinUploadStatus["accounts"];
     historical?: boolean;

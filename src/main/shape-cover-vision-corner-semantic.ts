@@ -1,5 +1,5 @@
 import type { ShapeCoverMediaTools } from "./shape-cover-alpha.js";
-import { assertOwnedDiscoveryEvidence, discoveryHash, type DiscoveryEvidence } from "./source-fact-discovery-evidence.js";
+import { verifyMatchingDiscoveryEvidence, discoveryHash, type DiscoveryEvidence } from "./source-fact-discovery-evidence.js";
 import { discoverStationaryTargets } from "./shape-cover-stationary-discovery.js";
 import { buildVisionCandidatePacket, type VisionPacket } from "./shape-cover-vision-packet.js";
 import { ShapeCoverVisionSession, type VisionReceipt, type CornerReviewContext } from "./shape-cover-vision-router.js";
@@ -126,11 +126,11 @@ export async function reviewHybridCornerPlan(plan: CornerScopePlan, session: Sha
 }
 
 export async function confirmHybridCornerTargets(evidence: DiscoveryEvidence, tools: ShapeCoverMediaTools,
-  session: ShapeCoverVisionSession, signal: AbortSignal): Promise<HybridCornerSemanticSet> {
-  assertOwnedDiscoveryEvidence(evidence);
-  const plan = createCornerScopePlan(await discoverStationaryTargets(evidence, signal));
-  return reviewHybridCornerPlan(plan, session, ids => buildVisionCandidatePacket(evidence, ids, { ...tools, signal }),
-    async () => { assertOwnedDiscoveryEvidence(evidence); await evidence.verifyFresh(); }, signal);
+  session: ShapeCoverVisionSession, signal: AbortSignal, candidateEvidence: DiscoveryEvidence = evidence): Promise<HybridCornerSemanticSet> {
+  await verifyMatchingDiscoveryEvidence(evidence, candidateEvidence);
+  const plan = createCornerScopePlan(await discoverStationaryTargets(candidateEvidence, signal));
+  return reviewHybridCornerPlan(plan, session, ids => buildVisionCandidatePacket(evidence, ids, { ...tools, signal }, candidateEvidence),
+    () => verifyMatchingDiscoveryEvidence(evidence, candidateEvidence), signal);
 }
 
 /** Sole H3 semantic projection; serialized sets have no live freshness authority. */

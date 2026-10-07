@@ -34,8 +34,25 @@ export interface DiscoveryEvidence {
   close(): Promise<void>;
 }
 const owned = new WeakSet<DiscoveryEvidence>();
+const defaultPopulations = new WeakSet<DiscoveryEvidence>();
 export function assertOwnedDiscoveryEvidence(evidence: DiscoveryEvidence): void {
   if (!owned.has(evidence)) discoveryIncomplete("unowned or closed evidence");
+}
+
+/** Default density is bounded by scratch capacity and the actual clock; a literal 96-frame count is not its identity. */
+export function assertDefaultDiscoveryPopulation(evidence: DiscoveryEvidence): void {
+  assertOwnedDiscoveryEvidence(evidence);
+  if (!defaultPopulations.has(evidence)) throw Error("DISCOVERY_SAMPLE_BINDING");
+}
+
+/** Separate sampling populations may share a source, never caller-authored ownership or clock claims. */
+export async function verifyMatchingDiscoveryEvidence(images: DiscoveryEvidence, candidates: DiscoveryEvidence): Promise<void> {
+  assertOwnedDiscoveryEvidence(images); assertOwnedDiscoveryEvidence(candidates);
+  await images.verifyFresh(); if (images !== candidates) await candidates.verifyFresh();
+  const a = images.receipt, b = candidates.receipt;
+  if (a.sourceKey !== b.sourceKey || a.clockDigest !== b.clockDigest || JSON.stringify(a.decode) !== JSON.stringify(b.decode)) {
+    throw Error("DISCOVERY_SOURCE_BINDING");
+  }
 }
 
 /** Deterministic exact original ordinals; selection describes sampling, never semantic coverage. */
@@ -173,7 +190,9 @@ export async function prepareDiscoveryEvidence(input: FullSourceCensusInput,
         ffmpegFingerprint, ffprobeFingerprint, inputInterpretation: clock.inputInterpretation }, sampling: "uniform-pts-nearest-with-endpoints/v1" as const, frames };
     evidence = Object.freeze({ receipt: freezeAI({ ...body, evidenceDigest: discoveryHash(JSON.stringify(body)) }), deadline,
       metrics: Object.freeze({ identityMs, clockMs, decodeMs, scratchBytes: expectedBytes }), readFrame, verifyFresh, close });
-    owned.add(evidence); return evidence;
+    owned.add(evidence);
+    if (framesLimit === DISCOVERY_LIMITS.frames && scratchLimit === DISCOVERY_LIMITS.scratchBytes) defaultPopulations.add(evidence);
+    return evidence;
   } catch (error) {
     await close();
     if (error instanceof Error && error.message.startsWith("INCOMPLETE:")) throw error;

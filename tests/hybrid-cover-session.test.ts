@@ -4,12 +4,12 @@ import { DEFAULT_PRESET, type MediaItem } from "../src/main/domain.js";
 import { DecorationSchema } from "../src/shared/decorations.js";
 import type { StickerAssets } from "../src/main/builtin-stickers.js";
 
-const mocks = vi.hoisted(() => ({ identity: vi.fn(), close: vi.fn(), semantic: vi.fn(), geometry: vi.fn(), approve: vi.fn(), fresh: vi.fn() }));
+const mocks = vi.hoisted(() => ({ identity: vi.fn(), close: vi.fn(), discovery: vi.fn(), semantic: vi.fn(), geometry: vi.fn(), approve: vi.fn(), fresh: vi.fn() }));
 vi.mock("../src/main/supervisor-evidence.js", () => ({ SupervisorEvidence: class {
   sourceIdentity = mocks.identity; dispose = async () => {};
 } }));
 vi.mock("../src/main/source-fact-discovery-evidence.js", async importOriginal => ({ ...await importOriginal<object>(),
-  prepareDiscoveryEvidence: async () => ({ close: mocks.close }) }));
+  prepareDiscoveryEvidence: mocks.discovery }));
 vi.mock("../src/main/shape-cover-vision-corner-semantic.js", () => ({ confirmHybridCornerTargets: mocks.semantic }));
 vi.mock("../src/main/shape-cover-hybrid-h3.js", () => ({ prepareHybridCornerOverlays: mocks.geometry,
   readHybridFrozenOverlay: async (_h3: unknown, corner: string) => ({ overlay: { corner } }) }));
@@ -31,16 +31,21 @@ function fixture(selectedMedia = media) {
 }
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.identity.mockResolvedValue(source); mocks.semantic.mockResolvedValue({ status: "CORNER_SEMANTIC_READY" });
+  mocks.identity.mockResolvedValue(source); mocks.discovery.mockImplementation(async () => ({ close: mocks.close }));
+  mocks.semantic.mockResolvedValue({ status: "CORNER_SEMANTIC_READY", corners: Object.fromEntries(["TOP_LEFT", "TOP_RIGHT", "BOTTOM_LEFT", "BOTTOM_RIGHT"].map(c => [c, { status: "NO_CANDIDATE" }])) });
   mocks.geometry.mockResolvedValue({ status: "READY", corners: [{ corner: "TOP_LEFT", status: "FROZEN" }, { corner: "TOP_RIGHT", status: "FROZEN" }, { corner: "BOTTOM_RIGHT", status: "SKIPPED" }], verifyFresh: mocks.fresh });
   mocks.approve.mockImplementation(async overlay => { if (overlay.corner === "TOP_LEFT") throw Error("UNSAFE: HYBRID_H4_NOT_PASS"); return pass; });
 });
 it("keeps a safe corner despite local H4 rejection and reuses the same freeze for all versions", async () => {
   const f = fixture(), a = await f.prepare(), b = await f.prepare(1);
   expect(a.layers).toEqual([pass]); expect(b.layers).toEqual([pass]);
-  expect(a.name).toContain("TOP_RIGHT"); expect(a.name).toContain("其他角落保持原样");
+  expect(a.name).toContain("右上：已处理"); expect(a.name).toContain("左上：样片未通过"); expect(a.name).toContain("其他角落保持原样");
+  expect(a.name.length).toBeLessThanOrEqual(120);
   expect(mocks.semantic).toHaveBeenCalledTimes(1); expect(mocks.geometry).toHaveBeenCalledTimes(1); expect(mocks.approve).toHaveBeenCalledTimes(2);
-  expect(mocks.close).toHaveBeenCalledTimes(1);
+  expect(mocks.close).toHaveBeenCalledTimes(2);
+  const dense = await mocks.discovery.mock.results[1].value;
+  expect(mocks.discovery.mock.calls.map(c => c[1])).toEqual([{ frames: 24 }, undefined]);
+  expect(mocks.semantic.mock.calls[0][4]).toBe(dense); expect(mocks.geometry.mock.calls[0][6]).toBe(dense);
 });
 it("keeps Hybrid approval bytes cached while resolving and freezing per-version frame overrides", async () => {
   const assets = Object.fromEntries(["sparkle", "arrow", "heart", "burst", "frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) as StickerAssets;
@@ -69,7 +74,7 @@ it("exports an explicit unchanged result when every corner is unresolved or skip
 it("does not convert infrastructure failure into a skipped corner or retry the unknown request", async () => {
   mocks.approve.mockRejectedValue(Error("UNSAFE: HYBRID_QA_INFRASTRUCTURE"));
   const f = fixture(); await expect(f.prepare()).rejects.toThrow("QA_INFRASTRUCTURE"); await expect(f.prepare(1)).rejects.toThrow("QA_INFRASTRUCTURE");
-  expect(mocks.approve).toHaveBeenCalledTimes(1); expect(f.routes).toHaveBeenCalledTimes(1); expect(mocks.close).toHaveBeenCalledTimes(1);
+  expect(mocks.approve).toHaveBeenCalledTimes(1); expect(f.routes).toHaveBeenCalledTimes(1); expect(mocks.close).toHaveBeenCalledTimes(2);
 });
 it("stops on a known source dispute before requesting models", async () => {
   const f = fixture(); f.knowledge.lookup.mockResolvedValue({ status: "disputed" });

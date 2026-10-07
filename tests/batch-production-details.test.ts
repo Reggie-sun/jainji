@@ -9,6 +9,13 @@ const render = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMar
     displayMode: "full", status: "producing", taskIds: [], completedCount: 0, failedCount: 0 }, items: [], tasks: [], ...patch }, onArtifact: () => undefined }));
 
 describe("batch works presentation", () => {
+  it("shows frozen Hybrid partial outcomes while keeping export errors authoritative", () => {
+    const coverSummary = "自动形状匹配 · 已处理 0 个角落；右上：语义未确认；其他角落保持原样";
+    const tasks = [{ id: "t1", status: "completed", progress: 1, coverSummary },
+      { id: "t2", status: "failed", progress: 0, coverSummary, errorMessage: "真实导出失败" }] as BatchProductionDetail["tasks"];
+    const html = render({ tasks });
+    expect(html.split(coverSummary)).toHaveLength(2); expect(html).toContain("导出完成"); expect(html).toContain("真实导出失败");
+  });
   it("shows live progress, completed playback and the exact production failure", () => {
     const html = render({ items: [{ id: "plan", mediaId: "m", version: 1, name: "失败素材", status: "failed", error: "主管无法确认覆盖效果" }],
       tasks: [{ id: "t1", status: "running", progress: 0.37 }, { id: "t2", status: "completed", progress: 1 }] as BatchProductionDetail["tasks"] });

@@ -76,7 +76,15 @@ it("H4 approved partial corner uses exact frozen bytes in the original compiler/
     const routes = { LUNA: route("LUNA"), SOL: route("SOL"), MINIMAX: route("MINIMAX") };
     const layer = await approveHybridOverlay(overlay, { sourcePath, source, ffmpeg, signal }, routes, root);
     expect(calls).toEqual(["MINIMAX"]);
-    const frames = decorationFrameLayers("frame-stars", { ...await ensureBuiltinStickerAssets(root), ...await ensureBuiltinFrameAssets(join(root, "frames")) });
+    // An independent full-perimeter fixture keeps this production seam separate from mutable artwork colors.
+    const frameRgba = Buffer.alloc(160 * 160 * 4);
+    for (let y = 0; y < 160; y++) for (let x = 0; x < 160; x++) {
+      if (x < 4 || x >= 156 || y < 4 || y >= 156) frameRgba.set([255, 220, 0, 255], (y * 160 + x) * 4);
+    }
+    const framePng = await encodeShapeCoverPng(frameRgba, source, ffmpeg), framePath = join(root, "test-frame.png");
+    await writeFile(framePath, framePng);
+    const frames = decorationFrameLayers("frame-stars", { ...await ensureBuiltinStickerAssets(root),
+      "frame-stars": { assetPath: framePath, assetFingerprint: `sha256:${hash(framePng)}` } });
     const template = hybridTemplate([layer], { ...createDefaultTemplate(), layers: frames }), preset = { ...DEFAULT_PRESET, ...settings };
     expect(template.layers).toEqual([...frames, layer]);
     const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "fixture.mp4", fingerprint: source.fingerprint, sizeBytes: source.byteLength,
@@ -108,6 +116,8 @@ it("H4 approved partial corner uses exact frozen bytes in the original compiler/
     const output = await decodeShapeCoverPng(frame.stdout, source, ffmpeg), p = (4 * 160 + 144) * 4;
     expect(output[p]).toBeGreaterThan(220); expect(output[p + 2]).toBeLessThan(30); expect(output[(80 * 160 + 80) * 4 + 2]).toBeGreaterThan(220);
     expect(output[(80 * 160 + 1) * 4]).toBeGreaterThan(200);
+    expect(output[(80 * 160 + 1) * 4 + 1]).toBeGreaterThan(180);
+    expect(output[(80 * 160 + 1) * 4 + 2]).toBeLessThan(30);
     // Mutation during encode must be detected by queue's post-render guard, before final publication.
     const run = ffmpeg.run.bind(ffmpeg);
     ffmpeg.run = (args, progress) => {

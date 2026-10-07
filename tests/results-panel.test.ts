@@ -4,6 +4,17 @@ import { expect, it } from "vitest";
 import { ResultsPanel, SupervisorPreviewDialog } from "../src/renderer/ResultsPanel";
 import type { DesktopState } from "../src/shared/desktop";
 
+it.each([0, 1])("shows the persisted partial Hybrid result with %s processed corners after restart", count => {
+  const coverSummary = `自动形状匹配 · 已处理 ${count} 个角落；右上：无匹配轮廓；其他角落保持原样`;
+  const taskId = crypto.randomUUID();
+  const html = renderToStaticMarkup(createElement(ResultsPanel, {
+    state: { project: { mediaItems: [], latestProduction: { items: [{ taskId, name: "已重开项目", status: "exporting" }] } },
+      queue: { batches: [{ batch: { tasks: [{ id: taskId, status: "completed", progress: 1, coverSummary }] } }] } } as unknown as DesktopState,
+    busy: false, retryingIds: [], onCancel: () => {}, onCancelAll: () => {}, onRetry: () => {}, onOpen: () => {}, onReveal: () => {}, onNew: () => {},
+  }));
+  expect(html).toContain(coverSummary); expect(html).toContain("导出完成"); expect(html).not.toContain("独立包装 · 成片");
+});
+
 it.each([false, true, undefined])("describes failed production using frozen model usage %s", (usesModel) => {
   const latestProduction = { id: crypto.randomUUID(), usesModel, items: [{ id: crypto.randomUUID(), mediaId: crypto.randomUUID(), version: 1, name: "失败项", status: "failed", error: "fixture" }] };
   for (const restored of [true, false]) {

@@ -40,6 +40,21 @@ function deferred() {
   return { promise, resolve };
 }
 
+it("projects the frozen Hybrid result after reopening without exposing the private template or changing task records", async () => {
+  const { service, file, snapshot } = await fixture();
+  const summary = "自动形状匹配 · 已处理 0 个角落；右上：无匹配轮廓；其他角落保持原样";
+  snapshot.batches[0].batch.templateSnapshot.name = summary;
+  await service.syncQueue(snapshot);
+  const reopened = new ApplicationService(new FfmpegAdapter("unused", "unused"), { resolve: async () => null });
+  await reopened.loadProject(file);
+  const publicBatch = reopened.view(snapshot).queue.batches[0].batch;
+  expect(publicBatch.tasks[0].coverSummary).toBe(summary);
+  expect(publicBatch).not.toHaveProperty("templateSnapshot"); expect(publicBatch).not.toHaveProperty("mediaSnapshots");
+  expect(snapshot.batches[0].batch.tasks[0]).not.toHaveProperty("coverSummary");
+  snapshot.batches[0].batch.templateSnapshot.name = "普通包装";
+  expect(reopened.view(snapshot).queue.batches[0].batch.tasks[0]).not.toHaveProperty("coverSummary");
+});
+
 it("bounds project saves during a progress burst and persists the latest state", async () => {
   const { service, file, snapshot } = await fixture();
   const gate = deferred();

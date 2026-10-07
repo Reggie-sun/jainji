@@ -82,8 +82,8 @@ export function BatchProductionWorkList({ detail, onArtifact }: { detail: BatchP
         const name = item?.name ?? `视频 ${tasks.length - index}`;
         return <div className="result-row" key={task.id}>
           <div className={`result-icon ${task.status === "completed" ? "complete" : ""}`}><Icon name={task.status === "completed" ? "check" : "film"} /></div>
-          <div className="result-info"><strong>{name}</strong><p>{task.errorMessage || "独立包装 · 成片"}</p><SourceStickerKnowledgeDetails progress={item?.sourceKnowledge} />{!terminal.has(task.status) && <progress aria-label={`${name}导出进度`} max={1} value={task.progress} />}</div>
-          <span className={`status-tag ${task.status}`}>{labels[task.status]}{task.status === "running" ? ` ${Math.round(task.progress * 100)}%` : ""}</span>
+          <div className="result-info"><strong>{name}</strong><p>{task.errorMessage || task.coverSummary || "独立包装 · 成片"}</p><SourceStickerKnowledgeDetails progress={item?.sourceKnowledge} />{!terminal.has(task.status) && <progress aria-label={`${name}导出进度`} max={1} value={task.progress} />}</div>
+          <span className={`status-tag ${task.status}`}>{task.status === "completed" && task.coverSummary ? "导出完成" : labels[task.status]}{task.status === "running" ? ` ${Math.round(task.progress * 100)}%` : ""}</span>
           {task.status === "completed" && <div className="row-actions"><button className="button secondary compact" onClick={() => onArtifact(task.id, false)}><Icon name="play" size={15} />播放</button><button className="icon-button" aria-label={`打开 ${name} 成片文件夹`} onClick={() => onArtifact(task.id, true)}><Icon name="folder" size={18} /></button></div>}
         </div>;
       })}

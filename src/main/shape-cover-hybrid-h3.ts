@@ -5,7 +5,7 @@ import { ExportSettingsSchema, type ExportSettings } from "../shared/export-sett
 import { CoverStickerIdSchema, isCoverPoolStickerId } from "../shared/cover-sticker.js";
 import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { freezeAI } from "./source-fact-ai-contract.js";
-import { assertOwnedDiscoveryEvidence, prepareDiscoveryEvidence, discoveryHash, type DiscoveryEvidence } from "./source-fact-discovery-evidence.js";
+import { assertOwnedDiscoveryEvidence, assertDefaultDiscoveryPopulation, verifyMatchingDiscoveryEvidence, prepareDiscoveryEvidence, discoveryHash, type DiscoveryEvidence } from "./source-fact-discovery-evidence.js";
 import { sourceKey } from "./source-sticker-knowledge-store.js";
 import { confirmStaticDiscoveryTarget, prepareStaticTargetEvidence } from "./source-mask-static-target.js";
 import { extractStaticConservativeMask } from "./source-mask-static-extraction.js";
@@ -52,13 +52,14 @@ const targetUuid = (id: string) => {
 /** Development H3 only. No knowledge publication, strict geometry/proof or production lifecycle. */
 export async function prepareHybridCornerOverlays(input: FullSourceCensusInput, evidence: DiscoveryEvidence,
   semantic: HybridCornerSemanticSet, candidates: readonly HybridStickerCandidate[], settings: ExportSettings,
-  directory: string): Promise<HybridCornerH3Result> {
+  directory: string, candidateEvidence?: DiscoveryEvidence): Promise<HybridCornerH3Result> {
   const signal = input.signal, tools = { ...input.ffmpeg, signal }, frozenInput = structuredClone({ source: input.source, candidates, settings: ExportSettingsSchema.parse(settings) });
   const sourceInput = { sourcePath: input.sourcePath, source: frozenInput.source, ffmpeg: { ...input.ffmpeg }, signal };
   const corners: HybridH3CornerResult[] = [], sourceErrors: string[] = [], masks = new Map<HybridFrozenOverlay, Uint8Array>(), directories: string[] = [];
   let maskDiscovery: DiscoveryEvidence | undefined;
   const fresh = async () => {
     signal.throwIfAborted(); assertOwnedDiscoveryEvidence(evidence); await evidence.verifyFresh(); await semantic.verifyFresh();
+    if (candidateEvidence) await verifyMatchingDiscoveryEvidence(evidence, candidateEvidence);
     if (sourceKey(frozenInput.source) !== evidence.receipt.sourceKey || semantic.sourceKey !== evidence.receipt.sourceKey) throw Error("HYBRID_SOURCE_BINDING");
   };
   const freshCatalog = async () => {
@@ -68,7 +69,8 @@ export async function prepareHybridCornerOverlays(input: FullSourceCensusInput, 
   try {
     await fresh();
     const targets = await getConfirmedCornerTargets(semantic);
-    const plan = createCornerScopePlan(await discoverStationaryTargets(evidence, signal));
+    if (candidateEvidence) assertDefaultDiscoveryPopulation(candidateEvidence);
+    const plan = createCornerScopePlan(await discoverStationaryTargets(candidateEvidence ?? evidence, signal));
     if (plan.candidateSetDigest !== semantic.candidateSetDigest || plan.scopeDigest !== semantic.scopeDigest) throw Error("HYBRID_SEMANTIC_BINDING");
     if (new Set(frozenInput.candidates.map(c => c.id)).size !== frozenInput.candidates.length) throw Error("HYBRID_CATALOG_BINDING");
     for (const c of frozenInput.candidates) {
@@ -82,7 +84,7 @@ export async function prepareHybridCornerOverlays(input: FullSourceCensusInput, 
       sampling.at(-1)?.index !== evidence.receipt.frameCount - 1) throw Error("HYBRID_SAMPLE_BINDING");
     const projection = targets.length ? await measureShapeCoverOutput(sourceInput.sourcePath, frozenInput.source, frozenInput.settings, tools) : undefined;
     // Preserve the existing mask kernel's default representative population. H2's smaller image budget is semantic-only.
-    maskDiscovery = targets.length ? await prepareDiscoveryEvidence(sourceInput) : undefined;
+    maskDiscovery = targets.length ? candidateEvidence ?? await prepareDiscoveryEvidence(sourceInput) : undefined;
     if (maskDiscovery && (maskDiscovery.receipt.sourceKey !== evidence.receipt.sourceKey || maskDiscovery.receipt.clockDigest !== evidence.receipt.clockDigest ||
       JSON.stringify(maskDiscovery.receipt.decode) !== JSON.stringify(evidence.receipt.decode))) throw Error("HYBRID_MASK_SOURCE_BINDING");
     const maskPlan = maskDiscovery ? createCornerScopePlan(await discoverStationaryTargets(maskDiscovery, signal)) : undefined;
@@ -92,9 +94,10 @@ export async function prepareHybridCornerOverlays(input: FullSourceCensusInput, 
       let targetEvidence: Awaited<ReturnType<typeof prepareStaticTargetEvidence>> | undefined;
       let operation: string | undefined;
       try {
-        // Only unambiguous dense components contained in each H2-confirmed component can supply its conservative mask.
+        // Aligned production consumes the exact H2-confirmed IDs. Legacy callers retain the old containment gate.
         const confirmedBoxes = semanticTarget.candidateIds.map(id => plan.allCandidates.find(c => c.candidateId === id)!.sourceBox);
-        const maskMembers = confirmedBoxes.map(box => maskPlan!.allCandidates.filter(c =>
+        const maskMembers = candidateEvidence ? semanticTarget.candidateIds.map(id => maskPlan!.allCandidates.filter(c =>
+          c.candidateId === id && maskPlan!.corners[semanticTarget.corner].candidateIds.includes(id))) : confirmedBoxes.map(box => maskPlan!.allCandidates.filter(c =>
           maskPlan!.corners[semanticTarget.corner].candidateIds.includes(c.candidateId) && c.sourceBox.x >= box.x && c.sourceBox.y >= box.y &&
           c.sourceBox.x + c.sourceBox.width <= box.x + box.width && c.sourceBox.y + c.sourceBox.height <= box.y + box.height));
         if (maskMembers.some(m => m.length !== 1) || new Set(maskMembers.map(m => m[0]?.candidateId)).size !== confirmedBoxes.length) {
@@ -164,7 +167,7 @@ export async function prepareHybridCornerOverlays(input: FullSourceCensusInput, 
     sourceErrors.push(signal.aborted ? "HYBRID_CANCELLED" : error instanceof Error ? error.message : "HYBRID_SOURCE_FAILED");
     for (const c of corners) { c.status = "SKIPPED"; c.reason = "HYBRID_SOURCE_FAILED"; delete c.overlay; } masks.clear();
     for (const d of directories) await rm(d, { recursive: true, force: true });
-  } finally { await maskDiscovery?.close(); }
+  } finally { if (maskDiscovery && maskDiscovery !== candidateEvidence) await maskDiscovery.close(); }
   const hasFrozen = corners.some(c => c.status === "FROZEN"), hasSkipped = corners.some(c => c.status === "SKIPPED");
   const data = freezeAI({ version: "HybridCornerH3/v1" as const, status: sourceErrors.length ? "BLOCKED" as const : hasFrozen ? hasSkipped ? "PARTIAL" as const : "READY" as const : "EMPTY" as const,
     productState: "PRODUCT_DISABLED" as const, corners, sourceErrors });

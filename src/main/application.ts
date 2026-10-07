@@ -8,6 +8,7 @@ import {
   ProjectSchema,
   type EditTemplate,
   type ExportBatch,
+  type ExportTask,
   LatestProductionSchema,
   type MediaItem,
   type Project,
@@ -25,7 +26,8 @@ import { CoverReviewDraftSchema, type CoverReviewDraft } from "../shared/cover-r
 import { recoverCoverReviewDraft } from "./cover-review-session.js";
 import { ProjectWorkspaceSchema, type ProjectWorkspace } from "../shared/project-workspace.js";
 
-export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots">;
+export type PublicExportTask = ExportTask & { coverSummary?: string };
+export type PublicExportBatch = Omit<ExportBatch, "templateSnapshot" | "mediaSnapshots" | "tasks"> & { tasks: PublicExportTask[] };
 export interface PublicQueueState {
   revision: number;
   updatedAt: string;
@@ -418,7 +420,10 @@ function toPublicQueue(queue: QueueSnapshot, projectId: string): PublicQueueSnap
       .filter((state) => state.batch.projectId === projectId)
       .map((state) => {
         const { templateSnapshot: _templateSnapshot, mediaSnapshots: _mediaSnapshots, ...batch } = state.batch;
-        return { revision: state.revision, updatedAt: state.updatedAt, batch };
+        // Observational text from the original frozen template survives restarts; it grants no approval authority.
+        const coverSummary = _templateSnapshot?.name.startsWith("自动形状匹配 · 已处理 ") ? _templateSnapshot.name : undefined;
+        return { revision: state.revision, updatedAt: state.updatedAt, batch: { ...batch,
+          tasks: batch.tasks.map(task => coverSummary ? { ...task, coverSummary } : task) } };
       }),
   };
 }

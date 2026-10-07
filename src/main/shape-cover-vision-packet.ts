@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { encodeShapeCoverPng, type ShapeCoverMediaTools } from "./shape-cover-alpha.js";
-import { assertOwnedDiscoveryEvidence, discoveryHash, type DiscoveryEvidence } from "./source-fact-discovery-evidence.js";
+import { verifyMatchingDiscoveryEvidence, discoveryHash, type DiscoveryEvidence } from "./source-fact-discovery-evidence.js";
 import { discoverStationaryTargets } from "./shape-cover-stationary-discovery.js";
 import type { ModelMessage } from "./api-transport.js";
 
@@ -80,14 +80,14 @@ export function createVisionPacket(input: Omit<z.infer<typeof Manifest>, "versio
       ...urls.flatMap((url, i) => [{ type: "text" as const, text: `imageIndex=${i}` }, { type: "image_url" as const, image_url: { url, detail: "high" } }])] });
 }
 
-export async function buildVisionCandidatePacket(evidence: DiscoveryEvidence, candidateIds: readonly string[], tools: ShapeCoverMediaTools): Promise<VisionPacket> {
-  assertOwnedDiscoveryEvidence(evidence);
+export async function buildVisionCandidatePacket(evidence: DiscoveryEvidence, candidateIds: readonly string[], tools: ShapeCoverMediaTools,
+  candidateEvidence: DiscoveryEvidence = evidence): Promise<VisionPacket> {
   const signal = tools.signal ?? new AbortController().signal;
-  signal.throwIfAborted(); await evidence.verifyFresh();
+  signal.throwIfAborted(); await verifyMatchingDiscoveryEvidence(evidence, candidateEvidence);
   const r = evidence.receipt;
   if (r.frames.length < 3 || r.frames.length > 32 || (r.frameCount >= 16 && r.frames.length < 16)) throw Error("VISION_OBSERVATION_BUDGET");
   if (candidateIds.length < 1 || candidateIds.length > 3 || new Set(candidateIds).size !== candidateIds.length) throw Error("VISION_CANDIDATE_BUDGET");
-  const result = await discoverStationaryTargets(evidence, signal);
+  const result = await discoverStationaryTargets(candidateEvidence, signal);
   const candidates = candidateIds.map(candidateId => {
     const component = result.components.find(c => c.id === candidateId);
     if (!component || component.state !== "CANDIDATE") throw Error("VISION_CANDIDATE_MISMATCH");
@@ -107,7 +107,7 @@ export async function buildVisionCandidatePacket(evidence: DiscoveryEvidence, ca
       images.push({ ...binding, kind: "CROP", candidateIds: [candidate.candidateId], crop: b, png: await encodeShapeCoverPng(crop, b, tools) });
     }
   }
-  signal.throwIfAborted(); await evidence.verifyFresh();
+  signal.throwIfAborted(); await verifyMatchingDiscoveryEvidence(evidence, candidateEvidence);
   return createVisionPacket({ kind: "CANDIDATE", sourceKey: r.sourceKey, sourceWidth: r.source.width, sourceHeight: r.source.height,
-    timeBase: r.source.timeBase, candidates }, images, async () => { assertOwnedDiscoveryEvidence(evidence); await evidence.verifyFresh(); });
+    timeBase: r.source.timeBase, candidates }, images, () => verifyMatchingDiscoveryEvidence(evidence, candidateEvidence));
 }

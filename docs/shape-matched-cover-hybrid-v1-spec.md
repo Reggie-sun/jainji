@@ -58,6 +58,24 @@ CV Proposal → VLM Semantic Confirmation/Grouping → deterministic conservativ
 
 ## H3 Accepted Delta
 
+### Candidate Identity Repair
+
+2026-10-06 产品兼容修复：新分析在 H2 前准备原默认密集 discovery，使 H2 确认的 candidate ID、集合摘要和 H3 mask 候选来自同一 live evidence；H3 精确按已确认 ID 交接，不从另一个抽帧人口的 bbox 推断身份。语义图片和 sampled motion 仍用原 24 帧证据，两份证据必须同源、同 clock/decode 且 fresh，JSON 不恢复 ownership。密集人口沿原默认上限 96 帧，并受原 scratch 容量和实际时钟约束，UNKNOWN 不升级。旧调用未提供同人口 evidence 时继续下方历史唯一包含规则，不 reinterpret 旧批准或 archive。零/部分处理及受限逐角原因保存在原冻结模板摘要并由原公开任务投影展示；摘要不授生产 authority，未知历史原因不补造。
+
+### Boundary Compatibility Investigation
+
+2026-10-06 用户先批准画布边缘兼容，再明确批准内部 ROI 掩码归属修复，均要求独立回归且 coverage/H4 不放宽。独立构造反例证明半透明阴影会随底层视频变化，不能用 M1 相邻帧持久性过滤 mask 像素。2026-10-07 的真实画布边缘反例进一步证明：仅裁切物理边界、保留 v2 稳定支持及 3px 膨胀，仍可能遗漏超过膨胀范围的变化阴影，却返回可继续的候选。该 v3 实验已完整撤下，新旧 H3 均使用原 canonical v2 extractor；画布边缘和内部 ROI 未解归属继续拒绝。不扩大 ROI、不补推画外像素，不改变运动/shape/placement/coverage 数值或 H4 门槛。
+
+proof 绑定的 `source-mask-static-extraction`、`source-mask-static-target`、`shape-cover-stationary-discovery` 源码保持原 SHA，不修改 v1/v2 methodSources 或历史 archive。受控像素回归不代表真实素材或 H4 已通过，未完成的边界兼容不能算产品修复。
+
+### Source-Bound Boundary Evidence Investigation
+
+2026-10-06 用户选择 A，授权调查并修复 H2→H3 的源绑定贴纸边界证据。该授权是兼容修复范围，不预先证明方案有效。2026-10-07 的原像素构造反例证明：即使 Luna 与盲化 Sol 对三张原图的矩形 extent 一致，双方仍能共同漏掉软阴影；先用 extent 切开混合稳定组件会接受残缺 mask。按完整组件核验可保留安全性，但原素材 4/5 的内部 ROI 仍 unresolved，不能解决实际替换问题。
+
+该矩形边界消费实验已撤下，没有改变产品 H2 v1 schema/prompt、请求预算或模型路线。当前交付仅包含同人口候选交接与冻结结果展示。画布边缘及内部 ROI 归属仍 blocked：需要能够独立区分目标像素和背景的证据，不能以模型一致、M1 粗框、时间持久性、丢弃触边组件或局部 coverage 自证完整。原 coverage/H4、motion、shape/placement、冻结生产及 unresolved/skipped 原样保留。
+
+受控原素材复跑及构造像素回归仅证明软件接缝与拒绝方向；真实 H2/H4、全部原贴纸替换与真实画面验收仍未评估，不以此前实验中的 motion/shape 结果算成功。
+
 仅消费 `getConfirmedCornerTargets()` 的 fresh H2 targets。conservative mask 保持既有 M1 默认96张代表帧和原 extractor；每个密集 component 必须唯一且完全处于对应 H2-confirmed component box，否则该角 `MASK_TARGET_AMBIGUOUS`，不能发现/确认额外 target。multi-component 逐成员绑定，不用 union bbox 代替 mask。H2 的16–32张语义帧独立用于每个 component 的 mask interior sampled motion：reference局部对比至少64的可追踪点需≥8，否则UNOBSERVABLE；纯色共同内核RGB不变不能证明整个贴纸未移动。明显移动、消失、变化或不可观察仅跳该角；源码/引擎/语义/目录绑定失效或取消关闭全源。旧 full-range RGB anomalies 保留 diagnostic，仅 `FULL_RANGE_STATIC_CONTRADICTION` 不作 Hybrid motion blocker；不调用 strict geometry/proof，不发布 Knowledge Store。
 
 本地有效 cover pool（内置及已校验上传）按 ID 排序，最多256款、5档等比尺寸、9个小平移位置、1280栅格/11520摆放/180秒。只裁全透明外围，不改变资源图文或部分 alpha。原 pixel gate 的 radius≤8 source px、area≤1.35、span≤1.16 保持；decode 后 oldMask 全部 alpha=255且 uncoveredPixels=0 才冻结。无匹配 `NO_SHAPE_MATCH`，预算耗尽 `HYBRID_SEARCH_LIMIT`；无白矩形fallback。PNG、RGBA、alpha、source、semantic、mask、motion、asset、trim、placement及output绑定冻结，重新读取核对同字节。H3仅提供 geometry-only/NOT_EVALUATED frozen PNG 和 active-owned getter 给后续H4；JSON不恢复authority。H4仍需渲染及视觉/内容安全判断，PRODUCT_DISABLED不变。
