@@ -201,16 +201,16 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7L]: F:协调项目包装审阅及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:无工作区默认随机；传递人工策略和本次上传选择；保存文字外观 | S:上传选择不随项目保存；界面不授main权限；已保存模式原样恢复；冻结输入不随草稿变化
+App.tsx[AU7L]: F:协调项目包装审阅及作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/CoverStickerPanel.tsx | A:覆盖卡片内挂载唯一审阅面板；传本次上传选择；无工作区默认随机 | S:上传选择不随项目保存；界面不授main权限；已保存模式原样恢复；冻结输入不随草稿变化
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
 CornerDecorationPicker.tsx[EU6T]: F:编辑装饰方式和角落选材并承载逐素材边框设置 | R:code:src/renderer/FrameDecorationPicker.tsx,code:src/shared/decorations.ts | A:模式切换保留整批及逐素材边框；传素材与项目保存回调；边框mutation独立禁用 | S:不改手填文字，不把边框当四角贴纸
 CoverReviewBox.tsx[AB7T]: F:绘制assisted覆盖审阅候选框与交互 | R:code:src/renderer/CoverReviewPanel.tsx | A:人工框交互界面 | S:修改草稿后旧批准失效
-CoverReviewPanel.tsx[AU7S]: F:呈现人工框冻结预览及最终确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/human-region-cover.ts | A:目标和可见占用分开展示；最终批准单独传千川选择；准备可取消 | S:预览不传上传信息；逐版查看再批准；框外完整性未证明；人工不调用识别
+CoverReviewPanel.tsx[AU7S]: F:呈现原片人工框冻结预览及最终确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/human-region-cover.ts | A:未建稿展示原片与显式建稿入口；目标占用分开展示；最终批准单独传上传选择 | S:预览不传上传信息；逐版查看再批准；框外完整性未证明；人工不调用识别
 CoverReviewProgress.tsx[AB7T]: F:展示assisted审阅和独立复核进度 | R:code:src/renderer/CoverReviewPanel.tsx | A:进度呈现组件 | S:复核结果只报告问题
 CoverReviewTimeline.tsx[AB7T]: F:按时间显示assisted候选与证据片段 | R:code:src/renderer/CoverReviewPanel.tsx | A:时间轴交互组件 | S:时域决策留在草稿
-CoverStickerPanel.tsx[EU6S]: F:编辑自动手动assisted和人工图案策略 | R:code:src/shared/cover-sticker.ts,code:src/renderer/MediaSelector.ts | A:独立人工框选入口；保存互斥策略并解释目标及真实占用 | S:切换旧模式清人工策略；不签发批准；不把框当自动轮廓
+CoverStickerPanel.tsx[EU6S]: F:编辑覆盖策略并承载原审阅框选界面 | R:code:src/shared/cover-sticker.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/MediaSelector.ts | A:人工设置保存后定位内嵌框选；assisted隐藏旧manual素材状态 | S:未保存设置不显示旧审阅编辑；切换旧模式清人工策略；不签发批准；不把框当自动轮廓
 CoverTrackEditor.tsx[AB7T]: F:视频上交互编辑覆盖轨迹位置和时段 | R:code:src/renderer/CoverStickerPanel.tsx | A:手动轨迹编辑器 | S:自动模式忽略手动位置草稿
 DecorationPicker.tsx[AB7T]: F:浏览贴纸目录和预览供手动选材 | R:code:src/main/asset-library.ts | A:选材界面 | S:仅本地有效素材进入目录
 ExportSettingsPanel.tsx[AB7T]: F:编辑导出分辨率帧率画质 | R:code:src/shared/export-settings.ts | A:导出设置界面 | S:默认方向720p且保持源帧率
@@ -222,7 +222,7 @@ ResultsPanel.tsx[EU7T]: F:展示本轮导出状态冻结覆盖摘要播放重试
 SavedConnectionsPanel.tsx[AB7T]: F:编辑选择删除API连接及CC Switch导入界面 | R:code:src/renderer/App.tsx | A:连接管理界面 | S:不显示已保存密钥
 SourceStickerKnowledgeDetails.tsx[AB7T]: F:展示源贴纸知识识别复核进度和风险细节 | R:code:src/shared/source-sticker-knowledge.ts | A:只读进度呈现 | S:不把风险提示变成批准
 StickerLibraryPanel.tsx[AB7T]: F:显示上传贴纸库并触发导入移除 | R:code:src/main/uploaded-stickers.ts | A:贴纸管理界面 | S:只引用已校验导入素材
-TemplatePanel.tsx[EU6T]: F:编辑包装文字数量与输出设置 | R:code:src/shared/agent.ts,code:src/renderer/DisplayTextEditor.tsx | A:无模板网格；仅手动模式提供折叠旧规则选择；人工模式引导预览确认；整批文字时段与逐素材设置 | S:文字只手填；条数向上取整；不改运行冻结输入
+TemplatePanel.tsx[EU6T]: F:编辑包装文字数量与输出设置 | R:code:src/shared/agent.ts,code:src/renderer/DisplayTextEditor.tsx | A:手动提供折叠旧规则；人工引导上方覆盖卡片预览确认；整批文字时段与逐素材设置 | S:文字只手填；条数向上取整；不改运行冻结输入
 TemplatePreview.tsx[EU6S]: F:播放素材并按输出画布预览文字位置与底层边框 | R:code:src/shared/layout-policy.ts,code:src/shared/price-styles.ts,code:src/shared/decorations.ts | A:目录独立读frame图并全画布先绘；video驱动文字渐隐及有界拖动 | S:边框不裁源不随文字渐隐；贴纸与Agent仍示意；预览不授成片验收
 VisionConnectionPanel.tsx[AB7T]: F:分别配置识别或复核模型连接 | R:code:src/renderer/ModelSettingsDrawer.tsx | A:视觉角色设置界面 | S:与创作连接分开
 WorkspaceChrome.tsx[AU5T]: F:呈现项目操作、工作区导航及引擎状态 | R:code:src/renderer/workspace-flow.ts,code:src/renderer/App.tsx | A:提供批量制作导航并在该页面隐藏单项目步骤；组件接收状态及回调 | S:GPU试运行失败与未检测到硬件使用不同提示；导航不拥有制作准入规则

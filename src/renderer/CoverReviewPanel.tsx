@@ -84,7 +84,10 @@ export function CoverReviewPanel({ drafts, mediaItems, input, library, chatgpt, 
     const douyinUpload = uploadSelection ? QianchuanUploadSelectionSchema.parse(uploadSelection) : undefined;
     return { ...await resolvedInput(), ...(douyinUpload ? { douyinUpload } : {}) };
   };
-  if (!draft || !media || !source) return <section className="cover-review"><h3>{humanRegion ? "人工区域贴纸覆盖" : "半自动覆盖审阅"}</h3><p>{eligibleDrafts.length ? `当前选择了 ${selectedIds.size} 条素材，需要为这批素材建立${humanRegion ? "人工区域" : "审阅"}草稿。其他策略的审阅记录已保留。` : humanRegion ? "先保存项目，再建立人工区域草稿。覆盖框由你指定，本地贴纸匹配不会调用模型。" : "先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。"}</p><button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>{busy ? "正在准备素材…" : humanRegion ? "建立人工区域草稿" : "建立人工审阅草稿"}</button>{error && <p role="alert">{error}</p>}</section>;
+  if (!draft || !media || !source) {
+    const firstSource = mediaItems.find(item => selectedIds.has(item.id));
+    return <section className="cover-review"><h3>{humanRegion ? "人工区域贴纸覆盖" : "半自动覆盖审阅"}</h3><p>{eligibleDrafts.length ? `当前选择了 ${selectedIds.size} 条素材，需要为这批素材建立${humanRegion ? "人工区域" : "审阅"}草稿。其他策略的审阅记录已保留。` : humanRegion ? "建立人工区域草稿后，即可在视频上新增、拖动和缩放覆盖框。覆盖框由你指定，本地贴纸匹配不会调用模型。" : "先保存项目，再建立审阅草稿。原片抽帧会保存在本机，不调用模型。"}</p>{humanRegion && firstSource && <div className="cover-review-frame" style={{ aspectRatio: `${firstSource.width}/${firstSource.height}`, width: `min(100%, 640px, ${520 * firstSource.width / firstSource.height}px)` }}><video key={firstSource.id} src={firstSource.previewUrl} controls preload="metadata" /></div>}<button type="button" disabled={busy || !input.mediaIds.length} onClick={() => void run(() => window.jianji.createCoverReview(input.mediaIds))}>{busy ? "正在准备素材…" : humanRegion ? "建立人工区域草稿" : "建立人工审阅草稿"}</button>{error && <p role="alert">{error}</p>}</section>;
+  }
   const ref = { projectId: draft.projectId, draftId: draft.id, expectedRevision: draft.revision, mediaId: media.mediaId };
   const command = (value: Omit<CoverReviewCommand, keyof typeof ref> & Record<string, unknown>) => run(() => window.jianji.editCoverReview({ ...ref, ...value } as CoverReviewCommand));
   const seek = (value: number) => { video.current?.pause(); if (video.current) video.current.currentTime = value / 1000; setTimeMs(value); };

@@ -1,4 +1,5 @@
 .cover-review { margin: 20px 0; padding: 20px; border: 1px solid var(--border, #cbd5e1); border-radius: 12px; }
+.cover-review, .cover-review-entry { scroll-margin-top: 210px; }
 .cover-review header, .cover-review-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
 .cover-review h3 { margin: 0; }
 .cover-review p { line-height: 1.6; }

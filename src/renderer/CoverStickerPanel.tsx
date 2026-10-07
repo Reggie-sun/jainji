@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { MediaView } from "../main/media";
 import { DEFAULT_COVER_STICKER, MAX_MANUAL_COVERS, manualCoverRegions, type CoverRegion, type CoverSticker, type CoverTrack } from "../shared/cover-sticker";
 import type { DecorationCatalog } from "../shared/decorations";
@@ -20,7 +20,7 @@ const cornerRectangles = [
 ];
 const HUMAN_REGION_ARTWORK = "human-region-v1" as const;
 
-export function CoverStickerPanel({ projectId, value, selectedMedia, revision, disabled, onSave, onDirtyChange }: {
+export function CoverStickerPanel({ projectId, value, selectedMedia, revision, disabled, onSave, onDirtyChange, reviewPanel }: {
   projectId: string;
   value?: CoverSticker;
   selectedMedia: readonly MediaView[];
@@ -28,6 +28,7 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   disabled: boolean;
   onSave(value: CoverSticker): Promise<void>;
   onDirtyChange?(dirty: boolean): void;
+  reviewPanel?: ReactNode;
 }) {
   const [draft, setDraft] = useState(() => cloneCoverSticker(value));
   const [stickers, setStickers] = useState<DecorationCatalog["stickers"]>();
@@ -37,6 +38,8 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const savedSignature = JSON.stringify(value ?? DEFAULT_COVER_STICKER);
+  const settingsDirty = JSON.stringify(draft) !== savedSignature;
+  const reviewEntry = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setDraft(cloneCoverSticker(value)); setActiveRegionId(undefined);
@@ -107,6 +110,7 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
     try {
       await onSave(draft);
       setMessage("覆盖设置已应用；保存素材集后可跨重启复用。");
+      if (draft.enabled && trackingMode === "assisted") requestAnimationFrame(() => requestAnimationFrame(() => reviewEntry.current?.scrollIntoView({ behavior: "smooth", block: "start" })));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "覆盖设置保存失败，请重试。");
     } finally { setSaving(false); }
@@ -130,7 +134,7 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
           <p className="cover-sticker-note">统一候选款供未单独指定的覆盖框共用：同轮素材使用一款，下一轮从候选中换用，不足时循环；每个框也可指定独立起始款。</p>
         </>}
         <div className="cover-sticker-editor"><div className="cover-sticker-preview-wrap">
-          <div className="cover-sticker-media-select"><span>当前素材</span><MediaSelector label="覆盖素材" media={selectedMedia} value={preview?.id} disabled={disabled || saving} onChange={id => { setPreviewId(id); setActiveRegionId(undefined); }} />{regions.length > 0 ? <span className="cover-sticker-media-status" aria-label={`${preview?.displayName ?? "当前素材"}已配置覆盖框`}>已覆盖</span> : null}</div>
+          {trackingMode !== "assisted" && <div className="cover-sticker-media-select"><span>当前素材</span><MediaSelector label="覆盖素材" media={selectedMedia} value={preview?.id} disabled={disabled || saving} onChange={id => { setPreviewId(id); setActiveRegionId(undefined); }} />{regions.length > 0 ? <span className="cover-sticker-media-status" aria-label={`${preview?.displayName ?? "当前素材"}已配置覆盖框`}>已覆盖</span> : null}</div>}
           {trackingMode === "assisted" ? humanRegionMode ? <div className="cover-human-region-mode"><p>保存设置后，在下方按素材新增固定框、调整出现时段，或明确选择“不需要覆盖”。首版不接受移动或缩放轨迹。</p><p>生成预览时只从本机已有的贴纸库和上传贴纸中匹配图案，不调用覆盖识别或视觉复核模型。预览将分别显示“待覆盖区域”和“最终贴纸占用范围”；图案可能超出目标框。查看每个冻结版本后，再沿现有审阅流程确认并导出。</p><p>程序检查目标框是否被贴纸不透明像素完整覆盖；这只证明你指定的区域被盖住，不能证明你已经框出了画面中的所有旧贴纸。</p></div> : <p>保存覆盖设置后，在下方建立审阅草稿。可以先人工建框，也可显式请求视觉模型提供候选。</p> : trackingMode === "agent" && draft.coverStrategy ? <div className="cover-agent-mode"><p>已选 {selectedMedia.length} 条素材。先确认角落语义，再由本地算法检查静态运动、轮廓和完全不透明覆盖；冻结样片通过独立检查后进入原导出队列。导出和重试使用同一 PNG 与位置；源片或冻结资产变化会停止。每条结果列出实际处理的角落，移动、无法确认或没有安全形状的角落保持原样。</p></div> : trackingMode === "agent" ? <div className="cover-agent-mode">{preview ? <div className="cover-agent-preview" style={{ aspectRatio: `${preview.width} / ${preview.height}` }}><video key={preview.id} src={preview.previewUrl} controls preload="metadata" /></div> : <div className="cover-sticker-preview-empty">先在素材工作台勾选至少一条可用素材，再开始自动识别。</div>}<p>开始制作后，视觉模型查看最多 12 张全片联系帧，提出近似覆盖位置和时段；独立主管检查真实样片，按遮盖效果和主体可见性判断，允许合理位置误差。必要时补帧或放大；快速闪现、遮挡仍可能漏检，无法确认时停止，不套用旧手动框。</p><p>已选 {selectedMedia.length} 条素材。定框最多纠正 3 次无效方案，补检与初始联系帧共用 40 帧预算；每版最多检查 5 轮样片、修订 2 次，实际调用次数取决于补检与修订。每轮另有 2 次创作选款调用。同源位置可复用，但每版仍检查新样片；同轮统一款式、下一轮换款，单款时复用。定框使用视觉连接，样片使用复核连接，选款使用创作连接，均需支持图片。</p></div> : preview ? <>
             <div className="cover-region-toolbar"><strong>覆盖框 {regions.length}/{MAX_MANUAL_COVERS}</strong><div><button type="button" className="button secondary compact" disabled={disabled || saving || regions.length >= MAX_MANUAL_COVERS} onClick={addFrame}>添加覆盖框</button><button type="button" className="button secondary compact" disabled={disabled || saving || regions.length + 4 > MAX_MANUAL_COVERS} onClick={addCorners}>添加四角</button><button type="button" className="button secondary compact" disabled={disabled || saving || !regions.some((region) => region.stickerId)} onClick={() => updateRegions((current) => current.map((region) => ({ ...region, stickerId: undefined })))}>统一使用候选款</button><button type="button" className="button secondary compact" disabled={disabled || saving || !activeRegion} onClick={deleteActive}>删除当前框</button></div></div>
             <button type="button" className="button secondary compact" disabled={disabled || saving || (hasMediaOverride && regions.length === 0)} onClick={() => { updateRegions(() => []); setActiveRegionId(undefined); }}>此素材不覆盖</button>
@@ -142,7 +146,8 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
       </>}
       {error && <p className="cover-sticker-warning" role="alert">{error}</p>}
       {message && <p className="cover-sticker-success" role="status">{message}</p>}
-      <div className="cover-sticker-actions"><small>保存覆盖设置后会应用到当前项目；保存素材集后可跨重启复用。已开始的任务会保留各自冻结的设置。</small><div><button type="button" className="button secondary compact" disabled={disabled || saving} onClick={() => { setDraft(cloneCoverSticker(value)); setActiveRegionId(undefined); setError(""); setMessage(""); }}>恢复已应用设置</button><button type="button" className="button primary" disabled={disabled || saving} onClick={() => void save()}><Icon name="download" size={16} />{saving ? "正在保存…" : "保存覆盖设置"}</button></div></div>
+      <div className="cover-sticker-actions"><small>保存覆盖设置后会应用到当前项目；保存素材集后可跨重启复用。已开始的任务会保留各自冻结的设置。</small><div><button type="button" className="button secondary compact" disabled={disabled || saving} onClick={() => { setDraft(cloneCoverSticker(value)); setActiveRegionId(undefined); setError(""); setMessage(""); }}>恢复已应用设置</button><button type="button" className="button primary" disabled={disabled || saving} onClick={() => void save()}><Icon name="download" size={16} />{saving ? "正在保存…" : draft.enabled && humanRegionMode ? "保存设置并打开框选" : "保存覆盖设置"}</button></div></div>
+      {draft.enabled && trackingMode === "assisted" && <div className="cover-review-entry" ref={reviewEntry}>{settingsDirty ? <p role="status">请先保存上面的覆盖设置，再打开视频框选；已有审阅草稿会保留。</p> : reviewPanel}</div>}
     </section>
   </>;
 }
