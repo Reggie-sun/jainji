@@ -478,7 +478,7 @@ describe("Qianchuan upload service", () => {
     expect((await f.service.clearVideoLibraries({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [account] }))[0].state).toBe("BLOCKED");
     expect(materials).toHaveBeenCalledTimes(1);
   });
-  it.each([undefined, "ZERO_IMPRESSIONS_30D", "AUDIT_AND_ZERO_IMPRESSIONS_30D"])("revalidates all selected plans before serial cleanup and clears the library once after all plans: %s", async planMaterialRule => {
+  it.each([undefined, "ZERO_IMPRESSIONS_15D", "AUDIT_AND_ZERO_IMPRESSIONS_15D"])("revalidates all selected plans before serial cleanup and clears the library once after all plans: %s", async planMaterialRule => {
     const plans = ["9001", "9002", "9003"].map(adId => ({ advertiserId: "1003", adId, name: `计划 ${adId}` }));
     const readPlans = vi.fn(async () => plans);
     const f = await nativeFixture(undefined, readPlans); await f.service.chooseConfig(f.configPath);
@@ -501,7 +501,7 @@ describe("Qianchuan upload service", () => {
     expect((await f.service.clearVideoLibraries(input))[0]).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
     expect(materials).toHaveBeenCalledTimes(2); expect(library).toHaveBeenCalledTimes(1);
   });
-  it.each([undefined, "ZERO_IMPRESSIONS_30D", "AUDIT_AND_ZERO_IMPRESSIONS_30D"])("retains confirmed progress and stops remaining plans and combined library cleanup on a blocked plan: %s", async planMaterialRule => {
+  it.each([undefined, "ZERO_IMPRESSIONS_15D", "AUDIT_AND_ZERO_IMPRESSIONS_15D"])("retains confirmed progress and stops remaining plans and combined library cleanup on a blocked plan: %s", async planMaterialRule => {
     const plans = ["9001", "9002", "9003"].map(adId => ({ advertiserId: "1003", adId, name: `计划 ${adId}` }));
     const f = await nativeFixture(undefined, async () => plans); await f.service.chooseConfig(f.configPath);
     const materials = vi.spyOn(QianchuanPlanMaterials.prototype, "clear").mockImplementation(async (target, guard) => {

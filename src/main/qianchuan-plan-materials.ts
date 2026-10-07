@@ -23,15 +23,15 @@ export class QianchuanPlanMaterials {
     await strictSyncDirectory(path.dirname(file));
   }
   async clear(target: FrozenQianchuanAccount, guard: () => Promise<void>, parentSignal?: AbortSignal, rule?: QianchuanLibraryClear["planMaterialRule"]): Promise<QianchuanLibraryResult> {
-    if (rule === "AUDIT_AND_ZERO_IMPRESSIONS_30D") {
+    if (rule === "AUDIT_AND_ZERO_IMPRESSIONS_15D") {
       const timeout = AbortSignal.timeout(30 * 60 * 1000);
       const signal = parentSignal ? AbortSignal.any([timeout, parentSignal]) : timeout;
       const audit = await this.clear(target, guard, signal);
       if (audit.state === "BLOCKED") return audit;
-      const zero = await this.clear(target, guard, signal, "ZERO_IMPRESSIONS_30D");
+      const zero = await this.clear(target, guard, signal, "ZERO_IMPRESSIONS_15D");
       return { ...zero, deletedCount: audit.deletedCount + zero.deletedCount, message: `${audit.message} ${zero.message}` };
     }
-    const zeroWindow = rule === "ZERO_IMPRESSIONS_30D" ? createZeroImpressionsWindow(this.startedAt) : undefined;
+    const zeroWindow = rule === "ZERO_IMPRESSIONS_15D" ? createZeroImpressionsWindow(this.startedAt) : undefined;
     const result: QianchuanLibraryResult = { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: "计划素材清理未开始。" };
     const directory = path.resolve(this.root, "plan-material-deletions"), attempt = randomUUID();
     const gate = path.join(directory, `${target.advertiserId}-${target.adId}.pending.json`), lock = path.join(directory, `${target.advertiserId}.operation.lock`);

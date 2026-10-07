@@ -9,7 +9,7 @@ export const QianchuanLibraryAccountSchema = z.object({
 }).strict();
 export const QianchuanLibraryClearSchema = z.object({
   confirmation: z.enum(["DELETE_ALL_VIDEOS", "DELETE_PLAN_MATERIALS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]),
-  planMaterialRule: z.enum(["ZERO_IMPRESSIONS_30D", "AUDIT_AND_ZERO_IMPRESSIONS_30D"]).optional(),
+  planMaterialRule: z.enum(["ZERO_IMPRESSIONS_15D", "AUDIT_AND_ZERO_IMPRESSIONS_15D"]).optional(),
   accounts: z.array(QianchuanLibraryAccountSchema.extend({ plan: QianchuanPlanOptionSchema.optional(), plans: QianchuanPlanListSchema.refine(plans => plans.length > 0, "请至少选择一个清理计划。").optional() })
     .refine(value => !value.plan || value.plan.advertiserId === value.expectedAdvertiserId && value.plan.adId === value.expectedAdId, "所选清理计划与账号或计划 ID 不一致。")
     .refine(value => !value.plans || !value.plan && !value.expectedAdId && value.plans.every(plan => plan.advertiserId === value.expectedAdvertiserId), "清理计划集合与账号不一致或含混用的单计划字段。")).min(1).max(6),

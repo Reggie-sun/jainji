@@ -15,9 +15,10 @@ vi.setConfig({ testTimeout: 40000, hookTimeout: 30000 });
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); });
 afterAll(async () => { await browser?.close(); });
 
-async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?: boolean; empty?: boolean; badDelivery?: string; badDeliveryRow?: string; badDate?: boolean; missingMetric?: boolean; extraTitle?: boolean; extraDeletion?: boolean; wrongAccount?: boolean; unknownOutcome?: boolean; emptyNextPage?: boolean } = {}) {
+async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?: boolean; empty?: boolean; badDelivery?: string; badDeliveryRow?: string; badDate?: boolean; thirtyDayRequest?: boolean; missingMetric?: boolean; extraTitle?: boolean; extraDeletion?: boolean; wrongAccount?: boolean; unknownOutcome?: boolean; emptyNextPage?: boolean } = {}) {
   const context = await browser.newContext(), page = await context.newPage();
   const window = createZeroImpressionsWindow();
+  const requestStart = options.thirtyDayRequest ? createZeroImpressionsWindow(Date.now() - 15 * 86400000).startTime : window.startTime;
   const fresh = new Date(Date.now() + 8 * 3600000 - 3600000).toISOString().slice(0, 19).replace("T", " ");
   let data = [
     { id: "11", count: 3, time: "2025-01-01 00:00:00" }, { id: "12", count: 0, time: fresh },
@@ -49,7 +50,7 @@ async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?
   function selection(){document.querySelector('#selection').textContent='已选'+selected().length+'个 视频'}
   async function list(){
     const expected={query_type:['all'],roi2_material_type_v3:['1001'],marketing_goal:['1'],ad_id:['${target.adId}'],roi2_material_video_type:['11'],roi2_material_status:[${options.badDelivery ? JSON.stringify(options.badDelivery) : "document.querySelector('#delivery input').value==='投放中'?'1':'2'"}]};
-    const body={DataSetKey:'site_promotion_product_post_data_video',StartTime:'${options.badDate ? "2026-01-01 00:00:00" : window.startTime}',EndTime:'${window.endTime}',Metrics:['product_show_count_for_roi2'],Dimensions:['material_id'${options.noCreationTime ? "" : ",'roi2_material_upload_time'"}],PageParams:{Offset:offset,Limit:pageSize},Filters:{ConditionRelationshipType:1,Conditions:Object.entries(expected).map(([Field,Values])=>({Field,Values,Operator:7}))}};
+    const body={DataSetKey:'site_promotion_product_post_data_video',StartTime:'${options.badDate ? "2026-01-01 00:00:00" : requestStart}',EndTime:'${window.endTime}',Metrics:['product_show_count_for_roi2'],Dimensions:['material_id'${options.noCreationTime ? "" : ",'roi2_material_upload_time'"}],PageParams:{Offset:offset,Limit:pageSize},Filters:{ConditionRelationshipType:1,Conditions:Object.entries(expected).map(([Field,Values])=>({Field,Values,Operator:7}))}};
     const r=await fetch('/ad/api/pmc/v1/uni-promotion/material/list-required?aavid=${target.advertiserId}',{method:'POST',body:JSON.stringify(body)});const b=await r.json();total=Number(b.data.statsData.totalCount??0);shown=b.data.statsData.rows??[];const pager=document.querySelector('.ovui-page-select');if(pager)pager.style.display=total?'':'none';
     document.querySelector('tbody').innerHTML=shown.map(x=>'<tr><td><input type="checkbox" data-id="'+x.id+'"></td><td>素材ID: '+x.id+'</td>${options.noCreationTime ? "" : "<td>'+x.time+'</td>"}<td>'+x.count+'</td></tr>').join('');
     document.querySelectorAll('tbody input').forEach(x=>x.onchange=selection);document.querySelector('#all').checked=false;selection();
@@ -81,11 +82,11 @@ async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?
   return { page, context, session, removed, offsets, remaining: () => data.filter(x => !protectedIds.includes(x.id)).map(x => x.id) };
 }
 
-it.each([false, true])("scans thirty-day uneven pages including fresh zero rows without requiring creation time: %s", async noCreationTime => {
+it.each([false, true])("scans fifteen-day uneven pages including fresh zero rows without requiring creation time: %s", async noCreationTime => {
   const f = await fixture({ noCreationTime }), root = await mkdtemp(path.join(tmpdir(), "zero-cleanup-"));
   try {
     const owner = new QianchuanPlanMaterials(root, async () => ({ page: f.session, close: () => f.session.dispose() }));
-    const result = await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_30D");
+    const result = await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D");
     expect(result, JSON.stringify({ result, offsets: f.offsets, removed: f.removed })).toMatchObject({ state: "CLEARED", deletedCount: 5 });
     const range = JSON.parse(new URLSearchParams(new URL(f.page.url()).hash.slice(1)).get("adr")!).dateRange;
     expect(range).toEqual([createZeroImpressionsWindow().startTime.slice(0, 10), createZeroImpressionsWindow().endTime.slice(0, 10)]);
@@ -94,7 +95,7 @@ it.each([false, true])("scans thirty-day uneven pages including fresh zero rows 
     expect((await readdir(path.join(root, "plan-material-deletions"))).some(name => name.endsWith("pending.json"))).toBe(false);
   } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
 });
-it.each([{ badDate: true }, { missingMetric: true }, { wrongAccount: true }])("refuses unbound dates, absent counts and wrong account before deletion %j", async options => {
+it.each([{ badDate: true }, { thirtyDayRequest: true }, { missingMetric: true }, { wrongAccount: true }])("refuses unbound dates, old thirty-day requests, absent counts and wrong account before deletion %j", async options => {
   const f = await fixture(options);
   try { await expect((async () => { await f.session.open(); await f.session.filter(); })()).rejects.toThrow(); expect(f.removed).toEqual([]); }
   finally { await f.session.dispose(); await f.context.close(); }
@@ -103,7 +104,7 @@ it("does not report completion when a later platform page unexpectedly becomes e
   const f = await fixture({ emptyNextPage: true, noInitialCandidates: true }), root = await mkdtemp(path.join(tmpdir(), "zero-empty-"));
   try {
     const owner = new QianchuanPlanMaterials(root, async () => ({ page: f.session, close: () => f.session.dispose() }));
-    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_30D")).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
+    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
     expect(f.offsets).toEqual([0, 0, 100]); expect(f.removed).toEqual([]);
   } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
 });
@@ -124,7 +125,7 @@ it("retains the shared pending fence on an expanded title-deletion confirmation 
   const connect = vi.fn(async () => ({ page: f.session, close: () => f.session.dispose() }));
   try {
     const owner = new QianchuanPlanMaterials(root, connect);
-    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_30D")).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
+    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
     const gate = path.join(root, "plan-material-deletions", `${target.advertiserId}-${target.adId}.pending.json`), bytes = await readFile(gate);
     expect(f.removed).toEqual([["12"]]);
     expect((await owner.clear(target, async () => {})).state).toBe("BLOCKED"); expect(connect).toHaveBeenCalledTimes(1); expect(await readFile(gate)).toEqual(bytes);
@@ -134,7 +135,7 @@ it.each([{ extraDeletion: true }, { unknownOutcome: true }])("keeps pending inte
   const f = await fixture(options), root = await mkdtemp(path.join(tmpdir(), "zero-unknown-"));
   try {
     const owner = new QianchuanPlanMaterials(root, async () => ({ page: f.session, close: () => f.session.dispose() }));
-    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_30D")).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
+    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
     expect(f.removed).toEqual([["12"]]);
     const intent = JSON.parse(await readFile(path.join(root, "plan-material-deletions", `${target.advertiserId}-${target.adId}.pending.json`), "utf8"));
     expect(intent).toMatchObject({ ids: ["12"], zeroWindow: { startTime: createZeroImpressionsWindow().startTime } });
@@ -166,7 +167,7 @@ it("finishes an empty delivering plan without a pagination control", async () =>
   const f = await fixture({ empty: true }), root = await mkdtemp(path.join(tmpdir(), "zero-empty-plan-"));
   try {
     const owner = new QianchuanPlanMaterials(root, async () => ({ page: f.session, close: () => f.session.dispose() }));
-    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_30D")).toMatchObject({ state: "CLEARED", deletedCount: 0 });
+    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "CLEARED", deletedCount: 0 });
     expect(f.removed).toEqual([]);
   } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
 });

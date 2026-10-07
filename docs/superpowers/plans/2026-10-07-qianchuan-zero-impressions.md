@@ -71,3 +71,19 @@ Parent self-review：保留显式全库选择和范围确认；无凭据、账�
 ### Self-Review
 
 原窗口、parser、CDP page、plan owner、共享schema和renderer继续各自独占职责；不新增队列、删除API或恢复路径。移除年龄是用户明确授权的新语义，以新token隔离旧请求；显示“整体展示次数”而非“播放量”。删除不可恢复，需验证30天绑定及新素材资格，开发测试不操作真实素材。
+
+## Accepted Fifteen-Day Delta
+
+2026-10-08 用户要求将素材删除统计周期改为最近15天。本节取代前文30天周期：北京时间最近15个完整自然日，不含今天；例如10月8日执行时，统计9月23日至10月7日。继续使用整体展示次数为0、仅投放中、不限制上传年龄的规则；审核规则可同时选择，视频库保持独立范围。
+
+共享请求使用 `ZERO_IMPRESSIONS_15D` / `AUDIT_AND_ZERO_IMPRESSIONS_15D`，旧7天和30天token均拒绝，避免旧界面授权被重新解释。窗口仍由 `createZeroImpressionsWindow` 独占，原CDP日期hash、DOM和请求核对原样消费该窗口。已有pending记录逐字保留并继续阻断，100条分页、自动逐批确认、取消和未知结果停止不变。
+
+### Implementation And Verification
+
+1. 在原window、schema、plan owner和renderer同步15天语义；不新增日期选择器或第二删除路径。
+2. 验证跨月、跨年、闰日的15天窗口，拒绝旧30天请求，覆盖旧pending不重试、稀疏分页和组合规则；浏览器fixture仅模拟删除，不操作真实账号素材。
+3. 运行typecheck、相关回归及owned Harness，按Risk Gate完成受管只读审查；维护4个源码对象AOCI，提交并推送main，核对远端。
+
+### Self-Review
+
+缩短统计周期可能增加零展示候选，用户已明确授权该变化；用新token限定新请求。保持冻结账号/计划、投放状态、指标和日期多重绑定以及删除未知停止，不把15天理解为素材上传年龄，不改变审核或视频库范围。

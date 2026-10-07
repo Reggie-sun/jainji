@@ -56,17 +56,17 @@ it.each([false, true])("runs both rules sequentially over remaining materials an
       } }, close: async () => {} };
   });
   const owner = new QianchuanPlanMaterials(root, connect);
-  expect(await owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_30D")).toMatchObject({ state: failZero ? "BLOCKED" : "CLEARED", deletedCount: failZero ? 2 : 3 });
+  expect(await owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_15D")).toMatchObject({ state: failZero ? "BLOCKED" : "CLEARED", deletedCount: failZero ? 2 : 3 });
   expect(modes).toEqual([false, true]); expect(removed).toEqual(failZero ? ["7001", "7002"] : ["7001", "7002", "7003"]);
   if (failZero) {
-    expect((await owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_30D")).state).toBe("BLOCKED");
+    expect((await owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_15D")).state).toBe("BLOCKED");
     expect(connect).toHaveBeenCalledTimes(2);
   }
 });
 it("does not enter the second rule when the first rule has an unknown outcome", async () => {
   const f = await ownerFixture();
   f.page.deleteBatch.mockImplementationOnce(async (_before, confirm) => { await confirm(); throw new Error("response lost"); });
-  expect((await f.owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_30D")).state).toBe("BLOCKED");
+  expect((await f.owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_15D")).state).toBe("BLOCKED");
   expect(f.connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate, "utf8")).toContain("7001");
 });
 it("keeps an unknown deletion intent and refuses confirmation on a later explicit call or a new owner", async () => {
@@ -77,12 +77,15 @@ it("keeps an unknown deletion intent and refuses confirmation on a later explici
   expect((await new QianchuanPlanMaterials(f.root, f.connect).clear(target, async () => {})).state).toBe("BLOCKED");
   expect(f.connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate)).toEqual(bytes);
 });
-it("preserves a legacy seven-day pending intent and blocks thirty-day cleanup before connecting", async () => {
+it.each([
+  { startTime: "2026-09-30 00:00:00", endTime: "2026-10-06 23:59:59", createdBefore: "2026-10-05 16:00:00" },
+  { startTime: "2026-09-08 00:00:00", endTime: "2026-10-07 23:59:59" },
+])("preserves a legacy pending intent and blocks fifteen-day cleanup before connecting: %j", async zeroWindow => {
   const f = await ownerFixture();
   await mkdir(path.dirname(f.gate), { recursive: true, mode: 0o700 });
-  const bytes = JSON.stringify({ version: 1, attempt: "11111111-1111-4111-8111-111111111111", advertiserId: target.advertiserId, adId: target.adId, ids: ["7001"], zeroWindow: { startTime: "2026-09-30 00:00:00", endTime: "2026-10-06 23:59:59", createdBefore: "2026-10-05 16:00:00" } });
+  const bytes = JSON.stringify({ version: 1, attempt: "11111111-1111-4111-8111-111111111111", advertiserId: target.advertiserId, adId: target.adId, ids: ["7001"], zeroWindow });
   await writeFile(f.gate, bytes, { mode: 0o600 });
-  expect(await f.owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_30D")).toMatchObject({ state: "BLOCKED", message: expect.stringContaining("上次删除结果未知") });
+  expect(await f.owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "BLOCKED", message: expect.stringContaining("上次删除结果未知") });
   expect(f.connect).not.toHaveBeenCalled(); expect(await readFile(f.gate, "utf8")).toBe(bytes);
 });
 it("stops after cancellation before intent and reports an absent ecological option without another filter", async () => {
