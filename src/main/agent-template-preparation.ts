@@ -9,7 +9,7 @@ import type { AutomaticCoverTrack } from "./automatic-cover-tracks.js";
 import { fillUncoveredCorners } from "./automatic-corner-layout.js";
 import { frameSettings } from "../shared/frames.js";
 
-export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleId; source: MediaItem; resolutionMode?: ExportSettings["resolutionMode"]; stickerAssets: StickerAssets; decorations?: DecorationOptions; catalog?: AgentDecorationCatalog; coverSticker?: FrozenCoverSticker; shapeCoverLayers?: StickerLayer[]; coverTracks?: AutomaticCoverTrack[]; sourceStickerTracks?: AutomaticCoverTrack[]; preserveCoverMotion?: boolean; runId: string; version: number }) {
+export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleId; source: MediaItem; resolutionMode?: ExportSettings["resolutionMode"]; stickerAssets: StickerAssets; decorations?: DecorationOptions; catalog?: AgentDecorationCatalog; coverSticker?: FrozenCoverSticker; shapeCoverLayers?: StickerLayer[]; humanRegionLayers?: StickerLayer[]; coverTracks?: AutomaticCoverTrack[]; sourceStickerTracks?: AutomaticCoverTrack[]; preserveCoverMotion?: boolean; runId: string; version: number }) {
   const dimensions = outputDimensions(input.source, { resolutionMode: input.resolutionMode ?? "source" });
   const textOptions = input.decorations && (input.decorations.displayText || input.decorations.displayTextByMedia)
     ? { ...input.decorations, displayText: displayTextSettings(input.decorations, input.source.id) } : input.decorations;
@@ -17,13 +17,17 @@ export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleI
   const decorations = textOptions?.framesByMedia ? { ...textOptions, frame, framesByMedia: undefined,
     frameId: frame.mode === "manual" ? frame.frameId : frame.mode === "random" ? textOptions.frameId : undefined } : textOptions;
   let template = materializePlan(input.plan, input.ruleId, dimensions, input.stickerAssets, decorations, input.catalog);
-  if (input.coverSticker && !input.shapeCoverLayers) {
+  if (input.coverSticker && !input.shapeCoverLayers && !input.humanRegionLayers) {
     const layers = input.coverTracks !== undefined ? automaticCoverLayers(input.coverSticker, input.source, dimensions, input.coverTracks, { preserveMotion: input.preserveCoverMotion }) : manualCoverLayers(input.coverSticker, input.source, dimensions, input.version);
     template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...layers.map((layer) => ({ ...layer, cover: { ...layer.cover!, selection: { runId: input.runId, round: input.version } } }))] });
   }
   if (input.decorations?.mode === "agent" || input.decorations?.mode === "random") {
     // Original corner identity is relative to the source; export padding must not create a second sticker beside it.
-    const sourceTracks = input.shapeCoverLayers ? input.shapeCoverLayers.map(layer => {
+    const sourceTracks = input.humanRegionLayers ? input.humanRegionLayers.map(layer => {
+      const binding = layer.cover!.humanRegion!, box = binding.visualBounds, size = binding.projection;
+      return { ...binding.range, keyframes: [{ timeMs: binding.range.startMs, rectangle: { x: box.x / size.width,
+        y: box.y / size.height, width: box.width / size.width, height: box.height / size.height } }] };
+    }) : input.shapeCoverLayers ? input.shapeCoverLayers.map(layer => {
       const shape = layer.cover!.shapeMatched!;
       const left = Math.max(0, shape.placement.x - shape.radiusPx), top = Math.max(0, shape.placement.y - shape.radiusPx);
       const right = Math.min(shape.projection.width, shape.placement.x + shape.placement.width + shape.radiusPx);
@@ -34,5 +38,6 @@ export function prepareAgentTemplate(input: { plan: PackagingPlan; ruleId: RuleI
     template = EditTemplateSchema.parse({ ...template, layers: fillUncoveredCorners(template.layers, input.source.durationMs, sourceTracks) });
   }
   if (input.shapeCoverLayers) template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...input.shapeCoverLayers] });
+  if (input.humanRegionLayers) template = EditTemplateSchema.parse({ ...template, layers: [...template.layers, ...input.humanRegionLayers] });
   return template;
 }

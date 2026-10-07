@@ -15,6 +15,7 @@ import { JianjiError } from "./errors.js";
 import { FrozenShapeCoverSchema } from "../shared/shape-cover.js";
 import { HybridCoverBindingSchema } from "../shared/hybrid-cover.js";
 import { FrameIdSchema } from "../shared/frames.js";
+import { HumanRegionBindingSchema } from "../shared/human-region-cover.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -140,6 +141,7 @@ export const StickerLayerSchema = z.object({
     selection: z.object({ runId: z.string().uuid(), round: z.number().int().positive() }).strict().optional(),
     shapeMatched: FrozenShapeCoverSchema.optional(),
     hybridApproved: HybridCoverBindingSchema.optional(),
+    humanRegion: HumanRegionBindingSchema.optional(),
   }).strict().optional(),
 }).strict();
 export type StickerLayer = z.infer<typeof StickerLayerSchema>;
@@ -211,6 +213,11 @@ export const EditTemplateSchema = z.object({
       if (layer.cover.automatic && (!layer.cover.motion || !layer.cover.targetId)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover"], message: "自动覆盖必须有识别目标与轨迹" });
       const shape = layer.cover.shapeMatched;
       const hybrid = layer.cover.hybridApproved;
+      const human = layer.cover.humanRegion;
+      if (human && (!layer.visible || layer.x !== 0 || layer.y !== 0 || layer.width !== 1 || layer.cover.height !== 1 || layer.zIndex !== 90 ||
+        layer.cover.opaqueBackground || layer.cover.motion || shape || hybrid || layer.cover.automatic || layer.cover.targetId || layer.cover.sharedSticker ||
+        layer.cover.regionId !== human.segmentId || layer.cover.stickerId !== human.artwork.id || layer.assetFingerprint !== `sha256:${human.pngSha256}` ||
+        template.coverPlacement || template.sourceStickerKnowledge)) ctx.addIssue({ code: "custom", path: ["layers", index, "cover", "humanRegion"], message: "人工区域覆盖必须保留完整冻结像素与用户意图绑定" });
       if (hybrid && (!layer.visible || layer.x !== 0 || layer.y !== 0 || layer.width !== 1 || layer.cover.height !== 1 ||
           layer.cover.opaqueBackground || layer.cover.motion || layer.cover.shapeMatched || layer.cover.automatic ||
           layer.assetFingerprint !== `sha256:${hybrid.pngSha256}` || template.coverPlacement || template.sourceStickerKnowledge)) {

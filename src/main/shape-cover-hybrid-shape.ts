@@ -1,5 +1,5 @@
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
-import { readShapeCoverAsset, trimShapeCoverArtwork, rasterizeShapeCoverArtwork, type ShapeCoverMediaTools, type ShapeCoverPlacement } from "./shape-cover-alpha.js";
+import { readShapeCoverAsset, trimShapeCoverArtwork, rasterizeShapeCoverArtwork, rasterizeClippedShapeArtwork, type ShapeCoverMediaTools, type ShapeCoverPlacement } from "./shape-cover-alpha.js";
 import { evaluateShapeCover, growOpaqueContour, SHAPE_COVER_PIXEL_CONTRACT, type PixelSize } from "./shape-cover-pixel-gate.js";
 import { discoveryHash } from "./source-fact-discovery-evidence.js";
 import { freezeAI } from "./source-fact-ai-contract.js";
@@ -27,7 +27,8 @@ export function hybridMaskBounds(mask: Uint8Array, size: PixelSize): ShapeCoverP
 
 /** Local catalog-only search. All allowed placements are enumerated; no stochastic/model selection. */
 export async function searchHybridCornerShape(candidates: readonly HybridStickerCandidate[], oldFinal: Uint8Array,
-  size: PixelSize, scope: ShapeCoverPlacement, sourceScale: number, tools: ShapeCoverMediaTools): Promise<HybridShapeMatch | null> {
+  size: PixelSize, scope: ShapeCoverPlacement, sourceScale: number, tools: ShapeCoverMediaTools,
+  coverageMode: "contour" | "artwork" = "contour"): Promise<HybridShapeMatch | null> {
   const config = HYBRID_SHAPE_SEARCH, deadline = Date.now() + config.wallMs;
   if (candidates.length > config.maximumCandidates) throw Error("HYBRID_SEARCH_LIMIT");
   const bounds = hybridMaskBounds(oldFinal, size), points: number[] = [];
@@ -67,7 +68,7 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
         positions.set(`${x}/${y}`, { x, y, width, height });
       }
       // Reuse one contour per radius for all translations. Work stays in the small artwork tile.
-      const radiusLimit = Math.floor(SHAPE_COVER_PIXEL_CONTRACT.maxRadiusSourcePx * sourceScale);
+      const radiusLimit = coverageMode === "artwork" ? 0 : Math.floor(SHAPE_COVER_PIXEL_CONTRACT.maxRadiusSourcePx * sourceScale);
       const remaining = new Map(positions);
       for (let radius = 0; radius <= radiusLimit && remaining.size; radius++) {
         check();
@@ -86,11 +87,15 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
           const right = Math.min(size.width, Math.max(bounds.x + bounds.width, placement.x + width + pad));
           const bottom = Math.min(size.height, Math.max(bounds.y + bounds.height, placement.y + height + pad));
           const window = { width: right - left, height: bottom - top }, localAlpha = new Uint8Array(window.width * window.height), localOld = new Uint8Array(localAlpha.length);
-          for (let row = 0; row < height; row++) localAlpha.set(tile.alpha.subarray(row * width, (row + 1) * width), (placement.y - top + row) * window.width + placement.x - left);
+          const clipLeft = Math.max(left, placement.x), clipRight = Math.min(right, placement.x + width);
+          for (let y = Math.max(top, placement.y); y < Math.min(bottom, placement.y + height); y++) {
+            const offset = (y - placement.y) * width + clipLeft - placement.x;
+            localAlpha.set(tile.alpha.subarray(offset, offset + clipRight - clipLeft), (y - top) * window.width + clipLeft - left);
+          }
           for (const p of points) localOld[(Math.floor(p / size.width) - top) * window.width + p % size.width - left] = 1;
           const verdict = evaluateShapeCover(localOld, localAlpha, window, sourceScale);
           remaining.delete(key);
-          if (verdict.status !== "PASS") continue;
+          if (verdict.status !== "PASS" || coverageMode === "artwork" && verdict.radiusPx !== 0) continue;
           const rank = [tile.alpha.reduce((n, a) => n + Number(a > 0), 0), verdict.radiusPx!, width * height, placement.y, placement.x];
           const precedes = !best || rank.some((n, i) => n < best!.rank[i] && rank.slice(0, i).every((v, j) => v === best!.rank[j]));
           if (precedes) best = { candidate, placement, radiusPx: verdict.radiusPx!, trimBox: trimmed.trimBox,
@@ -101,9 +106,9 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
   }
   check();
   if (!best) return null;
-  const raster = await rasterizeShapeCoverArtwork(best.bytes, size, best.placement, tools);
+  const raster = await (coverageMode === "artwork" ? rasterizeClippedShapeArtwork : rasterizeShapeCoverArtwork)(best.bytes, size, best.placement, tools);
   const verdict = evaluateShapeCover(oldFinal, raster.alpha, size, sourceScale);
-  if (verdict.status !== "PASS" || verdict.radiusPx !== best.radiusPx) throw Error("HYBRID_SHAPE_BINDING");
+  if (verdict.status !== "PASS" || verdict.radiusPx !== best.radiusPx || coverageMode === "artwork" && verdict.radiusPx !== 0) throw Error("HYBRID_SHAPE_BINDING");
   return { candidate: best.candidate, placement: best.placement, radiusPx: best.radiusPx, trimBox: best.trimBox,
     trimmedSha256: best.trimmedSha256, alphaSha256: discoveryHash(raster.alpha), raster, metrics };
 }

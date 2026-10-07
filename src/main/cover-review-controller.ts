@@ -1,3 +1,4 @@
+import { assertHumanRegionIntent } from "./human-region-render.js";
 import { randomUUID } from "node:crypto";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
@@ -54,6 +55,7 @@ export class CoverReviewController {
     const media = mediaIds.map((id) => this.service.getMedia(id));
     if (!media.length || media.some((item) => !item || item.probeStatus !== "ready")) throw new Error("请选择有效素材。");
     const draft = createCoverReviewDraft(project.id, media as MediaItem[]);
+    draft.assistedArtwork = project.coverSticker.assistedArtwork;
     draft.status = "draft";
     await this.save(draft);
     try {
@@ -120,6 +122,7 @@ export class CoverReviewController {
   async analyze(id: string, revision: number): Promise<void> {
     return this.run(async (signal) => {
       const draft = this.current(id, revision);
+      if (draft.assistedArtwork) throw new Error("人工区域模式由用户确定范围，不调用自动识别。");
       this.assertEnabled();
       if (draft.status !== "needs_human") throw new Error("当前状态不能分析。");
       if (draft.media.some((media) => media.analysis !== "not_started" || media.decisions.length)) throw new Error("此草稿已有分析或人工编辑，请新建草稿后再分析。");
@@ -155,6 +158,7 @@ export class CoverReviewController {
     return this.run(async (signal) => {
       this.assertEnabled();
       const draft = this.current(id, revision);
+      if (draft.assistedArtwork) throw new Error("人工区域模式请查看最终图案并确认，不调用模型复核。");
       if (draft.status !== "needs_human" || draft.review) throw new Error("单轮复核只可主动运行一次；请先完成人工编辑或建立新草稿。");
       if (!this.dependencies.reviewMedia) throw new Error("复核证据读取不可用。");
       await this.validateEvidence(draft); signal.throwIfAborted();
@@ -191,6 +195,7 @@ export class CoverReviewController {
       const parsed = AgentStartSchema.parse(input);
       if (parsed.sourceStickerRefresh) throw new Error("半自动审阅不接受原贴纸重新检查意图。");
       if (!this.service.currentProject.coverSticker?.enabled || this.service.currentProject.coverSticker.trackingMode !== "assisted") throw new Error("请显式启用半自动覆盖。");
+      if (draft.assistedArtwork !== this.service.currentProject.coverSticker.assistedArtwork) throw new Error("覆盖模式已变化，请建立新草稿。");
       draft.settingsDigest = reviewDigest(this.service.currentProject.coverSticker);
       draft.requestJson = JSON.stringify(parsed); draft.frozen = []; delete draft.approval;
       draft.status = "preparing_preview";
@@ -206,6 +211,7 @@ export class CoverReviewController {
         try {
         await this.agent.prepareReview(parsed, directories, draft, async (template, media, version, runnerSignal) => {
           signal.throwIfAborted(); runnerSignal.throwIfAborted();
+          assertHumanRegionIntent(draft, template, media.id);
           const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
           const cacheDirectory = path.join(this.dependencies.root, draft.projectId, draft.id, String(draft.revision), "previews");
           const output = await this.queue.renderPreview({ template, media, preset, cacheDirectory, signal: runnerSignal });
@@ -214,7 +220,7 @@ export class CoverReviewController {
           const bindingDigest = reviewDigest({ projectId: draft.projectId, template, media: [media], preset, outputDirectory: path.resolve(parsed.outputDirectory) });
           draft.frozen.push({ mediaId: media.id, version, templateJson: JSON.stringify(template), templateDigest: reviewDigest(template), presetJson: JSON.stringify(preset), bindingDigest,
             preview: { relativePath: path.relative(this.dependencies.root, output).split(path.sep).join("/"), digest: await previewDigest(output), viewed: false } });
-        });
+        }, path.join(this.dependencies.root, draft.projectId, draft.id, String(draft.revision), "artwork"));
         } finally { signal.removeEventListener("abort", cancelPreparation); }
         signal.throwIfAborted();
         if (draft.frozen.length !== draft.media.length * (parsed.multiplier ?? 1)) throw new Error("冻结版本不完整。");
@@ -308,6 +314,8 @@ export class CoverReviewController {
       for (const version of draft.frozen) {
         await this.previewPath(id, revision, version.mediaId, version.version);
         const template = EditTemplateSchema.parse(JSON.parse(version.templateJson));
+        assertHumanRegionIntent(draft, template, version.mediaId);
+        if (draft.assistedArtwork) await this.queue.verifyHumanRegions(template, this.service.getMedia(version.mediaId)!, ExportPresetSchema.parse(JSON.parse(version.presetJson)), signal);
         for (const layer of template.layers) if (layer.type === "sticker" && await fingerprintFile(layer.assetPath) !== layer.assetFingerprint) throw new Error("冻结贴纸已变化，请重新准备预览。");
       }
       draft.approval ??= { submissionId: randomUUID(), revision, bindingDigest: approvalBinding(draft), approvedAt: new Date().toISOString(), receipts: [] };
@@ -318,6 +326,7 @@ export class CoverReviewController {
         const media = this.service.getMedia(version.mediaId)!;
         const batch = await this.queue.createBatch({ projectId: draft.projectId, template: EditTemplateSchema.parse(JSON.parse(version.templateJson)), mediaIds: [media.id], mediaItems: [media],
           outputDirectory: parsed.outputDirectory, preset: ExportPresetSchema.parse(JSON.parse(version.presetJson)),
+          reviewDraft: draft,
           submission: { submissionId: draft.approval.submissionId, mediaId: media.id, version: version.version, bindingDigest: version.bindingDigest } }, signal);
         if (!draft.approval.receipts.some((receipt) => receipt.mediaId === media.id && receipt.version === version.version)) draft.approval.receipts.push({ mediaId: media.id, version: version.version, templateDigest: version.templateDigest, batchId: batch.id, taskId: batch.tasks[0].id });
         try { await this.save(draft, revision); }

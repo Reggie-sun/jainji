@@ -1,3 +1,4 @@
+import { createHumanRegionCover } from "./human-region-cover.js";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -107,11 +108,11 @@ export class AgentController {
     return { fonts: [], stickers, previews };
   }
 
-  async prepareReview(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, draft: CoverReviewDraft, prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void>): Promise<void> {
+  async prepareReview(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, draft: CoverReviewDraft, prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void>, artworkDirectory?: string): Promise<void> {
     assertReviewResolved(draft);
     if (draft.projectId !== this.service.currentProject.id || draft.status !== "preparing_preview") throw new Error("审阅状态不允许准备预览。");
     if (input.mediaIds.length !== draft.media.length || input.mediaIds.some((id) => !draft.media.some(({ mediaId }) => id === mediaId))) throw new Error("制作素材与审阅集合不同。");
-    await this.startInternal(input, approvedDirectories, { draft, prepared });
+    await this.startInternal(input, approvedDirectories, { draft, prepared, artworkDirectory });
     await this.runner?.settled();
     const failures = this.runner?.snapshot()?.items.filter(({ status }) => status !== "prepared") ?? [];
     if (failures.length) throw new Error(`部分版本准备失败或已取消：${failures.map(({ error }) => error ?? "用户已停止准备").join("；")}`);
@@ -126,7 +127,7 @@ export class AgentController {
     return this.startInternal(input, approvedDirectories, undefined, structuredClone(request));
   }
 
-  private async startInternal(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, assisted?: { draft: CoverReviewDraft; prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void> }, shapeRequest?: ShapeCoverCandidateRequest): Promise<void> {
+  private async startInternal(input: AgentStartInput, approvedDirectories: ReadonlySet<string>, assisted?: { draft: CoverReviewDraft; artworkDirectory?: string; prepared: (template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal) => Promise<void> }, shapeRequest?: ShapeCoverCandidateRequest): Promise<void> {
     this.assertIdle();
     if (this.queue.snapshot().batches.some(({ batch }) => batch.tasks.some((task) =>
       ["validating", "running", "verifying", "cancelling"].includes(task.status) ||
@@ -184,7 +185,9 @@ export class AgentController {
       const project = this.service.currentProject;
       if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted) throw new Error("半自动覆盖必须先审阅、预览和批准。");
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
-      const automaticCover = project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
+      const humanRegion = Boolean(assisted && project.coverSticker?.enabled && project.coverSticker.assistedArtwork === "human-region-v1");
+      if (humanRegion && (!assisted?.artworkDirectory || assisted.draft.assistedArtwork !== "human-region-v1")) throw new Error("人工覆盖草稿或持久缓存未绑定。");
+      const automaticCover = !humanRegion && project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
       if (shapeRequest && (!automaticCover || assisted || parsed.sourceStickerRefresh)) throw new ProviderError("UNSAFE: 形状接缝仅用于已准入静态源事实的显式自动覆盖，不支持重新识别或半自动草稿。");
       if ((decorations.mode === "agent" || automaticCover) && !this.provider.status().configured) throw new Error("请先接入模型。");
       const preserveSourceStickers = decorations.mode === "agent" && !project.coverSticker?.enabled;
@@ -205,7 +208,7 @@ export class AgentController {
       const autoCatalog = decorations.mode === "agent" ? { ...availableCatalog!, stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)) } : undefined;
       await assertDecorationFrameOptions(decorations, this.stickerAssets, ids);
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets, ids) : this.stickerAssets) };
-      const coverSticker = automaticCover ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, ids, randomPath);
+      const coverSticker = automaticCover || humanRegion ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, ids, randomPath);
       this.preparingController.signal.throwIfAborted();
       for (const family of decorationFontFamilies(decorations)) {
         const font = this.library ? await this.library.resolveFont(family) : await resolveFont(family);
@@ -327,6 +330,7 @@ export class AgentController {
       }
       this.runner = new AgentRunner({
         shape,
+        humanRegionLayers: humanRegion ? createHumanRegionCover({ draft: assisted!.draft, media: media as MediaItem[], preset, assets: this.stickerAssets, tools: this.ffmpeg, directory: assisted!.artworkDirectory!, random: randomPath }) : undefined,
         usesModel: decorations.mode === "agent" || Boolean(automaticCover),
         knowledge,
         placement,
@@ -362,7 +366,7 @@ export class AgentController {
           return source.disposition === "no_cover" ? [] : source.segments.map(segment => ({ targetId: segment.id, track: segment.track }));
         } : undefined,
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
-        frames: randomPath && !automaticCover ? async () => [] : (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
+        frames: (randomPath || humanRegion && decorations.mode !== "agent") && !automaticCover ? async () => [] : (item, signal) => extractAgentFrames(this.ffmpeg, item, signal),
         plan: async (rule, brief, frames, signal, catalog, selection) => {
           if (randomPath) return createLocalRandomPlan();
           // Manual mode is fully local: stickers, price style, and brief come from the user; only filter/intensity remain

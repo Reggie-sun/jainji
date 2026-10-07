@@ -36,6 +36,7 @@ export function editCoverReviewDraft(current: CoverReviewDraft, input: unknown):
   };
   switch (command.type) {
     case "put_segment": {
+      if (draft.assistedArtwork && command.segment.track.keyframes.length !== 1) throw new Error("人工图案覆盖使用固定框，移动目标请拆分时段。");
       if (command.segment.identityId !== command.identity.id) throw new Error("覆盖身份不匹配。");
       const identity = { ...command.identity, origin: "human" as const };
       const index = media.identities.findIndex(({ id }) => id === identity.id);

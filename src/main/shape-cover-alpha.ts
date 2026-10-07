@@ -62,11 +62,11 @@ export async function readShapeCoverAsset(asset: BuiltinStickerAsset, tools: Sha
 }
 
 /** Measure actual scale/pad rounding instead of accepting caller-supplied transforms. */
-export async function measureShapeCoverOutput(sourcePath: string, source: SourceIdentity, settings: ExportSettings, tools: ShapeCoverMediaTools): Promise<SourceToOutput> {
+export async function measureShapeCoverOutput(sourcePath: string, source: SourceIdentity, settings: ExportSettings, tools: ShapeCoverMediaTools, autorotate = false): Promise<SourceToOutput> {
   const size = outputDimensions(source, settings);
   if (size.width * size.height > MAX_PIXELS || source.width * source.height > MAX_PIXELS) throw new Error("output raster exceeds pixel limit");
   if (settings.resolutionMode === "source") return { ...size, scaledWidth: source.width, scaledHeight: source.height, padLeft: 0, padTop: 0 };
-  const result = await mediaCommand(tools, tools.ffmpegPath, ["-hide_banner", "-loglevel", "verbose", "-nostdin", "-threads", "1", "-noautorotate", "-i", sourcePath,
+  const result = await mediaCommand(tools, tools.ffmpegPath, ["-hide_banner", "-loglevel", "verbose", "-nostdin", "-threads", "1", ...(autorotate ? [] : ["-noautorotate"]), "-i", sourcePath,
     "-filter_threads", "1", "-vf", `scale=${size.width}:${size.height}:force_original_aspect_ratio=decrease,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2,format=yuv420p`,
     "-frames:v", "1", "-threads", "1", "-f", "null", "-"]);
   const match = /\[Parsed_pad_\d+[^\]]*\] w:(\d+) h:(\d+) -> w:(\d+) h:(\d+) x:(\d+) y:(\d+)/.exec(result.stderr);
@@ -102,6 +102,20 @@ async function rasterizeArtwork(bytes: Buffer, output: PixelSize, placement: Sha
 export async function rasterizeShapeCoverArtwork(bytes: Buffer, output: PixelSize, placement: ShapeCoverPlacement, tools: ShapeCoverMediaTools) {
   const result = await rasterizeArtwork(bytes, output, placement, tools, true);
   return { ...result, rgba: result.rgba! };
+}
+
+/** Proportional artwork may cross the canvas edge; clip only at the video boundary. */
+export async function rasterizeClippedShapeArtwork(bytes: Buffer, output: PixelSize, placement: ShapeCoverPlacement, tools: ShapeCoverMediaTools) {
+  if (![placement.x, placement.y].every(Number.isSafeInteger) || output.width * output.height > MAX_PIXELS) throw Error("invalid clipped placement");
+  const tile = await rasterizeShapeCoverArtwork(bytes, placement, { x: 0, y: 0, width: placement.width, height: placement.height }, tools);
+  const alpha = new Uint8Array(output.width * output.height), rgba = Buffer.alloc(alpha.length * 4);
+  const left = Math.max(0, placement.x), top = Math.max(0, placement.y);
+  const right = Math.min(output.width, placement.x + placement.width), bottom = Math.min(output.height, placement.y + placement.height);
+  for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+    const from = (y - placement.y) * placement.width + x - placement.x, to = y * output.width + x;
+    alpha[to] = tile.alpha[from]; tile.rgba.copy(rgba, to * 4, from * 4, from * 4 + 4);
+  }
+  return { ...tile, alpha, rgba, alphaSha256: digest(alpha) };
 }
 
 export async function rasterizeShapeCoverAlpha(bytes: Buffer, output: PixelSize, placement: ShapeCoverPlacement, tools: ShapeCoverMediaTools) {

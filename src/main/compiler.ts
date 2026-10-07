@@ -1,3 +1,4 @@
+import { readFrozenHumanRegion } from "./human-region-render.js";
 import path from "node:path";
 import { outputDimensions } from "../shared/export-settings.js";
 import { PRICE_LINE_HEIGHT } from "../shared/price-styles.js";
@@ -113,7 +114,7 @@ export class TemplateCompiler {
     const graph: string[] = [];
     const dimensions = outputDimensions(media, preset);
     const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
-    const frozenShape = template.layers.some(layer => layer.type === "sticker" && (layer.cover?.shapeMatched || layer.cover?.hybridApproved));
+    const frozenShape = template.layers.some(layer => layer.type === "sticker" && (layer.cover?.shapeMatched || layer.cover?.hybridApproved || layer.cover?.humanRegion));
     // Shape intervals must run on output PTS, before -r can duplicate/drop frames.
     const sourceFilters = ["setpts=PTS-STARTPTS", frozenShape && preset.frameRateMode === "30" ? "fps=30" : null, outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
@@ -183,9 +184,10 @@ export class TemplateCompiler {
       // Overlay repeats the last frame of a still image, so decode it only once.
       // GIFs and unknown formats retain their animation and bounded input loop.
       const hybrid = layer.cover?.hybridApproved;
-      const shape = hybrid ?? layer.cover?.shapeMatched;
+      const human = layer.cover?.humanRegion;
+      const shape = human ?? hybrid ?? layer.cover?.shapeMatched;
       const assetPath = shape ? options.textFilePath(`shape-${layer.id}.png`) : layer.assetPath;
-      if (shape) binaryFiles.push({ path: assetPath, content: hybrid ? await readApprovedHybridCover(layer, media, preset) : await readFrozenShapeCover(layer, media, preset) });
+      if (shape) binaryFiles.push({ path: assetPath, content: human ? await readFrozenHumanRegion(layer, media, preset) : hybrid ? await readApprovedHybridCover(layer, media, preset) : await readFrozenShapeCover(layer, media, preset) });
       const stillImage = !!shape || /\.(png|jpe?g)$/i.test(layer.assetPath);
       args.push(...threadArgs, ...(stillImage ? [] : ["-t", durationSeconds.toFixed(3), "-stream_loop", "-1"]), "-i", assetPath);
       const stickerIndex = inputIndex;

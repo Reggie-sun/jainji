@@ -66,6 +66,7 @@ export const CoverReviewDraftSchema = z.object({
   frozen: z.array(FrozenCoverVersionSchema).max(250), approval: CoverApprovalSchema.optional(),
   requestJson: z.string().min(1).optional(),
   settingsDigest: Digest.optional(),
+  assistedArtwork: z.literal("human-region-v1").optional(),
   frameTimes: z.record(Id, z.array(z.number().finite().nonnegative())).optional(),
   requestPlan: z.object({ maxRequests: Revision, usedRequests: Revision }).strict().refine((value) => value.usedRequests <= value.maxRequests).optional(),
   review: IndependentReviewRecordSchema.optional(),

@@ -1,3 +1,5 @@
+import type { CoverReviewDraft } from "../shared/cover-review.js";
+import { assertHumanRegionSubmission, hasHumanRegions, verifyHumanRegionTemplate } from "./human-region-render.js";
 import { createHash, randomUUID } from "node:crypto";
 import { access, constants, copyFile, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -60,6 +62,8 @@ export interface CreateBatchInput {
   outputDirectory: string;
   preset: ExportPreset;
   submission?: ExportBatch["submission"];
+  /** Main-only existing review approval; never accepted through generic export IPC. */
+  reviewDraft?: CoverReviewDraft;
 }
 
 export type ExportBatchIdentity = Pick<ExportBatch, "id" | "projectId"> & { tasks: Pick<ExportTask, "id">[] };
@@ -185,6 +189,7 @@ export class ExportQueue {
     assertPriceOnlyTemplate(template);
     if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new Error("原素材已变化。");
     await verifyFrozenShapeSources(template, media, this.dependencies.sourceKnowledgeStore, signal);
+    await verifyHumanRegionTemplate(template, media, preset, { ...this.dependencies.ffmpeg, signal }, this.dependencies.sourceKnowledgeStore);
     const missing = await validateTemplateResources(template, this.dependencies.fontResolver);
     if (missing.length) throw new Error("预览依赖素材不可用。");
     await mkdir(preview.cacheDirectory, { recursive: true });
@@ -204,6 +209,11 @@ export class ExportQueue {
       }
       const written = await Promise.allSettled(files.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
       for (const item of written) if (item.status === "rejected") throw item.reason;
+      const verifyCopies = async () => {
+        if (!hasHumanRegions(template)) return;
+        for (const file of compiled.binaryFiles ?? []) if (await fingerprintFile(file.path) !== `sha256:${createHash("sha256").update(file.content).digest("hex")}`) throw new Error("人工覆盖预览任务文件已变化。");
+      };
+      await verifyCopies();
       signal.throwIfAborted();
       if (this.shuttingDown) throw new Error("预览已停止。");
       let command: RunningCommand | undefined;
@@ -226,7 +236,9 @@ export class ExportQueue {
         });
         await measureCoverStage(preview.diagnostics, "artifact-verify", signal, async () => {
           await this.verifier.verify(output, id);
+          await verifyCopies();
           await verifyFrozenShapeSources(template, media, this.dependencies.sourceKnowledgeStore, signal);
+          await verifyHumanRegionTemplate(template, media, preset, { ...this.dependencies.ffmpeg, signal }, this.dependencies.sourceKnowledgeStore);
           signal.throwIfAborted();
         });
         if (template.layers.some(layer => layer.type === "sticker" && layer.cover?.shapeMatched)) {
@@ -319,6 +331,7 @@ export class ExportQueue {
   async createBatch(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
     signal?.throwIfAborted();
     assertShapeCoverExportReady(input.template);
+    assertHumanRegionSubmission(input);
     if (!input.submission) return this.createBatchNow(input, signal);
     const frozen = structuredClone(input);
     const work = this.submissionChain.catch(() => undefined).then(async () => {
@@ -342,16 +355,22 @@ export class ExportQueue {
     return work;
   }
 
+  async verifyHumanRegions(template: EditTemplate, media: MediaItem, preset: ExportPreset, signal?: AbortSignal): Promise<void> {
+    await verifyHumanRegionTemplate(template, media, preset, { ...this.dependencies.ffmpeg, signal }, this.dependencies.sourceKnowledgeStore);
+  }
+
   private async createBatchNow(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
     signal?.throwIfAborted();
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
+    assertHumanRegionSubmission(input);
     assertPriceOnlyTemplate(template);
     assertShapeCoverExportReady(template);
     const parsedPreset = ExportPresetSchema.parse(input.preset);
     const selected = input.mediaIds.map((id) => input.mediaItems.find((item) => item.id === id));
     if (selected.some((item): item is undefined => !item)) throw new JianjiError("存在未找到的素材。", "input_invalid", "input", false);
     const media = selected as MediaItem[];
+    if (hasHumanRegions(template)) for (const item of media) await this.verifyHumanRegions(template, item, parsedPreset, signal);
     if (media.some((item) => item.probeStatus !== "ready")) throw new JianjiError("只能导出探测成功的素材。", "input_invalid", "input", false);
     await assertOutputDirectorySafe(input.outputDirectory, media);
     const missing = await validateTemplateResources(template, this.dependencies.fontResolver);
@@ -428,6 +447,7 @@ export class ExportQueue {
    * supervised version is in the folder the moment the supervisor passes.
    */
   async publishApprovedSample(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; samplePath: string; outputDirectory: string; projectId?: string; shapeAdmission?: ShapeCoverAdmission; onTaskCreated?: (batch: ExportBatchIdentity) => Promise<void> }): Promise<{ batchId: string; taskId: string; outputPath: string }> {
+    if (hasHumanRegions(input.template)) throw new Error("人工覆盖必须通过原审阅批准队列导出。");
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
     input = { ...input, media: structuredClone(input.media), preset: ExportPresetSchema.parse(input.preset) };
@@ -813,9 +833,15 @@ export class ExportQueue {
     try {
       assertPriceOnlyTemplate(state.batch.templateSnapshot);
       assertShapeCoverExportReady(state.batch.templateSnapshot);
+      if (hasHumanRegions(state.batch.templateSnapshot)) {
+        const submission = state.batch.submission;
+        const digest = reviewDigest({ projectId: state.batch.projectId, template: state.batch.templateSnapshot, media: state.batch.mediaSnapshots, preset: state.batch.preset, outputDirectory: path.resolve(state.batch.outputDirectory) });
+        if (!submission || submission.mediaId !== media.id || submission.bindingDigest !== digest) throw new Error("人工覆盖队列冻结提交已失效。");
+      }
       await access(media.sourcePath, constants.R_OK);
       if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new JianjiError("原始素材在导出前已发生变化。", "input_invalid", "input", false);
       await verifyApprovedHybridTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg);
+      await verifyHumanRegionTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg, this.dependencies.sourceKnowledgeStore);
       const missing = await validateTemplateResources(state.batch.templateSnapshot, this.dependencies.fontResolver);
       if (missing.length > 0) throw new JianjiError(`模板资源缺失：${missing.join("、")}`, "resource_missing", "resource", false);
       await assertOutputDirectorySafe(state.batch.outputDirectory, [media]);
@@ -836,7 +862,7 @@ export class ExportQueue {
       const written = await Promise.allSettled(files.map((file) => writeFile(file.path, file.content, { mode: 0o600 })));
       for (const item of written) if (item.status === "rejected") throw item.reason;
       const verifyHybridCopies = async () => {
-        if (!state.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.cover?.hybridApproved)) return;
+        if (!state.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && (layer.cover?.hybridApproved || layer.cover?.humanRegion))) return;
         for (const file of compiled.binaryFiles ?? []) {
           const expected = `sha256:${createHash("sha256").update(file.content).digest("hex")}`;
           if (await fingerprintFile(file.path) !== expected) throw new Error("UNSAFE: HYBRID_TASK_COPY_CHANGED");
@@ -895,8 +921,10 @@ export class ExportQueue {
       await syncFile(partialPath);
       const artifact = await this.verifier.verify(partialPath, task.id);
       await verifyApprovedHybridTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg);
+      await verifyHumanRegionTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg, this.dependencies.sourceKnowledgeStore);
       await verifyHybridOutput(state.batch.templateSnapshot, partialPath, this.dependencies.ffmpeg);
       await verifyApprovedHybridTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg);
+      await verifyHumanRegionTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg, this.dependencies.sourceKnowledgeStore);
       if (this.cancelRequested.delete(task.id)) {
         await unlink(partialPath).catch(() => undefined);
         if (task.status !== "cancelling") await this.transition(state, task, "cancelling");

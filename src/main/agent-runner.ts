@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { type ExportSettings } from "../shared/export-settings.js";
 import { calculateExactProductionQuantity, MAX_AGENT_OUTPUTS, ProductionMultiplierSchema, type AgentRun, type RuleId } from "../shared/agent.js";
-import { type EditTemplate, type MediaItem } from "./domain.js";
+import { type EditTemplate, type MediaItem, type StickerLayer } from "./domain.js";
 import { ProviderError, type AgentDecorationCatalog, type AgentSelectionContext, type PackagingPlan } from "./agent-provider.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import type { DecorationOptions } from "../shared/decorations.js";
@@ -27,6 +27,7 @@ interface RunnerDependencies {
   publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal): Promise<string>;
   shape?: ShapeCoverProduction;
   hybrid?: HybridProductionSession;
+  humanRegionLayers?(media: MediaItem, version: number, runId: string, signal: AbortSignal): Promise<StickerLayer[]>;
   /** Real render slots from the export queue (encoder-aware); defaults to the legacy cap when absent. */
   renderSlots?(): number;
   prepared?(template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal): Promise<void>;
@@ -194,7 +195,8 @@ export class AgentRunner {
             stickerAssets: this.dependencies.stickerAssets, decorations: frameOptions[index], catalog: this.dependencies.autoCatalog,
             coverSticker, coverTracks, sourceStickerTracks, preserveCoverMotion: Boolean(this.dependencies.prepared), runId: run.id, version: item.version };
           const shapeCoverLayers = this.dependencies.shape ? await this.dependencies.shape.layers(item.version, coverSticker!.stickerId, source, run.id, signal) : undefined;
-          let template = prepareAgentTemplate({ ...preparation, shapeCoverLayers });
+          const humanRegionLayers = await this.dependencies.humanRegionLayers?.(source, item.version, run.id, signal);
+          let template = prepareAgentTemplate({ ...preparation, shapeCoverLayers, humanRegionLayers });
           let version: KnowledgeVersion | undefined;
           if ((knowledge && binding || placement) && !this.dependencies.prepared) {
             const original = template;

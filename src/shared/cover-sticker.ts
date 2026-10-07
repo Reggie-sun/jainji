@@ -51,9 +51,11 @@ export const CoverStickerSchema = z.object({
   tracks: z.record(z.string().uuid(), CoverTrackSchema).optional(),
   trackingMode: z.enum(["manual", "agent", "assisted"]).optional(),
   coverStrategy: z.literal("shape-matched-static-v1").optional(),
+  assistedArtwork: z.literal("human-region-v1").optional(),
   regions: z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS).optional(),
   mediaRegions: z.record(z.string().uuid(), z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS)).optional(),
 }).strict().superRefine((value, ctx) => {
+  if (value.assistedArtwork && (value.trackingMode !== "assisted" || value.coverStrategy)) ctx.addIssue({ code: "custom", message: "人工区域图案覆盖仅用于半自动审阅，不能混用自动形状策略" });
   if (value.enabled && (value.trackingMode ?? "manual") === "manual" && !value.mediaRegions && value.regions?.length === 0) ctx.addIssue({ code: "custom", path: ["regions"], message: "请至少添加一个覆盖框" });
   if (value.regions && new Set(value.regions.map((region) => region.id)).size !== value.regions.length) ctx.addIssue({ code: "custom", path: ["regions"], message: "覆盖框编号不得重复" });
   for (const [mediaId, regions] of Object.entries(value.mediaRegions ?? {})) {

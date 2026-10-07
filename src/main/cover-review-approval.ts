@@ -10,7 +10,7 @@ export function reviewDigest(value: unknown): string {
 }
 
 export function approvalBinding(draft: CoverReviewDraft): string {
-  return reviewDigest({ projectId: draft.projectId, id: draft.id, revision: draft.revision, media: draft.media, requestJson: draft.requestJson, settingsDigest: draft.settingsDigest,
+  return reviewDigest({ projectId: draft.projectId, id: draft.id, revision: draft.revision, assistedArtwork: draft.assistedArtwork, media: draft.media, requestJson: draft.requestJson, settingsDigest: draft.settingsDigest,
     frozen: draft.frozen.map(({ preview: _preview, ...version }) => version) });
 }
 
