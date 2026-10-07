@@ -75,3 +75,11 @@ gradient/texture 四例的两个初始化输出完全一致，却漏掉全部 70
 私有诊断文件保存在 repository 外 `jianji-hybrid-repair-20261006` 运行目录，未作为正式源码提交：`grabcut-independent-qualification.py`、对应 `-plan.json` 和结果 `.json`。plan SHA 为 `a502638a31d0ceb02aea2f94dac39543d9c36f0283bcc6d1071a61721f2f7ab0`，结果 SHA 为 `0b7fcf937d4449e05b89fbb9d3d753ed0777b86b4a32c6d0da363470d60bbdde`。本机命令为该目录下的 `python grabcut-independent-qualification.py`；依赖当前诊断环境中的 OpenCV/NumPy，不是产品命令或可移植 Harness。
 
 当前结论：该候选分割修复未通过独立回归资格，不进入 H3。原素材 4/5 的 TL/TR 仍为 `MASK_UNAVAILABLE`，真实 H4、新导出和人工整片验收均未完成。源绑定的原始贴纸 alpha/制作工程或独立边界证据是可以继续验证的输入；拿到原始 PNG 也仍需核对源片中的摆放与缩放，不能直接授生产 authority。原 coverage/H4、motion、shape/placement、冻结生产和 partial corner 行为保持原代码。
+
+## Temporal Background Follow-up
+
+用户确认没有原始贴纸 PNG 或制作工程，不能再把提供这些资产当成待办或前置要求。Parent 因此继续检查原视频本身：先核素材 4 的文件指纹，再用应用 FFmpeg 提取 0/1/2/3/4/5/7/14/21/28 秒的原尺寸帧。前 6 帧为移动镜头下的人物场景，后 4 帧为深色百叶背景；贴纸持续存在，顶部说明文字在场景变化后消失。两个场景不是同一块背景的前后观测，不能直接相减得到 alpha。
+
+进行了一个固定参数的背景可观察性诊断：仅在上方 720×360 区域、排除候选角落及顶部文字后提取 SIFT，ratio=0.7，homography RANSAC=2px、最多 2000 次、seed=1。0→1 秒仅 10 个 inliers，0→2 秒 6 个，0→3 秒 4 个，0→4 秒 6 个，0→5 秒 5 个；7→14/21/28 秒分别只有 0/1/7 个匹配。少量拟合点与低拟合残差不构成被遮挡角落内的背景对应证据：尤其 0→3 秒四点恰好拟合的投影不能当成干净背景。没有据这些未资格化的变换去重建背景、生成 mask 或批准输出。
+
+上述诊断只检查这组冻结帧及配置，不声称穷尽所有时刻、配准方法或未来修复方案，也不把“未找到”写成“算法不可能”。当前已验证的候选路线仍不能同时解决原片替换和独立阴影回归，自动修复尚未完成。新帧、联系图、`background-registration-diagnostic.py/.json` 继续保存在本轮 repository 外证据目录；未修改用户源片、历史导出或业务源码。
