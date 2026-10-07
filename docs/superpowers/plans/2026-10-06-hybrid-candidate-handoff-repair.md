@@ -28,6 +28,14 @@
 
 ## Acceptance And Verification
 
+### Continued Mask Repair Contract
+
+2026-10-07 继续执行，自审纠正此前“独立证明”表述的过度解释：独立 construction-alpha 回归是 mask 方法的资格证据；当前源字节/时钟/候选身份是 provenance；coverage 证明冻结 mask 被完全不透明覆盖；H4 检查实际配对画面。真实用户视频不新增原始 PNG、工程文件、strict REAL_MEDIA truth 或数学唯一解前置。用户已确认没有原资产，不能继续要求提供，也不能仅因一个候选失败就结束整个修复。已验证的阴影漏检仍必须修复或在运行时明确拒绝，不能交给 H4 抹去。
+
+后续实现只在 `shape-cover-hybrid-h3.ts` 的提取接缝接入一种通过方法回归的版本化 Hybrid mask owner；不串接多层 fallback，不修改三个 proof-pinned v2 文件。先用既有独立阴影、四个画布角、内部 ROI、无关字幕/背景与失效绑定用例检验方法，再用原素材 4/5 确认实际 H3；只有候选和运行时拒绝条件都成立，才继续原 H4/compiler/queue/export。实际产品 runtime 必须能在 Windows/Linux 装载、有界执行及取消，不将开发机 Python/Conda 当成产品依赖。原图库、shape/placement、coverage 和 H4 规则不变。
+
+最低验证为新方法的独立正/负例、H3 接缝及 stale/clone/cancel 回归、typecheck、按最终 owned scope 路由的 Harness 与 completion、AOCI，以及原片实际结果。保存每次失败；构造 PASS 不称真实视觉验收，研究记录及文档 PASS 不称修复完成。此边界修订属于已授权的 mask 兼容修复，没有新增产品功能或放宽原 gate，继续由 Native Codex 执行。
+
 可执行回归先证明旧 packet 无法消费密集候选；修复后 H2 的 candidate digest 与 H3 mask 集合一致，图片仍源自小样本。旧路径保持确定性；错源、伪造、关闭证据不能进入批准。原真实素材以受控 H2 fixture 重跑，分列后续 mask/motion/shape gate，不能当作真实模型验收。零/部分结果与原因在普通及批量页面可见并跨重开保留；失败文案优先。
 
 最新 main 的内置边框已改为细线电商款，最终 Harness 在 `decoration-display.integration` 的横竖屏两例复现旧黄色固定像素断言失败。该编译渲染接缝改用提取前独立构造的四色不对称透明边框：严格逐通道核四边、贴纸上层、中央原画面、首尾时段、音轨和时长；不绑定可变款式，也不降低像素 gate。实际内置资源仍由既有资源回归覆盖。本轮只维护此测试兼容性，不修改边框业务代码；旧失败回执不作最终 PASS。

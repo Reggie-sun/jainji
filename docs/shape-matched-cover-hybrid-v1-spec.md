@@ -76,6 +76,12 @@ proof 绑定的 `source-mask-static-extraction`、`source-mask-static-target`、
 
 受控原素材复跑及构造像素回归仅证明软件接缝与拒绝方向；真实 H2/H4、全部原贴纸替换与真实画面验收仍未评估，不以此前实验中的 motion/shape 结果算成功。
 
+### Mask Qualification Scope Clarification
+
+2026-10-07 对上述修复 delta 的合同自审：独立回归要求不得扩大为“每个真实视频先提供原始 PNG、制作工程或真实 alpha 真值”。这些输入是可选证据；`qualifyStaticMask` 的 strict 研究资格不进入 Hybrid 产品准入，也不能因其对 REAL_MEDIA 固定返回 INCOMPLETE 而停止产品修复。上述“独立区分目标像素和背景”指方法须有独立构造真值回归及可解释的运行时不确定性拒绝条件，不要求从任意 RGB 唯一恢复 alpha 的数学证明。
+
+此澄清不批准任何已失败候选：已知画布边缘、内部 ROI、变化阴影及 GrabCut 双初始化共同漏检反例必须由新方法完整包含规定真值 support 或明确拒绝，不能删例、缩减真值、只检查自身 mask 或由 H4 覆盖已知漏检。source/frame/候选 identity 与 freshness 证明输入归属；方法版本、参数及 mask digest 绑定候选；原 motion、shape/placement、100% opaque coverage、H4 和同字节生产仍各自负责既有职责。新的 Hybrid mask 方法须在 H3 单一提取接缝显式版本化，不能伪造 v2 receipt 或叠加多个失败后 repair owner；三个 proof-pinned 源文件及历史 strict 路径保持原样。
+
 仅消费 `getConfirmedCornerTargets()` 的 fresh H2 targets。conservative mask 保持既有 M1 默认96张代表帧和原 extractor；每个密集 component 必须唯一且完全处于对应 H2-confirmed component box，否则该角 `MASK_TARGET_AMBIGUOUS`，不能发现/确认额外 target。multi-component 逐成员绑定，不用 union bbox 代替 mask。H2 的16–32张语义帧独立用于每个 component 的 mask interior sampled motion：reference局部对比至少64的可追踪点需≥8，否则UNOBSERVABLE；纯色共同内核RGB不变不能证明整个贴纸未移动。明显移动、消失、变化或不可观察仅跳该角；源码/引擎/语义/目录绑定失效或取消关闭全源。旧 full-range RGB anomalies 保留 diagnostic，仅 `FULL_RANGE_STATIC_CONTRADICTION` 不作 Hybrid motion blocker；不调用 strict geometry/proof，不发布 Knowledge Store。
 
 本地有效 cover pool（内置及已校验上传）按 ID 排序，最多256款、5档等比尺寸、9个小平移位置、1280栅格/11520摆放/180秒。只裁全透明外围，不改变资源图文或部分 alpha。原 pixel gate 的 radius≤8 source px、area≤1.35、span≤1.16 保持；decode 后 oldMask 全部 alpha=255且 uncoveredPixels=0 才冻结。无匹配 `NO_SHAPE_MATCH`，预算耗尽 `HYBRID_SEARCH_LIMIT`；无白矩形fallback。PNG、RGBA、alpha、source、semantic、mask、motion、asset、trim、placement及output绑定冻结，重新读取核对同字节。H3仅提供 geometry-only/NOT_EVALUATED frozen PNG 和 active-owned getter 给后续H4；JSON不恢复authority。H4仍需渲染及视觉/内容安全判断，PRODUCT_DISABLED不变。

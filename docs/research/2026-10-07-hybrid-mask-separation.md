@@ -83,3 +83,15 @@ gradient/texture 四例的两个初始化输出完全一致，却漏掉全部 70
 进行了一个固定参数的背景可观察性诊断：仅在上方 720×360 区域、排除候选角落及顶部文字后提取 SIFT，ratio=0.7，homography RANSAC=2px、最多 2000 次、seed=1。0→1 秒仅 10 个 inliers，0→2 秒 6 个，0→3 秒 4 个，0→4 秒 6 个，0→5 秒 5 个；7→14/21/28 秒分别只有 0/1/7 个匹配。少量拟合点与低拟合残差不构成被遮挡角落内的背景对应证据：尤其 0→3 秒四点恰好拟合的投影不能当成干净背景。没有据这些未资格化的变换去重建背景、生成 mask 或批准输出。
 
 上述诊断只检查这组冻结帧及配置，不声称穷尽所有时刻、配准方法或未来修复方案，也不把“未找到”写成“算法不可能”。当前已验证的候选路线仍不能同时解决原片替换和独立阴影回归，自动修复尚未完成。新帧、联系图、`background-registration-diagnostic.py/.json` 继续保存在本轮 repository 外证据目录；未修改用户源片、历史导出或业务源码。
+
+## Continued Qualification And Contract Correction
+
+Parent 核对 H3 和 strict qualifier 后，纠正了此前调查中的过度前置：Hybrid 不要求每个用户视频提供原始 alpha，也不要求证明任意 RGB 的唯一分解。独立 construction 回归检验整个候选方法及其可执行拒绝条件；source/frame digest 负责归属，coverage 和 H4 各守原职责。具体解释已写入 [Hybrid spec](../shape-matched-cover-hybrid-v1-spec.md#mask-qualification-scope-clarification)。已知漏检仍需修复或拒绝，不能由 H4 抹去。这是合同解释修正，不是新方法准入。
+
+本机进一步使用固定 PyMatting 1.1.16 和 U2NetP ONNX 作私有诊断。wheel SHA 为 `6ad3f787f90d7720b60e9734c33588cb30f98a66abf7bd772fa499d3a32b466a`；ONNX SHA 为 `309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8`。仅本机 CPU 推理，没有新增远端请求、产品依赖或产品模型路线。权重部署许可、Windows/Linux 装载与取消资格未完成，不能将开发机环境当产品 runtime。
+
+单独 saliency 漏掉已知低 alpha 阴影。仅以 ROI 外边为背景 seed 的 CF matting 在真实角落填入约 91%–95% ROI，并再次触边。采用固定 saliency seed、15px unknown band、CF matting 和原 3px 保守膨胀的组合后，既有 8 个构造样例零漏检，原素材候选不再触内部边界；但独立冻结的彩色主体 holdout 推翻了直接准入：18 例中的 6 个 22px 阴影例漏 781–1520 个 required pixels。扩大 unknown band 也使真实 TL 再次触边。不存在可以交付的已资格化组合，未接入 H3。
+
+随后参考 [Dekel 等人的原始论文](https://openaccess.thecvf.com/content_cvpr_2017/papers/Dekel_On_the_Effectiveness_CVPR_2017_paper.pdf) 的跨图梯度一致性思路，在原素材 4 的 1764 帧中冻结 96 个 ordinal，读取原尺寸上方 720×160 RGB。仅研究 mask 候选，没有执行去除或重建用户视频。基于有向像素边界的封闭区域诊断消除了相接背景的开放分支；7 个首轮构造例零漏检，原片 TL/TR 候选均不触内部 ROI。然而新的 16 例动态背景 holdout 中，浅阴影叠加渐变、纹理或模糊纹理仍有 8 例漏 143–1988 个 required pixels。该方法同样未资格化；不能以原片候选外观或前一组 PASS 替代这些失败。
+
+以上结果分别保存于本轮私有目录的 `saliency-matting-diagnostic.json`、`matting-holdout.json`、`temporal-gradient-plan.json` 和 `temporal-face-holdout.json`。后两组 holdout 的结果 SHA 为 `400a0555d5b2fba442fb23e6256c3166deaffff2a64aab2fb64fdef5e053616f` 与 `e84410c3b65e788b3e72b7892778a5f73f5e9604f903171d646a3a559dfc300c`；输入与独立 truth hash 均先于提取落盘。它们属于诊断证据，不是产品测试、H4 或导出 receipt。本轮没有已通过方法资格的业务实现，原素材替换修复继续未完成，不新增用户授权或原始资产待办。
