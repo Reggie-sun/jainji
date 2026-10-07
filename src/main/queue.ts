@@ -1,4 +1,5 @@
 import type { CoverReviewDraft } from "../shared/cover-review.js";
+import type { HumanRegionIntent } from "./human-region-cover.js";
 import { assertHumanRegionSubmission, hasHumanRegions, verifyHumanRegionTemplate } from "./human-region-render.js";
 import { createHash, randomUUID } from "node:crypto";
 import { access, constants, copyFile, unlink, writeFile, mkdir, realpath } from "node:fs/promises";
@@ -64,6 +65,8 @@ export interface CreateBatchInput {
   submission?: ExportBatch["submission"];
   /** Main-only existing review approval; never accepted through generic export IPC. */
   reviewDraft?: CoverReviewDraft;
+  /** Main-only saved manual intent from normal production, not a review approval. */
+  manualIntent?: HumanRegionIntent;
 }
 
 export type ExportBatchIdentity = Pick<ExportBatch, "id" | "projectId"> & { tasks: Pick<ExportTask, "id">[] };
@@ -320,6 +323,12 @@ export class ExportQueue {
   /** Concurrent render slots shared by exports and review previews. */
   get renderSlots(): number { return this.limits.exports; }
 
+  async createManualCoverDirectory(projectId: string): Promise<string> {
+    const directory = path.join(path.dirname(this.dependencies.jobStore.pathFor(projectId)), "manual-cover-artifacts", projectId, randomUUID());
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    return directory;
+  }
+
   /** Main-process shape custody uses this queue's canonical JobStore, never a caller-selected ledger. */
   async createShapeCoverArtifactStore(projectId: string): Promise<ShapeCoverArtifactStore> {
     const root = path.join(path.dirname(this.dependencies.jobStore.pathFor(projectId)), "shape-cover-artifacts");
@@ -392,6 +401,7 @@ export class ExportQueue {
       mediaIds: media.map((item) => item.id), outputDirectory: path.resolve(input.outputDirectory),
       mediaSnapshots: structuredClone(media),
       submission: input.submission,
+      manualCoverDigest: input.manualIntent ? reviewDigest({ projectId: input.projectId, template, media, preset: parsedPreset, outputDirectory: path.resolve(input.outputDirectory) }) : undefined,
       preset: parsedPreset, status: "active", estimatedBytes: media.reduce((sum, item) => sum + item.sizeBytes, 0),
       createdAt: now(), tasks,
     });
@@ -833,7 +843,10 @@ export class ExportQueue {
     try {
       assertPriceOnlyTemplate(state.batch.templateSnapshot);
       assertShapeCoverExportReady(state.batch.templateSnapshot);
-      if (hasHumanRegions(state.batch.templateSnapshot)) {
+      if (state.batch.manualCoverDigest) {
+        const digest = reviewDigest({ projectId: state.batch.projectId, template: state.batch.templateSnapshot, media: state.batch.mediaSnapshots, preset: state.batch.preset, outputDirectory: path.resolve(state.batch.outputDirectory) });
+        if (state.batch.manualCoverDigest !== digest || state.batch.submission || state.batch.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.cover?.humanRegion && layer.cover.humanRegion.admission !== "manual-production-v1")) throw new Error("人工覆盖正常制作快照已失效。");
+      } else if (hasHumanRegions(state.batch.templateSnapshot)) {
         const submission = state.batch.submission;
         const digest = reviewDigest({ projectId: state.batch.projectId, template: state.batch.templateSnapshot, media: state.batch.mediaSnapshots, preset: state.batch.preset, outputDirectory: path.resolve(state.batch.outputDirectory) });
         if (!submission || submission.mediaId !== media.id || submission.bindingDigest !== digest) throw new Error("人工覆盖队列冻结提交已失效。");

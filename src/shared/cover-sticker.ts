@@ -57,7 +57,7 @@ export const CoverStickerSchema = z.object({
   mediaRegions: z.record(z.string().uuid(), z.array(CoverRegionSchema).max(MAX_MANUAL_COVERS)).optional(),
 }).strict().superRefine((value, ctx) => {
   if (value.manualRegionInput && !value.assistedArtwork) ctx.addIssue({ code: "custom", message: "手动区域输入仅用于真实贴纸覆盖" });
-  if (value.assistedArtwork && (value.trackingMode !== "assisted" || value.coverStrategy)) ctx.addIssue({ code: "custom", message: "人工区域图案覆盖仅用于半自动审阅，不能混用自动形状策略" });
+  if (value.assistedArtwork && (value.trackingMode !== "assisted" || value.coverStrategy)) ctx.addIssue({ code: "custom", message: "人工区域图案覆盖模式无效，不能混用自动形状策略" });
   if (value.enabled && (value.trackingMode ?? "manual") === "manual" && !value.mediaRegions && value.regions?.length === 0) ctx.addIssue({ code: "custom", path: ["regions"], message: "请至少添加一个覆盖框" });
   if (value.regions && new Set(value.regions.map((region) => region.id)).size !== value.regions.length) ctx.addIssue({ code: "custom", path: ["regions"], message: "覆盖框编号不得重复" });
   for (const [mediaId, regions] of Object.entries(value.mediaRegions ?? {})) {

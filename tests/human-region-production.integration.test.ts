@@ -15,7 +15,7 @@ import { EditTemplateSchema, DEFAULT_PRESET, now, type MediaItem } from "../src/
 import { DEFAULT_COVER_STICKER } from "../src/shared/cover-sticker";
 import { encodeRgbaPng, type StickerAssets } from "../src/main/builtin-stickers";
 import { fingerprintFile } from "../src/main/paths";
-import { verifyHumanRegionTemplate, assertHumanRegionIntent } from "../src/main/human-region-render";
+import { verifyHumanRegionTemplate, assertHumanRegionIntent, assertHumanRegionSubmission } from "../src/main/human-region-render";
 import { TemplateCompiler } from "../src/main/compiler";
 import { createHumanRegionCover } from "../src/main/human-region-cover";
 import * as shapeSearch from "../src/main/shape-cover-hybrid-shape";
@@ -177,3 +177,59 @@ it.each([0, 0.4])("takes human region at %s through local preparation, approval,
     expect(await createHumanRegionCover({ ...local, draft, assets: {} as StickerAssets })(media, 1, "test", new AbortController().signal)).toEqual([]);
   }
 }, 120_000);
+
+it("starts saved manual artwork through normal production without review previews, and persists frozen retries", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-direct-manual-"));
+  const ffmpeg = new FfmpegAdapter(ffmpegBin, ffprobeBin), fontResolver = { resolve: async () => null };
+  const sourcePath = path.join(directory, "source.mp4"), assetPath = path.join(directory, "art.png");
+  const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x120:r=24", "-f", "lavfi", "-i", "sine=f=440", "-t", "1", "-c:v", "libx264", "-c:a", "aac", sourcePath]).promise;
+  expect(generated.code).toBe(0);
+  await writeFile(assetPath, encodeRgbaPng(Buffer.from(Array.from({ length: 40 * 40 }, () => [240, 30, 40, 255]).flat()), 40, 40));
+  const assetFingerprint = await fingerprintFile(assetPath), stickerId = `uploaded-${assetFingerprint.slice(7)}`;
+  const assets = { [stickerId]: { assetPath, assetFingerprint } } as StickerAssets;
+  const service = new ApplicationService(ffmpeg, fontResolver);
+  const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "direct fixture", durationMs: 1000,
+    width: 160, height: 120, rotation: 0, sizeBytes: (await stat(sourcePath)).size, importedAt: now(), probeStatus: "ready" };
+  const unframed = { ...media, id: randomUUID() };
+  service.currentProject.mediaItems.push(media, unframed);
+  service.setCoverSticker({ ...DEFAULT_COVER_STICKER, enabled: true, trackingMode: "assisted", assistedArtwork: "human-region-v1", manualRegionInput: true,
+    mediaRegions: { [media.id]: [{ id: randomUUID(), rectangle: { x: .1, y: .1, width: .1, height: .1 } }] } });
+  const jobStore = new JobStore(path.join(directory, "jobs"));
+  const queue = new ExportQueue({ ffmpeg, fontResolver, jobStore, executionLimits: { analysis: 1, exports: 1, threads: 2 } });
+  const preview = vi.spyOn(queue, "renderPreview");
+  const submissions = vi.spyOn(queue, "createBatch");
+  const register = vi.fn(async () => {});
+  const agent = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, undefined, register);
+  const plan = vi.spyOn(agent.provider, "plan"), shortlist = vi.spyOn(agent.provider, "shortlist");
+  await agent.start({ ruleId: "clean", brief: "", mediaIds: [media.id, unframed.id], requestedCount: 3, outputDirectory: directory,
+    exportSettings: { resolutionMode: "source", frameRateMode: "source", quality: "balanced" },
+    decorations: { mode: "manual", sticker: "none", fontFamily: "Noto Sans CJK SC", displayText: { enabled: false, x: .5, y: .1 } } }, new Set([directory]));
+  await vi.waitFor(() => expect(agent.busy).toBe(false), { timeout: 20000 });
+  expect(agent.snapshot()?.items.map(item => ({ status: item.status, error: item.error }))).toEqual(Array.from({ length: 3 }, () => ({ status: "exporting", error: undefined })));
+  await vi.waitFor(() => expect(queue.snapshot().batches.flatMap(s => s.batch.tasks.map(t => t.status))).toEqual(["completed", "completed", "completed"]), { timeout: 20000 });
+  expect(preview).not.toHaveBeenCalled(); expect(plan).not.toHaveBeenCalled(); expect(shortlist).not.toHaveBeenCalled();
+  expect(service.currentProject.reviewDrafts ?? []).toHaveLength(0); expect(register).toHaveBeenCalledTimes(3);
+  const states = await jobStore.loadAll();
+  const covered = states.find(s => s.batch.mediaIds.includes(media.id))!;
+  const admission = submissions.mock.calls.find(([input]) => input.mediaIds[0] === media.id)![0];
+  expect(() => assertHumanRegionSubmission({ ...admission, projectId: randomUUID() })).toThrow();
+  const missing = structuredClone(admission);
+  missing.template.layers = missing.template.layers.filter(layer => layer.type !== "sticker" || !layer.cover?.humanRegion);
+  expect(() => assertHumanRegionSubmission(missing)).toThrow("目标集合");
+  const oldBinding = structuredClone(admission);
+  for (const layer of oldBinding.template.layers) if (layer.type === "sticker" && layer.cover?.humanRegion) delete layer.cover.humanRegion.admission;
+  expect(() => assertHumanRegionSubmission(oldBinding)).toThrow();
+  const layer = covered.batch.templateSnapshot.layers.find(l => l.type === "sticker" && l.cover?.humanRegion)!;
+  expect(layer.type === "sticker" && layer.cover?.humanRegion?.admission).toBe("manual-production-v1");
+  expect(layer.type === "sticker" && layer.cover?.opaqueBackground).toBeUndefined();
+  expect(states.find(s => s.batch.mediaIds.includes(unframed.id))!.batch.templateSnapshot.layers.some(l => l.type === "sticker" && l.cover)).toBe(false);
+  await expect(queue.createBatch({ projectId: service.currentProject.id, template: covered.batch.templateSnapshot, mediaIds: [media.id], mediaItems: [media], outputDirectory: directory, preset: covered.batch.preset })).rejects.toThrow("已批准");
+  expect((await ffmpeg.probe(covered.batch.tasks[0].outputPath!)).streams?.some(s => s.codec_type === "audio")).toBe(true);
+  const frozen = JSON.stringify(covered.batch.templateSnapshot), previous = covered.batch.tasks[0].outputPath!;
+  covered.batch.tasks[0].status = "interrupted"; await jobStore.save(covered);
+  const recovered = new ExportQueue({ ffmpeg, fontResolver, jobStore, executionLimits: { analysis: 1, exports: 1, threads: 2 } });
+  await recovered.recover(); await recovered.retry([covered.batch.tasks[0].id]);
+  await vi.waitFor(() => expect(recovered.snapshot().batches.find(s => s.batch.id === covered.batch.id)!.batch.tasks[0].status).toBe("completed"), { timeout: 20000 });
+  expect(JSON.stringify(recovered.snapshot().batches.find(s => s.batch.id === covered.batch.id)!.batch.templateSnapshot)).toBe(frozen);
+  expect((await stat(previous)).size).toBeGreaterThan(0);
+}, 60000);

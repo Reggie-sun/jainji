@@ -1,4 +1,5 @@
 import { createHumanRegionCover } from "./human-region-cover.js";
+import { manualProductionIntent } from "./manual-cover-production.js";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -183,10 +184,11 @@ export class AgentController {
       if (parsed.douyinUpload && !uploadAuthorization) throw new Error("千川账号预检不可用，请重新选择账号。");
       const decorations = DecorationSchema.parse(parsed.decorations ?? {});
       const project = this.service.currentProject;
-      if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted) throw new Error("半自动覆盖必须先审阅、预览和批准。");
+      const directManual = !assisted && Boolean(project.coverSticker?.enabled && project.coverSticker.manualRegionInput && project.coverSticker.assistedArtwork);
+      if (project.coverSticker?.enabled && project.coverSticker.trackingMode === "assisted" && !assisted && !directManual) throw new Error("半自动覆盖必须先审阅、预览和批准。");
       const history = [...project.exportBatches, ...this.queue.snapshot().batches.filter(({ batch }) => batch.projectId === project.id).map(({ batch }) => batch)];
-      const humanRegion = Boolean(assisted && project.coverSticker?.enabled && project.coverSticker.assistedArtwork === "human-region-v1");
-      if (humanRegion && (!assisted?.artworkDirectory || assisted.draft.assistedArtwork !== "human-region-v1")) throw new Error("人工覆盖草稿或持久缓存未绑定。");
+      const humanRegion = directManual || Boolean(assisted && project.coverSticker?.enabled && project.coverSticker.assistedArtwork === "human-region-v1");
+      if (humanRegion && !directManual && (!assisted?.artworkDirectory || assisted.draft.assistedArtwork !== "human-region-v1")) throw new Error("人工覆盖草稿或持久缓存未绑定。");
       const automaticCover = !humanRegion && project.coverSticker?.enabled && (project.coverSticker.trackingMode === "agent" || assisted) ? structuredClone(project.coverSticker) : undefined;
       if (shapeRequest && (!automaticCover || assisted || parsed.sourceStickerRefresh)) throw new ProviderError("UNSAFE: 形状接缝仅用于已准入静态源事实的显式自动覆盖，不支持重新识别或半自动草稿。");
       if ((decorations.mode === "agent" || automaticCover) && !this.provider.status().configured) throw new Error("请先接入模型。");
@@ -227,6 +229,9 @@ export class AgentController {
       const refreshFingerprints = new Set((media as MediaItem[]).filter(item => refresh?.mediaIds.includes(item.id)).map(item => item.fingerprint));
       const refreshMediaIds = new Set((media as MediaItem[]).filter(item => refreshFingerprints.has(item.fingerprint)).map(item => item.id));
       const projectId = this.service.currentProject.id;
+      const manualIntent = directManual ? manualProductionIntent(projectId, project.coverSticker!, media as MediaItem[]) : undefined;
+      const humanIntent = manualIntent ?? (humanRegion ? assisted!.draft : undefined);
+      const artworkDirectory = directManual ? await this.queue.createManualCoverDirectory(projectId) : assisted?.artworkDirectory;
       const previews = new Map<string, Promise<{ id: string; url: string }>>();
       for (const preview of availableCatalog?.previews ?? []) previews.set(preview.id, Promise.resolve(preview));
       const prepareCandidates = async (ids: string[], catalog: AgentDecorationCatalog, signal: AbortSignal): Promise<AgentDecorationCatalog> => {
@@ -330,7 +335,7 @@ export class AgentController {
       }
       this.runner = new AgentRunner({
         shape,
-        humanRegionLayers: humanRegion ? createHumanRegionCover({ draft: assisted!.draft, media: media as MediaItem[], preset, assets: this.stickerAssets, tools: this.ffmpeg, directory: assisted!.artworkDirectory!, random: randomPath }) : undefined,
+        humanRegionLayers: humanIntent ? createHumanRegionCover({ draft: humanIntent, media: media as MediaItem[], preset, assets: this.stickerAssets, tools: this.ffmpeg, directory: artworkDirectory!, random: randomPath }) : undefined,
         usesModel: decorations.mode === "agent" || Boolean(automaticCover),
         knowledge,
         placement,
@@ -361,8 +366,8 @@ export class AgentController {
           if (!ids.includes(stickerId) || !stickerAssets[stickerId]) throw new ProviderError("覆盖选款不在有效候选中，本轮已停止。");
           return { stickerId, ...stickerAssets[stickerId]!, rectangle: automaticCover.rectangle, automatic: true };
         } : undefined,
-        detectCoverTracks: assisted ? async item => {
-          const source = assisted.draft.media.find(({ mediaId }) => mediaId === item.id)!;
+        detectCoverTracks: humanIntent || assisted ? async item => {
+          const source = (humanIntent ?? assisted!.draft).media.find(({ mediaId }) => mediaId === item.id)!;
           return source.disposition === "no_cover" ? [] : source.segments.map(segment => ({ targetId: segment.id, track: segment.track }));
         } : undefined,
         resolutionMode: parsed.exportSettings?.resolutionMode ?? DEFAULT_PRESET.resolutionMode,
@@ -396,7 +401,7 @@ export class AgentController {
         },
         enqueue: async (template, item, signal) => {
           signal.throwIfAborted();
-          const batch = await this.queue.createBatch({ projectId, template, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container } });
+          const batch = await this.queue.createBatch({ projectId, template, manualIntent, mediaIds: [item.id], mediaItems: [item], outputDirectory, preset: { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container } }, signal);
           try { await this.registerUpload?.({ id: batch.id, projectId: batch.projectId, tasks: batch.tasks.map(task => ({ id: task.id })) }, parsed.douyinUpload, uploadAuthorization); } catch { this.onChange(); }
           if (signal.aborted) await this.queue.cancel(batch.tasks[0].id);
           else void this.queue.start(batch.id).catch(() => { this.onChange(); });

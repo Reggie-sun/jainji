@@ -491,6 +491,7 @@ export const ExportBatchSchema = z.object({
   id: z.string().uuid(),
   projectId: z.string().uuid().optional(),
   submission: z.object({ submissionId: z.string().uuid(), mediaId: z.string().uuid(), version: z.number().int().positive(), bindingDigest: z.string().regex(/^[a-f0-9]{64}$/) }).strict().optional(),
+  manualCoverDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   templateSnapshot: EditTemplateSchema,
   mediaIds: z.array(z.string().uuid()).min(1),
   mediaSnapshots: z.array(MediaItemSchema).min(1).max(1000).optional(),

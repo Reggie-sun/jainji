@@ -618,6 +618,19 @@ describe("cross-template batch admission", () => {
     expect(f.controller.snapshot()?.jobs[0].error).toContain("after enqueue");
   });
 
+  it("freezes batch real artwork selection with saved boxes without changing the source template", async () => {
+    const f = await fixture({ allComplete: true });
+    const mediaId = f.projects[0].mediaItems[0].id;
+    f.projects[0].coverSticker = { ...DEFAULT_COVER_STICKER, regions: [], mediaRegions: { [mediaId]: [{ id: crypto.randomUUID(), rectangle: { x: .1, y: .1, width: .1, height: .1 } }] } };
+    const saved = structuredClone(f.projects[0].coverSticker);
+    await f.controller.start({ entries: [{ ...f.entries[0], coverEnabled: true, coverMethod: "real-artwork" }] });
+    await waitFor(() => expect(f.controller.snapshot()?.status).toBe("finished"));
+    expect(f.controller.snapshot()?.jobs[0].status).toBe("completed");
+    expect(f.controller.snapshot()?.jobs[0].coverMethod).toBe("real-artwork");
+    expect(f.frozen[0].coverSticker).toMatchObject({ manualRegionInput: true, assistedArtwork: "human-region-v1", mediaRegions: saved.mediaRegions });
+    expect(f.projects[0].coverSticker).toEqual(saved);
+  });
+
   it("uses exact per-project quantity and rejects assisted cover without bypassing approval", async () => {
     const f = await fixture({ allComplete: true });
     f.projects[0] = project("蝴蝶贴", 2);
@@ -790,6 +803,8 @@ describe("batch automatic plan preparation", () => {
       expect(await page.getByRole("button", { name: "开始批量制作", exact: true }).isDisabled()).toBe(true);
       await choose(page);
       await checkbox.check();
+      await row(page).getByRole("checkbox", { name: "蝴蝶贴开启覆盖", exact: true }).check();
+      await row(page).getByLabel("蝴蝶贴覆盖方式", { exact: true }).selectOption("real-artwork");
       await page.getByRole("button", { name: "开始批量制作", exact: true }).click({ trial: true });
       await checkbox.uncheck(); await checkbox.check();
       await row(page).getByLabel("上传计划", { exact: true }).waitFor();
@@ -798,6 +813,7 @@ describe("batch automatic plan preparation", () => {
       expect(await requests(page)).toBe(2);
       await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
       expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].douyinUpload)).toEqual({ enabled: true, accountProduct: "眼贴", plan: { advertiserId: "1000", adId: "9002", name: "计划 9002" } });
+      expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].coverMethod)).toBe("real-artwork");
       await row(page).getByRole("button", { name: "刷新计划", exact: true }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
       expect(await page.evaluate(() => (window as any).catalogRequests[2].input.refresh)).toBe(true);

@@ -123,7 +123,7 @@ export class BatchProductionController {
     this.run = {
       id: randomUUID(), status: "running", createdAt: at, updatedAt: at,
       jobs: entries.map(entry => ({ id: randomUUID(), recentProjectId: entry.recentProjectId, name: this.dependencies.name(entry.recentProjectId),
-        requestedCount: entry.requestedCount, actualCount: 0, productPrice: entry.productPrice, coverEnabled: entry.coverEnabled, displayMode: entry.displayMode, mode: entry.mode,
+        requestedCount: entry.requestedCount, actualCount: 0, productPrice: entry.productPrice, coverEnabled: entry.coverEnabled, coverMethod: entry.coverMethod, displayMode: entry.displayMode, mode: entry.mode,
         ...(entry.douyinUpload ? { accountProduct: entry.douyinUpload.accountProduct } : {}),
         status: "queued", taskIds: [], completedCount: 0, failedCount: 0 })),
     };
@@ -175,8 +175,9 @@ export class BatchProductionController {
     const quantity = calculateExactProductionQuantity(mediaIds.length, entry.requestedCount);
     if (!quantity) throw new Error(`当前模板的素材和条数无效，最多 ${MAX_AGENT_OUTPUTS} 条。`);
     if (mediaIds.some(id => !project.mediaItems.some(item => item.id === id && item.probeStatus === "ready"))) throw new Error("模板所选素材已失效，请先重新打开模板检查。");
-    project.coverSticker = CoverStickerSchema.parse({ ...(project.coverSticker ?? DEFAULT_COVER_STICKER), enabled: entry.coverEnabled });
-    if (entry.coverEnabled && project.coverSticker.trackingMode === "assisted") throw new Error("半自动覆盖需要单独预览和人工批准；请在制作页面完成审阅，或关闭该项覆盖。");
+    project.coverSticker = CoverStickerSchema.parse({ ...(project.coverSticker ?? DEFAULT_COVER_STICKER), enabled: entry.coverEnabled,
+      ...(entry.coverMethod === "real-artwork" ? { trackingMode: "assisted", assistedArtwork: "human-region-v1", manualRegionInput: true, coverStrategy: undefined } : {}) });
+    if (entry.coverEnabled && project.coverSticker.trackingMode === "assisted" && !project.coverSticker.manualRegionInput) throw new Error("半自动覆盖需要单独预览和人工批准；请在制作页面完成审阅，或关闭该项覆盖。");
     const template = project.templates.find(item => item.id === project.activeTemplateId) ?? project.templates[0];
     template.productPriceDraft = entry.productPrice;
     const decorations = DecorationSchema.parse({ ...workspace?.decorations, ...(entry.mode ? { mode: entry.mode } : {}), productPrice: entry.productPrice, displayMode: entry.displayMode });

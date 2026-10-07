@@ -12,6 +12,7 @@ export const BatchProductionEntrySchema = z.object({
   requestedCount: z.number().int().min(1).max(MAX_AGENT_OUTPUTS),
   productPrice: ProductPriceSchema,
   coverEnabled: z.boolean(),
+  coverMethod: z.enum(["saved", "real-artwork"]).optional(),
   displayMode: z.enum(["full", "first-5s"]),
   mode: z.enum(["manual", "agent", "random"]).optional(),
   outputDirectory: z.string().min(1).max(4096).optional(),
@@ -32,6 +33,7 @@ export interface BatchProjectOption {
   requestedCount: number;
   productPrice: string;
   coverEnabled: boolean;
+  coverMethod?: "saved" | "real-artwork";
   displayMode: "full" | "first-5s";
   mode: "manual" | "agent" | "random";
   coverMode?: "manual" | "agent" | "assisted";
@@ -45,8 +47,8 @@ export function batchRequiresDisplayText(project: Pick<BatchProjectOption, "requ
   return project.displayTextRequiredByMedia?.slice(0, project.requestedCount).some(Boolean) ?? true;
 }
 
-export function batchLocalCoverError(project: Pick<BatchProjectOption, "mode" | "coverEnabled" | "coverMode">): string | undefined {
-  if (project.mode === "random" && project.coverEnabled && project.coverMode === "agent") {
+export function batchLocalCoverError(project: Pick<BatchProjectOption, "mode" | "coverEnabled" | "coverMode" | "coverMethod">): string | undefined {
+  if (project.mode === "random" && project.coverEnabled && project.coverMode === "agent" && project.coverMethod !== "real-artwork") {
     return "本地随机不会调用模型；该模板仍使用 Agent 自动覆盖。请先在制作页面保存手动覆盖框，或关闭本项覆盖后开始。";
   }
 }
@@ -60,6 +62,7 @@ export const BatchProductionJobSchema = z.object({
   actualCount: z.number().int().nonnegative(),
   productPrice: ProductPriceSchema,
   coverEnabled: z.boolean(),
+  coverMethod: z.enum(["saved", "real-artwork"]).optional(),
   displayMode: z.enum(["full", "first-5s"]),
   mode: z.enum(["manual", "agent", "random"]).optional(),
   accountProduct: QianchuanProductSchema.optional(),

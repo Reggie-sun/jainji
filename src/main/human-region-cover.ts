@@ -14,8 +14,13 @@ import { humanRegionBitmap, opaqueRegionCovered, projectHumanRectangle } from ".
 import { reviewDigest } from "./cover-review-approval.js";
 import { shapeCoverDigest } from "./shape-cover-render.js";
 
-/** Bounded local geometry adapter. The review controller remains the only lifecycle owner. */
-export function createHumanRegionCover(input: { draft: CoverReviewDraft; media: MediaItem[]; preset: ExportPreset;
+export type HumanRegionIntent = Pick<CoverReviewDraft, "id" | "projectId" | "revision" | "assistedArtwork"> & {
+  admission?: "manual-production-v1";
+  media: Pick<CoverReviewDraft["media"][number], "mediaId" | "sourceFingerprint" | "disposition" | "identities" | "segments">[];
+};
+
+/** Bounded geometry shared by normal production and the existing review lifecycle. */
+export function createHumanRegionCover(input: { draft: HumanRegionIntent; media: MediaItem[]; preset: ExportPreset;
   assets: StickerAssets; tools: FfmpegAdapter; directory: string; random: boolean }) {
   const draft = structuredClone(input.draft);
   const candidates = Object.keys(input.assets).filter(id => isCoverPoolStickerId(id) && input.assets[id]).sort();
@@ -58,6 +63,7 @@ export function createHumanRegionCover(input: { draft: CoverReviewDraft; media: 
     if (!opaqueRegionCovered(selected.raster.alpha, target.projection, target.target)) throw Error("人工覆盖不透明像素校验失败。");
     const frozen = await freezeShapeCoverRaster(selected.raster, bitmap, target.projection, 0, tools);
     const body = { kind: "human-region-v1" as const, projectId: draft.projectId, draftId: draft.id, revision: draft.revision,
+      ...(draft.admission ? { admission: draft.admission } : {}),
       mediaId: target.media.id, segmentId: target.segment.id, identityId: target.segment.identityId, source: target.source,
       settings: { resolutionMode: input.preset.resolutionMode, frameRateMode: input.preset.frameRateMode, quality: input.preset.quality }, container: input.preset.container,
       rectangle: target.segment.track.keyframes[0].rectangle, target: target.target, projection: target.projection,

@@ -10,6 +10,7 @@ export const HumanPixelBoxSchema = Size.extend({ x: Pixel, y: Pixel }).strict();
 /** User intent and frozen pixels, never automatic source alpha or an H4 approval. */
 export const HumanRegionBindingSchema = z.object({
   kind: z.literal("human-region-v1"), projectId: z.string().uuid(), draftId: z.string().uuid(), revision: Pixel,
+  admission: z.literal("manual-production-v1").optional(),
   mediaId: z.string().uuid(), segmentId: z.string().uuid(), identityId: z.string().uuid(),
   source: SourceIdentitySchema, settings: ExportSettingsSchema, container: z.enum(["mp4", "mov", "mkv"]),
   rectangle: CoverRectangleSchema, target: HumanPixelBoxSchema,

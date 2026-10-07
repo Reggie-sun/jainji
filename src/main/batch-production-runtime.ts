@@ -89,6 +89,7 @@ export function createBatchProductionRuntime(input: {
           productPrice: decorations.productPrice ?? "", coverEnabled: true,
           displayMode: decorations.displayMode === "full" ? "full" as const : "first-5s" as const, mode: decorations.mode ?? "manual",
           coverMode: project.coverSticker?.trackingMode,
+          coverMethod: project.coverSticker?.manualRegionInput ? "real-artwork" : "saved",
           uploadBinding, uploadBindingError,
           displayTextRequiredByMedia: mediaIds.map(id => requiresDisplayText(decorations, [id])) };
       } catch {

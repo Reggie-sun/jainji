@@ -11,6 +11,7 @@ import { projectHumanRectangle, opaqueRegionCovered } from "./human-region-geome
 import { hybridMaskBounds } from "./shape-cover-hybrid-shape.js";
 import { identifySource, sourceKey, type SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import { FfmpegAdapter } from "./ffmpeg.js";
+import type { HumanRegionIntent } from "./human-region-cover.js";
 
 export const hasHumanRegions = (template: EditTemplate) => template.layers.some(l => l.type === "sticker" && l.cover?.humanRegion);
 
@@ -57,7 +58,7 @@ export async function verifyHumanRegionTemplate(template: EditTemplate, media: M
   }
 }
 
-export function assertHumanRegionIntent(draft: CoverReviewDraft, template: EditTemplate, mediaId: string): void {
+export function assertHumanRegionIntent(draft: HumanRegionIntent, template: EditTemplate, mediaId: string): void {
   const layers = template.layers.filter((l): l is StickerLayer => l.type === "sticker" && Boolean(l.cover?.humanRegion));
   if (!draft.assistedArtwork) { if (layers.length) throw Error("人工区域策略与草稿不符。"); return; }
   const media = draft.media.find(m => m.mediaId === mediaId);
@@ -66,7 +67,7 @@ export function assertHumanRegionIntent(draft: CoverReviewDraft, template: EditT
   if (layers.length !== segments.length || template.layers.some(l => l.type === "sticker" && l.cover && !l.cover.humanRegion)) throw Error("人工覆盖目标集合不完整。");
   for (const segment of segments) {
     const b = layers.find(l => l.cover!.humanRegion!.segmentId === segment.id)?.cover?.humanRegion;
-    if (!b || b.projectId !== draft.projectId || b.draftId !== draft.id || b.revision !== draft.revision || b.mediaId !== mediaId ||
+    if (!b || b.admission !== draft.admission || b.projectId !== draft.projectId || b.draftId !== draft.id || b.revision !== draft.revision || b.mediaId !== mediaId ||
       b.source.fingerprint !== media.sourceFingerprint || b.identityId !== segment.identityId || segment.origin !== "human" || segment.track.keyframes.length !== 1 ||
       !media.identities.some(i => i.id === segment.identityId && i.origin === "human") ||
       b.range.startMs !== segment.track.startMs || b.range.endMs !== segment.track.endMs || reviewDigest(b.rectangle) !== reviewDigest(segment.track.keyframes[0].rectangle)) throw Error("人工覆盖区域或修订已变化。");
@@ -75,7 +76,13 @@ export function assertHumanRegionIntent(draft: CoverReviewDraft, template: EditT
 
 /** Checks the existing review approval, without issuing a second approval/token. Main-only queue input. */
 export function assertHumanRegionSubmission(input: { template: EditTemplate; projectId?: string; reviewDraft?: CoverReviewDraft;
+  manualIntent?: HumanRegionIntent; mediaIds?: string[];
   submission?: { submissionId: string; mediaId: string; version: number; bindingDigest: string } }): void {
+  if (input.manualIntent) {
+    if (input.reviewDraft || input.submission || input.manualIntent.admission !== "manual-production-v1" || input.manualIntent.projectId !== input.projectId || input.mediaIds?.length !== 1) throw Error("人工覆盖制作意图不匹配。");
+    assertHumanRegionIntent(input.manualIntent, input.template, input.mediaIds[0]);
+    return;
+  }
   if (!hasHumanRegions(input.template) && !input.reviewDraft?.assistedArtwork) return;
   const draft = input.reviewDraft, submission = input.submission;
   if (!draft || draft.status !== "approved" || !submission || draft.projectId !== input.projectId || draft.approval?.submissionId !== submission.submissionId) throw Error("人工覆盖必须从已批准的全部版本审阅提交。");
