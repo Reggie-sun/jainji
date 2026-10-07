@@ -226,7 +226,8 @@ describe("cleanup plan browser interaction", () => {
   it("defaults to all plans and freezes the complete set before deletion", async () => {
     const page = await cleanupFixture();
     try {
-      expect(await page.getByRole("button", { name: "清理所选计划", exact: true }).isDisabled()).toBe(true); await respond(page);
+      expect(await page.getByRole("button", { name: "自动删除所选两类素材", exact: true }).isDisabled()).toBe(true); await respond(page);
+      await page.getByRole("checkbox", { name: /近7天零展示素材/ }).uncheck();
       expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(true);
       expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(true);
       await page.setViewportSize({ width: 420, height: 900 });
@@ -240,12 +241,27 @@ describe("cleanup plan browser interaction", () => {
       expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1000", plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}`, productNames: ["叶黄素蒸汽眼罩"] })) }] });
     } finally { await page.close(); }
   });
+  it("defaults to both independent rules, allows an empty choice and starts both rules once", async () => {
+    const page = await cleanupFixture();
+    try {
+      await respond(page);
+      const audit = page.getByRole("checkbox", { name: /计划内三类素材/ }), zero = page.getByRole("checkbox", { name: /近7天零展示素材/ });
+      expect(await audit.isChecked()).toBe(true); expect(await zero.isChecked()).toBe(true);
+      expect(await page.getByRole("combobox", { name: "计划素材清理规则" }).count()).toBe(0);
+      await audit.uncheck(); await zero.uncheck();
+      expect(await page.getByRole("button", { name: "清理所选账号（1）" }).isDisabled()).toBe(true);
+      await audit.check(); await zero.check();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2); await respond(page);
+      await page.getByRole("button", { name: "自动删除所选两类素材（2）", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toMatchObject({ confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "AUDIT_AND_ZERO_IMPRESSIONS_7D" });
+    } finally { await page.close(); }
+  });
   it("starts zero-impression cleanup once for the frozen plan set without per-page confirmation or library clearing", async () => {
     const page = await cleanupFixture();
     try {
       await respond(page);
-      await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
-      await page.getByLabel("计划素材清理规则").selectOption("zero");
+      await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
       expect(await page.getByRole("checkbox", { name: /视频库全部视频/ }).isChecked()).toBe(false);
       expect(await page.getByRole("checkbox", { name: /视频库全部视频/ }).isDisabled()).toBe(true);
       await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
@@ -259,6 +275,7 @@ describe("cleanup plan browser interaction", () => {
     const page = await cleanupFixture();
     try {
       await respond(page);
+      await page.getByRole("checkbox", { name: /近7天零展示素材/ }).uncheck();
       await page.getByRole("button", { name: "全选清理计划", exact: true }).click();
       expect(await page.getByRole("button", { name: "清理所选计划", exact: true }).isDisabled()).toBe(true);
       await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
@@ -280,6 +297,7 @@ describe("cleanup plan browser interaction", () => {
     const page = await cleanupFixture();
     try {
       await respond(page);
+      await page.getByRole("checkbox", { name: /近7天零展示素材/ }).uncheck();
       await page.getByRole("button", { name: "清理所选计划（2）", exact: true }).click();
       await page.evaluate(() => (window as any).changeCleanupAccount("1001"));
       await page.getByText("账号设置已变化，请取消并重新选择清理范围。", { exact: true }).waitFor();

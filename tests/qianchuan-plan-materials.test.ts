@@ -38,6 +38,37 @@ it("persists each plan-bound intent before confirmation and uses only one combin
   expect(f.page.filter).toHaveBeenCalledTimes(1); expect(f.page.deleteBatch).toHaveBeenCalledTimes(2);
   expect((await readdir(path.join(f.root, "plan-material-deletions"))).some(name => name.endsWith(".pending.json"))).toBe(false);
 });
+it.each([false, true])("runs both rules sequentially over remaining materials and retains progress if zero cleanup fails: %s", async failZero => {
+  const root = await mkdtemp(path.join(tmpdir(), "combined-cleanup-")); roots.push(root);
+  let remaining = ["7001", "7002", "7003"];
+  const modes: boolean[] = [], removed: string[] = [];
+  const connect = vi.fn(async (_target, _signal, window) => {
+    const zero = !!window; modes.push(zero);
+    // 7002 belongs to both predicates; the second query must see only what remains.
+    const eligible = () => remaining.filter(id => zero ? id !== "7001" : id !== "7003");
+    const read = async () => ({ total: eligible().length, ids: eligible(), ...(zero ? { zeroImpressions: { offset: 0, limit: 10,
+      rows: eligible().map(id => ({ id, impressions: 0, createdAt: "2025-01-01 00:00:00", eligible: true })) } } : {}) });
+    return { page: { open: async () => {}, filter: async () => ({ skippedEcological: false }), read, movePage: async () => false,
+      deleteBatch: async (before: Awaited<ReturnType<typeof read>>, confirm: () => Promise<void>) => {
+        await confirm();
+        if (zero && failZero) throw new Error("zero result unknown");
+        removed.push(...before.ids); remaining = remaining.filter(id => !before.ids.includes(id));
+      } }, close: async () => {} };
+  });
+  const owner = new QianchuanPlanMaterials(root, connect);
+  expect(await owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_7D")).toMatchObject({ state: failZero ? "BLOCKED" : "CLEARED", deletedCount: failZero ? 2 : 3 });
+  expect(modes).toEqual([false, true]); expect(removed).toEqual(failZero ? ["7001", "7002"] : ["7001", "7002", "7003"]);
+  if (failZero) {
+    expect((await owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_7D")).state).toBe("BLOCKED");
+    expect(connect).toHaveBeenCalledTimes(2);
+  }
+});
+it("does not enter the second rule when the first rule has an unknown outcome", async () => {
+  const f = await ownerFixture();
+  f.page.deleteBatch.mockImplementationOnce(async (_before, confirm) => { await confirm(); throw new Error("response lost"); });
+  expect((await f.owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_7D")).state).toBe("BLOCKED");
+  expect(f.connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate, "utf8")).toContain("7001");
+});
 it("keeps an unknown deletion intent and refuses confirmation on a later explicit call or a new owner", async () => {
   const f = await ownerFixture();
   f.page.deleteBatch.mockImplementationOnce(async (_before, confirm) => { await confirm(); throw new Error("response lost"); });

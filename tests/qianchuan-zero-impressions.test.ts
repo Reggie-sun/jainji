@@ -15,6 +15,11 @@ it("admits explicit plan-bound zero-impression cleanup but never combines it wit
   expect(QianchuanLibraryClearSchema.safeParse({ ...request, planMaterialRule: "ZERO_PLAY" }).success).toBe(false);
   expect(QianchuanLibraryClearSchema.safeParse({ ...request, accounts: [{ product: "眼贴", expectedAdvertiserId: "1234" }] }).success).toBe(false);
 });
+it("admits both selected plan rules but forbids mixing them with the whole video library", () => {
+  const request = { confirmation: "DELETE_PLAN_MATERIALS", planMaterialRule: "AUDIT_AND_ZERO_IMPRESSIONS_7D", accounts: [{ product: "眼贴", expectedAdvertiserId: "1234", expectedAdId: "5678" }] };
+  expect(QianchuanLibraryClearSchema.safeParse(request).success).toBe(true);
+  for (const confirmation of ["DELETE_ALL_VIDEOS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]) expect(QianchuanLibraryClearSchema.safeParse({ ...request, confirmation }).success).toBe(false);
+});
 it("freezes seven complete China dates and a precise 48 hour cutoff independently of host timezone", () => {
   expect(createZeroImpressionsWindow(now)).toEqual(window);
   expect(createZeroImpressionsWindow(Date.parse("2027-01-01T00:00:00+08:00"))).toEqual({ startTime: "2026-12-25 00:00:00", endTime: "2026-12-31 23:59:59", createdBefore: "2026-12-30 00:00:00" });
