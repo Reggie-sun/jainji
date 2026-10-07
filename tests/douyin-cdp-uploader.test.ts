@@ -734,6 +734,65 @@ describe.skipIf(!PRODUCTION_QIANCHUAN_CONTRACT)("source-owned Qianchuan producti
     } finally { await service.stop(); }
   }, 15_000);
 
+  it.each(["modal-loss", "append"] as const)("persists a ready window while the tenth file waits before %s", async outcome => {
+    const source = productionFixture!;
+    const batchId = randomUUID(), projectId = randomUUID(), pageBatchId = randomUUID();
+    const tasks = await Promise.all(Array.from({ length: 11 }, (_, i) => productionTask(`ready-window-${i}.mp4`, batchId, pageBatchId, 11, projectId)));
+    source.setControls({ pendingName: tasks[0]!.result.file_name });
+    const state: QueueState = {
+      schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, updatedAt: now(),
+      batch: { schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [],
+        outputDirectory: tempRoot, preset: DEFAULT_PRESET, status: "completed", estimatedBytes: 0, createdAt: now(),
+        tasks: tasks.map(task => ({ id: task.input.export_task_id, batchId, mediaId: randomUUID(), status: "completed", progress: 1, attempt: 1, attempts: [], createdAt: now(), outputPath: task.input.video_path,
+          outputArtifact: { taskId: task.input.export_task_id, path: task.input.video_path, sizeBytes: task.input.size_bytes, durationMs: 1000, createdAt: now() } })),
+      },
+    };
+    const store = new DouyinUploadStore(path.join(tempRoot, `ready-window-store-${randomUUID()}`)); await store.load();
+    const configPath = path.join(tempRoot, `accounts-${randomUUID()}.json`);
+    await writeFile(configPath, JSON.stringify({ version: 1, accounts: QIANCHUAN_PRODUCTS.map((product, i) => ({ product,
+      cdpEndpoint: product === "眼贴" ? source.cdpEndpoint : `http://127.0.0.1:${14000 + i}`,
+      advertiserId: product === "眼贴" ? "123456" : String(200000 + i), adId: product === "眼贴" ? "987654" : String(300000 + i) })) }), { mode: 0o600 });
+    let observations = 0;
+    const service = new DouyinUploadService(store, { loadBatch: async () => structuredClone(state), browser: () => {
+      const uploader = productionUploader(), poll = uploader.pollReady.bind(uploader);
+      uploader.pollReady = async (group, signal) => { observations++; return poll(group, signal); };
+      return uploader;
+    }, accounts: new QianchuanAccountConfigReader() });
+    let running: Promise<void> | undefined;
+    try {
+      await service.chooseConfig(configPath);
+      await service.configure({ enabled: true, timeouts: { processing: 15000 } });
+      const selection = { enabled: true as const, accountProduct: "眼贴" as const };
+      await service.registerBatch(state.batch, selection, await service.preflight(selection, 11));
+      for (const task of tasks.slice(0, 10)) await service.enqueueFinalArtifact({ project_id: projectId, batch_id: batchId, export_task_id: task.input.export_task_id });
+      running = service.runPending();
+      await vi.waitFor(() => expect(observations).toBeGreaterThanOrEqual(3), { timeout: 6000 });
+      expect(store.tasks().filter(task => store.hasMarker(task.result.upload_task_id))).toHaveLength(9);
+      expect(store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(0);
+      source.setControls({ pendingName: "" });
+      await vi.waitFor(() => expect(store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(9), { timeout: 3000 });
+      const reopened = new DouyinUploadStore(store.root); await reopened.load();
+      expect(reopened.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(9);
+      if (outcome === "modal-loss") {
+        const browser = await chromium.connectOverCDP(source.cdpEndpoint, { noDefaults: true });
+        try {
+          const page = browser.contexts()[0]!.pages().find(page => page.url().includes(`adId=987654`))!;
+          await page.locator(source.contract.modal).evaluate(element => element.remove());
+        } finally { await browser.close(); }
+      } else {
+        await service.committed({ project_id: projectId, batch_id: batchId, export_task_id: tasks[10]!.input.export_task_id });
+      }
+      await running;
+      expect(store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(outcome === "modal-loss" ? 9 : 11);
+      const held = store.tasks().find(task => task.input.export_task_id === tasks[9]!.input.export_task_id)!;
+      expect(held.result.upload_outcome).toBe(outcome === "modal-loss" ? "NOT_SELECTED" : "READY");
+      expect(store.hasMarker(held.result.upload_task_id)).toBe(outcome === "append");
+      const events = (await source.inspect()).events;
+      expect(events.filter(event => event.type === "files").map(event => event.names?.length)).toEqual(outcome === "modal-loss" ? [9] : [9, 2]);
+      expect(events.filter(event => ["drop", "confirm", "settings"].includes(event.type))).toEqual([]);
+    } finally { await service.stop(); await running; }
+  }, 20_000);
+
   it.each(["unknown-name", "extra-row"] as const)("rejects a production upload list containing %s", async kind => {
     if (!productionFixture) throw new Error("production fixture is not initialized");
     productionFixture.reset();

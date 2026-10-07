@@ -1046,6 +1046,55 @@ describe("Qianchuan upload service", () => {
     } finally { await f.service.stop(); await running; }
   });
 
+  it.each(["page-loss", "timeout", "invalid-evidence", "save-failure"] as const)("checkpoints an observed ready window safely before %s while the tenth waits", async outcome => {
+    const f = await fixture(); await f.authorize();
+    await f.service.configure({ enabled: true, timeouts: { processing: 3000 } });
+    const batch = await f.createBatch(Array.from({ length: 11 }, (_, index) => `checkpoint ${index}`)); await f.register(batch);
+    for (const identity of batch.identities.slice(0, 10)) await f.service.enqueueFinalArtifact(identity);
+    let observations = 0, completed = false, lost = false, readySaves = 0;
+    f.port.pollReady = async (tasks, signal) => {
+      observations++;
+      if (lost) throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "Original modal disappeared", "Inspect original page", true);
+      if (!completed) return undefined;
+      const evidence = await f.port.ready(tasks, signal);
+      if (outcome === "invalid-evidence") evidence[0]!.selectedCount++;
+      return evidence;
+    };
+    const save = f.store.saveTasks.bind(f.store);
+    f.store.saveTasks = async tasks => {
+      if (tasks.some(task => task.result.upload_outcome === "READY")) {
+        readySaves++;
+        if (outcome === "save-failure") throw new Error("checkpoint save failed");
+      }
+      await save(tasks);
+    };
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(observations).toBeGreaterThanOrEqual(3));
+      const fences = f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id)).map(task => f.store.fence(task.result.upload_task_id));
+      expect(fences).toHaveLength(9);
+      completed = true;
+      const valid = outcome === "page-loss" || outcome === "timeout";
+      if (valid) {
+        await vi.waitFor(() => expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(9));
+        const before = observations;
+        await vi.waitFor(() => expect(observations).toBeGreaterThan(before));
+        expect(readySaves).toBe(1);
+        if (outcome === "page-loss") lost = true;
+      }
+      await running;
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(valid ? 9 : 0);
+      expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(valid ? 0 : 9);
+      const held = f.store.tasks().find(task => task.input.export_task_id === batch.identities[9]!.export_task_id)!;
+      expect(held.result.upload_outcome).toBe("NOT_SELECTED");
+      expect(f.store.hasMarker(held.result.upload_task_id)).toBe(false);
+      for (const fence of fences) expect(f.store.fence(fence!.upload_task_id)).toEqual(fence);
+      expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+      const reopened = new DouyinUploadStore(f.store.root); await reopened.load();
+      expect(reopened.tasks().filter(task => task.result.upload_outcome === "READY")).toHaveLength(valid ? 9 : 0);
+    } finally { await f.service.stop(); await running; }
+  }, 10_000);
+
   it("spaces idle whole-list observations and still cancels during that wait", async () => {
     const f = await groupedFixture(["idle upload"]), observations: number[] = [];
     f.port.pollReady = async () => { observations.push(performance.now()); return undefined; };

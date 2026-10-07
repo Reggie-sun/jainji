@@ -771,7 +771,13 @@ export class DouyinUploadService {
               const start = ids.length;
               ids.push(...next);
               for (const id of next) this.eligible.delete(id);
-              await this.prepareGroup(ids, start, signal, async () => { await port!.pollReady(tasks, signal); });
+              await this.prepareGroup(ids, start, signal, async () => {
+                const ready = await port!.pollReady(tasks, signal);
+                if (ready && tasks.some(task => !savedReady.has(task.result.upload_task_id))) {
+                  await this.saveReady(tasks, ready, signal);
+                  for (const task of tasks) savedReady.add(task.result.upload_task_id);
+                }
+              });
               const group = ids.slice(start).map(id => this.requireTask(id));
               for (const task of group) {
                 this.eligible.delete(task.result.upload_task_id);
@@ -787,18 +793,8 @@ export class DouyinUploadService {
           }
         }, t.processing, controller.signal);
       }
-      if (evidence.length !== tasks.length) throw unknown();
-      const parsed = evidence.map(item => ReadyEvidenceSchema.parse(item));
-      for (let index = 0; index < tasks.length; index++) {
-        const task = tasks[index]!, item = parsed[index]!;
-        if (item.fileName !== task.result.file_name || item.selectedCount !== this.selectedFiles(first).length || JSON.stringify(item.pageOwnership) !== JSON.stringify(this.store.fence(task.result.upload_task_id)!.pageOwnership)) throw unknown();
-        await this.snapshotValid(task); controller.signal.throwIfAborted();
-      }
-      for (let index = 0; index < tasks.length; index++) {
-        controller.signal.throwIfAborted(); const task = tasks[index]!;
-        task.result = { ...task.result, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: parsed[index], failure: undefined, retryable: false, timestamp: timestamp() };
-      }
-      await this.save(tasks); for (const task of tasks) savedReady.add(task.result.upload_task_id);
+      await this.saveReady(tasks, evidence, controller.signal);
+      for (const task of tasks) savedReady.add(task.result.upload_task_id);
     } catch (error) {
       this.pauseAccount(first);
       const failed: UploadTaskRecord[] = [];
@@ -813,6 +809,21 @@ export class DouyinUploadService {
       if (this.store.unavailable) { this.initializationFailure = "上传存储失败；保留屏障，上传结果按未知处理。"; this.changed(); }
       if (port) await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; }); this.sessions.delete(key);
     } finally { if (port && this.active?.port === port) this.active = undefined; }
+  }
+  private async saveReady(tasks: UploadTaskRecord[], evidence: ReadyEvidence[], signal: AbortSignal): Promise<void> {
+    if (evidence.length !== tasks.length) throw unknown();
+    const parsed = evidence.map(item => ReadyEvidenceSchema.parse(item));
+    const selectedCount = this.selectedFiles(tasks[0]!).length;
+    for (let index = 0; index < tasks.length; index++) {
+      const task = tasks[index]!, item = parsed[index]!;
+      if (item.fileName !== task.result.file_name || item.selectedCount !== selectedCount || JSON.stringify(item.pageOwnership) !== JSON.stringify(this.store.fence(task.result.upload_task_id)!.pageOwnership)) throw unknown();
+      await this.snapshotValid(task); signal.throwIfAborted();
+    }
+    for (let index = 0; index < tasks.length; index++) {
+      signal.throwIfAborted(); const task = tasks[index]!;
+      task.result = { ...task.result, state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: parsed[index], failure: undefined, retryable: false, timestamp: timestamp() };
+    }
+    await this.save(tasks);
   }
   private async selectGroup(tasks: UploadTaskRecord[], port: UploadBrowserPort, signal: AbortSignal): Promise<void> {
     const first = tasks[0]!, t = first.config.timeouts;

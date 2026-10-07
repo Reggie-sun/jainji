@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-07T14:33:41Z",
+  "updated_at": "2026-10-07T17:16:33Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "127234335fffa659099780df5a8ac5cadbb262eee7891d2dc90c8ee286d7c820",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "ed2974f8ffd0373acfd13d435def3aa01a17d237b1f359f9cbb5c3ec26bff433",
-      "size": 96356,
-      "normalized_sha256": "ed2974f8ffd0373acfd13d435def3aa01a17d237b1f359f9cbb5c3ec26bff433"
+      "sha256": "beaae1602de870895976064c30c576f71814db14baefbd4efb9a8146b5737320",
+      "size": 96549,
+      "normalized_sha256": "beaae1602de870895976064c30c576f71814db14baefbd4efb9a8146b5737320"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1123,9 +1123,9 @@
       "normalized_sha256": "08913d142fe1e094d7f464f49f659a4eed93d734651b293a2a80299a07a43662"
     },
     "src/main/agent-provider.ts": {
-      "sha256": "d08d2e61a297c3bb41388bc45b305cecca92d1ad40483a63917f7252c723673e",
-      "size": 45121,
-      "normalized_sha256": "d08d2e61a297c3bb41388bc45b305cecca92d1ad40483a63917f7252c723673e"
+      "sha256": "e919e219d748f7134aa55c9958c922eb06edccbf658bf0e15564413495ed4bf2",
+      "size": 45465,
+      "normalized_sha256": "e919e219d748f7134aa55c9958c922eb06edccbf658bf0e15564413495ed4bf2"
     },
     "src/main/agent-runner.ts": {
       "sha256": "02bc497a545e14561a4ed5770b7f67ab4751db9ca4b11a708cd32c8de4ec5898",
@@ -1358,9 +1358,9 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "0b82554a81dad426588ff1faf0e317d429c18a57517c30f53d71f9d28a122ca6",
-      "size": 75176,
-      "normalized_sha256": "0b82554a81dad426588ff1faf0e317d429c18a57517c30f53d71f9d28a122ca6"
+      "sha256": "fe216f1ed23f18e821ed271e46350b89a4efca1d896506a58fcb0f8a29a3ded7",
+      "size": 75675,
+      "normalized_sha256": "fe216f1ed23f18e821ed271e46350b89a4efca1d896506a58fcb0f8a29a3ded7"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "8d4e6dd4a16d198857bf2b9fbff8efa645e2aff36980fa932c851305f7e6163a",
@@ -2113,9 +2113,9 @@
       "normalized_sha256": "08da52160f1e2365c6d9635d9bf2b6d1d25c34cc9358a1b1722b9860de0f63b0"
     },
     "src/renderer/TemplatePreview.tsx": {
-      "sha256": "ca5a3971a23a9460637b789a247af358b6bf28bb77a9af4b7e1db0378a3857b3",
-      "size": 13943,
-      "normalized_sha256": "ca5a3971a23a9460637b789a247af358b6bf28bb77a9af4b7e1db0378a3857b3"
+      "sha256": "575eb110dbbd5fa5a875abf308c371333038768f7ddb2084e8bc50cb36a873f8",
+      "size": 14428,
+      "normalized_sha256": "575eb110dbbd5fa5a875abf308c371333038768f7ddb2084e8bc50cb36a873f8"
     },
     "src/renderer/VisionConnectionPanel.tsx": {
       "sha256": "a8ed048c483bd14b810978b0c57e597a7af747bd27c87bfdd2688a201cc68cba",
