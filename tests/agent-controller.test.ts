@@ -12,7 +12,7 @@ import type { AssetLibrary } from "../src/main/asset-library";
 import * as agentFrames from "../src/main/agent-frames";
 import * as stickerPreviews from "../src/main/sticker-preview";
 import { DEFAULT_PRESET } from "../src/main/domain";
-import { isAutomaticStickerAllowed } from "../src/shared/automatic-stickers";
+import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../src/shared/automatic-stickers";
 import { isUploadedStickerId } from "../src/shared/decorations";
 import { controllerKnowledge } from "./helpers/controller-knowledge";
 
@@ -96,7 +96,7 @@ describe("AgentController queue admission", () => {
       expect(knowledge.acquire.mock.invocationCallOrder[0]).toBeLessThan(shortlist.mock.invocationCallOrder[0]);
       expect(shortlist.mock.calls[0][1]).toContain("最后 0.5 秒渐隐");
       const catalog = shortlist.mock.calls[0][4];
-      expect(catalog.stickers).toHaveLength(56);
+      expect(catalog.stickers).toHaveLength(AUTOMATIC_STICKERS.length + 1);
       expect(catalog.stickers.every(({ id: stickerId }) => isAutomaticStickerAllowed(stickerId) || isUploadedStickerId(stickerId))).toBe(true);
       expect(catalog.stickers.some(({ id: stickerId }) => stickerId.startsWith("local-") || stickerId === "fluent-bf9436317c97f49dd95dacd3358e8983a24b2aec")).toBe(false);
       await controller.cancel();

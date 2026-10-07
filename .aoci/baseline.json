@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-07T11:58:30Z",
+  "updated_at": "2026-10-07T12:33:23Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "09c8e4689ded61631325f0ea58eb0ecda120c7f1da8ce9b02035300083351b54",
@@ -1158,9 +1158,9 @@
       "normalized_sha256": "8a2503f15f88b6cf4f7c4ce9fc26feac26f1a5cef61369a344394551b13cfe5c"
     },
     "src/main/asset-library.ts": {
-      "sha256": "f4a4a245b23ce7526462d0b45566a13bfedcb6e481695b63f476d03ab68f3ad9",
-      "size": 8349,
-      "normalized_sha256": "f4a4a245b23ce7526462d0b45566a13bfedcb6e481695b63f476d03ab68f3ad9"
+      "sha256": "9f03714ed480ec1d0734a274fb4d86d004d9695372c1c183bd132b64f8af7be0",
+      "size": 8785,
+      "normalized_sha256": "9f03714ed480ec1d0734a274fb4d86d004d9695372c1c183bd132b64f8af7be0"
     },
     "src/main/automatic-corner-layout.ts": {
       "sha256": "31fec9ad75eb1a5ca2bec8aa25982aaa793148e28e3d2d61df426890fa988ff7",
@@ -2023,9 +2023,9 @@
       "normalized_sha256": "37cc67c4d9adbb7323c167e25184bc2f0976eba389d38e0e3ec91f3193de37b0"
     },
     "src/renderer/PriceStylePicker.tsx": {
-      "sha256": "5dea88820eb25f54eb83aba80e3ed03f9652fdfbd8a01b2c87badfcf433686b2",
-      "size": 2586,
-      "normalized_sha256": "5dea88820eb25f54eb83aba80e3ed03f9652fdfbd8a01b2c87badfcf433686b2"
+      "sha256": "1e328ba553f11a1bd0832a69f03a0045d5f8ccf7c37d238586596977ecb35c69",
+      "size": 2592,
+      "normalized_sha256": "1e328ba553f11a1bd0832a69f03a0045d5f8ccf7c37d238586596977ecb35c69"
     },
     "src/renderer/QianchuanAccountSettings.tsx": {
       "sha256": "d47a918c351c690512f900189c2a02155fcf0b027cf51850e07334d872b631fb",
@@ -2219,9 +2219,9 @@
       "normalized_sha256": "b98ef947e1cd4a2b3e1c499a1a50888239ec85ee2a1202f7f81a368226164916"
     },
     "src/shared/automatic-stickers.ts": {
-      "sha256": "6f3934884460ce52190977537b3690d742d945d4d9b463eb737d04b44edb7b9a",
-      "size": 4685,
-      "normalized_sha256": "6f3934884460ce52190977537b3690d742d945d4d9b463eb737d04b44edb7b9a"
+      "sha256": "b8844519c64e1e2e161d028f356f84db1e846a5459b2c23b1cdff9eb744d89be",
+      "size": 8207,
+      "normalized_sha256": "b8844519c64e1e2e161d028f356f84db1e846a5459b2c23b1cdff9eb744d89be"
     },
     "src/shared/batch-production.ts": {
       "sha256": "6cf725e8f09e4fb0f73168574aa74a6dc53cbbb53d5eea0c515050cdc93ed9c7",
@@ -2269,9 +2269,9 @@
       "normalized_sha256": "82087ccae7ea81bd707e7b37c575196712d5d2ef9934777af4568962a63eee4a"
     },
     "src/shared/curated-stickers.ts": {
-      "sha256": "4dddb0c3ff0bcaadfc915f0ea1fc7a55e0b0474d04a295ac27322e61e1677c81",
-      "size": 4177,
-      "normalized_sha256": "4dddb0c3ff0bcaadfc915f0ea1fc7a55e0b0474d04a295ac27322e61e1677c81"
+      "sha256": "4b20948fe2faa8d921d0e15f64aa3d71054014df497688d49265e214fc0793cc",
+      "size": 6751,
+      "normalized_sha256": "4b20948fe2faa8d921d0e15f64aa3d71054014df497688d49265e214fc0793cc"
     },
     "src/shared/decorations.ts": {
       "sha256": "5d5a094412a4535e91f5d7007ddb09da89d00fdd645d70b08b9b0f0f97ecd470",
@@ -2324,9 +2324,9 @@
       "normalized_sha256": "dba2c07f2675c03ee00bff47dca5158e0b2053fc81f705a6f89a55122288922a"
     },
     "src/shared/price-styles.ts": {
-      "sha256": "b395e1e3fb0e236928e5f52af21a75ba51a7c77a6c99f7f259ce6d76f3cc88cf",
-      "size": 7043,
-      "normalized_sha256": "b395e1e3fb0e236928e5f52af21a75ba51a7c77a6c99f7f259ce6d76f3cc88cf"
+      "sha256": "d0b4c3b882d8208cdec29d6f34441e060046215709b11a7721c175b33b4cb1e0",
+      "size": 8783,
+      "normalized_sha256": "d0b4c3b882d8208cdec29d6f34441e060046215709b11a7721c175b33b4cb1e0"
     },
     "src/shared/project-workspace.ts": {
       "sha256": "ccd479e7d0a7cd7cb2777f3554057aac4d4933c36d20781866d61328126c1b5a",

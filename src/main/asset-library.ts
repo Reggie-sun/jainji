@@ -148,9 +148,15 @@ export class AssetLibrary {
     const stickerIds = options.mode === "random"
       ? [...this.entries.keys()].filter(isAutomaticStickerAllowed)
       : selectedIds;
-    const selected = await Promise.all(stickerIds
-      .filter((id) => this.entries.has(id))
-      .map(async (id) => [id, await this.ensure(id)] as const));
-    return selected.length ? { ...assets, ...Object.fromEntries(selected) } : assets;
+    const selectedIdsInLibrary = stickerIds.filter((id) => this.entries.has(id));
+    // Keep large local catalogs within the same four active materializations.
+    for (let offset = 0; offset < selectedIdsInLibrary.length; offset += 4) {
+      const results = await Promise.allSettled(selectedIdsInLibrary.slice(offset, offset + 4)
+        .map(async (id) => [id, await this.ensure(id)] as const));
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+      for (const result of results) if (result.status === "fulfilled") assets[result.value[0]] = result.value[1];
+    }
+    return assets;
   }
 }

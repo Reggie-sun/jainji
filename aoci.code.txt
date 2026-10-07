@@ -40,7 +40,7 @@ api-request-scheduler.ts[RP6T]: F:按连接凭据共享模型请求的起始间�
 api-transport.ts[IN8T]: F:为Chat Completions、Anthropic和Responses组装视觉请求并规范化文本响应 | R:code:src/shared/agent.ts,code:src/main/agent-provider.ts | A:completeApi封装协议、认证、超时、错误脱敏与输出上限 | S:API Key不得出现在返回内容；失败不自动换连接或重试
 application.ts[AB8L]: F:持有项目素材模板导出及最近制作，投影去敏公开状态 | R:code:src/main/domain.ts,code:src/main/store.ts,code:src/main/media.ts,code:src/main/queue.ts | A:按项目保存草稿及制作；冻结Hybrid摘要投影公开任务，重开仍展示；缺模板快照不添摘要，不公开私有快照 | S:摘要仅观察不授批准；制作按当前项目及本轮任务隔离；手动导出无需模型；项目不含凭据
 artifact.ts[RR8T]: F:用文件状态与FFprobe验证FFmpeg产物的可读性和媒体规格 | R:code:src/main/ffmpeg.ts,code:src/main/queue.ts,code:src/main/domain.ts | A:队列发布正式输出前调用ArtifactVerifier | S:验证失败不得把partial产物标为完成
-asset-library.ts[IB6S]: F:加载贴纸库及授权目录并准备有效本地装饰 | R:code:src/shared/asset-library.ts,code:src/main/builtin-stickers.ts,code:src/main/decoration-frame.ts | A:按装饰模式准备选材；按所选素材核验固定或随机边框指纹 | S:只有有效本地文件进入选材；边框不混入普通贴纸候选
+asset-library.ts[IB6S]: F:校验本地贴纸库并准备装饰所需素材 | R:code:src/shared/asset-library.ts,code:src/shared/automatic-stickers.ts,code:src/main/decoration-frame.ts | A:校验资源字节及上传指纹；随机池分批四项加载，失败先等待同批结束；核验边框设置 | S:内置文件缺失不联网替代；注册字体不回退；边框不混入普通贴纸池
 automatic-corner-layout.ts[KB8T]: F:按源轨迹及覆盖占位计算普通四角贴纸空档 | R:code:src/shared/layout-policy.ts,code:src/main/agent-template-preparation.ts | A:fillUncoveredCorners按activeRanges裁剪普通贴纸并原样保留边框 | S:边框不占覆盖角落且不裁时段；中部覆盖不替代四角
 automatic-cover-tracks.ts[KA8T]: F:把识别帧整理成有限、带安全余量的覆盖轨迹 | R:code:src/shared/automatic-cover.ts,code:src/shared/cover-sticker.ts,code:src/main/agent-runner.ts | A:轨迹按目标分段、插值约束化并经CoverTrackSchema校验 | S:渲染余量不能写回源贴纸知识；超出轨迹上限明确失败
 automatic-output-directory.ts[RR5T]: F:从素材所在产品目录建立自动成片目录 | R:code:src/main/index.ts,code:src/main/batch-production-runtime.ts | A:识别素材及编号素材祖先，在产品视频目录建立分钟名称；核查复用旧目录 | S:各平台统一全角冒号以兼容exfat；旧英文冒号目录仍可复用；不同产品拒绝，冲突编号不覆盖
@@ -213,7 +213,7 @@ ExportSettingsPanel.tsx[AB7T]: F:编辑导出分辨率帧率画质 | R:code:src/
 MaterialCollection.tsx[AB7T]: F:管理项目名称及已保存项目打开重命名删除 | R:code:src/renderer/App.tsx | A:项目导航不是素材目录 | S:项目与素材导入分流
 ModelPicker.tsx[AB7T]: F:选择创作模型连接型号与推理档位 | R:code:src/renderer/ModelSettingsDrawer.tsx | A:创作角色选择界面 | S:凭据不在组件持久化
 ModelSettingsDrawer.tsx[AB7T]: F:汇总创作识别复核三种角色设置 | R:code:src/renderer/VisionConnectionPanel.tsx | A:角色设置面板 | S:角色连接独立
-PriceStylePicker.tsx[AB7T]: F:预览并选择手动展示文字的花字风格 | R:code:src/shared/decorations.ts | A:只选外观不改文字 | S:保留用户输入原文
+PriceStylePicker.tsx[AU7T]: F:预览并选择手动文字花字外观 | R:code:src/shared/price-styles.ts,code:src/shared/decorations.ts | A:按样式注册表显示数量与描边投影 | S:只改外观且保留输入原文
 ResultsPanel.tsx[EU7T]: F:展示本轮导出状态冻结覆盖摘要播放重试追加入口 | R:code:src/renderer/App.tsx,code:src/renderer/AppendProductionDialog.tsx,code:src/renderer/DouyinUploadPanel.tsx | A:按本轮taskIds过滤；公开coverSummary持续展示；Hybrid标导出完成，错误优先；追加读取源批次 | S:导出完成不证明旧贴纸全部处理；旧记录不猜原因或模型；上传失败不改导出计数；重试冻结方案；播放仍需验收
 SavedConnectionsPanel.tsx[AB7T]: F:编辑选择删除API连接及CC Switch导入界面 | R:code:src/renderer/App.tsx | A:连接管理界面 | S:不显示已保存密钥
 SourceStickerKnowledgeDetails.tsx[AB7T]: F:展示源贴纸知识识别复核进度和风险细节 | R:code:src/shared/source-sticker-knowledge.ts | A:只读进度呈现 | S:不把风险提示变成批准
@@ -249,7 +249,7 @@ QianchuanCleanupPlanSelect.tsx[EU7T]: F:读取账号清理计划并默认全选�
 agent.ts[CB7S]: F:定义制作数量共享准入及追加制作请求 | R:code:src/main/agent-controller.ts,code:src/main/agent-runner.ts,code:src/shared/decorations.ts,code:src/shared/douyin-upload.ts | A:版本化shape intent与手填文字校验；全部关闭无文字要求；整轮与精确数量分配；Frozen保留旧时序 | S:intent不授admission；开启缺文字先于模型拒绝；requestedCount和multiplier互斥；上传选择由main再验
 asset-library.ts[AB7T]: F:将资源manifest暴露为贴纸字体及许可证目录 | R:code:src/main/asset-library.ts | A:内置资源描述 | S:只有受审素材可供自动选择
 automatic-cover.ts[AB7T]: F:定义自动源贴纸检测帧和抽样常量schema | R:code:src/main/cover-track-provider.ts | A:检测结果合同 | S:模型响应须本地校验
-automatic-stickers.ts[AB7T]: F:列出经审阅可自动使用的内置贴纸ID | R:code:src/main/agent-provider.ts | A:自动选材白名单 | S:上传贴纸须另经有效ID校验
+automatic-stickers.ts[CB7S]: F:声明自动选材可用的内置图案白名单 | R:code:src/main/agent-provider.ts | A:按固定资源ID判断自动使用准入 | S:新增或改图须像素审阅；上传贴纸另验有效ID
 bug-feedback.ts[AB7T]: F:反馈仓库端点截图大小与回执schema | R:code:src/main/bug-feedback.ts | A:反馈数据合同 | S:截图体积受限
 bundled-stickers.ts[AB7T]: F:列举随应用打包的内置贴纸ID及固定文件哈希 | R:code:src/shared/decorations.ts | A:内置贴纸目录常量；哈希与对应资源文件字节一致 | S:不允许模型生成新资源
 connections.ts[AB7T]: F:连接保存输入和模型选择的共享schema | R:code:src/main/model-connections.ts | A:连接公开形状合同 | S:界面快照不含API密钥
@@ -257,7 +257,7 @@ cover-diagnostics.ts[AB7T]: F:覆盖流程诊断事件阶段原因和大小限�
 cover-placement.ts[AB7T]: F:近似自动覆盖目标身份位置与证据绑定schema | R:code:src/main/cover-placement-session.ts | A:近似位置合同不是源事实 | S:时序边界与身份本地校验
 cover-review.ts[AB7T]: F:assisted证据身份片段问题版本预览批准草稿schema | R:code:src/main/cover-review-controller.ts | A:半自动审阅持久合同owner | S:批准绑定冻结版本与预览
 cover-sticker.ts[CB7S]: F:定义覆盖模式版本化intent逐素材区域轨迹及旧单框兼容 | R:code:src/main/cover-sticker.ts,code:src/main/shape-cover-activation.ts,code:src/renderer/CoverStickerPanel.tsx | A:保存可选shape-matched-static-v1；手动逐素材regions及keyframes时间范围校验；legacy默认框无用户信号不视为覆盖 | S:序列化意图不授执行权；覆盖和普通四角分开；显式空数组表示该素材不覆盖；位置宽高与时间受限
-curated-stickers.ts[AB7T]: F:精选内置贴纸搜索条目与标签映射 | R:code:src/shared/asset-library.ts | A:浏览目录筛选描述 | S:不扩充自动选材白名单
+curated-stickers.ts[CB7S]: F:构造精选图案搜索目录及中文标签 | R:code:src/shared/asset-library.ts | A:概念匹配中性3D资源并追加自定义图 | S:仅约束发现入口；历史完整manifest仍有效；不授自动选材资格
 decorations.ts[CB7S]: F:定义手填文字逐素材开关位置及装饰边框Schema | R:code:src/shared/agent.ts,code:src/shared/frames.ts,code:src/main/agent-template-preparation.ts | A:frame与UUID键framesByMedia校验；模式转换保留边框；legacy frameId兼容；独立frames目录 | S:旧API缺边框字段保持无边框；文字校验唯一owner；缺文字设置默认开启；Agent不生成改写内容
 defaults.ts[AB7T]: F:定义默认展示文字字体族 | R:code:src/shared/decorations.ts | A:共享默认常量 | S:字体由本地解析
 desktop.ts[CU7T]: F:定义主进程向renderer公开的桌面状态投影 | R:code:src/main/preload.ts,code:src/shared/batch-production.ts,code:src/shared/douyin-upload.ts | A:可选batchProduction及恢复警告与既有制作、上传、知识风险和项目投影并存 | S:公开状态不含原始密钥；批量投影和上传结果不授予生产或发布authority
@@ -265,7 +265,7 @@ export-format.ts[AB7T]: F:定义mp4 mov mkv容器格式schema及默认值 | R:co
 export-settings.ts[AB7T]: F:定义分辨率帧率画质schema及输出尺寸计算 | R:code:src/main/compiler.ts | A:导出设置合同owner | S:默认按方向720p保留源帧率
 layout-policy.ts[AB7T]: F:定义角落贴纸安全区域锚定检查及预览几何 | R:code:src/main/agent-provider.ts | A:四角布局约束owner | S:覆盖贴纸单独例外
 material-names.ts[AB7T]: F:校验素材或项目显示名称 | R:code:src/main/application.ts | A:命名合同 | S:长度和空白受限
-price-styles.ts[CB6T]: F:定义文字花字外观、字号和预览导出共用位置边界 | R:code:src/main/agent-provider.ts,code:src/renderer/TemplatePreview.tsx | A:按画布比例及行长度计算文字框并约束中心和顶端 | S:外观与几何不产生或改写文字内容
+price-styles.ts[CB6T]: F:注册文字花字外观和预览导出位置边界 | R:code:src/main/agent-provider.ts,code:src/renderer/TemplatePreview.tsx | A:样式ID校验；按画布比例和行长约束文字框 | S:外观和几何不产生或改写文字
 project-workspace.ts[AB7T]: F:校验可恢复工作区步骤素材外观数量导出设置 | R:code:src/main/application.ts | A:工作区草稿合同 | S:不重复持久化展示文字
 source-sticker-knowledge-audit.ts[AB7T]: F:定义源知识查询原因制作阶段复核结果的审计schema | R:code:src/main/source-sticker-knowledge-session.ts | A:进度与审计合同 | S:风险和失败显式记录
 source-sticker-knowledge.ts[DB8M]: F:定义精确源事实、证据及采样源掩码与确认静态v1/v2证明Schema | R:code:src/main/source-sticker-knowledge-store.ts,code:src/main/source-mask-static-proof.ts,code:src/main/source-mask-admission.ts | A:source evidence64MiB；preview/artifact8MiB；v2 exact边界及component一一绑定，未知variant拒绝 | S:schema仍1且downgrade不支持；旧reader不能reinterpret新proof；v2边界仍8MiB；authority=none/eligible=false不授输出或安全

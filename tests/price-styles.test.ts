@@ -20,11 +20,29 @@ const automaticHeartStickers = () => [
 const automaticCatalog = { fonts: [], stickers: [{ id: "heart", label: "爱心" }] };
 
 describe("local price styles", () => {
+  it("offers commerce lettering without solid background plates in new templates", async () => {
+    expect(PRICE_STYLES.length).toBeGreaterThanOrEqual(28);
+    for (const style of PRICE_STYLES) {
+      const template = materializePlan(plan, "black-gold", media, assets, { productPrice: "价格", sticker: "none", priceStyle: style.id });
+      expect(template.layers[0]).toMatchObject({ type: "text", content: "价格" });
+      expect((template.layers[0] as { backgroundColor?: unknown }).backgroundColor).toBeUndefined();
+      const compiled = await new TemplateCompiler().compile(template, media, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/price.txt" });
+      expect(compiled.args[compiled.args.indexOf("-filter_complex") + 1]).not.toContain("box=1");
+    }
+  });
+
   it("retains manual styles and ignores retained manual appearance in automatic mode", () => {
     expect(DecorationSchema.parse({ productPrice: "19.90" }).priceStyle).toBeUndefined();
     expect(() => DecorationSchema.parse({ mode: "manual", productPrice: "19.90", priceStyle: "unknown" })).toThrow();
     expect(DecorationSchema.parse({ mode: "manual", productPrice: "19.90", priceStyle: "comic" }).priceStyle).toBe("comic");
     expect(DecorationSchema.parse({ mode: "agent", productPrice: "19.90", priceStyle: "comic" }).priceStyle).toBeUndefined();
+  });
+
+  it("preserves explicitly frozen background plates when retrying historic templates", async () => {
+    const template = materializePlan(plan, "black-gold", media, assets, { productPrice: "价格", sticker: "none", priceStyle: "lemon-ink" });
+    const frozen = EditTemplateSchema.parse({ ...template, layers: template.layers.map((layer) => ({ ...layer, backgroundColor: { r: 29, g: 31, b: 29, a: 1 }, backgroundPaddingRatio: 0.008 })) });
+    const compiled = await new TemplateCompiler().compile(frozen, media, DEFAULT_PRESET, { ffmpegPath: "ffmpeg", fontResolver: { resolve: async () => "/tmp/font.ttf" }, textFilePath: () => "/tmp/price.txt" });
+    expect(compiled.args[compiled.args.indexOf("-filter_complex") + 1]).toContain("box=1");
   });
 
   it.each(PRICE_STYLES)("freezes $id into exactly one local price layer and compiles its effects", async (entry) => {

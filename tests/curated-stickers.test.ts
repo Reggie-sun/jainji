@@ -5,12 +5,15 @@ import { DecorationSchema } from "../src/shared/decorations";
 
 describe("commerce video sticker selection", () => {
   it("resolves every approved concept exactly once with localized search terms", () => {
-    expect(CURATED_STICKERS).toHaveLength(126);
+    expect(CURATED_STICKERS).toHaveLength(168);
     // Approved concepts resolve exactly once; bundled custom stickers are appended on top.
     expect(CURATED_STICKERS.filter((asset) => asset.license !== "custom").length).toBe(STICKER_SELECTION.length);
     expect(new Set(CURATED_STICKERS.map((asset) => asset.id)).size).toBe(CURATED_STICKERS.length);
     expect(CURATED_STICKERS.every((asset) => /[\u4e00-\u9fff]/.test(asset.label) && asset.searchTerms.length > 0)).toBe(true);
     expect(CURATED_STICKERS.some((asset) => asset.label === "蝴蝶")).toBe(true);
+    for (const label of ["上升火箭", "双手比心", "星光魔法棒", "粉色莲花", "缤纷彩虹"]) {
+      expect(CURATED_STICKERS.some((asset) => asset.label === label)).toBe(true);
+    }
     for (const category of ["促销", "指引", "强调", "轻装饰", "正向情绪"]) {
       expect(CURATED_STICKERS.some((asset) => asset.searchTerms.includes(category))).toBe(true);
     }
