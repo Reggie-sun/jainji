@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { QianchuanPlanMaterials } from "../src/main/qianchuan-plan-materials";
 import { QianchuanPlanMaterialRecovery } from "../src/main/qianchuan-plan-material-recovery";
 import { QianchuanPlanRecoverySchema } from "../src/shared/qianchuan-video-library";
+import { PlanMaterialDeletionError, QianchuanPlanMaterialDiagnostics } from "../src/main/qianchuan-plan-material-diagnostics";
 
 const target = { product: "肥皂" as const, advertiserId: "1004", adId: "2004", cdpEndpoint: "http://127.0.0.1:42001", configDigest: "d".repeat(64) };
 const roots: string[] = [];
@@ -25,6 +26,40 @@ it("returns exact historical material IDs without connecting or changing an unre
   const result = await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {});
   expect(result).toMatchObject({ state: "BLOCKED", pendingPlanDeletion: f.detail });
   expect(connect).not.toHaveBeenCalled(); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+});
+it("keeps classified diagnostics bound to exact pending bytes without rewriting history", async () => {
+  const f = await fixture(), diagnostics = new QianchuanPlanMaterialDiagnostics(f.directory, target);
+  expect(await diagnostics.message(f.detail)).toContain("未保存失败原因");
+  await diagnostics.record(f.detail, "确认计划素材删除", new PlanMaterialDeletionError("TITLE_CONFIRMATION"));
+  expect(await new QianchuanPlanMaterialDiagnostics(f.directory, target).message(f.detail)).toContain("同步删除自选标题");
+  expect(await diagnostics.message({ ...f.detail, digest: "0".repeat(64) })).toContain("无法核对");
+  expect(await new QianchuanPlanMaterialDiagnostics(f.directory, { ...target, adId: "2005" }).message(f.detail)).toContain("无法核对");
+  expect(await new QianchuanPlanMaterialDiagnostics(f.directory, { ...target, advertiserId: "1005" }).message(f.detail)).toContain("无法核对");
+  await expect(diagnostics.record(f.detail, "核对删除结果", new Error("secret-token"))).rejects.toMatchObject({ code: "EEXIST" });
+  expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+});
+it("does not persist arbitrary exception text and treats damaged diagnostics as non-authoritative", async () => {
+  const f = await fixture(), diagnostics = new QianchuanPlanMaterialDiagnostics(f.directory, target);
+  await diagnostics.record(f.detail, "核对删除结果", new Error("secret-token /private/local/path"));
+  const file = path.join(f.directory, `${f.pending.attempt}.failure.json`);
+  expect(await readFile(file, "utf8")).not.toContain("secret-token");
+  await writeFile(file, "{}");
+  expect(await diagnostics.message(f.detail)).toContain("无法核对");
+  const connect = vi.fn();
+  expect(await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {})).toMatchObject({ state: "BLOCKED", pendingPlanDeletion: f.detail });
+  expect(connect).not.toHaveBeenCalled(); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+});
+it("keeps the unknown intent when diagnostic persistence fails", async () => {
+  const f = await fixture(); await unlink(f.gate);
+  vi.spyOn(QianchuanPlanMaterialDiagnostics.prototype, "record").mockRejectedValue(new Error("disk unavailable"));
+  const page = { open: vi.fn(), filter: vi.fn(async () => ({ skippedEcological: false })), read: vi.fn(async () => ({ total: 1, ids: ["7001"] })),
+    deleteBatch: vi.fn(async (_snapshot, confirm) => { await confirm(); throw new PlanMaterialDeletionError("RESULT_TIMEOUT"); }) };
+  const connect = vi.fn(async () => ({ page, close: async () => {} }));
+  const result = await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {});
+  expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0, pendingPlanDeletion: { ids: ["7001"] }, message: expect.stringContaining("失败诊断未能完整保存") });
+  const bytes = await readFile(f.gate);
+  expect((await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {})).state).toBe("BLOCKED");
+  expect(connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate)).toEqual(bytes);
 });
 it("requires explicit confirmation bound to account, plan, attempt and exact bytes", async () => {
   const f = await fixture();

@@ -3,6 +3,7 @@ import { accountPageUrl } from "../shared/qianchuan-account.js";
 import { PLAN_MATERIAL_STATUSES, matchesPlanMaterialStatus, type PlanMaterialStatus } from "../shared/qianchuan-video-library.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { parseZeroImpressionsRow, type ZeroImpressionsRow, type ZeroImpressionsWindow } from "./qianchuan-zero-impressions.js";
+import { PlanMaterialDeletionError } from "./qianchuan-plan-material-diagnostics.js";
 
 export interface PlanMaterialSnapshot { total: number; ids: string[]; zeroImpressions?: { offset: number; limit: number; rows: ZeroImpressionsRow[] }; }
 export const PLAN_CLEANUP_MARKER = "jianjiCleanup=plan-materials";
@@ -293,15 +294,17 @@ export class QianchuanPlanMaterialPage {
         if (dialogCount !== 1) throw changed();
         const text = dialogTexts[0].replace(/\s+/g, "");
         if (text.startsWith("确定要删除自选视频吗？") && /需要同步删除以下\d+个自选标题/.test(text)) {
-          throw new Error("平台要求同步删除自选标题，已停止；删除结果未知，不会自动再次确认。");
+          throw new PlanMaterialDeletionError("TITLE_CONFIRMATION");
         }
         if (text !== "确定要删除视频吗？取消确定") {
-          throw new Error("平台出现额外确认或异常弹窗，已停止；删除结果未知，不会自动再次确认。");
+          throw new PlanMaterialDeletionError("EXTRA_CONFIRMATION");
         }
       }
       if (before.zeroImpressions && !dialogCount && this.revision > revision && this.response &&
+        // An unchanged refresh is not final evidence: keep observing within the original deadline.
+        JSON.stringify(this.response) !== JSON.stringify(before) &&
         (before.total - this.response.total !== before.ids.length || !this.response.zeroImpressions || this.response.zeroImpressions.rows.some(row => before.ids.includes(row.id)))) {
-        throw new Error("删除数量或素材身份无法核对，结果未知，已停止；不会自动再次确认。");
+        throw new PlanMaterialDeletionError("RESULT_MISMATCH");
       }
       if (!dialogCount && this.revision > revision && this.response && this.response.total < before.total &&
         (!before.zeroImpressions || before.total - this.response.total === before.ids.length) &&
@@ -310,7 +313,7 @@ export class QianchuanPlanMaterialPage {
       }
       await this.page.waitForTimeout(100);
     } while (Date.now() < deadline);
-    throw new Error("删除结果未知，已停止；不会自动再次确认。");
+    throw new PlanMaterialDeletionError("RESULT_TIMEOUT");
   }
   async dispose(): Promise<void> { this.page.off("request", this.requested); this.page.off("response", this.received); await this.document?.dispose().catch(() => undefined); }
 }

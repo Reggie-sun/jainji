@@ -176,7 +176,9 @@ it("reports the platform's additional title-deletion boundary without a second c
     const result = await new QianchuanPlanMaterials(owner.root, connect).clear(target, async () => {});
     expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0, message: expect.stringContaining("同步删除自选标题") });
     expect(f.confirmations()).toBe(1); const bytes = await readFile(owner.gate);
-    expect((await new QianchuanPlanMaterials(owner.root, connect).clear(target, async () => {})).state).toBe("BLOCKED");
+    const repeated = await new QianchuanPlanMaterials(owner.root, connect).clear(target, async () => {});
+    expect(repeated.state).toBe("BLOCKED"); expect(repeated.message).toContain("同步删除自选标题");
+    expect(result.pendingPlanDeletion?.ids).toHaveLength(3);
     expect(connect).toHaveBeenCalledTimes(1); expect(await readFile(owner.gate)).toEqual(bytes);
   } finally { await f.context.close(); }
 });

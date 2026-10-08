@@ -15,7 +15,7 @@ vi.setConfig({ testTimeout: 40000, hookTimeout: 30000 });
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); });
 afterAll(async () => { await browser?.close(); });
 
-async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?: boolean; badTime?: boolean; missingTimeDimension?: boolean; empty?: boolean; badDelivery?: string; badDeliveryRow?: string; badDate?: boolean; thirtyDayRequest?: boolean; missingMetric?: boolean; extraTitle?: boolean; extraDeletion?: boolean; wrongAccount?: boolean; unknownOutcome?: boolean; emptyNextPage?: boolean } = {}) {
+async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?: boolean; badTime?: boolean; missingTimeDimension?: boolean; empty?: boolean; badDelivery?: string; badDeliveryRow?: string; badDate?: boolean; thirtyDayRequest?: boolean; missingMetric?: boolean; extraTitle?: boolean; extraDeletion?: boolean; wrongAccount?: boolean; unknownOutcome?: boolean; resultRefresh?: "delayed" | "stale"; emptyNextPage?: boolean } = {}) {
   const context = await browser.newContext(), page = await context.newPage();
   const window = createZeroImpressionsWindow();
   const requestStart = options.thirtyDayRequest ? createZeroImpressionsWindow(Date.now() - 15 * 86400000).startTime : window.startTime;
@@ -26,6 +26,7 @@ async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?
     { id: "15", count: 0, time: "2025-01-01 00:00:00" }, { id: "16", count: 0, time: fresh },
     { id: "17", count: 0, time: "2025-01-01 00:00:00" },
   ];
+  if (options.resultRefresh) data[1].time = "2025-01-01 00:00:00";
   if (options.badTime) data[1].time = "2026-02-30 00:00:00";
   if (options.noInitialCandidates) data[1].count = 1;
   const protectedIds: string[] = [];
@@ -63,7 +64,7 @@ async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?
   document.querySelector('#all').onclick=()=>{document.querySelectorAll('tbody input').forEach(x=>x.checked=true);selection()};
   document.querySelector('#remove').onclick=()=>document.querySelector('.ovui-modal').style.display='';
   document.querySelector('#confirm').onclick=async()=>{await fetch('/fixture-delete',{method:'POST',body:JSON.stringify(selected())});
-  ${options.extraTitle ? "document.querySelector('.ovui-modal').innerHTML='确定要删除自选视频吗？需要同步删除以下1个自选标题<button>确定</button>'" : "document.querySelector('.ovui-modal').style.display='none'; offset=0; await list()"}};
+  ${options.extraTitle ? "document.querySelector('.ovui-modal').innerHTML='确定要删除自选视频吗？需要同步删除以下1个自选标题<button>确定</button>'" : "document.querySelector('.ovui-modal').style.display='none'; offset=0; await list(); if(" + (options.resultRefresh === "delayed") + ") setTimeout(()=>list(),500)"}};
   </script>`;
   await page.route("https://qianchuan.jinritemai.com/**", async route => {
     const url = new URL(route.request().url());
@@ -75,12 +76,14 @@ async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?
       })) } : {} } }) });
     } else if (url.pathname === "/fixture-delete") {
       const ids: string[] = route.request().postDataJSON(); removed.push(ids);
-      if (!options.extraTitle && !options.unknownOutcome) data = data.filter(x => !ids.includes(x.id) && !(options.extraDeletion && x.id === "11"));
+      if (options.resultRefresh === "delayed") setTimeout(() => { data = data.filter(x => !ids.includes(x.id)); }, 250);
+      else if (!options.resultRefresh && !options.extraTitle && !options.unknownOutcome) data = data.filter(x => !ids.includes(x.id) && !(options.extraDeletion && x.id === "11"));
       await route.fulfill({ body: "{}" });
     } else await route.fulfill({ contentType: "text/html", body: html });
   });
-  const session = new QianchuanPlanMaterialPage(page, target, new AbortController().signal, window);
-  return { page, context, session, removed, offsets, remaining: () => data.filter(x => !protectedIds.includes(x.id)).map(x => x.id) };
+  const controller = new AbortController();
+  const session = new QianchuanPlanMaterialPage(page, target, controller.signal, window);
+  return { page, context, session, controller, removed, offsets, remaining: () => data.filter(x => !protectedIds.includes(x.id)).map(x => x.id) };
 }
 
 it("scans fifteen-day uneven pages while protecting new plan materials", async () => {
@@ -183,5 +186,39 @@ it("refuses changed creation time before deletion confirmation", async () => {
     });
     await expect(f.session.deleteBatch(before, authorize)).rejects.toThrow();
     expect(authorize).toHaveBeenCalledTimes(1); expect(f.removed).toEqual([]);
+  } finally { await f.session.dispose(); await f.context.close(); }
+});
+
+it("waits for an unchanged refresh then verifies the delayed result without confirming twice", async () => {
+  const f = await fixture({ resultRefresh: "delayed" });
+  try {
+    await f.session.open(); await f.session.filter(); const before = await f.session.read();
+    await f.session.deleteBatch(before, async () => {});
+    expect(f.removed).toEqual([["12"]]);
+    expect((await f.session.read()).total).toBe(before.total - 1);
+  } finally { await f.session.dispose(); await f.context.close(); }
+});
+it("times out on a permanently unchanged refresh and persists the reason without replay", async () => {
+  const f = await fixture({ resultRefresh: "stale" }), root = await mkdtemp(path.join(tmpdir(), "zero-stale-"));
+  const connect = vi.fn(async () => ({ page: f.session, close: () => f.session.dispose() }));
+  try {
+    const owner = new QianchuanPlanMaterials(root, connect);
+    const result = await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D");
+    expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0, message: expect.stringContaining("等待删除结果超时"), pendingPlanDeletion: { ids: ["12"] } });
+    const gate = path.join(root, "plan-material-deletions", `${target.advertiserId}-${target.adId}.pending.json`), bytes = await readFile(gate);
+    const repeated = await new QianchuanPlanMaterials(root, connect).clear(target, async () => {});
+    expect(repeated.message).toContain("等待删除结果超时");
+    expect(repeated.state).toBe("BLOCKED"); expect(connect).toHaveBeenCalledTimes(1);
+    expect(f.removed).toEqual([["12"]]); expect(await readFile(gate)).toEqual(bytes);
+  } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
+});
+it("honors cancellation while waiting for a fresh result without another confirmation", async () => {
+  const f = await fixture({ resultRefresh: "stale" });
+  try {
+    await f.session.open(); await f.session.filter(); const before = await f.session.read();
+    const sent = f.page.waitForRequest("**/fixture-delete");
+    const stopped = expect(f.session.deleteBatch(before, async () => {})).rejects.toMatchObject({ name: "AbortError" });
+    await sent; f.controller.abort(); await stopped;
+    expect(f.removed).toEqual([["12"]]);
   } finally { await f.session.dispose(); await f.context.close(); }
 });

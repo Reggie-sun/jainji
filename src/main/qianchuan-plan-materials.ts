@@ -3,6 +3,7 @@ import { open, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { QianchuanPlanMaterialRecovery } from "./qianchuan-plan-material-recovery.js";
+import { QianchuanPlanMaterialDiagnostics, type PlanMaterialStage } from "./qianchuan-plan-material-diagnostics.js";
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
 import { connectPlanMaterials } from "./qianchuan-video-library-browser.js";
 import type { QianchuanPlanMaterialPage } from "./qianchuan-plan-material-page.js";
@@ -36,15 +37,16 @@ export class QianchuanPlanMaterials {
     const timer = setTimeout(() => controller.abort(), 30 * 60 * 1000);
     let operation: Awaited<ReturnType<typeof open>> | undefined, connection: Connection | undefined;
     let intentWritten = false;
-    let stage = "准备清理";
+    let stage: PlanMaterialStage = "准备清理";
+    const recovery = new QianchuanPlanMaterialRecovery(directory, target);
+    const diagnostics = new QianchuanPlanMaterialDiagnostics(directory, target);
     try {
       await secureUploadDirectory(directory); await strictSyncDirectory(this.root);
       operation = await open(lock, "wx", 0o600);
       await guard(); signal.throwIfAborted();
       // Existing unresolved intent forbids a new automated confirmation, including after restart.
-      const recovery = new QianchuanPlanMaterialRecovery(directory, target);
       result.pendingPlanDeletion = await recovery.pending();
-      if (result.pendingPlanDeletion) throw new Error("该计划上次删除结果未知，请展开待核查素材明细，在千川核查并处理后结束旧记录；不会自动重试。");
+      if (result.pendingPlanDeletion) throw new Error(`该计划上次删除结果未知，请展开待核查素材明细，在千川核查并处理后结束旧记录；不会自动重试。${await diagnostics.message(result.pendingPlanDeletion)}`);
       const protectedIds = await recovery.protectedIds();
       stage = "连接账号浏览器"; connection = await this.connect(target, signal, zeroWindow);
       stage = "打开计划素材"; await connection.page.open();
@@ -97,9 +99,18 @@ export class QianchuanPlanMaterials {
       await connection.close(); connection = undefined;
       return { ...result, state: "CLEARED", message: zeroWindow ? `计划 ${target.adId} 已逐页清理 ${zeroWindow.startTime.slice(0, 10)} 至 ${zeroWindow.endTime.slice(0, 10)} 零展示素材，删除 ${result.deletedCount} 条。` : `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。` };
     } catch (error) {
+      let diagnosticWarning = "";
+      if (intentWritten) {
+        try {
+          const pending = await recovery.pending();
+          if (!pending || pending.attempt !== attempt) throw new Error("intent binding");
+          result.pendingPlanDeletion = pending;
+          await diagnostics.record(pending, stage, error);
+        } catch { diagnosticWarning = " 失败诊断未能完整保存；删除意图仍须人工核查。"; }
+      }
       const detail = error instanceof Error && error.name === "TimeoutError" ? `${stage}时等待千川页面超时。` :
         error instanceof Error ? error.message.split("\n")[0].slice(0, 200) : "操作异常。";
-      return { ...result, message: `计划 ${target.adId} 清理已停止。${detail}${intentWritten ? " 删除意图保留，结果未知，不自动重试。" : ""}` };
+      return { ...result, message: `计划 ${target.adId} 清理已停止。${detail}${intentWritten ? " 删除意图保留，结果未知，不自动重试。" : ""}${diagnosticWarning}` };
     } finally {
       clearTimeout(timer); await connection?.close().catch(() => undefined);
       if (operation) {
