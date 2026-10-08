@@ -310,7 +310,7 @@ describe("cleanup plan browser interaction", () => {
       await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
       await page.getByRole("button", { name: "清理所选计划及视频库（1）", exact: true }).click();
       const confirmation = await page.getByRole("group", { name: "确认素材清理" }).textContent();
-      expect(confirmation).toContain("近15天零展示素材"); expect(confirmation).toContain("不按计划筛选");
+      expect(confirmation).toContain("近15天零展示素材"); expect(confirmation).toContain("加入当前计划已满72小时"); expect(confirmation).toContain("不按计划筛选");
       expect(confirmation?.includes("所选计划内三类素材")).toBe(planMaterialRule === "AUDIT_AND_ZERO_IMPRESSIONS_15D");
       expect(confirmation).toContain("ID 9002"); expect(confirmation).not.toContain("ID 9001");
       expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(0);

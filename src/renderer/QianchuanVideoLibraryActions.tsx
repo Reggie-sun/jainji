@@ -66,8 +66,8 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
         <fieldset className="qianchuan-cleanup-options" disabled={disabled}><legend>清理内容</legend>
           <p>计划素材仅清理“投放中”的素材，自动切换为100条/页，逐页核对所选规则。</p>
           <label><input type="checkbox" checked={auditMaterials} onChange={event => setAuditMaterials(event.target.checked)} /><span><strong>计划内三类素材</strong><small>审核不通过、生态审核不通过、审核通过可优化。按审核状态清理。</small></span></label>
-          <label><input type="checkbox" checked={zeroImpressions} onChange={event => setZeroImpressions(event.target.checked)} /><span><strong>近15天零展示素材</strong><small>不限制素材上传或加入计划时间；可与三类审核素材同时选择，符合任一勾选规则即清理。</small></span></label>
-          {planMaterials && zeroImpressions && <p>零展示规则自动删除所选计划中最近15个完整自然日（北京时间）整体展示次数为0的素材。程序逐页核对并确认，无需逐批操作；日期或数据无法核对时停止。本地视频和上传记录保留。</p>}
+          <label><input type="checkbox" checked={zeroImpressions} onChange={event => setZeroImpressions(event.target.checked)} /><span><strong>近15天零展示素材</strong><small>仅清理加入当前计划已满72小时的素材；以千川计划页“创建时间”为准。可与三类审核素材同时选择，符合任一勾选规则即清理。</small></span></label>
+          {planMaterials && zeroImpressions && <p>零展示规则自动删除所选计划中最近15个完整自然日（北京时间）整体展示次数为0、且加入计划已满3天（72小时）的投放中素材。未满72小时的素材保留；创建时间、日期或数据无法核对时停止。72小时保护仅适用于零展示规则，三类审核规则和视频库清空仍独立执行。本地视频和上传记录保留。</p>}
           <label><input type="checkbox" checked={videoLibrary} onChange={event => setVideoLibrary(event.target.checked)} /><span><strong>视频库全部视频</strong><small>清空整个账号素材库，不按计划筛选；已使用视频的在投创意和计划不受影响。</small></span></label>
         </fieldset>
         <div className="qianchuan-cleanup-footer"><small>{plansReady ? "本地视频和上传记录保留。" : "请为每个所选账号选择清理计划。"}</small><button className="button primary" type="button" disabled={disabled || !chosen.length || !plansReady || (!planMaterials && !videoLibrary)} onClick={() => {
@@ -78,7 +78,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
         <h4>确认清理 {selected.accounts.length} 个账号{selectedPlanMaterials ? `、${selected.accounts.reduce((count, account) => count + (account.plans?.length ?? 0), 0)} 个计划` : ""}？</h4>
         <p>将永久删除以下内容，不备份视频：</p>
         {selectedPlanMaterials && selected.planMaterialRule !== "ZERO_IMPRESSIONS_15D" && <p><strong>所选计划内三类素材</strong> · 审核不通过、生态审核不通过、审核通过可优化。可能影响这些素材的投放；其他计划不清理。</p>}
-        {selectedPlanMaterials && selected.planMaterialRule && <p><strong>所选计划近15天零展示素材</strong> · 仅投放中、最近15个完整自然日整体展示次数为0的素材；其他计划不清理。该筛选不适用于视频库。</p>}
+        {selectedPlanMaterials && selected.planMaterialRule && <p><strong>所选计划近15天零展示素材</strong> · 仅投放中、加入当前计划已满72小时且最近15个完整自然日整体展示次数为0的素材；其他计划不清理。该筛选不适用于三类审核规则或视频库。</p>}
         {selectedVideoLibrary && <p><strong>视频库全部视频</strong> · 清空整个账号素材库，不按计划筛选；已使用视频的在投创意和计划不受影响。</p>}
         <ul>{selected.accounts.map(account => <li key={account.product}><strong>{qianchuanProductName(account.product, accounts)}</strong><span>账户 {account.expectedAdvertiserId}</span>{selectedPlanMaterials && account.plans?.map(plan => <span key={plan.adId}>{plan.name} · ID {plan.adId}</span>)}</li>)}</ul>
         {!selectionCurrent && <p role="alert">账号设置已变化，请取消并重新选择清理范围。</p>}

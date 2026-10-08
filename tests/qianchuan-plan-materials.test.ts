@@ -47,7 +47,7 @@ it.each([false, true])("runs both rules sequentially over remaining materials an
     // 7002 belongs to both predicates; the second query must see only what remains.
     const eligible = () => remaining.filter(id => zero ? id !== "7001" : id !== "7003");
     const read = async () => ({ total: eligible().length, ids: eligible(), ...(zero ? { zeroImpressions: { offset: 0, limit: 10,
-      rows: eligible().map(id => ({ id, impressions: 0, eligible: true })) } } : {}) });
+      rows: eligible().map(id => ({ id, impressions: 0, createdAt: "2025-01-01 00:00:00", eligible: true })) } } : {}) });
     return { page: { open: async () => {}, filter: async () => ({ skippedEcological: false }), read, movePage: async () => false,
       deleteBatch: async (before: Awaited<ReturnType<typeof read>>, confirm: () => Promise<void>) => {
         await confirm();
