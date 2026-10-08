@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { qianchuanProductName, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
-import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library";
+import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecovery } from "../shared/qianchuan-video-library";
 import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { QianchuanCleanupResults } from "./QianchuanCleanupResults";
 import { QianchuanCleanupPlanSelect } from "./QianchuanCleanupPlanSelect";
@@ -34,6 +34,16 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
       const result = await window.jianji.clearQianchuanVideoLibraries(request);
       setResults(result); setSelected(undefined);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "素材清理未完成。"); }
+    finally { setRunning(false); }
+  };
+  const resolve = async (request: QianchuanPlanRecovery) => {
+    if (disabled || !configured.some(account => account.product === request.product && account.advertiserId === request.advertiserId)) return;
+    setRunning(true); setError("");
+    try {
+      await window.jianji.resolveQianchuanPlanMaterialDeletion(request);
+      setResults(current => current.map(result => result.product === request.product && result.pendingPlanDeletion?.attempt === request.attempt ?
+        { ...result, pendingPlanDeletion: undefined, message: `计划 ${request.adId} 的旧记录已由你标记为人工处理。上次删除结果仍未知，原始记录保留。可重新发起清理；历史素材不会自动重复删除。` } : result));
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "旧清理记录未处理，请重新核查。"); }
     finally { setRunning(false); }
   };
   return <div className="qianchuan-cleanup" aria-label="千川素材清理">
@@ -75,9 +85,9 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
         <p>本地视频和原上传记录保留。</p>
         <div className="qianchuan-cleanup-buttons"><button className="button secondary" type="button" disabled={running} onClick={() => setSelected(undefined)}>取消</button><button className="button qianchuan-cleanup-danger" type="button" disabled={disabled || !selectionCurrent} onClick={() => void clear()}>{running ? "正在清理…" : `确认删除${selectedPlanMaterials && selectedVideoLibrary ? "两类内容" : selectedPlanMaterials ? "三类计划素材" : "全部库视频"}（${selected.accounts.length} 个账号）`}</button></div>
       </div>}
-      {running && <p role="status">正在清理所选账号，请保持对应 Chrome 打开。</p>}
+      {running && <p role="status">正在处理所选清理操作，请保持对应 Chrome 打开。</p>}
       {error && <p className="qianchuan-cleanup-error" role="alert">{error}</p>}
-      {!!results.length && <QianchuanCleanupResults title="本次清理" results={results} accounts={accounts} />}
+      {!!results.length && <QianchuanCleanupResults title="本次清理" results={results} accounts={accounts} busy={disabled} onResolve={resolve} />}
     </section>
     <QianchuanVideoLibrarySchedule accounts={accounts} busy={disabled || !!selected} />
   </div>;

@@ -10,6 +10,7 @@ import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import { QianchuanVideoLibrary } from "../src/main/qianchuan-video-library";
 import { QianchuanPlanMaterials } from "../src/main/qianchuan-plan-materials";
+import { QianchuanPlanMaterialRecovery } from "../src/main/qianchuan-plan-material-recovery";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
@@ -409,6 +410,31 @@ describe("Qianchuan upload service", () => {
     const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, discover), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined, readPlans });
     await service.restoreConfig(); return { ...f, service };
   }
+  it("resolves only the explicitly identified pending record under the existing mutex without opening Chrome or clearing", async () => {
+    const discover = vi.fn(async () => "http://127.0.0.1:9225"), f = await nativeFixture(discover);
+    await f.service.chooseConfig(f.configPath); discover.mockClear();
+    const clear = vi.spyOn(QianchuanPlanMaterials.prototype, "clear");
+    const resolve = vi.spyOn(QianchuanPlanMaterialRecovery.prototype, "resolve").mockImplementation(async (_request, guard) => {
+      expect(f.service.busy).toBe(true); await guard();
+    });
+    const request = { product: "眼贴", advertiserId: "1003", adId: "9876", attempt: "11111111-1111-4111-8111-111111111111", digest: "d".repeat(64), confirmation: "MANUALLY_HANDLED_PLAN_DELETION" };
+    await f.service.resolvePlanMaterialDeletion(request);
+    expect(resolve).toHaveBeenCalledWith(request, expect.any(Function)); expect(clear).not.toHaveBeenCalled(); expect(discover).not.toHaveBeenCalled(); expect(f.service.busy).toBe(false);
+    await expect(f.service.resolvePlanMaterialDeletion({ ...request, advertiserId: "9999" })).rejects.toThrow("已变化");
+    await expect(f.service.resolvePlanMaterialDeletion({ ...request, confirmation: "RETRY" })).rejects.toThrow();
+    expect(resolve).toHaveBeenCalledTimes(1);
+  });
+  it("drains manual cleanup disposition on stop and rejects another cleanup while it runs", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    let release!: () => void, entered!: () => void;
+    const hold = new Promise<void>(resolve => { release = resolve; }), started = new Promise<void>(resolve => { entered = resolve; });
+    vi.spyOn(QianchuanPlanMaterialRecovery.prototype, "resolve").mockImplementation(async (_request, guard) => { entered(); await hold; await guard(); });
+    const work = f.service.resolvePlanMaterialDeletion({ product: "眼贴", advertiserId: "1003", adId: "2003", attempt: "11111111-1111-4111-8111-111111111111", digest: "d".repeat(64), confirmation: "MANUALLY_HANDLED_PLAN_DELETION" });
+    const rejection = expect(work).rejects.toThrow();
+    await started;
+    await expect(f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }] })).rejects.toThrow("仍在运行");
+    const stopping = f.service.stop(); release(); await rejection; await stopping; expect(f.service.busy).toBe(false);
+  });
   it("clears each requested saved account through the library owner without changing upload records", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     const before = f.store.tasks();

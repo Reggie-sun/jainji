@@ -37,6 +37,18 @@ it("skips a missed time after sleep and never catches up by deleting later", asy
   vi.setSystemTime(new Date(2026, 9, 4, 2)); await f.owner.tick();
   expect(f.clear).not.toHaveBeenCalled(); expect(f.owner.snapshot().lastRun?.state).toBe("SKIPPED");
 });
+it("keeps manual pending detail out of the durable schedule and reloads the blocked result", async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 4, 0, 29));
+  const f = await fixture(vi.fn(async () => [{ product: "蝴蝶贴" as const, advertiserId: accounts[0].advertiserId, state: "BLOCKED" as const, deletedCount: 0, message: "上次删除结果未知",
+    pendingPlanDeletion: { adId: "123", attempt: "11111111-1111-4111-8111-111111111111", digest: "d".repeat(64), ids: ["7001"] } }]));
+  await f.owner.save({ ...settings, includePlanMaterials: true, accounts: [{ ...settings.accounts[0], expectedAdId: "123" }] });
+  vi.setSystemTime(new Date(2026, 9, 4, 0, 30)); await f.owner.tick(); f.owner.stop();
+  const restored = new QianchuanVideoLibrarySchedule(f.root, { accounts: () => accounts, clear: f.clear, changed: () => {} }); owners.push(restored);
+  await restored.load();
+  expect(restored.snapshot().error).toBeUndefined(); expect(restored.snapshot().lastRun?.state).toBe("BLOCKED");
+  expect(restored.snapshot().lastRun?.results[0].pendingPlanDeletion).toBeUndefined();
+  expect(f.clear).toHaveBeenCalledTimes(1);
+});
 it("preserves an interrupted day and rejects a changed target when saving", async () => {
   vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 4, 0, 29));
   const f = await fixture(); f.owner.stop();

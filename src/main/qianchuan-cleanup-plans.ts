@@ -15,6 +15,7 @@ export async function clearQianchuanAccountPlans(target: FrozenQianchuanAccount,
   const messages: string[] = [];
   const collect = (next: QianchuanLibraryResult, label?: string) => {
     result.deletedCount += next.deletedCount; result.state = next.state;
+    if (next.pendingPlanDeletion) result.pendingPlanDeletion = next.pendingPlanDeletion;
     messages.push(`${label ? `${label}：` : ""}${next.message}`);
   };
   try {

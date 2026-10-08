@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { lstat, open, unlink } from "node:fs/promises";
+import { open, unlink } from "node:fs/promises";
 import path from "node:path";
-import { z } from "zod";
-import { readPrivateJson, type FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
+import { QianchuanPlanMaterialRecovery } from "./qianchuan-plan-material-recovery.js";
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
 import { connectPlanMaterials } from "./qianchuan-video-library-browser.js";
 import type { QianchuanPlanMaterialPage } from "./qianchuan-plan-material-page.js";
@@ -10,9 +10,6 @@ import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qi
 import { createZeroImpressionsWindow, type ZeroImpressionsWindow } from "./qianchuan-zero-impressions.js";
 
 type Connection = { page: Pick<QianchuanPlanMaterialPage, "open" | "filter" | "read" | "deleteBatch"> & Partial<Pick<QianchuanPlanMaterialPage, "movePage">>; close(): Promise<void> };
-const pendingSchema = z.object({ version: z.literal(1), attempt: z.string().uuid(), advertiserId: z.string(), adId: z.string(), ids: z.array(z.string()).min(1).max(100),
-  zeroWindow: z.object({ startTime: z.string(), endTime: z.string(), createdBefore: z.string().optional() }).strict().optional(),
-}).strict();
 
 /** Same production service owns scheduling; this owner only records plan-delete intent and current UI progress. */
 export class QianchuanPlanMaterials {
@@ -45,9 +42,10 @@ export class QianchuanPlanMaterials {
       operation = await open(lock, "wx", 0o600);
       await guard(); signal.throwIfAborted();
       // Existing unresolved intent forbids a new automated confirmation, including after restart.
-      let hasPending = true;
-      try { await lstat(gate); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") hasPending = false; else throw error; }
-      if (hasPending) { await readPrivateJson(gate, input => pendingSchema.parse(input)); throw new Error("该计划上次删除结果未知，请先人工核查；不会自动重试。"); }
+      const recovery = new QianchuanPlanMaterialRecovery(directory, target);
+      result.pendingPlanDeletion = await recovery.pending();
+      if (result.pendingPlanDeletion) throw new Error("该计划上次删除结果未知，请展开待核查素材明细，在千川核查并处理后结束旧记录；不会自动重试。");
+      const protectedIds = await recovery.protectedIds();
       stage = "连接账号浏览器"; connection = await this.connect(target, signal, zeroWindow);
       stage = "打开计划素材"; await connection.page.open();
       stage = "筛选计划素材";
@@ -73,6 +71,7 @@ export class QianchuanPlanMaterials {
           }
         }
         const before = snapshot;
+        if (before.ids.some(id => protectedIds.has(id))) throw new Error("当前列表含历史未知删除的素材，须在千川人工处理；不会自动重复删除。");
         stage = "确认计划素材删除";
         await connection.page.deleteBatch(before, async () => {
           await guard(); signal.throwIfAborted();

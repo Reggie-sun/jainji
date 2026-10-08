@@ -128,12 +128,12 @@ function currentState(): QueueSnapshot { return queue.snapshot(); }
 
 function assertProductionIdle(): void { batchRuntime?.controller.assertIdle(); agent.assertIdle(); }
 
-function clearVideoLibraries(input: unknown) {
+function assertCleanupIdle() {
   if (quitting) throw new Error("应用正在退出，已停止清空视频库。");
   coverReview?.assertIdle(); assertProductionIdle();
   if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未删除视频库素材。");
-  return douyinUpload.clearVideoLibraries(input);
 }
+function clearVideoLibraries(input: unknown) { assertCleanupIdle(); return douyinUpload.clearVideoLibraries(input); }
 
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("untrusted IPC sender");
@@ -221,6 +221,9 @@ function registerHandlers(): void {
   });
   ipcMain.handle("douyinUpload.clearVideoLibraries", async (event, input: unknown) => {
     assertTrustedSender(event); return clearVideoLibraries(input);
+  });
+  ipcMain.handle("douyinUpload.resolvePlanMaterialDeletion", async (event, input: unknown) => {
+    assertTrustedSender(event); assertCleanupIdle(); await douyinUpload.resolvePlanMaterialDeletion(input);
   });
   ipcMain.handle("videoLibrarySchedule.get", event => { assertTrustedSender(event); return videoLibrarySchedule.snapshot(); });
   ipcMain.handle("videoLibrarySchedule.save", (event, input: unknown) => { assertTrustedSender(event); return videoLibrarySchedule.save(input); });

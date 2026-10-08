@@ -36,16 +36,17 @@ export function planSelectionFixtureScript(options: { strict?: boolean; multiple
   `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
 }
 
-export function cleanupPlanFixtureScript() {
+export function cleanupPlanFixtureScript(recovery = false) {
   return buildSync({ stdin: { contents: `
     import React, { useState } from "react";
     import { createRoot } from "react-dom/client";
     import { QianchuanVideoLibraryActions } from "./src/renderer/QianchuanVideoLibraryActions";
-    window.catalogRequests = []; window.cleanupRequests = [];
+    window.catalogRequests = []; window.cleanupRequests = []; window.recoveryRequests = [];
     window.jianji = {
       listQianchuanPlans: input => new Promise((resolve, reject) => window.catalogRequests.push({ input, resolve, reject })),
       cancelQianchuanPlans: async () => {},
-      clearQianchuanVideoLibraries: async input => { window.cleanupRequests.push(input); return []; },
+      clearQianchuanVideoLibraries: async input => { window.cleanupRequests.push(input); return ${recovery ? '[{product:"眼贴",advertiserId:"1000",state:"BLOCKED",deletedCount:0,message:"计划 9001 上次删除结果未知",pendingPlanDeletion:{adId:"9001",attempt:"11111111-1111-4111-8111-111111111111",digest:"d".repeat(64),ids:["7001","7002"]}}]' : "[]"}; },
+      resolveQianchuanPlanMaterialDeletion: async input => { window.recoveryRequests.push(input); },
       onQianchuanVideoLibrarySchedule: () => () => {},
       getQianchuanVideoLibrarySchedule: async () => ({settings:{enabled:false,time:"00:30",accounts:[]},timeZone:"Asia/Hong_Kong"})
     };
@@ -61,6 +62,30 @@ export function cleanupPlanFixtureScript() {
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); }, 30000);
 afterAll(async () => { await browser?.close(); });
+it("shows pending IDs and requires manual handling plus a second confirmation without automatically retrying", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.route("http://127.0.0.1:3000/recovery", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/recovery"); await page.addScriptTag({ content: cleanupPlanFixtureScript(true) });
+    await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+    await page.evaluate(() => (window as any).catalogRequests[0].resolve([{advertiserId:"1000",adId:"9001",name:"计划 9001"}]));
+    await page.getByRole("button", { name: "自动删除所选两类素材（1）", exact: true }).click();
+    await page.getByText("查看各账号结果", { exact: true }).click();
+    await page.getByText("待核查素材明细（2 条）", { exact: true }).click();
+    expect(await page.getByLabel("待核查素材 ID").inputValue()).toBe("7001\n7002");
+    expect(await page.getByRole("button", { name: "结束这次旧清理记录", exact: true }).isDisabled()).toBe(true);
+    await page.getByRole("checkbox", { name: "我已在千川核查并处理以上全部素材" }).check();
+    await page.getByRole("button", { name: "结束这次旧清理记录", exact: true }).click();
+    expect(await page.evaluate(() => (window as any).recoveryRequests.length)).toBe(0);
+    await page.getByRole("button", { name: "返回核查", exact: true }).click();
+    await page.getByRole("button", { name: "结束这次旧清理记录", exact: true }).click();
+    await page.getByRole("button", { name: "确认结束旧记录", exact: true }).click();
+    await page.getByText(/旧记录已由你标记为人工处理/).waitFor();
+    expect(await page.evaluate(() => (window as any).recoveryRequests)).toEqual([{ product: "眼贴", advertiserId: "1000", adId: "9001", attempt: "11111111-1111-4111-8111-111111111111", digest: "d".repeat(64), confirmation: "MANUALLY_HANDLED_PLAN_DELETION" }]);
+    expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(1);
+    expect(await page.getByLabel("待核查素材 ID").count()).toBe(0);
+  } finally { await page.close(); }
+});
 async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: boolean } = {}): Promise<Page> {
   const page = await browser.newPage();
   await page.route("http://127.0.0.1:3000/plan-selector", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));

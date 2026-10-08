@@ -19,12 +19,24 @@ export const QianchuanLibraryClearSchema = z.object({
   .refine(value => value.confirmation !== "DELETE_ALL_VIDEOS" || value.accounts.every(account => !account.plan && !account.plans), "视频库清空作用于整个账号，不能限定计划。")
   .refine(value => !value.planMaterialRule || value.confirmation !== "DELETE_ALL_VIDEOS", "计划素材规则必须与计划清理一起使用，不能用于仅清空视频库。");
 export type QianchuanLibraryClear = z.infer<typeof QianchuanLibraryClearSchema>;
+export const QianchuanPlanRecoverySchema = z.object({
+  product: QianchuanProductSchema,
+  advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/), adId: z.string().regex(/^[1-9][0-9]{0,19}$/),
+  attempt: z.string().uuid(), digest: z.string().regex(/^[a-f0-9]{64}$/),
+  confirmation: z.literal("MANUALLY_HANDLED_PLAN_DELETION"),
+}).strict();
+export type QianchuanPlanRecovery = z.infer<typeof QianchuanPlanRecoverySchema>;
+export interface QianchuanPendingPlanDeletion {
+  adId: string; attempt: string; digest: string; ids: string[];
+  zeroWindow?: { startTime: string; endTime: string; createdBefore?: string };
+}
 export interface QianchuanLibraryResult {
   product: z.infer<typeof QianchuanProductSchema>;
   advertiserId: string;
   state: "CLEARED" | "BLOCKED";
   deletedCount: number;
   message: string;
+  pendingPlanDeletion?: QianchuanPendingPlanDeletion;
 }
 
 export const PLAN_MATERIAL_STATUSES = ["审核不通过", "生态审核不通过", "审核通过可优化"] as const;

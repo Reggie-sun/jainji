@@ -12,9 +12,10 @@ import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import { QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
-import { QianchuanLibraryClearSchema, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
+import { QianchuanLibraryClearSchema, QianchuanPlanRecoverySchema, type QianchuanLibraryClear, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import { QianchuanVideoLibrary } from "./qianchuan-video-library.js";
 import { QianchuanPlanMaterials } from "./qianchuan-plan-materials.js";
+import { QianchuanPlanMaterialRecovery } from "./qianchuan-plan-material-recovery.js";
 import { clearQianchuanAccountPlans } from "./qianchuan-cleanup-plans.js";
 import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
@@ -300,6 +301,32 @@ export class DouyinUploadService {
   }
   async clearVideoLibraries(input: unknown): Promise<QianchuanLibraryResult[]> {
     const parsed = QianchuanLibraryClearSchema.parse(input);
+    return this.withCleanupOperation(parsed, async (targets, guard, connect, signal) => {
+      const library = new QianchuanVideoLibrary(this.store.root);
+      const materials = new QianchuanPlanMaterials(this.store.root);
+      return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
+        try {
+          await guard(); const connected = await connect(target);
+          const selection = parsed.accounts.find(account => account.product === target.product)!;
+          return clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
+            guard, signal, readPlans: (account, signal) => this.readPlans(account, signal),
+            clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal, parsed.planMaterialRule),
+            clearLibrary: (account, fresh, signal) => library.clear(account, fresh, signal),
+          });
+        }
+        catch (error) { return { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
+      }));
+    });
+  }
+  async resolvePlanMaterialDeletion(input: unknown): Promise<void> {
+    const request = QianchuanPlanRecoverySchema.parse(input);
+    const scope: QianchuanLibraryClear = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: request.product, expectedAdvertiserId: request.advertiserId,
+      plans: [{ advertiserId: request.advertiserId, adId: request.adId, name: `计划 ${request.adId}` }] }] };
+    await this.withCleanupOperation(scope, async (targets, guard) => {
+      await new QianchuanPlanMaterialRecovery(path.join(this.store.root, "plan-material-deletions"), targets[0]).resolve(request, guard);
+    });
+  }
+  private async withCleanupOperation<T>(parsed: QianchuanLibraryClear, action: (targets: FrozenQianchuanAccount[], guard: () => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>, signal: AbortSignal) => Promise<T>): Promise<T> {
     await this.stopPlanPreload();
     if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未删除视频。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持视频库删除。");
@@ -320,20 +347,7 @@ export class DouyinUploadService {
           await fresh();
           check();
         };
-        const library = new QianchuanVideoLibrary(this.store.root);
-        const materials = new QianchuanPlanMaterials(this.store.root);
-        return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
-          try {
-            await guard(); const connected = await connect(target);
-            const selection = parsed.accounts.find(account => account.product === target.product)!;
-            return clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
-              guard, signal: operation.controller.signal, readPlans: (account, signal) => this.readPlans(account, signal),
-              clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal, parsed.planMaterialRule),
-              clearLibrary: (account, fresh, signal) => library.clear(account, fresh, signal),
-            });
-          }
-          catch (error) { return { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
-        }));
+        return action(targets, guard, connect, operation.controller.signal);
       });
     } finally { this.libraryOperation = undefined; this.managingBrowser = false; completed(); this.changed(); }
   }
