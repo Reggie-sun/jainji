@@ -33,7 +33,7 @@ export interface QianchuanPendingPlanDeletion {
 export interface QianchuanLibraryResult {
   product: z.infer<typeof QianchuanProductSchema>;
   advertiserId: string;
-  state: "CLEARED" | "BLOCKED";
+  state: "CLEARED" | "PARTIAL" | "BLOCKED";
   deletedCount: number;
   message: string;
   pendingPlanDeletion?: QianchuanPendingPlanDeletion;

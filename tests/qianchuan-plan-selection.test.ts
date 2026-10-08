@@ -16,11 +16,26 @@ import { ProjectWorkspaceSchema } from "../src/shared/project-workspace";
 import { DEFAULT_EXPORT_SETTINGS } from "../src/shared/export-settings";
 import { QianchuanPlanReads } from "../src/main/qianchuan-plan-reads";
 import { acquireQianchuanPlans } from "../src/renderer/qianchuan-plan-requests";
+import { clearQianchuanAccountPlans } from "../src/main/qianchuan-cleanup-plans";
 
 const roots: string[] = [];
 afterEach(async () => { vi.useRealTimers(); vi.unstubAllGlobals(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const plan = (adId = "9001"): QianchuanPlanOption => ({ advertiserId: "1000", adId, name: `测试计划 ${adId}` });
 const selection = (adId = "9001") => ({ enabled: true as const, accountProduct: "眼贴" as const, plan: plan(adId) });
+it.each(["CLEARED", "BLOCKED"] as const)("continues past historical partial plans and retains later %s state", async later => {
+  const target = { product: "眼贴" as const, advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:42001", configDigest: "d".repeat(64) };
+  const plans = [plan(), plan("9002"), plan("9003")];
+  const clearPlan = vi.fn(async (target: FrozenQianchuanAccount) => ({ product: target.product, advertiserId: target.advertiserId,
+    state: target.adId === "9001" ? "PARTIAL" as const : later, deletedCount: 1, message: target.adId }));
+  const clearLibrary = vi.fn();
+  const result = await clearQianchuanAccountPlans(target, { product: target.product, expectedAdvertiserId: target.advertiserId, plans }, "DELETE_VIDEOS_AND_PLAN_MATERIALS", {
+    guard: async () => {}, signal: new AbortController().signal, readPlans: async () => plans, clearPlan, clearLibrary,
+  });
+  expect(clearPlan.mock.calls.map(([target]) => target.adId)).toEqual(later === "BLOCKED" ? ["9001", "9002"] : ["9001", "9002", "9003"]);
+  expect(result.state).toBe(later === "BLOCKED" ? "BLOCKED" : "PARTIAL");
+  expect(clearLibrary).not.toHaveBeenCalled();
+  if (later === "CLEARED") expect(result.message).toContain("本次视频库清空未执行");
+});
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-plan-selection-")); roots.push(root);
   const configPath = path.join(root, "accounts.json");

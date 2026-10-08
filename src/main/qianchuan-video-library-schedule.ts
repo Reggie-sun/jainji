@@ -9,7 +9,7 @@ import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryAccountSchema, type QianchuanLibraryClear, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import type { QianchuanScheduledLaunch } from "./qianchuan-scheduled-launch.js";
 
-const resultSchema = z.object({ product: QianchuanLibraryAccountSchema.shape.product, advertiserId: QianchuanLibraryAccountSchema.shape.expectedAdvertiserId, state: z.enum(["CLEARED", "BLOCKED"]), deletedCount: z.number().int().nonnegative(), message: z.string().max(2000) }).strict();
+const resultSchema = z.object({ product: QianchuanLibraryAccountSchema.shape.product, advertiserId: QianchuanLibraryAccountSchema.shape.expectedAdvertiserId, state: z.enum(["CLEARED", "PARTIAL", "BLOCKED"]), deletedCount: z.number().int().nonnegative(), message: z.string().max(2000) }).strict();
 const runSchema = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), startedAt: z.string().datetime(), finishedAt: z.string().datetime().optional(),
   state: z.enum(["RUNNING", "COMPLETED", "BLOCKED", "SKIPPED"]), message: z.string().max(2000), results: z.array(resultSchema).max(6) }).strict();
 const stateSchema = z.object({ version: z.literal(1), settings: QianchuanLibraryScheduleSettingsSchema, lastRun: runSchema.optional() }).strict();

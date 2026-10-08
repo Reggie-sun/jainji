@@ -29,15 +29,32 @@ export class QianchuanPlanMaterialRecovery {
     if (result.value.advertiserId !== this.target.advertiserId || result.value.adId !== this.target.adId) throw changed();
     return result;
   }
-  async pending(): Promise<QianchuanPendingPlanDeletion | undefined> {
-    if (!await exists(this.gate)) return undefined;
-    const { value, digest } = await this.readPending(this.gate);
-    return { adId: value.adId, attempt: value.attempt, digest, ids: value.ids, ...(value.zeroWindow ? { zeroWindow: value.zeroWindow } : {}) };
+  attemptGate(attempt: string): string {
+    return path.join(this.directory, `${this.target.advertiserId}-${this.target.adId}-${z.string().uuid().parse(attempt)}.pending.json`);
+  }
+  private async records() {
+    if (!await exists(this.directory)) return [];
+    const prefix = `${this.target.advertiserId}-${this.target.adId}`;
+    const names = (await readdir(this.directory)).filter(name => name === `${prefix}.pending.json` || name.startsWith(`${prefix}-`) && name.endsWith(".pending.json")).sort();
+    if (names.length > 1000) throw changed();
+    const records: { file: string; pending: QianchuanPendingPlanDeletion }[] = [];
+    for (const name of names) {
+      const file = path.join(this.directory, name), { value, digest } = await this.readPending(file);
+      if (file !== this.gate && file !== this.attemptGate(value.attempt) || records.some(record => record.pending.attempt === value.attempt)) throw changed();
+      records.push({ file, pending: { adId: value.adId, attempt: value.attempt, digest, ids: value.ids, ...(value.zeroWindow ? { zeroWindow: value.zeroWindow } : {}) } });
+    }
+    return records;
+  }
+  async pendingRecords(): Promise<QianchuanPendingPlanDeletion[]> { return (await this.records()).map(record => record.pending); }
+  async pending(attempt?: string): Promise<QianchuanPendingPlanDeletion | undefined> {
+    const records = await this.pendingRecords();
+    return attempt ? records.find(record => record.attempt === attempt) : records[0];
   }
   async protectedIds(): Promise<Set<string>> {
-    if (!await exists(this.history)) return new Set();
+    const ids = new Set((await this.pendingRecords()).flatMap(record => record.ids));
+    if (!await exists(this.history)) return ids;
     await secureUploadDirectory(this.history);
-    const names = await readdir(this.history), ids = new Set<string>();
+    const names = await readdir(this.history);
     if (names.length > 2000 || names.length % 2) throw changed();
     for (const name of names) {
       if (name.endsWith(".pending.json")) continue;
@@ -60,13 +77,14 @@ export class QianchuanPlanMaterialRecovery {
     const lock = await open(lockPath, "wx", 0o600);
     try {
       await guard();
-      const pending = await this.pending();
+      const record = (await this.records()).find(record => record.pending.attempt === request.attempt);
+      const pending = record?.pending;
       if (!pending || pending.digest !== request.digest || pending.attempt !== request.attempt) throw changed();
       await secureUploadDirectory(path.dirname(this.history)); await strictSyncDirectory(this.directory);
       await secureUploadDirectory(this.history); await strictSyncDirectory(path.dirname(this.history));
       const archive = path.join(this.history, `${pending.attempt}.pending.json`), receipt = path.join(this.history, `${pending.attempt}.json`);
       // A hard link preserves the exact raw bytes; exclusive publication never overwrites history.
-      if (!await exists(archive)) await link(this.gate, archive);
+      if (!await exists(archive)) await link(record!.file, archive);
       await strictSyncDirectory(this.history);
       if ((await this.readPending(archive)).digest !== request.digest) throw changed();
       await guard();
@@ -82,8 +100,8 @@ export class QianchuanPlanMaterialRecovery {
       try { await durableReceipt.sync(); } finally { await durableReceipt.close(); }
       await strictSyncDirectory(this.history);
       await guard();
-      if ((await this.pending())?.digest !== request.digest) throw changed();
-      await unlink(this.gate); await strictSyncDirectory(this.directory);
+      if ((await this.pending(request.attempt))?.digest !== request.digest) throw changed();
+      await unlink(record!.file); await strictSyncDirectory(this.directory);
     } finally { await lock.close(); await unlink(lockPath); await strictSyncDirectory(this.directory); }
   }
 }

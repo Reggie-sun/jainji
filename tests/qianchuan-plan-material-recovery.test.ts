@@ -21,11 +21,11 @@ async function fixture() {
   const request = { product: target.product, advertiserId: target.advertiserId, adId: target.adId, attempt: detail.attempt, digest: detail.digest, confirmation: "MANUALLY_HANDLED_PLAN_DELETION" as const };
   return { root, directory, gate, pending, bytes, recovery, detail, request };
 }
-it("returns exact historical material IDs without connecting or changing an unresolved intent", async () => {
+it("retains historical IDs when a new connection cannot provide safe isolation", async () => {
   const f = await fixture(), connect = vi.fn();
   const result = await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {});
   expect(result).toMatchObject({ state: "BLOCKED", pendingPlanDeletion: f.detail });
-  expect(connect).not.toHaveBeenCalled(); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+  expect(connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
 });
 it("keeps classified diagnostics bound to exact pending bytes without rewriting history", async () => {
   const f = await fixture(), diagnostics = new QianchuanPlanMaterialDiagnostics(f.directory, target);
@@ -47,7 +47,7 @@ it("does not persist arbitrary exception text and treats damaged diagnostics as 
   expect(await diagnostics.message(f.detail)).toContain("无法核对");
   const connect = vi.fn();
   expect(await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {})).toMatchObject({ state: "BLOCKED", pendingPlanDeletion: f.detail });
-  expect(connect).not.toHaveBeenCalled(); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+  expect(connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
 });
 it("keeps the unknown intent when diagnostic persistence fails", async () => {
   const f = await fixture(); await unlink(f.gate);
@@ -59,7 +59,7 @@ it("keeps the unknown intent when diagnostic persistence fails", async () => {
   expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0, pendingPlanDeletion: { ids: ["7001"] }, message: expect.stringContaining("失败诊断未能完整保存") });
   const bytes = await readFile(f.gate);
   expect((await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {})).state).toBe("BLOCKED");
-  expect(connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate)).toEqual(bytes);
+  expect(connect).toHaveBeenCalledTimes(2); expect(page.deleteBatch).toHaveBeenCalledTimes(1); expect(await readFile(f.gate)).toEqual(bytes);
 });
 it("requires explicit confirmation bound to account, plan, attempt and exact bytes", async () => {
   const f = await fixture();
@@ -79,7 +79,7 @@ it("archives original bytes, preserves UNKNOWN and fences every historical ID ac
 });
 it("blocks automatic replay of a historical ID after manual disposition", async () => {
   const f = await fixture(); await f.recovery.resolve(f.request, async () => {});
-  const page = { open: vi.fn(), filter: vi.fn(async () => ({ skippedEcological: false })), read: vi.fn(async () => ({ total: 1, ids: ["7001"] })), deleteBatch: vi.fn() };
+  const page = { open: vi.fn(), filter: vi.fn(async () => ({ skippedEcological: false })), excludeMaterialIds: vi.fn(), movePage: async () => false, read: vi.fn(async () => ({ total: 1, ids: ["7001"], auditPage: { offset: 0, limit: 100, ids: ["7001"] } })), deleteBatch: vi.fn() };
   const owner = new QianchuanPlanMaterials(f.root, async () => ({ page, close: async () => {} }));
   expect(await owner.clear(target, async () => {})).toMatchObject({ state: "BLOCKED", message: expect.stringContaining("历史未知") });
   expect(page.deleteBatch).not.toHaveBeenCalled();
@@ -87,8 +87,8 @@ it("blocks automatic replay of a historical ID after manual disposition", async 
 it("allows a separately initiated cleanup of new IDs without changing the historical result", async () => {
   const f = await fixture(); await f.recovery.resolve(f.request, async () => {});
   let ids = ["8001"];
-  const page = { open: vi.fn(), filter: vi.fn(async () => ({ skippedEcological: false })), read: vi.fn(async () => ({ total: ids.length, ids })), deleteBatch: vi.fn(async (_snapshot, confirm) => { await confirm(); ids = []; }) };
-  expect(await new QianchuanPlanMaterials(f.root, async () => ({ page, close: async () => {} })).clear(target, async () => {})).toMatchObject({ state: "CLEARED", deletedCount: 1 });
+  const page = { open: vi.fn(), filter: vi.fn(async () => ({ skippedEcological: false })), excludeMaterialIds: vi.fn(), movePage: async () => false, read: vi.fn(async () => ({ total: ids.length, ids, auditPage: { offset: 0, limit: 100, ids: [...ids] } })), deleteBatch: vi.fn(async (_snapshot, confirm) => { await confirm(); ids = []; }) };
+  expect(await new QianchuanPlanMaterials(f.root, async () => ({ page, close: async () => {} })).clear(target, async () => {})).toMatchObject({ state: "PARTIAL", deletedCount: 1 });
   expect(await f.recovery.protectedIds()).toEqual(new Set(["7001", "7002"]));
 });
 it("rejects missing history evidence instead of authorizing a new deletion", async () => {
@@ -106,4 +106,58 @@ it("preserves the pending gate when cancelled and can finish an interrupted arch
   await expect(f.recovery.protectedIds()).rejects.toThrow();
   await f.recovery.resolve(f.request, async () => {});
   expect(await f.recovery.protectedIds()).toEqual(new Set(["7001", "7002"]));
+});
+
+it("isolates old unknown IDs and deletes other candidates without changing the old intent", async () => {
+  const f = await fixture(); let ids = ["7001", "7003"], excluded = new Set<string>();
+  const read = async () => ({ total: ids.length, ids: ids.filter(id => !excluded.has(id)), auditPage: { offset: 0, limit: 100, ids: [...ids] } });
+  const page = { open: vi.fn(), filter: async () => ({ skippedEcological: false }), read,
+    excludeMaterialIds: (values: ReadonlySet<string>) => { excluded = new Set(values); }, movePage: async () => false,
+    deleteBatch: vi.fn(async (before: Awaited<ReturnType<typeof read>>, confirm: () => Promise<void>) => {
+      expect(before.ids).toEqual(["7003"]); await confirm(); ids = ids.filter(id => !before.ids.includes(id));
+    }) };
+  const connect = vi.fn(async () => ({ page, close: async () => {} }));
+  const result = await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {});
+  expect(result).toMatchObject({ state: "PARTIAL", deletedCount: 1, pendingPlanDeletion: f.detail });
+  expect(page.deleteBatch).toHaveBeenCalledTimes(1); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+});
+
+it("preserves independent unknown attempts across restart and resolves only the explicitly chosen record", async () => {
+  const f = await fixture();
+  const page = { open: async () => {}, filter: async () => ({ skippedEcological: false }), excludeMaterialIds: vi.fn(), movePage: async () => false,
+    read: async () => ({ total: 1, ids: ["8001"], auditPage: { offset: 0, limit: 100, ids: ["8001"] } }),
+    deleteBatch: vi.fn(async (_before, confirm) => { await confirm(); throw new PlanMaterialDeletionError("RESULT_TIMEOUT"); }) };
+  const result = await new QianchuanPlanMaterials(f.root, async () => ({ page, close: async () => {} })).clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_15D");
+  expect(result).toMatchObject({ state: "BLOCKED", pendingPlanDeletion: { ids: ["8001"] } });
+  expect(page.deleteBatch).toHaveBeenCalledTimes(1);
+  const restarted = new QianchuanPlanMaterialRecovery(f.directory, target);
+  expect(await restarted.protectedIds()).toEqual(new Set(["7001", "7002", "8001"]));
+  expect(await restarted.pendingRecords()).toHaveLength(2);
+  const current = result.pendingPlanDeletion!;
+  await restarted.resolve({ ...f.request, attempt: current.attempt, digest: current.digest }, async () => {});
+  expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+  expect(await restarted.pendingRecords()).toEqual([f.detail]);
+  expect(await restarted.protectedIds()).toEqual(new Set(["7001", "7002", "8001"]));
+});
+
+it.each(["malformed", "wrong-name", "duplicate"])("rejects %s attempt records before connecting", async kind => {
+  const f = await fixture(), attempt = "22222222-2222-4222-8222-222222222222";
+  const file = f.recovery.attemptGate(kind === "duplicate" ? f.pending.attempt : attempt);
+  await writeFile(file, kind === "malformed" ? "{" : JSON.stringify({ ...f.pending, attempt: kind === "wrong-name" ? f.pending.attempt : kind === "duplicate" ? f.pending.attempt : attempt }), { mode: 0o600 });
+  const connect = vi.fn();
+  expect((await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {})).state).toBe("BLOCKED");
+  expect(connect).not.toHaveBeenCalled(); expect(await readFile(f.gate, "utf8")).toBe(f.bytes);
+});
+
+it("continues both independent rules while protecting all historical IDs", async () => {
+  const f = await fixture(), removed: string[] = [], modes: boolean[] = [];
+  const connect = vi.fn(async (_target, _signal, window) => {
+    modes.push(!!window); let ids = [window ? "8002" : "8001"];
+    const read = async () => ({ total: ids.length, ids, ...(window ? { zeroImpressions: { offset: 0, limit: 100, rows: ids.map(id => ({ id, impressions: 0, createdAt: "2025-01-01 00:00:00", eligible: true })) } } : { auditPage: { offset: 0, limit: 100, ids: [...ids] } }) });
+    return { page: { open: async () => {}, filter: async () => ({ skippedEcological: false }), excludeMaterialIds: (ids: ReadonlySet<string>) => expect(ids).toEqual(new Set(["7001", "7002"])), movePage: async () => false, read,
+      deleteBatch: async (before: Awaited<ReturnType<typeof read>>, confirm: () => Promise<void>) => { await confirm(); removed.push(...before.ids); ids = []; } }, close: async () => {} };
+  });
+  expect(await new QianchuanPlanMaterials(f.root, connect).clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "PARTIAL", deletedCount: 2 });
+  expect(modes).toEqual([false, true]); expect(removed).toEqual(["8001", "8002"]);
+  expect(await readFile(f.gate, "utf8")).toBe(f.bytes); expect(await f.recovery.pendingRecords()).toEqual([f.detail]);
 });

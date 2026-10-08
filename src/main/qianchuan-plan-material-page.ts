@@ -5,7 +5,7 @@ import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { parseZeroImpressionsRow, type ZeroImpressionsRow, type ZeroImpressionsWindow } from "./qianchuan-zero-impressions.js";
 import { PlanMaterialDeletionError } from "./qianchuan-plan-material-diagnostics.js";
 
-export interface PlanMaterialSnapshot { total: number; ids: string[]; zeroImpressions?: { offset: number; limit: number; rows: ZeroImpressionsRow[] }; }
+export interface PlanMaterialSnapshot { total: number; ids: string[]; auditPage?: { offset: number; limit: number; ids: string[] }; zeroImpressions?: { offset: number; limit: number; rows: ZeroImpressionsRow[] }; }
 export const PLAN_CLEANUP_MARKER = "jianjiCleanup=plan-materials";
 const drawerSelector = ".ovui-drawer--no-maskable .ad-drawer-body:visible";
 const listPath = "/ad/api/pmc/v1/uni-promotion/material/list-required";
@@ -16,6 +16,11 @@ export class QianchuanPlanMaterialPage {
   private document?: JSHandle<Document>;
   private response?: PlanMaterialSnapshot;
   private fault = false;
+  private excluded = new Set<string>();
+  excludeMaterialIds(ids: ReadonlySet<string>): void {
+    if (this.document) throw changed();
+    this.excluded = new Set(ids);
+  }
   private hundredRows = false;
   private responseLimit?: number;
   private statuses: PlanMaterialStatus[] = [];
@@ -68,7 +73,7 @@ export class QianchuanPlanMaterialPage {
       if (request.frame() !== this.page.mainFrame() || request.method() !== "POST" || url.origin !== "https://qianchuan.jinritemai.com" ||
         url.pathname !== listPath || url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== this.target.advertiserId ||
         body.DataSetKey !== "site_promotion_product_post_data_video" || !Number.isInteger(body.PageParams?.Limit) || body.PageParams.Limit < 1 || body.PageParams.Limit > 100 || this.hundredRows && body.PageParams.Limit !== 100 ||
-        !Number.isInteger(body.PageParams.Offset) || body.PageParams.Offset < 0 || body.PageParams.Offset > 20000 || body.PageParams.Offset % body.PageParams.Limit !== 0 || !this.zeroWindow && body.PageParams.Offset !== 0 ||
+        !Number.isInteger(body.PageParams.Offset) || body.PageParams.Offset < 0 || body.PageParams.Offset > 20000 || body.PageParams.Offset % body.PageParams.Limit !== 0 || !this.zeroWindow && !this.excluded.size && body.PageParams.Offset !== 0 ||
         body.Filters?.ConditionRelationshipType !== 1) return false;
       const expected: Record<string, string[]> = { query_type: ["all"], roi2_material_type_v3: ["1001"], marketing_goal: ["1"],
         ad_id: [this.target.adId], roi2_material_video_type: ["11"], roi2_material_status: ["1"], material_audit_status: ["2", "4"] };
@@ -108,7 +113,12 @@ export class QianchuanPlanMaterialPage {
       const rows = (stats.rows ?? []).map((row: unknown) => parseZeroImpressionsRow(row, this.zeroWindow!));
       const { Offset: offset, Limit: limit } = response.request().postDataJSON().PageParams;
       if (rows.length !== Math.min(limit, Math.max(0, value.total - offset)) || value.total > 0 && offset >= value.total) throw changed();
-      value = { total: value.total, ids: rows.filter((row: ZeroImpressionsRow) => row.eligible).map((row: ZeroImpressionsRow) => row.id), zeroImpressions: { offset, limit, rows } };
+      value = { total: value.total, ids: rows.filter((row: ZeroImpressionsRow) => row.eligible && !this.excluded.has(row.id)).map((row: ZeroImpressionsRow) => row.id), zeroImpressions: { offset, limit, rows } };
+    }
+    if (!this.zeroWindow && this.excluded.size) {
+      const { Offset: offset, Limit: limit } = response.request().postDataJSON().PageParams;
+      if (value.ids.length !== Math.min(limit, Math.max(0, value.total - offset)) || value.total > 0 && offset >= value.total) throw changed();
+      value = { ...value, auditPage: { offset, limit, ids: value.ids }, ids: value.ids.filter(id => !this.excluded.has(id)) };
     }
     await this.guard();
     if (revision === this.revision) { this.response = value; this.responseLimit = response.request().postDataJSON().PageParams.Limit; }
@@ -216,7 +226,11 @@ export class QianchuanPlanMaterialPage {
         const totals = await this.drawer().locator(".ovui-page-total:visible").allTextContents();
         const total = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].trim()) : null;
         if (response.total === 0 && !items.length && !totals.length && await this.drawer().locator(".oc-empty:visible").filter({ hasText: "暂无数据" }).count() === 1) return structuredClone(response);
-        if (total && Number(total[1]) === response.total && JSON.stringify(items.map(item => item.id)) === JSON.stringify(response.ids) &&
+        if (response.auditPage && response.total) {
+          const current = await this.drawer().locator(".ovui-page-turner__item--active:visible").allTextContents();
+          if (current.length !== 1 || Number(current[0]) !== response.auditPage.offset / response.auditPage.limit + 1) throw changed();
+        }
+        if (total && Number(total[1]) === response.total && JSON.stringify(items.map(item => item.id)) === JSON.stringify(response.auditPage?.ids ?? response.ids) &&
           items.every(item => this.statuses.some(status => matchesPlanMaterialStatus(item.status, status)))) return structuredClone(response);
       }
       await this.page.waitForTimeout(100);
@@ -244,7 +258,7 @@ export class QianchuanPlanMaterialPage {
         /^(?:0|[1-9]\d*|[1-9]\d{0,2}(?:,\d{3})+)$/.test(item.cells[countIndex] ?? "") && Number(item.cells[countIndex].replaceAll(",", "")) === data.rows[i].impressions);
   }
   async movePage(first = false): Promise<boolean> {
-    const before = await this.read(), data = before.zeroImpressions;
+    const before = await this.read(), data = before.zeroImpressions ?? (before.auditPage ? { ...before.auditPage, rows: before.auditPage.ids.map(id => ({ id })) } : undefined);
     if (!data) throw changed();
     if (first && !data.offset || !first && data.offset + data.rows.length >= before.total) return false;
     if (await this.drawer().locator('tbody input[type="checkbox"]:checked').count() || await this.page.locator(".ovui-modal:visible").count()) throw changed();
@@ -254,19 +268,19 @@ export class QianchuanPlanMaterialPage {
     const revision = this.revision; this.response = undefined;
     await button.click();
     const after = await this.read();
-    if (this.revision <= revision || after.total !== before.total || after.zeroImpressions?.offset !== (first ? 0 : data.offset + data.limit) || after.zeroImpressions.limit !== data.limit) throw changed();
+    if (this.revision <= revision || after.total !== before.total || (after.zeroImpressions ?? after.auditPage)?.offset !== (first ? 0 : data.offset + data.limit) || (after.zeroImpressions ?? after.auditPage)?.limit !== data.limit) throw changed();
     return true;
   }
   async deleteBatch(before: PlanMaterialSnapshot, beforeConfirm: () => Promise<void>): Promise<void> {
     await this.guard();
-    if (!before.ids.length || JSON.stringify(await this.read()) !== JSON.stringify(before) || await this.page.locator(".ovui-modal:visible").count()) throw changed();
+    if (!before.ids.length || before.ids.some(id => this.excluded.has(id)) || JSON.stringify(await this.read()) !== JSON.stringify(before) || await this.page.locator(".ovui-modal:visible").count()) throw changed();
     const selected = this.drawer().locator('.ovui-table__body-wrapper tbody input[type="checkbox"]:checked');
     if (await selected.count()) throw changed();
     const header = this.drawer().locator('.ovui-table__head-wrapper thead input[type="checkbox"]');
     if (await header.count() !== 1 || !await header.isEnabled()) throw changed();
-    if (before.zeroImpressions) {
+    if (before.zeroImpressions || before.auditPage) {
       const rows = this.drawer().locator('.ovui-table__body-wrapper tbody tr').filter({ has: this.page.locator('input[type="checkbox"]') });
-      for (const [index, row] of before.zeroImpressions.rows.entries()) if (before.ids.includes(row.id)) {
+      for (const [index, row] of (before.zeroImpressions?.rows ?? before.auditPage!.ids.map(id => ({ id }))).entries()) if (before.ids.includes(row.id)) {
         await rows.nth(index).locator('input[type="checkbox"]').evaluate(node => (node as HTMLInputElement).click());
       }
     } else await header.evaluate(node => (node as HTMLInputElement).click());
@@ -300,15 +314,15 @@ export class QianchuanPlanMaterialPage {
           throw new PlanMaterialDeletionError("EXTRA_CONFIRMATION");
         }
       }
-      if (before.zeroImpressions && !dialogCount && this.revision > revision && this.response &&
+      if ((before.zeroImpressions || before.auditPage) && !dialogCount && this.revision > revision && this.response &&
         // An unchanged refresh is not final evidence: keep observing within the original deadline.
         JSON.stringify(this.response) !== JSON.stringify(before) &&
-        (before.total - this.response.total !== before.ids.length || !this.response.zeroImpressions || this.response.zeroImpressions.rows.some(row => before.ids.includes(row.id)))) {
+        (before.total - this.response.total !== before.ids.length || !(this.response.zeroImpressions || this.response.auditPage) || (this.response.zeroImpressions?.rows.map(row => row.id) ?? this.response.auditPage!.ids).some(id => before.ids.includes(id)))) {
         throw new PlanMaterialDeletionError("RESULT_MISMATCH");
       }
       if (!dialogCount && this.revision > revision && this.response && this.response.total < before.total &&
-        (!before.zeroImpressions || before.total - this.response.total === before.ids.length) &&
-        !(this.response.zeroImpressions?.rows.map(row => row.id) ?? this.response.ids).some(id => before.ids.includes(id))) {
+        (!(before.zeroImpressions || before.auditPage) || before.total - this.response.total === before.ids.length) &&
+        !(this.response.zeroImpressions?.rows.map(row => row.id) ?? this.response.auditPage?.ids ?? this.response.ids).some(id => before.ids.includes(id))) {
         await this.read(); return;
       }
       await this.page.waitForTimeout(100);

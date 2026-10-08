@@ -14,7 +14,8 @@ export async function clearQianchuanAccountPlans(target: FrozenQianchuanAccount,
   const result: QianchuanLibraryResult = { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 0, message: "" };
   const messages: string[] = [];
   const collect = (next: QianchuanLibraryResult, label?: string) => {
-    result.deletedCount += next.deletedCount; result.state = next.state;
+    result.deletedCount += next.deletedCount;
+    result.state = next.state === "BLOCKED" || result.state === "BLOCKED" ? "BLOCKED" : next.state === "PARTIAL" || result.state === "PARTIAL" ? "PARTIAL" : "CLEARED";
     if (next.pendingPlanDeletion) result.pendingPlanDeletion = next.pendingPlanDeletion;
     messages.push(`${label ? `${label}：` : ""}${next.message}`);
   };
@@ -35,6 +36,7 @@ export async function clearQianchuanAccountPlans(target: FrozenQianchuanAccount,
         if (result.state === "BLOCKED") break;
       }
     }
+    if (result.state === "PARTIAL" && confirmation !== "DELETE_PLAN_MATERIALS") messages.push("计划含历史待核查素材，本次视频库清空未执行。");
     if (result.state === "CLEARED" && confirmation !== "DELETE_PLAN_MATERIALS") {
       await guard(); collect(await ports.clearLibrary(target, guard, signal));
     }

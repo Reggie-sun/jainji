@@ -12,7 +12,7 @@ export function QianchuanCleanupRecovery({ result, disabled, onResolve }: {
     <p>上次删除结果仍然未知。请在千川对应账号的该计划内，按以下 ID 核查并处理；当前筛选列表没有显示素材，不能证明删除成功。</p>
     {pending.zeroWindow && <p>上次统计窗口：{pending.zeroWindow.startTime} 至 {pending.zeroWindow.endTime}</p>}
     <textarea aria-label="待核查素材 ID" readOnly rows={5} value={pending.ids.join("\n")} style={{ width: "100%", boxSizing: "border-box" }} />
-    <p>结束旧记录只解除本地待核查状态，不执行删除。原始记录与未知结果保留；这些 ID 今后仍禁止自动重复删除。新清理需要重新发起。</p>
+    <p>历史待核查ID已隔离，不妨碍其他符合规则的计划素材清理。结束旧记录只解除该记录的待核查状态，不执行删除。原始记录与未知结果保留；这些 ID 今后仍禁止自动重复删除。新清理需要重新发起。</p>
     <label><input type="checkbox" disabled={disabled || confirming} checked={checked} onChange={event => setChecked(event.target.checked)} />我已在千川核查并处理以上全部素材</label>
     {!confirming ? <button type="button" className="button secondary" disabled={disabled || !checked} onClick={() => setConfirming(true)}>结束这次旧清理记录</button> : <div role="group" aria-label="确认结束旧清理记录">
       <p>确认结束账户 {result.advertiserId}、计划 {pending.adId} 的这次记录？此操作不代表平台删除成功。</p>
