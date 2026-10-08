@@ -63,6 +63,53 @@ export function cleanupPlanFixtureScript(recovery = false) {
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); }, 30000);
 afterAll(async () => { await browser?.close(); });
+it("keeps account editing and scheduled targets independent of live Chrome display names", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.route("http://127.0.0.1:3000/account-names", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/account-names");
+    const script = buildSync({ stdin: { contents: `
+      import React, {useState} from "react";
+      import {createRoot} from "react-dom/client";
+      import {QianchuanAccountSettings} from "./src/renderer/QianchuanAccountSettings";
+      window.saved = []; window.controlled = []; window.scheduled = [];
+      const settings = {enabled:true,time:"00:30",accounts:[{product:"眼贴",expectedAdvertiserId:"1000"}],confirmation:"DELETE_ALL_VIDEOS"};
+      window.jianji = {listQianchuanPlans:async()=>[],cancelQianchuanPlans:async()=>{},
+        onQianchuanVideoLibrarySchedule:()=>()=>{},getQianchuanVideoLibrarySchedule:async()=>({settings,timeZone:"Asia/Hong_Kong"}),
+        saveQianchuanVideoLibrarySchedule:async value=>{window.scheduled.push(value);return {settings:value,timeZone:"Asia/Hong_Kong"}}};
+      function Fixture(){const [accounts,setAccounts]=useState([
+        {product:"眼贴",productName:"旧产品",browserProfileName:"相同 Chrome 名称",advertiserId:"1000",adId:"9001",available:true},
+        {product:"肥皂",productName:"另一个产品",browserProfileName:"相同 Chrome 名称",advertiserId:"1001",adId:"9002",available:true}]);
+        window.renameAllProfiles=()=>setAccounts(current=>current.map(account=>({...account,browserProfileName:"改名后的 Chrome"})));
+        return <QianchuanAccountSettings accounts={accounts} busy={false}
+          onSave={async value=>{window.saved.push(value);return true}} onOpenBrowser={async()=>true}
+          onControlBrowser={async value=>{window.controlled.push(value);return true}}/>;}
+      createRoot(document.getElementById("root")).render(<Fixture/>);
+    `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
+    await page.addScriptTag({content:script});
+    await page.getByRole("button", {name:/相同 Chrome 名称.*账户 1000.*已设置/}).click();
+    expect(await page.getByLabel("产品名称",{exact:true}).inputValue()).toBe("旧产品");
+    await page.getByLabel("产品名称",{exact:true}).fill("手填新产品");
+    await page.evaluate(()=>(window as any).renameAllProfiles());
+    await page.getByRole("heading",{name:"改名后的 Chrome · 账号设置",exact:true}).waitFor();
+    expect(await page.getByLabel("产品名称",{exact:true}).inputValue()).toBe("手填新产品");
+    expect(await page.getByLabel("千川计划链接",{exact:true}).inputValue()).toContain("aavid=1000&adId=9001");
+    await page.getByRole("button",{name:"关闭账号浏览器",exact:true}).click();
+    expect(await page.getByRole("group",{name:"确认账号浏览器操作"}).textContent()).toContain("改名后的 Chrome（账户 1000）");
+    await page.getByRole("button",{name:"取消浏览器操作",exact:true}).click();
+    await page.getByText("运行条件与已绑定账号",{exact:true}).click();
+    expect(await page.locator(".qianchuan-cleanup-requirements").textContent()).toContain("改名后的 Chrome");
+    await page.getByText("修改定时设置",{exact:true}).click();
+    expect(await page.locator(".qianchuan-cleanup-schedule-editor").textContent()).toContain("改名后的 Chrome（账户 1000）");
+    await page.getByRole("button",{name:"保存定时设置",exact:true}).click();
+    await page.waitForFunction(()=>(window as any).scheduled.length===1);
+    expect(await page.evaluate(()=>(window as any).scheduled[0].accounts)).toEqual([{product:"眼贴",expectedAdvertiserId:"1000"},{product:"肥皂",expectedAdvertiserId:"1001"}]);
+    await page.getByRole("button",{name:"保存账号",exact:true}).click();
+    await page.waitForFunction(()=>(window as any).saved.length===1);
+    expect(await page.evaluate(()=>(window as any).saved[0])).toEqual({product:"眼贴",productName:"手填新产品",planUrl:"https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=9001"});
+    expect(await page.evaluate(()=>(window as any).controlled)).toEqual([]);
+  } finally {await page.close();}
+});
 it("shows pending IDs and requires manual handling plus a second confirmation without automatically retrying", async () => {
   const page = await browser.newPage();
   try {

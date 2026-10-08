@@ -11,7 +11,7 @@
 .douyin-upload-panel .qianchuan-account-settings{margin-top:16px}
 .douyin-upload-panel .qianchuan-account-settings p>small{margin-left:8px;color:var(--ink-3);font-size:12px}
 .douyin-upload-panel .qianchuan-account-products{display:flex;flex-wrap:wrap;gap:8px}
-.douyin-upload-panel .qianchuan-account-products button{display:flex;align-items:center;gap:10px}
+.douyin-upload-panel .qianchuan-account-products button{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
 .douyin-upload-panel .qianchuan-account-products button small{font-size:11px;color:var(--ink-3)}
 .douyin-upload-panel .qianchuan-account-products button[aria-pressed=true]{border-color:var(--seal)}
 .douyin-upload-panel .qianchuan-account-editor{max-width:760px;border:1px solid var(--line);border-radius:5px;padding:16px;margin-top:12px}

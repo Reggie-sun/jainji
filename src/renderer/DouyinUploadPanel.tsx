@@ -5,7 +5,8 @@ import { QianchuanUploadConfigSchema, type DouyinUploadStatus, type QianchuanUpl
 import "./douyin-upload.css";
 import { QianchuanAccountSettings } from "./QianchuanAccountSettings";
 import { qianchuanUploadLabels as labels } from "./qianchuan-upload-status";
-import { qianchuanProductName } from "../shared/qianchuan-account";
+import { qianchuanAccountName } from "../shared/qianchuan-account";
+import { qianchuanTargetName } from "./qianchuan-account-display";
 const processingStates: QianchuanUploadResult["state"][] = ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"];
 const defaultConfig = QianchuanUploadConfigSchema.parse({});
 export function DouyinUploadPanel({ projectId, status, onState }: { projectId: string; status?: DouyinUploadStatus; onState(state: DesktopState): void; }) {
@@ -50,7 +51,7 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
           <button className="button secondary compact" type="button" disabled={busy} onClick={() => void perform(() => window.jianji.selectQianchuanAccountConfig())}>导入已有账号配置</button>
           <button className="button secondary compact" type="button" disabled={busy || !status?.configSelected} onClick={() => void perform(() => window.jianji.refreshQianchuanAccounts())}>刷新账号摘要</button>
         </div>
-        {status?.accounts.map(account => <p key={account.product}>{qianchuanProductName(account.product, status.accounts)} · {account.available ? `账户 ${account.advertiserId} / 计划 ${account.adId}` : "缺少可用配置"}</p>)}
+        {status?.accounts.map(account => <p key={account.product}>{qianchuanAccountName(account)} · {account.available ? `账户 ${account.advertiserId} / 计划 ${account.adId}` : "缺少可用配置"}</p>)}
         <fieldset disabled={busy}><legend>操作时限（毫秒）</legend>{(Object.keys(config.timeouts) as (keyof typeof config.timeouts)[]).map(field => <label key={field}>{({ connect: "连接", navigation: "页面加载", fileInput: "文件选择", processing: "平台处理", action: "页面操作", confirmation: "只读核查" })[field]}<input type="number" min={1} value={config.timeouts[field]} onChange={event => setConfig(current => ({ ...current, timeouts: { ...current.timeouts, [field]: event.target.valueAsNumber } }))} /></label>)}</fieldset>
         <label><input type="checkbox" checked={config.captureFailureDiagnostics} disabled={busy} onChange={event => setConfig(current => ({ ...current, captureFailureDiagnostics: event.target.checked }))} />保存有限本机诊断</label>
       </details>
@@ -63,15 +64,15 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
     {feedback && <p role="status">{feedback}</p>}
     {!!tasks.length && <p role="status" aria-label="上传进度">已上传 {uploaded} / {tasks.length} 条 · 待上传 {pending} 条 · 处理中 {processing} 条 · 需处理 {tasks.length - uploaded - pending - processing} 条</p>}
     {status?.batches?.map(batch => <div key={batch.pageBatchId} className="brief-card">
-      <p>本批 {batch.expectedCount} 条 · 账户 {batch.advertiserId} / 计划 {batch.adId} · READY {batch.readyCount} / UNKNOWN {batch.unknownCount} / 未选 {batch.notSelectedCount}</p>
+      <p>本批 {batch.expectedCount} 条 · {qianchuanTargetName(batch.advertiserId, status.accounts)} · 账户 {batch.advertiserId} / 计划 {batch.adId} · READY {batch.readyCount} / UNKNOWN {batch.unknownCount} / 未选 {batch.notSelectedCount}</p>
       <button type="button" disabled={busy || !batch.canClose} onClick={() => setClosing(batch.pageBatchId)}>结束本批本地上传</button>
-      {closing === batch.pageBatchId && <QianchuanClosureConfirmation batch={batch} busy={busy}
+      {closing === batch.pageBatchId && <QianchuanClosureConfirmation batch={batch} accounts={status.accounts} busy={busy}
         onConfirm={() => void perform(() => window.jianji.closeDouyinUploadBatch(projectId, batch.taskIds[0]!)).then(done => { if (done) setClosing(undefined); })}
         onCancel={() => setClosing(undefined)} />}
     </div>)}
     {!!uploaded && <small>已保存上传记录；同一视频在本账号、本计划下不会重复上传，重启后仍有效。</small>}
     <div aria-label="当前项目的千川上传任务">{tasks.map(task => <article key={task.upload_task_id} className="card brief-card">
-      <h3>{task.file_name}</h3><p>{qianchuanProductName(task.accountProduct, status?.accounts ?? [])} · 账户 {task.advertiserId} / 计划 {task.adId}</p><p>{labels[task.state]}</p>
+      <h3>{task.file_name}</h3><p>{qianchuanTargetName(task.advertiserId, status?.accounts ?? [], task.accountProduct)} · 账户 {task.advertiserId} / 计划 {task.adId}</p><p>{labels[task.state]}</p>
       {task.upload_outcome === "READY" && <small>上传记录已保存 · 本计划不会重复上传</small>}
       {currentPlan(task) && <p>本任务保留原计划 {task.adId}；当前保存计划为 {currentPlan(task)}。{task.upload_outcome === "NOT_SELECTED" ? "整批从未选过文件时，可明确改传。" : "已有文件选择记录，不能改传或重传。"}</p>}
       {task.upload_outcome === "MAY_HAVE_UPLOADED" && !processingStates.includes(task.state) && <p>已保存防重传记录；结果未知，禁止重新上传，请核查原页面。</p>}
@@ -86,7 +87,7 @@ export function DouyinUploadPanel({ projectId, status, onState }: { projectId: s
         {deleting === task.upload_task_id && <div role="group" aria-label="确认删除本批上传任务"><p>永久删除这一整批上传任务，不能恢复。本地成片保留；结果未知文件的防重传记录仍有效。</p><button type="button" disabled={busy} onClick={() => void perform(() => window.jianji.discardDouyinUploadBatch(projectId, task.upload_task_id)).then(done => { if (done) setDeleting(undefined); })}>确认删除整批</button><button type="button" disabled={busy} onClick={() => setDeleting(undefined)}>保留任务</button></div>}
       </>}
     </article>)}{!tasks.length && <p>当前项目没有千川上传任务。</p>}</div>
-    <QianchuanUploadHistory batches={status?.closedBatches} />
+    <QianchuanUploadHistory batches={status?.closedBatches} accounts={status?.accounts} />
     {!!status?.legacyTasks.length && <details><summary>旧创作者中心记录（只读）</summary>{status.legacyTasks.map(task => <p key={task.upload_task_id}>{task.file_name} · {task.state} · {task.publish_outcome}</p>)}</details>}
   </section>;
 }

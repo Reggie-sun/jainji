@@ -4,7 +4,7 @@ import { SourceStickerKnowledgeDetails } from "./SourceStickerKnowledgeDetails";
 import { Heading, Icon } from "./ui";
 import { qianchuanUploadLabels } from "./qianchuan-upload-status";
 import { QianchuanUploadHistory } from "./QianchuanUploadHistory";
-import { qianchuanProductName } from "../shared/qianchuan-account";
+import { qianchuanTargetName } from "./qianchuan-account-display";
 
 const labels: Record<string, string> = { queued: "等待导出", validating: "检查素材", running: "正在渲染", verifying: "校验成片", cancelling: "正在停止", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
@@ -56,6 +56,7 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
     + unqueued.filter(item => item.status === "failed" || item.status === "cancelled").length;
   const total = job.actualCount || job.requestedCount;
   const uploads = detail.upload?.tasks ?? [];
+  const uploadAccountIds = [...new Set([...uploads, ...(detail.upload?.closedBatches ?? [])].map(target => target.advertiserId).filter(Boolean))];
   const processing = uploads.filter(task => ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state));
   const uploaded = uploads.filter(task => task.upload_outcome === "READY").length;
   const pending = uploads.filter(task => task.state === "PENDING").length;
@@ -64,13 +65,13 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
     <div className="result-stats"><div><span>本批制作</span><strong>{total}<small>条</small></strong></div><div><span>正在处理</span><strong>{Math.max(0, tasks.filter(task => !terminal.has(task.status)).length + unqueued.filter(item => !["failed", "cancelled"].includes(item.status)).length)}</strong></div><div><span>已完成</span><strong className="green-text">{completed}</strong></div><div><span>需要处理</span><strong className={failed ? "red-text" : ""}>{failed}</strong></div></div>
     {job.error && <p className="notice error">{job.error}</p>}
     {job.accountProduct && <section className="card brief-card" aria-label="本项千川上传">
-      <div className="card-header"><h2>千川上传 · {qianchuanProductName(job.accountProduct, detail.upload?.accounts ?? [])}</h2><span>导出与上传进度分别记录</span></div>
+      <div className="card-header"><h2>千川上传 · {uploadAccountIds.length ? uploadAccountIds.map(id => `${qianchuanTargetName(id, detail.upload?.accounts ?? [], job.accountProduct)}（账户 ${id}）`).join("、") : "等待账号任务"}</h2><span>导出与上传进度分别记录</span></div>
       <p role="status" aria-label="本项上传进度">已上传 {uploaded} / {total} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条 · 需处理 {uploads.length - uploaded - pending - processing.length - unknown} 条 · 停在确定前</p>
       <small>上传记录会保存，同账号同计划下不重复上传。请保持任务 Chrome 页面打开，检查后自行确认。</small>
       {detail.upload?.message && <p>{detail.upload.message}</p>}
       {!!unknown && <p className="notice error" role="alert">{unknown} 条上传结果未知，需核查原 Chrome 上传页面；这些文件禁止重新上传。尚未选文件的成片仍保留在队列中。</p>}
       {detail.upload?.tasks.map(task => <div className="result-row" key={task.upload_task_id}>
-        <div className="result-info"><strong>{task.file_name}</strong><p>{qianchuanUploadLabels[task.state]} · 账户 {task.advertiserId} / 计划 {task.adId}</p>
+        <div className="result-info"><strong>{task.file_name}</strong><p>{qianchuanUploadLabels[task.state]} · {qianchuanTargetName(task.advertiserId, detail.upload?.accounts ?? [], task.accountProduct)} · 账户 {task.advertiserId} / 计划 {task.adId}</p>
           {task.failure && <small className="batch-error">{task.failure.message} {task.failure.next_action}</small>}
           {task.upload_outcome === "READY" && <small>上传记录已保存 · 待在 Chrome 确认</small>}
           {task.upload_outcome === "MAY_HAVE_UPLOADED" && <small>结果未知，禁止重新上传，请核查原页面。</small>}
@@ -78,7 +79,7 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
         {onResumeUpload && !detail.upload?.historical && !task.duplicate_of && ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN", "CANCELLED"].includes(task.state) &&
           <button type="button" className="button secondary compact" disabled={resuming || processing.length > 0 || (unknown > 0 && task.upload_outcome === "NOT_SELECTED")} onClick={() => onResumeUpload(task.upload_task_id)}>{task.upload_outcome === "MAY_HAVE_UPLOADED" ? "核查原上传页" : "安全继续"}</button>}
       </div>)}
-      <QianchuanUploadHistory batches={detail.upload?.closedBatches} />
+      <QianchuanUploadHistory batches={detail.upload?.closedBatches} accounts={detail.upload?.accounts} />
     </section>}
     <section className="card result-list" aria-label={`${job.name}作品与任务`}>
       <div className="card-header"><h2>作品与任务</h2><span>{completed} / {total} 条完成</span></div>
