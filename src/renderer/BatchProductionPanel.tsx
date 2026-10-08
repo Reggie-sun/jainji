@@ -6,7 +6,7 @@ import { PRODUCT_PRICE_MAX_LENGTH, PRODUCT_PRICE_HELP, RequiredProductPriceSchem
 import { Heading, Icon } from "./ui";
 import { BatchProductionDetails } from "./BatchProductionDetails";
 import { resolveBatchUploadAccount } from "../shared/batch-upload";
-import type { QianchuanProduct } from "../shared/qianchuan-account";
+import { qianchuanAccountName, type QianchuanProduct } from "../shared/qianchuan-account";
 import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { QianchuanPlanSelect } from "./QianchuanPlanSelect";
 import "./batch-production.css";
@@ -170,7 +170,7 @@ export function BatchProductionPanel({ state, visible, onState }: { state: Deskt
                 <label className="batch-upload-toggle"><span>千川上传</span><span><input type="checkbox" aria-label={`${row.name}开启千川上传`} checked={row.uploadEnabled} disabled={busy || !state.douyinUpload?.config.enabled} onChange={event => update(row.recentProjectId, { uploadEnabled: event.target.checked })} /><span>{!state.douyinUpload?.config.enabled ? "全局已关闭" : row.uploadEnabled ? "自动上传" : "不上传"}</span></span></label>
                 <select aria-label={`${row.name}上传账号`} value={uploadAccount.error ? "" : uploadAccount.accountProduct ?? ""} disabled={busy || !bindingReady} onChange={event => void selectAccount(row, event.target.value as QianchuanProduct)}>
                   <option value="" disabled>请选择上传账号</option>
-                  {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{account.productName ?? account.product} · {account.advertiserId || "未配置"}{!account.available && "（不可用）"}</option>)}
+                  {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{qianchuanAccountName(account)} · {account.advertiserId || "未配置"}{!account.available && "（不可用）"}</option>)}
                 </select>
                 {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })} />}
                 {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}

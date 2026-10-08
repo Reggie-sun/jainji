@@ -7,6 +7,7 @@ import { discoverQianchuanBrowser, discoverQianchuanProfile, runningChromeBrowse
 import { QianchuanBrowserBindings, verifyOriginalProfile, type QianchuanBrowserBinding } from "./qianchuan-browser-bindings.js";
 import { secureUploadDirectory } from "./douyin-upload-store.js";
 import { shutdownAccountChrome } from "./qianchuan-browser-process.js";
+import { readQianchuanProfileName } from "./qianchuan-profile-name.js";
 
 const browserUnavailable = "账号浏览器未能启动。请安装 Google Chrome，并检查是否已有异常的账号窗口；不要删除登录目录。";
 const metadataUnavailable = "账号浏览器连接元数据无效，请核查原窗口和目录安全性；不会另开登录目录。";
@@ -48,6 +49,15 @@ export class QianchuanBrowserManager {
     ready?: typeof browserReady;
     shutdown?: typeof shutdownAccountChrome;
   } = {}) { this.bindings = new QianchuanBrowserBindings(root); }
+
+  /** Display-only lookup of an already bound profile; no discovery or browser lifecycle. */
+  async profileName(advertiserId: string): Promise<string | undefined> {
+    try {
+      const managed = this.profile(advertiserId);
+      const binding = await this.bindings.get(advertiserId);
+      return await readQianchuanProfileName(binding ?? { advertiserId, profile: managed, profileDirectory: "Default" });
+    } catch { return undefined; }
+  }
 
   private profile(advertiserId: string): string {
     if (!/^[1-9][0-9]{0,19}$/.test(advertiserId)) throw new Error("无效的千川账号。");

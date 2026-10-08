@@ -1,4 +1,4 @@
-import { qianchuanProductName, QIANCHUAN_PRODUCTS, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
+import { qianchuanAccountName, QIANCHUAN_PRODUCTS, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
 import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { QianchuanPlanSelect } from "./QianchuanPlanSelect";
 
@@ -7,7 +7,7 @@ export function DouyinUploadControls({ value, onChange, accounts = [], disabled 
   value?: UploadSelectionDraft; onChange(value?: UploadSelectionDraft): void;
   accounts?: QianchuanAccountSummary[]; disabled?: boolean; idPrefix?: string; compact?: boolean;
 }) {
-  const options = QIANCHUAN_PRODUCTS.map(product => { const account = accounts.find(item => item.product === product); return <option key={product} value={product} disabled={!account?.available}>{qianchuanProductName(product, accounts)}{account?.available ? "" : "（缺少可用配置）"}</option>; });
+  const options = QIANCHUAN_PRODUCTS.map(product => { const account = accounts.find(item => item.product === product); return <option key={product} value={product} disabled={!account?.available}>{account ? qianchuanAccountName(account) : product}{account?.available ? ` · ${account.advertiserId}` : "（缺少可用配置）"}</option>; });
   const planSelect = value?.accountProduct && <QianchuanPlanSelect account={accounts.find(account => account.product === value.accountProduct)} value={value.plan} disabled={disabled} idPrefix={idPrefix}
     onChange={plan => onChange({ enabled: true, accountProduct: value.accountProduct, ...(plan ? { plan } : {}) })} />;
   if (compact) return <><label htmlFor={`${idPrefix}-product`}>千川上传

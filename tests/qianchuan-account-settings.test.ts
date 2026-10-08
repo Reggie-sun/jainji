@@ -1,4 +1,4 @@
-import { chmod, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -6,6 +6,40 @@ import * as persistence from "../src/main/douyin-upload-store";
 import { parseQianchuanPlanUrl, QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
+import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+
+it("refreshes bound Chrome profile labels without changing config bytes, frozen identities or template bindings", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const root = path.join(f.root, "app"), profile = path.join(f.root, "chrome");
+  await mkdir(path.join(profile, "Profile 9"), { recursive: true, mode: 0o700 });
+  const old = await f.settings.preflight("蝴蝶贴");
+  const binding = { recentProjectId: crypto.randomUUID(), projectId: crypto.randomUUID(), accountProduct: old.product, advertiserId: old.advertiserId };
+  await f.settings.saveTemplateAccount(binding);
+  await new QianchuanBrowserBindings(root).save({ advertiserId: old.advertiserId, profile, profileDirectory: "Profile 9" });
+  const file = path.join(profile, "Local State");
+  const writeName = (name: unknown) => writeFile(file, JSON.stringify({ profile: { info_cache: { "Profile 9": { name }, Default: { name: "另一个账号" } } } }), { mode: 0o600 });
+  const bytes = await readFile(f.settings.file);
+  await writeName("旧 Chrome 名称");
+  expect((await new QianchuanAccountSettings(root).restore())[0]).toMatchObject({ browserProfileName: "旧 Chrome 名称" });
+  await writeName("予浅好物甄选");
+  expect((await f.settings.refresh())[0]).toMatchObject({ browserProfileName: "予浅好物甄选", advertiserId: old.advertiserId });
+  expect(await f.settings.freeze(old.product, old.configDigest)).toEqual(old);
+  expect(await f.settings.templateAccount(binding.recentProjectId, binding.projectId)).toEqual(binding);
+  expect(await readFile(f.settings.file)).toEqual(bytes);
+  expect(f.discover).not.toHaveBeenCalled();
+  for (const name of ["", "  ", "bad\nname", "x".repeat(257), 123]) {
+    await writeName(name);
+    expect((await f.settings.refresh())[0]).not.toHaveProperty("browserProfileName");
+  }
+  await writeFile(file, "broken JSON");
+  expect((await f.settings.refresh())[0]).not.toHaveProperty("browserProfileName");
+  await rm(file); await symlink(f.source, file);
+  expect((await f.settings.refresh())[0]).not.toHaveProperty("browserProfileName");
+  await rm(file); await writeFile(file, " ".repeat(1024 * 1024 + 1), { mode: 0o600 });
+  expect((await f.settings.refresh())[0]).not.toHaveProperty("browserProfileName");
+  await rm(file);
+  expect((await f.settings.refresh())[0]).toMatchObject({ available: true, advertiserId: old.advertiserId });
+});
 
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });

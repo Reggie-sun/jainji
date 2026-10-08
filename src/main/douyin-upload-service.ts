@@ -61,6 +61,7 @@ export class DouyinUploadService {
   private cancelling = 0;
   private initializationFailure?: string;
   private summaries: QianchuanAccountSummary[] = [];
+  private refreshingProfileNames?: Promise<void>;
   private readonly eligible = new Set<string>();
   private readonly currentIntents = new Set<string>();
   private readonly cancelledIntents = new Set<string>();
@@ -263,6 +264,18 @@ export class DouyinUploadService {
     if (!selection.plan) return target;
     if (selection.plan.advertiserId !== target.advertiserId) throw new Error("所选计划不属于当前广告账户，请重新选择。");
     return Object.freeze({ ...target, adId: selection.plan.adId });
+  }
+  /** Focus refresh reads local display metadata only, without loading plans or touching tasks. */
+  refreshAccountNames(): Promise<void> {
+    if (this.refreshingProfileNames) return this.refreshingProfileNames;
+    if (!(this.accounts instanceof QianchuanAccountSettings) || !this.summaries.length) return Promise.resolve();
+    const current = this.summaries;
+    const pending = this.accounts.withProfileNames(current).then(next => {
+      if (this.summaries !== current || JSON.stringify(next) === JSON.stringify(current)) return;
+      this.summaries = next; this.changed();
+    }).finally(() => { if (this.refreshingProfileNames === pending) this.refreshingProfileNames = undefined; });
+    this.refreshingProfileNames = pending;
+    return pending;
   }
   async refreshAccounts(): Promise<void> {
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后刷新账号。");

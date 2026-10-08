@@ -60,6 +60,7 @@ export function parseQianchuanPlanUrl(input: string): { advertiserId: string; ad
 export interface QianchuanAccountSummary {
   product: QianchuanProduct;
   productName?: string;
+  browserProfileName?: string;
   advertiserId: string;
   adId: string;
   available: boolean;
@@ -69,6 +70,11 @@ export interface QianchuanAccountSummary {
 /** Names are presentation only; the original product remains the stable account slot. */
 export function qianchuanProductName(product: QianchuanProduct, accounts: readonly { product: QianchuanProduct; productName?: string }[]): string {
   return accounts.find(account => account.product === product)?.productName ?? product;
+}
+
+/** Chrome labels never participate in product-name matching or persisted account identity. */
+export function qianchuanAccountName(account: QianchuanAccountSummary): string {
+  return account.browserProfileName ?? account.productName ?? account.product;
 }
 
 /** The diagnostic CLI and main process share this strict mapping owner. */

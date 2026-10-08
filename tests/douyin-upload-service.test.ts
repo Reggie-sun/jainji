@@ -410,6 +410,31 @@ describe("Qianchuan upload service", () => {
     const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, discover), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined, readPlans });
     await service.restoreConfig(); return { ...f, service };
   }
+  it("coalesces display refresh without browser work and discards stale names after an account edit", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    const before = f.service.status("unused").accounts, bytes = await readFile(path.join(f.store.root, "accounts", "mapping.json"));
+    const prepare = vi.spyOn(QianchuanBrowserManager.prototype, "prepareExisting"); prepare.mockClear();
+    let release!: () => void;
+    const projection = vi.spyOn(QianchuanAccountSettings.prototype, "withProfileNames").mockImplementationOnce(async accounts => {
+      await new Promise<void>(resolve => { release = resolve; });
+      return accounts.map(account => ({ ...account, browserProfileName: "新 Chrome 名称" }));
+    });
+    const first = f.service.refreshAccountNames(), second = f.service.refreshAccountNames();
+    expect(first).toBe(second); release(); await first;
+    expect(projection).toHaveBeenCalledTimes(1); expect(prepare).not.toHaveBeenCalled();
+    expect(f.service.status("unused").accounts).toEqual(before.map(account => ({ ...account, browserProfileName: "新 Chrome 名称" })));
+    expect(await readFile(path.join(f.store.root, "accounts", "mapping.json"))).toEqual(bytes);
+    projection.mockImplementationOnce(async accounts => {
+      await new Promise<void>(resolve => { release = resolve; });
+      return accounts.map(account => ({ ...account, browserProfileName: "迟到名称" }));
+    });
+    const stale = f.service.refreshAccountNames();
+    await f.service.saveAccount({ product: "蝴蝶贴", productName: "更新产品", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=9999" });
+    const saved = f.service.status("unused").accounts;
+    release(); await stale;
+    expect(f.service.status("unused").accounts).toEqual(saved);
+    expect(f.events).toEqual([]);
+  });
   it("resolves only the explicitly identified pending record under the existing mutex without opening Chrome or clearing", async () => {
     const discover = vi.fn(async () => "http://127.0.0.1:9225"), f = await nativeFixture(discover);
     await f.service.chooseConfig(f.configPath); discover.mockClear();

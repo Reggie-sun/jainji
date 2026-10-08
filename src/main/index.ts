@@ -668,6 +668,7 @@ async function createWindow(): Promise<void> {
     void requestQuit();
   });
   mainWindow.on("closed", () => { mainWindow = undefined; });
+  mainWindow.on("focus", () => { void douyinUpload?.refreshAccountNames().catch(() => undefined); });
 }
 
 let sourceKnowledge: SourceStickerKnowledgeStore | undefined;

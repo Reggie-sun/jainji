@@ -20,6 +20,12 @@ describe("automatic batch upload account binding", () => {
     expect(resolveBatchUploadAccount(" 蝴蝶贴 ", accounts)).toEqual({ accountProduct: "蝴蝶贴" });
     expect(resolveBatchUploadAccount("晚安油", accounts)).toEqual({ accountProduct: "眼贴" });
   });
+  it("keeps Chrome profile labels out of legacy template matching and preserves explicit identity", () => {
+    const renamed = accounts.map(account => ({ ...account, browserProfileName: "相同 Chrome 名称" }));
+    expect(resolveBatchUploadAccount("相同 Chrome 名称", renamed)).toHaveProperty("error");
+    expect(resolveBatchUploadAccount("晚安油", renamed)).toEqual({ accountProduct: "眼贴" });
+    expect(resolveBatchUploadAccount("任意模板", renamed, { accountProduct: "蝴蝶贴", advertiserId: "123" })).toEqual({ accountProduct: "蝴蝶贴" });
+  });
   it.each(["眼贴", "晚安", "晚安油模板", "", "  "])("never guesses or uses a renamed slot as fallback: %s", name => {
     expect(resolveBatchUploadAccount(name, accounts)).toEqual({ error: "请选择此模板的上传账号；也可以关闭本项上传。" });
   });
@@ -53,7 +59,10 @@ it("reads plans independently of template selection and cancels when upload is d
         cancelQianchuanPlans: async input => { window.cancellations.push(input); window.requests.find(r=>r.input.requestId===input.requestId)?.reject(new Error("已取消")); }
       };
       const state = {recentProjects:[],queue:{batches:[]},capabilities:{ready:true},douyinUpload:{config:{enabled:true},accounts}};
-      createRoot(document.getElementById("root")).render(<React.StrictMode><BatchProductionPanel state={state} visible={true} onState={()=>{}}/></React.StrictMode>);
+      const root = createRoot(document.getElementById("root"));
+      const render = () => root.render(<React.StrictMode><BatchProductionPanel state={state} visible={true} onState={()=>{}}/></React.StrictMode>);
+      window.renameProfiles = () => { state.douyinUpload = {...state.douyinUpload, accounts: accounts.map(account => ({...account, browserProfileName:"新 Chrome 名称"}))}; render(); };
+      render();
     `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
     await page.addScriptTag({ content: script });
     await page.getByRole("checkbox", { name: "选择模板 晚安油", exact: true }).waitFor();
@@ -82,6 +91,11 @@ it("reads plans independently of template selection and cancels when upload is d
     await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')?.value === "987", undefined, { timeout: 3000 });
     expect(await page.evaluate(() => (window as any).requests.length)).toBe(3);
     expect(await page.getByLabel("上传计划", { exact: true }).inputValue()).toBe("987");
+    await page.evaluate(() => (window as any).renameProfiles());
+    await page.waitForFunction(() => Array.from(document.querySelectorAll("option")).some(option => option.textContent === "新 Chrome 名称 · 789"));
+    expect(await page.getByLabel("上传计划", { exact: true }).inputValue()).toBe("987");
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(3);
+    expect(await page.getByRole("option", { name: "新 Chrome 名称 · 123", exact: true }).count()).toBe(2);
   } finally { await browser.close(); }
 }, 30000);
 
@@ -99,11 +113,13 @@ it.each([false, true])("keeps the chosen upload plan when returning to the selec
       window.jianji = { listQianchuanPlans: input => new Promise((resolve, reject) => window.requests.push({input,resolve,reject})), cancelQianchuanPlans: async () => undefined };
       const accounts = [{product:"眼贴",advertiserId:"789",adId:"987",available:true}, {product:"肥皂",advertiserId:"123",adId:"456",available:true}];
       function Fixture() {
+        const [names, setNames] = useState(accounts);
+        window.renameProfiles = () => setNames(accounts.map(account => ({...account, browserProfileName:"同名 Chrome"})));
         const [mounted, setMounted] = useState(true);
         const [value, setValue] = useState({enabled:true,accountProduct:"眼贴"});
         window.selection = value;
         return <><button onClick={() => setMounted(current => !current)}>离开或返回设置</button>
-          {mounted && <DouyinUploadControls accounts={accounts} value={value} onChange={setValue} compact={${compact}}/>}</>;
+          {mounted && <DouyinUploadControls accounts={names} value={value} onChange={setValue} compact={${compact}}/>}</>;
       }
       createRoot(document.getElementById("root")).render(<React.StrictMode><Fixture/></React.StrictMode>);
     `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
@@ -112,6 +128,10 @@ it.each([false, true])("keeps the chosen upload plan when returning to the selec
     await page.evaluate(() => (window as any).requests[0].resolve([{ advertiserId: "789", adId: "987", name: "已选计划" }]));
     await page.getByLabel("上传计划", { exact: true }).selectOption("987");
     const chosen = await page.evaluate(() => (window as any).selection.plan);
+    await page.evaluate(() => (window as any).renameProfiles());
+    await page.getByRole("option", { name: "同名 Chrome · 789", exact: true }).waitFor({ state: "attached" });
+    expect(await page.getByRole("option", { name: "同名 Chrome · 123", exact: true }).count()).toBe(1);
+    expect(await page.evaluate(() => (window as any).selection.plan)).toEqual(chosen);
     await page.getByRole("button", { name: "离开或返回设置" }).click();
     await page.getByRole("button", { name: "离开或返回设置" }).click();
     await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')?.value === "987", undefined, { timeout: 3000 });

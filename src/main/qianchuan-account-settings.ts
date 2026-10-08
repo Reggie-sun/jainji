@@ -93,7 +93,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private async save(accounts: QianchuanAccount[]): Promise<QianchuanAccountSummary[]> {
     const value = QianchuanAccountSettingsSchema.parse({ version: 1, accounts });
     await this.savePrivateJson(this.file, value);
-    try { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return summaries; }
+    try { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return this.withProfileNames(summaries); }
     catch (error) { this.blocked = true; throw error; }
   }
   private async savePrivateJson(file: string, value: unknown): Promise<void> {
@@ -147,7 +147,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     });
   }
   async restore(legacyPath?: string): Promise<QianchuanAccountSummary[]> {
-    if (await this.exists()) { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return summaries; }
+    if (await this.exists()) { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return this.withProfileNames(summaries); }
     if (legacyPath) {
       if (path.resolve(legacyPath) === this.file) { this.hasMapping = true; throw new Error("已保存的账号设置丢失，请人工核查。"); }
       return this.authorizeFile(legacyPath);
@@ -155,7 +155,13 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     return [];
   }
   private assertAvailable(): void { if (this.blocked) throw new Error("账号设置保存结果未知，请重启简辑核查。"); }
-  override async refresh(): Promise<QianchuanAccountSummary[]> { this.assertAvailable(); return super.refresh(); }
+  async withProfileNames(accounts: readonly QianchuanAccountSummary[]): Promise<QianchuanAccountSummary[]> {
+    return Promise.all(accounts.map(async ({ browserProfileName: _previous, ...account }) => {
+      const browserProfileName = await this.browsers.profileName(account.advertiserId);
+      return { ...account, ...(browserProfileName ? { browserProfileName } : {}) };
+    }));
+  }
+  override async refresh(): Promise<QianchuanAccountSummary[]> { this.assertAvailable(); return this.withProfileNames(await super.refresh()); }
   private withPreparedBrowser(target: FrozenQianchuanAccount): FrozenQianchuanAccount {
     const prepared = this.preparedBrowsers.get(target.product);
     return prepared?.advertiserId === target.advertiserId ? Object.freeze({ ...target, cdpEndpoint: prepared.endpoint }) : target;
