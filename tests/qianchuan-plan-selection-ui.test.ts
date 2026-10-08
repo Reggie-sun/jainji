@@ -53,6 +53,7 @@ export function cleanupPlanFixtureScript(recovery = false) {
     function Fixture() {
       const [accounts, setAccounts] = useState([{product:"眼贴",advertiserId:"1000",adId:"2000",available:true}]);
       window.changeCleanupAccount = advertiserId => setAccounts([{...accounts[0],advertiserId}]);
+      window.renameCleanupProfile = browserProfileName => setAccounts(current => current.map(account => ({...account,browserProfileName})));
       return <QianchuanVideoLibraryActions accounts={accounts} busy={false}/>;
     }
     createRoot(document.getElementById("root")).render(<Fixture/>);
@@ -264,6 +265,28 @@ describe("cleanup plan browser interaction", () => {
       await page.getByRole("button", { name: "确认删除三类计划素材（1 个账号）", exact: true }).click();
       await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
       expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1000", plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}`, productNames: ["叶黄素蒸汽眼罩"] })) }] });
+    } finally { await page.close(); }
+  });
+  it("refreshes Chrome labels without changing selected cleanup accounts or plans", async () => {
+    const page = await cleanupFixture();
+    try {
+      await respond(page);
+      await page.getByRole("checkbox", { name: /近15天零展示素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).uncheck();
+      await page.evaluate(() => (window as any).renameCleanupProfile("新的 Chrome 资料名"));
+      await page.getByRole("checkbox", { name: "新的 Chrome 资料名 账户 1000", exact: true }).waitFor();
+      expect(await page.getByRole("checkbox", { name: "新的 Chrome 资料名 账户 1000", exact: true }).isChecked()).toBe(true);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(false);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(true);
+      expect(await page.locator(".qianchuan-cleanup-plan > strong").textContent()).toBe("新的 Chrome 资料名 · 账户 1000");
+      expect(await page.evaluate(() => (window as any).catalogRequests.length)).toBe(1);
+      await page.getByRole("button", { name: "清理所选计划（1）", exact: true }).click();
+      await page.evaluate(() => (window as any).renameCleanupProfile("再次改名"));
+      await page.getByRole("group", { name: "确认素材清理" }).getByText("再次改名", { exact: true }).waitFor();
+      expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(0);
+      await page.getByRole("button", { name: "确认删除三类计划素材（1 个账号）", exact: true }).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0])).toEqual({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1000", plans: [{ advertiserId: "1000", adId: "9002", name: "计划 9002", productNames: ["叶黄素蒸汽眼罩"] }] }] });
     } finally { await page.close(); }
   });
   it("defaults to both independent rules, allows an empty choice and starts both rules once", async () => {

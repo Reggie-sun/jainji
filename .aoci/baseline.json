@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-08T15:38:14Z",
+  "updated_at": "2026-10-08T16:19:04Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "4b563b3cb896c1f07dc095fa48ae59561bab63743ce91c60d473fd154ac5b1e7",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "ad8cf82251bce218532cfc854b126251a93c9bfa08cbdaf2b8576dede6c607d2",
-      "size": 97731,
-      "normalized_sha256": "ad8cf82251bce218532cfc854b126251a93c9bfa08cbdaf2b8576dede6c607d2"
+      "sha256": "ae92edcdd2dd4c79b66d17e86ba907cd621c341379d9ff1aac59433bee241eca",
+      "size": 97802,
+      "normalized_sha256": "ae92edcdd2dd4c79b66d17e86ba907cd621c341379d9ff1aac59433bee241eca"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2103,9 +2103,9 @@
       "normalized_sha256": "48b03d24743e6c486b515f2009d99f9b02fa1cfc0085cad618c3bfcc3a2013b5"
     },
     "src/renderer/QianchuanVideoLibraryActions.tsx": {
-      "sha256": "42cdc101a50a16d7ca970457a44f888ae21fa486a5bc03e4c46b623dcc830d44",
-      "size": 11232,
-      "normalized_sha256": "42cdc101a50a16d7ca970457a44f888ae21fa486a5bc03e4c46b623dcc830d44"
+      "sha256": "1f67bdb82d5e4bfceb8bac498484c9298b0d579c2855f0b0dfe13bc962a1731f",
+      "size": 11451,
+      "normalized_sha256": "1f67bdb82d5e4bfceb8bac498484c9298b0d579c2855f0b0dfe13bc962a1731f"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
       "sha256": "978d8bd939862cdec7ccce7c019e0c9a33d3cd5cbc4a556fe0b337b54dd14572",

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { qianchuanProductName, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
+import { qianchuanAccountName, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
 import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecovery } from "../shared/qianchuan-video-library";
 import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { QianchuanCleanupResults } from "./QianchuanCleanupResults";
@@ -52,13 +52,13 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
       {!selected ? <>
         <div className="qianchuan-cleanup-label"><strong>选择账号</strong><button type="button" className="qianchuan-cleanup-link" disabled={disabled || !configured.length} onClick={() => setProducts(chosen.length === configured.length ? [] : undefined)}>{chosen.length === configured.length ? "取消全选" : "全选"}</button></div>
         <div className="qianchuan-cleanup-accounts">
-          {configured.map(account => <label key={account.product}><input type="checkbox" disabled={disabled} checked={chosen.some(item => item.product === account.product)} onChange={event => setProducts(event.target.checked ? [...chosen.map(item => item.product), account.product] : chosen.filter(item => item.product !== account.product).map(item => item.product))} />{qianchuanProductName(account.product, accounts)}</label>)}
+          {configured.map(account => <label key={account.product}><input type="checkbox" disabled={disabled} checked={chosen.some(item => item.product === account.product)} onChange={event => setProducts(event.target.checked ? [...chosen.map(item => item.product), account.product] : chosen.filter(item => item.product !== account.product).map(item => item.product))} /><span>{qianchuanAccountName(account)}<small>账户 {account.advertiserId}</small></span></label>)}
           {!configured.length && <p>请先配置千川账号。</p>}
         </div>
         {planMaterials && !!chosen.length && <div className="qianchuan-cleanup-plans">
           <strong>选择清理计划</strong><small>默认选择各账号的所有计划，可取消不需要清理的计划。</small>
           {chosen.map(account => <div className="qianchuan-cleanup-plan" key={`${account.product}:${account.advertiserId}`}>
-            <strong>{qianchuanProductName(account.product, accounts)} · 账户 {account.advertiserId}</strong>
+            <strong>{qianchuanAccountName(account)} · 账户 {account.advertiserId}</strong>
             <QianchuanCleanupPlanSelect account={account} value={chosenPlans(account)} disabled={disabled}
               onChange={next => setPlans(current => ({ ...current, [account.product]: next }))} />
           </div>)}
@@ -80,7 +80,10 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
         {selectedPlanMaterials && selected.planMaterialRule !== "ZERO_IMPRESSIONS_15D" && <p><strong>所选计划内三类素材</strong> · 审核不通过、生态审核不通过、审核通过可优化。可能影响这些素材的投放；其他计划不清理。</p>}
         {selectedPlanMaterials && selected.planMaterialRule && <p><strong>所选计划近15天零展示素材</strong> · 仅投放中、加入当前计划已满72小时且最近15个完整自然日整体展示次数为0的素材；其他计划不清理。该筛选不适用于三类审核规则或视频库。</p>}
         {selectedVideoLibrary && <p><strong>视频库全部视频</strong> · 清空整个账号素材库，不按计划筛选；已使用视频的在投创意和计划不受影响。</p>}
-        <ul>{selected.accounts.map(account => <li key={account.product}><strong>{qianchuanProductName(account.product, accounts)}</strong><span>账户 {account.expectedAdvertiserId}</span>{selectedPlanMaterials && account.plans?.map(plan => <span key={plan.adId}>{plan.name} · ID {plan.adId}</span>)}</li>)}</ul>
+        <ul>{selected.accounts.map(account => {
+          const currentAccount = accounts.find(item => item.product === account.product && item.advertiserId === account.expectedAdvertiserId);
+          return <li key={account.product}><strong>{currentAccount ? qianchuanAccountName(currentAccount) : account.product}</strong><span>账户 {account.expectedAdvertiserId}</span>{selectedPlanMaterials && account.plans?.map(plan => <span key={plan.adId}>{plan.name} · ID {plan.adId}</span>)}</li>;
+        })}</ul>
         {!selectionCurrent && <p role="alert">账号设置已变化，请取消并重新选择清理范围。</p>}
         <p>本地视频和原上传记录保留。</p>
         <div className="qianchuan-cleanup-buttons"><button className="button secondary" type="button" disabled={running} onClick={() => setSelected(undefined)}>取消</button><button className="button qianchuan-cleanup-danger" type="button" disabled={disabled || !selectionCurrent} onClick={() => void clear()}>{running ? "正在清理…" : `确认删除${selectedPlanMaterials && selectedVideoLibrary ? "两类内容" : selectedPlanMaterials ? "三类计划素材" : "全部库视频"}（${selected.accounts.length} 个账号）`}</button></div>
