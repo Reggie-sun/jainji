@@ -27,13 +27,13 @@ try {
         const sticker={id:'uploaded-'+'a'.repeat(64),source:'uploaded',label:'测试覆盖贴纸',url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=',animated:false};
         window.fixtureStickers=[];window.saves=[];
         window.jianji={decorationCatalog:async()=>({fonts:[],stickers:window.fixtureStickers}),libraryAsset:async()=>{throw Error('offline fixture');}};
-        function Fixture(){const [value,setValue]=React.useState();const [options,setOptions]=React.useState({mode:'agent',sticker:'none',fontFamily:'serif',productPrice:'手动内容'});const [revision,setRevision]=React.useState(0);const [disabled,setDisabled]=React.useState(false);const [dirty,setDirty]=React.useState(false);const [projectId,setProjectId]=React.useState('fixture');
-          window.fixture={value,mode:options.mode,dirty};window.setFixtureDisabled=setDisabled;
+        function Fixture(){const [value,setValue]=React.useState();const [options,setOptions]=React.useState({mode:'agent',sticker:'none',fontFamily:'serif',productPrice:'手动内容'});const [revision,setRevision]=React.useState(0);const [disabled,setDisabled]=React.useState(false);const [dirty,setDirty]=React.useState(false);const [projectId,setProjectId]=React.useState('fixture');const [reviewDrafts,setReviewDrafts]=React.useState([]);
+          window.fixture={value,mode:options.mode,dirty};window.setFixtureDisabled=setDisabled;window.loadFixture=(value,drafts=[])=>{setValue(value);setReviewDrafts(drafts);setProjectId(crypto.randomUUID());};
           window.addFixtureSticker=()=>{window.fixtureStickers=[sticker];setRevision(v=>v+1);};
           window.resetFixture=()=>{setValue(undefined);setProjectId('other');};
           return React.createElement(React.Fragment,null,
             React.createElement(CornerDecorationPicker,{value:options,onChange:setOptions,onSelect:()=>{},disabled}),
-            React.createElement(CoverStickerPanel,{projectId,value,selectedMedia:[{id:'fixture-media',displayName:'fixture.mp4',width:640,height:480,durationMs:1000,previewUrl:''}],revision,disabled,onSave:async v=>{window.saves.push(structuredClone(v));setValue(v);},onDirtyChange:setDirty}));}
+            React.createElement(CoverStickerPanel,{projectId,value,reviewDrafts,selectedMedia:[{id:'00000000-0000-4000-8000-000000000002',displayName:'fixture.mp4',width:640,height:480,durationMs:1000,previewUrl:''}],revision,disabled,onSave:async v=>{window.saves.push(structuredClone(v));setValue(v);},onDirtyChange:setDirty}));}
         createRoot(document.getElementById('root')).render(React.createElement(Fixture));
       </script></body></html>`));
     });
@@ -75,31 +75,35 @@ try {
   assert.equal(await evaluate(`document.querySelector('${toggle}').checked`), false, "mode switching cannot enable coverage");
   await click(toggle);
   await waitFor("window.fixture.dirty && document.querySelector('.cover-tracking-tabs')");
-  await clickText("手动设置");
-  await clickText("保存覆盖设置");
-  assert.equal(await evaluate("window.saves.length"), 1, "enabled without a candidate cannot save");
-  await evaluate("window.addFixtureSticker()");
-  await clickText("添加覆盖框");
-  await clickText("手动设置");
+  await clickText("手动框选");
   await clickText("保存覆盖设置");
   await waitFor("window.saves.length===2 && !window.fixture.dirty");
-  assert.equal(await evaluate("window.fixture.value.trackingMode"), "manual", "full Agent honors manual cover choice");
+  assert.equal(await evaluate("window.fixture.value.manualRegionInput"), true, "empty manual regions save without no-cover confirmation");
+  assert.equal(await evaluate("document.querySelectorAll('.cover-tracking-tabs button').length"), 2, "only two cover choices");
+  assert.equal(await evaluate("document.querySelector('.cover-sticker-panel').innerText.includes('不加白底')"), true);
+  await evaluate("window.addFixtureSticker()");
+  await clickText("添加覆盖框");
+  await clickText("手动框选");
+  await clickText("保存覆盖设置");
+  await waitFor("window.saves.length===3 && !window.fixture.dirty");
+  assert.equal(await evaluate("window.fixture.value.trackingMode"), "assisted", "manual entry uses existing real-artwork production owner");
+  assert.equal(await evaluate("window.fixture.value.manualRegionInput"), true);
   await clickText("自己设置"); await clickText("全部交给 Agent");
-  assert.equal(await evaluate("[...document.querySelectorAll('.cover-tracking-tabs button')].find(button=>button.textContent==='手动设置').getAttribute('aria-pressed')"), "true");
+  assert.equal(await evaluate("[...document.querySelectorAll('.cover-tracking-tabs button')].find(button=>button.textContent==='手动框选').getAttribute('aria-pressed')"), "true");
   assert.equal(await evaluate("window.fixture.dirty"), false, "decoration modes do not rewrite cover draft");
-  await clickText("自动形状匹配覆盖");
+  await clickText("自动识别");
   assert.ok(await evaluate("document.querySelector('.cover-agent-mode').innerText.includes('同一 PNG 与位置')"));
   assert.equal(await evaluate("document.querySelector('.cover-agent-mode').innerText.includes('每秒检测 4 帧')"), false);
   await clickText("保存覆盖设置");
-  await waitFor("window.saves.length===3 && !window.fixture.dirty");
+  await waitFor("window.saves.length===4 && !window.fixture.dirty");
   assert.equal(await evaluate("window.fixture.value.trackingMode"), "agent");
   assert.equal(await evaluate("window.fixture.value.coverStrategy"), "shape-matched-static-v1");
   await click(toggle);
   await waitFor("window.fixture.dirty");
   await clickText("保存覆盖设置");
-  await waitFor("window.saves.length===4 && !window.fixture.dirty");
+  await waitFor("window.saves.length===5 && !window.fixture.dirty");
   assert.equal(await evaluate("window.fixture.value.enabled"), false);
-  assert.equal(await evaluate("window.fixture.value.mediaRegions['fixture-media'].length"), 1, "disabling preserves the manual draft");
+  assert.equal(await evaluate("window.fixture.value.mediaRegions['00000000-0000-4000-8000-000000000002'].length"), 1, "disabling preserves the manual draft");
   await evaluate("window.setFixtureDisabled(true)");
   await waitFor(`document.querySelector('${toggle}').disabled`);
   await click(toggle);
@@ -110,7 +114,35 @@ try {
   await send("Emulation.setDeviceMetricsOverride", { width: 800, height: 1000, deviceScaleFactor: 1, mobile: false });
   await pause(100);
   assert.equal(await evaluate("document.documentElement.scrollWidth<=window.innerWidth"), true, "narrow layout fits");
+  await evaluate("window.loadFixture({enabled:true,stickerIds:[],rectangle:{x:0,y:0,width:.2,height:.2},trackingMode:'manual'})");
+  await waitFor("!window.fixture.dirty && document.body.innerText.includes('当前保留已保存的白底手动覆盖设置')");
+  assert.equal(await evaluate("window.fixture.value.trackingMode"), 'manual', 'opening legacy settings does not migrate them');
+  await clickText('手动框选');
+  await waitFor("window.fixture.dirty && document.body.innerText.includes('不加白底')");
+  await clickText('恢复已应用设置');
+  await waitFor("!window.fixture.dirty && document.body.innerText.includes('当前保留已保存的白底手动覆盖设置')");
+  await clickText('手动框选');
+  await clickText('保存覆盖设置');
+  await waitFor("!window.fixture.dirty && window.fixture.value.manualRegionInput===true");
+  const reviewTrack = { startMs: 100, endMs: 900, keyframes: [{ timeMs: 100, rectangle: { x: .1, y: .2, width: .2, height: .2 } }] };
+  const reviewRegionId = '00000000-0000-4000-8000-000000000003';
+  const loadReview = async track => {
+    await evaluate(`window.loadFixture({enabled:true,stickerIds:[],rectangle:{x:0,y:0,width:.4,height:.4},trackingMode:'assisted'},[{media:[{mediaId:'00000000-0000-4000-8000-000000000002',disposition:'cover',segments:[{id:'${reviewRegionId}',track:${JSON.stringify(track)}}]}]}])`);
+    await waitFor("!window.fixture.dirty && document.body.innerText.includes('当前保留已保存的半自动审阅设置')");
+  };
+  await loadReview(reviewTrack);
+  await clickText('手动框选');
+  await clickText('保存覆盖设置');
+  await waitFor("!window.fixture.dirty && window.fixture.value.manualRegionInput===true");
+  assert.deepEqual(await evaluate("window.fixture.value.mediaRegions['00000000-0000-4000-8000-000000000002'][0].tracks['00000000-0000-4000-8000-000000000002']"), reviewTrack, 'explicit switch imports existing review geometry and interval');
+  const beforeInvalid = await evaluate('window.saves.length');
+  await loadReview({ ...reviewTrack, keyframes: [...reviewTrack.keyframes, { timeMs: 800, rectangle: { x: .2, y: .2, width: .2, height: .2 } }] });
+  await clickText('手动框选');
+  await clickText('保存覆盖设置');
+  assert.equal(await evaluate('window.saves.length'), beforeInvalid, 'moving historical tracks cannot silently become static');
+  assert.ok(await evaluate("document.querySelector('[role=alert]').innerText.includes('固定框')"));
   console.log("PASS: independent off/on, no-upload admission, save/dirty state, mode isolation, manual/automatic tracking, candidate retention, busy lock, new-project default, narrow layout.");
+  if (process.env.JIANJI_SMOKE_HOLD_MS) { console.log(`FIXTURE_URL=http://127.0.0.1:${server.httpServer.address().port}/__cover-toggle`); await pause(Number(process.env.JIANJI_SMOKE_HOLD_MS)); }
 } finally {
   socket?.close();
   if (chrome && chrome.exitCode === null) {

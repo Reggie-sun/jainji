@@ -60,7 +60,22 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   const preview = selectedMedia.find((media) => media.id === previewId) ?? selectedMedia[0];
   const trackingMode = draft.trackingMode ?? "manual";
   const humanRegionMode = trackingMode === "assisted" && draft.assistedArtwork === HUMAN_REGION_ARTWORK;
-  const manualMode = trackingMode === "manual" || humanRegionMode;
+  const selectManual = () => setDraft((current) => {
+    const next: CoverSticker = { ...current, trackingMode: "assisted", assistedArtwork: HUMAN_REGION_ARTWORK, manualRegionInput: true, coverStrategy: undefined };
+    if (current.trackingMode === "assisted" && !current.assistedArtwork) {
+      const historical = reviewDrafts.filter(item => !item.assistedArtwork);
+      if (historical.length) {
+        next.regions = []; next.tracks = undefined;
+        next.rectangle = { ...DEFAULT_COVER_STICKER.rectangle }; next.mediaRegions = {};
+        for (const review of historical) for (const media of review.media) {
+          next.mediaRegions[media.mediaId] = media.disposition === "no_cover" ? [] : media.segments.map(segment => ({
+            id: segment.id, rectangle: { ...segment.track.keyframes[0].rectangle }, tracks: { [media.mediaId]: cloneTrack(segment.track) },
+          }));
+        }
+      }
+    }
+    return next;
+  });
   const regions = preview ? manualCoverRegions(draft, preview.id) : manualCoverRegions(draft);
   const activeRegion = regions.find((region) => region.id === activeRegionId) ?? regions[0];
   const effectiveRegions = selectedMedia.flatMap((media) => manualCoverRegions(draft, media.id));
@@ -118,7 +133,7 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
     try {
       await onSave(draft);
       setMessage("覆盖设置已应用；保存素材集后可跨重启复用。");
-      if (draft.enabled && trackingMode === "assisted") requestAnimationFrame(() => requestAnimationFrame(() => reviewEntry.current?.scrollIntoView({ behavior: "smooth", block: "start" })));
+      if (draft.enabled && trackingMode === "assisted" && !humanRegionMode) requestAnimationFrame(() => requestAnimationFrame(() => reviewEntry.current?.scrollIntoView({ behavior: "smooth", block: "start" })));
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "覆盖设置保存失败，请重试。");
     } finally { setSaving(false); }
@@ -133,10 +148,14 @@ export function CoverStickerPanel({ projectId, value, selectedMedia, revision, d
   return <>
     <Heading title="覆盖原贴纸">独立选择是否覆盖原视频中的贴纸，不随“全部交给 Agent”自动开启。</Heading>
     <section className="card cover-sticker-panel" aria-label="覆盖原贴纸设置">
-      <div className="cover-sticker-heading"><div><h2>{draft.enabled ? "覆盖已开启" : "覆盖已关闭"}</h2><p>{draft.enabled ? humanRegionMode ? "你指定需要盖住的区域，本地贴纸库负责提供完整图案；目标框和贴纸实际占用范围会分开显示。保存后应用到下次制作，已开始的任务保留原效果。" : trackingMode === "agent" && draft.coverStrategy ? "按已检查的图案与位置处理确认的角落，其他角落保持原样。保存后应用到下次制作，已开始的任务保留原效果。" : "调整覆盖框与跟随方式；统一款将从本地贴纸库与已上传贴纸中逐轮换用。新覆盖层铺白色不透明底板并等比保留完整图案，保存后应用到下次制作。旧导出任务保留原效果。" : "关闭时保留原贴纸，不添加覆盖层。全部交给 Agent 时仍会识别原贴纸占位，只补空缺角落和时段。"}</p></div><label className="cover-sticker-toggle"><input type="checkbox" checked={draft.enabled} disabled={disabled || saving} onChange={(event) => setDraft((current) => ({ ...current, enabled: event.target.checked }))} />启用覆盖</label></div>
+      <div className="cover-sticker-heading"><div><h2>{draft.enabled ? "覆盖已开启" : "覆盖已关闭"}</h2><p>{draft.enabled ? humanRegionMode ? "框出旧贴纸和阴影，保存后正常制作。本地程序等比放入真实贴纸，不加白底；图案可能超出目标框，请播放成片检查。" : trackingMode === "agent" && draft.coverStrategy ? "按已检查的图案与位置处理确认的角落，其他角落保持原样。保存后应用到下次制作，已开始的任务保留原效果。" : "调整覆盖框与跟随方式；统一款将从本地贴纸库与已上传贴纸中逐轮换用。新覆盖层铺白色不透明底板并等比保留完整图案，保存后应用到下次制作。旧导出任务保留原效果。" : "关闭时保留原贴纸，不添加覆盖层。全部交给 Agent 时仍会识别原贴纸占位，只补空缺角落和时段。"}</p></div><label className="cover-sticker-toggle"><input type="checkbox" checked={draft.enabled} disabled={disabled || saving} onChange={(event) => { const enabled = event.target.checked; setDraft(current => ({ ...current, enabled, ...(enabled && JSON.stringify(current) === JSON.stringify(DEFAULT_COVER_STICKER) ? { trackingMode: "assisted", assistedArtwork: HUMAN_REGION_ARTWORK, manualRegionInput: true, coverStrategy: undefined } : {}) })); }} />启用覆盖</label></div>
       {draft.enabled && <>
-        <div className="cover-tracking-tabs" role="group" aria-label="覆盖贴纸跟随方式"><button type="button" aria-pressed={trackingMode === "agent" && Boolean(draft.coverStrategy)} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "agent", coverStrategy: "shape-matched-static-v1", assistedArtwork: undefined, manualRegionInput: undefined }))}>自动形状匹配覆盖</button><button type="button" aria-pressed={trackingMode === "agent" && !draft.coverStrategy} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "agent", coverStrategy: undefined, assistedArtwork: undefined, manualRegionInput: undefined }))}>近似矩形覆盖</button><button type="button" aria-pressed={manualMode} disabled={disabled || saving} onClick={() => { if (!manualMode) setDraft((current) => ({ ...current, trackingMode: "manual", coverStrategy: undefined, assistedArtwork: undefined, manualRegionInput: undefined })); }}>手动设置</button><button type="button" aria-pressed={trackingMode === "assisted" && !humanRegionMode} disabled={disabled || saving} onClick={() => setDraft((current) => ({ ...current, trackingMode: "assisted", coverStrategy: undefined, assistedArtwork: undefined, manualRegionInput: undefined }))}>半自动 · 人工审阅</button></div>
-        {manualMode && <div className="cover-tracking-tabs" role="group" aria-label="手动覆盖方式"><button type="button" aria-pressed={!humanRegionMode} disabled={disabled || saving} onClick={() => setDraft(current => ({ ...current, trackingMode: "manual", assistedArtwork: undefined, manualRegionInput: undefined }))}>白底贴纸覆盖</button><button type="button" aria-pressed={humanRegionMode} disabled={disabled || saving} onClick={() => setDraft(current => ({ ...current, trackingMode: "assisted", assistedArtwork: HUMAN_REGION_ARTWORK, manualRegionInput: true, coverStrategy: undefined }))}>真实贴纸覆盖</button></div>}
+        <div className="cover-tracking-tabs" role="group" aria-label="覆盖方式">
+          <button type="button" aria-pressed={humanRegionMode} disabled={disabled || saving} onClick={selectManual}>手动框选</button>
+          <button type="button" aria-pressed={trackingMode === "agent"} disabled={disabled || saving} onClick={() => setDraft(current => ({ ...current, trackingMode: "agent", coverStrategy: current.trackingMode === "agent" ? current.coverStrategy : "shape-matched-static-v1", assistedArtwork: undefined, manualRegionInput: undefined }))}>自动识别</button>
+        </div>
+        {!humanRegionMode && trackingMode !== "agent" && <p role="status">当前保留已保存的{trackingMode === "manual" ? "白底手动覆盖" : "半自动审阅"}设置。点击“手动框选”可改为真实贴纸直接制作；保存后应用，已有任务保留原效果。</p>}
+        {trackingMode === "agent" && !draft.coverStrategy && <p role="status">当前沿用原有近似覆盖设置；不会自动改变已保存的覆盖策略。</p>}
         {trackingMode === "assisted" ? humanRegionMode ? <p>你先按素材框出必须完整盖住的区域（包含旧贴纸阴影），并设置出现时段；本地程序按原比例放入真实贴纸。覆盖框表示你的目标范围，不代表自动识别到的原贴纸轮廓，也不能证明框外没有其他旧贴纸。</p> : <p>半自动覆盖由你编辑完整边界与时段，查看各版本动态预览后再确认导出。</p> : trackingMode === "agent" && draft.coverStrategy ? <p className="cover-agent-status">仅处理四角内已确认的静态贴纸；样片检查通过后，按同一冻结图案与位置导出。未确认或跳过的角落保持原样，不能代表所有旧贴纸均已处理。保留原色和你填写的展示文字，不额外添加普通四角贴纸。</p> : trackingMode === "agent" ? <p className="cover-agent-status">Agent 将从全部本地内置贴纸和可用上传贴纸中看图选款，无需逐张勾选；覆盖可原样使用贴纸自带的文字、价格或品牌图案，普通四角装饰规则不变。同轮素材统一用一款，下一轮换款；一次制作多轮也会轮换。</p> : <>
           {!stickers ? <p className="cover-sticker-loading">正在读取贴纸…</p> : stickers.length === 0 ? <p className="cover-sticker-empty">还没有可用的贴纸。请重新安装完整软件包，或到“贴纸库”上传 PNG / JPG 图片。</p> : <p className="cover-sticker-note">统一款候选池 = 本地贴纸库 + 全部已上传贴纸（当前 {stickers.length} 张），新上传的贴纸自动进入轮换池，无需勾选。</p>}
           {missingSticker && <p className="cover-sticker-warning" role="alert">有已分配的贴纸不在当前贴纸库中，请重新选择。<button type="button" disabled={disabled || saving} onClick={clearMissingStickers}>清除失效贴纸</button></p>}

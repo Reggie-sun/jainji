@@ -128,8 +128,8 @@ try {
   await coverSettings.getByRole('spinbutton', { name: /^结束/ }).fill('900');
   await coverSettings.getByRole('button', { name: '保存覆盖设置', exact: true }).click();
   const saved = (await state(page)).project.coverSticker;
-  await coverSettings.getByRole('button', { name: '真实贴纸覆盖', exact: true }).click();
-  assert.equal(await coverSettings.getByRole('button', { name: '手动设置', exact: true }).getAttribute('aria-pressed'), 'true');
+  await coverSettings.getByRole('button', { name: '手动框选', exact: true }).click();
+  assert.equal(await coverSettings.getByRole('button', { name: '手动框选', exact: true }).getAttribute('aria-pressed'), 'true');
   assert.equal(await coverSettings.getByRole('button', { name: '人工框选区域 + 贴纸覆盖', exact: true }).count(), 0);
   assert.equal(await coverSettings.getByRole('spinbutton', { name: /^出现/ }).inputValue(), '100');
   assert.equal(await coverSettings.getByRole('spinbutton', { name: /^结束/ }).inputValue(), '900');
@@ -174,7 +174,7 @@ try {
     return { draftId: draft.id, mediaId: media.mediaId, track };
   });
   await page.reload();
-  await coverSettings.getByRole('button', { name: '真实贴纸覆盖', exact: true }).waitFor();
+  await coverSettings.getByRole('button', { name: '手动框选', exact: true }).waitFor();
   assert.equal(await coverSettings.getByRole('spinbutton', { name: /^出现/ }).inputValue(), '200');
   assert.equal(await coverSettings.getByRole('spinbutton', { name: /^结束/ }).inputValue(), '800');
   assert.equal(await coverSettings.getByRole('spinbutton', { name: '左边' }).inputValue(), '20');

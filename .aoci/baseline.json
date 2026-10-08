@@ -1953,9 +1953,9 @@
       "normalized_sha256": "fbafafc05dfe60821032a8e997711e2453410671d7fac636d5ccdbf460c79507"
     },
     "src/renderer/BatchProductionPanel.tsx": {
-      "sha256": "83397a1b1b965bb86e186f805bd1d78ca767c74208042f596304439671233f4e",
-      "size": 21408,
-      "normalized_sha256": "83397a1b1b965bb86e186f805bd1d78ca767c74208042f596304439671233f4e"
+      "sha256": "557f298fead4d123b3f40587a07e749805dc5fbd3e7a7302277daa6ecaa89bb7",
+      "size": 21416,
+      "normalized_sha256": "557f298fead4d123b3f40587a07e749805dc5fbd3e7a7302277daa6ecaa89bb7"
     },
     "src/renderer/BugFeedbackDialog.tsx": {
       "sha256": "4efc9e78614026b3ecfeeec6613c46d0132fee9e7c4c02687b7e47b8287886b7",
@@ -1993,9 +1993,9 @@
       "normalized_sha256": "2369c16e705d1b1b83df229d4adcdae7bf2792f7402a5cfe444ebf4f6a8cc978"
     },
     "src/renderer/CoverStickerPanel.tsx": {
-      "sha256": "8e1db13f16363189a102ffe89a31709f59b70738a2e8f53f5f6d46170585da7b",
-      "size": 22422,
-      "normalized_sha256": "8e1db13f16363189a102ffe89a31709f59b70738a2e8f53f5f6d46170585da7b"
+      "sha256": "a4768b30c0cf6df4ba56c633543c63be8eec707229433504792a3d7ca5fe1574",
+      "size": 22573,
+      "normalized_sha256": "a4768b30c0cf6df4ba56c633543c63be8eec707229433504792a3d7ca5fe1574"
     },
     "src/renderer/CoverTrackEditor.tsx": {
       "sha256": "36577e96d21824c15a89ff4b6842aabd48a9d8eed84c1b3d076300f275e0f90d",
