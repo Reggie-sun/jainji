@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { MembershipStatus } from "../shared/membership.js";
 import type { AgentStartInput, AppendProductionInput, AppendProductionPrefill, GenerateBriefInput } from "../shared/agent.js";
 import type { SaveConnection, SelectModel } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
@@ -18,6 +19,17 @@ import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, B
 import type { TemplateAccountBinding, TemplateAccountSelection } from "../shared/batch-upload.js";
 
 const api = {
+  membershipStatus: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.status"),
+  refreshMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.refresh"),
+  loginMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.login"),
+  logoutMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.logout"),
+  openMembershipPricing: (): Promise<void> => ipcRenderer.invoke("membership.openPricing"),
+  openMembershipAdmin: (): Promise<void> => ipcRenderer.invoke("membership.openAdmin"),
+  onMembership: (listener: (status: MembershipStatus) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: MembershipStatus) => listener(status);
+    ipcRenderer.on("membership.changed", handler);
+    return () => ipcRenderer.removeListener("membership.changed", handler);
+  },
   batchProductionProjects: (): Promise<BatchProjectOption[]> => ipcRenderer.invoke("batchProduction.projects"),
   saveBatchUploadAccount: (input: TemplateAccountSelection): Promise<TemplateAccountBinding> => ipcRenderer.invoke("batchProduction.saveUploadAccount", input),
   batchProductionDetails: (input: BatchProductionDetailRequest): Promise<BatchProductionDetail> => ipcRenderer.invoke("batchProduction.details", input),

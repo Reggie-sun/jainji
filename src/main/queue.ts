@@ -72,6 +72,8 @@ export interface CreateBatchInput {
 export type ExportBatchIdentity = Pick<ExportBatch, "id" | "projectId"> & { tasks: Pick<ExportTask, "id">[] };
 
 export interface ExportQueueDependencies {
+  /** Main-process online account admission, shared by every production path. */
+  authorize?: () => Promise<void>;
   onFinalArtifactCommitted?: (fact: { projectId: string; batchId: string; taskId: string; artifact: OutputArtifact }) => void | Promise<void>;
   onFinalArtifactNotificationError?: () => void;
   gpuFreeMemory?: () => Promise<number | undefined>;
@@ -158,6 +160,7 @@ export class ExportQueue {
   private submissionChain: Promise<void> = Promise.resolve();
 
   async renderPreview(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; cacheDirectory: string; signal: AbortSignal; diagnostics?: CoverDiagnostics }): Promise<string> {
+    await this.dependencies.authorize?.();
     input.signal.throwIfAborted();
     if (this.shuttingDown) throw new Error("预览已停止。");
     const preset = ExportPresetSchema.parse(input.preset);
@@ -187,6 +190,7 @@ export class ExportQueue {
   }
 
   private async executePreview(preview: PendingPreview, threads: number, permit?: NvencPermit): Promise<string> {
+    await this.dependencies.authorize?.();
     const { id, template, media, preset, signal } = preview;
     signal.throwIfAborted();
     assertPriceOnlyTemplate(template);
@@ -369,6 +373,7 @@ export class ExportQueue {
   }
 
   private async createBatchNow(input: CreateBatchInput, signal?: AbortSignal): Promise<ExportBatch> {
+    await this.dependencies.authorize?.();
     signal?.throwIfAborted();
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
@@ -457,6 +462,7 @@ export class ExportQueue {
    * supervised version is in the folder the moment the supervisor passes.
    */
   async publishApprovedSample(input: { template: EditTemplate; media: MediaItem; preset: ExportPreset; samplePath: string; outputDirectory: string; projectId?: string; shapeAdmission?: ShapeCoverAdmission; onTaskCreated?: (batch: ExportBatchIdentity) => Promise<void> }): Promise<{ batchId: string; taskId: string; outputPath: string }> {
+    await this.dependencies.authorize?.();
     if (hasHumanRegions(input.template)) throw new Error("人工覆盖必须通过原审阅批准队列导出。");
     if (this.shuttingDown) throw new Error("queue is shutting down");
     const template = immutableSnapshot(input.template);
@@ -501,6 +507,8 @@ export class ExportQueue {
       await this.transition(state, task, "verifying", { progress: 0.99 });
       const artifact = await this.verifier.verify(partialPath, task.id);
       if (shape) await verifyShapeCoverAdmission(input.shapeAdmission, template, input.media, parsed, partialPath);
+      await this.dependencies.authorize?.();
+      if (await this.stopRequested(state, task)) throw new Error("制作已停止。");
       const finalPath = await publishWithoutReplacement(partialPath, outputPath, state.batch.outputDirectory, input.media.sourcePath, [], parsed.container);
       artifact.path = finalPath;
       task.outputPath = finalPath;
@@ -695,6 +703,7 @@ export class ExportQueue {
   }
 
   async retry(taskIds?: readonly string[]): Promise<void> {
+    await this.dependencies.authorize?.();
     const requested = taskIds ? new Set(taskIds) : undefined;
     for (const state of this.states.values()) {
       if (state.batch.tasks.some((task) => (!requested || requested.has(task.id)) && ["failed", "interrupted"].includes(task.status))) {
@@ -841,6 +850,7 @@ export class ExportQueue {
     let temporaryTextFiles: string[] = [];
     await this.transition(state, task, "validating");
     try {
+      await this.dependencies.authorize?.();
       assertPriceOnlyTemplate(state.batch.templateSnapshot);
       assertShapeCoverExportReady(state.batch.templateSnapshot);
       if (state.batch.manualCoverDigest) {

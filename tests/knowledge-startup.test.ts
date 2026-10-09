@@ -10,11 +10,12 @@ const electron = vi.hoisted(() => ({
   showMessageBox: vi.fn(async () => ({ response: 0 })),
 }));
 vi.mock("electron", () => ({
-  app: { requestSingleInstanceLock: () => true, whenReady: async () => {}, getPath: () => electron.directory,
+  app: { requestSingleInstanceLock: () => true, whenReady: async () => {}, getPath: () => electron.directory, getAppPath: () => electron.directory,
     commandLine: { appendSwitch: vi.fn(), hasSwitch: () => false },
     on: (name: string, callback: (event: { preventDefault(): void }) => void) => { electron.events.set(name, callback); },
     quit: () => electron.events.get("before-quit")?.({ preventDefault() {} }), exit: electron.exit },
-  protocol: { registerSchemesAsPrivileged() {} }, BrowserWindow: class {}, dialog: { showMessageBox: electron.showMessageBox }, ipcMain: {}, nativeImage: {}, shell: {},
+  protocol: { registerSchemesAsPrivileged() {} }, BrowserWindow: class {}, dialog: { showMessageBox: electron.showMessageBox },
+  ipcMain: { handle: vi.fn() }, safeStorage: { isEncryptionAvailable: () => false }, nativeImage: {}, shell: {},
 }));
 
 it("offers explicit safe recovery and releases the fresh owner when later bootstrap fails", async () => {

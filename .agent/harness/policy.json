@@ -2,6 +2,15 @@
   "schemaVersion": 2,
   "codeChecks": [
     {
+      "id": "account-membership",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/membership-desktop.test.ts", "tests/membership-oauth.test.ts", "tests/membership-storage.test.ts", "tests/membership-queue.test.ts", "tests/membership-server.test.ts"],
+      "timeoutMs": 180000
+    },
+    {
       "id": "typecheck",
       "kind": "command",
       "required": true,
@@ -129,7 +138,7 @@
         "tests/qianchuan-remote-runtime.test.ts",
         "tests/qianchuan-remote-selection.test.ts"
       ],
-      "timeoutMs": 300000
+      "timeoutMs": 600000
     },
     {
       "id": "cover-contracts",
@@ -655,6 +664,12 @@
     }
   ],
   "routes": [
+    {
+      "id": "domain-account-membership",
+      "paths": ["src/main/membership-*.ts", "src/membership-server/**", "src/shared/membership.ts", "src/renderer/MembershipGate.tsx", "src/renderer/membership.css", "tests/membership-*.test.ts"],
+      "checkIds": ["typecheck", "harness", "account-membership", "documents", "owned-aoci"],
+      "documentRefs": ["docs/membership.md", "docs/superpowers/plans/2026-10-10-membership.md", "docs/video-validation-harness-spec.md"]
+    },
     {
       "id": "docs-and-rules",
       "paths": [

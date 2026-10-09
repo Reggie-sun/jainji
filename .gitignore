@@ -3,6 +3,8 @@ dist/
 dist-electron/
 dist-feedback/
 dist-model-server/
+dist-membership/
+/resources/membership.json
 dist-ffmpeg/
 release/
 coverage/

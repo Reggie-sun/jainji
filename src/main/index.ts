@@ -50,6 +50,8 @@ import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
 import { createAutomaticOutputDirectory } from "./automatic-output-directory.js";
 import { createBatchProductionRuntime } from "./batch-production-runtime.js";
+import { createMembershipDesktop } from "./membership-desktop.js";
+import type { MembershipSession } from "./membership-session.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -88,6 +90,7 @@ let uploadedStickers: UploadedStickers;
 let uploadedFrames: UploadedStickers;
 let stickerAssets: StickerAssets;
 let batchRuntime: ReturnType<typeof createBatchProductionRuntime>;
+let membership: MembershipSession;
 let queueReady: Promise<void> = Promise.resolve();
 let quitting = false;
 let closingPrompt = false;
@@ -133,7 +136,7 @@ function assertCleanupIdle() {
   coverReview?.assertIdle(); assertProductionIdle();
   if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未删除视频库素材。");
 }
-function clearVideoLibraries(input: unknown) { assertCleanupIdle(); return douyinUpload.clearVideoLibraries(input); }
+async function clearVideoLibraries(input: unknown) { await membership.assertAllowed(); assertCleanupIdle(); return douyinUpload.clearVideoLibraries(input); }
 
 function assertTrustedSender(event: Electron.IpcMainInvokeEvent): void {
   if (!mainWindow || event.sender !== mainWindow.webContents) throw new Error("untrusted IPC sender");
@@ -682,6 +685,14 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
   const userData = app.getPath("userData");
   await mkdir(userData, { recursive: true });
+  membership = await createMembershipDesktop({ root: userData, trusted: assertTrustedSender,
+    changed: status => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("membership.changed", status); },
+    lostAccess: async () => {
+      const projects = new Set(queue?.snapshot().batches.map(state => state.batch.projectId).filter((id): id is string => Boolean(id)) ?? []);
+      await Promise.allSettled([batchRuntime?.controller.cancel(), coverReview?.shutdown(), agent?.cancel(), douyinUpload?.stop(),
+        ...[...projects].map(projectId => queue.cancelAll(projectId))]);
+    },
+  });
   // Failure disables only new automatic analysis, never frozen jobs or manual editing.
   sourceKnowledge = await openSourceStickerKnowledge(userData, {
     confirmRecovery: async () => {
@@ -724,6 +735,7 @@ async function bootstrap(): Promise<void> {
   ffmpeg = checked.adapter ?? new FfmpegAdapter(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", process.env.JIANJI_FFPROBE_PATH || "ffprobe");
   service = new ApplicationService(ffmpeg, fontResolver);
   queue = new ExportQueue({
+    authorize: () => membership.assertAllowed(),
     jobStore: new JobStore(path.join(userData, "jobs")),
     onFinalArtifactCommitted: fact => douyinUpload.committed({ project_id: fact.projectId, batch_id: fact.batchId, export_task_id: fact.taskId }),
     onFinalArtifactNotificationError: () => safeLog("upload notification failed; formal export remains completed"),
@@ -837,6 +849,7 @@ function safeLog(...args: unknown[]): void {
 }
 
 async function shutdownServices(): Promise<void> {
+  membership?.dispose();
   videoLibrarySchedule?.stop();
   await batchRuntime?.controller.cancel().catch(() => safeLog("batch production cancellation failed during shutdown"));
   await douyinUpload?.stop().catch(() => safeLog("uploader safely blocked during shutdown"));
