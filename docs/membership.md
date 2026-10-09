@@ -92,6 +92,8 @@ JIANJI_MEMBERSHIP_CONFIG=/absolute/public/membership.json make frontend
 
 有效会话 + 当前组织账号未封禁/删除 +（有效付费 Subscription / 管理员赠送 / 首月试用）才允许新制作。试用从服务端不可由普通用户选择的 `createdTime` 起算，UTC 自然月末按目标月最后一天截断。付费/赠送期限读取 Casdoor Subscription，必须 `Active` 且 `startTime <= now < endTime`；忽略其他组织、其他用户、其他 Plan 及 group 订阅。Casdoor 管理员是可信授权方；Active 付费订阅关联的 payment 字段不是本服务独立验签的付款收据。
 
+存在有效管理员赠送时优先展示该赠送的截止时间，未汇总为所有权益的最晚截止；赠送到期后仍可命中有效付费权益。到期管理员仍可打开管理后台，实际管理权限由 Casdoor 核验，不要求先购买制作会员。
+
 每次新收费 IPC 和队列执行在线核验。30 秒心跳发现封禁、挤下线、到期或网络故障后触发原取消链；单次客户端核验最多等待 10 秒，所以不是声称远端封禁在零毫秒内终止既有 FFmpeg/平台操作。原项目保存、取消和已生成文件访问保留；未知上传证据不清空、不重试。
 
 桌面 access token 仅由 main process 持有，安全密钥存储可用时经 Electron safeStorage 加密保存在 `userData/membership/session.enc`；Linux `basic_text` 或无加密能力时只在内存保存。配置变化使旧缓存失效。没有离线会员宽限或本地时间授权，不能靠本地缓存重新放行；应用重启会在线检查已保存 token，不产生第二次登录。

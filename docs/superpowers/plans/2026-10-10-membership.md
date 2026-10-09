@@ -32,14 +32,16 @@
 
 该方案覆盖用户现有目标；套餐价格已确定，线上配置/密钥不属于本轮。任务内合同由 parent self-review，不增加用户批准 gate。安全后果涉及会话越权，最终 stable implementation 必须在 project verification 后做受管只读对抗审查。
 
-## Checkpoint And Remaining Work
+## Verification Checkpoint
 
-本任务独立验证副本由 `9a9fb76` 加本任务文件组成，不包含另一窗口的自动化改动。该副本的 typecheck、完整 `npm run build`、会员服务构建以及 161 项相关测试通过；共享工作区会员检查 29 项通过。真实 Electron IPC 检查证明未配置时拒绝制作且保留取消；早先 smoke 卡住是测试 ESM 顶层等待 readiness 导致，改为 CommonJS 异步启动后通过。Chrome 隔离页面已验证登录展示、套餐、管理员入口与失效提示。新增登录去重和磁盘清理失败仍取消工作的测试。
+代码候选 tree `35804fa3c89a89989bd244490f1d2bf17c177264` 由 `9a9fb76` 加本任务 owned files/hunks 组成，未混入另一窗口的自动化改动。完整 `npm run build`、会员服务构建及 Harness `20261009T211036Z-6fb7f08e` 的 16 组检查通过，共 1,698 项测试执行通过；其中会员检查 31 项。上传测试组实际约 305 秒，原 300 秒上限导致首轮 NOT_EVALUATED，因此仅将该组有限上限改为 600 秒，未删除测试。当前共享工作区 typecheck 也通过。
 
-核对 Casdoor v4.18.0 tag 源码后，将购买入口修正为 `/select-plan/:owner/:pricingName`；Basic 应用凭据映射组织管理员、introspection 与单会话 token 撤销均有源代码依据，不能替代真实实例验收。真实 Casdoor 双设备挤下线、国内支付回调与 Windows 安全存储未验证。
+用户报告未部署服务时被登录页锁在门外，已修订开发激活边界并执行验证：未打包、未显式指定配置、默认配置不存在才进入 `local-development`；错误配置和安装版仍拒绝。真实 `make frontend` 的 Electron 窗口返回本地模式、工作区可见、登录页不存在；Chrome 隔离页面验证相同显示行为，配置/服务端状态不能开启主进程本地准入的回归通过。
 
-用户明确将 `src/main/index.ts`、`src/main/preload.ts`、`.agent/harness/policy.json` 交本窗口先完成；保留另一窗口的自动化代码，不将它们作为本任务提交内容。会员 projectId 收窄已修复。当前工作区 typecheck 剩余三个错误为自动化调用尚未存在的 `automationAccount`、`uploadAutomation` 和双参数 `clearVideoLibraries`，所属上传实现不是本任务所有。之前自动化面板的声明顺序与 bridge 缺失已有其他窗口修改。
+受管只读 Kimi 最终审查 invocation `5f4678fa-1365-4dce-95af-1118c26012c6`，deep/k3/max，11 次经身份验证的请求，PARSED；必读源码的路径、哈希和 Read 回执已核验。Parent 裁决没有未解决阻断：普通渲染中途撤权遵循已接受的 30 秒心跳加 10 秒查询窗口；到期管理员仍可进入受 Casdoor 权限保护的后台；重启 reconcile 只恢复本地记录，不授上传资格，现有恢复测试证明必须明确继续。赠送优先显示其当前截止时间，慢上游可能触发十秒失败关闭，属于已记录限制。审查后未修改产品语义。
 
-Harness 首轮回归发现知识库启动测试的 Electron mock 未提供新账号入口所需的 `getAppPath`、`ipcMain.handle` 和 `safeStorage`；本任务已补齐真实 API 形状，原恢复/释放断言仍保留，focused 测试通过。该修复发生在首轮 Harness 期间，首轮不能作为最终源码通过证据。
+本轮源码 AOCI 已完成官方完整批次维护，独立候选与共享工作区的 Verify、Check、Guide 均证明 aligned；本轮对象维护不等于全库认知或线上验收。知识库启动 mock 已补齐新入口使用的 Electron API，原恢复和释放断言保留。
 
-已按官方完整批次维护 AOCI，共 26 项；Verify、Check、Guide 曾证明 `complete=true,next_action=none`。完整 Harness、最终 stable snapshot 受管安全审查和提交推送仍未完成。必须先解决共享工作区外部实现阻断，更新 scope 并重跑相关检查；不能将独立副本通过或 AOCI 对齐当作当前整库通过。
+## Remaining Deployment Verification
+
+本轮不部署、不真实收款。Casdoor v4.18.0 的接口及撤销路径已有 tag 源码核验；真实 Casdoor 双设备挤下线、国内支付回调、续费叠加、退款与 Windows 安全存储仍未评估，部署前另行验证。另一窗口的业务文件及共享文件中非本任务 hunks 保留，不作为本任务提交内容。
