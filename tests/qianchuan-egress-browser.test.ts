@@ -62,7 +62,8 @@ it("checks the actual browser response in a disposable tab, rejecting mismatches
     const port = (await readFile(path.join(root, "DevToolsActivePort"), "utf8")).split("\n")[0];
     const endpoint = `http://127.0.0.1:${port}`, original = context.pages()[0];
     await original.goto("data:text/html,Original%20user%20tab");
-    await context.route("https://api.ipify.org/**", route => route.fulfill({ status: 200, contentType: "text/plain", body: "203.0.113.11" }));
+    await context.route("https://api.ipify.org/**", route => route.abort("connectionrefused"));
+    await context.route("https://checkip.amazonaws.com/**", route => route.fulfill({ status: 200, contentType: "text/plain", body: "203.0.113.11\n" }));
     await probeChromeEgress(endpoint, "203.0.113.11", new AbortController().signal);
     await expect(probeChromeEgress(endpoint, "203.0.113.99", new AbortController().signal)).rejects.toThrow("实际出口");
     expect(original.isClosed()).toBe(false);

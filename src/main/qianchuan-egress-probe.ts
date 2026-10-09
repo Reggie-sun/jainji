@@ -40,7 +40,7 @@ export async function probeChromeEgress(endpoint: string, expectedIp: string, pa
     await call("Network.enable", {}, sessionId);
     await call("Network.setCacheDisabled", { cacheDisabled: true }, sessionId);
     await call("Network.setBypassServiceWorker", { bypass: true }, sessionId);
-    const url = `https://api.ipify.org/?format=text&jianji=${randomUUID()}`;
+    const url = `https://checkip.amazonaws.com/?jianji=${randomUUID()}`;
     const navigation = await call("Page.navigate", { url }, sessionId);
     if (navigation.errorText) throw unavailable();
     for (;;) {
