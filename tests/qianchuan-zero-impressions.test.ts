@@ -3,8 +3,8 @@ import { createZeroImpressionsWindow, parseZeroImpressionsRow } from "../src/mai
 import { QianchuanLibraryClearSchema } from "../src/shared/qianchuan-video-library";
 
 const now = Date.parse("2026-10-08T16:00:00+08:00");
-const window = { startTime: "2026-09-23 00:00:00", endTime: "2026-10-07 23:59:59", createdBefore: "2026-10-05 16:00:00" };
-const row = (count: unknown = 0, time: unknown = "2026-10-05 16:00:00", display: unknown = "0") => ({
+const window = { startTime: "2026-09-23 00:00:00", endTime: "2026-10-07 23:59:59", createdBefore: "2026-09-23 16:00:00" };
+const row = (count: unknown = 0, time: unknown = "2026-09-23 16:00:00", display: unknown = "0") => ({
   dimensions: { materialId: { value: "123" }, roi2MaterialUploadTime: { value: time } },
   metrics: { productShowCountForRoi2: { value: count, valueStr: display } },
 });
@@ -26,17 +26,22 @@ it("admits both plan rules with independently selected library clearing", () => 
 });
 it("freezes fifteen complete China dates independently of host timezone", () => {
   expect(createZeroImpressionsWindow(now)).toEqual(window);
-  expect(createZeroImpressionsWindow(Date.parse("2027-01-01T00:00:00+08:00"))).toEqual({ startTime: "2026-12-17 00:00:00", endTime: "2026-12-31 23:59:59", createdBefore: "2026-12-29 00:00:00" });
-  expect(createZeroImpressionsWindow(Date.parse("2024-03-01T00:00:00+08:00"))).toEqual({ startTime: "2024-02-15 00:00:00", endTime: "2024-02-29 23:59:59", createdBefore: "2024-02-27 00:00:00" });
+  expect(createZeroImpressionsWindow(Date.parse("2027-01-01T00:00:00+08:00"))).toEqual({ startTime: "2026-12-17 00:00:00", endTime: "2026-12-31 23:59:59", createdBefore: "2026-12-17 00:00:00" });
+  expect(createZeroImpressionsWindow(Date.parse("2024-03-01T00:00:00+08:00"))).toEqual({ startTime: "2024-02-15 00:00:00", endTime: "2024-02-29 23:59:59", createdBefore: "2024-02-15 00:00:00" });
 });
-it("requires zero impressions and at least seventy-two hours in the plan", () => {
-  expect(parseZeroImpressionsRow(row(), window).eligible).toBe(true);
-  expect(parseZeroImpressionsRow(row(0, "2026-10-08 15:59:59"), window).eligible).toBe(false);
-  expect(parseZeroImpressionsRow(row(0, "2026-10-05 16:00:01"), window).eligible).toBe(false);
-  expect(parseZeroImpressionsRow(row(0, "2026-10-05 15:59:59"), window).eligible).toBe(true);
-  expect(parseZeroImpressionsRow(row(0, "2027-01-01 00:00:00"), window).eligible).toBe(false);
-  expect(parseZeroImpressionsRow(row(0, "2025-01-01 00:00:00"), window).eligible).toBe(true);
-  expect(parseZeroImpressionsRow(row(1, undefined, "1"), window).eligible).toBe(false);
+it("requires zero impressions and fifteen elapsed days in the current plan, including the exact second boundary", () => {
+  const actual = createZeroImpressionsWindow(now);
+  expect(parseZeroImpressionsRow(row(), actual).eligible).toBe(true);
+  expect(parseZeroImpressionsRow(row(0, "2026-10-08 15:59:59"), actual).eligible).toBe(false);
+  expect(parseZeroImpressionsRow(row(0, "2026-09-23 16:00:01"), actual).eligible).toBe(false);
+  expect(parseZeroImpressionsRow(row(0, "2026-09-23 15:59:59"), actual).eligible).toBe(true);
+  expect(parseZeroImpressionsRow(row(0, "2027-01-01 00:00:00"), actual).eligible).toBe(false);
+  expect(parseZeroImpressionsRow(row(0, "2025-01-01 00:00:00"), actual).eligible).toBe(true);
+  expect(parseZeroImpressionsRow(row(1, undefined, "1"), actual).eligible).toBe(false);
+});
+it.each([3, 5, 14])("retains zero-impression material added %i days ago regardless of plan or library age", days => {
+  const createdAt = new Date(now - days * 86400000 + 8 * 3600000).toISOString().slice(0, 19).replace("T", " ");
+  expect(parseZeroImpressionsRow(row(0, createdAt), createZeroImpressionsWindow(now)).eligible).toBe(false);
 });
 it.each([null, undefined, "0", -1, NaN, 0.5])("rejects missing or ambiguous metric values %s", value => {
   const input = row(); input.metrics.productShowCountForRoi2.value = value;

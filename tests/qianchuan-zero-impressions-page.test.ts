@@ -15,15 +15,15 @@ vi.setConfig({ testTimeout: 40000, hookTimeout: 30000 });
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); });
 afterAll(async () => { await browser?.close(); });
 
-async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?: boolean; badTime?: boolean; missingTimeDimension?: boolean; empty?: boolean; badDelivery?: string; badDeliveryRow?: string; badDate?: boolean; thirtyDayRequest?: boolean; missingMetric?: boolean; extraTitle?: boolean; extraDeletion?: boolean; wrongAccount?: boolean; unknownOutcome?: boolean; resultRefresh?: "delayed" | "stale"; emptyNextPage?: boolean } = {}) {
+async function fixture(options: { fiveDayPlan?: boolean; noInitialCandidates?: boolean; noCreationTime?: boolean; badTime?: boolean; missingTimeDimension?: boolean; empty?: boolean; badDelivery?: string; badDeliveryRow?: string; badDate?: boolean; thirtyDayRequest?: boolean; missingMetric?: boolean; extraTitle?: boolean; extraDeletion?: boolean; wrongAccount?: boolean; unknownOutcome?: boolean; resultRefresh?: "delayed" | "stale"; emptyNextPage?: boolean } = {}) {
   const context = await browser.newContext(), page = await context.newPage();
   const window = createZeroImpressionsWindow();
   const requestStart = options.thirtyDayRequest ? createZeroImpressionsWindow(Date.now() - 15 * 86400000).startTime : window.startTime;
-  const fresh = new Date(Date.now() + 8 * 3600000 - 3600000).toISOString().slice(0, 19).replace("T", " ");
+  const createdDaysAgo = (days: number) => new Date(Date.now() + 8 * 3600000 - days * 86400000).toISOString().slice(0, 19).replace("T", " ");
   let data = [
-    { id: "11", count: 3, time: "2025-01-01 00:00:00" }, { id: "12", count: 0, time: fresh },
+    { id: "11", count: 3, time: "2025-01-01 00:00:00" }, { id: "12", count: 0, time: createdDaysAgo(5) },
     { id: "13", count: 0, time: "2025-01-01 00:00:00" }, { id: "14", count: 7, time: "2025-01-01 00:00:00" },
-    { id: "15", count: 0, time: "2025-01-01 00:00:00" }, { id: "16", count: 0, time: fresh },
+    { id: "15", count: 0, time: "2025-01-01 00:00:00" }, { id: "16", count: 0, time: createdDaysAgo(14) },
     { id: "17", count: 0, time: "2025-01-01 00:00:00" },
   ];
   if (options.resultRefresh) data[1].time = "2025-01-01 00:00:00";
@@ -31,6 +31,7 @@ async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?
   if (options.noInitialCandidates) data[1].count = 1;
   const protectedIds: string[] = [];
   data = data.flatMap((row, index) => index % 2 ? [row, ...Array.from({ length: 98 }, (_, i) => { const id = String(1000 + index * 100 + i); protectedIds.push(id); return { id, count: 1, time: "2025-01-01 00:00:00" }; })] : [row]);
+  if (options.fiveDayPlan) data = data.map(row => ({ ...row, time: createdDaysAgo(5), count: 0 }));
   if (options.empty) data = [];
   const removed: string[][] = [], offsets: number[] = [];
   const html = `<!doctype html><meta charset="utf-8"><div class="account-info-container">ID：${options.wrongAccount ? "9999" : target.advertiserId}</div>
@@ -86,7 +87,7 @@ async function fixture(options: { noInitialCandidates?: boolean; noCreationTime?
   return { page, context, session, controller, removed, offsets, remaining: () => data.filter(x => !protectedIds.includes(x.id)).map(x => x.id) };
 }
 
-it("scans fifteen-day uneven pages while protecting new plan materials", async () => {
+it("scans fifteen-day uneven pages while protecting five-day and fourteen-day materials in an older plan", async () => {
   const f = await fixture(), root = await mkdtemp(path.join(tmpdir(), "zero-cleanup-"));
   try {
     const owner = new QianchuanPlanMaterials(root, async () => ({ page: f.session, close: () => f.session.dispose() }));
@@ -96,6 +97,16 @@ it("scans fifteen-day uneven pages while protecting new plan materials", async (
     expect(range).toEqual([createZeroImpressionsWindow().startTime.slice(0, 10), createZeroImpressionsWindow().endTime.slice(0, 10)]);
     expect(f.removed.flat()).toEqual(["13", "15", "17"]); expect(f.remaining()).toEqual(["11", "12", "14", "16"]);
     expect(f.offsets.filter(offset => offset === 0).length).toBeGreaterThan(1); expect(f.offsets).toContain(100);
+    expect((await readdir(path.join(root, "plan-material-deletions"))).some(name => name.endsWith("pending.json"))).toBe(false);
+  } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
+});
+it("never confirms deletion for a five-day plan even when every page has zero impressions", async () => {
+  const f = await fixture({ fiveDayPlan: true }), root = await mkdtemp(path.join(tmpdir(), "zero-young-plan-"));
+  try {
+    const owner = new QianchuanPlanMaterials(root, async () => ({ page: f.session, close: () => f.session.dispose() }));
+    expect(await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "CLEARED", deletedCount: 0 });
+    expect(f.removed).toEqual([]); expect(f.offsets).toContain(300);
+    expect(f.remaining()).toEqual(["11", "12", "13", "14", "15", "16", "17"]);
     expect((await readdir(path.join(root, "plan-material-deletions"))).some(name => name.endsWith("pending.json"))).toBe(false);
   } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
 });

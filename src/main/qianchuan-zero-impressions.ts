@@ -8,7 +8,7 @@ const chinaTime = (time: number) => new Date(time + 8 * hour).toISOString().slic
 export function createZeroImpressionsWindow(now = Date.now()): ZeroImpressionsWindow {
   const today = chinaTime(now).slice(0, 10);
   const midnight = Date.parse(`${today}T00:00:00+08:00`);
-  return { startTime: chinaTime(midnight - 15 * 24 * hour), endTime: chinaTime(midnight - 1000), createdBefore: chinaTime(now - 72 * hour) };
+  return { startTime: chinaTime(midnight - 15 * 24 * hour), endTime: chinaTime(midnight - 1000), createdBefore: chinaTime(now - 15 * 24 * hour) };
 }
 
 function parseChinaTime(value: string): number {
