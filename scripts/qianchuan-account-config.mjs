@@ -26,6 +26,7 @@ export function assertSelectedPage(page, account) {
 }
 
 export async function openAccountPage(account, execute = run) {
+  if (account.egress) throw new Error("固定出口账号请从简辑打开；诊断 CLI 不管理 SSH 隧道或验证出口。");
   const sessionId = randomUUID();
   const url = accountPageUrl(account);
   // Bind this session to the configured endpoint before using its selected page.

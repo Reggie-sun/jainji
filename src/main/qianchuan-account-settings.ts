@@ -6,8 +6,10 @@ import { TemplateAccountBindingSchema, TemplateAccountSettingsSchema, type Templ
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
 import { QianchuanBrowserManager } from "./qianchuan-browser-manager.js";
 import type { RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
-import { parseQianchuanPlanUrl, QianchuanAccountSettingsSchema, QianchuanAccountSetupSchema, QianchuanBrowserControlSchema, type QianchuanAccount, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
+import { parseQianchuanPlanUrl, QIANCHUAN_PRODUCTS, QianchuanAccountSettingsSchema, QianchuanAccountSetupSchema, QianchuanBrowserControlSchema, type QianchuanAccount, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryClearSchema } from "../shared/qianchuan-video-library.js";
+import { egressIdentity, type QianchuanEgress } from "../shared/qianchuan-egress.js";
+import { qianchuanEgressRuntime } from "./qianchuan-egress-runtime.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -26,14 +28,20 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
-    this.browsers = new QianchuanBrowserManager(root);
+    this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id) });
     this.discoverBrowser = discoverBrowser ?? (id => this.browsers.prepare(id));
     this.discoverExistingBrowser = discoverExistingBrowser ?? (id => this.browsers.prepareExisting(id));
   }
   async openBrowser(input: unknown): Promise<void> {
     this.assertAvailable();
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
+    if (parsed.egress !== undefined && egressIdentity(parsed.egress ?? undefined) !== egressIdentity(await this.egress(ids.advertiserId))) throw new Error("请先保存固定出口设置，再打开账号浏览器。");
     await this.browsers.open(ids.advertiserId, true);
+  }
+  private async egress(advertiserId: string): Promise<QianchuanEgress | undefined> {
+    this.assertAvailable();
+    if (!await this.exists()) { if (this.hasMapping) throw new Error("账号设置丢失，禁止直连。"); return undefined; }
+    return (await readPrivateConfig(this.file, parseSettings)).accounts.find(account => account.advertiserId === advertiserId)?.egress;
   }
   async controlBrowser(input: unknown, guard: (advertiserId: string, browser?: RunningChromeBrowser) => void): Promise<void> {
     this.assertAvailable();
@@ -42,6 +50,14 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       const target = await super.preflight(parsed.product);
       if (target.advertiserId !== parsed.expectedAdvertiserId) throw new Error("账号设置已变化，未关闭任何浏览器，请重新选择账号。");
       guard(target.advertiserId);
+      if (parsed.action === "reconnect-egress") {
+        if (!target.egress) throw new Error("该账号未配置固定出口。");
+        qianchuanEgressRuntime.recover(target.egress);
+        await qianchuanEgressRuntime.ensure(target.egress);
+        await qianchuanEgressRuntime.verify(target.egress);
+        // Network recovery never touches Chrome, the upload queue or historical outcomes.
+        return super.refresh();
+      }
       this.preparedBrowsers.delete(parsed.product);
       await this.browsers.control(target.advertiserId, parsed.action, browser => guard(target.advertiserId, browser));
       return super.refresh();
@@ -90,10 +106,22 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     });
     this.writes = pending; return pending;
   }
-  private async save(accounts: QianchuanAccount[]): Promise<QianchuanAccountSummary[]> {
+  private async save(accounts: QianchuanAccount[], guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
     const value = QianchuanAccountSettingsSchema.parse({ version: 1, accounts });
+    const before = await this.exists() ? (await readPrivateConfig(this.file, parseSettings)).accounts : [];
+    const ids = [...new Set([...before, ...accounts].map(account => account.advertiserId).filter(Boolean))];
+    const changed = ids.filter(id => egressIdentity(before.find(account => account.advertiserId === id)?.egress) !== egressIdentity(accounts.find(account => account.advertiserId === id)?.egress));
+    if (changed.length) {
+      guard?.(changed);
+      for (const id of changed) await this.browsers.assertClosed(id);
+      guard?.(changed);
+    }
     await this.savePrivateJson(this.file, value);
-    try { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return this.withProfileNames(summaries); }
+    try {
+      const summaries = await super.authorizeFile(this.file); this.hasMapping = true;
+      if (changed.length) { this.preparedBrowsers.clear(); qianchuanEgressRuntime.retireUnused(accounts.flatMap(account => account.egress ? [account.egress] : [])); }
+      return this.withProfileNames(summaries);
+    }
     catch (error) { this.blocked = true; throw error; }
   }
   private async savePrivateJson(file: string, value: unknown): Promise<void> {
@@ -137,20 +165,20 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       return binding;
     });
   }
-  override async authorizeFile(source: string): Promise<QianchuanAccountSummary[]> {
+  override async authorizeFile(source: string, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
     // Validate through the original strict, private six-account import boundary.
     const importer = new QianchuanAccountConfigReader(); await importer.authorizeFile(source);
     const imported = await readPrivateConfig(path.resolve(source));
     return this.edit(async () => {
       if (await this.exists()) await readPrivateConfig(this.file, parseSettings);
-      return this.save(imported.accounts);
+      return this.save(imported.accounts, guard);
     });
   }
-  async restore(legacyPath?: string): Promise<QianchuanAccountSummary[]> {
+  async restore(legacyPath?: string, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
     if (await this.exists()) { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return this.withProfileNames(summaries); }
     if (legacyPath) {
       if (path.resolve(legacyPath) === this.file) { this.hasMapping = true; throw new Error("已保存的账号设置丢失，请人工核查。"); }
-      return this.authorizeFile(legacyPath);
+      return this.authorizeFile(legacyPath, guard);
     }
     return [];
   }
@@ -187,14 +215,17 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
     return this.withPreparedBrowser(target);
   }
-  async savePlan(input: unknown): Promise<QianchuanAccountSummary[]> {
+  async savePlan(input: unknown, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
     return this.edit(async () => {
       const accounts = await this.exists() ? (await readPrivateConfig(this.file, parseSettings)).accounts : [];
       const old = accounts.find(account => account.product === parsed.product);
-      const cdpEndpoint = old?.advertiserId === ids.advertiserId ? old.cdpEndpoint : await this.discoverBrowser(ids.advertiserId);
+      const egress = parsed.egress === undefined ? old?.advertiserId === ids.advertiserId ? old.egress : undefined : parsed.egress ?? undefined;
+      // A protected new account is saved before any browser/network activity; prepare resolves the real CDP port.
+      const cdpEndpoint = old?.advertiserId === ids.advertiserId ? old.cdpEndpoint : egress ? `http://127.0.0.1:${19400 + QIANCHUAN_PRODUCTS.indexOf(parsed.product)}` : await this.discoverBrowser(ids.advertiserId);
       const account: QianchuanAccount = { ...old, product: parsed.product, cdpEndpoint, ...ids, ...(parsed.productName !== undefined ? { productName: parsed.productName } : {}) };
-      return this.save(old ? accounts.map(value => value.product === parsed.product ? account : value) : [...accounts, account]);
+      if (egress) account.egress = egress; else delete account.egress;
+      return this.save(old ? accounts.map(value => value.product === parsed.product ? account : value) : [...accounts, account], guard);
     });
   }
 }

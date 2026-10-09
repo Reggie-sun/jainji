@@ -3,6 +3,7 @@ import { lstat, open, readdir, readlink, realpath } from "node:fs/promises";
 import path from "node:path";
 import { readChromeTargets } from "./local-cdp-transport.js";
 import { VIDEO_LIBRARY_ROUTE } from "../shared/qianchuan-video-library.js";
+import { EGRESS_FLAG_NAMES } from "../shared/qianchuan-egress.js";
 
 const unavailable = "无法完整连接千川浏览器。请保持账号 Chrome 打开；若 Chrome 提示允许远程调试，请先允许后重试。";
 const missing = "未找到该账户的可连接浏览器，请在已登录 Chrome 中打开对应的千川首页、计划或视频库。";
@@ -32,7 +33,7 @@ async function boundedRead(file: string, limit: number, owner?: { uid: number; p
 }
 
 /** Read debugging metadata only from this user's running Chrome main processes. */
-export interface RunningChromeBrowser { endpoint?: string; profile?: string; profileDirectory?: string; windowClass?: string; processId?: number; startedAt?: string; connectionIssue?: "METADATA_UNAVAILABLE"; }
+export interface RunningChromeBrowser { endpoint?: string; profile?: string; profileDirectory?: string; windowClass?: string; processId?: number; startedAt?: string; connectionIssue?: "METADATA_UNAVAILABLE"; egressArguments?: string[]; }
 export async function runningChromeBrowsers(procRoot = "/proc", uid = process.getuid?.(), exactProfile?: string): Promise<RunningChromeBrowser[]> {
   if (process.platform !== "linux" || uid === undefined) throw new Error("当前系统暂不支持自动识别浏览器连接。");
   const pids = (await readdir(procRoot)).filter(name => /^[1-9][0-9]*$/.test(name));
@@ -71,6 +72,8 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       const startedAt = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
       if (!startedAt || !/^[0-9]+$/.test(startedAt)) throw new Error(unavailable);
       metadata = { ...metadata, profileDirectory: flag(args, "--profile-directory"), windowClass: flag(args, "--class"), startedAt };
+      const egressArguments = args.filter(arg => EGRESS_FLAG_NAMES.some(name => arg === name || arg.startsWith(`${name}=`)));
+      if (egressArguments.length) metadata.egressArguments = egressArguments;
       let port = portNumber(declared);
       if (declared !== undefined && declared !== "0" && !port) throw new Error(unavailable);
       let socket: string | undefined;

@@ -106,7 +106,7 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
     expect(await page.evaluate(()=>(window as any).scheduled[0].accounts)).toEqual([{product:"眼贴",expectedAdvertiserId:"1000"},{product:"肥皂",expectedAdvertiserId:"1001"}]);
     await page.getByRole("button",{name:"保存账号",exact:true}).click();
     await page.waitForFunction(()=>(window as any).saved.length===1);
-    expect(await page.evaluate(()=>(window as any).saved[0])).toEqual({product:"眼贴",productName:"手填新产品",planUrl:"https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=9001"});
+    expect(await page.evaluate(()=>(window as any).saved[0])).toEqual({product:"眼贴",productName:"手填新产品",planUrl:"https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=9001",egress:null});
     expect(await page.evaluate(()=>(window as any).controlled)).toEqual([]);
   } finally {await page.close();}
 });

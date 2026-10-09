@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { QianchuanEgressSchema, validateEgressGroups, type QianchuanEgress } from "./qianchuan-egress.js";
 
 export const QIANCHUAN_PRODUCTS = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂", "热敷贴"] as const;
 export const QianchuanProductSchema = z.enum(QIANCHUAN_PRODUCTS);
@@ -11,10 +12,11 @@ const endpoint = z.string().max(64).refine(value => {
 }, "CDP 地址必须为 http://127.0.0.1:端口，端口范围为 1–65535。");
 
 export const QianchuanAccountSchema = z.object({
-  product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), cdpEndpoint: endpoint, advertiserId: accountId, adId: accountId,
+  product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), cdpEndpoint: endpoint, advertiserId: accountId, adId: accountId, egress: QianchuanEgressSchema.optional(),
 }).strict().refine(value => !value.adId || Boolean(value.advertiserId), "填写计划 ID 前必须填写广告账户 ID。");
 export type QianchuanAccount = z.infer<typeof QianchuanAccountSchema>;
 const uniqueBindings = (value: { accounts: QianchuanAccount[] }, ctx: z.RefinementCtx) => {
+  validateEgressGroups(value.accounts, ctx);
   const products = new Set<string>();
   const ports = new Set<string>();
   const accounts = new Set<string>();
@@ -36,11 +38,11 @@ export const QianchuanAccountSettingsSchema = z.object({
   version: z.literal(1), accounts: z.array(QianchuanAccountSchema).max(QIANCHUAN_PRODUCTS.length),
 }).strict().superRefine(uniqueBindings);
 export const QianchuanAccountSetupSchema = z.object({
-  product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), planUrl: z.string().trim().min(1).max(16384),
+  product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), planUrl: z.string().trim().min(1).max(16384), egress: QianchuanEgressSchema.nullable().optional(),
 }).strict();
 export type QianchuanAccountSetup = z.infer<typeof QianchuanAccountSetupSchema>;
 export const QianchuanBrowserControlSchema = z.object({
-  product: QianchuanProductSchema, action: z.enum(["close", "restart"]),
+  product: QianchuanProductSchema, action: z.enum(["close", "restart", "reconnect-egress"]),
   expectedAdvertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/),
 }).strict();
 export type QianchuanBrowserControl = z.infer<typeof QianchuanBrowserControlSchema>;
@@ -65,6 +67,7 @@ export interface QianchuanAccountSummary {
   adId: string;
   available: boolean;
   browserPort?: number;
+  egress?: QianchuanEgress;
 }
 
 /** Names are presentation only; the original product remains the stable account slot. */
@@ -83,7 +86,7 @@ export function parseAccountConfig(value: unknown): QianchuanAccount[] {
 }
 export function accountAvailable(account: QianchuanAccount): boolean { return Boolean(account.advertiserId && account.adId); }
 export function accountSummary(account: QianchuanAccount): QianchuanAccountSummary {
-  return { product: account.product, ...(account.productName !== undefined ? { productName: account.productName } : {}), advertiserId: account.advertiserId, adId: account.adId, available: accountAvailable(account), browserPort: Number(new URL(account.cdpEndpoint).port) };
+  return { product: account.product, ...(account.productName !== undefined ? { productName: account.productName } : {}), advertiserId: account.advertiserId, adId: account.adId, available: accountAvailable(account), browserPort: Number(new URL(account.cdpEndpoint).port), ...(account.egress ? { egress: account.egress } : {}) };
 }
 export function accountPageUrl(value: QianchuanAccount): string {
   const account = QianchuanAccountSchema.parse(value);

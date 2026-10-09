@@ -10,6 +10,7 @@ import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory,
 import { uploadBatchSettled } from "./douyin-upload-group.js";
 import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
+import { egressIdentity } from "../shared/qianchuan-egress.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import { QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryClearSchema, QianchuanPlanRecoverySchema, type QianchuanLibraryClear, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
@@ -186,28 +187,42 @@ export class DouyinUploadService {
   async restoreConfig(): Promise<void> {
     const savedPath = this.store.config.accountConfigPath;
     try {
-      const summaries = this.accounts instanceof QianchuanAccountSettings ? await this.accounts.restore(savedPath) : savedPath ? await this.accounts.authorizeFile(savedPath) : [];
+      const summaries = this.accounts instanceof QianchuanAccountSettings ? await this.accounts.restore(savedPath, this.guardEgressChange) : savedPath ? await this.accounts.authorizeFile(savedPath) : [];
       if (summaries.length && this.accounts instanceof QianchuanAccountSettings && savedPath !== this.accounts.file) await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
       this.summaries = summaries; this.initializationFailure = undefined;
     } catch { this.summaries = []; this.initializationFailure = "账号设置不可用，请检查已保存的配置。"; }
     this.preloadPlans();
   }
   /** Only the trusted main-process file dialog may call this with a path. */
+  private guardEgressChange = (advertiserIds: string[]): void => {
+    if (this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction || this.browserPreparations || this.preparingContinuation) throw new Error("制作或上传控制尚未空闲，不能更改固定出口。");
+    const protectedTasks = this.store.tasks().some(task => advertiserIds.includes(task.authorization.target.advertiserId) && !this.store.isClosed(task.authorization.pageBatchId) && task.result.state !== "DISCARDED");
+    const preparing = this.store.intents().some(intent => advertiserIds.includes(intent.authorization.target.advertiserId) && this.currentIntents.has(intentKey(intent)) && !this.cancelledIntents.has(intentKey(intent)));
+    if (protectedTasks || preparing) throw new Error("该账号有待处理、待确认或结果未知的批次，不能更改固定出口。请先核查并明确结束原批次。");
+  };
   async chooseConfig(file: string): Promise<void> {
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
-    const summary = await this.accounts.authorizeFile(file);
-    await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts instanceof QianchuanAccountSettings ? this.accounts.file : file });
-    this.summaries = summary; this.initializationFailure = undefined; this.changed();
+    this.managingBrowser = true;
+    try {
+      await this.stopPlanPreload();
+      const summary = this.accounts instanceof QianchuanAccountSettings ? await this.accounts.authorizeFile(file, this.guardEgressChange) : await this.accounts.authorizeFile(file);
+      await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts instanceof QianchuanAccountSettings ? this.accounts.file : file });
+      this.summaries = summary; this.initializationFailure = undefined;
+    } finally { this.managingBrowser = false; this.changed(); }
     if (this.accounts instanceof QianchuanAccountSettings) this.preloadPlans();
   }
   async saveAccount(input: unknown): Promise<void> {
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持软件内设置。");
-    const summaries = await this.accounts.savePlan(input);
-    await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
-    this.summaries = summaries; this.initializationFailure = undefined; this.changed();
+    this.managingBrowser = true;
+    try {
+      await this.stopPlanPreload();
+      const summaries = await this.accounts.savePlan(input, this.guardEgressChange);
+      await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
+      this.summaries = summaries; this.initializationFailure = undefined;
+    } finally { this.managingBrowser = false; this.changed(); }
     this.preloadPlans();
   }
   private preloadPlans(): void {
@@ -287,7 +302,8 @@ export class DouyinUploadService {
   async openAccountBrowser(input: unknown): Promise<void> {
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后重试。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持打开浏览器。");
-    await this.accounts.openBrowser(input);
+    this.browserPreparations++;
+    try { await this.accounts.openBrowser(input); } finally { this.browserPreparations--; }
     this.preloadPlans();
   }
   async controlAccountBrowser(input: unknown): Promise<void> {
@@ -300,6 +316,7 @@ export class DouyinUploadService {
       await this.control.catch(() => undefined);
       await this.accounts.controlBrowser(parsed, (advertiserId, browser) => {
         if (this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction) throw new Error("上传控制已变化，未关闭浏览器。");
+        if (parsed.action === "reconnect-egress") return;
         // A legacy draft may belong to another advertiser in this same process.
         const sharesBrowser = (target: UploadAuthorization["target"]) => target.advertiserId === advertiserId || browser &&
           (!browser.endpoint || new URL(browser.endpoint).host === new URL(target.cdpEndpoint).host);
@@ -729,6 +746,7 @@ export class DouyinUploadService {
   private async currentTarget(task: UploadTaskRecord): Promise<void> {
     if (this.store.tasks().some(other => other.authorization.pageBatchId === task.authorization.pageBatchId && this.store.hasMarker(other.result.upload_task_id))) return;
     const target = await this.accounts.preflight(task.authorization.target.product), old = task.authorization.target;
+    if (egressIdentity(target.egress) !== egressIdentity(old.egress)) throw uploadFailure("INPUT_CONFLICT", "account", "固定出口已变化，不能改用新网络继续原任务。", "核对原批次冻结出口；不会自动重传。", true);
     const plan = this.store.intents().find(intent => intent.authorization.pageBatchId === task.authorization.pageBatchId)?.selection.plan;
     const matchesPlan = plan ? plan.advertiserId === old.advertiserId && plan.adId === old.adId : target.adId === old.adId;
     if (target.advertiserId !== old.advertiserId || !matchesPlan || target.cdpEndpoint !== old.cdpEndpoint) throw uploadFailure("INPUT_CONFLICT", "account", plan ? `本批冻结计划 ${old.adId} 与当前账号或计划不同，请核查上传目标。` : `本批冻结计划 ${old.adId} 与当前保存计划 ${target.adId} 不同，请明确“改传当前计划”。`, "核对账号设置；同账户且整批从未选文件时可改传，已有文件屏障不能迁移或重传。", true);
