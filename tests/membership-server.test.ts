@@ -416,3 +416,128 @@ describe("membership server", () => {
     await expect(membershipServerConfigFromEnvironment({ JIANJI_MEMBERSHIP_SERVER_CONFIG: JSON.stringify(config) })).rejects.toThrow("JIANJI_MEMBERSHIP_SERVER_CONFIG is invalid.");
   });
 });
+
+import { CasdoorClient, type ManualSubscription } from "../src/membership-server/casdoor.js";
+import { ManualPayments } from "../src/membership-server/manual-payments.js";
+import type { MembershipServerConfig } from "../src/membership-server/policy.js";
+import { BillingPortal } from "../src/membership-server/billing.js";
+import { FileBillingWriteGuard } from "../src/membership-server/billing-write-guard.js";
+
+const config: MembershipServerConfig = { serviceUrl: "http://127.0.0.1:8789", issuer: "http://127.0.0.1:8000", clientId: "client", clientSecret: "test-secret-123456789", organization: "jianji", application: "app", pricingName: "pricing", callbackPort: 43829, monthlyPlan: "jianji-monthly", yearlyPlan: "jianji-yearly", grantPlan: "jianji-grant" };
+class Fake extends CasdoorClient {
+  rows = new Map<string, ManualSubscription>(); writes = 0; afterCommit = false; beforeCommit = false; banned = false; currentId = "alice-id";
+  override async introspect(token: string) { return token === "invalid" ? { active: false as const } : { active: true as const, client_id: "client", username: token, sub: token === "alice" ? this.currentId : token + "-id", iss: config.issuer, aud: "client", exp: 2e10 }; }
+  override async getUser(_org: string, name: string) { return { owner: "jianji", name, id: name === "alice" ? this.currentId : name + "-id", displayName: name, createdTime: "2020-01-01T00:00:00Z", isAdmin: name === "admin", isDeleted: false, isForbidden: this.banned && name === "alice" }; }
+  override async getApplication() { return { owner: "admin", name: "app", organization: "jianji", clientId: "client", enableExclusiveSignin: true, maxSessions: 1 }; }
+  override async getSubscriptions(_org: string, name: string) { return [...this.rows.values()].filter(r => r.user === name).map(r => structuredClone(r)); }
+  override async listManualSubscriptions(name?: string) { return [...this.rows.values()].filter(r => !name || r.user === name).map(r => structuredClone(r)); }
+  override async getManualSubscription(name: string) { return structuredClone(this.rows.get(name) ?? null); }
+  override async getPricing() { return { owner: "jianji", name: "pricing", application: "app", isEnabled: true, plans: ["jianji-monthly", "jianji-yearly"] }; }
+  override async getPlan(_org: string, name: string) { return { owner: "jianji", name, price: name === "jianji-monthly" ? 100 : 666, currency: "CNY", period: name === "jianji-monthly" ? "Monthly" : "Yearly", product: name, isEnabled: true }; }
+  override async getProduct(_org: string, name: string) { return { owner: "jianji", name, price: name === "jianji-monthly" ? 100 : 666, currency: "CNY" }; }
+  override async writeManualSubscription(row: ManualSubscription, create: boolean) { ++this.writes; if (this.beforeCommit) throw new Error("timeout"); if (create && this.rows.has(row.name)) throw new Error("duplicate"); this.rows.set(row.name, structuredClone(row)); if (this.afterCommit) throw new Error("timeout"); }
+}
+const submission = { plan: "monthly", channel: "wechat", transaction: "20261010000001" };
+const approval = { action: "approve", received: true, amount: 100, note: "已核对收款账单" };
+function manualFixture(now = "2024-01-31T12:00:00Z") { const api = new Fake(config); return { api, service: new ManualPayments(config, api, () => new Date(now), { run: async (_row, write) => write() }) }; }
+
+describe("manual membership requests", () => {
+  it("creates pending without entitlement and ignores no caller-supplied authority or price", async () => {
+    const { service, api } = manualFixture(); const request = await service.submit("alice", submission);
+    expect(request.state).toBe("pending"); expect(api.rows.get(request.id)).toMatchObject({ state: "Pending", payment: "", startTime: "", endTime: "" });
+    await expect(service.submit("alice", { ...submission, amount: 1 })).rejects.toMatchObject({ status: 400 });
+    await expect(service.submit("invalid", submission)).rejects.toMatchObject({ status: 401 });
+  });
+  it("deduplicates retries and conceals another account's transaction", async () => {
+    const { service, api } = manualFixture(); const a = await service.submit("alice", submission); const b = await service.submit("alice", submission);
+    expect(a.id).toBe(b.id); expect(api.writes).toBe(1);
+    await expect(service.submit("bob", submission)).rejects.toMatchObject({ status: 409 });
+    expect((await service.list("bob")).requests).toEqual([]);
+    await expect(service.review("alice", a.id, approval)).rejects.toMatchObject({ status: 403 });
+  });
+  it("requires actual amount confirmation and produces one clamped month exactly once", async () => {
+    const { service, api } = manualFixture(); const a = await service.submit("alice", submission);
+    await expect(service.review("admin", a.id, { ...approval, received: false })).rejects.toMatchObject({ status: 400 });
+    await expect(service.review("admin", a.id, { ...approval, amount: 1 })).rejects.toMatchObject({ status: 400 });
+    const [r, repeat] = await Promise.all([service.review("admin", a.id, approval), service.review("admin", a.id, approval)]);
+    expect(r.endTime).toBe("2024-02-29T12:00:00.000Z"); expect(repeat.endTime).toBe(r.endTime); expect(api.writes).toBe(2);
+    expect(api.rows.get(a.id)?.payment).toBe(`manual:${a.id}`);
+  });
+  it("serializes separate approvals for one user and extends existing end", async () => {
+    const { service } = manualFixture(); const a = await service.submit("alice", submission); const b = await service.submit("alice", { ...submission, transaction: "20261010000002" });
+    const results = await Promise.all([service.review("admin", a.id, approval), service.review("admin", b.id, approval)]);
+    expect(results[1].startTime).toBe(results[0].endTime); expect(results[1].endTime).toBe("2024-03-29T12:00:00.000Z");
+  });
+  it("clamps a leap day annual term and retains rejection audit", async () => {
+    const { service, api } = manualFixture("2024-02-29T00:00:00Z"); const a = await service.submit("alice", { ...submission, plan: "yearly" });
+    expect((await service.review("admin", a.id, { ...approval, amount: 666 })).endTime).toBe("2025-02-28T00:00:00.000Z");
+    const b = await service.submit("bob", { ...submission, transaction: "20261010000002" });
+    const rejected = await service.review("admin", b.id, { action: "reject", received: false, amount: 0, note: "未查询到到账" });
+    expect(rejected.state).toBe("rejected"); expect(api.rows.get(b.id)?.state).toBe("Suspended");
+    await expect(service.review("admin", b.id, approval)).rejects.toMatchObject({ status: 409 });
+  });
+  it("never retries unknown writes and recovers a committed response by readback", async () => {
+    const { service, api } = manualFixture(); api.afterCommit = true;
+    const a = await service.submit("alice", submission); expect(api.writes).toBe(1);
+    await service.review("admin", a.id, approval); expect(api.writes).toBe(2);
+    api.beforeCommit = true;
+    await expect(service.submit("alice", { ...submission, transaction: "20261010000002" })).rejects.toMatchObject({ status: 503 }); expect(api.writes).toBe(3);
+  });
+  it("cannot approve banned or recreated accounts", async () => {
+    const { service, api } = manualFixture(); const a = await service.submit("alice", submission); api.banned = true;
+    await expect(service.review("admin", a.id, approval)).rejects.toMatchObject({ status: 409 });
+    api.banned = false; api.currentId = "replacement-id";
+    await expect(service.review("admin", a.id, approval)).rejects.toMatchObject({ status: 409 });
+    expect((await service.list("alice")).requests).toEqual([]);
+  });
+  it("refuses offset-less dates in prior grants instead of extending a guessed date", async () => {
+    const { service, api } = manualFixture(); const a = await service.submit("alice", submission);
+    api.rows.set("grant", { ...api.rows.get(a.id)!, name: "grant", plan: config.grantPlan, payment: "", state: "Active", startTime: "2024-01-01 00:00:00", endTime: "2024-03-01 00:00:00" });
+    await expect(service.review("admin", a.id, approval)).rejects.toMatchObject({ status: 409 });
+  });
+  it("persists unknown-write fencing across restarts and never retries the unresolved mutation", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "billing-guard-")); temporaryDirectories.push(root);
+    const api = new Fake(config); const clock = () => new Date("2024-01-31T12:00:00Z");
+    const service = new ManualPayments(config, api, clock, new FileBillingWriteGuard(root));
+    const first = await service.submit("alice", submission); expect(first.state).toBe("pending");
+    api.beforeCommit = true;
+    await expect(service.review("admin", first.id, approval)).rejects.toMatchObject({ status: 503 });
+    expect(api.writes).toBe(2); api.beforeCommit = false;
+    const restarted = new ManualPayments(config, api, clock, new FileBillingWriteGuard(root));
+    await expect(restarted.review("admin", first.id, approval)).rejects.toMatchObject({ status: 503 });
+    await expect(restarted.submit("bob", { ...submission, transaction: "20261010000002" })).rejects.toMatchObject({ status: 503 });
+    expect(api.writes).toBe(2);
+    expect((await restarted.list("alice")).requests[0].state).toBe("pending");
+  });
+});
+
+describe("billing browser transport", () => {
+  it("requires single-use tickets, same origin and session CSRF; never exposes upstream tokens", async () => {
+    const { service } = manualFixture();
+    let portal: BillingPortal;
+    const server = createServer((req, res) => { void portal.handle(req, res); });
+    await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
+    const address = server.address(); if (!address || typeof address === "string") throw new Error();
+    const origin = `http://127.0.0.1:${address.port}`;
+    portal = new BillingPortal({ ...config, serviceUrl: origin }, "/absent-test-assets", service);
+    const post = (route: string, body: unknown, cookie = "", csrf = "", source = origin) => fetch(origin + route, { method: "POST", headers: { "Content-Type": "application/json", Origin: source, Cookie: cookie, "X-CSRF-Token": csrf }, body: JSON.stringify(body) });
+    try {
+      expect((await fetch(origin + "/billing/requests")).status).toBe(401);
+      const ticketReply = await fetch(origin + "/billing/ticket", { method: "POST", headers: { Authorization: "Bearer alice" } });
+      const { ticket } = await ticketReply.json(); expect(ticket).toMatch(/^[a-f0-9]{64}$/);
+      expect((await post("/billing/session", { ticket }, "", "", "https://evil.example")).status).toBe(403);
+      const sessionReply = await post("/billing/session", { ticket });
+      const cookie = sessionReply.headers.get("set-cookie")!.split(";")[0];
+      expect(sessionReply.headers.get("set-cookie")).toContain("HttpOnly");
+      expect((await post("/billing/session", { ticket })).status).toBe(401);
+      const list = await fetch(origin + "/billing/requests", { headers: { Cookie: cookie } });
+      const body = await list.json(); expect(body.user.name).toBe("alice"); expect(body).not.toHaveProperty("token");
+      expect((await post("/billing/requests", submission, cookie)).status).toBe(403);
+      // Valid authentication still fails closed when the deployment lacks payment images.
+      expect((await post("/billing/requests", submission, cookie, body.csrf)).status).toBe(503);
+      expect((await post("/billing/logout", {}, cookie, body.csrf)).status).toBe(200);
+      expect((await fetch(origin + "/billing/requests", { headers: { Cookie: cookie } })).status).toBe(401);
+      const page = await fetch(origin + "/billing"); expect(page.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+    } finally { await new Promise<void>(r => { server.close(() => r()); server.closeAllConnections(); }); }
+  });
+});

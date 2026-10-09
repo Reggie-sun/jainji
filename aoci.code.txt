@@ -205,10 +205,10 @@ qianchuan-remote-runtime.ts[IN8S]: F:管理主体远端浏览器通道租约及�
 qianchuan-remote-selection.ts[IN8T]: F:让远端Chrome读取已暂存路径并选入原文件控件 | R:code:src/main/douyin-cdp-uploader.ts,code:src/main/qianchuan-page-contract.ts | A:主frame多文件input通过临时objectId调用DOM.setFileInputFiles；清理CDP对象 | S:至多9路径；不查本地文件、不点击确认；该调用必须位于原selection fence之后
 qianchuan-remote-transport.ts[IN8S]: F:提供严格SSH worker通道及有界二进制帧 | R:code:src/shared/qianchuan-remote.ts,code:src/main/qianchuan-remote-runtime.ts | A:顺序请求和响应；控制45秒分片120秒；取消关闭通道；头16KiB及体4MiB | S:严格主机指纹且禁agent转发；固定远端命令不插入文件内容；协议错撤销，业务拒绝不销毁通道；无明文TCP后备
 qianchuan-remote-worker.ts[EN8T]: F:在主体VPS执行浏览器控制出口核验及素材接收 | R:code:src/main/qianchuan-browser-manager.ts,code:src/main/qianchuan-remote-files.ts,code:src/main/qianchuan-egress-probe.ts | A:主体与IP持久绑定；空白启动后核出口再开账号页；stdin二进制RPC与stdout响应 | S:专用非root Linux用户；无公网监听；probe可核登录页而existing要求账号；不持有队列账本或平台确认权
-membership-desktop.ts[AI8T]: F:组装桌面会员会话与账号IPC | R:code:src/main/membership-session.ts,code:src/main/membership-storage.ts,code:src/main/membership-oauth.ts,code:src/main/membership-ipc.ts | A:读取公开配置；恢复心跳；套餐管理员外链 | S:仅未打包未指定配置且默认文件不存在时本地开放；坏配置和安装版缺配置失败关闭；无client secret
+membership-desktop.ts[AI8T]: F:组装桌面会员会话与账号IPC | R:code:src/main/membership-session.ts,code:src/main/membership-storage.ts,code:src/main/membership-oauth.ts,code:src/main/membership-ipc.ts | A:读取公开配置；恢复心跳；打开会话签发的续费链接及管理员外链 | S:仅未打包未指定配置且默认文件不存在时本地开放；坏配置和安装版缺配置失败关闭；无client secret
 membership-ipc.ts[MI8T]: F:为主进程IPC安装会员准入门 | R:code:src/main/membership-session.ts | A:先核可信发送方；未知操作默认在线鉴权；保留固定恢复白名单 | S:须在业务handler注册前安装；不替代原安全检查
 membership-oauth.ts[II8T]: F:执行系统浏览器OIDC登录及loopback回调 | R:code:src/shared/membership.ts | A:openid-client发现；PKCE与state及nonce；限定issuer；取消超时关闭监听 | S:公共客户端不发送client secret；token只返回主进程；错误state不能完成登录
-membership-session.ts[AI8S]: F:拥有桌面唯一会员状态和准入 | R:code:src/shared/membership.ts | A:登录去重；串行存储；代际隔离；在线检查及失效取消 | S:仅无配置且主进程明确本地模式可免登录；服务端状态不能开启本地模式；清理存储失败仍停止工作
+membership-session.ts[AI8S]: F:拥有桌面唯一会员状态和准入 | R:code:src/shared/membership.ts | A:登录去重；串行存储；代际隔离；在线检查及失效取消；请求短期续费ticket链接 | S:仅无配置且主进程明确本地模式可免登录；服务端状态不能开启本地模式；清理存储失败仍停止工作；不把token放入外链
 membership-storage.ts[PS8T]: F:加密保存并按公开配置绑定会员token | R:code:src/main/membership-session.ts | A:safeStorage；私有目录与原子替换；读取验证绑定及长度 | S:basic_text或无加密时仅内存；不落明文token
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
@@ -269,7 +269,7 @@ QianchuanCleanupPlanSelect.tsx[EU7T]: F:读取账号清理计划并默认全选�
 QianchuanCleanupRecovery.tsx[EU7T]: F:展示旧清理素材明细并收集人工处理确认 | R:code:src/renderer/QianchuanCleanupResults.tsx,code:src/shared/qianchuan-video-library.ts | A:账户计划ID及统计窗口；说明新清理跳过未知ID；声明及二次确认绑定attempt摘要 | S:列表缺席非已删证明；本地处置不授平台成功或重试
 qianchuan-account-display.ts[CU5T]: F:按冻结广告主ID解析当前账号显示名称 | R:code:src/shared/qianchuan-account.ts | A:精确ID查找后调用共享名称优先级；缺匹配使用调用方fallback | S:不按可重用产品槽位匹配旧任务
 QianchuanEgressSettings.tsx[EU6T]: F:编辑账号VPS出口及浏览器位置并复用主体 | R:code:src/shared/qianchuan-egress.ts,code:src/renderer/QianchuanAccountSettings.tsx | A:A本机或B远端选择；主体SSH别名IP端口受控输入；即时校验及运行条件提示 | S:不收身份证号码或SSH私钥；B需要本地简辑在线；界面校验不替代main准入
-MembershipGate.tsx[EU7T]: F:呈现会员登录权益及工作区入口 | R:code:src/main/preload.ts,code:src/shared/membership.ts | A:订阅状态；本地模式开放工作区；登录刷新退出；失效保留草稿 | S:只展示不授权；无token；本地模式不伪装付费会员
+MembershipGate.tsx[EU7T]: F:呈现会员登录权益及工作区入口 | R:code:src/main/preload.ts,code:src/shared/membership.ts | A:订阅状态；本地模式开放工作区；登录刷新退出；提示人工核款后刷新 | S:只展示不授权；无token；失效保留草稿；本地模式不伪装付费会员
 
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===
@@ -320,7 +320,11 @@ sql-asm.d.ts[AB7T]: F:声明sql-asm模块的TypeScript类型 | R:code:src/main/s
 task.json[FQ4T]: F:封装产品规则断言覆盖调查 | R:code:.agent/harness/policy.json | A:限定测试及设计阅读，查实际断言而非文件名，parent裁决 | S:-
 
 ===/home/reggie/vscode_folder/jianji/src/membership-server/===
-casdoor.ts[II8M]: F:封装Casdoor在线身份与权益读取 | R:code:src/membership-server/policy.ts | A:服务端Basic认证；严格解码token用户应用订阅套餐；限时限量响应 | S:调用issuer而非会员serviceUrl；不重定向不输出上游密钥错误
-index.ts[EI7T]: F:启动本地会员HTTP服务 | R:code:src/membership-server/server.ts,code:src/membership-server/policy.ts | A:加载私有配置；loopback监听；进程信号停止 | S:不执行部署或真实支付
-policy.ts[DI8M]: F:根据在线会话及当前权益判定会员准入 | R:code:src/membership-server/casdoor.ts,code:src/shared/membership.ts | A:核身份组织应用单会话；封禁优先；月年套餐人工赠送；注册月末试用 | S:无本地缓存授权；只接受直接用户订阅；管理员是可信授权方；上游未知失败关闭
-server.ts[EI8T]: F:提供只读会员状态HTTP接口 | R:code:src/membership-server/policy.ts,code:src/shared/membership.ts | A:限定GET与Bearer格式；拒绝请求体；脱敏错误并禁止缓存 | S:不接受前端付款赠送或价格声明
+casdoor.ts[II8M]: F:封装Casdoor在线身份权益及人工申请存取 | R:code:src/membership-server/policy.ts | A:服务端Basic认证；严格解码身份套餐订阅；人工订阅查询及单次写入；限时限量响应 | S:调用issuer而非会员serviceUrl；不重定向不输出上游密钥错误
+index.ts[EI7T]: F:启动本地会员HTTP服务 | R:code:src/membership-server/server.ts,code:src/membership-server/policy.ts | A:加载私有配置及付款码和持久保护目录；loopback监听；信号停止 | S:启动不执行部署或付款
+policy.ts[DI8M]: F:根据在线会话及当前权益判定会员准入 | R:code:src/membership-server/casdoor.ts,code:src/shared/membership.ts | A:核身份组织应用单会话；封禁优先；月年套餐人工赠送；注册月末试用；共享付费套餐核验 | S:无本地缓存授权；只接受直接用户订阅；管理员是可信授权方；上游未知失败关闭
+server.ts[EI8T]: F:提供会员状态与可选续费门户路由 | R:code:src/membership-server/policy.ts,code:src/membership-server/billing.ts,code:src/membership-server/billing-write-guard.ts | A:配置图片与保护目录后挂载billing；状态接口核GET和Bearer；错误脱敏 | S:缺持久保护目录拒绝开启核款；状态接口拒绝请求体；前端声明不授权益
+billing-page.ts[EU7T]: F:提供续费申请及管理员核款页面 | R:code:src/membership-server/billing.ts | A:套餐与二维码；提交单号；查询审核；管理员核款表单；中文日期 | S:显示或提交不代表到账或授权；ticket消费后清除URL片段；用户字段按textContent展示
+billing.ts[EI8S]: F:提供人工续费门户与浏览器会话路由 | R:code:src/membership-server/manual-payments.ts,code:src/membership-server/billing-page.ts,code:src/membership-server/policy.ts | A:单次ticket；OIDC登录；付款码与申请审核；有限内存会话 | S:重启清会话不清申请；写请求核同源及CSRF；token不进页面；提交不授权益
+manual-payments.ts[AB8S]: F:管理人工付款申请与管理员核款续期 | R:code:src/membership-server/casdoor.ts,code:src/membership-server/policy.ts,code:src/membership-server/billing-write-guard.ts | A:单号去重；逐用户串行；核身份金额套餐；严格日期续期；持久意图保护 | S:Casdoor订阅唯一持久owner；提交不授权；未知只读核对不盲重试；既有审核不反转
+billing-write-guard.ts[PR8T]: F:持久保护人工核款未知写入 | R:code:src/membership-server/manual-payments.ts | A:独占创建意图；同步期望快照；已确认后清理 | S:不是权益账本；未知结果保留标记；重启不清除；其他writer不能覆盖未决意图

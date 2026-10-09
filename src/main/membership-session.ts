@@ -104,6 +104,21 @@ export class MembershipSession {
     const status = await this.refresh();
     if (!this.token || status.state !== "allowed") throw new Error(status.message);
   }
+  async billingUrl(): Promise<string> {
+    if (!this.config) throw new Error("账号服务尚未配置。");
+    if (!this.token) return `${this.config.serviceUrl}/billing`;
+    const generation = this.generation;
+    const response = await fetch(`${this.config.serviceUrl}/billing/ticket`, {
+      method: "POST", headers: { Authorization: `Bearer ${this.token}` },
+      redirect: "error", signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok || generation !== this.generation) throw new Error("续费页面未打开，请重新登录后重试。");
+    const text = await response.text();
+    if (text.length > 1024) throw new Error("续费链接无效。");
+    const ticket: unknown = JSON.parse(text).ticket;
+    if (typeof ticket !== "string" || !/^[a-f0-9]{64}$/.test(ticket)) throw new Error("续费链接无效。");
+    return `${this.config.serviceUrl}/billing#ticket=${ticket}`;
+  }
   private stopWork(): Promise<void> {
     this.stopping = this.deps.lostAccess().catch(() => {});
     return this.stopping;

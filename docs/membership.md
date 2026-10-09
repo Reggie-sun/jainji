@@ -2,7 +2,7 @@
 
 ## Scope
 
-本轮目标是代码和本地隔离验证，不部署、不启用真实收款。业务价格：月费 **¥100**、年费 **¥666**，新账号从注册时刻起试用一个自然月。管理员可为指定账号赠送一段使用期限、撤销赠送或封禁账号。同一账号新登录使旧会话失效；这里限制的是登录会话，不能证明操作者是同一自然人。
+首轮目标是代码和本地隔离验证；用户随后授权 VPS 部署及下方 Manual Payment 增量。业务价格：月费 **¥100**、年费 **¥666**，新账号从注册时刻起试用一个自然月。管理员可为指定账号赠送一段使用期限、撤销赠送或封禁账号。同一账号新登录使旧会话失效；这里限制的是登录会话，不能证明操作者是同一自然人。
 
 ## Open-Source Selection
 
@@ -19,7 +19,7 @@ Casdoor 支持管理员手工创建订阅。其默认只有 `paid-user` 参与�
 ## Ownership
 
 - `src/shared/membership.ts`：公开 schema、价格和心跳间隔。
-- `src/membership-server/`：Casdoor 在线 introspection、当前用户/订阅/套餐核验，以及只读会员 HTTP 接口。
+- `src/membership-server/`：Casdoor 在线 introspection、当前用户/订阅/套餐核验、只读会员 HTTP 接口及人工付款申请门户。
 - `src/main/membership-*`：系统浏览器登录、loopback 回调、加密凭据、当前会话、主进程 IPC 准入。队列只调用该 owner，不自己解释会员期限。
 - `src/renderer/MembershipGate.tsx`：账号状态、套餐及后台入口。renderer 不得到任何 token 或 client secret。
 - Casdoor：注册、密码、管理员、支付通知验签、订单、订阅与管理操作权限。会员适配服务不接受前端传来的价格、赠送或付款成功字段。
@@ -79,7 +79,23 @@ JIANJI_MEMBERSHIP_CONFIG=/absolute/public/membership.json make frontend
 | `jianji-yearly` | CNY | 666 | Yearly | 年度会员 |
 | `jianji-grant` | CNY | 0 | Monthly | 管理员手工赠送；不加入公开 Pricing |
 
-每个付费 Plan 关联其真实 Product，Product 的 owner、name、币种与价格必须匹配；不是把 application 名称当作 Product。公开购买入口为 `/select-plan/:owner/:pricingName`。支付 Provider 和证书只配置在 Casdoor 服务端。没有商户配置时，不启用真实支付；本轮不会用 Dummy 回调冒充收款。
+每个付费 Plan 关联其真实 Product，Product 的 owner、name、币种与价格必须匹配；不是把 application 名称当作 Product。Casdoor 自动支付入口为 `/select-plan/:owner/:pricingName`，当前桌面续费入口改用下方人工核款门户。支付 Provider 和证书只配置在 Casdoor 服务端。没有商户配置时不启用自动支付，不会用 Dummy 回调冒充收款。
+
+## Manual Payment
+
+用户已批准静态微信/支付宝收款码加人工核款，实施边界见 [Manual Payment Plan](superpowers/plans/2026-10-10-manual-membership-payment.md)。会员服务配置环境变量 `JIANJI_MEMBERSHIP_BILLING_ASSETS` 指向仓库外目录，放入原图 `wechat.jpg`、`alipay.jpg`（各不超过 3 MiB）。不配置该目录时门户不开启。收款人图片不提交 Git。Casdoor 应用必须追加精确回调 `${serviceUrl}/billing/callback`，保留原桌面 loopback 回调。
+
+部署门户时 `serviceUrl` 必须与 Casdoor `issuer` 使用不同 origin。Casdoor 4.18 的前端将同源回调视为自己的登录，不返回门户所需授权码；不能用同域路径分流替代独立 origin。当前服务域名为 `billing.reggie-sun.ccwu.cc`，登录域名为 `auth.reggie-sun.ccwu.cc`。
+
+用户打开 `${serviceUrl}/billing`，登录后选套餐，扫码输入 100 或 666 元，从付款账单复制完整付款订单号并提交。仅生成 `Pending` Casdoor Subscription，不能凭“已付款”声明放行。提交者只能查看自己的申请；管理员可查看本组织人工付款申请。独立网页登录遵守单会话；桌面续费使用 60 秒单次票据沿用 main token，浏览器凭据仅存服务内存及 HttpOnly cookie，页面不持有 access token。
+
+管理员在同页核对真实收款账单的单号、金额、付款人，填写实际到账金额、审核说明并勾选已核对，点击“确认到账并开通”；或填写拒绝原因并拒绝。申请只在原 Subscription 上变更，不创建第二份权益。相同渠道和完整单号只能形成一个申请；同账号审核由单进程串行，重复批准不重复加时。服务必须单实例运行，不以多个审核 writer 并发操作；Casdoor 管理员仍是可信管理者，不要在两个后台同时修改同一申请。
+
+人工批准写入 `payment=manual:<subscription-name>` 及 description 审计。这是人工核款引用，不是自动网关收据或真实 Casdoor Payment 对象。期限从当前时间与原有效权益最晚结束时间取较晚者，按自然月/年延长；免费试用未结束时保留试用，后续订阅为 Upcoming。退款资金仍由管理员在微信/支付宝处理，撤权在 Casdoor 将相应订阅设为 Suspended。
+
+同时必须配置 `JIANJI_MEMBERSHIP_BILLING_STATE` 为服务用户可写的私有持久化目录。写入前独占保存并 fsync `write-intent.json`，包含目标和期望快照，仅用作故障恢复，绝不授予权限。写入失败只读取确认结果，不自动重发；无法确认时保留标记，连同重启后的新写入一起阻止，仍可读取申请。管理员需停止会员服务、确认上游请求已结束，逐项核对 Casdoor 的账号 UUID、单号、审核决定和固定期限后保存恢复记录，才可移走该标记并恢复服务；不能用重启或直接删标记假装核对完成。保护目录也必须纳入私有备份。
+
+重启服务使浏览器会话失效，申请和审核保留在 Casdoor 数据库。用户报告的 1 元试款只作为人工到账报告，不用于开通套餐，也不证明自动回调已接通。
 
 管理员从简辑“管理用户”打开 Casdoor 控制台：
 

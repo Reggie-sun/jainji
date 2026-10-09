@@ -165,7 +165,7 @@ function selectEntitlement(entitlements: ActiveEntitlement[]): ActiveEntitlement
   return [...entitlements].sort((left, right) => right.endTime - left.endTime || entitlementPriority(right.reason) - entitlementPriority(left.reason))[0];
 }
 
-async function validatePaidPlan(
+export async function validatePaidPlan(
   api: CasdoorMembershipApi,
   config: MembershipServerConfig,
   pricingPlans: string[],

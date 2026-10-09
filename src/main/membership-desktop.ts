@@ -35,7 +35,7 @@ export async function createMembershipDesktop(input: {
   ipcMain.handle("membership.logout", () => session.logout());
   ipcMain.handle("membership.openPricing", async () => {
     if (!config) throw new Error("账号服务尚未配置。");
-    await shell.openExternal(`${config.issuer}/select-plan/${encodeURIComponent(config.organization)}/${encodeURIComponent(config.pricingName)}`);
+    await shell.openExternal(await session.billingUrl());
   });
   ipcMain.handle("membership.openAdmin", async () => {
     const status = await session.refresh();

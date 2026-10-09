@@ -68,6 +68,12 @@ const CasdoorSubscriptionSchema = z.object({
   payment: z.string(),
 });
 
+export const ManualSubscriptionSchema = CasdoorSubscriptionSchema.extend({
+  name: z.string().min(1), createdTime: z.string(), displayName: z.string(), description: z.string(),
+  group: z.string(), pricing: z.string(), period: z.string(),
+});
+export type ManualSubscription = z.infer<typeof ManualSubscriptionSchema>;
+
 export type TokenIntrospection = z.infer<typeof ActiveTokenIntrospectionSchema> | z.infer<typeof InactiveTokenIntrospectionSchema>;
 export type CasdoorUser = z.infer<typeof CasdoorUserSchema>;
 export type CasdoorApplication = z.infer<typeof CasdoorApplicationSchema>;
@@ -91,6 +97,26 @@ const UPSTREAM_TIMEOUT_MS = 10_000;
 
 export class CasdoorClient implements CasdoorMembershipApi {
   constructor(private readonly config: MembershipServerConfig, private readonly fetcher: typeof fetch = fetch) {}
+
+  async listManualSubscriptions(username?: string): Promise<ManualSubscription[]> {
+    const url = this.apiUrl("/api/get-subscriptions");
+    url.searchParams.set("owner", this.config.organization);
+    if (username) { url.searchParams.set("field", "user"); url.searchParams.set("value", username); }
+    return z.array(ManualSubscriptionSchema).parse(await this.getData(url));
+  }
+
+  async getManualSubscription(name: string): Promise<ManualSubscription | null> {
+    const url = this.apiUrl("/api/get-subscription");
+    url.searchParams.set("id", `${this.config.organization}/${name}`);
+    return ManualSubscriptionSchema.nullable().parse(await this.getData(url));
+  }
+
+  async writeManualSubscription(value: ManualSubscription, create: boolean): Promise<void> {
+    const url = this.apiUrl(create ? "/api/add-subscription" : "/api/update-subscription");
+    if (!create) url.searchParams.set("id", `${this.config.organization}/${value.name}`);
+    const payload = await this.request(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(value) });
+    z.object({ status: z.literal("ok"), data: z.literal(true) }).parse(payload);
+  }
 
   async introspect(accessToken: string): Promise<TokenIntrospection> {
     const body = new URLSearchParams({ token: accessToken, token_type_hint: "access_token" });

@@ -1,19 +1,30 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { signedOutMembership, MembershipStatusSchema } from "../shared/membership.js";
 import { resolveMembershipStatus, type MembershipServerConfig } from "./policy.js";
+import { BillingPortal } from "./billing.js";
+import { ManualPayments } from "./manual-payments.js";
+import { CasdoorClient } from "./casdoor.js";
+import { FileBillingWriteGuard } from "./billing-write-guard.js";
 
 export interface MembershipServerOptions {
   config?: MembershipServerConfig | null;
   fetcher?: typeof fetch;
   clock?: () => Date;
+  billingAssets?: string;
+  billingState?: string;
 }
 
 const MAX_ACCESS_TOKEN_LENGTH = 16_384;
 
 export function createMembershipServer(options: MembershipServerOptions = {}): Server {
   const config = options.config ?? null;
+  if (options.billingAssets && !options.billingState) throw new Error("人工核款需要配置持久化写入保护目录。");
+  const billing = config && options.billingAssets && options.billingState ? new BillingPortal(config, options.billingAssets, new ManualPayments(config, new CasdoorClient(config), () => new Date(), new FileBillingWriteGuard(options.billingState))) : undefined;
   const server = createServer((request, response) => {
-    void handleRequest(request, response, config, options.fetcher, options.clock).catch(() => {
+    void (async () => {
+      if (billing && await billing.handle(request, response)) return;
+      await handleRequest(request, response, config, options.fetcher, options.clock);
+    })().catch(() => {
       sendJson(response, 200, MembershipStatusSchema.parse({
         state: "unavailable",
         reason: "unavailable",

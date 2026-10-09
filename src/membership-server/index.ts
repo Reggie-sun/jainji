@@ -14,7 +14,7 @@ export async function startMembershipServer(options: StartMembershipServerOption
   const config = options.config === undefined ? await membershipServerConfigFromEnvironment() : options.config;
   const listenPort = options.listenPort ?? DEFAULT_MEMBERSHIP_SERVER_PORT;
   if (!Number.isInteger(listenPort) || listenPort < 0 || listenPort > 65535) throw new Error("会员服务监听端口无效。");
-  const server = createMembershipServer({ config });
+  const server = createMembershipServer({ config, billingAssets: process.env.JIANJI_MEMBERSHIP_BILLING_ASSETS, billingState: process.env.JIANJI_MEMBERSHIP_BILLING_STATE });
   await new Promise<void>((resolve, reject) => {
     const onError = () => {
       server.off("listening", onListening);

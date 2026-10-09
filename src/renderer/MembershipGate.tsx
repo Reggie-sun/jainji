@@ -58,7 +58,7 @@ export function MembershipGate({ children }: { children: ReactNode }) {
           <button disabled={unavailable || busy || signingIn || status?.reason === "forbidden"} onClick={() => void action(window.jianji.openMembershipPricing)}>查看套餐 / 续费</button>
           {admin && <button disabled={busy} onClick={() => void action(window.jianji.openMembershipAdmin)}>管理用户与免费授权</button>}
         </div>
-        <p className="membership-footnote">一个账号同时只允许一处登录，新登录会使旧会话失效。<br />管理员可赠送使用期限或停用账号；支付后请刷新权限。</p>
+        <p className="membership-footnote">一个账号同时只允许一处登录，新登录会使旧会话失效。<br />扫码付款后提交申请，管理员确认到账并开通后请刷新权限。</p>
         {opened && <button onClick={() => { void window.jianji.saveProject().catch(() => setError("项目未保存，请重试。")); }}>保存当前本地项目</button>}
         {error && <p className="membership-error" role="alert">{error}</p>}
       </section>

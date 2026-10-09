@@ -44,7 +44,7 @@ sudo systemctl status cloudflared-jianji-membership.service
 
 停用本次部署时仅停止这个 Compose 项目和 `cloudflared-jianji-membership.service`；保留数据库卷和备份，不使用 `down -v`，不停止现有远程桌面、Chrome 或其他 Tunnel。额外 swap 当前承载有效页面，不直接 `swapoff`；只有确认内存余量足够时才处理。
 
-# Pending Acceptance
+# Initial Deployment Checkpoint
 
 - Cloudflare 指定账号授权已完成，证书 API 回读确认 zone 为 `reggie-sun.ccwu.cc`。两个独立 CNAME 已创建到本任务 Tunnel，没有覆盖旧记录；公共 DNS 查询得到 Cloudflare 地址。
 - 公网 HTTPS discovery 的 issuer 正确；生产 OAuth/PKCE 经真实浏览器取得 token，公网会员接口返回 `allowed / trial`，用户为 `jianji/owner` 管理员，试用至 `2026-11-09T21:53:58.000Z`。尚未完成管理员后台交互验收。
@@ -52,6 +52,8 @@ sudo systemctl status cloudflared-jianji-membership.service
 - 未提供收款商户资料，未启用真实支付、验收到账、续费或退款。
 - swap 缓解了当前资源压力，不证明该 4 GB 主机能长期同时承载浏览器上传和会员峰值；尚未压测或整机重启验收。
 - 本记录是部分部署检查点，不是完整交付或收费上线声明。
+
+以上为人工核款门户部署前的检查点，后续结果以下方 Manual Billing Deployment 为准。
 
 # Review Adjudication
 
@@ -61,3 +63,41 @@ sudo systemctl status cloudflared-jianji-membership.service
 - `REV-DEP-06` 关于无限 refresh token 的推断为 `FALSE_POSITIVE`：同版 `object/token_jwt.go:606` 在 `RefreshExpireInHours == 0` 时令 refresh 到期时间等于 access token 到期时间；当前为 24 小时。
 - `REV-DEP-02/03/04/05/07/08` 为运维限制：loopback 由当前服务监听代码约束；资源没有负载验收；MySQL/Node tags 未按 digest 固定；Casbin CDN 是外部依赖；尚无完整卡死检测及定期升级机制。保留这些限制，不用复核通过替代后续容量、更新和可用性工作。
 - `REV-DEP-09` 的 DNS 未完成状态已被本轮实际记录取代；桌面网络、管理员交互及真实收款仍未验收。
+
+# Manual Billing Deployment
+
+2026-10-10，用户批准静态微信/支付宝原图收款码、提交付款单号、管理员核实到账后开通。用户回复“到了”仅记录为本人报告 1 元到账；没有制造支付回调、正式付费订单或会员授权。生产付款申请仍为空，完整核款写入只在本机隔离 Casdoor 测试。
+
+- 新增 `billing.reggie-sun.ccwu.cc` CNAME 到同一专用 Tunnel，未覆盖旧 DNS。会员服务 `serviceUrl` 使用此独立 origin；`auth.reggie-sun.ccwu.cc` 保持 Casdoor issuer，旧 API 域名路由保留。
+- 初次同源路径分流在公网 OAuth 验证失败：Casdoor 4.18 `web/src/lib/setting.tsx:86` 的 `isSelfRedirectUri` 判断 origin，`LoginPage.tsx:609` 将同源授权码请求转为后台登录。已撤销本轮同源回调及路径规则，改为精确 `https://billing.reggie-sun.ccwu.cc/billing/callback`，保留桌面 loopback callback。源码未因此修改；这是经过真实验证修正的部署配置。
+- 会员服务挂载原始 `payment-assets`（只读）及 `billing-state`（可写、持久化）；状态目录无未决写入标记。原图与凭据均不提交仓库。备份脚本包含两个目录。
+- 只重建 membership 容器、重启本任务 cloudflared unit，Casdoor / MySQL 数据和原 VPS 浏览器保持。切换前备份为 `backups/20261009T223059Z`；配置另有 `.before-manual` 和 `.before-billing-origin` 私有检查点。
+- 最终备份为 `backups/20261009T230026Z`，服务状态为 Casdoor/MySQL healthy、membership running、专用 Tunnel active。本机忽略的 `resources/membership.json` 已写入公开配置，下次 `make frontend` 启动读取；未重启当前简辑进程。密码仍只保存在本机私有 `vps/credentials.json`。
+
+## Manual Billing Verification
+
+| Surface | Evidence |
+| --- | --- |
+| 会员回归 | 5 个测试文件、41 项测试通过；typecheck、会员服务 bundle build 通过 |
+| 本机真实门户 | OAuth 登录、Pending 不赋权、管理员核款与试用后续期、桌面及 390px 页面无横向溢出 |
+| 普通用户权限 | 到期用户可申请；只读自己的申请；门户审核 403；直接 Casdoor 新增/修改订阅被拒绝 |
+| 重复及未知结果 | 重复批准不再加时；提交/审核写入结果不明时只读回查；持久标记跨服务实例重建阻止后续写入，仍可读取申请 |
+| 真实 Casdoor 时间状态 | 独立临时订阅由 Upcoming 在起始时间后转为 Active，检查后清理；未调用支付网关 |
+| 公网门户 | 真实管理员 OAuth 回到独立域名门户，管理员审核区可见；两张二维码响应与用户原图 SHA-256 一致 |
+| 公网桌面协议及续费票据 | 默认网络、正常证书校验的原 PKCE helper 登录成功，会员为 allowed/trial；新页面消费单次票据后原 token 仍有效；cookie 为 Secure/HttpOnly/SameSite=Lax |
+
+本机证据目录 `/tmp/jianji-membership-20261010/` 包含 `manual-tests-r2.log`、`manual-browser-result-r2.log`、`manual-normal-user-result-2.log`、`manual-upcoming-result.log`、`manual-public-smoke-result-r4.log` 和公网截图。源码验证与实际公网检查分别记录，不以单元测试替代付款到账证明。公网测试中 Cloudflare 统计脚本被门户 CSP 阻止，这是非必需第三方统计，不影响上述功能验证。
+
+## Manual Billing Review Adjudication
+
+受管只读 Kimi R1 `747fdfbd-1bf9-4b76-bc5e-dfef442b5eb7`、R2 `f21fe6a2-b4e1-47a2-90ab-83fd9147f8f7` 均有 canonical receipt，分别 5、8 个请求 `IDENTITY_VERIFIED`、报告 `PARSED`。Parent 逐项裁决；无未解决 blocking finding。R2 绑定最终实现源码；随后仅修正部署 origin 及本文档，由公网测试单独验收。
+
+- R1-F1 确认并修复：续期叠加先验证显式时区日期及直接用户订阅，再计算期限；R2 复核修复与回归用例。
+- Parent P1：未知写入必须跨重启保持关闭。新增私有持久化 write-intent fence，确认成功或严格读回才清除；R2 独立复核实现和重启回归。
+- R1-F2 保留为运行限制：无单 IP 限速，内存会话数量有界；不能宣称已完成抗滥用或容量验收。
+- R1-F3 采用失败关闭：损坏的人工申请会阻止整批列表，需管理员核对修复，不静默跳过。
+- R2-N1 为安全方向的提示限制：短暂并发写入也返回统一 503 核对提示；不因此删除恢复标记或自动重放。
+- R2-N2 为低风险覆盖空隙：真实持久保护测试覆盖审核失败及重启后其他用户提交被阻止；提交首次失败只用 stub guard 验证，实际 guard 不区分新增/更新。保留该范围，不声称所有文件系统故障均已注入测试。
+- R2-N3 为部署边界：一个会员服务 writer，管理员不得在另一个 Casdoor 后台并发改同一申请；没有跨后台 CAS 事务保证。
+
+仍未接通商户自动支付回调、自动退款、负载测试或整机重启验收。人工核款必须逐笔核对实际账单。管理员后台的免费赠送/停用沿用现有 Casdoor 能力。
