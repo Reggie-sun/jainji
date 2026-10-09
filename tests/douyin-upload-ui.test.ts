@@ -29,6 +29,8 @@ it("uses Chrome names in account settings, task summaries and cleanup results wi
   expect(upload).toContain("当前 Chrome 名称 · 账户 123 / 计划 456");
   const results = renderToStaticMarkup(createElement(QianchuanCleanupResults, { title: "清理结果", accounts, results: [{ product: "眼贴", advertiserId: "123", state: "BLOCKED", deletedCount: 0, message: "保留原结果" }] }));
   expect(results).toContain("当前 Chrome 名称"); expect(results).toContain("账户 123"); expect(results).not.toContain("旧产品名");
+  const partial = renderToStaticMarkup(createElement(QianchuanCleanupResults, { title: "清理结果", accounts, results: [{ product: "眼贴", advertiserId: "123", state: "PARTIAL", deletedCount: 1, message: "保留原结果" }] }));
+  expect(partial).toContain("当前 Chrome 名称（账户 123）"); expect(partial).toContain("历史未知素材已跳过");
   const foreign = renderToStaticMarkup(createElement(QianchuanCleanupResults, { title: "清理结果", accounts, results: [{ product: "眼贴", advertiserId: "999", state: "BLOCKED", deletedCount: 0, message: "保留原结果" }] }));
   expect(foreign).not.toContain("当前 Chrome 名称"); expect(foreign).toContain("账户 999");
   const oldTask = renderToStaticMarkup(createElement(DouyinUploadPanel, { projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts, ready: false, message: "", tasks: [task({ advertiserId: "999" })], legacyTasks: [] }, onState: () => {} }));

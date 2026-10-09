@@ -15,6 +15,7 @@
 | Hybrid四角静态overlay、partial生产与预览QA | [Hybrid V1 Delta](shape-matched-cover-hybrid-v1-spec.md#activation-accepted-product-delta) | hybrid-vision、H3/H4与hybrid-activation；旧strict proof为研究路径，启用以当前Activation记录及最终gate为准 |
 | Harness scope、检查和 completion | [Harness Delta](superpowers/specs/2026-10-02-agents-harness-governance-design.md)、[Harness Contract](video-validation-harness-spec.md) | [policy](../.agent/harness/policy.json) 独占路由与命令 |
 | 启动与手动运行 | [README](../README.md) | 当前 runtime 与实际命令 |
+| 当前 Windows 适配增量与实机验收 | [Windows Adaptation Spec](windows-adaptation-spec.md)、[Windows Acceptance Spec](windows-acceptance-spec.md) | 前者为 spec-only 适配目标；后者为通用用例，历史包证据不代表当前代码 |
 | AOCI 创作与维护 | 当前官方 Guide 与工具合同 | Verify / Check / Guide；本文不复制状态机 |
 
 ## Production Owners
