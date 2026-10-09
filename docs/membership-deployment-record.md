@@ -46,8 +46,18 @@ sudo systemctl status cloudflared-jianji-membership.service
 
 # Pending Acceptance
 
-- Cloudflare 控制台已通过指定 Google 账号进入。旧命令行凭据不具备该域名权限，新的域名授权仍在等待；两条 DNS 记录尚未确认创建。
-- 尚未验证公网 DNS、HTTPS、VPS 完整登录与管理员后台交互；未向当前简辑实例写入强制登录配置，避免再次锁住用户。
+- Cloudflare 指定账号授权已完成，证书 API 回读确认 zone 为 `reggie-sun.ccwu.cc`。两个独立 CNAME 已创建到本任务 Tunnel，没有覆盖旧记录；公共 DNS 查询得到 Cloudflare 地址。
+- 公网 HTTPS discovery 的 issuer 正确；生产 OAuth/PKCE 经真实浏览器取得 token，公网会员接口返回 `allowed / trial`，用户为 `jianji/owner` 管理员，试用至 `2026-11-09T21:53:58.000Z`。尚未完成管理员后台交互验收。
+- 本机默认网络访问 API 域名发生 TLS 连接失败；VPS 访问健康接口正常，本机使用公共 DNS 查询所得地址、保留域名和证书校验的 `curl --resolve` 可取得健康结果及上述会员结果。Mihomo DNS cache flush 返回 204，但默认路径仍失败，网络原因尚未完全定位。未改 hosts 或关闭 TLS 校验，未向当前简辑实例写入强制登录配置。
 - 未提供收款商户资料，未启用真实支付、验收到账、续费或退款。
 - swap 缓解了当前资源压力，不证明该 4 GB 主机能长期同时承载浏览器上传和会员峰值；尚未压测或整机重启验收。
-- 本记录是部分部署检查点，不是完整交付或收费上线声明。部署配置独立复核结果仍待归档。
+- 本记录是部分部署检查点，不是完整交付或收费上线声明。
+
+# Review Adjudication
+
+受管 Kimi 只读复核 `c59ea6a5-420e-44c7-872d-5af3ab59b08c` 已返回 canonical receipt，两个请求均 `IDENTITY_VERIFIED`，报告 `PARSED`；这不代替 parent 验证或公网验收。
+
+- `REV-DEP-01` 判为 `FALSE_POSITIVE`：复核遗漏同一冻结 `app.conf:41` 的 `initDataFile = ""`。官方 Casdoor `v4.18.0` 的 `object/init_data.go:69` 在该值为空时立即返回，先于读取 `initDataNewOnly` 和导入文件；保留 mount 不会重新导入。远端回读与重启证据已有记录，没有因该误报改配置。
+- `REV-DEP-06` 关于无限 refresh token 的推断为 `FALSE_POSITIVE`：同版 `object/token_jwt.go:606` 在 `RefreshExpireInHours == 0` 时令 refresh 到期时间等于 access token 到期时间；当前为 24 小时。
+- `REV-DEP-02/03/04/05/07/08` 为运维限制：loopback 由当前服务监听代码约束；资源没有负载验收；MySQL/Node tags 未按 digest 固定；Casbin CDN 是外部依赖；尚无完整卡死检测及定期升级机制。保留这些限制，不用复核通过替代后续容量、更新和可用性工作。
+- `REV-DEP-09` 的 DNS 未完成状态已被本轮实际记录取代；桌面网络、管理员交互及真实收款仍未验收。
