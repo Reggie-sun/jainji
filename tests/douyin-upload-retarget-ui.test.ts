@@ -47,6 +47,7 @@ it("opens the existing account editor on the requested slot and preserves its ac
     onSave: async () => true, onOpenBrowser: async () => true, onControlBrowser: async () => true,
   }));
   expect(html).toContain('value="晚安油"');
+  expect(html).toContain('<details class="qianchuan-account-management" open="">');
   expect(html).toContain("aavid=123&amp;adId=456");
   expect(html).toContain("账户 123 保持不变");
   expect(html).toContain("保存新产品和计划");

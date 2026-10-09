@@ -87,9 +87,18 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
       createRoot(document.getElementById("root")).render(<Fixture/>);
     `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
     await page.addScriptTag({content:script});
+    expect(await page.locator(".qianchuan-account-products").isVisible()).toBe(false);
+    await page.getByText("选择要清理的账号（可多选）", { exact: true }).waitFor();
+    const cleanupAccount = page.locator(".qianchuan-cleanup-accounts input").first();
+    await cleanupAccount.uncheck();
+    await page.getByText("管理账号设置", { exact: true }).click();
     await page.getByRole("button", {name:/相同 Chrome 名称.*账户 1000.*已设置/}).click();
     expect(await page.getByLabel("产品名称",{exact:true}).inputValue()).toBe("旧产品");
     await page.getByLabel("产品名称",{exact:true}).fill("手填新产品");
+    await page.getByText("管理账号设置", { exact: true }).click();
+    expect(await page.getByLabel("产品名称", { exact: true }).isVisible()).toBe(false);
+    expect(await cleanupAccount.isChecked()).toBe(false);
+    await page.getByText("管理账号设置", { exact: true }).click();
     await page.evaluate(()=>(window as any).renameAllProfiles());
     await page.getByRole("heading",{name:"改名后的 Chrome · 账号设置",exact:true}).waitFor();
     expect(await page.getByLabel("产品名称",{exact:true}).inputValue()).toBe("手填新产品");

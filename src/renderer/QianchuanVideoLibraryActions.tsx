@@ -50,7 +50,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
     <section className="qianchuan-cleanup-card" aria-label="立即清理素材">
       <div className="qianchuan-cleanup-heading"><h3>素材清理</h3><span>按账号和所选计划清理千川素材</span></div>
       {!selected ? <>
-        <div className="qianchuan-cleanup-label"><strong>选择账号</strong><button type="button" className="qianchuan-cleanup-link" disabled={disabled || !configured.length} onClick={() => setProducts(chosen.length === configured.length ? [] : undefined)}>{chosen.length === configured.length ? "取消全选" : "全选"}</button></div>
+        <div className="qianchuan-cleanup-label"><strong>选择要清理的账号（可多选）</strong><button type="button" className="qianchuan-cleanup-link" disabled={disabled || !configured.length} onClick={() => setProducts(chosen.length === configured.length ? [] : undefined)}>{chosen.length === configured.length ? "取消全选" : "全选"}</button></div>
         <div className="qianchuan-cleanup-accounts">
           {configured.map(account => <label key={account.product}><input type="checkbox" disabled={disabled} checked={chosen.some(item => item.product === account.product)} onChange={event => setProducts(event.target.checked ? [...chosen.map(item => item.product), account.product] : chosen.filter(item => item.product !== account.product).map(item => item.product))} /><span>{qianchuanAccountName(account)}<small>账户 {account.advertiserId}</small></span></label>)}
           {!configured.length && <p>请先配置千川账号。</p>}

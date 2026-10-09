@@ -36,14 +36,15 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
     if (await onSave({ product, productName: parsedName.data, planUrl: link, egress })) setProduct(undefined);
   };
   return <div className="qianchuan-account-settings" aria-label="千川账号设置">
-    <p>账号设置 <small>点选账号，可更换产品名称或千川计划。</small></p>
+    <details className="qianchuan-account-management" open={!!initialProduct}>
+    <summary>管理账号设置</summary>
+    <p>编辑账号资料 <small>点选账号，可更换产品名称或千川计划。清理账号请在下方勾选。</small></p>
     <div className="qianchuan-account-products">{QIANCHUAN_PRODUCTS.map(value => {
       const account = accounts.find(item => item.product === value);
-      return <button className="button secondary compact" type="button" key={value} disabled={busy} aria-pressed={product === value} onClick={() => edit(value)}>
+      return <button className="button secondary compact" type="button" key={value} disabled={busy} aria-expanded={product === value} onClick={() => edit(value)}>
         {account ? qianchuanAccountName(account) : value}{account?.advertiserId && <small>账户 {account.advertiserId}</small>}<small>{account?.available ? "已设置" : "未设置"}</small>
       </button>;
     })}</div>
-    <QianchuanVideoLibraryActions accounts={accounts} busy={busy} />
     {product && <div className="qianchuan-account-editor">
       <h3>{savedAccount ? qianchuanAccountName(savedAccount) : product} · 账号设置</h3>
       {recoveryAccount && <p>账户 {recoveryAccount} 保持不变；填写新产品名称，粘贴新千川计划链接。保存新计划不会自动重传旧任务。</p>}
@@ -73,5 +74,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
       <div className="douyin-upload-actions"><button className="button primary compact" type="button" disabled={busy || !ids || !!nameError || !!accountError || !!egress && !QianchuanEgressSchema.safeParse(egress).success} onClick={() => void save()}>{recoveryAccount ? "保存新产品和计划" : "保存账号"}</button><button className="button secondary compact" type="button" disabled={busy} onClick={() => setProduct(undefined)}>取消</button></div>
       <small>保存后供新制作使用；旧批次保留原计划。整批从未选过文件时，可在上传任务中明确“改传当前计划”；已有文件选择记录不能改传。</small>
     </div>}
+    </details>
+    <QianchuanVideoLibraryActions accounts={accounts} busy={busy} />
   </div>;
 }

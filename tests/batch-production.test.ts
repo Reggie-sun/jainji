@@ -783,7 +783,7 @@ describe("batch automatic plan preparation", () => {
         {product:"肥皂", productName:"最新眼贴", advertiserId:"1001", adId:"2001", available:true}];
       const projects = ["蝴蝶贴", "最新眼贴"].map((name, i) => ({recentProjectId: "00000000-0000-4000-8000-00000000000" + (i + 1),
         projectId: "10000000-0000-4000-8000-00000000000" + (i + 1), name, sourceCount: i ? 10 : 15, requestedCount: 1,
-        productPrice: "手动文字", coverEnabled:false, displayMode:"full", mode:"random", displayTextRequiredByMedia:[false]}));
+        productPrice: "手动文字", coverEnabled:false, coverMethod:"saved", coverMode:"agent", displayMode:"full", mode:"random", displayTextRequiredByMedia:[false]}));
       window.catalogRequests = []; window.cancelledRequests = []; window.batchStarts = [];
       window.jianji = {batchProductionProjects: async () => projects,
         saveBatchUploadAccount: async input => ({recentProjectId:input.recentProjectId, projectId:input.expectedProjectId,
@@ -845,7 +845,9 @@ describe("batch automatic plan preparation", () => {
       await choose(page);
       await checkbox.check();
       await row(page).getByRole("checkbox", { name: "蝴蝶贴开启覆盖", exact: true }).check();
-      await row(page).getByLabel("蝴蝶贴覆盖方式", { exact: true }).selectOption("real-artwork");
+      expect(await row(page).getByLabel("蝴蝶贴覆盖方式", { exact: true }).count()).toBe(0);
+      expect(await row(page).getByText("使用已保存覆盖框直接制作；无框不覆盖。调整框请在制作页打开并保存素材集。", { exact: true }).isVisible()).toBe(true);
+      await page.getByRole("button", { name: "刷新模板", exact: true }).click();
       await page.getByRole("button", { name: "开始批量制作", exact: true }).click({ trial: true });
       await checkbox.uncheck(); await checkbox.check();
       await row(page).getByLabel("上传计划", { exact: true }).waitFor();
@@ -855,6 +857,10 @@ describe("batch automatic plan preparation", () => {
       await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
       expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].douyinUpload)).toEqual({ enabled: true, accountProduct: "眼贴", plan: { advertiserId: "1000", adId: "9002", name: "计划 9002" } });
       expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].coverMethod)).toBe("real-artwork");
+      expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].coverEnabled)).toBe(true);
+      await row(page).getByRole("checkbox", { name: "蝴蝶贴开启覆盖", exact: true }).uncheck();
+      await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+      expect(await page.evaluate(() => (window as any).batchStarts[1].entries[0])).toMatchObject({ coverEnabled: false, coverMethod: "real-artwork" });
       await row(page).getByRole("button", { name: "刷新计划", exact: true }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
       expect(await page.evaluate(() => (window as any).catalogRequests[2].input.refresh)).toBe(true);

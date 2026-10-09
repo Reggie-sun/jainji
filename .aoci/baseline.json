@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-09T11:59:29Z",
+  "updated_at": "2026-10-09T12:29:01Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "044fc4c25aea1706fb945cf7d34d35673ad6bbf9fc34aa3649ec091182446e15",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "ec81dea7ca2dde32d8f914ec312011e77ac51109419e1fc7e7d32f4d38dac9d9",
-      "size": 99209,
-      "normalized_sha256": "ec81dea7ca2dde32d8f914ec312011e77ac51109419e1fc7e7d32f4d38dac9d9"
+      "sha256": "177b5c33735b0157655ddaf58ce610438ad21928ae5cfc1472dcf45b73d56226",
+      "size": 99253,
+      "normalized_sha256": "177b5c33735b0157655ddaf58ce610438ad21928ae5cfc1472dcf45b73d56226"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1983,9 +1983,9 @@
       "normalized_sha256": "6dbe2ae770691edc2834588b480f57d5e11062ef70cc53ece7937ae7948b9b01"
     },
     "src/renderer/BatchProductionPanel.tsx": {
-      "sha256": "497dea2728e2bf8601796e4ac0ecec62d563e7f8f8dc0f3b0c0a0078bbc3f41a",
-      "size": 21429,
-      "normalized_sha256": "497dea2728e2bf8601796e4ac0ecec62d563e7f8f8dc0f3b0c0a0078bbc3f41a"
+      "sha256": "b3729c8dbbd6454f952edee6b9dbb943b2e4316ad5eb0f2ad7b3e02ff67380e3",
+      "size": 20981,
+      "normalized_sha256": "b3729c8dbbd6454f952edee6b9dbb943b2e4316ad5eb0f2ad7b3e02ff67380e3"
     },
     "src/renderer/BugFeedbackDialog.tsx": {
       "sha256": "4efc9e78614026b3ecfeeec6613c46d0132fee9e7c4c02687b7e47b8287886b7",
@@ -2088,9 +2088,9 @@
       "normalized_sha256": "1e328ba553f11a1bd0832a69f03a0045d5f8ccf7c37d238586596977ecb35c69"
     },
     "src/renderer/QianchuanAccountSettings.tsx": {
-      "sha256": "e5e0121bd4cf87c9ecca14c9a2f74782d96b8cc4e833fdbfa67a721d5219b555",
-      "size": 8837,
-      "normalized_sha256": "e5e0121bd4cf87c9ecca14c9a2f74782d96b8cc4e833fdbfa67a721d5219b555"
+      "sha256": "fd306421e2f251af1f472a00d50d2185fa2625f97947f7c58e36adafebc77dec",
+      "size": 9013,
+      "normalized_sha256": "fd306421e2f251af1f472a00d50d2185fa2625f97947f7c58e36adafebc77dec"
     },
     "src/renderer/QianchuanCleanupPlanSelect.tsx": {
       "sha256": "48dce8f21a803a97f29a25a5a81557318c3725338e3213e69f9eb15b694f0233",
@@ -2123,9 +2123,9 @@
       "normalized_sha256": "0327241b4c8216ccc88b258320b61d6004d57791ea5b1bbffd56bd09face3690"
     },
     "src/renderer/QianchuanVideoLibraryActions.tsx": {
-      "sha256": "1f67bdb82d5e4bfceb8bac498484c9298b0d579c2855f0b0dfe13bc962a1731f",
-      "size": 11451,
-      "normalized_sha256": "1f67bdb82d5e4bfceb8bac498484c9298b0d579c2855f0b0dfe13bc962a1731f"
+      "sha256": "37ac478908062cf979957c29312682e6149e99f4555d27cdd6e375ba2b71bfe0",
+      "size": 11478,
+      "normalized_sha256": "37ac478908062cf979957c29312682e6149e99f4555d27cdd6e375ba2b71bfe0"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
       "sha256": "d430797a10e9a5ae32119151fad3c075471c10f1bea407cc1ab088349086483f",
