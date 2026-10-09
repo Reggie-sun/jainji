@@ -55,6 +55,15 @@ function scope(paths: string[]): HarnessTaskScope {
 }
 
 describe("harness policy routing", () => {
+  it("runs the real batch row layout regression for a CSS-only change", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const selected = selectChecks(candidate, scope(["src/renderer/batch-production.css"]));
+    expect(selected.checks.find(check => check.id === "lifecycle")).toMatchObject({
+      required: true, testFiles: ["tests/batch-production.test.ts"],
+    });
+    expect(selected.checks.map(check => check.id)).toEqual(expect.arrayContaining(["typecheck", "harness", "documents", "owned-aoci"]));
+  });
+
   it("selects domain or fallback separately for each owned path while retaining baseline", () => {
     const candidate = policy({ routes: [
       { id: "baseline", tier: "baseline", paths: ["src/**"], checkIds: ["typecheck"], documentRefs: [] },

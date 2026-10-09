@@ -868,6 +868,23 @@
       ]
     },
     {
+      "id": "domain-batch-layout",
+      "paths": [
+        "src/renderer/batch-production.css"
+      ],
+      "checkIds": [
+        "lifecycle"
+      ],
+      "testFilesByCheck": {
+        "lifecycle": [
+          "tests/batch-production.test.ts"
+        ]
+      },
+      "documentRefs": [
+        "docs/decoration-production-contract.md"
+      ]
+    },
+    {
       "id": "domain-lifecycle",
       "paths": [
         "src/main/agent-*.ts",

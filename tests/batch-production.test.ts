@@ -806,6 +806,43 @@ describe("batch automatic plan preparation", () => {
   }
   const requests = (page: Page) => page.evaluate(() => (window as any).catalogRequests.length);
   const row = (page: Page) => page.locator('[aria-label="蝴蝶贴制作设置"]');
+  it("keeps desktop batch controls on one line with quantity and plan errors", async () => {
+    const page = await panel();
+    try {
+      for (const stylesheet of ["styles.css", "workspace-redesign.css", "batch-production.css"]) {
+        await page.addStyleTag({ content: await readFile(path.join("src/renderer", stylesheet), "utf8") });
+      }
+      await row(page).getByRole("checkbox", { name: "蝴蝶贴开启覆盖", exact: true }).check();
+      await page.evaluate(() => (window as any).catalogRequests[0].reject(new Error("计划读取失败，请重试")));
+      await row(page).getByText("计划读取失败，请重试", { exact: false }).waitFor();
+      const count = row(page).getByRole("spinbutton");
+      await count.fill("500");
+      for (const width of [1280, 1920]) {
+        await page.setViewportSize({ width, height: 900 });
+        const metrics = await row(page).evaluate(element => {
+          const center = (selector: string) => {
+            const box = element.querySelector(selector)!.getBoundingClientRect();
+            return box.y + box.height / 2;
+          };
+          const input = element.querySelector<HTMLInputElement>('input[type="number"]')!;
+          const style = getComputedStyle(input);
+          const context = document.createElement("canvas").getContext("2d")!;
+          context.font = style.font;
+          return {
+            centers: ['.batch-template-title label', '.batch-mode-select button', 'input[type="number"]', 'textarea',
+              '.batch-template-controls > label select', '.batch-cover-toggle > span:nth-child(2)',
+              '.batch-upload-account > select', '.qianchuan-plan-select select', '.qianchuan-plan-select button', '.batch-output button'].map(center),
+            textWidth: context.measureText(input.value).width,
+            availableWidth: input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 20,
+            scrollLeft: input.scrollLeft,
+          };
+        });
+        expect(Math.max(...metrics.centers) - Math.min(...metrics.centers)).toBeLessThanOrEqual(2);
+        expect(metrics.availableWidth).toBeGreaterThan(metrics.textWidth);
+        expect(metrics.scrollLeft).toBe(0);
+      }
+    } finally { await page.close(); }
+  });
   async function choose(page: Page, advertiserId = "1000") {
     await page.evaluate(advertiserId => {
       const request = (window as any).catalogRequests.filter((request: any) => request.input.expectedAdvertiserId === advertiserId).at(-1);
@@ -846,7 +883,7 @@ describe("batch automatic plan preparation", () => {
       await checkbox.check();
       await row(page).getByRole("checkbox", { name: "蝴蝶贴开启覆盖", exact: true }).check();
       expect(await row(page).getByLabel("蝴蝶贴覆盖方式", { exact: true }).count()).toBe(0);
-      expect(await row(page).getByText("使用已保存覆盖框直接制作；无框不覆盖。调整框请在制作页打开并保存素材集。", { exact: true }).isVisible()).toBe(true);
+      expect(await row(page).getByText("使用已保存覆盖框直接制作", { exact: false }).count()).toBe(0);
       await page.getByRole("button", { name: "刷新模板", exact: true }).click();
       await page.getByRole("button", { name: "开始批量制作", exact: true }).click({ trial: true });
       await checkbox.uncheck(); await checkbox.check();
