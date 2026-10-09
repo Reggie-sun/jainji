@@ -123,7 +123,11 @@
         "tests/douyin-upload-integration.test.ts",
         "tests/douyin-cdp-uploader.test.ts",
         "tests/douyin-upload-ui.test.ts",
-        "tests/qianchuan-browser-process.test.ts"
+        "tests/qianchuan-browser-process.test.ts",
+        "tests/qianchuan-remote.test.ts",
+        "tests/qianchuan-remote-files.test.ts",
+        "tests/qianchuan-remote-runtime.test.ts",
+        "tests/qianchuan-remote-selection.test.ts"
       ],
       "timeoutMs": 300000
     },
@@ -566,6 +570,16 @@
         "tests/shape-cover-static-holdout.test.ts"
       ],
       "timeoutMs": 300000
+    },
+    {
+      "id": "qianchuan-remote-build",
+      "kind": "command",
+      "required": true,
+      "command": "node",
+      "args": [
+        "scripts/build-qianchuan-remote.mjs"
+      ],
+      "timeoutMs": 60000
     }
   ],
   "media": {
@@ -925,7 +939,12 @@
         "tests/douyin-upload-integration.test.ts",
         "tests/douyin-cdp-uploader.test.ts",
         "tests/douyin-upload-ui.test.ts",
-        "tests/qianchuan-browser-process.test.ts"
+        "tests/qianchuan-browser-process.test.ts",
+        "tests/qianchuan-remote.test.ts",
+        "tests/qianchuan-remote-files.test.ts",
+        "tests/qianchuan-remote-runtime.test.ts",
+        "tests/qianchuan-remote-selection.test.ts",
+        "src/shared/qianchuan-remote.ts"
       ],
       "checkIds": [
         "typecheck",
@@ -1470,6 +1489,27 @@
       "documentRefs": [
         "AGENTS.md",
         "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-qianchuan-remote",
+      "paths": [
+        "src/main/qianchuan-remote-*",
+        "src/shared/qianchuan-remote.ts",
+        "src/remote-worker.ts",
+        "scripts/build-qianchuan-remote.mjs",
+        "tests/qianchuan-remote*.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "douyin-upload",
+        "qianchuan-remote-build",
+        "documents",
+        "owned-aoci"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/qianchuan-remote-browser.md"
       ]
     }
   ],

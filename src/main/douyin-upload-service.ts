@@ -28,6 +28,7 @@ export interface BatchSelectedFile { fileName: string; index: number; ready?: bo
 export const MAX_UPLOAD_GROUP_SIZE = 9;
 export interface UploadBrowserPort {
   connect(task: UploadTaskRecord, signal: AbortSignal): Promise<void>;
+  prepareFiles?(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
   open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }>;
   upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
   ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]>;
@@ -839,7 +840,7 @@ export class DouyinUploadService {
             }
             await delay(500, undefined, { signal });
           }
-        }, t.processing, controller.signal);
+        }, first.authorization.target.egress?.mode === "remote-browser" ? Math.max(t.processing, 2 * 60 * 60 * 1000) : t.processing, controller.signal);
       }
       await this.saveReady(tasks, evidence, controller.signal);
       for (const task of tasks) savedReady.add(task.result.upload_task_id);
@@ -875,6 +876,11 @@ export class DouyinUploadService {
   }
   private async selectGroup(tasks: UploadTaskRecord[], port: UploadBrowserPort, signal: AbortSignal): Promise<void> {
     const first = tasks[0]!, t = first.config.timeouts;
+    if (port.prepareFiles) {
+      for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }
+      await this.bounded(inner => port.prepareFiles!(tasks, inner), 2 * 60 * 60 * 1000, signal);
+      await this.currentTarget(first); signal.throwIfAborted();
+    }
     await this.phase(tasks, "OPENING_UPLOAD_PAGE");
     const prepared = await this.bounded(inner => port.open(tasks, this.selectedFiles(first), inner), t.navigation, signal);
     for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }

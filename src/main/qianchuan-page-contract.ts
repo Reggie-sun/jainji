@@ -53,7 +53,8 @@ export class QianchuanPageSession {
     this.releaseChooser?.(); this.releaseChooser = undefined;
     this.chooser = undefined; this.chooserEvents = [];
   }
-  constructor(private readonly page: Page, private readonly contract: QianchuanPageContract, private readonly check: (signal: AbortSignal) => void) {}
+  constructor(private readonly page: Page, private readonly contract: QianchuanPageContract, private readonly check: (signal: AbortSignal) => void,
+    private readonly remoteSelect?: (element: ElementHandle, tasks: UploadTaskRecord[], signal: AbortSignal) => Promise<void>) {}
   url(task: UploadTaskRecord): string {
     if (!this.contract.fixtureUrl) {
       const { product, cdpEndpoint, advertiserId, adId } = task.authorization.target;
@@ -375,10 +376,17 @@ export class QianchuanPageSession {
       await this.guard(task, signal); this.check(signal);
       if (this.chooserEvents.length !== 1) throw changed();
       this.chooser = undefined;
-      try { await chooser.setFiles(tasks.map(value => value.snapshotPath), { timeout: task.config.timeouts.fileInput, signal }); }
+      try {
+        if (this.remoteSelect) await this.remoteSelect(chooser.element(), tasks, signal);
+        else await chooser.setFiles(tasks.map(value => value.snapshotPath), { timeout: task.config.timeouts.fileInput, signal });
+      }
       catch { this.check(signal); throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "browser", "文件发送调用未能确认结果。", "只读核查原上传页，禁止重传。", true); }
     }
-    else await (await this.unique(this.modal!.locator('input[type="file"]'), signal)).setInputFiles(tasks.map(value => value.snapshotPath), { timeout: task.config.timeouts.fileInput });
+    else {
+      const input = await this.unique(this.modal!.locator('input[type="file"]'), signal);
+      if (this.remoteSelect) { const element = await input.elementHandle(); if (!element) throw changed(); await this.remoteSelect(element, tasks, signal); }
+      else await input.setInputFiles(tasks.map(value => value.snapshotPath), { timeout: task.config.timeouts.fileInput });
+    }
     this.check(signal);
     const deadline = Date.now() + task.config.timeouts.fileInput;
     while (Date.now() < deadline) {

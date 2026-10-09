@@ -11,6 +11,7 @@ import { readQianchuanProfileName } from "./qianchuan-profile-name.js";
 import type { QianchuanEgress } from "../shared/qianchuan-egress.js";
 import { assertEgressArguments, chromeEgressArguments, verifyBrowserEgress } from "./qianchuan-egress-browser.js";
 import { qianchuanEgressRuntime } from "./qianchuan-egress-runtime.js";
+import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
 
 const browserUnavailable = "账号浏览器未能启动。请安装 Google Chrome，并检查是否已有异常的账号窗口；不要删除登录目录。";
 const metadataUnavailable = "账号浏览器连接元数据无效，请核查原窗口和目录安全性；不会另开登录目录。";
@@ -21,7 +22,7 @@ export function accountChromeArguments(profile: string, advertiserId: string, or
   return [`--user-data-dir=${profile}`, ...(original ? [`--profile-directory=${original.profileDirectory}`, ...(original.windowClass ? [`--class=${original.windowClass}`] : [])] : []), "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check", "--start-maximized", ...(egress ? chromeEgressArguments(egress) : []), openAccount ? accountUrl(advertiserId) : "about:blank"];
 }
 
-async function launchChrome(profile: string, advertiserId: string, original?: OriginalProfileOptions, egress?: QianchuanEgress, openAccount = true): Promise<void> {
+export async function launchChrome(profile: string, advertiserId: string, original?: OriginalProfileOptions, egress?: QianchuanEgress, openAccount = true): Promise<void> {
   for (const executable of ["/opt/google/chrome/chrome", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]) {
     try { await access(executable, constants.X_OK); } catch { continue; }
     const child = spawn(executable, accountChromeArguments(profile, advertiserId, original, egress, openAccount), { detached: true, stdio: "ignore" });
@@ -57,6 +58,7 @@ export class QianchuanBrowserManager {
   /** Display-only lookup of an already bound profile; no discovery or browser lifecycle. */
   async profileName(advertiserId: string): Promise<string | undefined> {
     try {
+      if ((await this.dependencies.egress?.(advertiserId))?.mode === "remote-browser") return undefined;
       const managed = this.profile(advertiserId);
       const binding = await this.bindings.get(advertiserId);
       return await readQianchuanProfileName(binding ?? { advertiserId, profile: managed, profileDirectory: "Default" });
@@ -72,6 +74,8 @@ export class QianchuanBrowserManager {
   }
   async assertClosed(advertiserId: string): Promise<void> {
     if (this.pending.has(advertiserId) || this.controlling.has(advertiserId)) throw new Error("账号浏览器操作正在进行，不能修改出口。");
+    const route = await this.dependencies.egress?.(advertiserId);
+    if (route?.mode === "remote-browser") return qianchuanRemoteRuntime.assertClosed(route, advertiserId);
     const binding = await this.bindings.get(advertiserId), profile = binding?.profile ?? this.profile(advertiserId);
     const browsers = await this.browsers()();
     if (browsers.some(browser => browser.profile === profile) || !binding && await discoverQianchuanProfile(advertiserId, browsers)) {
@@ -95,6 +99,7 @@ export class QianchuanBrowserManager {
   private async ensure(advertiserId: string, show: boolean): Promise<string> {
     if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
     const egress = await this.dependencies.egress?.(advertiserId);
+    if (egress?.mode === "remote-browser") return qianchuanRemoteRuntime.open(egress, advertiserId);
     if (egress) { await qianchuanEgressRuntime.ensure(egress); await qianchuanEgressRuntime.verify(egress); }
     let binding = await this.bindings.get(advertiserId);
     if (!binding) {
@@ -146,6 +151,8 @@ export class QianchuanBrowserManager {
     this.controlling.add(advertiserId);
     const pending = (async () => {
       if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
+      const remote = await this.dependencies.egress?.(advertiserId);
+      if (remote?.mode === "remote-browser") { await qianchuanRemoteRuntime.control(remote, advertiserId, action); return ""; }
       const binding = await this.bindings.get(advertiserId), profile = binding?.profile ?? managed;
       if (binding) await verifyOriginalProfile(binding);
       else { await secureUploadDirectory(path.resolve(this.root)); await secureUploadDirectory(path.dirname(profile)); await secureUploadDirectory(profile); }
@@ -172,9 +179,16 @@ export class QianchuanBrowserManager {
   }
   /** Catalog never launches Chrome; fixed egress may use its own background IP probe tab. */
   async prepareExisting(advertiserId: string): Promise<string> {
+    const endpoint = await this.existingConnection(advertiserId);
+    return discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] });
+  }
+  /** Process/profile connection only, including a login page; does not authorize account actions. */
+  async existingConnection(advertiserId: string): Promise<string> {
     const managed = this.profile(advertiserId);
     if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
     if (this.controlling.has(advertiserId) || this.pending.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
+    const remote = await this.dependencies.egress?.(advertiserId);
+    if (remote?.mode === "remote-browser") return qianchuanRemoteRuntime.open(remote, advertiserId, true);
     const binding = await this.bindings.get(advertiserId);
     const original = binding ?? await discoverQianchuanProfile(advertiserId, (await this.browsers()()).filter(browser => browser.profile && !browser.profile.startsWith(`${path.resolve(this.root)}${path.sep}`)));
     if (original) await verifyOriginalProfile({ advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) });
@@ -182,6 +196,6 @@ export class QianchuanBrowserManager {
     const endpoint = await this.endpoint(original?.profile ?? managed, original ? { profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) } : undefined, false, egress);
     if (!endpoint) throw new Error("请先打开该账号的千川浏览器，登录后刷新计划。");
     if (egress) await verifyBrowserEgress(endpoint, egress, this.dependencies.browsers);
-    return discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] });
+    return endpoint;
   }
 }

@@ -12,6 +12,11 @@ export function QianchuanEgressSettings({ value, onChange, accounts, busy }: {
       group: "", sshHost: "", localPort: 19381 + groups.length, expectedIp: "",
     } : null)} />为此账号启用固定出口</label>
     {value && <>
+      <label>浏览器运行位置<select aria-label="浏览器运行位置" value={value.mode ?? "local"} onChange={event => {
+        const { mode: _old, ...route } = value;
+        onChange(event.target.value === "remote-browser" ? { ...route, mode: "remote-browser" } : route);
+      }}><option value="local">A：本机浏览器，VPS 出口</option><option value="remote-browser">B：VPS 远端浏览器</option></select></label>
+      {value.mode === "remote-browser" && <p>浏览器和登录状态保存在对应 VPS，成片传输校验后由远端上传。本地简辑负责调度，运行期间需保持开机。首次登录或验证码请在 VPS 远程桌面处理。</p>}
       {groups.length > 0 && <label>复用已设置的主体<select aria-label="复用已设置的主体" value="" onChange={event => {
         const selected = groups.find(group => group.group === event.target.value); if (selected) onChange({ ...selected });
       }}><option value="">选择主体，或填写下方设置</option>{groups.map(group => <option key={group.group} value={group.group}>{group.group} · {group.expectedIp}</option>)}</select></label>}

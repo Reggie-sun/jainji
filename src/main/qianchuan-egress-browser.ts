@@ -2,6 +2,7 @@ import { egressProxy, type QianchuanEgress } from "../shared/qianchuan-egress.js
 import { runningChromeBrowsers, type RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
 import { qianchuanEgressRuntime, type EgressLease } from "./qianchuan-egress-runtime.js";
 import { probeChromeEgress } from "./qianchuan-egress-probe.js";
+import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
 
 export function chromeEgressArguments(route: QianchuanEgress): string[] {
   return [`--proxy-server=${egressProxy(route)}`, "--proxy-bypass-list=<-loopback>", "--disable-quic", "--disable-extensions",
@@ -14,6 +15,7 @@ export function assertEgressArguments(browser: RunningChromeBrowser, route?: Qia
   if (actual.length !== expected.length || expected.some(arg => !actual.includes(arg))) throw new Error("账号浏览器的固定出口与配置不一致，未执行自动化。请先关闭该账号浏览器，核查设置后重启并连接。");
 }
 export async function verifyBrowserEgress(endpoint: string, route?: QianchuanEgress, browsers = runningChromeBrowsers): Promise<EgressLease | undefined> {
+  if (route?.mode === "remote-browser") return qianchuanRemoteRuntime.verify(endpoint, route);
   const matches = (await browsers()).filter(browser => browser.endpoint === endpoint);
   if (matches.length !== 1 || matches[0].connectionIssue) throw new Error("无法唯一验证账号浏览器的固定出口。");
   assertEgressArguments(matches[0], route);

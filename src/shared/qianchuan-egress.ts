@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const QianchuanEgressSchema = z.object({
+  mode: z.literal("remote-browser").optional(),
   group: z.string().trim().min(1, "请填写主体代号。").max(40).regex(/^[^\u0000-\u001f\u007f]+$/),
   sshHost: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/, "请填写本机 SSH 配置中的主机别名。"),
   localPort: z.number().int().min(1024).max(65535),

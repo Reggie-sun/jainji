@@ -10,6 +10,7 @@ import { parseQianchuanPlanUrl, QIANCHUAN_PRODUCTS, QianchuanAccountSettingsSche
 import { QianchuanLibraryClearSchema } from "../shared/qianchuan-video-library.js";
 import { egressIdentity, type QianchuanEgress } from "../shared/qianchuan-egress.js";
 import { qianchuanEgressRuntime } from "./qianchuan-egress-runtime.js";
+import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -52,6 +53,10 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       guard(target.advertiserId);
       if (parsed.action === "reconnect-egress") {
         if (!target.egress) throw new Error("该账号未配置固定出口。");
+        if (target.egress.mode === "remote-browser") {
+          await qianchuanRemoteRuntime.reconnect(target.egress, target.advertiserId);
+          return super.refresh();
+        }
         qianchuanEgressRuntime.recover(target.egress);
         await qianchuanEgressRuntime.ensure(target.egress);
         await qianchuanEgressRuntime.verify(target.egress);
@@ -119,7 +124,11 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     await this.savePrivateJson(this.file, value);
     try {
       const summaries = await super.authorizeFile(this.file); this.hasMapping = true;
-      if (changed.length) { this.preparedBrowsers.clear(); qianchuanEgressRuntime.retireUnused(accounts.flatMap(account => account.egress ? [account.egress] : [])); }
+      if (changed.length) {
+        this.preparedBrowsers.clear();
+        const routes = accounts.flatMap(account => account.egress ? [account.egress] : []);
+        qianchuanEgressRuntime.retireUnused(routes); qianchuanRemoteRuntime.retireUnused(routes);
+      }
       return this.withProfileNames(summaries);
     }
     catch (error) { this.blocked = true; throw error; }

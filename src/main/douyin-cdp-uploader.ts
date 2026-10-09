@@ -1,12 +1,14 @@
 import { guardedTransport } from "./local-cdp-transport.js";
 import { browserWebSocketForEndpoint } from "./qianchuan-browser-discovery.js";
-import { chromium, type Browser, type Page } from "playwright-core";
+import { chromium, type Browser, type Page, type ElementHandle } from "playwright-core";
 import { isLoopbackUrl, uploadFailure, type PageOwnership, type ReadyEvidence, type QianchuanUploadConfig } from "../shared/douyin-upload.js";
 import { MAX_UPLOAD_GROUP_SIZE, type UploadBrowserPort, type BatchSelectedFile } from "./douyin-upload-service.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { QianchuanPageSession, PRODUCTION_QIANCHUAN_CONTRACT, qianchuanReadiness, type QianchuanPageContract } from "./qianchuan-page-contract.js";
 import { verifyBrowserEgress } from "./qianchuan-egress-browser.js";
 import type { EgressLease } from "./qianchuan-egress-runtime.js";
+import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
+import { selectRemoteFiles } from "./qianchuan-remote-selection.js";
 export const douyinReadiness = (_config: QianchuanUploadConfig) => qianchuanReadiness();
 export type { QianchuanPageContract };
 
@@ -17,6 +19,8 @@ export class DouyinCdpUploader implements UploadBrowserPort {
   private transport?: Awaited<ReturnType<typeof guardedTransport>>;
   private readonly controller = new AbortController();
   private egressLease?: EgressLease;
+  private readonly remoteFiles = new Map<string, { path: string; hash: string; size: number }>();
+  private remote = false;
   private readonly egressLost = () => { void this.stop(); };
   constructor(private readonly contract: QianchuanPageContract | undefined = PRODUCTION_QIANCHUAN_CONTRACT) {}
   private check = (signal: AbortSignal): void => { signal.throwIfAborted(); this.controller.signal.throwIfAborted(); this.egressLease?.signal.throwIfAborted(); };
@@ -31,6 +35,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
   async connect(task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
     this.pageContract(); this.check(signal); if (this.browser?.isConnected()) return;
     const endpoint = task.authorization.target.cdpEndpoint;
+    this.remote = task.authorization.target.egress?.mode === "remote-browser";
     if (!isLoopbackUrl(endpoint) || new URL(endpoint).pathname !== "/") throw new Error("Unsafe discovery endpoint");
     try {
       this.egressLease = await verifyBrowserEgress(endpoint, task.authorization.target.egress);
@@ -56,6 +61,29 @@ export class DouyinCdpUploader implements UploadBrowserPort {
       }
     });
   }
+  async prepareFiles(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> {
+    if (!this.remote) return;
+    await this.action(signal, async () => {
+      for (const task of tasks) {
+        try {
+          const remotePath = await qianchuanRemoteRuntime.stage(task, signal);
+          this.remoteFiles.set(task.result.upload_task_id, { path: remotePath, hash: task.input.artifact_sha256, size: task.input.size_bytes });
+        } catch {
+          this.check(signal);
+          throw uploadFailure("ARTIFACT_CHANGED", "input", "素材传入 VPS 未完成或校验失败，尚未向千川选择这些文件。", "检查连接和远端空间后明确继续；已传分片可复用，不重传结果未知的文件。", false, true);
+        }
+      }
+    });
+  }
+  private readonly selectRemote = async (element: ElementHandle, tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> => {
+    this.check(signal);
+    const paths = tasks.map(task => {
+      const staged = this.remoteFiles.get(task.result.upload_task_id);
+      if (!staged || staged.hash !== task.input.artifact_sha256 || staged.size !== task.input.size_bytes || task.result.upload_outcome !== "MAY_HAVE_UPLOADED") throw new Error("Remote snapshot not prepared");
+      return staged.path;
+    });
+    await selectRemoteFiles(this.page!, element, paths, signal); this.check(signal);
+  };
   private async targetId(page: Page): Promise<string> {
     const session = await page.context().newCDPSession(page);
     try { return (await session.send("Target.getTargetInfo")).targetInfo.targetId; } finally { await session.detach(); }
@@ -78,7 +106,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
             await window.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "maximized" } }); this.check(signal);
           } finally { await window.detach(); }
         }
-        this.session = new QianchuanPageSession(this.page, contract, this.check);
+        this.session = new QianchuanPageSession(this.page, contract, this.check, this.remote ? this.selectRemote : undefined);
         await this.page.goto(this.session.url(task), { timeout: task.config.timeouts.navigation, waitUntil: "domcontentloaded" }); this.check(signal);
       }
       // Background tabs can suspend animation frames used by click stability checks.

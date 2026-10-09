@@ -166,6 +166,37 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  it("stages files before page selection and leaves failed transfer tasks without a selection fence", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["remote staging"]); await f.register(batch);
+    f.port.prepareFiles = async tasks => {
+      expect(tasks.every(task => !f.store.hasMarker(task.result.upload_task_id))).toBe(true);
+      f.events.push("stage");
+      throw uploadFailure("ARTIFACT_CHANGED", "input", "transfer interrupted", "explicitly continue", false, true);
+    };
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const task = f.store.tasks()[0];
+    expect(task.result).toMatchObject({ state: "FAILED_RETRYABLE", upload_outcome: "NOT_SELECTED" });
+    expect(f.store.hasMarker(task.result.upload_task_id)).toBe(false);
+    expect(f.events).not.toContain("open"); expect(f.events).not.toContain("file-input");
+  });
+  it("keeps remote staging before fences and never stages again during UNKNOWN recovery", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["remote unknown"]); await f.register(batch);
+    f.port.prepareFiles = vi.fn(async (tasks: UploadTaskRecord[]) => {
+      expect(tasks.every(task => !f.store.hasMarker(task.result.upload_task_id))).toBe(true);
+      f.events.push("stage");
+    });
+    f.port.upload = async () => { f.events.push("file-input"); throw new Error("connection lost after selection fence"); };
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const task = f.store.tasks()[0];
+    expect(task.result.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+    expect(f.events.indexOf("stage")).toBeLessThan(f.events.indexOf("open"));
+    await f.service.resume(task.result.upload_task_id);
+    expect(f.port.prepareFiles).toHaveBeenCalledTimes(1);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(f.events).toContain("readonly");
+  });
   it("uses one fresh ledger snapshot for each status without exposing or caching mutable records", async () => {
     const f = await fixture(); await f.authorize();
     const current = await f.createBatch(["current"]), other = await f.createBatch(["other"]);
