@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentProvider, API_REQUEST_MIN_INTERVAL_MS, ProviderError, createLocalRandomPlan, materializePlan, validatePlan } from "../src/main/agent-provider";
-import { FilterPresetSchema } from "../src/main/domain";
 import { CORNER_SAFE_POLICY } from "../src/shared/layout-policy";
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
 import { DEFAULT_TEXT_FONT_FAMILY } from "../src/shared/defaults";
@@ -20,11 +19,12 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
-  it("random packaging uses the full filter range and ignores the saved legacy rule", () => {
+  it("random packaging preserves color and ignores the saved legacy rule", () => {
     const random = vi.spyOn(Math, "random");
     try {
-      for (const [index, filter] of FilterPresetSchema.options.entries()) {
-        random.mockReturnValue(0.5).mockReturnValueOnce((index + 0.5) / FilterPresetSchema.options.length);
+      const filters = ["none", "warm", "cool", "vivid"];
+      for (const [index, filter] of filters.entries()) {
+        random.mockReturnValue(0.5).mockReturnValueOnce((index + 0.5) / filters.length);
         const randomPlan = createLocalRandomPlan();
         expect(randomPlan).toMatchObject({ filter, intensity: 0.5, captions: [] });
         const snapshots = RULE_TEMPLATES.map(rule => {
@@ -43,6 +43,17 @@ describe("agent provider boundary", () => {
         expect(() => materializePlan({ ...plan, ...invalid }, "black-gold", { width: 720, height: 1280 }, stickerAssets, { mode: "random" })).toThrow();
       }
       expect(() => validatePlan({ ...plan, filter: "mono" }, "black-gold")).toThrow();
+    } finally { random.mockRestore(); }
+  });
+  it("keeps random filter boundaries colored while preserving explicit mono templates", () => {
+    const random = vi.spyOn(Math, "random");
+    try {
+      for (const draw of [0, 0.249999, 0.25, 0.499999, 0.5, 0.749999, 0.75, 0.999999]) {
+        random.mockReturnValue(0.999999).mockReturnValueOnce(draw);
+        expect(["none", "warm", "cool", "vivid"]).toContain(createLocalRandomPlan().filter);
+      }
+      const template = materializePlan({ ...plan, filter: "mono", intensity: 1 }, "mono", { width: 720, height: 1280 }, stickerAssets);
+      expect(template.filter).toEqual({ presetId: "mono", intensity: 1 });
     } finally { random.mockRestore(); }
   });
   it("decides optional frames once and keeps forced random frames random across versions", () => {

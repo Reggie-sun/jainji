@@ -220,9 +220,10 @@ function priceStyleContext(selection?: AgentSelectionContext): string {
 }
 
 export function createLocalRandomPlan(): LegacyPackagingPlan {
+  const filters = FilterPresetSchema.options.filter(preset => preset !== "mono");
   return {
     summary: "本地随机包装 · 零模型调用", captions: [],
-    filter: FilterPresetSchema.options[Math.floor(Math.random() * FilterPresetSchema.options.length)],
+    filter: filters[Math.floor(Math.random() * filters.length)],
     intensity: Math.random(),
   };
 }
