@@ -6,6 +6,9 @@ import { MembershipSession, fetchMembership } from "./membership-session.js";
 import { membershipStorage } from "./membership-storage.js";
 import { loginMembership } from "./membership-oauth.js";
 import { installMembershipIpc } from "./membership-ipc.js";
+import { configureMembershipKeyring } from "./membership-keyring.js";
+
+configureMembershipKeyring(app.commandLine);
 
 export async function createMembershipDesktop(input: {
   root: string; trusted(event: IpcMainInvokeEvent): void;

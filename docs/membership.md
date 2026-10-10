@@ -68,6 +68,8 @@ JIANJI_MEMBERSHIP_CONFIG=/absolute/public/membership.json make frontend
 
 使用独立组织 `jianji` 和 application `jianji-desktop`，应用对象 ID 为 `admin/jianji-desktop`，其 organization 为 `jianji`。启用 Authorization Code 和 PKCE；注册回调 `http://127.0.0.1:43829/jianji-login`。不将 client secret 交给桌面；禁用不必要 grant，`refreshExpireInHours` 设为 0。
 
+默认记住登录 30 天：`expireInHours=720`、`cookieExpireInHours=720`，登录表单的 AutoSignin 默认保持开启。`enableAutoSignin` 是自动提交登录的另一个功能，不为记住登录而启用。桌面公共客户端不使用要求 client secret 的 refresh grant；已签发的旧 24 小时 token 不因配置变化自动延长，更新后需首次登录取得新 token。桌面与门户授权请求不再强制 `prompt=login`，可复用仍有效的 Casdoor 浏览器会话。
+
 必须启用 `enableExclusiveSignin=true` 和 `maxSessions=1`。适配服务每次核查当前应用配置及 token introspection；配置不匹配不放行。v4.18.0 的 `controllers/auth.go` 在替换登录时调用 `ExpireTokenByUserAndApplication`，但仍需真实实例验证双设备登录，不能仅凭 JWT 签名或字段名判断会话有效。
 
 注册用户可用普通 user 类型；应用权益由本服务判断，避免 `paid-user` 在试用/赠送之前强制跳入购买页。根据实际注册策略配置邮件验证、找回密码和管理员安全措施，不在桌面自行实现密码接口。
@@ -88,7 +90,7 @@ JIANJI_MEMBERSHIP_CONFIG=/absolute/public/membership.json make frontend
 
 部署门户时 `serviceUrl` 必须与 Casdoor `issuer` 使用不同 origin。Casdoor 4.18 的前端将同源回调视为自己的登录，不返回门户所需授权码；不能用同域路径分流替代独立 origin。当前服务域名为 `billing.reggie-sun.ccwu.cc`，登录域名为 `auth.reggie-sun.ccwu.cc`。
 
-用户打开 `${serviceUrl}/billing`，登录后选套餐，扫码输入 100 或 666 元，从付款账单复制完整付款订单号并提交。仅生成 `Pending` Casdoor Subscription，不能凭“已付款”声明放行。提交者只能查看自己的申请；管理员可查看本组织人工付款申请。独立网页登录遵守单会话；桌面续费使用 60 秒单次票据沿用 main token，浏览器凭据仅存服务内存及 HttpOnly cookie，页面不持有 access token。
+用户打开 `${serviceUrl}/billing`，登录后选套餐，扫码输入 100 或 666 元，从付款账单复制完整付款订单号并提交。仅生成 `Pending` Casdoor Subscription，不能凭“已付款”声明放行。提交者只能查看自己的申请；管理员可查看本组织人工付款申请。独立网页登录遵守单会话；桌面续费使用 60 秒单次票据沿用 main token。浏览器只保存 30 天的随机 HttpOnly / SameSite=Lax cookie，HTTPS 时附加 Secure；上游 token 与 CSRF 保存在私有 `billing-state/sessions` 文件，使用 AES-256-GCM 加密，并绑定 cookie ID、公开配置及服务端密钥，页面不持有 access token。服务需单实例运行，会话最多 1000 条；新登录清理到期记录，读到期、配置/密钥变化或损坏的记录不恢复登录。
 
 管理员在同页核对真实收款账单的单号、金额、付款人，填写实际到账金额、审核说明并勾选已核对，点击“确认到账并开通”；或填写拒绝原因并拒绝。申请只在原 Subscription 上变更，不创建第二份权益。相同渠道和完整单号只能形成一个申请；同账号审核由单进程串行，重复批准不重复加时。服务必须单实例运行，不以多个审核 writer 并发操作；Casdoor 管理员仍是可信管理者，不要在两个后台同时修改同一申请。
 
@@ -96,7 +98,7 @@ JIANJI_MEMBERSHIP_CONFIG=/absolute/public/membership.json make frontend
 
 同时必须配置 `JIANJI_MEMBERSHIP_BILLING_STATE` 为服务用户可写的私有持久化目录。写入前独占保存并 fsync `write-intent.json`，包含目标和期望快照，仅用作故障恢复，绝不授予权限。写入失败只读取确认结果，不自动重发；无法确认时保留标记，连同重启后的新写入一起阻止，仍可读取申请。管理员需停止会员服务、确认上游请求已结束，逐项核对 Casdoor 的账号 UUID、单号、审核决定和固定期限后保存恢复记录，才可移走该标记并恢复服务；不能用重启或直接删标记假装核对完成。保护目录也必须纳入私有备份。
 
-重启服务使浏览器会话失效，申请和审核保留在 Casdoor 数据库。用户报告的 1 元试款只作为人工到账报告，不用于开通套餐，也不证明自动回调已接通。
+浏览器关闭及会员服务重启保留仍有效的会话；退出删除持久会话并清 cookie。申请和审核仍保留在 Casdoor 数据库；会话目录与既有私有状态一起备份。每次读写仍在线核验 Casdoor，封禁、token 到期或其他登录撤销后，旧 cookie 不赋予权限。用户报告的 1 元试款只作为人工到账报告，不用于开通套餐，也不证明自动回调已接通。
 
 管理员从简辑“管理用户”打开 Casdoor 控制台：
 
@@ -132,6 +134,10 @@ JIANJI_MEMBERSHIP_TRIAL_DATABASE=/absolute/private/trials.sqlite node dist-membe
 每次新收费 IPC 和队列执行在线核验。30 秒心跳发现封禁、挤下线、到期或网络故障后触发原取消链；单次客户端核验最多等待 10 秒，所以不是声称远端封禁在零毫秒内终止既有 FFmpeg/平台操作。原项目保存、取消和已生成文件访问保留；未知上传证据不清空、不重试。
 
 桌面 access token 仅由 main process 持有，安全密钥存储可用时经 Electron safeStorage 加密保存在 `userData/membership/session.enc`；Linux `basic_text` 或无加密能力时只在内存保存。配置变化使旧缓存失效。没有离线会员宽限或本地时间授权，不能靠本地缓存重新放行；应用重启会在线检查已保存 token，不产生第二次登录。
+
+Linux 在 Electron 初始化前核查当前用户的私有运行目录与 D-Bus socket；仅对缺失或 `disabled:` 的 session bus 恢复该用户原生地址。保留显式 `password-store` 和已识别桌面的后端；桌面环境未标明时选择 `gnome-libsecret`，仍禁止 `basic_text` 落盘。启动显示“正在恢复上次登录”，在线核验成功后进入工作区。默认保存的是可撤销的登录凭据，不保存账号密码，也不以共享公网 IP 或可伪造的 device/UA 字段授权。登录 30 天不延长任何试用、会员或管理员赠送期限。
+
+桌面退出先同步保存私有 `membership/logout-pending` 标记，再删除加密凭据；只要标记存在，重启不恢复旧凭据，只有显式新登录成功保存才移除标记。磁盘连标记也无法保存时退出报错，不能声称退出完成。软件退出不执行全账号上游登出，沿同 token 打开的门户有自己的退出入口。门户即使删除记录失败也清当前浏览器 cookie，同时报告失败；并非撤销所有已复制凭据。Cookie 使用专用 host-only 域名，尚未采用 `__Host-` 前缀；同系不可信子域 cookie tossing 风险保留，不把该配置描述成完整跨子域隔离。
 
 ## Verification Limits
 

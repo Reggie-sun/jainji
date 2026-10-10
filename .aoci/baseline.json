@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-10T16:54:41Z",
+  "updated_at": "2026-10-10T17:43:11Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "389b177b6b602540e22d18d003c7813fb4fedbd7311a206590d793c8ed0a3df2",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "5a7cb6e83058911d4ae8b1f37e7474ae4b72939f3148b50a29294555dc72b337",
-      "size": 109739,
-      "normalized_sha256": "5a7cb6e83058911d4ae8b1f37e7474ae4b72939f3148b50a29294555dc72b337"
+      "sha256": "326547a99350f72ecfc5e154e8a5a20754f61fd32f626c6a4c5f571408178e64",
+      "size": 110642,
+      "normalized_sha256": "326547a99350f72ecfc5e154e8a5a20754f61fd32f626c6a4c5f571408178e64"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1483,29 +1483,34 @@
       "normalized_sha256": "ac73a48c450d60d24cb6eac063f1e531d7347ddd2cc78a8622d9631caaada24e"
     },
     "src/main/membership-desktop.ts": {
-      "sha256": "ee8ce77a28b87555b39a3b701b477bda872bf3d7a2d40218f4a269aaae1bbac7",
-      "size": 2863,
-      "normalized_sha256": "ee8ce77a28b87555b39a3b701b477bda872bf3d7a2d40218f4a269aaae1bbac7"
+      "sha256": "cf8b07ec847a2ba818cac434682bdfff36a3e879502a92268c9a07649aea5f54",
+      "size": 2979,
+      "normalized_sha256": "cf8b07ec847a2ba818cac434682bdfff36a3e879502a92268c9a07649aea5f54"
     },
     "src/main/membership-ipc.ts": {
       "sha256": "e802956085acfa64fa4e4162fe1162a20df94bd503427092355e78994db7c798",
       "size": 1655,
       "normalized_sha256": "e802956085acfa64fa4e4162fe1162a20df94bd503427092355e78994db7c798"
     },
+    "src/main/membership-keyring.ts": {
+      "sha256": "19a9eb3b129d1e63ca0c75ea07b26743cb43715193a76fff4457c86c4287cc89",
+      "size": 1275,
+      "normalized_sha256": "19a9eb3b129d1e63ca0c75ea07b26743cb43715193a76fff4457c86c4287cc89"
+    },
     "src/main/membership-oauth.ts": {
-      "sha256": "a65106fccffc7af05623ed3179100140e34ff11fc93b1f7f50276f6ab5867a18",
-      "size": 3602,
-      "normalized_sha256": "a65106fccffc7af05623ed3179100140e34ff11fc93b1f7f50276f6ab5867a18"
+      "sha256": "386639a3689e641b357b3096afc208aea2a2dfb5c9bdae1766018fb67903c478",
+      "size": 3581,
+      "normalized_sha256": "386639a3689e641b357b3096afc208aea2a2dfb5c9bdae1766018fb67903c478"
     },
     "src/main/membership-session.ts": {
-      "sha256": "f1780484bb00dd14998f68937900570c43cbaf7a87ba27f0078c3834da16d9c6",
-      "size": 7398,
-      "normalized_sha256": "f1780484bb00dd14998f68937900570c43cbaf7a87ba27f0078c3834da16d9c6"
+      "sha256": "1786a6dfdc570b2b167b3c4e6a4537311256912a16e423b777da9cb11dab07ec",
+      "size": 7547,
+      "normalized_sha256": "1786a6dfdc570b2b167b3c4e6a4537311256912a16e423b777da9cb11dab07ec"
     },
     "src/main/membership-storage.ts": {
-      "sha256": "8323dd94986e98f31ff4c59c450ada1aadc5aeebbd2cd2aeb796e9e6776b2c7f",
-      "size": 1906,
-      "normalized_sha256": "8323dd94986e98f31ff4c59c450ada1aadc5aeebbd2cd2aeb796e9e6776b2c7f"
+      "sha256": "62c1c489abf27ca033bba5ab88410d04b8c5ab83266b804535cf541e0956e056",
+      "size": 2925,
+      "normalized_sha256": "62c1c489abf27ca033bba5ab88410d04b8c5ab83266b804535cf541e0956e056"
     },
     "src/main/model-connections.ts": {
       "sha256": "26898d6749b75ae6021f7e6b80c28c9236a710ad4cbd898d57e9e378e0e3760c",
@@ -2042,15 +2047,20 @@
       "size": 8252,
       "normalized_sha256": "85780d2da968e37f43e8cc7265d2970a07f393e584b3fc53c76f99be18c90fab"
     },
+    "src/membership-server/billing-session-store.ts": {
+      "sha256": "3eae8eb2a936d43f5533f5e1af764345131095270fa1ec5f8ce9a9be7bf66b24",
+      "size": 4737,
+      "normalized_sha256": "3eae8eb2a936d43f5533f5e1af764345131095270fa1ec5f8ce9a9be7bf66b24"
+    },
     "src/membership-server/billing-write-guard.ts": {
       "sha256": "4ab582c0029be3c4684188416bb6c4c2d2fed61f7c1680fbd18882a8f3bb7ef0",
       "size": 1704,
       "normalized_sha256": "4ab582c0029be3c4684188416bb6c4c2d2fed61f7c1680fbd18882a8f3bb7ef0"
     },
     "src/membership-server/billing.ts": {
-      "sha256": "252fd34296b2b32d2e83da60102a9447a9f0dd4eaf6463dd08e0ad94a045cf47",
-      "size": 9937,
-      "normalized_sha256": "252fd34296b2b32d2e83da60102a9447a9f0dd4eaf6463dd08e0ad94a045cf47"
+      "sha256": "f29b5eb36b93d818f782ad48ff4bce17d50793a1263c86e9ebed8a402af23954",
+      "size": 10023,
+      "normalized_sha256": "f29b5eb36b93d818f782ad48ff4bce17d50793a1263c86e9ebed8a402af23954"
     },
     "src/membership-server/casdoor.ts": {
       "sha256": "1a35204bf60980dbbe05e1855d9d3cd57b09ae7e787aff42c3a5ac85e56290a2",
@@ -2078,9 +2088,9 @@
       "normalized_sha256": "35cbf920e4fa1ad7c6498fa0126bcbd547f73929be09163beaccd3328c421a96"
     },
     "src/membership-server/server.ts": {
-      "sha256": "0f0eced775f7d16ca3274f2f8218639cec372621f58d3b24b572442a12478a5c",
-      "size": 4326,
-      "normalized_sha256": "0f0eced775f7d16ca3274f2f8218639cec372621f58d3b24b572442a12478a5c"
+      "sha256": "4418383ca9479beb6b5952587e2d345f414aca18ae122e9edc26e9dd183fd303",
+      "size": 4455,
+      "normalized_sha256": "4418383ca9479beb6b5952587e2d345f414aca18ae122e9edc26e9dd183fd303"
     },
     "src/model-server/gateway.ts": {
       "sha256": "f8bb315bc31d0b4ddba7ad8f5cf402baf9c7b7463389c62dab26819110cb1d7c",

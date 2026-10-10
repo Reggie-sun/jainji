@@ -210,13 +210,14 @@ automation-background.ts[EU6T]: F:用托盘保留可恢复的后台窗口 | R:co
 automation-desktop.ts[AW8T]: F:接线可信自动化IPC与原执行适配 | R:code:src/main/automation-runtime.ts,code:src/main/automation-scheduler.ts | A:准备执行均核会员；注册状态创建配置删除 | S:调度器不自行获得生产权限
 automation-files.ts[PS8T]: F:读写私有自动化配置并计算稳定摘要 | R:code:src/main/douyin-upload-store.ts | A:限制大小权限身份与读取漂移；排他写或临时重命名后同步 | S:未知持久化结果由调用方阻断；不替代执行授权
 automation-runtime.ts[AW8S]: F:冻结定时配方并适配原清理制作上传 | R:code:src/main/automation-files.ts,code:src/main/batch-production-controller.ts,code:src/main/queue.ts | A:绑定账号素材模型；清理失败短路；成功成片分组及一次消费登记 | S:不拥有第二队列；未知上传claim不重试；半自动仍须人工批准；绑定摘要不含开关时间
-membership-desktop.ts[AI8T]: F:组装桌面会员会话与账号IPC | R:code:src/main/membership-session.ts,code:src/main/membership-storage.ts,code:src/main/membership-oauth.ts,code:src/main/membership-ipc.ts | A:读取公开配置；恢复心跳；打开会话签发的续费链接及管理员外链 | S:仅未打包未指定配置且默认文件不存在时本地开放；坏配置和安装版缺配置失败关闭；无client secret
+membership-desktop.ts[AI8T]: F:组装桌面会员会话与账号IPC | R:code:src/main/membership-session.ts,code:src/main/membership-storage.ts,code:src/main/membership-keyring.ts | A:初始化密钥环；读取公开配置；恢复心跳；打开续费及管理员外链 | S:仅未打包未指定配置且默认文件缺失时本地开放；坏配置和安装版缺配置失败关闭；无client secret
 membership-ipc.ts[MI8T]: F:为主进程IPC安装会员准入门 | R:code:src/main/membership-session.ts | A:先核可信发送方；未知操作默认在线鉴权；保留固定恢复白名单 | S:须在业务handler注册前安装；不替代原安全检查
-membership-oauth.ts[II8T]: F:执行系统浏览器OIDC登录及loopback回调 | R:code:src/shared/membership.ts | A:openid-client发现；PKCE与state及nonce；限定issuer；取消超时关闭监听 | S:公共客户端不发送client secret；token只返回主进程；错误state不能完成登录
-membership-session.ts[AI8S]: F:拥有桌面唯一会员状态和准入 | R:code:src/shared/membership.ts | A:登录去重；串行存储；代际隔离；在线检查及失效取消；请求短期续费ticket链接 | S:仅无配置且主进程明确本地模式可免登录；服务端状态不能开启本地模式；清理存储失败仍停止工作；不把token放入外链
-membership-storage.ts[PS8T]: F:加密保存并按公开配置绑定会员token | R:code:src/main/membership-session.ts | A:safeStorage；私有目录与原子替换；读取验证绑定及长度 | S:basic_text或无加密时仅内存；不落明文token
+membership-oauth.ts[II8T]: F:执行系统浏览器OIDC登录及loopback回调 | R:code:src/shared/membership.ts | A:发现；PKCE state nonce；限定issuer；取消超时关闭监听；复用有效浏览器登录 | S:公共客户端无client secret；不强制prompt=login；token只返回main；错误state不能完成登录
+membership-session.ts[AI8S]: F:拥有桌面唯一会员状态和准入 | R:code:src/shared/membership.ts,code:src/main/membership-storage.ts | A:启动展示恢复；登录去重；串行存储；代际隔离；在线检查及失效取消；续费ticket | S:仅无配置且main明确本地模式可免登录；服务端状态不能开启本地模式；退出使在途恢复失效；清存储失败仍停止工作；token不入外链
+membership-storage.ts[PS8T]: F:加密保存并按公开配置绑定会员token | R:code:src/main/membership-session.ts | A:safeStorage；原子替换同步；退出先存标记；新登录才清标记 | S:basic_text或无加密时仅内存；不落明文；删除失败不恢复旧凭据
 automation-upload.ts[PW8T]: F:持久化定时上传确认的一次性屏障 | R:code:src/shared/douyin-upload.ts,code:src/main/automation-files.ts | A:严格冻结身份READY证据校验；独占写确认意图；检查存在性 | S:屏障存在禁止重新分类READY；损坏不作缺失；不执行平台点击
 qianchuan-confirmation-receipt.ts[IN8M]: F:被动核验千川绑定视频和添加计划素材回执 | R:code:src/main/qianchuan-page-contract.ts | A:同frame来源账号计划；完整文件名和唯一视频ID；单次POST与双成功响应；有界等待及摘要 | S:不发请求；数字status_code零且HTTP200；重复重定向取消均拒绝；缺有效Content-Length拒绝；正文1MiB；回执不证明审核投放
+membership-keyring.ts[IS8T]: F:在Electron初始化前准备Linux原生密钥环 | R:code:src/main/membership-desktop.ts,code:src/main/membership-storage.ts | A:核私有运行目录及同UID socket；恢复缺失或disabled的D-Bus；未识别桌面用libsecret | S:保留显式password-store与已识别桌面后端；不选择basic_text；无安全bus时不降级落明文
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -332,9 +333,10 @@ task.json[FQ4T]: F:封装产品规则断言覆盖调查 | R:code:.agent/harness/
 casdoor.ts[II8M]: F:封装Casdoor在线身份权益及人工申请存取 | R:code:src/membership-server/policy.ts | A:服务端Basic认证；解码Google身份套餐订阅；人工订阅单次写入；限时限量响应 | S:调用issuer而非会员serviceUrl；不重定向不输出上游密钥错误
 index.ts[EI7T]: F:启动本地会员服务及显式初始化试用账本 | R:code:src/membership-server/server.ts,code:src/membership-server/policy.ts,code:src/membership-server/google-trial.ts | A:加载私有配置付款码及持久保护；打开账本；loopback监听；关闭释放账本 | S:正常启动不创建新账本；不执行部署或付款
 policy.ts[DI8M]: F:根据在线会话当前权益及Google试用判定准入 | R:code:src/membership-server/casdoor.ts,code:src/shared/membership.ts,code:src/membership-server/google-trial.ts | A:核身份组织应用单会话；封禁优先；付费赠送；可信Google身份实领72小时 | S:无缓存授权；只接受直接用户订阅；管理员是可信授权方；未知失败关闭；未绑Google不自动试用
-server.ts[EI8S]: F:提供会员状态与可选续费门户路由 | R:code:src/membership-server/policy.ts,code:src/membership-server/billing.ts,code:src/membership-server/billing-write-guard.ts,code:src/membership-server/google-trial.ts | A:门户及状态共用试用账本和时钟；核GET及Bearer；错误脱敏 | S:缺持久保护目录拒绝核款；状态接口拒绝请求体；前端声明不授权益
+server.ts[EI8S]: F:提供会员状态与可选续费门户路由 | R:code:src/membership-server/policy.ts,code:src/membership-server/billing.ts,code:src/membership-server/billing-session-store.ts,code:src/membership-server/google-trial.ts | A:持久浏览器凭据；门户及状态共用试用账本和时钟；核GET及Bearer；错误脱敏 | S:缺持久保护目录拒绝核款；状态接口拒请求体；前端声明不授权益
 billing-page.ts[EU7T]: F:提供续费申请及管理员核款页面 | R:code:src/membership-server/billing.ts | A:套餐与二维码；提交单号；查询审核；管理员核款表单；中文日期 | S:显示或提交不代表到账或授权；ticket消费后清除URL片段；用户字段按textContent展示
-billing.ts[EI8S]: F:提供人工续费门户与浏览器会话路由 | R:code:src/membership-server/manual-payments.ts,code:src/membership-server/billing-page.ts,code:src/membership-server/policy.ts | A:单次ticket；OIDC登录；付款码与申请审核；有限内存会话 | S:重启清会话不清申请；写请求核同源及CSRF；token不进页面；提交不授权益
+billing.ts[EI8S]: F:提供人工续费门户与浏览器会话路由 | R:code:src/membership-server/manual-payments.ts,code:src/membership-server/billing-page.ts,code:src/membership-server/billing-session-store.ts | A:单次ticket；OIDC登录；付款码申请审核；30天cookie与持久会话 | S:重启保留；退出删除，失败仍清cookie并报错；同源及CSRF；token不进页面；提交不授权益
 manual-payments.ts[AB8S]: F:管理人工付款申请与管理员核款续期 | R:code:src/membership-server/casdoor.ts,code:src/membership-server/policy.ts,code:src/membership-server/billing-write-guard.ts,code:src/membership-server/google-trial.ts | A:单号去重；逐用户串行；核金额套餐；延续实领试用及订阅；持久意图保护 | S:Casdoor订阅唯一权益owner；提交不授权；未知只读核对不盲重试；既有审核不反转
 billing-write-guard.ts[PR8T]: F:持久保护人工核款未知写入 | R:code:src/membership-server/manual-payments.ts | A:独占创建意图；同步期望快照；已确认后清理 | S:不是权益账本；未知结果保留标记；重启不清除；其他writer不能覆盖未决意图
 google-trial.ts[PI8S]: F:持久约束每Google身份的一次72小时试用 | R:code:src/membership-server/policy.ts,code:src/membership-server/manual-payments.ts | A:SQLite事务及双唯一摘要；显式独占初始化；核文件身份和权限；只读有效期限 | S:缺失损坏不重建；删除用户不得删试用记录；更换身份或用户UUID不重新授时；不按邮箱合并
+billing-session-store.ts[PS8T]: F:持久加密浏览器会话运输凭据 | R:code:src/membership-server/billing.ts,code:src/membership-server/policy.ts | A:30天期限；AES-GCM及HKDF；私有目录文件；串行创建同步；清理到期及千条上限 | S:绑定公开配置密钥及cookie ID；损坏到期不恢复；不保存密码或授予权益；每次请求仍核Casdoor

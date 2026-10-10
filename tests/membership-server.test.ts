@@ -2,12 +2,13 @@ import { createServer, request as httpRequest, type Server } from "node:http";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MembershipStatusSchema } from "../src/shared/membership.js";
 import { DEFAULT_MEMBERSHIP_SERVER_PORT, startMembershipServer } from "../src/membership-server/index.js";
 import { MembershipServerConfigSchema, addUtcCalendarMonthClamped, membershipServerConfigFromEnvironment } from "../src/membership-server/policy.js";
 import { createMembershipServer } from "../src/membership-server/server.js";
 import { GOOGLE_TRIAL_MS, SqliteGoogleTrialStore } from "../src/membership-server/google-trial.js";
+import { FileBillingSessionStore } from "../src/membership-server/billing-session-store.js";
 
 type JsonObject = Record<string, unknown>;
 type Fault = { kind: "status" | "redirect" | "raw" | "oversized"; body?: string; status?: number };
@@ -614,7 +615,11 @@ describe("billing browser transport", () => {
     await new Promise<void>(r => server.listen(0, "127.0.0.1", r));
     const address = server.address(); if (!address || typeof address === "string") throw new Error();
     const origin = `http://127.0.0.1:${address.port}`;
-    portal = new BillingPortal({ ...config, serviceUrl: origin }, "/absent-test-assets", service);
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-billing-session-")); temporaryDirectories.push(root);
+    const publicConfig = { ...config, serviceUrl: origin };
+    let sessionStore: FileBillingSessionStore;
+    const restart = () => { sessionStore = new FileBillingSessionStore(root, publicConfig); portal = new BillingPortal(publicConfig, "/absent-test-assets", service, sessionStore); };
+    restart();
     const post = (route: string, body: unknown, cookie = "", csrf = "", source = origin) => fetch(origin + route, { method: "POST", headers: { "Content-Type": "application/json", Origin: source, Cookie: cookie, "X-CSRF-Token": csrf }, body: JSON.stringify(body) });
     try {
       expect((await fetch(origin + "/billing/requests")).status).toBe(401);
@@ -624,13 +629,21 @@ describe("billing browser transport", () => {
       const sessionReply = await post("/billing/session", { ticket });
       const cookie = sessionReply.headers.get("set-cookie")!.split(";")[0];
       expect(sessionReply.headers.get("set-cookie")).toContain("HttpOnly");
+      expect(sessionReply.headers.get("set-cookie")).toContain("Max-Age=2592000");
       expect((await post("/billing/session", { ticket })).status).toBe(401);
       const list = await fetch(origin + "/billing/requests", { headers: { Cookie: cookie } });
       const body = await list.json(); expect(body.user.name).toBe("alice"); expect(body).not.toHaveProperty("token");
+      restart();
+      const restored = await fetch(origin + "/billing/requests", { headers: { Cookie: cookie } });
+      expect(restored.status).toBe(200); expect((await restored.json()).csrf).toBe(body.csrf);
       expect((await post("/billing/requests", submission, cookie)).status).toBe(403);
       // Valid authentication still fails closed when the deployment lacks payment images.
       expect((await post("/billing/requests", submission, cookie, body.csrf)).status).toBe(503);
+      const failure = vi.spyOn(sessionStore!, "remove").mockRejectedValueOnce(new Error("disk unavailable"));
+      const failedLogout = await post("/billing/logout", {}, cookie, body.csrf);
+      expect(failedLogout.status).toBe(503); expect(failedLogout.headers.get("set-cookie")).toContain("Max-Age=0"); failure.mockRestore();
       expect((await post("/billing/logout", {}, cookie, body.csrf)).status).toBe(200);
+      restart();
       expect((await fetch(origin + "/billing/requests", { headers: { Cookie: cookie } })).status).toBe(401);
       const page = await fetch(origin + "/billing"); expect(page.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
     } finally { await new Promise<void>(r => { server.close(() => r()); server.closeAllConnections(); }); }

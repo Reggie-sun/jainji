@@ -5,6 +5,7 @@ import { BillingPortal } from "./billing.js";
 import { ManualPayments } from "./manual-payments.js";
 import { CasdoorClient } from "./casdoor.js";
 import { FileBillingWriteGuard } from "./billing-write-guard.js";
+import { FileBillingSessionStore } from "./billing-session-store.js";
 import type { GoogleTrialStore } from "./google-trial.js";
 
 export interface MembershipServerOptions {
@@ -21,7 +22,7 @@ const MAX_ACCESS_TOKEN_LENGTH = 16_384;
 export function createMembershipServer(options: MembershipServerOptions = {}): Server {
   const config = options.config ?? null;
   if (options.billingAssets && !options.billingState) throw new Error("人工核款需要配置持久化写入保护目录。");
-  const billing = config && options.billingAssets && options.billingState ? new BillingPortal(config, options.billingAssets, new ManualPayments(config, new CasdoorClient(config), options.clock ?? (() => new Date()), new FileBillingWriteGuard(options.billingState), options.trials)) : undefined;
+  const billing = config && options.billingAssets && options.billingState ? new BillingPortal(config, options.billingAssets, new ManualPayments(config, new CasdoorClient(config), options.clock ?? (() => new Date()), new FileBillingWriteGuard(options.billingState), options.trials), new FileBillingSessionStore(options.billingState, config)) : undefined;
   const server = createServer((request, response) => {
     void (async () => {
       if (billing && await billing.handle(request, response)) return;

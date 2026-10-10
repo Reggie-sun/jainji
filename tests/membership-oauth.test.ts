@@ -31,6 +31,7 @@ async function fixture() {
   return { config, inspect: () => ({ validVerifier, secretSent }), badNonce: () => { badNonce = true; },
     open: async (url: string) => {
       authorization = new URL(url);
+      expect(authorization.searchParams.has("prompt")).toBe(false);
       const callback = new URL(authorization.searchParams.get("redirect_uri")!);
       callback.searchParams.set("state", "forged"); callback.searchParams.set("code", "fixture-code");
       expect((await fetch(callback)).status).toBe(400);

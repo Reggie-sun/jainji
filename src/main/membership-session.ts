@@ -35,10 +35,12 @@ export class MembershipSession {
   async restore(): Promise<void> {
     if (!this.config) return;
     const generation = this.generation;
+    this.update({ state: "signing-in", reason: "signing-in", message: "正在恢复上次登录…" });
     const token = await this.deps.storage.read().catch(() => undefined);
     if (generation !== this.generation) return;
     this.token = token;
     if (this.token) await this.refresh();
+    else this.update(signedOutMembership());
   }
   login(): Promise<MembershipStatus> {
     if (this.pendingLogin) return this.pendingLogin;

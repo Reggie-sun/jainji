@@ -6,17 +6,16 @@ import * as oidc from "openid-client";
 import { BillingError, ManualPayments } from "./manual-payments.js";
 import { billingPage, billingScript } from "./billing-page.js";
 import type { MembershipServerConfig } from "./policy.js";
+import { BILLING_SESSION_SECONDS, FileBillingSessionStore, type BillingSession } from "./billing-session-store.js";
 
-type Session = { token: string; csrf: string; expires: number };
 type Login = { state: string; nonce: string; verifier: string; expires: number; client: oidc.Configuration };
 const opaque = () => randomBytes(32).toString("hex");
 
-/** In-memory browser credentials are short-lived. Restart logs browsers out, never loses applications. */
+/** Browser cookies reference private durable credentials, never contain upstream tokens. */
 export class BillingPortal {
-  private readonly sessions = new Map<string, Session>();
-  private readonly tickets = new Map<string, Session>();
+  private readonly tickets = new Map<string, BillingSession>();
   private readonly logins = new Map<string, Login>();
-  constructor(readonly config: MembershipServerConfig, readonly assets: string, readonly payments: ManualPayments) {}
+  constructor(readonly config: MembershipServerConfig, readonly assets: string, readonly payments: ManualPayments, private readonly sessions: FileBillingSessionStore) {}
 
   async handle(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
     const url = new URL(req.url ?? "/", this.config.serviceUrl);
@@ -57,7 +56,7 @@ export class BillingPortal {
       const session = this.tickets.get(ticket); this.tickets.delete(ticket);
       if (!session) throw new BillingError(401, "续费链接已过期，请从简辑重新打开。");
       await this.payments.principal(session.token);
-      this.createSession(res, session.token); this.json(res, 200, { ok: true }); return;
+      await this.createSession(res, session.token); this.json(res, 200, { ok: true }); return;
     }
     if (method === "GET" && route === "/billing/login") {
       this.reserve(this.logins);
@@ -69,7 +68,7 @@ export class BillingPortal {
         },
       });
       const id = opaque(), login: Login = { client, state: oidc.randomState(), nonce: oidc.randomNonce(), verifier: oidc.randomPKCECodeVerifier(), expires: Date.now() + 180_000 };
-      const target = oidc.buildAuthorizationUrl(client, { redirect_uri: `${this.config.serviceUrl}/billing/callback`, scope: "openid profile", response_type: "code", code_challenge: await oidc.calculatePKCECodeChallenge(login.verifier), code_challenge_method: "S256", state: login.state, nonce: login.nonce, prompt: "login" });
+      const target = oidc.buildAuthorizationUrl(client, { redirect_uri: `${this.config.serviceUrl}/billing/callback`, scope: "openid profile", response_type: "code", code_challenge: await oidc.calculatePKCECodeChallenge(login.verifier), code_challenge_method: "S256", state: login.state, nonce: login.nonce });
       if (target.origin !== this.config.issuer) throw new Error("Invalid authorization endpoint.");
       this.logins.set(id, login); this.cookie(res, "jianji_billing_login", id, 180); this.redirect(res, target.href); return;
     }
@@ -80,9 +79,9 @@ export class BillingPortal {
       const result = await oidc.authorizationCodeGrant(login.client, url, { pkceCodeVerifier: login.verifier, expectedState: login.state, expectedNonce: login.nonce, idTokenExpected: true });
       if (!result.access_token || result.access_token.length > 16384 || result.token_type.toLowerCase() !== "bearer") throw new Error("Invalid token.");
       await this.payments.principal(result.access_token);
-      this.createSession(res, result.access_token); this.redirect(res, "/billing"); return;
+      await this.createSession(res, result.access_token); this.redirect(res, "/billing"); return;
     }
-    const session = this.sessions.get(this.readCookie(req, "jianji_billing"));
+    const session = await this.sessions.get(this.readCookie(req, "jianji_billing"));
     if (!session) throw new BillingError(401, "请登录后查看或提交申请。");
     if (method === "GET" && route === "/billing/requests") {
       this.json(res, 200, { ...await this.payments.list(session.token), csrf: session.csrf }); return;
@@ -91,7 +90,9 @@ export class BillingPortal {
     this.sameOrigin(req);
     if (req.headers["x-csrf-token"] !== session.csrf) throw new BillingError(403, "页面已失效，请刷新后重试。");
     if (route === "/billing/logout") {
-      this.sessions.delete(this.readCookie(req, "jianji_billing")); this.cookie(res, "jianji_billing", "", 0); this.json(res, 200, { ok: true }); return;
+      try { await this.sessions.remove(this.readCookie(req, "jianji_billing")); }
+      finally { this.cookie(res, "jianji_billing", "", 0); }
+      this.json(res, 200, { ok: true }); return;
     }
     const body = await this.body(req);
     if (route === "/billing/requests") {
@@ -104,8 +105,8 @@ export class BillingPortal {
     throw new BillingError(404, "页面不存在。");
   }
 
-  private createSession(res: ServerResponse, token: string) { this.reserve(this.sessions); const id = opaque(); this.sessions.set(id, { token, csrf: opaque(), expires: Date.now() + 3600_000 }); this.cookie(res, "jianji_billing", id, 3600); }
-  private prune() { for (const map of [this.sessions, this.tickets, this.logins]) for (const [key, value] of map) if (value.expires <= Date.now()) map.delete(key); }
+  private async createSession(res: ServerResponse, token: string) { const id = opaque(); await this.sessions.put(id, { token, csrf: opaque(), expires: Date.now() + BILLING_SESSION_SECONDS * 1000 }); this.cookie(res, "jianji_billing", id, BILLING_SESSION_SECONDS); }
+  private prune() { for (const map of [this.tickets, this.logins]) for (const [key, value] of map) if (value.expires <= Date.now()) map.delete(key); }
   private reserve(map: Map<string, unknown>) { if (map.size >= 1000) throw new BillingError(429, "当前请求较多，请稍后重试。"); }
   private readCookie(req: IncomingMessage, name: string) { return (req.headers.cookie ?? "").split(";").map(s => s.trim()).find(s => s.startsWith(`${name}=`))?.slice(name.length + 1) ?? ""; }
   private cookie(res: ServerResponse, name: string, value: string, seconds: number) {

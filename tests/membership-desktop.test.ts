@@ -10,7 +10,8 @@ import { createMembershipDesktop } from "../src/main/membership-desktop.js";
 
 const desktop = vi.hoisted(() => ({ isPackaged: false, root: "" }));
 vi.mock("electron", () => ({
-  app: { get isPackaged() { return desktop.isPackaged; }, getAppPath: () => desktop.root },
+  app: { get isPackaged() { return desktop.isPackaged; }, getAppPath: () => desktop.root,
+    commandLine: { hasSwitch: () => true, appendSwitch: () => {} } },
   ipcMain: { handle: () => {} }, safeStorage: { isEncryptionAvailable: () => false }, shell: { openExternal: async () => {} },
 }));
 
@@ -25,6 +26,26 @@ function fixture() {
   return { session, check, stopped, storage };
 }
 describe("desktop membership", () => {
+  it("shows restoration while reading the saved login, then admits without a new login", async () => {
+    let resolve!: (token: string) => void;
+    const login = vi.fn(async () => "unexpected-token");
+    const session = new MembershipSession(config, { storage: { read: () => new Promise(r => { resolve = r; }), write: async () => {} },
+      check: async () => allowed, login, changed: () => {}, lostAccess: async () => {} });
+    const restoring = session.restore();
+    expect(session.snapshot().state).toBe("signing-in");
+    expect(session.snapshot().message).toContain("恢复");
+    resolve("saved-token"); await restoring;
+    await expect(session.assertAllowed()).resolves.toBeUndefined();
+    expect(login).not.toHaveBeenCalled();
+  });
+  it("a logout during restoration never revives the saved login", async () => {
+    let resolve!: (token: string) => void;
+    const session = new MembershipSession(config, { storage: { read: () => new Promise(r => { resolve = r; }), write: async () => {} },
+      check: async () => allowed, login: async () => "token", changed: () => {}, lostAccess: async () => {} });
+    const restoring = session.restore(); await session.logout(); resolve("saved-token"); await restoring;
+    expect(session.snapshot().state).toBe("signed-out");
+    await expect(session.assertAllowed()).rejects.toThrow();
+  });
   it("never treats a server response or configured session as local development admission", async () => {
     const dependencies = { storage: { read: async () => "token", write: async () => {} },
       check: async (): Promise<MembershipStatus> => ({ state: "local-development", reason: "local-development", message: "local" }),

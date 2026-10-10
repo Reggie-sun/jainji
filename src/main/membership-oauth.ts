@@ -19,7 +19,6 @@ export async function loginMembership(config: MembershipConfig, open: (url: stri
   const authorization = oidc.buildAuthorizationUrl(native, {
     redirect_uri: redirect, scope: "openid profile", response_type: "code",
     code_challenge: await oidc.calculatePKCECodeChallenge(verifier), code_challenge_method: "S256", state, nonce,
-    prompt: "login",
   });
   if (authorization.origin !== config.issuer) throw new Error("登录地址不匹配。");
   return new Promise<string>((resolve, reject) => {

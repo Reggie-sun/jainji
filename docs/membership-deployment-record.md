@@ -115,3 +115,37 @@ sudo systemctl status cloudflared-jianji-membership.service
 - R2-N3 为部署边界：一个会员服务 writer，管理员不得在另一个 Casdoor 后台并发改同一申请；没有跨后台 CAS 事务保证。
 
 仍未接通商户自动支付回调、自动退款、负载测试或整机重启验收。人工核款必须逐笔核对实际账单。管理员后台的免费赠送/停用沿用现有 Casdoor 能力。
+
+# Remembered Login
+
+2026-10-11，用户要求默认保存登录，并让本窗口自行测试。Google Cloud 登录和 OAuth 配置仍暂停，本次只修复现有账号密码登录及会话持久性。
+
+## Diagnosis And Implementation
+
+- 桌面原环境实际选择 `basic_text`，安全存储拒绝落盘；软件关闭后 token 丢失。新增初始化前的私有 D-Bus / 原生密钥环准备，保留显式后端与已识别桌面选择，未识别桌面使用 `gnome-libsecret`，仍不允许明文降级。启动显示恢复状态，成功后沿既有在线准入进入工作区。
+- 原门户会话仅在内存中保留一小时，重启必定失效。浏览器改为 30 天随机 HttpOnly cookie；服务端在既有私有 `billing-state/sessions` 内持久加密 token 和 CSRF，并绑定配置、密钥与 cookie ID。退出同步删除记录，重启不会重建已退出的会话。
+- 桌面及门户移除强制 `prompt=login`，允许复用有效 Casdoor 浏览器登录。默认记住凭据，不保存密码，不以 IP / device / UA 声明授权；每次使用仍核验当前账号、token 与权益。
+- 官方固定版本源调查确认 Casdoor 4.18.0 的 public PKCE 授权码 token 保存 `GrantType=authorization_code`；refresh 路径因此要求 client secret。使用有界 30 天 access token 与原在线 introspection，不将服务端 secret 交给桌面，也不新增刷新代理。受管 Kimi 调查 `3b951afe-f051-4623-9082-2eb22b6a73c6` 为 deep/k3，3 次请求身份已验证；Parent 另外核对了 token grant 写入、access_token hint 内省撤销检查与当前封禁检查，未采纳额外 DPoP 或新授权 owner 建议。
+
+## Preparation And Verification
+
+- 更新前备份：`backups/20261010T172802Z`。Casdoor application 原配置保存到私有 `application.before-remember-20261011.json`。仅更新 `expireInHours=720`、`cookieExpireInHours=720`，回读确认其他字段不变；`enableExclusiveSignin=true`、`maxSessions=1`、`refreshExpireInHours=0`、原 grant 保留。`enableAutoSignin` 不是记住登录开关，未启用。
+- 会员 53 项测试、typecheck、构建通过；owned Harness `20261010T172742Z-0655c3eb` 包含 104 项 Harness 回归，并通过文档、owned AOCI；只读 completion `20261010T173243Z-d3246710` 通过。首次 red 与索引维护前的失败保留在 `/tmp/jianji-login-persistence-20261011/`，不将历史失败改写成成功。
+- 两次独立真实 Electron 进程使用 `gnome_libsecret` 加密保存及恢复；第二次未调用登录且做了两次在线 fixture 校验。Chrome DevTools MCP 连接隔离 Electron，实际 Gate / preload / desktop owner：关闭重开进入工作区；点击退出后第三次启动保持登录页。此处后端是受控 HTTP fixture，不当作真实 Casdoor 验收。
+- 公网候选从生产原始 `9b2971284037f5386eea37dc108912132dac1cd4` 导出源码后，只加入本次 billing transport 与 server constructor，22 项对应服务测试通过。未使用 Git worktree，未将暂停中的 Google / 三天试用代码部署；原生产权益策略保持。候选 bundle SHA-256：`4f626e204a4a7ab0285c464e5aa5299877f62da5e6e855932317ee8dd2f4f5b5`。
+- 凭据持久化命中 Review Risk Gate；最终候选由受管只读 Kimi R1 独立复核，Parent 裁决及公网实际结果以下方最终检查点为准。本段准备证据不声明门户候选已经部署。
+
+## Final Candidate And Public Proof
+
+- R1 `13580eb3-a134-45d3-8066-f4cdfb6398c3` 有 canonical receipt，5 次 k3 请求身份已验证。Parent 确认 LP-01：桌面退出删除失败后可能复活旧凭据，已增加先同步的 `logout-pending` 标记和故障注入回归；LP-02：门户删除失败未清 cookie，已用 finally 清除并保留 503。LP-03 的同系子域 cookie tossing 风险保留在操作合同，不声明完整跨子域隔离。LP-05/06/07 的运行证据与 scope 缺口由本段及最终 owned receipt 关闭，不用 reviewer verdict 代替实测。
+- 修复后会员 54 项及 Harness 104 项、typecheck、documents、owned AOCI 全部通过，代码回执 `20261010T174335Z-dabd3561`。AOCI Verify / Check / Guide 对齐，Guide `complete=true`、`next_action=none`。两次独立 Electron 进程再次实测 `gnome_libsecret` 加密与恢复，第二次登录调用数为 0；删除失败回归证明标记存在时旧凭据不能恢复。
+- 公网只更新已测试的生产兼容 transport bundle，SHA-256 `dd121c28d912d34163584b437fa00dea74567c87507ec3506db891c328e57988`；原 bundle 保存在私有 `server.mjs.before-remember-20261011`。会员服务重新创建，其余服务未由本次更新重建。原生产权益策略与暂停的 Google 配置保持原样，生产兼容导出源码对应的 22 项测试通过。
+- 真实公网浏览器：首次登录取得 30 天 Secure / HttpOnly / SameSite=Lax cookie；关闭并重新启动独立 Chrome 后直接进入门户；仅重启 membership 服务后仍直接进入；退出并重开后返回登录、申请接口 401。未提交或审核付款。
+- 真实公网 native PKCE：取得 30 天 token，在线会员状态 allowed；第二个独立浏览器登录后新 token allowed、旧 token denied。真实登录表单默认勾选 Auto sign in。两份 native QA 失败日志保留：首次为 SPA 表单未就绪的测试时序问题，第二次为隔离 SOCKS 浏览器错误代理本机 callback；补充显式本机 bypass 后实测成功，未改产品 OAuth 回调合同。
+- 当前本机默认网络及现有代理访问公共域名出现 TLS 连接中断；VPS 公网请求和服务健康检查正常。本轮公网浏览器与 native 网络证明使用私有临时 SSH SOCKS 通道，保留 TLS 校验和原公开 origin。它证明真实服务与会话行为，不能证明本机日常代理路径已修复；全局代理选择未变。证据在 `/tmp/jianji-login-persistence-20261011/` 的 public-result-r2、public-native-result-r2 与 probe 日志。Windows 实机与整机断电恢复未评估。
+
+- 同一真实公网 token 经 Electron `gnome_libsecret` 加密保存后，两次独立软件进程恢复并各做两次真实在线核验，均 allowed，登录调用数为 0；该网络校验仍使用上文隔离通道。更新后私有备份 `backups/20261010T175208Z` 包含会话目录。
+
+- R2 `0c7f1a5c-f39d-455a-b61f-4bd14d704580` 实际 11 次 k3 请求身份已验证，进程 exit 0，但 canonical classification 为 `EVIDENCE_INCOMPLETE`：两处 standalone Harness receipt 的引用只读过包内副本，没有对应 standalone 原生 Read。报告已隔离，不作为通过回执。原源码未变；第三轮以去除巨大回执副本的最小完整边界包补齐引用与真实公网证明，保留前两轮全部消费和失败事实。
+
+- R3 `e00cec7c-f40d-4eb2-a778-46ee074f533c` canonical receipt `PARSED`、exit 0，3 次 k3 请求身份已验证；只读复核完整当前边界，未提出新的代码 blocker。Parent 核对 LP-01 / LP-02 的源码、故障回归和实际运行证据后关闭；公网源码 hash 与实际 token / cookie / 互踢结果由 Parent 核验。PC-1：`20261010T174335Z-dabd3561` 为最终源码检查点，前面的 53 项回执仅为历史；后续文档收尾的 owned scope 以最终 completion 回执为准。PC-2 Windows 实机仍不在本轮实测范围；PC-3 日常本机代理仍为明确剩余问题；PC-4 `__Host-` 迁移不纳入此次保存登录修复。R3 对容量限制的描述不作机器事实采用：`FileBillingSessionStore.create` 实际强制 active >= 1000 时拒绝，单实例运行则为部署约束。
