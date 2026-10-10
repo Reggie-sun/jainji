@@ -143,6 +143,8 @@
         "tests/douyin-upload-ui.test.ts",
         "tests/qianchuan-browser-process.test.ts",
         "tests/qianchuan-remote.test.ts",
+        "tests/qianchuan-remote-desktop.test.ts",
+        "tests/qianchuan-remote-desktop-panel.test.ts",
         "tests/qianchuan-remote-files.test.ts",
         "tests/qianchuan-remote-runtime.test.ts",
         "tests/qianchuan-remote-selection.test.ts"

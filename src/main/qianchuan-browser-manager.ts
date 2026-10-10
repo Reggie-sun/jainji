@@ -53,6 +53,7 @@ export class QianchuanBrowserManager {
     ready?: typeof browserReady;
     shutdown?: typeof shutdownAccountChrome;
     egress?: (advertiserId: string) => Promise<QianchuanEgress | undefined>;
+    displayName?: (advertiserId: string) => Promise<string | undefined>;
   } = {}) { this.bindings = new QianchuanBrowserBindings(root); }
 
   /** Display-only lookup of an already bound profile; no discovery or browser lifecycle. */
@@ -99,7 +100,7 @@ export class QianchuanBrowserManager {
   private async ensure(advertiserId: string, show: boolean): Promise<string> {
     if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
     const egress = await this.dependencies.egress?.(advertiserId);
-    if (egress?.mode === "remote-browser") return qianchuanRemoteRuntime.open(egress, advertiserId);
+    if (egress?.mode === "remote-browser") return qianchuanRemoteRuntime.open(egress, advertiserId, false, await this.dependencies.displayName?.(advertiserId));
     if (egress) { await qianchuanEgressRuntime.ensure(egress); await qianchuanEgressRuntime.verify(egress); }
     let binding = await this.bindings.get(advertiserId);
     if (!binding) {
@@ -152,7 +153,7 @@ export class QianchuanBrowserManager {
     const pending = (async () => {
       if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
       const remote = await this.dependencies.egress?.(advertiserId);
-      if (remote?.mode === "remote-browser") { await qianchuanRemoteRuntime.control(remote, advertiserId, action); return ""; }
+      if (remote?.mode === "remote-browser") { await qianchuanRemoteRuntime.control(remote, advertiserId, action, action === "restart" ? await this.dependencies.displayName?.(advertiserId) : undefined); return ""; }
       const binding = await this.bindings.get(advertiserId), profile = binding?.profile ?? managed;
       if (binding) await verifyOriginalProfile(binding);
       else { await secureUploadDirectory(path.resolve(this.root)); await secureUploadDirectory(path.dirname(profile)); await secureUploadDirectory(profile); }

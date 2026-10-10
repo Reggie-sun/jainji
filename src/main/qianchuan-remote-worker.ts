@@ -8,15 +8,21 @@ import { QianchuanBrowserManager, launchChrome } from "./qianchuan-browser-manag
 import { secureUploadDirectory } from "./douyin-upload-store.js";
 import { probeChromeEgress } from "./qianchuan-egress-probe.js";
 import { RemoteFileStore } from "./qianchuan-remote-files.js";
+import { RemoteDesktop } from "./qianchuan-remote-desktop.js";
+import { desktopEnvironment } from "./qianchuan-remote-desktop-panel.js";
+import { readPrivateJson } from "./qianchuan-account-config.js";
+import { z } from "zod";
 
 /** Runs as a dedicated non-root SSH user, over stdin/stdout only; never listens publicly. */
 export class RemoteWorker {
   private readonly manager: QianchuanBrowserManager;
   private readonly files: RemoteFileStore;
+  private readonly desktop: RemoteDesktop;
   private identity?: string;
-  constructor(private readonly root: string) {
+  constructor(private readonly root: string, home = os.homedir()) {
     this.manager = new QianchuanBrowserManager(path.join(root, "browsers"), { launch: (profile, id, original) => launchChrome(profile, id, original, undefined, false) });
     this.files = new RemoteFileStore(path.join(root, "files"));
+    this.desktop = new RemoteDesktop(root, home);
   }
   private async bind(request: RemoteRequest): Promise<void> {
     if (process.platform !== "linux" || !process.getuid?.()) throw new Error("Dedicated non-root Linux user required");
@@ -44,9 +50,22 @@ export class RemoteWorker {
     if (request.action === "file-append") return this.files.append(request.file!, request.offset!, body);
     if (request.action === "assert-closed") { await this.manager.assertClosed(id); return {}; }
     if (request.action === "close") { await this.manager.control(id, "close"); return {}; }
+    if (request.action === "desktop-sync") { await this.desktop.sync(id, request.displayName!); return {}; }
     const endpoint = request.action === "open" ? await this.manager.open(id) : request.action === "probe" ? await this.manager.existingConnection(id) : await this.manager.prepareExisting(id);
-    await probeChromeEgress(endpoint, request.route.expectedIp, AbortSignal.timeout(20_000));
-    if (request.action === "open") {
+    return this.browserInfo(endpoint, id, request.route.expectedIp, request.action === "open");
+  }
+  /** Fixed launcher command: existing registered profile only, never a new account. */
+  async focusDesktop(id: string): Promise<void> {
+    if (process.platform !== "linux" || !process.getuid?.()) throw new Error("Dedicated non-root Linux user required");
+    const subject = (await readPrivateJson(path.join(this.root, "subject.json"), input => z.object({ group: z.string().min(1).max(100), expectedIp: z.string().ip({ version: "v4" }) }).strict().parse(input))).value;
+    Object.assign(process.env, await desktopEnvironment());
+    if (await this.desktop.focus(id)) return;
+    await this.browserInfo(await this.manager.open(id), id, subject.expectedIp, true);
+    if (!await this.desktop.focus(id)) throw new Error("Account window unavailable");
+  }
+  private async browserInfo(endpoint: string, id: string, expectedIp: string, openAccount: boolean): Promise<unknown> {
+    await probeChromeEgress(endpoint, expectedIp, AbortSignal.timeout(20_000));
+    if (openAccount) {
       const opened = await fetch(`${endpoint}/json/new?${encodeURIComponent(`https://qianchuan.jinritemai.com/uni-prom?aavid=${id}`)}`, { method: "PUT", redirect: "error", signal: AbortSignal.timeout(5000) });
       await opened.body?.cancel(); if (!opened.ok) throw new Error("Remote account page unavailable");
     }

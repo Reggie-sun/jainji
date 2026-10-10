@@ -11,11 +11,41 @@ import { QianchuanRemoteRuntime } from "../src/main/qianchuan-remote-runtime";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import type { RemoteRequest } from "../src/shared/qianchuan-remote";
 import type { UploadTaskRecord } from "../src/main/douyin-upload-store";
+import { qianchuanRemoteRuntime } from "../src/main/qianchuan-remote-runtime";
+import { RemoteDesktop } from "../src/main/qianchuan-remote-desktop";
 
 const roots: string[] = [];
 const route = { mode: "remote-browser" as const, group: "one", sshHost: "shop-one", expectedIp: "8.8.8.8", localPort: 19381 };
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function root() { const value = await mkdtemp(path.join(os.tmpdir(), "jianji-remote-runtime-")); roots.push(value); return value; }
+
+it("dispatches desktop metadata without opening or probing Chrome, and rejects another subject first", async () => {
+  const dir = await root(), worker = new RemoteWorker(path.join(dir, "state"), dir);
+  const sync = vi.spyOn(RemoteDesktop.prototype, "sync").mockResolvedValue(), launch = vi.spyOn(QianchuanBrowserManager.prototype, "open");
+  const request: RemoteRequest = { version: 1, route, action: "desktop-sync", advertiserId: "123", displayName: "予浅", bodyBytes: 0 };
+  expect(await worker.handle(request, Buffer.alloc(0))).toEqual({}); expect(sync).toHaveBeenCalledWith("123", "予浅"); expect(launch).not.toHaveBeenCalled();
+  await expect(worker.handle({ ...request, route: { ...route, group: "wrong" } }, Buffer.alloc(0))).rejects.toThrow("Subject"); expect(sync).toHaveBeenCalledOnce();
+});
+
+it("synchronizes a cached verified browser only on explicit opens and leaves catalog/reconnect read-only", async () => {
+  const controller = new AbortController(), request = vi.fn(async () => ({}));
+  const runtime = new QianchuanRemoteRuntime(() => ({ route, controller, request, close() {} }));
+  Reflect.get(runtime, "browsers").set("123", { route, advertiserId: "123", endpoint: "http://127.0.0.1:19381" });
+  const verify = vi.spyOn(runtime, "verify").mockResolvedValue({ identity: "fixture", signal: controller.signal });
+  expect(await runtime.open(route, "123", false, "予浅")).toBe("http://127.0.0.1:19381");
+  expect(request).toHaveBeenCalledOnce(); expect(request).toHaveBeenCalledWith("desktop-sync", "123", { displayName: "予浅" });
+  expect(verify.mock.invocationCallOrder[0]).toBeLessThan(request.mock.invocationCallOrder[0]);
+  request.mockClear(); await runtime.open(route, "123", true, "不会写入"); expect(request).not.toHaveBeenCalled();
+  verify.mockRejectedValueOnce(new Error("egress mismatch"));
+  await expect(runtime.open(route, "123", false, "错路由")).rejects.toThrow(); expect(request).not.toHaveBeenCalled();
+});
+
+it("passes saved display labels through explicit B opens without putting them into read-only discovery", async () => {
+  const dir = await root(), openRemote = vi.spyOn(qianchuanRemoteRuntime, "open").mockResolvedValue("http://127.0.0.1:19381");
+  const manager = new QianchuanBrowserManager(dir, { egress: async () => route, displayName: async () => "予浅好物" });
+  await manager.open("123", true); expect(openRemote).toHaveBeenLastCalledWith(route, "123", false, "予浅好物");
+  await manager.existingConnection("123"); expect(openRemote).toHaveBeenLastCalledWith(route, "123", true);
+});
 
 it("can verify an existing login browser without granting authenticated account readiness or launching another browser", async () => {
   const dir = await root(), launch = vi.fn();

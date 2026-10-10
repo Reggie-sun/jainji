@@ -62,7 +62,7 @@ export class RemoteChannel {
       } catch { this.close(); }
     });
   }
-  request(action: RemoteRequest["action"], advertiserId: string, extras: Partial<Pick<RemoteRequest, "file" | "offset">> = {}, body = Buffer.alloc(0), signal?: AbortSignal): Promise<unknown> {
+  request(action: RemoteRequest["action"], advertiserId: string, extras: Partial<Pick<RemoteRequest, "file" | "offset" | "displayName">> = {}, body = Buffer.alloc(0), signal?: AbortSignal): Promise<unknown> {
     const request = RemoteRequestSchema.parse({ version: 1, route: this.route, action, advertiserId, ...extras, bodyBytes: body.length });
     const run = this.queue.catch(() => undefined).then(async () => {
       this.controller.signal.throwIfAborted(); signal?.throwIfAborted();

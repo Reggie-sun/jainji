@@ -32,6 +32,16 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes shop-one 'node --version'
 
 原有“关闭”“重启并连接”和“重连固定出口”继续受任务保护。B 不会回退本地 Chrome、A 的 SOCKS 或直连。模式切换也必须先结束受保护批次并关闭旧浏览器。
 
+## Account Dock
+
+使用 XFCE 桌面的 B 模式，保存账号后首次点击“打开账号浏览器”，或进行新制作的浏览器准备时，程序在连接验证后自动将账号图标加入底部一排。名称取已保存的产品名称，首字显示为角标；账号仍由广告主 ID 与原专用 Chrome 目录绑定。同名账号不会共用登录资料，改名称不会更换账户、计划或出口。重复打开不增加重复图标；读取计划、探测、重连和恢复不会修改桌面栏。
+
+远端需安装 `xfce4-panel`、`xfconf-query`、`wmctrl`、`xprop`，以及 SVG loader 和中文字体（Ubuntu 使用 `librsvg2-common`、`fonts-noto-cjk`；首次安装 loader 后需重新加载 panel）。worker 自动识别 `:99` 上本用户的 XFCE 会话 D-Bus；SSH 默认 bus 不能替代实际桌面 bus。新增图标时只短暂重启 panel，已有 Chrome 保留。顶栏与无关插件保留，已有底栏布局不覆盖。
+
+程序将展示用登记保存到 `state/desktop/accounts.json`，图标保存到其 `icons/`；launcher 写入本用户 applications 与 XFCE panel 目录。固定 `worker.cjs --desktop-focus <advertiserId>` 只聚焦该原目录窗口；窗口关闭后通过原 worker 打开同一已登记、已存在的目录，先验证出口再打开千川页，不创建替代登录资料。展示登记不提供上传或平台操作授权。
+
+更新需同时部署本机代码与完整远端 worker。旧 worker 不支持新增 `desktop-sync` 时明确报错，不回退。此前由 `jianji-vps-account` 创建且 Exec/Icon 精确匹配的旧入口会迁移为 worker 命令；其他文件冲突、损坏登记、残留 `sync.lock` 或不明确的桌面会话均阻断，保留资料供人工核查，不自动清锁或删除浏览器目录。
+
 ## Transfer And Recovery
 
 - 只传原队列已准入的冻结成片；每组最多九文件，准备好一组就交给千川，已选组上传期间可传后续组。

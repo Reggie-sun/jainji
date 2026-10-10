@@ -48,9 +48,14 @@ export class QianchuanRemoteRuntime {
     if (this.preparing.has(advertiserId)) throw remoteUnavailable();
     await this.channel(route).request("assert-closed", advertiserId);
   }
-  open(route: QianchuanEgress, advertiserId: string, existingOnly = false): Promise<string> {
-    const pending = this.preparing.get(advertiserId); if (pending) return pending;
-    const work = this.prepare(route, advertiserId, existingOnly).finally(() => this.preparing.delete(advertiserId));
+  private async desktop(route: QianchuanEgress, advertiserId: string, endpoint: string, displayName?: string): Promise<string> {
+    if (displayName !== undefined) await this.channel(route).request("desktop-sync", advertiserId, { displayName });
+    return endpoint;
+  }
+  open(route: QianchuanEgress, advertiserId: string, existingOnly = false, displayName?: string): Promise<string> {
+    const pending = this.preparing.get(advertiserId);
+    if (pending) return pending.then(endpoint => this.desktop(route, advertiserId, endpoint, existingOnly ? undefined : displayName));
+    const work = this.prepare(route, advertiserId, existingOnly).then(endpoint => this.desktop(route, advertiserId, endpoint, existingOnly ? undefined : displayName)).finally(() => this.preparing.delete(advertiserId));
     this.preparing.set(advertiserId, work); return work;
   }
   private async prepare(route: QianchuanEgress, advertiserId: string, existingOnly: boolean, preferredPort?: number): Promise<string> {
@@ -110,13 +115,13 @@ export class QianchuanRemoteRuntime {
       combined.throwIfAborted(); return status.path;
     } finally { await handle.close(); }
   }
-  async control(route: QianchuanEgress, advertiserId: string, action: "close" | "restart"): Promise<void> {
+  async control(route: QianchuanEgress, advertiserId: string, action: "close" | "restart", displayName?: string): Promise<void> {
     const channel = this.channels.get(route.group);
     if (channel?.controller.signal.aborted && egressIdentity(channel.route) === egressIdentity(route)) this.channels.delete(route.group);
     await this.channel(route).request("close", advertiserId);
     const old = this.browsers.get(advertiserId);
     if (old) { await this.stopTunnel(old); this.browsers.delete(advertiserId); }
-    if (action === "restart") await this.open(route, advertiserId);
+    if (action === "restart") await this.open(route, advertiserId, false, displayName);
   }
   /** Explicit recovery reattaches only the same remote browser, never opens a replacement. */
   async reconnect(route: QianchuanEgress, advertiserId: string): Promise<void> {

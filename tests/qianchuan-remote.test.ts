@@ -27,4 +27,11 @@ describe("remote browser transport", () => {
     expect(RemoteRequestSchema.safeParse(request).success).toBe(false);
     expect(RemoteRequestSchema.safeParse({ ...request, action: "file-status", bodyBytes: 0, file: { advertiserId: "456", sha256: "a".repeat(64), size: 1, fileName: "a.mp4" } }).success).toBe(false);
   });
+  it("accepts display labels only on the zero-body desktop synchronization action", () => {
+    const request = { version: 1, route, action: "desktop-sync", advertiserId: "123", bodyBytes: 0, displayName: "予浅好物" };
+    expect(RemoteRequestSchema.safeParse(request).success).toBe(true);
+    for (const value of [{ ...request, bodyBytes: 1 }, { ...request, displayName: "\nExec=bad" }, { ...request, displayName: undefined }, { ...request, action: "probe" }]) {
+      expect(RemoteRequestSchema.safeParse(value).success).toBe(false);
+    }
+  });
 });

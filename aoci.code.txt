@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:会员及定时制作上传回执；上传组十分钟；存储及迁移联动原生命周期和四项固定回归 | S:完整贡献优先子集；focused不替代全量或视觉验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:会员定时制作上传及远端桌面回归；上传组十分钟；存储迁移联动生命周期固定回归 | S:完整贡献优先子集；focused不替代全量或视觉验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -131,7 +131,7 @@ source-fact-ai-compare.ts[KA8S]: F:独立比较AI声明与逐帧真值并校验�
 source-fact-ai-contract.ts[DA8T]: F:定义独立machine声明、AI冻结标准及新holdout绑定和覆盖检查 | R:code:src/main/source-fact-qualification-contract.ts,code:src/main/source-sticker-knowledge-store.ts | A:复用严格truth数据形状及摘要；核对canonical census、source帧身份、全18场景和数量；固定category零容忍及5%门 | S:不改变human method或receipt；旧D2Q包不可作为新holdout；schema及caller声明不授予视觉、隔离或资格authority
 source-fact-ai-input.ts[IA8T]: F:从owned完整原画布证据生成无损PNG packet和冻结inputPlan | R:code:src/main/source-fact-review-evidence.ts,code:src/main/shape-cover-alpha.ts,code:src/main/source-fact-ai-contract.ts | A:逐帧PNG往返核验RGBA字节、尺寸和双摘要；最多8连续ordinal；private字节复制读取；fresh复查引擎和证据，close撤销ownership | S:只承认活跃原对象，不缩放或抽样；重复像素保留不同ordinal；PNG hash不等于RGBA hash；不调用human session或产品renderer
 source-fact-ai-run.ts[AA8T]: F:执行单次AI工程transport并冻结声明或单调停止 | R:code:src/main/source-fact-ai-input.ts,code:src/main/source-fact-ai-contract.ts | A:逐packet校验完整输入和声明；记录raw响应、manifest及executionLimits；默认request/token上限为null，保留wall、idle、payload和response边界；取消隔离迟到输出 | S:transport仍是ENGINEERING_ONLY且不能签发正式资格；false EMPTY撤销后续请求并永久NOT_QUALIFIED；无request/token上限不允许重试或切换模型；generic abort不证明真实网络生命周期收敛
-qianchuan-account-settings.ts[PC8M]: F:独占账号映射偏好与出口保存及浏览器准备 | R:code:src/main/qianchuan-account-config.ts,code:src/main/qianchuan-browser-manager.ts,code:src/main/qianchuan-remote-runtime.ts | A:保存导入共用出口guard；新出口先存后连；显式重连；configuredAccount读原配置不混运行端口 | S:换账号不继承出口；资料名不改digest；损坏不回退，写后未知锁存；restore不启动Chrome；不改变旧冻结目标
+qianchuan-account-settings.ts[PC8M]: F:独占账号映射偏好与出口保存及浏览器准备 | R:code:src/main/qianchuan-account-config.ts,code:src/main/qianchuan-browser-manager.ts,code:src/main/qianchuan-remote-runtime.ts | A:保存导入共用guard；先存出口后连；显式重连；原配置与运行端口分离；按广告主ID提供桌面显示名 | S:换账号不继承出口；显示名不改digest；损坏不回退，写后未知锁存；restore不启动Chrome；不改变旧冻结目标
 qianchuan-browser-discovery.ts[IC7M]: F:只读发现Chrome进程与千川账户连接及代理参数 | R:code:src/main/qianchuan-browser-manager.ts,code:src/main/local-cdp-transport.ts,code:src/shared/qianchuan-egress.ts | A:精确profile过滤；首页计划视频库唯一账户；进程命令行投影出口参数；独立探测端点 | S:无匹配且有故障非缺席证明；无法归属错误或资源超限拒绝；不读登录数据
 source-fact-ai-connections.ts[IA5T]: F:只读发现应用现存MiniMax/OpenAI连接与ChatGPT模型选择，输出受控审阅准备元数据 | R:code:src/main/connection-store.ts | A:API凭据只报告是否存在并拒绝元数据反射；不激活连接、不改配置、不读OAuth、不调用Provider；始终INCOMPLETE/authority=none/eligible=false | S:-
 shape-cover-selection.ts[AB8T]: F:复用队列和监督证据生成真实轮廓摆放选款图片的进程内交接 | R:code:src/main/queue.ts,code:src/main/shape-cover-render.ts,code:src/main/supervisor-evidence.ts | A:每素材目标抽首中末全图与局部原片成片；验证样片队列绑定、冻结PNG及内容hash；WeakMap绑定candidateId | S:图片仅选款数据，无源或发布authority；JSON克隆、缺图片、目录身份错配、变化或取消拒绝；单payload上限32MiB
@@ -139,7 +139,7 @@ shape-cover-stationary-envelope.ts[KA6S]: F:逐帧绑定源轮廓候选并计算
 source-mask-auto-extraction.ts[KA7M]: F:从完整原画布证据及工程目标声明提取非权威轮廓候选 | R:code:src/main/source-fact-review-evidence.ts,code:src/main/source-fact-ai-contract.ts,code:src/main/shape-cover-stationary-envelope.ts | A:逐帧核对绑定及像素SHA；有限ROI差色提取mask，冻结候选收据；完整候选复用原stationary-envelope，受字节和wall预算限制 | S:仅DEVELOPMENT候选，authority=none且eligible=false；JSON不恢复owned证据；UNKNOWN或INCOMPLETE不授几何，未写源准入、知识或队列
 source-mask-auto-qualification.ts[KA7M]: F:预冻结独立像素与运动真值并比较非权威自动轮廓候选 | R:code:src/main/source-mask-auto-extraction.ts,code:src/main/source-fact-review-evidence.ts,code:src/main/shape-cover-pixel-gate.ts | A:绑定源、原帧范围、配置、truth及候选摘要；逐目标统计遗漏、移动误接纳、过度覆盖与未知 | S:冻结必须早于提取且只认进程内原对象；受控匹配仅DEVELOPMENT_MATCH；未审核REAL_MEDIA保持INCOMPLETE及null指标，不授知识或生产authority
 local-cdp-transport.ts[IN8T]: F:提供拒绝重定向的本机CDP中继及只读target元数据读取 | R:code:src/main/douyin-cdp-uploader.ts,code:src/main/qianchuan-browser-discovery.ts,code:src/shared/douyin-upload.ts | A:随机路径保护loopback relay；取消关闭socket；readChromeTargets在20秒内连接并读取Target.getTargets后detach | S:上游只接受101，不跟随3xx；关闭连接不关闭Chrome或tab；元数据发现不授予文件选择权限
-qianchuan-browser-manager.ts[II8M]: F:管理账号Chrome资料及本机或远端浏览器生命周期 | R:code:src/main/qianchuan-browser-discovery.ts,code:src/main/qianchuan-browser-bindings.ts,code:src/main/qianchuan-remote-runtime.ts | A:B委托远端；A空白页出口验证后开账号页；existingConnection核进程，prepareExisting再核账号 | S:连接可用不代表已登录；无法识别原窗不另建登录目录；Linux限定不复制登录；计划读取不启动Chrome；重启不解除fence
+qianchuan-browser-manager.ts[II8M]: F:管理账号Chrome资料及本机或远端浏览器生命周期 | R:code:src/main/qianchuan-browser-discovery.ts,code:src/main/qianchuan-browser-bindings.ts,code:src/main/qianchuan-remote-runtime.ts | A:B显式准备和重启携显示名；A空白页核出口后开账号页；existingConnection核进程，prepareExisting再核账号 | S:连接非登录证明；原窗不明确不另建目录；Linux限定不复制登录；计划读取不启动Chrome或同步桌面；重启不解除fence
 qianchuan-browser-bindings.ts[PI8T]: F:独占原千川浏览器的私有账号及profile身份绑定 | R:code:src/main/qianchuan-browser-manager.ts,code:src/main/douyin-upload-store.ts | A:严格六项唯一账号及profile；验证目录不读登录数据；有界读取，串行及独占锁保存，临时文件sync后rename和目录sync | S:绑定目录存在却缺文件阻断；已有绑定不可改写，写入未知锁存；路径不接renderer，不授上传资格；旧任务不消费新绑定
 qianchuan-video-library-browser.ts[IN8T]: F:通过受保护loopback CDP复用账号库和专用计划清理页 | R:code:src/main/local-cdp-transport.ts,code:src/main/qianchuan-video-library-page.ts,code:src/main/qianchuan-plan-material-page.ts | A:同host websocket及唯一context；库按账号复用；计划核adId和marker；将冻结零展示窗口交页面；取消关闭中继并detach | S:URL不授删除权；页面独立核可见身份；不关闭重启Chrome，不导航原上传页
 qianchuan-video-library-schedule.ts[AW8S]: F:持久管理授权账号每日清理及系统启动触发 | R:code:src/shared/qianchuan-video-library-schedule.ts,code:src/main/qianchuan-scheduled-launch.ts | A:本地时区日claim；保存核双ID；持久结果含PARTIAL不存人工处置明细；旧settings仅库 | S:删除前占当天；迟到一分钟不补删；启动有界恢复；重启RUNNING阻断同日；保存未知停止
@@ -201,10 +201,10 @@ qianchuan-egress-browser.ts[IN8T]: F:按模式核验浏览器出口并定义本�
 qianchuan-egress-probe.ts[IN7T]: F:用自有后台页核验Chrome实际公网出口 | R:code:src/main/qianchuan-egress-browser.ts,code:src/shared/douyin-upload.ts | A:loopback同host CDP；固定HTTPS探测禁缓存与serviceworker；有界等待后关闭自有target | S:不attach或执行用户平台页；出口不符或取消拒绝；IP探测不证明平台安全
 qianchuan-egress-runtime.ts[RN8S]: F:按主体持有本进程SSH SOCKS隧道及出口租约 | R:code:src/shared/qianchuan-egress.ts,code:src/main/qianchuan-account-settings.ts | A:严格主机校验与非交互SSH；启动前查端口空闲，connect等待就绪；socks5h测IP；撤销及显式恢复 | S:就绪不抢占SSH监听端口；失败不自动重连或直连；不采纳未知端口；凭据由OpenSSH持有且stderr不记录；仅终止自有子进程
 qianchuan-remote-files.ts[PD8M]: F:接收远端成片分片并校验只读发布 | R:code:src/main/qianchuan-remote-worker.ts | A:账号SHA及文件名隔离；私有目录；排他锁和精确offset；完整hash后hardlink无覆盖发布 | S:4MiB分片及20GiB文件上限；拒符号链接和不安全权限；残锁损坏不自动清理；缓存存在不授平台重传
-qianchuan-remote-runtime.ts[IN8S]: F:管理主体远端浏览器通道租约及冻结文件暂存 | R:code:src/main/qianchuan-remote-transport.ts,code:src/shared/qianchuan-remote.ts,code:src/main/douyin-upload-store.ts | A:SSH loopback转发；核远端端口及browserPath；分片续传；显式重连原浏览器及本地端口 | S:仅NOT_SELECTED可暂存；通道丢失撤销租约；不启动本地回退；重连不重建远端窗口或恢复队列
+qianchuan-remote-runtime.ts[IN8S]: F:管理主体远端浏览器通道租约及冻结文件暂存 | R:code:src/main/qianchuan-remote-transport.ts,code:src/shared/qianchuan-remote.ts,code:src/main/douyin-upload-store.ts | A:SSH回环转发；核端口browserPath；分片续传；显式准备含缓存验证后同步显示名 | S:仅NOT_SELECTED可暂存；断连撤租约无本机回退；重连只接原窗原端口，不恢复队列或同步桌面
 qianchuan-remote-selection.ts[IN8T]: F:让远端Chrome读取已暂存路径并选入原文件控件 | R:code:src/main/douyin-cdp-uploader.ts,code:src/main/qianchuan-page-contract.ts | A:主frame多文件input通过临时objectId调用DOM.setFileInputFiles；清理CDP对象 | S:至多9路径；不查本地文件、不点击确认；该调用必须位于原selection fence之后
-qianchuan-remote-transport.ts[IN8S]: F:提供严格SSH worker通道及有界二进制帧 | R:code:src/shared/qianchuan-remote.ts,code:src/main/qianchuan-remote-runtime.ts | A:顺序请求和响应；控制45秒分片120秒；取消关闭通道；头16KiB及体4MiB | S:严格主机指纹且禁agent转发；固定远端命令不插入文件内容；协议错撤销，业务拒绝不销毁通道；无明文TCP后备
-qianchuan-remote-worker.ts[EN8T]: F:在主体VPS执行浏览器控制出口核验及素材接收 | R:code:src/main/qianchuan-browser-manager.ts,code:src/main/qianchuan-remote-files.ts,code:src/main/qianchuan-egress-probe.ts | A:主体与IP持久绑定；空白启动后核出口再开账号页；stdin二进制RPC与stdout响应 | S:专用非root Linux用户；无公网监听；probe可核登录页而existing要求账号；不持有队列账本或平台确认权
+qianchuan-remote-transport.ts[IN8T]: F:提供严格SSH worker通道及有界二进制帧 | R:code:src/shared/qianchuan-remote.ts,code:src/main/qianchuan-remote-runtime.ts | A:顺序RPC含桌面元数据；控制45秒分片120秒；取消关通道；头16KiB体4MiB | S:严格主机指纹禁agent转发；固定命令无内容插值；协议错撤销，业务拒绝保留通道；无明文TCP后备
+qianchuan-remote-worker.ts[EN8T]: F:在主体VPS执行浏览器控制出口核验素材接收及桌面入口 | R:code:src/main/qianchuan-browser-manager.ts,code:src/main/qianchuan-remote-files.ts,code:src/main/qianchuan-remote-desktop.ts,code:src/main/qianchuan-egress-probe.ts | A:持久主体IP；stdin帧RPC；desktop-sync不走浏览器流程；固定CLI仅原登记窗口或目录，打开先核出口 | S:非root Linux，无公网监听；不持有队列或确认权；展示同步不启Chrome或绑定上传
 automation-scheduler.ts[AW8S]: F:持久化每日任务并派发当日执行 | R:code:src/main/automation-files.ts,code:src/main/qianchuan-video-library-schedule.ts | A:串行创建配置删除；先存RUNNING再执行；中断转BLOCKED；停止取消当前工作 | S:只拥有触发账本；迟到或忙碌跳过；同日不重放；持久化未知锁存
 automation-background.ts[EU6T]: F:用托盘保留可恢复的后台窗口 | R:code:src/main/index.ts | A:隐藏显示窗口；显式退出；释放托盘 | S:无托盘能力则显示窗口避免失联
 automation-desktop.ts[AW8T]: F:接线可信自动化IPC与原执行适配 | R:code:src/main/automation-runtime.ts,code:src/main/automation-scheduler.ts | A:准备执行均核会员；注册状态创建配置删除 | S:调度器不自行获得生产权限
@@ -218,6 +218,8 @@ membership-storage.ts[PS8T]: F:加密保存并按公开配置绑定会员token |
 automation-upload.ts[PW8T]: F:持久化定时上传确认的一次性屏障 | R:code:src/shared/douyin-upload.ts,code:src/main/automation-files.ts | A:严格冻结身份READY证据校验；独占写确认意图；检查存在性 | S:屏障存在禁止重新分类READY；损坏不作缺失；不执行平台点击
 qianchuan-confirmation-receipt.ts[IN8M]: F:被动核验千川绑定视频和添加计划素材回执 | R:code:src/main/qianchuan-page-contract.ts | A:同frame来源账号计划；完整文件名和唯一视频ID；单次POST与双成功响应；有界等待及摘要 | S:不发请求；数字status_code零且HTTP200；重复重定向取消均拒绝；缺有效Content-Length拒绝；正文1MiB；回执不证明审核投放
 membership-keyring.ts[IS8T]: F:在Electron初始化前准备Linux原生密钥环 | R:code:src/main/membership-desktop.ts,code:src/main/membership-storage.ts | A:核私有运行目录及同UID socket；恢复缺失或disabled的D-Bus；未识别桌面用libsecret | S:保留显式password-store与已识别桌面后端；不选择basic_text；无安全bus时不降级落明文
+qianchuan-remote-desktop-panel.ts[IU7S]: F:在实际XFCE会话登记账号底栏并聚焦原Chrome窗口 | R:code:src/main/qianchuan-remote-desktop.ts | A:识别唯一owned panel及D-Bus，screen-zero等价；分配插件保留布局；新增先quit再更新数组；精确WM_CLASS聚焦 | S:文件校验先于panel写；顶栏及无关占用不接管；重复不重启；会话歧义或超时拒绝，不强杀Chrome
+qianchuan-remote-desktop.ts[PU7S]: F:按广告主ID维护远端Chrome图标launcher及展示登记 | R:code:src/main/qianchuan-remote-desktop-panel.ts,code:src/shared/qianchuan-remote.ts,code:src/main/qianchuan-remote-worker.ts | A:独占sync锁与同步原子文件；SVG首字角标；仅迁移精确旧Exec/Icon；固定worker聚焦命令 | S:仅已有规范profile；不创建登录资料；名称无命令权限；损坏登记残锁或外来文件拒绝；展示登记不授上传
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -225,7 +227,7 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 
 ===/home/reggie/vscode_folder/jianji/src/===
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
-remote-worker.ts[EN7T]: F:启动远端SSH worker进程 | R:code:src/main/qianchuan-remote-worker.ts | A:启动失败输出通用拒绝并非零退出 | S:stdout仅承载协议，不输出原始异常
+remote-worker.ts[EN7T]: F:启动远端SSH worker或固定账号聚焦入口 | R:code:src/main/qianchuan-remote-worker.ts | A:零参数RPC或精确desktop-focus及数字ID；私有umask和默认display | S:其他参数拒绝；RPC错误只通用响应，CLI错误非零且不泄露异常
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
 App.tsx[AU7L]: F:协调项目包装审阅与作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/CoverStickerPanel.tsx | A:保存人工框直接正常启动；其他assisted挂载审阅；传本次上传选择 | S:未保存覆盖禁止启动；上传选择不随项目保存；界面不授main权限
@@ -318,7 +320,7 @@ frames.ts[CB6T]: F:定义十三款边框目录及自动随机指定关闭草稿�
 human-region-cover.ts[CB8T]: F:定义人工目标与冻结图案绑定 | R:code:src/shared/cover-sticker.ts,code:src/shared/source-sticker-knowledge.ts,code:src/shared/export-settings.ts | A:源投影目标时段像素摘要；可选正常制作来源判别 | S:无admission沿旧审阅解释；人工意图不冒充alpha或H4；图案可跨画布但目标可见范围在画布内
 manual-cover-review.ts[DB7T]: F:投影手动覆盖输入及历史人工草稿 | R:code:src/shared/cover-sticker.ts,code:src/shared/cover-review.ts | A:继承手动区域时段；空区域不覆盖；比较快照；旧稿恢复 | S:移动轨迹拒绝；无轨迹为全片；旧手动残留不替代历史人工草稿
 qianchuan-egress.ts[CN7T]: F:校验非秘密出口模式及主体间唯一绑定 | R:code:src/shared/qianchuan-account.ts,code:src/main/qianchuan-egress-runtime.ts | A:可选remote-browser；group及SSH别名端口公网IPv4；归一身份及SOCKS地址 | S:缺mode保留A字节语义；同组全部字段相同；异组禁共享IP端口或SSH别名；无配置身份保留direct
-qianchuan-remote.ts[CN8T]: F:校验远端浏览器RPC及分片状态合同 | R:code:src/main/qianchuan-remote-transport.ts,code:src/main/qianchuan-remote-runtime.ts | A:v1严格动作与体长；文件账号SHA长度名称；浏览器端口路径及文件完成状态 | S:仅remote-browser路线；file账号必须匹配请求；不接受任意命令或本地凭据
+qianchuan-remote.ts[CN8T]: F:校验远端浏览器RPC分片及桌面显示元数据合同 | R:code:src/main/qianchuan-remote-transport.ts,code:src/main/qianchuan-remote-runtime.ts | A:v1严格动作体长；desktop-sync仅有界非控制字符名称及零body；文件SHA大小名称与端口路径 | S:仅B路线；file账号匹配请求；其他动作不接名称；不接受任意命令或本地凭据
 automation.ts[CW7T]: F:定义固定定时清理制作上传和执行状态 | R:code:src/shared/batch-production.ts,code:src/shared/qianchuan-video-library.ts,code:src/shared/douyin-upload.ts | A:严格时间确认来源组合；制作最多2500；结果绑定run和导出 | S:清理只限所选计划；上传须明确计划或独立来源；Schema不授平台确认
 membership.ts[CI8T]: F:定义会员公开状态配置价格和心跳合同 | R:code:src/main/membership-session.ts,code:src/membership-server/policy.ts | A:月100年666；Google三天试用提示；本地模式及严格origin配置 | S:配置禁止client secret；状态schema不代替主进程准入
 

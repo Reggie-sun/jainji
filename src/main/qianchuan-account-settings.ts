@@ -29,7 +29,12 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
-    this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id) });
+    this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id), displayName: async id => {
+      this.assertAvailable();
+      const account = (await readPrivateConfig(this.file, parseSettings)).accounts.find(value => value.advertiserId === id);
+      if (!account) throw new Error("账号设置已变化，请重新打开账号浏览器。");
+      return account.productName ?? account.product;
+    } });
     this.discoverBrowser = discoverBrowser ?? (id => this.browsers.prepare(id));
     this.discoverExistingBrowser = discoverExistingBrowser ?? (id => this.browsers.prepareExisting(id));
   }
