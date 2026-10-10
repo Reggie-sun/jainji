@@ -5,6 +5,7 @@ import { BillingPortal } from "./billing.js";
 import { ManualPayments } from "./manual-payments.js";
 import { CasdoorClient } from "./casdoor.js";
 import { FileBillingWriteGuard } from "./billing-write-guard.js";
+import type { GoogleTrialStore } from "./google-trial.js";
 
 export interface MembershipServerOptions {
   config?: MembershipServerConfig | null;
@@ -12,6 +13,7 @@ export interface MembershipServerOptions {
   clock?: () => Date;
   billingAssets?: string;
   billingState?: string;
+  trials?: GoogleTrialStore;
 }
 
 const MAX_ACCESS_TOKEN_LENGTH = 16_384;
@@ -19,11 +21,11 @@ const MAX_ACCESS_TOKEN_LENGTH = 16_384;
 export function createMembershipServer(options: MembershipServerOptions = {}): Server {
   const config = options.config ?? null;
   if (options.billingAssets && !options.billingState) throw new Error("人工核款需要配置持久化写入保护目录。");
-  const billing = config && options.billingAssets && options.billingState ? new BillingPortal(config, options.billingAssets, new ManualPayments(config, new CasdoorClient(config), () => new Date(), new FileBillingWriteGuard(options.billingState))) : undefined;
+  const billing = config && options.billingAssets && options.billingState ? new BillingPortal(config, options.billingAssets, new ManualPayments(config, new CasdoorClient(config), options.clock ?? (() => new Date()), new FileBillingWriteGuard(options.billingState), options.trials)) : undefined;
   const server = createServer((request, response) => {
     void (async () => {
       if (billing && await billing.handle(request, response)) return;
-      await handleRequest(request, response, config, options.fetcher, options.clock);
+      await handleRequest(request, response, config, options.fetcher, options.clock, options.trials);
     })().catch(() => {
       sendJson(response, 200, MembershipStatusSchema.parse({
         state: "unavailable",
@@ -45,6 +47,7 @@ async function handleRequest(
   config: MembershipServerConfig | null,
   fetcher?: typeof fetch,
   clock?: () => Date,
+  trials?: GoogleTrialStore,
 ): Promise<void> {
   let pathname: string;
   try {
@@ -84,7 +87,7 @@ async function handleRequest(
     return;
   }
 
-  const status = await resolveMembershipStatus(match[1], config, { fetcher, clock: () => now });
+  const status = await resolveMembershipStatus(match[1], config, { fetcher, clock: () => now, trials });
   sendJson(response, 200, MembershipStatusSchema.parse(status));
 }
 

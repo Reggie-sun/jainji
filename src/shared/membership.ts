@@ -36,4 +36,4 @@ export const MembershipConfigSchema = z.object({
 }).strict();
 export type MembershipConfig = z.infer<typeof MembershipConfigSchema>;
 
-export const signedOutMembership = (): MembershipStatus => ({ state: "signed-out", reason: "signed-out", message: "请登录简辑账号。新账号可免费试用一个月。" });
+export const signedOutMembership = (): MembershipStatus => ({ state: "signed-out", reason: "signed-out", message: "请登录简辑账号。每个 Google 账号可领取一次 3 天免费试用。" });

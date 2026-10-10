@@ -7,6 +7,7 @@ import { MembershipStatusSchema } from "../src/shared/membership.js";
 import { DEFAULT_MEMBERSHIP_SERVER_PORT, startMembershipServer } from "../src/membership-server/index.js";
 import { MembershipServerConfigSchema, addUtcCalendarMonthClamped, membershipServerConfigFromEnvironment } from "../src/membership-server/policy.js";
 import { createMembershipServer } from "../src/membership-server/server.js";
+import { GOOGLE_TRIAL_MS, SqliteGoogleTrialStore } from "../src/membership-server/google-trial.js";
 
 type JsonObject = Record<string, unknown>;
 type Fault = { kind: "status" | "redirect" | "raw" | "oversized"; body?: string; status?: number };
@@ -57,6 +58,7 @@ async function fixture(options: { createdTime?: string; now?: string } = {}) {
       isAdmin: false,
       isForbidden: false,
       isDeleted: false,
+      google: "google-alice",
     },
     application: {
       owner: "admin",
@@ -166,7 +168,15 @@ async function fixture(options: { createdTime?: string; now?: string } = {}) {
     yearlyPlan: "jianji-yearly",
     grantPlan: "jianji-grant",
   });
-  const service = createMembershipServer({ config, clock: () => new Date(state.now) });
+  const trialDirectory = await mkdtemp(path.join(tmpdir(), "google-trials-"));
+  temporaryDirectories.push(trialDirectory);
+  const trialPath = path.join(trialDirectory, "trials.sqlite");
+  SqliteGoogleTrialStore.initialize(trialPath);
+  const trials = new SqliteGoogleTrialStore(trialPath);
+  // Most historical entitlement cases intentionally have no trial identity.
+  if (options.createdTime === undefined || options.createdTime.startsWith("2020")) state.user.google = "";
+  const service = createMembershipServer({ config, clock: () => new Date(state.now), trials });
+  service.once("close", () => trials.close());
   const base = await listen(service);
   return { state, config, base, service, casdoor };
 }
@@ -277,7 +287,7 @@ describe("membership server", () => {
     state.tokens.first = { active: false };
     state.tokens.second = { active: true, client_id: "jianji-client-id", username: "alice", sub: "user-uuid", iss: config.issuer, aud: ["jianji-client-id"], exp: 2_000_000_000 };
     expect(await status(base, "first")).toMatchObject({ state: "denied", reason: "session-expired" });
-    expect(await status(base, "second")).toMatchObject({ state: "allowed", reason: "trial", expiresAt: "2024-02-29T12:00:00.000Z" });
+    expect(await status(base, "second")).toMatchObject({ state: "allowed", reason: "trial", expiresAt: "2024-02-04T00:00:00.000Z" });
     expect(state.requests.filter((request) => request.path === "/api/login/oauth/introspect")).toHaveLength(2);
   });
 
@@ -296,13 +306,43 @@ describe("membership server", () => {
     expect(await status(base)).toMatchObject({ state: "unavailable", reason: "unavailable" });
   });
 
-  it("grants exactly one UTC calendar month and denies at the exclusive expiry boundary", async () => {
-    const { state, base } = await fixture({ createdTime: "2024-01-31T12:00:00.000Z", now: "2024-02-29T11:59:59.999Z" });
-    expect(await status(base)).toMatchObject({ state: "allowed", reason: "trial", expiresAt: "2024-02-29T12:00:00.000Z" });
-    state.now = "2024-02-29T12:00:00.000Z";
+  it("grants one 72-hour Google trial and denies at the exclusive expiry boundary", async () => {
+    const { state, base } = await fixture({ createdTime: "2024-01-31T12:00:00.000Z" });
+    expect(await status(base)).toMatchObject({ state: "allowed", reason: "trial", expiresAt: "2024-02-04T00:00:00.000Z" });
+    state.now = "2024-02-03T23:59:59.999Z";
+    expect((await status(base)).reason).toBe("trial");
+    state.now = "2024-02-04T00:00:00.000Z";
     expect(await status(base)).toMatchObject({ state: "denied", reason: "expired" });
     expect(addUtcCalendarMonthClamped(new Date("2025-01-31T05:06:07.000Z")).toISOString()).toBe("2025-02-28T05:06:07.000Z");
     expect(addUtcCalendarMonthClamped(new Date("2024-01-31T05:06:07.000Z")).toISOString()).toBe("2024-02-29T05:06:07.000Z");
+  });
+
+  it("never grants a fresh password-only account a trial and keeps admin management identity", async () => {
+    const { state, base } = await fixture({ createdTime: "2024-02-01T00:00:00.000Z" });
+    state.user.google = "";
+    state.user.isAdmin = true;
+    expect(await status(base)).toMatchObject({ state: "denied", reason: "expired", user: { isAdmin: true } });
+    state.subscriptions = [subscription("jianji-grant", { payment: "" })];
+    expect((await status(base)).reason).toBe("grant");
+  });
+
+  it("keeps Google identity server-side and cannot renew after swapping the linked Google account", async () => {
+    const { state, base } = await fixture({ createdTime: "2024-02-01T00:00:00.000Z" });
+    const first = await status(base);
+    expect(first.reason).toBe("trial");
+    expect(JSON.stringify(first)).not.toContain("google-alice");
+    state.user.google = "google-bob";
+    expect((await status(base)).reason).toBe("expired");
+    state.user.google = "google-alice";
+    expect((await status(base)).expiresAt).toBe(first.expiresAt);
+  });
+
+  it("fails closed without the trial ledger while preserving paid entitlements", async () => {
+    const { state, config } = await fixture({ createdTime: "2024-02-01T00:00:00.000Z" });
+    const base = await listen(createMembershipServer({ config, clock: () => new Date(state.now) }));
+    expect((await status(base)).state).toBe("unavailable");
+    state.subscriptions = [subscription("jianji-monthly")];
+    expect((await status(base)).reason).toBe("monthly");
   });
 
   it("recognizes active paid and admin grant subscriptions while ignoring other states and plans", async () => {
@@ -417,6 +457,48 @@ describe("membership server", () => {
   });
 });
 
+describe("durable Google trial ledger", () => {
+  const user = { owner: "jianji", id: "uuid-1", google: "google-sub-1" };
+  const now = new Date("2026-10-11T00:00:00Z");
+  async function database() {
+    const directory = await mkdtemp(path.join(tmpdir(), "trial-ledger-"));
+    temporaryDirectories.push(directory);
+    const filename = path.join(directory, "trials.sqlite");
+    SqliteGoogleTrialStore.initialize(filename);
+    return filename;
+  }
+  it("persists the same window over independent connections, restart and exact expiry", async () => {
+    const filename = await database();
+    const one = new SqliteGoogleTrialStore(filename), two = new SqliteGoogleTrialStore(filename);
+    try {
+      expect(one.claim(user, now)).toBe("2026-10-14T00:00:00.000Z");
+      expect(two.claim(user, new Date(now.getTime() + 1000))).toBe("2026-10-14T00:00:00.000Z");
+      expect(two.claim({ ...user, id: "recreated-uuid" }, now)).toBeNull();
+      expect(two.claim({ ...user, google: "different-sub" }, now)).toBeNull();
+      expect(two.expiry(user, new Date(now.getTime() - 1))).toBeNull();
+    } finally { one.close(); two.close(); }
+    const restarted = new SqliteGoogleTrialStore(filename);
+    try {
+      expect(restarted.claim(user, new Date(now.getTime() + GOOGLE_TRIAL_MS - 1))).toBe("2026-10-14T00:00:00.000Z");
+      expect(restarted.claim(user, new Date(now.getTime() + GOOGLE_TRIAL_MS))).toBeNull();
+      expect(restarted.claim({ ...user, id: "recreated-uuid" }, new Date(now.getTime() + GOOGLE_TRIAL_MS))).toBeNull();
+    } finally { restarted.close(); }
+  });
+  it("does not synthesize trial time on read or reset a missing, damaged or reinitialized ledger", async () => {
+    const filename = await database();
+    const store = new SqliteGoogleTrialStore(filename);
+    expect(store.expiry(user, now)).toBeNull();
+    expect(store.claim({ ...user, google: undefined }, now)).toBeNull();
+    expect(() => SqliteGoogleTrialStore.initialize(filename)).toThrow();
+    await rm(filename);
+    expect(() => store.claim(user, now)).toThrow();
+    store.close();
+    expect(() => new SqliteGoogleTrialStore(filename)).toThrow();
+    await writeFile(filename, "corrupt", { mode: 0o600 });
+    expect(() => new SqliteGoogleTrialStore(filename)).toThrow();
+  });
+});
+
 import { CasdoorClient, type ManualSubscription } from "../src/membership-server/casdoor.js";
 import { ManualPayments } from "../src/membership-server/manual-payments.js";
 import type { MembershipServerConfig } from "../src/membership-server/policy.js";
@@ -425,9 +507,10 @@ import { FileBillingWriteGuard } from "../src/membership-server/billing-write-gu
 
 const config: MembershipServerConfig = { serviceUrl: "http://127.0.0.1:8789", issuer: "http://127.0.0.1:8000", clientId: "client", clientSecret: "test-secret-123456789", organization: "jianji", application: "app", pricingName: "pricing", callbackPort: 43829, monthlyPlan: "jianji-monthly", yearlyPlan: "jianji-yearly", grantPlan: "jianji-grant" };
 class Fake extends CasdoorClient {
+  google = "";
   rows = new Map<string, ManualSubscription>(); writes = 0; afterCommit = false; beforeCommit = false; banned = false; currentId = "alice-id";
   override async introspect(token: string) { return token === "invalid" ? { active: false as const } : { active: true as const, client_id: "client", username: token, sub: token === "alice" ? this.currentId : token + "-id", iss: config.issuer, aud: "client", exp: 2e10 }; }
-  override async getUser(_org: string, name: string) { return { owner: "jianji", name, id: name === "alice" ? this.currentId : name + "-id", displayName: name, createdTime: "2020-01-01T00:00:00Z", isAdmin: name === "admin", isDeleted: false, isForbidden: this.banned && name === "alice" }; }
+  override async getUser(_org: string, name: string) { return { owner: "jianji", name, id: name === "alice" ? this.currentId : name + "-id", displayName: name, createdTime: "2020-01-01T00:00:00Z", google: name === "alice" ? this.google : "", isAdmin: name === "admin", isDeleted: false, isForbidden: this.banned && name === "alice" }; }
   override async getApplication() { return { owner: "admin", name: "app", organization: "jianji", clientId: "client", enableExclusiveSignin: true, maxSessions: 1 }; }
   override async getSubscriptions(_org: string, name: string) { return [...this.rows.values()].filter(r => r.user === name).map(r => structuredClone(r)); }
   override async listManualSubscriptions(name?: string) { return [...this.rows.values()].filter(r => !name || r.user === name).map(r => structuredClone(r)); }
@@ -442,6 +525,18 @@ const approval = { action: "approve", received: true, amount: 100, note: "已核
 function manualFixture(now = "2024-01-31T12:00:00Z") { const api = new Fake(config); return { api, service: new ManualPayments(config, api, () => new Date(now), { run: async (_row, write) => write() }) }; }
 
 describe("manual membership requests", () => {
+  it("renews after the recorded 3-day trial instead of inventing a calendar month", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "billing-google-trial-")); temporaryDirectories.push(directory);
+    const filename = path.join(directory, "trials.sqlite"); SqliteGoogleTrialStore.initialize(filename);
+    const trials = new SqliteGoogleTrialStore(filename), api = new Fake(config); api.google = "google-alice";
+    const service = new ManualPayments(config, api, () => new Date("2026-10-11T00:00:00Z"), { run: async (_row, write) => write() }, trials);
+    try {
+      const pending = await service.submit("alice", submission);
+      const approved = await service.review("admin", pending.id, approval);
+      expect(approved.startTime).toBe("2026-10-14T00:00:00.000Z");
+      expect(approved.endTime).toBe("2026-11-14T00:00:00.000Z");
+    } finally { trials.close(); }
+  });
   it("creates pending without entitlement and ignores no caller-supplied authority or price", async () => {
     const { service, api } = manualFixture(); const request = await service.submit("alice", submission);
     expect(request.state).toBe("pending"); expect(api.rows.get(request.id)).toMatchObject({ state: "Pending", payment: "", startTime: "", endTime: "" });

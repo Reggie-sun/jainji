@@ -2,6 +2,7 @@ import { open } from "node:fs/promises";
 import { z } from "zod";
 import { MembershipConfigSchema, MembershipStatusSchema, type MembershipStatus } from "../shared/membership.js";
 import { CasdoorClient, type CasdoorMembershipApi, type CasdoorSubscription, type CasdoorUser } from "./casdoor.js";
+import type { GoogleTrialStore } from "./google-trial.js";
 
 export const MembershipServerConfigSchema = MembershipConfigSchema.extend({
   clientSecret: z.string().min(16).max(512),
@@ -36,7 +37,7 @@ export async function membershipServerConfigFromEnvironment(env: NodeJS.ProcessE
 export async function resolveMembershipStatus(
   accessToken: string,
   config: MembershipServerConfig,
-  options: { fetcher?: typeof fetch; clock?: () => Date; api?: CasdoorMembershipApi } = {},
+  options: { fetcher?: typeof fetch; clock?: () => Date; api?: CasdoorMembershipApi; trials?: GoogleTrialStore } = {},
 ): Promise<MembershipStatus> {
   const now = options.clock?.() ?? new Date();
   const checkedAt = now.toISOString();
@@ -108,20 +109,19 @@ export async function resolveMembershipStatus(
       if (entitlement) return allowed(entitlement, principal, checkedAt);
     }
 
-    const trialStart = Date.parse(user.createdTime);
-    const trialEnd = addUtcCalendarMonthClamped(new Date(trialStart));
-    if (now.getTime() >= trialStart && now.getTime() < trialEnd.getTime()) {
-      const expiresAt = trialEnd.toISOString();
+    if (user.google && !options.trials) return unavailable(checkedAt);
+    const expiresAt = options.trials?.claim(user, now);
+    if (expiresAt) {
       return MembershipStatusSchema.parse({
         state: "allowed",
         reason: "trial",
-        message: `一个月免费试用有效至 ${expiresAt}。`,
+        message: `Google 账号的 3 天免费试用有效至 ${expiresAt}。`,
         user: principal,
         expiresAt,
         checkedAt,
       });
     }
-    return denied("expired", "试用或会员已到期，请续费。", checkedAt, user);
+    return denied("expired", user.google ? "试用已领取或已到期，请续费。" : "请关联 Google 账号领取一次 3 天试用，或续费会员。", checkedAt, user);
   } catch {
     return unavailable(checkedAt);
   }

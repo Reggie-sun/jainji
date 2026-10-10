@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { MEMBERSHIP_OFFERS } from "../shared/membership.js";
+import type { GoogleTrialStore } from "./google-trial.js";
 import { CasdoorClient, type ManualSubscription } from "./casdoor.js";
 import { addUtcCalendarMonthClamped, resolveMembershipStatus, validatePaidPlan, type MembershipServerConfig } from "./policy.js";
 import type { BillingWriteGuard } from "./billing-write-guard.js";
@@ -19,10 +20,10 @@ export class BillingError extends Error {
 /** Casdoor Subscription remains the sole durable request and entitlement record. One service writer. */
 export class ManualPayments {
   private readonly locks = new Map<string, Promise<unknown>>();
-  constructor(readonly config: MembershipServerConfig, readonly api: CasdoorClient, readonly clock: () => Date, private readonly guard: BillingWriteGuard) {}
+  constructor(readonly config: MembershipServerConfig, readonly api: CasdoorClient, readonly clock: () => Date, private readonly guard: BillingWriteGuard, private readonly trials?: GoogleTrialStore) {}
 
   async principal(token: string) {
-    const status = await resolveMembershipStatus(token, this.config, { api: this.api, clock: this.clock });
+    const status = await resolveMembershipStatus(token, this.config, { api: this.api, clock: this.clock, trials: this.trials });
     if (!status.user || !(status.state === "allowed" || status.reason === "expired")) throw new BillingError(401, "登录已失效或账号不可用，请重新登录。");
     return status.user;
   }
@@ -97,7 +98,8 @@ export class ManualPayments {
         const pricing = await this.api.getPricing(this.config.organization, this.config.pricingName);
         if (pricing.owner !== this.config.organization || pricing.name !== this.config.pricingName || pricing.application !== this.config.application || !pricing.isEnabled || !await validatePaidPlan(this.api, this.config, pricing.plans, row.plan, request.plan)) throw new BillingError(409, "套餐配置异常，不能开通。");
         const now = this.clock();
-        let start = Math.max(now.getTime(), addUtcCalendarMonthClamped(new Date(user.createdTime)).getTime());
+        const trialExpiry = this.trials?.expiry(user, now);
+        let start = Math.max(now.getTime(), trialExpiry ? Date.parse(trialExpiry) : now.getTime());
         for (const sub of await this.api.listManualSubscriptions(user.name)) {
           if (sub.owner !== this.config.organization || sub.user !== user.name || sub.group !== "" || !["Active", "Upcoming"].includes(sub.state)) continue;
           if (!new Set<string>([this.config.monthlyPlan, this.config.yearlyPlan, this.config.grantPlan]).has(sub.plan)) continue;

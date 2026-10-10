@@ -2,7 +2,7 @@
 
 ## Scope
 
-首轮目标是代码和本地隔离验证；用户随后授权 VPS 部署及下方 Manual Payment 增量。业务价格：月费 **¥100**、年费 **¥666**，新账号从注册时刻起试用一个自然月。管理员可为指定账号赠送一段使用期限、撤销赠送或封禁账号。同一账号新登录使旧会话失效；这里限制的是登录会话，不能证明操作者是同一自然人。
+首轮目标是代码和本地隔离验证；用户随后授权 VPS 部署及下方 Manual Payment 增量。业务价格：月费 **¥100**、年费 **¥666**。2026-10-11 用户选择 Google 登录，每个 Google 身份仅可领取一次 **3 天（72 小时）**试用，替换旧的注册即赠一个自然月。管理员可为指定账号赠送一段使用期限、撤销赠送或封禁账号。同一账号新登录使旧会话失效；这里限制的是登录会话，不能证明操作者是同一自然人。
 
 ## Open-Source Selection
 
@@ -23,6 +23,7 @@ Casdoor 支持管理员手工创建订阅。其默认只有 `paid-user` 参与�
 - `src/main/membership-*`：系统浏览器登录、loopback 回调、加密凭据、当前会话、主进程 IPC 准入。队列只调用该 owner，不自己解释会员期限。
 - `src/renderer/MembershipGate.tsx`：账号状态、套餐及后台入口。renderer 不得到任何 token 或 client secret。
 - Casdoor：注册、密码、管理员、支付通知验签、订单、订阅与管理操作权限。会员适配服务不接受前端传来的价格、赠送或付款成功字段。
+- `src/membership-server/google-trial.ts`：Google 身份试用领取与防重复记录，不保存 Google 密码、令牌或付费订阅。
 
 ## Local Configuration
 
@@ -106,7 +107,25 @@ JIANJI_MEMBERSHIP_CONFIG=/absolute/public/membership.json make frontend
 
 ## Admission And Session Semantics
 
-有效会话 + 当前组织账号未封禁/删除 +（有效付费 Subscription / 管理员赠送 / 首月试用）才允许新制作。试用从服务端不可由普通用户选择的 `createdTime` 起算，UTC 自然月末按目标月最后一天截断。付费/赠送期限读取 Casdoor Subscription，必须 `Active` 且 `startTime <= now < endTime`；忽略其他组织、其他用户、其他 Plan 及 group 订阅。Casdoor 管理员是可信授权方；Active 付费订阅关联的 payment 字段不是本服务独立验签的付款收据。
+有效会话 + 当前组织账号未封禁/删除 +（有效付费 Subscription / 管理员赠送 / Google 三天试用）才允许新制作。试用以 Casdoor 服务端当前用户的 `google` provider ID 为身份，在首次通过会员服务领取时按服务器时间固定 72 小时；不使用邮箱、账号创建时间或客户端上报身份。独立 SQLite 记录同时唯一约束组织内 Google 身份和简辑用户 UUID；到期、注销、解绑、重启不重置。删号重建无法再次领取；若新的 UUID 不匹配原领取账号，则不转移剩余试用。普通密码账号无自动试用，仍可付费或由管理员赠送。
+
+付费/赠送期限读取 Casdoor Subscription，必须 `Active` 且 `startTime <= now < endTime`；忽略其他组织、其他用户、其他 Plan 及 group 订阅。付费与赠送判定优先于试用，既有明确订阅期限不缩短。人工核款只保留已领取且仍有效的试用期限，不再凭账号注册日期多赠一个月。Casdoor 管理员是可信授权方；Active 付费订阅关联的 payment 字段不是本服务独立验签的付款收据。
+
+## Google Login And Trial Operations
+
+实施计划：[Google Membership](superpowers/plans/2026-10-11-google-membership.md)。按 [Casdoor Google Provider](https://casdoor.ai/docs/provider/oauth/google/) 创建 Web application OAuth client，回调必须精确为 `https://auth.reggie-sun.ccwu.cc/callback`，不能使用桌面 loopback 或 billing callback。Provider 只请求 `openid email profile`，允许 Google 注册；绑定规则不要按邮箱自动关联已有管理员。保留管理员和已有用户的密码登录恢复路径，普通密码注册不授试用。Google Cloud OAuth 凭据只写服务端；测试模式、发布状态及真实回调分别验收，不能把配置保存当作 Google 登录成功。
+
+服务器及用户浏览器均须能访问 Google；服务器换取令牌和读取 Google 用户资料的网络失败不能靠前端按钮修复。主进程仍通过 Casdoor PKCE 登录，既有单会话配置保持。
+
+运行环境为支持 `node:sqlite` 的 Node 22（本机验证 22.21.0）。在服务器私有持久目录中显式初始化一次：
+
+```bash
+JIANJI_MEMBERSHIP_TRIAL_DATABASE=/absolute/private/trials.sqlite node dist-membership/server.mjs --initialize-trials
+```
+
+运行会员服务时设置相同 `JIANJI_MEMBERSHIP_TRIAL_DATABASE`；数据库文件须为普通文件、权限 `0600`，父目录须私有，使用绝对真实路径。初始化采用独占创建，不能覆盖已有记录。启动或运行中数据库缺失/损坏时不新建空账本、不自动发放试用。无数据库配置时 Google 试用失败关闭；明确付费/赠送的判定仍独立。
+
+备份同时保存 Casdoor 数据、原人工核款状态及试用数据库；SQLite 使用默认 rollback journal 与 FULL synchronous，备份须停会员服务或使用 SQLite backup API，不能在写入时单独复制数据库。恢复/迁移必须保留所有领取记录；回滚到旧代码会重新开启一月试用，不作为安全回滚路径。Google 多账号属于不同身份，本功能不承诺一自然人只领一次。
 
 存在有效管理员赠送时优先展示该赠送的截止时间，未汇总为所有权益的最晚截止；赠送到期后仍可命中有效付费权益。到期管理员仍可打开管理后台，实际管理权限由 Casdoor 核验，不要求先购买制作会员。
 

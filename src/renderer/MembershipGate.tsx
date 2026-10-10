@@ -40,7 +40,7 @@ export function MembershipGate({ children }: { children: ReactNode }) {
       <section className="membership-card" aria-labelledby="membership-title">
         <div className="membership-brand">简辑 <span>账号中心</span></div>
         <h1 id="membership-title">登录，让制作继续</h1>
-        <p className="membership-intro">新账号免费试用一个月，素材与项目保留在本机。</p>
+        <p className="membership-intro">每个 Google 账号可领取一次 3 天免费试用，素材与项目保留在本机。</p>
         <div className="membership-status" role="status">
           {status?.message ?? "正在读取账号状态…"}
           {status?.user && <small>当前账号：{status.user.displayName || status.user.name}</small>}

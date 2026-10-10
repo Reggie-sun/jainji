@@ -277,7 +277,7 @@ QianchuanCleanupRecovery.tsx[EU7T]: F:展示旧清理素材明细并收集人工
 qianchuan-account-display.ts[CU5T]: F:按冻结广告主ID解析当前账号显示名称 | R:code:src/shared/qianchuan-account.ts | A:精确ID查找后调用共享名称优先级；缺匹配使用调用方fallback | S:不按可重用产品槽位匹配旧任务
 QianchuanEgressSettings.tsx[EU6T]: F:编辑账号VPS出口及浏览器位置并复用主体 | R:code:src/shared/qianchuan-egress.ts,code:src/renderer/QianchuanAccountSettings.tsx | A:A本机或B远端选择；主体SSH别名IP端口受控输入；即时校验及运行条件提示 | S:不收身份证号码或SSH私钥；B需要本地简辑在线；界面校验不替代main准入
 AutomationPanel.tsx[EU7M]: F:配置每日自动化并显示固定范围和状态 | R:code:src/shared/automation.ts,code:src/main/preload.ts | A:制作清理及关联上传；范围变化撤销勾选；时间启停删除；缺bridge禁用 | S:UI不拥有执行授权；定时确认须明确范围；后台依赖主进程
-MembershipGate.tsx[EU7T]: F:呈现会员登录权益及工作区入口 | R:code:src/main/preload.ts,code:src/shared/membership.ts | A:订阅状态；本地模式开放工作区；登录刷新退出；提示人工核款后刷新 | S:只展示不授权；无token；失效保留草稿；本地模式不伪装付费会员
+MembershipGate.tsx[EU7T]: F:呈现会员登录权益及工作区入口 | R:code:src/main/preload.ts,code:src/shared/membership.ts | A:显示Google三天试用；订阅状态；登录刷新退出；管理员入口及核款提示 | S:只展示不授权；无token；失效保留草稿；本地模式不伪装付费会员
 
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===
@@ -319,7 +319,7 @@ manual-cover-review.ts[DB7T]: F:投影手动覆盖输入及历史人工草稿 | 
 qianchuan-egress.ts[CN7T]: F:校验非秘密出口模式及主体间唯一绑定 | R:code:src/shared/qianchuan-account.ts,code:src/main/qianchuan-egress-runtime.ts | A:可选remote-browser；group及SSH别名端口公网IPv4；归一身份及SOCKS地址 | S:缺mode保留A字节语义；同组全部字段相同；异组禁共享IP端口或SSH别名；无配置身份保留direct
 qianchuan-remote.ts[CN8T]: F:校验远端浏览器RPC及分片状态合同 | R:code:src/main/qianchuan-remote-transport.ts,code:src/main/qianchuan-remote-runtime.ts | A:v1严格动作与体长；文件账号SHA长度名称；浏览器端口路径及文件完成状态 | S:仅remote-browser路线；file账号必须匹配请求；不接受任意命令或本地凭据
 automation.ts[CW7T]: F:定义固定定时清理制作上传和执行状态 | R:code:src/shared/batch-production.ts,code:src/shared/qianchuan-video-library.ts,code:src/shared/douyin-upload.ts | A:严格时间确认来源组合；制作最多2500；结果绑定run和导出 | S:清理只限所选计划；上传须明确计划或独立来源；Schema不授平台确认
-membership.ts[CI8T]: F:定义会员公开状态配置价格和心跳合同 | R:code:src/main/membership-session.ts,code:src/membership-server/policy.ts | A:月100年666；本地模式及账号状态；严格HTTPS或loopback配置 | S:配置禁止client secret；状态schema不代替主进程准入
+membership.ts[CI8T]: F:定义会员公开状态配置价格和心跳合同 | R:code:src/main/membership-session.ts,code:src/membership-server/policy.ts | A:月100年666；Google三天试用提示；本地模式及严格origin配置 | S:配置禁止client secret；状态schema不代替主进程准入
 
 
 ===/home/reggie/vscode_folder/jianji/src/types/===
@@ -329,11 +329,12 @@ sql-asm.d.ts[AB7T]: F:声明sql-asm模块的TypeScript类型 | R:code:src/main/s
 task.json[FQ4T]: F:封装产品规则断言覆盖调查 | R:code:.agent/harness/policy.json | A:限定测试及设计阅读，查实际断言而非文件名，parent裁决 | S:-
 
 ===/home/reggie/vscode_folder/jianji/src/membership-server/===
-casdoor.ts[II8M]: F:封装Casdoor在线身份权益及人工申请存取 | R:code:src/membership-server/policy.ts | A:服务端Basic认证；严格解码身份套餐订阅；人工订阅查询及单次写入；限时限量响应 | S:调用issuer而非会员serviceUrl；不重定向不输出上游密钥错误
-index.ts[EI7T]: F:启动本地会员HTTP服务 | R:code:src/membership-server/server.ts,code:src/membership-server/policy.ts | A:加载私有配置及付款码和持久保护目录；loopback监听；信号停止 | S:启动不执行部署或付款
-policy.ts[DI8M]: F:根据在线会话及当前权益判定会员准入 | R:code:src/membership-server/casdoor.ts,code:src/shared/membership.ts | A:核身份组织应用单会话；封禁优先；月年套餐人工赠送；注册月末试用；共享付费套餐核验 | S:无本地缓存授权；只接受直接用户订阅；管理员是可信授权方；上游未知失败关闭
-server.ts[EI8T]: F:提供会员状态与可选续费门户路由 | R:code:src/membership-server/policy.ts,code:src/membership-server/billing.ts,code:src/membership-server/billing-write-guard.ts | A:配置图片与保护目录后挂载billing；状态接口核GET和Bearer；错误脱敏 | S:缺持久保护目录拒绝开启核款；状态接口拒绝请求体；前端声明不授权益
+casdoor.ts[II8M]: F:封装Casdoor在线身份权益及人工申请存取 | R:code:src/membership-server/policy.ts | A:服务端Basic认证；解码Google身份套餐订阅；人工订阅单次写入；限时限量响应 | S:调用issuer而非会员serviceUrl；不重定向不输出上游密钥错误
+index.ts[EI7T]: F:启动本地会员服务及显式初始化试用账本 | R:code:src/membership-server/server.ts,code:src/membership-server/policy.ts,code:src/membership-server/google-trial.ts | A:加载私有配置付款码及持久保护；打开账本；loopback监听；关闭释放账本 | S:正常启动不创建新账本；不执行部署或付款
+policy.ts[DI8M]: F:根据在线会话当前权益及Google试用判定准入 | R:code:src/membership-server/casdoor.ts,code:src/shared/membership.ts,code:src/membership-server/google-trial.ts | A:核身份组织应用单会话；封禁优先；付费赠送；可信Google身份实领72小时 | S:无缓存授权；只接受直接用户订阅；管理员是可信授权方；未知失败关闭；未绑Google不自动试用
+server.ts[EI8S]: F:提供会员状态与可选续费门户路由 | R:code:src/membership-server/policy.ts,code:src/membership-server/billing.ts,code:src/membership-server/billing-write-guard.ts,code:src/membership-server/google-trial.ts | A:门户及状态共用试用账本和时钟；核GET及Bearer；错误脱敏 | S:缺持久保护目录拒绝核款；状态接口拒绝请求体；前端声明不授权益
 billing-page.ts[EU7T]: F:提供续费申请及管理员核款页面 | R:code:src/membership-server/billing.ts | A:套餐与二维码；提交单号；查询审核；管理员核款表单；中文日期 | S:显示或提交不代表到账或授权；ticket消费后清除URL片段；用户字段按textContent展示
 billing.ts[EI8S]: F:提供人工续费门户与浏览器会话路由 | R:code:src/membership-server/manual-payments.ts,code:src/membership-server/billing-page.ts,code:src/membership-server/policy.ts | A:单次ticket；OIDC登录；付款码与申请审核；有限内存会话 | S:重启清会话不清申请；写请求核同源及CSRF；token不进页面；提交不授权益
-manual-payments.ts[AB8S]: F:管理人工付款申请与管理员核款续期 | R:code:src/membership-server/casdoor.ts,code:src/membership-server/policy.ts,code:src/membership-server/billing-write-guard.ts | A:单号去重；逐用户串行；核身份金额套餐；严格日期续期；持久意图保护 | S:Casdoor订阅唯一持久owner；提交不授权；未知只读核对不盲重试；既有审核不反转
+manual-payments.ts[AB8S]: F:管理人工付款申请与管理员核款续期 | R:code:src/membership-server/casdoor.ts,code:src/membership-server/policy.ts,code:src/membership-server/billing-write-guard.ts,code:src/membership-server/google-trial.ts | A:单号去重；逐用户串行；核金额套餐；延续实领试用及订阅；持久意图保护 | S:Casdoor订阅唯一权益owner；提交不授权；未知只读核对不盲重试；既有审核不反转
 billing-write-guard.ts[PR8T]: F:持久保护人工核款未知写入 | R:code:src/membership-server/manual-payments.ts | A:独占创建意图；同步期望快照；已确认后清理 | S:不是权益账本；未知结果保留标记；重启不清除；其他writer不能覆盖未决意图
+google-trial.ts[PI8S]: F:持久约束每Google身份的一次72小时试用 | R:code:src/membership-server/policy.ts,code:src/membership-server/manual-payments.ts | A:SQLite事务及双唯一摘要；显式独占初始化；核文件身份和权限；只读有效期限 | S:缺失损坏不重建；删除用户不得删试用记录；更换身份或用户UUID不重新授时；不按邮箱合并

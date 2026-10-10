@@ -22,6 +22,7 @@ const CasdoorUserSchema = z.object({
   isAdmin: z.boolean(),
   isForbidden: z.boolean(),
   isDeleted: z.boolean(),
+  google: z.string().max(255).optional(),
 });
 
 const CasdoorApplicationSchema = z.object({
