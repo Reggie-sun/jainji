@@ -1124,6 +1124,36 @@
       ]
     },
     {
+      "id": "domain-state-store",
+      "paths": [
+        "src/main/store.ts",
+        "src/main/state-migrations.ts",
+        "tests/store.test.ts",
+        "tests/state-migrations.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "harness",
+        "lifecycle",
+        "extended-regressions",
+        "documents",
+        "owned-aoci"
+      ],
+      "testFilesByCheck": {
+        "extended-regressions": [
+          "tests/project-sync.test.ts",
+          "tests/project-workspace.test.ts",
+          "tests/state-migrations.test.ts",
+          "tests/store.test.ts"
+        ]
+      },
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
       "id": "domain-output-publication",
       "paths": [
         "src/main/artifact.ts",
@@ -1312,10 +1342,8 @@
         "tests/source-sticker-knowledge.integration.test.ts",
         "tests/source-sticker-recognition.test.ts",
         "tests/source-sticker-refresh.test.ts",
-        "tests/state-migrations.test.ts",
         "tests/sticker-preview.test.ts",
         "tests/sticker-scale.integration.test.ts",
-        "tests/store.test.ts",
         "tests/supervised-agent.integration.test.ts",
         "tests/supervisor-evidence.integration.test.ts",
         "tests/tmp-repro-sticker-size.test.ts",

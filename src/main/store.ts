@@ -87,8 +87,15 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 async function readJson(filePath: string): Promise<unknown> {
+  let contents: string;
   try {
-    return JSON.parse(await readFile(filePath, "utf8"));
+    contents = await readFile(filePath, "utf8");
+  } catch (error) {
+    const missing = (error as NodeJS.ErrnoException).code === "ENOENT";
+    throw new StoreError(missing ? "corrupt" : "unavailable", `Cannot read JSON state: ${path.basename(filePath)}`, { cause: error });
+  }
+  try {
+    return JSON.parse(contents);
   } catch (error) {
     throw new StoreError("corrupt", `Cannot read JSON state: ${path.basename(filePath)}`, { cause: error });
   }

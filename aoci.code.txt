@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:会员及定时自动化；制作上传和平台回执回归；上传组有界十分钟 | S:完整贡献优先子集；focused不替代全量或视觉验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:会员及定时制作上传回执；上传组十分钟；存储及迁移联动原生命周期和四项固定回归 | S:完整贡献优先子集；focused不替代全量或视觉验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -92,7 +92,7 @@ source-sticker-knowledge-store.ts[PB8L]: F:按精确源身份原子保存知识�
 source-sticker-recognition.ts[AB7T]: F:抽取全片源贴纸观测并形成带证据的事实候选 | R:code:src/main/cover-track-provider.ts | A:识别原视频事实不同于覆盖近似位置 | S:不确定时阻断自动补角
 state-migrations.ts[AB7T]: F:预检并迁移已知项目队列模板历史格式 | R:code:src/main/store.ts | A:持久兼容迁移owner | S:未来版本或未知格式拒绝而非猜测
 sticker-preview.ts[AB7T]: F:用FFmpeg生成内置贴纸预览供界面与模型看图 | R:code:src/main/ffmpeg.ts | A:选材预览辅助 | S:模型只接收预览不接收本地路径
-store.ts[PD8M]: F:原子持久化项目与队列并提供canonical只读核对 | R:code:src/main/state-migrations.ts,code:src/main/domain.ts,code:src/main/shape-cover-artifacts.ts,code:src/main/batch-production-runtime.ts | A:ProjectStore readSnapshot仅内存迁移读取；load可恢复备份；JobStore提供primary读取及有界库存 | S:形状reconciliation只能用primary-only入口，不mkdir迁移或回退备份；坏primary不证明completed；readSnapshot不重写或隔离项目
+store.ts[PD8M]: F:原子持久化项目与队列并提供canonical只读核对 | R:code:src/main/state-migrations.ts,code:src/main/domain.ts,code:src/main/shape-cover-artifacts.ts,code:src/main/batch-production-runtime.ts | A:readSnapshot只读内存迁移；load可恢复缺失或坏JSON备份，其他读取错误返回unavailable停止恢复；JobStore提供primary读取及有界库存 | S:形状reconciliation只能用primary-only入口，不mkdir迁移或回退备份；坏primary不证明completed；readSnapshot不重写或隔离项目
 supervised-preview.ts[AB7T]: F:渲染正式入队前样片并让主管对照源帧检查修订 | R:code:src/main/supervisor-evidence.ts | A:成片复核门禁 | S:修订后重渲且不确定则失败
 supervisor-evidence.ts[AB7T]: F:提取配对原图与成片帧并绑定时间坐标及摘要 | R:code:src/main/supervised-preview.ts | A:主管检查证据owner | S:候选模板输出设置与证据绑定
 supervisor-knowledge.ts[AB7T]: F:主管复核源知识候选并传播已发现的问题与修订 | R:code:src/main/source-sticker-knowledge-session.ts | A:源事实复核不是创作方案生成 | S:非法或无效修订不能转通过

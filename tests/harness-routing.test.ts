@@ -55,6 +55,19 @@ function scope(paths: string[]): HarnessTaskScope {
 }
 
 describe("harness policy routing", () => {
+  it("binds storage changes to store, migration, project and original queue regressions", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    for (const paths of [["src/main/store.ts"], ["src/main/state-migrations.ts"], ["tests/store.test.ts", "tests/state-migrations.test.ts"]]) {
+      const selected = selectChecks(candidate, scope(paths));
+      expect(selected.checks.find(check => check.id === "extended-regressions")).toMatchObject({ required: true, testFiles: [
+        "tests/project-sync.test.ts", "tests/project-workspace.test.ts", "tests/state-migrations.test.ts", "tests/store.test.ts",
+      ] });
+      expect(selected.checks.find(check => check.id === "lifecycle")).toMatchObject({ required: true, testFiles: expect.arrayContaining(["tests/queue.test.ts"]) });
+    }
+    const mixed = selectChecks(candidate, scope(["src/main/store.ts", "tests/source-mask-static.test.ts"]));
+    expect(mixed.checks.find(check => check.id === "extended-regressions")).toMatchObject({ testFiles: expect.arrayContaining(["tests/source-mask-static.test.ts", "tests/store.test.ts"]) });
+  });
+
   it("runs the real batch row layout regression for a CSS-only change", () => {
     const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
     const selected = selectChecks(candidate, scope(["src/renderer/batch-production.css"]));
