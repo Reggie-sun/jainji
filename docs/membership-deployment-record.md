@@ -1,5 +1,22 @@
 # Scope
 
+## Login Latency — 2026-10-11
+
+用户要求同时修复点击登录后浏览器迟迟出现、认证后迟迟进入软件。实现范围与兼容边界见 [Login Latency Plan](superpowers/plans/2026-10-11-membership-login-latency.md)。本轮没有修改在线权益策略、收费、试用期限、视频路径或全局 VPN 配置。
+
+- 实测同一 VPS 的 Casdoor application 查询通过公网需要 526–1390 ms，loopback 为 19–25 ms。原会员核验串行读取多个公网接口，真实 Electron Google 权限查询为 4975、2911、2830 ms；Chrome 续费申请读取为 4389 ms。Python 默认 UA 访问公网 API 被 Cloudflare 拒绝，未将这组失败当作 Node 成功耗时。
+- 服务私有配置增加 `casdoorUrl=http://127.0.0.1:8000`，Casdoor REST 和门户 OIDC 使用本机通信；公开 issuer、跳转与 token issuer 校验保持原域名。服务端 schema 限定 loopback HTTP，禁止 URL 凭据、路径、query、hash；跨 issuer、重定向及双斜线路径更改目的 origin 均拒绝。该字段不进入公开桌面配置或门户会话密钥绑定，因此原会话跨本次服务更新仍能恢复。
+- 桌面用 Casdoor 固定公开 authorize/token/JWKS 端点建立原 openid-client Configuration，去除弹出浏览器前的 discovery 请求；PKCE、state、nonce、loopback 校验、取消和时限保持。登录、核验及续费请求沿 Electron `net.fetch`，不改全局 fetch，不关闭 TLS，不增加授权缓存。
+- 当前服务器 bundle SHA-256 为 `3e1bf7ec963dcb510fc9debba74028061a2d5c19fd0ecb81a85043563d935334`；更新前备份 `backups/20261010T184349Z`，原 bundle/config 保存在私有 `.before-latency-20261011` 文件，只重建 membership。初次非 sudo 备份因权限失败，证明配置尚未改动后改用 sudo；通过 SSH stdin 执行备份时 Docker 消费了后续脚本，已读回确认仍为旧 bundle，再独立完成更新，没有盲目假定成功。
+- 公网更新后，真实 Electron Google 核验为 1174、801、1096 ms；用户当前简辑实例的刷新权限为 609 ms，仍为 allowed/grant。Chrome 原管理员门户跨服务更新继续有效，读取为 675、799、579 ms。门户内部 login 入口 discovery 返回 303，耗时 11 ms。
+- 真实 native PKCE 完整流程复用 reggie Chrome 既有 Google 账号。软件发出打开浏览器请求耗时 5 ms、此前网络请求数 0；这是软件 dispatch 时间，不是浏览器页面加载时间。认证 callback 到 token 为 1075 ms，后续在线权限核验 792 ms、allowed/admin。旧 token 实测 session-expired；新 token 加密保存到私有 QA 目录，单次续费票据在真实 Chrome 消费并清除片段，门户读取为 511 ms、200/admin，未提交或审核付款。
+- 更新后完整备份 `backups/20261010T185143Z` 已完成，membership 恢复运行、health 返回 ok；bundle SHA-256 回读与本轮候选一致。备份以独立 SSH 命令并关闭 stdin 执行，避免 Docker 消费后续操作。重新打开 Chrome 门户，原 cookie 直接恢复管理员会话，读取为 609 ms、200，付款申请仍为 0。
+- 当前日常网络路径已实测可用；本轮所有上述测量均未使用临时 SSH SOCKS。网络时延仍会波动，未承诺固定 SLA，未评估 Windows 实机或大规模并发。
+
+受管只读 Kimi `55b430e7-6f61-4f90-9e37-5ce0c4d27fde` 的 canonical receipt 为 PARSED，两个 k3/max 请求身份已验证，四个源文件完整读取。Parent 用实测确认 discovery / 串行网络等待；采用免前置发现及同机运输，没有采用未验证的 JWKS 预热 API、授权缓存或政策并行化。该调查不替代最终 Review Risk Gate。局部验证为 typecheck、5 个会员测试文件共 61 项、服务 bundle 构建；本轮 AOCI 完整批次维护 8 项并经官方 Verify / Check / Guide 对齐。最终 owned Harness 与 completion 以本机本任务回执为准。
+
+源码 checkpoint `20261010T185224Z-c2b3feb7` 的 owned Harness 为 PASS：会员 61 项、Harness 105 项、typecheck、documents、owned AOCI；对应 completion `20261010T185337Z-2b2cb2ee` 为 PASS。其后只补充本段运行证据及修正 Plan 的测试文件数量，最终文档仍须由新的 scoped receipt 验证。最终源码 Risk Gate 为 `KIMI_REVIEW_NOT_REQUIRED`：无用户指定 review；公开身份、PKCE/state/nonce、在线权限和持久化格式保持，私有目标限制及重定向拒绝有回归与真实验证；未发现关键级泄露/越权/损坏路径，也没有重大后果与实质运行验证缺口同时成立的证据。详细 snapshot、三项判断及证据在本机任务目录 `review-risk-decision.json`。
+
 ## Google Egress Deployment — 2026-10-11
 
 用户明确授权复用本机 Mihomo 到南京 VPS。本次只部署账号服务的 Google 出口，不代表 Google OAuth client 已配置或真实登录已验收；此前 Google 登录及三天试用源码仍是未部署候选。

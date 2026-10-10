@@ -1,4 +1,4 @@
-import { app, ipcMain, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
+import { app, ipcMain, net, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { MembershipConfigSchema, type MembershipConfig, type MembershipStatus } from "../shared/membership.js";
@@ -24,11 +24,13 @@ export async function createMembershipDesktop(input: {
     localDevelopment = app.isPackaged === false && !process.env.JIANJI_MEMBERSHIP_CONFIG
       && (error as NodeJS.ErrnoException).code === "ENOENT";
   }
+  const fetcher: typeof fetch = (target, options) => net.fetch(target instanceof URL ? target.href : target, options);
   const session = new MembershipSession(config, {
     localDevelopment,
     storage: membershipStorage(input.root, config, safeStorage),
-    check: token => fetchMembership(config!, token),
-    login: signal => loginMembership(config!, url => shell.openExternal(url), signal),
+    check: token => fetchMembership(config!, token, fetcher),
+    fetcher,
+    login: signal => loginMembership(config!, url => shell.openExternal(url), signal, fetcher),
     changed: input.changed, lostAccess: input.lostAccess,
   });
   installMembershipIpc(ipcMain, session, input.trusted);

@@ -170,7 +170,7 @@ export class CasdoorClient implements CasdoorMembershipApi {
   }
 
   private apiUrl(path: string): URL {
-    return new URL(path, this.config.issuer);
+    return new URL(path, this.config.casdoorUrl ?? this.config.issuer);
   }
 
   private async getData(url: URL): Promise<unknown> {

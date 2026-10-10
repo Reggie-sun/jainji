@@ -3,17 +3,23 @@ import * as oidc from "openid-client";
 import type { MembershipConfig } from "../shared/membership.js";
 
 /** Public native OAuth client: no shared secret, no embedded login page, no renderer tokens. */
-export async function loginMembership(config: MembershipConfig, open: (url: string) => Promise<void>, signal: AbortSignal): Promise<string> {
+export async function loginMembership(config: MembershipConfig, open: (url: string) => Promise<void>, signal: AbortSignal, fetcher: typeof fetch = fetch): Promise<string> {
   const timeout = AbortSignal.timeout(180_000);
   const combined = AbortSignal.any([signal, timeout]);
   combined.throwIfAborted();
-  const native = await oidc.discovery(new URL(config.issuer), config.clientId, undefined, oidc.None(), {
-    execute: config.issuer.startsWith("http:") ? [oidc.allowInsecureRequests] : undefined,
-    [oidc.customFetch]: (url, options) => {
-      if (new URL(String(url)).origin !== config.issuer) throw new Error("账号服务元数据地址不匹配。");
-      return fetch(url, { ...options, redirect: "error", signal: AbortSignal.any([combined, AbortSignal.timeout(10_000)]) });
-    },
-  });
+  // Casdoor's stable endpoints let the browser open without a discovery round trip.
+  const native = new oidc.Configuration({
+    issuer: config.issuer,
+    authorization_endpoint: `${config.issuer}/login/oauth/authorize`,
+    token_endpoint: `${config.issuer}/api/login/oauth/access_token`,
+    jwks_uri: `${config.issuer}/.well-known/jwks`,
+    id_token_signing_alg_values_supported: ["RS256"],
+  }, config.clientId, undefined, oidc.None());
+  if (config.issuer.startsWith("http:")) oidc.allowInsecureRequests(native);
+  native[oidc.customFetch] = (url, options) => {
+    if (new URL(String(url)).origin !== config.issuer) throw new Error("账号服务地址不匹配。");
+    return fetcher(url, { ...options, redirect: "error", signal: AbortSignal.any([combined, AbortSignal.timeout(10_000)]) });
+  };
   const verifier = oidc.randomPKCECodeVerifier(), state = oidc.randomState(), nonce = oidc.randomNonce();
   const redirect = `http://127.0.0.1:${config.callbackPort}/jianji-login`;
   const authorization = oidc.buildAuthorizationUrl(native, {

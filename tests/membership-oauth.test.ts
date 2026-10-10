@@ -1,6 +1,6 @@
 import { createServer, type Server } from "node:http";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loginMembership } from "../src/main/membership-oauth.js";
 import { MembershipConfigSchema } from "../src/shared/membership.js";
 
@@ -13,9 +13,9 @@ async function fixture() {
   let validVerifier = false, secretSent = false, badNonce = false;
   const server = createServer(async (req, res) => {
     res.setHeader("Content-Type", "application/json");
-    if (req.url === "/.well-known/openid-configuration") res.end(JSON.stringify({ issuer, authorization_endpoint: `${issuer}/authorize`, token_endpoint: `${issuer}/token`, jwks_uri: `${issuer}/jwks`, response_types_supported: ["code"], subject_types_supported: ["public"], id_token_signing_alg_values_supported: ["RS256"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"] }));
-    else if (req.url === "/jwks") res.end(JSON.stringify({ keys: [{ ...publicKey.export({ format: "jwk" }), kid: "fixture", alg: "RS256", use: "sig" }] }));
-    else if (req.url === "/token") {
+    if (req.url === "/.well-known/openid-configuration") res.end(JSON.stringify({ issuer, authorization_endpoint: `${issuer}/login/oauth/authorize`, token_endpoint: `${issuer}/api/login/oauth/access_token`, jwks_uri: `${issuer}/.well-known/jwks`, response_types_supported: ["code"], subject_types_supported: ["public"], id_token_signing_alg_values_supported: ["RS256"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"] }));
+    else if (req.url === "/.well-known/jwks") res.end(JSON.stringify({ keys: [{ ...publicKey.export({ format: "jwk" }), kid: "fixture", alg: "RS256", use: "sig" }] }));
+    else if (req.url === "/api/login/oauth/access_token") {
       const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
       const body = new URLSearchParams(Buffer.concat(chunks).toString());
       validVerifier = createHash("sha256").update(body.get("code_verifier") ?? "").digest("base64url") === authorization.searchParams.get("code_challenge");
@@ -41,6 +41,24 @@ async function fixture() {
   };
 }
 describe("native OAuth PKCE", () => {
+  it("opens the Casdoor browser before making any network request", async () => {
+    const f = await fixture();
+    let opened = false;
+    const originalFetch = fetch;
+    const fetcher: typeof fetch = (url, options) => {
+      expect(opened).toBe(true);
+      return originalFetch(url, options);
+    };
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(fetcher);
+    try {
+      const token = await loginMembership(f.config, async url => {
+        opened = true;
+        expect(new URL(url).pathname).toBe("/login/oauth/authorize");
+        await f.open(url);
+      }, new AbortController().signal, fetcher);
+      expect(token).toBe("test-only-access-token");
+    } finally { spy.mockRestore(); }
+  });
   it("uses S256/state/nonce and never sends a desktop client secret", async () => {
     const f = await fixture();
     expect(await loginMembership(f.config, f.open, new AbortController().signal)).toBe("test-only-access-token");

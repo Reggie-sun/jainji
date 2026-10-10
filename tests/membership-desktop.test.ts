@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { MembershipSession } from "../src/main/membership-session.js";
+import { MembershipSession, fetchMembership } from "../src/main/membership-session.js";
 import { installMembershipIpc, requiresMembership } from "../src/main/membership-ipc.js";
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import { MembershipConfigSchema, type MembershipStatus } from "../src/shared/membership.js";
@@ -12,7 +12,7 @@ const desktop = vi.hoisted(() => ({ isPackaged: false, root: "" }));
 vi.mock("electron", () => ({
   app: { get isPackaged() { return desktop.isPackaged; }, getAppPath: () => desktop.root,
     commandLine: { hasSwitch: () => true, appendSwitch: () => {} } },
-  ipcMain: { handle: () => {} }, safeStorage: { isEncryptionAvailable: () => false }, shell: { openExternal: async () => {} },
+  ipcMain: { handle: () => {} }, net: { fetch: vi.fn() }, safeStorage: { isEncryptionAvailable: () => false }, shell: { openExternal: async () => {} },
 }));
 
 const config = MembershipConfigSchema.parse({ serviceUrl: "http://127.0.0.1:8789", issuer: "http://127.0.0.1:8000", clientId: "desktop", organization: "jianji", application: "jianji", pricingName: "jianji" });
@@ -26,6 +26,24 @@ function fixture() {
   return { session, check, stopped, storage };
 }
 describe("desktop membership", () => {
+  it("uses the supplied app network transport for membership and renewal tickets", async () => {
+    const transport = vi.fn<typeof fetch>(async url => String(url).endsWith("/billing/ticket")
+      ? Response.json({ ticket: "a".repeat(64) }) : Response.json(allowed));
+    const session = new MembershipSession(config, {
+      storage: { read: async () => "saved-token", write: async () => {} },
+      check: token => fetchMembership(config, token, transport), fetcher: transport,
+      login: async () => "token", changed: () => {}, lostAccess: async () => {},
+    });
+    await session.restore();
+    expect(await session.billingUrl()).toBe(`${config.serviceUrl}/billing#ticket=${"a".repeat(64)}`);
+    expect(transport).toHaveBeenCalledTimes(2);
+    for (const [, options] of transport.mock.calls) {
+      expect(options?.redirect).toBe("error");
+      expect(options?.headers).toMatchObject({ Authorization: "Bearer saved-token" });
+      expect(options?.signal).toBeInstanceOf(AbortSignal);
+    }
+    expect(session.snapshot().state).toBe("allowed");
+  });
   it("shows restoration while reading the saved login, then admits without a new login", async () => {
     let resolve!: (token: string) => void;
     const login = vi.fn(async () => "unexpected-token");
@@ -166,5 +184,6 @@ describe("desktop membership", () => {
   it("rejects remote HTTP and credential-bearing configuration", () => {
     expect(() => MembershipConfigSchema.parse({ ...config, serviceUrl: "http://example.com" })).toThrow();
     expect(() => MembershipConfigSchema.parse({ ...config, clientSecret: "never-in-desktop" })).toThrow();
+    expect(() => MembershipConfigSchema.parse({ ...config, casdoorUrl: "http://127.0.0.1:8000" })).toThrow();
   });
 });

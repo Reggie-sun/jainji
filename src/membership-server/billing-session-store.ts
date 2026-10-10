@@ -18,7 +18,7 @@ export class FileBillingSessionStore {
   private writes = Promise.resolve();
   constructor(root: string, config: MembershipServerConfig, private readonly clock = Date.now) {
     this.root = path.join(root, "sessions");
-    const { clientSecret, ...publicConfig } = config;
+    const { clientSecret, casdoorUrl: _privateTransport, ...publicConfig } = config;
     this.binding = createHash("sha256").update(JSON.stringify(publicConfig)).digest();
     this.key = Buffer.from(hkdfSync("sha256", clientSecret, this.binding, "jianji-billing-session-v1", 32));
   }

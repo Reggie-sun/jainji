@@ -7,6 +7,7 @@ import { BillingError, ManualPayments } from "./manual-payments.js";
 import { billingPage, billingScript } from "./billing-page.js";
 import type { MembershipServerConfig } from "./policy.js";
 import { BILLING_SESSION_SECONDS, FileBillingSessionStore, type BillingSession } from "./billing-session-store.js";
+import { casdoorOidcFetch } from "./casdoor-transport.js";
 
 type Login = { state: string; nonce: string; verifier: string; expires: number; client: oidc.Configuration };
 const opaque = () => randomBytes(32).toString("hex");
@@ -62,10 +63,7 @@ export class BillingPortal {
       this.reserve(this.logins);
       const client = await oidc.discovery(new URL(this.config.issuer), this.config.clientId, undefined, oidc.None(), {
         execute: this.config.issuer.startsWith("http:") ? [oidc.allowInsecureRequests] : undefined,
-        [oidc.customFetch]: (target, options) => {
-          if (new URL(String(target)).origin !== this.config.issuer) throw new Error("Invalid issuer.");
-          return fetch(target, { ...options, redirect: "error", signal: AbortSignal.timeout(10_000) });
-        },
+        [oidc.customFetch]: casdoorOidcFetch(this.config),
       });
       const id = opaque(), login: Login = { client, state: oidc.randomState(), nonce: oidc.randomNonce(), verifier: oidc.randomPKCECodeVerifier(), expires: Date.now() + 180_000 };
       const target = oidc.buildAuthorizationUrl(client, { redirect_uri: `${this.config.serviceUrl}/billing/callback`, scope: "openid profile", response_type: "code", code_challenge: await oidc.calculatePKCECodeChallenge(login.verifier), code_challenge_method: "S256", state: login.state, nonce: login.nonce });

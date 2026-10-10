@@ -9,6 +9,7 @@ import { MembershipServerConfigSchema, addUtcCalendarMonthClamped, membershipSer
 import { createMembershipServer } from "../src/membership-server/server.js";
 import { GOOGLE_TRIAL_MS, SqliteGoogleTrialStore } from "../src/membership-server/google-trial.js";
 import { FileBillingSessionStore } from "../src/membership-server/billing-session-store.js";
+import { casdoorOidcFetch } from "../src/membership-server/casdoor-transport.js";
 
 type JsonObject = Record<string, unknown>;
 type Fault = { kind: "status" | "redirect" | "raw" | "oversized"; body?: string; status?: number };
@@ -47,7 +48,7 @@ async function listen(server: Server): Promise<string> {
   return `http://127.0.0.1:${address.port}`;
 }
 
-async function fixture(options: { createdTime?: string; now?: string } = {}) {
+async function fixture(options: { createdTime?: string; now?: string; publicIssuer?: string } = {}) {
   const state: FixtureState = {
     now: options.now ?? "2024-02-01T00:00:00.000Z",
     user: {
@@ -155,10 +156,11 @@ async function fixture(options: { createdTime?: string; now?: string } = {}) {
   });
 
   const casdoorUrl = await listen(casdoor);
-  issuer = casdoorUrl;
+  issuer = options.publicIssuer ?? casdoorUrl;
   const config = MembershipServerConfigSchema.parse({
     serviceUrl: "http://127.0.0.1:8788",
-    issuer: casdoorUrl,
+    issuer,
+    ...(options.publicIssuer ? { casdoorUrl } : {}),
     clientId: "jianji-client-id",
     clientSecret: "membership-server-secret-123",
     organization: "jianji-org",
@@ -188,6 +190,46 @@ async function status(base: string, accessToken = "valid-access-token") {
   expect(response.status).toBe(200);
   return MembershipStatusSchema.parse(await response.json());
 }
+
+describe("private Casdoor transport", () => {
+  it("preserves encrypted browser sessions when only private transport changes", async () => {
+    const f = await fixture();
+    const directory = await mkdtemp(path.join(tmpdir(), "billing-transport-"));
+    temporaryDirectories.push(directory);
+    const id = "b".repeat(64), session = { token: "saved-access-token", csrf: "c".repeat(64), expires: Date.now() + 60_000 };
+    await new FileBillingSessionStore(directory, f.config).put(id, session);
+    expect(await new FileBillingSessionStore(directory, { ...f.config, casdoorUrl: "http://127.0.0.1:8000" }).get(id)).toEqual(session);
+  });
+  it("checks private loopback APIs while validating the public token issuer", async () => {
+    const f = await fixture({ publicIssuer: "https://auth.example.com", createdTime: "2024-02-01T00:00:00.000Z" });
+    expect((await status(f.base)).state).toBe("allowed");
+    expect(f.state.requests.map(r => r.path)).toContain("/api/login/oauth/introspect");
+    expect(f.state.requests.every(r => r.authorization?.startsWith("Basic "))).toBe(true);
+    f.state.tokens.wrong = { active: true, client_id: f.config.clientId, username: "alice", sub: "user-uuid", iss: f.config.casdoorUrl, aud: [f.config.clientId], exp: Date.parse("2030-01-01T00:00:00Z") / 1000 };
+    expect((await status(f.base, "wrong")).reason).toBe("session-expired");
+  });
+  it("only permits an explicit private loopback origin in server configuration", async () => {
+    const f = await fixture();
+    for (const casdoorUrl of ["http://example.com", "https://example.com", "http://127.0.0.1:8000/api", "http://user:pass@127.0.0.1:8000", "http://127.0.0.1:8000/?x=1", "http://127.0.0.1:8000/#x"]) {
+      expect(() => MembershipServerConfigSchema.parse({ ...f.config, casdoorUrl })).toThrow();
+    }
+    expect(MembershipServerConfigSchema.parse({ ...f.config, casdoorUrl: "http://127.0.0.1:8000" }).casdoorUrl).toBe("http://127.0.0.1:8000");
+  });
+  it("routes OIDC discovery and token requests privately without changing issuer metadata or accepting another issuer", async () => {
+    const f = await fixture();
+    const transport = vi.fn<typeof fetch>(async () => Response.json({ issuer: "https://auth.example.com" }));
+    const fetcher = casdoorOidcFetch({ ...f.config, issuer: "https://auth.example.com", casdoorUrl: "http://127.0.0.1:8000" }, transport);
+    expect((await (await fetcher("https://auth.example.com/.well-known/openid-configuration")).json()).issuer).toBe("https://auth.example.com");
+    await fetcher("https://auth.example.com/api/login/oauth/access_token", { method: "POST", body: "code=fixture-code", redirect: "follow" });
+    expect(String(transport.mock.calls[0][0])).toBe("http://127.0.0.1:8000/.well-known/openid-configuration");
+    expect(String(transport.mock.calls[1][0])).toBe("http://127.0.0.1:8000/api/login/oauth/access_token");
+    expect(transport.mock.calls[1][1]).toMatchObject({ method: "POST", body: "code=fixture-code", redirect: "error" });
+    await expect(fetcher("https://other.example.com/api/token")).rejects.toThrow();
+    expect(transport).toHaveBeenCalledTimes(2);
+    await fetcher("https://auth.example.com//other.example.com/token");
+    expect(new URL(String(transport.mock.calls[2][0])).origin).toBe("http://127.0.0.1:8000");
+  });
+});
 
 async function getWithBody(base: string, body: string): Promise<{ statusCode: number; body: string }> {
   const url = new URL(base);

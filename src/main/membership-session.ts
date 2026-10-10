@@ -2,6 +2,7 @@ import { MEMBERSHIP_HEARTBEAT_MS, MembershipStatusSchema, signedOutMembership, t
 
 export interface MembershipStorage { read(): Promise<string | undefined>; write(token?: string): Promise<void>; }
 interface Dependencies {
+  fetcher?: typeof fetch;
   localDevelopment?: boolean;
   storage: MembershipStorage;
   check(token: string): Promise<MembershipStatus>;
@@ -110,7 +111,7 @@ export class MembershipSession {
     if (!this.config) throw new Error("账号服务尚未配置。");
     if (!this.token) return `${this.config.serviceUrl}/billing`;
     const generation = this.generation;
-    const response = await fetch(`${this.config.serviceUrl}/billing/ticket`, {
+    const response = await (this.deps.fetcher ?? fetch)(`${this.config.serviceUrl}/billing/ticket`, {
       method: "POST", headers: { Authorization: `Bearer ${this.token}` },
       redirect: "error", signal: AbortSignal.timeout(10_000),
     });
@@ -133,8 +134,8 @@ export class MembershipSession {
   dispose(): void { clearInterval(this.timer); this.timer = undefined; ++this.generation; this.loginController?.abort(); }
 }
 
-export async function fetchMembership(config: MembershipConfig, token: string): Promise<MembershipStatus> {
-  const response = await fetch(`${config.serviceUrl}/v1/membership`, {
+export async function fetchMembership(config: MembershipConfig, token: string, fetcher: typeof fetch = fetch): Promise<MembershipStatus> {
+  const response = await fetcher(`${config.serviceUrl}/v1/membership`, {
     headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
     redirect: "error", signal: AbortSignal.timeout(10_000),
   });

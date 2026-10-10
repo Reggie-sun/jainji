@@ -5,6 +5,12 @@ import { CasdoorClient, type CasdoorMembershipApi, type CasdoorSubscription, typ
 import type { GoogleTrialStore } from "./google-trial.js";
 
 export const MembershipServerConfigSchema = MembershipConfigSchema.extend({
+  casdoorUrl: z.string().url().transform(value => {
+    const url = new URL(value);
+    if (url.protocol !== "http:" || !["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+      || url.username || url.password || url.pathname !== "/" || url.search || url.hash) throw new Error("私有账号地址必须为 loopback HTTP origin。");
+    return url.origin;
+  }).optional(),
   clientSecret: z.string().min(16).max(512),
   monthlyPlan: z.literal("jianji-monthly"),
   yearlyPlan: z.literal("jianji-yearly"),
