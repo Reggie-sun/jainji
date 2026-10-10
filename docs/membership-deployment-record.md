@@ -1,5 +1,17 @@
 # Scope
 
+## Google Egress Deployment — 2026-10-11
+
+用户明确授权复用本机 Mihomo 到南京 VPS。本次只部署账号服务的 Google 出口，不代表 Google OAuth client 已配置或真实登录已验收；此前 Google 登录及三天试用源码仍是未部署候选。
+
+- 远端既有 `compose.yaml` 增加 `mihomo` sidecar，与 Casdoor 共用网络命名空间；仅监听该命名空间的 `127.0.0.1:17897`，无宿主端口映射、管理 API、TUN 或宿主路由变更。非 root UID 10001、只读根文件系统、drop ALL capabilities、no-new-privileges、128 MiB 上限、健康检查和 `unless-stopped`。
+- 复用本机当前“地球人 / 日本JP02”节点快照，不复制个人 Chrome、全局规则或订阅管理面板。配置 `mihomo/config.json` 为 0600，父目录 0700；节点更新需重新同步，未部署订阅自动更新。该节点的代理 TLS 保留原有 `skip-cert-verify` 设置；Google HTTPS 证书校验未关闭。
+- Mihomo `1.19.21` 静态 amd64 程序传输前后 SHA-256 相同：`cbb631fd443273dd236f470e6351d1e5686a2bbc66ffda1ba7772f1a9ff34c98`。Casdoor 使用 `HTTP_PROXY` / `HTTPS_PROXY`，`NO_PROXY` 排除本地及数据库；代理规则仅将 Google 账号、Google APIs 与头像域名走节点，其他请求保持直连。
+- 重建 Casdoor 时须同时重建共享网络命名空间的 Mihomo；本次已执行两者共同重建，数据库、会员服务和 Tunnel 未重建。回退点为远端 `compose.yaml.before-google-mihomo` 与 `backup.sh.before-google-mihomo`；回退时先移除 sidecar，再恢复原 Compose 并重建 Casdoor，保留数据库卷。
+- 原备份脚本已纳入 `mihomo` 目录，实际备份完成于 `backups/20261010T164458Z`（UTC）。私有配置与备份不进入 Git。
+
+实际验证：Mihomo 配置检查通过；Casdoor / MySQL / Mihomo healthy；Google discovery 返回 200，约 0.53 秒，Mihomo 重启后仍返回 200、约 0.56 秒；无凭据请求 token、userinfo、People 分别返回 400、401、403，证明接口连通，不证明授权成功。公网登录页和收费页均返回 200。监听检查确认没有新增公网代理端口。证据位于本机 `/tmp/jianji-mihomo-20261011/verification.json`；未执行整台 VPS 重启或真实 Google 授权。
+
 2026-10-10，用户将先前“仅写代码、不部署”的要求调整为部署到现有南京 VPS `jianji-vps-01`。本记录承接 [Membership](membership.md) 的登录、试用、定价、赠送、封禁和单会话合同；不改变视频制作、千川账号或历史上传结果。Cloudflare 使用用户指定账号，保留已有域名记录和服务，不开通付费附加产品。
 
 # Deployment
