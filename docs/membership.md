@@ -119,6 +119,10 @@ JIANJI_MEMBERSHIP_CONFIG=/absolute/public/membership.json make frontend
 
 服务器及用户浏览器均须能访问 Google；服务器换取令牌和读取 Google 用户资料的网络失败不能靠前端按钮修复。主进程仍通过 Casdoor PKCE 登录，既有单会话配置保持。
 
+公开说明页为 `/billing/about`，隐私说明为 `/billing/privacy`；两页无需登录，只允许 GET / HEAD，不建立会话或授予会员权限。Google OAuth 品牌主页和隐私链接使用 billing 的 HTTPS origin。页内联系方式保持静态可用，不依赖被 CSP 禁止的 Cloudflare 邮箱还原脚本。
+
+2026-10-11 公网 Google Provider 已接入，OAuth 发布状态为正式版；指定所有者 Google 身份经过真实回调核验后单独设为管理员，未启用按邮箱自动合并。软件使用 Google 登录后可见“管理用户”，付款申请在续费门户的“付款申请审核”区处理。旧管理员密码账号保留恢复路径；已有密码账号此前获得的一个月试用以显式赠送保留原截止时间，新密码注册不自动获试用。
+
 运行环境为支持 `node:sqlite` 的 Node 22（本机验证 22.21.0）。在服务器私有持久目录中显式初始化一次：
 
 ```bash

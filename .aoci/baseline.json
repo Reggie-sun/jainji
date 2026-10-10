@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-10T17:43:11Z",
+  "updated_at": "2026-10-10T18:26:51Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "389b177b6b602540e22d18d003c7813fb4fedbd7311a206590d793c8ed0a3df2",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "326547a99350f72ecfc5e154e8a5a20754f61fd32f626c6a4c5f571408178e64",
-      "size": 110642,
-      "normalized_sha256": "326547a99350f72ecfc5e154e8a5a20754f61fd32f626c6a4c5f571408178e64"
+      "sha256": "607bf738c581d067105b5c6b20f1a87cc3abdb2838da69811f6e9e858245e7e0",
+      "size": 111086,
+      "normalized_sha256": "607bf738c581d067105b5c6b20f1a87cc3abdb2838da69811f6e9e858245e7e0"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2043,9 +2043,9 @@
       "normalized_sha256": "53113866d733ba445710da43b714a71cce5ac0dd3586f6da04f7348bad5e469d"
     },
     "src/membership-server/billing-page.ts": {
-      "sha256": "85780d2da968e37f43e8cc7265d2970a07f393e584b3fc53c76f99be18c90fab",
-      "size": 8252,
-      "normalized_sha256": "85780d2da968e37f43e8cc7265d2970a07f393e584b3fc53c76f99be18c90fab"
+      "sha256": "706b99e4bf7b084b4e699d622e0fd9bb97c1c0fd62d88e9549baf9151f06ac79",
+      "size": 8370,
+      "normalized_sha256": "706b99e4bf7b084b4e699d622e0fd9bb97c1c0fd62d88e9549baf9151f06ac79"
     },
     "src/membership-server/billing-session-store.ts": {
       "sha256": "3eae8eb2a936d43f5533f5e1af764345131095270fa1ec5f8ce9a9be7bf66b24",
@@ -2087,10 +2087,15 @@
       "size": 10145,
       "normalized_sha256": "35cbf920e4fa1ad7c6498fa0126bcbd547f73929be09163beaccd3328c421a96"
     },
+    "src/membership-server/public-pages.ts": {
+      "sha256": "67a440882d7af822774b851ec0296a670fa15c27d23bfa0dfc4a193e04cc111c",
+      "size": 4048,
+      "normalized_sha256": "67a440882d7af822774b851ec0296a670fa15c27d23bfa0dfc4a193e04cc111c"
+    },
     "src/membership-server/server.ts": {
-      "sha256": "4418383ca9479beb6b5952587e2d345f414aca18ae122e9edc26e9dd183fd303",
-      "size": 4455,
-      "normalized_sha256": "4418383ca9479beb6b5952587e2d345f414aca18ae122e9edc26e9dd183fd303"
+      "sha256": "cfb4cf1b5b42dd2fd2298be63d54c00e8c55790b6f36c623597173ceedb47abc",
+      "size": 4584,
+      "normalized_sha256": "cfb4cf1b5b42dd2fd2298be63d54c00e8c55790b6f36c623597173ceedb47abc"
     },
     "src/model-server/gateway.ts": {
       "sha256": "f8bb315bc31d0b4ddba7ad8f5cf402baf9c7b7463389c62dab26819110cb1d7c",

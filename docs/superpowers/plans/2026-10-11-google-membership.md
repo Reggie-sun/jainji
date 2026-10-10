@@ -19,6 +19,7 @@
 2. `casdoor.ts`、`policy.ts`、`server.ts`、`index.ts`、`manual-payments.ts`：读取可信 Google ID、注入同一个试用 owner；替换原按注册日期赠送一个月的路径，保留原付费/赠送/封禁和管理员准入。
 3. `src/shared/membership.ts`、`src/renderer/MembershipGate.tsx`、`docs/membership.md`：3 天规则及管理员入口说明。补充操作入口用于显式初始化私有试用数据库。
 4. VPS 上先备份，创建账本并纳入备份，再配置 Google Provider、精确 callback 与现有应用。用户使用指定 Google 账号配置 OAuth；缺凭据/用户确认/可用网络时报告部署阻断，不伪造 Google 登录成功。
+5. `public-pages.ts` 复用原会员服务提供公开产品与隐私说明，绑定 Google 品牌 HTTPS 链接；修正续费页旧一月试用提示。公开说明不建立会话或改变准入；指定所有者身份经真实登录核验后显式授管理员，既有恢复账号保留。
 
 ## Verification
 

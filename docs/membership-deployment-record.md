@@ -149,3 +149,31 @@ sudo systemctl status cloudflared-jianji-membership.service
 - R2 `0c7f1a5c-f39d-455a-b61f-4bd14d704580` 实际 11 次 k3 请求身份已验证，进程 exit 0，但 canonical classification 为 `EVIDENCE_INCOMPLETE`：两处 standalone Harness receipt 的引用只读过包内副本，没有对应 standalone 原生 Read。报告已隔离，不作为通过回执。原源码未变；第三轮以去除巨大回执副本的最小完整边界包补齐引用与真实公网证明，保留前两轮全部消费和失败事实。
 
 - R3 `e00cec7c-f40d-4eb2-a778-46ee074f533c` canonical receipt `PARSED`、exit 0，3 次 k3 请求身份已验证；只读复核完整当前边界，未提出新的代码 blocker。Parent 核对 LP-01 / LP-02 的源码、故障回归和实际运行证据后关闭；公网源码 hash 与实际 token / cookie / 互踢结果由 Parent 核验。PC-1：`20261010T174335Z-dabd3561` 为最终源码检查点，前面的 53 项回执仅为历史；后续文档收尾的 owned scope 以最终 completion 回执为准。PC-2 Windows 实机仍不在本轮实测范围；PC-3 日常本机代理仍为明确剩余问题；PC-4 `__Host-` 迁移不纳入此次保存登录修复。R3 对容量限制的描述不作机器事实采用：`FileBillingSessionStore.create` 实际强制 active >= 1000 时拒绝，单实例运行则为部署约束。
+
+# Google Login Activation
+
+2026-10-11 用户完成 Google Cloud 登录后继续原授权部署。复用 reggie-sun 的正常 Chrome 会话，经个人 profile 的 Chrome DevTools MCP / CLI 操作，未重新索取密码、验证码或改变共享 MCP 配置。
+
+## Configuration And Migration
+
+- Google Cloud project `eng-origin-478812-n7` 的 Web application client 回调为 `https://auth.reggie-sun.ccwu.cc/callback`；基本身份范围 `openid email profile`。品牌主页与隐私链接分别为 `https://billing.reggie-sun.ccwu.cc/billing/about` 和 `/billing/privacy`，发布状态回读为“正式版”。不声明品牌认证已经完成。
+- Casdoor 的 `admin/jianji-google` Provider 加入原 `jianji-desktop` application；允许注册和登录，不允许解绑，`bindingRule=[]`，不按邮箱自动绑定旧管理员。应用保留 720 小时 token / cookie、独占登录及单会话设置。首次生成的 OAuth secret 在配置过程中作废删除，新 secret 只写本机及 VPS 私有文件；仓库不保存 secret。
+- Google 用户经真实回调创建并核对 Google ID / Casdoor ID `115584184003583039108` 后，显式设置该身份为管理员；`owner` 密码管理员仍保留。没有对其他账号按邮箱授管理员，也没有给普通注册账号增加管理员权限。
+- 部署前备份 `backups/20261010T181254Z`；旧 bundle、compose、backup 脚本分别保留私有检查点。原已有 `owner` / `reggie` 的一个月试用以 `legacy-trial-20261011-*` 显式免费 Subscription 保留，截止分别为 `2026-11-09T21:53:58Z` / `2026-11-10T16:00:39Z`，不伪造付款。
+- 显式初始化私有 `trial-state/trials.sqlite`，文件 0600；compose 持久挂载并设置 `JIANJI_MEMBERSHIP_TRIAL_DATABASE`。仅更新会员服务 bundle 和会员容器，不重建 Casdoor / MySQL 数据。最终 bundle SHA-256 `e2122e87d9021b3cd5e9db2126ddbf17c7865331150d7414087a0619d4132cab`。
+- backup 脚本停止运行中的 membership，保存数据库及私有配置、人工核款与加密会话、试用账本，再恢复服务。实际备份 `backups/20261010T182406Z/config.tar.gz` 含 `trial-state/trials.sqlite` 和 `billing-state/sessions/`。首次非 sudo 调用因 Docker / 目录权限失败，未生成有效备份；随后 sudo 调用成功。不以失败目录充当备份。
+
+## Runtime Evidence
+
+- 真实 Google 授权从 Google 回到 Casdoor，再到公网续费门户成功；Google identity 新账号首次请求仅新增一条试用记录，`started_at=1791656370462`，`expires_at=1791915570462`，相差精确 259200000ms。重启会员服务后同一条记录未重新授时，门户 cookie 仍能读取申请接口 200；管理员“付款申请审核”区实际可见。
+- 原 native PKCE helper 复用当前 Casdoor Google SSO，未强制重新输入 Google 密码；取得 30 天 token，在线会员检查 allowed 且当前用户为管理员。两个独立 Electron 进程用 `gnome_libsecret` 加密保存/恢复该真实 Google token，各两次在线检查，登录调用数均为 0。网络校验使用有界私有 SSH SOCKS QA 通道，保留公开 HTTPS origin / TLS 校验；不能据此声称日常本机网络问题已修复。
+- 公开产品/隐私页实际 Chrome MCP 检查，390px 宽度无横向溢出；三天试用及 30 天记住登录提示正确，隐私说明不申请邮件/联系人/云盘权限。Cloudflare 对邮箱替换依赖脚本，按[官方静态 HTML 例外](https://developers.cloudflare.com/waf/tools/scrape-shield/email-address-obfuscation/)保留直接联系链接，不放宽 CSP。
+- 会员 5 文件 55 项测试、typecheck 与会员 bundle build 通过；新增公开页面 GET / HEAD、非支持方法拒绝、不建立 cookie、不授会员权限回归，续费页不再显示一月试用。最终 scoped Harness / completion 以本轮机器回执为准。
+
+## Independent Investigation And Limits
+
+- 受管 Kimi deep 第一次调查 `f4361bc6-d952-4d33-81f1-ad2b31ae741f` 因 `STRUCTURED_OUTPUT_EXHAUSTED` 无可用终态报告，保留失败、不当作通过。收窄到 SQLite / policy 的第二次 `064939f4-320f-4e86-ac23-cc90d8f21dc8` 为 `PARSED`，2 次 k3 请求身份已验证。Parent 核对 `index.ts` 正常启动仅打开数据库，缺失/损坏时抛错退出；初始化仅显式 CLI，现有库独占创建失败；实际 compose 持久挂载与停机备份已核验。
+- Kimi 指出的真实边界保留：人为丢弃全部记录后显式初始化全新合法库，无法从空库推断过去领取历史；运营不得把重新初始化作为丢账恢复，必须恢复完整备份。这是可信管理员恢复边界，不宣称能够防止管理员故意清账。单会员 writer，未做多实例 / 容量、整机断电、Windows 实机验收。
+- Google 不同账号仍是不同身份，不能证明同一自然人不会领取多次。微信/支付宝仍人工核款，本轮没有真实付款或商户自动回调验收。Google 用户浏览器须能访问 Google；此前日常本机网络问题仍须单独处理。
+- 最终源码 checkpoint 的 owned Harness `20261010T182658Z-fbfb1187` 通过会员 55 项、Harness 104 项、typecheck、documents 及 owned AOCI；官方 Verify / Check / Guide 对齐，Guide `complete=true` / `next_action=none`。Risk Gate 为 `KIMI_REVIEW_NOT_REQUIRED`：当前代码只新增固定静态说明路由与修正提示，不改凭据、身份授权或账本算法；无用户指定 review，也未发现关键级故障路径或重大后果且仍有实质验证缺口的组合。部署管理员绑定已按精确真实身份回读，不能将前述 Kimi 调查冒充 implementation review。源码 bundle hash 绑定上文，详细判定及 owned snapshot 位于 `/tmp/jianji-google-resume-20261011/review-risk-decision.json`。
+- 最后备份 `backups/20261010T182832Z` 已完成且会员容器恢复；清除了配置操作临时复制的系统管理员凭据。软件同一 Google token 的单次续费票据在新文档成功消费并清除 URL 片段，申请接口 200、管理员审核区可见；未另行登录或审核付款。本段记录后只读 completion 仍须绑定最终文档 scope。

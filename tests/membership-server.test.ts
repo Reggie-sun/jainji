@@ -216,6 +216,23 @@ function subscription(plan: string, overrides: JsonObject = {}): JsonObject {
 }
 
 describe("membership server", () => {
+  it("serves public OAuth information without account credentials or granting membership", async () => {
+    const origin = await listen(createMembershipServer());
+    for (const route of ["/billing/about", "/billing/privacy"]) {
+      const response = await fetch(`${origin}${route}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(response.headers.get("content-security-policy")).toContain("default-src 'none'");
+      expect(await response.text()).toContain("简辑");
+      const head = await fetch(`${origin}${route}`, { method: "HEAD" });
+      expect(head.status).toBe(200);
+      expect(await head.text()).toBe("");
+      expect((await fetch(`${origin}${route}`, { method: "POST", body: "ignored" })).status).toBe(405);
+    }
+    const membership = await (await fetch(`${origin}/v1/membership`)).json();
+    expect(membership.state).toBe("unconfigured");
+  });
+
   it("starts on loopback at the default port and returns an unconfigured status without config", async () => {
     const server = await startMembershipServer({ config: null, listenPort: 0 });
     servers.push(server);
@@ -646,6 +663,9 @@ describe("billing browser transport", () => {
       restart();
       expect((await fetch(origin + "/billing/requests", { headers: { Cookie: cookie } })).status).toBe(401);
       const page = await fetch(origin + "/billing"); expect(page.headers.get("content-security-policy")).toContain("frame-ancestors 'none'");
+      const pageText = await page.text();
+      expect(pageText).toContain("每个 Google 身份可领取一次 3 天试用");
+      expect(pageText).not.toContain("免费试用一个月");
     } finally { await new Promise<void>(r => { server.close(() => r()); server.closeAllConnections(); }); }
   });
 });

@@ -7,6 +7,7 @@ import { CasdoorClient } from "./casdoor.js";
 import { FileBillingWriteGuard } from "./billing-write-guard.js";
 import { FileBillingSessionStore } from "./billing-session-store.js";
 import type { GoogleTrialStore } from "./google-trial.js";
+import { handleMembershipPublicPage } from "./public-pages.js";
 
 export interface MembershipServerOptions {
   config?: MembershipServerConfig | null;
@@ -25,6 +26,7 @@ export function createMembershipServer(options: MembershipServerOptions = {}): S
   const billing = config && options.billingAssets && options.billingState ? new BillingPortal(config, options.billingAssets, new ManualPayments(config, new CasdoorClient(config), options.clock ?? (() => new Date()), new FileBillingWriteGuard(options.billingState), options.trials), new FileBillingSessionStore(options.billingState, config)) : undefined;
   const server = createServer((request, response) => {
     void (async () => {
+      if (handleMembershipPublicPage(request, response)) return;
       if (billing && await billing.handle(request, response)) return;
       await handleRequest(request, response, config, options.fetcher, options.clock, options.trials);
     })().catch(() => {
