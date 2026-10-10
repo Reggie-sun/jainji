@@ -2,6 +2,15 @@
   "schemaVersion": 2,
   "codeChecks": [
     {
+      "id": "scheduled-automation",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/automation-scheduler.test.ts", "tests/automation-runtime.test.ts", "tests/automation-fixed-production.test.ts", "tests/automation-desktop.test.ts", "tests/automation-ui.test.ts", "tests/automation-upload.test.ts", "tests/automation-upload-page.test.ts", "tests/automation-upload-receipt.test.ts"],
+      "timeoutMs": 180000
+    },
+    {
       "id": "account-membership",
       "kind": "vitest",
       "required": true,
@@ -664,6 +673,12 @@
     }
   ],
   "routes": [
+    {
+      "id": "domain-scheduled-automation",
+      "paths": ["src/main/automation-*.ts", "src/main/qianchuan-confirmation-receipt.ts", "src/shared/automation.ts", "src/renderer/AutomationPanel.tsx", "src/renderer/automation.css", "tests/automation-*.test.ts", "docs/superpowers/plans/2026-10-10-scheduled-automation.md"],
+      "checkIds": ["typecheck", "harness", "scheduled-automation", "lifecycle", "douyin-upload", "documents", "owned-aoci"],
+      "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/video-validation-harness-spec.md", "docs/superpowers/plans/2026-10-10-scheduled-automation.md"]
+    },
     {
       "id": "domain-account-membership",
       "paths": ["src/main/membership-*.ts", "src/membership-server/**", "src/shared/membership.ts", "src/renderer/MembershipGate.tsx", "src/renderer/membership.css", "tests/membership-*.test.ts"],

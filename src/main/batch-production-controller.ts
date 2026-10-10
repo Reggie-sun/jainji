@@ -124,10 +124,12 @@ export class BatchProductionController {
     }
   }
 
-  async start(input: unknown): Promise<BatchProductionRun> {
+  async start(input: unknown, fixedProjects?: ReadonlyMap<string, Project>): Promise<BatchProductionRun> {
     this.assertIdle();
     if (this.restorationError) throw new Error(this.restorationError);
     const { entries } = BatchProductionStartSchema.parse(input);
+    if (fixedProjects && (fixedProjects.size !== entries.length || entries.some(entry => !fixedProjects.has(entry.recentProjectId)))) throw new Error("定时制作的固定模板集合不完整。");
+    const projects = fixedProjects ? new Map([...fixedProjects].map(([id, project]) => [id, structuredClone(project)])) : undefined;
     if ([...this.dependencies.taskStatuses().values()].some(status => !terminal.has(status))) throw new Error("请等待当前导出完成，或先停止已有任务。");
     this.controller = new AbortController();
     const at = new Date().toISOString();
@@ -140,7 +142,7 @@ export class BatchProductionController {
     };
     this.executing = true;
     const initialSave = this.persist();
-    this.pending = this.execute(entries, this.controller.signal, initialSave);
+    this.pending = this.execute(entries, this.controller.signal, initialSave, projects);
     await initialSave;
     return this.snapshot()!;
   }
@@ -177,8 +179,8 @@ export class BatchProductionController {
     return this.activeCancellation;
   }
 
-  private async freeze(entry: BatchProductionEntry, job: BatchProductionJob): Promise<FrozenJob> {
-    const project = structuredClone(await this.dependencies.loadProject(entry.recentProjectId));
+  private async freeze(entry: BatchProductionEntry, job: BatchProductionJob, fixedProjects?: ReadonlyMap<string, Project>): Promise<FrozenJob> {
+    const project = structuredClone(fixedProjects ? fixedProjects.get(entry.recentProjectId)! : await this.dependencies.loadProject(entry.recentProjectId));
     delete project.latestProduction;
     const workspace = project.workspaceDraft;
     const selectedIds = workspace?.selectedMediaIds ?? project.mediaItems.filter(item => item.probeStatus === "ready").map(item => item.id);
@@ -227,7 +229,7 @@ export class BatchProductionController {
     return { job, projectPath, project, input: validatedInput, requestedOutput: entry.outputDirectory, authorization };
   }
 
-  private async execute(entries: BatchProductionEntry[], signal: AbortSignal, initialSave: Promise<void>): Promise<void> {
+  private async execute(entries: BatchProductionEntry[], signal: AbortSignal, initialSave: Promise<void>, fixedProjects?: ReadonlyMap<string, Project>): Promise<void> {
     try {
       await initialSave;
       const frozen: FrozenJob[] = [];
@@ -236,7 +238,7 @@ export class BatchProductionController {
         if (signal.aborted) break;
         const job = this.run!.jobs[index];
         if (job.status === "cancelled") continue;
-        try { frozen.push(await this.freeze(entry, job)); }
+        try { frozen.push(await this.freeze(entry, job, fixedProjects)); }
         catch (error) { if (this.run!.jobs[index].status !== "cancelled") { job.status = "failed"; job.error = message(error); } }
         await this.persist();
       }

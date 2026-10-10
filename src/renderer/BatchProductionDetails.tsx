@@ -58,7 +58,7 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
   const uploads = detail.upload?.tasks ?? [];
   const uploadAccountIds = [...new Set([...uploads, ...(detail.upload?.closedBatches ?? [])].map(target => target.advertiserId).filter(Boolean))];
   const processing = uploads.filter(task => ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state));
-  const uploaded = uploads.filter(task => task.upload_outcome === "READY").length;
+  const uploaded = uploads.filter(task => ["READY", "ACCEPTED"].includes(task.upload_outcome)).length;
   const pending = uploads.filter(task => task.state === "PENDING").length;
   const unknown = uploads.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED" && !processing.includes(task)).length;
   return <>
@@ -66,14 +66,15 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
     {job.error && <p className="notice error">{job.error}</p>}
     {job.accountProduct && <section className="card brief-card" aria-label="本项千川上传">
       <div className="card-header"><h2>千川上传 · {uploadAccountIds.length ? uploadAccountIds.map(id => `${qianchuanTargetName(id, detail.upload?.accounts ?? [], job.accountProduct)}（账户 ${id}）`).join("、") : "等待账号任务"}</h2><span>导出与上传进度分别记录</span></div>
-      <p role="status" aria-label="本项上传进度">已上传 {uploaded} / {total} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条 · 需处理 {uploads.length - uploaded - pending - processing.length - unknown} 条 · 停在确定前</p>
-      <small>上传记录会保存，同账号同计划下不重复上传。请保持任务 Chrome 页面打开，检查后自行确认。</small>
+      <p role="status" aria-label="本项上传进度">已上传 {uploaded} / {total} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条 · 需处理 {uploads.length - uploaded - pending - processing.length - unknown} 条 · 普通上传停在确定前</p>
+      <small>上传记录会保存，同账号同计划下不重复上传。普通上传请在 Chrome 检查后确认；定时上传以平台接收回执为准。</small>
       {detail.upload?.message && <p>{detail.upload.message}</p>}
       {!!unknown && <p className="notice error" role="alert">{unknown} 条上传结果未知，需核查原 Chrome 上传页面；这些文件禁止重新上传。尚未选文件的成片仍保留在队列中。</p>}
       {detail.upload?.tasks.map(task => <div className="result-row" key={task.upload_task_id}>
         <div className="result-info"><strong>{task.file_name}</strong><p>{qianchuanUploadLabels[task.state]} · {qianchuanTargetName(task.advertiserId, detail.upload?.accounts ?? [], task.accountProduct)} · 账户 {task.advertiserId} / 计划 {task.adId}</p>
           {task.failure && <small className="batch-error">{task.failure.message} {task.failure.next_action}</small>}
           {task.upload_outcome === "READY" && <small>上传记录已保存 · 待在 Chrome 确认</small>}
+          {task.acceptedEvidence && <small>平台已接收 · 视频 ID {task.acceptedEvidence.platformVideoId} · 不表示审核通过或已经产生投放</small>}
           {task.upload_outcome === "MAY_HAVE_UPLOADED" && <small>结果未知，禁止重新上传，请核查原页面。</small>}
         </div>
         {onResumeUpload && !detail.upload?.historical && !task.duplicate_of && ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN", "CANCELLED"].includes(task.state) &&

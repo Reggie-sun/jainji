@@ -4,7 +4,7 @@ import { mkdir, open, readdir, lstat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { atomicWriteJson } from "./store.js";
-import { ClosedUploadBatchSchema, type ClosedUploadBatch } from "../shared/douyin-upload.js";
+import { AcceptedEvidenceSchema, ClosedUploadBatchSchema, type AcceptedEvidence, type ClosedUploadBatch } from "../shared/douyin-upload.js";
 import { LegacyMarkerSchema, validateLegacy } from "./douyin-upload-legacy.js";
 import { FinalArtifactInputSchema, UploadIdentitySchema, UploadIdSchema, QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, QianchuanUploadResultSchema, UploadAuthorizationSchema, PageOwnershipSchema, uploadFailure, type UploadIdentity, type QianchuanUploadConfig, type PageOwnership, type UploadAuthorization } from "../shared/douyin-upload.js";
 
@@ -57,6 +57,7 @@ const closureBytes = (data: State, batchId: string) => Buffer.from(`${JSON.strin
 
 /** One ledger: new selection fences never grant creator publication permission. */
 export class DouyinUploadStore {
+  private readonly acceptanceAttempts = new Map<object, UploadTaskRecord[]>();
   private data: State = empty();
   private fences = new Map<string, Fence>();
   private legacyResults: import("../shared/douyin-upload.js").UploadResult[] = [];
@@ -131,7 +132,7 @@ export class DouyinUploadStore {
       await this.validateClosureArchives(data);
       if (original && JSON.parse(original.toString("utf8")).version === 2) { await atomicWriteJson(this.statePath, data); await strictSyncDirectory(this.root); }
       for (const task of data.tasks) {
-        if (task.result.state === "DISCARDED" || data.closedBatches.some(batch => batch.pageBatchId === task.authorization.pageBatchId)) continue;
+        if (["DISCARDED", "ACCEPTED"].includes(task.result.state) || data.closedBatches.some(batch => batch.pageBatchId === task.authorization.pageBatchId)) continue;
         const fence = fences.get(task.result.upload_task_id);
         if (fence && task.result.state === "NEEDS_HUMAN" && task.result.upload_outcome === "MAY_HAVE_UPLOADED" && !task.result.retryable) continue;
         if (fence && task.result.state !== "WAITING_FOR_CONFIRMATION") task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false, readyEvidence: undefined,
@@ -150,6 +151,7 @@ export class DouyinUploadStore {
       const tasks = data.tasks.filter(task => task.authorization.pageBatchId === closed.pageBatchId), first = tasks[0];
       if (closedIds.has(closed.pageBatchId) || !first || !this.canClose(data, closed.pageBatchId) || first.input.project_id !== closed.projectId ||
         first.authorization.target.advertiserId !== closed.advertiserId || first.authorization.target.adId !== closed.adId || first.authorization.expectedCount !== closed.expectedCount ||
+        (closed.admittedCount ?? closed.expectedCount) !== tasks.length ||
         JSON.stringify(tasks.map(task => task.result.upload_task_id).sort()) !== JSON.stringify(closed.taskIds) || createHash("sha256").update(closureBytes(data, closed.pageBatchId)).digest("hex") !== closed.archiveSha256) throw new Error("Closed batch binding mismatch");
       closedIds.add(closed.pageBatchId);
     }
@@ -179,15 +181,26 @@ export class DouyinUploadStore {
       }
       if (task.result.upload_outcome !== "NOT_SELECTED" && !fence && !task.result.duplicate_of) throw new Error("Missing selection fence");
       if (task.result.readyEvidence && fence && (JSON.stringify(task.result.readyEvidence.pageOwnership) !== JSON.stringify(fence.pageOwnership) || task.result.readyEvidence.selectedCount < fence.selectedIndex || task.result.readyEvidence.selectedCount > fenceCounts.get(fence.pageOwnership.pageBatchId)!)) throw new Error("Ready ownership mismatch");
+      if (task.result.acceptedEvidence && fence && (JSON.stringify(task.result.acceptedEvidence.pageOwnership) !== JSON.stringify(fence.pageOwnership) ||
+        task.result.acceptedEvidence.attempt !== fence.attempt || task.result.acceptedEvidence.selectedCount !== task.authorization.expectedCount ||
+        fenceCounts.get(fence.pageOwnership.pageBatchId) !== task.authorization.expectedCount)) throw new Error("Accepted ownership mismatch");
     }
     for (const group of groups.values()) {
       group.sort((left, right) => left.selectedIndex - right.selectedIndex);
       if (group.some((fence, index) => fence.selectedIndex !== index + 1 || JSON.stringify(fence.pageOwnership) !== JSON.stringify(group[0].pageOwnership))) throw new Error("Batch page ownership mismatch");
+      const members = group.map(fence => tasksById.get(fence.upload_task_id)!);
+      if (members.some(task => task.result.acceptedEvidence)) {
+        const proof = members[0]!.result.acceptedEvidence;
+        if (!proof || members.length !== members[0]!.authorization.expectedCount || members.some(task => !task.result.acceptedEvidence ||
+          task.result.acceptedEvidence.requestSha256 !== proof.requestSha256 || task.result.acceptedEvidence.responseSha256 !== proof.responseSha256) ||
+          new Set(members.map(task => task.result.acceptedEvidence?.platformVideoId)).size !== members.length) throw new Error("Incomplete accepted batch");
+      }
     }
     for (const id of fences.keys()) if (!ids.has(id)) throw new Error("Orphan selection fence");
     for (const task of data.tasks) if (task.result.duplicate_of) {
       const original = tasksById.get(task.result.duplicate_of);
       if (!original || original.result.duplicate_of || !sameTargetBytes(task, original) || !fences.has(original.result.upload_task_id) || task.result.readyEvidence && JSON.stringify(task.result.readyEvidence) !== JSON.stringify(original.result.readyEvidence)) throw new Error("Invalid duplicate evidence");
+      if (task.result.acceptedEvidence && JSON.stringify(task.result.acceptedEvidence) !== JSON.stringify(original.result.acceptedEvidence)) throw new Error("Invalid accepted duplicate evidence");
     }
   }
   private serial<T>(work: () => Promise<T>): Promise<T> { const next = this.chain.catch(() => undefined).then(work); this.chain = next; return next; }
@@ -197,10 +210,12 @@ export class DouyinUploadStore {
   private canClose(data: State, batchId: string): boolean {
     const tasks = data.tasks.filter(task => task.authorization.pageBatchId === batchId), first = tasks[0];
     const intents = data.intents.filter(intent => intent.authorization.pageBatchId === batchId);
-    return Boolean(first && tasks.length === first.authorization.expectedCount && intents.length === tasks.length &&
+    return Boolean(first && tasks.length >= 1 && tasks.length <= first.authorization.expectedCount && intents.length === first.authorization.expectedCount &&
+      new Set(intents.map(intentKey)).size === intents.length &&
       tasks.every(task => task.input.project_id === first.input.project_id && JSON.stringify(task.authorization) === JSON.stringify(first.authorization) && !task.result.duplicate_of &&
-        ["PENDING", "WAITING_FOR_CONFIRMATION", "NEEDS_HUMAN", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"].includes(task.result.state)) &&
-      intents.every(intent => intent.project_id === first.input.project_id && JSON.stringify(intent.authorization) === JSON.stringify(first.authorization) && tasks.some(task => intentKey(task.input) === intentKey(intent))));
+        ["PENDING", "WAITING_FOR_CONFIRMATION", "ACCEPTED", "NEEDS_HUMAN", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"].includes(task.result.state)) &&
+      intents.every(intent => intent.project_id === first.input.project_id && JSON.stringify(intent.authorization) === JSON.stringify(first.authorization)) &&
+      tasks.every(task => intents.some(intent => intentKey(task.input) === intentKey(intent) && JSON.stringify(intent.config) === JSON.stringify(task.config))));
   }
   private async validateClosureArchives(data: State): Promise<void> {
     if (!data.closedBatches.length) return;
@@ -231,6 +246,44 @@ export class DouyinUploadStore {
   saveTask(task: UploadTaskRecord): Promise<void> {
     return this.saveTasks([task]);
   }
+  /** Live capability minted only while this entire new batch is still READY. Never restored from JSON. */
+  beginAutomationAcceptance(records: readonly UploadTaskRecord[]): object {
+    this.assertReady();
+    const first = records[0], batch = first && this.data.tasks.filter(task => task.authorization.pageBatchId === first.authorization.pageBatchId);
+    if (!first || batch?.length !== first.authorization.expectedCount || records.length !== batch.length ||
+      new Set(records.map(task => task.result.upload_task_id)).size !== records.length ||
+      records.some(task => task.result.state !== "WAITING_FOR_CONFIRMATION" || task.result.duplicate_of || !this.hasMarker(task.result.upload_task_id) ||
+        task.authorization.pageBatchId !== first.authorization.pageBatchId ||
+        task.result.readyEvidence?.selectedCount !== records.length || this.isClosed(task.authorization.pageBatchId) ||
+        JSON.stringify(this.task(task.result.upload_task_id)) !== JSON.stringify(task)) ||
+      [...this.acceptanceAttempts.values()].some(tasks => tasks[0]!.authorization.pageBatchId === first.authorization.pageBatchId)) throw new Error("No live READY batch for acceptance");
+    const handle = Object.freeze({}); this.acceptanceAttempts.set(handle, structuredClone([...records])); return handle;
+  }
+  endAutomationAcceptance(handle: object): void { this.acceptanceAttempts.delete(handle); }
+  acceptAutomation(handle: object, evidence: readonly AcceptedEvidence[]): Promise<void> {
+    return this.serial(async () => {
+      this.assertReady();
+      const originals = this.acceptanceAttempts.get(handle); this.acceptanceAttempts.delete(handle);
+      if (!originals || evidence.length !== originals.length) throw new Error("No active confirmation attempt");
+      const accepted = evidence.map(value => AcceptedEvidenceSchema.parse(value));
+      if (new Set(accepted.map(value => value.platformVideoId)).size !== originals.length ||
+        accepted.some(value => value.requestSha256 !== accepted[0]!.requestSha256 || value.responseSha256 !== accepted[0]!.responseSha256)) throw new Error("Ambiguous platform receipt");
+      const updates = new Map<string, UploadTaskRecord>();
+      for (const [index, original] of originals.entries()) {
+        const current = this.task(original.result.upload_task_id), proof = accepted[index]!, ready = original.result.readyEvidence!;
+        this.assertOpen(original.authorization.pageBatchId);
+        if (!current || current.result.state !== "NEEDS_HUMAN" || current.result.upload_outcome !== "MAY_HAVE_UPLOADED" ||
+          current.inputDigest !== original.inputDigest || current.result.attempt_count !== original.result.attempt_count ||
+          proof.attempt !== original.result.attempt_count || proof.fileName !== ready.fileName || proof.advertiserId !== ready.advertiserId ||
+          proof.adId !== ready.adId || proof.selectedCount !== originals.length || Date.parse(proof.observedAt) < Date.parse(ready.observedAt) ||
+          JSON.stringify(proof.pageOwnership) !== JSON.stringify(ready.pageOwnership)) throw new Error("Confirmation receipt binding mismatch");
+        updates.set(current.result.upload_task_id, { ...current, result: { ...current.result, state: "ACCEPTED", upload_outcome: "ACCEPTED",
+          acceptedEvidence: proof, readyEvidence: undefined, failure: undefined, retryable: false, timestamp: proof.observedAt } });
+      }
+      const tasks = this.followUpdatedOriginals(this.data.tasks.map(task => updates.get(task.result.upload_task_id) ?? task), updates);
+      await this.commit({ ...this.data, tasks });
+    });
+  }
   saveTasks(records: readonly UploadTaskRecord[]): Promise<void> {
     return this.serial(async () => {
       this.assertReady(); if (!records.length) return;
@@ -238,18 +291,23 @@ export class DouyinUploadStore {
       for (const task of records) {
         const id = task.result.upload_task_id, old = oldTasks.get(id);
         if (updates.has(id)) throw new Error("Duplicate task update");
+        if (old?.result.state === "ACCEPTED" && JSON.stringify(old) !== JSON.stringify(task) ||
+          task.result.state === "ACCEPTED" && old?.result.state !== "ACCEPTED" && !task.result.duplicate_of) throw new Error("Platform acceptance requires the active confirmation capability");
         this.assertOpen(task.authorization.pageBatchId); if (old) this.assertOpen(old.authorization.pageBatchId);
         if (old && (old.inputDigest !== task.inputDigest || JSON.stringify(old.authorization) !== JSON.stringify(task.authorization) || JSON.stringify(old.config) !== JSON.stringify(task.config))) throw new Error("Frozen task changed");
         if (task.result.state === "DISCARDED" && old?.result.state !== "DISCARDED" || old?.result.state === "DISCARDED" && JSON.stringify(old) !== JSON.stringify(task)) throw new Error("Discarded tasks can only be set by whole-batch deletion and cannot be restored");
         if (this.hasMarker(id) && (task.result.upload_outcome === "NOT_SELECTED" || old?.result.attempt_count !== task.result.attempt_count)) throw new Error("Selection fence cannot be reversed");
         updates.set(id, task);
       }
-      const tasks = [...this.data.tasks.filter(value => !updates.has(value.result.upload_task_id)), ...records].map(value => {
-        const task = value.result.duplicate_of && updates.get(value.result.duplicate_of);
-        if (!task || value.result.state === "DISCARDED" || this.isClosed(value.authorization.pageBatchId)) return value;
-        return { ...value, result: { ...value.result, state: task.result.readyEvidence ? "WAITING_FOR_CONFIRMATION" as const : "NEEDS_HUMAN" as const, upload_outcome: task.result.readyEvidence ? "READY" as const : "MAY_HAVE_UPLOADED" as const, readyEvidence: task.result.readyEvidence, failure: task.result.readyEvidence ? undefined : task.result.failure, retryable: false, timestamp: task.result.timestamp } };
-      });
+      const tasks = this.followUpdatedOriginals([...this.data.tasks.filter(value => !updates.has(value.result.upload_task_id)), ...records], updates);
       await this.commit({ ...this.data, tasks });
+    });
+  }
+  private followUpdatedOriginals(records: UploadTaskRecord[], updates: ReadonlyMap<string, UploadTaskRecord>): UploadTaskRecord[] {
+    return records.map(value => {
+      const task = value.result.duplicate_of && updates.get(value.result.duplicate_of);
+      if (!task || value.result.state === "DISCARDED" || this.isClosed(value.authorization.pageBatchId)) return value;
+      return { ...value, result: { ...value.result, state: task.result.acceptedEvidence ? "ACCEPTED" as const : task.result.readyEvidence ? "WAITING_FOR_CONFIRMATION" as const : "NEEDS_HUMAN" as const, upload_outcome: task.result.acceptedEvidence ? "ACCEPTED" as const : task.result.readyEvidence ? "READY" as const : "MAY_HAVE_UPLOADED" as const, readyEvidence: task.result.readyEvidence, acceptedEvidence: task.result.acceptedEvidence, failure: task.result.readyEvidence || task.result.acceptedEvidence ? undefined : task.result.failure, retryable: false, timestamp: task.result.timestamp } };
     });
   }
   retargetBatch(id: string, authorization: UploadAuthorization, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
@@ -390,7 +448,7 @@ export class DouyinUploadStore {
       this.assertReady(); const task = this.task(id);
       if (!task) throw new Error("找不到待结束的上传任务。");
       const pageBatchId = task.authorization.pageBatchId; this.assertOpen(pageBatchId);
-      if (!this.canCloseBatch(pageBatchId)) throw new Error("仅可结束完整准入、无别名且未在运行的整批本地上传。");
+      if (!this.canCloseBatch(pageBatchId)) throw new Error("仅可结束冻结意图完整、成员一致、无别名且未在运行的整批本地上传。");
       const bytes = closureBytes(this.data, pageBatchId), file = path.join(this.closureHistoryDirectory, `${pageBatchId}.json`);
       try {
         await secureUploadDirectory(this.closureHistoryDirectory); await strictSyncDirectory(this.root);
@@ -403,8 +461,9 @@ export class DouyinUploadStore {
         this.blocked = true; throw uploadFailure("STORE_UNAVAILABLE", "store", "批次结束历史无法可靠保存，上传记录已停用。", "保留全部历史及文件选择屏障；检查本机存储。", true);
       }
       await beforeCommit?.();
+      const taskIds = this.data.tasks.filter(value => value.authorization.pageBatchId === pageBatchId).map(value => value.result.upload_task_id).sort();
       const closure = ClosedUploadBatchSchema.parse({ projectId: task.input.project_id, pageBatchId, advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId,
-        expectedCount: task.authorization.expectedCount, taskIds: this.data.tasks.filter(value => value.authorization.pageBatchId === pageBatchId).map(value => value.result.upload_task_id).sort(), archiveSha256: createHash("sha256").update(bytes).digest("hex"), closedAt: new Date().toISOString() });
+        expectedCount: task.authorization.expectedCount, ...(taskIds.length < task.authorization.expectedCount ? { admittedCount: taskIds.length } : {}), taskIds, archiveSha256: createHash("sha256").update(bytes).digest("hex"), closedAt: new Date().toISOString() });
       await this.commit({ ...this.data, closedBatches: [...this.data.closedBatches, closure] });
     });
   }

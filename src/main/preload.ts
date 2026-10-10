@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { MembershipStatus } from "../shared/membership.js";
+import type { AutomationRequest, AutomationStatus } from "../shared/automation.js";
 import type { AgentStartInput, AppendProductionInput, AppendProductionPrefill, GenerateBriefInput } from "../shared/agent.js";
 import type { SaveConnection, SelectModel } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
@@ -19,6 +20,15 @@ import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, B
 import type { TemplateAccountBinding, TemplateAccountSelection } from "../shared/batch-upload.js";
 
 const api = {
+  getAutomation: (): Promise<AutomationStatus> => ipcRenderer.invoke("automation.get"),
+  createAutomation: (input: AutomationRequest): Promise<AutomationStatus> => ipcRenderer.invoke("automation.create", input),
+  configureAutomation: (input: { id: string; enabled: boolean; time: string }): Promise<AutomationStatus> => ipcRenderer.invoke("automation.configure", input),
+  removeAutomation: (id: string): Promise<AutomationStatus> => ipcRenderer.invoke("automation.remove", id),
+  onAutomation: (listener: (status: AutomationStatus) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, status: AutomationStatus) => listener(status);
+    ipcRenderer.on("automation.changed", handler);
+    return () => ipcRenderer.removeListener("automation.changed", handler);
+  },
   membershipStatus: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.status"),
   refreshMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.refresh"),
   loginMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.login"),

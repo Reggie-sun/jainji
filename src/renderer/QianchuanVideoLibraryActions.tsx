@@ -5,6 +5,7 @@ import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { QianchuanCleanupResults } from "./QianchuanCleanupResults";
 import { QianchuanCleanupPlanSelect } from "./QianchuanCleanupPlanSelect";
 import { QianchuanVideoLibrarySchedule } from "./QianchuanVideoLibrarySchedule";
+import { AutomationComposer } from "./AutomationPanel";
 import "./qianchuan-cleanup.css";
 
 export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: QianchuanAccountSummary[]; busy: boolean }) {
@@ -27,6 +28,10 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
   const selectionCurrent = !selected || selected.accounts.every(target => configured.some(account => account.product === target.product && account.advertiserId === target.expectedAdvertiserId));
   const selectedPlanMaterials = selected?.confirmation !== "DELETE_ALL_VIDEOS";
   const selectedVideoLibrary = selected?.confirmation !== "DELETE_PLAN_MATERIALS";
+  const automationCleanup: QianchuanLibraryClear | undefined = planMaterials && !videoLibrary && chosen.length && Boolean(plansReady)
+    ? { confirmation: "DELETE_PLAN_MATERIALS", ...(zeroImpressions ? { planMaterialRule: auditMaterials ? "AUDIT_AND_ZERO_IMPRESSIONS_15D" : "ZERO_IMPRESSIONS_15D" } : {}),
+      accounts: chosen.map(account => ({ product: account.product, expectedAdvertiserId: account.advertiserId, plans: chosenPlans(account)! })) }
+    : undefined;
   const clear = async (request = selected) => {
     if (!request || disabled || !selectionCurrent) return;
     setRunning(true); setError(""); setResults([]);
@@ -93,5 +98,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
       {!!results.length && <QianchuanCleanupResults title="本次清理" results={results} accounts={accounts} busy={disabled} onResolve={resolve} />}
     </section>
     <QianchuanVideoLibrarySchedule accounts={accounts} busy={disabled || !!selected} />
+    {videoLibrary && <p role="status">新定时任务只支持所选计划素材清理，不能安排视频库全部视频清空。</p>}
+    {automationCleanup && <AutomationComposer cleanup={automationCleanup} disabled={disabled || Boolean(selected)} />}
   </div>;
 }

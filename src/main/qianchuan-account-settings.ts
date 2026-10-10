@@ -203,6 +203,8 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     const prepared = this.preparedBrowsers.get(target.product);
     return prepared?.advertiserId === target.advertiserId ? Object.freeze({ ...target, cdpEndpoint: prepared.endpoint }) : target;
   }
+  /** Read the authorized config identity without substituting a prepared runtime endpoint. */
+  async configuredAccount(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return super.preflight(product); }
   override async preflight(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.preflight(product)); }
   override async freeze(product: QianchuanProduct, digest: string): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.freeze(product, digest)); }
   /** Only new production discovers live connections; frozen and historical tasks retain their target. */

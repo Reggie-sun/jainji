@@ -1,9 +1,10 @@
 import { randomUUID } from "node:crypto";
 import type { ElementHandle, FileChooser, Frame, Locator, Page } from "playwright-core";
 import { accountPageUrl } from "../shared/qianchuan-account.js";
-import { UploadError, uploadFailure, type PageOwnership, type ReadyEvidence } from "../shared/douyin-upload.js";
+import { UploadError, uploadFailure, type AcceptedEvidence, type PageOwnership, type ReadyEvidence } from "../shared/douyin-upload.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { MAX_UPLOAD_GROUP_SIZE, type BatchSelectedFile } from "./douyin-upload-service.js";
+import { createQianchuanConfirmationReceiptObserver } from "./qianchuan-confirmation-receipt.js";
 
 /** Finite source-owned selectors; no browser scripts or selectors are supplied by IPC. */
 interface PageContract {
@@ -46,6 +47,7 @@ export class QianchuanPageSession {
   private identityEstablished = false;
   private upgradeTipDismissed = false;
   private prepared?: { taskIds: string[]; index: number };
+  private automationConfirmationAttempted = false;
   private chooser?: FileChooser;
   private chooserEvents: FileChooser[] = [];
   private releaseChooser?: () => void;
@@ -130,10 +132,10 @@ export class QianchuanPageSession {
       await this.page.waitForTimeout(Math.min(50, Math.max(1, deadline - Date.now())));
     }
   }
-  async guard(task: UploadTaskRecord, signal: AbortSignal, modalDeadline = Date.now() + Math.min(task.config.timeouts.action, 1000)): Promise<void> {
+  async guard(task: UploadTaskRecord, signal: AbortSignal, modalDeadline = Date.now() + Math.min(task.config.timeouts.action, 1000), requireModal = true): Promise<void> {
     this.check(signal);
     if (this.page.isClosed()) throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "原批次标签页已关闭。", "人工核查；不能新开页面重传。", true);
-    if (this.modal) await this.ownedModal(signal, modalDeadline);
+    if (this.modal && requireModal) await this.ownedModal(signal, modalDeadline);
     const url = new URL(this.page.url()), target = task.authorization.target;
     if (url.origin !== this.contract.origin || url.pathname !== this.contract.route || url.searchParams.get("aavid") !== target.advertiserId || url.searchParams.get("adId") !== target.adId) throw changed();
     if (!this.frame || this.frame.isDetached()) {
@@ -180,7 +182,7 @@ export class QianchuanPageSession {
       if (deleted) throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", `千川计划 ${target.adId} 已删除，已停止自动操作。`, "保存当前有效计划链接；仅整批从未选过文件的任务可明确“改传当前计划”。已有文件屏障保留，只能人工核查原计划，禁止重传。", true);
     }
     if (!this.modal && this.contract.kind === "qianchuan" && await this.dismissUpgradeTip(task, signal)) return this.guard(task, signal, modalDeadline);
-    if (this.modal) {
+    if (this.modal && requireModal) {
       if (await this.ownedModal(signal, modalDeadline)) return this.guard(task, signal, modalDeadline);
       await this.unique(this.modal.getByRole("button", { name: "确定", exact: true }), signal);
       if (await this.modal.locator(`${this.contract.failure}:visible`).count()) throw uploadFailure("CONTENT_REJECTED", "page", "上传列表显示失败或拒绝。", "在 Chrome 核查；不会重传或自动确认。", true);
@@ -418,6 +420,56 @@ export class QianchuanPageSession {
       this.check(signal); await this.page.waitForTimeout(Math.min(100, Math.max(1, deadline - Date.now()))); this.check(signal);
     }
     throw uploadFailure("TIMEOUT", "browser", "千川处理未在期限内完成。", "只读核查原页面；禁止重传。", true);
+  }
+  async confirmAutomation(tasks: UploadTaskRecord[], ownership: PageOwnership, signal: AbortSignal): Promise<AcceptedEvidence[]> {
+    const task = this.group(tasks, 250), expectedCount = task.authorization.expectedCount;
+    if (this.automationConfirmationAttempted) throw lostModal("已尝试自动确认，禁止再次点击");
+    if (tasks.length !== expectedCount || !this.modal || !this.ownership || JSON.stringify(this.ownership) !== JSON.stringify(ownership) ||
+      ownership.pageBatchId !== task.authorization.pageBatchId || this.selected.length !== expectedCount ||
+      new Set(this.selected.map(file => file.fileName)).size !== expectedCount || tasks.some(value => value.result.state !== "WAITING_FOR_CONFIRMATION" ||
+        value.result.upload_outcome !== "READY" || !value.result.readyEvidence || value.result.readyEvidence.advertiserId !== task.authorization.target.advertiserId ||
+        value.result.readyEvidence.adId !== task.authorization.target.adId || value.result.readyEvidence.selectedCount !== expectedCount ||
+      JSON.stringify(value.result.readyEvidence.pageOwnership) !== JSON.stringify(ownership)) ||
+      this.selected.some(file => !tasks.some(value => value.result.file_name === file.fileName))) throw changed();
+    await this.guard(task, signal);
+    const ready = await this.observe(task, signal);
+    if (!ready.ready || ready.selected !== expectedCount || this.selected.length !== expectedCount) throw changed();
+    await this.page.bringToFront(); this.check(signal);
+    await this.guard(task, signal);
+    const final = await this.observe(task, signal);
+    if (!final.ready || final.selected !== expectedCount || await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count()) throw changed();
+    const confirm = await this.unique(this.modal!.getByRole("button", { name: "确定", exact: true }), signal);
+    if (!await confirm.isEnabled()) throw changed();
+    this.automationConfirmationAttempted = true;
+    this.check(signal);
+    const frame = this.frame!, document = await frame.evaluateHandle(() => window.document);
+    let observer: ReturnType<typeof createQianchuanConfirmationReceiptObserver> | undefined;
+    try {
+      await confirm.click({ timeout: task.config.timeouts.action, signal }); this.check(signal);
+      const title = `确认添加并开始投放 ${expectedCount} 个素材吗？`;
+      const titles = frame.locator(".oc-modal-confirm-title:visible").filter({ hasText: new RegExp(`^${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) });
+      await this.shown(titles, task, signal);
+      const dialog = await this.unique(frame.locator(".ovui-modal:visible"), signal);
+      if (await dialog.locator(".oc-modal-confirm-title:visible").count() !== 1 ||
+        (await dialog.locator(".oc-modal-confirm-title:visible").innerText()).trim() !== title) throw changed();
+      await this.guard(task, signal);
+      if (!await frame.evaluate(original => original === window.document, document)) throw changed();
+      const finalConfirm = await this.unique(dialog.getByRole("button", { name: "确定", exact: true }).filter({ visible: true }), signal);
+      if (!await finalConfirm.isEnabled() || !(await this.observe(task, signal)).ready) throw changed();
+      observer = createQianchuanConfirmationReceiptObserver({ page: this.page, frame, advertiserId: task.authorization.target.advertiserId,
+        adId: task.authorization.target.adId, filenames: tasks.map(value => value.result.file_name), origin: this.contract.origin });
+      const receipt = observer.wait(signal, Math.min(task.config.timeouts.confirmation, 120_000));
+      // Observe rejection even when the click itself throws, then dispose in finally.
+      void receipt.catch(() => undefined);
+      this.check(signal);
+      await finalConfirm.click({ timeout: task.config.timeouts.action, signal });
+      const proof = await receipt; this.check(signal);
+      if (!await frame.evaluate(original => original === window.document, document)) throw changed();
+      await this.guard(task, signal, Date.now(), false);
+      return tasks.map((value, index) => ({ ...value.result.readyEvidence!, platformVideoId: proof.videoIds[index]!,
+        attempt: value.result.attempt_count, requestSha256: proof.requestSha256, responseSha256: proof.responseSha256, observedAt: proof.observedAt }));
+    } catch (error) { this.check(signal); if (error instanceof UploadError) throw error; throw lostModal("确认或平台回执无法核实"); }
+    finally { observer?.dispose(); await document.dispose().catch(() => undefined); }
   }
   async restore(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], targetId: string, signal: AbortSignal): Promise<ReadyEvidence> {
     if (ownership.targetId !== targetId || ownership.pageBatchId !== task.authorization.pageBatchId) throw changed();

@@ -52,6 +52,10 @@ import { createAutomaticOutputDirectory } from "./automatic-output-directory.js"
 import { createBatchProductionRuntime } from "./batch-production-runtime.js";
 import { createMembershipDesktop } from "./membership-desktop.js";
 import type { MembershipSession } from "./membership-session.js";
+import { createAutomationDesktop } from "./automation-desktop.js";
+import type { AutomationScheduler } from "./automation-scheduler.js";
+import { AutomationBackground } from "./automation-background.js";
+import { automationDigest } from "./automation-files.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -91,6 +95,8 @@ let uploadedFrames: UploadedStickers;
 let stickerAssets: StickerAssets;
 let batchRuntime: ReturnType<typeof createBatchProductionRuntime>;
 let membership: MembershipSession;
+let automation: AutomationScheduler | undefined;
+const automationBackground = new AutomationBackground(() => mainWindow, () => { void requestQuit(); });
 let queueReady: Promise<void> = Promise.resolve();
 let quitting = false;
 let closingPrompt = false;
@@ -129,7 +135,8 @@ protocol.registerSchemesAsPrivileged([
 
 function currentState(): QueueSnapshot { return queue.snapshot(); }
 
-function assertProductionIdle(): void { batchRuntime?.controller.assertIdle(); agent.assertIdle(); }
+function assertAutomationIdle(): void { if (automation?.busy) throw new Error("定时任务正在执行，请等待结束后操作。"); }
+function assertProductionIdle(): void { assertAutomationIdle(); batchRuntime?.controller.assertIdle(); agent.assertIdle(); }
 
 function assertCleanupIdle() {
   if (quitting) throw new Error("应用正在退出，已停止清空视频库。");
@@ -186,7 +193,7 @@ function registerHandlers(): void {
   ipcMain.handle("batchProduction.projects", async event => { assertTrustedSender(event); return batchRuntime.listProjects(); });
   ipcMain.handle("batchProduction.saveUploadAccount", async (event, input: unknown) => { assertTrustedSender(event); return batchRuntime.saveUploadAccount(input); });
   ipcMain.handle("batchProduction.details", async (event, input: unknown) => { assertTrustedSender(event); await queueReady; return batchRuntime.controller.details(input); });
-  ipcMain.handle("batchProduction.resumeUpload", async (event, input: unknown) => { assertTrustedSender(event); await queueReady; await batchRuntime.controller.resumeUpload(input); });
+  ipcMain.handle("batchProduction.resumeUpload", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await queueReady; await batchRuntime.controller.resumeUpload(input); });
   ipcMain.handle("batchProduction.start", async (event, input: unknown) => {
     assertTrustedSender(event);
     if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
@@ -205,18 +212,18 @@ function registerHandlers(): void {
     const task = douyinUpload.store.task(ref.uploadTaskId);
     if (ref.projectId !== service.currentProject.id || !task || task.input.project_id !== ref.projectId) throw new Error("上传任务不属于当前项目。");
   };
-  ipcMain.handle("douyinUpload.configure", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.configure(QianchuanUploadConfigSchema.omit({ accountConfigPath: true }).parse(input)); return publicState(); });
+  ipcMain.handle("douyinUpload.configure", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await douyinUpload.configure(QianchuanUploadConfigSchema.omit({ accountConfigPath: true }).parse(input)); return publicState(); });
   ipcMain.handle("douyinUpload.selectConfig", async (event) => {
-    assertTrustedSender(event);
+    assertTrustedSender(event); assertAutomationIdle();
     const selected = await dialog.showOpenDialog(mainWindow!, { properties: ["openFile"], filters: [{ name: "千川账号配置", extensions: ["json"] }] });
     if (!selected.canceled && selected.filePaths.length === 1) await douyinUpload.chooseConfig(selected.filePaths[0]);
     return publicState();
   });
   ipcMain.handle("douyinUpload.refreshAccounts", async (event) => { assertTrustedSender(event); await douyinUpload.refreshAccounts(); return publicState(); });
-  ipcMain.handle("douyinUpload.saveAccount", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.saveAccount(input); return publicState(); });
+  ipcMain.handle("douyinUpload.saveAccount", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await douyinUpload.saveAccount(input); return publicState(); });
   ipcMain.handle("douyinUpload.listPlans", async (event, input: unknown) => { assertTrustedSender(event); return douyinUpload.listPlans(input, event.sender.id); });
   ipcMain.handle("douyinUpload.cancelPlans", async (event, input: unknown) => { assertTrustedSender(event); douyinUpload.cancelPlanRead(input, event.sender.id); });
-  ipcMain.handle("douyinUpload.openAccountBrowser", async (event, input: unknown) => { assertTrustedSender(event); await douyinUpload.openAccountBrowser(input); return publicState(); });
+  ipcMain.handle("douyinUpload.openAccountBrowser", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await douyinUpload.openAccountBrowser(input); return publicState(); });
   ipcMain.handle("douyinUpload.controlAccountBrowser", async (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未关闭账号浏览器。");
@@ -230,20 +237,20 @@ function registerHandlers(): void {
   });
   ipcMain.handle("videoLibrarySchedule.get", event => { assertTrustedSender(event); return videoLibrarySchedule.snapshot(); });
   ipcMain.handle("videoLibrarySchedule.save", (event, input: unknown) => { assertTrustedSender(event); return videoLibrarySchedule.save(input); });
-  ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
-  ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
+  ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
+  ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
-  ipcMain.handle("douyinUpload.discard", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.discard(ref.uploadTaskId); return publicState(); });
-  ipcMain.handle("douyinUpload.closeBatch", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.closeBatch(ref.uploadTaskId); return publicState(); });
+  ipcMain.handle("douyinUpload.discard", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.discard(ref.uploadTaskId); return publicState(); });
+  ipcMain.handle("douyinUpload.closeBatch", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.closeBatch(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.caption", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ caption: z.string().max(4096) }).parse(input); assertUploadProject(ref); throw new Error("千川任务不接受发布文案。"); });
   ipcMain.handle("douyinUpload.confirm", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ success: UploadSuccessSchema }).parse(input); assertUploadProject(ref); throw new Error("千川任务只能由用户在 Chrome 确认，应用不提交或登记平台接受。"); });
   const reviewRef = z.object({ id: uuidSchema, revision: z.number().int().nonnegative() }).strict();
-  ipcMain.handle("coverReview.create", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.create(z.array(uuidSchema).min(1).max(250).parse(input)); return publicState(); });
-  ipcMain.handle("coverReview.edit", async (event, input: unknown) => { assertTrustedSender(event); await coverReview.edit(input); return publicState(); });
-  ipcMain.handle("coverReview.analyze", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); connections.assertIdle(); const ref = reviewRef.parse(input); await coverReview.analyze(ref.id, ref.revision); return publicState(); });
-  ipcMain.handle("coverReview.review", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); coverReview.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ selection: SelectModelSchema, enabled: z.literal(true) }).parse(input); await coverReview.review(ref.id, ref.revision, ref.selection, connections.reviewProvider(ref.selection)); return publicState(); });
-  ipcMain.handle("coverReview.prepare", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.prepare(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
-  ipcMain.handle("coverReview.approve", async (event, input: unknown) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); const ref = reviewRef.extend({ input: FrozenAgentStartSchema }).parse(input); await coverReview.approve(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
+  ipcMain.handle("coverReview.create", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await coverReview.create(z.array(uuidSchema).min(1).max(250).parse(input)); return publicState(); });
+  ipcMain.handle("coverReview.edit", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await coverReview.edit(input); return publicState(); });
+  ipcMain.handle("coverReview.analyze", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); batchRuntime.controller.assertIdle(); connections.assertIdle(); const ref = reviewRef.parse(input); await coverReview.analyze(ref.id, ref.revision); return publicState(); });
+  ipcMain.handle("coverReview.review", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); batchRuntime.controller.assertIdle(); coverReview.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ selection: SelectModelSchema, enabled: z.literal(true) }).parse(input); await coverReview.review(ref.id, ref.revision, ref.selection, connections.reviewProvider(ref.selection)); return publicState(); });
+  ipcMain.handle("coverReview.prepare", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); batchRuntime.controller.assertIdle(); connections.assertIdle(); const ref = reviewRef.extend({ input: AgentStartSchema }).parse(input); await coverReview.prepare(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
+  ipcMain.handle("coverReview.approve", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); batchRuntime.controller.assertIdle(); const ref = reviewRef.extend({ input: FrozenAgentStartSchema }).parse(input); await coverReview.approve(ref.id, ref.revision, ref.input, approvedOutputDirectories); return publicState(); });
   ipcMain.handle("coverReview.viewed", async (event, input: unknown) => { assertTrustedSender(event); const ref = reviewRef.extend({ mediaId: uuidSchema, version: z.number().int().positive() }).parse(input); await coverReview.viewed(ref.id, ref.revision, ref.mediaId, ref.version); return publicState(); });
   ipcMain.handle("coverReview.cancel", async (event) => { assertTrustedSender(event); await coverReview.cancel(); return publicState(); });
   registerBugFeedbackHandlers(assertTrustedSender);
@@ -300,9 +307,9 @@ function registerHandlers(): void {
     const selected = z.object({ id: z.string().min(1).max(200), appType: z.enum(["claude", "codex"]) }).strict().parse(input);
     await connections.importCCSwitch(selected.id, selected.appType); return publicState();
   });
-  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle(); await agent.test(); return true; });
+  ipcMain.handle("agent.test", async (event) => { assertTrustedSender(event); assertAutomationIdle(); batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle(); await agent.test(); return true; });
   ipcMain.handle("agent.generateBrief", async (event, input: unknown) => {
-    assertTrustedSender(event); batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle(); return agent.generateBrief(input);
+    assertTrustedSender(event); assertAutomationIdle(); batchRuntime.controller.assertIdle(); coverReview?.assertIdle(); connections.assertIdle(); return agent.generateBrief(input);
   });
   ipcMain.handle("agent.start", async (event, input) => {
     assertTrustedSender(event);
@@ -668,6 +675,7 @@ async function createWindow(): Promise<void> {
   mainWindow.on("close", (event) => {
     if (quitting) return;
     event.preventDefault();
+    if (automation?.enabled || automation?.busy) { automationBackground.hide(); return; }
     void requestQuit();
   });
   mainWindow.on("closed", () => { mainWindow = undefined; });
@@ -689,7 +697,7 @@ async function bootstrap(): Promise<void> {
     changed: status => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("membership.changed", status); },
     lostAccess: async () => {
       const projects = new Set(queue?.snapshot().batches.map(state => state.batch.projectId).filter((id): id is string => Boolean(id)) ?? []);
-      await Promise.allSettled([batchRuntime?.controller.cancel(), coverReview?.shutdown(), agent?.cancel(), douyinUpload?.stop(),
+      await Promise.allSettled([automation?.cancelCurrent(), batchRuntime?.controller.cancel(), coverReview?.shutdown(), agent?.cancel(), douyinUpload?.stop(),
         ...[...projects].map(projectId => queue.cancelAll(projectId))]);
     },
   });
@@ -818,6 +826,30 @@ async function bootstrap(): Promise<void> {
     changed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("videoLibrarySchedule.changed", videoLibrarySchedule.snapshot()); },
   });
   await videoLibrarySchedule.load();
+  automation = await createAutomationDesktop({
+    root: userData, trusted: assertTrustedSender, authorize: () => membership.assertAllowed(),
+    changed: status => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("automation.changed", status); },
+    busy: () => quitting || batchRuntime.controller.busy || agent.busy || coverReview.busy || douyinUpload.busy ||
+      [...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status)),
+    runtime: {
+      loadProject: id => new ProjectStore(recentProjects.resolve(id)).readSnapshot(),
+      account: product => douyinUpload.automationAccount(product),
+      modelBinding: () => {
+        const snapshot = connections.store.snapshot();
+        return automationDigest({ snapshot, profiles: snapshot.profiles.map(profile => connections.store.get(profile.id).input) });
+      },
+      approvedDirectories: approvedOutputDirectories, controller: batchRuntime.controller, queue,
+      produce: async (input, projects, signal) => {
+        await membership.assertAllowed();
+        signal.throwIfAborted();
+        if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
+        coverReview.assertIdle(); connections.assertIdle(); agent.assertIdle(); batchRuntime.controller.assertIdle();
+        await douyinUpload.withExportAdmission(async () => { await douyinUpload.beginProduction(); signal.throwIfAborted(); await batchRuntime.controller.start(input, projects); });
+      },
+      clear: async (input, signal) => { await membership.assertAllowed(); signal.throwIfAborted(); return douyinUpload.clearVideoLibraries(input, signal); },
+      upload: async (groups, signal) => { await membership.assertAllowed(); signal.throwIfAborted(); await douyinUpload.uploadAutomation(groups, signal); },
+    },
+  });
   registerHandlers();
   // Show the window before replaying job history; with large histories recover()
   // can take minutes and the app must not look like it failed to launch.
@@ -831,7 +863,7 @@ async function bootstrap(): Promise<void> {
     if (quitting) return;
     await videoLibrarySchedule.initializeAutomaticLaunch();
     if (quitting) return;
-    videoLibrarySchedule.start(); scheduledLaunchReady = true; await deliverScheduledLaunch();
+    automation?.start(); videoLibrarySchedule.start(); scheduledLaunchReady = true; await deliverScheduledLaunch();
   }).catch(() => safeLog("queue recovery unavailable; scheduled clearing not started"));
   void connections.restore();
 }
@@ -851,6 +883,8 @@ function safeLog(...args: unknown[]): void {
 async function shutdownServices(): Promise<void> {
   membership?.dispose();
   videoLibrarySchedule?.stop();
+  await automation?.stop().catch(() => safeLog("automation stopped with unresolved work"));
+  automationBackground.dispose();
   await batchRuntime?.controller.cancel().catch(() => safeLog("batch production cancellation failed during shutdown"));
   await douyinUpload?.stop().catch(() => safeLog("uploader safely blocked during shutdown"));
   const shutdownStart = Date.now();
@@ -935,6 +969,6 @@ process.on("SIGTERM", () => { safeLog(`[shutdown] sigterm received +${Date.now()
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 const startup = bootstrap();
 installDevelopmentQuit(process, startup, () => app.quit(), () =>
-  !batchRuntime?.controller.busy && !agent?.busy && !coverReview?.busy && !douyinUpload?.busy &&
+  !automation?.busy && !batchRuntime?.controller.busy && !agent?.busy && !coverReview?.busy && !douyinUpload?.busy &&
   [...queue.taskStatuses().values()].every(status => ["completed", "failed", "cancelled", "interrupted"].includes(status)));
 void startup.catch((error) => { console.error(error); app.quit(); });

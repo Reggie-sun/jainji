@@ -75,17 +75,21 @@ export interface DouyinUploadStatus {
   accounts: import("./qianchuan-account.js").QianchuanAccountSummary[];
   ready: boolean; message: string; tasks: QianchuanUploadResult[]; legacyTasks: UploadResult[];
   batches?: QianchuanUploadBatchSummary[];
+  historicalBatches?: QianchuanUploadBatchSummary[];
   closedBatches?: QianchuanClosedBatchSummary[];
 }
 
 export const ClosedUploadBatchSchema = z.object({
   projectId: z.string().uuid(), pageBatchId: z.string().uuid(), advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/), adId: z.string().regex(/^[1-9][0-9]{0,19}$/),
-  expectedCount: z.number().int().min(1).max(250), taskIds: z.array(UploadIdSchema).min(1).max(250), archiveSha256: UploadIdSchema, closedAt: z.string().datetime(),
-}).strict().refine(value => value.taskIds.length === value.expectedCount && value.taskIds.every((id, index) => index === 0 || id > value.taskIds[index - 1]!), "结束批次必须绑定排序且不重复的完整成员。");
+  expectedCount: z.number().int().min(1).max(250), admittedCount: z.number().int().min(1).max(250).optional(), taskIds: z.array(UploadIdSchema).min(1).max(250), archiveSha256: UploadIdSchema, closedAt: z.string().datetime(),
+}).strict().refine(value => (value.admittedCount === undefined
+  ? value.taskIds.length === value.expectedCount
+  : value.admittedCount < value.expectedCount && value.admittedCount === value.taskIds.length) &&
+  value.taskIds.every((id, index) => index === 0 || id > value.taskIds[index - 1]!), "结束批次必须绑定排序且不重复的全部已准入成员。");
 export type ClosedUploadBatch = z.infer<typeof ClosedUploadBatchSchema>;
 export interface QianchuanUploadBatchSummary {
   projectId: string; pageBatchId: string; advertiserId: string; adId: string; expectedCount: number;
-  taskIds: string[]; readyCount: number; unknownCount: number; notSelectedCount: number; canClose: boolean;
+  taskIds: string[]; readyCount: number; acceptedCount?: number; unknownCount: number; notSelectedCount: number; canClose: boolean;
 }
 export interface QianchuanClosedBatchSummary extends Omit<QianchuanUploadBatchSummary, "canClose"> { closedAt: string; tasks: QianchuanUploadResult[]; }
 
@@ -118,17 +122,26 @@ export const ReadyEvidenceSchema = z.object({
   fileName: z.string().min(1).max(255), selectedCount: z.number().int().min(1).max(250), observedAt: z.string().datetime(), pageOwnership: PageOwnershipSchema,
 }).strict();
 export type ReadyEvidence = z.infer<typeof ReadyEvidenceSchema>;
-export const QianchuanUploadStateSchema = z.enum(["PENDING", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE", "WAITING_FOR_CONFIRMATION", "FAILED_RETRYABLE", "FAILED_TERMINAL", "NEEDS_HUMAN", "CANCELLED", "DISCARDED"]);
-export const QianchuanUploadOutcomeSchema = z.enum(["NOT_SELECTED", "MAY_HAVE_UPLOADED", "READY"]);
+export const AcceptedEvidenceSchema = ReadyEvidenceSchema.extend({
+  platformVideoId: z.string().regex(/^[a-zA-Z0-9_-]{1,128}$/), attempt: z.number().int().positive(),
+  requestSha256: UploadIdSchema, responseSha256: UploadIdSchema,
+}).strict();
+export type AcceptedEvidence = z.infer<typeof AcceptedEvidenceSchema>;
+export const QianchuanUploadStateSchema = z.enum(["PENDING", "CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE", "WAITING_FOR_CONFIRMATION", "ACCEPTED", "FAILED_RETRYABLE", "FAILED_TERMINAL", "NEEDS_HUMAN", "CANCELLED", "DISCARDED"]);
+export const QianchuanUploadOutcomeSchema = z.enum(["NOT_SELECTED", "MAY_HAVE_UPLOADED", "READY", "ACCEPTED"]);
 export const QianchuanUploadResultSchema = UploadIdentitySchema.extend({
   upload_task_id: UploadIdSchema, artifact_sha256: UploadIdSchema, file_name: z.string().min(1).max(255),
   accountProduct: QianchuanProductSchema, advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/), adId: z.string().regex(/^[1-9][0-9]{0,19}$/),
   state: QianchuanUploadStateSchema, upload_outcome: QianchuanUploadOutcomeSchema,
   retryable: z.boolean(), retry_count: z.number().int().nonnegative(), attempt_count: z.number().int().nonnegative(), timestamp: z.string().datetime(),
-  readyEvidence: ReadyEvidenceSchema.optional(), failure: UploadFailureSchema.optional(), duplicate_of: UploadIdSchema.optional(),
+  readyEvidence: ReadyEvidenceSchema.optional(), acceptedEvidence: AcceptedEvidenceSchema.optional(), failure: UploadFailureSchema.optional(), duplicate_of: UploadIdSchema.optional(),
 }).strict().superRefine((value, ctx) => {
   if ((value.state === "WAITING_FOR_CONFIRMATION") !== Boolean(value.readyEvidence) ||
     (value.upload_outcome === "READY") !== Boolean(value.readyEvidence) ||
+    (value.state === "ACCEPTED") !== Boolean(value.acceptedEvidence) ||
+    (value.upload_outcome === "ACCEPTED") !== Boolean(value.acceptedEvidence) ||
+    value.acceptedEvidence && (value.acceptedEvidence.advertiserId !== value.advertiserId || value.acceptedEvidence.adId !== value.adId ||
+      !value.duplicate_of && (value.acceptedEvidence.fileName !== value.file_name || value.acceptedEvidence.attempt !== value.attempt_count) || value.failure || value.retryable) ||
     value.readyEvidence && (value.readyEvidence.advertiserId !== value.advertiserId || value.readyEvidence.adId !== value.adId || !value.duplicate_of && value.readyEvidence.fileName !== value.file_name || value.failure) ||
     value.retryable && (value.upload_outcome !== "NOT_SELECTED" || value.state === "DISCARDED")) ctx.addIssue({ code: "custom", message: "非法千川上传结果组合。" });
 });

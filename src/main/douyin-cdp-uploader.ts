@@ -1,7 +1,7 @@
 import { guardedTransport } from "./local-cdp-transport.js";
 import { browserWebSocketForEndpoint } from "./qianchuan-browser-discovery.js";
 import { chromium, type Browser, type Page, type ElementHandle } from "playwright-core";
-import { isLoopbackUrl, uploadFailure, type PageOwnership, type ReadyEvidence, type QianchuanUploadConfig } from "../shared/douyin-upload.js";
+import { isLoopbackUrl, uploadFailure, type PageOwnership, type ReadyEvidence, type AcceptedEvidence, type QianchuanUploadConfig } from "../shared/douyin-upload.js";
 import { MAX_UPLOAD_GROUP_SIZE, type UploadBrowserPort, type BatchSelectedFile } from "./douyin-upload-service.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { QianchuanPageSession, PRODUCTION_QIANCHUAN_CONTRACT, qianchuanReadiness, type QianchuanPageContract } from "./qianchuan-page-contract.js";
@@ -118,6 +118,16 @@ export class DouyinCdpUploader implements UploadBrowserPort {
   async upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> { await this.action(signal, () => this.session!.upload(tasks, signal)); }
   async ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]> { return this.action(signal, () => this.session!.ready(tasks, signal)); }
   async pollReady(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[] | undefined> { return this.action(signal, () => this.session!.pollReady(tasks, signal)); }
+  async confirmAutomation(tasks: UploadTaskRecord[], ownership: PageOwnership, signal: AbortSignal): Promise<AcceptedEvidence[]> {
+    return this.action(signal, async () => {
+      const page = this.page, session = this.session;
+      if (!page || !session || await this.targetId(page) !== ownership.targetId) {
+        throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "原上传标签页无法唯一确认，禁止自动点击。", "人工检查原千川页面；未知结果不可重试。", true);
+      }
+      this.check(signal);
+      return session.confirmAutomation(tasks, ownership, signal);
+    });
+  }
   async readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence> {
     return this.action(signal, async () => {
       const contract = this.pageContract(), pages = this.browser?.contexts()[0]?.pages() ?? [], matches: Page[] = [];
