@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
 import { QianchuanVideoLibrary } from "../src/main/qianchuan-video-library";
 import type { FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
-import { QianchuanLibraryClearSchema } from "../src/shared/qianchuan-video-library";
+import { matchesPlanMaterialStatus, QianchuanLibraryClearSchema } from "../src/shared/qianchuan-video-library";
 import { chromium, type Browser } from "playwright-core";
 import * as transport from "../src/main/local-cdp-transport";
 import { connectVideoLibrary } from "../src/main/qianchuan-video-library-browser";
@@ -12,6 +12,14 @@ import { connectVideoLibrary } from "../src/main/qianchuan-video-library-browser
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const target = { product: "蝴蝶贴", advertiserId: "1876024170199244", adId: "123", cdpEndpoint: "http://127.0.0.1:42001", configDigest: "d".repeat(64) } as FrozenQianchuanAccount;
+it.each(["审核通过可优化", "审核通过可优化\n可优化\n审核建议", "审核通过\n可优化\n审核建议"])("recognizes the explicit optimizable approval status: %s", text => {
+  expect(matchesPlanMaterialStatus(text, "审核通过可优化")).toBe(true);
+  expect(matchesPlanMaterialStatus(text, "审核不通过")).toBe(false);
+  expect(matchesPlanMaterialStatus(text, "生态审核不通过")).toBe(false);
+});
+it.each(["审核通过", "审核通过\n审核建议", "未审核\n审核通过可优化", "生态审核不通过\n可优化", "审核不通过\n审核通过可优化", "审核通过可优化建议"])("keeps other approval and audit states outside the optimizable approval predicate: %s", text => {
+  expect(matchesPlanMaterialStatus(text, "审核通过可优化")).toBe(false);
+});
 async function fixture(count = 45) {
   const root = await mkdtemp(path.join(tmpdir(), "library-clear-")); roots.push(root);
   let ids = Array.from({ length: count }, (_, index) => `${7000 + index}`);

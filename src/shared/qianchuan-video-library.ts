@@ -43,7 +43,7 @@ export const PLAN_MATERIAL_STATUSES = ["审核不通过", "生态审核不通过
 export type PlanMaterialStatus = typeof PLAN_MATERIAL_STATUSES[number];
 export function matchesPlanMaterialStatus(text: string, status: PlanMaterialStatus): boolean {
   const parts = text.trim().split(/\s+/);
-  return status === "审核通过可优化" ? parts[0] === "审核通过" && parts.includes("可优化") : parts[0] === status;
+  return parts[0] === status || status === "审核通过可优化" && parts[0] === "审核通过" && parts.includes("可优化");
 }
 
 export const VIDEO_LIBRARY_ROUTE = "/tools/creative-management/video-library";
