@@ -23,3 +23,13 @@
 没有创建或启用真实每日任务，没有新增真实清理或模型请求。新双层确认及 ACCEPTED 平台回执仍待真实验收，严格响应协议（包括 Content-Length）可能在平台变化时阻断。
 
 此前唯一真实上传由用户手动完成最终确认，历史 pageBatch `5144529d-7f38-4fe1-aed1-3b8d504cd480` 继续 UNKNOWN，不重传、不补写成功。额外真实测试需新的明确一次授权；提交后只读检查已观察到会员状态 allowed / trial，执行前仍须复核。没有专用 session-record Skill，本记录承担本轮稳定检查点记录，不写长期 Memory。
+
+## Authorized Live Probe Follow-up
+
+用户随后明确授权热敷贴账号 `1876956000684231`、计划 `1877477842671690` 的一条新测试，包含两层确认；成片任务为 `82dd4af1-4788-468c-8cbb-75351455f061`，批次为 `da4098e6-6d5e-4188-8691-87ed011df492`。本授权不包含历史 UNKNOWN 重传。
+
+2026-10-11 01:14（Asia/Hong_Kong）原应用会员状态已为 allowed / trial。此前主进程内验收等待登录超时，`live-5/result.json` 为 `started: false`，没有上传尝试。随后保留同一已登录进程，使用原会员校验、JobStore 和上传服务重新执行有界准入检查；`live-6/result.json` 在 01:16 返回 `Authorized canonical export binding changed`，仍为 `started: false`，没有选择文件或确认平台弹窗。
+
+当前 primary 队列中该任务是 `verifying` 且没有 `outputArtifact`；带 completed / artifact 的旧记录在 `.json.corrupt-1791647222780` 隔离文件中。该隔离文件通过当前 QueueStateSchema 只读解析，但不能因此恢复 primary 完成状态或授上传资格；隔离原因尚未确认。本次不修改原队列或历史上传记录，不启用真实每日任务。真实双层确认与 ACCEPTED 验收仍为 NOT_EVALUATED，剩余阻断是该成片缺少当前 canonical 完成证据，不能用登录成功替代。
+
+01:17:46 后续会员心跳又返回 denied / session-expired；未把先前 allowed 当成持续授权。临时主进程调试连接已关闭，生成 bundle 中的一次性验收 footer 已移除；原应用窗口保留，没有为本次复查再次重启、清除登录或修改会员实现。
