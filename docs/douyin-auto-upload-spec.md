@@ -230,6 +230,22 @@ fence 后断线、崩溃、timeout、取消或 ready 保存失败，只能对原
 
 ### Explicit Local Batch Closure
 
+#### Historical Admission Closure Delta
+
+2026-10-10 用户明确授权结束旧本地批次以切换主体 VPS。该授权不改变平台结果，也不恢复历史上传权限。以下窄修订优先于本节原先“部分准入拒绝”的限制，其余约束保持。
+
+历史批次单独展示在当前项目的结束入口，不加入本次活跃任务。可信 IPC 的当前项目/持久任务双重锚点保持；仅结束操作可读取不属于本次 production 的任务，继续、改传和上传仍受原 production 边界限制。
+
+先前已经明确整批处置为 DISCARDED 的成员也已永久撤销执行资格；浏览器关闭/重启保护与固定出口变更保护一致，不再由这些成员单独阻断。它们不重复关闭、不生成 closure、不改变原 UNKNOWN 或永久 fence。未处置的 READY/UNKNOWN、跨账号共享进程和缺连接时的保守保护保持。
+
+完整冻结 intents 数量等于原 expectedCount、所有 intents/已有 tasks 属于同一项目和同一完整 authorization，且至少有一个实际 task 的非运行批次，可以在明确确认后整体结束，即使尚有素材没有准入为 task。缺失 intents、重复身份、alias、DISCARDED、运行或并发控制不确定仍拒绝；不补造缺失 task，不改变原 expectedCount。
+
+部分准入 closure 在原 strict v3 closedBatches 记录上增加可选 admittedCount（1 <= admittedCount < expectedCount），taskIds 必须恰好等于排序去重的实际成员并与 admittedCount 相等。完整旧记录省略该字段且仍要求 taskIds.length === expectedCount。store 重读并核验实际成员、完整 intents 和原始归档 hash；归档包含所有冻结 intents 和实际 tasks。原字节、outcome、READY/UNKNOWN 证据及 fences 不变。旧程序不能解释新字段时应失败关闭，不允许删字段降级。
+
+结束后永久撤销整个 pageBatchId 的准入与选择权限，包括尚未生成的成员；迟到导出、saveIntents/saveTask、重启恢复、继续及改传均不得回填或激活。原已有同目标字节/alias/fence 屏障继续生效。UI 确认及只读历史分别展示原计划数、已准入数、未准入数和已有 READY/UNKNOWN/未选分布，不将未准入成员称为已上传。
+
+Parent Self-Review：复用原 store、原归档和原 closedBatches 作为唯一关闭事实；仅扩大明确结束的对象范围，不降低上传准入或未知结果保护。验证须覆盖部分准入关闭/重载/迟到成员拒绝、损坏和不完整 intents 拒绝、原结果及 fences 不变，并通过真实 UI 确认。实施计划见 [Historical Closure Plan](superpowers/plans/2026-10-10-qianchuan-historical-closure.md)。
+
 用户明确确认“结束本批本地上传”时，允许完整、非运行、未处置且无成员 alias 的 READY/UNKNOWN/未选混合批次结束。此操作不可恢复，全部未选成员也永久失去本批上传资格；原 result/outcome、READY 证据、failure、attempt/retry、冻结输入和目标、快照及 fence 保持不变，不表示平台接受或拒绝。部分准入、成员/目标/项目不一致、重复结束、DISCARDED 批次及并发上传/控制冲突拒绝。关闭不依赖当前 mapping 或浏览器，不启动或继续其他批次。
 
 唯一 store 的 v3 state 增加 strict `closedBatches`，绑定 store 重读的 projectId/pageBatchId/advertiserId/adId/expectedCount、排序完整 taskIds、原整批 intents/tasks 归档的 archiveSha256 和 closedAt。`batch-closure-history/<pageBatchId>.json` 私有独占归档经文件及目录 sync、control generation 复查后，才原子提交 closure。引用缺失或不一致、未知版本及写入/同步不确定均 STORE_UNAVAILABLE；孤立归档不自动重放。已结束任务加载时跳过恢复改写，所有更新、选文件、继续、改传、删除和准入回填入口均不得激活。活动阻塞/调度排除 closed，但永久 duplicate/sameTargetBytes/fence 检查遍历全部历史；别批引用 closed 原任务的 alias 保留原证据且没有新选择权。

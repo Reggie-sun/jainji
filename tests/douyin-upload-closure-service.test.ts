@@ -34,6 +34,30 @@ it("closure is offline, preserves results, rejects stale actions, and never wake
   expect(service.capturedStatus(f.project_id, [f.tasks[0]!.input.export_task_id]).closedBatches).toEqual([]);
   expect(reopened.tasks()).toEqual(before); expect(f.browser).not.toHaveBeenCalled(); expect(f.loadBatch).not.toHaveBeenCalled();
 });
+it("keeps complete historical batches visible and closable after a production boundary", async () => {
+  const f = await fixture(), foreign = await f.batch(1, randomUUID()), before = f.store.tasks();
+  const fences = before.map(task => f.store.fence(task.result.upload_task_id));
+  await f.service.beginProduction();
+  const status = f.service.status(f.project_id);
+  expect(status.tasks).toEqual([]); expect(status.batches).toEqual([]);
+  expect(status.historicalBatches).toMatchObject([{ pageBatchId: f.tasks[0]!.authorization.pageBatchId, expectedCount: 3, readyCount: 1, unknownCount: 1, notSelectedCount: 1, canClose: true }]);
+  expect(status.historicalBatches?.[0]?.taskIds).toEqual(f.tasks.map(task => task.result.upload_task_id).sort());
+  expect(status.historicalBatches?.map(batch => batch.pageBatchId)).not.toContain(foreign[0]!.authorization.pageBatchId);
+  await expect(f.service.requestResume(f.id)).rejects.toThrow(/历史上传不再处理/);
+  await f.service.closeBatch(f.id);
+  expect(f.store.tasks()).toEqual(before);
+  expect(f.store.tasks().map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
+  expect(f.store.closedBatches().map(batch => batch.pageBatchId)).toContain(f.tasks[0]!.authorization.pageBatchId);
+  expect(f.service.status(f.project_id).historicalBatches).toEqual([]);
+  const ownHistory = f.service.status(f.project_id).closedBatches;
+  expect(ownHistory).toMatchObject([{ pageBatchId: f.tasks[0]!.authorization.pageBatchId, expectedCount: 3, readyCount: 1, unknownCount: 1, notSelectedCount: 1 }]);
+  expect(ownHistory?.[0]?.tasks).toEqual(f.tasks.map(task => task.result));
+  await f.service.closeBatch(foreign[0]!.result.upload_task_id);
+  expect(f.service.status(f.project_id).closedBatches?.map(batch => batch.pageBatchId)).toEqual([f.tasks[0]!.authorization.pageBatchId]);
+  expect(f.service.status(foreign[0]!.input.project_id).closedBatches?.map(batch => batch.pageBatchId)).toEqual([foreign[0]!.authorization.pageBatchId]);
+  await expect(f.service.requestResume(f.id)).rejects.toThrow(/已结束/);
+  expect(f.browser).not.toHaveBeenCalled(); expect(f.loadBatch).not.toHaveBeenCalled();
+});
 it("concurrent resume/retarget/discard/closure refuse; stop generation veto leaves records unclosed", async () => {
   const f = await fixture(); let enter!: () => void, release!: () => void;
   const entered = new Promise<void>(resolve => { enter = resolve; }), gate = new Promise<void>(resolve => { release = resolve; });

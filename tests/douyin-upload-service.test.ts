@@ -735,6 +735,31 @@ describe("Qianchuan upload service", () => {
     await f.service.controlAccountBrowser({ product: "肥皂", expectedAdvertiserId: "1004", action: "close" });
     expect(control).toHaveBeenCalledWith("1004", "close", expect.any(Function));
   });
+  it("allows browser close after real whole-batch discard while retaining UNKNOWN and its fence", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const batch = await f.createBatch(["discarded unknown browser bytes"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    f.port.upload = async () => { f.events.push("file-input"); throw new Error("connection lost after selection"); };
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const before = f.store.tasks(), taskId = before[0].result.upload_task_id, fence = f.store.fence(taskId);
+    expect(before[0].result).toMatchObject({ state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" });
+    const discardBatch = vi.spyOn(f.store, "discardBatch");
+    await f.service.discard(taskId);
+    expect(discardBatch).toHaveBeenCalledTimes(1);
+    await f.service.beginProduction();
+    const discarded = f.store.tasks();
+    expect(discarded[0].result).toMatchObject({ state: "DISCARDED", upload_outcome: "MAY_HAVE_UPLOADED" });
+    expect(f.store.hasMarker(taskId)).toBe(true); expect(f.store.fence(taskId)).toEqual(fence);
+
+    const shutdown = vi.fn();
+    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async (_id, _action, ...extra: unknown[]) => {
+      (extra[0] as ((browser: { endpoint?: string; profile: string }) => void) | undefined)?.({ endpoint: "http://127.0.0.1:9225", profile: "/original/eye-patch" });
+      shutdown();
+    });
+    await f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "close" });
+    expect(control).toHaveBeenCalledWith("1003", "close", expect.any(Function)); expect(shutdown).toHaveBeenCalledTimes(1);
+    expect(f.store.tasks()).toEqual(discarded); expect(f.store.hasMarker(taskId)).toBe(true); expect(f.store.fence(taskId)).toEqual(fence);
+  });
   it("refuses browser controls while an account is preparing or producing unadmitted exports", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
     const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
