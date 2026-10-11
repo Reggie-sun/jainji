@@ -152,6 +152,7 @@ export class DouyinUploadStore {
       if (closedIds.has(closed.pageBatchId) || !first || !this.canClose(data, closed.pageBatchId) || first.input.project_id !== closed.projectId ||
         first.authorization.target.advertiserId !== closed.advertiserId || first.authorization.target.adId !== closed.adId || first.authorization.expectedCount !== closed.expectedCount ||
         (closed.admittedCount ?? closed.expectedCount) !== tasks.length ||
+        (closed.registeredIntentCount ?? closed.expectedCount) !== data.intents.filter(intent => intent.authorization.pageBatchId === closed.pageBatchId).length ||
         JSON.stringify(tasks.map(task => task.result.upload_task_id).sort()) !== JSON.stringify(closed.taskIds) || createHash("sha256").update(closureBytes(data, closed.pageBatchId)).digest("hex") !== closed.archiveSha256) throw new Error("Closed batch binding mismatch");
       closedIds.add(closed.pageBatchId);
     }
@@ -210,9 +211,11 @@ export class DouyinUploadStore {
   private canClose(data: State, batchId: string): boolean {
     const tasks = data.tasks.filter(task => task.authorization.pageBatchId === batchId), first = tasks[0];
     const intents = data.intents.filter(intent => intent.authorization.pageBatchId === batchId);
-    return Boolean(first && tasks.length >= 1 && tasks.length <= first.authorization.expectedCount && intents.length === first.authorization.expectedCount &&
+    return Boolean(first && tasks.length >= 1 && tasks.length <= intents.length && intents.length <= first.authorization.expectedCount &&
       new Set(intents.map(intentKey)).size === intents.length &&
-      tasks.every(task => task.input.project_id === first.input.project_id && JSON.stringify(task.authorization) === JSON.stringify(first.authorization) && !task.result.duplicate_of &&
+      tasks.every(task => task.input.project_id === first.input.project_id && JSON.stringify(task.authorization) === JSON.stringify(first.authorization) &&
+        (!task.result.duplicate_of || data.tasks.some(original => original.result.upload_task_id === task.result.duplicate_of &&
+          data.closedBatches.some(closed => closed.pageBatchId === original.authorization.pageBatchId))) &&
         ["PENDING", "WAITING_FOR_CONFIRMATION", "ACCEPTED", "NEEDS_HUMAN", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"].includes(task.result.state)) &&
       intents.every(intent => intent.project_id === first.input.project_id && JSON.stringify(intent.authorization) === JSON.stringify(first.authorization)) &&
       tasks.every(task => intents.some(intent => intentKey(task.input) === intentKey(intent) && JSON.stringify(intent.config) === JSON.stringify(task.config))));
@@ -448,7 +451,7 @@ export class DouyinUploadStore {
       this.assertReady(); const task = this.task(id);
       if (!task) throw new Error("找不到待结束的上传任务。");
       const pageBatchId = task.authorization.pageBatchId; this.assertOpen(pageBatchId);
-      if (!this.canCloseBatch(pageBatchId)) throw new Error("仅可结束冻结意图完整、成员一致、无别名且未在运行的整批本地上传。");
+      if (!this.canCloseBatch(pageBatchId)) throw new Error("仅可结束已登记意图与成员一致、无别名且未在运行的整批本地上传。");
       const bytes = closureBytes(this.data, pageBatchId), file = path.join(this.closureHistoryDirectory, `${pageBatchId}.json`);
       try {
         await secureUploadDirectory(this.closureHistoryDirectory); await strictSyncDirectory(this.root);
@@ -462,8 +465,10 @@ export class DouyinUploadStore {
       }
       await beforeCommit?.();
       const taskIds = this.data.tasks.filter(value => value.authorization.pageBatchId === pageBatchId).map(value => value.result.upload_task_id).sort();
+      const registeredIntentCount = this.data.intents.filter(intent => intent.authorization.pageBatchId === pageBatchId).length;
       const closure = ClosedUploadBatchSchema.parse({ projectId: task.input.project_id, pageBatchId, advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId,
-        expectedCount: task.authorization.expectedCount, ...(taskIds.length < task.authorization.expectedCount ? { admittedCount: taskIds.length } : {}), taskIds, archiveSha256: createHash("sha256").update(bytes).digest("hex"), closedAt: new Date().toISOString() });
+        expectedCount: task.authorization.expectedCount, ...(taskIds.length < task.authorization.expectedCount ? { admittedCount: taskIds.length } : {}),
+        ...(registeredIntentCount < task.authorization.expectedCount ? { registeredIntentCount } : {}), taskIds, archiveSha256: createHash("sha256").update(bytes).digest("hex"), closedAt: new Date().toISOString() });
       await this.commit({ ...this.data, closedBatches: [...this.data.closedBatches, closure] });
     });
   }

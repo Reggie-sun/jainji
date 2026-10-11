@@ -2,7 +2,7 @@ import { afterEach, expect, it } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { DouyinUploadStore } from "../src/main/douyin-upload-store";
+import { DouyinUploadStore, frozenInputDigest, uploadTaskId } from "../src/main/douyin-upload-store";
 import { closureFixture } from "./helpers/douyin-closure";
 
 const roots: string[] = [];
@@ -74,13 +74,39 @@ it("upgrades a validated v2 ledger with empty closures and unchanged identities/
   expect(JSON.parse(await readFile(path.join(f.root, "state.json"), "utf8")).version).toBe(3);
 });
 
-it("rejects incomplete intents, active members and closure sync failure without committing closure", async () => {
+it("closes legacy partially registered intents without inventing members or restoring late admission", async () => {
   const f = await fixture(), raw = JSON.parse(await readFile(path.join(f.root, "state.json"), "utf8"));
   const missing = f.tasks.find(task => task.result.upload_outcome === "NOT_SELECTED")!;
   raw.tasks = raw.tasks.filter((task: typeof f.tasks[number]) => task.result.upload_task_id !== missing.result.upload_task_id);
   raw.intents = raw.intents.filter((intent: { export_task_id: string }) => intent.export_task_id !== missing.input.export_task_id);
   await writeFile(path.join(f.root, "state.json"), JSON.stringify(raw), { mode: 0o600 });
-  const partial = new DouyinUploadStore(f.root); await partial.load(); expect(partial.canCloseBatch(f.id)).toBe(false); await expect(partial.closeBatch(f.id)).rejects.toThrow();
+  const partial = new DouyinUploadStore(f.root); await partial.load();
+  const tasks = partial.tasks(), intents = partial.intents();
+  const fences = await Promise.all([f.id, f.unknownId].map(id => readFile(path.join(f.root, "selection-fences", `${id}.json`))));
+  expect(partial.canCloseBatch(tasks[0]!.authorization.pageBatchId)).toBe(true); await partial.closeBatch(f.id);
+  const closure = partial.closedBatches()[0]!;
+  expect(closure).toMatchObject({ expectedCount: 3, admittedCount: 2, registeredIntentCount: 2 });
+  expect(partial.tasks()).toEqual(tasks); expect(partial.intents()).toEqual(intents);
+  const restored = new DouyinUploadStore(f.root); await restored.load();
+  expect(restored.tasks()).toEqual(tasks); expect(restored.intents()).toEqual(intents);
+  expect(restored.closedBatches()).toEqual([closure]);
+  await expect(restored.saveTask(missing)).rejects.toThrow(/已结束/);
+  await expect(restored.saveIntents([f.store.intents().find(intent => intent.export_task_id === missing.input.export_task_id)!])).rejects.toThrow(/已结束/);
+  await expect(restored.markSelecting(f.id, restored.fence(f.id)!.pageOwnership, 3)).rejects.toThrow();
+  expect(await Promise.all([f.id, f.unknownId].map(id => readFile(path.join(f.root, "selection-fences", `${id}.json`))))).toEqual(fences);
+  const statePath = path.join(f.root, "state.json"), closedState = JSON.parse(await readFile(statePath, "utf8"));
+  for (const count of [undefined, 1, 3]) {
+    const corrupted = structuredClone(closedState); corrupted.closedBatches[0].registeredIntentCount = count;
+    await writeFile(statePath, JSON.stringify(corrupted), { mode: 0o600 });
+    await expect(new DouyinUploadStore(f.root).load()).rejects.toMatchObject({ failure: { code: "STORE_UNAVAILABLE" } });
+  }
+});
+
+it("rejects an orphan task whose intent is missing, active members and uncertain closure sync", async () => {
+  const f = await fixture(), raw = JSON.parse(await readFile(path.join(f.root, "state.json"), "utf8"));
+  raw.intents = raw.intents.slice(1);
+  await writeFile(path.join(f.root, "state.json"), JSON.stringify(raw), { mode: 0o600 });
+  await expect(new DouyinUploadStore(f.root).load()).rejects.toMatchObject({ failure: { code: "STORE_UNAVAILABLE" } });
   const g = await fixture(), pending = g.store.tasks().find(task => task.result.upload_outcome === "NOT_SELECTED")!;
   pending.result.state = "CONNECTING_BROWSER"; await g.store.saveTask(pending); await expect(g.store.closeBatch(g.id)).rejects.toThrow();
   pending.result.state = "PENDING"; await g.store.saveTask(pending);
@@ -88,6 +114,30 @@ it("rejects incomplete intents, active members and closure sync failure without 
   const broken = new DouyinUploadStore(g.root, { syncDirectory: async () => { throw new Error("sync failure"); } }); await broken.load();
   await expect(broken.closeBatch(g.id)).rejects.toThrow(); expect(broken.unavailable).toBe(true);
   expect(await readFile(path.join(g.root, "state.json"))).toEqual(before); expect(broken.hasMarker(g.id)).toBe(true);
+});
+
+it("closes an alias only after its original batch is closed, preserving both batches and the original fence", async () => {
+  const f = await fixture(), original = f.store.task(f.id)!, candidates = await f.batch();
+  const alias = structuredClone(candidates[0]!);
+  alias.input.artifact_sha256 = original.input.artifact_sha256;
+  alias.inputDigest = frozenInputDigest(alias.input, alias.authorization);
+  alias.result = { ...alias.result, state: original.result.state, upload_outcome: original.result.upload_outcome,
+    artifact_sha256: alias.input.artifact_sha256, upload_task_id: uploadTaskId(alias.input, alias.authorization.target),
+    duplicate_of: f.id, readyEvidence: original.result.readyEvidence };
+  const raw = JSON.parse(await readFile(path.join(f.root, "state.json"), "utf8"));
+  raw.tasks = raw.tasks.map((task: typeof alias) => task.result.upload_task_id === candidates[0]!.result.upload_task_id ? alias : task);
+  await writeFile(path.join(f.root, "state.json"), JSON.stringify(raw), { mode: 0o600 });
+  const restored = new DouyinUploadStore(f.root); await restored.load();
+  const before = restored.tasks(), intents = restored.intents(), fence = await readFile(path.join(f.root, "selection-fences", `${f.id}.json`));
+  expect(restored.canCloseBatch(alias.authorization.pageBatchId)).toBe(false);
+  await expect(restored.closeBatch(alias.result.upload_task_id)).rejects.toThrow();
+  await restored.closeBatch(f.id); await restored.closeBatch(alias.result.upload_task_id);
+  expect(restored.tasks()).toEqual(before); expect(restored.intents()).toEqual(intents);
+  expect(await readFile(path.join(f.root, "selection-fences", `${f.id}.json`))).toEqual(fence);
+  const reloaded = new DouyinUploadStore(f.root); await reloaded.load();
+  expect(reloaded.closedBatches()).toEqual(restored.closedBatches()); expect(reloaded.tasks()).toEqual(before);
+  await expect(reloaded.saveTask(original)).rejects.toThrow(/已结束/);
+  await expect(reloaded.saveTask(alias)).rejects.toThrow(/已结束/);
 });
 
 it("vetoed closure remains unclosed; a missing or altered referenced audit blocks load and later writes", async () => {

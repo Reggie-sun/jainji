@@ -81,10 +81,11 @@ export interface DouyinUploadStatus {
 
 export const ClosedUploadBatchSchema = z.object({
   projectId: z.string().uuid(), pageBatchId: z.string().uuid(), advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/), adId: z.string().regex(/^[1-9][0-9]{0,19}$/),
-  expectedCount: z.number().int().min(1).max(250), admittedCount: z.number().int().min(1).max(250).optional(), taskIds: z.array(UploadIdSchema).min(1).max(250), archiveSha256: UploadIdSchema, closedAt: z.string().datetime(),
+  expectedCount: z.number().int().min(1).max(250), admittedCount: z.number().int().min(1).max(250).optional(), registeredIntentCount: z.number().int().min(1).max(250).optional(), taskIds: z.array(UploadIdSchema).min(1).max(250), archiveSha256: UploadIdSchema, closedAt: z.string().datetime(),
 }).strict().refine(value => (value.admittedCount === undefined
   ? value.taskIds.length === value.expectedCount
   : value.admittedCount < value.expectedCount && value.admittedCount === value.taskIds.length) &&
+  (value.registeredIntentCount === undefined || value.registeredIntentCount < value.expectedCount && value.registeredIntentCount >= value.taskIds.length) &&
   value.taskIds.every((id, index) => index === 0 || id > value.taskIds[index - 1]!), "结束批次必须绑定排序且不重复的全部已准入成员。");
 export type ClosedUploadBatch = z.infer<typeof ClosedUploadBatchSchema>;
 export interface QianchuanUploadBatchSummary {

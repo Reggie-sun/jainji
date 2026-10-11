@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T22:55:31Z",
+  "updated_at": "2026-10-11T22:33:53Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "6114395f8b6334e798e71ba3036d34a4055810c0c65e5935b011876ed6246e33",
-      "size": 120606,
-      "normalized_sha256": "6114395f8b6334e798e71ba3036d34a4055810c0c65e5935b011876ed6246e33"
+      "sha256": "e04c1e5464be85588c5745de5212e3f09e0fd94863997631aa435024dab4a22b",
+      "size": 120507,
+      "normalized_sha256": "e04c1e5464be85588c5745de5212e3f09e0fd94863997631aa435024dab4a22b"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1403,9 +1403,9 @@
       "normalized_sha256": "9677fd11ee624d38577de2225e4fdc9888da2c9fed0620def3565880551f035f"
     },
     "src/main/douyin-upload-store.ts": {
-      "sha256": "1634d2704c4aba818e3fd4442ccc488823983f9965f9e6b91336501999aa48cf",
-      "size": 44023,
-      "normalized_sha256": "1634d2704c4aba818e3fd4442ccc488823983f9965f9e6b91336501999aa48cf"
+      "sha256": "62b17f1dedc2884db78437e1211dda789110f6305c7036161c5ca30e2c27ee4b",
+      "size": 44605,
+      "normalized_sha256": "62b17f1dedc2884db78437e1211dda789110f6305c7036161c5ca30e2c27ee4b"
     },
     "src/main/errors.ts": {
       "sha256": "20deb9cdaad9284274b20c44ed341535964995e3c81dfb281f79a9b062ac35f6",
@@ -2599,9 +2599,9 @@
       "normalized_sha256": "07dfe3541c2eed829900561ce6a52d5edd253ca8c4a82a0c6680cc8510b9e06d"
     },
     "src/shared/douyin-upload.ts": {
-      "sha256": "ff4f402dd62200c57c630990608e007b814bd9fabbad971bc01aac21c4808982",
-      "size": 12981,
-      "normalized_sha256": "ff4f402dd62200c57c630990608e007b814bd9fabbad971bc01aac21c4808982"
+      "sha256": "30f85b8049bc13ed53dcb70aca4976628ec0b199c81850fc3f83c80c3ce6c10c",
+      "size": 13206,
+      "normalized_sha256": "30f85b8049bc13ed53dcb70aca4976628ec0b199c81850fc3f83c80c3ce6c10c"
     },
     "src/shared/export-format.ts": {
       "sha256": "f3c850874358396a9d0b3457741d1a884f2b818479634b2c273a0ff587ee8f82",

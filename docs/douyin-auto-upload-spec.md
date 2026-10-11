@@ -246,6 +246,16 @@ fence 后断线、崩溃、timeout、取消或 ready 保存失败，只能对原
 
 Parent Self-Review：复用原 store、原归档和原 closedBatches 作为唯一关闭事实；仅扩大明确结束的对象范围，不降低上传准入或未知结果保护。验证须覆盖部分准入关闭/重载/迟到成员拒绝、损坏和不完整 intents 拒绝、原结果及 fences 不变，并通过真实 UI 确认。实施计划见 [Historical Closure Plan](superpowers/plans/2026-10-10-qianchuan-historical-closure.md)。
 
+##### Partially Registered Historical Intent Withdrawal Delta
+
+2026-10-12 用户撤销旧批次的继续上传要求，并要求等当前任务结束后切换 VPS。真实历史批次存在原计划 30 条、仅登记 27 条 intents 和 27 条 tasks 的合法账本。明确结束本地资格时，本修订优先于上述完整 intents 限制；不扩大上传、恢复或平台确认准入。
+
+store 只允许至少一条实际 task 的批次结束，满足 `1 <= tasks.length <= intents.length <= expectedCount`，每条 task 必须匹配原 intent、同项目/冻结授权/config、无运行状态；原账本完整性、fence、归档和同步检查保持。alias 仅在原任务所属批次已结束且原绑定证据有效时可随本批结束，未结束原任务的引用仍阻断；不修改原任务或引用证据。没有 task 的意图、未知的缺失成员均不补造、不分类为成功或未上传。结束仍永久撤销整个 pageBatchId，迟到登记和选择均拒绝。
+
+不完整登记的 closure 必须额外冻结 `registeredIntentCount`，等于原归档 intents 数且小于 expectedCount、不得少于实际 taskIds 数。缺字段的旧 closure 仍要求完整 intents；删除/改写该字段、task/intent 缺绑定或归档漂移均失败关闭。原 admittedCount、expectedCount、全部已有记录和永久屏障保持原解释。旧 reader 对新字段失败关闭，不删字段降级。
+
+Parent Self-Review：关闭是资格撤销，不提供结果恢复或缺失成员推定；沿用唯一 store 与相同可信 IPC，不直接修改真实账本。验证涵盖真实 27/30 形状、重载、迟到未登记成员拒绝、字段篡改与 orphan task 拒绝。计划见 [Partially Registered Closure Plan](superpowers/plans/2026-10-12-partially-registered-closure.md)。
+
 用户明确确认“结束本批本地上传”时，允许完整、非运行、未处置且无成员 alias 的 READY/UNKNOWN/未选混合批次结束。此操作不可恢复，全部未选成员也永久失去本批上传资格；原 result/outcome、READY 证据、failure、attempt/retry、冻结输入和目标、快照及 fence 保持不变，不表示平台接受或拒绝。部分准入、成员/目标/项目不一致、重复结束、DISCARDED 批次及并发上传/控制冲突拒绝。关闭不依赖当前 mapping 或浏览器，不启动或继续其他批次。
 
 唯一 store 的 v3 state 增加 strict `closedBatches`，绑定 store 重读的 projectId/pageBatchId/advertiserId/adId/expectedCount、排序完整 taskIds、原整批 intents/tasks 归档的 archiveSha256 和 closedAt。`batch-closure-history/<pageBatchId>.json` 私有独占归档经文件及目录 sync、control generation 复查后，才原子提交 closure。引用缺失或不一致、未知版本及写入/同步不确定均 STORE_UNAVAILABLE；孤立归档不自动重放。已结束任务加载时跳过恢复改写，所有更新、选文件、继续、改传、删除和准入回填入口均不得激活。活动阻塞/调度排除 closed，但永久 duplicate/sameTargetBytes/fence 检查遍历全部历史；别批引用 closed 原任务的 alias 保留原证据且没有新选择权。
