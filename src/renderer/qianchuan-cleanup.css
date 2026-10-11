@@ -44,4 +44,11 @@
 .qianchuan-cleanup-results{margin-top:18px;border-top:1px solid var(--line-2);padding-top:14px}
 .qianchuan-cleanup-result-summary>span{color:var(--ink-2);font-variant-numeric:tabular-nums}
 .qianchuan-cleanup .qianchuan-cleanup-error{color:var(--bad);font-size:13px}
+.qianchuan-materials-page{width:100%;max-width:1200px;margin-inline:auto}
+.qianchuan-materials-page .qianchuan-cleanup{max-width:none}
+.qianchuan-materials-page .qianchuan-cleanup-accounts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+.qianchuan-materials-page .qianchuan-cleanup-plans{grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.qianchuan-materials-page .qianchuan-cleanup-plans>strong,.qianchuan-materials-page .qianchuan-cleanup-plans>small{grid-column:1/-1}
+@media(max-width:1000px){.qianchuan-materials-page .qianchuan-cleanup-accounts{grid-template-columns:repeat(2,minmax(0,1fr))}.qianchuan-materials-page .qianchuan-cleanup-plans{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:600px){.qianchuan-materials-page .qianchuan-cleanup-accounts{grid-template-columns:minmax(0,1fr)}}
 @media(max-width:600px){.qianchuan-cleanup-card{padding:16px}.qianchuan-cleanup-footer .button{width:100%}.qianchuan-cleanup-accounts label{flex:1 1 100px}.qianchuan-cleanup-result-summary{align-items:flex-start;flex-direction:column}}

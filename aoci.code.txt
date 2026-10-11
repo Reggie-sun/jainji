@@ -285,7 +285,7 @@ AutomationWorkspace.tsx[AU6T]: F:分离自动化列表创建编辑及旧每日�
 OutputConfirmation.tsx[EU6T]: F:呈现输出摘要数量目录设置上传及开始阻断 | R:code:src/shared/agent.ts,code:src/renderer/ExportSettingsPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:共享数量向上取整；本页补素材覆盖保存目录及数量原因；定位回调；assisted转覆盖页 | S:切页不启动批准；运行冻结输入不被下一轮设置替换
 PackagingModePicker.tsx[EU4T]: F:呈现Agent手动与本地随机制作方式选择 | R:code:src/shared/decorations.ts,code:src/renderer/App.tsx | A:受控value及onChange；显示pressed状态；沿父级禁用 | S:-
 QianchuanSettingsPage.tsx[EU6T]: F:汇总全局上传账号计划及高级设置页面 | R:code:src/renderer/QianchuanAccountSettings.tsx,code:src/renderer/WorkspacePage.tsx | A:沿原perform保存导入刷新；恢复序号重置账号编辑并定位；时限及诊断配置 | S:保存仅影响新制作；旧任务目标不自动迁移或重传
-QianchuanWorkspace.tsx[AU5T]: F:导航千川上传任务账号计划及素材管理三页 | R:code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/App.tsx | A:当前页投影；操作交原owner；按project.id隔离编辑器 | S:导航不授上传或清理权限
+QianchuanWorkspace.tsx[AU5T]: F:导航千川上传任务账号计划及素材管理三页 | R:code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/App.tsx | A:素材页居中等宽账号及双列计划；当前页投影；操作交原owner；按project.id隔离编辑器 | S:切页仅变样式不重挂清理owner；导航不授上传或清理权限
 WorkspacePage.tsx[AU5T]: F:保留已访问页草稿并实现工作区滚动和焦点恢复 | R:code:src/renderer/App.tsx,code:src/renderer/MembershipGate.tsx | A:首次访问挂载；inactive隐藏且暂停媒体；双RAF按实际页头避让定位控件或恢复来源scrollTop | S:隐藏不取消任务；滚动使用membership-workspace而非窗口
 
 
