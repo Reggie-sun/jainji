@@ -48,6 +48,10 @@
 .batch-result-info small { display: block; overflow-wrap: anywhere; color: #697b76; line-height: 1.6; }
 .batch-error, .batch-result-info .batch-error { color: #b14444; }
 .batch-template-row > .batch-error { grid-column: 1 / -1; margin: 0; }
+.batch-upload-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 20px; }
+.batch-upload-summary p { margin: 0; font-size: 13px; }
+.batch-upload-summary small { flex-basis: 100%; color: #697b76; overflow-wrap: anywhere; }
+.batch-upload-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
 @media (max-width: 700px) {
   .batch-production-heading { align-items: flex-start; flex-wrap: wrap; }
   .batch-template-row { grid-template-columns: minmax(0, 1fr); }

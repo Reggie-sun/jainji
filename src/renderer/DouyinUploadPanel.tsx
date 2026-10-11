@@ -12,9 +12,10 @@ import { qianchuanUploadLabels as labels } from "./qianchuan-upload-status";
 import { qianchuanTargetName } from "./qianchuan-account-display";
 const processingStates: QianchuanUploadResult["state"][] = ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"];
 const defaultConfig = QianchuanUploadConfigSchema.parse({});
-export function DouyinUploadPanel({ projectId, status, onState, page = "uploads", onPage, onAutomation }: {
+export function DouyinUploadPanel({ projectId, status, onState, page = "uploads", onPage, onAutomation, showProjectUploads = true }: {
   projectId: string; status?: DouyinUploadStatus; onState(state: DesktopState): void;
   page?: QianchuanPage; onPage?(page: QianchuanPage): void; onAutomation?(cleanup: QianchuanLibraryClear): void;
+  showProjectUploads?: boolean;
 }) {
   const [config, setConfig] = useState<DouyinUploadStatus["config"]>(status?.config ?? defaultConfig);
   const key = JSON.stringify(status?.config ?? defaultConfig), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -49,7 +50,7 @@ export function DouyinUploadPanel({ projectId, status, onState, page = "uploads"
     <WorkspacePage active={page === "materials"} label="素材管理">
       <QianchuanVideoLibraryActions accounts={status?.accounts ?? []} busy={busy} onAutomation={onAutomation} />
     </WorkspacePage>
-    <WorkspacePage active={page === "uploads"} label="上传任务">
+    <WorkspacePage active={page === "uploads" && showProjectUploads} label="上传任务">
     <section className="card brief-card douyin-upload-panel" aria-labelledby="douyin-upload-panel-title">
     <div className="card-header"><h2 id="douyin-upload-panel-title">千川上传任务</h2><span>普通上传由你确认，定时任务按已保存授权自动确认</span></div>
     <p role={status?.ready ? "status" : "alert"}>{status?.message ?? "上传状态尚未载入。"}</p>

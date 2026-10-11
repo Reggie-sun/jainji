@@ -1,53 +1,26 @@
-import { useEffect, useState } from "react";
 import type { BatchProductionDetail, BatchProductionDetailRequest } from "../shared/batch-production";
 import { SourceStickerKnowledgeDetails } from "./SourceStickerKnowledgeDetails";
 import { Heading, Icon } from "./ui";
-import { qianchuanUploadLabels } from "./qianchuan-upload-status";
-import { QianchuanUploadHistory } from "./QianchuanUploadHistory";
-import { qianchuanTargetName } from "./qianchuan-account-display";
+import { batchDetailError, useBatchProductionDetails } from "./useBatchProductionDetails";
 
 const labels: Record<string, string> = { queued: "等待导出", validating: "检查素材", running: "正在渲染", verifying: "校验成片", cancelling: "正在停止", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
 
-export function BatchProductionDetails({ request, name, onBack }: { request: BatchProductionDetailRequest; name: string; onBack(): void }) {
-  const [detail, setDetail] = useState<BatchProductionDetail>();
-  const [error, setError] = useState("");
-  const [uploadError, setUploadError] = useState("");
-  const [resuming, setResuming] = useState(false);
-  useEffect(() => {
-    let active = true;
-    let timer: ReturnType<typeof setTimeout>;
-    setDetail(undefined); setError(""); setUploadError("");
-    const refresh = async () => {
-      try {
-        const next = await window.jianji.batchProductionDetails({ runId: request.runId, jobId: request.jobId });
-        if (active) { setDetail(next); setError(""); }
-      } catch (cause) { if (active) setError(message(cause)); }
-      finally { if (active) timer = setTimeout(() => void refresh(), 1000); }
-    };
-    void refresh();
-    return () => { active = false; clearTimeout(timer); };
-  }, [request.runId, request.jobId]);
+export function BatchProductionDetails({ request, name, active, onBack, onUploads }: { request: BatchProductionDetailRequest; name: string; active: boolean; onBack(): void; onUploads?(): void }) {
+  const { detail, error, setError } = useBatchProductionDetails(request, active);
   const artifact = async (id: string, reveal: boolean) => {
     try { if (reveal) await window.jianji.revealArtifact(id); else await window.jianji.openArtifact(id); }
-    catch (cause) { setError(message(cause)); }
-  };
-  const resumeUpload = async (uploadTaskId: string) => {
-    setResuming(true); setUploadError("");
-    try { await window.jianji.resumeBatchUpload({ ...request, uploadTaskId }); }
-    catch (cause) { setUploadError(message(cause)); }
-    finally { setResuming(false); }
+    catch (cause) { setError(batchDetailError(cause)); }
   };
   return <>
     <button type="button" className="text-button batch-details-back" onClick={onBack}>← 返回批量列表</button>
     <Heading title={`${name} · 作品与导出`}>查看该商品本批每条视频的制作与导出进度；完成后可播放成片。</Heading>
     {error && <p className="notice error" role="alert">{error}</p>}
-    {uploadError && <p className="notice error" role="alert">{uploadError}</p>}
-    {detail ? <BatchProductionWorkList detail={detail} onArtifact={(id, reveal) => void artifact(id, reveal)} onResumeUpload={id => void resumeUpload(id)} resuming={resuming} /> : !error && <p role="status">正在读取作品…</p>}
+    {detail ? <BatchProductionWorkList detail={detail} onArtifact={(id, reveal) => void artifact(id, reveal)} onUploads={onUploads} /> : !error && <p role="status">正在读取作品…</p>}
   </>;
 }
 
-export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, resuming }: { detail: BatchProductionDetail; onArtifact(id: string, reveal: boolean): void; onResumeUpload?(id: string): void; resuming?: boolean }) {
+export function BatchProductionWorkList({ detail, onArtifact, onUploads }: { detail: BatchProductionDetail; onArtifact(id: string, reveal: boolean): void; onUploads?(): void }) {
   const { job, tasks, items, usesModel } = detail;
   const taskById = new Map(tasks.map(task => [task.id, task]));
   const unqueued = items.filter(item => !item.taskId || !taskById.has(item.taskId));
@@ -56,7 +29,6 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
     + unqueued.filter(item => item.status === "failed" || item.status === "cancelled").length;
   const total = job.actualCount || job.requestedCount;
   const uploads = detail.upload?.tasks ?? [];
-  const uploadAccountIds = [...new Set([...uploads, ...(detail.upload?.closedBatches ?? [])].map(target => target.advertiserId).filter(Boolean))];
   const processing = uploads.filter(task => ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state));
   const uploaded = uploads.filter(task => ["READY", "ACCEPTED"].includes(task.upload_outcome)).length;
   const pending = uploads.filter(task => task.state === "PENDING").length;
@@ -64,24 +36,11 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
   return <>
     <div className="result-stats"><div><span>本批制作</span><strong>{total}<small>条</small></strong></div><div><span>正在处理</span><strong>{Math.max(0, tasks.filter(task => !terminal.has(task.status)).length + unqueued.filter(item => !["failed", "cancelled"].includes(item.status)).length)}</strong></div><div><span>已完成</span><strong className="green-text">{completed}</strong></div><div><span>需要处理</span><strong className={failed ? "red-text" : ""}>{failed}</strong></div></div>
     {job.error && <p className="notice error">{job.error}</p>}
-    {job.accountProduct && <section className="card brief-card" aria-label="本项千川上传">
-      <div className="card-header"><h2>千川上传 · {uploadAccountIds.length ? uploadAccountIds.map(id => `${qianchuanTargetName(id, detail.upload?.accounts ?? [], job.accountProduct)}（账户 ${id}）`).join("、") : "等待账号任务"}</h2><span>导出与上传进度分别记录</span></div>
-      <p role="status" aria-label="本项上传进度">已上传 {uploaded} / {total} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条 · 需处理 {uploads.length - uploaded - pending - processing.length - unknown} 条 · 普通上传停在确定前</p>
-      <small>上传记录会保存，同账号同计划下不重复上传。普通上传请在 Chrome 检查后确认；定时上传以平台接收回执为准。</small>
-      {detail.upload?.message && <p>{detail.upload.message}</p>}
-      {!!unknown && <p className="notice error" role="alert">{unknown} 条上传结果未知，需核查原 Chrome 上传页面；这些文件禁止重新上传。尚未选文件的成片仍保留在队列中。</p>}
-      {detail.upload?.tasks.map(task => <div className="result-row" key={task.upload_task_id}>
-        <div className="result-info"><strong>{task.file_name}</strong><p>{qianchuanUploadLabels[task.state]} · {qianchuanTargetName(task.advertiserId, detail.upload?.accounts ?? [], task.accountProduct)} · 账户 {task.advertiserId} / 计划 {task.adId}</p>
-          {task.failure && <small className="batch-error">{task.failure.message} {task.failure.next_action}</small>}
-          {task.upload_outcome === "READY" && <small>上传记录已保存 · 待在 Chrome 确认</small>}
-          {task.acceptedEvidence && <small>平台已接收 · 视频 ID {task.acceptedEvidence.platformVideoId} · 不表示审核通过或已经产生投放</small>}
-          {task.upload_outcome === "MAY_HAVE_UPLOADED" && <small>结果未知，禁止重新上传，请核查原页面。</small>}
-        </div>
-        {onResumeUpload && !detail.upload?.historical && !task.duplicate_of && ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN", "CANCELLED"].includes(task.state) &&
-          <button type="button" className="button secondary compact" disabled={resuming || processing.length > 0 || (unknown > 0 && task.upload_outcome === "NOT_SELECTED")} onClick={() => onResumeUpload(task.upload_task_id)}>{task.upload_outcome === "MAY_HAVE_UPLOADED" ? "核查原上传页" : "安全继续"}</button>}
-      </div>)}
-      <QianchuanUploadHistory batches={detail.upload?.closedBatches} accounts={detail.upload?.accounts} />
-    </section>}
+    {job.accountProduct && <div className="batch-upload-summary" aria-label="本批上传摘要">
+      <p>千川上传：已上传 {uploaded} / {total} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条</p>
+      {onUploads && <button type="button" className="button secondary compact" onClick={onUploads}>查看本批上传任务</button>}
+      {detail.upload?.message && <small>{detail.upload.message}</small>}
+    </div>}
     <section className="card result-list" aria-label={`${job.name}作品与任务`}>
       <div className="card-header"><h2>作品与任务</h2><span>{completed} / {total} 条完成</span></div>
       {!tasks.length && !unqueued.length && <div className="empty-state"><Icon name="film" size={36} /><p>{job.status === "queued" ? "等待前面的商品制作完成，轮到该商品后会显示逐条进度。" : job.status === "preparing" || job.status === "producing" ? "正在准备制作，任务生成后会自动显示。" : "该项没有可用的作品记录。"}</p></div>}
@@ -103,5 +62,3 @@ export function BatchProductionWorkList({ detail, onArtifact, onResumeUpload, re
     </section>
   </>;
 }
-
-function message(cause: unknown): string { return cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "无法读取作品，请返回列表重试。"; }

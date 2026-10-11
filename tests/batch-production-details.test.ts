@@ -4,9 +4,13 @@ import { describe, expect, it } from "vitest";
 import type { BatchProductionDetail } from "../src/shared/batch-production";
 import { BatchProductionWorkList } from "../src/renderer/BatchProductionDetails";
 
-const render = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMarkup(createElement(BatchProductionWorkList, { detail: { runId: "run",
+import { BatchUploadList } from "../src/renderer/BatchUploadDetails";
+
+const makeDetail = (patch: Partial<BatchProductionDetail> = {}): BatchProductionDetail => ({ runId: "run",
   job: { id: "job", recentProjectId: "recent", name: "蝴蝶贴", requestedCount: 2, actualCount: 2, productPrice: "手动价格", coverEnabled: true,
-    displayMode: "full", status: "producing", taskIds: [], completedCount: 0, failedCount: 0 }, items: [], tasks: [], ...patch }, onArtifact: () => undefined }));
+    displayMode: "full", status: "producing", taskIds: [], completedCount: 0, failedCount: 0 }, items: [], tasks: [], ...patch });
+const render = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMarkup(createElement(BatchProductionWorkList, { detail: makeDetail(patch), onArtifact: () => undefined, onUploads: () => undefined }));
+const renderUploads = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMarkup(createElement(BatchUploadList, { detail: makeDetail(patch) }));
 
 describe("batch works presentation", () => {
   it("offers bounded resume for unselected tasks and only read-only checks for uncertain uploads", () => {
@@ -15,12 +19,22 @@ describe("batch works presentation", () => {
         { upload_task_id: "a", file_name: "unknown.mp4", state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" },
         { upload_task_id: "b", file_name: "pending.mp4", state: "PENDING", upload_outcome: "NOT_SELECTED" },
       ] } } as unknown as BatchProductionDetail;
-    const html = renderToStaticMarkup(createElement(BatchProductionWorkList, { detail, onArtifact: () => undefined, onResumeUpload: () => undefined }));
+    const html = renderToStaticMarkup(createElement(BatchUploadList, { detail, onResumeUpload: () => undefined }));
     expect(html).toContain('>核查原上传页</button>');
     expect(html).toMatch(/disabled="">安全继续<\/button>/);
     detail.upload!.tasks.shift();
-    const pending = renderToStaticMarkup(createElement(BatchProductionWorkList, { detail, onArtifact: () => undefined, onResumeUpload: () => undefined }));
+    const pending = renderToStaticMarkup(createElement(BatchUploadList, { detail, onResumeUpload: () => undefined }));
     expect(pending).toContain('>安全继续</button>'); expect(pending).not.toContain('disabled=""');
+  });
+  it("keeps upload rows and recovery controls out of the works view", () => {
+    const upload = { tasks: [{ upload_task_id: "a", file_name: "upload-only.mp4", state: "CANCELLED", upload_outcome: "NOT_SELECTED", attempt_count: 1, retry_count: 2 }] } as BatchProductionDetail["upload"];
+    const job = { ...makeDetail().job, accountProduct: "蝴蝶贴" as const };
+    const works = render({ job, upload });
+    expect(works).toContain("查看本批上传任务"); expect(works).not.toContain("upload-only.mp4"); expect(works).not.toContain("安全继续");
+    const uploads = renderUploads({ job, upload });
+    expect(uploads).toContain("连接 / 准备已重试 2 次"); expect(uploads).toContain("启动不表示已选文件或上传成功");
+    const historical = renderToStaticMarkup(createElement(BatchUploadList, { detail: makeDetail({ job, upload: { ...upload!, historical: true } }), onResumeUpload: () => undefined }));
+    expect(historical).not.toContain("安全继续");
   });
   it("shows frozen Hybrid partial outcomes while keeping export errors authoritative", () => {
     const coverSummary = "自动形状匹配 · 已处理 0 个角落；右上：语义未确认；其他角落保持原样";
@@ -52,7 +66,7 @@ describe("batch works presentation", () => {
   it("keeps export completion separate from upload ready and unknown outcomes", () => {
     const base = { id: "job", recentProjectId: "recent", name: "蝴蝶贴", requestedCount: 2, actualCount: 2, productPrice: "手动价格", coverEnabled: true,
       displayMode: "full" as const, status: "completed" as const, taskIds: [], completedCount: 2, failedCount: 0, accountProduct: "蝴蝶贴" as const };
-    const html = render({ job: base, upload: { message: "fixture upload", tasks: [
+    const html = renderUploads({ job: base, upload: { message: "fixture upload", tasks: [
       { upload_task_id: "ready", file_name: "ready.mp4", advertiserId: "123", adId: "456", state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY" },
       { upload_task_id: "unknown", file_name: "unknown.mp4", advertiserId: "123", adId: "456", state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" },
     ] as NonNullable<BatchProductionDetail["upload"]>["tasks"] } });
@@ -69,9 +83,9 @@ describe("batch works presentation", () => {
       ...Array.from({ length: 9 }, (_, index) => ({ upload_task_id: `pending-${index}`, file_name: `pending-${index}.mp4`, state: "PENDING", upload_outcome: "NOT_SELECTED" })),
     ].map(task => ({ ...task, accountProduct: "眼贴", advertiserId: "123", adId: "456" })) as NonNullable<BatchProductionDetail["upload"]>["tasks"];
     const tasks = Array.from({ length: 30 }, (_, index) => ({ id: `export-${index}`, status: "completed", progress: 1 })) as BatchProductionDetail["tasks"];
-    const html = render({ job, tasks, upload: { message: "此前制作的上传记录", accounts: [{ product: "眼贴", productName: "晚安油", browserProfileName: "当前 Chrome", advertiserId: "123", adId: "456", available: true }], tasks: uploads } });
+    const html = renderUploads({ job, tasks, upload: { message: "此前制作的上传记录", accounts: [{ product: "眼贴", productName: "晚安油", browserProfileName: "当前 Chrome", advertiserId: "123", adId: "456", available: true }], tasks: uploads } });
     expect(html).toContain("千川上传 · 当前 Chrome"); expect(html).not.toContain("千川上传 · 眼贴");
-    const rebound = render({ job, tasks, upload: { message: "此前制作的上传记录", tasks: uploads, accounts: [{ product: "眼贴", browserProfileName: "其他 Chrome", advertiserId: "999", adId: "456", available: true }] } });
+    const rebound = renderUploads({ job, tasks, upload: { message: "此前制作的上传记录", tasks: uploads, accounts: [{ product: "眼贴", browserProfileName: "其他 Chrome", advertiserId: "999", adId: "456", available: true }] } });
     expect(rebound).not.toContain("其他 Chrome");
     expect(html).toContain("已上传 12 / 30 条"); expect(html).toContain("待上传 9 条"); expect(html).toContain("结果未知 9 条");
     expect(html).toContain("9 条上传结果未知，需核查原 Chrome 上传页面");

@@ -5,6 +5,8 @@ import { calculateExactProductionQuantity, MAX_AGENT_OUTPUTS } from "../shared/a
 import { PRODUCT_PRICE_MAX_LENGTH, PRODUCT_PRICE_HELP, RequiredProductPriceSchema } from "../shared/decorations";
 import { Heading, Icon } from "./ui";
 import { BatchProductionDetails } from "./BatchProductionDetails";
+import type { BatchUploadContext } from "./BatchUploadDetails";
+import { WorkspacePage, scrollWorkspace } from "./WorkspacePage";
 import { resolveBatchUploadAccount } from "../shared/batch-upload";
 import { qianchuanAccountName, type QianchuanProduct } from "../shared/qianchuan-account";
 import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
@@ -15,7 +17,7 @@ type Row = BatchProjectOption & { selected: boolean; outputDirectory?: string; u
 const labels = { queued: "等待制作", preparing: "检查模板", producing: "正在制作", exporting: "正在导出", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const modeLabels = { manual: "自己设置", agent: "全部交给 Agent", random: "本地随机" };
 
-export function BatchProductionPanel({ state, visible, onState, onAutomation, onConfigureUpload }: { state: DesktopState; visible: boolean; onState(state: DesktopState): void; onAutomation?(production: BatchProductionStart): void; onConfigureUpload?(): void }) {
+export function BatchProductionPanel({ state, visible, onState, onAutomation, onConfigureUpload, onUploads }: { state: DesktopState; visible: boolean; onState(state: DesktopState): void; onAutomation?(production: BatchProductionStart): void; onConfigureUpload?(): void; onUploads?(context: BatchUploadContext): void }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -154,12 +156,14 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
     catch (value) { setError(message(value)); }
   };
   const total = selected.reduce((sum, row) => sum + (calculateExactProductionQuantity(row.sourceCount, row.requestedCount)?.total ?? 0), 0);
+  const openDetails = (next: BatchUploadContext) => { setDetail(next); scrollWorkspace(); };
+  if (detail) return <WorkspacePage active={visible} label="批量作品"><BatchProductionDetails request={detail} name={detail.name} active={visible} onBack={() => { setDetail(undefined); scrollWorkspace(); }} onUploads={() => onUploads?.(detail)} /></WorkspacePage>;
   if (!visible) return null;
-  if (detail) return <BatchProductionDetails request={detail} name={detail.name} onBack={() => setDetail(undefined)} />;
   return <>
     <div className="batch-production-heading"><Heading title="批量制作">选择不同商品的已保存模板，按列表顺序逐项制作。上一项全部导出并校验后才开始下一项；失败会记录原因并继续。</Heading><button className="button secondary compact" disabled={loading || busy} onClick={() => setRevision(value => value + 1)}><Icon name="folder" size={16} />刷新模板</button></div>
     <p>每个模板选择上传账号后会自动保存；多个模板可以使用同一个账号。{state.douyinUpload?.config.enabled ? "每组最多 9 条，成功后继续，停在确定前。" : "全局千川上传已关闭；仍可先保存模板与账号的关联。"}</p>
     <button type="button" className="text-button" onClick={onConfigureUpload}>配置千川上传</button>
+    {state.douyinUpload?.config.enabled && !state.douyinUpload.ready && <p className="notice" role="status">千川状态：{state.douyinUpload.message} 请先核对上传状态；制作入口仍由主进程检查资格。</p>}
     {!bindingReady && <p role="status">账号关联功能等待当前制作结束后加载，请保留正在进行的任务。</p>}
     {error && <div className="notice error" role="alert">{error}</div>}
     {state.batchProductionWarning && <div className="notice error" role="alert">{state.batchProductionWarning}</div>}
@@ -207,7 +211,7 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
     <button type="button" className="button secondary compact" disabled={busy || loading || !automationProduction} onClick={() => automationProduction && onAutomation?.(automationProduction)}>保存为定时任务</button>
     <div className="step-footer"><div style={{ minWidth: 0 }}><strong>已选择 {selected.length} 个模板，共制作 {total} 条视频</strong><small>开始后仍可编辑下一批参数；当前任务保留开始时的设置。失败项不会自动重试。</small></div><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>{startHint && <small id="batch-start-reasons" role="status" aria-live="polite" title={startReasons.join("\n")} style={{ color: "#b14444", marginTop: 0, maxWidth: 420, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{startHint}</small>}<button className="button primary" style={{ flexShrink: 0 }} aria-describedby={startHint ? "batch-start-reasons" : undefined} disabled={busy || loading || running || exporting || state.agentRun?.status === "running" || !state.capabilities.ready || Boolean(state.batchProductionWarning) || !valid} onClick={() => void start()}><Icon name="play" size={18} />{busy ? "正在准备…" : running ? "批量制作中" : "开始批量制作"}</button></div></div>
     {run && <section className="card batch-production-results" aria-label="批量制作进度"><div className="card-header"><h2>{running ? "批量制作进行中" : run.status === "interrupted" ? "上次批量制作已中断" : run.status === "cancelled" ? "批量制作已停止" : "批量制作结果"}</h2>{running && <button className="button secondary compact" disabled={stopping || run.status === "cancelling"} onClick={() => void stop()}>{stopping || run.status === "cancelling" ? "正在停止…" : "停止整批"}</button>}</div>{run.error && <p className="batch-error">{run.error}</p>}
-      {run.jobs.map((job, index) => <div className="batch-result-row" key={job.id}><span className="batch-order">{index + 1}</span><div className="batch-result-info"><button type="button" className="text-button batch-result-name" aria-label={`查看 ${job.name} 作品`} onClick={() => setDetail({ runId: run.id, jobId: job.id, name: job.name })}>{job.name}</button><p>{job.completedCount} / {job.actualCount || job.requestedCount} 条完成{job.mode && ` · ${modeLabels[job.mode]}`} · 覆盖{job.coverEnabled ? "开启" : "关闭"} · 价格{job.displayMode === "full" ? "全程" : "前 5 秒"}</p>{job.error && <small className="batch-error">{job.error}</small>}{job.outputDirectory && <small>{job.outputDirectory}</small>}</div><span className={`status-tag ${job.status}`}>{labels[job.status]}</span>{running && ["queued", "preparing", "producing", "exporting"].includes(job.status) && <button type="button" className="text-button" aria-label={`取消 ${job.name} 制作`} disabled={stopping || run.status === "cancelling" || cancellingJobs.includes(job.id)} onClick={() => void cancelJob(run.id, job.id)}>{cancellingJobs.includes(job.id) ? "正在取消…" : "取消该项"}</button>}<button type="button" className="text-button" onClick={() => setDetail({ runId: run.id, jobId: job.id, name: job.name })}>查看作品</button>{job.completedTaskIds?.[0] && <div className="row-actions"><button className="text-button" onClick={() => void artifact(job.completedTaskIds![0], false)}>播放首条</button><button className="icon-button" aria-label={`打开 ${job.name} 成片文件夹`} onClick={() => void artifact(job.completedTaskIds![0], true)}><Icon name="folder" size={18} /></button></div>}</div>)}
+      {run.jobs.map((job, index) => <div className="batch-result-row" key={job.id}><span className="batch-order">{index + 1}</span><div className="batch-result-info"><button type="button" className="text-button batch-result-name" aria-label={`查看 ${job.name} 作品`} onClick={() => openDetails({ runId: run.id, jobId: job.id, name: job.name })}>{job.name}</button><p>{job.completedCount} / {job.actualCount || job.requestedCount} 条完成{job.mode && ` · ${modeLabels[job.mode]}`} · 覆盖{job.coverEnabled ? "开启" : "关闭"} · 价格{job.displayMode === "full" ? "全程" : "前 5 秒"}</p>{job.error && <small className="batch-error">{job.error}</small>}{job.outputDirectory && <small>{job.outputDirectory}</small>}</div><span className={`status-tag ${job.status}`}>{labels[job.status]}</span>{running && ["queued", "preparing", "producing", "exporting"].includes(job.status) && <button type="button" className="text-button" aria-label={`取消 ${job.name} 制作`} disabled={stopping || run.status === "cancelling" || cancellingJobs.includes(job.id)} onClick={() => void cancelJob(run.id, job.id)}>{cancellingJobs.includes(job.id) ? "正在取消…" : "取消该项"}</button>}<button type="button" className="text-button" onClick={() => openDetails({ runId: run.id, jobId: job.id, name: job.name })}>查看作品</button>{job.completedTaskIds?.[0] && <div className="row-actions"><button className="text-button" onClick={() => void artifact(job.completedTaskIds![0], false)}>播放首条</button><button className="icon-button" aria-label={`打开 ${job.name} 成片文件夹`} onClick={() => void artifact(job.completedTaskIds![0], true)}><Icon name="folder" size={18} /></button></div>}</div>)}
     </section>}
   </>;
 }

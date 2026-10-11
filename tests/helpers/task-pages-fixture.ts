@@ -21,7 +21,16 @@ export function taskPagesFixtureScript() {
     let snapshots = new Set(); const emit=()=>snapshots.forEach(fn=>fn(clone(state)));
     let automations=[]; let automationListeners=new Set();
     const automationStatus=()=>({tasks:clone(automations),timeZone:"Asia/Hong_Kong",running:false});
-    const calls={starts:[],coverSaves:[],created:[],configured:[],sideEffects:[],plans:[],reviewEdits:[]};
+    const calls={starts:[],batchStarts:[],batchDetails:[],batchResumes:[],coverSaves:[],created:[],configured:[],sideEffects:[],plans:[],reviewEdits:[]};
+    let batchDetail;
+    const showBatchResults=({unknown=false,historical=false}={})=>{
+      const runId=crypto.randomUUID(),jobId=crypto.randomUUID();
+      const tasks=Array.from({length:50},(_,i)=>({id:crypto.randomUUID(),batchId:crypto.randomUUID(),mediaId:media[0].id,status:i<40?"completed":"failed",progress:i<40?1:0,errorMessage:i<40?undefined:"隔离渲染异常"}));
+      const job={id:jobId,recentProjectId:secondId,projectId:secondId,name:"绿眼贴",requestedCount:50,actualCount:50,productPrice:"隔离文字",coverEnabled:false,displayMode:"full",accountProduct:"蝴蝶贴",status:"completed",taskIds:tasks.map(x=>x.id),completedCount:40,failedCount:10};
+      const uploads=tasks.slice(0,40).map((task,i)=>({upload_task_id:i.toString(16).padStart(64,"0"),project_id:secondId,export_task_id:task.id,file_name:"上传文件 "+i+".mp4",accountProduct:"蝴蝶贴",advertiserId:"321",adId:"654",state:unknown&&i===0?"NEEDS_HUMAN":"CANCELLED",upload_outcome:unknown&&i===0?"MAY_HAVE_UPLOADED":"NOT_SELECTED",failure:{message:"上传已停止。",next_action:"明确继续才处理。"}}));
+      batchDetail={runId,job,tasks,usesModel:false,items:tasks.map((t,i)=>({id:crypto.randomUUID(),mediaId:t.mediaId,taskId:t.id,version:1,name:"成片 "+i,status:"exporting"})),upload:{message:"旧上传操作未能安全停止，请先关闭应用并核查 Chrome。",accounts:clone(accounts),tasks:uploads,historical,closedBatches:[]}};
+      state.batchProduction={id:runId,status:"finished",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),jobs:[job]};emit();
+    };
     const blocked = async()=>{calls.sideEffects.push("blocked");throw new Error("隔离界面禁止平台、模型和文件副作用");};
     const accounts=[{product:"蝴蝶贴",productName:"蝴蝶贴",browserProfileName:"隔离账号",advertiserId:"123",adId:"456",available:true}];
     window.jianji={
@@ -37,6 +46,9 @@ export function taskPagesFixtureScript() {
       loadProject:async id=>{state.project={id:id??secondId,name:id===projectId?"蝴蝶贴":"项目 B",template:{productPriceDraft:id===projectId?"A 的文字":"B 的文字"},mediaItems:clone(media),workspaceDraft:{...clone(workspace),brief:id===projectId?"A 的说明":"B 的说明",requestedCount:id===projectId?9:6},hasUnsavedChanges:false};return clone(state);},
       batchProductionProjects:async()=>recent.map(x=>({recentProjectId:x.id,projectId:x.id,name:x.name,sourceCount:3,requestedCount:5,productPrice:"隔离文字",coverEnabled:false,coverMode:"manual",displayMode:"full",mode:"random"})),
       saveBatchUploadAccount:async input=>({accountProduct:input.accountProduct,advertiserId:input.expectedAdvertiserId}),
+      batchProductionDetails:async input=>{calls.batchDetails.push(clone(input));if(!batchDetail||input.runId!==batchDetail.runId||input.jobId!==batchDetail.job.id)throw new Error("隔离详情身份不匹配");return clone(batchDetail);},
+      resumeBatchUpload:async input=>{calls.batchResumes.push(clone(input));},
+      startBatchProduction:async input=>{calls.batchStarts.push(clone(input));const id=crypto.randomUUID();state.batchProduction={id,status:"running",createdAt:new Date().toISOString(),updatedAt:new Date().toISOString(),jobs:input.entries.map(entry=>({id:crypto.randomUUID(),recentProjectId:entry.recentProjectId,name:"隔离新制作",requestedCount:entry.requestedCount,actualCount:entry.requestedCount,productPrice:entry.productPrice,coverEnabled:entry.coverEnabled,displayMode:entry.displayMode,status:"producing",taskIds:[],completedCount:0,failedCount:0}))};return clone(state);},
       listQianchuanPlans:async input=>{calls.plans.push(clone(input));return [{advertiserId:input.expectedAdvertiserId,adId:"456",name:"隔离计划"}];},cancelQianchuanPlans:async()=>{},
       saveDouyinUploadConfig:async config=>{state.douyinUpload.config=clone(config);return clone(state);},
       saveQianchuanAccount:async()=>{state.douyinUpload.accounts=clone(accounts);state.douyinUpload.configSelected=true;return clone(state);},
@@ -45,10 +57,10 @@ export function taskPagesFixtureScript() {
       createAutomation:async request=>{calls.created.push(clone(request));automations.push({id:crypto.randomUUID(),request:clone(request),binding:"a".repeat(64),summary:"隔离固定范围",createdAt:new Date().toISOString()});automationListeners.forEach(fn=>fn(automationStatus()));return automationStatus();},
       configureAutomation:async input=>{calls.configured.push(clone(input));automations=automations.map(t=>t.id===input.id?{...t,request:{...t.request,time:input.time,enabled:input.enabled}}:t);automationListeners.forEach(fn=>fn(automationStatus()));return automationStatus();},removeAutomation:blocked,
       getQianchuanVideoLibrarySchedule:async()=>({settings:{enabled:false,time:"00:30",accounts:[]},timeZone:"Asia/Hong_Kong"}),onQianchuanVideoLibrarySchedule:()=>()=>{},
-      getCCSwitchConnections:async()=>[],openArtifact:blocked,revealArtifact:blocked,startBatchProduction:blocked,
+      getCCSwitchConnections:async()=>[],openArtifact:blocked,revealArtifact:blocked,
       openQianchuanAccountBrowser:blocked,controlQianchuanAccountBrowser:blocked,clearQianchuanVideoLibraries:blocked,generateBrief:blocked,
     };
-    window.taskPagesFixture={state,calls,emit,configureAccounts:()=>{state.douyinUpload.accounts=clone(accounts);state.douyinUpload.config.enabled=true;state.douyinUpload.ready=true;emit();},showResults:()=>{const id=crypto.randomUUID();const tasks=media.map((x,i)=>({id:crypto.randomUUID(),batchId:id,mediaId:x.id,status:i===2?"failed":"completed",progress:i===2?0:1,errorMessage:i===2?"隔离失败":""}));state.agentRun=undefined;state.queue.batches=[{batch:{id,projectId:state.project.id,mediaIds:media.map(x=>x.id),status:"completed_with_errors",tasks}}];state.project.latestProduction={id:crypto.randomUUID(),usesModel:false,items:tasks.map((t,i)=>({id:crypto.randomUUID(),mediaId:t.mediaId,taskId:t.id,version:1,name:media[i].displayName,status:"exporting"}))};emit();}};
+    window.taskPagesFixture={state,calls,emit,showBatchResults,configureAccounts:()=>{state.douyinUpload.accounts=clone(accounts);state.douyinUpload.config.enabled=true;state.douyinUpload.ready=true;emit();},showResults:()=>{const id=crypto.randomUUID();const tasks=media.map((x,i)=>({id:crypto.randomUUID(),batchId:id,mediaId:x.id,status:i===2?"failed":"completed",progress:i===2?0:1,errorMessage:i===2?"隔离失败":""}));state.agentRun=undefined;state.queue.batches=[{batch:{id,projectId:state.project.id,mediaIds:media.map(x=>x.id),status:"completed_with_errors",tasks}}];state.project.latestProduction={id:crypto.randomUUID(),usesModel:false,items:tasks.map((t,i)=>({id:crypto.randomUUID(),mediaId:t.mediaId,taskId:t.id,version:1,name:media[i].displayName,status:"exporting"}))};emit();}};
     createRoot(document.getElementById("root")).render(<div className="membership-workspace"><App/></div>);
   `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
 }

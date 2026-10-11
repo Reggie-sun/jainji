@@ -28,6 +28,7 @@ import { DouyinUploadControls, type UploadSelectionDraft } from "./DouyinUploadC
 import { WorkspacePage, scrollWorkspace, workspaceScroller } from "./WorkspacePage";
 import { QianchuanWorkspace, type QianchuanPage } from "./QianchuanWorkspace";
 import { AutomationWorkspace, type AutomationDraft, type AutomationPage } from "./AutomationWorkspace";
+import type { BatchUploadContext } from "./BatchUploadDetails";
 
 export default function App() {
   const [state, setState] = useState<DesktopState>();
@@ -36,10 +37,11 @@ export default function App() {
   const [workflowSection, setWorkflowSection] = useState<WorkflowId>("materials");
   const [modelsOpen, setModelsOpen] = useState(false);
   const [qianchuanPage, setQianchuanPage] = useState<QianchuanPage>("uploads");
+  const [qianchuanBatch, setQianchuanBatch] = useState<BatchUploadContext>();
   const [automationPage, setAutomationPage] = useState<AutomationPage>("tasks");
   const [automationDraft, setAutomationDraft] = useState<AutomationDraft>();
   const [automationRevision, setAutomationRevision] = useState(0);
-  const returnContexts = useRef<{ step: Step; section: WorkflowId; qianchuanPage: QianchuanPage; automationPage: AutomationPage; top: number; focus?: HTMLElement }[]>([]);
+  const returnContexts = useRef<{ step: Step; section: WorkflowId; qianchuanPage: QianchuanPage; qianchuanBatch?: BatchUploadContext; automationPage: AutomationPage; top: number; focus?: HTMLElement }[]>([]);
   const [notice, setNotice] = useState<{ error: boolean; text: string }>();
   const [initError, setInitError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,6 +71,9 @@ export default function App() {
   const projectId = useRef("");
   const operation = useRef(false);
   const pendingProductPrice = useRef<{ projectId: string; productPrice: string }>();
+  useEffect(() => {
+    setQianchuanBatch(current => current?.runId === state?.batchProduction?.id ? current : undefined);
+  }, [state?.batchProduction?.id]);
 
   const apply = useCallback((next: DesktopState, restoreWorkspace = false) => {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
@@ -79,6 +84,7 @@ export default function App() {
       returnContexts.current = [];
       scrollWorkspace();
       setDouyinUploadSelection(undefined);
+      setQianchuanBatch(undefined);
       setCollectionName(next.project.name);
       knownMedia.current.clear();
       setRule(workspace?.ruleId ?? "black-gold");
@@ -375,16 +381,17 @@ export default function App() {
   };
   const openContext = (next: Step) => {
     if (next === step) return;
-    returnContexts.current.push({ step, section: workflowSection, qianchuanPage, automationPage, top: workspaceScroller().scrollTop, focus: document.activeElement instanceof HTMLElement ? document.activeElement : undefined });
+    returnContexts.current.push({ step, section: workflowSection, qianchuanPage, qianchuanBatch, automationPage, top: workspaceScroller().scrollTop, focus: document.activeElement instanceof HTMLElement ? document.activeElement : undefined });
     navigate(next);
   };
   const returnToContext = () => {
     const context = returnContexts.current.pop();
     if (!context) { navigateWorkflow("materials"); return; }
-    setStep(context.step); setWorkflowSection(context.section); setQianchuanPage(context.qianchuanPage); setAutomationPage(context.automationPage);
+    setStep(context.step); setWorkflowSection(context.section); setQianchuanPage(context.qianchuanPage); setQianchuanBatch(context.qianchuanBatch?.runId === state.batchProduction?.id ? context.qianchuanBatch : undefined); setAutomationPage(context.automationPage);
     scrollWorkspace({ top: context.top, focus: context.focus });
   };
   const openAccounts = () => { setQianchuanPage("accounts"); openContext("qianchuan"); };
+  const openBatchUploads = (context: BatchUploadContext) => { setQianchuanBatch(context); setQianchuanPage("uploads"); openContext("qianchuan"); };
   const openProjectManager = () => openContext("projects");
   const openModelSettings = () => openContext("connection");
   const openAutomation = (draft: AutomationDraft) => {
@@ -411,7 +418,7 @@ export default function App() {
   };
 
   return <div className="app-shell">
-    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onBatch={() => navigate("batch")} onStickerLibrary={() => openContext("stickers")} onResults={() => navigateWorkflow("results")} onQianchuan={() => navigate("qianchuan")} onAutomation={() => navigate("automation")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
+    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onBatch={() => navigate("batch")} onStickerLibrary={() => openContext("stickers")} onResults={() => navigateWorkflow("results")} onQianchuan={() => { setQianchuanBatch(undefined); navigate("qianchuan"); }} onAutomation={() => navigate("automation")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
     {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
     <BugFeedbackDialog open={feedbackOpen} page={step === "import" ? "import" : step === "connection" ? "connection" : step === "templates" || step === "stickers" ? "templates" : "results"} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">
@@ -448,10 +455,10 @@ export default function App() {
         </WorkspacePage>
 
         <WorkspacePage active={step === "templates"} label="制作设置"><TemplatePanel key={state.project.id} modePicker={<PackagingModePicker value={decorations.mode} disabled={busy} onChange={mode => { const next = { ...decorations, mode }; if (productionRunning) setDecorations(next); else changeDecorations(next); if (mode !== "manual") setSelectedCorner(undefined); }} />} section={workflowSection === "cover" || workflowSection === "export" ? workflowSection : "packaging"} onNavigate={navigateWorkflow} startReasons={reasons} onFix={fixReason} coverSummary={state.project.coverSticker?.enabled ? "覆盖开启" : "覆盖关闭"} selectedMedia={selectedMedia} onDisplayText={changeDisplayText} onSaveDisplayText={saveCollection} onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} reviewRequired={Boolean(state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && !state.project.coverSticker.manualRegionInput)} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<><div className="packaging-resources"><button type="button" className="text-button" onClick={() => openContext("stickers")}>管理贴纸库</button><button type="button" className="text-button" onClick={openModelSettings}>配置模型</button></div><CornerDecorationPicker media={selectedMedia} onSave={saveCollection} assetMutationDisabled={locked || exporting} selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} /></>} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel reviewDrafts={state.project.reviewDrafts} projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} reviewPanel={state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && !state.project.coverSticker.manualRegionInput && <CoverReviewPanel manualSettings={state.project.coverSticker.manualRegionInput ? state.project.coverSticker : undefined} uploadSelection={douyinUploadSelection} assistedArtwork={state.project.coverSticker.assistedArtwork} agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />} /></div>} uploadControls={<DouyinUploadControls onConfigure={openAccounts} serviceEnabled={state.douyinUpload?.config.enabled ?? false} accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} /></WorkspacePage>
-        <BatchProductionPanel state={state} visible={step === "batch"} onState={apply} onConfigureUpload={openAccounts} onAutomation={production => openAutomation({ production })} />
-        <WorkspacePage active={step === "qianchuan"} label="千川"><QianchuanWorkspace state={state} page={qianchuanPage} onPage={page => { setQianchuanPage(page); scrollWorkspace(); }} onState={apply} onAutomation={cleanup => openAutomation({ cleanup })} /></WorkspacePage>
+        <BatchProductionPanel state={state} visible={step === "batch"} onUploads={openBatchUploads} onState={apply} onConfigureUpload={openAccounts} onAutomation={production => openAutomation({ production })} />
+        <WorkspacePage active={step === "qianchuan"} label="千川"><QianchuanWorkspace state={state} active={step === "qianchuan"} batchUpload={qianchuanBatch} onBatchUpload={context => { setQianchuanBatch(context); scrollWorkspace(); }} page={qianchuanPage} onPage={page => { setQianchuanPage(page); scrollWorkspace(); }} onState={apply} onAutomation={cleanup => openAutomation({ cleanup })} /></WorkspacePage>
         <WorkspacePage active={step === "automation"} label="自动化"><AutomationWorkspace state={state} page={automationPage} onPage={page => { setAutomationPage(page); scrollWorkspace(); }} draft={automationDraft} revision={automationRevision} onSource={source => { if (source === "batch") navigate("batch"); else { setQianchuanPage("materials"); navigate("qianchuan"); } }} /></WorkspacePage>
-        <WorkspacePage key={"results:" + state.project.id} active={step === "results"} label="作品"><ResultsPanel onUploads={() => { setQianchuanPage("uploads"); openContext("qianchuan"); }} state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} /></WorkspacePage>
+        <WorkspacePage key={"results:" + state.project.id} active={step === "results"} label="作品"><ResultsPanel onUploads={() => { setQianchuanBatch(undefined); setQianchuanPage("uploads"); openContext("qianchuan"); }} state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} /></WorkspacePage>
       </main>
       <footer className="app-footer"><span>简辑 · 本地视频包装</span><span><i /> 本地渲染，原片保留</span></footer>
     </div>

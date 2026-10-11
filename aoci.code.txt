@@ -230,7 +230,7 @@ renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/ma
 remote-worker.ts[EN7T]: F:启动远端SSH worker或固定账号聚焦入口 | R:code:src/main/qianchuan-remote-worker.ts | A:零参数RPC或精确desktop-focus及数字ID；私有umask和默认display | S:其他参数拒绝；RPC错误只通用响应，CLI错误非零且不泄露异常
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7L]: F:协调项目草稿与制作作品千川自动化页面 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/TemplatePanel.tsx,code:src/renderer/QianchuanWorkspace.tsx,code:src/renderer/AutomationWorkspace.tsx | A:四阶段视图；来源返回恢复滚动焦点；原桥启动重试；输出阻断定位；项目切换恢复原草稿 | S:切页不保存批准或取消；运行输入已冻结；未保存覆盖禁启动；上传选择不随项目保存；界面不授main权限
+App.tsx[AU7L]: F:协调项目草稿与制作作品千川自动化页面 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/TemplatePanel.tsx,code:src/renderer/QianchuanWorkspace.tsx,code:src/renderer/AutomationWorkspace.tsx | A:四阶段视图；来源返回滚动焦点；本批上传绑定run/job；新run及项目切换清视图；原桥启动重试；输出阻断定位 | S:切页不保存批准或取消；运行输入已冻结；未保存覆盖禁启动；上传选择不随项目保存；界面不授main权限
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[EU7T]: F:管理ChatGPT登录API连接及角色模型入口 | R:code:src/renderer/App.tsx,code:src/renderer/SavedConnectionsPanel.tsx | A:居中设置页；登录与空表单窄栏；标签切换；沿原回调管理连接 | S:不持有已保存凭据；打开角色选择不请求模型或保存连接
@@ -260,9 +260,9 @@ main.tsx[EU7T]: F:用会员入口包裹React App并挂载 | R:code:src/renderer/
 ui.tsx[AB7T]: F:通用图标标题与尺寸时长显示函数 | R:code:src/renderer/App.tsx | A:纯展示组件 | S:不决定领域状态
 workspace-flow.ts[DU4T]: F:定义任务页面与四阶段制作导航目标 | R:code:src/renderer/App.tsx,code:src/renderer/WorkspaceChrome.tsx | A:materials包装覆盖输出映射；作品独立；管理任务不占制作步骤 | S:-
 DouyinUploadControls.tsx[EU6T]: F:提供本次制作上传开关账号计划及配置入口 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanPlanSelect.tsx | A:Chrome资料名及完整ID；提交稳定product；普通与compact布局；全局关闭提示 | S:同名靠ID区分；默认不上传；选择不授权确认发布或广告设置
-DouyinUploadPanel.tsx[EU7T]: F:分页面协调千川任务账号设置素材管理及处置历史 | R:code:src/renderer/QianchuanSettingsPage.tsx,code:src/renderer/QianchuanVideoLibraryActions.tsx,code:src/renderer/QianchuanUploadHistory.tsx | A:原操作状态owner；冻结ID取名；计划恢复跳配置页；任务及历史仅上传页；错误跨页可见 | S:历史不继续上传；保存不重传；closed非平台结果；READY非确认；接收非审核投放
-BatchProductionPanel.tsx[EU6M]: F:呈现立即批量制作单行参数进度及来源草稿入口 | R:code:src/shared/batch-production.ts,code:src/renderer/QianchuanPlanSelect.tsx,code:src/renderer/BatchProductionDetails.tsx | A:真实人工覆盖；账号名和ID；冻结参数；自动化草案交父页面；配置入口 | S:开启用保存框无框不覆盖；缺计划禁启动；改名保留选择；界面不授上传权
-BatchProductionDetails.tsx[EU6S]: F:展示批量作品导出上传及恢复入口 | R:code:src/shared/batch-production.ts,code:src/renderer/qianchuan-account-display.ts | A:轮询详情；冻结账号命名；READY及ACCEPTED计上传；展示平台视频ID | S:历史别名不恢复；UNKNOWN阻塞未选；READY非确认；接收非审核投放
+DouyinUploadPanel.tsx[EU7T]: F:分页面协调千川任务账号设置素材管理及处置历史 | R:code:src/renderer/QianchuanSettingsPage.tsx,code:src/renderer/QianchuanVideoLibraryActions.tsx,code:src/renderer/QianchuanUploadHistory.tsx | A:原操作状态owner；冻结ID取名；计划恢复跳配置；本批视图隐藏当前项目任务且保留设置；错误跨页可见 | S:历史不继续上传；保存不重传；closed非平台结果；READY非确认；接收非审核投放
+BatchProductionPanel.tsx[EU6M]: F:呈现立即批量制作单行参数进度及来源草稿入口 | R:code:src/shared/batch-production.ts,code:src/renderer/QianchuanPlanSelect.tsx,code:src/renderer/BatchProductionDetails.tsx | A:真实人工覆盖；冻结参数；自动化草案；上传服务阻断提示；隐藏保留作品及焦点；新run清详情 | S:开启用保存框无框不覆盖；缺计划禁启动；改名保留选择；界面不授上传权
+BatchProductionDetails.tsx[EU6T]: F:优先展示批量制作进度成片播放及异常 | R:code:src/renderer/useBatchProductionDetails.ts,code:src/shared/batch-production.ts | A:原详情轮询；冻结覆盖摘要及真实错误；仅紧凑上传摘要和千川跳转 | S:上传明细及恢复另页；导出完成不表示上传成功；不增重试或追加权限
 DisplayTextEditor.tsx[EU6T]: F:编辑手填文字及逐素材预览开关位置和边框 | R:code:src/shared/decorations.ts,code:src/shared/frames.ts,code:src/renderer/TemplatePreview.tsx,code:src/renderer/MediaSelector.tsx | A:按素材投影文字和边框；auto及random用示意款；播放拖动保存沿原回调 | S:文字整批手填；预览不承诺是否使用及冻结款；不授制作或保存路径权限
 MediaSelector.tsx[EU5T]: F:提供按素材ID选择的可访问下拉列表及前后导航 | R:code:src/renderer/DisplayTextEditor.tsx,code:src/renderer/CoverStickerPanel.tsx | A:combobox与listbox键盘高亮选取；外部点击或失焦关闭；滚动到高亮项；选定回调后恢复焦点；显示序号总数 | S:未知value显示首项但不自动调用onChange；组件不持久化选择
 QianchuanAccountSettings.tsx[EU6T]: F:提供可折叠账号计划出口及浏览器设置 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanEgressSettings.tsx | A:默认收起任务编辑展开；保留草稿；恢复核原advertiser；清理另页 | S:资料名不写产品字段；保存不迁移旧批次；main保护待处理任务
@@ -285,8 +285,10 @@ AutomationWorkspace.tsx[AU6T]: F:分离自动化列表创建编辑及旧每日�
 OutputConfirmation.tsx[EU6T]: F:呈现输出摘要数量目录设置上传及开始阻断 | R:code:src/shared/agent.ts,code:src/renderer/ExportSettingsPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:共享数量向上取整；本页补素材覆盖保存目录及数量原因；定位回调；assisted转覆盖页 | S:切页不启动批准；运行冻结输入不被下一轮设置替换
 PackagingModePicker.tsx[EU4T]: F:呈现Agent手动与本地随机制作方式选择 | R:code:src/shared/decorations.ts,code:src/renderer/App.tsx | A:受控value及onChange；显示pressed状态；沿父级禁用 | S:-
 QianchuanSettingsPage.tsx[EU6T]: F:汇总全局上传账号计划及高级设置页面 | R:code:src/renderer/QianchuanAccountSettings.tsx,code:src/renderer/WorkspacePage.tsx | A:沿原perform保存导入刷新；恢复序号重置账号编辑并定位；时限及诊断配置 | S:保存仅影响新制作；旧任务目标不自动迁移或重传
-QianchuanWorkspace.tsx[AU5T]: F:导航千川上传任务账号计划及素材管理三页 | R:code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/App.tsx | A:素材页居中等宽账号及双列计划；当前页投影；操作交原owner；按project.id隔离编辑器 | S:切页仅变样式不重挂清理owner；导航不授上传或清理权限
+QianchuanWorkspace.tsx[AU5T]: F:导航千川上传任务账号计划及素材管理三页 | R:code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/BatchUploadDetails.tsx,code:src/renderer/App.tsx | A:素材居中双列；本批run/job与当前项目上传视图切换；隐藏暂停详情轮询；按project.id隔离设置 | S:切页不重挂清理owner；跨模板上传不按当前项目过滤；导航不授上传或清理权限
 WorkspacePage.tsx[AU5T]: F:保留已访问页草稿并实现工作区滚动和焦点恢复 | R:code:src/renderer/App.tsx,code:src/renderer/MembershipGate.tsx | A:首次访问挂载；inactive隐藏且暂停媒体；双RAF按实际页头避让定位控件或恢复来源scrollTop | S:隐藏不取消任务；滚动使用membership-workspace而非窗口
+BatchUploadDetails.tsx[EU6T]: F:展示冻结批量上传详情历史及原安全恢复入口 | R:code:src/renderer/useBatchProductionDetails.ts,code:src/renderer/QianchuanUploadHistory.tsx,code:src/renderer/qianchuan-account-display.ts | A:按冻结广告主命名；READY及ACCEPTED计上传；实际启动准备重试计数；恢复只传run/job/task | S:历史别名不恢复；UNKNOWN阻塞未选；READY非确认；启动非已选或成功；接收非审核投放
+useBatchProductionDetails.ts[AU5T]: F:按冻结run/job复用原批量详情只读轮询 | R:code:src/shared/batch-production.ts,code:src/main/preload.ts | A:活跃每秒读取；隐藏停止轮询但保留详情；身份改变重置；隔离迟到响应及IPC错误前缀 | S:观察不恢复上传权限或触发任务
 
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===

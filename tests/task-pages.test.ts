@@ -26,6 +26,81 @@ async function fixture() {
 const workflow = (page: Page, name: string) => page.getByRole("navigation", { name: "制作流程" }).getByRole("button", { name: new RegExp(name + "$" ) });
 const rail = (page: Page, name: string) => page.locator(".workspace-rail").getByRole("button", { name, exact: true });
 
+it("puts bulk works first and navigates to frozen upload details without resuming on navigation", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(() => (window as any).taskPagesFixture.showBatchResults({ unknown: true }));
+    await rail(page, "批量制作").click();
+    await page.getByLabel("选择模板 蝴蝶贴", { exact: true }).check();
+    await page.getByRole("spinbutton", { name: "想制作的视频条数", exact: true }).first().fill("123");
+    await page.getByRole("button", { name: "查看 绿眼贴 作品", exact: true }).click();
+    const works = page.getByRole("region", { name: "绿眼贴作品与任务", exact: true });
+    await works.waitFor();
+    expect(await works.getByRole("button", { name: "播放", exact: true }).count()).toBe(40);
+    expect(await works.getByText("隔离渲染异常", { exact: true }).count()).toBe(10);
+    expect(await works.evaluate(element => element.getBoundingClientRect().top)).toBeLessThan(600);
+    expect(await page.getByText("上传文件 0.mp4", { exact: true }).isVisible()).toBe(false);
+    expect(await page.getByRole("button", { name: "安全继续", exact: true }).count()).toBe(0);
+    const uploadButton = page.getByRole("button", { name: "查看本批上传任务", exact: true });
+    await uploadButton.click();
+    await page.getByRole("heading", { name: "绿眼贴 · 上传任务", exact: true }).waitFor();
+    expect(await page.getByText("上传文件 0.mp4", { exact: true }).isVisible()).toBe(true);
+    expect(await page.getByText(/账户 321 \/ 计划 654/).count()).toBe(40);
+    expect(await page.getByRole("button", { name: "安全继续", exact: true }).first().isDisabled()).toBe(true);
+    expect(await page.getByRole("region", { name: "本项千川上传", exact: true }).getByText("旧上传操作未能安全停止，请先关闭应用并核查 Chrome。", { exact: true }).isVisible()).toBe(true);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.batchResumes)).toEqual([]);
+    await page.getByRole("button", { name: "核查原上传页", exact: true }).click();
+    const observed = await page.evaluate(() => { const f = (window as any).taskPagesFixture; return { run: f.state.batchProduction, calls: f.calls }; });
+    expect(observed.calls.batchResumes).toEqual([{ runId: observed.run.id, jobId: observed.run.jobs[0].id, uploadTaskId: "0".repeat(64) }]);
+    await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "账号与计划", exact: true }).click();
+    await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "上传任务", exact: true }).click();
+    expect(await page.getByRole("heading", { name: "绿眼贴 · 上传任务", exact: true }).isVisible()).toBe(true);
+    await page.getByRole("button", { name: "返回来源页面", exact: false }).click();
+    expect(await works.isVisible()).toBe(true);
+    await expect.poll(() => uploadButton.evaluate(element => element === document.activeElement)).toBe(true);
+    await page.getByRole("button", { name: "返回批量列表", exact: false }).click();
+    expect(await page.getByRole("spinbutton", { name: "想制作的视频条数", exact: true }).first().inputValue()).toBe("123");
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.batchStarts)).toEqual([]);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.sideEffects)).toEqual([]);
+    await rail(page, "千川").click();
+    await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "上传任务", exact: true }).click();
+    await page.getByRole("button", { name: "绿眼贴 · 本批上传", exact: true }).click();
+    await page.getByRole("heading", { name: "绿眼贴 · 上传任务", exact: true }).waitFor();
+    await page.locator(".project-switcher summary").click();
+    await page.getByRole("button", { name: "管理项目", exact: true }).click();
+    await page.getByLabel("已保存的项目", { exact: true }).click();
+    await page.getByRole("option", { name: /项目 B/ }).click();
+    await rail(page, "千川").click();
+    expect(await page.getByRole("heading", { name: "绿眼贴 · 上传任务", exact: true }).count()).toBe(0);
+    expect(await page.getByText("当前项目没有千川上传任务。", { exact: true }).isVisible()).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
+it("hands enabled automatic upload to new batch production and keeps it frozen during navigation", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(() => (window as any).taskPagesFixture.configureAccounts());
+    await rail(page, "批量制作").click();
+    await page.getByLabel("选择模板 蝴蝶贴", { exact: true }).check();
+    await page.getByRole("spinbutton", { name: "想制作的视频条数", exact: true }).first().fill("7");
+    await page.getByRole("combobox", { name: "蝴蝶贴上传账号", exact: true }).selectOption("蝴蝶贴");
+    await page.locator('[id$="-plan"]').first().selectOption("456");
+    await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+    const entries = await page.evaluate(() => (window as any).taskPagesFixture.calls.batchStarts[0].entries);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].requestedCount).toBe(7);
+    expect(entries[0].douyinUpload).toEqual({ enabled: true, accountProduct: "蝴蝶贴", plan: { advertiserId: "123", adId: "456", name: "隔离计划" } });
+    await rail(page, "千川").click();
+    await rail(page, "批量制作").click();
+    await page.getByRole("spinbutton", { name: "想制作的视频条数", exact: true }).first().fill("8");
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.batchStarts[0].entries)).toEqual(entries);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.batchStarts.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.batchResumes)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
 it("separates production stages, retains drafts and explains missing text beside output", async () => {
   const { page, errors } = await fixture();
   try {
