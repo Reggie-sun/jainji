@@ -81,3 +81,13 @@ Chrome MCP 使用隔离页面验证了保存清理+制作+上传完整范围、�
 6 个定向测试文件共 97 项通过，涵盖批量精确条数、模板顺序、私有项目、详情、上传准入及固定配方；typecheck 通过。受管 Kimi deep 只读映射 `cc700339-9166-4151-bbbc-db963309829a` 为 PARSED，seal `fa5c01282f23e340cd9edba1d8420d89946d2b9732743113890800c53d51951e`，2 个请求均 IDENTITY_VERIFIED，4 条实际读取及全部产物 SHA 经父线程核验。其指出的双模板各 2 条直接验收缺口由本次真实定时执行关闭；其读取范围外的 `automation-fixed-production.test.ts` 已独立覆盖 fixedProjects 不重读可变模板并包含在本次测试中。已完成 job 后续丢失队列记录的降级路径没有新增实测，不把本次成功路径说成完整恢复验收。仅新增测试记录，Implementation Review Risk Gate 不触发额外审查。
 
 本轮 record 为 AOCI observe，无需新增 Entry 或更新业务基线。官方 Verify / Check / Guide 已读取：结构和 managed scope 有效、无 recovery 或第三方冲突；另一会话的界面源码仍在变化，全库 governance_aligned 为 false，不用旧索引宣称全库对齐，也不代替该会话维护。保留其全部改动，仅以本轮文档的 owned Harness / completion 作为交付证据。批量真实上传、真实删除、跨日持续无人值守以及 Windows 未在本轮验收。
+
+## Cleanup Schedule Button Repair
+
+2026-10-11，用户反馈勾选零展示后定时保存按钮仍不可用，并询问“执行清理”的含义。当前应用复现：两个计划规则、视频库清空均勾选，6 个账号各选 1 个计划；`QianchuanVideoLibraryActions` 的 `!videoLibrary` 条件阻断定时草稿。现在即时清理和每日定时分别显示说明；视频库勾选保留，定时入口仅带入原有 `DELETE_PLAN_MATERIALS` 的账号、所选计划及审核/零展示规则，明确提示视频库不纳入任务。缺少账号、计划、规则、来源回调，或正在操作/确认时仍禁用并显示原因。即时删除、平台身份核对、15 天保护、未知结果屏障及保存授权合同保持原行为。
+
+新增混选回归在原实现上三种规则组合均因按钮禁用失败；修复后 automation UI 11 项及原计划选择/清理 UI 17 项通过，typecheck 通过。测试验证实际提交的计划规则与双 ID、默认暂停、授权前不能保存、打开草稿及保存定时均不调用清理接口；账号/计划/规则为空不能缩小范围后保存。Chrome MCP 在独立假 bridge 页面核对混选后按钮可点击并进入授权设置页，没有真实平台连接。
+
+原 `make frontend` 窗口实测点击“保存为定时任务”，成功带入 6 个所选计划和两类规则。设置页任务名称为空、启用及授权未勾选，最终保存按钮按合同禁用；当前项目 SHA 和自动化任务列表 SHA 前后完全一致，任务仍为 0。证据保存在 `.agent/harness/runs/20261011-cleanup-schedule-ui/live-proof.json`；没有保存或启用真实任务，没有执行素材删除、上传或模型请求。
+
+受管 Kimi deep 只读范围核对 invocation `f2821940-0f17-4eb9-a74e-74200eaa6312`，seal `f8c93f28005b014e2e08b8778d8540387089b681548cfe3d5d048c45c4355c66`，2 个请求均 IDENTITY_VERIFIED；父线程核验 2 条实际完整读取、4 个产物 SHA 及 source 稳定性。采纳计划专用草稿和原授权门的结论；其对按钮禁用的推测仅为候选，实际原因由本轮清理组件源码和原窗口独立确认。主进程 `AutomationScheduler.create` 再次校验共享 schema；后端不新增视频库定时准入。没有专用 session-record Skill，本节记录稳定检查点；record/test 为 AOCI observe，清理组件 Entry 与 baseline 由本会话维护。

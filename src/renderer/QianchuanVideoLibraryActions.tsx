@@ -26,10 +26,16 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
   const selectionCurrent = !selected || selected.accounts.every(target => configured.some(account => account.product === target.product && account.advertiserId === target.expectedAdvertiserId));
   const selectedPlanMaterials = selected?.confirmation !== "DELETE_ALL_VIDEOS";
   const selectedVideoLibrary = selected?.confirmation !== "DELETE_PLAN_MATERIALS";
-  const automationCleanup: QianchuanLibraryClear | undefined = planMaterials && !videoLibrary && chosen.length && Boolean(plansReady)
+  const automationCleanup: QianchuanLibraryClear | undefined = planMaterials && chosen.length && Boolean(plansReady)
     ? { confirmation: "DELETE_PLAN_MATERIALS", ...(zeroImpressions ? { planMaterialRule: auditMaterials ? "AUDIT_AND_ZERO_IMPRESSIONS_15D" : "ZERO_IMPRESSIONS_15D" } : {}),
       accounts: chosen.map(account => ({ product: account.product, expectedAdvertiserId: account.advertiserId, plans: chosenPlans(account)! })) }
     : undefined;
+  const scheduleDisabledReason = disabled ? "正在处理其他操作，请稍后设置定时清理。"
+    : selected ? "请先取消或完成当前的立即清理确认。"
+    : !onAutomation ? "定时任务入口尚未加载。"
+    : !chosen.length ? "请选择要定时清理的账号。"
+    : !planMaterials ? "请选择三类审核素材或近15天零展示素材。"
+    : !plansReady ? "请为每个所选账号选择清理计划。" : "";
   const clear = async (request = selected) => {
     if (!request || disabled || !selectionCurrent) return;
     setRunning(true); setError(""); setResults([]);
@@ -52,6 +58,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
   return <div className="qianchuan-cleanup" aria-label="千川素材清理">
     <section className="qianchuan-cleanup-card" aria-label="立即清理素材">
       <div className="qianchuan-cleanup-heading"><h3>素材清理</h3><span>按账号和所选计划清理千川素材</span></div>
+      <p>下方清理按钮立即删除符合所选规则的千川素材。要每天自动清理，请使用页面底部的“保存为定时任务”。</p>
       {!selected ? <>
         <div className="qianchuan-cleanup-label"><strong>选择要清理的账号（可多选）</strong><button type="button" className="qianchuan-cleanup-link" disabled={disabled || !configured.length} onClick={() => setProducts(chosen.length === configured.length ? [] : undefined)}>{chosen.length === configured.length ? "取消全选" : "全选"}</button></div>
         <div className="qianchuan-cleanup-accounts">
@@ -95,7 +102,12 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
       {error && <p className="qianchuan-cleanup-error" role="alert">{error}</p>}
       {!!results.length && <QianchuanCleanupResults title="本次清理" results={results} accounts={accounts} busy={disabled} onResolve={resolve} />}
     </section>
-    {videoLibrary && <p role="status">新定时任务只支持所选计划素材清理，不能安排视频库全部视频清空。</p>}
-    <button type="button" className="button secondary compact" disabled={disabled || Boolean(selected) || !automationCleanup} onClick={() => automationCleanup && onAutomation?.(automationCleanup)}>保存为定时任务</button>
+    <section className="qianchuan-cleanup-card" aria-label="定时清理计划素材">
+      <div className="qianchuan-cleanup-heading"><h3>每日定时清理</h3><span>仅清理上方所选计划素材</span></div>
+      <p>保存所选账号、计划和清理规则，在下一页设置每天执行时间并授权。此按钮不立即删除素材。</p>
+      {videoLibrary && <p role="status">视频库全部视频仅用于上方立即清理，不纳入这个定时任务。</p>}
+      {scheduleDisabledReason && <p role="status">{scheduleDisabledReason}</p>}
+      <button type="button" className="button secondary compact" disabled={Boolean(scheduleDisabledReason) || !automationCleanup} title={scheduleDisabledReason} onClick={() => automationCleanup && onAutomation?.(automationCleanup)}>保存为定时任务</button>
+    </section>
   </div>;
 }

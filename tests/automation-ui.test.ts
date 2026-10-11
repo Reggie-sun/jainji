@@ -29,7 +29,7 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
     import { AutomationComposer, AutomationPanel } from "./src/renderer/AutomationPanel";
     import { QianchuanVideoLibraryActions } from "./src/renderer/QianchuanVideoLibraryActions";
     window.automationTasks = ${JSON.stringify(sourceTasks.length ? sourceTasks : options.component === "composer" && !options.production ? [taskArgument] : [])};
-    window.automationCalls = { created: [], configured: [], removed: [] };
+    window.automationCalls = { created: [], configured: [], removed: [], cleanup: [] };
     const status = () => ({ tasks: window.automationTasks, timeZone: "Asia/Hong_Kong", running: false });
     window.jianji = {
       getAutomation: async () => status(),
@@ -43,6 +43,7 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
       onAutomation: () => () => {},
       listQianchuanPlans: async input => [{ advertiserId: input.expectedAdvertiserId, adId: "456", name: "固定计划" }],
       cancelQianchuanPlans: async () => {},
+      clearQianchuanVideoLibraries: async input => { window.automationCalls.cleanup.push(input); return []; },
       onQianchuanVideoLibrarySchedule: () => () => {},
       getQianchuanVideoLibrarySchedule: async () => ({ settings: { enabled: false, time: "00:30", accounts: [] }, timeZone: "Asia/Hong_Kong" }),
       saveQianchuanVideoLibrarySchedule: async settings => ({ settings, timeZone: "Asia/Hong_Kong" }),
@@ -152,6 +153,63 @@ describe("scheduled automation browser interaction", () => {
         upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
       });
       expect(pageErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it.each([
+    { audit: true, zero: true, rule: "AUDIT_AND_ZERO_IMPRESSIONS_15D" },
+    { audit: false, zero: true, rule: "ZERO_IMPRESSIONS_15D" },
+    { audit: true, zero: false, rule: undefined },
+  ])("schedules only selected plan rules when immediate library cleanup is also checked: $rule", async ({ audit, zero, rule }) => {
+    const { page, pageErrors } = await fixture({ component: "cleanup" });
+    try {
+      await page.getByRole("checkbox", { name: "清理计划 456" }).waitFor();
+      if (!audit) await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
+      if (!zero) await page.getByRole("checkbox", { name: /近15天零展示素材/ }).uncheck();
+      const library = page.getByRole("checkbox", { name: /视频库全部视频/ });
+      await library.check();
+      expect(await page.getByRole("button", { name: "保存为定时任务", exact: true }).isEnabled()).toBe(true);
+      const schedule = page.getByRole("region", { name: "定时清理计划素材" });
+      await schedule.getByText("视频库全部视频仅用于上方立即清理，不纳入这个定时任务。", { exact: true }).waitFor();
+      expect(await library.isChecked()).toBe(true);
+      expect(await schedule.getByRole("button", { name: "保存为定时任务", exact: true }).isEnabled()).toBe(true);
+      await schedule.getByRole("button", { name: "保存为定时任务", exact: true }).click();
+      await page.getByRole("heading", { name: "保存每日自动化" }).waitFor();
+      expect(await page.evaluate(() => (window as any).automationCalls.created)).toEqual([]);
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
+      expect(await page.getByRole("checkbox", { name: /我授权简辑/ }).isChecked()).toBe(false);
+      expect(await page.getByRole("button", { name: "保存定时任务" }).isDisabled()).toBe(true);
+      await page.getByLabel("任务名称").fill("每日计划素材清理");
+      await page.getByRole("checkbox", { name: /我授权简辑/ }).check();
+      await page.getByRole("button", { name: "保存定时任务" }).click();
+      await page.waitForFunction(() => (window as any).automationCalls.created.length === 1);
+      expect(await page.evaluate(() => (window as any).automationCalls.created[0])).toEqual({
+        name: "每日计划素材清理", time: "00:30", enabled: false, upload: false,
+        cleanup: { confirmation: "DELETE_PLAN_MATERIALS", ...(rule ? { planMaterialRule: rule } : {}),
+          accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", plans: [plan] }] },
+        confirmation: "AUTHORIZE_FIXED_AUTOMATION",
+      });
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
+      expect(pageErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it.each(["account", "plan", "rule"])("explains unavailable scheduling without shrinking an empty %s selection", async missing => {
+    const { page } = await fixture({ component: "cleanup" });
+    try {
+      await page.getByRole("checkbox", { name: "清理计划 456" }).waitFor();
+      if (missing === "account") await page.getByRole("checkbox", { name: /蝴蝶贴/ }).uncheck();
+      if (missing === "plan") await page.getByRole("checkbox", { name: "清理计划 456" }).uncheck();
+      if (missing === "rule") {
+        await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
+        await page.getByRole("checkbox", { name: /近15天零展示素材/ }).uncheck();
+        await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
+      }
+      const schedule = page.getByRole("region", { name: "定时清理计划素材" });
+      expect(await schedule.getByRole("button", { name: "保存为定时任务", exact: true }).isDisabled()).toBe(true);
+      await schedule.getByText(missing === "account" ? "请选择要定时清理的账号。" : missing === "plan" ? "请为每个所选账号选择清理计划。" : "请选择三类审核素材或近15天零展示素材。", { exact: true }).waitFor();
+      expect(await page.evaluate(() => (window as any).automationCalls.created)).toEqual([]);
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
     } finally { await page.close(); }
   });
 
