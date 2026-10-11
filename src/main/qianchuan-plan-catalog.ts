@@ -12,6 +12,7 @@ const PLAN_PICKER_MARKER = "jianjiPlanPicker";
 const MAX_PAGES = 100;
 const MAX_PLANS = 1000;
 const PAGE_WAIT_MS = 15_000;
+const INITIAL_PAGE_WAIT_MS = 45_000;
 const SAMPLE_INTERVAL_MS = 100;
 const STABLE_SAMPLES = 3;
 const changed = () => new Error("千川计划列表或账号身份无法完整核对，请检查账号浏览器中的计划列表后重试。");
@@ -142,15 +143,55 @@ function completeSnapshot(snapshot: DomSnapshot, expectedPage: number): PageSnap
   return { total, pageNumber, nextDisabled: snapshot.nextDisabled, rows: snapshot.rows, rowSignature };
 }
 
+async function prepareProductView(page: Page, advertiserId: string, document: JSHandle<Document>, requested: boolean, signal: AbortSignal): Promise<{ ready: boolean; requested: boolean }> {
+  signal.throwIfAborted();
+  checkPage(page, advertiserId);
+  const view = await abortable(page.evaluate(({ document, advertiserId, requested }) => {
+    if (document !== window.document) return undefined;
+    const visible = (element: Element) => !!element.getClientRects().length && getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden";
+    const ids = Array.from(document.querySelectorAll(".account-info-container")).filter(visible)
+      .flatMap(element => Array.from((element as HTMLElement).innerText.matchAll(/ID[：:]\s*([1-9][0-9]{0,19})/g), match => match[1]!));
+    if (ids.length > 1 || ids.length === 1 && ids[0] !== advertiserId) return { invalid: true, ready: false, requested };
+    const productTabs = Array.from(document.querySelectorAll('[data-e2e="oc_emptyKey_uni-prom_1"]')).filter(element =>
+      visible(element) && element.textContent?.trim() === "商品自选" && element.closest(".ovui-tabs__tab"));
+    const managedTabs = Array.from(document.querySelectorAll('[data-e2e="oc_emptyKey_uni-prom_2"]')).filter(element =>
+      visible(element) && element.textContent?.trim() === "全店托管" && element.closest(".ovui-tabs__tab"));
+    if (productTabs.length > 1 || managedTabs.length > 1) return { invalid: true, ready: false, requested };
+    if (!productTabs.length && !managedTabs.length) return { ready: true, requested };
+    if (productTabs.length !== 1 || managedTabs.length !== 1 || ids.length !== 1) return { ready: false, requested };
+    const product = productTabs[0]!;
+    if (product.closest(".ovui-tabs__tab")!.classList.contains("ovui-tabs__tab--active")) return { ready: true, requested };
+    if (!requested && managedTabs[0]!.closest(".ovui-tabs__tab")!.classList.contains("ovui-tabs__tab--active")) {
+      // This only selects a read-only view on our picker, without waiting for background animation frames.
+      (product as HTMLElement).click();
+      return { ready: false, requested: true };
+    }
+    return { ready: false, requested };
+  }, { document, advertiserId, requested }).catch(async cause => {
+    const sameDocument = await page.evaluate(value => value === window.document, document).catch(() => false);
+    if (!sameDocument) throw new CatalogDocumentChanged();
+    throw cause;
+  }), signal);
+  checkPage(page, advertiserId);
+  if (!view) throw new CatalogDocumentChanged();
+  if (view.invalid) throw changed();
+  return view;
+}
+
 async function waitForInitialDocument(page: Page, advertiserId: string, signal: AbortSignal, deadline: number): Promise<JSHandle<Document>> {
   let document = await abortable(page.evaluateHandle(() => window.document), signal);
   let bound = false;
+  let productViewRequested = false;
   try {
     while (Date.now() < deadline) {
       signal.throwIfAborted();
       try {
-        const snapshot = completeSnapshot(await observe(page, advertiserId, document, signal), 1);
-        if (snapshot && !(snapshot.total > 0 && snapshot.rows.length === 0)) { bound = true; return document; }
+        const view = await prepareProductView(page, advertiserId, document, productViewRequested, signal);
+        productViewRequested = view.requested;
+        if (view.ready) {
+          const snapshot = completeSnapshot(await observe(page, advertiserId, document, signal), 1);
+          if (snapshot && !(snapshot.total > 0 && snapshot.rows.length === 0)) { bound = true; return document; }
+        }
       } catch (cause) {
         if (!(cause instanceof CatalogDocumentChanged)) throw cause;
         await document.dispose().catch(() => undefined);
@@ -204,7 +245,7 @@ export async function readVisibleQianchuanPlans(page: Page, advertiserId: string
   if (!/^[1-9][0-9]{0,19}$/.test(advertiserId)) throw changed();
   signal.throwIfAborted();
   checkPage(page, advertiserId);
-  const firstPageDeadline = Date.now() + PAGE_WAIT_MS;
+  const firstPageDeadline = Date.now() + INITIAL_PAGE_WAIT_MS;
   const documentHandle = await waitForInitialDocument(page, advertiserId, signal, firstPageDeadline);
   try {
     const idsSeen = new Set<string>();

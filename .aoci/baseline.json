@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T18:22:15Z",
+  "updated_at": "2026-10-11T18:49:38Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "255083f25731a4ae5ba077248def4a56eb141905087d20a356a8ccd88222abe3",
-      "size": 118444,
-      "normalized_sha256": "255083f25731a4ae5ba077248def4a56eb141905087d20a356a8ccd88222abe3"
+      "sha256": "aee4d1a496a9060e18fe430c73e7379c76b7890c09bdf52157a90e93fef48765",
+      "size": 118394,
+      "normalized_sha256": "aee4d1a496a9060e18fe430c73e7379c76b7890c09bdf52157a90e93fef48765"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1603,9 +1603,9 @@
       "normalized_sha256": "59eebfaca11dd5797b4053c3484e4f1072c674549ed428b7810f4205f0df4799"
     },
     "src/main/qianchuan-plan-catalog.ts": {
-      "sha256": "841b81a8465f7916416016373f571849be735863685054b5950f3e13057740b8",
-      "size": 19203,
-      "normalized_sha256": "841b81a8465f7916416016373f571849be735863685054b5950f3e13057740b8"
+      "sha256": "fe0c78341ff7b4d69786e4154feac5b09f8f0155cba19afa94ab50c6fa01ae54",
+      "size": 22111,
+      "normalized_sha256": "fe0c78341ff7b4d69786e4154feac5b09f8f0155cba19afa94ab50c6fa01ae54"
     },
     "src/main/qianchuan-plan-material-diagnostics.ts": {
       "sha256": "7b06d9ec364ef452ff64583c3a85c274a0c1d42d5f8ed4bd97b8e154b3bcdca8",
