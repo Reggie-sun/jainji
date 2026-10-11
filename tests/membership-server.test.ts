@@ -231,10 +231,12 @@ describe("private Casdoor transport", () => {
   });
 });
 
-async function getWithBody(base: string, body: string): Promise<{ statusCode: number; body: string }> {
+async function getWithBody(base: string, body: string, options: { chunked?: boolean; token?: string } = {}): Promise<{ statusCode: number; body: string }> {
   const url = new URL(base);
   return new Promise((resolve, reject) => {
-    const request = httpRequest({ hostname: url.hostname, port: Number(url.port), path: "/v1/membership", method: "GET", headers: { "Content-Length": Buffer.byteLength(body) } }, (response) => {
+    const headers = { ...(options.chunked ? { "Transfer-Encoding": "chunked" } : { "Content-Length": Buffer.byteLength(body) }),
+      ...(options.token ? { Authorization: `Bearer ${options.token}` } : {}) };
+    const request = httpRequest({ hostname: url.hostname, port: Number(url.port), path: "/v1/membership", method: "GET", headers }, (response) => {
       const chunks: Buffer[] = [];
       response.on("data", (chunk: Buffer) => chunks.push(chunk));
       response.on("end", () => resolve({ statusCode: response.statusCode ?? 0, body: Buffer.concat(chunks).toString("utf8") }));
@@ -318,10 +320,48 @@ describe("membership server", () => {
     const fromUrl = await fetch(`${base}/v1/membership?access_token=valid-access-token`);
     expect(MembershipStatusSchema.parse(await fromUrl.json())).toMatchObject({ state: "signed-out", reason: "signed-out" });
     const response = await getWithBody(base, JSON.stringify({ accessToken: "valid-access-token" }));
-    expect(response.statusCode).toBe(200);
-    expect(MembershipStatusSchema.parse(JSON.parse(response.body))).toMatchObject({ state: "denied", reason: "session-expired" });
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body)).toEqual({ error: "请求无效。" });
     expect(state.requests).toHaveLength(0);
   });
+
+  it("validates the same saved token through an empty chunked GET forwarded by a proxy", async () => {
+    const { state, base } = await fixture({ createdTime: "2024-01-31T12:00:00.000Z" });
+    for (const chunked of [false, true]) {
+      const response = await getWithBody(base, "", { chunked, token: "valid-access-token" });
+      expect(response.statusCode).toBe(200);
+      expect(MembershipStatusSchema.parse(JSON.parse(response.body)).state).toBe("allowed");
+    }
+    expect(state.requests.filter(r => r.path === "/api/login/oauth/introspect")).toHaveLength(2);
+    state.tokens["valid-access-token"] = { active: false };
+    const revoked = await getWithBody(base, "", { chunked: true, token: "valid-access-token" });
+    expect(MembershipStatusSchema.parse(JSON.parse(revoked.body)).reason).toBe("session-expired");
+  });
+
+  it("rejects nonempty GET bodies without classifying a framing error as expired credentials", async () => {
+    const { state, base } = await fixture();
+    for (const chunked of [false, true]) {
+      const response = await getWithBody(base, "x", { chunked, token: "valid-access-token" });
+      expect(response.statusCode).toBe(400);
+      expect(JSON.parse(response.body)).toEqual({ error: "请求无效。" });
+    }
+    expect(state.requests).toHaveLength(0);
+  });
+
+  it("bounds an unfinished chunked GET without starting token validation", async () => {
+    const { state, base } = await fixture();
+    const url = new URL(base);
+    await new Promise<void>((resolve, reject) => {
+      const request = httpRequest({ hostname: url.hostname, port: Number(url.port), path: "/v1/membership", method: "GET",
+        headers: { "Transfer-Encoding": "chunked", Authorization: "Bearer valid-access-token" } }, response => {
+        expect(response.statusCode).toBe(400);
+        response.resume(); response.once("end", () => { request.destroy(); resolve(); });
+      });
+      request.once("error", reject);
+      request.flushHeaders();
+    });
+    expect(state.requests).toHaveLength(0);
+  }, 15_000);
 
   it("rejects wrong audience, subject, and owner before granting access", async () => {
     const { state, base, config } = await fixture();

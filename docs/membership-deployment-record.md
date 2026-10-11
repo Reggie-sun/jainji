@@ -1,5 +1,19 @@
 # Scope
 
+## Intermittent Login Recovery — 2026-10-11
+
+用户报告已登录使用时反复出现软件内登录页。本轮修复会员请求边界和既有 MembershipGate 展示，不改变会员价格、试用、单会话、封禁或生产准入。
+
+- 当前简辑实例先返回 allowed/grant，随后于 `2026-10-11T10:07:59.259Z` 返回 denied/session-expired，消息为“请求无效，请重新登录”。源码定位到 GET 请求 framing 检查：仅出现 `Transfer-Encoding` 就被误判为凭据失效。独立 Electron `net.fetch` 的 8 次无正文、无账号查询中，2 次返回该错误、6 次正常 signed-out，证明该错误并不表示实际凭据过期。
+- 服务允许已经完整结束、实际零字节的 chunked GET，并继续在线验证原 Bearer token；带正文或 10 秒内未完成的 chunked GET 返回 HTTP 400。传输错误不再输出 session-expired，因此客户端保留凭据；真正无效的 token、封禁、身份不匹配仍由原 policy 判定。
+- 既有 30 秒心跳的 unavailable 状态改为重连横幅，保留工作区与草稿，提供立即重试及退出。启动恢复遇到 unavailable 也提示连接中，不提示再次输入密码。已确认 denied 后再遇到 unavailable 不重新展示工作区；主进程仍拒绝新制作/上传，既有失权取消链保持，网络恢复不自动重放已取消工作或未知上传。
+- 隔离 Electron 使用真实 MembershipGate、preload、createMembershipDesktop、加密凭据及可控 HTTP fixture。修复前 503 复现 loginVisible=true / workspaceHidden=true / credentialSaved=true；修复后 503、服务 unavailable 和 10 秒超时均保留草稿及登录，受保护 IPC 拒绝，项目保存成功。无手动刷新时原心跳自动恢复 allowed；expired、session-expired 仍显示门禁，后者清除凭据。初次 QA 因 role locator 默认排除隐藏输入框而超时，改为读取同一隐藏草稿节点后完整检查通过，不将那次中断当作 PASS。
+- typecheck、5 个会员文件共 66 项测试及会员 bundle build 通过。回归覆盖空/非空 chunked GET、未完成 framing 的 10 秒上限、真实 token 撤销、重复心跳故障后恢复与封禁清凭据。Chrome DevTools CLI 同时核查隔离界面和实际 make frontend 实例，实际实例已加载新重连样式。
+- 部署前私有备份 `backups/20261011T101223Z` 成功；旧 bundle 保留为 `server.mjs.before-transient-20261011`。只重建 membership；新 bundle SHA-256 为 `1485a5afb6cc983838d35d2ebabe9288dfd25468555e25e077ae7839a4303bed`，远端读回一致。容器刚启动时首次 loopback health 尚未就绪，随后公网 health=ok、容器 running；没有重复部署。
+- 更新后同样 8 次 Electron 公网无账号查询全部正常 signed-out。复用此前私有 QA 目录中的同一加密 Google token，6 次真实公网核验全部 allowed/trial，耗时 580–1381 ms；没有新登录、创建账号、付款或审核。用户当前实例此前已被旧错误清除凭据，仍需一次正常重新登录，不能把 QA token 注入用户实例来绕过恢复。
+
+受管只读 Kimi `acdc3022-b615-474a-8139-1171791a2ca5` 以 deep/k3/max 完成 2 次身份核验请求，canonical receipt PARSED，四个源文件完整读取。Parent 确认 unavailable→整屏登录的展示缺陷；其保留隐藏工作区建议会留下空白主界面，因此采用保留可见草稿、由 main 独立阻止生产的方案。服务 framing 误判由 Parent 随后的真实运行证据定位，不宣称该调查覆盖服务修复或构成最终 review。最终 owned Harness、AOCI 与 Review Risk Gate 以本机本轮 scope/receipt 为准；Windows 实机与大规模并发未评估。
+
 ## Login Latency — 2026-10-11
 
 用户要求同时修复点击登录后浏览器迟迟出现、认证后迟迟进入软件。实现范围与兼容边界见 [Login Latency Plan](superpowers/plans/2026-10-11-membership-login-latency.md)。本轮没有修改在线权益策略、收费、试用期限、视频路径或全局 VPN 配置。

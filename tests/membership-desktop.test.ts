@@ -135,6 +135,44 @@ describe("desktop membership", () => {
     expect(JSON.stringify(f.session.snapshot())).not.toContain("secret token");
     expect(f.stopped).toHaveBeenCalledTimes(1);
   });
+  it("recovers from repeated heartbeat outages using the saved login without opening authentication", async () => {
+    vi.useFakeTimers();
+    const login = vi.fn(async () => "unexpected-new-token");
+    const write = vi.fn(async (_token?: string) => {});
+    const check = vi.fn(async (_token: string): Promise<MembershipStatus> => allowed);
+    const stopped = vi.fn(async () => {});
+    const session = new MembershipSession(config, { storage: { read: async () => "saved-token", write },
+      check, login, changed: () => {}, lostAccess: stopped });
+    try {
+      await session.restore(); session.startHeartbeat();
+      check.mockRejectedValue(new Error("temporary timeout"));
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(session.snapshot().state).toBe("unavailable");
+      await expect(session.assertAllowed()).rejects.toThrow();
+      expect(stopped).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(30_000);
+      check.mockResolvedValue(allowed);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(session.snapshot()).toEqual(allowed);
+      await expect(session.assertAllowed()).resolves.toBeUndefined();
+      expect(check.mock.calls.every(([token]) => token === "saved-token")).toBe(true);
+      expect(write).not.toHaveBeenCalled();
+      expect(login).not.toHaveBeenCalled();
+    } finally { session.dispose(); vi.useRealTimers(); }
+  });
+  it("retains credentials on a server unavailable response but clears them on confirmed revocation", async () => {
+    const f = fixture(); await f.session.restore();
+    f.check.mockResolvedValue({ state: "unavailable", reason: "unavailable", message: "服务暂时不可用" });
+    await expect(f.session.assertAllowed()).rejects.toThrow("服务暂时不可用");
+    expect(await f.storage.read()).toBe("access-token");
+    f.check.mockResolvedValue(allowed); await f.session.refresh();
+    expect(f.session.snapshot().state).toBe("allowed");
+    f.check.mockResolvedValue({ state: "denied", reason: "forbidden", message: "账号已停用" });
+    await expect(f.session.assertAllowed()).rejects.toThrow("账号已停用");
+    expect(await f.storage.read()).toBeUndefined();
+    f.check.mockResolvedValue(allowed);
+    expect((await f.session.refresh()).reason).toBe("forbidden");
+  });
   it("stops work even when clearing stored credentials fails", async () => {
     for (const action of ["logout", "revocation"] as const) {
       const f = fixture(); await f.session.restore();

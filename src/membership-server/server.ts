@@ -73,9 +73,9 @@ async function handleRequest(
     sendJson(response, 200, MembershipStatusSchema.parse({ state: "unconfigured", reason: "unconfigured", message: "账号服务尚未配置。", checkedAt: now.toISOString() }));
     return;
   }
-  if (request.headers["content-length"] !== undefined && request.headers["content-length"] !== "0" || request.headers["transfer-encoding"] !== undefined) {
+  if (await hasMembershipRequestBody(request)) {
     request.resume();
-    sendJson(response, 200, MembershipStatusSchema.parse({ state: "denied", reason: "session-expired", message: "请求无效，请重新登录。", checkedAt: now.toISOString() }));
+    sendJson(response, 400, { error: "请求无效。" });
     return;
   }
 
@@ -92,6 +92,27 @@ async function handleRequest(
 
   const status = await resolveMembershipStatus(match[1], config, { fetcher, clock: () => now, trials });
   sendJson(response, 200, MembershipStatusSchema.parse(status));
+}
+
+async function hasMembershipRequestBody(request: IncomingMessage): Promise<boolean> {
+  if (request.headers["content-length"] !== undefined && request.headers["content-length"] !== "0") return true;
+  if (request.headers["transfer-encoding"] === undefined) return false;
+  // Proxies can forward an empty GET using chunked framing. Only actual bytes
+  // violate this endpoint's no-body contract; framing cannot revoke a session.
+  return new Promise(resolve => {
+    const finish = (hasBody: boolean) => {
+      clearTimeout(timer);
+      request.off("data", onBody); request.off("end", onEnd);
+      request.off("aborted", onBody); request.off("error", onBody);
+      resolve(hasBody);
+    };
+    const onBody = () => finish(true), onEnd = () => finish(false);
+    const timer = setTimeout(onBody, 10_000);
+    timer.unref();
+    request.once("data", onBody); request.once("end", onEnd);
+    request.once("aborted", onBody); request.once("error", onBody);
+    request.resume();
+  });
 }
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown): void {

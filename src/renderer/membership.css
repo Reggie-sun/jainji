@@ -2,6 +2,7 @@
 .membership-bar { display: flex; flex: 0 0 auto; align-items: center; justify-content: space-between; gap: 16px; padding: 8px 20px; border-bottom: 1px solid #dce3ed; background: #fff; font-size: 13px; }
 .membership-bar > div, .membership-actions { display: flex; flex-wrap: wrap; gap: 10px; }
 .membership-bar button { padding: 5px 10px; }
+.membership-reconnecting { flex-wrap: wrap; background: #fff8e5; border-bottom-color: #ecd89f; color: #674b12; }
 .membership-workspace { flex: 1; min-height: 0; overflow: auto; }
 .membership-workspace[hidden] { display: none; }
 .membership-workspace > .app-shell { min-height: 100%; height: 100%; }
