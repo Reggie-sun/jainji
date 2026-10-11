@@ -74,7 +74,8 @@ export class QianchuanVideoLibraryPage {
     } finally { this.page.off("request", capture); this.page.off("framenavigated", committed); }
   }
   private async preparePage(): Promise<LibrarySnapshot> {
-    await this.read();
+    const snapshot = await this.read();
+    if (snapshot.total <= 50 && snapshot.ids.length === snapshot.total) return snapshot;
     const size = this.page.locator(".ovui-page-select .ovui-select__input:visible");
     if (await size.count() === 1) {
       const value = await size.evaluate(node => node instanceof HTMLInputElement ? node.value : node.querySelector("input")?.value);
@@ -84,14 +85,17 @@ export class QianchuanVideoLibraryPage {
         await fifty.waitFor({ state: "visible", timeout: 10000 });
         if (await fifty.count() !== 1) throw changed();
         await fifty.click({ timeout: 30000 });
-        await this.page.waitForFunction(() => {
+        await this.page.waitForFunction(allowEmpty => {
           const visible = (node: Element) => !!node.getClientRects().length;
           const tables = Array.from(document.querySelectorAll("table.ovui-table")).filter(visible);
           const totals = Array.from(document.querySelectorAll(".ovui-page-total")).filter(visible);
           const match = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].textContent?.trim() ?? "") : null;
-          return tables.length === 1 && !!match &&
-            tables[0].querySelectorAll('tbody input[type="checkbox"]').length === Math.min(Number(match[1]), 50);
-        }, null, { timeout: 30000 });
+          const rows = tables.length === 1 ? tables[0].querySelectorAll('tbody input[type="checkbox"]') : [];
+          const current = Array.from(document.querySelectorAll(".ovui-page-turner__item--active")).filter(visible);
+          const empty = Array.from(document.querySelectorAll('.oc-empty[data-e2e="oc_emptyKey_tools/creative-management/video-library__ocSelect_rolling_load__rollingLoad"], .oc-empty[data-e2e="oc_emptyKey_tools/creative-management/video-library__ocTable"]')).filter(visible);
+          return tables.length === 1 && (!!match && rows.length === Math.min(Number(match[1]), 50) ||
+            allowEmpty && !totals.length && !current.length && !rows.length && empty.length === 1 && empty[0].textContent?.trim() === "暂无数据");
+        }, this.mutationObserved || this.responseTotal === 0, { timeout: 30000 });
         this.check();
       }
     }
@@ -192,16 +196,30 @@ export class QianchuanVideoLibraryPage {
     await modal.waitFor({ state: "hidden", timeout: 30000 });
     await this.page.getByText(/^已选\s*[1-9]\d*\s*个\s*$/, { exact: true }).waitFor({ state: "hidden", timeout: 30000 });
     await this.page.waitForTimeout(1000);
-    await this.page.waitForFunction(({ total, ids }) => {
-      const visible = (node: Element) => !!node.getClientRects().length;
+    try { await this.page.waitForFunction(({ total, ids }) => {
+      const visible = (node: Element) => !!node.getClientRects().length && getComputedStyle(node).visibility !== "hidden";
       const totals = Array.from(document.querySelectorAll(".ovui-page-total")).filter(visible);
       const current = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].textContent?.trim() ?? "") : null;
-      const rows = Array.from(document.querySelectorAll('table.ovui-table tbody tr')).filter(row => row.querySelector('input[type="checkbox"]'));
+      const tables = Array.from(document.querySelectorAll("table.ovui-table")).filter(visible);
+      if (tables.length !== 1) return false;
+      const rows = Array.from(tables[0].querySelectorAll("tbody tr")).filter(row => row.querySelector('input[type="checkbox"]'));
       const first = /ID[：:]\s*([1-9][0-9]{0,19})/.exec(rows[0]?.textContent ?? "")?.[1];
-      const empty = Array.from(document.querySelectorAll('.oc-empty')).filter(visible);
+      const active = Array.from(document.querySelectorAll(".ovui-page-turner__item--active")).filter(visible);
+      const empty = Array.from(document.querySelectorAll('.oc-empty[data-e2e="oc_emptyKey_tools/creative-management/video-library__ocSelect_rolling_load__rollingLoad"], .oc-empty[data-e2e="oc_emptyKey_tools/creative-management/video-library__ocTable"]')).filter(visible);
       return current ? Number(current[1]) !== total || !!first && !ids.includes(first) :
-        !rows.length && empty.some(node => node.textContent?.trim() === "暂无数据");
-    }, { total: before.total, ids: before.ids }, { timeout: 30000 });
+        !totals.length && !active.length && !rows.length && empty.length === 1 && empty[0].textContent?.trim() === "暂无数据";
+    }, { total: before.total, ids: before.ids }, { timeout: 30000 }); }
+    catch (error) {
+      if (!(error instanceof Error) || error.name !== "TimeoutError") throw error;
+      // A stale result may be refreshed once; the irreversible confirmation is never replayed.
+      const progressed = (snapshot: LibrarySnapshot) => snapshot.total !== before.total ||
+        !!snapshot.ids.length && !before.ids.includes(snapshot.ids[0]);
+      if (!progressed(await this.read())) {
+        await this.load(() => { this.check(); return this.page.reload({ waitUntil: "domcontentloaded", timeout: 30000 }); });
+        if (!progressed(await this.read())) throw new Error("删除后刷新仍未观察到视频库变化，已暂停；不会自动重试删除。");
+        this.mutationObserved = true;
+      }
+    }
     this.check(); await this.checkDocument();
   }
   async refresh(): Promise<LibrarySnapshot> {

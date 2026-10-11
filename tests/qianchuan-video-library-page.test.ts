@@ -36,6 +36,161 @@ async function fixture(options: { count?: number; headerId?: string; warning?: s
   const session = new QianchuanVideoLibraryPage(page, id, new AbortController().signal);
   return { page, context, session, confirmations:()=>confirmations };
 }
+function boundResultWait(page: import("playwright-core").Page) {
+  const wait = page.waitForFunction.bind(page);
+  vi.spyOn(page, "waitForFunction").mockImplementation((fn, arg, options) => wait(fn, arg, { ...options, timeout: 500 }));
+}
+async function leaveStaleDeletionList(page: import("playwright-core").Page) {
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>("#confirm")!.onclick = async () => {
+      await fetch("/fixture-delete", { method: "POST" });
+      (document.querySelector(".ovui-modal") as HTMLElement).style.display = "none";
+      document.querySelector("#selected")!.textContent = "";
+      (document.querySelector("#remove") as HTMLElement).style.display = "none";
+    };
+  });
+}
+it("returns an initially empty library without changing a retained page-size selector", async () => {
+  const f = await fixture({ count: 0, delayedSize: true });
+  try {
+    boundResultWait(f.page);
+    await f.session.open();
+    expect(await f.session.read()).toEqual({ total: 0, ids: [] });
+    expect(await f.page.locator("#size").inputValue()).toBe("20条/页");
+    expect(f.confirmations()).toBe(0);
+  } finally { await f.context.close(); }
+});
+it("consumes an empty final page without changing a page-size selector reset by deletion", async () => {
+  const f = await fixture({ count: 2, delayedSize: true });
+  try {
+    boundResultWait(f.page);
+    await f.session.open();
+    await f.session.deleteBatch(await f.session.read(), async () => {});
+    await f.page.locator("#size").evaluate(node => (node as HTMLInputElement).value = "20条/页");
+    boundResultWait(f.page);
+    expect(await f.session.refresh()).toEqual({ total: 0, ids: [] });
+    expect(await f.page.locator("#size").inputValue()).toBe("20条/页");
+    expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
+it("accepts a verified empty transition while changing page size after a partial final batch", async () => {
+  const f = await fixture({ count: 60, delayedSize: true });
+  try {
+    await f.session.open();
+    await f.session.deleteBatch(await f.session.read(), async () => {});
+    await f.page.evaluate(() => {
+      document.querySelector<HTMLInputElement>("#size")!.value = "20条/页";
+      document.querySelector<HTMLElement>("#fifty")!.onclick = () => {
+        document.querySelector<HTMLInputElement>("#size")!.value = "50条/页";
+        document.querySelector<HTMLElement>("#fifty")!.style.display = "none";
+        setTimeout(() => {
+          document.querySelector(".ovui-page-total")!.remove();
+          document.querySelector(".ovui-page-turner__item--active")!.remove();
+          document.querySelector("tbody")!.innerHTML = "";
+          const empty = document.createElement("div");
+          empty.className = "oc-empty";
+          empty.dataset.e2e = "oc_emptyKey_tools/creative-management/video-library__ocTable";
+          empty.textContent = "暂无数据";
+          document.body.append(empty);
+        }, 50);
+      };
+    });
+    boundResultWait(f.page);
+    expect(await f.session.refresh()).toEqual({ total: 0, ids: [] });
+    expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
+it("recovers a stale deletion result through one fresh bound list without another confirmation", async () => {
+  const f = await fixture({ count: 2 });
+  try {
+    await f.session.open();
+    boundResultWait(f.page);
+    await leaveStaleDeletionList(f.page);
+    const reload = vi.spyOn(f.page, "reload");
+    let intents = 0;
+    await f.session.deleteBatch(await f.session.read(), async () => { intents++; });
+    expect(await f.session.refresh()).toEqual({ total: 0, ids: [] });
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(intents).toBe(1); expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
+it.each(["display:none", "visibility:hidden"])("ignores a %s old table when the final visible list is empty", async hidden => {
+  const f = await fixture({ count: 2 });
+  try {
+    await f.session.open();
+    boundResultWait(f.page);
+    await f.page.evaluate(hidden => {
+      document.querySelector<HTMLButtonElement>("#confirm")!.onclick = async () => {
+        await fetch("/fixture-delete", { method: "POST" });
+        document.querySelector<HTMLElement>(".ovui-modal")!.style.display = "none";
+        document.querySelector("#selected")!.textContent = "";
+        const old = document.querySelector("table")!;
+        old.setAttribute("style", hidden);
+        const table = document.createElement("table");
+        table.className = "ovui-table"; table.innerHTML = "<tbody></tbody>";
+        document.body.append(table);
+        document.querySelector(".ovui-page-total")!.remove();
+        document.querySelector(".ovui-page-turner__item--active")!.remove();
+        const empty = document.createElement("div");
+        empty.className = "oc-empty";
+        empty.dataset.e2e = "oc_emptyKey_tools/creative-management/video-library__ocTable";
+        empty.textContent = "暂无数据"; document.body.append(empty);
+      };
+    }, hidden);
+    const reload = vi.spyOn(f.page, "reload");
+    await f.session.deleteBatch(await f.session.read(), async () => {});
+    expect(await f.session.refresh()).toEqual({ total: 0, ids: [] });
+    expect(reload).not.toHaveBeenCalled(); expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
+it("stops after one readonly refresh when the platform has not removed the final videos", async () => {
+  const f = await fixture({ count: 2 });
+  try {
+    await f.session.open();
+    boundResultWait(f.page);
+    await leaveStaleDeletionList(f.page);
+    let confirmations = 0;
+    await f.page.route("**/fixture-delete", async route => { confirmations++; await route.fulfill({ body: "{}" }); });
+    const reload = vi.spyOn(f.page, "reload");
+    await expect(f.session.deleteBatch(await f.session.read(), async () => {})).rejects.toThrow("刷新仍未观察到");
+    expect(reload).toHaveBeenCalledTimes(1); expect(confirmations).toBe(1);
+    expect(await f.session.read()).toEqual({ total: 2, ids: ["7000", "7001"] });
+  } finally { await f.context.close(); }
+});
+it("rejects a failed fresh list response after a deletion timeout without confirming again", async () => {
+  const f = await fixture({ count: 2 });
+  try {
+    await f.session.open();
+    boundResultWait(f.page);
+    await leaveStaleDeletionList(f.page);
+    await f.page.route(`**${listRoute}?**`, route => route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: 7, data: { total: "0" } }) }));
+    const reload = vi.spyOn(f.page, "reload");
+    await expect(f.session.deleteBatch(await f.session.read(), async () => {})).rejects.toThrow("无法核对");
+    expect(reload).toHaveBeenCalledTimes(1); expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
+it.each(["filter", "account", "document", "cancel"])("does not reload or confirm again after %s drift during deletion observation", async drift => {
+  const f = await fixture({ count: 2 });
+  const controller = new AbortController();
+  const session = new QianchuanVideoLibraryPage(f.page, id, controller.signal);
+  try {
+    await session.open();
+    boundResultWait(f.page);
+    await leaveStaleDeletionList(f.page);
+    const reload = vi.spyOn(f.page, "reload"), pause = f.page.waitForTimeout.bind(f.page);
+    vi.spyOn(f.page, "waitForTimeout").mockImplementationOnce(async ms => {
+      if (drift === "cancel") controller.abort();
+      else if (drift === "document") await f.page.goto(videoLibraryUrl(id));
+      else await f.page.evaluate(drift => {
+        if (drift === "filter") document.querySelector<HTMLInputElement>('input[placeholder="请选择"]')!.value = "筛选";
+        else document.querySelector("header")!.textContent = "ID：9999";
+      }, drift);
+      await pause(ms);
+    });
+    await expect(session.deleteBatch(await session.read(), async () => {})).rejects.toThrow();
+    expect(reload).not.toHaveBeenCalled(); expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
 it("uses the real selectors to select only the current page and scopes confirmation to the verified deletion modal", async () => {
   const f=await fixture();
   try {
