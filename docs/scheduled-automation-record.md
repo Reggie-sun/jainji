@@ -69,3 +69,15 @@
 Chrome MCP 使用隔离页面验证了保存清理+制作+上传完整范围、暂停、时间变更与删除，假 bridge 不连接平台。受管 Kimi deep 只读测试覆盖核查 `b80ea56c-4086-49e7-b5ce-d715ce21a055` 为 PARSED，4 个请求均 IDENTITY_VERIFIED，5 条实际读取及产物 SHA 经父线程核验；seal `f2507cd6be6d423813844bf381586707d7400e3d111d36f6c7da475baed5e9fc`。父线程已用上述真实定时器和应用执行关闭其挂钟验证缺口，并核对本地日期函数；其未执行测试，不作为独立运行验收。60 秒边界、跨午夜缺席记录以及卡住的制作等待仍不在本轮实测范围；既有不补跑、取消停止和 UNKNOWN 不自动重试合同保持。
 
 本轮没有业务源码修改，没有新增真实清理、上传、模型请求或广告预算变更。没有专用 session-record Skill，此记录保存本轮测试检查点；文档按现行 AOCI scope 为 observe，不新增 Entry。Windows、无人值守跨日持续运行和平台全链路仍未在本轮评估。
+
+## Batch Daily Automation Runtime Test
+
+2026-10-11 18:40（Asia/Hong_Kong），原 `make frontend` 应用通过可信 preload IPC 保存并启用一次仅制作的批量定时测试：已保存“晚安油”和“肥皂”两个不同项目，各 requestedCount 2，共 4 条；manual、关闭覆盖，不包含清理、上传或模型请求。18:40:00.473 原每日定时器自动触发，18:40:59.509 为 COMPLETED，production run `4763edf9-5cda-4286-a496-be39d23966c0`。两个 job 均 requested / actual / completed 为 2、failed 为 0；第一组全部导出完成后第二组才开始，4 个原队列任务和输出路径互不重复，primary JobStore 均 completed / attempt 1 且有 ArtifactVerifier 产物证据。独立 FFprobe 和整片 FFmpeg 解码全部通过，时长分别为 137.183、136.348、168.717、233.013 秒；没有人工整片观看。
+
+成片保留在 `/home/reggie/电商/晚安油/视频/10.11 18：40/` 和 `/home/reggie/电商/肥皂/视频/10.11 18：40/`。同日后续读取的 scheduler run ID 不变；测试任务通过原接口暂停并删除，最终每日任务为 0。当前“氨糖膏”项目的全部公开内容（排除 updatedAt 元数据）与执行前 JSON 摘要完全一致，上传账本原始字节 SHA 也一致；详情 usesModel 为 false，新增成片没有上传任务。原 queue publish 会同步当前项目已有批次并更新 updatedAt，初次探针的全对象字节相等断言因此停止；只读补证核对唯一差异为该时间字段，未重做视频或更改项目。证据：`.agent/harness/runs/20261011-batch-daily-test/valid-templates/app-proof.json`、`media-proof.json` 和 `final-state.json`。
+
+此前“晚安油 + 氨糖膏”的准备尝试在创建定时任务前被拒绝，没有 scheduler run 或新导出：氨糖膏旧模板保存的 8 个选择 ID 中有 3 个不在当前 ready 素材集合。保留原模板和当前工作区，另建上述有独立一次性屏障、仍最多 4 条的有效模板测试；没有清理失效引用或放宽准入。该旧模板用于自动化前仍需核对素材选择并重新保存。
+
+6 个定向测试文件共 97 项通过，涵盖批量精确条数、模板顺序、私有项目、详情、上传准入及固定配方；typecheck 通过。受管 Kimi deep 只读映射 `cc700339-9166-4151-bbbc-db963309829a` 为 PARSED，seal `fa5c01282f23e340cd9edba1d8420d89946d2b9732743113890800c53d51951e`，2 个请求均 IDENTITY_VERIFIED，4 条实际读取及全部产物 SHA 经父线程核验。其指出的双模板各 2 条直接验收缺口由本次真实定时执行关闭；其读取范围外的 `automation-fixed-production.test.ts` 已独立覆盖 fixedProjects 不重读可变模板并包含在本次测试中。已完成 job 后续丢失队列记录的降级路径没有新增实测，不把本次成功路径说成完整恢复验收。仅新增测试记录，Implementation Review Risk Gate 不触发额外审查。
+
+本轮 record 为 AOCI observe，无需新增 Entry 或更新业务基线。官方 Verify / Check / Guide 已读取：结构和 managed scope 有效、无 recovery 或第三方冲突；另一会话的界面源码仍在变化，全库 governance_aligned 为 false，不用旧索引宣称全库对齐，也不代替该会话维护。保留其全部改动，仅以本轮文档的 owned Harness / completion 作为交付证据。批量真实上传、真实删除、跨日持续无人值守以及 Windows 未在本轮验收。
