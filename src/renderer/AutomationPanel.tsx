@@ -2,6 +2,10 @@ import { useEffect, useLayoutEffect, useState } from "react";
 import { AutomationRequestSchema, type AutomationRun, type AutomationStatus, type AutomationTask } from "../shared/automation";
 import type { BatchProductionStart } from "../shared/batch-production";
 import type { QianchuanLibraryClear } from "../shared/qianchuan-video-library";
+import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
+import type { QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule";
+import { AutomationTaskDetails, AutomationTimeConflict } from "./AutomationTaskDetails";
+import { QianchuanVideoLibrarySchedule } from "./QianchuanVideoLibrarySchedule";
 import "./automation.css";
 
 type AutomationComposerProps = {
@@ -154,8 +158,9 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
   </section>;
 }
 
-export function AutomationPanel({ onEdit }: { onEdit?(task: AutomationTask): void } = {}) {
+export function AutomationPanel({ onEdit, accounts = [] }: { onEdit?(task: AutomationTask, tasks: AutomationTask[]): void; accounts?: QianchuanAccountSummary[] } = {}) {
   const [status, setStatus] = useState<AutomationStatus>();
+  const [libraryStatus, setLibraryStatus] = useState<QianchuanLibraryScheduleStatus>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
@@ -196,14 +201,23 @@ export function AutomationPanel({ onEdit }: { onEdit?(task: AutomationTask): voi
     {status && <p className="automation-timezone">本机时区：{status.timeZone}{status.running ? " · 有任务正在执行" : ""}</p>}
     {loading && <p role="status">正在读取定时任务…</p>}
     {(error || status?.error) && <p className="automation-error" role="alert">{error || status?.error}</p>}
-    {!loading && status && !status.tasks.length && <p>暂无定时任务。</p>}
+    {!loading && status && !status.tasks.length && <p>暂无计划清理、制作或上传任务。</p>}
     <div className="automation-task-list">
-      {status?.tasks.map(task => <AutomationTaskRow key={task.id} task={task} timeZone={status.timeZone} onStatus={setStatus} onEdit={onEdit} />)}
+      {status?.tasks.map(task => <AutomationTaskRow key={task.id} task={task} timeZone={status.timeZone} onStatus={setStatus}
+        accounts={accounts} tasks={status.tasks} onEdit={onEdit ? value => onEdit(value, status.tasks) : undefined}
+        conflicts={task.request.enabled ? [
+          ...status.tasks.filter(other => other.id !== task.id && other.request.enabled && other.request.time === task.request.time).map(other => other.request.name),
+          ...(libraryStatus?.settings.enabled && libraryStatus.settings.time === task.request.time ? ["账号视频库全部清空"] : []),
+        ] : []} />)}
+      <div className="qianchuan-cleanup"><QianchuanVideoLibrarySchedule accounts={accounts} busy={status?.running ?? false} tasks={status?.tasks ?? []} onStatus={setLibraryStatus} /></div>
     </div>
   </section>;
 }
 
-function AutomationTaskRow({ task, timeZone, onStatus, onEdit }: { task: AutomationTask & { nextRunAt?: string }; timeZone: string; onStatus(status: AutomationStatus): void; onEdit?(task: AutomationTask): void }) {
+function AutomationTaskRow({ task, timeZone, onStatus, onEdit, accounts, tasks, conflicts }: {
+  task: AutomationTask & { nextRunAt?: string }; timeZone: string; onStatus(status: AutomationStatus): void; onEdit?(task: AutomationTask): void;
+  accounts: QianchuanAccountSummary[]; tasks: AutomationTask[]; conflicts: string[];
+}) {
   const [time, setTime] = useState(task.request.time);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -224,7 +238,8 @@ function AutomationTaskRow({ task, timeZone, onStatus, onEdit }: { task: Automat
   const lastRun = task.lastRun;
   return <article className="automation-task" aria-label={task.request.name}>
     <div className="automation-task-title"><strong>{task.request.name}</strong><span className={`automation-state${task.request.enabled ? " enabled" : ""}`}>{task.request.enabled ? "已启用" : "已暂停"}</span></div>
-    <p>{task.summary}</p>
+    <AutomationTaskDetails task={task} accounts={accounts} tasks={tasks} />
+    <AutomationTimeConflict names={conflicts} />
     <div className="automation-task-controls">{onEdit ? <><span>每天 {task.request.time}</span><button type="button" className="button secondary compact" disabled={busy} onClick={() => onEdit(task)}>编辑定时设置</button></> : <><label>每天<input type="time" lang="zh-CN" value={time} disabled={busy} onChange={event => setTime(event.target.value)} /></label>
       <button type="button" className="button secondary compact" disabled={busy || time === task.request.time} onClick={() => void configure(task.request.enabled, time)}>保存时间</button></>}
       <button type="button" className="button secondary compact" disabled={busy} onClick={() => void configure(!task.request.enabled)}>{task.request.enabled ? "暂停" : "启用"}</button>

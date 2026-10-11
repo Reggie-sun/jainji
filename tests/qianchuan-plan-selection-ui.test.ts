@@ -110,7 +110,7 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
     await page.getByRole("button",{name:"取消浏览器操作",exact:true}).click();
     await page.getByText("运行条件与已绑定账号",{exact:true}).click();
     expect(await page.locator(".qianchuan-cleanup-requirements").textContent()).toContain("改名后的 Chrome");
-    await page.getByText("修改定时设置",{exact:true}).click();
+    await page.getByText("编辑视频库清空设置",{exact:true}).click();
     expect(await page.locator(".qianchuan-cleanup-schedule-editor").textContent()).toContain("改名后的 Chrome（账户 1000）");
     await page.getByRole("button",{name:"保存定时设置",exact:true}).click();
     await page.waitForFunction(()=>(window as any).scheduled.length===1);

@@ -16,7 +16,7 @@ const productionWithoutPlan = {
     douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }],
 };
 
-function automationFixtureScript(options: { component?: "composer" | "panel" | "cleanup"; production?: unknown; tasks?: unknown[] } = {}) {
+function automationFixtureScript(options: { component?: "composer" | "panel" | "cleanup" | "workspace"; production?: unknown; tasks?: unknown[]; accounts?: unknown[]; librarySchedule?: unknown } = {}) {
   const sourceTasks = options.tasks ?? [];
   const taskArgument = sourceTasks[0] ?? {
     id: sourceTaskId,
@@ -27,9 +27,12 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
     import React, {useState} from "react";
     import { createRoot } from "react-dom/client";
     import { AutomationComposer, AutomationPanel } from "./src/renderer/AutomationPanel";
+    import { AutomationWorkspace } from "./src/renderer/AutomationWorkspace";
     import { QianchuanVideoLibraryActions } from "./src/renderer/QianchuanVideoLibraryActions";
     window.automationTasks = ${JSON.stringify(sourceTasks.length ? sourceTasks : options.component === "composer" && !options.production ? [taskArgument] : [])};
-    window.automationCalls = { created: [], configured: [], removed: [], cleanup: [] };
+    window.automationCalls = { created: [], configured: [], removed: [], cleanup: [], librarySaved: [] };
+    let librarySchedule = ${JSON.stringify(options.librarySchedule ?? { settings: { confirmation: "DELETE_ALL_VIDEOS", enabled: false, time: "00:30", accounts: [] }, timeZone: "Asia/Hong_Kong" })};
+    const libraryListeners = new Set();
     const status = () => ({ tasks: window.automationTasks, timeZone: "Asia/Hong_Kong", running: false });
     window.jianji = {
       getAutomation: async () => status(),
@@ -44,14 +47,22 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
       listQianchuanPlans: async input => [{ advertiserId: input.expectedAdvertiserId, adId: "456", name: "固定计划" }],
       cancelQianchuanPlans: async () => {},
       clearQianchuanVideoLibraries: async input => { window.automationCalls.cleanup.push(input); return []; },
-      onQianchuanVideoLibrarySchedule: () => () => {},
-      getQianchuanVideoLibrarySchedule: async () => ({ settings: { enabled: false, time: "00:30", accounts: [] }, timeZone: "Asia/Hong_Kong" }),
-      saveQianchuanVideoLibrarySchedule: async settings => ({ settings, timeZone: "Asia/Hong_Kong" }),
+      onQianchuanVideoLibrarySchedule: listener => { libraryListeners.add(listener); return () => libraryListeners.delete(listener); },
+      getQianchuanVideoLibrarySchedule: async () => structuredClone(librarySchedule),
+      saveQianchuanVideoLibrarySchedule: async settings => {
+        window.automationCalls.librarySaved.push(structuredClone(settings));
+        librarySchedule = { ...librarySchedule, settings: structuredClone(settings) };
+        libraryListeners.forEach(listener => listener(structuredClone(librarySchedule)));
+        return structuredClone(librarySchedule);
+      },
     };
     const production = ${JSON.stringify(options.production ?? null)};
     function Fixture() {
       const [cleanup, setCleanup] = useState();
-      if (${JSON.stringify(options.component ?? "composer")} === "panel") return <AutomationPanel/>;
+      const [page, setPage] = useState("tasks");
+      const accounts = ${JSON.stringify(options.accounts ?? [])};
+      if (${JSON.stringify(options.component ?? "composer")} === "panel") return <AutomationPanel accounts={accounts}/>;
+      if (${JSON.stringify(options.component ?? "composer")} === "workspace") return <AutomationWorkspace state={{douyinUpload:{accounts}}} page={page} onPage={setPage} revision={0} onSource={()=>{}}/>;
       if (${JSON.stringify(options.component ?? "composer")} === "cleanup") return cleanup ? <AutomationComposer cleanup={cleanup}/> : <QianchuanVideoLibraryActions accounts={[{ product: "蝴蝶贴", advertiserId: "123", adId: "456", available: true }]} busy={false} onAutomation={setCleanup}/>;
       return <AutomationComposer production={production ?? undefined}/>;
     }
@@ -72,12 +83,113 @@ async function fixture(options: Parameters<typeof automationFixtureScript>[0] = 
   await page.goto(route);
   await page.addScriptTag({ content: automationFixtureScript(options) });
   await page.addStyleTag({ content: ["src/renderer/styles.css", "src/renderer/automation.css", "src/renderer/qianchuan-cleanup.css"].map(path => readFileSync(path, "utf8")).join("\n") });
-  const heading = options.component === "panel" ? "每日自动化任务" : options.component === "cleanup" ? "素材清理" : "保存每日自动化";
+  const heading = options.component === "panel" || options.component === "workspace" ? "每日自动化任务" : options.component === "cleanup" ? "素材清理" : "保存每日自动化";
   await page.getByRole("heading", { name: heading }).waitFor();
   return { page, pageErrors };
 }
 
 describe("scheduled automation browser interaction", () => {
+  it.each([
+    { rule: undefined, audit: true, zero: false },
+    { rule: "ZERO_IMPRESSIONS_15D", audit: false, zero: true },
+    { rule: "AUDIT_AND_ZERO_IMPRESSIONS_15D", audit: true, zero: true },
+  ])("shows the actual saved cleanup conditions and named plan targets: $rule", async ({ rule, audit, zero }) => {
+    const task = {
+      id: sourceTaskId, request: { name: "日常清理", time: "00:30", enabled: true, upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
+        cleanup: { confirmation: "DELETE_PLAN_MATERIALS", ...(rule ? { planMaterialRule: rule } : {}), accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", plans: [plan, { ...plan, adId: "789", name: "第二个固定计划" }] }] } },
+      binding: "a".repeat(64), summary: "清理账户 123 · 计划 456、789", createdAt: "2026-10-10T00:00:00.000Z",
+    };
+    const { page, pageErrors } = await fixture({ component: "panel", tasks: [task], accounts: [{ product: "蝴蝶贴", browserProfileName: "已绑定账号", advertiserId: "123", adId: "456", available: true }] });
+    try {
+      const row = page.getByRole("article", { name: "日常清理", exact: true });
+      await row.getByText("执行内容：计划素材清理", { exact: true }).waitFor();
+      expect(await row.textContent()).toContain("已绑定账号");
+      expect(await row.textContent()).toContain("账户 123");
+      expect(await row.textContent()).toContain("固定计划");
+      expect(await row.textContent()).toContain("计划 456");
+      expect(await row.textContent()).toContain("第二个固定计划");
+      expect(await row.textContent()).toContain("计划 789");
+      expect(await row.textContent()).toContain("仅删除所选计划内符合条件的素材，不清空账号视频库。");
+      expect((await row.textContent())!.includes("审核不通过、生态审核不通过、审核通过可优化")).toBe(audit);
+      expect((await row.textContent())!.includes("近 15 天零展示（加入计划满 15 天）")).toBe(zero);
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
+      expect(pageErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("shows a saved single-plan ID without borrowing a name from a rebound account", async () => {
+    const task = {
+      id: sourceTaskId, request: { name: "历史计划清理", time: "00:30", enabled: false, upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
+        cleanup: { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", expectedAdId: "456" }] } },
+      binding: "a".repeat(64), summary: "清理账户 123 · 计划 456", createdAt: "2026-10-10T00:00:00.000Z",
+    };
+    const { page } = await fixture({ component: "panel", tasks: [task], accounts: [{ product: "蝴蝶贴", browserProfileName: "另一个账号", advertiserId: "999", adId: "888", available: true }] });
+    try {
+      const row = page.getByRole("article", { name: "历史计划清理", exact: true });
+      await row.getByText("账户 123", { exact: true }).waitFor();
+      expect(await row.textContent()).toContain("计划 456");
+      expect(await row.textContent()).not.toContain("另一个账号");
+      expect(await row.textContent()).not.toContain("999");
+    } finally { await page.close(); }
+  });
+
+  it("shows production and chained upload, and resolves an independent upload's saved source targets", async () => {
+    const task = {
+      id: sourceTaskId, request: { name: "固定制作", time: "23:00", enabled: true, production, upload: true, confirmation: "AUTHORIZE_FIXED_AUTOMATION" },
+      binding: "a".repeat(64), summary: "保存时的模板 · 1 条 · 素材 /tmp/固定素材", createdAt: "2026-10-10T00:00:00.000Z",
+    };
+    const source = { ...task, id: recentProjectId, request: { ...task.request, name: "已有制作", upload: false } };
+    const upload = { ...task, id: "33333333-3333-4333-8333-333333333333", request: { name: "独立上传", time: "23:30", enabled: true, upload: true, uploadFrom: recentProjectId, confirmation: "AUTHORIZE_FIXED_AUTOMATION" }, summary: "上传来源：已有制作" };
+    const { page } = await fixture({ component: "panel", tasks: [task, source, upload] });
+    try {
+      const row = page.getByRole("article", { name: "固定制作", exact: true });
+      await row.getByText("执行内容：制作 → 上传并确认批次", { exact: true }).waitFor();
+      expect(await row.textContent()).toContain("1 个模板，共 1 条");
+      await row.getByText("保存时的模板与素材信息", { exact: true }).click();
+      await row.getByText(task.summary, { exact: true }).waitFor();
+      const independent = page.getByRole("article", { name: "独立上传", exact: true });
+      expect(await independent.textContent()).toContain("已有制作");
+      expect(await independent.textContent()).toContain("固定计划");
+      expect(await independent.textContent()).toContain("计划 456");
+      expect(await page.getByRole("article", { name: "已有制作", exact: true }).textContent()).toContain("不自动上传");
+    } finally { await page.close(); }
+  });
+
+  it.each([false, true])("consolidates account-library cleanup with its real scope and history, warns about same-time tasks, and pauses without rebinding (plan materials: %s)", async includePlanMaterials => {
+    const task = {
+      id: sourceTaskId, request: { name: "日常清理", time: "00:30", enabled: true, upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
+        cleanup: { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", plans: [plan] }] } },
+      binding: "a".repeat(64), summary: "清理账户 123 · 计划 456", createdAt: "2026-10-10T00:00:00.000Z",
+    };
+    const settings = { confirmation: "DELETE_ALL_VIDEOS", enabled: true, time: "00:30", includePlanMaterials, accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", expectedAdId: "456" }] };
+    const librarySchedule = { settings, timeZone: "Asia/Hong_Kong", nextRunAt: "2026-10-12T16:30:00.000Z",
+      lastRun: { day: "2026-10-12", startedAt: "2026-10-11T16:30:00.000Z", state: "BLOCKED", message: "原执行记录保留", results: [{ product: "蝴蝶贴", advertiserId: "123", state: "BLOCKED", deletedCount: 0, message: "历史删除结果未知" }] } };
+    const { page, pageErrors } = await fixture({ component: "workspace", tasks: [task], librarySchedule, accounts: [{ product: "蝴蝶贴", browserProfileName: "新账号", advertiserId: "999", adId: "888", available: true }] });
+    try {
+      expect(await page.getByRole("navigation", { name: "自动化页面" }).getByRole("button").allTextContents()).toEqual(["任务管理", "创建任务"]);
+      const library = page.getByRole("region", { name: "账号视频库全部清空", exact: true });
+      await library.getByText("已启用", { exact: true }).waitFor();
+      expect(await library.textContent()).toContain("永久删除已绑定账号视频库中的全部视频");
+      expect(await library.textContent()).toContain("账户 123");
+      expect((await library.textContent())!.includes("计划 456")).toBe(includePlanMaterials);
+      const row = page.getByRole("article", { name: "日常清理", exact: true });
+      await row.getByRole("status").filter({ hasText: "同一时间" }).waitFor();
+      await library.getByRole("status").filter({ hasText: "同一时间" }).waitFor();
+      await library.getByText("编辑视频库清空设置", { exact: true }).click();
+      await library.getByLabel("视频库清空执行时间", { exact: true }).fill("01:00");
+      await library.getByRole("button", { name: "暂停视频库清空", exact: true }).click();
+      await page.waitForFunction(() => (window as any).automationCalls.librarySaved.length === 1);
+      expect(await page.evaluate(() => (window as any).automationCalls.librarySaved[0])).toEqual({ ...settings, enabled: false });
+      expect(await library.textContent()).toContain("账户 123");
+      expect(await row.getByRole("status").filter({ hasText: "同一时间" }).count()).toBe(0);
+      await library.getByText("查看各账号结果", { exact: true }).click();
+      await library.getByText("历史删除结果未知", { exact: true }).waitFor();
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
+      expect(await page.evaluate(() => (window as any).automationCalls.configured)).toEqual([]);
+      expect(pageErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
   it("renders production without a TDZ crash and saves the exact cleanup, production and chained upload scope", async () => {
     const { page, pageErrors } = await fixture({ production });
     try {
@@ -256,7 +368,7 @@ describe("scheduled automation browser interaction", () => {
       await page.getByRole("button", { name: "暂停" }).click();
       await page.waitForFunction(() => (window as any).automationCalls.configured.length === 1);
       expect(await page.evaluate(() => (window as any).automationCalls.configured[0])).toEqual({ id: sourceTaskId, enabled: false, time: "23:00" });
-      await page.getByLabel("每天").fill("03:45");
+      await page.getByRole("article", { name: "晚间制作", exact: true }).getByLabel("每天", { exact: true }).fill("03:45");
       await page.getByRole("button", { name: "保存时间" }).click();
       await page.waitForFunction(() => (window as any).automationCalls.configured.length === 2);
       expect(await page.evaluate(() => (window as any).automationCalls.configured[1])).toEqual({ id: sourceTaskId, enabled: false, time: "03:45" });

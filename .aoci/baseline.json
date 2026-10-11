@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T16:35:16Z",
+  "updated_at": "2026-10-11T18:22:15Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "669fb1472a06fcabf016e38af4c49bdd2a13fb614da3c3ed348eb392d02fcb10",
-      "size": 117948,
-      "normalized_sha256": "669fb1472a06fcabf016e38af4c49bdd2a13fb614da3c3ed348eb392d02fcb10"
+      "sha256": "255083f25731a4ae5ba077248def4a56eb141905087d20a356a8ccd88222abe3",
+      "size": 118444,
+      "normalized_sha256": "255083f25731a4ae5ba077248def4a56eb141905087d20a356a8ccd88222abe3"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2143,14 +2143,19 @@
       "normalized_sha256": "8f63e6417146fa082b69263e4a6c37fe8b1e7007f69d5b00e10b7fac8ad73902"
     },
     "src/renderer/AutomationPanel.tsx": {
-      "sha256": "2b9f0757c81784069052fe880999042487fb2e523d429a21aa03b5eb1197bf8b",
-      "size": 18419,
-      "normalized_sha256": "2b9f0757c81784069052fe880999042487fb2e523d429a21aa03b5eb1197bf8b"
+      "sha256": "4f9c41110142a85a853a0a800511a1b963778021a2a89579d3da9170ef2935df",
+      "size": 19824,
+      "normalized_sha256": "4f9c41110142a85a853a0a800511a1b963778021a2a89579d3da9170ef2935df"
+    },
+    "src/renderer/AutomationTaskDetails.tsx": {
+      "sha256": "9f0f58c70c534143dfaafa12b3d47bca88bcef3a42025a58c21baf675ffcee6c",
+      "size": 3992,
+      "normalized_sha256": "9f0f58c70c534143dfaafa12b3d47bca88bcef3a42025a58c21baf675ffcee6c"
     },
     "src/renderer/AutomationWorkspace.tsx": {
-      "sha256": "7025fd2be8e5be3cb2595152f831741aa8bd006f3f781e74e82978bd33879f1b",
-      "size": 4347,
-      "normalized_sha256": "7025fd2be8e5be3cb2595152f831741aa8bd006f3f781e74e82978bd33879f1b"
+      "sha256": "764288d19683341796ffeb5283e5d408da3cd8d74d3bf43cf276dbcb3d6776fa",
+      "size": 4301,
+      "normalized_sha256": "764288d19683341796ffeb5283e5d408da3cd8d74d3bf43cf276dbcb3d6776fa"
     },
     "src/renderer/BatchProductionDetails.tsx": {
       "sha256": "3c87abe15214af3c31b5eb9aa4407ccdaf5ed9294c0e44cc480b80dcf926d36a",
@@ -2328,9 +2333,9 @@
       "normalized_sha256": "3921b9d86cf322ca656f64d1b8a0e766d4852a96795d017d2d1eaa7fdd9b3df8"
     },
     "src/renderer/QianchuanVideoLibrarySchedule.tsx": {
-      "sha256": "d430797a10e9a5ae32119151fad3c075471c10f1bea407cc1ab088349086483f",
-      "size": 6911,
-      "normalized_sha256": "d430797a10e9a5ae32119151fad3c075471c10f1bea407cc1ab088349086483f"
+      "sha256": "a95e8cd7c668a51e3ee46a8de399b746037380086c78b9381f3a7676ce099dc5",
+      "size": 8841,
+      "normalized_sha256": "a95e8cd7c668a51e3ee46a8de399b746037380086c78b9381f3a7676ce099dc5"
     },
     "src/renderer/QianchuanWorkspace.tsx": {
       "sha256": "ed1400f8dca01a82abb64f4e6f4ecffed4d11268ebf94aa4e73b3b3d046c840e",
