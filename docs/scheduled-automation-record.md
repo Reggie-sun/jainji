@@ -53,3 +53,19 @@
 首次收尾 Harness `20261010T183400Z-b880173e` 的 typecheck、104 项 Harness 自测、15 项输出发布测试，以及 107 个扩展测试文件的 981 项测试均通过；整张回执为 NOT_EVALUATED，因为期间会员会话更新了共享索引，最后两项控制检查的旧 scope 后像不再匹配。该回执不作为完成证明。
 
 补齐存储检查路由：store.ts / state-migrations.ts 及各自测试共用 domain-state-store，要求原 lifecycle 和明确的 store、state-migrations、project-sync、project-workspace 回归；原输出发布检查继续适用。其他扩展域贡献完整集合时仍执行全部扩展测试，新增 routing 回归验证这一合并规则。路由回归已观察到修复前失败和修复后 21/21 PASS；最终完成以当前 scope 的新 Harness / verify 回执为准，不复用失效的全库状态。
+
+## Daily Automation Runtime Test
+
+2026-10-11 18:24–18:31（Asia/Hong_Kong），按用户“测试每日自动化”要求重新验证当前源码。`npm run typecheck` 通过；11 个定向测试文件共 135 项通过，包含每日调度、固定配方、可信桌面接口、界面操作、上传双层确认与回执、三类审核状态以及零展示 15 天保护。测试覆盖同日与重启不重放、忙碌及迟到跳过、失败短路、账号/源素材漂移、历史 UNKNOWN 保护；平台页面测试使用本地 fixture，不代表本轮真实删除或上传。
+
+18:26:00.955，隔离本地 Scheduler 的真实一秒定时器触发一次，未注入时钟或手动 tick 来启动首次执行。原 Runtime / BatchProductionController / AgentController / ExportQueue 和真实 FFmpeg 导出一条 1 秒视频。模拟清理→真实制作→模拟上传顺序通过，同日重复 tick 和重建 Scheduler 后均未重放；测试任务已暂停。证据：`/tmp/jianji-scheduled-production-proof-1FSXaU/proof.json`。此测试没有真实模型或平台请求。
+
+当前 `make frontend` 应用最初为 denied / session-expired，会员门禁拒绝 automation.get；用户重新登录后观察到 allowed / grant。随后通过原 Electron 的可信 preload IPC 保存并启用一个仅制作的每日测试任务：已保存的“晚安油”模板、1 条、manual、关闭覆盖、保留模板文字设置，不包含清理或上传。没有切换或保存当前未保存的“氨糖膏”项目。
+
+该任务在 18:29:00.118 自动触发，18:29:14.301 为 COMPLETED；production run `1be5d9ee-f8ec-4f50-9b17-f03e31375e56`，批次 `114e3e7f-9f2a-44b9-9c58-01f6d2b5caf5`，成片任务 `dacec009-df87-4e97-9415-df2b55a22275`。原队列记录为 completed / attempt 1，ArtifactVerifier 记录 40,153,267 字节、136,347 ms；独立 FFprobe 核对 720×1280 / AAC，整片 FFmpeg 解码通过。输出位于 `/home/reggie/电商/晚安油/视频/10.11 18：29/竞品详情-抖音电商罗盘 - 2026-09-29T022330.787_edited.mp4`。未进行人工整片观看。
+
+同日再次读取的 run ID 保持不变，新批次没有上传任务；当前项目仍为“氨糖膏”，5 个素材。测试定时任务已通过原接口暂停并删除，最终真实每日任务为 0；成片及制作记录保留。初次测试脚本在完成后以错误的详情查询字段 recentProjectId 被 schema 拒绝，随后仅用正确 runId/jobId 只读补齐证明，没有重新制作。应用证据：`.agent/harness/runs/20261011-daily-automation-test/app-proof.json` 与 `app-media-proof.json`。
+
+Chrome MCP 使用隔离页面验证了保存清理+制作+上传完整范围、暂停、时间变更与删除，假 bridge 不连接平台。受管 Kimi deep 只读测试覆盖核查 `b80ea56c-4086-49e7-b5ce-d715ce21a055` 为 PARSED，4 个请求均 IDENTITY_VERIFIED，5 条实际读取及产物 SHA 经父线程核验；seal `f2507cd6be6d423813844bf381586707d7400e3d111d36f6c7da475baed5e9fc`。父线程已用上述真实定时器和应用执行关闭其挂钟验证缺口，并核对本地日期函数；其未执行测试，不作为独立运行验收。60 秒边界、跨午夜缺席记录以及卡住的制作等待仍不在本轮实测范围；既有不补跑、取消停止和 UNKNOWN 不自动重试合同保持。
+
+本轮没有业务源码修改，没有新增真实清理、上传、模型请求或广告预算变更。没有专用 session-record Skill，此记录保存本轮测试检查点；文档按现行 AOCI scope 为 observe，不新增 Entry。Windows、无人值守跨日持续运行和平台全链路仍未在本轮评估。
