@@ -13,6 +13,7 @@ import type { ExportQueue } from "./queue.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { canonicalPath, fingerprintFile } from "./paths.js";
 import { automationDigest, readAutomationFile, writeAutomationFile } from "./automation-files.js";
+import { uploadProducingExports, type AutomationProductionUploadBinding } from "./automation-production-upload.js";
 
 const recipeSchema = z.object({ version: z.literal(1), id: z.string().uuid(), request: AutomationRequestSchema,
   projects: z.array(z.object({ recentProjectId: z.string().uuid(), project: ProjectSchema }).strict()).max(250),
@@ -25,7 +26,7 @@ interface Dependencies {
   modelBinding(): string;
   approvedDirectories: Set<string>;
   controller: BatchProductionController;
-  queue: Pick<ExportQueue, "snapshot">;
+  queue: Pick<ExportQueue, "snapshot" | "waitForPersistence">;
   task(id: string): AutomationTask | undefined;
   produce(input: BatchProductionStart, projects: ReadonlyMap<string, Project>, signal: AbortSignal): Promise<void>;
   clear(input: QianchuanLibraryClear, signal: AbortSignal): Promise<QianchuanLibraryResult[]>;
@@ -111,6 +112,11 @@ export class AutomationRuntime {
   async verifyCleanupMigration(task: AutomationTask): Promise<void> {
     await this.verify(await this.read(task));
   }
+  private async claimUpload(task: AutomationTask, sourceRun: string, exports?: UploadIdentity[]): Promise<void> {
+    await writeAutomationFile(path.join(this.root, "upload-claims", `${z.string().uuid().parse(sourceRun)}.json`),
+      { taskId: task.id, runId: task.lastRun!.id, sourceRun, ...(exports ? { exports } : { streaming: true }) }, true)
+      .catch(() => { throw new Error("来源成片已启动过上传或登记结果未知，禁止自动重传。"); });
+  }
   async execute(task: AutomationTask, signal: AbortSignal): Promise<Pick<AutomationRun, "exports" | "productionRunId">> {
     const recipe = await this.read(task); await this.verify(recipe, signal); signal.throwIfAborted();
     if (recipe.request.cleanup) {
@@ -119,26 +125,44 @@ export class AutomationRuntime {
     }
     signal.throwIfAborted();
     let result: Pick<AutomationRun, "exports" | "productionRunId"> = {};
+    const streaming = !!recipe.request.production && recipe.request.upload;
     if (recipe.request.production) {
       await this.verify(recipe, signal); signal.throwIfAborted();
       for (const entry of recipe.request.production.entries) if (entry.outputDirectory) this.dependencies.approvedDirectories.add(await canonicalPath(entry.outputDirectory));
       const entries = recipe.request.production.entries.map(({ douyinUpload: _upload, ...entry }) => entry);
+      const bindings: AutomationProductionUploadBinding[] = streaming ? recipe.projects.map(({ project, recentProjectId }) => {
+        const entry = recipe.request.production!.entries.find(entry => entry.recentProjectId === recentProjectId)!;
+        const selection = entry.douyinUpload, target = recipe.accounts.find(account => account.product === selection?.accountProduct);
+        if (!selection?.plan || !target) throw new Error("制作任务没有固定上传目标。");
+        return { recentProjectId, projectId: project.id, requestedCount: entry.requestedCount, selection, target };
+      }) : [];
+      if (streaming) { signal.throwIfAborted(); await this.claimUpload(task, task.lastRun!.id); signal.throwIfAborted(); }
       await this.dependencies.produce({ entries }, new Map(recipe.projects.map(value => [value.recentProjectId, value.project])), signal);
-      const started = this.dependencies.controller.snapshot()!;
+      const started = this.dependencies.controller.snapshot();
+      let uploaded: UploadIdentity[] | undefined;
       try {
-        while (this.dependencies.controller.busy) await delay(250, undefined, { signal });
+        if (!started) throw new Error("无法确认本轮制作运行，已停止。");
+        if (streaming) uploaded = await uploadProducingExports({ runId: started.id, bindings, controller: this.dependencies.controller,
+          queue: this.dependencies.queue, upload: (groups, signal) => this.dependencies.upload(groups, signal) }, signal);
+        else while (this.dependencies.controller.busy) await delay(250, undefined, { signal });
         signal.throwIfAborted();
-      } catch (error) { await this.dependencies.controller.cancel(); throw error; }
+      } catch (error) {
+        if (started && this.dependencies.controller.snapshot()?.id === started.id) await this.dependencies.controller.cancel();
+        throw error;
+      }
       const finished = this.dependencies.controller.snapshot();
-      if (finished?.id !== started.id || finished.status !== "finished" || finished.jobs.length !== entries.length || finished.jobs.some(job => job.status !== "completed" || job.completedCount !== job.requestedCount)) throw new Error("制作或导出未全部成功，定时上传未启动。");
+      if (finished?.id !== started.id || finished.status !== "finished" || finished.jobs.length !== entries.length || finished.jobs.some(job => job.status !== "completed" || job.completedCount !== job.requestedCount)) {
+        throw new Error(streaming ? `制作或导出未全部成功；已上传 ${uploaded!.length} 条成功成片，未自动重试。` : "制作或导出未全部成功，定时上传未启动。");
+      }
       const wanted = new Set(finished.jobs.flatMap(job => job.completedTaskIds ?? []));
       const exports = this.dependencies.queue.snapshot().batches.flatMap(({ batch }) => batch.tasks.filter(value => wanted.has(value.id) && value.status === "completed" && value.outputArtifact)
         .map(value => ({ project_id: batch.projectId!, batch_id: batch.id, export_task_id: value.id })));
-      if (!wanted.size || exports.length !== wanted.size) throw new Error("无法确认本轮全部成片记录，未上传。");
+      if (!wanted.size || exports.length !== wanted.size) throw new Error(streaming ? "无法确认本轮全部成片记录；已上传记录保留，未自动重试。" : "无法确认本轮全部成片记录，未上传。");
+      if (uploaded && (uploaded.length !== wanted.size || uploaded.some(value => !wanted.has(value.export_task_id)))) throw new Error("本轮成片与上传记录不一致，未自动重试。");
       result = { productionRunId: finished.id, exports };
     }
     signal.throwIfAborted();
-    if (recipe.request.upload) {
+    if (recipe.request.upload && !streaming) {
       let sourceRecipe = recipe, sourceRun = task.lastRun!.id;
       if (recipe.request.uploadFrom) {
         const source = this.dependencies.task(recipe.request.uploadFrom);
@@ -156,8 +180,7 @@ export class AutomationRuntime {
       if (groups.some(group => !group.exports.length) || groups.reduce((sum, group) => sum + group.exports.length, 0) !== result.exports.length) throw new Error("上传产物归属不一致。");
       // A source run can be consumed once, even by different upload schedules or after restart.
       signal.throwIfAborted();
-      await writeAutomationFile(path.join(this.root, "upload-claims", `${sourceRun}.json`), { taskId: task.id, runId: task.lastRun!.id, sourceRun, exports: result.exports }, true)
-        .catch(() => { throw new Error("来源成片已启动过上传或登记结果未知，禁止自动重传。"); });
+      await this.claimUpload(task, sourceRun, result.exports);
       await this.dependencies.upload(groups, signal);
     }
     return result;

@@ -15,7 +15,7 @@
 - 新调度 owner 保存每日时间、启用状态、固定 payload 与运行记录；先持久占用 occurrence，再触发任何副作用。重启中断、时间回拨、同刻重复唤醒不重跑。迟到超过一分钟跳过；同一天改时间不重新触发。运行冲突显式跳过，不积压隐式重试。
 - 清理仅复用 `DouyinUploadService.clearVideoLibraries`，固定 advertiser/plan 与审核/15 天零展示规则；历史 pending 与 UNKNOWN 继续由原 owner 保护。
 - 制作复用 `BatchProductionController` / `AgentController` / `ExportQueue`。保存私有项目快照，固定源素材路径和指纹；素材缺失或改变阻断。不得读取执行时编辑器状态；assisted 人工批准路径不能无人值守绕过。
-- 上传只允许原队列已验证成片，独立定时引用本调度的制作任务产物；不能扫描任意目录上传或恢复历史未知批次。串联清理出现 PARTIAL/BLOCKED 或制作不完整即停止后续阶段。
+- 上传只允许原队列已验证成片，独立定时引用本调度的制作任务产物；不能扫描任意目录上传或恢复历史未知批次。串联清理出现 PARTIAL/BLOCKED 即停止后续阶段。组合制作上传按 [Incremental Automation Upload Delta](2026-10-12-incremental-automation-upload.md) 随已验证成片上传；独立来源仍要求完整成功。
 - 自动确认必须绑定全部 expectedCount、同一 pageBatchId、原 tab/modal 和 READY 文件。确认前写入永久 intent，取消/断线/崩溃后不自动重新确认。平台回执与人工视觉验收分开。
 - 新任务默认关闭，由用户在产品界面保存启用；开发验证不创建真实清理/上传任务，不使用真实模型额度。
 - 关闭窗口隐藏到后台，显式退出停止服务。电脑须开机并登录桌面；不承诺断电或退出所有进程后继续执行。

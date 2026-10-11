@@ -91,3 +91,17 @@ Chrome MCP 使用隔离页面验证了保存清理+制作+上传完整范围、�
 原 `make frontend` 窗口实测点击“保存为定时任务”，成功带入 6 个所选计划和两类规则。设置页任务名称为空、启用及授权未勾选，最终保存按钮按合同禁用；当前项目 SHA 和自动化任务列表 SHA 前后完全一致，任务仍为 0。证据保存在 `.agent/harness/runs/20261011-cleanup-schedule-ui/live-proof.json`；没有保存或启用真实任务，没有执行素材删除、上传或模型请求。
 
 受管 Kimi deep 只读范围核对 invocation `f2821940-0f17-4eb9-a74e-74200eaa6312`，seal `f8c93f28005b014e2e08b8778d8540387089b681548cfe3d5d048c45c4355c66`，2 个请求均 IDENTITY_VERIFIED；父线程核验 2 条实际完整读取、4 个产物 SHA 及 source 稳定性。采纳计划专用草稿和原授权门的结论；其对按钮禁用的推测仅为候选，实际原因由本轮清理组件源码和原窗口独立确认。主进程 `AutomationScheduler.create` 再次校验共享 schema；后端不新增视频库定时准入。没有专用 session-record Skill，本节记录稳定检查点；record/test 为 AOCI observe，清理组件 Entry 与 baseline 由本会话维护。
+
+# Incremental Production Upload Checkpoint
+
+## Scope And Behavior
+
+2026-10-12，用户要求修改自动化任务等待所有模板制作完成才上传的逻辑。[增量合同](superpowers/plans/2026-10-12-incremental-automation-upload.md) 仅修改组合制作上传：原队列已经完成并具备 ArtifactVerifier 记录的成片及时交给原上传服务，每次最多 9 条，制作继续运行。普通制作失败保留成功项上传，但整项任务仍阻断；清理失败、取消、身份漂移和上传结果未知停止后续处理。
+
+没有新建持久生产或上传队列。原 scheduler occurrence、制作前独占 source-run 上传 claim、原文件 fence、READY 能力、双层确认 intent 和 ACCEPTED 回执继续负责防重。独立制作/独立上传及历史 UNKNOWN 保留原解释；本轮没有操作真实账号、清理、平台上传或模型，没有重启当前运行任务。
+
+## Evidence And Limits
+
+旧实现的四项行为回归失败，分别证明没有早期上传、20 条整批交付、普通制作失败阻断成功项，以及上传失败前仍等待制作。真实 service/store 加 fake browser port 的集成将同一原导出批次的 20 条分成 9/9/2，全部 ACCEPTED 且每条只选一次；这不是本轮真实平台接受证明。父线程随后用真实 ExportQueue/JobStore 延迟完成记录保存，复现早期上传读到 verifying 的竞态；修复增加原持久写入屏障，并共用原 run/job 的取消 signal。新增回归覆盖落盘前禁止上传及落盘等待期间取消，初始全量回执不作为修正后的完成证据。
+
+项目 Harness、风险判断、独立报告、AOCI 与最终 completion 证据保存在本地 `.agent/harness/runs/20261012-incremental-upload/`，以修正后当前字节的实际回执为准；tests/docs 为 observe。没有专用 session-record Skill，此处主动保存实现检查点。只读检查发现用户原任务成功 257 条、失败 33 条，旧实现因此未启动上传；该历史 occurrence 保留，不自动重跑。Windows、新流程的平台端到端和人工整片观看尚未评估。

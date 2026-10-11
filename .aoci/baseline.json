@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T20:39:22Z",
+  "updated_at": "2026-10-11T21:13:52Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "85c432ccaeb6a61209574b8a57923fada9973b8cd12c74f8721b5a7d57c270ee",
-      "size": 119954,
-      "normalized_sha256": "85c432ccaeb6a61209574b8a57923fada9973b8cd12c74f8721b5a7d57c270ee"
+      "sha256": "8b106ceec307b04e0382dca8a35de0c220b352335e62c9258bc950a0bef9d29e",
+      "size": 120570,
+      "normalized_sha256": "8b106ceec307b04e0382dca8a35de0c220b352335e62c9258bc950a0bef9d29e"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1197,10 +1197,15 @@
       "size": 2545,
       "normalized_sha256": "b220394665612fe4b02dd40e2a1336145ddf3455f1a285b79cf304bf9320f714"
     },
+    "src/main/automation-production-upload.ts": {
+      "sha256": "17267497af39af75e1d7842ebf5de7a78aee96f6ef3d611db93d72e395a51622",
+      "size": 5062,
+      "normalized_sha256": "17267497af39af75e1d7842ebf5de7a78aee96f6ef3d611db93d72e395a51622"
+    },
     "src/main/automation-runtime.ts": {
-      "sha256": "1c01052da90df53a0cc2d38afcdc8ab1420e7b86136825b833b9e54ea6ddfef1",
-      "size": 13645,
-      "normalized_sha256": "1c01052da90df53a0cc2d38afcdc8ab1420e7b86136825b833b9e54ea6ddfef1"
+      "sha256": "5b17c8e6fccb243ae5eb4417a33224720dd022553616365d865040aa1600f695",
+      "size": 15767,
+      "normalized_sha256": "5b17c8e6fccb243ae5eb4417a33224720dd022553616365d865040aa1600f695"
     },
     "src/main/automation-scheduler.ts": {
       "sha256": "47d1fc6b935e3c934540189c60f0276281bdbcfd3d1dadd2f63044d818c6492f",
@@ -1213,9 +1218,9 @@
       "normalized_sha256": "f07d038c8754c708ab79225e701859019ad1a41ae7977d50e4350a70a0b7805b"
     },
     "src/main/batch-production-controller.ts": {
-      "sha256": "5cb17adddfa887f697fcfaafa93c509b50e09548e1cb000550aff6a1cc0cd5d4",
-      "size": 22473,
-      "normalized_sha256": "5cb17adddfa887f697fcfaafa93c509b50e09548e1cb000550aff6a1cc0cd5d4"
+      "sha256": "fef89aa2fd3ca8fd05bf643ad54036504fe4e3367600327f249180e49fd368b7",
+      "size": 23058,
+      "normalized_sha256": "fef89aa2fd3ca8fd05bf643ad54036504fe4e3367600327f249180e49fd368b7"
     },
     "src/main/batch-production-runtime.ts": {
       "sha256": "bebc6d302453e6ba5d800f424293023e57c343fb83047ba908ddfda7c3f53cd9",
@@ -1708,9 +1713,9 @@
       "normalized_sha256": "e6e9652061d783c4ee76ace1aa6664cc5caa35ef4c7132baf96b1560c5b45948"
     },
     "src/main/queue.ts": {
-      "sha256": "467b25eaf4d0c909839b3d7b815b3da74e8aee99a97489ce17d675743b9acccf",
-      "size": 59863,
-      "normalized_sha256": "467b25eaf4d0c909839b3d7b815b3da74e8aee99a97489ce17d675743b9acccf"
+      "sha256": "55044f23b9c6e51e11225ef0dd078a0e9ab5bf93e9004c8b6c0bdef911e73a7b",
+      "size": 60078,
+      "normalized_sha256": "55044f23b9c6e51e11225ef0dd078a0e9ab5bf93e9004c8b6c0bdef911e73a7b"
     },
     "src/main/recent-projects.ts": {
       "sha256": "c5c8f17451efebb725e41ba7651f01bbd867f69ffbd1bd9ee03ce067210e51da",

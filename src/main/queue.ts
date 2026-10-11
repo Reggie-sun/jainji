@@ -318,6 +318,12 @@ export class ExportQueue {
     return { revision: this.globalRevision, batches: states.map((state) => structuredClone(state)) };
   }
 
+  /** Drain writes already scheduled when an observer captured completed artifacts. */
+  async waitForPersistence(signal: AbortSignal): Promise<void> {
+    await this.persistChain;
+    signal.throwIfAborted();
+  }
+
   taskStatuses(): ReadonlyMap<string, ExportTask["status"]> {
     const statuses = new Map<string, ExportTask["status"]>();
     for (const { batch } of this.states.values()) for (const task of batch.tasks) statuses.set(task.id, task.status);

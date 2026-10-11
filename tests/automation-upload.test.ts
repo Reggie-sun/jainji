@@ -10,6 +10,13 @@ import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, QianchuanUploadSelection, ReadyEvidence, UploadIdentity } from "../src/shared/douyin-upload";
+import { uploadProducingExports } from "../src/main/automation-production-upload";
+import type { BatchProductionRun } from "../src/shared/batch-production";
+import { ExportQueue } from "../src/main/queue";
+import { JobStore } from "../src/main/store";
+import { fingerprintFile } from "../src/main/paths";
+import type { ArtifactVerifier } from "../src/main/artifact";
+import type { FfmpegAdapter } from "../src/main/ffmpeg";
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -19,7 +26,7 @@ afterEach(async () => {
 
 type PlanReader = NonNullable<ConstructorParameters<typeof DouyinUploadService>[1]["readPlans"]>;
 
-async function fixture(options: { accounts?: (root: string) => QianchuanAccountConfigReader; readPlans?: PlanReader } = {}) {
+async function fixture(options: { accounts?: (root: string) => QianchuanAccountConfigReader; readPlans?: PlanReader; loadBatch?: (id: string) => Promise<QueueState> } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "automation-upload-")); roots.push(root);
   const output = path.join(root, "exports"), configPath = path.join(root, "accounts.json");
   await mkdir(output);
@@ -28,7 +35,7 @@ async function fixture(options: { accounts?: (root: string) => QianchuanAccountC
   })) }), { mode: 0o600 });
   const store = new DouyinUploadStore(path.join(root, "private")); await store.load();
   const accounts = options.accounts?.(root) ?? new QianchuanAccountConfigReader(), states = new Map<string, QueueState>();
-  const ownership = new Map<string, PageOwnership>(), events: string[] = [];
+  const ownership = new Map<string, PageOwnership>(), events: string[] = [], selectedExports: string[] = [];
   const port: UploadBrowserPort = {
     connect: async (_task, signal) => { signal.throwIfAborted(); events.push("connect"); },
     open: async (tasks, selected, signal) => {
@@ -40,7 +47,7 @@ async function fixture(options: { accounts?: (root: string) => QianchuanAccountC
       }
       events.push("open"); return { pageOwnership, selectedIndex: selected.length + 1 };
     },
-    upload: async (_tasks, signal) => { signal.throwIfAborted(); events.push("file-input"); },
+    upload: async (tasks, signal) => { signal.throwIfAborted(); events.push("file-input"); selectedExports.push(...tasks.map(task => task.result.export_task_id)); },
     ready: async tasks => tasks.map(task => readyEvidence(store, task)),
     pollReady: async tasks => tasks.map(task => readyEvidence(store, task)),
     readOnlyCheck: async (task, pageOwnership) => { events.push("read-only-recovery"); return readyEvidence(store, task, pageOwnership); },
@@ -61,10 +68,10 @@ async function fixture(options: { accounts?: (root: string) => QianchuanAccountC
     stop: async () => { events.push("stop"); },
   };
   const service = new DouyinUploadService(store, {
-    loadBatch: async id => {
+    loadBatch: options.loadBatch ?? (async id => {
       const state = states.get(id); if (!state) throw new Error("fixture batch missing");
       return structuredClone(state);
-    },
+    }),
     browser: () => port,
     accounts,
     readiness: () => undefined,
@@ -88,7 +95,7 @@ async function fixture(options: { accounts?: (root: string) => QianchuanAccountC
     states.set(batchId, state);
     return { batchId, projectId, tasks, identities, batchIdentity: { id: batchId, projectId, tasks: tasks.map(task => ({ id: task.id })) }, product };
   }
-  return { root, configPath, accounts, store, service, port, events, batch };
+  return { root, configPath, accounts, store, service, port, events, batch, states, selectedExports };
 }
 
 function readyEvidence(store: DouyinUploadStore, task: UploadTaskRecord, pageOwnership = store.fence(task.result.upload_task_id)!.pageOwnership): ReadyEvidence {
@@ -98,6 +105,65 @@ function readyEvidence(store: DouyinUploadStore, task: UploadTaskRecord, pageOwn
 }
 
 const selection: QianchuanUploadSelection = { enabled: true, accountProduct: "眼贴", plan: { advertiserId: "1003", adId: "2222", name: "冻结计划" } };
+
+it("waits for the original queue's completed record to persist before admitting an early upload", async () => {
+  let jobs!: JobStore, prematureRead = false, release!: () => void, entered!: () => void;
+  const saving = new Promise<void>(resolve => { release = resolve; }), completionSave = new Promise<void>(resolve => { entered = resolve; });
+  const f = await fixture({ loadBatch: async id => { const state = await jobs.readCanonical(id); if (state.batch.tasks[0].status !== "completed") prematureRead = true; return state; } });
+  jobs = new JobStore(path.join(f.root, "jobs")); const save = jobs.save.bind(jobs);
+  jobs.save = async state => { if (state.batch.tasks[0].status === "completed") { entered(); await saving; } await save(state); };
+  const sourcePath = path.join(f.root, "source.mp4"), samplePath = path.join(f.root, "sample.mp4");
+  await writeFile(sourcePath, "source"); await writeFile(samplePath, "encoded");
+  const projectId = randomUUID(), recentProjectId = randomUUID();
+  const queue = new ExportQueue({ jobStore: jobs, ffmpeg: {} as FfmpegAdapter, fontResolver: { resolve: async () => null },
+    artifactVerifier: { verify: async (file: string, taskId: string) => ({ taskId, path: file, sizeBytes: 7, durationMs: 1000, createdAt: now() }) } as ArtifactVerifier });
+  const publishing = queue.publishApprovedSample({ projectId, template: createDefaultTemplate(), preset: DEFAULT_PRESET, samplePath, outputDirectory: path.join(f.root, "output"),
+    media: { id: randomUUID(), sourcePath, displayName: "source.mp4", fingerprint: await fingerprintFile(sourcePath), sizeBytes: 6, durationMs: 1000,
+      width: 720, height: 1280, rotation: 0, probeStatus: "ready", importedAt: now() } });
+  await completionSave;
+  const { batch } = queue.snapshot().batches[0];
+  expect(batch.tasks[0].status).toBe("completed"); expect((await jobs.readCanonical(batch.id)).batch.tasks[0].status).toBe("verifying");
+  const target = await f.service.automationAccount("眼贴"), confirm = f.port.confirmAutomation!;
+  const run: BatchProductionRun = { id: randomUUID(), status: "running", createdAt: now(), updatedAt: now(), jobs: [{ id: randomUUID(), recentProjectId, projectId,
+    name: "模板", requestedCount: 1, actualCount: 1, productPrice: "", coverEnabled: false, displayMode: "full", status: "exporting",
+    taskIds: [batch.tasks[0].id], completedTaskIds: [batch.tasks[0].id], completedCount: 1, failedCount: 0 }] };
+  f.port.confirmAutomation = async (tasks, ownership, signal) => {
+    await confirm(tasks, ownership, signal); run.status = "finished"; run.jobs[0].status = "completed";
+    return tasks.map(task => ({ ...task.result.readyEvidence!, platformVideoId: "committed_video", attempt: task.result.attempt_count,
+      requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), observedAt: now() }));
+  };
+  const uploading = uploadProducingExports({ runId: run.id, bindings: [{ recentProjectId, projectId, requestedCount: 1, selection, target }],
+    controller: { get busy() { return run.status === "running"; }, snapshot: () => structuredClone(run), executionSignal: () => new AbortController().signal }, queue,
+    upload: (groups, signal) => f.service.uploadAutomation(groups, signal) }, new AbortController().signal).catch(error => error);
+  try { await new Promise(resolve => setTimeout(resolve, 200)); }
+  finally { release(); }
+  await publishing; const result = await uploading;
+  expect(prematureRead).toBe(false); expect(result).toHaveLength(1); expect(f.selectedExports).toEqual([batch.tasks[0].id]);
+});
+
+it("accepts consecutive incremental subsets from the same original export batch through the original service", async () => {
+  const f = await fixture(), source = await f.batch(Array.from({ length: 20 }, (_, index) => `unique output ${index}`));
+  const target = await f.service.automationAccount("眼贴"), confirm = f.port.confirmAutomation!, counts: number[] = [];
+  const recentProjectId = randomUUID();
+  const run: BatchProductionRun = { id: randomUUID(), status: "running", createdAt: now(), updatedAt: now(), jobs: [{ id: randomUUID(), recentProjectId,
+    projectId: source.projectId, name: "模板", requestedCount: 20, actualCount: 20, productPrice: "", coverEnabled: false, displayMode: "full",
+    status: "exporting", taskIds: source.tasks.map(task => task.id), completedTaskIds: source.tasks.map(task => task.id), completedCount: 20, failedCount: 0 }] };
+  f.port.confirmAutomation = async (tasks, ownership, signal) => {
+    expect(run.status === "running" || counts.length > 0).toBe(true);
+    await confirm(tasks, ownership, signal); counts.push(tasks.length);
+    run.status = "finished"; run.jobs[0].status = "completed";
+    return tasks.map(task => ({ ...task.result.readyEvidence!, platformVideoId: `video_${task.result.export_task_id}`, attempt: task.result.attempt_count,
+      requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), observedAt: now() }));
+  };
+  const uploaded = await uploadProducingExports({ runId: run.id, bindings: [{ recentProjectId, projectId: source.projectId, requestedCount: 20, selection, target }],
+    controller: { get busy() { return run.status === "running"; }, snapshot: () => structuredClone(run), executionSignal: () => new AbortController().signal },
+    queue: { snapshot: () => ({ revision: 1, batches: [...f.states.values()] }), waitForPersistence: async signal => signal.throwIfAborted() }, upload: (groups, signal) => f.service.uploadAutomation(groups, signal),
+  }, new AbortController().signal);
+  expect(counts).toEqual([9, 9, 2]); expect(uploaded).toEqual(source.identities);
+  expect(f.store.tasks()).toHaveLength(20); expect(f.store.tasks().every(task => task.result.state === "ACCEPTED")).toBe(true);
+  expect(f.selectedExports).toHaveLength(20);
+  expect(new Set(f.selectedExports)).toEqual(new Set(source.tasks.map(task => task.id)));
+});
 
 it("shares live acceptance with same-target duplicate groups without selecting or confirming twice", async () => {
   const f = await fixture(), first = await f.batch(["identical scheduled output"]), second = await f.batch(["identical scheduled output"]);

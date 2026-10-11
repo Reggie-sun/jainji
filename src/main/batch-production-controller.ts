@@ -81,6 +81,14 @@ export class BatchProductionController {
     return run;
   }
 
+  /** Main-only adapters share the original run/job cancellation, without owning it. */
+  executionSignal(runId: string, jobId: string): AbortSignal {
+    const job = this.run?.id === runId ? this.run.jobs.find(job => job.id === jobId) : undefined;
+    if (!job || !this.controller || ["cancelled", "interrupted"].includes(job.status)) throw new Error("制作任务已取消、中断或发生变化。");
+    return this.activeJobId === jobId && this.activeJobController
+      ? AbortSignal.any([this.controller.signal, this.activeJobController.signal]) : this.controller.signal;
+  }
+
   /** Observe one frozen job without switching the editor or starting a production session. */
   async details(input: unknown): Promise<BatchProductionDetail> {
     const { runId, jobId } = BatchProductionDetailRequestSchema.parse(input);
