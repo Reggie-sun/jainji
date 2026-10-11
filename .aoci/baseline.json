@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T15:37:20Z",
+  "updated_at": "2026-10-11T15:44:53Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "02c98103133b36a22cdc70cdd40db3ca6348c3952166f6637cf9eddba09f1b59",
-      "size": 116897,
-      "normalized_sha256": "02c98103133b36a22cdc70cdd40db3ca6348c3952166f6637cf9eddba09f1b59"
+      "sha256": "76b4cfecaa058a132d1e93fdadd000c9bdb5576346dca9e9f9c1e1f0f0f32931",
+      "size": 117381,
+      "normalized_sha256": "76b4cfecaa058a132d1e93fdadd000c9bdb5576346dca9e9f9c1e1f0f0f32931"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1148,9 +1148,9 @@
       "normalized_sha256": "56f6db3ddb8333389d159447335ad10d2e8ba3c9376f726cfacfd4678c6cbd93"
     },
     "src/main/application.ts": {
-      "sha256": "397d022ab844c0d8b107ae1c4bc000ea07d8220fd72c4cf3aa284f6893637021",
-      "size": 19165,
-      "normalized_sha256": "397d022ab844c0d8b107ae1c4bc000ea07d8220fd72c4cf3aa284f6893637021"
+      "sha256": "be4b6ab297f365ab134051efe98a39db1fdef70d3a189286c3e715c85d7f81eb",
+      "size": 19338,
+      "normalized_sha256": "be4b6ab297f365ab134051efe98a39db1fdef70d3a189286c3e715c85d7f81eb"
     },
     "src/main/artifact.ts": {
       "sha256": "8a2503f15f88b6cf4f7c4ce9fc26feac26f1a5cef61369a344394551b13cfe5c",
@@ -1208,14 +1208,14 @@
       "normalized_sha256": "f07d038c8754c708ab79225e701859019ad1a41ae7977d50e4350a70a0b7805b"
     },
     "src/main/batch-production-controller.ts": {
-      "sha256": "60ec4fd3e28ce7fffe1cde480ab24ad2c75dc66238a69533516fa1b5d114feab",
-      "size": 22553,
-      "normalized_sha256": "60ec4fd3e28ce7fffe1cde480ab24ad2c75dc66238a69533516fa1b5d114feab"
+      "sha256": "5cb17adddfa887f697fcfaafa93c509b50e09548e1cb000550aff6a1cc0cd5d4",
+      "size": 22473,
+      "normalized_sha256": "5cb17adddfa887f697fcfaafa93c509b50e09548e1cb000550aff6a1cc0cd5d4"
     },
     "src/main/batch-production-runtime.ts": {
-      "sha256": "833c64c87387e924b1c0c55cb58758646f5c512257dda903d1041c7abcf446cb",
-      "size": 7594,
-      "normalized_sha256": "833c64c87387e924b1c0c55cb58758646f5c512257dda903d1041c7abcf446cb"
+      "sha256": "bebc6d302453e6ba5d800f424293023e57c343fb83047ba908ddfda7c3f53cd9",
+      "size": 7547,
+      "normalized_sha256": "bebc6d302453e6ba5d800f424293023e57c343fb83047ba908ddfda7c3f53cd9"
     },
     "src/main/bug-feedback-ipc.ts": {
       "sha256": "3a7f4c243eae9448b93c5fd2652b9e730b154fe6510bee0788508df047b57c6b",
@@ -1453,9 +1453,9 @@
       "normalized_sha256": "4d1c55c8da2fb8c29a591647434faf01a47af0b306b2cb1193f995ae5ed76dc3"
     },
     "src/main/index.ts": {
-      "sha256": "4b9b8368d80cd9454eead7c4c8287d9573c4d76ee43e9cd266a024a1698f5536",
-      "size": 64535,
-      "normalized_sha256": "4b9b8368d80cd9454eead7c4c8287d9573c4d76ee43e9cd266a024a1698f5536"
+      "sha256": "0db1f7946b28497dba552ab6f3efde2d0bff32c484ce3c082fcb0f4e17b787d7",
+      "size": 64683,
+      "normalized_sha256": "0db1f7946b28497dba552ab6f3efde2d0bff32c484ce3c082fcb0f4e17b787d7"
     },
     "src/main/local-cdp-transport.ts": {
       "sha256": "fb23cfcad8d845112bca0b41434b6e619d63ab19d3263ae8bd95e83b64d8619f",
@@ -1478,9 +1478,9 @@
       "normalized_sha256": "4632d377643da645a9ebefdd09451d4a3d308b91ff0879a1ccde2ea5f6977188"
     },
     "src/main/media.ts": {
-      "sha256": "ac73a48c450d60d24cb6eac063f1e531d7347ddd2cc78a8622d9631caaada24e",
-      "size": 3954,
-      "normalized_sha256": "ac73a48c450d60d24cb6eac063f1e531d7347ddd2cc78a8622d9631caaada24e"
+      "sha256": "d7993e5eb07fbbf7a162ab9aa7e47bf6e77d7a63314aa6d3073b3fbec5de3338",
+      "size": 4464,
+      "normalized_sha256": "d7993e5eb07fbbf7a162ab9aa7e47bf6e77d7a63314aa6d3073b3fbec5de3338"
     },
     "src/main/membership-desktop.ts": {
       "sha256": "9734a1239f5af0c2eeb79e0b36f9dbe07a4686af46f1c10d254c0c1d569beb74",

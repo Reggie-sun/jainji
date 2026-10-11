@@ -152,6 +152,9 @@ export class ApplicationService {
 
   removeMedia(mediaId: string): void {
     this.project.mediaItems = this.project.mediaItems.filter((item) => item.id !== mediaId);
+    if (this.project.workspaceDraft) {
+      this.project.workspaceDraft.selectedMediaIds = this.project.workspaceDraft.selectedMediaIds.filter(id => id !== mediaId);
+    }
     if (this.project.coverSticker?.tracks) delete this.project.coverSticker.tracks[mediaId];
     for (const region of this.project.coverSticker?.regions ?? []) {
       if (region.tracks) delete region.tracks[mediaId];

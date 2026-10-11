@@ -101,6 +101,59 @@ async function fixture(options: { allComplete?: boolean; startThrows?: boolean; 
 }
 
 describe("cross-template batch admission", () => {
+  it("uses remaining saved selections in order after media removal, before applying the requested count", async () => {
+    const f = await fixture({ allComplete: true });
+    f.projects[0] = project("蝴蝶贴", 4);
+    const [removed, first, unselected, second] = f.projects[0].mediaItems;
+    f.projects[0].workspaceDraft!.selectedMediaIds = [removed.id, second.id, first.id, second.id];
+    f.projects[0].mediaItems = [first, unselected, second];
+    const original = structuredClone(f.projects[0]);
+    await f.controller.start({ entries: [{ ...f.entries[0], requestedCount: 5 }] });
+    await waitFor(() => expect(f.controller.busy).toBe(false));
+    expect(f.controller.snapshot()?.jobs[0]).toMatchObject({ status: "completed", actualCount: 5, completedCount: 5 });
+    expect(f.starts[0].mediaIds).toEqual([second.id, first.id]);
+    expect(f.tasks.map(task => task.mediaId)).toEqual([second.id, first.id, second.id, first.id, second.id]);
+    expect(f.projects[0]).toEqual(original);
+
+    await f.controller.start({ entries: [{ ...f.entries[0], requestedCount: 1 }] });
+    await waitFor(() => expect(f.controller.busy).toBe(false));
+    expect(f.starts[1].mediaIds).toEqual([second.id]);
+  });
+
+  it.each(["empty", "all-removed", "invalid"])("rejects %s saved selections without substituting unselected media", async state => {
+    const f = await fixture({ allComplete: true });
+    const selected = f.projects[0].mediaItems[0];
+    const unselected = project("蝴蝶贴").mediaItems[0];
+    f.projects[0].mediaItems.push(unselected);
+    if (state === "empty") f.projects[0].workspaceDraft!.selectedMediaIds = [];
+    if (state === "all-removed") f.projects[0].mediaItems = [unselected];
+    if (state === "invalid") selected.probeStatus = "invalid";
+    await f.controller.start({ entries: [f.entries[0]] });
+    await waitFor(() => expect(f.controller.busy).toBe(false));
+    expect(f.controller.snapshot()?.jobs[0].status).toBe("failed");
+    expect(f.dependencies.session).not.toHaveBeenCalled();
+    expect(f.dependencies.outputDirectory).not.toHaveBeenCalled();
+  });
+
+  it("lists remaining selections and their text switches without rewriting an older saved template", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-batch-removed-options-")); directories.push(root);
+    const value = project("无文字模板", 4);
+    const [removed, first, unselected, second] = value.mediaItems;
+    value.workspaceDraft!.selectedMediaIds = [removed.id, second.id, first.id, second.id];
+    value.workspaceDraft!.decorations.displayText = { enabled: false, x: 0.5, y: 0.13 };
+    value.workspaceDraft!.decorations.displayTextByMedia = { [removed.id]: { enabled: true, x: 0.2, y: 0.4 }, [first.id]: { enabled: true, x: 0.2, y: 0.4 } };
+    value.mediaItems = [first, unselected, second];
+    const file = path.join(root, "saved.json"); await new ProjectStore(file).save(value);
+    const before = await readFile(file, "utf8");
+    const recentProjectId = crypto.randomUUID();
+    const runtime = createBatchProductionRuntime({ root, registry: { list: () => [{ id: recentProjectId, name: value.name }], resolve: () => file },
+      changed: () => undefined } as unknown as Parameters<typeof createBatchProductionRuntime>[0]);
+    const [option] = await runtime.listProjects();
+    expect(option).toMatchObject({ sourceCount: 2, displayTextRequiredByMedia: [false, true] });
+    expect(batchRequiresDisplayText({ ...option, requestedCount: 1 })).toBe(false);
+    expect(await readFile(file, "utf8")).toBe(before);
+  });
+
   it("resumes only uploads captured by the current run and job without switching projects", async () => {
     const f = await fixture({ allComplete: true });
     const run = await f.controller.start({ entries: f.entries });
@@ -756,12 +809,12 @@ describe("batch automatic plan preparation", () => {
       await page.setContent('<div id="root"></div>');
       const script = buildSync({ stdin: { contents: `
         import React from "react"; import {createRoot} from "react-dom/client";
-        import {BatchProductionDetails} from "./src/renderer/BatchProductionDetails";
+        import {BatchUploadDetails} from "./src/renderer/BatchUploadDetails";
         window.calls=[];
         window.jianji={batchProductionDetails:async()=>({runId:"run",job:{id:"job",name:"蝴蝶贴",accountProduct:"蝴蝶贴",requestedCount:1,actualCount:1},tasks:[],items:[],
           upload:{tasks:[{upload_task_id:"unknown",file_name:"unknown.mp4",state:"NEEDS_HUMAN",upload_outcome:"MAY_HAVE_UPLOADED"}]}}),
           resumeBatchUpload:async input=>{window.calls.push(input);throw new Error("原页面无法确认，未重传");}};
-        createRoot(document.getElementById("root")).render(<BatchProductionDetails request={{runId:"run",jobId:"job"}} name="蝴蝶贴" onBack={()=>{}}/>);
+        createRoot(document.getElementById("root")).render(<BatchUploadDetails request={{runId:"run",jobId:"job",name:"蝴蝶贴"}} active={true}/>);
       `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic", loader: { ".css": "empty" } }).outputFiles[0]!.text;
       await page.addScriptTag({ content: script });
       await page.getByRole("button", { name: "核查原上传页", exact: true }).click();

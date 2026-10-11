@@ -4,6 +4,7 @@ import { canonicalPath } from "./paths.js";
 import { ApplicationService } from "./application.js";
 import { AgentController } from "./agent-controller.js";
 import { ProjectStore } from "./store.js";
+import { selectedProjectMediaIds } from "./media.js";
 import type { RecentProjects } from "./recent-projects.js";
 import type { ExportQueue } from "./queue.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
@@ -86,7 +87,7 @@ export function createBatchProductionRuntime(input: {
         catch (error) { uploadBindingError = error instanceof Error ? error.message : "模板账号关联无法读取，请核查账号设置。"; }
         const workspace = project.workspaceDraft;
         const template = project.templates.find(template => template.id === project.activeTemplateId) ?? project.templates[0];
-        const mediaIds = [...new Set(workspace?.selectedMediaIds ?? project.mediaItems.filter(media => media.probeStatus === "ready").map(media => media.id))];
+        const mediaIds = selectedProjectMediaIds(project);
         const sourceCount = mediaIds.length;
         const decorations = DecorationSchema.parse({ ...workspace?.decorations, productPrice: template.productPriceDraft ?? "" });
         return { recentProjectId: item.id, projectId: project.id, name: project.name, sourceCount, requestedCount: workspace?.requestedCount ?? Math.max(1, sourceCount),

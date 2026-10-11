@@ -346,6 +346,8 @@ function registerHandlers(): void {
     assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const id = uuidSchema.parse(input);
     service.removeMedia(id);
+    await service.persistCurrentProject();
+    if (service.projectPath) await recentProjects.remember(service.projectPath, service.currentProject);
     return publicState();
   });
   ipcMain.handle("media.selectStickerAsset", async (event) => {

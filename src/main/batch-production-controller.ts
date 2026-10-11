@@ -9,6 +9,7 @@ import { DEFAULT_EXPORT_SETTINGS } from "../shared/export-settings.js";
 import type { ExportTask, Project } from "./domain.js";
 import type { QueueSnapshot } from "./queue.js";
 import { ProjectStore, atomicWriteJson } from "./store.js";
+import { selectedProjectMediaIds } from "./media.js";
 import type { QianchuanUploadSelection, UploadAuthorization } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { resolveBatchUploadAccount, type TemplateAccountBinding } from "../shared/batch-upload.js";
@@ -183,8 +184,7 @@ export class BatchProductionController {
     const project = structuredClone(fixedProjects ? fixedProjects.get(entry.recentProjectId)! : await this.dependencies.loadProject(entry.recentProjectId));
     delete project.latestProduction;
     const workspace = project.workspaceDraft;
-    const selectedIds = workspace?.selectedMediaIds ?? project.mediaItems.filter(item => item.probeStatus === "ready").map(item => item.id);
-    const mediaIds = [...new Set(selectedIds)].slice(0, entry.requestedCount);
+    const mediaIds = selectedProjectMediaIds(project).slice(0, entry.requestedCount);
     const quantity = calculateExactProductionQuantity(mediaIds.length, entry.requestedCount);
     if (!quantity) throw new Error(`当前模板的素材和条数无效，最多 ${MAX_AGENT_OUTPUTS} 条。`);
     if (mediaIds.some(id => !project.mediaItems.some(item => item.id === id && item.probeStatus === "ready"))) throw new Error("模板所选素材已失效，请先重新打开模板检查。");

@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { now, type MediaItem } from "./domain.js";
+import { now, type MediaItem, type Project } from "./domain.js";
 import { fingerprintFile } from "./paths.js";
 import { FfmpegAdapter } from "./ffmpeg.js";
 
@@ -10,6 +10,13 @@ const SUPPORTED_VIDEO_CODECS = new Set(["av1", "cinepak", "flv1", "h263", "h264"
 
 export interface MediaView extends Omit<MediaItem, "sourcePath"> {
   previewUrl: string;
+}
+
+/** Reconcile saved selections with removals, preserving order and invalid-media admission checks. */
+export function selectedProjectMediaIds(project: Pick<Project, "mediaItems" | "workspaceDraft">): string[] {
+  const existing = new Set(project.mediaItems.map(item => item.id));
+  const selected = project.workspaceDraft?.selectedMediaIds ?? project.mediaItems.filter(item => item.probeStatus === "ready").map(item => item.id);
+  return [...new Set(selected)].filter(id => existing.has(id));
 }
 
 function rotationFromProbe(stream: { tags?: { rotate?: string }; side_data_list?: Array<{ rotation?: number }> }): 0 | 90 | 180 | 270 {
