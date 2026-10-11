@@ -57,7 +57,7 @@ export function MaterialCollection({ name, disabled, openingDisabled, onOpen, on
         setRenameName(item.name);
         setRenaming(true);
         closePicker();
-      }}>重命名</button>{!compact && <button className="saved-collection-option-action saved-collection-option-delete" type="button" aria-label={`删除项目 ${item.name}`} title="删除项目" disabled={openingDisabled || managing} onClick={() => deleteRecent(item.id)}><Icon name="close" size={16} /></button>}</div>)}
+      }}>重命名</button><button className="saved-collection-option-action saved-collection-option-delete" type="button" aria-label={`删除${compact ? "模板" : "项目"} ${item.name}`} title={compact ? "删除模板" : "删除项目"} disabled={openingDisabled || managing} onClick={() => deleteRecent(item.id)}><Icon name="close" size={16} /></button></div>)}
     </div></details></div></div>
     {renaming && selected && <form className="saved-collection-rename" onSubmit={(event) => {
       event.preventDefault();

@@ -51,7 +51,7 @@ it("selects and renames saved material templates directly beside an empty materi
     });
     const picker = page.getByRole("region", { name: "素材模板快捷选择", exact: true });
     await picker.getByLabel("已保存的素材模板", { exact: true }).click();
-    expect(await picker.getByRole("button", { name: /删除/ }).count()).toBe(0);
+    expect(await picker.getByRole("button", { name: /删除模板/ }).count()).toBe(2);
     await picker.getByRole("option", { name: /项目 B/ }).click();
     expect(await page.getByRole("heading", { name: "素材", exact: true }).isVisible()).toBe(true);
     await expect.poll(() => page.getByRole("checkbox", { name: /^选择 素材 [ABC]\.mp4$/ }).count()).toBe(3);

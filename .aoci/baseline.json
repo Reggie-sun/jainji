@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T15:44:53Z",
+  "updated_at": "2026-10-11T16:35:16Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "0090cee956aa055d2ff4c8a76a4427ed6dc0c3e8a3cc26dd9b32b0bc5d19ddfd",
-      "size": 117959,
-      "normalized_sha256": "0090cee956aa055d2ff4c8a76a4427ed6dc0c3e8a3cc26dd9b32b0bc5d19ddfd"
+      "sha256": "669fb1472a06fcabf016e38af4c49bdd2a13fb614da3c3ed348eb392d02fcb10",
+      "size": 117948,
+      "normalized_sha256": "669fb1472a06fcabf016e38af4c49bdd2a13fb614da3c3ed348eb392d02fcb10"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2243,9 +2243,9 @@
       "normalized_sha256": "0edd7fcae9e79932449d7a23a8a801bb88116c5cc841bb194be665155acabb30"
     },
     "src/renderer/MaterialCollection.tsx": {
-      "sha256": "e1dd526f7bdafa5fc7a15a4ead630749252a8806082d14d99c5e29236d14d91b",
-      "size": 5608,
-      "normalized_sha256": "e1dd526f7bdafa5fc7a15a4ead630749252a8806082d14d99c5e29236d14d91b"
+      "sha256": "630ad891b2f8ee2ac1c91738f38622876a1879ec49e9ea510d0425f38e924b48",
+      "size": 5649,
+      "normalized_sha256": "630ad891b2f8ee2ac1c91738f38622876a1879ec49e9ea510d0425f38e924b48"
     },
     "src/renderer/MediaSelector.tsx": {
       "sha256": "5e80f2e1200cec047bbf3d145dc2ce287f9cb3e84594d563dc7e52fc986959e1",
