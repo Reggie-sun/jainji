@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T20:15:17Z",
+  "updated_at": "2026-10-11T20:39:22Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "f2f6ff47decb7bf5581153c17e049e1667ba051563841ac5afc2f7e4e8578d06",
-      "size": 119661,
-      "normalized_sha256": "f2f6ff47decb7bf5581153c17e049e1667ba051563841ac5afc2f7e4e8578d06"
+      "sha256": "85c432ccaeb6a61209574b8a57923fada9973b8cd12c74f8721b5a7d57c270ee",
+      "size": 119954,
+      "normalized_sha256": "85c432ccaeb6a61209574b8a57923fada9973b8cd12c74f8721b5a7d57c270ee"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1123,9 +1123,9 @@
       "normalized_sha256": "08913d142fe1e094d7f464f49f659a4eed93d734651b293a2a80299a07a43662"
     },
     "src/main/agent-provider.ts": {
-      "sha256": "4809840ec812f643acf3015ffb169e9c410d7a7660ed8a59507d451ce0820f5c",
-      "size": 45600,
-      "normalized_sha256": "4809840ec812f643acf3015ffb169e9c410d7a7660ed8a59507d451ce0820f5c"
+      "sha256": "1565e2cefd58849a6ac869f076ce19946d1c74d742d8a818b9666d5f36a853ab",
+      "size": 47311,
+      "normalized_sha256": "1565e2cefd58849a6ac869f076ce19946d1c74d742d8a818b9666d5f36a853ab"
     },
     "src/main/agent-runner.ts": {
       "sha256": "1827b173bf4ac28a02dc24fcf757631f1675055754ac901f7ad0b4ea28894914",
@@ -1143,9 +1143,9 @@
       "normalized_sha256": "f26da7672cede1a835f069b7f56c60afa1e666df69c54ad7437f4ec120571bb1"
     },
     "src/main/api-transport.ts": {
-      "sha256": "56f6db3ddb8333389d159447335ad10d2e8ba3c9376f726cfacfd4678c6cbd93",
-      "size": 5976,
-      "normalized_sha256": "56f6db3ddb8333389d159447335ad10d2e8ba3c9376f726cfacfd4678c6cbd93"
+      "sha256": "543ef524ad1aefb6d859268be66bf80fa9042dc3180cf79b9d9ddfb7e8d40800",
+      "size": 6678,
+      "normalized_sha256": "543ef524ad1aefb6d859268be66bf80fa9042dc3180cf79b9d9ddfb7e8d40800"
     },
     "src/main/application.ts": {
       "sha256": "be4b6ab297f365ab134051efe98a39db1fdef70d3a189286c3e715c85d7f81eb",

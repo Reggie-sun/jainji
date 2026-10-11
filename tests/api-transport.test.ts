@@ -15,6 +15,43 @@ function requestReply(body: unknown) {
 }
 
 describe("completeApi protocol transport", () => {
+  it.each(["```json\n{}\n```", "```\r\n{}\r\n```"])("unwraps only the outer JSON fence for structured MiniMax Responses: %s", async text => {
+    const request = requestReply({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text }] }] });
+    await expect(completeApi({ baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", apiKey: key, protocol: "responses" },
+      messages, new AbortController().signal, request, { chatgptOutputSchema: { type: "object" } })).resolves.toBe("{}");
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it("does not extract JSON from explanatory prose or change unstructured MiniMax responses", async () => {
+    for (const [text, structured] of [["说明\n```json\n{}\n```", true], ["```json\n{}\n```\n完成", true], ["```json\n{}\n```", false]] as const) {
+      const request = requestReply({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text }] }] });
+      await expect(completeApi({ baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", apiKey: key, protocol: "responses" },
+        messages, new AbortController().signal, request, structured ? { chatgptOutputSchema: { type: "object" } } : {})).resolves.toBe(text);
+    }
+  });
+
+  it.each([undefined, "none", "low"])("uses reasoning for structured MiniMax-M3 Responses while preserving explicit effort %s", async reasoningEffort => {
+    const request = requestReply({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "{}" }] }] });
+    await completeApi({ baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", apiKey: key, protocol: "responses", reasoningEffort },
+      messages, new AbortController().signal, request, { chatgptOutputSchema: { type: "object" } });
+    const body = JSON.parse(String(vi.mocked(request).mock.calls[0][1]?.body));
+    expect(body.reasoning).toEqual({ effort: reasoningEffort ?? "high" });
+    expect(body).not.toHaveProperty("text");
+    expect(body).not.toHaveProperty("response_format");
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", structured: false },
+    { baseUrl: "https://relay.example/v1", model: "MiniMax-M3", structured: true },
+    { baseUrl: "https://api.minimaxi.com/v1", model: "other-model", structured: true },
+  ])("keeps provider-default reasoning outside the verified structured MiniMax route: %j", async ({ baseUrl, model, structured }) => {
+    const request = requestReply({ status: "completed", output: [{ type: "message", content: [{ type: "output_text", text: "{}" }] }] });
+    await completeApi({ baseUrl, model, apiKey: key, protocol: "responses" }, messages, new AbortController().signal, request,
+      structured ? { chatgptOutputSchema: { type: "object" } } : {});
+    expect(JSON.parse(String(vi.mocked(request).mock.calls[0][1]?.body))).not.toHaveProperty("reasoning");
+  });
+
   it.each([DEFAULT_QWEN_CONNECTION.baseUrl, "http://127.0.0.1:8000/v1", "http://localhost:8000/v1"])("requests JSON objects for cover calls to the deployed Qwen endpoint %s", async (baseUrl) => {
     const request = requestReply({ choices: [{ finish_reason: "stop", message: { content: "{}" } }] });
     await completeApi({ ...DEFAULT_QWEN_CONNECTION, baseUrl, apiKey: key }, messages, new AbortController().signal, request, { jsonObject: true });

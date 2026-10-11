@@ -23,6 +23,7 @@ function supportsJsonObject(connection: ConnectionInput): boolean {
 
 export async function completeApi(connection: ConnectionInput, messages: ModelMessage[], signal: AbortSignal, request: typeof fetch, options: CompletionOptions = {}): Promise<string> {
   const protocol = connection.protocol ?? "chat-completions";
+  const structuredMiniMax = protocol === "responses" && connection.model === "MiniMax-M3" && connection.baseUrl.replace(/\/+$/, "") === "https://api.minimaxi.com/v1" && Boolean(options.chatgptOutputSchema);
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   headers[connection.authHeader === "x-api-key" ? "x-api-key" : "Authorization"] = connection.authHeader === "x-api-key" ? connection.apiKey : `Bearer ${connection.apiKey}`;
   let endpoint = "/chat/completions";
@@ -41,7 +42,10 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
     };
   } else if (protocol === "responses") {
     endpoint = "/responses";
-    body = { model: connection.model, store: false, stream: false, ...(options.maxOutputTokens ? { max_output_tokens: options.maxOutputTokens } : {}), ...(connection.reasoningEffort ? { reasoning: { effort: connection.reasoningEffort } } : {}), input: messages.map((m) => ({ role: m.role,
+    // MiniMax-M3 defaults reasoning off; creative JSON tasks need arithmetic checks.
+    // An explicit connection preference, including "none", always wins.
+    const reasoningEffort = connection.reasoningEffort ?? (structuredMiniMax ? "high" : undefined);
+    body = { model: connection.model, store: false, stream: false, ...(options.maxOutputTokens ? { max_output_tokens: options.maxOutputTokens } : {}), ...(reasoningEffort ? { reasoning: { effort: reasoningEffort } } : {}), input: messages.map((m) => ({ role: m.role,
       content: typeof m.content === "string" ? m.content : m.content.map((item) => item.type === "text" ? { type: "input_text", text: item.text } : { type: "input_image", image_url: item.image_url.url, detail: item.image_url.detail }),
     })) };
   }
@@ -70,6 +74,11 @@ export async function completeApi(connection: ConnectionInput, messages: ModelMe
     }
     if (!content || content.length > (options.maxOutputCharacters ?? DEFAULT_MAX_OUTPUT_CHARACTERS)) throw new ProviderError("模型返回内容为空或过长。");
     if (content.includes(connection.apiKey)) throw new ProviderError("服务响应包含敏感信息，已丢弃。");
+    if (structuredMiniMax) {
+      // Accept one outer presentation fence; the caller still parses and validates every value.
+      const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(content.trim());
+      if (fenced) return fenced[1];
+    }
     return content;
   } catch (error) {
     if (signal.aborted) throw new ProviderError("已停止生成。");

@@ -203,6 +203,87 @@ describe("agent provider boundary", () => {
     expect(system).toContain("不得添加其他字段");
   });
 
+  it("carries the numbered shortlist contract as text through MiniMax Responses", async () => {
+    const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ status: "completed", output: [
+      { type: "message", content: [{ type: "output_text", text: '{"candidates":[2]}' }] },
+    ] })));
+    const provider = new AgentProvider(request, 0);
+    provider.configure({ ...connection, model: "MiniMax-M3", protocol: "responses" });
+    await expect(provider.shortlist("clean", "", ["data:image/jpeg;base64,ZnJhbWU="], new AbortController().signal, autoCatalog)).resolves.toEqual(["sparkle"]);
+    const [url, options] = request.mock.calls[0];
+    const body = JSON.parse(options.body);
+    expect(url).toBe("https://example.test/v1/responses");
+    expect(body.text).toBeUndefined();
+    const system = body.input[0].content as string;
+    const schema = JSON.parse(system.split("输出 JSON Schema：")[1].split("。返回前自检")[0]);
+    expect(schema).toMatchObject({ additionalProperties: false, required: ["candidates"], properties: {
+      candidates: { type: "array", minItems: 1, maxItems: 12, items: { type: "integer", minimum: 1, maximum: 2 } },
+    } });
+    expect(system).toContain("候选数量、编号范围与去重");
+    expect(body.input[1].content).toContainEqual({ type: "input_image", image_url: "data:image/jpeg;base64,ZnJhbWU=", detail: "low" });
+  });
+
+  it("carries candidate IDs and checked area examples through MiniMax Responses", async () => {
+    const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ status: "completed", output: [
+      { type: "reasoning" }, { type: "message", content: [{ type: "output_text", text: JSON.stringify(autoPlan) }] },
+    ] })));
+    const provider = new AgentProvider(request, 0);
+    provider.configure({ ...connection, model: "MiniMax-M3", protocol: "responses" });
+    await expect(provider.plan("clean", "", [], new AbortController().signal, autoCatalog)).resolves.toEqual(autoPlan);
+    const system = JSON.parse(request.mock.calls[0][1].body).input[0].content as string;
+    const schema = JSON.parse(system.split("输出 JSON Schema：")[1].split("。返回前自检")[0]);
+    expect(schema.properties.stickers.items.properties.sticker.enum).toEqual(["heart", "sparkle"]);
+    expect(schema.properties.stickers).toMatchObject({ minItems: 4, maxItems: 4 });
+    expect(system).toContain("corner 不得重复；sticker ID 可以复用");
+    const examples = JSON.parse(system.split("面积计算示例（不是固定尺寸）：")[1].split("。逐项计算")[0]);
+    for (const example of examples) {
+      const raw = { ...autoPlan, stickers: autoPlan.stickers.map((sticker, i) => ({ ...sticker, width: example.widths[i] })) };
+      expect(raw.stickers.reduce((sum, sticker) => sum + sticker.width ** 2, 0)).toBeCloseTo(example.sum);
+      if (example.valid) expect(() => validatePlan(raw, "clean", autoCatalog)).not.toThrow();
+      else expect(() => validatePlan(raw, "clean", autoCatalog)).toThrow("贴纸总面积");
+    }
+    expect(system).toContain("单项不超过 0.1 不代表总面积合格");
+  });
+
+  it.each(['{"candidates":[]}', '{"candidates":[1,1]}', '{"candidates":[3]}'])("still stops invalid Responses shortlists without repair or retry: %s", async content => {
+    const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ status: "completed", output: [
+      { type: "message", content: [{ type: "output_text", text: content }] },
+    ] })));
+    const provider = new AgentProvider(request, 0);
+    provider.configure({ ...connection, model: "MiniMax-M3", protocol: "responses" });
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, autoCatalog)).rejects.toThrow("候选不合格");
+    expect(request).toHaveBeenCalledOnce();
+  });
+
+  it("rejects the real MiniMax width pattern without shrinking or retrying it", async () => {
+    const widths = [0.09, 0.09, 0.08, 0.09];
+    const raw = { ...autoPlan, stickers: autoPlan.stickers.map((sticker, i) => ({ ...sticker, width: widths[i] })) };
+    const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ status: "completed", output: [
+      { type: "message", content: [{ type: "output_text", text: JSON.stringify(raw) }] },
+    ] })));
+    const provider = new AgentProvider(request, 0);
+    provider.configure({ ...connection, model: "MiniMax-M3", protocol: "responses" });
+    await expect(provider.plan("clean", "", [], new AbortController().signal, autoCatalog)).rejects.toThrow("贴纸总面积");
+    expect(request).toHaveBeenCalledOnce();
+    expect(raw.stickers.map(sticker => sticker.width)).toEqual(widths);
+  });
+
+  it.each([
+    [autoPlan, undefined],
+    [{ ...autoPlan, stickers: autoPlan.stickers.map(sticker => ({ ...sticker, width: 0.09 })) }, "贴纸总面积"],
+    [{ ...autoPlan, stickers: autoPlan.stickers.map(sticker => ({ ...sticker, sticker: "outside-catalog" })) }, "候选目录"],
+  ])("validates the unchanged JSON inside a MiniMax fence", async (raw, reason) => {
+    const request = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ status: "completed", output: [
+      { type: "message", content: [{ type: "output_text", text: `\x60\x60\x60json\n${JSON.stringify(raw)}\n\x60\x60\x60` }] },
+    ] })));
+    const provider = new AgentProvider(request, 0);
+    provider.configure({ ...connection, baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", protocol: "responses" });
+    const result = provider.plan("clean", "", [], new AbortController().signal, autoCatalog);
+    if (reason) await expect(result).rejects.toThrow(reason);
+    else await expect(result).resolves.toEqual(raw);
+    expect(request).toHaveBeenCalledOnce();
+  });
+
   it("omits forbidden entries while preserving uploaded preview numbers and batch usage", async () => {
     const id = `uploaded-${"b".repeat(64)}`;
     const preview = { id, url: "data:image/jpeg;base64,dXBsb2Fk" };
