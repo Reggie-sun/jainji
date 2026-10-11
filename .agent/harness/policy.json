@@ -19,6 +19,15 @@
       "timeoutMs": 120000
     },
     {
+      "id": "task-pages",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/task-pages.test.ts"],
+      "timeoutMs": 120000
+    },
+    {
       "id": "scheduled-automation",
       "kind": "vitest",
       "required": true,
@@ -712,6 +721,13 @@
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md"
       ]
+    },
+    {
+      "id": "renderer-task-pages",
+      "tier": "baseline",
+      "paths": ["src/renderer/**", "tests/task-pages.test.ts", "tests/helpers/task-pages-fixture.ts"],
+      "checkIds": ["typecheck", "harness", "task-pages", "documents", "owned-aoci"],
+      "documentRefs": ["docs/superpowers/plans/2026-10-11-task-pages.md", "docs/decoration-production-contract.md", "docs/semi-automatic-cover-review-spec.md"]
     },
     {
       "id": "domain-scheduled-automation",

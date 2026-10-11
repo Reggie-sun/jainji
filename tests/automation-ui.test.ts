@@ -24,7 +24,7 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
     binding: "a".repeat(64), summary: "固定绑定 1 个模板", createdAt: "2026-10-10T00:00:00.000Z",
   };
   return buildSync({ stdin: { contents: `
-    import React from "react";
+    import React, {useState} from "react";
     import { createRoot } from "react-dom/client";
     import { AutomationComposer, AutomationPanel } from "./src/renderer/AutomationPanel";
     import { QianchuanVideoLibraryActions } from "./src/renderer/QianchuanVideoLibraryActions";
@@ -49,8 +49,9 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
     };
     const production = ${JSON.stringify(options.production ?? null)};
     function Fixture() {
+      const [cleanup, setCleanup] = useState();
       if (${JSON.stringify(options.component ?? "composer")} === "panel") return <AutomationPanel/>;
-      if (${JSON.stringify(options.component ?? "composer")} === "cleanup") return <QianchuanVideoLibraryActions accounts={[{ product: "蝴蝶贴", advertiserId: "123", adId: "456", available: true }]} busy={false}/>;
+      if (${JSON.stringify(options.component ?? "composer")} === "cleanup") return cleanup ? <AutomationComposer cleanup={cleanup}/> : <QianchuanVideoLibraryActions accounts={[{ product: "蝴蝶贴", advertiserId: "123", adId: "456", available: true }]} busy={false} onAutomation={setCleanup}/>;
       return <AutomationComposer production={production ?? undefined}/>;
     }
     createRoot(document.getElementById("root")).render(<Fixture/>);
@@ -70,7 +71,7 @@ async function fixture(options: Parameters<typeof automationFixtureScript>[0] = 
   await page.goto(route);
   await page.addScriptTag({ content: automationFixtureScript(options) });
   await page.addStyleTag({ content: ["src/renderer/styles.css", "src/renderer/automation.css", "src/renderer/qianchuan-cleanup.css"].map(path => readFileSync(path, "utf8")).join("\n") });
-  const heading = options.component === "panel" ? "每日自动化任务" : options.component === "cleanup" ? "保存每日自动化" : "保存每日自动化";
+  const heading = options.component === "panel" ? "每日自动化任务" : options.component === "cleanup" ? "素材清理" : "保存每日自动化";
   await page.getByRole("heading", { name: heading }).waitFor();
   return { page, pageErrors };
 }
@@ -137,8 +138,10 @@ describe("scheduled automation browser interaction", () => {
     const { page, pageErrors } = await fixture({ component: "cleanup" });
     try {
       await page.getByRole("checkbox", { name: "清理计划 456" }).waitFor();
-      await page.getByRole("heading", { name: "保存每日自动化" }).waitFor();
+      expect(await page.getByLabel("任务名称").isVisible()).toBe(false);
       await page.getByRole("checkbox", { name: /近15天零展示素材/ }).uncheck();
+      await page.getByRole("button", { name: "保存为定时任务", exact: true }).click();
+      await page.getByRole("heading", { name: "保存每日自动化" }).waitFor();
       await page.getByLabel("任务名称").fill("清理所选计划");
       await page.getByRole("checkbox", { name: /我授权简辑/ }).check();
       await page.getByRole("button", { name: "保存定时任务" }).click();

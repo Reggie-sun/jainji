@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { TemplatePanel } from "../src/renderer/TemplatePanel";
 import { DecorationSchema } from "../src/shared/decorations";
-import { WORKFLOW_STEPS, activeWorkflowId, resolveWorkflowTarget, templateSectionForWorkflow, workflowForTemplateSection } from "../src/renderer/workspace-flow";
+import { WORKFLOW_STEPS, activeWorkflowId, resolveWorkflowTarget } from "../src/renderer/workspace-flow";
 
 describe("workspace workflow navigation", () => {
   it.each(["random", "agent", "manual"] as const)("opens packaging settings without a template grid in %s mode", mode => {
@@ -30,14 +30,14 @@ describe("workspace workflow navigation", () => {
     }
   });
   it("keeps every creation stage visible in the redesigned stepper", () => {
-    expect(WORKFLOW_STEPS.map(({ label }) => label)).toEqual(["素材", "包装", "覆盖贴纸", "输出", "作品"]);
+    expect(WORKFLOW_STEPS.map(({ label }) => label)).toEqual(["素材", "包装", "覆盖", "输出确认"]);
   });
 
   it("routes contextual packaging stages through the existing template surface", () => {
     expect(resolveWorkflowTarget("materials")).toEqual({ step: "import", section: "materials" });
     expect(resolveWorkflowTarget("packaging")).toEqual({ step: "templates", section: "packaging" });
-    expect(resolveWorkflowTarget("cover")).toEqual({ step: "templates", section: "cover", selector: "#cover-sticker-settings" });
-    expect(resolveWorkflowTarget("export")).toEqual({ step: "templates", section: "export", selector: ".export-card" });
+    expect(resolveWorkflowTarget("cover")).toEqual({ step: "templates", section: "cover" });
+    expect(resolveWorkflowTarget("export")).toEqual({ step: "templates", section: "export" });
     expect(resolveWorkflowTarget("results")).toEqual({ step: "results", section: "results" });
   });
 
@@ -49,14 +49,9 @@ describe("workspace workflow navigation", () => {
     expect(activeWorkflowId("stickers", "cover")).toBeUndefined();
   });
 
-  it("keeps packaging subnav sections distinct from top-level workflow stages", () => {
-    expect(workflowForTemplateSection("template")).toBe("packaging");
-    expect(workflowForTemplateSection("corners")).toBe("packaging");
-    expect(workflowForTemplateSection("timing")).toBe("packaging");
-    expect(workflowForTemplateSection("cover")).toBe("cover");
-    expect(workflowForTemplateSection("export")).toBe("export");
-    expect(templateSectionForWorkflow("packaging")).toBe("template");
-    expect(templateSectionForWorkflow("cover")).toBe("cover");
-    expect(templateSectionForWorkflow("export")).toBe("export");
+  it("leaves task pages outside the single-project production stepper", () => {
+    for (const page of ["batch", "qianchuan", "automation", "projects", "connection"] as const) {
+      expect(activeWorkflowId(page, "export")).toBeUndefined();
+    }
   });
 });

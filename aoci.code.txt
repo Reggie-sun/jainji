@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:固定导航及会员定时上传远端回归；上传组十分钟；存储迁移联动生命周期 | S:完整贡献优先子集；focused不替代全量或视觉验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:renderer分页及固定导航交互；会员定时上传远端回归；存储迁移联动生命周期 | S:完整贡献优先子集；focused不替代全量或视觉验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -230,11 +230,11 @@ renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/ma
 remote-worker.ts[EN7T]: F:启动远端SSH worker或固定账号聚焦入口 | R:code:src/main/qianchuan-remote-worker.ts | A:零参数RPC或精确desktop-focus及数字ID；私有umask和默认display | S:其他参数拒绝；RPC错误只通用响应，CLI错误非零且不泄露异常
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-App.tsx[AU7L]: F:协调项目包装审阅与作品界面 | R:code:src/main/preload.ts,code:src/renderer/CoverReviewPanel.tsx,code:src/renderer/CoverStickerPanel.tsx,code:src/renderer/WorkspaceChrome.tsx | A:人工框正常启动；其他assisted挂载审阅；传本次上传选择；包装快捷入口交顶部栏 | S:未保存覆盖禁止启动；上传选择不随项目保存；界面不授main权限
+App.tsx[AU7L]: F:协调项目草稿与制作作品千川自动化页面 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/TemplatePanel.tsx,code:src/renderer/QianchuanWorkspace.tsx,code:src/renderer/AutomationWorkspace.tsx | A:四阶段视图；来源返回恢复滚动焦点；原桥启动重试；输出阻断定位；项目切换恢复原草稿 | S:切页不保存批准或取消；运行输入已冻结；未保存覆盖禁启动；上传选择不随项目保存；界面不授main权限
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
 ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
-CornerDecorationPicker.tsx[EU6T]: F:编辑装饰方式和角落选材并承载逐素材边框设置 | R:code:src/renderer/FrameDecorationPicker.tsx,code:src/shared/decorations.ts | A:模式切换保留边框；传素材及保存回调；说明随机与Hybrid组合仅随机文字 | S:不改手填文字，不把边框当四角贴纸
+CornerDecorationPicker.tsx[EU6T]: F:编辑当前模式角落选材及逐素材边框 | R:code:src/renderer/FrameDecorationPicker.tsx,code:src/shared/decorations.ts | A:传素材及保存回调；自动随机显示说明；手动角落独立编辑 | S:不改手填文字，不把边框当四角贴纸
 CoverReviewBox.tsx[AB7T]: F:绘制assisted覆盖审阅候选框与交互 | R:code:src/renderer/CoverReviewPanel.tsx | A:人工框交互界面 | S:修改草稿后旧批准失效
 CoverReviewPanel.tsx[AU7M]: F:展示覆盖准备进度及冻结预览并收集确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/manual-cover-review.ts,code:src/renderer/CoverReviewProgress.tsx | A:手动快照生成预览；旧assisted编辑；抽帧与版本进度和停止 | S:逐版查看后批准；预览不传上传信息；框外完整性未证明
 CoverReviewProgress.tsx[AU7T]: F:展示覆盖准备阶段数量与停止入口 | R:code:src/renderer/CoverReviewPanel.tsx | A:抽帧素材计数；已准备版本及当前素材；等待计时 | S:人工贴纸匹配不称模型分析；进度不授输出批准
@@ -247,29 +247,29 @@ MaterialCollection.tsx[AB7T]: F:管理项目名称及已保存项目打开重命
 ModelPicker.tsx[AB7T]: F:选择创作模型连接型号与推理档位 | R:code:src/renderer/ModelSettingsDrawer.tsx | A:创作角色选择界面 | S:凭据不在组件持久化
 ModelSettingsDrawer.tsx[AB7T]: F:汇总创作识别复核三种角色设置 | R:code:src/renderer/VisionConnectionPanel.tsx | A:角色设置面板 | S:角色连接独立
 PriceStylePicker.tsx[AU7T]: F:预览并选择手动文字花字外观 | R:code:src/shared/price-styles.ts,code:src/shared/decorations.ts | A:按样式注册表显示数量与描边投影 | S:只改外观且保留输入原文
-ResultsPanel.tsx[EU7T]: F:展示本轮导出状态冻结覆盖摘要播放重试追加入口 | R:code:src/renderer/App.tsx,code:src/renderer/AppendProductionDialog.tsx,code:src/renderer/DouyinUploadPanel.tsx | A:按本轮taskIds过滤；公开coverSummary持续展示；Hybrid标导出完成，错误优先；追加读取源批次 | S:导出完成不证明旧贴纸全部处理；旧记录不猜原因或模型；上传失败不改导出计数；重试冻结方案；播放仍需验收
+ResultsPanel.tsx[EU7T]: F:优先展示本轮导出进度播放异常重试追加及相关上传入口 | R:code:src/renderer/App.tsx,code:src/renderer/AppendProductionDialog.tsx | A:本轮taskIds过滤；冻结coverSummary；Hybrid错误优先；追加读源批次；上传配置另页 | S:导出不证明旧贴纸全部处理；历史不猜原因模型；上传失败不改导出计数；重试冻结方案；播放仍需验收
 SavedConnectionsPanel.tsx[AB7T]: F:编辑选择删除API连接及CC Switch导入界面 | R:code:src/renderer/App.tsx | A:连接管理界面 | S:不显示已保存密钥
 SourceStickerKnowledgeDetails.tsx[AB7T]: F:展示源贴纸知识识别复核进度和风险细节 | R:code:src/shared/source-sticker-knowledge.ts | A:只读进度呈现 | S:不把风险提示变成批准
 StickerLibraryPanel.tsx[AB7T]: F:显示上传贴纸库并触发导入移除 | R:code:src/main/uploaded-stickers.ts | A:贴纸管理界面 | S:只引用已校验导入素材
-TemplatePanel.tsx[EU6T]: F:编辑包装文字数量与输出设置 | R:code:src/shared/agent.ts,code:src/renderer/DisplayTextEditor.tsx | A:手动提供折叠旧规则；整批文字时段与逐素材设置；说明随机与Hybrid组合保留原色和未确认角落 | S:文字只手填；条数向上取整；不改运行冻结输入
+TemplatePanel.tsx[EU6T]: F:分别呈现包装覆盖及输出确认三个制作子页 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/DisplayTextEditor.tsx,code:src/renderer/OutputConfirmation.tsx | A:前置模式；整批文字时段逐素材位置；Agent brief；隐藏保留编辑器；下一步导航 | S:文字只手填；不改运行冻结输入；assisted批准仍由原覆盖owner执行
 TemplatePreview.tsx[EU6S]: F:播放素材并按输出画布预览文字位置与底层边框 | R:code:src/shared/layout-policy.ts,code:src/shared/price-styles.ts,code:src/shared/decorations.ts | A:随机隐藏旧模板贴纸及角落编辑；说明Hybrid组合行为；独立frame先绘；video驱动渐隐拖动 | S:随机选款以冻结结果为准；边框不裁源不随文字渐隐；预览不授成片验收
 VisionConnectionPanel.tsx[AB7T]: F:分别配置识别或复核模型连接 | R:code:src/renderer/ModelSettingsDrawer.tsx | A:视觉角色设置界面 | S:与创作连接分开
-WorkspaceChrome.tsx[AU5T]: F:呈现项目操作工作区导航及引擎状态 | R:code:src/renderer/workspace-flow.ts,code:src/renderer/App.tsx | A:批量制作隐藏单项目步骤；顶部栏承载包装快捷入口；状态及导航回调由父级提供 | S:GPU试运行失败与未检测到硬件提示不同；导航不拥有制作准入
+WorkspaceChrome.tsx[AU5T]: F:呈现五类任务资源工具项目入口及引擎状态 | R:code:src/renderer/workspace-flow.ts,code:src/renderer/App.tsx | A:制作四阶段及顶部包装快捷入口；项目菜单；任务导航交父回调 | S:GPU试运行失败与未检测到硬件提示不同；导航不拥有制作准入
 cover-review-geometry.ts[AB7T]: F:换算assisted证据图像和覆盖框的界面坐标 | R:code:src/renderer/CoverReviewBox.tsx | A:人工交互几何辅助 | S:持久框仍经共享schema验证
 main.tsx[EU7T]: F:用会员入口包裹React App并挂载 | R:code:src/renderer/App.tsx,code:src/renderer/MembershipGate.tsx | A:导入全局样式；显示登录或工作区 | S:主进程独立校验会员
 ui.tsx[AB7T]: F:通用图标标题与尺寸时长显示函数 | R:code:src/renderer/App.tsx | A:纯展示组件 | S:不决定领域状态
-workspace-flow.ts[DU4T]: F:定义工作区步骤与包装分区的导航映射 | R:code:src/renderer/App.tsx,code:src/renderer/WorkspaceChrome.tsx | A:Step包括独立batch页面；resolveWorkflowTarget和分区转换仅返回导航目标 | S:-
-DouyinUploadControls.tsx[EU6T]: F:提供本次制作千川上传开关和账号计划选择 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanPlanSelect.tsx | A:账号优先Chrome资料名并显示完整ID，提交稳定product；普通开关与compact下拉；说明九条分组 | S:同名靠ID区分；默认不上传；选择不授权确认发布或广告设置
-DouyinUploadPanel.tsx[EU7T]: F:展示千川活动任务账号设置及处置历史 | R:code:src/renderer/QianchuanAccountSettings.tsx,code:src/renderer/QianchuanUploadHistory.tsx | A:冻结ID取名；计划与准入数；普通人工及定时确认；平台接收明细 | S:历史不继续上传；保存不重传；closed非平台结果；READY非确认；接收非审核投放
-BatchProductionPanel.tsx[EU6M]: F:呈现批量参数计划进度及定时保存入口 | R:code:src/shared/batch-production.ts,code:src/renderer/QianchuanPlanSelect.tsx,code:src/renderer/AutomationPanel.tsx | A:real-artwork及开关；账号名和ID；冻结参数；生成自动化草案 | S:开启用保存框无框不覆盖；缺计划禁启动；改名保留选择；界面不授上传权
+workspace-flow.ts[DU4T]: F:定义任务页面与四阶段制作导航目标 | R:code:src/renderer/App.tsx,code:src/renderer/WorkspaceChrome.tsx | A:materials包装覆盖输出映射；作品独立；管理任务不占制作步骤 | S:-
+DouyinUploadControls.tsx[EU6T]: F:提供本次制作上传开关账号计划及配置入口 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanPlanSelect.tsx | A:Chrome资料名及完整ID；提交稳定product；普通与compact布局；全局关闭提示 | S:同名靠ID区分；默认不上传；选择不授权确认发布或广告设置
+DouyinUploadPanel.tsx[EU7T]: F:分页面协调千川任务账号设置素材管理及处置历史 | R:code:src/renderer/QianchuanSettingsPage.tsx,code:src/renderer/QianchuanVideoLibraryActions.tsx,code:src/renderer/QianchuanUploadHistory.tsx | A:原操作状态owner；冻结ID取名；计划恢复跳配置页；任务及历史仅上传页；错误跨页可见 | S:历史不继续上传；保存不重传；closed非平台结果；READY非确认；接收非审核投放
+BatchProductionPanel.tsx[EU6M]: F:呈现立即批量制作单行参数进度及来源草稿入口 | R:code:src/shared/batch-production.ts,code:src/renderer/QianchuanPlanSelect.tsx,code:src/renderer/BatchProductionDetails.tsx | A:真实人工覆盖；账号名和ID；冻结参数；自动化草案交父页面；配置入口 | S:开启用保存框无框不覆盖；缺计划禁启动；改名保留选择；界面不授上传权
 BatchProductionDetails.tsx[EU6S]: F:展示批量作品导出上传及恢复入口 | R:code:src/shared/batch-production.ts,code:src/renderer/qianchuan-account-display.ts | A:轮询详情；冻结账号命名；READY及ACCEPTED计上传；展示平台视频ID | S:历史别名不恢复；UNKNOWN阻塞未选；READY非确认；接收非审核投放
 DisplayTextEditor.tsx[EU6T]: F:编辑手填文字及逐素材预览开关位置和边框 | R:code:src/shared/decorations.ts,code:src/shared/frames.ts,code:src/renderer/TemplatePreview.tsx,code:src/renderer/MediaSelector.tsx | A:按素材投影文字和边框；auto及random用示意款；播放拖动保存沿原回调 | S:文字整批手填；预览不承诺是否使用及冻结款；不授制作或保存路径权限
 MediaSelector.tsx[EU5T]: F:提供按素材ID选择的可访问下拉列表及前后导航 | R:code:src/renderer/DisplayTextEditor.tsx,code:src/renderer/CoverStickerPanel.tsx | A:combobox与listbox键盘高亮选取；外部点击或失焦关闭；滚动到高亮项；选定回调后恢复焦点；显示序号总数 | S:未知value显示首项但不自动调用onChange；组件不持久化选择
-QianchuanAccountSettings.tsx[EU6T]: F:提供可折叠账号设置和独立素材清理入口 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanEgressSettings.tsx,code:src/renderer/QianchuanVideoLibraryActions.tsx | A:管理默认收起，任务编辑自动展开；保留草稿；编辑计划出口和控制浏览器 | S:折叠不卸载清理；资料名不写产品字段；保存不迁移旧批次；main保护待处理任务
+QianchuanAccountSettings.tsx[EU6T]: F:提供可折叠账号计划出口及浏览器设置 | R:code:src/shared/qianchuan-account.ts,code:src/renderer/QianchuanEgressSettings.tsx | A:默认收起任务编辑展开；保留草稿；恢复核原advertiser；清理另页 | S:资料名不写产品字段；保存不迁移旧批次；main保护待处理任务
 qianchuan-upload-status.ts[CU4T]: F:统一普通和批量作品页的千川状态文案 | R:code:src/shared/douyin-upload.ts | A:类型约束完整映射；ACCEPTED为平台已接收 | S:-
 QianchuanUploadHistory.tsx[EU6T]: F:呈现本地批次结束确认及原结果只读历史 | R:code:src/shared/douyin-upload.ts,code:src/renderer/qianchuan-account-display.ts | A:冻结ID命名；准入与结果计数；已接收回执显示 | S:未准入不推断结果；结束保留结果屏障；不按槽位命名；历史无操作
 SourceMediaList.tsx[EU5T]: F:展示逐素材选择预览移除及清单保存入口 | R:code:src/renderer/App.tsx,code:src/shared/desktop.ts | A:原生dialog播放原片并前后导航；移除成功转相邻就绪素材，失败保留当前项，末项移除关闭 | S:移除只经回调移出项目，不删磁盘原片；清单保存交回项目owner
-QianchuanVideoLibraryActions.tsx[EU7S]: F:提供多计划清理人工处置及定时草案入口 | R:code:src/renderer/QianchuanCleanupPlanSelect.tsx,code:src/renderer/QianchuanCleanupResults.tsx,code:src/renderer/AutomationPanel.tsx | A:冻结ID确认；审核及零展示；独立视频库确认；定时仅所选计划素材 | S:改名不改ID；15天保护仅零展示；人工处置不重删旧ID；定时不清空视频库
+QianchuanVideoLibraryActions.tsx[EU7S]: F:提供立即多计划清理人工处置及自动化草案入口 | R:code:src/renderer/QianchuanCleanupPlanSelect.tsx,code:src/renderer/QianchuanCleanupResults.tsx,code:src/shared/qianchuan-video-library.ts | A:冻结ID确认；审核及零展示；独立视频库确认；定时草案交来源回调 | S:改名不改ID；15天保护仅零展示；人工处置不重删旧ID；定时不清空视频库
 QianchuanVideoLibrarySchedule.tsx[EU7T]: F:编辑每日清理并显示绑定账号及运行结果 | R:code:src/main/preload.ts,code:src/renderer/qianchuan-account-display.ts | A:当前账号显示Chrome名与ID；冻结目标按预期ID取名；保存携预期计划；关闭保留绑定 | S:改名不改变保存目标；加载不启用；旧设置不扩大；换计划须重存；不补删重试
 QianchuanCleanupResults.tsx[EU5T]: F:展示清理完成部分处理及待核查账号结果 | R:code:src/renderer/QianchuanCleanupRecovery.tsx,code:src/renderer/qianchuan-account-display.ts | A:按结果账号ID显示Chrome名及完整ID；分别汇总BLOCKED与PARTIAL；忙碌或换账号禁处置 | S:定时无处置回调；名称不改原消息或删除结果
 QianchuanPlanSelect.tsx[EU6T]: F:为上传和清理选择账号计划并展示商品及完整身份 | R:code:src/renderer/qianchuan-plan-requests.ts,code:src/shared/qianchuan-plan-selection.ts | A:purpose区分文案；商品优先保留计划ID；刷新清选择；租约卸载释放；CDP异常及过长错误转换为短恢复提示 | S:不自动选唯一计划；商品名不决定目标；错误清选择，迟到响应失效；旧preload提示等待
@@ -279,8 +279,14 @@ QianchuanCleanupPlanSelect.tsx[EU7T]: F:读取账号清理计划并默认全选�
 QianchuanCleanupRecovery.tsx[EU7T]: F:展示旧清理素材明细并收集人工处理确认 | R:code:src/renderer/QianchuanCleanupResults.tsx,code:src/shared/qianchuan-video-library.ts | A:账户计划ID及统计窗口；说明新清理跳过未知ID；声明及二次确认绑定attempt摘要 | S:列表缺席非已删证明；本地处置不授平台成功或重试
 qianchuan-account-display.ts[CU5T]: F:按冻结广告主ID解析当前账号显示名称 | R:code:src/shared/qianchuan-account.ts | A:精确ID查找后调用共享名称优先级；缺匹配使用调用方fallback | S:不按可重用产品槽位匹配旧任务
 QianchuanEgressSettings.tsx[EU6T]: F:编辑账号VPS出口及浏览器位置并复用主体 | R:code:src/shared/qianchuan-egress.ts,code:src/renderer/QianchuanAccountSettings.tsx | A:A本机或B远端选择；主体SSH别名IP端口受控输入；即时校验及运行条件提示 | S:不收身份证号码或SSH私钥；B需要本地简辑在线；界面校验不替代main准入
-AutomationPanel.tsx[EU7M]: F:配置每日自动化并显示固定范围和状态 | R:code:src/shared/automation.ts,code:src/main/preload.ts | A:制作清理及关联上传；范围变化撤销勾选；时间启停删除；缺bridge禁用 | S:UI不拥有执行授权；定时确认须明确范围；后台依赖主进程
+AutomationPanel.tsx[EU7M]: F:收集固定范围自动化授权并展示每日任务状态 | R:code:src/shared/automation.ts,code:src/main/preload.ts,code:src/renderer/AutomationWorkspace.tsx | A:制作清理及关联上传；范围变化撤销勾选；创建后返回列表；时间启停删除；独立编辑回调 | S:UI不拥有执行授权；定时确认须明确范围；后台依赖主进程
 MembershipGate.tsx[EU7T]: F:呈现会员登录权益及工作区入口 | R:code:src/main/preload.ts,code:src/shared/membership.ts,code:src/main/membership-session.ts | A:Google三天试用与会员管理；故障保留草稿工作区并提示重连；确认失效显示门禁 | S:只展示不授权，无token；故障不重放工作；拒绝后网络故障不得重开工作区；本地模式不伪装付费会员
+AutomationWorkspace.tsx[AU6T]: F:分离自动化列表创建编辑及旧每日清理页面 | R:code:src/renderer/AutomationPanel.tsx,code:src/renderer/WorkspacePage.tsx,code:src/renderer/QianchuanVideoLibrarySchedule.tsx | A:来源草稿绑定修订；编辑仅提交id时间启停；显式重开读当前任务；隐藏保留草稿 | S:切页不启用任务；固定素材账号计划及授权不经编辑改写
+OutputConfirmation.tsx[EU6T]: F:呈现输出摘要数量目录设置上传及开始阻断 | R:code:src/shared/agent.ts,code:src/renderer/ExportSettingsPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:共享数量向上取整；本页补素材覆盖保存目录及数量原因；定位回调；assisted转覆盖页 | S:切页不启动批准；运行冻结输入不被下一轮设置替换
+PackagingModePicker.tsx[EU4T]: F:呈现Agent手动与本地随机制作方式选择 | R:code:src/shared/decorations.ts,code:src/renderer/App.tsx | A:受控value及onChange；显示pressed状态；沿父级禁用 | S:-
+QianchuanSettingsPage.tsx[EU6T]: F:汇总全局上传账号计划及高级设置页面 | R:code:src/renderer/QianchuanAccountSettings.tsx,code:src/renderer/WorkspacePage.tsx | A:沿原perform保存导入刷新；恢复序号重置账号编辑并定位；时限及诊断配置 | S:保存仅影响新制作；旧任务目标不自动迁移或重传
+QianchuanWorkspace.tsx[AU5T]: F:导航千川上传任务账号计划及素材管理三页 | R:code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/App.tsx | A:当前页投影；操作交原owner；按project.id隔离编辑器 | S:导航不授上传或清理权限
+WorkspacePage.tsx[AU5T]: F:保留已访问页草稿并实现工作区滚动和焦点恢复 | R:code:src/renderer/App.tsx,code:src/renderer/MembershipGate.tsx | A:首次访问挂载；inactive隐藏且暂停媒体；双RAF按实际页头避让定位控件或恢复来源scrollTop | S:隐藏不取消任务；滚动使用membership-workspace而非窗口
 
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===

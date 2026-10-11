@@ -1,7 +1,7 @@
 import { Icon } from "./ui";
 import { WORKFLOW_STEPS, activeWorkflowId, type Step, type WorkflowId } from "./workspace-flow";
 
-export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, onWorkflow, onBatch, onStickerLibrary, onResults, onModels, onFeedback }: {
+export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, onWorkflow, onBatch, onStickerLibrary, onResults, onModels, onFeedback, onQianchuan, onAutomation }: {
   step: Step;
   modelsOpen: boolean;
   connectionConfigured: boolean;
@@ -13,6 +13,8 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
   onResults(): void;
   onModels(): void;
   onFeedback(): void;
+  onQianchuan(): void;
+  onAutomation(): void;
 }) {
   return <aside className="workspace-rail">
     <button className="workspace-brand" type="button" aria-label="返回制作" onClick={() => onWorkflow("materials")}>
@@ -22,12 +24,16 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
     <nav aria-label="工作区">
       <button className={step === "import" || step === "templates" ? "active" : ""} type="button" onClick={() => onWorkflow("materials")}><Icon name="play" /><span>制作</span></button>
       <button className={step === "batch" ? "active" : ""} type="button" onClick={onBatch}><Icon name="grid" /><span>批量制作</span></button>
-      <button className={step === "stickers" ? "active" : ""} type="button" onClick={onStickerLibrary}><Icon name="upload" /><span>贴纸库</span></button>
       <button className={step === "results" ? "active" : ""} type="button" onClick={onResults}><Icon name="film" /><span>作品</span></button>
+      <button className={step === "qianchuan" ? "active" : ""} type="button" onClick={onQianchuan}><Icon name="upload" /><span>千川</span></button>
+      <button className={step === "automation" ? "active" : ""} type="button" onClick={onAutomation}><Icon name="play" /><span>自动化</span></button>
     </nav>
     <div className="rail-utilities">
+      <small>资源 / 工具</small>
+      <button className={step === "stickers" ? "active" : ""} type="button" onClick={onStickerLibrary}><Icon name="upload" /><span>贴纸库</span></button>
+
       <button type="button" onClick={onFeedback}><Icon name="edit" /><span>反馈</span></button>
-      <button className={modelsOpen || step === "connection" ? "active" : ""} type="button" onClick={onModels}><Icon name="settings" /><span>模型</span><i className={connectionConfigured ? "status-dot connected" : "status-dot"} /></button>
+      <button className={modelsOpen || step === "connection" ? "active" : ""} type="button" onClick={onModels}><Icon name="settings" /><span>模型设置</span><i className={connectionConfigured ? "status-dot connected" : "status-dot"} /></button>
       <div className={engineReady ? "rail-engine" : "rail-engine unavailable"} title={engineLabel}><i /><span>{engineReady ? "本地就绪" : "引擎待配置"}</span></div>
     </div>
   </aside>;
@@ -61,7 +67,7 @@ export function WorkspaceHeader({ step, section, projectName, projectDirty, engi
         <div className="project-menu">
           <button type="button" disabled={saveDisabled} onClick={onSaveProject}><Icon name="download" size={17} />保存项目</button>
           <button type="button" disabled={disabled} onClick={onOpenProject}><Icon name="folder" size={17} />打开项目文件</button>
-          <button type="button" disabled={disabled} onClick={onProjectManager}><Icon name="edit" size={17} />重命名 / 删除</button>
+          <button type="button" disabled={disabled} onClick={onProjectManager}><Icon name="edit" size={17} />管理项目</button>
           <button type="button" disabled={disabled} onClick={onNewProject}><span className="project-menu-plus">＋</span>新建项目</button>
         </div>
       </details>
@@ -72,7 +78,7 @@ export function WorkspaceHeader({ step, section, projectName, projectDirty, engi
         <button className="button primary compact" type="button" disabled={saveDisabled} onClick={onSaveProject}><Icon name="download" size={16} />保存项目</button>
       </div>
     </div>
-    {step !== "connection" && step !== "stickers" && step !== "batch" && <nav className="workflow-steps" aria-label="制作流程">
+    {(step === "import" || step === "templates") && <nav className="workflow-steps" aria-label="制作流程">
       {WORKFLOW_STEPS.map((item, index) => <button type="button" key={item.id} className={item.id === active ? "active" : index < activeIndex ? "complete" : ""} aria-current={item.id === active ? "step" : undefined} onClick={() => onWorkflow(item.id)}>
         <span className="workflow-number">{index < activeIndex ? <Icon name="check" size={14} /> : index + 1}</span>
         <span>{item.label}</span>

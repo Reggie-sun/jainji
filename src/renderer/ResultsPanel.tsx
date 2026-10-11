@@ -5,7 +5,6 @@ import type { PublicExportBatch } from "../main/application";
 import { AppendProductionDialog } from "./AppendProductionDialog";
 import { SourceStickerKnowledgeDetails } from "./SourceStickerKnowledgeDetails";
 import { Heading, Icon } from "./ui";
-import { DouyinUploadPanel } from "./DouyinUploadPanel";
 
 const labels: Record<string, string> = { queued: "等待导出", validating: "检查素材", running: "正在渲染", verifying: "校验成片", cancelling: "正在停止", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
@@ -16,8 +15,8 @@ const sourceKnowledgeRiskWarning = {
 export function SupervisorPreviewDialog({ preview, onClose }: { preview: { url: string; name: string }; onClose(): void }) {
   return <div className="result-preview-backdrop" role="presentation" onClick={onClose}><section className="result-preview-dialog card" role="dialog" aria-modal="true" aria-label={`${preview.name} 主管样片`} onClick={(event) => event.stopPropagation()}><div className="card-header"><h2>{preview.name}</h2><button type="button" className="icon-button" aria-label="关闭样片" onClick={onClose}><Icon name="close" size={18} /></button></div><video src={preview.url} controls autoPlay preload="metadata" /></section></div>;
 }
-export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, onRetry, onOpen, onReveal, onNew, onState }: {
-  state: DesktopState; busy: boolean; retryingIds: string[]; onCancel(taskId: string): void; onCancelAll(): void; onRetry(taskId: string): void; onOpen(taskId: string): void; onReveal(taskId: string): void; onNew(): void; onState?(state: DesktopState): void;
+export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, onRetry, onOpen, onReveal, onNew, onState, onUploads }: {
+  state: DesktopState; busy: boolean; retryingIds: string[]; onCancel(taskId: string): void; onCancelAll(): void; onRetry(taskId: string): void; onOpen(taskId: string): void; onReveal(taskId: string): void; onNew(): void; onState?(state: DesktopState): void; onUploads?(): void;
 }) {
   const [preview, setPreview] = useState<{ url: string; name: string }>();
   const [appendTarget, setAppendTarget] = useState<{ batch: PublicExportBatch; prefill: AppendProductionPrefill }>();
@@ -54,7 +53,6 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, 
   const canCancelAll = liveRun?.status === "running" || tasks.some((task) => ["queued", "validating", "running", "verifying"].includes(task.status));
   return <>
     <Heading title="作品与导出">跟进分析与导出进度；完成后播放成片验收。</Heading>
-    <DouyinUploadPanel projectId={state.project.id} status={state.douyinUpload} onState={(next) => onState?.(next)} />
     <div className="result-stats"><div><span>本轮制作</span><strong>{planned.length}<small>条</small></strong></div><div><span>正在处理</span><strong>{processing.toString().padStart(2, "0")}</strong></div><div><span>已完成</span><strong className="green-text">{completed.toString().padStart(2, "0")}</strong></div><div><span>需要处理</span><strong className={failed ? "red-text" : ""}>{failed.toString().padStart(2, "0")}</strong></div></div>
     <div className="card result-list"><div className="card-header"><h2>作品与任务</h2><div className="result-header-actions"><span>原文件始终保留</span>{canCancelAll && <button type="button" className="text-button muted" title="停止当前项目全部未完成的分析和导出任务" disabled={busy} onClick={onCancelAll}>批量取消</button>}</div></div>
       {tasks.length + unqueued.length === 0 && <div className="empty-state"><Icon name="film" size={36} /><h3>第一条作品，从一份素材开始</h3><p>导入视频并选择模板后，Agent 会在这里开始工作。</p><button className="button secondary" onClick={onNew}>去导入素材<Icon name="arrow" size={16} /></button></div>}
@@ -70,6 +68,7 @@ export function ResultsPanel({ state, busy, retryingIds, onCancel, onCancelAll, 
         return <div className="result-row" key={task.id}><div className={`result-icon ${task.status === "completed" ? "complete" : ""}`}><Icon name={task.status === "completed" ? "check" : "film"} /></div><div className="result-info"><strong>{name}</strong><p>{task.errorMessage || task.coverSummary || "独立包装 · 成片"}</p><SourceStickerKnowledgeDetails progress={plan?.sourceKnowledge} />{riskWarning && <small>{sourceKnowledgeRiskWarning[riskWarning]}</small>}{!terminal.has(task.status) && <progress aria-label="导出进度" max={1} value={task.progress} />}</div>{playable ? <button type="button" className={`status-tag ${task.status} preview-status`} aria-label={`播放 ${name} 的主管样片`} onClick={() => setPreview({ url: plan.previewUrl!, name })}>{labels[task.status]}{task.status === "running" ? ` ${Math.round(task.progress * 100)}%` : ""}</button> : <span className={`status-tag ${task.status}`}>{task.status === "completed" && task.coverSummary ? "导出完成" : labels[task.status]}{task.status === "running" ? ` ${Math.round(task.progress * 100)}%` : ""}</span>}<div className="row-actions">{task.status === "completed" ? <><button className="button secondary compact" onClick={() => onOpen(task.id)}><Icon name="play" size={15} />播放</button>{appendable && <button className="text-button" disabled={busy} onClick={() => void openAppend(task.batchId)}>追加制作</button>}<button className="icon-button" aria-label="打开成片文件夹" onClick={() => onReveal(task.id)}><Icon name="folder" size={18} /></button></> : task.status === "failed" || task.status === "interrupted" ? <button className="text-button" disabled={busy || state.agentRun?.status === "running" || retryingIds.includes(task.id)} onClick={() => onRetry(task.id)}>重试导出</button> : task.status === "cancelled" || task.status === "cancelling" ? null : <button className="text-button muted" disabled={busy} onClick={() => onCancel(task.id)}>停止</button>}</div></div>;
       })}
     </div>
+    {!!state.douyinUpload?.tasks.some(task => task.project_id === state.project.id && task.state !== "DISCARDED") && <p className="related-task-link">本项目有千川上传任务 <button type="button" className="text-button" onClick={onUploads}>查看相关上传</button></p>}
     {preview && <SupervisorPreviewDialog preview={preview} onClose={() => setPreview(undefined)} />}
     {appendError && <p className="notice error" role="alert">{appendError}</p>}
     {appendTarget && <AppendProductionDialog accounts={state.douyinUpload?.accounts} batch={appendTarget.batch} prefill={appendTarget.prefill} mediaLabel={appendTarget.batch.mediaIds.map((id) => state.project.mediaItems.find((item) => item.id === id)?.displayName ?? "历史素材").join("、")} onClose={() => setAppendTarget(undefined)} />}

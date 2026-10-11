@@ -4,11 +4,9 @@ import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecove
 import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { QianchuanCleanupResults } from "./QianchuanCleanupResults";
 import { QianchuanCleanupPlanSelect } from "./QianchuanCleanupPlanSelect";
-import { QianchuanVideoLibrarySchedule } from "./QianchuanVideoLibrarySchedule";
-import { AutomationComposer } from "./AutomationPanel";
 import "./qianchuan-cleanup.css";
 
-export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: QianchuanAccountSummary[]; busy: boolean }) {
+export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: { accounts: QianchuanAccountSummary[]; busy: boolean; onAutomation?(cleanup: QianchuanLibraryClear): void }) {
   const [products, setProducts] = useState<QianchuanProduct[]>();
   const [selected, setSelected] = useState<QianchuanLibraryClear>();
   const [plans, setPlans] = useState<Partial<Record<QianchuanProduct, QianchuanPlanOption[]>>>({});
@@ -97,8 +95,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy }: { accounts: Qia
       {error && <p className="qianchuan-cleanup-error" role="alert">{error}</p>}
       {!!results.length && <QianchuanCleanupResults title="本次清理" results={results} accounts={accounts} busy={disabled} onResolve={resolve} />}
     </section>
-    <QianchuanVideoLibrarySchedule accounts={accounts} busy={disabled || !!selected} />
     {videoLibrary && <p role="status">新定时任务只支持所选计划素材清理，不能安排视频库全部视频清空。</p>}
-    {automationCleanup && <AutomationComposer cleanup={automationCleanup} disabled={disabled || Boolean(selected)} />}
+    <button type="button" className="button secondary compact" disabled={disabled || Boolean(selected) || !automationCleanup} onClick={() => automationCleanup && onAutomation?.(automationCleanup)}>保存为定时任务</button>
   </div>;
 }

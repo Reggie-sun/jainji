@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { QianchuanVideoLibraryActions } from "./QianchuanVideoLibraryActions";
 import { QianchuanEgressSettings } from "./QianchuanEgressSettings";
 import { QianchuanEgressSchema, type QianchuanEgress } from "../shared/qianchuan-egress";
 import { parseQianchuanPlanUrl, qianchuanAccountName, qianchuanProductName, QIANCHUAN_PRODUCTS, QianchuanProductNameSchema, type QianchuanAccountSetup, type QianchuanAccountSummary, type QianchuanProduct, type QianchuanBrowserControl } from "../shared/qianchuan-account";
@@ -38,7 +37,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
   return <div className="qianchuan-account-settings" aria-label="千川账号设置">
     <details className="qianchuan-account-management" open={!!initialProduct}>
     <summary>管理账号设置</summary>
-    <p>编辑账号资料 <small>点选账号，可更换产品名称或千川计划。清理账号请在下方勾选。</small></p>
+    <p>编辑账号资料 <small>点选账号，可更换产品名称或千川计划。素材清理在“素材管理”页面。</small></p>
     <div className="qianchuan-account-products">{QIANCHUAN_PRODUCTS.map(value => {
       const account = accounts.find(item => item.product === value);
       return <button className="button secondary compact" type="button" key={value} disabled={busy} aria-expanded={product === value} onClick={() => edit(value)}>
@@ -75,6 +74,5 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
       <small>保存后供新制作使用；旧批次保留原计划。整批从未选过文件时，可在上传任务中明确“改传当前计划”；已有文件选择记录不能改传。</small>
     </div>}
     </details>
-    <QianchuanVideoLibraryActions accounts={accounts} busy={busy} />
   </div>;
 }

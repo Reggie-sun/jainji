@@ -16,8 +16,8 @@ const task = (overrides: Partial<QianchuanUploadResult> = {}): QianchuanUploadRe
   upload_task_id: "a".repeat(64), artifact_sha256: "b".repeat(64), file_name: "成片.mp4", accountProduct: "眼贴", advertiserId: "123", adId: "456",
   state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false, retry_count: 0, attempt_count: 1, timestamp: "2026-09-27T00:00:00.000Z", ...overrides,
 });
-const panel = (upload: QianchuanUploadResult) => renderToStaticMarkup(createElement(DouyinUploadPanel, {
-  projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: false, accounts: [], ready: false, message: "千川生产页面合同尚未核实。", tasks: [upload], legacyTasks: [] }, onState: () => {},
+const panel = (upload: QianchuanUploadResult, page: "uploads" | "accounts" = "uploads") => renderToStaticMarkup(createElement(DouyinUploadPanel, {
+  projectId, page, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: false, accounts: [], ready: false, message: "千川生产页面合同尚未核实。", tasks: [upload], legacyTasks: [] }, onState: () => {},
 }));
 it("uses Chrome names in account settings, task summaries and cleanup results without editing product metadata", () => {
   const accounts = [{ product: "眼贴" as const, productName: "旧产品名", browserProfileName: "当前 Chrome 名称", advertiserId: "123", adId: "456", available: true }];
@@ -61,27 +61,27 @@ it("keeps append selection independently off", () => {
 it("projects unknown selected uploads as read-only without publish, caption or arbitrary endpoint controls", () => {
   const html = panel(task()); expect(html).toContain("只读核查页面"); expect(html).not.toContain("安全继续");
   for (const forbidden of ["提交发布", "修正文案", "人工确认平台已接受", "creator.douyin.com", "CDP 地址"]) expect(html).not.toContain(forbidden);
-  expect(html).toContain("导入已有账号配置"); expect(html).toContain("千川生产页面合同尚未核实。");
+  expect(html).toContain("前往账号与计划"); expect(html).not.toContain("导入已有账号配置"); expect(html).toContain("千川生产页面合同尚未核实。");
 });
-it("keeps technical settings collapsed and recovery actions available outside them", () => {
-  const html = panel(task());
+it("keeps technical settings on the account page and recovery on the task page", () => {
+  const html = panel(task(), "accounts");
   const advanced = html.match(/<details[^>]*><summary>高级设置<\/summary>[\s\S]*?<\/details>/)?.[0];
   expect(advanced).toBeDefined(); expect(advanced).not.toMatch(/<details[^>]*\bopen(?:\s|=|>)/);
   expect(advanced).toContain("操作时限"); expect(advanced).toContain("保存有限本机诊断");
   const main = html.replace(advanced!, "");
   expect(main).not.toContain('type="number"'); expect(advanced).toContain("导入已有账号配置");
   expect(main).not.toContain("导入已有账号配置"); expect(main).not.toContain("刷新账号摘要");
-  expect(main).toContain("保存上传设置"); expect(main).toContain("只读核查页面"); expect(main).toContain("停止任务");
+  expect(main).toContain("保存上传设置"); expect(panel(task())).toContain("只读核查页面"); expect(panel(task())).toContain("停止任务");
 });
-it("shows available products without making file configuration a daily step", () => {
+it("shows account products separately from cleanup and upload tasks", () => {
   const html = renderToStaticMarkup(createElement(DouyinUploadPanel, {
-    projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts: [{ product: "眼贴", advertiserId: "123", adId: "456", available: true }], ready: false, message: "自动上传已关闭。", tasks: [], legacyTasks: [] }, onState: () => {},
+    projectId, page: "accounts", status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts: [{ product: "眼贴", advertiserId: "123", adId: "456", available: true }], ready: false, message: "自动上传已关闭。", tasks: [], legacyTasks: [] }, onState: () => {},
   }));
   const advanced = html.match(/<details[^>]*><summary>高级设置<\/summary>[\s\S]*?<\/details>/)![0];
   const main = html.replace(advanced, "");
   const products = main.match(/<div class="qianchuan-account-products">[\s\S]*?<\/div>/)![0];
   expect(main).toContain("千川账号设置"); expect(main).toContain("更换产品名称或千川计划"); expect(products).toContain("眼贴<small>账户 123</small><small>已设置");
-  expect(main).toContain("清理计划"); expect(main).toContain("眼贴 · 账户 123");
+  expect(main).not.toContain("选择要清理的账号"); expect(main).not.toContain("千川上传任务");
   expect(advanced).toContain("账户 123 / 计划 456"); expect(main).not.toContain('value="眼贴"');
 });
 it("shows editable product names in account settings and both selectors while retaining stable account values", () => {
@@ -89,7 +89,7 @@ it("shows editable product names in account settings and both selectors while re
   const html = renderToStaticMarkup(createElement(DouyinUploadPanel, {
     projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts, ready: false, message: "自动上传已关闭。", tasks: [task()], legacyTasks: [] }, onState: () => {},
   }));
-  expect(html).toContain("新产品<small>账户 123</small><small>已设置"); expect(html).toContain("新产品 · 账户 123 / 计划 456");
+  expect(renderToStaticMarkup(createElement(QianchuanAccountSettings, {accounts, busy:false, onSave:async()=>true, onOpenBrowser:async()=>true, onControlBrowser:async()=>true}))).toContain("新产品<small>账户 123</small><small>已设置"); expect(html).toContain("新产品 · 账户 123 / 计划 456");
   expect(html).not.toContain("眼贴 · 账户 123 / 计划 456");
   for (const compact of [true, false]) {
     const selector = renderToStaticMarkup(createElement(DouyinUploadControls, { value: { enabled: true, accountProduct: "眼贴" }, accounts, compact, onChange: () => {} }));

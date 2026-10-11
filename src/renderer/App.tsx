@@ -6,12 +6,13 @@ import { ConnectionPanel } from "./ConnectionPanel";
 import { MaterialNameSchema } from "../shared/material-names";
 import { MaterialCollection } from "./MaterialCollection";
 import { SourceMediaList } from "./SourceMediaList";
-import { TemplatePanel } from "./TemplatePanel";
+import { TemplatePanel, type TemplatePanelProps } from "./TemplatePanel";
+import { PackagingModePicker } from "./PackagingModePicker";
 import { CornerDecorationPicker } from "./CornerDecorationPicker";
 import { StickerLibraryPanel } from "./StickerLibraryPanel";
 import { CoverReviewPanel } from "./CoverReviewPanel";
 import { CoverStickerPanel } from "./CoverStickerPanel";
-import { DecorationAppearanceSchema, DecorationSchema, ProductPriceSchema, type DisplayTextSettings, type DecorationOptions, type Corner } from "../shared/decorations";
+import { DecorationAppearanceSchema, DecorationSchema, ProductPriceSchema, RequiredProductPriceSchema, requiresDisplayText, type DisplayTextSettings, type DecorationOptions, type Corner } from "../shared/decorations";
 import type { CoverSticker } from "../shared/cover-sticker";
 import { DEFAULT_EXPORT_FORMAT, type ExportFormat } from "../shared/export-format";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace";
@@ -24,6 +25,9 @@ import { WorkspaceHeader, WorkspaceRail } from "./WorkspaceChrome";
 import { resolveWorkflowTarget, type Step, type WorkflowId } from "./workspace-flow";
 import { QianchuanUploadSelectionSchema } from "../shared/douyin-upload";
 import { DouyinUploadControls, type UploadSelectionDraft } from "./DouyinUploadControls";
+import { WorkspacePage, scrollWorkspace, workspaceScroller } from "./WorkspacePage";
+import { QianchuanWorkspace, type QianchuanPage } from "./QianchuanWorkspace";
+import { AutomationWorkspace, type AutomationDraft, type AutomationPage } from "./AutomationWorkspace";
 
 export default function App() {
   const [state, setState] = useState<DesktopState>();
@@ -31,6 +35,11 @@ export default function App() {
   const [step, setStep] = useState<Step>("connection");
   const [workflowSection, setWorkflowSection] = useState<WorkflowId>("materials");
   const [modelsOpen, setModelsOpen] = useState(false);
+  const [qianchuanPage, setQianchuanPage] = useState<QianchuanPage>("uploads");
+  const [automationPage, setAutomationPage] = useState<AutomationPage>("tasks");
+  const [automationDraft, setAutomationDraft] = useState<AutomationDraft>();
+  const [automationRevision, setAutomationRevision] = useState(0);
+  const returnContexts = useRef<{ step: Step; section: WorkflowId; qianchuanPage: QianchuanPage; automationPage: AutomationPage; top: number; focus?: HTMLElement }[]>([]);
   const [notice, setNotice] = useState<{ error: boolean; text: string }>();
   const [initError, setInitError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -64,10 +73,11 @@ export default function App() {
   const apply = useCallback((next: DesktopState, restoreWorkspace = false) => {
     const ready = next.project.mediaItems.filter((item) => item.probeStatus === "ready");
     const projectChanged = restoreWorkspace || projectId.current !== next.project.id;
-    if (!next.douyinUpload?.config.enabled) setDouyinUploadSelection(undefined);
     const workspace = next.project.workspaceDraft;
     if (projectChanged) {
       projectId.current = next.project.id;
+      returnContexts.current = [];
+      scrollWorkspace();
       setDouyinUploadSelection(undefined);
       setCollectionName(next.project.name);
       knownMedia.current.clear();
@@ -188,6 +198,8 @@ export default function App() {
   const ready = state.project.mediaItems.filter((item) => item.probeStatus === "ready");
   const preview = ready.find((item) => item.id === previewId) ?? ready[0];
   const usesModel = decorations.mode === "agent" || Boolean(state.project.coverSticker?.enabled && (state.project.coverSticker.trackingMode === "agent" || state.project.coverSticker.trackingMode === "assisted" && !state.project.coverSticker.assistedArtwork));
+  const hybridCover = Boolean(state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "agent" && state.project.coverSticker.coverStrategy);
+  const supervisedCover = !hybridCover && Boolean(state.project.coverSticker?.enabled ? state.project.coverSticker.trackingMode === "agent" : decorations.mode === "agent");
   const canCreate = state.capabilities.ready;
   const capability = state.capabilities.videoEncoder;
   const hardwareLabels: Record<"h264_nvenc" | "h264_amf" | "h264_qsv", string> = {
@@ -311,8 +323,8 @@ export default function App() {
   };
   const start = () => {
     if (locked || exporting || !canCreate) return;
-    if (state.project.coverSticker?.enabled && state.project.coverSticker.assistedArtwork && !state.project.coverSticker.manualRegionInput) {
-      document.querySelector(".cover-review")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && !state.project.coverSticker.manualRegionInput) {
+      navigateWorkflow("cover");
       return;
     }
     const uploadSelection = douyinUploadSelection;
@@ -328,7 +340,7 @@ export default function App() {
         await window.jianji.setWorkspaceDraft(startProjectId, workspaceDraft(productionDecorations));
         setWorkflowSection("results");
         setStep("results");
-        window.scrollTo({ top: 0, behavior: "smooth" });
+        scrollWorkspace();
         const resolvedOutputDirectory = await resolveOutputDirectory();
         if (projectId.current !== startProjectId) throw new Error("项目已切换，请在当前项目重新开始制作。");
         setDouyinUploadSelection(undefined);
@@ -354,60 +366,78 @@ export default function App() {
       retrying.current.delete(id); setRetryingIds([...retrying.current]);
     });
   };
-  const navigate = (next: Step) => {
-    if (next === "import" && step === "results" && outputDirectoryMode === "automatic") {
-      setOutputDirectory("");
-      setAutomaticOutputFor("");
-    }
-    setStep(next);
-  };
-
-  const scrollAfterRender = (selector: string) => {
-    window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-      document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }));
-  };
-  const navigateWorkflow = (id: WorkflowId) => {
+  const navigate = (next: Step) => { setStep(next); scrollWorkspace(); };
+  const navigateWorkflow = (id: WorkflowId, selector?: string) => {
     const target = resolveWorkflowTarget(id);
     setWorkflowSection(target.section);
-    navigate(target.step);
-    if (target.selector) scrollAfterRender(target.selector);
-    else window.scrollTo({ top: 0, behavior: "smooth" });
+    setStep(target.step);
+    scrollWorkspace({ selector });
   };
-  const openProjectManager = () => {
-    setWorkflowSection("materials");
-    navigate("import");
-    scrollAfterRender(".material-collection");
+  const openContext = (next: Step) => {
+    if (next === step) return;
+    returnContexts.current.push({ step, section: workflowSection, qianchuanPage, automationPage, top: workspaceScroller().scrollTop, focus: document.activeElement instanceof HTMLElement ? document.activeElement : undefined });
+    navigate(next);
   };
-  const openModelSettings = () => {
-    if (state.connection.configured) setModelsOpen(true);
-    else setStep("connection");
+  const returnToContext = () => {
+    const context = returnContexts.current.pop();
+    if (!context) { navigateWorkflow("materials"); return; }
+    setStep(context.step); setWorkflowSection(context.section); setQianchuanPage(context.qianchuanPage); setAutomationPage(context.automationPage);
+    scrollWorkspace({ top: context.top, focus: context.focus });
+  };
+  const openAccounts = () => { setQianchuanPage("accounts"); openContext("qianchuan"); };
+  const openProjectManager = () => openContext("projects");
+  const openModelSettings = () => openContext("connection");
+  const openAutomation = (draft: AutomationDraft) => {
+    setAutomationDraft(structuredClone(draft)); setAutomationRevision(value => value + 1); setAutomationPage("create"); openContext("automation");
+  };
+  const reasons: NonNullable<TemplatePanelProps["startReasons"]> = [
+    ...(busy ? [{ message: "正在处理操作，请稍候。" }] : []),
+    ...(productionRunning ? [{ message: "当前制作尚未结束；可浏览下一轮设置，不能重复启动。" }] : []),
+    ...(exporting ? [{ message: "还有视频正在导出，请等待完成。" }] : []),
+    ...(!canCreate ? [{ message: state.capabilities.message || "本地导出引擎尚未就绪。" }] : []),
+    ...(requiresDisplayText(decorations, selected) && !RequiredProductPriceSchema.safeParse(decorations.productPrice ?? "").success ? [{ message: "已开启展示文字的素材需要有效的手填内容。", section: "packaging" as const, selector: "#product-price" }] : []),
+    ...(usesModel && !hybridCover && !state.connection.configured ? [{ message: "当前制作方式需要配置创作模型。", action: "models" as const }] : []),
+    ...(supervisedCover && !state.visionConnection?.configured ? [{ message: "原贴纸识别需要配置独立的视觉识别模型。", action: "models" as const }] : []),
+    ...(supervisedCover && !state.reviewerConnection?.configured ? [{ message: "主管修正与样片检查需要配置复核模型。", action: "models" as const }] : []),
+    ...(douyinUploadSelection && !state.douyinUpload?.config.enabled ? [{ message: "本次已选择上传，但全局千川上传尚未启用。", action: "accounts" as const }] : []),
+    ...(douyinUploadSelection && !state.douyinUpload?.accounts.some(account => account.available && account.product === douyinUploadSelection.accountProduct) ? [{ message: "本次上传账号尚未选择或配置不可用。", action: "accounts" as const }] : []),
+    ...(douyinUploadSelection && (!douyinUploadSelection.plan || !state.douyinUpload?.accounts.some(account => account.available && account.product === douyinUploadSelection.accountProduct && account.advertiserId === douyinUploadSelection.plan?.advertiserId)) ? [{ message: "请在本页选择属于当前账号的上传计划。", section: "export" as const, selector: "#douyin-upload-title" }] : []),
+    ...(douyinUploadSelection && exportFormat !== "mp4" ? [{ message: "千川上传仅支持 MP4，请调整导出格式或关闭本次上传。", section: "export" as const, selector: "#export-format" }] : []),
+  ];
+  const fixReason = (reason: NonNullable<TemplatePanelProps["startReasons"]>[number]) => {
+    if (reason.action === "accounts") openAccounts();
+    else if (reason.action === "models") openModelSettings();
+    else if (reason.section) navigateWorkflow(reason.section, reason.selector);
   };
 
   return <div className="app-shell">
-    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onBatch={() => navigate("batch")} onStickerLibrary={() => navigate("stickers")} onResults={() => navigateWorkflow("results")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
+    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onBatch={() => navigate("batch")} onStickerLibrary={() => openContext("stickers")} onResults={() => navigateWorkflow("results")} onQianchuan={() => navigate("qianchuan")} onAutomation={() => navigate("automation")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
     {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
-    <BugFeedbackDialog open={feedbackOpen} page={step === "stickers" ? "templates" : step === "batch" ? "results" : step} onClose={() => setFeedbackOpen(false)} />
+    <BugFeedbackDialog open={feedbackOpen} page={step === "import" ? "import" : step === "connection" ? "connection" : step === "templates" || step === "stickers" ? "templates" : "results"} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">
       <WorkspaceHeader step={step} section={workflowSection} projectName={collectionName} projectDirty={state.project.hasUnsavedChanges || collectionName.trim() !== state.project.name} engineReady={state.capabilities.ready} engineLabel={engineLabel} engineWarning={engineWarning} disabled={locked || exporting} saveDisabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onWorkflow={navigateWorkflow} onNewProject={() => void changeProject(false)} onOpenProject={() => void changeProject(true)} onSaveProject={saveCollection} onProjectManager={openProjectManager} />
       <main className="content">
+        {!!returnContexts.current.length && <button type="button" className="text-button context-back" onClick={returnToContext}>← 返回来源页面</button>}
         {state.recentProjectsWarning && <div className="notice error" role="status">{state.recentProjectsWarning}</div>}
         {state.project.migrationBackupPath && <div className="notice" role="status">项目已升级；降级副本保存在：{state.project.migrationBackupPath}</div>}
         {notice && <div className={notice.error ? "notice error" : "notice success"} role={notice.error ? "alert" : "status"}><Icon name={notice.error ? "close" : "check"} size={17} /><span>{notice.text}</span><button className="icon-button" aria-label="关闭提示" onClick={() => setNotice(undefined)}><Icon name="close" size={16} /></button></div>}
         {!state.capabilities.ready && step !== "connection" && step !== "stickers" && <div className="capability-banner" role="status"><Icon name="settings" /><div><strong>本地导出引擎需要配置</strong><p>{state.capabilities.message} Windows 安装版：请重新安装完整的简辑安装包；Linux：安装 FFmpeg、fontconfig 与 Noto CJK 字体。配置完成后重启应用。</p></div></div>}
         {agentRunning && <div className="activity-banner" role="status"><span className="activity-orb"><Icon name="spark" size={17} /></span><div><strong>Agent 正在逐条创作</strong><span>可继续浏览和编辑下一轮设置，当前任务使用已冻结的素材与规则。</span></div><button className="text-button" disabled={busy} onClick={() => void run(async () => { apply(await window.jianji.cancelAgent()); })}>停止本轮任务</button></div>}
-        {step === "stickers" && <StickerLibraryPanel disabled={locked || exporting} revision={stickerRevision} onRemoved={(id) => {
+        <WorkspacePage active={step === "stickers"} label="贴纸库"><StickerLibraryPanel disabled={locked || exporting} revision={stickerRevision} onRemoved={(id) => {
           setStickerRevision((current) => current + 1);
           setDecorations((current) => ({
             ...current,
             sticker: current.sticker === id ? "none" : current.sticker,
             corners: current.corners && Object.fromEntries(Object.entries(current.corners).map(([corner, selection]) => [corner, selection?.type === "sticker" && selection.sticker === id ? { type: "none" as const } : selection])),
           }));
-        }} />}
-        {step === "connection" && <ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => { setNotice(undefined); void window.jianji.loginChatGPT().then(apply).catch((error) => { const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "登录未完成，请重试。"; setNotice({ error: true, text: message }); }); }} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); setWorkflowSection("materials"); setStep("import"); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={() => { setWorkflowSection("materials"); setStep("import"); }} />}
-        {step === "import" && <>
-          <Heading title="素材">导入视频，选择要包装的素材。每条素材独立包装，不合并、不裁剪；贴纸与滤镜可以交给 Agent 自主安排。</Heading>
+        }} /></WorkspacePage>
+        <WorkspacePage active={step === "connection"} label="模型设置"><button type="button" className="button secondary compact" onClick={() => setModelsOpen(true)}>快速选择角色模型</button><ConnectionPanel connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => { setNotice(undefined); void window.jianji.loginChatGPT().then(apply).catch((error) => { const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "登录未完成，请重试。"; setNotice({ error: true, text: message }); }); }} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); returnToContext(); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={returnToContext} /></WorkspacePage>
+        <WorkspacePage active={step === "projects"} label="项目管理">
+          <Heading title="项目管理">打开、命名或管理项目；当前草稿可通过顶部保存。</Heading>
           <MaterialCollection name={collectionName} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} onOpen={(id) => void changeProject(true, id)} onRename={renameSavedCollection} onDelete={removeSavedCollection} recentProjects={state.recentProjects ?? []} activeRecentId={state.activeRecentProjectId} />
+        </WorkspacePage>
+        <WorkspacePage key={state.project.id} active={step === "import"} label="素材">
+          <Heading title="素材">导入视频，选择要包装的素材。每条素材独立包装，不合并、不裁剪；贴纸与滤镜可以交给 Agent 自主安排。</Heading>
           <div className="import-layout"><div className="import-main">
             <div className={"drop-zone" + (dragOver ? " drag-over" : "")} onDragOver={(event) => { event.preventDefault(); if (!locked) setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={dropMedia}>
               <div className="upload-symbol"><Icon name="upload" size={29} /></div><h2>把视频拖到这里</h2><p>或者从电脑中选择，一次导入多条素材</p><button className="button primary" disabled={locked} onClick={importMedia}><Icon name="folder" size={17} />{busy ? "正在读取…" : "选择本地素材"}</button><small>MP4 · MOV · MKV · WebM <span>原始文件不会被修改</span></small>
@@ -415,13 +445,16 @@ export default function App() {
             <SourceMediaList key={state.project.id} items={state.project.mediaItems} selected={selected} previewId={preview?.id} disabled={locked} saveDisabled={locked || !MaterialNameSchema.safeParse(collectionName).success} onSelected={setSelected} onPreview={id => { sourcePreviewVideo.current?.pause(); setPreviewId(id); }} onRemove={id => run(async () => { apply(await window.jianji.removeMedia(id)); }, "已移出素材清单，原视频保留。请保存筛选结果。") } onSave={saveCollection} />
           </div><aside className="preview-card card"><div className="card-header"><h2>素材预览</h2><span>原片</span></div><div className="source-preview">{preview ? <video ref={sourcePreviewVideo} key={preview.id} src={preview.previewUrl} controls preload="metadata" /> : <div className="preview-empty"><Icon name="play" size={27} /><p>暂无预览</p></div>}</div><div className="preview-caption"><strong>{preview?.displayName || "尚未选择素材"}</strong><p>{preview ? "原始素材 · 点击播放查看内容" : "导入素材后可在这里预览。"}</p></div><div className="preview-tip"><Icon name="shield" size={18} /><p>视频保留在本地。发送抽帧供 Agent 分析；自动覆盖开启时，还会逐段发送追踪抽帧。</p></div></aside></div>
           <div className="step-footer"><div><strong>{selectedMedia.length ? "已选择 " + selectedMedia.length + " 条素材" : "准备好你的第一份素材"}</strong><small>每条素材独立包装，不合并，不裁剪。</small></div><button className="button primary" disabled={busy || !selectedMedia.length} onClick={() => navigateWorkflow("packaging")}>下一步，设置制作规则<Icon name="arrow" size={18} /></button></div>
-        </>}
-        {step === "templates" && <TemplatePanel selectedMedia={selectedMedia} onDisplayText={changeDisplayText} onSaveDisplayText={saveCollection} onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} reviewRequired={Boolean(state.project.coverSticker?.enabled && state.project.coverSticker.assistedArtwork && !state.project.coverSticker.manualRegionInput)} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<CornerDecorationPicker media={selectedMedia} onSave={saveCollection} assetMutationDisabled={locked || exporting} selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} />} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel reviewDrafts={state.project.reviewDrafts} projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} reviewPanel={state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && !state.project.coverSticker.manualRegionInput && <CoverReviewPanel manualSettings={state.project.coverSticker.manualRegionInput ? state.project.coverSticker : undefined} uploadSelection={douyinUploadSelection} assistedArtwork={state.project.coverSticker.assistedArtwork} agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />} /></div>} uploadControls={<DouyinUploadControls accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} />}
-        <BatchProductionPanel state={state} visible={step === "batch"} onState={apply} />
-        {step === "results" && <ResultsPanel state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} />}
+        </WorkspacePage>
+
+        <WorkspacePage active={step === "templates"} label="制作设置"><TemplatePanel key={state.project.id} modePicker={<PackagingModePicker value={decorations.mode} disabled={busy} onChange={mode => { const next = { ...decorations, mode }; if (productionRunning) setDecorations(next); else changeDecorations(next); if (mode !== "manual") setSelectedCorner(undefined); }} />} section={workflowSection === "cover" || workflowSection === "export" ? workflowSection : "packaging"} onNavigate={navigateWorkflow} startReasons={reasons} onFix={fixReason} coverSummary={state.project.coverSticker?.enabled ? "覆盖开启" : "覆盖关闭"} selectedMedia={selectedMedia} onDisplayText={changeDisplayText} onSaveDisplayText={saveCollection} onDisplayMode={(displayMode) => setDecorations((current) => ({ ...current, displayMode }))} onPriceStyle={(priceStyle) => setDecorations((current) => ({ ...current, priceStyle }))} requestedCount={requestedCount} onRequestedCount={setRequestedCount} onProductPrice={rememberProductPrice} onGenerateBrief={usesModel && state.connection.configured && !productionRunning ? generateBrief : undefined} generatingBrief={generatingBrief} reviewRequired={Boolean(state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && !state.project.coverSticker.manualRegionInput)} usesModel={usesModel} exportSettings={exportSettings} onExportSettings={setExportSettings} exportFormat={exportFormat} onExportFormat={setExportFormat} selectedCorner={selectedCorner} onCornerSelect={setSelectedCorner} decorationOptions={decorations} decorations={<><div className="packaging-resources"><button type="button" className="text-button" onClick={() => openContext("stickers")}>管理贴纸库</button><button type="button" className="text-button" onClick={openModelSettings}>配置模型</button></div><CornerDecorationPicker media={selectedMedia} onSave={saveCollection} assetMutationDisabled={locked || exporting} selected={selectedCorner} onSelect={setSelectedCorner} value={decorations} onChange={productionRunning ? setDecorations : changeDecorations} disabled={busy} /></>} coverPanel={<div id="cover-sticker-settings"><CoverStickerPanel reviewDrafts={state.project.reviewDrafts} projectId={state.project.id} value={state.project.coverSticker} selectedMedia={selectedMedia} revision={stickerRevision} disabled={locked} onSave={saveCoverSticker} onDirtyChange={setCoverStickerDirty} reviewPanel={state.project.coverSticker?.enabled && state.project.coverSticker.trackingMode === "assisted" && !state.project.coverSticker.manualRegionInput && <CoverReviewPanel manualSettings={state.project.coverSticker.manualRegionInput ? state.project.coverSticker : undefined} uploadSelection={douyinUploadSelection} assistedArtwork={state.project.coverSticker.assistedArtwork} agentRun={state.agentRun} library={state.connections ?? { profiles: [], selected: null }} chatgpt={state.chatgpt} drafts={state.project.reviewDrafts ?? []} mediaItems={state.project.mediaItems} input={{ mediaIds: selected, ruleId: rule, brief, outputDirectory, decorations, exportFormat, exportSettings, multiplier: calculateProductionQuantity(selected.length, requestedCount ?? selected.length)?.multiplier ?? 1 }} onResolveOutputDirectory={resolveOutputDirectory} onState={apply} />} /></div>} uploadControls={<DouyinUploadControls onConfigure={openAccounts} serviceEnabled={state.douyinUpload?.config.enabled ?? false} accounts={state.douyinUpload?.accounts} value={douyinUploadSelection} onChange={setDouyinUploadSelection} disabled={busy} />} coverDirty={coverStickerDirty} selected={rule} onSelect={setRule} brief={brief} onBrief={setBrief} outputDirectory={outputDirectory} automaticOutput={outputDirectoryMode === "automatic"} onAutomaticOutput={() => { setOutputDirectoryMode("automatic"); setOutputDirectory(""); setAutomaticOutputFor(""); }} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) { setOutputDirectoryMode("manual"); setOutputDirectory(directory); setAutomaticOutputFor(""); } })} onStart={start} count={selected.length} disabled={busy} startDisabled={locked || exporting || !canCreate} /></WorkspacePage>
+        <BatchProductionPanel state={state} visible={step === "batch"} onState={apply} onConfigureUpload={openAccounts} onAutomation={production => openAutomation({ production })} />
+        <WorkspacePage active={step === "qianchuan"} label="千川"><QianchuanWorkspace state={state} page={qianchuanPage} onPage={page => { setQianchuanPage(page); scrollWorkspace(); }} onState={apply} onAutomation={cleanup => openAutomation({ cleanup })} /></WorkspacePage>
+        <WorkspacePage active={step === "automation"} label="自动化"><AutomationWorkspace state={state} page={automationPage} onPage={page => { setAutomationPage(page); scrollWorkspace(); }} draft={automationDraft} revision={automationRevision} onSource={source => { if (source === "batch") navigate("batch"); else { setQianchuanPage("materials"); navigate("qianchuan"); } }} /></WorkspacePage>
+        <WorkspacePage key={"results:" + state.project.id} active={step === "results"} label="作品"><ResultsPanel onUploads={() => { setQianchuanPage("uploads"); openContext("qianchuan"); }} state={state} busy={busy} retryingIds={retryingIds} onState={apply} onCancel={(id) => void run(async () => { apply(await window.jianji.cancelExport(id)); })} onCancelAll={() => void run(async () => { apply(await window.jianji.cancelAllExports()); })} onRetry={retryExport} onOpen={(id) => void run(async () => { await window.jianji.openArtifact(id); })} onReveal={(id) => void run(async () => { await window.jianji.revealArtifact(id); })} onNew={() => navigateWorkflow("materials")} /></WorkspacePage>
       </main>
       <footer className="app-footer"><span>简辑 · 本地视频包装</span><span><i /> 本地渲染，原片保留</span></footer>
     </div>
-    <ModelSettingsDrawer open={modelsOpen} state={state} disabled={locked} onClose={() => setModelsOpen(false)} onManageConnections={() => { setModelsOpen(false); setStep("connection"); }} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onSelectModel={(input) => run(async () => { if (input.connectionId !== "chatgpt" && state.connections?.selected !== input.connectionId) apply(await window.jianji.selectConnection(input.connectionId)); apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} onSelectVision={(input) => run(async () => { apply(await window.jianji.selectVisionConnection(input)); }, "视觉识别模型设置已保存。")} onSelectReviewer={(input) => run(async () => { apply(await window.jianji.selectReviewerConnection(input)); }, "复核模型设置已保存。")} />
+    <ModelSettingsDrawer open={modelsOpen} state={state} disabled={locked} onClose={() => setModelsOpen(false)} onManageConnections={() => { setModelsOpen(false); if (step !== "connection") openModelSettings(); }} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onSelectModel={(input) => run(async () => { if (input.connectionId !== "chatgpt" && state.connections?.selected !== input.connectionId) apply(await window.jianji.selectConnection(input.connectionId)); apply(await window.jianji.selectModel(input)); }, "创作模型已切换并保存。")} onSelectVision={(input) => run(async () => { apply(await window.jianji.selectVisionConnection(input)); }, "视觉识别模型设置已保存。")} onSelectReviewer={(input) => run(async () => { apply(await window.jianji.selectReviewerConnection(input)); }, "复核模型设置已保存。")} />
   </div>;
 }

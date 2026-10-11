@@ -72,6 +72,8 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
       import React, {useState} from "react";
       import {createRoot} from "react-dom/client";
       import {QianchuanAccountSettings} from "./src/renderer/QianchuanAccountSettings";
+      import {QianchuanVideoLibraryActions} from "./src/renderer/QianchuanVideoLibraryActions";
+      import {QianchuanVideoLibrarySchedule} from "./src/renderer/QianchuanVideoLibrarySchedule";
       window.saved = []; window.controlled = []; window.scheduled = [];
       const settings = {enabled:true,time:"00:30",accounts:[{product:"眼贴",expectedAdvertiserId:"1000"}],confirmation:"DELETE_ALL_VIDEOS"};
       window.jianji = {listQianchuanPlans:async()=>[],cancelQianchuanPlans:async()=>{},
@@ -81,9 +83,9 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
         {product:"眼贴",productName:"旧产品",browserProfileName:"相同 Chrome 名称",advertiserId:"1000",adId:"9001",available:true},
         {product:"肥皂",productName:"另一个产品",browserProfileName:"相同 Chrome 名称",advertiserId:"1001",adId:"9002",available:true}]);
         window.renameAllProfiles=()=>setAccounts(current=>current.map(account=>({...account,browserProfileName:"改名后的 Chrome"})));
-        return <QianchuanAccountSettings accounts={accounts} busy={false}
+        return <><QianchuanAccountSettings accounts={accounts} busy={false}
           onSave={async value=>{window.saved.push(value);return true}} onOpenBrowser={async()=>true}
-          onControlBrowser={async value=>{window.controlled.push(value);return true}}/>;}
+          onControlBrowser={async value=>{window.controlled.push(value);return true}}/><QianchuanVideoLibraryActions accounts={accounts} busy={false}/><QianchuanVideoLibrarySchedule accounts={accounts} busy={false}/></>;}
       createRoot(document.getElementById("root")).render(<Fixture/>);
     `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
     await page.addScriptTag({content:script});

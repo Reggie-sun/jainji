@@ -8,12 +8,13 @@ type AutomationComposerProps = {
   production?: BatchProductionStart;
   cleanup?: QianchuanLibraryClear;
   disabled?: boolean;
+  onCreated?(): void;
 };
 
 const initialTime = "00:30";
 const runLabels: Record<AutomationRun["state"], string> = { RUNNING: "正在执行", COMPLETED: "已完成", BLOCKED: "已阻断", SKIPPED: "已跳过" };
 
-export function AutomationComposer({ production, cleanup, disabled = false }: AutomationComposerProps) {
+export function AutomationComposer({ production, cleanup, disabled = false, onCreated }: AutomationComposerProps) {
   const [name, setName] = useState("");
   const [time, setTime] = useState(initialTime);
   const [enabled, setEnabled] = useState(false);
@@ -90,6 +91,7 @@ export function AutomationComposer({ production, cleanup, disabled = false }: Au
       setUploadExisting(false);
       setUploadFrom("");
       setScheduleCleanup(false);
+      onCreated?.();
     } catch (value) {
       setError(message(value));
     } finally {
@@ -152,7 +154,7 @@ export function AutomationComposer({ production, cleanup, disabled = false }: Au
   </section>;
 }
 
-export function AutomationPanel() {
+export function AutomationPanel({ onEdit }: { onEdit?(task: AutomationTask): void } = {}) {
   const [status, setStatus] = useState<AutomationStatus>();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -196,12 +198,12 @@ export function AutomationPanel() {
     {(error || status?.error) && <p className="automation-error" role="alert">{error || status?.error}</p>}
     {!loading && status && !status.tasks.length && <p>暂无定时任务。</p>}
     <div className="automation-task-list">
-      {status?.tasks.map(task => <AutomationTaskRow key={task.id} task={task} timeZone={status.timeZone} onStatus={setStatus} />)}
+      {status?.tasks.map(task => <AutomationTaskRow key={task.id} task={task} timeZone={status.timeZone} onStatus={setStatus} onEdit={onEdit} />)}
     </div>
   </section>;
 }
 
-function AutomationTaskRow({ task, timeZone, onStatus }: { task: AutomationTask & { nextRunAt?: string }; timeZone: string; onStatus(status: AutomationStatus): void }) {
+function AutomationTaskRow({ task, timeZone, onStatus, onEdit }: { task: AutomationTask & { nextRunAt?: string }; timeZone: string; onStatus(status: AutomationStatus): void; onEdit?(task: AutomationTask): void }) {
   const [time, setTime] = useState(task.request.time);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -223,8 +225,8 @@ function AutomationTaskRow({ task, timeZone, onStatus }: { task: AutomationTask 
   return <article className="automation-task" aria-label={task.request.name}>
     <div className="automation-task-title"><strong>{task.request.name}</strong><span className={`automation-state${task.request.enabled ? " enabled" : ""}`}>{task.request.enabled ? "已启用" : "已暂停"}</span></div>
     <p>{task.summary}</p>
-    <div className="automation-task-controls"><label>每天<input type="time" lang="zh-CN" value={time} disabled={busy} onChange={event => setTime(event.target.value)} /></label>
-      <button type="button" className="button secondary compact" disabled={busy || time === task.request.time} onClick={() => void configure(task.request.enabled, time)}>保存时间</button>
+    <div className="automation-task-controls">{onEdit ? <><span>每天 {task.request.time}</span><button type="button" className="button secondary compact" disabled={busy} onClick={() => onEdit(task)}>编辑定时设置</button></> : <><label>每天<input type="time" lang="zh-CN" value={time} disabled={busy} onChange={event => setTime(event.target.value)} /></label>
+      <button type="button" className="button secondary compact" disabled={busy || time === task.request.time} onClick={() => void configure(task.request.enabled, time)}>保存时间</button></>}
       <button type="button" className="button secondary compact" disabled={busy} onClick={() => void configure(!task.request.enabled)}>{task.request.enabled ? "暂停" : "启用"}</button>
       <button type="button" className="button secondary compact" disabled={busy} onClick={() => void remove()}>删除</button>
     </div>
