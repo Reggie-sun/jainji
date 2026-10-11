@@ -94,7 +94,7 @@ body { background: var(--workspace-canvas); color: var(--workspace-ink); }
 .workflow-steps button.complete { color: #446f62; }
 .workflow-steps button.complete .workflow-number { background: var(--workspace-mint); color: #19745e; }
 
-.workspace-subnav { position: sticky; top: 136px; z-index: 15; display: flex; align-items: center; justify-content: center; gap: 0; margin: -34px -38px 28px; padding: 0 24px; background: #ffffff; border-bottom: 1px solid var(--workspace-border); }
+.workspace-subnav { display: flex; align-items: center; justify-content: center; gap: 0; margin: 0; padding: 0 24px; background: #ffffff; border-top: 1px solid var(--workspace-border); }
 .workspace-subnav button { display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 26px; border: 0; border-right: 1px solid #edf1ef; background: transparent; color: #60706b; font-size: 13px; }
 .workspace-subnav button:first-child { border-left: 1px solid #edf1ef; }
 .workspace-subnav button:hover { color: #176c59; background: #f7fbf9; }
@@ -151,7 +151,6 @@ body { background: var(--workspace-canvas); color: var(--workspace-ink); }
   .project-switcher { min-width: 210px; }
   .workflow-steps { max-width: 720px; }
   .content { padding: 28px 25px; }
-  .workspace-subnav { margin-left: -25px; margin-right: -25px; }
   .workspace-header-row>.engine-status { display: none; }
   .app-footer { margin: 0 25px; }
 }

@@ -1,5 +1,5 @@
 import { Icon } from "./ui";
-import { WORKFLOW_STEPS, activeWorkflowId, type Step, type TemplateSectionId, type WorkflowId } from "./workspace-flow";
+import { WORKFLOW_STEPS, activeWorkflowId, type Step, type WorkflowId } from "./workspace-flow";
 
 export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, onWorkflow, onBatch, onStickerLibrary, onResults, onModels, onFeedback }: {
   step: Step;
@@ -78,19 +78,9 @@ export function WorkspaceHeader({ step, section, projectName, projectDirty, engi
         <span>{item.label}</span>
       </button>)}
     </nav>}
+    {step === "templates" && section === "packaging" && <nav className="workspace-subnav" aria-label="包装设置">
+      <button type="button" onClick={() => document.getElementById("display-time-settings")?.scrollIntoView({ block: "start" })}><Icon name="play" size={16} />显示时段</button>
+      <button type="button" onClick={() => document.getElementById("corner-decoration-editor")?.scrollIntoView({ block: "start" })}><Icon name="spark" size={16} />四角贴纸</button>
+    </nav>}
   </header>;
-}
-
-const TEMPLATE_SECTIONS = [
-  { id: "timing", label: "显示时段", icon: "play", selector: "#display-time-settings" },
-  { id: "corners", label: "四角贴纸", icon: "spark", selector: "#corner-decoration-editor" },
-] as const;
-
-export function WorkspaceSubnav({ active, onNavigate }: {
-  active: TemplateSectionId;
-  onNavigate(id: TemplateSectionId, selector: string): void;
-}) {
-  return <nav className="workspace-subnav" aria-label="包装设置">
-    {TEMPLATE_SECTIONS.map((item) => <button key={item.id} type="button" className={active === item.id ? "active" : ""} aria-current={active === item.id ? "location" : undefined} onClick={() => onNavigate(item.id, item.selector)}><Icon name={item.icon} size={16} />{item.label}</button>)}
-  </nav>;
 }

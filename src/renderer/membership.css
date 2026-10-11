@@ -5,7 +5,7 @@
 .membership-reconnecting { flex-wrap: wrap; background: #fff8e5; border-bottom-color: #ecd89f; color: #674b12; }
 .membership-workspace { flex: 1; min-height: 0; overflow: auto; }
 .membership-workspace[hidden] { display: none; }
-.membership-workspace > .app-shell { min-height: 100%; height: 100%; }
+.membership-workspace > .app-shell { min-height: 100%; }
 .membership-screen { flex: 1; display: grid; place-items: center; overflow: auto; padding: 36px 20px; background: radial-gradient(ellipse at 10% 10%, #dce8fc 0%, transparent 55%), #f5f7fb; }
 .membership-card { width: min(620px, 100%); padding: 36px; border: 1px solid #dde5f0; border-radius: 20px; background: #fff; box-shadow: 0 20px 70px #243a6212; }
 .membership-brand { font-size: 20px; font-weight: 750; color: #254da0; }
