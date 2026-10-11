@@ -29,7 +29,12 @@ export type QianchuanConfirmationReceiptObserverOptions = {
   origin?: string;
 };
 
-function fail(message: string): never { throw new Error(message); }
+class ConfirmationReceiptValidationError extends Error {}
+function fail(message: string): never { throw new ConfirmationReceiptValidationError(message); }
+
+export function confirmationReceiptFailureMessage(error: unknown): string | undefined {
+  return error instanceof ConfirmationReceiptValidationError ? error.message : undefined;
+}
 
 function record(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail("千川确认回执格式无效。");
@@ -236,7 +241,7 @@ export class QianchuanConfirmationReceiptObserver {
   private async captureResponse(response: Response, request: Request): Promise<void> {
     if (response.status() !== 200) fail("千川确认请求 HTTP 状态不成功。");
     const contentLength = response.headers()["content-length"];
-    if (contentLength === undefined || !/^\d+$/.test(contentLength) || Number(contentLength) > MAX_JSON_BYTES) {
+    if (contentLength !== undefined && (!/^\d+$/.test(contentLength) || Number(contentLength) > MAX_JSON_BYTES)) {
       fail("千川确认响应正文超出大小限制。");
     }
     const bytes = await response.body();

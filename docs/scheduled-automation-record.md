@@ -123,3 +123,37 @@ Chrome MCP 使用隔离页面验证了保存清理+制作+上传完整范围、�
 运行主包 SHA `ea685962202563ed6765a390195fe47e1de8ad59fd60da391e28d2ee7fbcceea`，Git HEAD `5045f0dbecdfb304391b916067e38c8b22e9408d`；当时 upload store / shared schema 含另一会话未提交改动，精确源码摘要保存在 `runtime-start.json`，本证据不能冒充纯提交快照验收。所有本机原始证据位于 `.agent/harness/runs/20261012-real-stream-upload/`，包括 `live-observations.jsonl`、`ledger-current.json`、`paused.json`、`final-current.json` 与 `parent-proof.json`。
 
 受管 Kimi deep 的只读证据复核 invocation `44043580-67e2-4517-b39c-1706954de79d`，seal `8efad6d4acb7412f216d5717402a3ac9f7ea601b3867bdd4d673206c899a5951`，收到 HTTP 403，canonical classification 为 CREDENTIAL_OR_ENTITLEMENT_REJECTED；实际读取为 0，没有复核报告，不计作独立验收，也不重试额度/权限拒绝。父线程独立核对上述原应用状态、原账本绑定和实际成片 SHA。没有业务源码修改或专用 session-record Skill，本节主动保存实测失败检查点；record 为 AOCI observe，不维护另一会话的索引资产。
+
+## Compressed Batch Receipt Repair
+
+2026-10-12，用户要求继续解决批量确认失败。06:22 的新诊断任务 `765bf0eb-2f78-4ed5-83c1-77900447e5f8` 沿原调度器制作并上传十条新成片，仍为一条 ACCEPTED、九条 UNKNOWN。被动观察确认九条完整文件只产生一对原平台 POST；绑定响应 HTTP 200，`content-encoding: br`，没有 `Content-Length`。原观察器在读取正文前就将缺少长度头判为超限，捕获响应头可复现 `千川确认响应正文超出大小限制。`。这轮未知记录同样不重传、不补签接受；诊断未保留该绑定响应正文，HTTP 200 本身不证明平台成功状态。
+
+原 `qianchuan-confirmation-receipt.ts` 现在允许缺少可选长度头；存在时仍拒绝非法及超限声明，实际解码后的非空正文始终受 1 MiB 准入限制，并严格核 JSON、数字成功状态、冻结文件及账号/计划。该限制不声称 Playwright 读取过程的峰值内存上限。原页面 owner 只展示解析器自有的固定安全错误，未知底层异常及响应数据不反射。身份、原双层确认和一次性 UNKNOWN/selection 屏障不变；[当前合同与计划](superpowers/plans/2026-10-12-compressed-confirmation-receipt.md) 明确替代历史候选的强制长度条件。
+
+新增缺长度单元测试及真实 HTTP Brotli/chunked 九文件 Chrome fixture 在旧代码上分别失败；修复后十八项回执/页面测试通过，包括解码后超限、非法/伪小长度、错误账号/计划、重复请求、平台拒绝与安全错误提示。完整项目验证按 owned scope 路由；中间输出不作最终 completion。
+
+### Live Acceptance
+
+原开发模式自动重启中断首次测试创建连接；稳定新实例只读确认没有该测试任务和运行 occurrence 后，才创建唯一 `压缩回执修复验收-20261012`。没有重放已选择或结果未知的任务。任务 `770c94dc-743a-42e6-8a13-d8636ae928fa` 在 06:36:00.522（Asia/Hong_Kong）由原每日定时器自动触发，occurrence `dec63806-66a5-4809-83ba-b79ae4ebb4c7`，production run `76fe90a3-9a7d-4485-9fa2-9b4996607d0a`，job `5d22b41d-fe05-49e7-a0f6-32c712602c4a`。沿用保存的氨糖膏模板、原手填文字、local-random / real-artwork，十条新成片，不含清理或模型请求；目标仍为 advertiser `1876036793517065` / plan `1876052012647452`。
+
+06:41:01.245 occurrence 为 COMPLETED：十条制作 completed、零失败，十条均为 ACCEPTED / attempt 1，十个唯一平台 video ID。第一条 pageBatch `7d3d6c31-ac09-47b8-8026-bf520765b445`；后九条原 target `3A34A4A3232B648B8313DB9C75E0FD6B` 的绑定响应再次为 Brotli 且无长度头，两接口各一次、HTTP 200，原程序完整核验后接受九条。被动添加请求 SHA `048a3120d033610dbdf360b2c3cfb1bc487e41505b734b4883869e9b1fd3fe0f` 与九条 canonical acceptedEvidence 一致。首条平台 video ID `v03c8eg10000db60vsfog65sgpu2kbsg`；完整十条 ID、证据和成片 SHA 保存在本机 `parent-proof.json`。
+
+父线程独立流式核对十个成片和十个上传快照的文件类型、大小、SHA 与原账本及 selection fence。此前两轮共二十条历史任务的完整记录保持相同，十八条 UNKNOWN 保留，二十四个历史选择/确认屏障的原始 SHA 不变。验收任务已通过原配置接口暂停；没有重传、旧结果升级、素材删除或广告预算修改。
+
+本机证据位于 `.agent/harness/runs/20261012-confirmation-debug/`（原网络诊断、red/green、scope）和 `.agent/harness/runs/20261012-compressed-receipt-live/`（创建、原应用连续观察、原始协议头、暂停与父线程文件/屏障核对）。诊断中的临时签名素材链接已移除；成功验收的网络捕获只保留请求摘要、数量和受限响应头，不保留正文。稳定运行主包 SHA `db8af14c11ce1bfbd554ab77caa49ae37b470d26e35b6d7cea3df32ccf6281ce`；源码及另一会话 upload store/schema 字节摘要保存在 `runtime-stable.json`，终态仍完全相同，因此不冒称纯 HEAD 快照验收。
+
+本轮端到端约 301 秒；连接阶段出现选文件前超时，实际吞吐改善仍未建立，不把这次功能成功当速度验收。平台接收不证明审核、投放、全部画面覆盖或人工整片观看；Windows 未评估。没有专用 session-record Skill，此节保存持久修复与真实验收检查点。源码两个 indexed owner 按官方完整机器批次维护，测试/helper/plan/record 为 observe；当前官方 Verify / Check / Guide 已证明治理对齐，Guide complete=true / next_action=none。
+
+### Verification Environment
+
+初次完整 Harness `.agent/harness/runs/20261011T223506Z-a1fa9922/` 的扩展测试使用了 shell 中另一项目的 Python，缺少 `cv2`，静态掩码文件的九项检查因此失败。本会话只停止自己该轮的剩余测试进程，保存 NOT_EVALUATED 回执，不作为 completion 证据。本机 `/home/reggie/miniconda3/bin/python3` 经实际核验为 NumPy 2.2.6 / OpenCV 4.12.0，符合原冻结 geometry 合同；以 `PATH=/home/reggie/miniconda3/bin:$PATH` 重新执行完整 owned Harness，没有安装依赖或改动覆盖算法、固定参数及测试标准。
+
+共享 AOCI 资产含另一会话两项源码的既有维护。本轮提交候选只包含本任务的两个 Entry、两个源码基线及对应正式 Code Volume 字节身份；在忽略目录中的完整 indexed 源码投影上，通过官方 MCP Maintain 的完整两项批次与 CAS Apply 生成，Verify / Aggregate Check / Guide 均通过。此投影不是 Git worktree，不写业务源码，不把另一会话的索引或源码归为本轮提交。
+
+### Verification And Review
+
+修正环境后的 `.agent/harness/runs/20261011T224754Z-64a94cf4/receipt.json` 为 8/8 PASS：typecheck、scheduled automation 86 项、Harness 105 项、lifecycle 173 项、upload 700 项、extended regressions 107 个文件 / 990 项，以及 documents / owned AOCI。各 Vitest 报告失败与 pending 均为零；证据仍绑定当前七项源码、测试和计划字节。正式资产另有 `.agent/harness/runs/20261011T225639Z-34623d39/` 的 2/2 PASS；最终 record 单独核验，不以初次环境失败回执或中间输出替代。
+
+project-native verification 完成后，父线程对上述稳定 candidate 判断 Implementation Review Risk Gate 为 KIMI_REVIEW_NOT_REQUIRED。当前用户未要求 Kimi review；改动没有新增请求、点击、凭据、权限或持久状态通道，固定安全错误不反射未知异常；解码上限、平台状态及全部冻结身份门保持。错误接受会有实质后果，但 red/green 九文件真实 HTTP fixture、完整回归和十条真实原应用回执已关闭本次兼容修正的实质验证缺口，没有证据表明额外 Kimi 审查能补齐仍存在的该类缺口。风险决定绑定两源码 SHA `8e4178053b01799728cb52e8a16fa133c3ad692dc1f65be1d8660fd6f811020d` / `5a96a698a1e4c543173128ec38d377564bdda9d976ad6a9e40f8acf6f253b7ff`、完整 owned hashes 及 Harness receipt SHA，保存在 `review-risk-decision.json`。连接性能、Windows、峰值缓冲内存和审核/投放/人工视觉边界仍按上述限制报告。
+
+06:57 的最终只读核查再次确认当前应用没有自动化任务正在执行，验收任务仍暂停、同一 occurrence 为 COMPLETED、同一十条均 ACCEPTED。没有追加平台操作。

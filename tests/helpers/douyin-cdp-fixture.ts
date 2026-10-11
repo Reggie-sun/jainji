@@ -79,7 +79,10 @@ export interface QianchuanFixture {
   inspect(): Promise<{ chromeRunning: boolean; pages: Array<{ id: string; type: string; url: string }>; events: QianchuanFixtureEvent[] }>;
   stop(): Promise<void>;
 }
-export interface StartFixtureOptions { tempRoot: string; chromeExecutable?: string; fixtureHtml?: string; production?: boolean; profileDirectory?: string; }
+export interface StartFixtureOptions {
+  tempRoot: string; chromeExecutable?: string; fixtureHtml?: string; production?: boolean; profileDirectory?: string;
+  handleRequest?: (request: IncomingMessage, response: ServerResponse) => boolean | Promise<boolean>;
+}
 
 async function bodyText(request: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
@@ -167,6 +170,7 @@ export async function startQianchuanFixture(options: StartFixtureOptions): Promi
         const pageHtml = html.replace(/const state = \{ controls: \{\}, (files|uploads): \[\] \};/, (_match, collection: string) => `const state = { controls: ${JSON.stringify(controls)}, ${collection}: [] };`);
         response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" }); response.end(pageHtml); return;
       }
+      if (await options.handleRequest?.(request, response)) return;
       response.writeHead(404).end("not found");
     })().catch(error => { if (!response.headersSent) json(response, 500, { error: error instanceof Error ? error.message : "fixture error" }); else response.destroy(); });
   });

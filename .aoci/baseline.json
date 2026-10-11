@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T21:13:52Z",
+  "updated_at": "2026-10-11T22:55:31Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "8b106ceec307b04e0382dca8a35de0c220b352335e62c9258bc950a0bef9d29e",
-      "size": 120570,
-      "normalized_sha256": "8b106ceec307b04e0382dca8a35de0c220b352335e62c9258bc950a0bef9d29e"
+      "sha256": "6114395f8b6334e798e71ba3036d34a4055810c0c65e5935b011876ed6246e33",
+      "size": 120606,
+      "normalized_sha256": "6114395f8b6334e798e71ba3036d34a4055810c0c65e5935b011876ed6246e33"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1583,9 +1583,9 @@
       "normalized_sha256": "89d65d7c636672588b4170bb4b407fdbbc5a192885cac7ed659957a9d9074d83"
     },
     "src/main/qianchuan-confirmation-receipt.ts": {
-      "sha256": "ac4844015b507d5f1c1a0d5fae3e16582875ca4f65152efde01760b07578190b",
-      "size": 15367,
-      "normalized_sha256": "ac4844015b507d5f1c1a0d5fae3e16582875ca4f65152efde01760b07578190b"
+      "sha256": "8e4178053b01799728cb52e8a16fa133c3ad692dc1f65be1d8660fd6f811020d",
+      "size": 15637,
+      "normalized_sha256": "8e4178053b01799728cb52e8a16fa133c3ad692dc1f65be1d8660fd6f811020d"
     },
     "src/main/qianchuan-egress-browser.ts": {
       "sha256": "182d4f685fe7315c72721d8b823f6e6d9fe2f90e4a6a20e7994d5ef3199d7f67",
@@ -1603,9 +1603,9 @@
       "normalized_sha256": "16aebd00cc8e1910b057ff8386f0ae8cbd172b43edba0706d5c45a17d3ca9bf8"
     },
     "src/main/qianchuan-page-contract.ts": {
-      "sha256": "7a88e7e8be71abc22d4d877bee6b7dddaa8a5b082a963373be47bbdd2680ef2a",
-      "size": 38773,
-      "normalized_sha256": "7a88e7e8be71abc22d4d877bee6b7dddaa8a5b082a963373be47bbdd2680ef2a"
+      "sha256": "5a96a698a1e4c543173128ec38d377564bdda9d976ad6a9e40f8acf6f253b7ff",
+      "size": 38957,
+      "normalized_sha256": "5a96a698a1e4c543173128ec38d377564bdda9d976ad6a9e40f8acf6f253b7ff"
     },
     "src/main/qianchuan-picker-transport.ts": {
       "sha256": "59eebfaca11dd5797b4053c3484e4f1072c674549ed428b7810f4205f0df4799",

@@ -226,23 +226,33 @@ it("rejects mixed media, nonempty titles, extra settings, and invalid multi-prod
   }
 });
 
-it("rejects an oversized response before parsing it and refuses responses without a bounded length", async () => {
-  {
+it("accepts bounded decoded responses without Content-Length", async () => {
+  const { page, frame, pending } = fixture();
+  const bind = makeRequest(frame, "bind", bindBody());
+  const add = makeRequest(frame, "add", directAdd(["video-1", "video-2"]));
+  page.emit("request", bind.request); page.emit("request", add.request);
+  page.emit("response", makeResponse(bind.request, { status_code: 0 }, { contentLength: "" }).response);
+  page.emit("response", makeResponse(add.request, { status_code: 0 }, { contentLength: "" }).response);
+  await expect(pending).resolves.toMatchObject({ videoIds: ["video-1", "video-2"] });
+});
+
+it("rejects oversized decoded responses with absent or misleading lengths and malformed declared lengths", async () => {
+  for (const contentLength of [undefined, "", "10"]) {
     const { page, frame, pending } = fixture();
     const bind = makeRequest(frame, "bind", bindBody());
     const add = makeRequest(frame, "add", directAdd(["video-1", "video-2"]));
     page.emit("request", bind.request); page.emit("request", add.request);
     page.emit("response", makeResponse(bind.request, { status_code: 0 }).response);
-    page.emit("response", makeResponse(add.request, { status_code: 0, padding: "x".repeat(1024 * 1024) }).response);
+    page.emit("response", makeResponse(add.request, { status_code: 0, padding: "x".repeat(1024 * 1024) }, { contentLength }).response);
     await expect(pending).rejects.toThrow(/大小限制/);
   }
-  {
+  for (const contentLength of ["invalid", "-1", "1048577"]) {
     const { page, frame, pending } = fixture();
     const bind = makeRequest(frame, "bind", bindBody());
     const add = makeRequest(frame, "add", directAdd(["video-1", "video-2"]));
     page.emit("request", bind.request); page.emit("request", add.request);
     page.emit("response", makeResponse(bind.request, { status_code: 0 }).response);
-    page.emit("response", makeResponse(add.request, { status_code: 0 }, { contentLength: "" }).response);
+    page.emit("response", makeResponse(add.request, { status_code: 0 }, { contentLength }).response);
     await expect(pending).rejects.toThrow();
   }
 });

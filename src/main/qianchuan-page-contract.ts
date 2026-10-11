@@ -4,7 +4,7 @@ import { accountPageUrl } from "../shared/qianchuan-account.js";
 import { UploadError, uploadFailure, type AcceptedEvidence, type PageOwnership, type ReadyEvidence } from "../shared/douyin-upload.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { MAX_UPLOAD_GROUP_SIZE, type BatchSelectedFile, type UploadReadyProgress } from "./douyin-upload-service.js";
-import { createQianchuanConfirmationReceiptObserver } from "./qianchuan-confirmation-receipt.js";
+import { confirmationReceiptFailureMessage, createQianchuanConfirmationReceiptObserver } from "./qianchuan-confirmation-receipt.js";
 
 /** Finite source-owned selectors; no browser scripts or selectors are supplied by IPC. */
 interface PageContract {
@@ -476,7 +476,11 @@ export class QianchuanPageSession {
       await this.guard(task, signal, Date.now(), false);
       return tasks.map((value, index) => ({ ...value.result.readyEvidence!, platformVideoId: proof.videoIds[index]!,
         attempt: value.result.attempt_count, requestSha256: proof.requestSha256, responseSha256: proof.responseSha256, observedAt: proof.observedAt }));
-    } catch (error) { this.check(signal); if (error instanceof UploadError) throw error; throw lostModal("确认或平台回执无法核实"); }
+    } catch (error) {
+      this.check(signal); if (error instanceof UploadError) throw error;
+      const reason = confirmationReceiptFailureMessage(error);
+      throw lostModal(reason ? `确认回执核验失败：${reason.replace(/。$/, "")}` : "确认或平台回执无法核实");
+    }
     finally { observer?.dispose(); await document.dispose().catch(() => undefined); }
   }
   async restore(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], targetId: string, signal: AbortSignal): Promise<ReadyEvidence> {

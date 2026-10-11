@@ -118,3 +118,7 @@ alias 修正后的上传回归 8 文件、188 项通过，包含原历史结束�
 本会话按官方完整机器批次维护 12 个共享索引对象（自动上传两个 owner 与会员变更十个对象），Verify/Check/Guide 曾证明对齐。随后会员会话继续修改 `billing-page.ts`，正式资产检查 `.agent/harness/runs/20261009T222816Z-3028e51e` 因该对象 stale 失败。全量 Harness `.agent/harness/runs/20261009T222718Z-a859cac2` 在源码已变化后由本会话中止，保留 NOT_EVALUATED 回执；此前候选的 16/16 PASS 不代替当前候选验收。
 
 当前自然停止点是共享验证快照不能稳定：自动化业务改动保留，未提交或推送；第二轮有效独立审查尚未启动，未耗用额外真实上传预算。待共享源码稳定，先重新核对 owned scope 和 AOCI，再完成 Harness、有效审查及本任务提交推送；共享索引中的会员部分不得当作自动化业务归属。没有专用 session-record Skill，故在本 plan 记录此次恢复与阻断，不写长期 Memory。
+
+## Compressed Receipt Delta
+
+2026-10-12 用户要求继续解决真实批量确认失败。本次实测九条绑定响应使用 Brotli 且无 `Content-Length`，与上述历史候选的强制长度条件冲突。当前接受合同改为长度头可选、存在时严格核验，解码后的非空 JSON 正文仍限 1 MiB；平台双成功、完整身份和永久 UNKNOWN 屏障保持。详见 [Compressed Receipt Plan](2026-10-12-compressed-confirmation-receipt.md)。本次修正不回写历史未知结果，也不把 HTTP 成功等同审核或投放成功。
