@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-11T19:10:26Z",
+  "updated_at": "2026-10-11T20:15:17Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "58d472732087f56aea91c9b174d3d3198a295afb947eca7789d42885322a5ad4",
-      "size": 119321,
-      "normalized_sha256": "58d472732087f56aea91c9b174d3d3198a295afb947eca7789d42885322a5ad4"
+      "sha256": "3bed8677162cbad6ed54a1ea55e82b4635042b0e173bc6e7311dbdfa8487099c",
+      "size": 119659,
+      "normalized_sha256": "3bed8677162cbad6ed54a1ea55e82b4635042b0e173bc6e7311dbdfa8487099c"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1128,9 +1128,9 @@
       "normalized_sha256": "4809840ec812f643acf3015ffb169e9c410d7a7660ed8a59507d451ce0820f5c"
     },
     "src/main/agent-runner.ts": {
-      "sha256": "02bc497a545e14561a4ed5770b7f67ab4751db9ca4b11a708cd32c8de4ec5898",
-      "size": 25607,
-      "normalized_sha256": "02bc497a545e14561a4ed5770b7f67ab4751db9ca4b11a708cd32c8de4ec5898"
+      "sha256": "1827b173bf4ac28a02dc24fcf757631f1675055754ac901f7ad0b4ea28894914",
+      "size": 25663,
+      "normalized_sha256": "1827b173bf4ac28a02dc24fcf757631f1675055754ac901f7ad0b4ea28894914"
     },
     "src/main/agent-template-preparation.ts": {
       "sha256": "4efbe9a5a8c462f7e41d16a495bcf811a822ecc33d15b5ba80f789858534528b",
@@ -1403,9 +1403,9 @@
       "normalized_sha256": "1634d2704c4aba818e3fd4442ccc488823983f9965f9e6b91336501999aa48cf"
     },
     "src/main/errors.ts": {
-      "sha256": "249b2aeb6801896746532541e29c31af192403d73200b363c0f6a7c5d937a12b",
-      "size": 2478,
-      "normalized_sha256": "249b2aeb6801896746532541e29c31af192403d73200b363c0f6a7c5d937a12b"
+      "sha256": "20deb9cdaad9284274b20c44ed341535964995e3c81dfb281f79a9b062ac35f6",
+      "size": 4271,
+      "normalized_sha256": "20deb9cdaad9284274b20c44ed341535964995e3c81dfb281f79a9b062ac35f6"
     },
     "src/main/execution-limits.ts": {
       "sha256": "94afc84023532077e411268b7714923b3d688ddc237e571fc6dcba9200266b75",

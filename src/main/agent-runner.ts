@@ -18,6 +18,7 @@ import type { CoverPlacementSession } from "./cover-placement-session.js";
 import { CoverDiagnostics } from "./cover-diagnostics.js";
 import type { ShapeCoverProduction } from "./shape-cover-production.js";
 import type { HybridProductionSession } from "./hybrid-cover-session.js";
+import { preparationFailureMessage } from "./errors.js";
 
 interface RunnerDependencies {
   usesModel?: boolean;
@@ -248,7 +249,10 @@ export class AgentRunner {
             if (previewPath && this.dependencies.retainPreview) item.previewUrl = this.dependencies.retainPreview(run.id, item.id, previewPath);
             item.summary = `近似覆盖样片检查通过，${published ? "已发布到输出目录；位置已冻结，下次仍需检查样片" : "已提交导出；位置已冻结，下次仍需检查样片"}`;
           }
-          else item.taskId = await this.dependencies.enqueue(template, source, signal);
+          else {
+            audit[index].stage = "enqueue";
+            item.taskId = await this.dependencies.enqueue(template, source, signal);
+          }
           if (!placement) {
             item.summary = this.dependencies.prepared ? `${plan.summary} · 人工确认覆盖，等待动态预览批准` : sourceStickerTracks !== undefined ? `${plan.summary} · 保留原贴纸，仅补空缺角落和时段` : coverTracks !== undefined ? `${plan.summary} · ${coverTracks.length ? `已自动生成 ${coverTracks.length} 段贴纸覆盖轨迹` : "未识别到需覆盖的原贴纸"}` : plan.summary;
             if (version) item.summary += " · 主管样片检查通过，正在提交导出";
@@ -258,7 +262,7 @@ export class AgentRunner {
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           stopKnowledgeProgress(item, signal.aborted, "本版创作或样片准备未完成，未提交导出；请查看本条失败原因。");
-          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "素材分析或本地导出准备失败，请检查素材、字体和输出目录后重试。";
+          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : preparationFailureMessage(error, audit[index].stage);
         } finally {
           diagnostics?.record("lifecycle", item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "failed" : "ok",
             { reason: item.status === "cancelled" ? "cancelled" : item.status === "failed" ? "stage-failed" : "accepted" });
@@ -303,7 +307,7 @@ export class AgentRunner {
         } catch (error) {
           item.status = signal.aborted ? "cancelled" : "failed";
           stopKnowledgeProgress(item, signal.aborted, "本版样片已检查，但正式提交未完成；请查看本条失败原因。");
-          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : "主管样片检查通过，但正式导出提交失败，请重试。";
+          item.error = signal.aborted ? undefined : error instanceof ProviderError ? error.message : preparationFailureMessage(error, "enqueue");
         }
         audit[index].finished = Date.now(); this.dependencies.onChange();
       }

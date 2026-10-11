@@ -11,6 +11,7 @@ import { knowledgeFixture } from "./helpers/knowledge-session";
 import type { KnowledgeOutcome } from "../src/shared/source-sticker-knowledge-audit";
 import { PreviewReviewSession } from "../src/main/supervised-preview";
 import type { CoverPlacementSession } from "../src/main/cover-placement-session";
+import { JianjiError } from "../src/main/errors";
 
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
@@ -208,6 +209,37 @@ const automaticHeartStickers = () => [
 ];
 
 describe("agent run lifecycle", () => {
+  it.each([
+    [Object.assign(new Error("copyfile private-path private-key"), { code: "EPERM" }), "权限"],
+    [Object.assign(new Error("private-path private-key"), { code: "ENOSPC" }), "磁盘空间不足"],
+    [new JianjiError("private-path private-key", "font_missing", "resource", false), "字体"],
+    [new Error("private-path private-key"), "原始素材抽帧失败"],
+  ])("reports safe actionable frame preparation failures", async (error, message) => {
+    const frames = vi.fn().mockRejectedValue(error);
+    const provider = vi.fn().mockResolvedValue(plan("设计"));
+    const enqueue = vi.fn();
+    const runner = new AgentRunner({ frames, plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a.mp4")]);
+    await runner.settled();
+    expect(runner.snapshot()?.items[0]).toMatchObject({ status: "failed", error: expect.stringContaining(message) });
+    expect(runner.snapshot()?.items[0].error).not.toMatch(/private-path|private-key/);
+    expect(frames).toHaveBeenCalledOnce();
+    expect(provider).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
+  it("identifies enqueue failure without exposing raw details or retrying the model", async () => {
+    const provider = vi.fn().mockResolvedValue(plan("设计"));
+    const enqueue = vi.fn().mockRejectedValue(new Error("private-path private-key"));
+    const runner = new AgentRunner({ frames: async () => [], plan: provider, enqueue, stickerAssets, onChange: () => {} });
+    runner.start("project", "clean", "", [media("a.mp4")]);
+    await runner.settled();
+    expect(runner.snapshot()?.items[0]).toMatchObject({ status: "failed", error: expect.stringContaining("导出提交失败") });
+    expect(runner.snapshot()?.items[0].error).not.toMatch(/private-path|private-key/);
+    expect(provider).toHaveBeenCalledOnce();
+    expect(enqueue).toHaveBeenCalledOnce();
+  });
+
   it.each(["source", "720p", "1080p"] as const)("freezes text size for %s output before compiling nonstandard sources", async (resolutionMode) => {
     const productPrice = "一二三四五六七八九十一二\n春日新品";
     for (const size of [{ width: 1080, height: 1350 }, { width: 2560, height: 1080 }]) {

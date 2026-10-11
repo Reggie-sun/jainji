@@ -144,6 +144,43 @@ describe("export output directory lifecycle", () => {
     expect(await readdir(output)).toEqual([]);
   });
 
+  it.each(["EPERM", "EACCES"])("classifies denied output copies safely (%s)", async (code) => {
+    denyLinks();
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    vi.mocked(copyFile).mockImplementation(async (source, destination, mode) => {
+      if (mode === constants.COPYFILE_EXCL) throw Object.assign(new Error("private-path private-key"), { code });
+      await actual.copyFile(source, destination, mode);
+    });
+    const { queue, batch } = await fixture(async args => {
+      await writeFile(args.at(-1)!, "encoded");
+      return { code: 0, stdout: "", stderr: "" };
+    });
+    await queue.start(batch.id);
+    const task = queue.snapshot().batches[0].batch.tasks[0];
+    expect(task).toMatchObject({ status: "failed", errorCode: "permission_denied", errorMessage: expect.stringContaining("权限") });
+    expect(task.errorMessage).not.toMatch(/private-path|private-key/);
+    expect(task.outputArtifact).toBeUndefined();
+    expect(vi.mocked(copyFile).mock.calls.filter(call => call[2] === constants.COPYFILE_EXCL)).toHaveLength(1);
+  });
+
+  it("classifies the Windows EPERM copyfile message without leaking its paths", async () => {
+    denyLinks();
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    vi.mocked(copyFile).mockImplementation(async (source, destination, mode) => {
+      if (mode === constants.COPYFILE_EXCL) throw new Error("EPERM: operation not permitted, copyfile 'C:\\private\\source.mp4' -> 'C:\\private\\out.mp4'");
+      await actual.copyFile(source, destination, mode);
+    });
+    const { queue, batch } = await fixture(async args => {
+      await writeFile(args.at(-1)!, "encoded");
+      return { code: 0, stdout: "", stderr: "" };
+    });
+    await queue.start(batch.id);
+    const task = queue.snapshot().batches[0].batch.tasks[0];
+    expect(task).toMatchObject({ status: "failed", errorCode: "permission_denied" });
+    expect(task.errorMessage).not.toContain("private");
+    expect(task.outputArtifact).toBeUndefined();
+  });
+
   it("recreates a directory removed after enqueue before writing text and rendering", async () => {
     let calls = 0;
     const { output, media, queue, batch } = await fixture(async (args) => {
