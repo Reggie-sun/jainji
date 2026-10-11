@@ -23,17 +23,18 @@ import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
 import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { automationConfirmationRecoveryLock, hasAutomationConfirmationIntent, persistAutomationConfirmationIntent } from "./automation-upload.js";
-import { FrozenAccountSchema, QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type AcceptedEvidence, type QianchuanUploadResult } from "../shared/douyin-upload.js";
+import { FrozenAccountSchema, QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, UploadError, UploadIdentitySchema, QianchuanUploadResultSchema, ReadyEvidenceSchema, UploadAuthorizationSchema, uploadFailure, type QianchuanUploadConfig, type QianchuanUploadSelection, type DouyinUploadStatus, type UploadIdentity, type UploadAuthorization, type PageOwnership, type ReadyEvidence, type AcceptedEvidence, type QianchuanUploadResult, type QianchuanUploadTaskStatus } from "../shared/douyin-upload.js";
 
 export interface BatchSelectedFile { fileName: string; index: number; ready?: boolean; }
 export const MAX_UPLOAD_GROUP_SIZE = 9;
+export type UploadReadyProgress = (fileNames: string[]) => Promise<void>;
 export interface UploadBrowserPort {
   connect(task: UploadTaskRecord, signal: AbortSignal): Promise<void>;
   prepareFiles?(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
   open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }>;
   upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
   ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]>;
-  pollReady(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[] | undefined>;
+  pollReady(tasks: UploadTaskRecord[], signal: AbortSignal, onReady?: UploadReadyProgress): Promise<ReadyEvidence[] | undefined>;
   readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence>;
   confirmAutomation?(tasks: UploadTaskRecord[], ownership: PageOwnership, signal: AbortSignal): Promise<AcceptedEvidence[] | void>;
   stop(): Promise<void>;
@@ -159,10 +160,11 @@ export class DouyinUploadService {
       message: historical ? "这是此前制作的上传记录；自动上传只处理当前制作，旧记录不会自动续传。" : status.message,
       tasks: records.filter(task => !this.store.isClosed(task.authorization.pageBatchId) && task.result.state !== "DISCARDED").map(task => this.taskResult(task)), closedBatches };
   }
-  private taskResult(task: UploadTaskRecord): QianchuanUploadResult {
+  private taskResult(task: UploadTaskRecord): QianchuanUploadTaskStatus {
     let result = task.result;
     if (this.store.unavailable && this.store.hasMarker(result.upload_task_id) && result.state !== "WAITING_FOR_CONFIRMATION") result = { ...result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, acceptedEvidence: undefined, retryable: false, failure: unknown().failure };
-    return QianchuanUploadResultSchema.parse(result);
+    const parsed = QianchuanUploadResultSchema.parse(result);
+    return parsed.state === "WAITING_UPLOAD_COMPLETE" && this.rowReady.has(parsed.upload_task_id) ? { ...parsed, rowReady: true } : parsed;
   }
   private batchSummary(projectId: string, batch: UploadTaskRecord[]) {
     const first = batch[0]!;
@@ -908,6 +910,7 @@ export class DouyinUploadService {
     this.control = work; return work;
   }
   private requireTask(id: string): UploadTaskRecord { const task = this.store.task(id); if (!task) throw new Error("找不到千川上传任务。"); if (!this.inProduction(task.authorization.pageBatchId)) throw new Error("本任务不属于本次制作，历史上传不再处理。"); return task; }
+  private readonly rowReady = new Set<string>();
   private async save(task: UploadTaskRecord | UploadTaskRecord[]): Promise<void> {
     if (Array.isArray(task)) await this.store.saveTasks(task); else await this.store.saveTask(task);
     this.changed();
@@ -990,9 +993,21 @@ export class DouyinUploadService {
       } else {
         tasks = ids.map(id => this.requireTask(id));
         evidence = await this.bounded(async signal => {
+          const reportReady: UploadReadyProgress = async fileNames => {
+            signal.throwIfAborted();
+            if (new Set(fileNames).size !== fileNames.length) throw unknown();
+            const completed = fileNames.map(fileName => {
+              const task = tasks.find(task => task.result.file_name === fileName);
+              if (!task) throw unknown();
+              return task;
+            }).filter(task => !this.rowReady.has(task.result.upload_task_id));
+            if (!completed.length) return;
+            for (const task of completed) this.rowReady.add(task.result.upload_task_id);
+            this.changed();
+          };
           while (true) {
             signal.throwIfAborted();
-            const ready = await port!.pollReady(tasks, signal);
+            const ready = await port!.pollReady(tasks, signal, reportReady);
             if (ready) return ready;
             const next = this.pendingGroup(key);
             if (next.length) {
@@ -1000,7 +1015,7 @@ export class DouyinUploadService {
               ids.push(...next);
               for (const id of next) this.eligible.delete(id);
               await this.prepareGroup(ids, start, signal, async () => {
-                const ready = await port!.pollReady(tasks, signal);
+                const ready = await port!.pollReady(tasks, signal, reportReady);
                 if (ready && tasks.some(task => !savedReady.has(task.result.upload_task_id))) {
                   await this.saveReady(tasks, ready, signal);
                   for (const task of tasks) savedReady.add(task.result.upload_task_id);
@@ -1024,6 +1039,7 @@ export class DouyinUploadService {
       await this.saveReady(tasks, evidence, controller.signal);
       for (const task of tasks) savedReady.add(task.result.upload_task_id);
     } catch (error) {
+      for (const id of ids) this.rowReady.delete(id);
       this.pauseAccount(first);
       const failed: UploadTaskRecord[] = [];
       for (const id of ids) {
@@ -1036,7 +1052,7 @@ export class DouyinUploadService {
       if (!this.store.unavailable && failed.length) await this.save(failed);
       if (this.store.unavailable) { this.initializationFailure = "上传存储失败；保留屏障，上传结果按未知处理。"; this.changed(); }
       if (port) await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; }); this.sessions.delete(key);
-    } finally { if (port && this.active?.port === port) this.active = undefined; }
+    } finally { for (const id of ids) this.rowReady.delete(id); if (port && this.active?.port === port) this.active = undefined; this.changed(); }
   }
   private async saveReady(tasks: UploadTaskRecord[], evidence: ReadyEvidence[], signal: AbortSignal): Promise<void> {
     if (evidence.length !== tasks.length) throw unknown();

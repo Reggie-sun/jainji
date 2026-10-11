@@ -3,7 +3,7 @@ import type { ElementHandle, FileChooser, Frame, Locator, Page } from "playwrigh
 import { accountPageUrl } from "../shared/qianchuan-account.js";
 import { UploadError, uploadFailure, type AcceptedEvidence, type PageOwnership, type ReadyEvidence } from "../shared/douyin-upload.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
-import { MAX_UPLOAD_GROUP_SIZE, type BatchSelectedFile } from "./douyin-upload-service.js";
+import { MAX_UPLOAD_GROUP_SIZE, type BatchSelectedFile, type UploadReadyProgress } from "./douyin-upload-service.js";
 import { createQianchuanConfirmationReceiptObserver } from "./qianchuan-confirmation-receipt.js";
 
 /** Finite source-owned selectors; no browser scripts or selectors are supplied by IPC. */
@@ -44,6 +44,7 @@ export class QianchuanPageSession {
   private ownership?: PageOwnership;
   private selected: BatchSelectedFile[] = [];
   private pending = new Set<string>();
+  private observedReady = new Set<string>();
   private identityEstablished = false;
   private upgradeTipDismissed = false;
   private prepared?: { taskIds: string[]; index: number };
@@ -272,7 +273,7 @@ export class QianchuanPageSession {
     this.prepared = { taskIds: tasks.map(value => value.result.upload_task_id), index: selected.length + 1 };
     return { pageOwnership: this.ownership!, selectedIndex: this.prepared.index };
   }
-  private async observe(task: UploadTaskRecord, signal: AbortSignal): Promise<{ selected: number; capacity: number; ready: boolean; missing: number }> {
+  private async observe(task: UploadTaskRecord, signal: AbortSignal): Promise<{ selected: number; capacity: number; ready: boolean; missing: number; readyFiles: string[] }> {
     await this.guard(task, signal);
     // The list can insert/reorder rows during processing. Read one finite DOM snapshot
     // so a filename and its success markers always belong to the same row.
@@ -300,10 +301,10 @@ export class QianchuanPageSession {
       if (!row.valid || ["failed", "cancelled", "rejected"].includes(row.state ?? "") || !row.name || observed.has(row.name) || !this.selected.some(file => file.fileName === row.name)) throw changed();
       observed.set(row.name, row.ready);
     }
-    for (const file of previous) if (!observed.has(file.fileName) || (file.ready === true && !observed.get(file.fileName))) throw changed();
+    for (const file of previous) if (!observed.has(file.fileName) || ((file.ready === true || this.observedReady.has(file.fileName)) && !observed.get(file.fileName))) throw changed();
     const confirm = await this.unique(this.modal!.getByRole("button", { name: "确定", exact: true }), signal);
     const complete = size === this.selected.length && parsed.selected === this.selected.length && [...observed.values()].every(Boolean);
-    return { ...parsed, missing: this.selected.length - observed.size, ready: complete && await confirm.isEnabled() && !await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count() };
+    return { ...parsed, missing: this.selected.length - observed.size, readyFiles: [...observed].filter(([, ready]) => ready).map(([name]) => name), ready: complete && await confirm.isEnabled() && !await this.modal!.getByText("取消上传", { exact: true }).filter({ visible: true }).count() };
   }
   private async uploadEntrance(task: UploadTaskRecord, signal: AbortSignal): Promise<Locator> {
     const deadline = Date.now() + Math.min(task.config.timeouts.action, task.config.timeouts.fileInput);
@@ -401,10 +402,17 @@ export class QianchuanPageSession {
     return { advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId, fileName: task.result.file_name,
       selectedCount, observedAt: new Date().toISOString(), pageOwnership: this.ownership! };
   }
-  async pollReady(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[] | undefined> {
+  async pollReady(tasks: UploadTaskRecord[], signal: AbortSignal, onReady?: UploadReadyProgress): Promise<ReadyEvidence[] | undefined> {
     const task = this.group(tasks, 250);
     if (tasks.some(value => !this.selected.some(file => file.fileName === value.result.file_name)) || this.ownership?.pageBatchId !== task.authorization.pageBatchId) throw changed();
     const observed = await this.observe(task, signal);
+    if (onReady && !observed.missing) {
+      const readyFiles = tasks.filter(value => observed.readyFiles.includes(value.result.file_name)).map(value => value.result.file_name);
+      if (readyFiles.length) {
+        await onReady(readyFiles); this.check(signal);
+        for (const name of readyFiles) this.observedReady.add(name);
+      }
+    }
     if (observed.ready) { this.pending.clear(); return tasks.map(value => this.evidence(value, observed.selected)); }
     return undefined;
   }

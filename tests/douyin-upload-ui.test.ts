@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { QianchuanUploadConfigSchema, type QianchuanUploadResult, type QianchuanClosedBatchSummary } from "../src/shared/douyin-upload";
+import { QianchuanUploadConfigSchema, QianchuanUploadResultSchema, type QianchuanUploadResult, type QianchuanClosedBatchSummary } from "../src/shared/douyin-upload";
 import { AppendProductionDialog } from "../src/renderer/AppendProductionDialog";
 import { DouyinUploadControls } from "../src/renderer/DouyinUploadControls";
 import { DouyinUploadPanel } from "../src/renderer/DouyinUploadPanel";
@@ -121,6 +121,17 @@ it("counts only current-project persisted outcomes and never calls unknown resul
   expect(html).toContain("已上传 1 / 4 条"); expect(html).toContain("待上传 1 条"); expect(html).toContain("处理中 1 条"); expect(html).toContain("需处理 1 条");
   expect(html).toContain("已保存防重传记录；结果未知，禁止重新上传，请核查原页面。");
   expect(html).not.toContain("其他项目.mp4");
+});
+it("counts live completed rows without claiming a persisted READY result or enabling confirmation", () => {
+  const live = { ...task({ state: "WAITING_UPLOAD_COMPLETE" }), rowReady: true };
+  const html = panel(live);
+  expect(html).toContain("已上传 1 / 1 条"); expect(html).toContain("处理中 0 条"); expect(html).toContain("需处理 0 条");
+  expect(html).toContain("已上传，等待整批处理");
+  expect(html).not.toContain("已保存上传记录；"); expect(html).not.toContain("上传记录已保存");
+  expect(html).not.toContain("只读核查页面"); expect(html).not.toContain("安全继续");
+  expect(QianchuanUploadResultSchema.safeParse(live).success).toBe(false);
+  const lost = panel({ ...live, state: "NEEDS_HUMAN" });
+  expect(lost).toContain("已上传 0 / 1 条"); expect(lost).toContain("结果未知，禁止重新上传");
 });
 it("allows safe continuation only before selection and no actions on duplicate aliases", () => {
   expect(panel(task({ state: "CANCELLED", upload_outcome: "NOT_SELECTED" }))).toContain("安全继续");

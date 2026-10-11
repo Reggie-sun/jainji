@@ -2,7 +2,7 @@ import { guardedTransport } from "./local-cdp-transport.js";
 import { browserWebSocketForEndpoint } from "./qianchuan-browser-discovery.js";
 import { chromium, type Browser, type Page, type ElementHandle } from "playwright-core";
 import { isLoopbackUrl, uploadFailure, type PageOwnership, type ReadyEvidence, type AcceptedEvidence, type QianchuanUploadConfig } from "../shared/douyin-upload.js";
-import { MAX_UPLOAD_GROUP_SIZE, type UploadBrowserPort, type BatchSelectedFile } from "./douyin-upload-service.js";
+import { MAX_UPLOAD_GROUP_SIZE, type UploadBrowserPort, type BatchSelectedFile, type UploadReadyProgress } from "./douyin-upload-service.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { QianchuanPageSession, PRODUCTION_QIANCHUAN_CONTRACT, qianchuanReadiness, type QianchuanPageContract } from "./qianchuan-page-contract.js";
 import { verifyBrowserEgress } from "./qianchuan-egress-browser.js";
@@ -117,7 +117,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
   }
   async upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> { await this.action(signal, () => this.session!.upload(tasks, signal)); }
   async ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]> { return this.action(signal, () => this.session!.ready(tasks, signal)); }
-  async pollReady(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[] | undefined> { return this.action(signal, () => this.session!.pollReady(tasks, signal)); }
+  async pollReady(tasks: UploadTaskRecord[], signal: AbortSignal, onReady?: UploadReadyProgress): Promise<ReadyEvidence[] | undefined> { return this.action(signal, () => this.session!.pollReady(tasks, signal, onReady)); }
   async confirmAutomation(tasks: UploadTaskRecord[], ownership: PageOwnership, signal: AbortSignal): Promise<AcceptedEvidence[]> {
     return this.action(signal, async () => {
       const page = this.page, session = this.session;

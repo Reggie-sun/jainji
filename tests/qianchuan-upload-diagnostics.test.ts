@@ -52,6 +52,49 @@ async function zeroConfirmation(expectedSelections: number) {
   });
 }
 
+describe("per-file upload progress", () => {
+  async function processingGroup() {
+    const values = await Promise.all([task(), task()]);
+    const first = values[0]!;
+    first.authorization.expectedCount = 2;
+    for (const value of values) { value.authorization = structuredClone(first.authorization); value.input.project_id = first.input.project_id; value.config = structuredClone(first.config); }
+    fixture.setControls({ pendingName: values[1]!.result.file_name, processingDelayMs: 1 });
+    const prepared = await session(first);
+    await prepared.port.prepare(values, [], prepared.targetId, signal);
+    for (const value of values) value.result.upload_outcome = "MAY_HAVE_UPLOADED";
+    await prepared.port.upload(values, signal);
+    await vi.waitFor(async () => expect(await prepared.page.locator('.oc-upload-table-name-progress-success').count()).toBe(1));
+    return { values, prepared };
+  }
+
+  it("reports a completed row before the final confirmation gate is ready, even after reordering", async () => {
+    const { values, prepared } = await processingGroup();
+    fixture.setControls({ reorderRows: true });
+    await vi.waitFor(async () => expect(await prepared.page.locator('.oc-create-upload-table-wrapper tbody tr').first().textContent()).toContain(values[1]!.result.file_name));
+    const progress = vi.fn(async () => {});
+    expect(await prepared.port.pollReady(values, signal, progress)).toBeUndefined();
+    expect(progress).toHaveBeenCalledWith([values[0]!.result.file_name]);
+    expect(await prepared.page.getByRole("button", { name: "确定", exact: true }).isEnabled()).toBe(false);
+    fixture.setControls({ pendingName: "" });
+    await vi.waitFor(async () => expect(await prepared.page.getByRole("button", { name: "确定", exact: true }).isEnabled()).toBe(true));
+    expect(await prepared.port.pollReady(values, signal)).toHaveLength(2);
+    await zeroConfirmation(1);
+  });
+
+  it.each(["unknown-file", "regressed-row"] as const)("refuses %s before publishing further progress", async variant => {
+    const { values, prepared } = await processingGroup();
+    const progress = vi.fn(async () => {});
+    if (variant === "regressed-row") await prepared.port.pollReady(values, signal, progress);
+    fixture.setControls(variant === "unknown-file" ? { unknownName: values[0]!.result.file_name } : { pendingName: values[0]!.result.file_name });
+    if (variant === "unknown-file") await vi.waitFor(async () => expect(await prepared.page.locator('.oc-create-upload-table-wrapper tbody').textContent()).toContain("unknown-file.mp4"));
+    else await vi.waitFor(async () => expect(await prepared.page.locator('.oc-create-upload-table-wrapper tbody tr').filter({ hasText: values[0]!.result.file_name }).locator('.oc-upload-table-name-progress-success').count()).toBe(0));
+    const calls = progress.mock.calls.length;
+    await expect(prepared.port.pollReady(values, signal, progress)).rejects.toMatchObject({ failure: { code: "PAGE_CONTRACT_CHANGED" } });
+    expect(progress).toHaveBeenCalledTimes(calls);
+    await zeroConfirmation(1);
+  });
+});
+
 describe("finite upload blocker diagnostics", () => {
   it("refuses an unrecognized click control before preparing a file selection", async () => {
     const value = await task(), prepared = await session(value);

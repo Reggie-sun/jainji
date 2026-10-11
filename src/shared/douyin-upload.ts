@@ -73,7 +73,7 @@ export interface DouyinUploadStatus {
   config: Omit<QianchuanUploadConfig, "accountConfigPath">;
   configSelected: boolean;
   accounts: import("./qianchuan-account.js").QianchuanAccountSummary[];
-  ready: boolean; message: string; tasks: QianchuanUploadResult[]; legacyTasks: UploadResult[];
+  ready: boolean; message: string; tasks: QianchuanUploadTaskStatus[]; legacyTasks: UploadResult[];
   batches?: QianchuanUploadBatchSummary[];
   historicalBatches?: QianchuanUploadBatchSummary[];
   closedBatches?: QianchuanClosedBatchSummary[];
@@ -146,3 +146,5 @@ export const QianchuanUploadResultSchema = UploadIdentitySchema.extend({
     value.retryable && (value.upload_outcome !== "NOT_SELECTED" || value.state === "DISCARDED")) ctx.addIssue({ code: "custom", message: "非法千川上传结果组合。" });
 });
 export type QianchuanUploadResult = z.infer<typeof QianchuanUploadResultSchema>;
+/** Live page observation only; never persisted as READY evidence or confirmation authority. */
+export type QianchuanUploadTaskStatus = QianchuanUploadResult & { rowReady?: boolean };

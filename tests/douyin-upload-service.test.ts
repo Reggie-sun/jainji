@@ -959,6 +959,70 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks().every(task => task.result.readyEvidence?.selectedCount === 3)).toBe(true);
   });
 
+  it("publishes each completed row while the rest of the upload list is still processing", async () => {
+    const f = await groupedFixture();
+    let partial = false, completed = false, progressSaves = 0;
+    const save = f.store.saveTasks.bind(f.store);
+    f.store.saveTasks = async tasks => {
+      if (tasks.length === 2 && tasks.every(task => task.result.upload_outcome === "READY")) progressSaves++;
+      await save(tasks);
+    };
+    f.port.pollReady = async (tasks, signal, onReady) => {
+      if (completed) return f.port.ready(tasks, signal);
+      if (partial) await onReady?.(tasks.slice(0, 2).map(task => task.result.file_name));
+      return undefined;
+    };
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]), { timeout: 3000 });
+      partial = true;
+      await vi.waitFor(() => expect(f.service.status(f.batch.projectId).tasks.filter(task => task.rowReady)).toHaveLength(2), { timeout: 3000 });
+      expect(f.service.capturedStatus(f.batch.projectId, f.batch.identities.map(identity => identity.export_task_id)).tasks.filter(task => task.rowReady)).toHaveLength(2);
+      expect(f.store.tasks().filter(task => task.result.state === "WAITING_UPLOAD_COMPLETE")).toHaveLength(21);
+      expect(f.store.tasks().some(task => task.result.upload_outcome === "READY" || task.result.readyEvidence)).toBe(false);
+      expect(f.store.tasks().some(task => "rowReady" in task.result)).toBe(false);
+      await new Promise(resolve => setTimeout(resolve, 600));
+      expect(progressSaves).toBe(0);
+      expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]);
+    } finally { completed = true; await running; }
+    expect(f.store.tasks().every(task => task.result.upload_outcome === "READY")).toBe(true);
+    expect(f.service.status(f.batch.projectId).tasks.some(task => task.rowReady)).toBe(false);
+  }, 15_000);
+
+  it.each(["file", "duplicate"] as const)("rejects live progress with invalid %s binding", async mismatch => {
+    const f = await groupedFixture();
+    f.port.pollReady = async (tasks, signal, onReady) => {
+      const files = [mismatch === "file" ? "foreign-file.mp4" : tasks[0]!.result.file_name];
+      if (mismatch === "duplicate") files.push(files[0]!);
+      await onReady?.(files);
+      return f.port.ready(tasks, signal);
+    };
+    await f.service.runPending();
+    expect(f.store.tasks().some(task => task.result.upload_outcome === "READY")).toBe(false);
+    expect(f.groups.map(group => group.length)).toEqual([9]);
+    expect(f.store.tasks().filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(9);
+  });
+
+  it("revokes live completion observations after losing the original page without saving READY", async () => {
+    const f = await groupedFixture();
+    let lost = false;
+    f.port.pollReady = async (tasks, signal, onReady) => {
+      if (lost) throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "Original modal disappeared", "Inspect original page", true);
+      await onReady?.(tasks.slice(0, 2).map(task => task.result.file_name));
+      return undefined;
+    };
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(f.groups.map(group => group.length)).toEqual([9, 9, 3]));
+      await vi.waitFor(() => expect(f.service.status(f.batch.projectId).tasks.filter(task => task.rowReady)).toHaveLength(2));
+      lost = true;
+      await running;
+      expect(f.service.status(f.batch.projectId).tasks.some(task => task.rowReady)).toBe(false);
+      expect(f.store.tasks().every(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED" && !task.result.readyEvidence)).toBe(true);
+      expect(f.store.tasks().every(task => f.store.hasMarker(task.result.upload_task_id))).toBe(true);
+    } finally { await f.service.stop(); await running; }
+  });
+
   it("starts with one available output and streams up to nine without stopping at cumulative ten", async () => {
     const f = await fixture(); await f.authorize();
     const batch = await f.createBatch(Array.from({ length: 21 }, (_, index) => `streamed ${index}`)); await f.register(batch);

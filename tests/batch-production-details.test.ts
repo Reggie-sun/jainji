@@ -13,6 +13,24 @@ const render = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMar
 const renderUploads = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMarkup(createElement(BatchUploadList, { detail: makeDetail(patch) }));
 
 describe("batch works presentation", () => {
+  it("shares live row counts across works and upload details while keeping active tasks protected", () => {
+    const job = { ...makeDetail().job, accountProduct: "蝴蝶贴" as const, requestedCount: 4, actualCount: 4 };
+    const tasks = [
+      { upload_task_id: "live", file_name: "live.mp4", state: "WAITING_UPLOAD_COMPLETE", upload_outcome: "MAY_HAVE_UPLOADED", rowReady: true },
+      { upload_task_id: "processing", file_name: "processing.mp4", state: "WAITING_UPLOAD_COMPLETE", upload_outcome: "MAY_HAVE_UPLOADED" },
+      { upload_task_id: "pending", file_name: "pending.mp4", state: "PENDING", upload_outcome: "NOT_SELECTED" },
+      { upload_task_id: "unknown", file_name: "unknown.mp4", state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", rowReady: true },
+    ] as NonNullable<BatchProductionDetail["upload"]>["tasks"];
+    const detail = makeDetail({ job, upload: { message: "live observation", tasks } });
+    for (const html of [render(detail), renderUploads(detail)]) {
+      expect(html).toContain("已上传 1 / 4 条"); expect(html).toContain("待上传 1 条");
+      expect(html).toContain("处理中 1 条"); expect(html).toContain("结果未知 1 条");
+    }
+    const html = renderToStaticMarkup(createElement(BatchUploadList, { detail, onResumeUpload: () => undefined }));
+    expect(html).toContain("已上传，等待整批处理");
+    expect(html).toMatch(/disabled="">安全继续<\/button>/);
+    expect(html.split("结果未知，禁止重新上传，请核查原页面。")).toHaveLength(2);
+  });
   it("offers bounded resume for unselected tasks and only read-only checks for uncertain uploads", () => {
     const detail = { runId: "run", job: { id: "job", name: "蝴蝶贴", actualCount: 2, requestedCount: 2, accountProduct: "蝴蝶贴" }, items: [], tasks: [],
       upload: { tasks: [
