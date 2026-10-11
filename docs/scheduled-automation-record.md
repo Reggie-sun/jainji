@@ -105,3 +105,21 @@ Chrome MCP 使用隔离页面验证了保存清理+制作+上传完整范围、�
 旧实现的四项行为回归失败，分别证明没有早期上传、20 条整批交付、普通制作失败阻断成功项，以及上传失败前仍等待制作。真实 service/store 加 fake browser port 的集成将同一原导出批次的 20 条分成 9/9/2，全部 ACCEPTED 且每条只选一次；这不是本轮真实平台接受证明。父线程随后用真实 ExportQueue/JobStore 延迟完成记录保存，复现早期上传读到 verifying 的竞态；修复增加原持久写入屏障，并共用原 run/job 的取消 signal。新增回归覆盖落盘前禁止上传及落盘等待期间取消，初始全量回执不作为修正后的完成证据。
 
 项目 Harness、风险判断、独立报告、AOCI 与最终 completion 证据保存在本地 `.agent/harness/runs/20261012-incremental-upload/`，以修正后当前字节的实际回执为准；tests/docs 为 observe。没有专用 session-record Skill，此处主动保存实现检查点。只读检查发现用户原任务成功 257 条、失败 33 条，旧实现因此未启动上传；该历史 occurrence 保留，不自动重跑。Windows、新流程的平台端到端和人工整片观看尚未评估。
+
+## Incremental Upload Live Verification
+
+2026-10-12 05:50–05:54（Asia/Hong_Kong），按用户“真实测试”要求，通过原 `make frontend` 应用的可信 preload IPC 新建并启用 `真实增量上传测试-20261012`，沿用已保存“氨糖膏”模板，仅制作并上传 10 条新视频。目标账号 `1876036793517065`、计划 `1876052012647452`；保留原手填文字和 local-random / real-artwork 设置，没有清理、付费模型调用或历史任务重放。原 `test2` 的顶层 `upload:false`，其原设置未修改；模板内选择计划不代替此总开关。
+
+测试任务 `6014dfb4-65da-441f-b455-294d9b7318f9`，当日 occurrence `c64f73e1-393e-415f-9b45-1723157de9f6`，原制作 run `161ac234-e7cd-4c01-b7b4-1a0bfbc316cc`，job `9b274ff5-7fb6-44e1-a382-1d38932ad349`，export batch `face1888-723c-4d07-8faf-0f3efb013e1b`。原定时器在 05:50:00.541 触发，10 条导出全部 completed，失败 0；制作在 05:52:04.915 结束。独立读取全部 10 个成片字节，SHA、文件名及大小与本轮原上传账本、selection fence 和 ArtifactVerifier 记录一致，每条仅一个选文件 attempt。
+
+05:51:26.907 观察到制作完成 4/10 时首条已进入上传队列，连接和准入准备与制作重叠。但浏览器首次连接超时，原服务仅在选文件前重试连接；首个 selection fence 为 05:52:05.646，比制作结束晚 731 ms。本轮没有证明实际文件传输与制作重叠，不能据此宣称平台吞吐或总耗时改善。
+
+首条 `竞品详情-抖音电商罗盘 (22)_edited.mp4` 获得原双层确认及绑定/添加回执，账本为 ACCEPTED，平台 video ID `v03c8eg10000db60a7vog65kpddl34fg`；接受证据 observedAt 为 05:53:08.677，绑定上述账号、计划、文件和 attempt 1。成片 SHA `0ca47c3d37b6cd1bb27d02b80e6eeddeb2a303d6e6a6ccf8b3739fe538e15f33`，请求摘要 `d53719c9def0a6038ae6597fd98e396eb1869a663f82e1c6cfcb4e783bbfe370`，响应摘要 `621cd24be3c3c9c25c6a426c9c3c8753609c4afaed188af8b1cd5b833fa0fab1`。该证据证明平台接收这一条，不证明审核或实际投放。
+
+随后原上传服务以 pageBatch `cec8f090-ef6c-42a1-bdf4-188e9c8cac7b` 处理其余 9 条；全部进入一次性确认屏障后，确认或回执无法核实。05:54:04.687 occurrence 为 BLOCKED，9 条保留 NEEDS_HUMAN / MAY_HAVE_UPLOADED、retryable false，没有 acceptedEvidence。原页面后来显示计划素材数由 228 增至 238 且部分新文件名可见，只作“可能已上传”的旁证；弹窗消失、总数变化或行缺席不能补签 ACCEPTED。未保留该组失败时的完整网络请求/响应，现有通用错误不能确定是点击、文档变化还是回执解析失败，不猜测根因或放宽准入。
+
+测试任务已通过原配置接口暂停。06:00:20 再读原应用，任务仍 disabled / BLOCKED，制作 10/10，上传 1 ACCEPTED + 9 MAY_HAVE_UPLOADED，当时没有自动化任务正在执行；没有重传、再次确认或改写这 9 条，也没有重放此前 257 条历史成片。本轮真实端到端验收为部分失败，批量确认/回执问题仍待调查，Windows 和人工整片观看未评估。
+
+运行主包 SHA `ea685962202563ed6765a390195fe47e1de8ad59fd60da391e28d2ee7fbcceea`，Git HEAD `5045f0dbecdfb304391b916067e38c8b22e9408d`；当时 upload store / shared schema 含另一会话未提交改动，精确源码摘要保存在 `runtime-start.json`，本证据不能冒充纯提交快照验收。所有本机原始证据位于 `.agent/harness/runs/20261012-real-stream-upload/`，包括 `live-observations.jsonl`、`ledger-current.json`、`paused.json`、`final-current.json` 与 `parent-proof.json`。
+
+受管 Kimi deep 的只读证据复核 invocation `44043580-67e2-4517-b39c-1706954de79d`，seal `8efad6d4acb7412f216d5717402a3ac9f7ea601b3867bdd4d673206c899a5951`，收到 HTTP 403，canonical classification 为 CREDENTIAL_OR_ENTITLEMENT_REJECTED；实际读取为 0，没有复核报告，不计作独立验收，也不重试额度/权限拒绝。父线程独立核对上述原应用状态、原账本绑定和实际成片 SHA。没有业务源码修改或专用 session-record Skill，本节主动保存实测失败检查点；record 为 AOCI observe，不维护另一会话的索引资产。
