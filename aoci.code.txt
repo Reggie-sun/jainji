@@ -233,7 +233,7 @@ remote-worker.ts[EN7T]: F:启动远端SSH worker或固定账号聚焦入口 | R:
 App.tsx[AU7L]: F:协调项目草稿与制作作品千川自动化页面 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/TemplatePanel.tsx,code:src/renderer/QianchuanWorkspace.tsx,code:src/renderer/AutomationWorkspace.tsx | A:四阶段视图；来源返回恢复滚动焦点；原桥启动重试；输出阻断定位；项目切换恢复原草稿 | S:切页不保存批准或取消；运行输入已冻结；未保存覆盖禁启动；上传选择不随项目保存；界面不授main权限
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
-ConnectionPanel.tsx[AB7T]: F:初始选择ChatGPT或API连接管理入口 | R:code:src/renderer/App.tsx | A:连接导航界面 | S:不持有凭据
+ConnectionPanel.tsx[EU7T]: F:管理ChatGPT登录API连接及角色模型入口 | R:code:src/renderer/App.tsx,code:src/renderer/SavedConnectionsPanel.tsx | A:居中设置页；登录与空表单窄栏；标签切换；沿原回调管理连接 | S:不持有已保存凭据；打开角色选择不请求模型或保存连接
 CornerDecorationPicker.tsx[EU6T]: F:编辑当前模式角落选材及逐素材边框 | R:code:src/renderer/FrameDecorationPicker.tsx,code:src/shared/decorations.ts | A:传素材及保存回调；自动随机显示说明；手动角落独立编辑 | S:不改手填文字，不把边框当四角贴纸
 CoverReviewBox.tsx[AB7T]: F:绘制assisted覆盖审阅候选框与交互 | R:code:src/renderer/CoverReviewPanel.tsx | A:人工框交互界面 | S:修改草稿后旧批准失效
 CoverReviewPanel.tsx[AU7M]: F:展示覆盖准备进度及冻结预览并收集确认 | R:code:src/main/cover-review-controller.ts,code:src/shared/manual-cover-review.ts,code:src/renderer/CoverReviewProgress.tsx | A:手动快照生成预览；旧assisted编辑；抽帧与版本进度和停止 | S:逐版查看后批准；预览不传上传信息；框外完整性未证明
@@ -248,7 +248,7 @@ ModelPicker.tsx[AB7T]: F:选择创作模型连接型号与推理档位 | R:code:
 ModelSettingsDrawer.tsx[AB7T]: F:汇总创作识别复核三种角色设置 | R:code:src/renderer/VisionConnectionPanel.tsx | A:角色设置面板 | S:角色连接独立
 PriceStylePicker.tsx[AU7T]: F:预览并选择手动文字花字外观 | R:code:src/shared/price-styles.ts,code:src/shared/decorations.ts | A:按样式注册表显示数量与描边投影 | S:只改外观且保留输入原文
 ResultsPanel.tsx[EU7T]: F:优先展示本轮导出进度播放异常重试追加及相关上传入口 | R:code:src/renderer/App.tsx,code:src/renderer/AppendProductionDialog.tsx | A:本轮taskIds过滤；冻结coverSummary；Hybrid错误优先；追加读源批次；上传配置另页 | S:导出不证明旧贴纸全部处理；历史不猜原因模型；上传失败不改导出计数；重试冻结方案；播放仍需验收
-SavedConnectionsPanel.tsx[AB7T]: F:编辑选择删除API连接及CC Switch导入界面 | R:code:src/renderer/App.tsx | A:连接管理界面 | S:不显示已保存密钥
+SavedConnectionsPanel.tsx[EU7T]: F:编辑选择删除API连接及导入CC Switch配置 | R:code:src/renderer/ConnectionPanel.tsx | A:宽屏连接双列窄屏单列；原保存协议及认证表单；删除确认跟随对应卡片 | S:已有Key不回显；留空保留；取消或删除正在编辑项清临时Key
 SourceStickerKnowledgeDetails.tsx[AB7T]: F:展示源贴纸知识识别复核进度和风险细节 | R:code:src/shared/source-sticker-knowledge.ts | A:只读进度呈现 | S:不把风险提示变成批准
 StickerLibraryPanel.tsx[AB7T]: F:显示上传贴纸库并触发导入移除 | R:code:src/main/uploaded-stickers.ts | A:贴纸管理界面 | S:只引用已校验导入素材
 TemplatePanel.tsx[EU6T]: F:分别呈现包装覆盖及输出确认三个制作子页 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/DisplayTextEditor.tsx,code:src/renderer/OutputConfirmation.tsx | A:前置模式；整批文字时段逐素材位置；Agent brief；隐藏保留编辑器；下一步导航 | S:文字只手填；不改运行冻结输入；assisted批准仍由原覆盖owner执行

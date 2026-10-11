@@ -43,7 +43,7 @@ export function SavedConnectionsPanel({ library, locked, onSave, onSelect, onRem
     <h3>我的 API 连接</h3><p>默认使用团队的 Qwen 视觉模型，首次填写分配给你的 API Key。重启后自动恢复上次使用的连接。</p>
     {library.error && <p role="alert">{library.error}</p>}
     {library.profiles.length === 0 && <p>还没有保存的连接，添加一个即可开始。</p>}
-    {library.profiles.map((profile) => <div className="provider-choice" key={profile.id}>
+    {library.profiles.length > 0 && <div className="saved-connections-grid">{library.profiles.map((profile) => <div className="provider-choice" key={profile.id}>
       <strong>{profile.name}{library.selected === profile.id && <small>当前使用</small>}</strong>
       <small>{profile.model} · {profile.protocol}<br />{profile.baseUrl}</small>
       <div className="connection-actions">
@@ -52,7 +52,7 @@ export function SavedConnectionsPanel({ library, locked, onSave, onSelect, onRem
         <button className="text-button muted" disabled={locked} onClick={() => setDeleting(profile.id)}>删除</button>
       </div>
       {deleting === profile.id && <div role="alert"><p>删除“{profile.name}”？{library.selected === profile.id ? "当前连接也会断开。" : ""}</p><button className="text-button" disabled={locked} onClick={() => void onRemove(profile.id).then((ok) => { if (ok) { setDeleting(undefined); if (editing !== "new" && editing?.id === profile.id) { setEditing(undefined); setKey(""); } } })}>确认删除</button><button className="text-button" disabled={locked} onClick={() => setDeleting(undefined)}>取消</button></div>}
-    </div>)}
+    </div>)}</div>}
     <button className="button secondary wide" disabled={locked || Boolean(library.error)} onClick={() => edit("new")}>添加 API 连接</button>
     {editing && <form className="manual-connection" onSubmit={(event) => void save(event)}>
       <h3>{editing === "new" ? "添加连接" : "编辑连接"}</h3>

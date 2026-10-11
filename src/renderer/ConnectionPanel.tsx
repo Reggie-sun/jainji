@@ -4,23 +4,29 @@ import type { ConnectionLibrary, SaveConnection } from "../shared/connections";
 import { SavedConnectionsPanel } from "./SavedConnectionsPanel";
 import { Heading, Icon } from "./ui";
 
-export function ConnectionPanel({ connection, chatgpt, library, busy, onSave, onSelect, onRemove, onTest, onDisconnect, onContinue, onLogin, onRefreshLogin, onCancelLogin, onImport }: {
+export function ConnectionPanel({ connection, chatgpt, library, busy, onSave, onSelect, onRemove, onTest, onDisconnect, onContinue, onLogin, onRefreshLogin, onCancelLogin, onImport, onChooseModels }: {
   connection: ConnectionStatus; busy: boolean; chatgpt?: ChatGPTStatus; library: ConnectionLibrary;
   onSave(input: SaveConnection): Promise<boolean>;
   onSelect(id: string): Promise<boolean>; onRemove(id: string): Promise<boolean>;
   onTest(): void; onDisconnect(): void; onContinue(): void; onLogin(): void; onRefreshLogin(): void; onCancelLogin(): void;
   onImport(id: string, appType: "claude" | "codex"): Promise<boolean>;
+  onChooseModels?(): void;
 }) {
   const [mode, setMode] = useState(connection.source === "chatgpt" || library.selected === "chatgpt" ? "chatgpt" : "api");
   const loginPending = chatgpt?.status === "logging-in" || chatgpt?.status === "starting";
   const locked = busy || loginPending;
-  return <>
-    <Heading title="连接模型">登录 ChatGPT 账号，或添加 API 连接。模型与推理档位之后可在左侧「模型」中随时调整。</Heading>
-    <div className="connection-layout">
+  return <section className="model-settings-page">
+    <div className="model-settings-heading">
+      <Heading title="模型设置">管理 ChatGPT 登录和 API 连接，在角色模型中选择创作、识别与复核使用的模型。</Heading>
+      {onChooseModels && <button type="button" className="button secondary compact" onClick={onChooseModels}>快速选择角色模型</button>}
+    </div>
+    <div className={"connection-layout" + (mode === "chatgpt" || !library.profiles.length ? " connection-layout-compact" : "")}>
       <div className="connection-form card">
-        <div className="form-title"><div className="icon-tile"><Icon name="key" /></div><div><h2>模型连接</h2><p>登录账号，或复用已有的 API 配置</p></div></div>
-        <div className="connection-tabs" role="tablist" aria-label="连接方式">
-          {[["chatgpt", "ChatGPT 登录"], ["api", "API 连接管理"]].map(([id, label]) => <button key={id} role="tab" aria-selected={mode === id} disabled={locked} className={mode === id ? "active" : ""} onClick={() => setMode(id)}>{label}</button>)}
+        <div className="connection-form-header">
+          <div className="form-title"><div className="icon-tile"><Icon name="key" /></div><div><h2>模型连接</h2><p>登录账号，或复用已有的 API 配置</p></div></div>
+          <div className="connection-tabs" role="tablist" aria-label="连接方式">
+            {[["chatgpt", "ChatGPT 登录"], ["api", "API 连接管理"]].map(([id, label]) => <button key={id} role="tab" aria-selected={mode === id} disabled={locked} className={mode === id ? "active" : ""} onClick={() => setMode(id)}>{label}</button>)}
+          </div>
         </div>
         {connection.configured && <div className="inline-success"><Icon name="check" size={16} /> 已保存配置 · {connection.model}</div>}
         {mode === "chatgpt" && <div className="auth-choice">
@@ -36,5 +42,5 @@ export function ConnectionPanel({ connection, chatgpt, library, busy, onSave, on
         {connection.configured && <div className="connection-actions"><button type="button" className="text-button" disabled={locked} onClick={onTest}>测试连接（一次请求）</button><button type="button" className="text-button" disabled={busy} onClick={onContinue}>使用已保存配置</button><button type="button" className="text-button muted" disabled={locked} onClick={onDisconnect}>断开</button></div>}
       </div>
     </div>
-  </>;
+  </section>;
 }

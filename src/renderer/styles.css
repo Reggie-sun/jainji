@@ -78,9 +78,18 @@ button{color:inherit}
 .small-tag{font-size:12px;display:inline-flex;gap:5px;align-items:center}
 .icon-tile{display:grid;place-items:center;flex-shrink:0;width:40px;height:40px;border:1px solid var(--line);background:var(--paper);border-radius:8px;color:var(--seal)}
 
-/* 连接页 — 单栏表单,无营销插画 */
-.connection-layout{display:grid;grid-template-columns:1fr;max-width:760px}
+/* 模型设置 — 居中页面,连接列表按窗口宽度分栏 */
+.model-settings-page{width:100%;max-width:1200px;margin-inline:auto}
+.model-settings-heading{display:flex;align-items:start;justify-content:space-between;gap:24px}
+.model-settings-heading>.button{flex-shrink:0;margin-top:4px}
+.connection-layout{display:grid;grid-template-columns:minmax(0,1fr);width:100%}
+.connection-layout-compact{max-width:760px;margin-inline:auto}
 .connection-form{padding:26px 28px;align-self:start}
+.connection-form-header{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:22px}
+.connection-form-header .form-title{margin-bottom:0;flex-shrink:0}
+.connection-form-header .connection-tabs{width:460px;max-width:100%;margin-bottom:0}
+.connection-layout-compact .connection-form-header{flex-direction:column;align-items:stretch}
+.connection-layout-compact .connection-tabs{width:100%}
 .form-title{display:flex;gap:13px;align-items:center;margin-bottom:22px}
 .form-title h2{font-size:16px;font-weight:650;margin-bottom:4px}
 .form-title p{font-size:12px;color:var(--ink-3)}
@@ -97,11 +106,19 @@ input::placeholder,textarea::placeholder{color:#9aa6a0}
 .auth-choice p,.auth-choice small{margin:0;color:var(--ink-2);line-height:1.65;overflow-wrap:anywhere}
 .provider-choice{display:flex;flex-direction:column;gap:12px;padding:16px;border:1px solid var(--line);border-radius:8px}
 .provider-choice strong small{display:block;font-size:12px;font-weight:400;margin-top:5px}
+.saved-connections-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.saved-connections-grid .provider-choice{min-width:0}
+.saved-connections-grid .provider-choice>strong{display:flex;align-items:center;justify-content:space-between;gap:12px;overflow-wrap:anywhere}
+.saved-connections-grid .provider-choice strong small{flex-shrink:0;margin:0;padding:2px 7px;border-radius:3px;background:var(--mint);color:var(--seal)}
+.saved-connections-grid .connection-actions{justify-content:flex-start;margin-top:auto;gap:20px}
+.saved-connections-grid .connection-actions>.muted{margin-left:auto}
+.model-settings-page .manual-connection{width:100%;max-width:720px;align-self:center;padding:20px;border:1px solid var(--line);border-radius:6px;background:var(--paper)}
 .privacy-note{display:flex;gap:10px;margin:2px 0 18px;color:var(--ink-2);background:var(--paper);border:1px solid var(--line-2);border-radius:5px;padding:12px}
 .privacy-note svg{flex-shrink:0;margin-top:2px;color:var(--seal)}
 .privacy-note p{font-size:12px;line-height:1.7}
 .connection-actions{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;margin-top:14px}
 .inline-success{display:flex;align-items:center;gap:8px;color:var(--ok);background:#e9f4ec;border:1px solid #cfe4d4;border-radius:5px;padding:10px 12px;margin-bottom:16px;font-size:12px;overflow-wrap:anywhere}
+@media(max-width:1000px){.model-settings-heading{flex-wrap:wrap;gap:0;margin-bottom:20px}.model-settings-heading .section-heading{margin-bottom:12px}.connection-form-header{flex-direction:column;align-items:stretch;gap:18px}.connection-form-header .connection-tabs{width:100%}.saved-connections-grid{grid-template-columns:minmax(0,1fr)}}
 
 /* 素材步 */
 .import-layout{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(270px,.72fr);gap:22px}
