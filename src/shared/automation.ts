@@ -7,7 +7,7 @@ export const AutomationRequestSchema = z.object({
   name: z.string().trim().min(1, "请填写任务名称。").max(80, "任务名称最多 80 个字。"),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "请选择有效的每日执行时间。"),
   enabled: z.boolean(),
-  cleanup: QianchuanLibraryClearSchema.refine(value => value.confirmation === "DELETE_PLAN_MATERIALS", "定时任务只清理所选计划素材。").optional(),
+  cleanup: QianchuanLibraryClearSchema.optional(),
   production: BatchProductionStartSchema.optional(),
   upload: z.boolean(),
   uploadFrom: z.string().uuid().optional(),
@@ -34,6 +34,8 @@ export const AutomationTaskSchema = z.object({
   summary: z.string().max(8000), createdAt: z.string().datetime(), lastRun: AutomationRunSchema.optional(),
 }).strict();
 export type AutomationTask = z.infer<typeof AutomationTaskSchema>;
+export const AutomationCleanupMigrationSchema = z.object({ task: AutomationTaskSchema, source: AutomationTaskSchema.optional(), complete: z.boolean() }).strict();
+export type AutomationCleanupMigration = z.infer<typeof AutomationCleanupMigrationSchema>;
 export interface AutomationStatus {
   tasks: (AutomationTask & { nextRunAt?: string })[];
   timeZone: string; running: boolean; error?: string;

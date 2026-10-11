@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { QianchuanLibraryAccountSchema, type QianchuanLibraryResult } from "./qianchuan-video-library.js";
+import type { AutomationRun } from "./automation.js";
 
 export const QianchuanLibraryScheduleSettingsSchema = z.object({
   confirmation: z.literal("DELETE_ALL_VIDEOS"),
@@ -28,5 +29,7 @@ export interface QianchuanLibraryScheduleStatus {
   lastRun?: QianchuanLibraryScheduleRun;
   error?: string;
   automaticLaunch?: QianchuanAutomaticLaunchStatus;
+  mergedTaskId?: string;
+  previousAutomationRun?: AutomationRun;
 }
 export interface QianchuanAutomaticLaunchStatus { supported: boolean; enabled: boolean; message: string }

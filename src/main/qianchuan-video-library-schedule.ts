@@ -8,11 +8,12 @@ import { QianchuanLibraryScheduleSettingsSchema, type QianchuanLibraryScheduleRu
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryAccountSchema, type QianchuanLibraryClear, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import type { QianchuanScheduledLaunch } from "./qianchuan-scheduled-launch.js";
+import { AutomationCleanupMigrationSchema, type AutomationCleanupMigration, type AutomationRequest } from "../shared/automation.js";
 
 const resultSchema = z.object({ product: QianchuanLibraryAccountSchema.shape.product, advertiserId: QianchuanLibraryAccountSchema.shape.expectedAdvertiserId, state: z.enum(["CLEARED", "PARTIAL", "BLOCKED"]), deletedCount: z.number().int().nonnegative(), message: z.string().max(2000) }).strict();
 const runSchema = z.object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), startedAt: z.string().datetime(), finishedAt: z.string().datetime().optional(),
   state: z.enum(["RUNNING", "COMPLETED", "BLOCKED", "SKIPPED"]), message: z.string().max(2000), results: z.array(resultSchema).max(6) }).strict();
-const stateSchema = z.object({ version: z.literal(1), settings: QianchuanLibraryScheduleSettingsSchema, lastRun: runSchema.optional() }).strict();
+const stateSchema = z.object({ version: z.literal(1), settings: QianchuanLibraryScheduleSettingsSchema, lastRun: runSchema.optional(), migration: AutomationCleanupMigrationSchema.optional() }).strict();
 interface Dependencies {
   accounts(): QianchuanAccountSummary[];
   clear(input: QianchuanLibraryClear): Promise<QianchuanLibraryResult[]>;
@@ -38,6 +39,8 @@ export function nextLibraryClearTime(now: Date, time: string, lastDay?: string):
 export class QianchuanVideoLibrarySchedule {
   private settings: QianchuanLibraryScheduleSettings = { confirmation: "DELETE_ALL_VIDEOS", enabled: false, time: "00:30", accounts: [] };
   private lastRun?: QianchuanLibraryScheduleRun;
+  private migration?: AutomationCleanupMigration;
+  private automationTask?: () => AutomationRequest | undefined;
   private error?: string;
   private next?: Date;
   private timer?: ReturnType<typeof setTimeout>;
@@ -48,7 +51,8 @@ export class QianchuanVideoLibrarySchedule {
   constructor(private readonly root: string, private readonly dependencies: Dependencies) { this.file = path.join(root, "video-library-schedule.json"); }
   snapshot(): QianchuanLibraryScheduleStatus {
     return structuredClone({ settings: this.settings, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      nextRunAt: this.next?.toISOString(), lastRun: this.lastRun, error: this.error, automaticLaunch: this.dependencies.automaticLaunch?.snapshot() });
+      nextRunAt: this.next?.toISOString(), lastRun: this.lastRun, error: this.error, automaticLaunch: this.dependencies.automaticLaunch?.snapshot(),
+      mergedTaskId: this.migration?.task.id, previousAutomationRun: this.migration?.source?.lastRun });
   }
   async load(): Promise<void> {
     try {
@@ -57,18 +61,22 @@ export class QianchuanVideoLibrarySchedule {
       const { value } = await readPrivateJson(this.file, input => stateSchema.parse(input));
       this.settings = value.settings;
       this.lastRun = value.lastRun;
+      this.migration = value.migration;
       if (this.lastRun?.state === "RUNNING") {
         this.lastRun = { ...this.lastRun, state: "BLOCKED", message: "上次定时清空中断，结果未知；当天不会自动重试。" };
       }
     } catch { this.error = "定时清空记录不可用，自动删除已停止，请核查设置文件。"; }
   }
   start(): void {
+    if (this.migration) return;
     this.started = true; this.plan();
   }
   initializeAutomaticLaunch(): Promise<void> {
     return this.serialize(async () => {
       if (this.error) return;
-      try { await this.dependencies.automaticLaunch?.configure(this.settings); }
+      const task = this.automationTask?.();
+      const settings = this.automationTask ? { ...this.settings, enabled: task?.enabled ?? false, time: task?.time ?? this.settings.time } : this.settings;
+      try { await this.dependencies.automaticLaunch?.configure(settings); }
       catch { /* The status exposes OS setup failure; the existing in-app timer remains available. */ }
     });
   }
@@ -77,6 +85,23 @@ export class QianchuanVideoLibrarySchedule {
   }
   stop(): void {
     this.started = false; if (this.timer) clearTimeout(this.timer); this.timer = undefined; this.next = undefined;
+  }
+  cleanupMigration(): AutomationCleanupMigration | undefined { return structuredClone(this.migration); }
+  useAutomationTask(lookup: () => AutomationRequest | undefined): void { this.automationTask = lookup; this.stop(); }
+  retireCleanup(migration: AutomationCleanupMigration): Promise<void> {
+    return this.serialize(async () => {
+      if (this.running || this.error || this.migration) throw new Error("旧清理状态不可迁移。");
+      const checked = AutomationCleanupMigrationSchema.parse(migration);
+      const settings = { ...this.settings, enabled: false };
+      this.stop(); await this.persist(settings, this.lastRun, checked); this.settings = settings; this.migration = checked; this.dependencies.changed();
+    });
+  }
+  completeCleanupMigration(): Promise<void> {
+    return this.serialize(async () => {
+      if (!this.migration || this.error) throw new Error("合并记录不可用。");
+      const migration = { ...this.migration, complete: true };
+      await this.persist(this.settings, this.lastRun, migration); this.migration = migration; this.dependencies.changed();
+    });
   }
   private plan(): void {
     if (this.timer) clearTimeout(this.timer);
@@ -89,12 +114,12 @@ export class QianchuanVideoLibrarySchedule {
     this.timer = setTimeout(() => { this.timer = undefined; void this.tick().catch(() => undefined); }, Math.max(1, Math.min(30000, this.next.getTime() - Date.now())));
     this.timer.unref?.();
   }
-  private async persist(settings: QianchuanLibraryScheduleSettings, lastRun?: QianchuanLibraryScheduleRun): Promise<void> {
+  private async persist(settings: QianchuanLibraryScheduleSettings, lastRun?: QianchuanLibraryScheduleRun, migration = this.migration): Promise<void> {
     await secureUploadDirectory(this.root);
     const temporary = path.join(this.root, `library-schedule-${randomUUID()}.tmp`);
     try {
       const handle = await open(temporary, "wx", 0o600);
-      try { await handle.writeFile(`${JSON.stringify({ version: 1, settings, lastRun }, null, 2)}\n`); await handle.sync(); }
+      try { await handle.writeFile(`${JSON.stringify({ version: 1, settings, lastRun, migration }, null, 2)}\n`); await handle.sync(); }
       finally { await handle.close(); }
       await rename(temporary, this.file); await strictSyncDirectory(this.root);
     } catch (error) {
@@ -108,7 +133,7 @@ export class QianchuanVideoLibrarySchedule {
   }
   save(input: unknown): Promise<QianchuanLibraryScheduleStatus> {
     return this.serialize(async () => {
-      if (this.running || this.error) throw new Error(this.error ?? "定时清空正在执行，请等待结束后设置。");
+      if (this.running || this.error || this.migration) throw new Error(this.error ?? (this.migration ? "旧清理已合并，请在自动化任务中修改。" : "定时清空正在执行，请等待结束后设置。"));
       const settings = QianchuanLibraryScheduleSettingsSchema.parse(input);
       if (settings.enabled) {
         const accounts = this.dependencies.accounts();
@@ -124,7 +149,7 @@ export class QianchuanVideoLibrarySchedule {
   }
   async tick(systemRequest?: { time: string; receivedAt: Date }): Promise<void> {
     const claimed = await this.serialize(async () => {
-      if (!this.started || !this.settings.enabled || this.error || this.running || !this.next) return false;
+      if (!this.started || !this.settings.enabled || this.error || this.running || this.migration || !this.next) return false;
       const now = new Date();
       if (systemRequest) {
         const { time, receivedAt } = systemRequest;

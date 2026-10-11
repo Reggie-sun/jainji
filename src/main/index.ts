@@ -124,7 +124,8 @@ app.on("second-instance", (_event, argv) => {
 
 async function deliverScheduledLaunch(): Promise<void> {
   const time = pendingScheduledLaunch; pendingScheduledLaunch = undefined;
-  if (time && !quitting) await videoLibrarySchedule.requestSystemLaunch(time, scheduledLaunchReceivedAt).catch(() => safeLog("scheduled launch safely blocked"));
+  const id = videoLibrarySchedule.snapshot().mergedTaskId;
+  if (time && id && !quitting) await automation?.requestSystemLaunch(id, time, scheduledLaunchReceivedAt).catch(() => safeLog("scheduled launch safely blocked"));
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -236,7 +237,7 @@ function registerHandlers(): void {
     assertTrustedSender(event); assertCleanupIdle(); await douyinUpload.resolvePlanMaterialDeletion(input);
   });
   ipcMain.handle("videoLibrarySchedule.get", event => { assertTrustedSender(event); return videoLibrarySchedule.snapshot(); });
-  ipcMain.handle("videoLibrarySchedule.save", (event, input: unknown) => { assertTrustedSender(event); return videoLibrarySchedule.save(input); });
+  ipcMain.handle("videoLibrarySchedule.save", event => { assertTrustedSender(event); throw new Error("请在每日自动化任务中创建或修改清理任务。"); });
   ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
@@ -829,6 +830,7 @@ async function bootstrap(): Promise<void> {
   });
   await videoLibrarySchedule.load();
   automation = await createAutomationDesktop({
+    legacySchedule: videoLibrarySchedule,
     root: userData, trusted: assertTrustedSender, authorize: () => membership.assertAllowed(),
     changed: status => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("automation.changed", status); },
     busy: () => quitting || batchRuntime.controller.busy || agent.busy || coverReview.busy || douyinUpload.busy ||
@@ -865,7 +867,7 @@ async function bootstrap(): Promise<void> {
     if (quitting) return;
     await videoLibrarySchedule.initializeAutomaticLaunch();
     if (quitting) return;
-    automation?.start(); videoLibrarySchedule.start(); scheduledLaunchReady = true; await deliverScheduledLaunch();
+    automation?.start(); scheduledLaunchReady = true; await deliverScheduledLaunch();
   }).catch(() => safeLog("queue recovery unavailable; scheduled clearing not started"));
   void connections.restore();
 }

@@ -61,6 +61,18 @@ it("stops a chain after partial cleanup", async () => {
   await expect(f.runtime.execute(task, new AbortController().signal)).rejects.toThrow("后续步骤已停止");
   expect(f.dependencies.produce).not.toHaveBeenCalled(); expect(f.dependencies.upload).not.toHaveBeenCalled();
 });
+it("executes both cleanup scopes as one existing service request and stops after an unknown result", async () => {
+  const f = await fixture();
+  const cleanup = { confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS" as const, planMaterialRule: "AUDIT_AND_ZERO_IMPRESSIONS_15D" as const,
+    accounts: [{ product: "蝴蝶贴" as const, expectedAdvertiserId: "123", plans: [{ advertiserId: "123", adId: "456", name: "固定计划" }] }] };
+  const task = await f.create({ ...f.request, production: undefined, cleanup });
+  await f.runtime.execute(task, new AbortController().signal);
+  expect(f.dependencies.clear).toHaveBeenCalledTimes(1);
+  expect(f.dependencies.clear).toHaveBeenCalledWith(cleanup, expect.any(AbortSignal));
+  f.dependencies.clear.mockResolvedValue([{ product: "蝴蝶贴", advertiserId: "123", state: "BLOCKED", deletedCount: 0, message: "结果未知" }]);
+  await expect(f.runtime.execute(task, new AbortController().signal)).rejects.toThrow("结果未知");
+  expect(f.dependencies.produce).not.toHaveBeenCalled(); expect(f.dependencies.upload).not.toHaveBeenCalled();
+});
 it("consumes completed source-run exports once across different upload schedules and after restart", async () => {
   const f = await fixture(), source = await f.create();
   source.lastRun = { ...source.lastRun!, ...await f.runtime.execute(source, new AbortController().signal), state: "COMPLETED" };

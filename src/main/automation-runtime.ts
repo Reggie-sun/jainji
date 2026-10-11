@@ -73,7 +73,7 @@ export class AutomationRuntime {
     const recipe = recipeSchema.parse({ version: 1, id, request, projects, accounts: [...accounts.values()], ...(usesModel ? { modelBinding: this.dependencies.modelBinding() } : {}) });
     await this.verify(recipe);
     const summary = [
-      ...(request.cleanup?.accounts.map(account => `清理账户 ${account.expectedAdvertiserId} · 计划 ${(account.plans?.map(plan => plan.adId) ?? [account.expectedAdId]).join("、")}`) ?? []),
+      ...(request.cleanup?.accounts.map(account => `清理账户 ${account.expectedAdvertiserId}${request.cleanup!.confirmation === "DELETE_ALL_VIDEOS" ? " · 视频库全部视频" : ` · 计划 ${(account.plans?.map(plan => plan.adId) ?? [account.expectedAdId]).join("、")}`}`) ?? []),
       ...projects.map(({ project, recentProjectId }) => {
         const entry = request.production!.entries.find(entry => entry.recentProjectId === recentProjectId)!;
         const sources = [...new Set(project.mediaItems.map(media => path.dirname(media.sourcePath)))];
@@ -107,6 +107,9 @@ export class AutomationRuntime {
         signal?.throwIfAborted();
       }
     }
+  }
+  async verifyCleanupMigration(task: AutomationTask): Promise<void> {
+    await this.verify(await this.read(task));
   }
   async execute(task: AutomationTask, signal: AbortSignal): Promise<Pick<AutomationRun, "exports" | "productionRunId">> {
     const recipe = await this.read(task); await this.verify(recipe, signal); signal.throwIfAborted();

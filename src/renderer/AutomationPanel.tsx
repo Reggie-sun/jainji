@@ -5,7 +5,7 @@ import type { QianchuanLibraryClear } from "../shared/qianchuan-video-library";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import type { QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule";
 import { AutomationTaskDetails, AutomationTimeConflict } from "./AutomationTaskDetails";
-import { QianchuanVideoLibrarySchedule } from "./QianchuanVideoLibrarySchedule";
+import { QianchuanCleanupResults } from "./QianchuanCleanupResults";
 import "./automation.css";
 
 type AutomationComposerProps = {
@@ -141,17 +141,18 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
 
     <div className="automation-scope" aria-label="固定执行范围">
       <strong>固定执行范围</strong>
-      {currentCleanup && <p>计划素材清理：{cleanupPlanCount} 个已选计划，{auditMaterials && zeroImpressions && scheduleCleanup ? "三类审核素材 + 近 15 天零展示" : currentCleanup.planMaterialRule === "ZERO_IMPRESSIONS_15D" ? "近 15 天零展示" : currentCleanup.planMaterialRule === "AUDIT_AND_ZERO_IMPRESSIONS_15D" ? "三类审核素材 + 近 15 天零展示" : "三类审核素材"}。不会清空账号视频库。</p>}
+      {currentCleanup && currentCleanup.confirmation !== "DELETE_ALL_VIDEOS" && <p>计划素材清理：{cleanupPlanCount} 个已选计划，{currentCleanup.planMaterialRule === "ZERO_IMPRESSIONS_15D" ? "近 15 天零展示" : currentCleanup.planMaterialRule === "AUDIT_AND_ZERO_IMPRESSIONS_15D" ? "三类审核素材 + 近 15 天零展示" : "三类审核素材"}。{currentCleanup.confirmation === "DELETE_PLAN_MATERIALS" ? "不会清空账号视频库。" : "成功后再清空账号视频库。"}</p>}
+      {currentCleanup && currentCleanup.confirmation !== "DELETE_PLAN_MATERIALS" && <p>视频库全部清空：永久删除 {currentCleanup.accounts.length} 个已选账号素材库中的全部视频，不按计划或零展示条件筛选。</p>}
       {useProduction && production && <p>制作：固定绑定 {production.entries.length} 个已选模板及当前设置。{upload ? "制作完成后自动上传并确认选定批次。" : "不自动上传；已选择的上传计划会保留为后续目标。"}</p>}
       {useExistingUpload && sourceTask && <p>独立上传：固定引用“{sourceTask.request.name}”的制作结果，并自动上传和确认对应批次。</p>}
       {uploadExisting && !sourceTask && <p>请选择一个已有制作专用任务。</p>}
       {!currentCleanup && !useProduction && !useExistingUpload && <p>请选择有效的计划清理范围或制作模板。</p>}
-      {currentCleanup && <ul>{currentCleanup.accounts.flatMap(account => (account.plans ?? []).map(plan => <li key={`${account.expectedAdvertiserId}:${plan.adId}`}>{account.product} · 账户 {account.expectedAdvertiserId} · {plan.name}（计划 {plan.adId}）</li>))}</ul>}
+      {currentCleanup && <ul>{currentCleanup.accounts.map(account => <li key={account.expectedAdvertiserId}>{account.product} · 账户 {account.expectedAdvertiserId}{currentCleanup.confirmation !== "DELETE_ALL_VIDEOS" && (account.plans ?? []).map(plan => <span key={plan.adId}> · {plan.name}（计划 {plan.adId}）</span>)}</li>)}</ul>}
     </div>
 
     <p className="automation-runtime-note">关闭主窗口会隐藏到后台继续运行；显式退出简辑或关闭电脑会停止。错过时间会跳过，失败后不会自动重试。</p>
     <label className="automation-option automation-enable"><input type="checkbox" checked={enabled} disabled={disabled || saving} onChange={event => setEnabled(event.target.checked)} /><span>保存后立即启用此每日任务</span></label>
-    <label className="automation-option automation-authorization"><input type="checkbox" checked={authorized} disabled={disabled || saving} onChange={event => setAuthorized(event.target.checked)} /><span>我授权简辑在以上固定范围定时执行；如包含清理会自动删除所选计划素材，如包含上传会自动上传并确认批次。</span></label>
+    <label className="automation-option automation-authorization"><input type="checkbox" checked={authorized} disabled={disabled || saving} onChange={event => setAuthorized(event.target.checked)} /><span>我授权简辑在以上固定范围定时执行；如包含清理会自动删除上述计划素材或账号全部库视频，如包含上传会自动上传并确认批次。</span></label>
     {error && <p className="automation-error" role="alert">{error}</p>}
     {!validation.success && (name || uploadExisting || currentCleanup || production) && <p className="automation-error" role="status">{validation.error.issues[0]?.message}</p>}
     <button type="button" className="button primary" disabled={disabled || saving || !automationAvailable || cleanupInputInvalid || !validation.success} onClick={() => void create()}>{saving ? "正在保存…" : "保存定时任务"}</button>
@@ -166,6 +167,15 @@ export function AutomationPanel({ onEdit, accounts = [] }: { onEdit?(task: Autom
   const [refreshing, setRefreshing] = useState(false);
   const automationAvailable = typeof window.jianji.getAutomation === "function" && typeof window.jianji.onAutomation === "function" &&
     typeof window.jianji.configureAutomation === "function" && typeof window.jianji.removeAutomation === "function";
+
+  useEffect(() => {
+    if (typeof window.jianji.getQianchuanVideoLibrarySchedule !== "function") return;
+    let active = true;
+    const update = (value: QianchuanLibraryScheduleStatus) => { if (active) setLibraryStatus(value); };
+    const unsubscribe = window.jianji.onQianchuanVideoLibrarySchedule?.(update);
+    void window.jianji.getQianchuanVideoLibrarySchedule().then(update).catch(value => { if (active) setError(message(value)); });
+    return () => { active = false; unsubscribe?.(); };
+  }, []);
 
   const refresh = async () => {
     if (!automationAvailable) return;
@@ -201,15 +211,18 @@ export function AutomationPanel({ onEdit, accounts = [] }: { onEdit?(task: Autom
     {status && <p className="automation-timezone">本机时区：{status.timeZone}{status.running ? " · 有任务正在执行" : ""}</p>}
     {loading && <p role="status">正在读取定时任务…</p>}
     {(error || status?.error) && <p className="automation-error" role="alert">{error || status?.error}</p>}
-    {!loading && status && !status.tasks.length && <p>暂无计划清理、制作或上传任务。</p>}
+    {libraryStatus?.settings.accounts.length && !libraryStatus.mergedTaskId ? <p role="status">旧视频库清理尚未合并。请保存当前工作并重新启动简辑；合并完成前请勿另建相同任务。</p> : null}
+    {!loading && status && !status.tasks.length && <p>暂无清理、制作或上传任务。</p>}
     <div className="automation-task-list">
       {status?.tasks.map(task => <AutomationTaskRow key={task.id} task={task} timeZone={status.timeZone} onStatus={setStatus}
         accounts={accounts} tasks={status.tasks} onEdit={onEdit ? value => onEdit(value, status.tasks) : undefined}
         conflicts={task.request.enabled ? [
           ...status.tasks.filter(other => other.id !== task.id && other.request.enabled && other.request.time === task.request.time).map(other => other.request.name),
-          ...(libraryStatus?.settings.enabled && libraryStatus.settings.time === task.request.time ? ["账号视频库全部清空"] : []),
         ] : []} />)}
-      <div className="qianchuan-cleanup"><QianchuanVideoLibrarySchedule accounts={accounts} busy={status?.running ?? false} tasks={status?.tasks ?? []} onStatus={setLibraryStatus} /></div>
+      {libraryStatus && (libraryStatus.lastRun || libraryStatus.previousAutomationRun) && <details className="qianchuan-cleanup"><summary>合并前的执行记录</summary>
+        {libraryStatus.previousAutomationRun && <p>计划素材清理：{runLabels[libraryStatus.previousAutomationRun.state]} · {libraryStatus.previousAutomationRun.message}</p>}
+        {libraryStatus.lastRun && <QianchuanCleanupResults title="原视频库清理" results={libraryStatus.lastRun.results} accounts={accounts} message={libraryStatus.lastRun.message} />}
+      </details>}
     </div>
   </section>;
 }

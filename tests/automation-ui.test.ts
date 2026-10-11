@@ -155,37 +155,33 @@ describe("scheduled automation browser interaction", () => {
     } finally { await page.close(); }
   });
 
-  it.each([false, true])("consolidates account-library cleanup with its real scope and history, warns about same-time tasks, and pauses without rebinding (plan materials: %s)", async includePlanMaterials => {
+  it("shows one combined task with a shared pause control and read-only historical results", async () => {
     const task = {
       id: sourceTaskId, request: { name: "日常清理", time: "00:30", enabled: true, upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
-        cleanup: { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", plans: [plan] }] } },
+        cleanup: { confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", plans: [plan] }] } },
       binding: "a".repeat(64), summary: "清理账户 123 · 计划 456", createdAt: "2026-10-10T00:00:00.000Z",
     };
-    const settings = { confirmation: "DELETE_ALL_VIDEOS", enabled: true, time: "00:30", includePlanMaterials, accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", expectedAdId: "456" }] };
-    const librarySchedule = { settings, timeZone: "Asia/Hong_Kong", nextRunAt: "2026-10-12T16:30:00.000Z",
+    const librarySchedule = { mergedTaskId: sourceTaskId, settings: { confirmation: "DELETE_ALL_VIDEOS", enabled: false, time: "00:30", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123" }] }, timeZone: "Asia/Hong_Kong",
       lastRun: { day: "2026-10-12", startedAt: "2026-10-11T16:30:00.000Z", state: "BLOCKED", message: "原执行记录保留", results: [{ product: "蝴蝶贴", advertiserId: "123", state: "BLOCKED", deletedCount: 0, message: "历史删除结果未知" }] } };
     const { page, pageErrors } = await fixture({ component: "workspace", tasks: [task], librarySchedule, accounts: [{ product: "蝴蝶贴", browserProfileName: "新账号", advertiserId: "999", adId: "888", available: true }] });
     try {
-      expect(await page.getByRole("navigation", { name: "自动化页面" }).getByRole("button").allTextContents()).toEqual(["任务管理", "创建任务"]);
-      const library = page.getByRole("region", { name: "账号视频库全部清空", exact: true });
-      await library.getByText("已启用", { exact: true }).waitFor();
-      expect(await library.textContent()).toContain("永久删除已绑定账号视频库中的全部视频");
-      expect(await library.textContent()).toContain("账户 123");
-      expect((await library.textContent())!.includes("计划 456")).toBe(includePlanMaterials);
       const row = page.getByRole("article", { name: "日常清理", exact: true });
-      await row.getByRole("status").filter({ hasText: "同一时间" }).waitFor();
-      await library.getByRole("status").filter({ hasText: "同一时间" }).waitFor();
-      await library.getByText("编辑视频库清空设置", { exact: true }).click();
-      await library.getByLabel("视频库清空执行时间", { exact: true }).fill("01:00");
-      await library.getByRole("button", { name: "暂停视频库清空", exact: true }).click();
-      await page.waitForFunction(() => (window as any).automationCalls.librarySaved.length === 1);
-      expect(await page.evaluate(() => (window as any).automationCalls.librarySaved[0])).toEqual({ ...settings, enabled: false });
-      expect(await library.textContent()).toContain("账户 123");
-      expect(await row.getByRole("status").filter({ hasText: "同一时间" }).count()).toBe(0);
-      await library.getByText("查看各账号结果", { exact: true }).click();
-      await library.getByText("历史删除结果未知", { exact: true }).waitFor();
+      await row.getByText("已启用", { exact: true }).waitFor();
+      expect(await page.getByRole("article").count()).toBe(1);
+      expect(await row.textContent()).toContain("计划素材清理 → 账号视频库全部清空");
+      expect(await row.textContent()).toContain("永久删除已绑定账号视频库中的全部视频");
+      expect(await row.textContent()).toContain("账户 123");
+      expect(await row.textContent()).toContain("计划 456");
+      expect(await row.textContent()).not.toContain("新账号");
+      expect(await page.getByText(/同一时间还启用/).count()).toBe(0);
+      await row.getByRole("button", { name: "暂停", exact: true }).click();
+      await page.waitForFunction(() => (window as any).automationCalls.configured.length === 1);
+      expect(await page.evaluate(() => (window as any).automationCalls.configured[0])).toEqual({ id: sourceTaskId, time: "00:30", enabled: false });
+      await page.getByText("合并前的执行记录", { exact: true }).click();
+      await page.getByText("查看各账号结果", { exact: true }).click();
+      await page.getByText("历史删除结果未知", { exact: true }).waitFor();
       expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
-      expect(await page.evaluate(() => (window as any).automationCalls.configured)).toEqual([]);
+      expect(await page.evaluate(() => (window as any).automationCalls.librarySaved)).toEqual([]);
       expect(pageErrors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -272,7 +268,7 @@ describe("scheduled automation browser interaction", () => {
     { audit: true, zero: true, rule: "AUDIT_AND_ZERO_IMPRESSIONS_15D" },
     { audit: false, zero: true, rule: "ZERO_IMPRESSIONS_15D" },
     { audit: true, zero: false, rule: undefined },
-  ])("schedules only selected plan rules when immediate library cleanup is also checked: $rule", async ({ audit, zero, rule }) => {
+  ])("saves both selected cleanup scopes as one authorized task: $rule", async ({ audit, zero, rule }) => {
     const { page, pageErrors } = await fixture({ component: "cleanup" });
     try {
       await page.getByRole("checkbox", { name: "清理计划 456" }).waitFor();
@@ -281,8 +277,8 @@ describe("scheduled automation browser interaction", () => {
       const library = page.getByRole("checkbox", { name: /视频库全部视频/ });
       await library.check();
       expect(await page.getByRole("button", { name: "保存为定时任务", exact: true }).isEnabled()).toBe(true);
-      const schedule = page.getByRole("region", { name: "定时清理计划素材" });
-      await schedule.getByText("视频库全部视频仅用于上方立即清理，不纳入这个定时任务。", { exact: true }).waitFor();
+      const schedule = page.getByRole("region", { name: "定时清理素材" });
+      await schedule.getByText(/定时任务将清空所选账号视频库的全部视频/).waitFor();
       expect(await library.isChecked()).toBe(true);
       expect(await schedule.getByRole("button", { name: "保存为定时任务", exact: true }).isEnabled()).toBe(true);
       await schedule.getByRole("button", { name: "保存为定时任务", exact: true }).click();
@@ -297,12 +293,29 @@ describe("scheduled automation browser interaction", () => {
       await page.waitForFunction(() => (window as any).automationCalls.created.length === 1);
       expect(await page.evaluate(() => (window as any).automationCalls.created[0])).toEqual({
         name: "每日计划素材清理", time: "00:30", enabled: false, upload: false,
-        cleanup: { confirmation: "DELETE_PLAN_MATERIALS", ...(rule ? { planMaterialRule: rule } : {}),
+        cleanup: { confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", ...(rule ? { planMaterialRule: rule } : {}),
           accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", plans: [plan] }] },
         confirmation: "AUTHORIZE_FIXED_AUTOMATION",
       });
       expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
       expect(pageErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("saves an explicitly selected library-only task without plan rules", async () => {
+    const { page, pageErrors } = await fixture({ component: "cleanup" });
+    try {
+      await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: /近15天零展示素材/ }).uncheck();
+      await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
+      await page.getByRole("button", { name: "保存为定时任务", exact: true }).click();
+      await page.getByLabel("任务名称").fill("每日视频库清空");
+      await page.getByText(/视频库全部清空：永久删除/).waitFor();
+      await page.getByRole("checkbox", { name: /我授权简辑/ }).check();
+      await page.getByRole("button", { name: "保存定时任务" }).click();
+      await page.waitForFunction(() => (window as any).automationCalls.created.length === 1);
+      expect(await page.evaluate(() => (window as any).automationCalls.created[0].cleanup)).toEqual({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123" }] });
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]); expect(pageErrors).toEqual([]);
     } finally { await page.close(); }
   });
 
@@ -315,11 +328,10 @@ describe("scheduled automation browser interaction", () => {
       if (missing === "rule") {
         await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
         await page.getByRole("checkbox", { name: /近15天零展示素材/ }).uncheck();
-        await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
       }
-      const schedule = page.getByRole("region", { name: "定时清理计划素材" });
+      const schedule = page.getByRole("region", { name: "定时清理素材" });
       expect(await schedule.getByRole("button", { name: "保存为定时任务", exact: true }).isDisabled()).toBe(true);
-      await schedule.getByText(missing === "account" ? "请选择要定时清理的账号。" : missing === "plan" ? "请为每个所选账号选择清理计划。" : "请选择三类审核素材或近15天零展示素材。", { exact: true }).waitFor();
+      await schedule.getByText(missing === "account" ? "请选择要定时清理的账号。" : missing === "plan" ? "请为每个所选账号选择清理计划。" : "请选择计划素材或视频库清理。", { exact: true }).waitFor();
       expect(await page.evaluate(() => (window as any).automationCalls.created)).toEqual([]);
       expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
     } finally { await page.close(); }

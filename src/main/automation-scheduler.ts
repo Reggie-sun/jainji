@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { AutomationRequestSchema, AutomationTaskSchema, type AutomationRequest, type AutomationRun, type AutomationTask, type AutomationStatus } from "../shared/automation.js";
-import { readAutomationFile, writeAutomationFile } from "./automation-files.js";
+import { AutomationRequestSchema, AutomationTaskSchema, AutomationCleanupMigrationSchema, type AutomationCleanupMigration, type AutomationRequest, type AutomationRun, type AutomationTask, type AutomationStatus } from "../shared/automation.js";
+import { automationDigest, readAutomationFile, writeAutomationFile } from "./automation-files.js";
 import { localScheduleDay, nextLibraryClearTime } from "./qianchuan-video-library-schedule.js";
 
 const stateSchema = z.object({ version: z.literal(1), tasks: z.array(AutomationTaskSchema).max(100) }).strict()
@@ -61,6 +61,31 @@ export class AutomationScheduler {
   private assertEditable(): void {
     if (this.error || this.active) throw new Error(this.error ?? "定时任务正在执行，请等待结束。");
   }
+  blockCleanupMigration(): void { this.error = "旧清理任务合并未完成，自动执行已停止；请核查原任务及迁移记录后重新启动。"; }
+  async prepareCleanupMigration(request: AutomationRequest, source?: AutomationTask, lastRun?: AutomationRun): Promise<AutomationTask> {
+    return this.serialize(async () => {
+      this.assertEditable();
+      if (!request.cleanup || request.production || request.upload || request.uploadFrom) throw new Error("只能迁移独立清理任务。");
+      const id = randomUUID(), prepared = await this.dependencies.prepare(AutomationRequestSchema.parse(request), id);
+      return AutomationTaskSchema.parse({ id, request, ...prepared, createdAt: source?.createdAt ?? this.now().toISOString(), lastRun });
+    });
+  }
+  async installCleanupMigration(input: AutomationCleanupMigration): Promise<void> {
+    await this.serialize(async () => {
+      this.assertEditable();
+      const { task, source } = AutomationCleanupMigrationSchema.parse(input);
+      if (!task.request.cleanup || task.request.production || task.request.upload || task.request.uploadFrom) throw new Error("只能迁移独立清理任务。");
+      const installed = this.tasks.find(value => value.id === task.id);
+      if (installed) {
+        if (automationDigest(installed) !== automationDigest(task) || source && this.tasks.some(value => value.id === source.id)) throw new Error("合并任务身份不一致。");
+        return;
+      }
+      const current = source && this.tasks.find(value => value.id === source.id);
+      if (source && (!current || automationDigest(current) !== automationDigest(source))) throw new Error("原清理任务已变化，未覆盖。");
+      const tasks = [...this.tasks.filter(value => value.id !== source?.id), task];
+      await this.persist(tasks); this.tasks = tasks; this.dependencies.changed();
+    });
+  }
   async create(input: unknown): Promise<AutomationStatus> {
     return this.serialize(async () => {
       this.assertEditable();
@@ -90,18 +115,23 @@ export class AutomationScheduler {
       this.dependencies.changed(); return this.snapshot();
     });
   }
-  async tick(): Promise<void> {
+  async requestSystemLaunch(id: string, time: string, receivedAt: Date): Promise<void> { await this.tick({ id, time, receivedAt }); }
+  async tick(systemRequest?: { id: string; time: string; receivedAt: Date }): Promise<void> {
     if (!this.started || this.error || this.active) return;
     const work = this.serialize(async () => {
       if (!this.started || this.error || this.active) return;
       for (const task of this.tasks) {
         if (!this.started || this.error) break;
         const now = this.now(), day = localScheduleDay(now);
+        if (systemRequest && (task.id !== systemRequest.id || task.request.time !== systemRequest.time)) continue;
         if (!task.request.enabled || task.lastRun && task.lastRun.day >= day) continue;
         const due = new Date(now), [hour, minute] = task.request.time.split(":").map(Number);
         due.setHours(hour!, minute!, 0, 0);
+        if (systemRequest && (!Number.isFinite(systemRequest.receivedAt.getTime()) || systemRequest.receivedAt < due ||
+          systemRequest.receivedAt.getTime() - due.getTime() > 60000 || now < systemRequest.receivedAt ||
+          now.getTime() - systemRequest.receivedAt.getTime() > 30 * 60000 || localScheduleDay(systemRequest.receivedAt) !== day)) continue;
         if (now < due || new Date(task.createdAt) > due) continue;
-        const skip = now.getTime() - due.getTime() > 60000 || this.dependencies.busy();
+        const skip = !systemRequest && now.getTime() - due.getTime() > 60000 || this.dependencies.busy();
         const run: AutomationRun = { id: randomUUID(), day, startedAt: now.toISOString(), state: skip ? "SKIPPED" : "RUNNING",
           message: skip ? "错过执行时间或已有任务运行，已跳过；不会自动补跑。" : "正在执行固定配置的定时任务。" };
         const candidate = this.tasks.map(value => value.id === task.id ? { ...value, lastRun: run } : value);

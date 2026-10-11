@@ -314,7 +314,7 @@ it("hands batch and cleanup drafts to the separate composer, retains form drafts
     await page.getByRole("button", { name: "保存为定时任务", exact: true }).click();
     await page.getByLabel("任务名称", { exact: true }).fill("隔离定时制作");
     await page.getByLabel("每天执行时间", { exact: true }).fill("22:15");
-    await page.getByLabel("我授权简辑在以上固定范围定时执行；如包含清理会自动删除所选计划素材，如包含上传会自动上传并确认批次。", { exact: true }).check();
+    await page.getByLabel("我授权简辑在以上固定范围定时执行；如包含清理会自动删除上述计划素材或账号全部库视频，如包含上传会自动上传并确认批次。", { exact: true }).check();
     await page.getByRole("button", { name: "返回来源页面", exact: false }).click();
     expect(await page.getByRole("spinbutton", { name: "想制作的视频条数", exact: true }).first().inputValue()).toBe("123");
     await rail(page, "自动化").click();

@@ -3,10 +3,13 @@ import { ipcMain } from "electron";
 import type { AutomationStatus } from "../shared/automation.js";
 import { AutomationRuntime } from "./automation-runtime.js";
 import { AutomationScheduler } from "./automation-scheduler.js";
+import { migrateCleanupSchedules } from "./automation-cleanup-migration.js";
+import type { QianchuanVideoLibrarySchedule } from "./qianchuan-video-library-schedule.js";
 
 /** Trusted desktop boundary; the scheduler never acquires production authority itself. */
 export async function createAutomationDesktop(input: {
   root: string;
+  legacySchedule?: QianchuanVideoLibrarySchedule;
   runtime: Omit<ConstructorParameters<typeof AutomationRuntime>[1], "task">;
   authorize(): Promise<void>;
   busy(): boolean;
@@ -22,11 +25,18 @@ export async function createAutomationDesktop(input: {
     changed: () => input.changed(scheduler.snapshot()),
   });
   await scheduler.load();
+  if (input.legacySchedule) {
+    try { await migrateCleanupSchedules(scheduler, input.legacySchedule, task => runtime.verifyCleanupMigration(task)); }
+    catch { scheduler.blockCleanupMigration(); input.legacySchedule.useAutomationTask(() => undefined); }
+  }
   ipcMain.handle("automation.get", event => { input.trusted(event); return scheduler.snapshot(); });
   ipcMain.handle("automation.create", (event, request: unknown) => { input.trusted(event); return scheduler.create(request); });
   ipcMain.handle("automation.configure", async (event, request: unknown) => {
-    input.trusted(event); await input.authorize(); return scheduler.configure(request);
+    input.trusted(event); await input.authorize(); await scheduler.configure(request);
+    await input.legacySchedule?.initializeAutomaticLaunch(); return scheduler.snapshot();
   });
-  ipcMain.handle("automation.remove", (event, id: string) => { input.trusted(event); return scheduler.remove(id); });
+  ipcMain.handle("automation.remove", async (event, id: string) => {
+    input.trusted(event); await scheduler.remove(id); await input.legacySchedule?.initializeAutomaticLaunch(); return scheduler.snapshot();
+  });
   return scheduler;
 }
