@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import type { DesktopState } from "../shared/desktop";
 import { Icon, duration, sizeLabel } from "./ui";
 
@@ -21,8 +21,9 @@ function SourcePreviewDialog({ media, index, count, disabled, onMove, onRemove, 
   </dialog>;
 }
 
-export function SourceMediaList({ items, selected, previewId, disabled, saveDisabled, onSelected, onPreview, onRemove, onSave }: {
+export function SourceMediaList({ items, selected, previewId, disabled, saveDisabled, templatePicker, onSelected, onPreview, onRemove, onSave }: {
   items: Media[]; selected: string[]; previewId?: string; disabled: boolean; saveDisabled: boolean;
+  templatePicker?: ReactNode;
   onSelected(ids: string[]): void; onPreview(id: string): void;
   onRemove(id: string): Promise<boolean>; onSave(): void;
 }) {
@@ -40,7 +41,7 @@ export function SourceMediaList({ items, selected, previewId, disabled, saveDisa
     }
   };
   return <div className="card media-list">
-    <div className="card-header"><h2>素材清单 <span>{items.length}</span></h2><div className="source-media-toolbar"><button type="button" className="text-button" disabled={disabled || !ready.length} onClick={() => onSelected(selected.length === ready.length ? [] : ready.map(item => item.id))}>{selected.length === ready.length && ready.length ? "取消全选" : "选择全部"}</button><button type="button" className="button secondary compact" disabled={saveDisabled} onClick={onSave}>保存素材清单</button></div></div>
+    <div className="card-header"><div className="source-media-heading"><h2>素材清单 <span>{items.length}</span></h2>{templatePicker}</div><div className="source-media-toolbar"><button type="button" className="text-button" disabled={disabled || !ready.length} onClick={() => onSelected(selected.length === ready.length ? [] : ready.map(item => item.id))}>{selected.length === ready.length && ready.length ? "取消全选" : "选择全部"}</button><button type="button" className="button secondary compact" disabled={saveDisabled} onClick={onSave}>保存素材清单</button></div></div>
     {items.length === 0 ? <div className="empty-material"><Icon name="film" size={26} /><p>你的素材即将在这里就位</p><small>导入后自动检查格式、时长与画面尺寸</small></div> : items.map(item => <div className={"media-row" + (previewId === item.id ? " previewing" : "")} key={item.id}>
       <input type="checkbox" aria-label={"选择 " + item.displayName} checked={selected.includes(item.id)} disabled={disabled || item.probeStatus !== "ready"} onChange={() => onSelected(selected.includes(item.id) ? selected.filter(id => id !== item.id) : [...selected, item.id])} />
       <button type="button" className="media-thumb" aria-label={"打开预览 " + item.displayName} disabled={item.probeStatus !== "ready"} onClick={() => open(item.id)}><Icon name="play" /></button>

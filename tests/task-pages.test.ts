@@ -26,6 +26,81 @@ async function fixture() {
 const workflow = (page: Page, name: string) => page.getByRole("navigation", { name: "制作流程" }).getByRole("button", { name: new RegExp(name + "$" ) });
 const rail = (page: Page, name: string) => page.locator(".workspace-rail").getByRole("button", { name, exact: true });
 
+it("selects and renames saved material templates directly beside an empty material list", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(() => {
+      const f = (window as any).taskPagesFixture;
+      f.state.project.mediaItems = [];
+      f.state.project.workspaceDraft.selectedMediaIds = [];
+      f.calls.templateLoads = []; f.calls.templateRenames = [];
+      const load = window.jianji.loadProject;
+      window.jianji.loadProject = async id => {
+        f.calls.templateLoads.push(id);
+        const next = await load(id);
+        f.state.activeRecentProjectId = id;
+        return { ...next!, activeRecentProjectId: id };
+      };
+      window.jianji.renameSavedProject = async (id, name) => {
+        f.calls.templateRenames.push({ id, name });
+        f.state.recentProjects = f.state.recentProjects.map((project: any) => project.id === id ? { ...project, name } : project);
+        if (f.state.activeRecentProjectId === id) f.state.project.name = name;
+        return structuredClone(f.state);
+      };
+      f.emit();
+    });
+    const picker = page.getByRole("region", { name: "素材模板快捷选择", exact: true });
+    await picker.getByLabel("已保存的素材模板", { exact: true }).click();
+    expect(await picker.getByRole("button", { name: /删除/ }).count()).toBe(0);
+    await picker.getByRole("option", { name: /项目 B/ }).click();
+    expect(await page.getByRole("heading", { name: "素材", exact: true }).isVisible()).toBe(true);
+    await expect.poll(() => page.getByRole("checkbox", { name: /^选择 素材 [ABC]\.mp4$/ }).count()).toBe(3);
+    await workflow(page, "包装").click();
+    expect(await page.locator("#product-price").inputValue()).toBe("B 的文字");
+    await workflow(page, "输出确认").click();
+    expect(await page.locator("#production-count").inputValue()).toBe("6");
+    await workflow(page, "素材").click();
+    await picker.getByLabel("已保存的素材模板", { exact: true }).click();
+    await picker.getByRole("button", { name: "重命名模板 项目 B", exact: true }).click();
+    await picker.getByRole("textbox", { name: "新的模板名称", exact: true }).fill("项目 B 新名称");
+    await picker.getByRole("button", { name: "确认重命名", exact: true }).click();
+    expect(await picker.getByLabel("已保存的素材模板", { exact: true }).innerText()).toContain("项目 B 新名称");
+    const calls = await page.evaluate(() => (window as any).taskPagesFixture.calls);
+    expect(calls.templateLoads).toHaveLength(1);
+    expect(calls.templateRenames).toEqual([{ id: calls.templateLoads[0], name: "项目 B 新名称" }]);
+    expect(calls.starts).toEqual([]); expect(calls.batchStarts).toEqual([]); expect(calls.sideEffects).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
+it("keeps the active template after load failure and blocks template switching during production", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(() => {
+      const f = (window as any).taskPagesFixture;
+      f.state.activeRecentProjectId = f.state.recentProjects[0].id;
+      window.jianji.loadProject = async () => { throw new Error("隔离模板加载失败"); };
+      f.emit();
+    });
+    const picker = page.getByRole("region", { name: "素材模板快捷选择", exact: true });
+    const summary = picker.getByLabel("已保存的素材模板", { exact: true });
+    await summary.click();
+    await picker.getByRole("option", { name: /项目 B/ }).click();
+    await page.getByRole("alert").filter({ hasText: "隔离模板加载失败" }).waitFor();
+    expect(await summary.innerText()).toContain("蝴蝶贴");
+    expect(await summary.innerText()).not.toContain("项目 B");
+    await page.evaluate(() => {
+      const f = (window as any).taskPagesFixture;
+      f.state.agentRun = { id: crypto.randomUUID(), projectId: f.state.project.id, status: "running", usesModel: false, items: [] };
+      f.emit();
+    });
+    await expect.poll(() => summary.getAttribute("aria-disabled")).toBe("true");
+    await summary.click();
+    expect(await picker.locator("details").getAttribute("open")).toBe(null);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
 it("puts bulk works first and navigates to frozen upload details without resuming on navigation", async () => {
   const { page, errors } = await fixture();
   try {
