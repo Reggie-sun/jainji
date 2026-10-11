@@ -5,7 +5,6 @@ import type { QianchuanLibraryClear } from "../shared/qianchuan-video-library";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import type { QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule";
 import { AutomationTaskDetails, AutomationTimeConflict } from "./AutomationTaskDetails";
-import { QianchuanCleanupResults } from "./QianchuanCleanupResults";
 import "./automation.css";
 
 type AutomationComposerProps = {
@@ -219,10 +218,6 @@ export function AutomationPanel({ onEdit, accounts = [] }: { onEdit?(task: Autom
         conflicts={task.request.enabled ? [
           ...status.tasks.filter(other => other.id !== task.id && other.request.enabled && other.request.time === task.request.time).map(other => other.request.name),
         ] : []} />)}
-      {libraryStatus && (libraryStatus.lastRun || libraryStatus.previousAutomationRun) && <details className="qianchuan-cleanup"><summary>合并前的执行记录</summary>
-        {libraryStatus.previousAutomationRun && <p>计划素材清理：{runLabels[libraryStatus.previousAutomationRun.state]} · {libraryStatus.previousAutomationRun.message}</p>}
-        {libraryStatus.lastRun && <QianchuanCleanupResults title="原视频库清理" results={libraryStatus.lastRun.results} accounts={accounts} message={libraryStatus.lastRun.message} />}
-      </details>}
     </div>
   </section>;
 }

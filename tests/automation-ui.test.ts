@@ -155,7 +155,7 @@ describe("scheduled automation browser interaction", () => {
     } finally { await page.close(); }
   });
 
-  it("shows one combined task with a shared pause control and read-only historical results", async () => {
+  it("shows one combined task with a shared pause control without obsolete historical results", async () => {
     const task = {
       id: sourceTaskId, request: { name: "日常清理", time: "00:30", enabled: true, upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
         cleanup: { confirmation: "DELETE_VIDEOS_AND_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", plans: [plan] }] } },
@@ -177,9 +177,10 @@ describe("scheduled automation browser interaction", () => {
       await row.getByRole("button", { name: "暂停", exact: true }).click();
       await page.waitForFunction(() => (window as any).automationCalls.configured.length === 1);
       expect(await page.evaluate(() => (window as any).automationCalls.configured[0])).toEqual({ id: sourceTaskId, time: "00:30", enabled: false });
-      await page.getByText("合并前的执行记录", { exact: true }).click();
-      await page.getByText("查看各账号结果", { exact: true }).click();
-      await page.getByText("历史删除结果未知", { exact: true }).waitFor();
+      expect(await page.getByText("合并前的执行记录", { exact: true }).count()).toBe(0);
+      expect(await page.getByText("原视频库清理", { exact: true }).count()).toBe(0);
+      expect(await page.getByText("查看各账号结果", { exact: true }).count()).toBe(0);
+      expect(await page.getByText("历史删除结果未知", { exact: true }).count()).toBe(0);
       expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]);
       expect(await page.evaluate(() => (window as any).automationCalls.librarySaved)).toEqual([]);
       expect(pageErrors).toEqual([]);
