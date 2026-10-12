@@ -182,6 +182,7 @@ async function waitForInitialDocument(page: Page, advertiserId: string, signal: 
   let document = await abortable(page.evaluateHandle(() => window.document), signal);
   let bound = false;
   let productViewRequested = false;
+  let costViewRequested = false;
   try {
     while (Date.now() < deadline) {
       signal.throwIfAborted();
@@ -189,6 +190,9 @@ async function waitForInitialDocument(page: Page, advertiserId: string, signal: 
         const view = await prepareProductView(page, advertiserId, document, productViewRequested, signal);
         productViewRequested = view.requested;
         if (view.ready) {
+          const costView = await prepareCostControlView(page, advertiserId, document, costViewRequested, signal);
+          costViewRequested = costView.requested;
+          if (!costView.ready) { await abortable(new Promise<void>(resolve => setTimeout(resolve, SAMPLE_INTERVAL_MS)), signal); continue; }
           const snapshot = completeSnapshot(await observe(page, advertiserId, document, signal), 1);
           if (snapshot && !(snapshot.total > 0 && snapshot.rows.length === 0)) { bound = true; return document; }
         }
@@ -203,6 +207,32 @@ async function waitForInitialDocument(page: Page, advertiserId: string, signal: 
     }
     throw new Error("千川计划列表初始化超时，请检查账号浏览器中的计划列表后重试。");
   } finally { if (!bound) await document.dispose().catch(() => undefined); }
+}
+
+async function prepareCostControlView(page: Page, advertiserId: string, document: JSHandle<Document>, requested: boolean, signal: AbortSignal): Promise<{ ready: boolean; requested: boolean }> {
+  signal.throwIfAborted();
+  checkPage(page, advertiserId);
+  const view = await abortable(page.evaluate(({ document, advertiserId, requested }) => {
+    if (document !== window.document) return undefined;
+    const visible = (element: Element) => !!element.getClientRects().length && getComputedStyle(element).display !== "none" && getComputedStyle(element).visibility !== "hidden";
+    const controls = Array.from(document.querySelectorAll('[data-e2e="oc_emptyKey_uni-prom_0"]')).filter(element => visible(element) && element.textContent?.trim() === "控成本投放" && element.classList.contains("ovui-radio-item"));
+    const broad = Array.from(document.querySelectorAll('[data-e2e="oc_emptyKey_uni-prom_7"]')).filter(element => visible(element) && element.textContent?.includes("放量投放") && element.classList.contains("ovui-radio-item"));
+    if (!controls.length && !broad.length) return { ready: true, requested };
+    const ids = Array.from(document.querySelectorAll(".account-info-container")).filter(visible)
+      .flatMap(element => Array.from((element as HTMLElement).innerText.matchAll(/ID[：:]\s*([1-9][0-9]{0,19})/g), match => match[1]!));
+    if (controls.length > 1 || broad.length > 1 || ids.length > 1 || ids.length === 1 && ids[0] !== advertiserId) return { invalid: true, ready: false, requested };
+    if (controls.length !== 1 || broad.length !== 1 || ids.length !== 1) return { ready: false, requested };
+    if (controls[0]!.classList.contains("ovui-radio-item--checked")) return { ready: true, requested };
+    if (!requested && broad[0]!.classList.contains("ovui-radio-item--checked")) {
+      (controls[0] as HTMLElement).click();
+      return { ready: false, requested: true };
+    }
+    return { ready: false, requested };
+  }, { document, advertiserId, requested }), signal);
+  checkPage(page, advertiserId);
+  if (!view) throw new CatalogDocumentChanged();
+  if (view.invalid) throw changed();
+  return view;
 }
 
 async function waitForStablePage(page: Page, advertiserId: string, document: JSHandle<Document>, signal: AbortSignal,

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
 import { DouyinUploadStore } from "../src/main/douyin-upload-store";
 import { QianchuanAccountConfigReader, type FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
+import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account";
 import { QianchuanPlanListSchema, type QianchuanPlanOption } from "../src/shared/qianchuan-plan-selection";
 import { QianchuanUploadSelectionSchema, uploadFailure } from "../src/shared/douyin-upload";
@@ -36,7 +37,7 @@ it.each(["CLEARED", "BLOCKED"] as const)("continues past historical partial plan
   expect(clearLibrary).not.toHaveBeenCalled();
   if (later === "CLEARED") expect(result.message).toContain("本次视频库清空未执行");
 });
-async function fixture() {
+async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: string) => Promise<string>>>) {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-plan-selection-")); roots.push(root);
   const configPath = path.join(root, "accounts.json");
   const document = { version: 1, accounts: ["眼贴", ...QIANCHUAN_PRODUCTS.filter(product => product !== "眼贴")].map((product, index) => ({ product, advertiserId: String(1000 + index), adId: String(2000 + index), cdpEndpoint: `http://127.0.0.1:${11000 + index}` })) };
@@ -47,15 +48,82 @@ async function fixture() {
   const browser: UploadBrowserPort = { connect, open: async () => { throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "fixture stops before any file action", "fixture", true); },
     upload: async () => { throw new Error("Unexpected file action"); }, ready: async () => [], pollReady: async () => [], readOnlyCheck: async () => { throw new Error("Unexpected recovery"); }, stop: async () => undefined };
   const states = new Map<string, QueueState>();
-  const service = new DouyinUploadService(store, { accounts: new QianchuanAccountConfigReader(), readPlans, loadBatch: async id => structuredClone(states.get(id)!), browser: () => browser, readiness: () => undefined });
+  const accounts = currentAccount ? new QianchuanAccountSettings(store.root, async () => "http://127.0.0.1:11000", async () => "http://127.0.0.1:11000", currentAccount) : new QianchuanAccountConfigReader();
+  const service = new DouyinUploadService(store, { accounts, readPlans, loadBatch: async id => structuredClone(states.get(id)!), browser: () => browser, readiness: () => undefined });
   await service.chooseConfig(configPath); await service.configure({ enabled: true });
+  if (currentAccount) await service.stop();
   const batchId = randomUUID(), projectId = randomUUID(), taskId = randomUUID(), video = path.join(root, "output.mp4");
   await writeFile(video, "fixture artifact");
   const task: QueueState["batch"]["tasks"][number] = { id: taskId, batchId, mediaId: randomUUID(), status: "completed", progress: 1, attempt: 1, attempts: [], createdAt: now(), outputPath: video,
     outputArtifact: { taskId, path: video, sizeBytes: 16, durationMs: 1000, createdAt: now() } };
   states.set(batchId, { schemaVersion: QUEUE_SCHEMA_VERSION, revision: 1, updatedAt: now(), batch: { schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [], outputDirectory: root, preset: DEFAULT_PRESET, status: "completed", estimatedBytes: 0, createdAt: now(), tasks: [task] } });
-  return { service, store, readPlans, connect, configPath, document, save, batch: { id: batchId, projectId, tasks: [{ id: taskId }] }, identity: { project_id: projectId, batch_id: batchId, export_task_id: taskId } };
+  return { service, store, readPlans, connect, accounts, configPath, document, save, batch: { id: batchId, projectId, tasks: [{ id: taskId }] }, identity: { project_id: projectId, batch_id: batchId, export_task_id: taskId } };
 }
+
+describe("current browser subaccount", () => {
+  const currentPlan = (advertiserId = "7000", adId = "9001") => ({ ...plan(adId), advertiserId, accountSource: "current-browser" as const });
+  it("reads the current child through the saved anchor, without changing the mapping or creating intents", async () => {
+    const current = vi.fn(async () => "7000"), f = await fixture(current);
+    const before = await readFile((f.accounts as QianchuanAccountSettings).file);
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const request = { product: "眼贴", expectedAdvertiserId: "1000", accountSource: "current-browser" };
+    expect(await f.service.listPlans(request)).toEqual([currentPlan()]);
+    expect(f.readPlans.mock.calls.at(-1)![0].advertiserId).toBe("7000");
+    current.mockResolvedValue("8000");
+    expect(await f.service.listPlans(request)).toEqual([currentPlan("8000")]);
+    expect(await readFile((f.accounts as QianchuanAccountSettings).file)).toEqual(before);
+    expect(f.store.intents()).toHaveLength(0); expect(f.connect).not.toHaveBeenCalled();
+    await expect(f.service.listPlans({ ...request, expectedAdvertiserId: "9999" })).rejects.toThrow("广告账户已变化");
+  });
+  it("binds authorization, intent and browser connection to the explicit child plan", async () => {
+    const current = vi.fn(async () => "7000"), f = await fixture(current);
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const selected = { ...selection(), plan: currentPlan() };
+    const authorization = (await f.service.preflight(selected, 1))!;
+    expect(authorization.target).toMatchObject({ advertiserId: "7000", adId: "9001", cdpEndpoint: "http://127.0.0.1:11000" });
+    await f.service.registerBatches([f.batch], selected, authorization);
+    expect(f.store.intents()[0]!.authorization.target.advertiserId).toBe("7000");
+    await f.service.enqueueFinalArtifact(f.identity); await f.service.runPending();
+    expect(f.connect).toHaveBeenCalledOnce();
+    expect((f.connect.mock.calls[0] as unknown as [any])[0].authorization.target.advertiserId).toBe("7000");
+    expect(f.store.tasks()[0]!.authorization.target.advertiserId).toBe("7000");
+  });
+  it("rejects a saved anchor change between the initial check and the current catalog preparation", async () => {
+    const f = await fixture(vi.fn(async () => "7000")), accounts = f.accounts as QianchuanAccountSettings;
+    const preflight = accounts.preflight.bind(accounts);
+    vi.spyOn(accounts, "preflight").mockImplementationOnce(async product => {
+      const target = await preflight(product), mapping = JSON.parse(await readFile(accounts.file, "utf8"));
+      mapping.accounts.find((account: { product: string }) => account.product === product).advertiserId = "9999";
+      await writeFile(accounts.file, JSON.stringify(mapping));
+      return target;
+    });
+    f.readPlans.mockClear();
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    await expect(f.service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000", accountSource: "current-browser" })).rejects.toThrow("广告账户已变化");
+    expect(f.readPlans).not.toHaveBeenCalled(); expect(f.store.intents()).toHaveLength(0);
+  });
+  it("rejects a stale child selection, drift during the catalog and forged authorization", async () => {
+    const current = vi.fn(async () => "7000"), f = await fixture(current);
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const selected = { ...selection(), plan: currentPlan() };
+    await expect(f.service.preflight({ ...selected, plan: currentPlan("8000") }, 1)).rejects.toThrow("不属于");
+    f.readPlans.mockImplementationOnce(async target => { current.mockResolvedValue("8000"); return [{ ...plan(), advertiserId: target.advertiserId }]; });
+    await expect(f.service.preflight(selected, 1)).rejects.toThrow("已变化");
+    current.mockResolvedValue("7000");
+    const authorization = (await f.service.preflight(selected, 1))!;
+    await expect(f.service.registerBatches([f.batch], selected, { ...authorization, expectedCount: 2 })).rejects.toThrow("授权已变化");
+    expect(f.store.intents()).toHaveLength(0); expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("blocks a later child switch before any browser upload action, preserving the frozen target", async () => {
+    const current = vi.fn(async () => "7000"), f = await fixture(current);
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const selected = { ...selection(), plan: currentPlan() }, authorization = (await f.service.preflight(selected, 1))!;
+    await f.service.registerBatches([f.batch], selected, authorization); await f.service.enqueueFinalArtifact(f.identity);
+    current.mockResolvedValue("8000"); await f.service.runPending();
+    expect(f.connect).not.toHaveBeenCalled(); expect(f.store.tasks()[0]!.authorization.target).toEqual(authorization.target);
+    expect(f.store.tasks()[0]!.result.failure?.code).toBe("INPUT_CONFLICT");
+  });
+});
 
 describe("explicit upload plan selection", () => {
   it("scopes cancellation to the initiating IPC sender and stops its active reader", async () => {
@@ -262,12 +330,14 @@ describe("explicit upload plan selection", () => {
     expect(restored.unavailable).toBe(false); expect(restored.intents()[0]!.selection.plan?.adId).toBe("9002");
     expect(restored.tasks()[0]!.authorization.target.adId).toBe("9002");
   });
-  it.each([true, false])("cross-template admission accepts only the explicit selected plan (matching=%s)", async matching => {
-    const f = await fixture(), project = createDefaultProject("眼贴"), mediaId = randomUUID();
+  it.each([[true, false], [false, false], [true, true], [false, true]])("cross-template admission accepts only the explicit selected plan (matching=%s, child=%s)", async (matching, child) => {
+    const f = await fixture(child ? vi.fn(async () => "7000") : undefined), project = createDefaultProject("眼贴"), mediaId = randomUUID();
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const selected = child ? { ...selection(), plan: { ...plan(), advertiserId: "7000", accountSource: "current-browser" as const } } : selection();
     project.mediaItems = [{ id: mediaId, sourcePath: "/fixture/source.mp4", displayName: "source.mp4", fingerprint: "fixture", sizeBytes: 100, durationMs: 1000,
       width: 720, height: 1280, rotation: 0, probeStatus: "ready", importedAt: now() }];
     project.workspaceDraft = ProjectWorkspaceSchema.parse({ step: "templates", selectedMediaIds: [mediaId], ruleId: "clean", brief: "", decorations: { mode: "random" }, requestedCount: 1, exportFormat: "mp4", exportSettings: DEFAULT_EXPORT_SETTINGS });
-    const authorization = (await f.service.preflight(selection(), 1))!;
+    const authorization = (await f.service.preflight(selected, 1))!;
     const outputDirectory = vi.fn(async () => { throw new Error("Fixture stops after admission"); });
     const controller = new BatchProductionController(f.store.root, {
       name: () => "眼贴", loadProject: async () => project,
@@ -275,7 +345,7 @@ describe("explicit upload plan selection", () => {
       preflightUpload: async () => matching ? authorization : { ...authorization, target: { ...authorization.target, adId: "9002" } },
       outputDirectory, session: vi.fn(), queue: () => ({ revision: 0, batches: [] }), taskStatuses: () => new Map(), cancelExport: vi.fn(), changed: vi.fn(),
     });
-    await controller.start({ entries: [{ recentProjectId: randomUUID(), requestedCount: 1, productPrice: "手动文字", coverEnabled: false, displayMode: "full", mode: "random", douyinUpload: selection() }] });
+    await controller.start({ entries: [{ recentProjectId: randomUUID(), requestedCount: 1, productPrice: "手动文字", coverEnabled: false, displayMode: "full", mode: "random", douyinUpload: selected }] });
     await vi.waitFor(() => expect(controller.snapshot()?.status).toBe("finished"));
     if (matching) expect(outputDirectory).toHaveBeenCalledOnce();
     else { expect(outputDirectory).not.toHaveBeenCalled(); expect(controller.snapshot()?.jobs[0]?.error).toContain("计划"); }

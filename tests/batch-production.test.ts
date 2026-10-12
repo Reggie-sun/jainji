@@ -921,7 +921,11 @@ describe("batch automatic plan preparation", () => {
       const checkbox = page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true });
       await checkbox.uncheck(); await checkbox.check();
       expect(await page.getByLabel("上传计划", { exact: true }).count()).toBe(2);
-      await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 4);
+      await page.evaluate(() => {
+        for (const request of (window as any).catalogRequests.slice(2)) request.resolve([{advertiserId:request.input.expectedAdvertiserId,adId:request.input.expectedAdvertiserId === "1000" ? "9002" : "9001",name:"已核对计划"}]);
+      });
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="蝴蝶贴制作设置"] [aria-label="上传计划"]')?.value === "9002");
       expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
     } finally { await page.close(); }
   });

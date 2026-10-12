@@ -99,7 +99,7 @@ it("reads plans independently of template selection and cancels when upload is d
   } finally { await browser.close(); }
 }, 30000);
 
-it.each([false, true])("keeps the chosen upload plan when returning to the selector (compact: %s)", async compact => {
+it.each([false, true])("revalidates and keeps the matching upload plan when returning to the selector (compact: %s)", async compact => {
   const browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
   try {
     const page = await browser.newPage();
@@ -134,19 +134,23 @@ it.each([false, true])("keeps the chosen upload plan when returning to the selec
     expect(await page.evaluate(() => (window as any).selection.plan)).toEqual(chosen);
     await page.getByRole("button", { name: "离开或返回设置" }).click();
     await page.getByRole("button", { name: "离开或返回设置" }).click();
+    await page.waitForFunction(() => (window as any).requests.length === 2);
+    expect(await page.evaluate(() => (window as any).requests[1].input.accountSource)).toBe("current-browser");
+    expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(true);
+    await page.evaluate(() => (window as any).requests[1].resolve([{ advertiserId: "789", adId: "987", name: "已选计划" }]));
     await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')?.value === "987", undefined, { timeout: 3000 });
-    expect(await page.evaluate(() => (window as any).requests.length)).toBe(1);
+    expect(await page.evaluate(() => (window as any).requests.length)).toBe(2);
     expect(await page.evaluate(() => (window as any).selection.plan)).toEqual(chosen);
     expect(await page.getByLabel("上传计划", { exact: true }).inputValue()).toBe("987");
     await page.getByRole("button", { name: "刷新计划", exact: true }).click();
-    await page.waitForFunction(() => (window as any).requests.length === 2);
+    await page.waitForFunction(() => (window as any).requests.length === 3);
     expect(await page.evaluate(() => (window as any).selection.plan)).toBeUndefined();
-    await page.evaluate(() => (window as any).requests[1].reject(new Error("计划已失效")));
+    await page.evaluate(() => (window as any).requests[2].reject(new Error("计划已失效")));
     await page.getByRole("alert").waitFor();
     expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(true);
     await page.getByLabel(compact ? "千川上传" : "本次产品账号", { exact: true }).selectOption("肥皂");
-    await page.waitForFunction(() => (window as any).requests.length === 3);
-    expect(await page.evaluate(() => (window as any).requests[2].input.expectedAdvertiserId)).toBe("123");
+    await page.waitForFunction(() => (window as any).requests.length === 4);
+    expect(await page.evaluate(() => (window as any).requests[3].input.expectedAdvertiserId)).toBe("123");
     expect(await page.evaluate(() => (window as any).selection.plan)).toBeUndefined();
   } finally { await browser.close(); }
 }, 30000);

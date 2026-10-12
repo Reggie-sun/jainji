@@ -152,6 +152,25 @@ async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: 
 }
 async function selected(page: Page) { return page.locator("#selection").textContent().then(value => JSON.parse(value!)); }
 describe("plan selector browser interaction", () => {
+  it("reads and selects the webpage child, then clears the choice if focus returns with a different child", async () => {
+    const page = await fixture({ batch: true });
+    try {
+      expect(await page.evaluate(() => (window as any).catalogRequests[0].input.accountSource)).toBe("current-browser");
+      const respond = (advertiserId: string) => page.evaluate(id => (window as any).catalogRequests.at(-1).resolve([
+        { advertiserId: id, adId: "9001", name: "子账户计划", accountSource: "current-browser" },
+      ]), advertiserId);
+      await respond("7000");
+      await page.getByLabel("上传计划").selectOption("9001");
+      expect((await selected(page)).plan).toMatchObject({ advertiserId: "7000", accountSource: "current-browser" });
+      await page.getByText("账户 7000", { exact: true }).waitFor();
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await respond("8000");
+      await page.getByText("账户 8000", { exact: true }).waitFor();
+      expect((await selected(page)).plan).toBeUndefined();
+      expect(await page.getByLabel("上传计划").inputValue()).toBe("");
+    } finally { await page.close(); }
+  });
   it("keeps account controls aligned and offers recovery after a raw CDP timeout", async () => {
     const page = await fixture({ batch: true });
     try {

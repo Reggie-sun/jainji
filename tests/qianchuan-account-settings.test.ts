@@ -7,6 +7,7 @@ import { parseQianchuanPlanUrl, QIANCHUAN_PRODUCTS } from "../src/shared/qianchu
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+import * as discovery from "../src/main/qianchuan-browser-discovery";
 
 it("refreshes bound Chrome profile labels without changing config bytes, frozen identities or template bindings", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);
@@ -57,6 +58,28 @@ it("resolves catalog connections without starting browsers or changing saved set
   expect(existing).toHaveBeenCalledWith(target.advertiserId); expect(f.discover).not.toHaveBeenCalled();
   existing.mockImplementationOnce(async () => { await settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(target.advertiserId, "456") }); return "http://127.0.0.1:9442"; });
   await expect(settings.prepareCatalog("蝴蝶贴")).rejects.toThrow("已变化");
+});
+it("reads catalogs through the bound profile after its visible page switches subaccounts", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const root = path.join(f.root, "app"), profile = path.join(f.root, "chrome");
+  await mkdir(path.join(profile, "Profile 9"), { recursive: true, mode: 0o700 });
+  const settings = new QianchuanAccountSettings(root); await settings.restore();
+  const old = await settings.preflight("蝴蝶贴"), before = await readFile(settings.file);
+  const binding = { advertiserId: old.advertiserId, profile, profileDirectory: "Profile 9", windowClass: "cp-original" };
+  await new QianchuanBrowserBindings(root).save(binding);
+  const bindingFile = path.join(root, "account-browser-bindings", "bindings.json"), bindingBefore = await readFile(bindingFile);
+  vi.spyOn(discovery, "runningChromeBrowsers").mockResolvedValue([{ ...binding, endpoint: "http://127.0.0.1:9441" }]);
+  const request = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify([
+    { type: "page", url: "https://qianchuan.jinritemai.com/uni-prom?aavid=456" },
+    { type: "page", url: `https://qianchuan.jinritemai.com/finance?aavid=${old.advertiserId}` },
+  ])));
+  const target = await settings.prepareCatalog(old.product);
+  expect(target).toEqual({ ...old, cdpEndpoint: "http://127.0.0.1:9441" });
+  expect(request).not.toHaveBeenCalled();
+  expect(await readFile(settings.file)).toEqual(before);
+  expect(await readFile(bindingFile)).toEqual(bindingBefore);
+  // Upload preparation still requires the selected account; catalog connections grant no upload authority.
+  await expect(settings.prepare(old.product)).rejects.toThrow("未找到该账户");
 });
 it("persists multiple template bindings independently without invalidating account digests", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);

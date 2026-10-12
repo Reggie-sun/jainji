@@ -25,11 +25,17 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
   const product = account?.product, advertiserId = account?.advertiserId;
   const available = account?.available === true;
   useEffect(() => {
+    if (purpose !== "upload") return;
+    const refresh = () => { if (!disabled) setRevision(current => current + 1); };
+    window.addEventListener("focus", refresh);
+    return () => window.removeEventListener("focus", refresh);
+  }, [purpose, disabled]);
+  useEffect(() => {
     let active = true;
     setPlans([]); setError(""); setLoading(false);
-    if (selected.current && selected.current.advertiserId !== advertiserId) change.current(undefined);
+    if (purpose === "cleanup" && selected.current && selected.current.advertiserId !== advertiserId) change.current(undefined);
     if (!product || !advertiserId || !available) return;
-    if (revision === 0 && selected.current?.advertiserId === advertiserId) {
+    if (purpose === "cleanup" && revision === 0 && selected.current?.advertiserId === advertiserId) {
       // Restore this round's explicit choice; production admission revalidates the plan.
       setPlans([selected.current]);
       return;
@@ -39,21 +45,21 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
       return;
     }
     setLoading(true);
-    const request = acquireQianchuanPlans({ product, expectedAdvertiserId: advertiserId, ...(revision ? { refresh: true } : {}) });
+    const request = acquireQianchuanPlans({ product, expectedAdvertiserId: advertiserId, ...(revision ? { refresh: true } : {}), ...(purpose === "upload" ? { accountSource: "current-browser" } : {}) });
     void request.promise.then(result => {
       if (!active) return;
       const next = QianchuanPlanListSchema.parse(result);
-      if (next.some(plan => plan.advertiserId !== advertiserId)) throw new Error("计划列表不属于所选账号，请重新读取。");
+      if (purpose === "cleanup" && next.some(plan => plan.advertiserId !== advertiserId)) throw new Error("计划列表不属于所选账号，请重新读取。");
       setPlans(next);
-      if (selected.current && !next.some(plan => plan.adId === selected.current?.adId)) change.current(undefined);
+      if (selected.current && !next.some(plan => plan.advertiserId === selected.current?.advertiserId && plan.adId === selected.current?.adId)) change.current(undefined);
     }).catch(cause => {
       if (!active) return;
       change.current(undefined);
       setError(planReadError(cause));
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; request.release(); };
-  }, [product, advertiserId, available, revision]);
-  const chosen = value && value.advertiserId === advertiserId && plans.some(plan => plan.adId === value.adId) ? value.adId : "";
+  }, [product, advertiserId, available, revision, purpose]);
+  const chosen = value && plans.some(plan => plan.advertiserId === value.advertiserId && plan.adId === value.adId) ? value.adId : "";
   const chosenPlan = plans.find(plan => plan.adId === chosen);
   const identity = chosenPlan && `${chosenPlan.name} · ID ${chosenPlan.adId}`;
   return <div className={`qianchuan-plan-select${compact ? " compact" : ""}`} style={{ gridColumn: compact ? undefined : "1 / -1", minWidth: 0 }}>
@@ -65,6 +71,6 @@ export function QianchuanPlanSelect({ account, value, onChange, disabled = false
     </select>
     <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
     {!compact && chosenPlan && <div style={{ overflowWrap: "anywhere" }}><strong>{chosenPlan.productNames?.join("、") ?? "商品信息未读取"}</strong><p>计划名称：{chosenPlan.name}</p><small>计划 ID：{chosenPlan.adId}</small></div>}
-    {error ? <p role="alert">{error}</p> : !compact && (loading ? <small role="status">{purpose === "cleanup" ? "只读取计划列表，不删除素材。" : "只读取计划列表，不上传视频。"}</small> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>{instruction}</small> : null)}
+    {error ? <p role="alert">{error}</p> : purpose === "upload" && available && (plans.length > 0 || loading) ? <small role={loading ? "status" : undefined} style={{ gridColumn: "1 / -1", overflowWrap: "anywhere" }}>{loading ? "正在核对网页子账户…" : `账户 ${plans[0]!.advertiserId}`}</small> : !compact && (loading ? <small role="status">{purpose === "cleanup" ? "只读取计划列表，不删除素材。" : "只读取计划列表，不上传视频。"}</small> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>{instruction}</small> : null)}
   </div>;
 }

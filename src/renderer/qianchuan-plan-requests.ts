@@ -11,7 +11,7 @@ const requests = new Map<string, Request>();
 
 /** A lease lasts only for a mounted selector; no catalog is cached after completion. */
 export function acquireQianchuanPlans(input: QianchuanPlanListRequest): { promise: Promise<QianchuanPlanOption[]>; release(): void } {
-  const key = JSON.stringify([input.product, input.expectedAdvertiserId, input.refresh === true]);
+  const key = JSON.stringify([input.product, input.expectedAdvertiserId, input.refresh === true, input.accountSource]);
   let request = requests.get(key);
   if (!request) {
     const id = crypto.randomUUID();

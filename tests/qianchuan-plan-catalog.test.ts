@@ -39,17 +39,24 @@ function pageHtml(page: FixturePage, pageNumber: number): string {
   </div><table><tbody>${page.rows.map(rowHtml).join("")}</tbody></table>`;
 }
 
-async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean; metadata?: unknown; context?: BrowserContext; bootstrapReload?: boolean; bootstrapAdId?: string; reloadNext?: boolean; managedDefault?: boolean } = {}): Promise<{ context: BrowserContext; page: Page }> {
+async function fixture(options: { pages?: FixturePage[]; accountId?: string; updateDelay?: number; holdNext?: boolean; metadata?: unknown; context?: BrowserContext; bootstrapReload?: boolean; bootstrapAdId?: string; reloadNext?: boolean; managedDefault?: boolean; broadDefault?: boolean } = {}): Promise<{ context: BrowserContext; page: Page }> {
   const context = options.context ?? await browser.newContext();
   const page = await context.newPage();
   const pages = options.pages ?? [{ rows: [], total: 0, nextDisabled: true }];
   const html = `<!doctype html><meta charset="utf-8"><div class="account-info-container">ID：${options.accountId ?? advertiserId}</div>
     ${options.managedDefault ? '<div class="account-info-container" id="managed-account">千川账户：示例店铺</div><div class="ovui-tabs__tab"><div data-e2e="oc_emptyKey_uni-prom_1">商品自选</div></div><div class="ovui-tabs__tab ovui-tabs__tab--active"><div data-e2e="oc_emptyKey_uni-prom_2">全店托管</div></div>' : ""}
-    <div id="catalog"${options.managedDefault ? ' style="display:none"' : ""}>${pageHtml(pages[0]!, 1)}</div><script>
+    ${options.broadDefault ? '<div data-e2e="oc_emptyKey_uni-prom_7" class="ovui-radio-item ovui-radio-item--checked">放量投放</div><div data-e2e="oc_emptyKey_uni-prom_0" class="ovui-radio-item">控成本投放</div>' : ""}
+    <div id="catalog"${options.managedDefault || options.broadDefault ? ' style="display:none"' : ""}>${pageHtml(pages[0]!, 1)}</div><script>
       const values=${JSON.stringify(pages.map((entry, index) => pageHtml(entry, index + 1)))}; let index=0;
       const next=()=>document.querySelector('[data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"] li.ovui-page-turner__item:has(.ovui-page-turner__next-icon)');
       next().addEventListener('click',()=>{${options.reloadNext ? "location.reload();" : options.holdNext ? "" : `setTimeout(()=>{index++;if(index<values.length)document.querySelector('#catalog').innerHTML=values[index];},${options.updateDelay ?? 50});`}});
       ${options.metadata ? "fetch('/ad/api/pmc/v1/uni-promotion/ad/list-optional')" : ""};
+      ${options.broadDefault ? `document.querySelector('[data-e2e="oc_emptyKey_uni-prom_0"]').addEventListener('click',()=>{
+        console.log('fixture cost view selected');
+        document.querySelector('#catalog').style.display='';
+        document.querySelector('[data-e2e="oc_emptyKey_uni-prom_7"]').classList.remove('ovui-radio-item--checked');
+        document.querySelector('[data-e2e="oc_emptyKey_uni-prom_0"]').classList.add('ovui-radio-item--checked');
+      });` : ""}
       ${options.managedDefault ? `document.querySelector('[data-e2e="oc_emptyKey_uni-prom_1"]').addEventListener('click',()=>{
         console.log('fixture product view selected');
         document.querySelector('#managed-account').remove();
@@ -189,6 +196,27 @@ it.each(["matching", "wrong"])("handles a managed default view with a %s account
     expect(context.pages()).toEqual(originalPages);
     expect(await f.page.locator("#catalog").isVisible()).toBe(false);
     expect(await f.page.locator('[data-e2e="oc_emptyKey_uni-prom_2"]').locator("..").getAttribute("class")).toBe("ovui-tabs__tab ovui-tabs__tab--active");
+  } finally { await context.close(); await rm(profile, { recursive: true, force: true }); }
+});
+
+it.each(["matching", "wrong"])("reads the cost-control catalog from a broad default only with a %s account on the owned picker", async identity => {
+  const profile = await mkdtemp(path.join(tmpdir(), "jianji-plan-broad-"));
+  const context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true,
+    args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
+  let selections = 0;
+  context.on("page", page => page.on("console", message => { if (message.text() === "fixture cost view selected") selections++; }));
+  try {
+    const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
+    const f = await fixture({ context, broadDefault: true, accountId: identity === "matching" ? advertiserId : "999999",
+      pages: [{ rows: [{ name: "控成本计划", id: "7001" }], total: 1, nextDisabled: true }] });
+    const originalPages = context.pages();
+    const pending = readQianchuanPlans({ ...target, cdpEndpoint: `http://127.0.0.1:${port}` }, AbortSignal.timeout(5000));
+    if (identity === "matching") await expect(pending).resolves.toEqual([{ advertiserId, adId: "7001", name: "控成本计划" }]);
+    else await expect(pending).rejects.toThrow();
+    expect(selections).toBe(identity === "matching" ? 1 : 0);
+    expect(context.pages()).toEqual(originalPages);
+    expect(await f.page.locator("#catalog").isVisible()).toBe(false);
+    expect(await f.page.locator('[data-e2e="oc_emptyKey_uni-prom_7"]').getAttribute("class")).toContain("ovui-radio-item--checked");
   } finally { await context.close(); await rm(profile, { recursive: true, force: true }); }
 });
 

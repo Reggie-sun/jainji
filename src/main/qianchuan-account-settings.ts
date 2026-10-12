@@ -11,6 +11,7 @@ import { QianchuanLibraryClearSchema } from "../shared/qianchuan-video-library.j
 import { egressIdentity, type QianchuanEgress } from "../shared/qianchuan-egress.js";
 import { qianchuanEgressRuntime } from "./qianchuan-egress-runtime.js";
 import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
+import { readCurrentQianchuanAccount } from "./qianchuan-current-account.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -26,7 +27,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly browsers: QianchuanBrowserManager;
   private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
   private readonly discoverExistingBrowser: (advertiserId: string) => Promise<string>;
-  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>) {
+  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccount) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
     this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id), displayName: async id => {
@@ -36,7 +37,8 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       return account.productName ?? account.product;
     } });
     this.discoverBrowser = discoverBrowser ?? (id => this.browsers.prepare(id));
-    this.discoverExistingBrowser = discoverExistingBrowser ?? (id => this.browsers.prepareExisting(id));
+    // The owned catalog page verifies account identity; switching an existing tab must not hide its bound browser.
+    this.discoverExistingBrowser = discoverExistingBrowser ?? (id => this.browsers.existingConnection(id));
   }
   async openBrowser(input: unknown): Promise<void> {
     this.assertAvailable();
@@ -232,6 +234,14 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     await super.freeze(product, target.configDigest);
     this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
     return this.withPreparedBrowser(target);
+  }
+  async prepareCurrentCatalog(product: QianchuanProduct, signal?: AbortSignal, excludedTargets?: ReadonlySet<string>): Promise<{ configured: FrozenQianchuanAccount; target: FrozenQianchuanAccount }> {
+    const configured = await this.prepareCatalog(product);
+    const advertiserId = await this.currentAccount(configured.cdpEndpoint, signal, excludedTargets);
+    const fresh = await this.freeze(product, configured.configDigest);
+    if (JSON.stringify(fresh) !== JSON.stringify(configured)) throw new Error("账号连接已变化，请重新读取计划。");
+    if (configured.egress?.mode === "remote-browser" && advertiserId !== configured.advertiserId) throw new Error("VPS 浏览器当前子账户与保存绑定不同，请先在账号设置中保存该子账户后重试。");
+    return { configured, target: Object.freeze({ ...configured, advertiserId }) };
   }
   async savePlan(input: unknown, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
