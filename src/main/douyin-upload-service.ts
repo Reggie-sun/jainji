@@ -304,16 +304,18 @@ export class DouyinUploadService {
       return targetId ? [targetId] : [];
     }));
   }
-  private async catalogPlans(product: QianchuanProduct, advertiserId: string, signal: AbortSignal, refresh = false, currentBrowser = false, onAccount?: (account: QianchuanCurrentAccount) => void): Promise<QianchuanPlanOption[]> {
+  private async catalogPlans(product: QianchuanProduct, advertiserId: string, signal: AbortSignal, refresh = false, currentBrowser = false, onAccount?: (account: QianchuanCurrentAccount) => void, openLocalIfMissing = false): Promise<QianchuanPlanOption[]> {
     this.browserPreparations++;
     try {
       signal.throwIfAborted();
       const configured = await this.accounts.preflight(product);
       signal.throwIfAborted();
       if (configured.advertiserId !== advertiserId) throw new Error("广告账户已变化，请重新选择账号。");
+      const openLocal = openLocalIfMissing && this.accounts instanceof QianchuanAccountSettings && configured.egress?.mode !== "remote-browser";
+      if (openLocal && (this.stopFailed || this.store.unavailable)) throw new Error("上传状态不可用，未打开账号浏览器。");
       if (currentBrowser) {
         if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持读取网页子账户，请在简辑中保存账号设置。");
-        const before = await this.accounts.prepareCurrentCatalog(product, signal, this.excludedPlanTargets());
+        const before = await this.accounts.prepareCurrentCatalog(product, signal, this.excludedPlanTargets(), openLocal);
         if (before.configured.advertiserId !== advertiserId) throw new Error("广告账户已变化，请重新选择账号。");
         const plans = await this.planReads.catalog(before.target, signal, refresh);
         const after = await this.accounts.prepareCurrentCatalog(product, signal, this.excludedPlanTargets());
@@ -322,9 +324,9 @@ export class DouyinUploadService {
         onAccount?.(after.account);
         return plans.map(plan => ({ ...plan, accountSource: "current-browser" }));
       }
-      const cached = !refresh ? this.planReads.cached(configured) : undefined;
+      const cached = !refresh && !openLocal ? this.planReads.cached(configured) : undefined;
       if (cached) return cached;
-      const target = await this.accounts.prepareCatalog(product);
+      const target = await (openLocal ? (this.accounts as QianchuanAccountSettings).prepareCatalog(product, true) : this.accounts.prepareCatalog(product));
       signal.throwIfAborted();
       if (target.advertiserId !== advertiserId) throw new Error("广告账户已变化，请重新选择账号。");
       const plans = await this.planReads.catalog(target, signal, refresh);
@@ -346,7 +348,7 @@ export class DouyinUploadService {
     try {
       if (parsed.accountSource === "current-browser") await this.stopPlanPreload(signal);
       let account: QianchuanCurrentAccount | undefined;
-      const plans = await this.catalogPlans(parsed.product, parsed.expectedAdvertiserId, signal, parsed.refresh, parsed.accountSource === "current-browser", value => { account = value; });
+      const plans = await this.catalogPlans(parsed.product, parsed.expectedAdvertiserId, signal, parsed.refresh, parsed.accountSource === "current-browser", value => { account = value; }, true);
       return parsed.includeAccount ? QianchuanPlanCatalogSchema.parse({ account, plans }) : plans;
     } finally { if (key) this.planRequests.delete(key); }
   }

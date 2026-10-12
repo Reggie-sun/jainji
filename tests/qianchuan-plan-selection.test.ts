@@ -37,7 +37,7 @@ it.each(["CLEARED", "BLOCKED"] as const)("continues past historical partial plan
   expect(clearLibrary).not.toHaveBeenCalled();
   if (later === "CLEARED") expect(result.message).toContain("本次视频库清空未执行");
 });
-async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: string) => Promise<string>>>) {
+async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: string) => Promise<string>>>, existingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>) {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-plan-selection-")); roots.push(root);
   const configPath = path.join(root, "accounts.json");
   const document = { version: 1, accounts: ["眼贴", ...QIANCHUAN_PRODUCTS.filter(product => product !== "眼贴")].map((product, index) => ({ product, advertiserId: String(1000 + index), adId: String(2000 + index), cdpEndpoint: `http://127.0.0.1:${11000 + index}` })) };
@@ -48,7 +48,7 @@ async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: strin
   const browser: UploadBrowserPort = { connect, open: async () => { throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "fixture stops before any file action", "fixture", true); },
     upload: async () => { throw new Error("Unexpected file action"); }, ready: async () => [], pollReady: async () => [], readOnlyCheck: async () => { throw new Error("Unexpected recovery"); }, stop: async () => undefined };
   const states = new Map<string, QueueState>();
-  const accounts = currentAccount ? new QianchuanAccountSettings(store.root, async () => "http://127.0.0.1:11000", async () => "http://127.0.0.1:11000", async endpoint => ({ advertiserId: await currentAccount(endpoint), name: "网页子账户" })) : new QianchuanAccountConfigReader();
+  const accounts = currentAccount ? new QianchuanAccountSettings(store.root, async () => "http://127.0.0.1:11000", existingBrowser ?? (async () => "http://127.0.0.1:11000"), async endpoint => ({ advertiserId: await currentAccount(endpoint), name: "网页子账户" })) : new QianchuanAccountConfigReader();
   const service = new DouyinUploadService(store, { accounts, readPlans, loadBatch: async id => structuredClone(states.get(id)!), browser: () => browser, readiness: () => undefined });
   await service.chooseConfig(configPath); await service.configure({ enabled: true });
   if (currentAccount) await service.stop();
@@ -62,6 +62,89 @@ async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: strin
 
 describe("current browser subaccount", () => {
   const currentPlan = (advertiserId = "7000", adId = "9001") => ({ ...plan(adId), advertiserId, accountSource: "current-browser" as const });
+  it.each([false, true])("loads foreground plans with an already-open local browser: %s", async alreadyOpen => {
+    let opened = alreadyOpen;
+    const start = vi.fn(), currentId = alreadyOpen ? "7000" : "1000";
+    const existing = vi.fn(async (_id: string, openIfMissing?: boolean) => {
+      if (!opened) {
+        if (!openIfMissing) throw new Error("local browser closed");
+        start(); opened = true;
+      }
+      return "http://127.0.0.1:11000";
+    });
+    const f = await fixture(vi.fn(async () => currentId), existing);
+    expect(start).not.toHaveBeenCalled();
+    expect(existing.mock.calls.every(([, allowed]) => !allowed)).toBe(true);
+    const before = await readFile((f.accounts as QianchuanAccountSettings).file);
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const request = { product: "眼贴", expectedAdvertiserId: "1000", accountSource: "current-browser", includeAccount: true };
+    expect(await f.service.listPlans(request)).toEqual({ account: { advertiserId: currentId, name: "网页子账户" }, plans: [currentPlan(currentId)] });
+    expect(await f.service.listPlans({ ...request, refresh: true })).toEqual({ account: { advertiserId: currentId, name: "网页子账户" }, plans: [currentPlan(currentId)] });
+    expect(start).toHaveBeenCalledTimes(alreadyOpen ? 0 : 1);
+    expect(opened).toBe(true);
+    expect(await readFile((f.accounts as QianchuanAccountSettings).file)).toEqual(before);
+    expect(f.store.intents()).toHaveLength(0); expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("opens a closed local browser for the foreground saved-account catalog", async () => {
+    let opened = false;
+    const start = vi.fn();
+    const f = await fixture(vi.fn(async () => "1000"), async (_id, openIfMissing) => {
+      if (!opened) {
+        if (!openIfMissing) throw new Error("local browser closed");
+        start(); opened = true;
+      }
+      return "http://127.0.0.1:11000";
+    });
+    expect(start).not.toHaveBeenCalled();
+    expect(await f.service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000" })).toEqual([plan(), plan("9002")]);
+    expect(start).toHaveBeenCalledOnce(); expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("keeps restore and mismatched or remote foreground requests from starting local Chrome", async () => {
+    const start = vi.fn();
+    const f = await fixture(vi.fn(async () => "1000"), async (_id, openIfMissing) => {
+      if (!openIfMissing) throw new Error("local browser closed");
+      start(); return "http://127.0.0.1:11000";
+    });
+    await f.service.restoreConfig(); await vi.waitFor(() => expect(f.service.busy).toBe(false));
+    expect(start).not.toHaveBeenCalled();
+    const request = { product: "眼贴", expectedAdvertiserId: "1000", accountSource: "current-browser" };
+    await expect(f.service.listPlans({ ...request, expectedAdvertiserId: "9999" })).rejects.toThrow("广告账户已变化");
+    const target = await f.accounts.preflight("眼贴");
+    vi.spyOn(f.accounts, "preflight").mockResolvedValue({ ...target, egress: { mode: "remote-browser", group: "one", sshHost: "one", localPort: 19160, expectedIp: "8.8.8.8" } });
+    await expect(f.service.listPlans(request)).rejects.toThrow("local browser closed");
+    expect(start).not.toHaveBeenCalled(); expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("cancels plan reading during local startup without uploading or retrying", async () => {
+    let release!: () => void;
+    const ready = new Promise<void>(resolve => { release = resolve; }), start = vi.fn();
+    const f = await fixture(vi.fn(async () => "1000"), async (_id, openIfMissing) => {
+      if (!openIfMissing) throw new Error("local browser closed");
+      start(); await ready; return "http://127.0.0.1:11000";
+    });
+    const requestId = randomUUID(); f.readPlans.mockClear();
+    const pending = f.service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000", accountSource: "current-browser", requestId }, 11);
+    const rejected = expect(pending).rejects.toThrow();
+    await vi.waitFor(() => expect(start).toHaveBeenCalledOnce());
+    f.service.cancelPlanRead({ requestId }, 11); release(); await rejected;
+    expect(f.service.busy).toBe(false); expect(start).toHaveBeenCalledOnce();
+    expect(f.readPlans).not.toHaveBeenCalled(); expect(f.connect).not.toHaveBeenCalled();
+    expect(f.store.intents()).toHaveLength(0);
+  });
+  it("does not reopen a local browser that disappears during a foreground catalog read", async () => {
+    let opened = false;
+    const start = vi.fn();
+    const f = await fixture(vi.fn(async () => "1000"), async (_id, openIfMissing) => {
+      if (!opened) {
+        if (!openIfMissing) throw new Error("local browser closed");
+        start(); opened = true;
+      }
+      return "http://127.0.0.1:11000";
+    });
+    f.readPlans.mockImplementation(async () => { opened = false; return [plan()]; });
+    await expect(f.service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000", accountSource: "current-browser" })).rejects.toThrow("local browser closed");
+    expect(start).toHaveBeenCalledOnce(); expect(opened).toBe(false);
+    expect(f.store.intents()).toHaveLength(0); expect(f.connect).not.toHaveBeenCalled();
+  });
   it("rejects catalogs whose account identity disagrees with their plans", () => {
     expect(QianchuanPlanCatalogSchema.safeParse({ account: { advertiserId: "8000", name: "其他账户" }, plans: [currentPlan()] }).success).toBe(false);
     expect(QianchuanPlanCatalogSchema.safeParse({ account: { advertiserId: "1000" }, plans: [plan()] }).success).toBe(false);

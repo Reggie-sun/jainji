@@ -135,7 +135,7 @@ export class QianchuanBrowserManager {
     } while (Date.now() < deadline);
     throw new Error(browserUnavailable);
   }
-  /** Explicit user action or new-production preflight only; restore never calls this. */
+  /** Explicit foreground preparation only; restore never calls this. */
   open(advertiserId: string, show = false): Promise<string> {
     this.profile(advertiserId);
     if (this.controlling.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后重试。");
@@ -183,7 +183,7 @@ export class QianchuanBrowserManager {
     const endpoint = await this.existingConnection(advertiserId);
     return discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] });
   }
-  /** Process/profile connection only; production may open a proven absent local browser. */
+  /** Process/profile connection only; foreground preparation may open a proven absent local browser. */
   async existingConnection(advertiserId: string, openLocalIfMissing = false): Promise<string> {
     const managed = this.profile(advertiserId);
     if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");

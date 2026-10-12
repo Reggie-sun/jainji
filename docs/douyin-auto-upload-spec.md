@@ -9,6 +9,14 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## Local Foreground Plan Preparation Amendment (2026-10-13)
+
+用户要求本机账号 Chrome 关闭后仍可在简辑选择计划。本修订允许可信 `listPlans` 前台请求在核对所选账号槽和期望 advertiser 后，使用原 browser manager 启动确认缺席的本机账号 Chrome，再读取计划；包含上传的当前网页子账户和清理的保存账号目录。已打开时复用原连接及网页子账户，不重新导航、关闭或重启原窗口。
+
+权限只作用于前台所选账号；应用启动、恢复、刷新账号摘要及后台 `preloadPlans` 不启动浏览器。VPS 仍使用已有受保护生命周期，不因本机参数获得自动启动或关闭权。连接故障、身份歧义、配置或前后网页账户漂移继续拒绝；取消后不继续读计划，不恢复旧任务或改变账本、绑定与永久 fence。计划读取不上传、确认或删除素材，读取结果仍须由用户明确选择。
+
+Parent Self-Review：复用已有 `openLocalIfMissing` 和目录核验，只在原前台 `listPlans` 路由传入权限；后台共享目录默认值保持关闭。实现计划见 [Local Plan Preparation](superpowers/plans/2026-10-13-qianchuan-plan-browser-preparation.md)。
+
 ## All Entry Automatic Confirmation Amendment (2026-10-12)
 
 用户明确要求所有制作入口均自动化。本修订替代下文及旧增量中普通上传“停在确定前”的边界：单项目、普通跨模板批量、追加和每日自动化在用户开启本轮千川上传并选择账号/计划后，共用原服务的一次性自动确认。上传仍按最多 9 条选择一组，只有冻结完整批次的全部文件同页达到 READY，且最终身份、文件、数量及页面归属核验通过，才能进入确认。先持久保存 UNKNOWN 与确认意图，再逐层点击唯一确定；绑定平台回执才标 ACCEPTED，接收不证明审核或广告投放结果。
