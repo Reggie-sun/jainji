@@ -159,6 +159,31 @@ it("automatically confirms an ordinary production only after every frozen member
   expect(f.events.filter(event => event === "confirm")).toHaveLength(1);
 });
 
+it("opens a closed remote browser before ordinary current-account production preflight", async () => {
+  const open = new Set<string>(), events: string[] = [];
+  const endpoint = (id: string) => `http://127.0.0.1:${12000 + Number(id) - 1000}`;
+  vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async (id, action) => {
+    expect(action).toBe("close"); events.push(`close:${id}`); open.delete(id);
+  });
+  const f = await fixture({ remote: true, accounts: root => new QianchuanAccountSettings(path.join(root, "private"), async id => {
+    open.add(id); events.push(`open:${id}`); expect(open.size).toBe(1); return endpoint(id);
+  }, async id => {
+    events.push(`catalog:${id}`);
+    if (!open.has(id)) throw new Error("catalog browser closed");
+    return endpoint(id);
+  }, async value => ({ displayName: "当前账号", advertiserId: String(Number(new URL(value).port) - 12000 + 1000) })) });
+  const target = await f.service.automationAccount("眼贴");
+  await f.service.beginProduction();
+  expect(open.size).toBe(0);
+  const authorization = await f.service.preflight({ enabled: true, accountProduct: target.product,
+    plan: { advertiserId: target.advertiserId, adId: "2222", name: "当前计划", accountSource: "current-browser" } }, 1);
+  expect(authorization?.target.advertiserId).toBe(target.advertiserId);
+  expect(events.filter(event => event === `open:${target.advertiserId}`)).toHaveLength(1);
+  expect(events.indexOf(`open:${target.advertiserId}`)).toBeLessThan(events.lastIndexOf(`catalog:${target.advertiserId}`));
+  expect(events.at(-1)).toBe(`close:${target.advertiserId}`);
+  expect(open.size).toBe(0);
+});
+
 it("serializes ordinary remote preflights, holds incomplete uploads, then closes before the next account", async () => {
   const f = await remoteFixture(), first = await f.batch(["ordinary remote A1", "ordinary remote A2"], "眼贴"), next = await f.batch(["ordinary remote B"], "蝴蝶贴");
   await f.service.beginProduction();

@@ -537,6 +537,7 @@ export class DouyinUploadService {
       }
       const browserSelection = parsed.plan?.accountSource === "current-browser" && !this.automationUploadActive;
       if (browserSelection && !(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持网页子账户，请重新设置账号。");
+      if (browserSelection && ordinaryTarget) await this.accounts.prepare(parsed.accountProduct);
       const browserTarget = browserSelection ? await (this.accounts as QianchuanAccountSettings).prepareCurrentCatalog(parsed.accountProduct, undefined, this.excludedPlanTargets()) : undefined;
       const prepared = browserTarget?.target ?? await this.accounts.prepare(parsed.accountProduct);
       const target = this.selectedTarget(prepared, parsed);
