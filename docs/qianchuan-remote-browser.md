@@ -42,6 +42,12 @@ ssh -o BatchMode=yes -o StrictHostKeyChecking=yes shop-one 'node --version'
 
 更新需同时部署本机代码与完整远端 worker。旧 worker 不支持新增 `desktop-sync` 时明确报错，不回退。此前由 `jianji-vps-account` 创建且 Exec/Icon 精确匹配的旧入口会迁移为 worker 命令；其他文件冲突、损坏登记、残留 `sync.lock` 或不明确的桌面会话均阻断，保留资料供人工核查，不自动清锁或删除浏览器目录。
 
+## Native Client Links
+
+千川网页可能唤起 `bytedance://dispatch_message/`。仅使用网页的 Linux VPS 没有对应客户端时，XFCE 会反复显示 “Failed to open URI / Operation not supported”。桌面同步按 [XDG MIME 关联规范](https://specifications.freedesktop.org/mime-apps-spec/latest/) 通过 GIO 为缺失的 `bytedance` handler 注册本用户的 `jianji-bytedance-web.desktop`；固定 `/usr/bin/true %u` 直接忽略客户端唤起，URI 不执行为 shell 命令，不记录其内容。它不安装客户端，不处理客户端功能，也不提供网页上传、确认、删除或出口权限。
+
+已有其他默认客户端时保留其关联；应用自有 entry 内容冲突、链接目录/配置、不安全权限、残锁或登记后验证失败均明确拒绝。仅支持专用用户的默认 XDG 目录，需系统 `gio` 与 `/usr/bin/true`，相关用户目录与 MIME 文件不得由其他用户或组写入。`xdg-mime query` 可仅按条目声明返回候选而未真正登记，不能替代 GIO 的有效默认应用核验。更新后可在该专用用户运行 `node ~/.local/share/jianji-remote/worker.cjs --desktop-repair`，只应用兼容登记，不打开或重启 Chrome，当前上传草稿保留。更新 worker 仍遵守前述自动化空闲要求。
+
 ## Transfer And Recovery
 
 - 只传原队列已准入的冻结成片；每组最多九文件，准备好一组就交给千川，已选组上传期间可传后续组。

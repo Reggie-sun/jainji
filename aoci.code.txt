@@ -204,7 +204,7 @@ qianchuan-remote-files.ts[PD8M]: F:接收远端成片分片并校验只读发布
 qianchuan-remote-runtime.ts[IN8S]: F:管理主体远端浏览器通道租约及冻结文件暂存 | R:code:src/main/qianchuan-remote-transport.ts,code:src/shared/qianchuan-remote.ts,code:src/main/douyin-upload-store.ts | A:SSH回环转发；核端口browserPath；分片续传；显式准备含缓存验证后同步显示名 | S:仅NOT_SELECTED可暂存；断连撤租约无本机回退；重连只接原窗原端口，不恢复队列或同步桌面
 qianchuan-remote-selection.ts[IN8T]: F:让远端Chrome读取已暂存路径并选入原文件控件 | R:code:src/main/douyin-cdp-uploader.ts,code:src/main/qianchuan-page-contract.ts | A:主frame多文件input通过临时objectId调用DOM.setFileInputFiles；清理CDP对象 | S:至多9路径；不查本地文件、不点击确认；该调用必须位于原selection fence之后
 qianchuan-remote-transport.ts[IN8T]: F:提供严格SSH worker通道及有界二进制帧 | R:code:src/shared/qianchuan-remote.ts,code:src/main/qianchuan-remote-runtime.ts | A:顺序RPC含桌面元数据；控制45秒分片120秒；取消关通道；头16KiB体4MiB | S:严格主机指纹禁agent转发；固定命令无内容插值；协议错撤销，业务拒绝保留通道；无明文TCP后备
-qianchuan-remote-worker.ts[EN8T]: F:在主体VPS执行浏览器控制出口核验素材接收及桌面入口 | R:code:src/main/qianchuan-browser-manager.ts,code:src/main/qianchuan-remote-files.ts,code:src/main/qianchuan-remote-desktop.ts,code:src/main/qianchuan-egress-probe.ts | A:持久主体IP；stdin帧RPC；desktop-sync不走浏览器流程；固定CLI仅原登记窗口或目录，打开先核出口 | S:非root Linux，无公网监听；不持有队列或确认权；展示同步不启Chrome或绑定上传
+qianchuan-remote-worker.ts[EN8T]: F:在主体VPS执行浏览器控制出口核验素材接收及桌面入口 | R:code:src/main/qianchuan-browser-manager.ts,code:src/main/qianchuan-remote-files.ts,code:src/main/qianchuan-remote-desktop.ts,code:src/main/qianchuan-remote-desktop-protocols.ts | A:持久主体IP；stdin帧RPC；desktop-sync不走浏览器流程；固定repair仅核主体并登记协议；focus原窗口或目录 | S:专用非root Linux，无公网监听；不持有队列或确认权；repair不打开重启或导航Chrome；打开浏览器仍先核出口
 automation-scheduler.ts[AW8S]: F:持久化每日任务并拥有版本化当日触发账本 | R:code:src/main/automation-files.ts,code:src/main/automation-cleanup-migration.ts,code:src/shared/automation.ts | A:串行配置迁移；改时间递增修订；按修订及日期领取；先存RUNNING再执行；未来时间才触发 | S:只拥有触发账本；暂停不重置领取；过去时间不补跑；运行禁改；中断不恢复；未知持久化锁存；系统启动限30分钟
 automation-background.ts[EU6T]: F:用托盘保留可恢复的后台窗口 | R:code:src/main/index.ts | A:隐藏显示窗口；显式退出；释放托盘 | S:无托盘能力则显示窗口避免失联
 automation-desktop.ts[AW8T]: F:接线可信自动化IPC与原执行适配及旧清理迁移 | R:code:src/main/automation-runtime.ts,code:src/main/automation-scheduler.ts,code:src/main/automation-cleanup-migration.ts | A:准备执行核会员；启动前迁移；配置删除同步原系统启动 | S:迁移失败阻断自动执行及旧启动；调度器不自行获得生产权限
@@ -219,10 +219,11 @@ automation-upload.ts[PW8T]: F:持久化定时上传确认的一次性屏障 | R:
 qianchuan-confirmation-receipt.ts[IN8M]: F:被动核验千川绑定视频和添加计划素材回执 | R:code:src/main/qianchuan-page-contract.ts | A:同frame来源账号计划；完整文件名及唯一视频ID；单次POST与双成功响应；有界等待摘要；固定安全校验错误 | S:不发请求；HTTP200及数字status_code零；重复重定向取消拒绝；Content-Length可缺失但声明须有效；解码正文1MiB；不证明审核投放
 membership-keyring.ts[IS8T]: F:在Electron初始化前准备Linux原生密钥环 | R:code:src/main/membership-desktop.ts,code:src/main/membership-storage.ts | A:核私有运行目录及同UID socket；恢复缺失或disabled的D-Bus；未识别桌面用libsecret | S:保留显式password-store与已识别桌面后端；不选择basic_text；无安全bus时不降级落明文
 qianchuan-remote-desktop-panel.ts[IU7S]: F:在实际XFCE会话登记账号底栏并聚焦原Chrome窗口 | R:code:src/main/qianchuan-remote-desktop.ts | A:识别唯一owned panel及D-Bus，screen-zero等价；分配插件保留布局；新增先quit再更新数组；精确WM_CLASS聚焦 | S:文件校验先于panel写；顶栏及无关占用不接管；重复不重启；会话歧义或超时拒绝，不强杀Chrome
-qianchuan-remote-desktop.ts[PU7S]: F:按广告主ID维护远端Chrome图标launcher及展示登记 | R:code:src/main/qianchuan-remote-desktop-panel.ts,code:src/shared/qianchuan-remote.ts,code:src/main/qianchuan-remote-worker.ts | A:独占sync锁与同步原子文件；SVG首字角标；仅迁移精确旧Exec/Icon；固定worker聚焦命令 | S:仅已有规范profile；不创建登录资料；名称无命令权限；损坏登记残锁或外来文件拒绝；展示登记不授上传
+qianchuan-remote-desktop.ts[PU7S]: F:按广告主ID维护远端Chrome图标launcher及展示登记 | R:code:src/main/qianchuan-remote-desktop-panel.ts,code:src/main/qianchuan-remote-desktop-protocols.ts,code:src/main/qianchuan-remote-worker.ts | A:独占sync及原子文件；SVG角标；精确旧入口迁移；登记前应用协议兼容；固定worker聚焦 | S:仅已有规范profile；不创建登录资料；名称无命令权；损坏残锁或外来文件拒绝；展示不授上传
 automation-cleanup-migration.ts[AW8T]: F:将旧视频库授权迁移到唯一自动化调度任务 | R:code:src/main/automation-scheduler.ts,code:src/main/qianchuan-video-library-schedule.ts | A:精确匹配账号时间启用状态；冻结合并配方；先退役旧触发再安装；恢复未完成迁移 | S:不执行平台操作；歧义或绑定漂移阻断；审核规则并集不扩大计划；保留最大已领取日期；完成后不重建已删除任务
 automation-production-upload.ts[AW8S]: F:随原制作已验证成片按账号串行交给原定时上传 | R:code:src/main/batch-production-controller.ts,code:src/main/queue.ts,code:src/main/douyin-upload-service.ts | A:核同run及冻结job归属；等待原持久写入并共用取消signal；每次至多9条；B账号跨小批持有，全部关联job终态及成功成片上传后通知关闭 | S:不另建队列或确认owner；失败可上传成功项，取消项不准入；错误不重试；关闭失败阻断后续账号
 qianchuan-automation-browsers.ts[AW8T]: F:协调B自动化单账号Chrome持有及安全切换 | R:code:src/main/douyin-upload-service.ts,code:src/main/douyin-upload-store.ts,code:src/main/qianchuan-account-settings.ts | A:首次持有复验配置及全部同出口账号保护，再关闭其他空闲窗；同账号跨小批复用；finish核持有身份正常关闭 | S:READY UNKNOWN eligible及未准入意图阻断；持久ACCEPTED证据允许关闭但不改账本；本机与A不关闭；失败不强杀重试或另建队列；release仅内存
+qianchuan-remote-desktop-protocols.ts[IU6T]: F:为专用网页桌面登记缺失的Bytedance协议兼容处理 | R:code:src/main/qianchuan-remote-desktop-panel.ts,code:src/main/douyin-upload-store.ts | A:GIO有效默认关联核验；固定true参数忽略URI；自有锁与同步文件；默认XDG目录检查 | S:已有客户端保留；%u为GLib URI支持所需且不经shell；链接权限外来entry及残锁拒绝；不接触Chrome或平台
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
@@ -230,7 +231,7 @@ index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/mod
 
 ===/home/reggie/vscode_folder/jianji/src/===
 renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/main/preload.ts | A:类型桥接不实现IPC | S:界面只能用显式DesktopApi
-remote-worker.ts[EN7T]: F:启动远端SSH worker或固定账号聚焦入口 | R:code:src/main/qianchuan-remote-worker.ts | A:零参数RPC或精确desktop-focus及数字ID；私有umask和默认display | S:其他参数拒绝；RPC错误只通用响应，CLI错误非零且不泄露异常
+remote-worker.ts[EN7T]: F:启动远端SSH worker及固定桌面聚焦或修复入口 | R:code:src/main/qianchuan-remote-worker.ts | A:零参数RPC；精确desktop-focus数字ID；单参数desktop-repair；私有umask及默认display | S:其他参数拒绝；RPC错误只通用响应，CLI错误非零不泄露异常
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
 App.tsx[AU7L]: F:协调项目草稿与制作作品千川自动化页面 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/TemplatePanel.tsx,code:src/renderer/QianchuanWorkspace.tsx,code:src/renderer/AutomationWorkspace.tsx,code:src/renderer/MaterialCollection.tsx | A:四阶段视图；来源返回滚动焦点；本批上传绑定run/job；原桥启动重试；输出阻断定位；素材模板快捷加载成功留在素材页 | S:切页不保存批准或取消；运行输入已冻结；未保存覆盖禁启动；上传选择不随项目保存；界面不授main权限

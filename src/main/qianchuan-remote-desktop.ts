@@ -7,6 +7,7 @@ import { RemoteDisplayNameSchema } from "../shared/qianchuan-remote.js";
 import { readPrivateJson } from "./qianchuan-account-config.js";
 import { secureUploadDirectory, strictSyncDirectory } from "./douyin-upload-store.js";
 import { XfceDesktopPanel, type DesktopPanel } from "./qianchuan-remote-desktop-panel.js";
+import { RemoteDesktopProtocols } from "./qianchuan-remote-desktop-protocols.js";
 
 const Id = z.string().regex(/^[1-9][0-9]{0,19}$/);
 const Registry = z.object({ version: z.literal(1), accounts: z.array(z.object({ advertiserId: Id, displayName: RemoteDisplayNameSchema, pluginId: z.number().int().min(1).max(99999) }).strict()).max(100) }).strict().refine(v => new Set(v.accounts.map(a => a.advertiserId)).size === v.accounts.length && new Set(v.accounts.map(a => a.pluginId)).size === v.accounts.length);
@@ -27,7 +28,8 @@ function icon(label: string): string {
 /** Presentation only: the original account/profile and worker retain all authority. */
 export class RemoteDesktop {
   private readonly directory: string;
-  constructor(private readonly root: string, private readonly home: string, private readonly panel: DesktopPanel = new XfceDesktopPanel()) {
+  constructor(private readonly root: string, private readonly home: string, private readonly panel: DesktopPanel = new XfceDesktopPanel(),
+    private readonly protocols: Pick<RemoteDesktopProtocols, "ensure"> = new RemoteDesktopProtocols(root, home)) {
     this.directory = path.join(root, "desktop");
   }
   private async profile(id: string): Promise<string> {
@@ -87,6 +89,7 @@ export class RemoteDesktop {
       await this.sharedDirectory(applications); await this.sharedDirectory(panelRoot);
       const fileName = `jianji-account-${id}.desktop`, application = path.join(applications, fileName);
       this.ownedEntry(await this.inspect(application), id, exec);
+      await this.protocols.ensure();
       await this.panel.register(id, async pluginId => {
         const old = registry.accounts.find(v => v.advertiserId === id);
         if (old && old.pluginId !== pluginId || registry.accounts.some(v => v.advertiserId !== id && v.pluginId === pluginId)) throw new Error("Launcher binding changed");

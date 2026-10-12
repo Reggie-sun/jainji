@@ -12,6 +12,7 @@ import { RemoteDesktop } from "./qianchuan-remote-desktop.js";
 import { desktopEnvironment } from "./qianchuan-remote-desktop-panel.js";
 import { readPrivateJson } from "./qianchuan-account-config.js";
 import { z } from "zod";
+import { RemoteDesktopProtocols } from "./qianchuan-remote-desktop-protocols.js";
 
 /** Runs as a dedicated non-root SSH user, over stdin/stdout only; never listens publicly. */
 export class RemoteWorker {
@@ -19,10 +20,16 @@ export class RemoteWorker {
   private readonly files: RemoteFileStore;
   private readonly desktop: RemoteDesktop;
   private identity?: string;
-  constructor(private readonly root: string, home = os.homedir()) {
+  constructor(private readonly root: string, private readonly home = os.homedir()) {
     this.manager = new QianchuanBrowserManager(path.join(root, "browsers"), { launch: (profile, id, original) => launchChrome(profile, id, original, undefined, false) });
     this.files = new RemoteFileStore(path.join(root, "files"));
     this.desktop = new RemoteDesktop(root, home);
+  }
+  /** Applies desktop compatibility without opening, restarting or touching any Chrome page. */
+  async repairDesktopProtocols(): Promise<void> {
+    if (process.platform !== "linux" || !process.getuid?.()) throw new Error("Dedicated non-root Linux user required");
+    await readPrivateJson(path.join(this.root, "subject.json"), input => z.object({ group: z.string().min(1).max(100), expectedIp: z.string().ip({ version: "v4" }) }).strict().parse(input));
+    await new RemoteDesktopProtocols(this.root, this.home).ensure();
   }
   private async bind(request: RemoteRequest): Promise<void> {
     if (process.platform !== "linux" || !process.getuid?.()) throw new Error("Dedicated non-root Linux user required");
