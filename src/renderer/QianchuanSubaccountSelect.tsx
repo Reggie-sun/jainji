@@ -5,6 +5,11 @@ import { QianchuanSubaccountCatalogSchema, type QianchuanSubaccountCatalog } fro
 
 export const QIANCHUAN_ACCOUNT_CHANGED = "jianji:qianchuan-account-changed";
 
+function subaccountError(cause: unknown, fallback: string): string {
+  const message = cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "";
+  return message && message.length < 180 && !/\w+:\/\/|Call log:|[\r\n]/.test(message) ? message : fallback;
+}
+
 export function QianchuanSubaccountSelect({ account, current, disabled, idPrefix, onSwitching }: {
   account?: QianchuanAccountSummary; current?: QianchuanCurrentAccount; disabled: boolean; idPrefix: string;
   onSwitching(value: boolean): void;
@@ -26,7 +31,7 @@ export function QianchuanSubaccountSelect({ account, current, disabled, idPrefix
       const next = QianchuanSubaccountCatalogSchema.parse(value);
       if (next.current.advertiserId !== currentId) { window.dispatchEvent(new CustomEvent(QIANCHUAN_ACCOUNT_CHANGED, { detail: { product, anchor } })); return; }
       setCatalog(next);
-    }).catch(() => { if (generation.current === operation) setError("读取子账户失败，请检查网页后刷新。"); })
+    }).catch(cause => { if (generation.current === operation) setError(subaccountError(cause, "读取子账户失败，请检查网页后刷新。")); })
       .finally(() => { if (generation.current === operation) setLoading(false); });
     return () => { generation.current++; };
   }, [product, anchor, currentId, available, supported, revision]);
@@ -43,8 +48,7 @@ export function QianchuanSubaccountSelect({ account, current, disabled, idPrefix
     } catch (cause) {
       if (generation.current !== operation) return;
       setCatalog(undefined);
-      const message = cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "";
-      setError(message && message.length < 180 && !/ws:\/\/|Call log:/.test(message) ? message : "切换结果未能核对，请刷新子账户；未自动重试。");
+      setError(subaccountError(cause, "切换结果未能核对，请刷新子账户；未自动重试。"));
     } finally { setSwitching(false); report.current(false); }
   };
   if (!supported) return null;

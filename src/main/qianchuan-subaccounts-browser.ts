@@ -74,9 +74,13 @@ async function catalogOnPage(page: Page, identity: Awaited<ReturnType<typeof rea
     const list = page.locator(".qc-ui-navigator-account-list");
     if (!await list.isVisible()) {
       await abortable(page.locator(".account-info-container").hover(), signal);
-      const switcher = page.locator(".qc-ui-navigator-account-detail .checkout-account");
-      if (await switcher.count() !== 1) throw failure();
-      await check(); await abortable(switcher.click(), signal);
+      await abortable(page.locator(".qc-ui-navigator-account-list:visible, .qc-ui-navigator-account-detail .checkout-account:visible").first().waitFor({ state: "visible" }), signal);
+      // The webpage may retain the directory view and reveal it directly on hover.
+      if (!await list.isVisible()) {
+        const switcher = page.locator(".qc-ui-navigator-account-detail .checkout-account");
+        if (await switcher.count() !== 1) throw failure();
+        await check(); await abortable(switcher.click(), signal);
+      }
     }
     await abortable(list.waitFor({ state: "visible" }), signal);
     const search = list.locator('input[placeholder="请输入账户名称或完整ID"]');

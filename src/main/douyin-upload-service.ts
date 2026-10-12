@@ -95,6 +95,7 @@ export class DouyinUploadService {
   private readonly planReads: QianchuanPlanReads;
   private readonly selectedAccountTargets = new QianchuanSelectedAccountTargets();
   private readonly planRequests = new Map<string, AbortController>();
+  private readonly subaccountReads = new Map<string, Promise<QianchuanSubaccountCatalog>>();
   private planPreloadController?: AbortController;
   private planPreload: Promise<void> = Promise.resolve();
   private hasNonAutomationWork(): boolean {
@@ -359,7 +360,26 @@ export class DouyinUploadService {
   }
   async listSubaccounts(input: unknown): Promise<QianchuanSubaccountCatalog> {
     const parsed = QianchuanSubaccountListRequestSchema.parse(input);
-    return this.withSubaccountOperation((accounts, signal, guard) => accounts.listSubaccounts(parsed, signal, this.excludedPlanTargets(), guard));
+    const generation = this.controlGeneration, key = JSON.stringify([generation, parsed.product, parsed.expectedAdvertiserId]);
+    let pending = this.subaccountReads.get(key);
+    if (!pending) {
+      pending = (async () => {
+        const accounts = this.accounts;
+        if (!(accounts instanceof QianchuanAccountSettings)) throw new Error("请先在简辑中保存登录账号。");
+        const signal = AbortSignal.timeout(30_000);
+        const guard = () => {
+          signal.throwIfAborted();
+          if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner || this.pendingAdmissions || this.stopping || this.beginningProduction || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.cancelling || this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("制作、上传或账号操作尚未空闲，请稍后刷新子账户。");
+        };
+        guard();
+        // Directory observation may overlap plan reads; actual switching keeps the task/fence guard below.
+        this.browserPreparations++;
+        try { return await accounts.listSubaccounts(parsed, signal, this.excludedPlanTargets(), guard); }
+        finally { this.browserPreparations--; }
+      })().finally(() => { this.subaccountReads.delete(key); });
+      this.subaccountReads.set(key, pending);
+    }
+    return structuredClone(await pending);
   }
   async switchSubaccount(input: unknown): Promise<QianchuanCurrentAccount> {
     const parsed = QianchuanSubaccountSwitchRequestSchema.parse(input);

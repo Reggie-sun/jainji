@@ -82,15 +82,73 @@ describe("current browser subaccount", () => {
     if(uncertain){const task=f.store.tasks()[0]!;task.result.attempt_count=1;await f.store.saveTask(task);await f.store.markSelecting(task.result.upload_task_id,{targetId:"old-task-tab",pageBatchId:task.authorization.pageBatchId,modalSessionId:randomUUID()},1);}
     const before={tasks:f.store.tasks(),intents:f.store.intents(),config:await readFile((f.accounts as QianchuanAccountSettings).file)};
     const request={product:"眼贴",expectedAdvertiserId:"1000",expectedCurrentAdvertiserId:"7000",advertiserId:"8000"};
+    expect(await f.service.listSubaccounts({product:"眼贴",expectedAdvertiserId:"1000"})).toMatchObject({current:named("7000")});
     if(uncertain){await expect(f.service.switchSubaccount(request)).rejects.toThrow("结果未知");expect(switchChild).not.toHaveBeenCalled();}
     else {
-      expect(await f.service.listSubaccounts({product:"眼贴",expectedAdvertiserId:"1000"})).toMatchObject({current:named("7000")});
       expect(await f.service.switchSubaccount(request)).toEqual(named("8000"));
       expect(await f.service.listPlans({product:"眼贴",expectedAdvertiserId:"1000",accountSource:"current-browser",includeAccount:true})).toEqual({account:named("8000"),plans:[currentPlan("8000")]});
       await expect(f.service.switchSubaccount(request)).rejects.toThrow("已变化");expect(switchChild).toHaveBeenCalledOnce();
     }
     expect(f.store.tasks()).toEqual(before.tasks);expect(f.store.intents()).toEqual(before.intents);
     expect(await readFile((f.accounts as QianchuanAccountSettings).file)).toEqual(before.config);expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("reads all mounted selectors without rejecting other directory reads as busy", async () => {
+    const account = {advertiserId:"7000",name:"网页子账户"};
+    type Subaccounts = NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    const read = vi.fn<Subaccounts["read"]>(async (_endpoint, _signal, _excluded, guard) => { await guard(); return {current:account,accounts:[account]}; });
+    const f = await fixture(vi.fn(async()=>account.advertiserId),undefined,{read,switch:vi.fn<Subaccounts["switch"]>()});
+    const request = {product:"眼贴",expectedAdvertiserId:"1000"};
+    const results = await Promise.all(Array.from({length:3},()=>f.service.listSubaccounts(request)));
+    expect(results.map(value=>value.current)).toEqual([account,account,account]);
+    expect(read).toHaveBeenCalledOnce();
+    results[0]!.accounts[0]!.name = "consumer edit";
+    expect(results[1]!.accounts[0]!.name).toBe(account.name);
+    await f.service.listSubaccounts(request); expect(read).toHaveBeenCalledTimes(2);
+    expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("reads the child directory while another plan read is still pending", async () => {
+    const account = {advertiserId:"7000",name:"网页子账户"};
+    type Subaccounts = NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    const read = vi.fn<Subaccounts["read"]>(async (_endpoint, _signal, _excluded, guard) => { await guard(); return {current:account,accounts:[account]}; });
+    const f = await fixture(vi.fn(async()=>account.advertiserId),undefined,{read,switch:vi.fn<Subaccounts["switch"]>()});
+    let release!:()=>void, started!:()=>void;
+    const held = new Promise<void>(resolve=>{release=resolve;}), entered = new Promise<void>(resolve=>{started=resolve;});
+    f.readPlans.mockImplementationOnce(async()=>{started();await held;return [currentPlan()];});
+    const plans = f.service.listPlans({product:"眼贴",expectedAdvertiserId:"1000",accountSource:"current-browser",includeAccount:true});
+    await entered;
+    try { expect(await f.service.listSubaccounts({product:"眼贴",expectedAdvertiserId:"1000"})).toMatchObject({current:account}); }
+    finally { release(); await plans; }
+    expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("reads different account directories without rejecting concurrent selectors", async () => {
+    const account = {advertiserId:"7000",name:"网页子账户"};
+    type Subaccounts = NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    const read = vi.fn<Subaccounts["read"]>(async (_endpoint, _signal, _excluded, guard) => {
+      await new Promise(resolve=>setTimeout(resolve,20)); await guard(); return {current:account,accounts:[account]};
+    });
+    const f = await fixture(vi.fn(async()=>account.advertiserId),undefined,{read,switch:vi.fn<Subaccounts["switch"]>()});
+    const results = await Promise.all(f.document.accounts.slice(0,3).map(({product,advertiserId})=>f.service.listSubaccounts({product,expectedAdvertiserId:advertiserId})));
+    expect(results.map(value=>value.current)).toEqual([account,account,account]);
+    expect(read).toHaveBeenCalledTimes(3); expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("invalidates an in-flight directory on stop and allows a fresh explicit read", async () => {
+    const account = {advertiserId:"7000",name:"网页子账户"};
+    type Subaccounts = NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    let release!:()=>void;
+    const read = vi.fn<Subaccounts["read"]>(async (_endpoint, _signal, _excluded, guard) => {
+      await new Promise<void>(resolve=>{release=resolve;}); await guard(); return {current:account,accounts:[account]};
+    });
+    const switchChild = vi.fn<Subaccounts["switch"]>();
+    const f = await fixture(vi.fn(async()=>account.advertiserId),undefined,{read,switch:switchChild});
+    const request = {product:"眼贴",expectedAdvertiserId:"1000"};
+    const pending = f.service.listSubaccounts(request), rejected = expect(pending).rejects.toThrow("尚未空闲");
+    await vi.waitFor(()=>expect(read).toHaveBeenCalledOnce());
+    await expect(f.service.switchSubaccount({...request,expectedCurrentAdvertiserId:"7000",advertiserId:"8000"})).rejects.toThrow("尚未空闲");
+    expect(switchChild).not.toHaveBeenCalled();
+    await f.service.stop(); release(); await rejected;
+    read.mockImplementation(async (_endpoint, _signal, _excluded, guard)=>{await guard();return {current:account,accounts:[account]};});
+    expect(await f.service.listSubaccounts(request)).toMatchObject({current:account});
+    expect(f.store.intents()).toHaveLength(0); expect(f.connect).not.toHaveBeenCalled();
   });
   it("protects an unknown old child in the shared browser after its current child changes", async () => {
     let currentId="9000";

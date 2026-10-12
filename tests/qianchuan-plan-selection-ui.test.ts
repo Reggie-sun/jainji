@@ -60,15 +60,15 @@ export function cleanupPlanFixtureScript(recovery = false) {
   `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
 }
 
-export function subaccountFixtureScript() {
+export function subaccountFixtureScript(directoryError?: string) {
   return buildSync({stdin:{contents:`
     import React,{useState} from "react";
     import {createRoot} from "react-dom/client";
     import {QianchuanPlanSelect} from "./src/renderer/QianchuanPlanSelect";
-    window.currentChild="7000";window.planReads=[];window.switches=[];
+    window.currentChild="7000";window.planReads=[];window.switches=[];window.directoryReads=0;window.directoryError=${JSON.stringify(directoryError ?? "")};
     const named=id=>({advertiserId:id,name:id==="7000"?"原子账户商贸":"新子账户商贸"});
     window.jianji={listQianchuanPlans:async input=>{window.planReads.push(input);const id=window.currentChild;return {account:named(id),plans:[{advertiserId:id,adId:id==="7000"?"9001":"9002",name:"对应计划",accountSource:"current-browser"}]};},cancelQianchuanPlans:async()=>{},
-      listQianchuanSubaccounts:async()=>({current:named(window.currentChild),accounts:[named("7000"),named("8000")]}),
+      listQianchuanSubaccounts:async()=>{window.directoryReads++;if(window.directoryError)throw new Error(window.directoryError);return {current:named(window.currentChild),accounts:[named("7000"),named("8000")]};},
       switchQianchuanSubaccount:input=>new Promise((resolve,reject)=>window.switches.push({input,resolve:()=>{window.currentChild=input.advertiserId;resolve(named(window.currentChild));},reject}))};
     function Fixture(){const [plan,setPlan]=useState(),[account,setAccount]=useState();window.selection={plan,account};
       return <div className="batch-template-controls"><div className="batch-upload-account" style={{width:520}}><label>千川上传</label>
@@ -170,6 +170,26 @@ async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: 
 }
 async function selected(page: Page) { return page.locator("#selection").textContent().then(value => JSON.parse(value!)); }
 describe("plan selector browser interaction", () => {
+  it.each([
+    ["Error invoking remote method 'douyin-upload:list-subaccounts': Error: 远端浏览器连接不可用，请明确重连。", "远端浏览器连接不可用，请明确重连。"],
+    ["连接失败 ws://127.0.0.1:12345/private-browser-token", "读取子账户失败，请检查网页后刷新。"],
+  ])("shows a safe directory failure and recovers on explicit refresh: %s", async (cause, message) => {
+    const page = await browser.newPage();
+    try {
+      await page.route("http://127.0.0.1:3000/children",route=>route.fulfill({contentType:"text/html; charset=utf-8",body:'<div id="root"></div>'}));
+      await page.goto("http://127.0.0.1:3000/children"); await page.addScriptTag({content:subaccountFixtureScript(cause)});
+      await page.getByRole("alert").waitFor(); expect(await page.getByRole("alert").textContent()).toBe(message);
+      expect(await page.getByLabel("子账户",{exact:true}).isDisabled()).toBe(true);
+      expect(await page.evaluate(()=>(window as any).directoryReads)).toBe(1);
+      await page.getByLabel("上传计划",{exact:true}).selectOption("9001");
+      await page.evaluate(()=>{(window as any).directoryError="";});
+      await page.getByRole("button",{name:"刷新子账户",exact:true}).click();
+      await page.getByLabel("子账户",{exact:true}).selectOption("7000");
+      expect(await page.evaluate(()=>(window as any).directoryReads)).toBe(2);
+      expect((await selected(page)).plan).toMatchObject({advertiserId:"7000",adId:"9001"});
+      expect(await page.evaluate(()=>(window as any).switches)).toEqual([]);
+    } finally {await page.close();}
+  });
   it("selects a child explicitly, clears the old plan immediately, then reads only the new child's plans", async () => {
     const page=await browser.newPage();
     try {

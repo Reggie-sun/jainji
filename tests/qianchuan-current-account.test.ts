@@ -99,19 +99,22 @@ async function realChrome(): Promise<{ context: BrowserContext; profile: string;
 
 afterEach(() => vi.restoreAllMocks());
 
-it("lists paginated child accounts and switches only the explicit verified target without touching other tabs", async () => {
+it.each([{ menuDelay: 0, directList: false }, { menuDelay: 150, directList: false }, { menuDelay: 0, directList: true }, { menuDelay: 150, directList: true }])("lists child accounts after the hover menu renders ($menuDelay ms, direct list $directList) and switches only the explicit target", async ({ menuDelay, directList }) => {
   const fixture = await realChrome();
   try {
     await fixture.context.unroute(`${origin}/**`);
     await fixture.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: `
       <div class="account-info-container"><div class="account-info-box">账户甲<br>ID：200</div></div>
       <div class="qc-ui-navigator-account-detail"><div class="checkout-account" onclick="document.querySelector('.qc-ui-navigator-account-list').hidden=false">切换</div></div>
-      <div class="qc-ui-navigator-account-list" hidden><input placeholder="请输入账户名称或完整ID">
+      <div class="qc-ui-navigator-account-list" hidden><div class="back-text" onclick="window.backCount++">返回</div><input placeholder="请输入账户名称或完整ID">
         <div class="tools-vmok-plugin-infinite-scroll" style="height:80px;overflow:auto">
           <div class="qc-ui-navigator-account-item" style="height:100px"><span class="account-name">账户甲</span><span class="account-id">ID 200</span></div>
           <div class="tools-vmok-plugin-infinite-scroll__loader">加载中</div>
         </div></div>
-      <script>window.switchCount=0;const scroll=document.querySelector('.tools-vmok-plugin-infinite-scroll');
+      <script>window.switchCount=0;window.backCount=0;const scroll=document.querySelector('.tools-vmok-plugin-infinite-scroll');
+      const detail=document.querySelector('.qc-ui-navigator-account-detail');
+      if(${directList}){detail.remove();document.querySelector('.account-info-container').onmouseenter=()=>setTimeout(()=>{document.querySelector('.qc-ui-navigator-account-list').hidden=false;},${menuDelay});}
+      else if(${menuDelay}>0){detail.remove();document.querySelector('.account-info-container').onmouseenter=()=>setTimeout(()=>{if(!detail.isConnected)document.body.append(detail);},${menuDelay});}
       scroll.addEventListener('scroll',()=>{if(document.querySelectorAll('.qc-ui-navigator-account-item').length>1)return;
         const row=document.createElement('div');row.className='qc-ui-navigator-account-item';row.innerHTML='<span class="account-name">账户乙</span><span class="account-id">ID 300</span>';
         row.onclick=()=>{window.switchCount++;history.replaceState(null,'','/uni-prom?aavid=300');document.querySelector('.account-info-box').innerHTML='账户乙<br>ID：300';};
@@ -128,6 +131,7 @@ it("lists paginated child accounts and switches only the explicit verified targe
     expect(await page.evaluate(() => (window as any).switchCount)).toBe(0);
     expect(await switchQianchuanSubaccount(fixture.endpoint, "200", "300", new AbortController().signal, new Set(), guard)).toEqual({ name: "账户乙", advertiserId: "300" });
     expect(await page.evaluate(() => (window as any).switchCount)).toBe(1);
+    expect(await page.evaluate(() => (window as any).backCount)).toBe(0);
     expect(untouched.url()).toBe("about:blank"); expect(fixture.context.pages()).toHaveLength(2);
     await expect(switchQianchuanSubaccount(fixture.endpoint, "200", "300", new AbortController().signal, new Set(), guard)).rejects.toThrow();
     expect(await page.evaluate(() => (window as any).switchCount)).toBe(1);
