@@ -33,6 +33,7 @@
 .batch-upload-account > select { margin-top: 0; grid-column: 2; grid-row: 2; }
 .batch-upload-account .batch-upload-toggle > span:nth-child(2) { grid-column: 1; grid-row: 2; }
 .batch-upload-account > .qianchuan-plan-select.compact { grid-column: 3; grid-row: 1 / 4; display: grid; grid-template-columns: minmax(0, 1fr) 28px; grid-template-rows: subgrid; gap: 4px; align-content: start; min-width: 0; }
+.batch-upload-account > .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) { grid-template-rows: auto 40px auto auto; }
 .batch-upload-account .qianchuan-plan-select.compact > label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
 .batch-upload-account .qianchuan-plan-select.compact > select { margin: 0; }
 .batch-upload-account .qianchuan-plan-select.compact > button { padding: 0; font-size: 20px; min-width: 0; }

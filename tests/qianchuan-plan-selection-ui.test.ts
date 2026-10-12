@@ -60,6 +60,24 @@ export function cleanupPlanFixtureScript(recovery = false) {
   `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
 }
 
+export function subaccountFixtureScript() {
+  return buildSync({stdin:{contents:`
+    import React,{useState} from "react";
+    import {createRoot} from "react-dom/client";
+    import {QianchuanPlanSelect} from "./src/renderer/QianchuanPlanSelect";
+    window.currentChild="7000";window.planReads=[];window.switches=[];
+    const named=id=>({advertiserId:id,name:id==="7000"?"原子账户商贸":"新子账户商贸"});
+    window.jianji={listQianchuanPlans:async input=>{window.planReads.push(input);const id=window.currentChild;return {account:named(id),plans:[{advertiserId:id,adId:id==="7000"?"9001":"9002",name:"对应计划",accountSource:"current-browser"}]};},cancelQianchuanPlans:async()=>{},
+      listQianchuanSubaccounts:async()=>({current:named(window.currentChild),accounts:[named("7000"),named("8000")]}),
+      switchQianchuanSubaccount:input=>new Promise((resolve,reject)=>window.switches.push({input,resolve:()=>{window.currentChild=input.advertiserId;resolve(named(window.currentChild));},reject}))};
+    function Fixture(){const [plan,setPlan]=useState(),[account,setAccount]=useState();window.selection={plan,account};
+      return <div className="batch-template-controls"><div className="batch-upload-account" style={{width:520}}><label>千川上传</label>
+        <select aria-label="上传账号"><option>已保存的登录浏览器</option></select><QianchuanPlanSelect compact account={{product:"眼贴",advertiserId:"1000",available:true}} value={plan} onChange={setPlan} onAccountRead={setAccount}/>
+        </div><output id="selection">{JSON.stringify({plan,account})}</output></div>;}
+    createRoot(document.getElementById("root")).render(<Fixture/>);
+  `,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",jsx:"automatic"}).outputFiles[0]!.text;
+}
+
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); }, 30000);
 afterAll(async () => { await browser?.close(); });
@@ -152,6 +170,45 @@ async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: 
 }
 async function selected(page: Page) { return page.locator("#selection").textContent().then(value => JSON.parse(value!)); }
 describe("plan selector browser interaction", () => {
+  it("selects a child explicitly, clears the old plan immediately, then reads only the new child's plans", async () => {
+    const page=await browser.newPage();
+    try {
+      await page.route("http://127.0.0.1:3000/children",route=>route.fulfill({contentType:"text/html; charset=utf-8",body:'<div id="root"></div>'}));
+      await page.goto("http://127.0.0.1:3000/children");await page.addScriptTag({content:subaccountFixtureScript()});
+      await page.addStyleTag({content:readFileSync("src/renderer/styles.css","utf8")+readFileSync("src/renderer/batch-production.css","utf8")});
+      await page.getByLabel("子账户",{exact:true}).selectOption("7000");
+      expect(await page.getByLabel("子账户",{exact:true}).locator("option").allTextContents()).toEqual(["原子账户商贸 · 7000","新子账户商贸 · 8000"]);
+      const layout=await page.locator(".qianchuan-plan-select").evaluate(element=>{
+        const current=element.querySelector("small")!.getBoundingClientRect(), child=element.querySelector(".qianchuan-subaccount-select")!.getBoundingClientRect();
+        return {gap:child.top-current.bottom,overflow:element.scrollWidth>element.clientWidth};
+      });
+      expect(layout.gap).toBeGreaterThanOrEqual(0);expect(layout.overflow).toBe(false);
+      await page.getByLabel("上传计划",{exact:true}).selectOption("9001");
+      await page.getByLabel("子账户",{exact:true}).selectOption("8000");
+      await page.waitForFunction(()=>(window as any).switches.length===1);
+      expect(await page.evaluate(()=>(window as any).selection)).toEqual({});
+      expect(await page.getByLabel("上传计划",{exact:true}).isDisabled()).toBe(true);
+      expect(await page.evaluate(()=>(window as any).switches[0].input)).toEqual({product:"眼贴",expectedAdvertiserId:"1000",expectedCurrentAdvertiserId:"7000",advertiserId:"8000"});
+      await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
+      expect(await page.evaluate(()=>(window as any).planReads.length)).toBe(1);
+      await page.evaluate(()=>(window as any).switches[0].resolve());
+      await page.getByLabel("子账户",{exact:true}).selectOption("8000");
+      await page.waitForFunction(()=>(window as any).selection.account?.advertiserId==="8000");
+      expect((await selected(page)).plan).toBeUndefined();
+      expect(await page.getByLabel("上传计划",{exact:true}).locator("option").allTextContents()).toEqual(["请选择上传计划","对应计划 · ID 9002"]);
+      await page.getByLabel("上传计划",{exact:true}).selectOption("9002");
+      expect((await selected(page)).plan).toMatchObject({advertiserId:"8000",adId:"9002",accountSource:"current-browser"});
+      await page.getByLabel("子账户",{exact:true}).selectOption("7000");
+      await page.evaluate(()=>(window as any).switches[1].reject(new Error("切换结果未能核对，请检查网页。")));
+      await page.getByRole("alert").waitFor();
+      expect((await selected(page)).plan).toBeUndefined();
+      expect(await page.evaluate(()=>(window as any).switches.length)).toBe(2);
+      expect(await page.getByLabel("子账户",{exact:true}).isDisabled()).toBe(true);
+      await page.getByRole("button",{name:"刷新子账户",exact:true}).click();
+      await page.getByLabel("子账户",{exact:true}).selectOption("8000");
+      expect(await page.evaluate(()=>(window as any).switches.length)).toBe(2);
+    } finally {await page.close();}
+  });
   it("shows the child name and ID in the account dropdown even without plans, clearing them on failed refresh", async () => {
     const page = await fixture();
     try {

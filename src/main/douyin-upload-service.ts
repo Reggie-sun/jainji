@@ -23,6 +23,7 @@ import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
 import { QianchuanSelectedAccountTargets } from "./qianchuan-selected-account-targets.js";
 import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, QianchuanPlanCatalogSchema, type QianchuanPlanOption, type QianchuanCurrentAccount, type QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
+import { QianchuanSubaccountListRequestSchema, QianchuanSubaccountSwitchRequestSchema, type QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { automationConfirmationRecoveryLock, hasAutomationConfirmationIntent } from "./automation-upload.js";
 import { confirmReadyUpload } from "./qianchuan-upload-completion.js";
@@ -355,6 +356,35 @@ export class DouyinUploadService {
   cancelPlanRead(input: unknown, senderId = 0): void {
     const { requestId } = QianchuanPlanCancelSchema.parse(input);
     this.planRequests.get(`${senderId}:${requestId}`)?.abort();
+  }
+  async listSubaccounts(input: unknown): Promise<QianchuanSubaccountCatalog> {
+    const parsed = QianchuanSubaccountListRequestSchema.parse(input);
+    return this.withSubaccountOperation((accounts, signal, guard) => accounts.listSubaccounts(parsed, signal, this.excludedPlanTargets(), guard));
+  }
+  async switchSubaccount(input: unknown): Promise<QianchuanCurrentAccount> {
+    const parsed = QianchuanSubaccountSwitchRequestSchema.parse(input);
+    return this.withSubaccountOperation(async (accounts, signal, guard) => {
+      try { return await accounts.switchSubaccount(parsed, signal, this.excludedPlanTargets(), guard); }
+      finally { this.planReads.invalidate(parsed.product); }
+    });
+  }
+  private async withSubaccountOperation<T>(operation: (accounts: QianchuanAccountSettings, signal: AbortSignal, guard: (target: FrozenQianchuanAccount) => void) => Promise<T>): Promise<T> {
+    await this.stopPlanPreload();
+    if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作尚未空闲，未切换子账户。");
+    if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("请先在简辑中保存登录账号。");
+    const generation = this.controlGeneration;
+    const signal = AbortSignal.timeout(30_000);
+    const guard = (target: FrozenQianchuanAccount) => {
+      signal.throwIfAborted();
+      if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner || this.pendingAdmissions || this.stopping || this.beginningProduction) throw new Error("上传控制已变化，未切换子账户。");
+      const shared = (other: FrozenQianchuanAccount) => other.advertiserId === target.advertiserId || new URL(other.cdpEndpoint).host === new URL(target.cdpEndpoint).host;
+      const tasks = this.store.tasks();
+      if (tasks.some(task => shared(task.authorization.target) && !this.store.isClosed(task.authorization.pageBatchId) && task.result.state !== "DISCARDED" && (this.store.hasMarker(task.result.upload_task_id) || task.result.upload_outcome !== "NOT_SELECTED" || this.eligible.has(task.result.upload_task_id))) ||
+        this.store.intents().some(intent => shared(intent.authorization.target) && this.currentIntents.has(intentKey(intent)) && !this.cancelledIntents.has(intentKey(intent)) && !tasks.some(task => intentKey(task.input) === intentKey(intent)))) throw new Error("该浏览器仍有制作中、待确认或结果未知的任务，请先核查原上传页面。");
+    };
+    this.managingBrowser = true;
+    try { await this.control.catch(() => undefined); return await operation(this.accounts, signal, guard); }
+    finally { this.managingBrowser = false; this.changed(); }
   }
   private readPlans(target: FrozenQianchuanAccount, signal?: AbortSignal): Promise<QianchuanPlanOption[]> { return this.planReads.request(target, signal); }
   private selectedTarget(target: FrozenQianchuanAccount, selection: QianchuanUploadSelection): FrozenQianchuanAccount {

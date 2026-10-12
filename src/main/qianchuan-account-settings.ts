@@ -13,6 +13,8 @@ import { qianchuanEgressRuntime } from "./qianchuan-egress-runtime.js";
 import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
 import { readCurrentQianchuanAccountSnapshot } from "./qianchuan-current-account.js";
 import type { QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
+import type { QianchuanSubaccountListRequest, QianchuanSubaccountSwitchRequest, QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
+import { readQianchuanSubaccounts, switchQianchuanSubaccount } from "./qianchuan-subaccounts-browser.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -28,7 +30,8 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly browsers: QianchuanBrowserManager;
   private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
   private readonly discoverExistingBrowser: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>;
-  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccountSnapshot) {
+  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccountSnapshot,
+    private readonly subaccountBrowser = { read: readQianchuanSubaccounts, switch: switchQianchuanSubaccount }) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
     this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id), displayName: async id => {
@@ -257,5 +260,28 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       if (egress) account.egress = egress; else delete account.egress;
       return this.save(old ? accounts.map(value => value.product === parsed.product ? account : value) : [...accounts, account], guard);
     });
+  }
+
+  async listSubaccounts(input: QianchuanSubaccountListRequest, signal: AbortSignal, excluded: ReadonlySet<string>, guard: (target: FrozenQianchuanAccount) => void): Promise<QianchuanSubaccountCatalog> {
+    const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
+    if (before.configured.advertiserId !== input.expectedAdvertiserId) throw new Error("登录账号已变化，请重新选择。");
+    const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); await this.freeze(input.product, before.configured.configDigest); };
+    await fresh();
+    const catalog = await this.subaccountBrowser.read(before.configured.cdpEndpoint, signal, excluded, fresh);
+    const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
+    if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(catalog.current) !== JSON.stringify(after.account)) throw new Error("网页账户或浏览器连接已变化，请刷新子账户。");
+    await fresh(); return catalog;
+  }
+
+  async switchSubaccount(input: QianchuanSubaccountSwitchRequest, signal: AbortSignal, excluded: ReadonlySet<string>, guard: (target: FrozenQianchuanAccount) => void): Promise<QianchuanCurrentAccount> {
+    const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
+    if (before.configured.advertiserId !== input.expectedAdvertiserId || before.account.advertiserId !== input.expectedCurrentAdvertiserId) throw new Error("网页账户或登录账号已变化，请刷新子账户后重选。");
+    if (before.configured.egress?.mode === "remote-browser" && input.advertiserId !== before.configured.advertiserId) throw new Error("VPS 子账户须先在账号设置中保存绑定，未切换网页。");
+    const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); guard({ ...before.target, advertiserId: input.advertiserId }); await this.freeze(input.product, before.configured.configDigest); };
+    await fresh();
+    const account = await this.subaccountBrowser.switch(before.configured.cdpEndpoint, input.expectedCurrentAdvertiserId, input.advertiserId, signal, excluded, fresh);
+    const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
+    if (JSON.stringify(before.configured) !== JSON.stringify(after.configured) || JSON.stringify(account) !== JSON.stringify(after.account)) throw new Error("切换后的网页账户未能核对，请刷新子账户；未自动重试。");
+    await fresh(); return account;
   }
 }

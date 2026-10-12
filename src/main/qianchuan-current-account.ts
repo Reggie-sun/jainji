@@ -217,6 +217,17 @@ export async function readCurrentQianchuanAccount(endpoint: string, parentSignal
 }
 
 export async function readCurrentQianchuanAccountSnapshot(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<QianchuanCurrentAccount> {
+  return (await readCurrentAccountState(endpoint, parentSignal, excludedTargets)).account;
+}
+
+/** An explicit account operation must address exactly one visible, verified user page. */
+export async function readCurrentQianchuanPage(endpoint: string, signal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<{ account: QianchuanCurrentAccount; targetId: string; url: string }> {
+  const state = await readCurrentAccountState(endpoint, signal, excludedTargets);
+  if (state.pages.length !== 1) throw new Error(FAILURE);
+  return { account: state.account, targetId: state.pages[0]!.targetId, url: state.pages[0]!.url };
+}
+
+async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<{ account: QianchuanCurrentAccount; pages: Candidate[] }> {
   parentSignal?.throwIfAborted();
   const controller = new AbortController();
   let timedOut = false;
@@ -247,7 +258,7 @@ export async function readCurrentQianchuanAccountSnapshot(endpoint: string, pare
     for (const candidate of currentCandidates) second.push({ candidate, snapshot: await readPage(connection, candidate) });
     if (first.some((page, index) => page.snapshot.href !== second[index]?.snapshot.href || page.snapshot.visibilityState !== second[index]?.snapshot.visibilityState || page.snapshot.visibilityState === "visible" && JSON.stringify(page.snapshot.accountTexts) !== JSON.stringify(second[index]?.snapshot.accountTexts))) throw new Error(FAILURE);
     if (JSON.stringify(uniqueVisibleAccount(second)) !== JSON.stringify(expected)) throw new Error(FAILURE);
-    return expected;
+    return { account: expected, pages: second.filter(page => page.snapshot.visibilityState === "visible").map(page => page.candidate) };
   } catch (error) {
     if (controller.signal.aborted) {
       if (timedOut) throw controller.signal.reason;

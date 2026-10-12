@@ -1,4 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import type { QianchuanSubaccountListRequest, QianchuanSubaccountSwitchRequest, QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
+import type { QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
 import type { MembershipStatus } from "../shared/membership.js";
 import type { AutomationRequest, AutomationStatus } from "../shared/automation.js";
 import type { AgentStartInput, AppendProductionInput, AppendProductionPrefill, GenerateBriefInput } from "../shared/agent.js";
@@ -108,6 +110,8 @@ const api = {
   selectQianchuanAccountConfig: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.selectConfig"),
   saveQianchuanAccount: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.saveAccount", input),
   listQianchuanPlans: (input: QianchuanPlanListRequest): Promise<QianchuanPlanListResult> => ipcRenderer.invoke("douyinUpload.listPlans", input),
+  listQianchuanSubaccounts: (input: QianchuanSubaccountListRequest): Promise<QianchuanSubaccountCatalog> => ipcRenderer.invoke("douyinUpload.listSubaccounts", input),
+  switchQianchuanSubaccount: (input: QianchuanSubaccountSwitchRequest): Promise<QianchuanCurrentAccount> => ipcRenderer.invoke("douyinUpload.switchSubaccount", input),
   cancelQianchuanPlans: (input: QianchuanPlanCancel): Promise<void> => ipcRenderer.invoke("douyinUpload.cancelPlans", input),
   openQianchuanAccountBrowser: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.openAccountBrowser", input),
   controlQianchuanAccountBrowser: (input: QianchuanBrowserControl): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.controlAccountBrowser", input),

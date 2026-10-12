@@ -1009,6 +1009,7 @@
         "src/main/qianchuan-*",
         "src/shared/qianchuan-account.ts",
         "src/shared/qianchuan-plan-selection.ts",
+        "src/shared/qianchuan-subaccounts.ts",
         "src/shared/qianchuan-egress.ts",
         "scripts/qianchuan-account-config.mjs",
         "src/main/local-cdp-*",

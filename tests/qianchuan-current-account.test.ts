@@ -7,6 +7,7 @@ import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 import { readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot } from "../src/main/qianchuan-current-account";
+import { readQianchuanSubaccounts, switchQianchuanSubaccount } from "../src/main/qianchuan-subaccounts-browser";
 
 const origin = "https://qianchuan.jinritemai.com";
 const account = (targetId: string, id: string, visibilityState: "visible" | "hidden", route = "/finance") => ({
@@ -97,6 +98,41 @@ async function realChrome(): Promise<{ context: BrowserContext; profile: string;
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+it("lists paginated child accounts and switches only the explicit verified target without touching other tabs", async () => {
+  const fixture = await realChrome();
+  try {
+    await fixture.context.unroute(`${origin}/**`);
+    await fixture.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: `
+      <div class="account-info-container"><div class="account-info-box">账户甲<br>ID：200</div></div>
+      <div class="qc-ui-navigator-account-detail"><div class="checkout-account" onclick="document.querySelector('.qc-ui-navigator-account-list').hidden=false">切换</div></div>
+      <div class="qc-ui-navigator-account-list" hidden><input placeholder="请输入账户名称或完整ID">
+        <div class="tools-vmok-plugin-infinite-scroll" style="height:80px;overflow:auto">
+          <div class="qc-ui-navigator-account-item" style="height:100px"><span class="account-name">账户甲</span><span class="account-id">ID 200</span></div>
+          <div class="tools-vmok-plugin-infinite-scroll__loader">加载中</div>
+        </div></div>
+      <script>window.switchCount=0;const scroll=document.querySelector('.tools-vmok-plugin-infinite-scroll');
+      scroll.addEventListener('scroll',()=>{if(document.querySelectorAll('.qc-ui-navigator-account-item').length>1)return;
+        const row=document.createElement('div');row.className='qc-ui-navigator-account-item';row.innerHTML='<span class="account-name">账户乙</span><span class="account-id">ID 300</span>';
+        row.onclick=()=>{window.switchCount++;history.replaceState(null,'','/uni-prom?aavid=300');document.querySelector('.account-info-box').innerHTML='账户乙<br>ID：300';};
+        scroll.insertBefore(row,scroll.lastElementChild);scroll.lastElementChild.textContent='没有更多了';});</script>` }));
+    const untouched = fixture.context.pages()[0]!;
+    await untouched.goto("about:blank");
+    const page = await fixture.context.newPage(); await page.goto(`${origin}/uni-prom?aavid=200`); await page.bringToFront();
+    const guard = vi.fn(async () => undefined);
+    const catalog = await readQianchuanSubaccounts(fixture.endpoint, new AbortController().signal, new Set(), guard);
+    expect(catalog).toEqual({ current: { name: "账户甲", advertiserId: "200" }, accounts: [{ name: "账户甲", advertiserId: "200" }, { name: "账户乙", advertiserId: "300" }] });
+    await expect(switchQianchuanSubaccount(fixture.endpoint, "200", "999", new AbortController().signal, new Set(), guard)).rejects.toThrow();
+    expect(await page.evaluate(() => (window as any).switchCount)).toBe(0);
+    await expect(switchQianchuanSubaccount(fixture.endpoint, "200", "300", new AbortController().signal, new Set(), async () => { throw new Error("protected upload"); })).rejects.toThrow();
+    expect(await page.evaluate(() => (window as any).switchCount)).toBe(0);
+    expect(await switchQianchuanSubaccount(fixture.endpoint, "200", "300", new AbortController().signal, new Set(), guard)).toEqual({ name: "账户乙", advertiserId: "300" });
+    expect(await page.evaluate(() => (window as any).switchCount)).toBe(1);
+    expect(untouched.url()).toBe("about:blank"); expect(fixture.context.pages()).toHaveLength(2);
+    await expect(switchQianchuanSubaccount(fixture.endpoint, "200", "300", new AbortController().signal, new Set(), guard)).rejects.toThrow();
+    expect(await page.evaluate(() => (window as any).switchCount)).toBe(1);
+  } finally { await fixture.context.close(); await rm(fixture.profile, { recursive: true, force: true }); }
+}, 30_000);
 
 it("reads the current webpage name with its ID and rejects name drift", async () => {
   const fixture = await fakeBrowser({ snapshot: target => ({ ...target.snapshot, accountTexts: ["新子账户商贸\nID：200"] }) });

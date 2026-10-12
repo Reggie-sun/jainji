@@ -18,6 +18,7 @@ import { DEFAULT_EXPORT_SETTINGS } from "../src/shared/export-settings";
 import { QianchuanPlanReads } from "../src/main/qianchuan-plan-reads";
 import { acquireQianchuanPlans } from "../src/renderer/qianchuan-plan-requests";
 import { clearQianchuanAccountPlans } from "../src/main/qianchuan-cleanup-plans";
+import { QianchuanSubaccountCatalogSchema, QianchuanSubaccountSwitchRequestSchema } from "../src/shared/qianchuan-subaccounts";
 
 const roots: string[] = [];
 afterEach(async () => { vi.useRealTimers(); vi.unstubAllGlobals(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -37,7 +38,7 @@ it.each(["CLEARED", "BLOCKED"] as const)("continues past historical partial plan
   expect(clearLibrary).not.toHaveBeenCalled();
   if (later === "CLEARED") expect(result.message).toContain("本次视频库清空未执行");
 });
-async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: string) => Promise<string>>>, existingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>) {
+async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: string) => Promise<string>>>, existingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, subaccounts?: ConstructorParameters<typeof QianchuanAccountSettings>[4]) {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-plan-selection-")); roots.push(root);
   const configPath = path.join(root, "accounts.json");
   const document = { version: 1, accounts: ["眼贴", ...QIANCHUAN_PRODUCTS.filter(product => product !== "眼贴")].map((product, index) => ({ product, advertiserId: String(1000 + index), adId: String(2000 + index), cdpEndpoint: `http://127.0.0.1:${11000 + index}` })) };
@@ -48,7 +49,7 @@ async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: strin
   const browser: UploadBrowserPort = { connect, open: async () => { throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "fixture stops before any file action", "fixture", true); },
     upload: async () => { throw new Error("Unexpected file action"); }, ready: async () => [], pollReady: async () => [], readOnlyCheck: async () => { throw new Error("Unexpected recovery"); }, stop: async () => undefined };
   const states = new Map<string, QueueState>();
-  const accounts = currentAccount ? new QianchuanAccountSettings(store.root, async () => "http://127.0.0.1:11000", existingBrowser ?? (async () => "http://127.0.0.1:11000"), async endpoint => ({ advertiserId: await currentAccount(endpoint), name: "网页子账户" })) : new QianchuanAccountConfigReader();
+  const accounts = currentAccount ? new QianchuanAccountSettings(store.root, async () => "http://127.0.0.1:11000", existingBrowser ?? (async () => "http://127.0.0.1:11000"), async endpoint => ({ advertiserId: await currentAccount(endpoint), name: "网页子账户" }), subaccounts) : new QianchuanAccountConfigReader();
   const service = new DouyinUploadService(store, { accounts, readPlans, loadBatch: async id => structuredClone(states.get(id)!), browser: () => browser, readiness: () => undefined });
   await service.chooseConfig(configPath); await service.configure({ enabled: true });
   if (currentAccount) await service.stop();
@@ -62,6 +63,49 @@ async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: strin
 
 describe("current browser subaccount", () => {
   const currentPlan = (advertiserId = "7000", adId = "9001") => ({ ...plan(adId), advertiserId, accountSource: "current-browser" as const });
+  it("requires a complete unique named child catalog and explicit current identity", () => {
+    const account = {advertiserId:"7000",name:"网页子账户"};
+    expect(QianchuanSubaccountCatalogSchema.safeParse({current:account,accounts:[account,account]}).success).toBe(false);
+    expect(QianchuanSubaccountCatalogSchema.safeParse({current:account,accounts:[{...account,advertiserId:"8000"}]}).success).toBe(false);
+    expect(QianchuanSubaccountSwitchRequestSchema.safeParse({product:"眼贴",expectedAdvertiserId:"1000",advertiserId:"8000"}).success).toBe(false);
+  });
+  it.each([false, true])("switches only a new draft and preserves old frozen tasks; uncertain=%s", async uncertain => {
+    let currentId = "7000";
+    const named = (advertiserId: string) => ({advertiserId,name:"网页子账户"});
+    type Subaccounts = NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    const read = vi.fn<Subaccounts["read"]>(async (_endpoint, _signal, _excluded, guard) => {await guard(); return {current:named(currentId),accounts:[named("7000"),named("8000")]};});
+    const switchChild = vi.fn<Subaccounts["switch"]>(async (_endpoint, expected, selected, _signal, _excluded, guard) => {await guard(); if(currentId!==expected)throw new Error("changed");currentId=selected;return named(selected);});
+    const f = await fixture(vi.fn(async()=>currentId), undefined, {read,switch:switchChild});
+    f.readPlans.mockImplementation(async target => [{...plan(),advertiserId:target.advertiserId}]);
+    const selected = {...selection(),plan:currentPlan()}, authorization = (await f.service.preflight(selected,1))!;
+    await f.service.registerBatches([f.batch],selected,authorization); await f.service.enqueueFinalArtifact(f.identity); await f.service.stop();
+    if(uncertain){const task=f.store.tasks()[0]!;task.result.attempt_count=1;await f.store.saveTask(task);await f.store.markSelecting(task.result.upload_task_id,{targetId:"old-task-tab",pageBatchId:task.authorization.pageBatchId,modalSessionId:randomUUID()},1);}
+    const before={tasks:f.store.tasks(),intents:f.store.intents(),config:await readFile((f.accounts as QianchuanAccountSettings).file)};
+    const request={product:"眼贴",expectedAdvertiserId:"1000",expectedCurrentAdvertiserId:"7000",advertiserId:"8000"};
+    if(uncertain){await expect(f.service.switchSubaccount(request)).rejects.toThrow("结果未知");expect(switchChild).not.toHaveBeenCalled();}
+    else {
+      expect(await f.service.listSubaccounts({product:"眼贴",expectedAdvertiserId:"1000"})).toMatchObject({current:named("7000")});
+      expect(await f.service.switchSubaccount(request)).toEqual(named("8000"));
+      expect(await f.service.listPlans({product:"眼贴",expectedAdvertiserId:"1000",accountSource:"current-browser",includeAccount:true})).toEqual({account:named("8000"),plans:[currentPlan("8000")]});
+      await expect(f.service.switchSubaccount(request)).rejects.toThrow("已变化");expect(switchChild).toHaveBeenCalledOnce();
+    }
+    expect(f.store.tasks()).toEqual(before.tasks);expect(f.store.intents()).toEqual(before.intents);
+    expect(await readFile((f.accounts as QianchuanAccountSettings).file)).toEqual(before.config);expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("protects an unknown old child in the shared browser after its current child changes", async () => {
+    let currentId="9000";
+    type Subaccounts=NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    const switchChild=vi.fn<Subaccounts["switch"]>();
+    const f=await fixture(vi.fn(async()=>currentId),undefined,{read:vi.fn<Subaccounts["read"]>(),switch:switchChild});
+    f.readPlans.mockImplementation(async target=>[{...plan(),advertiserId:target.advertiserId}]);
+    const selected={...selection(),plan:currentPlan("9000")},authorization=(await f.service.preflight(selected,1))!;
+    await f.service.registerBatches([f.batch],selected,authorization);await f.service.enqueueFinalArtifact(f.identity);await f.service.stop();
+    const task=f.store.tasks()[0]!;task.result.attempt_count=1;await f.store.saveTask(task);await f.store.markSelecting(task.result.upload_task_id,{targetId:"old-child-tab",pageBatchId:task.authorization.pageBatchId,modalSessionId:randomUUID()},1);
+    currentId="7000";
+    const before=f.store.tasks();
+    await expect(f.service.switchSubaccount({product:"眼贴",expectedAdvertiserId:"1000",expectedCurrentAdvertiserId:"7000",advertiserId:"8000"})).rejects.toThrow("结果未知");
+    expect(switchChild).not.toHaveBeenCalled();expect(f.store.tasks()).toEqual(before);
+  });
   it.each([false, true])("loads foreground plans with an already-open local browser: %s", async alreadyOpen => {
     let opened = alreadyOpen;
     const start = vi.fn(), currentId = alreadyOpen ? "7000" : "1000";

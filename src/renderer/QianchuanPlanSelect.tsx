@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QianchuanPlanListSchema, QianchuanPlanCatalogSchema, type QianchuanPlanOption, type QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection";
 import { acquireQianchuanPlans } from "./qianchuan-plan-requests";
+import { QianchuanSubaccountSelect, QIANCHUAN_ACCOUNT_CHANGED } from "./QianchuanSubaccountSelect";
 
 function planReadError(cause: unknown): string {
   const message = cause instanceof Error ? cause.message.replace(/\u001b\[[0-9;]*m/g, "").replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "";
@@ -22,6 +23,7 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [currentAccount, setCurrentAccount] = useState<QianchuanCurrentAccount>();
+  const [switching, setSwitching] = useState(false);
   const accountRead = useRef(onAccountRead); accountRead.current = onAccountRead;
   const change = useRef(onChange); change.current = onChange;
   const selected = useRef(value); selected.current = value;
@@ -29,10 +31,15 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
   const available = account?.available === true;
   useEffect(() => {
     if (purpose !== "upload") return;
-    const refresh = () => { if (!disabled) setRevision(current => current + 1); };
+    const refresh = () => { if (!disabled && !switching) setRevision(current => current + 1); };
+    const accountChanged = (event: Event) => {
+      const detail = (event as CustomEvent).detail;
+      if (detail?.product === product && detail?.anchor === advertiserId) { change.current(undefined); setCurrentAccount(undefined); accountRead.current?.(undefined); setRevision(value => value + 1); }
+    };
     window.addEventListener("focus", refresh);
-    return () => window.removeEventListener("focus", refresh);
-  }, [purpose, disabled]);
+    window.addEventListener(QIANCHUAN_ACCOUNT_CHANGED, accountChanged);
+    return () => { window.removeEventListener("focus", refresh); window.removeEventListener(QIANCHUAN_ACCOUNT_CHANGED, accountChanged); };
+  }, [purpose, disabled, switching, product, advertiserId]);
   useEffect(() => {
     let active = true;
     const reportAccount = accountRead.current;
@@ -74,13 +81,15 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
   const identity = chosenPlan && `${chosenPlan.name} · ID ${chosenPlan.adId}`;
   return <div className={`qianchuan-plan-select${compact ? " compact" : ""}`} style={{ gridColumn: compact ? undefined : "1 / -1", minWidth: 0 }}>
     <label htmlFor={`${idPrefix}-plan`}>{label}</label>
-    <select id={`${idPrefix}-plan`} aria-label={label} title={identity || error || (loading ? "正在读取计划" : instruction)} value={chosen} disabled={disabled || loading || !available || !plans.length}
+    <select id={`${idPrefix}-plan`} aria-label={label} title={identity || error || (loading ? "正在读取计划" : instruction)} value={chosen} disabled={disabled || loading || switching || !available || !plans.length}
       onChange={event => onChange(plans.find(plan => plan.adId === event.target.value))}>
       <option value="">{loading ? compact ? "正在准备…" : `正在准备${label}…` : error ? "读取失败，请重试" : !available ? "请先选择账号" : !plans.length ? "没有可用计划" : `请选择${label}`}</option>
       {plans.map(plan => <option key={plan.adId} value={plan.adId}>{plan.productNames?.length ? `${plan.productNames.join("、")} — ` : ""}{plan.name} · ID {plan.adId}</option>)}
     </select>
-    <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
+    <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || switching || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
     {!compact && chosenPlan && <div style={{ overflowWrap: "anywhere" }}><strong>{chosenPlan.productNames?.join("、") ?? "商品信息未读取"}</strong><p>计划名称：{chosenPlan.name}</p><small>计划 ID：{chosenPlan.adId}</small></div>}
     {error ? <p role="alert">{error}</p> : purpose === "upload" && available && (currentAccount || loading) ? <small role={loading ? "status" : undefined} style={{ gridColumn: "1 / -1", overflowWrap: "anywhere" }}>{loading ? "正在核对网页子账户…" : `${currentAccount!.name ?? "网页账户"} · 账户 ${currentAccount!.advertiserId}`}</small> : !compact && (loading ? <small role="status">{purpose === "cleanup" ? "只读取计划列表，不删除素材。" : "只读取计划列表，不上传视频。"}</small> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>{instruction}</small> : null)}
+    {purpose === "upload" && <QianchuanSubaccountSelect key={`${product}:${advertiserId}`} account={account} current={currentAccount} disabled={disabled || loading || switching} idPrefix={idPrefix}
+      onSwitching={value => { setSwitching(value); if (value) { change.current(undefined); accountRead.current?.(undefined); } }} />}
   </div>;
 }
