@@ -22,7 +22,7 @@ import { clearQianchuanAccountPlans } from "./qianchuan-cleanup-plans.js";
 import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
 import { QianchuanSelectedAccountTargets } from "./qianchuan-selected-account-targets.js";
-import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
+import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, QianchuanPlanCatalogSchema, type QianchuanPlanOption, type QianchuanCurrentAccount, type QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { automationConfirmationRecoveryLock, hasAutomationConfirmationIntent } from "./automation-upload.js";
 import { confirmReadyUpload } from "./qianchuan-upload-completion.js";
@@ -304,7 +304,7 @@ export class DouyinUploadService {
       return targetId ? [targetId] : [];
     }));
   }
-  private async catalogPlans(product: QianchuanProduct, advertiserId: string, signal: AbortSignal, refresh = false, currentBrowser = false): Promise<QianchuanPlanOption[]> {
+  private async catalogPlans(product: QianchuanProduct, advertiserId: string, signal: AbortSignal, refresh = false, currentBrowser = false, onAccount?: (account: QianchuanCurrentAccount) => void): Promise<QianchuanPlanOption[]> {
     this.browserPreparations++;
     try {
       signal.throwIfAborted();
@@ -319,6 +319,7 @@ export class DouyinUploadService {
         const after = await this.accounts.prepareCurrentCatalog(product, signal, this.excludedPlanTargets());
         if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("网页子账户或账号连接已变化，请重新读取计划。");
         signal.throwIfAborted();
+        onAccount?.(after.account);
         return plans.map(plan => ({ ...plan, accountSource: "current-browser" }));
       }
       const cached = !refresh ? this.planReads.cached(configured) : undefined;
@@ -334,7 +335,7 @@ export class DouyinUploadService {
       return plans;
     } finally { this.browserPreparations--; }
   }
-  async listPlans(input: unknown, senderId = 0): Promise<QianchuanPlanOption[]> {
+  async listPlans(input: unknown, senderId = 0): Promise<QianchuanPlanListResult> {
     const parsed = QianchuanPlanListRequestSchema.parse(input);
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
     const key = parsed.requestId ? `${senderId}:${parsed.requestId}` : undefined;
@@ -344,7 +345,9 @@ export class DouyinUploadService {
     if (key) this.planRequests.set(key, controller);
     try {
       if (parsed.accountSource === "current-browser") await this.stopPlanPreload(signal);
-      return await this.catalogPlans(parsed.product, parsed.expectedAdvertiserId, signal, parsed.refresh, parsed.accountSource === "current-browser");
+      let account: QianchuanCurrentAccount | undefined;
+      const plans = await this.catalogPlans(parsed.product, parsed.expectedAdvertiserId, signal, parsed.refresh, parsed.accountSource === "current-browser", value => { account = value; });
+      return parsed.includeAccount ? QianchuanPlanCatalogSchema.parse({ account, plans }) : plans;
     } finally { if (key) this.planRequests.delete(key); }
   }
   cancelPlanRead(input: unknown, senderId = 0): void {

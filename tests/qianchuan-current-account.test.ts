@@ -6,7 +6,7 @@ import { chromium, type BrowserContext, type Page } from "playwright-core";
 import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
-import { readCurrentQianchuanAccount } from "../src/main/qianchuan-current-account";
+import { readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot } from "../src/main/qianchuan-current-account";
 
 const origin = "https://qianchuan.jinritemai.com";
 const account = (targetId: string, id: string, visibilityState: "visible" | "hidden", route = "/finance") => ({
@@ -90,13 +90,22 @@ async function realChrome(): Promise<{ context: BrowserContext; profile: string;
     args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
   await context.route(`${origin}/**`, route => {
     const id = new URL(route.request().url()).searchParams.get("aavid") ?? "";
-    return route.fulfill({ contentType: "text/html; charset=utf-8", body: `<div class="account-info-container">ID：${id}</div>` });
+    return route.fulfill({ contentType: "text/html; charset=utf-8", body: `<div class="account-info-container"><div>新</div><div class="account-info-box"><div class="shop-name">新子账户商贸</div><div>ID：${id}</div></div></div>` });
   });
   const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
   return { context, profile, endpoint: `http://127.0.0.1:${port}` };
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+it("reads the current webpage name with its ID and rejects name drift", async () => {
+  const fixture = await fakeBrowser({ snapshot: target => ({ ...target.snapshot, accountTexts: ["新子账户商贸\nID：200"] }) });
+  try { await expect(readCurrentQianchuanAccountSnapshot(fixture.endpoint)).resolves.toEqual({ advertiserId: "200", name: "新子账户商贸" }); }
+  finally { await fixture.close(); }
+  const drift = await fakeBrowser({ snapshot: (target, read) => ({ ...target.snapshot, accountTexts: [`${read === 1 ? "旧名称" : "新名称"}\nID：200`] }) });
+  try { await expect(readCurrentQianchuanAccountSnapshot(drift.endpoint)).rejects.toThrow(); }
+  finally { await drift.close(); }
+});
 
 it("reads the active account in isolated Chrome and leaves other browser tabs untouched", async () => {
   const fixture = await realChrome();
@@ -113,6 +122,7 @@ it("reads the active account in isolated Chrome and leaves other browser tabs un
     const before = await Promise.all(fixture.context.pages().map(async page => ({ url: page.url(), state: await page.evaluate(() => document.visibilityState) })));
 
     await expect(readCurrentQianchuanAccount(fixture.endpoint)).resolves.toBe("200");
+    await expect(readCurrentQianchuanAccountSnapshot(fixture.endpoint)).resolves.toEqual({ advertiserId: "200", name: "新子账户商贸" });
 
     expect(fixture.context.pages()).toHaveLength(2);
     expect(before).toEqual(await Promise.all(fixture.context.pages().map(async page => ({ url: page.url(), state: await page.evaluate(() => document.visibilityState) }))));

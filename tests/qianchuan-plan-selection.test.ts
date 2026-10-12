@@ -8,7 +8,7 @@ import { DouyinUploadStore } from "../src/main/douyin-upload-store";
 import { QianchuanAccountConfigReader, type FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account";
-import { QianchuanPlanListSchema, type QianchuanPlanOption } from "../src/shared/qianchuan-plan-selection";
+import { QianchuanPlanListSchema, QianchuanPlanCatalogSchema, QianchuanPlanListRequestSchema, type QianchuanPlanOption } from "../src/shared/qianchuan-plan-selection";
 import { QianchuanUploadSelectionSchema, uploadFailure } from "../src/shared/douyin-upload";
 import { BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION, DEFAULT_PRESET, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { createDefaultProject } from "../src/main/domain";
@@ -48,7 +48,7 @@ async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: strin
   const browser: UploadBrowserPort = { connect, open: async () => { throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "fixture stops before any file action", "fixture", true); },
     upload: async () => { throw new Error("Unexpected file action"); }, ready: async () => [], pollReady: async () => [], readOnlyCheck: async () => { throw new Error("Unexpected recovery"); }, stop: async () => undefined };
   const states = new Map<string, QueueState>();
-  const accounts = currentAccount ? new QianchuanAccountSettings(store.root, async () => "http://127.0.0.1:11000", async () => "http://127.0.0.1:11000", currentAccount) : new QianchuanAccountConfigReader();
+  const accounts = currentAccount ? new QianchuanAccountSettings(store.root, async () => "http://127.0.0.1:11000", async () => "http://127.0.0.1:11000", async endpoint => ({ advertiserId: await currentAccount(endpoint), name: "网页子账户" })) : new QianchuanAccountConfigReader();
   const service = new DouyinUploadService(store, { accounts, readPlans, loadBatch: async id => structuredClone(states.get(id)!), browser: () => browser, readiness: () => undefined });
   await service.chooseConfig(configPath); await service.configure({ enabled: true });
   if (currentAccount) await service.stop();
@@ -62,6 +62,17 @@ async function fixture(currentAccount?: ReturnType<typeof vi.fn<(endpoint: strin
 
 describe("current browser subaccount", () => {
   const currentPlan = (advertiserId = "7000", adId = "9001") => ({ ...plan(adId), advertiserId, accountSource: "current-browser" as const });
+  it("rejects catalogs whose account identity disagrees with their plans", () => {
+    expect(QianchuanPlanCatalogSchema.safeParse({ account: { advertiserId: "8000", name: "其他账户" }, plans: [currentPlan()] }).success).toBe(false);
+    expect(QianchuanPlanCatalogSchema.safeParse({ account: { advertiserId: "1000" }, plans: [plan()] }).success).toBe(false);
+    expect(QianchuanPlanListRequestSchema.safeParse({ product: "眼贴", expectedAdvertiserId: "1000", includeAccount: true }).success).toBe(false);
+  });
+  it("returns the verified child name and ID even when its catalog is empty", async () => {
+    const f = await fixture(vi.fn(async () => "7000"));
+    f.readPlans.mockResolvedValue([]);
+    expect(await f.service.listPlans({ product: "眼贴", expectedAdvertiserId: "1000", accountSource: "current-browser", includeAccount: true })).toEqual({ account: { advertiserId: "7000", name: "网页子账户" }, plans: [] });
+    expect(f.store.intents()).toHaveLength(0);
+  });
   it("reads the current child through the saved anchor, without changing the mapping or creating intents", async () => {
     const current = vi.fn(async () => "7000"), f = await fixture(current);
     const before = await readFile((f.accounts as QianchuanAccountSettings).file);

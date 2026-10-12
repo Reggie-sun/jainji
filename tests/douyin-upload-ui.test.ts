@@ -95,7 +95,7 @@ it("shows editable product names in account settings and both selectors while re
   expect(html).not.toContain("眼贴 · 账户 123 / 计划 456");
   for (const compact of [true, false]) {
     const selector = renderToStaticMarkup(createElement(DouyinUploadControls, { value: { enabled: true, accountProduct: "眼贴" }, accounts, compact, onChange: () => {} }));
-    expect(selector).toContain('<option value="眼贴" selected="">新产品 · 123</option>');
+    expect(selector).toContain('<option value="眼贴" selected="">新产品 · 网页账户待核对</option>');
     expect(selector).not.toContain('value="新产品"');
   }
 });

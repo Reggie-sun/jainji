@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import { VIDEO_LIBRARY_ROUTE } from "../shared/qianchuan-video-library.js";
+import { QianchuanCurrentAccountSchema, type QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
 
 const ORIGIN = "https://qianchuan.jinritemai.com";
 const MAX_RESPONSE_BYTES = 256 * 1024;
@@ -159,7 +160,7 @@ const SNAPSHOT_EXPRESSION = `(() => {
     return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
   };
   return { href: location.href, visibilityState: document.visibilityState,
-    accountTexts: Array.from(document.querySelectorAll(".account-info-container")).filter(visible).map(element => element.innerText) };
+    accountTexts: Array.from(document.querySelectorAll(".account-info-container")).filter(visible).map(element => (element.querySelector(".account-info-box") || element).innerText) };
 })()`;
 
 function validateSnapshot(value: unknown, candidate: Candidate): PageSnapshot {
@@ -172,13 +173,14 @@ function validateSnapshot(value: unknown, candidate: Candidate): PageSnapshot {
   return { href: snapshot.href, visibilityState: snapshot.visibilityState!, accountTexts: snapshot.accountTexts as string[] };
 }
 
-function domAdvertiserId(texts: string[]): string {
+function domAccount(texts: string[]): QianchuanCurrentAccount {
   if (texts.length !== 1) throw new Error(FAILURE);
   const text = texts[0]!.replace(/\s+/g, " ").trim();
   const markers = [...text.matchAll(/ID\s*[：:]/gi)];
   const match = /ID\s*[：:]\s*([0-9]+)(?![\p{L}\p{N}_])/iu.exec(text);
   if (markers.length !== 1 || !match || !ID_PATTERN.test(match[1]!)) throw new Error(FAILURE);
-  return match[1]!;
+  const name = text.slice(0, match.index).trim();
+  return QianchuanCurrentAccountSchema.parse({ advertiserId: match[1]!, ...(name ? { name } : {}) });
 }
 
 async function readPage(connection: CdpConnection, candidate: Candidate): Promise<PageSnapshot> {
@@ -193,16 +195,16 @@ async function readPage(connection: CdpConnection, candidate: Candidate): Promis
   } finally { await connection.detach(sessionId); }
 }
 
-function uniqueVisibleId(pages: Array<{ candidate: Candidate; snapshot: PageSnapshot }>): string {
-  const ids = new Set<string>();
+function uniqueVisibleAccount(pages: Array<{ candidate: Candidate; snapshot: PageSnapshot }>): QianchuanCurrentAccount {
+  const accounts = new Map<string, QianchuanCurrentAccount>();
   for (const page of pages) {
     if (page.snapshot.visibilityState !== "visible") continue;
-    const id = domAdvertiserId(page.snapshot.accountTexts);
-    if (id !== page.candidate.advertiserId) throw new Error(FAILURE);
-    ids.add(id);
+    const account = domAccount(page.snapshot.accountTexts);
+    if (account.advertiserId !== page.candidate.advertiserId) throw new Error(FAILURE);
+    accounts.set(JSON.stringify(account), account);
   }
-  if (ids.size !== 1) throw new Error(FAILURE);
-  return [...ids][0]!;
+  if (accounts.size !== 1) throw new Error(FAILURE);
+  return [...accounts.values()][0]!;
 }
 
 function candidateSignature(pages: Candidate[]): string {
@@ -211,6 +213,10 @@ function candidateSignature(pages: Candidate[]): string {
 
 /** Reads the active advertiser from the already-bound local browser without changing its pages. */
 export async function readCurrentQianchuanAccount(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<string> {
+  return (await readCurrentQianchuanAccountSnapshot(endpoint, parentSignal, excludedTargets)).advertiserId;
+}
+
+export async function readCurrentQianchuanAccountSnapshot(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<QianchuanCurrentAccount> {
   parentSignal?.throwIfAborted();
   const controller = new AbortController();
   let timedOut = false;
@@ -234,14 +240,14 @@ export async function readCurrentQianchuanAccount(endpoint: string, parentSignal
     const initialCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets);
     const first = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of initialCandidates) first.push({ candidate, snapshot: await readPage(connection, candidate) });
-    const expectedId = uniqueVisibleId(first);
+    const expected = uniqueVisibleAccount(first);
     const currentCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets);
     if (candidateSignature(currentCandidates) !== candidateSignature(initialCandidates)) throw new Error(FAILURE);
     const second = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of currentCandidates) second.push({ candidate, snapshot: await readPage(connection, candidate) });
     if (first.some((page, index) => page.snapshot.href !== second[index]?.snapshot.href || page.snapshot.visibilityState !== second[index]?.snapshot.visibilityState || page.snapshot.visibilityState === "visible" && JSON.stringify(page.snapshot.accountTexts) !== JSON.stringify(second[index]?.snapshot.accountTexts))) throw new Error(FAILURE);
-    if (uniqueVisibleId(second) !== expectedId) throw new Error(FAILURE);
-    return expectedId;
+    if (JSON.stringify(uniqueVisibleAccount(second)) !== JSON.stringify(expected)) throw new Error(FAILURE);
+    return expected;
   } catch (error) {
     if (controller.signal.aborted) {
       if (timedOut) throw controller.signal.reason;

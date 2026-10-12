@@ -11,7 +11,8 @@ import { QianchuanLibraryClearSchema } from "../shared/qianchuan-video-library.j
 import { egressIdentity, type QianchuanEgress } from "../shared/qianchuan-egress.js";
 import { qianchuanEgressRuntime } from "./qianchuan-egress-runtime.js";
 import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
-import { readCurrentQianchuanAccount } from "./qianchuan-current-account.js";
+import { readCurrentQianchuanAccountSnapshot } from "./qianchuan-current-account.js";
+import type { QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -27,7 +28,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly browsers: QianchuanBrowserManager;
   private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
   private readonly discoverExistingBrowser: (advertiserId: string) => Promise<string>;
-  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccount) {
+  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccountSnapshot) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
     this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id), displayName: async id => {
@@ -235,13 +236,14 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
     return this.withPreparedBrowser(target);
   }
-  async prepareCurrentCatalog(product: QianchuanProduct, signal?: AbortSignal, excludedTargets?: ReadonlySet<string>): Promise<{ configured: FrozenQianchuanAccount; target: FrozenQianchuanAccount }> {
+  async prepareCurrentCatalog(product: QianchuanProduct, signal?: AbortSignal, excludedTargets?: ReadonlySet<string>): Promise<{ configured: FrozenQianchuanAccount; target: FrozenQianchuanAccount; account: QianchuanCurrentAccount }> {
     const configured = await this.prepareCatalog(product);
-    const advertiserId = await this.currentAccount(configured.cdpEndpoint, signal, excludedTargets);
+    const account = await this.currentAccount(configured.cdpEndpoint, signal, excludedTargets);
+    const { advertiserId } = account;
     const fresh = await this.freeze(product, configured.configDigest);
     if (JSON.stringify(fresh) !== JSON.stringify(configured)) throw new Error("账号连接已变化，请重新读取计划。");
     if (configured.egress?.mode === "remote-browser" && advertiserId !== configured.advertiserId) throw new Error("VPS 浏览器当前子账户与保存绑定不同，请先在账号设置中保存该子账户后重试。");
-    return { configured, target: Object.freeze({ ...configured, advertiserId }) };
+    return { configured, target: Object.freeze({ ...configured, advertiserId }), account };
   }
   async savePlan(input: unknown, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);

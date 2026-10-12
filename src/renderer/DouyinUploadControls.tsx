@@ -1,6 +1,8 @@
-import { qianchuanAccountName, QIANCHUAN_PRODUCTS, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
-import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
+import { useState } from "react";
+import { QIANCHUAN_PRODUCTS, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
+import type { QianchuanPlanOption, QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection";
 import { QianchuanPlanSelect } from "./QianchuanPlanSelect";
+import { qianchuanUploadAccountLabel } from "./qianchuan-account-display";
 
 export interface UploadSelectionDraft { enabled: true; accountProduct?: QianchuanProduct; plan?: QianchuanPlanOption; }
 export function DouyinUploadControls({ value, onChange, accounts = [], disabled = false, idPrefix = "douyin-upload", compact = false, serviceEnabled = true, onConfigure }: {
@@ -8,8 +10,10 @@ export function DouyinUploadControls({ value, onChange, accounts = [], disabled 
   accounts?: QianchuanAccountSummary[]; disabled?: boolean; idPrefix?: string; compact?: boolean;
   serviceEnabled?: boolean; onConfigure?(): void;
 }) {
-  const options = QIANCHUAN_PRODUCTS.map(product => { const account = accounts.find(item => item.product === product); return <option key={product} value={product} disabled={!account?.available}>{account ? qianchuanAccountName(account) : product}{account?.available ? ` · ${account.advertiserId}` : "（缺少可用配置）"}</option>; });
+  const [readAccount, setReadAccount] = useState<{ product: QianchuanProduct; anchor: string; account?: QianchuanCurrentAccount }>();
+  const options = QIANCHUAN_PRODUCTS.map(product => { const account = accounts.find(item => item.product === product); const current = readAccount?.product === product && readAccount.anchor === account?.advertiserId ? readAccount.account : undefined; return <option key={product} value={product} disabled={!account?.available}>{account ? qianchuanUploadAccountLabel(account, current, value?.accountProduct === product && account.available) : product}{!account?.available && "（缺少可用配置）"}</option>; });
   const planSelect = value?.accountProduct && <QianchuanPlanSelect account={accounts.find(account => account.product === value.accountProduct)} value={value.plan} disabled={disabled} idPrefix={idPrefix}
+    onAccountRead={account => setReadAccount({ product: value.accountProduct!, anchor: accounts.find(item => item.product === value.accountProduct)?.advertiserId ?? "", account })}
     onChange={plan => onChange({ enabled: true, accountProduct: value.accountProduct, ...(plan ? { plan } : {}) })} />;
   if (compact) return <><label htmlFor={`${idPrefix}-product`}>千川上传
     <select id={`${idPrefix}-product`} aria-label="千川上传" value={value?.accountProduct ?? ""} disabled={disabled} title="本项成片自动上传；最多 9 条一组，整批就绪后自动确认"

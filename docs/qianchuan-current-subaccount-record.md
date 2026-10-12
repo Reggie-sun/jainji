@@ -1,5 +1,15 @@
 # Qianchuan Current Subaccount Delivery Record
 
+## Account Display Correction 2026-10-13
+
+用户指出上一轮只识别计划，上传账号下拉框仍显示保存的旧 Chrome 名称和 ID。根因包括账号控件只消费保存摘要，以及批量 renderer 把新子账户计划与保存锚点 ID 比较。当前 owner 增加同一次目录读取的网页账户快照（名称及 ID），空目录仍返回账户；普通、追加及批量控件消费该快照，读取失败/刷新清除旧展示。名称从账户信息框读取，排除头像首字；保存映射和主进程目标证明保持。用户选择 A，授权只调整已有脏 `preload.ts` 的千川读取类型，其他自动化改动保留。
+
+reader 名称测试先失败；批量 UI 回归先复现“新子账户计划已返回，账号仍为旧 ID”。修复后相关 5 个文件共 139 个测试通过，包含空目录、名称漂移、账户与计划不一致、旧 runtime 数组兼容、刷新失败、批量明确 B 计划提交及原保存关联。正式 Electron IPC 返回 `reggie呵护商贸-1 · 1876039035222536` 和属于该账户的计划 `1878843675747371`；实际批量页面的账号 dropdown 显示相同名称/完整 ID，plan 下拉框亦属于同一 ID，任务数保持零。Chrome MCP 只读核对网页账户信息框；Electron UI 使用实际 CDP 交互和截图，均没有选择文件、确认或删除。
+
+受管 Kimi deep 只读 mapping `e7d046c8-8106-4d0f-934a-455dd18ab390` 的 canonical receipt 为 PARSED，4 次请求均 `IDENTITY_VERIFIED`，required source Reads 完整；parent 采纳账号显示与普通批量 renderer 校验两处证据。报告将保存绑定漂移与网页子账户切换混为部分建议，parent 根据当前 source 区分两者，不采纳修改保存绑定 resolver 或定时语义的建议。该 mapping 不代表最终 implementation review。最终候选 Risk Gate 为 `KIMI_REVIEW_NOT_REQUIRED`：用户未要求额外审查；本增量只传递已核对账户展示及 renderer 普通制作校验，不修改主进程签发/证明/fence/确认准入，已有防伪与漂移用例和真实只读 UI 证明覆盖相应边界，无新 critical authority failure path 或重大未验证缺口。上一轮的两次审查仍保留原记录，不把 mapping 作为第三轮 review。
+
+本增量 owned scope、Harness、官方 AOCI 和仅 owned 提交字节验证保存在 `.agent/harness/runs/20261013-account-display/`。项目没有可调用的独立 session-record skill，本节作为 stable checkpoint 记录；证据不授予真实上传、Windows 或平台投放验收。
+
 ## Goal And Candidate
 
 用户确认：子账户在千川网页内切换，上传计划读取当前新子账户。用户选择 A，授权本会话接管已有脏 service 文件并保留先前改动；只提交本任务新增 hunks。[实施计划](superpowers/plans/2026-10-12-qianchuan-current-subaccount.md) 已自审，本轮没有保留额外用户批准步骤。

@@ -129,7 +129,7 @@ it.each([false, true])("revalidates and keeps the matching upload plan when retu
     await page.getByLabel("上传计划", { exact: true }).selectOption("987");
     const chosen = await page.evaluate(() => (window as any).selection.plan);
     await page.evaluate(() => (window as any).renameProfiles());
-    await page.getByRole("option", { name: "同名 Chrome · 789", exact: true }).waitFor({ state: "attached" });
+    await page.getByRole("option", { name: "网页账户 · 789", exact: true }).waitFor({ state: "attached" });
     expect(await page.getByRole("option", { name: "同名 Chrome · 123", exact: true }).count()).toBe(1);
     expect(await page.evaluate(() => (window as any).selection.plan)).toEqual(chosen);
     await page.getByRole("button", { name: "离开或返回设置" }).click();

@@ -1,17 +1,17 @@
-import type { QianchuanPlanListRequest, QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
+import type { QianchuanPlanListRequest, QianchuanPlanListResult } from "../shared/qianchuan-plan-selection";
 
 interface Request {
   id: string;
   consumers: number;
   completed: boolean;
-  promise: Promise<QianchuanPlanOption[]>;
+  promise: Promise<QianchuanPlanListResult>;
   releaseTimer?: ReturnType<typeof setTimeout>;
 }
 const requests = new Map<string, Request>();
 
 /** A lease lasts only for a mounted selector; no catalog is cached after completion. */
-export function acquireQianchuanPlans(input: QianchuanPlanListRequest): { promise: Promise<QianchuanPlanOption[]>; release(): void } {
-  const key = JSON.stringify([input.product, input.expectedAdvertiserId, input.refresh === true, input.accountSource]);
+export function acquireQianchuanPlans(input: QianchuanPlanListRequest): { promise: Promise<QianchuanPlanListResult>; release(): void } {
+  const key = JSON.stringify([input.product, input.expectedAdvertiserId, input.refresh === true, input.accountSource, input.includeAccount]);
   let request = requests.get(key);
   if (!request) {
     const id = crypto.randomUUID();

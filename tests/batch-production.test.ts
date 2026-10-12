@@ -859,6 +859,22 @@ describe("batch automatic plan preparation", () => {
   }
   const requests = (page: Page) => page.evaluate(() => (window as any).catalogRequests.length);
   const row = (page: Page) => page.locator('[aria-label="蝴蝶贴制作设置"]');
+  it("shows and submits the current child identity while retaining the saved browser slot", async () => {
+    const page = await panel();
+    try {
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await page.evaluate(() => {
+        const request = (window as any).catalogRequests.find((item: any) => item.input.product === "眼贴");
+        request.resolve({ account: { advertiserId: "7000", name: "新子账户商贸" }, plans: [{ advertiserId: "7000", adId: "9001", name: "子账户计划", accountSource: "current-browser" }] });
+      });
+      await row(page).getByLabel("上传计划", { exact: true }).selectOption("9001");
+      expect(await row(page).getByLabel("蝴蝶贴上传账号", { exact: true }).locator("option:checked").textContent()).toBe("新子账户商贸 · 7000");
+      await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).check();
+      await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+      await page.waitForFunction(() => (window as any).batchStarts.length === 1);
+      expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].douyinUpload)).toEqual({ enabled: true, accountProduct: "眼贴", plan: { advertiserId: "7000", adId: "9001", name: "子账户计划", accountSource: "current-browser" } });
+    } finally { await page.close(); }
+  });
   it("keeps desktop batch controls on one line with quantity and plan errors", async () => {
     const page = await panel();
     try {

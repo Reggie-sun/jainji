@@ -8,9 +8,10 @@ import { BatchProductionDetails } from "./BatchProductionDetails";
 import type { BatchUploadContext } from "./BatchUploadDetails";
 import { WorkspacePage, scrollWorkspace } from "./WorkspacePage";
 import { resolveBatchUploadAccount } from "../shared/batch-upload";
-import { qianchuanAccountName, type QianchuanProduct } from "../shared/qianchuan-account";
-import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
+import type { QianchuanProduct } from "../shared/qianchuan-account";
+import type { QianchuanPlanOption, QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection";
 import { QianchuanPlanSelect } from "./QianchuanPlanSelect";
+import { qianchuanUploadAccountLabel } from "./qianchuan-account-display";
 import "./batch-production.css";
 
 type Row = BatchProjectOption & { selected: boolean; outputDirectory?: string; uploadEnabled: boolean; uploadPlan?: QianchuanPlanOption };
@@ -26,6 +27,7 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [detail, setDetail] = useState<{ runId: string; jobId: string; name: string }>();
+  const [accountReads, setAccountReads] = useState<Record<string, { product?: QianchuanProduct; anchor?: string; account?: QianchuanCurrentAccount }>>({});
   useEffect(() => { setDetail(undefined); }, [state.batchProduction?.id]);
   const projectKey = (state.recentProjects ?? []).map(item => `${item.id}:${item.name}:${item.mediaCount}`).join("|");
   useEffect(() => {
@@ -48,6 +50,11 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
   const accountFor = (row: Row) => row.uploadBindingError
     ? { error: row.uploadBindingError, accountProduct: undefined }
     : resolveBatchUploadAccount(row.name, state.douyinUpload?.accounts ?? [], row.uploadBinding);
+  const currentAccountFor = (row: Row) => {
+    const read = accountReads[row.recentProjectId], product = accountFor(row).accountProduct;
+    const anchor = state.douyinUpload?.accounts?.find(account => account.product === product)?.advertiserId;
+    return read?.product === product && read?.anchor === anchor ? read?.account : undefined;
+  };
   const uploadSelection = (row: Row) => {
     if (!row.uploadEnabled || !state.douyinUpload?.config.enabled) return undefined;
     const account = accountFor(row);
@@ -68,7 +75,7 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
     if (row.uploadEnabled && state.douyinUpload?.config.enabled) {
       if (account.error) errors.push(account.error);
       else if (!row.uploadPlan) errors.push("尚未选择上传计划，请点击下拉框选择计划，或关闭本项千川上传。");
-      else if (row.uploadPlan.advertiserId !== uploadAccount?.advertiserId) errors.push("上传计划不属于当前账号，请重新选择计划。");
+      else if (row.uploadPlan.advertiserId !== (row.uploadPlan.accountSource === "current-browser" ? currentAccountFor(row)?.advertiserId : uploadAccount?.advertiserId)) errors.push("上传计划不属于当前账号，请重新选择计划。");
     }
     return errors.filter((value): value is string => Boolean(value)).map(message => ({ name: row.name, message }));
   });
@@ -195,9 +202,10 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
                 <label className="batch-upload-toggle"><span>千川上传</span><span><input type="checkbox" aria-label={`${row.name}开启千川上传`} checked={row.uploadEnabled} disabled={busy || !state.douyinUpload?.config.enabled} onChange={event => update(row.recentProjectId, { uploadEnabled: event.target.checked })} /><span>{!state.douyinUpload?.config.enabled ? "全局已关闭" : row.uploadEnabled ? "自动上传" : "不上传"}</span></span></label>
                 <select aria-label={`${row.name}上传账号`} value={uploadAccount.error ? "" : uploadAccount.accountProduct ?? ""} disabled={busy || !bindingReady} onChange={event => void selectAccount(row, event.target.value as QianchuanProduct)}>
                   <option value="" disabled>请选择上传账号</option>
-                  {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{qianchuanAccountName(account)} · {account.advertiserId || "未配置"}{!account.available && "（不可用）"}</option>)}
+                  {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{qianchuanUploadAccountLabel(account, currentAccountFor(row), account.product === uploadAccount.accountProduct && row.uploadEnabled && state.douyinUpload?.config.enabled === true && account.available)}{!account.available && "（不可用）"}</option>)}
                 </select>
-                {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })} />}
+                {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })}
+                  onAccountRead={account => setAccountReads(current => ({ ...current, [row.recentProjectId]: { product: planAccount?.product, anchor: planAccount?.advertiserId, account } }))} />}
                 {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}
               </div>
             </div>

@@ -152,6 +152,24 @@ async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: 
 }
 async function selected(page: Page) { return page.locator("#selection").textContent().then(value => JSON.parse(value!)); }
 describe("plan selector browser interaction", () => {
+  it("shows the child name and ID in the account dropdown even without plans, clearing them on failed refresh", async () => {
+    const page = await fixture();
+    try {
+      await page.evaluate(() => (window as any).catalogRequests[0].resolve({ account: { advertiserId: "7000", name: "新子账户商贸" }, plans: [] }));
+      const account = page.locator('#douyin-upload-product');
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('#douyin-upload-product')?.selectedOptions[0]?.textContent === "新子账户商贸 · 7000");
+      expect(await page.getByLabel("上传计划").isDisabled()).toBe(true);
+      expect(await account.inputValue()).toBe("眼贴");
+      await page.getByRole("button", { name: "刷新计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('#douyin-upload-product')?.selectedOptions[0]?.textContent?.includes("网页账户待核对"));
+      expect(await account.locator("option:checked").textContent()).not.toContain("7000");
+      await page.evaluate(() => (window as any).catalogRequests[1].reject(new Error("无法确认当前网页账户")));
+      await page.getByRole("alert").waitFor();
+      expect(await account.locator("option:checked").textContent()).toContain("网页账户待核对");
+      expect(await account.locator("option:checked").textContent()).not.toContain("1000");
+    } finally { await page.close(); }
+  });
   it("reads and selects the webpage child, then clears the choice if focus returns with a different child", async () => {
     const page = await fixture({ batch: true });
     try {
@@ -162,11 +180,11 @@ describe("plan selector browser interaction", () => {
       await respond("7000");
       await page.getByLabel("上传计划").selectOption("9001");
       expect((await selected(page)).plan).toMatchObject({ advertiserId: "7000", accountSource: "current-browser" });
-      await page.getByText("账户 7000", { exact: true }).waitFor();
+      await page.getByText("网页账户 · 账户 7000", { exact: true }).waitFor();
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       await respond("8000");
-      await page.getByText("账户 8000", { exact: true }).waitFor();
+      await page.getByText("网页账户 · 账户 8000", { exact: true }).waitFor();
       expect((await selected(page)).plan).toBeUndefined();
       expect(await page.getByLabel("上传计划").inputValue()).toBe("");
     } finally { await page.close(); }
