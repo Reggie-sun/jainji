@@ -184,6 +184,42 @@ it("opens a closed remote browser before ordinary current-account production pre
   expect(open.size).toBe(0);
 });
 
+it.each([false, true])("prepares local current-account production with an already-open browser: %s", async alreadyOpen => {
+  let opened = alreadyOpen;
+  const start = vi.fn(), endpoint = "http://127.0.0.1:41001";
+  const currentId = alreadyOpen ? "9009" : "1003";
+  const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+  const f = await fixture({ accounts: root => new QianchuanAccountSettings(path.join(root, "private"),
+    async () => { throw new Error("must preserve the browser's current subaccount"); },
+    async (_id, openIfMissing) => {
+      if (!opened) {
+        if (!openIfMissing) throw new Error("catalog browser closed");
+        start(); opened = true;
+      }
+      return endpoint;
+    }, async () => ({ displayName: "当前本机账号", advertiserId: currentId })) });
+  await f.service.beginProduction();
+  const before = await readFile((f.accounts as QianchuanAccountSettings).file);
+  const selected: QianchuanUploadSelection = { enabled: true, accountProduct: "眼贴",
+    plan: { advertiserId: currentId, adId: "2222", name: "当前计划", accountSource: "current-browser" } };
+  const authorization = await f.service.preflight(selected, 1);
+  expect(authorization?.target).toMatchObject({ advertiserId: currentId, cdpEndpoint: endpoint });
+  const source = await f.batch(["local current-account export"]);
+  const confirm = f.port.confirmAutomation!;
+  f.port.confirmAutomation = async (tasks, ownership, signal) => {
+    await confirm(tasks, ownership, signal);
+    return tasks.map(task => ({ ...task.result.readyEvidence!, platformVideoId: `local_${task.result.export_task_id}`,
+      attempt: task.result.attempt_count, requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), observedAt: now() }));
+  };
+  await f.service.registerBatch(source.batchIdentity, selected, authorization);
+  await f.service.enqueueFinalArtifact(source.identities[0]!); await f.service.runPending();
+  expect(f.store.tasks()[0].result.state).toBe("ACCEPTED");
+  expect(start).toHaveBeenCalledTimes(alreadyOpen ? 0 : 1);
+  expect(opened).toBe(true);
+  expect(control).not.toHaveBeenCalled();
+  expect(await readFile((f.accounts as QianchuanAccountSettings).file)).toEqual(before);
+});
+
 it("serializes ordinary remote preflights, holds incomplete uploads, then closes before the next account", async () => {
   const f = await remoteFixture(), first = await f.batch(["ordinary remote A1", "ordinary remote A2"], "眼贴"), next = await f.batch(["ordinary remote B"], "蝴蝶贴");
   await f.service.beginProduction();

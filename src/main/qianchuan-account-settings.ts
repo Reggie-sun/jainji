@@ -27,8 +27,8 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly preparedBrowsers = new Map<QianchuanProduct, { advertiserId: string; endpoint: string }>();
   private readonly browsers: QianchuanBrowserManager;
   private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
-  private readonly discoverExistingBrowser: (advertiserId: string) => Promise<string>;
-  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccountSnapshot) {
+  private readonly discoverExistingBrowser: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>;
+  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccountSnapshot) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
     this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id), displayName: async id => {
@@ -39,7 +39,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     } });
     this.discoverBrowser = discoverBrowser ?? (id => this.browsers.prepare(id));
     // The owned catalog page verifies account identity; switching an existing tab must not hide its bound browser.
-    this.discoverExistingBrowser = discoverExistingBrowser ?? (id => this.browsers.existingConnection(id));
+    this.discoverExistingBrowser = discoverExistingBrowser ?? ((id, openLocalIfMissing) => this.browsers.existingConnection(id, openLocalIfMissing));
   }
   async openBrowser(input: unknown): Promise<void> {
     this.assertAvailable();
@@ -227,17 +227,17 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
     return this.withPreparedBrowser(target);
   }
-  override async prepareCatalog(product: QianchuanProduct): Promise<FrozenQianchuanAccount> {
+  override async prepareCatalog(product: QianchuanProduct, openLocalIfMissing = false): Promise<FrozenQianchuanAccount> {
     this.assertAvailable();
     const target = await super.preflight(product);
-    const endpoint = await this.discoverExistingBrowser(target.advertiserId);
+    const endpoint = await (openLocalIfMissing ? this.discoverExistingBrowser(target.advertiserId, true) : this.discoverExistingBrowser(target.advertiserId));
     this.assertAvailable();
     await super.freeze(product, target.configDigest);
     this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
     return this.withPreparedBrowser(target);
   }
-  async prepareCurrentCatalog(product: QianchuanProduct, signal?: AbortSignal, excludedTargets?: ReadonlySet<string>): Promise<{ configured: FrozenQianchuanAccount; target: FrozenQianchuanAccount; account: QianchuanCurrentAccount }> {
-    const configured = await this.prepareCatalog(product);
+  async prepareCurrentCatalog(product: QianchuanProduct, signal?: AbortSignal, excludedTargets?: ReadonlySet<string>, openLocalIfMissing = false): Promise<{ configured: FrozenQianchuanAccount; target: FrozenQianchuanAccount; account: QianchuanCurrentAccount }> {
+    const configured = await this.prepareCatalog(product, openLocalIfMissing);
     const account = await this.currentAccount(configured.cdpEndpoint, signal, excludedTargets);
     const { advertiserId } = account;
     const fresh = await this.freeze(product, configured.configDigest);

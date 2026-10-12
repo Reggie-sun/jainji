@@ -76,6 +76,31 @@ it("uses loopback dynamic debugging from process startup, without a shell or use
   expect(args.at(-1)).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=123");
 });
 
+it("opens an absent local connection only for production and reuses it without account-page discovery", async () => {
+  const f = await fixture();
+  await expect(f.manager.existingConnection("123")).rejects.toThrow("先打开");
+  expect(f.launch).not.toHaveBeenCalled();
+  const request = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("must not inspect or switch existing tabs"));
+  const endpoint = await f.manager.existingConnection("123", true);
+  expect(endpoint).toBe("http://127.0.0.1:9300");
+  expect(await f.manager.existingConnection("123", true)).toBe(endpoint);
+  expect(f.launch).toHaveBeenCalledTimes(1);
+  expect(request).not.toHaveBeenCalled();
+});
+
+it("does not treat invalid or ambiguous local connections as absent during production", async () => {
+  const f = await fixture(), profile = path.join(f.root, "account-browsers", "123");
+  for (const browsers of [
+    [{ profile, endpoint: "http://127.0.0.1:9300", connectionIssue: "METADATA_UNAVAILABLE" as const }],
+    [{ profile }],
+    [{ profile, endpoint: "http://127.0.0.1:9300" }, { profile, endpoint: "http://127.0.0.1:9301" }],
+  ]) {
+    f.running.splice(0, f.running.length, ...browsers);
+    await expect(f.manager.existingConnection("123", true)).rejects.toThrow();
+  }
+  expect(f.launch).not.toHaveBeenCalled();
+});
+
 it("rejects injected account paths and profile aliases before browser launch", async () => {
   const f = await fixture();
   for (const id of ["../123", "123 --flag", "0", "", "https://example.com"]) expect(() => f.manager.open(id)).toThrow();
@@ -319,7 +344,7 @@ it("rejects an original profile-directory alias before persisting or starting a 
   await expect(f.manager.open("123")).rejects.toThrow("绑定"); expect(f.launch).not.toHaveBeenCalled();
 });
 
-it("attaches repeatedly to real isolated Chrome without remote-debugging permission or closing its tabs", async () => {
+it("starts absent real isolated Chrome for production and reuses it without closing its tabs", async () => {
   const f = await fixture(), executable = await resolveChromeExecutable(); let child: ChildProcess | undefined;
   const browsers = async () => (await runningChromeBrowsers("/proc", process.getuid?.(), path.join(f.root, "account-browsers", "123"))).filter(browser => browser.profile?.startsWith(f.root + path.sep));
   const manager = new QianchuanBrowserManager(f.root, { browsers, launch: async (profile, id) => {
@@ -328,16 +353,17 @@ it("attaches repeatedly to real isolated Chrome without remote-debugging permiss
     await new Promise<void>((resolve, reject) => { child!.once("spawn", resolve); child!.once("error", reject); });
   } });
   try {
-    const endpoint = await manager.open("123");
+    const endpoint = await manager.existingConnection("123", true), pid = child!.pid;
     const response = await fetch(`${endpoint}/json/version`); expect(response.status).toBe(200);
     const info = await response.json();
     const first = await readChromeTargets(info.webSocketDebuggerUrl) as Array<{ type: string; targetId: string }>;
+    expect(await new QianchuanBrowserManager(f.root, { browsers }).existingConnection("123", true)).toBe(endpoint);
+    expect((await browsers())[0]?.processId).toBe(pid);
     const second = await readChromeTargets(info.webSocketDebuggerUrl) as Array<{ type: string; targetId: string }>;
     // Extension background workers can appear while Chrome starts; preserve actual page tabs.
     const pages = first.filter(target => target.type === "page").map(target => target.targetId).sort();
     expect(pages.length).toBeGreaterThan(0);
     expect(second.filter(target => target.type === "page").map(target => target.targetId).sort()).toEqual(pages);
-    expect(await new QianchuanBrowserManager(f.root, { browsers }).open("123")).toBe(endpoint);
   } finally {
     if (child && child.exitCode === null) { const closed = new Promise(resolve => child!.once("close", resolve)); child.kill("SIGTERM"); await closed; }
   }

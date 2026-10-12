@@ -183,8 +183,8 @@ export class QianchuanBrowserManager {
     const endpoint = await this.existingConnection(advertiserId);
     return discoverQianchuanBrowser(advertiserId, { endpoints: async () => [endpoint] });
   }
-  /** Process/profile connection only, including a login page; does not authorize account actions. */
-  async existingConnection(advertiserId: string): Promise<string> {
+  /** Process/profile connection only; production may open a proven absent local browser. */
+  async existingConnection(advertiserId: string, openLocalIfMissing = false): Promise<string> {
     const managed = this.profile(advertiserId);
     if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
     if (this.controlling.has(advertiserId) || this.pending.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
@@ -195,7 +195,10 @@ export class QianchuanBrowserManager {
     if (original) await verifyOriginalProfile({ advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) });
     const egress = await this.dependencies.egress?.(advertiserId);
     const endpoint = await this.endpoint(original?.profile ?? managed, original ? { profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) } : undefined, false, egress);
-    if (!endpoint) throw new Error("请先打开该账号的千川浏览器，登录后刷新计划。");
+    if (!endpoint) {
+      if (openLocalIfMissing) return this.open(advertiserId);
+      throw new Error("请先打开该账号的千川浏览器，登录后刷新计划。");
+    }
     if (egress) await verifyBrowserEgress(endpoint, egress, this.dependencies.browsers);
     return endpoint;
   }
