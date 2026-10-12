@@ -136,6 +136,125 @@ async function remoteFixture() {
   return { ...f, open, remoteEvents: events, group };
 }
 
+it("automatically confirms an ordinary production only after every frozen member is READY", async () => {
+  const f = await fixture(), source = await f.batch(["ordinary first", "ordinary second"]);
+  const confirm = f.port.confirmAutomation!;
+  f.port.confirmAutomation = async (tasks, ownership, signal) => {
+    await confirm(tasks, ownership, signal);
+    return tasks.map(task => ({ ...task.result.readyEvidence!, platformVideoId: `ordinary_${task.result.export_task_id}`,
+      attempt: task.result.attempt_count, requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), observedAt: now() }));
+  };
+  await f.service.beginProduction();
+  const authorization = await f.service.preflight(selection, 2);
+  await f.service.registerBatch(source.batchIdentity, selection, authorization);
+  await f.service.enqueueFinalArtifact(source.identities[0]!); await f.service.runPending();
+  expect(f.events).not.toContain("confirm");
+  expect(f.store.tasks()[0].result.state).toBe("WAITING_FOR_CONFIRMATION");
+  await f.service.committed(source.identities[1]!); await f.service.runPending();
+  expect(f.events.filter(event => event === "confirm")).toHaveLength(1);
+  expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED" && f.store.hasMarker(task.result.upload_task_id))).toBe(true);
+  await f.service.runPending();
+  const restored = new DouyinUploadStore(f.store.root); await restored.load();
+  expect(restored.tasks().every(task => task.result.state === "ACCEPTED")).toBe(true);
+  expect(f.events.filter(event => event === "confirm")).toHaveLength(1);
+});
+
+it("serializes ordinary remote preflights, holds incomplete uploads, then closes before the next account", async () => {
+  const f = await remoteFixture(), first = await f.batch(["ordinary remote A1", "ordinary remote A2"], "眼贴"), next = await f.batch(["ordinary remote B"], "蝴蝶贴");
+  await f.service.beginProduction();
+  const selections = [first, next].map(source => ({ enabled: true as const, accountProduct: source.product,
+    plan: { advertiserId: String(1000 + QIANCHUAN_PRODUCTS.indexOf(source.product)), adId: "2222", name: "冻结计划" } }));
+  const a = await f.service.preflight(selections[0], 2);
+  expect(f.open.size).toBe(0);
+  const b = await f.service.preflight(selections[1], 1);
+  expect(f.open.size).toBe(0);
+  await f.service.registerBatch(first.batchIdentity, selections[0], a);
+  await f.service.registerBatch(next.batchIdentity, selections[1], b);
+  f.remoteEvents.splice(0);
+  await f.service.enqueueFinalArtifact(first.identities[0]!); await f.service.runPending();
+  await f.service.enqueueFinalArtifact(next.identities[0]!); await f.service.runPending();
+  expect(f.open).toEqual(new Set([a!.target.advertiserId]));
+  expect(f.selectedExports).toEqual([first.identities[0]!.export_task_id]);
+  await f.service.committed(first.identities[1]!); await f.service.runPending();
+  expect(f.store.tasks().every(task => task.result.state === "ACCEPTED")).toBe(true);
+  expect(f.open.size).toBe(0);
+  const accepted = f.remoteEvents.indexOf(`accepted:${a!.target.advertiserId}`);
+  const closed = f.remoteEvents.indexOf(`close:${a!.target.advertiserId}`, accepted);
+  expect(accepted).toBeGreaterThan(-1); expect(closed).toBeGreaterThan(accepted);
+  expect(f.remoteEvents.indexOf(`open:${b!.target.advertiserId}`)).toBeGreaterThan(closed);
+  expect(f.events.filter(event => event === "close-accepted-page")).toHaveLength(2);
+});
+
+it("does not rotate ordinary accounts or recover READY after an unknown confirmation", async () => {
+  const f = await remoteFixture(), sources = [await f.batch(["ordinary unknown"], "眼贴"), await f.batch(["ordinary deferred"], "蝴蝶贴")];
+  await f.service.beginProduction();
+  for (const source of sources) {
+    const selected = { enabled: true as const, accountProduct: source.product,
+      plan: { advertiserId: String(1000 + QIANCHUAN_PRODUCTS.indexOf(source.product)), adId: "2222", name: "冻结计划" } };
+    const authorization = await f.service.preflight(selected, 1);
+    await f.service.registerBatch(source.batchIdentity, selected, authorization);
+  }
+  f.remoteEvents.splice(0); f.port.confirmAutomation = async () => { f.events.push("unknown-confirm"); };
+  for (const source of sources) await f.service.enqueueFinalArtifact(source.identities[0]!);
+  await f.service.runPending(); await f.service.runPending();
+  const task = f.store.tasks().find(task => task.input.project_id === sources[0].projectId)!;
+  expect(task.result).toMatchObject({ state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", retryable: false });
+  expect(f.selectedExports).toEqual(sources[0].identities.map(identity => identity.export_task_id));
+  expect(f.remoteEvents).not.toContain("open:1000");
+  expect(f.events.filter(event => event === "unknown-confirm")).toHaveLength(1);
+  await expect(f.service.requestResume(task.result.upload_task_id)).rejects.toThrow();
+  expect(f.events).not.toContain("read-only-recovery");
+});
+
+it("keeps ordinary confirmation UNKNOWN when stop races a late accepted receipt", async () => {
+  const f = await fixture(), source = await f.batch(["ordinary stopped"]);
+  let stop: Promise<boolean> | undefined;
+  f.port.confirmAutomation = async tasks => {
+    stop = f.service.stop();
+    return tasks.map(task => ({ ...task.result.readyEvidence!, platformVideoId: "ordinary_late", attempt: task.result.attempt_count,
+      requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), observedAt: now() }));
+  };
+  await f.service.beginProduction();
+  const authorization = await f.service.preflight(selection, 1);
+  await f.service.registerBatch(source.batchIdentity, selection, authorization);
+  await f.service.enqueueFinalArtifact(source.identities[0]!); await f.service.runPending(); await stop;
+  expect(stop).toBeDefined();
+  const restored = new DouyinUploadStore(f.store.root); await restored.load();
+  expect(restored.tasks()[0].result).toMatchObject({ state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" });
+  expect(restored.tasks()[0].result.acceptedEvidence).toBeUndefined();
+});
+
+it("does not lose eligible ordinary batches on the same account during confirmation", async () => {
+  const f = await remoteFixture(), sources = [await f.batch(["same account first"]), await f.batch(["same account next"])];
+  await f.service.beginProduction();
+  for (const source of sources) {
+    const authorization = await f.service.preflight(selection, 1);
+    await f.service.registerBatch(source.batchIdentity, selection, authorization);
+    await f.service.enqueueFinalArtifact(source.identities[0]!);
+  }
+  await f.service.runPending();
+  expect(f.store.tasks().every(task => task.result.state === "ACCEPTED")).toBe(true);
+  expect(f.events.filter(event => event === "confirm")).toHaveLength(2);
+  expect(f.open.size).toBe(0);
+});
+
+it("stops ordinary account rotation if closing the accepted page fails", async () => {
+  const f = await remoteFixture(), sources = [await f.batch(["accepted cannot close"], "眼贴"), await f.batch(["not sent after close failure"], "蝴蝶贴")];
+  await f.service.beginProduction();
+  for (const source of sources) {
+    const selected = { enabled: true as const, accountProduct: source.product,
+      plan: { advertiserId: String(1000 + QIANCHUAN_PRODUCTS.indexOf(source.product)), adId: "2222", name: "冻结计划" } };
+    await f.service.registerBatch(source.batchIdentity, selected, await f.service.preflight(selected, 1));
+    await f.service.enqueueFinalArtifact(source.identities[0]!);
+  }
+  f.remoteEvents.splice(0); f.port.closeAcceptedAutomationPage = async () => { throw new Error("fixture close failure"); };
+  await f.service.runPending();
+  expect(f.store.tasks().find(task => task.input.project_id === sources[0].projectId)!.result.state).toBe("ACCEPTED");
+  expect(f.selectedExports).toEqual(sources[0].identities.map(identity => identity.export_task_id));
+  expect(f.remoteEvents).not.toContain("open:1000");
+  expect(f.open).toEqual(new Set(["1003"]));
+});
+
 it("accepts and closes each of five remote accounts before opening the next, without changing fences or closing batches", async () => {
   const f = await remoteFixture(), products = QIANCHUAN_PRODUCTS.slice(0, 5);
   const groups = await Promise.all(products.map((product, i) => f.group(product, `unique remote output ${i}`)));

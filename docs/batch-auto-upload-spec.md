@@ -10,7 +10,7 @@
 - 模板保存名称去除首尾空白后，只匹配账号保存的有效显示名称（`productName ?? product`），必须唯一且可用。重命名槽位不能通过旧 `product` 名称兜底；不使用子串、模糊匹配、排序或默认第一个账号。
 - 批量 UI 显示自动绑定商品，无账号选择器。未匹配、歧义或不可用时显示具体原因，开启上传的所选模板不能开始；用户可修正账号配置，或明确关闭该行上传。
 - 制作请求仍只发送原 strict `douyinUpload` 产品槽位。主进程从实际读取的项目名称与当前账号摘要重新匹配，在上传 preflight、模型和导出前拒绝不一致的槽位；仍由原 service 冻结 advertiser、plan、digest 与 pageBatchId。
-- 上传授权仍只来自用户点击开始的本次制作。页面加载、刷新、启动恢复不上传；UNKNOWN/fence、每组最多 9 条、停在确定前不变。历史任务和冻结模板不迁移，不改账号私有配置。
+- 上传授权仍只来自用户点击开始的本次制作。页面加载、刷新、启动恢复不上传；UNKNOWN/fence、每组最多 9 条不变。2026-10-12 用户授权所有制作入口整批就绪后自动确认，按 [All Entry Amendment](douyin-auto-upload-spec.md#all-entry-automatic-confirmation-amendment-2026-10-12) 执行。历史任务和冻结模板不迁移，不改账号私有配置。
 
 ## Acceptance And Verification
 

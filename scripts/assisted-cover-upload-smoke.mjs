@@ -44,7 +44,22 @@ try {
   const bindingsFile = path.join(directory, "bindings.cjs");
   await require("esbuild").build({ entryPoints: [path.join(root, "src/main/qianchuan-browser-bindings.ts")], bundle: true, platform: "node", format: "cjs", outfile: bindingsFile });
   const { QianchuanBrowserBindings } = require(bindingsFile);
-  const html = await readFile(path.join(root, "tests/fixtures/qianchuan-production-page.html"), "utf8");
+  const html = (await readFile(path.join(root, "tests/fixtures/qianchuan-production-page.html"), "utf8")).replace(
+    "document.querySelector('#confirm-button').addEventListener('click', () => postEvent({ type: 'confirm' }));",
+    `document.querySelector('#confirm-button').addEventListener('click', () => {
+      postEvent({ type: 'confirm' });
+      const modal = document.createElement('div'); modal.className = 'ovui-modal';
+      modal.innerHTML = '<div class="oc-modal-confirm-title">确认添加并开始投放 ' + state.uploads.length + ' 个素材吗？</div><button>确定</button>';
+      document.body.append(modal);
+      modal.querySelector('button').addEventListener('click', async () => {
+        modal.querySelector('button').disabled = true;
+        const videos = state.uploads.map((file, index) => ({ file_name: file.name, video_id: 'fixture_video_' + index }));
+        await fetch('/ad/api/creation/material/bind-video-to-owner?aavid=123456', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vids: videos }) });
+        await fetch('/ad/api/pmc/v1/uni-promotion/material/add-uni-prom-materials?aavid=123456', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aggregateAID: '987654', proceduralCreative: { videoMaterial: videos.map(video => ({ videoId: video.video_id })) } }) });
+        modal.remove();
+      });
+    });`);
   const ids = [{ advertiserId: "123456", adId: "987654" }];
   for (let index = 0; index < 1; index++) {
     const fixtureRoot = path.join(directory, `browser-${index}`); await mkdir(fixtureRoot);
@@ -57,6 +72,10 @@ try {
     const browser = await require("playwright-core").chromium.connectOverCDP(fixture.cdpEndpoint); routing.push(browser);
     await browser.contexts()[0].route("https://qianchuan.jinritemai.com/**", async route => {
       const url = new URL(route.request().url());
+      if (["/ad/api/creation/material/bind-video-to-owner", "/ad/api/pmc/v1/uni-promotion/material/add-uni-prom-materials"].includes(url.pathname)) {
+        assert.equal(route.request().method(), "POST");
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status_code: 0, data: {} }) });
+      }
       if (url.pathname === "/uni-prom" && !url.searchParams.get("adId")) return route.fulfill({ contentType: "text/html", body: `<html><head><meta charset="utf-8"></head><body><div class="account-info-container">ID：123456</div><table><tr class="ovui-tr"><td class="p-c-ad-name-col"><div class="oc-promotion-product-adinfo-name"><span class="oc-typography-value-int">隔离上传计划</span></div><div class="oc-promotion-product-adinfo-id-fade">ID：987654</div></td></tr></table><div data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"><span class="ovui-page-total">共 1 条记录</span><li class="ovui-page-turner__item--active">1</li><li class="ovui-page-turner__item ovui-page-turner__item--disabled"><span class="ovui-page-turner__next-icon">下一页</span></li></div></body></html>` });
       if (!["/uni-prom", "/controls", "/events"].includes(url.pathname)) return route.abort();
       const local = new URL(url.pathname, fixture.contract.origin); local.search = url.search;
@@ -114,6 +133,7 @@ try {
     await window.jianji.saveProject("人工覆盖上传", { step: "templates", selectedMediaIds: state.project.mediaItems.map(item => item.id), ruleId: "clean", brief: "", decorations: { mode: "manual", sticker: "none", displayText: { enabled: false, x: .5, y: .1 } }, requestedCount: 2, exportFormat: "mp4", exportSettings: { resolutionMode: "source", frameRateMode: "source", quality: "balanced" }, outputDirectoryMode: "automatic" });
   }, sources);
   await page.reload();
+  await page.getByRole('navigation', { name: '制作流程' }).getByRole('button', { name: /覆盖$/ }).click();
   const coverSettings = page.getByRole('region', { name: '覆盖原贴纸设置', exact: true });
   await coverSettings.getByRole('button', { name: '添加覆盖框', exact: true }).click();
   const move = coverSettings.getByLabel('拖动覆盖贴纸', { exact: true });
@@ -140,29 +160,31 @@ try {
   assert.equal(await page.locator('.cover-review').count(), 0);
   await coverSettings.getByRole('spinbutton', { name: /^当前时间/ }).fill('200');
   await coverSettings.screenshot({ path: path.join(directory, 'human-region-entry.png') });
-  await page.getByRole('checkbox', { name: '本次成片导出完成后自动上传，停在确定前', exact: true }).check();
+  await page.getByRole('navigation', { name: '制作流程' }).getByRole('button', { name: /输出确认$/ }).click();
+  await page.getByRole('checkbox', { name: '本次成片导出完成后自动上传并确认', exact: true }).check();
   await page.locator('#douyin-upload-product').selectOption('眼贴');
   const planSelect = page.getByRole('combobox', { name: '上传计划', exact: true });
   await planSelect.locator('option[value="987654"]').waitFor({ state: 'attached', timeout: 30000 });
   await planSelect.selectOption('987654');
   await page.getByRole('button', { name: '本地制作，制作 2 条成片', exact: true }).click();
-  const ready = await until(() => state(page), value => value.douyinUpload.tasks.length === 2 && value.douyinUpload.tasks.every(task => task.state === 'WAITING_FOR_CONFIRMATION'));
+  const ready = await until(() => state(page), value => value.douyinUpload.tasks.length === 2 && value.douyinUpload.tasks.every(task => task.state === 'ACCEPTED'));
   assert.equal((ready.project.reviewDrafts ?? []).length, 0);
   const batches = ready.queue.batches.map(value => value.batch);
   assert.equal(batches.length, 2);
   assert.ok(batches.every(batch => batch.manualCoverDigest));
   assert.equal(Object.keys(saved.mediaRegions).length, 1);
   const before = await fixtures[0].inspect();
-  assert.equal(before.events.filter(event => event.type === 'confirm' || event.type === 'settings').length, 0);
-  report.checks.push('manual boxes and times reused in direct production', 'unframed material exports without confirmation', 'no review draft or pre-render preview');
+  assert.equal(before.events.filter(event => event.type === 'confirm').length, 1);
+  assert.equal(before.events.filter(event => event.type === 'settings').length, 0);
+  report.checks.push('manual boxes and times reused in direct production', 'unframed material exports without cover-review approval', 'no review draft or pre-render preview');
   const ledger = JSON.parse(await readFile(path.join(runtime.userData, 'douyin-upload/state.json'), 'utf8'));
   assert.equal(ledger.intents.length, 2); assert.equal(ledger.tasks.length, 2);
   const task = ledger.tasks[0];
   assert.equal(task.result.advertiserId, '123456'); assert.equal(task.result.adId, '987654');
   assert.ok(!task.input.video_path.includes('previews'));
   const fence = JSON.parse(await readFile(path.join(runtime.userData, 'douyin-upload/selection-fences', `${task.result.upload_task_id}.json`), 'utf8'));
-  assert.deepEqual(fence.pageOwnership, task.result.readyEvidence.pageOwnership);
-  report.checks.push('real human-region direct UI production and explicit upload choice', 'real FFmpeg formal export', 'production CDP uploader against isolated local page', 'durable private intent and selection fence', 'zero platform confirm/settings clicks');
+  assert.deepEqual(fence.pageOwnership, task.result.acceptedEvidence.pageOwnership);
+  report.checks.push('real human-region direct UI production and explicit upload choice', 'real FFmpeg formal export', 'production CDP uploader against isolated local page', 'durable private intent and selection fence', 'automatic double confirmation with bound receipts', 'zero ad settings changes');
   const legacy = await page.evaluate(async () => {
     let state = await window.jianji.getState();
     await window.jianji.setCoverSticker({ ...state.project.coverSticker, manualRegionInput: undefined });
@@ -174,6 +196,7 @@ try {
     return { draftId: draft.id, mediaId: media.mediaId, track };
   });
   await page.reload();
+  await page.getByRole('navigation', { name: '制作流程' }).getByRole('button', { name: /覆盖$/ }).click();
   await coverSettings.getByRole('button', { name: '手动框选', exact: true }).waitFor();
   assert.equal(await coverSettings.getByRole('spinbutton', { name: /^出现/ }).inputValue(), '200');
   assert.equal(await coverSettings.getByRole('spinbutton', { name: /^结束/ }).inputValue(), '800');
@@ -187,7 +210,7 @@ try {
   assert.deepEqual(migrated.coverSticker.mediaRegions[legacy.mediaId][0].tracks[legacy.mediaId], legacy.track);
   assert.ok(migrated.reviewDrafts.some(draft => draft.id === legacy.draftId));
   report.checks.push('historical review boxes migrated through manual settings and survive reload', 'saved direct manual settings remain after reload');
-  Object.assign(report, { result: 'PASS', runtime, formalOutput: task.input.video_path, uploadedReady: 2, confirmClicks: 0, productionOriginInterceptedLocally: true });
+  Object.assign(report, { result: 'PASS', runtime, formalOutput: task.input.video_path, uploadedAccepted: 2, confirmClicks: 1, adSettingsChanges: 0, productionOriginInterceptedLocally: true });
 } catch (error) {
   report.fixturePages = await Promise.all(routing.flatMap(browser => browser.contexts()[0].pages()).map(async page => ({ url: page.url(), html: await page.content().catch(() => '') })));
   report.result = 'FAIL'; report.failure = String(error.stack ?? error).slice(0, 4000); process.exitCode = 1;

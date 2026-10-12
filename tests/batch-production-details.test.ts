@@ -88,7 +88,7 @@ describe("batch works presentation", () => {
       { upload_task_id: "ready", file_name: "ready.mp4", advertiserId: "123", adId: "456", state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY" },
       { upload_task_id: "unknown", file_name: "unknown.mp4", advertiserId: "123", adId: "456", state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED" },
     ] as NonNullable<BatchProductionDetail["upload"]>["tasks"] } });
-    expect(html).toContain("已上传 1 / 2 条"); expect(html).toContain("待在 Chrome 确认"); expect(html).toContain("结果未知，禁止重新上传");
+    expect(html).toContain("已上传 1 / 2 条"); expect(html).toContain("等待确认"); expect(html).toContain("整批就绪后自动确认"); expect(html).toContain("结果未知，禁止重新上传");
     expect(html).not.toContain("已发布"); expect(html).not.toContain(">确定<");
   });
 

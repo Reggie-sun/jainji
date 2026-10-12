@@ -360,7 +360,7 @@ it("returns to output with the internal scroll position, upload choices and acco
     await workflow(page, "包装").click();
     await page.locator("#product-price").fill("原文");
     await workflow(page, "输出确认").click();
-    await page.getByLabel("本次成片导出完成后自动上传，停在确定前", { exact: true }).check();
+    await page.getByLabel("本次成片导出完成后自动上传并确认", { exact: true }).check();
     await page.getByRole("button", { name: "配置千川账号与计划", exact: true }).scrollIntoViewIfNeeded();
     const top = await page.locator(".membership-workspace").evaluate(el => el.scrollTop);
     await page.getByRole("button", { name: "配置千川账号与计划", exact: true }).click();
@@ -368,7 +368,7 @@ it("returns to output with the internal scroll position, upload choices and acco
     await page.locator("#qianchuan-product-name").fill("未保存的名字");
     await page.getByRole("button", { name: "返回来源页面", exact: false }).click();
     await page.waitForFunction(top => Math.abs(document.querySelector(".membership-workspace")!.scrollTop - top) < 2, top);
-    expect(await page.getByLabel("本次成片导出完成后自动上传，停在确定前", { exact: true }).isChecked()).toBe(true);
+    expect(await page.getByLabel("本次成片导出完成后自动上传并确认", { exact: true }).isChecked()).toBe(true);
     expect(await page.locator(".production-blockers").textContent()).toContain("全局千川上传尚未启用");
     await page.getByRole("button", { name: "配置千川账号与计划", exact: true }).click();
     expect(await page.locator("#qianchuan-product-name").inputValue()).toBe("未保存的名字");

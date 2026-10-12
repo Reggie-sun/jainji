@@ -60,7 +60,7 @@ describe("paused Qianchuan status projection", () => {
     const before = await readFile(path.join(f.store.root, "state.json"));
     const status = f.service.status(current.projectId);
     expect(status.ready).toBe(true);
-    expect(status.message).not.toContain("暂停"); expect(status.message).toContain("停在确定前");
+    expect(status.message).not.toContain("暂停"); expect(status.message).toContain("整批就绪后自动确认");
     expect(status.tasks).toHaveLength(12); expect(status.tasks.every(task => task.state === "PENDING" && task.upload_outcome === "NOT_SELECTED")).toBe(true);
     expect(status.tasks.some(task => task.project_id === old.projectId)).toBe(false);
     const html = renderToStaticMarkup(createElement(DouyinUploadPanel, { projectId: current.projectId, status, onState: () => {} }));

@@ -94,6 +94,12 @@ async function fixture(browser?: () => UploadBrowserPort) {
       expect(files.some(file => file.fileName === task.result.file_name && file.index === store.fence(task.result.upload_task_id)!.selectedIndex)).toBe(true);
       return evidenceFor(task, ownership, store.fence(task.result.upload_task_id)!.selectedIndex);
     },
+    confirmAutomation: async (tasks, pageOwnership, signal) => {
+      signal.throwIfAborted();
+      return tasks.map((task, index) => ({ advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId,
+        fileName: task.result.file_name, pageOwnership, selectedCount: tasks.length, observedAt: now(), platformVideoId: String(90000 + index),
+        attempt: task.result.attempt_count, requestSha256: "a".repeat(64), responseSha256: "b".repeat(64) }));
+    },
     stop: async () => { events.push("stop"); },
   };
   const service = new DouyinUploadService(store, {
@@ -291,8 +297,8 @@ describe("Qianchuan upload service", () => {
     for (const identity of [...a.identities, ...chunk.identities, ...b.identities]) await f.service.enqueueFinalArtifact(identity);
     await f.service.runPending();
     expect(f.service.status(a.projectId).tasks).toHaveLength(2);
-    expect(f.service.status(b.projectId).tasks[0]!.upload_outcome).toBe("READY");
-    expect(f.service.status(a.projectId).tasks.every(task => task.upload_outcome === "READY")).toBe(true);
+    expect(f.service.status(b.projectId).tasks[0]!.upload_outcome).toBe("ACCEPTED");
+    expect(f.service.status(a.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED")).toBe(true);
     expect(f.events.filter(event => event === "file-input")).toHaveLength(3);
   });
 
@@ -344,7 +350,7 @@ describe("Qianchuan upload service", () => {
     const current = await f.createBatch(["new valid admission"]); await f.register(current);
     expect(f.service.status(current.projectId).ready).toBe(true);
     await f.service.enqueueFinalArtifact(current.identities[0]!); await f.service.runPending();
-    expect(f.service.status(current.projectId).tasks[0]!.upload_outcome).toBe("READY");
+    expect(f.service.status(current.projectId).tasks[0]!.upload_outcome).toBe("ACCEPTED");
     expect(f.store.tasks()).toHaveLength(1);
   });
 
@@ -1828,7 +1834,7 @@ describe("Qianchuan upload service", () => {
     await f.service.runPending();
     expect(ports).toHaveLength(3); expect(stopped.size).toBe(2);
     expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
-    expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "READY" && task.retry_count === 2 && task.attempt_count === 1)).toBe(true);
+    expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED" && task.retry_count === 2 && task.attempt_count === 1)).toBe(true);
   });
 
   it("reconnects preparation timeouts before any fence and sends files only once", async () => {
@@ -1844,7 +1850,7 @@ describe("Qianchuan upload service", () => {
     await f.service.enqueueFinalArtifact(batch.identities[0]); await f.service.runPending();
     expect(opens).toBe(3); expect(stops).toBeGreaterThanOrEqual(2);
     expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
-    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "READY", retry_count: 2 });
+    expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "ACCEPTED", retry_count: 2 });
   });
 
   it("does not retry a file action timeout once the durable fence exists", async () => {
@@ -1881,7 +1887,7 @@ describe("Qianchuan upload service", () => {
     expect(status.tasks.filter(task => task.state === "FAILED_RETRYABLE")).toHaveLength(9);
     expect(status.tasks.filter(task => task.state === "PENDING")).toHaveLength(1);
     expect(f.store.hasMarker(task.upload_task_id)).toBe(false);
-    expect(f.service.status(other.projectId).tasks[0]!.upload_outcome).toBe("READY");
+    expect(f.service.status(other.projectId).tasks[0]!.upload_outcome).toBe("ACCEPTED");
     f.port.connect = connect;
     await f.service.runPending();
     expect(f.service.status(blocked.projectId).tasks.some(task => task.upload_outcome !== "NOT_SELECTED")).toBe(false);
@@ -1913,7 +1919,7 @@ describe("Qianchuan upload service", () => {
       else expect(stopCompleted).toBe(true);
     };
     await f.service.runPending();
-    expect(calls).toBe(2); expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "READY", retry_count: 1 });
+    expect(calls).toBe(2); expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "ACCEPTED", retry_count: 1 });
   });
 
   it.each(["ACCOUNT_UNCONFIRMED", "PAGE_CONTRACT_UNVERIFIED"] as const)("does not retry %s from connect", async code => {
@@ -1990,10 +1996,11 @@ describe("Qianchuan upload service", () => {
       return originalReady(tasks, signal);
     };
     await f.service.runPending();
-    expect(groups.map(group => group.length)).toEqual([9, 9, 1]);
-    expect(groups.slice(1).flat()).toEqual(other.identities.map(identity => identity.export_task_id));
-    expect(f.service.status(other.projectId)).toMatchObject({ ready: true, message: "成片就绪即上传，每次最多 9 条；处理中继续追加，停在确定前。" });
-    expect(f.service.status(other.projectId).tasks.every(task => task.upload_outcome === "READY")).toBe(true);
+    expect(groups.map(group => group.length)).toEqual([9, 9, 1, 10]);
+    expect(groups.slice(1, 3).flat()).toEqual(other.identities.map(identity => identity.export_task_id));
+    expect(groups[3]).toEqual(other.identities.map(identity => identity.export_task_id));
+    expect(f.service.status(other.projectId)).toMatchObject({ ready: true, message: expect.stringContaining("整批就绪后自动确认") });
+    expect(f.service.status(other.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED")).toBe(true);
     expect(f.service.status(blocked.projectId).ready).toBe(false);
     expect(f.service.status(blocked.projectId).tasks.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED")).toHaveLength(9);
     expect(f.service.status(sameAccount.projectId).tasks[0]).toMatchObject({ state: "PENDING", upload_outcome: "NOT_SELECTED", attempt_count: 0 });
@@ -2001,7 +2008,7 @@ describe("Qianchuan upload service", () => {
     const fencePath = path.join(f.store.root, "selection-fences", `${unknown.result.upload_task_id}.json`);
     const fence = await readFile(fencePath), result = structuredClone(unknown.result);
     await f.service.runPending();
-    expect(groups.map(group => group.length)).toEqual([9, 9, 1]);
+    expect(groups.map(group => group.length)).toEqual([9, 9, 1, 10]);
     expect(await readFile(fencePath)).toEqual(fence); expect(f.store.task(unknown.result.upload_task_id)!.result).toEqual(result);
     await expect(f.service.resume(f.service.status(sameAccount.projectId).tasks[0]!.upload_task_id)).rejects.toThrow("未解决");
   });
@@ -2018,7 +2025,7 @@ describe("Qianchuan upload service", () => {
     await f.service.runPending();
     const other = await f.createBatch(["late artifact"], { product: "热敷贴" }); await f.register(other);
     await f.service.committed(other.identities[0]!);
-    await vi.waitFor(() => expect(f.service.status(other.projectId).tasks[0]?.upload_outcome).toBe("READY"));
+    await vi.waitFor(() => expect(f.service.status(other.projectId).tasks[0]?.upload_outcome).toBe("ACCEPTED"));
     expect(f.service.status(blocked.projectId).tasks[0]!.upload_outcome).toBe("MAY_HAVE_UPLOADED");
   });
 
@@ -2044,7 +2051,7 @@ describe("Qianchuan upload service", () => {
     try {
       expect(await Promise.race([cancellation.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 500))])).toBe(true);
     } finally { release(); await cancellation; await work; await f.service.runPending(); }
-    expect(f.service.status(other.projectId).tasks[0]!.upload_outcome).toBe("READY");
+    expect(f.service.status(other.projectId).tasks[0]!.upload_outcome).toBe("ACCEPTED");
     expect(f.service.status(cancelled.projectId).tasks[0]!.upload_outcome).toBe("MAY_HAVE_UPLOADED");
   });
 
@@ -2083,7 +2090,7 @@ describe("Qianchuan upload service", () => {
     await f.service.registerBatch(newBatch.batchIdentity, newSelection, newAuthorization);
     await f.service.enqueueFinalArtifact(newBatch.identities[0]!);
     await f.service.runPending();
-    expect(f.service.status(newBatch.projectId).tasks[0]?.state).toBe("WAITING_FOR_CONFIRMATION");
+    expect(f.service.status(newBatch.projectId).tasks[0]?.state).toBe("ACCEPTED");
     expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
     const afterNewBatch = [...f.events];
 

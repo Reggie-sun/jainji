@@ -9,6 +9,14 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## All Entry Automatic Confirmation Amendment (2026-10-12)
+
+用户明确要求所有制作入口均自动化。本修订替代下文及旧增量中普通上传“停在确定前”的边界：单项目、普通跨模板批量、追加和每日自动化在用户开启本轮千川上传并选择账号/计划后，共用原服务的一次性自动确认。上传仍按最多 9 条选择一组，只有冻结完整批次的全部文件同页达到 READY，且最终身份、文件、数量及页面归属核验通过，才能进入确认。先持久保存 UNKNOWN 与确认意图，再逐层点击唯一确定；绑定平台回执才标 ACCEPTED，接收不证明审核或广告投放结果。
+
+普通 VPS 上传也按账号串行完成：预检只核验并释放账号浏览器；正式上传持有同一账号直至整批接受，再关闭自有上传页及正常关闭账号 Chrome，自动准备下一账号。同轮后续从未选择的任务只延迟准备，不阻止资源切换；历史、已选择、待确认或 UNKNOWN 仍保护原窗口。关闭失败阻断后续账号，不能强杀或清除 fence。
+
+本轮授权不追溯已有历史待确认页面，不自动恢复旧任务或再次确认未知结果；停止后不接受迟到响应。普通半自动制作批准、删除范围和上传默认开关保持原 owner。Parent Self-Review：复用原 store capability、确认 intent、页面 adapter 与浏览器协调，只移除入口之间的收尾差异。实现计划见 [All Entry Plan](superpowers/plans/2026-10-12-all-entry-upload-automation.md)；验证记录不以 fixture 替代真实平台验收。
+
 ## Per-Template Account Binding Amendment (2026-10-02)
 
 用户选择 A：每个已保存模板可直接选择并记住上传账号，多个不同名模板可共用同一账号。模板名不再决定显式关联；没有保存关联的旧模板仍兼容唯一同名匹配，缺匹配时提示在本行选择账号。关联在本机 QianchuanAccountSettings 下单独私有保存，不写入项目/模板文件或 mapping.json，不改变账号配置 digest、原 Chrome profile 或已有上传授权。

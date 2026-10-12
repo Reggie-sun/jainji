@@ -52,7 +52,7 @@ export function DouyinUploadPanel({ projectId, status, onState, page = "uploads"
     </WorkspacePage>
     <WorkspacePage active={page === "uploads" && showProjectUploads} label="上传任务">
     <section className="card brief-card douyin-upload-panel" aria-labelledby="douyin-upload-panel-title">
-    <div className="card-header"><h2 id="douyin-upload-panel-title">千川上传任务</h2><span>普通上传由你确认，定时任务按已保存授权自动确认</span></div>
+    <div className="card-header"><h2 id="douyin-upload-panel-title">千川上传任务</h2><span>所有制作入口整批就绪后自动确认，VPS 账号完成后自动切换</span></div>
     <p role={status?.ready ? "status" : "alert"}>{status?.message ?? "上传状态尚未载入。"}</p>
     <button type="button" className="text-button" onClick={() => onPage?.("accounts")}>前往账号与计划</button>
     {!!tasks.length && <p role="status" aria-label="上传进度">已上传 {uploaded} / {tasks.length} 条 · 待上传 {pending} 条 · 处理中 {processing} 条 · 需处理 {tasks.length - uploaded - pending - processing} 条</p>}

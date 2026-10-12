@@ -47,7 +47,7 @@ it("labels closed history and closure confirmation by original advertiser ID wit
 });
 it("starts every production upload off and requires a manual account choice without captions", () => {
   const off = renderToStaticMarkup(createElement(DouyinUploadControls, { onChange: () => {} }));
-  expect(off).toContain("默认关闭"); expect(off).toContain("停在确定前"); expect(off).not.toContain('checked=""');
+  expect(off).toContain("默认关闭"); expect(off).toContain("自动上传并确认"); expect(off).not.toContain('checked=""');
   const on = renderToStaticMarkup(createElement(DouyinUploadControls, { value: { enabled: true }, onChange: () => {}, accounts: [{ product: "眼贴", advertiserId: "123", adId: "456", available: true }] }));
   expect(on).toContain("请选择一个产品账号"); expect(on).toContain('value="" selected=""');
   expect(on).toContain('value="眼贴"'); expect(on).toContain('value="热敷贴" disabled=""');
@@ -56,7 +56,7 @@ it("starts every production upload off and requires a manual account choice with
 it("keeps append selection independently off", () => {
   const batch = { id: projectId, status: "completed", mediaIds: [projectId], outputDirectory: "/tmp/out", createdAt: "2026-09-27T00:00:00.000Z", tasks: [] } as unknown as PublicExportBatch;
   const html = renderToStaticMarkup(createElement(AppendProductionDialog, { batch, prefill: { productPrice: "19.9元", mediaCount: 1 }, mediaLabel: "成片.mp4", onClose: () => {} }));
-  expect(html).toContain("千川上传"); expect(html).toContain("停在确定前"); expect(html).not.toContain('checked=""');
+  expect(html).toContain("千川上传"); expect(html).toContain("整批就绪后自动确认"); expect(html).not.toContain('checked=""');
 });
 it("projects unknown selected uploads as read-only without publish, caption or arbitrary endpoint controls", () => {
   const html = panel(task()); expect(html).toContain("只读核查页面"); expect(html).not.toContain("安全继续");

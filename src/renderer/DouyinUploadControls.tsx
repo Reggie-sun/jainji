@@ -12,7 +12,7 @@ export function DouyinUploadControls({ value, onChange, accounts = [], disabled 
   const planSelect = value?.accountProduct && <QianchuanPlanSelect account={accounts.find(account => account.product === value.accountProduct)} value={value.plan} disabled={disabled} idPrefix={idPrefix}
     onChange={plan => onChange({ enabled: true, accountProduct: value.accountProduct, ...(plan ? { plan } : {}) })} />;
   if (compact) return <><label htmlFor={`${idPrefix}-product`}>千川上传
-    <select id={`${idPrefix}-product`} aria-label="千川上传" value={value?.accountProduct ?? ""} disabled={disabled} title="本项成片自动上传；最多 9 条一组，停在确定前"
+    <select id={`${idPrefix}-product`} aria-label="千川上传" value={value?.accountProduct ?? ""} disabled={disabled} title="本项成片自动上传；最多 9 条一组，整批就绪后自动确认"
       onChange={event => onChange(event.target.value ? { enabled: true, accountProduct: event.target.value as QianchuanProduct } : undefined)}>
       <option value="">不上传</option>{options}
     </select>
@@ -21,8 +21,8 @@ export function DouyinUploadControls({ value, onChange, accounts = [], disabled 
     <div className="card-header"><h2 id={`${idPrefix}-title`}>千川上传</h2><span>本次可选</span></div>
     <button type="button" className="text-button" onClick={onConfigure}>配置千川账号与计划</button>
     {!serviceEnabled && <p role="status">全局千川上传已关闭。可先配置并返回，本次上传需另外选择。</p>}
-    <label><input type="checkbox" checked={value?.enabled === true} disabled={disabled} onChange={event => onChange(event.target.checked ? { enabled: true } : undefined)} />本次成片导出完成后自动上传，停在确定前</label>
-    <small>默认关闭；每次制作和追加选择一个产品账号，无需逐条选择视频。每组最多 9 条，全部上传成功后继续下一组；已上传记录会保存。</small>
+    <label><input type="checkbox" checked={value?.enabled === true} disabled={disabled} onChange={event => onChange(event.target.checked ? { enabled: true } : undefined)} />本次成片导出完成后自动上传并确认</label>
+    <small>默认关闭；每次制作和追加选择一个产品账号，无需逐条选择视频。成片就绪即上传，每组最多 9 条；整批就绪后自动确认，VPS 账号完成后自动关闭并切换。</small>
     {value && <>
       <label htmlFor={`${idPrefix}-product`}>本次产品账号</label>
       <select id={`${idPrefix}-product`} value={value.accountProduct ?? ""} disabled={disabled} onChange={event => onChange({ enabled: true, ...(event.target.value ? { accountProduct: event.target.value as QianchuanProduct } : {}) })}>

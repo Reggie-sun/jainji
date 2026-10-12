@@ -36,7 +36,7 @@ try {
   await mkdir(home);
   await symlink(path.join(root, "node_modules"), path.join(directory, "node_modules"), "dir");
   const helperFile = path.join(directory, "helper.mjs");
-  await require("esbuild").build({ entryPoints: [path.join(root, "tests/helpers/douyin-cdp-fixture.ts")], bundle: true, platform: "node", format: "esm", outfile: helperFile, external: ["playwright-core"] });
+  await require("esbuild").build({ entryPoints: [path.join(root, "tests/helpers/douyin-cdp-fixture.ts")], bundle: true, platform: "node", format: "esm", outfile: helperFile, external: ["playwright-core", "ws"] });
   const helper = await import(pathToFileURL(helperFile).href);
   const fixtureChrome = path.join(directory, "fixture-chrome");
   const chromeExecutable = await helper.resolveChromeExecutable();
@@ -44,7 +44,22 @@ try {
   const bindingsFile = path.join(directory, "bindings.cjs");
   await require("esbuild").build({ entryPoints: [path.join(root, "src/main/qianchuan-browser-bindings.ts")], bundle: true, platform: "node", format: "cjs", outfile: bindingsFile });
   const { QianchuanBrowserBindings } = require(bindingsFile);
-  const html = await readFile(path.join(root, "tests/fixtures/qianchuan-production-page.html"), "utf8");
+  const html = (await readFile(path.join(root, "tests/fixtures/qianchuan-production-page.html"), "utf8")).replace(
+    "document.querySelector('#confirm-button').addEventListener('click', () => postEvent({ type: 'confirm' }));",
+    `document.querySelector('#confirm-button').addEventListener('click', () => {
+      postEvent({ type: 'confirm' });
+      const modal = document.createElement('div'); modal.className = 'ovui-modal';
+      modal.innerHTML = '<div class="oc-modal-confirm-title">确认添加并开始投放 ' + state.uploads.length + ' 个素材吗？</div><button>确定</button>';
+      document.body.append(modal);
+      modal.querySelector('button').addEventListener('click', async () => {
+        modal.querySelector('button').disabled = true;
+        const videos = state.uploads.map((file, index) => ({ file_name: file.name, video_id: 'fixture_video_' + index }));
+        await fetch('/ad/api/creation/material/bind-video-to-owner?aavid=123456', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vids: videos }) });
+        await fetch('/ad/api/pmc/v1/uni-promotion/material/add-uni-prom-materials?aavid=123456', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ aggregateAID: '987654', proceduralCreative: { videoMaterial: videos.map(video => ({ videoId: video.video_id })) } }) });
+        modal.remove();
+      });
+    });`);
   const ids = [{ advertiserId: "123456", adId: "987654" }, { advertiserId: "223456", adId: "887654" }];
   for (let index = 0; index < 2; index++) {
     const fixtureRoot = path.join(directory, `browser-${index}`); await mkdir(fixtureRoot);
@@ -57,6 +72,15 @@ try {
     const browser = await require("playwright-core").chromium.connectOverCDP(fixture.cdpEndpoint); routing.push(browser);
     await browser.contexts()[0].route("https://qianchuan.jinritemai.com/**", async route => {
       const url = new URL(route.request().url());
+      if (url.searchParams.has("jianjiPlanPicker")) return route.fulfill({ contentType: "text/html; charset=utf-8", body: `<!doctype html><meta charset="utf-8">
+        <div class="account-info-container">ID：${ids[index].advertiserId}</div>
+        <div data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"><span class="ovui-page-total">共 1 条记录</span><ul>
+          <li class="ovui-page-turner__item ovui-page-turner__item--active">1</li><li class="ovui-page-turner__item ovui-page-turner__item--disabled"><span class="ovui-page-turner__next-icon"></span></li></ul></div>
+        <table><tbody><tr class="ovui-tr"><td class="p-c-ad-name-col"><div class="oc-promotion-product-adinfo"><div class="oc-promotion-product-adinfo-name"><span class="oc-typography-value-int">隔离计划</span></div><span class="oc-promotion-product-adinfo-id-fade">ID：${ids[index].adId}</span></div></td></tr></tbody></table>` });
+      if (["/ad/api/creation/material/bind-video-to-owner", "/ad/api/pmc/v1/uni-promotion/material/add-uni-prom-materials"].includes(url.pathname)) {
+        assert.equal(route.request().method(), "POST");
+        return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status_code: 0, data: {} }) });
+      }
       if (!["/uni-prom", "/controls", "/events"].includes(url.pathname)) return route.abort();
       const local = new URL(url.pathname, fixture.contract.origin); local.search = url.search;
       const method = route.request().method(), body = route.request().postData();
@@ -130,14 +154,16 @@ try {
     if (index === 2) await row(name).getByRole("checkbox", { name: `${name}开启千川上传`, exact: true }).uncheck();
   }
   assert.equal(await page.locator(".batch-template-controls select[aria-label=\"千川上传\"]").count(), 0);
-  await row("商品甲").getByText("自动 · 商品甲", { exact: true }).waitFor();
-  await row("商品乙").getByText("自动 · 商品乙", { exact: true }).waitFor();
+  for (const [index, name] of names.slice(0, 2).entries()) {
+    assert.equal(await row(name).getByRole("combobox", { name: `${name}上传账号`, exact: true }).inputValue(), index ? "眼贴" : "蝴蝶贴");
+    await row(name).getByRole("combobox", { name: "上传计划", exact: true }).selectOption(ids[index].adId);
+  }
   await page.screenshot({ path: path.join(directory, "batch-settings.png"), fullPage: true });
   await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
   const finished = await until(() => state(page), value => value.batchProduction?.status === "finished");
   assert.ok(finished.batchProduction.jobs.every(job => job.status === "completed"));
   async function details(run) { return page.evaluate(run => Promise.all(run.jobs.map(job => window.jianji.batchProductionDetails({ runId: run.id, jobId: job.id }))), run); }
-  const ready = await until(() => details(finished.batchProduction), values => values[0].upload?.tasks.length === 10 && values[1].upload?.tasks.length === 2 && values.slice(0, 2).every(value => value.upload.tasks.every(task => task.state === "WAITING_FOR_CONFIRMATION")));
+  const ready = await until(() => details(finished.batchProduction), values => values[0].upload?.tasks.length === 10 && values[1].upload?.tasks.length === 2 && values.slice(0, 2).every(value => value.upload.tasks.every(task => task.state === "ACCEPTED")));
   assert.equal(ready[2].upload.tasks.length, 0);
   assert.ok(ready.slice(0, 2).every((value, index) => value.upload.tasks.every(task => task.advertiserId === ids[index].advertiserId && task.adId === ids[index].adId && value.job.taskIds.includes(task.export_task_id))));
   for (const [index, name] of names.entries()) assert.equal(await row(name).getByRole("checkbox", { name: `${name}开启千川上传`, exact: true }).isChecked(), index !== 2);
@@ -160,17 +186,18 @@ try {
   assert.equal(new Set(ledger.tasks.map(task => task.authorization.pageBatchId)).size, 2);
   for (const task of ledger.tasks) {
     const fence = JSON.parse(await readFile(path.join(runtime.userData, "douyin-upload/selection-fences", `${task.result.upload_task_id}.json`), "utf8"));
-    assert.deepEqual(fence.pageOwnership, task.result.readyEvidence.pageOwnership);
+    assert.deepEqual(fence.pageOwnership, task.result.acceptedEvidence.pageOwnership);
   }
   const firstTask = ready[0].tasks[0];
   assert.ok(Number(execFileSync(ffprobe, ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", firstTask.outputPath], { encoding: "utf8" })) > 0);
   await page.getByRole("button", { name: "查看 商品甲 作品", exact: true }).click();
+  await page.getByRole("button", { name: "查看本批上传任务", exact: true }).click();
   const progress = page.getByRole("region", { name: "本项千川上传" }).getByRole("status", { name: "本项上传进度" });
   await progress.waitFor();
-  assert.match(await progress.innerText(), /已上传 10 \/ 10 条 · 待上传 0 条 · 处理中 0 条 · 结果未知 0 条 · 需处理 0 条 · 停在确定前/);
+  assert.match(await progress.innerText(), /已上传 10 \/ 10 条 · 待上传 0 条 · 处理中 0 条 · 结果未知 0 条 · 需处理 0 条 · 整批就绪后自动确认/);
   await page.screenshot({ path: path.join(directory, "batch-ready.png"), fullPage: true });
-  await page.getByRole("button", { name: "← 返回批量列表", exact: true }).click();
-  report.checks.push("UI selection/reset", "two frozen accounts", "formal FFmpeg outputs", "group limit and per-file fences", "job-scoped ready details", "export-only item", "saved template drafts unchanged");
+  await page.getByRole("button", { name: "批量制作", exact: true }).click();
+  report.checks.push("UI selection/reset", "two frozen accounts", "formal FFmpeg outputs", "group limit and per-file fences", "job-scoped accepted details", "automatic double confirmation with bound receipts", "export-only item", "saved template drafts unchanged");
   await closeApp(); page = await launch();
   const recovered = await state(page); assert.equal(recovered.batchProduction.id, finished.batchProduction.id);
   const countBefore = inspection.map(value => value.events.filter(event => event.type === "files").length);
@@ -185,20 +212,22 @@ try {
     await row(name).getByRole("spinbutton").fill("2");
     await row(name).getByRole("textbox").fill("故障验证文字");
     assert.equal(await row(name).getByRole("checkbox", { name: `${name}开启千川上传`, exact: true }).isChecked(), true);
+    await row(name).getByRole("combobox", { name: "上传计划", exact: true }).selectOption(ids[index].adId);
   }
   fixtures[0].setControls({ processingDelayMs: 8000 });
   await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
   await until(() => fixtures[0].inspect(), value => value.events.filter(event => event.type === "files").length > countBefore[0]);
   fixtures[0].setControls({ failure: true });
   const fault = await until(() => state(page), value => value.batchProduction?.id !== recovered.batchProduction.id && value.batchProduction?.status === "finished");
-  const stopped = await until(() => details(fault.batchProduction), values => values[0].upload.tasks.some(task => task.upload_outcome === "MAY_HAVE_UPLOADED") && values[1].upload.tasks.length === 2 && values[1].upload.tasks.every(task => task.upload_outcome === "READY"));
+  const stopped = await until(() => details(fault.batchProduction), values => values[0].upload.tasks.some(task => task.upload_outcome === "MAY_HAVE_UPLOADED") && values[1].upload.tasks.length === 2 && values[1].upload.tasks.every(task => task.upload_outcome === "ACCEPTED"));
   assert.ok(stopped.every(value => value.job.status === "completed"));
-  assert.ok(stopped[1].upload.tasks.every(task => task.state === "WAITING_FOR_CONFIRMATION" && task.upload_outcome === "READY"));
+  assert.ok(stopped[1].upload.tasks.every(task => task.state === "ACCEPTED" && task.upload_outcome === "ACCEPTED"));
   const finalInspection = await Promise.all(fixtures.map(fixture => fixture.inspect()));
   assert.ok(finalInspection[1].events.filter(event => event.type === "files").length > countBefore[1]);
-  assert.equal(finalInspection.flatMap(value => value.events).filter(event => event.type === "confirm" || event.type === "settings").length, 0);
+  assert.equal(finalInspection.flatMap(value => value.events).filter(event => event.type === "confirm").length, 3);
+  assert.equal(finalInspection.flatMap(value => value.events).filter(event => event.type === "settings").length, 0);
   report.checks.push("unknown pauses only its account without changing completed exports");
-  Object.assign(report, { result: "PASS", runtime, formalOutputs: 17, uploadedReady: 12 + stopped.flatMap(value => value.upload.tasks).filter(task => task.upload_outcome === "READY").length, confirmClicks: 0, adSettingsChanges: 0, productionOriginInterceptedLocally: true });
+  Object.assign(report, { result: "PASS", runtime, formalOutputs: 17, uploadedAccepted: 14, confirmClicks: 3, adSettingsChanges: 0, productionOriginInterceptedLocally: true });
 } catch (error) {
   report.result = "FAIL"; report.failure = String(error.stack ?? error).slice(0, 4000); process.exitCode = 1;
   if (app) { const page = await app.firstWindow(); await page.screenshot({ path: path.join(directory, "failure.png"), fullPage: true }).catch(() => undefined); }

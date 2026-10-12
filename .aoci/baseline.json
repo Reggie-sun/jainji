@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-12T11:33:09Z",
+  "updated_at": "2026-10-12T11:52:12Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c9948b76070b85d60307cf07d463ad1da5b34c91893164722d8baa2694c61406",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "e75ed6e4fb716a70b5ddb592bfa79cc05da380b88615165a55e6e18077892a9d",
-      "size": 122328,
-      "normalized_sha256": "e75ed6e4fb716a70b5ddb592bfa79cc05da380b88615165a55e6e18077892a9d"
+      "sha256": "ae49e366882c24b5fb59d875a7b2c17cd781ee51290a939f43443dc88a783840",
+      "size": 122784,
+      "normalized_sha256": "ae49e366882c24b5fb59d875a7b2c17cd781ee51290a939f43443dc88a783840"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1398,9 +1398,9 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "de4f2a438f949fe2674cbc44d0cf2620fbec19d5af5295136ad07db77abd7c83",
-      "size": 102777,
-      "normalized_sha256": "de4f2a438f949fe2674cbc44d0cf2620fbec19d5af5295136ad07db77abd7c83"
+      "sha256": "9e48256548e7b6945510f04c37eb1ea40802ca8e94911051f58ec6138b837f2d",
+      "size": 106399,
+      "normalized_sha256": "9e48256548e7b6945510f04c37eb1ea40802ca8e94911051f58ec6138b837f2d"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "62b17f1dedc2884db78437e1211dda789110f6305c7036161c5ca30e2c27ee4b",
@@ -1696,6 +1696,11 @@
       "sha256": "4120f81b82f93b0f28b0cb89ded20b8cfb3b77ce8e086d47138b66e7fd750763",
       "size": 5809,
       "normalized_sha256": "4120f81b82f93b0f28b0cb89ded20b8cfb3b77ce8e086d47138b66e7fd750763"
+    },
+    "src/main/qianchuan-upload-completion.ts": {
+      "sha256": "13b8140168e93bddef6ed8d95f622c94b0aa491456901e59600bfb7ed40af0d9",
+      "size": 4012,
+      "normalized_sha256": "13b8140168e93bddef6ed8d95f622c94b0aa491456901e59600bfb7ed40af0d9"
     },
     "src/main/qianchuan-video-library-browser.ts": {
       "sha256": "4442a868b4791f36f40d20f29db3df178076ff991650172a535170e0ceae4caf",
@@ -2183,14 +2188,14 @@
       "normalized_sha256": "3c87abe15214af3c31b5eb9aa4407ccdaf5ed9294c0e44cc480b80dcf926d36a"
     },
     "src/renderer/BatchProductionPanel.tsx": {
-      "sha256": "28f6abddd1f6e4c26bdc66bb0edcc30910918f7cfbc19d701cb0ca54374353f1",
-      "size": 23710,
-      "normalized_sha256": "28f6abddd1f6e4c26bdc66bb0edcc30910918f7cfbc19d701cb0ca54374353f1"
+      "sha256": "c7dbd59ba51c61a9e2072d05bfa5a50b9a5b85c2c3f31f891bcb894a06c9c487",
+      "size": 23747,
+      "normalized_sha256": "c7dbd59ba51c61a9e2072d05bfa5a50b9a5b85c2c3f31f891bcb894a06c9c487"
     },
     "src/renderer/BatchUploadDetails.tsx": {
-      "sha256": "26e63492e2bcf04332ecb04e6cb85447fe74bb27620bddd42aa93741e2b23a38",
-      "size": 5623,
-      "normalized_sha256": "26e63492e2bcf04332ecb04e6cb85447fe74bb27620bddd42aa93741e2b23a38"
+      "sha256": "c8b7f491a8bd0fbf2b94ccb02a202a1942019214f3a501ef13eff1e7b38a17f4",
+      "size": 5643,
+      "normalized_sha256": "c8b7f491a8bd0fbf2b94ccb02a202a1942019214f3a501ef13eff1e7b38a17f4"
     },
     "src/renderer/BugFeedbackDialog.tsx": {
       "sha256": "4efc9e78614026b3ecfeeec6613c46d0132fee9e7c4c02687b7e47b8287886b7",
@@ -2213,9 +2218,9 @@
       "normalized_sha256": "b0ccd2f60f577ba70d5874d29242515e9a7e5633fc39ad80e3ed3f405dc95eb3"
     },
     "src/renderer/CoverReviewPanel.tsx": {
-      "sha256": "6e034e1f7c90d564cf36a92d450ad98cc0d8ba8cf8cde70f22f6882860c53457",
-      "size": 30884,
-      "normalized_sha256": "6e034e1f7c90d564cf36a92d450ad98cc0d8ba8cf8cde70f22f6882860c53457"
+      "sha256": "78b72be3b750a3cc53869adb9740a42effbe88386c0d7bac8734901bff7a0121",
+      "size": 30896,
+      "normalized_sha256": "78b72be3b750a3cc53869adb9740a42effbe88386c0d7bac8734901bff7a0121"
     },
     "src/renderer/CoverReviewProgress.tsx": {
       "sha256": "bbba4c424bc00827ef1915de2e2636374d9c15f5c3e81e30cf39ce2339ce7d62",
@@ -2248,14 +2253,14 @@
       "normalized_sha256": "cc87138a2af9b4d5a0722e5e22bc538f9a3b2b6e2ee00f78871b2fcc3977080d"
     },
     "src/renderer/DouyinUploadControls.tsx": {
-      "sha256": "71384d3217db6cb186bc3a8ac43a42b242e513850050967364862571186dbafd",
-      "size": 3548,
-      "normalized_sha256": "71384d3217db6cb186bc3a8ac43a42b242e513850050967364862571186dbafd"
+      "sha256": "9f26c364651cc16329f249c4ef42ffd7ba994ee4d5f50ede1775eee18a9c5f6f",
+      "size": 3582,
+      "normalized_sha256": "9f26c364651cc16329f249c4ef42ffd7ba994ee4d5f50ede1775eee18a9c5f6f"
     },
     "src/renderer/DouyinUploadPanel.tsx": {
-      "sha256": "92520012fc57c4a888a59c1984132deab6f1f0999f05394f76a00537f108fd1e",
-      "size": 10897,
-      "normalized_sha256": "92520012fc57c4a888a59c1984132deab6f1f0999f05394f76a00537f108fd1e"
+      "sha256": "a1d2e4e3d6d6030bb745a0c627cf046480c168ffcbed9e0fda56ce04c2e6615a",
+      "size": 10907,
+      "normalized_sha256": "a1d2e4e3d6d6030bb745a0c627cf046480c168ffcbed9e0fda56ce04c2e6615a"
     },
     "src/renderer/ExportSettingsPanel.tsx": {
       "sha256": "6aa6e9b01329b37278c9dc228aa5f9b931fa0e476a7b214850d3014ed2aac9bf",
