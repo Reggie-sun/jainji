@@ -26,6 +26,88 @@ async function fixture() {
 const workflow = (page: Page, name: string) => page.getByRole("navigation", { name: "制作流程" }).getByRole("button", { name: new RegExp(name + "$" ) });
 const rail = (page: Page, name: string) => page.locator(".workspace-rail").getByRole("button", { name, exact: true });
 
+it("exposes saved upload methods and preserves isolated route drafts without starting work", async () => {
+  const { page, errors } = await fixture();
+  try {
+    const remote = { mode: "remote-browser", group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+    const local = { group: "主体二", sshHost: "shop-two", localPort: 19382, expectedIp: "203.0.113.12" };
+    await page.evaluate(({ remote, local }) => {
+      const f = (window as any).taskPagesFixture;
+      f.state.douyinUpload.accounts = [
+        { product: "蝴蝶贴", browserProfileName: "远端账号", advertiserId: "123", adId: "456", available: true, egress: remote },
+        { product: "眼贴", browserProfileName: "代理账号", advertiserId: "124", adId: "457", available: true, egress: local },
+        { product: "肥皂", browserProfileName: "本机账号", advertiserId: "125", adId: "458", available: true },
+      ];
+      f.calls.accountSaves = []; f.calls.configSaves = [];
+      window.jianji.saveQianchuanAccount = async input => { f.calls.accountSaves.push(structuredClone(input)); throw new Error("隔离保存失败"); };
+      window.jianji.saveDouyinUploadConfig = async config => { f.calls.configSaves.push(structuredClone(config)); f.state.douyinUpload.config = structuredClone(config); return structuredClone(f.state); };
+      f.emit();
+    }, { remote, local });
+    await rail(page, "千川").click();
+    const nav = page.getByRole("navigation", { name: "千川页面" });
+    await nav.getByRole("button", { name: "账号与计划", exact: true }).click();
+    const cards = page.locator(".qianchuan-account-products");
+    expect(await cards.isVisible()).toBe(true);
+    expect(await cards.getByRole("button", { name: /远端账号.*账户 123.*VPS 上传/ }).isVisible()).toBe(true);
+    expect(await cards.getByRole("button", { name: /代理账号.*账户 124.*本机上传 · VPS 出口/ }).isVisible()).toBe(true);
+    expect(await cards.getByRole("button", { name: /本机账号.*账户 125.*本机上传/ }).isVisible()).toBe(true);
+    expect((await cards.boundingBox())!.y).toBeLessThan(600);
+    await cards.getByRole("button", { name: /远端账号.*账户 123/ }).click();
+    expect(await page.getByRole("radio", { name: "VPS 上传", exact: true }).isChecked()).toBe(true);
+    expect(await page.getByLabel("SSH 主机别名", { exact: true }).inputValue()).toBe("shop-one");
+    await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).check();
+    expect(await page.getByLabel("预期出口 IPv4", { exact: true }).inputValue()).toBe(remote.expectedIp);
+    await page.getByRole("radio", { name: "VPS 上传", exact: true }).check();
+    await page.getByLabel("主体代号", { exact: true }).fill("未保存主体");
+    await cards.getByRole("button", { name: /远端账号.*账户 123/ }).click();
+    expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe("未保存主体");
+    await nav.getByRole("button", { name: "上传任务", exact: true }).click();
+    await nav.getByRole("button", { name: "账号与计划", exact: true }).click();
+    expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe("未保存主体");
+    await page.getByRole("button", { name: "保存账号", exact: true }).click();
+    await page.getByText(/隔离保存失败/).waitFor();
+    expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe("未保存主体");
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves[0].egress)).toEqual({ ...remote, group: "未保存主体" });
+    await page.getByLabel("复用已设置的主体", { exact: true }).selectOption(local.group);
+    expect(await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).isChecked()).toBe(true);
+    expect(await page.getByLabel("SSH 主机别名", { exact: true }).inputValue()).toBe(local.sshHost);
+    await page.getByRole("radio", { name: "VPS 上传", exact: true }).check();
+    expect(await page.getByRole("button", { name: "保存账号", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("alert").filter({ hasText: "同主体必须使用相同出口设置" }).isVisible()).toBe(true);
+    expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe(local.group);
+    await cards.getByRole("button", { name: /本机账号.*账户 125/ }).click();
+    expect(await page.getByRole("radio", { name: "本机上传", exact: true }).isChecked()).toBe(true);
+    expect(await page.getByLabel("SSH 主机别名", { exact: true }).count()).toBe(0);
+    await page.getByRole("radio", { name: "VPS 上传", exact: true }).check();
+    expect(await page.getByRole("button", { name: "保存账号", exact: true }).isDisabled()).toBe(true);
+    await cards.getByRole("button", { name: /代理账号.*账户 124/ }).click();
+    expect(await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).isChecked()).toBe(true);
+    await page.getByRole("button", { name: "保存账号", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves.length)).toBe(2);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves[1].egress)).toEqual(local);
+    await page.getByRole("radio", { name: "本机上传", exact: true }).check();
+    await page.getByRole("button", { name: "保存账号", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves.length)).toBe(3);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves[2].egress)).toBeNull();
+    await page.getByRole("checkbox", { name: "启用千川上传", exact: true }).check();
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.configSaves)).toEqual([]);
+    await page.getByRole("button", { name: "保存上传设置", exact: true }).click();
+    await expect.poll(() => page.evaluate(() => (window as any).taskPagesFixture.calls.configSaves.length)).toBe(1);
+    for (const width of [760, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect((await cards.boundingBox())!.width).toBeLessThan(width);
+    }
+    await page.evaluate(() => { window.jianji.saveQianchuanAccount = async () => new Promise(() => {}); });
+    await page.getByRole("button", { name: "保存账号", exact: true }).click();
+    await expect.poll(() => page.getByRole("radio", { name: "VPS 上传", exact: true }).isDisabled()).toBe(true);
+    expect(await cards.getByRole("button", { name: /远端账号.*账户 123/ }).isDisabled()).toBe(true);
+    const calls = await page.evaluate(() => (window as any).taskPagesFixture.calls);
+    expect(calls.starts).toEqual([]); expect(calls.batchStarts).toEqual([]); expect(calls.sideEffects).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
 it("selects and renames saved material templates directly beside an empty material list", async () => {
   const { page, errors } = await fixture();
   try {
@@ -282,7 +364,6 @@ it("returns to output with the internal scroll position, upload choices and acco
     await page.getByRole("button", { name: "配置千川账号与计划", exact: true }).scrollIntoViewIfNeeded();
     const top = await page.locator(".membership-workspace").evaluate(el => el.scrollTop);
     await page.getByRole("button", { name: "配置千川账号与计划", exact: true }).click();
-    await page.getByText("管理账号设置", { exact: true }).click();
     await page.getByRole("button", { name: /蝴蝶贴.*未设置/ }).click();
     await page.locator("#qianchuan-product-name").fill("未保存的名字");
     await page.getByRole("button", { name: "返回来源页面", exact: false }).click();
@@ -393,7 +474,7 @@ it("puts results first and moves account and material management into separate Q
     expect(await page.getByRole("heading", { name: "千川上传任务", exact: true }).isVisible()).toBe(false);
     await rail(page, "千川").click();
     await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "账号与计划", exact: true }).click();
-    await page.getByText("管理账号设置", { exact: true }).click();
+    expect(await page.locator(".qianchuan-account-products").isVisible()).toBe(true);
     expect(await page.getByRole("heading", { name: "素材清理", exact: true }).isVisible()).toBe(false);
     await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "素材管理", exact: true }).click();
     expect(await page.getByRole("heading", { name: "素材清理", exact: true }).isVisible()).toBe(true);

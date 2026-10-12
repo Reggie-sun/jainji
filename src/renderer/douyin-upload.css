@@ -9,17 +9,34 @@
 .douyin-upload-panel .douyin-upload-advanced fieldset input{margin-top:6px}
 .douyin-upload-panel .douyin-upload-advanced>label{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--ink-2)}
 .douyin-upload-panel .qianchuan-account-settings{margin-top:16px}
-.douyin-upload-panel .qianchuan-account-management{border:1px solid var(--line);border-radius:5px;padding:12px 16px}
-.douyin-upload-panel .qianchuan-account-management>summary{cursor:pointer;font-size:14px;font-weight:600;color:var(--ink-2)}
-.douyin-upload-panel .qianchuan-account-settings p>small{margin-left:8px;color:var(--ink-3);font-size:12px}
-.douyin-upload-panel .qianchuan-account-products{display:flex;flex-wrap:wrap;gap:8px}
-.douyin-upload-panel .qianchuan-account-products button{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:100%;white-space:normal;overflow-wrap:anywhere;text-align:left}
-.douyin-upload-panel .qianchuan-account-products button small{font-size:11px;color:var(--ink-3)}
-.douyin-upload-panel .qianchuan-account-products button[aria-expanded=true]{border-color:var(--seal)}
-.douyin-upload-panel .qianchuan-account-editor{max-width:760px;border:1px solid var(--line);border-radius:5px;padding:16px;margin-top:12px}
+.douyin-upload-panel .qianchuan-account-settings>p{font-size:13px;color:var(--ink-3);margin:0 0 12px}
+.douyin-upload-panel .qianchuan-account-products{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.douyin-upload-panel .qianchuan-account-products button{display:flex;align-items:flex-start;flex-direction:column;gap:7px;min-width:0;width:100%;padding:16px;white-space:normal;overflow-wrap:anywhere;text-align:left}
+.douyin-upload-panel .qianchuan-account-products button small{font-size:12px;font-weight:400;color:var(--ink-3)}
+.douyin-upload-panel .qianchuan-account-products button[aria-expanded=true]{border-color:var(--seal);background:var(--mint)}
+.douyin-upload-panel .qianchuan-upload-method{font-size:13px;color:var(--seal);font-weight:600}
+.douyin-upload-panel .qianchuan-account-edit-link{font-size:12px;color:var(--seal);margin-top:3px}
+.douyin-upload-panel .qianchuan-account-editor{border:1px solid var(--line);border-radius:5px;padding:20px;margin-top:16px}
 .douyin-upload-panel .qianchuan-account-editor label{display:block;font-size:13px;margin-top:10px}
 .douyin-upload-panel .qianchuan-account-editor textarea{width:100%;margin-top:6px;resize:vertical;overflow-wrap:anywhere}
-.douyin-upload-panel .qianchuan-account-editor input{max-width:220px;margin:6px 0}
+.douyin-upload-panel .qianchuan-account-editor input:not([type=radio]){display:block;width:100%;max-width:520px;margin:6px 0;border:1px solid var(--line);border-radius:5px;padding:10px 12px;font:inherit;background:var(--surface);color:var(--ink)}
 .douyin-upload-panel .qianchuan-account-editor>small{display:block;color:var(--ink-3);font-size:12px;margin-top:8px}
 .douyin-upload-panel .qianchuan-account-editor details{margin-top:12px}
 .douyin-upload-panel .qianchuan-account-editor summary{cursor:pointer;font-size:12px}
+.douyin-upload-panel .qianchuan-egress-settings{border:0;padding:0;margin:16px 0 24px;min-width:0}
+.douyin-upload-panel .qianchuan-egress-settings legend{font-size:14px;font-weight:650;margin-bottom:10px}
+.douyin-upload-panel .qianchuan-upload-methods{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.douyin-upload-panel .qianchuan-upload-methods label{display:flex;align-items:flex-start;gap:10px;border:1px solid var(--line);border-radius:5px;padding:14px;margin:0;cursor:pointer;min-width:0}
+.douyin-upload-panel .qianchuan-upload-methods label:has(input:checked){border-color:var(--seal);background:var(--mint)}
+.douyin-upload-panel .qianchuan-upload-methods input{flex-shrink:0;width:auto;margin:3px 0;accent-color:var(--seal)}
+.douyin-upload-panel .qianchuan-upload-methods small{display:block;font-size:12px;color:var(--ink-3);font-weight:400;line-height:1.6;margin-top:6px}
+.douyin-upload-panel .qianchuan-egress-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px}
+.douyin-upload-panel .qianchuan-account-editor .qianchuan-egress-fields input{max-width:none}
+.douyin-upload-panel .qianchuan-egress-settings p,.douyin-upload-panel .qianchuan-egress-settings>small{font-size:12px;line-height:1.7;color:var(--ink-3);display:block;margin-top:10px}
+.douyin-upload-panel .qianchuan-egress-settings p[role=alert]{color:var(--bad)}
+.douyin-upload-panel .qianchuan-upload-preferences{display:flex;align-items:center;justify-content:space-between;gap:16px;border-bottom:1px solid var(--line);padding-bottom:18px;margin-bottom:20px}
+.douyin-upload-panel .qianchuan-upload-preferences label{font-size:14px;font-weight:600}
+.douyin-upload-panel .qianchuan-upload-preferences small{display:block;font-size:12px;color:var(--ink-3);line-height:1.7;margin-top:6px}
+.douyin-upload-panel .qianchuan-upload-preferences .douyin-upload-actions{margin-top:0}
+@media(max-width:1100px){.douyin-upload-panel .qianchuan-account-products{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){.douyin-upload-panel .qianchuan-account-products,.douyin-upload-panel .qianchuan-upload-methods,.douyin-upload-panel .qianchuan-egress-fields{grid-template-columns:1fr}.douyin-upload-panel .qianchuan-upload-preferences{align-items:flex-start;flex-direction:column}.douyin-upload-panel .qianchuan-account-editor{padding:14px}}

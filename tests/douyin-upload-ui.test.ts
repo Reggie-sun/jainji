@@ -80,7 +80,8 @@ it("shows account products separately from cleanup and upload tasks", () => {
   const advanced = html.match(/<details[^>]*><summary>高级设置<\/summary>[\s\S]*?<\/details>/)![0];
   const main = html.replace(advanced, "");
   const products = main.match(/<div class="qianchuan-account-products">[\s\S]*?<\/div>/)![0];
-  expect(main).toContain("千川账号设置"); expect(main).toContain("更换产品名称或千川计划"); expect(products).toContain("眼贴<small>账户 123</small><small>已设置");
+  expect(main).toContain("千川账号设置"); expect(main).toContain("更换产品名称或千川计划");
+  expect(products).toContain("眼贴"); expect(products).toContain("账户 123"); expect(products).toContain("已设置"); expect(products).toContain("本机上传");
   expect(main).not.toContain("选择要清理的账号"); expect(main).not.toContain("千川上传任务");
   expect(advanced).toContain("账户 123 / 计划 456"); expect(main).not.toContain('value="眼贴"');
 });
@@ -89,7 +90,8 @@ it("shows editable product names in account settings and both selectors while re
   const html = renderToStaticMarkup(createElement(DouyinUploadPanel, {
     projectId, status: { config: QianchuanUploadConfigSchema.parse({}), configSelected: true, accounts, ready: false, message: "自动上传已关闭。", tasks: [task()], legacyTasks: [] }, onState: () => {},
   }));
-  expect(renderToStaticMarkup(createElement(QianchuanAccountSettings, {accounts, busy:false, onSave:async()=>true, onOpenBrowser:async()=>true, onControlBrowser:async()=>true}))).toContain("新产品<small>账户 123</small><small>已设置"); expect(html).toContain("新产品 · 账户 123 / 计划 456");
+  const settings = renderToStaticMarkup(createElement(QianchuanAccountSettings, {accounts, busy:false, onSave:async()=>true, onOpenBrowser:async()=>true, onControlBrowser:async()=>true}));
+  expect(settings).toContain("新产品"); expect(settings).toContain("账户 123"); expect(settings).toContain("已设置"); expect(html).toContain("新产品 · 账户 123 / 计划 456");
   expect(html).not.toContain("眼贴 · 账户 123 / 计划 456");
   for (const compact of [true, false]) {
     const selector = renderToStaticMarkup(createElement(DouyinUploadControls, { value: { enabled: true, accountProduct: "眼贴" }, accounts, compact, onChange: () => {} }));

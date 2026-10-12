@@ -18,7 +18,7 @@ Host shop-one
 
 其余两台使用独立别名，例如 `shop-two`、`shop-three`。私钥仅由 OpenSSH 使用；不要上传到 Jianji、项目或聊天。先人工核实服务器主机指纹并保存到 `known_hosts`，确保 `ssh -o BatchMode=yes -o StrictHostKeyChecking=yes shop-one true` 能成功。程序不会自动接受新指纹、弹出密码框或运行远程安装命令。默认使用 `/usr/bin/ssh`、`/usr/bin/curl`，并要求 VPS 允许 SSH 动态转发。
 
-在“账号设置”选择账号，启用“固定 VPS 出口”，填写：
+进入“千川 → 账号与计划”，账号卡片直接显示已保存的上传方式。点选账号的“设置上传方式”，选择“本机上传 · VPS 出口”（A：本机浏览器），填写下方 VPS 设置。选择“本机上传”会解除出口设置；选择“VPS 上传”使用 [远端浏览器](qianchuan-remote-browser.md)。仅选择不会保存或启动上传，需明确点击“保存账号”。
 
 | Field | Meaning |
 | --- | --- |
