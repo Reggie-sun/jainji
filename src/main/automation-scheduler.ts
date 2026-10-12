@@ -8,6 +8,7 @@ import { localScheduleDay, nextLibraryClearTime } from "./qianchuan-video-librar
 
 const stateSchema = z.object({ version: z.literal(1), tasks: z.array(AutomationTaskSchema).max(100) }).strict()
   .refine(value => new Set(value.tasks.map(task => task.id)).size === value.tasks.length);
+const claimedDay = (task: AutomationTask): string | undefined => (task.lastRun?.scheduleRevision ?? 0) === (task.scheduleRevision ?? 0) ? task.lastRun?.day : undefined;
 interface Dependencies {
   prepare(request: AutomationRequest, id: string): Promise<{ binding: string; summary: string }>;
   execute(task: AutomationTask, signal: AbortSignal): Promise<Pick<AutomationRun, "exports" | "productionRunId">>;
@@ -31,7 +32,7 @@ export class AutomationScheduler {
   private now(): Date { return this.dependencies.now?.() ?? new Date(); }
   snapshot(): AutomationStatus {
     return structuredClone({ tasks: this.tasks.map(task => ({ ...task, nextRunAt: task.request.enabled && !this.error
-      ? nextLibraryClearTime(this.now(), task.request.time, task.lastRun?.day).toISOString() : undefined })),
+      ? nextLibraryClearTime(new Date(Math.max(this.now().getTime(), Date.parse(task.scheduleUpdatedAt ?? task.createdAt))), task.request.time, claimedDay(task)).toISOString() : undefined })),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, running: this.busy, error: this.error });
   }
   task(id: string): AutomationTask | undefined { return structuredClone(this.tasks.find(task => task.id === id)); }
@@ -99,9 +100,13 @@ export class AutomationScheduler {
   }
   async configure(input: unknown): Promise<AutomationStatus> {
     const value = z.object({ id: z.string().uuid(), enabled: z.boolean(), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).strict().parse(input);
+    this.assertEditable();
     return this.serialize(async () => {
       this.assertEditable(); const tasks = structuredClone(this.tasks), task = tasks.find(task => task.id === value.id);
       if (!task) throw new Error("定时任务不存在。");
+      if (task.request.time !== value.time) {
+        task.scheduleRevision = (task.scheduleRevision ?? 0) + 1; task.scheduleUpdatedAt = this.now().toISOString();
+      }
       task.request.enabled = value.enabled; task.request.time = value.time;
       await this.persist(tasks); this.tasks = tasks; this.dependencies.changed(); return this.snapshot();
     });
@@ -124,15 +129,16 @@ export class AutomationScheduler {
         if (!this.started || this.error) break;
         const now = this.now(), day = localScheduleDay(now);
         if (systemRequest && (task.id !== systemRequest.id || task.request.time !== systemRequest.time)) continue;
-        if (!task.request.enabled || task.lastRun && task.lastRun.day >= day) continue;
+        const lastDay = claimedDay(task);
+        if (!task.request.enabled || lastDay && lastDay >= day) continue;
         const due = new Date(now), [hour, minute] = task.request.time.split(":").map(Number);
         due.setHours(hour!, minute!, 0, 0);
         if (systemRequest && (!Number.isFinite(systemRequest.receivedAt.getTime()) || systemRequest.receivedAt < due ||
           systemRequest.receivedAt.getTime() - due.getTime() > 60000 || now < systemRequest.receivedAt ||
           now.getTime() - systemRequest.receivedAt.getTime() > 30 * 60000 || localScheduleDay(systemRequest.receivedAt) !== day)) continue;
-        if (now < due || new Date(task.createdAt) > due) continue;
+        if (now < due || new Date(task.createdAt) > due || task.scheduleUpdatedAt && new Date(task.scheduleUpdatedAt) > due) continue;
         const skip = !systemRequest && now.getTime() - due.getTime() > 60000 || this.dependencies.busy();
-        const run: AutomationRun = { id: randomUUID(), day, startedAt: now.toISOString(), state: skip ? "SKIPPED" : "RUNNING",
+        const run: AutomationRun = { id: randomUUID(), day, scheduleRevision: task.scheduleRevision ?? 0, startedAt: now.toISOString(), state: skip ? "SKIPPED" : "RUNNING",
           message: skip ? "错过执行时间或已有任务运行，已跳过；不会自动补跑。" : "正在执行固定配置的定时任务。" };
         const candidate = this.tasks.map(value => value.id === task.id ? { ...value, lastRun: run } : value);
         if (!skip) this.active = new AbortController();

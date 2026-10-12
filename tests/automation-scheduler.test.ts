@@ -3,7 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
 import { AutomationScheduler } from "../src/main/automation-scheduler";
-import { AutomationRequestSchema, type AutomationTask } from "../src/shared/automation";
+import { AutomationRequestSchema, AutomationTaskSchema, type AutomationTask } from "../src/shared/automation";
 import { migrateCleanupSchedules } from "../src/main/automation-cleanup-migration";
 import { QianchuanVideoLibrarySchedule } from "../src/main/qianchuan-video-library-schedule";
 
@@ -40,13 +40,105 @@ it.each(["late", "busy"])("skips %s occurrences without catchup", async reason =
   f.dependencies.busy.mockReturnValue(false); await f.owner.tick();
   expect(f.owner.snapshot().tasks[0].lastRun?.state).toBe("SKIPPED"); expect(f.dependencies.execute).not.toHaveBeenCalled();
 });
-it("does not replay after time edits, failure or enabling again", async () => {
+it("does not replay after saving the same time, failure or enabling again", async () => {
   const f = await fixture(); const created = await f.owner.create(request), id = created.tasks[0].id;
   f.dependencies.execute.mockRejectedValue(new Error("结果未知"));
   f.setTime(new Date(2026, 9, 10, 12)); await f.owner.tick();
-  await f.owner.configure({ id, time: "13:00", enabled: false }); await f.owner.configure({ id, time: "13:00", enabled: true });
-  f.setTime(new Date(2026, 9, 10, 13)); await f.owner.tick();
+  await f.owner.configure({ id, time: "12:00", enabled: false }); await f.owner.configure({ id, time: "12:00", enabled: true });
+  f.setTime(new Date(2026, 9, 10, 12, 0, 30)); await f.owner.tick();
   expect(f.dependencies.execute).toHaveBeenCalledTimes(1); expect(f.owner.snapshot().tasks[0].lastRun?.state).toBe("BLOCKED");
+});
+it.each(["COMPLETED", "BLOCKED", "SKIPPED"] as const)("treats an edited future time as a new occurrence after %s and preserves the previous result", async state => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id;
+  if (state === "BLOCKED") f.dependencies.execute.mockRejectedValueOnce(new Error("结果未知"));
+  f.dependencies.busy.mockReturnValue(state === "SKIPPED");
+  f.setTime(new Date(2026, 9, 10, 12)); await f.owner.tick();
+  const previous = f.owner.task(id)!.lastRun!; expect(previous.state).toBe(state);
+  f.dependencies.busy.mockReturnValue(false);
+  f.setTime(new Date(2026, 9, 10, 12, 5));
+  const configured = (await f.owner.configure({ id, time: "13:00", enabled: true })).tasks[0];
+  expect(configured.lastRun).toEqual(previous); expect(configured.scheduleRevision).toBe(1);
+  expect(configured).toMatchObject({ id, binding: "a".repeat(64), summary: "固定账号计划" });
+  expect(configured.request.cleanup).toEqual(request.cleanup); expect(f.dependencies.prepare).toHaveBeenCalledTimes(1);
+  expect(configured.nextRunAt).toBe(new Date(2026, 9, 10, 13).toISOString());
+  f.setTime(new Date(2026, 9, 10, 13)); await Promise.all([f.owner.tick(), f.owner.tick()]);
+  expect(f.dependencies.execute).toHaveBeenCalledTimes(state === "SKIPPED" ? 1 : 2);
+  const current = f.owner.task(id)!;
+  expect(current.lastRun).toMatchObject({ state: "COMPLETED", scheduleRevision: 1 });
+  expect(current.lastRun!.id).not.toBe(previous.id);
+  expect(f.owner.snapshot().tasks[0].nextRunAt).toBe(new Date(2026, 9, 11, 13).toISOString());
+});
+it("retains pending and consumed edited occurrences across restarts and clock rollback", async () => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id;
+  f.setTime(new Date(2026, 9, 10, 12)); await f.owner.tick();
+  f.setTime(new Date(2026, 9, 10, 12, 5)); await f.owner.configure({ id, time: "13:00", enabled: true }); await f.owner.stop();
+  const restored = new AutomationScheduler(f.root, f.dependencies); owners.push(restored); await restored.load(); restored.start();
+  expect(restored.snapshot().tasks[0].nextRunAt).toBe(new Date(2026, 9, 10, 13).toISOString());
+  f.setTime(new Date(2026, 9, 10, 13)); await restored.tick(); await restored.stop();
+  const consumed = new AutomationScheduler(f.root, f.dependencies); owners.push(consumed); await consumed.load(); consumed.start();
+  await consumed.tick(); f.setTime(new Date(2026, 9, 9, 13)); await consumed.tick();
+  f.setTime(new Date(2026, 9, 10, 13)); await consumed.tick(); expect(f.dependencies.execute).toHaveBeenCalledTimes(2);
+});
+it("creates a fresh identity for each actual time edit including returning to an earlier time", async () => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id;
+  f.setTime(new Date(2026, 9, 10, 12)); await f.owner.tick();
+  f.setTime(new Date(2026, 9, 10, 12, 5));
+  await f.owner.configure({ id, time: "13:00", enabled: true });
+  await f.owner.configure({ id, time: "14:00", enabled: true });
+  await f.owner.configure({ id, time: "13:00", enabled: true });
+  expect(f.owner.task(id)!.scheduleRevision).toBe(3);
+  f.setTime(new Date(2026, 9, 10, 13)); await f.owner.tick(); await f.owner.tick();
+  expect(f.dependencies.execute).toHaveBeenCalledTimes(2);
+  expect(f.dependencies.execute.mock.calls[1][0].lastRun?.scheduleRevision).toBe(3);
+});
+it("does not catch up an edited time that already passed, including the current minute", async () => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id;
+  f.setTime(new Date(2026, 9, 10, 12, 0, 20));
+  await f.owner.configure({ id, time: "11:59", enabled: true }); await f.owner.tick();
+  await f.owner.configure({ id, time: "12:00", enabled: true }); await f.owner.tick();
+  expect(f.dependencies.execute).not.toHaveBeenCalled(); expect(f.owner.task(id)!.lastRun).toBeUndefined();
+  expect(f.owner.snapshot().tasks[0].nextRunAt).toBe(new Date(2026, 9, 11, 12).toISOString());
+  f.setTime(new Date(2026, 9, 11, 12)); await f.owner.tick(); expect(f.dependencies.execute).toHaveBeenCalledTimes(1);
+});
+it("reads legacy claims as revision zero and rearms them only after a real time edit", async () => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id;
+  f.setTime(new Date(2026, 9, 10, 12)); await f.owner.tick(); await f.owner.stop();
+  const file = path.join(f.root, "tasks.json"), saved = JSON.parse(await readFile(file, "utf8"));
+  delete saved.tasks[0].scheduleRevision; delete saved.tasks[0].scheduleUpdatedAt; delete saved.tasks[0].lastRun.scheduleRevision;
+  await writeFile(file, JSON.stringify(saved));
+  const restored = new AutomationScheduler(f.root, f.dependencies); owners.push(restored); await restored.load(); restored.start();
+  await restored.tick(); expect(f.dependencies.execute).toHaveBeenCalledTimes(1);
+  f.setTime(new Date(2026, 9, 10, 12, 5)); await restored.configure({ id, time: "13:00", enabled: true });
+  f.setTime(new Date(2026, 9, 10, 13)); await restored.tick(); expect(f.dependencies.execute).toHaveBeenCalledTimes(2);
+});
+it("fails closed when an edited schedule cannot be durably saved", async () => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id;
+  await rename(path.join(f.root, "tasks.json"), path.join(f.root, "previous.json")); await mkdir(path.join(f.root, "tasks.json"));
+  await expect(f.owner.configure({ id, time: "13:00", enabled: true })).rejects.toThrow();
+  expect(f.owner.task(id)!.request.time).toBe("12:00");
+  expect(f.owner.snapshot().error).toContain("保存结果未知");
+  f.setTime(new Date(2026, 9, 10, 13)); await f.owner.tick(); expect(f.dependencies.execute).not.toHaveBeenCalled();
+});
+it("rejects inconsistent or invalid persisted schedule identities", async () => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id, task = f.owner.task(id)!;
+  expect(AutomationTaskSchema.safeParse(task).success).toBe(true);
+  for (const scheduleRevision of [-1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
+    expect(AutomationTaskSchema.safeParse({ ...task, scheduleRevision, scheduleUpdatedAt: task.createdAt }).success).toBe(false);
+  }
+  expect(AutomationTaskSchema.safeParse({ ...task, scheduleRevision: 1 }).success).toBe(false);
+  expect(AutomationTaskSchema.safeParse({ ...task, scheduleRevision: 1, scheduleUpdatedAt: task.createdAt,
+    lastRun: { id: crypto.randomUUID(), day: "2026-10-10", startedAt: task.createdAt, state: "BLOCKED", message: "结果未知", scheduleRevision: 2 } }).success).toBe(false);
+});
+it("rejects time edits requested during an active execution instead of silently deferring them", async () => {
+  const f = await fixture(); const id = (await f.owner.create(request)).tasks[0].id;
+  let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+  f.dependencies.execute.mockImplementation(async (_task, signal) => {
+    entered(); await new Promise<void>((_resolve, reject) => signal.addEventListener("abort", () => reject(new Error("cancelled")), { once: true })); return {};
+  });
+  f.setTime(new Date(2026, 9, 10, 12)); const ticking = f.owner.tick(); await started;
+  const edit = f.owner.configure({ id, time: "13:00", enabled: true }).then(() => undefined, error => error);
+  await f.owner.stop(); await ticking;
+  expect(await edit).toBeInstanceOf(Error); expect(f.owner.task(id)!.request.time).toBe("12:00");
 });
 it("fails closed for corrupted state and interrupted runs", async () => {
   const f = await fixture(); await f.owner.create(request); await f.owner.stop();
