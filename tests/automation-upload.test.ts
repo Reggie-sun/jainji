@@ -7,6 +7,8 @@ import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-
 import { DouyinUploadStore, type UploadTaskRecord } from "../src/main/douyin-upload-store";
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
+import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
+import { QianchuanVideoLibrary } from "../src/main/qianchuan-video-library";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, QianchuanUploadSelection, ReadyEvidence, UploadIdentity } from "../src/shared/douyin-upload";
@@ -26,12 +28,13 @@ afterEach(async () => {
 
 type PlanReader = NonNullable<ConstructorParameters<typeof DouyinUploadService>[1]["readPlans"]>;
 
-async function fixture(options: { accounts?: (root: string) => QianchuanAccountConfigReader; readPlans?: PlanReader; loadBatch?: (id: string) => Promise<QueueState> } = {}) {
+async function fixture(options: { accounts?: (root: string) => QianchuanAccountConfigReader; readPlans?: PlanReader; loadBatch?: (id: string) => Promise<QueueState>; remote?: boolean } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "automation-upload-")); roots.push(root);
   const output = path.join(root, "exports"), configPath = path.join(root, "accounts.json");
   await mkdir(output);
   await writeFile(configPath, JSON.stringify({ version: 1, accounts: QIANCHUAN_PRODUCTS.map((product, index) => ({
     product, cdpEndpoint: `http://127.0.0.1:${12000 + index}`, advertiserId: String(1000 + index), adId: String(2000 + index),
+    ...(options.remote ? { egress: { mode: "remote-browser", group: "one", sshHost: "one", expectedIp: "8.8.8.8", localPort: 19160 } } : {}),
   })) }), { mode: 0o600 });
   const store = new DouyinUploadStore(path.join(root, "private")); await store.load();
   const accounts = options.accounts?.(root) ?? new QianchuanAccountConfigReader(), states = new Map<string, QueueState>();
@@ -64,6 +67,13 @@ async function fixture(options: { accounts?: (root: string) => QianchuanAccountC
       const persisted = JSON.parse(await readFile(path.join(store.root, "state.json"), "utf8")) as { tasks: UploadTaskRecord[] };
       expect(persisted.tasks.find(value => value.result.upload_task_id === task.result.upload_task_id)?.result.state).toBe("NEEDS_HUMAN");
       events.push("confirm");
+    },
+    closeAcceptedAutomationPage: async (tasks, pageOwnership, signal, guard) => {
+      signal.throwIfAborted(); guard();
+      const persisted = JSON.parse(await readFile(path.join(store.root, "state.json"), "utf8")) as { tasks: UploadTaskRecord[] };
+      for (const task of tasks) expect(persisted.tasks.find(value => value.result.upload_task_id === task.result.upload_task_id)?.result)
+        .toMatchObject({ state: "ACCEPTED", upload_outcome: "ACCEPTED", acceptedEvidence: { pageOwnership } });
+      events.push("close-accepted-page");
     },
     stop: async () => { events.push("stop"); },
   };
@@ -103,6 +113,109 @@ function readyEvidence(store: DouyinUploadStore, task: UploadTaskRecord, pageOwn
     selectedCount: store.tasks().filter(value => value.authorization.pageBatchId === task.authorization.pageBatchId && store.hasMarker(value.result.upload_task_id)).length,
     observedAt: new Date().toISOString(), pageOwnership };
 }
+
+async function remoteFixture() {
+  const open = new Set<string>(), events: string[] = [];
+  vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async (id, action) => {
+    expect(action).toBe("close"); events.push(`close:${id}`); open.delete(id);
+  });
+  const f = await fixture({ remote: true, accounts: root => new QianchuanAccountSettings(path.join(root, "private"), async id => {
+    open.add(id); events.push(`open:${id}`); expect(open.size).toBe(1); return `http://127.0.0.1:${12000 + Number(id) - 1000}`;
+  }, async () => { throw new Error("catalog browser closed"); }) });
+  const confirm = f.port.confirmAutomation!;
+  f.port.confirmAutomation = async (tasks, ownership, signal) => {
+    await confirm(tasks, ownership, signal); events.push(`accepted:${tasks[0].authorization.target.advertiserId}`);
+    return tasks.map(task => ({ ...task.result.readyEvidence!, platformVideoId: `video_${task.result.export_task_id}`, attempt: task.result.attempt_count,
+      requestSha256: "a".repeat(64), responseSha256: "b".repeat(64), observedAt: now() }));
+  };
+  const group = async (product: QianchuanProduct, content: string) => {
+    const source = await f.batch([content], product), target = await f.service.automationAccount(product);
+    return { target, exports: source.identities, selection: { enabled: true as const, accountProduct: product,
+      plan: { advertiserId: target.advertiserId, adId: "2222", name: "冻结计划" } } };
+  };
+  return { ...f, open, remoteEvents: events, group };
+}
+
+it("accepts and closes each of five remote accounts before opening the next, without changing fences or closing batches", async () => {
+  const f = await remoteFixture(), products = QIANCHUAN_PRODUCTS.slice(0, 5);
+  const groups = await Promise.all(products.map((product, i) => f.group(product, `unique remote output ${i}`)));
+  await f.service.uploadAutomation(groups, new AbortController().signal);
+  expect(f.open.size).toBe(0); expect(f.store.tasks()).toHaveLength(5);
+  expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED" && f.store.hasMarker(task.result.upload_task_id))).toBe(true);
+  expect(f.store.closedBatches()).toEqual([]);
+  for (const group of groups) {
+    const id = group.target.advertiserId, start = f.remoteEvents.indexOf(`open:${id}`), accepted = f.remoteEvents.indexOf(`accepted:${id}`);
+    expect(start).toBeLessThan(accepted); expect(f.remoteEvents.indexOf(`close:${id}`, accepted)).toBeGreaterThan(accepted);
+  }
+  await expect(f.service.controlAccountBrowser({ product: products[0], expectedAdvertiserId: groups[0].target.advertiserId, action: "close" })).rejects.toThrow("待确认");
+});
+
+it("keeps the remote browser across accepted chunks, blocks manual opens, then closes once at account completion", async () => {
+  const f = await remoteFixture(), first = await f.group("眼贴", "first chunk"), second = await f.group("眼贴", "second chunk");
+  const signal = new AbortController().signal;
+  await f.service.uploadAutomation([first], signal, true);
+  expect(f.events.filter(event => event === "close-accepted-page")).toHaveLength(1);
+  expect(f.open).toEqual(new Set([first.target.advertiserId])); expect(f.service.busy).toBe(true);
+  const closes = f.remoteEvents.filter(event => event.startsWith("close:")).length;
+  await expect(f.service.openAccountBrowser({})).rejects.toThrow("操作正在进行");
+  await expect(f.service.listPlans({ product: "蝴蝶贴", expectedAdvertiserId: "1000" })).rejects.toThrow("操作正在进行");
+  await f.service.uploadAutomation([second], signal, true);
+  expect(f.events.filter(event => event === "close-accepted-page")).toHaveLength(2);
+  expect(f.remoteEvents.filter(event => event.startsWith("close:"))).toHaveLength(closes);
+  await f.service.finishAutomationAccount(first.target, signal);
+  expect(f.open.size).toBe(0); expect(f.service.busy).toBe(false);
+  expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
+});
+
+it("keeps an unknown remote upload window and never prepares the next account", async () => {
+  const f = await remoteFixture(), first = await f.group("蝴蝶贴", "unknown output"), next = await f.group("眼贴", "never admitted");
+  f.port.confirmAutomation = async () => {};
+  await expect(f.service.uploadAutomation([first, next], new AbortController().signal)).rejects.toThrow("上传结果未知");
+  expect(f.open).toEqual(new Set([first.target.advertiserId])); expect(f.remoteEvents).not.toContain(`open:${next.target.advertiserId}`);
+  expect(f.store.tasks()).toHaveLength(1); expect(f.store.tasks()[0].result.upload_outcome).toBe("MAY_HAVE_UPLOADED");
+  expect(f.store.hasMarker(f.store.tasks()[0].result.upload_task_id)).toBe(true);
+  expect(f.events).not.toContain("close-accepted-page");
+});
+
+it("keeps accepted evidence and stops later accounts if the owned accepted page cannot close", async () => {
+  const f = await remoteFixture(), first = await f.group("蝴蝶贴", "accepted page close failure"), next = await f.group("眼贴", "not admitted after page close failure");
+  f.port.closeAcceptedAutomationPage = async () => { throw new Error("accepted page close failed"); };
+  await expect(f.service.uploadAutomation([first, next], new AbortController().signal)).rejects.toThrow("accepted page close failed");
+  expect(f.store.tasks()).toHaveLength(1); expect(f.store.tasks()[0].result.upload_outcome).toBe("ACCEPTED");
+  expect(f.open).toEqual(new Set([first.target.advertiserId])); expect(f.remoteEvents).not.toContain(`open:${next.target.advertiserId}`);
+});
+
+it("stops after an accepted account fails to close and does not admit later accounts", async () => {
+  const f = await remoteFixture(), first = await f.group("蝴蝶贴", "accepted before failed close"), next = await f.group("眼贴", "never admitted close");
+  vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async id => {
+    if (f.open.has(id)) throw new Error("normal close failed");
+  });
+  await expect(f.service.uploadAutomation([first, next], new AbortController().signal)).rejects.toThrow("normal close failed");
+  expect(f.remoteEvents).not.toContain(`open:${next.target.advertiserId}`);
+  expect(f.store.tasks()).toHaveLength(1); expect(f.store.tasks()[0].result.upload_outcome).toBe("ACCEPTED");
+});
+
+it("cleans remote accounts serially and closes outside the settings edit lock", async () => {
+  const f = await remoteFixture();
+  vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async target => {
+    f.remoteEvents.push(`cleared:${target.advertiserId}`);
+    return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 0, message: "empty library" };
+  });
+  const accounts = QIANCHUAN_PRODUCTS.slice(0, 2).map((product, i) => ({ product, expectedAdvertiserId: String(1000 + i) }));
+  const results = await f.service.clearAutomationVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts }, new AbortController().signal);
+  expect(results.map(result => result.state)).toEqual(["CLEARED", "CLEARED"]); expect(f.open.size).toBe(0);
+  const firstCleared = f.remoteEvents.indexOf("cleared:1000"), firstClosed = f.remoteEvents.indexOf("close:1000", firstCleared);
+  expect(firstClosed).toBeGreaterThan(firstCleared); expect(firstClosed).toBeLessThan(f.remoteEvents.indexOf("open:1001"));
+});
+
+it("retains a blocked cleanup window and does not open a later remote account", async () => {
+  const f = await remoteFixture();
+  vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async target => ({ product: target.product, advertiserId: target.advertiserId,
+    state: "BLOCKED", deletedCount: 0, message: "unknown deletion" }));
+  const results = await f.service.clearAutomationVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: QIANCHUAN_PRODUCTS.slice(0, 2).map((product, i) => ({ product, expectedAdvertiserId: String(1000 + i) })) }, new AbortController().signal);
+  expect(results).toHaveLength(1); expect(results[0].state).toBe("BLOCKED"); expect(f.open).toEqual(new Set(["1000"]));
+  expect(f.remoteEvents).not.toContain("open:1001");
+});
 
 const selection: QianchuanUploadSelection = { enabled: true, accountProduct: "眼贴", plan: { advertiserId: "1003", adId: "2222", name: "冻结计划" } };
 

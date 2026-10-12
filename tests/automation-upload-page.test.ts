@@ -14,7 +14,7 @@ const roots: string[] = [];
 const fixtures: QianchuanFixture[] = [];
 afterEach(async () => {
   await Promise.all(fixtures.splice(0).map(fixture => fixture.stop()));
-  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 })));
 });
 
 async function setup(count = 1, handleRequest?: StartFixtureOptions["handleRequest"]) {
@@ -140,14 +140,29 @@ it.each([0, 1])("confirms both owned dialogs once and verifies platform status %
         });
       });
     }, task.result.file_name);
+    let accepted: UploadTaskRecord | undefined;
     if (statusCode === 0) {
       const [proof] = await uploader.confirmAutomation([task], ownership, signal);
       expect(proof).toMatchObject({ advertiserId: "123456", adId: "987654", platformVideoId: "fixture_video", fileName: task.result.file_name, pageOwnership: ownership });
+      accepted = { ...task, result: { ...task.result, state: "ACCEPTED", upload_outcome: "ACCEPTED", readyEvidence: undefined, acceptedEvidence: proof } };
     } else {
       await expect(uploader.confirmAutomation([task], ownership, signal)).rejects.toThrow("原上传弹窗确认回执核验失败：千川平台未确认接受素材。");
     }
     await expect(uploader.confirmAutomation([task], ownership, signal)).rejects.toThrow();
     expect((await fixture.inspect()).events.filter(event => event.type === "confirm")).toHaveLength(1);
+    await expect(uploader.closeAcceptedAutomationPage([task], ownership, signal, () => {})).rejects.toThrow();
+    expect(page.isClosed()).toBe(false);
+    if (accepted) {
+      const unrelated = await browser.contexts()[0]!.newPage();
+      try {
+        await expect(uploader.closeAcceptedAutomationPage([accepted], { ...ownership, targetId: "wrong-target" }, signal, () => {})).rejects.toThrow();
+        await expect(uploader.closeAcceptedAutomationPage([accepted], ownership, signal, () => { throw new Error("guard changed"); })).rejects.toThrow("guard changed");
+        expect(page.isClosed()).toBe(false);
+        await uploader.closeAcceptedAutomationPage([accepted], ownership, signal, () => {});
+        await expect.poll(() => page.isClosed()).toBe(true);
+        expect(browser.isConnected()).toBe(true); expect(unrelated.isClosed()).toBe(false);
+      } finally { await unrelated.close(); }
+    }
   } finally { await browser.close(); await uploader.stop(); }
 });
 

@@ -49,12 +49,14 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     if (!await this.exists()) { if (this.hasMapping) throw new Error("账号设置丢失，禁止直连。"); return undefined; }
     return (await readPrivateConfig(this.file, parseSettings)).accounts.find(account => account.advertiserId === advertiserId)?.egress;
   }
-  async controlBrowser(input: unknown, guard: (advertiserId: string, browser?: RunningChromeBrowser) => void): Promise<void> {
+  async controlBrowser(input: unknown, guard: (advertiserId: string, browser?: RunningChromeBrowser) => void, expectedTarget?: FrozenQianchuanAccount): Promise<void> {
     this.assertAvailable();
     const parsed = QianchuanBrowserControlSchema.parse(input);
     await this.edit(async () => {
       const target = await super.preflight(parsed.product);
       if (target.advertiserId !== parsed.expectedAdvertiserId) throw new Error("账号设置已变化，未关闭任何浏览器，请重新选择账号。");
+      if (expectedTarget && (target.configDigest !== expectedTarget.configDigest || target.cdpEndpoint !== expectedTarget.cdpEndpoint ||
+        egressIdentity(target.egress) !== egressIdentity(expectedTarget.egress))) throw new Error("VPS 账号配置已变化，未关闭浏览器。");
       guard(target.advertiserId);
       if (parsed.action === "reconnect-egress") {
         if (!target.egress) throw new Error("该账号未配置固定出口。");

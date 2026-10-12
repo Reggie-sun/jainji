@@ -1198,14 +1198,14 @@
       "normalized_sha256": "b220394665612fe4b02dd40e2a1336145ddf3455f1a285b79cf304bf9320f714"
     },
     "src/main/automation-production-upload.ts": {
-      "sha256": "17267497af39af75e1d7842ebf5de7a78aee96f6ef3d611db93d72e395a51622",
-      "size": 5062,
-      "normalized_sha256": "17267497af39af75e1d7842ebf5de7a78aee96f6ef3d611db93d72e395a51622"
+      "sha256": "07e4433c9fa79cc5f589e36c36a6750c10169bc2c0bb0faabee844be4c14e31b",
+      "size": 6187,
+      "normalized_sha256": "07e4433c9fa79cc5f589e36c36a6750c10169bc2c0bb0faabee844be4c14e31b"
     },
     "src/main/automation-runtime.ts": {
-      "sha256": "5b17c8e6fccb243ae5eb4417a33224720dd022553616365d865040aa1600f695",
-      "size": 15767,
-      "normalized_sha256": "5b17c8e6fccb243ae5eb4417a33224720dd022553616365d865040aa1600f695"
+      "sha256": "f41e5e8e642bcf382753e3a09f96792c786cc3663a0bc96c08415a7bd60fbaa6",
+      "size": 16274,
+      "normalized_sha256": "f41e5e8e642bcf382753e3a09f96792c786cc3663a0bc96c08415a7bd60fbaa6"
     },
     "src/main/automation-scheduler.ts": {
       "sha256": "47d1fc6b935e3c934540189c60f0276281bdbcfd3d1dadd2f63044d818c6492f",
@@ -1383,9 +1383,9 @@
       "normalized_sha256": "ceb69409c2c8d6bd447f6ac1b5ceaa655cce7b59d9f980f2e4eadc7f6b3e31e8"
     },
     "src/main/douyin-cdp-uploader.ts": {
-      "sha256": "8d207e99f8382f06295455452d096613b74b817d7b8bf9189a46ba0ae88ff759",
-      "size": 11112,
-      "normalized_sha256": "8d207e99f8382f06295455452d096613b74b817d7b8bf9189a46ba0ae88ff759"
+      "sha256": "64907d0b3ce06d086ef47d5426abfe0ae1eef69d63b8cc732542fbc3924b10b7",
+      "size": 12709,
+      "normalized_sha256": "64907d0b3ce06d086ef47d5426abfe0ae1eef69d63b8cc732542fbc3924b10b7"
     },
     "src/main/douyin-upload-group.ts": {
       "sha256": "b5405ef1ed791a0eab62aaa9d4cf944d784ea692baceb81ac0f08a817701138f",
@@ -1398,9 +1398,9 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "9677fd11ee624d38577de2225e4fdc9888da2c9fed0620def3565880551f035f",
-      "size": 95475,
-      "normalized_sha256": "9677fd11ee624d38577de2225e4fdc9888da2c9fed0620def3565880551f035f"
+      "sha256": "de4f2a438f949fe2674cbc44d0cf2620fbec19d5af5295136ad07db77abd7c83",
+      "size": 102777,
+      "normalized_sha256": "de4f2a438f949fe2674cbc44d0cf2620fbec19d5af5295136ad07db77abd7c83"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "62b17f1dedc2884db78437e1211dda789110f6305c7036161c5ca30e2c27ee4b",
@@ -1463,9 +1463,9 @@
       "normalized_sha256": "4d1c55c8da2fb8c29a591647434faf01a47af0b306b2cb1193f995ae5ed76dc3"
     },
     "src/main/index.ts": {
-      "sha256": "084282b02ca567deafc7d2ea779423faf02c21d542eb74d244bf5a4831dab669",
-      "size": 64777,
-      "normalized_sha256": "084282b02ca567deafc7d2ea779423faf02c21d542eb74d244bf5a4831dab669"
+      "sha256": "2feb3a2cf06939fe7dde4cd75561f4e581034ff1984414d84ea5ff7896265a8c",
+      "size": 64995,
+      "normalized_sha256": "2feb3a2cf06939fe7dde4cd75561f4e581034ff1984414d84ea5ff7896265a8c"
     },
     "src/main/local-cdp-transport.ts": {
       "sha256": "fb23cfcad8d845112bca0b41434b6e619d63ab19d3263ae8bd95e83b64d8619f",
@@ -1553,9 +1553,9 @@
       "normalized_sha256": "bfb44dd2a37b7caaab115e1bbd18f462e75a3a15071fc3f68429095b1c9be05b"
     },
     "src/main/qianchuan-account-settings.ts": {
-      "sha256": "96ab6734755ff73d8934dd790c060bc149f98331eec7e564c5d9a4bd866998bf",
-      "size": 16679,
-      "normalized_sha256": "96ab6734755ff73d8934dd790c060bc149f98331eec7e564c5d9a4bd866998bf"
+      "sha256": "d382cea599ed06ef7f95f862eaee1563865b04696f2c07fc2327c262d30baebe",
+      "size": 17009,
+      "normalized_sha256": "d382cea599ed06ef7f95f862eaee1563865b04696f2c07fc2327c262d30baebe"
     },
     "src/main/qianchuan-browser-bindings.ts": {
       "sha256": "648c2fd88fc84bda52c937a0a4c459559a9882983250778c982072af258a9754",
@@ -3502,6 +3502,11 @@
       "sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b",
       "size": 8075,
       "normalized_sha256": "8a429d22a1104c76f00b38a2d60ffa21ce3eb0df80c9b7fe9ffa2820869f632b"
+    },
+    "src/main/qianchuan-automation-browsers.ts": {
+      "sha256": "50973c8e9858469e2d40f7bed5fb47930b0b45e57495682d6e4507d4c7918828",
+      "size": 3936,
+      "normalized_sha256": "50973c8e9858469e2d40f7bed5fb47930b0b45e57495682d6e4507d4c7918828"
     }
   },
   "managed_scope": {

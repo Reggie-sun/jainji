@@ -16,6 +16,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
   private browser?: Browser;
   private page?: Page;
   private session?: QianchuanPageSession;
+  private pageOwnership?: PageOwnership;
   private transport?: Awaited<ReturnType<typeof guardedTransport>>;
   private readonly controller = new AbortController();
   private egressLease?: EgressLease;
@@ -112,7 +113,9 @@ export class DouyinCdpUploader implements UploadBrowserPort {
       // Background tabs can suspend animation frames used by click stability checks.
       await this.page.bringToFront(); this.check(signal);
       if (initial) await this.session!.openInitialPlan(task, signal);
-      return this.session!.prepare(tasks, selected, await this.targetId(this.page), signal);
+      const prepared = await this.session!.prepare(tasks, selected, await this.targetId(this.page), signal);
+      this.pageOwnership = prepared.pageOwnership;
+      return prepared;
     });
   }
   async upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void> { await this.action(signal, () => this.session!.upload(tasks, signal)); }
@@ -126,6 +129,23 @@ export class DouyinCdpUploader implements UploadBrowserPort {
       }
       this.check(signal);
       return session.confirmAutomation(tasks, ownership, signal);
+    });
+  }
+  async closeAcceptedAutomationPage(tasks: UploadTaskRecord[], ownership: PageOwnership, signal: AbortSignal, guard: () => void): Promise<void> {
+    const matches = (value?: PageOwnership) => value?.targetId === ownership.targetId && value.pageBatchId === ownership.pageBatchId && value.modalSessionId === ownership.modalSessionId;
+    if (!tasks.length || tasks.length !== tasks[0].authorization.expectedCount || !matches(this.pageOwnership) || tasks.some(task => {
+      const result = task.result, proof = result.acceptedEvidence;
+      return task.authorization.pageBatchId !== ownership.pageBatchId || result.state !== "ACCEPTED" || result.upload_outcome !== "ACCEPTED" ||
+        !proof || !matches(proof.pageOwnership) || proof.selectedCount !== tasks.length || proof.fileName !== result.file_name ||
+        proof.advertiserId !== task.authorization.target.advertiserId || proof.adId !== task.authorization.target.adId;
+    })) throw new Error("上传页没有完整的同批接收证据，未关闭。");
+    await this.action(signal, async () => {
+      guard(); const page = this.page;
+      if (!page || page.isClosed() || await this.targetId(page) !== ownership.targetId) throw new Error("已接收上传页无法唯一确认，未关闭其他页面。");
+      this.check(signal); guard();
+      this.session?.clearChooser();
+      await page.close();
+      this.page = undefined; this.session = undefined; this.pageOwnership = undefined;
     });
   }
   async readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence> {

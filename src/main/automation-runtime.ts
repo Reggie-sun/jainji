@@ -30,7 +30,9 @@ interface Dependencies {
   task(id: string): AutomationTask | undefined;
   produce(input: BatchProductionStart, projects: ReadonlyMap<string, Project>, signal: AbortSignal): Promise<void>;
   clear(input: QianchuanLibraryClear, signal: AbortSignal): Promise<QianchuanLibraryResult[]>;
-  upload(groups: { selection: QianchuanUploadSelection; target: FrozenQianchuanAccount; exports: UploadIdentity[] }[], signal: AbortSignal): Promise<void>;
+  upload(groups: { selection: QianchuanUploadSelection; target: FrozenQianchuanAccount; exports: UploadIdentity[] }[], signal: AbortSignal, retainBrowser?: boolean): Promise<void>;
+  finishUploadAccount(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<void>;
+  releaseUploadAccounts(): void;
 }
 const actions = (request: AutomationRequest) => ({ cleanup: request.cleanup, production: request.production, upload: request.upload, uploadFrom: request.uploadFrom });
 const identity = (account: FrozenQianchuanAccount) => automationDigest(FrozenAccountSchema.parse(account));
@@ -118,6 +120,10 @@ export class AutomationRuntime {
       .catch(() => { throw new Error("来源成片已启动过上传或登记结果未知，禁止自动重传。"); });
   }
   async execute(task: AutomationTask, signal: AbortSignal): Promise<Pick<AutomationRun, "exports" | "productionRunId">> {
+    try { return await this.executeRun(task, signal); }
+    finally { this.dependencies.releaseUploadAccounts(); }
+  }
+  private async executeRun(task: AutomationTask, signal: AbortSignal): Promise<Pick<AutomationRun, "exports" | "productionRunId">> {
     const recipe = await this.read(task); await this.verify(recipe, signal); signal.throwIfAborted();
     if (recipe.request.cleanup) {
       const results = await this.dependencies.clear(recipe.request.cleanup, signal);
@@ -143,7 +149,8 @@ export class AutomationRuntime {
       try {
         if (!started) throw new Error("无法确认本轮制作运行，已停止。");
         if (streaming) uploaded = await uploadProducingExports({ runId: started.id, bindings, controller: this.dependencies.controller,
-          queue: this.dependencies.queue, upload: (groups, signal) => this.dependencies.upload(groups, signal) }, signal);
+          queue: this.dependencies.queue, upload: (groups, signal) => this.dependencies.upload(groups, signal, true),
+          finishAccount: (target, signal) => this.dependencies.finishUploadAccount(target, signal) }, signal);
         else while (this.dependencies.controller.busy) await delay(250, undefined, { signal });
         signal.throwIfAborted();
       } catch (error) {

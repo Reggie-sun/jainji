@@ -850,8 +850,10 @@ async function bootstrap(): Promise<void> {
         coverReview.assertIdle(); connections.assertIdle(); agent.assertIdle(); batchRuntime.controller.assertIdle();
         await douyinUpload.withExportAdmission(async () => { await douyinUpload.beginProduction(); signal.throwIfAborted(); await batchRuntime.controller.start(input, projects); });
       },
-      clear: async (input, signal) => { await membership.assertAllowed(); signal.throwIfAborted(); return douyinUpload.clearVideoLibraries(input, signal); },
-      upload: async (groups, signal) => { await membership.assertAllowed(); signal.throwIfAborted(); await douyinUpload.uploadAutomation(groups, signal); },
+      clear: async (input, signal) => { await membership.assertAllowed(); signal.throwIfAborted(); return douyinUpload.clearAutomationVideoLibraries(input, signal); },
+      upload: async (groups, signal, retainBrowser) => { await membership.assertAllowed(); signal.throwIfAborted(); await douyinUpload.uploadAutomation(groups, signal, retainBrowser); },
+      finishUploadAccount: (target, signal) => douyinUpload.finishAutomationAccount(target, signal),
+      releaseUploadAccounts: () => douyinUpload.releaseAutomationBrowsers(),
     },
   });
   registerHandlers();

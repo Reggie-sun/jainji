@@ -25,8 +25,10 @@ export async function uploadProducingExports(input: {
   controller: Pick<BatchProductionController, "snapshot" | "busy" | "executionSignal">;
   queue: Pick<ExportQueue, "snapshot" | "waitForPersistence">;
   upload(groups: AutomationUploadGroup[], signal: AbortSignal): Promise<void>;
+  finishAccount?(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<void>;
 }, signal: AbortSignal): Promise<UploadIdentity[]> {
   const uploaded = new Map<string, UploadIdentity>(), jobs = new Map<string, string>();
+  let currentAccount: FrozenQianchuanAccount | undefined;
   while (true) {
     signal.throwIfAborted();
     const busy = input.controller.busy, run = input.controller.snapshot();
@@ -65,8 +67,20 @@ export async function uploadProducingExports(input: {
       const current = available.get(id);
       if (current && (current.project_id !== previous.project_id || current.batch_id !== previous.batch_id)) throw new Error("已上传成片归属发生变化，后续上传已停止。");
     }
-    const binding = input.bindings.find(value => [...available.values()].some(item => item.project_id === value.projectId && !uploaded.has(item.export_task_id)));
+    const hasExports = (value: AutomationProductionUploadBinding) => [...available.values()].some(item => item.project_id === value.projectId && !uploaded.has(item.export_task_id));
+    if (currentAccount) {
+      const owned = input.bindings.filter(binding => binding.target.advertiserId === currentAccount!.advertiserId);
+      const finished = owned.every(binding => ["completed", "failed", "cancelled"].includes(run.jobs.find(job => job.id === jobs.get(binding.recentProjectId))!.status));
+      if (finished && !owned.some(hasExports)) {
+        await input.finishAccount!(currentAccount, signal); currentAccount = undefined;
+      }
+    }
+    const binding = input.bindings.find(value => (!currentAccount || value.target.advertiserId === currentAccount.advertiserId) && hasExports(value));
     if (binding) {
+      if (binding.target.egress?.mode === "remote-browser") {
+        if (!input.finishAccount) throw new Error("VPS 自动化缺少账号完成关闭通道，未上传。");
+        currentAccount ??= binding.target;
+      }
       const exports = [...available.values()].filter(value => value.project_id === binding.projectId && !uploaded.has(value.export_task_id)).slice(0, MAX_UPLOAD_GROUP_SIZE);
       const uploadSignal = AbortSignal.any([signal, input.controller.executionSignal(input.runId, jobs.get(binding.recentProjectId)!)]);
       uploadSignal.throwIfAborted();
@@ -77,7 +91,10 @@ export async function uploadProducingExports(input: {
       for (const identity of exports) uploaded.set(identity.export_task_id, identity);
       continue;
     }
-    if (!busy) return [...uploaded.values()];
+    if (!busy) {
+      if (currentAccount) throw new Error("VPS 账号制作尚未完整结束，后续上传已停止。");
+      return [...uploaded.values()];
+    }
     await delay(250, undefined, { signal });
   }
 }

@@ -10,6 +10,7 @@ import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory,
 import { uploadBatchSettled } from "./douyin-upload-group.js";
 import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
+import { AutomationBrowserAccounts, assertAutomationBrowserSafe } from "./qianchuan-automation-browsers.js";
 import { egressIdentity } from "../shared/qianchuan-egress.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import { QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
@@ -37,6 +38,7 @@ export interface UploadBrowserPort {
   pollReady(tasks: UploadTaskRecord[], signal: AbortSignal, onReady?: UploadReadyProgress): Promise<ReadyEvidence[] | undefined>;
   readOnlyCheck(task: UploadTaskRecord, ownership: PageOwnership, selected: BatchSelectedFile[], signal: AbortSignal): Promise<ReadyEvidence>;
   confirmAutomation?(tasks: UploadTaskRecord[], ownership: PageOwnership, signal: AbortSignal): Promise<AcceptedEvidence[] | void>;
+  closeAcceptedAutomationPage?(tasks: UploadTaskRecord[], ownership: PageOwnership, signal: AbortSignal, guard: () => void): Promise<void>;
   stop(): Promise<void>;
 }
 interface Dependencies {
@@ -81,6 +83,8 @@ export class DouyinUploadService {
   private browserPreparations = 0;
   private stopFailed = false;
   private readonly accounts: QianchuanAccountConfigReader;
+  private readonly automationBrowsers: AutomationBrowserAccounts;
+  private automationBrowserGeneration?: number;
   private readonly planReads: QianchuanPlanReads;
   private readonly planRequests = new Map<string, AbortController>();
   private planPreloadController?: AbortController;
@@ -90,10 +94,32 @@ export class DouyinUploadService {
       this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations);
   }
   get busy(): boolean {
-    return this.hasNonAutomationWork() || this.automationUploadActive;
+    return this.hasNonAutomationWork() || this.automationUploadActive || this.automationBrowsers.busy;
   }
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
+    this.automationBrowsers = new AutomationBrowserAccounts({
+      accounts: async () => {
+        const summaries = await this.accounts.refresh();
+        return Promise.all(summaries.filter(account => account.available).map(account => this.automationAccount(account.product)));
+      },
+      guard: advertiserId => {
+        if (this.automationBrowserGeneration !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction) throw new Error("上传控制仍在运行或不可用，未切换 VPS 浏览器。");
+        assertAutomationBrowserSafe(this.store, advertiserId, this.eligible, this.currentIntents, this.cancelledIntents);
+      },
+      close: async (target, guard) => {
+        if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持 VPS 浏览器管理。");
+        guard();
+        const batches = new Set(this.store.tasks().filter(task => task.authorization.target.advertiserId === target.advertiserId).map(task => task.authorization.pageBatchId));
+        for (const [id, port] of this.sessions) if (batches.has(id)) {
+          await this.bounded(() => port.stop(), 5000, new AbortController().signal).catch(error => { this.stopFailed = true; throw error; });
+          this.sessions.delete(id);
+        }
+        guard();
+        await this.accounts.controlBrowser({ product: target.product, expectedAdvertiserId: target.advertiserId, action: "close" }, guard, target);
+        this.planReads.invalidate(target.product);
+      },
+    });
     this.planReads = new QianchuanPlanReads(dependencies.readPlans ?? readQianchuanPlans);
     this.refreshAccountPauses();
   }
@@ -114,7 +140,7 @@ export class DouyinUploadService {
   private openTasks(records = this.store.tasks()): UploadTaskRecord[] { return records.filter(task => this.inProduction(task.authorization.pageBatchId) && !this.store.isClosed(task.authorization.pageBatchId)); }
   /** Trusted production boundaries revoke old runtime permission without changing history. */
   async beginProduction(): Promise<void> {
-    if (this.managingBrowser || this.automationUploadActive && !this.preparingAutomationUpload) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
+    if (this.managingBrowser || (this.automationUploadActive || this.automationBrowsers.busy) && !this.preparingAutomationUpload) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
     if (this.beginningProduction || this.stopping || this.closing || this.discarding || this.retargeting || this.preparingContinuation) throw new Error("上传控制仍在运行，请等待停止后开始本次制作。");
     this.beginningProduction = true;
     try {
@@ -222,7 +248,7 @@ export class DouyinUploadService {
     if (protectedTasks || preparing) throw new Error("该账号有待处理、待确认或结果未知的批次，不能更改固定出口。请先核查并明确结束原批次。");
   };
   async chooseConfig(file: string): Promise<void> {
-    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     this.managingBrowser = true;
     try {
@@ -234,7 +260,7 @@ export class DouyinUploadService {
     if (this.accounts instanceof QianchuanAccountSettings) this.preloadPlans();
   }
   async saveAccount(input: unknown): Promise<void> {
-    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持软件内设置。");
     this.managingBrowser = true;
@@ -251,7 +277,7 @@ export class DouyinUploadService {
     const controller = new AbortController(), accounts = this.summaries.filter(account => account.available);
     this.planPreloadController = controller;
     this.planPreload = this.planPreload.then(async () => {
-      if (controller.signal.aborted || this.managingBrowser || this.store.unavailable || this.stopFailed) return;
+      if (controller.signal.aborted || this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy || this.store.unavailable || this.stopFailed) return;
       await Promise.all(accounts.map(account => this.catalogPlans(account.product, account.advertiserId, AbortSignal.any([controller.signal, AbortSignal.timeout(60_000)])).catch(() => undefined)));
     });
   }
@@ -281,7 +307,7 @@ export class DouyinUploadService {
   }
   async listPlans(input: unknown, senderId = 0): Promise<QianchuanPlanOption[]> {
     const parsed = QianchuanPlanListRequestSchema.parse(input);
-    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
     const key = parsed.requestId ? `${senderId}:${parsed.requestId}` : undefined;
     if (key && this.planRequests.has(key)) throw new Error("计划读取请求已存在。");
     const controller = new AbortController();
@@ -314,14 +340,14 @@ export class DouyinUploadService {
     return pending;
   }
   async refreshAccounts(): Promise<void> {
-    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后刷新账号。");
+    if (this.managingBrowser || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后刷新账号。");
     try { this.summaries = await this.accounts.refresh(); this.initializationFailure = undefined; }
     catch { this.summaries = []; this.initializationFailure = "账号配置不可用，请检查文件权限和映射。"; }
     this.changed();
     this.preloadPlans();
   }
   async openAccountBrowser(input: unknown): Promise<void> {
-    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后重试。");
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy || this.stopFailed || this.store.unavailable) throw new Error("账号浏览器操作正在进行或状态不可用，请稍后重试。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持打开浏览器。");
     this.browserPreparations++;
     try { await this.accounts.openBrowser(input); } finally { this.browserPreparations--; }
@@ -351,6 +377,35 @@ export class DouyinUploadService {
     } finally { this.managingBrowser = false; this.changed(); }
   }
   async clearVideoLibraries(input: unknown, signal?: AbortSignal): Promise<QianchuanLibraryResult[]> {
+    if (this.automationBrowsers.busy) throw new Error("VPS 自动化账号尚未完成，请稍后清理。");
+    return this.clearVideoLibrariesOwned(input, signal);
+  }
+  async clearAutomationVideoLibraries(input: unknown, signal: AbortSignal): Promise<QianchuanLibraryResult[]> {
+    const parsed = QianchuanLibraryClearSchema.parse(input), results: QianchuanLibraryResult[] = [];
+    await this.stopPlanPreload(signal);
+    if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("账号操作仍在运行或状态不可用，未开始定时清理。");
+    const targets = await Promise.all(parsed.accounts.map(async account => {
+      const target = await this.automationAccount(account.product);
+      if (target.advertiserId !== account.expectedAdvertiserId) throw new Error("定时清理账号已变化。");
+      return target;
+    }));
+    const generation = this.controlGeneration;
+    this.automationBrowserGeneration = generation;
+    try {
+      for (let index = 0; index < targets.length; index++) {
+        const target = targets[index]!;
+        await this.automationBrowsers.prepare(target, signal);
+        if (generation !== this.controlGeneration) throw new Error("上传控制已变化，定时清理已停止。");
+        const result = await this.clearVideoLibrariesOwned({ ...parsed, accounts: [parsed.accounts[index]!] }, signal, true);
+        results.push(...result);
+        // Failed/unknown deletion keeps the original window and stops later accounts.
+        if (result.length !== 1 || result[0].state !== "CLEARED") break;
+        await this.automationBrowsers.finish(target, signal);
+      }
+      return results;
+    } finally { this.automationBrowsers.release(); this.changed(); }
+  }
+  private async clearVideoLibrariesOwned(input: unknown, signal?: AbortSignal, automatic = false): Promise<QianchuanLibraryResult[]> {
     const parsed = QianchuanLibraryClearSchema.parse(input);
     return this.withCleanupOperation(parsed, async (targets, guard, connect, signal) => {
       const library = new QianchuanVideoLibrary(this.store.root);
@@ -367,7 +422,7 @@ export class DouyinUploadService {
         }
         catch (error) { return { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
       }));
-    }, signal);
+    }, signal, automatic);
   }
   async resolvePlanMaterialDeletion(input: unknown): Promise<void> {
     const request = QianchuanPlanRecoverySchema.parse(input);
@@ -377,10 +432,10 @@ export class DouyinUploadService {
       await new QianchuanPlanMaterialRecovery(path.join(this.store.root, "plan-material-deletions"), targets[0]).resolve(request, guard);
     });
   }
-  private async withCleanupOperation<T>(parsed: QianchuanLibraryClear, action: (targets: FrozenQianchuanAccount[], guard: () => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>, signal: AbortSignal) => Promise<T>, parentSignal?: AbortSignal): Promise<T> {
+  private async withCleanupOperation<T>(parsed: QianchuanLibraryClear, action: (targets: FrozenQianchuanAccount[], guard: () => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>, signal: AbortSignal) => Promise<T>, parentSignal?: AbortSignal, automatic = false): Promise<T> {
     parentSignal?.throwIfAborted();
     await this.stopPlanPreload();
-    if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未删除视频。");
+    if (this.hasNonAutomationWork() || this.automationUploadActive || !automatic && this.automationBrowsers.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未删除视频。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持视频库删除。");
     this.managingBrowser = true;
     let completed!: () => void;
@@ -407,7 +462,7 @@ export class DouyinUploadService {
     } finally { parentSignal?.removeEventListener("abort", cancel); this.libraryOperation = undefined; this.managingBrowser = false; completed(); this.changed(); }
   }
   async configure(input: unknown): Promise<void> {
-    if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后修改上传设置。");
+    if (this.managingBrowser || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后修改上传设置。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     const publicSettings = QianchuanUploadConfigSchema.omit({ accountConfigPath: true }).parse(input);
     if (!publicSettings.enabled) await this.stop();
@@ -419,14 +474,14 @@ export class DouyinUploadService {
   }
   /** Hold browser protection through the export handoff, not only its preflight. */
   async withExportAdmission<T>(action: () => Promise<T>): Promise<T> {
-    if (this.managingBrowser || this.automationUploadActive) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
     this.browserPreparations++;
     try { return await action(); }
     finally { this.browserPreparations--; }
   }
   async preflight(selection: QianchuanUploadSelection | undefined, expectedCount: number): Promise<UploadAuthorization | undefined> {
     if (!selection) return undefined;
-    if (this.automationUploadActive && !this.preparingAutomationUpload) throw new Error("定时上传正在运行，不能并发接收其他上传批次。");
+    if ((this.automationUploadActive || this.automationBrowsers.busy) && !this.preparingAutomationUpload) throw new Error("定时上传正在运行，不能并发接收其他上传批次。");
     if (this.managingBrowser) throw new Error("账号浏览器操作正在进行，请稍后开始制作。");
     this.browserPreparations++;
     try {
@@ -481,7 +536,13 @@ export class DouyinUploadService {
     try { await this.enqueueFinalArtifact(identity); if (!this.stopping && !this.stopped) void this.runPending().catch(() => this.changed()); }
     catch (error) { if (generation === this.controlGeneration) { this.initializationFailure = error instanceof UploadError ? error.failure.message : "成片上传准入失败；导出结果保持完成。"; this.changed(); } }
   }
-  async uploadAutomation(groups: { selection: QianchuanUploadSelection; target: FrozenQianchuanAccount; exports: UploadIdentity[] }[], signal: AbortSignal): Promise<void> {
+  async finishAutomationAccount(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<void> {
+    await this.stopPlanPreload(signal);
+    await this.automationBrowsers.finish(target, signal);
+    this.changed();
+  }
+  releaseAutomationBrowsers(): void { this.automationBrowsers.release(); this.changed(); }
+  async uploadAutomation(groups: { selection: QianchuanUploadSelection; target: FrozenQianchuanAccount; exports: UploadIdentity[] }[], signal: AbortSignal, retainBrowser = false): Promise<void> {
     signal.throwIfAborted();
     if (!groups.length || this.store.unavailable || !this.store.config.enabled || this.automationUploadActive) throw new Error("上传服务忙碌或不可用，定时成片未登记。");
     this.automationUploadActive = true;
@@ -489,7 +550,7 @@ export class DouyinUploadService {
     const cancel = () => { abortStop ??= this.stop(); };
     signal.addEventListener("abort", cancel, { once: true });
     let admitted = false;
-    const authorizations: UploadAuthorization[] = [], failures: Error[] = [];
+    const failures: Error[] = [];
     try {
       // Account restore starts a cancellable plan-directory preload. Drain that
       // owned work before deciding whether unrelated browser work is still busy.
@@ -518,101 +579,127 @@ export class DouyinUploadService {
       await this.beginProduction();
       this.preparingAutomationUpload = false;
       signal.throwIfAborted();
-      for (const group of prepared) {
-        signal.throwIfAborted();
-        this.preparingAutomationUpload = true;
-        let authorization: UploadAuthorization | undefined;
-        try { authorization = await this.preflight(group.selection, group.exports.length); }
-        finally { this.preparingAutomationUpload = false; }
-        if (!authorization || !this.sameAutomationBinding(authorization.target, group.target) ||
-          authorization.target.adId !== (group.selection.plan!.adId)) {
-          throw new Error("千川账号或计划与定时任务冻结值不一致，未登记成片。");
+      const generation = this.controlGeneration;
+      this.automationBrowserGeneration = generation;
+      const accountGroups = [...new Set(prepared.map(group => group.target.advertiserId))].map(id => prepared.filter(group => group.target.advertiserId === id));
+      for (const accountPrepared of accountGroups) {
+        const authorizations: UploadAuthorization[] = [];
+        await this.automationBrowsers.prepare(accountPrepared[0]!.target, signal);
+        if (generation !== this.controlGeneration) throw new Error("上传控制已变化，定时上传已停止。");
+        for (const group of accountPrepared) {
+          signal.throwIfAborted();
+          this.preparingAutomationUpload = true;
+          let authorization: UploadAuthorization | undefined;
+          try { authorization = await this.preflight(group.selection, group.exports.length); }
+          finally { this.preparingAutomationUpload = false; }
+          if (!authorization || !this.sameAutomationBinding(authorization.target, group.target) ||
+            authorization.target.adId !== (group.selection.plan!.adId)) {
+            throw new Error("千川账号或计划与定时任务冻结值不一致，未登记成片。");
+          }
+          const byBatch = new Map<string, UploadIdentity[]>();
+          for (const identity of group.exports) {
+            const batch = byBatch.get(identity.batch_id) ?? []; batch.push(identity); byBatch.set(identity.batch_id, batch);
+          }
+          const batches = [...byBatch].map(([id, batchExports]) => ({ id, projectId: batchExports[0]!.project_id, tasks: batchExports.map(value => ({ id: value.export_task_id })) }));
+          await this.registerBatches(batches, group.selection, authorization);
+          admitted = true; authorizations.push(authorization);
         }
-        const byBatch = new Map<string, UploadIdentity[]>();
-        for (const identity of group.exports) {
-          const batch = byBatch.get(identity.batch_id) ?? []; batch.push(identity); byBatch.set(identity.batch_id, batch);
-        }
-        const batches = [...byBatch].map(([id, batchExports]) => ({ id, projectId: batchExports[0]!.project_id, tasks: batchExports.map(value => ({ id: value.export_task_id })) }));
-        await this.registerBatches(batches, group.selection, authorization);
-        admitted = true; authorizations.push(authorization);
-      }
-      for (let index = 0; index < prepared.length; index++) {
-        const group = prepared[index]!, authorization = authorizations[index]!;
-        for (const identity of group.exports) {
-          signal.throwIfAborted(); await this.committed(identity);
-          if (!this.store.tasks().some(task => intentKey(task.input) === intentKey(identity) && task.authorization.pageBatchId === authorization.pageBatchId)) {
-            throw new Error("定时上传成片未通过原队列的正式成片验证。");
+        for (let index = 0; index < accountPrepared.length; index++) {
+          const group = accountPrepared[index]!, authorization = authorizations[index]!;
+          for (const identity of group.exports) {
+            signal.throwIfAborted(); await this.committed(identity);
+            if (!this.store.tasks().some(task => intentKey(task.input) === intentKey(identity) && task.authorization.pageBatchId === authorization.pageBatchId)) {
+              throw new Error("定时上传成片未通过原队列的正式成片验证。");
+            }
           }
         }
-      }
-      await this.runPending(); signal.throwIfAborted();
-      for (let index = 0; index < prepared.length; index++) {
-        const authorization = authorizations[index]!;
-        const tasks = this.store.tasks().filter(task => task.authorization.pageBatchId === authorization.pageBatchId)
-          .sort((left, right) => (this.store.fence(left.result.upload_task_id)?.selectedIndex ?? Number.MAX_SAFE_INTEGER) - (this.store.fence(right.result.upload_task_id)?.selectedIndex ?? Number.MAX_SAFE_INTEGER));
-        if (tasks.length === authorization.expectedCount && tasks.every(task => task.result.duplicate_of && task.result.state === "ACCEPTED" && task.result.acceptedEvidence)) continue;
-        if (tasks.length !== authorization.expectedCount || tasks.some(task => task.result.state !== "WAITING_FOR_CONFIRMATION" || task.result.upload_outcome !== "READY" || !task.result.readyEvidence)) {
-          const failed = tasks.find(task => task.result.failure)?.result.failure;
-          failures.push(failed ? new UploadError(failed) : new Error("定时上传批次未全部达到 READY，未自动确认。"));
-          continue;
-        }
-        const first = tasks[0]!, port = this.sessions.get(authorization.pageBatchId), ownership = this.store.fence(first.result.upload_task_id)?.pageOwnership;
-        if (!port?.confirmAutomation || !ownership || tasks.some(task => {
-          const fence = this.store.fence(task.result.upload_task_id);
-          return !fence || !this.store.hasMarker(task.result.upload_task_id) || JSON.stringify(fence.pageOwnership) !== JSON.stringify(ownership) ||
-            task.result.readyEvidence!.selectedCount > authorization.expectedCount || JSON.stringify(task.result.readyEvidence!.pageOwnership) !== JSON.stringify(ownership);
-        })) {
-          failures.push(new Error("原上传标签页、弹窗或 READY 文件无法唯一绑定，未自动确认。"));
-          continue;
-        }
-        signal.throwIfAborted();
-        const finalReady = await port.pollReady(tasks, signal);
-        if (!finalReady || finalReady.length !== tasks.length) {
-          failures.push(new Error("最终整批 READY 核验未通过，未自动确认。"));
-          continue;
-        }
-        await this.saveReady(tasks, finalReady, signal);
-        const confirmationTasks = structuredClone(tasks);
-        const acceptance = this.store.beginAutomationAcceptance(confirmationTasks);
-        const files = tasks.map(task => {
-          const fence = this.store.fence(task.result.upload_task_id)!;
-          return { identity: UploadIdentitySchema.parse({ project_id: task.input.project_id, batch_id: task.input.batch_id, export_task_id: task.input.export_task_id }),
-            uploadTaskId: task.result.upload_task_id, artifactSha256: task.input.artifact_sha256, fileName: task.result.file_name,
-            sizeBytes: task.input.size_bytes, selectedIndex: fence.selectedIndex, readyEvidence: task.result.readyEvidence! };
-        });
-        const failure = uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "定时自动确认已进入一次性处理；千川是否接受仍未知。",
-          automationConfirmationRecoveryLock(authorization.pageBatchId), true).failure;
-        for (const task of tasks) {
-          task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, retryable: false, failure, timestamp: timestamp() };
-        }
-        // Persist the unknown barrier before the confirmation intent and before any platform click.
-        // A crash or a failed post-click save can therefore never restore this batch as READY.
-        try { await this.save(tasks); } catch (error) { this.store.endAutomationAcceptance(acceptance); throw error; }
-        this.pauseAccount(first);
-        const controller = new AbortController(), ids = tasks.map(task => task.result.upload_task_id);
-        this.active = { ids, controller, port };
-        let intentWritten = false, platformAccepted = false, actionError: unknown;
-        try {
-          await persistAutomationConfirmationIntent(this.store.root, { version: 1, pageBatchId: authorization.pageBatchId, target: authorization.target,
-            expectedCount: authorization.expectedCount, pageOwnership: ownership, files, recordedAt: timestamp() });
-          intentWritten = true;
-          const actionSignal = AbortSignal.any([signal, controller.signal]); actionSignal.throwIfAborted();
-          const proof = await port.confirmAutomation(confirmationTasks, ownership, actionSignal);
-          actionSignal.throwIfAborted();
-          if (proof) {
-            await this.store.acceptAutomation(acceptance, proof);
-            platformAccepted = true; this.refreshAccountPauses(); this.changed();
+        await this.runPending(); signal.throwIfAborted();
+        for (let index = 0; index < accountPrepared.length; index++) {
+          const authorization = authorizations[index]!;
+          const tasks = this.store.tasks().filter(task => task.authorization.pageBatchId === authorization.pageBatchId)
+            .sort((left, right) => (this.store.fence(left.result.upload_task_id)?.selectedIndex ?? Number.MAX_SAFE_INTEGER) - (this.store.fence(right.result.upload_task_id)?.selectedIndex ?? Number.MAX_SAFE_INTEGER));
+          if (tasks.length === authorization.expectedCount && tasks.every(task => task.result.duplicate_of && task.result.state === "ACCEPTED" && task.result.acceptedEvidence)) continue;
+          if (tasks.length !== authorization.expectedCount || tasks.some(task => task.result.state !== "WAITING_FOR_CONFIRMATION" || task.result.upload_outcome !== "READY" || !task.result.readyEvidence)) {
+            const failed = tasks.find(task => task.result.failure)?.result.failure;
+            failures.push(failed ? new UploadError(failed) : new Error("定时上传批次未全部达到 READY，未自动确认。"));
+            continue;
           }
-        } catch (error) { actionError = error; }
-        finally { this.store.endAutomationAcceptance(acceptance); if (this.active?.controller === controller) this.active = undefined; }
-        if (!intentWritten) {
-          failures.push(actionError instanceof Error ? actionError : new Error("自动确认意图未能持久保存，未点击千川确认。"));
-          continue;
+          const first = tasks[0]!, port = this.sessions.get(authorization.pageBatchId), ownership = this.store.fence(first.result.upload_task_id)?.pageOwnership;
+          if (!port?.confirmAutomation || authorization.target.egress?.mode === "remote-browser" && !port.closeAcceptedAutomationPage || !ownership || tasks.some(task => {
+            const fence = this.store.fence(task.result.upload_task_id);
+            return !fence || !this.store.hasMarker(task.result.upload_task_id) || JSON.stringify(fence.pageOwnership) !== JSON.stringify(ownership) ||
+              task.result.readyEvidence!.selectedCount > authorization.expectedCount || JSON.stringify(task.result.readyEvidence!.pageOwnership) !== JSON.stringify(ownership);
+          })) {
+            failures.push(new Error("原上传标签页、弹窗或 READY 文件无法唯一绑定，未自动确认。"));
+            continue;
+          }
+          signal.throwIfAborted();
+          const finalReady = await port.pollReady(tasks, signal);
+          if (!finalReady || finalReady.length !== tasks.length) {
+            failures.push(new Error("最终整批 READY 核验未通过，未自动确认。"));
+            continue;
+          }
+          await this.saveReady(tasks, finalReady, signal);
+          const confirmationTasks = structuredClone(tasks);
+          const acceptance = this.store.beginAutomationAcceptance(confirmationTasks);
+          const files = tasks.map(task => {
+            const fence = this.store.fence(task.result.upload_task_id)!;
+            return { identity: UploadIdentitySchema.parse({ project_id: task.input.project_id, batch_id: task.input.batch_id, export_task_id: task.input.export_task_id }),
+              uploadTaskId: task.result.upload_task_id, artifactSha256: task.input.artifact_sha256, fileName: task.result.file_name,
+              sizeBytes: task.input.size_bytes, selectedIndex: fence.selectedIndex, readyEvidence: task.result.readyEvidence! };
+          });
+          const failure = uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "定时自动确认已进入一次性处理；千川是否接受仍未知。",
+            automationConfirmationRecoveryLock(authorization.pageBatchId), true).failure;
+          for (const task of tasks) {
+            task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, retryable: false, failure, timestamp: timestamp() };
+          }
+          // Persist the unknown barrier before the confirmation intent and before any platform click.
+          // A crash or a failed post-click save can therefore never restore this batch as READY.
+          try { await this.save(tasks); } catch (error) { this.store.endAutomationAcceptance(acceptance); throw error; }
+          this.pauseAccount(first);
+          const controller = new AbortController(), ids = tasks.map(task => task.result.upload_task_id);
+          this.active = { ids, controller, port };
+          let intentWritten = false, platformAccepted = false, actionError: unknown;
+          try {
+            await persistAutomationConfirmationIntent(this.store.root, { version: 1, pageBatchId: authorization.pageBatchId, target: authorization.target,
+              expectedCount: authorization.expectedCount, pageOwnership: ownership, files, recordedAt: timestamp() });
+            intentWritten = true;
+            const actionSignal = AbortSignal.any([signal, controller.signal]); actionSignal.throwIfAborted();
+            const proof = await port.confirmAutomation(confirmationTasks, ownership, actionSignal);
+            actionSignal.throwIfAborted();
+            if (proof) {
+              await this.store.acceptAutomation(acceptance, proof);
+              platformAccepted = true; this.refreshAccountPauses(); this.changed();
+            }
+          } catch (error) { actionError = error; }
+          finally { this.store.endAutomationAcceptance(acceptance); if (this.active?.controller === controller) this.active = undefined; }
+          if (!intentWritten) {
+            failures.push(actionError instanceof Error ? actionError : new Error("自动确认意图未能持久保存，未点击千川确认。"));
+            continue;
+          }
+          if (!platformAccepted) failures.push(unknown(actionError instanceof UploadError ? actionError : undefined));
+          else if (authorization.target.egress?.mode === "remote-browser") {
+            const guard = () => {
+              signal.throwIfAborted();
+              if (generation !== this.controlGeneration || this.stopFailed || this.stopping || this.store.unavailable ||
+                ids.some(id => {
+                  const result = this.store.task(id)?.result;
+                  return result?.state !== "ACCEPTED" || result.upload_outcome !== "ACCEPTED" || !result.acceptedEvidence ||
+                    JSON.stringify(result.acceptedEvidence.pageOwnership) !== JSON.stringify(ownership);
+                })) throw new Error("已接收上传页的关闭资格已变化，未继续自动化。");
+            };
+            guard();
+            await this.bounded(inner => port.closeAcceptedAutomationPage!(ids.map(id => this.store.task(id)!), ownership, inner, guard), 15000, signal);
+            guard();
+            await this.bounded(() => port.stop(), 5000, signal);
+            this.sessions.delete(authorization.pageBatchId);
+          }
         }
-        if (!platformAccepted) failures.push(unknown(actionError instanceof UploadError ? actionError : undefined));
+        if (failures.length) throw failures.find(error => error instanceof UploadError) ?? failures[0]!;
+        if (!retainBrowser || accountGroups.length > 1) await this.automationBrowsers.finish(accountPrepared[0]!.target, signal);
       }
-      if (failures.length) throw failures.find(error => error instanceof UploadError) ?? failures[0]!;
     } catch (error) {
+      this.automationBrowsers.release();
       if (signal.aborted) cancel();
       if (admitted && !this.stopped) {
         abortStop ??= this.stop(); await abortStop;
@@ -724,7 +811,7 @@ export class DouyinUploadService {
     return new Promise((resolve, reject) => { void this.resume(id, resolve).then(resolve, error => { reject(error); this.changed(); }); });
   }
   resume(id: string, accepted?: () => void): Promise<void> {
-    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后继续上传。"));
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后继续上传。"));
     if (this.stopFailed) return Promise.reject(new Error("旧上传操作未能安全停止，请先关闭应用并核查 Chrome。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.closing) return Promise.reject(new Error("正在结束本批本地上传，请等待记录保存。"));
@@ -793,7 +880,7 @@ export class DouyinUploadService {
     }); this.control = work; return work;
   }
   retarget(id: string, expectedAdId: string): Promise<void> {
-    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后改传计划。"));
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后改传计划。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.closing) return Promise.reject(new Error("正在结束本批本地上传，请等待记录保存。"));
     if (this.discarding) return Promise.reject(new Error("正在删除本批上传任务，请等待记录保存。"));
@@ -823,7 +910,7 @@ export class DouyinUploadService {
     this.control = work; return work;
   }
   discard(id: string): Promise<void> {
-    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后处理上传任务。"));
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后处理上传任务。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再删除本批任务。"));
     this.discarding = true;
@@ -879,6 +966,7 @@ export class DouyinUploadService {
   }
   async stop(): Promise<boolean> {
     let drained = true;
+    if (!this.preparingAutomationUpload) this.automationBrowsers.release();
     const libraryOperation = this.libraryOperation;
     libraryOperation?.controller.abort();
     this.planPreloadController?.abort();
@@ -891,7 +979,7 @@ export class DouyinUploadService {
     return !this.stopFailed;
   }
   closeBatch(id: string): Promise<void> {
-    if (this.managingBrowser) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后结束本批上传。"));
+    if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后结束本批上传。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再结束本批本地上传。"));
     this.closing = true;

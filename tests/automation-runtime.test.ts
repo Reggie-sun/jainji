@@ -10,6 +10,7 @@ import type { BatchProductionController } from "../src/main/batch-production-con
 import type { QueueSnapshot } from "../src/main/queue";
 import type { QianchuanLibraryResult } from "../src/shared/qianchuan-video-library";
 import type { BatchProductionRun } from "../src/shared/batch-production";
+import { uploadProducingExports } from "../src/main/automation-production-upload";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -31,6 +32,7 @@ async function fixture() {
     queue: { snapshot: () => ({ batches: [{ batch: { id: batchId, projectId: project.id, tasks: [{ id: exportId, status: "completed", outputArtifact: { taskId: exportId } }] } }] }) as QueueSnapshot, waitForPersistence: async (signal: AbortSignal) => signal.throwIfAborted() },
     task: (id: string) => tasks.get(id), produce, clear: vi.fn(async (): Promise<QianchuanLibraryResult[]> => [{ product: "蝴蝶贴", advertiserId: "123", state: "CLEARED", deletedCount: 0, message: "清理完成" }]),
     upload: vi.fn(async (_groups: Parameters<ConstructorParameters<typeof AutomationRuntime>[1]["upload"]>[0], _signal: AbortSignal) => {}),
+    finishUploadAccount: vi.fn(async () => {}), releaseUploadAccounts: vi.fn(),
   };
   const runtime = new AutomationRuntime(root, dependencies);
   const create = async (input = request) => {
@@ -85,6 +87,39 @@ it("sends at most nine ready exports per call and includes the final short group
   const result = await f.runtime.execute(f.task, new AbortController().signal);
   expect(f.dependencies.upload.mock.calls.map(call => (call[0] as { exports: unknown[] }[])[0].exports.length)).toEqual([9, 9, 2]);
   expect(result.exports).toHaveLength(20);
+});
+
+it("holds a remote account until its remaining exports finish, then closes before advancing through five accounts", async () => {
+  const f = await streamingFixture(2);
+  const products = ["蝴蝶贴", "氨糖膏", "滴耳康", "眼贴", "肥皂"] as const;
+  const route = { mode: "remote-browser" as const, group: "one", sshHost: "one", localPort: 19160, expectedIp: "8.8.8.8" };
+  const bindings = products.map((product, i) => ({ recentProjectId: i ? crypto.randomUUID() : f.recentId,
+    projectId: i ? crypto.randomUUID() : f.project.id, requestedCount: i ? 1 : 2,
+    target: { ...f.account, product, advertiserId: String(1000 + i), egress: route },
+    selection: { enabled: true as const, accountProduct: product, plan: { advertiserId: String(1000 + i), adId: "456", name: "计划" } } }));
+  const batchIds = bindings.map((_, i) => i ? crypto.randomUUID() : f.batchId);
+  bindings.slice(1).forEach(binding => f.run.jobs.push({ ...f.run.jobs[0], id: crypto.randomUUID(), recentProjectId: binding.recentProjectId,
+    projectId: binding.projectId, requestedCount: 1, actualCount: 1, taskIds: [crypto.randomUUID()], completedTaskIds: [], completedCount: 1, status: "completed" }));
+  f.run.jobs.slice(1).forEach(job => { job.completedTaskIds = [...job.taskIds]; }); f.complete([f.ids[0]]);
+  f.dependencies.queue.snapshot = () => ({ batches: f.run.jobs.map((job, i) => ({ batch: { id: batchIds[i], projectId: bindings[i].projectId,
+    tasks: job.completedTaskIds!.map(id => ({ id, batchId: batchIds[i], status: "completed", outputArtifact: { taskId: id } })) } })) }) as QueueSnapshot;
+  const events: string[] = [];
+  const uploading = uploadProducingExports({ runId: f.run.id, bindings, controller: f.dependencies.controller, queue: f.dependencies.queue,
+    upload: async groups => { events.push(`upload:${groups[0].target.advertiserId}`); }, finishAccount: async target => { events.push(`close:${target.advertiserId}`); } }, new AbortController().signal);
+  await vi.waitFor(() => expect(events).toEqual(["upload:1000"]));
+  await new Promise(resolve => setTimeout(resolve, 300)); expect(events).toEqual(["upload:1000"]);
+  f.complete(f.ids); f.finish();
+  expect(await uploading).toHaveLength(6);
+  expect(events).toEqual(["upload:1000", "upload:1000", "close:1000", ...bindings.slice(1).flatMap(b => [`upload:${b.target.advertiserId}`, `close:${b.target.advertiserId}`])]);
+});
+
+it("does not upload to the next remote account when closing the completed account fails", async () => {
+  const f = await streamingFixture(); f.complete(f.ids); f.finish();
+  const target = { ...f.account, egress: { mode: "remote-browser" as const, group: "one", sshHost: "one", localPort: 19160, expectedIp: "8.8.8.8" } };
+  const upload = vi.fn(async () => {}), finishAccount = vi.fn(async () => { throw new Error("close failed"); });
+  await expect(uploadProducingExports({ runId: f.run.id, bindings: [{ recentProjectId: f.recentId, projectId: f.project.id, requestedCount: 1,
+    target, selection: f.request.production!.entries[0].douyinUpload! }], controller: f.dependencies.controller, queue: f.dependencies.queue, upload, finishAccount }, new AbortController().signal)).rejects.toThrow("close failed");
+  expect(upload).toHaveBeenCalledTimes(1); expect(finishAccount).toHaveBeenCalledTimes(1);
 });
 
 it("uploads successful exports from a normally failed production job but does not complete the automation", async () => {
