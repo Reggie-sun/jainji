@@ -4,6 +4,8 @@ import path from "node:path";
 import os from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
 import { QianchuanBrowserManager, accountChromeArguments } from "../src/main/qianchuan-browser-manager";
+import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+import { qianchuanAccountName } from "../src/shared/qianchuan-account";
 import { runningChromeBrowsers, type RunningChromeBrowser } from "../src/main/qianchuan-browser-discovery";
 import { readChromeTargets } from "../src/main/local-cdp-transport";
 import { chromium } from "playwright-core";
@@ -20,6 +22,38 @@ async function fixture() {
   const ready = vi.fn(async () => true);
   return { root, running, launch, browsers, ready, manager: new QianchuanBrowserManager(root, { launch, browsers, ready, startupMs: 200 }) };
 }
+
+it.each([undefined, "remote-browser" as const])("reads the bound shop name independently of upload mode %s without browser or network activity", async mode => {
+  const f = await fixture(), profile = path.join(f.root, "original");
+  await mkdir(path.join(profile, "Profile 9"), { recursive: true, mode: 0o700 });
+  await new QianchuanBrowserBindings(f.root).save({ advertiserId: "123", profile, profileDirectory: "Profile 9" });
+  const file = path.join(profile, "Local State");
+  const writeName = (name: string) => writeFile(file, JSON.stringify({ profile: { info_cache: { "Profile 9": { name }, Default: { name: "其他店铺" } } } }), { mode: 0o600 });
+  await writeName("予浅好物甄选");
+  const egress = vi.fn(async () => mode ? { mode, group: "shop-one", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } : undefined);
+  const manager = new QianchuanBrowserManager(f.root, { launch: f.launch, browsers: f.browsers, egress });
+  const request = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("unexpected network activity"));
+  const binding = path.join(f.root, "account-browser-bindings", "bindings.json"), before = await readFile(binding);
+  const browserProfileName = await manager.profileName("123");
+  expect(browserProfileName).toBe("予浅好物甄选");
+  expect(qianchuanAccountName({ product: "蝴蝶贴", browserProfileName, advertiserId: "123", adId: "456", available: true })).toBe("予浅好物甄选");
+  await writeName("安序居家");
+  expect(await manager.profileName("123")).toBe("安序居家");
+  expect(await manager.profileName("456")).toBeUndefined();
+  await rm(file);
+  expect(await manager.profileName("123")).toBeUndefined();
+  expect(await readFile(binding)).toEqual(before);
+  expect(f.launch).not.toHaveBeenCalled(); expect(f.browsers).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
+});
+
+it("does not substitute an unbound local managed name for a VPS account", async () => {
+  const f = await fixture(), profile = path.join(f.root, "account-browsers", "123");
+  await mkdir(path.join(profile, "Default"), { recursive: true, mode: 0o700 });
+  await writeFile(path.join(profile, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "未绑定的本机店铺" } } } }), { mode: 0o600 });
+  const manager = new QianchuanBrowserManager(f.root, { egress: async () => ({ mode: "remote-browser", group: "shop-one", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" }) });
+  expect(await manager.profileName("123")).toBeUndefined();
+  expect(await f.manager.profileName("123")).toBe("未绑定的本机店铺");
+});
 
 it("does nothing at construction, starts one browser per account, coalesces requests and reuses its exact profile", async () => {
   const f = await fixture(); expect(f.launch).not.toHaveBeenCalled();

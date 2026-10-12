@@ -59,9 +59,9 @@ export class QianchuanBrowserManager {
   /** Display-only lookup of an already bound profile; no discovery or browser lifecycle. */
   async profileName(advertiserId: string): Promise<string | undefined> {
     try {
-      if ((await this.dependencies.egress?.(advertiserId))?.mode === "remote-browser") return undefined;
       const managed = this.profile(advertiserId);
       const binding = await this.bindings.get(advertiserId);
+      if (!binding && (await this.dependencies.egress?.(advertiserId))?.mode === "remote-browser") return undefined;
       return await readQianchuanProfileName(binding ?? { advertiserId, profile: managed, profileDirectory: "Default" });
     } catch { return undefined; }
   }
