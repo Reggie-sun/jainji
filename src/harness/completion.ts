@@ -60,7 +60,7 @@ export async function verifyReceipt(repoRoot: string, scopePath: string, receipt
       return rejected("Frozen policy or scope does not match current inputs.");
     }
     const ids = receipt.checks.map((check) => check.id);
-    if (new Set(ids).size !== ids.length || aggregateOutcome(receipt.checks) !== "PASS") return rejected("Duplicate or nonpassing checks.");
+    if (new Set(ids).size !== ids.length || ids.length !== selection.checks.length || aggregateOutcome(receipt.checks) !== "PASS") return rejected("Unexpected, duplicate or nonpassing checks.");
     for (const selected of selection.checks) {
       const result = receipt.checks.find((check) => check.id === selected.id);
       if (!result || !result.required || result.status !== "PASS") return rejected(`Missing required PASS check: ${selected.id}`);
@@ -85,13 +85,17 @@ export async function verifyReceipt(repoRoot: string, scopePath: string, receipt
         if (evaluation.status !== "PASS") return rejected(`Report cannot prove success: ${selected.id}: ${evaluation.message}`);
       }
     }
+    const controlIds = selection.checks.filter((check) => ["documents", "owned-aoci"].includes(check.id)).map((check) => check.id);
     const governance = options.governance ?? (async (ownedScope, refs) => {
       const { checkDocuments, checkOwnedAoci } = await import("./governance.js");
-      return [await checkDocuments(repoRoot, ownedScope.ownedChanges.filter((change) => change.change !== "delete" && change.path.endsWith(".md")).map((change) => change.path), refs),
-        await checkOwnedAoci(repoRoot, ownedScope.ownedChanges)];
+      const results: HarnessCheckResult[] = [];
+      if (controlIds.includes("documents")) results.push(await checkDocuments(repoRoot, ownedScope.ownedChanges.filter((change) => change.change !== "delete" && change.path.endsWith(".md")).map((change) => change.path), refs));
+      if (controlIds.includes("owned-aoci")) results.push(await checkOwnedAoci(repoRoot, ownedScope.ownedChanges.filter((change) => selection.aociPaths.includes(change.path))));
+      return results;
     });
-    const controls = await governance(scope, selection.documentRefs);
-    if (!controls.some((check) => check.id === "documents" && check.required) || !controls.some((check) => check.id === "owned-aoci" && check.required)) {
+    const controls = controlIds.length > 0 ? await governance(scope, selection.documentRefs) : [];
+    if (controls.length !== controlIds.length || new Set(controls.map((check) => check.id)).size !== controls.length ||
+      controlIds.some((id) => !controls.some((check) => check.id === id && check.required === true))) {
       return rejected("Current governance checks are missing.");
     }
     return [...receipt.checks.filter((check) => !["documents", "owned-aoci"].includes(check.id)), ...controls,

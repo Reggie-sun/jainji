@@ -11,6 +11,7 @@ export interface SelectedChecks {
   checks: CodeCheckPolicy[];
   documentRefs: string[];
   routeIds: string[];
+  aociPaths: string[];
 }
 
 function segmentMatches(pattern: string, value: string): boolean {
@@ -49,17 +50,34 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
   const selectedRouteIds = new Set<string>();
   const selectedCheckIds = new Set<string>();
   const selectedDocumentRefs = new Set<string>();
+  const contributedChanges = new Map<string, HarnessTaskScope["ownedChanges"]>();
+  const aociPaths = new Set(parsedScope.aoci?.paths ?? []);
 
   for (const change of parsedScope.ownedChanges) {
     const candidates = matchingRoutes(parsedPolicy.routes, change.path);
     const hasDomain = candidates.some((route) => (route.tier ?? "domain") === "domain");
     const matches = candidates.filter((route) => route.tier !== "fallback" || !hasDomain);
     if (matches.length === 0) throw new Error(`Unmapped owned path: ${change.path}`);
+    if (/^src\/.+\.[cm]?tsx?$/.test(change.path) && !change.path.endsWith(".d.ts") && matches.every((route) => route.tier === "baseline")) {
+      throw new Error(`Unmapped behavioral source: ${change.path}; a domain or fallback route is required.`);
+    }
     for (const route of matches) {
       selectedRouteIds.add(route.id);
-      for (const checkId of route.checkIds) selectedCheckIds.add(checkId);
+      for (const checkId of route.checkIds) {
+        selectedCheckIds.add(checkId);
+        const changes = contributedChanges.get(checkId) ?? [];
+        if (!changes.some((item) => item.path === change.path)) changes.push(change);
+        contributedChanges.set(checkId, changes);
+        if (checkId === "owned-aoci") aociPaths.add(change.path);
+      }
       for (const documentRef of route.documentRefs) selectedDocumentRefs.add(documentRef);
     }
+  }
+  if (aociPaths.size > 0) {
+    if (!parsedPolicy.controlChecks.some((check) => check.id === "owned-aoci" && check.required)) {
+      throw new Error("Required AOCI has no registered required control check.");
+    }
+    selectedCheckIds.add("owned-aoci");
   }
 
   const checks = [
@@ -68,9 +86,15 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
   ].filter((check) => selectedCheckIds.has(check.id)).map((check): CodeCheckPolicy => {
     if (check.kind !== "vitest") return check;
     const contributors = parsedPolicy.routes.filter((route) => selectedRouteIds.has(route.id) && route.checkIds.includes(check.id));
-    if (contributors.some((route) => !route.testFilesByCheck?.[check.id])) return check;
-    const files = new Set(contributors.flatMap((route) => route.testFilesByCheck![check.id]));
-    return { ...check, testFiles: check.testFiles.filter((file) => files.has(file)) };
+    const full = contributors.some((route) => !route.testFilesByCheck?.[check.id]);
+    const files = new Set(contributors.flatMap((route) => route.testFilesByCheck?.[check.id] ?? []));
+    let testFiles = full ? check.testFiles : check.testFiles.filter((file) => files.has(file));
+    const changes = contributedChanges.get(check.id) ?? [];
+    if (contributors.every((route) => !route.testFilesByCheck?.[check.id]) && changes.length > 0 &&
+      changes.every((change) => change.change !== "delete" && check.testFiles.includes(change.path))) {
+      testFiles = testFiles.filter((file) => changes.some((change) => change.path === file));
+    }
+    return { ...check, testFiles };
   });
   if (checks.length === 0) throw new Error("Selected route set is empty; no executable checks cover this scope.");
   const optionalChecks = checks.filter((check) => !check.required).map((check) => check.id);
@@ -88,6 +112,7 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
   return {
     checks,
     routeIds: parsedPolicy.routes.filter((route) => selectedRouteIds.has(route.id)).map((route) => route.id),
+    aociPaths: parsedScope.ownedChanges.filter((change) => aociPaths.has(change.path)).map((change) => change.path),
     documentRefs: [...selectedDocumentRefs].sort((left, right) => left < right ? -1 : left > right ? 1 : 0),
   };
 }

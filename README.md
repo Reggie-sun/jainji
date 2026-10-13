@@ -156,11 +156,13 @@ npm run harness -- media --project /absolute/path/project.json --batch <batch-id
 npm run harness -- media --queue /absolute/path/queue-state.json
 ```
 
-`code` 顺序运行 policy 的默认核心检查，不等于完整发布或桌面验收；专项注册不代表每次都运行研究或平台实验。`code --scope` 校验声明的 Git 前像、当前后像，按完整 policy routes 选择必需检查及关联文档；纯文档只运行文档和 owned AOCI 控制。scope 声明不证明作者归属，空/未分类/未注册路径与必需 skip 不可通过。
+`code` 顺序运行 policy 的默认核心检查，不等于完整发布或桌面验收；专项注册不代表每次都运行研究或平台实验。`code --scope` 校验 Git 前像、当前后像，按 policy routes 选择必需检查及关联文档；纯文档只检查文档，Harness 自测仅在自身变更时运行。仅改已登记测试时可缩至改动文件；源码/helper/删除及固定子集保留对应回归范围。业务源码只有 baseline 路由会拒绝通过。scope 不证明作者归属，空/未分类/未注册路径与必需 skip 不可通过。
 
 scope 使用 `schemaVersion: "harness-task-scope/v1"`、`sessionId`、完整 `baseCommit` 和非空 `ownedChanges`。每项含 `path`、`change`（add/modify/delete）、`beforeSha256` / `afterSha256`（`sha256:<64 lowercase hex>`，不存在为 null）；rename 写成 delete + add。路径须规范、仓库内且不是 symlink，不能放凭据或用户数据；详细形状见 [Scope Contract](docs/superpowers/specs/2026-10-02-agents-harness-governance-design.md#r02--task-scope-is-a-declaration-not-attribution-proof)。保存到忽略的 runs 目录，不把临时 scope 放进正式索引范围。
 
-`verify` 复核已完成 scoped code v2 receipt 的原始报告、policy/scope、源码与合同字节，重新检查文档和官方 owned AOCI，生成独立 receipt；不重跑测试、修改旧回执、调用模型、维护 AOCI 或执行 Git mutation。旧 v1 receipt 可读但不能通过新 completion。`ownedAoci` 与 `repositoryAoci` 分开报告，本次对齐不代表全库无漂移；维护仍由 session 按官方 Guide 执行。
+需要维护 indexed 语义/身份、修复过期索引或明确治理时，在 scope 添加 `aoci: { reason, paths }`；合法原因及路径约束见 Scope Contract。该声明只追加 required AOCI，正式资产/配置/根规则由 policy 自动触发。普通文档/测试/样式不默认启动 AOCI，必要维护仍由 session 按官方 Guide 执行。
+
+`verify` 复核已完成 scoped code v2 receipt 的原始报告、policy/scope、源码与合同字节，只重新检查所选文档/AOCI controls，生成独立 receipt；不重跑测试、修改旧回执、调用模型、维护 AOCI 或执行 Git mutation。旧 v1 receipt 可读但不能通过新 completion。`ownedAoci` 与 `repositoryAoci` 分开报告，本次对齐不代表全库无漂移。
 
 `media` 只读解析当前 schema 的项目或 QueueState，只检查显式批次及冻结的 `mediaSnapshots`，不会迁移项目、入队、重导出或调用模型；缺少冻结快照时返回 `NOT_EVALUATED`，不会使用当前素材补齐历史证据。
 

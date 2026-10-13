@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { selectChecks } from "../src/harness/routing.js";
 import {
   HarnessPolicySchema,
+  HarnessTaskScopeSchema,
   MEDIA_CHECK_IDS,
   aggregateOutcome,
   type HarnessPolicy,
@@ -55,6 +56,52 @@ function scope(paths: string[]): HarnessTaskScope {
 }
 
 describe("harness policy routing", () => {
+  it("runs only the changed registered test for a test-only scope", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const selected = selectChecks(candidate, scope(["tests/results-panel.test.ts"]));
+    expect(selected.checks.flatMap(check => check.kind === "vitest" ? check.testFiles : [])).toEqual(["tests/results-panel.test.ts"]);
+    expect(selected.checks.map(check => check.id)).not.toContain("owned-aoci");
+  });
+
+  it("binds output-directory and result rendering sources to their own behavioral tests", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    for (const [source, test] of [["src/main/automatic-output-directory.ts", "tests/automatic-output-directory.test.ts"], ["src/renderer/ResultsPanel.tsx", "tests/results-panel.test.ts"]]) {
+      const selected = selectChecks(candidate, scope([source]));
+      expect(selected.checks.flatMap(check => check.kind === "vitest" ? check.testFiles : []), source).toContain(test);
+      expect(selected.checks.map(check => check.id)).not.toContain("harness");
+    }
+    expect(() => selectChecks(candidate, scope(["src/main/unregistered-behavior.ts"]))).toThrow(/unmapped.*behavior|behavior.*route/i);
+  });
+
+  it("keeps required AOCI additive and limits it to owned paths", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const ordinary = scope(["src/harness/routing.ts", "README.md"]);
+    const explicit = { ...ordinary, aoci: { reason: "indexed-semantics" as const, paths: ["src/harness/routing.ts"] } };
+    const selected = selectChecks(candidate, explicit);
+    expect(selected.checks.find(check => check.id === "owned-aoci")).toMatchObject({ required: true });
+    expect(selected.aociPaths).toEqual(["src/harness/routing.ts"]);
+    expect(selectChecks(candidate, ordinary).checks.map(check => check.id)).not.toContain("owned-aoci");
+    expect(HarnessTaskScopeSchema.safeParse({ ...ordinary, aoci: { reason: "indexed-semantics", paths: ["src/foreign.ts"] } }).success).toBe(false);
+    expect(HarnessTaskScopeSchema.safeParse({ ...ordinary, aoci: { reason: "skip", paths: [] } }).success).toBe(false);
+    expect(HarnessTaskScopeSchema.safeParse({ ...ordinary, aoci: { reason: "indexed-semantics", paths: ["README.md", "README.md"] } }).success).toBe(false);
+    expect(selectChecks(candidate, scope(["AGENTS.md"])).checks.map(check => check.id)).toContain("owned-aoci");
+    const automatic = { ...scope(["AGENTS.md", "README.md"]), aoci: { reason: "explicit-governance" as const, paths: ["README.md"] } };
+    expect(selectChecks(candidate, automatic).aociPaths).toEqual(["AGENTS.md", "README.md"]);
+    if (candidate.schemaVersion !== 2) throw Error("Expected policy v2");
+    expect(() => selectChecks({ ...candidate, controlChecks: candidate.controlChecks.map(check => check.id === "owned-aoci" ? { ...check, required: false } : check) }, explicit)).toThrow(/required AOCI/i);
+  });
+
+  it("preserves full source and deleted-test contributions in mixed scopes", () => {
+    const candidate = policy();
+    const mixed = selectChecks(candidate, scope(["src/harness/routing.ts", "tests/harness-routing.test.ts"]));
+    expect(mixed.checks.find(check => check.id === "harness-tests")).toMatchObject({ testFiles: ["tests/harness-scope.test.ts", "tests/harness-routing.test.ts"] });
+    const deleted = scope(["tests/harness-old.test.ts"]);
+    deleted.ownedChanges[0] = { ...deleted.ownedChanges[0], change: "delete", afterSha256: null };
+    expect(selectChecks(candidate, deleted).checks.find(check => check.id === "harness-tests")).toMatchObject({ testFiles: ["tests/harness-scope.test.ts", "tests/harness-routing.test.ts"] });
+    const helperPolicy = policy({ routes: [{ id: "helper", paths: ["tests/**"], checkIds: ["harness-tests"], documentRefs: [] }] });
+    expect(selectChecks(helperPolicy, scope(["tests/harness-routing.test.ts", "tests/helpers/harness-fixture.ts"])).checks[0]).toMatchObject({ testFiles: ["tests/harness-scope.test.ts", "tests/harness-routing.test.ts"] });
+  });
+
   it("binds storage changes to store, migration, project and original queue regressions", () => {
     const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
     for (const paths of [["src/main/store.ts"], ["src/main/state-migrations.ts"], ["tests/store.test.ts", "tests/state-migrations.test.ts"]]) {
@@ -74,7 +121,7 @@ describe("harness policy routing", () => {
     expect(selected.checks.find(check => check.id === "lifecycle")).toMatchObject({
       required: true, testFiles: ["tests/batch-production.test.ts"],
     });
-    expect(selected.checks.map(check => check.id)).toEqual(expect.arrayContaining(["typecheck", "harness", "documents", "owned-aoci"]));
+    expect(selected.checks.map(check => check.id)).toEqual(["task-pages", "typecheck", "lifecycle", "documents"]);
   });
 
   it("selects domain or fallback separately for each owned path while retaining baseline", () => {
@@ -113,13 +160,13 @@ describe("harness policy routing", () => {
   it("keeps frame regressions focused, governance-only assets narrow, and unknown shared entries conservative", () => {
     const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(new URL("../.agent/harness/policy.json", import.meta.url), "utf8")));
     const selected = selectChecks(candidate, scope(["src/shared/frames.ts", "src/main/builtin-frames.ts", "tests/builtin-stickers.test.ts", "aoci.code.txt", ".aoci/baseline.json"]));
-    expect(selected.checks.map(c => c.id)).toEqual(["typecheck", "harness", "text-and-plan", "lifecycle", "real-media", "layout", "frame-assets", "documents", "owned-aoci"]);
+    expect(selected.checks.map(c => c.id)).toEqual(["typecheck", "text-and-plan", "lifecycle", "real-media", "layout", "frame-assets", "documents", "owned-aoci"]);
     const files = selected.checks.flatMap(c => c.kind === "vitest" ? c.testFiles : []);
-    expect(files).toHaveLength(20);
+    expect(files).toHaveLength(14);
     expect(new Set(files).size).toBe(files.length);
     expect(files).toEqual(expect.arrayContaining(["tests/agent-controller.test.ts", "tests/agent-runner.test.ts", "tests/compiler.test.ts", "tests/four-corner-render.integration.test.ts", "tests/append-production.test.ts"]));
     expect(selectChecks(candidate, scope(["aoci.code.txt"])).checks.map(c => c.id)).toEqual(["documents", "owned-aoci"]);
-    expect(selectChecks(candidate, scope(["src/harness/routing.ts", ".agent/harness/policy.json"])).checks.map(c => c.id)).toEqual(["typecheck", "harness", "documents", "owned-aoci"]);
+    expect(selectChecks(candidate, scope(["src/harness/routing.ts", ".agent/harness/policy.json"])).checks.map(c => c.id)).toEqual(["typecheck", "harness", "documents"]);
     expect(selectChecks(candidate, scope(["src/shared/frames.ts", "src/shared/agent.ts"])).checks.map(c => c.id)).toContain("douyin-upload");
   });
 
@@ -128,7 +175,7 @@ describe("harness policy routing", () => {
     if (policy.schemaVersion !== 2) throw Error("Expected policy v2");
     const selected = selectChecks(policy, scope(["src/main/hybrid-cover-production.ts", "tests/hybrid-cover-session.test.ts"]));
     expect(selected.checks.map(c => c.id)).toEqual(expect.arrayContaining(policy.defaultCheckIds ?? []));
-    expect(selected.checks.map(c => c.id)).toEqual(expect.arrayContaining(["hybrid-activation", "hybrid-corner-h3", "extended-regressions", "documents", "owned-aoci"]));
+    expect(selected.checks.map(c => c.id)).toEqual(expect.arrayContaining(["hybrid-activation", "hybrid-corner-h3", "extended-regressions", "documents"]));
     expect(selected.checks.every(c => c.required)).toBe(true);
   });
   it("keeps H4 QA development focused while preserving required H3 and extended integration checks", () => {
@@ -137,7 +184,7 @@ describe("harness policy routing", () => {
     ));
     if (repositoryPolicy.schemaVersion !== 2) throw new Error("Expected policy v2");
     const selected = selectChecks(repositoryPolicy, scope(["src/main/shape-cover-vision-router.ts", "tests/shape-cover-hybrid-preview.test.ts"]));
-    expect(selected.checks.map(c => c.id)).toEqual(expect.arrayContaining(["typecheck", "hybrid-vision", "hybrid-corner-h4", "hybrid-corner-h3-focused", "owned-aoci"]));
+    expect(selected.checks.map(c => c.id)).toEqual(expect.arrayContaining(["typecheck", "hybrid-vision", "hybrid-corner-h4", "hybrid-corner-h3-focused"]));
     expect(selected.checks.map(c => c.id)).not.toEqual(expect.arrayContaining(["extended-regressions"]));
     expect(selected.checks.map(c => c.id)).not.toContain("hybrid-corner-h3");
     expect(selected.checks.every(c => c.required)).toBe(true);
@@ -267,7 +314,7 @@ describe("harness policy routing", () => {
     for (const file of ["docs/agent-contract-index.md", "docs/shape-matched-cover-hybrid-activation-record.md"]) {
       const selected = selectChecks(repositoryPolicy, scope([file]));
       expect(selected.routeIds).toEqual(["docs-and-rules"]);
-      expect(selected.checks.map((check) => check.id)).toEqual(["documents", "owned-aoci"]);
+      expect(selected.checks.map((check) => check.id)).toEqual(["documents"]);
     }
   });
 

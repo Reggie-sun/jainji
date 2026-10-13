@@ -27,7 +27,11 @@ v2 scoped code receipt 分别绑定当前 policy/scope、实际参与的 source/
 
 进度写 stderr，不改变 stdout 最终结果接口。每组显示序号、文件数量、完成状态和耗时，Vitest default reporter 提供实时文件进度，JSON reporter 继续作为证据。summary 与结构化 evidence 给出文件耗时及失败案例；执行与 completion 共用命令参数生成，completion 重算实际子集并核对报告文件集合。完整 source/config/resources manifest 和媒体/发布/人工验收边界保持。
 
-`verify` 不重跑 tests、模型、队列、AOCI Apply 或 Git mutation，只复核原 receipt 与当前字节，重新核对适用文档及官方 owned AOCI，并保存独立 completion receipt。AOCI 只消费已识别版本的官方 Verify / Check / Guide、scope 和 source facts；`ownedAoci` 与 `repositoryAoci` 分开报告，缺工具、未知结构、本次 stale/missing、恢复风险均不能通过。维护仍由产生改动的 session 按官方完整批次/CAS/恢复合同完成。
+2026-10-13 proportional routing delta：Harness 自测只由自身实现、测试、runner 或 policy 变更触发，普通业务与文档不附带该组。仅改动已登记、未删除的测试且无固定 route 子集时，该 Vitest 检查只执行改动测试；源码、helper、fixture 或删除测试仍执行对应完整集合，显式 `testFilesByCheck` 保留。业务 `.ts` / `.tsx` 不能仅靠 baseline typecheck 获得 PASS，必须有 domain 或 fallback；新增业务 owner 应补充对应行为路由。完整 source identity 不缩小。
+
+scope 可选 `aoci: { reason, paths }`，原因是 `indexed-semantics`、`indexed-identity`、`stale-index` 或 `explicit-governance`，paths 必须是非空、唯一的 owned paths。只在 indexed 语义/身份变化、索引冲突/过期或明确治理时声明；它追加 required 检查，不能关闭 policy 对正式资产、AOCI 配置和根规则自动要求的检查。普通文档、测试和样式不默认运行 AOCI。维护与 role 分类仍归官方 Guide；声明不是作者归属或已维护证明。
+
+`verify` 不重跑 tests、模型、队列、AOCI Apply 或 Git mutation，只复核原 receipt 与当前字节，重跑本 scope 实际选中的文档/AOCI controls，并保存独立 completion receipt。required 检查及控制结果必须精确齐全，缺失、额外、重复或 optional 不能通过。AOCI 仅核对本 scope 的触发对象，消费已识别版本的官方 Verify / Check / Guide、scope 和 source facts；`ownedAoci` 与 `repositoryAoci` 分开报告，缺工具、未知结构、本次 stale/missing、恢复风险均不能通过。必要维护仍由产生改动的 session 按官方完整批次/CAS/恢复合同完成。
 
 正式 AOCI root/meta/code/database 资产由一致官方 governance facts 的 path/asset_state/SHA 声明，不属于 business-source manifest，不要求为正式索引自身建立 Entry。owned 正式资产仍须启用且存在、全库 governance aligned、无恢复/冲突，磁盘 exact SHA 与官方事实一致；不是按文件名豁免。普通 owned source 的 manifest/baseline/drift gates 与 required 检查保持。
 

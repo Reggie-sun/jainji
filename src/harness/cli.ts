@@ -79,9 +79,10 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       const scope = await loadScope(process.cwd(), scopePath);
       const policy = loadPolicy(await readFile(path.join(process.cwd(), ".agent/harness/policy.json")));
       const selection = selectChecks(policy, scope);
+      if (!selection.checks.some((check) => check.id === id && check.required)) throw new Error("Governance control is not selected by this scope.");
       const check = id === "documents"
         ? await checkDocuments(process.cwd(), scope.ownedChanges.filter((change) => change.change !== "delete" && change.path.endsWith(".md")).map((change) => change.path), selection.documentRefs)
-        : await checkOwnedAoci(process.cwd(), scope.ownedChanges);
+        : await checkOwnedAoci(process.cwd(), scope.ownedChanges.filter((change) => selection.aociPaths.includes(change.path)));
       console.log(JSON.stringify(check));
       return exitCodeFor(check.status);
     } catch (error) {

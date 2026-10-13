@@ -29,7 +29,7 @@ it("treats missing receipts as absent evidence, not PASS", async () => {
   expect(checks).toEqual(expect.arrayContaining([expect.objectContaining({ status: "NOT_EVALUATED" })]));
 });
 
-async function fixture(vitest = false) {
+async function fixture(vitest = false, controls: string[] = []) {
   const root = await mkdtemp(path.join(tmpdir(), "harness-completion-bound-")); roots.push(root);
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
   await mkdir(path.join(root, ".agent/harness"), { recursive: true });
@@ -41,7 +41,9 @@ async function fixture(vitest = false) {
     codeChecks: vitest ? [{ id: "fixture", kind: "vitest", command: "node", required: true, timeoutMs: 5000,
       testFiles: ["tests/one.test.ts", "tests/two.test.ts"], args: ["-e", `const fs=require('node:fs');const path=require('node:path');const out=process.argv.find(v=>v.startsWith('--outputFile=')).slice(13);fs.writeFileSync(out,JSON.stringify({numTotalTests:1,numPassedTests:1,numFailedTests:0,numPendingTests:0,numTodoTests:0,success:true,testResults:[{name:path.resolve('tests/one.test.ts'),status:'passed',assertionResults:[{status:'passed'}]}]}));`] }]
       : [{ id: "fixture", kind: "command", command: "node", args: ["-e", "console.log('checked')"], required: true, timeoutMs: 5000 }],
-    controlChecks: [], routes: [{ id: "docs", paths: ["docs/**"], checkIds: ["fixture"],
+    controlChecks: controls.map(id => ({ id, kind: "command", command: "node", required: true, timeoutMs: 5000,
+      args: ["-e", `console.log(${JSON.stringify(JSON.stringify({ id, required: true, status: "PASS", message: "fixture control" }))})`, "--"] })),
+    routes: [{ id: "docs", paths: ["docs/**"], checkIds: ["fixture", ...controls],
       ...(vitest ? { testFilesByCheck: { fixture: ["tests/one.test.ts"] } } : {}), documentRefs: ["docs/contract.md"] }],
   });
   const policyPath = path.join(root, ".agent/harness/policy.json");
@@ -65,6 +67,28 @@ async function fixture(vitest = false) {
   return { root, run, scopePath, governance };
 }
 
+it("does not invoke AOCI or unrelated governance when controls were not selected", async () => {
+  const { root, run, scopePath, governance } = await fixture();
+  expect(aggregateOutcome(await verifyReceipt(root, scopePath, run.receiptPath, { governance }))).toBe("PASS");
+  expect(governance).not.toHaveBeenCalled();
+});
+
+it("verifies documents-only controls without requiring AOCI", async () => {
+  const { root, run, scopePath } = await fixture(false, ["documents"]);
+  const governance = vi.fn(async () => [{ id: "documents", required: true, status: "PASS" as const, message: "current links" }]);
+  expect(aggregateOutcome(await verifyReceipt(root, scopePath, run.receiptPath, { governance }))).toBe("PASS");
+  expect(governance).toHaveBeenCalledOnce();
+});
+
+it("still refuses missing, optional, failed or duplicate selected AOCI controls", async () => {
+  const { root, run, scopePath } = await fixture(false, ["owned-aoci"]);
+  for (const controls of [[], [{ id: "owned-aoci", required: false, status: "PASS" as const, message: "optional" }],
+    [{ id: "owned-aoci", required: true, status: "FAIL" as const, message: "stale" }],
+    Array.from({ length: 2 }, () => ({ id: "owned-aoci", required: true, status: "PASS" as const, message: "duplicate" }))]) {
+    expect(aggregateOutcome(await verifyReceipt(root, scopePath, run.receiptPath, { governance: async () => controls }))).not.toBe("PASS");
+  }
+});
+
 it("recomputes a fixed Vitest subset for completion and rejects a widened recorded command", async () => {
   const { run, root, scopePath, governance } = await fixture(true);
   expect(aggregateOutcome(await verifyReceipt(root, scopePath, run.receiptPath, { governance }))).toBe("PASS");
@@ -85,12 +109,12 @@ it("accepts bound evidence read-only; unrelated docs/index changes and identical
   execFileSync("git", ["add", "docs/contract.md"], { cwd: root });
   execFileSync("git", ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "same bytes"], { cwd: root, stdio: "pipe" });
   expect(aggregateOutcome(await verifyReceipt(root, scopePath, run.receiptPath, { governance }))).toBe("PASS");
-  expect(governance).toHaveBeenCalledOnce();
+  expect(governance).not.toHaveBeenCalled();
   expect(command).not.toHaveBeenCalled();
   expect(await readFile(run.receiptPath, "utf8")).toBe(receiptBefore);
 });
 
-it.each(["source", "policy", "scope", "report", "missing-check", "optional-check"])("rejects stale or incomplete %s evidence", async (mutation) => {
+it.each(["source", "policy", "scope", "report", "missing-check", "optional-check", "extra-check"])("rejects stale or incomplete %s evidence", async (mutation) => {
   const { root, run, scopePath, governance } = await fixture();
   if (mutation === "source") await writeFile(path.join(root, "src/participating.ts"), "changed other session source\n");
   else if (mutation === "policy") await writeFile(path.join(root, ".agent/harness/policy.json"), "{}");
@@ -99,6 +123,7 @@ it.each(["source", "policy", "scope", "report", "missing-check", "optional-check
   else {
     const receipt = JSON.parse(await readFile(run.receiptPath, "utf8"));
     if (mutation === "missing-check") receipt.checks = [];
+    else if (mutation === "extra-check") receipt.checks.push({ id: "unselected", required: true, status: "PASS" });
     else receipt.checks[0].required = false;
     await writeFile(run.receiptPath, JSON.stringify(receipt));
   }

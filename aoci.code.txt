@@ -3,7 +3,7 @@
 ===/home/reggie/vscode_folder/jianji/===
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖构建日志及本机配置 | R:code:AGENTS.md | A:排除会员构建与公开实例配置；保留正式AOCI资产 | S:-
-AGENTS.md[SC9T]: F:规定项目权威产品不变量与交付边界 | R:code:src/shared/agent.ts,code:src/main/queue.ts,code:.agent/harness/policy.json | A:按合同路由；冻结重试；make frontend；owned回执及AOCI；验证后提交推送核远端 | S:人工框真实贴纸直接正常制作不伪造审阅批准；普通assisted仍审阅；Hybrid仅H4同字节四角，未知保留无白fallback；覆盖GPT限6.1-sol及6-luna；工程证据不替代平台人工验收
+AGENTS.md[SC9T]: F:规定项目权威产品不变量与交付边界 | R:code:src/shared/agent.ts,code:src/main/queue.ts,code:.agent/harness/policy.json | A:按合同路由；冻结重试；make frontend；owned回执；AOCI按语义身份冲突治理触发；验证后提交推送核远端 | S:人工框真实贴纸直接制作不伪造批准；assisted仍审阅；Hybrid仅H4同字节四角，未知保留无白fallback；覆盖GPT限6.1-sol及6-luna；工程证据不替代平台人工验收
 Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7S]: F:声明桌面依赖验证脚本及打包资源 | R:code:src/main/index.ts,code:src/membership-server/index.ts | A:openid-client固定版本；会员与远端worker构建；typecheck和Harness | S:Windows携带FFmpeg与字体；Codex解包；不分发服务端密钥
@@ -12,21 +12,21 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:千川查询及UI回归登记；会员定时回归；存储迁移联动生命周期 | S:完整贡献优先子集；focused不替代全量或视觉验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:登记千川扩展远端构建及业务回归；结果面板和输出目录独立子集；Harness仅自身触发，正式治理资产要求AOCI | S:完整贡献优先子集；隔离扩展测试显式启用；focused不替代全量或视觉验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
 service.ts[IN7M]: F:验证、限流并持久化Bug反馈，再向GitHub Issues提交或核对结果 | R:code:src/shared/bug-feedback.ts,code:src/feedback-server/index.ts | A:GET health和截图、POST反馈；按feedbackId与指纹保持幂等 | S:上游提交结果不明时保留pending并查询既有Issue，不盲目重发；令牌和错误需脱敏
 
 ===/home/reggie/vscode_folder/jianji/src/harness/===
-cli.ts[EQ6S]: F:解析Harness code/media/control/verify入口并保存结果 | R:code:src/harness/code.ts,code:src/harness/media.ts,code:src/harness/run.ts,code:src/harness/routing.ts,code:src/harness/completion.ts | A:可按显式scope选检查；control返回治理证据；verify核验已有回执而不重跑命令 | S:输入错误与缺证据归NOT_EVALUATED
+cli.ts[EQ6S]: F:解析Harness code/media/control/verify入口并保存结果 | R:code:src/harness/code.ts,code:src/harness/media.ts,code:src/harness/run.ts,code:src/harness/routing.ts,code:src/harness/completion.ts | A:按显式scope选检查；control仅接受选中必需项，AOCI限触发路径；verify核验已有回执 | S:输入错误与缺证据归NOT_EVALUATED
 code.ts[TQ7S]: F:执行选定回归并核验Vitest和治理报告 | R:code:src/harness/run.ts,code:src/harness/types.ts,code:src/harness/completion.ts | A:共享Vitest参数；stderr实时文件进度；记录案例失败及耗时；绑定日志和实际文件集 | S:进程成功不足以PASS；缺报告、必需skip或截断失败关闭
 media.ts[TQ8L]: F:按冻结批次检查源片和成片的身份、解码、规格、时长、帧率、音轨与文字 | R:code:src/harness/run.ts,code:src/harness/types.ts,code:src/main/domain.ts | A:只读解析项目或队列并输出源片与成片定位帧 | S:VFR或时间戳不可靠时NOT_EVALUATED；定位帧不等于人工观看
 run.ts[RQ8M]: F:管理Harness进程预算日志及冻结回执 | R:code:src/harness/types.ts,code:src/harness/scope.ts,code:src/harness/cli.ts | A:保存policy和scope；绑定产物及前后身份；有界stdout回调提供实时进度 | S:visualReview固定NOT_EVALUATED；中断、缺工具、截断或参与源码变化不可PASS；停止进程树包含后代
-types.ts[CQ7M]: F:定义三态结果版本策略scope及分层路由Schema | R:code:src/harness/code.ts,code:src/harness/routing.ts,code:src/harness/run.ts | A:校验唯一登记、规范路径及路由引用；子集仅准已选择Vitest登记文件；聚合退出码0/1/2 | S:缺失或未知结果不可PASS；已知必需失败仍为FAIL
-completion.ts[TQ7S]: F:只读重验scope回执与当前源码策略合同和产物 | R:code:src/harness/scope.ts,code:src/harness/routing.ts,code:src/harness/governance.ts,code:src/harness/code.ts | A:重算路由及子集，复用执行参数核对命令和报告；刷新文档及本轮AOCI证明 | S:不执行回执内命令；缺冻结产物或字节失配拒绝完成
+types.ts[CQ7M]: F:定义三态结果版本策略scope及分层路由Schema | R:code:src/harness/code.ts,code:src/harness/routing.ts,code:src/harness/run.ts | A:校验唯一登记规范路径路由引用及Vitest子集；可选AOCI声明限制原因和唯一owned路径；聚合退出码0/1/2 | S:缺失或未知结果不可PASS；已知必需失败仍为FAIL
+completion.ts[TQ7S]: F:只读重验scope回执与当前源码策略合同和产物 | R:code:src/harness/scope.ts,code:src/harness/routing.ts,code:src/harness/governance.ts,code:src/harness/code.ts | A:重算路由子集，核对命令报告；仅重验所选文档与触发AOCI；拒绝缺失额外重复可选结果 | S:不执行回执内命令；缺冻结产物或字节失配拒绝完成
 governance.ts[TQ7L]: F:核验本轮文档引用与官方AOCI治理证据 | R:code:src/harness/run.ts,code:src/harness/types.ts | A:核对scope及三项官方事实；正式Volume绑定path和磁盘SHA并记录artifactRequired | S:正式资产不要求自身Entry；未知声明重复路径链接漂移冲突失败关闭；observe/exclude不伪造索引
-routing.ts[CQ6T]: F:逐owned路径选取必需检查合同及固定测试子集 | R:code:src/harness/types.ts,code:src/harness/cli.ts | A:baseline保留，domain抑制该路径fallback；跨路径聚合；子集union保持registry顺序，完整贡献优先 | S:缺tier沿用旧union；未映射、可选检查或遗漏changed test拒绝
+routing.ts[CQ6S]: F:逐owned路径选择必需检查合同测试集及AOCI对象 | R:code:src/harness/types.ts,code:src/harness/cli.ts | A:baseline保留，domain抑制fallback；子集union及完整贡献优先；无固定子集的纯测试缩至改动；AOCI声明与policy触发合并 | S:缺tier沿用旧union；baseline-only业务TS、可选检查及遗漏changed test拒绝；删除测试不自动缩集
 scope.ts[CQ7M]: F:验证任务拥有文件的Git前后像并捕获参与证据身份 | R:code:src/harness/types.ts,code:src/harness/run.ts | A:拒绝越界和符号链接；冻结声明；绑定源码、合同与策略，源码树排除Python缓存目录 | S:不从全库dirty状态推断ownership；声明字节须匹配baseCommit和当前磁盘
 
 ===/home/reggie/vscode_folder/jianji/src/main/===

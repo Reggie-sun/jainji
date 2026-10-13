@@ -63,7 +63,7 @@ baseline: 7d4c7a8ed45e1e1734ed7344456af01fdde18983
 
 ## R02 — Task Scope Is A Declaration, Not Attribution Proof
 
-新增 `harness-task-scope/v1` JSON，存放于现有忽略的 `.agent/harness/runs/` 目录。字段为 `schemaVersion`、`sessionId`、`baseCommit` 和非空 `ownedChanges`；每项为 `path`、`change`（add / modify / delete）、`beforeSha256`、`afterSha256`。新增前 hash=null，删除后 hash=null；其余使用实际文件字节 SHA-256。
+新增 `harness-task-scope/v1` JSON，存放于现有忽略的 `.agent/harness/runs/` 目录。字段为 `schemaVersion`、`sessionId`、`baseCommit` 和非空 `ownedChanges`；每项为 `path`、`change`（add / modify / delete）、`beforeSha256`、`afterSha256`。新增前 hash=null，删除后 hash=null；其余使用实际文件字节 SHA-256。2026-10-13 增加可选 `aoci: { reason, paths }`；reason 仅为 `indexed-semantics` / `indexed-identity` / `stale-index` / `explicit-governance`，paths 为非空唯一 owned paths，只追加 required AOCI，不能关闭 policy 触发的治理。
 
 路径为规范仓库相对路径，拒绝越界、重复、符号链接逃逸与不一致的变更类型。rename 表示旧路径 delete 加新路径 add，检查取两条路径的并集。scope 不包含凭据、用户项目或媒体内容。
 
@@ -75,7 +75,7 @@ policy 升级为 schemaVersion=2，保留 `codeChecks` / `media`，增加 `contr
 
 实施核对发现，注册全部专项 tests 不等于每次运行全部专项实验；例如 Windows 专项断言在 Linux 上必须保留未评估。v2 因此允许 policy 自己定义非空、唯一的 `defaultCheckIds`，只引用 required code checks，指定无 scope `code` 的核心集合；缺此字段兼容原来的全部 `codeChecks`。scoped 路由仍从完整 registry 求并集，不受 default 集合限制，相关必需 skip 仍不能通过。该收敛不改变产品或测试断言，也不授予跳过实际 scope 检查的 CLI 开关。
 
-所有生产源码变更至少执行 typecheck 与 Harness 自测，再执行路由关联测试；共享入口/schema、compiler/queue 或 Harness / policy 变更采用保守的完整相关集合。测试改动必须路由到自身及适用 domain。新增、删除与重命名不得只看仍存在的文件。
+2026-10-13 修订：生产源码执行 typecheck 与路由关联测试；Harness 自测仅由自身实现、测试、runner 或 policy 变更触发。业务 `.ts` / `.tsx` 只有 baseline 路由时拒绝 completion，必须补 domain 或 fallback。共享入口/schema、compiler/queue 或 Harness / policy 变更保留相关完整集合。仅改已登记且未删除的测试、没有固定 route 子集时，Vitest 缩至实际改动测试；源码/helper/fixture/删除贡献保留对应完整集合，显式子集仍按 union/full contributor 规则执行。新增、删除与重命名不得只看仍存在的文件。
 
 未分类路径不得返回 completion PASS：报告 `unmapped_path`，执行保守集合可用于调查，但不能掩盖路由缺失。文档 / 规则、配置与资源有显式类别；“纯文档无需代码测试”必须由完整 scoped change 分类证明。scope 涉及的必需检查不得被 CLI flag、空集合或 policy 的 required=false 静默绕过。
 
@@ -105,7 +105,7 @@ Fixture 使用隔离配置与假服务，不读取用户账号、密钥或全局
 
 ## R07 — Verify Owned AOCI Without Taking Over Maintenance
 
-AOCI adapter 为只读检查：消费当前官方工具的结构化 Verify、Check、Guide 及必要对象/基线事实，不创作语义、不自动 Maintain / Apply、不手写索引、不截断机器批次。写入仍由改文件的 session Agent 使用原工具合同直接完成，无需询问用户。
+AOCI 在 indexed 语义/身份变化、索引认知冲突/过期或明确治理时维护；由 session 在 scope 声明 reason 和受影响 paths。policy 自动要求正式资产、AOCI 配置和根规则的治理；普通文档/测试/样式及 observe/exclude 改动不默认启动 AOCI。非语义变化采用官方适用路径，不重复写已对齐 Entry。AOCI adapter 为只读检查：消费当前官方工具的结构化 Verify、Check、Guide 及必要对象/基线事实，不创作语义、不自动 Maintain / Apply、不手写索引、不截断机器批次。必要写入仍由改文件的 session Agent 使用原工具合同直接完成，无需询问用户。
 
 结果分为 `ownedAoci` 与 `repositoryAoci`：逐项证明本次 indexed 对象无 missing / stale / unbaselined / unresolved orphan，当前 source hash 与官方基线一致；add / delete 使用适用创建 / 删除证据。observe / exclude 项核实 scope 后记为适用的无需 Entry，而非跳过未分类对象。
 
@@ -127,7 +127,7 @@ npm run harness -- media --queue <queue-state.json>
 
 `code` 无 scope 时执行 policy 的完整默认核心集合；缺 `defaultCheckIds` 保留全部 code checks 的旧解释。scoped run 保存 v2 回执，绑定 scope / policy / selected checks / 实际源码 / docs / 输出报告的 hash；旧 v1 policy 和 receipt 保持可读，v1 receipt 不能满足新 scoped completion gate。
 
-`verify` 不重跑测试、不调用模型、不维护 AOCI、不入队、不提交或发布；它复核回执是否结束、必需检查是否齐全、检查身份与当前字节是否匹配，并运行必要的当前 owned AOCI 和文档引用检查。运行后产生独立 completion 回执，不改旧 receipt。缺项、RUNNING、旧字节、skip 和无法核实时非 PASS。
+`verify` 不重跑测试、不调用模型、不维护 AOCI、不入队、不提交或发布；它复核回执是否结束、必需检查是否精确齐全、检查身份与当前字节是否匹配，只重跑该 scope 实际选择的文档/AOCI controls。AOCI 仅核对声明与 policy 触发路径的并集。控制结果缺失、额外、重复或 optional 均拒绝；未选择 controls 时不调用治理工具。运行后产生独立 completion 回执，不改旧 receipt。缺项、RUNNING、旧字节、skip 和无法核实时非 PASS。
 
 沿用 PASS / FAIL / NOT_EVALUATED 与退出码 0 / 1 / 2。明确违反合同为 FAIL；证据、工具或身份无法确认时 NOT_EVALUATED；两者均不能交付为通过。零必需检查不能通过。
 
@@ -151,7 +151,7 @@ npm run harness -- media --queue <queue-state.json>
 | AC04 | 参与测试的真实源码、合同、policy 与 scope 变化使旧证据失效 | hash / source-change / forged-report 反例 |
 | AC05 | 文字、随机覆盖、时序、数量与冻结生命周期专项确实运行，既有 schema 仍独占业务准入 | policy发现断言、domain 正反例、适用 FFmpeg fixtures |
 | AC06 | shape 工程检查不能签生产资格，凭据及连接边界没有弱化 | activation / source / custody / secret 隔离反例 |
-| AC07 | owned AOCI 对齐与全库漂移分别报告，工具失败和本次 stale 不会通过 | fake 官方结果与一次真实 scoped 检查 |
+| AC07 | 必要 AOCI 按触发对象证明；未选择时不调用，选择后工具失败/本次 stale 不会通过，与全库漂移分别报告 | 路由/controls 反例、fake 官方结果与一次真实必要 scoped 检查 |
 | AC08 | completion verify 只读，拒绝缺失/陈旧/运行中回执，证据层级不冒升 | 副作用探针、缺证据反例、code/media 报告断言 |
 | AC09 | 纯文档不运行无关代码/媒体检查，其他 dirty 工作被保留 | docs-only fixture、已知 shared-tree fixture、task-only diff |
 | AC10 | 根规则达到减重目标，每个阶段有独立可回滚 checkpoint | 字节统计、完整迁移表、阶段验证及 task-only commits |

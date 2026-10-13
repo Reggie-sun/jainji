@@ -75,11 +75,18 @@ export const HarnessTaskScopeSchema = z.object({
   sessionId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/),
   baseCommit: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/),
   ownedChanges: z.array(OwnedChangeSchema).min(1),
+  aoci: z.object({
+    reason: z.enum(["indexed-semantics", "indexed-identity", "stale-index", "explicit-governance"]),
+    paths: z.array(z.string().refine((value) => isCanonicalRelativePath(value, false), "AOCI path must be canonical")).min(1),
+  }).strict().optional(),
 }).strict().superRefine((scope, context) => {
   const paths = new Set<string>();
   for (const [index, change] of scope.ownedChanges.entries()) {
     if (paths.has(change.path)) context.addIssue({ code: "custom", path: ["ownedChanges", index, "path"], message: `duplicate owned path: ${change.path}` });
     paths.add(change.path);
+  }
+  if (scope.aoci && (new Set(scope.aoci.paths).size !== scope.aoci.paths.length || scope.aoci.paths.some((path) => !paths.has(path)))) {
+    context.addIssue({ code: "custom", path: ["aoci", "paths"], message: "AOCI paths must be unique owned paths" });
   }
 });
 export type HarnessTaskScope = z.infer<typeof HarnessTaskScopeSchema>;

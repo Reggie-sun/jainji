@@ -45,7 +45,7 @@
 ## AOCI Cognition
 
 - aoci.txt / aoci.meta.txt / aoci.code.txt 只是语义索引，不建立规则 owner。关系用 CodeGraph 核对，认知冲突时调查刷新，不静默用旧索引。
-- 每次代码、测试、配置、文档或规则变更稳定后，产生变更的 session 必须逐项核对 AOCI role，直接维护 indexed 对象的 Entry / baseline；observe/exclude 按当前 scope 处理，不扩大索引。再次改动则重新维护，不能推给用户或其他 session，已对齐不重复写。
+- AOCI 按必要性维护：indexed 对象语义或身份变化、发现索引认知冲突/过期、或明确的治理任务时，由产生变更的 session 在最终稳定状态维护 Entry / baseline。纯文档、测试、样式及 observe/exclude 改动不默认启动维护；非语义变化走官方适用路径，已对齐不重复写，不扩大索引。
 - 对应共享索引/基线维护已授权，按当前官方 Guide、完整机器批次、CAS、原子写入及有界恢复保留其他会话结果；不得截断批次或越权改业务文件。本轮对象逐项证明与全库治理分别报告，无关 drift 不免本轮维护；未知版本、恢复/冲突、工具不可用或真实 ownership 阻断须列明未维护对象和剩余工作，不假称对齐。
-- 提交/交付/交接前完成官方 Verify、Check、Guide。正式索引及必要配置/基线可随对应源码提交，运行状态、缓存、日志和机器 MCP 配置不提交。
+- 必要维护后的提交/交付/交接完成官方 Verify、Check、Guide，并在 owned Harness scope 的 `aoci` 中声明原因与对象；正式资产、AOCI 配置及本规则由 policy 自动要求该检查。必需检查不能关闭。正式索引及必要配置/基线可随对应源码提交，运行状态、缓存、日志和机器 MCP 配置不提交。
 <!-- aoci:end -->
