@@ -232,6 +232,7 @@ qianchuan-backend-adapter.ts[IN7S]: F:执行REA验证的计划详情素材指标
 qianchuan-backend-queries.ts[AW7T]: F:管理单个只读查询与冻结账号核验 | R:code:src/shared/qianchuan-backend.ts,code:src/main/qianchuan-account-config.ts,code:src/main/qianchuan-backend-query.ts,code:src/shared/qianchuan-egress.ts | A:先核保存身份；VPS用prepare本地用prepareCatalog；核digest与出口后读取；按sender及UUID取消；90秒期限；前后冻结；stop等待 | S:清理结束前不释放busy；不落任务或缓存；不恢复旧查询
 qianchuan-backend-query.ts[IN7T]: F:通过已有账号浏览器出口与自有页执行后端查询 | R:code:src/main/qianchuan-query-page.ts,code:src/main/qianchuan-egress-browser.ts,code:src/main/qianchuan-backend-adapter.ts | A:先核出口租约；导航标记picker；核可见身份；dispose；连接导航错误脱敏 | S:不导出登录状态或启动用户页；picker排除账户发现；取消保留AbortError
 qianchuan-query-page.ts[IN7T]: F:复用受控loopback CDP连接与自有查询页清理 | R:code:src/main/local-cdp-transport.ts,code:src/main/qianchuan-picker-transport.ts | A:核同host websocket；后台创建并定向attach；取消与有界cleanup | S:只关闭本次target；browser.close仅断开CDP；不导航现有用户页
+qianchuan-open-api-videos.ts[IN6T]: F:提供官方千川视频素材目录只读适配器 | R:- | A:固定HTTPS GET；主进程授权范围校验；20秒2MiB；校验分页及元数据；取消且不重试 | S:不导出URL或数值material_id；不读取浏览器凭据；无OAuth存储及投放写入口
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
