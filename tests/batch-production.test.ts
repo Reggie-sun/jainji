@@ -824,7 +824,7 @@ describe("batch automatic plan preparation", () => {
       expect(await page.evaluate(() => (window as unknown as { calls: unknown[] }).calls)).toEqual([{ runId: "run", jobId: "job", uploadTaskId: "unknown" }]);
     } finally { await page.close(); }
   });
-  async function panel(): Promise<Page> {
+  async function panel(subaccounts = false): Promise<Page> {
     const page = await browser.newPage();
     await page.route("http://127.0.0.1:3000/batch-plan-intent", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
     await page.goto("http://127.0.0.1:3000/batch-plan-intent");
@@ -839,6 +839,8 @@ describe("batch automatic plan preparation", () => {
         productPrice: "手动文字", coverEnabled:false, coverMethod:"saved", coverMode:"agent", displayMode:"full", mode:"random", displayTextRequiredByMedia:[false]}));
       window.catalogRequests = []; window.cancelledRequests = []; window.batchStarts = [];
       window.jianji = {batchProductionProjects: async () => projects,
+        ...(${subaccounts} ? {listQianchuanSubaccounts: async () => ({current:{advertiserId:"1000",name:"隔离账户"},accounts:[{advertiserId:"1000",name:"隔离账户"}]}),
+          switchQianchuanSubaccount: async () => ({advertiserId:"1000",name:"隔离账户"}), selectOutputDirectory: async () => "/tmp/隔离成片"} : {}),
         saveBatchUploadAccount: async input => ({recentProjectId:input.recentProjectId, projectId:input.expectedProjectId,
           accountProduct:input.accountProduct, advertiserId:input.expectedAdvertiserId}),
         listQianchuanPlans: input => new Promise((resolve, reject) => window.catalogRequests.push({input, resolve, reject})),
@@ -875,18 +877,22 @@ describe("batch automatic plan preparation", () => {
       expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].douyinUpload)).toEqual({ enabled: true, accountProduct: "眼贴", plan: { advertiserId: "7000", adId: "9001", name: "子账户计划", accountSource: "current-browser" } });
     } finally { await page.close(); }
   });
-  it("keeps desktop batch controls on one line with quantity and plan errors", async () => {
-    const page = await panel();
+  it("fits all desktop batch controls on one line and keeps narrow windows accessible with quantity and plan errors", async () => {
+    const page = await panel(true);
     try {
       for (const stylesheet of ["styles.css", "workspace-redesign.css", "batch-production.css"]) {
         await page.addStyleTag({ content: await readFile(path.join("src/renderer", stylesheet), "utf8") });
       }
+      await page.evaluate(() => { const root = document.getElementById("root")!; root.style.marginLeft = "94px"; root.style.padding = "34px 38px"; });
+      await row(page).getByLabel("子账户", { exact: true }).waitFor();
       await row(page).getByRole("checkbox", { name: "蝴蝶贴开启覆盖", exact: true }).check();
       await page.evaluate(() => (window as any).catalogRequests[0].reject(new Error("计划读取失败，请重试")));
       await row(page).getByText("计划读取失败，请重试", { exact: false }).waitFor();
       const count = row(page).getByRole("spinbutton");
       await count.fill("500");
-      for (const width of [1280, 1920]) {
+      await row(page).getByRole("button", { name: "选择目录", exact: true }).click();
+      await row(page).getByRole("button", { name: "改为自动保存", exact: true }).waitFor();
+      for (const width of [760, 1024, 1200, 1280, 1366, 1600, 1920]) {
         await page.setViewportSize({ width, height: 900 });
         const metrics = await row(page).evaluate(element => {
           const center = (selector: string) => {
@@ -897,16 +903,26 @@ describe("batch automatic plan preparation", () => {
           const style = getComputedStyle(input);
           const context = document.createElement("canvas").getContext("2d")!;
           context.font = style.font;
+          const list = element.closest(".batch-production-list")!;
+          const bounds = list.getBoundingClientRect();
           return {
             centers: ['.batch-template-title label', '.batch-mode-select button', 'input[type="number"]', 'textarea',
               '.batch-template-controls > label select', '.batch-cover-toggle > span:nth-child(2)',
-              '.batch-upload-account > select', '.qianchuan-plan-select select', '.qianchuan-plan-select button', '.batch-output button'].map(center),
+              '.batch-upload-account > select', '.qianchuan-plan-select > select', '.qianchuan-plan-select > button',
+              '.qianchuan-subaccount-select > select', '.qianchuan-subaccount-select > button', '.batch-output button'].map(center),
+            listOverflow: list.scrollWidth - list.clientWidth,
+            clippedControls: [...element.querySelectorAll("input, textarea, select, button")].filter(control => {
+              const box = control.getBoundingClientRect();
+              return box.width > 0 && (box.left < bounds.left - 1 || box.right > bounds.right + 1);
+            }).map(control => control.getAttribute("aria-label") || control.textContent),
             textWidth: context.measureText(input.value).width,
             availableWidth: input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight) - 20,
             scrollLeft: input.scrollLeft,
           };
         });
-        expect(Math.max(...metrics.centers) - Math.min(...metrics.centers)).toBeLessThanOrEqual(2);
+        if (width >= 1280) expect(Math.max(...metrics.centers) - Math.min(...metrics.centers)).toBeLessThanOrEqual(2);
+        expect(metrics.listOverflow).toBeLessThanOrEqual(1);
+        expect(metrics.clippedControls).toEqual([]);
         expect(metrics.availableWidth).toBeGreaterThan(metrics.textWidth);
         expect(metrics.scrollLeft).toBe(0);
       }
