@@ -58,7 +58,7 @@ Casdoor 支持管理员手工创建订阅。其默认只有 `paid-user` 参与�
 
 Casdoor 与会员服务部署在同一台机器时，可在服务端私有配置加 `"casdoorUrl": "http://127.0.0.1:8000"`。仅允许 loopback HTTP origin；REST、门户 discovery / token / JWKS 使用此内部地址，避免每次在线核验绕行公网。省略时仍使用 `issuer`。公开 issuer、token issuer 校验和浏览器授权跳转保持原 HTTPS 域名；公开桌面配置拒绝该私有字段。改变此运输地址不使已记住的门户会话失效。
 
-桌面明确使用 Casdoor 稳定的 authorize、token、JWKS 路径，通过 openid-client 保留 PKCE、state、nonce 和 ID token 验证；点击登录前无需 discovery 网络请求。实际请求沿 Electron `net.fetch` 使用应用网络设置，登录恢复、权限和续费票据共用该运输接缝。没有权限缓存或本地离线放行。详细验证见 [Login Latency Plan](superpowers/plans/2026-10-11-membership-login-latency.md)。
+桌面明确使用 Casdoor 稳定的 authorize、token、JWKS 路径，通过 openid-client 保留 PKCE、state、nonce 和 ID token 验证；点击登录前无需 discovery 网络请求。账号 HTTP 请求共用非持久、禁缓存的 Electron `jianji-membership` Session，等待 `setProxy({ mode: "direct" })` 完成后通过该 `Session.fetch` 发送；登录恢复、权限及心跳、token/JWKS 和续费票据不继承默认会话或系统 HTTP 代理，不回退代理。初始化失败即停止，不放行账号请求。默认会话、模型及千川运输不受该设置修改；系统浏览器登录仍使用浏览器网络配置，OS TUN 接管不由应用级直连绕过。没有权限缓存或本地离线放行。历史登录性能工作见 [Login Latency Plan](superpowers/plans/2026-10-11-membership-login-latency.md)，当前运输修订见 [Direct Network Plan](superpowers/plans/2026-10-14-membership-direct-network.md)。
 
 ```bash
 npm run build:membership

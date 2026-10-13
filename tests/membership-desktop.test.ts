@@ -7,12 +7,18 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createMembershipDesktop } from "../src/main/membership-desktop.js";
+import * as storageModule from "../src/main/membership-storage.js";
+import * as oauthModule from "../src/main/membership-oauth.js";
 
-const desktop = vi.hoisted(() => ({ isPackaged: false, root: "" }));
+const desktop = vi.hoisted(() => ({ isPackaged: false, root: "", directFetch: vi.fn(), setProxy: vi.fn(async () => {}),
+  defaultFetch: vi.fn(), defaultSetProxy: vi.fn(), fromPartition: vi.fn() }));
 vi.mock("electron", () => ({
   app: { get isPackaged() { return desktop.isPackaged; }, getAppPath: () => desktop.root,
     commandLine: { hasSwitch: () => true, appendSwitch: () => {} } },
-  ipcMain: { handle: () => {} }, net: { fetch: vi.fn() }, safeStorage: { isEncryptionAvailable: () => false }, shell: { openExternal: async () => {} },
+  ipcMain: { handle: () => {} }, net: { fetch: desktop.defaultFetch },
+  session: { fromPartition: desktop.fromPartition.mockImplementation(() => ({ setProxy: desktop.setProxy, fetch: desktop.directFetch })),
+    defaultSession: { setProxy: desktop.defaultSetProxy } },
+  safeStorage: { isEncryptionAvailable: () => false }, shell: { openExternal: async () => {} },
 }));
 
 const config = MembershipConfigSchema.parse({ serviceUrl: "http://127.0.0.1:8789", issuer: "http://127.0.0.1:8000", clientId: "desktop", organization: "jianji", application: "jianji", pricingName: "jianji" });
@@ -26,6 +32,51 @@ function fixture() {
   return { session, check, stopped, storage };
 }
 describe("desktop membership", () => {
+  it("waits for isolated direct routing before restoring and keeps all account requests off the default proxy", async () => {
+    desktop.root = await mkdtemp(path.join(tmpdir(), "jianji-membership-direct-"));
+    const oldConfig = process.env.JIANJI_MEMBERSHIP_CONFIG;
+    await writeFile(path.join(desktop.root, "membership.json"), JSON.stringify(config));
+    process.env.JIANJI_MEMBERSHIP_CONFIG = path.join(desktop.root, "membership.json");
+    desktop.directFetch.mockReset().mockImplementation(async (url: string) => url.endsWith("/billing/ticket")
+      ? Response.json({ ticket: "a".repeat(64) }) : Response.json(allowed));
+    desktop.defaultFetch.mockReset().mockRejectedValue(new Error("proxy unavailable"));
+    desktop.defaultSetProxy.mockClear(); desktop.fromPartition.mockClear();
+    let release!: () => void;
+    desktop.setProxy.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));
+    const storage = vi.spyOn(storageModule, "membershipStorage").mockReturnValue({ read: async () => "saved-token", write: async () => {} });
+    const login = vi.spyOn(oauthModule, "loginMembership").mockImplementation(async (_config, _open, _signal, fetcher) => {
+      await fetcher!(`${config.issuer}/api/login/oauth/access_token`, { method: "POST", redirect: "error" });
+      await fetcher!(`${config.issuer}/.well-known/jwks`, { redirect: "error" });
+      return "new-token";
+    });
+    let session: MembershipSession | undefined;
+    try {
+      const creating = createMembershipDesktop({ root: desktop.root, trusted: () => {}, changed: () => {}, lostAccess: async () => {} });
+      await vi.waitFor(() => expect(desktop.fromPartition).toHaveBeenCalledOnce());
+      expect(desktop.fromPartition).toHaveBeenCalledWith("jianji-membership", { cache: false });
+      expect(desktop.setProxy).toHaveBeenLastCalledWith({ mode: "direct" });
+      expect(desktop.directFetch).not.toHaveBeenCalled(); expect(storage).not.toHaveBeenCalled();
+      release(); session = await creating;
+      await vi.waitFor(() => expect(session!.snapshot().state).toBe("allowed"));
+      await session.assertAllowed();
+      await expect(session.billingUrl()).resolves.toContain("/billing#ticket=");
+      await session.login();
+      expect(desktop.directFetch.mock.calls.map(([url]) => url)).toEqual([
+        `${config.serviceUrl}/v1/membership`, `${config.serviceUrl}/v1/membership`, `${config.serviceUrl}/billing/ticket`,
+        `${config.issuer}/api/login/oauth/access_token`, `${config.issuer}/.well-known/jwks`, `${config.serviceUrl}/v1/membership`,
+      ]);
+      expect(desktop.defaultFetch).not.toHaveBeenCalled(); expect(desktop.defaultSetProxy).not.toHaveBeenCalled();
+      desktop.setProxy.mockRejectedValueOnce(new Error("direct configuration failed"));
+      desktop.directFetch.mockClear();
+      await expect(createMembershipDesktop({ root: desktop.root, trusted: () => {}, changed: () => {}, lostAccess: async () => {} }))
+        .rejects.toThrow("direct configuration failed");
+      expect(desktop.directFetch).not.toHaveBeenCalled(); expect(desktop.defaultFetch).not.toHaveBeenCalled();
+    } finally {
+      session?.dispose(); storage.mockRestore(); login.mockRestore();
+      if (oldConfig === undefined) delete process.env.JIANJI_MEMBERSHIP_CONFIG; else process.env.JIANJI_MEMBERSHIP_CONFIG = oldConfig;
+      await rm(desktop.root, { recursive: true, force: true });
+    }
+  });
   it("uses the supplied app network transport for membership and renewal tickets", async () => {
     const transport = vi.fn<typeof fetch>(async url => String(url).endsWith("/billing/ticket")
       ? Response.json({ ticket: "a".repeat(64) }) : Response.json(allowed));
