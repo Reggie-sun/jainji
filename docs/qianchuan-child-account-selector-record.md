@@ -37,3 +37,17 @@
 受管 Kimi mapping invocation `b5f9de24-d7e6-4aad-81ca-629177684b0f` 使用 qualified Docker deep/max route，3 次请求，PARSED。Parent 接受在途合并与业务错误展示建议；按真实 fence 和跨账号连接证据拒绝等待全部计划完成、自动重试及放宽切换保护的方案。该输出为调查证据，最终 implementation Risk Gate 另按稳定快照和 project-native 验证裁决。
 
 本次补充仍有 durable value；继续使用当前记录，验证和只读运行旁证保存于忽略目录 `.agent/harness/runs/20261013-child-directory-failure/`，最终 Harness、AOCI 和远端 SHA 以本次稳定候选为准。
+
+## Membership Recovery Follow-up
+
+用户再次报告全部计划失败、子账户等待网页核对。实时证据发现会员已恢复 `allowed/grant`，公开计划 IPC 对氨糖膏成功返回当前子账户 `1876039035222536` 和一项计划，但页面仍有 14 条旧的会员核验错误。`MembershipGate` 在网络故障期间保留工作区；计划组件未订阅权限恢复，因此其错误和空账户一直保留。
+
+`QianchuanPlanSelect` 现在只在观察到 `unavailable -> allowed` 时通过原 revision 和请求租约重新读取目录；重复 allowed 通知不重复读取，忙碌或切换中延后到空闲，新的非 allowed 状态撤销待刷新。读取仍经 main 在线会员准入，恢复不会选择计划、切换网页、启动制作、继续上传或改写旧冻结目标。保留原取消和迟到响应隔离。
+
+新增两项真实组件浏览器用例先 FAIL、修复后 PASS，覆盖恢复、重复通知、忙碌延后、子账户目录恢复和无自动选择/切换。会员准入原测试保持通过。Chrome MCP 隔离页面观察到读取次数从 1 到 2、子账户目录从 0 到 1，随后明确选择计划并重复发送 allowed，读取仍为 2；此模拟 IPC 证据不代表真实平台上传。
+
+受管 Kimi mapping invocation `c91155f9-7a71-427a-8b58-b67f7662c4dd` 使用 qualified Docker deep/max route，2 次请求，PARSED；Parent 核验 canonical receipt、实际源码读取与工件 SHA。采纳源绑定的恢复边沿和循环风险分析，沿用既有请求租约及测试 seam，没有增加第二读取 owner。它是调查而非最终 implementation review。
+
+运行期间会员服务再次不可用，应用显式只读核验仍返回 unavailable；公开 `/v1/membership` 请求曾返回 HTTP 403、Cloudflare `error code: 1034`，而 `/health` 随后的请求为 200。当前证据只证明核验路径有外部阻断，不断言 DNS、代理或服务端配置中的具体归因，也未绕过准入。只读刷新前后上传公开状态一致；目录实际恢复仍依赖核验请求成功。
+
+本次达到有 durable value 的修复及验证 checkpoint，仓库没有专用 session capture skill，继续使用本记录；回执在忽略目录 `.agent/harness/runs/20261013-membership-plan-block/`。最终 Harness、AOCI、Risk Gate 与 upstream SHA 以稳定 owned 候选为准。

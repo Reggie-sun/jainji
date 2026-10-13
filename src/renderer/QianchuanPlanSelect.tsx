@@ -24,11 +24,28 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
   const [revision, setRevision] = useState(0);
   const [currentAccount, setCurrentAccount] = useState<QianchuanCurrentAccount>();
   const [switching, setSwitching] = useState(false);
+  const [membershipRecovered, setMembershipRecovered] = useState(false);
   const accountRead = useRef(onAccountRead); accountRead.current = onAccountRead;
   const change = useRef(onChange); change.current = onChange;
   const selected = useRef(value); selected.current = value;
   const product = account?.product, advertiserId = account?.advertiserId;
   const available = account?.available === true;
+  useEffect(() => {
+    if (typeof window.jianji.onMembership !== "function") return;
+    let unavailable = false;
+    return window.jianji.onMembership(status => {
+      const recovered = unavailable && status.state === "allowed";
+      unavailable = status.state === "unavailable";
+      if (recovered) setMembershipRecovered(true);
+      else if (status.state !== "allowed") setMembershipRecovered(false);
+    });
+  }, []);
+  useEffect(() => {
+    if (membershipRecovered && !disabled && !switching) {
+      setMembershipRecovered(false);
+      setRevision(current => current + 1);
+    }
+  }, [membershipRecovered, disabled, switching]);
   useEffect(() => {
     if (purpose !== "upload") return;
     const refresh = () => { if (!disabled && !switching) setRevision(current => current + 1); };

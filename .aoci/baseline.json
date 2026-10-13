@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-12T21:23:18Z",
+  "updated_at": "2026-10-13T10:20:22Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c71f2c2ee047d21e45fbc120bec7f12a1fd377d5cb71634bedc93f11bac34eb2",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "0d7b59a48209385ac29fa577f3cb6a95e659f875c6ca42b55bf57eb69c8be589",
-      "size": 125872,
-      "normalized_sha256": "0d7b59a48209385ac29fa577f3cb6a95e659f875c6ca42b55bf57eb69c8be589"
+      "sha256": "eb1bd057c288f9512e11c8c140d75cf250d127a23dc258bbee2940defaaf08b1",
+      "size": 125934,
+      "normalized_sha256": "eb1bd057c288f9512e11c8c140d75cf250d127a23dc258bbee2940defaaf08b1"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2338,9 +2338,9 @@
       "normalized_sha256": "0841658c6dee1f69b64ee5e64c8524ce9de226989c55464474ee7021bdf8c06b"
     },
     "src/renderer/QianchuanPlanSelect.tsx": {
-      "sha256": "1ca0655eb5ebd35bbec3ed68c4a207a4ede456b3f61e5bbc99012e3ed6609cd2",
-      "size": 8023,
-      "normalized_sha256": "1ca0655eb5ebd35bbec3ed68c4a207a4ede456b3f61e5bbc99012e3ed6609cd2"
+      "sha256": "c9b75a42c181e2d59959a5a394734f07e9a8c93cc3c57311d53d9f79c4bb2e22",
+      "size": 8737,
+      "normalized_sha256": "c9b75a42c181e2d59959a5a394734f07e9a8c93cc3c57311d53d9f79c4bb2e22"
     },
     "src/renderer/QianchuanSettingsPage.tsx": {
       "sha256": "295fb2e621f36350322dad08cd9fcd9a444ebc4b620b001507b8da4eaa69c90e",
