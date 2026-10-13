@@ -53,7 +53,7 @@ export function QianchuanBackendPanel({ accounts, active }: { accounts: Qianchua
     }
   }
   return <section className="qianchuan-backend-panel" aria-label="千川数据查询">
-    <p>读取所选账号的计划详情、计划素材指标或商品自选控成本汇总。请先在账号页面打开并登录对应浏览器。</p>
+    <p>读取所选账号的计划详情、计划素材指标或商品自选控成本汇总。查询会连接或打开对应账号浏览器；登录失效时请先在浏览器中登录后再查询。</p>
     <div className="qianchuan-query-fields">
       <label>查询账号<select aria-label="查询账号" value={product} disabled={busy} onChange={event => { setProduct(event.target.value); reset(); }}>
         <option value="">请选择已配置账号</option>{accounts.filter(item => item.available).map(item => <option key={item.product} value={item.product}>{qianchuanAccountName(item)} · {item.advertiserId}</option>)}

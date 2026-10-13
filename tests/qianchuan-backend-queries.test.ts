@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, it, vi } from "vitest";
 import { QianchuanBackendQueries } from "../src/main/qianchuan-backend-queries";
 import type { QianchuanAccountConfigReader, FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
-import type { QianchuanBackendQuery, QianchuanBackendResult } from "../src/shared/qianchuan-backend";
+import { QIANCHUAN_QUERY_METRICS, type QianchuanBackendQuery, type QianchuanBackendResult } from "../src/shared/qianchuan-backend";
 import { DouyinUploadService } from "../src/main/douyin-upload-service";
 import { DouyinUploadStore } from "../src/main/douyin-upload-store";
 
@@ -19,10 +19,31 @@ function fixture(readQuery: Read = async () => structuredClone(result)) {
 it("freezes the saved account before returning and never creates upload work", async () => {
   const f = fixture(), input = query();
   await expect(f.queries.run(input, 7)).resolves.toEqual(result);
-  expect(f.prepareCatalog).toHaveBeenCalledWith(target.product);
+  expect(f.prepareCatalog).toHaveBeenCalledWith(target.product, true);
   expect(f.freeze).toHaveBeenCalledWith(target.product, target.configDigest);
   expect(f.read).toHaveBeenCalledWith(target, input, expect.any(AbortSignal));
   expect(f.queries.busy).toBe(false);
+});
+it("opens a proven absent account browser for an explicit report without creating upload work", async () => {
+  const f = fixture(), input = { product: target.product, expectedAdvertiserId: target.advertiserId,
+    requestId: randomUUID(), kind: "report" as const, startDate: "2026-10-13", endDate: "2026-10-13" };
+  f.prepareCatalog.mockImplementation(async (...args: unknown[]) => {
+    if (args[1] !== true) throw new Error("请先打开该账号的千川浏览器，登录后刷新计划。");
+    return target;
+  });
+  const report = { advertiserId: target.advertiserId, observedAt: result.observedAt, kind: "report" as const,
+    startTime: "2026-10-13 00:00:00", endTime: "2026-10-13 12:00:00",
+    metrics: Object.fromEntries(QIANCHUAN_QUERY_METRICS.map(key => [key, { value: "0", display: "0" }])) } as QianchuanBackendResult;
+  f.read.mockResolvedValue(report);
+  const store = new DouyinUploadStore("/unused-fixture");
+  const service = new DouyinUploadService(store, { accounts: f.accounts, readBackendQuery: f.read,
+    loadBatch: async () => { throw new Error("must not create a queue"); }, browser: () => { throw new Error("must not upload"); } });
+  await expect(service.queryBackend(input, 7)).resolves.toEqual(report);
+  expect(f.prepareCatalog).toHaveBeenCalledTimes(1);
+  expect(f.read).toHaveBeenCalledWith(target, input, expect.any(AbortSignal));
+  expect(f.freeze).toHaveBeenCalledWith(target.product, target.configDigest);
+  expect(store.tasks()).toEqual([]);
+  expect(service.busy).toBe(false);
 });
 it.each(["before", "after"])("rejects account drift %s the read", async when => {
   const f = fixture();

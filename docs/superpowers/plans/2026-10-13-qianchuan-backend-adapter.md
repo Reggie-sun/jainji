@@ -68,3 +68,13 @@ focused verification 为 typecheck 与四文件 162 项测试通过；最终 Har
 验收发现预算展示错误：adapter 保留接口原值 `100000000`，renderer 却未换算。REA 保存的前端源码明确将 `adDetailInfo.budget / 1e5` 后按两位小数展示；来源 script artifact SHA256 为 `fe67f683922f0a4b3845a329289bee32933cee7176fd111db5ced17003c0be0f`。renderer 现在显示“预算（元）”及 `1000.00`，保持共享返回类型和原值不变；浏览器 fixture 使用相同原值，回归断言先失败再通过。所有平台指标仍沿用原显示串，不重算报表。
 
 本次范围为 Linux 当前登录账号的只读链路；不外推为六账号、Windows、长期接口稳定性或上传/修改预算的验收。真实截图、脱敏结果、runtime identity、REA 换算片段及 Kimi 验收条件映射保存在忽略的 `.agent/harness/runs/20261013-qianchuan-real-acceptance/`，不保存 Cookie/token。修正后相关验证、AOCI 与 Git 回执按同一 owner 记录。
+
+## Closed Account Browser Query Repair
+
+2026-10-13 用户截图中的氨糖膏账号 `1876036793517065` 报表失败。真实 renderer/preload 调用复现了主进程的“请先打开该账号的千川浏览器”拒绝；原绑定 Chrome 未运行，尚未发送报表请求。此前肥皂账号验收不能外推到这个账号。页面通用错误遮住了浏览器准备阶段的原因。
+
+显式查询现在调用现有 `prepareCatalog(product, true)`，连接已有窗口，或由原 browser manager 打开已证明不存在的本地绑定窗口；保留原 profile、身份、出口核验及无效/不唯一连接拒绝，不重启运行窗口，不回退 VPS、不恢复历史查询、不增加重试、上传任务或平台写入。基类补齐该可选参数，默认仍为 false；其他调用行为保持不变。页面说明同步明确自动连接/打开与失效登录的人工处理。Self-review：这是既有前台准备能力在查询入口的复用，不建立第二生命周期；不扩大至逐类错误协议重构。
+
+回归测试先复现闭窗拒绝，再证明前台准备、报表返回、配置冻结及上传队列为空；四个相关文件 83 项通过，typecheck 通过。真实 `make frontend` 主进程查询打开原绑定 Chrome 并返回成功；随后在“千川 → 计划与数据”选择该账号、当天商品控成本汇总并点击查询，界面显示消耗 `0.00`、订单 `0`、成交金额 `0.00`、支付 ROI `-`。账号配置字节保持不变、上传任务仍为零。支付 ROI 沿用平台显示串，不把 `-` 改成零。
+
+本轮恢复 `rea` 的缺失本地依赖和编译产物后，以 `inspect-web-page` 只读观察该原账号页面；工具源码没有修改。CLI 的 origin array 初次传参失败，修正后产生 Evidence `inspect_web_page`。Kimi 封存只读失败边界调查 `2b7d7f73-4e6d-4c25-b9f6-f1ed0e93fe9d` 为 PARSED、实际读取六个指定文件；其建议的完整失败协议重构未纳入本次已定位修复。无 DISPLAY 的独立 shell 准备探针未能启动 Chrome，不能作为产品启动失败或验收；验收以实际 Electron 正常桌面环境和真实 UI 为准。脱敏截图、RED/GREEN、REA、Kimi 与最终验证保存在忽略的 `.agent/harness/runs/20261013-qianchuan-query-failure/`。

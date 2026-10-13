@@ -19,7 +19,7 @@ export class QianchuanBackendQueries {
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]);
     const done = Promise.resolve().then(async () => {
       signal.throwIfAborted();
-      const target = await this.accounts.prepareCatalog(query.product);
+      const target = await this.accounts.prepareCatalog(query.product, true);
       signal.throwIfAborted();
       if (target.advertiserId !== query.expectedAdvertiserId) throw new Error("广告账户已变化，请重新选择账号。");
       const result = await this.read(target, query, signal);
