@@ -3,6 +3,7 @@ import { QianchuanBackendCancelSchema, QianchuanBackendQuerySchema,
 } from "../shared/qianchuan-backend.js";
 import type { QianchuanAccountConfigReader, FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { readQianchuanBackendQuery } from "./qianchuan-backend-query.js";
+import { egressIdentity } from "../shared/qianchuan-egress.js";
 
 type ReadQuery = (target: FrozenQianchuanAccount, query: QianchuanBackendQuery, signal: AbortSignal) => Promise<QianchuanBackendResult>;
 
@@ -19,9 +20,14 @@ export class QianchuanBackendQueries {
     const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]);
     const done = Promise.resolve().then(async () => {
       signal.throwIfAborted();
-      const target = await this.accounts.prepareCatalog(query.product, true);
+      const configured = await this.accounts.preflight(query.product);
       signal.throwIfAborted();
-      if (target.advertiserId !== query.expectedAdvertiserId) throw new Error("广告账户已变化，请重新选择账号。");
+      if (configured.advertiserId !== query.expectedAdvertiserId) throw new Error("广告账户已变化，请重新选择账号。");
+      const target = await (configured.egress?.mode === "remote-browser" ? this.accounts.prepare(query.product) :
+        this.accounts.prepareCatalog(query.product, true));
+      signal.throwIfAborted();
+      if (target.advertiserId !== query.expectedAdvertiserId || target.configDigest !== configured.configDigest ||
+        egressIdentity(target.egress) !== egressIdentity(configured.egress)) throw new Error("账号连接或查询目标已变化，请重新查询。");
       const result = await this.read(target, query, signal);
       signal.throwIfAborted();
       const current = await this.accounts.freeze(target.product, target.configDigest);

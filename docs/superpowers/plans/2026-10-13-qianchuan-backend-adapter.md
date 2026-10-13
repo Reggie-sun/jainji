@@ -78,3 +78,29 @@ focused verification 为 typecheck 与四文件 162 项测试通过；最终 Har
 回归测试先复现闭窗拒绝，再证明前台准备、报表返回、配置冻结及上传队列为空；四个相关文件 83 项通过，typecheck 通过。真实 `make frontend` 主进程查询打开原绑定 Chrome 并返回成功；随后在“千川 → 计划与数据”选择该账号、当天商品控成本汇总并点击查询，界面显示消耗 `0.00`、订单 `0`、成交金额 `0.00`、支付 ROI `-`。账号配置字节保持不变、上传任务仍为零。支付 ROI 沿用平台显示串，不把 `-` 改成零。
 
 本轮恢复 `rea` 的缺失本地依赖和编译产物后，以 `inspect-web-page` 只读观察该原账号页面；工具源码没有修改。CLI 的 origin array 初次传参失败，修正后产生 Evidence `inspect_web_page`。Kimi 封存只读失败边界调查 `2b7d7f73-4e6d-4c25-b9f6-f1ed0e93fe9d` 为 PARSED、实际读取六个指定文件；其建议的完整失败协议重构未纳入本次已定位修复。无 DISPLAY 的独立 shell 准备探针未能启动 Chrome，不能作为产品启动失败或验收；验收以实际 Electron 正常桌面环境和真实 UI 为准。脱敏截图、RED/GREEN、REA、Kimi 与最终验证保存在忽略的 `.agent/harness/runs/20261013-qianchuan-query-failure/`。
+
+
+## VPS Closed Browser Query Repair
+
+### Goal And Ownership
+
+用户明确要求修复 VPS 查询路径。截图账号 `1876024170199244` 使用既有 `remote-browser` route；实际查询在 `prepareCatalog` 的 existing-only 远端请求阶段失败。只读 SSH 检查证明 worker 与原账号目录存在、VPS 无 Chrome 进程，尚未发送数据查询。查询准备语义由 `QianchuanBackendQueries.run` 独占，目标源码只修改 `src/main/qianchuan-backend-queries.ts`，回归归入既有 `tests/qianchuan-backend-queries.test.ts`；本节维护现有 plan。
+
+### Target Behavior And Invariants
+
+显式查询先以 `preflight` 核对保存的 advertiser identity。远端账号使用已存在的 `accounts.prepare(product)` 打开或连接该账号原 VPS 浏览器；本地继续使用 `prepareCatalog(product, true)`。准备后核对 advertiser、配置 digest 与出口，再调用原 adapter。固定主体、SSH alias、出口和原 profile 仍由原 browser manager / remote runtime / worker 验证；不新增绑定、替代目录、登录状态存储或 SSH owner。失败不回退本机、不盲重试或自动重连；旧任务与旧批次不变。取消仍等待准备结束并阻断随后的 backend read，不关闭账号原窗口，查询后原冻结检查保持。
+
+### Acceptance And Verification
+
+回归需先复现远端关闭 Chrome 时 existing-only 拒绝；修复后明确走已有准备入口，本地不走远端准备；stale advertiser 在 browser action 前拒绝，准备期间 digest/出口变化拒绝；远端准备失败不 fallback/retry；取消不发出后端读取且正确释放 busy。执行 typecheck、backend/账号/remote 受影响测试及 scoped Harness。真实验收使用现有 `make frontend` 查询截图中的 VPS 账号，核对固定出口、原 profile、返回 advertiser 和报表指标及 picker 清理；不上传或修改平台数据。真实登录或远端条件仍阻断时保留失败证据，不用 fixture PASS 声称实际恢复。
+
+### Self Review
+
+该修订只把用户显式查询接入既有正常浏览器准备入口。它不修改远端 protocol、恢复门、扩展目录或生产 owner；窗口内仅在 `/tmp` 准备候选，不影响并行任务的共享稳定源码。源、测试和当前运行证据分别验证，最终统一维护 AOCI 并仅提交 owned paths。
+
+
+### Implementation And Real Evidence
+
+2026-10-13：旧 query owner 加六项回归后为 6 FAIL / 7 PASS；应用 route 修复后，backend-queries、account-settings、browser-manager、remote 四文件 101 项全部通过，typecheck 通过。受管 Kimi immutable mapping invocation `aa898cfb-17e7-4271-8acc-21e92958b9e0` 的 canonical receipt 为 PARSED，18 个引用 span 的源 hash 均由 Parent 核对；它不是 implementation acceptance。
+
+运行中的 `make frontend` 空闲重启后，通过正常“千川 → 计划与数据”查询蝴蝶贴 `1876024170199244` 的当天商品控成本汇总，真实 renderer → IPC → 账号准备/冻结 → adapter 链返回消耗 `0.22`、订单 `0`、成交金额 `0.00`、支付 ROI `0.00`。账号 mapping hash 前后相同，上传任务保持 0；没有上传、修改计划或预算。该证据只支持 Linux 这个 VPS 账号的本次只读查询，不外推全部账号、Windows 或长期稳定性。Harness、REA、原 profile 与清理证明以及 Git 身份回执保存在本任务忽略/私有证据目录。

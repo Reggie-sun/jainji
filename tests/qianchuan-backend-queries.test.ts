@@ -12,16 +12,62 @@ const result: QianchuanBackendResult = { advertiserId: target.advertiserId, obse
 type Read = (target: FrozenQianchuanAccount, query: QianchuanBackendQuery, signal: AbortSignal) => Promise<QianchuanBackendResult>;
 function fixture(readQuery: Read = async () => structuredClone(result)) {
   const read = vi.fn(readQuery);
+  const preflight = vi.fn(async () => target), prepare = vi.fn(async () => target);
   const prepareCatalog = vi.fn(async () => target), freeze = vi.fn(async () => target);
-  const accounts = { prepareCatalog, freeze } as unknown as QianchuanAccountConfigReader;
-  return { accounts, prepareCatalog, freeze, read, queries: new QianchuanBackendQueries(accounts, read) };
+  const accounts = { preflight, prepare, prepareCatalog, freeze } as unknown as QianchuanAccountConfigReader;
+  return { accounts, preflight, prepare, prepareCatalog, freeze, read, queries: new QianchuanBackendQueries(accounts, read) };
 }
 it("freezes the saved account before returning and never creates upload work", async () => {
   const f = fixture(), input = query();
   await expect(f.queries.run(input, 7)).resolves.toEqual(result);
   expect(f.prepareCatalog).toHaveBeenCalledWith(target.product, true);
+  expect(f.prepare).not.toHaveBeenCalled();
   expect(f.freeze).toHaveBeenCalledWith(target.product, target.configDigest);
   expect(f.read).toHaveBeenCalledWith(target, input, expect.any(AbortSignal));
+  expect(f.queries.busy).toBe(false);
+});
+const remoteTarget: FrozenQianchuanAccount = { ...target,
+  egress: { mode: "remote-browser", group: "example", sshHost: "example-vps", localPort: 42001, expectedIp: "203.0.113.8" } };
+it("prepares the original VPS browser for an explicit query instead of requiring it already open", async () => {
+  const f = fixture(), connected = { ...remoteTarget, cdpEndpoint: "http://127.0.0.1:42002" };
+  f.preflight.mockResolvedValue(remoteTarget);
+  f.prepare.mockResolvedValue(connected); f.freeze.mockResolvedValue(connected);
+  f.prepareCatalog.mockRejectedValue(new Error("远端浏览器连接不可用"));
+  await expect(f.queries.run(query(), 7)).resolves.toEqual(result);
+  expect(f.prepare).toHaveBeenCalledTimes(1); expect(f.prepare).toHaveBeenCalledWith(target.product);
+  expect(f.prepareCatalog).not.toHaveBeenCalled();
+  expect(f.read).toHaveBeenCalledWith(connected, expect.any(Object), expect.any(AbortSignal));
+  expect(f.freeze).toHaveBeenCalledWith(target.product, remoteTarget.configDigest);
+});
+it("rejects a stale selected advertiser before opening any browser", async () => {
+  const f = fixture(); f.preflight.mockResolvedValue({ ...remoteTarget, advertiserId: "999" });
+  await expect(f.queries.run(query(), 7)).rejects.toThrow("变化");
+  expect(f.prepare).not.toHaveBeenCalled(); expect(f.prepareCatalog).not.toHaveBeenCalled();
+  expect(f.read).not.toHaveBeenCalled(); expect(f.queries.busy).toBe(false);
+});
+it.each(["digest", "egress"])("rejects %s drift during VPS preparation before querying", async field => {
+  const f = fixture(); f.preflight.mockResolvedValue(remoteTarget);
+  f.prepare.mockResolvedValue(field === "digest" ? { ...remoteTarget, configDigest: "e".repeat(64) } :
+    { ...remoteTarget, egress: { ...remoteTarget.egress!, sshHost: "another-vps" } });
+  await expect(f.queries.run(query(), 7)).rejects.toThrow("变化");
+  expect(f.read).not.toHaveBeenCalled(); expect(f.queries.busy).toBe(false);
+});
+it("does not fall back locally or retry when VPS preparation requires explicit reconnection", async () => {
+  const f = fixture(); f.preflight.mockResolvedValue(remoteTarget);
+  f.prepare.mockRejectedValue(new Error("远端浏览器连接不可用，请明确重连。"));
+  await expect(f.queries.run(query(), 7)).rejects.toThrow("明确重连");
+  expect(f.prepare).toHaveBeenCalledTimes(1); expect(f.prepareCatalog).not.toHaveBeenCalled();
+  expect(f.read).not.toHaveBeenCalled(); expect(f.queries.busy).toBe(false);
+});
+it("drains cancelled VPS preparation without issuing a backend read", async () => {
+  let resolve!: (value: FrozenQianchuanAccount) => void;
+  const f = fixture(), input = query(); f.preflight.mockResolvedValue(remoteTarget);
+  f.prepare.mockImplementation(() => new Promise<FrozenQianchuanAccount>(done => { resolve = done; }));
+  const pending = f.queries.run(input, 7); void pending.catch(() => undefined);
+  await vi.waitFor(() => expect(resolve).toBeTypeOf("function"));
+  f.queries.cancel({ requestId: input.requestId }, 7); expect(f.queries.busy).toBe(true);
+  resolve(remoteTarget); await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  expect(f.read).not.toHaveBeenCalled(); expect(f.freeze).not.toHaveBeenCalled();
   expect(f.queries.busy).toBe(false);
 });
 it("opens a proven absent account browser for an explicit report without creating upload work", async () => {

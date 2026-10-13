@@ -1568,9 +1568,9 @@
       "normalized_sha256": "d1d5eb35974f3bad964190e78815578443d8ba01a5ed18be7ae25a7a19fa8f9a"
     },
     "src/main/qianchuan-backend-queries.ts": {
-      "sha256": "42e0e4841748792ad73d500657fcdae82070439ab3d39b8d7dde5cf62b9e757b",
-      "size": 2623,
-      "normalized_sha256": "42e0e4841748792ad73d500657fcdae82070439ab3d39b8d7dde5cf62b9e757b"
+      "sha256": "72b24a562d20676ab06845a4a000d1e248e2cc4fc2d3ba691e8e0e742e07e75a",
+      "size": 3159,
+      "normalized_sha256": "72b24a562d20676ab06845a4a000d1e248e2cc4fc2d3ba691e8e0e742e07e75a"
     },
     "src/main/qianchuan-backend-query.ts": {
       "sha256": "ded87741c9ac44970e6a885eed6ddec438266c9cdcc09d5c9e2fb17272347177",
