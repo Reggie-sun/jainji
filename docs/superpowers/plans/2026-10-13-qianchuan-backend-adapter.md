@@ -104,3 +104,27 @@ focused verification 为 typecheck 与四文件 162 项测试通过；最终 Har
 2026-10-13：旧 query owner 加六项回归后为 6 FAIL / 7 PASS；应用 route 修复后，backend-queries、account-settings、browser-manager、remote 四文件 101 项全部通过，typecheck 通过。受管 Kimi immutable mapping invocation `aa898cfb-17e7-4271-8acc-21e92958b9e0` 的 canonical receipt 为 PARSED，18 个引用 span 的源 hash 均由 Parent 核对；它不是 implementation acceptance。
 
 运行中的 `make frontend` 空闲重启后，通过正常“千川 → 计划与数据”查询蝴蝶贴 `1876024170199244` 的当天商品控成本汇总，真实 renderer → IPC → 账号准备/冻结 → adapter 链返回消耗 `0.22`、订单 `0`、成交金额 `0.00`、支付 ROI `0.00`。账号 mapping hash 前后相同，上传任务保持 0；没有上传、修改计划或预算。该证据只支持 Linux 这个 VPS 账号的本次只读查询，不外推全部账号、Windows 或长期稳定性。Harness、REA、原 profile 与清理证明以及 Git 身份回执保存在本任务忽略/私有证据目录。
+
+## VPS Slow Loading Readiness Repair
+
+### Goal And Ownership
+
+用户在计划详情查询中看到 VPS 页面仍加载却已报错并关闭。原 query owner 等待 `domcontentloaded` 后仅等账号容器可见 10 秒，随后立即创建带严格账号 ID guard 的 adapter；账号容器先出现、ID 后渲染会过早失败。原 cleanup 只关闭本次 picker，不应改变原账号窗口。修改 owner 为 `src/main/qianchuan-backend-query.ts`，验证归入现有 `tests/qianchuan-backend-session.test.ts`，本节为本次 implementation plan；不修改其他会话的远端、扩展、选择组件或上传文件。
+
+### Target Behavior And Invariants
+
+导航在响应提交后进入 readiness 等待，不以完整页面或网络空闲作为准入。最多等 60 秒出现唯一、可见且与 URL 同一 advertiser 的账号 ID，再创建原 adapter 并只发一次只读查询；容器空壳仍视为加载。错误账号、歧义身份、登录或验证码出现时阻断；adapter 的同 Document、账号、请求及返回 guard 保留。整体 90 秒期限、用户取消、出口租约、前后冻结及失败后 picker 清理沿用原 owner，不增加重试、重连、本机回退、账号绑定或平台写入。整个请求已取消时不发后端请求。
+
+### Acceptance And Verification
+
+先用 ID 延迟 12 秒渲染的测试复现旧行为，然后覆盖 readiness 前零请求、正确身份单次查询、空壳/隐藏/错号/重复身份/登录或验证码/URL 错号拒绝，以及 readiness 后取消不读取并释放 handle。执行 session/queries 相关测试、typecheck、当前 policy required scoped Harness 及 completion；源码/AOCI 保持对应稳定字节。真实验收在原上传与其他任务稳定窗口释放后，通过正常 UI 查询截图账号的计划详情；不操作用户正在上传的原 profile，不以此前报表成功代替本次计划查询。外部登录、计划目标或慢网络仍阻断时保留实际失败并报告。
+
+### Self Review
+
+只改 page readiness 准入；未放宽账号/出口/Document guard 或失败恢复规则。等待参数是有限的，外层取消与期限仍能结束查询。私有副本完成 RED/GREEN 后再落入三项已确认无并发 owner 的文件；真实环境未验收前不声称截图已修复。
+
+### Implementation And Real Evidence
+
+2026-10-14：旧源码的延迟账号 ID 回归先 FAIL；修复后的 session/queries 27 项与 typecheck 通过，其中独立 Chrome 将 ID 延迟 12 秒渲染，随后原 adapter 只发送一次计划详情请求。受管 Kimi 只读 mapping `d65445b3-cf74-4ec9-9767-845883fa0710` 的 11 个 source span 已由 Parent 核对，不作为验收或 final review。
+
+正常 `make frontend` 自动空闲重启后，经真实 UI 查询截图中的 VPS 账号 `1876024170199244`、原计划 `1876036593854788`，约 27.8 秒返回计划详情、预算 `300.00` 元和 ROI 目标 `2`。账号 mapping hash 前后相同，当前项目上传任务保持 0、素材保持 25；未重启主进程、操作其他上传账号或修改平台计划。原账号页面保留，本次查询页清理。该证据仅支持本次 Linux/VPS 只读计划查询，不推断其他批次上传结果或长期稳定性。RED/GREEN、真实 UI、REA、完整 Harness 与 Git 身份证据保存在私有 `/tmp/jianji-qianchuan-vps-loading-20261014/`；首次完整检查发现其他会话的选择器 SSR 回归，保留 FAIL 并由其 owner 修复后重新验证。
