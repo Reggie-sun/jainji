@@ -15,6 +15,7 @@ vi.mock("electron", () => ({
     on: (name: string, callback: (event: { preventDefault(): void }) => void) => { electron.events.set(name, callback); },
     quit: () => electron.events.get("before-quit")?.({ preventDefault() {} }), exit: electron.exit },
   protocol: { registerSchemesAsPrivileged() {} }, BrowserWindow: class {}, dialog: { showMessageBox: electron.showMessageBox },
+  session: { fromPartition: () => ({ setProxy: async () => {}, fetch: vi.fn(async () => { throw new Error("Unexpected account request in startup recovery fixture."); }) }) },
   ipcMain: { handle: vi.fn() }, safeStorage: { isEncryptionAvailable: () => false }, nativeImage: {}, shell: {},
 }));
 
