@@ -21,6 +21,8 @@ import { QianchuanPlanMaterialRecovery } from "./qianchuan-plan-material-recover
 import { clearQianchuanAccountPlans } from "./qianchuan-cleanup-plans.js";
 import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
+import { QianchuanBackendQueries } from "./qianchuan-backend-queries.js";
+import type { QianchuanBackendQuery, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
 import { QianchuanSelectedAccountTargets } from "./qianchuan-selected-account-targets.js";
 import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, QianchuanPlanCatalogSchema, type QianchuanPlanOption, type QianchuanCurrentAccount, type QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
 import { QianchuanSubaccountListRequestSchema, QianchuanSubaccountSwitchRequestSchema, type QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
@@ -49,6 +51,7 @@ interface Dependencies {
   accounts?: QianchuanAccountConfigReader; changed?(): void;
   readiness?(config: QianchuanUploadConfig): string | undefined;
   readPlans?(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<QianchuanPlanOption[]>;
+  readBackendQuery?(target: FrozenQianchuanAccount, query: QianchuanBackendQuery, signal: AbortSignal): Promise<QianchuanBackendResult>;
 }
 const timestamp = () => new Date().toISOString();
 const unknown = (cause?: UploadError) => uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", cause ? `上传结果未知：${cause.failure.message}`.slice(0, 500) : "上传结果未知，禁止重新选文件。", cause?.failure.next_action ?? "在 Chrome 核查原批次页面；页面丢失时需人工处理。", true);
@@ -93,6 +96,7 @@ export class DouyinUploadService {
   private ordinaryBrowserController?: AbortController;
   private ordinaryBrowserControl = false;
   private readonly planReads: QianchuanPlanReads;
+  private readonly backendQueries: QianchuanBackendQueries;
   private readonly selectedAccountTargets = new QianchuanSelectedAccountTargets();
   private readonly planRequests = new Map<string, AbortController>();
   private readonly subaccountReads = new Map<string, Promise<QianchuanSubaccountCatalog>>();
@@ -100,13 +104,14 @@ export class DouyinUploadService {
   private planPreload: Promise<void> = Promise.resolve();
   private hasNonAutomationWork(): boolean {
     return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding ||
-      this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations);
+      this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations || this.backendQueries.busy);
   }
   get busy(): boolean {
     return this.hasNonAutomationWork() || this.automationUploadActive || this.automationBrowsers.busy;
   }
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
+    this.backendQueries = new QianchuanBackendQueries(this.accounts, dependencies.readBackendQuery);
     this.automationBrowsers = new AutomationBrowserAccounts({
       accounts: async () => {
         const summaries = await this.accounts.refresh();
@@ -339,6 +344,11 @@ export class DouyinUploadService {
       return plans;
     } finally { this.browserPreparations--; }
   }
+  queryBackend(input: unknown, senderId = 0): Promise<QianchuanBackendResult> {
+    if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作尚未空闲，请稍后查询千川数据。");
+    return this.backendQueries.run(input, senderId);
+  }
+  cancelBackendQuery(input: unknown, senderId = 0): void { this.backendQueries.cancel(input, senderId); }
   async listPlans(input: unknown, senderId = 0): Promise<QianchuanPlanListResult> {
     const parsed = QianchuanPlanListRequestSchema.parse(input);
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
@@ -1099,9 +1109,10 @@ export class DouyinUploadService {
     libraryOperation?.controller.abort();
     this.planPreloadController?.abort();
     this.controlGeneration++; this.stopping = true; this.stopped = true; this.eligible.clear(); this.currentIntents.clear(); this.continuationBatch = undefined; this.active?.controller.abort();
+    const backendQueries = this.backendQueries.stop();
     try {
       await Promise.all([...this.sessions.values()].map(port => this.bounded(() => port.stop(), 5000, new AbortController().signal).catch(() => { drained = false; this.paused = true; })));
-      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); await libraryOperation?.done; await this.planPreload; }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
+      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); await libraryOperation?.done; await this.planPreload; await backendQueries; }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
     } finally { this.stopping = false; }
     if (!drained || this.active) this.stopFailed = true;
     return !this.stopFailed;

@@ -1,7 +1,5 @@
-import { chromium, type Browser, type CDPSession, type JSHandle, type Page, type Response as BrowserResponse } from "playwright-core";
-import { guardedTransport } from "./local-cdp-transport.js";
-import { QianchuanPickerTransport } from "./qianchuan-picker-transport.js";
-import { isLoopbackUrl } from "../shared/douyin-upload.js";
+import type { JSHandle, Page, Response as BrowserResponse } from "playwright-core";
+import { withQianchuanQueryPage } from "./qianchuan-query-page.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { QianchuanPlanOptionSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 
@@ -327,60 +325,11 @@ export function readPlanProductNames(input: unknown, advertiserId: string): Map<
   return result;
 }
 
-/** Connects through the guarded loopback relay and touches only a new, marked picker tab. */
+/** Existing DOM catalog behavior, using the shared owned picker connection. */
 export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<QianchuanPlanOption[]> {
-  signal.throwIfAborted();
-  if (!/^[1-9][0-9]{0,19}$/.test(target.advertiserId) || !isLoopbackUrl(target.cdpEndpoint) || new URL(target.cdpEndpoint).pathname !== "/") throw changed();
-  let relay: Awaited<ReturnType<typeof guardedTransport>> | undefined;
-  let pickerTransport: QianchuanPickerTransport | undefined;
-  let browser: Browser | undefined;
-  let page: Page | undefined;
-  let pickerSession: CDPSession | undefined;
-  let pickerTargetId: string | undefined;
-  const transportController = new AbortController();
-  let productResponse: ((response: BrowserResponse) => void) | undefined;
-  try {
-    const endpoint = new URL(target.cdpEndpoint);
-    const response = await fetch(new URL("/json/version", endpoint), { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]) });
-    if (!response.ok) throw changed();
-    const info = await response.json() as { webSocketDebuggerUrl?: unknown };
-    if (typeof info.webSocketDebuggerUrl !== "string" || !isLoopbackUrl(info.webSocketDebuggerUrl, true) ||
-      new URL(info.webSocketDebuggerUrl).host !== endpoint.host) throw changed();
-    // Keep the relay alive until cancellation has closed this invocation's target.
-    relay = await guardedTransport(info.webSocketDebuggerUrl, transportController.signal, 10_000);
-    signal.throwIfAborted();
-    pickerTransport = await QianchuanPickerTransport.connect(relay.url, transportController.signal);
-    signal.throwIfAborted();
-    const connection = chromium.connectOverCDP(pickerTransport, { timeout: 10_000, noDefaults: true }).then(async connected => {
-      if (signal.aborted) { await connected.close().catch(() => undefined); signal.throwIfAborted(); }
-      return connected;
-    });
-    browser = await abortable(connection, signal);
-    if (browser.contexts().length !== 1) throw changed();
-    const context = browser.contexts()[0]!;
-    pickerSession = await browser.newBrowserCDPSession();
-    signal.throwIfAborted();
-    let creating: Promise<{ targetId: string }>;
-    const opening = context.waitForEvent("page", { timeout: 10_000, predicate: async candidate => {
-      const owned = await creating;
-      const candidateSession = await context.newCDPSession(candidate);
-      try { return (await candidateSession.send("Target.getTargetInfo")).targetInfo.targetId === owned.targetId; }
-      finally { await candidateSession.detach().catch(() => undefined); }
-    } });
-    void opening.catch(() => undefined);
-    const creationTimer = setTimeout(() => transportController.abort(), 10_000);
-    try {
-      creating = pickerSession.send("Target.createTarget", { url: "about:blank", background: true });
-      pickerTargetId = (await creating).targetId;
-      signal.throwIfAborted();
-      await abortable(pickerTransport.attach(pickerTargetId), signal);
-    } finally { clearTimeout(creationTimer); }
-    signal.throwIfAborted();
-    page = await abortable(opening, signal);
-    page.setDefaultTimeout(10_000);
-    await abortable(page.setViewportSize({ width: 1600, height: 1000 }), signal);
+  return withQianchuanQueryPage(target, signal, async page => {
     const products = new Map<string, QianchuanPlanOption>();
-    productResponse = response => {
+    const productResponse = (response: BrowserResponse) => {
       const url = new URL(response.url());
       if (url.origin !== QIANCHUAN_ORIGIN || url.pathname !== "/ad/api/pmc/v1/uni-promotion/ad/list-optional" || !response.ok()) return;
       void response.body().then(body => {
@@ -389,24 +338,14 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
       }).catch(() => undefined);
     };
     page.on("response", productResponse);
-    await abortable(page.goto(pageUrl(target.advertiserId), { waitUntil: "domcontentloaded", timeout: 45_000 }), signal);
-    const plans = await readVisibleQianchuanPlans(page, target.advertiserId, signal);
-    const deadline = Date.now() + 2000;
-    while (plans.some(plan => !products.has(plan.adId)) && Date.now() < deadline) {
-      await abortable(new Promise<void>(resolve => setTimeout(resolve, SAMPLE_INTERVAL_MS)), signal);
-    }
-    return plans.map(plan => products.get(plan.adId)?.name === plan.name ? { ...plan, productNames: products.get(plan.adId)!.productNames } : plan);
-  } finally {
-    const cleanupTimer = setTimeout(() => transportController.abort(), 2000);
-    cleanupTimer.unref();
-    if (page && productResponse) page.off("response", productResponse);
-    await page?.close({ runBeforeUnload: false }).catch(() => undefined);
-    if (pickerTargetId) await pickerSession?.send("Target.closeTarget", { targetId: pickerTargetId }).catch(() => undefined);
-    await pickerSession?.detach().catch(() => undefined);
-    await browser?.close().catch(() => undefined);
-    transportController.abort();
-    pickerTransport?.close();
-    await relay?.close().catch(() => undefined);
-    clearTimeout(cleanupTimer);
-  }
+    try {
+      await abortable(page.goto(pageUrl(target.advertiserId), { waitUntil: "domcontentloaded", timeout: 45_000 }), signal);
+      const plans = await readVisibleQianchuanPlans(page, target.advertiserId, signal);
+      const deadline = Date.now() + 2000;
+      while (plans.some(plan => !products.has(plan.adId)) && Date.now() < deadline) {
+        await abortable(new Promise<void>(resolve => setTimeout(resolve, SAMPLE_INTERVAL_MS)), signal);
+      }
+      return plans.map(plan => products.get(plan.adId)?.name === plan.name ? { ...plan, productNames: products.get(plan.adId)!.productNames } : plan);
+    } finally { page.off("response", productResponse); }
+  });
 }

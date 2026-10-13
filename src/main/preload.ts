@@ -16,6 +16,7 @@ import type { ProjectWorkspace } from "../shared/project-workspace.js";
 import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/qianchuan-account.js";
 import type { QianchuanPlanListRequest, QianchuanPlanCancel, QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
+import type { QianchuanBackendQuery, QianchuanBackendCancel, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecovery } from "../shared/qianchuan-video-library.js";
 import type { QianchuanLibraryScheduleSettings, QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule.js";
 import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest, BatchUploadResume } from "../shared/batch-production.js";
@@ -110,6 +111,8 @@ const api = {
   selectQianchuanAccountConfig: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.selectConfig"),
   saveQianchuanAccount: (input: QianchuanAccountSetup): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.saveAccount", input),
   listQianchuanPlans: (input: QianchuanPlanListRequest): Promise<QianchuanPlanListResult> => ipcRenderer.invoke("douyinUpload.listPlans", input),
+  queryQianchuanBackend: (input: QianchuanBackendQuery): Promise<QianchuanBackendResult> => ipcRenderer.invoke("douyinUpload.queryBackend", input),
+  cancelQianchuanBackendQuery: (input: QianchuanBackendCancel): Promise<void> => ipcRenderer.invoke("douyinUpload.cancelBackendQuery", input),
   listQianchuanSubaccounts: (input: QianchuanSubaccountListRequest): Promise<QianchuanSubaccountCatalog> => ipcRenderer.invoke("douyinUpload.listSubaccounts", input),
   switchQianchuanSubaccount: (input: QianchuanSubaccountSwitchRequest): Promise<QianchuanCurrentAccount> => ipcRenderer.invoke("douyinUpload.switchSubaccount", input),
   cancelQianchuanPlans: (input: QianchuanPlanCancel): Promise<void> => ipcRenderer.invoke("douyinUpload.cancelPlans", input),

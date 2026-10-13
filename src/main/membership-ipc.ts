@@ -7,6 +7,7 @@ const RECOVERY = new Set([
   "batchProduction.cancel", "batchProduction.cancelJob", "batchProduction.details", "batchProduction.projects",
   "coverReview.cancel", "coverReview.viewed", "artifact.open", "artifact.reveal", "export.appendPrefill",
   "project.save", "project.workspaceDraft", "project.productPriceDraft", "douyinUpload.stop",
+  "douyinUpload.cancelBackendQuery",
   "douyinUpload.discard", "douyinUpload.closeBatch", "douyinUpload.confirm", "douyinUpload.resolvePlanMaterialDeletion",
   "videoLibrarySchedule.get", "feedback.history", "feedback.submit", "feedback.open", "feedback.repository", "feedback.screenshot",
   "membership.status", "membership.refresh", "membership.login", "membership.logout", "membership.openPricing", "membership.openAdmin",

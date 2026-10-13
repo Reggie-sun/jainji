@@ -203,8 +203,8 @@ describe("desktop membership", () => {
     expect(session.snapshot().state).toBe("allowed");
   });
   it("requires membership for new/unknown work but keeps recovery available", () => {
-    for (const channel of ["agent.start", "export.retry", "export.append", "batchProduction.start", "coverReview.approve", "future.operation"]) expect(requiresMembership(channel)).toBe(true);
-    for (const channel of ["membership.login", "membership.logout", "app.state", "agent.cancel", "export.cancelAll", "project.save", "artifact.open", "douyinUpload.stop"]) expect(requiresMembership(channel)).toBe(false);
+    for (const channel of ["agent.start", "export.retry", "export.append", "batchProduction.start", "coverReview.approve", "future.operation", "douyinUpload.queryBackend"]) expect(requiresMembership(channel)).toBe(true);
+    for (const channel of ["membership.login", "membership.logout", "app.state", "agent.cancel", "export.cancelAll", "project.save", "artifact.open", "douyinUpload.stop", "douyinUpload.cancelBackendQuery"]) expect(requiresMembership(channel)).toBe(false);
   });
   it("enforces main-process IPC and trusted sender independently of the UI", async () => {
     const handlers = new Map<string, (event: IpcMainInvokeEvent, ...args: unknown[]) => unknown>();
@@ -214,9 +214,12 @@ describe("desktop membership", () => {
     installMembershipIpc(ipc, f.session, event => { if (event !== trusted) throw new Error("untrusted sender"); });
     const work = vi.fn(() => "started"); ipc.handle("agent.start", work);
     ipc.handle("export.cancelAll", () => "cancelled");
+    ipc.handle("douyinUpload.cancelBackendQuery", () => "query cancelled");
     await expect(handlers.get("agent.start")!(trusted)).rejects.toThrow(); expect(work).not.toHaveBeenCalled();
     expect(await handlers.get("export.cancelAll")!(trusted)).toBe("cancelled");
     await expect(handlers.get("export.cancelAll")!({} as IpcMainInvokeEvent)).rejects.toThrow("untrusted sender");
+    expect(await handlers.get("douyinUpload.cancelBackendQuery")!(trusted)).toBe("query cancelled");
+    await expect(handlers.get("douyinUpload.cancelBackendQuery")!({} as IpcMainInvokeEvent)).rejects.toThrow("untrusted sender");
     await f.session.restore(); expect(await handlers.get("agent.start")!(trusted)).toBe("started");
   });
   it("rejects remote HTTP and credential-bearing configuration", () => {

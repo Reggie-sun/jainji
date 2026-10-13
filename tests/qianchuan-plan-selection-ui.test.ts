@@ -231,10 +231,12 @@ describe("plan selector browser interaction", () => {
       await page.getByLabel("子账户",{exact:true}).selectOption("7000");
       expect(await page.getByLabel("子账户",{exact:true}).locator("option").allTextContents()).toEqual(["原子账户商贸 · 7000","新子账户商贸 · 8000"]);
       const layout=await page.locator(".qianchuan-plan-select").evaluate(element=>{
-        const current=element.querySelector("small")!.getBoundingClientRect(), child=element.querySelector(".qianchuan-subaccount-select")!.getBoundingClientRect();
-        return {gap:child.top-current.bottom,overflow:element.scrollWidth>element.clientWidth};
+        // The child wrapper uses display: contents; measure its visible controls.
+        const current=element.querySelector("small")!.getBoundingClientRect(), child=element.querySelector(".qianchuan-subaccount-select > select")!.getBoundingClientRect();
+        const plan=element.querySelector(":scope > select")!.getBoundingClientRect();
+        return {gap:child.left-current.right,alignment:Math.abs(child.top-plan.top),overflow:element.scrollWidth>element.clientWidth};
       });
-      expect(layout.gap).toBeGreaterThanOrEqual(0);expect(layout.overflow).toBe(false);
+      expect(layout.gap).toBeGreaterThanOrEqual(0);expect(layout.alignment).toBeLessThan(1);expect(layout.overflow).toBe(false);
       await page.getByLabel("上传计划",{exact:true}).selectOption("9001");
       await page.getByLabel("子账户",{exact:true}).selectOption("8000");
       await page.waitForFunction(()=>(window as any).switches.length===1);

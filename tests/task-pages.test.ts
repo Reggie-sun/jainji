@@ -26,6 +26,31 @@ async function fixture() {
 const workflow = (page: Page, name: string) => page.getByRole("navigation", { name: "制作流程" }).getByRole("button", { name: new RegExp(name + "$" ) });
 const rail = (page: Page, name: string) => page.locator(".workspace-rail").getByRole("button", { name, exact: true });
 
+it("opens the Qianchuan query page and uses the selected saved account without upload work", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(() => {
+      const f = (window as any).taskPagesFixture;
+      f.state.douyinUpload.accounts = [{ product: "眼贴", advertiserId: "12345", adId: "67890", available: true }];
+      f.calls.backendQueries = [];
+      window.jianji.queryQianchuanBackend = async input => {
+        f.calls.backendQueries.push(input);
+        return { kind: "plan", advertiserId: "12345", adId: "67890", name: "已查询的计划", observedAt: "2026-10-13T10:00:00Z", budget: "500", roiGoal: "2", products: [] };
+      };
+      window.jianji.cancelQianchuanBackendQuery = async () => {};
+      f.emit();
+    });
+    await rail(page, "千川").click();
+    await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "计划与数据" }).click();
+    expect(await page.getByLabel("查询计划 ID").inputValue()).toBe("67890");
+    await page.getByRole("button", { name: "查询", exact: true }).click();
+    await page.getByRole("heading", { name: "已查询的计划" }).waitFor();
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.backendQueries)).toEqual([expect.objectContaining({ kind: "plan", expectedAdvertiserId: "12345", adId: "67890" })]);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.starts)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("exposes saved upload methods and preserves isolated route drafts without starting work", async () => {
   const { page, errors } = await fixture();
   try {
