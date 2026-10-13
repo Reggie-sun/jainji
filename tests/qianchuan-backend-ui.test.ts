@@ -21,6 +21,8 @@ it("reads explicit plan, material pages and report, clearing stale data on edits
     expect(await page.evaluate(() => (window as any).reads)).toEqual([]);
     await page.getByRole("button", { name: "查询", exact: true }).click();
     await page.getByRole("heading", { name: "真实结构示例计划" }).waitFor();
+    expect(await page.locator(".qianchuan-query-metrics dd").nth(1).innerText()).toBe("1000.00");
+    expect(await page.locator(".qianchuan-query-metrics dt").nth(1).innerText()).toBe("预算（元）");
     await page.getByLabel("查询账号").selectOption("肥皂");
     expect(await page.getByRole("heading", { name: "真实结构示例计划" }).count()).toBe(0);
     expect(await page.getByLabel("查询计划 ID").inputValue()).toBe("67891");

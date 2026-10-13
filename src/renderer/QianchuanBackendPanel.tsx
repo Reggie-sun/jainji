@@ -71,7 +71,7 @@ export function QianchuanBackendPanel({ accounts, active }: { accounts: Qianchua
     {busy && <p role="status">正在读取千川数据…</p>}{error && <p role="alert">{error}</p>}
     {result && <div className="qianchuan-query-result">
       <p>账户 {result.advertiserId} · 读取于 {new Date(result.observedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</p>
-      {result.kind === "plan" ? <><h3>{result.name}</h3><dl className="qianchuan-query-metrics"><div><dt>计划 ID</dt><dd>{result.adId}</dd></div><div><dt>预算</dt><dd>{result.budget}</dd></div><div><dt>ROI 目标</dt><dd>{result.roiGoal}</dd></div></dl>
+      {result.kind === "plan" ? <><h3>{result.name}</h3><dl className="qianchuan-query-metrics"><div><dt>计划 ID</dt><dd>{result.adId}</dd></div><div><dt>预算（元）</dt><dd>{(Number(result.budget) / 100000).toFixed(2)}</dd></div><div><dt>ROI 目标</dt><dd>{result.roiGoal}</dd></div></dl>
         <ul>{result.products.map(item => <li key={item.id}>{item.name} · {item.id}</li>)}</ul></> : <>
         <p>时间范围：{result.startTime} 至 {result.endTime}（北京时间）</p>
         {result.kind === "report" ? <Metrics metrics={result.metrics} /> : <>

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-13T12:05:33Z",
+  "updated_at": "2026-10-13T13:19:03Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "146ead30dafc8475d62ad22bc2d7f7f763e7a73ae0226f4d1e725d2c7238aea9",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "c022557fd142df6a1bcd3df1cb428447ab8a8e6b6d941de2dbae6cb5b40f74a1",
-      "size": 128106,
-      "normalized_sha256": "c022557fd142df6a1bcd3df1cb428447ab8a8e6b6d941de2dbae6cb5b40f74a1"
+      "sha256": "d06102993e4d7d69ce6a259f1d9ba5d20f9932b8329ca8e09bc92e3f2cbe5bed",
+      "size": 128169,
+      "normalized_sha256": "d06102993e4d7d69ce6a259f1d9ba5d20f9932b8329ca8e09bc92e3f2cbe5bed"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2353,9 +2353,9 @@
       "normalized_sha256": "b9d943fad8c318311cba6dc960b5c6640fb23b7f2ab5d335a837d6b62c41d745"
     },
     "src/renderer/QianchuanBackendPanel.tsx": {
-      "sha256": "2c845c795bf5f71873b2682e5147f8a222da7b5a391de94fb3440c8ae968a617",
-      "size": 7348,
-      "normalized_sha256": "2c845c795bf5f71873b2682e5147f8a222da7b5a391de94fb3440c8ae968a617"
+      "sha256": "b564d0805759fa885c90172e242b2c5afd854fa4d197db732f47673b1e97ea7b",
+      "size": 7387,
+      "normalized_sha256": "b564d0805759fa885c90172e242b2c5afd854fa4d197db732f47673b1e97ea7b"
     },
     "src/renderer/QianchuanCleanupPlanSelect.tsx": {
       "sha256": "48dce8f21a803a97f29a25a5a81557318c3725338e3213e69f9eb15b694f0233",

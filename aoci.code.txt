@@ -303,7 +303,7 @@ WorkspacePage.tsx[AU5T]: F:保留已访问页草稿并实现工作区滚动和�
 BatchUploadDetails.tsx[EU6T]: F:展示冻结批量上传实时进度历史及原恢复入口 | R:code:src/renderer/useBatchProductionDetails.ts,code:src/renderer/QianchuanUploadHistory.tsx,code:src/renderer/qianchuan-upload-status.ts | A:按广告主命名；READY及ACCEPTED计上传；整批自动确认说明；活动任务禁恢复 | S:历史别名不恢复；UNKNOWN阻塞未选；实时观察非保存证据；READY非平台接收；接收非审核投放
 useBatchProductionDetails.ts[AU5T]: F:按冻结run/job复用原批量详情只读轮询 | R:code:src/shared/batch-production.ts,code:src/main/preload.ts | A:活跃每秒读取；隐藏停止轮询但保留详情；身份改变重置；隔离迟到响应及IPC错误前缀 | S:观察不恢复上传权限或触发任务
 AutomationTaskDetails.tsx[EU6T]: F:按冻结请求展示清理顺序规则制作数量和上传目标 | R:code:src/shared/automation.ts,code:src/renderer/qianchuan-account-display.ts | A:区分计划库及组合清理；单多计划具名呈现；来源按任务ID；库范围明确不按计划筛选 | S:账号按advertiserId取名；缺规则是三类审核；缺计划名不猜补；库清空不受零展示保护
-QianchuanBackendPanel.tsx[AU7T]: F:展示账号计划素材分页与控成本报表查询 | R:code:src/shared/qianchuan-backend.ts,code:src/shared/qianchuan-account.ts,code:src/main/preload.ts | A:显式查询；校验日期；绑定UUID；投影指标；输入变化清旧结果；取消及隐藏撤销 | S:账号来自已保存配置；不上传或改计划；迟到结果丢弃；错误不回显桥接原文
+QianchuanBackendPanel.tsx[AU7T]: F:展示账号计划素材分页与控成本报表查询 | R:code:src/shared/qianchuan-backend.ts,code:src/shared/qianchuan-account.ts,code:src/main/preload.ts | A:显式查询；校验日期；绑定UUID；投影指标；输入变化清旧结果；取消及隐藏撤销 | S:账号来自已保存配置；预算接口原值除以100000展示元且保留两位小数；不上传或改计划；迟到结果丢弃；错误不回显桥接原文
 
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===

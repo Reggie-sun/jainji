@@ -58,3 +58,13 @@ focused verification 为 typecheck 与四文件 162 项测试通过；最终 Har
 首次 required Harness 为 FAIL：千川组 39 文件、779 项通过、1 项失败；保留原回执。失败是已有测试对 `display: contents` 容器取空矩形，且错误要求当前横向布局为纵向。修正断言为实际 select 控件的水平间距、同一行对齐与无溢出；没有改动已成熟的 CDP 控件。对应 24 项测试随后全部通过。
 
 用户 A 后已接通入口。独立 UI browser fixture 覆盖三类查询、分页、输入作废、取消、页面离开、账号变化、迟到响应与窄屏；完整 App fixture 覆盖千川导航与 saved account 输入；session fixture 覆盖连接/导航错误脱敏和取消。Chrome MCP 的新隔离页验证查询交互，不操作真实平台写入。最终 policy-routed Harness、AOCI、Risk Gate 与提交回执由本任务忽略目录保存，不能以局部 PASS 替代其 completion gate。
+
+## Real Acceptance And Budget Display Correction
+
+2026-10-13 用户授权真实验收后，在当前 `make frontend` Electron 窗口通过“千川 → 计划与数据”实际操作，使用已保存的肥皂账号和原绑定 Chrome；未替换 preload、IPC、账号解析或后端请求。计划详情、素材查询、报表都经过真实 renderer → trusted IPC → 主进程账号冻结 → 独立 adapter → 登录浏览器接口链。
+
+当前投放计划的素材总数为 204，三页分别为 100 / 100 / 4 行，204 个 ID 全部唯一，末页禁用下一页；旧配置计划的空素材结果也正常返回。商品自选控成本报表消耗 0.23 元、订单 0、成交金额 0.00 元、支付 ROI 0.00，与同时观察的千川页面一致。真实查询取消后等待 6 秒未出现结果，查询按钮恢复，原浏览器标签 ID 保持不变，没有残留 picker；后续真实查询成功。这次取消验证的是实际请求生命周期及清理，不单独证明特定 HTTP 响应阶段的流中断。
+
+验收发现预算展示错误：adapter 保留接口原值 `100000000`，renderer 却未换算。REA 保存的前端源码明确将 `adDetailInfo.budget / 1e5` 后按两位小数展示；来源 script artifact SHA256 为 `fe67f683922f0a4b3845a329289bee32933cee7176fd111db5ced17003c0be0f`。renderer 现在显示“预算（元）”及 `1000.00`，保持共享返回类型和原值不变；浏览器 fixture 使用相同原值，回归断言先失败再通过。所有平台指标仍沿用原显示串，不重算报表。
+
+本次范围为 Linux 当前登录账号的只读链路；不外推为六账号、Windows、长期接口稳定性或上传/修改预算的验收。真实截图、脱敏结果、runtime identity、REA 换算片段及 Kimi 验收条件映射保存在忽略的 `.agent/harness/runs/20261013-qianchuan-real-acceptance/`，不保存 Cookie/token。修正后相关验证、AOCI 与 Git 回执按同一 owner 记录。
