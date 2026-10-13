@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-13T15:55:27Z",
+  "updated_at": "2026-10-13T18:54:22Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "1ef07f62994e78f8da7c3d79aa9802da7952c17b0a4efeec627dc5f0eea815c0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "9636ca678df2c0cb4195986f083be94ae3ac984cfde4eb9884497539ea4e3af2",
-      "size": 128241,
-      "normalized_sha256": "9636ca678df2c0cb4195986f083be94ae3ac984cfde4eb9884497539ea4e3af2"
+      "sha256": "83c63082b56f3facdd05f5344a31f71177a33fe197a9db641546beda5e1a0cf2",
+      "size": 129081,
+      "normalized_sha256": "83c63082b56f3facdd05f5344a31f71177a33fe197a9db641546beda5e1a0cf2"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1458,9 +1458,9 @@
       "normalized_sha256": "5eed9c1bc8b19b3ac415cf636de92893686b0f044c8b4f24e485d852e3d09e59"
     },
     "src/main/hybrid-cover-session.ts": {
-      "sha256": "4d1c55c8da2fb8c29a591647434faf01a47af0b306b2cb1193f995ae5ed76dc3",
-      "size": 8336,
-      "normalized_sha256": "4d1c55c8da2fb8c29a591647434faf01a47af0b306b2cb1193f995ae5ed76dc3"
+      "sha256": "a8b2ff8f8021cfe29e74164ac67e44310fdc0de38402b7ae3eadba0750024ccc",
+      "size": 8440,
+      "normalized_sha256": "a8b2ff8f8021cfe29e74164ac67e44310fdc0de38402b7ae3eadba0750024ccc"
     },
     "src/main/index.ts": {
       "sha256": "e7ec88a071896841bdc381a49d239de892243dbe7635b79783dff5469967d32f",
@@ -1953,9 +1953,9 @@
       "normalized_sha256": "442c566eaf2d9ae9e29fd8734ecd1aa9f62f6308eafe22fa5b2ca587383fa526"
     },
     "src/main/source-fact-discovery-evidence.ts": {
-      "sha256": "8e6c2300fc27c3cd5de15f90d4e517f9b28c32114b613670daed4bb46a34063c",
-      "size": 13892,
-      "normalized_sha256": "8e6c2300fc27c3cd5de15f90d4e517f9b28c32114b613670daed4bb46a34063c"
+      "sha256": "a9df1998ad2c965c416ce2c465c313c32bdb2a806a7f32fa48446bdd3c1e891a",
+      "size": 14754,
+      "normalized_sha256": "a9df1998ad2c965c416ce2c465c313c32bdb2a806a7f32fa48446bdd3c1e891a"
     },
     "src/main/source-fact-exact-frames.ts": {
       "sha256": "3e606ad786b274b4c69edaeb4e4823bc1eb0394bbb99b9e7df029e0edfb34c8e",

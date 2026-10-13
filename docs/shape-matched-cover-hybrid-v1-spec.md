@@ -62,6 +62,14 @@ CV Proposal → VLM Semantic Confirmation/Grouping → deterministic conservativ
 
 2026-10-06 产品兼容修复：新分析在 H2 前准备原默认密集 discovery，使 H2 确认的 candidate ID、集合摘要和 H3 mask 候选来自同一 live evidence；H3 精确按已确认 ID 交接，不从另一个抽帧人口的 bbox 推断身份。语义图片和 sampled motion 仍用原 24 帧证据，两份证据必须同源、同 clock/decode 且 fresh，JSON 不恢复 ownership。密集人口沿原默认上限 96 帧，并受原 scratch 容量和实际时钟约束，UNKNOWN 不升级。旧调用未提供同人口 evidence 时继续下方历史唯一包含规则，不 reinterpret 旧批准或 archive。零/部分处理及受限逐角原因保存在原冻结模板摘要并由原公开任务投影展示；摘要不授生产 authority，未知历史原因不补造。
 
+### Evidence Lifetime Repair
+
+2026-10-14 任务内合同修订：Hybrid 两份 discovery evidence 显式使用固定 2 小时保留上限，从各自准备开始计时，不续期。原单次 identity/clock/decode/spool 准备仍受 300 秒 wall budget 限制；成功后才切换到保留 deadline。该上限覆盖四角 H2 最多八次 180 秒请求、H3 四次 300 秒 mask、H4 四次 300 秒 preview 和最多八次 180 秒 QA，以及两次 discovery 准备，预留有限本地处理时间；不增加任何模型次数、单次预算或重试。
+
+canonical `prepareDiscoveryEvidence` 的 `lifetimeMs` 是独立、有限的保留预算，最大 7,200,000 ms，不能小于 `wallMs`；省略时沿用原 end-to-end wall deadline。只有 Hybrid 两次准备显式选择长保留时间。`deadline` 继续约束 discovery 和目标 evidence，H3 mask 保持 `min(discovery.deadline, now + 300s)`。源/引擎 generations 与字节、spool/pixel hashes、clock/decode/candidate/packet bindings、ownership、close 和用户取消仍逐次核查；过期不能被续期或缓存成功结果恢复。预算超时报告 `INCOMPLETE: stationary discovery wall budget exceeded`，不泄露原始底层中止文本。
+
+self-review：不修改三个 proof-pinned 源文件或历史 archive，不解除 freshness/H4/coverage，失败 promise 仍逐版本复用且不重试未知结果。执行与验证见 [Evidence Lifetime Plan](superpowers/plans/2026-10-14-hybrid-evidence-lifetime.md)。
+
 ### Boundary Compatibility Investigation
 
 2026-10-06 用户先批准画布边缘兼容，再明确批准内部 ROI 掩码归属修复，均要求独立回归且 coverage/H4 不放宽。独立构造反例证明半透明阴影会随底层视频变化，不能用 M1 相邻帧持久性过滤 mask 像素。2026-10-07 的真实画布边缘反例进一步证明：仅裁切物理边界、保留 v2 稳定支持及 3px 膨胀，仍可能遗漏超过膨胀范围的变化阴影，却返回可继续的候选。该 v3 实验已完整撤下，新旧 H3 均使用原 canonical v2 extractor；画布边缘和内部 ROI 未解归属继续拒绝。不扩大 ROI、不补推画外像素，不改变运动/shape/placement/coverage 数值或 H4 门槛。

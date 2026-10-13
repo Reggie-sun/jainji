@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm, appendFile } from "node:fs/promises";
+import { mkdtemp, rm, appendFile, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { discoverBinary } from "../src/main/ffmpeg.js";
@@ -9,9 +9,13 @@ import { collectFullSourceCensus } from "../src/main/source-fact-census.js";
 import { prepareDiscoveryEvidence, verifyDiscoveryFramehash, selectDiscoveryOrdinals, type DiscoveryEvidence } from "../src/main/source-fact-discovery-evidence.js";
 import { discoverStationaryTargets, mapDiscoveryBox } from "../src/main/shape-cover-stationary-discovery.js";
 import type { FullDecodeClock } from "../src/main/source-fact-census-clock.js";
+import { confirmStaticDiscoveryTarget, prepareStaticTargetEvidence } from "../src/main/source-mask-static-target.js";
 
 const cleanup: (() => Promise<void>)[] = [];
-afterEach(async () => { while (cleanup.length) await cleanup.pop()!(); });
+afterEach(async () => {
+  try { while (cleanup.length) await cleanup.pop()!(); }
+  finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+});
 function run(binary: string, args: string[], input?: Buffer) {
   const r = spawnSync(binary, args, { input, timeout: 20000, maxBuffer: 8 * 1024 ** 2 });
   if (r.error || r.status !== 0) throw r.error ?? Error(r.stderr.toString()); return r.stdout;
@@ -71,6 +75,83 @@ describe("bounded representative RGBA evidence", () => {
     await expect(prepareDiscoveryEvidence(input, { frames: 97 })).rejects.toThrow(/budget/);
     await expect(prepareDiscoveryEvidence(input, { scratchBytes: 1 })).rejects.toThrow(/scratch/);
     await expect(prepareDiscoveryEvidence(input, { wallMs: 1 })).rejects.toThrow(/wall/);
+  }, 30000);
+  it("retains prepared Hybrid evidence through model waiting without renewing its fixed lifetime", async () => {
+    const input = await fixture();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const evidence = await prepareDiscoveryEvidence(input, { lifetimeMs: 7_200_000 });
+    cleanup.push(() => evidence.close());
+    const deadline = evidence.deadline, original = await evidence.readFrame(0);
+    const before = await discoverStationaryTargets(evidence, input.signal);
+    await vi.advanceTimersByTimeAsync(300_001);
+    await expect(evidence.verifyFresh()).resolves.toBeUndefined();
+    expect(await evidence.readFrame(0)).toEqual(original);
+    expect((await discoverStationaryTargets(evidence, input.signal)).resultDigest).toBe(before.resultDigest);
+    expect(evidence.deadline).toBe(deadline);
+    await vi.advanceTimersByTimeAsync(7_200_000);
+    await expect(evidence.verifyFresh()).rejects.toThrow(/INCOMPLETE: stationary discovery wall budget exceeded/);
+    await expect(evidence.readFrame(0)).rejects.toThrow(/wall budget exceeded/);
+  }, 30000);
+  it("keeps the default evidence deadline and reports timer expiry as a controlled wall-budget failure", async () => {
+    const input = await fixture();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const evidence = await prepareDiscoveryEvidence(input);
+    cleanup.push(() => evidence.close());
+    await vi.advanceTimersByTimeAsync(300_001);
+    await expect(evidence.verifyFresh()).rejects.toThrow(/INCOMPLETE: stationary discovery wall budget exceeded/);
+    await expect(evidence.readFrame(0)).rejects.toThrow(/wall budget exceeded/);
+  }, 30000);
+  it("rejects invalid retention budgets and keeps preparation bounded independently", async () => {
+    const input = await fixture();
+    for (const lifetimeMs of [0, -1, 299_999, 7_200_001, Infinity, NaN]) {
+      await expect(prepareDiscoveryEvidence(input, { lifetimeMs })).rejects.toThrow(/budget/);
+    }
+    await expect(prepareDiscoveryEvidence(input, { wallMs: 1, lifetimeMs: 7_200_000 })).rejects.toThrow(/wall/);
+  }, 30000);
+  it("still rejects drift, cancellation, closure and forged evidence after the old Hybrid deadline", async () => {
+    const input = await fixture(), controller = new AbortController();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const evidence = await prepareDiscoveryEvidence({ ...input, signal: controller.signal }, { lifetimeMs: 7_200_000 });
+    cleanup.push(() => evidence.close());
+    await vi.advanceTimersByTimeAsync(300_001);
+    await expect(discoverStationaryTargets({ ...evidence } as DiscoveryEvidence, input.signal)).rejects.toThrow(/unowned/);
+    await appendFile(input.sourcePath, Buffer.from([1]));
+    await expect(evidence.readFrame(0)).rejects.toThrow(/generation/);
+    await expect(evidence.verifyFresh()).rejects.toThrow(/generation/);
+    controller.abort();
+    await expect(evidence.verifyFresh()).rejects.toThrow(/cancelled/);
+    await evidence.close();
+    await expect(evidence.readFrame(0)).rejects.toThrow(/closed/);
+  }, 30000);
+  it("gives H3 target evidence its existing preparation budget after Hybrid model waiting", async () => {
+    const input = await fixture();
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const evidence = await prepareDiscoveryEvidence(input, { lifetimeMs: 7_200_000 });
+    cleanup.push(() => evidence.close());
+    const result = await discoverStationaryTargets(evidence, input.signal);
+    const target = await confirmStaticDiscoveryTarget(evidence, { targetId: crypto.randomUUID(), candidateId: candidates(result)[0].id,
+      confirmedBy: "fixture", description: "retained evidence", decision: "CONFIRM_STATIC_TARGET_IDENTITY_AND_RANGE_ONLY",
+      range: { startFrame: 0, endFrame: evidence.receipt.frameCount } }, input.signal);
+    await vi.advanceTimersByTimeAsync(300_001);
+    const targetEvidence = await prepareStaticTargetEvidence(input, target);
+    cleanup.push(() => targetEvidence.close());
+    expect(targetEvidence.deadline).toBeLessThan(evidence.deadline);
+    await expect(targetEvidence.verifyFresh()).resolves.toBeUndefined();
+    expect((await targetEvidence.readRepresentativeRoi(0)).length).toBe(targetEvidence.roi.width * targetEvidence.roi.height * 4);
+    await vi.advanceTimersByTimeAsync(300_001);
+    await expect(targetEvidence.verifyFresh()).rejects.toThrow();
+    await expect(evidence.verifyFresh()).resolves.toBeUndefined();
+  }, 30000);
+  it("rejects engine drift during retained evidence consumption", async () => {
+    const input = await fixture(), ffmpegPath = join(input.sourcePath, "..", "ffmpeg-copy");
+    await copyFile(input.ffmpeg.ffmpegPath, ffmpegPath);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const evidence = await prepareDiscoveryEvidence({ ...input, ffmpeg: { ...input.ffmpeg, ffmpegPath } }, { lifetimeMs: 7_200_000 });
+    cleanup.push(() => evidence.close());
+    await vi.advanceTimersByTimeAsync(300_001);
+    await appendFile(ffmpegPath, Buffer.from([1]));
+    await expect(evidence.verifyFresh()).rejects.toThrow(/generation/);
+    await expect(evidence.readFrame(0)).rejects.toThrow(/generation/);
   }, 30000);
   it("rejects source drift, closed and forged evidence; cancellation never returns candidates", async () => {
     const { input, evidence } = await evidenceFor();

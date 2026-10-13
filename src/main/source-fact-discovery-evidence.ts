@@ -11,7 +11,7 @@ import { fingerprintFile } from "./paths.js";
 import { identifySource, sourceKey } from "./source-sticker-knowledge-store.js";
 import { freezeAI } from "./source-fact-ai-contract.js";
 
-export const DISCOVERY_LIMITS = Object.freeze({ frames: 96, wallMs: 300_000, scratchBytes: 512 * 1024 ** 2,
+export const DISCOVERY_LIMITS = Object.freeze({ frames: 96, wallMs: 300_000, lifetimeMs: 7_200_000, scratchBytes: 512 * 1024 ** 2,
   workingBytes: 512 * 1024 ** 2, bindingBytes: 128 * 1024 });
 export const discoveryHash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
 export const discoveryIncomplete = (reason: string): never => { throw Error(`INCOMPLETE: stationary discovery ${reason}`); };
@@ -85,15 +85,23 @@ export function verifyDiscoveryFramehash(text: string, frames: readonly Discover
 
 /** Bounded evidence mode alongside D2. Never calls full census or spools unsampled frames. */
 export async function prepareDiscoveryEvidence(input: FullSourceCensusInput,
-  limits: { frames?: number; wallMs?: number; scratchBytes?: number } = {}): Promise<DiscoveryEvidence> {
+  limits: { frames?: number; wallMs?: number; lifetimeMs?: number; scratchBytes?: number } = {}): Promise<DiscoveryEvidence> {
   const framesLimit = limits.frames ?? DISCOVERY_LIMITS.frames, wallMs = limits.wallMs ?? DISCOVERY_LIMITS.wallMs;
+  const lifetimeMs = limits.lifetimeMs ?? wallMs;
   const scratchLimit = limits.scratchBytes ?? DISCOVERY_LIMITS.scratchBytes;
   for (const [value, max] of [[framesLimit, DISCOVERY_LIMITS.frames], [wallMs, DISCOVERY_LIMITS.wallMs], [scratchLimit, DISCOVERY_LIMITS.scratchBytes]]) {
     if (!Number.isSafeInteger(value) || value < 1 || value > max) discoveryIncomplete("invalid or enlarged budget");
   }
-  const deadline = Date.now() + wallMs, budget = new AbortController();
+  if (!Number.isSafeInteger(lifetimeMs) || lifetimeMs < wallMs || lifetimeMs > DISCOVERY_LIMITS.lifetimeMs) discoveryIncomplete("invalid or enlarged lifetime budget");
+  const started = Date.now(), budget = new AbortController();
+  let deadline = started + wallMs;
   const signal = AbortSignal.any([input.signal, budget.signal]);
-  const timer = setTimeout(() => budget.abort(), wallMs);
+  const expire = () => budget.abort(Error("INCOMPLETE: stationary discovery wall budget exceeded"));
+  let timer = setTimeout(expire, wallMs);
+  const checkBudget = () => {
+    if (input.signal.aborted) discoveryIncomplete("cancelled");
+    if (budget.signal.aborted || Date.now() >= deadline) discoveryIncomplete("wall budget exceeded");
+  };
   let root: string | undefined, evidence: DiscoveryEvidence | undefined;
   let handle: Awaited<ReturnType<typeof open>> | undefined, closed = false;
   const close = async () => {
@@ -102,7 +110,7 @@ export async function prepareDiscoveryEvidence(input: FullSourceCensusInput,
     try { await handle?.close(); } finally { if (root) await rm(root, { recursive: true, force: true }); }
   };
   try {
-    signal.throwIfAborted();
+    checkBudget();
     const source = SourceIdentitySchema.parse(input.source);
     const sourcePath = await realpath(input.sourcePath);
     const ffmpeg = { ffmpegPath: await realpath(input.ffmpeg.ffmpegPath), ffprobePath: await realpath(input.ffmpeg.ffprobePath) };
@@ -111,7 +119,7 @@ export async function prepareDiscoveryEvidence(input: FullSourceCensusInput,
     if (generations.some(s => !s.isFile())) discoveryIncomplete("non-file source or engine");
     const check = async () => {
       if (closed) discoveryIncomplete("closed evidence");
-      signal.throwIfAborted(); if (Date.now() >= deadline) discoveryIncomplete("wall budget exceeded");
+      checkBudget();
       for (let i = 0; i < tracked.length; i++) {
         const s = await stat(tracked[i], { bigint: true });
         for (const key of ["dev", "ino", "size", "mtimeNs", "ctimeNs"] as const) if (s[key] !== generations[i][key]) discoveryIncomplete("source or engine generation changed");
@@ -165,10 +173,12 @@ export async function prepareDiscoveryEvidence(input: FullSourceCensusInput,
     verifyDiscoveryFramehash(bindingText, frames, source.timeBase);
     handle = await open(file, "r"); const spool = await handle.stat({ bigint: true });
     const verifyFresh = async () => {
-      await verifySource();
-      if (await fingerprintFile(ffmpeg.ffmpegPath, engineOptions) !== ffmpegFingerprint
-        || await fingerprintFile(ffmpeg.ffprobePath, engineOptions) !== ffprobeFingerprint) discoveryIncomplete("engine bytes changed");
-      await check();
+      try {
+        await verifySource();
+        if (await fingerprintFile(ffmpeg.ffmpegPath, engineOptions) !== ffmpegFingerprint
+          || await fingerprintFile(ffmpeg.ffprobePath, engineOptions) !== ffprobeFingerprint) discoveryIncomplete("engine bytes changed");
+        await check();
+      } catch (error) { checkBudget(); throw error; }
     };
     const readFrame = async (sampleIndex: number) => {
       await check(); const f = frames[sampleIndex];
@@ -177,13 +187,17 @@ export async function prepareDiscoveryEvidence(input: FullSourceCensusInput,
       for (const key of ["dev", "ino", "size", "mtimeNs", "ctimeNs"] as const) if (current[key] !== spool[key]) discoveryIncomplete("sample generation changed");
       const bytes = Buffer.alloc(f.byteLength); let offset = 0;
       while (offset < bytes.length) {
-        signal.throwIfAborted(); const r = await handle!.read(bytes, offset, bytes.length - offset, sampleIndex * f.byteLength + offset);
+        checkBudget(); const r = await handle!.read(bytes, offset, bytes.length - offset, sampleIndex * f.byteLength + offset);
         if (!r.bytesRead) discoveryIncomplete("short read"); offset += r.bytesRead;
       }
       if (discoveryHash(bytes) !== f.pixelSha256) discoveryIncomplete("sample pixel digest mismatch");
       await check(); return bytes;
     };
     await verifyFresh();
+    // Only a completed preparation can retain its exact bytes through downstream model waiting.
+    // Both clocks start at invocation; neither freshness checks nor reads renew the lifetime.
+    clearTimeout(timer); deadline = started + lifetimeMs;
+    timer = setTimeout(expire, Math.max(1, deadline - Date.now()));
     const body = { method: "bounded-lossless-discovery/v1" as const, authority: "none" as const, eligible: false as const,
       source, sourceKey: sourceKey(source), clockDigest: discoveryHash(JSON.stringify(clock)), frameCount: clock.frames.length,
       startPts: clock.startPts, endPts: clock.endPts, decode: { pixelFormat: "rgba" as const, streamIndex: clock.streamIndex,

@@ -45,7 +45,7 @@ it("keeps a safe corner despite local H4 rejection and reuses the same freeze fo
   expect(mocks.semantic).toHaveBeenCalledTimes(1); expect(mocks.geometry).toHaveBeenCalledTimes(1); expect(mocks.approve).toHaveBeenCalledTimes(2);
   expect(mocks.close).toHaveBeenCalledTimes(2);
   const dense = await mocks.discovery.mock.results[1].value;
-  expect(mocks.discovery.mock.calls.map(c => c[1])).toEqual([{ frames: 24 }, undefined]);
+  expect(mocks.discovery.mock.calls.map(c => c[1])).toEqual([{ frames: 24, lifetimeMs: 7_200_000 }, { lifetimeMs: 7_200_000 }]);
   expect(mocks.semantic.mock.calls[0][4]).toBe(dense); expect(mocks.geometry.mock.calls[0][6]).toBe(dense);
 });
 it("keeps Hybrid approval bytes cached while resolving and freezing per-version frame overrides", async () => {

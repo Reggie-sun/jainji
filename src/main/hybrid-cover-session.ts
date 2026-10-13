@@ -5,7 +5,7 @@ import { displayTextSettings } from "../shared/decorations.js";
 import { getRule, type RuleId } from "../shared/agent.js";
 import type { ExportPreset, MediaItem, EditTemplate } from "./domain.js";
 import type { StickerAssets } from "./builtin-stickers.js";
-import { prepareDiscoveryEvidence } from "./source-fact-discovery-evidence.js";
+import { DISCOVERY_LIMITS, prepareDiscoveryEvidence } from "./source-fact-discovery-evidence.js";
 import { SupervisorEvidence } from "./supervisor-evidence.js";
 import { FfmpegAdapter } from "./ffmpeg.js";
 import type { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
@@ -47,7 +47,7 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
         try { probe = await identity.sourceIdentity(signal); } finally { await identity.dispose(); }
         const input = { sourcePath: media.sourcePath, source: probe, ffmpeg: deps.tools, signal };
         if (probe.fingerprint !== media.fingerprint) throw new ProviderError("UNSAFE: Hybrid 原素材已变化。");
-        const evidence = await prepareDiscoveryEvidence(input, { frames: 24 });
+        const evidence = await prepareDiscoveryEvidence(input, { frames: 24, lifetimeMs: DISCOVERY_LIMITS.lifetimeMs });
         let candidateEvidence: Awaited<ReturnType<typeof prepareDiscoveryEvidence>> | undefined;
         try {
           const verifySourceKnowledge = async () => { if (deps.knowledgeStore) {
@@ -58,7 +58,7 @@ export function createHybridProductionSession(deps: { tools: FullSourceCensusInp
             }
           } };
           await verifySourceKnowledge();
-          candidateEvidence = await prepareDiscoveryEvidence(input);
+          candidateEvidence = await prepareDiscoveryEvidence(input, { lifetimeMs: DISCOVERY_LIMITS.lifetimeMs });
           const routes = await deps.routes(signal);
           const semantic = await confirmHybridCornerTargets(evidence, { ...deps.tools, signal }, new ShapeCoverVisionSession(sourceKey(probe), routes, 180000, "CORNER"), signal, candidateEvidence);
           if (semantic.status === "CORNER_SEMANTIC_BLOCKED") throw new ProviderError("UNSAFE: Hybrid 源或模型连接绑定失败。");
