@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { QianchuanEgressSchema } from "./qianchuan-egress.js";
 
+const ExtensionProcessSchema = z.object({ pid: z.number().int().min(2).safe(), profile: z.string().startsWith("/").max(4096), profileDirectory: z.string().min(1).max(100).refine(value => !/[\\/\u0000-\u001f]/.test(value) && ![".", ".."].includes(value)) }).strict();
+const ExtensionSetupSchema = z.object({ port: z.number().int().min(0).max(65535), token: z.string().regex(/^[A-Za-z0-9._~-]{32,256}$/) }).strict();
+
 export const REMOTE_CHUNK_BYTES = 4 * 1024 * 1024;
 export const RemoteDisplayNameSchema = z.string().min(1).max(100).refine(value => value.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(value)).transform(value => value.trim());
 export const RemoteFileSchema = z.object({
@@ -12,15 +15,18 @@ export const RemoteFileSchema = z.object({
 export const RemoteRequestSchema = z.object({
   version: z.literal(1),
   route: QianchuanEgressSchema.refine(value => value.mode === "remote-browser"),
-  action: z.enum(["open", "existing", "assert-closed", "close", "probe", "file-status", "file-append", "desktop-sync"]),
+  action: z.enum(["open", "existing", "assert-closed", "close", "probe", "file-status", "file-append", "desktop-sync", "extension-setup", "extension-profile", "extension-verify"]),
   advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/),
   file: RemoteFileSchema.optional(), offset: z.number().int().nonnegative().optional(),
   displayName: RemoteDisplayNameSchema.optional(),
+  extension: ExtensionSetupSchema.optional(), extensionProcess: ExtensionProcessSchema.optional(),
   bodyBytes: z.number().int().min(0).max(REMOTE_CHUNK_BYTES),
 }).strict().superRefine((value, ctx) => {
   if (value.action === "desktop-sync" ? value.displayName === undefined : value.displayName !== undefined) ctx.addIssue({ code: "custom", message: "Invalid desktop metadata" });
+  if ((value.action === "extension-setup") !== (value.extension !== undefined) || (value.action === "extension-verify") !== (value.extensionProcess !== undefined)) ctx.addIssue({ code: "custom", message: "Invalid extension metadata" });
   if (value.action.startsWith("file-") ? !value.file || value.file.advertiserId !== value.advertiserId || (value.action === "file-append" ? value.offset === undefined || !value.bodyBytes : value.bodyBytes !== 0) : !!value.file || value.bodyBytes !== 0 || value.offset !== undefined) ctx.addIssue({ code: "custom", message: "Invalid remote request" });
 });
 export type RemoteRequest = z.infer<typeof RemoteRequestSchema>;
 export const RemoteBrowserSchema = z.object({ port: z.number().int().min(1).max(65535), browserPath: z.string().regex(/^\/devtools\/browser\/[a-zA-Z0-9-]+$/) }).strict();
 export const RemoteFileStatusSchema = z.object({ offset: z.number().int().nonnegative(), complete: z.boolean(), path: z.string().startsWith("/").max(4096) }).strict();
+export const RemoteExtensionProfileSchema = z.object({ profile: z.string().startsWith("/").max(4096), profileDirectory: ExtensionProcessSchema.shape.profileDirectory, browser: RemoteBrowserSchema.optional() }).strict();

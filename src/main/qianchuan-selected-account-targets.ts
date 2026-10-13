@@ -12,6 +12,12 @@ export class QianchuanSelectedAccountTargets {
     if (this.targets.has(authorization.pageBatchId)) throw changed();
     this.targets.set(authorization.pageBatchId, structuredClone({ authorization, configured }));
   }
+  browserAnchor(authorization: UploadAuthorization): FrozenQianchuanAccount | undefined {
+    const binding = this.targets.get(authorization.pageBatchId);
+    if (!binding) return undefined;
+    if (!equal(binding.authorization, authorization)) throw changed();
+    return Object.freeze(structuredClone(binding.configured));
+  }
   resolve(authorization: UploadAuthorization, selection: QianchuanUploadSelection, configured: FrozenQianchuanAccount): FrozenQianchuanAccount | undefined {
     const binding = this.targets.get(authorization.pageBatchId);
     if (!binding) {
@@ -24,3 +30,4 @@ export class QianchuanSelectedAccountTargets {
     return Object.freeze(structuredClone(binding.authorization.target));
   }
 }
+export const qianchuanSelectedAccountTargets = new QianchuanSelectedAccountTargets();

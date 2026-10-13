@@ -37,17 +37,19 @@
 .batch-upload-account:has(.qianchuan-subaccount-select) { grid-template-columns: 18px minmax(0, 1fr) minmax(0, 2fr); }
 .batch-upload-account > .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) { grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr) 28px; }
 .batch-upload-account .qianchuan-plan-select.compact > label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
-.batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > label { grid-column: 1 / 3; }
+.batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > label { grid-column: 3 / 5; }
 .batch-upload-account .qianchuan-plan-select.compact > select { margin: 0; grid-column: 1; grid-row: 2; }
 .batch-upload-account .qianchuan-plan-select.compact > button { padding: 0; font-size: 20px; min-width: 0; grid-column: 2; grid-row: 2; }
 .batch-upload-account .qianchuan-plan-select.compact > p { grid-column: 1 / -1; grid-row: 3; margin: 0; font-size: 12px; color: #b14444; overflow-wrap: anywhere; max-height: 4.5em; overflow-y: auto; }
 .batch-upload-account .qianchuan-plan-select.compact > small { grid-row: 3; }
-.batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > p, .batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > small { grid-column: 1 / 3 !important; }
+.batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > select { grid-column: 3; }
+.batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > button { grid-column: 4; }
+.batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > p, .batch-upload-account .qianchuan-plan-select.compact:has(.qianchuan-subaccount-select) > small { grid-column: 3 / 5 !important; }
 .batch-upload-account .qianchuan-subaccount-select { display: contents !important; }
-.batch-upload-account .qianchuan-subaccount-select > label { grid-column: 3 / 5 !important; grid-row: 1; }
-.batch-upload-account .qianchuan-subaccount-select > select { grid-column: 3; grid-row: 2; margin: 0; }
-.batch-upload-account .qianchuan-subaccount-select > button { grid-column: 4; grid-row: 2; padding: 0; font-size: 20px; min-width: 0; }
-.batch-upload-account .qianchuan-subaccount-select > small { grid-column: 3 / 5 !important; grid-row: 3; }
+.batch-upload-account .qianchuan-subaccount-select > label { grid-column: 1 / 3 !important; grid-row: 1; }
+.batch-upload-account .qianchuan-subaccount-select > select { grid-column: 1; grid-row: 2; margin: 0; }
+.batch-upload-account .qianchuan-subaccount-select > button { grid-column: 2; grid-row: 2; padding: 0; font-size: 20px; min-width: 0; }
+.batch-upload-account .qianchuan-subaccount-select > small { grid-column: 1 / 3 !important; grid-row: 3; }
 .batch-upload-account > small { display: none; }
 .batch-output { display: flex; align-items: center; gap: 4px; margin: 0; padding-top: calc(var(--batch-control-offset) + 4px); grid-column: 4; grid-row: 1; }
 .batch-output .icon-button, .batch-output .text-button { min-width: 28px; min-height: 32px; white-space: nowrap; }

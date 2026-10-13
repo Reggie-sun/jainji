@@ -23,7 +23,7 @@ import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
 import { QianchuanBackendQueries } from "./qianchuan-backend-queries.js";
 import type { QianchuanBackendQuery, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
-import { QianchuanSelectedAccountTargets } from "./qianchuan-selected-account-targets.js";
+import { qianchuanSelectedAccountTargets } from "./qianchuan-selected-account-targets.js";
 import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, QianchuanPlanCatalogSchema, type QianchuanPlanOption, type QianchuanCurrentAccount, type QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
 import { QianchuanSubaccountListRequestSchema, QianchuanSubaccountSwitchRequestSchema, type QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
@@ -93,11 +93,13 @@ export class DouyinUploadService {
   private automationBrowserGeneration?: number;
   private readonly automaticConfirmationBatches = new Set<string>();
   private ordinaryRemoteAccount?: FrozenQianchuanAccount;
+  private ordinaryRemoteAdvertiserId?: string;
   private ordinaryBrowserController?: AbortController;
   private ordinaryBrowserControl = false;
   private readonly planReads: QianchuanPlanReads;
+  private readonly currentPlanReads: QianchuanPlanReads;
   private readonly backendQueries: QianchuanBackendQueries;
-  private readonly selectedAccountTargets = new QianchuanSelectedAccountTargets();
+  private readonly selectedAccountTargets = qianchuanSelectedAccountTargets;
   private readonly planRequests = new Map<string, AbortController>();
   private readonly subaccountReads = new Map<string, Promise<QianchuanSubaccountCatalog>>();
   private planPreloadController?: AbortController;
@@ -126,6 +128,9 @@ export class DouyinUploadService {
         // Only current, never-selected production work may defer browser preparation.
         // Every historical or selected task is still protected by the original guard.
         assertAutomationBrowserSafe(this.store, advertiserId, eligible, intents, this.cancelledIntents);
+        const childIds = new Set([...this.store.tasks().map(task => task.authorization.target), ...this.store.intents().map(intent => intent.authorization.target)]
+          .filter(target => this.summaries.some(account => account.product === target.product && account.advertiserId === advertiserId)).map(target => target.advertiserId));
+        for (const id of childIds) assertAutomationBrowserSafe(this.store, id, eligible, intents, this.cancelledIntents);
       },
       close: async (target, guard) => {
         if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持 VPS 浏览器管理。");
@@ -141,6 +146,8 @@ export class DouyinUploadService {
       },
     });
     this.planReads = new QianchuanPlanReads(dependencies.readPlans ?? readQianchuanPlans);
+    this.currentPlanReads = this.accounts instanceof QianchuanAccountSettings && this.accounts.extensionBacked
+      ? new QianchuanPlanReads((target, signal) => (this.accounts as QianchuanAccountSettings).readCurrentPlans(target, signal)) : this.planReads;
     this.refreshAccountPauses();
   }
   async templateAccount(recentProjectId: string, projectId: string): Promise<TemplateAccountBinding | undefined> {
@@ -324,7 +331,7 @@ export class DouyinUploadService {
         if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持读取网页子账户，请在简辑中保存账号设置。");
         const before = await this.accounts.prepareCurrentCatalog(product, signal, this.excludedPlanTargets(), openLocal);
         if (before.configured.advertiserId !== advertiserId) throw new Error("广告账户已变化，请重新选择账号。");
-        const plans = await this.planReads.catalog(before.target, signal, refresh);
+        const plans = await this.currentPlanReads.catalog(before.target, signal, refresh);
         const after = await this.accounts.prepareCurrentCatalog(product, signal, this.excludedPlanTargets());
         if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("网页子账户或账号连接已变化，请重新读取计划。");
         signal.throwIfAborted();
@@ -395,7 +402,7 @@ export class DouyinUploadService {
     const parsed = QianchuanSubaccountSwitchRequestSchema.parse(input);
     return this.withSubaccountOperation(async (accounts, signal, guard) => {
       try { return await accounts.switchSubaccount(parsed, signal, this.excludedPlanTargets(), guard); }
-      finally { this.planReads.invalidate(parsed.product); }
+      finally { this.planReads.invalidate(parsed.product); this.currentPlanReads.invalidate(parsed.product); }
     });
   }
   private async withSubaccountOperation<T>(operation: (accounts: QianchuanAccountSettings, signal: AbortSignal, guard: (target: FrozenQianchuanAccount) => void) => Promise<T>): Promise<T> {
@@ -587,7 +594,9 @@ export class DouyinUploadService {
       if (!this.store.config.enabled || this.store.unavailable) throw new Error("请先启用千川上传并授权账号配置。");
       if (this.dependencies.readiness?.(this.store.config)) throw new Error(this.dependencies.readiness(this.store.config));
       const generation = this.controlGeneration;
-      if (!this.automationUploadActive) {
+      const browserSelection = parsed.plan?.accountSource === "current-browser" && !this.automationUploadActive;
+      const extensionSelection = browserSelection && this.accounts instanceof QianchuanAccountSettings && this.accounts.extensionBacked;
+      if (!this.automationUploadActive && !extensionSelection) {
         const configured = await this.automationAccount(parsed.accountProduct);
         if (configured.egress?.mode === "remote-browser") {
           await this.stopPlanPreload();
@@ -597,14 +606,13 @@ export class DouyinUploadService {
           ordinaryTarget = configured;
         }
       }
-      const browserSelection = parsed.plan?.accountSource === "current-browser" && !this.automationUploadActive;
       if (browserSelection && !(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持网页子账户，请重新设置账号。");
       if (browserSelection && ordinaryTarget) await this.accounts.prepare(parsed.accountProduct);
       const browserTarget = browserSelection ? await (this.accounts as QianchuanAccountSettings).prepareCurrentCatalog(parsed.accountProduct, undefined, this.excludedPlanTargets(), !ordinaryTarget) : undefined;
       const prepared = browserTarget?.target ?? await this.accounts.prepare(parsed.accountProduct);
       const target = this.selectedTarget(prepared, parsed);
       if (parsed.plan) {
-        const plans = await this.readPlans(prepared);
+        const plans = browserTarget ? await this.currentPlanReads.request(prepared) : await this.readPlans(prepared);
         if (!plans.some(plan => plan.adId === target.adId)) throw new Error("所选计划已失效，请刷新计划列表后重新选择。");
         if (browserTarget) {
           const current = await (this.accounts as QianchuanAccountSettings).prepareCurrentCatalog(prepared.product, undefined, this.excludedPlanTargets());
@@ -615,6 +623,7 @@ export class DouyinUploadService {
         }
       }
       if (generation !== this.controlGeneration || this.stopping || !this.store.config.enabled) throw new Error("上传控制已变化，请重新开始本次制作。");
+      if (browserTarget) await (this.accounts as QianchuanAccountSettings).assertCurrentUploadTarget(target);
       const authorization = UploadAuthorizationSchema.parse({ target, pageBatchId: randomUUID(), expectedCount });
       if (browserTarget) this.selectedAccountTargets.remember(authorization, browserTarget.configured);
       this.productionBatches?.add(authorization.pageBatchId);
@@ -716,21 +725,24 @@ export class DouyinUploadService {
   }
   private async prepareOrdinaryUpload(task: UploadTaskRecord): Promise<void> {
     if (this.automationUploadActive || !this.automaticConfirmationBatches.has(task.authorization.pageBatchId) || task.authorization.target.egress?.mode !== "remote-browser") return;
+    const anchor = this.selectedAccountTargets.browserAnchor(task.authorization) ?? task.authorization.target;
     if (this.ordinaryRemoteAccount) {
-      if (!this.sameAutomationBinding(this.ordinaryRemoteAccount, task.authorization.target)) throw new Error("当前账号尚未完成，未切换上传账号。");
+      if (!this.sameAutomationBinding({ ...this.ordinaryRemoteAccount, cdpEndpoint: anchor.cdpEndpoint }, anchor) || this.ordinaryRemoteAdvertiserId !== task.authorization.target.advertiserId) throw new Error("当前账号尚未完成，未切换上传账号。");
       return;
     }
     this.ordinaryBrowserController = new AbortController();
     const signal = this.ordinaryBrowserController.signal, generation = this.controlGeneration;
     await this.stopPlanPreload(signal);
     const target = await this.automationAccount(task.authorization.target.product);
-    if (!this.sameAutomationBinding(target, task.authorization.target)) throw new Error("本轮冻结账号或出口已变化，未打开上传浏览器。");
+    if (!this.sameAutomationBinding({ ...target, cdpEndpoint: anchor.cdpEndpoint }, anchor)) throw new Error("本轮冻结账号或出口已变化，未打开上传浏览器。");
     this.automationBrowserGeneration = generation;
     await this.withOrdinaryBrowserControl(() => this.automationBrowsers.prepare(target, signal));
-    const prepared = await this.accounts.prepare(target.product);
+    const prepared = this.accounts instanceof QianchuanAccountSettings && this.accounts.extensionBacked && this.selectedAccountTargets.browserAnchor(task.authorization)
+      ? (await this.accounts.prepareCurrentCatalog(target.product, signal, this.excludedPlanTargets())).configured : await this.accounts.prepare(target.product);
     signal.throwIfAborted();
-    if (generation !== this.controlGeneration || !this.sameAutomationBinding(prepared, task.authorization.target) || prepared.cdpEndpoint !== task.authorization.target.cdpEndpoint) throw new Error("账号连接已变化，未继续原上传批次。");
+    if (generation !== this.controlGeneration || !this.sameAutomationBinding(prepared, anchor) || prepared.cdpEndpoint !== task.authorization.target.cdpEndpoint) throw new Error("账号连接已变化，未继续原上传批次。");
     this.ordinaryRemoteAccount = target;
+    this.ordinaryRemoteAdvertiserId = task.authorization.target.advertiserId;
   }
   private async completeOrdinaryUpload(pageBatchId: string): Promise<void> {
     if (this.automationUploadActive || this.continuationBatch || !this.productionBatches?.has(pageBatchId) || !this.automaticConfirmationBatches.has(pageBatchId)) return;
@@ -742,7 +754,7 @@ export class DouyinUploadService {
       const target = this.ordinaryRemoteAccount;
       if (this.openTasks().some(task => task.authorization.target.advertiserId === target.advertiserId && this.store.hasMarker(task.result.upload_task_id) && task.result.state !== "ACCEPTED")) return;
       await this.withOrdinaryBrowserControl(() => this.automationBrowsers.finish(target, this.ordinaryBrowserController!.signal));
-      this.ordinaryRemoteAccount = undefined; this.ordinaryBrowserController = undefined;
+      this.ordinaryRemoteAccount = undefined; this.ordinaryRemoteAdvertiserId = undefined; this.ordinaryBrowserController = undefined;
     }
   }
   async uploadAutomation(groups: { selection: QianchuanUploadSelection; target: FrozenQianchuanAccount; exports: UploadIdentity[] }[], signal: AbortSignal, retainBrowser = false): Promise<void> {
@@ -892,7 +904,7 @@ export class DouyinUploadService {
     this.changed();
   }
   private pendingGroup(pageBatchId?: string, held: UploadTaskRecord[] = []): string[] {
-    const available = this.openTasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && !held.some(other => sameTargetBytes(task, other)) && !this.pausedAccounts.has(task.authorization.target.advertiserId) && (!this.ordinaryRemoteAccount || task.authorization.target.advertiserId === this.ordinaryRemoteAccount.advertiserId) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch) && (!pageBatchId || task.authorization.pageBatchId === pageBatchId && !this.duplicate(task)));
+    const available = this.openTasks().filter(task => task.result.state === "PENDING" && this.eligible.has(task.result.upload_task_id) && !held.some(other => sameTargetBytes(task, other)) && !this.pausedAccounts.has(task.authorization.target.advertiserId) && (!this.ordinaryRemoteAccount || task.authorization.target.advertiserId === this.ordinaryRemoteAdvertiserId) && (!this.continuationBatch || task.authorization.pageBatchId === this.continuationBatch) && (!pageBatchId || task.authorization.pageBatchId === pageBatchId && !this.duplicate(task)));
     const first = available[0]; if (!first) return [];
     const group: UploadTaskRecord[] = [];
     if (this.duplicate(first)) group.push(first);
@@ -939,7 +951,7 @@ export class DouyinUploadService {
       }
     })().catch(error => {
       this.paused = true; this.initializationFailure = error instanceof Error ? error.message : "自动上传已停止，请核查原页面。";
-      if (!this.automationUploadActive) { this.automationBrowsers.release(); this.ordinaryRemoteAccount = undefined; this.ordinaryBrowserController = undefined; }
+      if (!this.automationUploadActive) { this.automationBrowsers.release(); this.ordinaryRemoteAccount = undefined; this.ordinaryRemoteAdvertiserId = undefined; this.ordinaryBrowserController = undefined; }
       this.changed();
     }).finally(() => { this.runner = undefined; if (this.pendingGroup().length && !this.cancelling && !this.paused && !this.stopped && !this.stopping && !this.store.unavailable) void this.runPending().catch(() => this.changed()); });
     return this.runner;
@@ -1104,7 +1116,7 @@ export class DouyinUploadService {
   async stop(): Promise<boolean> {
     let drained = true;
     if (!this.preparingAutomationUpload) this.automationBrowsers.release();
-    this.ordinaryBrowserController?.abort(); this.ordinaryRemoteAccount = undefined;
+    this.ordinaryBrowserController?.abort(); this.ordinaryRemoteAccount = undefined; this.ordinaryRemoteAdvertiserId = undefined;
     const libraryOperation = this.libraryOperation;
     libraryOperation?.controller.abort();
     this.planPreloadController?.abort();
@@ -1160,6 +1172,7 @@ export class DouyinUploadService {
       try {
         if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("网页子账户绑定不可用。");
         const current = await this.accounts.prepareCurrentCatalog(task.authorization.target.product, undefined, this.excludedPlanTargets());
+        await this.accounts.assertCurrentUploadTarget(task.authorization.target);
         this.selectedAccountTargets.resolve(task.authorization, selection, current.configured);
         if (current.target.advertiserId !== task.authorization.target.advertiserId) throw new Error("网页当前子账户已变化。");
       } catch {

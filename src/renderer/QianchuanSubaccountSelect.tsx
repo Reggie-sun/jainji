@@ -10,31 +10,33 @@ function subaccountError(cause: unknown, fallback: string): string {
   return message && message.length < 180 && !/\w+:\/\/|Call log:|[\r\n]/.test(message) ? message : fallback;
 }
 
-export function QianchuanSubaccountSelect({ account, current, disabled, idPrefix, onSwitching }: {
-  account?: QianchuanAccountSummary; current?: QianchuanCurrentAccount; disabled: boolean; idPrefix: string;
-  onSwitching(value: boolean): void;
+export function QianchuanSubaccountSelect({ account, disabled, idPrefix, refreshKey, onAccountRead, onSwitching }: {
+  account?: QianchuanAccountSummary; disabled: boolean; idPrefix: string; refreshKey: number;
+  onAccountRead(value?: QianchuanCurrentAccount): void; onSwitching(value: boolean): void;
 }) {
   const [catalog, setCatalog] = useState<QianchuanSubaccountCatalog>();
   const [loading, setLoading] = useState(false), [switching, setSwitching] = useState(false), [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const generation = useRef(0), report = useRef(onSwitching); report.current = onSwitching;
-  const product = account?.product, anchor = account?.advertiserId, currentId = current?.advertiserId;
+  const accountRead = useRef(onAccountRead); accountRead.current = onAccountRead;
+  const product = account?.product, anchor = account?.advertiserId;
   const available = account?.available === true;
   const supported = typeof window !== "undefined" && typeof window.jianji.listQianchuanSubaccounts === "function" && typeof window.jianji.switchQianchuanSubaccount === "function";
   useEffect(() => {
     const operation = ++generation.current;
     setCatalog(undefined); setError(""); setLoading(false);
-    if (!supported || !product || !anchor || !currentId || !available) return;
+    accountRead.current(undefined);
+    if (!supported || !product || !anchor || !available) return;
     setLoading(true);
     void window.jianji.listQianchuanSubaccounts({ product, expectedAdvertiserId: anchor }).then(value => {
       if (generation.current !== operation) return;
       const next = QianchuanSubaccountCatalogSchema.parse(value);
-      if (next.current.advertiserId !== currentId) { window.dispatchEvent(new CustomEvent(QIANCHUAN_ACCOUNT_CHANGED, { detail: { product, anchor } })); return; }
       setCatalog(next);
+      accountRead.current(next.current);
     }).catch(cause => { if (generation.current === operation) setError(subaccountError(cause, "读取子账户失败，请检查网页后刷新。")); })
       .finally(() => { if (generation.current === operation) setLoading(false); });
     return () => { generation.current++; };
-  }, [product, anchor, currentId, available, supported, revision]);
+  }, [product, anchor, available, supported, revision, refreshKey]);
   const select = async (advertiserId: string) => {
     if (!catalog || !product || !anchor || disabled || switching || !catalog.accounts.some(value => value.advertiserId === advertiserId) || advertiserId === catalog.current.advertiserId) return;
     const operation = generation.current;
@@ -59,7 +61,7 @@ export function QianchuanSubaccountSelect({ account, current, disabled, idPrefix
       {!catalog && <option value="">{switching ? "正在切换…" : loading ? "正在读取子账户…" : error ? "读取失败" : "等待网页账户核对"}</option>}
       {catalog?.accounts.map(child => <option key={child.advertiserId} value={child.advertiserId}>{child.name} · {child.advertiserId}</option>)}
     </select>
-    <button type="button" className="text-button" aria-label="刷新子账户" title="刷新子账户" disabled={disabled || loading || switching || !currentId} onClick={() => setRevision(value => value + 1)}>↻</button>
+    <button type="button" className="text-button" aria-label="刷新子账户" title="刷新子账户" disabled={disabled || loading || switching || !available} onClick={() => setRevision(value => value + 1)}>↻</button>
     {error && <small className="batch-error" role="alert" style={{ gridColumn: "1 / -1" }}>{error}</small>}
   </div>;
 }

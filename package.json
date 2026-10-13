@@ -64,6 +64,7 @@
       "package.json"
     ],
     "extraResources": [
+      { "from": "resources/qianchuan-extension", "to": "qianchuan-extension" },
       {
         "from": "resources/stickers",
         "to": "stickers"

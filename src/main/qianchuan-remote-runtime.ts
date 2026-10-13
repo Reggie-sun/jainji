@@ -3,10 +3,11 @@ import { createServer } from "node:net";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { egressIdentity, type QianchuanEgress } from "../shared/qianchuan-egress.js";
-import { REMOTE_CHUNK_BYTES, RemoteBrowserSchema, RemoteFileStatusSchema } from "../shared/qianchuan-remote.js";
+import { REMOTE_CHUNK_BYTES, RemoteBrowserSchema, RemoteFileStatusSchema, type RemoteRequest } from "../shared/qianchuan-remote.js";
 import { RemoteChannel, remoteUnavailable, sshRemoteArguments } from "./qianchuan-remote-transport.js";
 import { waitForEgressListener, type EgressLease } from "./qianchuan-egress-runtime.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
+import { qianchuanSelectedAccountTargets } from "./qianchuan-selected-account-targets.js";
 
 type RemoteBrowser = { route: QianchuanEgress; advertiserId: string; endpoint: string; browserPath: string; remotePort: number; child: ChildProcess; controller: AbortController };
 type Channel = Pick<RemoteChannel, "route" | "controller" | "request" | "close">;
@@ -62,6 +63,20 @@ export class QianchuanRemoteRuntime {
     const channel = this.channel(route), old = this.browsers.get(advertiserId);
     if (old) { await this.verify(old.endpoint, route, advertiserId); return old.endpoint; }
     const info = RemoteBrowserSchema.parse(await channel.request(existingOnly ? "existing" : "open", advertiserId));
+    const endpoint = await this.attachMetadata(route, advertiserId, info, preferredPort);
+    await this.verify(endpoint, route, advertiserId); return endpoint;
+  }
+  /** Fixed native-extension RPC reuses the existing subject/SSH channel without CDP. */
+  extensionRequest(route: QianchuanEgress, advertiserId: string, action: "extension-setup" | "extension-profile" | "extension-verify", extras: Partial<Pick<RemoteRequest, "extension" | "extensionProcess">> = {}, signal?: AbortSignal): Promise<unknown> {
+    return this.channel(route).request(action, advertiserId, extras, undefined, signal);
+  }
+  /** Metadata was checked by the remote worker against its canonical profile, without contacting DevTools. */
+  async attachMetadata(route: QianchuanEgress, advertiserId: string, input: unknown, preferredPort?: number): Promise<string> {
+    const info = RemoteBrowserSchema.parse(input), channel = this.channel(route), old = this.browsers.get(advertiserId);
+    if (old) {
+      if (egressIdentity(old.route) !== egressIdentity(route) || old.remotePort !== info.port || old.browserPath !== info.browserPath) throw remoteUnavailable();
+      old.controller.signal.throwIfAborted(); return old.endpoint;
+    }
     const localPort = await freePort(preferredPort ?? ([...this.browsers.values()].some(value => value.route.group === route.group) ? 0 : route.localPort));
     channel.controller.signal.throwIfAborted();
     const base = sshRemoteArguments(route).slice(0, -2);
@@ -71,7 +86,7 @@ export class QianchuanRemoteRuntime {
     this.browsers.set(advertiserId, browser);
     child.on("error", () => this.drop(browser)); child.on("exit", () => this.drop(browser));
     channel.controller.signal.addEventListener("abort", () => this.drop(browser), { once: true });
-    try { await waitForEgressListener(localPort, browser.controller.signal); await this.verify(browser.endpoint, route, advertiserId); return browser.endpoint; }
+    try { await waitForEgressListener(localPort, browser.controller.signal); return browser.endpoint; }
     catch (error) { this.drop(browser); throw error; }
   }
   async verify(endpoint: string, route: QianchuanEgress, advertiserId?: string): Promise<EgressLease> {
@@ -93,7 +108,8 @@ export class QianchuanRemoteRuntime {
   async stage(task: UploadTaskRecord, signal: AbortSignal): Promise<string> {
     const route = task.authorization.target.egress;
     if (route?.mode !== "remote-browser" || task.result.upload_outcome !== "NOT_SELECTED") throw remoteUnavailable();
-    const lease = await this.verify(task.authorization.target.cdpEndpoint, route, task.authorization.target.advertiserId);
+    const anchor = qianchuanSelectedAccountTargets.browserAnchor(task.authorization);
+    const lease = await this.verify(task.authorization.target.cdpEndpoint, route, anchor?.advertiserId ?? task.authorization.target.advertiserId);
     const combined = AbortSignal.any([signal, lease.signal]);
     const file = { advertiserId: task.authorization.target.advertiserId, sha256: task.input.artifact_sha256, size: task.input.size_bytes, fileName: task.result.file_name };
     const channel = this.channel(route), handle = await open(task.snapshotPath, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);

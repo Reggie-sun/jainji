@@ -15,6 +15,8 @@ import { readCurrentQianchuanAccountSnapshot } from "./qianchuan-current-account
 import type { QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
 import type { QianchuanSubaccountListRequest, QianchuanSubaccountSwitchRequest, QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
 import { readQianchuanSubaccounts, switchQianchuanSubaccount } from "./qianchuan-subaccounts-browser.js";
+import { QianchuanExtensionAccounts, type ExtensionAccountsPort, type ExtensionAccountSession } from "./qianchuan-extension-accounts.js";
+import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
 
@@ -30,10 +32,17 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly browsers: QianchuanBrowserManager;
   private readonly discoverBrowser: (advertiserId: string) => Promise<string>;
   private readonly discoverExistingBrowser: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>;
-  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, private readonly currentAccount = readCurrentQianchuanAccountSnapshot,
-    private readonly subaccountBrowser = { read: readQianchuanSubaccounts, switch: switchQianchuanSubaccount }) {
+  private readonly currentAccount: typeof readCurrentQianchuanAccountSnapshot;
+  private readonly extension?: ExtensionAccountsPort;
+  private readonly extensionSessions = new WeakMap<object, ExtensionAccountSession>();
+  get extensionBacked(): boolean { return !!this.extension; }
+  constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, currentAccount?: typeof readCurrentQianchuanAccountSnapshot,
+    private readonly subaccountBrowser = { read: readQianchuanSubaccounts, switch: switchQianchuanSubaccount }, extension?: ExtensionAccountsPort) {
     super(parseSettings);
     this.directory = path.resolve(root, "accounts"); this.file = path.join(this.directory, "mapping.json");
+    this.currentAccount = currentAccount ?? readCurrentQianchuanAccountSnapshot;
+    // An explicit reader is the existing test seam. Production never falls back from an absent extension to CDP.
+    this.extension = extension ?? (currentAccount ? undefined : new QianchuanExtensionAccounts(root));
     this.browsers = new QianchuanBrowserManager(root, { egress: id => this.egress(id), displayName: async id => {
       this.assertAvailable();
       const account = (await readPrivateConfig(this.file, parseSettings)).accounts.find(value => value.advertiserId === id);
@@ -68,6 +77,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
         if (!target.egress) throw new Error("该账号未配置固定出口。");
         if (target.egress.mode === "remote-browser") {
           await qianchuanRemoteRuntime.reconnect(target.egress, target.advertiserId);
+          await this.extension?.reconnect?.(target);
           return super.refresh();
         }
         qianchuanEgressRuntime.recover(target.egress);
@@ -239,7 +249,18 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
     return this.withPreparedBrowser(target);
   }
-  async prepareCurrentCatalog(product: QianchuanProduct, signal?: AbortSignal, excludedTargets?: ReadonlySet<string>, openLocalIfMissing = false): Promise<{ configured: FrozenQianchuanAccount; target: FrozenQianchuanAccount; account: QianchuanCurrentAccount }> {
+  async prepareCurrentCatalog(product: QianchuanProduct, signal?: AbortSignal, excludedTargets?: ReadonlySet<string>, openLocalIfMissing = false): Promise<{ configured: FrozenQianchuanAccount; target: FrozenQianchuanAccount; account: QianchuanCurrentAccount; browserIdentity?: string }> {
+    if (this.extension) {
+      this.assertAvailable();
+      const configured = await this.preflight(product), combined = signal ?? AbortSignal.timeout(45_000);
+      const session = await this.extension.current(configured, combined);
+      await super.freeze(product, configured.configDigest); combined.throwIfAborted();
+      this.preparedBrowsers.set(product, { advertiserId: configured.advertiserId, endpoint: session.endpoint });
+      const bound = this.withPreparedBrowser(configured);
+      const result = { configured: bound, target: Object.freeze({ ...bound, advertiserId: session.snapshot.account.advertiserId }), account: session.snapshot.account, browserIdentity: session.identity };
+      this.extensionSessions.set(result, session);
+      return result;
+    }
     const configured = await this.prepareCatalog(product, openLocalIfMissing);
     const account = await this.currentAccount(configured.cdpEndpoint, signal, excludedTargets);
     const { advertiserId } = account;
@@ -247,6 +268,22 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     if (JSON.stringify(fresh) !== JSON.stringify(configured)) throw new Error("账号连接已变化，请重新读取计划。");
     if (configured.egress?.mode === "remote-browser" && advertiserId !== configured.advertiserId) throw new Error("VPS 浏览器当前子账户与保存绑定不同，请先在账号设置中保存该子账户后重试。");
     return { configured, target: Object.freeze({ ...configured, advertiserId }), account };
+  }
+  async assertCurrentUploadTarget(target: FrozenQianchuanAccount, signal?: AbortSignal): Promise<void> {
+    if (!this.extension) return;
+    const current = await this.prepareCurrentCatalog(target.product, signal), session = this.extensionSessions.get(current)!;
+    if (!session.uploadEndpointVerified || current.target.configDigest !== target.configDigest || current.target.cdpEndpoint !== target.cdpEndpoint || current.target.advertiserId !== target.advertiserId)
+      throw new Error("当前 Chrome 的上传连接未能与扩展进程核对，请检查原浏览器；子账户目录仍可读取。");
+  }
+  async readCurrentPlans(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<QianchuanPlanOption[]> {
+    if (!this.extension) throw new Error("当前账户读取未使用千川扩展。");
+    const before = await this.prepareCurrentCatalog(target.product, signal), session = this.extensionSessions.get(before)!;
+    if (before.target.advertiserId !== target.advertiserId || before.target.configDigest !== target.configDigest || before.target.cdpEndpoint !== target.cdpEndpoint) throw new Error("网页账户或账号连接已变化，请重新读取计划。");
+    const fresh = async () => { signal.throwIfAborted(); await this.freeze(target.product, target.configDigest); };
+    const plans = await this.extension.plans(session, signal, fresh);
+    const after = await this.prepareCurrentCatalog(target.product, signal);
+    if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("网页账户或扩展连接已变化，请重新读取计划。");
+    return plans;
   }
   async savePlan(input: unknown, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
@@ -267,7 +304,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     if (before.configured.advertiserId !== input.expectedAdvertiserId) throw new Error("登录账号已变化，请重新选择。");
     const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); await this.freeze(input.product, before.configured.configDigest); };
     await fresh();
-    const catalog = await this.subaccountBrowser.read(before.configured.cdpEndpoint, signal, excluded, fresh);
+    const catalog = this.extension ? await this.extension.accounts(this.extensionSessions.get(before)!, signal, fresh) : await this.subaccountBrowser.read(before.configured.cdpEndpoint, signal, excluded, fresh);
     const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
     if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(catalog.current) !== JSON.stringify(after.account)) throw new Error("网页账户或浏览器连接已变化，请刷新子账户。");
     await fresh(); return catalog;
@@ -276,10 +313,10 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   async switchSubaccount(input: QianchuanSubaccountSwitchRequest, signal: AbortSignal, excluded: ReadonlySet<string>, guard: (target: FrozenQianchuanAccount) => void): Promise<QianchuanCurrentAccount> {
     const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
     if (before.configured.advertiserId !== input.expectedAdvertiserId || before.account.advertiserId !== input.expectedCurrentAdvertiserId) throw new Error("网页账户或登录账号已变化，请刷新子账户后重选。");
-    if (before.configured.egress?.mode === "remote-browser" && input.advertiserId !== before.configured.advertiserId) throw new Error("VPS 子账户须先在账号设置中保存绑定，未切换网页。");
+    if (!this.extension && before.configured.egress?.mode === "remote-browser" && input.advertiserId !== before.configured.advertiserId) throw new Error("VPS 子账户须先在账号设置中保存绑定，未切换网页。");
     const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); guard({ ...before.target, advertiserId: input.advertiserId }); await this.freeze(input.product, before.configured.configDigest); };
     await fresh();
-    const account = await this.subaccountBrowser.switch(before.configured.cdpEndpoint, input.expectedCurrentAdvertiserId, input.advertiserId, signal, excluded, fresh);
+    const account = this.extension ? (await this.extension.switch(this.extensionSessions.get(before)!, input.advertiserId, signal, fresh)).account : await this.subaccountBrowser.switch(before.configured.cdpEndpoint, input.expectedCurrentAdvertiserId, input.advertiserId, signal, excluded, fresh);
     const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
     if (JSON.stringify(before.configured) !== JSON.stringify(after.configured) || JSON.stringify(account) !== JSON.stringify(after.account)) throw new Error("切换后的网页账户未能核对，请刷新子账户；未自动重试。");
     await fresh(); return account;

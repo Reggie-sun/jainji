@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "简辑千川账户桥接",
+  "version": "1.0.0",
+  "description": "通过当前 Chrome 登录态读取千川账户与计划。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAr4pu8BIDbA2yBGAV9ZaXmLd/gW/DVCA7v9mvPC/Y869VyqmnxP7pLPnNHT0DHgdFQ0WfUy8RGsYsl+qpAP2j9XL2Gza9L74vubHAnN7GKHunAM8jy9DwmXPCmuIicWhtoSECFn7TPVVDGWqdh2q81sC/L37tylHH5AIGffqSsU+m+a3SuKddo4MjgTTBLGb8JshIqpKGfZSjDBPVmh0eOXpmQ65zmrIeRWZ8EaLcGBMzGqgLkQ7hvaRFRDcoevOCdKPqNr8C1ztikLWMJDSvmuB33HlQ9tiAJ1kQyS0ZZXyjPCHPEKXxYcFxUA+BgMlxWZMwaCD2HNwGzkSbwyniVwIDAQAB",
+  "permissions": [
+    "alarms",
+    "nativeMessaging",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://qianchuan.jinritemai.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://qianchuan.jinritemai.com/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}

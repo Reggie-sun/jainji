@@ -9,5 +9,6 @@ await mkdir(output, { recursive: true });
 await build({ entryPoints: [path.join(root, "src/remote-worker.ts")], bundle: true, platform: "node", format: "cjs", target: "node22", external: ["playwright-core"], outfile: path.join(output, "worker.cjs") });
 await mkdir(path.join(output, "node_modules"), { recursive: true });
 await cp(path.join(root, "node_modules", "playwright-core"), path.join(output, "node_modules", "playwright-core"), { recursive: true, dereference: true });
+await cp(path.join(root, "resources", "qianchuan-extension"), path.join(output, "qianchuan-extension"), { recursive: true });
 await writeFile(path.join(output, "package.json"), JSON.stringify({ private: true, type: "commonjs", engines: { node: ">=22" } }) + "\n");
 console.log(`Remote worker built: ${output}`);

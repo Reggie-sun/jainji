@@ -13,6 +13,7 @@ import { desktopEnvironment } from "./qianchuan-remote-desktop-panel.js";
 import { readPrivateJson } from "./qianchuan-account-config.js";
 import { z } from "zod";
 import { RemoteDesktopProtocols } from "./qianchuan-remote-desktop-protocols.js";
+import { RemoteExtensionHost } from "./qianchuan-extension-remote-worker.js";
 
 /** Runs as a dedicated non-root SSH user, over stdin/stdout only; never listens publicly. */
 export class RemoteWorker {
@@ -53,6 +54,9 @@ export class RemoteWorker {
     await this.bind(request);
     if (body.length !== request.bodyBytes) throw new Error("Truncated frame");
     const id = request.advertiserId;
+    if (request.action === "extension-setup") return new RemoteExtensionHost(this.root, this.home).setup(request.extension!, id);
+    if (request.action === "extension-profile") return new RemoteExtensionHost(this.root, this.home).profile(id);
+    if (request.action === "extension-verify") return { startedAt: await new RemoteExtensionHost(this.root, this.home).verify(id, request.extensionProcess!) };
     if (request.action === "file-status") return this.files.status(request.file!);
     if (request.action === "file-append") return this.files.append(request.file!, request.offset!, body);
     if (request.action === "assert-closed") { await this.manager.assertClosed(id); return {}; }
