@@ -7760,5 +7760,234 @@
     "dashboardEvidence": "EXAMPLE_DATA_EXPLICITLY_LABELLED_BY_UI",
     "exampleNotice": "当前为示例数据，点此免费领取会员，畅享所有权益",
     "collection": "passive normal-page XHR metadata and shape; no headers, credentials, raw values, login/signature response or independent private replay"
+  },
+  "continuation_2026_10_14": {
+    "normal_browser_read": {
+      "observedAt": "2026-10-13T17:24:47.563Z",
+      "source": "Current JIANJI adapter; normal browser same-origin; no qianguanjia backend",
+      "reads": [
+        {
+          "kind": "plan",
+          "status": "NOT_EVALUATED",
+          "reason": "Platform read or strict response validation rejected; no raw values/errors retained"
+        },
+        {
+          "kind": "materials",
+          "status": "PASS",
+          "accountMatched": true,
+          "fields": [
+            "advertiserId",
+            "observedAt",
+            "startTime",
+            "endTime",
+            "kind",
+            "adId",
+            "offset",
+            "limit",
+            "total",
+            "rows"
+          ],
+          "total": 0,
+          "rowCount": 0,
+          "startTime": "2026-10-14 00:00:00",
+          "endTime": "2026-10-14 01:24:48",
+          "metricKeys": [],
+          "requestedPlanEchoMatched": true,
+          "planBindingEvidence": "ID extracted from visible plan table; result echoes requested target; empty response does not independently confirm plan identity"
+        }
+      ],
+      "sourceSha256": "d1d5eb35974f3bad964190e78815578443d8ba01a5ed18be7ae25a7a19fa8f9a"
+    },
+    "historical_material_read": {
+      "observedAt": "2026-10-13T17:25:53.283Z",
+      "source": "Current JIANJI adapter; normal browser same-origin; no qianguanjia backend",
+      "reads": [
+        {
+          "kind": "materials",
+          "status": "PASS",
+          "accountMatched": true,
+          "fields": [
+            "advertiserId",
+            "observedAt",
+            "startTime",
+            "endTime",
+            "kind",
+            "adId",
+            "offset",
+            "limit",
+            "total",
+            "rows"
+          ],
+          "total": 0,
+          "rowCount": 0,
+          "startTime": "2026-10-13 00:00:00",
+          "endTime": "2026-10-13 23:59:59",
+          "metricKeys": [],
+          "requestedPlanEchoMatched": true,
+          "planBindingEvidence": "ID extracted from visible plan table; result echoes requested target; empty response does not independently confirm plan identity"
+        }
+      ],
+      "sourceSha256": "d1d5eb35974f3bad964190e78815578443d8ba01a5ed18be7ae25a7a19fa8f9a"
+    },
+    "plan_failure_shape": {
+      "observedAt": "2026-10-13T17:25:22.715Z",
+      "httpStatus": 200,
+      "businessCode": 1001,
+      "dataKeys": [
+        "goodsInfos",
+        "roomInfos"
+      ],
+      "adDetailInfoKeys": [],
+      "fieldTypes": {
+        "id": "undefined",
+        "name": "undefined",
+        "budget": "undefined",
+        "ecpRoi2Goal": "undefined"
+      },
+      "idMatches": false,
+      "goodsType": "array",
+      "goodsCount": 0,
+      "firstGoodsKeys": [],
+      "firstGoodsTypes": {}
+    },
+    "official_material_id_runtime": {
+      "raw_json": "{\"material_id\":1879999999999999999}",
+      "native_number_string": "1880000000000000000",
+      "reviver_source": "1879999999999999999",
+      "tested_runtimes": [
+        {
+          "node": "22.21.0"
+        },
+        {
+          "electron": "33.2.1",
+          "node": "20.18.1"
+        }
+      ],
+      "spec": "https://tc39.es/ecma262/multipage/structured-data.html#sec-internalizejsonproperty",
+      "official_oauth_live": "NOT_EVALUATED",
+      "windows_live": "NOT_EVALUATED",
+      "adapter_fixture": {
+        "observedAt": "2026-10-13T17:39:09.356Z",
+        "electron": "33.2.1",
+        "node": "20.18.1",
+        "source": "actual project Electron RUN_AS_NODE executing current bundled adapter; fixture transport; no official network",
+        "exactIdPreserved": true,
+        "exponentRejected": true
+      }
+    },
+    "implementation": {
+      "output_field": "materialId?: string",
+      "canonical_id": "positive decimal, no leading zero, 1..20 digits",
+      "absent_or_null": "field omitted",
+      "numeric_without_source": "whole page rejected",
+      "red_tests": {
+        "failed": 18,
+        "passed": 21
+      },
+      "green_tests": {
+        "passed": 39,
+        "failed": 0
+      },
+      "typecheck_exit": 0,
+      "source_sha256": "20f0b82b5e9a8215656bd85b6ebbb3c24d8cc621b6fca989a0a3121c5cf246b7",
+      "test_sha256": "b008fdd4306a53a5dc08f15bbdc44dfe73d9751a7671bebf22c934f3ab7f9138"
+    },
+    "mutations_executed": 0,
+    "qianguanjia_current_dom": {
+      "observedAt": "2026-10-13T17:40:56.672Z",
+      "path": "/dist/dashboard/index",
+      "exampleData": true,
+      "passwordInputVisible": false,
+      "method": "normal browser DOM read only; no navigation or backend replay"
+    },
+    "authorization_boundary": {
+      "official_api_available": false,
+      "source": "User explicitly states no official API",
+      "active_route": "authorized normal Qianchuan browser; independent of qianguanjia",
+      "official_provider": "not activated; live OAuth NOT_EVALUATED"
+    },
+    "verification_attempts": [
+      {
+        "runId": "20261013T174950Z-7758086d",
+        "status": "NOT_EVALUATED",
+        "exit": 2,
+        "required_checks": {
+          "typecheck": "PASS",
+          "douyin-upload": "PASS",
+          "documents": "PASS",
+          "owned-aoci": "PASS"
+        },
+        "test_files": 41,
+        "tests_passed": 834,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "invalidated_by": "Four foreign Hybrid source/test files changed during execution; owned source/test hashes unchanged"
+      },
+      {
+        "runId": "20261013T180453Z-932a7480",
+        "status": "NOT_EVALUATED",
+        "exit": 2,
+        "required_checks": {
+          "typecheck": "PASS",
+          "douyin-upload": "PASS",
+          "documents": "PASS",
+          "owned-aoci": "PASS"
+        },
+        "test_files": 41,
+        "tests_passed": 834,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "invalidated_by": "Foreign membership-desktop.ts and membership-desktop.test.ts changed during execution; owned source/test hashes unchanged"
+      },
+      {
+        "runId": "20261013T182234Z-9c524e3d",
+        "status": "PASS",
+        "exit": 0,
+        "environment": "complete frozen verification copy; read-only Git; no registered worktree",
+        "baseCommit": "90f08bb59f4cc660147387f65c099f962d552ad5",
+        "copied_file_count": 4377,
+        "participating_source_count": 4063,
+        "required_checks": {
+          "typecheck": "PASS",
+          "douyin-upload": "PASS",
+          "documents": "PASS",
+          "owned-aoci": "PASS"
+        },
+        "test_files": 41,
+        "tests_passed": 834,
+        "tests_failed": 0,
+        "tests_skipped": 0,
+        "completionRunId": "20261013T182912Z-7b92196d",
+        "completion": "PASS"
+      }
+    ],
+    "actual_source_equivalence": {
+      "frozenRunId": "20261013T182234Z-9c524e3d",
+      "frozenRunStatus": "PASS",
+      "sourceFileCount": 4063,
+      "actualSourceDrift": [
+        "resources/qianchuan-extension/background.js",
+        "tests/qianchuan-extension-browser.test.ts"
+      ],
+      "ownedAndDirectDependenciesMatch": true,
+      "dependencies": {
+        "src/main/qianchuan-open-api-videos.ts": "sha256:20f0b82b5e9a8215656bd85b6ebbb3c24d8cc621b6fca989a0a3121c5cf246b7",
+        "tests/qianchuan-backend-adapter.test.ts": "sha256:b008fdd4306a53a5dc08f15bbdc44dfe73d9751a7671bebf22c934f3ab7f9138",
+        "src/main/qianchuan-backend-adapter.ts": "sha256:d1d5eb35974f3bad964190e78815578443d8ba01a5ed18be7ae25a7a19fa8f9a",
+        "src/shared/qianchuan-backend.ts": "sha256:fd18d00f594701620d82ea6e790586c8ba76182f1a5167308191a0b1af6c74e1",
+        "src/shared/qianchuan-account.ts": "sha256:a2a73177778570622e48bcf857d952e09052263a8ede96b4ea46080b454c71ad",
+        "tests/helpers/douyin-cdp-fixture.ts": "sha256:2b90e6433d427129b3eb349eb202a22cfc845985ac11845413e239bb36ba804c",
+        "package.json": "sha256:a6dd7ce0d41e04d5b65e3f59d3746a77b6db3bc6903994eb8185bc9f6920ab54",
+        "package-lock.json": "sha256:c7e0ef69cb1b718b961a2cd8b1de87c656b639328e50fed515a3124c56ea7471",
+        "tsconfig.json": "sha256:9feb22b956bbb22ab6cb16118db8e8f396b329d1687e1c4dff458972a1428b88",
+        "vitest.config.ts": "sha256:c7807e617363d2c108f242d64a8de61cc47b87bd5a2efebd8b546b96d62bf8f5"
+      }
+    },
+    "current_tree_focused_verification": {
+      "typecheck_exit": 0,
+      "adapter_tests_passed": 39,
+      "adapter_tests_failed": 0,
+      "proof_boundary": "owned module and relevant runtime; not whole concurrent worktree acceptance"
+    }
   }
 }

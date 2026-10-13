@@ -1628,9 +1628,9 @@
       "normalized_sha256": "16aebd00cc8e1910b057ff8386f0ae8cbd172b43edba0706d5c45a17d3ca9bf8"
     },
     "src/main/qianchuan-open-api-videos.ts": {
-      "sha256": "ebcadcf8cc0b3a55ff85b59c231e9c1a89f3bc62e141b1a56011b6832f53a8cc",
-      "size": 5101,
-      "normalized_sha256": "ebcadcf8cc0b3a55ff85b59c231e9c1a89f3bc62e141b1a56011b6832f53a8cc"
+      "sha256": "20f0b82b5e9a8215656bd85b6ebbb3c24d8cc621b6fca989a0a3121c5cf246b7",
+      "size": 5562,
+      "normalized_sha256": "20f0b82b5e9a8215656bd85b6ebbb3c24d8cc621b6fca989a0a3121c5cf246b7"
     },
     "src/main/qianchuan-page-contract.ts": {
       "sha256": "5a96a698a1e4c543173128ec38d377564bdda9d976ad6a9e40f8acf6f253b7ff",

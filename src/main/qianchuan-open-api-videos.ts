@@ -2,7 +2,7 @@
 export interface QianchuanVideoQuery { advertiserId: string; page: number; pageSize: number }
 export interface QianchuanVideoPage {
   advertiserId: string; page: number; pageSize: number; total: number;
-  videos: { videoId: string; filename: string; signature: string; durationSeconds: number }[];
+  videos: { videoId: string; materialId?: string; filename: string; signature: string; durationSeconds: number }[];
 }
 export interface QianchuanVideoAuthorization { accessToken: string; advertiserIds: readonly string[] }
 const endpoint = "https://api.oceanengine.com/open_api/v1.0/qianchuan/video/get/";
@@ -18,6 +18,11 @@ const string = (value: unknown, maximum: number): string => {
 const integer = (value: unknown, minimum: number, maximum: number): number => {
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < minimum || value > maximum) throw fail();
   return value;
+};
+const materialId = (value: unknown): string => {
+  const id = string(value, 20);
+  if (!/^[1-9]\d{0,19}$/.test(id)) throw fail();
+  return id;
 };
 
 /** Only GET video/get is exposed; no browser tokens, redirects, writes, retries or URL projection. */
@@ -57,7 +62,11 @@ export class QianchuanOpenApiVideos {
       timeout.throwIfAborted();
       const bytes = new Uint8Array(size); let offset = 0;
       for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-      const result = object(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+      const result = object(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes),
+        (key, value: unknown, context?: { source?: string }) => {
+          // Never recover an ID from the rounded Number, even when it appears safe.
+          return key === "material_id" && typeof value === "number" ? materialId(context?.source) : value;
+        }));
       if (result.code !== 0) throw fail();
       const data = object(result.data), pagination = object(data.page_info);
       if (pagination.page !== page || pagination.page_size !== pageSize) throw fail();
@@ -67,12 +76,12 @@ export class QianchuanOpenApiVideos {
         data.list.length > total || total > 0 && page > totalPages || total === 0 && page !== 1) throw fail();
       const videos = data.list.map(value => {
         const video = object(value);
-        // The documented id is a string; numeric material_id is deliberately not parsed as an ID.
         const videoId = string(video.id, 128), filename = string(video.filename, 512);
+        const association = video.material_id == null ? {} : { materialId: materialId(video.material_id) };
         const signature = string(video.signature, 32);
         if (!/^[a-fA-F0-9]{32}$/.test(signature) || typeof video.duration !== "number" ||
           !Number.isFinite(video.duration) || video.duration < 0) throw fail();
-        return { videoId, filename, signature, durationSeconds: video.duration };
+        return { videoId, ...association, filename, signature, durationSeconds: video.duration };
       });
       if (new Set(videos.map(video => video.videoId)).size !== videos.length) throw fail();
       return { advertiserId, page, pageSize, total, videos };

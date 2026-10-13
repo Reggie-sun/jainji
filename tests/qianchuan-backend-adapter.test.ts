@@ -105,21 +105,55 @@ it("does not turn missing report metrics into zero", async () => {
 const officialInput = () => ({ advertiserId: aid, page: 1, pageSize: 20 });
 const officialGrant = () => ({ accessToken: "fixture-token", advertiserIds: [aid] });
 const officialBody = () => ({ code: 0, data: { page_info: { page: 1, page_size: 20, total_number: 1, total_page: 1 },
-  list: [{ id: "v01000000000000000001", material_id: 1879999999999999999, filename: "样片.mp4", signature: "a".repeat(32), duration: 12.5,
+  list: [{ id: "v01000000000000000001", material_id: "1879999999999999999", filename: "样片.mp4", signature: "a".repeat(32), duration: 12.5,
     url: "https://secret.invalid?token=x", poster_url: "secret" }] } });
 const officialResponse = (body: unknown) => new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } });
+const rawMaterialResponse = (literal: string) => new Response(JSON.stringify(officialBody()).replace('"1879999999999999999"', literal), { headers: { "content-type": "application/json" } });
 
-it("queries only the fixed official video GET and projects metadata without credentials or rounded material IDs", async () => {
+it("queries only the fixed official video GET and projects exact material metadata without credentials", async () => {
   const transport = vi.fn<typeof fetch>(async () => officialResponse(officialBody()));
   const port = new QianchuanOpenApiVideos(officialGrant, transport);
   const result = await port.list(officialInput(), signal);
-  expect(result).toMatchObject({ advertiserId: aid, total: 1, videos: [{ videoId: "v01000000000000000001", durationSeconds: 12.5 }] });
+  expect(result).toMatchObject({ advertiserId: aid, total: 1, videos: [{ videoId: "v01000000000000000001", materialId: "1879999999999999999", durationSeconds: 12.5 }] });
   const [input, options] = transport.mock.calls[0]!;
   const url = new URL(String(input));
   expect(url.origin).toBe("https://api.oceanengine.com"); expect(url.pathname).toBe("/open_api/v1.0/qianchuan/video/get/");
   expect(url.searchParams.get("advertiser_id")).toBe(aid);
   expect(options).toMatchObject({ method: "GET", redirect: "error", credentials: "omit", cache: "no-store", headers: { "Access-Token": "fixture-token" } });
   expect(JSON.stringify(result)).not.toMatch(/token|secret|https:|material_id/);
+});
+it("preserves unsafe numeric official material IDs from raw JSON source digits", async () => {
+  for (const literal of ["1", "1879999999999999999", "1880000000000000000", "12345678901234567890"]) {
+    const port = new QianchuanOpenApiVideos(officialGrant, async () => rawMaterialResponse(literal));
+    const result = await port.list(officialInput(), signal);
+    expect(result.videos[0]).toMatchObject({ materialId: literal, durationSeconds: 12.5 });
+    expect(typeof result.videos[0]!.materialId).toBe("string");
+  }
+});
+it("omits absent or null official material IDs without manufacturing an association", async () => {
+  for (const material_id of [undefined, null]) {
+    const body = officialBody();
+    const response = { ...body, data: { ...body.data, list: [{ ...body.data.list[0], material_id }] } };
+    const result = await new QianchuanOpenApiVideos(officialGrant, async () => officialResponse(response)).list(officialInput(), signal);
+    expect(result.videos[0]).not.toHaveProperty("materialId");
+    expect(result.videos[0]!.videoId).toBe("v01000000000000000001");
+  }
+});
+it.each(["1.0", "1e3", "9007199254740991.4", "1879999999999999999.1", "-1", "0", "-0", "1e309", "123456789012345678901", '"01"', '"1e3"', '""', "true", "{}", "[]"])("rejects ambiguous or invalid official material ID literal %s without retry", async literal => {
+  const transport = vi.fn<typeof fetch>(async () => rawMaterialResponse(literal));
+  await expect(new QianchuanOpenApiVideos(officialGrant, transport).list(officialInput(), signal)).rejects.toThrow("千川官方素材查询未完成，请检查授权、权限或返回数据。");
+  expect(transport).toHaveBeenCalledTimes(1);
+});
+it("fails closed on numeric official material IDs when the runtime omits source context", async () => {
+  const original = JSON.parse;
+  const parse = vi.spyOn(JSON, "parse").mockImplementation((text, reviver) => original(text, reviver ? function (key, value) { return reviver.call(this, key, value); } : undefined));
+  try {
+    for (const literal of ["1", "1879999999999999999", "1e3"]) {
+      await expect(new QianchuanOpenApiVideos(officialGrant, async () => rawMaterialResponse(literal)).list(officialInput(), signal)).rejects.toThrow(/千川官方/);
+    }
+    const result = await new QianchuanOpenApiVideos(officialGrant, async () => officialResponse(officialBody())).list(officialInput(), signal);
+    expect(result.videos[0]).toMatchObject({ materialId: "1879999999999999999" });
+  } finally { parse.mockRestore(); }
 });
 it("denies unauthorized accounts, invalid pages and tokens before official transport", async () => {
   const transport = vi.fn<typeof fetch>(async () => officialResponse(officialBody()));

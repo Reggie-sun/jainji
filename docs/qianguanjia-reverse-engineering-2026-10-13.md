@@ -2,7 +2,7 @@
 
 ## Decision
 
-本轮已验证 JIANJI 可以独立读取当前千川账户汇总；完整投放管理仍需取得官方权限并逐项实测。千管家的账号、商品、计划、素材和规则任务边界可供参考。公开前端和登录后网络均显示它调用 `qc-api.uliangtech.com` 自有中台，**没有证明其服务端如何调用千川，也没有证明所有展示功能当前可用**。因此适合借鉴流程，不适合将第三方私有接口当作 JIANJI 的长期依赖。
+本轮已验证 JIANJI 可以独立读取当前千川账户汇总；完整投放管理仍需逐项核验对应平台权限、响应与操作结果。用户目前没有官方 API，正常登录的千川浏览器是当前独立路线。千管家的账号、商品、计划、素材和规则任务边界可供参考。公开前端和登录后网络均显示它调用 `qc-api.uliangtech.com` 自有中台，**没有证明其服务端如何调用千川，也没有证明所有展示功能当前可用**。因此适合借鉴流程，不适合将第三方私有接口当作 JIANJI 的长期依赖。
 
 本轮先复用 JIANJI 已有的直接千川浏览器只读适配器，再增加官方视频素材目录查询的主进程库接缝。两者均不调用千管家。官方路线仍需要 JIANJI 自有应用/主体获得相应权限和用户 OAuth 授权；仅有千管家的登录或授权，不代表 JIANJI 可使用其服务端 token。
 
@@ -157,9 +157,9 @@ JIANJI 既有只读适配器明确选择 4 个 ROI2 指标，保留原始 value 
 
 | Capability | Independent route | Current boundary |
 | --- | --- | --- |
-| 计划详情、ROI/预算读取 | 现有 `QianchuanBackendAdapter` 在正常千川浏览器 same-origin 读取 | 已有源码/隔离回归；本轮实机证据单列，不依赖千管家 |
+| 计划详情、ROI/预算读取 | 现有 `QianchuanBackendAdapter` 在正常千川浏览器 same-origin 读取 | 已有源码/隔离回归；10-14 当前计划返回业务码1001，尚未验证当前计划读取成功 |
 | 账户消耗/成交/ROI 汇总 | 同上 fixed statQuery | 本轮正常账户独立实测成功，LIVE_OBSERVED；日期≤31天、CST、4指标 |
-| 单计划视频素材效果 | 同上 fixed material/list-required | 固定类型/状态过滤，不等同全库素材列表 |
+| 单计划视频素材效果 | 同上 fixed material/list-required | 10-14 实测当前/前一日过滤查询严格空页；未验证非空指标，不等同全库素材列表 |
 | 视频素材目录 | 新 `QianchuanOpenApiVideos` | 官方契约+模拟 HTTP；真实账户未授权，NOT_EVALUATED |
 | 视频上传 | 复用既有 JIANJI upload owner；或获得官方上传权限后适配 | 本轮没有真实上传/转码/归属回执 |
 | 多店铺/多广告主 | 复用现有账号配置、账号选择与 egress owner；官方令牌须逐账号授权 | 千管家的多账户页面静态存在，实际账户授权未验证 |
@@ -172,19 +172,25 @@ JIANJI 既有只读适配器明确选择 4 个 ROI2 指标，保留原始 value 
 
 实际返回通过 HTTP 200 / JSON / `status_code=0` 和四个指标单元的严格校验：消耗、支付订单数、含券成交额、ROI。输出 ID 保持字符串、raw value/display 均存在；缺指标不能变成零。正式证据只记录成功状态、字段集合、时间与源码 SHA，不提交真实账户的财务值或凭据。
 
-这证明**当前账户的汇总查询可以脱离千管家独立复现**，不能外推到其他账户、官方 OAuth、计划/素材查询、VPS 查询、上传或投放变更。plan/materials 配方本轮未做真实回放。
+这证明**当前账户的汇总查询可以脱离千管家独立复现**，不能外推到其他账户、官方 OAuth、VPS 查询、上传或投放变更。该次汇总证据不包含 plan/materials；下文记录随后独立核验。
+
+2026-10-13 17:24–17:26 UTC（CST 10-14），复用同一已授权正常浏览器，当前账户 guard PASS，页面一条计划。通过现有 adapter 查询 `/ad/api/pmc/v1/uni-promotion/material/list-required`，当前日与前一日均严格返回空页（total=0、rows=[]）。这仅证明固定账户/计划/类型/状态/日期过滤下的只读配方可执行，不能证明全库为空或非空素材效果解析已获真实验收。
+
+同一页面计划 ID 的 `/ad/api/creation/v1/ad/ad-detail-basic` 返回 HTTP 200 / `status_code=1001`，data 仅有空 `goodsInfos` / `roomInfos`，没有 `adDetailInfo`。adapter 正确拒绝，ROI/预算未当作零；业务失败原因未验证。此前其他会话的成功不外推为当前目标成功；没有猜参数重试、切换账号或写投放。
 
 ## Minimal Implementation
 
 新增主进程库 `src/main/qianchuan-open-api-videos.ts`；其单页 `list` 只调用固定官方 HTTPS GET 接口，通过同步主进程授权回调取得调用方已获授权的 token/scope。未新增凭据管理、renderer token 输入、任意 URL 代理或写操作。页面与现有三类浏览器只读查询维持原 owner。
 
-返回 `{advertiserId,page,pageSize,total,videos:[{videoId,filename,signature,durationSeconds}]}`。不返回下载/预览 URL（官方权限与短期有效期另受限制），不投影数值 material_id，避免 JavaScript 64 位 ID 精度丢失。素材效果关联继续使用既有浏览器素材 ID；未来官方报表 join 应先解决精确 material_id 解析，不以 rounded number 关联。
+前一阶段（提交 `6b16193`）返回视频 ID、文件名、签名与时长，忽略数值 `material_id`。10-14 增量增加可选精确字符串 `materialId`：从原始 JSON 数值的 reviver `context.source` 读取，或校验原有字符串，绝不从 rounded Number 恢复。缺失/null 时省略，其他值须为 1–20 位无前导零正整数；小数、指数、负数、零、非法类型和超长值拒绝。没有原始 source 的运行时拒绝数值 ID。原生机制见 [ECMAScript JSON.parse](https://tc39.es/ecma262/multipage/structured-data.html#sec-internalizejsonproperty)。
+
+当前返回 `{advertiserId,page,pageSize,total,videos:[{videoId,materialId?,filename,signature,durationSeconds}]}`，仍不返回下载/预览 URL。Node 22.21.0 和项目 Electron 33.2.1 / Node 20.18.1 实测保留 `1879999999999999999`，普通 Number 解析则成为 `1880000000000000000`。这一库级解析证据为以后报表 join 提供标识，不代表官方 OAuth 已接通或跨报表关联已经完成。
 
 该库是可运行、可测试的独立适配层接缝，**没有在 renderer 新增官方 OAuth 按钮，也没有宣称已完成官方账号接入**。在获得自有授权前，用户可使用原有千川只读面板；不能使用千管家的 token 替代。
 
 ## Extension Sequence
 
-1. 在 JIANJI 自有应用完成最小官方素材读取 scope 授权，验证一页真实目录和账号归属，再接到现有账户 owner。浏览器路线继续作为明确标注的 session-dependent 只读 provider。
+1. 用户目前没有官方 API。先沿已授权正常浏览器的独立只读路线补齐当前计划详情和非空素材效果证据，复用现有账户 owner，标明会话有效性与页面协议依赖；无需先申请 API。以后若取得 JIANJI 自有应用的官方素材读取授权，再验证真实目录和账号归属，启用官方 provider。
 2. 用 videoId/精确 materialId/MD5 连接已有制作 output、上传回执和报表；保留每次采集的账户、过滤、归因口径与日期快照。先使用本地追加快照与增量游标，不先搭通用数据中台。
 3. 在真实数据验证后增加计划目录、全域报表与素材排名；实现权限/速率/分页边界和账户隔离。官方和浏览器 response parser 分开，不混用 private 与 official schema。
 4. 写操作单独启用：冻结广告主/计划/商品、before/after ROI/预算、单次/每日预算上限、有效授权、操作记录；读取确认结果，不盲重试 unknown outcome。先 dry-run，再逐次明确授权，不启用无人值守花费。
@@ -192,16 +198,22 @@ JIANJI 既有只读适配器明确选择 4 个 ROI2 指标，保留原始 value 
 
 ## Authorization And Remaining Work
 
-千管家已由用户正常登录；要核验真实计划、报表与素材效果，仍需用户自行完成广告账户授权及适用套餐。当前空授权列表及首页示例数据不能替代真实账户证据。官方接入需 JIANJI 自有巨量应用授权，千管家应用的服务端 token 不在允许提取范围。本轮真实广告花费、上传、ROI/预算调整均未执行。
+千管家已由用户正常登录；要核验其真实计划、报表与素材效果，仍需用户自行完成广告账户授权及适用套餐。当前空授权列表及首页示例数据不能替代真实账户证据。用户已明确没有官方 API，因此当前产品验证继续使用正常千川会话；官方库保持未启用。未来官方接入需 JIANJI 自有巨量应用授权，千管家应用的服务端 token 不在允许提取范围。本轮真实广告花费、上传、ROI/预算调整均未执行。
 
 项目存在其他线程的 extension/VPS/automation 工作；本轮仅提交独立 owned files，已有功能与并发改动保留。仓库未发现专用 session-record/capture skill；本报告和实现计划记录本轮 durable evidence，不写用户 memory。
 
 ## Verification Evidence
 
-本轮 `npm run typecheck` exit 0；`tests/qianchuan-backend-adapter.test.ts` 21/21 PASS（包含既有浏览器配方与新增 7 组官方查询边界，真实 Chrome 仅为隔离 fixture）。另有临时目录 7 组 Node 模拟 HTTP 检查通过。当前新模块源码 SHA-256 为 `ebcadcf8cc0b3a55ff85b59c231e9c1a89f3bc62e141b1a56011b6832f53a8cc`，相关测试 SHA-256 为 `4127db549c6f155673c57c655886004c12430fa8d37b93766640600622372116`。
+前一阶段 `npm run typecheck` exit 0；`tests/qianchuan-backend-adapter.test.ts` 21/21 PASS（包含既有浏览器配方与新增 7 组官方查询边界，真实 Chrome 仅为隔离 fixture）。另有临时目录 7 组 Node 模拟 HTTP 检查通过。该阶段模块源码 SHA-256 为 `ebcadcf8cc0b3a55ff85b59c231e9c1a89f3bc62e141b1a56011b6832f53a8cc`，相关测试 SHA-256 为 `4127db549c6f155673c57c655886004c12430fa8d37b93766640600622372116`；不是当前增量字节身份。
 
-AOCI：新主进程模块为 indexed；测试、报告和证据为 observe。官方完整批次同时包含另一线程自有 backend-queries 对象；采用该 owner 提供并经父级源码核对的完整 Entry，一次 CAS 原子提交两对象，未改其业务源码。批次 applied=2、remaining=0、findings=0；正式 Verify 为 governance_aligned=true。项目 root/meta 认知刷新不包含 code 全卷，未声称完整源码认知。
+10-14 增量 RED：旧模块在 39 项测试中 18 FAIL / 21 PASS；加入精确解析后 GREEN：39/39 PASS，typecheck exit 0。使用未加引号的原始 JSON 大整数、字符串、缺/null、歧义表达式及模拟旧运行时验证，未用已舍入的 JavaScript 字面量伪造精度证据。完整 scoped Harness 和 completion 以本轮独立回执为准。
+
+前一阶段 AOCI：新主进程模块为 indexed；测试、报告和证据为 observe。官方完整批次同时包含另一线程自有 backend-queries 对象；采用该 owner 提供并经父级源码核对的完整 Entry，一次 CAS 原子提交两对象，未改其业务源码。批次 applied=2、remaining=0、findings=0；正式 Verify 为 governance_aligned=true。项目 root/meta 认知刷新不包含 code 全卷，未声称完整源码认知。
 
 owned-scope 声明保存于忽略的 `.agent/harness/runs/20261013-qianguanjia-independent/scope.json`，后续 Harness/verify 原始回执只用于对应源码字节的工程验证，不能替代登录、官方权限或真实投放验收。
 
 首次完整 scoped 回归保留为 FAIL（本地 run `20261013T154052Z-3511e4ea`）：800 个千川用例通过，3 个已有上传场景超时；执行中共享验证器及 policy 被另一授权任务修改，导致 source identity drift 与 AOCI control 路由拒绝。相关 5 个参数用例独立诊断均通过，但这不能替代完整 required 检查。最终交付以当前稳定候选的新回执为准，旧失败不被重标。
+
+10-14 增量交付：两个当前树 run `20261013T174950Z-7758086d` / `20261013T180453Z-932a7480` 均有 4 项 required / 834 测试成功，但其他任务分别修改 Hybrid 与 membership 源码，整体 `NOT_EVALUATED` 保留。最终使用完整冻结副本（4377 文件、4063 参与源码），原 policy 的 `20261013T182234Z-9c524e3d` 为 PASS，41 文件 / 834 测试 / 零 skip、typecheck、documents、owned-AOCI 全通过；副本内 completion `20261013T182912Z-7b92196d` PASS。
+
+实际工作树随后只有另一任务的扩展 background/test 与冻结源码不同，本轮 source/test 和直接依赖/配置均一致；当前树再次 typecheck exit 0、adapter 39/39 PASS。这证明本轮模块，不能宣称其他并发模块或完整当前树已获全量验收。AOCI 当前增量完整单候选 applied=1、remaining=0、findings=0，本源对象为 `20f0b82b5e9a8215656bd85b6ebbb3c24d8cc621b6fca989a0a3121c5cf246b7`；全库认知和其他 owner 的治理状态不由本轮声明。具体风险裁决见 [增量实现计划](superpowers/plans/2026-10-14-qianchuan-exact-material-id.md)。
