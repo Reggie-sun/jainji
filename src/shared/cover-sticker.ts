@@ -1,11 +1,20 @@
 import { z } from "zod";
 import { BUNDLED_STICKERS } from "./bundled-stickers.js";
 import { isStickerId, isUploadedStickerId } from "./decorations.js";
+import { isAutomaticStickerAllowed } from "./automatic-stickers.js";
 
 const bundledCoverStickerIds: ReadonlySet<string> = new Set(BUNDLED_STICKERS.map((entry) => entry.id));
 /** The unified-cover pool and per-region picks accept anything already on this machine:
  * bundled library artwork or the user's own uploads. */
 export function isCoverPoolStickerId(id: string): boolean { return bundledCoverStickerIds.has(id) || isUploadedStickerId(id); }
+/** Reviewed portrait artwork already bundled in the library; real-region coverage only. */
+export const HUMAN_REGION_LIBRARY_STICKER_IDS: readonly string[] = [
+  "fluent-052f235f47d4b51d38230872b15c7aa990c27176",
+  "fluent-6fc97c244c00c6b65fa87ffd745662b22770d748",
+];
+export function isHumanRegionStickerId(id: string): boolean {
+  return isCoverPoolStickerId(id) || isAutomaticStickerAllowed(id) || HUMAN_REGION_LIBRARY_STICKER_IDS.includes(id);
+}
 const UploadedCoverStickerIdSchema = z.string().regex(/^uploaded-[a-f0-9]{64}$/, "请选择自己上传的贴纸");
 const CoverRegionStickerIdSchema = z.string().refine(isCoverPoolStickerId, "请选择本地贴纸库中的贴纸或自己上传的贴纸");
 export const CoverStickerIdSchema = z.string().refine((id) => isStickerId(id) && id !== "none" && id !== "template", "覆盖贴纸不可用");

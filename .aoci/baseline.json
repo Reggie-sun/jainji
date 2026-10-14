@@ -4,9 +4,9 @@
   "updated_at": "2026-10-14T13:00:44Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "9355e9584e965b4ec957e4465bdb93eefe739253eaa1e5ec844533326d68994a",
-      "size": 56120,
-      "normalized_sha256": "9355e9584e965b4ec957e4465bdb93eefe739253eaa1e5ec844533326d68994a"
+      "sha256": "926da6c6c5f6efb8ee210e6d011e690aa09d35d41266a4eba61331c2b88e7d1a",
+      "size": 56271,
+      "normalized_sha256": "926da6c6c5f6efb8ee210e6d011e690aa09d35d41266a4eba61331c2b88e7d1a"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -1128,9 +1128,9 @@
       "normalized_sha256": "b045632efdab5d7f20dedc90190ec14bf55c39b776849b2fca39ff33b85a6c11"
     },
     "src/main/agent-controller.ts": {
-      "sha256": "dadb12e342a35bf337638e291598b25638649bf19c6a1f014c4c23c06142831e",
-      "size": 35306,
-      "normalized_sha256": "dadb12e342a35bf337638e291598b25638649bf19c6a1f014c4c23c06142831e"
+      "sha256": "d674c6284b635ecb564518f79faaede67250cba0443c2b5a6338a6cca62b7c60",
+      "size": 35519,
+      "normalized_sha256": "d674c6284b635ecb564518f79faaede67250cba0443c2b5a6338a6cca62b7c60"
     },
     "src/main/agent-frames.ts": {
       "sha256": "161cdedc18deceb84972a5778203fcfd44fcc62420d68b1ad05932a8cc31b199",
@@ -1178,9 +1178,9 @@
       "normalized_sha256": "8a2503f15f88b6cf4f7c4ce9fc26feac26f1a5cef61369a344394551b13cfe5c"
     },
     "src/main/asset-library.ts": {
-      "sha256": "9f03714ed480ec1d0734a274fb4d86d004d9695372c1c183bd132b64f8af7be0",
-      "size": 8785,
-      "normalized_sha256": "9f03714ed480ec1d0734a274fb4d86d004d9695372c1c183bd132b64f8af7be0"
+      "sha256": "ecae1ac2272536ad33426ff746f4d78070530fd13a02ec6c64ddebc62cca2680",
+      "size": 9013,
+      "normalized_sha256": "ecae1ac2272536ad33426ff746f4d78070530fd13a02ec6c64ddebc62cca2680"
     },
     "src/main/automatic-corner-layout.ts": {
       "sha256": "31fec9ad75eb1a5ca2bec8aa25982aaa793148e28e3d2d61df426890fa988ff7",
@@ -1452,10 +1452,15 @@
       "size": 2194,
       "normalized_sha256": "455c1b8529cb903ad1c696c7a6cb3aac0e9746477c6d097d782da24ba4fda49d"
     },
+    "src/main/human-region-artwork-placement.ts": {
+      "sha256": "b18aff0e7125fab4c247be586fdce7e365b9a0951be0a73d51b553f6690468d4",
+      "size": 2626,
+      "normalized_sha256": "b18aff0e7125fab4c247be586fdce7e365b9a0951be0a73d51b553f6690468d4"
+    },
     "src/main/human-region-cover.ts": {
-      "sha256": "658ed484b7f34b29e98796653437fccbde8fdd17e29ec4f1087e43cb8c0e5d00",
-      "size": 11043,
-      "normalized_sha256": "658ed484b7f34b29e98796653437fccbde8fdd17e29ec4f1087e43cb8c0e5d00"
+      "sha256": "108bd9c9862841a113390b804fb6ca6026b1b620f9c2a288216e343aa3d8b426",
+      "size": 12360,
+      "normalized_sha256": "108bd9c9862841a113390b804fb6ca6026b1b620f9c2a288216e343aa3d8b426"
     },
     "src/main/human-region-geometry.ts": {
       "sha256": "08d3167f12fd97f90f5441e079922e0be6ff642667f4667c64fb462f562fe376",
@@ -1943,9 +1948,9 @@
       "normalized_sha256": "5f0fe1d0bf4a7c635933a7870e35062c2105eb91a3bd230c5e458a18154a1851"
     },
     "src/main/shape-cover-hybrid-shape.ts": {
-      "sha256": "fade5858075ac2fa56052d43739b1e9c56be549ede1383140496e43d627213b0",
-      "size": 8771,
-      "normalized_sha256": "fade5858075ac2fa56052d43739b1e9c56be549ede1383140496e43d627213b0"
+      "sha256": "7f86615ed664f45335e25c1e647edb6fce7fb6f2b5d9c81c6ca8cf11874a3f73",
+      "size": 10496,
+      "normalized_sha256": "7f86615ed664f45335e25c1e647edb6fce7fb6f2b5d9c81c6ca8cf11874a3f73"
     },
     "src/main/shape-cover-pixel-gate.ts": {
       "sha256": "d45aeee6d86d4fbf09c68631fd087ae4ea22fb8eb45d16ba425040c75f1aa400",
@@ -2744,9 +2749,9 @@
       "normalized_sha256": "26f86f2e2e243add4fc2f6c9d9d51ed9e756b44dc743ecbc292d90bcc31c63e0"
     },
     "src/shared/cover-sticker.ts": {
-      "sha256": "289a426e7b79a1ee8c6c6fcbb40b749e2eab26992105081e4e5120d9c49175ea",
-      "size": 8326,
-      "normalized_sha256": "289a426e7b79a1ee8c6c6fcbb40b749e2eab26992105081e4e5120d9c49175ea"
+      "sha256": "f523f10904e91a81c358d11b599199989e25004e6260a2ba234a011dd6af85d7",
+      "size": 8846,
+      "normalized_sha256": "f523f10904e91a81c358d11b599199989e25004e6260a2ba234a011dd6af85d7"
     },
     "src/shared/curated-stickers.ts": {
       "sha256": "4b20948fe2faa8d921d0e15f64aa3d71054014df497688d49265e214fc0793cc",
