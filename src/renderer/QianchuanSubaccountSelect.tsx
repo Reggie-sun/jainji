@@ -10,13 +10,14 @@ function subaccountError(cause: unknown, fallback: string): string {
   return message && message.length < 180 && !/\w+:\/\/|Call log:|[\r\n]/.test(message) ? message : fallback;
 }
 
-export function QianchuanSubaccountSelect({ account, disabled, idPrefix, refreshKey, onAccountRead, onSwitching }: {
-  account?: QianchuanAccountSummary; disabled: boolean; idPrefix: string; refreshKey: number;
+export function QianchuanSubaccountSelect({ account, disabled, idPrefix, refreshKey, forceRefresh = false, onAccountRead, onSwitching }: {
+  account?: QianchuanAccountSummary; disabled: boolean; idPrefix: string; refreshKey: number; forceRefresh?: boolean;
   onAccountRead(value?: QianchuanCurrentAccount): void; onSwitching(value: boolean): void;
 }) {
   const [catalog, setCatalog] = useState<QianchuanSubaccountCatalog>();
   const [loading, setLoading] = useState(false), [switching, setSwitching] = useState(false), [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const lastRevision = useRef(revision);
   const generation = useRef(0), report = useRef(onSwitching); report.current = onSwitching;
   const accountRead = useRef(onAccountRead); accountRead.current = onAccountRead;
   const product = account?.product, anchor = account?.advertiserId;
@@ -28,7 +29,8 @@ export function QianchuanSubaccountSelect({ account, disabled, idPrefix, refresh
     accountRead.current(undefined);
     if (!supported || !product || !anchor || !available) return;
     setLoading(true);
-    void window.jianji.listQianchuanSubaccounts({ product, expectedAdvertiserId: anchor }).then(value => {
+    const refresh = forceRefresh || revision !== lastRevision.current; lastRevision.current = revision;
+    void window.jianji.listQianchuanSubaccounts({ product, expectedAdvertiserId: anchor, ...(refresh ? { refresh: true } : {}) }).then(value => {
       if (generation.current !== operation) return;
       const next = QianchuanSubaccountCatalogSchema.parse(value);
       setCatalog(next);
@@ -36,7 +38,7 @@ export function QianchuanSubaccountSelect({ account, disabled, idPrefix, refresh
     }).catch(cause => { if (generation.current === operation) setError(subaccountError(cause, "读取子账户失败，请检查网页后刷新。")); })
       .finally(() => { if (generation.current === operation) setLoading(false); });
     return () => { generation.current++; };
-  }, [product, anchor, available, supported, revision, refreshKey]);
+  }, [product, anchor, available, supported, revision, refreshKey, forceRefresh]);
   const select = async (advertiserId: string) => {
     if (!catalog || !product || !anchor || disabled || switching || !catalog.accounts.some(value => value.advertiserId === advertiserId) || advertiserId === catalog.current.advertiserId) return;
     const operation = generation.current;

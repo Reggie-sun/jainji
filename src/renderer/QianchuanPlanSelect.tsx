@@ -22,6 +22,7 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
+  const [forceRefresh, setForceRefresh] = useState(false);
   const [currentAccount, setCurrentAccount] = useState<QianchuanCurrentAccount>();
   const [directoryAccount, setDirectoryAccount] = useState<{ product: string; anchor: string; revision: number; current: QianchuanCurrentAccount }>();
   const [switching, setSwitching] = useState(false);
@@ -46,15 +47,16 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
   useEffect(() => {
     if (membershipRecovered && !disabled && !switching) {
       setMembershipRecovered(false);
+      setForceRefresh(true);
       setRevision(current => current + 1);
     }
   }, [membershipRecovered, disabled, switching]);
   useEffect(() => {
     if (purpose !== "upload") return;
-    const refresh = () => { if (!disabled && !switching) setRevision(current => current + 1); };
+    const refresh = () => { if (!disabled && !switching) { setForceRefresh(false); setRevision(current => current + 1); } };
     const accountChanged = (event: Event) => {
       const detail = (event as CustomEvent).detail;
-      if (detail?.product === product && detail?.anchor === advertiserId) { change.current(undefined); setDirectoryAccount(undefined); setCurrentAccount(undefined); accountRead.current?.(undefined); setRevision(value => value + 1); }
+      if (detail?.product === product && detail?.anchor === advertiserId) { change.current(undefined); setDirectoryAccount(undefined); setCurrentAccount(undefined); accountRead.current?.(undefined); setForceRefresh(true); setRevision(value => value + 1); }
     };
     window.addEventListener("focus", refresh);
     window.addEventListener(QIANCHUAN_ACCOUNT_CHANGED, accountChanged);
@@ -78,7 +80,7 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
       return;
     }
     setLoading(true);
-    const request = acquireQianchuanPlans({ product, expectedAdvertiserId: advertiserId, ...(revision ? { refresh: true } : {}), ...(purpose === "upload" ? { accountSource: "current-browser", includeAccount: true } : {}) });
+    const request = acquireQianchuanPlans({ product, expectedAdvertiserId: advertiserId, ...(forceRefresh ? { refresh: true } : {}), ...(purpose === "upload" ? { accountSource: "current-browser", includeAccount: true } : {}) });
     void request.promise.then(result => {
       if (!active) return;
       const catalog = Array.isArray(result) ? undefined : QianchuanPlanCatalogSchema.parse(result);
@@ -97,12 +99,12 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
       setError(planReadError(cause));
     }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; request.release(); };
-  }, [product, advertiserId, available, revision, purpose, directorySupported, directoryCurrent?.advertiserId, directoryCurrent?.name]);
+  }, [product, advertiserId, available, revision, forceRefresh, purpose, directorySupported, directoryCurrent?.advertiserId, directoryCurrent?.name]);
   const chosen = value && plans.some(plan => plan.advertiserId === value.advertiserId && plan.adId === value.adId) ? value.adId : "";
   const chosenPlan = plans.find(plan => plan.adId === chosen);
   const identity = chosenPlan && `${chosenPlan.name} · ID ${chosenPlan.adId}`;
   return <div className={`qianchuan-plan-select${compact ? " compact" : ""}`} style={{ gridColumn: compact ? undefined : "1 / -1", minWidth: 0 }}>
-    {purpose === "upload" && <QianchuanSubaccountSelect key={`${product}:${advertiserId}`} account={account} disabled={disabled || loading || switching} idPrefix={idPrefix} refreshKey={revision}
+    {purpose === "upload" && <QianchuanSubaccountSelect key={`${product}:${advertiserId}`} account={account} disabled={disabled || loading || switching} idPrefix={idPrefix} refreshKey={revision} forceRefresh={forceRefresh}
       onAccountRead={current => { setDirectoryAccount(current && product && advertiserId ? { product, anchor: advertiserId, revision, current } : undefined); setCurrentAccount(current); accountRead.current?.(current); }}
       onSwitching={value => { setSwitching(value); if (value) { change.current(undefined); setDirectoryAccount(undefined); setCurrentAccount(undefined); accountRead.current?.(undefined); } }} />}
     <label htmlFor={`${idPrefix}-plan`}>{label}</label>
@@ -111,7 +113,7 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
       <option value="">{loading ? compact ? "正在准备…" : `正在准备${label}…` : error ? "读取失败，请重试" : !available ? "请先选择账号" : directorySupported && !directoryCurrent ? "请先选择子账户" : !plans.length ? "没有可用计划" : `请选择${label}`}</option>
       {plans.map(plan => <option key={plan.adId} value={plan.adId}>{plan.productNames?.length ? `${plan.productNames.join("、")} — ` : ""}{plan.name} · ID {plan.adId}</option>)}
     </select>
-    <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || switching || !available} onClick={() => { onChange(undefined); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
+    <button type="button" className="text-button" aria-label="刷新计划" title="刷新计划" disabled={disabled || loading || switching || !available} onClick={() => { onChange(undefined); setForceRefresh(true); setRevision(current => current + 1); }}>{compact ? "↻" : "刷新计划"}</button>
     {!compact && chosenPlan && <div style={{ overflowWrap: "anywhere" }}><strong>{chosenPlan.productNames?.join("、") ?? "商品信息未读取"}</strong><p>计划名称：{chosenPlan.name}</p><small>计划 ID：{chosenPlan.adId}</small></div>}
     {error ? <p role="alert">{error}</p> : purpose === "upload" && available && (currentAccount || loading) ? <small role={loading ? "status" : undefined} style={{ gridColumn: "1 / -1", overflowWrap: "anywhere" }}>{loading ? "正在核对网页子账户…" : `${currentAccount!.name ?? "网页账户"} · 账户 ${currentAccount!.advertiserId}`}</small> : !compact && (directorySupported && available && !directoryCurrent ? <small role="status">等待子账户核对。</small> : loading ? <small role="status">{purpose === "cleanup" ? "只读取计划列表，不删除素材。" : "只读取计划列表，不上传视频。"}</small> : available && !plans.length ? <p role="status">该账号没有可用计划。</p> : available && !chosen ? <small>{instruction}</small> : null)}
   </div>;
