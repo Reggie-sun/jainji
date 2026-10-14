@@ -1,7 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { QianchuanSubaccountListRequest, QianchuanSubaccountSwitchRequest, QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
 import type { QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
-import type { MembershipStatus } from "../shared/membership.js";
+import type { MembershipPasswordLogin, MembershipStatus } from "../shared/membership.js";
 import type { AutomationRequest, AutomationStatus } from "../shared/automation.js";
 import type { AgentStartInput, AppendProductionInput, AppendProductionPrefill, GenerateBriefInput } from "../shared/agent.js";
 import type { SaveConnection, SelectModel } from "../shared/connections.js";
@@ -34,7 +34,7 @@ const api = {
   },
   membershipStatus: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.status"),
   refreshMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.refresh"),
-  loginMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.login"),
+  loginMembership: (input?: MembershipPasswordLogin): Promise<MembershipStatus> => ipcRenderer.invoke("membership.login", input),
   logoutMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.logout"),
   openMembershipPricing: (): Promise<void> => ipcRenderer.invoke("membership.openPricing"),
   openMembershipAdmin: (): Promise<void> => ipcRenderer.invoke("membership.openAdmin"),

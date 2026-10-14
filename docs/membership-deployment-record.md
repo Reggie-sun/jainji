@@ -208,3 +208,30 @@ sudo systemctl status cloudflared-jianji-membership.service
 - Google 不同账号仍是不同身份，不能证明同一自然人不会领取多次。微信/支付宝仍人工核款，本轮没有真实付款或商户自动回调验收。Google 用户浏览器须能访问 Google；此前日常本机网络问题仍须单独处理。
 - 最终源码 checkpoint 的 owned Harness `20261010T182658Z-fbfb1187` 通过会员 55 项、Harness 104 项、typecheck、documents 及 owned AOCI；官方 Verify / Check / Guide 对齐，Guide `complete=true` / `next_action=none`。Risk Gate 为 `KIMI_REVIEW_NOT_REQUIRED`：当前代码只新增固定静态说明路由与修正提示，不改凭据、身份授权或账本算法；无用户指定 review，也未发现关键级故障路径或重大后果且仍有实质验证缺口的组合。部署管理员绑定已按精确真实身份回读，不能将前述 Kimi 调查冒充 implementation review。源码 bundle hash 绑定上文，详细判定及 owned snapshot 位于 `/tmp/jianji-google-resume-20261011/review-risk-decision.json`。
 - 最后备份 `backups/20261010T182832Z` 已完成且会员容器恢复；清除了配置操作临时复制的系统管理员凭据。软件同一 Google token 的单次续费票据在新文档成功消费并清除 URL 片段，申请接口 200、管理员审核区可见；未另行登录或审核付款。本段记录后只读 completion 仍须绑定最终文档 scope。
+
+## Local Permanent Administrator — 2026-10-14
+
+用户先要求为 `sunruijie42@gmail.com` 开通长期管理员使用权限，再明确要求指定密码、本机直接登录、不经公网会员核验。前一阶段回读确认其已绑定 Google 身份且为 Casdoor 管理员，仅三天试用已到期；通过原 `jianji-grant` 新增 `owner-google-lifetime-20261014`，期限至 `9999-12-31T23:59:59Z`，线上接口由 `denied/expired` 变为 `allowed/grant`。没有新增付款、按邮箱自动绑定或修改 Google 身份。
+
+随后实施 [Local Administrator Delta](membership.md#local-administrator-delta--2026-10-14)：仅为本机 `/home/reggie/.config/jianji` 独占创建加密授权文件，并使用用户指定密码完成本机核验、保存加密会话。密码仅经关闭回显的 stdin 输入，不进入脚本、源码、日志、Git、索引或记录。本机权限独立于前述 Google grant；本次没有修改 VPS bundle、云端密码、支付或账号网络配置。
+
+实际证据位于本机私有 `/tmp/jianji-offline-admin-20261014/`：
+
+- 当前源码 typecheck 与六个会员/启动测试文件共 96 项通过；包括真实 scrypt 验证、无授权/错误密码/损坏/改密钥拒绝、跨机器会话隔离、无公网配置仍须密码、并发与退出隔离。
+- Chrome MCP 在独立 localhost UI 验证实际 `MembershipGate` 和实际 `MembershipSession`，使用测试用加密及本机 HTTP bridge：错误密码保留门禁、清密码；正确密码显示永久权限并通过制作准入；退出隐藏工作区；账号网络计数为零。另有 390px Chromium 自动交互回归。该 fixture 不冒充 OS 密钥环或正式 Google 登录。
+- 两个独立真实 Electron 进程用 `gnome_libsecret` 验证本机授权的加密保存/恢复/退出；另用真实 `createMembershipDesktop`、当前 preload 与 IPC 验证错误密码、制作准入、退出后拒绝，以及本机身份不能请求云端管理和续费。账号请求和打开浏览器计数均为零。
+- 首次直接文件入口的 Electron helper 能自行解密，但与正式 `jianji` package 的密钥环身份不一致；实际工作台没有显示本机登录表单，不能将 helper 成功当作应用成功。保留原密文恢复副本后，以相同 package 身份重新配置，独立 package 进程恢复通过；原开发启动器等待任务空闲后正常重启，没有强制终止工作。
+- 重启后实际工作台的当前 preload / IPC / Gate 回读 `allowed/offline-admin`。实际界面退出后输入错误密码，保持 `signed-out`、清空密码、隐藏工作区；输入用户指定密码后显示帐号及“超级管理员 · 永久权限”，工作区可见且没有到期字段。界面事件到 DOM 的首次测试存在时序误判，补充等待真实状态文本/工作区后再次完整验证通过。最终保持本机帐号登录，证据为 `user-real-ui-login.json`；独立 package 恢复为 `user-package-restore.json`。
+- Google 登录另遇到系统默认浏览器启动器的多 profile 拒绝，另一个既有账号窗口修复该 host owner 并验证 16 项测试；本任务没有修改默认浏览器、Chrome profiles 或引入第二个 OAuth owner。实际点击 Google 登录能启动浏览器，但本次未收到成功授权回调，仍不能声称真实 Google 登录通过；它继续需要正常 Google 授权。私有 host receipt 为 `/home/reggie/.local/share/chrome-profile-grouping/evidence/login-link-recovery-20261014.json`。
+- 原 Kimi 调查 receipt `1eac234d-d945-4eb0-9594-688ba850bd5a` 为 credentials/entitlement HTTP403 拒绝，无可用 findings、不重试、不声称 review。原生 `architecture_auditor` 只读核对接入边界；Parent 处理配置门、远端权限隔离、恢复链、云端操作及跨登录方式并发五项候选风险。
+
+AOCI 完整机器批次十项经官方原子 Apply，其中六项属于本任务、四项为共享批次既有外部源；没有修改这些外部业务文件。该检查点官方 Verify / Check / Guide 对齐，Guide `complete=true / next_action=none`。之后共享工作树的覆盖源码继续变化，首轮 owned Harness 的 16 个检查组通过，但正式索引控制被外部 `shape-cover-hybrid-shape.ts` stale 阻断；六个会员对象本身全部通过。保留失败回执，不将其写成 PASS。实际源码和正式资产的最终 owned Harness / completion 以最终私有 scope 对应回执为准，不把其他任务代码、Windows 实机或真实云端登录列为本机离线验收。
+
+## Google Egress Recovery — 2026-10-14
+
+用户随后提供 Google 回调错误，Casdoor 已取得 Google token，但读取用户信息时返回 `EOF`。不把该错误认作密码错误，也不复制错误页内的敏感 URL。VPS Google 专用 Mihomo 日志在相同时段明确显示原静态出口多次 `connection refused`；原节点快照地址与当前已用本机节点配置不同，说明浏览器启动修复并未覆盖服务端出口。
+
+- 复用原私有 Mihomo owner，将 Google 专用出口改为现有两个日本节点的 `fallback`，按[官方配置](https://wiki.metacubex.one/en/config/proxy-groups/fallback/)及[健康检查字段](https://wiki.metacubex.one/en/config/proxy-groups/)每 60 秒检查 Google 204 URL。原三个 Google domain rules、`MATCH,DIRECT`、私有 17897 端口及 DNS/隔离配置保持；没有改变桌面帐号 transport、系统 TUN、宿主路由、千川出口或 Google 身份。
+- 先用同一 Mihomo `1.19.21`、原镜像和受限隔离容器验证。首次 AnyTLS / 401 健康检查候选未通过完整 token / 故障切换测试，未部署；最终当前 Trojan 节点与标准 Google 204 检查通过。故障注入仅在隔离 fixture：主节点指向拒绝连接的本机端口，API 证明它 `alive=false`、选择备用节点，Google userinfo 无凭据请求返回 401。隔离诊断 API 没有宿主端口映射，生产候选移除它。
+- 生产配置先经相同 UID 10001 / 只读根文件系统 / 128 MiB 限额验证。按原配置 SHA-256 比较后私有备份并 fsync/原子替换，只重建 `mihomo` 服务；Casdoor 启动时间仍为 `2026-10-10T16:50:21.857173044Z`，没有重建它、会员服务或数据库。生产配置 SHA-256 为 `dd3af65e08044d86113f85244514bc5fe5972837aad60670278c4aeef98095ff`；备份为远端 `mihomo/config.before-google-recovery-20261014.json`，保持私有权限和原节点凭据。
+- 部署后的真实 Casdoor 容器通过其正常环境代理请求 discovery=200、无凭据 userinfo=401、空 token POST=400，约 0.54 / 0.81 / 0.62 秒；Mihomo healthy、无宿主端口映射。以上证明服务器连接与故障切换，不证明用户完成新的 Google 授权。旧失败回调已消费授权码，需重新发起登录，不能刷新旧回调当作成功重试。本机永久帐号仍保持实际工作台登录。

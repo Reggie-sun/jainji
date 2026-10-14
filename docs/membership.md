@@ -25,6 +25,18 @@ Casdoor 支持管理员手工创建订阅。其默认只有 `paid-user` 参与�
 - Casdoor：注册、密码、管理员、支付通知验签、订单、订阅与管理操作权限。会员适配服务不接受前端传来的价格、赠送或付款成功字段。
 - `src/membership-server/google-trial.ts`：Google 身份试用领取与防重复记录，不保存 Google 密码、令牌或付费订阅。
 
+## Local Administrator Delta — 2026-10-14
+
+用户明确要求本机帐号密码直接登录、永久使用、不经公网会员核验。本段仅授权已在当前 OS 用户的私有 `userData/membership/offline-admin.enc` 中显式配置的本机管理员；不是普通会员断网 fallback，不改变 Casdoor/Google 帐号或在线权益。
+
+`src/main/membership-offline-admin.ts` 维护该加密文件：密码只保存随机盐的 scrypt verifier，每台机器独立生成会话签名密钥，使用原 `safeStorage` 安全系统密钥环，拒绝 `basic_text`。`provisionOfflineAdmin` 仅供受信任 OS 本机配置，不暴露为 renderer IPC；初始化独占发布，不覆盖已有授权。真实密码不进入公开配置、源码、测试、Git、日志或索引。文件不存在/损坏/权限不安全或密钥环不可用时不能启用本机登录。
+
+唯一 `MembershipSession` 接收现有 `membership.login` 的可选 `{username,password}` 参数；指定参数时只做本机核验，错误密码不会提交公网或打开浏览器。不带参数保留原 Google/OIDC 登录。本机 `offline-admin` 会话无权益截止时间，沿原加密 session 存储记住登录；恢复、心跳和每次制作准入读取并核验当前本机授权，零账号网络请求。删除/改变/损坏该文件立即阻止后续准入；退出沿原持久退出 fence 清凭据并停止工作，取消后的旧结果不得恢复权限。配置本机管理员时无公网配置的开发免登录路径也不能绕过密码。
+
+`offlineLoginAvailable` 只是主进程向 UI 提供的入口展示字段；远端会员响应不能开启本机入口或赋予 `offline-admin`。本机凭据不发送到续费票据接口，不打开云端管理员后台，UI 显示永久权限并隐藏续费/云端管理操作。本机管理员使用权限不代表 Google 身份或公网管理权；OS 用户控制其本机授权文件，不承诺抵抗具有本机写权限的操作者。视频校验、上传确认、未知结果停止等产品 gates 保持。
+
+实施与验收边界见 [Offline Administrator Plan](superpowers/plans/2026-10-14-offline-admin-login.md)。其余本文在线规则适用于云端帐号；“无离线放行”不涵盖本段用户明确授权的本机独立管理员。
+
 ## Local Configuration
 
 桌面公开配置放在忽略的 `resources/membership.json`；开发时也可以用 `JIANJI_MEMBERSHIP_CONFIG` 指向另一份文件。打包后读取 Electron `process.resourcesPath/membership.json`。本轮不改安装包、不自动分发配置。

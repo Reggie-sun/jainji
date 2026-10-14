@@ -2,13 +2,15 @@ import { useEffect, useState, type ReactNode } from "react";
 import { MEMBERSHIP_OFFERS, type MembershipStatus } from "../shared/membership";
 import "./membership.css";
 
-const labels: Record<string, string> = { trial: "免费试用", monthly: "月度会员", yearly: "年度会员", grant: "管理员赠送" };
+const labels: Record<string, string> = { trial: "免费试用", monthly: "月度会员", yearly: "年度会员", grant: "管理员赠送", "offline-admin": "超级管理员 · 永久权限" };
 export function MembershipGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<MembershipStatus>();
   const [opened, setOpened] = useState(false);
   const [workspaceVisible, setWorkspaceVisible] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   useEffect(() => {
     let active = true, received = false;
     const update = (next: MembershipStatus) => {
@@ -34,13 +36,14 @@ export function MembershipGate({ children }: { children: ReactNode }) {
   const unavailable = !status || status.state === "unconfigured";
   const signingIn = status?.state === "signing-in";
   const reconnecting = status?.state === "unavailable";
-  const admin = status?.user?.isAdmin && !["forbidden", "session-expired", "unavailable"].includes(status.reason);
+  const offline = status?.reason === "offline-admin";
+  const admin = status?.user?.isAdmin && !["offline-admin", "forbidden", "session-expired", "unavailable"].includes(status.reason);
   return <div className="membership-shell">
     {status?.state === "allowed" && <aside className="membership-bar" aria-label="简辑账号">
       <span><strong>{status.user?.displayName || status.user?.name}</strong> · {labels[status.reason]}{expires && <span className="membership-expiry"> · 到期 {expires}</span>}</span>
       <div>
         {admin && <button onClick={() => void action(window.jianji.openMembershipAdmin)} disabled={busy}>管理用户</button>}
-        <button onClick={() => void action(window.jianji.openMembershipPricing)} disabled={busy}>续费会员</button>
+        {!offline && <button onClick={() => void action(window.jianji.openMembershipPricing)} disabled={busy}>续费会员</button>}
         <button onClick={() => void action(window.jianji.logoutMembership)} disabled={busy}>退出登录</button>
       </div>
     </aside>}
@@ -56,14 +59,26 @@ export function MembershipGate({ children }: { children: ReactNode }) {
       <section className="membership-card" aria-labelledby="membership-title">
         <div className="membership-brand">简辑 <span>账号中心</span></div>
         <h1 id="membership-title">{reconnecting ? "正在连接账号服务" : "登录，让制作继续"}</h1>
-        <p className="membership-intro">{reconnecting ? "登录已保留，连接恢复后会自动核验，无需重新输入密码。" : "每个 Google 账号可领取一次 3 天免费试用，素材与项目保留在本机。"}</p>
+        <p className="membership-intro">{reconnecting ? "登录已保留，连接恢复后会自动核验，无需重新输入密码。" : status?.offlineLoginAvailable ? "本机管理员可用帐号密码直接登录，永久使用。素材与项目保留在本机。" : "每个 Google 账号可领取一次 3 天免费试用，素材与项目保留在本机。"}</p>
         <div className="membership-status" role="status">
           {status?.message ?? "正在读取账号状态…"}
           {status?.user && <small>当前账号：{status.user.displayName || status.user.name}</small>}
           {expires && <small>权益截止：{expires}</small>}
         </div>
+        {status?.offlineLoginAvailable && <form className="membership-password-login" aria-label="本机管理员登录" onSubmit={event => {
+          event.preventDefault();
+          if (busy || signingIn || !username.trim() || !password) return;
+          const input = { username: username.trim(), password }; setPassword("");
+          void action(() => window.jianji.loginMembership(input));
+        }}>
+          <label>帐号<input type="email" autoComplete="username" value={username} maxLength={254} required
+            disabled={busy || signingIn} onChange={event => setUsername(event.target.value)} /></label>
+          <label>密码<input type="password" autoComplete="current-password" value={password} maxLength={1024} required
+            disabled={busy || signingIn} onChange={event => setPassword(event.target.value)} /></label>
+          <button className="membership-primary" type="submit" disabled={busy || signingIn || !username.trim() || !password}>帐号密码登录</button>
+        </form>}
         <div className="membership-actions">
-          {!reconnecting && <button className="membership-primary" disabled={unavailable || signingIn || busy} onClick={() => void action(window.jianji.loginMembership)}>登录 / 注册</button>}
+          {!reconnecting && <button className={status?.offlineLoginAvailable ? undefined : "membership-primary"} disabled={unavailable || signingIn || busy} onClick={() => void action(() => window.jianji.loginMembership())}>{status?.offlineLoginAvailable ? "Google 登录 / 注册" : "登录 / 注册"}</button>}
           <button disabled={unavailable || signingIn || busy} onClick={() => void action(window.jianji.refreshMembership)}>刷新权限</button>
           {(status?.user || signingIn || reconnecting) && <button onClick={() => { void window.jianji.logoutMembership().catch(() => setError("退出未完成，请重试。")); }}>{signingIn ? "取消登录" : "退出账号"}</button>}
         </div>
@@ -74,7 +89,7 @@ export function MembershipGate({ children }: { children: ReactNode }) {
           <button disabled={unavailable || busy || signingIn || status?.reason === "forbidden"} onClick={() => void action(window.jianji.openMembershipPricing)}>查看套餐 / 续费</button>
           {admin && <button disabled={busy} onClick={() => void action(window.jianji.openMembershipAdmin)}>管理用户与免费授权</button>}
         </div>
-        <p className="membership-footnote">一个账号同时只允许一处登录，新登录会使旧会话失效。<br />扫码付款后提交申请，管理员确认到账并开通后请刷新权限。</p>
+        <p className="membership-footnote">{status?.offlineLoginAvailable ? <>本机管理员永久使用，无需续费。<br />Google 帐号继续按会员规则核验。</> : <>一个账号同时只允许一处登录，新登录会使旧会话失效。<br />扫码付款后提交申请，管理员确认到账并开通后请刷新权限。</>}</p>
         {opened && <button onClick={() => { void window.jianji.saveProject().catch(() => setError("项目未保存，请重试。")); }}>保存当前本地项目</button>}
         {error && <p className="membership-error" role="alert">{error}</p>}
       </section>

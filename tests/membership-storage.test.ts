@@ -8,6 +8,8 @@ import { FileBillingSessionStore, BILLING_SESSION_SECONDS } from "../src/members
 import { MembershipServerConfigSchema } from "../src/membership-server/policy.js";
 import { configureMembershipKeyring } from "../src/main/membership-keyring.js";
 import { createServer } from "node:net";
+import { loadOfflineAdmin, provisionOfflineAdmin } from "../src/main/membership-offline-admin.js";
+import { MembershipSession } from "../src/main/membership-session.js";
 const roots: string[] = [];
 const faults = vi.hoisted(() => ({ failCredentialDelete: false }));
 vi.mock("node:fs/promises", async importOriginal => {
@@ -21,6 +23,66 @@ afterEach(async () => { faults.failCredentialDelete = false; await Promise.all(r
 const config = MembershipConfigSchema.parse({ serviceUrl: "https://member.example.com", issuer: "https://login.example.com", clientId: "desktop", organization: "jianji", application: "jianji", pricingName: "jianji" });
 // Only a storage contract fixture; this is not evidence of OS keychain encryption.
 const encryption = { isEncryptionAvailable: () => true, getSelectedStorageBackend: () => "gnome_libsecret", encryptString: (s: string) => Buffer.from(s).reverse(), decryptString: (b: Buffer) => Buffer.from(b).reverse().toString() };
+describe("explicit OS-local administrator authority", () => {
+  const credentials = { username: "owner@example.test", password: "test-only-local-password" };
+  const signal = () => new AbortController().signal;
+  async function provision() {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-local-admin-")); roots.push(root);
+    await provisionOfflineAdmin(root, credentials, encryption);
+    return { root, authority: (await loadOfflineAdmin(root, encryption))!, file: path.join(root, "membership/offline-admin.enc") };
+  }
+  it("requires the actual password and never stores it or overwrites an existing authorization", async () => {
+    const { root, authority, file } = await provision();
+    const bytes = await readFile(file); expect(bytes.toString()).not.toContain(credentials.password);
+    expect(encryption.decryptString(bytes)).not.toContain(credentials.password);
+    expect((await stat(file)).mode & 0o777).toBe(0o600);
+    await expect(authority.login({ ...credentials, password: "incorrect" }, signal())).rejects.toThrow();
+    await expect(authority.login({ ...credentials, username: "another@example.test" }, signal())).rejects.toThrow();
+    await expect(provisionOfflineAdmin(root, credentials, encryption)).rejects.toThrow();
+    expect(await readFile(file)).toEqual(bytes);
+    const token = await authority.login(credentials, signal());
+    const status = await authority.check(token, signal());
+    expect(status).toMatchObject({ state: "allowed", reason: "offline-admin", user: { name: credentials.username, isAdmin: true } });
+    expect(status.expiresAt).toBeUndefined(); expect(JSON.stringify(status)).not.toContain(token);
+  });
+  it("rejects forged sessions, copied sessions from another installation and removed credentials", async () => {
+    const first = await provision(), second = await provision();
+    const token = await first.authority.login(credentials, signal());
+    expect((await first.authority.check(token.slice(0, -1) + (token.endsWith("a") ? "b" : "a"), signal())).state).toBe("denied");
+    expect((await second.authority.check(token, signal())).state).toBe("denied");
+    await rm(first.file);
+    expect((await first.authority.check(token, signal())).state).toBe("denied");
+    expect(await loadOfflineAdmin(first.root, encryption)).toBeUndefined();
+  });
+  it("does not activate without safe encryption or with malformed or unsafe credential files", async () => {
+    const { root, file } = await provision();
+    for (const unsafe of [{ ...encryption, isEncryptionAvailable: () => false }, { ...encryption, getSelectedStorageBackend: () => "basic_text" }]) {
+      expect(await loadOfflineAdmin(root, unsafe)).toBeUndefined();
+      await expect(provisionOfflineAdmin(root, credentials, unsafe)).rejects.toThrow();
+    }
+    await chmod(file, 0o644); expect(await loadOfflineAdmin(root, encryption)).toBeUndefined();
+    await chmod(file, 0o600); await writeFile(file, "corrupt"); expect(await loadOfflineAdmin(root, encryption)).toBeUndefined();
+  });
+  it("restores encrypted local login offline and revokes admission on changed authority without any account network", async () => {
+    const { root, authority, file } = await provision();
+    let accountRequests = 0, stops = 0;
+    const forbidden = async () => { ++accountRequests; throw new Error("Account network prohibited"); };
+    const dependencies = { storage: membershipStorage(root, config, encryption), offlineAdmin: authority,
+      login: forbidden, check: forbidden, fetcher: forbidden, recover: forbidden, changed: () => {}, lostAccess: async () => { ++stops; } };
+    const session = new MembershipSession(config, dependencies);
+    await session.login({ ...credentials, password: "wrong" });
+    await expect(session.assertAllowed()).rejects.toThrow();
+    await session.login(credentials); await session.assertAllowed();
+    session.dispose();
+    const restarted = new MembershipSession(config, { ...dependencies, offlineAdmin: (await loadOfflineAdmin(root, encryption))! });
+    await restarted.restore(); await restarted.assertAllowed();
+    const record = JSON.parse(encryption.decryptString(await readFile(file))); record.sessionKey = "0".repeat(64);
+    await writeFile(file, encryption.encryptString(JSON.stringify(record)));
+    await expect(restarted.assertAllowed()).rejects.toThrow();
+    expect(restarted.snapshot().state).toBe("denied"); expect(stops).toBe(1); expect(accountRequests).toBe(0);
+    expect(await dependencies.storage.read()).toBeUndefined(); restarted.dispose();
+  });
+});
 describe("membership credential storage", () => {
   it("binds encrypted credentials to the public service configuration", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "jianji-membership-")); roots.push(root);
