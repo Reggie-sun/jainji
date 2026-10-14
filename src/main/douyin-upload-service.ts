@@ -13,7 +13,7 @@ import { QianchuanAccountSettings, type EgressChangeGuard } from "./qianchuan-ac
 import { AutomationBrowserAccounts, assertAutomationBrowserSafe } from "./qianchuan-automation-browsers.js";
 import { egressIdentity } from "../shared/qianchuan-egress.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
-import { QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
+import { QianchuanAccountSetupSchema, QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryClearSchema, QianchuanPlanRecoverySchema, type QianchuanLibraryClear, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import { QianchuanVideoLibrary } from "./qianchuan-video-library.js";
 import { QianchuanPlanMaterials } from "./qianchuan-plan-materials.js";
@@ -86,6 +86,8 @@ export class DouyinUploadService {
   private automationUploadActive = false;
   private preparingAutomationUpload = false;
   private managingBrowser = false;
+  private egressChangeProduct?: QianchuanProduct;
+  private egressBlockedBatches?: { product: QianchuanProduct; pageBatchIds: Set<string> };
   private libraryOperation?: { controller: AbortController; done: Promise<void> };
   private browserPreparations = 0;
   private stopFailed = false;
@@ -208,7 +210,13 @@ export class DouyinUploadService {
       const group = accountGroups.get(task.authorization.pageBatchId) ?? [];
       group.push(task); accountGroups.set(task.authorization.pageBatchId, group);
     }
-    const accountBatches = [...accountGroups.values()].map(batch => ({ ...this.batchSummary(batch[0]!.input.project_id, batch), accountProduct: batch[0]!.authorization.target.product, canClose: canClose(batch[0]!.authorization.pageBatchId) }));
+    const accountBatches = [...accountGroups.values()].map(batch => {
+      const first = batch[0]!, target = first.authorization.target;
+      const relatedAccountProducts = this.summaries.filter(account => this.egressTargetAffected(target, [account.advertiserId], [{ product: account.product, egress: account.egress,
+        ...(account.browserPort ? { cdpEndpoint: `http://127.0.0.1:${account.browserPort}` } : {}) }])).map(account => account.product);
+      if (this.egressBlockedBatches?.pageBatchIds.has(first.authorization.pageBatchId) && !relatedAccountProducts.includes(this.egressBlockedBatches.product)) relatedAccountProducts.push(this.egressBlockedBatches.product);
+      return { ...this.batchSummary(first.input.project_id, batch), accountProduct: target.product, relatedAccountProducts, canClose: canClose(first.authorization.pageBatchId) };
+    });
     return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.stopFailed && !this.store.unavailable && !this.initializationFailure && !paused && !this.stopped && !this.stopping && this.summaries.some(account => account.available) && !readiness, message, tasks, batches, historicalBatches, accountBatches, closedBatches, legacyTasks: this.productionBatches ? [] : this.store.legacyTasks().filter(task => task.project_id === projectId) };
   }
   /** Captured job details are read-only; they never restore historical upload permission. */
@@ -281,14 +289,22 @@ export class DouyinUploadService {
     this.preloadPlans();
   }
   /** Only the trusted main-process file dialog may call this with a path. */
+  private egressTargetAffected(target: UploadAuthorization["target"], advertiserIds: readonly string[], accounts: readonly { product: QianchuanProduct; cdpEndpoint?: string; egress?: UploadAuthorization["target"]["egress"] }[] = [], browser?: Parameters<EgressChangeGuard>[2]): boolean {
+    return advertiserIds.includes(target.advertiserId) || accounts.some(account => account.product === target.product ||
+      !!account.cdpEndpoint && new URL(account.cdpEndpoint).host === new URL(target.cdpEndpoint).host ||
+      !!account.egress && !!target.egress && account.egress.sshHost === target.egress.sshHost &&
+        account.egress.localPort === target.egress.localPort && account.egress.expectedIp === target.egress.expectedIp) ||
+      !!browser && (!browser.endpoint || new URL(browser.endpoint).host === new URL(target.cdpEndpoint).host);
+  }
   private guardEgressChange: EgressChangeGuard = (advertiserIds, accounts = [], browser): void => {
     if (this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction || this.browserPreparations || this.preparingContinuation) throw new Error("制作或上传控制尚未空闲，不能更改固定出口。");
-    const affected = (target: UploadAuthorization["target"]) => advertiserIds.includes(target.advertiserId) ||
-      accounts.some(account => account.product === target.product || new URL(account.cdpEndpoint).host === new URL(target.cdpEndpoint).host) ||
-      !!browser && (!browser.endpoint || new URL(browser.endpoint).host === new URL(target.cdpEndpoint).host);
-    const protectedTasks = this.store.tasks().some(task => affected(task.authorization.target) && !this.store.isClosed(task.authorization.pageBatchId) && task.result.state !== "DISCARDED");
+    const affected = (target: UploadAuthorization["target"]) => this.egressTargetAffected(target, advertiserIds, accounts, browser);
+    const protectedTasks = this.store.tasks().filter(task => affected(task.authorization.target) && !this.store.isClosed(task.authorization.pageBatchId) && task.result.state !== "DISCARDED");
     const preparing = this.store.intents().some(intent => affected(intent.authorization.target) && this.currentIntents.has(intentKey(intent)) && !this.cancelledIntents.has(intentKey(intent)));
-    if (protectedTasks || preparing) throw new Error("该账号有待处理、待确认或结果未知的批次，不能更改固定出口。请先核查并明确结束原批次。");
+    if (protectedTasks.length || preparing) {
+      if (this.egressChangeProduct && protectedTasks.length) this.egressBlockedBatches = { product: this.egressChangeProduct, pageBatchIds: new Set(protectedTasks.map(task => task.authorization.pageBatchId)) };
+      throw new Error("该账号或共用浏览器有待处理、待确认或结果未知的批次，不能更改固定出口。请在下方“查看未结束上传”核查并明确结束原批次。");
+    }
   };
   async chooseConfig(file: string): Promise<void> {
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
@@ -306,13 +322,15 @@ export class DouyinUploadService {
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持软件内设置。");
+    const setup = QianchuanAccountSetupSchema.parse(input);
+    this.egressChangeProduct = setup.product; this.egressBlockedBatches = undefined;
     this.managingBrowser = true;
     try {
       await this.stopPlanPreload();
-      const summaries = await this.accounts.savePlan(input, this.guardEgressChange, true);
+      const summaries = await this.accounts.savePlan(setup, this.guardEgressChange, true);
       await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
       this.summaries = summaries; this.initializationFailure = undefined;
-    } finally { this.managingBrowser = false; this.changed(); }
+    } finally { this.egressChangeProduct = undefined; this.managingBrowser = false; this.changed(); }
     this.preloadPlans();
   }
   private preloadPlans(): void {

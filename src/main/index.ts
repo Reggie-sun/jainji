@@ -110,7 +110,7 @@ let scheduledLaunchReceivedAt = scheduledClearReceivedAt(process.argv);
 let scheduledLaunchReady = false;
 // Scheduled launches keep the primary owner; ordinary dev windows use separate profiles.
 const desktopInstance = claimDesktopInstance(app, {
-  multiple: !!process.env.JIANJI_DEV_SERVER_URL && !app.isPackaged && !pendingScheduledLaunch && !process.argv.includes("--jianji-schedule-probe"),
+  multiple: !!process.env.JIANJI_DEV_SERVER_URL && process.env.JIANJI_DEV_REUSE_PRIMARY !== "1" && !app.isPackaged && !pendingScheduledLaunch && !process.argv.includes("--jianji-schedule-probe"),
   directory: process.env.JIANJI_DEV_USER_DATA,
 });
 if (!desktopInstance.locked) app.exit(0);

@@ -146,37 +146,50 @@ export class QianchuanBrowserManager {
     this.pending.set(advertiserId, pending);
     return pending;
   }
+  private async shutdownTarget(advertiserId: string) {
+    let binding = await this.bindings.get(advertiserId), imported = false;
+    let original: RunningChromeBrowser | undefined;
+    if (!binding) {
+      const originalBrowsers = (await this.browsers()()).filter(browser => browser.profile && !browser.profile.startsWith(`${path.resolve(this.root)}${path.sep}`));
+      original = await discoverQianchuanProfile(advertiserId, originalBrowsers);
+      if (original) {
+        binding = { advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) };
+        imported = true;
+      } else if (originalBrowsers.some(browser => !browser.endpoint || browser.endpoint.startsWith("ws:"))) throw new Error("尚未建立原账号浏览器绑定，无法安全识别或关闭原窗口；未关闭任何窗口。");
+    }
+    const profile = binding?.profile ?? this.profile(advertiserId);
+    if (binding) await verifyOriginalProfile(binding);
+    const browsers = this.browsers(profile), matches = (await browsers()).filter(browser => browser.profile === profile);
+    if (matches.length > 1) throw new Error("账号浏览器连接不唯一，未关闭任何窗口。");
+    if (matches.some(browser => browser.connectionIssue)) throw new Error(metadataUnavailable);
+    if (binding && matches.some(browser => browser.profileDirectory !== binding.profileDirectory || browser.windowClass !== binding.windowClass)) throw new Error("原账号浏览器目录或窗口身份已变化，未关闭任何窗口。");
+    return { binding, imported, profile, browsers, original, browser: matches[0] };
+  }
+  /** Read-only whole-subject preflight; never binds, launches or closes Chrome. */
+  async inspectForShutdown(advertiserId: string, check: (browser: RunningChromeBrowser) => void): Promise<void> {
+    this.profile(advertiserId);
+    if (this.pending.has(advertiserId) || this.controlling.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后重试。");
+    if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
+    if ((await this.dependencies.egress?.(advertiserId))?.mode === "remote-browser") return;
+    const { original, browser } = await this.shutdownTarget(advertiserId);
+    if (original) check(original);
+    if (browser) check(browser);
+  }
   /** Called only after the service has protected uploads and explicit UI consent. */
   async control(advertiserId: string, action: "close" | "restart", beforeShutdown?: (browser: RunningChromeBrowser) => void): Promise<void> {
-    const managed = this.profile(advertiserId);
+    this.profile(advertiserId);
     if (this.pending.has(advertiserId)) throw new Error("账号浏览器操作正在进行，请稍后重试。");
     this.controlling.add(advertiserId);
     const pending = (async () => {
       if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
       const remote = await this.dependencies.egress?.(advertiserId);
       if (remote?.mode === "remote-browser") { await qianchuanRemoteRuntime.control(remote, advertiserId, action, action === "restart" ? await this.dependencies.displayName?.(advertiserId) : undefined); return ""; }
-      let binding = await this.bindings.get(advertiserId);
-      if (!binding) {
-        const originalBrowsers = (await this.browsers()()).filter(browser => browser.profile && !browser.profile.startsWith(`${path.resolve(this.root)}${path.sep}`));
-        const original = await discoverQianchuanProfile(advertiserId, originalBrowsers);
-        if (original) {
-          beforeShutdown?.(original);
-          binding = { advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) };
-          await this.bindings.save(binding);
-        } else if (originalBrowsers.some(browser => !browser.endpoint || browser.endpoint.startsWith("ws:"))) throw new Error("尚未建立原账号浏览器绑定，无法安全识别或关闭原窗口；未关闭任何窗口。");
-      }
-      const profile = binding?.profile ?? managed;
-      if (binding) await verifyOriginalProfile(binding);
-      else { await secureUploadDirectory(path.resolve(this.root)); await secureUploadDirectory(path.dirname(profile)); await secureUploadDirectory(profile); }
-      const browsers = this.browsers(profile);
-      const matches = (await browsers()).filter(browser => browser.profile === profile);
-      if (matches.length > 1) throw new Error("账号浏览器连接不唯一，未关闭任何窗口。");
-      if (matches.some(browser => browser.connectionIssue)) throw new Error(metadataUnavailable);
-      if (binding && matches.some(browser => browser.profileDirectory !== binding.profileDirectory || browser.windowClass !== binding.windowClass)) throw new Error("原账号浏览器目录或窗口身份已变化，未关闭任何窗口。");
-      if (matches.length) {
-        beforeShutdown?.(matches[0]);
-        await (this.dependencies.shutdown ?? shutdownAccountChrome)(matches[0], browsers);
-      }
+      const { binding, imported, profile, browsers, original, browser } = await this.shutdownTarget(advertiserId);
+      if (original) beforeShutdown?.(original);
+      if (browser) beforeShutdown?.(browser);
+      if (imported && binding) await this.bindings.save(binding);
+      if (!binding) { await secureUploadDirectory(path.resolve(this.root)); await secureUploadDirectory(path.dirname(profile)); await secureUploadDirectory(profile); }
+      if (browser) await (this.dependencies.shutdown ?? shutdownAccountChrome)(browser, browsers);
       if ((await browsers()).some(browser => browser.profile === profile)) throw new Error("账号浏览器关闭未完成，未重新启动。");
       const egress = await this.dependencies.egress?.(advertiserId);
       if (action === "restart" && egress) qianchuanEgressRuntime.recover(egress);

@@ -42,7 +42,7 @@ await server.listen();
 const serverUrl = server.resolvedUrls.local[0];
 const require = createRequire(import.meta.url);
 const env = { ...process.env, JIANJI_DEV_SERVER_URL: serverUrl };
-delete env.ELECTRON_RUN_AS_NODE; delete env.JIANJI_MEMBERSHIP_CONFIG; delete env.JIANJI_DEV_USER_DATA;
+delete env.ELECTRON_RUN_AS_NODE; delete env.JIANJI_MEMBERSHIP_CONFIG; delete env.JIANJI_DEV_USER_DATA; delete env.JIANJI_DEV_REUSE_PRIMARY;
 const applications = new Set();
 async function launch(directoryOverride) {
   const application = await _electron.launch({ executablePath: require("electron"), args: [fixture, `--user-data-dir=${userData}`],
@@ -74,6 +74,18 @@ try {
   }
   assert.equal((await first.page.evaluate(() => window.jianji.getState())).project.name, "独立窗口A");
   assert.equal((await second.page.evaluate(() => window.jianji.getState())).project.name, "独立窗口B");
+  const beforeReuse = await readdir(path.join(userData, "instances"));
+  await first.application.evaluate(({ app }) => {
+    globalThis.jianjiReuseRequests = 0;
+    app.on("second-instance", () => { globalThis.jianjiReuseRequests++; });
+  });
+  await execute(require("electron"), [fixture, `--user-data-dir=${userData}`], {
+    env: { ...env, JIANJI_DEV_REUSE_PRIMARY: "1" }, timeout: 30_000,
+  });
+  assert.equal(await first.application.evaluate(() => globalThis.jianjiReuseRequests), 1);
+  assert.deepEqual(await readdir(path.join(userData, "instances")), beforeReuse);
+  assert.equal((await first.page.evaluate(() => window.jianji.getState())).project.name, "独立窗口A");
+  assert.equal((await second.page.evaluate(() => window.jianji.getState())).project.name, "独立窗口B");
   await close(first);
   await assert.rejects(access(path.join(userData, "source-sticker-knowledge", "owner.lock")));
   assert.equal((await second.page.evaluate(() => window.jianji.getState())).project.name, "独立窗口B");
@@ -93,7 +105,8 @@ try {
   assert.equal(restored.recentProjects.some(project => project.name === "独立窗口A"), false);
   const report = { result: "PASS", directory, primaryDirectoryRetained: true, separateProjectIds: true,
     independentEditing: true, closingFirstKeepsSecond: true, gracefulLockRelease: true, restartProfilePinned: true,
-    independentHistoryRetained: true, realAccounts: false, modelRequests: 0, uploads: 0 };
+    independentHistoryRetained: true, primaryReusePreservesWorkspace: true, primaryReuseCreatesNoProfile: true,
+    realAccounts: false, modelRequests: 0, uploads: 0 };
   await writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));
 } finally {

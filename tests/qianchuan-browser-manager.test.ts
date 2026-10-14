@@ -187,6 +187,14 @@ async function originalFixture() {
   const request = vi.spyOn(globalThis, "fetch").mockImplementation(async input => new Response(JSON.stringify([{ type: "page", url: `https://qianchuan.jinritemai.com/home?aavid=${String(input).includes(":9421/") ? "123" : "456"}` }])));
   return { ...f, root, manager, original, browser, request, binding: path.join(root, "account-browser-bindings", "bindings.json") };
 }
+it("retains the discovered original endpoint guard when the window disappears during shutdown resolution", async () => {
+  const f = await originalFixture(), guard = vi.fn(() => { throw Error("original protected task"); });
+  f.browsers.mockResolvedValueOnce([f.browser]).mockResolvedValue([]);
+  await expect(f.manager.control("123", "close", guard)).rejects.toThrow("original protected task");
+  expect(guard).toHaveBeenCalledWith(f.browser);
+  await expect(lstat(f.binding)).rejects.toMatchObject({ code: "ENOENT" });
+  expect(f.launch).not.toHaveBeenCalled();
+});
 it("reads an unbound original browser without writing bindings or activating its window", async () => {
   const f = await originalFixture();
   expect(await f.manager.prepareExisting("123")).toBe(f.browser.endpoint);

@@ -147,6 +147,10 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       if (closeBrowsers && !guard) throw new Error("缺少任务保护检查，未关闭浏览器或切换上传方式。");
       guard?.(changed, targets);
       if (closeBrowsers) for (const id of changed) {
+        await this.browsers.inspectForShutdown(id, browser => guard?.(changed, targets, browser));
+        guard?.(changed, targets);
+      }
+      if (closeBrowsers) for (const id of changed) {
         guard?.(changed, targets);
         await this.browsers.control(id, "close", browser => guard?.(changed, targets, browser));
       }

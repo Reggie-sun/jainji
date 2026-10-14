@@ -267,14 +267,14 @@ it("switches a subject without a checkbox or manual browser operation and shows 
   } finally { await page.close(); }
 }, 30000);
 
-it("shows old account batches and requires explicit confirmation before ending one without changing the project", async () => {
+it.each([false, true])("shows old account batches, including a shared browser (%s), and requires explicit confirmation without changing the project", async sharedBrowser => {
   const { page, errors } = await fixture();
   try {
     const oldProject = "f97a1b03-0479-45e7-9e30-aee4d6da852c", batchId = "c9a5b359-a801-4429-b3c5-50c4ae6fb255";
-    await page.evaluate(({ oldProject, batchId }) => {
+    await page.evaluate(({ oldProject, batchId, sharedBrowser }) => {
       const f = (window as any).taskPagesFixture;
       f.state.douyinUpload.accounts = [{ product: "眼贴", advertiserId: "123", adId: "456", available: true }];
-      f.state.douyinUpload.accountBatches = [{ projectId: oldProject, pageBatchId: batchId, accountProduct: "眼贴", advertiserId: "999", adId: "456", expectedCount: 2, taskIds: ["a".repeat(64)], readyCount: 0, unknownCount: 1, notSelectedCount: 0, canClose: true },
+      f.state.douyinUpload.accountBatches = [{ projectId: oldProject, pageBatchId: batchId, accountProduct: sharedBrowser ? "热敷贴" : "眼贴", relatedAccountProducts: ["眼贴"], advertiserId: "999", adId: "456", expectedCount: 2, taskIds: ["a".repeat(64)], readyCount: 0, unknownCount: 1, notSelectedCount: 0, canClose: true },
         { projectId: oldProject, pageBatchId: "e6bf04d2-5074-4b44-aad8-809c60735ff9", accountProduct: "肥皂", advertiserId: "888", adId: "457", expectedCount: 1, taskIds: ["b".repeat(64)], readyCount: 1, unknownCount: 0, notSelectedCount: 0, canClose: true }];
       f.calls.accountClosures = [];
       window.jianji.closeQianchuanAccountUploadBatch = async input => {
@@ -283,7 +283,7 @@ it("shows old account batches and requires explicit confirmation before ending o
         return structuredClone(f.state);
       };
       f.emit();
-    }, { oldProject, batchId });
+    }, { oldProject, batchId, sharedBrowser });
     const beforeProject = await page.evaluate(() => (window as any).taskPagesFixture.state.project.id);
     await rail(page, "千川").click();
     await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "账号与计划", exact: true }).click();
@@ -298,6 +298,33 @@ it("shows old account batches and requires explicit confirmation before ending o
     await page.getByText("本批本地上传已结束。处理完剩余批次后，可再次保存上传方式。", { exact: true }).waitFor();
     expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.accountClosures)).toEqual([{ projectId: oldProject, uploadTaskId: "a".repeat(64), expectedPageBatchId: batchId }]);
     expect(await page.evaluate(() => (window as any).taskPagesFixture.state.project.id)).toBe(beforeProject);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.sideEffects)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
+it("opens the actual shared-browser blockers beside a failed save without ending them", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(() => {
+      const f = (window as any).taskPagesFixture;
+      f.state.douyinUpload.accounts = [{ product: "眼贴", advertiserId: "123", adId: "456", available: true }];
+      f.state.douyinUpload.accountBatches = [];
+      f.calls.accountClosures = []; f.calls.accountSaves = [];
+      window.jianji.saveQianchuanAccount = async input => {
+        f.calls.accountSaves.push(input);
+        f.state.douyinUpload.accountBatches = [{ projectId: "f97a1b03-0479-45e7-9e30-aee4d6da852c", pageBatchId: "c9a5b359-a801-4429-b3c5-50c4ae6fb255", accountProduct: "热敷贴", relatedAccountProducts: ["眼贴"], advertiserId: "999", adId: "456", expectedCount: 1, taskIds: ["a".repeat(64)], readyCount: 0, unknownCount: 1, notSelectedCount: 0, canClose: true }];
+        f.emit(); throw new Error("该账号或共用浏览器有待确认或结果未知的批次，请在下方查看未结束上传。");
+      };
+      f.emit();
+    });
+    await rail(page, "千川").click();
+    await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "账号与计划", exact: true }).click();
+    await page.locator(".qianchuan-account-products").getByRole("button", { name: /账户 123/ }).click();
+    await page.getByRole("button", { name: "保存账号", exact: true }).click();
+    await page.getByRole("button", { name: "结束本批本地上传", exact: true }).waitFor({ state: "visible" });
+    expect(await page.getByText("查看未结束上传（1 批）", { exact: true }).evaluate(el => (el.parentElement as HTMLDetailsElement).open)).toBe(true);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.accountClosures)).toEqual([]);
     expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.sideEffects)).toEqual([]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

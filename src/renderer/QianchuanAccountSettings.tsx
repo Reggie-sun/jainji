@@ -116,12 +116,12 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
       </div>}
       </details>
       {actionError && <p role="alert">{actionError}</p>}
-      {onCloseBatch && <QianchuanAccountUploadBatches accounts={accounts} busy={busy || saving} onClose={async batch => {
+      {onCloseBatch && <QianchuanAccountUploadBatches accounts={accounts} busy={busy || saving} expanded={!!actionError} onClose={async batch => {
         const done = await onCloseBatch(batch);
         if (done) { setActionError(""); setBrowserMessage("本批本地上传已结束。处理完剩余批次后，可再次保存上传方式。"); }
         return done;
       }}
-        batches={batches?.filter(batch => batch.accountProduct === product || batch.advertiserId === savedAccount?.advertiserId || canChangeGroup && groupMembers.some(account => account.product === batch.accountProduct || account.advertiserId === batch.advertiserId))} />}
+        batches={batches?.filter(batch => batch.relatedAccountProducts?.includes(product) || batch.accountProduct === product || batch.advertiserId === savedAccount?.advertiserId || canChangeGroup && groupMembers.some(account => batch.relatedAccountProducts?.includes(account.product) || account.product === batch.accountProduct || account.advertiserId === batch.advertiserId))} />}
       {browserMessage && <p role="status">{browserMessage}</p>}
       <div className="douyin-upload-actions"><button className="button primary compact" type="button" disabled={busy || saving || !ids || !!nameError || !!accountError || !!egressError} onClick={() => void save()}>{saving ? "正在保存并应用…" : recoveryAccount ? "保存新产品和计划" : "保存账号"}</button><button className="button secondary compact" type="button" disabled={busy || saving} onClick={() => setProduct(undefined)}>取消</button></div>
       <small>更换上传方式时，保存会自动关闭相关账号的空闲浏览器；登录状态保留，网页未保存的内容可能丢失。</small>

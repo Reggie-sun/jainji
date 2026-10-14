@@ -4,13 +4,14 @@ import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QianchuanClosureConfirmation } from "./QianchuanUploadHistory";
 import { qianchuanTargetName } from "./qianchuan-account-display";
 
-export function QianchuanAccountUploadBatches({ batches = [], accounts, busy, onClose }: {
+export function QianchuanAccountUploadBatches({ batches = [], accounts, busy, expanded = false, onClose }: {
   batches?: DouyinUploadStatus["accountBatches"]; accounts: QianchuanAccountSummary[]; busy: boolean;
+  expanded?: boolean;
   onClose(batch: QianchuanUploadBatchSummary): Promise<boolean>;
 }) {
   const [closing, setClosing] = useState<string>();
   if (!batches.length) return null;
-  return <details className="douyin-upload-advanced">
+  return <details className="douyin-upload-advanced" open={expanded}>
     <summary>查看未结束上传（{batches.length} 批）</summary>
     <p>这些历史批次会阻止切换上传方式。核查原上传页面后，可逐批明确结束本地上传；视频和防重传记录保留。</p>
     {batches.map(batch => <div key={batch.pageBatchId} className="brief-card">

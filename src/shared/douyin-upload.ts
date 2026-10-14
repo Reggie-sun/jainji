@@ -78,7 +78,7 @@ export interface DouyinUploadStatus {
   ready: boolean; message: string; tasks: QianchuanUploadTaskStatus[]; legacyTasks: UploadResult[];
   batches?: QianchuanUploadBatchSummary[];
   historicalBatches?: QianchuanUploadBatchSummary[];
-  accountBatches?: (QianchuanUploadBatchSummary & { accountProduct: z.infer<typeof QianchuanProductSchema> })[];
+  accountBatches?: (QianchuanUploadBatchSummary & { accountProduct: z.infer<typeof QianchuanProductSchema>; relatedAccountProducts?: z.infer<typeof QianchuanProductSchema>[] })[];
   closedBatches?: QianchuanClosedBatchSummary[];
 }
 

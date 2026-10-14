@@ -11,6 +11,7 @@ import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import { QianchuanVideoLibrary } from "../src/main/qianchuan-video-library";
 import { QianchuanPlanMaterials } from "../src/main/qianchuan-plan-materials";
 import { QianchuanPlanMaterialRecovery } from "../src/main/qianchuan-plan-material-recovery";
+import { qianchuanRemoteRuntime } from "../src/main/qianchuan-remote-runtime";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
@@ -21,6 +22,7 @@ const temporaryRoots = new Set<string>();
 const fixtureServices = new Set<DouyinUploadService>();
 beforeEach(() => {
   vi.spyOn(QianchuanBrowserManager.prototype, "prepareExisting").mockRejectedValue(new Error("Fixture account browser is closed"));
+  vi.spyOn(QianchuanBrowserManager.prototype, "inspectForShutdown").mockResolvedValue(undefined);
 });
 afterEach(async () => {
   await Promise.all([...fixtureServices].map(service => service.stop()));
@@ -488,6 +490,82 @@ describe("Qianchuan upload service", () => {
       egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } })).rejects.toThrow("待确认或结果未知");
     expect(shutdown).not.toHaveBeenCalled(); expect(await readFile(mapping)).toEqual(before);
     expect(f.store.tasks()).toEqual(records); expect(f.store.fence(records[0].result.upload_task_id)).toEqual(fence);
+    expect(f.service.status(batch.projectId).accountBatches).toContainEqual(expect.objectContaining({
+      pageBatchId: records[0].authorization.pageBatchId, accountProduct: "眼贴", relatedAccountProducts: expect.arrayContaining(["蝴蝶贴"]),
+    }));
+  });
+  it("shows a different slot's old batch occupying the saved browser connection and retains its fence after explicit closure", async () => {
+    const f = await nativeFixture(async () => "http://127.0.0.1:9225", async () => []);
+    await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const batch = await f.createBatch(["old shared endpoint bytes"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const records = f.store.tasks(), original = records[0], fence = f.store.fence(original.result.upload_task_id);
+    const mapping = path.join(f.store.root, "accounts", "mapping.json"), value = JSON.parse(await readFile(mapping, "utf8"));
+    for (const account of value.accounts) {
+      if (account.product === "蝴蝶贴") account.cdpEndpoint = original.authorization.target.cdpEndpoint;
+      if (account.product === "眼贴") account.cdpEndpoint = "http://127.0.0.1:9235";
+    }
+    await writeFile(mapping, JSON.stringify(value)); await f.service.restoreConfig();
+    const before = await readFile(mapping), close = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+    vi.spyOn(QianchuanBrowserManager.prototype, "assertClosed").mockResolvedValue();
+    expect(f.service.status(randomUUID()).accountBatches).toContainEqual(expect.objectContaining({
+      pageBatchId: original.authorization.pageBatchId, accountProduct: "眼贴", relatedAccountProducts: expect.arrayContaining(["蝴蝶贴"]),
+    }));
+    const input = { product: "蝴蝶贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=2000",
+      egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } };
+    await expect(f.service.saveAccount(input)).rejects.toThrow("待确认或结果未知");
+    expect(close).not.toHaveBeenCalled(); expect(await readFile(mapping)).toEqual(before);
+    await f.service.closeAccountBatch({ projectId: original.input.project_id, uploadTaskId: original.result.upload_task_id, expectedPageBatchId: original.authorization.pageBatchId });
+    expect(f.service.status(batch.projectId).accountBatches?.some(item => item.pageBatchId === original.authorization.pageBatchId)).toBe(false);
+    expect(f.store.tasks()).toEqual(records); expect(f.store.fence(original.result.upload_task_id)).toEqual(fence);
+    await f.service.saveAccount(input); expect(close).toHaveBeenCalledWith("1000", "close", expect.any(Function));
+    expect(f.store.tasks()).toEqual(records); expect(f.store.fence(original.result.upload_task_id)).toEqual(fence);
+  });
+  it.each([{ outcome: "READY", currentRemote: true, renamed: false }, { outcome: "UNKNOWN", currentRemote: true, renamed: false }, { outcome: "READY", currentRemote: false, renamed: false }, { outcome: "UNKNOWN", currentRemote: false, renamed: false }, { outcome: "READY", currentRemote: true, renamed: true }])("protects a frozen remote child route after slot reassignment and restart port changes ($outcome, remote=$currentRemote, renamed=$renamed)", async ({ outcome, currentRemote, renamed }) => {
+    const f = await fixture(), remote = { mode: "remote-browser" as const, group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+    const document = accountDocument();
+    for (const account of document.accounts) if (["眼贴", "肥皂"].includes(account.product)) Object.assign(account, { egress: remote });
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    const close = vi.spyOn(qianchuanRemoteRuntime, "control").mockResolvedValue();
+    const closed = vi.spyOn(QianchuanBrowserManager.prototype, "assertClosed").mockResolvedValue();
+    const currentAccounts = {
+      current: async () => ({ identity: "fixture-remote-child", endpoint: "http://127.0.0.1:9225", uploadEndpointVerified: true, account: { advertiserId: "7000", name: "Fixture child" } }),
+      plans: async () => [{ advertiserId: "7000", adId: "9001", name: "Fixture frozen plan" }],
+      accounts: async () => { throw Error("unused fixture operation"); }, switch: async () => { throw Error("unused fixture operation"); },
+    };
+    const accounts = new QianchuanAccountSettings(f.store.root, undefined, undefined, undefined, undefined, currentAccounts);
+    const service = new DouyinUploadService(f.store, { accounts, loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined, readPlans: async () => [] });
+    fixtureServices.add(service); await service.chooseConfig(f.configPath); await service.configure({ enabled: true });
+    const batch = await f.createBatch(["frozen remote child bytes"]), selected: QianchuanUploadSelection = { enabled: true, accountProduct: "眼贴", plan: { advertiserId: "7000", adId: "9001", name: "Fixture frozen plan", accountSource: "current-browser" } };
+    const authorization = await service.preflight(selected, 1); await service.registerBatch(batch.batchIdentity, selected, authorization);
+    await service.enqueueFinalArtifact(batch.identities[0]!);
+    if (outcome === "UNKNOWN") f.port.ready = async () => { throw uploadFailure("TIMEOUT", "page", "Fixture unknown result", "Inspect original page", true, false); };
+    await service.runPending();
+    const records = structuredClone(f.store.tasks()), original = records[0]!, fence = f.store.fence(original.result.upload_task_id);
+    expect(original.result.upload_outcome).toBe(outcome === "UNKNOWN" ? "MAY_HAVE_UPLOADED" : outcome); expect(original.authorization.target.egress).toEqual(remote);
+    const oldEye = document.accounts.find(account => account.product === "眼贴")!, oldButterfly = document.accounts.find(account => account.product === "蝴蝶贴")!;
+    document.accounts = document.accounts.map((account, i) => ({ ...(account.product === "蝴蝶贴" ? oldEye : account.product === "眼贴" ? oldButterfly : account), product: account.product, cdpEndpoint: `http://127.0.0.1:${12000 + i}` }));
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 }); closed.mockClear(); close.mockClear();
+    await service.chooseConfig(f.configPath); expect(closed).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled(); await service.stop();
+    const mapping = path.join(f.store.root, "accounts", "mapping.json");
+    const currentGroup = renamed ? "主体一新名称" : remote.group;
+    if (!currentRemote || renamed) {
+      const legacy = JSON.parse(await readFile(mapping, "utf8"));
+      for (const account of legacy.accounts) if (account.egress?.group === remote.group) {
+        if (!currentRemote) delete account.egress.mode;
+        account.egress.group = currentGroup;
+      }
+      await writeFile(mapping, JSON.stringify(legacy), { mode: 0o600 });
+    }
+    const restarted = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined, readPlans: async () => [] });
+    fixtureServices.add(restarted); await restarted.restoreConfig();
+    const before = await readFile(mapping);
+    const localClose = currentRemote ? undefined : vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+    await expect(restarted.saveAccount({ product: "蝴蝶贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=2003", egress: { ...remote, group: currentGroup, mode: currentRemote ? undefined : "remote-browser" } })).rejects.toThrow("待确认或结果未知");
+    expect(close).not.toHaveBeenCalled(); if (localClose) expect(localClose).not.toHaveBeenCalled(); expect(await readFile(mapping)).toEqual(before);
+    expect(f.store.tasks()).toEqual(records); expect(f.store.fence(original.result.upload_task_id)).toEqual(fence);
+    expect(restarted.status(randomUUID()).accountBatches).toContainEqual(expect.objectContaining({ pageBatchId: original.authorization.pageBatchId, relatedAccountProducts: expect.arrayContaining(["蝴蝶贴", "肥皂"]) }));
   });
   it("coalesces display refresh without browser work and discards stale names after an account edit", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);

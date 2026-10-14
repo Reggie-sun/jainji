@@ -17,8 +17,9 @@ afterEach(async () => { vi.restoreAllMocks(); await Promise.all(roots.splice(0).
 async function fixture() {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-egress-settings-")); roots.push(root);
   const closed = vi.spyOn(QianchuanBrowserManager.prototype, "assertClosed").mockResolvedValue();
+  const inspect = vi.spyOn(QianchuanBrowserManager.prototype, "inspectForShutdown").mockResolvedValue(undefined);
   const discover = vi.fn(async () => "http://127.0.0.1:9222");
-  return { root, closed, discover, settings: new QianchuanAccountSettings(root, discover) };
+  return { root, closed, inspect, discover, settings: new QianchuanAccountSettings(root, discover) };
 }
 async function groupFixture(remote = true) {
   const f = await fixture(), expected = remote ? { ...route, mode: "remote-browser" as const } : route;
@@ -111,6 +112,31 @@ it("requires a service task guard before any automatic browser shutdown", async 
   const f = await groupFixture(), close = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
   await expect(f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: route }, undefined, true)).rejects.toThrow("保护检查");
   expect(close).not.toHaveBeenCalled();
+});
+it("checks every actual subject browser before binding or closing when a later member has shared protected work", async () => {
+  const f = await groupFixture(false), before = await readFile(f.settings.file);
+  f.inspect.mockRestore();
+  const originals = await mkdtemp(path.join(tmpdir(), "jianji-group-originals-")); roots.push(originals);
+  const running = await Promise.all(["123", "124"].map(async (id, i) => {
+    const profile = path.join(originals, `original-${id}`);
+    await mkdir(path.join(profile, "Profile 1"), { recursive: true, mode: 0o700 });
+    return { profile, profileDirectory: "Profile 1", endpoint: `http://127.0.0.1:${9521 + i}` };
+  }));
+  vi.spyOn(browserDiscovery, "runningChromeBrowsers").mockImplementation(async () => running);
+  vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
+    const url = new URL(String(input)), index = ["9521", "9522"].indexOf(url.port);
+    if (index < 0 || url.pathname !== "/json/list") throw Error("unexpected network activity");
+    return new Response(JSON.stringify([{ type: "page", url: `https://qianchuan.jinritemai.com/home?aavid=${123 + index}` }]));
+  });
+  const shutdown = vi.spyOn(browserProcess, "shutdownAccountChrome").mockImplementation(async browser => {
+    running.splice(running.findIndex(value => value.endpoint === browser.endpoint), 1);
+  });
+  await expect(f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: { ...route, mode: "remote-browser" } },
+    (_ids, _accounts, browser) => { if (browser?.endpoint === "http://127.0.0.1:9522") throw Error("后序成员共享浏览器有受保护任务"); }, true)).rejects.toThrow("受保护任务");
+  expect(shutdown).not.toHaveBeenCalled();
+  expect(running).toHaveLength(2);
+  expect(await readFile(f.settings.file)).toEqual(before);
+  await expect(lstat(path.join(f.root, "account-browser-bindings", "bindings.json"))).rejects.toMatchObject({ code: "ENOENT" });
 });
 it.each(["idle", "protected", "shared-protected"])("switches an imported unbound original browser safely (%s)", async state => {
   const parent = await mkdtemp(path.join(tmpdir(), "jianji-original-switch-")); roots.push(parent);

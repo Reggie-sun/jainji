@@ -101,7 +101,16 @@ describe("initial source-owned plan navigation", () => {
     await noFileActions(0);
   });
   it("cancellation stops a pending navigation without a late list click", async () => {
-    const controller = new AbortController(), value = await task("missing"), work = open(value, controller.signal);
-    setTimeout(() => controller.abort(), 100); await expect(work).rejects.toBeDefined(); await new Promise(resolve => setTimeout(resolve, 150)); await noFileActions(0);
+    const controller = new AbortController(), value = await task("missing");
+    const original = QianchuanPageSession.prototype.openInitialPlan;
+    const navigation = vi.spyOn(QianchuanPageSession.prototype, "openInitialPlan").mockImplementationOnce(function (this: QianchuanPageSession, value, signal) {
+      const work = original.call(this, value, signal);
+      setTimeout(() => controller.abort(), 100); return work;
+    });
+    try {
+      await expect(open(value, controller.signal)).rejects.toBeDefined();
+      expect(navigation).toHaveBeenCalledOnce(); expect(controller.signal.aborted).toBe(true);
+      await new Promise(resolve => setTimeout(resolve, 150)); await noFileActions(0);
+    } finally { navigation.mockRestore(); }
   });
 });

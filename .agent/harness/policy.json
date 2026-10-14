@@ -734,7 +734,7 @@
         "control",
         "owned-aoci"
       ],
-      "timeoutMs": 180000
+      "timeoutMs": 360000
     }
   ],
   "routes": [

@@ -168,12 +168,15 @@ it.each([0, 1])("confirms both owned dialogs once and verifies platform status %
 
 it("refuses ambiguous confirmation controls without clicking", async () => {
   const { fixture, task } = await setup(), uploader = new DouyinCdpUploader(fixture.contract), signal = new AbortController().signal;
+  const browser = await chromium.connectOverCDP(fixture.cdpEndpoint, { isLocal: true });
   try {
     await uploader.connect(task, signal);
     const ownership = await markReady(uploader, task, signal);
+    const page = browser.contexts()[0]!.pages().find(value => value.url().includes("adId=987654"))!;
     fixture.setControls({ duplicateConfirm: true });
+    await page.waitForFunction(() => document.querySelectorAll("#confirm-button, #duplicate-confirm-button").length === 2);
     await expect(uploader.confirmAutomation([task], ownership, signal)).rejects.toThrow();
     const observed = await fixture.inspect();
     expect(observed.events.filter(event => event.type === "confirm")).toHaveLength(0);
-  } finally { await uploader.stop(); }
+  } finally { await browser.close(); await uploader.stop(); }
 });
