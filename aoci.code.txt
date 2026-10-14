@@ -242,6 +242,7 @@ qianchuan-extension-protocol.ts[CI8T]: F:定义固定扩展身份、命令、严
 qianchuan-extension-remote-worker.ts[IN8T]: F:在VPS按原保存账户解析profile并准备扩展native host | R:code:src/main/qianchuan-extension-process.ts,code:src/main/qianchuan-extension-install.ts | A:setup配置私有helper；profile及verify核相同Chrome进程；返回可选socket验证端口元数据 | S:无CDP；动态按保存锚点隔离账户；无真实监听不授上传证明；不读取登录状态
 qianchuan-extension-remote.ts[IN8T]: F:用自有SSH反向通道把VPS native扩展接入同一私有桥 | R:code:src/main/qianchuan-extension-bridge.ts,code:src/main/qianchuan-remote-runtime.ts | A:主体路线合并通道；每profile绑定原保存锚点；固定setup/profile/verify；上传端口附接仅用元数据 | S:无CDP账户读取；只回环监听；失败不自动重连或重放；显式reset等自有进程退出；不关闭Chrome或恢复旧任务
 
+qianchuan-qianguanjia-adapter.ts[IN8S]: F:执行千管家固定只读账户目录与当日汇总配方 | R:- | A:浏览器不透明会话handle；固定POST只读接口；有界响应白名单投影；标记supplier-home-aggregate口径 | S:token不跨CDP并拒绝字段反射；同文档store用户token前后复验；取消只终止本次读取；不接上传删除或确认
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
 index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/model-server/gateway.ts | A:模型网关进程入口 | S:密钥来自受控环境或文件

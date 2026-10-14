@@ -3637,6 +3637,11 @@
       "sha256": "caca62cf42758123b3b5d4f8f421fc462a8dfb96957d245a28baf3c45f2f2de7",
       "size": 5024,
       "normalized_sha256": "caca62cf42758123b3b5d4f8f421fc462a8dfb96957d245a28baf3c45f2f2de7"
+    },
+    "src/main/qianchuan-qianguanjia-adapter.ts": {
+      "sha256": "f5fe6083f3a6d659dd52ee22afe3026b92846bff120fe66017922c2ca2ce8955",
+      "size": 11155,
+      "normalized_sha256": "f5fe6083f3a6d659dd52ee22afe3026b92846bff120fe66017922c2ca2ce8955"
     }
   },
   "managed_scope": {

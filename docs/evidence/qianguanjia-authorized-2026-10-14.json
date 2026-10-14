@@ -1,0 +1,343 @@
+{
+  "schemaVersion": "qianguanjia-authorized-evidence/v1",
+  "date": "2026-10-14",
+  "authorization": {
+    "supplierLogin": "user_completed",
+    "advertiserAuthorization": "user_completed",
+    "trial": "user_confirmed",
+    "oncePerAdvertiser": true,
+    "repeatAuthorizationPerformed": false
+  },
+  "priorEvidence": "qianguanjia-2026-10-13.json",
+  "frontend": {
+    "vueStore": "#app.__vue__.$store",
+    "userIdentityFields": [
+      "id",
+      "merchantId"
+    ],
+    "exampleBannerObserved": false,
+    "trialLabelObserved": true,
+    "credentialsExported": false
+  },
+  "liveAdapter": {
+    "sourceSha256": "f5fe6083f3a6d659dd52ee22afe3026b92846bff120fe66017922c2ca2ce8955",
+    "method": "same product adapter compiled with existing esbuild; direct fixed backend requests within authorized normal browser; no button/request helper",
+    "credentialsExported": false,
+    "advertisingChangesPerformed": false,
+    "authorizationRepeated": false,
+    "records": [
+      {
+        "operation": "listAdvertisers",
+        "source": "qianguanjia",
+        "observedAt": "2026-10-14T08:59:01.686Z",
+        "rowCount": 20,
+        "stringAdvertiserIds": true,
+        "statusCounts": {
+          "授权正常": 20
+        }
+      },
+      {
+        "operation": "todayHomeSummary",
+        "source": "qianguanjia",
+        "scope": "supplier-home-aggregate",
+        "observedAt": "2026-10-14T08:59:02.041Z",
+        "date": "2026-10-14",
+        "groups": [
+          "ALL",
+          "LIVE_PROM_GOODS",
+          "VIDEO_PROM_GOODS"
+        ],
+        "metricFields": [
+          "statCost",
+          "totalPayOrderGmvIncludeCouponForRoi2",
+          "totalPayOrderCountForRoi2",
+          "totalPrepayAndPayOrderRoi2"
+        ],
+        "completeCurrentAndComparisonGroups": true,
+        "comparisonSemantics": "unverified",
+        "platformReconciliation": "not_evaluated"
+      }
+    ]
+  },
+  "pageRequests": [
+    {
+      "observedAt": "2026-10-14T08:50:00.667Z",
+      "method": "POST",
+      "path": "/qianchuan/homereport/advReport",
+      "httpStatus": 200,
+      "code": 0,
+      "params": {
+        "startDate": "2026-10-13 00:00:00",
+        "endDate": "2026-10-14 23:59:59",
+        "marketingGoal": "string",
+        "page": "number",
+        "limit": "number"
+      },
+      "responseShape": {
+        "total": "object",
+        "list": "object",
+        "currentPage": "object",
+        "totalPage": "object"
+      }
+    },
+    {
+      "observedAt": "2026-10-14T08:50:00.912Z",
+      "method": "POST",
+      "path": "/qianchuan/homereport/dataTrend",
+      "httpStatus": 200,
+      "code": 0,
+      "params": {
+        "startDate": "2026-10-08 00:00:00",
+        "endDate": "2026-10-14 23:59:59"
+      },
+      "responseShape": {
+        "type": "array",
+        "length": 7,
+        "first": {
+          "date": "string",
+          "statCost": "object",
+          "totalPrepayAndPayOrderRoi2": "object",
+          "totalPayOrderGmvForRoi2": "object",
+          "totalPayOrderCountForRoi2": "object",
+          "totalCostPerPayOrderForRoi2": "object",
+          "totalPayOrderGmvIncludeCouponForRoi2": "object",
+          "totalPayOrderCouponAmountForRoi2": "object",
+          "totalEcomPlatformSubsidyAmountForRoi2": "object",
+          "totalUnfinishedEstimateOrderGmvForRoi2": "object"
+        }
+      }
+    },
+    {
+      "observedAt": "2026-10-14T08:50:01.081Z",
+      "method": "POST",
+      "path": "/qianchuan/homereport/uniHomeTop",
+      "httpStatus": 200,
+      "code": 0,
+      "params": {
+        "startDate": "2026-10-14 00:00:00",
+        "endDate": "2026-10-14 23:59:59",
+        "selectFields": [
+          "statCost",
+          "totalPayOrderGmvIncludeCouponForRoi2",
+          "totalPayOrderCountForRoi2",
+          "totalPrepayAndPayOrderRoi2"
+        ]
+      },
+      "responseShape": {
+        "LIVE_PROM_GOODS": {
+          "nowTotalData": {
+            "statCost": "number",
+            "totalPrepayAndPayOrderRoi2": "number",
+            "totalPayOrderGmvIncludeCouponForRoi2": "number",
+            "totalPayOrderCountForRoi2": "string",
+            "totalPayOrderGmvForRoi2": "number",
+            "totalPayOrderCouponAmountForRoi2": "number",
+            "totalEcomPlatformSubsidyAmountForRoi2": "number",
+            "totalUnfinishedEstimateOrderGmvForRoi2": "number"
+          },
+          "oldTotalData": {
+            "statCost": "number",
+            "totalPrepayAndPayOrderRoi2": "number",
+            "totalPayOrderGmvIncludeCouponForRoi2": "number",
+            "totalPayOrderCountForRoi2": "string",
+            "totalPayOrderGmvForRoi2": "number",
+            "totalPayOrderCouponAmountForRoi2": "number",
+            "totalEcomPlatformSubsidyAmountForRoi2": "number",
+            "totalUnfinishedEstimateOrderGmvForRoi2": "number"
+          }
+        },
+        "ALL": {
+          "nowTotalData": {
+            "statCost": "number",
+            "totalPrepayAndPayOrderRoi2": "number",
+            "totalPayOrderGmvIncludeCouponForRoi2": "number",
+            "totalPayOrderCountForRoi2": "string",
+            "totalPayOrderGmvForRoi2": "number",
+            "totalPayOrderCouponAmountForRoi2": "number",
+            "totalEcomPlatformSubsidyAmountForRoi2": "number",
+            "totalUnfinishedEstimateOrderGmvForRoi2": "number"
+          },
+          "oldTotalData": {
+            "statCost": "number",
+            "totalPrepayAndPayOrderRoi2": "number",
+            "totalPayOrderGmvIncludeCouponForRoi2": "number",
+            "totalPayOrderCountForRoi2": "string",
+            "totalPayOrderGmvForRoi2": "number",
+            "totalPayOrderCouponAmountForRoi2": "number",
+            "totalEcomPlatformSubsidyAmountForRoi2": "number",
+            "totalUnfinishedEstimateOrderGmvForRoi2": "number"
+          }
+        },
+        "VIDEO_PROM_GOODS": {
+          "nowTotalData": {
+            "statCost": "number",
+            "totalPrepayAndPayOrderRoi2": "number",
+            "totalPayOrderGmvIncludeCouponForRoi2": "number",
+            "totalPayOrderCountForRoi2": "string",
+            "totalPayOrderGmvForRoi2": "number",
+            "totalPayOrderCouponAmountForRoi2": "number",
+            "totalEcomPlatformSubsidyAmountForRoi2": "number",
+            "totalUnfinishedEstimateOrderGmvForRoi2": "number"
+          },
+          "oldTotalData": {
+            "statCost": "number",
+            "totalPrepayAndPayOrderRoi2": "number",
+            "totalPayOrderGmvIncludeCouponForRoi2": "number",
+            "totalPayOrderCountForRoi2": "string",
+            "totalPayOrderGmvForRoi2": "number",
+            "totalPayOrderCouponAmountForRoi2": "number",
+            "totalEcomPlatformSubsidyAmountForRoi2": "number",
+            "totalUnfinishedEstimateOrderGmvForRoi2": "number"
+          }
+        }
+      }
+    }
+  ],
+  "implementation": {
+    "path": "src/main/qianchuan-qianguanjia-adapter.ts",
+    "sha256": "f5fe6083f3a6d659dd52ee22afe3026b92846bff120fe66017922c2ca2ce8955",
+    "productionIpcUiActive": false,
+    "fixedReadOnlyOperations": [
+      "listAdvertisers",
+      "todayHomeSummary"
+    ],
+    "timeoutMs": 20000,
+    "maxResponseBytes": 2097152,
+    "redirects": "error",
+    "cookieMode": "omit",
+    "retries": 0,
+    "tokenPersistence": false,
+    "thirdPartyServerCredentialsAccessed": false
+  },
+  "engineering": {
+    "red": {
+      "newTestsFailed": 19,
+      "reason": "unimplemented adapter stub",
+      "existingTestsNotRun": 39
+    },
+    "focused": {
+      "command": "npx vitest run tests/qianchuan-backend-adapter.test.ts --no-file-parallelism --maxWorkers=1 --minWorkers=1",
+      "passed": 60,
+      "failed": 0,
+      "testSha256": "afe2bd6e6fb577fa961dd12b99a2e8d6fd99b434d2f29609c417783fe54a1f27"
+    },
+    "kimiMapping": {
+      "invocationId": "ab83ffcd-5445-419a-88ad-99bda32202b6",
+      "seal": "7995fbee14226a6d57dcf690622f41c33f2401b90faf70134acb0030728ed7c1",
+      "profile": "deep",
+      "effort": "max",
+      "wireModel": "k3",
+      "upstreamHost": "api.kimi.ai",
+      "wireRequests": 2,
+      "classification": "PARSED",
+      "role": "explorer",
+      "acceptanceByParent": true,
+      "finalImplementationReview": false
+    },
+    "aoci": {
+      "ownSourceRole": "index",
+      "ownSourceEntry": "IN8S",
+      "sourceSha256": "f5fe6083f3a6d659dd52ee22afe3026b92846bff120fe66017922c2ca2ce8955",
+      "parentAuthoringParticipation": "Full source and own FRAS adjudicated; shared writer applied official 20+1 complete batches; Parent verified own Entry/leaf",
+      "officialVerifyCheckGuide": "PASS on frozen candidate",
+      "ownedControl": "PASS",
+      "repositoryCurrent": "Concurrent manual-cover changes remain outside this task; no global alignment claim"
+    },
+    "implementationReviewRiskGate": {
+      "decision": "KIMI_REVIEW_NOT_REQUIRED",
+      "sourceSha256": "f5fe6083f3a6d659dd52ee22afe3026b92846bff120fe66017922c2ca2ce8955",
+      "testSha256": "afe2bd6e6fb577fa961dd12b99a2e8d6fd99b434d2f29609c417783fe54a1f27",
+      "planSha256": "926ef7f3619422793be063750d89d4d9be96b7f2f2f74098890229fd4828793b",
+      "explicitUserFinalReviewRequest": false,
+      "criticalConsequence": "No new credential export/store, arbitrary transport, ad writes, durable state or product IPC activation; original authorized Page is the trust boundary",
+      "remainingSignificantGap": "None for the two fixed read-only recipes: actual authorized replay plus browser guards, bounded cancellation and reflection tests passed",
+      "independentReviewValue": "No concrete major consequence/gap combination requiring another reviewer; supplier attribution/UI activation remain explicitly unverified",
+      "mappingNotFinalReview": true
+    },
+    "harnessFirstRun": {
+      "runId": "20261014T090450Z-af35b5c8",
+      "status": "NOT_EVALUATED",
+      "checks": [
+        {
+          "id": "typecheck",
+          "status": "PASS",
+          "message": "Command completed successfully."
+        },
+        {
+          "id": "douyin-upload",
+          "status": "PASS",
+          "message": "858 tests passed with no skipped tests."
+        },
+        {
+          "id": "documents",
+          "status": "PASS",
+          "message": "Checked 6 Markdown document(s) and their local links."
+        },
+        {
+          "id": "owned-aoci",
+          "status": "NOT_EVALUATED",
+          "message": "Verify, Check, and Guide returned different governance facts; no single AOCI snapshot can be proven."
+        },
+        {
+          "id": "workspace-identity",
+          "status": "NOT_EVALUATED",
+          "message": "Source identity changed while the harness was running; start a new run."
+        }
+      ],
+      "sourceDriftPaths": [
+        "src/main/qianchuan-remote-runtime.ts",
+        "tests/qianchuan-browser-accounts.test.ts",
+        "tests/qianchuan-cdp-account-session.test.ts",
+        "src/main/qianchuan-cdp-account-session.ts"
+      ],
+      "testCounts": {
+        "passed": 858,
+        "failed": 0,
+        "skipped": 0
+      },
+      "completionEligible": false
+    },
+    "harnessFinal": {
+      "runId": "20261014T092215Z-798515c0",
+      "completionRunId": "20261014T094124Z-1bbc097d",
+      "status": "PASS",
+      "snapshot": "4397-file frozen validation copy; no .git or registered worktree; read-only Git shim",
+      "snapshotBase": "f210044488378690901a2e86b1a3515531c8c766",
+      "checks": {
+        "typecheck": "PASS",
+        "douyin-upload": "PASS",
+        "documents": "PASS",
+        "owned-aoci": "PASS"
+      },
+      "testCounts": {
+        "passed": 858,
+        "failed": 0,
+        "skipped": 0
+      },
+      "ownedSourceMatchesCurrent": true,
+      "repositoryWideCurrentAcceptance": false
+    }
+  },
+  "boundaries": {
+    "supplierBackendInternalOfficialApiMapping": "not_evaluated",
+    "homeSingleAdvertiserFilter": "absent_from_observed_request",
+    "homeComparisonSemantics": "unverified",
+    "financialValuesPersisted": false,
+    "platformReconciliation": "not_evaluated",
+    "advertisingChanges": "not_performed",
+    "plansMaterialsUploadBudgetRoi": "not_live_verified"
+  },
+  "delivery": {
+    "repositoryCodeState": "verified_candidate",
+    "ownedFiles": [
+      "src/main/qianchuan-qianguanjia-adapter.ts",
+      "tests/qianchuan-backend-adapter.test.ts",
+      "docs/qianguanjia-authorized-integration-2026-10-14.md",
+      "docs/evidence/qianguanjia-authorized-2026-10-14.json",
+      "docs/superpowers/plans/2026-10-14-qianguanjia-readonly-session.md"
+    ],
+    "formalStaging": "one own Entry and one own baseline leaf; preserve foreign staged entries",
+    "commitIdentity": "Git history and final delivery message",
+    "sessionRecordEvaluation": "No dedicated repository capture Skill declared; report, plan and sanitized evidence record stable live proof"
+  }
+}

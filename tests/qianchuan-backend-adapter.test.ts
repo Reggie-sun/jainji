@@ -3,6 +3,7 @@ import { afterAll, afterEach, beforeAll, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 import { QianchuanBackendAdapter } from "../src/main/qianchuan-backend-adapter";
 import { QianchuanOpenApiVideos } from "../src/main/qianchuan-open-api-videos";
+import { QianguanjiaReadonlyAdapter } from "../src/main/qianchuan-qianguanjia-adapter";
 import { QianchuanBackendQuerySchema, QIANCHUAN_QUERY_METRICS } from "../src/shared/qianchuan-backend";
 
 const aid = "1876414814643802", adId = "1878754135410692", origin = "https://qianchuan.jinritemai.com";
@@ -211,4 +212,141 @@ it("rejects official redirects and network errors and propagates cancellation to
   const work = new QianchuanOpenApiVideos(officialGrant, transport).list(officialInput(), cancel.signal);
   cancel.abort(); await expect(work).rejects.toThrow("千川官方素材查询未完成，请检查授权、权限或返回数据。");
   expect(transport).toHaveBeenCalledTimes(1);
+});
+
+const supplierOrigin = "https://qc.uliangtech.com", supplierApi = "https://qc-api.uliangtech.com";
+const supplierToken = "fixture-customer-session-private";
+const supplierAccount = { outAdvertiserId: "1879999999999999999", name: "fixture shop", authStatus: 1, authStatusDesc: "授权正常", serverSecret: "not-projected" };
+const supplierMetrics = { statCost: 12.5, totalPayOrderGmvIncludeCouponForRoi2: 50,
+  totalPayOrderCountForRoi2: "4", totalPrepayAndPayOrderRoi2: 4 };
+const supplierHome = () => Object.fromEntries(["ALL", "LIVE_PROM_GOODS", "VIDEO_PROM_GOODS"].map(key => [key,
+  { nowTotalData: { ...supplierMetrics }, oldTotalData: { ...supplierMetrics }, secret: "not-projected" }]));
+async function supplierFixture(options: { token?: string; response?: unknown; status?: number; raw?: string; delay?: number; type?: string; redirect?: boolean } = {}) {
+  const context = await browser.newContext(); contexts.push(context);
+  const requests: { path: string; method: string; body: unknown; headers: Record<string, string> }[] = [];
+  await context.addCookies([{ name: "unused-cookie", value: "cookie-private", url: supplierApi }]);
+  await context.route(`${supplierOrigin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<meta charset="utf-8"><div id="app"></div>' }));
+  await context.route(`${supplierApi}/**`, async route => {
+    const request = route.request();
+    const headers = { "access-control-allow-origin": supplierOrigin, "access-control-allow-headers": "token,Channel,appType,content-type", "access-control-allow-methods": "POST" };
+    if (request.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
+    requests.push({ path: new URL(request.url()).pathname, method: request.method(), body: request.postDataJSON(), headers: await request.allHeaders() });
+    if (options.delay) await new Promise(resolve => setTimeout(resolve, options.delay));
+    if (options.redirect) return route.fulfill({ status: 302, headers: { ...headers, location: `${supplierOrigin}/dist/login` } });
+    const data = request.url().endsWith("uniHomeTop") ? supplierHome() : [supplierAccount];
+    await route.fulfill({ status: options.status ?? 200, headers, contentType: options.type ?? "application/json",
+      body: options.raw ?? JSON.stringify(options.response ?? { code: 0, data }) }).catch(() => undefined);
+  });
+  const page = await context.newPage(); await page.goto(`${supplierOrigin}/dist/dashboard/index`);
+  await page.evaluate(token => {
+    Object.assign(document.querySelector("#app")!, { __vue__: { $store: { getters: { token }, state: { user: { userInfo: { id: "101", merchantId: "202" } } } } } });
+  }, options.token ?? supplierToken);
+  return { page, requests };
+}
+async function changeSupplier(page: Page, field: "token" | "id" | "merchantId") {
+  await page.evaluate(field => {
+    const store = (document.querySelector("#app") as unknown as { __vue__: { $store: { getters: { token: string }; state: { user: { userInfo: Record<string, string> } } } } }).__vue__.$store;
+    if (field === "token") store.getters.token = "changed-private-session";
+    else store.state.user.userInfo[field] = "303";
+  }, field);
+}
+
+it("supplier: replays the fixed directory POST and exports only exact string metadata", async () => {
+  const { page, requests } = await supplierFixture(); const port = await QianguanjiaReadonlyAdapter.create(page, clock);
+  try {
+    const result = await port.listAdvertisers(signal);
+    expect(result).toEqual({ source: "qianguanjia", observedAt: clock().toISOString(), accounts: [{ advertiserId: supplierAccount.outAdvertiserId, name: "fixture shop", authStatus: 1, authStatusDesc: "授权正常" }] });
+    expect(requests).toHaveLength(1); expect(requests[0]).toMatchObject({ method: "POST", path: "/mms/qianchuanAdvertiser/listAdvertisers", body: {}, headers: { token: supplierToken, channel: "PC", apptype: "qianchuan" } });
+    expect(requests[0]!.headers.cookie).toBeUndefined();
+    expect(JSON.stringify(result)).not.toMatch(/private|secret|https:/);
+  } finally { await port.dispose(); }
+});
+it("supplier: labels the home aggregate separately and preserves complete four-metric groups", async () => {
+  const { page, requests } = await supplierFixture(); const port = await QianguanjiaReadonlyAdapter.create(page, clock);
+  try {
+    const result = await port.todayHomeSummary(signal);
+    expect(result).toMatchObject({ scope: "supplier-home-aggregate", date: "2026-10-13", groups: { ALL: { current: { statCost: "12.5", totalPayOrderCountForRoi2: "4" }, comparison: { statCost: "12.5" } } } });
+    expect(requests[0]).toMatchObject({ path: "/qianchuan/homereport/uniHomeTop", body: { startDate: "2026-10-13 00:00:00", endDate: "2026-10-13 23:59:59", selectFields: Object.keys(supplierMetrics) } });
+    expect(JSON.stringify(result)).not.toMatch(/not-projected|private|advertiserId/);
+  } finally { await port.dispose(); }
+});
+it("supplier: requires an existing normal login without invoking authorization", async () => {
+  const { page, requests } = await supplierFixture({ token: "" });
+  await expect(QianguanjiaReadonlyAdapter.create(page)).rejects.toThrow(/登录/); expect(requests).toHaveLength(0);
+  await page.goto("https://other.invalid/").catch(() => undefined);
+  await expect(QianguanjiaReadonlyAdapter.create(page)).rejects.toThrow();
+});
+it("supplier: prevents reads from login or visible password/captcha pages and never exports the session canary", async () => {
+  const { page, requests } = await supplierFixture();
+  const returned: unknown[] = [];
+  const evaluate = page.evaluate.bind(page);
+  vi.spyOn(page, "evaluate").mockImplementation(async (fn, arg) => {
+    const value = await evaluate(fn, arg); returned.push(value); return value;
+  });
+  const port = await QianguanjiaReadonlyAdapter.create(page);
+  try {
+    await port.listAdvertisers(signal);
+    expect(JSON.stringify(returned)).not.toContain(supplierToken);
+    await page.evaluate(() => document.body.insertAdjacentHTML("beforeend", '<input type="password">'));
+    await expect(port.listAdvertisers(signal)).rejects.toThrow(/会话/);
+    await expect(QianguanjiaReadonlyAdapter.create(page)).rejects.toThrow(/登录/); expect(requests).toHaveLength(1);
+    await page.evaluate(() => document.querySelector("input")?.remove());
+    await page.evaluate(() => history.pushState({}, "", "/dist/login"));
+    await expect(QianguanjiaReadonlyAdapter.create(page)).rejects.toThrow(/登录/);
+  } finally { await port.dispose(); }
+});
+it("supplier: detects token reflection before projection even with JSON escaping", async () => {
+  const token = 'fixture-customer-"escaped-session';
+  const { page } = await supplierFixture({ token, response: { code: 0, data: [{ ...supplierAccount, name: token }] } });
+  const port = await QianguanjiaReadonlyAdapter.create(page);
+  try { await expect(port.listAdvertisers(signal)).rejects.toThrow(/^千管家/); } finally { await port.dispose(); }
+});
+it.each(["token", "id", "merchantId"] as const)("supplier: blocks changed %s before sending and rejects stale results", async field => {
+  const { page, requests } = await supplierFixture(); const port = await QianguanjiaReadonlyAdapter.create(page);
+  try { await changeSupplier(page, field); await expect(port.listAdvertisers(signal)).rejects.toThrow(/会话/); expect(requests).toHaveLength(0); }
+  finally { await port.dispose(); }
+  const late = await supplierFixture({ delay: 150 }); const latePort = await QianguanjiaReadonlyAdapter.create(late.page);
+  try {
+    const request = latePort.listAdvertisers(signal); const rejected = expect(request).rejects.toThrow(/会话/);
+    await expect.poll(() => late.requests.length).toBe(1); await changeSupplier(late.page, field); await rejected;
+  } finally { await latePort.dispose(); }
+});
+it("supplier: rejects a replaced Document and a disposed instance without closing the user's page", async () => {
+  const { page, requests } = await supplierFixture(); const port = await QianguanjiaReadonlyAdapter.create(page);
+  await page.reload(); await expect(port.listAdvertisers(signal)).rejects.toThrow(); await port.dispose();
+  await expect(port.listAdvertisers(signal)).rejects.toThrow(); expect(requests).toHaveLength(0); expect(page.isClosed()).toBe(false);
+});
+it.each([
+  ["http", { status: 401 }], ["membership", { response: { code: 1001, message: supplierToken } }],
+  ["json", { raw: "private-broken-json" }], ["type", { type: "text/html" }],
+  ["size", { raw: "x".repeat(2 * 1024 * 1024 + 1) }], ["redirect", { redirect: true }],
+] as const)("supplier: fails closed and suppresses raw errors without retry: %s", async (_, options) => {
+  const { page, requests } = await supplierFixture(options); const port = await QianguanjiaReadonlyAdapter.create(page);
+  try { await expect(port.listAdvertisers(signal)).rejects.toThrow(/^千管家/); expect(requests).toHaveLength(1); }
+  finally { await port.dispose(); }
+});
+it.each([
+  { data: [{ ...supplierAccount, outAdvertiserId: 1879999999999999999 }] }, { data: [{ ...supplierAccount, outAdvertiserId: "01" }] },
+  { data: [{ ...supplierAccount, name: supplierToken }] }, { data: [supplierAccount, supplierAccount] },
+])("supplier: rejects invalid IDs, duplicate accounts and reflected credentials", async ({ data }) => {
+  const { page } = await supplierFixture({ response: { code: 0, data } }); const port = await QianguanjiaReadonlyAdapter.create(page);
+  try { await expect(port.listAdvertisers(signal)).rejects.toThrow(/^千管家/); }
+  finally { await port.dispose(); }
+});
+it("supplier: preserves empty directories and rejects missing report metrics instead of inventing zero", async () => {
+  const empty = await supplierFixture({ response: { code: 0, data: [] } }); const port = await QianguanjiaReadonlyAdapter.create(empty.page);
+  try { expect(await port.listAdvertisers(signal)).toMatchObject({ accounts: [] }); } finally { await port.dispose(); }
+  const data = supplierHome(); delete (data.ALL!.nowTotalData as Partial<typeof supplierMetrics>).statCost;
+  const missing = await supplierFixture({ response: { code: 0, data } }); const missingPort = await QianguanjiaReadonlyAdapter.create(missing.page);
+  try { await expect(missingPort.todayHomeSummary(signal)).rejects.toThrow(); } finally { await missingPort.dispose(); }
+});
+it("supplier: cancellation and disposal abort in-flight reads with safe errors and no replay", async () => {
+  for (const dispose of [false, true]) {
+    const { page, requests } = await supplierFixture({ delay: 2000 }); const port = await QianguanjiaReadonlyAdapter.create(page);
+    const controller = new AbortController(); const work = port.listAdvertisers(controller.signal);
+    const rejected = expect(work).rejects.toThrow(/^千管家/);
+    await expect.poll(() => requests.length).toBe(1);
+    if (dispose) await port.dispose(); else controller.abort(new Error(supplierToken));
+    await rejected; expect(requests).toHaveLength(1); await port.dispose(); expect(page.isClosed()).toBe(false);
+  }
 });
