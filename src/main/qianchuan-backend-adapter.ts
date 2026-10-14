@@ -30,6 +30,11 @@ function readMetrics(value: unknown, capital: boolean): QianchuanQueryMetrics {
 }
 function period(query: Exclude<QianchuanBackendQuery, { kind: "plan" }>, now: Date) {
   // Qianchuan report dates use China Standard Time, independent of the host timezone.
+  if (query.asOf) {
+    const cutoff = new Date(query.asOf);
+    if (cutoff.getTime() > now.getTime()) throw new Error("千川查询截止时刻不能在未来。");
+    now = cutoff;
+  }
   const current = new Date(now.getTime() + 8 * 3600000).toISOString().slice(0, 19).replace("T", " ");
   const startTime = `${query.startDate} 00:00:00`;
   const endTime = [`${query.endDate} 23:59:59`, current].sort()[0]!;
@@ -98,6 +103,17 @@ export class QianchuanBackendAdapter {
           for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
           const json = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
           if (json?.status_code !== 0 || !json.data || typeof json.data !== "object" || Array.isArray(json.data)) return { ok: false as const };
+          // The observed playback cell contains signed preview data. Only its VideoId may leave the browser.
+          if (path === "/ad/api/pmc/v1/uni-promotion/material/list-required" && Array.isArray(json.data.statsData?.rows)) {
+            for (const row of json.data.statsData.rows) {
+              const cell = row?.dimensions?.roi2MaterialVideoPlayInfo;
+              if (cell === undefined) continue;
+              if (typeof cell.value !== "string" || cell.value.length > 65536) return { ok: false as const };
+              const play = JSON.parse(cell.value);
+              if (!play || typeof play.VideoId !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(play.VideoId)) return { ok: false as const };
+              row.dimensions.roi2MaterialVideoPlayInfo = { value: JSON.stringify({ VideoId: play.VideoId }) };
+            }
+          }
           return { ok: true as const, data: json.data as Record<string, unknown> };
         } catch { return { ok: false as const }; }
       }, { path, method, params, body, advertiserId: this.advertiserId, original: this.document, controller: remote }).catch(() => ({ ok: false as const }));
@@ -142,7 +158,7 @@ export class QianchuanBackendAdapter {
     }
     const data = await this.request("/ad/api/pmc/v1/uni-promotion/material/list-required", "POST", {}, {
       DataSetKey: "site_promotion_product_post_data_video", Metrics: [...QIANCHUAN_QUERY_METRICS],
-      Dimensions: ["material_id", "roi2_material_video_name"], StartTime: times.startTime, EndTime: times.endTime,
+      Dimensions: ["material_id", "roi2_material_video_name", "roi2_material_video_play_info"], StartTime: times.startTime, EndTime: times.endTime,
       Filters: { ConditionRelationshipType: 1, Conditions: [condition("query_type", ["all"]), condition("roi2_material_type_v3", ["1001"]),
         condition("marketing_goal", ["1"]), condition("roi2_material_status", ["1"]), condition("ad_id", [query.adId]), condition("roi2_material_video_type", ["11"])] },
       PageParams: { Limit: query.limit, Offset: query.offset }, OrderBy: [{ Type: 2, Field: "stat_cost_for_roi2" }], reqFrom: "uni-prom-creative-tab-list",
@@ -158,7 +174,10 @@ export class QianchuanBackendAdapter {
       const row = record(value), dimensions = record(row.dimensions);
       const materialId = text(record(dimensions.materialId).value);
       if (!/^[1-9][0-9]{0,19}$/.test(materialId)) throw dataFailure();
-      return { materialId, name: text(record(dimensions.roi2MaterialVideoName).value), metrics: readMetrics(row.metrics, false) };
+      const play = dimensions.roi2MaterialVideoPlayInfo;
+      const videoId = play === undefined ? undefined : text(record(JSON.parse(text(record(play).value, 1024))).VideoId, 128);
+      if (videoId !== undefined && !/^[a-zA-Z0-9_-]{1,128}$/.test(videoId)) throw dataFailure();
+      return { materialId, ...(videoId === undefined ? {} : { videoId }), name: text(record(dimensions.roi2MaterialVideoName).value), metrics: readMetrics(row.metrics, false) };
     });
     if (new Set(rows.map(row => row.materialId)).size !== rows.length) throw dataFailure();
     return { ...identity, ...times, kind: "materials", adId: query.adId, offset: query.offset, limit: query.limit, total, rows };

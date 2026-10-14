@@ -12,7 +12,7 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
 }, "请选择有效日期。");
 const account = { product: QianchuanProductSchema, expectedAdvertiserId: id, requestId: z.string().uuid() };
-const period = { startDate: date, endDate: date };
+const period = { startDate: date, endDate: date, asOf: z.string().datetime().optional() };
 export const QianchuanBackendQuerySchema = z.discriminatedUnion("kind", [
   z.object({ ...account, kind: z.literal("plan"), adId: id }).strict(),
   z.object({ ...account, ...period, kind: z.literal("materials"), adId: id,
@@ -35,5 +35,5 @@ interface QueryIdentity { advertiserId: string; observedAt: string; }
 export type QianchuanBackendResult =
   | (QueryIdentity & { kind: "plan"; adId: string; name: string; budget: string; roiGoal: string; products: { id: string; name: string }[] })
   | (QueryIdentity & { kind: "materials"; adId: string; startTime: string; endTime: string; offset: number; limit: number; total: number;
-      rows: { materialId: string; name: string; metrics: QianchuanQueryMetrics }[] })
+      rows: { materialId: string; videoId?: string; name: string; metrics: QianchuanQueryMetrics }[] })
   | (QueryIdentity & { kind: "report"; startTime: string; endTime: string; metrics: QianchuanQueryMetrics });

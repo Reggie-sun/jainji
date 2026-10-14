@@ -27,6 +27,19 @@ async function fixture() {
 const workflow = (page: Page, name: string) => page.getByRole("navigation", { name: "制作流程" }).getByRole("button", { name: new RegExp(name + "$" ) });
 const rail = (page: Page, name: string) => page.locator(".workspace-rail").getByRole("button", { name, exact: true });
 
+it("opens the effect loop and returns to production configuration without starting production", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await rail(page, "千川").click();
+    await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "制作与效果", exact: true }).click();
+    await page.getByRole("heading", { name: "制作与效果", exact: true }).waitFor();
+    await page.getByRole("button", { name: "制作并配置上传", exact: true }).click();
+    await page.getByRole("heading", { name: "输出确认", exact: true }).waitFor();
+    const calls = await page.evaluate(() => (window as any).taskPagesFixture.calls);
+    expect(calls.starts).toEqual([]); expect(calls.batchStarts).toEqual([]); expect(calls.sideEffects).toEqual([]); expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("opens the business console directly and returns to the original query and upload pages without production", async () => {
   const { page, errors } = await fixture();
   try {

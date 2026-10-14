@@ -35,6 +35,37 @@ async function fixture(options: { account?: string; response?: unknown; status?:
 }
 async function adapter(page: Page) { return QianchuanBackendAdapter.create(page, aid, clock); }
 
+it("projects the observed platform VideoId without exporting playback URLs", async () => {
+  const { page, requests } = await fixture({ response: { status_code: 0, data: { statsData: { totalCount: "1", rows: [{ dimensions: {
+    materialId: { value: "7696527003390771254" }, roi2MaterialVideoName: { value: "样片" },
+    roi2MaterialVideoPlayInfo: { value: JSON.stringify({ VideoId: "v03044secret_example", CoverImage: { url: "https://private.invalid?token=never-export" } }) },
+  }, metrics: metrics(false) }] } } } });
+  const port = await adapter(page);
+  try {
+    const result = await port.query({ ...identity, kind: "materials", adId, startDate: "2026-10-13", endDate: "2026-10-13", offset: 0, limit: 1 }, signal);
+    expect(result).toMatchObject({ rows: [{ videoId: "v03044secret_example", materialId: "7696527003390771254" }] });
+    expect(JSON.stringify(result)).not.toContain("private.invalid");
+    expect((requests[0]!.body as any).Dimensions).toContain("roi2_material_video_play_info");
+  } finally { await port.dispose(); }
+});
+it.each(["{broken", JSON.stringify({ VideoId: 1879999999999999999 }), JSON.stringify({ VideoId: "https://private.invalid" })])("rejects malformed platform video identity %s", async info => {
+  const { page } = await fixture({ response: { status_code: 0, data: { statsData: { totalCount: "1", rows: [{ dimensions: { materialId: { value: "900" }, roi2MaterialVideoName: { value: "样片" }, roi2MaterialVideoPlayInfo: { value: info } }, metrics: metrics(false) }] } } } });
+  const port = await adapter(page);
+  try { await expect(port.query({ ...identity, kind: "materials", adId, startDate: "2026-10-13", endDate: "2026-10-13", offset: 0, limit: 1 }, signal)).rejects.toThrow(); }
+  finally { await port.dispose(); }
+});
+it("freezes pagination cutoff and refuses future or pre-period cutoffs before a request", async () => {
+  const { page, requests } = await fixture(); const port = await adapter(page);
+  try {
+    const input = { ...identity, kind: "report" as const, startDate: "2026-10-13", endDate: "2026-10-13", asOf: "2026-10-13T09:30:00Z" };
+    const result = await port.query(input, signal);
+    expect(result).toMatchObject({ endTime: "2026-10-13 17:30:00" });
+    await expect(port.query({ ...input, asOf: "2026-10-13T11:00:00Z" }, signal)).rejects.toThrow();
+    await expect(port.query({ ...input, asOf: "2026-10-12T00:00:00Z" }, signal)).rejects.toThrow();
+    expect(requests).toHaveLength(1);
+  } finally { await port.dispose(); }
+});
+
 it("directly queries the account report with browser session and fixed account filters", async () => {
   const { page, requests } = await fixture(); const port = await adapter(page);
   try {

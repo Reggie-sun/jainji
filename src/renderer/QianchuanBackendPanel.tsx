@@ -11,7 +11,7 @@ function Metrics({ metrics }: { metrics: QianchuanQueryMetrics }) {
 }
 
 export function QianchuanBackendPanel({ accounts, active, provider, onProvider, onNavigate }: { accounts: QianchuanAccountSummary[]; active: boolean;
-  provider?: "qianchuan" | "qianguanjia"; onProvider?(provider: "qianchuan" | "qianguanjia"): void; onNavigate?(page: "reports" | "materials" | "uploads"): void }) {
+  provider?: "qianchuan" | "qianguanjia"; onProvider?(provider: "qianchuan" | "qianguanjia"): void; onNavigate?(page: "reports" | "materials" | "uploads" | "effects"): void }) {
   const [localSource, setSource] = useState("qianchuan");
   const source = provider ?? localSource;
   return <section aria-label="投放数据来源">

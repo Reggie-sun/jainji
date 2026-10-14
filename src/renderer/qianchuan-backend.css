@@ -95,3 +95,8 @@
   .qianguanjia-kpis, .qianguanjia-group .qianchuan-query-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qianguanjia-account-filters { grid-template-columns: minmax(0, 1fr); }
 }
+.qianchuan-effect-steps { display: flex; flex-wrap: wrap; gap: 12px; margin: 20px 0; }
+.qianchuan-effect-steps span { padding: 12px 16px; background: #edf6f3; color: #126b59; border-radius: 8px; }
+.qianchuan-effect-loop td { vertical-align: top; min-width: 180px; }
+.qianchuan-effect-loop td small { overflow-wrap: anywhere; }
+.qianchuan-effect-loop td .qianchuan-query-metrics { grid-template-columns: repeat(2, minmax(100px, 1fr)); }

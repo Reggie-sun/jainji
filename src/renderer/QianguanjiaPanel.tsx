@@ -6,7 +6,7 @@ const metrics = [["statCost", "消耗"], ["totalPayOrderCountForRoi2", "成交�
 const time = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 const overviewMetrics = [metrics[0], metrics[2], metrics[1], metrics[3]];
 
-export function QianguanjiaPanel({ active, api, onNavigate }: { active: boolean; api: QianguanjiaDesktopApi; onNavigate?(page: "reports" | "materials" | "uploads"): void }) {
+export function QianguanjiaPanel({ active, api, onNavigate }: { active: boolean; api: QianguanjiaDesktopApi; onNavigate?(page: "reports" | "materials" | "uploads" | "effects"): void }) {
   const [sessions, setSessions] = useState<QianguanjiaSessionOption[]>([]), [sessionId, setSessionId] = useState("");
   const [directory, setDirectory] = useState<QianguanjiaAccountDirectory>(), [home, setHome] = useState<QianguanjiaHomeSummary>();
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
@@ -76,6 +76,7 @@ export function QianguanjiaPanel({ active, api, onNavigate }: { active: boolean;
       <nav aria-label="投放工作台业务导航">
         <button type="button" aria-current={tab === "home" ? "page" : undefined} onClick={() => setTab("home")}>首页</button>
         <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("reports")}>推广管理</button>
+        <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("effects")}>制作与效果</button>
         <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("reports")}>数据报表</button>
         <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("materials")}>素材中心</button>
         <button type="button" aria-current={tab === "accounts" ? "page" : undefined} onClick={() => setTab("accounts")}>账户管理</button>
