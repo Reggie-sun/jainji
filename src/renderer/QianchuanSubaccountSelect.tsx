@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import type { QianchuanCatalogCacheInfo, QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection";
 import { QianchuanSubaccountCatalogSchema, type QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts";
-import { qianchuanCatalogStatus, retainQianchuanCatalogAfterFailure } from "./qianchuan-catalog-status";
+import { retainQianchuanCatalogAfterFailure } from "./qianchuan-catalog-status";
 
 export const QIANCHUAN_ACCOUNT_CHANGED = "jianji:qianchuan-account-changed";
 
@@ -24,7 +24,6 @@ export function QianchuanSubaccountSelect({ account, disabled, idPrefix, refresh
   const product = account?.product, anchor = account?.advertiserId;
   const scope = JSON.stringify([product ?? null, anchor ?? null]);
   const scopedCatalog = catalogState?.scope === scope ? catalogState.catalog : undefined;
-  const cache = scopedCatalog?.cache;
   const available = account?.available === true;
   const supported = typeof window !== "undefined" && typeof window.jianji.listQianchuanSubaccounts === "function" && typeof window.jianji.switchQianchuanSubaccount === "function";
   useEffect(() => {
@@ -84,7 +83,6 @@ export function QianchuanSubaccountSelect({ account, disabled, idPrefix, refresh
       {scopedCatalog?.accounts.map(child => <option key={child.advertiserId} value={child.advertiserId}>{child.name} · {child.advertiserId}</option>)}
     </select>
     <button type="button" className="text-button" aria-label="刷新子账户" title="刷新子账户" disabled={disabled || loading || switching || !available} onClick={() => setRevision(value => value + 1)}>↻</button>
-    {qianchuanCatalogStatus(cache) && <small role="status" style={{ gridColumn: "1 / -1", overflowWrap: "anywhere" }}>{qianchuanCatalogStatus(cache)}</small>}
     {error && <small className="batch-error" role="alert" style={{ gridColumn: "1 / -1" }}>{error}</small>}
   </div>;
 }

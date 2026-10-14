@@ -264,7 +264,7 @@ renderer.d.ts[AB7T]: F:声明preload注入的window.jianji类型 | R:code:src/ma
 remote-worker.ts[EN7T]: F:启动远端SSH worker及固定桌面聚焦或修复入口 | R:code:src/main/qianchuan-remote-worker.ts | A:零参数RPC；精确desktop-focus数字ID；单参数desktop-repair；私有umask及默认display | S:其他参数拒绝；RPC错误只通用响应，CLI错误非零不泄露异常
 
 ===/home/reggie/vscode_folder/jianji/src/renderer/===
-QianchuanSubaccountSelect.tsx[EU6T]: F:读取展示子账户目录并提交显式切换 | R:code:src/shared/qianchuan-subaccounts.ts,code:src/renderer/QianchuanPlanSelect.tsx,code:src/renderer/qianchuan-catalog-status.ts | A:按槽位锚点隔离；同绑定刷新失败保留目录和历史说明；显式切换携expectedCurrent并核结果；成功广播刷新；迟到隔离 | S:缓存只展示，实际切换仍经main实时校验；未知结果清目录不重试；业务错误不展示端点日志
+QianchuanSubaccountSelect.tsx[EU6T]: F:读取子账户目录并提交显式切换 | R:code:src/shared/qianchuan-subaccounts.ts,code:src/renderer/qianchuan-catalog-status.ts | A:按槽位锚点隔离；刷新失败保留目录；显式切换携expectedCurrent并核结果；成功广播刷新；缓存状态内部处理 | S:历史目录不授操作权；切换结果未知清目录不重试；错误不展示端点日志
 App.tsx[AU7L]: F:协调项目草稿与制作作品千川自动化页面 | R:code:src/renderer/WorkspacePage.tsx,code:src/renderer/TemplatePanel.tsx,code:src/renderer/QianchuanWorkspace.tsx,code:src/renderer/AutomationWorkspace.tsx,code:src/renderer/MaterialCollection.tsx | A:四阶段视图；来源返回滚动焦点；本批上传绑定run/job；原桥启动重试；输出阻断定位；素材模板快捷加载成功留在素材页 | S:切页不保存批准或取消；运行输入已冻结；未保存覆盖禁启动；上传选择不随项目保存；界面不授main权限
 AppendProductionDialog.tsx[EU7T]: F:校验追加条数手填文字和本次千川计划选择 | R:code:src/shared/agent.ts,code:src/renderer/DouyinUploadControls.tsx,code:src/renderer/ResultsPanel.tsx | A:关闭展示文字沿源设置；数量受原容量限制；自动或显式目录经原append API提交 | S:上传默认关闭不继承原授权；启用上传必须明确计划；不改写文字或授平台确认
 BugFeedbackDialog.tsx[AB7T]: F:收集并提交用户问题反馈 | R:code:src/main/bug-feedback-ipc.ts | A:反馈界面 | S:不触碰制作合同
@@ -307,10 +307,10 @@ SourceMediaList.tsx[EU5T]: F:展示素材选择预览移除保存及模板入口
 QianchuanVideoLibraryActions.tsx[EU7S]: F:提供多计划立即清理人工处置及统一定时草稿入口 | R:code:src/renderer/QianchuanCleanupPlanSelect.tsx,code:src/renderer/QianchuanCleanupResults.tsx,code:src/shared/qianchuan-video-library.ts | A:冻结ID确认；审核和零展示；库即时确认；定时继承勾选的计划库或组合范围；禁用原因 | S:定时草稿不立即删除；15天保护仅零展示；人工处置不重删旧ID；库范围不按计划筛选
 QianchuanVideoLibrarySchedule.tsx[EU7T]: F:管理账号全视频库定时清空并呈现原设置历史 | R:code:src/shared/qianchuan-video-library-schedule.ts,code:src/renderer/qianchuan-account-display.ts,code:src/renderer/AutomationTaskDetails.tsx | A:具名冻结账号；可含计划审核素材；启用保存当前账号；暂停保留已存时间绑定；同时间冲突；运行结果 | S:加载不启用；账号全库范围不限定计划；未知结果不自动重试
 QianchuanCleanupResults.tsx[EU5T]: F:展示清理完成部分处理及待核查账号结果 | R:code:src/renderer/QianchuanCleanupRecovery.tsx,code:src/renderer/qianchuan-account-display.ts | A:按结果账号ID显示Chrome名及完整ID；分别汇总BLOCKED与PARTIAL；忙碌或换账号禁处置 | S:定时无处置回调；名称不改原消息或删除结果
-QianchuanPlanSelect.tsx[EU6S]: F:选择上传或清理计划并展示当前或历史账户 | R:code:src/renderer/qianchuan-plan-requests.ts,code:src/renderer/QianchuanSubaccountSelect.tsx,code:src/renderer/qianchuan-catalog-status.ts,code:src/shared/qianchuan-plan-selection.ts | A:绑定用途槽位锚点子账户；展示缓存来源，失败保留草稿；实时成功过滤失效计划；跨账号拒绝；商品名优先且单列计划身份 | S:历史选择不是生产授权；main仍核实时账户计划；未知切换不自动重试
+QianchuanPlanSelect.tsx[EU6S]: F:按子账户目录选择上传或清理计划 | R:code:src/renderer/qianchuan-plan-requests.ts,code:src/renderer/QianchuanSubaccountSelect.tsx,code:src/renderer/qianchuan-catalog-status.ts | A:绑定用途槽位锚点子账户；失败保留草稿；实时成功过滤失效计划；缓存状态不显示，紧凑行不重复账户说明 | S:历史选择仅草稿；main实时核账户计划；跨账户及迟到响应拒绝；未知切换不自动重试
 qianchuan-plan-requests.ts[AW6T]: F:共享同账号读取模式的在途计划租约 | R:code:src/main/preload.ts,code:src/shared/qianchuan-plan-selection.ts | A:租约键含来源includeAccount displayCache及当前子账户；UUID引用计数；末位延迟承接StrictMode；结束移除 | S:不缓存完成列表；不同来源不混用；取消不影响其他使用者；旧preload不传UUID
 FrameDecorationPicker.tsx[EU6T]: F:编辑整批及逐素材自动必用随机指定关闭边框 | R:code:src/shared/frames.ts,code:src/renderer/MediaSelector.tsx,code:src/main/preload.ts | A:默认auto可省略；random每条必用随机款；逐素材覆盖及恢复继承；上传入池保存交原项目；删除清指定引用 | S:卸载隔离迟到响应；mutation独立禁用；历史文件保留；自动及随机预览仅示意，重试沿冻结决定
-QianchuanCleanupPlanSelect.tsx[EU7T]: F:显示账号清理计划并提供多选 | R:code:src/renderer/qianchuan-plan-requests.ts,code:src/renderer/qianchuan-catalog-status.ts,code:src/shared/qianchuan-plan-selection.ts | A:请求展示目录并标来源；按账号隔离；首次默认全选；同绑定失败保留目录和选择；新成功目录过滤已失效计划 | S:缓存不授删除；清理main仍实时核完整选择；明确空选择不自动全选
+QianchuanCleanupPlanSelect.tsx[EU7T]: F:显示账号清理计划并提供多选 | R:code:src/renderer/qianchuan-plan-requests.ts,code:src/renderer/qianchuan-catalog-status.ts | A:按账号隔离；首次默认全选；同绑定失败保留目录选择；实时成功过滤失效计划；缓存状态仅内部处理 | S:缓存不授删除；main实时核完整选择；明确空选择不自动全选
 QianchuanCleanupRecovery.tsx[EU7T]: F:展示旧清理素材明细并收集人工处理确认 | R:code:src/renderer/QianchuanCleanupResults.tsx,code:src/shared/qianchuan-video-library.ts | A:账户计划ID及统计窗口；说明新清理跳过未知ID；声明及二次确认绑定attempt摘要 | S:列表缺席非已删证明；本地处置不授平台成功或重试
 qianchuan-account-display.ts[CU5T]: F:格式化当前网页上传账户及冻结目标显示名称 | R:code:src/shared/qianchuan-account.ts,code:src/shared/qianchuan-plan-selection.ts | A:当前选项用网页姓名ID，未核时只示待核对；未选项沿保存资料名ID；冻结目标按advertiserId查名 | S:不以保存Chrome名冒充网页子账户；不按可重用槽位匹配旧任务
 QianchuanEgressSettings.tsx[EU6T]: F:直观选择本机代理或VPS上传并编辑非秘密出口 | R:code:src/shared/qianchuan-egress.ts,code:src/renderer/QianchuanAccountSettings.tsx | A:三种单选；A/B保留字段；直连为null；复用主体出口保留当前上传方式；匹配出口字段时回显主体；即时校验及组冲突提示 | S:A省略mode沿旧语义；B需本地简辑在线；选择不保存连接或上传；不收私钥；main独立准入
@@ -328,7 +328,7 @@ AutomationTaskDetails.tsx[EU6T]: F:按冻结请求展示清理顺序规则制作
 QianchuanBackendPanel.tsx[AU7T]: F:展示账号计划素材分页与控成本报表查询 | R:code:src/shared/qianchuan-backend.ts,code:src/shared/qianchuan-account.ts,code:src/main/preload.ts | A:显式查询；校验日期；绑定UUID；投影指标；输入变化清旧结果；取消及隐藏撤销 | S:账号来自已保存配置；预算接口原值除以100000展示元且保留两位小数；不上传或改计划；迟到结果丢弃；错误不回显桥接原文
 
 
-qianchuan-catalog-status.ts[CU5T]: F:格式化目录来源和历史状态 | R:code:src/shared/qianchuan-plan-selection.ts | A:显示读取时间历史过期及刷新失败；失败保留readAt和persisted并标cache stale | S:-
+qianchuan-catalog-status.ts[CU5T]: F:生成刷新失败后保留目录的内部缓存状态 | R:code:src/shared/qianchuan-plan-selection.ts | A:保留readAt与persisted并标cache stale和refreshFailed；不生成用户提示 | S:-
 ===/home/reggie/vscode_folder/jianji/src/shared/===
 qianchuan-subaccounts.ts[CI7T]: F:定义子账户目录与显式切换契约 | R:code:src/shared/qianchuan-plan-selection.ts,code:src/shared/qianchuan-account.ts | A:目录请求支持refresh和displayCache；严格唯一ID姓名及当前成员；响应可附展示cache；切换携锚点当前与目标ID | S:目录不是上传授权；缓存元数据不进入切换请求
 agent.ts[CB7S]: F:定义制作数量共享准入及追加制作请求 | R:code:src/main/agent-controller.ts,code:src/main/agent-runner.ts,code:src/shared/decorations.ts,code:src/shared/douyin-upload.ts | A:版本化shape intent与手填文字校验；全部关闭无文字要求；整轮与精确数量分配；Frozen保留旧时序 | S:intent不授admission；开启缺文字先于模型拒绝；requestedCount和multiplier互斥；上传选择由main再验

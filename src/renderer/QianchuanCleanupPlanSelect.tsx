@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QianchuanPlanCatalogSchema, QianchuanPlanDisplaySchema, QianchuanPlanListSchema, type QianchuanCatalogCacheInfo, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { acquireQianchuanPlans } from "./qianchuan-plan-requests";
-import { qianchuanCatalogStatus, retainQianchuanCatalogAfterFailure } from "./qianchuan-catalog-status";
+import { retainQianchuanCatalogAfterFailure } from "./qianchuan-catalog-status";
 
 export function QianchuanCleanupPlanSelect({ account, value, onChange, disabled }: {
   account: QianchuanAccountSummary; value?: QianchuanPlanOption[];
@@ -60,7 +60,6 @@ export function QianchuanCleanupPlanSelect({ account, value, onChange, disabled 
       <button type="button" className="qianchuan-cleanup-link" aria-label="全选清理计划" disabled={disabled || loading || !plans.length} onClick={() => onChange(chosen.length === plans.length ? [] : plans)}>{chosen.length === plans.length && plans.length ? "取消全选" : "全选"}</button>
       <button type="button" className="qianchuan-cleanup-link" disabled={disabled || loading || !available} onClick={() => setRevision(current => current + 1)}>刷新计划</button>
     </div></div>
-    {qianchuanCatalogStatus(scopedCatalog?.cache) && <small role="status">{qianchuanCatalogStatus(scopedCatalog?.cache)}</small>}
     {plans.map(plan => <label className="qianchuan-cleanup-plan-option" key={plan.adId}>
       <input type="checkbox" aria-label={`清理计划 ${plan.adId}`} disabled={disabled || loading} checked={chosen.some(item => item.adId === plan.adId)}
         onChange={event => onChange(event.target.checked ? plans.filter(item => item.adId === plan.adId || chosen.some(selected => selected.adId === item.adId)) : chosen.filter(item => item.adId !== plan.adId))} />

@@ -372,7 +372,7 @@ describe("plan selector browser interaction", () => {
       await page.evaluate(() => (window as any).catalogRequests[1].reject(new Error("无法确认当前网页账户")));
       await page.getByRole("alert").waitFor();
       expect(await account.locator("option:checked").textContent()).toContain("7000");
-      await page.getByText(/历史目录.*刷新失败/).waitFor();
+      expect(await page.locator(".qianchuan-plan-select").textContent()).not.toMatch(/历史目录|历史网页账户|最近读取|较早记录/);
     } finally { await page.close(); }
   });
   it("reads and selects the webpage child, then clears the choice if focus returns with a different child", async () => {
@@ -386,13 +386,15 @@ describe("plan selector browser interaction", () => {
       await respond("7000");
       await page.getByLabel("上传计划").selectOption("9001");
       expect((await selected(page)).plan).toMatchObject({ advertiserId: "7000", accountSource: "current-browser" });
-      await page.getByText("网页账户 · 账户 7000", { exact: true }).waitFor();
+      expect(await page.locator(".qianchuan-plan-select small").count()).toBe(0);
       await page.evaluate(() => window.dispatchEvent(new Event("focus")));
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
       await respond("8000");
-      await page.getByText("网页账户 · 账户 8000", { exact: true }).waitFor();
+      await page.waitForFunction(() => (window as any).fixtureSelection.plan === undefined);
       expect((await selected(page)).plan).toBeUndefined();
       expect(await page.getByLabel("上传计划").inputValue()).toBe("");
+      await page.getByLabel("上传计划").selectOption("9001");
+      expect((await selected(page)).plan).toMatchObject({ advertiserId: "8000", accountSource: "current-browser" });
     } finally { await page.close(); }
   });
   it("keeps account controls aligned and offers recovery after a raw CDP timeout", async () => {
@@ -474,7 +476,7 @@ describe("plan selector browser interaction", () => {
         plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}` })),
         cache: { source: "cache", readAt: 1_760_000_000_000, stale: true, refreshFailed: true },
       }));
-      await page.getByText(/历史目录.*刷新失败/).waitFor();
+      expect(await page.locator(".qianchuan-plan-select").textContent()).not.toMatch(/历史目录|历史网页账户|最近读取|较早记录/);
       expect((await selected(page)).plan?.adId).toBe("9002");
       expect(await page.getByLabel("上传计划").isDisabled()).toBe(false);
     } finally { await page.close(); }
@@ -508,7 +510,8 @@ describe("plan selector browser interaction", () => {
       await page.evaluate(() => { (window as any).directoryError = "Chrome 已断开"; });
       await page.getByRole("button", { name: "刷新子账户", exact: true }).click();
       await page.waitForFunction(() => (window as any).directoryReads === 2);
-      await page.locator(".qianchuan-subaccount-select").getByRole("status").waitFor();
+      await page.locator(".qianchuan-subaccount-select").getByRole("alert").waitFor();
+      expect(await page.locator(".qianchuan-subaccount-select").getByRole("status").count()).toBe(0);
       expect(await page.getByLabel("子账户", { exact: true }).inputValue()).toBe("7000");
       expect(await page.getByLabel("子账户", { exact: true }).locator("option").allTextContents()).toEqual(["原子账户商贸 · 7000", "新子账户商贸 · 8000"]);
       expect(await page.getByLabel("子账户", { exact: true }).isDisabled()).toBe(false);
@@ -732,7 +735,7 @@ describe("cleanup plan browser interaction", () => {
       expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(false);
       await page.evaluate(() => (window as any).catalogRequests[1].reject(new Error("Chrome 登录已失效")));
       await page.getByRole("alert").waitFor();
-      await page.getByText(/历史目录.*刷新失败/).waitFor();
+      expect(await page.locator(".qianchuan-cleanup-plan-select").textContent()).not.toMatch(/历史目录|最近读取|较早记录/);
       expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(false);
       expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(false);
       expect(await page.getByText("已选 0 / 2 个计划", { exact: true }).count()).toBe(1);

@@ -18,7 +18,7 @@
 
 ## Milestone 2: Retained Selector Drafts
 
-更新 `QianchuanPlanSelect`、`QianchuanSubaccountSelect`、`QianchuanCleanupPlanSelect` 及共享请求租约。所有入口 opt-in；显示读取时间和历史状态；同绑定刷新不先清空列表/选择，真实成功响应才清理已失效选择。账号变化仍隔离迟到响应。
+更新 `QianchuanPlanSelect`、`QianchuanSubaccountSelect`、`QianchuanCleanupPlanSelect` 及共享请求租约。所有入口 opt-in；按后续用户要求，读取时间与历史状态仅供内部处理，选择器不显示缓存提示，紧凑行不重复显示账户身份；同绑定刷新不先清空列表/选择，真实成功响应才清理已失效选择。账号变化仍隔离迟到响应。
 
 验证 `tests/qianchuan-plan-selection-ui.test.ts` 的普通/紧凑/清理入口、历史空目录、刷新失败保留、成功更新、账户变化与 StrictMode，使用 Chrome MCP 检查隔离页面交互。
 
