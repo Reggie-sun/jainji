@@ -292,11 +292,22 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       const accounts = await this.exists() ? (await readPrivateConfig(this.file, parseSettings)).accounts : [];
       const old = accounts.find(account => account.product === parsed.product);
       const egress = parsed.egress === undefined ? old?.advertiserId === ids.advertiserId ? old.egress : undefined : parsed.egress ?? undefined;
+      const groupChange = parsed.egressGroupChange;
+      if (groupChange) {
+        const { expected, advertiserIds } = groupChange;
+        const members = accounts.filter(value => value.egress?.group === expected.group);
+        if (!old?.egress || old.advertiserId !== ids.advertiserId || egressIdentity(old.egress) !== egressIdentity(expected) ||
+          JSON.stringify(members.map(value => value.advertiserId).sort()) !== JSON.stringify([...advertiserIds].sort()))
+          throw new Error("主体账号或原出口设置已变化，请重新核对整组切换。");
+        if (!egress || egressIdentity({ ...egress, mode: expected.mode }) !== egressIdentity(expected) || egressIdentity(egress) === egressIdentity(expected))
+          throw new Error("整组切换仅支持同一主体出口下改变上传方式，请保留原主体、SSH 别名、端口和 IP。");
+      }
       // A protected new account is saved before any browser/network activity; prepare resolves the real CDP port.
       const cdpEndpoint = old?.advertiserId === ids.advertiserId ? old.cdpEndpoint : egress ? `http://127.0.0.1:${19400 + QIANCHUAN_PRODUCTS.indexOf(parsed.product)}` : await this.discoverBrowser(ids.advertiserId);
       const account: QianchuanAccount = { ...old, product: parsed.product, cdpEndpoint, ...ids, ...(parsed.productName !== undefined ? { productName: parsed.productName } : {}) };
       if (egress) account.egress = egress; else delete account.egress;
-      return this.save(old ? accounts.map(value => value.product === parsed.product ? account : value) : [...accounts, account], guard);
+      return this.save(old ? accounts.map(value => value.product === parsed.product ? account :
+        groupChange && value.egress?.group === groupChange.expected.group ? { ...value, egress } : value) : [...accounts, account], guard);
     });
   }
 

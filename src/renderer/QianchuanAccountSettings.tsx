@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { QianchuanEgressSettings } from "./QianchuanEgressSettings";
-import { QianchuanEgressSchema, validateEgressGroups, type QianchuanEgress } from "../shared/qianchuan-egress";
+import { egressIdentity, QianchuanEgressSchema, validateEgressGroups, type QianchuanEgress } from "../shared/qianchuan-egress";
 import { scrollWorkspace } from "./WorkspacePage";
 import { parseQianchuanPlanUrl, qianchuanAccountName, qianchuanProductName, QIANCHUAN_PRODUCTS, QianchuanProductNameSchema, type QianchuanAccountSetup, type QianchuanAccountSummary, type QianchuanProduct, type QianchuanBrowserControl } from "../shared/qianchuan-account";
 
@@ -14,6 +14,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
   const [link, setLink] = useState(initialAccount ? `https://qianchuan.jinritemai.com/uni-prom?aavid=${initialAccount.advertiserId}&adId=${initialAccount.adId}` : "");
   const [name, setName] = useState(initialProduct ? qianchuanProductName(initialProduct, accounts) : "");
   const [egress, setEgress] = useState<QianchuanEgress | null>(initialAccount?.egress ?? null);
+  const [groupChange, setGroupChange] = useState<QianchuanAccountSetup["egressGroupChange"]>();
   const [browserAction, setBrowserAction] = useState<"close" | "restart">();
   const [browserMessage, setBrowserMessage] = useState("");
   const savedAccount = accounts.find(item => item.product === product && item.available);
@@ -24,6 +25,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
     setProduct(value); setLink(account?.available ? `https://qianchuan.jinritemai.com/uni-prom?aavid=${account.advertiserId}&adId=${account.adId}` : "");
     setName(qianchuanProductName(value, accounts));
     setEgress(account?.egress ?? null);
+    setGroupChange(undefined);
     setBrowserAction(undefined); setBrowserMessage("");
   };
   const parsedName = QianchuanProductNameSchema.safeParse(name);
@@ -34,14 +36,23 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
   const recoveryAccount = product === initialProduct ? expectedAdvertiserId : undefined;
   const accountError = recoveryAccount && ids && ids.advertiserId !== recoveryAccount ? `请使用原账户 ${recoveryAccount} 的新计划链接。` : undefined;
   const parsedEgress = egress ? QianchuanEgressSchema.safeParse(egress) : undefined;
+  const groupMembers = savedAccount?.egress ? accounts.filter(account => account.egress?.group === savedAccount.egress!.group) : [];
+  const canChangeGroup = !!(parsedEgress?.success && savedAccount?.egress && ids?.advertiserId === savedAccount.advertiserId &&
+    groupMembers.length > 1 && groupMembers.every(account => account.advertiserId) && parsedEgress.data.mode !== savedAccount.egress.mode &&
+    egressIdentity({ ...parsedEgress.data, mode: savedAccount.egress.mode }) === egressIdentity(savedAccount.egress));
+  const groupChangeValid = !!(groupChange && canChangeGroup && egressIdentity(groupChange.expected) === egressIdentity(savedAccount?.egress) &&
+    JSON.stringify([...groupChange.advertiserIds].sort()) === JSON.stringify(groupMembers.map(account => account.advertiserId).sort()));
+  const groupChangeError = groupChange && !groupChangeValid ? "主体账号或设置已变化，请取消勾选后重新核对整组切换。" : undefined;
   const groupIssues: string[] = [];
-  if (parsedEgress?.success) validateEgressGroups([...accounts.filter(account => account.product !== product), { egress: parsedEgress.data }], { path: [], addIssue: issue => { if (issue.message) groupIssues.push(issue.message); } });
-  const egressError = parsedEgress && !parsedEgress.success ? parsedEgress.error.issues[0].message : groupIssues[0];
+  if (parsedEgress?.success) validateEgressGroups([...accounts.filter(account => account.product !== product).map(account =>
+    groupChangeValid && account.egress?.group === groupChange!.expected.group ? { ...account, egress: parsedEgress.data } : account),
+    { egress: parsedEgress.data }], { path: [], addIssue: issue => { if (issue.message) groupIssues.push(issue.message); } });
+  const egressError = groupChangeError ?? (parsedEgress && !parsedEgress.success ? parsedEgress.error.issues[0].message : groupIssues[0]);
   const savedLink = savedAccount ? `https://qianchuan.jinritemai.com/uni-prom?aavid=${savedAccount.advertiserId}&adId=${savedAccount.adId}` : "";
   const dirty = !!product && (name !== qianchuanProductName(product, accounts) || link !== savedLink || JSON.stringify(egress) !== JSON.stringify(savedAccount?.egress ?? null));
   const save = async () => {
     if (!product || !ids || !parsedName.success || nameError || accountError || egressError) return;
-    if (await onSave({ product, productName: parsedName.data, planUrl: link, egress })) setProduct(undefined);
+    if (await onSave({ product, productName: parsedName.data, planUrl: link, egress, ...(groupChangeValid ? { egressGroupChange: groupChange } : {}) })) setProduct(undefined);
   };
   return <div className="qianchuan-account-settings" aria-label="千川账号设置">
     <p>点选账号设置上传方式，也可更换产品名称或千川计划。</p>
@@ -57,13 +68,20 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
       <h3>{savedAccount ? qianchuanAccountName(savedAccount) : product} · 账号设置</h3>
       {dirty && <small role="status">账号有未保存的修改</small>}
       {recoveryAccount && <p>账户 {recoveryAccount} 保持不变；填写新产品名称，粘贴新千川计划链接。保存新计划不会自动重传旧任务。</p>}
-      <QianchuanEgressSettings value={egress} onChange={setEgress} accounts={accounts} busy={busy} groupError={groupIssues[0]} />
+      <QianchuanEgressSettings value={egress} onChange={value => { setEgress(value); setGroupChange(undefined); }} accounts={accounts} busy={busy} groupError={groupIssues[0]} />
+      {(canChangeGroup || groupChange) && <div role="group" aria-label="主体上传方式整组切换">
+        <label><input type="checkbox" disabled={busy} checked={!!groupChange} onChange={event => setGroupChange(event.target.checked && savedAccount?.egress
+          ? { expected: { ...savedAccount.egress }, advertiserIds: groupMembers.map(account => account.advertiserId) } : undefined)} />同时切换本主体全部账号（{groupMembers.length} 个）</label>
+        <p>受影响账号：{groupMembers.map(account => `${qianchuanAccountName(account)}（${account.advertiserId}）`).join("、")}。</p>
+        <small>仅切换上传方式，出口 IP 保持不变。请先核查并结束受保护批次、关闭这些账号的浏览器，再保存；任一账号未通过检查，整组都不会修改。</small>
+        {groupChangeError && <p role="alert">{groupChangeError}</p>}
+      </div>}
       <label htmlFor="qianchuan-product-name">产品名称</label>
       <input id="qianchuan-product-name" type="text" maxLength={40} value={name} disabled={busy} onChange={event => setName(event.target.value)} />
       {nameError && <p role="alert">{nameError}</p>}
       <small>产品名称用于模板匹配；账号显示名称跟随 Chrome 资料名。只改产品名称时，保留当前 Chrome 连接和千川计划。</small>
       <label htmlFor="qianchuan-plan-link">千川计划链接</label>
-      <textarea id="qianchuan-plan-link" rows={3} maxLength={16384} value={link} disabled={busy} placeholder="粘贴浏览器地址栏中的千川计划链接" onChange={event => setLink(event.target.value)} />
+      <textarea id="qianchuan-plan-link" rows={3} maxLength={16384} value={link} disabled={busy} placeholder="粘贴浏览器地址栏中的千川计划链接" onChange={event => { setLink(event.target.value); setGroupChange(undefined); }} />
       {ids ? <p role="status">已识别账户 {ids.advertiserId} · 计划 {ids.adId}</p> : link.trim() ? <p role="alert">请粘贴含账户和计划 ID 的千川计划链接。</p> : <small>打开要上传的千川计划，复制地址栏链接。</small>}
       {accountError && <p role="alert">{accountError}</p>}
       <small>新制作会自动打开或连接已绑定的账号浏览器。可在这里打开、关闭或重启同一窗口；登录状态会保留。</small>

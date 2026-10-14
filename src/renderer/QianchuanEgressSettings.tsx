@@ -9,6 +9,8 @@ export function QianchuanEgressSettings({ value, onChange, accounts, busy, group
   const groups = [...new Map(accounts.flatMap(account => account.egress ? [[account.egress.group, account.egress] as const] : [])).values()];
   const parsed = value ? QianchuanEgressSchema.safeParse(value) : undefined;
   const method = !value ? "direct" : value.mode === "remote-browser" ? "remote-browser" : "local";
+  const selectedGroup = groups.find(group => group.group === value?.group && group.sshHost === value.sshHost &&
+    group.localPort === value.localPort && group.expectedIp === value.expectedIp)?.group ?? "";
   const selectMethod = (next: string) => {
     if (next === "direct") { onChange(null); return; }
     const { mode: _old, ...route } = value ?? { group: "", sshHost: "", localPort: 19381 + groups.length, expectedIp: "" };
@@ -26,8 +28,12 @@ export function QianchuanEgressSettings({ value, onChange, accounts, busy, group
     </label>)}</div>
     {value && <>
       {value.mode === "remote-browser" && <p>浏览器和登录状态保存在对应 VPS，成片传输校验后由远端上传。本地简辑负责调度，运行期间需保持开机。首次登录或验证码请在 VPS 远程桌面处理。</p>}
-      {groups.length > 0 && <label>复用已设置的主体<select aria-label="复用已设置的主体" value="" onChange={event => {
-        const selected = groups.find(group => group.group === event.target.value); if (selected) onChange({ ...selected });
+      {groups.length > 0 && <label>复用已设置的主体<select aria-label="复用已设置的主体" value={selectedGroup} onChange={event => {
+        const selected = groups.find(group => group.group === event.target.value);
+        if (selected) {
+          const { mode: _savedMode, ...route } = selected;
+          onChange(method === "remote-browser" ? { ...route, mode: "remote-browser" } : route);
+        }
       }}><option value="">选择主体，或填写下方设置</option>{groups.map(group => <option key={group.group} value={group.group}>{group.group} · {group.expectedIp}</option>)}</select></label>}
       <small>用代号区分营业执照，无需填写身份证号码。同一主体的账号复用同一组设置。</small>
       <div className="qianchuan-egress-fields">

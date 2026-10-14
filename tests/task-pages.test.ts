@@ -80,10 +80,12 @@ it("exposes saved upload methods and preserves isolated route drafts without sta
     await cards.getByRole("button", { name: /远端账号.*账户 123/ }).click();
     expect(await page.getByRole("radio", { name: "VPS 上传", exact: true }).isChecked()).toBe(true);
     expect(await page.getByLabel("SSH 主机别名", { exact: true }).inputValue()).toBe("shop-one");
+    expect(await page.getByLabel("复用已设置的主体", { exact: true }).inputValue()).toBe(remote.group);
     await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).check();
     expect(await page.getByLabel("预期出口 IPv4", { exact: true }).inputValue()).toBe(remote.expectedIp);
     await page.getByRole("radio", { name: "VPS 上传", exact: true }).check();
     await page.getByLabel("主体代号", { exact: true }).fill("未保存主体");
+    expect(await page.getByLabel("复用已设置的主体", { exact: true }).inputValue()).toBe("");
     await cards.getByRole("button", { name: /远端账号.*账户 123/ }).click();
     expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe("未保存主体");
     await nav.getByRole("button", { name: "上传任务", exact: true }).click();
@@ -94,12 +96,28 @@ it("exposes saved upload methods and preserves isolated route drafts without sta
     expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe("未保存主体");
     expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves[0].egress)).toEqual({ ...remote, group: "未保存主体" });
     await page.getByLabel("复用已设置的主体", { exact: true }).selectOption(local.group);
-    expect(await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).isChecked()).toBe(true);
+    expect(await page.getByLabel("复用已设置的主体", { exact: true }).inputValue()).toBe(local.group);
+    expect(await page.getByRole("radio", { name: "VPS 上传", exact: true }).isChecked()).toBe(true);
     expect(await page.getByLabel("SSH 主机别名", { exact: true }).inputValue()).toBe(local.sshHost);
-    await page.getByRole("radio", { name: "VPS 上传", exact: true }).check();
     expect(await page.getByRole("button", { name: "保存账号", exact: true }).isDisabled()).toBe(true);
     expect(await page.getByRole("alert").filter({ hasText: "同主体必须使用相同出口设置" }).isVisible()).toBe(true);
     expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe(local.group);
+    await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).check();
+    await page.getByLabel("复用已设置的主体", { exact: true }).selectOption(remote.group);
+    expect(await page.getByLabel("复用已设置的主体", { exact: true }).inputValue()).toBe(remote.group);
+    expect(await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).isChecked()).toBe(true);
+    expect(await page.getByLabel("SSH 主机别名", { exact: true }).inputValue()).toBe(remote.sshHost);
+    expect(await page.getByLabel("主体代号", { exact: true }).inputValue()).toBe(remote.group);
+    expect(await page.getByLabel("预期出口 IPv4", { exact: true }).inputValue()).toBe(remote.expectedIp);
+    expect(await page.getByLabel("本地连接端口", { exact: true }).inputValue()).toBe(String(remote.localPort));
+    await page.getByLabel("SSH 主机别名", { exact: true }).fill("未保存别名");
+    expect(await page.getByLabel("复用已设置的主体", { exact: true }).inputValue()).toBe("");
+    await page.getByLabel("复用已设置的主体", { exact: true }).selectOption(remote.group);
+    expect(await page.getByLabel("SSH 主机别名", { exact: true }).inputValue()).toBe(remote.sshHost);
+    expect(await page.getByLabel("复用已设置的主体", { exact: true }).inputValue()).toBe(remote.group);
+    await page.getByLabel("复用已设置的主体", { exact: true }).selectOption(local.group);
+    expect(await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).isChecked()).toBe(true);
+    expect(await page.getByRole("button", { name: "保存账号", exact: true }).isDisabled()).toBe(false);
     await cards.getByRole("button", { name: /本机账号.*账户 125/ }).click();
     expect(await page.getByRole("radio", { name: "本机上传", exact: true }).isChecked()).toBe(true);
     expect(await page.getByLabel("SSH 主机别名", { exact: true }).count()).toBe(0);
@@ -129,6 +147,66 @@ it("exposes saved upload methods and preserves isolated route drafts without sta
     expect(await cards.getByRole("button", { name: /远端账号.*账户 123/ }).isDisabled()).toBe(true);
     const calls = await page.evaluate(() => (window as any).taskPagesFixture.calls);
     expect(calls.starts).toEqual([]); expect(calls.batchStarts).toEqual([]); expect(calls.sideEffects).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
+it("requires explicit fresh group consent and updates all subject cards only after a successful save", async () => {
+  const { page, errors } = await fixture();
+  try {
+    const remote = { mode: "remote-browser", group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+    await page.evaluate(remote => {
+      const f = (window as any).taskPagesFixture;
+      f.state.douyinUpload.accounts = [
+        { product: "蝴蝶贴", browserProfileName: "予浅", advertiserId: "123", adId: "456", available: true, egress: remote },
+        { product: "眼贴", browserProfileName: "安序", advertiserId: "124", adId: "457", available: true, egress: remote },
+      ];
+      f.calls.accountSaves = []; f.rejectGroupSave = true;
+      window.jianji.saveQianchuanAccount = async input => {
+        f.calls.accountSaves.push(structuredClone(input));
+        if (f.rejectGroupSave) throw Error("成员浏览器仍打开，请先关闭后再保存。");
+        if (!input.egressGroupChange || !input.egress) throw Error("未明确同意主体切换。");
+        const group = input.egressGroupChange.expected.group;
+        f.state.douyinUpload.accounts = f.state.douyinUpload.accounts.map((account: any) => account.egress?.group === group ? { ...account, egress: structuredClone(input.egress) } : account);
+        return structuredClone(f.state);
+      };
+      f.emit();
+    }, remote);
+    await rail(page, "千川").click();
+    await page.getByRole("navigation", { name: "千川页面" }).getByRole("button", { name: "账号与计划", exact: true }).click();
+    const cards = page.locator(".qianchuan-account-products"), save = page.getByRole("button", { name: "保存账号", exact: true });
+    await cards.getByRole("button", { name: /予浅.*账户 123/ }).click();
+    await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).check();
+    const consent = page.getByRole("checkbox", { name: /^同时切换本主体全部账号/ });
+    expect(await save.isDisabled()).toBe(true);
+    expect(await consent.isChecked()).toBe(false);
+    await consent.check();
+    expect(await save.isDisabled()).toBe(false);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves)).toEqual([]);
+    await page.evaluate(remote => {
+      const f = (window as any).taskPagesFixture;
+      f.state.douyinUpload.accounts.push({ product: "氨糖膏", browserProfileName: "新增成员", advertiserId: "126", adId: "459", available: true, egress: remote });
+      f.emit();
+    }, remote);
+    await expect.poll(() => save.isDisabled()).toBe(true);
+    await page.getByRole("alert").filter({ hasText: "主体账号或设置已变化" }).waitFor();
+    await consent.uncheck(); await consent.check();
+    expect(await save.isDisabled()).toBe(false);
+    await save.click();
+    await page.getByText("成员浏览器仍打开，请先关闭后再保存。").waitFor();
+    expect(await consent.isChecked()).toBe(true);
+    expect(await page.getByRole("radio", { name: "本机上传 · VPS 出口", exact: true }).isChecked()).toBe(true);
+    expect(await cards.getByRole("button", { name: /安序.*VPS 上传/ }).isVisible()).toBe(true);
+    const input = await page.evaluate(() => (window as any).taskPagesFixture.calls.accountSaves[0]);
+    expect(input.egressGroupChange).toEqual({ expected: remote, advertiserIds: ["123", "124", "126"] });
+    const { mode: _mode, ...local } = remote;
+    expect(input.egress).toEqual(local);
+    await page.evaluate(() => { (window as any).taskPagesFixture.rejectGroupSave = false; });
+    await save.click();
+    await expect.poll(() => cards.getByRole("button", { name: /本机上传 · VPS 出口/ }).count()).toBe(3);
+    expect(await page.locator("#qianchuan-account-editor").count()).toBe(0);
+    const calls = await page.evaluate(() => (window as any).taskPagesFixture.calls);
+    expect(calls.starts).toEqual([]); expect(calls.sideEffects).toEqual([]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 30000);

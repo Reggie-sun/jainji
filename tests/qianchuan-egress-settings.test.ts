@@ -18,6 +18,67 @@ async function fixture() {
   const discover = vi.fn(async () => "http://127.0.0.1:9222");
   return { root, closed, discover, settings: new QianchuanAccountSettings(root, discover) };
 }
+async function groupFixture(remote = true) {
+  const f = await fixture(), expected = remote ? { ...route, mode: "remote-browser" as const } : route;
+  await f.settings.savePlan({ product: "蝴蝶贴", productName: "主体一商品", planUrl: planUrl(), egress: expected });
+  await f.settings.savePlan({ product: "眼贴", productName: "主体一眼贴", planUrl: planUrl("124"), egress: expected });
+  await f.settings.savePlan({ product: "肥皂", planUrl: planUrl("125"), egress: { ...route, group: "主体二", sshHost: "shop-two", localPort: 19382, expectedIp: "203.0.113.12" } });
+  f.closed.mockClear();
+  return { ...f, expected, change: { expected, advertiserIds: ["123", "124"] } };
+}
+it.each([true, false])("atomically switches every approved subject member while preserving other targets (remote=%s)", async remote => {
+  const f = await groupFixture(remote), before = JSON.parse(await readFile(f.settings.file, "utf8"));
+  const guard = vi.fn(), egress = remote ? route : { ...route, mode: "remote-browser" };
+  const summaries = await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl().replace("adId=456", "adId=789"), egress, egressGroupChange: f.change }, guard);
+  expect(summaries.filter(item => ["123", "124"].includes(item.advertiserId)).map(item => item.egress)).toEqual([egress, egress]);
+  expect(guard.mock.calls).toEqual([[["123", "124"]], [["123", "124"]]]);
+  expect(f.closed.mock.calls).toEqual([["123"], ["124"]]);
+  const after = JSON.parse(await readFile(f.settings.file, "utf8"));
+  expect(after.accounts[0]).toEqual({ ...before.accounts[0], adId: "789", egress });
+  expect(after.accounts[1]).toEqual({ ...before.accounts[1], egress });
+  expect(after.accounts[2]).toEqual(before.accounts[2]);
+  expect((await new QianchuanAccountSettings(f.root).restore()).map(item => item.egress)).toEqual(after.accounts.map((item: any) => item.egress));
+  expect(f.discover).not.toHaveBeenCalled();
+});
+it("keeps the entire subject unchanged when any approved member has protected work or an open browser", async () => {
+  const f = await groupFixture(), input = { product: "蝴蝶贴", planUrl: planUrl(), egress: route, egressGroupChange: f.change };
+  const before = await readFile(f.settings.file);
+  await expect(f.settings.savePlan(input, ids => { if (ids.includes("124")) throw Error("成员有受保护任务"); })).rejects.toThrow("受保护任务");
+  expect(f.closed).not.toHaveBeenCalled();
+  f.closed.mockResolvedValueOnce(undefined).mockRejectedValueOnce(Error("另一成员浏览器未关闭"));
+  await expect(f.settings.savePlan(input)).rejects.toThrow("另一成员浏览器");
+  expect(await readFile(f.settings.file)).toEqual(before);
+});
+it("rejects stale subject membership, stale original routes and broader route migrations without changing bytes", async () => {
+  const f = await groupFixture(), input = { product: "蝴蝶贴", planUrl: planUrl(), egress: route, egressGroupChange: f.change };
+  const before = await readFile(f.settings.file);
+  for (const patch of [
+    { egressGroupChange: { ...f.change, advertiserIds: ["123"] } },
+    { egressGroupChange: { ...f.change, advertiserIds: ["123", "125"] } },
+    { egressGroupChange: { ...f.change, advertiserIds: ["123", "124", "125"] } },
+    { egressGroupChange: { ...f.change, advertiserIds: ["123", "123"] } },
+    { egressGroupChange: { ...f.change, expected: route } },
+    { egress: { ...route, expectedIp: "203.0.113.99" } },
+    { egress: null },
+    { planUrl: planUrl("125") },
+    { egress: f.expected },
+  ]) await expect(f.settings.savePlan({ ...input, ...patch })).rejects.toThrow();
+  expect(await readFile(f.settings.file)).toEqual(before);
+  expect(f.closed).not.toHaveBeenCalled();
+});
+it("still rejects an unapproved one-account switch within a shared subject", async () => {
+  const f = await groupFixture(), before = await readFile(f.settings.file);
+  await expect(f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: route })).rejects.toThrow("同主体");
+  expect(await readFile(f.settings.file)).toEqual(before);
+});
+it("rejects a previously approved member list after another account joins the subject", async () => {
+  const f = await groupFixture();
+  await f.settings.savePlan({ product: "氨糖膏", planUrl: planUrl("126"), egress: f.expected });
+  const before = await readFile(f.settings.file), guard = vi.fn(); f.closed.mockClear();
+  await expect(f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: route, egressGroupChange: f.change }, guard)).rejects.toThrow("主体账号或原出口设置已变化");
+  expect(await readFile(f.settings.file)).toEqual(before);
+  expect(guard).not.toHaveBeenCalled(); expect(f.closed).not.toHaveBeenCalled();
+});
 it("saves before connecting and freezes the route in the existing private account digest", async () => {
   const f = await fixture();
   const summary = await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: route });

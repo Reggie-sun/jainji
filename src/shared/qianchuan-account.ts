@@ -39,6 +39,11 @@ export const QianchuanAccountSettingsSchema = z.object({
 }).strict().superRefine(uniqueBindings);
 export const QianchuanAccountSetupSchema = z.object({
   product: QianchuanProductSchema, productName: QianchuanProductNameSchema.optional(), planUrl: z.string().trim().min(1).max(16384), egress: QianchuanEgressSchema.nullable().optional(),
+  egressGroupChange: z.object({
+    expected: QianchuanEgressSchema,
+    advertiserIds: z.array(z.string().regex(/^[1-9][0-9]{0,19}$/)).min(2).max(QIANCHUAN_PRODUCTS.length)
+      .refine(ids => new Set(ids).size === ids.length, "主体账号名单不能重复。"),
+  }).strict().optional(),
 }).strict();
 export type QianchuanAccountSetup = z.infer<typeof QianchuanAccountSetupSchema>;
 export const QianchuanBrowserControlSchema = z.object({
