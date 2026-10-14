@@ -29,3 +29,9 @@ export function humanRegionBitmap(box: HumanPixelBox, size: PixelSize): Uint8Arr
   for (let y = box.y; y < box.y + box.height; y++) result.fill(1, y * size.width + box.x, y * size.width + box.x + box.width);
   return result;
 }
+
+/** New artwork may extend by at most a quarter of the target on each side. */
+export function humanRegionArtworkScope(target: HumanPixelBox): HumanPixelBox {
+  const mx = Math.floor(target.width / 4), my = Math.floor(target.height / 4);
+  return { x: target.x - mx, y: target.y - my, width: target.width + mx * 2, height: target.height + my * 2 };
+}

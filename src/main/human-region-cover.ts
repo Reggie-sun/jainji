@@ -10,14 +10,16 @@ import type { FfmpegAdapter } from "./ffmpeg.js";
 import { measureShapeCoverOutput } from "./shape-cover-alpha.js";
 import { searchHybridCornerShape, hybridMaskBounds } from "./shape-cover-hybrid-shape.js";
 import { freezeShapeCoverRaster, publishShapeCoverPng } from "./shape-cover-freeze.js";
-import { humanRegionBitmap, opaqueRegionCovered, projectHumanRectangle } from "./human-region-geometry.js";
+import { humanRegionArtworkScope, humanRegionBitmap, opaqueRegionCovered, projectHumanRectangle } from "./human-region-geometry.js";
 import { reviewDigest } from "./cover-review-approval.js";
 import { shapeCoverDigest } from "./shape-cover-render.js";
+import { ProviderError } from "./agent-provider.js";
 
 export type HumanRegionIntent = Pick<CoverReviewDraft, "id" | "projectId" | "revision" | "assistedArtwork"> & {
   admission?: "manual-production-v1";
   media: Pick<CoverReviewDraft["media"][number], "mediaId" | "sourceFingerprint" | "disposition" | "identities" | "segments">[];
 };
+type MatchedArtwork = { excess: number; publish: () => Promise<StickerLayer> };
 
 /** Bounded geometry shared by normal production and the existing review lifecycle. */
 export function createHumanRegionCover(input: { draft: HumanRegionIntent; media: MediaItem[]; preset: ExportPreset;
@@ -27,7 +29,7 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
   if (candidates.length > 256) throw Error("人工覆盖本地候选超过 256 款，请缩小贴纸库后重试。");
   const rounds = new Map<string, Promise<Map<string, StickerLayer[]>>>();
   const used = new Map<string, string[]>();
-  const cache = new Map<string, StickerLayer | null>();
+  const cache = new Map<string, MatchedArtwork | null>();
   const prepared = new Map<string, Promise<Awaited<ReturnType<typeof targets>>>>();
   const trials = new Map<string, number>();
   const targets = async (signal: AbortSignal, mediaId?: string) => {
@@ -48,7 +50,7 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     await mkdir(input.directory, { recursive: true, mode: 0o700 });
     return result;
   };
-  const match = async (target: Awaited<ReturnType<typeof targets>>[number], id: string, signal: AbortSignal): Promise<StickerLayer | null> => {
+  const match = async (target: Awaited<ReturnType<typeof targets>>[number], id: string, signal: AbortSignal): Promise<MatchedArtwork | null> => {
     const key = `${target.media.id}:${target.segment.id}:${id}`;
     if (cache.has(key)) return cache.get(key)!;
     const budgetKey = input.random ? target.media.id : "round";
@@ -57,7 +59,8 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     if (attempts > 512) throw Error(`人工覆盖匹配已达到${input.random ? "此素材" : "本批"} 512 次候选预算；请调整覆盖框或贴纸库。`);
     const tools = { ...input.tools, signal }, bitmap = humanRegionBitmap(target.target, target.projection);
     const selected = await searchHybridCornerShape([{ id, asset: input.assets[id]! }], bitmap, target.projection,
-      { x: -target.projection.width, y: -target.projection.height, width: target.projection.width * 3, height: target.projection.height * 3 },
+      draft.admission === "manual-production-v1" ? humanRegionArtworkScope(target.target)
+        : { x: -target.projection.width, y: -target.projection.height, width: target.projection.width * 3, height: target.projection.height * 3 },
       Math.min(target.projection.scaledWidth / target.source.width, target.projection.scaledHeight / target.source.height), tools, "artwork");
     if (!selected) { cache.set(key, null); return null; }
     if (!opaqueRegionCovered(selected.raster.alpha, target.projection, target.target)) throw Error("人工覆盖不透明像素校验失败。");
@@ -71,10 +74,14 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
       range: { startMs: target.segment.track.startMs, endMs: target.segment.track.endMs },
       artwork: { id, ...input.assets[id]! }, pngSha256: shapeCoverDigest(frozen.png), rgbaSha256: shapeCoverDigest(frozen.decoded) };
     const binding = HumanRegionBindingSchema.parse({ ...body, bindingDigest: reviewDigest(body) });
-    const layer: StickerLayer = { id: randomUUID(), type: "sticker", visible: true, x: 0, y: 0, width: 1, opacity: 1, rotationDeg: 0, zIndex: 90,
-      assetPath: await publishShapeCoverPng(input.directory, frozen.png), assetFingerprint: `sha256:${binding.pngSha256}`,
-      cover: { stickerId: id, height: 1, regionId: target.segment.id, humanRegion: binding } };
-    cache.set(key, layer); return layer;
+    const png = frozen.png, area = target.target.width * target.target.height;
+    const excess = selected.raster.alpha.reduce((n, alpha) => n + Number(alpha > 0), 0) / area - 1;
+    let published: StickerLayer | undefined;
+    const matched: MatchedArtwork = { excess, publish: async () => published ??= {
+      id: randomUUID(), type: "sticker", visible: true, x: 0, y: 0, width: 1, opacity: 1, rotationDeg: 0, zIndex: 90,
+      assetPath: await publishShapeCoverPng(input.directory, png), assetFingerprint: `sha256:${binding.pngSha256}`,
+      cover: { stickerId: id, height: 1, regionId: target.segment.id, humanRegion: binding } } };
+    cache.set(key, matched); return matched;
   };
   const round = (version: number, signal: AbortSignal, mediaId?: string): Promise<Map<string, StickerLayer[]>> => {
     const scope = mediaId ?? "round", key = `${scope}:${version}`;
@@ -91,7 +98,7 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
           groups.set(key, [...groups.get(key) ?? [], target]);
         }
         const assigned = new Map<string, Set<string>>(), entries = [...groups];
-        const selections: { key: string; id: string; group: typeof all; layers: StickerLayer[] }[] = [];
+        const selections: { key: string; id: string; group: typeof all; matches: MatchedArtwork[] }[] = [];
         let assignments = 0;
         const solve = async (index: number): Promise<boolean> => {
           if (index === entries.length) return true;
@@ -100,22 +107,33 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
           const perMedia = assigned.get(group[0].media.id) ?? new Set<string>();
           assigned.set(group[0].media.id, perMedia);
           const eligible = candidates.filter(id => !input.random || !perMedia.has(id));
-          const ordered = [...eligible.filter(id => !previous.includes(id)), ...eligible.filter(id => previous.includes(id) && id !== previous.at(-1)), ...eligible.filter(id => id === previous.at(-1))];
-          for (const id of ordered) {
-            if (++assignments > 4096) throw Error("人工覆盖选材组合达到本轮预算，请减少目标或调整贴纸库。");
-            bounded.throwIfAborted();
-            const layers: StickerLayer[] = [];
-            for (const target of group) { const layer = await match(target, id, bounded); if (!layer) break; layers.push(layer); }
-            if (layers.length !== group.length) continue;
-            perMedia.add(id); selections.push({ key, id, group, layers });
-            if (await solve(index + 1)) return true;
-            selections.pop(); perMedia.delete(id);
+          const tiers = [eligible.filter(id => !previous.includes(id)), eligible.filter(id => previous.includes(id) && id !== previous.at(-1)), eligible.filter(id => id === previous.at(-1))];
+          for (const tier of tiers) for (let start = 0; start < tier.length; start += 8) {
+            // Compare bounded windows; retain rotation priority and the original search budgets.
+            const options: { id: string; matches: MatchedArtwork[]; excess: number }[] = [];
+            for (const id of tier.slice(start, start + 8)) {
+              if (++assignments > 4096) throw Error("人工覆盖选材组合达到本轮预算，请减少目标或调整贴纸库。");
+              bounded.throwIfAborted();
+              const matches: MatchedArtwork[] = [];
+              for (const target of group) { const matched = await match(target, id, bounded); if (!matched) break; matches.push(matched); }
+              if (matches.length === group.length) options.push({ id, matches, excess: matches.reduce((sum, matched) => sum + matched.excess, 0) });
+            }
+            options.sort((a, b) => a.excess - b.excess || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+            for (const { id, matches } of options) {
+              perMedia.add(id); selections.push({ key, id, group, matches });
+              if (await solve(index + 1)) return true;
+              selections.pop(); perMedia.delete(id);
+            }
           }
           return false;
         };
-        if (!await solve(0)) throw Error("没有贴纸能用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会添加白底。");
-        for (const { key, id, group, layers } of selections) {
+        if (!await solve(0)) throw new ProviderError(draft.admission === "manual-production-v1"
+          ? "没有贴纸能在有限超框范围内用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会放大遮挡主体或添加白底。"
+          : "没有贴纸能用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会添加白底。");
+        bounded.throwIfAborted();
+        for (const { key, id, group, matches } of selections) {
           used.set(key, [...used.get(key) ?? [], id]);
+          const layers = await Promise.all(matches.map(matched => matched.publish()));
           layers.forEach((layer, index) => result.get(group[index].media.id)!.push(structuredClone(layer)));
         }
         return result;
