@@ -1,13 +1,14 @@
 import { z } from "zod";
 import { QianchuanProductSchema } from "./qianchuan-account.js";
-import { QianchuanCurrentAccountSchema } from "./qianchuan-plan-selection.js";
+import { QianchuanCurrentAccountSchema, QianchuanCatalogCacheInfoSchema } from "./qianchuan-plan-selection.js";
 
 const id = QianchuanCurrentAccountSchema.shape.advertiserId;
 const accountRequest = z.object({ product: QianchuanProductSchema, expectedAdvertiserId: id }).strict();
-export const QianchuanSubaccountListRequestSchema = accountRequest.extend({ refresh: z.boolean().optional() }).strict();
+export const QianchuanSubaccountListRequestSchema = accountRequest.extend({ refresh: z.boolean().optional(), displayCache: z.literal(true).optional() }).strict();
 export const QianchuanSubaccountSwitchRequestSchema = accountRequest.extend({ expectedCurrentAdvertiserId: id, advertiserId: id }).strict();
 export const QianchuanSubaccountCatalogSchema = z.object({ current: QianchuanCurrentAccountSchema,
   accounts: z.array(QianchuanCurrentAccountSchema.extend({ name: QianchuanCurrentAccountSchema.shape.name.unwrap() })).min(1).max(1000),
+  cache: QianchuanCatalogCacheInfoSchema.optional(),
 }).strict().superRefine((value, context) => {
   if (new Set(value.accounts.map(account => account.advertiserId)).size !== value.accounts.length || !value.accounts.some(account => account.advertiserId === value.current.advertiserId && account.name === value.current.name)) context.addIssue({ code: "custom", message: "子账户列表与网页当前账户无法核对。" });
 });

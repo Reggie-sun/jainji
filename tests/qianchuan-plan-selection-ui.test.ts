@@ -123,6 +123,7 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
     await page.getByRole("heading",{name:"改名后的 Chrome · 账号设置",exact:true}).waitFor();
     expect(await page.getByLabel("产品名称",{exact:true}).inputValue()).toBe("手填新产品");
     expect(await page.getByLabel("千川计划链接",{exact:true}).inputValue()).toContain("aavid=1000&adId=9001");
+    await page.getByText("浏览器维护",{exact:true}).click();
     await page.getByRole("button",{name:"关闭账号浏览器",exact:true}).click();
     expect(await page.getByRole("group",{name:"确认账号浏览器操作"}).textContent()).toContain("改名后的 Chrome（账户 1000）");
     await page.getByRole("button",{name:"取消浏览器操作",exact:true}).click();
@@ -178,6 +179,7 @@ describe("plan selector browser interaction", () => {
       await page.route("http://127.0.0.1:3000/children", route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<div id="root"></div>' }));
       await page.goto("http://127.0.0.1:3000/children"); await page.addScriptTag({ content: subaccountFixtureScript(undefined, false, true) });
       await page.waitForFunction(() => (window as any).directoryReads === 1);
+      expect(await page.evaluate(() => (window as any).directoryInputs[0].displayCache)).toBe(true);
       expect(await page.evaluate(() => (window as any).planReads.length)).toBe(0);
       expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(true);
       expect(await page.locator(".qianchuan-plan-select").evaluate(element => {
@@ -187,6 +189,7 @@ describe("plan selector browser interaction", () => {
       await page.evaluate(() => (window as any).resolveDirectory());
       await page.getByLabel("上传计划", { exact: true }).selectOption("9001");
       expect(await page.evaluate(() => (window as any).planReads.length)).toBe(1);
+      expect(await page.evaluate(() => (window as any).planReads[0])).toMatchObject({ displayCache: true, expectedCurrentAdvertiserId: "7000" });
       expect((await selected(page)).plan).toMatchObject({ advertiserId: "7000", adId: "9001" });
     } finally { await page.close(); }
   });
@@ -333,6 +336,7 @@ describe("plan selector browser interaction", () => {
       expect(await page.evaluate(()=>(window as any).selection)).toEqual({});
       expect(await page.getByLabel("上传计划",{exact:true}).isDisabled()).toBe(true);
       expect(await page.evaluate(()=>(window as any).switches[0].input)).toEqual({product:"眼贴",expectedAdvertiserId:"1000",expectedCurrentAdvertiserId:"7000",advertiserId:"8000"});
+      expect(await page.evaluate(() => (window as any).switches[0].input.displayCache)).toBeUndefined();
       await page.evaluate(()=>window.dispatchEvent(new Event("focus")));
       expect(await page.evaluate(()=>(window as any).planReads.length)).toBe(1);
       await page.evaluate(()=>(window as any).switches[0].resolve());
@@ -353,7 +357,7 @@ describe("plan selector browser interaction", () => {
       expect(await page.evaluate(()=>(window as any).switches.length)).toBe(2);
     } finally {await page.close();}
   });
-  it("shows the child name and ID in the account dropdown even without plans, clearing them on failed refresh", async () => {
+  it("retains the last child name and ID as a historical draft after plan refresh fails", async () => {
     const page = await fixture();
     try {
       await page.evaluate(() => (window as any).catalogRequests[0].resolve({ account: { advertiserId: "7000", name: "新子账户商贸" }, plans: [] }));
@@ -363,18 +367,19 @@ describe("plan selector browser interaction", () => {
       expect(await account.inputValue()).toBe("眼贴");
       await page.getByRole("button", { name: "刷新计划", exact: true }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
-      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('#douyin-upload-product')?.selectedOptions[0]?.textContent?.includes("网页账户待核对"));
-      expect(await account.locator("option:checked").textContent()).not.toContain("7000");
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('#douyin-upload-product')?.selectedOptions[0]?.textContent?.includes("7000"));
+      expect(await account.locator("option:checked").textContent()).toContain("7000");
       await page.evaluate(() => (window as any).catalogRequests[1].reject(new Error("无法确认当前网页账户")));
       await page.getByRole("alert").waitFor();
-      expect(await account.locator("option:checked").textContent()).toContain("网页账户待核对");
-      expect(await account.locator("option:checked").textContent()).not.toContain("1000");
+      expect(await account.locator("option:checked").textContent()).toContain("7000");
+      await page.getByText(/历史目录.*刷新失败/).waitFor();
     } finally { await page.close(); }
   });
   it("reads and selects the webpage child, then clears the choice if focus returns with a different child", async () => {
     const page = await fixture({ batch: true });
     try {
       expect(await page.evaluate(() => (window as any).catalogRequests[0].input.accountSource)).toBe("current-browser");
+      expect(await page.evaluate(() => (window as any).catalogRequests[0].input.displayCache)).toBe(true);
       const respond = (advertiserId: string) => page.evaluate(id => (window as any).catalogRequests.at(-1).resolve([
         { advertiserId: id, adId: "9001", name: "子账户计划", accountSource: "current-browser" },
       ]), advertiserId);
@@ -448,11 +453,15 @@ describe("plan selector browser interaction", () => {
       await page.getByText("计划名称：2026-10-02_商品全域投放_22:00:07", { exact: true }).waitFor();
     } finally { await page.close(); }
   });
-  it("requires an explicit plan, displays name and ID, and clears selection on refresh failure", async () => {
+  it("requires an explicit plan, displays name and ID, and retains selection when a refresh falls back to history", async () => {
     const page = await fixture();
     try {
       expect(await page.getByLabel("上传计划").isDisabled()).toBe(true);
-      await page.getByRole("button", { name: "返回两个计划" }).click();
+      expect(await page.evaluate(() => (window as any).catalogRequests[0].input.displayCache)).toBe(true);
+      await page.evaluate(() => (window as any).catalogRequests[0].resolve({
+        plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}` })),
+        cache: { source: "live", readAt: 1_760_000_000_000, stale: false, persisted: true },
+      }));
       await page.waitForFunction(() => !document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')!.disabled);
       expect((await selected(page)).plan).toBeUndefined();
       expect(await page.getByLabel("上传计划").locator("option").allTextContents()).toContain("计划 9002 · ID 9002");
@@ -460,11 +469,62 @@ describe("plan selector browser interaction", () => {
       expect((await selected(page)).plan).toEqual({ advertiserId: "1000", adId: "9002", name: "计划 9002" });
       await page.getByRole("button", { name: "刷新计划" }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      expect((await selected(page)).plan?.adId).toBe("9002");
+      await page.evaluate(() => (window as any).catalogRequests[1].resolve({
+        plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}` })),
+        cache: { source: "cache", readAt: 1_760_000_000_000, stale: true, refreshFailed: true },
+      }));
+      await page.getByText(/历史目录.*刷新失败/).waitFor();
+      expect((await selected(page)).plan?.adId).toBe("9002");
+      expect(await page.getByLabel("上传计划").isDisabled()).toBe(false);
+    } finally { await page.close(); }
+  });
+  it("clears a selected upload plan only after a fresh catalog removes it", async () => {
+    const page = await fixture();
+    try {
+      await page.evaluate(() => (window as any).catalogRequests[0].resolve({
+        plans: ["9001", "9002"].map(adId => ({ advertiserId: "1000", adId, name: `计划 ${adId}` })),
+        cache: { source: "live", readAt: 1_760_000_000_000, stale: false, persisted: true },
+      }));
+      await page.getByLabel("上传计划").selectOption("9002");
+      await page.getByRole("button", { name: "刷新计划" }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      await page.evaluate(() => (window as any).catalogRequests[1].resolve({
+        plans: [{ advertiserId: "1000", adId: "9001", name: "计划 9001" }],
+        cache: { source: "live", readAt: 1_760_000_060_000, stale: false, persisted: true },
+      }));
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')!.options.length === 2);
       expect((await selected(page)).plan).toBeUndefined();
-      await page.getByRole("button", { name: "读取失败", exact: true }).click();
+      expect(await page.getByLabel("上传计划").locator("option").allTextContents()).not.toContain("计划 9002 · ID 9002");
+    } finally { await page.close(); }
+  });
+  it("retains a failed child refresh as a draft and sends switches through the live API", async () => {
+    const page = await browser.newPage();
+    try {
+      await page.route("http://127.0.0.1:3000/children", route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<div id="root"></div>' }));
+      await page.goto("http://127.0.0.1:3000/children"); await page.addScriptTag({ content: subaccountFixtureScript() });
+      await page.waitForFunction(() => (window as any).directoryReads === 1);
+      await page.getByLabel("上传计划", { exact: true }).selectOption("9001");
+      await page.evaluate(() => { (window as any).directoryError = "Chrome 已断开"; });
+      await page.getByRole("button", { name: "刷新子账户", exact: true }).click();
+      await page.waitForFunction(() => (window as any).directoryReads === 2);
+      await page.locator(".qianchuan-subaccount-select").getByRole("status").waitFor();
+      expect(await page.getByLabel("子账户", { exact: true }).inputValue()).toBe("7000");
+      expect(await page.getByLabel("子账户", { exact: true }).locator("option").allTextContents()).toEqual(["原子账户商贸 · 7000", "新子账户商贸 · 8000"]);
+      expect(await page.getByLabel("子账户", { exact: true }).isDisabled()).toBe(false);
+      expect((await selected(page)).plan).toMatchObject({ advertiserId: "7000", adId: "9001" });
+      await page.getByLabel("子账户", { exact: true }).selectOption("8000");
+      await page.waitForFunction(() => (window as any).switches.length === 1);
+      expect(await page.evaluate(() => (window as any).switches[0].input)).toEqual({ product: "眼贴", expectedAdvertiserId: "1000", expectedCurrentAdvertiserId: "7000", advertiserId: "8000" });
+      await page.evaluate(() => (window as any).switches[0].reject(new Error("当前网页连接失败")));
       await page.getByRole("alert").waitFor();
-      expect(await page.getByRole("alert").textContent()).toBe("Chrome 登录已失效");
-      expect(await page.getByLabel("上传计划").isDisabled()).toBe(true);
+      expect(await page.evaluate(() => (window as any).switches[0].input.displayCache)).toBeUndefined();
+      await page.evaluate(() => { (window as any).directoryError = ""; });
+      await page.getByRole("button", { name: "刷新子账户", exact: true }).click();
+      await page.waitForFunction(() => (window as any).directoryReads === 3);
+      await page.getByLabel("子账户", { exact: true }).selectOption("8000");
+      await page.waitForFunction(() => (window as any).switches.length === 2);
+      expect(await page.evaluate(() => (window as any).switches[1].input)).toEqual({ product: "眼贴", expectedAdvertiserId: "1000", expectedCurrentAdvertiserId: "7000", advertiserId: "8000" });
     } finally { await page.close(); }
   });
   it("ignores late responses from the previous Chrome account and handles an empty catalog", async () => {
@@ -518,11 +578,12 @@ describe("plan selector browser interaction", () => {
       expect(geometry.overflow).toBe(false);
       expect(await page.getByLabel("上传计划", { exact: true }).getAttribute("title")).toContain("计划 9002 · ID 9002");
       await page.getByRole("button", { name: "刷新计划", exact: true }).click();
-      expect((await selected(page)).plan).toBeUndefined();
+      expect((await selected(page)).plan.adId).toBe("9002");
       await page.getByRole("button", { name: "读取失败", exact: true }).click();
       await page.getByRole("alert").waitFor();
       expect(await page.getByRole("alert").textContent()).toBe("Chrome 登录已失效");
-      expect(await page.getByLabel("上传计划").isDisabled()).toBe(true);
+      expect((await selected(page)).plan.adId).toBe("9002");
+      expect(await page.getByLabel("上传计划").isDisabled()).toBe(false);
     } finally { await page.close(); }
   });
 });
@@ -534,6 +595,7 @@ describe("cleanup plan browser interaction", () => {
     await page.goto("http://127.0.0.1:3000/cleanup"); await page.addScriptTag({ content: cleanupPlanFixtureScript() });
     await page.addStyleTag({ content: readFileSync("src/renderer/styles.css", "utf8") + readFileSync("src/renderer/qianchuan-cleanup.css", "utf8") });
     await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+    expect(await page.evaluate(() => (window as any).catalogRequests[0].input.displayCache)).toBe(true);
     return page;
   }
   async function respond(page: Page) {
@@ -658,6 +720,24 @@ describe("cleanup plan browser interaction", () => {
       expect(await page.evaluate(() => (window as any).cleanupRequests[0].accounts[0].plans.map((plan: { adId: string }) => plan.adId))).toEqual(["9002"]);
     } finally { await page.close(); }
   });
+  it("preserves an explicit empty cleanup choice and its plan directory after refresh fails", async () => {
+    const page = await cleanupFixture();
+    try {
+      await respond(page);
+      await page.getByRole("button", { name: "全选清理计划", exact: true }).click();
+      expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(false);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(false);
+      await page.getByRole("button", { name: "刷新计划", exact: true }).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(false);
+      await page.evaluate(() => (window as any).catalogRequests[1].reject(new Error("Chrome 登录已失效")));
+      await page.getByRole("alert").waitFor();
+      await page.getByText(/历史目录.*刷新失败/).waitFor();
+      expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(false);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9002", exact: true }).isChecked()).toBe(false);
+      expect(await page.getByText("已选 0 / 2 个计划", { exact: true }).count()).toBe(1);
+    } finally { await page.close(); }
+  });
   it("blocks stale confirmation and failed refresh, while account-wide clearing remains explicit", async () => {
     const page = await cleanupFixture();
     try {
@@ -674,7 +754,8 @@ describe("cleanup plan browser interaction", () => {
       await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
       await page.evaluate(() => (window as any).catalogRequests.at(-1).reject(new Error("Chrome 登录已失效")));
       await page.getByText("Chrome 登录已失效", { exact: true }).waitFor();
-      expect(await page.getByRole("button", { name: "清理所选计划", exact: true }).isDisabled()).toBe(true);
+      expect(await page.getByRole("button", { name: "清理所选计划（2）", exact: true }).isDisabled()).toBe(false);
+      expect(await page.getByRole("checkbox", { name: "清理计划 9001", exact: true }).isChecked()).toBe(true);
       await page.getByRole("checkbox", { name: /计划内三类素材/ }).uncheck();
       await page.getByRole("checkbox", { name: /视频库全部视频/ }).check();
       await page.getByRole("button", { name: "清理所选账号（1）", exact: true }).click();

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -19,11 +19,102 @@ import { QianchuanPlanReads } from "../src/main/qianchuan-plan-reads";
 import { acquireQianchuanPlans } from "../src/renderer/qianchuan-plan-requests";
 import { clearQianchuanAccountPlans } from "../src/main/qianchuan-cleanup-plans";
 import { QianchuanSubaccountCatalogSchema, QianchuanSubaccountSwitchRequestSchema } from "../src/shared/qianchuan-subaccounts";
+import { QianchuanDisplayCatalogs } from "../src/main/qianchuan-display-catalogs";
+import { QianchuanCatalogCache, type CatalogBinding } from "../src/main/qianchuan-catalog-cache";
 
 const roots: string[] = [];
 afterEach(async () => { vi.useRealTimers(); vi.unstubAllGlobals(); await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 const plan = (adId = "9001"): QianchuanPlanOption => ({ advertiserId: "1000", adId, name: `测试计划 ${adId}` });
 const selection = (adId = "9001") => ({ enabled: true as const, accountProduct: "眼贴" as const, plan: plan(adId) });
+describe("durable display catalogs", () => {
+  it.each(["direct", "local-vps", "remote-browser"])("retains history for %s and marks changed transport config stale", async mode => {
+    const root = await mkdtemp(path.join(tmpdir(), "qianchuan-display-")); roots.push(root);
+    let target: FrozenQianchuanAccount = { product: "眼贴", advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:11000", configDigest: "a".repeat(64),
+      ...(mode === "direct" ? {} : { egress: { ...(mode === "remote-browser" ? { mode: "remote-browser" as const } : {}), group: "one", sshHost: "fixture", localPort: 1080, expectedIp: "8.8.8.8" } }) };
+    const plans = vi.fn(async () => [plan()]);
+    const readers = { configured: async () => target, plans, directory: vi.fn(async () => { throw new Error("unexpected directory read"); }) };
+    const request = { product: "眼贴" as const, expectedAdvertiserId: "1000", displayCache: true as const };
+    expect((await new QianchuanDisplayCatalogs(root, readers).plans(request, new AbortController().signal)).cache).toMatchObject({ source: "live", persisted: true });
+    plans.mockClear(); plans.mockRejectedValue(new Error("disconnected"));
+    target = { ...target, configDigest: "b".repeat(64), egress: undefined };
+    const display = new QianchuanDisplayCatalogs(root, readers);
+    expect(await display.plans(request, new AbortController().signal)).toMatchObject({ plans: [plan()], cache: { source: "cache", stale: true } });
+    expect(plans).not.toHaveBeenCalled();
+    expect(await display.plans({ ...request, refresh: true }, new AbortController().signal)).toMatchObject({ plans: [plan()], cache: { refreshFailed: true } });
+    const aborted = new AbortController(); aborted.abort();
+    await expect(display.plans(request, aborted.signal)).rejects.toThrow();
+    target = { ...target, advertiserId: "8000" };
+    await expect(display.plans(request, new AbortController().signal)).rejects.toThrow("已变化");
+  });
+  it("rejects unsafe, corrupt, cross-identity and oversized disk records, while safe live writes remain usable", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "qianchuan-cache-files-")); roots.push(root);
+    const cache = new QianchuanCatalogCache(root);
+    const binding: CatalogBinding = { product: "眼贴", anchor: "1000", kind: "saved-plans", advertiserId: "1000" };
+    const put = () => cache.put(binding, "a".repeat(64), { plans: [plan()] }, Date.now());
+    expect(await cache.get(binding)).toBeUndefined();
+    expect(await readdir(root)).toEqual([]);
+    expect(await put()).toBe(true);
+    const directory = path.join(root, "catalog-cache"), file = path.join(directory, (await readdir(directory))[0]!);
+    const original = await readFile(file);
+    await writeFile(file, "broken", { mode: 0o600 }); expect(await cache.get(binding)).toBeUndefined(); expect(await put()).toBe(true);
+    const crossed = JSON.parse(original.toString()); crossed.binding.anchor = "8000";
+    await writeFile(file, JSON.stringify(crossed)); expect(await cache.get(binding)).toBeUndefined();
+    await writeFile(file, Buffer.alloc(4 * 1024 * 1024 + 1)); expect(await cache.get(binding)).toBeUndefined();
+    await rm(file); const external = path.join(root, "external.json"); await writeFile(external, original, { mode: 0o600 });
+    await symlink(external, file); expect(await cache.get(binding)).toBeUndefined(); expect(await put()).toBe(false);
+    expect(await readFile(external)).toEqual(original);
+    await rm(file); await put(); await chmod(file, 0o644); expect(await cache.get(binding)).toBeUndefined(); expect(await put()).toBe(false);
+    await chmod(file, 0o600); expect(await cache.get({ ...binding, kind: "current-plans" })).toBeUndefined();
+    expect(await cache.put(binding, "a".repeat(64), { plans: [{ ...plan(), advertiserId: "8000" }] }, Date.now())).toBe(false);
+    expect(await cache.get(binding)).toMatchObject({ data: { plans: [plan()] } });
+  });
+  it("retains saved-account plans across expiry and service restart without Chrome, but preflight stays live", async () => {
+    const f = await fixture();
+    const request = { product: "眼贴", expectedAdvertiserId: "1000", displayCache: true };
+    expect(await f.service.listPlans(request)).toMatchObject({ plans: [plan(), plan("9002")], cache: { source: "live", persisted: true } });
+    await f.service.stop();
+    const restarted = new DouyinUploadService(f.store, { accounts: f.accounts, readPlans: f.readPlans, readiness: () => undefined,
+      loadBatch: async () => { throw new Error("unexpected batch read"); }, browser: () => { throw new Error("unexpected upload browser"); } });
+    f.readPlans.mockClear(); f.readPlans.mockRejectedValue(new Error("Chrome unavailable"));
+    const clock = vi.spyOn(Date, "now").mockReturnValue(Date.now() + 6 * 60_000);
+    try {
+      expect(await restarted.listPlans(request)).toMatchObject({ plans: [plan(), plan("9002")], cache: { source: "cache", stale: true } });
+      expect(f.readPlans).not.toHaveBeenCalled();
+      expect(await restarted.listPlans({ ...request, refresh: true })).toMatchObject({ plans: [plan(), plan("9002")], cache: { source: "cache", refreshFailed: true } });
+      await expect(restarted.preflight(selection(), 1)).rejects.toThrow("Chrome unavailable");
+      expect(f.store.intents()).toEqual([]);
+    } finally { clock.mockRestore(); await restarted.stop(); }
+  });
+  it("restores directory and the exact child's plans without probing the disconnected browser", async () => {
+    const account = { advertiserId: "7000", name: "网页子账户" };
+    type Subaccounts = NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    const current = vi.fn(async () => account.advertiserId);
+    const read = vi.fn<Subaccounts["read"]>(async () => ({ current: account, accounts: [account] }));
+    const f = await fixture(current, undefined, { read, switch: vi.fn<Subaccounts["switch"]>() });
+    f.readPlans.mockImplementation(async target => [{ ...plan(), advertiserId: target.advertiserId }]);
+    const directory = { product: "眼贴", expectedAdvertiserId: "1000", displayCache: true };
+    const request = { ...directory, accountSource: "current-browser", includeAccount: true, expectedCurrentAdvertiserId: "7000" };
+    expect(await f.service.listSubaccounts(directory)).toMatchObject({ current: account, cache: { source: "live" } });
+    expect(await f.service.listPlans(request)).toMatchObject({ account, cache: { source: "live" } });
+    current.mockClear(); current.mockRejectedValue(new Error("Chrome unavailable")); f.readPlans.mockClear();
+    expect(await f.service.listSubaccounts(directory)).toMatchObject({ current: account, cache: { source: "cache" } });
+    expect(await f.service.listPlans(request)).toMatchObject({ account, cache: { source: "cache" } });
+    expect(current).not.toHaveBeenCalled(); expect(f.readPlans).not.toHaveBeenCalled();
+    expect(await f.service.listSubaccounts({ ...directory, refresh: true })).toMatchObject({ current: account, cache: { refreshFailed: true } });
+    await expect(f.service.listPlans({ ...request, expectedCurrentAdvertiserId: "8000" })).rejects.toThrow();
+    await expect(f.service.switchSubaccount({ product: "眼贴", expectedAdvertiserId: "1000", expectedCurrentAdvertiserId: "7000", advertiserId: "7000" })).rejects.toThrow();
+    await f.service.stop();
+    const restarted = new DouyinUploadService(f.store, { accounts: f.accounts, readPlans: f.readPlans, readiness: () => undefined,
+      loadBatch: async () => { throw new Error("unexpected batch read"); }, browser: () => { throw new Error("unexpected upload browser"); } });
+    current.mockClear(); f.readPlans.mockClear();
+    await restarted.restoreConfig();
+    expect(await restarted.listSubaccounts(directory)).toMatchObject({ current: account, cache: { source: "cache" } });
+    expect(await restarted.listPlans(request)).toMatchObject({ account, cache: { source: "cache" } });
+    await restarted.stop();
+    expect(current).not.toHaveBeenCalled();
+    expect(f.readPlans.mock.calls.filter(([target]) => target.product === "眼贴")).toEqual([]);
+  });
+});
 it.each(["CLEARED", "BLOCKED"] as const)("continues past historical partial plans and retains later %s state", async later => {
   const target = { product: "眼贴" as const, advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:42001", configDigest: "d".repeat(64) };
   const plans = [plan(), plan("9002"), plan("9003")];
