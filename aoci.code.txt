@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:登记无扩展CDP账户目录、远端元数据及原扩展回归；Harness自身变更触发自测；正式资产要求AOCI | S:完整贡献优先子集；隔离浏览器必需执行；focused不替代全量或平台验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:登记原千川与千管家只读控制器回归；Harness自身变更触发自测；正式资产要求AOCI | S:完整贡献优先子集；隔离浏览器必需执行；focused不替代全量或平台验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -77,13 +77,13 @@ execution-limits.ts[RP7T]: F:按CPU与内存估算并发容量并探测可运行
 ffmpeg.ts[IB8M]: F:封装媒体子进程、能力发现、编码并发探测与字体解析 | R:code:src/main/video-encoder.ts,code:src/main/execution-limits.ts,code:src/main/hardware-probe.ts,code:src/main/platform.ts | A:FfmpegAdapter提供probe和run；checkCapabilities返回引擎及容量；refreshFontCapabilities只更新字体就绪状态 | S:硬件和CPU回退均须真实同时编码探测；CPU有独立探测预算；刷新字体不重选队列引擎；进程退出不代表产物已验证发布
 gpu-memory.ts[AB7T]: F:解析空闲显存并估算NVENC需求 | R:code:src/main/execution-limits.ts | A:硬件容量辅助 | S:探测不可用不得推定容量
 hardware-probe.ts[KH7T]: F:用持续编码进程验证指定路数的同时运行能力 | R:code:src/main/ffmpeg.ts,code:src/main/execution-limits.ts | A:probeConcurrentEncodes等待每路输出帧及持续重叠，超时或提前退出返回失败 | S:探测输入保持开放；任何提前退出使容量无效；结束必须杀死仍运行进程并等待全部promise
-index.ts[EG8L]: F:启动Electron并接线制作覆盖千川会员及自动化 | R:code:src/main/application.ts,code:src/main/membership-desktop.ts,code:src/main/automation-desktop.ts,code:src/main/queue.ts,code:src/main/douyin-upload-service.ts | A:可信IPC及会员准入；查询及取消绑定sender；素材先持久后更新索引；托盘及系统启动迁移；B串行释放；子账户切换核制作及审阅空闲 | S:旧定时保存关闭；无第二队列；不恢复未知上传；边框中央透明由主进程校验
+index.ts[EG8L]: F:启动Electron并接线制作覆盖千川会员及自动化 | R:code:src/main/application.ts,code:src/main/membership-desktop.ts,code:src/main/automation-desktop.ts,code:src/main/queue.ts,code:src/main/douyin-upload-service.ts,code:src/main/qianguanjia-queries.ts | A:可信IPC及会员准入；千管家固定查询取消断开绑定sender；失权关窗退出释放；素材先持久后更新索引；托盘及系统启动迁移；B串行释放；子账户切换核制作审阅空闲 | S:旧定时保存关闭；无第二队列；不恢复未知上传；边框中央透明由主进程校验
 media-response.ts[AB7T]: F:对本地媒体请求返回可范围读取的Response | R:code:src/main/index.ts | A:受控媒体协议辅助 | S:仅按受信路径提供媒体
 media.ts[AB7S]: F:探测导入媒体、投影公开视图并解析保存的素材选择 | R:code:src/main/domain.ts,code:src/main/ffmpeg.ts | A:按保存顺序去重并排除已移出ID；无草稿沿用全部就绪素材；去除公开源路径 | S:显式空选择不扩成全选；现存invalid项保留给准入拒绝；无效媒体不进入制作
 model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独立Codex登录与执行runtime | R:code:src/main/connection-store.ts,code:src/main/chatgpt-session.ts,code:src/main/codex-rpc.ts,code:src/main/api-request-scheduler.ts | A:ModelConnections持久选择、激活各角色、导入连接与关闭；启动参数和执行凭据由主进程构造 | S:登录和执行目录分离，执行auth.json必须缺席；凭据仅经允许的环境传给子进程；禁用工具、搜索和多Agent；不读写全局Codex登录，凭据不回传界面
 paths.ts[IB7S]: F:提供有界文件指纹、输出路径分配、文件同步与无覆盖发布及资源校验 | R:code:src/main/queue.ts,code:src/main/source-fact-census.ts,code:src/main/source-sticker-knowledge-store.ts | A:fingerprintFile支持取消及字节预算；lstat跳过含悬空链接的占用名；硬链接不支持时独占复制并同步最终文件后删除partial | S:指纹等待EOF和close，取消不返回部分摘要；发布冲突重分配，其他失败不授completed；复制不是原子rename
 platform.ts[AB7T]: F:跨Linux和Windows解析命令及字体候选路径 | R:code:src/main/ffmpeg.ts | A:平台路径辅助 | S:保留各平台路径语义
-preload.ts[EU7S]: F:以固定DesktopApi桥接制作会员自动化及千川查询 | R:code:src/main/index.ts,code:src/shared/membership.ts,code:src/shared/automation.ts,code:src/shared/qianchuan-plan-selection.ts,code:src/shared/qianchuan-backend.ts | A:固定方法事件；计划返回数组或账户目录；子账户目录及切换；typed只读查询和取消 | S:不暴露token；不接受任意端点；不替代main准入
+preload.ts[EU7S]: F:以固定DesktopApi桥接制作会员自动化及投放查询 | R:code:src/main/index.ts,code:src/shared/membership.ts,code:src/shared/automation.ts,code:src/shared/qianchuan-plan-selection.ts,code:src/shared/qianchuan-backend.ts,code:src/shared/qianguanjia.ts | A:固定方法事件；账户目录及切换；typed千川查询取消和千管家查询取消断开 | S:不暴露token；不接受任意端点；不替代main准入
 queue.ts[AW9L]: F:拥有持久导出调度验证及无覆盖发布 | R:code:src/main/compiler.ts,code:src/main/artifact.ts,code:src/main/human-region-render.ts,code:src/main/nvenc-admission.ts | A:会员准入执行复核；核人工意图或批准；冻结源模板设置目录；样片发布前核权限取消；观察者可等待原持久写入 | S:completed内存状态先于落盘，上传仍核主记录；重试不重选；任务副本SHA仍验；变化不completed；保留partial发布取消与原并发
 recent-projects.ts[AB7T]: F:持久管理最近打开的项目目录列表 | R:code:src/main/application.ts | A:项目入口历史辅助 | S:不承担工作区或模板状态
 source-sticker-knowledge-projection.ts[AB7T]: F:从队列快照与知识库投影源知识风险状态 | R:code:src/main/source-sticker-knowledge-store.ts | A:只读UI风险投影 | S:争议及未知状态必须显式显示
@@ -214,7 +214,7 @@ automation-desktop.ts[AW8T]: F:接线可信自动化IPC与原执行适配及旧�
 automation-files.ts[PS8T]: F:读写私有自动化配置并计算稳定摘要 | R:code:src/main/douyin-upload-store.ts | A:限制大小权限身份与读取漂移；排他写或临时重命名后同步 | S:未知持久化结果由调用方阻断；不替代执行授权
 automation-runtime.ts[AW8S]: F:冻结定时配方并适配原清理制作上传 | R:code:src/main/automation-files.ts,code:src/main/automation-production-upload.ts,code:src/main/batch-production-controller.ts,code:src/main/queue.ts | A:绑定账号素材模型；清理失败短路；制作前消费claim并增量上传；B流式上传持有账号及完成回调；finally只释放资源协调状态 | S:无第二队列；未知claim不重试；半自动仍须批准；部分制作失败不标完成；取消原run；释放不关闭未知窗口；摘要不含开关时间
 membership-desktop.ts[AI8T]: F:组装桌面会员会话与账号IPC | R:code:src/main/membership-session.ts,code:src/main/membership-network.ts,code:src/main/membership-diagnostics.ts | A:分离登录续费和可恢复核验运输；初始化密钥环及存储；固定IPC；恢复与心跳 | S:仅未打包且未指定配置的缺文件可本地开放；坏配置失败关闭；direct初始化失败不回退；不接管系统浏览器和OS TUN
-membership-ipc.ts[MI8T]: F:为主进程IPC安装会员准入门 | R:code:src/main/membership-session.ts | A:先核可信发送方；未知操作默认在线鉴权；固定恢复白名单含查询取消 | S:须在业务handler注册前安装；恢复仍执行原安全检查
+membership-ipc.ts[MI8T]: F:为主进程IPC安装会员准入门 | R:code:src/main/membership-session.ts | A:先核可信发送方；未知操作默认在线鉴权；恢复白名单包含千川取消及千管家取消断开 | S:须在业务handler注册前安装；恢复仍执行原安全检查，供应商查询不豁免会员
 membership-oauth.ts[II8T]: F:执行系统浏览器OIDC登录及loopback回调 | R:code:src/shared/membership.ts | A:固定Casdoor端点免前置发现；PKCE state nonce；注入运输并限定issuer；取消超时关监听 | S:公共客户端无client secret；不强制prompt=login；token只返回main；错误state不能完成登录
 membership-session.ts[AI8S]: F:拥有桌面唯一会员状态与实时准入 | R:code:src/main/membership-check.ts,code:src/main/membership-storage.ts,code:src/shared/membership.ts | A:串行持久化与代际隔离；GET有限恢复；退出取消在途检查；失权停止工作；心跳复查 | S:缓存仅展示；服务端不能开启本地模式；退出清存储失败仍停工作；token不入外链；续费POST不随GET恢复重发
 membership-storage.ts[PS8T]: F:加密保存并按公开配置绑定会员token | R:code:src/main/membership-session.ts | A:safeStorage；原子替换同步；退出先存标记；新登录才清标记 | S:basic_text或无加密时仅内存；不落明文；删除失败不恢复旧凭据
@@ -242,7 +242,7 @@ qianchuan-extension-protocol.ts[CI8T]: F:定义固定扩展身份、命令、严
 qianchuan-extension-remote-worker.ts[IN8T]: F:在VPS核定原profile进程与浏览器元数据 | R:code:src/main/qianchuan-extension-process.ts,code:src/main/qianchuan-extension-install.ts,code:src/main/qianchuan-browser-bindings.ts | A:browserProfile返回必需PID时钟端口路径；旧profile登记native host，setup保持原行为 | S:纯metadata不注册扩展、不启动或导航Chrome；前后进程复验；不读取登录文件
 qianchuan-extension-remote.ts[IN8T]: F:用自有SSH反向通道把VPS native扩展接入同一私有桥 | R:code:src/main/qianchuan-extension-bridge.ts,code:src/main/qianchuan-remote-runtime.ts | A:主体路线合并通道；每profile绑定原保存锚点；固定setup/profile/verify；上传端口附接仅用元数据 | S:无CDP账户读取；只回环监听；失败不自动重连或重放；显式reset等自有进程退出；不关闭Chrome或恢复旧任务
 
-qianchuan-qianguanjia-adapter.ts[IN8S]: F:执行千管家固定只读账户目录与当日汇总配方 | R:- | A:浏览器不透明会话handle；固定POST只读接口；有界响应白名单投影；标记supplier-home-aggregate口径 | S:token不跨CDP并拒绝字段反射；同文档store用户token前后复验；取消只终止本次读取；不接上传删除或确认
+qianchuan-qianguanjia-adapter.ts[IN8S]: F:执行千管家固定只读账户目录与当日汇总配方 | R:code:src/shared/qianguanjia.ts | A:浏览器不透明会话handle；固定POST只读接口；有界响应白名单投影；标记supplier-home-aggregate口径；共享DTO兼容重导出 | S:token不跨CDP并拒绝字段反射；同文档store用户token前后复验；取消只终止本次读取；不接上传删除或确认
 membership-check.ts[II7T]: F:执行有界会员GET恢复并生成去敏诊断 | R:code:src/shared/membership.ts,code:src/main/membership-session.ts | A:总22秒最多两次核验；短等待；网络异常可先调用恢复；结构化分类HTTP网络与TLS | S:已确认拒绝及无效响应不重试；取消停止等待；不沿用缓存授权；诊断异常不授权限
 membership-diagnostics.ts[PO6T]: F:串行保存有界会员网络诊断 | R:code:src/main/membership-check.ts | A:白名单schema投影；64KiB轮转并保留上一份；拒绝链接文件；I/O失败吞并 | S:不记录原始异常凭据或端点；诊断不影响准入
 membership-network.ts[IN7T]: F:提供独立direct会员核验与登录续费运输 | R:code:src/main/membership-desktop.ts,code:src/main/membership-oauth.ts | A:两个非持久禁缓存Electron Session；仅核验池关闭连接并清DNS缓存 | S:恢复不关闭OAuth和续费连接；不修改默认Session或系统代理TUN；初始化失败不退回默认fetch
@@ -250,6 +250,8 @@ qianchuan-account-catalog.ts[II8T]: F:校验运输中立的签名账户目录切
 qianchuan-browser-accounts.ts[II8S]: F:从保存的原浏览器建立当前账户会话 | R:code:src/main/qianchuan-browser-bindings.ts,code:src/main/qianchuan-cdp-account-session.ts,code:src/main/qianchuan-remote-runtime.ts | A:核PID时钟socket与ActivePort；VPS动态自有转发；复制排除页；复用context与文档身份比较 | S:不借旧端口转发；WeakMap拒克隆；共享profile拒绝；网页子账户不改锚点
 qianchuan-cdp-account-session.ts[II8M]: F:对原网页提供有界CDP身份固定GET切换及计划读取 | R:code:src/main/qianchuan-picker-transport.ts,code:src/main/qianchuan-account-catalog.ts,code:src/main/qianchuan-current-account.ts,code:src/main/qianchuan-plan-catalog.ts | A:排除任务页；单后台页；操作前后核真实默认context；GET同文档；计划传原context | S:空context列表不证明登录态；缺默认context证明拒绝；真实target不伪装tabId；切换一次核新文档；未知不重放；保留用户页；Cookie不离浏览器
 qianchuan-current-account-port.ts[CI7T]: F:定义当前浏览器账户操作与不透明会话契约 | R:code:src/main/qianchuan-account-config.ts,code:src/shared/qianchuan-plan-selection.ts | A:公开identity端口账户及上传连接证明；接收排除target集；目录切换计划共用guard | S:类型不签发权限；transport私有文档身份由适配器持有
+qianguanjia-browser.ts[IN7S]: F:发现千管家原Chrome业务页并定向连接只读适配器 | R:code:src/main/qianchuan-browser-discovery.ts,code:src/main/local-cdp-transport.ts,code:src/main/qianchuan-picker-transport.ts,code:src/main/qianchuan-qianguanjia-adapter.ts | A:loopback限量元数据；固定首页账户路由；核浏览器GUID与target；只attach所选页；连接有界并去敏 | S:不读登录文件；不导航关闭原页面或Chrome；不重新授权；CDP地址不回renderer
+qianguanjia-queries.ts[AW7T]: F:管理千管家UI只读查询与临时固定会话 | R:code:src/shared/qianguanjia.ts,code:src/main/qianguanjia-browser.ts | A:按sender及UUID取消；目录签发不透明选项；同页面复用适配器；单在途60秒；失败取消断开清会话 | S:不改上传映射或保存凭据结果；其他sender不能消费会话；停止仅detach且不恢复读取
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
 index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/model-server/gateway.ts | A:模型网关进程入口 | S:密钥来自受控环境或文件
@@ -320,7 +322,8 @@ WorkspacePage.tsx[AU5T]: F:保留已访问页草稿并实现工作区滚动和�
 BatchUploadDetails.tsx[EU6T]: F:展示冻结批量上传实时进度历史及原恢复入口 | R:code:src/renderer/useBatchProductionDetails.ts,code:src/renderer/QianchuanUploadHistory.tsx,code:src/renderer/qianchuan-upload-status.ts | A:按广告主命名；READY及ACCEPTED计上传；整批自动确认说明；活动任务禁恢复 | S:历史别名不恢复；UNKNOWN阻塞未选；实时观察非保存证据；READY非平台接收；接收非审核投放
 useBatchProductionDetails.ts[AU5T]: F:按冻结run/job复用原批量详情只读轮询 | R:code:src/shared/batch-production.ts,code:src/main/preload.ts | A:活跃每秒读取；隐藏停止轮询但保留详情；身份改变重置；隔离迟到响应及IPC错误前缀 | S:观察不恢复上传权限或触发任务
 AutomationTaskDetails.tsx[EU6T]: F:按冻结请求展示清理顺序规则制作数量和上传目标 | R:code:src/shared/automation.ts,code:src/renderer/qianchuan-account-display.ts | A:区分计划库及组合清理；单多计划具名呈现；来源按任务ID；库范围明确不按计划筛选 | S:账号按advertiserId取名；缺规则是三类审核；缺计划名不猜补；库清空不受零展示保护
-QianchuanBackendPanel.tsx[AU7T]: F:展示账号计划素材分页与控成本报表查询 | R:code:src/shared/qianchuan-backend.ts,code:src/shared/qianchuan-account.ts,code:src/main/preload.ts | A:显式查询；校验日期；绑定UUID；投影指标；输入变化清旧结果；取消及隐藏撤销 | S:账号来自已保存配置；预算接口原值除以100000展示元且保留两位小数；不上传或改计划；迟到结果丢弃；错误不回显桥接原文
+QianchuanBackendPanel.tsx[AU7T]: F:选择千川或千管家来源并展示投放只读查询 | R:code:src/shared/qianchuan-backend.ts,code:src/shared/qianchuan-account.ts,code:src/main/preload.ts,code:src/renderer/QianguanjiaPanel.tsx | A:默认原千川；保留草稿；显式计划素材分页报表；来源切换停读；日期UUID身份核对及指标投影 | S:原预算除100000展示元；供应商不沿用此换算；隐藏取消并丢迟到结果；错误不反射桥接原文；不改计划
+QianguanjiaPanel.tsx[EU6T]: F:连接正常千管家页面并展示授权目录与当日汇总 | R:code:src/shared/qianguanjia.ts,code:src/main/preload.ts | A:明确发现选择读取；精确ID及状态；三类四指标原值；范围时间提示；取消断开隐藏清观察 | S:汇总不归单账户或计划；错误安全；迟到响应丢弃；无授权投放写入口
 
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===
@@ -365,6 +368,7 @@ qianchuan-remote.ts[CN8T]: F:校验远端浏览器文件桌面及元数据RPC合
 automation.ts[CW7T]: F:定义固定定时清理制作上传及修订账本Schema | R:code:src/shared/batch-production.ts,code:src/shared/qianchuan-video-library.ts,code:src/shared/douyin-upload.ts | A:严格范围时间来源及迁移；制作最多2500；任务运行可含scheduleRevision与改时日期；旧记录兼容缺省 | S:清空库须显式确认；上传须计划或独立来源；非零修订须改时日期且运行修订不超任务；Schema不授执行或重试权限
 membership.ts[CI8T]: F:定义会员公开状态配置价格和心跳合同 | R:code:src/main/membership-session.ts,code:src/membership-server/policy.ts | A:月100年666；Google三天试用提示；本地模式及严格origin配置 | S:配置禁止client secret；状态schema不代替主进程准入
 qianchuan-backend.ts[CD7T]: F:定义计划素材与商品控成本报表的固定查询输入和投影 | R:code:src/shared/qianchuan-account.ts,code:src/main/qianchuan-backend-adapter.ts | A:strict账号UUID日期；31天及整页offset；四指标value与display；typed取消 | S:不接任意URL或headers；ID保留字符串；结果无凭据或原始JSON
+qianguanjia.ts[CI7T]: F:定义千管家固定只读查询与去敏结果契约 | R:code:src/main/qianguanjia-queries.ts,code:src/main/preload.ts | A:strict UUID及discover accounts home枚举；不透明sessionId；目录与supplier-home-aggregate DTO；typed取消断开 | S:无endpoint headers token或写请求；目录不授上传权
 
 
 ===/home/reggie/vscode_folder/jianji/src/types/===

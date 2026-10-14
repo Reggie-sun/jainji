@@ -8,4 +8,5 @@
 .qianchuan-query-metrics dd { margin: 4px 0 0; }
 .qianchuan-query-table { overflow-x: auto; }
 .qianchuan-query-table table { width: 100%; border-collapse: collapse; }
+.qianguanjia-account-table { max-height: 280px; }
 .qianchuan-query-table th, .qianchuan-query-table td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }

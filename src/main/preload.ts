@@ -17,12 +17,16 @@ import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.
 import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/qianchuan-account.js";
 import type { QianchuanPlanListRequest, QianchuanPlanCancel, QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
 import type { QianchuanBackendQuery, QianchuanBackendCancel, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
+import type { QianguanjiaQuery, QianguanjiaResult } from "../shared/qianguanjia.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecovery } from "../shared/qianchuan-video-library.js";
 import type { QianchuanLibraryScheduleSettings, QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule.js";
 import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest, BatchUploadResume } from "../shared/batch-production.js";
 import type { TemplateAccountBinding, TemplateAccountSelection } from "../shared/batch-upload.js";
 
 const api = {
+  queryQianguanjia: (input: QianguanjiaQuery): Promise<QianguanjiaResult> => ipcRenderer.invoke("qianguanjia.query", input),
+  cancelQianguanjiaQuery: (input: { requestId: string }): Promise<void> => ipcRenderer.invoke("qianguanjia.cancel", input),
+  disconnectQianguanjia: (): Promise<void> => ipcRenderer.invoke("qianguanjia.disconnect"),
   getAutomation: (): Promise<AutomationStatus> => ipcRenderer.invoke("automation.get"),
   createAutomation: (input: AutomationRequest): Promise<AutomationStatus> => ipcRenderer.invoke("automation.create", input),
   configureAutomation: (input: { id: string; enabled: boolean; time: string }): Promise<AutomationStatus> => ipcRenderer.invoke("automation.configure", input),

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { qianchuanAccountName, type QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QIANCHUAN_QUERY_METRICS, QianchuanBackendQuerySchema, type QianchuanBackendResult, type QianchuanQueryMetrics } from "../shared/qianchuan-backend";
 import "./qianchuan-backend.css";
+import { QianguanjiaPanel } from "./QianguanjiaPanel";
 
 const metricLabels = ["消耗", "成交订单数", "成交金额（含优惠券）", "支付 ROI"];
 function chinaDate() { return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10); }
@@ -10,6 +11,17 @@ function Metrics({ metrics }: { metrics: QianchuanQueryMetrics }) {
 }
 
 export function QianchuanBackendPanel({ accounts, active }: { accounts: QianchuanAccountSummary[]; active: boolean }) {
+  const [source, setSource] = useState("qianchuan");
+  return <section aria-label="投放数据来源">
+    <div className="qianchuan-query-fields"><label>数据来源<select aria-label="数据来源" value={source} onChange={event => setSource(event.target.value)}>
+      <option value="qianchuan">千川账号</option><option value="qianguanjia">千管家</option>
+    </select></label></div>
+    <div hidden={source !== "qianchuan"}><NativeQianchuanBackendPanel accounts={accounts} active={active && source === "qianchuan"} /></div>
+    <div hidden={source !== "qianguanjia"}><QianguanjiaPanel active={active && source === "qianguanjia"} api={window.jianji} /></div>
+  </section>;
+}
+
+function NativeQianchuanBackendPanel({ accounts, active }: { accounts: QianchuanAccountSummary[]; active: boolean }) {
   const [product, setProduct] = useState(accounts.find(account => account.available)?.product ?? "");
   const account = accounts.find(account => account.product === product);
   const identity = `${product}:${account?.advertiserId ?? ""}:${account?.adId ?? ""}:${account?.available ?? false}`;

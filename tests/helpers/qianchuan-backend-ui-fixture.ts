@@ -8,13 +8,16 @@ export function qianchuanBackendFixtureScript() {
     import {createRoot} from "react-dom/client";
     import {QianchuanBackendPanel} from "./src/renderer/QianchuanBackendPanel";
     import {QIANCHUAN_QUERY_METRICS} from "./src/shared/qianchuan-backend";
-    window.reads=[]; window.cancellations=[]; window.pending=[]; window.delay=false; window.fail=false;
+    window.supplierReads=[]; window.supplierCancels=[]; window.supplierDisconnects=0; window.supplierPending=[]; window.supplierDelay=false; window.supplierFail=false; window.supplierEmpty=false; window.reads=[]; window.cancellations=[]; window.pending=[]; window.delay=false; window.fail=false;
     const metrics=Object.fromEntries(QIANCHUAN_QUERY_METRICS.map(key=>[key,{value:"123.45",display:"123.45"}]));
     const result=input=>({kind:input.kind,advertiserId:input.expectedAdvertiserId,observedAt:"2026-10-13T10:00:00Z",
       ...(input.kind==="plan"?{adId:input.adId,name:"真实结构示例计划",budget:"100000000",roiGoal:"2",products:[{id:"700",name:"示例商品"}]}:
       {startTime:input.startDate+" 00:00:00",endTime:input.endDate+" 12:00:00",...(input.kind==="report"?{metrics}:
       {adId:input.adId,offset:input.offset,limit:input.limit,total:101,rows:[{materialId:String(900+input.offset),name:"素材页 "+input.offset,metrics}]})})});
-    window.jianji={queryQianchuanBackend:input=>{window.reads.push(input);if(window.fail)return Promise.reject(new Error("ws://private-secret-token"));
+    const supplierResult=input=>input.kind==="discover"?{requestId:input.requestId,kind:"discover",sessions:[{sessionId:"6fcb5ecd-7608-4a57-bf4d-26625804a38c",label:"千管家首页 · 页面 1"}],unavailableBrowsers:0}:
+      {requestId:input.requestId,kind:input.kind,sessionId:input.sessionId,data:input.kind==="accounts"?{source:"qianguanjia",observedAt:"2026-10-14T08:00:00Z",accounts:window.supplierEmpty?[]:[{advertiserId:"1879999999999999999",name:"授权测试账户",authStatus:1,authStatusDesc:"授权正常"}]}:
+      {source:"qianguanjia",scope:"supplier-home-aggregate",observedAt:"2026-10-14T08:00:00Z",date:"2026-10-14",groups:Object.fromEntries(["ALL","LIVE_PROM_GOODS","VIDEO_PROM_GOODS"].map(key=>[key,{current:{statCost:"12.34",totalPayOrderCountForRoi2:"3",totalPayOrderGmvIncludeCouponForRoi2:"99.99",totalPrepayAndPayOrderRoi2:"8.10"},comparison:{}}]))}};
+    window.jianji={queryQianguanjia:input=>{window.supplierReads.push(input);if(window.supplierFail)return Promise.reject(new Error("private-secret-token"));if(window.supplierDelay)return new Promise(resolve=>window.supplierPending.push(()=>resolve(supplierResult(input))));return Promise.resolve(supplierResult(input));},cancelQianguanjiaQuery:async input=>{window.supplierCancels.push(input);},disconnectQianguanjia:async()=>{window.supplierDisconnects++;},queryQianchuanBackend:input=>{window.reads.push(input);if(window.fail)return Promise.reject(new Error("ws://private-secret-token"));
       if(window.delay)return new Promise(resolve=>window.pending.push(()=>resolve(result(input))));return Promise.resolve(result(input));},
       cancelQianchuanBackendQuery:async input=>{window.cancellations.push(input);}};
     function Fixture(){const [active,setActive]=useState(true),[accounts,setAccounts]=useState([

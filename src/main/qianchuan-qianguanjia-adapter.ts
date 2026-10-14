@@ -1,17 +1,6 @@
 import type { JSHandle, Page } from "playwright-core";
-
-export interface QianguanjiaAccountDirectory {
-  source: "qianguanjia"; observedAt: string;
-  accounts: { advertiserId: string; name: string; authStatus: number; authStatusDesc: string }[];
-}
-export interface QianguanjiaHomeMetrics {
-  statCost: string; totalPayOrderGmvIncludeCouponForRoi2: string;
-  totalPayOrderCountForRoi2: string; totalPrepayAndPayOrderRoi2: string;
-}
-export interface QianguanjiaHomeSummary {
-  source: "qianguanjia"; scope: "supplier-home-aggregate"; observedAt: string; date: string;
-  groups: Record<"ALL" | "LIVE_PROM_GOODS" | "VIDEO_PROM_GOODS", { current: QianguanjiaHomeMetrics; comparison: QianguanjiaHomeMetrics }>;
-}
+import type { QianguanjiaAccountDirectory, QianguanjiaHomeMetrics, QianguanjiaHomeSummary } from "../shared/qianguanjia.js";
+export type { QianguanjiaAccountDirectory, QianguanjiaHomeMetrics, QianguanjiaHomeSummary } from "../shared/qianguanjia.js";
 interface SupplierStore {
   getters: { token?: unknown };
   state: { user: { userInfo: { id?: unknown; merchantId?: unknown } } };

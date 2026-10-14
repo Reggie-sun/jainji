@@ -77,3 +77,59 @@ it("keeps narrow controls inside the viewport and hides unsafe bridge errors", a
     expect(await page.locator("body").textContent()).not.toContain("private-secret-token");
   } finally { await page.close(); }
 });
+it("connects supplier source and displays exact account IDs and aggregate scope", async () => {
+  const page = await fixture(360);
+  try {
+    await page.getByLabel("数据来源", { exact: true }).selectOption("qianguanjia");
+    expect(await page.getByRole("button", { name: "读取授权账户" }).isDisabled()).toBe(true);
+    await page.getByRole("button", { name: "发现已登录页面" }).click();
+    await page.waitForFunction(() => (document.querySelector('[aria-label="千管家页面"]') as HTMLSelectElement).value !== "");
+    await page.getByRole("button", { name: "读取授权账户" }).click();
+    await page.getByRole("cell", { name: "1879999999999999999", exact: true }).waitFor();
+    await page.getByRole("button", { name: "读取今日汇总" }).click();
+    await page.getByRole("heading", { name: "全部推广", exact: true }).waitFor();
+    expect(await page.getByTestId("qianguanjia-home").textContent()).toContain("不代表任一单账户");
+    expect(await page.getByTestId("qianguanjia-home").locator("dd").first().textContent()).toBe("12.34");
+    expect(await page.getByTestId("qianguanjia-directory").count()).toBe(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.getByLabel("数据来源", { exact: true }).selectOption("qianchuan");
+    await page.getByRole("button", { name: "查询", exact: true }).click();
+    await page.getByRole("heading", { name: "真实结构示例计划" }).waitFor();
+  } finally { await page.close(); }
+});
+it.each(["cancel", "source", "hide"])("supplier %s cancels and rejects late observations", async action => {
+  const page = await fixture();
+  try {
+    await page.getByLabel("数据来源", { exact: true }).selectOption("qianguanjia");
+    await page.getByRole("button", { name: "发现已登录页面" }).click();
+    await page.waitForFunction(() => (document.querySelector('[aria-label="千管家页面"]') as HTMLSelectElement).value !== "");
+    await page.evaluate(() => { (window as any).supplierDelay = true; });
+    await page.getByRole("button", { name: "读取授权账户" }).click();
+    await page.getByRole("button", { name: "取消千管家查询" }).waitFor();
+    if (action === "cancel") await page.getByRole("button", { name: "取消千管家查询" }).click();
+    if (action === "source") await page.getByLabel("数据来源", { exact: true }).selectOption("qianchuan");
+    if (action === "hide") await page.evaluate(() => (window as any).setActive(false));
+    await page.waitForFunction(() => (window as any).supplierCancels.length === 1);
+    await page.evaluate(() => (window as any).supplierPending[0]());
+    await page.waitForTimeout(50);
+    expect(await page.getByTestId("qianguanjia-directory").count()).toBe(0);
+    expect(await page.evaluate(() => (window as any).supplierDisconnects)).toBeGreaterThan(0);
+  } finally { await page.close(); }
+});
+it("supplier shows empty directory and safely clears state on bridge failure", async () => {
+  const page = await fixture();
+  try {
+    await page.getByLabel("数据来源", { exact: true }).selectOption("qianguanjia");
+    await page.getByRole("button", { name: "发现已登录页面" }).click();
+    await page.waitForFunction(() => (document.querySelector('[aria-label="千管家页面"]') as HTMLSelectElement).value !== "");
+    await page.evaluate(() => { (window as any).supplierEmpty = true; });
+    await page.getByRole("button", { name: "读取授权账户" }).click();
+    await page.getByText("当前会话没有返回授权账户。").waitFor();
+    await page.evaluate(() => { (window as any).supplierFail = true; });
+    await page.getByRole("button", { name: "读取今日汇总" }).click();
+    await page.getByRole("alert").waitFor();
+    expect(await page.locator("body").textContent()).not.toContain("private-secret-token");
+    expect(await page.getByTestId("qianguanjia-directory").count()).toBe(0);
+    expect(await page.getByRole("button", { name: "读取今日汇总" }).isDisabled()).toBe(true);
+  } finally { await page.close(); }
+});

@@ -47,6 +47,7 @@ import { DouyinCdpUploader, douyinReadiness } from "./douyin-cdp-uploader.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
 import { RecentProjects } from "./recent-projects.js";
 import { registerBugFeedbackHandlers } from "./bug-feedback-ipc.js";
+import { QianguanjiaQueries } from "./qianguanjia-queries.js";
 import { ProjectWorkspaceSchema } from "../shared/project-workspace.js";
 import { createAutomaticOutputDirectory } from "./automatic-output-directory.js";
 import { createBatchProductionRuntime } from "./batch-production-runtime.js";
@@ -83,6 +84,7 @@ let recentProjects: RecentProjects;
 let activeRecentProjectId: string | undefined;
 let queue: ExportQueue;
 let douyinUpload: DouyinUploadService;
+const qianguanjia = new QianguanjiaQueries();
 let videoLibrarySchedule: QianchuanVideoLibrarySchedule;
 let ffmpeg: FfmpegAdapter;
 let capabilities: CapabilityStatus;
@@ -225,6 +227,9 @@ function registerHandlers(): void {
   ipcMain.handle("douyinUpload.listPlans", async (event, input: unknown) => { assertTrustedSender(event); return douyinUpload.listPlans(input, event.sender.id); });
   ipcMain.handle("douyinUpload.queryBackend", async (event, input: unknown) => { assertTrustedSender(event); return douyinUpload.queryBackend(input, event.sender.id); });
   ipcMain.handle("douyinUpload.cancelBackendQuery", async (event, input: unknown) => { assertTrustedSender(event); douyinUpload.cancelBackendQuery(input, event.sender.id); });
+  ipcMain.handle("qianguanjia.query", async (event, input: unknown) => { assertTrustedSender(event); return qianguanjia.run(input, event.sender.id); });
+  ipcMain.handle("qianguanjia.cancel", async (event, input: unknown) => { assertTrustedSender(event); qianguanjia.cancel(input, event.sender.id); });
+  ipcMain.handle("qianguanjia.disconnect", async (event) => { assertTrustedSender(event); await qianguanjia.disconnect(event.sender.id); });
   ipcMain.handle("douyinUpload.listSubaccounts", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); return douyinUpload.listSubaccounts(input); });
   ipcMain.handle("douyinUpload.switchSubaccount", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); assertProductionIdle(); coverReview?.assertIdle(); return douyinUpload.switchSubaccount(input); });
   ipcMain.handle("douyinUpload.cancelPlans", async (event, input: unknown) => { assertTrustedSender(event); douyinUpload.cancelPlanRead(input, event.sender.id); });
@@ -685,7 +690,7 @@ async function createWindow(): Promise<void> {
     if (automation?.enabled || automation?.busy) { automationBackground.hide(); return; }
     void requestQuit();
   });
-  mainWindow.on("closed", () => { mainWindow = undefined; });
+  mainWindow.on("closed", () => { mainWindow = undefined; void qianguanjia.stop(); });
   mainWindow.on("focus", () => { void douyinUpload?.refreshAccountNames().catch(() => undefined); });
 }
 
@@ -704,7 +709,7 @@ async function bootstrap(): Promise<void> {
     changed: status => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("membership.changed", status); },
     lostAccess: async () => {
       const projects = new Set(queue?.snapshot().batches.map(state => state.batch.projectId).filter((id): id is string => Boolean(id)) ?? []);
-      await Promise.allSettled([automation?.cancelCurrent(), batchRuntime?.controller.cancel(), coverReview?.shutdown(), agent?.cancel(), douyinUpload?.stop(),
+      await Promise.allSettled([qianguanjia.stop(), automation?.cancelCurrent(), batchRuntime?.controller.cancel(), coverReview?.shutdown(), agent?.cancel(), douyinUpload?.stop(),
         ...[...projects].map(projectId => queue.cancelAll(projectId))]);
     },
   });
@@ -891,6 +896,7 @@ function safeLog(...args: unknown[]): void {
 }
 
 async function shutdownServices(): Promise<void> {
+  await qianguanjia.stop();
   membership?.dispose();
   videoLibrarySchedule?.stop();
   await automation?.stop().catch(() => safeLog("automation stopped with unresolved work"));
