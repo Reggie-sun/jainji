@@ -196,7 +196,7 @@ human-region-geometry.ts[KB7T]: F:投影人工矩形并核验逐像素完全不�
 human-region-render.ts[AB8T]: F:校验人工冻结像素目标与入队来源 | R:code:src/main/cover-review-approval.ts,code:src/main/human-region-cover.ts,code:src/main/source-sticker-knowledge-store.ts | A:源资源输出绑定；解码覆盖；正常意图或历史批准分别核验 | S:正常入口拒绝review binding和错项目目标；无意图不放行；coverage只证明指定框；容器及视频时长源争议均检查
 cover-review-upload.ts[IW8T]: F:交接已批准导出到原千川上传账本 | R:code:src/main/douyin-upload-service.ts,code:src/main/douyin-upload-store.ts | A:核对完整任务集合；新登记共用数量授权并原子保存；全部相同记录直接返回 | S:重复批准不恢复浏览器权限；部分记录或目标冲突拒绝；无登记历史成片不追加；预览不准入
 manual-cover-review.ts[AB7T]: F:将保存手动输入绑定为审阅快照 | R:code:src/shared/manual-cover-review.ts,code:src/main/cover-review-approval.ts | A:播种区域决定及输入摘要；核对当前输入与快照几何 | S:未标记的历史草稿保持原路径；输入摘要不构成最终批准
-manual-cover-production.ts[AB7T]: F:将保存人工框投影为正常制作意图 | R:code:src/shared/manual-cover-review.ts,code:src/main/human-region-cover.ts | A:绑定项目素材源指纹和区域时段；分配本轮身份 | S:没有审阅状态或批准；复用固定框校验；未框选保持不覆盖
+manual-cover-production.ts[AB7T]: F:将保存人工框投影为正常制作意图 | R:code:src/shared/manual-cover-review.ts,code:src/main/human-region-cover.ts | A:绑定项目源指纹及区域时段；有效框覆盖，无框默认不覆盖 | S:无审阅批准；无框无需逐素材确认；旧冻结不迁移
 qianchuan-plan-material-recovery.ts[PR8S]: F:保存计划未知删除记录与人工处置并汇总保护ID | R:code:src/main/qianchuan-plan-materials.ts,code:src/main/qianchuan-account-config.ts | A:读取旧门及attempt独立门；strict双ID摘要；原字节硬链接归档后移除对应指针；pending最多1000历史2000 | S:全部pending及归档ID禁止重删；UNKNOWN不改写；孤立归档不解锁；处置仅原attempt同字节，不连接平台
 qianchuan-plan-material-diagnostics.ts[PO7T]: F:保存计划删除失败旁证并读取绑定原因 | R:code:src/main/qianchuan-account-config.ts,code:src/main/douyin-upload-store.ts | A:独占写入同步；核attempt摘要与双ID；枚举阶段及错误分类 | S:不改变pending或授重试；无旁证不猜首次原因，损坏不证明删除结果
 qianchuan-profile-name.ts[IC6T]: F:只读提取精确绑定Chrome资料的显示名称 | R:code:src/main/qianchuan-browser-bindings.ts,code:src/main/qianchuan-browser-manager.ts | A:验证目录后有界读取Local State内对应info_cache名称；核文件身份及读取前后变化 | S:不读Cookies或Preferences；缺失损坏不安全均省略名称；名称不是账户身份
@@ -270,7 +270,7 @@ CoverReviewBox.tsx[AB7T]: F:绘制assisted覆盖审阅候选框与交互 | R:cod
 CoverReviewPanel.tsx[AU7M]: F:展示覆盖准备进度冻结预览并收集制作批准 | R:code:src/main/cover-review-controller.ts,code:src/shared/manual-cover-review.ts,code:src/renderer/CoverReviewProgress.tsx | A:旧assisted编辑；逐版预览批准；说明批准后正式成片整批自动上传确认；进度及停止 | S:逐版查看后批准；预览不传上传信息；框外完整性未证明；账号计划不随审阅草稿保存
 CoverReviewProgress.tsx[AU7T]: F:展示覆盖准备阶段数量与停止入口 | R:code:src/renderer/CoverReviewPanel.tsx | A:抽帧素材计数；已准备版本及当前素材；等待计时 | S:人工贴纸匹配不称模型分析；进度不授输出批准
 CoverReviewTimeline.tsx[AB7T]: F:按时间显示assisted候选与证据片段 | R:code:src/renderer/CoverReviewPanel.tsx | A:时间轴交互组件 | S:时域决策留在草稿
-CoverStickerPanel.tsx[EU6S]: F:提供手动框选与自动识别覆盖入口 | R:code:src/shared/manual-cover-review.ts,code:src/renderer/CoverTrackEditor.tsx | A:手动复用真实贴纸直接制作；显式切换带入审阅框时段；旧设置保留并提示 | S:加载不迁移旧白底或普通审阅；移动轨迹不压平；人工框非自动alpha；图案可超框，无框不覆盖
+CoverStickerPanel.tsx[EU6S]: F:提供手动框选与自动识别覆盖入口 | R:code:src/shared/manual-cover-review.ts,code:src/shared/cover-sticker.ts,code:src/renderer/CoverTrackEditor.tsx | A:显示有框与无框数量；无框默认不覆盖可直接保存；清空框仅影响当前素材 | S:加载不迁移旧白底审阅；不压平移动轨迹；目标框非自动alpha
 CoverTrackEditor.tsx[AU7S]: F:视频上编辑覆盖位置尺寸与时段 | R:code:src/shared/cover-sticker.ts,code:src/renderer/CoverStickerPanel.tsx | A:原关键帧轨迹或固定目标编辑；目标显示透明边界 | S:目标模式不自动增加关键帧；移动轨迹须显式处理；旧白底方式保留
 DecorationPicker.tsx[AB7T]: F:浏览贴纸目录和预览供手动选材 | R:code:src/main/asset-library.ts | A:选材界面 | S:仅本地有效素材进入目录
 ExportSettingsPanel.tsx[AB7T]: F:编辑导出分辨率帧率画质 | R:code:src/shared/export-settings.ts | A:导出设置界面 | S:默认方向720p且保持源帧率
@@ -360,7 +360,7 @@ batch-upload.ts[CC6T]: F:定义模板账号绑定及批量上传账号解析 | R
 hybrid-cover.ts[CB8T]: F:定义H4批准角落冻结生产层的严格序列化绑定 | R:code:src/main/hybrid-cover-production.ts,code:src/main/domain.ts,code:src/shared/source-sticker-knowledge.ts | A:固定HybridApprovedCorner/v1与UUID、源、设置、PNG binding packet摘要、projection placement及range | S:coverage必须oldPixels正数uncovered0/fraction1；数据不授authority或恢复进程内owner；不声明全源完整性
 frames.ts[CB6T]: F:定义十三款边框目录及自动随机指定关闭草稿合同 | R:code:src/shared/decorations.ts,code:src/main/builtin-frames.ts | A:strict auto/random/manual/none；素材优先整批再legacy；既有ID及uploaded SHA格式保持，缺字段none | S:边框独立命名空间；random既有每条必用语义保持
 human-region-cover.ts[CB8T]: F:定义人工目标与冻结图案绑定 | R:code:src/shared/cover-sticker.ts,code:src/shared/source-sticker-knowledge.ts,code:src/shared/export-settings.ts | A:源投影目标时段像素摘要；可选正常制作来源判别 | S:无admission沿旧审阅解释；人工意图不冒充alpha或H4；图案可跨画布但目标可见范围在画布内
-manual-cover-review.ts[DB7T]: F:投影手动覆盖输入及历史人工草稿 | R:code:src/shared/cover-sticker.ts,code:src/shared/cover-review.ts | A:继承手动区域时段；空区域不覆盖；比较快照；旧稿恢复 | S:移动轨迹拒绝；无轨迹为全片；旧手动残留不替代历史人工草稿
+manual-cover-review.ts[DB7T]: F:投影保存人工框并比较恢复历史输入 | R:code:src/shared/cover-sticker.ts,code:src/shared/cover-review.ts | A:有效框转覆盖；无框默认不覆盖；历史草稿恢复比较 | S:不要求无框逐素材确认；拒绝移动轨迹及超时段；无轨迹全片
 qianchuan-egress.ts[CN7T]: F:校验非秘密出口模式及主体间唯一绑定 | R:code:src/shared/qianchuan-account.ts,code:src/main/qianchuan-egress-runtime.ts | A:可选remote-browser；group及SSH别名端口公网IPv4；归一身份及SOCKS地址 | S:缺mode保留A字节语义；同组全部字段相同；异组禁共享IP端口或SSH别名；无配置身份保留direct
 qianchuan-remote.ts[CN8T]: F:校验远端浏览器文件桌面及元数据RPC合同 | R:code:src/main/qianchuan-remote-transport.ts,code:src/main/qianchuan-remote-runtime.ts | A:严格动作与零body；browser-profile要求原profile目录PID时钟端口路径；扩展旧接口保持可选元数据 | S:仅B路线；file账号匹配请求；metadata不接扩展字段名称或命令；不携本地凭据
 automation.ts[CW7T]: F:定义固定定时清理制作上传及修订账本Schema | R:code:src/shared/batch-production.ts,code:src/shared/qianchuan-video-library.ts,code:src/shared/douyin-upload.ts | A:严格范围时间来源及迁移；制作最多2500；任务运行可含scheduleRevision与改时日期；旧记录兼容缺省 | S:清空库须显式确认；上传须计划或独立来源；非零修订须改时日期且运行修订不超任务；Schema不授执行或重试权限

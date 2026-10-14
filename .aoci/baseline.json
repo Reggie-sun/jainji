@@ -2378,9 +2378,9 @@
       "normalized_sha256": "2369c16e705d1b1b83df229d4adcdae7bf2792f7402a5cfe444ebf4f6a8cc978"
     },
     "src/renderer/CoverStickerPanel.tsx": {
-      "sha256": "a4768b30c0cf6df4ba56c633543c63be8eec707229433504792a3d7ca5fe1574",
-      "size": 22573,
-      "normalized_sha256": "a4768b30c0cf6df4ba56c633543c63be8eec707229433504792a3d7ca5fe1574"
+      "sha256": "5d026fe672d13abd3aa056d5c9ba25f26df87626d91da769a3c4b31dab6a5b33",
+      "size": 22892,
+      "normalized_sha256": "5d026fe672d13abd3aa056d5c9ba25f26df87626d91da769a3c4b31dab6a5b33"
     },
     "src/renderer/CoverTrackEditor.tsx": {
       "sha256": "36577e96d21824c15a89ff4b6842aabd48a9d8eed84c1b3d076300f275e0f90d",
