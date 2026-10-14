@@ -65,12 +65,12 @@ export function subaccountFixtureScript(directoryError?: string, membershipError
     import React,{useState} from "react";
     import {createRoot} from "react-dom/client";
     import {QianchuanPlanSelect} from "./src/renderer/QianchuanPlanSelect";
-    window.currentChild="7000";window.planReads=[];window.switches=[];window.directoryReads=0;window.directoryInputs=[];window.directoryError=${JSON.stringify(directoryError ?? "")};
+    window.currentChild="7000";window.planReads=[];window.switches=[];window.directoryReads=0;window.directoryError=${JSON.stringify(directoryError ?? "")};
     window.planError=${JSON.stringify(membershipError ? "无法核验账号权限，请检查网络后重试。" : "")};
     const membershipListeners=new Set();window.emitMembership=state=>membershipListeners.forEach(listener=>listener({state}));
     const named=id=>({advertiserId:id,name:id==="7000"?"原子账户商贸":"新子账户商贸"});
     window.jianji={onMembership:listener=>{membershipListeners.add(listener);return()=>membershipListeners.delete(listener);},listQianchuanPlans:async input=>{window.planReads.push(input);if(window.planError)throw new Error(window.planError);const id=window.currentChild;return {account:named(id),plans:[{advertiserId:id,adId:id==="7000"?"9001":"9002",name:"对应计划",accountSource:"current-browser"}]};},cancelQianchuanPlans:async()=>{},
-      listQianchuanSubaccounts:async input=>{window.directoryReads++;window.directoryInputs.push(input);if(window.directoryError)throw new Error(window.directoryError);if(${deferDirectory})await new Promise(resolve=>window.resolveDirectory=resolve);return {current:named(window.currentChild),accounts:[named("7000"),named("8000")]};},
+      listQianchuanSubaccounts:async()=>{window.directoryReads++;if(window.directoryError)throw new Error(window.directoryError);if(${deferDirectory})await new Promise(resolve=>window.resolveDirectory=resolve);return {current:named(window.currentChild),accounts:[named("7000"),named("8000")]};},
       switchQianchuanSubaccount:input=>new Promise((resolve,reject)=>window.switches.push({input,resolve:()=>{window.currentChild=input.advertiserId;resolve(named(window.currentChild));},reject}))};
     function Fixture(){const [plan,setPlan]=useState(),[account,setAccount]=useState(),[disabled,setDisabled]=useState(false);window.selection={plan,account};window.setDisabled=setDisabled;
       return <div className="batch-template-controls"><div className="batch-upload-account" style={{width:520}}><label>千川上传</label>
@@ -204,29 +204,6 @@ describe("plan selector browser interaction", () => {
       await page.getByLabel("上传计划", { exact: true }).selectOption("9002");
       expect((await selected(page)).plan).toMatchObject({ advertiserId: "8000", adId: "9002" });
       expect(await page.evaluate(() => (window as any).switches.length)).toBe(1);
-    } finally { await page.close(); }
-  });
-  it("uses cached catalogs on focus but bypasses both caches on explicit refresh", async () => {
-    const page = await browser.newPage();
-    try {
-      await page.route("http://127.0.0.1:3000/cache", route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<div id="root"></div>' }));
-      await page.goto("http://127.0.0.1:3000/cache"); await page.addScriptTag({ content: subaccountFixtureScript() });
-      await page.getByLabel("上传计划", {exact:true}).selectOption("9001");
-      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      await page.waitForFunction(() => (window as any).planReads.length === 2);
-      expect(await page.evaluate(() => (window as any).planReads[1].refresh)).toBeUndefined();
-      expect(await page.evaluate(() => (window as any).directoryInputs[1].refresh)).toBeUndefined();
-      expect((await selected(page)).plan.adId).toBe("9001");
-      await page.getByRole("button", {name:"刷新计划",exact:true}).click();
-      await page.waitForFunction(() => (window as any).planReads.length === 3);
-      expect(await page.evaluate(() => (window as any).planReads[2].refresh)).toBe(true);
-      expect(await page.evaluate(() => (window as any).directoryInputs[2].refresh)).toBe(true);
-      await page.getByRole("button", {name:"刷新子账户",exact:true}).click();
-      await page.waitForFunction(() => (window as any).directoryInputs.length === 4);
-      expect(await page.evaluate(() => (window as any).directoryInputs[3].refresh)).toBe(true);
-      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      await page.waitForFunction(() => (window as any).directoryInputs.length === 5);
-      expect(await page.evaluate(() => (window as any).directoryInputs[4].refresh)).toBeUndefined();
     } finally { await page.close(); }
   });
   it("rejects plans from a different child until the directory is explicitly refreshed", async () => {

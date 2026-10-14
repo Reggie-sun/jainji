@@ -3,9 +3,8 @@ import { QianchuanProductSchema } from "./qianchuan-account.js";
 import { QianchuanCurrentAccountSchema } from "./qianchuan-plan-selection.js";
 
 const id = QianchuanCurrentAccountSchema.shape.advertiserId;
-const accountRequest = z.object({ product: QianchuanProductSchema, expectedAdvertiserId: id }).strict();
-export const QianchuanSubaccountListRequestSchema = accountRequest.extend({ refresh: z.boolean().optional() }).strict();
-export const QianchuanSubaccountSwitchRequestSchema = accountRequest.extend({ expectedCurrentAdvertiserId: id, advertiserId: id }).strict();
+export const QianchuanSubaccountListRequestSchema = z.object({ product: QianchuanProductSchema, expectedAdvertiserId: id }).strict();
+export const QianchuanSubaccountSwitchRequestSchema = QianchuanSubaccountListRequestSchema.extend({ expectedCurrentAdvertiserId: id, advertiserId: id }).strict();
 export const QianchuanSubaccountCatalogSchema = z.object({ current: QianchuanCurrentAccountSchema,
   accounts: z.array(QianchuanCurrentAccountSchema.extend({ name: QianchuanCurrentAccountSchema.shape.name.unwrap() })).min(1).max(1000),
 }).strict().superRefine((value, context) => {

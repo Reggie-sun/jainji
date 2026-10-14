@@ -8,7 +8,7 @@ import type { ExportBatchIdentity } from "./queue.js";
 import { fingerprintFile, isPathWithinDirectory, pathsEqual } from "./paths.js";
 import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory, strictSyncDirectory, uploadTaskId, sameTargetBytes, type UploadTaskRecord } from "./douyin-upload-store.js";
 import { uploadBatchSettled } from "./douyin-upload-group.js";
-import { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
+import { QianchuanAccountConfigReader, QianchuanAccountConfigError } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 import { AutomationBrowserAccounts, assertAutomationBrowserSafe } from "./qianchuan-automation-browsers.js";
 import { egressIdentity } from "../shared/qianchuan-egress.js";
@@ -377,7 +377,7 @@ export class DouyinUploadService {
   }
   async listSubaccounts(input: unknown): Promise<QianchuanSubaccountCatalog> {
     const parsed = QianchuanSubaccountListRequestSchema.parse(input);
-    const generation = this.controlGeneration, key = JSON.stringify([generation, parsed.product, parsed.expectedAdvertiserId, parsed.refresh === true]);
+    const generation = this.controlGeneration, key = JSON.stringify([generation, parsed.product, parsed.expectedAdvertiserId]);
     let pending = this.subaccountReads.get(key);
     if (!pending) {
       pending = (async () => {
@@ -990,7 +990,7 @@ export class DouyinUploadService {
       }
       const blockers = this.unresolvedAccountTasks(task);
       if (blockers.length) throw new Error(this.blockedAccountMessage(task, blockers.length));
-      if (accepted) await this.currentTarget(task);
+      if (accepted) await this.bounded(signal => this.currentTarget(task, signal), task.config.timeouts.navigation, new AbortController().signal);
       if (this.stopFailed || this.active || this.runner || generation !== this.controlGeneration || this.stopping || this.closing || this.discarding || this.retargeting) throw new Error("上传控制已变化，本次继续未接收。");
       if (requested?.result.state === "CANCELLED") this.cancelledIntents.delete(intentKey(task.input));
       accepted?.();
@@ -1165,18 +1165,31 @@ export class DouyinUploadService {
   private duplicate(task: UploadTaskRecord): UploadTaskRecord | undefined {
     return this.store.tasks().find(other => other.result.upload_task_id !== task.result.upload_task_id && sameTargetBytes(task, other) && this.store.hasMarker(other.result.upload_task_id));
   }
-  private async currentTarget(task: UploadTaskRecord): Promise<void> {
+  private async currentTarget(task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
+    signal.throwIfAborted();
     if (this.store.tasks().some(other => other.authorization.pageBatchId === task.authorization.pageBatchId && this.store.hasMarker(other.result.upload_task_id))) return;
     const selection = this.store.intents().find(intent => intent.authorization.pageBatchId === task.authorization.pageBatchId)?.selection;
     if (selection?.plan?.accountSource === "current-browser" && !this.automationUploadActive) {
+      if (!(this.accounts instanceof QianchuanAccountSettings)) throw uploadFailure("INPUT_CONFLICT", "account", "本轮网页子账户绑定不可用，未选择上传文件。", "核查原批次授权；不会更改冻结目标。", true);
       try {
-        if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("网页子账户绑定不可用。");
-        const current = await this.accounts.prepareCurrentCatalog(task.authorization.target.product, undefined, this.excludedPlanTargets());
-        await this.accounts.assertCurrentUploadTarget(task.authorization.target);
-        this.selectedAccountTargets.resolve(task.authorization, selection, current.configured);
-        if (current.target.advertiserId !== task.authorization.target.advertiserId) throw new Error("网页当前子账户已变化。");
-      } catch {
-        throw uploadFailure("INPUT_CONFLICT", "account", "网页子账户或本轮上传授权已变化，未选择上传文件。", "刷新计划后重新开始制作；旧冻结目标保持原样。", true);
+        const configured = await this.accounts.freeze(task.authorization.target.product, task.authorization.target.configDigest);
+        try { this.selectedAccountTargets.resolve(task.authorization, selection, configured); }
+        catch { throw uploadFailure("INPUT_CONFLICT", "account", "本轮上传授权或账号配置已变化，未选择上传文件。", "核查原批次授权；旧冻结目标保持原样。", true); }
+        const current = await this.accounts.prepareCurrentCatalog(task.authorization.target.product, signal, this.excludedPlanTargets());
+        signal.throwIfAborted();
+        if (current.target.advertiserId !== task.authorization.target.advertiserId) throw uploadFailure("INPUT_CONFLICT", "account", "网页当前子账户与本批冻结账户不同，未选择上传文件。", "核对原账号浏览器；不会改传其他账户或计划。", true);
+        try { this.selectedAccountTargets.resolve(task.authorization, selection, current.configured); }
+        catch { throw uploadFailure("INPUT_CONFLICT", "account", "账号连接或本轮上传授权已变化，未选择上传文件。", "核查原批次授权；旧冻结目标保持原样。", true); }
+        await this.accounts.assertCurrentUploadTarget(task.authorization.target, signal);
+      } catch (error) {
+        signal.throwIfAborted();
+        if (error instanceof UploadError) throw error;
+        if (error instanceof QianchuanAccountConfigError) throw uploadFailure("INPUT_CONFLICT", "account", error.message, "核查原批次账号配置；旧冻结目标保持原样。", true);
+        // Only identified transport failures can retry. Ambiguous identity reads remain fail-closed.
+        const code = (error as NodeJS.ErrnoException | undefined)?.code ?? (error as { cause?: NodeJS.ErrnoException } | undefined)?.cause?.code;
+        if (error instanceof Error && error.name === "TimeoutError") throw uploadFailure("TIMEOUT", "browser", "读取原账号浏览器超时，尚未选择文件。", "程序将在原冻结目标下有限重试。", false, true);
+        if (["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET"].includes(code ?? "")) throw uploadFailure("CDP_UNAVAILABLE", "browser", "原账号浏览器连接暂时不可用，尚未选择文件。", "程序将在原冻结目标下有限重试。", false, true);
+        throw uploadFailure("PAGE_CONTRACT_CHANGED", "page", "无法核对原浏览器的当前账户或上传连接，尚未选择文件；未确认账号已变化。", "核查对应 Chrome 的当前页面及连接；恢复后对未选文件任务安全继续。", true);
       }
       return;
     }
@@ -1194,9 +1207,9 @@ export class DouyinUploadService {
     const controller = new AbortController(), key = first.authorization.pageBatchId, recovery = this.store.hasMarker(first.result.upload_task_id);
     const savedReady = new Set<string>();
     let port: UploadBrowserPort | undefined;
+    let portStarted = false;
     try {
       if (!recovery && tasks.some(task => this.store.tasks().some(other => this.store.isClosed(other.authorization.pageBatchId) && sameTargetBytes(task, other) && !this.store.hasMarker(other.result.upload_task_id)))) throw uploadFailure("INPUT_CONFLICT", "input", "同目标视频属于已结束的本地上传批次，禁止重新上传。", "保留原批次历史；结束后的未选成员也不能取得新选择权限。", true);
-      if (!recovery) await this.currentTarget(first);
       if (this.stopFailed || generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，本次浏览器操作已阻断。");
       if (!recovery) {
         const duplicate = this.duplicate(first);
@@ -1205,34 +1218,40 @@ export class DouyinUploadService {
           await this.save(first); if (!duplicate.result.readyEvidence && !duplicate.result.acceptedEvidence) this.pauseAccount(first); return;
         }
       }
+      portStarted = this.sessions.has(key);
       port = this.sessions.get(key) ?? this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
       const t = first.config.timeouts;
       if (!recovery) { await this.bounded(signal => this.prepareGroup(ids, 0, signal), t.processing, controller.signal); tasks = ids.map(id => this.requireTask(id)); }
       if (tasks.length > (recovery ? first.authorization.expectedCount : MAX_UPLOAD_GROUP_SIZE) || tasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(first.authorization) || JSON.stringify(task.config) !== JSON.stringify(first.config) || this.store.hasMarker(task.result.upload_task_id) !== recovery)) throw unknown();
       if (!recovery) { for (const task of tasks) task.result.attempt_count++; await this.phase(tasks, "CONNECTING_BROWSER"); }
       for (let retry = 0; ; retry++) {
+        let retryCounted = false;
         try {
+          if (!recovery) await this.bounded(signal => this.currentTarget(first, signal), t.navigation, controller.signal);
+          if (this.stopFailed || this.store.unavailable || generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，本次浏览器操作已阻断。");
+          if (retry > 0) { for (const task of tasks) task.result.retry_count++; await this.save(tasks); retryCounted = true; }
+          portStarted = true;
           await this.bounded(signal => port!.connect(first, signal), t.connect, controller.signal);
           if (!recovery) await this.selectGroup(tasks, port, controller.signal);
           break;
         }
         catch (error) {
-          const reconnectable = error instanceof UploadError && error.failure.category === "browser" &&
+          const reconnectable = error instanceof UploadError && !error.failure.requires_human && error.failure.category === "browser" &&
             (error.failure.code === "CDP_UNAVAILABLE" && error.failure.retryable || error.failure.code === "TIMEOUT");
           if (!reconnectable || recovery || controller.signal.aborted || tasks.some(task => task.result.upload_outcome !== "NOT_SELECTED" || this.store.hasMarker(task.result.upload_task_id)) || this.selectedFiles(first).length) throw error;
+          if (retry > 0 && !retryCounted) { for (const task of tasks) task.result.retry_count++; await this.save(tasks); }
           if (retry === 2) throw new UploadError({ ...error.failure, retryable: true, message: `自动连接及上传准备已尝试 3 次：${error.failure.message}`.slice(0, 500), next_action: "文件尚未选择。请检查对应 Chrome 的连接及登录状态，恢复后明确点击“安全继续”；不会自动追加重试。" });
-          await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; throw error; });
+          if (portStarted) await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; throw error; });
+          portStarted = false;
           this.sessions.delete(key);
           for (const task of tasks) {
             task.result = { ...task.result, failure: { ...error.failure, message: `Chrome 连接或上传准备失败，正在自动重连（${retry + 1}/2）。`, next_action: "尚未选择文件；稍候自动重连，可停止本批上传。" }, timestamp: timestamp() };
           }
           await this.save(tasks);
           await delay(1000 * (retry + 1), undefined, { signal: controller.signal });
-          await this.currentTarget(first); controller.signal.throwIfAborted();
+          controller.signal.throwIfAborted();
           if (this.stopFailed || this.store.unavailable || generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，自动重连已停止。");
           port = this.dependencies.browser(); this.sessions.set(key, port); this.active = { ids, controller, port };
-          for (const task of tasks) task.result.retry_count++;
-          await this.save(tasks);
         }
       }
       let evidence: ReadyEvidence[];
@@ -1303,7 +1322,7 @@ export class DouyinUploadService {
       }
       if (!this.store.unavailable && failed.length) await this.save(failed);
       if (this.store.unavailable) { this.initializationFailure = "上传存储失败；保留屏障，上传结果按未知处理。"; this.changed(); }
-      if (port) await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; }); this.sessions.delete(key);
+      if (port && portStarted) await this.bounded(() => port!.stop(), 5000, new AbortController().signal).catch(() => { this.stopFailed = true; }); this.sessions.delete(key);
     } finally { for (const id of ids) this.rowReady.delete(id); if (port && this.active?.port === port) this.active = undefined; this.changed(); }
   }
   private async saveReady(tasks: UploadTaskRecord[], evidence: ReadyEvidence[], signal: AbortSignal): Promise<void> {
@@ -1326,12 +1345,12 @@ export class DouyinUploadService {
     if (port.prepareFiles) {
       for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }
       await this.bounded(inner => port.prepareFiles!(tasks, inner), 2 * 60 * 60 * 1000, signal);
-      await this.currentTarget(first); signal.throwIfAborted();
+      await this.bounded(inner => this.currentTarget(first, inner), t.navigation, signal); signal.throwIfAborted();
     }
     await this.phase(tasks, "OPENING_UPLOAD_PAGE");
     const prepared = await this.bounded(inner => port.open(tasks, this.selectedFiles(first), inner), t.navigation, signal);
     for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }
-    await this.currentTarget(first); signal.throwIfAborted();
+    await this.bounded(inner => this.currentTarget(first, inner), t.navigation, signal); signal.throwIfAborted();
     await this.store.markSelecting(tasks.map(task => task.result.upload_task_id), prepared.pageOwnership, prepared.selectedIndex);
     this.changed(); signal.throwIfAborted();
     await this.bounded(inner => port.upload(tasks.map(task => this.requireTask(task.result.upload_task_id)), inner), t.fileInput, signal);

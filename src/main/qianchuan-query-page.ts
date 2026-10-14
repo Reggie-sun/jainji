@@ -75,18 +75,7 @@ export async function withQianchuanQueryPage<T>(target: FrozenQianchuanAccount, 
     const cleanupTimer = setTimeout(() => transportController.abort(), 2000);
     cleanupTimer.unref();
     await page?.close({ runBeforeUnload: false }).catch(() => undefined);
-    if (pickerTargetId && pickerSession) {
-      await pickerSession.send("Target.closeTarget", { targetId: pickerTargetId }).catch(() => undefined);
-      // Chrome acknowledges close before other connections observe the target's removal.
-      // Keep this invocation's transport alive until its own blank/loaded picker is gone.
-      await (async () => {
-        while (!transportController.signal.aborted) {
-          const targets = await pickerSession!.send("Target.getTargets");
-          if (!targets.targetInfos.some(target => target.targetId === pickerTargetId)) return;
-          await new Promise(resolve => setTimeout(resolve, 20));
-        }
-      })().catch(() => undefined);
-    }
+    if (pickerTargetId) await pickerSession?.send("Target.closeTarget", { targetId: pickerTargetId }).catch(() => undefined);
     await pickerSession?.detach().catch(() => undefined);
     await browser?.close().catch(() => undefined);
     transportController.abort();
