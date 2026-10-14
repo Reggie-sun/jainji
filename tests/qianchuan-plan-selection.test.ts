@@ -103,8 +103,38 @@ describe("current browser subaccount", () => {
     expect(read).toHaveBeenCalledOnce();
     results[0]!.accounts[0]!.name = "consumer edit";
     expect(results[1]!.accounts[0]!.name).toBe(account.name);
-    await f.service.listSubaccounts(request); expect(read).toHaveBeenCalledTimes(2);
+    await f.service.listSubaccounts(request); expect(read).toHaveBeenCalledOnce();
+    await f.service.listSubaccounts({...request,refresh:true}); expect(read).toHaveBeenCalledTimes(2);
     expect(f.connect).not.toHaveBeenCalled();
+  });
+  it("reuses only a fresh directory for the same live child, and rejects failed live checks instead of falling back", async () => {
+    let currentId = "7000", time = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => time);
+    const named = (advertiserId: string) => ({advertiserId,name:"网页子账户"});
+    type Subaccounts = NonNullable<ConstructorParameters<typeof QianchuanAccountSettings>[4]>;
+    const current = vi.fn(async () => currentId);
+    const read = vi.fn<Subaccounts["read"]>(async () => ({current:named(currentId),accounts:[named("7000"),named("8000")]}));
+    try {
+      const f = await fixture(current,undefined,{read,switch:vi.fn<Subaccounts["switch"]>()});
+      const request = {product:"眼贴",expectedAdvertiserId:"1000"};
+      await f.service.listSubaccounts(request);
+      current.mockClear();
+      const cached = await f.service.listSubaccounts(request);
+      expect(current).toHaveBeenCalledTimes(2); expect(read).toHaveBeenCalledOnce();
+      cached.accounts[0]!.name = "consumer edit";
+      expect((await f.service.listSubaccounts(request)).accounts[0]!.name).toBe("网页子账户");
+      currentId = "8000";
+      expect((await f.service.listSubaccounts(request)).current.advertiserId).toBe("8000");
+      expect(read).toHaveBeenCalledTimes(2);
+      time += 5 * 60_000;
+      await f.service.listSubaccounts(request); expect(read).toHaveBeenCalledTimes(3);
+      current.mockRejectedValueOnce(new Error("Chrome closed"));
+      await expect(f.service.listSubaccounts(request)).rejects.toThrow("Chrome closed");
+      await f.service.listSubaccounts(request); expect(read).toHaveBeenCalledTimes(4);
+      read.mockRejectedValueOnce(new Error("directory unavailable"));
+      await expect(f.service.listSubaccounts({...request,refresh:true})).rejects.toThrow("directory unavailable");
+      await f.service.listSubaccounts(request); expect(read).toHaveBeenCalledTimes(6);
+    } finally { clock.mockRestore(); }
   });
   it("reads the child directory while another plan read is still pending", async () => {
     const account = {advertiserId:"7000",name:"网页子账户"};

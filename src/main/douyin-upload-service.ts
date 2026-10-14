@@ -377,7 +377,7 @@ export class DouyinUploadService {
   }
   async listSubaccounts(input: unknown): Promise<QianchuanSubaccountCatalog> {
     const parsed = QianchuanSubaccountListRequestSchema.parse(input);
-    const generation = this.controlGeneration, key = JSON.stringify([generation, parsed.product, parsed.expectedAdvertiserId]);
+    const generation = this.controlGeneration, key = JSON.stringify([generation, parsed.product, parsed.expectedAdvertiserId, parsed.refresh === true]);
     let pending = this.subaccountReads.get(key);
     if (!pending) {
       pending = (async () => {

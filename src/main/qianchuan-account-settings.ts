@@ -36,6 +36,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly currentAccount: typeof readCurrentQianchuanAccountSnapshot;
   private readonly currentAccounts?: QianchuanCurrentAccountPort;
   private readonly currentSessions = new WeakMap<object, QianchuanCurrentAccountSession>();
+  private readonly subaccountCatalogs = new Map<QianchuanProduct, { key: string; readAt: number; catalog: QianchuanSubaccountCatalog }>();
   get currentAccountBacked(): boolean { return !!this.currentAccounts; }
   constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, currentAccount?: typeof readCurrentQianchuanAccountSnapshot,
     private readonly subaccountBrowser = { read: readQianchuanSubaccounts, switch: switchQianchuanSubaccount }, currentAccounts?: QianchuanCurrentAccountPort) {
@@ -312,17 +313,26 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   }
 
   async listSubaccounts(input: QianchuanSubaccountListRequest, signal: AbortSignal, excluded: ReadonlySet<string>, guard: (target: FrozenQianchuanAccount) => void): Promise<QianchuanSubaccountCatalog> {
-    const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
-    if (before.configured.advertiserId !== input.expectedAdvertiserId) throw new Error("登录账号已变化，请重新选择。");
-    const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); await this.freeze(input.product, before.configured.configDigest); };
-    await fresh();
-    const catalog = this.currentAccounts ? await this.currentAccounts.accounts(this.currentSessions.get(before)!, signal, fresh) : await this.subaccountBrowser.read(before.configured.cdpEndpoint, signal, excluded, fresh);
-    const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
-    if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(catalog.current) !== JSON.stringify(after.account)) throw new Error("网页账户或浏览器连接已变化，请刷新子账户。");
-    await fresh(); return catalog;
+    try {
+      const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
+      if (before.configured.advertiserId !== input.expectedAdvertiserId) throw new Error("登录账号已变化，请重新选择。");
+      const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); await this.freeze(input.product, before.configured.configDigest); };
+      await fresh();
+      const key = JSON.stringify([before, [...excluded].sort()]), cached = this.subaccountCatalogs.get(input.product);
+      const reuse = !input.refresh && cached?.key === key && performance.now() - cached.readAt < 5 * 60_000;
+      if (!reuse) this.subaccountCatalogs.delete(input.product);
+      // Only the display directory is cached; live browser/account and config checks still bracket every read.
+      const catalog = reuse ? structuredClone(cached.catalog) : this.currentAccounts ? await this.currentAccounts.accounts(this.currentSessions.get(before)!, signal, fresh) : await this.subaccountBrowser.read(before.configured.cdpEndpoint, signal, excluded, fresh);
+      const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
+      if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(catalog.current) !== JSON.stringify(after.account)) throw new Error("网页账户或浏览器连接已变化，请刷新子账户。");
+      await fresh();
+      if (!reuse) this.subaccountCatalogs.set(input.product, { key, readAt: performance.now(), catalog: structuredClone(catalog) });
+      return catalog;
+    } catch (error) { this.subaccountCatalogs.delete(input.product); throw error; }
   }
 
   async switchSubaccount(input: QianchuanSubaccountSwitchRequest, signal: AbortSignal, excluded: ReadonlySet<string>, guard: (target: FrozenQianchuanAccount) => void): Promise<QianchuanCurrentAccount> {
+    this.subaccountCatalogs.delete(input.product);
     const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
     if (before.configured.advertiserId !== input.expectedAdvertiserId || before.account.advertiserId !== input.expectedCurrentAdvertiserId) throw new Error("网页账户或登录账号已变化，请刷新子账户后重选。");
     if (!this.currentAccounts && before.configured.egress?.mode === "remote-browser" && input.advertiserId !== before.configured.advertiserId) throw new Error("VPS 子账户须先在账号设置中保存绑定，未切换网页。");
