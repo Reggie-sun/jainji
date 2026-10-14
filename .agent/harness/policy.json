@@ -628,7 +628,7 @@
       "required": true,
       "command": "node",
       "args": ["scripts/run-qianchuan-extension-tests.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/qianchuan-extension-catalog.test.ts", "tests/qianchuan-extension-bridge.test.ts", "tests/qianchuan-extension-browser.test.ts", "tests/qianchuan-extension-install.test.ts", "tests/qianchuan-extension-egress.test.ts", "tests/qianchuan-extension-accounts.test.ts", "tests/qianchuan-extension-remote.test.ts", "tests/qianchuan-extension-integration.test.ts", "tests/qianchuan-extension-process.test.ts", "tests/qianchuan-extension-upload.test.ts"],
+      "testFiles": ["tests/qianchuan-account-catalog.test.ts", "tests/qianchuan-browser-accounts.test.ts", "tests/qianchuan-cdp-account-session.test.ts", "tests/qianchuan-remote-browser-metadata.test.ts", "tests/qianchuan-extension-catalog.test.ts", "tests/qianchuan-extension-bridge.test.ts", "tests/qianchuan-extension-browser.test.ts", "tests/qianchuan-extension-install.test.ts", "tests/qianchuan-extension-egress.test.ts", "tests/qianchuan-extension-accounts.test.ts", "tests/qianchuan-extension-remote.test.ts", "tests/qianchuan-extension-integration.test.ts", "tests/qianchuan-extension-process.test.ts", "tests/qianchuan-extension-upload.test.ts"],
       "timeoutMs": 180000
     },
     {
@@ -717,7 +717,7 @@
   "routes": [
     {
       "id": "domain-qianchuan-extension",
-      "paths": ["src/main/qianchuan-extension-*.ts", "src/main/qianchuan-account-settings.ts", "src/main/qianchuan-egress-browser.ts", "src/main/qianchuan-selected-account-targets.ts", "src/main/douyin-upload-service.ts", "src/main/qianchuan-remote-*.ts", "src/shared/qianchuan-remote.ts", "resources/qianchuan-extension/**", "tests/qianchuan-extension-*.test.ts", "tests/helpers/qianchuan-extension-fixture.ts", "scripts/build-qianchuan-remote.mjs", "scripts/run-qianchuan-extension-tests.mjs", "docs/superpowers/plans/2026-10-13-qianchuan-extension-subaccounts.md", "docs/qianchuan-extension-subaccounts.md"],
+      "paths": ["src/main/qianchuan-extension-*.ts", "src/main/qianchuan-account-catalog.ts", "src/main/qianchuan-current-account-port.ts", "src/main/qianchuan-cdp-account-session.ts", "src/main/qianchuan-browser-accounts.ts", "src/main/qianchuan-account-settings.ts", "src/main/qianchuan-egress-browser.ts", "src/main/qianchuan-selected-account-targets.ts", "src/main/douyin-upload-service.ts", "src/main/qianchuan-remote-*.ts", "src/shared/qianchuan-remote.ts", "resources/qianchuan-extension/**", "tests/qianchuan-account-catalog.test.ts", "tests/qianchuan-browser-accounts.test.ts", "tests/qianchuan-cdp-account-session.test.ts", "tests/qianchuan-remote-browser-metadata.test.ts", "tests/qianchuan-extension-*.test.ts", "tests/helpers/qianchuan-extension-fixture.ts", "scripts/build-qianchuan-remote.mjs", "scripts/run-qianchuan-extension-tests.mjs", "docs/superpowers/plans/2026-10-13-qianchuan-extension-subaccounts.md", "docs/superpowers/plans/2026-10-14-qianchuan-browser-child-selection.md", "docs/qianchuan-extension-subaccounts.md"],
       "checkIds": ["typecheck", "qianchuan-extension", "qianchuan-remote-build", "documents"],
       "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/video-validation-harness-spec.md", "docs/douyin-auto-upload-spec.md", "docs/qianchuan-extension-subaccounts.md"]
     },

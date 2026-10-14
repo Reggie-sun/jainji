@@ -195,10 +195,14 @@ async function readPage(connection: CdpConnection, candidate: Candidate): Promis
   } finally { await connection.detach(sessionId); }
 }
 
-function uniqueVisibleAccount(pages: Array<{ candidate: Candidate; snapshot: PageSnapshot }>): QianchuanCurrentAccount {
+function selectedPages(pages: Array<{ candidate: Candidate; snapshot: PageSnapshot }>, allowSingleHidden: boolean) {
+  const visible = pages.filter(page => page.snapshot.visibilityState === "visible");
+  return visible.length || !allowSingleHidden || pages.length !== 1 ? visible : pages;
+}
+
+function uniqueAccount(pages: Array<{ candidate: Candidate; snapshot: PageSnapshot }>): QianchuanCurrentAccount {
   const accounts = new Map<string, QianchuanCurrentAccount>();
   for (const page of pages) {
-    if (page.snapshot.visibilityState !== "visible") continue;
     const account = domAccount(page.snapshot.accountTexts);
     if (account.advertiserId !== page.candidate.advertiserId) throw new Error(FAILURE);
     accounts.set(JSON.stringify(account), account);
@@ -220,14 +224,14 @@ export async function readCurrentQianchuanAccountSnapshot(endpoint: string, pare
   return (await readCurrentAccountState(endpoint, parentSignal, excludedTargets)).account;
 }
 
-/** An explicit account operation must address exactly one visible, verified user page. */
-export async function readCurrentQianchuanPage(endpoint: string, signal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<{ account: QianchuanCurrentAccount; targetId: string; url: string }> {
-  const state = await readCurrentAccountState(endpoint, signal, excludedTargets);
+/** The catalog may address the sole verified account page while another browser tab is active. */
+export async function readCurrentQianchuanPage(endpoint: string, signal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), options: { allowSingleHidden?: boolean } = {}): Promise<{ account: QianchuanCurrentAccount; targetId: string; url: string }> {
+  const state = await readCurrentAccountState(endpoint, signal, excludedTargets, options.allowSingleHidden === true);
   if (state.pages.length !== 1) throw new Error(FAILURE);
   return { account: state.account, targetId: state.pages[0]!.targetId, url: state.pages[0]!.url };
 }
 
-async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<{ account: QianchuanCurrentAccount; pages: Candidate[] }> {
+async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), allowSingleHidden = false): Promise<{ account: QianchuanCurrentAccount; pages: Candidate[] }> {
   parentSignal?.throwIfAborted();
   const controller = new AbortController();
   let timedOut = false;
@@ -251,14 +255,16 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
     const initialCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets);
     const first = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of initialCandidates) first.push({ candidate, snapshot: await readPage(connection, candidate) });
-    const expected = uniqueVisibleAccount(first);
+    const selected = selectedPages(first, allowSingleHidden);
+    const expected = uniqueAccount(selected);
     const currentCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets);
     if (candidateSignature(currentCandidates) !== candidateSignature(initialCandidates)) throw new Error(FAILURE);
     const second = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of currentCandidates) second.push({ candidate, snapshot: await readPage(connection, candidate) });
-    if (first.some((page, index) => page.snapshot.href !== second[index]?.snapshot.href || page.snapshot.visibilityState !== second[index]?.snapshot.visibilityState || page.snapshot.visibilityState === "visible" && JSON.stringify(page.snapshot.accountTexts) !== JSON.stringify(second[index]?.snapshot.accountTexts))) throw new Error(FAILURE);
-    if (JSON.stringify(uniqueVisibleAccount(second)) !== JSON.stringify(expected)) throw new Error(FAILURE);
-    return { account: expected, pages: second.filter(page => page.snapshot.visibilityState === "visible").map(page => page.candidate) };
+    if (first.some((page, index) => page.snapshot.href !== second[index]?.snapshot.href || page.snapshot.visibilityState !== second[index]?.snapshot.visibilityState || selected.includes(page) && JSON.stringify(page.snapshot.accountTexts) !== JSON.stringify(second[index]?.snapshot.accountTexts))) throw new Error(FAILURE);
+    const finalPages = selectedPages(second, allowSingleHidden);
+    if (JSON.stringify(uniqueAccount(finalPages)) !== JSON.stringify(expected)) throw new Error(FAILURE);
+    return { account: expected, pages: finalPages.map(page => page.candidate) };
   } catch (error) {
     if (controller.signal.aborted) {
       if (timedOut) throw controller.signal.reason;

@@ -57,6 +57,7 @@ export class RemoteWorker {
     if (request.action === "extension-setup") return new RemoteExtensionHost(this.root, this.home).setup(request.extension!, id);
     if (request.action === "extension-profile") return new RemoteExtensionHost(this.root, this.home).profile(id);
     if (request.action === "extension-verify") return { startedAt: await new RemoteExtensionHost(this.root, this.home).verify(id, request.extensionProcess!) };
+    if (request.action === "browser-profile") return new RemoteExtensionHost(this.root, this.home).browserProfile(id);
     if (request.action === "file-status") return this.files.status(request.file!);
     if (request.action === "file-append") return this.files.append(request.file!, request.offset!, body);
     if (request.action === "assert-closed") { await this.manager.assertClosed(id); return {}; }

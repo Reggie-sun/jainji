@@ -48,11 +48,12 @@ it("reads and switches dynamic local, proxy, and VPS child accounts through the 
       identity: `${target.product}:${documentIds.get(target.product)!}`,
       endpoint: target.cdpEndpoint,
       uploadEndpointVerified: true,
+      account: snapshotAccount,
       snapshot: { tabId: QIANCHUAN_PRODUCTS.indexOf(target.product), documentId: documentIds.get(target.product)!, account: snapshotAccount, gfversion: "fixture" },
       catalog: {} as QianchuanExtensionCatalog,
     };
   };
-  const current = vi.fn(async (target: FrozenQianchuanAccount) => session(target, currentIds.get(target.product)!));
+  const current = vi.fn(async (target: FrozenQianchuanAccount, _signal?: AbortSignal, _excludedTargets?: ReadonlySet<string>) => session(target, currentIds.get(target.product)!));
   const accounts = vi.fn(async (bound: ExtensionAccountSession, _signal: AbortSignal, guard: () => Promise<void>): Promise<QianchuanSubaccountCatalog> => {
     await guard();
     const currentAccount = bound.snapshot.account;
@@ -96,10 +97,13 @@ it("reads and switches dynamic local, proxy, and VPS child accounts through the 
     expect(catalog.current).toEqual(account(initialChild, `网页子账户 ${configuredRow.product}`));
     expect(catalog.accounts.map(value => value.advertiserId)).toEqual([initialChild, expectedChild]);
 
-    const currentPage = await settings.prepareCurrentCatalog(configuredRow.product);
+    const excludedTargets = new Set(["protected-upload-page"]);
+    const currentPage = await settings.prepareCurrentCatalog(configuredRow.product, undefined, excludedTargets);
+    expect(current.mock.lastCall?.[2]).toBe(excludedTargets);
     expect(currentPage.configured.advertiserId).toBe(anchor.advertiserId);
     expect(currentPage.target.advertiserId).toBe(initialChild);
-    const plan = (await settings.readCurrentPlans(currentPage.target, new AbortController().signal))[0]!;
+    const plan = (await settings.readCurrentPlans(currentPage.target, new AbortController().signal, excludedTargets))[0]!;
+    expect(current.mock.calls.slice(-2).every(call => call[2] === excludedTargets)).toBe(true);
     expect(plan).toMatchObject({ advertiserId: initialChild, accountSource: "current-browser" });
 
     const authorization = {
@@ -141,7 +145,7 @@ it("reads and switches dynamic local, proxy, and VPS child accounts through the 
     currentIds.set(driftProduct, "9600000000000000002");
     return [{ advertiserId: bound.snapshot.account.advertiserId, adId: "9600000000000000011", name: "过期快照计划", accountSource: "current-browser" as const }];
   });
-  await expect(settings.readCurrentPlans(planReadTarget.target, new AbortController().signal)).rejects.toThrow("网页账户或扩展连接已变化");
+  await expect(settings.readCurrentPlans(planReadTarget.target, new AbortController().signal)).rejects.toThrow("网页账户或浏览器连接已变化");
 
   expect(current).toHaveBeenCalled();
   expect(accounts).toHaveBeenCalledTimes(QIANCHUAN_PRODUCTS.length + 1);

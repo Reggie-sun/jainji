@@ -15,7 +15,7 @@ export const RemoteFileSchema = z.object({
 export const RemoteRequestSchema = z.object({
   version: z.literal(1),
   route: QianchuanEgressSchema.refine(value => value.mode === "remote-browser"),
-  action: z.enum(["open", "existing", "assert-closed", "close", "probe", "file-status", "file-append", "desktop-sync", "extension-setup", "extension-profile", "extension-verify"]),
+  action: z.enum(["open", "existing", "assert-closed", "close", "probe", "file-status", "file-append", "desktop-sync", "extension-setup", "extension-profile", "extension-verify", "browser-profile"]),
   advertiserId: z.string().regex(/^[1-9][0-9]{0,19}$/),
   file: RemoteFileSchema.optional(), offset: z.number().int().nonnegative().optional(),
   displayName: RemoteDisplayNameSchema.optional(),
@@ -28,5 +28,12 @@ export const RemoteRequestSchema = z.object({
 });
 export type RemoteRequest = z.infer<typeof RemoteRequestSchema>;
 export const RemoteBrowserSchema = z.object({ port: z.number().int().min(1).max(65535), browserPath: z.string().regex(/^\/devtools\/browser\/[a-zA-Z0-9-]+$/) }).strict();
+export const RemoteBrowserProfileSchema = z.object({
+  profile: z.string().startsWith("/").max(4096),
+  profileDirectory: ExtensionProcessSchema.shape.profileDirectory,
+  processId: z.number().int().min(2).safe(),
+  startedAt: z.string().regex(/^[0-9]+$/),
+  browser: RemoteBrowserSchema,
+}).strict();
 export const RemoteFileStatusSchema = z.object({ offset: z.number().int().nonnegative(), complete: z.boolean(), path: z.string().startsWith("/").max(4096) }).strict();
 export const RemoteExtensionProfileSchema = z.object({ profile: z.string().startsWith("/").max(4096), profileDirectory: ExtensionProcessSchema.shape.profileDirectory, browser: RemoteBrowserSchema.optional() }).strict();

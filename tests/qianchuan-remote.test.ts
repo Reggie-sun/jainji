@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { RemoteRequestSchema } from "../src/shared/qianchuan-remote";
+import { RemoteBrowserProfileSchema, RemoteRequestSchema } from "../src/shared/qianchuan-remote";
 import { sshRemoteArguments, RemoteFrames } from "../src/main/qianchuan-remote-transport";
 import { AutomationBrowserAccounts } from "../src/main/qianchuan-automation-browsers";
+import { QianchuanRemoteRuntime } from "../src/main/qianchuan-remote-runtime";
 import type { FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
 
 const route = { mode: "remote-browser" as const, group: "one", sshHost: "shop-one", expectedIp: "8.8.8.8", localPort: 19381 };
@@ -35,6 +36,20 @@ describe("remote browser transport", () => {
     for (const value of [{ ...request, bodyBytes: 1 }, { ...request, displayName: "\nExec=bad" }, { ...request, displayName: undefined }, { ...request, action: "probe" }]) {
       expect(RemoteRequestSchema.safeParse(value).success).toBe(false);
     }
+  });
+  it("accepts a fixed zero-body browser-profile request and validates its complete process proof", async () => {
+    const request = { version: 1, route, action: "browser-profile", advertiserId: "123", bodyBytes: 0 };
+    expect(RemoteRequestSchema.safeParse(request).success).toBe(true);
+    expect(RemoteRequestSchema.safeParse({ ...request, extensionProcess: { pid: 45, profile: "/profile", profileDirectory: "Default" } }).success).toBe(false);
+    const profile = { profile: "/profile", profileDirectory: "Default", processId: 45, startedAt: "12345", browser: { port: 43123, browserPath: "/devtools/browser/abc-123" } };
+    expect(RemoteBrowserProfileSchema.parse(profile)).toEqual(profile);
+    for (const invalid of [
+      { ...profile, processId: 1 }, { ...profile, startedAt: "" }, { ...profile, browser: undefined },
+      { ...profile, extra: true }, { ...profile, browser: { ...profile.browser, browserPath: "/devtools/page/id" } },
+    ]) expect(RemoteBrowserProfileSchema.safeParse(invalid).success).toBe(false);
+    const channel = { route, controller: new AbortController(), close() {}, request: async (...args: unknown[]) => { expect(args).toEqual(["browser-profile", "123", {}, undefined, undefined]); return profile; } };
+    const runtime = new QianchuanRemoteRuntime(() => channel as never);
+    await expect(runtime.browserProfile(route, "123")).resolves.toEqual(profile);
   });
 });
 

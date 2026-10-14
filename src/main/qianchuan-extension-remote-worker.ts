@@ -17,15 +17,30 @@ export class RemoteExtensionHost {
     if (identity.profile !== binding.profile || identity.profileDirectory !== binding.profileDirectory) throw extensionChanged();
     return verifyExtensionProcess(identity);
   }
-  async profile(advertiserId: string): Promise<{ profile: string; profileDirectory: string; browser?: { port: number; browserPath: string } }> {
+  private async verifiedIdentity(advertiserId: string) {
     const binding = await this.binding(advertiserId), identity = await findExtensionProcess(binding.profile, binding.profileDirectory);
     const startedAt = await this.verify(advertiserId, identity);
+    return { binding, identity, startedAt };
+  }
+  private async stableBrowserMetadata(advertiserId: string, identity: ExtensionProcess, startedAt: string) {
+    const metadata = await readExtensionBrowserMetadata(identity);
+    if (await this.verify(advertiserId, identity) !== startedAt) throw extensionChanged();
+    return metadata;
+  }
+  async profile(advertiserId: string): Promise<{ profile: string; profileDirectory: string; browser?: { port: number; browserPath: string } }> {
+    const { binding, identity, startedAt } = await this.verifiedIdentity(advertiserId);
     // Metadata only: no CDP request or page connection is made here.
     await registerQianchuanExtensionProfile(this.root, binding.profile);
-    const metadata = await readExtensionBrowserMetadata(identity);
+    const metadata = await this.stableBrowserMetadata(advertiserId, identity, startedAt);
     const browser = metadata?.browserPath ? { port: metadata.port, browserPath: metadata.browserPath } : undefined;
-    if (await this.verify(advertiserId, identity) !== startedAt) throw extensionChanged();
     return { profile: binding.profile, profileDirectory: binding.profileDirectory, ...(browser ? { browser } : {}) };
+  }
+  /** Pure current-browser proof for CDP account reading; it never installs or registers a native host. */
+  async browserProfile(advertiserId: string): Promise<{ profile: string; profileDirectory: string; processId: number; startedAt: string; browser: { port: number; browserPath: string } }> {
+    const { binding, identity, startedAt } = await this.verifiedIdentity(advertiserId);
+    const metadata = await this.stableBrowserMetadata(advertiserId, identity, startedAt);
+    if (!metadata?.browserPath) throw extensionChanged();
+    return { profile: binding.profile, profileDirectory: binding.profileDirectory, processId: identity.pid, startedAt, browser: { port: metadata.port, browserPath: metadata.browserPath } };
   }
   async setup(config: Omit<ExtensionHostConfig, "version" | "extensionOrigin">, advertiserId: string): Promise<{ port: number }> {
     let port = config.port;

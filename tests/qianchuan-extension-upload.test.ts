@@ -55,6 +55,7 @@ it("keeps a 12-file current-child VPS batch on its saved browser anchor through 
     return {
       identity: `fixture-extension:${selectedProduct}:${childAdvertiserId}`,
       endpoint: runtimeEndpoint,
+      account: currentAccount,
       snapshot: { tabId: 11, documentId: "f237e19e-cc37-48b2-a54c-c757fb95a61c", account: currentAccount, gfversion: "fixture" },
       catalog: {} as QianchuanExtensionCatalog,
       uploadEndpointVerified,

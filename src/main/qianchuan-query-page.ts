@@ -14,7 +14,7 @@ function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 
 /** Shared, guarded connection: only this invocation's new picker tab is attached and closed. */
-export async function withQianchuanQueryPage<T>(target: FrozenQianchuanAccount, signal: AbortSignal, read: (page: Page) => Promise<T>): Promise<T> {
+export async function withQianchuanQueryPage<T>(target: FrozenQianchuanAccount, signal: AbortSignal, read: (page: Page) => Promise<T>, expectedBrowserContextId?: string): Promise<T> {
   signal.throwIfAborted();
   if (!/^[1-9][0-9]{0,19}$/.test(target.advertiserId) || !isLoopbackUrl(target.cdpEndpoint) || new URL(target.cdpEndpoint).pathname !== "/") throw changed();
   let relay: Awaited<ReturnType<typeof guardedTransport>> | undefined;
@@ -58,6 +58,12 @@ export async function withQianchuanQueryPage<T>(target: FrozenQianchuanAccount, 
       creating = pickerSession.send("Target.createTarget", { url: "about:blank", background: true });
       pickerTargetId = (await creating).targetId;
       signal.throwIfAborted();
+      // Compare the actual blank target before attaching or navigating. A matching
+      // advertiser alone does not prove that two pages share browser login state.
+      if (expectedBrowserContextId !== undefined) {
+        const actual = await abortable(pickerSession.send("Target.getTargetInfo", { targetId: pickerTargetId }), signal);
+        if (!expectedBrowserContextId || actual.targetInfo.browserContextId !== expectedBrowserContextId) throw changed();
+      }
       await abortable(pickerTransport.attach(pickerTargetId), signal);
     } finally { clearTimeout(creationTimer); }
     signal.throwIfAborted();

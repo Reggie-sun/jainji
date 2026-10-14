@@ -3,7 +3,7 @@ import { createServer } from "node:net";
 import { constants } from "node:fs";
 import { open } from "node:fs/promises";
 import { egressIdentity, type QianchuanEgress } from "../shared/qianchuan-egress.js";
-import { REMOTE_CHUNK_BYTES, RemoteBrowserSchema, RemoteFileStatusSchema, type RemoteRequest } from "../shared/qianchuan-remote.js";
+import { REMOTE_CHUNK_BYTES, RemoteBrowserProfileSchema, RemoteBrowserSchema, RemoteFileStatusSchema, type RemoteRequest } from "../shared/qianchuan-remote.js";
 import { RemoteChannel, remoteUnavailable, sshRemoteArguments } from "./qianchuan-remote-transport.js";
 import { waitForEgressListener, type EgressLease } from "./qianchuan-egress-runtime.js";
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
@@ -29,10 +29,20 @@ export class QianchuanRemoteRuntime {
   private readonly browsers = new Map<string, RemoteBrowser>();
   private readonly preparing = new Map<string, Promise<string>>();
   constructor(private readonly createChannel: (route: QianchuanEgress) => Channel = route => new RemoteChannel(route)) {}
-  private channel(route: QianchuanEgress): Channel {
+  private channel(route: QianchuanEgress, observation = false): Channel {
     if (route.mode !== "remote-browser") throw remoteUnavailable();
     let channel = this.channels.get(route.group);
-    if (channel && (egressIdentity(channel.route) !== egressIdentity(route) || channel.controller.signal.aborted)) throw remoteUnavailable();
+    if (channel && egressIdentity(channel.route) !== egressIdentity(route)) throw remoteUnavailable();
+    if (channel?.controller.signal.aborted && observation) {
+      const old = [...this.browsers.values()].filter(browser => browser.route.group === route.group);
+      if (old.some(browser => !browser.controller.signal.aborted)) throw remoteUnavailable();
+      // A fresh read may rebuild a terminated transport. It never replays the
+      // failed request or restores any old upload lease/target authorization.
+      channel.close(); this.channels.delete(route.group);
+      for (const browser of old) this.browsers.delete(browser.advertiserId);
+      channel = undefined;
+    }
+    if (channel?.controller.signal.aborted) throw remoteUnavailable();
     if (!channel) { channel = this.createChannel(route); this.channels.set(route.group, channel); }
     return channel;
   }
@@ -69,6 +79,10 @@ export class QianchuanRemoteRuntime {
   /** Fixed native-extension RPC reuses the existing subject/SSH channel without CDP. */
   extensionRequest(route: QianchuanEgress, advertiserId: string, action: "extension-setup" | "extension-profile" | "extension-verify", extras: Partial<Pick<RemoteRequest, "extension" | "extensionProcess">> = {}, signal?: AbortSignal): Promise<unknown> {
     return this.channel(route).request(action, advertiserId, extras, undefined, signal);
+  }
+  /** Reads only the verified remote browser profile/process/socket metadata for CDP. */
+  async browserProfile(route: QianchuanEgress, advertiserId: string, signal?: AbortSignal) {
+    return RemoteBrowserProfileSchema.parse(await this.channel(route, true).request("browser-profile", advertiserId, {}, undefined, signal));
   }
   /** Metadata was checked by the remote worker against its canonical profile, without contacting DevTools. */
   async attachMetadata(route: QianchuanEgress, advertiserId: string, input: unknown, preferredPort?: number): Promise<string> {

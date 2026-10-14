@@ -326,7 +326,7 @@ export function readPlanProductNames(input: unknown, advertiserId: string): Map<
 }
 
 /** Existing DOM catalog behavior, using the shared owned picker connection. */
-export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<QianchuanPlanOption[]> {
+export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal: AbortSignal, expectedBrowserContextId?: string): Promise<QianchuanPlanOption[]> {
   return withQianchuanQueryPage(target, signal, async page => {
     const products = new Map<string, QianchuanPlanOption>();
     const productResponse = (response: BrowserResponse) => {
@@ -347,5 +347,5 @@ export async function readQianchuanPlans(target: FrozenQianchuanAccount, signal:
       }
       return plans.map(plan => products.get(plan.adId)?.name === plan.name ? { ...plan, productNames: products.get(plan.adId)!.productNames } : plan);
     } finally { page.off("response", productResponse); }
-  });
+  }, expectedBrowserContextId);
 }

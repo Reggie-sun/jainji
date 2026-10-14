@@ -146,8 +146,8 @@ export class DouyinUploadService {
       },
     });
     this.planReads = new QianchuanPlanReads(dependencies.readPlans ?? readQianchuanPlans);
-    this.currentPlanReads = this.accounts instanceof QianchuanAccountSettings && this.accounts.extensionBacked
-      ? new QianchuanPlanReads((target, signal) => (this.accounts as QianchuanAccountSettings).readCurrentPlans(target, signal)) : this.planReads;
+    this.currentPlanReads = this.accounts instanceof QianchuanAccountSettings && this.accounts.currentAccountBacked
+      ? new QianchuanPlanReads((target, signal) => (this.accounts as QianchuanAccountSettings).readCurrentPlans(target, signal, this.excludedPlanTargets())) : this.planReads;
     this.refreshAccountPauses();
   }
   async templateAccount(recentProjectId: string, projectId: string): Promise<TemplateAccountBinding | undefined> {
@@ -595,8 +595,8 @@ export class DouyinUploadService {
       if (this.dependencies.readiness?.(this.store.config)) throw new Error(this.dependencies.readiness(this.store.config));
       const generation = this.controlGeneration;
       const browserSelection = parsed.plan?.accountSource === "current-browser" && !this.automationUploadActive;
-      const extensionSelection = browserSelection && this.accounts instanceof QianchuanAccountSettings && this.accounts.extensionBacked;
-      if (!this.automationUploadActive && !extensionSelection) {
+      const currentAccountSelection = browserSelection && this.accounts instanceof QianchuanAccountSettings && this.accounts.currentAccountBacked;
+      if (!this.automationUploadActive && !currentAccountSelection) {
         const configured = await this.automationAccount(parsed.accountProduct);
         if (configured.egress?.mode === "remote-browser") {
           await this.stopPlanPreload();
@@ -737,7 +737,7 @@ export class DouyinUploadService {
     if (!this.sameAutomationBinding({ ...target, cdpEndpoint: anchor.cdpEndpoint }, anchor)) throw new Error("本轮冻结账号或出口已变化，未打开上传浏览器。");
     this.automationBrowserGeneration = generation;
     await this.withOrdinaryBrowserControl(() => this.automationBrowsers.prepare(target, signal));
-    const prepared = this.accounts instanceof QianchuanAccountSettings && this.accounts.extensionBacked && this.selectedAccountTargets.browserAnchor(task.authorization)
+    const prepared = this.accounts instanceof QianchuanAccountSettings && this.accounts.currentAccountBacked && this.selectedAccountTargets.browserAnchor(task.authorization)
       ? (await this.accounts.prepareCurrentCatalog(target.product, signal, this.excludedPlanTargets())).configured : await this.accounts.prepare(target.product);
     signal.throwIfAborted();
     if (generation !== this.controlGeneration || !this.sameAutomationBinding(prepared, anchor) || prepared.cdpEndpoint !== task.authorization.target.cdpEndpoint) throw new Error("账号连接已变化，未继续原上传批次。");

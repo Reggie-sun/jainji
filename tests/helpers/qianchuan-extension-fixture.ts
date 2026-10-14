@@ -66,7 +66,7 @@ function accountHtml(advertiserId: string, name: string, planPage: number | unde
     : "";
   return `<!doctype html><html><head><meta charset="utf-8"><title>Fixture</title>
     <script>
-      if (new URL(location.href).searchParams.get("jianjiExtensionPlanPicker") === "1") {
+      if (["jianjiExtensionPlanPicker", "jianjiPlanPicker"].some(key => new URL(location.href).searchParams.get(key) === "1")) {
         const load = ${planPage ?? 0};
         addEventListener("pagehide", () => navigator.sendBeacon("/__fixture/plan-closed?load=" + load, "closed"));
       }
@@ -109,7 +109,7 @@ export async function createQianchuanFixture(root: string): Promise<QianchuanFix
     if (request.method === "GET" && (url.pathname === "/" || url.pathname === "/uni-prom")) {
       const account = FIXTURE_ACCOUNTS.find(value => value.advertiserId === advertiserId);
       if (!account) { response.writeHead(404).end(); return; }
-      const isPlan = url.searchParams.get("jianjiExtensionPlanPicker") === "1";
+      const isPlan = ["jianjiExtensionPlanPicker", "jianjiPlanPicker"].some(key => url.searchParams.get(key) === "1");
       let planPage: number | undefined;
       if (isPlan) planPage = ++state.planPageLoads;
       else state.accountDocumentLoads.set(advertiserId, (state.accountDocumentLoads.get(advertiserId) ?? 0) + 1);

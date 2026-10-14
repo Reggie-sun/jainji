@@ -6,7 +6,7 @@ import { chromium, type BrowserContext, type Page } from "playwright-core";
 import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
-import { readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot } from "../src/main/qianchuan-current-account";
+import { readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot, readCurrentQianchuanPage } from "../src/main/qianchuan-current-account";
 import { readQianchuanSubaccounts, switchQianchuanSubaccount } from "../src/main/qianchuan-subaccounts-browser";
 
 const origin = "https://qianchuan.jinritemai.com";
@@ -181,6 +181,35 @@ it("uses only visible eligible pages and detaches every inspected target session
     expect(fixture.detached).toEqual(fixture.attached);
     expect(fixture.connected()).toBe(false);
   } finally { await fixture.close(); }
+});
+
+it("allows the catalog to address one hidden account page without relaxing existing active-account reads", async () => {
+  const fixture = await fakeBrowser({ targets: [account("sole-hidden", "200", "hidden")] });
+  try {
+    await expect(readCurrentQianchuanAccount(fixture.endpoint)).rejects.toThrow();
+    await expect(readCurrentQianchuanPage(fixture.endpoint)).rejects.toThrow();
+    await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(), { allowSingleHidden: true })).resolves.toMatchObject({
+      account: { advertiserId: "200" }, targetId: "sole-hidden",
+    });
+    expect(fixture.detached).toEqual(fixture.attached);
+  } finally { await fixture.close(); }
+});
+
+it("rejects ambiguous hidden account pages and still prefers a visible account", async () => {
+  const ambiguous = await fakeBrowser({ targets: [account("one", "200", "hidden"), account("two", "200", "hidden")] });
+  try { await expect(readCurrentQianchuanPage(ambiguous.endpoint, undefined, new Set(), { allowSingleHidden: true })).rejects.toThrow(); }
+  finally { await ambiguous.close(); }
+  const visible = await fakeBrowser({ targets: [account("one", "100", "hidden"), account("two", "200", "visible")] });
+  try { await expect(readCurrentQianchuanPage(visible.endpoint, undefined, new Set(), { allowSingleHidden: true })).resolves.toMatchObject({ targetId: "two", account: { advertiserId: "200" } }); }
+  finally { await visible.close(); }
+});
+
+it.each(["mismatch", "name drift"])("rejects %s on an explicitly qualified hidden page", async failure => {
+  const fixture = await fakeBrowser({ targets: [account("hidden", "200", "hidden")], snapshot: (target, read) => ({
+    ...target.snapshot, accountTexts: [failure === "mismatch" ? "ID：999" : `${read === 1 ? "旧名称" : "新名称"} ID：200`],
+  }) });
+  try { await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(), { allowSingleHidden: true })).rejects.toThrow(); }
+  finally { await fixture.close(); }
 });
 
 it("rejects conflicting visible accounts, URL and DOM identity mismatches, and duplicate URL IDs", async () => {

@@ -179,16 +179,21 @@
       return accountFromText(text, expectedId);
     }
 
-    function identity(tabId, allowPicker = false, expectedId) {
+    function accountIdentity(allowPicker = false, expectedId) {
       checkDocument();
       let url;
       try { url = new URL(env.location.href); } catch { fail("CHANGED"); }
       const ids = url.searchParams.getAll("aavid");
-      if (ids.length !== 1 || !ID_PATTERN.test(ids[0]) || !Number.isSafeInteger(tabId) || tabId < 0) fail("CHANGED");
+      if (ids.length !== 1 || !ID_PATTERN.test(ids[0])) fail("CHANGED");
       pageUrl(ids[0], allowPicker);
       const account = currentAccount(ids[0]);
       if (expectedId && account.advertiserId !== expectedId) fail("CHANGED");
-      return { tabId, documentId, account };
+      return { documentId, account };
+    }
+
+    function identity(tabId, allowPicker = false, expectedId) {
+      if (!Number.isSafeInteger(tabId) || tabId < 0) fail("CHANGED");
+      return { tabId, ...accountIdentity(allowPicker, expectedId) };
     }
 
     async function waitForPickerIdentity(tabId, budgetMs, signal) {
@@ -233,9 +238,9 @@
       return params;
     }
 
-    async function readRequest(operation, tabId, signal) {
+    async function readAccountRequest(operation, signal, checkFresh) {
       checkCancelled(signal);
-      const before = checkSnapshot(operation.snapshot, tabId);
+      const before = checkFresh(operation.snapshot);
       const params = validateRequest(operation, before);
       const url = new URL(operation.path, ORIGIN);
       if (url.origin !== ORIGIN || url.pathname !== operation.path) fail("INVALID");
@@ -283,7 +288,7 @@
         checkCancelled(signal);
         let payload;
         try { payload = JSON.parse(text); } catch { fail("INVALID"); }
-        checkSnapshot(operation.snapshot, tabId);
+        checkFresh(operation.snapshot);
         if (!isRecord(payload) || payload.status_code !== 0 || !isRecord(payload.data)) fail("UNAVAILABLE");
         if (operation.path === USER_LIST) {
           const page = parseAccountList(payload.data, params.page, params.limit);
@@ -297,9 +302,11 @@
       } finally { env.clearTimeout(timeout); signal?.removeEventListener("abort", cancelRequest); }
     }
 
-    async function switchAccount(operation, tabId, signal) {
-      checkCancelled(signal);
-      const before = checkSnapshot(operation.snapshot, tabId);
+    async function readRequest(operation, tabId, signal) {
+      return readAccountRequest(operation, signal, snapshot => checkSnapshot(snapshot, tabId));
+    }
+
+    function beginAccountSwitch(operation, before, route = "/") {
       if (!exactKeys(operation.chosen, ["advertiserId", "name"]) || !ID_PATTERN.test(operation.chosen.advertiserId) || !safeText(operation.chosen.name)) fail("INVALID");
       if (navigationStarted) fail("CHANGED");
       if (operation.chosen.advertiserId === before.account.advertiserId) {
@@ -307,8 +314,22 @@
         return { navigating: false };
       }
       navigationStarted = true;
-      env.location.replace(`${ORIGIN}/?aavid=${encodeURIComponent(operation.chosen.advertiserId)}`);
+      env.location.replace(`${ORIGIN}${route}?aavid=${encodeURIComponent(operation.chosen.advertiserId)}`);
       return { navigating: true };
+    }
+
+    async function switchAccount(operation, tabId, signal) {
+      checkCancelled(signal);
+      return beginAccountSwitch(operation, checkSnapshot(operation.snapshot, tabId));
+    }
+
+    function checkAccountSnapshot(expected) {
+      if (!exactKeys(expected, ["documentId", "account", "gfversion"]) || expected.documentId !== documentId || !UUID_PATTERN.test(expected.documentId) ||
+        !exactKeys(expected.account, ["advertiserId", "name"]) || !ID_PATTERN.test(expected.account.advertiserId) || !safeText(expected.account.name) ||
+        typeof expected.gfversion !== "string" || expected.gfversion.length > 80 || /[\u0000-\u001f\u007f]/.test(expected.gfversion)) fail("CHANGED");
+      const fresh = accountIdentity(false, expected.account.advertiserId);
+      if (fresh.account.name !== expected.account.name) fail("CHANGED");
+      return { ...fresh, gfversion: expected.gfversion };
     }
 
     function accountForPlans(expected, tabId, signal) {
@@ -466,7 +487,7 @@
       if (Object.hasOwn(message, "budgetMs") && (operation.kind !== "plans" && !(operation.kind === "identity" && message.picker) || !Number.isSafeInteger(message.budgetMs) || message.budgetMs < 1 || message.budgetMs > 30_000)) fail("INVALID");
       if (activeCommands.has(message.id)) fail("INVALID");
       const controller = new env.AbortController();
-      activeCommands.set(message.id, { controller, tabId: message.tabId });
+      activeCommands.set(message.id, { controller, owner: "extension", tabId: message.tabId });
       try {
         checkCancelled(controller.signal);
         if (operation.kind === "identity" && exactKeys(operation, ["kind"])) return message.picker && message.budgetMs !== undefined
@@ -478,7 +499,32 @@
       } finally { if (activeCommands.get(message.id)?.controller === controller) activeCommands.delete(message.id); }
     }
 
-    return { documentId, handleMessage };
+    async function handleAccountMessage(message) {
+      if (!isRecord(message) || typeof message.kind !== "string") fail("INVALID");
+      if (message.kind === "cancel") {
+        if (!exactKeys(message, ["kind", "id"]) || !UUID_PATTERN.test(message.id)) fail("INVALID");
+        const active = activeCommands.get(message.id);
+        if (active?.owner === "cdp") active.controller.abort();
+        return { cancelled: active?.owner === "cdp" };
+      }
+      if (message.kind !== "account-command" || !exactKeys(message, ["kind", "id", "operation"]) || !UUID_PATTERN.test(message.id) || !isRecord(message.operation) || activeCommands.has(message.id)) fail("INVALID");
+      const operation = message.operation;
+      if (operation.kind === "identity" && !exactKeys(operation, ["kind"]) ||
+        operation.kind === "request" && !exactKeys(operation, ["kind", "snapshot", "path", "params", "headers"]) ||
+        operation.kind === "switch" && !exactKeys(operation, ["kind", "snapshot", "chosen"]) ||
+        !["identity", "request", "switch"].includes(operation.kind)) fail("INVALID");
+      const controller = new env.AbortController();
+      activeCommands.set(message.id, { controller, owner: "cdp" });
+      try {
+        checkCancelled(controller.signal);
+        if (operation.kind === "identity") return accountIdentity();
+        if (operation.kind === "request") return await readAccountRequest(operation, controller.signal, checkAccountSnapshot);
+        if (operation.kind === "switch") return beginAccountSwitch(operation, checkAccountSnapshot(operation.snapshot), "/uni-prom");
+        fail("INVALID");
+      } finally { if (activeCommands.get(message.id)?.controller === controller) activeCommands.delete(message.id); }
+    }
+
+    return { documentId, accountIdentity, handleMessage, handleAccountMessage };
   }
 
   global.__jianjiQianchuanContent = Object.freeze({ createContentController, projectAccountList: (data, page, limit) => {
