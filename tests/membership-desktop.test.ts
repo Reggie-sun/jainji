@@ -3,12 +3,16 @@ import { MembershipSession, fetchMembership } from "../src/main/membership-sessi
 import { installMembershipIpc, requiresMembership } from "../src/main/membership-ipc.js";
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import { MembershipConfigSchema, type MembershipStatus } from "../src/shared/membership.js";
-import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createMembershipDesktop } from "../src/main/membership-desktop.js";
 import * as storageModule from "../src/main/membership-storage.js";
 import * as oauthModule from "../src/main/membership-oauth.js";
+import { createMembershipNetwork } from "../src/main/membership-network.js";
+import { membershipDiagnostics } from "../src/main/membership-diagnostics.js";
+import { type MembershipDiagnostic } from "../src/main/membership-check.js";
+import type { session as ElectronSessions } from "electron";
 
 const desktop = vi.hoisted(() => ({ isPackaged: false, root: "", directFetch: vi.fn(), setProxy: vi.fn(async () => {}),
   defaultFetch: vi.fn(), defaultSetProxy: vi.fn(), fromPartition: vi.fn() }));
@@ -28,10 +32,156 @@ function fixture() {
   const storage = { read: async () => saved, write: async (token?: string) => { saved = token; } };
   const check = vi.fn(async () => allowed);
   const stopped = vi.fn(async () => {});
-  const session = new MembershipSession(config, { storage, check, login: async () => "new-token", changed: vi.fn(), lostAccess: stopped });
-  return { session, check, stopped, storage };
+  const changed = vi.fn();
+  const session = new MembershipSession(config, { storage, check, login: async () => "new-token", changed, lostAccess: stopped });
+  return { session, check, stopped, storage, changed };
 }
 describe("desktop membership", () => {
+  it("only resets the check session and never interrupts login or renewal connections", async () => {
+    const account = { setProxy: vi.fn(async () => {}), fetch: vi.fn(async () => Response.json({})), closeAllConnections: vi.fn() };
+    const checks = { setProxy: vi.fn(async () => {}), fetch: vi.fn(async () => Response.json(allowed)),
+      closeAllConnections: vi.fn(async () => {}), clearHostResolverCache: vi.fn(async () => {}) };
+    const sessions = { fromPartition: (name: string) => name === "jianji-membership-check" ? checks : account } as unknown as Pick<typeof ElectronSessions, "fromPartition">;
+    const network = await createMembershipNetwork(sessions);
+    await network.checkFetcher(`${config.serviceUrl}/v1/membership`);
+    await network.fetcher(`${config.serviceUrl}/billing/ticket`, { method: "POST" });
+    await network.recover();
+    expect(account.setProxy).toHaveBeenCalledWith({ mode: "direct" }); expect(checks.setProxy).toHaveBeenCalledWith({ mode: "direct" });
+    expect(checks.closeAllConnections).toHaveBeenCalledOnce(); expect(checks.clearHostResolverCache).toHaveBeenCalledOnce();
+    expect(account.closeAllConnections).not.toHaveBeenCalled(); expect(account.fetch).toHaveBeenCalledOnce();
+    expect(checks.fetch).toHaveBeenCalledOnce();
+    const controller = new AbortController();
+    checks.closeAllConnections.mockImplementationOnce(async () => { controller.abort(); });
+    await expect(network.recover(controller.signal)).rejects.toThrow();
+    expect(checks.clearHostResolverCache).toHaveBeenCalledOnce();
+  });
+  it("reconnects once, redacts diagnostics and does not retry a renewal POST", async () => {
+    vi.useFakeTimers();
+    const check = vi.fn(async (): Promise<MembershipStatus> => allowed), recover = vi.fn(async () => {}), diagnostic = vi.fn();
+    const transport = vi.fn(async () => { throw new Error("ticket write outcome unknown"); });
+    const session = new MembershipSession(config, { storage: { read: async () => "private-token", write: async () => {} },
+      check, recover, diagnostic, fetcher: transport, login: async () => "token", changed: () => {}, lostAccess: async () => {} });
+    try {
+      await session.restore(); check.mockRejectedValueOnce(new Error("ERR_CONNECTION_RESET Bearer private-token /private/path"));
+      const pending = session.assertAllowed(); await vi.advanceTimersByTimeAsync(250); await pending;
+      expect(recover).toHaveBeenCalledOnce(); expect(check).toHaveBeenCalledTimes(3);
+      expect(diagnostic.mock.calls.map(([event]) => event.phase)).toEqual(["retry", "reconnect", "recovered"]);
+      expect(diagnostic.mock.calls[2][0]).toMatchObject({ kind: "network", networkCode: "ERR_CONNECTION_RESET", state: "allowed" });
+      expect(JSON.stringify(diagnostic.mock.calls)).not.toMatch(/private-token|private\/path|Bearer/);
+      await expect(session.billingUrl()).rejects.toThrow(); expect(transport).toHaveBeenCalledOnce();
+      expect(recover).toHaveBeenCalledOnce();
+    } finally { session.dispose(); vi.useRealTimers(); }
+  });
+  it.each(["logout", "dispose"] as const)("stops delayed retries on %s", async action => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      await f.session.restore(); f.check.mockRejectedValueOnce(new TypeError("temporary failure"));
+      const pending = f.session.assertAllowed().then(() => true, () => false);
+      await vi.advanceTimersByTimeAsync(0);
+      if (action === "logout") await f.session.logout(); else f.session.dispose();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(await pending).toBe(false); expect(f.check).toHaveBeenCalledTimes(2);
+      if (action === "logout") expect(f.session.snapshot().state).toBe("signed-out");
+    } finally { f.session.dispose(); vi.useRealTimers(); }
+  });
+  it("keeps repeated transient failure bounded and preserves the saved login", async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      await f.session.restore(); f.check.mockRejectedValue(new TypeError("offline"));
+      const denied = f.session.assertAllowed().then(() => true, () => false);
+      await vi.advanceTimersByTimeAsync(22_000);
+      expect(await denied).toBe(false); expect(f.check).toHaveBeenCalledTimes(3);
+      expect(f.stopped).toHaveBeenCalledOnce(); expect(await f.storage.read()).toBe("access-token");
+    } finally { f.session.dispose(); vi.useRealTimers(); }
+  });
+  it.each([401, 403, 404, "invalid-json", "invalid-schema", "oversized", "tls"])("does not retry the permanent failure %s", async failure => {
+    const transport = vi.fn(async () => {
+      if (typeof failure === "number") return new Response("ignored", { status: failure });
+      if (failure === "tls") throw new Error("ERR_CERT_AUTHORITY_INVALID private-token");
+      return new Response(failure === "invalid-json" ? "not-json" : failure === "oversized" ? "a".repeat(16_385) : "{}");
+    });
+    const recover = vi.fn(async () => {});
+    const session = new MembershipSession(config, { storage: { read: async () => "token", write: async () => {} },
+      check: (token, signal) => fetchMembership(config, token, transport, signal), recover,
+      login: async () => "token", changed: () => {}, lostAccess: async () => {} });
+    try { await session.restore(); expect(session.snapshot().state).toBe("unavailable");
+      expect(transport).toHaveBeenCalledOnce(); expect(recover).not.toHaveBeenCalled();
+    } finally { session.dispose(); }
+  });
+  it.each([503, "server-unavailable"])("retries %s once without resetting healthy local connections", async failure => {
+    vi.useFakeTimers(); const recover = vi.fn(async () => {});
+    const transport = vi.fn().mockResolvedValueOnce(failure === 503 ? new Response("unavailable", { status: 503 })
+      : Response.json({ state: "unavailable", reason: "unavailable", message: "服务不可用" })).mockResolvedValueOnce(Response.json(allowed));
+    const session = new MembershipSession(config, { storage: { read: async () => "token", write: async () => {} },
+      check: (token, signal) => fetchMembership(config, token, transport, signal), recover,
+      login: async () => "token", changed: () => {}, lostAccess: async () => {} });
+    try { const restoring = session.restore(); await vi.advanceTimersByTimeAsync(250); await restoring;
+      expect(session.snapshot().state).toBe("allowed"); expect(transport).toHaveBeenCalledTimes(2); expect(recover).not.toHaveBeenCalled();
+    } finally { session.dispose(); vi.useRealTimers(); }
+  });
+  it("fails closed when reconnecting fails and does not let diagnostic failures change the result", async () => {
+    const check = vi.fn(async (): Promise<MembershipStatus> => { throw new TypeError("network failed"); });
+    const recover = vi.fn(async () => { throw new Error("recovery failed"); });
+    const session = new MembershipSession(config, { storage: { read: async () => "token", write: async () => {} }, check, recover,
+      diagnostic: () => { throw new Error("logging failed"); }, login: async () => "token", changed: () => {}, lostAccess: async () => {} });
+    try { await session.restore(); expect(session.snapshot().state).toBe("unavailable"); expect(check).toHaveBeenCalledOnce();
+      expect(recover).toHaveBeenCalledOnce();
+    } finally { session.dispose(); }
+  });
+  it("writes only safe diagnostic fields and rotates the customer log within a fixed budget", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-membership-log-"));
+    try {
+      const write = membershipDiagnostics(root);
+      const event: MembershipDiagnostic = { at: new Date().toISOString(), phase: "failed", kind: "network", attempt: 2, elapsedMs: 10,
+        networkCode: "ERR_CONNECTION_RESET", state: "unavailable" };
+      await write({ ...event, token: "private-token", message: "/private/path" } as MembershipDiagnostic);
+      const file = path.join(root, "diagnostics", "membership-network.jsonl");
+      expect(await readFile(file, "utf8")).not.toMatch(/private-token|private\/path|token|message/);
+      await writeFile(file, "a".repeat(64 * 1024)); await write(event);
+      expect((await stat(file)).size).toBeLessThan(64 * 1024); expect((await stat(`${file}.1`)).size).toBe(64 * 1024);
+      await writeFile(file, "b".repeat(64 * 1024)); await write(event);
+      expect(await readdir(path.dirname(file))).toEqual(["membership-network.jsonl", "membership-network.jsonl.1"]);
+      expect((await stat(`${file}.1`)).size).toBe(64 * 1024);
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+  it("recovers one transient failure without publishing an outage or cancelling work", async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      await f.session.restore(); f.changed.mockClear();
+      f.check.mockRejectedValueOnce(new TypeError("secret must never be logged")).mockResolvedValue(allowed);
+      const admission = f.session.assertAllowed().then(() => true, () => false);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(f.stopped).not.toHaveBeenCalled(); expect(f.changed).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(250);
+      expect(await admission).toBe(true); expect(f.check).toHaveBeenCalledTimes(3);
+      expect(f.stopped).not.toHaveBeenCalled(); expect(f.session.snapshot()).toEqual(allowed);
+    } finally { f.session.dispose(); vi.useRealTimers(); }
+  });
+  it("waits for the fresh retry result and shares it across concurrent admissions", async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      await f.session.restore(); let resolve!: (value: MembershipStatus) => void;
+      f.check.mockRejectedValueOnce(new TypeError("temporary network failure"))
+        .mockImplementationOnce(() => new Promise(r => { resolve = r; }));
+      let admissions = 0;
+      const first = f.session.assertAllowed().then(() => { admissions++; }, () => {});
+      const second = f.session.assertAllowed().then(() => { admissions++; }, () => {});
+      await vi.advanceTimersByTimeAsync(250);
+      expect(admissions).toBe(0); expect(f.session.snapshot().state).toBe("allowed");
+      expect(f.check).toHaveBeenCalledTimes(3); resolve(allowed); await Promise.all([first, second]);
+      expect(admissions).toBe(2); expect(f.stopped).not.toHaveBeenCalled();
+    } finally { f.session.dispose(); vi.useRealTimers(); }
+  });
+  it("bounds a stuck check and does not turn its previous allowed state into admission", async () => {
+    vi.useFakeTimers(); const f = fixture();
+    try {
+      await f.session.restore(); f.check.mockImplementation(() => new Promise(() => {}));
+      const admitted = f.session.assertAllowed().then(() => true, () => false);
+      await vi.advanceTimersByTimeAsync(22_000);
+      expect(await admitted).toBe(false); expect(f.session.snapshot().state).toBe("unavailable");
+      expect(f.stopped).toHaveBeenCalledTimes(1); expect(await f.storage.read()).toBe("access-token");
+    } finally { f.session.dispose(); vi.useRealTimers(); }
+  });
   it("waits for isolated direct routing before restoring and keeps all account requests off the default proxy", async () => {
     desktop.root = await mkdtemp(path.join(tmpdir(), "jianji-membership-direct-"));
     const oldConfig = process.env.JIANJI_MEMBERSHIP_CONFIG;
@@ -52,8 +202,9 @@ describe("desktop membership", () => {
     let session: MembershipSession | undefined;
     try {
       const creating = createMembershipDesktop({ root: desktop.root, trusted: () => {}, changed: () => {}, lostAccess: async () => {} });
-      await vi.waitFor(() => expect(desktop.fromPartition).toHaveBeenCalledOnce());
+      await vi.waitFor(() => expect(desktop.fromPartition).toHaveBeenCalledTimes(2));
       expect(desktop.fromPartition).toHaveBeenCalledWith("jianji-membership", { cache: false });
+      expect(desktop.fromPartition).toHaveBeenCalledWith("jianji-membership-check", { cache: false });
       expect(desktop.setProxy).toHaveBeenLastCalledWith({ mode: "direct" });
       expect(desktop.directFetch).not.toHaveBeenCalled(); expect(storage).not.toHaveBeenCalled();
       release(); session = await creating;
@@ -197,9 +348,10 @@ describe("desktop membership", () => {
     try {
       await session.restore(); session.startHeartbeat();
       check.mockRejectedValue(new Error("temporary timeout"));
-      await vi.advanceTimersByTimeAsync(30_000);
+      await vi.advanceTimersByTimeAsync(30_250);
       expect(session.snapshot().state).toBe("unavailable");
-      await expect(session.assertAllowed()).rejects.toThrow();
+      const rejected = expect(session.assertAllowed()).rejects.toThrow();
+      await vi.advanceTimersByTimeAsync(250); await rejected;
       expect(stopped).toHaveBeenCalledTimes(1);
       await vi.advanceTimersByTimeAsync(30_000);
       check.mockResolvedValue(allowed);

@@ -7,6 +7,8 @@ import { membershipStorage } from "./membership-storage.js";
 import { loginMembership } from "./membership-oauth.js";
 import { installMembershipIpc } from "./membership-ipc.js";
 import { configureMembershipKeyring } from "./membership-keyring.js";
+import { createMembershipNetwork } from "./membership-network.js";
+import { membershipDiagnostics } from "./membership-diagnostics.js";
 
 configureMembershipKeyring(app.commandLine);
 
@@ -24,13 +26,12 @@ export async function createMembershipDesktop(input: {
     localDevelopment = app.isPackaged === false && !process.env.JIANJI_MEMBERSHIP_CONFIG
       && (error as NodeJS.ErrnoException).code === "ENOENT";
   }
-  const accountNetwork = electronSession.fromPartition("jianji-membership", { cache: false });
-  await accountNetwork.setProxy({ mode: "direct" });
-  const fetcher: typeof fetch = (target, options) => accountNetwork.fetch(target instanceof URL ? target.href : target, options);
+  const { fetcher, checkFetcher, recover } = await createMembershipNetwork(electronSession);
   const session = new MembershipSession(config, {
     localDevelopment,
     storage: membershipStorage(input.root, config, safeStorage),
-    check: token => fetchMembership(config!, token, fetcher),
+    check: (token, signal) => fetchMembership(config!, token, checkFetcher, signal),
+    recover, diagnostic: membershipDiagnostics(input.root),
     fetcher,
     login: signal => loginMembership(config!, url => shell.openExternal(url), signal, fetcher),
     changed: input.changed, lostAccess: input.lostAccess,

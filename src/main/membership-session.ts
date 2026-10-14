@@ -1,11 +1,14 @@
 import { MEMBERSHIP_HEARTBEAT_MS, MembershipStatusSchema, signedOutMembership, type MembershipConfig, type MembershipStatus } from "../shared/membership.js";
+import { checkMembershipWithRecovery, MembershipCheckError, membershipFailure, type MembershipDiagnostic } from "./membership-check.js";
 
 export interface MembershipStorage { read(): Promise<string | undefined>; write(token?: string): Promise<void>; }
 interface Dependencies {
   fetcher?: typeof fetch;
   localDevelopment?: boolean;
   storage: MembershipStorage;
-  check(token: string): Promise<MembershipStatus>;
+  check(token: string, signal?: AbortSignal): Promise<MembershipStatus>;
+  recover?(signal?: AbortSignal): Promise<void>;
+  diagnostic?(event: MembershipDiagnostic): void | Promise<void>;
   login(signal: AbortSignal): Promise<string>;
   changed(status: MembershipStatus): void;
   lostAccess(): Promise<void>;
@@ -20,6 +23,7 @@ export class MembershipSession {
   private pendingLogin?: Promise<MembershipStatus>;
   private timer?: ReturnType<typeof setTimeout>;
   private pending?: Promise<MembershipStatus>;
+  private checkController?: AbortController;
   private writes = Promise.resolve();
   private stopping = Promise.resolve();
   constructor(readonly config: MembershipConfig | undefined, private readonly deps: Dependencies) {
@@ -75,6 +79,7 @@ export class MembershipSession {
   async logout(): Promise<MembershipStatus> {
     const wasAllowed = this.status.state === "allowed";
     ++this.generation; this.loginController?.abort(); this.loginController = undefined;
+    this.checkController?.abort(); this.checkController = undefined;
     this.token = undefined; this.pending = undefined;
     if (this.config) this.update(signedOutMembership());
     const stopped = wasAllowed ? this.stopWork() : this.stopping;
@@ -85,15 +90,18 @@ export class MembershipSession {
     if (!this.token || !this.config) return Promise.resolve(this.snapshot());
     if (this.pending) return this.pending;
     const generation = this.generation, token = this.token;
-    const request = this.check(generation, token);
+    const controller = new AbortController(); this.checkController = controller;
+    const request = this.check(generation, token, controller.signal);
     this.pending = request;
-    void request.finally(() => { if (this.pending === request) this.pending = undefined; }).catch(() => {});
+    void request.finally(() => {
+      if (this.pending === request) this.pending = undefined;
+      if (this.checkController === controller) this.checkController = undefined;
+    }).catch(() => {});
     return request;
   }
-  private async check(generation: number, token: string): Promise<MembershipStatus> {
-    let next: MembershipStatus;
-    try { next = MembershipStatusSchema.parse(await this.deps.check(token)); }
-    catch { next = { state: "unavailable", reason: "unavailable", message: "无法核验账号权限，请检查网络后重试。" }; }
+  private async check(generation: number, token: string, signal: AbortSignal): Promise<MembershipStatus> {
+    const next = await checkMembershipWithRecovery({ check: signal => this.deps.check(token, signal), signal,
+      recover: this.deps.recover, diagnostic: this.deps.diagnostic });
     if (generation !== this.generation) return this.snapshot();
     const wasAllowed = this.status.state === "allowed";
     this.update(next);
@@ -104,7 +112,9 @@ export class MembershipSession {
   }
   async assertAllowed(): Promise<void> {
     if (this.isLocalDevelopment()) return;
+    const generation = this.generation;
     const status = await this.refresh();
+    if (generation !== this.generation) throw new Error("账号已变更，请重试。");
     if (!this.token || status.state !== "allowed") throw new Error(status.message);
   }
   async billingUrl(): Promise<string> {
@@ -131,16 +141,20 @@ export class MembershipSession {
     this.timer = setInterval(() => { void this.refresh().catch(() => {}); }, MEMBERSHIP_HEARTBEAT_MS);
     this.timer.unref();
   }
-  dispose(): void { clearInterval(this.timer); this.timer = undefined; ++this.generation; this.loginController?.abort(); }
+  dispose(): void { clearInterval(this.timer); this.timer = undefined; ++this.generation; this.loginController?.abort(); this.checkController?.abort(); }
 }
 
-export async function fetchMembership(config: MembershipConfig, token: string, fetcher: typeof fetch = fetch): Promise<MembershipStatus> {
-  const response = await fetcher(`${config.serviceUrl}/v1/membership`, {
-    headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
-    redirect: "error", signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) throw new Error("账号核验失败。");
-  const text = await response.text();
-  if (text.length > 16_384) throw new Error("账号响应无效。");
-  return MembershipStatusSchema.parse(JSON.parse(text));
+export async function fetchMembership(config: MembershipConfig, token: string, fetcher: typeof fetch = fetch, signal?: AbortSignal): Promise<MembershipStatus> {
+  try {
+    const timeout = AbortSignal.timeout(10_000);
+    const response = await fetcher(`${config.serviceUrl}/v1/membership`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      redirect: "error", signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
+    if (!response.ok) throw new MembershipCheckError({ kind: "http", httpStatus: response.status,
+      retryable: response.status === 408 || response.status === 429 || response.status >= 500 });
+    const text = await response.text();
+    if (text.length > 16_384) throw new MembershipCheckError({ kind: "invalid-response", retryable: false });
+    return MembershipStatusSchema.parse(JSON.parse(text));
+  } catch (error) { throw error instanceof MembershipCheckError ? error : new MembershipCheckError(membershipFailure(error)); }
 }

@@ -58,7 +58,7 @@ Casdoor 支持管理员手工创建订阅。其默认只有 `paid-user` 参与�
 
 Casdoor 与会员服务部署在同一台机器时，可在服务端私有配置加 `"casdoorUrl": "http://127.0.0.1:8000"`。仅允许 loopback HTTP origin；REST、门户 discovery / token / JWKS 使用此内部地址，避免每次在线核验绕行公网。省略时仍使用 `issuer`。公开 issuer、token issuer 校验和浏览器授权跳转保持原 HTTPS 域名；公开桌面配置拒绝该私有字段。改变此运输地址不使已记住的门户会话失效。
 
-桌面明确使用 Casdoor 稳定的 authorize、token、JWKS 路径，通过 openid-client 保留 PKCE、state、nonce 和 ID token 验证；点击登录前无需 discovery 网络请求。账号 HTTP 请求共用非持久、禁缓存的 Electron `jianji-membership` Session，等待 `setProxy({ mode: "direct" })` 完成后通过该 `Session.fetch` 发送；登录恢复、权限及心跳、token/JWKS 和续费票据不继承默认会话或系统 HTTP 代理，不回退代理。初始化失败即停止，不放行账号请求。默认会话、模型及千川运输不受该设置修改；系统浏览器登录仍使用浏览器网络配置，OS TUN 接管不由应用级直连绕过。没有权限缓存或本地离线放行。历史登录性能工作见 [Login Latency Plan](superpowers/plans/2026-10-11-membership-login-latency.md)，当前运输修订见 [Direct Network Plan](superpowers/plans/2026-10-14-membership-direct-network.md)。
+桌面明确使用 Casdoor 稳定的 authorize、token、JWKS 路径，通过 openid-client 保留 PKCE、state、nonce 和 ID token 验证；点击登录前无需 discovery 网络请求。账号 HTTP 请求使用非持久、禁缓存的 Electron Sessions，等待 `setProxy({ mode: "direct" })` 完成后通过各自 `Session.fetch` 发送，不继承默认会话或系统 HTTP 代理，不回退代理。`jianji-membership` 处理登录 token/JWKS 和续费票据；`jianji-membership-check` 独立处理登录恢复、权限与心跳 GET，仅重置该 Session 的连接和 DNS 缓存。初始化失败即停止，不放行账号请求。默认会话、模型及千川运输不受该设置修改；系统浏览器登录仍使用浏览器网络配置，OS TUN 接管不由应用级直连绕过。没有权限缓存或本地离线放行。历史登录性能工作见 [Login Latency Plan](superpowers/plans/2026-10-11-membership-login-latency.md)，直连增量见 [Direct Network Plan](superpowers/plans/2026-10-14-membership-direct-network.md)，当前恢复合同见 [Recovery Spec](superpowers/specs/2026-10-14-membership-network-recovery.md)。
 
 ```bash
 npm run build:membership
@@ -139,7 +139,9 @@ JIANJI_MEMBERSHIP_TRIAL_DATABASE=/absolute/private/trials.sqlite node dist-membe
 
 存在有效管理员赠送时优先展示该赠送的截止时间，未汇总为所有权益的最晚截止；赠送到期后仍可命中有效付费权益。到期管理员仍可打开管理后台，实际管理权限由 Casdoor 核验，不要求先购买制作会员。
 
-每次新收费 IPC 和队列执行在线核验。30 秒心跳发现封禁、挤下线、到期或网络故障后触发原取消链；单次客户端核验最多等待 10 秒，所以不是声称远端封禁在零毫秒内终止既有 FFmpeg/平台操作。原项目保存、取消和已生成文件访问保留；未知上传证据不清空、不重试。
+每次新收费 IPC 和队列执行在线核验。30 秒心跳与并发准入共用一个在途逻辑核验；一次核验最多两次 GET，单次 HTTP 上限 10 秒、总预算 22 秒，首次可恢复失败后等待 250 ms 再试一次。网络/超时失败先恢复独立核验连接和 DNS；服务 unavailable、HTTP 408/429/5xx 仅有限重试，不重置健康连接。确认拒绝、其他 HTTP 错误、证书或响应格式错误不重试。中间失败不发布 unavailable 或取消已有任务，恢复成功继续；新任务仍必须等待本次在线成功，旧 allowed 只用于展示。确认封禁、挤下线、到期或逻辑核验最终失败沿原取消链；退出/关闭中止延迟重试，旧代际不能授权。原项目保存、取消和已生成文件访问保留；未知上传证据不清空、不重试，OAuth/续费 POST 不重放。
+
+账号故障记录保存在本机 `userData/diagnostics/membership-network.jsonl`，固定 64 KiB 上限及一份 `.1` 轮转；只记录时间、错误类别、白名单网络错误码、HTTP 状态、尝试次数、耗时、阶段及状态。不记录原始异常/响应、URL、token、用户或本地业务路径，也不发送到外部。写日志失败不改变核验结果；明确的外部网络长期中断仍不能离线制作，不能把有界恢复当作账号服务永不失联的承诺。
 
 桌面 access token 仅由 main process 持有，安全密钥存储可用时经 Electron safeStorage 加密保存在 `userData/membership/session.enc`；Linux `basic_text` 或无加密能力时只在内存保存。配置变化使旧缓存失效。没有离线会员宽限或本地时间授权，不能靠本地缓存重新放行；应用重启会在线检查已保存 token，不产生第二次登录。
 
