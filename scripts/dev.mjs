@@ -1,6 +1,8 @@
 import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
+import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { context } from "esbuild";
@@ -19,6 +21,7 @@ let restartTimer;
 let restartRequested = false;
 let stopping = false;
 let shutdownPromise;
+let instanceDirectory;
 
 function start(command, args, options = {}) {
   const child = spawn(command, args, { cwd: root, stdio: "inherit", ...options });
@@ -87,7 +90,20 @@ function reloadPlugin(bundle) {
     plugin: {
       name: `jianji-${bundle}-reload`,
       setup(build) {
-        build.onEnd((result) => {
+        build.onEnd(async (result) => {
+          // Concurrent launchers publish complete bundles, never partial files.
+          try {
+            if (result.errors.length === 0) for (const output of result.outputFiles ?? []) {
+              await mkdir(path.dirname(output.path), { recursive: true });
+              const temporary = `${output.path}.${randomUUID()}.tmp`;
+              try { await writeFile(temporary, output.contents); await rename(temporary, output.path); }
+              finally { await unlink(temporary).catch(() => undefined); }
+            }
+          } catch (error) {
+            if (initial) { initial = false; rejectReady(error); }
+            else console.error("[dev] Could not publish rebuilt bundle; existing Electron remains running.");
+            return;
+          }
           if (initial) {
             initial = false;
             if (result.errors.length === 0) resolveReady();
@@ -141,6 +157,7 @@ const mainContext = await context({
   format: "cjs",
   external: ["electron", "playwright-core", "sql.js/*"],
   outfile: path.join(root, "dist-electron/main.cjs"),
+  write: false,
   plugins: [mainReload.plugin],
 });
 const preloadContext = await context({
@@ -150,6 +167,7 @@ const preloadContext = await context({
   format: "cjs",
   external: ["electron"],
   outfile: path.join(root, "dist-electron/preload.cjs"),
+  write: false,
   plugins: [preloadReload.plugin],
 });
 buildContexts.push(mainContext, preloadContext);
@@ -162,7 +180,11 @@ try {
   while (!stopping) {
     // A terminal Ctrl+C must reach the launcher, not kill Electron before cleanup.
     electron = start(electronBinary, [".", ...scheduledArgs], { stdio: ["inherit", "inherit", "inherit", "ipc"], detached: process.platform !== "win32",
-      env: { ...process.env, JIANJI_DEV_SERVER_URL: devServerUrl, JIANJI_DEV_NODE: process.execPath } });
+      env: { ...process.env, JIANJI_DEV_SERVER_URL: devServerUrl, JIANJI_DEV_NODE: process.execPath,
+        ...(instanceDirectory ? { JIANJI_DEV_USER_DATA: instanceDirectory } : {}) } });
+    electron.on("message", message => {
+      if (message?.type === "jianji-dev-instance" && typeof message.directory === "string") instanceDirectory = message.directory;
+    });
     const exitCode = await waitForExit(electron);
     if (stopping) break;
     if (restartRequested) {

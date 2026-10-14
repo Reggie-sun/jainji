@@ -9,6 +9,7 @@ import { isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { assertDecorationFrameOptions } from "./decoration-frame.js";
+import { HUMAN_REGION_LIBRARY_STICKER_IDS } from "../shared/cover-sticker.js";
 
 const bundledStickerIds = new Set(LIBRARY_STICKERS.map(({ id }) => id));
 export function bundledStickerDirectory(runtime: { resourcesPath?: string; defaultApp?: boolean } = process as NodeJS.Process & { resourcesPath?: string; defaultApp?: boolean }): string {
@@ -126,7 +127,7 @@ export class AssetLibrary {
     return entry ? await this.cached(entry) ? this.file(entry) : null : resolveFont(family);
   }
 
-  async prepare(options: DecorationOptions, builtins: StickerAssets, mediaIds?: readonly string[]): Promise<StickerAssets> {
+  async prepare(options: DecorationOptions, builtins: StickerAssets, mediaIds?: readonly string[], humanRegions = false): Promise<StickerAssets> {
     await assertDecorationFrameOptions(options, builtins, mediaIds);
     const selectedIds = options.mode === "random" ? [] : decorationStickerIds(options);
     for (const id of selectedIds.filter(isUploadedStickerId)) {
@@ -145,9 +146,10 @@ export class AssetLibrary {
       const font = [...this.entries.values()].find((entry) => entry.kind === "font" && entry.family === family);
       if (font) await this.ensure(font.id);
     }
-    const stickerIds = options.mode === "random"
+    const ordinaryStickerIds = options.mode === "random"
       ? [...this.entries.keys()].filter(isAutomaticStickerAllowed)
       : selectedIds;
+    const stickerIds = [...new Set([...ordinaryStickerIds, ...humanRegions ? HUMAN_REGION_LIBRARY_STICKER_IDS : []])];
     const selectedIdsInLibrary = stickerIds.filter((id) => this.entries.has(id));
     // Keep large local catalogs within the same four active materializations.
     for (let offset = 0; offset < selectedIdsInLibrary.length; offset += 4) {

@@ -5,6 +5,8 @@ import { QianchuanPlanOptionSchema } from "./qianchuan-plan-selection.js";
 export const DouyinUploadSelectionSchema = z.object({ enabled: z.literal(true), caption: z.string().max(4096).optional() }).strict();
 export type DouyinUploadSelection = z.infer<typeof DouyinUploadSelectionSchema>;
 export const UploadIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
+export const QianchuanAccountBatchCloseSchema = z.object({ projectId: z.string().uuid(), uploadTaskId: UploadIdSchema, expectedPageBatchId: z.string().uuid() }).strict();
+export type QianchuanAccountBatchClose = z.infer<typeof QianchuanAccountBatchCloseSchema>;
 export const UploadIdentitySchema = z.object({ project_id: z.string().uuid(), batch_id: z.string().uuid(), export_task_id: z.string().uuid() }).strict();
 export type UploadIdentity = z.infer<typeof UploadIdentitySchema>;
 
@@ -76,6 +78,7 @@ export interface DouyinUploadStatus {
   ready: boolean; message: string; tasks: QianchuanUploadTaskStatus[]; legacyTasks: UploadResult[];
   batches?: QianchuanUploadBatchSummary[];
   historicalBatches?: QianchuanUploadBatchSummary[];
+  accountBatches?: (QianchuanUploadBatchSummary & { accountProduct: z.infer<typeof QianchuanProductSchema> })[];
   closedBatches?: QianchuanClosedBatchSummary[];
 }
 

@@ -18,10 +18,13 @@ import { uploadFailure } from "../src/shared/douyin-upload";
 
 const selection = (accountProduct: QianchuanProduct): QianchuanUploadSelection => ({ enabled: true, accountProduct });
 const temporaryRoots = new Set<string>();
+const fixtureServices = new Set<DouyinUploadService>();
 beforeEach(() => {
   vi.spyOn(QianchuanBrowserManager.prototype, "prepareExisting").mockRejectedValue(new Error("Fixture account browser is closed"));
 });
 afterEach(async () => {
+  await Promise.all([...fixtureServices].map(service => service.stop()));
+  fixtureServices.clear();
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
   await Promise.all([...temporaryRoots].map(root => rm(root, { recursive: true, force: true })));
@@ -112,6 +115,7 @@ async function fixture(browser?: () => UploadBrowserPort) {
     accounts,
     readiness: () => undefined,
   });
+  fixtureServices.add(service);
 
   async function authorize() {
     await service.chooseConfig(configPath);
@@ -278,6 +282,17 @@ describe("Qianchuan upload service", () => {
     expect(f.store.fence(original.result.upload_task_id)).toEqual(fence);
     expect(f.service.status(old.projectId).tasks).toEqual([]);
     await expect(f.service.requestResume(original.result.upload_task_id)).rejects.toThrow("不属于本次制作");
+    expect(f.service.status(current.projectId).accountBatches).toContainEqual(expect.objectContaining({ projectId: old.projectId, pageBatchId: original.authorization.pageBatchId, accountProduct: "眼贴", unknownCount: 1 }));
+    const closeRef = { projectId: old.projectId, uploadTaskId: original.result.upload_task_id, expectedPageBatchId: original.authorization.pageBatchId };
+    for (const patch of [{ projectId: current.projectId }, { expectedPageBatchId: randomUUID() }, { uploadTaskId: "f".repeat(64) }, { extra: true }]) {
+      await expect(f.service.closeAccountBatch({ ...closeRef, ...patch })).rejects.toThrow();
+      expect(f.store.closedBatches()).toEqual([]);
+    }
+    await f.service.closeAccountBatch(closeRef);
+    expect(f.service.status(current.projectId).accountBatches?.some(batch => batch.pageBatchId === original.authorization.pageBatchId)).toBe(false);
+    expect(f.store.fence(original.result.upload_task_id)).toEqual(fence);
+    expect(f.store.task(original.result.upload_task_id)).toEqual(original);
+    await expect(f.service.requestResume(original.result.upload_task_id)).rejects.toThrow("已结束");
   });
 
   it("admits multiple accounts and queue chunks into one production and clears historical pause", async () => {
@@ -445,8 +460,35 @@ describe("Qianchuan upload service", () => {
   async function nativeFixture(discover: (id: string) => Promise<string> = async () => "http://127.0.0.1:9225", readPlans?: NonNullable<ConstructorParameters<typeof DouyinUploadService>[1]>["readPlans"]) {
     const f = await fixture();
     const service = new DouyinUploadService(f.store, { accounts: new QianchuanAccountSettings(f.store.root, discover), loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined, readPlans });
+    fixtureServices.add(service);
     await service.restoreConfig(); return { ...f, service };
   }
+  it("applies an idle account's upload method through normal browser closure without starting uploads", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    const close = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+    vi.spyOn(QianchuanBrowserManager.prototype, "assertClosed").mockResolvedValue();
+    const egress = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+    await f.service.saveAccount({ product: "蝴蝶贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=2000", egress });
+    expect(close.mock.calls.map(call => call.slice(0, 2))).toEqual([["1000", "close"]]);
+    expect(f.service.status(randomUUID()).accounts.find(account => account.product === "蝴蝶贴")?.egress).toEqual(egress);
+    expect(f.store.tasks()).toEqual([]); expect(f.events).toEqual([]);
+  });
+  it("protects another account's READY batch sharing the actual browser before automatic shutdown", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });
+    const batch = await f.createBatch(["shared browser protected bytes"]), authorization = await f.service.preflight(selection("眼贴"), 1);
+    await f.service.registerBatch(batch.batchIdentity, selection("眼贴"), authorization);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const records = structuredClone(f.store.tasks()), fence = f.store.fence(records[0].result.upload_task_id);
+    const mapping = path.join(f.store.root, "accounts", "mapping.json"), before = await readFile(mapping);
+    const shutdown = vi.fn();
+    vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async (_id, _action, guard) => {
+      guard?.({ profile: "/fixture/shared", endpoint: records[0].authorization.target.cdpEndpoint }); shutdown();
+    });
+    await expect(f.service.saveAccount({ product: "蝴蝶贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=2000",
+      egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } })).rejects.toThrow("待确认或结果未知");
+    expect(shutdown).not.toHaveBeenCalled(); expect(await readFile(mapping)).toEqual(before);
+    expect(f.store.tasks()).toEqual(records); expect(f.store.fence(records[0].result.upload_task_id)).toEqual(fence);
+  });
   it("coalesces display refresh without browser work and discards stale names after an account edit", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     const before = f.service.status("unused").accounts, bytes = await readFile(path.join(f.store.root, "accounts", "mapping.json"));
@@ -1816,6 +1858,85 @@ describe("Qianchuan upload service", () => {
     expect(events.filter(event => event === "readonly")).toHaveLength(1);
     expect(maximumActive).toBe(1);
     expect(reopenedStore.task(oldRecord!.result.upload_task_id)?.result.state).toBe("WAITING_FOR_CONFIRMATION");
+  });
+
+  async function currentBrowserUpload() {
+    const f = await fixture();
+    const live = { advertiserId: "7000", failures: [] as Error[], reads: 0 };
+    const accounts = new QianchuanAccountSettings(f.store.root, async () => "http://127.0.0.1:11000", async () => "http://127.0.0.1:11000", async () => {
+      live.reads++;
+      const failure = live.failures.shift(); if (failure) throw failure;
+      return { advertiserId: live.advertiserId, name: "Fixture child account" };
+    });
+    const service = new DouyinUploadService(f.store, {
+      accounts, loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined,
+      readPlans: async target => [{ advertiserId: target.advertiserId, adId: "9001", name: "Fixture frozen plan" }],
+    });
+    await service.chooseConfig(f.configPath); await service.configure({ enabled: true }); await service.beginProduction();
+    const batch = await f.createBatch(["current browser first", "current browser second"]);
+    const selected: QianchuanUploadSelection = { enabled: true, accountProduct: batch.product,
+      plan: { advertiserId: "7000", adId: "9001", name: "Fixture frozen plan", accountSource: "current-browser" } };
+    const authorization = (await service.preflight(selected, 2))!;
+    await service.registerBatches([batch.batchIdentity], selected, authorization);
+    for (const identity of batch.identities) await service.enqueueFinalArtifact(identity);
+    live.reads = 0;
+    return { ...f, service, live, batch, authorization };
+  }
+
+  it("recovers transient current-account checks without changing the frozen target or selecting twice", async () => {
+    const f = await currentBrowserUpload();
+    f.live.failures.push(...Array.from({ length: 2 }, () => uploadFailure("CDP_UNAVAILABLE", "browser", "Fixture connection unavailable", "Check Chrome", false, true)));
+    await f.service.runPending();
+    expect(f.service.status(f.batch.projectId).tasks).toEqual([
+      expect.objectContaining({ upload_outcome: "ACCEPTED", retry_count: 2 }),
+      expect.objectContaining({ upload_outcome: "ACCEPTED", retry_count: 2 }),
+    ]);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(f.store.tasks().every(task => JSON.stringify(task.authorization) === JSON.stringify(f.authorization))).toBe(true);
+  });
+
+  it("bounds current-account connection failures to three attempts and retains their browser cause", async () => {
+    const f = await currentBrowserUpload();
+    f.live.failures.push(...Array.from({ length: 4 }, () => uploadFailure("TIMEOUT", "browser", "Fixture current-account timeout", "Check Chrome", false, true)));
+    await f.service.runPending();
+    expect(f.live.reads).toBe(3);
+    expect(f.service.status(f.batch.projectId).tasks.every(task => task.state === "FAILED_RETRYABLE" && task.upload_outcome === "NOT_SELECTED" && task.failure?.code === "TIMEOUT" && task.retry_count === 2)).toBe(true);
+    expect(f.events).not.toContain("file-input");
+    await f.service.runPending(); expect(f.live.reads).toBe(3);
+  });
+
+  it.each([
+    Object.assign(new Error("Fixture transport"), { code: "ECONNRESET" }),
+    new TypeError("Fixture fetch", { cause: Object.assign(new Error("Fixture socket"), { code: "UND_ERR_SOCKET" }) }),
+    Object.assign(new Error("Fixture timeout"), { name: "TimeoutError" }),
+  ])("recovers an identified native current-account transport error without exposing raw diagnostics: %s", async failure => {
+    const f = await currentBrowserUpload(); f.live.failures.push(failure);
+    await f.service.runPending();
+    expect(f.service.status(f.batch.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED" && task.retry_count === 1 && !task.failure)).toBe(true);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+  });
+
+  it("honors a browser failure requiring human review instead of automatically retrying it", async () => {
+    const f = await currentBrowserUpload();
+    f.live.failures.push(uploadFailure("CDP_UNAVAILABLE", "browser", "Fixture explicit human gate", "Inspect Chrome", true, true));
+    await f.service.runPending();
+    expect(f.service.status(f.batch.projectId).tasks.every(task => task.state === "NEEDS_HUMAN" && task.failure?.message === "Fixture explicit human gate" && task.retry_count === 0)).toBe(true);
+    expect(f.live.reads).toBe(1); expect(f.events).not.toContain("file-input");
+  });
+
+  it("does not claim an account change or retry when current-page identity cannot be verified", async () => {
+    const f = await currentBrowserUpload(); f.live.failures.push(new Error("Fixture ambiguous current page"));
+    await f.service.runPending();
+    expect(f.service.status(f.batch.projectId).tasks.every(task => task.state === "NEEDS_HUMAN" && task.failure?.code === "PAGE_CONTRACT_CHANGED" && task.retry_count === 0)).toBe(true);
+    expect(f.live.reads).toBe(1); expect(f.events).not.toContain("file-input");
+  });
+
+  it("still blocks a verified different child account without retrying or changing authorization", async () => {
+    const f = await currentBrowserUpload(); f.live.advertiserId = "8000";
+    await f.service.runPending();
+    expect(f.service.status(f.batch.projectId).tasks.every(task => task.failure?.code === "INPUT_CONFLICT" && task.retry_count === 0 && task.upload_outcome === "NOT_SELECTED")).toBe(true);
+    expect(f.events).not.toContain("file-input");
+    expect(f.store.tasks().every(task => JSON.stringify(task.authorization) === JSON.stringify(f.authorization))).toBe(true);
   });
 
   it("reconnects unselected files with fresh ports and selects the group only once", async () => {

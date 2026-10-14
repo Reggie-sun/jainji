@@ -201,14 +201,17 @@ it("starts saved manual artwork through normal production without review preview
   const register = vi.fn(async () => {});
   const agent = new AgentController(service, queue, ffmpeg, () => {}, assets, undefined, undefined, undefined, undefined, undefined, register);
   const plan = vi.spyOn(agent.provider, "plan"), shortlist = vi.spyOn(agent.provider, "shortlist");
-  await agent.start({ ruleId: "clean", brief: "", mediaIds: [media.id, unframed.id], requestedCount: 3, outputDirectory: directory,
-    exportSettings: { resolutionMode: "source", frameRateMode: "source", quality: "balanced" },
-    decorations: { mode: "manual", sticker: "none", fontFamily: "Noto Sans CJK SC", displayText: { enabled: false, x: .5, y: .1 } } }, new Set([directory]));
+  const input = { ruleId: "clean" as const, brief: "", mediaIds: [media.id, unframed.id], requestedCount: 3, outputDirectory: directory,
+    exportSettings: { resolutionMode: "source" as const, frameRateMode: "source" as const, quality: "balanced" as const },
+    decorations: { mode: "manual" as const, sticker: "none", fontFamily: "Noto Sans CJK SC", displayText: { enabled: false, x: .5, y: .1 } } };
+  expect(service.currentProject.coverSticker!.mediaRegions![unframed.id]).toBeUndefined();
+  await agent.start(input, new Set([directory]));
   await vi.waitFor(() => expect(agent.busy).toBe(false), { timeout: 20000 });
   expect(agent.snapshot()?.items.map(item => ({ status: item.status, error: item.error }))).toEqual(Array.from({ length: 3 }, () => ({ status: "exporting", error: undefined })));
   await vi.waitFor(() => expect(queue.snapshot().batches.flatMap(s => s.batch.tasks.map(t => t.status))).toEqual(["completed", "completed", "completed"]), { timeout: 20000 });
   expect(preview).not.toHaveBeenCalled(); expect(plan).not.toHaveBeenCalled(); expect(shortlist).not.toHaveBeenCalled();
   expect(service.currentProject.reviewDrafts ?? []).toHaveLength(0); expect(register).toHaveBeenCalledTimes(3);
+  expect(service.currentProject.coverSticker!.mediaRegions![unframed.id]).toBeUndefined();
   const states = await jobStore.loadAll();
   const covered = states.find(s => s.batch.mediaIds.includes(media.id))!;
   const admission = submissions.mock.calls.find(([input]) => input.mediaIds[0] === media.id)![0];

@@ -18,14 +18,15 @@ const metadataUnavailable = "账号浏览器连接元数据无效，请核查原
 const accountUrl = (id: string) => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}`;
 
 type OriginalProfileOptions = Pick<QianchuanBrowserBinding, "profileDirectory" | "windowClass">;
-export function accountChromeArguments(profile: string, advertiserId: string, original?: OriginalProfileOptions, egress?: QianchuanEgress, openAccount = true): string[] {
-  return [`--user-data-dir=${profile}`, ...(original ? [`--profile-directory=${original.profileDirectory}`, ...(original.windowClass ? [`--class=${original.windowClass}`] : [])] : []), "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check", "--start-maximized", ...(egress ? chromeEgressArguments(egress) : []), openAccount ? accountUrl(advertiserId) : "about:blank"];
+type ChromeWindowMode = "maximized" | "remote";
+export function accountChromeArguments(profile: string, advertiserId: string, original?: OriginalProfileOptions, egress?: QianchuanEgress, openAccount = true, windowMode: ChromeWindowMode = "maximized"): string[] {
+  return [`--user-data-dir=${profile}`, ...(original ? [`--profile-directory=${original.profileDirectory}`, ...(original.windowClass ? [`--class=${original.windowClass}`] : [])] : []), "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", "--no-first-run", "--no-default-browser-check", windowMode === "remote" ? "--window-size=1920,1080" : "--start-maximized", ...(egress ? chromeEgressArguments(egress) : []), openAccount ? accountUrl(advertiserId) : "about:blank"];
 }
 
-export async function launchChrome(profile: string, advertiserId: string, original?: OriginalProfileOptions, egress?: QianchuanEgress, openAccount = true): Promise<void> {
+export async function launchChrome(profile: string, advertiserId: string, original?: OriginalProfileOptions, egress?: QianchuanEgress, openAccount = true, windowMode: ChromeWindowMode = "maximized"): Promise<void> {
   for (const executable of ["/opt/google/chrome/chrome", "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser"]) {
     try { await access(executable, constants.X_OK); } catch { continue; }
-    const child = spawn(executable, accountChromeArguments(profile, advertiserId, original, egress, openAccount), { detached: true, stdio: "ignore" });
+    const child = spawn(executable, accountChromeArguments(profile, advertiserId, original, egress, openAccount, windowMode), { detached: true, stdio: "ignore" });
     await new Promise<void>((resolve, reject) => { child.once("spawn", resolve); child.once("error", reject); });
     child.unref();
     return;
@@ -154,7 +155,17 @@ export class QianchuanBrowserManager {
       if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
       const remote = await this.dependencies.egress?.(advertiserId);
       if (remote?.mode === "remote-browser") { await qianchuanRemoteRuntime.control(remote, advertiserId, action, action === "restart" ? await this.dependencies.displayName?.(advertiserId) : undefined); return ""; }
-      const binding = await this.bindings.get(advertiserId), profile = binding?.profile ?? managed;
+      let binding = await this.bindings.get(advertiserId);
+      if (!binding) {
+        const originalBrowsers = (await this.browsers()()).filter(browser => browser.profile && !browser.profile.startsWith(`${path.resolve(this.root)}${path.sep}`));
+        const original = await discoverQianchuanProfile(advertiserId, originalBrowsers);
+        if (original) {
+          beforeShutdown?.(original);
+          binding = { advertiserId, profile: original.profile!, profileDirectory: original.profileDirectory!, ...(original.windowClass ? { windowClass: original.windowClass } : {}) };
+          await this.bindings.save(binding);
+        } else if (originalBrowsers.some(browser => !browser.endpoint || browser.endpoint.startsWith("ws:"))) throw new Error("尚未建立原账号浏览器绑定，无法安全识别或关闭原窗口；未关闭任何窗口。");
+      }
+      const profile = binding?.profile ?? managed;
       if (binding) await verifyOriginalProfile(binding);
       else { await secureUploadDirectory(path.resolve(this.root)); await secureUploadDirectory(path.dirname(profile)); await secureUploadDirectory(profile); }
       const browsers = this.browsers(profile);

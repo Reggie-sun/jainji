@@ -1,14 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import type { CoverReviewDraft } from "../shared/cover-review.js";
-import { isCoverPoolStickerId } from "../shared/cover-sticker.js";
+import { isCoverPoolStickerId, isHumanRegionStickerId } from "../shared/cover-sticker.js";
 import { HumanRegionBindingSchema } from "../shared/human-region-cover.js";
 import type { MediaItem, ExportPreset, StickerLayer } from "./domain.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { SupervisorEvidence } from "./supervisor-evidence.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 import { measureShapeCoverOutput } from "./shape-cover-alpha.js";
-import { searchHybridCornerShape, hybridMaskBounds } from "./shape-cover-hybrid-shape.js";
+import { searchHybridCornerShape, hybridMaskBounds, type HybridArtworkCache } from "./shape-cover-hybrid-shape.js";
 import { freezeShapeCoverRaster, publishShapeCoverPng } from "./shape-cover-freeze.js";
 import { humanRegionArtworkScope, humanRegionBitmap, opaqueRegionCovered, projectHumanRectangle } from "./human-region-geometry.js";
 import { reviewDigest } from "./cover-review-approval.js";
@@ -19,13 +19,17 @@ export type HumanRegionIntent = Pick<CoverReviewDraft, "id" | "projectId" | "rev
   admission?: "manual-production-v1";
   media: Pick<CoverReviewDraft["media"][number], "mediaId" | "sourceFingerprint" | "disposition" | "identities" | "segments">[];
 };
-type MatchedArtwork = { excess: number; publish: () => Promise<StickerLayer> };
+type MatchedArtwork = { excess: number; clipped: number; publish: () => Promise<StickerLayer> };
 
 /** Bounded geometry shared by normal production and the existing review lifecycle. */
 export function createHumanRegionCover(input: { draft: HumanRegionIntent; media: MediaItem[]; preset: ExportPreset;
   assets: StickerAssets; tools: FfmpegAdapter; directory: string; random: boolean }) {
   const draft = structuredClone(input.draft);
-  const candidates = Object.keys(input.assets).filter(id => isCoverPoolStickerId(id) && input.assets[id]).sort();
+  const independent = input.random || draft.admission === "manual-production-v1";
+  const artworkCache: HybridArtworkCache = new Map();
+  const eligibleSticker = draft.admission === "manual-production-v1" ? isHumanRegionStickerId : isCoverPoolStickerId;
+  const candidates = draft.media.every(item => item.disposition === "no_cover") ? []
+    : Object.keys(input.assets).filter(id => eligibleSticker(id) && input.assets[id]).sort();
   if (candidates.length > 256) throw Error("人工覆盖本地候选超过 256 款，请缩小贴纸库后重试。");
   const rounds = new Map<string, Promise<Map<string, StickerLayer[]>>>();
   const used = new Map<string, string[]>();
@@ -53,15 +57,18 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
   const match = async (target: Awaited<ReturnType<typeof targets>>[number], id: string, signal: AbortSignal): Promise<MatchedArtwork | null> => {
     const key = `${target.media.id}:${target.segment.id}:${id}`;
     if (cache.has(key)) return cache.get(key)!;
-    const budgetKey = input.random ? target.media.id : "round";
+    const budgetKey = independent ? target.media.id : "round";
     const attempts = (trials.get(budgetKey) ?? 0) + 1;
     trials.set(budgetKey, attempts);
-    if (attempts > 512) throw Error(`人工覆盖匹配已达到${input.random ? "此素材" : "本批"} 512 次候选预算；请调整覆盖框或贴纸库。`);
+    const maximum = draft.admission === "manual-production-v1"
+      ? Math.max(512, candidates.length * draft.media.find(item => item.mediaId === target.media.id)!.segments.length) : 512;
+    if (attempts > maximum) throw Error(`人工覆盖匹配已达到${independent ? "此素材" : "本批"} ${maximum} 次候选预算；请调整覆盖框或贴纸库。`);
     const tools = { ...input.tools, signal }, bitmap = humanRegionBitmap(target.target, target.projection);
     const selected = await searchHybridCornerShape([{ id, asset: input.assets[id]! }], bitmap, target.projection,
       draft.admission === "manual-production-v1" ? humanRegionArtworkScope(target.target)
         : { x: -target.projection.width, y: -target.projection.height, width: target.projection.width * 3, height: target.projection.height * 3 },
-      Math.min(target.projection.scaledWidth / target.source.width, target.projection.scaledHeight / target.source.height), tools, "artwork");
+      Math.min(target.projection.scaledWidth / target.source.width, target.projection.scaledHeight / target.source.height), tools,
+      draft.admission === "manual-production-v1" ? "compact-artwork" : "artwork", artworkCache);
     if (!selected) { cache.set(key, null); return null; }
     if (!opaqueRegionCovered(selected.raster.alpha, target.projection, target.target)) throw Error("人工覆盖不透明像素校验失败。");
     const frozen = await freezeShapeCoverRaster(selected.raster, bitmap, target.projection, 0, tools);
@@ -76,8 +83,12 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     const binding = HumanRegionBindingSchema.parse({ ...body, bindingDigest: reviewDigest(body) });
     const png = frozen.png, area = target.target.width * target.target.height;
     const excess = selected.raster.alpha.reduce((n, alpha) => n + Number(alpha > 0), 0) / area - 1;
+    const p = selected.placement;
+    const visibleWidth = Math.min(target.projection.width, p.x + p.width) - Math.max(0, p.x);
+    const visibleHeight = Math.min(target.projection.height, p.y + p.height) - Math.max(0, p.y);
+    const clipped = draft.admission === "manual-production-v1" ? 1 - visibleWidth * visibleHeight / (p.width * p.height) : 0;
     let published: StickerLayer | undefined;
-    const matched: MatchedArtwork = { excess, publish: async () => published ??= {
+    const matched: MatchedArtwork = { excess, clipped, publish: async () => published ??= {
       id: randomUUID(), type: "sticker", visible: true, x: 0, y: 0, width: 1, opacity: 1, rotationDeg: 0, zIndex: 90,
       assetPath: await publishShapeCoverPng(input.directory, png), assetFingerprint: `sha256:${binding.pngSha256}`,
       cover: { stickerId: id, height: 1, regionId: target.segment.id, humanRegion: binding } } };
@@ -94,7 +105,7 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
         const all = await prepared.get(scope)!, result = new Map(input.media.map(m => [m.id, [] as StickerLayer[]]));
         const groups = new Map<string, typeof all>();
         for (const target of all) {
-          const key = input.random ? `${target.media.id}:${target.segment.identityId}` : "round";
+          const key = independent ? `${target.media.id}:${target.segment.identityId}` : "round";
           groups.set(key, [...groups.get(key) ?? [], target]);
         }
         const assigned = new Map<string, Set<string>>(), entries = [...groups];
@@ -110,19 +121,22 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
           const tiers = [eligible.filter(id => !previous.includes(id)), eligible.filter(id => previous.includes(id) && id !== previous.at(-1)), eligible.filter(id => id === previous.at(-1))];
           for (const tier of tiers) for (let start = 0; start < tier.length; start += 8) {
             // Compare bounded windows; retain rotation priority and the original search budgets.
-            const options: { id: string; matches: MatchedArtwork[]; excess: number }[] = [];
+            const options: { id: string; matches: MatchedArtwork[]; excess: number; clipped: number }[] = [];
             for (const id of tier.slice(start, start + 8)) {
               if (++assignments > 4096) throw Error("人工覆盖选材组合达到本轮预算，请减少目标或调整贴纸库。");
               bounded.throwIfAborted();
               const matches: MatchedArtwork[] = [];
               for (const target of group) { const matched = await match(target, id, bounded); if (!matched) break; matches.push(matched); }
-              if (matches.length === group.length) options.push({ id, matches, excess: matches.reduce((sum, matched) => sum + matched.excess, 0) });
+              if (matches.length === group.length) options.push({ id, matches, excess: matches.reduce((sum, matched) => sum + matched.excess, 0),
+                clipped: matches.reduce((sum, matched) => sum + matched.clipped, 0) });
             }
-            options.sort((a, b) => a.excess - b.excess || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+            options.sort((a, b) => a.clipped - b.clipped || a.excess - b.excess || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
             for (const { id, matches } of options) {
               perMedia.add(id); selections.push({ key, id, group, matches });
               if (await solve(index + 1)) return true;
               selections.pop(); perMedia.delete(id);
+              // Creator/manual choices are independent; another earlier choice cannot repair a later no-fit target.
+              if (!input.random) return false;
             }
           }
           return false;
@@ -142,5 +156,5 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     }
     return pending;
   };
-  return async (media: MediaItem, version: number, _runId: string, signal: AbortSignal) => (await round(version, signal, input.random ? media.id : undefined)).get(media.id)!;
+  return async (media: MediaItem, version: number, _runId: string, signal: AbortSignal) => (await round(version, signal, independent ? media.id : undefined)).get(media.id)!;
 }

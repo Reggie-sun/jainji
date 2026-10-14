@@ -25,4 +25,8 @@
 .membership-offers span, .membership-offers small { color: #56677e; }
 .membership-footnote { font-size: 12px; margin-top: 22px; }
 .membership-error { color: #ae2525; padding: 8px 14px; }
+.membership-password-login { display: grid; gap: 12px; margin: 20px 0; }
+.membership-password-login label { display: grid; gap: 6px; color: #233d62; font-size: 14px; }
+.membership-password-login input { width: 100%; box-sizing: border-box; min-width: 0; padding: 10px 12px; border: 1px solid #ccd7e6; border-radius: 8px; font: inherit; }
+.membership-password-login input:focus-visible { outline: 3px solid #8ab1ff; outline-offset: 2px; }
 @media (max-width: 640px) { .membership-card { padding: 24px; } .membership-offers { gap: 10px; } .membership-offers article { padding: 14px; } .membership-expiry { display: none; } }

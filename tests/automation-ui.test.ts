@@ -16,7 +16,7 @@ const productionWithoutPlan = {
     douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }],
 };
 
-function automationFixtureScript(options: { component?: "composer" | "panel" | "cleanup" | "workspace"; production?: unknown; tasks?: unknown[]; accounts?: unknown[]; librarySchedule?: unknown } = {}) {
+function automationFixtureScript(options: { component?: "composer" | "panel" | "cleanup" | "workspace"; production?: unknown; tasks?: unknown[]; accounts?: unknown[]; librarySchedule?: unknown; preflight?: boolean } = {}) {
   const sourceTasks = options.tasks ?? [];
   const taskArgument = sourceTasks[0] ?? {
     id: sourceTaskId,
@@ -33,17 +33,25 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
     window.automationCalls = { created: [], configured: [], removed: [], cleanup: [], librarySaved: [] };
     let librarySchedule = ${JSON.stringify(options.librarySchedule ?? { settings: { confirmation: "DELETE_ALL_VIDEOS", enabled: false, time: "00:30", accounts: [] }, timeZone: "Asia/Hong_Kong" })};
     const libraryListeners = new Set();
+    const automationListeners = new Set();
     const status = () => ({ tasks: window.automationTasks, timeZone: "Asia/Hong_Kong", running: false });
+    window.updateAutomationModelIssue = issue => {
+      window.automationTasks = window.automationTasks.map(task => ({ ...task, configurationIssue: issue }));
+      automationListeners.forEach(listener => listener(status()));
+    };
     window.jianji = {
       getAutomation: async () => status(),
       createAutomation: async input => { window.automationCalls.created.push(input); return status(); },
       configureAutomation: async input => {
         window.automationCalls.configured.push(input);
+        const issue = window.automationTasks.find(task => task.id === input.id)?.configurationIssue;
+        if (${Boolean(options.preflight)} && input.enabled && issue) throw Error(issue);
         window.automationTasks = window.automationTasks.map(task => task.id === input.id ? { ...task, request: { ...task.request, enabled: input.enabled, time: input.time } } : task);
+        automationListeners.forEach(listener => listener(status()));
         return status();
       },
       removeAutomation: async id => { window.automationCalls.removed.push(id); window.automationTasks = window.automationTasks.filter(task => task.id !== id); return status(); },
-      onAutomation: () => () => {},
+      onAutomation: listener => { automationListeners.add(listener); return () => automationListeners.delete(listener); },
       listQianchuanPlans: async input => [{ advertiserId: input.expectedAdvertiserId, adId: "456", name: "固定计划" }],
       cancelQianchuanPlans: async () => {},
       clearQianchuanVideoLibraries: async input => { window.automationCalls.cleanup.push(input); return []; },
@@ -89,6 +97,22 @@ async function fixture(options: Parameters<typeof automationFixtureScript>[0] = 
 }
 
 describe("scheduled automation browser interaction", () => {
+  it("identifies an old blocked run as history after the schedule time changes", async () => {
+    const task = { id: "11111111-1111-4111-8111-111111111111", request: { name: "改时制作", time: "18:08", enabled: true,
+      production: { entries: [{ recentProjectId: "22222222-2222-4222-8222-222222222222", requestedCount: 1, coverEnabled: false }] } },
+      binding: "a".repeat(64), summary: "固定模板", createdAt: "2026-10-10T00:00:00.000Z", scheduleRevision: 1,
+      scheduleUpdatedAt: "2026-10-12T08:00:00.000Z", nextRunAt: "2026-10-12T10:08:00.000Z",
+      lastRun: { id: "55555555-5555-4555-8555-555555555555", day: "2026-10-12", startedAt: "2026-10-11T20:02:00.000Z",
+        scheduleRevision: 0, state: "BLOCKED", message: "旧时间的制作未完成" } };
+    const { page } = await fixture({ component: "panel", tasks: [task] });
+    try {
+      const row = page.getByRole("article", { name: "改时制作" });
+      await row.getByText("下次执行：").waitFor();
+      await row.getByText("上次安排的执行记录：已阻断").waitFor();
+      expect(await row.getByText("最近执行：已阻断").count()).toBe(0);
+      expect(await row.getByRole("alert").count()).toBe(0);
+    } finally { await page.close(); }
+  });
   it.each([
     { rule: undefined, audit: true, zero: false },
     { rule: "ZERO_IMPRESSIONS_15D", audit: false, zero: true },
@@ -368,6 +392,57 @@ describe("scheduled automation browser interaction", () => {
     } finally { await page.close(); }
   }, 15000);
 
+  it("refreshes model issues inside an open editor without resetting scheduling drafts", async () => {
+    const task = { id: sourceTaskId, request: { name: "编辑中恢复模型", time: "18:08", enabled: false, production },
+      binding: "a".repeat(64), summary: "固定模板", createdAt: "2026-10-10T00:00:00.000Z", configurationIssue: "请先配置视觉识别模型。" };
+    const { page, pageErrors } = await fixture({ component: "workspace", tasks: [task], preflight: true });
+    try {
+      await page.getByRole("button", { name: "编辑定时设置" }).click();
+      const editor = page.getByRole("region", { name: "编辑定时任务", exact: true });
+      await editor.getByLabel("每天执行时间").fill("19:08");
+      await editor.getByLabel("启用此每日任务").check();
+      await editor.getByRole("button", { name: "保存定时设置" }).click();
+      await editor.getByRole("alert").nth(1).waitFor();
+      await page.evaluate(() => (window as any).updateAutomationModelIssue(undefined));
+      await page.waitForFunction(() => !document.querySelector('[aria-label="定时任务列表"] [role="alert"]'));
+      expect(await editor.getByRole("alert").count()).toBe(0);
+      expect(await editor.getByLabel("每天执行时间").inputValue()).toBe("19:08");
+      expect(await editor.getByLabel("启用此每日任务").isChecked()).toBe(true);
+      expect(await page.evaluate(() => (window as any).automationTasks[0].request.enabled)).toBe(false);
+      expect(await page.evaluate(() => (window as any).automationCalls.configured)).toHaveLength(1);
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]); expect(pageErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("updates current model readiness live and saves without the obsolete model refresh control", async () => {
+    const task = { id: sourceTaskId, request: { name: "配置待更新", time: "18:08", enabled: true, production, upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION" },
+      binding: "a".repeat(64), summary: "固定模板", createdAt: "2026-10-10T00:00:00.000Z", configurationIssue: "请先在模型与 API 中配置视觉识别模型。",
+      lastRun: { id: "55555555-5555-4555-8555-555555555555", day: "2026-10-12", startedAt: "2026-10-12T10:08:00.000Z", state: "BLOCKED", message: "原执行记录" } };
+    const { page, pageErrors } = await fixture({ component: "workspace", tasks: [task], preflight: true });
+    try {
+      const row = page.getByRole("article", { name: task.request.name, exact: true });
+      await row.getByRole("alert").waitFor(); expect(await row.textContent()).toContain("原执行记录");
+      await row.getByRole("button", { name: "暂停", exact: true }).click();
+      await row.getByRole("button", { name: "启用", exact: true }).click();
+      await row.getByRole("alert").filter({ hasText: "视觉识别模型" }).nth(1).waitFor();
+      await page.evaluate(() => (window as any).updateAutomationModelIssue(undefined));
+      await row.getByRole("alert").filter({ hasText: "当前配置不可用" }).waitFor({ state: "detached" });
+      expect(await row.getByRole("alert").count()).toBe(0);
+      await row.getByRole("button", { name: "编辑定时设置" }).click();
+      const editor = page.getByRole("region", { name: "编辑定时任务", exact: true });
+      expect(await editor.getByRole("checkbox", { name: /更新模型配置/ }).count()).toBe(0);
+      expect(await editor.textContent()).toContain("每次开始执行时使用“模型与 API”的当前设置");
+      await editor.getByLabel("启用此每日任务").check();
+      await editor.getByLabel("每天执行时间").fill("23:45"); await editor.getByRole("button", { name: "保存定时设置" }).click();
+      await row.getByText("每天 23:45", { exact: true }).waitFor();
+      expect(await row.getByRole("alert").count()).toBe(0); expect(await row.textContent()).toContain("原执行记录");
+      expect(await page.evaluate(() => (window as any).automationCalls.configured)).toEqual([
+        { id: sourceTaskId, enabled: false, time: "18:08" },
+        { id: sourceTaskId, enabled: true, time: "18:08" },
+        { id: sourceTaskId, enabled: true, time: "23:45" }]);
+      expect(await page.evaluate(() => (window as any).automationCalls.cleanup)).toEqual([]); expect(pageErrors).toEqual([]);
+    } finally { await page.close(); }
+  });
   it("pauses, changes the daily time and deletes a saved task through its task controls", async () => {
     const task = {
       id: sourceTaskId,

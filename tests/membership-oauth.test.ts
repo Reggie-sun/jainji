@@ -7,7 +7,7 @@ import { MembershipConfigSchema } from "../src/shared/membership.js";
 const servers: Server[] = [];
 afterEach(async () => { await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }))); });
 async function listen(server: Server) { servers.push(server); await new Promise<void>(r => server.listen(0, "127.0.0.1", r)); return (server.address() as { port: number }).port; }
-async function fixture() {
+async function fixture({ notBeforeOffset, expiresOffset = 300 }: { notBeforeOffset?: number; expiresOffset?: number } = {}) {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   let authorization: URL, issuer: string;
   let validVerifier = false, secretSent = false, badNonce = false;
@@ -21,7 +21,7 @@ async function fixture() {
       validVerifier = createHash("sha256").update(body.get("code_verifier") ?? "").digest("base64url") === authorization.searchParams.get("code_challenge");
       secretSent = body.has("client_secret") || !!req.headers.authorization;
       const at = Math.floor(Date.now() / 1000);
-      const unsigned = [JSON.stringify({ alg: "RS256", kid: "fixture" }), JSON.stringify({ iss: issuer, aud: "desktop", sub: "account", iat: at, exp: at + 300, nonce: badNonce ? "wrong" : authorization.searchParams.get("nonce") })].map(s => Buffer.from(s).toString("base64url")).join(".");
+      const unsigned = [JSON.stringify({ alg: "RS256", kid: "fixture" }), JSON.stringify({ iss: issuer, aud: "desktop", sub: "account", iat: at, exp: at + expiresOffset, ...(notBeforeOffset === undefined ? {} : { nbf: at + notBeforeOffset }), nonce: badNonce ? "wrong" : authorization.searchParams.get("nonce") })].map(s => Buffer.from(s).toString("base64url")).join(".");
       res.end(JSON.stringify({ access_token: "test-only-access-token", token_type: "Bearer", expires_in: 300, id_token: `${unsigned}.${sign("RSA-SHA256", Buffer.from(unsigned), privateKey).toString("base64url")}` }));
     } else { res.writeHead(404); res.end("{}"); }
   });
@@ -66,6 +66,19 @@ describe("native OAuth PKCE", () => {
   });
   it("rejects mismatched OIDC nonce without leaking the response", async () => {
     const f = await fixture(); f.badNonce();
+    await expect(loginMembership(f.config, f.open, new AbortController().signal)).rejects.toThrow("登录未完成");
+  });
+  it("accepts a valid issuer token when the desktop clock is 45 seconds behind", async () => {
+    const f = await fixture({ notBeforeOffset: 45 });
+    expect(await loginMembership(f.config, f.open, new AbortController().signal)).toBe("test-only-access-token");
+    expect(f.inspect()).toEqual({ validVerifier: true, secretSent: false });
+  });
+  it("rejects a token more than one minute ahead of the desktop clock", async () => {
+    const f = await fixture({ notBeforeOffset: 90 });
+    await expect(loginMembership(f.config, f.open, new AbortController().signal)).rejects.toThrow("登录未完成");
+  });
+  it("rejects expired tokens outside the clock tolerance", async () => {
+    const f = await fixture({ expiresOffset: -90 });
     await expect(loginMembership(f.config, f.open, new AbortController().signal)).rejects.toThrow("登录未完成");
   });
   it("allows cancelling the system-browser login", async () => {

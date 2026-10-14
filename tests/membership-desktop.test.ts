@@ -13,6 +13,10 @@ import { createMembershipNetwork } from "../src/main/membership-network.js";
 import { membershipDiagnostics } from "../src/main/membership-diagnostics.js";
 import { type MembershipDiagnostic } from "../src/main/membership-check.js";
 import type { session as ElectronSessions } from "electron";
+import { buildSync } from "esbuild";
+import { chromium } from "playwright-core";
+import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture.js";
+import { loadOfflineAdmin, provisionOfflineAdmin } from "../src/main/membership-offline-admin.js";
 
 const desktop = vi.hoisted(() => ({ isPackaged: false, root: "", directFetch: vi.fn(), setProxy: vi.fn(async () => {}),
   defaultFetch: vi.fn(), defaultSetProxy: vi.fn(), fromPartition: vi.fn() }));
@@ -27,6 +31,114 @@ vi.mock("electron", () => ({
 
 const config = MembershipConfigSchema.parse({ serviceUrl: "http://127.0.0.1:8789", issuer: "http://127.0.0.1:8000", clientId: "desktop", organization: "jianji", application: "jianji", pricingName: "jianji" });
 const allowed: MembershipStatus = { state: "allowed", reason: "trial", message: "试用中", user: { id: "user-id", name: "user", displayName: "用户", isAdmin: false }, expiresAt: "2026-11-10T00:00:00Z" };
+
+describe("local administrator session boundary", () => {
+  it("uses the real password form and session owner, hides cloud actions and closes the workspace on logout", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "jianji-offline-ui-"));
+    const encryption = { isEncryptionAvailable: () => true, encryptString: (value: string) => Buffer.from(value).reverse(),
+      decryptString: (value: Buffer) => Buffer.from(value).reverse().toString() };
+    const credentials = { username: "owner@example.test", password: "test-only-ui-password" };
+    await provisionOfflineAdmin(root, credentials, encryption);
+    let publicRequests = 0;
+    const forbidden = async () => { ++publicRequests; throw new Error("Public account network disabled"); };
+    const session = new MembershipSession(config, { offlineAdmin: await loadOfflineAdmin(root, encryption),
+      storage: storageModule.membershipStorage(root, config, encryption), check: forbidden, login: forbidden,
+      changed: () => {}, lostAccess: async () => {} });
+    const browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true });
+    try {
+      const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+      await page.exposeFunction("backendStatus", () => session.snapshot());
+      await page.exposeFunction("backendLogin", (input: { username: string; password: string }) => session.login(input));
+      await page.exposeFunction("backendLogout", () => session.logout());
+      await page.exposeFunction("backendAuthorize", () => session.assertAllowed());
+      await page.setContent('<div id="root"></div>');
+      await page.addStyleTag({ content: '* { box-sizing: border-box; } body { margin: 0; }' + await readFile("src/renderer/membership.css", "utf8") });
+      const script = buildSync({ stdin: { contents: `
+        import React from 'react'; import {createRoot} from 'react-dom/client';
+        import {MembershipGate} from './src/renderer/MembershipGate';
+        const listeners=new Set(); const emit=status=>{for(const listener of listeners)listener(status);return status;};
+        window.jianji={membershipStatus:window.backendStatus,onMembership:listener=>{listeners.add(listener);return()=>listeners.delete(listener);},
+          loginMembership:async input=>emit(await window.backendLogin(input)),logoutMembership:async()=>emit(await window.backendLogout()),
+          refreshMembership:async()=>emit(await window.backendStatus()),openMembershipPricing:async()=>{},openMembershipAdmin:async()=>{}};
+        createRoot(document.getElementById('root')).render(<MembershipGate><button onClick={async()=>{await window.backendAuthorize();document.getElementById('authorized').textContent='制作准入成功';}}>检查制作权限</button><span id="authorized"/></MembershipGate>);
+      `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, write: false, bundle: true,
+        platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
+      await page.addScriptTag({ content: script });
+      await page.getByLabel("帐号", { exact: true }).fill(credentials.username);
+      await page.getByLabel("密码", { exact: true }).fill("incorrect");
+      await page.getByRole("button", { name: "帐号密码登录", exact: true }).click();
+      await page.getByText("帐号或密码错误，或本机授权不可用。", { exact: true }).waitFor();
+      expect(await page.getByRole("button", { name: "检查制作权限" }).isVisible()).toBe(false);
+      expect(await page.getByLabel("密码", { exact: true }).inputValue()).toBe("");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await page.getByLabel("密码", { exact: true }).fill(credentials.password);
+      await page.getByRole("button", { name: "帐号密码登录", exact: true }).click();
+      await page.getByText("超级管理员 · 永久权限", { exact: false }).waitFor();
+      expect(await page.getByRole("button", { name: "续费会员", exact: true }).count()).toBe(0);
+      expect(await page.getByRole("button", { name: "管理用户", exact: true }).count()).toBe(0);
+      await page.getByRole("button", { name: "检查制作权限" }).click();
+      await page.getByText("制作准入成功", { exact: true }).waitFor();
+      await page.getByRole("button", { name: "退出登录", exact: true }).click();
+      await page.getByRole("button", { name: "帐号密码登录", exact: true }).waitFor();
+      expect(await page.getByRole("button", { name: "检查制作权限" }).isVisible()).toBe(false);
+      expect(publicRequests).toBe(0);
+    } finally { session.dispose(); await browser.close(); await rm(root, { recursive: true, force: true }); }
+  });
+  it("does not reopen development admission when explicit local authorization is corrupt", async () => {
+    desktop.root = await mkdtemp(path.join(tmpdir(), "jianji-offline-corrupt-"));
+    const oldConfig = process.env.JIANJI_MEMBERSHIP_CONFIG;
+    delete process.env.JIANJI_MEMBERSHIP_CONFIG;
+    await mkdir(path.join(desktop.root, "membership"), { mode: 0o700 });
+    await writeFile(path.join(desktop.root, "membership/offline-admin.enc"), "corrupt", { mode: 0o600 });
+    const session = await createMembershipDesktop({ root: desktop.root, trusted: () => {}, changed: () => {}, lostAccess: async () => {} });
+    try { await expect(session.assertAllowed()).rejects.toThrow(); }
+    finally {
+      session.dispose();
+      if (oldConfig === undefined) delete process.env.JIANJI_MEMBERSHIP_CONFIG; else process.env.JIANJI_MEMBERSHIP_CONFIG = oldConfig;
+      await rm(desktop.root, { recursive: true, force: true });
+    }
+  });
+  it("rejects password login joining an existing cloud login and ignores a late result after logout", async () => {
+    let resolve!: (token: string) => void;
+    let saved: string | undefined;
+    const session = new MembershipSession(config, { storage: { read: async () => saved, write: async token => { saved = token; } },
+      login: () => new Promise<string>(r => { resolve = r; }), check: async () => allowed,
+      changed: () => {}, lostAccess: async () => {} });
+    const pending = session.login(); await vi.waitFor(() => expect(resolve).toBeDefined());
+    expect(() => session.login({ username: "owner@example.test", password: "wrong" })).toThrow("登录正在进行");
+    await session.logout(); resolve("late-cloud-token"); await pending;
+    expect(saved).toBeUndefined(); await expect(session.assertAllowed()).rejects.toThrow(); session.dispose();
+  });
+  it("logs in and restores permanent local authority without using cloud checks or browser login", async () => {
+    let saved: string | undefined;
+    let publicRequests = 0;
+    const forbidden = async () => { ++publicRequests; throw new Error("Public account request forbidden"); };
+    const localStatus = { state: "allowed", reason: "offline-admin", message: "本机永久权限",
+      user: { id: "local-admin-id", name: "owner@example.test", displayName: "owner", isAdmin: true } } as MembershipStatus;
+    const dependencies = { storage: { read: async () => saved, write: async (value?: string) => { saved = value; } },
+      check: forbidden, login: forbidden, fetcher: forbidden, changed: () => {}, lostAccess: async () => {},
+      offlineAdmin: { login: async () => "jianji-offline-admin:test-session", check: async () => localStatus } };
+    const session = new MembershipSession(config, dependencies);
+    try {
+      await session.login({ username: "owner@example.test", password: "test-only-password" });
+      expect(session.snapshot()).toMatchObject({ state: "allowed", reason: "offline-admin" });
+      expect(session.snapshot().expiresAt).toBeUndefined();
+      await session.assertAllowed();
+      await expect(session.billingUrl()).rejects.toThrow();
+      const restarted = new MembershipSession(undefined, dependencies);
+      await restarted.restore(); await restarted.assertAllowed();
+      expect(restarted.snapshot().user?.isAdmin).toBe(true);
+      await restarted.logout(); await expect(restarted.assertAllowed()).rejects.toThrow(); restarted.dispose();
+      expect(saved).toBeUndefined(); expect(publicRequests).toBe(0);
+    } finally { session.dispose(); }
+  });
+  it("cannot obtain local authority from an online membership response", async () => {
+    const session = new MembershipSession(config, { storage: { read: async () => "cloud-token", write: async () => {} },
+      check: async () => ({ ...allowed, reason: "offline-admin" } as MembershipStatus), login: async () => "cloud-token",
+      changed: () => {}, lostAccess: async () => {} });
+    await session.restore(); await expect(session.assertAllowed()).rejects.toThrow(); session.dispose();
+  });
+});
 function fixture() {
   let saved: string | undefined = "access-token";
   const storage = { read: async () => saved, write: async (token?: string) => { saved = token; } };

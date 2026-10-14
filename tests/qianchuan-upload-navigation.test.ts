@@ -50,7 +50,7 @@ afterEach(async () => {
   for (const page of browser.contexts()[0]!.pages().slice(1)) await page.close();
   fixture.reset();
 });
-afterAll(async () => { await browser?.close(); await fixture?.stop(); if (root) await rm(root, { recursive: true, force: true }); });
+afterAll(async () => { await browser?.close(); await fixture?.stop(); if (root) await rm(root, { recursive: true, force: true, maxRetries: 3 }); });
 async function task(mode: string): Promise<UploadTaskRecord> {
   await browser.contexts()[0]!.pages()[0]!.evaluate(value => localStorage.setItem("navigation-mode", value), mode);
   const snapshotPath = path.join(root, `${randomUUID()}.mp4`), bytes = Buffer.from("offline-navigation"); await writeFile(snapshotPath, bytes);

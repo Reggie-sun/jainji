@@ -158,7 +158,7 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
   </section>;
 }
 
-export function AutomationPanel({ onEdit, accounts = [] }: { onEdit?(task: AutomationTask, tasks: AutomationTask[]): void; accounts?: QianchuanAccountSummary[] } = {}) {
+export function AutomationPanel({ onEdit, accounts = [] }: { onEdit?(task: AutomationStatus["tasks"][number], tasks: AutomationTask[]): void; accounts?: QianchuanAccountSummary[] } = {}) {
   const [status, setStatus] = useState<AutomationStatus>();
   const [libraryStatus, setLibraryStatus] = useState<QianchuanLibraryScheduleStatus>();
   const [loading, setLoading] = useState(true);
@@ -223,13 +223,14 @@ export function AutomationPanel({ onEdit, accounts = [] }: { onEdit?(task: Autom
 }
 
 function AutomationTaskRow({ task, timeZone, onStatus, onEdit, accounts, tasks, conflicts }: {
-  task: AutomationTask & { nextRunAt?: string }; timeZone: string; onStatus(status: AutomationStatus): void; onEdit?(task: AutomationTask): void;
+  task: AutomationStatus["tasks"][number]; timeZone: string; onStatus(status: AutomationStatus): void; onEdit?(task: AutomationStatus["tasks"][number]): void;
   accounts: QianchuanAccountSummary[]; tasks: AutomationTask[]; conflicts: string[];
 }) {
   const [time, setTime] = useState(task.request.time);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => setTime(task.request.time), [task.request.time]);
+  useEffect(() => setError(""), [task.configurationIssue]);
   const configure = async (enabled: boolean, nextTime = task.request.time) => {
     setBusy(true); setError("");
     try { onStatus(await window.jianji.configureAutomation({ id: task.id, enabled, time: nextTime })); }
@@ -248,13 +249,15 @@ function AutomationTaskRow({ task, timeZone, onStatus, onEdit, accounts, tasks, 
     <div className="automation-task-title"><strong>{task.request.name}</strong><span className={`automation-state${task.request.enabled ? " enabled" : ""}`}>{task.request.enabled ? "已启用" : "已暂停"}</span></div>
     <AutomationTaskDetails task={task} accounts={accounts} tasks={tasks} />
     <AutomationTimeConflict names={conflicts} />
+    {task.request.production && <p>模型配置：每次执行使用“模型与 API”的当前设置。</p>}
+    {task.configurationIssue && <p className="automation-error" role="alert">当前配置不可用：{task.configurationIssue}</p>}
     <div className="automation-task-controls">{onEdit ? <><span>每天 {task.request.time}</span><button type="button" className="button secondary compact" disabled={busy} onClick={() => onEdit(task)}>编辑定时设置</button></> : <><label>每天<input type="time" lang="zh-CN" value={time} disabled={busy} onChange={event => setTime(event.target.value)} /></label>
       <button type="button" className="button secondary compact" disabled={busy || time === task.request.time} onClick={() => void configure(task.request.enabled, time)}>保存时间</button></>}
       <button type="button" className="button secondary compact" disabled={busy} onClick={() => void configure(!task.request.enabled)}>{task.request.enabled ? "暂停" : "启用"}</button>
       <button type="button" className="button secondary compact" disabled={busy} onClick={() => void remove()}>删除</button>
     </div>
     {task.nextRunAt && task.request.enabled && <small>下次执行：{formatTime(task.nextRunAt, timeZone)}</small>}
-    {lastRun && <small>最近执行：{runLabels[lastRun.state]} · {formatTime(lastRun.startedAt, timeZone)} · {lastRun.message}</small>}
+    {lastRun && <small>{(lastRun.scheduleRevision ?? 0) === (task.scheduleRevision ?? 0) ? "最近执行" : "上次安排的执行记录"}：{runLabels[lastRun.state]} · {formatTime(lastRun.startedAt, timeZone)} · {lastRun.message}</small>}
     {error && <small className="automation-error" role="alert">{error}</small>}
   </article>;
 }

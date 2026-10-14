@@ -4,15 +4,20 @@ import { encodeShapeCoverPng } from "./shape-cover-alpha.js";
 import type { VisionRole, VisionRoute } from "./shape-cover-vision-router.js";
 import type { FfmpegAdapter } from "./ffmpeg.js";
 
+export function hybridMiniMaxProfile(connections: ModelConnections) {
+  const profile = connections.store.snapshot().profiles.find(p => p.model === "MiniMax-M3" && p.protocol === "responses" &&
+    ["api.minimaxi.com", "api.minimax.io"].includes(new URL(p.baseUrl).hostname));
+  if (!profile) throw Error("HYBRID_MINIMAX_CONNECTION_UNAVAILABLE");
+  return profile;
+}
+
 /** The canonical connection owner provides credentials; bounded capability failure is never retried. */
 export function hybridProductRoutes(connections: ModelConnections, tools: FfmpegAdapter) {
   let capability: Promise<VisionRoute> | undefined;
   return async (signal: AbortSignal): Promise<Record<VisionRole, VisionRoute>> => {
     signal.throwIfAborted();
     if (!capability) capability = (async () => {
-      const profile = connections.store.snapshot().profiles.find(p => p.model === "MiniMax-M3" && p.protocol === "responses" &&
-        ["api.minimaxi.com", "api.minimax.io"].includes(new URL(p.baseUrl).hostname));
-      if (!profile) throw Error("HYBRID_MINIMAX_CONNECTION_UNAVAILABLE");
+      const profile = hybridMiniMaxProfile(connections);
       const rgba = Buffer.alloc(96 * 32 * 4);
       for (let i = 0; i < rgba.length / 4; i++) { rgba[i * 4 + Math.floor(i % 96 / 32)] = 255; rgba[i * 4 + 3] = 255; }
       const probe = await probeMiniMaxVisionRoute(connections, { connectionId: profile.id, model: profile.model },

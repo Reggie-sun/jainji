@@ -3,7 +3,6 @@ import { z } from "zod";
 import { setTimeout as delay } from "node:timers/promises";
 import { AutomationRequestSchema, type AutomationRequest, type AutomationTask, type AutomationRun } from "../shared/automation.js";
 import { type BatchProductionStart } from "../shared/batch-production.js";
-import { DEFAULT_COVER_STICKER } from "../shared/cover-sticker.js";
 import { FrozenAccountSchema, type UploadIdentity, type QianchuanUploadSelection } from "../shared/douyin-upload.js";
 import type { QianchuanProduct } from "../shared/qianchuan-account.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
@@ -14,16 +13,18 @@ import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { canonicalPath, fingerprintFile } from "./paths.js";
 import { automationDigest, readAutomationFile, writeAutomationFile } from "./automation-files.js";
 import { uploadProducingExports, type AutomationProductionUploadBinding } from "./automation-production-upload.js";
+import { AutomationModelRolesSchema, automationModelRoles, type AutomationModelRole } from "./automation-model-binding.js";
 
 const recipeSchema = z.object({ version: z.literal(1), id: z.string().uuid(), request: AutomationRequestSchema,
   projects: z.array(z.object({ recentProjectId: z.string().uuid(), project: ProjectSchema }).strict()).max(250),
-  accounts: z.array(FrozenAccountSchema).max(6), modelBinding: z.string().optional(),
-}).strict();
+  // Legacy fields remain readable and digest-bound, but never select models for a new execution.
+  accounts: z.array(FrozenAccountSchema).max(6), modelBinding: z.string().optional(), modelRoles: AutomationModelRolesSchema.optional(),
+}).strict().refine(recipe => !recipe.modelRoles || !!recipe.modelBinding);
 type Recipe = z.infer<typeof recipeSchema>;
 interface Dependencies {
   loadProject(id: string): Promise<Project>;
   account(product: QianchuanProduct): Promise<FrozenQianchuanAccount>;
-  modelBinding(): string;
+  modelBinding(roles: AutomationModelRole[]): string;
   approvedDirectories: Set<string>;
   controller: BatchProductionController;
   queue: Pick<ExportQueue, "snapshot" | "waitForPersistence">;
@@ -68,13 +69,9 @@ export class AutomationRuntime {
       const recipe = await this.read(source);
       if (recipe.request.production!.entries.some(entry => !entry.douyinUpload?.plan)) throw new Error("来源制作任务尚未固定上传账号及计划，请重新保存带上传目标的制作任务。");
     }
-    const usesModel = projects.some(({ project, recentProjectId }) => {
-      const entry = request.production!.entries.find(entry => entry.recentProjectId === recentProjectId)!;
-      return (entry.mode ?? project.workspaceDraft?.decorations?.mode) === "agent" || entry.coverEnabled && entry.coverMethod !== "real-artwork" && (project.coverSticker ?? DEFAULT_COVER_STICKER).trackingMode === "agent";
-    });
     if (new Set(projects.map(value => value.project.id)).size !== projects.length) throw new Error("同一个项目不能以多个模板条目重复绑定。");
-    const recipe = recipeSchema.parse({ version: 1, id, request, projects, accounts: [...accounts.values()], ...(usesModel ? { modelBinding: this.dependencies.modelBinding() } : {}) });
-    await this.verify(recipe);
+    const recipe = recipeSchema.parse({ version: 1, id, request, projects, accounts: [...accounts.values()] });
+    await this.verify(recipe, undefined, this.currentModelBinding(recipe));
     const summary = [
       ...(request.cleanup?.accounts.map(account => `清理账户 ${account.expectedAdvertiserId}${request.cleanup!.confirmation === "DELETE_ALL_VIDEOS" ? " · 视频库全部视频" : ` · 计划 ${(account.plans?.map(plan => plan.adId) ?? [account.expectedAdId]).join("、")}`}`) ?? []),
       ...projects.map(({ project, recentProjectId }) => {
@@ -89,12 +86,15 @@ export class AutomationRuntime {
     return { binding: automationDigest(recipe), summary };
   }
   private async read(task: AutomationTask): Promise<Recipe> {
-    const recipe = await readAutomationFile(this.file(task.id), value => recipeSchema.parse(value));
+    const recipe = await readAutomationFile(this.file(task.recipeId ?? task.id), value => recipeSchema.parse(value));
     if (recipe.id !== task.id || automationDigest(recipe) !== task.binding || automationDigest(actions(recipe.request)) !== automationDigest(actions(task.request))) throw new Error("定时任务固定配置不一致，已停止。");
     return recipe;
   }
-  private async verify(recipe: Recipe, signal?: AbortSignal): Promise<void> {
-    if (recipe.modelBinding && recipe.modelBinding !== this.dependencies.modelBinding()) throw new Error("模型连接已变化，请重新保存定时任务。");
+  private async verify(recipe: Recipe, signal?: AbortSignal, modelBinding?: string): Promise<void> {
+    const verifyModel = () => {
+      if (modelBinding !== undefined && modelBinding !== this.currentModelBinding(recipe)) throw new Error("模型配置已在本次执行中变化，已停止后续步骤。");
+    };
+    verifyModel();
     for (const entry of recipe.request.production?.entries ?? []) {
       if (entry.outputDirectory && await canonicalPath(entry.outputDirectory) !== entry.outputDirectory) throw new Error("固定成片目录的实际位置已变化，请重新选择目录并保存任务。");
       signal?.throwIfAborted();
@@ -110,6 +110,31 @@ export class AutomationRuntime {
         signal?.throwIfAborted();
       }
     }
+    verifyModel();
+  }
+  private currentModelBinding(recipe: Recipe): string | undefined {
+    const roles = automationModelRoles(recipe.request, recipe.projects);
+    return roles.length ? this.dependencies.modelBinding(roles) : undefined;
+  }
+  async configurationIssue(task: AutomationTask): Promise<string | undefined> {
+    try {
+      this.currentModelBinding(await this.read(task));
+      if (task.request.uploadFrom) {
+        const source = this.dependencies.task(task.request.uploadFrom);
+        if (!source) throw new Error("来源制作任务不存在。");
+        await this.read(source);
+      }
+      return undefined;
+    } catch (error) { return error instanceof Error ? error.message.slice(0, 2000) : "当前模型配置暂不可用。"; }
+  }
+  async configure(task: AutomationTask): Promise<void> {
+    const recipe = await this.read(task);
+    await this.verify(recipe, undefined, this.currentModelBinding(recipe));
+    if (recipe.request.uploadFrom) {
+      const source = this.dependencies.task(recipe.request.uploadFrom);
+      if (!source) throw new Error("来源制作任务不存在。");
+      await this.verify(await this.read(source));
+    }
   }
   async verifyCleanupMigration(task: AutomationTask): Promise<void> {
     await this.verify(await this.read(task));
@@ -124,7 +149,8 @@ export class AutomationRuntime {
     finally { this.dependencies.releaseUploadAccounts(); }
   }
   private async executeRun(task: AutomationTask, signal: AbortSignal): Promise<Pick<AutomationRun, "exports" | "productionRunId">> {
-    const recipe = await this.read(task); await this.verify(recipe, signal); signal.throwIfAborted();
+    const recipe = await this.read(task), modelBinding = this.currentModelBinding(recipe);
+    await this.verify(recipe, signal, modelBinding); signal.throwIfAborted();
     if (recipe.request.cleanup) {
       const results = await this.dependencies.clear(recipe.request.cleanup, signal);
       if (results.length !== recipe.request.cleanup.accounts.length || results.some(result => result.state !== "CLEARED")) throw new Error(`清理未全部完成，后续步骤已停止：${results.map(result => result.message).join("；")}`);
@@ -133,7 +159,7 @@ export class AutomationRuntime {
     let result: Pick<AutomationRun, "exports" | "productionRunId"> = {};
     const streaming = !!recipe.request.production && recipe.request.upload;
     if (recipe.request.production) {
-      await this.verify(recipe, signal); signal.throwIfAborted();
+      await this.verify(recipe, signal, modelBinding); signal.throwIfAborted();
       for (const entry of recipe.request.production.entries) if (entry.outputDirectory) this.dependencies.approvedDirectories.add(await canonicalPath(entry.outputDirectory));
       const entries = recipe.request.production.entries.map(({ douyinUpload: _upload, ...entry }) => entry);
       const bindings: AutomationProductionUploadBinding[] = streaming ? recipe.projects.map(({ project, recentProjectId }) => {

@@ -15,10 +15,58 @@ async function fixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), "automation-")); roots.push(root);
   let now = new Date(2026, 9, 10, 11, 59);
   const execute = vi.fn(async (_task: AutomationTask, _signal: AbortSignal) => ({})), busy = vi.fn(() => false);
-  const dependencies = { prepare: vi.fn(async () => ({ binding: "a".repeat(64), summary: "固定账号计划" })), execute, busy, changed: vi.fn(), now: () => now };
+  const dependencies = { prepare: vi.fn(async () => ({ binding: "a".repeat(64), summary: "固定账号计划" })),
+    configure: vi.fn(async (_task: AutomationTask) => {}),
+    configurationIssue: vi.fn(async (_task: AutomationTask): Promise<string | undefined> => undefined), execute, busy, changed: vi.fn(), now: () => now };
   const owner = new AutomationScheduler(root, dependencies); owners.push(owner); await owner.load(); owner.start();
   return { root, owner, dependencies, setTime: (date: Date) => { now = date; } };
 }
+it("checks enabled edits before changing the schedule and allows pausing an invalid task", async () => {
+  const f = await fixture(), id = (await f.owner.create(request)).tasks[0].id;
+  f.dependencies.configure.mockRejectedValue(new Error("视觉识别模型未配置"));
+  await expect(f.owner.configure({ id, time: "13:00", enabled: true })).rejects.toThrow("视觉识别模型未配置");
+  expect(f.owner.task(id)?.request.time).toBe("12:00"); expect(f.owner.task(id)?.scheduleRevision).toBeUndefined();
+  await f.owner.configure({ id, time: "12:00", enabled: false });
+  expect(f.owner.task(id)?.request.enabled).toBe(false); expect(f.dependencies.configure).toHaveBeenCalledTimes(1);
+  expect(f.dependencies.execute).not.toHaveBeenCalled();
+});
+it("preserves the frozen recipe and history and rearms only on a time edit", async () => {
+  const f = await fixture(), id = (await f.owner.create(request)).tasks[0].id;
+  f.setTime(new Date(2026, 9, 10, 12)); await f.owner.tick(); const previous = f.owner.task(id)!.lastRun!;
+  await f.owner.configure({ id, time: "12:00", enabled: true }); await f.owner.tick();
+  expect(f.owner.task(id)).toMatchObject({ binding: "a".repeat(64), lastRun: previous });
+  expect(f.dependencies.execute).toHaveBeenCalledTimes(1);
+  await f.owner.configure({ id, time: "13:00", enabled: true });
+  const restored = new AutomationScheduler(f.root, f.dependencies); owners.push(restored); await restored.load(); restored.start();
+  expect(restored.task(id)).toMatchObject({ binding: "a".repeat(64), scheduleRevision: 1, lastRun: previous });
+  f.setTime(new Date(2026, 9, 10, 13)); await restored.tick(); expect(f.dependencies.execute).toHaveBeenCalledTimes(2);
+  expect(f.dependencies.execute.mock.calls[1][0].binding).toBe("a".repeat(64));
+});
+it("shows current configuration issues without overwriting execution history or exposing a runnable time", async () => {
+  const f = await fixture(), id = (await f.owner.create(request)).tasks[0].id;
+  f.dependencies.configurationIssue.mockResolvedValue("视觉识别模型未配置"); await f.owner.refreshConfiguration();
+  expect(f.owner.snapshot().tasks[0]).toMatchObject({ configurationIssue: "视觉识别模型未配置", nextRunAt: undefined });
+  expect(f.owner.task(id)?.lastRun).toBeUndefined(); expect(f.dependencies.execute).not.toHaveBeenCalled();
+  f.dependencies.configurationIssue.mockResolvedValue(undefined); await f.owner.refreshConfiguration();
+  expect(f.owner.snapshot().tasks[0].configurationIssue).toBeUndefined(); expect(f.owner.snapshot().tasks[0].nextRunAt).toBeDefined();
+});
+it("discards a late configuration observation after the schedule changes", async () => {
+  const f = await fixture(), id = (await f.owner.create(request)).tasks[0].id;
+  let release!: (value: string) => void;
+  f.dependencies.configurationIssue.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  const observation = f.owner.refreshConfiguration();
+  await f.owner.configure({ id, time: "13:00", enabled: true });
+  release("旧配置问题"); await observation;
+  expect(f.owner.snapshot().tasks[0].configurationIssue).toBeUndefined();
+});
+it("keeps the old task and stops automation when saving a schedule has an unknown result", async () => {
+  const f = await fixture(), task = (await f.owner.create(request)).tasks[0];
+  await rename(path.join(f.root, "tasks.json"), path.join(f.root, "previous.json")); await mkdir(path.join(f.root, "tasks.json"));
+  await expect(f.owner.configure({ id: task.id, enabled: true, time: "13:00" })).rejects.toThrow();
+  expect(f.owner.task(task.id)).toMatchObject({ id: task.id, request: task.request, binding: task.binding });
+  expect(f.owner.task(task.id)?.recipeId).toBeUndefined(); expect(f.owner.snapshot().error).toContain("保存结果未知");
+  f.setTime(new Date(2026, 9, 10, 13)); await f.owner.tick(); expect(f.dependencies.execute).not.toHaveBeenCalled();
+});
 it("persists the occurrence before any effect and fences repeated tick, restart and clock rollback", async () => {
   const f = await fixture(); await f.owner.create(request);
   f.dependencies.execute.mockImplementation(async () => {

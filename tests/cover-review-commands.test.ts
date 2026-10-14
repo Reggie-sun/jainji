@@ -4,6 +4,25 @@ import { createCoverReviewDraft, editCoverReviewDraft, assertReviewResolved, rec
 import type { MediaItem } from "../src/main/domain";
 import { manualReviewInput, manualReviewMatches, manualSettingsFromReview } from "../src/shared/manual-cover-review";
 import { DEFAULT_COVER_STICKER, type CoverSticker } from "../src/shared/cover-sticker";
+import { manualProductionIntent } from "../src/main/manual-cover-production";
+
+it("defaults unframed manual production to no-cover without a per-media confirmation", () => {
+  const first = { id: randomUUID(), fingerprint: "first", durationMs: 1000, displayName: "有框素材" } as MediaItem;
+  const second = { ...first, id: randomUUID(), displayName: "无框素材" };
+  const region = { id: randomUUID(), rectangle: { x: 0.1, y: 0.2, width: 0.3, height: 0.1 } };
+  const settings: CoverSticker = { ...DEFAULT_COVER_STICKER, enabled: true, trackingMode: "assisted", assistedArtwork: "human-region-v1", manualRegionInput: true,
+    mediaRegions: { [first.id]: [region] } };
+  const intent = manualProductionIntent(randomUUID(), settings, [first, second]);
+  expect(intent.media.map(item => item.disposition)).toEqual(["cover", "no_cover"]);
+  expect(intent.media[1].segments).toEqual([]);
+  expect(intent.media[1].identities).toEqual([]);
+  expect(settings.mediaRegions![second.id]).toBeUndefined();
+  settings.mediaRegions![second.id] = [];
+  expect(manualProductionIntent(randomUUID(), settings, [first, second]).media.map(item => item.disposition)).toEqual(["cover", "no_cover"]);
+  expect(manualProductionIntent(randomUUID(), { ...settings, mediaRegions: undefined, regions: [] }, [first, second]).media.map(item => item.disposition)).toEqual(["no_cover", "no_cover"]);
+  expect(manualProductionIntent(randomUUID(), { ...settings, mediaRegions: undefined, regions: [region] }, [first, second]).media.map(item => item.disposition)).toEqual(["cover", "cover"]);
+  expect(manualProductionIntent(randomUUID(), { ...settings, regions: [region] }, [first, second]).media.map(item => item.disposition)).toEqual(["cover", "no_cover"]);
+});
 
 it("reuses saved manual boxes and times, leaves unframed media uncovered, and rejects moving tracks", () => {
   const { draft } = fixture();

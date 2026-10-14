@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -140,7 +140,7 @@ it("keeps a 12-file current-child VPS batch on its saved browser anchor through 
   uploadEndpointVerified = false;
   const catalog = await service.listPlans({ product: selectedProduct, expectedAdvertiserId: anchorAdvertiserId, accountSource: "current-browser", includeAccount: true, refresh: true });
   if (Array.isArray(catalog)) throw new Error("fixture expected current-browser catalog");
-  expect(catalog.account.advertiserId).toBe(childAdvertiserId);
+  expect(catalog).toMatchObject({ account: { advertiserId: childAdvertiserId } });
   expect(catalog.plans).toEqual([plan]);
   expect(extensionPlans).toHaveBeenCalled();
 
@@ -173,6 +173,15 @@ it("keeps a 12-file current-child VPS batch on its saved browser anchor through 
   expect(extensionPlans).toHaveBeenCalled();
   expect(legacyPlanReaderIds).not.toContain(childAdvertiserId);
   expect(uploadEvents).not.toContain("confirm");
+  const mappingBefore = await readFile(settings.file), records = structuredClone(store.tasks());
+  const fences = records.map(task => store.fence(task.result.upload_task_id));
+  const close = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+  const { mode: _mode, ...localEgress } = egress;
+  await expect(service.saveAccount({ product: selectedProduct, planUrl: `https://qianchuan.jinritemai.com/uni-prom?aavid=${anchorAdvertiserId}&adId=${anchorAdId}`, egress: localEgress })).rejects.toThrow("待确认或结果未知");
+  expect(close).not.toHaveBeenCalled();
+  expect(await readFile(settings.file)).toEqual(mappingBefore);
+  expect(store.tasks()).toEqual(records);
+  expect(records.map(task => store.fence(task.result.upload_task_id))).toEqual(fences);
 });
 
 async function createBatch(states: Map<string, QueueState>, outputDirectory: string, contents: string[]) {

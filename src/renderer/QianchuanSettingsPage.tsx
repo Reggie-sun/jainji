@@ -9,9 +9,17 @@ export function QianchuanSettingsPage({ config, status, configKey: key, busy, pl
   config: DouyinUploadStatus["config"]; status?: DouyinUploadStatus; configKey: string; busy: boolean;
   planEdit?: { task: QianchuanUploadResult; sequence: number };
   onConfig: Dispatch<SetStateAction<DouyinUploadStatus["config"]>>;
-  onPerform(action: () => Promise<DesktopState>): Promise<boolean>;
+  onPerform(action: () => Promise<DesktopState>, reportError?: boolean): Promise<boolean>;
   onFeedback(text: string): void;
 }) {
+  const performAccount = async (action: () => Promise<DesktopState>) => {
+    let failure: unknown;
+    const done = await onPerform(async () => {
+      try { return await action(); } catch (error) { failure = error; throw error; }
+    }, false);
+    if (!done) throw new Error(failure instanceof Error ? failure.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "账号操作未完成，请稍后重试。");
+    return done;
+  };
   useEffect(() => { if (planEdit) scrollWorkspace({ selector: "#qianchuan-product-name" }); }, [planEdit?.sequence]);
   return <section className="card brief-card douyin-upload-panel" aria-label="千川账号与计划">
     <div className="card-header"><h2>账号与计划</h2><span>保存后供新制作使用</span></div>
@@ -24,10 +32,11 @@ export function QianchuanSettingsPage({ config, status, configKey: key, busy, pl
         {JSON.stringify(config) !== key && <small role="status">有未保存的修改</small>}
       </div></div>
       <div><QianchuanAccountSettings key={planEdit?.sequence ?? 0} initialProduct={planEdit?.task.accountProduct} expectedAdvertiserId={planEdit?.task.advertiserId} accounts={status?.accounts} busy={busy} onSave={async input => {
-        const done = await onPerform(() => window.jianji.saveQianchuanAccount(input));
+        const done = await performAccount(() => window.jianji.saveQianchuanAccount(input));
         if (done && planEdit) onFeedback("新产品和计划已保存，新制作使用新计划；旧批次保留原目标。若这些成片适用于新产品，整批从未选文件时可点击“本批改传当前计划”，再“安全继续”。");
         return done;
-      }} onOpenBrowser={input => onPerform(() => window.jianji.openQianchuanAccountBrowser(input))} onControlBrowser={input => onPerform(() => window.jianji.controlQianchuanAccountBrowser(input))} /></div>
+      }} batches={status?.accountBatches} onCloseBatch={batch => onPerform(() => window.jianji.closeQianchuanAccountUploadBatch({ projectId: batch.projectId, uploadTaskId: batch.taskIds[0]!, expectedPageBatchId: batch.pageBatchId }))}
+      onOpenBrowser={input => performAccount(() => window.jianji.openQianchuanAccountBrowser(input))} onControlBrowser={input => performAccount(() => window.jianji.controlQianchuanAccountBrowser(input))} /></div>
       <details className="douyin-upload-advanced"><summary>高级设置</summary>
         <p>通常无需调整，遇到上传问题时再使用。</p>
         <div className="douyin-upload-actions">

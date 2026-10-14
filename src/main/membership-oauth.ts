@@ -14,7 +14,7 @@ export async function loginMembership(config: MembershipConfig, open: (url: stri
     token_endpoint: `${config.issuer}/api/login/oauth/access_token`,
     jwks_uri: `${config.issuer}/.well-known/jwks`,
     id_token_signing_alg_values_supported: ["RS256"],
-  }, config.clientId, undefined, oidc.None());
+  }, config.clientId, { [oidc.clockTolerance]: 60 }, oidc.None());
   if (config.issuer.startsWith("http:")) oidc.allowInsecureRequests(native);
   native[oidc.customFetch] = (url, options) => {
     if (new URL(String(url)).origin !== config.issuer) throw new Error("账号服务地址不匹配。");

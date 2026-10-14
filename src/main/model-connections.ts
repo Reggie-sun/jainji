@@ -121,7 +121,11 @@ export class ModelConnections {
       return startCodex(codexCompletionLaunch(appPath, userData, credential));
     });
   }
-  assertIdle(): void { if (this.pending || ["starting", "logging-in"].includes(this.chatgpt.status().status)) throw new ProviderError("连接正在处理中，请等待或取消登录。"); }
+  assertConfigurationIdle(): void { if (this.pending) throw new ProviderError("连接正在处理中，请等待或取消登录。"); }
+  assertIdle(): void {
+    this.assertConfigurationIdle();
+    if (["starting", "logging-in"].includes(this.chatgpt.status().status)) throw new ProviderError("连接正在处理中，请等待或取消登录。");
+  }
   private async exclusive(action: () => Promise<void>): Promise<void> {
     this.assertIdle(); this.pending = true;
     try { await action(); } finally { this.pending = false; this.changed(); }

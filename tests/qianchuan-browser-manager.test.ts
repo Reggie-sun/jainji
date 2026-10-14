@@ -76,6 +76,16 @@ it("uses loopback dynamic debugging from process startup, without a shell or use
   expect(args.at(-1)).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=123");
 });
 
+it("limits a remote account window without changing its profile, connection or initial page", () => {
+  const original = { profileDirectory: "Profile 9", windowClass: "jianji-account-123" };
+  const args = accountChromeArguments("/private/account profile", "123", original, undefined, false, "remote");
+  expect(args).toContain("--window-size=1920,1080");
+  expect(args).not.toContain("--start-maximized");
+  expect(args.filter(arg => !arg.startsWith("--window-size="))).toEqual(
+    accountChromeArguments("/private/account profile", "123", original, undefined, false).filter(arg => arg !== "--start-maximized"),
+  );
+});
+
 it("opens an absent local connection only for production and reuses it without account-page discovery", async () => {
   const f = await fixture();
   await expect(f.manager.existingConnection("123")).rejects.toThrow("先打开");
@@ -343,6 +353,32 @@ it("rejects an original profile-directory alias before persisting or starting a 
   await symlink(elsewhere, path.join(f.original, "Profile 9"));
   await expect(f.manager.open("123")).rejects.toThrow("绑定"); expect(f.launch).not.toHaveBeenCalled();
 });
+
+it("opens a real isolated remote window at the startup budget without a platform request", async () => {
+  const f = await fixture(), executable = await resolveChromeExecutable();
+  const profile = path.join(f.root, "remote-window");
+  const args = accountChromeArguments(profile, "123", undefined, undefined, false, "remote");
+  const child = spawn(executable, [...args, "--headless=new", "--no-sandbox", "--disable-gpu", "--disable-extensions", "--disable-background-networking", "--host-resolver-rules=MAP * 127.0.0.1, EXCLUDE localhost"], { stdio: "ignore" });
+  let browser: Awaited<ReturnType<typeof chromium.connectOverCDP>> | undefined;
+  try {
+    let endpoint: string | undefined;
+    await vi.waitFor(async () => {
+      endpoint = (await runningChromeBrowsers("/proc", process.getuid?.(), profile))[0]?.endpoint;
+      expect(endpoint).toBeDefined();
+      expect((await fetch(`${endpoint}/json/version`)).ok).toBe(true);
+    }, { timeout: 15_000 });
+    browser = await chromium.connectOverCDP(endpoint!, { noDefaults: true });
+    const control = await browser.newBrowserCDPSession();
+    const { targetInfos } = await control.send("Target.getTargets");
+    const pages = targetInfos.filter(target => target.type === "page");
+    expect(pages).toHaveLength(1); expect(pages[0].url).toBe("about:blank");
+    const { bounds } = await control.send("Browser.getWindowForTarget", { targetId: pages[0].targetId });
+    expect(bounds).toMatchObject({ width: 1920, height: 1080, windowState: "normal" });
+  } finally {
+    await browser?.close();
+    if (child.exitCode === null) { const closed = new Promise(resolve => child.once("close", resolve)); child.kill("SIGTERM"); await closed; }
+  }
+}, 30_000);
 
 it("starts absent real isolated Chrome for production and reuses it without closing its tabs", async () => {
   const f = await fixture(), executable = await resolveChromeExecutable(); let child: ChildProcess | undefined;

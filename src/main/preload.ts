@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { QianchuanSubaccountListRequest, QianchuanSubaccountSwitchRequest, QianchuanSubaccountCatalog } from "../shared/qianchuan-subaccounts.js";
 import type { QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
-import type { MembershipStatus } from "../shared/membership.js";
-import type { AutomationRequest, AutomationStatus } from "../shared/automation.js";
+import type { MembershipPasswordLogin, MembershipStatus } from "../shared/membership.js";
+import type { AutomationConfigure, AutomationRequest, AutomationStatus } from "../shared/automation.js";
 import type { AgentStartInput, AppendProductionInput, AppendProductionPrefill, GenerateBriefInput } from "../shared/agent.js";
 import type { SaveConnection, SelectModel } from "../shared/connections.js";
 import type { CCSwitchProvider } from "./cc-switch.js";
@@ -13,7 +13,7 @@ import type { LibraryAssetPreview } from "../shared/asset-library.js";
 import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shared/bug-feedback.js";
 import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
-import type { DouyinUploadStatus, UploadSuccess } from "../shared/douyin-upload.js";
+import type { DouyinUploadStatus, UploadSuccess, QianchuanAccountBatchClose } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/qianchuan-account.js";
 import type { QianchuanPlanListRequest, QianchuanPlanCancel, QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
 import type { QianchuanBackendQuery, QianchuanBackendCancel, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
@@ -29,7 +29,7 @@ const api = {
   disconnectQianguanjia: (): Promise<void> => ipcRenderer.invoke("qianguanjia.disconnect"),
   getAutomation: (): Promise<AutomationStatus> => ipcRenderer.invoke("automation.get"),
   createAutomation: (input: AutomationRequest): Promise<AutomationStatus> => ipcRenderer.invoke("automation.create", input),
-  configureAutomation: (input: { id: string; enabled: boolean; time: string }): Promise<AutomationStatus> => ipcRenderer.invoke("automation.configure", input),
+  configureAutomation: (input: AutomationConfigure): Promise<AutomationStatus> => ipcRenderer.invoke("automation.configure", input),
   removeAutomation: (id: string): Promise<AutomationStatus> => ipcRenderer.invoke("automation.remove", id),
   onAutomation: (listener: (status: AutomationStatus) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, status: AutomationStatus) => listener(status);
@@ -38,7 +38,7 @@ const api = {
   },
   membershipStatus: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.status"),
   refreshMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.refresh"),
-  loginMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.login"),
+  loginMembership: (input?: MembershipPasswordLogin): Promise<MembershipStatus> => ipcRenderer.invoke("membership.login", input),
   logoutMembership: (): Promise<MembershipStatus> => ipcRenderer.invoke("membership.logout"),
   openMembershipPricing: (): Promise<void> => ipcRenderer.invoke("membership.openPricing"),
   openMembershipAdmin: (): Promise<void> => ipcRenderer.invoke("membership.openAdmin"),
@@ -137,6 +137,7 @@ const api = {
   stopDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.stop", { projectId, uploadTaskId }),
   discardDouyinUploadBatch: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.discard", { projectId, uploadTaskId }),
   closeDouyinUploadBatch: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.closeBatch", { projectId, uploadTaskId }),
+  closeQianchuanAccountUploadBatch: (input: QianchuanAccountBatchClose): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.closeAccountBatch", input),
   reviseDouyinUploadCaption: (projectId: string, uploadTaskId: string, caption: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.caption", { projectId, uploadTaskId, caption }),
   confirmDouyinUpload: (projectId: string, uploadTaskId: string, success: UploadSuccess): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.confirm", { projectId, uploadTaskId, success }),
   openArtifact: (taskId: string): Promise<boolean> => ipcRenderer.invoke("artifact.open", { taskId }),

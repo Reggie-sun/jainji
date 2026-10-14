@@ -3,11 +3,13 @@ import { readShapeCoverAsset, trimShapeCoverArtwork, rasterizeShapeCoverArtwork,
 import { evaluateShapeCover, growOpaqueContour, SHAPE_COVER_PIXEL_CONTRACT, type PixelSize } from "./shape-cover-pixel-gate.js";
 import { discoveryHash } from "./source-fact-discovery-evidence.js";
 import { freezeAI } from "./source-fact-ai-contract.js";
+import { compactArtworkPlacement } from "./human-region-artwork-placement.js";
 
 export const HYBRID_SHAPE_SEARCH = freezeAI({ version: "hybrid-corner-shape-search/v1", maximumCandidates: 256,
   sizeFactors: [1, 1.25, 1.5, 2, 2.5] as readonly number[], translationFractions: [-0.1, 0, 0.1] as readonly number[],
   maximumTrials: 11520, maximumRasters: 1280, wallMs: 180_000 });
 export type HybridStickerCandidate = { id: string; asset: BuiltinStickerAsset };
+export type HybridArtworkCache = Map<string, Awaited<ReturnType<typeof trimShapeCoverArtwork>>>;
 export type HybridShapeMatch = {
   candidate: HybridStickerCandidate; placement: ShapeCoverPlacement; radiusPx: number;
   trimBox: ShapeCoverPlacement; trimmedSha256: string; alphaSha256: string;
@@ -28,8 +30,10 @@ export function hybridMaskBounds(mask: Uint8Array, size: PixelSize): ShapeCoverP
 /** Local catalog-only search. All allowed placements are enumerated; no stochastic/model selection. */
 export async function searchHybridCornerShape(candidates: readonly HybridStickerCandidate[], oldFinal: Uint8Array,
   size: PixelSize, scope: ShapeCoverPlacement, sourceScale: number, tools: ShapeCoverMediaTools,
-  coverageMode: "contour" | "artwork" = "contour"): Promise<HybridShapeMatch | null> {
+  coverageMode: "contour" | "artwork" | "compact-artwork" = "contour", artworkCache?: HybridArtworkCache): Promise<HybridShapeMatch | null> {
   const config = HYBRID_SHAPE_SEARCH, deadline = Date.now() + config.wallMs;
+  const artwork = coverageMode !== "contour";
+  const factors = coverageMode === "compact-artwork" ? [1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5] : config.sizeFactors;
   if (candidates.length > config.maximumCandidates) throw Error("HYBRID_SEARCH_LIMIT");
   const bounds = hybridMaskBounds(oldFinal, size), points: number[] = [];
   for (let p = 0; p < oldFinal.length; p++) if (oldFinal[p]) points.push(p);
@@ -47,28 +51,45 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
     try { bytes = await readShapeCoverAsset(candidate.asset, tools); }
     catch { check(); throw Error("HYBRID_CATALOG_BINDING"); }
     let trimmed: Awaited<ReturnType<typeof trimShapeCoverArtwork>>;
-    try { trimmed = await trimShapeCoverArtwork(bytes, tools); }
+    const sourceDigest = discoveryHash(bytes);
+    try {
+      trimmed = artworkCache?.get(sourceDigest) ?? await trimShapeCoverArtwork(bytes, tools);
+      artworkCache?.set(sourceDigest, trimmed);
+    }
     catch (error) {
       check();
       if (!(error instanceof Error) || !["HYBRID_EMPTY_ARTWORK", "rotated sticker is unsupported"].includes(error.message) && error.name !== "ZodError") throw error;
       metrics.rejectedAssets++; continue;
     }
     const baseScale = Math.max(bounds.width / trimmed.trimBox.width, bounds.height / trimmed.trimBox.height);
+    const maximumScale = Math.min(
+      (scope.x > 0 && scope.x + scope.width < size.width ? scope.width : bounds.width * 2) / trimmed.trimBox.width,
+      (scope.y > 0 && scope.y + scope.height < size.height ? scope.height : bounds.height * 2) / trimmed.trimBox.height);
+    const candidateFactors = coverageMode === "compact-artwork" ? [...factors, maximumScale / baseScale].sort((a, b) => a - b) : factors;
     const seenSizes = new Set<string>();
-    for (const factor of config.sizeFactors) {
+    for (const factor of candidateFactors) {
       check();
-      const width = Math.max(1, Math.ceil(trimmed.trimBox.width * baseScale * factor)), height = Math.max(1, Math.ceil(trimmed.trimBox.height * baseScale * factor));
-      if (width > scope.width || height > scope.height || seenSizes.has(`${width}/${height}`)) continue;
+      const epsilon = coverageMode === "compact-artwork" ? 1e-9 : 0;
+      const width = Math.max(1, Math.ceil(trimmed.trimBox.width * baseScale * factor - epsilon)), height = Math.max(1, Math.ceil(trimmed.trimBox.height * baseScale * factor - epsilon));
+      const clippedCompact = coverageMode === "compact-artwork";
+      if ((!clippedCompact && (width > scope.width || height > scope.height)) || seenSizes.has(`${width}/${height}`)) continue;
+      // Edge clipping is bounded too: never select a giant tile merely to show a tiny opaque fragment.
+      if (clippedCompact && (width > bounds.width * 2 || height > bounds.height * 2 || width * height > 16_777_216)) continue;
+      if (clippedCompact && (scope.x > 0 && scope.x + scope.width < size.width && width > scope.width
+        || scope.y > 0 && scope.y + scope.height < size.height && height > scope.height)) continue;
       seenSizes.add(`${width}/${height}`); metrics.rasters++; check();
       const tile = await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools);
       const positions = new Map<string, ShapeCoverPlacement>();
-      for (const fy of config.translationFractions) for (const fx of config.translationFractions) {
+      if (clippedCompact) {
+        const position = compactArtworkPlacement(tile.alpha, { width, height }, bounds, size, scope, tools.signal);
+        if (position) positions.set(`${position.x}/${position.y}`, position);
+      } else for (const fy of config.translationFractions) for (const fx of config.translationFractions) {
         const x = Math.max(scope.x, Math.min(scope.x + scope.width - width, Math.round(bounds.x + (bounds.width - width) / 2 + fx * bounds.width)));
         const y = Math.max(scope.y, Math.min(scope.y + scope.height - height, Math.round(bounds.y + (bounds.height - height) / 2 + fy * bounds.height)));
         positions.set(`${x}/${y}`, { x, y, width, height });
       }
       // Reuse one contour per radius for all translations. Work stays in the small artwork tile.
-      const radiusLimit = coverageMode === "artwork" ? 0 : Math.floor(SHAPE_COVER_PIXEL_CONTRACT.maxRadiusSourcePx * sourceScale);
+      const radiusLimit = artwork ? 0 : Math.floor(SHAPE_COVER_PIXEL_CONTRACT.maxRadiusSourcePx * sourceScale);
       const remaining = new Map(positions);
       for (let radius = 0; radius <= radiusLimit && remaining.size; radius++) {
         check();
@@ -95,7 +116,7 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
           for (const p of points) localOld[(Math.floor(p / size.width) - top) * window.width + p % size.width - left] = 1;
           const verdict = evaluateShapeCover(localOld, localAlpha, window, sourceScale);
           remaining.delete(key);
-          if (verdict.status !== "PASS" || coverageMode === "artwork" && verdict.radiusPx !== 0) continue;
+          if (verdict.status !== "PASS" || artwork && verdict.radiusPx !== 0) continue;
           const rank = [tile.alpha.reduce((n, a) => n + Number(a > 0), 0), verdict.radiusPx!, width * height, placement.y, placement.x];
           const precedes = !best || rank.some((n, i) => n < best!.rank[i] && rank.slice(0, i).every((v, j) => v === best!.rank[j]));
           if (precedes) best = { candidate, placement, radiusPx: verdict.radiusPx!, trimBox: trimmed.trimBox,
@@ -106,9 +127,9 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
   }
   check();
   if (!best) return null;
-  const raster = await (coverageMode === "artwork" ? rasterizeClippedShapeArtwork : rasterizeShapeCoverArtwork)(best.bytes, size, best.placement, tools);
+  const raster = await (artwork ? rasterizeClippedShapeArtwork : rasterizeShapeCoverArtwork)(best.bytes, size, best.placement, tools);
   const verdict = evaluateShapeCover(oldFinal, raster.alpha, size, sourceScale);
-  if (verdict.status !== "PASS" || verdict.radiusPx !== best.radiusPx || coverageMode === "artwork" && verdict.radiusPx !== 0) throw Error("HYBRID_SHAPE_BINDING");
+  if (verdict.status !== "PASS" || verdict.radiusPx !== best.radiusPx || artwork && verdict.radiusPx !== 0) throw Error("HYBRID_SHAPE_BINDING");
   return { candidate: best.candidate, placement: best.placement, radiusPx: best.radiusPx, trimBox: best.trimBox,
     trimmedSha256: best.trimmedSha256, alphaSha256: discoveryHash(raster.alpha), raster, metrics };
 }

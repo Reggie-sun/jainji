@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { DesktopState } from "../shared/desktop";
 import type { BatchProductionStart } from "../shared/batch-production";
 import type { QianchuanLibraryClear } from "../shared/qianchuan-video-library";
-import type { AutomationTask } from "../shared/automation";
+import type { AutomationTask, AutomationStatus } from "../shared/automation";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { AutomationComposer, AutomationPanel } from "./AutomationPanel";
 import { AutomationTaskDetails } from "./AutomationTaskDetails";
@@ -15,9 +15,12 @@ export function AutomationWorkspace({ state, page, onPage, draft, revision, onSo
   state: DesktopState; page: AutomationPage; onPage(page: AutomationPage): void;
   draft?: AutomationDraft; revision: number; onSource(source: "batch" | "cleanup"): void;
 }) {
-  const [editing, setEditing] = useState<AutomationTask>();
+  const [editing, setEditing] = useState<AutomationStatus["tasks"][number]>();
   const [editingTasks, setEditingTasks] = useState<AutomationTask[]>([]);
   const [editRevision, setEditRevision] = useState(0);
+  useEffect(() => window.jianji.onAutomation(status => {
+    setEditing(task => task && { ...task, configurationIssue: status.tasks.find(current => current.id === task.id)?.configurationIssue });
+  }), []);
   const accounts = state.douyinUpload?.accounts ?? [];
   return <>
     <Heading title="自动化">管理每日固定任务；保存或启用需要明确的范围与授权。</Heading>
@@ -34,11 +37,12 @@ export function AutomationWorkspace({ state, page, onPage, draft, revision, onSo
   </>;
 }
 
-function AutomationTaskEditor({ task, accounts, tasks, onSaved }: { task: AutomationTask; accounts: QianchuanAccountSummary[]; tasks: AutomationTask[]; onSaved(): void }) {
+function AutomationTaskEditor({ task, accounts, tasks, onSaved }: { task: AutomationStatus["tasks"][number]; accounts: QianchuanAccountSummary[]; tasks: AutomationTask[]; onSaved(): void }) {
   const [time, setTime] = useState(task.request.time);
   const [enabled, setEnabled] = useState(task.request.enabled);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useEffect(() => setError(""), [task.configurationIssue]);
   const save = async () => {
     if (busy) return;
     setBusy(true); setError("");
@@ -49,6 +53,8 @@ function AutomationTaskEditor({ task, accounts, tasks, onSaved }: { task: Automa
   return <section className="card automation-composer" aria-label="编辑定时任务">
     <h2>{task.request.name}</h2><AutomationTaskDetails task={task} accounts={accounts} tasks={tasks} />
     <p>固定素材、账号、计划和授权范围保持原绑定；需要更换范围时，从来源页面创建新任务。</p>
+    {task.configurationIssue && <p role="alert">当前配置不可用：{task.configurationIssue}</p>}
+    {task.request.production && <p>每次开始执行时使用“模型与 API”的当前设置；执行中保持模型配置不变。</p>}
     <label>每天执行时间<input type="time" value={time} disabled={busy} onChange={event => setTime(event.target.value)} /></label>
     <label><input type="checkbox" checked={enabled} disabled={busy} onChange={event => setEnabled(event.target.checked)} />启用此每日任务</label>
     {error && <p role="alert">{error}</p>}

@@ -7,13 +7,20 @@ export const MEMBERSHIP_OFFERS = [
 export const MEMBERSHIP_HEARTBEAT_MS = 30_000;
 export const MembershipStatusSchema = z.object({
   state: z.enum(["local-development", "unconfigured", "signed-out", "signing-in", "allowed", "denied", "unavailable"]),
-  reason: z.enum(["local-development", "unconfigured", "signed-out", "signing-in", "trial", "monthly", "yearly", "grant", "expired", "forbidden", "session-expired", "unavailable"]),
+  reason: z.enum(["local-development", "unconfigured", "signed-out", "signing-in", "trial", "monthly", "yearly", "grant", "offline-admin", "expired", "forbidden", "session-expired", "unavailable"]),
   message: z.string().max(300),
   user: z.object({ id: z.string().min(1), name: z.string().min(1), displayName: z.string(), isAdmin: z.boolean() }).strict().optional(),
   expiresAt: z.string().datetime({ offset: true }).optional(),
   checkedAt: z.string().datetime({ offset: true }).optional(),
+  offlineLoginAvailable: z.boolean().optional(),
 }).strict();
 export type MembershipStatus = z.infer<typeof MembershipStatusSchema>;
+
+export const MembershipPasswordLoginSchema = z.object({
+  username: z.string().trim().email().max(254),
+  password: z.string().min(1).max(1024),
+}).strict();
+export type MembershipPasswordLogin = z.infer<typeof MembershipPasswordLoginSchema>;
 
 export function membershipUrl(value: string): string {
   const url = new URL(value);

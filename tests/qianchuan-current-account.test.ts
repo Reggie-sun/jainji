@@ -195,6 +195,24 @@ it("allows the catalog to address one hidden account page without relaxing exist
   } finally { await fixture.close(); }
 });
 
+it.each(["visible", "hidden"] as const)("reads a %s root-path catalog page while legacy reads still reject it", async visibility => {
+  const fixture = await fakeBrowser({ targets: [account("root-page", "200", visibility, "/")] });
+  try {
+    await expect(readCurrentQianchuanAccount(fixture.endpoint)).rejects.toThrow();
+    await expect(readCurrentQianchuanPage(fixture.endpoint)).rejects.toThrow();
+    await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(), { allowRoot: true, allowSingleHidden: true })).resolves.toMatchObject({
+      account: { advertiserId: "200" }, targetId: "root-page",
+    });
+    await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(["root-page"]), { allowRoot: true, allowSingleHidden: true })).rejects.toThrow();
+  } finally { await fixture.close(); }
+});
+
+it("still rejects a root catalog page whose DOM account differs from its URL", async () => {
+  const fixture = await fakeBrowser({ targets: [account("root-page", "200", "visible", "/")], snapshot: target => ({ ...target.snapshot, accountTexts: ["ID：999"] }) });
+  try { await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(), { allowRoot: true })).rejects.toThrow(); }
+  finally { await fixture.close(); }
+});
+
 it("rejects ambiguous hidden account pages and still prefers a visible account", async () => {
   const ambiguous = await fakeBrowser({ targets: [account("one", "200", "hidden"), account("two", "200", "hidden")] });
   try { await expect(readCurrentQianchuanPage(ambiguous.endpoint, undefined, new Set(), { allowSingleHidden: true })).rejects.toThrow(); }

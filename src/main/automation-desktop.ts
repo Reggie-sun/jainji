@@ -20,6 +20,8 @@ export async function createAutomationDesktop(input: {
   const runtime: AutomationRuntime = new AutomationRuntime(root, { ...input.runtime, task: id => scheduler.task(id) });
   const scheduler: AutomationScheduler = new AutomationScheduler(root, {
     prepare: async (request, id) => { await input.authorize(); return runtime.prepare(request, id); },
+    configure: task => runtime.configure(task),
+    configurationIssue: task => runtime.configurationIssue(task),
     execute: async (task, signal) => { await input.authorize(); signal.throwIfAborted(); return runtime.execute(task, signal); },
     busy: input.busy,
     changed: () => input.changed(scheduler.snapshot()),
@@ -29,7 +31,8 @@ export async function createAutomationDesktop(input: {
     try { await migrateCleanupSchedules(scheduler, input.legacySchedule, task => runtime.verifyCleanupMigration(task)); }
     catch { scheduler.blockCleanupMigration(); input.legacySchedule.useAutomationTask(() => undefined); }
   }
-  ipcMain.handle("automation.get", event => { input.trusted(event); return scheduler.snapshot(); });
+  await scheduler.refreshConfiguration();
+  ipcMain.handle("automation.get", async event => { input.trusted(event); await scheduler.refreshConfiguration(); return scheduler.snapshot(); });
   ipcMain.handle("automation.create", (event, request: unknown) => { input.trusted(event); return scheduler.create(request); });
   ipcMain.handle("automation.configure", async (event, request: unknown) => {
     input.trusted(event); await input.authorize(); await scheduler.configure(request);

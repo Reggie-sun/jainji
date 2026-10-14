@@ -3,11 +3,12 @@ import path from "node:path";
 import os from "node:os";
 import { afterEach, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ handlers: new Map<string, (...args: any[]) => any>(), prepare: vi.fn(), execute: vi.fn(),
+  configure: vi.fn(), configurationIssue: vi.fn(),
   tray: { setToolTip: vi.fn(), setContextMenu: vi.fn(), on: vi.fn(), destroy: vi.fn() }, menu: [] as any[] }));
 vi.mock("electron", () => ({ ipcMain: { handle: (name: string, handler: (...args: any[]) => any) => mocks.handlers.set(name, handler) },
   Tray: class { constructor() { return mocks.tray; } }, nativeImage: { createFromBuffer: (value: Buffer) => value },
   Menu: { buildFromTemplate: (value: any[]) => { mocks.menu = value; return value; } } }));
-vi.mock("../src/main/automation-runtime", () => ({ AutomationRuntime: class { prepare = mocks.prepare; execute = mocks.execute; } }));
+vi.mock("../src/main/automation-runtime", () => ({ AutomationRuntime: class { prepare = mocks.prepare; execute = mocks.execute; configure = mocks.configure; configurationIssue = mocks.configurationIssue; } }));
 import { createAutomationDesktop } from "../src/main/automation-desktop";
 import { AutomationBackground } from "../src/main/automation-background";
 import type { BrowserWindow } from "electron";
@@ -21,7 +22,7 @@ it("exposes only trusted scheduled operations, authorizes create/enable and does
   mocks.prepare.mockResolvedValue({ binding: "a".repeat(64), summary: "fixed" });
   const scheduler = await createAutomationDesktop({ root, runtime: {} as Parameters<typeof createAutomationDesktop>[0]["runtime"],
     authorize, busy: () => false, trusted: value => { if (value !== event) throw new Error("untrusted"); }, changed });
-  expect(() => mocks.handlers.get("automation.get")!({})).toThrow("untrusted");
+  await expect(mocks.handlers.get("automation.get")!({})).rejects.toThrow("untrusted");
   await expect(mocks.handlers.get("automation.configure")!({}, {})).rejects.toThrow("untrusted");
   const request = { name: "固定清理", enabled: false, time: "12:00", upload: false, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
     cleanup: { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", expectedAdId: "456" }] } };

@@ -9,6 +9,14 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## Remote Browser Window Budget Amendment (2026-10-14)
+
+用户要求修复 VPS 投放管理的明显卡顿。保持远程桌面分辨率和 noVNC 画质，由既有 browser manager 的内部启动参数区分本机与 VPS：本机默认最大化；VPS 新启动的 Chrome 默认普通窗口 1920×1080。仅改变冷启动窗口参数，复用原 profile、profile-directory、window class、动态 loopback CDP 和出口核验；不调整已运行窗口、不自动重启或刷新页面，不改变账号串行持有及安全关闭规则。
+
+`openAccount` 仍只决定初始页面，窗口模式独立，不把空白启动解释为远端授权。VPS 沿原 worker 先核出口后打开账号页面；本机旧调用参数保持兼容。窗口尺寸不授计划、上传、确认、删除、恢复或重试权限，历史 READY／UNKNOWN、登录数据及永久 fence 保持原 owner。
+
+Parent Self-Review：同页可恢复实验支持降低可见像素面积可缓解软件渲染压力，但未证明唯一根因或长期容量。选择 1920×1080 保留常用页面空间，不新增产品配置项。实际启动验证须确认普通窗口尺寸，不能只比较参数字符串；相关生命周期回归及 typecheck 仍必需。接入 `qianchuan-remote-worker.ts` 按用户决定等待另一会话完成后执行。实现计划见 [Window Budget Plan](superpowers/plans/2026-10-14-vps-browser-window-budget.md)，现场证据见 [Performance Investigation](vps-browser-performance-investigation-2026-10-14.md)。
+
 ## Local Foreground Plan Preparation Amendment (2026-10-13)
 
 用户要求本机账号 Chrome 关闭后仍可在简辑选择计划。本修订允许可信 `listPlans` 前台请求在核对所选账号槽和期望 advertiser 后，使用原 browser manager 启动确认缺席的本机账号 Chrome，再读取计划；包含上传的当前网页子账户和清理的保存账号目录。已打开时复用原连接及网页子账户，不重新导航、关闭或重启原窗口。

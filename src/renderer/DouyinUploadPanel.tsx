@@ -30,10 +30,10 @@ export function DouyinUploadPanel({ projectId, status, onState, page = "uploads"
   const [planEdit, setPlanEdit] = useState<{ task: QianchuanUploadResult; sequence: number }>();
   const currentPlan = (task: QianchuanUploadResult) => status?.accounts.find(account => account.available && account.product === task.accountProduct && account.advertiserId === task.advertiserId && account.adId !== task.adId)?.adId;
   useEffect(() => setConfig(status?.config ?? defaultConfig), [key]);
-  const perform = async (action: () => Promise<DesktopState>) => {
+  const perform = async (action: () => Promise<DesktopState>, reportError = true) => {
     if (busy) return false; setBusy(true); setError("");
     try { onState(await action()); return true; }
-    catch (cause) { setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "千川操作未完成，请检查状态。"); return false; }
+    catch (cause) { if (reportError) setError(cause instanceof Error ? cause.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "千川操作未完成，请检查状态。"); return false; }
     finally { setBusy(false); }
   };
   const renderClosureBatches = (batches: QianchuanUploadBatchSummary[]) => batches.map(batch => <div key={batch.pageBatchId} className="brief-card">

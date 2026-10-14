@@ -144,13 +144,18 @@ it.each([false, true])("revalidates and keeps the matching upload plan when retu
     expect(await page.getByLabel("上传计划", { exact: true }).inputValue()).toBe("987");
     await page.getByRole("button", { name: "刷新计划", exact: true }).click();
     await page.waitForFunction(() => (window as any).requests.length === 3);
-    expect(await page.evaluate(() => (window as any).selection.plan)).toBeUndefined();
+    expect(await page.evaluate(() => (window as any).selection.plan)).toEqual(chosen);
     await page.evaluate(() => (window as any).requests[2].reject(new Error("计划已失效")));
     await page.getByRole("alert").waitFor();
-    expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(true);
-    await page.getByLabel(compact ? "千川上传" : "本次产品账号", { exact: true }).selectOption("肥皂");
+    expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(false);
+    expect(await page.evaluate(() => (window as any).selection.plan)).toEqual(chosen);
+    await page.getByRole("button", { name: "刷新计划", exact: true }).click();
     await page.waitForFunction(() => (window as any).requests.length === 4);
-    expect(await page.evaluate(() => (window as any).requests[3].input.expectedAdvertiserId)).toBe("123");
+    await page.evaluate(() => (window as any).requests[3].resolve([{ advertiserId: "789", adId: "998", name: "新的有效计划" }]));
+    await page.waitForFunction(() => (window as any).selection.plan === undefined);
+    await page.getByLabel(compact ? "千川上传" : "本次产品账号", { exact: true }).selectOption("肥皂");
+    await page.waitForFunction(() => (window as any).requests.length === 5);
+    expect(await page.evaluate(() => (window as any).requests[4].input.expectedAdvertiserId)).toBe("123");
     expect(await page.evaluate(() => (window as any).selection.plan)).toBeUndefined();
   } finally { await browser.close(); }
 }, 30000);

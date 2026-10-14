@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, expect, it, vi } from "vitest";
@@ -11,6 +11,12 @@ import type { QueueSnapshot } from "../src/main/queue";
 import type { QianchuanLibraryResult } from "../src/shared/qianchuan-video-library";
 import type { BatchProductionRun } from "../src/shared/batch-production";
 import { uploadProducingExports } from "../src/main/automation-production-upload";
+import { automationModelBinding, automationModelRoles, type AutomationModelRole } from "../src/main/automation-model-binding";
+import { ConnectionStore } from "../src/main/connection-store";
+import { ModelConnections } from "../src/main/model-connections";
+import { DEFAULT_COVER_STICKER } from "../src/shared/cover-sticker";
+import { automationDigest } from "../src/main/automation-files";
+import { AutomationScheduler } from "../src/main/automation-scheduler";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -27,7 +33,7 @@ async function fixture() {
       douyinUpload: { enabled: true, accountProduct: "蝴蝶贴", plan: { advertiserId: "123", adId: "456", name: "固定计划" } } }] } };
   const tasks = new Map<string, AutomationTask>();
   const produce = vi.fn(async (_input: unknown, _projects: ReadonlyMap<string, Project>) => {});
-  const dependencies = { loadProject: vi.fn(async () => project), account: vi.fn(async () => account), modelBinding: () => "model", approvedDirectories: new Set<string>(),
+  const dependencies = { loadProject: vi.fn(async () => project), account: vi.fn(async () => account), modelBinding: (_roles: AutomationModelRole[]) => "model", approvedDirectories: new Set<string>(),
     controller: { busy: false, snapshot: () => ({ id: productionRunId, status: "finished", jobs: [{ status: "completed", completedCount: 1, requestedCount: 1, completedTaskIds: [exportId] }] }), cancel: vi.fn() } as unknown as BatchProductionController,
     queue: { snapshot: () => ({ batches: [{ batch: { id: batchId, projectId: project.id, tasks: [{ id: exportId, status: "completed", outputArtifact: { taskId: exportId } }] } }] }) as QueueSnapshot, waitForPersistence: async (signal: AbortSignal) => signal.throwIfAborted() },
     task: (id: string) => tasks.get(id), produce, clear: vi.fn(async (): Promise<QianchuanLibraryResult[]> => [{ product: "蝴蝶贴", advertiserId: "123", state: "CLEARED", deletedCount: 0, message: "清理完成" }]),
@@ -241,12 +247,212 @@ it("rejects tampered fixed actions and cancellation before effects", async () =>
   await expect(f.runtime.execute(task, abort.signal)).rejects.toThrow();
   expect(f.dependencies.produce).not.toHaveBeenCalled();
 });
-it("binds the model for default automatic cover even when an old template has no cover settings", async () => {
+it("uses current models for default automatic cover even when an old template has no cover settings", async () => {
   const f = await fixture(); delete f.project.coverSticker;
   const task = await f.create({ ...f.request, production: { entries: f.request.production!.entries.map(entry => ({ ...entry, coverEnabled: true })) } });
   f.dependencies.modelBinding = () => "changed-model";
-  await expect(f.runtime.execute(task, new AbortController().signal)).rejects.toThrow("模型连接已变化");
-  expect(f.dependencies.produce).not.toHaveBeenCalled();
+  await expect(f.runtime.execute(task, new AbortController().signal)).resolves.toMatchObject({ productionRunId: f.productionRunId });
+  expect(f.dependencies.produce).toHaveBeenCalledOnce();
+});
+it("reads current models without rewriting the frozen task or requiring an explicit refresh", async () => {
+  const f = await fixture();
+  const task = await f.create({ ...f.request, production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: "agent" })) } });
+  const original = await readFile(path.join(f.root, "recipes", `${task.id}.json`), "utf8");
+  f.dependencies.modelBinding = () => "changed-model";
+  await expect(f.runtime.configure(task)).resolves.toBeUndefined();
+  expect(await f.runtime.configurationIssue(task)).toBeUndefined();
+  expect(await readFile(path.join(f.root, "recipes", `${task.id}.json`), "utf8")).toBe(original);
+  expect(JSON.parse(original).modelBinding).toBeUndefined();
+  expect(f.dependencies.loadProject).toHaveBeenCalledTimes(1);
+  expect(f.dependencies.produce).not.toHaveBeenCalled(); expect(f.dependencies.clear).not.toHaveBeenCalled(); expect(f.dependencies.upload).not.toHaveBeenCalled();
+  const restored = new AutomationRuntime(f.root, f.dependencies);
+  await expect(restored.execute(task, new AbortController().signal)).resolves.toMatchObject({ productionRunId: f.productionRunId });
+});
+it("refuses configuration when frozen material or account has changed", async () => {
+  const f = await fixture(), task = await f.create();
+  f.account.configDigest = "b".repeat(64);
+  await expect(f.runtime.configure(task)).rejects.toThrow("账号");
+  f.account.configDigest = "a".repeat(64); await writeFile(f.source, "different-source");
+  await expect(f.runtime.configure(task)).rejects.toThrow("源素材");
+  expect(f.dependencies.produce).not.toHaveBeenCalled(); expect(f.dependencies.upload).not.toHaveBeenCalled();
+});
+it("reads legacy recipe pointers and model fields while retaining recipe integrity checks", async () => {
+  const f = await fixture(); const task = await f.create({ ...f.request, production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: "agent" })) } });
+  const file = path.join(f.root, "recipes", `${task.id}.json`), recipe = JSON.parse(await readFile(file, "utf8"));
+  recipe.modelBinding = "legacy-model"; delete recipe.modelRoles;
+  const recipeId = crypto.randomUUID(), legacyFile = path.join(f.root, "recipes", `${recipeId}.json`);
+  await writeFile(legacyFile, JSON.stringify(recipe), { mode: 0o600 }); task.binding = automationDigest(recipe); task.recipeId = recipeId;
+  f.dependencies.modelBinding = roles => roles ? "scoped" : "legacy-changed";
+  await expect(f.runtime.configure(task)).resolves.toBeUndefined();
+  await expect(f.runtime.execute(task, new AbortController().signal)).resolves.toMatchObject({ productionRunId: f.productionRunId });
+  recipe.modelBinding = "tampered"; await writeFile(legacyFile, JSON.stringify(recipe));
+  await expect(f.runtime.execute(task, new AbortController().signal)).rejects.toThrow("固定配置不一致");
+  expect(task.lastRun?.state).toBe("RUNNING");
+});
+it("uses current models through save, restart and scheduled production without changing task binding", async () => {
+  const f = await fixture(); let now = new Date(2026, 9, 12, 18, 7);
+  const dependencies = { prepare: f.runtime.prepare.bind(f.runtime), configure: f.runtime.configure.bind(f.runtime),
+    configurationIssue: f.runtime.configurationIssue.bind(f.runtime), execute: f.runtime.execute.bind(f.runtime), busy: () => false, changed: () => {}, now: () => now };
+  const scheduler = new AutomationScheduler(f.root, dependencies); await scheduler.load();
+  const task = (await scheduler.create({ ...f.request, enabled: true, time: "18:08", production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: "agent" })) } })).tasks[0];
+  f.dependencies.modelBinding = () => "changed-model"; await scheduler.refreshConfiguration();
+  expect(scheduler.snapshot().tasks[0].configurationIssue).toBeUndefined();
+  await scheduler.configure({ id: task.id, enabled: true, time: "18:10" });
+  expect(scheduler.task(task.id)?.binding).toBe(task.binding);
+  const restored = new AutomationScheduler(f.root, dependencies); await restored.load(); restored.start();
+  try {
+    now = new Date(2026, 9, 12, 18, 9); await restored.tick(); expect(f.dependencies.produce).not.toHaveBeenCalled();
+    now = new Date(2026, 9, 12, 18, 10); await restored.tick(); await restored.tick();
+    expect(restored.task(task.id)?.lastRun?.state).toBe("COMPLETED"); expect(f.dependencies.produce).toHaveBeenCalledTimes(1);
+    expect(f.dependencies.upload).not.toHaveBeenCalled();
+  } finally { await restored.stop(); }
+});
+it("blocks missing current models before any cleanup and clears the observation after configuration recovers", async () => {
+  const f = await fixture(), task = await f.create({ ...f.request,
+    cleanup: { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", expectedAdId: "456" }] },
+    production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: "agent" })) } });
+  f.dependencies.modelBinding = () => { throw new Error("请先在模型与 API 中配置视觉识别模型。"); };
+  expect(await f.runtime.configurationIssue(task)).toContain("视觉识别模型");
+  await expect(f.runtime.configure(task)).rejects.toThrow("视觉识别模型");
+  await expect(f.runtime.execute(task, new AbortController().signal)).rejects.toThrow("视觉识别模型");
+  expect(f.dependencies.clear).not.toHaveBeenCalled(); expect(f.dependencies.produce).not.toHaveBeenCalled();
+  f.dependencies.modelBinding = () => "recovered-model";
+  expect(await f.runtime.configurationIssue(task)).toBeUndefined();
+});
+it("pins current models for one execution and refuses drift during cleanup", async () => {
+  const f = await fixture(), task = await f.create({ ...f.request,
+    cleanup: { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "123", expectedAdId: "456" }] },
+    production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: "agent" })) } });
+  f.dependencies.modelBinding = () => "current-model";
+  f.dependencies.clear.mockImplementation(async () => {
+    f.dependencies.modelBinding = () => "changed-during-run";
+    return [{ product: "蝴蝶贴", advertiserId: "123", state: "CLEARED", deletedCount: 0, message: "完成" }];
+  });
+  await expect(f.runtime.execute(task, new AbortController().signal)).rejects.toThrow("模型配置已在本次执行中变化");
+  expect(f.dependencies.clear).toHaveBeenCalledOnce(); expect(f.dependencies.produce).not.toHaveBeenCalled();
+});
+it("does not require models when independently uploading already completed source exports", async () => {
+  const f = await fixture(), source = await f.create({ ...f.request,
+    production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: "agent" })) } });
+  Object.assign(source.lastRun!, await f.runtime.execute(source, new AbortController().signal), { state: "COMPLETED" });
+  f.dependencies.modelBinding = () => { throw new Error("模型未配置"); };
+  const task = await f.create({ ...f.request, production: undefined, upload: true, uploadFrom: source.id });
+  expect(await f.runtime.configurationIssue(task)).toBeUndefined();
+  await expect(f.runtime.configure(task)).resolves.toBeUndefined();
+  await expect(f.runtime.execute(task, new AbortController().signal)).resolves.toMatchObject({ productionRunId: f.productionRunId });
+  expect(f.dependencies.upload).toHaveBeenCalledOnce(); expect(f.dependencies.produce).toHaveBeenCalledOnce();
+});
+it.each([
+  { mode: "random", cover: false, tracking: "agent", roles: [] },
+  { mode: "manual", cover: true, tracking: "manual", roles: [] },
+  { mode: "agent", cover: false, tracking: "agent", roles: ["creative", "reviewer", "vision"] },
+  { mode: "random", cover: true, tracking: "agent", roles: ["creative", "reviewer", "vision"] },
+  { mode: "agent", cover: true, tracking: "manual", roles: ["creative"] },
+  { mode: "random", cover: true, tracking: "agent", hybrid: true, roles: ["hybrid"] },
+  { mode: "random", cover: false, tracking: "agent", hybrid: true, roles: [] },
+  { mode: "random", cover: true, tracking: "agent", artwork: true, roles: [] },
+  { mode: "agent", cover: true, tracking: "agent", artwork: true, roles: ["creative"] },
+] as const)("matches production role dependencies: %j", async scenario => {
+  const f = await fixture();
+  f.project.coverSticker = { ...DEFAULT_COVER_STICKER, trackingMode: scenario.tracking,
+    ...("hybrid" in scenario ? { coverStrategy: "shape-matched-static-v1" as const } : {}) };
+  const request = { ...f.request, production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: scenario.mode,
+    coverEnabled: scenario.cover, ...("artwork" in scenario ? { coverMethod: "real-artwork" as const } : {}) })) } };
+  expect(automationModelRoles(request, [{ recentProjectId: f.recentId, project: f.project }])).toEqual(scenario.roles);
+});
+it("ignores names and unused connections but binds effective role inputs without exposing keys", async () => {
+  const f = await fixture(), store = new ConnectionStore(path.join(f.root, "connections")); await store.load();
+  const input = { name: "创作", baseUrl: "https://fixture.example/v1", model: "fixture-model", apiKey: "private-fixture-key", protocol: "responses" as const };
+  const first = await store.save(input); await store.select(first);
+  await store.selectVision({ connectionId: first, model: "vision-model" }); await store.selectReviewer({ connectionId: first, model: "review-model" });
+  const configured = { status: () => ({ configured: true }) };
+  const connections = { store, assertConfigurationIdle: () => {}, provider: configured, visionProvider: configured, reviewerProvider: configured } as unknown as ModelConnections;
+  const roles: AutomationModelRole[] = ["creative", "reviewer", "vision"], binding = automationModelBinding(connections, roles);
+  const unused = await store.save({ ...input, name: "未使用", model: "unused" });
+  await store.save({ ...input, id: first, name: "只改名称" });
+  await store.saveChatGPTModel("dormant-model", "high");
+  expect(automationModelBinding(connections, roles)).toBe(binding);
+  await store.save({ ...input, id: unused, apiKey: "other-key", baseUrl: "https://other.example/v1", model: "other-model" });
+  expect(automationModelBinding(connections, roles)).toBe(binding);
+  await store.selectReviewer({ connectionId: first, model: "changed-reviewer" });
+  expect(automationModelBinding(connections, roles)).not.toBe(binding);
+  f.dependencies.modelBinding = selected => automationModelBinding(connections, selected);
+  const task = await f.create({ ...f.request, production: { entries: f.request.production!.entries.map(entry => ({ ...entry, mode: "agent" })) } });
+  const recipe = await readFile(path.join(f.root, "recipes", `${task.id}.json`), "utf8");
+  expect(recipe).not.toContain("private-fixture-key"); expect(recipe).not.toContain("apiKey");
+  const before = automationModelBinding(connections, roles);
+  await store.save({ ...input, id: first, apiKey: "rotated-key" });
+  expect(automationModelBinding(connections, roles)).not.toBe(before);
+  await expect(f.runtime.configure(task)).resolves.toBeUndefined();
+});
+it("keeps an API task binding readable while an unused ChatGPT connection is logging in", async () => {
+  const f = await fixture(), store = new ConnectionStore(path.join(f.root, "connections")); await store.load();
+  const profile = await store.save({ name: "使用中", baseUrl: "https://fixture.example/v1", model: "fixture-model", apiKey: "fake-key" });
+  await store.select(profile);
+  const state = { status: "logged-in" };
+  const connections = { store, provider: { status: () => ({ configured: true }) }, chatgpt: { status: () => state },
+    assertIdle: ModelConnections.prototype.assertIdle, assertConfigurationIdle: ModelConnections.prototype.assertConfigurationIdle } as unknown as ModelConnections;
+  const before = automationModelBinding(connections, ["creative"]);
+  state.status = "logging-in";
+  expect(() => connections.assertIdle()).toThrow("连接正在处理中");
+  expect(automationModelBinding(connections, ["creative"])).toBe(before);
+});
+it("blocks a task binding while its API configuration save is still pending", async () => {
+  const f = await fixture(), connections = new ModelConnections(f.root, process.cwd(), async () => {}, () => {});
+  await connections.restore();
+  const input = { name: "使用中", baseUrl: "https://fixture.example/v1", model: "fixture-model", apiKey: "fake-key" };
+  await connections.save(input);
+  const id = connections.store.snapshot().profiles[0].id;
+  await connections.select(id);
+  const before = automationModelBinding(connections, ["creative"]);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const save = connections.store.save.bind(connections.store);
+  vi.spyOn(connections.store, "save").mockImplementation(async value => { await gate; return save(value); });
+  const saving = connections.save({ ...input, id, apiKey: "changed-key" });
+  try {
+    expect(() => automationModelBinding(connections, ["creative"])).toThrow("连接正在处理中");
+    release(); await saving;
+    expect(automationModelBinding(connections, ["creative"])).not.toBe(before);
+  } finally { release(); await saving; await connections.dispose(); }
+});
+it.each(["baseUrl", "model", "reasoningEffort", "protocol", "authHeader"] as const)("binds changes to an active API %s", async field => {
+  const f = await fixture(), store = new ConnectionStore(path.join(f.root, "connections")); await store.load();
+  const input = { name: "使用中", baseUrl: "https://fixture.example/v1", model: "fixture-model", apiKey: "fake-key" };
+  const profile = await store.save(input); await store.select(profile);
+  const connections = { store, assertConfigurationIdle: () => {}, provider: { status: () => ({ configured: true }) } } as unknown as ModelConnections;
+  const before = automationModelBinding(connections, ["creative"]);
+  const changes = { baseUrl: "https://other.example/v1", model: "other-model", reasoningEffort: "high", protocol: "responses", authHeader: "x-api-key" };
+  await store.save({ ...input, id: profile, [field]: changes[field] });
+  expect(automationModelBinding(connections, ["creative"])).not.toBe(before);
+});
+it("binds ChatGPT account and model choices only for an active ChatGPT role", async () => {
+  const f = await fixture(), store = new ConnectionStore(path.join(f.root, "connections")); await store.load();
+  await store.select("chatgpt"); await store.saveChatGPTModel("gpt-6.1-sol", "high");
+  const state = { email: "fixture@example.com", model: "gpt-6.1-sol", reasoningEffort: "high" };
+  const connections = { store, assertConfigurationIdle: () => {}, provider: { status: () => ({ configured: true }) },
+    chatgpt: { status: () => state, assertModel: vi.fn() } } as unknown as ModelConnections;
+  const before = automationModelBinding(connections, ["creative"]); state.email = "different@example.com";
+  expect(automationModelBinding(connections, ["creative"])).not.toBe(before);
+  const next = automationModelBinding(connections, ["creative"]); await store.saveChatGPTModel("gpt-6-luna", "medium");
+  expect(automationModelBinding(connections, ["creative"])).not.toBe(next);
+});
+it("uses canonical Hybrid routes rather than unrelated creative or visual role settings, without requests", async () => {
+  const f = await fixture(), store = new ConnectionStore(path.join(f.root, "connections")); await store.load();
+  const minimax = await store.save({ name: "Hybrid", baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", protocol: "responses", apiKey: "fake-key" });
+  const models = ["gpt-6-luna", "gpt-6.1-sol"].map(model => ({ model, defaultReasoningEffort: "high" }));
+  const complete = vi.fn(), state = { email: "fixture@example.com", models };
+  const connections = { store, assertConfigurationIdle: () => {}, chatgpt: { status: () => state, assertModel: (model: string) => { if (!models.some(value => value.model === model)) throw Error("unavailable"); } },
+    reviewProvider: () => ({ completeStructuredVision: complete }) } as unknown as ModelConnections;
+  const before = automationModelBinding(connections, ["hybrid"]);
+  const other = await store.save({ name: "其他", baseUrl: "https://fixture.example/v1", model: "other-model", apiKey: "fake-key" });
+  await store.select(other); await store.selectVision({ connectionId: other, model: "unused-vision" });
+  await store.saveChatGPTModel("gpt-6-luna", "medium");
+  expect(automationModelBinding(connections, ["hybrid"])).toBe(before);
+  await store.save({ id: minimax, name: "改名称", baseUrl: "https://api.minimaxi.com/v1", model: "MiniMax-M3", protocol: "responses", apiKey: "fake-key" });
+  expect(automationModelBinding(connections, ["hybrid"])).toBe(before);
+  state.email = "changed@example.com"; expect(automationModelBinding(connections, ["hybrid"])).not.toBe(before);
+  expect(complete).not.toHaveBeenCalled();
 });
 it("rejects replacement of a frozen output directory by a symbolic link before cleanup", async () => {
   const f = await fixture(), output = path.join(f.root, "output"), elsewhere = path.join(f.root, "elsewhere");

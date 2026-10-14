@@ -20,6 +20,7 @@ import type { QianchuanCurrentAccountPort, QianchuanCurrentAccountSession } from
 import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 
 const parseSettings = (value: unknown) => QianchuanAccountSettingsSchema.parse(value).accounts;
+export type EgressChangeGuard = (advertiserIds: string[], accounts?: readonly QianchuanAccount[], browser?: RunningChromeBrowser) => void;
 
 /** One app-owned mapping. Imported JSON is read-only input, never a live second owner. */
 export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
@@ -36,6 +37,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   private readonly currentAccount: typeof readCurrentQianchuanAccountSnapshot;
   private readonly currentAccounts?: QianchuanCurrentAccountPort;
   private readonly currentSessions = new WeakMap<object, QianchuanCurrentAccountSession>();
+  private readonly subaccountCatalogs = new Map<QianchuanProduct, { key: string; readAt: number; catalog: QianchuanSubaccountCatalog }>();
   get currentAccountBacked(): boolean { return !!this.currentAccounts; }
   constructor(root: string, discoverBrowser?: (advertiserId: string) => Promise<string>, discoverExistingBrowser?: (advertiserId: string, openLocalIfMissing?: boolean) => Promise<string>, currentAccount?: typeof readCurrentQianchuanAccountSnapshot,
     private readonly subaccountBrowser = { read: readQianchuanSubaccounts, switch: switchQianchuanSubaccount }, currentAccounts?: QianchuanCurrentAccountPort) {
@@ -135,15 +137,21 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     });
     this.writes = pending; return pending;
   }
-  private async save(accounts: QianchuanAccount[], guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
+  private async save(accounts: QianchuanAccount[], guard?: EgressChangeGuard, closeBrowsers = false): Promise<QianchuanAccountSummary[]> {
     const value = QianchuanAccountSettingsSchema.parse({ version: 1, accounts });
     const before = await this.exists() ? (await readPrivateConfig(this.file, parseSettings)).accounts : [];
     const ids = [...new Set([...before, ...accounts].map(account => account.advertiserId).filter(Boolean))];
     const changed = ids.filter(id => egressIdentity(before.find(account => account.advertiserId === id)?.egress) !== egressIdentity(accounts.find(account => account.advertiserId === id)?.egress));
     if (changed.length) {
-      guard?.(changed);
+      const targets = before.filter(account => changed.includes(account.advertiserId));
+      if (closeBrowsers && !guard) throw new Error("缺少任务保护检查，未关闭浏览器或切换上传方式。");
+      guard?.(changed, targets);
+      if (closeBrowsers) for (const id of changed) {
+        guard?.(changed, targets);
+        await this.browsers.control(id, "close", browser => guard?.(changed, targets, browser));
+      }
       for (const id of changed) await this.browsers.assertClosed(id);
-      guard?.(changed);
+      guard?.(changed, targets);
     }
     await this.savePrivateJson(this.file, value);
     try {
@@ -286,32 +294,56 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     if (JSON.stringify(before) !== JSON.stringify(after)) throw new Error("网页账户或浏览器连接已变化，请重新读取计划。");
     return plans;
   }
-  async savePlan(input: unknown, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
+  async savePlan(input: unknown, guard?: EgressChangeGuard, closeBrowsers = false): Promise<QianchuanAccountSummary[]> {
     const parsed = QianchuanAccountSetupSchema.parse(input), ids = parseQianchuanPlanUrl(parsed.planUrl);
     return this.edit(async () => {
       const accounts = await this.exists() ? (await readPrivateConfig(this.file, parseSettings)).accounts : [];
       const old = accounts.find(account => account.product === parsed.product);
       const egress = parsed.egress === undefined ? old?.advertiserId === ids.advertiserId ? old.egress : undefined : parsed.egress ?? undefined;
+      const sameSubjectModeChange = old?.egress && old.advertiserId === ids.advertiserId && egress && egress.mode !== old.egress.mode &&
+        egressIdentity({ ...egress, mode: old.egress.mode }) === egressIdentity(old.egress);
+      const members = sameSubjectModeChange ? accounts.filter(value => value.egress?.group === old.egress!.group) : [];
+      const groupChange = parsed.egressGroupChange ?? (sameSubjectModeChange && members.length > 1
+        ? { expected: old.egress!, advertiserIds: members.map(value => value.advertiserId) } : undefined);
+      if (groupChange) {
+        const { expected, advertiserIds } = groupChange;
+        const members = accounts.filter(value => value.egress?.group === expected.group);
+        if (!old?.egress || members.some(value => !value.advertiserId) || old.advertiserId !== ids.advertiserId || egressIdentity(old.egress) !== egressIdentity(expected) ||
+          JSON.stringify(members.map(value => value.advertiserId).sort()) !== JSON.stringify([...advertiserIds].sort()))
+          throw new Error("主体账号或原出口设置已变化，请重新核对整组切换。");
+        if (!egress || egressIdentity({ ...egress, mode: expected.mode }) !== egressIdentity(expected) || egressIdentity(egress) === egressIdentity(expected))
+          throw new Error("整组切换仅支持同一主体出口下改变上传方式，请保留原主体、SSH 别名、端口和 IP。");
+      }
       // A protected new account is saved before any browser/network activity; prepare resolves the real CDP port.
       const cdpEndpoint = old?.advertiserId === ids.advertiserId ? old.cdpEndpoint : egress ? `http://127.0.0.1:${19400 + QIANCHUAN_PRODUCTS.indexOf(parsed.product)}` : await this.discoverBrowser(ids.advertiserId);
       const account: QianchuanAccount = { ...old, product: parsed.product, cdpEndpoint, ...ids, ...(parsed.productName !== undefined ? { productName: parsed.productName } : {}) };
       if (egress) account.egress = egress; else delete account.egress;
-      return this.save(old ? accounts.map(value => value.product === parsed.product ? account : value) : [...accounts, account], guard);
+      return this.save(old ? accounts.map(value => value.product === parsed.product ? account :
+        groupChange && value.egress?.group === groupChange.expected.group ? { ...value, egress } : value) : [...accounts, account], guard, closeBrowsers);
     });
   }
 
   async listSubaccounts(input: QianchuanSubaccountListRequest, signal: AbortSignal, excluded: ReadonlySet<string>, guard: (target: FrozenQianchuanAccount) => void): Promise<QianchuanSubaccountCatalog> {
-    const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
-    if (before.configured.advertiserId !== input.expectedAdvertiserId) throw new Error("登录账号已变化，请重新选择。");
-    const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); await this.freeze(input.product, before.configured.configDigest); };
-    await fresh();
-    const catalog = this.currentAccounts ? await this.currentAccounts.accounts(this.currentSessions.get(before)!, signal, fresh) : await this.subaccountBrowser.read(before.configured.cdpEndpoint, signal, excluded, fresh);
-    const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
-    if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(catalog.current) !== JSON.stringify(after.account)) throw new Error("网页账户或浏览器连接已变化，请刷新子账户。");
-    await fresh(); return catalog;
+    try {
+      const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
+      if (before.configured.advertiserId !== input.expectedAdvertiserId) throw new Error("登录账号已变化，请重新选择。");
+      const fresh = async () => { signal.throwIfAborted(); guard(before.configured); guard(before.target); await this.freeze(input.product, before.configured.configDigest); };
+      await fresh();
+      const key = JSON.stringify([before, [...excluded].sort()]), cached = this.subaccountCatalogs.get(input.product);
+      const reuse = !input.refresh && cached?.key === key && performance.now() - cached.readAt < 5 * 60_000;
+      if (!reuse) this.subaccountCatalogs.delete(input.product);
+      // Only the display directory is cached; live browser/account and config checks still bracket every read.
+      const catalog = reuse ? structuredClone(cached.catalog) : this.currentAccounts ? await this.currentAccounts.accounts(this.currentSessions.get(before)!, signal, fresh) : await this.subaccountBrowser.read(before.configured.cdpEndpoint, signal, excluded, fresh);
+      const after = await this.prepareCurrentCatalog(input.product, signal, excluded);
+      if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(catalog.current) !== JSON.stringify(after.account)) throw new Error("网页账户或浏览器连接已变化，请刷新子账户。");
+      await fresh();
+      if (!reuse) this.subaccountCatalogs.set(input.product, { key, readAt: performance.now(), catalog: structuredClone(catalog) });
+      return catalog;
+    } catch (error) { this.subaccountCatalogs.delete(input.product); throw error; }
   }
 
   async switchSubaccount(input: QianchuanSubaccountSwitchRequest, signal: AbortSignal, excluded: ReadonlySet<string>, guard: (target: FrozenQianchuanAccount) => void): Promise<QianchuanCurrentAccount> {
+    this.subaccountCatalogs.delete(input.product);
     const before = await this.prepareCurrentCatalog(input.product, signal, excluded);
     if (before.configured.advertiserId !== input.expectedAdvertiserId || before.account.advertiserId !== input.expectedCurrentAdvertiserId) throw new Error("网页账户或登录账号已变化，请刷新子账户后重选。");
     if (!this.currentAccounts && before.configured.egress?.mode === "remote-browser" && input.advertiserId !== before.configured.advertiserId) throw new Error("VPS 子账户须先在账号设置中保存绑定，未切换网页。");

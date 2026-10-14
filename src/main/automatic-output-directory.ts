@@ -1,7 +1,7 @@
 import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 
-const MATERIAL_DIRECTORY_NAME = /^素材(?:[0-9]+)?$/;
+const MATERIAL_DIRECTORY_NAME = /素材/;
 const VIDEO_DIRECTORY_NAME = "视频";
 
 function productRootForSource(sourcePath: string): string | undefined {
@@ -24,7 +24,7 @@ function automaticVideoRoot(sourcePaths: readonly string[]): string {
   if (!sourcePaths.length) throw new Error("请先选择素材，再自动创建成片目录。");
   const roots = sourcePaths.map(productRootForSource);
   if (roots.some((root) => !root)) {
-    throw new Error("无法从素材位置识别产品目录。请把素材放在“产品/素材”或“产品/素材2”等目录中，或手动选择成片目录。");
+    throw new Error("无法从素材位置识别产品目录。请把素材放在目录名包含“素材”的目录中（如“产品/素材备份”或“产品/原始素材”），或手动选择成片目录。");
   }
   const productRoots = new Set(roots as string[]);
   if (productRoots.size !== 1) {

@@ -230,6 +230,8 @@ export class AgentController {
       const refreshMediaIds = new Set((media as MediaItem[]).filter(item => refreshFingerprints.has(item.fingerprint)).map(item => item.id));
       const projectId = this.service.currentProject.id;
       const manualIntent = directManual ? manualProductionIntent(projectId, project.coverSticker!, media as MediaItem[]) : undefined;
+      if (manualIntent?.media.some(item => item.disposition === "cover") && this.library) Object.assign(stickerAssets,
+        await this.library.prepare({ ...decorations, mode: "random" }, stickerAssets, ids, true));
       const humanIntent = manualIntent ?? (humanRegion ? assisted!.draft : undefined);
       const artworkDirectory = directManual ? await this.queue.createManualCoverDirectory(projectId) : assisted?.artworkDirectory;
       const previews = new Map<string, Promise<{ id: string; url: string }>>();
@@ -335,7 +337,7 @@ export class AgentController {
       }
       this.runner = new AgentRunner({
         shape,
-        humanRegionLayers: humanIntent ? createHumanRegionCover({ draft: humanIntent, media: media as MediaItem[], preset, assets: this.stickerAssets, tools: this.ffmpeg, directory: artworkDirectory!, random: randomPath }) : undefined,
+        humanRegionLayers: humanIntent ? createHumanRegionCover({ draft: humanIntent, media: media as MediaItem[], preset, assets: stickerAssets, tools: this.ffmpeg, directory: artworkDirectory!, random: randomPath }) : undefined,
         usesModel: decorations.mode === "agent" || Boolean(automaticCover),
         knowledge,
         placement,

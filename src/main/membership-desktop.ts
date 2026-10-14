@@ -1,5 +1,5 @@
 import { app, ipcMain, session as electronSession, safeStorage, shell, type IpcMainInvokeEvent } from "electron";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { MembershipConfigSchema, type MembershipConfig, type MembershipStatus } from "../shared/membership.js";
 import { MembershipSession, fetchMembership } from "./membership-session.js";
@@ -9,6 +9,7 @@ import { installMembershipIpc } from "./membership-ipc.js";
 import { configureMembershipKeyring } from "./membership-keyring.js";
 import { createMembershipNetwork } from "./membership-network.js";
 import { membershipDiagnostics } from "./membership-diagnostics.js";
+import { loadOfflineAdmin } from "./membership-offline-admin.js";
 
 configureMembershipKeyring(app.commandLine);
 
@@ -27,8 +28,11 @@ export async function createMembershipDesktop(input: {
       && (error as NodeJS.ErrnoException).code === "ENOENT";
   }
   const { fetcher, checkFetcher, recover } = await createMembershipNetwork(electronSession);
+  const offlineConfigured = await lstat(path.join(input.root, "membership", "offline-admin.enc"))
+    .then(() => true, error => (error as NodeJS.ErrnoException).code !== "ENOENT");
   const session = new MembershipSession(config, {
-    localDevelopment,
+    localDevelopment: localDevelopment && !offlineConfigured,
+    offlineAdmin: await loadOfflineAdmin(input.root, safeStorage),
     storage: membershipStorage(input.root, config, safeStorage),
     check: (token, signal) => fetchMembership(config!, token, checkFetcher, signal),
     recover, diagnostic: membershipDiagnostics(input.root),
@@ -39,7 +43,7 @@ export async function createMembershipDesktop(input: {
   installMembershipIpc(ipcMain, session, input.trusted);
   ipcMain.handle("membership.status", () => session.snapshot());
   ipcMain.handle("membership.refresh", () => session.refresh());
-  ipcMain.handle("membership.login", () => session.login());
+  ipcMain.handle("membership.login", (_event, credentials) => session.login(credentials));
   ipcMain.handle("membership.logout", () => session.logout());
   ipcMain.handle("membership.openPricing", async () => {
     if (!config) throw new Error("账号服务尚未配置。");
@@ -47,7 +51,7 @@ export async function createMembershipDesktop(input: {
   });
   ipcMain.handle("membership.openAdmin", async () => {
     const status = await session.refresh();
-    if (!config || !status.user?.isAdmin || status.reason === "forbidden" || status.reason === "session-expired" || status.state === "unavailable") throw new Error("需要管理员账号。");
+    if (!config || !status.user?.isAdmin || status.reason === "offline-admin" || status.reason === "forbidden" || status.reason === "session-expired" || status.state === "unavailable") throw new Error("需要云端管理员账号。");
     await shell.openExternal(`${config.issuer}/users`);
   });
   // Restore may need network; keep startup responsive and expose checking through the gate.

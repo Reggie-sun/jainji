@@ -27,7 +27,7 @@ afterEach(async () => {
   vi.restoreAllMocks();
 });
 
-async function fixture(hidden = false): Promise<{ context: BrowserContext; profile: string; service: QianchuanFixture; target: FrozenQianchuanAccount }> {
+async function fixture(hidden = false, route = "/uni-prom"): Promise<{ context: BrowserContext; profile: string; service: QianchuanFixture; target: FrozenQianchuanAccount }> {
   const root = await mkdtemp(path.join(os.tmpdir(), "jianji-qianchuan-cdp-account-"));
   roots.push(root);
   const profile = path.join(root, "profile");
@@ -51,7 +51,7 @@ async function fixture(hidden = false): Promise<{ context: BrowserContext; profi
   const untouched = context.pages()[0]!;
   await untouched.goto("about:blank");
   const page = await context.newPage();
-  await page.goto(`https://${FIXTURE_HOST}/uni-prom?aavid=${FIXTURE_ACCOUNTS[0].advertiserId}`, { waitUntil: "domcontentloaded" });
+  await page.goto(`https://${FIXTURE_HOST}${route}?aavid=${FIXTURE_ACCOUNTS[0].advertiserId}`, { waitUntil: "domcontentloaded" });
   await page.bringToFront();
   const port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0];
   if (!port) throw new Error("Fixture Chrome did not publish a DevTools port");
@@ -62,8 +62,8 @@ async function fixture(hidden = false): Promise<{ context: BrowserContext; profi
   return { context, profile, service, target };
 }
 
-it("reads the directory from a hidden main-account document, switches once to the explicit child, and reads that child's plans without an extension", async () => {
-  const f = await fixture(true);
+it("reads the directory from a hidden root main-account document, switches once to the explicit child, and reads that child's plans without an extension", async () => {
+  const f = await fixture(true, "/");
   try {
     const foreground = f.context.pages()[0]!;
     await foreground.bringToFront();

@@ -130,6 +130,35 @@ async function fixture() {
   const discover = vi.fn(async (advertiserId: string) => `http://127.0.0.1:${advertiserId === "9007199254740993" ? 9230 : 9222 + Number(BigInt(advertiserId) - 1876024170199244n)}`);
   return { root, source, discover, settings: new QianchuanAccountSettings(path.join(root, "app"), discover) };
 }
+it("binds directory cache to the original browser session and config, and never uses it to authorize switching", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  let identity = "original-document", endpoint = "http://127.0.0.1:9222";
+  const main = {advertiserId:"7000",name:"原子账户"}, child = {advertiserId:"8000",name:"新子账户"};
+  let account = main;
+  const current = vi.fn(async () => ({identity,endpoint,uploadEndpointVerified:true,account}));
+  const accounts = vi.fn(async () => ({current:account,accounts:[main,child]}));
+  const switchChild = vi.fn(async () => {account=child;identity="switched-document";return {account};});
+  const settings = new QianchuanAccountSettings(path.join(f.root,"app"),f.discover,undefined,undefined,undefined,{current,accounts,switch:switchChild,plans:vi.fn()});
+  await settings.restore();
+  const request = {product:"蝴蝶贴" as const,expectedAdvertiserId:"1876024170199244"}, signal = new AbortController().signal, guard = vi.fn();
+  const read = (excluded: ReadonlySet<string> = new Set()) => settings.listSubaccounts(request,signal,excluded,guard);
+  await read(); await read(); expect(accounts).toHaveBeenCalledOnce(); expect(current).toHaveBeenCalledTimes(4);
+  identity="replaced-document";await read();expect(accounts).toHaveBeenCalledTimes(2);
+  endpoint="http://127.0.0.1:9333";await read();expect(accounts).toHaveBeenCalledTimes(3);
+  await read(new Set(["protected-page"]));expect(accounts).toHaveBeenCalledTimes(4);
+  await read();expect(accounts).toHaveBeenCalledTimes(5);
+  await settings.savePlan({product:request.product,planUrl:planUrl(request.expectedAdvertiserId,"456")});
+  await read();expect(accounts).toHaveBeenCalledTimes(6);
+  await settings.switchSubaccount({...request,expectedCurrentAdvertiserId:main.advertiserId,advertiserId:child.advertiserId},signal,new Set(),guard);
+  expect(switchChild).toHaveBeenCalledOnce();
+  expect((await read()).current).toEqual(child);expect(accounts).toHaveBeenCalledTimes(7);
+  guard.mockImplementationOnce(() => {throw new Error("busy");});
+  await expect(read()).rejects.toThrow("busy");
+  await read();expect(accounts).toHaveBeenCalledTimes(8);
+  current.mockImplementationOnce(async () => ({identity,endpoint,uploadEndpointVerified:true,account:main}));
+  await expect(read()).rejects.toThrow("已变化");
+  await read();expect(accounts).toHaveBeenCalledTimes(10);
+});
 it("binds library clearing to the saved advertiser before browser discovery and holds the existing account writer lock", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);
   const bytes = await readFile(f.settings.file);

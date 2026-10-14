@@ -26,6 +26,8 @@ npm start
 
 Windows 与 Linux 使用相同命令。开发启动器自动分配本地端口并启动 Electron。
 
+Linux 上可重复运行 `make frontend` 打开独立窗口，各自编辑不同项目；启动不会关闭已有窗口。首个窗口沿用原用户目录，新增窗口使用其 `instances/<序号>` 子目录，各自保存连接、账号和队列，首次使用需单独配置。关闭后再多开会复用空闲目录，热更新保持原目录。系统自动启动只由主窗口管理，多开窗口保持打开时可执行各自的定时任务；每次启动的日志路径会单独打印。
+
 ## Local Engine
 
 Windows x64 安装包内置 FFmpeg 8.0.1 essentials 的 `ffmpeg.exe`、`ffprobe.exe`，以及默认中文价格字体 Noto Sans CJK SC；用户无需另装 FFmpeg、字体、Node.js 或 Codex。此构建使用 NVENC API 13.0，NVIDIA 驱动最低要求为 570，591.74 满足这一要求（见 [NVIDIA SDK 13.0 要求](https://docs.nvidia.com/video-technologies/video-codec-sdk/13.0/read-me/index.html#system-requirements)）；实际 GPU 加速仍以启动试编码为准。Linux 仍需安装包含 H.264 编码器、`aac`、`drawtext` 与 `overlay` 的 FFmpeg 和中文字体。启动时按 NVIDIA NVENC → AMD AMF → Intel QSV 顺序实际试编码，选用首个通过检测的硬件编码器；全部不可用时检测 `libx264` CPU 软件编码。编码器列表或显卡名称不代表实际可用。

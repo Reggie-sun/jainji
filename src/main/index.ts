@@ -24,6 +24,7 @@ import { AgentController } from "./agent-controller.js";
 import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import { openSourceStickerKnowledge, type KnowledgeRecoveryFailure } from "./source-sticker-knowledge-startup.js";
 import { installDevelopmentQuit } from "./development-lifecycle.js";
+import { claimDesktopInstance } from "./desktop-instance.js";
 import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -56,7 +57,7 @@ import type { MembershipSession } from "./membership-session.js";
 import { createAutomationDesktop } from "./automation-desktop.js";
 import type { AutomationScheduler } from "./automation-scheduler.js";
 import { AutomationBackground } from "./automation-background.js";
-import { automationDigest } from "./automation-files.js";
+import { automationModelBinding } from "./automation-model-binding.js";
 
 const pathListSchema = z.array(z.string().min(1).refine((value) => path.isAbsolute(value), "path must be absolute")).min(1).max(1000);
 const uuidSchema = z.string().uuid();
@@ -107,19 +108,25 @@ const approvedOutputDirectories = new Set<string>();
 let pendingScheduledLaunch = scheduledClearTime(process.argv);
 let scheduledLaunchReceivedAt = scheduledClearReceivedAt(process.argv);
 let scheduledLaunchReady = false;
-// A single owner protects saved connections and the managed OAuth callback.
-if (!app.requestSingleInstanceLock()) app.exit(0);
+// Scheduled launches keep the primary owner; ordinary dev windows use separate profiles.
+const desktopInstance = claimDesktopInstance(app, {
+  multiple: !!process.env.JIANJI_DEV_SERVER_URL && !app.isPackaged && !pendingScheduledLaunch && !process.argv.includes("--jianji-schedule-probe"),
+  directory: process.env.JIANJI_DEV_USER_DATA,
+});
+if (!desktopInstance.locked) app.exit(0);
 else if (process.argv.includes("--jianji-schedule-probe")) { app.releaseSingleInstanceLock(); app.exit(75); }
+if (process.env.JIANJI_DEV_SERVER_URL && process.send) process.send({ type: "jianji-dev-instance", directory: desktopInstance.directory }, () => {});
 // Normal desktop launches expose CDP on a dynamic local port; test drivers may select a port.
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 if (!app.commandLine.hasSwitch("remote-debugging-port")) app.commandLine.appendSwitch("remote-debugging-port", "0");
-app.on("second-instance", (_event, argv) => {
+app.on("second-instance", (_event, argv, _cwd, data) => {
   const time = scheduledClearTime(argv);
   if (time) {
     pendingScheduledLaunch = time; scheduledLaunchReceivedAt = scheduledClearReceivedAt(argv);
     if (scheduledLaunchReady) void deliverScheduledLaunch();
     return;
   }
+  if (data && typeof data === "object" && "independentWindow" in data && data.independentWindow === true) return;
   if (mainWindow?.isMinimized()) mainWindow.restore();
   mainWindow?.show(); mainWindow?.focus();
 });
@@ -252,6 +259,7 @@ function registerHandlers(): void {
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.discard", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.discard(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.closeBatch", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.closeBatch(ref.uploadTaskId); return publicState(); });
+  ipcMain.handle("douyinUpload.closeAccountBatch", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await douyinUpload.closeAccountBatch(input); return publicState(); });
   ipcMain.handle("douyinUpload.caption", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ caption: z.string().max(4096) }).parse(input); assertUploadProject(ref); throw new Error("千川任务不接受发布文案。"); });
   ipcMain.handle("douyinUpload.confirm", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.extend({ success: UploadSuccessSchema }).parse(input); assertUploadProject(ref); throw new Error("千川任务只能由用户在 Chrome 确认，应用不提交或登记平台接受。"); });
   const reviewRef = z.object({ id: uuidSchema, revision: z.number().int().nonnegative() }).strict();
@@ -795,7 +803,9 @@ async function bootstrap(): Promise<void> {
   }, "frame");
   stickerAssets = { ...builtins, ...await loadBundledStickerAssets(bundledDirectory), ...await uploadedStickers.load(),
     ...await ensureBuiltinFrameAssets(path.join(userData, "frame-assets")), ...await uploadedFrames.load() };
-  connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), notifyState);
+  connections = new ModelConnections(userData, app.getAppPath(), (url) => shell.openExternal(url), () => {
+    notifyState(); void automation?.refreshConfiguration().catch(() => undefined);
+  });
   await connections.store.load();
   agent = new AgentController(service, queue, ffmpeg, notifyState, stickerAssets, library, connections.provider, connections.visionProvider, connections.reviewerProvider, sourceKnowledge, (batch, selection, authorization) => douyinUpload.registerBatch(batch, selection, authorization), (selection, count) => douyinUpload.preflight(selection, count), hybridProductRoutes(connections, ffmpeg));
   batchRuntime = createBatchProductionRuntime({ root: userData, registry: recentProjects, queue, ffmpeg, fontResolver,
@@ -832,7 +842,7 @@ async function bootstrap(): Promise<void> {
   });
   videoLibrarySchedule = new QianchuanVideoLibrarySchedule(uploadStore.root, {
     automaticLaunch: new QianchuanScheduledLaunch({ packaged: app.isPackaged, executable: process.execPath, root: app.getAppPath(),
-      node: process.env.JIANJI_DEV_NODE || process.env.npm_node_execpath }),
+      node: process.env.JIANJI_DEV_NODE || process.env.npm_node_execpath, primary: desktopInstance.primary }),
     accounts: () => douyinUpload.status(service.currentProject.id).accounts,
     clear: input => clearVideoLibraries(input),
     changed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("videoLibrarySchedule.changed", videoLibrarySchedule.snapshot()); },
@@ -847,16 +857,13 @@ async function bootstrap(): Promise<void> {
     runtime: {
       loadProject: id => new ProjectStore(recentProjects.resolve(id)).readSnapshot(),
       account: product => douyinUpload.automationAccount(product),
-      modelBinding: () => {
-        const snapshot = connections.store.snapshot();
-        return automationDigest({ snapshot, profiles: snapshot.profiles.map(profile => connections.store.get(profile.id).input) });
-      },
+      modelBinding: roles => automationModelBinding(connections, roles),
       approvedDirectories: approvedOutputDirectories, controller: batchRuntime.controller, queue,
       produce: async (input, projects, signal) => {
         await membership.assertAllowed();
         signal.throwIfAborted();
         if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
-        coverReview.assertIdle(); connections.assertIdle(); agent.assertIdle(); batchRuntime.controller.assertIdle();
+        coverReview.assertIdle(); connections.assertConfigurationIdle(); agent.assertIdle(); batchRuntime.controller.assertIdle();
         await douyinUpload.withExportAdmission(async () => { await douyinUpload.beginProduction(); signal.throwIfAborted(); await batchRuntime.controller.start(input, projects); });
       },
       clear: async (input, signal) => { await membership.assertAllowed(); signal.throwIfAborted(); return douyinUpload.clearAutomationVideoLibraries(input, signal); },

@@ -16,6 +16,7 @@ reggie 保存锚点为 `1876036793517065`，原 Chrome `Profile 11` 当前网页
 - 从 `qianchuan-extension-catalog.ts` 提取运输方式无关的目录完整性算法与固定 GET 签名；扩展适配器复用这一 owner。CDP 默认实现复用同一算法及固定响应投影，不建立菜单/API fallback 链。
 - 新 CDP session 只连接已验证原 profile/PID/start/loopback 端口；CDP target ID 保持字符串，文档证明来自持续持有的隔离上下文及真实文档，不将 target 哈希或伪装成扩展 tab ID。Cookie/CSRF 留在浏览器。
 - 目录会话优先核对可见千川页；当没有可见千川页且仅有一个合格千川页时，允许读取该后台页，不抢占其他标签页。多个后台页仍拒绝；原上传、清理及默认当前账户读取保持可见页约束。两轮 URL、DOM 名称/ID 与 target 校验同样用于后台页。
+- 目录会话也接收带唯一 `aavid` 的根路径 `/`，兼容旧扩展留下的主账户入口；此准入不扩大原上传/清理页面集合，仍走原 DOM、target、文档与 context 证明。
 - 元数据读取复用现有 process/socket owner；VPS 复用原 worker profile 证明、严格 SSH 与 `attachMetadata`，读取 metadata 不依赖 native messaging 安装。目录新建的自有转发使用动态 loopback 端口，不抢占已有应用占用的配置端口、不借用其他进程的转发。共享资料根目录的多 profile 仍失败关闭。
 - 计划继续由 `readQianchuanPlans` 的自有查询页读取；上传、清理、确认、原队列、会员与 UNKNOWN 屏障不变。显式切换仅一次，未知结果不重放、不自动回切。
 - 原任务受保护页面的排除集从 service 经当前账户 port 传到 CDP session；目录与计划重读均沿用排除，避免把旧上传页作为账户文档。

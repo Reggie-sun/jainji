@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { AutomationRequestSchema, AutomationTaskSchema, AutomationCleanupMigrationSchema, type AutomationCleanupMigration, type AutomationRequest, type AutomationRun, type AutomationTask, type AutomationStatus } from "../shared/automation.js";
+import { AutomationConfigureSchema, AutomationRequestSchema, AutomationTaskSchema, AutomationCleanupMigrationSchema, type AutomationCleanupMigration, type AutomationRequest, type AutomationRun, type AutomationTask, type AutomationStatus } from "../shared/automation.js";
 import { automationDigest, readAutomationFile, writeAutomationFile } from "./automation-files.js";
 import { localScheduleDay, nextLibraryClearTime } from "./qianchuan-video-library-schedule.js";
 
@@ -11,6 +11,8 @@ const stateSchema = z.object({ version: z.literal(1), tasks: z.array(AutomationT
 const claimedDay = (task: AutomationTask): string | undefined => (task.lastRun?.scheduleRevision ?? 0) === (task.scheduleRevision ?? 0) ? task.lastRun?.day : undefined;
 interface Dependencies {
   prepare(request: AutomationRequest, id: string): Promise<{ binding: string; summary: string }>;
+  configure(task: AutomationTask): Promise<void>;
+  configurationIssue(task: AutomationTask): Promise<string | undefined>;
   execute(task: AutomationTask, signal: AbortSignal): Promise<Pick<AutomationRun, "exports" | "productionRunId">>;
   busy(): boolean;
   changed(): void;
@@ -26,16 +28,30 @@ export class AutomationScheduler {
   private active?: AbortController;
   private work?: Promise<void>;
   private started = false;
+  private configurationIssues = new Map<string, string>();
+  private inspectionGeneration = 0;
   constructor(private readonly root: string, private readonly dependencies: Dependencies) {}
   get busy(): boolean { return !!this.active; }
   get enabled(): boolean { return this.tasks.some(task => task.request.enabled); }
   private now(): Date { return this.dependencies.now?.() ?? new Date(); }
   snapshot(): AutomationStatus {
-    return structuredClone({ tasks: this.tasks.map(task => ({ ...task, nextRunAt: task.request.enabled && !this.error
+    return structuredClone({ tasks: this.tasks.map(task => ({ ...task, configurationIssue: this.configurationIssues.get(task.id), nextRunAt: task.request.enabled && !this.error && !this.configurationIssues.has(task.id)
       ? nextLibraryClearTime(new Date(Math.max(this.now().getTime(), Date.parse(task.scheduleUpdatedAt ?? task.createdAt))), task.request.time, claimedDay(task)).toISOString() : undefined })),
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, running: this.busy, error: this.error });
   }
   task(id: string): AutomationTask | undefined { return structuredClone(this.tasks.find(task => task.id === id)); }
+  async refreshConfiguration(): Promise<void> {
+    const generation = ++this.inspectionGeneration, tasks = structuredClone(this.tasks), digest = automationDigest(tasks);
+    const issues = new Map<string, string>();
+    for (const task of tasks) {
+      const issue = await this.dependencies.configurationIssue(task);
+      if (issue) issues.set(task.id, issue);
+    }
+    if (generation !== this.inspectionGeneration || digest !== automationDigest(this.tasks)) return;
+    if (automationDigest([...issues]) !== automationDigest([...this.configurationIssues])) {
+      this.configurationIssues = issues; this.dependencies.changed();
+    }
+  }
   async load(): Promise<void> {
     try {
       try { await lstat(path.join(this.root, "tasks.json")); }
@@ -99,16 +115,19 @@ export class AutomationScheduler {
     });
   }
   async configure(input: unknown): Promise<AutomationStatus> {
-    const value = z.object({ id: z.string().uuid(), enabled: z.boolean(), time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).strict().parse(input);
+    const value = AutomationConfigureSchema.parse(input);
     this.assertEditable();
     return this.serialize(async () => {
       this.assertEditable(); const tasks = structuredClone(this.tasks), task = tasks.find(task => task.id === value.id);
       if (!task) throw new Error("定时任务不存在。");
+      if (value.enabled) await this.dependencies.configure(structuredClone(task));
       if (task.request.time !== value.time) {
         task.scheduleRevision = (task.scheduleRevision ?? 0) + 1; task.scheduleUpdatedAt = this.now().toISOString();
       }
       task.request.enabled = value.enabled; task.request.time = value.time;
-      await this.persist(tasks); this.tasks = tasks; this.dependencies.changed(); return this.snapshot();
+      await this.persist(tasks); this.tasks = tasks;
+      if (value.enabled) this.configurationIssues.delete(task.id);
+      this.dependencies.changed(); return this.snapshot();
     });
   }
   async remove(id: string): Promise<AutomationStatus> {

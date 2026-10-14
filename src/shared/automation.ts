@@ -22,6 +22,9 @@ export const AutomationRequestSchema = z.object({
   }
 });
 export type AutomationRequest = z.infer<typeof AutomationRequestSchema>;
+export const AutomationConfigureSchema = z.object({ id: z.string().uuid(), enabled: z.boolean(),
+  time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/) }).strict();
+export type AutomationConfigure = z.infer<typeof AutomationConfigureSchema>;
 export const AutomationRunSchema = z.object({
   id: z.string().uuid(), day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), startedAt: z.string().datetime(), finishedAt: z.string().datetime().optional(),
   scheduleRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
@@ -31,7 +34,7 @@ export const AutomationRunSchema = z.object({
 }).strict();
 export type AutomationRun = z.infer<typeof AutomationRunSchema>;
 export const AutomationTaskSchema = z.object({
-  id: z.string().uuid(), request: AutomationRequestSchema, binding: z.string().regex(/^[a-f0-9]{64}$/),
+  id: z.string().uuid(), recipeId: z.string().uuid().optional(), request: AutomationRequestSchema, binding: z.string().regex(/^[a-f0-9]{64}$/),
   summary: z.string().max(8000), createdAt: z.string().datetime(), lastRun: AutomationRunSchema.optional(),
   scheduleRevision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(), scheduleUpdatedAt: z.string().datetime().optional(),
 }).strict().refine(value => ((value.scheduleRevision ?? 0) === 0 || !!value.scheduleUpdatedAt)
@@ -40,6 +43,6 @@ export type AutomationTask = z.infer<typeof AutomationTaskSchema>;
 export const AutomationCleanupMigrationSchema = z.object({ task: AutomationTaskSchema, source: AutomationTaskSchema.optional(), complete: z.boolean() }).strict();
 export type AutomationCleanupMigration = z.infer<typeof AutomationCleanupMigrationSchema>;
 export interface AutomationStatus {
-  tasks: (AutomationTask & { nextRunAt?: string })[];
+  tasks: (AutomationTask & { nextRunAt?: string; configurationIssue?: string })[];
   timeZone: string; running: boolean; error?: string;
 }

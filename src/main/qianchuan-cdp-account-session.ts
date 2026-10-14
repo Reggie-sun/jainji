@@ -209,13 +209,13 @@ export class QianchuanCdpAccountSession {
   }
 
   private async currentUnchecked(signal: AbortSignal): Promise<CdpSnapshot> {
-    const observed = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, { allowSingleHidden: true });
+    const observed = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, { allowSingleHidden: true, allowRoot: true });
     const snapshot = await this.withTarget(observed.targetId, signal, async bound => {
       const current = await this.readBoundSnapshot(bound, observed.url, bound.signal);
       if (current.account.advertiserId !== observed.account.advertiserId || current.account.name !== observed.account.name) throw changed();
       return current;
     });
-    const fresh = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, { allowSingleHidden: true });
+    const fresh = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, { allowSingleHidden: true, allowRoot: true });
     if (fresh.targetId !== observed.targetId || fresh.url !== observed.url || fresh.account.advertiserId !== snapshot.account.advertiserId || fresh.account.name !== snapshot.account.name) throw changed();
     return snapshot;
   }

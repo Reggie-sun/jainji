@@ -35,6 +35,24 @@ it("accepts a numbered material directory beside the product video directory", a
   expect((await stat(created)).isDirectory()).toBe(true);
 });
 
+it.each(["素材备份", "原始素材", "产品素材2026", "新素材合集"])("accepts a material directory containing 素材: %s", async (name) => {
+  const root = await temporaryRoot();
+  const source = path.join(root, "眼贴", name, "分组", "a.mp4");
+  const created = await createAutomaticOutputDirectory([source], new Date(2026, 9, 13, 9, 7));
+
+  expect(created).toBe(path.join(root, "眼贴", "视频", `10.13 09${timeSeparator}07`));
+  expect((await stat(created)).isDirectory()).toBe(true);
+  await expect(createAutomaticOutputDirectory([source], new Date(), created)).resolves.toBe(created);
+});
+
+it("uses the nearest matching material ancestor", async () => {
+  const root = await temporaryRoot();
+  const source = path.join(root, "素材归档", "眼贴", "原始素材", "分组", "a.mp4");
+  const created = await createAutomaticOutputDirectory([source], new Date(2026, 9, 13, 9, 7));
+
+  expect(created).toBe(path.join(root, "素材归档", "眼贴", "视频", `10.13 09${timeSeparator}07`));
+});
+
 it("reserves a new directory when the same minute already exists", async () => {
   const root = await temporaryRoot();
   const existing = path.join(root, "马油膏布", "视频", `9.18 20${timeSeparator}02`);
@@ -86,12 +104,12 @@ it("rejects sources that do not identify one product root", async () => {
   const root = await temporaryRoot();
   await expect(createAutomaticOutputDirectory([
     path.join(root, "肥皂", "素材", "a.mp4"),
-    path.join(root, "蝴蝶贴", "素材", "b.mp4"),
+    path.join(root, "蝴蝶贴", "原始素材", "b.mp4"),
   ])).rejects.toThrow("不同产品目录");
   await expect(createAutomaticOutputDirectory([
     path.join(root, "肥皂", "原片", "a.mp4"),
   ])).rejects.toThrow("产品/素材");
   await expect(createAutomaticOutputDirectory([
-    path.join(root, "肥皂", "素材备份", "a.mp4"),
+    path.join(root, "肥皂", "原片", "素材备份.mp4"),
   ])).rejects.toThrow("产品/素材");
 });

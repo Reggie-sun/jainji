@@ -33,7 +33,9 @@ function unitArgument(value: string): string {
 export class QianchuanScheduledLaunch {
   private state: QianchuanAutomaticLaunchStatus = { supported: process.platform === "linux", enabled: false,
     message: process.platform === "linux" ? "系统定时启动尚未启用。" : "当前系统尚未支持自动启动；请保持软件打开。" };
-  constructor(private readonly application: { packaged: boolean; executable: string; root: string; node?: string }) {}
+  constructor(private readonly application: { packaged: boolean; executable: string; root: string; node?: string; primary?: boolean }) {
+    if (application.primary === false) this.state = { supported: false, enabled: false, message: "系统自动启动由主窗口管理；此多开窗口可保持打开执行自己的定时任务。" };
+  }
   snapshot(): QianchuanAutomaticLaunchStatus { return { ...this.state }; }
 
   private async installFile(directory: string, name: string, contents: string): Promise<void> {
