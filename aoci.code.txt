@@ -4,7 +4,7 @@
 .gitattributes[OV2T]: F:固定贴纸库授权文本的LF行尾 | R:- | A:Git读取该路径属性 | S:-
 .gitignore[OV3T]: F:排除依赖构建日志及本机配置 | R:code:AGENTS.md | A:排除会员构建与公开实例配置；保留正式AOCI资产 | S:-
 AGENTS.md[SC9T]: F:规定项目权威产品不变量与交付边界 | R:code:src/shared/agent.ts,code:src/main/queue.ts,code:.agent/harness/policy.json | A:按合同路由；冻结重试；make frontend；owned回执；AOCI按语义身份冲突治理触发；验证后提交推送核远端 | S:人工框真实贴纸直接制作不伪造批准；assisted仍审阅；Hybrid仅H4同字节四角，未知保留无白fallback；覆盖GPT限6.1-sol及6-luna；工程证据不替代平台人工验收
-Makefile[OV3T]: F:启动本地Electron开发进程并展示日志尾部 | R:code:package.json | A:frontend目标先调用dev-stop再后台执行npm run dev | S:-
+Makefile[OV3T]: F:通过开发启动脚本打开本地Electron窗口 | R:code:package.json | A:frontend委托scripts/dev-start.sh | S:-
 index.html[EU4T]: F:为React renderer提供根节点和入口脚本 | R:code:src/renderer/main.tsx | A:Vite加载src/renderer/main.tsx | S:-
 package.json[FV7S]: F:声明桌面依赖验证脚本及打包资源 | R:code:src/main/index.ts,code:src/membership-server/index.ts | A:openid-client固定版本；会员远端worker构建；typecheck与Harness；分发千川扩展资源 | S:Windows携带FFmpeg与字体；Codex解包；不分发服务端密钥
 tsconfig.json[AB5T]: F:严格TypeScript编译约束并包含src tests和Vite配置 | R:code:src/main/index.ts | A:类型检查配置不代表运行行为 | S:noEmit且模块按Bundler解析
@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:登记无扩展CDP账户目录、远端元数据及原扩展回归；Harness自身变更触发自测；正式资产要求AOCI | S:完整贡献优先子集；隔离浏览器必需执行；focused不替代全量或平台验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:登记多开测试及双Electron smoke；人工紧凑回归；资源库完整路由；账户远端元数据；Harness自测；正式资产要求AOCI | S:完整贡献优先子集；隔离浏览器必需执行；focused不替代全量或平台验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -77,7 +77,7 @@ execution-limits.ts[RP7T]: F:按CPU与内存估算并发容量并探测可运行
 ffmpeg.ts[IB8M]: F:封装媒体子进程、能力发现、编码并发探测与字体解析 | R:code:src/main/video-encoder.ts,code:src/main/execution-limits.ts,code:src/main/hardware-probe.ts,code:src/main/platform.ts | A:FfmpegAdapter提供probe和run；checkCapabilities返回引擎及容量；refreshFontCapabilities只更新字体就绪状态 | S:硬件和CPU回退均须真实同时编码探测；CPU有独立探测预算；刷新字体不重选队列引擎；进程退出不代表产物已验证发布
 gpu-memory.ts[AB7T]: F:解析空闲显存并估算NVENC需求 | R:code:src/main/execution-limits.ts | A:硬件容量辅助 | S:探测不可用不得推定容量
 hardware-probe.ts[KH7T]: F:用持续编码进程验证指定路数的同时运行能力 | R:code:src/main/ffmpeg.ts,code:src/main/execution-limits.ts | A:probeConcurrentEncodes等待每路输出帧及持续重叠，超时或提前退出返回失败 | S:探测输入保持开放；任何提前退出使容量无效；结束必须杀死仍运行进程并等待全部promise
-index.ts[EG8L]: F:启动Electron并接线制作覆盖千川会员及自动化 | R:code:src/main/application.ts,code:src/main/membership-desktop.ts,code:src/main/automation-desktop.ts,code:src/main/queue.ts,code:src/main/douyin-upload-service.ts | A:可信IPC及会员准入；查询及取消绑定sender；素材先持久后更新索引；托盘及系统启动迁移；B串行释放；子账户切换核制作及审阅空闲 | S:旧定时保存关闭；无第二队列；不恢复未知上传；边框中央透明由主进程校验
+index.ts[EG8L]: F:启动Electron并接线制作覆盖千川会员及自动化 | R:code:src/main/application.ts,code:src/main/douyin-upload-service.ts,code:src/main/desktop-instance.ts | A:可信IPC及会员准入；素材先存后索引；开发独立profile；仅主窗系统启动；模型变动刷新配置观察；子账户切换核空闲 | S:无第二队列；不恢复未知上传；边框main验透明；观察不启动模型任务；定时制作保留在途配置保护；独立次实例不聚焦原窗
 media-response.ts[AB7T]: F:对本地媒体请求返回可范围读取的Response | R:code:src/main/index.ts | A:受控媒体协议辅助 | S:仅按受信路径提供媒体
 media.ts[AB7S]: F:探测导入媒体、投影公开视图并解析保存的素材选择 | R:code:src/main/domain.ts,code:src/main/ffmpeg.ts | A:按保存顺序去重并排除已移出ID；无草稿沿用全部就绪素材；去除公开源路径 | S:显式空选择不扩成全选；现存invalid项保留给准入拒绝；无效媒体不进入制作
 model-connections.ts[II8M]: F:管理创作、视觉、复核连接及应用独立Codex登录与执行runtime | R:code:src/main/connection-store.ts,code:src/main/chatgpt-session.ts,code:src/main/codex-rpc.ts,code:src/main/api-request-scheduler.ts | A:ModelConnections持久选择、激活各角色、导入连接与关闭；启动参数和执行凭据由主进程构造 | S:登录和执行目录分离，执行auth.json必须缺席；凭据仅经允许的环境传给子进程；禁用工具、搜索和多Agent；不读写全局Codex登录，凭据不回传界面
@@ -166,7 +166,7 @@ shape-cover-hybrid-motion.ts[KA7T]: F:逐component轻量抽样检查角落贴纸
 shape-cover-hybrid-shape.ts[KB8S]: F:有界搜索本地图案覆盖摆放 | R:code:src/main/shape-cover-alpha.ts,code:src/main/shape-cover-pixel-gate.ts,code:src/main/human-region-cover.ts | A:固定尺寸平移枚举；原Hybrid轮廓门；artwork模式原alpha零半径并裁画布边界 | S:默认Hybrid不变；有限预算无白底；目录漂移拒绝；几何匹配不授源事实或批准
 qianchuan-browser-process.ts[IR7T]: F:核验账号Chrome进程身份并请求正常退出 | R:code:src/main/qianchuan-browser-discovery.ts | A:pidfd固定实例；核对UID命令行profile和启动时间；等原实例消失 | S:不强杀重试或触碰Chrome锁；身份漂移和pidfd不可用拒绝
 qianchuan-plan-catalog.ts[IA7M]: F:读取商品自选控成本计划并补充商品名称 | R:code:src/main/qianchuan-query-page.ts,code:src/shared/qianchuan-plan-selection.ts | A:复用后台自有页并传入可选原context；首屏选商品自选控成本；同Document稳定分页；双ID原name绑定商品 | S:只选自有页只读视图；绑定刷新或错账号及非空adId拒绝；商品名不授上传；有界清页
-qianchuan-scheduled-launch.ts[OW6T]: F:安装用户systemd每日启动简辑的timer和service | R:code:src/shared/qianchuan-video-library-schedule.ts | A:校验启动时间；仅更新应用标记单元；保存后启停timer；公开能力状态 | S:只负责OS启动，不授删除授权；Persistent=false且Restart=no
+qianchuan-scheduled-launch.ts[OW6T]: F:安装用户systemd每日启动简辑的timer和service | R:code:src/shared/qianchuan-video-library-schedule.ts,code:src/main/desktop-instance.ts | A:校验时间；核应用标记单元；保存后启停timer；非主窗口禁管理 | S:只接OS启动，不授删除授权；Persistent=false且Restart=no
 qianchuan-video-library-page.ts[IB8M]: F:核对绑定账号的视频库并删除当前批次 | R:code:src/main/qianchuan-video-library.ts | A:完整尾页跳过切页容量；唯一可见表及显式空库；确认前guard；结果超时至多一次只读刷新核新绑定响应 | S:删除对话框独立于上传及计划；未知确认不重发；账号筛选文档漂移或取消停止；刷新无变化仍暂停
 qianchuan-video-library.ts[AW8T]: F:协调显式账号视频库清空并持久化审计 | R:code:src/main/qianchuan-video-library-page.ts,code:src/main/qianchuan-account-config.ts | A:独占账号操作锁；确认前pending标记；逐批fresh列表直到真实空库；有界次数及时间 | S:保留旧unknown审计；新显式操作只消费当前列表，不重放旧确认；不改变上传fences
 shape-cover-hybrid-preview.ts[AA7S]: F:消费冻结图层生成开发预览并闭合独立视觉QA | R:code:src/main/compiler.ts,code:src/main/shape-cover-vision-router.ts | A:核验mask投影、全时钟和音频；MiniMax首审与有界Sol独立审 | S:无效首审不伪造verdict；Sol有效PASS可闭合；高风险矛盾保持UNSAFE；无生产authority
@@ -250,6 +250,7 @@ qianchuan-account-catalog.ts[II8T]: F:校验运输中立的签名账户目录切
 qianchuan-browser-accounts.ts[II8S]: F:从保存的原浏览器建立当前账户会话 | R:code:src/main/qianchuan-browser-bindings.ts,code:src/main/qianchuan-cdp-account-session.ts,code:src/main/qianchuan-remote-runtime.ts | A:核PID时钟socket与ActivePort；VPS动态自有转发；复制排除页；复用context与文档身份比较 | S:不借旧端口转发；WeakMap拒克隆；共享profile拒绝；网页子账户不改锚点
 qianchuan-cdp-account-session.ts[II8M]: F:对原网页提供有界CDP身份固定GET切换及计划读取 | R:code:src/main/qianchuan-picker-transport.ts,code:src/main/qianchuan-account-catalog.ts,code:src/main/qianchuan-current-account.ts,code:src/main/qianchuan-plan-catalog.ts | A:排除任务页；单后台页；操作前后核真实默认context；GET同文档；计划传原context | S:空context列表不证明登录态；缺默认context证明拒绝；真实target不伪装tabId；切换一次核新文档；未知不重放；保留用户页；Cookie不离浏览器
 qianchuan-current-account-port.ts[CI7T]: F:定义当前浏览器账户操作与不透明会话契约 | R:code:src/main/qianchuan-account-config.ts,code:src/shared/qianchuan-plan-selection.ts | A:公开identity端口账户及上传连接证明；接收排除target集；目录切换计划共用guard | S:类型不签发权限；transport私有文档身份由适配器持有
+desktop-instance.ts[RI7T]: F:为开发窗口领取独立Electron资料及单实例锁 | R:code:src/main/index.ts | A:优先主目录；最多32个数字槽；重启可重领原目录 | S:仅instances直接子目录；拒符号链接；每profile一个owner；定时启动仍走主目录
 membership-offline-admin.ts[PI8S]: F:保存显式本机管理员密码verifier并验证签名会话 | R:code:src/main/membership-session.ts,code:src/main/membership-desktop.ts,code:src/shared/membership.ts | A:随机盐scrypt；safeStorage加密；独占完整发布；每次核私有文件及HMAC；允许状态无期限 | S:初始化仅OS本机，不暴露IPC；无授权或basic_text不启用；不保存密码；损坏删除密钥变化撤会话；本机身份不授云端权限
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限

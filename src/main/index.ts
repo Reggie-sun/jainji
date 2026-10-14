@@ -24,6 +24,7 @@ import { AgentController } from "./agent-controller.js";
 import { SourceStickerKnowledgeStore } from "./source-sticker-knowledge-store.js";
 import { openSourceStickerKnowledge, type KnowledgeRecoveryFailure } from "./source-sticker-knowledge-startup.js";
 import { installDevelopmentQuit } from "./development-lifecycle.js";
+import { claimDesktopInstance } from "./desktop-instance.js";
 import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -105,19 +106,25 @@ const approvedOutputDirectories = new Set<string>();
 let pendingScheduledLaunch = scheduledClearTime(process.argv);
 let scheduledLaunchReceivedAt = scheduledClearReceivedAt(process.argv);
 let scheduledLaunchReady = false;
-// A single owner protects saved connections and the managed OAuth callback.
-if (!app.requestSingleInstanceLock()) app.exit(0);
+// Scheduled launches keep the primary owner; ordinary dev windows use separate profiles.
+const desktopInstance = claimDesktopInstance(app, {
+  multiple: !!process.env.JIANJI_DEV_SERVER_URL && !app.isPackaged && !pendingScheduledLaunch && !process.argv.includes("--jianji-schedule-probe"),
+  directory: process.env.JIANJI_DEV_USER_DATA,
+});
+if (!desktopInstance.locked) app.exit(0);
 else if (process.argv.includes("--jianji-schedule-probe")) { app.releaseSingleInstanceLock(); app.exit(75); }
+if (process.env.JIANJI_DEV_SERVER_URL && process.send) process.send({ type: "jianji-dev-instance", directory: desktopInstance.directory }, () => {});
 // Normal desktop launches expose CDP on a dynamic local port; test drivers may select a port.
 app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 if (!app.commandLine.hasSwitch("remote-debugging-port")) app.commandLine.appendSwitch("remote-debugging-port", "0");
-app.on("second-instance", (_event, argv) => {
+app.on("second-instance", (_event, argv, _cwd, data) => {
   const time = scheduledClearTime(argv);
   if (time) {
     pendingScheduledLaunch = time; scheduledLaunchReceivedAt = scheduledClearReceivedAt(argv);
     if (scheduledLaunchReady) void deliverScheduledLaunch();
     return;
   }
+  if (data && typeof data === "object" && "independentWindow" in data && data.independentWindow === true) return;
   if (mainWindow?.isMinimized()) mainWindow.restore();
   mainWindow?.show(); mainWindow?.focus();
 });
@@ -827,7 +834,7 @@ async function bootstrap(): Promise<void> {
   });
   videoLibrarySchedule = new QianchuanVideoLibrarySchedule(uploadStore.root, {
     automaticLaunch: new QianchuanScheduledLaunch({ packaged: app.isPackaged, executable: process.execPath, root: app.getAppPath(),
-      node: process.env.JIANJI_DEV_NODE || process.env.npm_node_execpath }),
+      node: process.env.JIANJI_DEV_NODE || process.env.npm_node_execpath, primary: desktopInstance.primary }),
     accounts: () => douyinUpload.status(service.currentProject.id).accounts,
     clear: input => clearVideoLibraries(input),
     changed: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("videoLibrarySchedule.changed", videoLibrarySchedule.snapshot()); },
