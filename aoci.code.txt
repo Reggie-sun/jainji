@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:登记原千川与千管家只读控制器回归；Harness自身变更触发自测；正式资产要求AOCI | S:完整贡献优先子集；隔离浏览器必需执行；focused不替代全量或平台验收
+policy.json[FQ7L]: F:声明必需回归检查与逐文件分层路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts | A:登记千川及千管家查询、上下文同步运输回归；Harness自身变更触发自测；正式资产要求AOCI | S:完整贡献优先子集；隔离浏览器必需执行；focused不替代全量或平台验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -250,8 +250,9 @@ qianchuan-account-catalog.ts[II8T]: F:校验运输中立的签名账户目录切
 qianchuan-browser-accounts.ts[II8S]: F:从保存的原浏览器建立当前账户会话 | R:code:src/main/qianchuan-browser-bindings.ts,code:src/main/qianchuan-cdp-account-session.ts,code:src/main/qianchuan-remote-runtime.ts | A:核PID时钟socket与ActivePort；VPS动态自有转发；复制排除页；复用context与文档身份比较 | S:不借旧端口转发；WeakMap拒克隆；共享profile拒绝；网页子账户不改锚点
 qianchuan-cdp-account-session.ts[II8M]: F:对原网页提供有界CDP身份固定GET切换及计划读取 | R:code:src/main/qianchuan-picker-transport.ts,code:src/main/qianchuan-account-catalog.ts,code:src/main/qianchuan-current-account.ts,code:src/main/qianchuan-plan-catalog.ts | A:排除任务页；单后台页；操作前后核真实默认context；GET同文档；计划传原context | S:空context列表不证明登录态；缺默认context证明拒绝；真实target不伪装tabId；切换一次核新文档；未知不重放；保留用户页；Cookie不离浏览器
 qianchuan-current-account-port.ts[CI7T]: F:定义当前浏览器账户操作与不透明会话契约 | R:code:src/main/qianchuan-account-config.ts,code:src/shared/qianchuan-plan-selection.ts | A:公开identity端口账户及上传连接证明；接收排除target集；目录切换计划共用guard | S:类型不签发权限；transport私有文档身份由适配器持有
-qianguanjia-browser.ts[IN7S]: F:发现千管家原Chrome业务页并定向连接只读适配器 | R:code:src/main/qianchuan-browser-discovery.ts,code:src/main/local-cdp-transport.ts,code:src/main/qianchuan-picker-transport.ts,code:src/main/qianchuan-qianguanjia-adapter.ts | A:loopback限量元数据；固定首页账户路由；核浏览器GUID与target；只attach所选页；连接有界并去敏 | S:不读登录文件；不导航关闭原页面或Chrome；不重新授权；CDP地址不回renderer
-qianguanjia-queries.ts[AW7T]: F:管理千管家UI只读查询与临时固定会话 | R:code:src/shared/qianguanjia.ts,code:src/main/qianguanjia-browser.ts | A:按sender及UUID取消；目录签发不透明选项；同页面复用适配器；单在途60秒；失败取消断开清会话 | S:不改上传映射或保存凭据结果；其他sender不能消费会话；停止仅detach且不恢复读取
+qianguanjia-browser.ts[IN7T]: F:发现千管家原Chrome业务页并定向连接只读适配器 | R:code:src/main/qianchuan-browser-discovery.ts,code:src/main/local-cdp-transport.ts,code:src/main/qianguanjia-transport.ts,code:src/main/qianchuan-qianguanjia-adapter.ts | A:loopback限量元数据；核浏览器GUID及target；定向attach后同步同SDK上下文；幂等同Promise断连及两秒清理上限 | S:不导航关闭用户页或Chrome；不读登录文件或重新授权；CDP地址不回renderer；SDK释放不无限等待
+qianguanjia-queries.ts[AW7T]: F:管理千管家UI只读查询与临时固定会话 | R:code:src/shared/qianguanjia.ts,code:src/main/qianguanjia-browser.ts | A:sender及UUID取消；目录签发不透明选项；同页复用；host层连接15秒读取20秒总60秒；清理限2.5秒且错误去敏；迟到连接独立关闭 | S:CDP无应答也必须收束取消；不改上传映射或保存凭据结果；其他sender不能用会话；旧操作不恢复读取或覆盖新状态
+qianguanjia-transport.ts[IN7T]: F:为千管家定向CDP连接重发主世界上下文通知 | R:code:src/main/qianchuan-picker-transport.ts,code:src/main/qianguanjia-browser.ts | A:复用原运输；捕获所选target的SDK session；顺序Runtime disable及enable；独立负ID关联应答；断连拒绝等待 | S:不导航或重载原页；不切换登录；应答须同session；恢复上下文不授平台写权限
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限
 index.ts[AB7T]: F:读取网关密钥并启动本地模型服务 | R:code:src/model-server/gateway.ts | A:模型网关进程入口 | S:密钥来自受控环境或文件

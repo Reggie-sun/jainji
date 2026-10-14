@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-14T12:15:41Z",
+  "updated_at": "2026-10-14T13:49:58Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "a78260885e4c8371aa4604d311f135c5458711313774cd566a49e645a1360b14",
-      "size": 54911,
-      "normalized_sha256": "a78260885e4c8371aa4604d311f135c5458711313774cd566a49e645a1360b14"
+      "sha256": "8c3bef3ec104c62358a83d10aea38d4d82fd4eb6845556f5f192adcf501eacca",
+      "size": 55005,
+      "normalized_sha256": "8c3bef3ec104c62358a83d10aea38d4d82fd4eb6845556f5f192adcf501eacca"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "24156341e4a495f7ebae48565b64a914dbdaac5c382d51d3a5bbbb266361b62f",
-      "size": 139046,
-      "normalized_sha256": "24156341e4a495f7ebae48565b64a914dbdaac5c382d51d3a5bbbb266361b62f"
+      "sha256": "466a877a1b001e1f6e74cf04f4dcf63d7aceb63bacce8329a91f329da2bb196c",
+      "size": 139590,
+      "normalized_sha256": "466a877a1b001e1f6e74cf04f4dcf63d7aceb63bacce8329a91f329da2bb196c"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1868,14 +1868,19 @@
       "normalized_sha256": "e6e9652061d783c4ee76ace1aa6664cc5caa35ef4c7132baf96b1560c5b45948"
     },
     "src/main/qianguanjia-browser.ts": {
-      "sha256": "04db7d3b6d686a559d70e3ef740d0225bf755d20bbb57186462875b8f7813dc5",
-      "size": 6295,
-      "normalized_sha256": "04db7d3b6d686a559d70e3ef740d0225bf755d20bbb57186462875b8f7813dc5"
+      "sha256": "7194fe56c5c6b0260fccba02ca5ca545fd32f0f2ab33384e4b1e4454b7e9d130",
+      "size": 6507,
+      "normalized_sha256": "7194fe56c5c6b0260fccba02ca5ca545fd32f0f2ab33384e4b1e4454b7e9d130"
     },
     "src/main/qianguanjia-queries.ts": {
-      "sha256": "e17c9a5575e76a523fb8a6d341364e59e3a0674eeb3db00e192d544fb8b07830",
-      "size": 5131,
-      "normalized_sha256": "e17c9a5575e76a523fb8a6d341364e59e3a0674eeb3db00e192d544fb8b07830"
+      "sha256": "7a3968af2ae38f30f8ccdc33ebb54430f4fccf007525ddc4d4392efde3aa2aa3",
+      "size": 6305,
+      "normalized_sha256": "7a3968af2ae38f30f8ccdc33ebb54430f4fccf007525ddc4d4392efde3aa2aa3"
+    },
+    "src/main/qianguanjia-transport.ts": {
+      "sha256": "1c147813e35a16748fd7100b09cc803e904f7c51961ee98e2584fc99d2011ada",
+      "size": 2913,
+      "normalized_sha256": "1c147813e35a16748fd7100b09cc803e904f7c51961ee98e2584fc99d2011ada"
     },
     "src/main/queue.ts": {
       "sha256": "55044f23b9c6e51e11225ef0dd078a0e9ab5bf93e9004c8b6c0bdef911e73a7b",

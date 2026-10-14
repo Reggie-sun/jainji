@@ -1,6 +1,6 @@
 import { chromium, type Page } from "playwright-core";
 import { guardedTransport } from "./local-cdp-transport.js";
-import { QianchuanPickerTransport } from "./qianchuan-picker-transport.js";
+import { QianguanjiaTransport } from "./qianguanjia-transport.js";
 import { runningChromeEndpoints } from "./qianchuan-browser-discovery.js";
 import { QianguanjiaReadonlyAdapter } from "./qianchuan-qianguanjia-adapter.js";
 
@@ -61,17 +61,18 @@ export async function connectQianguanjiaTarget(target: QianguanjiaBrowserTarget,
   if (signal.aborted) controller.abort();
   const deadline = setTimeout(() => controller.abort(), 15000);
   let relay: Awaited<ReturnType<typeof guardedTransport>> | undefined;
-  let transport: QianchuanPickerTransport | undefined;
+  let transport: QianguanjiaTransport | undefined;
   let adapter: QianguanjiaReadonlyAdapter | undefined;
-  let closed = false;
-  const close = async () => {
-    if (closed) return; closed = true;
-    controller.abort(); transport?.close(); await relay?.close().catch(() => undefined);
-    await adapter?.dispose();
-  };
+  let closing: Promise<void> | undefined;
+  const close = () => closing ??= (async () => {
+    controller.abort(); transport?.close();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([Promise.allSettled([relay?.close(), adapter?.dispose()]), new Promise<void>(resolve => { timer = setTimeout(resolve, 2000); })]); }
+    finally { clearTimeout(timer); }
+  })();
   try {
     relay = await guardedTransport(target.websocket, controller.signal, 10000);
-    transport = await QianchuanPickerTransport.connect(relay.url, controller.signal);
+    transport = await QianguanjiaTransport.connect(relay.url, target.targetId, controller.signal);
     const browser = await chromium.connectOverCDP(transport, { timeout: 10000, noDefaults: true });
     const session = await browser.newBrowserCDPSession();
     try {
@@ -80,12 +81,13 @@ export async function connectQianguanjiaTarget(target: QianguanjiaBrowserTarget,
       if (browser.contexts().length !== 1) throw unavailable();
       const opened = browser.contexts()[0]!.waitForEvent("page", { timeout: 10000 }) as Promise<Page>;
       void opened.catch(() => undefined);
-      await transport.attach(target.targetId);
+      await transport.attach();
       const page = await opened;
       const pageSession = await page.context().newCDPSession(page);
       try {
         if ((await pageSession.send("Target.getTargetInfo")).targetInfo.targetId !== target.targetId || !pageLabel(page.url())) throw unavailable();
       } finally { await pageSession.detach().catch(() => undefined); }
+      await transport.refreshMainWorld();
       adapter = await QianguanjiaReadonlyAdapter.create(page);
       signal.throwIfAborted(); controller.signal.throwIfAborted();
       return { adapter, close };

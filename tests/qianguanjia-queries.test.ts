@@ -55,3 +55,23 @@ it("keeps cancellation and detach available after membership failure", () => {
   expect(requiresMembership("qianguanjia.cancel")).toBe(false);
   expect(requiresMembership("qianguanjia.disconnect")).toBe(false);
 });
+it("returns cancellation even if the CDP connection never settles", async () => {
+  const f = fixture(), sessionId = await select(f.service), requestId = randomUUID();
+  f.connect.mockImplementation(() => new Promise(() => {}));
+  const work = f.service.run({ kind: "accounts", sessionId, requestId }, 10);
+  const result = Promise.race([work.then(() => "resolved", error => error.message), new Promise<string>(resolve => setTimeout(() => resolve("hung"), 200))]);
+  await vi.waitFor(() => expect(f.connect).toHaveBeenCalled());
+  f.service.cancel({ requestId }, 10);
+  expect(await result).toMatch(/已取消/);
+});
+it("settles a stalled browser read and hides cleanup errors", async () => {
+  const f = fixture(), sessionId = await select(f.service), requestId = randomUUID();
+  f.list.mockImplementation(() => new Promise(() => {}));
+  f.close.mockRejectedValue(new Error("private-secret-token"));
+  const work = f.service.run({ kind: "accounts", sessionId, requestId }, 10);
+  const result = Promise.race([work.then(() => "resolved", error => error.message), new Promise<string>(resolve => setTimeout(() => resolve("hung"), 200))]);
+  await vi.waitFor(() => expect(f.list).toHaveBeenCalled());
+  f.service.cancel({ requestId }, 10);
+  expect(await result).toMatch(/已取消/);
+  expect(await result).not.toContain("private-secret-token");
+});

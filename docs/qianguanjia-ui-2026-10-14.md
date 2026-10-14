@@ -37,3 +37,15 @@ Chrome MCP 当前连接的是其他正常浏览器，不能操作本次 Electron
 ## Review Risk Gate
 
 Parent 在原生检查通过后裁决 `KIMI_REVIEW_NOT_REQUIRED`。用户未要求本快照的 Kimi review；没有新的任意网络/凭据出口、投放写入或持久生产状态修改，固定只读 IPC 的可信发送方、会话与取消均有测试及完整 Electron 实测。已接受的 Linux 只读范围没有重大剩余运行缺口，Windows 发现保持未验收。基线 `da27b23b86fb92e6cfa98598929e7ff2d3c7f841`；业务与测试 owned 字节聚合 SHA-256 `bef2d6e979cfe73c7a7e354e6717e0c61714a7bc1d315c388319f690935d4b4d`。Kimi 调查拒绝不作为审查证据，裁决属于 Parent。
+
+## Runtime Followup
+
+发布前再次检查现有页时，发现 Playwright 初始化并行发送 Runtime.enable 与 Page.getFrameTree，默认上下文通知可能在 frame 绑定前被丢弃；直接 CDP 可读 DOM 而 SDK 的 evaluate 等待上下文。SDK 自身的 WebView 路线也使用 Runtime disable/enable 重发通知。本轮新增薄运输包装，仅在所选 target 的原 SDK session 顺序重发通知，消费独立负 ID 应答，不导航、重载、关闭用户页或变更登录。
+
+同时补 host 层连接 15 秒、读取 20 秒、总 60 秒边界与有界清理。两个取消复现测试先 RED（返回 hung），修复后 GREEN；最终 4 文件 79 专项案例通过。初始接线快照的 18 项全量回归保留历史依据；本次 6 个业务/测试/策略路径按当前 policy 运行 `20261014T134445Z-610e038c`，5 项必需检查全部 PASS，随后 completion verify PASS。不把初始全量回执冒充更新后字节的完整全量验收。
+
+`2026-10-14T13:44:46.531Z` 在完整 Electron 实例重新读取 20 个账户与 3 组汇总，bridge 为真实 preload/IPC，断开验证连接后开发窗口仍运行。Parent 对基线 `9690847dfd3362a6623ef5f8febf11fa1b5de11e`、owned SHA-256 `d8b95a26ea454ace50efe190b414e6d9b131c7193eafc60c071be768cb0b03bc` 的稳定候选重新判断 `KIMI_REVIEW_NOT_REQUIRED`：固定只读行为和凭据白名单保持，新增上下文同步不授广告、任意网络或持久生产权限，取消、应答 session、迟到连接与实际页面读取均有验证。此前拒绝的 Kimi 调查仍不视作独立 review。
+
+## Final Routing Constraint
+
+用户在收尾时明确撤销 Kimi 授权，工程 delegation/review 后续仅使用原生 Codex profile。`SUBAGENTS.md` 磁盘仍含旧 Kimi 路由，本轮按最新用户约束替换 actor，不执行旧授权或重试要求。前文 KIMI_REVIEW_NOT_REQUIRED 仅保留当时裁决身份；最终相同业务快照按原风险条件裁决 REVIEW_NOT_REQUIRED，由 Parent 完成验证和 diff review。该 actor 更新不取消技术 gates，也不把此前 HTTP 403 当作审查通过。
