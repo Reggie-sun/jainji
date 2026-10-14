@@ -6,6 +6,7 @@ import { createCoverReviewDraft, editCoverReviewDraft } from "../src/main/cover-
 import { DEFAULT_COVER_STICKER } from "../src/shared/cover-sticker";
 import type { MediaItem } from "../src/main/domain";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); }, 30000);
@@ -25,6 +26,46 @@ async function fixture() {
 }
 const workflow = (page: Page, name: string) => page.getByRole("navigation", { name: "制作流程" }).getByRole("button", { name: new RegExp(name + "$" ) });
 const rail = (page: Page, name: string) => page.locator(".workspace-rail").getByRole("button", { name, exact: true });
+
+it("opens the business console directly and returns to the original query and upload pages without production", async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.addStyleTag({ content: readFileSync("src/renderer/qianchuan-backend.css", "utf8") });
+    await page.evaluate(() => {
+      const f = (window as any).taskPagesFixture;
+      f.calls.supplierReads = [];
+      window.jianji.queryQianguanjia = async input => {
+        f.calls.supplierReads.push(input.kind);
+        if (input.kind === "discover") return { requestId: input.requestId, kind: "discover", unavailableBrowsers: 0, sessions: [{ sessionId: "6fcb5ecd-7608-4a57-bf4d-26625804a38c", label: "隔离授权页面" }] };
+        if (input.kind === "accounts") return { ...input, data: { source: "qianguanjia", observedAt: "2026-10-14T08:00:00Z", accounts: [{ advertiserId: "1879999999999999999", name: "隔离授权账户", authStatus: 1, authStatusDesc: "授权正常" }] } };
+        if (input.kind === "home") return { ...input, data: { source: "qianguanjia", scope: "supplier-home-aggregate", date: "2026-10-14", observedAt: "2026-10-14T08:00:00Z", groups: Object.fromEntries(["ALL", "LIVE_PROM_GOODS", "VIDEO_PROM_GOODS"].map(key => [key, { current: { statCost: "12.34", totalPayOrderCountForRoi2: "3", totalPayOrderGmvIncludeCouponForRoi2: "99.99", totalPrepayAndPayOrderRoi2: "8.10" }, comparison: {} }])) } } as any;
+        throw new Error("unexpected supplier query");
+      };
+      window.jianji.cancelQianguanjiaQuery = async () => {};
+      window.jianji.disconnectQianguanjia = async () => {};
+    });
+    await rail(page, "千川").click();
+    const nav = page.getByRole("navigation", { name: "千川页面" });
+    await nav.getByRole("button", { name: "投放工作台", exact: true }).click();
+    await page.getByRole("heading", { name: "数据概览", exact: true }).waitFor();
+    await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
+    await page.getByTestId("qianguanjia-home").waitFor();
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.supplierReads)).toEqual(["discover", "accounts", "home"]);
+    await page.getByRole("navigation", { name: "投放工作台业务导航" }).getByRole("button", { name: "推广管理", exact: true }).click();
+    expect(await page.getByLabel("数据来源", { exact: true }).inputValue()).toBe("qianchuan");
+    await page.getByLabel("查询内容", { exact: true }).selectOption("report");
+    await page.getByLabel("数据来源", { exact: true }).selectOption("qianguanjia");
+    await page.getByRole("heading", { name: "数据概览", exact: true }).waitFor();
+    expect(await page.getByTestId("qianguanjia-home").count()).toBe(0);
+    await page.getByRole("button", { name: "计划 · ROI · 预算", exact: true }).click();
+    expect(await page.getByLabel("查询内容", { exact: true }).inputValue()).toBe("report");
+    await nav.getByRole("button", { name: "上传任务", exact: true }).click();
+    expect(await page.getByText("当前项目没有千川上传任务。", { exact: true }).isVisible()).toBe(true);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.sideEffects)).toEqual([]);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.starts)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
 
 it("opens the Qianchuan query page and uses the selected saved account without upload work", async () => {
   const { page, errors } = await fixture();

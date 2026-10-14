@@ -10,14 +10,16 @@ function Metrics({ metrics }: { metrics: QianchuanQueryMetrics }) {
   return <dl className="qianchuan-query-metrics">{QIANCHUAN_QUERY_METRICS.map((key, index) => <div key={key}><dt>{metricLabels[index]}</dt><dd title={metrics[key].value}>{metrics[key].display}</dd></div>)}</dl>;
 }
 
-export function QianchuanBackendPanel({ accounts, active }: { accounts: QianchuanAccountSummary[]; active: boolean }) {
-  const [source, setSource] = useState("qianchuan");
+export function QianchuanBackendPanel({ accounts, active, provider, onProvider, onNavigate }: { accounts: QianchuanAccountSummary[]; active: boolean;
+  provider?: "qianchuan" | "qianguanjia"; onProvider?(provider: "qianchuan" | "qianguanjia"): void; onNavigate?(page: "reports" | "materials" | "uploads"): void }) {
+  const [localSource, setSource] = useState("qianchuan");
+  const source = provider ?? localSource;
   return <section aria-label="投放数据来源">
-    <div className="qianchuan-query-fields"><label>数据来源<select aria-label="数据来源" value={source} onChange={event => setSource(event.target.value)}>
+    {provider !== "qianguanjia" && <div className="qianchuan-query-fields"><label>数据来源<select aria-label="数据来源" value={source} onChange={event => { setSource(event.target.value); onProvider?.(event.target.value as "qianchuan" | "qianguanjia"); }}>
       <option value="qianchuan">千川账号</option><option value="qianguanjia">千管家</option>
-    </select></label></div>
+    </select></label></div>}
     <div hidden={source !== "qianchuan"}><NativeQianchuanBackendPanel accounts={accounts} active={active && source === "qianchuan"} /></div>
-    <div hidden={source !== "qianguanjia"}><QianguanjiaPanel active={active && source === "qianguanjia"} api={window.jianji} /></div>
+    <div hidden={source !== "qianguanjia"}><QianguanjiaPanel active={active && source === "qianguanjia"} api={window.jianji} onNavigate={onNavigate} /></div>
   </section>;
 }
 

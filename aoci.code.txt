@@ -318,13 +318,13 @@ AutomationWorkspace.tsx[AU6T]: F:分离自动化任务管理创建与定时编�
 OutputConfirmation.tsx[EU6T]: F:呈现输出摘要数量目录设置上传及开始阻断 | R:code:src/shared/agent.ts,code:src/renderer/ExportSettingsPanel.tsx,code:src/renderer/TemplatePanel.tsx | A:共享数量向上取整；本页补素材覆盖保存目录及数量原因；定位回调；assisted转覆盖页 | S:切页不启动批准；运行冻结输入不被下一轮设置替换
 PackagingModePicker.tsx[EU4T]: F:呈现Agent手动与本地随机制作方式选择 | R:code:src/shared/decorations.ts,code:src/renderer/App.tsx | A:受控value及onChange；显示pressed状态；沿父级禁用 | S:-
 QianchuanSettingsPage.tsx[EU6T]: F:呈现可见账号上传方式与就近全局开关保存 | R:code:src/renderer/QianchuanAccountSettings.tsx,code:src/renderer/WorkspacePage.tsx | A:账号页沿上传样式；原perform保存导入刷新；恢复序号重置并定位；高级时限诊断 | S:全局和账号分别保存；制作仍须本次账号计划；旧任务目标不迁移或重传
-QianchuanWorkspace.tsx[AU5T]: F:导航千川上传账号素材及计划数据四页 | R:code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/BatchUploadDetails.tsx,code:src/renderer/QianchuanBackendPanel.tsx,code:src/renderer/App.tsx | A:本批与项目视图切换；隐藏暂停详情轮询及数据查询；按project.id隔离设置 | S:切页不重挂清理owner；导航不授上传清理权限
+QianchuanWorkspace.tsx[AU5T]: F:导航投放工作台及上传账户素材计划数据 | R:code:src/renderer/DouyinUploadPanel.tsx,code:src/renderer/BatchUploadDetails.tsx,code:src/renderer/QianchuanBackendPanel.tsx,code:src/renderer/App.tsx | A:console与reports共用backend实例；受控来源映射子页；项目及本批上传视图；隐藏暂停详情与读取 | S:切页不重挂清理owner；导航不授操作；上传目标不随供应商目录变化
 WorkspacePage.tsx[AU5T]: F:保留已访问页草稿并实现工作区滚动和焦点恢复 | R:code:src/renderer/App.tsx,code:src/renderer/MembershipGate.tsx | A:首次访问挂载；inactive隐藏且暂停媒体；双RAF按实际页头避让定位控件或恢复来源scrollTop | S:隐藏不取消任务；滚动使用membership-workspace而非窗口
 BatchUploadDetails.tsx[EU6T]: F:展示冻结批量上传实时进度历史及原恢复入口 | R:code:src/renderer/useBatchProductionDetails.ts,code:src/renderer/QianchuanUploadHistory.tsx,code:src/renderer/qianchuan-upload-status.ts | A:按广告主命名；READY及ACCEPTED计上传；整批自动确认说明；活动任务禁恢复 | S:历史别名不恢复；UNKNOWN阻塞未选；实时观察非保存证据；READY非平台接收；接收非审核投放
 useBatchProductionDetails.ts[AU5T]: F:按冻结run/job复用原批量详情只读轮询 | R:code:src/shared/batch-production.ts,code:src/main/preload.ts | A:活跃每秒读取；隐藏停止轮询但保留详情；身份改变重置；隔离迟到响应及IPC错误前缀 | S:观察不恢复上传权限或触发任务
 AutomationTaskDetails.tsx[EU6T]: F:按冻结请求展示清理顺序规则制作数量和上传目标 | R:code:src/shared/automation.ts,code:src/renderer/qianchuan-account-display.ts | A:区分计划库及组合清理；单多计划具名呈现；来源按任务ID；库范围明确不按计划筛选 | S:账号按advertiserId取名；缺规则是三类审核；缺计划名不猜补；库清空不受零展示保护
-QianchuanBackendPanel.tsx[AU7T]: F:选择千川或千管家来源并展示投放只读查询 | R:code:src/shared/qianchuan-backend.ts,code:src/shared/qianchuan-account.ts,code:src/main/preload.ts,code:src/renderer/QianguanjiaPanel.tsx | A:默认原千川；保留草稿；显式计划素材分页报表；来源切换停读；日期UUID身份核对及指标投影 | S:原预算除100000展示元；供应商不沿用此换算；隐藏取消并丢迟到结果；错误不反射桥接原文；不改计划
-QianguanjiaPanel.tsx[EU6T]: F:连接正常千管家页面并展示授权目录与当日汇总 | R:code:src/shared/qianguanjia.ts,code:src/main/preload.ts | A:明确发现选择读取；精确ID及状态；三类四指标原值；范围时间提示；取消断开隐藏清观察 | S:汇总不归单账户或计划；错误安全；迟到响应丢弃；无授权投放写入口
+QianchuanBackendPanel.tsx[AU7S]: F:统一展示原千川查询与千管家投放工作台 | R:code:src/shared/qianchuan-backend.ts,code:src/renderer/QianguanjiaPanel.tsx,code:src/renderer/QianchuanWorkspace.tsx,code:src/main/preload.ts | A:工作区控来源并隐藏重复选择；保留查询草稿；日期UUID身份核对；计划素材分页报表；预算换算元 | S:预算除100000；供应商原值；隐藏取消迟到丢弃；导航不改计划
+QianguanjiaPanel.tsx[EU6S]: F:呈现千管家式投放工作台与授权账户管理 | R:code:src/shared/qianguanjia.ts,code:src/renderer/QianchuanBackendPanel.tsx,code:src/main/preload.ts | A:首页四卡三分类；账户搜索状态分页；唯一页面串行连接；多页明确选择；快捷跳原业务；取消断开隐藏清观察 | S:汇总不属单账户；缺数据不填零；未接时间序列；时间随当前页；取消阻止链后读；无投放写入口
 
 
 ===/home/reggie/vscode_folder/jianji/src/shared/===
