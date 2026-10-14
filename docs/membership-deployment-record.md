@@ -235,3 +235,14 @@ AOCI 完整机器批次十项经官方原子 Apply，其中六项属于本任务
 - 先用同一 Mihomo `1.19.21`、原镜像和受限隔离容器验证。首次 AnyTLS / 401 健康检查候选未通过完整 token / 故障切换测试，未部署；最终当前 Trojan 节点与标准 Google 204 检查通过。故障注入仅在隔离 fixture：主节点指向拒绝连接的本机端口，API 证明它 `alive=false`、选择备用节点，Google userinfo 无凭据请求返回 401。隔离诊断 API 没有宿主端口映射，生产候选移除它。
 - 生产配置先经相同 UID 10001 / 只读根文件系统 / 128 MiB 限额验证。按原配置 SHA-256 比较后私有备份并 fsync/原子替换，只重建 `mihomo` 服务；Casdoor 启动时间仍为 `2026-10-10T16:50:21.857173044Z`，没有重建它、会员服务或数据库。生产配置 SHA-256 为 `dd3af65e08044d86113f85244514bc5fe5972837aad60670278c4aeef98095ff`；备份为远端 `mihomo/config.before-google-recovery-20261014.json`，保持私有权限和原节点凭据。
 - 部署后的真实 Casdoor 容器通过其正常环境代理请求 discovery=200、无凭据 userinfo=401、空 token POST=400，约 0.54 / 0.81 / 0.62 秒；Mihomo healthy、无宿主端口映射。以上证明服务器连接与故障切换，不证明用户完成新的 Google 授权。旧失败回调已消费授权码，需重新发起登录，不能刷新旧回调当作成功重试。本机永久帐号仍保持实际工作台登录。
+
+## Google Desktop Full Flow — 2026-10-14
+
+用户要求验证完整登录，并明确授权窗口应进入自己的 Google 浏览器账号。验证使用独立 `jianji` package / `userData`、实际 `MembershipGate` / preload / IPC / OAuth / 在线会员 / `safeStorage`，未退出或替换主工作台的本机管理员会话，未提交制作或付款任务。初次可观测标签页使用了其他 Chrome 配置，后按 Chrome `Local State` 核对正确的 `Profile 1` 与指定 Google 账号，在该配置的新授权窗口完成验证。
+
+- 保留失败历史：最初 token HTTP 200 后退回 `signed-out`；随后限定诊断得到 `OAUTH_JWT_TIMESTAMP_CHECK_FAILED`。Electron `Session.fetch` 返回对象与全局 `Response` / `Headers` 兼容；有效令牌的 nonce、issuer、audience、算法及有效期均匹配。本机比服务端慢约 36 秒，超过 SDK 默认 30 秒容差。
+- 持久修复仅在原 `loginMembership` 的 client metadata 中设定 60 秒有限容差；PKCE / state / nonce / issuer / ID token 校验及在线权限服务保持原准入。回归用例先证明未来 45 秒的 `nbf` 被旧逻辑拒绝，再验证修复后接受；未来 90 秒及超过容差的过期令牌仍拒绝。
+- 实际点击 Google Provider 后，浏览器记录 `accounts.google.com/signin/oauth` 302、Casdoor `/callback` 200、其 `/api/login` POST 200，随后桌面 loopback `/jianji-login` 200。未读取或代填密码，未保存 OAuth query、授权码或 token。
+- 使用未修改业务行为的实际源码 bundle，桌面 token POST 200 后在线会员 GET 200，状态为 `allowed/grant`；服务端返回的用户 id / name 与已核验 Google 管理员记录匹配，`isAdmin=true`、`offline=false`。同一响应的独立本地 shadow 校验使用旧 30 秒容差，明确在 `nbf` 拒绝；实际 `nbf` 比本机当前时间未来 34 秒，新逻辑成功。shadow 仅读取响应 clone，不重发 token POST、不修改实际 SDK 返回值。
+- 实际主进程 `assertAllowed` 再次在线核验成功。加密后端为 `gnome_libsecret`，`session.enc` 权限为 0600。正常退出验证进程而不退出账号后，同 package / 同独立 `userData` 的新进程恢复同一在线管理员；没有打开浏览器、没有新的 token POST，会员 GET 与新一次 `assertAllowed` 成功，实际 Gate 显示工作区。
+- 去敏证据位于私有 `/tmp/jianji-google-fullflow-20261014/`：`login-pass.json`、`restart-pass.json`、`browser-network-safe.json` 及最终 `receipt.json` 绑定源和 bundle 哈希。失败轮次保留。主工作台仍为 `allowed/offline-admin`，其原 `session.enc` 哈希未变。该证据覆盖当前 Linux 真实 Google 登录与重启恢复，不覆盖 Windows 实机、支付或生产视频任务。

@@ -1543,9 +1543,9 @@
       "normalized_sha256": "f2178b2ed628dfb27cccdfd732b5ecb43e16c700d05330abf58a8678b9abb890"
     },
     "src/main/membership-oauth.ts": {
-      "sha256": "065718141be2050193a0c55db9f83e8f64548a1629025bf130b7df990eae60e3",
-      "size": 3924,
-      "normalized_sha256": "065718141be2050193a0c55db9f83e8f64548a1629025bf130b7df990eae60e3"
+      "sha256": "fdca5fae8b88255c8504e37e4c9f9998fb63d3de36aadba4068ca3338c27dfd5",
+      "size": 3944,
+      "normalized_sha256": "fdca5fae8b88255c8504e37e4c9f9998fb63d3de36aadba4068ca3338c27dfd5"
     },
     "src/main/membership-offline-admin.ts": {
       "sha256": "c4ef7dac73a54a8f9bf6ba5eb35b3b97e8c792ffbccedea9efed20f3a7f66029",
