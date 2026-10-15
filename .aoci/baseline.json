@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-15T20:32:48Z",
+  "updated_at": "2026-10-15T21:18:18Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "85267f98a04ea41f30bad3b5ccdb596e8e30b945ece31372a7af8a7d4210d6c3",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "7a0ebb95cc39d6bd2e0dfed5a16be7211e25136f09c2548422ad7cac983957be",
-      "size": 155373,
-      "normalized_sha256": "7a0ebb95cc39d6bd2e0dfed5a16be7211e25136f09c2548422ad7cac983957be"
+      "sha256": "abf9a245f85611373fd5e34f1eebf1b030240e536e3ea6433938b65251a921ec",
+      "size": 155455,
+      "normalized_sha256": "abf9a245f85611373fd5e34f1eebf1b030240e536e3ea6433938b65251a921ec"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1433,14 +1433,14 @@
       "normalized_sha256": "ca5d2ce0197d311270bfa367f3ee49fd291feb492b5fee0be6c98254314f91e4"
     },
     "src/main/douyin-upload-recovery.ts": {
-      "sha256": "890982d33fa0dd336a25d5dd7f1ee9caffa321dc5f9d2ee8259e500415e8b274",
-      "size": 4142,
-      "normalized_sha256": "890982d33fa0dd336a25d5dd7f1ee9caffa321dc5f9d2ee8259e500415e8b274"
+      "sha256": "d48c79f3b94fde9d685dabc0bff2addc8a1fe0c8786839a19a880d0cfe06b56e",
+      "size": 4673,
+      "normalized_sha256": "d48c79f3b94fde9d685dabc0bff2addc8a1fe0c8786839a19a880d0cfe06b56e"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "7c8d1a39033811a34983b029c3f896629ca2e26ec4cd4441a6c3e337932f5a11",
-      "size": 135312,
-      "normalized_sha256": "7c8d1a39033811a34983b029c3f896629ca2e26ec4cd4441a6c3e337932f5a11"
+      "sha256": "26bbc48a100c6a2b6137675bb3b56377c78706cb9875a15c1123a72d8445c151",
+      "size": 136575,
+      "normalized_sha256": "26bbc48a100c6a2b6137675bb3b56377c78706cb9875a15c1123a72d8445c151"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "e265f54963123c917ab44d414023c1fda289741d061299a5fd1bed7ad2295073",

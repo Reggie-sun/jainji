@@ -2415,6 +2415,86 @@ describe("Qianchuan upload service", () => {
     expect(f.service.status(batch.projectId).tasks[0]).toMatchObject({ upload_outcome: "MAY_HAVE_UPLOADED", retry_count: 0 });
   });
 
+  it.each(["current timeout", "persisted terminal timeout", "continue pending sibling", "lost original page"] as const)("recovers an unselected ninth after eight READY files without reselecting them (%s)", async mode => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(Array.from({ length: 12 }, (_, index) => `preparation recovery ${index}`)); await f.register(batch);
+    const uploaded: string[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { await upload(tasks, signal); uploaded.push(...tasks.map(task => task.result.upload_task_id)); };
+    for (const identity of batch.identities.slice(0, 8)) await f.service.enqueueFinalArtifact(identity);
+    await f.service.runPending();
+    const ready = f.store.tasks();
+    expect(ready).toHaveLength(8);
+    expect(ready.every(task => task.result.upload_outcome === "READY")).toBe(true);
+    const fences = ready.map(task => f.store.fence(task.result.upload_task_id));
+    const open = f.port.open;
+    f.port.open = async () => { throw uploadFailure("TIMEOUT", "browser", "操作已停止或阶段超时。", "人工检查后明确继续。", false); };
+    const ninth = (await f.service.enqueueFinalArtifact(batch.identities[8]!))!;
+    await f.service.runPending();
+    expect(f.store.hasMarker(ninth.result.upload_task_id)).toBe(false);
+    expect(uploaded).toHaveLength(8);
+    if (mode === "persisted terminal timeout" || mode === "continue pending sibling") {
+      const task = f.store.task(ninth.result.upload_task_id)!;
+      await f.store.saveTask({ ...task, result: { ...task.result, state: "FAILED_TERMINAL", retryable: false, failure: { ...task.result.failure!, retryable: false } } });
+    }
+    const savedState = await readFile(path.join(f.store.root, "state.json"), "utf8");
+    expect(f.service.status(batch.projectId).tasks.find(task => task.upload_task_id === ninth.result.upload_task_id)).toMatchObject({ state: "FAILED_RETRYABLE", upload_outcome: "NOT_SELECTED", retryable: true });
+    expect(await readFile(path.join(f.store.root, "state.json"), "utf8")).toBe(savedState);
+    for (const identity of batch.identities.slice(9)) await f.service.enqueueFinalArtifact(identity);
+    f.port.open = open;
+    f.port.readOnlyCheck = async (task, owner, files, signal) => {
+      signal.throwIfAborted(); f.events.push("readonly");
+      expect(files).toHaveLength(8); expect(owner).toEqual(fences[0]!.pageOwnership);
+      if (mode === "lost original page") throw uploadFailure("UPLOAD_OUTCOME_UNKNOWN", "page", "Original page is missing", "Inspect original page", true);
+      return evidenceFor(task, owner, 8);
+    };
+    const pending = f.store.tasks().find(task => task.input.export_task_id === batch.identities[9]!.export_task_id)!;
+    await f.service.resume(mode === "continue pending sibling" ? pending.result.upload_task_id : ninth.result.upload_task_id);
+    expect(f.events).toContain("readonly");
+    for (const fence of fences) expect(f.store.fence(fence!.upload_task_id)).toEqual(fence);
+    if (mode === "lost original page") {
+      expect(uploaded).toHaveLength(8);
+      expect(f.store.task(ninth.result.upload_task_id)?.result).toMatchObject({ state: "NEEDS_HUMAN", upload_outcome: "NOT_SELECTED" });
+      expect(f.store.hasMarker(ninth.result.upload_task_id)).toBe(false);
+    } else {
+      expect(uploaded).toHaveLength(12); expect(new Set(uploaded).size).toBe(12);
+      expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED")).toBe(true);
+    }
+  });
+
+  it.each(["CONTENT_REJECTED", "INPUT_CONFLICT"] as const)("keeps an unselected terminal %s blocked instead of granting recovery", async code => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch([`terminal ${code}`]); await f.register(batch);
+    const task = (await f.service.enqueueFinalArtifact(batch.identities[0]!))!;
+    await f.store.saveTask({ ...task, result: { ...task.result, state: "FAILED_TERMINAL", attempt_count: 1, failure: uploadFailure(code, "input", "Terminal failure", "Inspect input", false).failure } });
+    expect(f.service.status(batch.projectId).tasks[0]?.state).toBe("FAILED_TERMINAL");
+    await expect(f.service.resume(task.result.upload_task_id)).rejects.toThrow("不能继续");
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("reserves safe continuation before an in-flight admission can start a competing empty runner", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["ready before continuation", "timed out preparation", "admitted during continuation"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const open = f.port.open;
+    f.port.open = async () => { throw uploadFailure("TIMEOUT", "browser", "Preparation timed out", "Continue safely", false); };
+    const second = (await f.service.enqueueFinalArtifact(batch.identities[1]!))!;
+    await f.service.runPending(); f.port.open = open;
+    f.port.readOnlyCheck = async (task, owner, files) => evidenceFor(task, owner, files.length);
+    const save = f.store.saveTask.bind(f.store);
+    let entered = false, release!: () => void;
+    const admission = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(f.store, "saveTask").mockImplementation(async task => {
+      if (task.input.export_task_id === batch.identities[2]!.export_task_id) { entered = true; await admission; }
+      return save(task);
+    });
+    const committed = f.service.committed(batch.identities[2]!);
+    await vi.waitFor(() => expect(entered).toBe(true));
+    const resumed = f.service.requestResume(second.result.upload_task_id);
+    release(); await committed; await resumed; await f.service.runPending();
+    await vi.waitFor(() => expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED")).toBe(true));
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(2);
+  });
+
   it.each(["CDP_UNAVAILABLE", "TIMEOUT"] as const)("exhausts three %s connection attempts and only continues after an explicit request", async code => {
     const f = await fixture(); await f.authorize(); await f.service.configure({ enabled: true, timeouts: { connect: 20 } }); await f.service.beginProduction();
     const blocked = await f.createBatch(Array.from({ length: 10 }, (_, index) => `offline bytes ${index}`)), other = await f.createBatch(["online bytes"], { product: "热敷贴" });
