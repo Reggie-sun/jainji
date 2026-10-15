@@ -16,6 +16,7 @@
 | Harness scope、检查和 completion | [Harness Delta](superpowers/specs/2026-10-02-agents-harness-governance-design.md)、[Harness Contract](video-validation-harness-spec.md) | [policy](../.agent/harness/policy.json) 独占路由与命令 |
 | 启动与手动运行 | [README](../README.md) | 当前 runtime 与实际命令 |
 | 千川历史目录、跨模式展示缓存与实时准入边界 | [Durable Display Cache](superpowers/specs/2026-10-15-qianchuan-durable-display-cache.md) | 原目录/计划 reader 与展示缓存测试；历史投影不授操作权 |
+| 千川真实接入、完整报表及投放授权边界 | [Real Integration Spec](superpowers/specs/2026-10-15-qianchuan-real-integration.md)、[Implementation Evidence](qianchuan-real-integration-2026-10-15.md) | 原账户/上传协调入口；独立归一化报告和最小投放审计；未准入写 recipe 不执行 |
 | 当前 Windows 适配增量与实机验收 | [Windows Adaptation Spec](windows-adaptation-spec.md)、[Windows Acceptance Spec](windows-acceptance-spec.md) | 前者为 spec-only 适配目标；后者为通用用例，历史包证据不代表当前代码 |
 | AOCI 创作与必要维护 | 当前官方 Guide 与工具合同；触发条件见 AGENTS / Harness Delta | 必要维护后 Verify / Check / Guide；本文不复制状态机 |
 

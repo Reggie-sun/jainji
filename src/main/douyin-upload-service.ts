@@ -24,6 +24,7 @@ import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 import { QianchuanPlanReads } from "./qianchuan-plan-reads.js";
 import { QianchuanDisplayCatalogs } from "./qianchuan-display-catalogs.js";
 import { QianchuanBackendQueries } from "./qianchuan-backend-queries.js";
+import { QianchuanAccountOperations } from "./qianchuan-account-operations.js";
 import type { QianchuanBackendQuery, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
 import { qianchuanSelectedAccountTargets } from "./qianchuan-selected-account-targets.js";
 import { QianchuanPlanListRequestSchema, QianchuanPlanCancelSchema, QianchuanPlanCatalogSchema, type QianchuanPlanOption, type QianchuanCurrentAccount, type QianchuanPlanListResult, type QianchuanPlanListRequest, type QianchuanPlanCatalog } from "../shared/qianchuan-plan-selection.js";
@@ -105,6 +106,7 @@ export class DouyinUploadService {
   private readonly currentPlanReads: QianchuanPlanReads;
   private readonly displayCatalogs: QianchuanDisplayCatalogs;
   private readonly backendQueries: QianchuanBackendQueries;
+  private readonly accountOperations: QianchuanAccountOperations;
   private readonly selectedAccountTargets = qianchuanSelectedAccountTargets;
   private readonly planRequests = new Map<string, AbortController>();
   private readonly subaccountReads = new Map<string, Promise<QianchuanSubaccountCatalog>>();
@@ -112,7 +114,7 @@ export class DouyinUploadService {
   private planPreload: Promise<void> = Promise.resolve();
   private hasNonAutomationWork(): boolean {
     return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding ||
-      this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations || this.backendQueries.busy);
+      this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations || this.backendQueries.busy || this.accountOperations.busy);
   }
   get busy(): boolean {
     return this.hasNonAutomationWork() || this.automationUploadActive || this.automationBrowsers.busy;
@@ -120,6 +122,7 @@ export class DouyinUploadService {
   constructor(readonly store: DouyinUploadStore, private readonly dependencies: Dependencies) {
     this.accounts = dependencies.accounts ?? new QianchuanAccountSettings(store.root);
     this.backendQueries = new QianchuanBackendQueries(this.accounts, dependencies.readBackendQuery);
+    this.accountOperations = new QianchuanAccountOperations(this.accounts, (query, senderId, signal) => this.backendQueries.run(query, senderId, signal));
     this.automationBrowsers = new AutomationBrowserAccounts({
       accounts: async () => {
         const summaries = await this.accounts.refresh();
@@ -318,6 +321,7 @@ export class DouyinUploadService {
     }
   };
   async chooseConfig(file: string): Promise<void> {
+    this.accountOperations.assertIdle();
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     this.managingBrowser = true;
@@ -330,6 +334,7 @@ export class DouyinUploadService {
     if (this.accounts instanceof QianchuanAccountSettings) this.preloadPlans();
   }
   async saveAccount(input: unknown): Promise<void> {
+    this.accountOperations.assertIdle();
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号来源不支持软件内设置。");
@@ -367,6 +372,7 @@ export class DouyinUploadService {
     }));
   }
   private async catalogPlans(product: QianchuanProduct, advertiserId: string, signal: AbortSignal, refresh = false, currentBrowser = false, onAccount?: (account: QianchuanCurrentAccount) => void, openLocalIfMissing = false): Promise<QianchuanPlanOption[]> {
+    this.accountOperations.assertIdle();
     this.browserPreparations++;
     try {
       signal.throwIfAborted();
@@ -404,6 +410,13 @@ export class DouyinUploadService {
     return this.backendQueries.run(input, senderId);
   }
   cancelBackendQuery(input: unknown, senderId = 0): void { this.backendQueries.cancel(input, senderId); }
+  withAccountOperation<T>(scope: Pick<QianchuanBackendQuery, "product" | "expectedAdvertiserId" | "requestId">, senderId: number,
+    work: (signal: AbortSignal, read: (query: QianchuanBackendQuery) => Promise<QianchuanBackendResult>, prepareAccount: () => Promise<FrozenQianchuanAccount>) => Promise<T>, publish?: (value: T, signal: AbortSignal) => Promise<void>): Promise<T> {
+    if (this.busy || this.stopFailed || this.store.unavailable) return Promise.reject(new Error("制作、上传或账号操作尚未空闲，请稍后读取报表或操作投放。"));
+    return this.accountOperations.run(scope, senderId, work, () => this.stopPlanPreload(), publish);
+  }
+  cancelAccountOperation(input: unknown, senderId = 0): void { this.accountOperations.cancel(input, senderId); }
+  stopAccountOperations(senderId: number): Promise<void> { return this.accountOperations.stopForSender(senderId); }
   private async readPlanCatalog(parsed: QianchuanPlanListRequest, signal: AbortSignal): Promise<QianchuanPlanOption[] | QianchuanPlanCatalog> {
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后读取计划。");
     if (parsed.accountSource === "current-browser") await this.stopPlanPreload(signal);
@@ -440,6 +453,7 @@ export class DouyinUploadService {
         const signal = AbortSignal.timeout(30_000);
         const guard = () => {
           signal.throwIfAborted();
+          this.accountOperations.assertIdle();
           if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner || this.pendingAdmissions || this.stopping || this.beginningProduction || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.cancelling || this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) throw new Error("制作、上传或账号操作尚未空闲，请稍后刷新子账户。");
         };
         guard();
@@ -496,6 +510,7 @@ export class DouyinUploadService {
     return pending;
   }
   async refreshAccounts(): Promise<void> {
+    this.accountOperations.assertIdle();
     if (this.managingBrowser || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后刷新账号。");
     try { this.summaries = await this.accounts.refresh(); this.initializationFailure = undefined; }
     catch { this.summaries = []; this.initializationFailure = "账号配置不可用，请检查文件权限和映射。"; }
@@ -503,6 +518,7 @@ export class DouyinUploadService {
     this.preloadPlans();
   }
   async openAccountBrowser(input: unknown): Promise<void> {
+    this.accountOperations.assertIdle();
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy || this.stopFailed || this.store.unavailable) throw new Error("账号浏览器操作正在进行或状态不可用，请稍后重试。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持打开浏览器。");
     this.browserPreparations++;
@@ -623,6 +639,7 @@ export class DouyinUploadService {
     } finally { parentSignal?.removeEventListener("abort", cancel); this.libraryOperation = undefined; this.managingBrowser = false; completed(); this.changed(); }
   }
   async configure(input: unknown): Promise<void> {
+    this.accountOperations.assertIdle();
     if (this.managingBrowser || this.automationBrowsers.busy) throw new Error("账号浏览器操作正在进行，请稍后修改上传设置。");
     if (this.retargeting) throw new Error("正在改传本批计划，请等待记录保存。");
     const publicSettings = QianchuanUploadConfigSchema.omit({ accountConfigPath: true }).parse(input);
@@ -921,6 +938,7 @@ export class DouyinUploadService {
     const generation = this.controlGeneration;
     this.pendingAdmissions++;
     const work = this.admission.catch(() => undefined).then(async () => {
+      await this.accountOperations.stop();
       identity = UploadIdentitySchema.parse(identity);
       const intent = this.store.intents().find(value => intentKey(value) === intentKey(identity)); if (!intent) return undefined;
       if (!this.inProduction(intent.authorization.pageBatchId) || this.store.isClosed(intent.authorization.pageBatchId)) return this.store.tasks().find(task => intentKey(task.input) === intentKey(identity));
@@ -1019,6 +1037,7 @@ export class DouyinUploadService {
     return new Promise((resolve, reject) => { void this.resume(id, resolve, historicalPageBatchId).then(resolve, error => { reject(error); this.changed(); }); });
   }
   resume(id: string, accepted?: () => void, historicalPageBatchId?: string): Promise<void> {
+    if (this.accountOperations.busy) return Promise.reject(new Error("报表或投放操作尚未结束，请等待或停止后继续上传。"));
     if (this.preparingContinuation) return Promise.reject(new Error("正在核验或恢复上传批次，请等待当前操作结束。"));
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后继续上传。"));
     if (this.stopFailed) return Promise.reject(new Error("旧上传操作未能安全停止，请先关闭应用并核查 Chrome。"));
@@ -1137,6 +1156,7 @@ export class DouyinUploadService {
     }); this.control = work; return work;
   }
   retarget(id: string, expectedAdId: string): Promise<void> {
+    if (this.accountOperations.busy) return Promise.reject(new Error("报表或投放操作尚未结束，请等待或停止后改传计划。"));
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后改传计划。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.closing) return Promise.reject(new Error("正在结束本批本地上传，请等待记录保存。"));
@@ -1167,6 +1187,7 @@ export class DouyinUploadService {
     this.control = work; return work;
   }
   discard(id: string): Promise<void> {
+    if (this.accountOperations.busy) return Promise.reject(new Error("报表或投放操作尚未结束，请等待或停止后处理上传任务。"));
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后处理上传任务。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再删除本批任务。"));
@@ -1230,9 +1251,10 @@ export class DouyinUploadService {
     this.planPreloadController?.abort();
     this.controlGeneration++; this.stopping = true; this.stopped = true; this.eligible.clear(); this.currentIntents.clear(); this.continuationBatch = undefined; this.active?.controller.abort();
     const backendQueries = this.backendQueries.stop();
+    const accountOperations = this.accountOperations.stop();
     try {
       await Promise.all([...this.sessions.values()].map(port => this.bounded(() => port.stop(), 5000, new AbortController().signal).catch(() => { drained = false; this.paused = true; })));
-      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); await libraryOperation?.done; await this.planPreload; await backendQueries; }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
+      this.sessions.clear(); await this.bounded(async () => { await this.runner; await this.admission.catch(() => undefined); await libraryOperation?.done; await this.planPreload; await backendQueries; await accountOperations; }, 15000, new AbortController().signal).catch(() => { drained = false; this.paused = true; });
     } finally { this.stopping = false; }
     if (!drained || this.active) this.stopFailed = true;
     return !this.stopFailed;
@@ -1245,6 +1267,7 @@ export class DouyinUploadService {
     return this.closeBatch(ref.uploadTaskId);
   }
   closeBatch(id: string): Promise<void> {
+    if (this.accountOperations.busy) return Promise.reject(new Error("报表或投放操作尚未结束，请等待或停止后结束本地上传。"));
     if (this.managingBrowser || this.automationUploadActive || this.automationBrowsers.busy) return Promise.reject(new Error("账号浏览器操作正在进行，请稍后结束本批上传。"));
     if (this.beginningProduction) return Promise.reject(new Error("正在切换本次制作范围，请等待上传控制停止。"));
     if (this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.stopping) return Promise.reject(new Error("上传操作仍在运行，请等待停止后再结束本批本地上传。"));

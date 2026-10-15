@@ -34,6 +34,8 @@ export function taskPagesFixtureScript() {
     const blocked = async()=>{calls.sideEffects.push("blocked");throw new Error("隔离界面禁止平台、模型和文件副作用");};
     const accounts=[{product:"蝴蝶贴",productName:"蝴蝶贴",browserProfileName:"隔离账号",advertiserId:"123",adId:"456",available:true}];
     window.jianji={
+      listQianchuanReports:async()=>[],getQianchuanIntegration:async()=>({capabilities:[],stopped:false,auditUnavailable:false,operations:[]}),
+      cancelQianchuanIntegration:async()=>{},stopQianchuanIntegration:blocked,
       getState:async()=>clone(state),onExportSnapshot:fn=>{snapshots.add(fn);return()=>snapshots.delete(fn);},
       decorationCatalog:async()=>({fonts:[],stickers:[],frames:[]}),libraryAsset:async()=>({url:""}),
       setProductPriceDraft:async(id,text)=>{state.project.template.productPriceDraft=text;return clone(state);},

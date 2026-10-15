@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { collectMaterialEffects } from "../src/renderer/qianchuan-effect-read";
+import { collectMaterialEffects } from "../src/shared/qianchuan-effect-read";
 import type { QianchuanBackendQuery, QianchuanBackendResult } from "../src/shared/qianchuan-backend";
 const input = { product: "眼贴", expectedAdvertiserId: "1879999999999999999", adId: "1878754135410692", startDate: "2026-10-15", endDate: "2026-10-15", asOf: "2026-10-15T01:00:00Z" };
 const controller = () => new AbortController();
@@ -16,7 +16,7 @@ it("collects all pages with a single frozen cutoff and exact material IDs", asyn
   expect(calls.map(q => q.kind === "materials" && q.offset)).toEqual([0, 100, 200]);
   expect(calls.every(q => q.kind !== "plan" && q.asOf === input.asOf)).toBe(true);
 });
-it.each(["identity", "total", "time", "duplicate", "limit"])("rejects %s drift without publishing a partial snapshot", async mode => {
+it.each(["identity", "total", "time", "duplicate", "limit", "observation"])("rejects %s drift without publishing a partial snapshot", async mode => {
   let calls = 0;
   await expect(collectMaterialEffects(input, async q => {
     const r = page(q); if (r.kind !== "materials") throw new Error();
@@ -26,6 +26,7 @@ it.each(["identity", "total", "time", "duplicate", "limit"])("rejects %s drift w
       if (mode === "time") r.endTime = "2026-10-15 10:00:00";
       if (mode === "duplicate") r.rows[0]!.materialId = "7696527003390771254";
       if (mode === "limit") r.total = 2001;
+      if (mode === "observation") r.observedAt = "not-a-time";
     }
     return r;
   }, controller().signal)).rejects.toThrow(); expect(calls).toBe(2);

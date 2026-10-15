@@ -43,6 +43,7 @@ import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema as DouyinUp
 import { DouyinUploadStore } from "./douyin-upload-store.js";
 import { DouyinUploadService } from "./douyin-upload-service.js";
 import { QianchuanVideoLibrarySchedule } from "./qianchuan-video-library-schedule.js";
+import { QianchuanIntegration } from "./qianchuan-integration.js";
 import { QianchuanScheduledLaunch, scheduledClearTime, scheduledClearReceivedAt } from "./qianchuan-scheduled-launch.js";
 import { DouyinCdpUploader, douyinReadiness } from "./douyin-cdp-uploader.js";
 import { MaterialNameSchema } from "../shared/material-names.js";
@@ -85,6 +86,7 @@ let recentProjects: RecentProjects;
 let activeRecentProjectId: string | undefined;
 let queue: ExportQueue;
 let douyinUpload: DouyinUploadService;
+let qianchuanIntegration: QianchuanIntegration;
 const qianguanjia = new QianguanjiaQueries();
 let videoLibrarySchedule: QianchuanVideoLibrarySchedule;
 let ffmpeg: FfmpegAdapter;
@@ -233,6 +235,12 @@ function registerHandlers(): void {
   ipcMain.handle("douyinUpload.listPlans", async (event, input: unknown) => { assertTrustedSender(event); return douyinUpload.listPlans(input, event.sender.id); });
   ipcMain.handle("douyinUpload.queryBackend", async (event, input: unknown) => { assertTrustedSender(event); return douyinUpload.queryBackend(input, event.sender.id); });
   ipcMain.handle("douyinUpload.cancelBackendQuery", async (event, input: unknown) => { assertTrustedSender(event); douyinUpload.cancelBackendQuery(input, event.sender.id); });
+  ipcMain.handle("qianchuanIntegration.capture", (event, input: unknown) => { assertTrustedSender(event); assertProductionIdle(); return qianchuanIntegration.capture(input, event.sender.id); });
+  ipcMain.handle("qianchuanIntegration.history", (event, input: unknown) => { assertTrustedSender(event); return qianchuanIntegration.history(input); });
+  ipcMain.handle("qianchuanIntegration.status", (event, input: unknown) => { assertTrustedSender(event); return qianchuanIntegration.status(input); });
+  ipcMain.handle("qianchuanIntegration.execute", (event, input: unknown) => { assertTrustedSender(event); assertProductionIdle(); return qianchuanIntegration.execute(input, event.sender.id); });
+  ipcMain.handle("qianchuanIntegration.cancel", (event, input: unknown) => { assertTrustedSender(event); qianchuanIntegration.cancel(input, event.sender.id); });
+  ipcMain.handle("qianchuanIntegration.stop", (event) => { assertTrustedSender(event); return qianchuanIntegration.stop(event.sender.id); });
   ipcMain.handle("qianguanjia.query", async (event, input: unknown) => { assertTrustedSender(event); return qianguanjia.run(input, event.sender.id); });
   ipcMain.handle("qianguanjia.cancel", async (event, input: unknown) => { assertTrustedSender(event); qianguanjia.cancel(input, event.sender.id); });
   ipcMain.handle("qianguanjia.disconnect", async (event) => { assertTrustedSender(event); await qianguanjia.disconnect(event.sender.id); });
@@ -782,6 +790,7 @@ async function bootstrap(): Promise<void> {
     loadBatch: async id => { const loaded = await uploadJobs.load(id); if (loaded.source !== "primary") throw new Error("Export recovery needs reconciliation"); return loaded.state; },
     browser: () => new DouyinCdpUploader(), readiness: douyinReadiness, changed: notifyState,
   });
+  qianchuanIntegration = new QianchuanIntegration(douyinUpload, userData);
   await douyinUpload.restoreConfig();
   await douyinUpload.beginProduction();
   const builtins = await ensureBuiltinStickerAssets(path.join(userData, "agent-stickers"));

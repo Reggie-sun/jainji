@@ -1,10 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { QianchuanEgressSettings } from "./QianchuanEgressSettings";
 import { QianchuanAccountUploadBatches } from "./QianchuanAccountUploadBatches";
+import { QianchuanPlanSelect } from "./QianchuanPlanSelect";
 import type { DouyinUploadStatus, QianchuanUploadBatchSummary } from "../shared/douyin-upload";
 import { egressIdentity, QianchuanEgressSchema, validateEgressGroups, type QianchuanEgress } from "../shared/qianchuan-egress";
 import { scrollWorkspace } from "./WorkspacePage";
 import { parseQianchuanPlanUrl, qianchuanAccountName, qianchuanProductName, QIANCHUAN_PRODUCTS, QianchuanProductNameSchema, type QianchuanAccountSetup, type QianchuanAccountSummary, type QianchuanProduct, type QianchuanBrowserControl } from "../shared/qianchuan-account";
+import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
+
+function planUrl(advertiserId: string, adId: string): string {
+  return `https://qianchuan.jinritemai.com/uni-prom?aavid=${advertiserId}&adId=${adId}`;
+}
 
 export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBrowser, onControlBrowser, initialProduct, expectedAdvertiserId, batches, onCloseBatch }: {
   accounts?: QianchuanAccountSummary[]; busy: boolean; onSave(input: QianchuanAccountSetup): Promise<boolean>; onOpenBrowser(input: QianchuanAccountSetup): Promise<boolean>;
@@ -21,7 +27,26 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
   const [browserMessage, setBrowserMessage] = useState("");
   const [actionError, setActionError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [planDirectoryOpen, setPlanDirectoryOpen] = useState(false);
+  const [planDirectoryBaseLink, setPlanDirectoryBaseLink] = useState("");
+  const [planDirectoryChoice, setPlanDirectoryChoice] = useState<{ binding: string; plan: QianchuanPlanOption; baseLink: string }>();
   const savedAccount = accounts.find(item => item.product === product && item.available);
+  const configuredAccount = accounts.find(item => item.product === product);
+  const planBinding = JSON.stringify([product ?? null, configuredAccount?.advertiserId ?? null, configuredAccount?.adId ?? null]);
+  const scopedPlanChoice = planDirectoryChoice?.binding === planBinding ? planDirectoryChoice : undefined;
+  const planChoiceRef = useRef(planDirectoryChoice); planChoiceRef.current = planDirectoryChoice;
+  const previousPlanBinding = useRef(planBinding);
+  const savedLink = savedAccount ? planUrl(savedAccount.advertiserId, savedAccount.adId) : "";
+  useEffect(() => {
+    if (previousPlanBinding.current === planBinding) return;
+    const previous = previousPlanBinding.current;
+    previousPlanBinding.current = planBinding;
+    const choice = planChoiceRef.current;
+    if (choice?.binding === previous && link === planUrl(choice.plan.advertiserId, choice.plan.adId)) setLink(savedLink);
+    setPlanDirectoryOpen(false);
+    setPlanDirectoryChoice(undefined);
+    setPlanDirectoryBaseLink("");
+  }, [link, planBinding, savedLink]);
   useEffect(() => { if (product && !initialProduct) scrollWorkspace({ selector: "#qianchuan-account-editor" }); }, [product]);
   const edit = (value: QianchuanProduct) => {
     if (value === product) return;
@@ -31,6 +56,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
     setEgress(account?.egress ?? null);
     setActionError("");
     setBrowserAction(undefined); setBrowserMessage("");
+    setPlanDirectoryOpen(false); setPlanDirectoryChoice(undefined); setPlanDirectoryBaseLink("");
   };
   const parsedName = QianchuanProductNameSchema.safeParse(name);
   const duplicateName = parsedName.success && QIANCHUAN_PRODUCTS.some(value => value !== product && qianchuanProductName(value, accounts) === parsedName.data);
@@ -51,7 +77,6 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
     groupChange && account.egress?.group === groupChange.expected.group ? { ...account, egress: parsedEgress.data } : account),
     { egress: parsedEgress.data }], { path: [], addIssue: issue => { if (issue.message) groupIssues.push(issue.message); } });
   const egressError = parsedEgress && !parsedEgress.success ? parsedEgress.error.issues[0].message : groupIssues[0];
-  const savedLink = savedAccount ? `https://qianchuan.jinritemai.com/uni-prom?aavid=${savedAccount.advertiserId}&adId=${savedAccount.adId}` : "";
   const dirty = !!product && (name !== qianchuanProductName(product, accounts) || link !== savedLink || JSON.stringify(egress) !== JSON.stringify(savedAccount?.egress ?? null));
   const save = async () => {
     if (!product || !ids || !parsedName.success || nameError || accountError || egressError) return;
@@ -59,6 +84,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
     try {
       if (await onSave({ product, productName: parsedName.data, planUrl: link, egress, ...(groupChange ? { egressGroupChange: groupChange } : {}) })) {
         setBrowserMessage("账号设置已保存，新制作将使用所选上传方式。"); setProduct(undefined);
+        setPlanDirectoryOpen(false); setPlanDirectoryChoice(undefined); setPlanDirectoryBaseLink("");
       } else setActionError("账号设置未保存，请稍后重试。");
     } catch (error) { setActionError(error instanceof Error ? error.message : "账号设置未保存，请稍后重试。"); }
     finally { setSaving(false); }
@@ -73,11 +99,35 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
   const changeEgress = (value: QianchuanEgress | null) => {
     setEgress(value); setActionError("");
   };
+  const togglePlanDirectory = () => {
+    if (planDirectoryOpen) {
+      if (scopedPlanChoice && link === planUrl(scopedPlanChoice.plan.advertiserId, scopedPlanChoice.plan.adId)) setLink(scopedPlanChoice.baseLink);
+      setPlanDirectoryOpen(false); setPlanDirectoryChoice(undefined); setPlanDirectoryBaseLink("");
+      return;
+    }
+    setActionError(""); setPlanDirectoryChoice(undefined); setPlanDirectoryBaseLink(link); setPlanDirectoryOpen(true);
+  };
+  const chooseDirectoryPlan = (plan?: QianchuanPlanOption) => {
+    if (!plan) {
+      if (scopedPlanChoice && link === planUrl(scopedPlanChoice.plan.advertiserId, scopedPlanChoice.plan.adId)) setLink(scopedPlanChoice.baseLink);
+      setPlanDirectoryChoice(undefined);
+      return;
+    }
+    if (!savedAccount || plan.advertiserId !== savedAccount.advertiserId) {
+      setActionError("目录计划所属账户与已保存账户不一致，未应用此选择。");
+      return;
+    }
+    setActionError(""); setLink(planUrl(plan.advertiserId, plan.adId));
+    setPlanDirectoryChoice({ binding: planBinding, plan, baseLink: planDirectoryBaseLink });
+  };
+  const cancelEdit = () => {
+    setPlanDirectoryOpen(false); setPlanDirectoryChoice(undefined); setPlanDirectoryBaseLink(""); setProduct(undefined);
+  };
   return <div className="qianchuan-account-settings" aria-label="千川账号设置">
     <p>点选账号设置上传方式，也可更换产品名称或千川计划。</p>
     <div className="qianchuan-account-products">{QIANCHUAN_PRODUCTS.map(value => {
       const account = accounts.find(item => item.product === value);
-      return <button className="button secondary compact" type="button" key={value} disabled={busy} aria-expanded={product === value} onClick={() => edit(value)}>
+      return <button className="button secondary compact" type="button" key={value} disabled={busy || saving} aria-expanded={product === value} onClick={() => edit(value)}>
         <strong>{account ? qianchuanAccountName(account) : value}</strong>{account?.advertiserId && <small>账户 {account.advertiserId}</small>}<small>{account?.available ? `已设置 · 计划 ${account.adId}` : "未设置"}</small>
         {account?.available && <><span className="qianchuan-upload-method">{!account.egress ? "本机上传" : account.egress.mode === "remote-browser" ? "VPS 上传" : "本机上传 · VPS 出口"}</span>{account.egress?.mode === "remote-browser" && <small>需本机简辑运行</small>}</>}
         <span className="qianchuan-account-edit-link">{account?.available ? "设置上传方式 →" : "配置账号 →"}</span>
@@ -86,6 +136,9 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
     {product && <div className="qianchuan-account-editor" id="qianchuan-account-editor" tabIndex={-1}>
       <h3>{savedAccount ? qianchuanAccountName(savedAccount) : product} · 账号设置</h3>
       {dirty && <small role="status">账号有未保存的修改</small>}
+      {configuredAccount?.advertiserId && configuredAccount.adId
+        ? <p role="status">已保存目标：账户 {configuredAccount.advertiserId} · 计划 {configuredAccount.adId}</p>
+        : <p role="status">当前没有已保存的账户和计划目标。</p>}
       {recoveryAccount && <p>账户 {recoveryAccount} 保持不变；填写新产品名称，粘贴新千川计划链接。保存新计划不会自动重传旧任务。</p>}
       <QianchuanEgressSettings key={product} value={egress} onChange={changeEgress} accounts={accounts} busy={busy || saving} groupError={groupIssues[0]} />
       {(canChangeGroup || groupChange) && <div role="group" aria-label="主体上传方式整组切换">
@@ -93,26 +146,37 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
         <small>保存时自动检查任务并关闭空闲浏览器，出口 IP 保持不变。有未结束的上传任务时会提示原因。</small>
       </div>}
       <label htmlFor="qianchuan-product-name">产品名称</label>
-      <input id="qianchuan-product-name" type="text" maxLength={40} value={name} disabled={busy} onChange={event => setName(event.target.value)} />
+      <input id="qianchuan-product-name" type="text" maxLength={40} value={name} disabled={busy || saving} onChange={event => setName(event.target.value)} />
       {nameError && <p role="alert">{nameError}</p>}
       <small>产品名称用于模板匹配；账号显示名称跟随 Chrome 资料名。只改产品名称时，保留当前 Chrome 连接和千川计划。</small>
       <label htmlFor="qianchuan-plan-link">千川计划链接</label>
-      <textarea id="qianchuan-plan-link" rows={3} maxLength={16384} value={link} disabled={busy} placeholder="粘贴浏览器地址栏中的千川计划链接" onChange={event => setLink(event.target.value)} />
+      <textarea id="qianchuan-plan-link" rows={3} maxLength={16384} value={link} disabled={busy || saving} placeholder="粘贴浏览器地址栏中的千川计划链接" onChange={event => {
+        setLink(event.target.value);
+        if (scopedPlanChoice) { setPlanDirectoryChoice(undefined); setPlanDirectoryBaseLink(event.target.value); }
+      }} />
       {ids ? <p role="status">已识别账户 {ids.advertiserId} · 计划 {ids.adId}</p> : link.trim() ? <p role="alert">请粘贴含账户和计划 ID 的千川计划链接。</p> : <small>打开要上传的千川计划，复制地址栏链接。</small>}
       {accountError && <p role="alert">{accountError}</p>}
+      <small>链接是本次草稿目标；只有保存后才更新新制作使用的计划。</small>
+      <button className="button secondary compact" type="button" aria-expanded={planDirectoryOpen} disabled={busy || saving || !savedAccount} onClick={togglePlanDirectory}>
+        {planDirectoryOpen ? "取消目录选择" : "从当前网页读取计划并选择"}
+      </button>
+      {planDirectoryOpen && savedAccount && <>
+        <p>目录候选只表示当前浏览器读取到的可选计划，不代表网页当前打开的计划。</p>
+        <QianchuanPlanSelect key={planBinding} account={savedAccount} value={scopedPlanChoice?.plan} onChange={chooseDirectoryPlan} disabled={busy || saving} />
+      </>}
       <small>新制作会自动连接已保存的上传方式。首次登录可在保存后打开账号浏览器。</small>
-      <button className="button secondary compact" type="button" disabled={busy || !ids || !!nameError || !!accountError || !!egressError || dirty} onClick={() => product && void performBrowser(() => onOpenBrowser({ product, productName: name.trim(), planUrl: link, egress }), "账号浏览器已打开，首次使用请完成登录。")}>打开账号浏览器 / 登录</button>
+      <button className="button secondary compact" type="button" disabled={busy || saving || !ids || !!nameError || !!accountError || !!egressError || dirty} onClick={() => product && void performBrowser(() => onOpenBrowser({ product, productName: name.trim(), planUrl: link, egress }), "账号浏览器已打开，首次使用请完成登录。")}>打开账号浏览器 / 登录</button>
       <details><summary>浏览器维护</summary>
       <div className="douyin-upload-actions">
-        {savedAccount?.egress && <button className="button secondary compact" type="button" disabled={busy} onClick={() => void performBrowser(() => onControlBrowser({ product: savedAccount.product, expectedAdvertiserId: savedAccount.advertiserId, action: "reconnect-egress" }), "固定出口已连接并通过 IP 校验；未继续或重传任何上传任务。")}>重连固定出口</button>}
-        <button className="button secondary compact" type="button" disabled={busy || !savedAccount} onClick={() => { setBrowserMessage(""); setBrowserAction("restart"); }}>重启并连接</button>
-        <button className="button secondary compact" type="button" disabled={busy || !savedAccount} onClick={() => { setBrowserMessage(""); setBrowserAction("close"); }}>关闭账号浏览器</button>
+        {savedAccount?.egress && <button className="button secondary compact" type="button" disabled={busy || saving} onClick={() => void performBrowser(() => onControlBrowser({ product: savedAccount.product, expectedAdvertiserId: savedAccount.advertiserId, action: "reconnect-egress" }), "固定出口已连接并通过 IP 校验；未继续或重传任何上传任务。")}>重连固定出口</button>}
+        <button className="button secondary compact" type="button" disabled={busy || saving || !savedAccount} onClick={() => { setBrowserMessage(""); setBrowserAction("restart"); }}>重启并连接</button>
+        <button className="button secondary compact" type="button" disabled={busy || saving || !savedAccount} onClick={() => { setBrowserMessage(""); setBrowserAction("close"); }}>关闭账号浏览器</button>
       </div>
       {browserAction && savedAccount && <div role="group" aria-label="确认账号浏览器操作">
         <p>将{browserAction === "restart" ? "关闭并重新打开" : "关闭"}{qianchuanAccountName(savedAccount)}（账户 {savedAccount.advertiserId}）的全部浏览器窗口，未保存的网页内容可能丢失。登录目录会保留。</p>
         <small>有制作、上传、待确认或结果未知的任务时，软件会保护窗口并停止操作。</small>
-        <button className="button secondary compact" type="button" disabled={busy} onClick={() => void performBrowser(() => onControlBrowser({ product: savedAccount.product, expectedAdvertiserId: savedAccount.advertiserId, action: browserAction }), browserAction === "restart" ? "账号浏览器已重启并连接；下一次制作使用新连接。" : "账号浏览器已关闭，登录状态保留。")}>确认{browserAction === "restart" ? "重启并连接" : "关闭浏览器"}</button>
-        <button className="button secondary compact" type="button" disabled={busy} onClick={() => setBrowserAction(undefined)}>取消浏览器操作</button>
+        <button className="button secondary compact" type="button" disabled={busy || saving} onClick={() => void performBrowser(() => onControlBrowser({ product: savedAccount.product, expectedAdvertiserId: savedAccount.advertiserId, action: browserAction }), browserAction === "restart" ? "账号浏览器已重启并连接；下一次制作使用新连接。" : "账号浏览器已关闭，登录状态保留。")}>确认{browserAction === "restart" ? "重启并连接" : "关闭浏览器"}</button>
+        <button className="button secondary compact" type="button" disabled={busy || saving} onClick={() => setBrowserAction(undefined)}>取消浏览器操作</button>
       </div>}
       </details>
       {actionError && <p role="alert">{actionError}</p>}
@@ -123,7 +187,7 @@ export function QianchuanAccountSettings({ accounts = [], busy, onSave, onOpenBr
       }}
         batches={batches?.filter(batch => batch.relatedAccountProducts?.includes(product) || batch.accountProduct === product || batch.advertiserId === savedAccount?.advertiserId || canChangeGroup && groupMembers.some(account => batch.relatedAccountProducts?.includes(account.product) || account.product === batch.accountProduct || account.advertiserId === batch.advertiserId))} />}
       {browserMessage && <p role="status">{browserMessage}</p>}
-      <div className="douyin-upload-actions"><button className="button primary compact" type="button" disabled={busy || saving || !ids || !!nameError || !!accountError || !!egressError} onClick={() => void save()}>{saving ? "正在保存并应用…" : recoveryAccount ? "保存新产品和计划" : "保存账号"}</button><button className="button secondary compact" type="button" disabled={busy || saving} onClick={() => setProduct(undefined)}>取消</button></div>
+      <div className="douyin-upload-actions"><button className="button primary compact" type="button" disabled={busy || saving || !ids || !!nameError || !!accountError || !!egressError} onClick={() => void save()}>{saving ? "正在保存并应用…" : recoveryAccount ? "保存新产品和计划" : "保存账号"}</button><button className="button secondary compact" type="button" disabled={busy || saving} onClick={cancelEdit}>取消</button></div>
       <small>更换上传方式时，保存会自动关闭相关账号的空闲浏览器；登录状态保留，网页未保存的内容可能丢失。</small>
       <small>保存后供新制作使用；旧批次保留原计划。整批从未选过文件时，可在上传任务中明确“改传当前计划”；已有文件选择记录不能改传。</small>
     </div>}
