@@ -623,7 +623,8 @@ function registerHandlers(): void {
         .filter((entry): entry is [string, NonNullable<(typeof entry)[1]>] => Boolean(entry[1]) && !isFrameId(entry[0]) && entry[0] !== "template" && entry[0] !== "none")
         .map(([id, asset]) => ({ id, assetPath: asset.assetPath, assetFingerprint: asset.assetFingerprint }));
       assertProductionIdle();
-      if (sourceBatch?.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.frame?.selection === "random")) await assertDecorationFrameOptions({ frame: { mode: "random" } }, stickerAssets);
+      const randomFrame = sourceBatch?.templateSnapshot.layers.find(layer => layer.type === "sticker" && layer.frame?.selection === "random");
+      if (randomFrame?.type === "sticker") await assertDecorationFrameOptions({ frame: { mode: "random", ...(randomFrame.frame?.pool ? { pool: randomFrame.frame.pool } : {}) } }, stickerAssets);
       const batches = await queue.appendFromBatch({ batchId: parsed.batchId, projectId: service.currentProject.id, count: parsed.count, productPrice: parsed.productPrice, outputDirectory }, stickerPool, undefined, decorationFramePool(stickerAssets));
       await service.rememberExportProduction(batches);
       for (const batch of batches) await douyinUpload.registerBatch(batch, parsed.douyinUpload, uploadAuthorization);

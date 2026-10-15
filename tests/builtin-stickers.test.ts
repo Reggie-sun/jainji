@@ -8,12 +8,12 @@ import { encodeRgbaPng, ensureBuiltinStickerAssets } from "../src/main/builtin-s
 import { fingerprintFile } from "../src/main/paths";
 import { ensureBuiltinFrameAssets } from "../src/main/builtin-frames";
 import { assertDecorationFrameOptions, createDecorationFrameResolver } from "../src/main/decoration-frame";
-import { FrameIdSchema } from "../src/shared/frames";
+import { BUILTIN_FRAMES, BUILTIN_WIDE_FRAMES, FrameIdSchema, isWideFrameId } from "../src/shared/frames";
 import { DecorationSchema } from "../src/shared/decorations";
 import type { StickerAssets } from "../src/main/builtin-stickers";
 
 describe("built-in Agent stickers", () => {
-  it("generates thirteen restrained transparent commerce frames and admits the full random pool", async () => {
+  it("generates narrow and wide transparent frames and admits only the selected random pool", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-frames-"));
     try {
       const historicalBytes = encodeRgbaPng(new Uint8Array([80, 60, 40, 255]), 1, 1);
@@ -25,11 +25,14 @@ describe("built-in Agent stickers", () => {
       expect(await readFile(historicalPath)).toEqual(historicalBytes);
       await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).resolves.toBeUndefined();
       await expect(assertDecorationFrameOptions({ frame: { mode: "auto" } }, first as StickerAssets)).resolves.toBeUndefined();
-      expect(Object.keys(first)).toHaveLength(13);
-      expect(new Set(Object.values(first).map(asset => asset.assetFingerprint)).size).toBe(13);
+      expect(Object.keys(first)).toHaveLength(25);
+      expect(new Set(Object.values(first).map(asset => asset.assetFingerprint)).size).toBe(25);
       expect(first["frame-stars"].assetFingerprint).not.toBe("sha256:d3e24a0d294f2e3292cc458fd8c4b40037e801e909527e6540f4fd3c42806e5b");
       const resolve = createDecorationFrameResolver(DecorationSchema.parse({ mode: "agent", frame: { mode: "random" } }), first as StickerAssets);
-      expect(new Set(Array.from({ length: 13 }, () => resolve("source").frameId))).toEqual(new Set(Object.keys(first)));
+      expect(new Set(Array.from({ length: BUILTIN_FRAMES.length }, () => resolve("source").frameId))).toEqual(new Set(Object.keys(first)));
+      const resolveWide = createDecorationFrameResolver(DecorationSchema.parse({ mode: "random", frame: { mode: "random", pool: "wide" } }), first as StickerAssets);
+      const wideCycle = Array.from({ length: 12 }, () => resolveWide("source").frameId);
+      expect(new Set(wideCycle)).toEqual(new Set(BUILTIN_WIDE_FRAMES.map(frame => frame.id)));
       expect(await ensureBuiltinFrameAssets(directory)).toEqual(first);
       expect(await readFile(historicalPath)).toEqual(historicalBytes);
       for (const [id, asset] of Object.entries(first)) {
@@ -63,10 +66,22 @@ describe("built-in Agent stickers", () => {
         }
         expect(opaqueCenter, id).toBe(0);
         expect(missingPerimeter, id).toBe(0);
-        expect(wideDecoration, id).toBe(0);
-        expect(visiblePixels / (720 * 1280), id).toBeLessThan(0.095);
+        if (isWideFrameId(id)) {
+          expect(wideDecoration, id).toBeGreaterThan(0);
+          expect(visiblePixels / (720 * 1280), id).toBeGreaterThan(0.30);
+          expect(visiblePixels / (720 * 1280), id).toBeLessThanOrEqual(0.362);
+          const alpha = (x: number, y: number) => rows[y * (720 * 4 + 1) + 1 + x * 4 + 3];
+          for (let x = 0; x < 720; x++) for (const y of [0, 100, 1179, 1279]) expect(alpha(x, y), id).toBe(255);
+          for (let y = 0; y < 1280; y++) for (const x of [0, 57, 662, 719]) expect(alpha(x, y), id).toBe(255);
+        } else {
+          expect(wideDecoration, id).toBe(0);
+          expect(visiblePixels / (720 * 1280), id).toBeLessThan(0.095);
+        }
       }
       await writeFile(first["frame-stars"].assetPath, "corrupted");
+      await expect(assertDecorationFrameOptions({ frame: { mode: "random", pool: "wide" } }, first as StickerAssets)).resolves.toBeUndefined();
+      await writeFile(first["frame-wide-cream"].assetPath, "corrupted");
+      await expect(assertDecorationFrameOptions({ frame: { mode: "random", pool: "wide" } }, first as StickerAssets)).rejects.toThrow("边框");
       await expect(assertDecorationFrameOptions({ frame: { mode: "random" } }, first as StickerAssets)).rejects.toThrow("边框");
       await expect(assertDecorationFrameOptions({ frame: { mode: "auto" } }, first as StickerAssets)).rejects.toThrow("边框");
       const mediaId = crypto.randomUUID();

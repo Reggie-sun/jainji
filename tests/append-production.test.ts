@@ -5,6 +5,19 @@ import { materializePlan } from "../src/main/agent-provider";
 import { formatProductPrice } from "../src/shared/decorations";
 import type { StickerAssets } from "../src/main/builtin-stickers";
 
+it("keeps wide pool provenance on append and rejects a thin replacement", () => {
+  const asset = { assetPath: "/tmp/wide.png", assetFingerprint: "fixture" };
+  const source = materializePlan({ summary: "宽框", captions: [], filter: "cool", intensity: .3 }, "clean", { width: 720, height: 1280 },
+    { sparkle: asset, heart: asset, arrow: asset, burst: asset, "frame-wide-cream": asset }, { frameId: "frame-wide-cream", frame: { mode: "random", pool: "wide" }, sticker: "heart", productPrice: "测试" });
+  const picker = new BalancedStickerPicker([{ id: "heart", ...asset }]);
+  const wide = new BalancedStickerPicker([{ id: "frame-wide-blue", ...asset }]);
+  const appended = cloneTemplateForRandom(source, "新内容", picker, wide);
+  expect(appended.layers.find(layer => layer.type === "sticker" && layer.frame)).toMatchObject({ frame: { id: "frame-wide-blue", selection: "random", pool: "wide" } });
+  expect(cloneTemplateForAppend(source, "新内容").layers.find(layer => layer.type === "sticker" && layer.frame)).toMatchObject({ frame: { id: "frame-wide-cream", pool: "wide" } });
+  expect(randomTemplateDigest(appended)).toBe(randomTemplateDigest(source));
+  expect(() => cloneTemplateForRandom(source, "新内容", picker, new BalancedStickerPicker([{ id: "frame-stars", ...asset }]))).toThrow("宽边框");
+});
+
 it("chooses a new frame only for a new random append and keeps frozen/manual frame identity", () => {
   const asset = { assetPath: "/tmp/frame.png", assetFingerprint: "fixture" };
   const source = materializePlan({ summary: "包装", captions: [], filter: "cool", intensity: .3 }, "clean", { width: 720, height: 1280 },

@@ -32,6 +32,33 @@ const completedSource = async (queue: ExportQueue, directory: string, media: Med
 const dummyPool: RandomStickerPoolEntry[] = [{ id: "sparkle", assetPath: "/tmp/sparkle.png", assetFingerprint: "fixture" }];
 
 describe("appendFromBatch", () => {
+  it("filters random appends to the frozen wide pool before creating batches", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-append-wide-"));
+    const sourcePath = path.join(directory, "source.mp4");
+    await writeFile(sourcePath, "source");
+    const media = await makeMedia(crypto.randomUUID(), sourcePath), projectId = crypto.randomUUID();
+    const pool: RandomStickerPoolEntry[] = [];
+    for (const id of ["frame-stars", "frame-wide-cream", "frame-wide-blue"]) {
+      const assetPath = path.join(directory, `${id}.png`);
+      await writeFile(assetPath, id);
+      pool.push({ id, assetPath, assetFingerprint: await fingerprintFile(assetPath) });
+    }
+    const template = materializePlan({ summary: "宽框", captions: [], filter: "cool", intensity: .3 }, "clean", media,
+      { ...stickerAssets, ...Object.fromEntries(pool.map(({ id, ...asset }) => [id, asset])) },
+      { frameId: "frame-wide-cream", frame: { mode: "random", pool: "wide" }, sticker: "none", displayText: { enabled: false, x: .5, y: .13 } });
+    const queue = fakeQueue(directory);
+    const source = await queue.createBatch({ projectId, template, mediaIds: [media.id], mediaItems: [media], outputDirectory: path.join(directory, "out1"), preset: DEFAULT_PRESET });
+    await queue.start(source.id);
+    const input = { batchId: source.id, projectId, count: 4, productPrice: "", outputDirectory: path.join(directory, "out2") };
+    await expect(queue.appendFromBatch(input, dummyPool, undefined, [pool[0]])).rejects.toThrow("边框");
+    expect(queue.snapshot().batches).toHaveLength(1);
+    const appended = await queue.appendFromBatch(input, dummyPool, undefined, pool);
+    const frames = appended.map(batch => batch.templateSnapshot.layers.find(layer => layer.type === "sticker" && layer.frame));
+    expect(frames).toHaveLength(4);
+    expect(frames.every(layer => layer?.type === "sticker" && layer.frame?.id.startsWith("frame-wide-"))).toBe(true);
+    for (const frame of frames) expect(frame).toMatchObject({ frame: { selection: "random", pool: "wide" } });
+  });
+
   it("appends N rendered clones of a completed batch without model calls or overwrites", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-append-"));
     const sourcePath = path.join(directory, "a.mp4");

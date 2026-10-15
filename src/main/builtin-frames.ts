@@ -8,7 +8,8 @@ import type { BuiltinStickerAsset } from "./builtin-stickers.js";
 const WIDTH = 720;
 const HEIGHT = 1280;
 type Rgb = readonly [number, number, number];
-type FrameStyle = "double" | "inset" | "rail" | "matte" | "soft" | "corners" | "bevel" | "rounded";
+type FrameStyle = "double" | "inset" | "rail" | "matte" | "soft" | "corners" | "bevel" | "rounded" | "paper" | "gilt" | "glass" | "gift"
+  | "pearl" | "ribbon" | "deco" | "stitch" | "facet" | "arch" | "wave" | "starburst";
 
 // IDs stay stable; existing frozen files keep their original content-hash paths.
 const FRAMES = {
@@ -25,25 +26,146 @@ const FRAMES = {
   "frame-rainbows": { base: [137, 113, 95], accent: [222, 206, 188], ink: [89, 71, 57], style: "inset" },
   "frame-film": { base: [31, 32, 35], accent: [187, 164, 117], ink: [12, 13, 15], style: "corners" },
   "frame-geometric": { base: [150, 145, 138], accent: [235, 230, 220], ink: [98, 95, 89], style: "rail" },
-} as const satisfies Record<string, { base: Rgb; accent: Rgb; ink: Rgb; style: FrameStyle }>;
+  "frame-wide-cream": { base: [238, 228, 208], accent: [255, 249, 235], ink: [176, 151, 112], style: "paper", width: 64 },
+  "frame-wide-obsidian": { base: [34, 37, 40], accent: [193, 166, 104], ink: [13, 16, 19], style: "gilt", width: 72 },
+  "frame-wide-blue": { base: [112, 143, 164], accent: [222, 235, 242], ink: [57, 85, 108], style: "glass", width: 60 },
+  "frame-wide-sage": { base: [130, 150, 128], accent: [229, 232, 206], ink: [73, 94, 72], style: "gift", width: 64 },
+  "frame-wide-pearl": { base: [230, 223, 216], accent: [255, 251, 245], ink: [176, 157, 140], style: "pearl", width: 64 },
+  "frame-wide-rose": { base: [190, 130, 141], accent: [255, 226, 220], ink: [123, 67, 83], style: "ribbon", width: 68 },
+  "frame-wide-champagne": { base: [211, 187, 138], accent: [255, 242, 204], ink: [127, 103, 60], style: "deco", width: 64 },
+  "frame-wide-kraft": { base: [191, 157, 114], accent: [250, 232, 196], ink: [123, 90, 60], style: "stitch", width: 64 },
+  "frame-wide-silver": { base: [167, 181, 193], accent: [244, 250, 255], ink: [76, 95, 117], style: "facet", width: 60 },
+  "frame-wide-clay": { base: [187, 118, 93], accent: [247, 218, 187], ink: [123, 69, 53], style: "arch", width: 68 },
+  "frame-wide-lavender": { base: [174, 160, 196], accent: [245, 234, 252], ink: [103, 85, 132], style: "wave", width: 64 },
+  "frame-wide-navy": { base: [37, 59, 84], accent: [218, 192, 133], ink: [17, 29, 48], style: "starburst", width: 72 },
+} as const satisfies Record<string, { base: Rgb; accent: Rgb; ink: Rgb; style: FrameStyle; width?: number }>;
 
 function blend(left: Rgb, right: Rgb, amount: number): Rgb {
   return left.map((value, index) => Math.round(value + (right[index] - value) * amount)) as [number, number, number];
 }
 
 function drawFrame(id: keyof typeof FRAMES): Buffer {
-  const { base, accent, ink, style } = FRAMES[id];
+  const definition = FRAMES[id];
+  const { base, accent, ink, style } = definition;
+  const band = "width" in definition ? definition.width : undefined;
   const pixels = new Uint8Array(WIDTH * HEIGHT * 4);
   for (let y = 0; y < HEIGHT; y += 1) {
     for (let x = 0; x < WIDTH; x += 1) {
-      // Equal proportions keep the perimeter narrow in portrait and landscape.
+      // Equal proportions preserve the selected band width in either orientation.
       const edgeX = Math.min(x, WIDTH - 1 - x);
       const edgeY = Math.min(y, HEIGHT - 1 - y) * WIDTH / HEIGHT;
       const distance = Math.min(edgeX, edgeY);
-      if (distance >= 32) continue;
+      if (distance >= (band ?? 32)) continue;
       let color: Rgb = base;
       let alpha = distance < 2 ? 255 : 0;
-      if (style === "double") {
+      if (band) {
+        const light = (1 - x / WIDTH) * .35 + (1 - y / HEIGHT) * .25;
+        const grain = ((x * 17 + y * 13) % 11) / 100;
+        const corner = edgeX < band * 1.9 && edgeY < band * 1.9;
+        if (style === "paper") {
+          // A warm paper mount, inset sheet and fine champagne keyline.
+          color = blend(base, accent, grain);
+          if (distance < 8) color = blend(ink, base, .55 + light * .4);
+          else if (distance < 11) color = accent;
+          else if (distance >= band - 15 && distance < band - 11) color = blend(base, ink, .16);
+          else if (distance >= band - 11) color = blend(accent, base, (distance - band + 11) / 20);
+          if (distance >= band - 2) color = blend(base, ink, .28);
+          if (corner && distance >= 19 && distance < 21) color = blend(ink, base, .35);
+        } else if (style === "gilt") {
+          // Satin-black rails with hairline gold and a restrained stepped corner.
+          color = blend(ink, base, .55 + light * .4 + grain * .2);
+          if (distance >= 7 && distance < 9 || distance >= band - 7 && distance < band - 5) color = blend(accent, [255, 241, 201], light);
+          if (corner && (Math.abs(edgeX - edgeY) < 1.3 || distance >= 18 && distance < 20)) color = accent;
+          if (distance >= band - 3) color = blend(ink, base, .3);
+        } else if (style === "glass") {
+          // Frosted blue stepped glass; diagonal reflections stay in the rim.
+          color = blend(base, accent, .12 + light * .45);
+          if (distance < 6) color = blend(ink, base, .45 + light * .3);
+          else if (distance < 9 || distance >= band - 9 && distance < band - 6) color = blend(accent, base, .12);
+          else if (distance >= band - 6) color = blend(base, ink, .15);
+          const reflection = (x / WIDTH + y / HEIGHT) % .48;
+          if (reflection < .014 && distance > 12 && distance < band - 12) color = blend(color, accent, .4);
+          if (corner && distance >= 16 && distance < 18) color = accent;
+        } else if (style === "gift") {
+          // Linen-like sage mount with woven detail and pale ribbon corners.
+          color = blend(base, accent, grain + (x % 4 === 0 || y % 4 === 0 ? .06 : 0));
+          if (distance < 6) color = blend(ink, base, .45 + light * .3);
+          else if (distance < 8 || distance >= band - 5 && distance < band - 3) color = accent;
+          if (corner && Math.abs(edgeX - edgeY) < 8 && distance > 10 && distance < band - 10) {
+            color = blend(accent, base, Math.abs(edgeX - edgeY) / 24);
+          }
+          if (distance >= band - 3) color = blend(base, ink, .22);
+        } else if (style === "pearl") {
+          // Porcelain mount with a graduated row of small pearl studs.
+          color = blend(base, accent, .2 + light * .5);
+          if (distance < 5 || distance >= band - 5) color = blend(base, ink, .22);
+          if (distance >= 8 && distance < 10 || distance >= band - 10 && distance < band - 8) color = accent;
+          const along = edgeX < edgeY ? y * WIDTH / HEIGHT : x;
+          const beadX = (along + 12) % 24 - 12;
+          const beadY = distance - band / 2;
+          const bead = Math.hypot(beadX, beadY);
+          if (bead < 6) color = blend(ink, accent, Math.max(.2, 1 - bead / 9 + (beadX + beadY) / 30));
+        } else if (style === "ribbon") {
+          // Satin rail and broad diagonal ribbon folds at each corner.
+          color = blend(ink, base, .55 + .35 * Math.sin(distance / band * Math.PI));
+          if (distance >= 7 && distance < 9 || distance >= band - 8 && distance < band - 6) color = accent;
+          if (corner && Math.abs(edgeX - edgeY) < 15) {
+            color = blend(base, accent, .3 + .5 * (1 - Math.abs(edgeX - edgeY) / 15));
+            if (Math.abs(edgeX - edgeY) > 12) color = ink;
+          }
+          if (distance >= band - 3) color = blend(base, ink, .4);
+        } else if (style === "deco") {
+          // Etched fan corners, on a brushed champagne surround.
+          color = blend(base, accent, grain + light * .3);
+          if (distance < 5 || distance >= band - 4) color = ink;
+          if (distance >= 8 && distance < 10 || distance >= band - 9 && distance < band - 7) color = accent;
+          if (corner) {
+            const radius = Math.hypot(edgeX, edgeY);
+            const angle = Math.atan2(edgeY, edgeX);
+            if (radius > 22 && radius < band * 1.65 && (radius % 18 < 1.8 || Math.abs(Math.sin(angle * 8)) < .045)) color = accent;
+          }
+        } else if (style === "stitch") {
+          // Kraft fibre, a pale inset and separate dashed stitch tracks.
+          color = blend(base, accent, grain + (y % 3 === 0 ? .06 : 0));
+          if (distance < 4 || distance >= band - 4) color = blend(base, ink, .35);
+          if (distance >= band - 15 && distance < band - 7) color = blend(base, accent, .7);
+          const along = edgeX < edgeY ? y * WIDTH / HEIGHT : x;
+          if (distance >= 13 && distance < 15 && along % 17 < 9) color = accent;
+          if (corner && distance >= 23 && distance < 25) color = ink;
+        } else if (style === "facet") {
+          // Alternating polished bevels and diamond corner plates.
+          const bevel = Math.abs(distance / band * 4 % 2 - 1);
+          color = blend(ink, accent, .25 + bevel * .65 + light * .1);
+          if (distance >= band - 3 || distance < 2) color = ink;
+          if (corner && Math.abs(edgeX + edgeY - band * 1.45) < 10) {
+            color = blend(base, accent, edgeX < edgeY ? .2 : .85);
+          }
+        } else if (style === "arch") {
+          // Matte terracotta with nested pottery-like corner arches.
+          color = blend(base, accent, grain * .5 + light * .12);
+          if (distance < 7 || distance >= band - 6) color = blend(base, ink, .35);
+          if (distance >= 11 && distance < 14) color = accent;
+          if (corner && Math.hypot(edgeX, edgeY) % 22 < 3) color = blend(accent, base, .15);
+          if (distance >= band - 12 && distance < band - 9) color = blend(base, accent, .6);
+        } else if (style === "wave") {
+          // Fine flowing lines on a lilac silk gradient.
+          color = blend(base, accent, .15 + light * .5);
+          if (distance < 5 || distance >= band - 4) color = blend(base, ink, .3);
+          const along = edgeX < edgeY ? y * WIDTH / HEIGHT : x;
+          const ripple = distance + Math.sin(along / 55) * 5;
+          if (distance > 11 && distance < band - 10 && ripple % 13 < 1.8) color = blend(accent, base, .1);
+          if (corner && Math.abs(edgeX - edgeY) < 2) color = accent;
+        } else if (style === "starburst") {
+          // Midnight gift packaging with small four-point corner highlights.
+          color = blend(ink, base, .6 + light * .4);
+          if (distance >= 7 && distance < 9 || distance >= band - 8 && distance < band - 6) color = accent;
+          const starX = Math.abs(edgeX - 33);
+          const starY = Math.abs(edgeY - 33);
+          if (corner && starX + starY < 18 && Math.min(starX, starY) < 3.5 * (1 - Math.max(starX, starY) / 18)) color = accent;
+          if (corner && Math.abs(edgeX + edgeY - 104) < 1.4 && distance > 15) color = blend(accent, base, .3);
+        }
+        alpha = 255;
+      } else if (style === "double") {
         if (distance < 4) { color = blend(ink, accent, 0.25 + 0.65 * x / WIDTH); alpha = 255; }
         else if (distance >= 11 && distance < 12.5) { color = base; alpha = 255; }
       } else if (style === "inset") {

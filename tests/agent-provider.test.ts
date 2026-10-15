@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { StickerAssets } from "../src/main/builtin-stickers";
 import { AgentProvider, API_REQUEST_MIN_INTERVAL_MS, ProviderError, createLocalRandomPlan, materializePlan, validatePlan } from "../src/main/agent-provider";
 import { CORNER_SAFE_POLICY } from "../src/shared/layout-policy";
 import { ConnectionInputSchema, GenerateBriefSchema, RULE_TEMPLATES } from "../src/shared/agent";
@@ -19,6 +20,22 @@ const reply = (content: string) => new Response(JSON.stringify({ choices: [{ mes
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("agent provider boundary", () => {
+  it("requires wide frames on every output and preserves the pool in frozen layers", () => {
+    const ids = [crypto.randomUUID(), crypto.randomUUID()];
+    const assets: StickerAssets = { ...stickerAssets, ...Object.fromEntries(["frame-stars", "frame-wide-cream", "frame-wide-obsidian"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) };
+    const options = DecorationSchema.parse({ mode: "random", frame: { mode: "random", pool: "wide" }, framesByMedia: { [ids[1]]: { mode: "none" } } });
+    const resolve = createDecorationFrameResolver(options, assets, ids);
+    const frozen = Array.from({ length: 6 }, () => resolve(ids[0]));
+    expect(new Set(frozen.map(item => item.frameId))).toEqual(new Set(["frame-wide-cream", "frame-wide-obsidian"]));
+    for (const value of frozen) {
+      expect(value.frame).toEqual({ mode: "random", pool: "wide" });
+      const template = materializePlan({ ...plan, filter: "cool", intensity: .3 }, "clean", { width: 720, height: 1280 }, assets, value);
+      expect(template.layers.find(layer => layer.type === "sticker" && layer.frame)).toMatchObject({ frame: { id: value.frameId, selection: "random", pool: "wide" } });
+    }
+    expect(resolve(ids[1]).frameId).toBeUndefined();
+    expect(() => createDecorationFrameResolver(options, { ...stickerAssets, "frame-stars": assets["frame-stars"] }, [ids[0]])).toThrow("宽边框");
+    expect(() => materializePlan(plan, "clean", { width: 720, height: 1280 }, assets, { ...options, frameId: "frame-stars", framesByMedia: undefined })).toThrow("宽边框");
+  });
   it("random packaging preserves color and ignores the saved legacy rule", () => {
     const random = vi.spyOn(Math, "random");
     try {

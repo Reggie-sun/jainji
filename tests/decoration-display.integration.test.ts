@@ -8,8 +8,9 @@ import { TemplateCompiler } from "../src/main/compiler";
 import { DEFAULT_PRESET, DEFAULT_TEXT_FONT_FAMILY, type MediaItem } from "../src/main/domain";
 import { discoverBinary, FfmpegAdapter, resolveFont, runCommand } from "../src/main/ffmpeg";
 import { encodeRgbaPng } from "../src/main/builtin-stickers";
+import { ensureBuiltinFrameAssets } from "../src/main/builtin-frames";
 
-it.each([[320, 240], [240, 320]])("renders four frame edges with stickers above and original center/audio on %ix%i", { timeout: 60_000 }, async (width, height) => {
+it.each([[320, 240, false], [240, 320, false], [320, 240, true], [240, 320, true]] as const)("renders four frame edges with stickers above and original center/audio on %ix%i (wide=%s)", { timeout: 60_000 }, async (width, height, wide) => {
   const ffmpeg = await discoverBinary("ffmpeg"), ffprobe = await discoverBinary("ffprobe");
   expect(ffmpeg, "FFmpeg is required for frame acceptance").toBeTruthy(); expect(ffprobe).toBeTruthy();
   const root = await mkdtemp(path.join(tmpdir(), "jianji-frame-render-"));
@@ -27,11 +28,11 @@ it.each([[320, 240], [240, 320]])("renders four frame edges with stickers above 
   }
   const frameBytes = encodeRgbaPng(frame, 720, 1280), framePath = path.join(root, "frame.png");
   await writeFile(framePath, frameBytes);
-  const frames = { "frame-stars": { assetPath: framePath, assetFingerprint: `sha256:${createHash("sha256").update(frameBytes).digest("hex")}` } };
+  const frames = wide ? await ensureBuiltinFrameAssets(path.join(root, "frames")) : { "frame-stars": { assetPath: framePath, assetFingerprint: `sha256:${createHash("sha256").update(frameBytes).digest("hex")}` } };
   const asset = { assetPath: stickerPath, assetFingerprint: "fixture" };
   const media: MediaItem = { id: crypto.randomUUID(), sourcePath, displayName: "frame fixture", fingerprint: "fixture", sizeBytes: 1, durationMs: 6000, width, height, rotation: 0, probeStatus: "ready", importedAt: new Date().toISOString() };
   const template = materializePlan({ summary: "边框", captions: [], filter: "cool", intensity: .3 }, "clean", media,
-    { heart: asset, sparkle: asset, arrow: asset, burst: asset, ...frames }, { frameId: "frame-stars", sticker: "none", displayMode: "first-5s", displayText: { enabled: false, x: .5, y: .13 }, corners: { "top-left": { type: "sticker", sticker: "heart" } } });
+    { heart: asset, sparkle: asset, arrow: asset, burst: asset, ...frames }, { frameId: wide ? "frame-wide-cream" : "frame-stars", ...(wide ? { frame: { mode: "random" as const, pool: "wide" as const } } : {}), sticker: "none", displayMode: "first-5s", displayText: { enabled: false, x: .5, y: .13 }, corners: { "top-left": { type: "sticker", sticker: "heart" } } });
   template.filter = { presetId: "none", intensity: 0 };
   const options = { ffmpegPath: ffmpeg!, fontResolver: { resolve: async () => null }, textFilePath: (id: string) => path.join(root, `${id}.txt`), threads: 1 };
   const compiler = new TemplateCompiler(), preset = { ...DEFAULT_PRESET, resolutionMode: "source" as const };
@@ -45,10 +46,10 @@ it.each([[320, 240], [240, 320]])("renders four frame edges with stickers above 
     await run(["-ss", String(t), "-i", output, "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", file]);
     const pixels = await readFile(file), pixel = (x: number, y: number) => pixels.subarray((y * width + x) * 3, (y * width + x) * 3 + 3);
     expect(pixels.length).toBe(width * height * 3);
-    const edges = [[2, Math.floor(height / 2)], [width - 3, Math.floor(height / 2)], [Math.floor(width * .4), 2], [Math.floor(width * .4), height - 3]];
+    const edges = wide ? [[Math.floor(width * .05), Math.floor(height / 2)], [Math.floor(width * .95), Math.floor(height / 2)], [Math.floor(width / 2), Math.floor(height * .05)], [Math.floor(width / 2), Math.floor(height * .95)]] : [[2, Math.floor(height / 2)], [width - 3, Math.floor(height / 2)], [Math.floor(width * .4), 2], [Math.floor(width * .4), height - 3]];
     for (const [index, [x, y]] of edges.entries()) {
       const rgb = pixel(x, y);
-      for (let channel = 0; channel < 3; channel++) expect(Math.abs(rgb[channel] - colors[index][channel])).toBeLessThan(30);
+      for (let channel = 0; channel < 3; channel++) expect(Math.abs(rgb[channel] - (wide ? [238, 228, 208] : colors[index])[channel])).toBeLessThan(30);
     }
     const center = pixel(Math.floor(width / 2), Math.floor(height / 2));
     expect(center[0]).toBeGreaterThan(210); expect(center[1]).toBeLessThan(30); expect(center[2]).toBeLessThan(30);

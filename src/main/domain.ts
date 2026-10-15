@@ -14,7 +14,7 @@ import { CoverPlacementSchema } from "../shared/cover-placement.js";
 import { JianjiError } from "./errors.js";
 import { FrozenShapeCoverSchema } from "../shared/shape-cover.js";
 import { HybridCoverBindingSchema } from "../shared/hybrid-cover.js";
-import { FrameIdSchema } from "../shared/frames.js";
+import { FrameIdSchema, isWideFrameId } from "../shared/frames.js";
 import { HumanRegionBindingSchema } from "../shared/human-region-cover.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
@@ -120,7 +120,8 @@ export const StickerLayerSchema = z.object({
   assetPath: AbsolutePath,
   assetFingerprint: z.string().min(1),
   rotationDeg: z.number().finite().min(-360).max(360),
-  frame: z.object({ id: FrameIdSchema, selection: z.enum(["random", "manual"]).optional() }).strict().optional(),
+  frame: z.object({ id: FrameIdSchema, selection: z.enum(["random", "manual"]).optional(), pool: z.literal("wide").optional() }).strict()
+    .refine(value => !value.pool || value.selection === "random" && isWideFrameId(value.id), "宽边框来源与冻结款式不匹配。").optional(),
   activeRanges: z.array(z.object({
     startMs: z.number().finite().nonnegative(),
     endMs: z.number().finite().positive(),
@@ -411,6 +412,7 @@ export function cloneTemplateForRandom(template: EditTemplate, productPrice: str
       if (layer.frame.selection === "random") {
         if (!framePicker) throw new JianjiError("没有可用的随机边框资源。", "input_invalid", "input", false);
         const picked = framePicker.pick(new Set([layer.frame.id]));
+        if (layer.frame.pool === "wide" && !isWideFrameId(picked.id)) throw new JianjiError("追加必须使用宽边框。", "input_invalid", "input", false);
         layer.assetPath = picked.assetPath; layer.assetFingerprint = picked.assetFingerprint; layer.frame.id = FrameIdSchema.parse(picked.id);
       }
       continue;

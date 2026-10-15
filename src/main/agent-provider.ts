@@ -287,7 +287,7 @@ export function materializePlan(raw: unknown, ruleId: RuleId, dimensions: { widt
   if (frame.mode === "auto") throw new Error("自动边框尚未冻结，请重新开始制作。");
   const frameId = frame.mode === "manual" ? frame.frameId : frame.mode === "random" ? options.frameId : undefined;
   if (frame.mode === "random" && !frameId) throw new Error("随机边框尚未冻结，请重新开始制作。");
-  const frameLayers = decorationFrameLayers(frameId, stickerAssets, options.frame ? frame.mode === "random" ? "random" : "manual" : undefined);
+  const frameLayers = decorationFrameLayers(frameId, stickerAssets, options.frame ? frame.mode === "random" ? "random" : "manual" : undefined, frame.mode === "random" ? frame.pool : undefined);
   if (options.mode === "agent" && !catalog) throw new Error("Agent 装饰目录不可用，请重新开始。");
   const plan = options.mode === "random" ? PlanSchema.parse(raw) : validatePlan(raw, ruleId, options.mode === "agent" ? catalog : undefined);
   const rule = getRule(ruleId);

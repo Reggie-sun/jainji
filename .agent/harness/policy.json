@@ -850,6 +850,7 @@
         "src/shared/**",
         "src/harness/**",
         "src/main/compiler.ts",
+        "src/main/domain.ts",
         "src/main/queue.ts",
         "src/main/index.ts",
         "src/main/preload.ts",

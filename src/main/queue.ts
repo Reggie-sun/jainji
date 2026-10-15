@@ -1,4 +1,5 @@
 import type { CoverReviewDraft } from "../shared/cover-review.js";
+import { isWideFrameId } from "../shared/frames.js";
 import type { HumanRegionIntent } from "./human-region-cover.js";
 import { assertHumanRegionSubmission, hasHumanRegions, verifyHumanRegionTemplate } from "./human-region-render.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -440,9 +441,10 @@ export class ExportQueue {
     if (mediaItems.some((item): item is undefined => !item)) throw new JianjiError("源批次素材已变化，无法追加制作。", "input_invalid", "input", false);
     const media = mediaItems as MediaItem[];
     const picker = new BalancedStickerPicker(stickerPool);
-    const randomFrame = source.templateSnapshot.layers.some(layer => layer.type === "sticker" && layer.frame?.selection === "random");
-    if (randomFrame && !framePool.length) throw new JianjiError("没有可用的随机边框资源。", "input_invalid", "input", false);
-    const framePicker = randomFrame ? new BalancedStickerPicker(framePool) : undefined;
+    const randomFrame = source.templateSnapshot.layers.find(layer => layer.type === "sticker" && layer.frame?.selection === "random");
+    const selectedFramePool = randomFrame?.type === "sticker" && randomFrame.frame?.pool === "wide" ? framePool.filter(entry => isWideFrameId(entry.id)) : framePool;
+    if (randomFrame && !selectedFramePool.length) throw new JianjiError("没有可用的随机边框资源。", "input_invalid", "input", false);
+    const framePicker = randomFrame ? new BalancedStickerPicker(selectedFramePool) : undefined;
     const created: ExportBatch[] = [];
     for (let index = 0; index < input.count; index += 1) {
       const template = cloneTemplateForRandom(source.templateSnapshot, input.productPrice, picker, framePicker);
