@@ -2,6 +2,14 @@
   "schemaVersion": 2,
   "codeChecks": [
     {
+      "id": "material-plan-exclusion-smoke",
+      "kind": "command",
+      "required": true,
+      "command": "node",
+      "args": ["scripts/material-preview-smoke.mjs"],
+      "timeoutMs": 120000
+    },
+    {
       "id": "desktop-multi-instance",
       "kind": "vitest",
       "required": true,
@@ -738,6 +746,13 @@
     }
   ],
   "routes": [
+    {
+      "id": "domain-material-plan-exclusion",
+      "paths": ["src/renderer/SourceMediaList.tsx", "scripts/material-preview-smoke.mjs"],
+      "checkIds": ["typecheck", "material-plan-exclusion-smoke", "task-pages", "extended-regressions", "documents"],
+      "testFilesByCheck": { "extended-regressions": ["tests/material-collection.test.ts"] },
+      "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/video-validation-harness-spec.md"]
+    },
     {
       "id": "domain-desktop-multi-instance",
       "paths": ["Makefile", "scripts/dev.mjs", "scripts/dev-start.sh", "scripts/dev-multi-instance-smoke.mjs", "src/main/desktop-instance.ts", "src/main/index.ts", "src/main/qianchuan-scheduled-launch.ts", "tests/desktop-instance.test.ts", "tests/dev-start.test.ts", "tests/qianchuan-scheduled-launch.test.ts"],

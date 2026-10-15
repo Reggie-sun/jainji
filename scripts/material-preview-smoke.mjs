@@ -13,8 +13,8 @@ const directory = await mkdtemp(path.join(tmpdir(), "jianji-material-preview-"))
 let server, browser;
 try {
   const ownerBundle = path.join(directory, "owner.mjs");
-  await build({ stdin: { contents: 'export {ApplicationService} from "./src/main/application.ts"; export {FfmpegAdapter} from "./src/main/ffmpeg.ts";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "esm", outfile: ownerBundle });
-  const { ApplicationService, FfmpegAdapter } = await import(pathToFileURL(ownerBundle));
+  await build({ stdin: { contents: 'export {ApplicationService} from "./src/main/application.ts"; export {FfmpegAdapter} from "./src/main/ffmpeg.ts"; export {selectedProjectMediaIds} from "./src/main/media.ts";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "esm", outfile: ownerBundle });
+  const { ApplicationService, FfmpegAdapter, selectedProjectMediaIds } = await import(pathToFileURL(ownerBundle));
   const adapter = new FfmpegAdapter(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", process.env.JIANJI_FFPROBE_PATH || "ffprobe");
   const createOwner = () => new ApplicationService(adapter, { resolve: async () => null });
   let owner = createOwner();
@@ -46,7 +46,7 @@ try {
         try {
           let body = ""; for await (const chunk of request) body += chunk;
           const input = body ? JSON.parse(body) : {};
-          if (url.pathname === "/__api/remove") { if (rejectRemove) throw new Error("模拟移除失败"); owner.removeMedia(input.id); }
+          if (url.pathname === "/__api/remove") { if (rejectRemove) throw new Error("模拟移除失败"); owner.removeMedia(input.id); await owner.persistCurrentProject(); }
           if (url.pathname === "/__api/save") await owner.saveProject(savedFile, input.name, input.workspace);
           if (url.pathname === "/__api/reopen") { owner = createOwner(); await owner.loadProject(savedFile); }
           if (url.pathname === "/__api/reject") rejectRemove = input.value;
@@ -70,6 +70,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 900, height: 850 } });
   const errors = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto(url);
+  await page.getByText("移出本计划后不参与制作，磁盘原视频保留，可供其他项目使用。筛选后请点击“保存素材清单”。", { exact: true }).waitFor();
   await page.getByRole("button", { name: "预览 素材-2.mp4", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "素材预览", exact: true });
   await dialog.waitFor();
@@ -78,9 +79,10 @@ try {
   await page.getByLabel("播放 素材-3.mp4", { exact: true }).waitFor();
   assert.equal(await dialog.getByRole("button", { name: "下一条", exact: true }).isDisabled(), true);
   await dialog.getByRole("button", { name: "上一条", exact: true }).click();
-  await dialog.getByRole("button", { name: "移出清单", exact: true }).click();
+  await dialog.getByRole("button", { name: "移出本计划", exact: true }).click();
   await page.getByLabel("播放 素材-3.mp4", { exact: true }).waitFor();
   assert.equal(await page.getByRole("button", { name: "预览 素材-2.mp4", exact: true }).count(), 0);
+  assert.deepEqual(selectedProjectMediaIds(owner.currentProject), owner.currentProject.mediaItems.filter(item => item.probeStatus === "ready").map(item => item.id));
   await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
   await page.getByRole("button", { name: "保存素材清单", exact: true }).click();
@@ -93,24 +95,35 @@ try {
   assert.equal(await page.getByRole("button", { name: "预览 无法读取.mp4", exact: true }).isDisabled(), true);
   await page.request.post(url.replace("/__material-preview", "/__api/reject"), { data: { value: true } });
   await page.getByRole("button", { name: "预览 素材-1.mp4", exact: true }).click();
-  await dialog.getByRole("button", { name: "移出清单", exact: true }).click();
+  await dialog.getByRole("button", { name: "移出本计划", exact: true }).click();
   await page.getByRole("alert").filter({ hasText: "模拟移除失败" }).waitFor();
   assert.equal(await page.getByLabel("播放 素材-1.mp4", { exact: true }).count(), 1, "failure retains current preview");
   await page.request.post(url.replace("/__material-preview", "/__api/reject"), { data: { value: false } });
-  await dialog.getByRole("button", { name: "移出清单", exact: true }).click();
-  await page.getByLabel("播放 素材-3.mp4", { exact: true }).waitFor();
-  await dialog.getByRole("button", { name: "移出清单", exact: true }).click();
+  await page.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
-  await page.getByRole("button", { name: "移除 无法读取.mp4", exact: true }).click();
+  await page.getByRole("button", { name: "移出本计划 素材-1.mp4", exact: true }).click();
+  await page.getByRole("button", { name: "移出本计划 素材-1.mp4", exact: true }).waitFor({ state: "detached" });
+  assert.equal(owner.currentProject.mediaItems.some(item => item.displayName === "素材-1.mp4"), false);
+  assert.deepEqual(selectedProjectMediaIds(owner.currentProject), [owner.currentProject.mediaItems.find(item => item.displayName === "素材-3.mp4").id]);
+  await page.getByRole("button", { name: "预览 素材-3.mp4", exact: true }).click();
+  await page.getByLabel("播放 素材-3.mp4", { exact: true }).waitFor();
+  await dialog.getByRole("button", { name: "移出本计划", exact: true }).click();
+  await dialog.waitFor({ state: "detached" });
+  await page.getByRole("button", { name: "移出本计划 无法读取.mp4", exact: true }).click();
   await page.getByText("你的素材即将在这里就位", { exact: true }).waitFor();
   await page.getByRole("button", { name: "保存素材清单", exact: true }).click();
   await page.getByText("项目已保存，下次可从已保存项目列表继续。", { exact: true }).waitFor();
   const saved = JSON.parse(await readFile(savedFile, "utf8"));
   assert.deepEqual(saved.mediaItems, []);
   assert.deepEqual(saved.workspaceDraft.selectedMediaIds, []);
+  assert.deepEqual(selectedProjectMediaIds(owner.currentProject), []);
   for (const [index, source] of sources.entries()) assert.deepEqual(await readFile(source), originalBytes[index]);
+  const otherOwner = createOwner();
+  await otherOwner.addMedia(sources);
+  assert.equal(selectedProjectMediaIds(otherOwner.currentProject).length, 3, "originals remain reusable in another project");
+  assert.equal(otherOwner.currentProject.mediaItems.every(item => item.probeStatus === "ready"), true);
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ status: "PASS", playback: true, narrowViewport: true, failedRemovalRetained: true, savedReopened: true, emptyListSaved: true, originalFilesUnchanged: true }));
+  console.log(JSON.stringify({ status: "PASS", playback: true, narrowViewport: true, failedRemovalRetained: true, savedReopened: true, emptyListSaved: true, excludedFromPlan: true, reusableInOtherProject: true, originalFilesUnchanged: true }));
   if (process.argv.includes("--serve")) {
     owner = createOwner(); await owner.addMedia(sources); owner.renameProject("MCP预览筛选测试");
     console.log(`MCP_URL=${url}`);

@@ -11,6 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { ResultsPanel } from "../src/renderer/ResultsPanel";
 import type { DesktopState } from "../src/shared/desktop";
 import { ProjectWorkspaceSchema } from "../src/shared/project-workspace";
+import { selectedProjectMediaIds } from "../src/main/media";
 
 const directories: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true }))); });
@@ -74,23 +75,54 @@ describe("named material collections", () => {
     await writeFile(otherSource, "keep original bytes");
     const [kept] = await service.addMedia([otherSource]);
     const file = path.join(directory, "collection.json");
-    await service.saveProject(file, "筛选素材");
-    service.removeMedia(media.id);
-    expect(service.hasUnsavedChanges).toBe(true);
-    await service.saveProject(file, undefined, ProjectWorkspaceSchema.parse({
-      step: "import", selectedMediaIds: [kept.id], ruleId: "clean", brief: "",
+    await service.saveProject(file, "筛选素材", ProjectWorkspaceSchema.parse({
+      step: "import", selectedMediaIds: [media.id, kept.id], ruleId: "clean", brief: "",
       decorations: { mode: "manual" }, exportFormat: "mp4",
       exportSettings: { resolutionMode: "720p", frameRateMode: "source", quality: "balanced" },
     }));
+    service.removeMedia(media.id);
+    expect(service.hasUnsavedChanges).toBe(true);
+    expect(service.currentProject.workspaceDraft?.selectedMediaIds).toEqual([kept.id]);
+    await service.persistCurrentProject();
 
     const reopened = createService();
     await reopened.loadProject(file);
     expect(reopened.currentProject.mediaItems.map(item => item.id)).toEqual([kept.id]);
     expect(reopened.getMedia(kept.id)).toMatchObject({ sourcePath: otherSource, fingerprint: kept.fingerprint, probeStatus: "ready" });
     expect(reopened.currentProject.workspaceDraft?.selectedMediaIds).toEqual([kept.id]);
+    expect(selectedProjectMediaIds(reopened.currentProject)).toEqual([kept.id]);
     expect(JSON.parse(await readFile(file, "utf8")).mediaItems.map((item: { id: string }) => item.id)).toEqual([kept.id]);
     expect(await readFile(source, "utf8")).toBe("original video bytes");
     expect(await readFile(otherSource, "utf8")).toBe("keep original bytes");
+  });
+
+  it("keeps a fully excluded plan empty while another project can still use the same original", async () => {
+    const { directory, source, service, media, createService } = await fixture();
+    const other = createService();
+    const [otherMedia] = await other.addMedia([source]);
+    const otherFile = path.join(directory, "other.json");
+    await other.saveProject(otherFile, "其他人的素材");
+    const otherBytes = await readFile(otherFile);
+    const file = path.join(directory, "excluded.json");
+    await service.saveProject(file, "本次计划", ProjectWorkspaceSchema.parse({
+      step: "import", selectedMediaIds: [media.id], ruleId: "clean", brief: "",
+      decorations: { mode: "manual" }, exportFormat: "mp4",
+      exportSettings: { resolutionMode: "720p", frameRateMode: "source", quality: "balanced" },
+    }));
+    service.removeMedia(media.id);
+    await service.persistCurrentProject();
+
+    const reopened = createService();
+    await reopened.loadProject(file);
+    expect(reopened.currentProject.mediaItems).toEqual([]);
+    expect(reopened.currentProject.workspaceDraft?.selectedMediaIds).toEqual([]);
+    expect(selectedProjectMediaIds(reopened.currentProject)).toEqual([]);
+    expect(reopened.getMedia(media.id)).toBeUndefined();
+    await other.loadProject(otherFile);
+    expect(selectedProjectMediaIds(other.currentProject)).toEqual([otherMedia.id]);
+    expect(other.getMedia(otherMedia.id)?.probeStatus).toBe("ready");
+    expect(await readFile(otherFile)).toEqual(otherBytes);
+    expect(await readFile(source, "utf8")).toBe("original video bytes");
   });
 
   it("persists only the latest production membership for the reopened project", async () => {

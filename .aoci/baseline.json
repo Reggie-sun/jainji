@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-15T14:10:40Z",
+  "updated_at": "2026-10-15T15:02:52Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "86c088920454ec8b9480a14a8b8eb5681b2d0e43cda89ea6407cc0aef9e47f2f",
-      "size": 57268,
-      "normalized_sha256": "86c088920454ec8b9480a14a8b8eb5681b2d0e43cda89ea6407cc0aef9e47f2f"
+      "sha256": "c08a15ccfc750148db53f3e7c1253965d75ddd921cfcdbcb3b397e21dd14226a",
+      "size": 57949,
+      "normalized_sha256": "c08a15ccfc750148db53f3e7c1253965d75ddd921cfcdbcb3b397e21dd14226a"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "55f11580e993563bd798c77979a884993f5d739698596f126e20e9d52a2bab84",
-      "size": 147678,
-      "normalized_sha256": "55f11580e993563bd798c77979a884993f5d739698596f126e20e9d52a2bab84"
+      "sha256": "038c6881d38d2b98edbcc9c940183ee4e8fdf7b65a443f923f146ac9a7d86488",
+      "size": 147715,
+      "normalized_sha256": "038c6881d38d2b98edbcc9c940183ee4e8fdf7b65a443f923f146ac9a7d86488"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -487,9 +487,9 @@
       "normalized_sha256": "fbf2c1ee4a500ee610b375649675f5b6d2b7e277009260c150352a19c707a368"
     },
     "resources/qianchuan-extension/content.js": {
-      "sha256": "0d5b867c6cbcb89ed6708e76975bd61cefdf12e668d0b5bb405d8f7e1745726b",
-      "size": 32062,
-      "normalized_sha256": "0d5b867c6cbcb89ed6708e76975bd61cefdf12e668d0b5bb405d8f7e1745726b"
+      "sha256": "86a4e707f4b410595995fa0f2b90c59a98fa33c140bf4e47046260592dcc5279",
+      "size": 32135,
+      "normalized_sha256": "86a4e707f4b410595995fa0f2b90c59a98fa33c140bf4e47046260592dcc5279"
     },
     "resources/qianchuan-extension/manifest.json": {
       "sha256": "d94c0bd2cf6a2a97ed36463ecbb2da72c6e59fc6724f7d81d3d8702ea30111cf",
@@ -1678,9 +1678,9 @@
       "normalized_sha256": "eba6cfb3d74104869b7a0ba97fa4cea98aaae72234a679e325ca2ee2d1c49bb0"
     },
     "src/main/qianchuan-cdp-account-session.ts": {
-      "sha256": "7c23210b4439baaa8ff91865b45d380548e57717edf94a2b233b045a90612d0c",
-      "size": 20311,
-      "normalized_sha256": "7c23210b4439baaa8ff91865b45d380548e57717edf94a2b233b045a90612d0c"
+      "sha256": "e2d9b571da75676ef380450dfbf7ac0f6872a1ec58b3147d166e03b71e133be1",
+      "size": 20764,
+      "normalized_sha256": "e2d9b571da75676ef380450dfbf7ac0f6872a1ec58b3147d166e03b71e133be1"
     },
     "src/main/qianchuan-cdp-profile.ts": {
       "sha256": "577f29d0118417094b0de70c2d6ea7ca1feee0507028dd9da62f18a05936d823",
@@ -1703,9 +1703,9 @@
       "normalized_sha256": "5bde7adbc36c081f9ac4d78f8817991fea7fe00b678498e062483f2e53f3d382"
     },
     "src/main/qianchuan-current-account.ts": {
-      "sha256": "a1c86a6619738ffb2cf8f67be77412a30f57486828c0db05ac3db96cafa6e928",
-      "size": 18532,
-      "normalized_sha256": "a1c86a6619738ffb2cf8f67be77412a30f57486828c0db05ac3db96cafa6e928"
+      "sha256": "5f1f85d52d7f14797a7d960962cc870b63b39072c4cf1beab509dfa40b6a6c8d",
+      "size": 18564,
+      "normalized_sha256": "5f1f85d52d7f14797a7d960962cc870b63b39072c4cf1beab509dfa40b6a6c8d"
     },
     "src/main/qianchuan-display-catalogs.ts": {
       "sha256": "9ca28bfb52550043499350289fb3eb50132cfe38fcba4479ba68267384d07308",
@@ -2603,9 +2603,9 @@
       "normalized_sha256": "87b816a128f341899c29a7e4997c06f6889a3f0b68ce334c60e31c5229c1f7a5"
     },
     "src/renderer/SourceMediaList.tsx": {
-      "sha256": "3d4ec32b28d37b69eb2ec9d0b462e6069a8a7ee34bcdb5aef06d340f84e17a2f",
-      "size": 5700,
-      "normalized_sha256": "3d4ec32b28d37b69eb2ec9d0b462e6069a8a7ee34bcdb5aef06d340f84e17a2f"
+      "sha256": "83775c0ec92611336f3485acc4d5325d2674f237aa0afce12b645f78c2d2462f",
+      "size": 5844,
+      "normalized_sha256": "83775c0ec92611336f3485acc4d5325d2674f237aa0afce12b645f78c2d2462f"
     },
     "src/renderer/SourceStickerKnowledgeDetails.tsx": {
       "sha256": "bc22928fd10c2cf4a4200c40fb395487b5d9a440e5451ca7f05a227536984d04",
