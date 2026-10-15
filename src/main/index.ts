@@ -151,7 +151,6 @@ function assertProductionIdle(): void { assertAutomationIdle(); batchRuntime?.co
 function assertCleanupIdle() {
   if (quitting) throw new Error("应用正在退出，已停止清空视频库。");
   coverReview?.assertIdle(); assertProductionIdle();
-  if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未删除视频库素材。");
 }
 async function clearVideoLibraries(input: unknown) { await membership.assertAllowed(); assertCleanupIdle(); return douyinUpload.clearVideoLibraries(input); }
 

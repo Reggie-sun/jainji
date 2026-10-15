@@ -630,6 +630,47 @@ describe("Qianchuan upload service", () => {
     await expect(f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "9999" }] })).rejects.toThrow("已变化");
     expect(clear).toHaveBeenCalledTimes(2);
   });
+  it("allows cloud library cleanup through the actual IPC while unrelated local exports remain queued", async () => {
+    const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
+    const before = f.store.tasks();
+    const clear = vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async (target, guard) => {
+      await guard();
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 20, message: "empty" };
+    });
+    const { default: ts } = await import("typescript"), { runInNewContext } = await import("node:vm"), { z } = await import("zod");
+    const source = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+    const tree = ts.createSourceFile("index.ts", source, ts.ScriptTarget.Latest, true);
+    const names = ["assertAutomationIdle", "assertProductionIdle", "assertCleanupIdle", "clearVideoLibraries", "registerHandlers"];
+    const declarations = tree.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name?.text ?? ""));
+    expect(declarations).toHaveLength(names.length);
+    const handlers = new Map<string, (event: unknown, input: unknown) => Promise<unknown>>();
+    const statuses = new Map([["unrelated-project-export", "running"], ["historical-pending-export", "queued"]]);
+    const membership = { assertAllowed: vi.fn(async () => {}) };
+    const production = { assertIdle: vi.fn() }, review = { assertIdle: vi.fn() };
+    const context = {
+      ipcMain: { handle: (name: string, handler: (event: unknown, input: unknown) => Promise<unknown>) => handlers.set(name, handler) },
+      z, uuidSchema: z.string().uuid(), UploadIdSchema: z.string(), registerBugFeedbackHandlers() {}, registerDecorationAssetHandlers() {}, assertTrustedSender() {},
+      mainWindow: {}, stickerAssets: {}, uploadedStickers: {}, uploadedFrames: {}, membership,
+      automation: { busy: false }, agent: production, batchRuntime: { controller: production }, coverReview: review,
+      quitting: false, douyinUpload: f.service, queue: { taskStatuses: () => statuses },
+    };
+    runInNewContext(ts.transpileModule(declarations.map(node => node.getText(tree)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText + "\nregisterHandlers();", context);
+    const input = { confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }] };
+    const invoke = () => handlers.get("douyinUpload.clearVideoLibraries")!({}, input);
+    expect(await invoke()).toEqual([expect.objectContaining({ state: "CLEARED", advertiserId: "1003", deletedCount: 20 })]);
+    expect(clear).toHaveBeenCalledTimes(1); expect(f.store.tasks()).toEqual(before);
+    expect([...statuses.values()]).toEqual(["running", "queued"]);
+    await expect(handlers.get("douyinUpload.clearVideoLibraries")!({}, { ...input, accounts: [{ product: "眼贴", expectedAdvertiserId: "9999" }] })).rejects.toThrow("已变化");
+    membership.assertAllowed.mockRejectedValueOnce(new Error("membership denied"));
+    await expect(invoke()).rejects.toThrow("membership denied");
+    context.quitting = true; await expect(invoke()).rejects.toThrow("应用正在退出"); context.quitting = false;
+    context.automation.busy = true; await expect(invoke()).rejects.toThrow("定时任务正在执行"); context.automation.busy = false;
+    production.assertIdle.mockImplementationOnce(() => { throw new Error("production busy"); });
+    await expect(invoke()).rejects.toThrow("production busy");
+    review.assertIdle.mockImplementationOnce(() => { throw new Error("review busy"); });
+    await expect(invoke()).rejects.toThrow("review busy");
+    expect(clear).toHaveBeenCalledTimes(1);
+  });
   it("clears independent accounts concurrently while retaining the shared operation until all finish", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     let release!: () => void, entered!: () => void, count = 0;

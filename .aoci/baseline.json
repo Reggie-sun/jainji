@@ -1503,9 +1503,9 @@
       "normalized_sha256": "a8b2ff8f8021cfe29e74164ac67e44310fdc0de38402b7ae3eadba0750024ccc"
     },
     "src/main/index.ts": {
-      "sha256": "b9e09ee24f50469bcc20006784c9f683993780a25ce03bd280b2ddeb176c26da",
-      "size": 67232,
-      "normalized_sha256": "b9e09ee24f50469bcc20006784c9f683993780a25ce03bd280b2ddeb176c26da"
+      "sha256": "cb3b0f7171ac84fda8b8707c37cde8adc733558967e45d3db1315cc80a6cd780",
+      "size": 67035,
+      "normalized_sha256": "cb3b0f7171ac84fda8b8707c37cde8adc733558967e45d3db1315cc80a6cd780"
     },
     "src/main/local-cdp-transport.ts": {
       "sha256": "fb23cfcad8d845112bca0b41434b6e619d63ab19d3263ae8bd95e83b64d8619f",
