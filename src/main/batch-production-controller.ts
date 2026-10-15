@@ -34,7 +34,7 @@ interface Dependencies {
   uploadBinding?(recentProjectId: string, projectId: string): Promise<TemplateAccountBinding | undefined>;
   uploadStatus?(projectId: string, taskIds: string[]): BatchProductionDetail["upload"];
   cancelUploads?(projectId: string, taskIds: string[]): Promise<void>;
-  resumeUpload?(uploadTaskId: string): Promise<void>;
+  resumeUpload?(uploadTaskId: string, historicalPageBatchId?: string): Promise<void>;
   queue(projectId?: string): QueueSnapshot;
   taskStatuses(): ReadonlyMap<string, ExportTask["status"]>;
   cancelExport(taskId: string): Promise<void>;
@@ -115,7 +115,10 @@ export class BatchProductionController {
     if (this.run?.id !== request.runId || !task || task.project_id !== detail.job.projectId ||
       !detail.tasks.some(exportTask => exportTask.id === task.export_task_id)) throw new Error("上传任务不属于本批商品。");
     if (!this.dependencies.resumeUpload) throw new Error("批量上传恢复不可用。");
-    await this.dependencies.resumeUpload(task.upload_task_id);
+    if (request.historicalPageBatchId) {
+      if (!detail.upload?.recoverableBatches?.some(batch => batch.pageBatchId === request.historicalPageBatchId && batch.uploadTaskId === task.upload_task_id)) throw new Error("历史上传批次不属于本项或不可恢复。");
+      await this.dependencies.resumeUpload(task.upload_task_id, request.historicalPageBatchId);
+    } else await this.dependencies.resumeUpload(task.upload_task_id);
   }
 
   async restore(): Promise<void> {

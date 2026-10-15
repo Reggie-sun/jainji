@@ -9,6 +9,16 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## Explicit Historical Upload Resume Amendment (2026-10-15)
+
+用户选择 C，要求软件提供历史未完成批次的明确恢复入口。本修订只覆盖“历史永不继续”的显式操作限制，启动、查询、刷新与新制作仍不自动恢复历史。批量上传详情可列出完整登记、全部 `NOT_SELECTED` 且无 fence、别名、终止、取消、处置或 closure 的历史批次；用户点击“恢复本批上传”提交原 run/job/task 和精确 pageBatchId。
+
+主进程重读原 tasks/intents，核对完整成员、同一项目/授权/配置和快照；原账号配置 digest、连接、固定出口、网页子账户及冻结计划必须保持一致。有当前待执行工作或控制 generation 变化时拒绝。核验失败不改变账本或运行内资格。核验成功只授本批运行内资格，沿原九条分组、selection fence、平台接收确认与失败关闭规则执行，不改写冻结目标、不启动替代浏览器、不恢复其他旧批次。任何已选或未知成员的历史批次继续保持只读，不通过该入口重传。
+
+Parent Self-Review：复用原 service/store/队列与可信 IPC；新 helper 只判定恢复资格及原连接绑定。历史读请求没有执行能力，配置漂移明确拒绝。实现与验证见 [Historical Resume Plan](superpowers/plans/2026-10-15-historical-upload-resume.md)。
+
+用户后续要求修复后真实上传。原 `current-browser` 浏览器重启仅调试端口改变时，明确恢复请求可在原 canonical profile、账号、计划、配置 digest 与出口均通过核验后，复用原 store 整批原子迁移及私有归档：保留旧授权和 tasks/intents，建立仅端口与 pageBatchId 不同的新授权，快照、任务身份、历史计数和 selection 来源保持原样。已选、未知及不完整批次不能更新连接；非 `current-browser` 分支仍要求旧端口。当前已授权但尚在制作的 intents 也阻断历史抢占。隧道出口查询与浏览器查询统一使用既有 AWS 服务，保留 SOCKS、TLS、精确冻结 IP 和失败关闭，无直连回退。
+
 ## Remote Browser Window Budget Amendment (2026-10-14)
 
 用户要求修复 VPS 投放管理的明显卡顿。保持远程桌面分辨率和 noVNC 画质，由既有 browser manager 的内部启动参数区分本机与 VPS：本机默认最大化；VPS 新启动的 Chrome 默认普通窗口 1920×1080。仅改变冷启动窗口参数，复用原 profile、profile-directory、window class、动态 loopback CDP 和出口核验；不调整已运行窗口、不自动重启或刷新页面，不改变账号串行持有及安全关闭规则。

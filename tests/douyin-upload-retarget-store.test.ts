@@ -52,6 +52,38 @@ function newAuthorization(old: UploadAuthorization): UploadAuthorization {
 }
 
 describe("explicit Qianchuan batch retargeting", () => {
+  it("durably renews only the connection of a complete untouched batch, preserving task IDs and counters", async () => {
+    const f = await fixture(makeBatch(authorization(), [{ retry_count: 2, attempt_count: 3 }, { attempt_count: 1 }]));
+    const before = f.store.tasks(), old = before[0]!.authorization;
+    const next = { ...old, pageBatchId: crypto.randomUUID(), target: { ...old.target, cdpEndpoint: "http://127.0.0.1:9333" } };
+    const moved = await f.store.reconnectBatch(before[0]!.result.upload_task_id, next);
+    expect(moved.map(task => task.result.upload_task_id)).toEqual(before.map(task => task.result.upload_task_id));
+    expect(moved.map(task => [task.result.retry_count, task.result.attempt_count])).toEqual([[2, 3], [0, 1]]);
+    expect(moved.map(task => task.inputDigest)).toEqual(before.map(task => frozenInputDigest(task.input, next)));
+    const archive = JSON.parse(await readFile(path.join(f.root, "retarget-history", `${old.pageBatchId}.json`), "utf8"));
+    expect(archive).toMatchObject({ action: "reconnect", tasks: before, newAuthorization: next });
+    const reopened = new DouyinUploadStore(f.root); await reopened.load(); expect(reopened.tasks()).toEqual(moved);
+  });
+
+  it.each(["adId", "advertiserId", "configDigest", "product", "egress"])("refuses connection renewal that also changes %s", async field => {
+    const f = await fixture(), before = f.store.tasks(), old = before[0]!.authorization;
+    const changes = { adId: "701", advertiserId: "999", configDigest: "b".repeat(64), product: "蝴蝶贴", egress: { group: "other", sshHost: "other", localPort: 12345, expectedIp: "203.0.113.10" } };
+    const next = { ...old, pageBatchId: crypto.randomUUID(), target: { ...old.target, cdpEndpoint: "http://127.0.0.1:9333", [field]: changes[field as keyof typeof changes] } };
+    await expect(f.store.reconnectBatch(before[0]!.result.upload_task_id, next)).rejects.toThrow();
+    expect(f.store.tasks()).toEqual(before); expect(await readdir(f.root)).not.toContain("retarget-history");
+  });
+
+  it("refuses partial or selected connection renewal without altering original records or fences", async () => {
+    const batch = makeBatch(), partial = await fixture(batch.slice(0, 1)), full = await fixture(makeBatch(authorization(), [{ attempt_count: 1 }]));
+    for (const f of [partial, full]) {
+      const task = f.store.tasks()[0]!, old = task.authorization;
+      if (f === full) await f.store.markSelecting(task.result.upload_task_id, { pageBatchId: old.pageBatchId, targetId: "original-tab", modalSessionId: crypto.randomUUID() }, 1);
+      const before = f.store.tasks(), fence = f.store.fence(task.result.upload_task_id);
+      await expect(f.store.reconnectBatch(task.result.upload_task_id, { ...old, pageBatchId: crypto.randomUUID(), target: { ...old.target, cdpEndpoint: "http://127.0.0.1:9333" } })).rejects.toThrow();
+      expect(f.store.tasks()).toEqual(before); expect(f.store.fence(task.result.upload_task_id)).toEqual(fence);
+    }
+  });
+
   it("moves a complete untouched batch atomically, keeps snapshots and counters, and retains exact original history across reload", async () => {
     const batch = makeBatch(authorization(), [
       { retry_count: 2, attempt_count: 3, state: "FAILED_RETRYABLE", retryable: true },

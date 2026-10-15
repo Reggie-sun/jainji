@@ -314,20 +314,32 @@ export class DouyinUploadStore {
     });
   }
   retargetBatch(id: string, authorization: UploadAuthorization, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
+    return this.moveUnselectedBatch(id, authorization, false, beforeCommit);
+  }
+  /** Explicit recovery only: preserve the frozen target except its verified browser endpoint. */
+  reconnectBatch(id: string, authorization: UploadAuthorization, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
+    return this.moveUnselectedBatch(id, authorization, true, beforeCommit);
+  }
+  private moveUnselectedBatch(id: string, authorization: UploadAuthorization, reconnect: boolean, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
     return this.serial(async () => {
       this.assertReady();
       const nextAuthorization = UploadAuthorizationSchema.parse(authorization), selected = this.data.tasks.find(task => task.result.upload_task_id === id);
       if (!selected) throw uploadFailure("INPUT_CONFLICT", "account", "找不到待改传任务。", "刷新上传记录后重新选择整批任务。", true);
       this.assertOpen(selected.authorization.pageBatchId);
+      this.assertOpen(nextAuthorization.pageBatchId);
       const oldAuthorization = selected.authorization, oldBatchId = oldAuthorization.pageBatchId;
       const batchTasks = this.data.tasks.filter(task => task.authorization.pageBatchId === oldBatchId);
       const batchIntents = this.data.intents.filter(intent => intent.authorization.pageBatchId === oldBatchId);
       const identities = new Set(batchTasks.map(task => intentKey(task.input)));
-      const rejected = () => uploadFailure("INPUT_CONFLICT", "account", "本批任务不满足改传当前计划的条件。", "仅可整批改传同账号、同产品、同 CDP 的未选文件任务；含围栏、别名或目标冲突时需人工核查。", true);
+      const rejected = () => uploadFailure("INPUT_CONFLICT", "account", reconnect ? "本批任务不满足恢复原账号连接的条件。" : "本批任务不满足改传当前计划的条件。", "仅完整未选文件批次可明确更新授权；含围栏、别名或目标冲突时需人工核查。", true);
+      const validTarget = reconnect
+        ? nextAuthorization.target.cdpEndpoint !== oldAuthorization.target.cdpEndpoint &&
+          JSON.stringify({ ...nextAuthorization.target, cdpEndpoint: oldAuthorization.target.cdpEndpoint }) === JSON.stringify(oldAuthorization.target)
+        : nextAuthorization.target.cdpEndpoint === oldAuthorization.target.cdpEndpoint && nextAuthorization.target.adId !== oldAuthorization.target.adId;
 
       if (nextAuthorization.expectedCount !== oldAuthorization.expectedCount || nextAuthorization.pageBatchId === oldBatchId ||
         nextAuthorization.target.product !== oldAuthorization.target.product || nextAuthorization.target.advertiserId !== oldAuthorization.target.advertiserId ||
-        nextAuthorization.target.cdpEndpoint !== oldAuthorization.target.cdpEndpoint || nextAuthorization.target.adId === oldAuthorization.target.adId ||
+        !validTarget ||
         this.data.tasks.some(task => task.authorization.pageBatchId === nextAuthorization.pageBatchId) ||
         this.data.intents.some(intent => intent.authorization.pageBatchId === nextAuthorization.pageBatchId) ||
         batchTasks.length !== oldAuthorization.expectedCount || batchIntents.length !== oldAuthorization.expectedCount ||
@@ -354,10 +366,12 @@ export class DouyinUploadStore {
         newTargetBytes.add(targetBytes);
         movedById.set(task.result.upload_task_id, moved);
       }
-      const movedIntents = batchIntents.map(intent => ({ ...intent, authorization: nextAuthorization, selection: intent.selection.plan ? {
+      const movedIntents = batchIntents.map(intent => ({ ...intent, authorization: nextAuthorization, selection: !reconnect && intent.selection.plan ? {
         ...intent.selection, plan: { advertiserId: nextAuthorization.target.advertiserId, adId: nextAuthorization.target.adId, name: `计划 ${nextAuthorization.target.adId}` },
       } : intent.selection }));
-      const archive = { version: 1 as const, intents: batchIntents, tasks: batchTasks, newAuthorization: nextAuthorization };
+      // A rejected reconnect must not leave a random, uncommitted proposal that poisons the next explicit request.
+      if (reconnect) await beforeCommit?.();
+      const archive = { version: 1 as const, ...(reconnect ? { action: "reconnect" } : {}), intents: batchIntents, tasks: batchTasks, newAuthorization: nextAuthorization };
       const archivePath = path.join(this.retargetHistoryDirectory, `${oldBatchId}.json`), archiveBytes = Buffer.from(`${JSON.stringify(archive, null, 2)}\n`);
       try {
         await secureUploadDirectory(this.retargetHistoryDirectory);
@@ -374,7 +388,7 @@ export class DouyinUploadStore {
         this.blocked = true;
         throw uploadFailure("STORE_UNAVAILABLE", "store", "整批改传历史无法可靠保存，上传记录已停用。", "保留原上传记录和全部文件选择屏障；检查本机存储。", true);
       }
-      await beforeCommit?.();
+      if (!reconnect) await beforeCommit?.();
       const next: State = {
         ...this.data,
         intents: this.data.intents.map(intent => movedIntents.find(value => intentKey(value) === intentKey(intent)) ?? intent),

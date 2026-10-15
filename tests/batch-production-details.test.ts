@@ -13,6 +13,13 @@ const render = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMar
 const renderUploads = (patch: Partial<BatchProductionDetail> = {}) => renderToStaticMarkup(createElement(BatchUploadList, { detail: makeDetail(patch) }));
 
 describe("batch works presentation", () => {
+  it("shows explicit recovery with original targets only for a main-process qualified historical batch", () => {
+    const detail = makeDetail({ upload: { message: "历史任务", historical: true, tasks: [], recoverableBatches: [{ uploadTaskId: "id", pageBatchId: "batch", advertiserId: "7000", adId: "9001", count: 30 }] } });
+    const html = renderToStaticMarkup(createElement(BatchUploadList, { detail, onResumeUpload: () => undefined }));
+    expect(html).toContain("恢复本批上传"); expect(html).toContain("恢复 30 条未上传成片");
+    expect(html).toContain("原账户 7000 / 原计划 9001");
+    expect(renderToStaticMarkup(createElement(BatchUploadList, { detail: makeDetail({ upload: { message: "历史任务", historical: true, tasks: [] } }), onResumeUpload: () => undefined }))).not.toContain("恢复本批上传");
+  });
   it("shares live row counts across works and upload details while keeping active tasks protected", () => {
     const job = { ...makeDetail().job, accountProduct: "蝴蝶贴" as const, requestedCount: 4, actualCount: 4 };
     const tasks = [

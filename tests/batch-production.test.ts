@@ -173,6 +173,21 @@ describe("cross-template batch admission", () => {
     await expect(f.controller.resumeUpload({ runId: run.id, jobId: job.id, uploadTaskId: id })).rejects.toThrow("不属于");
     expect(f.dependencies.resumeUpload).toHaveBeenCalledTimes(1);
   });
+  it("requires the captured historical batch identity for explicit recovery", async () => {
+    const f = await fixture({ allComplete: true });
+    const run = await f.controller.start({ entries: f.entries });
+    await waitFor(() => expect(f.controller.busy).toBe(false));
+    const job = f.controller.snapshot()!.jobs[0], id = "a".repeat(64), pageBatchId = crypto.randomUUID();
+    const task = { upload_task_id: id, project_id: job.projectId, export_task_id: job.taskIds[0] };
+    f.dependencies.uploadStatus.mockReturnValue({ historical: true, tasks: [task], recoverableBatches: [{ uploadTaskId: id, pageBatchId }] } as BatchProductionDetail["upload"]);
+    const input = { runId: run.id, jobId: job.id, uploadTaskId: id, historicalPageBatchId: pageBatchId };
+    await f.controller.resumeUpload(input);
+    expect(f.dependencies.resumeUpload).toHaveBeenCalledWith(id, pageBatchId);
+    await expect(f.controller.resumeUpload({ ...input, historicalPageBatchId: crypto.randomUUID() })).rejects.toThrow("不可恢复");
+    f.dependencies.uploadStatus.mockReturnValue({ message: "历史任务", historical: true, tasks: [task], recoverableBatches: [] } as unknown as BatchProductionDetail["upload"]);
+    await expect(f.controller.resumeUpload(input)).rejects.toThrow("不可恢复");
+    expect(f.dependencies.resumeUpload).toHaveBeenCalledTimes(1);
+  });
   it("freezes shared explicit bindings for differently named templates before next-batch edits", async () => {
     const f = await fixture({ allComplete: true });
     f.projects[0].name = "新眼贴模板"; f.projects[1].name = "眼贴2";
@@ -803,7 +818,7 @@ describe("batch automatic plan preparation", () => {
     browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] });
   }, 30000);
   afterAll(async () => { await browser?.close(); });
-  it("executes batch recovery from the rendered details and preserves errors across polling", async () => {
+  it.each([false, true])("executes explicit batch recovery and preserves errors across polling (historical=%s)", async historical => {
     const page = await browser.newPage();
     try {
       await page.setContent('<div id="root"></div>');
@@ -812,16 +827,16 @@ describe("batch automatic plan preparation", () => {
         import {BatchUploadDetails} from "./src/renderer/BatchUploadDetails";
         window.calls=[];
         window.jianji={batchProductionDetails:async()=>({runId:"run",job:{id:"job",name:"蝴蝶贴",accountProduct:"蝴蝶贴",requestedCount:1,actualCount:1},tasks:[],items:[],
-          upload:{tasks:[{upload_task_id:"unknown",file_name:"unknown.mp4",state:"NEEDS_HUMAN",upload_outcome:"MAY_HAVE_UPLOADED"}]}}),
+          upload:{historical:${historical},recoverableBatches:${historical ? '[{uploadTaskId:"unknown",pageBatchId:"original-batch",advertiserId:"7000",adId:"9001",count:30}]' : '[]'},tasks:[{upload_task_id:"unknown",file_name:"unknown.mp4",state:"NEEDS_HUMAN",upload_outcome:"${historical ? 'NOT_SELECTED' : 'MAY_HAVE_UPLOADED'}"}]}}),
           resumeBatchUpload:async input=>{window.calls.push(input);throw new Error("原页面无法确认，未重传");}};
         createRoot(document.getElementById("root")).render(<BatchUploadDetails request={{runId:"run",jobId:"job",name:"蝴蝶贴"}} active={true}/>);
       `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic", loader: { ".css": "empty" } }).outputFiles[0]!.text;
       await page.addScriptTag({ content: script });
-      await page.getByRole("button", { name: "核查原上传页", exact: true }).click();
+      await page.getByRole("button", { name: historical ? "恢复本批上传" : "核查原上传页", exact: true }).click();
       await page.getByText("原页面无法确认，未重传", { exact: true }).waitFor();
       await page.waitForTimeout(1200);
       expect(await page.getByText("原页面无法确认，未重传", { exact: true }).isVisible()).toBe(true);
-      expect(await page.evaluate(() => (window as unknown as { calls: unknown[] }).calls)).toEqual([{ runId: "run", jobId: "job", uploadTaskId: "unknown" }]);
+      expect(await page.evaluate(() => (window as unknown as { calls: unknown[] }).calls)).toEqual([{ runId: "run", jobId: "job", uploadTaskId: "unknown", ...(historical ? { historicalPageBatchId: "original-batch" } : {}) }]);
     } finally { await page.close(); }
   });
   async function panel(subaccounts = false): Promise<Page> {

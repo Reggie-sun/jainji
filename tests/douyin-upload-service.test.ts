@@ -1938,10 +1938,15 @@ describe("Qianchuan upload service", () => {
     expect(reopenedStore.task(oldRecord!.result.upload_task_id)?.result.state).toBe("WAITING_FOR_CONFIRMATION");
   });
 
-  async function currentBrowserUpload() {
+  async function currentBrowserUpload(remote = false, count = 2) {
     const f = await fixture();
-    const live = { advertiserId: "7000", failures: [] as Error[], reads: 0 };
-    const accounts = new QianchuanAccountSettings(f.store.root, async () => "http://127.0.0.1:11000", async () => "http://127.0.0.1:11000", async () => {
+    if (remote) {
+      const document = accountDocument();
+      Object.assign(document.accounts.find(account => account.product === "眼贴")!, { advertiserId: "7000", egress: { mode: "remote-browser", group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } });
+      await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    }
+    const live = { advertiserId: "7000", endpoint: "http://127.0.0.1:11000", failures: [] as Error[], reads: 0 };
+    const accounts = new QianchuanAccountSettings(f.store.root, async () => live.endpoint, async () => live.endpoint, async () => {
       live.reads++;
       const failure = live.failures.shift(); if (failure) throw failure;
       return { advertiserId: live.advertiserId, name: "Fixture child account" };
@@ -1950,16 +1955,215 @@ describe("Qianchuan upload service", () => {
       accounts, loadBatch: async id => structuredClone(f.states.get(id)!), browser: () => f.port, readiness: () => undefined,
       readPlans: async target => [{ advertiserId: target.advertiserId, adId: "9001", name: "Fixture frozen plan" }],
     });
+    fixtureServices.add(service);
+    if (remote) vi.spyOn(accounts, "controlBrowser").mockImplementation(async (_input, guard) => { guard((await accounts.configuredAccount("眼贴")).advertiserId); });
     await service.chooseConfig(f.configPath); await service.configure({ enabled: true }); await service.beginProduction();
-    const batch = await f.createBatch(["current browser first", "current browser second"]);
+    const batch = await f.createBatch(Array.from({ length: count }, (_, index) => `current browser ${index}`));
     const selected: QianchuanUploadSelection = { enabled: true, accountProduct: batch.product,
       plan: { advertiserId: "7000", adId: "9001", name: "Fixture frozen plan", accountSource: "current-browser" } };
-    const authorization = (await service.preflight(selected, 2))!;
+    const authorization = (await service.preflight(selected, count))!;
     await service.registerBatches([batch.batchIdentity], selected, authorization);
     for (const identity of batch.identities) await service.enqueueFinalArtifact(identity);
     live.reads = 0;
     return { ...f, service, live, batch, authorization };
   }
+
+  it("explicitly restores only the complete unselected historical batch under its frozen browser target", async () => {
+    const f = await currentBrowserUpload();
+    const original = f.store.tasks();
+    await f.service.beginProduction();
+    expect(f.service.capturedStatus(f.batch.projectId, f.batch.tasks.map(task => task.id)).historical).toBe(true);
+    await expect(f.service.requestResume(original[0]!.result.upload_task_id)).rejects.toThrow("不属于本次制作");
+    expect(f.events).not.toContain("file-input");
+    await f.service.resume(original[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    expect(f.store.tasks().map(task => ({ outcome: task.result.upload_outcome, failure: task.result.failure }))).toEqual(original.map(() => ({ outcome: "ACCEPTED", failure: undefined })));
+    expect(f.store.tasks().map(task => task.authorization)).toEqual(original.map(task => task.authorization));
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+  });
+
+  it("rejects historical account drift without restoring authority or changing records", async () => {
+    const f = await currentBrowserUpload(); await f.service.beginProduction();
+    const original = f.store.tasks(); f.live.advertiserId = "7001";
+    await expect(f.service.resume(original[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId)).rejects.toThrow();
+    expect(f.store.tasks()).toEqual(original);
+    await expect(f.service.requestResume(original[0]!.result.upload_task_id)).rejects.toThrow("不属于本次制作");
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("holds the original remote browser before the first of thirty immediately READY historical uploads", async () => {
+    const f = await currentBrowserUpload(true, 30); await f.service.beginProduction();
+    f.port.closeAcceptedAutomationPage = async () => {};
+    const groups: number[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { groups.push(tasks.length); await upload(tasks, signal); };
+    await f.service.resume(f.store.tasks()[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    expect(groups).toEqual([9, 9, 9, 3]);
+    expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
+  });
+
+  it.each([false, true])("rejects configuration digest drift for historical config selection (plan=%s)", async plan => {
+    const f = await fixture();
+    const service = new DouyinUploadService(f.store, { accounts: f.accounts, loadBatch: async id => f.states.get(id)!, browser: () => f.port, readiness: () => undefined,
+      readPlans: async target => [{ advertiserId: target.advertiserId, adId: target.adId, name: "Frozen plan" }] });
+    fixtureServices.add(service); await service.chooseConfig(f.configPath); await service.configure({ enabled: true }); await service.beginProduction();
+    const batch = await f.createBatch(["frozen config bytes"]);
+    const target = await f.accounts.preflight(batch.product);
+    const selected = { ...selection(batch.product), ...(plan ? { plan: { advertiserId: target.advertiserId, adId: target.adId, name: "Frozen plan" } } : {}) };
+    const authorization = (await service.preflight(selected, 1))!; await service.registerBatches([batch.batchIdentity], selected, authorization);
+    const record = (await service.enqueueFinalArtifact(batch.identities[0]!))!;
+    await service.beginProduction(); const before = f.store.tasks();
+    await writeFile(f.configPath, `${await readFile(f.configPath, "utf8")}\n`, { mode: 0o600 });
+    await expect(service.resume(record.result.upload_task_id, undefined, authorization.pageBatchId)).rejects.toThrow("配置已变化");
+    expect(f.store.tasks()).toEqual(before); expect(f.events).not.toContain("file-input");
+    await expect(service.requestResume(record.result.upload_task_id)).rejects.toThrow("不属于本次制作");
+  });
+
+  it("refuses history while a current authorized export is still preparing and uploads it when committed", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const old = await f.createBatch(["old historical bytes"]), authorization = await f.register(old);
+    const record = (await f.service.enqueueFinalArtifact(old.identities[0]!))!;
+    await f.service.beginProduction();
+    const current = await f.createBatch(["current preparing bytes"]); await f.register(current);
+    await expect(f.service.requestResume(record.result.upload_task_id, authorization.pageBatchId)).rejects.toThrow("当前任务结束");
+    await f.service.committed(current.identities[0]!);
+    await vi.waitFor(() => expect(f.store.tasks().find(task => task.input.project_id === current.projectId)?.result.upload_outcome).toBe("ACCEPTED"));
+    expect(f.store.task(record.result.upload_task_id)?.result.upload_outcome).toBe("NOT_SELECTED");
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+  });
+
+  it("rediscovers the original historical endpoint instead of trusting the saved startup port hint", async () => {
+    const f = await currentBrowserUpload(); await f.service.beginProduction();
+    const freeze = vi.spyOn(QianchuanAccountSettings.prototype, "freeze");
+    freeze.mockResolvedValueOnce({ ...f.authorization.target, advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:9222" });
+    await f.service.resume(f.store.tasks()[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
+    expect(f.store.tasks().every(task => task.authorization.target.cdpEndpoint === f.authorization.target.cdpEndpoint)).toBe(true);
+  });
+
+  it("archives and renews only the endpoint of a completely untouched original-browser batch", async () => {
+    const f = await currentBrowserUpload(); await f.service.beginProduction();
+    const before = f.store.tasks(), intents = f.store.intents(); f.live.endpoint = "http://127.0.0.1:12000";
+    await f.service.resume(before[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    const tasks = f.store.tasks(), renewed = tasks[0]!.authorization;
+    expect(renewed.pageBatchId).not.toBe(f.authorization.pageBatchId);
+    expect(renewed.target).toEqual({ ...f.authorization.target, cdpEndpoint: f.live.endpoint });
+    expect(tasks.map(task => task.result.upload_task_id)).toEqual(before.map(task => task.result.upload_task_id));
+    expect(tasks.every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
+    expect(f.store.intents().map(intent => intent.selection)).toEqual(intents.map(intent => intent.selection));
+    expect(JSON.parse(await readFile(path.join(f.store.root, "retarget-history", `${f.authorization.pageBatchId}.json`), "utf8"))).toEqual({ version: 1, action: "reconnect", intents, tasks: before, newAuthorization: renewed });
+    const reopened = new DouyinUploadStore(f.store.root); await reopened.load(); expect(reopened.tasks()).toEqual(tasks);
+    await f.service.beginProduction(); await f.service.runPending();
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+  });
+
+  it("retries an explicit historical recovery after its final connection check fails without poisoning the store", async () => {
+    const f = await currentBrowserUpload(); await f.service.beginProduction();
+    const before = f.store.tasks(); f.live.endpoint = "http://127.0.0.1:12000";
+    let checks = 0;
+    vi.spyOn(QianchuanAccountSettings.prototype, "assertCurrentUploadTarget").mockImplementation(async () => {
+      if (++checks === 2) throw new Error("Fixture final connection check failed");
+    });
+    await expect(f.service.resume(before[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId)).rejects.toThrow("final connection check failed");
+    expect(f.store.tasks()).toEqual(before); expect(f.store.unavailable).toBe(false); expect(f.events).not.toContain("file-input");
+    await f.service.resume(before[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    expect(f.store.unavailable).toBe(false); expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(JSON.parse(await readFile(path.join(f.store.root, "retarget-history", `${f.authorization.pageBatchId}.json`), "utf8"))).toMatchObject({ action: "reconnect", tasks: before, newAuthorization: f.store.tasks()[0]!.authorization });
+  });
+
+  it("does not strand current eligible uploads when a historical request is refused", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const old = await f.createBatch(["old history"]), authorization = await f.register(old);
+    const task = (await f.service.enqueueFinalArtifact(old.identities[0]!))!;
+    await f.service.beginProduction();
+    const current = await f.createBatch(["current work"]); await f.register(current);
+    await f.service.enqueueFinalArtifact(current.identities[0]!);
+    await expect(f.service.resume(task.result.upload_task_id, undefined, authorization.pageBatchId)).rejects.toThrow("待执行");
+    await vi.waitFor(() => expect(f.store.tasks().find(task => task.input.project_id === current.projectId)?.result.upload_outcome).toBe("ACCEPTED"));
+    expect(f.store.task(task.result.upload_task_id)?.result.upload_outcome).toBe("NOT_SELECTED");
+  });
+
+  it("finishes a restored historical batch after a second explicit unselected continuation", async () => {
+    const f = await currentBrowserUpload(); await f.service.beginProduction();
+    const task = f.store.tasks()[0]!, connect = f.port.connect;
+    f.port.connect = async () => { throw uploadFailure("ACCOUNT_UNCONFIRMED", "account", "Fixture egress rejected", "Check egress", true); };
+    await f.service.resume(task.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    expect(f.store.tasks().every(task => task.result.upload_outcome === "NOT_SELECTED")).toBe(true);
+    f.port.connect = connect;
+    await f.service.resume(task.result.upload_task_id);
+    expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+  });
+
+  it("rejects a mismatched historical batch id and damaged snapshot before browser actions", async () => {
+    const f = await currentBrowserUpload(); await f.service.beginProduction();
+    const task = f.store.tasks()[0]!;
+    await expect(f.service.resume(task.result.upload_task_id, undefined, randomUUID())).rejects.toThrow();
+    await chmod(task.snapshotPath, 0o600); await writeFile(task.snapshotPath, "changed"); await chmod(task.snapshotPath, 0o400);
+    await expect(f.service.resume(task.result.upload_task_id, undefined, f.authorization.pageBatchId)).rejects.toThrow();
+    expect(f.service.capturedStatus(f.batch.projectId, f.batch.tasks.map(task => task.id)).historical).toBe(true);
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("restores thirty untouched files after human-required account failure, retaining nine-file groups and unrelated history", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const unrelated = await f.createBatch(["unrelated old bytes"]); await f.register(unrelated);
+    await f.service.enqueueFinalArtifact(unrelated.identities[0]!);
+    await f.service.beginProduction();
+    const batch = await f.createBatch(Array.from({ length: 30 }, (_, index) => `historical ${index}`));
+    const authorization = await f.register(batch);
+    for (const identity of batch.identities) await f.service.enqueueFinalArtifact(identity);
+    const records = f.store.tasks().filter(task => task.authorization.pageBatchId === authorization.pageBatchId);
+    for (const task of records.slice(0, 9)) {
+      task.result = { ...task.result, state: "NEEDS_HUMAN", failure: uploadFailure("ACCOUNT_UNCONFIRMED", "account", "Fixture egress unavailable", "Check egress", true).failure };
+      await f.store.saveTask(task);
+    }
+    await f.service.beginProduction();
+    const before = f.store.tasks().find(task => task.input.project_id === unrelated.projectId);
+    const groups: number[] = [], upload = f.port.upload;
+    f.port.upload = async (tasks, signal) => { groups.push(tasks.length); await upload(tasks, signal); };
+    await f.service.resume(records[0]!.result.upload_task_id, undefined, authorization.pageBatchId);
+    expect(groups).toEqual([9, 9, 9, 3]);
+    expect(f.store.tasks().filter(task => task.input.project_id === batch.projectId).every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
+    expect(f.store.tasks().find(task => task.input.project_id === unrelated.projectId)).toEqual(before);
+    expect(f.service.capturedStatus(unrelated.projectId, unrelated.tasks.map(task => task.id)).historical).toBe(true);
+  });
+
+  it("keeps historical batches with any selection fence read-only", async () => {
+    const f = await currentBrowserUpload(); await f.service.runPending();
+    const records = f.store.tasks(), fences = records.map(task => f.store.fence(task.result.upload_task_id));
+    await f.service.beginProduction(); const events = [...f.events];
+    expect(f.service.capturedStatus(f.batch.projectId, f.batch.tasks.map(task => task.id)).recoverableBatches).toEqual([]);
+    await expect(f.service.resume(records[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId)).rejects.toThrow();
+    expect(f.store.tasks()).toEqual(records); expect(f.events).toEqual(events);
+    expect(records.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
+  });
+
+  it("does not admit a partial historical batch or interrupt current eligible uploads", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["first", "second"]), authorization = await f.register(batch);
+    const first = (await f.service.enqueueFinalArtifact(batch.identities[0]!))!;
+    await f.service.beginProduction();
+    await expect(f.service.resume(first.result.upload_task_id, undefined, authorization.pageBatchId)).rejects.toThrow("完整");
+    const current = await f.createBatch(["current pending"]); await f.register(current);
+    await f.service.enqueueFinalArtifact(current.identities[0]!);
+    await expect(f.service.resume(first.result.upload_task_id, undefined, authorization.pageBatchId)).rejects.toThrow("待执行");
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("revokes an in-flight historical recovery when stop changes the control generation", async () => {
+    const f = await currentBrowserUpload(); await f.service.beginProduction();
+    const records = f.store.tasks();
+    let entered!: () => void, release!: () => void;
+    const waiting = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(QianchuanAccountSettings.prototype, "assertCurrentUploadTarget").mockImplementation(async () => { entered(); await held; });
+    const recovery = f.service.resume(records[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    const rejected = expect(recovery).rejects.toThrow("控制已变化");
+    await waiting; const stopped = f.service.stop(); release(); await stopped; await rejected;
+    expect(f.store.tasks()).toEqual(records);
+    expect(f.service.capturedStatus(f.batch.projectId, f.batch.tasks.map(task => task.id)).historical).toBe(true);
+    expect(f.events).not.toContain("file-input");
+  });
 
   it("recovers transient current-account checks without changing the frozen target or selecting twice", async () => {
     const f = await currentBrowserUpload();

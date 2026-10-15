@@ -88,7 +88,7 @@ export type BatchProductionRun = z.infer<typeof BatchProductionRunSchema>;
 
 export const BatchProductionDetailRequestSchema = z.object({ runId: z.string().uuid(), jobId: z.string().uuid() }).strict();
 export type BatchProductionDetailRequest = z.infer<typeof BatchProductionDetailRequestSchema>;
-export const BatchUploadResumeSchema = BatchProductionDetailRequestSchema.extend({ uploadTaskId: z.string().regex(/^[a-f0-9]{64}$/) });
+export const BatchUploadResumeSchema = BatchProductionDetailRequestSchema.extend({ uploadTaskId: z.string().regex(/^[a-f0-9]{64}$/), historicalPageBatchId: z.string().uuid().optional() });
 export type BatchUploadResume = z.infer<typeof BatchUploadResumeSchema>;
 export interface BatchProductionDetail {
   runId: string;
@@ -99,5 +99,6 @@ export interface BatchProductionDetail {
   upload?: Pick<DouyinUploadStatus, "message" | "tasks" | "closedBatches"> & {
     accounts?: DouyinUploadStatus["accounts"];
     historical?: boolean;
+    recoverableBatches?: { uploadTaskId: string; pageBatchId: string; advertiserId: string; adId: string; count: number }[];
   };
 }

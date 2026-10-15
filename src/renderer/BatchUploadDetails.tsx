@@ -12,10 +12,10 @@ export function BatchUploadDetails({ request, active }: { request: BatchUploadCo
   const { detail, error } = useBatchProductionDetails(request, active);
   const [uploadError, setUploadError] = useState("");
   const [resuming, setResuming] = useState(false);
-  const resume = async (uploadTaskId: string) => {
+  const resume = async (uploadTaskId: string, historicalPageBatchId?: string) => {
     if (resuming) return;
     setResuming(true); setUploadError("");
-    try { await window.jianji.resumeBatchUpload({ runId: request.runId, jobId: request.jobId, uploadTaskId }); }
+    try { await window.jianji.resumeBatchUpload({ runId: request.runId, jobId: request.jobId, uploadTaskId, ...(historicalPageBatchId ? { historicalPageBatchId } : {}) }); }
     catch (cause) { setUploadError(batchDetailError(cause)); }
     finally { setResuming(false); }
   };
@@ -23,11 +23,11 @@ export function BatchUploadDetails({ request, active }: { request: BatchUploadCo
     <Heading title={`${request.name} · 上传任务`}>查看本批成片的上传状态；每条记录保留制作时的账号和计划。</Heading>
     {error && <p className="notice error" role="alert">{error}</p>}
     {uploadError && <p className="notice error" role="alert">{uploadError}</p>}
-    {detail ? <BatchUploadList detail={detail} onResumeUpload={id => void resume(id)} resuming={resuming} /> : !error && <p role="status">正在读取上传任务…</p>}
+    {detail ? <BatchUploadList detail={detail} onResumeUpload={(id, batchId) => void resume(id, batchId)} resuming={resuming} /> : !error && <p role="status">正在读取上传任务…</p>}
   </>;
 }
 
-export function BatchUploadList({ detail, onResumeUpload, resuming }: { detail: BatchProductionDetail; onResumeUpload?(id: string): void; resuming?: boolean }) {
+export function BatchUploadList({ detail, onResumeUpload, resuming }: { detail: BatchProductionDetail; onResumeUpload?(id: string, historicalPageBatchId?: string): void; resuming?: boolean }) {
   const { job, upload } = detail;
   const tasks = upload?.tasks ?? [];
   const accounts = upload?.accounts ?? [];
@@ -42,6 +42,10 @@ export function BatchUploadList({ detail, onResumeUpload, resuming }: { detail: 
     <p role="status" aria-label="本项上传进度">已上传 {uploaded} / {job.actualCount || job.requestedCount} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条 · 需处理 {tasks.length - uploaded - pending - processing.length - unknown} 条 · 整批就绪后自动确认</p>
     <small>上传记录会保存，同账号同计划下不重复上传。所有入口整批就绪后自动确认，以平台接收回执为准；结果未知时停止并保留原页面。</small>
     {upload?.message && <p>{upload.message}</p>}
+    {onResumeUpload && upload?.recoverableBatches?.map(batch => <div key={batch.pageBatchId} className="result-row">
+      <div className="result-info"><strong>恢复 {batch.count} 条未上传成片</strong><p>原账户 {batch.advertiserId} / 原计划 {batch.adId} · 核验通过后继续上传并在整批就绪后自动确认</p></div>
+      <button type="button" className="button secondary" disabled={resuming || active.length > 0 || unknown > 0} onClick={() => onResumeUpload(batch.uploadTaskId, batch.pageBatchId)}>恢复本批上传</button>
+    </div>)}
     {!!unknown && <p className="notice error" role="alert">{unknown} 条上传结果未知，需核查原 Chrome 上传页面；这些文件禁止重新上传。尚未选文件的成片仍保留在队列中。</p>}
     {!job.accountProduct && <p>本项制作未选择千川上传。</p>}
     {job.accountProduct && !tasks.length && !upload?.closedBatches?.length && <p>尚无已准入的上传任务；制作完成后由原上传服务处理。若上传受阻，请核对上方状态和账号配置。</p>}

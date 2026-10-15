@@ -38,9 +38,9 @@ export function createBatchProductionRuntime(input: {
     uploadBinding: (recentProjectId, projectId) => input.upload?.templateAccount(recentProjectId, projectId) ?? Promise.resolve(undefined),
     uploadStatus: (projectId, taskIds) => input.upload?.capturedStatus(projectId, taskIds),
     cancelUploads: (projectId, taskIds) => input.upload?.cancelExports(projectId, taskIds) ?? Promise.resolve(),
-    resumeUpload: async id => {
+    resumeUpload: async (id, historicalPageBatchId) => {
       if (!input.upload) throw new Error("千川上传不可用。");
-      await input.upload.requestResume(id);
+      await input.upload.requestResume(id, historicalPageBatchId);
     },
     outputDirectory: async (project, ids, requested) => {
       if (requested) {
