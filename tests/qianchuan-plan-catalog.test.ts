@@ -269,6 +269,34 @@ it("returns an empty list only when the visible total and terminal page are both
   finally { await f.context.close(); }
 });
 
+it("reads the explicit cost-control empty state without pagination after all plans are deleted", async () => {
+  const f = await fixture();
+  try {
+    await f.page.locator("#catalog").evaluate(element => { element.innerHTML = '<table><tr class="ovui-tr"><th>计划</th></tr></table><div class="ovui-table__empty-wrapper"><div class="oc-empty" data-e2e="oc_emptyKey_uni-prom__ocTable">你还没有创建控成本投放</div></div>'; });
+    await expect(readVisibleQianchuanPlans(f.page, advertiserId, AbortSignal.timeout(2000))).resolves.toEqual([]);
+  } finally { await f.context.close(); }
+});
+
+it.each(["rows", "duplicate", "account"])("rejects a no-pagination empty state with conflicting %s evidence", async conflict => {
+  const f = await fixture();
+  try {
+    await f.page.locator("#catalog").evaluate((element, conflict) => {
+      const empty = '<div class="ovui-table__empty-wrapper"><div class="oc-empty" data-e2e="oc_emptyKey_uni-prom__ocTable">你还没有创建控成本投放</div></div>';
+      element.innerHTML = empty + (conflict === "duplicate" ? empty : conflict === "rows" ? '<table><tr class="ovui-tr"><td class="p-c-ad-name-col">仍有计划</td></tr></table>' : "");
+      if (conflict === "account") document.querySelector(".account-info-container")!.textContent = "ID：999999";
+    }, conflict);
+    await expect(readVisibleQianchuanPlans(f.page, advertiserId, AbortSignal.timeout(2000))).rejects.toThrow();
+  } finally { await f.context.close(); }
+});
+
+it.each(["hidden", "unrecognized"])("does not interpret a %s empty placeholder as a verified empty catalog", async state => {
+  const f = await fixture();
+  try {
+    await f.page.locator("#catalog").evaluate((element, state) => { element.innerHTML = `<div class="ovui-table__empty-wrapper"${state === "hidden" ? ' style="display:none"' : ""}><div class="oc-empty" data-e2e="oc_emptyKey_uni-prom__ocTable">${state === "unrecognized" ? "加载失败，请重试" : "你还没有创建控成本投放"}</div></div>`; }, state);
+    await expect(readVisibleQianchuanPlans(f.page, advertiserId, AbortSignal.timeout(500))).rejects.toMatchObject({ name: "TimeoutError" });
+  } finally { await f.context.close(); }
+});
+
 it("accepts the platform removing the picker URL marker on its owned list page", async () => {
   const f = await fixture({ pages: [{ total: 1, nextDisabled: true, rows: [{ name: "平台重写 URL", id: "7001" }] }] });
   try {

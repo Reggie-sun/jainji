@@ -597,6 +597,25 @@ describe("plan selector browser interaction", () => {
 });
 
 describe("cleanup plan browser interaction", () => {
+  it("removes deleted child plans and their selections after a successful empty refresh", async () => {
+    const page = await browser.newPage();
+    try {
+      await page.route("http://127.0.0.1:3000/cleanup-empty", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+      await page.goto("http://127.0.0.1:3000/cleanup-empty"); await page.addScriptTag({ content: cleanupPlanFixtureScript(false, true) });
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      await page.evaluate(() => (window as any).catalogRequests[0].resolve({account:{advertiserId:"7000"},plans:[{advertiserId:"7000",adId:"9001",name:"已删除的旧计划",accountSource:"current-browser"}]}));
+      await page.getByRole("checkbox", {name:"清理计划 9001",exact:true}).waitFor();
+      await page.getByRole("button", {name:"刷新计划",exact:true}).click();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      expect(await page.evaluate(() => (window as any).catalogRequests[1].input)).toMatchObject({refresh:true,accountSource:"current-browser",expectedCurrentAdvertiserId:"7000"});
+      await page.evaluate(() => (window as any).catalogRequests[1].resolve({account:{advertiserId:"7000"},plans:[],cache:{source:"live",readAt:Date.now(),stale:false}}));
+      await page.getByText("已选 0 / 0 个计划", {exact:true}).waitFor();
+      expect(await page.getByRole("checkbox", {name:"清理计划 9001",exact:true}).count()).toBe(0);
+      expect(await page.getByText("该账号没有可用计划。", {exact:true}).count()).toBe(1);
+      expect(await page.getByRole("button", {name:/自动删除所选两类素材/}).isDisabled()).toBe(true);
+      expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(0);
+    } finally { await page.close(); }
+  });
   it("identifies cleanup children, discards the old child's plans and freezes the explicit child scope", async () => {
     const page = await browser.newPage();
     try {

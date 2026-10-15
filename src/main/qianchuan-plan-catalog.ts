@@ -38,6 +38,8 @@ interface PageSnapshot {
 interface DomSnapshot {
   accountContainers: number;
   accountIds: string[];
+  paginationGroups: number;
+  emptyStates: number;
   paginationReady: boolean;
   totalText?: string;
   activePageText?: string;
@@ -87,6 +89,8 @@ async function observe(page: Page, advertiserId: string, documentHandle: JSHandl
     const accounts = Array.from(doc.querySelectorAll(".account-info-container")).filter(visible);
     const accountIds = accounts.flatMap(account => Array.from(text(account).matchAll(/ID[：:]\s*([1-9][0-9]{0,19})/g), match => match[1]!));
     const groups = Array.from(doc.querySelectorAll('[data-e2e="oc_emptyKey_uni-prom__ocTable_pagination_group"]')).filter(visible);
+    const emptyStates = Array.from(doc.querySelectorAll('.ovui-table__empty-wrapper .oc-empty[data-e2e="oc_emptyKey_uni-prom__ocTable"]'))
+      .filter(element => visible(element) && text(element) === "你还没有创建控成本投放");
     const group = groups.length === 1 ? groups[0]! : undefined;
     const totals = group ? Array.from(group.querySelectorAll(".ovui-page-total")).filter(visible) : [];
     const activePages = group ? Array.from(group.querySelectorAll(".ovui-page-turner__item--active")).filter(visible) : [];
@@ -113,6 +117,8 @@ async function observe(page: Page, advertiserId: string, documentHandle: JSHandl
     return {
       accountContainers: accounts.length,
       accountIds,
+      paginationGroups: groups.length,
+      emptyStates: emptyStates.length,
       paginationReady: groups.length === 1 && totals.length === 1 && activePages.length === 1 && nextItems.length === 1,
       ...(totals.length === 1 ? { totalText: text(totals[0]!) } : {}),
       ...(activePages.length === 1 ? { activePageText: text(activePages[0]!) } : {}),
@@ -128,7 +134,12 @@ async function observe(page: Page, advertiserId: string, documentHandle: JSHandl
 }
 
 function completeSnapshot(snapshot: DomSnapshot, expectedPage: number): PageSnapshot | undefined {
-  if (snapshot.accountContainers !== 1 || snapshot.accountIds.length !== 1 || !snapshot.paginationReady ||
+  if (snapshot.accountContainers !== 1 || snapshot.accountIds.length !== 1) return undefined;
+  if (snapshot.emptyStates) {
+    if (snapshot.emptyStates !== 1 || snapshot.paginationGroups || snapshot.rows.length || expectedPage !== 1) throw changed();
+    return { total: 0, pageNumber: 1, nextDisabled: true, rows: [], rowSignature: "[]" };
+  }
+  if (!snapshot.paginationReady ||
     snapshot.totalText === undefined || snapshot.activePageText === undefined || snapshot.nextDisabled === undefined) return undefined;
   const totalMatch = /^共\s*(0|[1-9][0-9]*)\s*条记录$/.exec(snapshot.totalText);
   const pageMatch = /^([1-9][0-9]*)$/.exec(snapshot.activePageText);
