@@ -9,6 +9,9 @@ import { FrozenAccountSchema } from "../src/shared/douyin-upload";
 import { qianchuanEgressRuntime } from "../src/main/qianchuan-egress-runtime";
 import * as browserDiscovery from "../src/main/qianchuan-browser-discovery";
 import * as browserProcess from "../src/main/qianchuan-browser-process";
+import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+import { chromeEgressArguments } from "../src/main/qianchuan-egress-browser";
+import * as egressProbe from "../src/main/qianchuan-egress-probe";
 
 const route = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
 const planUrl = (id = "123") => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}&adId=456`;
@@ -29,6 +32,58 @@ async function groupFixture(remote = true) {
   f.closed.mockClear();
   return { ...f, expected, change: { expected, advertiserIds: ["123", "124"] } };
 }
+async function survivingEgressFixture() {
+  const f = await fixture();
+  await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: route });
+  const profile = path.join(f.root, "original");
+  await mkdir(path.join(profile, "Profile 9"), { recursive: true, mode: 0o700 });
+  const bindings = new QianchuanBrowserBindings(f.root);
+  await bindings.save({ advertiserId: "123", profile, profileDirectory: "Profile 9", windowClass: "shop-one" });
+  const browser = { profile, profileDirectory: "Profile 9", windowClass: "shop-one", endpoint: "http://127.0.0.1:19390", egressArguments: chromeEgressArguments(route) };
+  const browsers = vi.spyOn(browserDiscovery, "runningChromeBrowsers").mockResolvedValue([browser]);
+  const lease = { identity: "saved-route", signal: new AbortController().signal };
+  const ensure = vi.spyOn(qianchuanEgressRuntime, "ensure").mockResolvedValue(lease);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const recover = vi.spyOn(qianchuanEgressRuntime, "recover");
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockResolvedValue();
+  const open = vi.spyOn(QianchuanBrowserManager.prototype, "open");
+  const control = vi.spyOn(QianchuanBrowserManager.prototype, "control");
+  return { ...f, browser, browsers, bindings, lease, ensure, verify, recover, probe, open, control };
+}
+it("restores the saved fixed exit for a surviving bound Chrome on app restart without touching browser or config", async () => {
+  const { settings, root, bindings, ensure, verify, probe, browser, lease, open, control, recover } = await survivingEgressFixture();
+  const before = await readFile(settings.file), bindingBefore = await bindings.get("123");
+  await new QianchuanAccountSettings(root).restore();
+  expect(ensure).toHaveBeenCalledWith(route);
+  expect(verify).toHaveBeenCalledWith(route);
+  expect(probe).toHaveBeenCalledWith(browser.endpoint, route.expectedIp, lease.signal);
+  expect(open).not.toHaveBeenCalled(); expect(control).not.toHaveBeenCalled(); expect(recover).not.toHaveBeenCalled();
+  expect(await readFile(settings.file)).toEqual(before); expect(await bindings.get("123")).toEqual(bindingBefore);
+});
+it.each(["absent", "other profile", "changed directory", "proxy mismatch", "missing metadata", "ambiguous"])("never restores an unproven surviving browser: %s", async scenario => {
+  const f = await survivingEgressFixture();
+  const browser = f.browser;
+  if (scenario === "absent") f.browsers.mockResolvedValue([]);
+  if (scenario === "other profile") f.browsers.mockResolvedValue([{ ...browser, profile: path.join(f.root, "foreign") }]);
+  if (scenario === "changed directory") f.browsers.mockResolvedValue([{ ...browser, profileDirectory: "Default" }]);
+  if (scenario === "proxy mismatch") f.browsers.mockResolvedValue([{ ...browser, egressArguments: [] }]);
+  if (scenario === "missing metadata") f.browsers.mockResolvedValue([{ ...browser, connectionIssue: "METADATA_UNAVAILABLE" }]);
+  if (scenario === "ambiguous") f.browsers.mockResolvedValue([browser, { ...browser, endpoint: "http://127.0.0.1:19391" }]);
+  vi.spyOn(console, "warn").mockImplementation(() => {});
+  expect(await new QianchuanAccountSettings(f.root).restore()).toHaveLength(1);
+  expect(f.ensure).not.toHaveBeenCalled(); expect(f.probe).not.toHaveBeenCalled();
+  expect(f.open).not.toHaveBeenCalled(); expect(f.control).not.toHaveBeenCalled(); expect(f.recover).not.toHaveBeenCalled();
+});
+it("retains authorized settings when startup egress fails and never clears the failure barrier", async () => {
+  const f = await survivingEgressFixture(), before = await readFile(f.settings.file);
+  f.ensure.mockRejectedValue(new Error("private SSH diagnostics"));
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  expect(await new QianchuanAccountSettings(f.root).restore()).toHaveLength(1);
+  expect(await readFile(f.settings.file)).toEqual(before);
+  expect(f.verify).not.toHaveBeenCalled(); expect(f.probe).not.toHaveBeenCalled(); expect(f.recover).not.toHaveBeenCalled();
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining("重连固定出口"));
+  expect(warn.mock.calls.flat().join(" ")).not.toContain("private SSH");
+});
 it.each([true, false])("atomically switches every approved subject member while preserving other targets (remote=%s)", async remote => {
   const f = await groupFixture(remote), before = JSON.parse(await readFile(f.settings.file, "utf8"));
   const guard = vi.fn(), egress = remote ? route : { ...route, mode: "remote-browser" };
