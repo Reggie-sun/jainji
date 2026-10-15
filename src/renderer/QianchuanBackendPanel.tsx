@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { qianchuanAccountName, type QianchuanAccountSummary } from "../shared/qianchuan-account";
 import { QIANCHUAN_QUERY_METRICS, QianchuanBackendQuerySchema, type QianchuanBackendResult, type QianchuanQueryMetrics } from "../shared/qianchuan-backend";
 import "./qianchuan-backend.css";
+import "./qianchuan-console.css";
 import { QianguanjiaPanel } from "./QianguanjiaPanel";
 import { QianchuanIntegrationPanel } from "./QianchuanIntegrationPanel";
 
@@ -15,10 +16,10 @@ export function QianchuanBackendPanel({ accounts, active, provider, onProvider, 
   provider?: "qianchuan" | "qianguanjia"; onProvider?(provider: "qianchuan" | "qianguanjia"): void; onNavigate?(page: "reports" | "materials" | "uploads" | "effects"): void }) {
   const [localSource, setSource] = useState("qianchuan");
   const source = provider ?? localSource;
-  return <section aria-label="投放数据来源">
-    {provider !== "qianguanjia" && <div className="qianchuan-query-fields"><label>数据来源<select aria-label="数据来源" value={source} onChange={event => { setSource(event.target.value); onProvider?.(event.target.value as "qianchuan" | "qianguanjia"); }}>
+  return <section className="qianchuan-console" aria-label="投放数据来源">
+    {provider !== "qianguanjia" && <header className="qc-console-header"><div className="qc-console-brand"><span className="qc-brand-mark" aria-hidden="true">千</span><div><span className="qc-eyebrow">简辑 · 投放管理</span><h2>计划与数据</h2></div></div><label className="qc-source">数据来源<select aria-label="数据来源" value={source} onChange={event => { setSource(event.target.value); onProvider?.(event.target.value as "qianchuan" | "qianguanjia"); }}>
       <option value="qianchuan">千川账号</option><option value="qianguanjia">千管家</option>
-    </select></label></div>}
+    </select></label></header>}
     <div hidden={source !== "qianchuan"}><NativeQianchuanBackendPanel accounts={accounts} active={active && source === "qianchuan"} /></div>
     <div hidden={source !== "qianguanjia"}><QianguanjiaPanel active={active && source === "qianguanjia"} api={window.jianji} onNavigate={onNavigate} /></div>
   </section>;
@@ -67,8 +68,9 @@ function NativeQianchuanBackendPanel({ accounts, active }: { accounts: Qianchuan
       if (request.current === requestId) { request.current = undefined; setBusy(false); }
     }
   }
-  return <section className="qianchuan-backend-panel" aria-label="千川数据查询">
-    <p>读取所选账号的计划详情、计划素材指标或商品自选控成本汇总。查询会连接或打开对应账号浏览器；登录失效时请先在浏览器中登录后再查询。</p>
+  return <section className="qianchuan-backend-panel qc-console-body" aria-label="千川数据查询">
+    <section className="qc-card qc-query-card" aria-label="查询范围">
+    <div className="qc-section-heading"><div><span className="qc-eyebrow">账户与计划</span><h3>查看投放数据</h3></div><span className="qc-badge">千川账户数据</span></div>
     <div className="qianchuan-query-fields">
       <label>查询账号<select aria-label="查询账号" value={product} disabled={busy} onChange={event => { setProduct(event.target.value); reset(); }}>
         <option value="">请选择已配置账号</option>{accounts.filter(item => item.available).map(item => <option key={item.product} value={item.product}>{qianchuanAccountName(item)} · {item.advertiserId}</option>)}
@@ -80,11 +82,14 @@ function NativeQianchuanBackendPanel({ accounts, active }: { accounts: Qianchuan
       {kind !== "plan" && <><label>开始日期<input aria-label="查询开始日期" type="date" value={startDate} disabled={busy} onChange={event => { setStartDate(event.target.value); reset(); }} /></label>
         <label>结束日期<input aria-label="查询结束日期" type="date" value={endDate} disabled={busy} onChange={event => { setEndDate(event.target.value); reset(); }} /></label></>}
     </div>
-    {kind !== "plan" && <p>按北京时间查询，最多 31 天；今天的数据截至本次读取时刻。</p>}
+    <div className="qc-query-footer"><p className="qc-help">{kind !== "plan" ? "北京时间 · 最多查询 31 天 · 今日数据截至读取时刻" : "查询所选计划的当前预算、ROI 与关联商品"}<br />查询时会连接对应账户浏览器，登录失效请先完成登录。</p>
     <div className="qianchuan-query-actions"><button type="button" className="button" disabled={busy || !active || !account?.available} onClick={() => void read()}>查询</button>
       {busy && <button type="button" className="button secondary" onClick={() => { cancel(); setBusy(false); setError("查询已取消。"); }}>取消查询</button>}</div>
+    </div>
     {busy && <p role="status">正在读取千川数据…</p>}{error && <p role="alert">{error}</p>}
-    {result && <div className="qianchuan-query-result">
+    </section>
+    {!result && <section className="qc-card qc-empty" aria-label="查询结果为空"><span className="qc-empty-symbol" aria-hidden="true">▤</span><div><h3>{busy ? "正在读取投放数据" : "从一份真实数据开始"}</h3><p>{busy ? "结果会在此处显示，你也可以取消本次查询。" : "选择账户与查询范围，点击「查询」查看计划或素材表现。"}</p><span className="qc-help">尚未读取 · 不展示估算数据</span></div></section>}
+    {result && <div className="qianchuan-query-result qc-card">
       <p>账户 {result.advertiserId} · 读取于 {new Date(result.observedAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</p>
       {result.kind === "plan" ? <><h3>{result.name}</h3><dl className="qianchuan-query-metrics"><div><dt>计划 ID</dt><dd>{result.adId}</dd></div><div><dt>预算（元）</dt><dd>{(Number(result.budget) / 100000).toFixed(2)}</dd></div><div><dt>ROI 目标</dt><dd>{result.roiGoal}</dd></div></dl>
         <ul>{result.products.map(item => <li key={item.id}>{item.name} · {item.id}</li>)}</ul></> : <>

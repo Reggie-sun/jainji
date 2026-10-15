@@ -98,10 +98,11 @@ export function QianchuanIntegrationPanel({ account, active, adId, kind, startDa
     const url = URL.createObjectURL(new Blob([exportQianchuanReportCsv(selected)], { type: "text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href = url; link.download = `qianchuan-${selected.id}.csv`; link.click(); setTimeout(() => URL.revokeObjectURL(url), 0);
   }
-  return <section className="qianchuan-backend-panel" aria-label="千川完整报表与投放准入">
-    <h3>完整报表与历史记录</h3>
-    <p>店铺未识别。账户和计划身份以平台核验结果为准；历史报表只供查看，不代表当前值或操作资格。</p>
-    <p>汇总范围为商品自选控成本；素材报告绑定上方计划。北京时间，最多 31 天、2000 条素材、180 秒。保留平台原始口径和显示值，原始单位未核验；支付 ROI 与净成交 ROI 不合并。</p>
+  return <section className="qianchuan-backend-panel qc-integration-grid" aria-label="千川完整报表与投放准入">
+    <section className="qc-card qc-report-card">
+    <div className="qc-section-heading"><div><span className="qc-eyebrow">报表中心</span><h3>完整报表与历史记录</h3></div><span className="qc-badge">{reports.length} 份已保存</span></div>
+    <p className="qc-help">保存完整数据供后续对比、筛选和导出。历史记录不代表平台当前值。</p>
+    <div className="qc-scope-strip"><span>{kind === "materials" ? `素材效果 · 计划 ${adId || "未选择"}` : "账户汇总 · 商品自选控成本"}</span><span>{startDate} — {endDate} · 北京时间</span></div>
     <div className="qianchuan-query-actions"><button type="button" className="button secondary" disabled={busy || !active || !account?.available} onClick={() => void capture()}>{kind === "materials" ? "采集并保存完整素材效果" : "采集并保存账户汇总"}</button>
       <button type="button" className="button secondary" disabled={!active || !scope || busy} onClick={refreshHistory}>读取历史报表</button>
       {busy && <button type="button" className="button secondary" onClick={() => { cancel(); setBusy(false); setNotice("已取消采集，迟到结果不会显示；没有继续采集后续页。"); }}>取消完整采集</button>}</div>
@@ -117,13 +118,30 @@ export function QianchuanIntegrationPanel({ account, active, adId, kind, startDa
         <div className="qianchuan-query-table"><table><thead><tr><th>素材 / 视频</th>{metricLabels.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={row.materialId}><td>{row.name}<br /><small>{row.materialId}<br />{row.videoId ?? "未返回视频 ID"}</small></td>{QIANCHUAN_QUERY_METRICS.map(key => <td key={key} title={`${key} / ${row.metrics[key].value}`}>{row.metrics[key].display}</td>)}</tr>)}</tbody></table></div>
       </>}
     </div>}
-    <h3>投放操作准入</h3><p>每个账户、推广模式和动作分别核验。下方只提供预算与 ROI 的单次范围验证；创建、加入素材和启停没有操作入口。具体准入由主进程预检决定，接口线索不授予权限。</p>
-    {status && <><div className="qianchuan-query-table"><table><thead><tr><th>动作</th><th>准入状态</th><th>当前限制</th></tr></thead><tbody>{status.capabilities.map(capability => <tr key={capability.action}><td>{actionLabels[capability.action]}</td><td>{capabilityLabels[capability.status]}</td><td>{capability.status === "live-write-verified" ? "仍需本次对象、动作、金额、次数和时限授权" : "缺少该账户和推广模式的真实写入与回读核验"}{capability.evidenceId && <small> · 证据 {capability.evidenceId}</small>}</td></tr>)}</tbody></table></div>
-      {status.auditUnavailable && <p role="alert">投放审计不可用，写操作保持关闭。</p>}
-      {status.operations.length > 0 && <div className="qianchuan-query-table"><table><thead><tr><th>操作 ID</th><th>动作</th><th>状态</th><th>最近记录（北京时间）</th></tr></thead><tbody>{status.operations.map(operation => <tr key={operation.operationId}><td>{operation.operationId}</td><td>{actionLabels[operation.action]}</td><td>{operation.state === "UNKNOWN" || operation.state === "PENDING" ? "结果未知，只能核查，不可重发" : operation.state}{operation.adId && <small> · 平台返回计划 {operation.adId}（以回读状态为准）</small>}</td><td>{localTime(operation.updatedAt)}</td></tr>)}</tbody></table></div>}
-      {status.stopped && <p>本地投放动作已停止，本次应用会话不会恢复执行权。</p>}</>}
+    {!selected && <div className="qc-history-empty"><span aria-hidden="true">▥</span><strong>{reports.length ? "选择一份历史报表" : "还没有保存的报表"}</strong><p>{reports.length ? "选择上方快照，查看采集时的数据与素材明细。" : "采集完整数据后，会在这里保留查询范围和采集时间。"}</p></div>}
+    <details className="qc-details"><summary>数据范围与口径</summary><p>店铺未识别。账户和计划身份以平台核验结果为准；历史报表只供查看，不代表当前值或操作资格。</p><p>汇总范围为商品自选控成本；素材报告绑定上方计划。北京时间，最多 31 天、2000 条素材、180 秒。保留平台原始口径和显示值，原始单位未核验；支付 ROI 与净成交 ROI 不合并。</p></details>
+    </section>
+    <aside className="qc-card qc-operations-card" aria-label="计划操作">
+    <div className="qc-section-heading"><div><span className="qc-eyebrow">投放管理</span><h3>计划操作</h3></div><span className="qc-badge qc-badge-caution">执行前需核验</span></div>
+    <p className="qc-help">针对当前计划单次调整预算或 ROI。先读取当前值，核对后再授权执行。</p>
+    <div className="qc-target"><span>本次目标计划</span><strong>{adId || "尚未选择计划"}</strong><small>账户 {account?.advertiserId || "未选择"}</small></div>
+    <details className="qc-adjustment"><summary><span>调整预算 / ROI<small>填写目标值与本次授权范围</small></span><span aria-hidden="true">＋</span></summary>
     {active && account && <QianchuanDeliveryPanel account={account} active={active} adId={adId} />}
+    {!account && <p className="qc-help">请先选择已配置的账户。</p>}
+    </details>
+    <p className="qc-help">创建计划、加入素材与启停尚未开放。</p>
+    {status?.auditUnavailable && <p role="alert">投放审计不可用，写操作保持关闭。</p>}
+    {status?.stopped && <p role="alert">本地投放动作已停止，本次应用会话不会恢复执行权。</p>}
+    <details className="qc-details"><summary>查看操作资格与核验详情</summary>
+    <p>每个账户、推广模式和动作分别核验。具体准入由主进程预检决定，接口线索不授予权限。</p>
+    {status ? <div className="qianchuan-query-table"><table><thead><tr><th>动作</th><th>准入状态</th><th>当前限制</th></tr></thead><tbody>{status.capabilities.map(capability => <tr key={capability.action}><td>{actionLabels[capability.action]}</td><td>{capabilityLabels[capability.status]}</td><td>{capability.status === "live-write-verified" ? "仍需本次对象、动作、金额、次数和时限授权" : "缺少该账户和推广模式的真实写入与回读核验"}{capability.evidenceId && <small> · 证据 {capability.evidenceId}</small>}</td></tr>)}</tbody></table></div> : <p>尚未取得当前账户的操作资格。</p>}
+    </details>
+    {status && <>
+      {status.operations.length > 0 && <div className="qianchuan-query-table"><table><thead><tr><th>操作 ID</th><th>动作</th><th>状态</th><th>最近记录（北京时间）</th></tr></thead><tbody>{status.operations.map(operation => <tr key={operation.operationId}><td>{operation.operationId}</td><td>{actionLabels[operation.action]}</td><td>{operation.state === "UNKNOWN" || operation.state === "PENDING" ? "结果未知，只能核查，不可重发" : operation.state}{operation.adId && <small> · 平台返回计划 {operation.adId}（以回读状态为准）</small>}</td><td>{localTime(operation.updatedAt)}</td></tr>)}</tbody></table></div>}
+      </>}
+    <div className="qc-stop-area">
     <button type="button" className="button secondary" disabled={!active} onClick={() => void stop()}>停止本地投放动作</button>
-    <p>本地停止不等于平台暂停；平台暂停需要单独授权并回读状态。未知结果不会提供一键重试。</p>
+    <p className="qc-help">仅停止简辑的后续动作，平台计划可能仍在投放。未知结果需核查，不可重发。</p>
+    </div></aside>
   </section>;
 }

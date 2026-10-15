@@ -15,8 +15,31 @@ async function fixture(width = 1000, historyDelay = false) {
   await page.getByRole("heading", { name: "完整报表与历史记录" }).waitFor();
   return page;
 }
+it.each([360, 820, 1440])("organizes the native console at %i px without auto reads or hiding financial confirmation", async width => {
+  const p = await fixture(width); try {
+    expect(await p.getByRole("heading", { name: "计划与数据", exact: true }).isVisible()).toBe(true);
+    expect(await p.getByRole("region", { name: "查询结果为空" }).isVisible()).toBe(true);
+    expect(await p.getByRole("cell", { name: "创建商品全域计划", exact: true }).isVisible()).toBe(false);
+    expect(await p.getByRole("button", { name: "确认并执行一次", exact: true }).isVisible()).toBe(false);
+    await p.locator(".qc-adjustment > summary").focus();
+    await p.keyboard.press("Enter");
+    expect(await p.getByRole("heading", { name: "调整预算与 ROI", exact: true }).isVisible()).toBe(true);
+    expect(await p.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
+    expect(await p.getByLabel("目标值", { exact: true }).inputValue()).toBe("");
+    expect(await p.getByLabel("授权截止时间（本地时间）", { exact: true }).inputValue()).toBe("");
+    await p.getByText("查看操作资格与核验详情", { exact: true }).click();
+    expect(await p.getByRole("cell", { name: "尚未核验", exact: true }).count()).toBe(6);
+    expect(await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    const controlsFit = await p.locator(".qc-console-body input, .qc-console-body select, .qc-console-body button").evaluateAll(nodes => nodes.every(node => {
+      const box = node.getBoundingClientRect(); return !box.width || box.left >= 0 && box.right <= innerWidth;
+    }));
+    expect(controlsFit).toBe(true);
+    expect(await p.evaluate(() => [(window as any).reads.length, (window as any).reportReads.length])).toEqual([0, 0]);
+  } finally { await p.close(); }
+});
 it("reads independently of the supplier, persists an explicit full report, and reloads history without querying", async () => {
   const p = await fixture(); try {
+    await p.getByText("查看操作资格与核验详情", { exact: true }).click();
     await p.getByRole("cell", { name: "创建商品全域计划", exact: true }).waitFor();
     expect(await p.evaluate(() => (window as any).supplierReads)).toEqual([]);
     expect(await p.getByRole("cell", { name: "尚未核验", exact: true }).count()).toBe(6);
