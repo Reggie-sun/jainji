@@ -6,7 +6,7 @@ import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import { QianchuanCurrentAccountSchema, QianchuanPlanListSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
 import { QianchuanAccountCatalog, type CatalogOperation, type CatalogSnapshotBase } from "./qianchuan-account-catalog.js";
 import { qianchuanExtensionResources } from "./qianchuan-extension-install.js";
-import { readCurrentQianchuanPage } from "./qianchuan-current-account.js";
+import { readCurrentQianchuanPage, sameQianchuanAccountPageUrl } from "./qianchuan-current-account.js";
 import { QianchuanPickerTransport } from "./qianchuan-picker-transport.js";
 import { guardedTransport } from "./local-cdp-transport.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
@@ -200,7 +200,7 @@ export class QianchuanCdpAccountSession {
     const targetInfo = await abortable(bound.session.send("Target.getTargetInfo"), signal);
     if (typeof targetInfo.targetInfo?.targetId !== "string" || targetInfo.targetInfo.type !== "page" ||
       typeof targetInfo.targetInfo.url !== "string" || targetInfo.targetInfo.targetId.length < 8 ||
-      targetInfo.targetInfo.browserContextId !== bound.browserContextId || targetInfo.targetInfo.url !== bound.page.url() || expectedUrl !== undefined && bound.page.url() !== expectedUrl) throw changed();
+      targetInfo.targetInfo.browserContextId !== bound.browserContextId || !sameQianchuanAccountPageUrl(targetInfo.targetInfo.url, bound.page.url()) || expectedUrl !== undefined && !sameQianchuanAccountPageUrl(bound.page.url(), expectedUrl)) throw changed();
     const expression = `globalThis[${JSON.stringify(STATE_NAME)}].controller.readAccountIdentity()`;
     const runtime = await abortable(bound.session.send("Runtime.evaluate", { expression, contextId: bound.contextId, returnByValue: true }), signal) as RuntimeResult;
     const identity = valueOf(runtime) as { documentId?: unknown; account?: unknown };
@@ -218,7 +218,7 @@ export class QianchuanCdpAccountSession {
       return current;
     });
     const fresh = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, options);
-    if (fresh.targetId !== observed.targetId || fresh.url !== observed.url || fresh.account.advertiserId !== snapshot.account.advertiserId || fresh.account.name !== snapshot.account.name) throw changed();
+    if (fresh.targetId !== observed.targetId || !sameQianchuanAccountPageUrl(fresh.url, observed.url) || fresh.account.advertiserId !== snapshot.account.advertiserId || fresh.account.name !== snapshot.account.name) throw changed();
     return snapshot;
   }
 

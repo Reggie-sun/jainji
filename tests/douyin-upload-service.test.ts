@@ -178,6 +178,50 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  it.each(["ACCEPTED", "READY", "UNKNOWN", "ACCEPTED_AND_READY"])("excludes unfinished page owners but permits a verified accepted page for account reads (%s)", async outcome => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["previous upload"]); await f.register(batch);
+    if (outcome === "UNKNOWN") f.port.upload = async () => { throw Error("fixture selected result unknown"); };
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const original = f.store.tasks()[0]!, ownership = f.store.fence(original.result.upload_task_id)!.pageOwnership;
+    if (outcome.startsWith("ACCEPTED")) {
+      const handle = f.store.beginAutomationAcceptance([original]);
+      await f.store.saveTask({ ...original, result: { ...original.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined } });
+      await f.store.acceptAutomation(handle, [{ ...original.result.readyEvidence!, platformVideoId: "90001", attempt: original.result.attempt_count,
+        requestSha256: "a".repeat(64), responseSha256: "b".repeat(64) }]);
+    }
+    if (outcome === "ACCEPTED_AND_READY") {
+      const open = f.port.open.bind(f.port);
+      f.port.open = async (...args) => {
+        const result = await open(...args);
+        return { ...result, pageOwnership: { ...result.pageOwnership, targetId: ownership.targetId } };
+      };
+      const pending = await f.createBatch(["unfinished upload in the same tab"]); await f.register(pending);
+      await f.service.enqueueFinalArtifact(pending.identities[0]!); await f.service.runPending();
+    }
+    await f.service.stop();
+    const records = f.store.tasks(), events = [...f.events];
+    const current = vi.fn(async (_target: unknown, _signal: AbortSignal, excluded?: ReadonlySet<string>) => {
+      if (excluded?.has(ownership.targetId)) throw Error("protected upload page excluded");
+      return { identity: "fixture-original-page", endpoint: original.authorization.target.cdpEndpoint, uploadEndpointVerified: true,
+        account: { advertiserId: "1003", name: "Fixture account" } };
+    });
+    const accounts = new QianchuanAccountSettings(f.store.root, undefined, undefined, undefined, undefined, {
+      current, plans: async () => [{ advertiserId: "1003", adId: "2003", name: "Fixture plan" }],
+      accounts: async () => { throw Error("unused"); }, switch: async () => { throw Error("unused"); },
+    });
+    const service = new DouyinUploadService(f.store, { accounts, loadBatch: async id => structuredClone(f.states.get(id)!),
+      browser: () => f.port, readiness: () => undefined, readPlans: async () => [] });
+    fixtureServices.add(service); await service.restoreConfig();
+    const read = service.listPlans({ product: "眼贴", expectedAdvertiserId: "1003", accountSource: "current-browser", includeAccount: true, requestId: randomUUID() });
+    if (outcome === "ACCEPTED") await expect(read).resolves.toMatchObject({ account: { advertiserId: "1003" }, plans: [{ adId: "2003" }] });
+    else await expect(read).rejects.toThrow("protected upload page excluded");
+    expect(current).toHaveBeenCalled();
+    expect(f.store.tasks()).toEqual(records);
+    expect(f.store.fence(original.result.upload_task_id)!.pageOwnership).toEqual(ownership);
+    expect(f.events).toEqual(events);
+  });
+
   it("stages files before page selection and leaves failed transfer tasks without a selection fence", async () => {
     const f = await fixture(); await f.authorize();
     const batch = await f.createBatch(["remote staging"]); await f.register(batch);

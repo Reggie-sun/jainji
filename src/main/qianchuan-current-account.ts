@@ -18,6 +18,22 @@ const FAILURE = "无法确认千川网页当前子账户，请检查当前页面
 interface Candidate { targetId: string; url: string; advertiserId: string; }
 interface PageSnapshot { href: string; visibilityState: string; accountTexts: string[]; }
 
+function accountPageUrlIdentity(value: string): string | undefined {
+  const url = new URL(value), hash = new URLSearchParams(url.hash.slice(1));
+  const times = hash.getAll("dut");
+  if (url.origin !== ORIGIN || url.pathname !== "/uni-prom" || times.length !== 1 ||
+    !/^\d{4}-\d{2}-\d{2} (?:[01]\d|2[0-3]):[0-5]\d$/.test(times[0]!)) return undefined;
+  const offset = value.indexOf("#");
+  // The dashboard refresh clock is not account state. Preserve every other URL byte.
+  return value.slice(0, offset + 1) + value.slice(offset + 1).replace(/(^|&)dut=[^&]*/, "$1dut=");
+}
+
+export function sameQianchuanAccountPageUrl(left: string, right: string): boolean {
+  if (left === right) return true;
+  const identity = accountPageUrlIdentity(left);
+  return identity !== undefined && identity === accountPageUrlIdentity(right);
+}
+
 function validPort(value: string): boolean {
   const port = Number(value);
   return /^[1-9][0-9]{0,4}$/.test(value) && port <= 65535;
@@ -169,7 +185,7 @@ const SNAPSHOT_EXPRESSION = `(() => {
 function validateSnapshot(value: unknown, candidate: Candidate): PageSnapshot {
   if (!value || typeof value !== "object") throw new Error(FAILURE);
   const snapshot = value as Partial<PageSnapshot>;
-  if (snapshot.href !== candidate.url || !["visible", "hidden"].includes(snapshot.visibilityState ?? "") || !Array.isArray(snapshot.accountTexts) || snapshot.accountTexts.some(text => typeof text !== "string")) throw new Error(FAILURE);
+  if (typeof snapshot.href !== "string" || !sameQianchuanAccountPageUrl(snapshot.href, candidate.url) || !["visible", "hidden"].includes(snapshot.visibilityState ?? "") || !Array.isArray(snapshot.accountTexts) || snapshot.accountTexts.some(text => typeof text !== "string")) throw new Error(FAILURE);
   const url = new URL(snapshot.href);
   const ids = url.searchParams.getAll("aavid");
   if (url.origin !== ORIGIN || ids.length !== 1 || ids[0] !== candidate.advertiserId) throw new Error(FAILURE);
@@ -215,7 +231,7 @@ function uniqueAccount(pages: Array<{ candidate: Candidate; snapshot: PageSnapsh
 }
 
 function candidateSignature(pages: Candidate[]): string {
-  return JSON.stringify([...pages].sort((left, right) => left.targetId.localeCompare(right.targetId)));
+  return JSON.stringify([...pages].sort((left, right) => left.targetId.localeCompare(right.targetId)).map(page => ({ ...page, url: accountPageUrlIdentity(page.url) ?? page.url })));
 }
 
 /** Reads the active advertiser from the already-bound local browser without changing its pages. */
@@ -265,7 +281,7 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
     if (candidateSignature(currentCandidates) !== candidateSignature(initialCandidates)) throw new Error(FAILURE);
     const second = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of currentCandidates) second.push({ candidate, snapshot: await readPage(connection, candidate) });
-    if (first.some((page, index) => page.snapshot.href !== second[index]?.snapshot.href || page.snapshot.visibilityState !== second[index]?.snapshot.visibilityState || selected.includes(page) && JSON.stringify(page.snapshot.accountTexts) !== JSON.stringify(second[index]?.snapshot.accountTexts))) throw new Error(FAILURE);
+    if (first.some((page, index) => !sameQianchuanAccountPageUrl(page.snapshot.href, second[index]!.snapshot.href) || page.snapshot.visibilityState !== second[index]?.snapshot.visibilityState || selected.includes(page) && JSON.stringify(page.snapshot.accountTexts) !== JSON.stringify(second[index]?.snapshot.accountTexts))) throw new Error(FAILURE);
     const finalPages = selectedPages(second, allowSingleHidden);
     if (JSON.stringify(uniqueAccount(finalPages)) !== JSON.stringify(expected)) throw new Error(FAILURE);
     return { account: expected, pages: finalPages.map(page => page.candidate) };

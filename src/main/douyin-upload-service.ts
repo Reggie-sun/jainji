@@ -361,6 +361,7 @@ export class DouyinUploadService {
   }
   private excludedPlanTargets(): ReadonlySet<string> {
     return new Set(this.store.tasks().flatMap(task => {
+      if (task.result.state === "ACCEPTED" && task.result.upload_outcome === "ACCEPTED" && task.result.acceptedEvidence) return [];
       const targetId = this.store.fence(task.result.upload_task_id)?.pageOwnership.targetId;
       return targetId ? [targetId] : [];
     }));

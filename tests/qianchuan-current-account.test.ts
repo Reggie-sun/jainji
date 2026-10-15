@@ -283,6 +283,37 @@ it("rejects identity drift while reading an eligible page", async () => {
   } finally { await fixture.close(); }
 });
 
+it("reads the same account while the platform updates only its hash refresh time", async () => {
+  const target = account("refreshing", "200", "visible", "/uni-prom");
+  target.url += "#shop=&dut=2026-10-15%2021%3A58&uni=unchanged";
+  const fixture = await fakeBrowser({ targets: [target], snapshot: (current, read) => {
+    current.url = current.url.replace(/dut=[^&]+/, `dut=2026-10-15%20${read === 1 ? "21%3A59" : "22%3A00"}`);
+    return { ...current.snapshot, href: current.url };
+  } });
+  try {
+    await expect(readCurrentQianchuanPage(fixture.endpoint)).resolves.toMatchObject({ account: { advertiserId: "200" }, targetId: target.targetId });
+    expect(fixture.detached).toEqual(fixture.attached);
+  } finally { await fixture.close(); }
+});
+
+it.each([
+  "/uni-prom?aavid=300#shop=&dut=2026-10-15%2021%3A59",
+  "/uni-prom?aavid=200&adId=700#shop=&dut=2026-10-15%2021%3A59",
+  "/finance?aavid=200#shop=&dut=2026-10-15%2021%3A59",
+  "/uni-prom?aavid=200#shop=other&dut=2026-10-15%2021%3A59",
+  "/uni-prom?aavid=200#shop=&dut=invalid",
+  "/uni-prom?aavid=200#shop=&dut=",
+  "/uni-prom?aavid=200#shop=&dut=2026-10-15%2021%3A99",
+  "/uni-prom?aavid=200#shop=&dut=2026-10-15%2021%3A59&dut=2026-10-15%2021%3A58",
+  "/uni-prom?aavid=200#shop=",
+])("rejects account, route, state or malformed refresh-time drift: %s", async route => {
+  const target = account("refreshing", "200", "visible", "/uni-prom");
+  target.url += "#shop=&dut=2026-10-15%2021%3A58";
+  const fixture = await fakeBrowser({ targets: [target], snapshot: current => ({ ...current.snapshot, href: `${origin}${route}` }) });
+  try { await expect(readCurrentQianchuanPage(fixture.endpoint)).rejects.toThrow(); }
+  finally { await fixture.close(); }
+});
+
 it("accepts canonical HTTP and browser WebSocket endpoints, and refuses redirects", async () => {
   const fixture = await fakeBrowser();
   try {

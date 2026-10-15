@@ -85,6 +85,28 @@ async function fixture(hidden = false, route = "/uni-prom", socketProcess = fals
   return { context, profile, service, target };
 }
 
+it("keeps the same document identity during automatic hash refresh-time updates", async () => {
+  const f = await fixture();
+  try {
+    const page = f.context.pages()[1]!;
+    await page.evaluate(() => {
+      let minute = 0;
+      setInterval(() => {
+        const url = new URL(location.href), hash = new URLSearchParams(url.hash.slice(1));
+        hash.set("dut", `2026-10-15 21:${String(minute++ % 60).padStart(2, "0")}`);
+        url.hash = hash.toString(); history.replaceState(null, "", url);
+      }, 1);
+    });
+    const session = new QianchuanCdpAccountSession(f.target, async () => undefined);
+    const current = await session.current(new AbortController().signal);
+    expect(current.account).toEqual(FIXTURE_ACCOUNTS[0]);
+    expect(sameCdpSnapshot(current, await session.current(new AbortController().signal))).toBe(true);
+    expect(f.service.state.accountDocumentLoads.get(FIXTURE_ACCOUNTS[0].advertiserId)).toBe(1);
+    expect(f.service.state.apiRequests).toHaveLength(0);
+    expect(f.context.pages()).toHaveLength(2);
+  } finally { await f.service.close(); }
+});
+
 it("reads the foreground upload document identity without authorizing account commands on its drawer", async () => {
   const f = await fixture();
   try {
