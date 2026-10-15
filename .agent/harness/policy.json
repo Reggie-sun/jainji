@@ -1071,6 +1071,7 @@
         "src/shared/qianchuan-backend.ts",
         "src/shared/qianchuan-effect.ts",
         "src/shared/qianchuan-plan-selection.ts",
+        "src/shared/qianchuan-video-library.ts",
         "src/shared/qianchuan-subaccounts.ts",
         "src/shared/qianchuan-egress.ts",
         "scripts/qianchuan-account-config.mjs",

@@ -175,6 +175,25 @@ it("binds library clearing to the saved advertiser before browser discovery and 
   });
   expect(await readFile(f.settings.file)).toEqual(bytes);
 });
+it("freezes a cleanup child separately from its browser anchor and rejects live account drift", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  let child = "7000";
+  const settings = new QianchuanAccountSettings(path.join(f.root, "app"), f.discover, async () => "http://127.0.0.1:9441", async () => ({ advertiserId: child, name: "清理子账户" }));
+  await settings.restore();
+  const bytes = await readFile(settings.file);
+  const input = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244", expectedCurrentAdvertiserId: "7000",
+    plans: [{ advertiserId: "7000", adId: "9001", name: "子账户计划", accountSource: "current-browser" }] }] };
+  await settings.withVideoLibraryTargets(input, async (targets, fresh, connect) => {
+    expect(targets[0]).toMatchObject({ advertiserId: "7000", adId: "9001" });
+    expect(await connect(targets[0])).toMatchObject({ advertiserId: "7000", cdpEndpoint: "http://127.0.0.1:9441" });
+    await fresh(); child = "8000";
+    await expect(fresh()).rejects.toThrow(/子账户|网页账户/);
+    await expect(connect(targets[0])).rejects.toThrow(/子账户|网页账户/);
+  });
+  await expect(settings.withVideoLibraryTargets(input, async () => { throw new Error("must not enter"); })).rejects.toThrow(/子账户|网页账户/);
+  expect(await readFile(settings.file)).toEqual(bytes);
+  expect(f.discover).not.toHaveBeenCalled();
+});
 it("rejects out-of-process mapping drift before the library deletion guard can succeed", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);
   const input = { confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244" }] };

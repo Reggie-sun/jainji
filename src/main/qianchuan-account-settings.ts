@@ -98,20 +98,36 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     this.assertAvailable();
     const parsed = QianchuanLibraryClearSchema.parse(input);
     return this.edit(async () => {
+      const currentTargets = new Map<QianchuanProduct, FrozenQianchuanAccount>();
       const targets = await Promise.all(parsed.accounts.map(async account => {
         const target = await super.preflight(account.product);
         if (target.advertiserId !== account.expectedAdvertiserId) throw new Error("账号设置已变化，未删除视频，请重新选择账号。");
         if (parsed.confirmation !== "DELETE_ALL_VIDEOS" && !account.plan && !account.plans && target.adId !== account.expectedAdId) throw new Error("千川计划已变化，未删除素材，请重新选择当前计划。");
+        let selected = target;
+        if (account.expectedCurrentAdvertiserId) {
+          const current = await this.prepareCurrentCatalog(account.product);
+          if (current.configured.configDigest !== target.configDigest || current.target.advertiserId !== account.expectedCurrentAdvertiserId) throw new Error("网页子账户已变化，未删除素材，请刷新子账户和计划。");
+          selected = current.target;
+          currentTargets.set(account.product, selected);
+        }
         const plan = account.plan ?? account.plans?.[0];
-        return plan ? Object.freeze({ ...target, adId: plan.adId }) : target;
+        return plan ? Object.freeze({ ...selected, adId: plan.adId }) : selected;
       }));
       const fresh = async () => {
         this.assertAvailable();
-        for (const target of targets) await super.freeze(target.product, target.configDigest);
+        for (const target of targets) {
+          await super.freeze(target.product, target.configDigest);
+          const expected = currentTargets.get(target.product);
+          if (expected) {
+            const current = await this.prepareCurrentCatalog(target.product);
+            if (current.target.advertiserId !== expected.advertiserId || current.target.configDigest !== expected.configDigest || current.target.cdpEndpoint !== expected.cdpEndpoint) throw new Error("网页子账户或浏览器连接已变化，已停止清理。");
+          }
+        }
       };
       await fresh();
       // Resolve per account so one unavailable Chrome does not hide other results.
       return action(targets, fresh, async target => {
+        if (currentTargets.has(target.product)) { await fresh(); return target; }
         const cdpEndpoint = await this.discoverBrowser(target.advertiserId);
         await fresh();
         return Object.freeze({ ...target, cdpEndpoint });

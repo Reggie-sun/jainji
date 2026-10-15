@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { qianchuanAccountName, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account";
 import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecovery } from "../shared/qianchuan-video-library";
-import type { QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
+import type { QianchuanCurrentAccount, QianchuanPlanOption } from "../shared/qianchuan-plan-selection";
 import { QianchuanCleanupResults } from "./QianchuanCleanupResults";
 import { QianchuanCleanupPlanSelect } from "./QianchuanCleanupPlanSelect";
 import "./qianchuan-cleanup.css";
@@ -10,6 +10,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
   const [products, setProducts] = useState<QianchuanProduct[]>();
   const [selected, setSelected] = useState<QianchuanLibraryClear>();
   const [plans, setPlans] = useState<Partial<Record<QianchuanProduct, QianchuanPlanOption[]>>>({});
+  const [subaccounts, setSubaccounts] = useState<Partial<Record<QianchuanProduct, { anchor: string; current: QianchuanCurrentAccount }>>>({});
   const [auditMaterials, setAuditMaterials] = useState(true);
   const [videoLibrary, setVideoLibrary] = useState(false);
   const [zeroImpressions, setZeroImpressions] = useState(true);
@@ -20,7 +21,11 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
   const configured = accounts.filter(account => account.available);
   const chosen = configured.filter(account => products === undefined || products.includes(account.product));
   const disabled = busy || running;
-  const chosenPlans = (account: QianchuanAccountSummary) => plans[account.product]?.every(plan => plan.advertiserId === account.advertiserId) ? plans[account.product] : undefined;
+  const child = (account: QianchuanAccountSummary) => subaccounts[account.product]?.anchor === account.advertiserId ? subaccounts[account.product]?.current : undefined;
+  const directorySupported = typeof window.jianji.listQianchuanSubaccounts === "function" && typeof window.jianji.switchQianchuanSubaccount === "function";
+  const chosenPlans = (account: QianchuanAccountSummary) => plans[account.product]?.every(plan => plan.advertiserId === (directorySupported ? child(account)?.advertiserId : account.advertiserId)) ? plans[account.product] : undefined;
+  const cleanupTarget = (account: QianchuanAccountSummary) => ({ product: account.product, expectedAdvertiserId: account.advertiserId,
+    ...(planMaterials ? { ...(child(account) ? { expectedCurrentAdvertiserId: child(account)!.advertiserId } : {}), plans: chosenPlans(account)! } : {}) });
   const planCount = chosen.reduce((count, account) => count + (chosenPlans(account)?.length ?? 0), 0);
   const plansReady = !planMaterials || chosen.every(account => chosenPlans(account)?.length);
   const selectionCurrent = !selected || selected.accounts.every(target => configured.some(account => account.product === target.product && account.advertiserId === target.expectedAdvertiserId));
@@ -28,7 +33,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
   const selectedVideoLibrary = selected?.confirmation !== "DELETE_PLAN_MATERIALS";
   const automationCleanup: QianchuanLibraryClear | undefined = (planMaterials || videoLibrary) && chosen.length && Boolean(plansReady)
     ? { confirmation: planMaterials ? videoLibrary ? "DELETE_VIDEOS_AND_PLAN_MATERIALS" : "DELETE_PLAN_MATERIALS" : "DELETE_ALL_VIDEOS", ...(planMaterials && zeroImpressions ? { planMaterialRule: auditMaterials ? "AUDIT_AND_ZERO_IMPRESSIONS_15D" : "ZERO_IMPRESSIONS_15D" } : {}),
-      accounts: chosen.map(account => ({ product: account.product, expectedAdvertiserId: account.advertiserId, ...(planMaterials ? { plans: chosenPlans(account)! } : {}) })) }
+      accounts: chosen.map(cleanupTarget) }
     : undefined;
   const scheduleDisabledReason = disabled ? "正在处理其他操作，请稍后设置定时清理。"
     : selected ? "请先取消或完成当前的立即清理确认。"
@@ -46,7 +51,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
     finally { setRunning(false); }
   };
   const resolve = async (request: QianchuanPlanRecovery) => {
-    if (disabled || !configured.some(account => account.product === request.product && account.advertiserId === request.advertiserId)) return;
+    if (disabled || !configured.some(account => account.product === request.product && account.advertiserId === (request.expectedAdvertiserId ?? request.advertiserId))) return;
     setRunning(true); setError("");
     try {
       await window.jianji.resolveQianchuanPlanMaterialDeletion(request);
@@ -70,6 +75,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
           {chosen.map(account => <div className="qianchuan-cleanup-plan" key={`${account.product}:${account.advertiserId}`}>
             <strong>{qianchuanAccountName(account)} · 账户 {account.advertiserId}</strong>
             <QianchuanCleanupPlanSelect account={account} value={chosenPlans(account)} disabled={disabled}
+              onAccountRead={current => setSubaccounts(previous => ({ ...previous, [account.product]: current ? { anchor: account.advertiserId, current } : undefined }))}
               onChange={next => setPlans(current => ({ ...current, [account.product]: next }))} />
           </div>)}
         </div>}
@@ -81,7 +87,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
           <label><input type="checkbox" checked={videoLibrary} onChange={event => setVideoLibrary(event.target.checked)} /><span><strong>视频库全部视频</strong><small>清空整个账号素材库，不按计划筛选；已使用视频的在投创意和计划不受影响。</small></span></label>
         </fieldset>
         <div className="qianchuan-cleanup-footer"><small>{plansReady ? "本地视频和上传记录保留。" : "请为每个所选账号选择清理计划。"}</small><button className="button primary" type="button" disabled={disabled || !chosen.length || !plansReady || (!planMaterials && !videoLibrary)} onClick={() => {
-          const request: QianchuanLibraryClear = { confirmation: planMaterials ? videoLibrary ? "DELETE_VIDEOS_AND_PLAN_MATERIALS" : "DELETE_PLAN_MATERIALS" : "DELETE_ALL_VIDEOS", ...(planMaterials && zeroImpressions ? { planMaterialRule: auditMaterials ? "AUDIT_AND_ZERO_IMPRESSIONS_15D" as const : "ZERO_IMPRESSIONS_15D" as const } : {}), accounts: chosen.map(account => ({ product: account.product, expectedAdvertiserId: account.advertiserId, ...(planMaterials ? { plans: chosenPlans(account)! } : {}) })) };
+          const request: QianchuanLibraryClear = { confirmation: planMaterials ? videoLibrary ? "DELETE_VIDEOS_AND_PLAN_MATERIALS" : "DELETE_PLAN_MATERIALS" : "DELETE_ALL_VIDEOS", ...(planMaterials && zeroImpressions ? { planMaterialRule: auditMaterials ? "AUDIT_AND_ZERO_IMPRESSIONS_15D" as const : "ZERO_IMPRESSIONS_15D" as const } : {}), accounts: chosen.map(cleanupTarget) };
           if (request.planMaterialRule && !videoLibrary) void clear(request); else setSelected(request); setError("");
         }}>{planMaterials && videoLibrary ? "清理所选计划及视频库" : planMaterials && zeroImpressions ? auditMaterials ? "自动删除所选两类素材" : "自动删除零展示素材" : `清理所选${planMaterials ? "计划" : "账号"}`}{(planMaterials ? planCount : chosen.length) ? `（${planMaterials ? planCount : chosen.length}）` : ""}</button></div>
       </> : <div className="qianchuan-cleanup-confirm" role="group" aria-label="确认素材清理">
@@ -92,7 +98,7 @@ export function QianchuanVideoLibraryActions({ accounts, busy, onAutomation }: {
         {selectedVideoLibrary && <p><strong>视频库全部视频</strong> · 清空整个账号素材库，不按计划筛选；已使用视频的在投创意和计划不受影响。</p>}
         <ul>{selected.accounts.map(account => {
           const currentAccount = accounts.find(item => item.product === account.product && item.advertiserId === account.expectedAdvertiserId);
-          return <li key={account.product}><strong>{currentAccount ? qianchuanAccountName(currentAccount) : account.product}</strong><span>账户 {account.expectedAdvertiserId}</span>{selectedPlanMaterials && account.plans?.map(plan => <span key={plan.adId}>{plan.name} · ID {plan.adId}</span>)}</li>;
+          return <li key={account.product}><strong>{currentAccount ? qianchuanAccountName(currentAccount) : account.product}</strong><span>账户 {account.expectedAdvertiserId}</span>{account.expectedCurrentAdvertiserId && <span>子账户 {currentAccount ? child(currentAccount)?.name : ""} · {account.expectedCurrentAdvertiserId}</span>}{selectedPlanMaterials && account.plans?.map(plan => <span key={plan.adId}>{plan.name} · ID {plan.adId}</span>)}</li>;
         })}</ul>
         {!selectionCurrent && <p role="alert">账号设置已变化，请取消并重新选择清理范围。</p>}
         <p>本地视频和原上传记录保留。</p>

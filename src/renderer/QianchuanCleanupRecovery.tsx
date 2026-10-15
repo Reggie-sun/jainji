@@ -18,6 +18,7 @@ export function QianchuanCleanupRecovery({ result, disabled, onResolve }: {
       <p>确认结束账户 {result.advertiserId}、计划 {pending.adId} 的这次记录？此操作不代表平台删除成功。</p>
       <button type="button" className="button secondary" disabled={disabled} onClick={() => setConfirming(false)}>返回核查</button>
       <button type="button" className="button secondary" disabled={disabled || !checked} onClick={() => void onResolve({ product: result.product, advertiserId: result.advertiserId,
+        ...(result.expectedAdvertiserId ? { expectedAdvertiserId: result.expectedAdvertiserId } : {}),
         adId: pending.adId, attempt: pending.attempt, digest: pending.digest, confirmation: "MANUALLY_HANDLED_PLAN_DELETION" })}>确认结束旧记录</button>
     </div>}
   </details>;

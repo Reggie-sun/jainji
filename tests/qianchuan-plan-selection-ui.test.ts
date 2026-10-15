@@ -36,16 +36,21 @@ export function planSelectionFixtureScript(options: { strict?: boolean; multiple
   `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
 }
 
-export function cleanupPlanFixtureScript(recovery = false) {
+export function cleanupPlanFixtureScript(recovery = false, subaccounts = false) {
   return buildSync({ stdin: { contents: `
     import React, { useState } from "react";
     import { createRoot } from "react-dom/client";
     import { QianchuanVideoLibraryActions } from "./src/renderer/QianchuanVideoLibraryActions";
     window.catalogRequests = []; window.cleanupRequests = []; window.recoveryRequests = [];
     window.jianji = {
+      ...(${subaccounts} ? { listQianchuanSubaccounts: async input => {
+        if (!window.cleanupDirectoryCache || input.refresh) window.cleanupDirectoryCache={current:{advertiserId:window.cleanupChild??"7000",name:window.cleanupChild==="8000"?"其他子账户":"清理子账户"},accounts:[{advertiserId:"7000",name:"清理子账户"},{advertiserId:"8000",name:"其他子账户"}]};
+        return structuredClone(window.cleanupDirectoryCache);
+      },
+        switchQianchuanSubaccount: async input => {window.cleanupChild=input.advertiserId;return {advertiserId:input.advertiserId,name:input.advertiserId==="7000"?"清理子账户":"其他子账户"};} } : {}),
       listQianchuanPlans: input => new Promise((resolve, reject) => window.catalogRequests.push({ input, resolve, reject })),
       cancelQianchuanPlans: async () => {},
-      clearQianchuanVideoLibraries: async input => { window.cleanupRequests.push(input); return ${recovery ? '[{product:"眼贴",advertiserId:"1000",state:"BLOCKED",deletedCount:0,message:"计划 9001 上次删除结果未知",pendingPlanDeletion:{adId:"9001",attempt:"11111111-1111-4111-8111-111111111111",digest:"d".repeat(64),ids:["7001","7002"]}}]' : "[]"}; },
+      clearQianchuanVideoLibraries: async input => { window.cleanupRequests.push(input); return ${recovery ? `[{product:"眼贴",advertiserId:${subaccounts ? 'input.accounts[0].expectedCurrentAdvertiserId,expectedAdvertiserId:input.accounts[0].expectedAdvertiserId' : '"1000"'},state:"BLOCKED",deletedCount:0,message:"计划 9001 上次删除结果未知",pendingPlanDeletion:{adId:"9001",attempt:"11111111-1111-4111-8111-111111111111",digest:"d".repeat(64),ids:["7001","7002"]}}]` : "[]"}; },
       resolveQianchuanPlanMaterialDeletion: async input => { window.recoveryRequests.push(input); },
       onQianchuanVideoLibrarySchedule: () => () => {},
       getQianchuanVideoLibrarySchedule: async () => ({settings:{enabled:false,time:"00:30",accounts:[]},timeZone:"Asia/Hong_Kong"})
@@ -140,13 +145,13 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
     expect(await page.evaluate(()=>(window as any).controlled)).toEqual([]);
   } finally {await page.close();}
 });
-it("shows pending IDs and requires manual handling plus a second confirmation without automatically retrying", async () => {
+it.each([false, true])("shows pending IDs and requires manual handling plus a second confirmation without automatically retrying (child=%s)", async child => {
   const page = await browser.newPage();
   try {
     await page.route("http://127.0.0.1:3000/recovery", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
-    await page.goto("http://127.0.0.1:3000/recovery"); await page.addScriptTag({ content: cleanupPlanFixtureScript(true) });
+    await page.goto("http://127.0.0.1:3000/recovery"); await page.addScriptTag({ content: cleanupPlanFixtureScript(true, child) });
     await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
-    await page.evaluate(() => (window as any).catalogRequests[0].resolve([{advertiserId:"1000",adId:"9001",name:"计划 9001"}]));
+    await page.evaluate(child => (window as any).catalogRequests[0].resolve(child ? {account:{advertiserId:"7000",name:"清理子账户"},plans:[{advertiserId:"7000",adId:"9001",name:"计划 9001",accountSource:"current-browser"}]} : [{advertiserId:"1000",adId:"9001",name:"计划 9001"}]), child);
     await page.getByRole("button", { name: "自动删除所选两类素材（1）", exact: true }).click();
     await page.getByText("查看各账号结果", { exact: true }).click();
     await page.getByText("待核查素材明细（2 条）", { exact: true }).click();
@@ -159,7 +164,7 @@ it("shows pending IDs and requires manual handling plus a second confirmation wi
     await page.getByRole("button", { name: "结束这次旧清理记录", exact: true }).click();
     await page.getByRole("button", { name: "确认结束旧记录", exact: true }).click();
     await page.getByText(/旧记录已由你标记为人工处理/).waitFor();
-    expect(await page.evaluate(() => (window as any).recoveryRequests)).toEqual([{ product: "眼贴", advertiserId: "1000", adId: "9001", attempt: "11111111-1111-4111-8111-111111111111", digest: "d".repeat(64), confirmation: "MANUALLY_HANDLED_PLAN_DELETION" }]);
+    expect(await page.evaluate(() => (window as any).recoveryRequests)).toEqual([{ product: "眼贴", advertiserId: child ? "7000" : "1000", ...(child ? {expectedAdvertiserId:"1000"} : {}), adId: "9001", attempt: "11111111-1111-4111-8111-111111111111", digest: "d".repeat(64), confirmation: "MANUALLY_HANDLED_PLAN_DELETION" }]);
     expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(1);
     expect(await page.getByLabel("待核查素材 ID").count()).toBe(0);
   } finally { await page.close(); }
@@ -592,6 +597,46 @@ describe("plan selector browser interaction", () => {
 });
 
 describe("cleanup plan browser interaction", () => {
+  it("identifies cleanup children, discards the old child's plans and freezes the explicit child scope", async () => {
+    const page = await browser.newPage();
+    try {
+      await page.route("http://127.0.0.1:3000/cleanup-child", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+      await page.goto("http://127.0.0.1:3000/cleanup-child"); await page.addScriptTag({ content: cleanupPlanFixtureScript(false, true) });
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+      expect(await page.getByLabel("子账户", {exact:true}).inputValue()).toBe("7000");
+      const respondChild = async (child: string, adId: string) => {
+        await page.evaluate(({child,adId}) => (window as any).catalogRequests.at(-1).resolve({account:{advertiserId:child,name:"清理子账户"},plans:[{advertiserId:child,adId,name:"子账户对应计划",accountSource:"current-browser"}]}), {child,adId});
+        await page.getByRole("checkbox", {name:`清理计划 ${adId}`,exact:true}).waitFor();
+      };
+      expect(await page.evaluate(() => (window as any).catalogRequests[0].input)).toMatchObject({expectedAdvertiserId:"1000",expectedCurrentAdvertiserId:"7000",accountSource:"current-browser",includeAccount:true});
+      await respondChild("7000","9001");
+      await page.getByLabel("子账户", {exact:true}).selectOption("8000");
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+      expect(await page.getByRole("checkbox", {name:"清理计划 9001",exact:true}).count()).toBe(0);
+      expect(await page.getByRole("button", {name:"自动删除所选两类素材",exact:true}).isDisabled()).toBe(true);
+      await respondChild("8000","9002");
+      await page.getByRole("checkbox", {name:"清理计划 9002",exact:true}).uncheck();
+      await page.getByRole("checkbox", {name:/计划内三类素材/}).uncheck();
+      await page.getByRole("checkbox", {name:/近15天零展示素材/}).uncheck();
+      await page.getByRole("checkbox", {name:/计划内三类素材/}).check();
+      await page.getByRole("checkbox", {name:/近15天零展示素材/}).check();
+      await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
+      await respondChild("8000","9002");
+      expect(await page.getByRole("checkbox", {name:"清理计划 9002",exact:true}).isChecked()).toBe(false);
+      await page.getByRole("checkbox", {name:"清理计划 9002",exact:true}).check();
+      await page.getByRole("button", {name:"自动删除所选两类素材（1）",exact:true}).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 1);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[0].accounts[0])).toEqual({product:"眼贴",expectedAdvertiserId:"1000",expectedCurrentAdvertiserId:"8000",plans:[{advertiserId:"8000",adId:"9002",name:"子账户对应计划",accountSource:"current-browser"}]});
+      await page.getByRole("checkbox", {name:/计划内三类素材/}).uncheck();
+      await page.getByRole("checkbox", {name:/近15天零展示素材/}).uncheck();
+      await page.getByRole("checkbox", {name:/视频库全部视频/}).check();
+      expect(await page.getByLabel("子账户", {exact:true}).count()).toBe(0);
+      await page.getByRole("button", {name:"清理所选账号（1）",exact:true}).click();
+      await page.getByRole("button", {name:"确认删除全部库视频（1 个账号）",exact:true}).click();
+      await page.waitForFunction(() => (window as any).cleanupRequests.length === 2);
+      expect(await page.evaluate(() => (window as any).cleanupRequests[1].accounts)).toEqual([{product:"眼贴",expectedAdvertiserId:"1000"}]);
+    } finally { await page.close(); }
+  });
   async function cleanupFixture() {
     const page = await browser.newPage();
     await page.route("http://127.0.0.1:3000/cleanup", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));

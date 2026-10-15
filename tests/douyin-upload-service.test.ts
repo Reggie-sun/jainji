@@ -650,6 +650,27 @@ describe("Qianchuan upload service", () => {
     await expect(f.service.resolvePlanMaterialDeletion({ ...request, confirmation: "RETRY" })).rejects.toThrow();
     expect(resolve).toHaveBeenCalledTimes(1);
   });
+  it("ends a child cleanup record under its saved anchor without Chrome, retaining exact UNKNOWN evidence and protected IDs", async () => {
+    const discover = vi.fn(async () => "http://127.0.0.1:9225"), f = await nativeFixture(discover);
+    await f.service.chooseConfig(f.configPath); discover.mockClear();
+    const browserRead = vi.spyOn(QianchuanAccountSettings.prototype, "prepareCurrentCatalog").mockRejectedValue(new Error("must not contact Chrome"));
+    const clear = vi.spyOn(QianchuanPlanMaterials.prototype, "clear");
+    const directory = path.join(f.store.root, "plan-material-deletions"); await mkdir(directory, { mode: 0o700 });
+    const pending = {version:1,attempt:"11111111-1111-4111-8111-111111111111",advertiserId:"7000",adId:"9001",ids:["7001","7002"]};
+    const bytes = JSON.stringify(pending, null, 2) + "\n";
+    await writeFile(path.join(directory, "7000-9001.pending.json"), bytes, {mode:0o600});
+    const target = {product:"眼贴" as const,advertiserId:"7000",adId:"9001",cdpEndpoint:"http://127.0.0.1:9225",configDigest:"d".repeat(64)};
+    const recovery = new QianchuanPlanMaterialRecovery(directory, target), detail = (await recovery.pending())!;
+    const request = {product:target.product,advertiserId:target.advertiserId,expectedAdvertiserId:"1003",adId:target.adId,attempt:detail.attempt,digest:detail.digest,confirmation:"MANUALLY_HANDLED_PLAN_DELETION"};
+    await expect(f.service.resolvePlanMaterialDeletion({...request,expectedAdvertiserId:"1004"})).rejects.toThrow("已变化");
+    await f.service.resolvePlanMaterialDeletion(request);
+    expect(await recovery.pending()).toBeUndefined();
+    const history = path.join(directory, "manual-history", "7000-9001");
+    expect(await readFile(path.join(history, `${pending.attempt}.pending.json`), "utf8")).toBe(bytes);
+    expect(JSON.parse(await readFile(path.join(history, `${pending.attempt}.json`), "utf8"))).toMatchObject({outcome:"UNKNOWN",expectedAdvertiserId:"1003",advertiserId:"7000"});
+    expect(await new QianchuanPlanMaterialRecovery(directory, target).protectedIds()).toEqual(new Set(pending.ids));
+    expect(clear).not.toHaveBeenCalled(); expect(discover).not.toHaveBeenCalled(); expect(browserRead).not.toHaveBeenCalled();
+  });
   it("drains manual cleanup disposition on stop and rejects another cleanup while it runs", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     let release!: () => void, entered!: () => void;
@@ -793,6 +814,26 @@ describe("Qianchuan upload service", () => {
     readPlans.mockResolvedValueOnce([plans[0]]);
     expect((await f.service.clearVideoLibraries(input))[0]).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
     expect(materials).toHaveBeenCalledTimes(2); expect(library).toHaveBeenCalledTimes(1);
+  });
+  it("revalidates child cleanup through the current-browser plan reader while retaining its configured anchor", async () => {
+    const plans = [{ advertiserId: "7000", adId: "9001", name: "子账户计划", accountSource: "current-browser" as const }];
+    const savedReader = vi.fn(async () => []);
+    const currentReader = vi.spyOn(QianchuanAccountSettings.prototype, "readCurrentPlans").mockResolvedValue(plans);
+    vi.spyOn(QianchuanAccountSettings.prototype, "prepareCurrentCatalog").mockImplementation(async function(this: QianchuanAccountSettings, product) {
+      const configured = await this.preflight(product);
+      return { configured, target: { ...configured, advertiserId: "7000" }, account: {advertiserId:"7000",name:"子账户"} };
+    });
+    const f = await nativeFixture(undefined, savedReader); await f.service.chooseConfig(f.configPath);
+    const materials = vi.spyOn(QianchuanPlanMaterials.prototype, "clear").mockImplementation(async (target, guard) => {
+      await guard(); expect(target).toMatchObject({advertiserId:"7000",adId:"9001"});
+      return {product:target.product,advertiserId:target.advertiserId,state:"CLEARED",deletedCount:0,message:"empty"};
+    });
+    const input = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{product:"眼贴",expectedAdvertiserId:"1003",expectedCurrentAdvertiserId:"7000",plans}] };
+    expect((await f.service.clearVideoLibraries(input))[0]).toMatchObject({advertiserId:"7000",expectedAdvertiserId:"1003",state:"CLEARED"});
+    expect(currentReader).toHaveBeenCalledOnce(); expect(savedReader).not.toHaveBeenCalled();
+    currentReader.mockResolvedValueOnce([]);
+    expect((await f.service.clearVideoLibraries(input))[0]).toMatchObject({state:"BLOCKED",deletedCount:0});
+    expect(materials).toHaveBeenCalledOnce();
   });
   it.each([undefined, "ZERO_IMPRESSIONS_15D", "AUDIT_AND_ZERO_IMPRESSIONS_15D"])("retains confirmed progress and stops remaining plans and combined library cleanup on a blocked plan: %s", async planMaterialRule => {
     const plans = ["9001", "9002", "9003"].map(adId => ({ advertiserId: "1003", adId, name: `计划 ${adId}` }));

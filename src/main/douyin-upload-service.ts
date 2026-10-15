@@ -567,25 +567,30 @@ export class DouyinUploadService {
       const library = new QianchuanVideoLibrary(this.store.root);
       const materials = new QianchuanPlanMaterials(this.store.root);
       return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
+        const selection = parsed.accounts.find(account => account.product === target.product)!;
+        const binding = selection.expectedCurrentAdvertiserId ? { expectedAdvertiserId: selection.expectedAdvertiserId } : {};
         try {
           await guard(); const connected = await connect(target);
-          const selection = parsed.accounts.find(account => account.product === target.product)!;
-          return clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
-            guard, signal, readPlans: (account, signal) => this.readPlans(account, signal),
+          const result = await clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
+            guard, signal, readPlans: (account, signal) => selection.expectedCurrentAdvertiserId ? this.currentPlanReads.request(account, signal) : this.readPlans(account, signal),
             clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal, parsed.planMaterialRule),
             clearLibrary: (account, fresh, signal) => library.clear(account, fresh, signal),
           });
+          return { ...result, ...binding };
         }
-        catch (error) { return { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
+        catch (error) { return { product: target.product, advertiserId: target.advertiserId, ...binding, state: "BLOCKED", deletedCount: 0, message: error instanceof Error ? error.message : "该账号浏览器或绑定不可用，未开始删除，请核查原账号窗口。" }; }
       }));
     }, signal, automatic);
   }
   async resolvePlanMaterialDeletion(input: unknown): Promise<void> {
     const request = QianchuanPlanRecoverySchema.parse(input);
-    const scope: QianchuanLibraryClear = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: request.product, expectedAdvertiserId: request.advertiserId,
-      plans: [{ advertiserId: request.advertiserId, adId: request.adId, name: `计划 ${request.adId}` }] }] };
+    const anchor = request.expectedAdvertiserId ?? request.advertiserId;
+    const scope: QianchuanLibraryClear = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [{ product: request.product, expectedAdvertiserId: anchor,
+      plans: [{ advertiserId: anchor, adId: request.adId, name: `计划 ${request.adId}` }] }] };
     await this.withCleanupOperation(scope, async (targets, guard) => {
-      await new QianchuanPlanMaterialRecovery(path.join(this.store.root, "plan-material-deletions"), targets[0]).resolve(request, guard);
+      // Local disposition verifies the saved browser binding without opening Chrome or replaying deletion.
+      const target = Object.freeze({ ...targets[0], advertiserId: request.advertiserId });
+      await new QianchuanPlanMaterialRecovery(path.join(this.store.root, "plan-material-deletions"), target).resolve(request, guard);
     });
   }
   private async withCleanupOperation<T>(parsed: QianchuanLibraryClear, action: (targets: FrozenQianchuanAccount[], guard: () => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>, signal: AbortSignal) => Promise<T>, parentSignal?: AbortSignal, automatic = false): Promise<T> {

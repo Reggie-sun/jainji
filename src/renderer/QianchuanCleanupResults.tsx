@@ -21,7 +21,7 @@ export function QianchuanCleanupResults({ title, results, accounts, message, bus
       {message && <p>{message}</p>}
       <ul>{results.map(result => <li key={result.product}><strong>{qianchuanTargetName(result.advertiserId, accounts, result.product)}</strong><span>账户 {result.advertiserId}</span><span>{result.message}</span>
         {result.pendingPlanDeletion && onResolve && <QianchuanCleanupRecovery key={`${result.pendingPlanDeletion.attempt}:${result.pendingPlanDeletion.digest}`} result={result}
-          disabled={busy || !accounts.some(account => account.available && account.product === result.product && account.advertiserId === result.advertiserId)} onResolve={onResolve} />}
+          disabled={busy || !accounts.some(account => account.available && account.product === result.product && account.advertiserId === (result.expectedAdvertiserId ?? result.advertiserId))} onResolve={onResolve} />}
       </li>)}</ul>
     </details>}
   </div>;

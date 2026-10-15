@@ -41,6 +41,17 @@ it("requires explicit confirmation and unique saved-account identities", () => {
   expect(() => QianchuanLibraryClearSchema.parse({ ...input, accounts: [...input.accounts, ...input.accounts] })).toThrow();
   expect(() => QianchuanLibraryClearSchema.parse({ ...input, cdpEndpoint: target.cdpEndpoint })).toThrow();
 });
+it("binds cleanup children to explicit browser plans and rejects mixed or duplicate child scopes", () => {
+  const account = { product: target.product, expectedAdvertiserId: target.advertiserId, expectedCurrentAdvertiserId: "7000",
+    plans: [{ advertiserId: "7000", adId: "9001", name: "子账户计划", accountSource: "current-browser" }] };
+  const input = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [account] };
+  expect(QianchuanLibraryClearSchema.parse(input)).toEqual(input);
+  for (const invalid of [{ ...account, plans: [{ ...account.plans[0], advertiserId: target.advertiserId }] },
+    { ...account, plans: [{ ...account.plans[0], accountSource: undefined }] }, { ...account, plans: undefined, expectedAdId: "9001" }]) {
+    expect(QianchuanLibraryClearSchema.safeParse({ ...input, accounts: [invalid] }).success).toBe(false);
+  }
+  expect(QianchuanLibraryClearSchema.safeParse({ ...input, accounts: [account, { ...account, product: "眼贴", expectedAdvertiserId: "1234" }] }).success).toBe(false);
+});
 it("requires the expected saved plan for every plan-material cleanup and keeps legacy library input compatible", () => {
   const account = { product: target.product, expectedAdvertiserId: target.advertiserId, expectedAdId: target.adId };
   for (const confirmation of ["DELETE_PLAN_MATERIALS", "DELETE_VIDEOS_AND_PLAN_MATERIALS"]) {
