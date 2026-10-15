@@ -3,8 +3,52 @@ import { afterEach, expect, it, vi } from "vitest";
 import { QianchuanBrowserAccounts } from "../src/main/qianchuan-browser-accounts";
 import { QianchuanRemoteRuntime, qianchuanRemoteRuntime } from "../src/main/qianchuan-remote-runtime";
 import type { FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
+import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+import * as processProof from "../src/main/qianchuan-extension-process";
+import * as profileProof from "../src/main/qianchuan-cdp-profile";
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+function localProfileFixture() {
+  const target: FrozenQianchuanAccount = { product: "氨糖膏", advertiserId: "123", adId: "456", cdpEndpoint: "http://127.0.0.1:9223", configDigest: "a".repeat(64) };
+  let startedAt = "original-start", browserPath = "/devtools/browser/original";
+  const binding = { advertiserId: "123", profile: "/original", profileDirectory: "Default" };
+  vi.spyOn(QianchuanBrowserBindings.prototype, "get").mockResolvedValue(binding);
+  vi.spyOn(processProof, "findExtensionProcess").mockResolvedValue({ pid: 1234, profile: binding.profile, profileDirectory: "Default" });
+  const verify = vi.spyOn(processProof, "verifyExtensionProcess").mockImplementation(async () => startedAt);
+  vi.spyOn(processProof, "readExtensionBrowserMetadata").mockImplementation(async () => ({ port: 36895, browserPath }));
+  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ webSocketDebuggerUrl: `ws://127.0.0.1:36895${browserPath}` }))));
+  const profile = vi.spyOn(profileProof, "readQianchuanCdpProfile").mockImplementation(async () => { await new Promise(resolve => setTimeout(resolve, 20)); return "original-context"; });
+  let account = { advertiserId: "123", name: "main" };
+  const current = vi.fn(async () => ({ targetId: "real-target-id", browserContextId: "original-context", documentId: randomUUID(), account, gfversion: "fixture" }));
+  const owner = new QianchuanBrowserAccounts("/unused", { session: () => ({ current, call: vi.fn() }) });
+  return { target, owner, profile, verify, current, restart() { startedAt = "new-start"; browserPath = "/devtools/browser/restarted"; }, switchChild() { account = { advertiserId: "789", name: "child" }; } };
+}
+
+it("shares one profile probe for concurrent guards but reads the live child every time", async () => {
+  const f = localProfileFixture(), signal = new AbortController().signal;
+  await Promise.all(Array.from({ length: 6 }, () => f.owner.current(f.target, signal)));
+  expect(f.profile).toHaveBeenCalledOnce();
+  expect(f.current).toHaveBeenCalledTimes(6);
+  f.switchChild();
+  expect((await f.owner.current(f.target, signal)).account.advertiserId).toBe("789");
+  expect(f.profile).toHaveBeenCalledOnce();
+  f.verify.mockRejectedValueOnce(new Error("process changed"));
+  await expect(f.owner.current(f.target, signal)).rejects.toThrow();
+  expect(f.current).toHaveBeenCalledTimes(7);
+});
+
+it("reproves a restarted browser and never retains a failed profile proof", async () => {
+  const f = localProfileFixture(), signal = new AbortController().signal;
+  await f.owner.current(f.target, signal);
+  f.restart();
+  f.profile.mockRejectedValueOnce(new Error("profile unavailable"));
+  await expect(f.owner.current(f.target, signal)).rejects.toThrow("profile unavailable");
+  await f.owner.current(f.target, signal);
+  await f.owner.current(f.target, signal);
+  expect(f.profile).toHaveBeenCalledTimes(3);
+  expect(f.current).toHaveBeenCalledTimes(3);
+});
 
 it("reads a main-account directory, then switches and reads the chosen child's plans without an extension", async () => {
   const anchor: FrozenQianchuanAccount = { product: "氨糖膏", advertiserId: "1876036793517065", adId: "123", cdpEndpoint: "http://127.0.0.1:9223", configDigest: "a".repeat(64) };

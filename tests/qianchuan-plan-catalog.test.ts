@@ -16,7 +16,7 @@ const signal = new AbortController().signal;
 const target = { product: "蝴蝶贴", advertiserId, adId: "123", cdpEndpoint: "http://127.0.0.1:42001", configDigest: "d".repeat(64) } as FrozenQianchuanAccount;
 vi.setConfig({ testTimeout: 30_000, hookTimeout: 30_000 });
 
-interface FixtureRow { name: string; id: string; deleted?: boolean; zeroHeightDeleted?: boolean; idText?: string; }
+interface FixtureRow { name: string; id: string; deleted?: boolean; zeroHeightDeleted?: boolean; idText?: string; status?: string; hiddenStatus?: boolean; }
 interface FixturePage { rows: FixtureRow[]; total: number; nextDisabled: boolean; }
 
 let browser: Browser;
@@ -28,7 +28,8 @@ function rowHtml(row: FixtureRow): string {
   return `<tr class="ovui-tr"><td class="p-c-ad-name-col"><div class="oc-promotion-product-adinfo">
     <div class="oc-promotion-product-adinfo-name"><span class="oc-typography-value-int">${row.name}</span></div>
     <span class="oc-promotion-product-adinfo-id-fade">${row.idText ?? `ID：${row.id}`}</span>
-  </div>${row.deleted ? `<div class="oc-tag-text"${row.zeroHeightDeleted ? ' style="line-height:0"' : ""}>已删除</div>` : ""}</td></tr>`;
+  </div>${row.deleted ? `<div class="oc-tag-text"${row.zeroHeightDeleted ? ' style="line-height:0"' : ""}>已删除</div>` : ""}</td>
+  ${row.status ? `<td><div class="ad-status"${row.hiddenStatus ? ' style="display:none"' : ""}><div class="oc-promotion-status-card"><span class="oc-promotion-status-card-wrapper-title-value"><i class="list-style"></i>${row.status}</span><div class="oc-tag-text">保</div></div></div></td>` : ""}</tr>`;
 }
 
 function pageHtml(page: FixturePage, pageNumber: number): string {
@@ -90,6 +91,22 @@ it("returns visible active plans, excludes exact deleted tags, and ignores summa
       { advertiserId, adId: "1877947268854202", name: "全域投放一" },
       { advertiserId, adId: "1877947268854204", name: "全域投放二" },
       { advertiserId, adId: "1877947268854205", name: "名称包含已删除字样" },
+    ]);
+  } finally { await f.context.close(); }
+});
+
+it("excludes deleted plans from the live status card while keeping matching names and hidden status copies", async () => {
+  const f = await fixture({ pages: [{ total: 4, nextDisabled: true, rows: [
+    { name: "当前投放计划", id: "1878488818847384", status: "投放中" },
+    { name: "旧滴耳康计划", id: "1877582409449488", status: "已删除" },
+    { name: "名称包含已删除", id: "1877122107497536", status: "投放中" },
+    { name: "隐藏的旧状态不生效", id: "1876967196602448", status: "已删除", hiddenStatus: true },
+  ] }] });
+  try {
+    await expect(readVisibleQianchuanPlans(f.page, advertiserId, signal)).resolves.toEqual([
+      { advertiserId, adId: "1878488818847384", name: "当前投放计划" },
+      { advertiserId, adId: "1877122107497536", name: "名称包含已删除" },
+      { advertiserId, adId: "1876967196602448", name: "隐藏的旧状态不生效" },
     ]);
   } finally { await f.context.close(); }
 });

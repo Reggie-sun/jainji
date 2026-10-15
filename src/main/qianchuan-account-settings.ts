@@ -94,7 +94,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       return super.refresh();
     });
   }
-  async withVideoLibraryTargets<T>(input: unknown, action: (targets: FrozenQianchuanAccount[], fresh: () => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>) => Promise<T>): Promise<T> {
+  async withVideoLibraryTargets<T>(input: unknown, action: (targets: FrozenQianchuanAccount[], fresh: (product?: QianchuanProduct) => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>) => Promise<T>, signal?: AbortSignal): Promise<T> {
     this.assertAvailable();
     const parsed = QianchuanLibraryClearSchema.parse(input);
     return this.edit(async () => {
@@ -105,7 +105,7 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
         if (parsed.confirmation !== "DELETE_ALL_VIDEOS" && !account.plan && !account.plans && target.adId !== account.expectedAdId) throw new Error("千川计划已变化，未删除素材，请重新选择当前计划。");
         let selected = target;
         if (account.expectedCurrentAdvertiserId) {
-          const current = await this.prepareCurrentCatalog(account.product);
+          const current = await this.prepareCurrentCatalog(account.product, signal);
           if (current.configured.configDigest !== target.configDigest || current.target.advertiserId !== account.expectedCurrentAdvertiserId) throw new Error("网页子账户已变化，未删除素材，请刷新子账户和计划。");
           selected = current.target;
           currentTargets.set(account.product, selected);
@@ -113,13 +113,16 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
         const plan = account.plan ?? account.plans?.[0];
         return plan ? Object.freeze({ ...selected, adId: plan.adId }) : selected;
       }));
-      const fresh = async () => {
+      const fresh = async (product?: QianchuanProduct) => {
         this.assertAvailable();
-        for (const target of targets) {
+        signal?.throwIfAborted();
+        const checked = product === undefined ? targets : targets.filter(target => target.product === product);
+        if (!checked.length) throw new Error("该账号不属于本次清理范围。");
+        for (const target of checked) {
           await super.freeze(target.product, target.configDigest);
           const expected = currentTargets.get(target.product);
           if (expected) {
-            const current = await this.prepareCurrentCatalog(target.product);
+            const current = await this.prepareCurrentCatalog(target.product, signal);
             if (current.target.advertiserId !== expected.advertiserId || current.target.configDigest !== expected.configDigest || current.target.cdpEndpoint !== expected.cdpEndpoint) throw new Error("网页子账户或浏览器连接已变化，已停止清理。");
           }
         }
@@ -127,9 +130,9 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
       await fresh();
       // Resolve per account so one unavailable Chrome does not hide other results.
       return action(targets, fresh, async target => {
-        if (currentTargets.has(target.product)) { await fresh(); return target; }
+        if (currentTargets.has(target.product)) { await fresh(target.product); return target; }
         const cdpEndpoint = await this.discoverBrowser(target.advertiserId);
-        await fresh();
+        await fresh(target.product);
         return Object.freeze({ ...target, cdpEndpoint });
       });
     });

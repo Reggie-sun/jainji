@@ -306,8 +306,14 @@ it.each([false, true])("proves the bound default profile despite another stored 
     }
     const owner = new QianchuanBrowserAccounts(root), signal = AbortSignal.timeout(30_000);
     const before = f.context.pages().map(page => page.url());
+    const opened: unknown[] = [];
+    f.context.on("page", page => { opened.push(page); });
     const session = await owner.current(f.target, signal);
+    expect(opened).toHaveLength(1);
     expect(session.account).toEqual(FIXTURE_ACCOUNTS[0]);
+    const repeated = await Promise.all(Array.from({ length: 3 }, () => owner.current(f.target, signal)));
+    expect(repeated.every(value => value.account.advertiserId === FIXTURE_ACCOUNTS[0].advertiserId)).toBe(true);
+    expect(opened).toHaveLength(1);
     expect((await owner.accounts(session, signal, async () => {})).accounts).toEqual([...FIXTURE_ACCOUNTS]);
     expect(f.context.pages().map(page => page.url())).toEqual(before);
     if (other) {

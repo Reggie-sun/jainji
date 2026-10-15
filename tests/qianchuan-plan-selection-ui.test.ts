@@ -180,7 +180,7 @@ it("keeps a saved plan distinct from an explicitly selected current-browser dire
     expect(await page.evaluate(() => (window as any).catalogRequests.length)).toBe(0);
     expect(await page.getByText("已保存目标：账户 1876131703522649 · 计划 1877582409449488", { exact: true }).count()).toBe(1);
     await page.evaluate(() => (window as any).setAccountSettingsBusy(true));
-    expect(await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).isDisabled()).toBe(true);
+    await expect.poll(() => page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).isDisabled()).toBe(true);
     await page.evaluate(() => (window as any).setAccountSettingsBusy(false));
     await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).click();
     await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
@@ -198,7 +198,7 @@ it("keeps a saved plan distinct from an explicitly selected current-browser dire
     await page.evaluate(() => (window as any).holdSave = true);
     await page.getByRole("button", { name: "保存账号", exact: true }).click();
     await page.waitForFunction(() => (window as any).saved.length === 1);
-    expect(await page.getByRole("button", { name: "取消目录选择", exact: true }).isDisabled()).toBe(true);
+    await expect.poll(() => page.getByRole("button", { name: "取消目录选择", exact: true }).isDisabled()).toBe(true);
     expect(await page.getByLabel("千川计划链接", { exact: true }).isDisabled()).toBe(true);
     expect(await page.getByLabel("产品名称", { exact: true }).isDisabled()).toBe(true);
     expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(true);

@@ -41,3 +41,17 @@ it("waits for manual close after IPC disconnect so launcher cleanup can continue
     expect(child.kill).not.toHaveBeenCalled();
   } finally { log.mockRestore(); }
 });
+
+it("requests an idle restart for a replacement and waits for the original process to exit", async () => {
+  const { waitForDevelopmentQuit } = await import(helperPath);
+  const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, connected: true, send: vi.fn(), kill: vi.fn() });
+  const finished = vi.fn();
+  const waiting = waitForDevelopmentQuit(child, { restart: true }).then(finished);
+  expect(child.send).toHaveBeenCalledWith({ type: "jianji-dev-restart" }, expect.any(Function));
+  await Promise.resolve();
+  expect(finished).not.toHaveBeenCalled();
+  child.emit("exit", 0);
+  await waiting;
+  expect(finished).toHaveBeenCalledOnce();
+  expect(child.kill).not.toHaveBeenCalled();
+});

@@ -591,10 +591,11 @@ export class DouyinUploadService {
       return Promise.all(targets.map(async (target): Promise<QianchuanLibraryResult> => {
         const selection = parsed.accounts.find(account => account.product === target.product)!;
         const binding = selection.expectedCurrentAdvertiserId ? { expectedAdvertiserId: selection.expectedAdvertiserId } : {};
+        const accountGuard = () => guard(target.product);
         try {
-          await guard(); const connected = await connect(target);
+          await accountGuard(); const connected = await connect(target);
           const result = await clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
-            guard, signal, readPlans: (account, signal) => selection.expectedCurrentAdvertiserId ? this.currentPlanReads.request(account, signal) : this.readPlans(account, signal),
+            guard: accountGuard, signal, readPlans: (account, signal) => selection.expectedCurrentAdvertiserId ? this.currentPlanReads.request(account, signal) : this.readPlans(account, signal),
             clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal, parsed.planMaterialRule),
             clearLibrary: (account, fresh, signal) => library.clear(account, fresh, signal),
           });
@@ -615,7 +616,7 @@ export class DouyinUploadService {
       await new QianchuanPlanMaterialRecovery(path.join(this.store.root, "plan-material-deletions"), target).resolve(request, guard);
     });
   }
-  private async withCleanupOperation<T>(parsed: QianchuanLibraryClear, action: (targets: FrozenQianchuanAccount[], guard: () => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>, signal: AbortSignal) => Promise<T>, parentSignal?: AbortSignal, automatic = false): Promise<T> {
+  private async withCleanupOperation<T>(parsed: QianchuanLibraryClear, action: (targets: FrozenQianchuanAccount[], guard: (product?: QianchuanProduct) => Promise<void>, connect: (target: FrozenQianchuanAccount) => Promise<FrozenQianchuanAccount>, signal: AbortSignal) => Promise<T>, parentSignal?: AbortSignal, automatic = false): Promise<T> {
     parentSignal?.throwIfAborted();
     await this.stopPlanPreload();
     if (this.hasNonAutomationWork() || this.automationUploadActive || !automatic && this.automationBrowsers.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未删除视频。");
@@ -635,13 +636,13 @@ export class DouyinUploadService {
           operation.controller.signal.throwIfAborted();
           if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner || this.stopping || this.pendingAdmissions || this.beginningProduction) throw new Error("上传控制已变化，已停止删除视频。");
         };
-        const guard = async () => {
+        const guard = async (product?: QianchuanProduct) => {
           check();
-          await fresh();
+          await fresh(product);
           check();
         };
         return action(targets, guard, connect, operation.controller.signal);
-      });
+      }, operation.controller.signal);
     } finally { parentSignal?.removeEventListener("abort", cancel); this.libraryOperation = undefined; this.managingBrowser = false; completed(); this.changed(); }
   }
   async configure(input: unknown): Promise<void> {

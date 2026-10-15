@@ -685,12 +685,22 @@ describe("Qianchuan upload service", () => {
   it("clears each requested saved account through the library owner without changing upload records", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     const before = f.store.tasks();
+    const scopes: Array<QianchuanProduct | undefined> = [];
+    const withTargets = QianchuanAccountSettings.prototype.withVideoLibraryTargets;
+    vi.spyOn(QianchuanAccountSettings.prototype, "withVideoLibraryTargets").mockImplementation(function(this: QianchuanAccountSettings, input, action, signal) {
+      return withTargets.call(this, input, (targets, fresh, connect) => action(targets, async product => {
+        scopes.push(product); await fresh(product);
+      }, connect), signal);
+    });
     const clear = vi.spyOn(QianchuanVideoLibrary.prototype, "clear").mockImplementation(async (target, guard) => {
       await guard();
       return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 20, message: "empty" };
     });
     const results = await f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }, { product: "肥皂", expectedAdvertiserId: "1004" }] });
     expect(results.map(result => result.advertiserId)).toEqual(["1003", "1004"]);
+    expect(scopes.length).toBeGreaterThan(0);
+    expect(scopes.every(product => product === "眼贴" || product === "肥皂")).toBe(true);
+    expect(new Set(scopes)).toEqual(new Set(["眼贴", "肥皂"]));
     expect(clear).toHaveBeenCalledTimes(2); expect(f.store.tasks()).toEqual(before); expect(f.events).toEqual([]);
     await expect(f.service.clearVideoLibraries({ confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "9999" }] })).rejects.toThrow("已变化");
     expect(clear).toHaveBeenCalledTimes(2);

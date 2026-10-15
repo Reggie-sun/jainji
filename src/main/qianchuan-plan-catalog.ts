@@ -101,7 +101,7 @@ async function observe(page: Page, advertiserId: string, documentHandle: JSHandl
       const cell = cells.length === 1 ? cells[0]! : row;
       const names = Array.from(cell.querySelectorAll(".oc-promotion-product-adinfo-name .oc-typography-value-int")).filter(visible).map(text);
       const ids = Array.from(cell.querySelectorAll(".oc-promotion-product-adinfo-id-fade")).filter(visible).map(text);
-      const deletedTags = Array.from(row.querySelectorAll(".oc-tag-text")).filter(tag => {
+      const deletedTags = Array.from(row.querySelectorAll(".oc-tag-text, .ad-status .oc-promotion-status-card-wrapper-title-value")).filter(tag => {
         if (text(tag) !== "已删除") return false;
         for (let ancestor: Element | null = tag; ancestor; ancestor = ancestor.parentElement) {
           const style = getComputedStyle(ancestor);

@@ -194,6 +194,26 @@ it("freezes a cleanup child separately from its browser anchor and rejects live 
   expect(await readFile(settings.file)).toEqual(bytes);
   expect(f.discover).not.toHaveBeenCalled();
 });
+it("checks only the cleaning account at each scoped guard and still rejects its live child drift", async () => {
+  const f = await fixture(); await f.settings.authorizeFile(f.source);
+  const current = vi.fn(async (target: { product: string }) => ({ identity: target.product, endpoint: "http://127.0.0.1:9441",
+    uploadEndpointVerified: true, account: { advertiserId: target.product === "蝴蝶贴" ? "7000" : "8000", name: target.product } }));
+  const settings = new QianchuanAccountSettings(path.join(f.root, "app"), f.discover, undefined, undefined, undefined,
+    { current, accounts: vi.fn(), switch: vi.fn(), plans: vi.fn() });
+  await settings.restore();
+  const input = { confirmation: "DELETE_PLAN_MATERIALS", accounts: [
+    { product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244", expectedCurrentAdvertiserId: "7000", plans: [{ advertiserId: "7000", adId: "9001", name: "计划A", accountSource: "current-browser" }] },
+    { product: "氨糖膏", expectedAdvertiserId: "1876024170199245", expectedCurrentAdvertiserId: "8000", plans: [{ advertiserId: "8000", adId: "9002", name: "计划B", accountSource: "current-browser" }] },
+  ] };
+  await settings.withVideoLibraryTargets(input, async (_targets, fresh) => {
+    current.mockClear();
+    await fresh("蝴蝶贴");
+    expect(current.mock.calls.map(call => call[0].product)).toEqual(["蝴蝶贴"]);
+    current.mockImplementationOnce(async target => ({ identity: target.product, endpoint: "http://127.0.0.1:9441", uploadEndpointVerified: true,
+      account: { advertiserId: "9999", name: target.product } }));
+    await expect(fresh("蝴蝶贴")).rejects.toThrow("已变化");
+  });
+});
 it("rejects out-of-process mapping drift before the library deletion guard can succeed", async () => {
   const f = await fixture(); await f.settings.authorizeFile(f.source);
   const input = { confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "蝴蝶贴", expectedAdvertiserId: "1876024170199244" }] };

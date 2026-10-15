@@ -1,59 +1,46 @@
 #!/usr/bin/env bash
-# Stop a previous `make frontend` dev session through its normal lifecycle.
-# Never force-kill Electron: a killed owner cannot release the source-sticker
-# knowledge store lock, so the next start would demand recovery (issue #5).
-set -u
+# Stop only the primary dev owner of this repository, including other worktrees.
+# Never force-kill Electron or signal independent profiles and other projects.
+set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-electron_pattern="$root/node_modules/electron/dist/electron"
+common_dir="$(git -C "$root" rev-parse --path-format=absolute --git-common-dir)"
+primary_lock="${XDG_CONFIG_HOME:-"$HOME/.config"}/jianji/SingletonLock"
+owner="$(readlink "$primary_lock" 2>/dev/null)" || exit 0
+primary_pid="${owner##*-}"
+[[ "$primary_pid" =~ ^[1-9][0-9]*$ ]] || { echo "Cannot identify the primary Jianji owner; close it normally first." >&2; exit 1; }
+[[ "$owner" = "$(hostname)-$primary_pid" ]] || { echo "Primary Jianji lock belongs to another host; not starting a replacement." >&2; exit 1; }
+kill -0 "$primary_pid" 2>/dev/null || exit 0
 
-# Only the dev app matters: its main process is launched as `electron .`
-# (optionally with flags before the "."). Other repo-electron consumers
-# (smoke fixtures, batch harnesses with their own launch scripts) must never
-# be signaled or waited on.
-is_dev_app() {
-  # Electron rewrites the browser-process cmdline into one space-joined
-  # string ("<binary> ."), so look for a standalone "." argv token.
-  tr '\0' ' ' 2>/dev/null < "/proc/$1/cmdline" | grep -Eq '(^| )\.( |$)'
+same_repository() {
+  local cwd common
+  cwd="$(readlink "/proc/$1/cwd" 2>/dev/null)" || return 1
+  common="$(git -C "$cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 1
+  [[ "$common" = "$common_dir" ]]
 }
-dev_app_running() {
-  for pid in $(pgrep -f "$electron_pattern" 2>/dev/null); do
-    if is_dev_app "$pid"; then
-      return 0
-    fi
-  done
-  return 1
-}
-
-# The dev launcher forwards SIGTERM into a graceful app quit
-# (scripts/dev.mjs -> IPC jianji-dev-quit -> normal save/close flow).
-# Match by cwd so another project's `node scripts/dev.mjs` is never signaled.
-for pid in $(pgrep -f "node scripts/dev\.mjs" 2>/dev/null); do
-  if [ "$(readlink "/proc/$pid/cwd" 2>/dev/null)" = "$root" ]; then
-    kill -TERM "$pid" 2>/dev/null || true
-  fi
-done
-
-if ! dev_app_running; then
-  exit 0
+primary_command="$(tr '\0' ' ' < "/proc/$primary_pid/cmdline")"
+if [[ "$(stat -c %u "/proc/$primary_pid")" != "$(id -u)" ]] ||
+   ! [[ "$primary_command" =~ /node_modules/electron/dist/electron\ \.\ ?$ ]] || ! same_repository "$primary_pid"; then
+  echo "The primary Jianji window is not a development instance of this repository; close it normally first." >&2
+  exit 1
 fi
 
-echo "Waiting for the previous Jianji instance to close (save or cancel in the app if prompted)..."
+launcher_pid="$(awk '/^PPid:/ {print $2}' "/proc/$primary_pid/status")"
+launcher_command="$(tr '\0' ' ' < "/proc/$launcher_pid/cmdline")"
+if ! [[ "$launcher_command" =~ node\ ([^[:space:]]*/)?scripts/dev\.mjs\ ?$ ]] || ! same_repository "$launcher_pid"; then
+  echo "The primary dev launcher is unavailable; close the Jianji window normally before restarting." >&2
+  exit 1
+fi
+# The launcher requests the existing idle/save/close path and releases its Vite
+# and build watchers before this script permits a fresh launch.
+kill -TERM "$launcher_pid"
+echo "Waiting for the previous primary workspace to finish tasks and close normally..."
 for i in $(seq 1 180); do
-  if ! dev_app_running; then
+  if ! kill -0 "$primary_pid" 2>/dev/null && ! kill -0 "$launcher_pid" 2>/dev/null; then
     exit 0
   fi
-  if [ "$i" -eq 15 ]; then
-    # Escalate orphaned instances (no launcher): the app handles SIGTERM with the
-    # same graceful save/close flow and releases the knowledge store lock.
-    for pid in $(pgrep -f "$electron_pattern" 2>/dev/null); do
-      if is_dev_app "$pid"; then
-        kill -TERM "$pid" 2>/dev/null || true
-      fi
-    done
-  fi
   if [ "$((i % 15))" -eq 0 ]; then
-    echo "Still waiting (${i}s); the app releases its stores before the process exits."
+    echo "Still waiting (${i}s); no replacement will start before the original owner exits."
   fi
   sleep 1
 done

@@ -120,7 +120,7 @@ function reloadPlugin(bundle) {
 async function shutdown(signal) {
   if (shutdownPromise) {
     // A repeated signal re-requests a normal quit; the user may have cancelled the save prompt.
-    try { requestDevelopmentQuit(electron); }
+    try { requestDevelopmentQuit(electron, { restart: signal === "SIGTERM" }); }
     catch (error) { console.error(`[dev] ${error.message}`); }
     return shutdownPromise;
   }
@@ -130,7 +130,7 @@ async function shutdown(signal) {
   shutdownPromise = (async () => {
     if (electron?.exitCode === null && electron.signalCode === null) {
       console.log("[dev] Waiting for normal Electron shutdown; no forced-quit timeout.");
-      await waitForDevelopmentQuit(electron);
+      await waitForDevelopmentQuit(electron, { restart: signal === "SIGTERM" });
     }
     const remaining = [...children].filter(child => child !== electron);
     for (const child of remaining) if (child.exitCode === null) child.kill("SIGTERM");

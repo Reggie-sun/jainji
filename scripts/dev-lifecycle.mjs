@@ -7,10 +7,10 @@ export function requestDevelopmentQuit(child, { restart = false } = {}) {
   });
 }
 /** A disconnected parent channel requires manual close, not forced termination. */
-export async function waitForDevelopmentQuit(child) {
+export async function waitForDevelopmentQuit(child, options = {}) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   const exited = new Promise(resolve => child.once("exit", resolve));
-  try { requestDevelopmentQuit(child); }
+  try { requestDevelopmentQuit(child, options); }
   catch (error) { console.error(`[dev] ${error.message}`); }
   await exited;
 }

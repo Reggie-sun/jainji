@@ -26,6 +26,7 @@ const changed = () => new Error("原 Chrome 进程、连接或网页账户已变
 export class QianchuanBrowserAccounts implements QianchuanCurrentAccountPort {
   private readonly bindings: QianchuanBrowserBindings;
   private readonly sessions = new WeakMap<QianchuanCurrentAccountSession, BoundSession>();
+  private readonly profileContexts = new Map<FrozenQianchuanAccount["product"], { identity: string; context: Promise<string> }>();
   constructor(private readonly root: string, private readonly dependencies: BrowserAccountDependencies = {}) {
     this.bindings = new QianchuanBrowserBindings(root);
   }
@@ -62,7 +63,17 @@ export class QianchuanBrowserAccounts implements QianchuanCurrentAccountPort {
       await this.verifyEndpoint(endpoint, metadata.browserPath!, signal);
     };
     await verify();
-    const browserContextId = await readQianchuanCdpProfile({ ...target, cdpEndpoint: endpoint }, binding, signal);
+    // A live process keeps its default profile. Recheck OS/endpoint proof on
+    // every read, but share the one internal proof page for that exact process.
+    let profile = this.profileContexts.get(target.product);
+    if (profile?.identity !== expected) {
+      const context = readQianchuanCdpProfile({ ...target, cdpEndpoint: endpoint }, binding, signal).then(async context => { await verify(); return context; });
+      profile = { identity: expected, context };
+      this.profileContexts.set(target.product, profile);
+      const pending = profile;
+      void context.catch(() => { if (this.profileContexts.get(target.product) === pending) this.profileContexts.delete(target.product); });
+    }
+    const browserContextId = await profile.context;
     await verify(); return { identity: `${expected}:${browserContextId}`, endpoint, browserContextId, verify };
   }
   private async verifyEndpoint(endpoint: string, browserPath: string, signal: AbortSignal): Promise<void> {
