@@ -2,6 +2,15 @@
   "schemaVersion": 2,
   "codeChecks": [
     {
+      "id": "qianchuan-real-integration",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/qianchuan-account-operation.test.ts", "tests/qianchuan-report.test.ts", "tests/qianchuan-report-capture.test.ts", "tests/qianchuan-report-store.test.ts", "tests/qianchuan-report-export.test.ts", "tests/qianchuan-integration.test.ts", "tests/qianchuan-integration-ui.test.ts", "tests/qianchuan-delivery.test.ts", "tests/qianchuan-delivery-store.test.ts"],
+      "timeoutMs": 180000
+    },
+    {
       "id": "desktop-multi-instance",
       "kind": "vitest",
       "required": true,
@@ -165,6 +174,7 @@
         "tests/qianchuan-plan-catalog.test.ts",
         "tests/qianchuan-backend-adapter.test.ts",
         "tests/qianchuan-effect.test.ts",
+        "tests/qianchuan-effect-export.test.ts",
         "tests/qianchuan-effect-read.test.ts",
         "tests/qianchuan-effect-ui.test.ts",
         "tests/qianchuan-backend-queries.test.ts",
@@ -738,6 +748,13 @@
     }
   ],
   "routes": [
+    {
+      "id": "domain-qianchuan-real-integration",
+      "tier": "domain",
+      "paths": ["src/main/qianchuan-account-operations.ts", "src/main/qianchuan-report-*.ts", "src/main/qianchuan-delivery*.ts", "src/main/qianchuan-integration.ts", "src/shared/qianchuan-report*.ts", "src/shared/qianchuan-delivery.ts", "src/shared/qianchuan-integration.ts", "src/shared/qianchuan-effect-read.ts", "src/shared/qianchuan-effect-export.ts", "src/renderer/QianchuanEffectLoop.tsx", "tests/helpers/qianchuan-effect-ui-fixture.ts", "tests/qianchuan-effect-export.test.ts", "src/renderer/QianchuanIntegrationPanel.tsx", "src/renderer/QianchuanWorkspace.tsx", "src/renderer/QianchuanBackendPanel.tsx", "tests/qianchuan-account-operation.test.ts", "tests/qianchuan-report*.test.ts", "tests/qianchuan-delivery*.test.ts", "tests/qianchuan-integration*.test.ts", "tests/qianchuan-effect-read.test.ts", "docs/qianchuan-real-integration-2026-10-15.md", "docs/superpowers/plans/2026-10-15-qianchuan-real-integration.md"],
+      "checkIds": ["typecheck", "qianchuan-real-integration", "douyin-upload", "documents"],
+      "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/douyin-auto-upload-spec.md", "docs/superpowers/specs/2026-10-15-qianchuan-real-integration.md", "docs/superpowers/plans/2026-10-15-qianchuan-real-integration.md", "docs/qianchuan-real-integration-2026-10-15.md"]
+    },
     {
       "id": "domain-desktop-multi-instance",
       "paths": ["Makefile", "scripts/dev.mjs", "scripts/dev-start.sh", "scripts/dev-multi-instance-smoke.mjs", "src/main/desktop-instance.ts", "src/main/index.ts", "src/main/qianchuan-scheduled-launch.ts", "tests/desktop-instance.test.ts", "tests/dev-start.test.ts", "tests/qianchuan-scheduled-launch.test.ts"],

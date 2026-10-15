@@ -60,6 +60,9 @@ it("opens the business console directly and returns to the original query and up
     await rail(page, "千川").click();
     const nav = page.getByRole("navigation", { name: "千川页面" });
     await nav.getByRole("button", { name: "投放工作台", exact: true }).click();
+    expect(await page.getByLabel("数据来源", { exact: true }).inputValue()).toBe("qianchuan");
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.supplierReads)).toEqual([]);
+    await page.getByLabel("数据来源", { exact: true }).selectOption("qianguanjia");
     await page.getByRole("heading", { name: "数据概览", exact: true }).waitFor();
     await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
     await page.getByTestId("qianguanjia-home").waitFor();

@@ -3,6 +3,7 @@ import { qianchuanAccountName, type QianchuanAccountSummary } from "../shared/qi
 import { QIANCHUAN_QUERY_METRICS, QianchuanBackendQuerySchema, type QianchuanBackendResult, type QianchuanQueryMetrics } from "../shared/qianchuan-backend";
 import "./qianchuan-backend.css";
 import { QianguanjiaPanel } from "./QianguanjiaPanel";
+import { QianchuanIntegrationPanel } from "./QianchuanIntegrationPanel";
 
 const metricLabels = ["消耗", "成交订单数", "成交金额（含优惠券）", "支付 ROI"];
 function chinaDate() { return new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10); }
@@ -98,5 +99,6 @@ function NativeQianchuanBackendPanel({ accounts, active }: { accounts: Qianchuan
         </>}
       </>}
     </div>}
+    <QianchuanIntegrationPanel account={account} active={active} adId={adId} kind={kind} startDate={startDate} endDate={endDate} />
   </section>;
 }

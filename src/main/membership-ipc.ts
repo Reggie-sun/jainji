@@ -8,6 +8,7 @@ const RECOVERY = new Set([
   "coverReview.cancel", "coverReview.viewed", "artifact.open", "artifact.reveal", "export.appendPrefill",
   "project.save", "project.workspaceDraft", "project.productPriceDraft", "douyinUpload.stop",
   "douyinUpload.cancelBackendQuery",
+  "qianchuanIntegration.cancel", "qianchuanIntegration.stop",
   "qianguanjia.cancel", "qianguanjia.disconnect",
   "douyinUpload.discard", "douyinUpload.closeBatch", "douyinUpload.confirm", "douyinUpload.resolvePlanMaterialDeletion",
   "videoLibrarySchedule.get", "feedback.history", "feedback.submit", "feedback.open", "feedback.repository", "feedback.screenshot",

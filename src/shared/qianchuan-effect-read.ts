@@ -1,4 +1,5 @@
-import { QianchuanBackendQuerySchema, type QianchuanBackendQuery, type QianchuanBackendResult } from "../shared/qianchuan-backend";
+import { QianchuanBackendQuerySchema, type QianchuanBackendQuery, type QianchuanBackendResult } from "./qianchuan-backend.js";
+import { z } from "zod";
 
 export type QianchuanEffectSnapshot = Extract<QianchuanBackendResult, { kind: "materials" }>;
 type Input = { product: string; expectedAdvertiserId: string; adId: string; startDate: string; endDate: string; asOf: string };
@@ -15,7 +16,7 @@ export async function collectMaterialEffects(input: Input, read: (query: Qianchu
     const next = await read(query);
     signal.throwIfAborted();
     if (next.kind !== "materials" || next.advertiserId !== input.expectedAdvertiserId || next.adId !== input.adId || next.offset !== offset || next.limit !== 100 ||
-      next.startTime !== expectedStart || next.endTime !== expectedEnd ||
+      next.startTime !== expectedStart || next.endTime !== expectedEnd || !z.string().datetime().safeParse(next.observedAt).success ||
       !Number.isSafeInteger(next.total) || next.total < 0 || next.total > 2000 || next.rows.length !== Math.min(100, Math.max(0, next.total - offset))) throw new Error("无法核对完整素材目录或超出2000条采集上限。");
     if (first && (next.total !== first.total || next.startTime !== first.startTime || next.endTime !== first.endTime)) throw new Error("素材目录或统计范围已变化，请重新采集。");
     first ??= next;

@@ -13,11 +13,11 @@ export class QianchuanBackendQueries {
   get busy(): boolean { return !!this.active; }
   constructor(private readonly accounts: QianchuanAccountConfigReader, private readonly read: ReadQuery = readQianchuanBackendQuery) {}
 
-  run(input: unknown, senderId: number): Promise<QianchuanBackendResult> {
+  run(input: unknown, senderId: number, parentSignal?: AbortSignal): Promise<QianchuanBackendResult> {
     const query = QianchuanBackendQuerySchema.parse(input);
     if (this.active) throw new Error("千川查询正在进行，请等待或取消后再查询。");
     const key = `${senderId}:${query.requestId}`, controller = new AbortController();
-    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90000)]);
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(90000), ...(parentSignal ? [parentSignal] : [])]);
     const done = Promise.resolve().then(async () => {
       signal.throwIfAborted();
       const configured = await this.accounts.preflight(query.product);
