@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-15T12:11:19Z",
+  "updated_at": "2026-10-15T12:44:10Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "bde26b03bd47bd85b2f786f7dd14897ef89e4a4cf55808dee72da3a5fbfe0213",
@@ -487,9 +487,9 @@
       "normalized_sha256": "fbf2c1ee4a500ee610b375649675f5b6d2b7e277009260c150352a19c707a368"
     },
     "resources/qianchuan-extension/content.js": {
-      "sha256": "d165485de3d8b64d78e0032cd6b1556deabaa5489b9521aeed58c32b41b40f0c",
-      "size": 31673,
-      "normalized_sha256": "d165485de3d8b64d78e0032cd6b1556deabaa5489b9521aeed58c32b41b40f0c"
+      "sha256": "0d5b867c6cbcb89ed6708e76975bd61cefdf12e668d0b5bb405d8f7e1745726b",
+      "size": 32062,
+      "normalized_sha256": "0d5b867c6cbcb89ed6708e76975bd61cefdf12e668d0b5bb405d8f7e1745726b"
     },
     "resources/qianchuan-extension/manifest.json": {
       "sha256": "d94c0bd2cf6a2a97ed36463ecbb2da72c6e59fc6724f7d81d3d8702ea30111cf",

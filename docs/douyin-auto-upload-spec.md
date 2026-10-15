@@ -9,6 +9,10 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 # Summary
 
+## Upload Document Identity Amendment (2026-10-15)
+
+真实上传在选文件前激活本批计划页，当前网页账户的只读投影必须支持 `/uni-prom` 上唯一合法非空 `adId` 及上传/确认弹窗；仍核对原文档、唯一可见账户姓名与 URL 中的唯一 advertiser ID，不从弹窗或保存账号推断身份。CDP 使用独立 v2 隔离 world 的只读身份入口；目录 GET、账户切换及 native 命令继续使用原概览页和无弹窗限制。此观察不授选择或确认权限，原 uploader/page contract 的双 ID、精确归属、快照、永久 fence 和回执要求保持不变。
+
 ## Explicit Historical Upload Resume Amendment (2026-10-15)
 
 用户选择 C，要求软件提供历史未完成批次的明确恢复入口。本修订只覆盖“历史永不继续”的显式操作限制，启动、查询、刷新与新制作仍不自动恢复历史。批量上传详情可列出完整登记、全部 `NOT_SELECTED` 且无 fence、别名、终止、取消、处置或 closure 的历史批次；用户点击“恢复本批上传”提交原 run/job/task 和精确 pageBatchId。

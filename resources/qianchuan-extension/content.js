@@ -146,25 +146,26 @@
       if (env.document !== boundDocument) fail("CHANGED");
     }
 
-    function pageUrl(expectedId, allowPicker = false) {
+    function pageUrl(expectedId, allowPicker = false, readOnlyIdentity = false) {
       checkDocument();
       let url;
       try { url = new URL(env.location.href); } catch { fail("CHANGED"); }
       const extensionMarkers = url.searchParams.getAll("jianjiExtensionPlanPicker");
       const planIds = url.searchParams.getAll("adId");
       if (url.origin !== ORIGIN || !["/", "/uni-prom"].includes(url.pathname) || url.username || url.password ||
-        url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== expectedId || planIds.length > 1 || planIds.some(value => value !== "") ||
+        url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== expectedId || planIds.length > 1 ||
+        planIds.some(value => value !== "" && (!readOnlyIdentity || url.pathname !== "/uni-prom" || !ID_PATTERN.test(value))) ||
         url.searchParams.has("jianjiPlanPicker") || extensionMarkers.length > 1 || extensionMarkers.length === 1 &&
           (!allowPicker || extensionMarkers[0] !== "1")) fail("CHANGED");
       if (allowPicker && url.pathname !== "/uni-prom") fail("CHANGED");
       return url;
     }
 
-    function currentAccount(expectedId, allowMissing = false) {
+    function currentAccount(expectedId, allowMissing = false, readOnlyIdentity = false) {
       const uploadDrawers = Array.from(boundDocument.querySelectorAll(".ovui-drawer:not(.ovui-drawer--no-maskable):has(.oc-create-material-submit-bar-count)"))
         .filter(element => visible(element, env));
       const confirmationTitles = Array.from(boundDocument.querySelectorAll(".oc-modal-confirm-title")).filter(element => visible(element, env));
-      if (uploadDrawers.length || confirmationTitles.length) fail("CHANGED");
+      if (!readOnlyIdentity && (uploadDrawers.length || confirmationTitles.length)) fail("CHANGED");
       const containers = Array.from(boundDocument.querySelectorAll(".account-info-container")).filter(element => {
         if (!element?.getClientRects?.().length) return false;
         const style = env.getComputedStyle(element);
@@ -179,14 +180,14 @@
       return accountFromText(text, expectedId);
     }
 
-    function accountIdentity(allowPicker = false, expectedId) {
+    function accountIdentity(allowPicker = false, expectedId, readOnlyIdentity = false) {
       checkDocument();
       let url;
       try { url = new URL(env.location.href); } catch { fail("CHANGED"); }
       const ids = url.searchParams.getAll("aavid");
       if (ids.length !== 1 || !ID_PATTERN.test(ids[0])) fail("CHANGED");
-      pageUrl(ids[0], allowPicker);
-      const account = currentAccount(ids[0]);
+      pageUrl(ids[0], allowPicker, readOnlyIdentity);
+      const account = currentAccount(ids[0], false, readOnlyIdentity);
       if (expectedId && account.advertiserId !== expectedId) fail("CHANGED");
       return { documentId, account };
     }
@@ -524,7 +525,8 @@
       } finally { if (activeCommands.get(message.id)?.controller === controller) activeCommands.delete(message.id); }
     }
 
-    return { documentId, accountIdentity, handleMessage, handleAccountMessage };
+    // Identity observation grants no account request, navigation or upload authority.
+    return { documentId, accountIdentity, readAccountIdentity: () => accountIdentity(false, undefined, true), handleMessage, handleAccountMessage };
   }
 
   global.__jianjiQianchuanContent = Object.freeze({ createContentController, projectAccountList: (data, page, limit) => {

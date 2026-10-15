@@ -406,7 +406,7 @@ casdoor-transport.ts[IN8T]: F:将门户OIDC请求送往私有Casdoor并保持公
 
 ===/home/reggie/vscode_folder/jianji/resources/qianchuan-extension/===
 background.js[IE8M]: F:经native messaging在唯一当前千川页执行账户观察切换与计划目录 | R:code:resources/qianchuan-extension/content.js,code:resources/qianchuan-extension/native-host.mjs | A:兼容单个空adId概览参数；固定GET投影；一次切换核新文档；创建带账户栏自有计划页；共用剩余读取预算后清理 | S:不导出Cookie或连接CDP；非空重复adId及多当前页拒绝；取消先清理再应答；故障不重放切换
-content.js[IE8L]: F:在千川文档内核验账户并执行受限读取与一次切换 | R:code:src/main/qianchuan-cdp-account-session.ts,code:resources/qianchuan-extension/background.js | A:共用固定GET投影与取消；原native入口保留tab校验，CDP入口只绑定文档；稳定计划分页 | S:Cookie和CSRF留浏览器；不上传确认删除；URL及文档漂移拒绝；单文档只导航一次；不返回不完整目录
+content.js[IE8L]: F:在千川文档内核验账户并执行受限读取与一次切换 | R:code:src/main/qianchuan-cdp-account-session.ts,code:resources/qianchuan-extension/background.js | A:固定GET投影取消及稳定计划分页；独立只读身份允许计划及弹窗；native和目录命令仍核原概览 | S:只读身份不授命令权限；Cookie和CSRF留浏览器；不上传确认删除；URL及文档漂移拒绝；单文档只导航一次；不返回不完整目录
 manifest.json[FE7T]: F:声明固定身份的千川MV3扩展与最小页面权限 | R:code:resources/qianchuan-extension/background.js | A:固定key；nativeMessaging、tabs与scripting；限定千川HTTPS域与content入口 | S:固定扩展ID与native host allowed_origins须一致
 native-host.mjs[IE8M]: F:桥接Chrome native帧与本地私有扩展命令通道 | R:code:src/main/qianchuan-extension-bridge.ts,code:resources/qianchuan-extension/background.js | A:兼容NUL参数及单字符串进程标题提取原Chrome profile；验证私有配置；有界帧及pending；固定命令投影 | S:仅Linux；renderer及异UID拒绝；token仅私有helper配置；不接收任意端点；异常关闭且不重放
 

@@ -35,3 +35,9 @@
 真实诊断证明旧 IP 查询服务不可达，但原 SSH、千川及既有浏览器使用的 AWS IP 查询正常，且固定 IP 一致；隧道查询与浏览器查询统一到 AWS，保留 SOCKS、TLS、有限超时、精确 IP 和失败屏障。原浏览器通过软件明确重启后端口变化；只允许完整无 fence 的 current-browser 历史批次在原 profile/账号/计划/配置/出口验证后通过 store 归档旧授权并换用新 pageBatchId 和端口。非 current-browser 分支仍验证原 digest，端口变化拒绝。当前尚在制作的已授权 intents 也阻断历史抢占。Parent Self-Review：沿原 owner 执行、保留所有历史计数与 bytes；不从 READY/UNKNOWN 获得新权限。
 
 连接更新的最终外部复核先于归档写入；复核拒绝保留原账本且不留下随机未提交提案，下一次显式请求可重新核验。归档仍先于原子账本迁移，写入或同步结果未知继续停用 store。迁移期间取消由 service 的 generation 复核阻断执行；原计划改传顺序保持原合同。
+
+## Upload Document Identity Delta
+
+真实首次恢复在文件 fence 前失败：原 uploader 创建并激活同账户的计划上传页，随后 `currentTarget` 使用 CDP 目录 controller 的概览身份方法；该方法拒绝非空 `adId` 和上传 drawer。修复 owner 为原 `content.js` 的只读身份投影及 `QianchuanCdpAccountSession.readBoundSnapshot`，不移除选文件前的账户核验。新增只读身份入口允许 `/uni-prom` 的唯一合法计划 ID 及现存弹窗，仍校验当前文档、唯一可见账户及 URL ID；目录 GET、切换、native 命令沿原严格准入。隔离 world 升至 v2，避免热重启复用旧 controller。用户选择 A 接手已有未提交的 CDP 文件及测试，仅提交本轮 owned hunks。
+
+验证先用隔离 Chrome 复现同错误，再验证计划 drawer 的只读身份、错账户拒绝及目录请求仍零发出；typecheck、受影响 Harness、AOCI 与必要独立审查后沿原 30 条恢复。只读投影不授文件或确认权限，原 page contract 双 ID、modal 和 fence 保持。Parent Self-Review：修复校验职责混用，不改保存锚点、上传授权或结果解释。

@@ -12,8 +12,8 @@ import { guardedTransport } from "./local-cdp-transport.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 
-const WORLD_NAME = "__jianji_qianchuan_account_reader_v1__";
-const STATE_NAME = "__jianjiQianchuanAccountReaderV1";
+const WORLD_NAME = "__jianji_qianchuan_account_reader_v2__";
+const STATE_NAME = "__jianjiQianchuanAccountReaderV2";
 const MAX_CONTENT_BYTES = 256 * 1024;
 const MAX_METADATA_BYTES = 64 * 1024;
 const SWITCH_WAIT_MS = 10_000;
@@ -200,7 +200,7 @@ export class QianchuanCdpAccountSession {
     if (typeof targetInfo.targetInfo?.targetId !== "string" || targetInfo.targetInfo.type !== "page" ||
       typeof targetInfo.targetInfo.url !== "string" || targetInfo.targetInfo.targetId.length < 8 ||
       targetInfo.targetInfo.browserContextId !== bound.browserContextId || targetInfo.targetInfo.url !== bound.page.url() || expectedUrl !== undefined && bound.page.url() !== expectedUrl) throw changed();
-    const expression = `globalThis[${JSON.stringify(STATE_NAME)}].controller.accountIdentity()`;
+    const expression = `globalThis[${JSON.stringify(STATE_NAME)}].controller.readAccountIdentity()`;
     const runtime = await abortable(bound.session.send("Runtime.evaluate", { expression, contextId: bound.contextId, returnByValue: true }), signal) as RuntimeResult;
     const identity = valueOf(runtime) as { documentId?: unknown; account?: unknown };
     const versionRuntime = await abortable(bound.session.send("Runtime.evaluate", { expression: "window.gfdatav1?.ver", returnByValue: true }), signal) as RuntimeResult;

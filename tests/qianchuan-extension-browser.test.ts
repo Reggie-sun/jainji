@@ -13,7 +13,7 @@ import { createQianchuanDispatcher, selectUniqueActiveQianchuanTab, startQianchu
 const contentScope: Record<string, unknown> = { URL, Date, TextEncoder, TextDecoder, AbortController };
 vm.runInNewContext(readFileSync("resources/qianchuan-extension/content.js", "utf8"), contentScope);
 const { createContentController, projectAccountList, collectPlanCatalog } = contentScope["__jianjiQianchuanContent"] as {
-  createContentController: (env: Record<string, unknown>) => { handleMessage: (message: unknown) => Promise<unknown> };
+  createContentController: (env: Record<string, unknown>) => { handleMessage: (message: unknown) => Promise<unknown>; readAccountIdentity: () => unknown };
   projectAccountList: (data: unknown, page: number, limit: number) => unknown;
   collectPlanCatalog: (readPage: (page: number) => Promise<unknown>, advance: () => Promise<void>, check: () => void, advertiserId: string) => Promise<unknown>;
 };
@@ -103,6 +103,28 @@ it.each(["", "&adId="])("reads the current account on the official overview URL 
   const f = contentFixture(); f.location.href = url;
   await expect(createContentController(f.env).handleMessage(contentCommand({ kind: "identity" })))
     .resolves.toMatchObject({ tabId: 7, account: snapshot.account });
+});
+
+it("observes a plan drawer identity while command identity stays blocked", async () => {
+  const f = contentFixture(true);
+  f.location.href = `${origin}/uni-prom?aavid=${advertiserId}&adId=73001`;
+  const controller = createContentController(f.env);
+  expect(controller.readAccountIdentity()).toEqual({ documentId, account: snapshot.account });
+  await expect(controller.handleMessage(contentCommand({ kind: "identity" }))).rejects.toMatchObject({ code: "CHANGED" });
+  expect(f.env.fetch).not.toHaveBeenCalled();
+  expect(f.location.replace).not.toHaveBeenCalled();
+});
+
+it.each([
+  `/?aavid=${advertiserId}&adId=73001`,
+  `/uni-prom?aavid=${advertiserId}&adId=invalid`,
+  `/uni-prom?aavid=${advertiserId}&adId=73001&adId=73001`,
+  `/uni-prom?aavid=${advertiserId}&jianjiPlanPicker=1`,
+  `/uni-prom?aavid=${advertiserId}&jianjiExtensionPlanPicker=1`,
+  `/uni-prom?aavid=${advertiserId}&aavid=${advertiserId}`,
+])("rejects ambiguous or picker URLs during read-only identity: %s", query => {
+  const f = contentFixture(); f.location.href = `${origin}${query}`;
+  expect(() => createContentController(f.env).readAccountIdentity()).toThrow("CHANGED");
 });
 
 function delayedPickerFixture() {

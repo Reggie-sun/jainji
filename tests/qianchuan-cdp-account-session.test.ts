@@ -62,6 +62,30 @@ async function fixture(hidden = false, route = "/uni-prom"): Promise<{ context: 
   return { context, profile, service, target };
 }
 
+it("reads the foreground upload document identity without authorizing account commands on its drawer", async () => {
+  const f = await fixture();
+  try {
+    const page = f.context.pages()[1]!;
+    await page.evaluate(adId => {
+      const url = new URL(location.href); url.searchParams.set("adId", adId); history.replaceState(null, "", url);
+      const drawer = document.createElement("div"); drawer.className = "ovui-drawer";
+      drawer.innerHTML = '<span class="oc-create-material-submit-bar-count">已选择 0/100</span>';
+      document.body.append(drawer);
+    }, FIXTURE_PLANS[0].adId);
+    const session = new QianchuanCdpAccountSession(f.target, async () => undefined);
+    const current = await session.current(new AbortController().signal);
+    expect(current.account).toEqual(FIXTURE_ACCOUNTS[0]);
+    expect(sameCdpSnapshot(current, await session.current(new AbortController().signal))).toBe(true);
+    const catalog = new QianchuanAccountCatalog(session.call.bind(session), {
+      parse: value => CdpSnapshotSchema.parse(value), same: sameCdpSnapshot, switched: switchedCdpSnapshot,
+    });
+    await expect(catalog.accounts(current, new AbortController().signal)).rejects.toThrow();
+    expect(f.service.state.apiRequests).toHaveLength(0);
+    await page.locator(".account-info-box").evaluate(element => { element.textContent = "错误账户 ID：1876294500004865"; });
+    await expect(session.current(new AbortController().signal)).rejects.toThrow();
+  } finally { await f.service.close(); }
+});
+
 it("reads the directory from a hidden root main-account document, switches once to the explicit child, and reads that child's plans without an extension", async () => {
   const f = await fixture(true, "/");
   try {
