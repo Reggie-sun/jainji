@@ -154,9 +154,11 @@ export class DouyinUploadService {
         this.planReads.invalidate(target.product);
       },
     });
-    this.planReads = new QianchuanPlanReads(dependencies.readPlans ?? readQianchuanPlans);
-    this.currentPlanReads = this.accounts instanceof QianchuanAccountSettings && this.accounts.currentAccountBacked
-      ? new QianchuanPlanReads((target, signal) => (this.accounts as QianchuanAccountSettings).readCurrentPlans(target, signal, this.excludedPlanTargets())) : this.planReads;
+    const readPlans = dependencies.readPlans ?? readQianchuanPlans;
+    this.planReads = new QianchuanPlanReads((target, signal) => this.displayCatalogs.readPlans(target, signal, false, readPlans));
+    this.currentPlanReads = new QianchuanPlanReads((target, signal) => this.displayCatalogs.readPlans(target, signal, true,
+      this.accounts instanceof QianchuanAccountSettings && this.accounts.currentAccountBacked
+        ? (account, signal) => (this.accounts as QianchuanAccountSettings).readCurrentPlans(account, signal, this.excludedPlanTargets()) : readPlans));
     this.displayCatalogs = new QianchuanDisplayCatalogs(store.root, {
       configured: product => this.accounts instanceof QianchuanAccountSettings ? this.accounts.configuredAccount(product) : this.accounts.preflight(product),
       plans: (input, signal) => this.readPlanCatalog(input, signal),

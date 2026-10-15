@@ -96,7 +96,7 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
       const cache = catalog && "cache" in catalog ? catalog.cache : undefined;
       setPlanCatalog({ binding, plans: next, ...(current ? { account: current } : {}), ...(cache ? { cache } : {}) });
       if (purpose === "upload") reportAccount?.(current);
-      if (cache?.source !== "cache" && selected.current && !next.some(plan => plan.advertiserId === selected.current?.advertiserId && plan.adId === selected.current?.adId)) change.current(undefined);
+      if (!cache?.refreshFailed && selected.current && !next.some(plan => plan.advertiserId === selected.current?.advertiserId && plan.adId === selected.current?.adId)) change.current(undefined);
     }).catch(cause => {
       if (!active) return;
       const failedCache = retainQianchuanCatalogAfterFailure(planCatalog?.binding === binding ? planCatalog.cache : undefined);

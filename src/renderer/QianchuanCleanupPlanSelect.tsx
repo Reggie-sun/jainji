@@ -61,7 +61,7 @@ export function QianchuanCleanupPlanSelect({ account, value, onChange, disabled,
       }
       setPlanCatalog({ binding, plans: next, ...(cache ? { cache } : {}) });
       if (previous === undefined) change.current(next);
-      else if (cache?.source !== "cache") change.current(next.filter(plan => previous.some(item => item.adId === plan.adId)));
+      else if (!cache?.refreshFailed) change.current(next.filter(plan => previous.some(item => item.adId === plan.adId)));
     }).catch(cause => {
       if (!active) return;
       if (previousCatalog) setPlanCatalog({ ...previousCatalog, cache: retainQianchuanCatalogAfterFailure(previousCatalog.cache) });

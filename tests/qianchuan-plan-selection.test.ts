@@ -27,6 +27,69 @@ afterEach(async () => { vi.useRealTimers(); vi.unstubAllGlobals(); await Promise
 const plan = (adId = "9001"): QianchuanPlanOption => ({ advertiserId: "1000", adId, name: `测试计划 ${adId}` });
 const selection = (adId = "9001") => ({ enabled: true as const, accountProduct: "眼贴" as const, plan: plan(adId) });
 describe("durable display catalogs", () => {
+  it("does not let a delayed display refresh restore plans removed by a newer live read", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "qianchuan-reconcile-order-")); roots.push(root);
+    const target: FrozenQianchuanAccount = { product: "眼贴", advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:11000", configDigest: "a".repeat(64) };
+    const signal = new AbortController().signal;
+    let hold = false, resume!: () => void, reached!: () => void;
+    const waiting = new Promise<void>(resolve => { reached = resolve; });
+    const display: QianchuanDisplayCatalogs = new QianchuanDisplayCatalogs(root, { configured: async () => {
+      if (hold) { hold = false; reached(); await new Promise<void>(resolve => { resume = resolve; }); }
+      return target;
+    }, plans: async () => { const plans = await display.readPlans(target, signal, false, async () => [plan()]); hold = true; return plans; },
+    directory: async () => { throw new Error("unexpected directory"); } });
+    const request = { product: "眼贴" as const, expectedAdvertiserId: "1000", displayCache: true as const };
+    const older = display.plans({ ...request, refresh: true }, signal);
+    await waiting;
+    await display.readPlans(target, signal, false, async () => []);
+    resume(); await older;
+    expect(await display.plans(request, signal)).toMatchObject({ plans: [], cache: { source: "cache" } });
+  });
+  it.each([false, true])("reconciles deleted plans from live preflight into durable history (current=%s)", async current => {
+    const f = await fixture(current ? vi.fn(async () => "7000") : undefined);
+    const advertiserId = current ? "7000" : "1000";
+    const options = [plan(), plan("9002")].map(item => ({ ...item, advertiserId, ...(current ? { accountSource: "current-browser" as const } : {}) }));
+    f.readPlans.mockResolvedValue(options);
+    const request = { product: "眼贴", expectedAdvertiserId: "1000", displayCache: true,
+      ...(current ? { accountSource: "current-browser", includeAccount: true, expectedCurrentAdvertiserId: advertiserId } : {}) };
+    expect(await f.service.listPlans(request)).toMatchObject({ plans: options });
+    f.readPlans.mockResolvedValue([options[1]!]);
+    await expect(f.service.preflight({ ...selection(), plan: options[0] }, 1)).rejects.toThrow("已失效");
+    f.readPlans.mockClear();
+    expect(await f.service.listPlans(request)).toMatchObject({ plans: [options[1]], cache: { source: "cache" } });
+    expect(f.readPlans).not.toHaveBeenCalled();
+    f.readPlans.mockResolvedValue([]);
+    await expect(f.service.preflight({ ...selection(), plan: options[1] }, 1)).rejects.toThrow("已失效");
+    await f.service.stop();
+    const restarted = new DouyinUploadService(f.store, { accounts: f.accounts, readPlans: f.readPlans,
+      loadBatch: async () => { throw new Error("unexpected batch"); }, browser: () => { throw new Error("unexpected browser"); } });
+    f.readPlans.mockClear(); f.readPlans.mockRejectedValue(new Error("disconnected"));
+    try {
+      expect(await restarted.listPlans(request)).toMatchObject({ plans: [], cache: { source: "cache" } });
+      expect(f.readPlans).not.toHaveBeenCalled();
+      expect(f.store.intents()).toEqual([]); expect(f.connect).not.toHaveBeenCalled();
+    } finally { await restarted.stop(); }
+  });
+  it("retains history on failed, cancelled, mismatched or drifted live observations and isolates plan sources", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "qianchuan-reconcile-")); roots.push(root);
+    let configured: FrozenQianchuanAccount = { product: "眼贴", advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:11000", configDigest: "a".repeat(64) };
+    const target = configured, signal = new AbortController().signal;
+    const display = new QianchuanDisplayCatalogs(root, { configured: async () => configured,
+      plans: async () => { throw new Error("unexpected display live read"); }, directory: async () => { throw new Error("unexpected directory read"); } });
+    await display.readPlans(target, signal, false, async () => [plan()]);
+    await display.readPlans({ ...target, advertiserId: "7000" }, signal, true, async () => []);
+    const request = { product: "眼贴" as const, expectedAdvertiserId: "1000", displayCache: true as const };
+    expect(await display.plans(request, signal)).toMatchObject({ plans: [plan()] });
+    expect(await display.plans({ ...request, accountSource: "current-browser", expectedCurrentAdvertiserId: "7000" }, signal)).toMatchObject({ plans: [] });
+    await expect(display.readPlans(target, signal, false, async () => { throw new Error("disconnected"); })).rejects.toThrow("disconnected");
+    await expect(display.readPlans(target, signal, false, async () => [plan(), plan()])).rejects.toThrow();
+    await expect(display.readPlans(target, signal, false, async () => [{ ...plan(), advertiserId: "8000" }])).rejects.toThrow("不属于");
+    const cancelled = new AbortController();
+    await expect(display.readPlans(target, cancelled.signal, false, async () => { cancelled.abort(); return []; })).rejects.toThrow();
+    configured = { ...target, configDigest: "b".repeat(64) };
+    expect(await display.readPlans(target, signal, false, async () => [])).toEqual([]);
+    expect(await display.plans(request, signal)).toMatchObject({ plans: [plan()], cache: { stale: true } });
+  });
   it.each(["direct", "local-vps", "remote-browser"])("retains history for %s and marks changed transport config stale", async mode => {
     const root = await mkdtemp(path.join(tmpdir(), "qianchuan-display-")); roots.push(root);
     let target: FrozenQianchuanAccount = { product: "眼贴", advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:11000", configDigest: "a".repeat(64),

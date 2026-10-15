@@ -26,6 +26,14 @@
 
 运行 typecheck、相关测试及 owned Harness；稳定后判断 native Review Risk Gate，必要时只用一个原生 reviewer。按官方 AOCI 完整批次维护所有本轮 indexed 对象，完成 Verify、Check、Guide 和 Harness completion。保留外部 dirty changes，只提交本轮路径/hunks，按明确 SHA 推送并核对远端源码，防止其他会话旧快照撤回缓存。
 
+## Deleted Plan Reconciliation Delta
+
+`QianchuanDisplayCatalogs` 接收原实时 reader 的成功完整列表，按冻结配置摘要、保存锚点和当前子账户隔离更新既有缓存。`DouyinUploadService` 仅为两种 reader 增加缓存接线；生产仍实时读取，失败不写、缓存写失败不改变实时结果。移除“只有显式刷新更新”的限制；不新增后台平台轮询或第二套缓存 owner。
+
+同绑定的实时观察在写入前登记；展示刷新最终落盘前核对观察身份及列表内容，较早刷新不得覆盖较新的完整列表，避免已删计划被迟到响应恢复。
+
+选择器在下一次读取成功保存的缓存后也过滤不存在的草稿计划；失败回退仍保留选择，清理的明确空选择不扩大为全选。由 `tests/qianchuan-plan-selection.test.ts` 覆盖已删计划准入拒绝后缓存更新、全空、两种来源隔离、重启、取消/配置漂移及失败保留；现有 UI 回归及隔离 Chrome 页面验证下一次缓存读取清理选择。此增量由 Parent 串行实现，避免紧密相连的读取、持久化和草稿语义跨 writer 拆分。
+
 ## Self-Review
 
 所有五项验收分别由持久化/隔离测试、选择器测试和原生产边界测试覆盖；未引入新的队列、账号配置或上传模式 owner。Native Codex 持续执行，不增加用户批准步骤或 worktree。
