@@ -5,6 +5,14 @@ import { QianchuanAccountSettings } from "./qianchuan-account-settings.js";
 
 const equal = (left: unknown, right: unknown) => JSON.stringify(left) === JSON.stringify(right);
 
+/** Older releases classified an unfenced browser preparation timeout as terminal. */
+export function recoverablePreparationTimeout(store: DouyinUploadStore, task: UploadTaskRecord): boolean {
+  const result = task.result;
+  return result.state === "FAILED_TERMINAL" && result.upload_outcome === "NOT_SELECTED" && result.attempt_count > 0 &&
+    !result.duplicate_of && !store.hasMarker(result.upload_task_id) && result.failure?.category === "browser" &&
+    result.failure.code === "TIMEOUT" && !result.failure.requires_human;
+}
+
 /** Admission only: no writes, scheduling, browser creation or file selection. */
 export function historicalUploadBatch(store: DouyinUploadStore, id: string, expectedPageBatchId: string): UploadTaskRecord[] {
   const task = store.task(id);

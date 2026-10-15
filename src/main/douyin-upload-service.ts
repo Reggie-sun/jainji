@@ -8,7 +8,7 @@ import type { ExportBatchIdentity } from "./queue.js";
 import { fingerprintFile, isPathWithinDirectory, pathsEqual } from "./paths.js";
 import { DouyinUploadStore, frozenInputDigest, intentKey, secureUploadDirectory, strictSyncDirectory, uploadTaskId, sameTargetBytes, type UploadTaskRecord } from "./douyin-upload-store.js";
 import { uploadBatchSettled } from "./douyin-upload-group.js";
-import { historicalUploadBatch, historicalBrowserAnchor } from "./douyin-upload-recovery.js";
+import { historicalUploadBatch, historicalBrowserAnchor, recoverablePreparationTimeout } from "./douyin-upload-recovery.js";
 import { QianchuanAccountConfigReader, QianchuanAccountConfigError } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings, type EgressChangeGuard } from "./qianchuan-account-settings.js";
 import { AutomationBrowserAccounts, assertAutomationBrowserSafe } from "./qianchuan-automation-browsers.js";
@@ -69,6 +69,7 @@ export class DouyinUploadService {
   private readonly pausedAccounts = new Set<string>();
   private continuationBatch?: string;
   private preparingContinuation = false;
+  private pendingContinuations = 0;
   private retargeting = false;
   private discarding = false;
   private closing = false;
@@ -113,7 +114,7 @@ export class DouyinUploadService {
   private planPreloadController?: AbortController;
   private planPreload: Promise<void> = Promise.resolve();
   private hasNonAutomationWork(): boolean {
-    return Boolean(this.pendingAdmissions || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding ||
+    return Boolean(this.pendingAdmissions || this.pendingContinuations || this.active || this.runner || this.preparingContinuation || this.retargeting || this.discarding ||
       this.closing || this.stopping || this.cancelling || this.beginningProduction || this.managingBrowser || this.browserPreparations || this.backendQueries.busy || this.accountOperations.busy);
   }
   get busy(): boolean {
@@ -252,6 +253,8 @@ export class DouyinUploadService {
   }
   private taskResult(task: UploadTaskRecord): QianchuanUploadTaskStatus {
     let result = task.result;
+    if (recoverablePreparationTimeout(this.store, task)) result = { ...result, state: "FAILED_RETRYABLE", retryable: true,
+      failure: { ...result.failure!, retryable: true, next_action: "点击“安全继续”；程序先核查原上传页面，再接续未选文件，已选文件不会重传。" } };
     if (this.store.unavailable && this.store.hasMarker(result.upload_task_id) && result.state !== "WAITING_FOR_CONFIRMATION") result = { ...result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined, acceptedEvidence: undefined, retryable: false, failure: unknown().failure };
     const parsed = QianchuanUploadResultSchema.parse(result);
     return parsed.state === "WAITING_UPLOAD_COMPLETE" && this.rowReady.has(parsed.upload_task_id) ? { ...parsed, rowReady: true } : parsed;
@@ -289,9 +292,10 @@ export class DouyinUploadService {
     }
     const advertisers = new Set(open.filter(task => task.input.project_id === projectId).map(task => task.authorization.target.advertiserId));
     const affected = open.filter(task => ["NEEDS_HUMAN", "FAILED_RETRYABLE", "FAILED_TERMINAL", "CANCELLED"].includes(task.result.state) && !task.result.duplicate_of && (this.paused || advertisers.has(task.authorization.target.advertiserId)));
-    const count = (state: QianchuanUploadResult["state"]) => affected.filter(task => task.result.state === state).length;
+    const count = (state: QianchuanUploadResult["state"]) => affected.filter(task => this.taskResult(task).state === state).length;
     const summary = affected.length ? `存在 ${affected.length} 条需处理的任务（需人工核查 ${count("NEEDS_HUMAN")} 条、可明确继续 ${count("FAILED_RETRYABLE")} 条、终止失败 ${count("FAILED_TERMINAL")} 条、已停止 ${count("CANCELLED")} 条）。` : "待上传成片保留在队列中。";
-    const latest = affected.filter(task => task.result.failure).sort((left, right) => right.result.timestamp.localeCompare(left.result.timestamp))[0]?.result.failure;
+    const latestTask = affected.filter(task => task.result.failure).sort((left, right) => right.result.timestamp.localeCompare(left.result.timestamp))[0];
+    const latest = latestTask && this.taskResult(latestTask).failure;
     return `本账号自动上传已暂停：${summary}${latest ? `最近失败原因：${latest.message} 下一步：${latest.next_action} ` : ""}${this.paused ? "" : "其他未暂停账号可继续处理本轮成片。"}请核查对应 Chrome；仅提供“安全继续”的未选文件任务可明确继续，终止失败任务不能继续；结果未知的文件禁止重传。`;
   }
   private changed(): void { this.dependencies.changed?.(); }
@@ -1013,9 +1017,12 @@ export class DouyinUploadService {
     }
   }
   runPending(): Promise<void> {
+    return this.drainPending(false);
+  }
+  private drainPending(continuation: boolean): Promise<void> {
     if (this.stopFailed) return Promise.resolve();
     if (this.runner) return this.runner;
-    if (this.managingBrowser || this.active || this.preparingContinuation || this.retargeting || this.discarding || this.closing || this.cancelling || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
+    if (this.managingBrowser || this.active || !continuation && (this.preparingContinuation || this.pendingContinuations > 0) || this.retargeting || this.discarding || this.closing || this.cancelling || this.stopped || this.stopping || this.paused || !this.store.config.enabled || this.store.unavailable) return Promise.resolve();
     this.runner = (async () => {
       while (!this.stopFailed && !this.cancelling && !this.stopped && !this.stopping && !this.paused && this.store.config.enabled && !this.store.unavailable) {
         const ids = this.pendingGroup(); if (!ids.length) break;
@@ -1051,7 +1058,9 @@ export class DouyinUploadService {
     const requested = this.store.task(id);
     if (requested && this.store.isClosed(requested.authorization.pageBatchId)) return Promise.reject(new Error("本批本地上传已结束，不能恢复。"));
     if (historicalPageBatchId) this.preparingContinuation = true;
+    this.pendingContinuations++;
     const work = this.control.catch(() => undefined).then(async () => {
+      this.preparingContinuation = true;
       await this.admission.catch(() => undefined);
       if (this.managingBrowser || this.stopFailed || generation !== this.controlGeneration || this.stopping || this.closing || this.discarding || this.retargeting || this.store.unavailable || !this.store.config.enabled || this.active || this.runner) throw new Error("上传控制已变化、仍在运行或不可用，本次继续未接收。");
       if (historicalPageBatchId) {
@@ -1092,7 +1101,7 @@ export class DouyinUploadService {
       if (this.store.isClosed(task.authorization.pageBatchId)) throw new Error("本批本地上传已结束，不能恢复。");
       if (task.result.state === "ACCEPTED") throw new Error("平台已确认接收，本任务不能再次确认或上传。");
       if (task.result.state === "DISCARDED") throw new Error("本批上传任务已删除，不能恢复。");
-      if (task.result.duplicate_of || task.result.state === "FAILED_TERMINAL") throw new Error("本任务不能继续；别名及终止记录不授予文件选择权限。");
+      if (task.result.duplicate_of || task.result.state === "FAILED_TERMINAL" && !recoverablePreparationTimeout(this.store, task)) throw new Error("本任务不能继续；别名及终止记录不授予文件选择权限。");
       const fenced = this.store.hasMarker(id);
       const batch = this.store.tasks().filter(other => other.authorization.pageBatchId === task.authorization.pageBatchId);
       if (fenced) {
@@ -1128,7 +1137,7 @@ export class DouyinUploadService {
         for (const pending of batch) {
           if (generation !== this.controlGeneration || this.stopping || this.stopped || this.store.unavailable || !this.store.config.enabled) return;
           const other = this.requireTask(pending.result.upload_task_id);
-          if (this.store.hasMarker(other.result.upload_task_id) || this.cancelledIntents.has(intentKey(other.input)) || other.result.duplicate_of || !(other.result.upload_task_id === id || ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(other.result.state))) continue;
+          if (this.store.hasMarker(other.result.upload_task_id) || this.cancelledIntents.has(intentKey(other.input)) || other.result.duplicate_of || !(other.result.upload_task_id === id || ["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(other.result.state) || recoverablePreparationTimeout(this.store, other))) continue;
           await this.phase(other, "PENDING");
           if (this.cancelledIntents.has(intentKey(other.input))) { await this.cancel(other.result.upload_task_id); continue; }
           if (generation !== this.controlGeneration || this.stopping || this.stopped || this.store.unavailable || !this.store.config.enabled) return;
@@ -1139,10 +1148,9 @@ export class DouyinUploadService {
         const ids = this.pendingGroup(); for (const pending of ids) this.eligible.delete(pending);
         await this.execute(ids);
       } finally {
-        this.preparingContinuation = false;
-        if (this.eligible.size) void this.runPending().catch(() => this.changed());
+        if (this.eligible.size) void this.drainPending(true).catch(() => this.changed());
       }
-      await this.runPending();
+      await this.drainPending(true);
       const currentBatchReady = this.productionBatches?.has(task.authorization.pageBatchId) &&
         this.automaticConfirmationBatches.has(task.authorization.pageBatchId) && batch.length === task.authorization.expectedCount &&
         batch.every(other => ["WAITING_FOR_CONFIRMATION", "ACCEPTED"].includes(this.requireTask(other.result.upload_task_id).result.state));
@@ -1151,10 +1159,9 @@ export class DouyinUploadService {
         await this.completeOrdinaryUpload(task.authorization.pageBatchId);
       }
     }).finally(() => {
-      if (historicalPageBatchId) {
-        this.preparingContinuation = false; this.changed();
-        if (this.eligible.size) void this.runPending().catch(() => this.changed());
-      }
+      this.pendingContinuations--;
+      this.preparingContinuation = false; this.changed();
+      if (this.eligible.size) void this.runPending().catch(() => this.changed());
     }); this.control = work; return work;
   }
   retarget(id: string, expectedAdId: string): Promise<void> {
@@ -1456,7 +1463,8 @@ export class DouyinUploadService {
       for (const id of ids) {
         const task = this.requireTask(id); if (task.result.state === "WAITING_FOR_CONFIRMATION" && (!recovery || savedReady.has(id))) continue;
         const fenced = this.store.hasMarker(id), waitingTimeout = !fenced && task.result.state === "PENDING" && error instanceof UploadError && error.failure.code === "TIMEOUT";
-        const failure = fenced ? unknown(error instanceof UploadError ? error : undefined).failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : waitingTimeout ? uploadFailure("TIMEOUT", "page", "处理期限已到，本文件尚未选择。", "核查原任务页面后点击“安全继续”；已选文件不会重传。", true).failure : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
+        const preparationTimeout = !fenced && task.result.upload_outcome === "NOT_SELECTED" && ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE"].includes(task.result.state) && error instanceof UploadError && error.failure.category === "browser" && error.failure.code === "TIMEOUT" && !error.failure.requires_human;
+        const failure = fenced ? unknown(error instanceof UploadError ? error : undefined).failure : controller.signal.aborted ? uploadFailure("STOPPED", "cancel", "上传已停止。", "确认后明确继续。", false).failure : waitingTimeout ? uploadFailure("TIMEOUT", "page", "处理期限已到，本文件尚未选择。", "核查原任务页面后点击“安全继续”；已选文件不会重传。", true).failure : preparationTimeout ? { ...error.failure, retryable: true, next_action: "点击“安全继续”；程序先核查原上传页面，再接续未选文件，已选文件不会重传。" } : error instanceof UploadError ? error.failure : uploadFailure("PAGE_CONTRACT_CHANGED", "page", "页面操作无法确认，自动操作已停止。", "检查页面结构与任务归属。", true).failure;
         task.result = { ...task.result, state: fenced || failure.requires_human ? "NEEDS_HUMAN" : controller.signal.aborted ? "CANCELLED" : failure.retryable ? "FAILED_RETRYABLE" : "FAILED_TERMINAL", upload_outcome: fenced ? "MAY_HAVE_UPLOADED" : "NOT_SELECTED", readyEvidence: undefined, failure, retryable: !fenced && failure.retryable, timestamp: timestamp() };
         failed.push(task);
       }
