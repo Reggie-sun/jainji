@@ -41,3 +41,9 @@
 真实首次恢复在文件 fence 前失败：原 uploader 创建并激活同账户的计划上传页，随后 `currentTarget` 使用 CDP 目录 controller 的概览身份方法；该方法拒绝非空 `adId` 和上传 drawer。修复 owner 为原 `content.js` 的只读身份投影及 `QianchuanCdpAccountSession.readBoundSnapshot`，不移除选文件前的账户核验。新增只读身份入口允许 `/uni-prom` 的唯一合法计划 ID 及现存弹窗，仍校验当前文档、唯一可见账户及 URL ID；目录 GET、切换、native 命令沿原严格准入。隔离 world 升至 v2，避免热重启复用旧 controller。用户选择 A 接手已有未提交的 CDP 文件及测试，仅提交本轮 owned hunks。
 
 验证先用隔离 Chrome 复现同错误，再验证计划 drawer 的只读身份、错账户拒绝及目录请求仍零发出；typecheck、受影响 Harness、AOCI 与必要独立审查后沿原 30 条恢复。只读投影不授文件或确认权限，原 page contract 双 ID、modal 和 fence 保持。Parent Self-Review：修复校验职责混用，不改保存锚点、上传授权或结果解释。
+
+## Current Account Transport Timeout Delta
+
+氨糖膏新批次在选文件前的 raw CDP 读取中，因 `CdpConnection.detach` 的 150ms 确认期限失败；该明确运输超时被当成账户身份未知而要求人工。用户再次选择 A 接手 `qianchuan-current-account.ts`，保留已有 context 过滤改动。将 detach 等待调整为 1 秒，保留整体 4 秒读取期限与有界 socket 清理；detach 及整体期限仅以 `ETIMEDOUT` 标记已知运输超时，沿原服务至多 3 次未选文件重连。身份错配、页面歧义和已有 fence 的行为不变。
+
+验证使用延迟 200ms 的真实本地 WebSocket 协议复现旧失败；新行为须成功读取、无应答有界失败且关闭自有 socket、整体超时可识别，原服务只投递一次文件；再执行 typecheck、路由 Harness、必要 AOCI、最终 Risk Gate 与提交推送。待当前制作安全结束并载入新代码后，沿原账号、计划、冻结文件及原批次继续实传，不强制终止正在导出任务。Parent Self-Review：改变有限运输预算及错误分类，不更改身份准入或未知结果恢复。

@@ -2230,6 +2230,7 @@ describe("Qianchuan upload service", () => {
 
   it.each([
     Object.assign(new Error("Fixture transport"), { code: "ECONNRESET" }),
+    Object.assign(new Error("Fixture current-account detach timeout"), { code: "ETIMEDOUT" }),
     new TypeError("Fixture fetch", { cause: Object.assign(new Error("Fixture socket"), { code: "UND_ERR_SOCKET" }) }),
     Object.assign(new Error("Fixture timeout"), { name: "TimeoutError" }),
   ])("recovers an identified native current-account transport error without exposing raw diagnostics: %s", async failure => {

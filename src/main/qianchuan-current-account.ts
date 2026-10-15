@@ -9,6 +9,8 @@ const MAX_TOTAL_BYTES = 2 * 1024 * 1024;
 const MAX_TARGETS = 256;
 const MAX_CANDIDATES = 32;
 const OPERATION_TIMEOUT_MS = 4_000;
+const DETACH_TIMEOUT_MS = 1_000;
+const readTimeout = () => Object.assign(new Error("读取千川浏览器连接超时，尚未选择文件。"), { code: "ETIMEDOUT" });
 const ID_PATTERN = /^[1-9][0-9]{0,19}$/;
 const ACCOUNT_ROUTES = new Set(["/home", "/uni-prom", "/finance", VIDEO_LIBRARY_ROUTE]);
 const FAILURE = "无法确认千川网页当前子账户，请检查当前页面后重试。";
@@ -111,7 +113,7 @@ class CdpConnection {
     try {
       await Promise.race([
         this.call("Target.detachFromTarget", { sessionId }, undefined, true),
-        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(FAILURE)), 150); }),
+        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(readTimeout()), DETACH_TIMEOUT_MS); }),
       ]);
     }
     finally { if (timer) clearTimeout(timer); this.sessions.delete(sessionId); }
@@ -238,7 +240,7 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
   let timedOut = false;
   const onParentAbort = () => controller.abort(parentSignal?.reason ?? new DOMException("Aborted", "AbortError"));
   parentSignal?.addEventListener("abort", onParentAbort, { once: true });
-  const timer = setTimeout(() => { timedOut = true; controller.abort(new Error("读取千川当前子账户超时，请刷新页面后重试。")); }, OPERATION_TIMEOUT_MS);
+  const timer = setTimeout(() => { timedOut = true; controller.abort(readTimeout()); }, OPERATION_TIMEOUT_MS);
   let connection: CdpConnection | undefined;
   let socket: WebSocket | undefined;
   try {

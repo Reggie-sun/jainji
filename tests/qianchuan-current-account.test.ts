@@ -23,6 +23,7 @@ interface FakeOptions {
   redirectMetadata?: boolean;
   pageError?: boolean;
   detachDelayMs?: number;
+  holdDetach?: boolean;
 }
 
 async function fakeBrowser(options: FakeOptions = {}) {
@@ -64,6 +65,7 @@ async function fakeBrowser(options: FakeOptions = {}) {
         const targetId = sessions.get(sessionId);
         if (targetId) detached.push(targetId);
         sessions.delete(sessionId);
+        if (options.holdDetach) return;
         if (options.detachDelayMs) setTimeout(() => respond({}), options.detachDelayMs);
         else respond({});
       }
@@ -107,6 +109,15 @@ it("accepts valid account reads when CDP detach acknowledgements take 200ms", as
   try {
     await expect(readCurrentQianchuanAccount(fixture.endpoint)).resolves.toBe("200");
     expect(fixture.detached).toEqual(fixture.attached);
+    expect(fixture.connected()).toBe(false);
+  } finally { await fixture.close(); }
+});
+
+it("classifies a missing detach acknowledgement as a bounded transport timeout and closes its socket", async () => {
+  const fixture = await fakeBrowser({ holdDetach: true });
+  try {
+    await expect(readCurrentQianchuanAccount(fixture.endpoint)).rejects.toMatchObject({ code: "ETIMEDOUT" });
+    expect(fixture.attached).toHaveLength(1);
     expect(fixture.connected()).toBe(false);
   } finally { await fixture.close(); }
 });
@@ -303,7 +314,7 @@ it("cancels a stalled page read, detaches the session and closes its socket", as
 it("times out a stalled CDP command and closes its socket", async () => {
   const fixture = await fakeBrowser({ holdTargets: true });
   try {
-    await expect(readCurrentQianchuanAccount(fixture.endpoint)).rejects.toThrow("超时");
+    await expect(readCurrentQianchuanAccount(fixture.endpoint)).rejects.toMatchObject({ code: "ETIMEDOUT" });
     expect(fixture.connected()).toBe(false);
   } finally { await fixture.close(); }
 }, 8_000);
