@@ -35,7 +35,7 @@ afterEach(async () => {
     await Promise.race([new Promise<void>(resolve => child.once("exit", () => resolve())), new Promise(resolve => setTimeout(resolve, 2000))]);
     if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
   }));
-  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+  await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 })));
   vi.restoreAllMocks();
 });
 

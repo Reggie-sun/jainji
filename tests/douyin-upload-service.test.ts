@@ -2326,6 +2326,28 @@ describe("Qianchuan upload service", () => {
     expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED" && task.retry_count === 2 && task.attempt_count === 1)).toBe(true);
   });
 
+  it.each([1, 12])("automatically confirms the current %i-file batch after safe continuation", async count => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    let unavailable = true;
+    f.port.connect = async () => {
+      if (unavailable) throw uploadFailure("CDP_UNAVAILABLE", "browser", "fixture offline", "check Chrome", false, true);
+    };
+    const confirm = vi.fn(f.port.confirmAutomation!);
+    f.port.confirmAutomation = confirm;
+    const batch = await f.createBatch(Array.from({ length: count }, (_, index) => `continued ${index}`));
+    await f.register(batch);
+    for (const identity of batch.identities) await f.service.enqueueFinalArtifact(identity);
+    await f.service.runPending();
+    const failed = f.service.status(batch.projectId).tasks.find(task => task.state === "FAILED_RETRYABLE")!;
+    expect(failed.upload_outcome).toBe("NOT_SELECTED");
+    expect(confirm).not.toHaveBeenCalled();
+    unavailable = false;
+    await f.service.resume(failed.upload_task_id);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0]![0]).toHaveLength(count);
+    expect(f.service.status(batch.projectId).tasks.every(task => task.state === "ACCEPTED")).toBe(true);
+  });
+
   it("reconnects preparation timeouts before any fence and sends files only once", async () => {
     let f!: Awaited<ReturnType<typeof fixture>>;
     let opens = 0, stops = 0;
@@ -2381,7 +2403,7 @@ describe("Qianchuan upload service", () => {
     await f.service.runPending();
     expect(f.service.status(blocked.projectId).tasks.some(task => task.upload_outcome !== "NOT_SELECTED")).toBe(false);
     await f.service.resume(task.upload_task_id);
-    expect(f.service.status(blocked.projectId).tasks.every(task => task.upload_outcome === "READY")).toBe(true);
+    expect(f.service.status(blocked.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED")).toBe(true);
   });
 
   it("cancels during reconnect backoff without a late reconnect or file selection", async () => {

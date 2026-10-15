@@ -1117,7 +1117,10 @@ export class DouyinUploadService {
         if (this.eligible.size) void this.runPending().catch(() => this.changed());
       }
       await this.runPending();
-      if (this.historicalContinuationBatches.has(task.authorization.pageBatchId)) {
+      const currentBatchReady = this.productionBatches?.has(task.authorization.pageBatchId) &&
+        this.automaticConfirmationBatches.has(task.authorization.pageBatchId) && batch.length === task.authorization.expectedCount &&
+        batch.every(other => ["WAITING_FOR_CONFIRMATION", "ACCEPTED"].includes(this.requireTask(other.result.upload_task_id).result.state));
+      if (this.historicalContinuationBatches.has(task.authorization.pageBatchId) || currentBatchReady) {
         this.continuationBatch = undefined;
         await this.completeOrdinaryUpload(task.authorization.pageBatchId);
       }

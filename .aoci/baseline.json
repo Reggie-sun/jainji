@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-15T15:02:52Z",
+  "updated_at": "2026-10-15T16:06:01Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c08a15ccfc750148db53f3e7c1253965d75ddd921cfcdbcb3b397e21dd14226a",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "038c6881d38d2b98edbcc9c940183ee4e8fdf7b65a443f923f146ac9a7d86488",
-      "size": 147715,
-      "normalized_sha256": "038c6881d38d2b98edbcc9c940183ee4e8fdf7b65a443f923f146ac9a7d86488"
+      "sha256": "78e74d14c425a2fb13c556191d62d99b0d165513b9d6ce7e6057a3f635e5fef7",
+      "size": 147751,
+      "normalized_sha256": "78e74d14c425a2fb13c556191d62d99b0d165513b9d6ce7e6057a3f635e5fef7"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1438,9 +1438,9 @@
       "normalized_sha256": "890982d33fa0dd336a25d5dd7f1ee9caffa321dc5f9d2ee8259e500415e8b274"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "2d70d4f98be918c4d799ba4da28c36ccb6b95341fe322d56ecf22ca124908239",
-      "size": 131957,
-      "normalized_sha256": "2d70d4f98be918c4d799ba4da28c36ccb6b95341fe322d56ecf22ca124908239"
+      "sha256": "e343e3aa1dd07d6d3cb210899e414e18b420e241f79846e3e3ad36edf455716b",
+      "size": 132348,
+      "normalized_sha256": "e343e3aa1dd07d6d3cb210899e414e18b420e241f79846e3e3ad36edf455716b"
     },
     "src/main/douyin-upload-store.ts": {
       "sha256": "e265f54963123c917ab44d414023c1fda289741d061299a5fd1bed7ad2295073",

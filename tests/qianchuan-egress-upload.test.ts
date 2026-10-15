@@ -28,5 +28,5 @@ it("tunnel loss detaches automation and rejects later delivery while keeping ori
     expect(evidence.chromeRunning).toBe(true);
     expect(evidence.pages.some(page => page.id === fixture.originalTargetId)).toBe(true);
     expect(evidence.events).toHaveLength(0);
-  } finally { await uploader.stop(); verify.mockRestore(); await fixture.stop(); await rm(root, { recursive: true, force: true }); }
+  } finally { await uploader.stop(); verify.mockRestore(); await fixture.stop(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }, 15000);
