@@ -1,13 +1,15 @@
 import path from "node:path";
+import os from "node:os";
 import { QianchuanBrowserBindings } from "./qianchuan-browser-bindings.js";
 import { findExtensionProcess, readExtensionBrowserMetadata, verifyExtensionProcess } from "./qianchuan-extension-process.js";
 import { QianchuanCdpAccountSession, CdpSnapshotSchema, sameCdpSnapshot, switchedCdpSnapshot, type CdpSnapshot } from "./qianchuan-cdp-account-session.js";
 import { QianchuanAccountCatalog, type CatalogOperation } from "./qianchuan-account-catalog.js";
 import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
+import { readQianchuanCdpProfile } from "./qianchuan-cdp-profile.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import type { QianchuanCurrentAccountPort, QianchuanCurrentAccountSession } from "./qianchuan-current-account-port.js";
 
-interface BrowserProof { identity: string; endpoint: string; verify(): Promise<void>; }
+interface BrowserProof { identity: string; endpoint: string; browserContextId?: string; verify(): Promise<void>; }
 interface BrowserSession {
   current(signal: AbortSignal): Promise<CdpSnapshot>;
   call(operation: CatalogOperation<CdpSnapshot>, signal?: AbortSignal): Promise<unknown>;
@@ -46,20 +48,22 @@ export class QianchuanBrowserAccounts implements QianchuanCurrentAccountPort {
     const binding = await this.bindings.get(target.advertiserId) ?? managed;
     let processIdentity, startedAt, metadata;
     try {
-      processIdentity = await findExtensionProcess(binding.profile, binding.profileDirectory);
-      startedAt = await verifyExtensionProcess(processIdentity);
-      metadata = await readExtensionBrowserMetadata(processIdentity);
+      processIdentity = await findExtensionProcess(binding.profile, binding.profileDirectory, "/proc", "cdp-default-profile");
+      startedAt = await verifyExtensionProcess(processIdentity, "/proc", os.homedir(), "cdp-default-profile");
+      metadata = await readExtensionBrowserMetadata(processIdentity, "/proc", "cdp-default-profile");
     } catch { signal.throwIfAborted(); throw new Error("无法核对该账号的原 Chrome，请先打开对应账号浏览器后刷新子账户。"); }
     if (!metadata?.browserPath) throw new Error("该账号 Chrome 未提供可核对的连接，请从账号设置打开原浏览器后刷新。");
     const endpoint = `http://127.0.0.1:${metadata.port}`, expected = JSON.stringify({ binding, processIdentity, startedAt, metadata });
     const verify = async () => {
       signal.throwIfAborted();
       const currentBinding = await this.bindings.get(target.advertiserId) ?? managed;
-      const start = await verifyExtensionProcess(processIdentity), currentMetadata = await readExtensionBrowserMetadata(processIdentity);
+      const start = await verifyExtensionProcess(processIdentity, "/proc", os.homedir(), "cdp-default-profile"), currentMetadata = await readExtensionBrowserMetadata(processIdentity, "/proc", "cdp-default-profile");
       if (JSON.stringify({ binding: currentBinding, processIdentity, startedAt: start, metadata: currentMetadata }) !== expected) throw changed();
       await this.verifyEndpoint(endpoint, metadata.browserPath!, signal);
     };
-    await verify(); return { identity: expected, endpoint, verify };
+    await verify();
+    const browserContextId = await readQianchuanCdpProfile({ ...target, cdpEndpoint: endpoint }, binding, signal);
+    await verify(); return { identity: `${expected}:${browserContextId}`, endpoint, browserContextId, verify };
   }
   private async verifyEndpoint(endpoint: string, browserPath: string, signal: AbortSignal): Promise<void> {
     const response = await fetch(`${endpoint}/json/version`, { redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
@@ -72,7 +76,7 @@ export class QianchuanBrowserAccounts implements QianchuanCurrentAccountPort {
   async current(target: FrozenQianchuanAccount, signal: AbortSignal, excludedTargets: ReadonlySet<string> = new Set()): Promise<QianchuanCurrentAccountSession> {
     const proof = await this.resolve(target, signal), bound = Object.freeze({ ...target, cdpEndpoint: proof.endpoint });
     const exclusions = new Set(excludedTargets);
-    const reader = this.dependencies.session?.(bound, proof.verify, exclusions) ?? new QianchuanCdpAccountSession(bound, proof.verify, exclusions);
+    const reader = this.dependencies.session?.(bound, proof.verify, exclusions) ?? new QianchuanCdpAccountSession(bound, proof.verify, exclusions, proof.browserContextId);
     await proof.verify();
     const snapshot = CdpSnapshotSchema.parse(await reader.current(signal));
     await proof.verify(); signal.throwIfAborted();

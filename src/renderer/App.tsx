@@ -408,7 +408,7 @@ export default function App() {
     ...(supervisedCover && !state.reviewerConnection?.configured ? [{ message: "主管修正与样片检查需要配置复核模型。", action: "models" as const }] : []),
     ...(douyinUploadSelection && !state.douyinUpload?.config.enabled ? [{ message: "本次已选择上传，但全局千川上传尚未启用。", action: "accounts" as const }] : []),
     ...(douyinUploadSelection && !state.douyinUpload?.accounts.some(account => account.available && account.product === douyinUploadSelection.accountProduct) ? [{ message: "本次上传账号尚未选择或配置不可用。", action: "accounts" as const }] : []),
-    ...(douyinUploadSelection && (!douyinUploadSelection.plan || !state.douyinUpload?.accounts.some(account => account.available && account.product === douyinUploadSelection.accountProduct && account.advertiserId === douyinUploadSelection.plan?.advertiserId)) ? [{ message: "请在本页选择属于当前账号的上传计划。", section: "export" as const, selector: "#douyin-upload-title" }] : []),
+    ...(douyinUploadSelection && (!douyinUploadSelection.plan || !state.douyinUpload?.accounts.some(account => account.available && account.product === douyinUploadSelection.accountProduct && (douyinUploadSelection.plan?.accountSource === "current-browser" || account.advertiserId === douyinUploadSelection.plan?.advertiserId))) ? [{ message: "请在本页选择属于当前账号的上传计划。", section: "export" as const, selector: "#douyin-upload-title" }] : []),
     ...(douyinUploadSelection && exportFormat !== "mp4" ? [{ message: "千川上传仅支持 MP4，请调整导出格式或关闭本次上传。", section: "export" as const, selector: "#export-format" }] : []),
   ];
   const fixReason = (reason: NonNullable<TemplatePanelProps["startReasons"]>[number]) => {

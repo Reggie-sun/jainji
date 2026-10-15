@@ -100,7 +100,7 @@ export class QianchuanCdpAccountSession {
   private contentSource?: Promise<string>;
   private readonly excludedTargets: ReadonlySet<string>;
 
-  constructor(private readonly target: FrozenQianchuanAccount, private readonly verify: () => Promise<void>, excludedTargets: ReadonlySet<string> = new Set()) {
+  constructor(private readonly target: FrozenQianchuanAccount, private readonly verify: () => Promise<void>, excludedTargets: ReadonlySet<string> = new Set(), private readonly expectedBrowserContextId?: string) {
     this.excludedTargets = new Set(excludedTargets);
   }
 
@@ -149,14 +149,15 @@ export class QianchuanCdpAccountSession {
       browserSession = await abortable(browser.newBrowserCDPSession(), operationSignal);
       const defaultContext = async (): Promise<string> => {
         const value = await abortable(browserSession!.send("Target.getBrowserContexts"), operationSignal);
-        if (!Array.isArray(value.browserContextIds) || value.browserContextIds.length !== 0 ||
-          typeof value.defaultBrowserContextId !== "string" || !value.defaultBrowserContextId) throw changed();
+        if (!Array.isArray(value.browserContextIds) || !this.expectedBrowserContextId && value.browserContextIds.length !== 0 ||
+          typeof value.defaultBrowserContextId !== "string" || !value.defaultBrowserContextId ||
+          this.expectedBrowserContextId !== undefined && value.defaultBrowserContextId !== this.expectedBrowserContextId) throw changed();
         return value.defaultBrowserContextId;
       };
       // The list only enumerates DevTools-created contexts. Prove the target's
       // actual identity against the default context used by the upload path.
       const browserContextId = await defaultContext();
-      if (browser.contexts().length !== 1) throw changed();
+      if (!browser.contexts().length || !this.expectedBrowserContextId && browser.contexts().length !== 1) throw changed();
       const context = browser.contexts()[0]!;
       if (context.pages().length !== 0) throw changed();
       const opening = context.waitForEvent("page", { timeout: 10_000 });
@@ -209,13 +210,14 @@ export class QianchuanCdpAccountSession {
   }
 
   private async currentUnchecked(signal: AbortSignal): Promise<CdpSnapshot> {
-    const observed = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, { allowSingleHidden: true, allowRoot: true });
+    const options = { allowSingleHidden: true, allowRoot: true, browserContextId: this.expectedBrowserContextId };
+    const observed = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, options);
     const snapshot = await this.withTarget(observed.targetId, signal, async bound => {
       const current = await this.readBoundSnapshot(bound, observed.url, bound.signal);
       if (current.account.advertiserId !== observed.account.advertiserId || current.account.name !== observed.account.name) throw changed();
       return current;
     });
-    const fresh = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, { allowSingleHidden: true, allowRoot: true });
+    const fresh = await readCurrentQianchuanPage(this.target.cdpEndpoint, signal, this.excludedTargets, options);
     if (fresh.targetId !== observed.targetId || fresh.url !== observed.url || fresh.account.advertiserId !== snapshot.account.advertiserId || fresh.account.name !== snapshot.account.name) throw changed();
     return snapshot;
   }

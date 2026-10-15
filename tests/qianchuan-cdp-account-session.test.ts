@@ -1,6 +1,7 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
 import { chromium, type BrowserContext } from "playwright-core";
 import { afterEach, expect, it, vi } from "vitest";
 vi.mock("../src/main/qianchuan-extension-install", () => ({
@@ -15,34 +16,56 @@ import {
 } from "../src/main/qianchuan-cdp-account-session";
 import type { FrozenQianchuanAccount } from "../src/main/qianchuan-account-config";
 import { withQianchuanQueryPage } from "../src/main/qianchuan-query-page";
+import { QianchuanBrowserAccounts } from "../src/main/qianchuan-browser-accounts";
+import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+import { findExtensionProcess } from "../src/main/qianchuan-extension-process";
+import { readQianchuanCdpProfile } from "../src/main/qianchuan-cdp-profile";
 import { FIXTURE_ACCOUNTS, FIXTURE_HOST, FIXTURE_PLANS, createQianchuanFixture, type QianchuanFixture } from "./helpers/qianchuan-extension-fixture";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
 
 const roots: string[] = [];
 const contexts: BrowserContext[] = [];
+const children: ChildProcess[] = [];
 
 afterEach(async () => {
   await Promise.all(contexts.splice(0).map(context => context.close().catch(() => undefined)));
+  await Promise.all(children.splice(0).map(async child => {
+    if (child.exitCode !== null) return;
+    child.kill("SIGTERM");
+    await Promise.race([new Promise<void>(resolve => child.once("exit", () => resolve())), new Promise(resolve => setTimeout(resolve, 2000))]);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }));
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
   vi.restoreAllMocks();
 });
 
-async function fixture(hidden = false, route = "/uni-prom"): Promise<{ context: BrowserContext; profile: string; service: QianchuanFixture; target: FrozenQianchuanAccount }> {
+async function fixture(hidden = false, route = "/uni-prom", socketProcess = false): Promise<{ context: BrowserContext; profile: string; service: QianchuanFixture; target: FrozenQianchuanAccount }> {
   const root = await mkdtemp(path.join(os.tmpdir(), "jianji-qianchuan-cdp-account-"));
   roots.push(root);
   const profile = path.join(root, "profile");
   const service = await createQianchuanFixture(path.join(root, "fixture"));
-  const context = await chromium.launchPersistentContext(profile, {
-    executablePath: await resolveChromeExecutable(),
-    headless: true,
-    args: [
+  const args = [
       "--no-sandbox", "--disable-extensions", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1",
       `--proxy-server=http://127.0.0.1:${service.proxyPort}`,
       `--host-resolver-rules=MAP ${FIXTURE_HOST} 127.0.0.1,MAP * ~NOTFOUND,EXCLUDE 127.0.0.1,EXCLUDE localhost`,
       `--ignore-certificate-errors-spki-list=${service.certificateSpki}`,
       "--disable-background-networking", "--no-first-run", "--no-default-browser-check",
-    ],
-  });
+    ];
+  let context: BrowserContext;
+  if (socketProcess) {
+    await mkdir(profile, { mode: 0o700 });
+    const child = spawn(await resolveChromeExecutable(), ["--headless=new", `--user-data-dir=${profile}`, ...args, "about:blank"], { stdio: "ignore" });
+    children.push(child);
+    let port: string | undefined;
+    for (let i = 0; i < 100; i++) {
+      try { port = (await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]; break; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+      if (child.exitCode !== null) throw Error("Fixture Chrome exited before publishing metadata");
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    if (!port) throw Error("Fixture Chrome did not publish process-owned metadata");
+    context = (await chromium.connectOverCDP(`http://127.0.0.1:${port}`, { isLocal: true })).contexts()[0]!;
+  } else context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true, args });
   contexts.push(context);
   await context.addInitScript(() => { (window as typeof window & { gfdatav1?: { ver: string } }).gfdatav1 = { ver: "fixture-gf-1" }; });
   if (hidden) await context.addInitScript(host => {
@@ -164,6 +187,77 @@ it("does not use a protected upload page as the account document", async () => {
     expect(snapshot.targetId).not.toBe(target.targetInfo.targetId);
     expect(protectedPage.url()).toContain(`aavid=${FIXTURE_ACCOUNTS[1].advertiserId}`);
     expect(protectedPage.isClosed()).toBe(false);
+  } finally { await f.service.close(); }
+}, 30_000);
+
+it.each([false, true])("proves the bound default profile despite another stored profile and isolated context (%s)", async isolated => {
+  const f = await fixture(true, "/uni-prom", true);
+  let other: BrowserContext | undefined;
+  try {
+    await chmod(f.profile, 0o700);
+    await mkdir(path.join(f.profile, "Profile 1"), { mode: 0o700 });
+    await writeFile(path.join(f.profile, "Profile 1", "Preferences"), "fixture private data must not be read");
+    const root = path.dirname(f.profile);
+    await new QianchuanBrowserBindings(root).save({ advertiserId: f.target.advertiserId, profile: f.profile, profileDirectory: "Default" });
+    if (isolated) {
+      other = await f.context.browser()!.newContext({ ignoreHTTPSErrors: true });
+      const page = await other.newPage();
+      await page.goto(`https://${FIXTURE_HOST}/uni-prom?aavid=${FIXTURE_ACCOUNTS[1].advertiserId}`);
+      await page.evaluate(() => {
+        const original = document.querySelectorAll.bind(document);
+        (window as any).foreignAccountReads = 0;
+        document.querySelectorAll = ((selector: string) => {
+          if (selector === ".account-info-container") (window as any).foreignAccountReads++;
+          return original(selector);
+        }) as typeof document.querySelectorAll;
+      });
+    }
+    const owner = new QianchuanBrowserAccounts(root), signal = AbortSignal.timeout(30_000);
+    const before = f.context.pages().map(page => page.url());
+    const session = await owner.current(f.target, signal);
+    expect(session.account).toEqual(FIXTURE_ACCOUNTS[0]);
+    expect((await owner.accounts(session, signal, async () => {})).accounts).toEqual([...FIXTURE_ACCOUNTS]);
+    expect(f.context.pages().map(page => page.url())).toEqual(before);
+    if (other) {
+      const page = other.pages()[0]!;
+      expect(page.isClosed()).toBe(false); expect(page.url()).toContain(`aavid=${FIXTURE_ACCOUNTS[1].advertiserId}`);
+      expect(await page.evaluate(() => (window as any).foreignAccountReads)).toBe(0);
+    }
+    // Native messaging still cannot attribute a profile within a shared process.
+    await expect(findExtensionProcess(f.profile, "Default")).rejects.toThrow();
+  } finally { await other?.close(); await f.service.close(); }
+}, 60_000);
+
+it("rejects a different actual default profile path and removes only its internal proof page", async () => {
+  const f = await fixture();
+  try {
+    const before = f.context.pages().map(page => page.url());
+    await expect(readQianchuanCdpProfile(f.target, { advertiserId: f.target.advertiserId, profile: f.profile, profileDirectory: "Profile 1" }, AbortSignal.timeout(15_000))).rejects.toThrow("实际资料目录");
+    expect(f.context.pages().map(page => page.url())).toEqual(before);
+    expect(f.service.state.apiRequests).toHaveLength(0);
+  } finally { await f.service.close(); }
+}, 30_000);
+
+it("rejects a default context change during the internal profile proof without an account request", async () => {
+  const f = await fixture();
+  try {
+    const before = f.context.pages().map(page => page.url()), connect = chromium.connectOverCDP.bind(chromium);
+    vi.spyOn(chromium, "connectOverCDP").mockImplementation(async (...args) => {
+      const browser = await connect(...args), createSession = browser.newBrowserCDPSession.bind(browser);
+      vi.spyOn(browser, "newBrowserCDPSession").mockImplementation(async () => {
+        const session = await createSession(), send = session.send.bind(session); let observations = 0;
+        vi.spyOn(session, "send").mockImplementation(async (method, params) => {
+          const result = await send(method, params);
+          if (method === "Target.getBrowserContexts" && ++observations > 1) Reflect.set(result, "defaultBrowserContextId", "changed-default-context");
+          return result;
+        });
+        return session;
+      });
+      return browser;
+    });
+    await expect(readQianchuanCdpProfile(f.target, { advertiserId: f.target.advertiserId, profile: f.profile, profileDirectory: "Default" }, AbortSignal.timeout(15_000))).rejects.toThrow("实际资料目录");
+    expect(f.context.pages().map(page => page.url())).toEqual(before);
+    expect(f.service.state.apiRequests).toHaveLength(0);
   } finally { await f.service.close(); }
 }, 30_000);
 

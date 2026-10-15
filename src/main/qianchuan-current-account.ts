@@ -129,13 +129,14 @@ class CdpConnection {
   }
 }
 
-function candidates(value: unknown, excludedTargets: ReadonlySet<string>, allowRoot: boolean): Candidate[] {
+function candidates(value: unknown, excludedTargets: ReadonlySet<string>, allowRoot: boolean, browserContextId?: string): Candidate[] {
   if (!Array.isArray(value) || value.length > MAX_TARGETS) throw new Error(FAILURE);
   const result: Candidate[] = [];
   const seenTargets = new Set<string>();
   for (const entry of value) {
     if (!entry || typeof entry !== "object") throw new Error(FAILURE);
-    const target = entry as { targetId?: unknown; type?: unknown; url?: unknown };
+    const target = entry as { targetId?: unknown; type?: unknown; url?: unknown; browserContextId?: unknown };
+    if (browserContextId !== undefined && target.browserContextId !== browserContextId) continue;
     if (target.type !== "page" || typeof target.url !== "string") continue;
     let url: URL;
     try { url = new URL(target.url); } catch { continue; }
@@ -225,13 +226,13 @@ export async function readCurrentQianchuanAccountSnapshot(endpoint: string, pare
 }
 
 /** The catalog may address the sole verified account page while another browser tab is active. */
-export async function readCurrentQianchuanPage(endpoint: string, signal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), options: { allowSingleHidden?: boolean; allowRoot?: boolean } = {}): Promise<{ account: QianchuanCurrentAccount; targetId: string; url: string }> {
-  const state = await readCurrentAccountState(endpoint, signal, excludedTargets, options.allowSingleHidden === true, options.allowRoot === true);
+export async function readCurrentQianchuanPage(endpoint: string, signal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), options: { allowSingleHidden?: boolean; allowRoot?: boolean; browserContextId?: string } = {}): Promise<{ account: QianchuanCurrentAccount; targetId: string; url: string }> {
+  const state = await readCurrentAccountState(endpoint, signal, excludedTargets, options.allowSingleHidden === true, options.allowRoot === true, options.browserContextId);
   if (state.pages.length !== 1) throw new Error(FAILURE);
   return { account: state.account, targetId: state.pages[0]!.targetId, url: state.pages[0]!.url };
 }
 
-async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), allowSingleHidden = false, allowRoot = false): Promise<{ account: QianchuanCurrentAccount; pages: Candidate[] }> {
+async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), allowSingleHidden = false, allowRoot = false, browserContextId?: string): Promise<{ account: QianchuanCurrentAccount; pages: Candidate[] }> {
   parentSignal?.throwIfAborted();
   const controller = new AbortController();
   let timedOut = false;
@@ -252,12 +253,13 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
       socket!.once("open", opened); socket!.once("error", failed); controller.signal.addEventListener("abort", aborted, { once: true });
     });
     connection = new CdpConnection(socket, controller.signal);
-    const initialCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets, allowRoot);
+    if (browserContextId !== undefined && (!browserContextId || (await connection.call("Target.getBrowserContexts") as { defaultBrowserContextId?: unknown }).defaultBrowserContextId !== browserContextId)) throw new Error(FAILURE);
+    const initialCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets, allowRoot, browserContextId);
     const first = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of initialCandidates) first.push({ candidate, snapshot: await readPage(connection, candidate) });
     const selected = selectedPages(first, allowSingleHidden);
     const expected = uniqueAccount(selected);
-    const currentCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets, allowRoot);
+    const currentCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets, allowRoot, browserContextId);
     if (candidateSignature(currentCandidates) !== candidateSignature(initialCandidates)) throw new Error(FAILURE);
     const second = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of currentCandidates) second.push({ candidate, snapshot: await readPage(connection, candidate) });

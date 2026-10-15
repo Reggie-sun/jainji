@@ -607,6 +607,53 @@ it("returns to output with the internal scroll position, upload choices and acco
   } finally { await page.close(); }
 }, 30000);
 
+it.each([
+  { source: "current-browser", advertiserId: "7000", allowed: true },
+  { source: undefined, advertiserId: "123", allowed: true },
+  { source: undefined, advertiserId: "7000", allowed: false },
+])("checks the selected upload plan source $source for account $advertiserId before starting", async ({ source, advertiserId, allowed }) => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(({ source, advertiserId }) => {
+      const f = (window as any).taskPagesFixture;
+      window.jianji.listQianchuanPlans = async () => {
+        const plan = { advertiserId, adId: "456", name: "显式选择的计划", ...(source ? { accountSource: source as "current-browser" } : {}) };
+        return source ? { account: { advertiserId, name: "当前网页子账户" }, plans: [plan] } : [plan];
+      };
+      f.configureAccounts();
+    }, { source, advertiserId });
+    await workflow(page, "包装").click();
+    await page.locator("#product-price").fill("隔离手填内容");
+    await workflow(page, "输出确认").click();
+    await page.getByLabel("本次成片导出完成后自动上传并确认", { exact: true }).check();
+    await page.locator("#douyin-upload-product").selectOption("蝴蝶贴");
+    const start = page.getByRole("button", { name: /本地制作，制作/ });
+    expect(await start.isDisabled()).toBe(true);
+    await page.locator("#douyin-upload-plan").selectOption("456");
+    expect(await page.locator("#douyin-upload-plan").inputValue()).toBe("456");
+    expect(await start.isEnabled()).toBe(allowed);
+    if (allowed) {
+      expect(await page.locator(".production-blockers").textContent()).toBe("");
+      if (source === "current-browser") {
+        await page.evaluate(() => { const f = (window as any).taskPagesFixture; f.state.douyinUpload.accounts[0].available = false; f.emit(); });
+        expect(await start.isDisabled()).toBe(true);
+        expect(await page.locator(".production-blockers").textContent()).toContain("本次上传账号尚未选择或配置不可用");
+        await page.evaluate(() => { const f = (window as any).taskPagesFixture; f.state.douyinUpload.accounts[0].available = true; f.emit(); });
+        await page.locator("#douyin-upload-plan").selectOption("456");
+        expect(await start.isEnabled()).toBe(true);
+      }
+      await start.click();
+      await page.waitForFunction(() => (window as any).taskPagesFixture.calls.starts.length === 1);
+      const input = await page.evaluate(() => (window as any).taskPagesFixture.calls.starts[0]);
+      expect(input.douyinUpload).toEqual({ enabled: true, accountProduct: "蝴蝶贴", plan: { advertiserId, adId: "456", name: "显式选择的计划", ...(source ? { accountSource: source } : {}) } });
+    } else {
+      expect(await page.locator(".production-blockers").textContent()).toContain("请在本页选择属于当前账号的上传计划");
+      expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.starts)).toEqual([]);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
 it("hands batch and cleanup drafts to the separate composer, retains form drafts and edits only scheduling", async () => {
   const { page, errors } = await fixture();
   try {

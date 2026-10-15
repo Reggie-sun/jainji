@@ -41,7 +41,7 @@ export async function withQianchuanQueryPage<T>(target: FrozenQianchuanAccount, 
       return connected;
     });
     browser = await abortable(connection, signal);
-    if (browser.contexts().length !== 1) throw changed();
+    if (!browser.contexts().length) throw changed();
     const context = browser.contexts()[0]!;
     pickerSession = await browser.newBrowserCDPSession();
     signal.throwIfAborted();

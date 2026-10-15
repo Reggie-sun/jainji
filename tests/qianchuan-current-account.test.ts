@@ -22,6 +22,7 @@ interface FakeOptions {
   holdEvaluation?: boolean;
   redirectMetadata?: boolean;
   pageError?: boolean;
+  detachDelayMs?: number;
 }
 
 async function fakeBrowser(options: FakeOptions = {}) {
@@ -62,7 +63,9 @@ async function fakeBrowser(options: FakeOptions = {}) {
         const sessionId = request.params?.sessionId ?? "";
         const targetId = sessions.get(sessionId);
         if (targetId) detached.push(targetId);
-        sessions.delete(sessionId); respond({});
+        sessions.delete(sessionId);
+        if (options.detachDelayMs) setTimeout(() => respond({}), options.detachDelayMs);
+        else respond({});
       }
     });
   });
@@ -98,6 +101,15 @@ async function realChrome(): Promise<{ context: BrowserContext; profile: string;
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+it("accepts valid account reads when CDP detach acknowledgements take 200ms", async () => {
+  const fixture = await fakeBrowser({ detachDelayMs: 200 });
+  try {
+    await expect(readCurrentQianchuanAccount(fixture.endpoint)).resolves.toBe("200");
+    expect(fixture.detached).toEqual(fixture.attached);
+    expect(fixture.connected()).toBe(false);
+  } finally { await fixture.close(); }
+});
 
 it.each([{ menuDelay: 0, directList: false }, { menuDelay: 150, directList: false }, { menuDelay: 0, directList: true }, { menuDelay: 150, directList: true }])("lists child accounts after the hover menu renders ($menuDelay ms, direct list $directList) and switches only the explicit target", async ({ menuDelay, directList }) => {
   const fixture = await realChrome();

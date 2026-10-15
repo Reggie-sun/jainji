@@ -5,6 +5,9 @@ import os from "node:os";
 import { ExtensionProcessSchema, extensionChanged, type ExtensionProcess } from "./qianchuan-extension-protocol.js";
 import { verifyOriginalProfile } from "./qianchuan-browser-bindings.js";
 
+// CDP callers must separately prove Chrome's actual default profile/context.
+type ProfileScope = "single-profile" | "cdp-default-profile";
+
 function chromeArguments(bytes: Buffer): string[] {
   if (bytes.length > 65536) throw extensionChanged();
   const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes).split("\0").filter(Boolean);
@@ -12,7 +15,7 @@ function chromeArguments(bytes: Buffer): string[] {
 }
 
 /** Native messaging supplies metadata; independently check the live OS process, never Chrome login files. */
-export async function verifyExtensionProcess(input: ExtensionProcess, procRoot = "/proc", home = os.homedir()): Promise<string> {
+export async function verifyExtensionProcess(input: ExtensionProcess, procRoot = "/proc", home = os.homedir(), scope: ProfileScope = "single-profile"): Promise<string> {
   const value = ExtensionProcessSchema.parse(input), directory = path.join(procRoot, String(value.pid));
   if (process.platform !== "linux" || !path.isAbsolute(value.profile)) throw extensionChanged();
   const before = await lstat(directory);
@@ -32,7 +35,7 @@ export async function verifyExtensionProcess(input: ExtensionProcess, procRoot =
   const profiles = await readdir(profile, { withFileTypes: true });
   if (profiles.length > 1024) throw extensionChanged();
   // Linux native messaging identifies the Chrome process, not a tab's profile within a shared process.
-  for (const entry of profiles) {
+  for (const entry of scope === "single-profile" ? profiles : []) {
     if (entry.name === value.profileDirectory) continue;
     if (/^(Default|Profile [0-9]+|Guest Profile)$/.test(entry.name) || entry.isSymbolicLink() && !/^Singleton(Lock|Cookie|Socket)$/.test(entry.name)) throw extensionChanged();
     if (entry.isDirectory()) {
@@ -62,8 +65,8 @@ async function metadataText(file: string, maximum: number): Promise<string> {
 }
 
 /** Bind debugging metadata to the native host's exact live process using OS sockets only. */
-export async function readExtensionBrowserMetadata(identity: ExtensionProcess, procRoot = "/proc"): Promise<{ port: number; browserPath?: string } | undefined> {
-  const startedAt = await verifyExtensionProcess(identity, procRoot), directory = path.join(procRoot, String(identity.pid));
+export async function readExtensionBrowserMetadata(identity: ExtensionProcess, procRoot = "/proc", scope: ProfileScope = "single-profile"): Promise<{ port: number; browserPath?: string } | undefined> {
+  const startedAt = await verifyExtensionProcess(identity, procRoot, os.homedir(), scope), directory = path.join(procRoot, String(identity.pid));
   const args = chromeArguments(await readFile(path.join(directory, "cmdline")));
   const flag = (name: string) => {
     const values = args.flatMap((arg, index) => arg === name ? [args[index + 1] ?? ""] : arg.startsWith(`${name}=`) ? [arg.slice(name.length + 1)] : []);
@@ -97,11 +100,11 @@ export async function readExtensionBrowserMetadata(identity: ExtensionProcess, p
     .map(line => line.trim().split(/\s+/)).filter(fields => fields[3] === "0A" && fields[1] === `0100007F:${port.toString(16).toUpperCase().padStart(4, "0")}`);
   if (listeners.length !== 1 || !sockets.has(listeners[0][9])) throw extensionChanged();
   if (before) { const after = await lstat(file); if (after.dev !== before.dev || after.ino !== before.ino || after.ctimeMs !== before.ctimeMs || after.size !== before.size) throw extensionChanged(); }
-  if (await verifyExtensionProcess(identity, procRoot) !== startedAt) throw extensionChanged();
+  if (await verifyExtensionProcess(identity, procRoot, os.homedir(), scope) !== startedAt) throw extensionChanged();
   return { port, ...(browserPath ? { browserPath } : {}) };
 }
 
-export async function findExtensionProcess(profile: string, profileDirectory: string, procRoot = "/proc"): Promise<ExtensionProcess> {
+export async function findExtensionProcess(profile: string, profileDirectory: string, procRoot = "/proc", scope: ProfileScope = "single-profile"): Promise<ExtensionProcess> {
   const pids = (await readdir(procRoot)).filter(value => /^[1-9][0-9]*$/.test(value));
   if (pids.length > 4096) throw extensionChanged();
   const matches: ExtensionProcess[] = [];
@@ -115,7 +118,7 @@ export async function findExtensionProcess(profile: string, profileDirectory: st
       if (args.some(arg => arg === "--type" || arg.startsWith("--type="))) continue;
       if (!args.some((arg, index) => arg === `--user-data-dir=${profile}` || arg === "--user-data-dir" && args[index + 1] === profile)) continue;
       const candidate = { pid: Number(pid), profile, profileDirectory };
-      await verifyExtensionProcess(candidate, procRoot); matches.push(candidate);
+      await verifyExtensionProcess(candidate, procRoot, os.homedir(), scope); matches.push(candidate);
     } catch (error) { if (!["ENOENT", "ESRCH", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
   }
   if (matches.length !== 1) throw extensionChanged(); return matches[0];

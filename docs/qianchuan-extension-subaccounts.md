@@ -24,7 +24,7 @@ VPS 使用固定 `browser-profile` RPC 读取同样的进程与监听证明，�
 
 平台 Cookie 和 CSRF 仅在 Chrome 使用；简辑只收到账户与计划投影。CDP 使用真实字符串 target ID 与同文档持续存在的隔离上下文标记，不伪装成扩展数字 tab ID。分页缺失、ID 精度丢失、账户或文档漂移以及未知导航结果拒绝，不自动重发切换或回切。待确认和结果未知的原上传任务继续阻止切换原浏览器。
 
-默认读取要求已核验的调试连接。共用资料根目录出现其他 Chrome profile 时仍拒绝连接，不将一个进程的端口冒充为特定 profile 中页面的证明。不会删除多余 profile 或改动原绑定来绕过检查。新一轮只读 metadata 请求可以重建已终止的 SSH 通信，但不重发失败操作、不恢复旧上传租约或冻结授权；现有未终止的连接与主体变化仍拒绝。显式恢复 VPS 连接也不自动继续旧任务。
+默认读取要求已核验的调试连接。本地 CDP 额外使用本次自有后台 `chrome://version/` 页核对 Chrome 实际 profile 路径及默认 context；只有与原绑定完全一致时，才允许同根存在其他 profile 或隔离 context。目录及计划仍只能使用这个已证明的默认 context；不以一个进程的端口代替 profile 证明。native messaging 和远端原进程校验继续拒绝多 profile。不会删除多余 profile 或改动原绑定来绕过检查。新一轮只读 metadata 请求可以重建已终止的 SSH 通信，但不重发失败操作、不恢复旧上传租约或冻结授权；现有未终止的连接与主体变化仍拒绝。显式恢复 VPS 连接也不自动继续旧任务。
 
 ## Verification Boundary
 
