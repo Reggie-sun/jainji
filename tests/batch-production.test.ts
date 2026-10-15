@@ -839,7 +839,7 @@ describe("batch automatic plan preparation", () => {
       expect(await page.evaluate(() => (window as unknown as { calls: unknown[] }).calls)).toEqual([{ runId: "run", jobId: "job", uploadTaskId: "unknown", ...(historical ? { historicalPageBatchId: "original-batch" } : {}) }]);
     } finally { await page.close(); }
   });
-  async function panel(subaccounts = false): Promise<Page> {
+  async function panel(subaccounts = false, serviceEnabled = true): Promise<Page> {
     const page = await browser.newPage();
     await page.route("http://127.0.0.1:3000/batch-plan-intent", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
     await page.goto("http://127.0.0.1:3000/batch-plan-intent");
@@ -865,8 +865,10 @@ describe("batch automatic plan preparation", () => {
       const state = {recentProjects:[], queue:{batches:[]}, capabilities:{ready:true}, douyinUpload:{config:{enabled:true}, accounts}};
       function Fixture() {
         const [visible, setVisible] = useState(true);
+        const [serviceEnabled, setServiceEnabled] = useState(${serviceEnabled});
         return <><button onClick={() => setVisible(value => !value)}>切换页面</button>
-          <BatchProductionPanel state={state} visible={visible} onState={() => {}} /></>;
+          <button onClick={() => setServiceEnabled(value => !value)}>切换全局上传</button>
+          <BatchProductionPanel state={{...state, douyinUpload:{...state.douyinUpload, config:{enabled:serviceEnabled}}}} visible={visible} onState={() => {}} /></>;
       }
       createRoot(document.getElementById("root")).render(<React.StrictMode><Fixture/></React.StrictMode>);
     `, resolveDir: process.cwd(), loader: "tsx" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic", loader: { ".css": "empty" } }).outputFiles[0]!.text;
@@ -876,6 +878,24 @@ describe("batch automatic plan preparation", () => {
   }
   const requests = (page: Page) => page.evaluate(() => (window as any).catalogRequests.length);
   const row = (page: Page) => page.locator('[aria-label="蝴蝶贴制作设置"]');
+  it("keeps child account and plan configuration available with global upload off without authorizing upload", async () => {
+    const page = await panel(true, false);
+    try {
+      await row(page).getByLabel("子账户", { exact: true }).waitFor();
+      expect(await row(page).getByLabel("上传计划", { exact: true }).isVisible()).toBe(true);
+      expect(await row(page).getByRole("checkbox", { name: "蝴蝶贴开启千川上传", exact: true }).isEnabled()).toBe(true);
+      await choose(page);
+      await page.getByRole("checkbox", { name: "选择模板 蝴蝶贴", exact: true }).check();
+      await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+      expect(await page.evaluate(() => (window as any).batchStarts[0].entries[0].douyinUpload)).toBeUndefined();
+      await page.getByRole("button", { name: "切换全局上传", exact: true }).click();
+      expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
+      expect(await page.evaluate(() => (window as any).batchStarts.length)).toBe(1);
+      await page.getByRole("button", { name: "切换全局上传", exact: true }).click();
+      expect(await row(page).getByLabel("子账户", { exact: true }).isVisible()).toBe(true);
+      expect(await row(page).getByLabel("上传计划", { exact: true }).inputValue()).toBe("9002");
+    } finally { await page.close(); }
+  });
   it("shows and submits the current child identity while retaining the saved browser slot", async () => {
     const page = await panel();
     try {

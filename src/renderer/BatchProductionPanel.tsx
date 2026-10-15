@@ -168,7 +168,7 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
   if (!visible) return null;
   return <>
     <div className="batch-production-heading"><Heading title="批量制作">选择不同商品的已保存模板，按列表顺序逐项制作。上一项全部导出并校验后才开始下一项；失败会记录原因并继续。</Heading><button className="button secondary compact" disabled={loading || busy} onClick={() => setRevision(value => value + 1)}><Icon name="folder" size={16} />刷新模板</button></div>
-    <p>每个模板选择上传账号后会自动保存；多个模板可以使用同一个账号。{state.douyinUpload?.config.enabled ? "每组最多 9 条，整批就绪后自动确认，VPS 账号完成后自动关闭并切换。" : "全局千川上传已关闭；仍可先保存模板与账号的关联。"}</p>
+    <p>每个模板选择上传账号后会自动保存；多个模板可以使用同一个账号。{state.douyinUpload?.config.enabled ? "每组最多 9 条，整批就绪后自动确认，VPS 账号完成后自动关闭并切换。" : "全局千川上传已关闭；仍可选择子账户和计划、保存模板与账号的关联，本次制作不会上传。"}</p>
     <button type="button" className="text-button" onClick={onConfigureUpload}>配置千川上传</button>
     {state.douyinUpload?.config.enabled && !state.douyinUpload.ready && <p className="notice" role="status">千川状态：{state.douyinUpload.message} 请先核对上传状态；制作入口仍由主进程检查资格。</p>}
     {!bindingReady && <p role="status">账号关联功能等待当前制作结束后加载，请保留正在进行的任务。</p>}
@@ -199,12 +199,12 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
               <label htmlFor={`${prefix}-timing`}>价格显示时段<select id={`${prefix}-timing`} value={row.displayMode} disabled={busy} onChange={event => update(row.recentProjectId, { displayMode: event.target.value as Row["displayMode"] })}><option value="full">全程显示</option><option value="first-5s">仅前 5 秒（渐隐）</option></select></label>
               <div className="batch-cover-settings"><label className="batch-cover-toggle"><span>覆盖原贴纸</span><span><input type="checkbox" aria-label={`${row.name}开启覆盖`} checked={row.coverEnabled} disabled={busy} onChange={event => update(row.recentProjectId, { coverEnabled: event.target.checked })} />开启</span></label></div>
               <div className="batch-upload-account">
-                <label className="batch-upload-toggle"><span>千川上传</span><span><input type="checkbox" aria-label={`${row.name}开启千川上传`} checked={row.uploadEnabled} disabled={busy || !state.douyinUpload?.config.enabled} onChange={event => update(row.recentProjectId, { uploadEnabled: event.target.checked })} /><span>{!state.douyinUpload?.config.enabled ? "全局已关闭" : row.uploadEnabled ? "自动上传" : "不上传"}</span></span></label>
+                <label className="batch-upload-toggle"><span>千川上传</span><span><input type="checkbox" aria-label={`${row.name}开启千川上传`} checked={row.uploadEnabled} disabled={busy} onChange={event => update(row.recentProjectId, { uploadEnabled: event.target.checked })} /><span>{!state.douyinUpload?.config.enabled ? "全局已关闭" : row.uploadEnabled ? "自动上传" : "不上传"}</span></span></label>
                 <select aria-label={`${row.name}上传账号`} value={uploadAccount.error ? "" : uploadAccount.accountProduct ?? ""} disabled={busy || !bindingReady} onChange={event => void selectAccount(row, event.target.value as QianchuanProduct)}>
                   <option value="" disabled>请选择上传账号</option>
-                  {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{qianchuanUploadAccountLabel(account, currentAccountFor(row), account.product === uploadAccount.accountProduct && row.uploadEnabled && state.douyinUpload?.config.enabled === true && account.available)}{!account.available && "（不可用）"}</option>)}
+                  {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{qianchuanUploadAccountLabel(account, currentAccountFor(row), account.product === uploadAccount.accountProduct && row.uploadEnabled && account.available)}{!account.available && "（不可用）"}</option>)}
                 </select>
-                {row.uploadEnabled && state.douyinUpload?.config.enabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })}
+                {row.uploadEnabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })}
                   onAccountRead={account => setAccountReads(current => ({ ...current, [row.recentProjectId]: { product: planAccount?.product, anchor: planAccount?.advertiserId, account } }))} />}
                 {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}
               </div>

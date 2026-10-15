@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-15T13:09:33Z",
+  "updated_at": "2026-10-15T13:51:10Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "86c088920454ec8b9480a14a8b8eb5681b2d0e43cda89ea6407cc0aef9e47f2f",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "3720533483251b17a6904f3898a816f57886a5720d5b6af6b99a8d15509e8995",
-      "size": 147507,
-      "normalized_sha256": "3720533483251b17a6904f3898a816f57886a5720d5b6af6b99a8d15509e8995"
+      "sha256": "ce1879684161ee59f8fe4d820f0a32b1d036f2442dbe71d115e9a8c567b46121",
+      "size": 147579,
+      "normalized_sha256": "ce1879684161ee59f8fe4d820f0a32b1d036f2442dbe71d115e9a8c567b46121"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2388,9 +2388,9 @@
       "normalized_sha256": "3c87abe15214af3c31b5eb9aa4407ccdaf5ed9294c0e44cc480b80dcf926d36a"
     },
     "src/renderer/BatchProductionPanel.tsx": {
-      "sha256": "4a65afc9ac8ac91492a16d5ed08cc50361d9f96a73b39756551ed76d84ce87c6",
-      "size": 24741,
-      "normalized_sha256": "4a65afc9ac8ac91492a16d5ed08cc50361d9f96a73b39756551ed76d84ce87c6"
+      "sha256": "e8395a2edf080820aa673c87593deb70cf28345d08bf2053115987cb0c8e67b0",
+      "size": 24668,
+      "normalized_sha256": "e8395a2edf080820aa673c87593deb70cf28345d08bf2053115987cb0c8e67b0"
     },
     "src/renderer/BatchUploadDetails.tsx": {
       "sha256": "928b49327f45f017bc5c81ce7f0815bf7bede70619069a83a46d1d84b39da3db",
