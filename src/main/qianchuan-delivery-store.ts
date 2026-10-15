@@ -11,6 +11,11 @@ const uuid = z.string().uuid();
 const platformId = z.string().regex(/^[1-9][0-9]{0,19}$/);
 const timestamp = z.string().datetime();
 const version = z.string().min(1).max(128).regex(/^[^\u0000-\u001f\u007f]+$/);
+const qualificationSchema = z.object({
+  evidenceId: z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/),
+  recipeDigest: z.string().regex(/^[a-f0-9]{64}$/), configDigest: z.string().regex(/^[a-f0-9]{64}$/),
+  senderId: z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER),
+}).strict();
 const recordSchema = z.object({
   operationId: uuid,
   sessionId: uuid,
@@ -27,6 +32,7 @@ const recordSchema = z.object({
   afterVersion: z.string().min(1).max(128).optional(),
   readbackDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   adId: platformId.optional(),
+  qualification: qualificationSchema.optional(),
 }).strict();
 const stateSchema = z.object({ version: z.literal(1), records: z.array(recordSchema) }).strict().superRefine((value, context) => {
   const operations = new Set<string>(), authorizations = new Map<string, string>();
@@ -52,6 +58,9 @@ const stateSchema = z.object({ version: z.literal(1), records: z.array(recordSch
     if (record.state !== "CONFIRMED" && (record.afterVersion || record.readbackDigest)) context.addIssue({ code: "custom", path: ["records", index], message: "unexpected readback" });
     if (!["REJECTED", "CONFIRMED", "UNKNOWN"].includes(record.state) && record.providerRequestId) context.addIssue({ code: "custom", path: ["records", index, "providerRequestId"], message: "unexpected provider request reference" });
     if (record.adId && (record.draft.action !== "create-plan" || !["PENDING", "UNKNOWN", "CONFIRMED"].includes(record.state))) context.addIssue({ code: "custom", path: ["records", index, "adId"], message: "unexpected created plan identity" });
+    if (record.qualification && (!(["set-budget", "set-roi", "pause", "enable"] as const).includes(record.draft.action as "set-budget" | "set-roi" | "pause" | "enable") || record.authorization.maxActions !== 1)) {
+      context.addIssue({ code: "custom", path: ["records", index, "qualification"], message: "invalid first qualification intent" });
+    }
   }
 });
 
@@ -63,6 +72,8 @@ export type QianchuanDeliverySettlement =
   | { state: "REJECTED"; reason: "PLATFORM_REJECTED"; evidenceId: string; providerRequestId?: string }
   | { state: "UNKNOWN"; reason: "SUBMIT_OUTCOME_UNKNOWN" | "READBACK_MISMATCH"; providerRequestId?: string }
   | { state: "CONFIRMED"; afterVersion: string; readbackDigest: string; providerRequestId?: string; adId?: string };
+export type QianchuanDeliveryQualificationProvenance = z.infer<typeof qualificationSchema>;
+export interface QianchuanDeliveryReservationOptions { qualification?: QianchuanDeliveryQualificationProvenance; }
 
 export class QianchuanDeliveryStoreError extends Error {
   constructor(readonly code: "STORE_UNAVAILABLE" | "ADVERTISER_HAS_UNKNOWN" | "BUDGET_LIMIT" | "ACTION_LIMIT" | "AUTHORIZATION_INVALID" | "AUTHORIZATION_EXPIRED" | "OPERATION_STATE_INVALID") {
@@ -163,9 +174,14 @@ export class QianchuanDeliveryStore {
     }
   }
 
-  async reserve(value: QianchuanDeliveryDraft, suppliedAuthorization: QianchuanDeliveryAuthorization): Promise<string> {
+  async reserve(value: QianchuanDeliveryDraft, suppliedAuthorization: QianchuanDeliveryAuthorization, options?: QianchuanDeliveryReservationOptions): Promise<string> {
     this.assertReady();
     const draft = QianchuanDeliveryDraftSchema.parse(value), authorization = QianchuanDeliveryAuthorizationSchema.parse(suppliedAuthorization);
+    const qualification = options?.qualification === undefined ? undefined : qualificationSchema.parse(options.qualification);
+    if (options && Object.keys(options).some(key => key !== "qualification")) throw new QianchuanDeliveryStoreError("AUTHORIZATION_INVALID");
+    if (qualification && (!(["set-budget", "set-roi", "pause", "enable"] as const).includes(draft.action as "set-budget" | "set-roi" | "pause" | "enable") || authorization.maxActions !== 1)) {
+      throw new QianchuanDeliveryStoreError("AUTHORIZATION_INVALID");
+    }
     this.validateAuthorization(draft, authorization);
     const operationId = randomUUID(), budgetIncrease = deliveryBudgetIncrease(draft), now = new Date().toISOString();
     try {
@@ -179,6 +195,7 @@ export class QianchuanDeliveryStore {
         }
         if (Date.parse(authorization.expiresAt) <= Date.now()) throw new QianchuanDeliveryStoreError("AUTHORIZATION_EXPIRED");
         const previous = state.records.filter(record => record.authorization.authorizationId === authorization.authorizationId);
+        if ((qualification || previous.some(record => record.qualification)) && previous.length > 0) throw new QianchuanDeliveryStoreError("ACTION_LIMIT");
         if (previous.some(record => record.authorization.draftDigest !== authorization.draftDigest || JSON.stringify(record.authorization) !== JSON.stringify(authorization))) {
           throw new QianchuanDeliveryStoreError("AUTHORIZATION_INVALID");
         }
@@ -188,6 +205,7 @@ export class QianchuanDeliveryStore {
         const next = stateSchema.parse({ ...state, records: [...state.records, {
           operationId, sessionId: this.currentSessionId, draft, authorization, state: "PENDING", budgetIncrease: minorUnitsMoney(budgetIncrease),
           createdAt: now, updatedAt: now,
+          ...(qualification ? { qualification } : {}),
         }] });
         await this.write(next);
       });

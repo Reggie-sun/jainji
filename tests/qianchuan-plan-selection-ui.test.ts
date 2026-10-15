@@ -80,6 +80,31 @@ export function subaccountFixtureScript(directoryError?: string, membershipError
   `,resolveDir:process.cwd(),loader:"tsx"},bundle:true,write:false,platform:"browser",format:"iife",jsx:"automatic"}).outputFiles[0]!.text;
 }
 
+export function accountSettingsPlanFixtureScript() {
+  return buildSync({ stdin: { contents: `
+    import React, { useState } from "react";
+    import { createRoot } from "react-dom/client";
+    import { QianchuanAccountSettings } from "./src/renderer/QianchuanAccountSettings";
+    window.catalogRequests = []; window.cancelledRequests = []; window.saved = []; window.holdSave = false; window.resolveSave = undefined;
+    const initialAccounts = [
+      {product:"滴耳康",productName:"滴耳康",browserProfileName:"滴耳康 Chrome",advertiserId:"1876131703522649",adId:"1877582409449488",available:true,egress:null},
+      {product:"氨糖膏",productName:"氨糖膏",browserProfileName:"氨糖膏 Chrome",advertiserId:"1876036793517065",adId:"1876052012647452",available:true,egress:null},
+    ];
+    window.jianji = {
+      listQianchuanPlans: input => new Promise((resolve,reject) => window.catalogRequests.push({input,resolve,reject})),
+      cancelQianchuanPlans: input => { window.cancelledRequests.push(input); window.catalogRequests.find(request => request.input.requestId === input.requestId)?.reject(new Error("计划读取已取消")); },
+    };
+    function Fixture() {
+      const [busy,setBusy] = useState(false), [accounts,setAccounts] = useState(initialAccounts);
+      window.setAccountSettingsBusy = setBusy;
+      window.changeSavedPlan = (product,adId) => setAccounts(current => current.map(account => account.product === product ? {...account,adId} : account));
+      return <QianchuanAccountSettings accounts={accounts} busy={busy}
+        onSave={async value => { window.saved.push(value); if(window.holdSave) await new Promise(resolve => window.resolveSave = resolve); return true; }} onOpenBrowser={async () => true} onControlBrowser={async () => true} />;
+    }
+    createRoot(document.getElementById("root")).render(<Fixture/>);
+  `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
+}
+
 let browser: Browser;
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); }, 30000);
 afterAll(async () => { await browser?.close(); });
@@ -139,6 +164,102 @@ it("keeps account editing and scheduled targets independent of live Chrome displ
     expect(await page.evaluate(()=>(window as any).saved[0])).toEqual({product:"眼贴",productName:"手填新产品",planUrl:"https://qianchuan.jinritemai.com/uni-prom?aavid=1000&adId=9001",egress:null});
     expect(await page.evaluate(()=>(window as any).controlled)).toEqual([]);
   } finally {await page.close();}
+});
+it("keeps a saved plan distinct from an explicitly selected current-browser directory plan until save", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.route("http://127.0.0.1:3000/account-plan-draft", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/account-plan-draft");
+    await page.addScriptTag({ content: accountSettingsPlanFixtureScript() });
+    await page.getByRole("button", { name: /滴耳康.*账户 1876131703522649.*已设置/ }).click();
+    expect(await page.evaluate(() => (window as any).catalogRequests.length)).toBe(0);
+    expect(await page.getByText("已保存目标：账户 1876131703522649 · 计划 1877582409449488", { exact: true }).count()).toBe(1);
+    await page.evaluate(() => (window as any).setAccountSettingsBusy(true));
+    expect(await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).isDisabled()).toBe(true);
+    await page.evaluate(() => (window as any).setAccountSettingsBusy(false));
+    await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).click();
+    await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+    expect(await page.evaluate(() => (window as any).catalogRequests[0].input.expectedAdvertiserId)).toBe("1876131703522649");
+    expect(await page.evaluate(() => (window as any).catalogRequests[0].input.accountSource)).toBe("current-browser");
+    await page.evaluate(() => {
+      const request = (window as any).catalogRequests[0];
+      request.resolve([{advertiserId:request.input.expectedAdvertiserId,adId:"1878488818847384",name:"当前目录候选计划"}]);
+    });
+    await page.getByLabel("上传计划", { exact: true }).selectOption("1878488818847384");
+    expect(await page.getByLabel("千川计划链接", { exact: true }).inputValue()).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=1876131703522649&adId=1878488818847384");
+    expect(await page.evaluate(() => (window as any).saved)).toEqual([]);
+    await page.getByText("已保存目标：账户 1876131703522649 · 计划 1877582409449488", { exact: true }).waitFor();
+    await page.getByText("目录候选只表示当前浏览器读取到的可选计划，不代表网页当前打开的计划。", { exact: true }).waitFor();
+    await page.evaluate(() => (window as any).holdSave = true);
+    await page.getByRole("button", { name: "保存账号", exact: true }).click();
+    await page.waitForFunction(() => (window as any).saved.length === 1);
+    expect(await page.getByRole("button", { name: "取消目录选择", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByLabel("千川计划链接", { exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByLabel("产品名称", { exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByLabel("上传计划", { exact: true }).isDisabled()).toBe(true);
+    await page.evaluate(() => (window as any).resolveSave());
+    await page.waitForFunction(() => !document.querySelector(".qianchuan-account-editor"));
+    expect(await page.evaluate(() => (window as any).saved[0])).toEqual({ product:"滴耳康", productName:"滴耳康", planUrl:"https://qianchuan.jinritemai.com/uni-prom?aavid=1876131703522649&adId=1878488818847384", egress:null });
+  } finally { await page.close(); }
+});
+it("discards a cancelled plan choice and ignores a late directory response after switching account slots", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.route("http://127.0.0.1:3000/account-plan-cancel", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/account-plan-cancel");
+    await page.addScriptTag({ content: accountSettingsPlanFixtureScript() });
+    await page.getByRole("button", { name: /滴耳康.*账户 1876131703522649.*已设置/ }).click();
+    await page.getByLabel("产品名称", { exact: true }).fill("未保存产品名");
+    expect(await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).count()).toBe(1);
+    await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).click();
+    await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+    await page.evaluate(() => {
+      const request = (window as any).catalogRequests[0];
+      request.resolve([{advertiserId:request.input.expectedAdvertiserId,adId:"1878488818847384",name:"待取消候选"}]);
+    });
+    await page.getByLabel("上传计划", { exact: true }).selectOption("1878488818847384");
+    await page.getByRole("button", { name: "取消目录选择", exact: true }).click();
+    expect(await page.getByLabel("千川计划链接", { exact: true }).inputValue()).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=1876131703522649&adId=1877582409449488");
+    expect(await page.getByLabel("产品名称", { exact: true }).inputValue()).toBe("未保存产品名");
+    await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).click();
+    await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
+    await page.getByRole("button", { name: /氨糖膏.*账户 1876036793517065.*已设置/ }).click();
+    await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).click();
+    await page.waitForFunction(() => (window as any).catalogRequests.length === 3);
+    expect(await page.evaluate(() => (window as any).catalogRequests[2].input.expectedAdvertiserId)).toBe("1876036793517065");
+    await page.evaluate(() => {
+      const oldRequest = (window as any).catalogRequests[1];
+      oldRequest.resolve([{advertiserId:oldRequest.input.expectedAdvertiserId,adId:"1878488818847384",name:"旧账号迟到候选"}]);
+      const currentRequest = (window as any).catalogRequests[2];
+      currentRequest.resolve([{advertiserId:currentRequest.input.expectedAdvertiserId,adId:"1876052012647453",name:"新账号候选"}]);
+    });
+    await page.waitForFunction(() => [...document.querySelector<HTMLSelectElement>('[aria-label="上传计划"]')!.options].some(option => option.textContent?.includes("新账号候选")));
+    expect(await page.getByLabel("上传计划", { exact: true }).locator("option").allTextContents()).not.toContain("旧账号迟到候选 · ID 1878488818847384");
+    expect(await page.evaluate(() => (window as any).saved)).toEqual([]);
+  } finally { await page.close(); }
+});
+it("clears a directory choice when the saved advertiser-plan binding changes while preserving other drafts", async () => {
+  const page = await browser.newPage();
+  try {
+    await page.route("http://127.0.0.1:3000/account-plan-binding", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
+    await page.goto("http://127.0.0.1:3000/account-plan-binding");
+    await page.addScriptTag({ content: accountSettingsPlanFixtureScript() });
+    await page.getByRole("button", { name: /滴耳康.*账户 1876131703522649.*已设置/ }).click();
+    await page.getByLabel("产品名称", { exact: true }).fill("保留名称草稿");
+    await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).click();
+    await page.waitForFunction(() => (window as any).catalogRequests.length === 1);
+    await page.evaluate(() => {
+      const request = (window as any).catalogRequests[0];
+      request.resolve([{advertiserId:request.input.expectedAdvertiserId,adId:"1878488818847384",name:"旧绑定下的候选"}]);
+    });
+    await page.getByLabel("上传计划", { exact: true }).selectOption("1878488818847384");
+    await page.evaluate(() => (window as any).changeSavedPlan("滴耳康", "1877582409449499"));
+    await page.waitForFunction(() => !document.querySelector(".qianchuan-plan-select"));
+    expect(await page.getByLabel("千川计划链接", { exact: true }).inputValue()).toBe("https://qianchuan.jinritemai.com/uni-prom?aavid=1876131703522649&adId=1877582409449499");
+    expect(await page.getByLabel("产品名称", { exact: true }).inputValue()).toBe("保留名称草稿");
+    expect(await page.getByRole("button", { name: "从当前网页读取计划并选择", exact: true }).getAttribute("aria-expanded")).toBe("false");
+    expect(await page.evaluate(() => (window as any).saved)).toEqual([]);
+  } finally { await page.close(); }
 });
 it("shows pending IDs and requires manual handling plus a second confirmation without automatically retrying", async () => {
   const page = await browser.newPage();
@@ -367,10 +488,9 @@ describe("plan selector browser interaction", () => {
       expect(await account.inputValue()).toBe("眼贴");
       await page.getByRole("button", { name: "刷新计划", exact: true }).click();
       await page.waitForFunction(() => (window as any).catalogRequests.length === 2);
-      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('#douyin-upload-product')?.selectedOptions[0]?.textContent?.includes("7000"));
-      expect(await account.locator("option:checked").textContent()).toContain("7000");
       await page.evaluate(() => (window as any).catalogRequests[1].reject(new Error("无法确认当前网页账户")));
       await page.getByRole("alert").waitFor();
+      await page.waitForFunction(() => document.querySelector<HTMLSelectElement>('#douyin-upload-product')?.selectedOptions[0]?.textContent === "新子账户商贸 · 7000");
       expect(await account.locator("option:checked").textContent()).toContain("7000");
       expect(await page.locator(".qianchuan-plan-select").textContent()).not.toMatch(/历史目录|历史网页账户|最近读取|较早记录/);
     } finally { await page.close(); }

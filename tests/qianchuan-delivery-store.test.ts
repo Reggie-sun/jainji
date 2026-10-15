@@ -38,6 +38,32 @@ it.skipIf(process.platform === "win32")("persists a reserved intent and upgrades
   } finally { await rm(root, { recursive: true, force: true }); }
 });
 
+it.skipIf(process.platform === "win32")("persists qualification provenance without restoring authorization after restart", async () => {
+  const root = await rootFor();
+  try {
+    const store = new QianchuanDeliveryStore(root); await store.initialize();
+    const value = rawDraft(), auth = rawAuthorization(value, store.sessionId);
+    const qualification = { evidenceId: "fixture:form", recipeDigest: "b".repeat(64), configDigest: "a".repeat(64), senderId: 7 };
+    const operationId = await store.reserve(value, { ...auth, maxActions: 1 }, { qualification });
+    const restarted = new QianchuanDeliveryStore(root, undefined, "33333333-3333-4333-8333-333333333333"); await restarted.initialize();
+    expect(await restarted.list(value.advertiserId)).toMatchObject([{ operationId, state: "UNKNOWN", qualification }]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it.skipIf(process.platform === "win32")("rejects qualification audit metadata outside the one-action allowlist", async () => {
+  const root = await rootFor();
+  try {
+    const store = new QianchuanDeliveryStore(root); await store.initialize();
+    const value = QianchuanDeliveryDraftSchema.parse({ schemaVersion: 1, draftId: "44444444-4444-4444-8444-444444444444",
+      provider: "qianchuan-browser", accountSlot: "蝴蝶贴", advertiserId: "1234567890", mode: "product-cost-control",
+      action: "create-plan", productId: "123", beforeVersion: "v1", beforeValues: { productEligible: true },
+      target: { budget: "1.00", budgetType: "daily", roi: "2", status: "paused", materials: [{ materialId: "456", platformVideoId: "video-1" }] } });
+    const auth = rawAuthorization(value, store.sessionId), qualification = { evidenceId: "fixture:form", recipeDigest: "b".repeat(64), configDigest: "a".repeat(64), senderId: 7 };
+    await expect(store.reserve(value, { ...auth, maxActions: 1 }, { qualification })).rejects.toThrow();
+    expect(await store.list(value.advertiserId)).toEqual([]);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
 it.skipIf(process.platform === "win32")("serializes reservations across store instances sharing the same ledger path", async () => {
   const root = await rootFor();
   try {

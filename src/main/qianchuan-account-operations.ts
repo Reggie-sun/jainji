@@ -1,5 +1,5 @@
 import { QianchuanBackendCancelSchema, type QianchuanBackendQuery, type QianchuanBackendResult } from "../shared/qianchuan-backend.js";
-import type { QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
+import type { FrozenQianchuanAccount, QianchuanAccountConfigReader } from "./qianchuan-account-config.js";
 import { egressIdentity } from "../shared/qianchuan-egress.js";
 
 type Scope = Pick<QianchuanBackendQuery, "product" | "expectedAdvertiserId" | "requestId">;
@@ -13,7 +13,7 @@ export class QianchuanAccountOperations {
   assertIdle(): void {
     if (this.active) throw new Error("报表或投放操作尚未结束，请等待或停止后再操作账号。");
   }
-  run<T>(scope: Scope, senderId: number, work: (signal: AbortSignal, read: (query: QianchuanBackendQuery) => Promise<QianchuanBackendResult>) => Promise<T>, prepare: () => Promise<void>, publish?: (value: T, signal: AbortSignal) => Promise<void>): Promise<T> {
+  run<T>(scope: Scope, senderId: number, work: (signal: AbortSignal, read: (query: QianchuanBackendQuery) => Promise<QianchuanBackendResult>, prepareAccount: () => Promise<FrozenQianchuanAccount>) => Promise<T>, prepare: () => Promise<void>, publish?: (value: T, signal: AbortSignal) => Promise<void>): Promise<T> {
     this.assertIdle();
     QianchuanBackendCancelSchema.parse({ requestId: scope.requestId });
     const key = `${senderId}:${scope.requestId}`, controller = new AbortController();
@@ -31,6 +31,12 @@ export class QianchuanAccountOperations {
         reads.add(pending);
         void pending.then(() => reads.delete(pending), () => reads.delete(pending));
         return pending;
+      }, async () => {
+        signal.throwIfAborted();
+        const target = await this.accounts.prepareCatalog(scope.product, false);
+        signal.throwIfAborted();
+        if (target.configDigest !== before.configDigest || target.advertiserId !== before.advertiserId || egressIdentity(target.egress) !== egressIdentity(before.egress)) throw new Error("账号连接或设置已变化，请重新预检。");
+        return target;
       });
       signal.throwIfAborted();
       const after = await this.accounts.freeze(scope.product, before.configDigest);

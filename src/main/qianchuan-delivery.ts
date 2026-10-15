@@ -14,9 +14,14 @@ const version = z.string().min(1).max(128).regex(/^[^\u0000-\u001f\u007f]+$/);
 const money = z.string().regex(/^(?:0|[1-9][0-9]{0,12})\.[0-9]{2}$/);
 const roi = z.string().regex(/^(?:0|[1-9][0-9]{0,5})(?:\.[0-9]{1,6})?$/);
 const safeId = z.string().min(1).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
+const sha256 = z.string().regex(/^[a-f0-9]{64}$/);
+const qualificationBindingSchema = z.object({
+  evidenceId: safeId, recipeDigest: sha256, configDigest: sha256, senderId: z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER),
+}).strict();
+const qualificationContextSchema = z.object({ configDigest: sha256, senderId: z.number().finite().int().min(0).max(Number.MAX_SAFE_INTEGER) }).strict();
 const recipeSchema = z.object({
   action: z.enum(QIANCHUAN_DELIVERY_ACTIONS), advertiserId: platformId, mode: z.literal("product-cost-control"),
-  status: QianchuanDeliveryCapabilityStatusSchema, evidenceId: safeId.optional(), observedAt: z.string().datetime().optional(),
+  status: QianchuanDeliveryCapabilityStatusSchema, evidenceId: safeId.optional(), recipeDigest: sha256.optional(), observedAt: z.string().datetime().optional(),
 }).strict();
 const observationSchema = z.object({
   advertiserId: platformId, adId: platformId.optional(), productId: platformId.optional(), version,
@@ -29,6 +34,7 @@ const budgetAfterValues = z.object({ budget: money, budgetType: z.literal("daily
 const statusAfterValues = z.object({ status: z.enum(["paused", "enabled"]) }).strict();
 const submittedSchema = z.object({ kind: z.literal("submitted"), providerRequestId: safeId.optional(), adId: platformId.optional() }).strict();
 const rejectedSchema = z.object({ kind: z.literal("rejected"), code: z.literal("PLATFORM_REJECTED"), evidenceId: safeId, providerRequestId: safeId.optional() }).strict();
+const notSentSchema = z.object({ kind: z.literal("not-sent"), reason: z.literal("AUTHORIZATION_EXPIRED") }).strict();
 const authorizationBoundsSchema = z.object({
   maxTargetBudget: money, totalBudgetIncrease: money, maxActions: z.number().finite().int().min(1).max(1000), expiresAt: z.string().datetime(),
 }).strict();
@@ -36,10 +42,13 @@ const authorizationBoundsSchema = z.object({
 export type QianchuanDeliveryRecipe = z.infer<typeof recipeSchema>;
 export type QianchuanDeliveryObservation = z.infer<typeof observationSchema>;
 export type QianchuanDeliverySubmission = z.infer<typeof submittedSchema>;
+export type QualificationBinding = z.infer<typeof qualificationBindingSchema>;
+export type QualificationExecutionContext = z.infer<typeof qualificationContextSchema>;
+export interface QianchuanDeliverySubmissionContext { readonly expiresAt: string; }
 export interface QianchuanDeliveryAdapter {
   capabilities(advertiserId: string, mode: "product-cost-control"): readonly unknown[];
   readFresh(draft: QianchuanDeliveryDraft, signal: AbortSignal): Promise<unknown>;
-  submitOnce(draft: QianchuanDeliveryDraft, signal: AbortSignal): Promise<unknown>;
+  submitOnce(draft: QianchuanDeliveryDraft, signal: AbortSignal, context: QianchuanDeliverySubmissionContext): Promise<unknown>;
   readback(draft: QianchuanDeliveryDraft, submission: QianchuanDeliverySubmission, signal: AbortSignal): Promise<unknown>;
 }
 
@@ -114,6 +123,7 @@ export class QianchuanDelivery {
   private stoppedValue = false;
   private readonly active = new Set<AbortController>();
   private readonly issuedAuthorizations = new Map<string, QianchuanDeliveryAuthorization>();
+  private readonly qualificationAuthorizations = new Map<string, { binding: QualificationBinding; consumed: boolean }>();
   constructor(private readonly store: QianchuanDeliveryStore, private readonly adapter?: QianchuanDeliveryAdapter) {}
 
   get stopped(): boolean { return this.stoppedValue; }
@@ -132,6 +142,44 @@ export class QianchuanDelivery {
     });
     this.issuedAuthorizations.set(authorization.authorizationId, authorization);
     return structuredClone(authorization);
+  }
+
+  issueQualificationAuthorization(value: QianchuanDeliveryDraft, limits: QianchuanDeliveryAuthorizationBounds, bindingInput: QualificationBinding): QianchuanDeliveryAuthorization {
+    if (this.stoppedValue) throw new Error("Delivery session stopped");
+    const draft = QianchuanDeliveryDraftSchema.parse(value), bounds = authorizationBoundsSchema.parse(limits);
+    const binding = qualificationBindingSchema.parse(bindingInput);
+    if (bounds.maxActions !== 1 || !this.isQualificationAction(draft.action) || !this.hasQualificationRecipe(draft, binding)) {
+      throw new Error("First qualification is not bound to one observed action recipe");
+    }
+    const authorization = this.issueAuthorization(draft, bounds);
+    this.qualificationAuthorizations.set(authorization.authorizationId, { binding, consumed: false });
+    return authorization;
+  }
+
+  private isQualificationAction(action: QianchuanDeliveryDraft["action"]): boolean {
+    return action === "set-budget" || action === "set-roi" || action === "pause" || action === "enable";
+  }
+
+  private hasQualificationRecipe(draft: QianchuanDeliveryDraft, binding: QualificationBinding): boolean {
+    if (!this.adapter) return false;
+    let values: readonly unknown[];
+    try { values = this.adapter.capabilities(draft.advertiserId, "product-cost-control"); }
+    catch { return false; }
+    if (!Array.isArray(values)) return false;
+    const matches: QianchuanDeliveryRecipe[] = [];
+    const seen = new Set<string>();
+    for (const value of values) {
+      const parsed = recipeSchema.safeParse(value);
+      if (!parsed.success) return false;
+      const recipe = parsed.data;
+      if (recipe.advertiserId !== draft.advertiserId || recipe.mode !== "product-cost-control") continue;
+      if (seen.has(recipe.action)) return false;
+      seen.add(recipe.action);
+      if (recipe.action === draft.action) matches.push(recipe);
+    }
+    const recipe = matches[0];
+    return matches.length === 1 && recipe?.status === "live-read-verified" && recipe.evidenceId === binding.evidenceId &&
+      recipe.recipeDigest === binding.recipeDigest && recipe.observedAt !== undefined;
   }
 
   capabilities(advertiserId: string): QianchuanDeliveryActionCapability[] {
@@ -166,7 +214,7 @@ export class QianchuanDelivery {
     for (const controller of this.active) controller.abort(new Error("Stopped"));
   }
 
-  async execute(draftInput: unknown, authorizationInput: unknown, parentSignal?: AbortSignal): Promise<QianchuanDeliveryResult> {
+  async execute(draftInput: unknown, authorizationInput: unknown, parentSignal?: AbortSignal, qualificationContextInput?: QualificationExecutionContext): Promise<QianchuanDeliveryResult> {
     const parsedDraft = QianchuanDeliveryDraftSchema.safeParse(draftInput);
     if (!parsedDraft.success) return result("NOT_SENT", "INVALID_DRAFT");
     const draft = parsedDraft.data, action = draft.action;
@@ -179,8 +227,19 @@ export class QianchuanDelivery {
     const now = Date.now();
     if (Date.parse(authorization.issuedAt) > now || Date.parse(authorization.expiresAt) <= now) return result("NOT_SENT", "AUTHORIZATION_EXPIRED", action);
     if (this.stoppedValue) return result("NOT_SENT", "STOPPED", action);
-    const capability = this.capabilities(draft.advertiserId).find(item => item.action === action);
-    if (!capability || capability.status !== "live-write-verified" || !capability.evidenceId || !capability.observedAt) return result("NOT_SENT", "CAPABILITY_UNQUALIFIED", action);
+    const qualification = this.qualificationAuthorizations.get(authorization.authorizationId);
+    if (qualification) {
+      const context = qualificationContextSchema.safeParse(qualificationContextInput);
+      if (!context.success || context.data.configDigest !== qualification.binding.configDigest || context.data.senderId !== qualification.binding.senderId) {
+        return result("NOT_SENT", "INVALID_AUTHORIZATION", action);
+      }
+      if (qualification.consumed) return result("NOT_SENT", "ACTION_LIMIT", action);
+      qualification.consumed = true;
+      if (!this.hasQualificationRecipe(draft, qualification.binding)) return result("NOT_SENT", "CAPABILITY_UNQUALIFIED", action);
+    } else {
+      const capability = this.capabilities(draft.advertiserId).find(item => item.action === action);
+      if (!capability || capability.status !== "live-write-verified" || !capability.evidenceId || !capability.observedAt) return result("NOT_SENT", "CAPABILITY_UNQUALIFIED", action);
+    }
     const target = maxTargetBudget(draft);
     if (target !== undefined && target > moneyMinorUnits(authorization.maxTargetBudget)) return result("NOT_SENT", "BUDGET_LIMIT", action);
     const controller = new AbortController(); this.active.add(controller);
@@ -205,7 +264,7 @@ export class QianchuanDelivery {
       const before = observationSchema.safeParse(beforeRaw);
       if (!before.success || !beforeMatches(draft, before.data)) return result("NOT_SENT", "PRECONDITION_CHANGED", action);
       if (signal.aborted || this.stoppedValue) return result("NOT_SENT", "STOPPED", action);
-      try { operationId = await this.store.reserve(draft, authorization); }
+      try { operationId = await this.store.reserve(draft, authorization, qualification ? { qualification: qualification.binding } : undefined); }
       catch (error) { return result("NOT_SENT", storeFailure(error), action); }
       if (signal.aborted || this.stoppedValue) {
         return await this.settleNotSent(operationId, action, "STOPPED");
@@ -221,7 +280,7 @@ export class QianchuanDelivery {
         const sendingAt = Date.now();
         if (Date.parse(authorization.issuedAt) > sendingAt || Date.parse(authorization.expiresAt) <= sendingAt) throw new Error("Authorization expired before submission");
         submissionInvoked = true;
-        return this.adapter!.submitOnce(draft, signal);
+        return this.adapter!.submitOnce(draft, signal, { expiresAt: authorization.expiresAt });
       });
       try { rawSubmission = await tracked(submission); }
       catch {
@@ -239,6 +298,8 @@ export class QianchuanDelivery {
         }
         return await this.settleUnknown(operationId, "SUBMIT_OUTCOME_UNKNOWN", action, lateRequestId, createdAdId);
       }
+      const notSent = notSentSchema.safeParse(rawSubmission);
+      if (notSent.success) return await this.settleNotSent(operationId, action, notSent.data.reason);
       const rejected = rejectedSchema.safeParse(rawSubmission);
       if (rejected.success) {
         try {

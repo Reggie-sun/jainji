@@ -3,6 +3,7 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import type { MembershipStorage } from "./membership-session.js";
 import type { MembershipConfig } from "../shared/membership.js";
+import { isOfflineAdminToken } from "./membership-offline-admin.js";
 
 interface Encryption {
   isEncryptionAvailable(): boolean;
@@ -29,7 +30,10 @@ export function membershipStorage(root: string, config: MembershipConfig | undef
       const bytes = await readFile(file);
       if (bytes.length > 65_536) throw new Error("账号缓存无效。");
       const value: unknown = JSON.parse(encryption.decryptString(bytes));
-      if (!value || typeof value !== "object" || !("binding" in value) || value.binding !== binding || !("token" in value) || typeof value.token !== "string" || !value.token || value.token.length > 32_768) return undefined;
+      if (!value || typeof value !== "object" || !("binding" in value) || typeof value.binding !== "string" || !("token" in value) || typeof value.token !== "string" || !value.token || value.token.length > 32_768) return undefined;
+      // Local authority is checked against this installation's signed credential,
+      // including legacy sessions saved before cloud configuration changed.
+      if (!isOfflineAdminToken(value.token) && value.binding !== binding) return undefined;
       return value.token;
     },
     async write(token) {
@@ -43,7 +47,7 @@ export function membershipStorage(root: string, config: MembershipConfig | undef
       const temporary = `${file}.${randomUUID()}.tmp`;
       try {
         const handle = await open(temporary, "wx", 0o600);
-        try { await handle.writeFile(encryption.encryptString(JSON.stringify({ binding, token }))); await handle.sync(); }
+        try { await handle.writeFile(encryption.encryptString(JSON.stringify({ binding: isOfflineAdminToken(token) ? "offline-admin/v1" : binding, token }))); await handle.sync(); }
         finally { await handle.close(); }
         await rename(temporary, file);
         await syncDirectory();

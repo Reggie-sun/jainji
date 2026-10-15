@@ -399,7 +399,7 @@ export class DouyinUploadService {
   }
   cancelBackendQuery(input: unknown, senderId = 0): void { this.backendQueries.cancel(input, senderId); }
   withAccountOperation<T>(scope: Pick<QianchuanBackendQuery, "product" | "expectedAdvertiserId" | "requestId">, senderId: number,
-    work: (signal: AbortSignal, read: (query: QianchuanBackendQuery) => Promise<QianchuanBackendResult>) => Promise<T>, publish?: (value: T, signal: AbortSignal) => Promise<void>): Promise<T> {
+    work: (signal: AbortSignal, read: (query: QianchuanBackendQuery) => Promise<QianchuanBackendResult>, prepareAccount: () => Promise<FrozenQianchuanAccount>) => Promise<T>, publish?: (value: T, signal: AbortSignal) => Promise<void>): Promise<T> {
     if (this.busy || this.stopFailed || this.store.unavailable) return Promise.reject(new Error("制作、上传或账号操作尚未空闲，请稍后读取报表或操作投放。"));
     return this.accountOperations.run(scope, senderId, work, () => this.stopPlanPreload(), publish);
   }

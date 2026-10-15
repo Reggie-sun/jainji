@@ -18,7 +18,7 @@ import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/q
 import type { QianchuanPlanListRequest, QianchuanPlanCancel, QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
 import type { QianchuanBackendQuery, QianchuanBackendCancel, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
 import type { QianchuanReportCapture, QianchuanReportList, QianchuanReportSnapshot } from "../shared/qianchuan-report.js";
-import type { QianchuanDeliveryCommand, QianchuanIntegrationStatus } from "../shared/qianchuan-integration.js";
+import type { QianchuanDeliveryCommand, QianchuanDeliveryPrepare, QianchuanDeliveryPrepared, QianchuanDeliveryConfirm, QianchuanIntegrationStatus } from "../shared/qianchuan-integration.js";
 import type { QianchuanDeliveryResult } from "../shared/qianchuan-delivery.js";
 import type { QianguanjiaQuery, QianguanjiaResult } from "../shared/qianguanjia.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecovery } from "../shared/qianchuan-video-library.js";
@@ -124,6 +124,8 @@ const api = {
   listQianchuanReports: (input: QianchuanReportList): Promise<QianchuanReportSnapshot[]> => ipcRenderer.invoke("qianchuanIntegration.history", input),
   getQianchuanIntegration: (input: QianchuanReportList): Promise<QianchuanIntegrationStatus> => ipcRenderer.invoke("qianchuanIntegration.status", input),
   executeQianchuanDelivery: (input: QianchuanDeliveryCommand): Promise<QianchuanDeliveryResult> => ipcRenderer.invoke("qianchuanIntegration.execute", input),
+  prepareQianchuanDelivery: (input: QianchuanDeliveryPrepare): Promise<QianchuanDeliveryPrepared> => ipcRenderer.invoke("qianchuanIntegration.execute", { operation: "prepare", input }),
+  confirmQianchuanDelivery: (input: QianchuanDeliveryConfirm): Promise<QianchuanDeliveryResult> => ipcRenderer.invoke("qianchuanIntegration.execute", { operation: "confirm", input }),
   cancelQianchuanIntegration: (input: QianchuanBackendCancel): Promise<void> => ipcRenderer.invoke("qianchuanIntegration.cancel", input),
   stopQianchuanIntegration: (): Promise<void> => ipcRenderer.invoke("qianchuanIntegration.stop"),
   listQianchuanSubaccounts: (input: QianchuanSubaccountListRequest): Promise<QianchuanSubaccountCatalog> => ipcRenderer.invoke("douyinUpload.listSubaccounts", input),

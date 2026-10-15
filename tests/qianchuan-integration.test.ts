@@ -11,6 +11,7 @@ import type { FrozenQianchuanAccount, QianchuanAccountConfigReader } from "../sr
 import { draftDigest } from "../src/main/qianchuan-delivery-store";
 import type { QianchuanDeliveryDraft } from "../src/shared/qianchuan-delivery";
 import { requiresMembership } from "../src/main/membership-ipc";
+import { QianchuanLiveDelivery, type QianchuanDeliveryPageSession } from "../src/main/qianchuan-delivery-page";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -74,4 +75,29 @@ it("keeps cancellation and local stop available without granting other IPC recov
   expect(requiresMembership("qianchuanIntegration.execute")).toBe(true); expect(requiresMembership("qianchuanIntegration.capture")).toBe(true);
   const f = await fixture(); await f.api.stop(7);
   expect((await f.api.status(scope)).stopped).toBe(true); expect(f.read).not.toHaveBeenCalled();
+});
+it("issues one sender-bound preflight inside the original lease and records a first-write confirmation", async () => {
+  const f = await fixture(); let calls = 0;
+  const draft: QianchuanDeliveryDraft = { schemaVersion: 1, draftId: randomUUID(), provider: "qianchuan-browser", accountSlot: target.product,
+    advertiserId: target.advertiserId, mode: "product-cost-control", action: "set-budget", adId: target.adId, beforeVersion: "v1",
+    beforeValues: { budget: "5000.00", budgetType: "daily" }, target: { budget: "4999.00", budgetType: "daily" } };
+  const prepared = { preflightId: randomUUID(), draft, expiresAt: new Date(Date.now() + 300000).toISOString(), capabilityStatus: "live-read-verified" as const,
+    recipeEvidenceId: "fixture-form-proof", recipeDigest: "b".repeat(64), productIds: ["3847118098272485669"] };
+  const session = { prepare: async () => prepared,
+    capabilities: () => [{ action: draft.action, advertiserId: draft.advertiserId, mode: draft.mode, status: "live-read-verified", evidenceId: prepared.recipeEvidenceId, recipeDigest: prepared.recipeDigest, observedAt: new Date().toISOString() }],
+    readFresh: async () => ({ advertiserId: draft.advertiserId, adId: target.adId, version: "v1", values: draft.beforeValues }),
+    submitOnce: async () => { calls++; expect(f.uploads.busy).toBe(true); return { kind: "submitted" }; },
+    readback: async () => ({ advertiserId: draft.advertiserId, adId: target.adId, version: "v2", values: draft.target }),
+  } as unknown as QianchuanDeliveryPageSession;
+  const live = new QianchuanLiveDelivery(async (_target, _signal, work) => work(session));
+  const api = new QianchuanIntegration(f.uploads, f.root, live);
+  const request = { ...scope, requestId: randomUUID(), action: "set-budget", adId: target.adId, targetValue: "4999.00" };
+  expect(await api.execute({ operation: "prepare", input: request }, 7)).toEqual(prepared); expect(calls).toBe(0);
+  const confirm = { requestId: randomUUID(), preflightId: prepared.preflightId, maxTargetBudget: "5000.00", totalBudgetIncrease: "0.00", maxActions: 1, expiresAt: new Date(Date.now() + 60000).toISOString() };
+  await expect(api.execute({ operation: "confirm", input: confirm }, 8)).rejects.toThrow(); expect(calls).toBe(0);
+  expect(await api.execute({ operation: "confirm", input: confirm }, 7)).toMatchObject({ state: "CONFIRMED" }); expect(calls).toBe(1);
+  await expect(api.execute({ operation: "confirm", input: { ...confirm, requestId: randomUUID() } }, 7)).rejects.toThrow(); expect(calls).toBe(1);
+  const restarted = new QianchuanIntegration(f.uploads, f.root, live);
+  await expect(restarted.execute({ operation: "confirm", input: confirm }, 7)).rejects.toThrow();
+  expect((await restarted.status(scope)).operations).toHaveLength(1);
 });

@@ -126,6 +126,15 @@ export class QianchuanBackendAdapter {
       await remote.dispose().catch(() => undefined);
     }
   }
+  async readDeliverySettings(adId: string, signal: AbortSignal) {
+    if (!/^[1-9][0-9]{0,19}$/.test(adId)) throw dataFailure();
+    const data = await this.request("/ad/api/creation/v1/ad/ad-detail-basic", "GET", { adid: adId, needCanDeliveryVerticalImage: "true" }, undefined, signal);
+    const plan = record(data.adDetailInfo);
+    if (plan.id !== adId || plan.budgetMode !== 0 || !Array.isArray(data.goodsInfos) || !data.goodsInfos.length || data.goodsInfos.length > 50) throw dataFailure();
+    const productIds = data.goodsInfos.map(value => text(record(value).id));
+    if (productIds.some(id => !/^[1-9][0-9]{0,19}$/.test(id)) || new Set(productIds).size !== productIds.length) throw dataFailure();
+    return { adId, budget: scalar(plan.budget), budgetMode: 0 as const, roi: scalar(plan.ecpRoi2Goal), modifiedAt: scalar(plan.modifyTime), productIds };
+  }
   async query(input: QianchuanBackendQuery, signal: AbortSignal): Promise<QianchuanBackendResult> {
     const query = QianchuanBackendQuerySchema.parse(input);
     if (query.expectedAdvertiserId !== this.advertiserId) throw identityFailure();

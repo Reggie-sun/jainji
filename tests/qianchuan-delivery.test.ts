@@ -78,6 +78,17 @@ function fixtureAdapter(value: Extract<QianchuanDeliveryDraft, { action: "set-bu
   } as unknown as QianchuanDeliveryAdapter;
 }
 
+const qualificationBinding = {
+  evidenceId: "fixture:observed-form", recipeDigest: "b".repeat(64), configDigest: "a".repeat(64), senderId: 7,
+};
+const qualificationContext = { configDigest: qualificationBinding.configDigest, senderId: qualificationBinding.senderId };
+function qualificationAdapter(value: Extract<QianchuanDeliveryDraft, { action: "set-budget" }>, options: Parameters<typeof fixtureAdapter>[1] = {}): QianchuanDeliveryAdapter {
+  const adapter = fixtureAdapter(value, options);
+  adapter.capabilities = advertiserId => [{ action: "set-budget", advertiserId, mode: "product-cost-control", status: "live-read-verified",
+    evidenceId: qualificationBinding.evidenceId, recipeDigest: qualificationBinding.recipeDigest, observedAt: new Date().toISOString() }];
+  return adapter;
+}
+
 async function service(value = draft(), adapter?: QianchuanDeliveryAdapter) {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-delivery-")); roots.push(root);
   const store = new QianchuanDeliveryStore(path.join(root, "ledger"));
@@ -188,6 +199,7 @@ it("settles only after independent readback and retains the consumed draft's bud
   const auth = f.delivery.issueAuthorization(value, limits());
   expect(await f.delivery.execute(value, auth)).toMatchObject({ state: "CONFIRMED" });
   expect(adapter.submitOnce).toHaveBeenCalledTimes(1);
+  expect(vi.mocked(adapter.submitOnce).mock.calls[0]![2]).toEqual({ expiresAt: auth.expiresAt });
   expect(await f.delivery.execute(value, auth)).toMatchObject({ state: "NOT_SENT", reason: "ACTION_LIMIT" });
   expect(adapter.submitOnce).toHaveBeenCalledTimes(1);
   expect((await f.store.list(value.advertiserId))[0]).toMatchObject({ state: "CONFIRMED", budgetIncrease: "5.00", authorization: { authorizationId: auth.authorizationId } });
@@ -296,6 +308,118 @@ it("rejects a failed parent-directory sync before any financial submission", asy
   const delivery = new QianchuanDelivery(store, adapter), value = draft();
   expect(await delivery.execute(value, delivery.issueAuthorization(value, limits()))).toMatchObject({ state: "NOT_SENT", reason: "STORE_UNAVAILABLE" });
   expect(adapter.submitOnce).not.toHaveBeenCalled();
+});
+
+it("admits one bound first qualification through the normal intent, submit, readback and audit chain", async () => {
+  const value = draft(), adapter = qualificationAdapter(value), f = await service(value, adapter);
+  const authorization = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "CONFIRMED", reason: "READBACK_CONFIRMED" });
+  expect(adapter.submitOnce).toHaveBeenCalledTimes(1);
+  expect(await f.store.list(value.advertiserId)).toMatchObject([{ state: "CONFIRMED", qualification: qualificationBinding }]);
+  expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "ACTION_LIMIT" });
+  expect(adapter.submitOnce).toHaveBeenCalledTimes(1);
+});
+
+it("keeps ordinary authorization blocked for a live-read-only recipe", async () => {
+  const value = draft(), adapter = qualificationAdapter(value), f = await service(value, adapter);
+  expect(await f.delivery.execute(value, f.delivery.issueAuthorization(value, limits()))).toMatchObject({ state: "NOT_SENT", reason: "CAPABILITY_UNQUALIFIED" });
+  expect(adapter.submitOnce).not.toHaveBeenCalled();
+});
+
+it("rejects unbounded, unsupported, or recipe-mismatched qualification issuance", async () => {
+  const value = draft(), adapter = qualificationAdapter(value), f = await service(value, adapter);
+  expect(() => f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 2 }), qualificationBinding)).toThrow();
+  expect(() => f.delivery.issueQualificationAuthorization(value, limits(), { ...qualificationBinding, recipeDigest: "c".repeat(64) })).toThrow();
+  const createDraft = QianchuanDeliveryDraftSchema.parse({ schemaVersion: 1, draftId: "33333333-3333-4333-8333-333333333333",
+    provider: "qianchuan-browser", accountSlot: "蝴蝶贴", advertiserId: value.advertiserId, mode: value.mode,
+    action: "create-plan", productId: "123", beforeVersion: "product-v1", beforeValues: { productEligible: true },
+    target: { budget: "10.00", budgetType: "daily", roi: "2", status: "paused", materials: [{ materialId: "456", platformVideoId: "video-1" }] } });
+  expect(() => f.delivery.issueQualificationAuthorization(createDraft, limits({ maxActions: 1 }), qualificationBinding)).toThrow();
+  expect(adapter.submitOnce).not.toHaveBeenCalled();
+});
+
+it.each([
+  ["evidence", { ...qualificationBinding, evidenceId: "fixture:other" }, qualificationContext],
+  ["configuration", qualificationBinding, { ...qualificationContext, configDigest: "c".repeat(64) }],
+  ["sender", qualificationBinding, { ...qualificationContext, senderId: 8 }],
+] as const)("rejects qualification with mismatched %s without submitting", async (_label, binding, context) => {
+  const value = draft(), adapter = qualificationAdapter(value), f = await service(value, adapter);
+  const authorization = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  if (binding.evidenceId !== qualificationBinding.evidenceId) {
+    adapter.capabilities = advertiserId => [{ action: "set-budget", advertiserId, mode: "product-cost-control", status: "live-read-verified",
+      evidenceId: binding.evidenceId, recipeDigest: binding.recipeDigest, observedAt: new Date().toISOString() }];
+  }
+  expect(await f.delivery.execute(value, authorization, undefined, context)).toMatchObject({ state: "NOT_SENT" });
+  expect(adapter.submitOnce).not.toHaveBeenCalled();
+});
+
+it("does not consume a qualification on a forged draft, then consumes the valid attempt on pre-submit failure", async () => {
+  const value = draft(), changed = draft({ target: { budget: "11.00", budgetType: "daily" } });
+  const adapter = qualificationAdapter(value, { onRead: async () => ({ advertiserId: value.advertiserId, adId: value.adId, version: "stale", values: value.beforeValues }) });
+  const f = await service(value, adapter), authorization = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  expect(await f.delivery.execute(changed, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "INVALID_AUTHORIZATION" });
+  expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "PRECONDITION_CHANGED" });
+  expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "ACTION_LIMIT" });
+  expect(adapter.submitOnce).not.toHaveBeenCalled();
+});
+
+it("consumes a concurrent qualification once and never restores it after a confirmed restart", async () => {
+  const value = draft(), adapter = qualificationAdapter(value), f = await service(value, adapter);
+  const authorization = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  const results = await Promise.all([
+    f.delivery.execute(value, authorization, undefined, qualificationContext),
+    f.delivery.execute(value, authorization, undefined, qualificationContext),
+  ]);
+  expect(results.filter(result => result.state === "CONFIRMED")).toHaveLength(1);
+  expect(results.filter(result => result.reason === "ACTION_LIMIT")).toHaveLength(1);
+  const restarted = new QianchuanDelivery(f.store, adapter);
+  expect(await restarted.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "INVALID_AUTHORIZATION" });
+  expect(adapter.submitOnce).toHaveBeenCalledTimes(1);
+});
+
+it("does not submit when qualification reservation storage fails", async () => {
+  const value = draft(), adapter = qualificationAdapter(value);
+  const root = await mkdtemp(path.join(tmpdir(), "qianchuan-qualification-store-failure-")); roots.push(root);
+  let failSync = false;
+  const store = new QianchuanDeliveryStore(path.join(root, "ledger"), async directory => {
+    if (failSync) throw new Error("private filesystem failure");
+    await strictSyncDirectory(directory);
+  });
+  await store.initialize(); failSync = true;
+  const delivery = new QianchuanDelivery(store, adapter), authorization = delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  expect(await delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "STORE_UNAVAILABLE" });
+  expect(adapter.submitOnce).not.toHaveBeenCalled();
+});
+
+it("keeps qualification UNKNOWN blocked for another action on the same advertiser", async () => {
+  const value = draft(), adapter = qualificationAdapter(value, { submit: async () => { throw new Error("unknown"); } });
+  const f = await service(value, adapter), authorization = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "UNKNOWN", reason: "SUBMIT_OUTCOME_UNKNOWN" });
+  const nextDraft = draft({ draftId: "33333333-3333-4333-8333-333333333333" });
+  const next = f.delivery.issueQualificationAuthorization(nextDraft, limits({ maxActions: 1 }), qualificationBinding);
+  expect(await f.delivery.execute(nextDraft, next, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "ADVERTISER_HAS_UNKNOWN" });
+  expect(adapter.submitOnce).toHaveBeenCalledTimes(1);
+});
+
+it("rejects an expired first qualification before reading or submitting", async () => {
+  const value = draft(), adapter = qualificationAdapter(value), f = await service(value, adapter);
+  const authorization = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  vi.useFakeTimers(); vi.setSystemTime(Date.parse(authorization.expiresAt));
+  try {
+    expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "AUTHORIZATION_EXPIRED" });
+    expect(adapter.readFresh).not.toHaveBeenCalled(); expect(adapter.submitOnce).not.toHaveBeenCalled();
+  } finally { vi.useRealTimers(); }
+});
+it("settles a trusted pre-click expiry as not sent without reviving its one-shot qualification", async () => {
+  const value = draft(), adapter = qualificationAdapter(value, { submit: async () => ({ kind: "not-sent", reason: "AUTHORIZATION_EXPIRED" }) });
+  const f = await service(value, adapter), authorization = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "AUTHORIZATION_EXPIRED" });
+  expect(await f.store.hasUnresolved(value.advertiserId)).toBe(false);
+  expect(await f.delivery.execute(value, authorization, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "ACTION_LIMIT" });
+  const next = f.delivery.issueQualificationAuthorization(value, limits({ maxActions: 1 }), qualificationBinding);
+  expect(await f.delivery.execute(value, next, undefined, qualificationContext)).toMatchObject({ state: "NOT_SENT", reason: "AUTHORIZATION_EXPIRED" });
+  expect(adapter.submitOnce).toHaveBeenCalledTimes(2);
+  expect(adapter.readback).not.toHaveBeenCalled();
 });
 
 it("holds delivery completion until cancelled adapter cleanup has drained", async () => {

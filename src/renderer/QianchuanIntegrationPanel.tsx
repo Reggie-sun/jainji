@@ -5,6 +5,7 @@ import { QianchuanReportCaptureSchema, QianchuanReportSnapshotSchema, type Qianc
 import { exportQianchuanReportCsv } from "../shared/qianchuan-report-export";
 import type { QianchuanIntegrationStatus } from "../shared/qianchuan-integration";
 import type { QianchuanDeliveryActionCapability } from "../shared/qianchuan-delivery";
+import { QianchuanDeliveryPanel } from "./QianchuanDeliveryPanel";
 
 const actionLabels = { "create-plan": "创建商品全域计划", "bind-materials": "加入已有计划", "set-roi": "修改 ROI 目标", "set-budget": "修改预算", pause: "暂停计划", enable: "启用计划" };
 const capabilityLabels: Record<QianchuanDeliveryActionCapability["status"], string> = {
@@ -116,11 +117,12 @@ export function QianchuanIntegrationPanel({ account, active, adId, kind, startDa
         <div className="qianchuan-query-table"><table><thead><tr><th>素材 / 视频</th>{metricLabels.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>{rows.map(row => <tr key={row.materialId}><td>{row.name}<br /><small>{row.materialId}<br />{row.videoId ?? "未返回视频 ID"}</small></td>{QIANCHUAN_QUERY_METRICS.map(key => <td key={key} title={`${key} / ${row.metrics[key].value}`}>{row.metrics[key].display}</td>)}</tr>)}</tbody></table></div>
       </>}
     </div>}
-    <h3>投放操作准入</h3><p>每个账户、推广模式和动作分别核验。创建、ROI、预算及启停在真实写入和独立回读核验完成前保持关闭；不会根据接口线索发送请求。</p>
+    <h3>投放操作准入</h3><p>每个账户、推广模式和动作分别核验。下方只提供预算与 ROI 的单次范围验证；创建、加入素材和启停没有操作入口。具体准入由主进程预检决定，接口线索不授予权限。</p>
     {status && <><div className="qianchuan-query-table"><table><thead><tr><th>动作</th><th>准入状态</th><th>当前限制</th></tr></thead><tbody>{status.capabilities.map(capability => <tr key={capability.action}><td>{actionLabels[capability.action]}</td><td>{capabilityLabels[capability.status]}</td><td>{capability.status === "live-write-verified" ? "仍需本次对象、动作、金额、次数和时限授权" : "缺少该账户和推广模式的真实写入与回读核验"}{capability.evidenceId && <small> · 证据 {capability.evidenceId}</small>}</td></tr>)}</tbody></table></div>
       {status.auditUnavailable && <p role="alert">投放审计不可用，写操作保持关闭。</p>}
       {status.operations.length > 0 && <div className="qianchuan-query-table"><table><thead><tr><th>操作 ID</th><th>动作</th><th>状态</th><th>最近记录（北京时间）</th></tr></thead><tbody>{status.operations.map(operation => <tr key={operation.operationId}><td>{operation.operationId}</td><td>{actionLabels[operation.action]}</td><td>{operation.state === "UNKNOWN" || operation.state === "PENDING" ? "结果未知，只能核查，不可重发" : operation.state}{operation.adId && <small> · 平台返回计划 {operation.adId}（以回读状态为准）</small>}</td><td>{localTime(operation.updatedAt)}</td></tr>)}</tbody></table></div>}
       {status.stopped && <p>本地投放动作已停止，本次应用会话不会恢复执行权。</p>}</>}
+    {active && account && <QianchuanDeliveryPanel account={account} active={active} adId={adId} />}
     <button type="button" className="button secondary" disabled={!active} onClick={() => void stop()}>停止本地投放动作</button>
     <p>本地停止不等于平台暂停；平台暂停需要单独授权并回读状态。未知结果不会提供一键重试。</p>
   </section>;
