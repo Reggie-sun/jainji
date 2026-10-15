@@ -220,7 +220,14 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
     });
   }
   async restore(legacyPath?: string, guard?: (advertiserIds: string[]) => void): Promise<QianchuanAccountSummary[]> {
-    if (await this.exists()) { const summaries = await super.authorizeFile(this.file); this.hasMapping = true; return this.withProfileNames(summaries); }
+    if (await this.exists()) {
+      const summaries = await super.authorizeFile(this.file); this.hasMapping = true;
+      await Promise.all(summaries.filter(account => account.egress && account.egress.mode !== "remote-browser").map(async account => {
+        try { await this.browsers.restoreExistingEgress(account.advertiserId); }
+        catch { console.warn(`[qianchuan] ${account.product} 固定出口自动恢复失败，请在账号设置中重连固定出口；未恢复上传。`); }
+      }));
+      return this.withProfileNames(summaries);
+    }
     if (legacyPath) {
       if (path.resolve(legacyPath) === this.file) { this.hasMapping = true; throw new Error("已保存的账号设置丢失，请人工核查。"); }
       return this.authorizeFile(legacyPath, guard);

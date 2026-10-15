@@ -45,7 +45,7 @@ export async function waitForEgressListener(port: number, signal: AbortSignal): 
 export async function probeEgressIp(route: QianchuanEgress, signal: AbortSignal): Promise<string> {
   try {
     const { stdout } = await execute("/usr/bin/curl", ["--disable", "--silent", "--show-error", "--fail", "--proto", "=https", "--max-time", "10",
-      "--max-filesize", "64", "--noproxy", "", "--proxy", `socks5h://127.0.0.1:${route.localPort}`, "https://api.ipify.org"],
+      "--max-filesize", "64", "--noproxy", "", "--proxy", `socks5h://127.0.0.1:${route.localPort}`, "https://checkip.amazonaws.com"],
     { signal, timeout: 12_000, maxBuffer: 1024, env: { PATH: "/usr/bin:/bin", LANG: "C" } });
     const ip = stdout.trim();
     if (!QianchuanEgressSchema.shape.expectedIp.safeParse(ip).success) throw failure();

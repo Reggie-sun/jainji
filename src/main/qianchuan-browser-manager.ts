@@ -98,6 +98,19 @@ export class QianchuanBrowserManager {
     if (!/^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/.test(matches[0].endpoint) || Number(new URL(matches[0].endpoint).port) > 65535) throw new Error("账号浏览器需要重新连接，请在账号设置中点击“重启并连接”；当前窗口不是简辑启动的连接方式。");
     return matches[0].endpoint;
   }
+  /** Rebuild only the saved network for a surviving owned Chrome after app restart. */
+  async restoreExistingEgress(advertiserId: string): Promise<void> {
+    if (process.platform !== "linux" || !process.getuid) return;
+    const egress = await this.dependencies.egress?.(advertiserId);
+    if (!egress || egress.mode === "remote-browser") return;
+    const binding = await this.bindings.get(advertiserId), profile = binding?.profile ?? this.profile(advertiserId);
+    if (binding) await verifyOriginalProfile(binding);
+    const endpoint = await this.endpoint(profile, binding, false, egress);
+    if (!endpoint) return;
+    // No discovery, browser launch, route change or recovery of an already failed lease.
+    await qianchuanEgressRuntime.ensure(egress);
+    await verifyBrowserEgress(endpoint, egress, this.dependencies.browsers);
+  }
   private async ensure(advertiserId: string, show: boolean): Promise<string> {
     if (process.platform !== "linux" || !process.getuid) throw new Error("当前系统的账号浏览器尚未通过验证。");
     const egress = await this.dependencies.egress?.(advertiserId);
