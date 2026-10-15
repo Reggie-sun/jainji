@@ -12,7 +12,7 @@ const OPERATION_TIMEOUT_MS = 4_000;
 const DETACH_TIMEOUT_MS = 1_000;
 const readTimeout = () => Object.assign(new Error("读取千川浏览器连接超时，尚未选择文件。"), { code: "ETIMEDOUT" });
 const ID_PATTERN = /^[1-9][0-9]{0,19}$/;
-const ACCOUNT_ROUTES = new Set(["/home", "/uni-prom", "/finance", VIDEO_LIBRARY_ROUTE]);
+const ACCOUNT_ROUTES = new Set(["/home", "/uni-prom", "/finance", "/account-center/account-info", VIDEO_LIBRARY_ROUTE]);
 const FAILURE = "无法确认千川网页当前子账户，请检查当前页面后重试。";
 
 interface Candidate { targetId: string; url: string; advertiserId: string; }

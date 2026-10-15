@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import { chromium, type Browser, type CDPSession, type Page } from "playwright-core";
+import { chromium, type Browser, type CDPSession } from "playwright-core";
 import { z } from "zod";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import { QianchuanCurrentAccountSchema, QianchuanPlanListSchema, type QianchuanPlanOption } from "../shared/qianchuan-plan-selection.js";
@@ -32,7 +32,7 @@ export const CdpSnapshotSchema = z.object({
 export type CdpSnapshot = z.infer<typeof CdpSnapshotSchema>;
 interface Metadata { webSocketDebuggerUrl?: unknown; }
 interface RuntimeResult { result?: { value?: unknown }; exceptionDetails?: { text?: string; exception?: { description?: string } }; }
-interface BoundTarget { page: Page; session: CDPSession; contextId: number; browserContextId: string; signal: AbortSignal; }
+interface BoundTarget { frameId: string; session: CDPSession; contextId: number; browserContextId: string; signal: AbortSignal; }
 
 export function sameCdpSnapshot(left: CdpSnapshot, right: CdpSnapshot): boolean {
   return left.targetId === right.targetId && left.browserContextId === right.browserContextId && left.documentId === right.documentId &&
@@ -180,7 +180,7 @@ export class QianchuanCdpAccountSession {
         `return globalThis[${JSON.stringify(STATE_NAME)}].controller.documentId;\n})()`;
       const installed = await abortable(session.send("Runtime.evaluate", { expression, contextId: world.executionContextId as number, awaitPromise: true, returnByValue: true }), operationSignal) as RuntimeResult;
       if (typeof valueOf(installed) !== "string") throw changed();
-      const result = await abortable(action({ page, session, contextId: world.executionContextId as number, browserContextId, signal: operationSignal }), operationSignal);
+      const result = await abortable(action({ frameId, session, contextId: world.executionContextId as number, browserContextId, signal: operationSignal }), operationSignal);
       const after = await abortable(session.send("Target.getTargetInfo"), operationSignal);
       if (after.targetInfo.targetId !== targetId || after.targetInfo.browserContextId !== browserContextId || await defaultContext() !== browserContextId) throw changed();
       return result;
@@ -198,9 +198,14 @@ export class QianchuanCdpAccountSession {
   private async readBoundSnapshot(bound: BoundTarget, expectedUrl: string | undefined, signal: AbortSignal): Promise<CdpSnapshot> {
     signal.throwIfAborted();
     const targetInfo = await abortable(bound.session.send("Target.getTargetInfo"), signal);
+    const frameTree = await abortable(bound.session.send("Page.getFrameTree"), signal) as { frameTree?: { frame?: { id?: unknown; url?: unknown; urlFragment?: unknown } } };
+    const frame = frameTree.frameTree?.frame;
+    const frameUrl = typeof frame?.url === "string" && (frame.urlFragment === undefined || typeof frame.urlFragment === "string")
+      ? frame.url + (frame.urlFragment ?? "") : undefined;
     if (typeof targetInfo.targetInfo?.targetId !== "string" || targetInfo.targetInfo.type !== "page" ||
       typeof targetInfo.targetInfo.url !== "string" || targetInfo.targetInfo.targetId.length < 8 ||
-      targetInfo.targetInfo.browserContextId !== bound.browserContextId || !sameQianchuanAccountPageUrl(targetInfo.targetInfo.url, bound.page.url()) || expectedUrl !== undefined && !sameQianchuanAccountPageUrl(bound.page.url(), expectedUrl)) throw changed();
+      targetInfo.targetInfo.browserContextId !== bound.browserContextId || frame?.id !== bound.frameId || frameUrl === undefined ||
+      !sameQianchuanAccountPageUrl(targetInfo.targetInfo.url, frameUrl) || expectedUrl !== undefined && !sameQianchuanAccountPageUrl(frameUrl, expectedUrl)) throw changed();
     const expression = `globalThis[${JSON.stringify(STATE_NAME)}].controller.readAccountIdentity()`;
     const runtime = await abortable(bound.session.send("Runtime.evaluate", { expression, contextId: bound.contextId, returnByValue: true }), signal) as RuntimeResult;
     const identity = valueOf(runtime) as { documentId?: unknown; account?: unknown };

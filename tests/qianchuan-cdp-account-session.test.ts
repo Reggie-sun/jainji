@@ -131,6 +131,76 @@ it("reads the foreground upload document identity without authorizing account co
   } finally { await f.service.close(); }
 });
 
+it("reads the protocol-bound document when the browser SDK has not populated its page URL", async () => {
+  const f = await fixture();
+  const connect = chromium.connectOverCDP.bind(chromium);
+  vi.spyOn(chromium, "connectOverCDP").mockImplementation(async (...args) => {
+    const browser = await connect(...args);
+    for (const context of browser.contexts()) context.on("page", page => { vi.spyOn(page, "url").mockReturnValue(""); });
+    return browser;
+  });
+  try {
+    const page = f.context.pages()[1]!, before = page.url();
+    const session = new QianchuanCdpAccountSession(f.target, async () => undefined);
+    const current = await session.current(new AbortController().signal);
+    expect(current.account).toEqual(FIXTURE_ACCOUNTS[0]);
+    expect(page.url()).toBe(before);
+    await page.locator(".account-info-box").evaluate(element => { element.textContent = "错误账户 ID：1876294500004865"; });
+    await expect(session.current(new AbortController().signal)).rejects.toThrow();
+  } finally { await f.service.close(); }
+});
+
+it.each(["id", "url", "urlFragment"] as const)("rejects protocol frame %s drift before an account request", async field => {
+  const f = await fixture(), connect = chromium.connectOverCDP.bind(chromium);
+  vi.spyOn(chromium, "connectOverCDP").mockImplementation(async (...args) => {
+    const browser = await connect(...args);
+    for (const context of browser.contexts()) {
+      const createSession = context.newCDPSession.bind(context);
+      vi.spyOn(context, "newCDPSession").mockImplementation(async target => {
+        const session = await createSession(target), send = session.send.bind(session); let observations = 0;
+        vi.spyOn(session, "send").mockImplementation(async (method, params) => {
+          const result = await send(method, params);
+          if (method === "Page.getFrameTree" && ++observations > 1) {
+            const frame = Reflect.get(result, "frameTree").frame;
+            Reflect.set(frame, field, field === "url" ? `https://${FIXTURE_HOST}/uni-prom?aavid=999` : "changed-frame");
+          }
+          return result;
+        });
+        return session;
+      });
+    }
+    return browser;
+  });
+  try {
+    const before = f.context.pages().map(page => page.url());
+    await expect(new QianchuanCdpAccountSession(f.target, async () => undefined).current(new AbortController().signal)).rejects.toThrow();
+    expect(f.context.pages().map(page => page.url())).toEqual(before);
+    expect(f.service.state.apiRequests).toHaveLength(0);
+  } finally { await f.service.close(); }
+});
+
+it("reads the account and its plans from an account information page without navigating that page", async () => {
+  const f = await fixture();
+  try {
+    const page = f.context.pages()[1]!;
+    await page.evaluate(() => { history.replaceState(null, "", `/account-center/account-info${location.search}`); });
+    const before = page.url();
+    const session = new QianchuanCdpAccountSession(f.target, async () => undefined);
+    const current = await session.current(new AbortController().signal);
+    expect(current.account).toEqual(FIXTURE_ACCOUNTS[0]);
+    expect(sameCdpSnapshot(current, await session.current(new AbortController().signal))).toBe(true);
+    const catalog = new QianchuanAccountCatalog(session.call.bind(session), {
+      parse: value => CdpSnapshotSchema.parse(value), same: sameCdpSnapshot, switched: switchedCdpSnapshot,
+    });
+    expect(await catalog.plans(current, new AbortController().signal)).toEqual([FIXTURE_PLANS[0]]);
+    expect(page.url()).toBe(before);
+    expect(f.context.pages()).toHaveLength(2);
+    await expect(catalog.accounts(current, new AbortController().signal)).rejects.toThrow();
+    await page.locator(".account-info-box").evaluate(element => { element.textContent = "错误账户 ID：1876294500004865"; });
+    await expect(session.current(new AbortController().signal)).rejects.toThrow();
+  } finally { await f.service.close(); }
+});
+
 it("reads the directory from a hidden root main-account document, switches once to the explicit child, and reads that child's plans without an extension", async () => {
   const f = await fixture(true, "/");
   try {

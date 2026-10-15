@@ -115,6 +115,18 @@ it("observes a plan drawer identity while command identity stays blocked", async
   expect(f.location.replace).not.toHaveBeenCalled();
 });
 
+it("observes account information identity without granting account command authority", async () => {
+  const f = contentFixture();
+  f.location.href = `${origin}/account-center/account-info?aavid=${advertiserId}`;
+  const controller = createContentController(f.env);
+  expect(controller.readAccountIdentity()).toEqual({ documentId, account: snapshot.account });
+  await expect(controller.handleMessage(contentCommand({ kind: "identity" }))).rejects.toMatchObject({ code: "CHANGED" });
+  f.header.innerText = "错误账户 ID：999";
+  expect(() => controller.readAccountIdentity()).toThrow("CHANGED");
+  expect(f.env.fetch).not.toHaveBeenCalled();
+  expect(f.location.replace).not.toHaveBeenCalled();
+});
+
 it.each([
   `/?aavid=${advertiserId}&adId=73001`,
   `/uni-prom?aavid=${advertiserId}&adId=invalid`,

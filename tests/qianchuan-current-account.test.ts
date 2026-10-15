@@ -218,6 +218,16 @@ it("allows the catalog to address one hidden account page without relaxing exist
   } finally { await fixture.close(); }
 });
 
+it.each(["visible", "hidden"] as const)("reads the verified account information page when %s", async visibility => {
+  const fixture = await fakeBrowser({ targets: [account("account-info", "200", visibility, "/account-center/account-info")] });
+  try {
+    await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(), { allowSingleHidden: true })).resolves.toMatchObject({
+      account: { advertiserId: "200" }, targetId: "account-info",
+    });
+    expect(fixture.detached).toEqual(fixture.attached);
+  } finally { await fixture.close(); }
+});
+
 it.each(["visible", "hidden"] as const)("reads a %s root-path catalog page while legacy reads still reject it", async visibility => {
   const fixture = await fakeBrowser({ targets: [account("root-page", "200", visibility, "/")] });
   try {
