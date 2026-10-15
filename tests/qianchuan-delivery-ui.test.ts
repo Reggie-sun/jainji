@@ -32,7 +32,7 @@ async function fixture(): Promise<Page> {
   await page.route("http://127.0.0.1:3000/delivery", route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<meta charset="utf-8"><div id="root"></div>' }));
   await page.goto("http://127.0.0.1:3000/delivery");
   await page.addScriptTag({ content: fixtureScript() });
-  await page.getByRole("heading", { name: "单次计划调整验证" }).waitFor();
+  await page.getByRole("heading", { name: "调整预算与 ROI" }).waitFor();
   return page;
 }
 
@@ -52,10 +52,10 @@ it("does not read on mount and requires explicit preflight before a single exact
     expect(await page.evaluate(() => [(window as any).prepareCalls, (window as any).confirmCalls])).toEqual([[], []]);
     expect(await page.getByLabel("操作").locator("option").allTextContents()).toEqual(["请选择动作", "修改预算", "修改 ROI 目标"]);
     expect(await page.getByText("最多执行 1 次", { exact: true }).count()).toBe(1);
-    expect(await page.getByRole("button", { name: "授权并执行一次验证", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
     await fillBounds(page);
     expect(await page.evaluate(() => [(window as any).prepareCalls, (window as any).confirmCalls])).toEqual([[], []]);
-    await page.getByRole("button", { name: "读取并准备一次验证", exact: true }).click();
+    await page.getByRole("button", { name: "读取当前值并检查", exact: true }).click();
     await page.waitForFunction(() => (window as any).prepareCalls.length === 1);
     expect(await page.evaluate(() => (window as any).prepareCalls[0])).toMatchObject({
       product: "滴耳康", expectedAdvertiserId: "1876131703522649", adId: "1878488818847384", action: "set-budget", targetValue: "150.00",
@@ -66,14 +66,14 @@ it("does not read on mount and requires explicit preflight before a single exact
     expect(await page.getByText("150.00", { exact: false }).count()).toBeGreaterThan(0);
     expect(await page.getByText("首次资格：仅真实读取核验；本次为一次性实验写入，尚未证明真实写入及回读。", { exact: true }).count()).toBe(1);
     expect(await page.getByText("商品 ID：7001", { exact: true }).count()).toBe(1);
-    expect(await page.getByRole("button", { name: "授权并执行一次验证", exact: true }).isEnabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isEnabled()).toBe(true);
     await page.evaluate(() => { (window as any).confirmDelay = true; });
-    await page.getByRole("button", { name: "授权并执行一次验证", exact: true }).click();
+    await page.getByRole("button", { name: "确认并执行一次", exact: true }).click();
     await page.waitForFunction(() => (window as any).confirmCalls.length === 1);
     const confirmation = await page.evaluate(() => (window as any).confirmCalls[0]);
     expect(confirmation).toMatchObject({ preflightId: "55555555-5555-4555-8555-555555555555", maxTargetBudget: "200.00", totalBudgetIncrease: "40.00", maxActions: 1 });
     expect(Date.parse(confirmation.expiresAt)).toBeLessThanOrEqual(Date.parse("2026-10-17T12:00:00.000Z"));
-    expect(await page.getByRole("button", { name: "授权并执行一次验证", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
     await page.evaluate(() => (window as any).confirmPending[0]());
     await page.getByText(/结果未知.*不可重发/).waitFor();
     expect(await page.evaluate(() => (window as any).confirmCalls.length)).toBe(1);
@@ -86,10 +86,10 @@ it("requires explicit CNY bounds and expiry before preflight can be requested", 
   try {
     await page.getByLabel("操作", { exact: true }).selectOption("set-budget");
     await page.getByLabel("目标值", { exact: true }).fill("150.00");
-    expect(await page.getByRole("button", { name: "读取并准备一次验证", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "读取当前值并检查", exact: true }).isDisabled()).toBe(true);
     await page.getByLabel("CNY 每日预算上限", { exact: true }).fill("200.00");
     await page.getByLabel("本次累计可增加额（CNY）", { exact: true }).fill("40.00");
-    expect(await page.getByRole("button", { name: "读取并准备一次验证", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "读取当前值并检查", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => (window as any).prepareCalls)).toEqual([]);
   } finally { await page.close(); }
 });
@@ -98,11 +98,11 @@ it("invalidates an already prepared draft when its target input changes", async 
   const page = await fixture();
   try {
     await fillBounds(page);
-    await page.getByRole("button", { name: "读取并准备一次验证", exact: true }).click();
+    await page.getByRole("button", { name: "读取当前值并检查", exact: true }).click();
     await page.getByText(/首次资格：仅真实读取核验/).waitFor();
     await page.getByLabel("目标值", { exact: true }).fill("151.00");
     expect(await page.getByText(/首次资格：仅真实读取核验/).count()).toBe(0);
-    expect(await page.getByRole("button", { name: "授权并执行一次验证", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => (window as any).confirmCalls)).toEqual([]);
   } finally { await page.close(); }
 });
@@ -112,9 +112,9 @@ it("rejects budget limits below the returned budget increase", async () => {
   try {
     await fillBounds(page);
     await page.getByLabel("本次累计可增加额（CNY）", { exact: true }).fill("29.99");
-    await page.getByRole("button", { name: "读取并准备一次验证", exact: true }).click();
+    await page.getByRole("button", { name: "读取当前值并检查", exact: true }).click();
     await page.getByText(/本次累计可增加额不能低于本次预算上调额/).waitFor();
-    expect(await page.getByRole("button", { name: "授权并执行一次验证", exact: true }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => (window as any).confirmCalls)).toEqual([]);
   } finally { await page.close(); }
 });
@@ -124,7 +124,7 @@ it.each(["target", "adId", "account", "hidden"])("cancels and ignores a late pre
   try {
     await fillBounds(page);
     await page.evaluate(() => { (window as any).prepareDelay = true; });
-    await page.getByRole("button", { name: "读取并准备一次验证", exact: true }).click();
+    await page.getByRole("button", { name: "读取当前值并检查", exact: true }).click();
     await page.waitForFunction(() => (window as any).prepareCalls.length === 1);
     const requestId = await page.evaluate(() => (window as any).prepareCalls[0].requestId);
     if (change === "target") await page.getByLabel("目标值", { exact: true }).fill("151.00");

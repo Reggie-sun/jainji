@@ -1,7 +1,7 @@
 import { buildSync } from "esbuild";
 import { readFileSync } from "node:fs";
 
-export function qianchuanBackendFixtureStyles() { return readFileSync("src/renderer/qianchuan-backend.css", "utf8"); }
+export function qianchuanBackendFixtureStyles() { return ["src/renderer/qianchuan-backend.css", "src/renderer/qianchuan-console.css"].map(path => readFileSync(path, "utf8")).join("\n"); }
 export function qianchuanBackendFixtureScript() {
   return buildSync({ stdin: { contents: `
     import React, {useState} from "react";

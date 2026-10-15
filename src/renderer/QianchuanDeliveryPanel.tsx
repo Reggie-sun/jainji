@@ -175,11 +175,9 @@ export function QianchuanDeliveryPanel({ account, active, adId }: {
     : prepared?.capabilityStatus === "live-write-verified" ? "该账户和推广模式已有真实写入及回读核验；本次仍受一次性范围授权约束。" : "";
 
   return <section className="qianchuan-backend-panel qianchuan-delivery-panel" aria-label="单次计划调整验证">
-    <h4>单次计划调整验证</h4>
-    <p>账户 {account?.advertiserId ?? "未配置"} · 保存默认计划 {account?.adId ?? "未配置"}</p>
-    <p>本次目标计划 {adId || "未选择"}。目录读取候选不代表网页当前打开计划；只有本次明确授权并执行后，才会尝试该目标。</p>
-    <p>只开放修改预算和修改 ROI。创建、加入素材、暂停和启用没有操作入口。</p>
-    <p><strong>最多执行 1 次</strong></p>
+    <div className="qc-section-heading"><h4>调整预算与 ROI</h4><span className="qc-badge">最多执行 1 次</span></div>
+    <p className="qc-help">账户 {account?.advertiserId ?? "未配置"} · 保存默认计划 {account?.adId ?? "未配置"}</p>
+    <p className="qc-target-note">本次目标计划 {adId || "未选择"}。请核对目标；本次调整不会更换保存的默认计划。</p>
     <div className="qianchuan-query-fields">
       <label>操作<select aria-label="操作" value={form.action} disabled={submitted} onChange={event => change("action", event.target.value as Action | "")}>
         <option value="">请选择动作</option><option value="set-budget">修改预算</option><option value="set-roi">修改 ROI 目标</option>
@@ -189,15 +187,15 @@ export function QianchuanDeliveryPanel({ account, active, adId }: {
       <label>本次累计可增加额（CNY）<input aria-label="本次累计可增加额（CNY）" type="text" inputMode="decimal" value={form.totalBudgetIncrease} disabled={submitted} onChange={event => change("totalBudgetIncrease", event.target.value)} placeholder="例如 40.00" /></label>
       <label>授权截止时间（本地时间）<input aria-label="授权截止时间（本地时间）" type="datetime-local" value={form.expiresAt} disabled={submitted} onChange={event => change("expiresAt", event.target.value)} /></label>
     </div>
-    <p>金额单位：人民币 CNY；预算类型：每日。金额与期限需由你明确填写，不会代填。</p>
+    <p className="qc-help">人民币 CNY · 每日预算。请明确填写金额与授权期限。</p>
     {!identityValid && <p role="alert">当前账户或目标计划 ID 无效，无法准备验证。</p>}
     {prepared && <div className="qianchuan-query-result" aria-label="准备结果">
-      <p>{capabilityText}</p>
+      <p className="qc-preflight-note">{capabilityText}</p>
       <p>预检账户 {prepared.draft.advertiserId} · 产品 {prepared.draft.accountSlot} · 计划 {"adId" in prepared.draft ? prepared.draft.adId : "未知"}</p>
-      <p>动作 {prepared.draft.action}</p><p>商品 ID：{prepared.productIds.join("、")}</p>
-      <p>修改前：<code>{JSON.stringify(prepared.draft.beforeValues)}</code></p>
-      <p>目标值：<code>{JSON.stringify(prepared.draft.target)}</code></p>
-      <p>配方证据 {prepared.recipeEvidenceId} · 预检截止 {new Date(prepared.expiresAt).toLocaleString("zh-CN")}</p>
+      <p>商品 ID：{prepared.productIds.join("、")}</p>
+      <div className="qc-change-preview"><div><span>修改前</span><strong>{Object.entries(prepared.draft.beforeValues).filter(([key]) => key === "budget" || key === "roi").map(([key, value]) => `${value}${key === "budget" ? " 元 / 天" : " ROI"}`).join(" · ")}</strong></div><span aria-hidden="true">→</span><div><span>调整为</span><strong>{Object.entries(prepared.draft.target).filter(([key]) => key === "budget" || key === "roi").map(([key, value]) => `${value}${key === "budget" ? " 元 / 天" : " ROI"}`).join(" · ")}</strong></div></div>
+      <p className="qc-help">请在 {new Date(prepared.expiresAt).toLocaleString("zh-CN")} 前完成确认。</p>
+      <details className="qc-details"><summary>预检证据</summary><p>配方证据 {prepared.recipeEvidenceId}</p></details>
     </div>}
     {boundsError && <p role="alert">{boundsError}</p>}
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
@@ -205,8 +203,8 @@ export function QianchuanDeliveryPanel({ account, active, adId }: {
     {busy === "prepare" && <p role="status">正在等待本地预检结果…</p>}
     {busy === "confirm" && <p role="status">已提交本次单次验证，正在等待平台执行与回读结果；不可重发。</p>}
     <div className="qianchuan-query-actions">
-      <button type="button" className="button secondary" disabled={!canPrepare} onClick={() => void prepare()}>读取并准备一次验证</button>
-      <button type="button" className="button primary" disabled={!canConfirm} onClick={() => void confirm()}>授权并执行一次验证</button>
+      <button type="button" className="button secondary" disabled={!canPrepare} onClick={() => void prepare()}>读取当前值并检查</button>
+      <button type="button" className="button primary" disabled={!canConfirm} onClick={() => void confirm()}>确认并执行一次</button>
       {busy === "prepare" && <button type="button" className="button secondary" disabled={submitted} onClick={cancelPreparation}>取消本地预检</button>}
     </div>
   </section>;
