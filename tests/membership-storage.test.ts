@@ -1,6 +1,7 @@
 import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { membershipStorage } from "../src/main/membership-storage.js";
 import { MembershipConfigSchema } from "../src/shared/membership.js";
@@ -82,6 +83,28 @@ describe("explicit OS-local administrator authority", () => {
     expect(restarted.snapshot().state).toBe("denied"); expect(stops).toBe(1); expect(accountRequests).toBe(0);
     expect(await dependencies.storage.read()).toBeUndefined(); restarted.dispose();
   });
+  it("keeps local login across cloud configuration changes, including legacy sessions, until explicit logout", async () => {
+    const { root, authority } = await provision();
+    const forbidden = async () => { throw new Error("Account network prohibited"); };
+    const token = await authority.login(credentials, signal());
+    const legacy = { binding: createHash("sha256").update(JSON.stringify(config)).digest("hex"), token };
+    const file = path.join(root, "membership/session.enc");
+    await writeFile(file, encryption.encryptString(JSON.stringify(legacy)), { mode: 0o600 });
+    for (const nextConfig of [undefined, { ...config, clientId: "another-cloud-client" }, config]) {
+      const storage = membershipStorage(root, nextConfig, encryption);
+      const session = new MembershipSession(nextConfig, { storage, offlineAdmin: (await loadOfflineAdmin(root, encryption))!,
+        check: forbidden, login: forbidden, changed: () => {}, lostAccess: async () => {} });
+      try {
+        await session.restore(); await session.assertAllowed();
+        expect(session.snapshot().reason).toBe("offline-admin");
+        await session.login(credentials);
+        expect(await storage.read()).toBeDefined();
+      } finally { session.dispose(); }
+    }
+    const storage = membershipStorage(root, undefined, encryption);
+    await storage.write();
+    for (const nextConfig of [undefined, config]) expect(await membershipStorage(root, nextConfig, encryption).read()).toBeUndefined();
+  });
 });
 describe("membership credential storage", () => {
   it("binds encrypted credentials to the public service configuration", async () => {
@@ -90,6 +113,7 @@ describe("membership credential storage", () => {
     expect((await readFile(path.join(root, "membership/session.enc"))).toString()).not.toContain("private-access-token");
     expect(await store.read()).toBe("private-access-token");
     expect(await membershipStorage(root, { ...config, clientId: "other" }, encryption).read()).toBeUndefined();
+    expect(await membershipStorage(root, undefined, encryption).read()).toBeUndefined();
     await store.write(); expect(await store.read()).toBeUndefined();
   });
   it("never persists tokens with Linux basic_text fallback", async () => {
