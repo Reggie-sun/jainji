@@ -177,3 +177,22 @@ it("rejects corrupt captures and invalid dates without automatic fallback or ret
     expect(await page.evaluate(() => (window as any).captureCalls.length)).toBe(6);
   } finally { await page.close(); }
 });
+
+it("uses current Chrome profile labels throughout account views without exposing legacy slot names", async () => {
+  const page = await fixture();
+  try {
+    await page.evaluate(() => (window as any).setAccounts((window as any).baseAccounts.map((a: any,i:number)=>({...a,browserProfileName:'当前Chrome档案'+(i+1)}))));
+    await page.waitForFunction(()=>document.querySelector('[aria-label="千川跨账户报表"] tbody')?.textContent?.includes('当前Chrome档案1'));
+    expect(await table(page).innerText()).not.toContain('原槽位');
+    for(let i=1;i<=6;i++)expect(await table(page).innerText()).toContain('当前Chrome档案'+i);
+    await range(page);await capture(page);await finish(page);
+    expect(await page.evaluate(()=>(window as any).captureCalls.map((q:any)=>q.product))).toEqual(['蝴蝶贴','氨糖膏','滴耳康','眼贴','肥皂','热敷贴']);
+    await page.evaluate(() => (window as any).setAccounts((window as any).baseAccounts.map((a: any,i:number)=>({...a,browserProfileName:'已更名Chrome档案'+(i+1)}))));
+    await page.waitForFunction(()=>document.querySelector('[aria-label="千川跨账户报表"] tbody')?.textContent?.includes('已更名Chrome档案1'));
+    expect(await page.evaluate(()=>(window as any).captureCalls.length)).toBe(6);
+    expect(await table(page).innerText()).toContain('12.34');
+    await page.getByLabel('历史报表来源',{exact:true}).selectOption('local');
+    const labels=await page.getByLabel('本地历史账户',{exact:true}).locator('option').allTextContents();
+    expect(labels.slice(1).every(label=>label.startsWith('已更名Chrome档案'))).toBe(true);
+  } finally { await page.close(); }
+});

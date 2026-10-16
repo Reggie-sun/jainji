@@ -1,18 +1,20 @@
 import { z } from "zod";
-import { QianguanjiaAnalysisInputSchema, type QianguanjiaReportPage, type QianguanjiaMaterialPage, type QianguanjiaPlanReportPage } from "./qianguanjia-analysis.js";
+import { QianguanjiaAnalysisInputSchema, QianguanjiaAnalysisRangeSchema, type QianguanjiaReportPage, type QianguanjiaMaterialPage, type QianguanjiaPlanReportPage } from "./qianguanjia-analysis.js";
 import type { QianchuanUploadTaskStatus } from "./douyin-upload.js";
 
 const request = { requestId: z.string().uuid() };
 const basicQueries = z.discriminatedUnion("kind", [
   z.object({ ...request, kind: z.literal("discover") }).strict(),
   z.object({ ...request, kind: z.literal("accounts"), sessionId: z.string().uuid() }).strict(),
-  z.object({ ...request, kind: z.literal("home"), sessionId: z.string().uuid() }).strict(),
+  z.object({ ...request, kind: z.literal("home"), sessionId: z.string().uuid(), date: z.string().optional() }).strict(),
 ]);
 export const QianguanjiaQuerySchema = z.union([basicQueries, z.object({ ...request, kind:z.literal("local-materials") }).strict(),
   z.object({ ...request, sessionId:z.string().uuid(), kind:z.literal("report"), startDate:z.string(), endDate:z.string(), advertiserIds:z.array(z.string()), page:z.number(),limit:z.literal(20) }).strict(),
   z.object({ ...request,sessionId:z.string().uuid(),kind:z.literal("plan-report"),startDate:z.string(),endDate:z.string(),page:z.literal(1),limit:z.literal(10) }).strict(),
   z.object({ ...request, sessionId:z.string().uuid(), kind:z.literal("materials"), advertiserId:z.string(),page:z.number(),limit:z.literal(20) }).strict(),
 ]).superRefine((value,ctx)=>{
+  if(value.kind === "home" && value.date !== undefined && !QianguanjiaAnalysisRangeSchema.safeParse({startDate:value.date,endDate:value.date}).success)
+    ctx.addIssue({code:"custom",message:"汇总日期无效。"});
   if(value.kind !== "report" && value.kind !== "materials" && value.kind !== "plan-report") return;
   const {requestId:_requestId,sessionId:_sessionId,...input}=value;
   if(!QianguanjiaAnalysisInputSchema.safeParse(input).success)ctx.addIssue({code:"custom",message:"千管家分析参数无效。"});

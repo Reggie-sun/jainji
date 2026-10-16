@@ -106,3 +106,15 @@ it("does not invalidate an unrelated supplier connection after a local ledger fa
  await f.service.run({kind:'home',sessionId,requestId:randomUUID()},10);
  expect(f.connect).toHaveBeenCalledTimes(1);await f.service.stop();
 });
+
+it("forwards an explicitly validated home day without routing it through today's recipe", async () => {
+  const f=fixture();
+  const homeSummary=vi.fn(async(date:string,_signal:AbortSignal)=>({...await f.home(_signal),date}));
+  f.connect.mockImplementation(async()=>({adapter:{listAdvertisers:f.list,todayHomeSummary:f.home,homeSummary} as unknown as QianguanjiaReadonlyAdapter,close:f.close}));
+  const found=await f.service.run({kind:'discover',requestId:randomUUID()},10);
+  if(found.kind!=='discover')throw Error('discover');const sessionId=found.sessions[0]!.sessionId;
+  const result=await f.service.run({kind:'home',sessionId,requestId:randomUUID(),date:'2026-10-12'},10);
+  expect(result).toMatchObject({kind:'home',data:{date:'2026-10-12'}});expect(homeSummary.mock.calls[0]?.[0]).toBe('2026-10-12');expect(f.home).toHaveBeenCalledTimes(1);
+  await expect(f.service.run({kind:'home',sessionId,requestId:randomUUID(),date:'2026-02-30'},10)).rejects.toThrow(/参数/);
+  expect(homeSummary).toHaveBeenCalledTimes(1);await f.service.stop();
+});

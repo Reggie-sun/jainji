@@ -3,7 +3,7 @@ import { QianguanjiaAccountReports } from "./QianguanjiaAccountReports";
 import { QianguanjiaPlans } from "./QianguanjiaPlans";
 import { QianguanjiaSupplierComparison } from "./QianguanjiaSupplierComparison";
 import { QIANCHUAN_QUERY_METRICS, type QianchuanQueryMetric } from "../shared/qianchuan-backend.js";
-import type { QianchuanAccountSummary } from "../shared/qianchuan-account.js";
+import { qianchuanAccountName, type QianchuanAccountSummary } from "../shared/qianchuan-account.js";
 import { QianguanjiaAnalysisInputSchema, type QianguanjiaReportPage, type QianguanjiaReportField } from "../shared/qianguanjia-analysis.js";
 import type { QianguanjiaAccountDirectory, QianguanjiaDesktopApi } from "../shared/qianguanjia.js";
 import { QianchuanReportListSchema, QianchuanReportSnapshotSchema, type QianchuanReportSnapshot } from "../shared/qianchuan-report.js";
@@ -173,7 +173,7 @@ export function QianguanjiaHistory({ active, api, sessionId, directory, accounts
         <option value="direct">千川跨账户报表</option><option value="supplier">千管家中台报表</option><option value="local">已保存的千川快照</option>
       </select></label>
       {source === "local" && <label>本地账户<select aria-label="本地历史账户" value={selectedLocalAccount ? accountKey(selectedLocalAccount) : ""} disabled={!active || !usableLocalAccounts.length} onChange={event => setLocalAccountValue(event.target.value)}>
-        <option value="">请选择本地账户</option>{usableLocalAccounts.map(account => <option key={accountKey(account)} value={accountKey(account)}>{account.productName ?? account.product} · {account.advertiserId}</option>)}
+        <option value="">请选择本地账户</option>{usableLocalAccounts.map(account => <option key={accountKey(account)} value={accountKey(account)}>{qianchuanAccountName(account)} · {account.advertiserId}</option>)}
       </select></label>}
       <label>开始日期<input aria-label="历史报表开始日期" type="date" value={startDate} disabled={!active || crossBusy || Boolean(visibleSupplier?.loading)} onChange={event => { setStartDate(event.target.value); setSupplierPage(1); }} /></label>
       <label>结束日期<input aria-label="历史报表结束日期" type="date" value={endDate} disabled={!active || crossBusy || Boolean(visibleSupplier?.loading)} onChange={event => { setEndDate(event.target.value); setSupplierPage(1); }} /></label>

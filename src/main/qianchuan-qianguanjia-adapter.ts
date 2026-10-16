@@ -1,4 +1,4 @@
-import { QianguanjiaAnalysisInputSchema, type QianguanjiaAnalysisInput, type QianguanjiaReportPage, type QianguanjiaMaterialPage, type QianguanjiaPlanReportPage } from "../shared/qianguanjia-analysis.js";
+import { QianguanjiaAnalysisInputSchema, QianguanjiaAnalysisRangeSchema, type QianguanjiaAnalysisInput, type QianguanjiaReportPage, type QianguanjiaMaterialPage, type QianguanjiaPlanReportPage } from "../shared/qianguanjia-analysis.js";
 import type { JSHandle, Page } from "playwright-core";
 import type { QianguanjiaAccountDirectory, QianguanjiaHomeMetrics, QianguanjiaHomeSummary } from "../shared/qianguanjia.js";
 export type { QianguanjiaAccountDirectory, QianguanjiaHomeMetrics, QianguanjiaHomeSummary } from "../shared/qianguanjia.js";
@@ -44,7 +44,7 @@ export class QianguanjiaReadonlyAdapter {
     }
   }
 
-  private async read(kind: "accounts" | "home" | "report" | "materials" | "plan-report", signal: AbortSignal, analysis?: QianguanjiaAnalysisInput): Promise<QianguanjiaAccountDirectory | QianguanjiaHomeSummary | QianguanjiaReportPage | QianguanjiaMaterialPage | QianguanjiaPlanReportPage> {
+  private async read(kind: "accounts" | "home" | "report" | "materials" | "plan-report", signal: AbortSignal, analysis?: QianguanjiaAnalysisInput, homeDate?: string): Promise<QianguanjiaAccountDirectory | QianguanjiaHomeSummary | QianguanjiaReportPage | QianguanjiaMaterialPage | QianguanjiaPlanReportPage> {
     if (this.disposed || this.page.isClosed()) throw new Error(errors.session);
     const cancel = new AbortController(); this.active.add(cancel);
     const combined = AbortSignal.any([signal, cancel.signal, AbortSignal.timeout(20000)]);
@@ -54,7 +54,7 @@ export class QianguanjiaReadonlyAdapter {
     try {
       combined.throwIfAborted();
       const observedAt = this.clock().toISOString();
-      const date = new Date(Date.parse(observedAt) + 8 * 3600000).toISOString().slice(0, 10);
+      const date = homeDate ?? new Date(Date.parse(observedAt) + 8 * 3600000).toISOString().slice(0, 10);
       controller = await this.page.evaluateHandle(() => new AbortController());
       combined.throwIfAborted();
       const result = await this.page.evaluate(async ({ session, controller, kind, date, observedAt, analysis }) => {
@@ -213,7 +213,12 @@ export class QianguanjiaReadonlyAdapter {
     return await this.read("accounts", signal) as QianguanjiaAccountDirectory;
   }
   async todayHomeSummary(signal: AbortSignal): Promise<QianguanjiaHomeSummary> {
-    return await this.read("home", signal) as QianguanjiaHomeSummary;
+    return this.homeSummary(new Date(this.clock().getTime() + 8 * 3600000).toISOString().slice(0,10), signal);
+  }
+  async homeSummary(date: string, signal: AbortSignal): Promise<QianguanjiaHomeSummary> {
+    const today = new Date(this.clock().getTime() + 8 * 3600000).toISOString().slice(0,10);
+    if (!QianguanjiaAnalysisRangeSchema.safeParse({startDate:date,endDate:date}).success || date > today) throw new Error(errors.query);
+    return await this.read("home", signal, undefined, date) as QianguanjiaHomeSummary;
   }
   async analysis(input: QianguanjiaAnalysisInput, signal: AbortSignal): Promise<QianguanjiaReportPage | QianguanjiaMaterialPage | QianguanjiaPlanReportPage> {
     const query = QianguanjiaAnalysisInputSchema.parse(input);

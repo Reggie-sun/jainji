@@ -79,7 +79,7 @@ it("keeps supplier navigation inside its own workspace and preserves native quer
         f.calls.supplierReads.push(input.kind);
         if (input.kind === "discover") return { requestId: input.requestId, kind: "discover", unavailableBrowsers: 0, sessions: [{ sessionId: "6fcb5ecd-7608-4a57-bf4d-26625804a38c", label: "隔离授权页面" }] };
         if (input.kind === "accounts") return { ...input, data: { source: "qianguanjia", observedAt: "2026-10-14T08:00:00Z", accounts: [{ advertiserId: "1879999999999999999", name: "隔离授权账户", authStatus: 1, authStatusDesc: "授权正常" }] } };
-        if (input.kind === "home") return { ...input, data: { source: "qianguanjia", scope: "supplier-home-aggregate", date: "2026-10-14", observedAt: "2026-10-14T08:00:00Z", groups: Object.fromEntries(["ALL", "LIVE_PROM_GOODS", "VIDEO_PROM_GOODS"].map(key => [key, { current: { statCost: "12.34", totalPayOrderCountForRoi2: "3", totalPayOrderGmvIncludeCouponForRoi2: "99.99", totalPrepayAndPayOrderRoi2: "8.10" }, comparison: {} }])) } } as any;
+        if (input.kind === "home") return { ...input, data: { source: "qianguanjia", scope: "supplier-home-aggregate", date: input.date ?? "2026-10-14", observedAt: "2026-10-14T08:00:00Z", groups: Object.fromEntries(["ALL", "LIVE_PROM_GOODS", "VIDEO_PROM_GOODS"].map(key => [key, { current: { statCost: "12.34", totalPayOrderCountForRoi2: "3", totalPayOrderGmvIncludeCouponForRoi2: "99.99", totalPrepayAndPayOrderRoi2: "8.10" }, comparison: {} }])) } } as any;
         throw new Error("unexpected supplier query");
       };
       window.jianji.cancelQianguanjiaQuery = async () => {};

@@ -140,9 +140,10 @@ export function QianguanjiaAccountReports({ active, accounts, directory, startDa
       {visibleBaseline && <p>对比基准：{visibleBaseline.startDate} 至 {visibleBaseline.endDate} · 完整 {visibleBaseline.rows.filter(row => row.status === "complete").length} / {visibleBaseline.rows.length} 个账户。差值为当前 − 基准，只匹配精确账户身份，未折算不同区间长度。<button type="button" className="button secondary" onClick={() => setBaseline(undefined)}>清除跨账户基准</button></p>}
       <div className="qianchuan-query-table"><table><thead><tr><th>账户 / 来源与窗口</th><th>读取状态</th>{labels.map(label => <th key={label}>{label}</th>)}</tr></thead><tbody>
         {rows.map(row => {
+          const displayName = targets.find(target => target.key === row.target.key)?.name ?? row.target.name;
           const old = visibleBaseline?.rows.find(previous => previous.target.key === row.target.key && previous.status === "complete")?.snapshot;
           const comparison = row.snapshot && old ? compareQianchuanSnapshots(row.snapshot, old) : undefined;
-          return <tr key={row.target.key}><td>{row.target.name}<br /><small>账户 {row.target.advertiserId} · 原槽位 {row.target.product}<br />供应商目录 {row.target.supplierListed === undefined ? "未知" : row.target.supplierListed ? "已列出" : "未列出"}</small>
+          return <tr key={row.target.key}><td>{displayName}<br /><small>账户 {row.target.advertiserId}<br />供应商目录 {row.target.supplierListed === undefined ? "未知" : row.target.supplierListed ? "已列出" : "未列出"}</small>
             {row.snapshot && <p><small>来源：千川浏览器 · 原完整账户快照<br />{row.snapshot.startTime} 至 {row.snapshot.endTime}（北京时间）<br />截止 {clock(row.snapshot.asOf)} · 采集 {clock(row.snapshot.capturedAt)}<br />快照 {row.snapshot.id}</small></p>}{old && <p><small>基准实际窗口：{old.startTime} 至 {old.endTime}（北京时间）<br />基准截止 {clock(old.asOf)} · 采集 {clock(old.capturedAt)}<br />基准快照 {old.id}</small></p>}</td>
             <td><span>{statuses[row.status]}</span>{row.note && <p>{row.note}</p>}</td>
             {QIANCHUAN_QUERY_METRICS.map(metric => <td key={metric}>{row.snapshot?.metrics[metric].display ?? "—"}{visibleBaseline && <><br /><small>基准 {old?.metrics[metric].display ?? "未知"}<br />差值 {comparison?.kind === "report" ? comparison.metricDeltas[metric] ?? "未知" : "未知"}</small></>}</td>)}

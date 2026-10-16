@@ -457,3 +457,15 @@ it("preserves an exact empty supplier home response as unavailable without inven
  const {page,requests}=await supplierFixture({response:{code:0,data:{}}}); const port=await QianguanjiaReadonlyAdapter.create(page,clock);
  try {const result=await port.todayHomeSummary(new AbortController().signal); expect(result).toMatchObject({availability:"not-provided",groups:{ALL:{current:{statCost:null,totalPrepayAndPayOrderRoi2:null}}}});expect(requests).toHaveLength(1);} finally {await port.dispose();await page.close();}
 });
+
+it("reads an explicit home date without changing its actual observation time or falling back to today", async () => {
+  const { page, requests } = await supplierFixture(); const port = await QianguanjiaReadonlyAdapter.create(page, clock);
+  try {
+    const result = await port.homeSummary("2026-10-12", signal);
+    expect(result).toMatchObject({ date: "2026-10-12", observedAt: clock().toISOString(), scope: "supplier-home-aggregate" });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]!.body).toMatchObject({ startDate: "2026-10-12 00:00:00", endDate: "2026-10-12 23:59:59" });
+    for (const date of ["2026-02-30", "2026-10-14", "2026-10-12 00:00:00", ""]) await expect(port.homeSummary(date, signal)).rejects.toThrow();
+    expect(requests).toHaveLength(1);
+  } finally { await port.dispose(); }
+});

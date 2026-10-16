@@ -444,7 +444,7 @@ describe("harness policy routing", () => {
 
 it('routes Qianguanjia session contracts through provider consumers without unrelated media checks', () => {
   const p = HarnessPolicySchema.parse(JSON.parse(readFileSync(new URL('../.agent/harness/policy.json', import.meta.url), 'utf8')));
-  for (const path of ['src/shared/qianguanjia.ts', 'src/main/qianchuan-qianguanjia-adapter.ts']) {
+  for (const path of ['src/shared/qianguanjia.ts', 'src/main/qianchuan-qianguanjia-adapter.ts', 'src/main/qianguanjia-queries.ts']) {
     const r = selectChecks(p, scope([path]));
     expect(r.checks.map(c => c.id)).toEqual(['typecheck', 'douyin-upload', 'documents']);
     expect(r.checks.find(c => c.id === 'douyin-upload')?.kind).toBe('vitest');

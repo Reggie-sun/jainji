@@ -87,7 +87,8 @@ export class QianguanjiaQueries {
           return query.kind === "report" ? {kind:"report",sessionId:query.sessionId,requestId:query.requestId,data:data as import("../shared/qianguanjia-analysis.js").QianguanjiaReportPage} :
             {kind:"materials",sessionId:query.sessionId,requestId:query.requestId,data:data as import("../shared/qianguanjia-analysis.js").QianguanjiaMaterialPage};
         }
-        const data = query.kind === "accounts" ? await abortable(adapter.listAdvertisers(reading), reading) : await abortable(adapter.todayHomeSummary(reading), reading);
+        const data = query.kind === "accounts" ? await abortable(adapter.listAdvertisers(reading), reading) :
+          await abortable(query.date === undefined ? adapter.todayHomeSummary(reading) : adapter.homeSummary(query.date, reading), reading);
         signal.throwIfAborted();
         return query.kind === "accounts" ? { kind: "accounts", sessionId: query.sessionId, requestId: query.requestId, data: data as Awaited<ReturnType<typeof adapter.listAdvertisers>> } :
           { kind: "home", sessionId: query.sessionId, requestId: query.requestId, data: data as Awaited<ReturnType<typeof adapter.todayHomeSummary>> };

@@ -1,5 +1,5 @@
 import {QianchuanUploadResultSchema,type QianchuanUploadTaskStatus} from './douyin-upload.js';
-import type {QianchuanAccountSummary,QianchuanProduct} from './qianchuan-account.js';
+import {qianchuanAccountName,type QianchuanAccountSummary,type QianchuanProduct} from './qianchuan-account.js';
 import type {QianguanjiaAccountDirectory} from './qianguanjia.js';
 
 export interface QianguanjiaEffectTarget {
@@ -36,7 +36,7 @@ export function qianguanjiaEffectTargets(tasks:QianchuanUploadTaskStatus[],accou
   const readBlock=!binding?.available?'slot-unavailable' as const:binding.advertiserId!==first.advertiserId?'slot-changed' as const:undefined;
   const videos=[...new Set(members.map(t=>t.acceptedEvidence!.platformVideoId))];
   const conflictingVideoIds=videos.filter(video=>(videoBytes.get(JSON.stringify([first.advertiserId,video]))?.size??0)>1);
-  return {key,product:first.accountProduct,advertiserId:first.advertiserId,adId:first.adId,label:binding?.productName??first.accountProduct,
+  return {key,product:first.accountProduct,advertiserId:first.advertiserId,adId:first.adId,label:binding?.advertiserId===first.advertiserId?qianchuanAccountName(binding):`账户 ${first.advertiserId}`,
    tasks:members,attributableTasks:members.filter(t=>!conflictingVideoIds.includes(t.acceptedEvidence!.platformVideoId)),
    acceptedCount:members.length,uniqueVideos:videos.length,projectCount:new Set(members.map(t=>t.project_id)).size,
    latestAcceptedAt:members.reduce((latest,t)=>Date.parse(t.acceptedEvidence!.observedAt)>Date.parse(latest)?t.acceptedEvidence!.observedAt:latest,first.acceptedEvidence!.observedAt),

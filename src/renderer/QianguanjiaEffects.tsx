@@ -277,7 +277,7 @@ export function QianguanjiaEffects({ active, tasks, loaded, accounts, directory,
 
       {target && <>
         <div className="qianguanjia-data-scope" role="group" aria-label="目标覆盖与本地接收记录">
-          <p>{target.product} · 账户 {target.advertiserId} · 计划 {target.adId} · {supplierCoverage(target)}</p>
+          <p>{target.label} · 账户 {target.advertiserId} · 计划 {target.adId} · {supplierCoverage(target)}</p>
           <p>有效接收 {target.acceptedCount} 条 · 可归属接收 {target.attributableTasks.length} 条 · 唯一视频 {target.uniqueVideos} 个 · 涉及 {target.projectCount} 个项目{target.latestAcceptedAt ? ` · 最近接收 ${formatDateTime(target.latestAcceptedAt)}` : ""}。</p>
           {target.conflictingVideoIds.length > 0 && <p role="alert">{target.conflictingVideoIds.length} 个平台视频 ID 对应冲突的本地文件 SHA-256，相关回执不参与指标关联：{target.conflictingVideoIds.join("、")}</p>}
           {!targetReadable && <p role="alert">{target.readBlock ? readBlockText(target) : "当前账户槽位与上传时冻结的广告账户身份不一致，不能读取此目标。"}</p>}

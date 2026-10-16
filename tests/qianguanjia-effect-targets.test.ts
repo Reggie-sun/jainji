@@ -42,3 +42,9 @@ it('keeps account-video byte conflicts visible across different plans',()=>{
  const a=task(),b=task({upload_task_id:'e'.repeat(64),artifact_sha256:'f'.repeat(64),adId:'123',acceptedEvidence:{...a.acceptedEvidence!,adId:'123'}});
  const targets=qianguanjiaEffectTargets([a,b],configured);expect(targets).toHaveLength(2);expect(targets.every(t=>t.attributableTasks.length===0&&t.conflictingVideoIds[0]==='video-1')).toBe(true);
 });
+it('uses the bound Chrome profile label only for the exact frozen advertiser identity',()=>{
+ const saved={...configured[0]!,browserProfileName:'当前Chrome档案'};
+ expect(qianguanjiaEffectTargets([task()],[saved])[0]).toMatchObject({label:'当前Chrome档案',product:'眼贴',advertiserId:account,adId:plan,readable:true});
+ const changed=qianguanjiaEffectTargets([task()],[{...saved,advertiserId:'123'}])[0]!;
+ expect(changed.label).not.toBe('当前Chrome档案');expect(changed).toMatchObject({readable:false,readBlock:'slot-changed',advertiserId:account,adId:plan});
+});
