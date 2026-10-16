@@ -62,6 +62,7 @@ export class QianchuanPlanMaterials {
       }
       const initialCount = snapshot.total;
       const visited = new Set<string>();
+      const skippedStatusIds = new Set<string>();
       for (let batch = 0; snapshot.total; batch++) {
         signal.throwIfAborted(); await guard();
         if (snapshot.total > 20000 || batch >= 1000 || !paginated && !snapshot.ids.length) throw new Error("超过计划素材清理上限，已停止。");
@@ -72,6 +73,7 @@ export class QianchuanPlanMaterials {
             visited.add(row.id);
           }
           if (!snapshot.ids.length) {
+            for (const id of snapshot.auditPage?.ids ?? []) skippedStatusIds.add(id);
             stage = "扫描下一页素材";
             if (!await connection.page.movePage()) break;
             snapshot = await connection.page.read(); continue;
@@ -93,6 +95,7 @@ export class QianchuanPlanMaterials {
         await this.write(path.join(audit, `${batch}.json`), { advertiserId: target.advertiserId, adId: target.adId, before, after: snapshot, ...(zeroWindow ? { zeroWindow } : {}), observedAt: new Date().toISOString() });
         await unlink(gate); await strictSyncDirectory(directory); intentWritten = false;
         result.deletedCount += before.total - snapshot.total;
+        for (const id of before.ids) skippedStatusIds.delete(id);
         if (paginated && snapshot.total) {
           visited.clear(); await connection.page.movePage!(true); snapshot = await connection.page.read();
         }
@@ -101,7 +104,8 @@ export class QianchuanPlanMaterials {
       const audit = path.join(directory, attempt); await secureUploadDirectory(audit); await strictSyncDirectory(directory);
       await this.write(path.join(audit, "completed.json"), { advertiserId: target.advertiserId, adId: target.adId, initialCount, deletedCount: result.deletedCount, observationMode: zeroWindow ? "zero_impressions_all_pages" : "filtered_current_ui", ...(zeroWindow ? { zeroWindow } : {}), completedAt: new Date().toISOString() });
       await connection.close(); connection = undefined;
-      return { ...result, state: "CLEARED", message: zeroWindow ? `计划 ${target.adId} 已逐页清理 ${zeroWindow.startTime.slice(0, 10)} 至 ${zeroWindow.endTime.slice(0, 10)} 零展示素材，删除 ${result.deletedCount} 条。` : `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。` };
+      const skipped = skippedStatusIds.size ? ` 另有 ${skippedStatusIds.size} 条素材未显示可核对的审核状态，已跳过。` : "";
+      return { ...result, state: "CLEARED", message: (zeroWindow ? `计划 ${target.adId} 已逐页清理 ${zeroWindow.startTime.slice(0, 10)} 至 ${zeroWindow.endTime.slice(0, 10)} 零展示素材，删除 ${result.deletedCount} 条。` : `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。`) + skipped };
     } catch (error) {
       let diagnosticWarning = "";
       if (intentWritten) {

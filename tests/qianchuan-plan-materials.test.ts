@@ -108,7 +108,7 @@ let browser: Browser;
 vi.setConfig({ testTimeout: 40000, hookTimeout: 30000 });
 beforeAll(async () => { browser = await chromium.launch({ executablePath: await resolveChromeExecutable(), headless: true, args: ["--no-sandbox"] }); });
 afterAll(async () => { await browser?.close(); });
-async function pageFixture(options: { initialOffset?: number; many?: boolean; badDelivery?: string; badDeliveryRow?: string; noEcological?: boolean; wrongAccount?: boolean; wrongPlan?: boolean; badFilter?: boolean; failedList?: boolean; unsafeRow?: boolean; empty?: boolean; auditLabel?: boolean; ambiguousStatus?: boolean; titleConfirmation?: boolean } = {}) {
+async function pageFixture(options: { missingStatus?: "initial" | "after-delete" | "first-page" | "placeholder" | "mixed" | "mixed-placeholder"; initialOffset?: number; many?: boolean; badDelivery?: string; badDeliveryRow?: string; noEcological?: boolean; wrongAccount?: boolean; wrongPlan?: boolean; badFilter?: boolean; failedList?: boolean; unsafeRow?: boolean; empty?: boolean; auditLabel?: boolean; ambiguousStatus?: boolean; titleConfirmation?: boolean } = {}) {
   const context = await browser.newContext(), page = await context.newPage();
   let confirmations = 0, filters = 0;
   const data = [
@@ -118,6 +118,11 @@ async function pageFixture(options: { initialOffset?: number; many?: boolean; ba
   ];
   let filtered = options.empty ? [] : data.filter(row => PLAN_MATERIAL_STATUSES.some(status => matchesPlanMaterialStatus(row.status, status)));
   if (options.many) filtered = Array.from({ length: 101 }, (_, i) => ({ id: String(8000 + i), status: "审核不通过" }));
+  if (options.missingStatus === "initial") filtered = filtered.map(row => ({ ...row, status: "" }));
+  if (options.missingStatus === "placeholder") filtered = filtered.map(row => ({ ...row, status: " - " }));
+  if (options.missingStatus === "first-page") filtered = filtered.map((row, index) => index < 100 ? { ...row, status: "" } : row);
+  const delayedMixed = options.missingStatus === "mixed" || options.missingStatus === "mixed-placeholder";
+  if (delayedMixed) filtered[0] = { ...filtered[0], status: options.missingStatus === "mixed" ? "" : " - " };
   const removed: string[][] = [];
   if (options.unsafeRow) filtered.push(data.find(row => row.id === "7004")!);
   const html = `<!doctype html><meta charset="utf-8"><div class="account-info-container">ID：${options.wrongAccount ? "999" : target.advertiserId}</div>
@@ -145,7 +150,16 @@ async function pageFixture(options: { initialOffset?: number; many?: boolean; ba
       filters++;
       const { Offset: offset, Limit: limit } = route.request().postDataJSON().PageParams;
       await route.fulfill({ contentType: "application/json", body: JSON.stringify({ status_code: options.failedList ? 9 : 0, data: { statsData: filtered.length ? { totalCount: String(filtered.length), rows: filtered.slice(offset, offset + limit).map(row => ({ ...row, dimensions: { materialId: { value: row.id }, roi2MaterialStatus: { value: options.badDeliveryRow ?? "1" } } })) } : {} } }) });
-    } else if (pathname === "/fixture-delete") { confirmations++; const ids: string[] = route.request().postDataJSON(); removed.push(ids); if (!options.titleConfirmation) filtered = filtered.filter(row => !ids.includes(row.id)); await route.fulfill({ body: "{}" }); }
+    } else if (pathname === "/fixture-delete") {
+      confirmations++; const ids: string[] = route.request().postDataJSON(); removed.push(ids);
+      if (!options.titleConfirmation && !delayedMixed) filtered = filtered.filter(row => !ids.includes(row.id));
+      if (options.missingStatus === "after-delete") filtered = filtered.map(row => ({ ...row, status: "" }));
+      await route.fulfill({ body: "{}" });
+    }
+    else if (pathname === "/fixture-apply-delete") {
+      filtered = filtered.filter(row => !removed.at(-1)?.includes(row.id));
+      await route.fulfill({ body: "{}" });
+    }
     else await route.fulfill({ contentType: "text/html", body: html });
   });
   return { context, page, removed, session: new QianchuanPlanMaterialPage(page, target, new AbortController().signal), confirmations: () => confirmations, filters: () => filters };
@@ -157,6 +171,59 @@ it("selects all three options together, sends one filter and deletes only verifi
     expect(f.filters()).toBe(2); const before = await f.session.read(); expect(before.ids).toEqual(["7001", "7002", "7003"]);
     await f.session.deleteBatch(before, async () => { expect(f.confirmations()).toBe(0); });
     expect(f.confirmations()).toBe(1); expect(await f.session.read()).toMatchObject({ total: 0, ids: [] });
+  } finally { await f.session.dispose(); await f.context.close(); }
+});
+it.each(["initial", "after-delete", "placeholder"] as const)("skips rows without a visible audit status and preserves confirmed deletion progress: %s", async missingStatus => {
+  const f = await pageFixture({ missingStatus, many: missingStatus === "after-delete" }), owner = await ownerFixture();
+  try {
+    const result = await new QianchuanPlanMaterials(owner.root, async () => ({ page: f.session, close: () => f.session.dispose() })).clear(target, async () => {});
+    expect(result).toMatchObject({ state: "CLEARED", deletedCount: missingStatus === "after-delete" ? 100 : 0 });
+    expect(result.message).toContain(missingStatus === "after-delete" ? "1 条" : "3 条");
+    expect(result.message).toContain("状态"); expect(result.message).toContain("跳过");
+    expect(f.removed).toEqual(missingStatus === "after-delete" ? [Array.from({ length: 100 }, (_, i) => String(8000 + i))] : []);
+    expect(f.confirmations()).toBe(missingStatus === "after-delete" ? 1 : 0);
+    expect((await readdir(path.join(owner.root, "plan-material-deletions"))).some(name => name.endsWith(".pending.json"))).toBe(false);
+  } finally { await f.session.dispose(); await f.context.close(); }
+});
+it("scans past a full page with unknown audit statuses and deletes only the later eligible row", async () => {
+  const f = await pageFixture({ missingStatus: "first-page", many: true }), owner = await ownerFixture();
+  try {
+    const result = await new QianchuanPlanMaterials(owner.root, async () => ({ page: f.session, close: () => f.session.dispose() })).clear(target, async () => {});
+    expect(result).toMatchObject({ state: "CLEARED", deletedCount: 1 });
+    expect(result.message).toContain("100 条"); expect(result.message).toContain("跳过");
+    expect(f.removed).toEqual([["8100"]]); expect(f.confirmations()).toBe(1);
+  } finally { await f.session.dispose(); await f.context.close(); }
+});
+it.each(["mixed", "mixed-placeholder"] as const)("waits through an unchanged response on a mixed-status page: %s", async missingStatus => {
+  const f = await pageFixture({ missingStatus }), owner = await ownerFixture();
+  try {
+    await f.page.addInitScript(() => {
+      window.addEventListener("load", () => {
+        const button = document.querySelector<HTMLButtonElement>("#confirm")!;
+        const original = button.onclick!;
+        button.onclick = async event => {
+          await original.call(button, event);
+          await new Promise(resolve => setTimeout(resolve, 500));
+          await fetch("/fixture-apply-delete", { method: "POST" });
+          document.querySelector<HTMLLIElement>("#first")!.click();
+        };
+      });
+    });
+    const result = await new QianchuanPlanMaterials(owner.root, async () => ({ page: f.session, close: () => f.session.dispose() })).clear(target, async () => {});
+    expect(result).toMatchObject({ state: "CLEARED", deletedCount: 2 });
+    expect(result.message).toContain("1 条"); expect(result.message).toContain("跳过");
+    expect(f.removed).toEqual([["7002", "7003"]]); expect(f.confirmations()).toBe(1);
+    expect((await readdir(path.join(owner.root, "plan-material-deletions"))).some(name => name.endsWith(".pending.json"))).toBe(false);
+  } finally { await f.session.dispose(); await f.context.close(); }
+});
+it("does not confirm when a selected candidate loses its visible audit status", async () => {
+  const f = await pageFixture();
+  try {
+    await f.session.open(); await f.session.filter(); const before = await f.session.read();
+    await f.page.locator('.oc-promotion-status-card').first().evaluate(node => node.remove());
+    let intents = 0;
+    await expect(f.session.deleteBatch(before, async () => { intents++; })).rejects.toThrow("无法核对");
+    expect(intents).toBe(0); expect(f.removed).toEqual([]);
   } finally { await f.session.dispose(); await f.context.close(); }
 });
 it.each(["mixed", "protected-first", "protected-last"])("clears eligible historical IDs across all audit pages from the first page: %s", async mode => {

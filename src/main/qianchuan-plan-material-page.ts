@@ -215,9 +215,9 @@ export class QianchuanPlanMaterialPage {
         const rows = this.drawer().locator(".ovui-table__body-wrapper tbody tr").filter({ has: this.page.locator('input[type="checkbox"]') });
         const items = await rows.evaluateAll(rows => rows.map(row => ({
           id: /素材ID[：:]\s*([1-9][0-9]{0,19})/.exec((row as HTMLElement).innerText)?.[1],
-          status: (row.querySelector(".oc-promotion-status-card") as HTMLElement | null)?.innerText ?? "",
+          status: (row.querySelector(".oc-promotion-status-card") as HTMLElement | null)?.innerText.trim() ?? "",
         })));
-        if (items.some(item => item.status && !this.statuses.some(status => matchesPlanMaterialStatus(item.status, status)))) throw changed();
+        if (items.some(item => item.status && item.status !== "-" && !this.statuses.some(status => matchesPlanMaterialStatus(item.status, status)))) throw changed();
         const totals = await this.drawer().locator(".ovui-page-total:visible").allTextContents();
         const total = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].trim()) : null;
         if (response.total === 0 && !items.length && !totals.length && await this.drawer().locator(".oc-empty:visible").filter({ hasText: "暂无数据" }).count() === 1) return structuredClone(response);
@@ -225,8 +225,12 @@ export class QianchuanPlanMaterialPage {
           const current = await this.drawer().locator(".ovui-page-turner__item--active:visible").allTextContents();
           if (current.length !== 1 || Number(current[0]) !== response.auditPage.offset / response.auditPage.limit + 1) throw changed();
         }
-        if (total && Number(total[1]) === response.total && JSON.stringify(items.map(item => item.id)) === JSON.stringify(response.auditPage?.ids ?? response.ids) &&
-          items.every(item => this.statuses.some(status => matchesPlanMaterialStatus(item.status, status)))) return structuredClone(response);
+        if (total && Number(total[1]) === response.total && JSON.stringify(items.map(item => item.id)) === JSON.stringify(response.auditPage?.ids ?? response.ids)) {
+          // The platform may render "-" after a product is deleted. These rows
+          // still prove list progress, but cannot authorize another audit deletion.
+          return structuredClone({ ...response, ids: response.ids.filter((_, index) =>
+            this.statuses.some(status => matchesPlanMaterialStatus(items[index].status, status))) });
+        }
       }
       await this.page.waitForTimeout(100);
     } while (Date.now() < deadline);
@@ -269,6 +273,8 @@ export class QianchuanPlanMaterialPage {
   async deleteBatch(before: PlanMaterialSnapshot, beforeConfirm: () => Promise<void>): Promise<void> {
     await this.guard();
     if (!before.ids.length || JSON.stringify(await this.read()) !== JSON.stringify(before) || await this.page.locator(".ovui-modal:visible").count()) throw changed();
+    // Compare raw list evidence with the full page, not its eligible subset.
+    const beforeResponse = before.auditPage ? { ...before, ids: before.auditPage.ids } : before;
     const selected = this.drawer().locator('.ovui-table__body-wrapper tbody input[type="checkbox"]:checked');
     if (await selected.count()) throw changed();
     const header = this.drawer().locator('.ovui-table__head-wrapper thead input[type="checkbox"]');
@@ -311,7 +317,7 @@ export class QianchuanPlanMaterialPage {
       }
       if ((before.zeroImpressions || before.auditPage) && !dialogCount && this.revision > revision && this.response &&
         // An unchanged refresh is not final evidence: keep observing within the original deadline.
-        JSON.stringify(this.response) !== JSON.stringify(before) &&
+        JSON.stringify(this.response) !== JSON.stringify(beforeResponse) &&
         (before.total - this.response.total !== before.ids.length || !(this.response.zeroImpressions || this.response.auditPage) || (this.response.zeroImpressions?.rows.map(row => row.id) ?? this.response.auditPage!.ids).some(id => before.ids.includes(id)))) {
         throw new PlanMaterialDeletionError("RESULT_MISMATCH");
       }
