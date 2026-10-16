@@ -2,11 +2,13 @@ import { createServer, type Socket } from "node:net";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { expect, it } from "vitest";
+import { EventEmitter } from "node:events";
+import { expect, it, vi } from "vitest";
 import { chromium } from "playwright-core";
 import { assertEgressArguments, chromeEgressArguments, verifyBrowserEgress } from "../src/main/qianchuan-egress-browser";
 import { accountChromeArguments } from "../src/main/qianchuan-browser-manager";
 import { probeChromeEgress } from "../src/main/qianchuan-egress-probe";
+import { QianchuanEgressRuntime } from "../src/main/qianchuan-egress-runtime";
 
 const route = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
 it("rejects an unowned legacy endpoint before connecting even when its route is absent", async () => {
@@ -23,7 +25,7 @@ it("requires exact per-process flags and rejects legacy or PAC/bypass replacemen
   expect(args).toContain("--remote-debugging-address=127.0.0.1");
   expect(args).toContain("--proxy-server=socks5://127.0.0.1:19381");
 });
-it("real Chromium uses its SOCKS endpoint and fails after proxy loss without direct fallback", async () => {
+it("real Chromium retains its SOCKS transport when attestation fails, but never falls back after actual proxy loss", async () => {
   const sockets = new Set<Socket>(), requested: string[] = [];
   const proxy = createServer(socket => {
     sockets.add(socket); socket.on("error", () => {}); socket.on("close", () => sockets.delete(socket));
@@ -44,16 +46,34 @@ it("real Chromium uses its SOCKS endpoint and fails after proxy loss without dir
   });
   await new Promise<void>(resolve => proxy.listen(0, "127.0.0.1", resolve));
   const port = (proxy.address() as { port: number }).port;
+  const ownedRoute = { ...route, localPort: port };
+  const child = Object.assign(new EventEmitter(), { exitCode: null, signalCode: null, kill: vi.fn(() => {
+    for (const socket of sockets) socket.destroy();
+    proxy.close(); return true;
+  }) });
+  const probe = vi.fn(async () => route.expectedIp);
+  const runtime = new QianchuanEgressRuntime({ launch: () => child, portFree: async () => true, probe });
   const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", headless: true, args: chromeEgressArguments({ ...route, localPort: port }) });
   try {
+    const lease = await runtime.ensure(ownedRoute);
     const page = await browser.newPage();
     await page.goto("http://egress-fixture.invalid/first", { timeout: 5000 });
     expect(await page.locator("body").innerText()).toBe("proxy-fixture");
     expect(requested).toContain("egress-fixture.invalid");
+    probe.mockRejectedValueOnce(new Error("attestation timeout"));
+    await expect(runtime.verify(ownedRoute)).rejects.toThrow();
+    expect(lease.signal.aborted).toBe(true);
+    await expect(runtime.ensure(ownedRoute)).rejects.toThrow();
+    expect(child.kill).not.toHaveBeenCalled();
+    await page.goto("http://egress-fixture.invalid/after-attestation-outage", { timeout: 5000 });
+    expect(await page.locator("body").innerText()).toBe("proxy-fixture");
+    runtime.recover(ownedRoute);
+    expect((await runtime.ensure(ownedRoute)).signal.aborted).toBe(false);
+    expect(lease.signal.aborted).toBe(true);
     for (const socket of sockets) socket.destroy();
     await new Promise<void>(resolve => proxy.close(() => resolve()));
     await expect(page.goto("http://egress-fixture.invalid/after-loss", { timeout: 5000 })).rejects.toThrow();
-  } finally { await browser.close(); for (const socket of sockets) socket.destroy(); if (proxy.listening) await new Promise<void>(resolve => proxy.close(() => resolve())); }
+  } finally { runtime.dispose(); await browser.close(); for (const socket of sockets) socket.destroy(); if (proxy.listening) await new Promise<void>(resolve => proxy.close(() => resolve())); }
 }, 15000);
 it("checks the actual browser response in a disposable tab, rejecting mismatches while preserving user tabs", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-egress-probe-"));

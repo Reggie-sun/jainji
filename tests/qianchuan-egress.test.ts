@@ -52,6 +52,66 @@ it("refuses pre-existing listeners and fails closed when a probe or SSH fails", 
   f.probe.mockRejectedValue(new Error("sensitive stderr"));
   await expect(f.runtime.verify(route)).rejects.toThrow("出口");
   expect(lease.signal.aborted).toBe(true);
+  expect(f.child.kill).not.toHaveBeenCalled();
+  await expect(f.runtime.ensure(route)).rejects.toThrow("重连");
+});
+it("explicit recovery rechecks the same healthy transport with a new lease and never revives old work", async () => {
+  const f = fixture(), old = await f.runtime.ensure(route);
+  f.probe.mockRejectedValueOnce(new Error("IP service timeout"));
+  await expect(f.runtime.verify(route)).rejects.toThrow();
+  f.runtime.recover(route);
+  const [a, b] = await Promise.all([f.runtime.ensure(route), f.runtime.ensure(route)]);
+  expect(a).toBe(b); expect(a).not.toBe(old);
+  expect(old.signal.aborted).toBe(true); expect(a.signal.aborted).toBe(false);
+  expect(f.launch).toHaveBeenCalledTimes(1); expect(f.probe).toHaveBeenCalledTimes(3);
+  expect(f.child.kill).not.toHaveBeenCalled();
+  f.child.exitCode = 255; f.child.emit("exit", 255);
+  expect(a.signal.aborted).toBe(true);
+  await expect(f.runtime.ensure(route)).rejects.toThrow();
+});
+it.each(["dispose", "retire"])("%s closes retained transport even after its automation lease was revoked", async operation => {
+  const f = fixture(); await f.runtime.ensure(route);
+  f.probe.mockRejectedValue(new Error("IP service timeout"));
+  await expect(f.runtime.verify(route)).rejects.toThrow();
+  expect(f.child.kill).not.toHaveBeenCalled();
+  if (operation === "dispose") f.runtime.dispose(); else f.runtime.retireUnused([]);
+  expect(f.child.kill).toHaveBeenCalledOnce();
+  f.runtime.dispose(); expect(f.child.kill).toHaveBeenCalledOnce();
+});
+it("retains a newly launched tunnel if the initial IP service request fails", async () => {
+  const f = fixture(); f.probe.mockRejectedValueOnce(new Error("IP service timeout"));
+  await expect(f.runtime.ensure(route)).rejects.toThrow();
+  expect(f.child.kill).not.toHaveBeenCalled();
+  f.runtime.recover(route); const lease = await f.runtime.ensure(route);
+  expect(lease.signal.aborted).toBe(false); expect(f.launch).toHaveBeenCalledTimes(1);
+  f.runtime.dispose();
+});
+it("rejects malformed attestations and keeps the transport through an unsuccessful explicit recovery", async () => {
+  const f = fixture(), old = await f.runtime.ensure(route);
+  f.probe.mockResolvedValue("upstream unavailable");
+  await expect(f.runtime.verify(route)).rejects.toThrow();
+  f.runtime.recover(route);
+  await expect(f.runtime.ensure(route)).rejects.toThrow();
+  await expect(f.runtime.ensure(route)).rejects.toThrow();
+  expect(f.launch).toHaveBeenCalledOnce(); expect(f.child.kill).not.toHaveBeenCalled();
+  expect(old.signal.aborted).toBe(true);
+  f.runtime.dispose();
+});
+it.each(["203.0.113.99", "203.0.113.11", "unavailable"])("handles a late old-generation probe (%s) after explicit recovery without reviving old work", async result => {
+  const f = fixture(), old = await f.runtime.ensure(route);
+  let resolve!: (ip: string) => void, reject!: (error: Error) => void;
+  f.probe.mockImplementationOnce(() => new Promise<string>((yes, no) => { resolve = yes; reject = no; }));
+  const pending = f.runtime.verify(route); const rejected = expect(pending).rejects.toThrow();
+  await vi.waitFor(() => expect(f.probe).toHaveBeenCalledTimes(2));
+  f.probe.mockRejectedValueOnce(new Error("IP service timeout"));
+  await expect(f.runtime.verify(route)).rejects.toThrow();
+  f.runtime.recover(route); const fresh = await f.runtime.ensure(route);
+  if (result === "unavailable") reject(new Error("late timeout")); else resolve(result);
+  await rejected;
+  expect(old.signal.aborted).toBe(true);
+  expect(fresh.signal.aborted).toBe(result === "203.0.113.99");
+  expect(f.child.kill).toHaveBeenCalledTimes(result === "203.0.113.99" ? 1 : 0);
+  f.runtime.dispose();
 });
 it("rejects reusing a port or changing a live group and bounds explicit recovery", async () => {
   const f = fixture(); await f.runtime.ensure(route);
@@ -79,7 +139,8 @@ function developmentFixture() {
   const children: Array<ReturnType<typeof child>> = [];
   function child() { return Object.assign(new EventEmitter(), { kill: vi.fn(() => true), exitCode: null as number | null, signalCode: null }); }
   const launch = vi.fn(() => { const next = child(); children.push(next); return next; });
-  const runtime = new QianchuanEgressRuntime({ launch, probe: async () => route.expectedIp, portFree: async () => true });
+  const probe = vi.fn(async () => route.expectedIp);
+  const runtime = new QianchuanEgressRuntime({ launch, probe, portFree: async () => true });
   const host = new DevelopmentEgressHost(runtime);
   function connect() {
     const app = Object.assign(new EventEmitter(), { connected: true, send: vi.fn((message: object, callback: (error: Error | null) => void) => { launcher.emit("message", message); callback(null); }) });
@@ -87,8 +148,26 @@ function developmentFixture() {
     host.attach(launcher);
     return { app, launcher, client: new DevelopmentEgressClient(app) };
   }
-  return { children, launch, runtime, host, connect };
+  return { children, launch, probe, runtime, host, connect };
 }
+
+it("propagates attestation failure across IPC and revalidates retained SSH only after explicit recovery", async () => {
+  const f = developmentFixture(), connection = f.connect(), lease = await connection.client.ensure(route);
+  f.probe.mockRejectedValueOnce(new Error("attestation timeout"));
+  await expect(connection.client.verify(route)).rejects.toThrow();
+  expect(lease.signal.aborted).toBe(true);
+  expect(f.children[0].kill).not.toHaveBeenCalled();
+  connection.client.dispose(); connection.launcher.emit("exit");
+  const replacement = f.connect();
+  await expect(replacement.client.ensure(route)).rejects.toThrow();
+  replacement.client.recover(route);
+  const fresh = await replacement.client.ensure(route);
+  expect(fresh.signal.aborted).toBe(false); expect(lease.signal.aborted).toBe(true);
+  expect(f.launch).toHaveBeenCalledOnce();
+  f.children[0].exitCode = 255; f.children[0].emit("exit", 255);
+  expect(fresh.signal.aborted).toBe(true);
+  replacement.client.dispose(); f.host.dispose();
+});
 
 it("keeps the same owned SSH transport across Electron replacement and closes it with the launcher", async () => {
   const f = developmentFixture(), first = f.connect();

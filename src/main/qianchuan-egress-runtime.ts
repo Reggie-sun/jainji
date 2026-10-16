@@ -11,7 +11,8 @@ const execute = promisify(execFile);
 const failure = () => new Error("固定出口连接或 IP 校验失败，已停止自动化且不会直连。请检查 VPS、SSH 密钥与主机指纹，然后明确重连。");
 interface TunnelChild extends EventEmitter { kill(signal?: NodeJS.Signals): boolean; exitCode: number | null; signalCode: string | null; }
 export interface EgressLease { readonly identity: string; readonly signal: AbortSignal; }
-type Tunnel = { route: QianchuanEgress; controller: AbortController; child?: TunnelChild; lease: EgressLease; ready: Promise<EgressLease>; };
+type Transport = { child?: TunnelChild; stopped: boolean; };
+type Tunnel = { route: QianchuanEgress; controller: AbortController; transport: Transport; lease: EgressLease; ready?: Promise<EgressLease>; };
 
 export function sshEgressArguments(route: QianchuanEgress): string[] {
   QianchuanEgressSchema.parse(route);
@@ -63,65 +64,91 @@ export class QianchuanEgressRuntime {
     probe?: typeof probeEgressIp;
     portFree?: typeof portFree;
   } = {}) {}
-  private fail(tunnel: Tunnel): void {
-    if (tunnel.controller.signal.aborted) return;
-    tunnel.controller.abort(failure()); tunnel.child?.kill("SIGTERM");
+  private revoke(tunnel: Tunnel): void {
+    tunnel.controller.abort(failure());
+  }
+  private stop(tunnel: Tunnel): void {
+    this.revoke(tunnel);
+    const current = this.tunnels.get(tunnel.route.group);
+    if (current?.transport === tunnel.transport) this.revoke(current);
+    if (tunnel.transport.stopped) return;
+    tunnel.transport.stopped = true;
+    tunnel.transport.child?.kill("SIGTERM");
+  }
+  private createTunnel(route: QianchuanEgress, transport: Transport = { stopped: false }): Tunnel {
+    const controller = new AbortController();
+    return { route, controller, transport, lease: Object.freeze({ identity: egressIdentity(route), signal: controller.signal }) };
   }
   async ensure(input: QianchuanEgress): Promise<EgressLease> {
     const route = QianchuanEgressSchema.parse(input), identity = egressIdentity(route);
-    const existing = this.tunnels.get(route.group);
-    if (existing) {
-      if (existing.lease.identity !== identity || existing.controller.signal.aborted) throw failure();
-      return existing.ready;
+    let tunnel = this.tunnels.get(route.group);
+    if (tunnel) {
+      if (tunnel.lease.identity !== identity || tunnel.controller.signal.aborted) throw failure();
+    } else {
+      if ([...this.tunnels.values()].some(value => value.route.localPort === route.localPort)) throw failure();
+      tunnel = this.createTunnel(route);
+      this.tunnels.set(route.group, tunnel);
     }
-    if ([...this.tunnels.values()].some(value => value.route.localPort === route.localPort)) throw failure();
-    const controller = new AbortController();
-    const tunnel: Tunnel = { route, controller, lease: Object.freeze({ identity, signal: controller.signal }), ready: undefined! };
-    this.tunnels.set(route.group, tunnel);
-    tunnel.ready = (async () => {
+    tunnel.ready ??= this.connect(tunnel);
+    return tunnel.ready;
+  }
+  private async connect(tunnel: Tunnel): Promise<EgressLease> {
+    const { route, controller, transport } = tunnel;
+    if (!transport.child) {
       try {
         if (!await (this.dependencies.portFree ?? portFree)(route.localPort)) throw new Error("固定出口本地端口已被占用，未复用未知代理。请核查后重连。");
         controller.signal.throwIfAborted();
-        tunnel.child = this.dependencies.launch ? this.dependencies.launch(route) : spawn("/usr/bin/ssh", sshEgressArguments(route), { stdio: "ignore" });
-        tunnel.child.once("error", () => this.fail(tunnel));
-        tunnel.child.once("exit", () => this.fail(tunnel));
+        transport.child = this.dependencies.launch ? this.dependencies.launch(route) : spawn("/usr/bin/ssh", sshEgressArguments(route), { stdio: "ignore" });
+        // These callbacks own the transport, including any later lease generation.
+        transport.child.once("error", () => this.stop(tunnel));
+        transport.child.once("exit", () => this.stop(tunnel));
         // This is bounded startup readiness, not a repeated SSH/provider invocation.
         if (!this.dependencies.launch) await waitForEgressListener(route.localPort, controller.signal);
-        this.assert(tunnel);
-        await this.verifyTunnel(tunnel);
-        return tunnel.lease;
-      } catch (error) { this.fail(tunnel); throw error instanceof Error && error.message.includes("端口") ? error : failure(); }
-    })();
-    return tunnel.ready;
+      } catch (error) { this.stop(tunnel); throw error instanceof Error && error.message.includes("端口") ? error : failure(); }
+    }
+    await this.verifyTunnel(tunnel);
+    return tunnel.lease;
   }
   private assert(tunnel: Tunnel): void {
-    if (tunnel.controller.signal.aborted || !tunnel.child || tunnel.child.exitCode !== null || tunnel.child.signalCode !== null) throw failure();
+    const { child, stopped } = tunnel.transport;
+    if (!child || stopped || child.exitCode !== null || child.signalCode !== null) { this.stop(tunnel); throw failure(); }
+    if (tunnel.controller.signal.aborted) throw failure();
   }
   private async verifyTunnel(tunnel: Tunnel): Promise<void> {
+    this.assert(tunnel);
+    let ip: string;
     try {
-      this.assert(tunnel);
-      const ip = await (this.dependencies.probe ?? probeEgressIp)(tunnel.route, tunnel.controller.signal);
-      this.assert(tunnel);
-      if (ip !== tunnel.route.expectedIp) throw failure();
-    } catch { this.fail(tunnel); throw failure(); }
+      ip = await (this.dependencies.probe ?? probeEgressIp)(tunnel.route, tunnel.controller.signal);
+      if (!QianchuanEgressSchema.shape.expectedIp.safeParse(ip).success) throw failure();
+    } catch { this.revoke(tunnel); throw failure(); }
+    // A positive mismatch concerns this transport even if another check revoked its lease.
+    if (ip !== tunnel.route.expectedIp) { this.stop(tunnel); throw failure(); }
+    this.assert(tunnel);
   }
   async verify(route: QianchuanEgress): Promise<EgressLease> {
     const tunnel = this.tunnels.get(route.group);
     if (!tunnel || tunnel.lease.identity !== egressIdentity(route)) throw failure();
-    await tunnel.ready;
+    await this.ensure(route);
     await this.verifyTunnel(tunnel);
     return tunnel.lease;
   }
   /** Only called by an explicit browser restart after the existing task guard. */
   recover(route: QianchuanEgress): void {
     const tunnel = this.tunnels.get(route.group);
-    if (tunnel && tunnel.lease.identity === egressIdentity(route) && tunnel.controller.signal.aborted) this.tunnels.delete(route.group);
+    if (!tunnel || tunnel.lease.identity !== egressIdentity(route) || !tunnel.controller.signal.aborted) return;
+    const { child, stopped } = tunnel.transport;
+    if (child && !stopped && child.exitCode === null && child.signalCode === null) {
+      this.tunnels.set(route.group, this.createTunnel(tunnel.route, tunnel.transport));
+    } else {
+      this.stop(tunnel);
+      this.tunnels.delete(route.group);
+    }
   }
   retireUnused(routes: readonly QianchuanEgress[]): void {
     const retained = new Set(routes.map(egressIdentity));
-    for (const [group, tunnel] of this.tunnels) if (!retained.has(tunnel.lease.identity)) { this.fail(tunnel); this.tunnels.delete(group); }
+    for (const [group, tunnel] of this.tunnels) if (!retained.has(tunnel.lease.identity)) { this.stop(tunnel); this.tunnels.delete(group); }
   }
-  dispose(): void { for (const tunnel of this.tunnels.values()) this.fail(tunnel); }
+  dispose(): void { for (const tunnel of this.tunnels.values()) this.stop(tunnel); }
 }
 // A dev rebuild replaces Electron, but its launcher and original Chrome survive.
 // A missing/disconnected opted-in IPC owner must fail closed, never create another tunnel.
