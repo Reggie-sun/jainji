@@ -75,6 +75,7 @@ export const HarnessTaskScopeSchema = z.object({
   sessionId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/),
   baseCommit: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/),
   ownedChanges: z.array(OwnedChangeSchema).min(1),
+  regression: z.object({ reason: z.string().trim().min(1) }).strict().optional(),
   aoci: z.object({
     reason: z.enum(["indexed-semantics", "indexed-identity", "stale-index", "explicit-governance"]),
     paths: z.array(z.string().refine((value) => isCanonicalRelativePath(value, false), "AOCI path must be canonical")).min(1),

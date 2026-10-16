@@ -50,7 +50,7 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
   const selectedRouteIds = new Set<string>();
   const selectedCheckIds = new Set<string>();
   const selectedDocumentRefs = new Set<string>();
-  const contributedChanges = new Map<string, HarnessTaskScope["ownedChanges"]>();
+  const contributions = new Map<string, { route: HarnessPolicyRoute; change: HarnessTaskScope["ownedChanges"][number] }[]>();
   const aociPaths = new Set(parsedScope.aoci?.paths ?? []);
 
   for (const change of parsedScope.ownedChanges) {
@@ -65,9 +65,9 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
       selectedRouteIds.add(route.id);
       for (const checkId of route.checkIds) {
         selectedCheckIds.add(checkId);
-        const changes = contributedChanges.get(checkId) ?? [];
-        if (!changes.some((item) => item.path === change.path)) changes.push(change);
-        contributedChanges.set(checkId, changes);
+        const entries = contributions.get(checkId) ?? [];
+        entries.push({ route, change });
+        contributions.set(checkId, entries);
         if (checkId === "owned-aoci") aociPaths.add(change.path);
       }
       for (const documentRef of route.documentRefs) selectedDocumentRefs.add(documentRef);
@@ -80,20 +80,28 @@ export function selectChecks(policy: HarnessPolicy, scope: HarnessTaskScope): Se
     selectedCheckIds.add("owned-aoci");
   }
 
+  if (parsedScope.regression) {
+    for (const id of parsedPolicy.defaultCheckIds ?? parsedPolicy.codeChecks.map((check) => check.id)) selectedCheckIds.add(id);
+  }
+
   const checks = [
     ...parsedPolicy.codeChecks,
     ...parsedPolicy.controlChecks,
   ].filter((check) => selectedCheckIds.has(check.id)).map((check): CodeCheckPolicy => {
-    if (check.kind !== "vitest") return check;
-    const contributors = parsedPolicy.routes.filter((route) => selectedRouteIds.has(route.id) && route.checkIds.includes(check.id));
-    const full = contributors.some((route) => !route.testFilesByCheck?.[check.id]);
-    const files = new Set(contributors.flatMap((route) => route.testFilesByCheck?.[check.id] ?? []));
-    let testFiles = full ? check.testFiles : check.testFiles.filter((file) => files.has(file));
-    const changes = contributedChanges.get(check.id) ?? [];
-    if (contributors.every((route) => !route.testFilesByCheck?.[check.id]) && changes.length > 0 &&
-      changes.every((change) => change.change !== "delete" && check.testFiles.includes(change.path))) {
-      testFiles = testFiles.filter((file) => changes.some((change) => change.path === file));
+    if (check.kind !== "vitest" || parsedScope.regression) return check;
+    const files = new Set<string>();
+    let full = false;
+    for (const { route, change } of contributions.get(check.id) ?? []) {
+      const subset = route.testFilesByCheck?.[check.id];
+      if (subset) {
+        for (const file of subset) files.add(file);
+      } else if (change.change !== "delete" && check.testFiles.includes(change.path)) {
+        files.add(change.path);
+      } else {
+        full = true;
+      }
     }
+    const testFiles = full ? check.testFiles : check.testFiles.filter((file) => files.has(file));
     return { ...check, testFiles };
   });
   if (checks.length === 0) throw new Error("Selected route set is empty; no executable checks cover this scope.");

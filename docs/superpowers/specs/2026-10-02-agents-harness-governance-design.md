@@ -75,7 +75,9 @@ policy 升级为 schemaVersion=2，保留 `codeChecks` / `media`，增加 `contr
 
 实施核对发现，注册全部专项 tests 不等于每次运行全部专项实验；例如 Windows 专项断言在 Linux 上必须保留未评估。v2 因此允许 policy 自己定义非空、唯一的 `defaultCheckIds`，只引用 required code checks，指定无 scope `code` 的核心集合；缺此字段兼容原来的全部 `codeChecks`。scoped 路由仍从完整 registry 求并集，不受 default 集合限制，相关必需 skip 仍不能通过。该收敛不改变产品或测试断言，也不授予跳过实际 scope 检查的 CLI 开关。
 
-2026-10-13 修订：生产源码执行 typecheck 与路由关联测试；Harness 自测仅由自身实现、测试、runner 或 policy 变更触发。业务 `.ts` / `.tsx` 只有 baseline 路由时拒绝 completion，必须补 domain 或 fallback。共享入口/schema、compiler/queue 或 Harness / policy 变更保留相关完整集合。仅改已登记且未删除的测试、没有固定 route 子集时，Vitest 缩至实际改动测试；源码/helper/fixture/删除贡献保留对应完整集合，显式子集仍按 union/full contributor 规则执行。新增、删除与重命名不得只看仍存在的文件。
+2026-10-16 修订：局部修改默认执行 typecheck 与受影响 owner/直接消费者的路由测试，Harness 自测只由自身实现、测试、runner 或 policy 变更触发。业务 `.ts` / `.tsx` 只有 baseline 路由时拒绝 completion，必须补 domain 或 fallback。每个 path 独立贡献：无固定子集的已登记非删除测试只贡献自身，源码/已知 helper 按显式子集贡献；无子集源码、未知依赖 helper/fixture、删除测试保留完整贡献，最后按 registry 顺序取并集。测试或已知 fixture 不得仅因通配规则把其他专项扩大成全组；新增、删除与重命名继续检查双方路径。
+
+只有跨模块行为/公共契约、持久化格式或迁移、共享生命周期、产品准入等大影响修改才扩大核心回归，单纯 App/IPC 接线、已知 fixture 或文件数量不作为全套依据。核心 schema/compiler/queue 和 Hybrid activation 的完整路由保留。大影响修改在 scope 声明 `regression: { reason }`（非空具体原因），在已选必需路由上追加 policy 默认核心集合，并对所有选中 Vitest 执行完整集合；未配置默认集合的旧 policy 兼容追加全部 code checks。该声明只扩大检查，不能覆盖未知路径、关闭必需检查或放宽 source identity/回执校验；原因与 scope 一起绑定进回执。
 
 未分类路径不得返回 completion PASS：报告 `unmapped_path`，执行保守集合可用于调查，但不能掩盖路由缺失。文档 / 规则、配置与资源有显式类别；“纯文档无需代码测试”必须由完整 scoped change 分类证明。scope 涉及的必需检查不得被 CLI flag、空集合或 policy 的 required=false 静默绕过。
 

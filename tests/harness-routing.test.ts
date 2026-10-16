@@ -56,6 +56,96 @@ function scope(paths: string[]): HarnessTaskScope {
 }
 
 describe("harness policy routing", () => {
+  it.each([
+    ["src/main/qianchuan-plan-material-recovery.ts", ["tests/qianchuan-plan-material-recovery.test.ts", "tests/douyin-upload-service.test.ts"]],
+    ["src/main/qianchuan-egress-browser.ts", ["tests/qianchuan-egress-browser.test.ts", "tests/qianchuan-egress-upload.test.ts"]],
+    ["src/main/qianchuan-account-settings.ts", ["tests/qianchuan-egress-settings.test.ts", "tests/douyin-upload-recovery.test.ts"]],
+    ["src/main/douyin-upload-service.ts", ["tests/douyin-upload-recovery.test.ts", "tests/douyin-upload-integration.test.ts"]],
+    ["src/shared/qianchuan-backend.ts", ["tests/qianchuan-effect-read.test.ts", "tests/qianchuan-effect-export.test.ts", "tests/qianguanjia-view.test.ts"]],
+    ["src/shared/qianchuan-report.ts", ["tests/qianguanjia-account-reports.test.ts", "tests/qianguanjia-view.test.ts"]],
+  ])("retains the safety and shared-schema consumers of %s", (source, consumers) => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const selected = selectChecks(candidate, scope([source as string]));
+    const files = selected.checks.flatMap(check => check.kind === "vitest" ? check.testFiles : []);
+    expect(files).toEqual(expect.arrayContaining(consumers as string[]));
+    if ((source as string).includes("qianchuan-")) expect(selected.checks.map(check => check.id)).not.toContain("cover-contracts");
+  });
+
+  it("expands an explicitly justified broad regression without weakening local or unknown-path gates", () => {
+    const candidate = { ...policy({ routes: [{ id: "focused", paths: ["src/one.ts"], checkIds: ["harness-tests"],
+      testFilesByCheck: { "harness-tests": ["tests/harness-routing.test.ts"] }, documentRefs: [] }] }),
+      defaultCheckIds: ["typecheck", "harness-tests"] };
+    const ordinary = scope(["src/one.ts"]);
+    expect(selectChecks(candidate, ordinary).checks[0]).toMatchObject({ testFiles: ["tests/harness-routing.test.ts"] });
+    const broad = HarnessTaskScopeSchema.parse({ ...ordinary, regression: { reason: "Cross-module schema and lifecycle changes" } });
+    const selected = selectChecks(candidate, broad);
+    expect(selected.checks.map(check => check.id)).toEqual(["typecheck", "harness-tests"]);
+    expect(selected.checks[1]).toMatchObject({ testFiles: ["tests/harness-scope.test.ts", "tests/harness-routing.test.ts"] });
+    expect(() => selectChecks(candidate, { ...broad, ownedChanges: scope(["src/unknown.ts"]).ownedChanges })).toThrow(/unmapped/i);
+    for (const regression of [{ reason: " " }, { reason: "Broad change", skip: true }, false]) {
+      expect(HarnessTaskScopeSchema.safeParse({ ...ordinary, regression }).success).toBe(false);
+    }
+  });
+
+  it("does not let a direct test contribution widen a fixed source subset", () => {
+    const candidate = policy({
+      codeChecks: [{ id: "tests", kind: "vitest", required: true, command: "node", args: ["vitest"],
+        testFiles: ["tests/one.test.ts", "tests/two.test.ts", "tests/unrelated.test.ts"], timeoutMs: 1_000 }],
+      controlChecks: [],
+      routes: [
+        { id: "source", paths: ["src/one.ts"], checkIds: ["tests"], testFilesByCheck: { tests: ["tests/one.test.ts"] }, documentRefs: [] },
+        { id: "test", paths: ["tests/**"], checkIds: ["tests"], documentRefs: [] },
+      ],
+    });
+    const selected = selectChecks(candidate, scope(["src/one.ts", "tests/two.test.ts"]));
+    expect(selected.checks[0]).toMatchObject({ testFiles: ["tests/one.test.ts", "tests/two.test.ts"] });
+    const withHelper = selectChecks(candidate, scope(["src/one.ts", "tests/two.test.ts", "tests/helpers/shared.ts"]));
+    expect(withHelper.checks[0]).toMatchObject({ testFiles: ["tests/one.test.ts", "tests/two.test.ts", "tests/unrelated.test.ts"] });
+  });
+
+  it("keeps known analysis fixtures and their mixed test changes out of unrelated media regressions", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const selected = selectChecks(candidate, scope([
+      "src/renderer/QianguanjiaMaterials.tsx", "tests/helpers/qianguanjia-materials-ui-fixture.ts", "tests/qianguanjia-materials-ui.test.ts",
+    ]));
+    expect(selected.checks.map(check => check.id)).toEqual(["task-pages", "typecheck", "douyin-upload", "documents"]);
+    expect(selected.checks.find(check => check.id === "douyin-upload")).toMatchObject({ testFiles: expect.arrayContaining([
+      "tests/qianguanjia-materials.test.ts", "tests/qianguanjia-materials-ui.test.ts",
+    ]) });
+    const files = selected.checks.flatMap(check => check.kind === "vitest" ? check.testFiles : []);
+    expect(files).not.toContain("tests/douyin-upload-service.test.ts");
+    expect(files).not.toContain("tests/source-mask-static.test.ts");
+    expect(selectChecks(candidate, scope(["tests/helpers/unregistered-helper.ts"])).checks
+      .find(check => check.id === "extended-regressions")).toMatchObject({ testFiles: expect.arrayContaining(["tests/source-mask-static.test.ts"]) });
+  });
+
+  it("verifies desktop entry wiring without dragging every extended or cover regression into a local feature", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const selected = selectChecks(candidate, scope(["src/renderer/App.tsx", "src/main/index.ts", "src/main/preload.ts", "src/main/video-fission.ts"]));
+    const files = selected.checks.flatMap(check => check.kind === "vitest" ? check.testFiles : []);
+    expect(files).toEqual(expect.arrayContaining(["tests/project-workspace.test.ts", "tests/workspace-flow.test.ts", "tests/video-fission.integration.test.ts"]));
+    expect(files).not.toContain("tests/source-mask-static.test.ts");
+    expect(selected.checks.map(check => check.id)).not.toContain("shape-boundaries");
+    expect(selected.checks.find(check => check.id === "douyin-upload")).toMatchObject({ testFiles: ["tests/douyin-upload-service.test.ts"] });
+    expect(selectChecks(candidate, scope(["src/main/queue.ts"])).checks.map(check => check.id)).toContain("shape-boundaries");
+  });
+
+  it("limits browser discovery changes to their browser and upload consumers", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const selected = selectChecks(candidate, scope(["src/main/qianchuan-browser-discovery.ts", "tests/qianchuan-browser-discovery.test.ts"]));
+    const files = selected.checks.flatMap(check => check.kind === "vitest" ? check.testFiles : []);
+    expect(files).toEqual(expect.arrayContaining(["tests/qianchuan-browser-discovery.test.ts", "tests/qianchuan-browser-manager.test.ts", "tests/douyin-cdp-uploader.test.ts"]));
+    expect(files).not.toContain("tests/qianguanjia-materials-ui.test.ts");
+    expect(files).not.toContain("tests/qianchuan-plan-material-recovery.test.ts");
+    expect(selectChecks(candidate, scope(["src/main/qianchuan-unclassified.ts"])).checks.find(check => check.id === "douyin-upload"))
+      .toMatchObject({ testFiles: expect.arrayContaining(["tests/qianchuan-plan-material-recovery.test.ts"]) });
+  });
+
+  it("does not execute business regressions for analysis documentation alone", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    expect(selectChecks(candidate, scope(["docs/qianguanjia-history-materials-2026-10-16.md"])).checks.map(check => check.id)).toEqual(["documents"]);
+  });
+
   it("runs only the changed registered test for a test-only scope", () => {
     const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
     const selected = selectChecks(candidate, scope(["tests/results-panel.test.ts"]));

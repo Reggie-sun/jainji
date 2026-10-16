@@ -27,7 +27,9 @@ v2 scoped code receipt 分别绑定当前 policy/scope、实际参与的 source/
 
 进度写 stderr，不改变 stdout 最终结果接口。每组显示序号、文件数量、完成状态和耗时，Vitest default reporter 提供实时文件进度，JSON reporter 继续作为证据。summary 与结构化 evidence 给出文件耗时及失败案例；执行与 completion 共用命令参数生成，completion 重算实际子集并核对报告文件集合。完整 source/config/resources manifest 和媒体/发布/人工验收边界保持。
 
-2026-10-13 proportional routing delta：Harness 自测只由自身实现、测试、runner 或 policy 变更触发，普通业务与文档不附带该组。仅改动已登记、未删除的测试且无固定 route 子集时，该 Vitest 检查只执行改动测试；源码、helper、fixture 或删除测试仍执行对应完整集合，显式 `testFilesByCheck` 保留。业务 `.ts` / `.tsx` 不能仅靠 baseline typecheck 获得 PASS，必须有 domain 或 fallback；新增业务 owner 应补充对应行为路由。完整 source identity 不缩小。
+2026-10-16 proportional routing delta：局部修改默认执行 typecheck、受影响 owner 及直接消费者的必要检查；Harness 自测只由自身实现、测试、runner 或 policy 变更触发。每个 owned path 单独贡献测试：已登记且未删除的测试在无固定子集时只贡献自身，已知源码/helper/fixture 消费 policy 的 `testFilesByCheck`，不同贡献取并集；无子集的源码、未知依赖 helper/fixture 或删除测试仍要求对应完整集合。一个独立修改的测试不会把其他路径的固定子集扩大成整组。通配业务及 test-support fallback 只在该路径没有 domain owner 时生效，未知行为路径仍拒绝 PASS；完整 source identity、必需检查与回执校验不缩小。
+
+广泛回归用于跨模块行为/公共契约、持久化格式或迁移、共享生命周期及产品准入等大影响修改，不能仅因碰到 App/IPC 接线、已知 fixture 或改动文件较多就合并所有 session 跑整套。核心 schema/compiler/queue 与 Hybrid activation 的已有完整路由保留；普通接线、浏览器发现、报表与素材展示使用各自消费者子集。大影响 scope 声明 `regression: { "reason": "具体影响和扩大验证的原因" }`，在本轮必需路由并集上追加 policy 的 `defaultCheckIds` 核心集合（旧 policy 缺字段时追加全部 code checks），所有选中 Vitest 检查执行各自完整集合，一次生成绑定原因的 scoped receipt；不提供减少必需检查的开关。纯业务文档只执行文档检查。
 
 scope 可选 `aoci: { reason, paths }`，原因是 `indexed-semantics`、`indexed-identity`、`stale-index` 或 `explicit-governance`，paths 必须是非空、唯一的 owned paths。只在 indexed 语义/身份变化、索引冲突/过期或明确治理时声明；它追加 required 检查，不能关闭 policy 对正式资产、AOCI 配置和根规则自动要求的检查。普通文档、测试和样式不默认运行 AOCI。维护与 role 分类仍归官方 Guide；声明不是作者归属或已维护证明。
 
