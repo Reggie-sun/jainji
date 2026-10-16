@@ -1116,7 +1116,14 @@ export class DouyinUploadService {
       }
       const blockers = this.unresolvedAccountTasks(task);
       if (blockers.length) throw new Error(this.blockedAccountMessage(task, blockers.length));
-      if (accepted && !historicalPageBatchId) await this.bounded(signal => this.currentTarget(task, signal), task.config.timeouts.navigation, new AbortController().signal);
+      if (accepted && !historicalPageBatchId) {
+        try { await this.bounded(signal => this.currentTarget(task, signal), task.config.timeouts.navigation, new AbortController().signal); }
+        catch (error) {
+          // Rejected admission revokes only this batch's queued permission; unrelated current work may still drain.
+          for (const pending of batch) this.eligible.delete(pending.result.upload_task_id);
+          throw error;
+        }
+      }
       if (this.stopFailed || this.active || this.runner || generation !== this.controlGeneration || this.stopping || this.closing || this.discarding || this.retargeting) throw new Error("上传控制已变化，本次继续未接收。");
       if (requested?.result.state === "CANCELLED") this.cancelledIntents.delete(intentKey(task.input));
       accepted?.();

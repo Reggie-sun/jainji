@@ -727,6 +727,7 @@ describe("explicit upload plan selection", () => {
     });
     await controller.start({ entries: [{ recentProjectId: randomUUID(), requestedCount: 1, productPrice: "手动文字", coverEnabled: false, displayMode: "full", mode: "random", douyinUpload: selected }] });
     await vi.waitFor(() => expect(controller.snapshot()?.status).toBe("finished"));
+    await vi.waitFor(() => expect(controller.busy).toBe(false));
     if (matching) expect(outputDirectory).toHaveBeenCalledOnce();
     else { expect(outputDirectory).not.toHaveBeenCalled(); expect(controller.snapshot()?.jobs[0]?.error).toContain("计划"); }
   });
