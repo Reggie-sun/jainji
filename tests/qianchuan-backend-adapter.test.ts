@@ -252,7 +252,7 @@ const supplierMetrics = { statCost: 12.5, totalPayOrderGmvIncludeCouponForRoi2: 
   totalPayOrderCountForRoi2: "4", totalPrepayAndPayOrderRoi2: 4 };
 const supplierHome = () => Object.fromEntries(["ALL", "LIVE_PROM_GOODS", "VIDEO_PROM_GOODS"].map(key => [key,
   { nowTotalData: { ...supplierMetrics }, oldTotalData: { ...supplierMetrics }, secret: "not-projected" }]));
-async function supplierFixture(options: { token?: string; response?: unknown; status?: number; raw?: string; delay?: number; type?: string; redirect?: boolean } = {}) {
+async function supplierFixture(options: { token?: string; response?: unknown; status?: number; raw?: string; delay?: number; type?: string; redirect?: boolean; analysisResponse?: unknown; analysisDelay?: number } = {}) {
   const context = await browser.newContext(); contexts.push(context);
   const requests: { path: string; method: string; body: unknown; headers: Record<string, string> }[] = [];
   await context.addCookies([{ name: "unused-cookie", value: "cookie-private", url: supplierApi }]);
@@ -264,7 +264,9 @@ async function supplierFixture(options: { token?: string; response?: unknown; st
     requests.push({ path: new URL(request.url()).pathname, method: request.method(), body: request.postDataJSON(), headers: await request.allHeaders() });
     if (options.delay) await new Promise(resolve => setTimeout(resolve, options.delay));
     if (options.redirect) return route.fulfill({ status: 302, headers: { ...headers, location: `${supplierOrigin}/dist/login` } });
-    const data = request.url().endsWith("uniHomeTop") ? supplierHome() : [supplierAccount];
+    const isAnalysis = /qcunireport|qcremotematerial|homereport\/planReport/.test(request.url());
+    if (isAnalysis && options.analysisDelay) await new Promise(resolve=>setTimeout(resolve,options.analysisDelay));
+    const data = isAnalysis ? options.analysisResponse : request.url().endsWith("uniHomeTop") ? supplierHome() : [supplierAccount];
     await route.fulfill({ status: options.status ?? 200, headers, contentType: options.type ?? "application/json",
       body: options.raw ?? JSON.stringify(options.response ?? { code: 0, data }) }).catch(() => undefined);
   });
@@ -380,4 +382,72 @@ it("supplier: cancellation and disposal abort in-flight reads with safe errors a
     if (dispose) await port.dispose(); else controller.abort(new Error(supplierToken));
     await rejected; expect(requests).toHaveLength(1); await port.dispose(); expect(page.isClosed()).toBe(false);
   }
+});
+
+const supplierReportInput = {kind:"report" as const,startDate:"2026-10-12",endDate:"2026-10-12",advertiserIds:[supplierAccount.outAdvertiserId],page:1,limit:20 as const};
+const supplierReportRow = () => ({outAdvertiserId:supplierAccount.outAdvertiserId,advertiserName:"fixture",date:"2026-10-12~2026-10-12",
+  statCostForRoi2:12.5,totalPayOrderCountForRoi2:"4",totalPayOrderGmvIncludeCouponForRoi2:50,totalPrepayAndPayOrderRoi2:4,secret:supplierToken});
+const supplierMaterialRow = () => ({outAdvertiserId:supplierAccount.outAdvertiserId,outMaterialId:"1879999999999999998",outMediaId:"v030fixture_exact",
+  materialType:"VIDEO",filename:"fixture.mp4",signature:"a".repeat(32),duration:12,url:"https://private.invalid?token="+supplierToken});
+it("supplier history uses the requested historical window and account dimension, without home fallback",async()=>{
+ const f=await supplierFixture({analysisResponse:{total:1,list:[supplierReportRow()],currentPage:null,totalPage:null}}), port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{
+ const next=await port.analysis(supplierReportInput,signal);
+ expect(next).toMatchObject({source:"qianguanjia",scope:"supplier-product-account-report",startDate:"2026-10-12",endDate:"2026-10-12",total:1,rows:[{advertiserId:supplierAccount.outAdvertiserId,metrics:{statCostForRoi2:"12.5"}}]});
+ expect(f.requests.map(x=>x.path)).toEqual(["/mms/qianchuanAdvertiser/listAdvertisers","/qianchuan/qcunireport/reportPageByProduct"]);
+ expect(f.requests[1]!.body).toMatchObject({mode:"1",dimensions:["ADVERTISER"],outAdvertiserIds:[supplierAccount.outAdvertiserId],startDate:"2026-10-12 00:00:00",endDate:"2026-10-12 23:59:59",marketingGoal:"VIDEO_PROM_GOODS"});
+ expect(JSON.stringify(next)).not.toMatch(/private|secret|http/);
+ }finally{await port.dispose()}
+});
+it.each([{total:null,list:null},{total:0,list:[],currentPage:1,totalPage:0}])("supplier distinguishes unavailable data and a strict empty page",async data=>{
+ const f=await supplierFixture({analysisResponse:data}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{const r=await port.analysis(supplierReportInput,signal);expect(r).toMatchObject({availability:data.total===null?"not-provided":"provided",total:data.total,rows:[]});}finally{await port.dispose()}
+});
+it.each([
+ {total:1,list:[]},{total:1,list:[{...supplierReportRow(),outAdvertiserId:"99"}]},
+ {total:1,list:[{...supplierReportRow(),outAdvertiserId:1879999999999999999}]},
+ {total:1,list:[{...supplierReportRow(),date:"2026-10-13~2026-10-13"}]},
+ {total:1,list:[{...supplierReportRow(),advertiserName:supplierToken}]},
+ {total:2,list:[supplierReportRow(),supplierReportRow()]},
+ {total:1,list:[{...supplierReportRow(),statCostForRoi2:undefined}]},
+])("supplier history rejects partial, wrong identity, wrong range and reflected fields",async data=>{
+ const f=await supplierFixture({analysisResponse:data}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{await expect(port.analysis(supplierReportInput,signal)).rejects.toThrow(/^千管家/);expect(f.requests).toHaveLength(2)}finally{await port.dispose()}
+});
+it("supplier history preserves explicitly unavailable metrics without turning them into zero",async()=>{
+ const f=await supplierFixture({analysisResponse:{total:1,list:[{...supplierReportRow(),statCostForRoi2:null}]}}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{const r=await port.analysis(supplierReportInput,signal);expect(r).toMatchObject({rows:[{metrics:{statCostForRoi2:null}}]});}finally{await port.dispose()}
+});
+it("supplier refuses unauthorized IDs and invalid ranges before a report request",async()=>{
+ const f=await supplierFixture(),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{
+ await expect(port.analysis({...supplierReportInput,advertiserIds:["123"]},signal)).rejects.toThrow();expect(f.requests).toHaveLength(1);
+ for(const patch of [{startDate:"2026-02-30"},{endDate:"2026-10-14"},{startDate:"2026-08-01"},{advertiserIds:[supplierAccount.outAdvertiserId,supplierAccount.outAdvertiserId]}])await expect(port.analysis({...supplierReportInput,...patch},signal)).rejects.toThrow();
+ expect(f.requests).toHaveLength(1);
+ }finally{await port.dispose()}
+});
+it("supplier catalog projects exact video identity, not playback URLs or guessed filenames",async()=>{
+ const f=await supplierFixture({analysisResponse:{total:1,list:[supplierMaterialRow()],currentPage:1,totalPage:1}}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{const r=await port.analysis({kind:"materials",advertiserId:supplierAccount.outAdvertiserId,page:1,limit:20},signal);
+ expect(r).toMatchObject({scope:"supplier-platform-video-catalog",rows:[{materialId:"1879999999999999998",videoId:"v030fixture_exact",filename:"fixture.mp4"}]});
+ expect(JSON.stringify(r)).not.toMatch(/private|https:|token/);expect(f.requests[1]!.path).toBe("/qianchuan/qcremotematerial/searchPage");
+ }finally{await port.dispose()}
+});
+it.each([{outMediaId:123},{outMaterialId:1879999999999999999},{outAdvertiserId:"123"},{materialType:"IMAGE"},{filename:supplierToken}])("supplier catalog refuses ambiguous IDs and credential reflection",async patch=>{
+ const f=await supplierFixture({analysisResponse:{total:1,list:[{...supplierMaterialRow(),...patch}]}}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{await expect(port.analysis({kind:"materials",advertiserId:supplierAccount.outAdvertiserId,page:1,limit:20},signal)).rejects.toThrow(/^千管家/)}finally{await port.dispose()}
+});
+it("supplier cancellation aborts analysis and never replays the page",async()=>{
+ const f=await supplierFixture({analysisDelay:2000,analysisResponse:{total:0,list:[]}}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock),controller=new AbortController();
+ try{const work=port.analysis(supplierReportInput,controller.signal), rejected=expect(work).rejects.toThrow(/取消/);await expect.poll(()=>f.requests.length).toBe(2);controller.abort();await rejected;expect(f.requests).toHaveLength(2);}finally{await port.dispose()}
+});
+
+it("supplier plan ranking preserves exact plan identity and does not invent advertiser IDs",async()=>{
+ const f=await supplierFixture({analysisResponse:{total:1,list:[{outPlanId:"1879999999999999997",planName:"fixture plan",statCostForRoi2:10,totalPayOrderCountForRoi2:"2",totalPayOrderGmvIncludeCouponForRoi2:20,totalPrepayAndPayOrderRoi2:2}],currentPage:1,totalPage:1}}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{const r=await port.analysis({kind:"plan-report",startDate:"2026-10-12",endDate:"2026-10-12",page:1,limit:10},signal);expect(r).toMatchObject({scope:"supplier-plan-ranking",filter:"SMART_BID_CUSTOM",total:null,reportedTotal:1,coverage:"current-page-only",rows:[{planId:"1879999999999999997",metrics:{statCostForRoi2:"10"}}]});expect(JSON.stringify(r)).not.toContain("advertiserId");expect(f.requests[1]!.body).toMatchObject({smartBidType:"SMART_BID_CUSTOM",page:1,limit:10});}finally{await port.dispose()}
+});
+
+it("supplier plan ranking retains bounded rows when its reported total is inconsistent, without claiming completeness",async()=>{
+ const f=await supplierFixture({analysisResponse:{total:0,list:[{outPlanId:"1879999999999999997",planName:"fixture plan",statCostForRoi2:10,totalPayOrderCountForRoi2:"2",totalPayOrderGmvIncludeCouponForRoi2:20,totalPrepayAndPayOrderRoi2:2}],currentPage:1,totalPage:0}}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
+ try{expect(await port.analysis({kind:"plan-report",startDate:"2026-10-12",endDate:"2026-10-12",page:1,limit:10},signal)).toMatchObject({total:null,reportedTotal:0,coverage:"current-page-only",rows:[{planId:"1879999999999999997"}]});await expect(port.analysis({kind:"plan-report",startDate:"2026-10-12",endDate:"2026-10-12",page:2,limit:10} as any,signal)).rejects.toThrow();expect(f.requests).toHaveLength(2);}finally{await port.dispose()}
 });

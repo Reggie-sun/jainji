@@ -75,3 +75,34 @@ it("settles a stalled browser read and hides cleanup errors", async () => {
   expect(await result).toMatch(/已取消/);
   expect(await result).not.toContain("private-secret-token");
 });
+it("routes historical reads with pinned session and rejects invalid dates, writes and unknown accounts at the provider", async () => {
+  const f=fixture(),sessionId=await select(f.service);
+  const analysis=vi.fn(async (input:unknown)=>({source:'qianguanjia',scope:'supplier-product-account-report',observedAt:'2026-10-16T01:00:00Z',startDate:'2026-10-15',endDate:'2026-10-15',advertiserIds:['123'],page:1,limit:20,total:0,availability:'provided',rows:[]}));
+  f.connect.mockImplementation(async()=>({adapter:{listAdvertisers:f.list,todayHomeSummary:f.home,analysis} as unknown as QianguanjiaReadonlyAdapter,close:f.close}));
+  const input={kind:'report',sessionId,requestId:randomUUID(),startDate:'2026-10-15',endDate:'2026-10-15',advertiserIds:['123'],page:1,limit:20};
+  for(const patch of [{startDate:'2026-02-30'},{endDate:'2026-12-15'},{advertiserIds:['123','123']},{page:0},{url:'https://evil.invalid'}]) await expect(f.service.run({...input,...patch},10)).rejects.toThrow(/参数/);
+  expect(f.connect).not.toHaveBeenCalled();
+  expect(await f.service.run(input,10)).toMatchObject({kind:'report',sessionId,data:{total:0}});
+  expect(analysis).toHaveBeenCalledWith({kind:'report',startDate:'2026-10-15',endDate:'2026-10-15',advertiserIds:['123'],page:1,limit:20},expect.any(AbortSignal));
+  await f.service.stop();
+});
+it("reads local materials independently of a supplier login and never connects a browser",async()=>{
+ const f=fixture();f.service.setLocalMaterialReader(()=>[]);
+ expect(await f.service.run({kind:'local-materials',requestId:randomUUID()},10)).toMatchObject({kind:'local-materials',tasks:[]});
+ expect(f.discover).not.toHaveBeenCalled();expect(f.connect).not.toHaveBeenCalled();
+});
+it("fails closed when the local ledger projection is unavailable or contains private record fields",async()=>{
+ const f=fixture();
+ await expect(f.service.run({kind:'local-materials',requestId:randomUUID()},10)).rejects.toThrow(/未完成/);
+ f.service.setLocalMaterialReader(()=>[{snapshotPath:'/private/path',config:{token:'private-secret'}} as any]);
+ await expect(f.service.run({kind:'local-materials',requestId:randomUUID()},10)).rejects.toThrow(/^千管家读取未完成/);
+ expect(f.connect).not.toHaveBeenCalled();
+});
+it("does not invalidate an unrelated supplier connection after a local ledger failure",async()=>{
+ const f=fixture(),sessionId=await select(f.service);
+ await f.service.run({kind:'accounts',sessionId,requestId:randomUUID()},10);
+ await expect(f.service.run({kind:'local-materials',requestId:randomUUID()},10)).rejects.toThrow(/未完成/);
+ expect(f.close).not.toHaveBeenCalled();
+ await f.service.run({kind:'home',sessionId,requestId:randomUUID()},10);
+ expect(f.connect).toHaveBeenCalledTimes(1);await f.service.stop();
+});

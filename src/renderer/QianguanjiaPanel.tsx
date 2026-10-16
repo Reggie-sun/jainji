@@ -1,17 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { QianguanjiaAccountDirectory, QianguanjiaDesktopApi, QianguanjiaHomeSummary, QianguanjiaSessionOption } from "../shared/qianguanjia";
 import "./qianchuan-backend.css";
+import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
+import { QianguanjiaMaterials } from "./QianguanjiaMaterials";
+import { QianguanjiaHistory } from "./QianguanjiaHistory";
 
 const groups = [["ALL", "全部推广"], ["LIVE_PROM_GOODS", "直播推广"], ["VIDEO_PROM_GOODS", "短视频推广"]] as const;
 const metrics = [["statCost", "消耗"], ["totalPayOrderCountForRoi2", "成交订单数"], ["totalPayOrderGmvIncludeCouponForRoi2", "成交金额（含优惠券）"], ["totalPrepayAndPayOrderRoi2", "支付 ROI"]] as const;
 const time = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 const overviewMetrics = [metrics[0], metrics[2], metrics[1], metrics[3]];
 
-export function QianguanjiaPanel({ active, api }: { active: boolean; api: QianguanjiaDesktopApi }) {
+export function QianguanjiaPanel({ active, api, accounts = [] }: { active: boolean; api: QianguanjiaDesktopApi; accounts?: QianchuanAccountSummary[] }) {
   const [sessions, setSessions] = useState<QianguanjiaSessionOption[]>([]), [sessionId, setSessionId] = useState("");
   const [directory, setDirectory] = useState<QianguanjiaAccountDirectory>(), [home, setHome] = useState<QianguanjiaHomeSummary>();
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
-  const [tab, setTab] = useState<"home" | "accounts">("home"), [settings, setSettings] = useState(false);
+  const [tab, setTab] = useState<"home" | "accounts" | "history" | "materials">("home"), [settings, setSettings] = useState(false);
+  const [analysisBusy, setAnalysisBusy] = useState(false);
+  const invalidateSession = useCallback(() => { setSessions([]);setSessionId("");setDirectory(undefined);setHome(undefined);setNotice("查询已停止或会话未能保持有效，请重新连接后读取。"); }, []);
   const [search, setSearch] = useState(""), [status, setStatus] = useState(""), [pageIndex, setPageIndex] = useState(0);
   const request = useRef<string>();
   const generation = useRef(0);
@@ -44,8 +49,8 @@ export function QianguanjiaPanel({ active, api }: { active: boolean; api: Qiangu
         if (next.sessions.length === 1) setSessionId(next.sessions[0]!.sessionId);
         setNotice(next.sessions.length ? `发现 ${next.sessions.length} 个正常业务页面，请选择页面后读取。` : "没有发现可连接的千管家页面。请保持已登录的千管家首页或账户管理页打开。浏览器需要已允许本地调试连接。");
         if (next.unavailableBrowsers) setNotice(value => `${value} 部分浏览器连接不可用。`);
-      } else if (next.kind === "accounts") { setDirectory(next.data); setPageIndex(0); setTab("accounts"); }
-      else { if (next.data.scope !== "supplier-home-aggregate") throw new Error(); setHome(next.data); setTab("home"); }
+      } else if (next.kind === "accounts") { setDirectory(next.data); setPageIndex(0); if (tab === "home" || tab === "accounts") setTab("accounts"); }
+      else { if (next.data.scope !== "supplier-home-aggregate") throw new Error(); setHome(next.data); if (tab === "home" || tab === "accounts") setTab("home"); }
       return next;
     } catch {
       if (request.current === requestId) {
@@ -73,34 +78,38 @@ export function QianguanjiaPanel({ active, api }: { active: boolean; api: Qiangu
   const selected = (tab === "accounts" ? directory : home) ?? directory ?? home;
 
   return <section aria-label="千管家只读数据" className="qianchuan-backend-panel qianguanjia-console">
-    <header className="qianguanjia-page-heading"><h1>千管家</h1><p>查看已授权账户与今日推广汇总</p></header>
+    <header className="qianguanjia-page-heading"><h1>千管家</h1><p>查看账户、历史报表与成片素材</p></header>
       <nav className="task-page-tabs" aria-label="千管家页面">
-        <button type="button" aria-current={tab === "home" ? "page" : undefined} onClick={() => setTab("home")}>数据概览</button>
-        <button type="button" aria-current={tab === "accounts" ? "page" : undefined} onClick={() => setTab("accounts")}>账户管理</button>
+        <button type="button" disabled={busy} aria-current={tab === "home" ? "page" : undefined} onClick={() => {setAnalysisBusy(false);setTab("home");}}>数据概览</button>
+        <button type="button" disabled={busy} aria-current={tab === "accounts" ? "page" : undefined} onClick={() => {setAnalysisBusy(false);setTab("accounts");}}>账户管理</button>
+        <button type="button" disabled={busy} aria-current={tab === "history" ? "page" : undefined} onClick={() => {setAnalysisBusy(false);setTab("history");}}>历史报表</button>
+        <button type="button" disabled={busy} aria-current={tab === "materials" ? "page" : undefined} onClick={() => {setAnalysisBusy(false);setTab("materials");}}>素材中心</button>
       </nav>
     <div className="qianguanjia-console-toolbar"><div><span className={`qianguanjia-connection ${selected ? "is-connected" : ""}`}>{selected ? "已连接授权会话" : "未连接"}</span><span>数据来源：千管家</span>{selected && <small>更新于 {time(selected.observedAt)}</small>}</div>
-      <div className="qianguanjia-console-actions"><button type="button" className="button" disabled={busy || !active || !connected} onClick={() => void connect()}>连接已授权账户</button>
-        <button type="button" className="button secondary" disabled={busy || !active || !sessionId} onClick={() => void read(tab === "accounts" ? "accounts" : "home")}>刷新数据</button>
+      <div className="qianguanjia-console-actions"><button type="button" className="button" disabled={busy || analysisBusy || !active || !connected} onClick={() => void connect()}>连接已授权账户</button>
+        {(tab === "home" || tab === "accounts") && <button type="button" className="button secondary" disabled={busy || analysisBusy || !active || !sessionId} onClick={() => void read(tab === "accounts" ? "accounts" : "home")}>刷新数据</button>}
       {busy && <button type="button" className="button secondary" onClick={() => { release(); clear(); setBusy(false); setNotice("查询已取消，请重新发现页面。"); }}>取消千管家查询</button>}
-      {!busy && sessions.length > 0 && <button type="button" className="button secondary" onClick={() => { release(); clear(); setNotice("连接已断开，浏览器和原页面保留。"); }}>断开连接</button>}
+      {!busy && !analysisBusy && sessions.length > 0 && <button type="button" className="button secondary" onClick={() => { release(); clear(); setNotice("连接已断开，浏览器和原页面保留。"); }}>断开连接</button>}
       </div></div>
     <div className="qianguanjia-console-messages">{!connected && <p role="alert">千管家界面接线尚未加载，请等待应用主进程更新。</p>}
       {busy && <p role="status">正在读取千管家…</p>}{error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}</div>
+    {tab === "history" && <QianguanjiaHistory active={active} api={api} sessionId={sessionId} directory={directory} accounts={accounts} onBusy={setAnalysisBusy} onSessionInvalid={invalidateSession} />}
+    {tab === "materials" && <QianguanjiaMaterials active={active} api={api} sessionId={sessionId} directory={directory} onBusy={setAnalysisBusy} onSessionInvalid={invalidateSession} />}
     <details className="qianguanjia-connection-settings" open={settings} onToggle={event => setSettings(event.currentTarget.open)}><summary>连接设置</summary>
       <p>沿用已正常登录并授权的千管家首页或账户管理页，不需要再次授权。没有发现页面时，请确认原 Chrome 浏览器已允许本地调试连接。</p>
-      <div className="qianchuan-query-fields"><label>千管家页面<select aria-label="千管家页面" value={sessionId} disabled={busy || !active} onChange={event => {
+      <div className="qianchuan-query-fields"><label>千管家页面<select aria-label="千管家页面" value={sessionId} disabled={busy || analysisBusy || !active} onChange={event => {
         setSessionId(event.target.value); setDirectory(undefined); setHome(undefined); setError(""); setNotice("");
       }}><option value="">请选择已登录页面</option>{sessions.map(item => <option key={item.sessionId} value={item.sessionId}>{item.label}</option>)}</select></label></div>
-      <div className="qianchuan-query-actions"><button type="button" className="button secondary" disabled={busy || !active || !connected} onClick={() => void read("discover")}>发现已登录页面</button>
-        <button type="button" className="button secondary" disabled={busy || !active || !sessionId} onClick={() => void read("accounts")}>读取授权账户</button>
-        <button type="button" className="button secondary" disabled={busy || !active || !sessionId} onClick={() => void read("home")}>读取今日汇总</button></div>
+      <div className="qianchuan-query-actions"><button type="button" className="button secondary" disabled={busy || analysisBusy || !active || !connected} onClick={() => void read("discover")}>发现已登录页面</button>
+        <button type="button" className="button secondary" disabled={busy || analysisBusy || !active || !sessionId} onClick={() => void read("accounts")}>读取授权账户</button>
+        <button type="button" className="button secondary" disabled={busy || analysisBusy || !active || !sessionId} onClick={() => void read("home")}>读取今日汇总</button></div>
     </details>
     <div hidden={tab !== "home"} className="qianguanjia-console-body">
       <div className="qianguanjia-console-main">
         <section className="qianguanjia-card"><div className="qianguanjia-card-title"><h2>数据概览</h2><span>{home?.date ?? "今日"} · 北京时间</span></div>
           <dl className="qianguanjia-kpis">{overviewMetrics.map(([field, name]) => <div key={field} className="qianguanjia-kpi"><dt>{name}</dt><dd>{home?.groups.ALL.current[field] ?? "—"}</dd></div>)}</dl>
           <p className="qianguanjia-data-scope">当前供应商用户的全域汇总，不代表任一单账户或计划的效果。</p>
-          <button type="button" className="qianguanjia-text-button" onClick={() => setTab("accounts")}>{directory ? `查看 ${directory.accounts.length} 个授权账户 →` : "查看授权账户 →"}</button>
+          <button type="button" className="qianguanjia-text-button" onClick={() => {setAnalysisBusy(false);setTab("accounts");}}>{directory ? `查看 ${directory.accounts.length} 个授权账户 →` : "查看授权账户 →"}</button>
         </section>
         <section className="qianguanjia-card"><div className="qianguanjia-card-title"><h2>推广数据</h2><span>按读取日期统计</span></div>
           {home ? <div className="qianchuan-query-result" data-testid="qianguanjia-home">{groups.map(([key, label]) => <section key={key} className="qianguanjia-group" aria-label={label}><h3>{label}</h3><dl className="qianchuan-query-metrics">{metrics.map(([field, name]) => <div key={field}><dt>{name}</dt><dd>{home.groups[key].current[field]}</dd></div>)}</dl></section>)}

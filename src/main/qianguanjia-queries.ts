@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
+import { QianchuanUploadResultSchema } from "../shared/douyin-upload.js";
 import { QianguanjiaCancelSchema, QianguanjiaQuerySchema, type QianguanjiaResult } from "../shared/qianguanjia.js";
 import { connectQianguanjiaTarget, discoverQianguanjiaTargets, type QianguanjiaBrowserTarget } from "./qianguanjia-browser.js";
 
 const failure = "千管家读取未完成，请重新发现页面并检查正常登录与试用权限。";
+type LocalReader = () => import("../shared/douyin-upload.js").QianchuanUploadTaskStatus[];
 type Connection = Awaited<ReturnType<typeof connectQianguanjiaTarget>>;
 function abortable<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -22,6 +24,8 @@ export class QianguanjiaQueries {
   private readonly targets = new Map<string, { senderId: number; target: QianguanjiaBrowserTarget }>();
   private connection?: { senderId: number; sessionId: string; value: Connection };
   private active?: { senderId: number; requestId: string; controller: AbortController; done: Promise<unknown> };
+  private localReader?: LocalReader;
+  setLocalMaterialReader(reader:LocalReader):void { this.localReader=reader; }
   constructor(private readonly dependencies = { discover: discoverQianguanjiaTargets, connect: connectQianguanjiaTarget }) {}
 
   async run(input: unknown, senderId: number): Promise<QianguanjiaResult> {
@@ -34,6 +38,18 @@ export class QianguanjiaQueries {
     signal.addEventListener("abort", aborted, { once: true });
     const work = (async (): Promise<QianguanjiaResult> => {
       try {
+        if (query.kind === "local-materials") {
+          if (!this.localReader) throw new Error();
+          const records = this.localReader();
+          if (records.length > 10000) throw new Error();
+          const tasks = records.map(record => {
+            const { rowReady: _rowReady, ...result } = record;
+            return QianchuanUploadResultSchema.parse(result);
+          });
+          if (new Set(tasks.map(task => task.upload_task_id)).size !== tasks.length) throw new Error();
+          signal.throwIfAborted();
+          return {kind:"local-materials",requestId:query.requestId,observedAt:new Date().toISOString(),tasks};
+        }
         if (query.kind === "discover") {
           if (this.connection && this.connection.senderId !== senderId) throw new Error();
           await this.clear(senderId);
@@ -63,12 +79,20 @@ export class QianguanjiaQueries {
         }
         const adapter = this.connection.value.adapter;
         const reading = AbortSignal.any([signal, AbortSignal.timeout(20000)]);
+        if (query.kind === "report" || query.kind === "materials" || query.kind === "plan-report") {
+          const {requestId:_requestId,sessionId:_sessionId,...input}=query;
+          const data=await abortable(adapter.analysis(input,reading),reading);
+          signal.throwIfAborted();
+          if (query.kind === "plan-report") return {kind:"plan-report",sessionId:query.sessionId,requestId:query.requestId,data:data as import("../shared/qianguanjia-analysis.js").QianguanjiaPlanReportPage};
+          return query.kind === "report" ? {kind:"report",sessionId:query.sessionId,requestId:query.requestId,data:data as import("../shared/qianguanjia-analysis.js").QianguanjiaReportPage} :
+            {kind:"materials",sessionId:query.sessionId,requestId:query.requestId,data:data as import("../shared/qianguanjia-analysis.js").QianguanjiaMaterialPage};
+        }
         const data = query.kind === "accounts" ? await abortable(adapter.listAdvertisers(reading), reading) : await abortable(adapter.todayHomeSummary(reading), reading);
         signal.throwIfAborted();
         return query.kind === "accounts" ? { kind: "accounts", sessionId: query.sessionId, requestId: query.requestId, data: data as Awaited<ReturnType<typeof adapter.listAdvertisers>> } :
           { kind: "home", sessionId: query.sessionId, requestId: query.requestId, data: data as Awaited<ReturnType<typeof adapter.todayHomeSummary>> };
       } catch {
-        await this.clear(senderId);
+        if (query.kind !== "local-materials") await this.clear(senderId);
         throw new Error(signal.aborted ? "千管家读取已取消，请重新发现页面。" : failure);
       }
     })();

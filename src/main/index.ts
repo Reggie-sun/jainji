@@ -785,6 +785,10 @@ async function bootstrap(): Promise<void> {
   queue.setMediaLookup((id) => service.getMedia(id));
   const uploadStore = new DouyinUploadStore(path.join(userData, "douyin-upload"));
   await uploadStore.load().catch(() => safeLog("upload store unavailable; upload disabled"));
+  qianguanjia.setLocalMaterialReader(() => {
+    if (uploadStore.unavailable) throw new Error("local upload history unavailable");
+    return uploadStore.tasks().map(task => task.result);
+  });
   const uploadJobs = new JobStore(path.join(userData, "jobs"));
   douyinUpload = new DouyinUploadService(uploadStore, {
     loadBatch: async id => { const loaded = await uploadJobs.load(id); if (loaded.source !== "primary") throw new Error("Export recovery needs reconciliation"); return loaded.state; },

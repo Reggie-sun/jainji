@@ -6,6 +6,9 @@ import { QianguanjiaReadonlyAdapter } from "./qianchuan-qianguanjia-adapter.js";
 
 const unavailable = () => new Error("无法连接千管家正常页面，请保持已登录的 Chrome 打开后重新发现。");
 const routes = new Map([
+  ["/dist/adsreport/report-uni/video", "千管家推商品报表"],
+  ["/dist/adsreport/report-uni/materialNew", "千管家素材报表"],
+  ["/dist/material/index", "千管家素材中心"],
   ["/dist/dashboard/index", "千管家首页"],
   ["/dist/advertiser/manage/AdvertiserManager/index", "千管家账户管理"],
 ]);

@@ -98,11 +98,17 @@ it("keeps supplier navigation inside its own workspace and preserves native quer
     await page.getByTestId("qianguanjia-home").waitFor();
     expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.supplierReads)).toEqual(["discover", "accounts", "home"]);
     const supplierNav = page.getByRole("navigation", { name: "千管家页面" });
-    expect(await supplierNav.getByRole("button").allTextContents()).toEqual(["数据概览", "账户管理"]);
+    expect(await supplierNav.getByRole("button").allTextContents()).toEqual(["数据概览", "账户管理", "历史报表", "素材中心"]);
     await supplierNav.getByRole("button", { name: "账户管理", exact: true }).click();
     expect(await rail(page, "千管家").getAttribute("class")).toContain("active");
     expect(await nav.isVisible()).toBe(false);
     await page.getByRole("cell", { name: "隔离授权账户", exact: false }).waitFor();
+    await supplierNav.getByRole("button", { name: "历史报表", exact: true }).click();
+    await page.getByRole("heading", { name: "历史报表", exact: true }).waitFor();
+    expect(await nav.isVisible()).toBe(false);
+    await supplierNav.getByRole("button", { name: "素材中心", exact: true }).click();
+    await page.getByRole("heading", { name: "素材中心", exact: true }).waitFor();
+    expect(await rail(page, "千管家").getAttribute("class")).toContain("active");
     await supplierNav.getByRole("button", { name: "数据概览", exact: true }).click();
     expect(await rail(page, "千管家").getAttribute("class")).toContain("active");
     expect(await page.locator(".qianguanjia-shortcuts, .qianguanjia-console-header").count()).toBe(0);

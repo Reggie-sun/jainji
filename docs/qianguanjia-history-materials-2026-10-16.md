@@ -1,0 +1,33 @@
+# Qianguanjia History And Material Center
+
+## Scope And Ownership
+
+千管家的“历史报表”和“素材中心”保留在简辑原生页面内。供应商只读请求仍由 `QianguanjiaQueries`、`QianguanjiaReadonlyAdapter` 和原浏览器 transport 管理；本地历史复用 `QianchuanReportStore` 的既有 IPC，素材记录从已加载的 `DouyinUploadStore` 投影。没有新增持久报表库、上传队列、计划创建、预算、ROI 或启停控制链。
+
+## Data Contracts
+
+| View | Source and scope | Date and identity |
+| --- | --- | --- |
+| 供应商历史账户报表 | POST `/qianchuan/qcunireport/reportPageByProduct`；`VIDEO_PROM_GOODS`、`ADVERTISER`、汇总模式 | 用户明确日期，北京时间，最多31天；账户必须属于本次正常登录目录；响应账户和日期逐行校验 |
+| 供应商计划榜 | POST `/qianchuan/homereport/planReport`；固定 `SMART_BID_CUSTOM` | 用户明确日期；只读取第一页10条以内观察；账户 ID 未返回，不受账户勾选影响，不推测归属 |
+| 已保存账户/计划素材报表 | 既有千川快照 owner；来源 `qianchuan-browser` | 保留实际 startTime/endTime、asOf、capturedAt 和 frozen advertiser/ad；账户汇总为商品自选控成本，不能当作计划汇总 |
+| 平台视频目录 | POST `/qianchuan/qcremotematerial/searchPage`；`VIDEO` | 指定已授权账户；目录不是日期范围内的投放效果或实时全平台证明；只读，不调用同步 |
+| 本地成片与上传记录 | 当前已加载的原上传账本，含跨项目和关闭批次的已登记任务 | 保留 project/batch/export task、SHA-256、冻结账户/计划及原接收证据；不读取私有 snapshotPath/config，不恢复上传权限 |
+
+供应商账户报表仅显示实际返回的消耗、成交订单数、含券成交金额、支付 ROI。字段口径和单位沿供应商返回，未与千川独立对账；缺指标为未知，不填零；支付 ROI 不求和。对比仍保留各自期间和采集时间，缺行不解释为零。分页只声称当前实际读取页面。
+
+计划可按日期读取供应商计划榜并按精确计划 ID 比较两个期间；计划关联账户及全量目录仍未知。完整计划范围内的素材效果以已保存的千川快照提供筛选及兼容范围对比。供应商素材效果报表的正常页面观察为 `total/list=null`，没有把该结构解释成零条，也没有将首页今日汇总当作历史数据。没有本地快照时明确为空；本页不自动采集或写入快照。现有快照私有权限持久化尚未核验 Windows，读取失败不能当作空库。
+
+目录与本地任务的关联必须同时满足精确账户 ID、有效 `ACCEPTED` 结果和接收回执 `platformVideoId` 等于目录 `outMediaId`。`outMaterialId`、`outMediaId` 和账户 ID 保留字符串，拒绝 rounded Number。名称和供应商 MD5 仅为元数据，不能建立本地身份。相同 SHA-256 标识本地成片字节重复；不会合并不同账户/计划的上传操作。READY 和 MAY_HAVE_UPLOADED 不标已接收。同一视频若关联到不同本地字节，显示冲突。
+
+## Query And Recovery Boundaries
+
+延续原固定 HTTPS host、opaque 会话、身份变化失效、credentials omit、无重定向、20秒单次读取及2MiB响应上限。新增查询先核对当前授权目录，不接受任意URL或写操作。取消停止当前请求，页面输入、账户、会话或工作区变化均忽略迟到结果；失败不自动重试、同步或重新授权。供应商会话失效后需重新发现，原浏览器与标签页保留。本地记录不要求供应商登录，账本不可用时失败关闭。
+
+## Current Evidence
+
+2026-10-16，使用本轮产品适配器源码连接当前正常千管家页面：目录20个授权账户；查询2026-10-15单日推商品历史账户报表，严格解析1行；同日计划榜1行且未返回账户身份；平台视频目录总数202，本页20行，ID均为精确字符串。同一供应商正常素材页曾在另一个账户返回严格空页。这些为真实只读数据结构和范围证据，不证明供应商归因准确、无延迟、平台审核通过或 Windows 实机验收。
+
+计划榜第一次产品读取因 `total=0` 却有1行而正确拒绝。随后通过正常页面同一日期和配方确认该不一致，调整为显式 bounded observation 契约：保留 `reportedTotal`，全量 total 固定未知、coverage 为 current-page-only，只允许 page=1，最多10行；不接受完整性或翻页资格。没有通过放宽凭据、替换账户或盲重试掩盖失败。调整后同源码真实读取通过。
+
+正式文件不保存账户名称、ID、财务值、客户身份、token 或播放URL。原始脱敏运行摘要、源码身份及本轮验证回执位于 ignored Harness run；交付前的最终测试、Chrome交互、Harness、AOCI和审查结果以对应最终候选证据及 Git 提交为准。

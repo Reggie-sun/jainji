@@ -188,6 +188,10 @@
         "tests/qianchuan-backend-queries.test.ts",
         "tests/qianguanjia-queries.test.ts",
         "tests/qianguanjia-transport.test.ts",
+        "tests/qianguanjia-view.test.ts",
+        "tests/qianguanjia-materials.test.ts",
+        "tests/qianguanjia-analysis-ui.test.ts",
+        "tests/qianguanjia-materials-ui.test.ts",
         "tests/qianchuan-backend-ui.test.ts",
         "tests/qianchuan-backend-session.test.ts",
         "tests/qianchuan-plan-selection.test.ts",
@@ -1769,6 +1773,36 @@
         "AGENTS.md",
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
+      "id": "domain-qianguanjia-analysis",
+      "paths": [
+        "src/shared/qianguanjia-analysis.ts",
+        "src/shared/qianguanjia-materials.ts",
+        "src/shared/qianguanjia-view.ts",
+        "src/renderer/QianguanjiaHistory.tsx",
+        "src/renderer/QianguanjiaSupplierComparison.tsx",
+        "src/renderer/QianguanjiaPlans.tsx",
+        "src/renderer/QianguanjiaMaterials.tsx",
+        "tests/qianguanjia-view.test.ts",
+        "tests/qianguanjia-materials.test.ts",
+        "tests/qianguanjia-analysis-ui.test.ts",
+        "tests/qianguanjia-materials-ui.test.ts",
+        "tests/helpers/qianguanjia-analysis-ui-fixture.ts",
+        "tests/helpers/qianguanjia-materials-ui-fixture.ts",
+        "docs/qianguanjia-history-materials-2026-10-16.md"
+      ],
+      "checkIds": [
+        "typecheck",
+        "douyin-upload",
+        "documents"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/video-validation-harness-spec.md",
+        "docs/qianguanjia-history-materials-2026-10-16.md"
       ]
     }
   ],
