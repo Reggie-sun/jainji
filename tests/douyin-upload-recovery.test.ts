@@ -15,7 +15,7 @@ import { uploadFailure, type PageOwnership, type ReadyEvidence, type UploadIdent
 const roots = new Set<string>();
 afterEach(async () => { await Promise.all([...roots].map(root => rm(root, { recursive: true, force: true }))); roots.clear(); });
 
-async function fixture(remote = false) {
+async function fixture(remote = false, currentBrowser = false) {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-recovery-")); roots.add(root);
   const outputDirectory = path.join(root, "outputs"); await mkdir(outputDirectory);
   const accountPath = path.join(root, "accounts.json");
@@ -24,7 +24,7 @@ async function fixture(remote = false) {
     ...(remote && product === "滴耳康" ? { egress: { mode: "remote-browser", group: "fixture", sshHost: "fixture-one", localPort: 19381, expectedIp: "203.0.113.11" } } : {}),
   })) }), { mode: 0o600 });
   const store = new DouyinUploadStore(path.join(root, "private")); await store.load();
-  const accounts = remote ? new QianchuanAccountSettings(store.root, async id => `http://127.0.0.1:${10000 + Number(id)}`,
+  const accounts = remote || currentBrowser ? new QianchuanAccountSettings(store.root, async id => `http://127.0.0.1:${10000 + Number(id)}`,
     async id => `http://127.0.0.1:${10000 + Number(id)}`, async () => ({ advertiserId: "3000", name: "Fixture account" })) : new QianchuanAccountConfigReader();
   if (accounts instanceof QianchuanAccountSettings) vi.spyOn(accounts, "controlBrowser").mockImplementation(async (_input, guard) => { guard((await accounts.preflight("滴耳康")).advertiserId); });
   let browserStore = store;
@@ -52,7 +52,8 @@ async function fixture(remote = false) {
     readOnlyCheck: async (task, owner, selected) => { checks.push(task.result.upload_task_id); return evidence(task, owner, selected.length); },
     stop: async () => {},
   };
-  const dependencies = { loadBatch: async (id: string) => structuredClone(states.get(id)!), accounts, browser: () => port, readPlans: async () => [] };
+  const dependencies = { loadBatch: async (id: string) => structuredClone(states.get(id)!), accounts, browser: () => port,
+    readPlans: async () => currentBrowser ? [{ advertiserId: "3000", adId: "4000", name: "Fixture plan", accountSource: "current-browser" as const }] : [] };
   const service = new DouyinUploadService(store, dependencies);
   await service.chooseConfig(accountPath); await service.configure({ enabled: true });
   async function batch(count: number, product: QianchuanProduct = "滴耳康", expectedCount = count) {
@@ -69,7 +70,8 @@ async function fixture(remote = false) {
       schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [], outputDirectory,
       preset: DEFAULT_PRESET, status: "completed", estimatedBytes: 0, createdAt: now(), tasks,
     } });
-    const selection = { enabled: true as const, accountProduct: product }, authorization = await service.preflight(selection, expectedCount);
+    const selection = { enabled: true as const, accountProduct: product,
+      ...(currentBrowser ? { plan: { advertiserId: "3000", adId: "4000", name: "Fixture plan", accountSource: "current-browser" as const } } : {}) }, authorization = await service.preflight(selection, expectedCount);
     await service.registerBatch({ id: batchId, projectId, tasks: tasks.map(task => ({ id: task.id })) }, selection, authorization);
     return { projectId, identities, pageBatchId: authorization!.pageBatchId };
   }
@@ -88,8 +90,8 @@ async function fixture(remote = false) {
 }
 
 describe("explicit Qianchuan batch recovery", () => {
-  async function manuallySubmitted(remote = false) {
-    const f = await fixture(remote), target = await f.batch(5, "滴耳康", 7);
+  async function manuallySubmitted(remote = false, currentBrowser = false) {
+    const f = await fixture(remote, currentBrowser), target = await f.batch(5, "滴耳康", 7);
     for (const identity of target.identities.slice(0, 2)) await f.service.enqueueFinalArtifact(identity);
     await f.service.runPending(); await f.service.stop();
     const records = await f.admit(target, true), selected = records.filter(task => f.store.hasMarker(task.result.upload_task_id));
@@ -148,6 +150,58 @@ describe("explicit Qianchuan batch recovery", () => {
     expect(restart.tasks()).toEqual(f.reopened.tasks());
     await expect(f.recovered.resume(f.request.uploadTaskId, undefined, undefined, f.request)).rejects.toThrow();
     expect(f.groups.map(group => group.length)).toEqual([2, 3]);
+  });
+
+  it.each(["partial", "restarted-child"])("reads the protected account page only for explicit historical upload identity, preserving catalog exclusions (%s)", async mode => {
+    const f = await manuallySubmitted(false, true);
+    if (!(f.accounts instanceof QianchuanAccountSettings)) throw new Error("Expected current-browser fixture");
+    const protectedId = f.reopened.fence(f.selected[0]!.result.upload_task_id)!.pageOwnership.targetId;
+    const selectedBefore = f.selected.map(task => structuredClone(f.reopened.task(task.result.upload_task_id)));
+    const fences = await Promise.all(f.selected.map(task => readFile(path.join(f.store.root, "selection-fences", `${task.result.upload_task_id}.json`))));
+    const original = f.accounts.prepareCurrentCatalog.bind(f.accounts);
+    const catalog = vi.spyOn(f.accounts, "prepareCurrentCatalog").mockImplementation(async (product, signal, excluded, openLocal) => {
+      // Live reproduction: the original protected upload page is the sole account page.
+      if (excluded?.has(protectedId)) throw new Error("The sole protected account page was excluded");
+      return original(product, signal, excluded, openLocal);
+    });
+    const admitted = vi.fn();
+    if (mode === "partial") await f.recovered.resume(f.request.uploadTaskId, admitted, undefined, f.request);
+    else {
+      const moved = await f.reopened.continueUnselectedBatch(f.request, { ...f.remaining[0]!.authorization, pageBatchId: randomUUID(), expectedCount: 3 });
+      await f.recovered.resume(moved[0]!.result.upload_task_id, admitted, moved[0]!.authorization.pageBatchId);
+    }
+    expect(admitted).toHaveBeenCalledOnce();
+    expect(f.groups.map(group => group.length)).toEqual([2, 3]);
+    for (let i = 0; i < f.selected.length; i++) {
+      expect(f.reopened.task(f.selected[i]!.result.upload_task_id)).toEqual(selectedBefore[i]);
+      expect(await readFile(path.join(f.store.root, "selection-fences", `${f.selected[i]!.result.upload_task_id}.json`))).toEqual(fences[i]);
+    }
+    expect(f.remaining.every(task => f.reopened.task(task.result.upload_task_id)!.result.state === "ACCEPTED")).toBe(true);
+    expect(() => assertAutomationBrowserSafe(f.reopened, "3000", new Set(), new Set(), new Set())).toThrow("未关闭或切换浏览器");
+    catalog.mockClear();
+    const configured = await f.accounts.preflight("滴耳康");
+    await expect(f.recovered.listPlans({ product: "滴耳康", expectedAdvertiserId: configured.advertiserId, accountSource: "current-browser", includeAccount: true, refresh: true })).rejects.toThrow("protected account page was excluded");
+    await expect(f.recovered.preflight({ enabled: true, accountProduct: "滴耳康", plan: { advertiserId: "3000", adId: "4000", name: "Fixture plan", accountSource: "current-browser" } }, 1)).rejects.toThrow("protected account page was excluded");
+    expect(catalog.mock.calls.some(call => call[2]?.has(protectedId))).toBe(true);
+  });
+
+  it("rejects a changed browser account after migration without granting a file action", async () => {
+    const f = await manuallySubmitted(false, true);
+    if (!(f.accounts instanceof QianchuanAccountSettings)) throw new Error("Expected current-browser fixture");
+    const original = f.accounts.prepareCurrentCatalog.bind(f.accounts); let reads = 0;
+    vi.spyOn(f.accounts, "prepareCurrentCatalog").mockImplementation(async (...args) => {
+      const current = await original(...args);
+      return ++reads >= 3 ? { ...current, target: { ...current.target, advertiserId: "9999" } } : current;
+    });
+    const admitted = vi.fn();
+    await expect(f.recovered.resume(f.request.uploadTaskId, admitted, undefined, f.request)).rejects.toThrow("网页当前子账户");
+    expect(admitted).not.toHaveBeenCalled(); expect(f.groups.map(group => group.length)).toEqual([2]);
+    for (const selected of f.selected) expect(f.reopened.task(selected.result.upload_task_id)).toEqual(selected);
+    for (const remaining of f.remaining) {
+      const moved = f.reopened.task(remaining.result.upload_task_id)!;
+      expect(moved.authorization.pageBatchId).not.toBe(f.target.pageBatchId);
+      expect(moved.result.upload_outcome).toBe("NOT_SELECTED"); expect(f.reopened.hasMarker(moved.result.upload_task_id)).toBe(false);
+    }
   });
 
   it.each(["missing", "extra", "unknown", "cancelled", "count", "project", "target", "snapshot"])("rejects %s continuation without changing the ledger or selecting another file", async kind => {

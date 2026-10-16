@@ -1399,7 +1399,9 @@ export class DouyinUploadService {
         const configured = await this.accounts.freeze(task.authorization.target.product, task.authorization.target.configDigest);
         try { this.selectedAccountTargets.resolve(task.authorization, selection, configured); }
         catch { throw uploadFailure("INPUT_CONFLICT", "account", "本轮上传授权或账号配置已变化，未选择上传文件。", "核查原批次授权；旧冻结目标保持原样。", true); }
-        const current = await this.accounts.prepareCurrentCatalog(task.authorization.target.product, signal, this.excludedPlanTargets());
+        // Explicit historical recovery may read identity on the protected original page; catalog actions still exclude it.
+        const current = await this.accounts.prepareCurrentCatalog(task.authorization.target.product, signal,
+          this.historicalContinuationBatches.has(task.authorization.pageBatchId) ? undefined : this.excludedPlanTargets());
         signal.throwIfAborted();
         if (current.target.advertiserId !== task.authorization.target.advertiserId) throw uploadFailure("INPUT_CONFLICT", "account", "网页当前子账户与本批冻结账户不同，未选择上传文件。", "核对原账号浏览器；不会改传其他账户或计划。", true);
         try { this.selectedAccountTargets.resolve(task.authorization, selection, current.configured); }
