@@ -162,6 +162,63 @@ it("does not open an absent Chrome while its upload owner still protects an old 
   await expect(manager.prepareUpload("123", () => { throw new Error("protected old batch"); }, new AbortController().signal)).rejects.toThrow("protected old batch");
   expect(launch).not.toHaveBeenCalled();
 });
+it("distinguishes opening a proven absent original Chrome from restarting a protected window", async () => {
+  const f = await survivingEgressFixture(), shutdown = vi.fn();
+  let running: typeof f.browser[] = [];
+  f.browsers.mockImplementation(async () => running);
+  const launch = vi.fn(async (profile, _id, binding, saved) => {
+    expect(profile).toBe(f.browser.profile); expect(binding?.profileDirectory).toBe(f.browser.profileDirectory);
+    expect(saved).toEqual(route); running = [f.browser];
+  });
+  const guard = vi.fn((_browser, operation) => { if (operation !== "open") throw new Error("protected old batch"); });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), shutdown, launch,
+    egress: async () => route, ready: async () => true });
+  await expect(manager.prepareUpload("123", guard, new AbortController().signal)).resolves.toBe(f.browser.endpoint);
+  expect(guard).toHaveBeenCalled(); expect(guard.mock.calls.every(call => call[1] === "open")).toBe(true);
+  expect(launch).toHaveBeenCalled(); expect(shutdown).not.toHaveBeenCalled();
+  expect(await f.bindings.get("123")).toMatchObject({ profile: f.browser.profile });
+});
+
+it.each(["metadata", "ambiguous"])("does not grant absent-browser preparation for %s evidence", async reason => {
+  const f = await survivingEgressFixture(), launch = vi.fn();
+  f.browsers.mockResolvedValue(reason === "metadata" ? [{ ...f.browser, connectionIssue: "METADATA_UNAVAILABLE" }] : [f.browser, f.browser]);
+  const guard = vi.fn((_browser, operation) => { if (operation !== "open") throw new Error("protected old batch"); });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), launch, egress: async () => route });
+  await expect(manager.prepareUpload("123", guard, new AbortController().signal)).rejects.toThrow();
+  expect(launch).not.toHaveBeenCalled(); expect(guard).not.toHaveBeenCalled();
+});
+
+it("does not treat an unbound absent browser as the original profile of a protected batch", async () => {
+  const f = await fixture(), launch = vi.fn();
+  await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: route });
+  const lease = { identity: "fixture", signal: new AbortController().signal };
+  vi.spyOn(qianchuanEgressRuntime, "ensure").mockResolvedValue(lease);
+  vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const manager = new QianchuanBrowserManager(f.root, { browsers: async () => [], launch, egress: async () => route, startupMs: 1 });
+  await expect(manager.prepareUpload("123", (_browser, operation) => {
+    if (operation !== "open") throw new Error("protected old batch");
+  }, new AbortController().signal)).rejects.toThrow("protected old batch");
+  expect(launch).not.toHaveBeenCalled();
+});
+
+it("does not grant original-profile opening when a newly discovered Chrome exits before binding is saved", async () => {
+  const f = await fixture(), launch = vi.fn();
+  await f.settings.savePlan({ product: "蝴蝶贴", planUrl: planUrl(), egress: route });
+  const profile = path.join(f.root, "original");
+  await mkdir(path.join(profile, "Profile 9"), { recursive: true, mode: 0o700 });
+  const original = { profile, profileDirectory: "Profile 9", endpoint: "http://127.0.0.1:19390", egressArguments: chromeEgressArguments(route) };
+  const browsers = vi.fn().mockResolvedValueOnce([original]).mockResolvedValue([]);
+  vi.spyOn(browserDiscovery, "discoverQianchuanProfile").mockResolvedValueOnce(original).mockResolvedValue(undefined);
+  const lease = { identity: "fixture", signal: new AbortController().signal };
+  vi.spyOn(qianchuanEgressRuntime, "ensure").mockResolvedValue(lease);
+  vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const manager = new QianchuanBrowserManager(f.root, { browsers, launch, egress: async () => route, startupMs: 1 });
+  await expect(manager.prepareUpload("123", (_browser, operation) => {
+    if (operation !== "open") throw new Error("protected old batch");
+  }, new AbortController().signal)).rejects.toThrow("protected old batch");
+  expect(launch).not.toHaveBeenCalled(); expect(await new QianchuanBrowserBindings(f.root).get("123")).toBeUndefined();
+});
+
 it.each(["absent", "other profile", "changed directory", "proxy mismatch", "missing metadata", "ambiguous"])("never restores an unproven surviving browser: %s", async scenario => {
   const f = await survivingEgressFixture();
   const browser = f.browser;

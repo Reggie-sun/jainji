@@ -16,6 +16,7 @@ import { readCurrentQianchuanAccountSnapshot, waitForCurrentQianchuanAccount } f
 
 const browserUnavailable = "账号浏览器未能启动。请安装 Google Chrome，并检查是否已有异常的账号窗口；不要删除登录目录。";
 const metadataUnavailable = "账号浏览器连接元数据无效，请核查原窗口和目录安全性；不会另开登录目录。";
+export type UploadBrowserPreparation = "open" | "restart";
 const accountUrl = (id: string) => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}`;
 
 type OriginalProfileOptions = Pick<QianchuanBrowserBinding, "profileDirectory" | "windowClass">;
@@ -113,13 +114,14 @@ export class QianchuanBrowserManager {
     await verifyBrowserEgress(endpoint, egress, this.dependencies.browsers);
   }
   /** Foreground upload preparation may repair the original browser before authorization freezes. */
-  async prepareUpload(advertiserId: string, guard: (browser?: RunningChromeBrowser) => void, signal: AbortSignal, expectedAdvertiserId?: string): Promise<string | undefined> {
+  async prepareUpload(advertiserId: string, guard: (browser?: RunningChromeBrowser, operation?: UploadBrowserPreparation) => void, signal: AbortSignal, expectedAdvertiserId?: string): Promise<string | undefined> {
     signal.throwIfAborted();
     const route = await this.dependencies.egress?.(advertiserId);
     if (!route || route.mode === "remote-browser") return;
-    const check = (browser?: RunningChromeBrowser) => { signal.throwIfAborted(); guard(browser); };
-    const { browser } = await this.shutdownTarget(advertiserId);
+    const { browser, binding, imported } = await this.shutdownTarget(advertiserId);
     signal.throwIfAborted();
+    // Only proven absence of a verified original profile grants open semantics; restart stays protected after shutdown.
+    const check = (observed?: RunningChromeBrowser) => { signal.throwIfAborted(); guard(observed, !browser && binding && !imported ? "open" : "restart"); };
     let mismatched = false;
     let currentAdvertiserId = expectedAdvertiserId ?? advertiserId;
     if (browser) {

@@ -694,10 +694,12 @@ export class DouyinUploadService {
     try {
       await this.stopPlanPreload(controller.signal);
       const preparations = this.browserPreparations;
-      await this.accounts.prepareUploadBrowser(product, (advertiserId, browser) => {
+      await this.accounts.prepareUploadBrowser(product, (advertiserId, browser, operation) => {
         if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner ||
           this.accountOperations.busy || this.backendQueries.busy || this.managingBrowser || this.cancelling || this.closing || this.discarding || this.retargeting ||
           this.stopping || this.beginningProduction || this.browserPreparations !== preparations || !this.store.config.enabled) throw new Error("上传控制已变化，未自动恢复账号浏览器。");
+        // Opening a proven absent original profile cannot close an old upload page or resume its tasks.
+        if (operation === "open" && !browser) return;
         const targets = [...this.store.tasks().map(task => task.authorization.target), ...this.store.intents().map(intent => intent.authorization.target)];
         const anchors = [advertiserId, ...(expectedAdvertiserId ? [expectedAdvertiserId] : [])];
         // Preparing one local browser keeps the exit configuration unchanged.

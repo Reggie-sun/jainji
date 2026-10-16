@@ -2223,6 +2223,21 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks()).toEqual(before);
   });
 
+  it.each(["READY", "MAY_HAVE_UPLOADED"] as const)("allows new production to open its absent original browser without resuming %s history", async outcome => {
+    const f = await fixedExitPreparation(outcome), before = f.store.tasks();
+    const fences = before.map(task => f.store.fence(task.result.upload_task_id));
+    const ledger = await readFile(path.join(f.store.root, "state.json")), events = [...f.events];
+    vi.mocked(QianchuanBrowserManager.prototype.prepareUpload).mockImplementation(async (_id, guard, signal) => {
+      signal.throwIfAborted(); guard(undefined, "open"); return "http://127.0.0.1:19391";
+    });
+    const authorization = await f.service.preflight(f.selected, 2);
+    expect(authorization?.target.advertiserId).toBe(f.selected.plan!.advertiserId);
+    expect(authorization?.target.adId).toBe(f.selected.plan!.adId);
+    expect(f.store.tasks()).toEqual(before); expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(ledger);
+    expect(before.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
+    expect(f.events).toEqual(events); expect(f.repaired()).toBe(false);
+  });
+
   it("keeps same-product historical drafts protected when a changed config cannot prove their original browser binding", async () => {
     const f = await fixedExitPreparation("READY", true), before = f.store.tasks();
     await expect(f.service.preflight(f.selected, 2)).rejects.toThrow("原页面");
