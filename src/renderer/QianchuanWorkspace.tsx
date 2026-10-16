@@ -25,7 +25,7 @@ export function QianchuanWorkspace({ state, page, onPage, onState, onAutomation,
     {batchUpload && <WorkspacePage active={page === "uploads"} label="本批上传任务"><BatchUploadDetails key={`${batchUpload.runId}:${batchUpload.jobId}`} request={batchUpload} active={active && page === "uploads"} /></WorkspacePage>}
     <DouyinUploadPanel key={state.project.id} projectId={state.project.id} status={state.douyinUpload} page={page === "console" || page === "effects" ? "reports" : page} showProjectUploads={!batchUpload} onPage={onPage} onState={onState} onAutomation={onAutomation} />
     <WorkspacePage active={page === "effects"} label="制作与效果"><QianchuanEffectLoop state={state} active={active && page === "effects"} onNavigate={onPage} onProduction={onProduction ?? (() => undefined)} /></WorkspacePage>
-    <WorkspacePage active={page === "console"} label="投放概览"><QianchuanOverview state={state} onNavigate={onPage} /></WorkspacePage>
+    <WorkspacePage active={page === "console"} label="投放概览"><QianchuanOverview state={state} active={active && page === "console"} onNavigate={onPage} /></WorkspacePage>
     <WorkspacePage active={page === "reports"} label="投放数据"><QianchuanBackendPanel accounts={state.douyinUpload?.accounts ?? []} active={active && page === "reports"} /></WorkspacePage>
   </section>;
 }

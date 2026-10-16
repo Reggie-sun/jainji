@@ -73,3 +73,10 @@
 .qc-overview-links button { display: grid; gap: 7px; text-align: left; padding: 18px; border: 1px solid var(--qc-line); border-radius: 10px; background: #fff; color: var(--qc-ink); cursor: pointer; font: inherit; }
 .qc-overview-links button:hover { border-color: #86b49e; background: #f1f7f3; }.qc-overview-links span { font-size: 12px; color: var(--qc-muted); overflow-wrap: anywhere; }
 @media (max-width: 800px) { .qc-overview-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }.qc-overview-links { grid-template-columns: minmax(0, 1fr); } }
+
+.qc-overview-account { display: grid; gap: 6px; max-width: 620px; }
+.qc-overview-catalog { display: grid; gap: 14px; margin-top: 14px; min-width: 0; }
+.qc-overview-catalog .qianchuan-subaccount-select { max-width: 620px; }
+.qc-overview-catalog .qc-section-heading { margin: 0; }
+.qc-overview-catalog .qianchuan-query-table table { table-layout: fixed; }
+.qc-overview-catalog .qianchuan-query-table td { overflow-wrap: anywhere; }

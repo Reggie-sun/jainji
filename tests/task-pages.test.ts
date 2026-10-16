@@ -36,7 +36,7 @@ for (const width of [820, 1440]) it(`separates local overview, compact reports a
     const nav = page.getByRole("navigation", { name: "千川页面" });
     expect(await nav.getByRole("button", { name: "投放概览", exact: true }).getAttribute("aria-current")).toBe("page");
     await page.getByRole("heading", { name: "账户与保存计划", exact: true }).waitFor();
-    expect(await page.getByRole("cell", { name: "456", exact: true }).isVisible()).toBe(true);
+    await page.getByRole("cell", { name: "456", exact: true }).waitFor();
     expect(await page.getByLabel("查询内容", { exact: true }).isVisible()).toBe(false);
     await page.getByRole("button", { name: "查询计划与数据 →", exact: false }).click();
     await page.getByRole("heading", { name: "计划与数据", exact: true }).waitFor();
@@ -518,7 +518,7 @@ it("hands enabled automatic upload to new batch production and keeps it frozen d
     const entries = await page.evaluate(() => (window as any).taskPagesFixture.calls.batchStarts[0].entries);
     expect(entries).toHaveLength(1);
     expect(entries[0].requestedCount).toBe(7);
-    expect(entries[0].douyinUpload).toEqual({ enabled: true, accountProduct: "蝴蝶贴", plan: { advertiserId: "123", adId: "456", name: "隔离计划" } });
+    expect(entries[0].douyinUpload).toEqual({ enabled: true, accountProduct: "蝴蝶贴", plan: { advertiserId: "123", adId: "456", name: "隔离计划", accountSource: "current-browser" } });
     await rail(page, "千川").click();
     await rail(page, "批量制作").click();
     await page.getByRole("spinbutton", { name: "想制作的视频条数", exact: true }).first().fill("8");
@@ -665,6 +665,10 @@ it.each([
   try {
     await page.evaluate(({ source, advertiserId }) => {
       const f = (window as any).taskPagesFixture;
+      // Preserve coverage of plan-source admission on the pre-directory bridge.
+      const bridge = window.jianji as any;
+      delete bridge.listQianchuanSubaccounts;
+      delete bridge.switchQianchuanSubaccount;
       window.jianji.listQianchuanPlans = async () => {
         const plan = { advertiserId, adId: "456", name: "显式选择的计划", ...(source ? { accountSource: source as "current-browser" } : {}) };
         return source ? { account: { advertiserId, name: "当前网页子账户" }, plans: [plan] } : [plan];
