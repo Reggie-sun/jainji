@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { QianguanjiaAccountReports } from "./QianguanjiaAccountReports";
 import { QianguanjiaPlans } from "./QianguanjiaPlans";
 import { QianguanjiaSupplierComparison } from "./QianguanjiaSupplierComparison";
 import { QIANCHUAN_QUERY_METRICS, type QianchuanQueryMetric } from "../shared/qianchuan-backend.js";
@@ -41,7 +42,8 @@ export function QianguanjiaHistory({ active, api, sessionId, directory, accounts
   onSessionInvalid?: () => void;
 }) {
   const [planBusy,setPlanBusy]=useState(false);
-  const [source, setSource] = useState<"supplier" | "local">("supplier");
+  const [crossBusy, setCrossBusy] = useState(false);
+  const [source, setSource] = useState<"direct" | "supplier" | "local">("direct");
   const [startDate, setStartDate] = useState(beijingDate), [endDate, setEndDate] = useState(beijingDate);
   const [supplierSelection, setSupplierSelection] = useState<string[] | null>(null);
   const [localAccountValue, setLocalAccountValue] = useState("");
@@ -165,18 +167,18 @@ export function QianguanjiaHistory({ active, api, sessionId, directory, accounts
   const missingSupplierRows = visibleSupplier?.data ? selectedSupplierIds.filter(id => !visibleSupplier.data!.rows.some(row => row.advertiserId === id)) : [];
 
   return <section className="qianguanjia-card" aria-label="千管家历史报表" data-testid="qianguanjia-history">
-    <div className="qianguanjia-card-title"><h2>历史报表</h2><span>{source === "supplier" ? "账户与日期维度" : `${localSnapshots.length} 份本地快照`}</span></div>
+    <div className="qianguanjia-card-title"><h2>历史报表</h2><span>{source === "direct" ? "全部已保存千川账户" : source === "supplier" ? "账户与日期维度" : `${localSnapshots.length} 份本地快照`}</span></div>
     <div className="qianchuan-query-fields">
-      <label>历史来源<select aria-label="历史报表来源" value={source} disabled={!active || Boolean(visibleSupplier?.loading)} onChange={event => setSource(event.target.value as "supplier" | "local")}>
-        <option value="supplier">千管家中台报表</option><option value="local">已保存的千川快照</option>
+      <label>历史来源<select aria-label="历史报表来源" value={source} disabled={!active || crossBusy || Boolean(visibleSupplier?.loading)} onChange={event => setSource(event.target.value as "direct" | "supplier" | "local")}>
+        <option value="direct">千川跨账户报表</option><option value="supplier">千管家中台报表</option><option value="local">已保存的千川快照</option>
       </select></label>
       {source === "local" && <label>本地账户<select aria-label="本地历史账户" value={selectedLocalAccount ? accountKey(selectedLocalAccount) : ""} disabled={!active || !usableLocalAccounts.length} onChange={event => setLocalAccountValue(event.target.value)}>
         <option value="">请选择本地账户</option>{usableLocalAccounts.map(account => <option key={accountKey(account)} value={accountKey(account)}>{account.productName ?? account.product} · {account.advertiserId}</option>)}
       </select></label>}
-      <label>开始日期<input aria-label="历史报表开始日期" type="date" value={startDate} disabled={!active || Boolean(visibleSupplier?.loading)} onChange={event => { setStartDate(event.target.value); setSupplierPage(1); }} /></label>
-      <label>结束日期<input aria-label="历史报表结束日期" type="date" value={endDate} disabled={!active || Boolean(visibleSupplier?.loading)} onChange={event => { setEndDate(event.target.value); setSupplierPage(1); }} /></label>
+      <label>开始日期<input aria-label="历史报表开始日期" type="date" value={startDate} disabled={!active || crossBusy || Boolean(visibleSupplier?.loading)} onChange={event => { setStartDate(event.target.value); setSupplierPage(1); }} /></label>
+      <label>结束日期<input aria-label="历史报表结束日期" type="date" value={endDate} disabled={!active || crossBusy || Boolean(visibleSupplier?.loading)} onChange={event => { setEndDate(event.target.value); setSupplierPage(1); }} /></label>
     </div>
-    {source === "supplier" ? <>
+    {source === "direct" ? <QianguanjiaAccountReports active={active} accounts={accounts} directory={directory} startDate={startDate} endDate={endDate} onBusy={value => { setCrossBusy(value); onBusy?.(value); }} /> : source === "supplier" ? <>
       <div role="group" aria-label="选择历史报表账户" style={{ display: "grid", gap: 8, gridColumn: "1 / -1" }}>
         <label style={{ display: "flex", alignItems: "center", gap: 7 }}><input type="checkbox" aria-label="全部授权账户" style={{ width: "auto", minHeight: "auto" }} checked={supplierAccounts.length > 0 && selectedSupplierIds.length === supplierAccounts.length} disabled={!active || Boolean(visibleSupplier?.loading) || !supplierAccounts.length} onChange={event => setSupplierSelection(event.target.checked ? supplierAccounts.map(account => account.advertiserId) : [])} />全部授权账户（{supplierAccounts.length}）</label>
         {supplierAccounts.length > 0 && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: "4px 12px", maxHeight: 144, overflowY: "auto", padding: "4px 0" }}>

@@ -14,6 +14,7 @@ async function fixture(width = 1000, accountCount = 2) {
   await page.addStyleTag({ content: qianguanjiaAnalysisFixtureStyles() });
   await page.addScriptTag({ content: qianguanjiaAnalysisFixtureScript(accountCount) });
   await page.getByRole("heading", { name: "历史报表", exact: true }).waitFor();
+  await page.getByLabel("历史报表来源").selectOption("supplier");
   return page;
 }
 
