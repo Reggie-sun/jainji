@@ -110,16 +110,16 @@ it("never confirms deletion for a five-day plan even when every page has zero im
     expect((await readdir(path.join(root, "plan-material-deletions"))).some(name => name.endsWith("pending.json"))).toBe(false);
   } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
 });
-it("skips pending zero-impression IDs while deleting eligible IDs on later pages", async () => {
+it("clears currently eligible zero-impression IDs despite historical records", async () => {
   const f = await fixture(), root = await mkdtemp(path.join(tmpdir(), "zero-isolation-"));
   const directory = path.join(root, "plan-material-deletions"), gate = path.join(directory, `${target.advertiserId}-${target.adId}.pending.json`);
   const bytes = JSON.stringify({ version: 1, attempt: "11111111-1111-4111-8111-111111111111", advertiserId: target.advertiserId, adId: target.adId, ids: ["13"] });
   await mkdir(directory, { mode: 0o700 }); await writeFile(gate, bytes, { mode: 0o600 });
   try {
     const result = await new QianchuanPlanMaterials(root, async () => ({ page: f.session, close: () => f.session.dispose() })).clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D");
-    expect(result).toMatchObject({ state: "PARTIAL", deletedCount: 2 });
-    expect(f.removed.flat()).toEqual(["15", "17"]); expect(f.remaining()).toEqual(["11", "12", "13", "14", "16"]);
-    expect(f.offsets).toContain(200); expect(await readFile(gate, "utf8")).toBe(bytes);
+    expect(result).toMatchObject({ state: "CLEARED", deletedCount: 3 });
+    expect(f.removed.flat()).toEqual(["13", "15", "17"]); expect(f.remaining()).toEqual(["11", "12", "14", "16"]);
+    expect(f.offsets).toContain(100); expect(await readFile(gate, "utf8")).toBe(bytes);
   } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
 });
 it.each([{ noCreationTime: true }, { badTime: true }, { missingTimeDimension: true }, { badDate: true }, { thirtyDayRequest: true }, { missingMetric: true }, { wrongAccount: true }])("refuses unbound dates, old thirty-day requests, absent counts and wrong account before deletion %j", async options => {
@@ -221,7 +221,7 @@ it("waits for an unchanged refresh then verifies the delayed result without conf
     expect((await f.session.read()).total).toBe(before.total - 1);
   } finally { await f.session.dispose(); await f.context.close(); }
 });
-it("times out on a permanently unchanged refresh and persists the reason without replay", async () => {
+it("stops the current operation on a permanently unchanged refresh and preserves its unknown intent", async () => {
   const f = await fixture({ resultRefresh: "stale" }), root = await mkdtemp(path.join(tmpdir(), "zero-stale-"));
   const connect = vi.fn(async () => ({ page: f.session, close: () => f.session.dispose() }));
   try {
@@ -229,9 +229,7 @@ it("times out on a permanently unchanged refresh and persists the reason without
     const result = await owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D");
     expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0, message: expect.stringContaining("等待删除结果超时"), pendingPlanDeletion: { ids: ["12"] } });
     const gate = path.join(root, "plan-material-deletions", `${target.advertiserId}-${target.adId}.pending.json`), bytes = await readFile(gate);
-    const repeated = await new QianchuanPlanMaterials(root, connect).clear(target, async () => {});
-    expect(repeated.pendingPlanDeletion).toEqual(result.pendingPlanDeletion);
-    expect(repeated.state).toBe("BLOCKED"); expect(connect).toHaveBeenCalledTimes(2);
+    expect(connect).toHaveBeenCalledTimes(1);
     expect(f.removed).toEqual([["12"]]); expect(await readFile(gate)).toEqual(bytes);
   } finally { await f.context.close(); await rm(root, { recursive: true, force: true }); }
 });

@@ -107,6 +107,30 @@ it("keeps the same document identity during automatic hash refresh-time updates"
   } finally { await f.service.close(); }
 });
 
+it("reads video-library identity past an installed old reader without authorizing commands or accepting a different account", async () => {
+  const f = await fixture();
+  try {
+    const page = f.context.pages()[1]!;
+    await page.evaluate(() => { history.replaceState(null, "", `/tools/creative-management/video-library${location.search}`); });
+    const legacy = await f.context.newCDPSession(page);
+    const tree = await legacy.send("Page.getFrameTree");
+    const world = await legacy.send("Page.createIsolatedWorld", { frameId: tree.frameTree.frame.id, worldName: "__jianji_qianchuan_account_reader_v2__" });
+    await legacy.send("Runtime.evaluate", { contextId: world.executionContextId,
+      expression: 'globalThis.__jianjiQianchuanContent = { createContentController() { throw new Error("old reader retained across application restart"); } }' });
+    await legacy.detach();
+    const session = new QianchuanCdpAccountSession(f.target, async () => undefined);
+    const current = await session.current(new AbortController().signal);
+    expect(current.account).toEqual(FIXTURE_ACCOUNTS[0]);
+    const catalog = new QianchuanAccountCatalog(session.call.bind(session), {
+      parse: value => CdpSnapshotSchema.parse(value), same: sameCdpSnapshot, switched: switchedCdpSnapshot,
+    });
+    await expect(catalog.accounts(current, new AbortController().signal)).rejects.toThrow();
+    expect(f.service.state.apiRequests).toHaveLength(0);
+    await page.locator(".account-info-box").evaluate(element => { element.textContent = "错误账户 ID：1876294500004865"; });
+    await expect(session.current(new AbortController().signal)).rejects.toThrow();
+  } finally { await f.service.close(); }
+});
+
 it("reads the foreground upload document identity without authorizing account commands on its drawer", async () => {
   const f = await fixture();
   try {

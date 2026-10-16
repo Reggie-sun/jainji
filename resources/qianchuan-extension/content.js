@@ -152,7 +152,7 @@
       try { url = new URL(env.location.href); } catch { fail("CHANGED"); }
       const extensionMarkers = url.searchParams.getAll("jianjiExtensionPlanPicker");
       const planIds = url.searchParams.getAll("adId");
-      if (url.origin !== ORIGIN || !(["/", "/uni-prom"].includes(url.pathname) || readOnlyIdentity && url.pathname === "/account-center/account-info") || url.username || url.password ||
+      if (url.origin !== ORIGIN || !(["/", "/uni-prom"].includes(url.pathname) || readOnlyIdentity && ["/account-center/account-info", "/tools/creative-management/video-library"].includes(url.pathname)) || url.username || url.password ||
         url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== expectedId || planIds.length > 1 ||
         planIds.some(value => value !== "" && (!readOnlyIdentity || url.pathname !== "/uni-prom" || !ID_PATTERN.test(value))) ||
         url.searchParams.has("jianjiPlanPicker") || extensionMarkers.length > 1 || extensionMarkers.length === 1 &&

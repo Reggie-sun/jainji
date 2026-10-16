@@ -26,7 +26,9 @@ async function ownerFixture() {
   const gate = path.join(root, "plan-material-deletions", `${target.advertiserId}-${target.adId}.pending.json`);
   const page = { open: vi.fn(async () => {}), filter: vi.fn(async () => ({ skippedEcological: false })), read: vi.fn(async () => snapshot()),
     deleteBatch: vi.fn(async (before: ReturnType<typeof snapshot>, confirm: () => Promise<void>) => {
-      await confirm(); expect(JSON.parse(await readFile(gate, "utf8"))).toMatchObject({ adId: target.adId, ids: before.ids });
+      await confirm();
+      const records = await Promise.all((await readdir(path.dirname(gate))).filter(name => name.endsWith(".pending.json")).map(async name => JSON.parse(await readFile(path.join(path.dirname(gate), name), "utf8"))));
+      expect(records.some(record => record.adId === target.adId && JSON.stringify(record.ids) === JSON.stringify(before.ids))).toBe(true);
       ids = ids.filter(id => !before.ids.includes(id));
     }) };
   const connect = vi.fn(async () => ({ page, close: async () => {} }));
@@ -60,7 +62,7 @@ it.each([false, true])("runs both rules sequentially over remaining materials an
   expect(modes).toEqual([false, true]); expect(removed).toEqual(failZero ? ["7001", "7002"] : ["7001", "7002", "7003"]);
   if (failZero) {
     expect((await owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_15D")).state).toBe("BLOCKED");
-    expect(connect).toHaveBeenCalledTimes(3);
+    expect(connect).toHaveBeenCalledTimes(4);
   }
 });
 it("does not enter the second rule when the first rule has an unknown outcome", async () => {
@@ -69,23 +71,23 @@ it("does not enter the second rule when the first rule has an unknown outcome", 
   expect((await f.owner.clear(target, async () => {}, undefined, "AUDIT_AND_ZERO_IMPRESSIONS_15D")).state).toBe("BLOCKED");
   expect(f.connect).toHaveBeenCalledTimes(1); expect(await readFile(f.gate, "utf8")).toContain("7001");
 });
-it("keeps an unknown deletion intent and refuses confirmation on a later explicit call or a new owner", async () => {
+it("keeps an unknown deletion intent while a later explicit call evaluates the current list again", async () => {
   const f = await ownerFixture();
   f.page.deleteBatch.mockImplementationOnce(async (_before, confirm) => { await confirm(); throw new Error("response lost"); });
   expect((await f.owner.clear(target, async () => {})).state).toBe("BLOCKED");
   const bytes = await readFile(f.gate);
-  expect((await new QianchuanPlanMaterials(f.root, f.connect).clear(target, async () => {})).state).toBe("BLOCKED");
-  expect(f.connect).toHaveBeenCalledTimes(2); expect(f.page.deleteBatch).toHaveBeenCalledTimes(1); expect(await readFile(f.gate)).toEqual(bytes);
+  expect(await new QianchuanPlanMaterials(f.root, f.connect).clear(target, async () => {})).toMatchObject({ state: "CLEARED", deletedCount: 3 });
+  expect(f.connect).toHaveBeenCalledTimes(2); expect(f.page.deleteBatch).toHaveBeenCalledTimes(3); expect(await readFile(f.gate)).toEqual(bytes);
 });
 it.each([
   { startTime: "2026-09-30 00:00:00", endTime: "2026-10-06 23:59:59", createdBefore: "2026-10-05 16:00:00" },
   { startTime: "2026-09-08 00:00:00", endTime: "2026-10-07 23:59:59" },
-])("preserves a legacy pending intent when the connection lacks isolation support: %j", async zeroWindow => {
+])("preserves a legacy pending intent without requiring isolation support: %j", async zeroWindow => {
   const f = await ownerFixture();
   await mkdir(path.dirname(f.gate), { recursive: true, mode: 0o700 });
   const bytes = JSON.stringify({ version: 1, attempt: "11111111-1111-4111-8111-111111111111", advertiserId: target.advertiserId, adId: target.adId, ids: ["7001"], zeroWindow });
   await writeFile(f.gate, bytes, { mode: 0o600 });
-  expect(await f.owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "BLOCKED", message: expect.stringContaining("缺少历史素材隔离分页能力") });
+  expect(await f.owner.clear(target, async () => {}, undefined, "ZERO_IMPRESSIONS_15D")).toMatchObject({ state: "BLOCKED", message: expect.stringContaining("缺少素材分页证据") });
   expect(f.connect).toHaveBeenCalledTimes(1); expect(f.page.deleteBatch).not.toHaveBeenCalled(); expect(await readFile(f.gate, "utf8")).toBe(bytes);
 });
 it("stops after cancellation before intent and reports an absent ecological option without another filter", async () => {
@@ -154,10 +156,10 @@ it("selects all three options together, sends one filter and deletes only verifi
     await f.session.open(); expect(await f.session.filter()).toEqual({ skippedEcological: false });
     expect(f.filters()).toBe(2); const before = await f.session.read(); expect(before.ids).toEqual(["7001", "7002", "7003"]);
     await f.session.deleteBatch(before, async () => { expect(f.confirmations()).toBe(0); });
-    expect(f.confirmations()).toBe(1); expect(await f.session.read()).toEqual({ total: 0, ids: [] });
+    expect(f.confirmations()).toBe(1); expect(await f.session.read()).toMatchObject({ total: 0, ids: [] });
   } finally { await f.session.dispose(); await f.context.close(); }
 });
-it.each(["mixed", "protected-first", "protected-last"])("skips historical audit IDs and reaches other candidates across pages: %s", async mode => {
+it.each(["mixed", "protected-first", "protected-last"])("clears eligible historical IDs across all audit pages from the first page: %s", async mode => {
   const many = mode !== "mixed";
   const f = await pageFixture({ many, initialOffset: mode === "protected-last" ? 100 : 0 }), owner = await ownerFixture();
   await mkdir(path.dirname(owner.gate), { recursive: true, mode: 0o700 });
@@ -166,8 +168,8 @@ it.each(["mixed", "protected-first", "protected-last"])("skips historical audit 
   await writeFile(owner.gate, bytes, { mode: 0o600 });
   try {
     const result = await new QianchuanPlanMaterials(owner.root, async () => ({ page: f.session, close: () => f.session.dispose() })).clear(target, async () => {});
-    expect(result).toMatchObject({ state: "PARTIAL", deletedCount: mode === "protected-last" ? 100 : many ? 1 : 2 });
-    expect(f.removed).toEqual([mode === "protected-last" ? Array.from({ length: 100 }, (_, i) => String(8000 + i)) : many ? ["8100"] : ["7002", "7003"]]);
+    expect(result).toMatchObject({ state: "CLEARED", deletedCount: many ? 101 : 3 });
+    expect(f.removed).toEqual(many ? [Array.from({ length: 100 }, (_, i) => String(8000 + i)), ["8100"]] : [["7001", "7002", "7003"]]);
     expect(await readFile(owner.gate, "utf8")).toBe(bytes);
   } finally { await f.session.dispose(); await f.context.close(); }
 });
@@ -194,7 +196,7 @@ it("reports the platform's additional title-deletion boundary without a second c
     expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0, message: expect.stringContaining("同步删除自选标题") });
     expect(f.confirmations()).toBe(1); const bytes = await readFile(owner.gate);
     const repeated = await new QianchuanPlanMaterials(owner.root, connect).clear(target, async () => {});
-    expect(repeated.state).toBe("BLOCKED"); expect(repeated.pendingPlanDeletion).toEqual(result.pendingPlanDeletion);
+    expect(repeated.state).toBe("BLOCKED"); expect(repeated.pendingPlanDeletion).toBeUndefined();
     expect(result.pendingPlanDeletion?.ids).toHaveLength(3);
     expect(connect).toHaveBeenCalledTimes(2); expect(f.confirmations()).toBe(1); expect(await readFile(owner.gate)).toEqual(bytes);
   } finally { await f.context.close(); }
@@ -243,6 +245,6 @@ it.each(["delivery", "pager", "drift"])("rejects missing delivery/pager controls
 
 it("accepts an empty delivering filter without a pagination control", async () => {
   const f = await pageFixture({ empty: true });
-  try { await f.session.open(); await f.session.filter(); expect(await f.session.read()).toEqual({ total: 0, ids: [] }); expect(f.confirmations()).toBe(0); }
+  try { await f.session.open(); await f.session.filter(); expect(await f.session.read()).toMatchObject({ total: 0, ids: [] }); expect(f.confirmations()).toBe(0); }
   finally { await f.session.dispose(); await f.context.close(); }
 });

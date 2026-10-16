@@ -12,8 +12,8 @@ import { guardedTransport } from "./local-cdp-transport.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { readQianchuanPlans } from "./qianchuan-plan-catalog.js";
 
-const WORLD_NAME = "__jianji_qianchuan_account_reader_v2__";
-const STATE_NAME = "__jianjiQianchuanAccountReaderV2";
+const WORLD_NAME = "__jianji_qianchuan_account_reader_v3__";
+const STATE_NAME = "__jianjiQianchuanAccountReaderV3";
 const MAX_CONTENT_BYTES = 256 * 1024;
 const MAX_METADATA_BYTES = 64 * 1024;
 const SWITCH_WAIT_MS = 10_000;

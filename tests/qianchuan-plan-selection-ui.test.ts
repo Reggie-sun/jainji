@@ -266,7 +266,7 @@ it("clears a directory choice when the saved advertiser-plan binding changes whi
     expect(await page.evaluate(() => (window as any).saved)).toEqual([]);
   } finally { await page.close(); }
 });
-it.each([false, true])("shows pending IDs and requires manual handling plus a second confirmation without automatically retrying (child=%s)", async child => {
+it.each([false, true])("shows deletion records without a manual-handling prerequisite and allows a new cleanup (child=%s)", async child => {
   const page = await browser.newPage();
   try {
     await page.route("http://127.0.0.1:3000/recovery", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));
@@ -275,21 +275,16 @@ it.each([false, true])("shows pending IDs and requires manual handling plus a se
     await page.evaluate(child => (window as any).catalogRequests[0].resolve(child ? {account:{advertiserId:"7000",name:"清理子账户"},plans:[{advertiserId:"7000",adId:"9001",name:"计划 9001",accountSource:"current-browser"}]} : [{advertiserId:"1000",adId:"9001",name:"计划 9001"}]), child);
     await page.getByRole("button", { name: "自动删除所选两类素材（1）", exact: true }).click();
     await page.getByText("查看各账号结果", { exact: true }).click();
-    await page.getByText("待核查素材明细（2 条）", { exact: true }).click();
-    expect(await page.getByLabel("待核查素材 ID").inputValue()).toBe("7001\n7002");
-    expect(await page.getByRole("button", { name: "结束这次旧清理记录", exact: true }).isDisabled()).toBe(true);
-    await page.getByRole("checkbox", { name: "我已在千川核查并处理以上全部素材" }).check();
-    await page.getByRole("button", { name: "结束这次旧清理记录", exact: true }).click();
-    expect(await page.evaluate(() => (window as any).recoveryRequests.length)).toBe(0);
-    await page.getByRole("button", { name: "返回核查", exact: true }).click();
-    await page.getByRole("button", { name: "结束这次旧清理记录", exact: true }).click();
-    await page.getByRole("button", { name: "确认结束旧记录", exact: true }).click();
-    await page.getByText(/旧记录已由你标记为人工处理/).waitFor();
-    expect(await page.evaluate(() => (window as any).recoveryRequests)).toEqual([{ product: "眼贴", advertiserId: child ? "7000" : "1000", ...(child ? {expectedAdvertiserId:"1000"} : {}), adId: "9001", attempt: "11111111-1111-4111-8111-111111111111", digest: "d".repeat(64), confirmation: "MANUALLY_HANDLED_PLAN_DELETION" }]);
-    expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(1);
-    expect(await page.getByLabel("待核查素材 ID").count()).toBe(0);
+    await page.getByText("删除记录（2 条）", { exact: true }).click();
+    expect(await page.getByLabel("本次删除素材 ID").inputValue()).toBe("7001\n7002");
+    expect(await page.getByRole("checkbox", { name: "我已在千川核查并处理以上全部素材" }).count()).toBe(0);
+    expect(await page.getByRole("button", { name: /结束.*记录/ }).count()).toBe(0);
+    expect(await page.evaluate(() => (window as any).recoveryRequests)).toEqual([]);
+    await page.getByRole("button", { name: "自动删除所选两类素材（1）", exact: true }).click();
+    expect(await page.evaluate(() => (window as any).cleanupRequests.length)).toBe(2);
   } finally { await page.close(); }
 });
+
 async function fixture(options: { strict?: boolean; multiple?: boolean; batch?: boolean } = {}): Promise<Page> {
   const page = await browser.newPage();
   await page.route("http://127.0.0.1:3000/plan-selector", route => route.fulfill({ contentType: "text/html", body: '<div id="root"></div>' }));

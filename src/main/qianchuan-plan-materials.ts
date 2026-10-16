@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { open, unlink } from "node:fs/promises";
+import { lstat, open, unlink } from "node:fs/promises";
 import path from "node:path";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { QianchuanPlanMaterialRecovery } from "./qianchuan-plan-material-recovery.js";
@@ -10,7 +10,7 @@ import type { QianchuanPlanMaterialPage } from "./qianchuan-plan-material-page.j
 import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import { createZeroImpressionsWindow, type ZeroImpressionsWindow } from "./qianchuan-zero-impressions.js";
 
-type Connection = { page: Pick<QianchuanPlanMaterialPage, "open" | "filter" | "read" | "deleteBatch"> & Partial<Pick<QianchuanPlanMaterialPage, "movePage" | "excludeMaterialIds">>; close(): Promise<void> };
+type Connection = { page: Pick<QianchuanPlanMaterialPage, "open" | "filter" | "read" | "deleteBatch"> & Partial<Pick<QianchuanPlanMaterialPage, "movePage">>; close(): Promise<void> };
 
 /** Same production service owns scheduling; this owner only records plan-delete intent and current UI progress. */
 export class QianchuanPlanMaterials {
@@ -27,7 +27,7 @@ export class QianchuanPlanMaterials {
       const audit = await this.clear(target, guard, signal);
       if (audit.state === "BLOCKED") return audit;
       const zero = await this.clear(target, guard, signal, "ZERO_IMPRESSIONS_15D");
-      return { ...zero, state: zero.state === "CLEARED" && audit.state === "PARTIAL" ? "PARTIAL" : zero.state, pendingPlanDeletion: zero.pendingPlanDeletion ?? audit.pendingPlanDeletion, deletedCount: audit.deletedCount + zero.deletedCount, message: `${audit.message} ${zero.message}` };
+      return { ...zero, deletedCount: audit.deletedCount + zero.deletedCount, message: `${audit.message} ${zero.message}` };
     }
     const zeroWindow = rule === "ZERO_IMPRESSIONS_15D" ? createZeroImpressionsWindow(this.startedAt) : undefined;
     const result: QianchuanLibraryResult = { product: target.product, advertiserId: target.advertiserId, state: "BLOCKED", deletedCount: 0, message: "计划素材清理未开始。" };
@@ -44,22 +44,17 @@ export class QianchuanPlanMaterials {
       await secureUploadDirectory(directory); await strictSyncDirectory(this.root);
       operation = await open(lock, "wx", 0o600);
       await guard(); signal.throwIfAborted();
-      const pending = await recovery.pendingRecords();
-      result.pendingPlanDeletion = pending[0];
-      const protectedIds = await recovery.protectedIds();
-      // Keep every old intent byte intact; new confirmations use an independent exclusive gate.
-      if (pending.length) gate = recovery.attemptGate(attempt);
-      const paginated = !!zeroWindow || protectedIds.size > 0;
+      // Historical records are informational. Never overwrite them or use them
+      // to exclude candidates from a newly authorized current-list cleanup.
+      try { await lstat(gate); gate = recovery.attemptGate(attempt); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
       stage = "连接账号浏览器"; connection = await this.connect(target, signal, zeroWindow);
-      if (protectedIds.size) {
-        if (!connection.page.excludeMaterialIds || !connection.page.movePage) throw new Error("缺少历史素材隔离分页能力，未删除素材。");
-        connection.page.excludeMaterialIds(protectedIds);
-      }
       stage = "打开计划素材"; await connection.page.open();
       stage = "筛选计划素材";
       const { skippedEcological } = await connection.page.filter();
       stage = "核对素材列表";
       let snapshot = await connection.page.read();
+      const paginated = !!zeroWindow || !!snapshot.auditPage;
       if (paginated && (!(snapshot.zeroImpressions || snapshot.auditPage) || !connection.page.movePage)) throw new Error("缺少素材分页证据，未删除素材。");
       if (paginated && snapshot.total) {
         await connection.page.movePage!(true); snapshot = await connection.page.read();
@@ -83,7 +78,6 @@ export class QianchuanPlanMaterials {
           }
         }
         const before = snapshot;
-        if (before.ids.some(id => protectedIds.has(id))) throw new Error("当前列表含历史未知删除的素材，须在千川人工处理；不会自动重复删除。");
         stage = "确认计划素材删除";
         await connection.page.deleteBatch(before, async () => {
           await guard(); signal.throwIfAborted();
@@ -107,7 +101,7 @@ export class QianchuanPlanMaterials {
       const audit = path.join(directory, attempt); await secureUploadDirectory(audit); await strictSyncDirectory(directory);
       await this.write(path.join(audit, "completed.json"), { advertiserId: target.advertiserId, adId: target.adId, initialCount, deletedCount: result.deletedCount, observationMode: zeroWindow ? "zero_impressions_all_pages" : "filtered_current_ui", ...(zeroWindow ? { zeroWindow } : {}), completedAt: new Date().toISOString() });
       await connection.close(); connection = undefined;
-      return { ...result, state: protectedIds.size ? "PARTIAL" : "CLEARED", message: (zeroWindow ? `计划 ${target.adId} 已逐页清理 ${zeroWindow.startTime.slice(0, 10)} 至 ${zeroWindow.endTime.slice(0, 10)} 零展示素材，删除 ${result.deletedCount} 条。` : `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。`) + (protectedIds.size ? ` 历史未知结果的 ${protectedIds.size} 个素材ID已隔离，其他候选已处理；保留 ${pending.length} 批待核查记录，不自动重删。` : "") };
+      return { ...result, state: "CLEARED", message: zeroWindow ? `计划 ${target.adId} 已逐页清理 ${zeroWindow.startTime.slice(0, 10)} 至 ${zeroWindow.endTime.slice(0, 10)} 零展示素材，删除 ${result.deletedCount} 条。` : `计划 ${target.adId} 三类素材已清理，列表净减少 ${result.deletedCount} 条${skippedEcological ? "；无生态审核不通过选项，已跳过" : ""}。` };
     } catch (error) {
       let diagnosticWarning = "";
       if (intentWritten) {

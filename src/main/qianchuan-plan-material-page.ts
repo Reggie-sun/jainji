@@ -16,11 +16,6 @@ export class QianchuanPlanMaterialPage {
   private document?: JSHandle<Document>;
   private response?: PlanMaterialSnapshot;
   private fault = false;
-  private excluded = new Set<string>();
-  excludeMaterialIds(ids: ReadonlySet<string>): void {
-    if (this.document) throw changed();
-    this.excluded = new Set(ids);
-  }
   private hundredRows = false;
   private responseLimit?: number;
   private statuses: PlanMaterialStatus[] = [];
@@ -73,7 +68,7 @@ export class QianchuanPlanMaterialPage {
       if (request.frame() !== this.page.mainFrame() || request.method() !== "POST" || url.origin !== "https://qianchuan.jinritemai.com" ||
         url.pathname !== listPath || url.searchParams.getAll("aavid").length !== 1 || url.searchParams.get("aavid") !== this.target.advertiserId ||
         body.DataSetKey !== "site_promotion_product_post_data_video" || !Number.isInteger(body.PageParams?.Limit) || body.PageParams.Limit < 1 || body.PageParams.Limit > 100 || this.hundredRows && body.PageParams.Limit !== 100 ||
-        !Number.isInteger(body.PageParams.Offset) || body.PageParams.Offset < 0 || body.PageParams.Offset > 20000 || body.PageParams.Offset % body.PageParams.Limit !== 0 || !this.zeroWindow && !this.excluded.size && body.PageParams.Offset !== 0 ||
+        !Number.isInteger(body.PageParams.Offset) || body.PageParams.Offset < 0 || body.PageParams.Offset > 20000 || body.PageParams.Offset % body.PageParams.Limit !== 0 ||
         body.Filters?.ConditionRelationshipType !== 1) return false;
       const expected: Record<string, string[]> = { query_type: ["all"], roi2_material_type_v3: ["1001"], marketing_goal: ["1"],
         ad_id: [this.target.adId], roi2_material_video_type: ["11"], roi2_material_status: ["1"], material_audit_status: ["2", "4"] };
@@ -113,12 +108,12 @@ export class QianchuanPlanMaterialPage {
       const rows = (stats.rows ?? []).map((row: unknown) => parseZeroImpressionsRow(row, this.zeroWindow!));
       const { Offset: offset, Limit: limit } = response.request().postDataJSON().PageParams;
       if (rows.length !== Math.min(limit, Math.max(0, value.total - offset)) || value.total > 0 && offset >= value.total) throw changed();
-      value = { total: value.total, ids: rows.filter((row: ZeroImpressionsRow) => row.eligible && !this.excluded.has(row.id)).map((row: ZeroImpressionsRow) => row.id), zeroImpressions: { offset, limit, rows } };
+      value = { total: value.total, ids: rows.filter((row: ZeroImpressionsRow) => row.eligible).map((row: ZeroImpressionsRow) => row.id), zeroImpressions: { offset, limit, rows } };
     }
-    if (!this.zeroWindow && this.excluded.size) {
+    if (!this.zeroWindow) {
       const { Offset: offset, Limit: limit } = response.request().postDataJSON().PageParams;
       if (value.ids.length !== Math.min(limit, Math.max(0, value.total - offset)) || value.total > 0 && offset >= value.total) throw changed();
-      value = { ...value, auditPage: { offset, limit, ids: value.ids }, ids: value.ids.filter(id => !this.excluded.has(id)) };
+      value = { ...value, auditPage: { offset, limit, ids: value.ids } };
     }
     await this.guard();
     if (revision === this.revision) { this.response = value; this.responseLimit = response.request().postDataJSON().PageParams.Limit; }
@@ -273,7 +268,7 @@ export class QianchuanPlanMaterialPage {
   }
   async deleteBatch(before: PlanMaterialSnapshot, beforeConfirm: () => Promise<void>): Promise<void> {
     await this.guard();
-    if (!before.ids.length || before.ids.some(id => this.excluded.has(id)) || JSON.stringify(await this.read()) !== JSON.stringify(before) || await this.page.locator(".ovui-modal:visible").count()) throw changed();
+    if (!before.ids.length || JSON.stringify(await this.read()) !== JSON.stringify(before) || await this.page.locator(".ovui-modal:visible").count()) throw changed();
     const selected = this.drawer().locator('.ovui-table__body-wrapper tbody input[type="checkbox"]:checked');
     if (await selected.count()) throw changed();
     const header = this.drawer().locator('.ovui-table__head-wrapper thead input[type="checkbox"]');

@@ -47,8 +47,15 @@ export class QianchuanPlanMaterialRecovery {
   }
   async pendingRecords(): Promise<QianchuanPendingPlanDeletion[]> { return (await this.records()).map(record => record.pending); }
   async pending(attempt?: string): Promise<QianchuanPendingPlanDeletion | undefined> {
+    if (attempt) {
+      const file = this.attemptGate(attempt);
+      const record = await exists(file) ? await this.readPending(file) : await exists(this.gate) ? await this.readPending(this.gate) : undefined;
+      if (!record || record.value.attempt !== attempt) return undefined;
+      const { value, digest } = record;
+      return { adId: value.adId, attempt, digest, ids: value.ids, ...(value.zeroWindow ? { zeroWindow: value.zeroWindow } : {}) };
+    }
     const records = await this.pendingRecords();
-    return attempt ? records.find(record => record.attempt === attempt) : records[0];
+    return records[0];
   }
   async protectedIds(): Promise<Set<string>> {
     const ids = new Set((await this.pendingRecords()).flatMap(record => record.ids));
