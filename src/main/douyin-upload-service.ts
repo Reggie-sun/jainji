@@ -11,7 +11,7 @@ import { uploadBatchSettled } from "./douyin-upload-group.js";
 import { historicalUploadBatch, historicalBrowserAnchor, recoverablePreparationTimeout } from "./douyin-upload-recovery.js";
 import { QianchuanAccountConfigReader, QianchuanAccountConfigError } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings, type EgressChangeGuard } from "./qianchuan-account-settings.js";
-import { AutomationBrowserAccounts, assertAutomationBrowserSafe } from "./qianchuan-automation-browsers.js";
+import { AutomationBrowserAccounts, assertAutomationBrowserSafe, historicalBrowserPageProof } from "./qianchuan-automation-browsers.js";
 import { egressIdentity } from "../shared/qianchuan-egress.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import { QianchuanAccountSetupSchema, QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
@@ -694,10 +694,14 @@ export class DouyinUploadService {
     try {
       await this.stopPlanPreload(controller.signal);
       const preparations = this.browserPreparations;
-      await this.accounts.prepareUploadBrowser(product, (advertiserId, browser, operation) => {
+      const absentPages = historicalBrowserPageProof(this.store);
+      const checkControl = () => {
         if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner ||
           this.accountOperations.busy || this.backendQueries.busy || this.managingBrowser || this.cancelling || this.closing || this.discarding || this.retargeting ||
           this.stopping || this.beginningProduction || this.browserPreparations !== preparations || !this.store.config.enabled) throw new Error("上传控制已变化，未自动恢复账号浏览器。");
+      };
+      await this.accounts.prepareUploadBrowser(product, (advertiserId, browser, operation, closed) => {
+        checkControl();
         // Opening a proven absent original profile cannot close an old upload page or resume its tasks.
         if (operation === "open" && !browser) return;
         const targets = [...this.store.tasks().map(task => task.authorization.target), ...this.store.intents().map(intent => intent.authorization.target)];
@@ -712,7 +716,14 @@ export class DouyinUploadService {
             this.summaries.some(account => account.product === target.product && account.advertiserId === target.advertiserId);
           return !savedAnchor && this.egressTargetAffected(target, anchors, [configured], browser);
         }).map(target => target.advertiserId)]);
-        for (const id of ids) assertAutomationBrowserSafe(this.store, id, this.eligible, this.currentIntents, this.cancelledIntents);
+        const assertSafe = (absent?: ReadonlySet<string>) => {
+          for (const id of ids) assertAutomationBrowserSafe(this.store, id, this.eligible, this.currentIntents, this.cancelledIntents, absent);
+        };
+        try { assertSafe(); }
+        catch (error) {
+          if (operation !== "restart" || !browser) throw error;
+          return absentPages(browser, closed).then(absent => { checkControl(); assertSafe(absent); });
+        }
       }, controller.signal, expectedAdvertiserId);
     } finally { if (this.ordinaryBrowserController === controller) this.ordinaryBrowserController = undefined; }
   }

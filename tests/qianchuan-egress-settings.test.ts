@@ -13,6 +13,10 @@ import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings
 import { chromeEgressArguments } from "../src/main/qianchuan-egress-browser";
 import * as egressProbe from "../src/main/qianchuan-egress-probe";
 import * as currentAccount from "../src/main/qianchuan-current-account";
+import { chromium } from "playwright-core";
+import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
+import { DouyinUploadStore } from "../src/main/douyin-upload-store";
+import { historicalBrowserPageProof } from "../src/main/qianchuan-automation-browsers";
 
 const route = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
 const planUrl = (id = "123") => `https://qianchuan.jinritemai.com/uni-prom?aavid=${id}&adId=456`;
@@ -84,6 +88,50 @@ it("repairs a bound direct Chrome before upload using the saved fixed exit and t
   expect(events.filter(event => event === "shutdown")).toHaveLength(1);
   expect(running[0]!.egressArguments).toContain("--proxy-server=socks5://127.0.0.1:19381");
 });
+
+it("awaits asynchronous page protection before shutdown and marks checks after its own shutdown", async () => {
+  const f = await survivingEgressFixture(), original = { ...f.browser, egressArguments: [] as string[] };
+  let running = [original], checked = false, closed = false;
+  f.browsers.mockImplementation(async () => running);
+  const shutdown = vi.fn(async () => { expect(checked).toBe(true); closed = true; running = []; });
+  const launch = vi.fn(async () => { expect(closed).toBe(true); running = [f.browser]; });
+  const guard = vi.fn(async (_browser, operation, afterShutdown) => {
+    await Promise.resolve(); expect(operation).toBe("restart"); expect(Boolean(afterShutdown)).toBe(closed); checked = true;
+  });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), shutdown, launch,
+    egress: async () => route, ready: async () => true });
+  await expect(manager.prepareUpload("123", guard, new AbortController().signal)).resolves.toBe(f.browser.endpoint);
+  expect(shutdown).toHaveBeenCalledOnce(); expect(guard.mock.calls.some(call => call[2] === true)).toBe(true);
+});
+
+it("does not apply a historical-page proof to a replacement browser process", async () => {
+  const f = await survivingEgressFixture(), original = { ...f.browser, egressArguments: [] as string[], processId: 42, startedAt: "123" };
+  let replaced = false;
+  f.browsers.mockImplementation(async () => [{ ...original, startedAt: replaced ? "124" : "123" }]);
+  f.readAccount.mockImplementation(async () => { replaced = true; return { advertiserId: "123" }; });
+  const shutdown = vi.fn();
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), shutdown, egress: async () => route });
+  await expect(manager.prepareUpload("123", async () => {}, new AbortController().signal)).rejects.toThrow("进程身份已变化");
+  expect(shutdown).not.toHaveBeenCalled();
+});
+
+it("reads historical-page absence through the real HTTP CDP endpoint without changing Chrome pages", async () => {
+  const f = await fixture(), profile = path.join(f.root, "isolated-http");
+  const context = await chromium.launchPersistentContext(profile, { executablePath: await resolveChromeExecutable(), headless: true,
+    args: ["--no-sandbox", "--remote-debugging-port=0", "--remote-debugging-address=127.0.0.1"] });
+  try {
+    const endpoint = `http://127.0.0.1:${(await readFile(path.join(profile, "DevToolsActivePort"), "utf8")).split("\n")[0]}`;
+    const session = await context.browser()!.newBrowserCDPSession();
+    const { processInfo } = await session.send("SystemInfo.getProcessInfo"); await session.detach();
+    const processId = processInfo.find(info => info.type === "browser")!.id;
+    const stat = await readFile(`/proc/${processId}/stat`, "utf8"), startedAt = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
+    const browser = { endpoint, profile, processId, startedAt };
+    const store = new DouyinUploadStore(path.join(f.root, "empty-store")); await store.load();
+    const pages = context.pages(), proof = historicalBrowserPageProof(store);
+    await expect(proof(browser)).resolves.toEqual(new Set());
+    expect(context.pages()).toEqual(pages); expect(pages.every(page => !page.isClosed())).toBe(true);
+  } finally { await context.close(); }
+}, 15_000);
 
 it("leaves the original Chrome untouched when the upload owner's protection rejects recovery", async () => {
   const f = await survivingEgressFixture();

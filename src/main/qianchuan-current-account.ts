@@ -67,7 +67,7 @@ async function boundedBody(response: Response, limit: number, signal: AbortSigna
   return Buffer.concat(chunks.map(chunk => Buffer.from(chunk))).toString("utf8");
 }
 
-async function browserEndpoint(endpoint: string, signal: AbortSignal): Promise<string> {
+export async function browserEndpoint(endpoint: string, signal: AbortSignal): Promise<string> {
   const url = new URL(endpoint);
   if (url.protocol === "ws:") return browserWebSocket(endpoint).href;
   if (!isLoopbackUrl(endpoint) || !validPort(url.port) || url.pathname !== "/") throw new Error(FAILURE);

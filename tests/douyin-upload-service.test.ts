@@ -3,7 +3,7 @@ import { chmod, mkdtemp, mkdir, readFile, rm, stat, symlink, writeFile } from "n
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DouyinUploadStore, type UploadTaskRecord } from "../src/main/douyin-upload-store";
+import { DouyinUploadStore, intentKey, type UploadTaskRecord } from "../src/main/douyin-upload-store";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
@@ -16,6 +16,9 @@ import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefau
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
 import type { PageOwnership, ReadyEvidence, UploadAuthorization, UploadIdentity, QianchuanUploadSelection } from "../src/shared/douyin-upload";
 import { uploadFailure } from "../src/shared/douyin-upload";
+import * as localCdp from "../src/main/local-cdp-transport";
+import * as accountConnection from "../src/main/qianchuan-current-account";
+import { assertAutomationBrowserSafe } from "../src/main/qianchuan-automation-browsers";
 
 const selection = (accountProduct: QianchuanProduct): QianchuanUploadSelection => ({ enabled: true, accountProduct });
 const temporaryRoots = new Set<string>();
@@ -2236,6 +2239,49 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks()).toEqual(before); expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(ledger);
     expect(before.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
     expect(f.events).toEqual(events); expect(f.repaired()).toBe(false);
+  });
+
+  it.each(["READY", "MAY_HAVE_UPLOADED"] as const)("repairs the original browser when its historical %s page has disappeared without changing history", async outcome => {
+    const f = await fixedExitPreparation(outcome), before = f.store.tasks(), ledger = await readFile(path.join(f.store.root, "state.json"));
+    const fences = before.map(task => f.store.fence(task.result.upload_task_id)), events = [...f.events];
+    vi.spyOn(accountConnection, "browserEndpoint").mockImplementation(async endpoint => endpoint.replace("http:", "ws:") + "/devtools/browser/fixture");
+    const targets = vi.spyOn(localCdp, "readChromeTargets").mockResolvedValue([{ targetId: "current-dashboard", type: "page" }]);
+    const browser = { endpoint: "http://127.0.0.1:19390", profile: "/fixture/original", processId: 42, startedAt: "123", profileDirectory: "Profile 9" };
+    vi.mocked(QianchuanBrowserManager.prototype.prepareUpload).mockImplementation(async (_id, guard) => {
+      await guard(browser, "restart", false);
+      targets.mockRejectedValue(new Error("the old process is now closed"));
+      await guard(browser, "restart", true);
+      return "http://127.0.0.1:19391";
+    });
+    expect((await f.service.preflight(f.selected, 2))?.target.adId).toBe("9001");
+    expect(targets).toHaveBeenCalledOnce(); expect(f.store.tasks()).toEqual(before);
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(ledger);
+    expect(before.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences); expect(f.events).toEqual(events);
+    const task = before[0]!, absent = new Set([fences[0]!.pageOwnership.targetId]);
+    expect(() => assertAutomationBrowserSafe(f.store, task.authorization.target.advertiserId, new Set([task.result.upload_task_id]), new Set(), new Set(), absent)).toThrow("原页面");
+    expect(() => assertAutomationBrowserSafe(f.store, task.authorization.target.advertiserId, new Set(), new Set([intentKey(task.input)]), new Set(), absent)).toThrow("原页面");
+  });
+
+  it.each(["live page", "unreadable", "malformed", "unproven process", "closed without proof", "changed process", "page appears before shutdown"])("keeps historical upload protection for %s during browser repair", async scenario => {
+    const f = await fixedExitPreparation("MAY_HAVE_UPLOADED"), before = f.store.tasks();
+    const targetId = f.store.fence(before[0]!.result.upload_task_id)!.pageOwnership.targetId;
+    vi.spyOn(accountConnection, "browserEndpoint").mockImplementation(async endpoint => endpoint.replace("http:", "ws:") + "/devtools/browser/fixture");
+    const targets = vi.spyOn(localCdp, "readChromeTargets").mockResolvedValue([{ targetId: scenario === "live page" ? targetId : "dashboard", type: "page" }]);
+    if (scenario === "unreadable") targets.mockRejectedValue(new Error("CDP unavailable"));
+    if (scenario === "malformed") targets.mockResolvedValue([{ type: "page" }]);
+    const browser = { endpoint: "http://127.0.0.1:19390", profile: "/fixture/original", processId: 42, startedAt: "123", profileDirectory: "Profile 9" };
+    let repaired = false;
+    vi.mocked(QianchuanBrowserManager.prototype.prepareUpload).mockImplementation(async (_id, guard) => {
+      if (scenario === "unproven process") delete (browser as Partial<typeof browser>).startedAt;
+      if (scenario === "changed process") await guard(browser, "restart", false);
+      if (scenario === "page appears before shutdown") {
+        await guard(browser, "restart", false); targets.mockResolvedValue([{ targetId, type: "page" }]);
+      }
+      await guard(scenario === "changed process" ? { ...browser, startedAt: "124" } : browser, "restart", scenario === "closed without proof" || scenario === "changed process");
+      repaired = true; return browser.endpoint;
+    });
+    await expect(f.service.preflight(f.selected, 2)).rejects.toThrow();
+    expect(repaired).toBe(false); expect(f.store.tasks()).toEqual(before);
   });
 
   it("keeps same-product historical drafts protected when a changed config cannot prove their original browser binding", async () => {

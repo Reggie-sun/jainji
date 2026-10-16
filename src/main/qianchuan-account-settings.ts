@@ -269,12 +269,12 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   async configuredAccount(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return super.preflight(product); }
   override async preflight(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.preflight(product)); }
   override async freeze(product: QianchuanProduct, digest: string): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.freeze(product, digest)); }
-  async prepareUploadBrowser(product: QianchuanProduct, guard: (advertiserId: string, browser?: RunningChromeBrowser, operation?: UploadBrowserPreparation) => void, signal: AbortSignal, expectedAdvertiserId?: string): Promise<void> {
+  async prepareUploadBrowser(product: QianchuanProduct, guard: (advertiserId: string, browser?: RunningChromeBrowser, operation?: UploadBrowserPreparation, browserClosed?: boolean) => void | Promise<void>, signal: AbortSignal, expectedAdvertiserId?: string): Promise<void> {
     await this.edit(async () => {
       this.assertAvailable(); signal.throwIfAborted();
       const target = await super.preflight(product);
       if (!target.egress || target.egress.mode === "remote-browser") return;
-      const endpoint = await this.browsers.prepareUpload(target.advertiserId, (browser, operation) => guard(target.advertiserId, browser, operation), signal, expectedAdvertiserId);
+      const endpoint = await this.browsers.prepareUpload(target.advertiserId, (browser, operation, closed) => guard(target.advertiserId, browser, operation, closed), signal, expectedAdvertiserId);
       await super.freeze(product, target.configDigest); signal.throwIfAborted();
       if (endpoint) this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
     });

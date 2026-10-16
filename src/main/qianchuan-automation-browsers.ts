@@ -1,6 +1,9 @@
 import { egressIdentity } from "../shared/qianchuan-egress.js";
 import type { FrozenQianchuanAccount } from "./qianchuan-account-config.js";
 import { intentKey, type DouyinUploadStore } from "./douyin-upload-store.js";
+import type { RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
+import { readChromeTargets } from "./local-cdp-transport.js";
+import { browserEndpoint } from "./qianchuan-current-account.js";
 
 interface Dependencies {
   accounts(): Promise<FrozenQianchuanAccount[]>;
@@ -10,11 +13,34 @@ interface Dependencies {
 const sameAccount = (a: FrozenQianchuanAccount, b: FrozenQianchuanAccount) => a.product === b.product && a.advertiserId === b.advertiserId &&
   a.configDigest === b.configDigest && a.cdpEndpoint === b.cdpEndpoint && egressIdentity(a.egress) === egressIdentity(b.egress);
 
-export function assertAutomationBrowserSafe(store: DouyinUploadStore, advertiserId: string, eligible: ReadonlySet<string>, currentIntents: ReadonlySet<string>, cancelledIntents: ReadonlySet<string>): void {
+/** Ephemeral absence evidence for one foreground repair; never changes task or upload authority. */
+export function historicalBrowserPageProof(store: DouyinUploadStore) {
+  let proof: { browser: string; absent: ReadonlySet<string> } | undefined;
+  return async (browser: RunningChromeBrowser, closed = false): Promise<ReadonlySet<string> | undefined> => {
+    if (!browser.endpoint || !browser.profile || !browser.processId || !browser.startedAt) return undefined;
+    const identity = JSON.stringify([browser.endpoint, browser.profile, browser.profileDirectory, browser.windowClass, browser.processId, browser.startedAt]);
+    if (closed) return proof?.browser === identity ? proof.absent : undefined;
+    proof = undefined;
+    const targets = await readChromeTargets(await browserEndpoint(browser.endpoint, AbortSignal.timeout(5_000)));
+    if (!Array.isArray(targets) || targets.length > 256 || targets.some(target => !target || typeof target.targetId !== "string" || !target.targetId || target.targetId.length > 256) ||
+      new Set(targets.map(target => target.targetId)).size !== targets.length) throw new Error("无法完整核查原浏览器页面，未重启账号浏览器。");
+    const live = new Set(targets.map(target => target.targetId));
+    const absent = new Set(store.tasks().flatMap(task => {
+      const id = store.fence(task.result.upload_task_id)?.pageOwnership.targetId;
+      return id && !live.has(id) ? [id] : [];
+    }));
+    proof = { browser: identity, absent };
+    return absent;
+  };
+}
+
+export function assertAutomationBrowserSafe(store: DouyinUploadStore, advertiserId: string, eligible: ReadonlySet<string>, currentIntents: ReadonlySet<string>, cancelledIntents: ReadonlySet<string>, absentHistoricalPages?: ReadonlySet<string>): void {
   const tasks = store.tasks();
   const protectedTask = tasks.some(task => task.authorization.target.advertiserId === advertiserId && !store.isClosed(task.authorization.pageBatchId) && task.result.state !== "DISCARDED" &&
     !(task.result.state === "ACCEPTED" && task.result.upload_outcome === "ACCEPTED" && task.result.acceptedEvidence) &&
-    (store.hasMarker(task.result.upload_task_id) || task.result.upload_outcome !== "NOT_SELECTED" || eligible.has(task.result.upload_task_id)));
+    (store.hasMarker(task.result.upload_task_id) || task.result.upload_outcome !== "NOT_SELECTED" || eligible.has(task.result.upload_task_id)) &&
+    !(absentHistoricalPages?.has(store.fence(task.result.upload_task_id)?.pageOwnership.targetId ?? "") &&
+      !eligible.has(task.result.upload_task_id) && !currentIntents.has(intentKey(task.input))));
   const preparing = store.intents().some(intent => intent.authorization.target.advertiserId === advertiserId && !store.isClosed(intent.authorization.pageBatchId) &&
     currentIntents.has(intentKey(intent)) && !cancelledIntents.has(intentKey(intent)) && !tasks.some(task => intentKey(task.input) === intentKey(intent)));
   if (protectedTask || preparing) throw new Error("该 VPS 账号仍有待上传、待确认或结果未知的任务，未关闭或切换浏览器。请核查原页面。");
