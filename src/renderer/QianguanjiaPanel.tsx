@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import type { QianguanjiaAccountDirectory, QianguanjiaDesktopApi, QianguanjiaHomeSummary, QianguanjiaSessionOption } from "../shared/qianguanjia";
+import "./qianchuan-backend.css";
 
 const groups = [["ALL", "全部推广"], ["LIVE_PROM_GOODS", "直播推广"], ["VIDEO_PROM_GOODS", "短视频推广"]] as const;
 const metrics = [["statCost", "消耗"], ["totalPayOrderCountForRoi2", "成交订单数"], ["totalPayOrderGmvIncludeCouponForRoi2", "成交金额（含优惠券）"], ["totalPrepayAndPayOrderRoi2", "支付 ROI"]] as const;
 const time = (value: string) => new Date(value).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" });
 const overviewMetrics = [metrics[0], metrics[2], metrics[1], metrics[3]];
 
-export function QianguanjiaPanel({ active, api, onNavigate }: { active: boolean; api: QianguanjiaDesktopApi; onNavigate?(page: "reports" | "materials" | "uploads" | "effects"): void }) {
+export function QianguanjiaPanel({ active, api }: { active: boolean; api: QianguanjiaDesktopApi }) {
   const [sessions, setSessions] = useState<QianguanjiaSessionOption[]>([]), [sessionId, setSessionId] = useState("");
   const [directory, setDirectory] = useState<QianguanjiaAccountDirectory>(), [home, setHome] = useState<QianguanjiaHomeSummary>();
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
@@ -72,16 +73,11 @@ export function QianguanjiaPanel({ active, api, onNavigate }: { active: boolean;
   const selected = (tab === "accounts" ? directory : home) ?? directory ?? home;
 
   return <section aria-label="千管家只读数据" className="qianchuan-backend-panel qianguanjia-console">
-    <header className="qianguanjia-console-header"><div className="qianguanjia-console-brand"><span aria-hidden="true">◇</span><strong>JIANJI</strong><span>投放工作台</span></div>
-      <nav aria-label="投放工作台业务导航">
-        <button type="button" aria-current={tab === "home" ? "page" : undefined} onClick={() => setTab("home")}>首页</button>
-        <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("reports")}>推广管理</button>
-        <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("effects")}>制作与效果</button>
-        <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("reports")}>数据报表</button>
-        <button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("materials")}>素材中心</button>
+    <header className="qianguanjia-page-heading"><h1>千管家</h1><p>查看已授权账户与今日推广汇总</p></header>
+      <nav className="task-page-tabs" aria-label="千管家页面">
+        <button type="button" aria-current={tab === "home" ? "page" : undefined} onClick={() => setTab("home")}>数据概览</button>
         <button type="button" aria-current={tab === "accounts" ? "page" : undefined} onClick={() => setTab("accounts")}>账户管理</button>
       </nav>
-    </header>
     <div className="qianguanjia-console-toolbar"><div><span className={`qianguanjia-connection ${selected ? "is-connected" : ""}`}>{selected ? "已连接授权会话" : "未连接"}</span><span>数据来源：千管家</span>{selected && <small>更新于 {time(selected.observedAt)}</small>}</div>
       <div className="qianguanjia-console-actions"><button type="button" className="button" disabled={busy || !active || !connected} onClick={() => void connect()}>连接已授权账户</button>
         <button type="button" className="button secondary" disabled={busy || !active || !sessionId} onClick={() => void read(tab === "accounts" ? "accounts" : "home")}>刷新数据</button>
@@ -100,20 +96,17 @@ export function QianguanjiaPanel({ active, api, onNavigate }: { active: boolean;
         <button type="button" className="button secondary" disabled={busy || !active || !sessionId} onClick={() => void read("home")}>读取今日汇总</button></div>
     </details>
     <div hidden={tab !== "home"} className="qianguanjia-console-body">
-      <main className="qianguanjia-console-main"><div className="qianguanjia-mode-bar"><strong>全域推广</strong><button type="button" disabled={!onNavigate} onClick={() => onNavigate?.("reports")}>计划与预算查询 →</button></div>
+      <div className="qianguanjia-console-main">
         <section className="qianguanjia-card"><div className="qianguanjia-card-title"><h2>数据概览</h2><span>{home?.date ?? "今日"} · 北京时间</span></div>
-          <dl className="qianguanjia-kpis">{overviewMetrics.map(([field, name], index) => <div key={field} className={`qianguanjia-kpi qianguanjia-kpi-${index}`}><dt>{name}</dt><dd>{home?.groups.ALL.current[field] ?? "—"}</dd><span aria-hidden="true">{["¥", "↗", "▤", "%"][index]}</span></div>)}</dl>
+          <dl className="qianguanjia-kpis">{overviewMetrics.map(([field, name]) => <div key={field} className="qianguanjia-kpi"><dt>{name}</dt><dd>{home?.groups.ALL.current[field] ?? "—"}</dd></div>)}</dl>
           <p className="qianguanjia-data-scope">当前供应商用户的全域汇总，不代表任一单账户或计划的效果。</p>
+          <button type="button" className="qianguanjia-text-button" onClick={() => setTab("accounts")}>{directory ? `查看 ${directory.accounts.length} 个授权账户 →` : "查看授权账户 →"}</button>
         </section>
         <section className="qianguanjia-card"><div className="qianguanjia-card-title"><h2>推广数据</h2><span>按读取日期统计</span></div>
           {home ? <div className="qianchuan-query-result" data-testid="qianguanjia-home">{groups.map(([key, label]) => <section key={key} className="qianguanjia-group" aria-label={label}><h3>{label}</h3><dl className="qianchuan-query-metrics">{metrics.map(([field, name]) => <div key={field}><dt>{name}</dt><dd>{home.groups[key].current[field]}</dd></div>)}</dl></section>)}
             <p className="qianguanjia-data-scope">供应商首页汇总 · {home.date}。时间序列尚未接入，此处只展示本次实际读取的分类数据。</p></div> : <div className="qianguanjia-empty"><span aria-hidden="true">▥</span><strong>连接账户，查看投放数据</strong><p>读取授权账户、今日消耗、成交金额、订单数与支付 ROI。</p></div>}
         </section>
-      </main>
-      <aside className="qianguanjia-console-aside"><section className="qianguanjia-card"><div className="qianguanjia-card-title"><h2>账户概况</h2></div><strong className="qianguanjia-account-total">{directory?.accounts.length ?? "—"}<small>个授权账户</small></strong><p>沿用原有授权，账户目录与本地上传目标分别管理。</p><button type="button" className="qianguanjia-text-button" onClick={() => setTab("accounts")}>查看授权账户 →</button></section>
-        <section className="qianguanjia-card"><div className="qianguanjia-card-title"><h2>快捷入口</h2></div><div className="qianguanjia-shortcuts">{([["reports", "↗", "计划 · ROI · 预算"], ["materials", "▣", "素材管理"], ["uploads", "↑", "上传任务"]] as const).map(([page, icon, label]) => <button key={page} type="button" disabled={!onNavigate} onClick={() => onNavigate?.(page)}><span aria-hidden="true">{icon}</span>{label}</button>)}</div></section>
-        <section className="qianguanjia-card qianguanjia-scope-note"><h2>投放管理</h2><p>计划与素材操作进入简辑现有页面。今日汇总仅查询数据；调整预算、ROI 和创建投放尚未接入本工作台。</p></section>
-      </aside>
+      </div>
     </div>
     <section hidden={tab !== "accounts"} className="qianguanjia-card qianguanjia-directory-page"><div className="qianguanjia-card-title"><h2>账户管理</h2><span>{directory ? `已读取 ${directory.accounts.length} 个授权账户` : "等待连接"}</span></div>
       <div className="qianguanjia-account-filters"><label>账户搜索<input aria-label="搜索授权账户" placeholder="输入账户名称或广告主 ID" value={search} onChange={event => { setSearch(event.target.value); setPageIndex(0); }} /></label>

@@ -50,7 +50,7 @@ describe("workspace workflow navigation", () => {
   });
 
   it("leaves task pages outside the single-project production stepper", () => {
-    for (const page of ["batch", "qianchuan", "automation", "projects", "connection"] as const) {
+    for (const page of ["batch", "qianchuan", "qianguanjia", "automation", "projects", "connection"] as const) {
       expect(activeWorkflowId(page, "export")).toBeUndefined();
     }
   });

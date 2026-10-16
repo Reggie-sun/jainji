@@ -7,6 +7,7 @@ export function qianchuanBackendFixtureScript() {
     import React, {useState} from "react";
     import {createRoot} from "react-dom/client";
     import {QianchuanBackendPanel} from "./src/renderer/QianchuanBackendPanel";
+    import {QianguanjiaPanel} from "./src/renderer/QianguanjiaPanel";
     import {QIANCHUAN_QUERY_METRICS} from "./src/shared/qianchuan-backend";
     import {QIANCHUAN_REPORT_METRIC_PROVENANCE} from "./src/shared/qianchuan-report";
     window.supplierReads=[]; window.supplierCancels=[]; window.supplierDisconnects=0; window.supplierPending=[]; window.supplierDelay=false; window.supplierFail=false; window.supplierEmpty=false; window.reads=[]; window.cancellations=[]; window.pending=[]; window.delay=false; window.fail=false;
@@ -29,11 +30,11 @@ export function qianchuanBackendFixtureScript() {
       queryQianguanjia:input=>{window.supplierReads.push(input);if(window.supplierFail)return Promise.reject(new Error("private-secret-token"));if(window.supplierDelay)return new Promise(resolve=>window.supplierPending.push(()=>resolve(supplierResult(input))));return Promise.resolve(supplierResult(input));},cancelQianguanjiaQuery:async input=>{window.supplierCancels.push(input);},disconnectQianguanjia:async()=>{window.supplierDisconnects++;},queryQianchuanBackend:input=>{window.reads.push(input);if(window.fail)return Promise.reject(new Error("ws://private-secret-token"));
       if(window.delay)return new Promise(resolve=>window.pending.push(()=>resolve(result(input))));return Promise.resolve(result(input));},
       cancelQianchuanBackendQuery:async input=>{window.cancellations.push(input);}};
-    function Fixture(){const [active,setActive]=useState(true),[accounts,setAccounts]=useState([
+    function Fixture(){const [source,setSource]=useState("qianchuan"),[active,setActive]=useState(true),[accounts,setAccounts]=useState([
       {product:"眼贴",advertiserId:"12345",adId:"67890",available:true},
       {product:"肥皂",advertiserId:"12346",adId:"67891",available:true}]);
       window.setActive=setActive; window.setAccounts=setAccounts;
-      return <div style={{maxWidth:1000,margin:"auto"}}><QianchuanBackendPanel accounts={accounts} active={active}/></div>;}
+      return <div style={{maxWidth:1000,margin:"auto"}}><nav aria-label="隔离入口"><button onClick={()=>setSource("qianchuan")}>千川查询</button><button onClick={()=>setSource("qianguanjia")}>千管家</button></nav><div hidden={source!=="qianchuan"}><QianchuanBackendPanel accounts={accounts} active={active&&source==="qianchuan"}/></div><div hidden={source!=="qianguanjia"}><QianguanjiaPanel active={active&&source==="qianguanjia"} api={window.jianji}/></div></div>;}
     createRoot(document.getElementById("root")).render(<Fixture/>);
   `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
 }

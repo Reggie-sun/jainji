@@ -1,7 +1,7 @@
 import { Icon } from "./ui";
 import { WORKFLOW_STEPS, activeWorkflowId, type Step, type WorkflowId } from "./workspace-flow";
 
-export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, onWorkflow, onBatch, onStickerLibrary, onResults, onModels, onFeedback, onQianchuan, onAutomation }: {
+export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineReady, engineLabel, onWorkflow, onBatch, onStickerLibrary, onResults, onModels, onFeedback, onQianchuan, onQianguanjia, onAutomation }: {
   step: Step;
   modelsOpen: boolean;
   connectionConfigured: boolean;
@@ -14,6 +14,7 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
   onModels(): void;
   onFeedback(): void;
   onQianchuan(): void;
+  onQianguanjia(): void;
   onAutomation(): void;
 }) {
   return <aside className="workspace-rail">
@@ -26,6 +27,7 @@ export function WorkspaceRail({ step, modelsOpen, connectionConfigured, engineRe
       <button className={step === "batch" ? "active" : ""} type="button" onClick={onBatch}><Icon name="grid" /><span>批量制作</span></button>
       <button className={step === "results" ? "active" : ""} type="button" onClick={onResults}><Icon name="film" /><span>作品</span></button>
       <button className={step === "qianchuan" ? "active" : ""} type="button" onClick={onQianchuan}><Icon name="upload" /><span>千川</span></button>
+      <button className={step === "qianguanjia" ? "active" : ""} type="button" onClick={onQianguanjia}><Icon name="grid" /><span>千管家</span></button>
       <button className={step === "automation" ? "active" : ""} type="button" onClick={onAutomation}><Icon name="play" /><span>自动化</span></button>
     </nav>
     <div className="rail-utilities">

@@ -27,6 +27,34 @@ async function fixture() {
 const workflow = (page: Page, name: string) => page.getByRole("navigation", { name: "制作流程" }).getByRole("button", { name: new RegExp(name + "$" ) });
 const rail = (page: Page, name: string) => page.locator(".workspace-rail").getByRole("button", { name, exact: true });
 
+for (const width of [820, 1440]) it(`separates local overview, compact reports and supplier navigation at ${width} px`, async () => {
+  const { page, errors } = await fixture();
+  try {
+    await page.setViewportSize({ width, height: 900 });
+    await page.evaluate(() => (window as any).taskPagesFixture.configureAccounts());
+    await rail(page, "千川").click();
+    const nav = page.getByRole("navigation", { name: "千川页面" });
+    expect(await nav.getByRole("button", { name: "投放概览", exact: true }).getAttribute("aria-current")).toBe("page");
+    await page.getByRole("heading", { name: "账户与保存计划", exact: true }).waitFor();
+    expect(await page.getByRole("cell", { name: "456", exact: true }).isVisible()).toBe(true);
+    expect(await page.getByLabel("查询内容", { exact: true }).isVisible()).toBe(false);
+    await page.getByRole("button", { name: "查询计划与数据 →", exact: false }).click();
+    await page.getByRole("heading", { name: "计划与数据", exact: true }).waitFor();
+    const history = await page.getByRole("heading", { name: "完整报表与历史记录" }).boundingBox();
+    expect(history!.y).toBeLessThan(850);
+    expect(await page.locator(".qc-console-header").count()).toBe(0);
+    await page.getByLabel("查询计划 ID").fill("789");
+    await rail(page, "千管家").click();
+    expect(await nav.isVisible()).toBe(false);
+    expect(await page.getByLabel("查询计划 ID").isVisible()).toBe(false);
+    await rail(page, "千川").click();
+    expect(await page.getByLabel("查询计划 ID").inputValue()).toBe("789");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.sideEffects)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("opens the effect loop and returns to production configuration without starting production", async () => {
   const { page, errors } = await fixture();
   try {
@@ -40,7 +68,7 @@ it("opens the effect loop and returns to production configuration without starti
   } finally { await page.close(); }
 });
 
-it("opens the business console directly and returns to the original query and upload pages without production", async () => {
+it("keeps supplier navigation inside its own workspace and preserves native query drafts", async () => {
   const { page, errors } = await fixture();
   try {
     await page.addStyleTag({ content: readFileSync("src/renderer/qianchuan-backend.css", "utf8") });
@@ -59,21 +87,33 @@ it("opens the business console directly and returns to the original query and up
     });
     await rail(page, "千川").click();
     const nav = page.getByRole("navigation", { name: "千川页面" });
-    await nav.getByRole("button", { name: "投放工作台", exact: true }).click();
-    expect(await page.getByLabel("数据来源", { exact: true }).inputValue()).toBe("qianchuan");
+    await page.getByRole("heading", { name: "账户与保存计划", exact: true }).waitFor();
+    expect(await page.getByLabel("查询内容", { exact: true }).isVisible()).toBe(false);
+    expect(await page.getByLabel("数据来源", { exact: true }).count()).toBe(0);
     expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.supplierReads)).toEqual([]);
-    await page.getByLabel("数据来源", { exact: true }).selectOption("qianguanjia");
+    await rail(page, "千管家").click();
+    expect(await nav.isVisible()).toBe(false);
     await page.getByRole("heading", { name: "数据概览", exact: true }).waitFor();
     await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
     await page.getByTestId("qianguanjia-home").waitFor();
     expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.supplierReads)).toEqual(["discover", "accounts", "home"]);
-    await page.getByRole("navigation", { name: "投放工作台业务导航" }).getByRole("button", { name: "推广管理", exact: true }).click();
-    expect(await page.getByLabel("数据来源", { exact: true }).inputValue()).toBe("qianchuan");
+    const supplierNav = page.getByRole("navigation", { name: "千管家页面" });
+    expect(await supplierNav.getByRole("button").allTextContents()).toEqual(["数据概览", "账户管理"]);
+    await supplierNav.getByRole("button", { name: "账户管理", exact: true }).click();
+    expect(await rail(page, "千管家").getAttribute("class")).toContain("active");
+    expect(await nav.isVisible()).toBe(false);
+    await page.getByRole("cell", { name: "隔离授权账户", exact: false }).waitFor();
+    await supplierNav.getByRole("button", { name: "数据概览", exact: true }).click();
+    expect(await rail(page, "千管家").getAttribute("class")).toContain("active");
+    expect(await page.locator(".qianguanjia-shortcuts, .qianguanjia-console-header").count()).toBe(0);
+    await rail(page, "千川").click();
+    await nav.getByRole("button", { name: "计划与数据", exact: true }).click();
+    expect(await nav.getByRole("button", { name: "计划与数据", exact: true }).getAttribute("aria-current")).toBe("page");
     await page.getByLabel("查询内容", { exact: true }).selectOption("report");
-    await page.getByLabel("数据来源", { exact: true }).selectOption("qianguanjia");
+    await rail(page, "千管家").click();
     await page.getByRole("heading", { name: "数据概览", exact: true }).waitFor();
     expect(await page.getByTestId("qianguanjia-home").count()).toBe(0);
-    await page.getByRole("button", { name: "计划 · ROI · 预算", exact: true }).click();
+    await rail(page, "千川").click();
     expect(await page.getByLabel("查询内容", { exact: true }).inputValue()).toBe("report");
     await nav.getByRole("button", { name: "上传任务", exact: true }).click();
     expect(await page.getByText("当前项目没有千川上传任务。", { exact: true }).isVisible()).toBe(true);

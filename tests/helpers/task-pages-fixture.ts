@@ -68,5 +68,5 @@ export function taskPagesFixtureScript() {
 }
 
 export function taskPagesFixtureStyles() {
-  return ["styles.css", "workspace-redesign.css", "membership.css", "batch-production.css", "automation.css", "qianchuan-cleanup.css", "douyin-upload.css", "cover-sticker.css", "decorations.css", "material-collection.css"].map(path => readFileSync(`src/renderer/${path}`, "utf8")).join("\n") + "\nhtml,body,#root{height:100%;}.membership-workspace{height:100%;}";
+  return ["styles.css", "workspace-redesign.css", "membership.css", "batch-production.css", "automation.css", "qianchuan-cleanup.css", "douyin-upload.css", "cover-sticker.css", "decorations.css", "material-collection.css", "qianchuan-backend.css", "qianchuan-console.css"].map(path => readFileSync(`src/renderer/${path}`, "utf8")).join("\n") + "\nhtml,body,#root{height:100%;}.membership-workspace{height:100%;}";
 }

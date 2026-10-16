@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-16T00:23:55Z",
+  "updated_at": "2026-10-16T00:26:30Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "85267f98a04ea41f30bad3b5ccdb596e8e30b945ece31372a7af8a7d4210d6c3",
-      "size": 60244,
-      "normalized_sha256": "85267f98a04ea41f30bad3b5ccdb596e8e30b945ece31372a7af8a7d4210d6c3"
+      "sha256": "56a5f4f437392f6295e208455ccdb4a631af910605df835e4e723bd40a5d6434",
+      "size": 60484,
+      "normalized_sha256": "56a5f4f437392f6295e208455ccdb4a631af910605df835e4e723bd40a5d6434"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -223,9 +223,9 @@
       "normalized_sha256": "6368db94f468318e841db836e80ad2d54f0f10822d2cfcb5c7ec1ee1b404fb8c"
     },
     "AGENTS.md": {
-      "sha256": "d050a2aef1d45183f6389e85e8e0328e2a8cfda1edec786c3b75cef47336e0b0",
-      "size": 9144,
-      "normalized_sha256": "d050a2aef1d45183f6389e85e8e0328e2a8cfda1edec786c3b75cef47336e0b0"
+      "sha256": "abb82c34752595b3553647ca3fea3bfdd83d7133d737b1ba27d9a63c54554821",
+      "size": 4601,
+      "normalized_sha256": "abb82c34752595b3553647ca3fea3bfdd83d7133d737b1ba27d9a63c54554821"
     },
     "CLAUDE.md": {
       "role": "observe",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "1a02c7c3e4f4830d05c26f0c9c3caeb04036ecc886e6f0d2e7106d946e6ca5cf",
-      "size": 155766,
-      "normalized_sha256": "1a02c7c3e4f4830d05c26f0c9c3caeb04036ecc886e6f0d2e7106d946e6ca5cf"
+      "sha256": "8346cdc292a0bee129bb8d82424eab810ad996cd0856965e92c8a33d17a1c076",
+      "size": 156224,
+      "normalized_sha256": "8346cdc292a0bee129bb8d82424eab810ad996cd0856965e92c8a33d17a1c076"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -2393,9 +2393,9 @@
       "normalized_sha256": "cbe9ced740aebbe1c0b99e4e2b4d4bca83b6683700ea0318885cda7548cf158a"
     },
     "src/renderer/App.tsx": {
-      "sha256": "ba55883f5a3937f98da866420e8660c99e672589e25de55195ce57003ef6aba0",
-      "size": 43211,
-      "normalized_sha256": "ba55883f5a3937f98da866420e8660c99e672589e25de55195ce57003ef6aba0"
+      "sha256": "28b18fd3857ded0d741f34ffc4a7f0dd586ca0f7bcefb999f62199139000f9ae",
+      "size": 43474,
+      "normalized_sha256": "28b18fd3857ded0d741f34ffc4a7f0dd586ca0f7bcefb999f62199139000f9ae"
     },
     "src/renderer/AppendProductionDialog.tsx": {
       "sha256": "8f63e6417146fa082b69263e4a6c37fe8b1e7007f69d5b00e10b7fac8ad73902",
@@ -2558,9 +2558,9 @@
       "normalized_sha256": "90d4219e2da2aee4ea4f49a0bf8db59c916fda16c42888aca00c3810553cda47"
     },
     "src/renderer/QianchuanBackendPanel.tsx": {
-      "sha256": "6f3619cfdd8860125edfbfc350409dbc5cb1d34096e4d7ab2188d6197ec56fd6",
-      "size": 9935,
-      "normalized_sha256": "6f3619cfdd8860125edfbfc350409dbc5cb1d34096e4d7ab2188d6197ec56fd6"
+      "sha256": "4429286d44e4e83295de2b25b0667ee943e14569ad33ad529e611faab9b6945a",
+      "size": 8443,
+      "normalized_sha256": "4429286d44e4e83295de2b25b0667ee943e14569ad33ad529e611faab9b6945a"
     },
     "src/renderer/QianchuanCleanupPlanSelect.tsx": {
       "sha256": "c99cd76347793343582226c14bdd1cfdbe59573746a5ddb4c46831a8918910bc",
@@ -2597,6 +2597,11 @@
       "size": 15569,
       "normalized_sha256": "91dd55527d1ac4c30c744acaa0fa21b4863e515a3982eafaf3cfa36335560254"
     },
+    "src/renderer/QianchuanOverview.tsx": {
+      "sha256": "1d7ab7b0d3c109ed33a02943b602e292015f90cccf40e3a872ab9eb02a68d26f",
+      "size": 2821,
+      "normalized_sha256": "1d7ab7b0d3c109ed33a02943b602e292015f90cccf40e3a872ab9eb02a68d26f"
+    },
     "src/renderer/QianchuanPlanSelect.tsx": {
       "sha256": "9e96345e686eb29767af592871b8d39ab835f9cf605819fe0993f387af32b2ed",
       "size": 12010,
@@ -2628,14 +2633,14 @@
       "normalized_sha256": "a95e8cd7c668a51e3ee46a8de399b746037380086c78b9381f3a7676ce099dc5"
     },
     "src/renderer/QianchuanWorkspace.tsx": {
-      "sha256": "dec5e9e230bd2cf4687c975b51c8b803b1ab2c017402d671cd48fd554a14cfc8",
-      "size": 3608,
-      "normalized_sha256": "dec5e9e230bd2cf4687c975b51c8b803b1ab2c017402d671cd48fd554a14cfc8"
+      "sha256": "6794a72494b272b3ab61fd442f0ccbc5417eaecb6e3792d8be4aac75cd7f9560",
+      "size": 3431,
+      "normalized_sha256": "6794a72494b272b3ab61fd442f0ccbc5417eaecb6e3792d8be4aac75cd7f9560"
     },
     "src/renderer/QianguanjiaPanel.tsx": {
-      "sha256": "667b73b0eaa2d771f80b524b609540fa75974e8c3f59185f188c6f592b71b41b",
-      "size": 14848,
-      "normalized_sha256": "667b73b0eaa2d771f80b524b609540fa75974e8c3f59185f188c6f592b71b41b"
+      "sha256": "7ee03576125a9851e9129b7b25cc48d38bd49c44fc083569494cbfbcea1830d0",
+      "size": 12964,
+      "normalized_sha256": "7ee03576125a9851e9129b7b25cc48d38bd49c44fc083569494cbfbcea1830d0"
     },
     "src/renderer/ResultsPanel.tsx": {
       "sha256": "d12e68523a41ba7d40d79e4c17e12d3dccd5121626331b09ab15e734a73cc14d",
@@ -2678,9 +2683,9 @@
       "normalized_sha256": "a8ed048c483bd14b810978b0c57e597a7af747bd27c87bfdd2688a201cc68cba"
     },
     "src/renderer/WorkspaceChrome.tsx": {
-      "sha256": "209f95942fc2111a0ed2e656c9409cc14bfa478d477d5d4acefa9991fda3e721",
-      "size": 6337,
-      "normalized_sha256": "209f95942fc2111a0ed2e656c9409cc14bfa478d477d5d4acefa9991fda3e721"
+      "sha256": "18b3e5b3230ea7fa5e5a5b22f54a291f36ad22a51c6870b6ac8999d922ceca26",
+      "size": 6532,
+      "normalized_sha256": "18b3e5b3230ea7fa5e5a5b22f54a291f36ad22a51c6870b6ac8999d922ceca26"
     },
     "src/renderer/WorkspacePage.tsx": {
       "sha256": "81615594ea2de1878ff701a591ae3ddcee4d6e91160504d57f78c0d7806d8c1d",
@@ -2787,9 +2792,9 @@
       "normalized_sha256": "86bcb698f52045d96150626122bca892ac5f25607076c9ea4b5bab18b8673faa"
     },
     "src/renderer/workspace-flow.ts": {
-      "sha256": "e35e0c2ce3186f4cd48de9724983fba46cb6601f156e776ca612c9bf95daf79d",
-      "size": 1373,
-      "normalized_sha256": "e35e0c2ce3186f4cd48de9724983fba46cb6601f156e776ca612c9bf95daf79d"
+      "sha256": "225deb7cbcb1c43d56a5bc28dc4059b4cca9e6aa11c8fce464400a0abf70f0c8",
+      "size": 1389,
+      "normalized_sha256": "225deb7cbcb1c43d56a5bc28dc4059b4cca9e6aa11c8fce464400a0abf70f0c8"
     },
     "src/renderer/workspace-redesign.css": {
       "role": "observe",

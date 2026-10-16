@@ -1,4 +1,4 @@
-export type Step = "connection" | "import" | "templates" | "stickers" | "results" | "batch" | "qianchuan" | "automation" | "projects";
+export type Step = "connection" | "import" | "templates" | "stickers" | "results" | "batch" | "qianchuan" | "qianguanjia" | "automation" | "projects";
 export type WorkflowId = "materials" | "packaging" | "cover" | "export" | "results";
 
 export type WorkflowTarget = {
