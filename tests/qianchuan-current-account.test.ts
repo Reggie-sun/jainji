@@ -6,8 +6,11 @@ import { chromium, type BrowserContext, type Page } from "playwright-core";
 import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
-import { readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot, readCurrentQianchuanPage } from "../src/main/qianchuan-current-account";
+import { readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot, readCurrentQianchuanPage, waitForCurrentQianchuanAccount } from "../src/main/qianchuan-current-account";
 import { readQianchuanSubaccounts, switchQianchuanSubaccount } from "../src/main/qianchuan-subaccounts-browser";
+import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
+import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
+import { qianchuanEgressRuntime } from "../src/main/qianchuan-egress-runtime";
 
 const origin = "https://qianchuan.jinritemai.com";
 const account = (targetId: string, id: string, visibilityState: "visible" | "hidden", route = "/finance") => ({
@@ -103,6 +106,109 @@ async function realChrome(): Promise<{ context: BrowserContext; profile: string;
 }
 
 afterEach(() => vi.restoreAllMocks());
+
+it("waits for the reopened account DOM before returning its original child", async () => {
+  const f = await fakeBrowser({ snapshot: (target, read) => ({ ...target.snapshot, accountTexts: read < 3 ? [] : target.snapshot.accountTexts }) });
+  try {
+    expect(await waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(2000))).toEqual({ advertiserId: "200" });
+    expect(f.evaluated.length).toBeGreaterThan(2);
+  } finally { await f.close(); }
+});
+
+it.each(["different child", "different child loading", "conflicting DOM", "challenge", "challenge with account header"])("does not wait through a reopened page with %s", async failure => {
+  const f = await fakeBrowser({ snapshot: target => ({ ...target.snapshot,
+    ...(failure === "conflicting DOM" ? { accountTexts: ["ID：300"] } : failure.startsWith("challenge") ? { ...(failure === "challenge" ? { accountTexts: [] } : {}), accountBlocked: true } : failure === "different child loading" ? { accountTexts: [] } : {}) }) });
+  try {
+    await expect(waitForCurrentQianchuanAccount(f.endpoint, failure.startsWith("different child") ? "300" : "200", AbortSignal.timeout(2000))).rejects.toThrow(failure.startsWith("different child") ? "原网页子账户" : "无法确认");
+    expect(f.evaluated.length).toBeLessThanOrEqual(2);
+  } finally { await f.close(); }
+});
+
+it("cancels the reopened account DOM wait without returning a later account", async () => {
+  const f = await fakeBrowser({ snapshot: target => ({ ...target.snapshot, accountTexts: [] }) });
+  try {
+    await expect(waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(100))).rejects.toThrow();
+    expect(f.connected()).toBe(false);
+  } finally { await f.close(); }
+});
+
+it("rejects a verification prompt that appears during the final account recheck", async () => {
+  const f = await fakeBrowser({ snapshot: (target, read) => ({ ...target.snapshot, accountBlocked: read > 1 }) });
+  try {
+    await expect(waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(2000))).rejects.toThrow("无法确认");
+    expect(f.evaluated).toHaveLength(2);
+  } finally { await f.close(); }
+});
+
+it("waits for delayed account DOM in an isolated real Chrome without navigating or selecting files", async () => {
+  const f = await realChrome();
+  try {
+    await f.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: `<body>正在加载<script>setTimeout(() => { document.body.innerHTML = '<div class="account-info-container">子账户 ID：200</div>'; }, 300)</script></body>` }));
+    const page = f.context.pages()[0]!;
+    await page.goto(`${origin}/uni-prom?aavid=200`);
+    expect(await waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(3000))).toEqual({ advertiserId: "200", name: "子账户" });
+    expect(new URL(page.url()).searchParams.get("aavid")).toBe("200");
+  } finally { await f.context.close(); await rm(f.profile, { recursive: true, force: true }); }
+});
+
+it("stops at a real Chrome verification page instead of treating it as delayed account DOM", async () => {
+  const f = await realChrome();
+  try {
+    await f.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: "<body>请完成安全验证</body>" }));
+    await f.context.pages()[0]!.goto(`${origin}/uni-prom?aavid=200`);
+    await expect(waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(2000))).rejects.toThrow("无法确认");
+  } finally { await f.context.close(); await rm(f.profile, { recursive: true, force: true }); }
+});
+
+it.each(["请完成安全验证", "请完成安全验证后继续", "请登录后继续操作", "当前操作需要安全验证",
+  "demo.mp4：请完成安全验证", "demo.mp4 上传受限，请完成安全验证", "demo.mp4 请完成安全验证",
+  "请完成安全验证 demo.mp4", "demo.mp4 请通过安全验证 demo.mp4",
+  "demo.mp4 请登录 demo.mp4", "请登录 demo.mp4", "demo.mp4 请先完成安全验证 demo.mp4",
+  "安全验证教学.mp4 验证码素材.mp4", "权限不足说明.mp4", "请登录操作说明.mp4"])("preserves a real Chrome verification overlay with its original account header: %s", async prompt => {
+  const f = await realChrome(), root = await mkdtemp(path.join(tmpdir(), "jianji-challenge-guard-"));
+  try {
+    await f.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<div class="account-info-container">原子账户 ID：200</div><div role="dialog" style="position:fixed;top:100px">' + prompt + '</div>' }));
+    await f.context.pages()[0]!.goto(`${origin}/uni-prom?aavid=200`);
+    await new QianchuanBrowserBindings(root).save({ advertiserId: "200", profile: f.profile, profileDirectory: "Default" });
+    const shutdown = vi.fn(), launch = vi.fn();
+    vi.spyOn(qianchuanEgressRuntime, "ensure").mockResolvedValue({ identity: "fixture", signal: new AbortController().signal });
+    vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue({ identity: "fixture", signal: new AbortController().signal });
+    const manager = new QianchuanBrowserManager(root, { browsers: async () => [{ profile: f.profile, profileDirectory: "Default", endpoint: f.endpoint, egressArguments: [] }], shutdown, launch,
+      egress: async () => ({ group: "fixture", sshHost: "fixture", localPort: 19381, expectedIp: "203.0.113.11" }) });
+    await expect(manager.prepareUpload("200", () => {}, AbortSignal.timeout(2000), "200")).rejects.toThrow();
+    expect(shutdown).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
+    await expect(readCurrentQianchuanAccountSnapshot(f.endpoint)).rejects.toThrow("无法确认");
+    await expect(waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(2000))).rejects.toThrow("无法确认");
+    expect(await f.context.pages()[0]!.getByRole("dialog").innerText()).toBe(prompt);
+  } finally { await f.context.close(); await rm(f.profile, { recursive: true, force: true }); await rm(root, { recursive: true, force: true }); }
+});
+
+it("accepts ordinary materials while ignoring a hidden challenge", async () => {
+  const f = await realChrome();
+  try {
+    await f.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<div class="account-info-container">原子账户 ID：200</div><div>教学.mp4 普通素材.mp4</div><div style="display:none">请完成安全验证</div>' }));
+    await f.context.pages()[0]!.goto(`${origin}/uni-prom?aavid=200`);
+    await expect(readCurrentQianchuanAccountSnapshot(f.endpoint)).resolves.toEqual({ advertiserId: "200", name: "原子账户" });
+  } finally { await f.context.close(); await rm(f.profile, { recursive: true, force: true }); }
+});
+
+it.each(['<div>普通素材.mp4</div>', '<div>操作说明.mp4</div>', '<div style="position:absolute;top:2000px">请完成安全验证</div>'])("ignores ordinary content or an offscreen prompt: %s", async content => {
+  const f = await realChrome();
+  try {
+    await f.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<div class="account-info-container">原子账户 ID：200</div>' + content }));
+    await f.context.pages()[0]!.goto(`${origin}/uni-prom?aavid=200`);
+    await expect(readCurrentQianchuanAccountSnapshot(f.endpoint)).resolves.toEqual({ advertiserId: "200", name: "原子账户" });
+  } finally { await f.context.close(); await rm(f.profile, { recursive: true, force: true }); }
+});
+
+it.each(['<div><span>请</span><span>完成安全验证</span></div>', '请完成安全验证'])("rejects a rendered verification prompt without relying on a particular wrapper: %s", async content => {
+  const f = await realChrome();
+  try {
+    await f.context.route(`${origin}/**`, route => route.fulfill({ contentType: "text/html; charset=utf-8", body: '<div class="account-info-container">原子账户 ID：200</div>' + content }));
+    await f.context.pages()[0]!.goto(`${origin}/uni-prom?aavid=200`);
+    await expect(waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(2000))).rejects.toThrow("无法确认");
+  } finally { await f.context.close(); await rm(f.profile, { recursive: true, force: true }); }
+});
 
 it("accepts valid account reads when CDP detach acknowledgements take 200ms", async () => {
   const fixture = await fakeBrowser({ detachDelayMs: 200 });

@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { setTimeout as delay } from "node:timers/promises";
 import { isLoopbackUrl } from "../shared/douyin-upload.js";
 import { VIDEO_LIBRARY_ROUTE } from "../shared/qianchuan-video-library.js";
 import { QianchuanCurrentAccountSchema, type QianchuanCurrentAccount } from "../shared/qianchuan-plan-selection.js";
@@ -16,7 +17,8 @@ const ACCOUNT_ROUTES = new Set(["/home", "/uni-prom", "/finance", "/account-cent
 const FAILURE = "无法确认千川网页当前子账户，请检查当前页面后重试。";
 
 interface Candidate { targetId: string; url: string; advertiserId: string; }
-interface PageSnapshot { href: string; visibilityState: string; accountTexts: string[]; }
+interface PageSnapshot { href: string; visibilityState: string; accountTexts: string[]; accountBlocked?: boolean; }
+class AccountPageLoading extends Error { constructor() { super(FAILURE); } }
 
 function accountPageUrlIdentity(value: string): string | undefined {
   const url = new URL(value), hash = new URLSearchParams(url.hash.slice(1));
@@ -174,12 +176,36 @@ function candidates(value: unknown, excludedTargets: ReadonlySet<string>, allowR
 }
 
 const SNAPSHOT_EXPRESSION = `(() => {
+  const onscreen = rect => rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
   const visible = element => {
     const style = getComputedStyle(element), rect = element.getBoundingClientRect();
-    return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && rect.width > 0 && rect.height > 0 && rect.bottom > 0 && rect.right > 0 && rect.top < innerHeight && rect.left < innerWidth;
+    return style.display !== "none" && style.visibility !== "hidden" && Number(style.opacity) > 0 && onscreen(rect);
+  };
+  const blocked = () => {
+    if (!document.body) return false;
+    const prompt = value => {
+      const text = value.replace(/\\s+/g, "");
+      return /请.{0,12}(?:登录|验证码|验证)|登录.{0,8}失效|验证码|人机验证|安全验证|访问验证|无权限|权限不足/.test(text);
+    };
+    for (const element of document.querySelectorAll("body, body *")) {
+      const ownText = Array.from(element.childNodes).filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent || "").join("");
+      if ((!prompt(element.innerText || "") && !prompt(ownText)) || !visible(element)) continue;
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let rendered = "", ownRendered = "";
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.parentElement || !visible(node.parentElement)) continue;
+        const range = document.createRange(); range.selectNodeContents(node);
+        if (!Array.from(range.getClientRects()).some(onscreen)) continue;
+        rendered += node.textContent || "";
+        if (node.parentElement === element) ownRendered += node.textContent || "";
+      }
+      if (prompt(rendered) || prompt(ownRendered)) return true;
+    }
+    return false;
   };
   return { href: location.href, visibilityState: document.visibilityState,
-    accountTexts: Array.from(document.querySelectorAll(".account-info-container")).filter(visible).map(element => (element.querySelector(".account-info-box") || element).innerText) };
+    accountTexts: Array.from(document.querySelectorAll(".account-info-container")).filter(visible).map(element => (element.querySelector(".account-info-box") || element).innerText),
+    accountBlocked: blocked() };
 })()`;
 
 function validateSnapshot(value: unknown, candidate: Candidate): PageSnapshot {
@@ -189,7 +215,8 @@ function validateSnapshot(value: unknown, candidate: Candidate): PageSnapshot {
   const url = new URL(snapshot.href);
   const ids = url.searchParams.getAll("aavid");
   if (url.origin !== ORIGIN || ids.length !== 1 || ids[0] !== candidate.advertiserId) throw new Error(FAILURE);
-  return { href: snapshot.href, visibilityState: snapshot.visibilityState!, accountTexts: snapshot.accountTexts as string[] };
+  if (snapshot.accountBlocked !== undefined && typeof snapshot.accountBlocked !== "boolean") throw new Error(FAILURE);
+  return { href: snapshot.href, visibilityState: snapshot.visibilityState!, accountTexts: snapshot.accountTexts as string[], accountBlocked: snapshot.accountBlocked };
 }
 
 function domAccount(texts: string[]): QianchuanCurrentAccount {
@@ -220,6 +247,8 @@ function selectedPages(pages: Array<{ candidate: Candidate; snapshot: PageSnapsh
 }
 
 function uniqueAccount(pages: Array<{ candidate: Candidate; snapshot: PageSnapshot }>): QianchuanCurrentAccount {
+  if (pages.some(page => page.snapshot.accountBlocked)) throw new Error(FAILURE);
+  if (pages.length === 1 && !pages[0]!.snapshot.accountTexts.length && !pages[0]!.snapshot.accountBlocked) throw new AccountPageLoading();
   const accounts = new Map<string, QianchuanCurrentAccount>();
   for (const page of pages) {
     const account = domAccount(page.snapshot.accountTexts);
@@ -243,6 +272,21 @@ export async function readCurrentQianchuanAccountSnapshot(endpoint: string, pare
   return (await readCurrentAccountState(endpoint, parentSignal, excludedTargets)).account;
 }
 
+/** Only a newly opened upload browser may wait for its account DOM; conflicts are never retried. */
+export async function waitForCurrentQianchuanAccount(endpoint: string, advertiserId: string, signal: AbortSignal): Promise<QianchuanCurrentAccount> {
+  const waiting = AbortSignal.any([signal, AbortSignal.timeout(20_000)]);
+  while (true) {
+    waiting.throwIfAborted();
+    try {
+      return (await readCurrentAccountState(endpoint, waiting, new Set(), false, false, undefined, advertiserId)).account;
+    } catch (error) {
+      waiting.throwIfAborted();
+      if (!(error instanceof AccountPageLoading)) throw error;
+      await delay(100, undefined, { signal: waiting });
+    }
+  }
+}
+
 /** The catalog may address the sole verified account page while another browser tab is active. */
 export async function readCurrentQianchuanPage(endpoint: string, signal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), options: { allowSingleHidden?: boolean; allowRoot?: boolean; browserContextId?: string } = {}): Promise<{ account: QianchuanCurrentAccount; targetId: string; url: string }> {
   const state = await readCurrentAccountState(endpoint, signal, excludedTargets, options.allowSingleHidden === true, options.allowRoot === true, options.browserContextId);
@@ -250,7 +294,7 @@ export async function readCurrentQianchuanPage(endpoint: string, signal?: AbortS
   return { account: state.account, targetId: state.pages[0]!.targetId, url: state.pages[0]!.url };
 }
 
-async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), allowSingleHidden = false, allowRoot = false, browserContextId?: string): Promise<{ account: QianchuanCurrentAccount; pages: Candidate[] }> {
+async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSignal, excludedTargets: ReadonlySet<string> = new Set(), allowSingleHidden = false, allowRoot = false, browserContextId?: string, expectedAdvertiserId?: string): Promise<{ account: QianchuanCurrentAccount; pages: Candidate[] }> {
   parentSignal?.throwIfAborted();
   const controller = new AbortController();
   let timedOut = false;
@@ -272,10 +316,13 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
     });
     connection = new CdpConnection(socket, controller.signal);
     if (browserContextId !== undefined && (!browserContextId || (await connection.call("Target.getBrowserContexts") as { defaultBrowserContextId?: unknown }).defaultBrowserContextId !== browserContextId)) throw new Error(FAILURE);
-    const initialCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets, allowRoot, browserContextId);
+    const initialTargets = (await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos;
+    const initialCandidates = candidates(initialTargets, excludedTargets, allowRoot, browserContextId);
+    if (!initialCandidates.length && Array.isArray(initialTargets) && initialTargets.every(target => target.type !== "page" || target.url === "about:blank")) throw new AccountPageLoading();
     const first = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of initialCandidates) first.push({ candidate, snapshot: await readPage(connection, candidate) });
     const selected = selectedPages(first, allowSingleHidden);
+    if (expectedAdvertiserId && selected.some(page => page.candidate.advertiserId !== expectedAdvertiserId)) throw new Error("原网页子账户已变化，未授权上传。");
     const expected = uniqueAccount(selected);
     const currentCandidates = candidates((await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos, excludedTargets, allowRoot, browserContextId);
     if (candidateSignature(currentCandidates) !== candidateSignature(initialCandidates)) throw new Error(FAILURE);

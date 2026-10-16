@@ -269,6 +269,16 @@ export class QianchuanAccountSettings extends QianchuanAccountConfigReader {
   async configuredAccount(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return super.preflight(product); }
   override async preflight(product: QianchuanProduct): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.preflight(product)); }
   override async freeze(product: QianchuanProduct, digest: string): Promise<FrozenQianchuanAccount> { this.assertAvailable(); return this.withPreparedBrowser(await super.freeze(product, digest)); }
+  async prepareUploadBrowser(product: QianchuanProduct, guard: (advertiserId: string, browser?: RunningChromeBrowser) => void, signal: AbortSignal, expectedAdvertiserId?: string): Promise<void> {
+    await this.edit(async () => {
+      this.assertAvailable(); signal.throwIfAborted();
+      const target = await super.preflight(product);
+      if (!target.egress || target.egress.mode === "remote-browser") return;
+      const endpoint = await this.browsers.prepareUpload(target.advertiserId, browser => guard(target.advertiserId, browser), signal, expectedAdvertiserId);
+      await super.freeze(product, target.configDigest); signal.throwIfAborted();
+      if (endpoint) this.preparedBrowsers.set(product, { advertiserId: target.advertiserId, endpoint });
+    });
+  }
   /** Only new production discovers live connections; frozen and historical tasks retain their target. */
   override async prepare(product: QianchuanProduct): Promise<FrozenQianchuanAccount> {
     this.assertAvailable();

@@ -1042,19 +1042,24 @@ describe("Qianchuan upload service", () => {
     const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
     let release!: () => void;
     const pathCheck = new Promise<void>(resolve => { release = resolve; });
+    let reached!: () => void;
+    const preflightReached = new Promise<void>(resolve => { reached = resolve; });
     const preflightDone = vi.fn();
     const work = f.service.withExportAdmission(async () => {
       await f.service.beginProduction();
       await f.service.preflight(selection("眼贴"), 1);
       preflightDone();
+      reached();
       await pathCheck;
       throw new Error("output directory refused");
     });
     const failed = expect(work).rejects.toThrow("output directory refused");
-    await vi.waitFor(() => expect(preflightDone).toHaveBeenCalledTimes(1));
-    await expect(f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "restart" })).rejects.toThrow("仍在运行");
-    expect(control).not.toHaveBeenCalled(); expect(f.store.intents()).toEqual([]);
-    release(); await failed;
+    try {
+      await Promise.race([preflightReached, work]);
+      expect(preflightDone).toHaveBeenCalledTimes(1);
+      await expect(f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "restart" })).rejects.toThrow("仍在运行");
+      expect(control).not.toHaveBeenCalled(); expect(f.store.intents()).toEqual([]);
+    } finally { release(); await failed; }
     await f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "close" });
     expect(control).toHaveBeenCalledTimes(1);
   });
@@ -1067,19 +1072,22 @@ describe("Qianchuan upload service", () => {
     const records = f.store.tasks(), fence = f.store.fence(records[0].result.upload_task_id), events = [...f.events];
     let release!: () => void;
     const wait = new Promise<void>(resolve => { release = resolve; });
-    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async () => { await wait; });
+    let started!: () => void;
+    const controlStarted = new Promise<void>(resolve => { started = resolve; });
+    const control = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockImplementation(async () => { started(); await wait; });
     const work = f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "close" });
-    await vi.waitFor(() => expect(control).toHaveBeenCalledTimes(1));
-    expect(f.service.busy).toBe(true);
-    const admit = vi.fn();
-    await expect(f.service.withExportAdmission(admit)).rejects.toThrow("浏览器操作");
-    expect(admit).not.toHaveBeenCalled();
-    await expect(f.service.preflight(selection("眼贴"), 1)).rejects.toThrow("浏览器操作");
-    await expect(f.service.beginProduction()).rejects.toThrow("浏览器操作");
-    await expect(f.service.resume(records[0].result.upload_task_id)).rejects.toThrow("浏览器操作");
-    await expect(f.service.controlAccountBrowser({ product: "肥皂", expectedAdvertiserId: "1004", action: "restart" })).rejects.toThrow("仍在运行");
-    await f.service.runPending(); expect(f.events).toEqual(events);
-    release(); await work;
+    try {
+      await Promise.race([controlStarted, work]);
+      expect(control).toHaveBeenCalledTimes(1); expect(f.service.busy).toBe(true);
+      const admit = vi.fn();
+      await expect(f.service.withExportAdmission(admit)).rejects.toThrow("浏览器操作");
+      expect(admit).not.toHaveBeenCalled();
+      await expect(f.service.preflight(selection("眼贴"), 1)).rejects.toThrow("浏览器操作");
+      await expect(f.service.beginProduction()).rejects.toThrow("浏览器操作");
+      await expect(f.service.resume(records[0].result.upload_task_id)).rejects.toThrow("浏览器操作");
+      await expect(f.service.controlAccountBrowser({ product: "肥皂", expectedAdvertiserId: "1004", action: "restart" })).rejects.toThrow("仍在运行");
+      await f.service.runPending(); expect(f.events).toEqual(events);
+    } finally { release(); await work; }
     expect(f.service.busy).toBe(false); expect(f.store.tasks()).toEqual(records); expect(f.store.fence(records[0].result.upload_task_id)).toEqual(fence);
   });
   it("imports into app settings and restores without enabling upload, browser operations or an external dependency", async () => {
@@ -2074,14 +2082,20 @@ describe("Qianchuan upload service", () => {
     expect(reopenedStore.task(oldRecord!.result.upload_task_id)?.result.state).toBe("WAITING_FOR_CONFIRMATION");
   });
 
-  async function currentBrowserUpload(remote = false, count = 2) {
+  async function currentBrowserUpload(remote = false, count = 2, localFixedExit = false, currentAdvertiserId = "7000") {
     const f = await fixture();
-    if (remote) {
+    if (remote || localFixedExit) {
       const document = accountDocument();
-      Object.assign(document.accounts.find(account => account.product === "眼贴")!, { advertiserId: "7000", egress: { mode: "remote-browser", group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } });
+      Object.assign(document.accounts.find(account => account.product === "眼贴")!, { advertiserId: "7000", egress: { ...(remote ? { mode: "remote-browser" } : {}), group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } });
       await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
     }
-    const live = { advertiserId: "7000", endpoint: "http://127.0.0.1:11000", failures: [] as Error[], reads: 0 };
+    const live = { advertiserId: currentAdvertiserId, endpoint: "http://127.0.0.1:11000", failures: [] as Error[], reads: 0, fixedPreparations: 0 };
+    if (localFixedExit) {
+      vi.spyOn(QianchuanBrowserManager.prototype, "assertClosed").mockResolvedValue();
+      vi.spyOn(QianchuanBrowserManager.prototype, "prepareUpload").mockImplementation(async (_id, guard, signal) => {
+        signal.throwIfAborted(); guard({ endpoint: live.endpoint }); live.fixedPreparations++; return live.endpoint;
+      });
+    }
     const accounts = new QianchuanAccountSettings(f.store.root, async () => live.endpoint, async () => live.endpoint, async () => {
       live.reads++;
       const failure = live.failures.shift(); if (failure) throw failure;
@@ -2096,13 +2110,156 @@ describe("Qianchuan upload service", () => {
     await service.chooseConfig(f.configPath); await service.configure({ enabled: true }); await service.beginProduction();
     const batch = await f.createBatch(Array.from({ length: count }, (_, index) => `current browser ${index}`));
     const selected: QianchuanUploadSelection = { enabled: true, accountProduct: batch.product,
-      plan: { advertiserId: "7000", adId: "9001", name: "Fixture frozen plan", accountSource: "current-browser" } };
+      plan: { advertiserId: currentAdvertiserId, adId: "9001", name: "Fixture frozen plan", accountSource: "current-browser" } };
     const authorization = (await service.preflight(selected, count))!;
     await service.registerBatches([batch.batchIdentity], selected, authorization);
     for (const identity of batch.identities) await service.enqueueFinalArtifact(identity);
     live.reads = 0;
     return { ...f, service, live, batch, authorization };
   }
+
+  async function fixedExitPreparation(protectedOutcome?: "READY" | "MAY_HAVE_UPLOADED", unrelated = false) {
+    const f = await fixture();
+    if (protectedOutcome) {
+      await f.authorize();
+      const batch = await f.createBatch(["protected fixed-exit upload"]);
+      await f.register(batch);
+      for (const identity of batch.identities) await f.service.enqueueFinalArtifact(identity);
+      await f.service.runPending();
+      if (protectedOutcome === "MAY_HAVE_UPLOADED") {
+        const task = f.store.tasks()[0]!;
+        task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined };
+        await f.store.saveTask(task);
+      }
+      await f.service.stop();
+    }
+    const document = accountDocument(), account = document.accounts.find(item => item.product === "眼贴")!;
+    if (unrelated) Object.assign(account, { advertiserId: "5001", cdpEndpoint: "http://127.0.0.1:19290" });
+    Object.assign(account, { egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } });
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    let endpoint = account.cdpEndpoint, repaired = false;
+    const reads: boolean[] = [];
+    const accounts = new QianchuanAccountSettings(f.store.root, async () => endpoint, async () => endpoint, async () => {
+      reads.push(repaired); return { advertiserId: account.advertiserId, name: "Fixture fixed-exit account" };
+    });
+    vi.spyOn(QianchuanBrowserManager.prototype, "assertClosed").mockResolvedValue();
+    vi.spyOn(QianchuanBrowserManager.prototype, "prepareUpload").mockImplementation(async (_id, guard, signal) => {
+      signal.throwIfAborted(); guard({ endpoint });
+      repaired = true; endpoint = "http://127.0.0.1:19391"; return endpoint;
+    });
+    const service = new DouyinUploadService(f.store, { accounts, browser: () => f.port,
+      loadBatch: async id => structuredClone(f.states.get(id)!), readiness: () => undefined,
+      readPlans: async target => [{ advertiserId: target.advertiserId, adId: "9001", name: "Fixture fixed-exit plan" }],
+    });
+    fixtureServices.add(service);
+    await accounts.authorizeFile(f.configPath); await service.restoreConfig();
+    await service.configure({ enabled: true }); await service.beginProduction();
+    const selected: QianchuanUploadSelection = { enabled: true, accountProduct: "眼贴",
+      plan: { advertiserId: account.advertiserId, adId: "9001", name: "Fixture fixed-exit plan", accountSource: "current-browser" } };
+    return { ...f, service, reads, selected, repaired: () => repaired };
+  }
+
+  it("repairs the fixed exit before reading the selected child account and freezing its upload endpoint", async () => {
+    const f = await fixedExitPreparation();
+    const authorization = await f.service.preflight(f.selected, 2);
+    expect(authorization?.target.cdpEndpoint).toBe("http://127.0.0.1:19391");
+    expect(authorization?.target.adId).toBe("9001");
+    expect(f.reads.length).toBeGreaterThan(0); expect(f.reads.every(Boolean)).toBe(true);
+    expect(f.store.tasks()).toEqual([]); expect(f.events).not.toContain("file-input");
+  });
+
+  it.each(["READY", "MAY_HAVE_UPLOADED"] as const)("does not repair a Chrome protecting a %s upload", async outcome => {
+    const f = await fixedExitPreparation(outcome), before = f.store.tasks();
+    await expect(f.service.preflight(f.selected, 2)).rejects.toThrow("原页面");
+    expect(f.repaired()).toBe(false);
+    expect(f.store.tasks()).toEqual(before);
+  });
+
+  it("keeps same-product historical drafts protected when a changed config cannot prove their original browser binding", async () => {
+    const f = await fixedExitPreparation("READY", true), before = f.store.tasks();
+    await expect(f.service.preflight(f.selected, 2)).rejects.toThrow("原页面");
+    expect(f.repaired()).toBe(false); expect(f.store.tasks()).toEqual(before);
+  });
+
+  it("does not restart the fixed-exit browser while a report or delivery operation owns it", async () => {
+    const f = await fixedExitPreparation();
+    let release!: () => void, entered!: () => void;
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const operation = f.service.withAccountOperation({ product: "眼贴", expectedAdvertiserId: "1003", requestId: randomUUID() }, 1,
+      async () => { entered(); await hold; });
+    await started;
+    try {
+      await expect(f.service.preflight(f.selected, 2)).rejects.toThrow();
+      expect(f.repaired()).toBe(false); expect(f.store.tasks()).toEqual([]);
+    } finally { release(); await operation; }
+  });
+
+  it("keeps a selected child distinct from the fixed-exit browser anchor during new upload preparation", async () => {
+    const f = await currentBrowserUpload(false, 2, true, "7001");
+    expect(f.authorization.target.advertiserId).toBe("7001"); expect(f.authorization.target.adId).toBe("9001");
+    expect(QianchuanBrowserManager.prototype.prepareUpload).toHaveBeenLastCalledWith("7000", expect.any(Function), expect.any(AbortSignal), "7001");
+    expect(f.events).not.toContain("file-input");
+  });
+
+  it("protects an older child of the same frozen browser anchor after its runtime endpoint changes", async () => {
+    const f = await currentBrowserUpload(false, 2, true, "7001");
+    f.port.confirmAutomation = async () => { throw new Error("fixture leaves confirmation unresolved"); };
+    await f.service.runPending();
+    expect(f.store.tasks().some(task => f.store.hasMarker(task.result.upload_task_id) && task.result.upload_outcome !== "NOT_SELECTED")).toBe(true);
+    await f.service.beginProduction();
+    f.live.endpoint = "http://127.0.0.1:19391"; f.live.advertiserId = "7002"; f.live.fixedPreparations = 0;
+    const before = f.store.tasks();
+    await expect(f.service.preflight({ enabled: true, accountProduct: "眼贴", plan: { advertiserId: "7002", adId: "9001", name: "Fixture other child", accountSource: "current-browser" } }, 1)).rejects.toThrow("原页面");
+    expect(f.live.fixedPreparations).toBe(0); expect(f.store.tasks()).toEqual(before);
+  });
+
+  it("protects an older child after its browser moves to another product slot and port", async () => {
+    const f = await currentBrowserUpload(false, 2, true, "7001");
+    f.port.confirmAutomation = async () => { throw new Error("fixture leaves confirmation unresolved"); };
+    await f.service.runPending();
+    const document = accountDocument(), moved = document.accounts.find(account => account.product === "蝴蝶贴")!;
+    Object.assign(moved, { advertiserId: "7000", cdpEndpoint: "http://127.0.0.1:19392", egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } });
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    await f.service.chooseConfig(f.configPath); await f.service.beginProduction();
+    f.live.endpoint = "http://127.0.0.1:19391"; f.live.advertiserId = "7002"; f.live.fixedPreparations = 0;
+    const before = f.store.tasks(), fences = before.map(task => f.store.fence(task.result.upload_task_id));
+    await expect(f.service.preflight({ enabled: true, accountProduct: "蝴蝶贴", plan: { advertiserId: "7002", adId: "9001", name: "Fixture other child", accountSource: "current-browser" } }, 1)).rejects.toThrow("原页面");
+    expect(f.live.fixedPreparations).toBe(0); expect(f.store.tasks()).toEqual(before);
+    expect(before.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
+  });
+
+  it("rejects a slot import adding fixed egress while legacy tasks lack proof of an independent original browser", async () => {
+    const f = await currentBrowserUpload(false, 2, false, "7001");
+    f.port.confirmAutomation = async () => { throw new Error("fixture leaves confirmation unresolved"); };
+    await f.service.runPending();
+    const before = f.store.tasks();
+    expect(before.every(task => !task.authorization.target.egress)).toBe(true);
+    const document = accountDocument(), moved = document.accounts.find(account => account.product === "蝴蝶贴")!;
+    Object.assign(document.accounts.find(account => account.product === "眼贴")!, { advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:19393" });
+    Object.assign(moved, { advertiserId: "1003", cdpEndpoint: "http://127.0.0.1:19392", egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } });
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    await expect(f.service.chooseConfig(f.configPath)).rejects.toThrow("待确认或结果未知");
+    expect(f.store.tasks()).toEqual(before); expect(f.live.fixedPreparations).toBe(0);
+  });
+
+  it.each(["7000", "7001"])("repairs the original fixed-exit Chrome before reconnecting a complete never-selected historical batch for child %s", async child => {
+    const f = await currentBrowserUpload(false, 2, true, child), originals = f.store.tasks();
+    await f.service.beginProduction();
+    f.live.fixedPreparations = 0; f.live.endpoint = "http://127.0.0.1:19391";
+    const connect = f.port.connect;
+    f.port.connect = async (task, signal) => {
+      expect(f.live.fixedPreparations).toBe(1);
+      expect(task.authorization.target.cdpEndpoint).toBe("http://127.0.0.1:19391");
+      expect(task.authorization.target.advertiserId).toBe(child);
+      await connect(task, signal);
+    };
+    await f.service.resume(originals[0]!.result.upload_task_id, undefined, f.authorization.pageBatchId);
+    expect(f.store.tasks().map(task => task.input)).toEqual(originals.map(task => task.input));
+    expect(f.store.tasks().every(task => task.result.state === "ACCEPTED")).toBe(true);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(QianchuanBrowserManager.prototype.prepareUpload).toHaveBeenLastCalledWith("7000", expect.any(Function), expect.any(AbortSignal), child);
+  });
 
   it("explicitly restores only the complete unselected historical batch under its frozen browser target", async () => {
     const f = await currentBrowserUpload();

@@ -664,6 +664,27 @@ export class DouyinUploadService {
     try { return await action(); }
     finally { this.browserPreparations--; }
   }
+  private async prepareLocalUploadBrowser(product: QianchuanProduct, generation: number, expectedAdvertiserId?: string): Promise<void> {
+    if (!(this.accounts instanceof QianchuanAccountSettings)) return;
+    const configured = await this.accounts.configuredAccount(product);
+    if (!configured.egress || configured.egress.mode === "remote-browser") return;
+    if (this.ordinaryBrowserController) throw new Error("账号浏览器准备正在进行，请稍后重试。");
+    const controller = new AbortController();
+    this.ordinaryBrowserController = controller;
+    try {
+      await this.stopPlanPreload(controller.signal);
+      const preparations = this.browserPreparations;
+      await this.accounts.prepareUploadBrowser(product, (advertiserId, browser) => {
+        if (generation !== this.controlGeneration || this.stopFailed || this.store.unavailable || this.active || this.runner ||
+          this.accountOperations.busy || this.backendQueries.busy || this.managingBrowser || this.cancelling || this.closing || this.discarding || this.retargeting ||
+          this.stopping || this.beginningProduction || this.browserPreparations !== preparations || !this.store.config.enabled) throw new Error("上传控制已变化，未自动恢复账号浏览器。");
+        const targets = [...this.store.tasks().map(task => task.authorization.target), ...this.store.intents().map(intent => intent.authorization.target)];
+        const anchors = [advertiserId, ...(expectedAdvertiserId ? [expectedAdvertiserId] : [])];
+        const ids = new Set([...anchors, ...targets.filter(target => this.egressTargetAffected(target, anchors, [configured], browser)).map(target => target.advertiserId)]);
+        for (const id of ids) assertAutomationBrowserSafe(this.store, id, this.eligible, this.currentIntents, this.cancelledIntents);
+      }, controller.signal, expectedAdvertiserId);
+    } finally { if (this.ordinaryBrowserController === controller) this.ordinaryBrowserController = undefined; }
+  }
   async preflight(selection: QianchuanUploadSelection | undefined, expectedCount: number): Promise<UploadAuthorization | undefined> {
     if (!selection) return undefined;
     if ((this.automationUploadActive || this.automationBrowsers.busy) && !this.preparingAutomationUpload) throw new Error("定时上传正在运行，不能并发接收其他上传批次。");
@@ -679,6 +700,7 @@ export class DouyinUploadService {
       const generation = this.controlGeneration;
       const browserSelection = parsed.plan?.accountSource === "current-browser" && !this.automationUploadActive;
       const currentAccountSelection = browserSelection && this.accounts instanceof QianchuanAccountSettings && this.accounts.currentAccountBacked;
+      if (!this.automationUploadActive) await this.prepareLocalUploadBrowser(parsed.accountProduct, generation, browserSelection ? parsed.plan!.advertiserId : undefined);
       if (!this.automationUploadActive && !currentAccountSelection) {
         const configured = await this.automationAccount(parsed.accountProduct);
         if (configured.egress?.mode === "remote-browser") {
@@ -1073,6 +1095,8 @@ export class DouyinUploadService {
         const blockers = this.unresolvedAccountTasks(first);
         if (blockers.length) throw new Error(this.blockedAccountMessage(first, blockers.length));
         for (const other of batch) await this.snapshotValid(other);
+        await this.accounts.freeze(first.authorization.target.product, first.authorization.target.configDigest);
+        await this.prepareLocalUploadBrowser(first.authorization.target.product, generation, first.authorization.target.advertiserId);
         const anchor = await this.bounded(signal => historicalBrowserAnchor(this.store, first, this.accounts, signal), first.config.timeouts.navigation, new AbortController().signal);
         if (!anchor) await this.bounded(signal => this.currentTarget(first, signal), first.config.timeouts.navigation, new AbortController().signal);
         if (generation !== this.controlGeneration || this.stopping || this.active || this.runner || this.eligible.size || currentPreparing() || this.browserPreparations || this.store.unavailable) throw new Error("上传控制已变化，历史批次未恢复。");
