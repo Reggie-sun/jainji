@@ -8,6 +8,7 @@ import { EGRESS_FLAG_NAMES } from "../shared/qianchuan-egress.js";
 const unavailable = "无法完整连接千川浏览器。请保持账号 Chrome 打开；若 Chrome 提示允许远程调试，请先允许后重试。";
 const missing = "未找到该账户的可连接浏览器，请在已登录 Chrome 中打开对应的千川首页、计划或视频库。";
 const maxEndpoints = 16;
+const processReadConcurrency = 16;
 const portNumber = (value: string | undefined) => value && /^[1-9][0-9]{0,4}$/.test(value) && Number(value) <= 65535 ? Number(value) : undefined;
 function flag(args: string[], name: string): string | undefined {
   const matches = args.flatMap((value, index) => value === name ? [args[index + 1] ?? ""] : value.startsWith(`${name}=`) ? [value.slice(name.length + 1)] : []);
@@ -39,34 +40,34 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
   const pids = (await readdir(procRoot)).filter(name => /^[1-9][0-9]*$/.test(name));
   if (pids.length > 4096) throw new Error(unavailable);
   const endpoints = new Map<string, RunningChromeBrowser>();
-  for (const pid of pids) {
+  const inspect = async (pid: string): Promise<RunningChromeBrowser | undefined> => {
     const directory = path.join(procRoot, pid);
     let metadata: RunningChromeBrowser | undefined;
     try {
       const info = await lstat(directory);
-      if (!info.isDirectory() || info.uid !== uid) continue;
+      if (!info.isDirectory() || info.uid !== uid) return;
       let executable: string;
       try { executable = path.basename(await readlink(path.join(directory, "exe"))).replace(/ \(deleted\)$/, ""); }
       catch (error) {
         // Linux may deny exe metadata for unrelated non-dumpable processes owned by this user.
-        if ((error as NodeJS.ErrnoException).code === "EACCES") continue;
+        if ((error as NodeJS.ErrnoException).code === "EACCES") return;
         throw error;
       }
-      if (!["chrome", "chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].includes(executable)) continue;
+      if (!["chrome", "chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].includes(executable)) return;
       const rawArgs = (await boundedRead(path.join(directory, "cmdline"), 65536)).split("\0").filter(Boolean);
       // Desktop Chrome can rewrite argv as one space-joined process title.
       const args = rawArgs.length === 1 ? rawArgs[0].split(/ (?=--)/).flatMap(arg => arg.startsWith("--") && !arg.includes("=") ? arg.split(" ") : [arg]) : rawArgs;
-      if (args.some(value => value === "--type" || value.startsWith("--type="))) continue;
+      if (args.some(value => value === "--type" || value.startsWith("--type="))) return;
       const profile = flag(args, "--user-data-dir");
       // A bound account must not inspect another application's debugging metadata.
-      if (exactProfile !== undefined && profile !== exactProfile) continue;
+      if (exactProfile !== undefined && profile !== exactProfile) return;
       metadata = { profile, processId: Number(pid) };
       const address = flag(args, "--remote-debugging-address");
       if (address && !["127.0.0.1", "localhost"].includes(address)) {
         if (profile) throw new Error(unavailable);
-        continue;
+        return;
       }
-      if (args.includes("--remote-debugging-pipe")) continue;
+      if (args.includes("--remote-debugging-pipe")) return;
       const declared = flag(args, "--remote-debugging-port");
       const stat = await boundedRead(path.join(directory, "stat"), 4096);
       const startedAt = stat.slice(stat.lastIndexOf(")") + 2).split(" ")[19];
@@ -83,9 +84,7 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
         try { await lstat(path.join(profile, "DevToolsActivePort")); }
         catch (error) {
           if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-          endpoints.set(`process:${pid}`, metadata);
-          if (endpoints.size > maxEndpoints) throw new Error(unavailable);
-          continue;
+          return metadata;
         }
         const profileInfo = await lstat(profile);
         if (!profileInfo.isDirectory() || profileInfo.uid !== uid || (profileInfo.mode & 0o022) !== 0) throw new Error(unavailable);
@@ -98,23 +97,40 @@ export async function runningChromeBrowsers(procRoot = "/proc", uid = process.ge
       }
       if (port) {
         const endpoint = socket ?? `http://127.0.0.1:${port}`;
-        endpoints.set(`process:${pid}`, { endpoint, ...metadata });
+        return { endpoint, ...metadata };
       }
-      if (endpoints.size > maxEndpoints) throw new Error(unavailable);
     } catch (error) {
       // A vanished process is different from an unreadable profile of a still-running browser.
       if (["ENOENT", "ESRCH"].includes((error as NodeJS.ErrnoException).code ?? "")) {
-        if (!metadata) continue;
+        if (!metadata) return;
         try { await lstat(directory); }
         catch (current) {
-          if (["ENOENT", "ESRCH"].includes((current as NodeJS.ErrnoException).code ?? "")) continue;
+          if (["ENOENT", "ESRCH"].includes((current as NodeJS.ErrnoException).code ?? "")) return;
           throw new Error(unavailable);
         }
       }
-      if (exactProfile !== undefined || !metadata?.profile || endpoints.size > maxEndpoints) throw new Error(unavailable);
-      endpoints.set(`process:${pid}`, { ...metadata, connectionIssue: "METADATA_UNAVAILABLE" });
-      if (endpoints.size > maxEndpoints) throw new Error(unavailable);
+      if (exactProfile !== undefined || !metadata?.profile) throw new Error(unavailable);
+      return { ...metadata, connectionIssue: "METADATA_UNAVAILABLE" };
     }
+  };
+  // Export progress can keep the main process busy between filesystem callbacks.
+  // Bound concurrent reads so a process-table scan does not consume the entire
+  // upload connection deadline, while retaining complete, ordered discovery.
+  const results: Array<RunningChromeBrowser | undefined> = new Array(pids.length);
+  let next = 0;
+  let stopped = false;
+  const workers = await Promise.allSettled(Array.from({ length: Math.min(processReadConcurrency, pids.length) }, async () => {
+    while (!stopped && next < pids.length) {
+      const index = next++;
+      try { results[index] = await inspect(pids[index]!); }
+      catch (error) { stopped = true; throw error; }
+    }
+  }));
+  const failed = workers.find(worker => worker.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+  for (const [index, metadata] of results.entries()) {
+    if (metadata) endpoints.set(`process:${pids[index]}`, metadata);
+    if (endpoints.size > maxEndpoints) throw new Error(unavailable);
   }
   return [...endpoints.values()];
 }

@@ -130,6 +130,79 @@ it("discovers current-user Chrome main processes only, with loopback debug flags
   expect(await runningChromeEndpoints(f.proc)).toEqual([endpoint, "http://127.0.0.1:9322"]);
   expect(await runningChromeEndpoints(f.proc, process.getuid!() + 1)).toEqual([]);
 });
+it("finishes process discovery inside its connection budget while metadata callbacks are delayed by production work", async () => {
+  const f = await processes();
+  for (let index = 0; index < 63; index++) await f.add([], "/usr/bin/node");
+  await f.add(["--remote-debugging-port=9321"]);
+  const readlink = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).readlink;
+  vi.mocked(filesystem.readlink).mockImplementation(async (...args) => {
+    await new Promise(resolve => setTimeout(resolve, 40));
+    return readlink(...args);
+  });
+  const scan = runningChromeEndpoints(f.proc);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const outcome = await Promise.race([
+      scan.then(endpoints => ({ endpoints })),
+      new Promise<{ deadlineExceeded: true }>(resolve => { timer = setTimeout(() => resolve({ deadlineExceeded: true }), 1000); }),
+    ]);
+    expect(outcome).toEqual({ endpoints: [endpoint] });
+  } finally {
+    if (timer) clearTimeout(timer);
+    await scan;
+  }
+});
+it("does not serialize the remaining process table behind individual slow metadata reads", async () => {
+  const f = await processes();
+  for (let index = 0; index < 63; index++) await f.add([], "/usr/bin/node");
+  await f.add(["--remote-debugging-port=9321"]);
+  const processIds = await filesystem.readdir(f.proc);
+  const slow = new Set([0, 16, 32, 48].map(index => path.join(f.proc, processIds[index]!, "exe")));
+  const readlink = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).readlink;
+  vi.mocked(filesystem.readlink).mockImplementation(async (...args) => {
+    await new Promise(resolve => setTimeout(resolve, slow.has(String(args[0])) ? 350 : 10));
+    return readlink(...args);
+  });
+  const scan = runningChromeEndpoints(f.proc);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const outcome = await Promise.race([
+      scan.then(endpoints => ({ endpoints })),
+      new Promise<{ deadlineExceeded: true }>(resolve => { timer = setTimeout(() => resolve({ deadlineExceeded: true }), 1000); }),
+    ]);
+    expect(outcome).toEqual({ endpoints: [endpoint] });
+  } finally {
+    if (timer) clearTimeout(timer);
+    await scan;
+  }
+});
+it("settles active metadata reads and stops scheduling new processes before rejecting a failed scan", async () => {
+  const f = await processes();
+  for (let index = 0; index < 64; index++) await f.add([], "/usr/bin/node");
+  const first = path.join(f.proc, (await filesystem.readdir(f.proc))[0]!, "exe");
+  const readlink = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).readlink;
+  let started = 0, active = 0;
+  vi.mocked(filesystem.readlink).mockImplementation(async (...args) => {
+    started++; active++;
+    try {
+      const failed = String(args[0]) === first;
+      await new Promise(resolve => setTimeout(resolve, failed ? 5 : 30));
+      if (failed) throw Object.assign(new Error("denied"), { code: "EPERM" });
+      return await readlink(...args);
+    } finally { active--; }
+  });
+  try {
+    await expect(runningChromeBrowsers(f.proc)).rejects.toThrow("无法完整连接");
+    expect(active).toBe(0);
+    expect(started).toBeLessThan(64);
+    const atRejection = started;
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(started).toBe(atRejection);
+  } finally {
+    // The pre-fix scanner keeps reading after rejection; let it finish before fixture cleanup.
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+});
 it("retains a running Chrome instance after its executable is replaced by an update", async () => {
   const f = await processes(), profile = path.join(f.root, "profile"); await mkdir(profile, { mode: 0o700 });
   await f.add(["--remote-debugging-port=9321", `--user-data-dir=${profile}`, "--profile-directory=Default"], "/opt/google/chrome/chrome (deleted)");
@@ -155,7 +228,9 @@ it("reads a bounded DevToolsActivePort only from the running port-zero browser's
 });
 it("ignores a process whose executable cannot be identified instead of blocking every readable Chrome", async () => {
   const f = await processes(); await f.add([]); await f.add(["--remote-debugging-port=9321"]);
-  vi.mocked(filesystem.readlink).mockRejectedValueOnce(Object.assign(new Error("denied"), { code: "EACCES" }));
+  const readlink = (await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises")).readlink;
+  vi.mocked(filesystem.readlink).mockImplementation((...args) => String(args[0]) === path.join(f.proc, "10", "exe")
+    ? Promise.reject(Object.assign(new Error("denied"), { code: "EACCES" })) : readlink(...args));
   expect(await runningChromeEndpoints(f.proc)).toEqual([endpoint]);
 });
 it("recognizes a desktop Chrome process title and ignores a pipe-only MCP browser", async () => {
