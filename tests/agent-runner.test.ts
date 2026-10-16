@@ -12,6 +12,7 @@ import type { KnowledgeOutcome } from "../src/shared/source-sticker-knowledge-au
 import { PreviewReviewSession } from "../src/main/supervised-preview";
 import type { CoverPlacementSession } from "../src/main/cover-placement-session";
 import { JianjiError } from "../src/main/errors";
+import { AUTOMATIC_STICKERS } from "../src/shared/automatic-stickers";
 
 function media(name: string): MediaItem {
   return { id: crypto.randomUUID(), sourcePath: `/tmp/${name}`, displayName: name, fingerprint: name, width: 640, height: 480, durationMs: 1000, sizeBytes: 10, rotation: 0, importedAt: now(), probeStatus: "ready" };
@@ -22,6 +23,24 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("supervisor production admission", () => {
+  it("balances random stickers across concurrent outputs and resets allocations for a new run", async () => {
+    const assets = Object.fromEntries(AUTOMATIC_STICKERS.slice(0, 12).map(({ id }) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
+    const templates: EditTemplate[] = [];
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("本地随机"), stickerAssets: assets,
+      decorations: DecorationSchema.parse({ mode: "random", displayText: { enabled: false, x: .5, y: .13 } }),
+      enqueue: async template => { templates.push(template); return crypto.randomUUID(); }, onChange: () => {} });
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const sources = [media("one"), media("two"), media("three")];
+      runner.start("project", "clean", "", sources); await runner.settled();
+      expect(runner.snapshot()?.items.every(item => item.status === "exporting")).toBe(true);
+      const selections = templates.map(template => template.layers.filter(layer => layer.type === "sticker").map(layer => layer.assetPath));
+      expect(new Set(selections.flat()).size).toBe(12);
+      runner.start("project", "clean", "", sources); await runner.settled();
+      expect(templates.slice(3).map(template => template.layers.filter(layer => layer.type === "sticker").map(layer => layer.assetPath))).toEqual(selections);
+    } finally { random.mockRestore(); }
+  });
+
   it("shows local coverage matching progress before an export exists", async () => {
     let release!: () => void;
     const pending = new Promise<void>(resolve => { release = resolve; });

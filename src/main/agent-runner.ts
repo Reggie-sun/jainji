@@ -194,6 +194,7 @@ export class AgentRunner {
           audit[index].stage = "prepare";
           const preparation = { plan, ruleId: run.ruleId, source, resolutionMode: this.dependencies.resolutionMode,
             stickerAssets: this.dependencies.stickerAssets, decorations: frameOptions[index], catalog: this.dependencies.autoCatalog,
+            randomSelection: { usage: stickerUsage },
             coverSticker, coverTracks, sourceStickerTracks, preserveCoverMotion: Boolean(this.dependencies.prepared), runId: run.id, version: item.version };
           const shapeCoverLayers = this.dependencies.shape ? await this.dependencies.shape.layers(item.version, coverSticker!.stickerId, source, run.id, signal) : undefined;
           const humanRegionLayers = await this.dependencies.humanRegionLayers?.(source, item.version, run.id, signal, onStage);

@@ -323,6 +323,31 @@ describe("agent provider boundary", () => {
     expect(messages[1].content).toContainEqual({ type: "image_url", image_url: { url: preview.url, detail: "low" } });
   });
 
+  it("shows every eligible sticker image in mapped contact sheets before shortlisting", async () => {
+    const complete = vi.fn().mockResolvedValue('{"candidates":[1]}');
+    const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+    const url = "data:image/jpeg;base64,c2hlZXQ=";
+    const catalog = { ...autoCatalog, contactSheets: [{ stickerIds: ["heart", "sparkle"], columns: 2, url }] };
+    const selection = { outputIndex: 0, totalOutputs: 1, stickerUsage: [{ id: "heart", count: 5 }] };
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, catalog, selection)).resolves.toEqual(["sparkle"]);
+    const user = complete.mock.calls[0][0].find((message: { role: string }) => message.role === "user");
+    expect(user.content).toContainEqual({ type: "image_url", image_url: { url, detail: "high" } });
+    const mapping = user.content.find((part: { text?: string }) => part.text?.startsWith("贴纸总览 1"));
+    expect(mapping.text).toContain('[1,1,2,"heart","爱心"]');
+    expect(mapping.text).toContain('[1,2,1,"sparkle","星芒"]');
+  });
+
+  it.each([
+    [{ stickerIds: ["heart"], columns: 1, url: "data:image/jpeg;base64,c2hlZXQ=" }],
+    [{ stickerIds: ["heart", "heart"], columns: 2, url: "data:image/jpeg;base64,c2hlZXQ=" }],
+    [{ stickerIds: ["heart", "sparkle"], columns: 0, url: "data:image/jpeg;base64,c2hlZXQ=" }],
+    [{ stickerIds: ["heart", "unreviewed"], columns: 2, url: "data:image/jpeg;base64,c2hlZXQ=" }],
+  ])("rejects incomplete or ambiguous shortlist image mappings before invoking the model", async (...contactSheets) => {
+    const complete = vi.fn(); const provider = new AgentProvider(); provider.useChatGPT("test-model", complete);
+    await expect(provider.shortlist("clean", "", [], new AbortController().signal, { ...autoCatalog, contactSheets })).rejects.toThrow("贴纸总览");
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it("rejects empty catalogs before model requests and invented stickers without retrying", async () => {
     const catalog = { fonts: [], stickers: [] };
     const complete = vi.fn().mockResolvedValue(JSON.stringify({ ...autoPlan, stickers: autoPlan.stickers.map(sticker => ({ ...sticker, sticker: "mint" })) }));
@@ -418,6 +443,36 @@ describe("agent provider boundary", () => {
     }
     expect(() => validatePlan({ ...autoPlan, priceStyle: undefined }, "black-gold", autoCatalog)).toThrow();
     expect(materializePlan({ ...autoPlan, priceStyle: "ice" }, "black-gold", { width: 640, height: 480 }, stickerAssets, { mode: "agent", productPrice: "19.90", priceStyle: "comic" }, autoCatalog).layers.find(layer => layer.type === "text")).toMatchObject({ color: PRICE_STYLES.find(style => style.id === "ice")!.color, content: "¥ 19.90" });
+  });
+
+  it("uses the whole random sticker pool before repeating across outputs", () => {
+    const assets = Object.fromEntries(AUTOMATIC_STICKERS.slice(0, 9).map(({ id }) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as StickerAssets;
+    const usage = new Map<string, number>();
+    const random = vi.spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const chosen = Array.from({ length: 9 }, () => materializePlan(plan, "clean", { width: 640, height: 480 }, assets,
+        { mode: "random", displayText: { enabled: false, x: 0.5, y: 0.13 } }, undefined, { usage }).layers
+        .filter(layer => layer.type === "sticker").map(layer => layer.assetPath));
+      expect(new Set(chosen.flat().slice(0, 9)).size).toBe(9);
+      expect(chosen.every(ids => new Set(ids).size === 4)).toBe(true);
+      const counts = Object.values(chosen.flat().reduce((counts, id) => ({ ...counts, [id]: (counts[id] ?? 0) + 1 }), {} as Record<string, number>));
+      expect(counts).toHaveLength(9);
+      expect(new Set(counts)).toEqual(new Set([4]));
+    } finally { random.mockRestore(); }
+  });
+
+  it("keeps a random output's selected stickers and allocation counts during rebuilds", () => {
+    const selection = { usage: new Map<string, number>(), ids: undefined as string[] | undefined };
+    const options = { mode: "random", displayText: { enabled: false, x: 0.5, y: 0.13 } };
+    const first = materializePlan(plan, "clean", { width: 640, height: 480 }, stickerAssets, options, undefined, selection);
+    const counts = [...selection.usage];
+    const random = vi.spyOn(Math, "random").mockReturnValue(0);
+    try {
+      const rebuilt = materializePlan(plan, "clean", { width: 640, height: 480 }, stickerAssets, options, undefined, selection);
+      expect(rebuilt.layers.filter(layer => layer.type === "sticker").map(layer => layer.assetPath))
+        .toEqual(first.layers.filter(layer => layer.type === "sticker").map(layer => layer.assetPath));
+      expect([...selection.usage]).toEqual(counts);
+    } finally { random.mockRestore(); }
   });
 
   it("random mode picks four different stickers and a random price style per material", () => {

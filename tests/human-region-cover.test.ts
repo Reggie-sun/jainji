@@ -14,6 +14,39 @@ import { decodeShapeCoverPng } from "../src/main/shape-cover-alpha";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ProviderError } from "../src/main/agent-provider";
 
+it("varies equally fitting random cover artwork across media instead of reusing the first sorted IDs", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-diversity-"));
+  try {
+    const tools = new FfmpegAdapter(ffmpegBin, ffprobeBin), sourcePath = path.join(directory, "source.mp4");
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x120:r=24", "-t", "1", "-c:v", "libx264", sourcePath]).promise;
+    expect(generated.code, generated.stderr).toBe(0);
+    const media: MediaItem[] = Array.from({ length: 8 }, (_, i) => ({ id: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`, sourcePath,
+      fingerprint: "", displayName: "equal-fit", durationMs: 1000, width: 160, height: 120, rotation: 0, sizeBytes: 0, importedAt: now(), probeStatus: "ready" }));
+    const fingerprint = await fingerprintFile(sourcePath), sizeBytes = (await stat(sourcePath)).size;
+    media.forEach(item => Object.assign(item, { fingerprint, sizeBytes }));
+    const identity = "00000000-0000-4000-8000-999999999999";
+    const draft: HumanRegionIntent = { id: randomUUID(), projectId: randomUUID(), revision: 0, assistedArtwork: "human-region-v1", admission: "manual-production-v1",
+      media: media.map(item => ({ mediaId: item.id, sourceFingerprint: fingerprint, disposition: "cover",
+        identities: [{ id: identity, label: "target", semantics: "sticker", origin: "human" }],
+        segments: [{ id: identity, identityId: identity, origin: "human", track: { startMs: 0, endMs: 1000,
+          keyframes: [{ timeMs: 0, rectangle: { x: .1, y: .1, width: .2, height: .1 } }] } }] })) };
+    const assetPath = path.join(directory, "solid.png");
+    await writeFile(assetPath, encodeRgbaPng(Buffer.alloc(40 * 16 * 4, 255), 40, 16));
+    const asset = { assetPath, assetFingerprint: await fingerprintFile(assetPath) };
+    const assets = Object.fromEntries(Array.from({ length: 24 }, (_, i) => [`uploaded-${i.toString(16).padStart(64, "0")}`, asset])) as StickerAssets;
+    const prepare = createHumanRegionCover({ draft, media, preset: { ...DEFAULT_PRESET, resolutionMode: "source" }, assets,
+      tools, directory: path.join(directory, "frozen"), random: true });
+    const selected = [];
+    for (const item of media) {
+      const layers = await prepare(item, 1, "fixed-diversity-run", new AbortController().signal);
+      selected.push(layers[0].cover!.stickerId);
+      expect(await prepare(item, 1, "same-version", new AbortController().signal)).toEqual(layers);
+    }
+    expect(new Set(selected).size).toBeGreaterThan(1);
+    expect(selected.some(id => parseInt(id.slice(9), 16) >= 8)).toBe(true);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}, 60000);
+
 it("reports a genuinely impossible last target without exhausting unrelated sticker combinations", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-no-fit-prune-"));
   try {

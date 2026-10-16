@@ -24,7 +24,7 @@ describe("agent to local export", () => {
     if (!font) { context.skip(); return; }
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-agent-proof-"));
     const butterfly = AUTOMATIC_STICKERS.find(({ label }) => label === "蝴蝶")!;
-    const requests: Array<{ model: string; messages: Array<{ content: string | Array<{ type: string; image_url?: { url: string } }> }> }> = [];
+    const requests: Array<{ model: string; messages: Array<{ content: string | Array<{ type: string; text?: string; image_url?: { url: string; detail?: string } }> }> }> = [];
     const server = createServer((request, response) => {
       let body = "";
       request.on("data", (chunk) => { body += chunk; });
@@ -134,7 +134,29 @@ describe("agent to local export", () => {
         const content = request.messages[1].content;
         if (typeof content === "string") throw new Error("expected visual content");
         const images = content.filter((item) => item.type === "image_url");
-        expect(images).toHaveLength(previewRequests.includes(request) ? 16 : detectorRequests.includes(request) || recognitionRequests.includes(request) ? sampledFrameCount : mode === "agent" && !shortlistRequests.includes(request) ? 4 : 3);
+        if (shortlistRequests.includes(request)) {
+          const directory = JSON.parse((request.messages[0].content as string).split("完整目录为 [编号,名称,资格]：")[1]) as [number, string, string][];
+          const byNumber = new Map(directory.map(([number, label, qualification]) => [number, { label, qualification }]));
+          const sheetMappings = content.filter((item) => item.text?.startsWith("贴纸总览 "));
+          expect(sheetMappings.length).toBeGreaterThan(1);
+          const represented: string[] = [];
+          for (const sheet of sheetMappings) {
+            const mapping = JSON.parse(sheet.text!.match(/\[行,列,目录编号,ID,名称\]：(\[.*\])。按真实图案选择/)![1]) as [number, number, number, string, string][];
+            expect(mapping.length).toBeGreaterThan(0);
+            expect(new Set(mapping.map(([row, column]) => `${row}:${column}`)).size).toBe(mapping.length);
+            expect(mapping.every(([row, column]) => Number.isInteger(row) && row > 0 && Number.isInteger(column) && column > 0)).toBe(true);
+            for (const [, , number, id, label] of mapping) {
+              expect(byNumber.get(number)).toEqual({ label, qualification: "允许" });
+              expect(AUTOMATIC_STICKERS.find(entry => entry.id === id)?.label).toBe(label);
+              represented.push(id);
+            }
+            expect(content[content.indexOf(sheet) + 1]).toMatchObject({ type: "image_url", image_url: { detail: "high", url: expect.stringMatching(/^data:image\/jpeg;base64,\/9j\//) } });
+          }
+          expect(represented.sort()).toEqual(AUTOMATIC_STICKERS.map(({ id }) => id).sort());
+          expect(images).toHaveLength(3 + sheetMappings.length);
+        } else {
+          expect(images).toHaveLength(previewRequests.includes(request) ? 16 : detectorRequests.includes(request) || recognitionRequests.includes(request) ? sampledFrameCount : mode === "agent" ? 4 : 3);
+        }
         expect(images.every((item) => item.image_url!.url.startsWith("data:image/jpeg;base64,/9j/"))).toBe(true);
         expect(JSON.stringify(request)).not.toContain(directory);
       }

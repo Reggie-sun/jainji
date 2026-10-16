@@ -14,7 +14,7 @@ import { AgentRunner } from "./agent-runner.js";
 import { extractAgentFrames } from "./agent-frames.js";
 import { assertOutputDirectorySafe, canonicalPath } from "./paths.js";
 import type { ExportBatchIdentity, ExportQueue } from "./queue.js";
-import type { StickerAssets } from "./builtin-stickers.js";
+import type { BuiltinStickerAsset, StickerAssets } from "./builtin-stickers.js";
 import { resolveFont } from "./ffmpeg.js";
 import { DecorationSchema, decorationTimingContext, isUploadedStickerId, type DecorationOptions } from "../shared/decorations.js";
 import { isCoverPoolStickerId } from "../shared/cover-sticker.js";
@@ -22,7 +22,7 @@ import { decorationFontFamilies, decorationStickerIds, type AssetLibrary } from 
 import { AUTOMATIC_STICKERS, isAutomaticStickerAllowed } from "../shared/automatic-stickers.js";
 import { LIBRARY_STICKERS } from "../shared/asset-library.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
-import { stickerPreview } from "./sticker-preview.js";
+import { stickerContactSheets, stickerPreview } from "./sticker-preview.js";
 import { resolveCoverSticker, previousCoverStickerId, unusedCoverStickerIds } from "./cover-sticker.js";
 import { recognizeSourceStickerKnowledge } from "./source-sticker-recognition.js";
 import { SourceStickerKnowledgeSession } from "./source-sticker-knowledge-session.js";
@@ -92,6 +92,28 @@ export class AgentController {
       previews.push({ id, url: await stickerPreview(this.ffmpeg, asset, signal) });
     }
     return previews;
+  }
+
+  private async prepareContactSheets(catalog: AgentDecorationCatalog, assets: StickerAssets, signal: AbortSignal) {
+    const resolved: { id: string; asset: BuiltinStickerAsset }[] = [];
+    const mutableAssets = assets as Record<string, BuiltinStickerAsset | undefined>;
+    for (let offset = 0; offset < catalog.stickers.length; offset += 4) {
+      signal.throwIfAborted();
+      const entries = catalog.stickers.slice(offset, offset + 4);
+      const results = await Promise.allSettled(entries.map(async ({ id }) => {
+        const asset = mutableAssets[id] ?? await this.library?.ensure(id);
+        if (!asset) throw new Error("贴纸素材缺失，请重新安装完整素材库。");
+        return { id, asset };
+      }));
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure?.status === "rejected") throw failure.reason;
+      for (const result of results) {
+        if (result.status !== "fulfilled") continue;
+        mutableAssets[result.value.id] = result.value.asset;
+        resolved.push(result.value);
+      }
+    }
+    return stickerContactSheets(this.ffmpeg, resolved, signal);
   }
 
   private async autoCatalog(signal: AbortSignal, cover = false, deferPreviews = false): Promise<AgentDecorationCatalog> {
@@ -206,8 +228,13 @@ export class AgentController {
       }
       if (!shapeRequest && (automaticCover && !assisted || preserveSourceStickers) && !this.visionProvider.status().configured) throw new Error("请先在模型与 API 中配置独立的视觉识别模型，用于原贴纸识别和空缺角落补齐。");
       if (supervised && !this.reviewerProvider.status().configured) throw new Error("请先在模型与 API 中配置复核模型，用于主管 Agent 修正与样片检查。");
-      const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover), Boolean(shapeRequest)) : undefined;
-      const autoCatalog = decorations.mode === "agent" ? { ...availableCatalog!, stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)) } : undefined;
+      const deferCatalogPreviews = Boolean(shapeRequest) || decorations.mode === "agent" && !automaticCover;
+      const availableCatalog = decorations.mode === "agent" || automaticCover ? await this.autoCatalog(this.preparingController.signal, Boolean(automaticCover), deferCatalogPreviews) : undefined;
+      const autoCatalog = decorations.mode === "agent" ? {
+        ...availableCatalog!,
+        stickers: availableCatalog!.stickers.filter(({ id }) => isAutomaticStickerAllowed(id) || isUploadedStickerId(id)),
+        previews: undefined,
+      } : undefined;
       await assertDecorationFrameOptions(decorations, this.stickerAssets, ids);
       const stickerAssets = { ...(decorations.mode === "agent" ? this.stickerAssets : this.library ? await this.library.prepare(decorations, this.stickerAssets, ids) : this.stickerAssets) };
       const coverSticker = automaticCover || humanRegion ? undefined : resolveCoverSticker(project.coverSticker, randomPath ? stickerAssets : this.stickerAssets, history, ids, randomPath);
@@ -259,6 +286,7 @@ export class AgentController {
       };
       const previousCoverId = previousCoverStickerId(history);
       let manualPreviews: Promise<{ id: string; url: string }[]> | undefined;
+      let contactSheets: ReturnType<AgentController["prepareContactSheets"]> | undefined;
       const preset = { ...DEFAULT_PRESET, ...parsed.exportSettings, container: parsed.exportFormat ?? DEFAULT_PRESET.container };
       let creativeRequests = 0;
       const knowledge = preserveSourceStickers && !assisted ? new SourceStickerKnowledgeSession({
@@ -396,7 +424,10 @@ export class AgentController {
             return this.provider.plan(rule, brief, frames, signal, undefined, undefined, previews);
           }
           creativeRequests++;
-          const ids = await this.provider.shortlist(rule, brief, frames, signal, catalog, selection);
+          const shortlistCatalog = decorations?.mode === "agent"
+            ? { ...catalog, previews: undefined, contactSheets: await (contactSheets ??= this.prepareContactSheets(catalog, stickerAssets, signal)) }
+            : catalog;
+          const ids = await this.provider.shortlist(rule, brief, frames, signal, shortlistCatalog, selection);
           const candidates = await prepareCandidates(ids, catalog, signal);
           creativeRequests++;
           return this.provider.plan(rule, brief, frames, signal, candidates, selection);

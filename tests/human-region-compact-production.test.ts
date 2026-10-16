@@ -120,8 +120,13 @@ it("covers mixed saved boxes independently in creator mode and preserves every t
     const pool = Object.fromEntries(Array.from({ length: 200 }, (_, index) => [`uploaded-${index.toString(16).padStart(64, "0")}`, asset])) as StickerAssets;
     for (const letter of ["a", "b", "c", "d"]) (pool as Record<string, typeof asset>)[`uploaded-${letter.repeat(64)}`] = asset;
     const originalSearch = shapeSearch.searchHybridCornerShape;
-    const search = vi.spyOn(shapeSearch, "searchHybridCornerShape").mockImplementation((candidates, ...args) =>
-      candidates[0].id.startsWith("uploaded-0") ? Promise.resolve(null) : originalSearch(candidates, ...args));
+    const attemptsByTarget = new Map<number, number>();
+    const search = vi.spyOn(shapeSearch, "searchHybridCornerShape").mockImplementation((candidates, ...args) => {
+      const target = args[0].findIndex(pixel => pixel > 0), attempts = (attemptsByTarget.get(target) ?? 0) + 1;
+      attemptsByTarget.set(target, attempts);
+      // Delay each target's first fit independently of randomized candidate order.
+      return attempts <= 160 ? Promise.resolve(null) : originalSearch(candidates, ...args);
+    });
     try {
       const layers = await createHumanRegionCover({ draft: four, media: [media[0]], assets: pool, preset: { ...DEFAULT_PRESET, resolutionMode: "source" },
         tools, directory: path.join(directory, "full-pool"), random: true })(media[0], 1, "late-candidates", new AbortController().signal);

@@ -105,6 +105,13 @@ describe("reusable batch cover", () => {
     const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
     const plan = vi.spyOn(controller.provider, "plan").mockImplementation(async (_rule, _brief, _frames, _signal, catalog) => ({ summary: "包装", captions: [], filter: "cool", intensity: 0.3, ...(mode === "agent" ? { stickers: ["top-left", "top-right", "bottom-left", "bottom-right"].map((corner) => ({ corner, sticker: catalog!.stickers[0].id, width: 0.08, rotationDeg: 0 })), priceStyle: "ice" as const } : {}) }));
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
+    const contactSheets = vi.spyOn(stickerPreviews, "stickerContactSheets").mockImplementation(async (_ffmpeg, stickers, signal) => {
+      signal.throwIfAborted();
+      return Array.from({ length: Math.ceil(stickers.length / 25) }, (_, page) => {
+        const batch = stickers.slice(page * 25, (page + 1) * 25);
+        return { stickerIds: batch.map(({ id }) => id), columns: Math.min(5, batch.length), url: "data:image/jpeg;base64,aA==" };
+      });
+    });
     const selectCover = vi.spyOn(controller.provider, "selectCoverSticker").mockImplementation(async (_frames, _signal, catalog) => catalog.stickers[0].id);
     const shortlist = vi.spyOn(controller.provider, "shortlist").mockImplementation(async (_rule, _brief, _frames, _signal, catalog, selection) => selection ? ["sparkle"] : [catalog.stickers.some(({ id }) => id === libraryId) ? libraryId : "sparkle"]);
     const visionDetect = vi.spyOn(controller.visionProvider, "detectCovers").mockResolvedValue([]);
@@ -113,6 +120,7 @@ describe("reusable batch cover", () => {
     try {
       await expect(controller.start(input, new Set([directory]))).rejects.toThrow("独立的视觉识别模型");
       expect(preview).not.toHaveBeenCalled();
+      expect(contactSheets).not.toHaveBeenCalled();
       expect(shortlist).not.toHaveBeenCalled();
       expect(plan).not.toHaveBeenCalled();
       expect(selectCover).not.toHaveBeenCalled();
@@ -166,9 +174,15 @@ describe("reusable batch cover", () => {
         await expect(controller.start(input, new Set([directory]))).rejects.toThrow("独立的视觉识别模型");
         expect(plan).toHaveBeenCalledTimes(8);
       }
+      expect(contactSheets).toHaveBeenCalledTimes(mode === "agent" ? 4 : 0);
+      if (mode === "agent") for (const call of shortlist.mock.calls.filter(call => Boolean(call[5]))) {
+        const catalog = call[4];
+        expect(catalog.contactSheets?.flatMap(({ stickerIds }) => stickerIds)).toEqual(catalog.stickers.map(({ id }) => id));
+        expect(catalog.contactSheets?.every(sheet => sheet.stickerIds.length <= 25)).toBe(true);
+      }
       expect(history.slice(4)).toHaveLength(4);
       expect(history.slice(4).every((batch) => batch.templateSnapshot.layers.every((layer) => layer.type !== "sticker" || !layer.cover))).toBe(true);
-    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); recognitionReview.mockRestore(); visionDetect.mockRestore(); knowledge.restore(); placementAcquire.mockRestore(); placementReview.mockRestore(); placementAdmit.mockRestore(); await rm(directory, { recursive: true, force: true }); }
+    } finally { await controller.cancel(); frames.mockRestore(); plan.mockRestore(); preview.mockRestore(); contactSheets.mockRestore(); shortlist.mockRestore(); selectCover.mockRestore(); recognitionReview.mockRestore(); visionDetect.mockRestore(); knowledge.restore(); placementAcquire.mockRestore(); placementReview.mockRestore(); placementAdmit.mockRestore(); await rm(directory, { recursive: true, force: true }); }
   });
   it("rejects enabled coverage with missing assets before requesting a model", async () => {
     const ffmpeg = new FfmpegAdapter("unused", "unused");

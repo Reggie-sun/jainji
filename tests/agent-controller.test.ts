@@ -36,12 +36,16 @@ describe("AgentController queue admission", () => {
     expect(controller.busy).toBe(false);
   });
 
-  it.each(["start", "brief"])("waits for uploaded preview cleanup when cancelling %s", async (operation) => {
+  it.each(["start", "brief"])("waits for local sticker image cleanup when cancelling %s", async (operation) => {
+    const directory = await mkdtemp(path.join(tmpdir(), "jianji-sticker-cleanup-"));
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
     const queue = { snapshot: () => ({ revision: 1, batches: [] }) } as unknown as ExportQueue;
     const id = `uploaded-${"c".repeat(64)}`;
-    const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [id]: { assetPath: "/unused.png", assetFingerprint: "unused" } });
+    const mediaId = crypto.randomUUID();
+    service.currentProject.mediaItems.push({ id: mediaId, displayName: "test", sourcePath: path.join(directory, "missing.mp4"), fingerprint: "missing", width: 10, height: 10, durationMs: 1000, sizeBytes: 1, rotation: 0, importedAt: new Date().toISOString(), probeStatus: "ready" });
+    const knowledge = operation === "start" ? controllerKnowledge() : undefined;
+    const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [id]: { assetPath: "/unused.png", assetFingerprint: "unused" } }, undefined, undefined, undefined, undefined, knowledge?.store);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
     controller.visionProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
     controller.reviewerProvider.configure({ apiKey: "unused", model: "detector", baseUrl: "https://example.test/v1" });
@@ -51,12 +55,18 @@ describe("AgentController queue admission", () => {
       release = () => reject(new Error("cancelled after cleanup"));
       signal.addEventListener("abort", () => { aborted = true; }, { once: true });
     }));
+    const contactSheets = vi.spyOn(stickerPreviews, "stickerContactSheets").mockImplementation(async (_ffmpeg, _stickers, signal) => new Promise((_resolve, reject) => {
+      release = () => reject(new Error("cancelled after cleanup"));
+      signal.addEventListener("abort", () => { aborted = true; }, { once: true });
+    }));
+    const frames = vi.spyOn(agentFrames, "extractAgentFrames").mockResolvedValue([]);
     const plan = vi.spyOn(controller.provider, "plan");
     const brief = vi.spyOn(controller.provider, "generateBrief");
     try {
-      const input = { ruleId: "clean" as const, brief: "", mediaIds: [crypto.randomUUID()], outputDirectory: path.resolve("unused-output"), decorations: { mode: "agent" as const, productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } };
-      const pending = (operation === "start" ? controller.start(input, new Set()) : controller.generateBrief({ ruleId: input.ruleId, decorations: input.decorations })).catch(() => undefined);
-      await vi.waitFor(() => expect(preview).toHaveBeenCalledTimes(1));
+      const input = { ruleId: "clean" as const, brief: "", mediaIds: [mediaId], outputDirectory: directory, decorations: { mode: "agent" as const, productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } };
+      const pending = (operation === "start" ? controller.start(input, new Set([directory])) : controller.generateBrief({ ruleId: input.ruleId, decorations: input.decorations })).catch(() => undefined);
+      const pendingImage = operation === "start" ? contactSheets : preview;
+      await vi.waitFor(() => expect(pendingImage).toHaveBeenCalledTimes(1));
       let cancelled = false;
       const cancel = controller.cancel().then(() => { cancelled = true; });
       await vi.waitFor(() => expect(aborted).toBe(true));
@@ -67,17 +77,17 @@ describe("AgentController queue admission", () => {
       expect(controller.busy).toBe(false);
       expect(plan).not.toHaveBeenCalled();
       expect(brief).not.toHaveBeenCalled();
-    } finally { release?.(); preview.mockRestore(); plan.mockRestore(); brief.mockRestore(); }
+    } finally { release?.(); frames.mockRestore(); contactSheets.mockRestore(); preview.mockRestore(); plan.mockRestore(); brief.mockRestore(); knowledge?.restore(); await rm(directory, { recursive: true, force: true }); }
   });
 
-  it("cancels candidate selection without preparing previews or calling the final model", async () => {
+  it("cancels candidate selection after exposing the full visual catalog without calling the final model", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-shortlist-cancel-"));
     const ffmpeg = new FfmpegAdapter("unused", "unused");
     const service = new ApplicationService(ffmpeg, { resolve: async () => null });
     const queue = { snapshot: () => ({ revision: 1, batches: [] }) } as unknown as ExportQueue;
     const id = crypto.randomUUID();
     service.currentProject.mediaItems.push({ id, displayName: "test", sourcePath: path.join(directory, "missing.mp4"), fingerprint: "missing", width: 10, height: 10, durationMs: 1000, sizeBytes: 1, rotation: 0, importedAt: new Date().toISOString(), probeStatus: "ready" });
-    const library = { ensure: vi.fn(), resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary;
+    const library = { ensure: vi.fn(async () => stickerAssets.sparkle), resolveFont: async () => "/tmp/font.ttf" } as unknown as AssetLibrary;
     const knowledge = controllerKnowledge();
     const controller = new AgentController(service, queue, ffmpeg, () => {}, { ...stickerAssets, [`uploaded-${"a".repeat(64)}`]: stickerAssets.sparkle }, library, undefined, undefined, undefined, knowledge.store);
     controller.provider.configure({ apiKey: "unused", model: "unused", baseUrl: "https://example.test/v1" });
@@ -89,6 +99,10 @@ describe("AgentController queue admission", () => {
       signal.addEventListener("abort", () => reject(signal.reason), { once: true });
     }));
     const preview = vi.spyOn(stickerPreviews, "stickerPreview").mockResolvedValue("data:image/jpeg;base64,aA==");
+    const contactSheets = vi.spyOn(stickerPreviews, "stickerContactSheets").mockImplementation(async (_ffmpeg, stickers, signal) => {
+      signal.throwIfAborted();
+      return [{ stickerIds: stickers.map(({ id }) => id), columns: 5, url: "data:image/jpeg;base64,aA==" }];
+    });
     try {
       await controller.start({ ruleId: "clean", brief: "", mediaIds: [id], outputDirectory: directory, decorations: { mode: "agent", displayMode: "first-3s", productPrice: "19.90", sticker: "template", fontFamily: "Noto Sans CJK SC" } }, new Set([directory]));
       await vi.waitFor(() => expect(shortlist).toHaveBeenCalledTimes(1));
@@ -99,14 +113,17 @@ describe("AgentController queue admission", () => {
       expect(catalog.stickers).toHaveLength(AUTOMATIC_STICKERS.length + 1);
       expect(catalog.stickers.every(({ id: stickerId }) => isAutomaticStickerAllowed(stickerId) || isUploadedStickerId(stickerId))).toBe(true);
       expect(catalog.stickers.some(({ id: stickerId }) => stickerId.startsWith("local-") || stickerId === "fluent-bf9436317c97f49dd95dacd3358e8983a24b2aec")).toBe(false);
+      expect(catalog.contactSheets?.flatMap(({ stickerIds }) => stickerIds).sort()).toEqual(catalog.stickers.map(({ id: stickerId }) => stickerId).sort());
+      expect(catalog.previews).toBeUndefined();
+      expect(contactSheets).toHaveBeenCalledTimes(1);
       await controller.cancel();
       expect(finalPlan).not.toHaveBeenCalled();
-      expect(library.ensure).not.toHaveBeenCalled();
+      expect(preview).not.toHaveBeenCalled();
       expect(controller.snapshot()?.items[0].status).toBe("cancelled");
       expect(controller.busy).toBe(false);
       expect(knowledge.review).not.toHaveBeenCalled();
       expect(knowledge.close).toHaveBeenCalledTimes(1);
-    } finally { preview.mockRestore(); frames.mockRestore(); finalPlan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); knowledge.restore(); await rm(directory, { recursive: true, force: true }); }
+    } finally { contactSheets.mockRestore(); preview.mockRestore(); frames.mockRestore(); finalPlan.mockRestore(); shortlist.mockRestore(); await controller.cancel(); knowledge.restore(); await rm(directory, { recursive: true, force: true }); }
   });
   it.each([1, 250])("admits %i outputs with 500 historical exports despite another project's recovered queued task", async (multiplier) => {
     const directory = await mkdtemp(path.join(tmpdir(), "jianji-admission-"));

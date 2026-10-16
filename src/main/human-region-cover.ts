@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import type { CoverReviewDraft } from "../shared/cover-review.js";
 import { isCoverPoolStickerId, isHumanRegionStickerId } from "../shared/cover-sticker.js";
@@ -98,13 +98,13 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
   const noFit = () => new ProviderError(draft.admission === "manual-production-v1"
     ? "没有贴纸能在有限超框范围内用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会放大遮挡主体或添加白底。"
     : "没有贴纸能用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会添加白底。");
-  const round = (version: number, signal: AbortSignal, mediaId?: string): Promise<Map<string, StickerLayer[]>> => {
+  const round = (version: number, signal: AbortSignal, mediaId?: string, runId = ""): Promise<Map<string, StickerLayer[]>> => {
     const scope = mediaId ?? "round", key = `${scope}:${version}`;
     let pending = rounds.get(key);
     if (!pending) {
       let timeout: AbortSignal | undefined;
       pending = (async () => {
-        if (version > 1) await round(version - 1, signal, mediaId);
+        if (version > 1) await round(version - 1, signal, mediaId, runId);
         timeout = AbortSignal.timeout(600_000);
         const bounded = AbortSignal.any([signal, timeout]), started = Date.now();
         let lastProgress = 0;
@@ -131,6 +131,10 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
           const perMedia = assigned.get(group[0].media.id) ?? new Set<string>();
           assigned.set(group[0].media.id, perMedia);
           const eligible = candidates.filter(id => !input.random || !perMedia.has(id));
+          // A stable random order per run/target prevents the first ID window from
+          // winning on every source while preserving backtracking and version rotation.
+          const ranks = new Map(input.random ? eligible.map(id => [id, createHash("sha256").update(`${runId}:${key}:${id}`).digest("hex")]) : []);
+          if (input.random) eligible.sort((a, b) => ranks.get(a)!.localeCompare(ranks.get(b)!));
           const tiers = [eligible.filter(id => !previous.includes(id)), eligible.filter(id => previous.includes(id) && id !== previous.at(-1)), eligible.filter(id => id === previous.at(-1))];
           let hasMatch = false;
           for (const tier of tiers) for (let start = 0; start < tier.length; start += 8) {
@@ -145,7 +149,8 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
               if (matches.length === group.length) options.push({ id, matches, excess: matches.reduce((sum, matched) => sum + matched.excess, 0),
                 clipped: matches.reduce((sum, matched) => sum + matched.clipped, 0) });
             }
-            options.sort((a, b) => a.clipped - b.clipped || a.excess - b.excess || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+            options.sort((a, b) => a.clipped - b.clipped || a.excess - b.excess
+              || (input.random ? ranks.get(a.id)!.localeCompare(ranks.get(b.id)!) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
             hasMatch ||= options.length > 0;
             for (const { id, matches } of options) {
               perMedia.add(id); selections.push({ key, id, group, matches });
@@ -188,11 +193,11 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     }
     return pending;
   };
-  return async (media: MediaItem, version: number, _runId: string, signal: AbortSignal, onStage?: (stage: string) => void) => {
+  return async (media: MediaItem, version: number, runId: string, signal: AbortSignal, onStage?: (stage: string) => void) => {
     const scope = independent ? media.id : "round", key = `${scope}:${version}`;
     if (onStage) progress.set(key, onStage);
     onStage?.(version > 1 ? "等待本素材上一版本完成覆盖匹配…" : "正在准备人工框真实贴纸覆盖…");
-    try { return (await round(version, signal, independent ? media.id : undefined)).get(media.id)!; }
+    try { return (await round(version, signal, independent ? media.id : undefined, runId)).get(media.id)!; }
     finally { progress.delete(key); }
   };
 }
