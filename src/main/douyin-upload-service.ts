@@ -200,13 +200,17 @@ export class DouyinUploadService {
       if (this.accounts instanceof QianchuanAccountSettings && !this.preparingAutomationUpload) this.preloadPlans();
     } finally { this.beginningProduction = false; this.changed(); }
   }
-  status(projectId: string): DouyinUploadStatus {
+  private statusBase(projectId: string, records: UploadTaskRecord[]) {
     const { accountConfigPath, ...config } = this.store.config;
     const readiness = this.dependencies.readiness?.(this.store.config);
-    const records = this.store.tasks(), open = this.openTasks(records);
+    const open = this.openTasks(records);
     const paused = this.paused || open.some(task => task.input.project_id === projectId && this.pausedAccounts.has(task.authorization.target.advertiserId));
     const progress = "成片就绪即上传，每次最多 9 条；所有制作入口整批就绪后自动确认，VPS 账号完成后自动关闭并切换。";
     const message = this.store.unavailable ? "上传存储不可用，已阻断浏览器操作。" : (this.stopFailed ? "旧上传操作未能安全停止，请先关闭应用并核查 Chrome。" : this.initializationFailure) ?? (!config.enabled ? "自动上传已关闭。" : readiness ?? (!this.summaries.some(account => account.available) ? "请授权可用的千川账号配置。" : paused ? this.pausedMessage(projectId, open) : this.stopped || this.stopping ? "自动上传已停止，待上传成片保留在队列中。检查对应 Chrome 后，对本批未选文件的任务点击“安全继续”；结果未知的文件只能只读核查原页面。" : progress));
+    return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.stopFailed && !this.store.unavailable && !this.initializationFailure && !paused && !this.stopped && !this.stopping && this.summaries.some(account => account.available) && !readiness, message };
+  }
+  status(projectId: string): DouyinUploadStatus {
+    const records = this.store.tasks(), open = this.openTasks(records), base = this.statusBase(projectId, records);
     const tasks = open.filter(task => task.input.project_id === projectId && task.result.state !== "DISCARDED").map(task => this.taskResult(task));
     const all = records.filter(task => task.input.project_id === projectId);
     const summary = (pageBatchId: string) => {
@@ -240,14 +244,14 @@ export class DouyinUploadService {
       if (this.egressBlockedBatches?.pageBatchIds.has(first.authorization.pageBatchId) && !relatedAccountProducts.includes(this.egressBlockedBatches.product)) relatedAccountProducts.push(this.egressBlockedBatches.product);
       return { ...this.batchSummary(first.input.project_id, batch), accountProduct: target.product, relatedAccountProducts, canClose: canClose(first.authorization.pageBatchId) };
     });
-    return { config, configSelected: Boolean(accountConfigPath), accounts: structuredClone(this.summaries), ready: config.enabled && !this.stopFailed && !this.store.unavailable && !this.initializationFailure && !paused && !this.stopped && !this.stopping && this.summaries.some(account => account.available) && !readiness, message, tasks, batches, historicalBatches, accountBatches, closedBatches, legacyTasks: this.productionBatches ? [] : this.store.legacyTasks().filter(task => task.project_id === projectId) };
+    return { ...base, tasks, batches, historicalBatches, accountBatches, closedBatches, legacyTasks: this.productionBatches ? [] : this.store.legacyTasks().filter(task => task.project_id === projectId) };
   }
   /** Captured job details are read-only; they never restore historical upload permission. */
   capturedStatus(projectId: string, exportTaskIds: string[]): Pick<DouyinUploadStatus, "accounts" | "message" | "tasks" | "closedBatches"> & { historical: boolean; recoverableBatches: { uploadTaskId: string; pageBatchId: string; advertiserId: string; adId: string; count: number }[] } {
     const ids = new Set(exportTaskIds);
-    const records = this.store.tasks().filter(task => task.input.project_id === projectId && ids.has(task.input.export_task_id));
+    const all = this.store.tasks(), records = all.filter(task => task.input.project_id === projectId && ids.has(task.input.export_task_id));
     const historical = records.some(task => !this.inProduction(task.authorization.pageBatchId));
-    const status = this.status(projectId);
+    const status = this.statusBase(projectId, all);
     const closedBatches = this.store.closedBatches().filter(batch => batch.projectId === projectId && batch.taskIds.every(id => records.some(task => task.result.upload_task_id === id)))
       .map(batch => {
         const tasks = records.filter(task => task.authorization.pageBatchId === batch.pageBatchId);

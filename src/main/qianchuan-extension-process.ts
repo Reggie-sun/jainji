@@ -8,6 +8,23 @@ import { verifyOriginalProfile } from "./qianchuan-browser-bindings.js";
 // CDP callers must separately prove Chrome's actual default profile/context.
 type ProfileScope = "single-profile" | "cdp-default-profile";
 
+// Keep complete identity proofs responsive when export/status work delays each
+// filesystem callback. A failed proof drains its active reads before rejecting.
+async function readMetadataConcurrently<T>(values: string[], read: (value: string) => Promise<T>): Promise<T[]> {
+  const results = new Array<T>(values.length);
+  let next = 0, stopped = false;
+  const workers = await Promise.allSettled(Array.from({ length: Math.min(16, values.length) }, async () => {
+    while (!stopped && next < values.length) {
+      const index = next++;
+      try { results[index] = await read(values[index]!); }
+      catch (error) { stopped = true; throw error; }
+    }
+  }));
+  const failed = workers.find(worker => worker.status === "rejected");
+  if (failed?.status === "rejected") throw failed.reason;
+  return results;
+}
+
 function chromeArguments(bytes: Buffer): string[] {
   if (bytes.length > 65536) throw extensionChanged();
   const raw = new TextDecoder("utf-8", { fatal: true }).decode(bytes).split("\0").filter(Boolean);
@@ -90,12 +107,12 @@ export async function readExtensionBrowserMetadata(identity: ExtensionProcess, p
   if (port < 1 || port > 65535) throw extensionChanged();
   const descriptors = await readdir(path.join(directory, "fd"));
   if (descriptors.length > 4096) throw extensionChanged();
-  const sockets = new Set<string>();
-  for (const fd of descriptors) {
+  const socketInodes = await readMetadataConcurrently(descriptors, async fd => {
     if (!/^[0-9]+$/.test(fd)) throw extensionChanged();
-    try { const match = /^socket:\[([0-9]+)\]$/.exec(await readlink(path.join(directory, "fd", fd))); if (match) sockets.add(match[1]); }
+    try { return /^socket:\[([0-9]+)\]$/.exec(await readlink(path.join(directory, "fd", fd)))?.[1]; }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  }
+  });
+  const sockets = new Set(socketInodes.filter((inode): inode is string => inode !== undefined));
   const listeners = (await metadataText(path.join(directory, "net", "tcp"), 1024 * 1024)).trim().split("\n").slice(1)
     .map(line => line.trim().split(/\s+/)).filter(fields => fields[3] === "0A" && fields[1] === `0100007F:${port.toString(16).toUpperCase().padStart(4, "0")}`);
   if (listeners.length !== 1 || !sockets.has(listeners[0][9])) throw extensionChanged();
@@ -107,19 +124,19 @@ export async function readExtensionBrowserMetadata(identity: ExtensionProcess, p
 export async function findExtensionProcess(profile: string, profileDirectory: string, procRoot = "/proc", scope: ProfileScope = "single-profile"): Promise<ExtensionProcess> {
   const pids = (await readdir(procRoot)).filter(value => /^[1-9][0-9]*$/.test(value));
   if (pids.length > 4096) throw extensionChanged();
-  const matches: ExtensionProcess[] = [];
-  for (const pid of pids) {
+  const candidates = await readMetadataConcurrently(pids, async pid => {
     try {
       const directory = path.join(procRoot, pid), info = await lstat(directory);
-      if (info.uid !== process.getuid?.()) continue;
+      if (info.uid !== process.getuid?.()) return;
       const executable = path.basename(await readlink(path.join(directory, "exe"))).replace(/ \(deleted\)$/, "");
-      if (!["chrome", "chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].includes(executable)) continue;
+      if (!["chrome", "chromium", "chromium-browser", "google-chrome", "google-chrome-stable"].includes(executable)) return;
       const args = chromeArguments(await readFile(path.join(directory, "cmdline")));
-      if (args.some(arg => arg === "--type" || arg.startsWith("--type="))) continue;
-      if (!args.some((arg, index) => arg === `--user-data-dir=${profile}` || arg === "--user-data-dir" && args[index + 1] === profile)) continue;
+      if (args.some(arg => arg === "--type" || arg.startsWith("--type="))) return;
+      if (!args.some((arg, index) => arg === `--user-data-dir=${profile}` || arg === "--user-data-dir" && args[index + 1] === profile)) return;
       const candidate = { pid: Number(pid), profile, profileDirectory };
-      await verifyExtensionProcess(candidate, procRoot, os.homedir(), scope); matches.push(candidate);
+      await verifyExtensionProcess(candidate, procRoot, os.homedir(), scope); return candidate;
     } catch (error) { if (!["ENOENT", "ESRCH", "EACCES"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error; }
-  }
+  });
+  const matches = candidates.filter((candidate): candidate is ExtensionProcess => candidate !== undefined);
   if (matches.length !== 1) throw extensionChanged(); return matches[0];
 }

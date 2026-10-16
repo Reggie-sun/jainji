@@ -3,12 +3,12 @@ import { chmod, mkdir, mkdtemp, rename, rm, symlink, writeFile } from "node:fs/p
 import * as fsPromises from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { readExtensionBrowserMetadata, verifyExtensionProcess } from "../src/main/qianchuan-extension-process";
+import { findExtensionProcess, readExtensionBrowserMetadata, verifyExtensionProcess } from "../src/main/qianchuan-extension-process";
 import type { ExtensionProcess } from "../src/main/qianchuan-extension-protocol";
 
 vi.mock("node:fs/promises", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs/promises")>();
-  return { ...actual, open: vi.fn(actual.open) };
+  return { ...actual, open: vi.fn(actual.open), readlink: vi.fn(actual.readlink) };
 });
 
 const roots: string[] = [];
@@ -73,6 +73,71 @@ const debugArguments = (profile: string, port: string | number) => [
 ];
 
 describe("Qianchuan extension browser process metadata", () => {
+  it("rejects multiple verified processes for the same bound profile", async () => {
+    const f = await fakeChrome({ args: debugArguments("/placeholder", 9321) });
+    const args = [f.executable, ...debugArguments(f.profile, 9321), ""].join("\0");
+    await writeFile(path.join(f.proc, String(f.pid), "cmdline"), args);
+    const other = path.join(f.proc, "4243"); await mkdir(other);
+    await symlink(f.executable, path.join(other, "exe"));
+    await writeFile(path.join(other, "cmdline"), args);
+    await writeFile(path.join(other, "stat"), `4243 (chrome) S ${Array(18).fill("0").join(" ")} 124 0`);
+    await expect(findExtensionProcess(f.profile, "Default", f.proc)).rejects.toThrow();
+  });
+
+  it.each(["processes", "descriptors"])("drains active %s reads and stops scheduling after a fatal metadata error", async kind => {
+    const f = await fakeChrome({ args: debugArguments("/placeholder", 9321), listeners: [{ port: 9321, inode: 7001 }], fdInodes: [7001] });
+    await writeFile(path.join(f.proc, String(f.pid), "cmdline"), [f.executable, ...debugArguments(f.profile, 9321), ""].join("\0"));
+    for (let index = 0; index < 64; index++) {
+      if (kind === "processes") {
+        const directory = path.join(f.proc, String(100 + index)); await mkdir(directory); await symlink("/usr/bin/node", path.join(directory, "exe"));
+      } else await symlink("/dev/null", path.join(f.proc, String(f.pid), "fd", String(100 + index)));
+    }
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    let active = 0, started = 0;
+    vi.mocked(fsPromises.readlink).mockImplementation(async (...args) => {
+      const match = kind === "processes" ? String(args[0]).endsWith("/exe") : String(args[0]).includes("/fd/");
+      if (!match) return actual.readlink(...args);
+      const first = ++started === 1; active++;
+      try {
+        await new Promise(resolve => setTimeout(resolve, first ? 5 : 30));
+        if (first) throw Object.assign(new Error("denied"), { code: "EPERM" });
+        return await actual.readlink(...args);
+      } finally { active--; }
+    });
+    const work = kind === "processes" ? findExtensionProcess(f.profile, "Default", f.proc) : readExtensionBrowserMetadata(f.identity, f.proc);
+    await expect(work).rejects.toThrow("denied"); expect(active).toBe(0); expect(started).toBeLessThan(64);
+    const atRejection = started; await new Promise(resolve => setTimeout(resolve, 50)); expect(started).toBe(atRejection);
+  });
+
+  it.each(["processes", "descriptors"])("keeps %s proof within budget when production delays filesystem callbacks", async kind => {
+    const f = await fakeChrome({ args: debugArguments("/placeholder", 9321), listeners: [{ port: 9321, inode: 7001 }], fdInodes: [7001] });
+    await writeFile(path.join(f.proc, String(f.pid), "cmdline"), [f.executable, ...debugArguments(f.profile, 9321), ""].join("\0"));
+    if (kind === "processes") {
+      for (let index = 0; index < 63; index++) {
+        const directory = path.join(f.proc, String(100 + index)); await mkdir(directory);
+        await symlink("/usr/bin/node", path.join(directory, "exe"));
+      }
+    } else {
+      for (let index = 0; index < 63; index++) await symlink("/dev/null", path.join(f.proc, String(f.pid), "fd", String(100 + index)));
+    }
+    const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+    let active = 0, maximum = 0;
+    vi.mocked(fsPromises.readlink).mockImplementation(async (...args) => {
+      const delayed = kind === "processes" ? String(args[0]).endsWith("/exe") : String(args[0]).includes("/fd/");
+      if (!delayed) return actual.readlink(...args);
+      active++; maximum = Math.max(maximum, active);
+      try { await new Promise(resolve => setTimeout(resolve, 40)); return await actual.readlink(...args); }
+      finally { active--; }
+    });
+    const work = kind === "processes" ? findExtensionProcess(f.profile, "Default", f.proc) : readExtensionBrowserMetadata(f.identity, f.proc);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const result = await Promise.race([work, new Promise(resolve => { timer = setTimeout(() => resolve("deadline"), 1000); })]);
+      expect(result).toEqual(kind === "processes" ? f.identity : { port: 9321 });
+      expect(maximum).toBeGreaterThan(1); expect(maximum).toBeLessThanOrEqual(16); expect(active).toBe(0);
+    } finally { if (timer) clearTimeout(timer); await work; }
+  });
+
   it("returns a fixed port only when the exact browser process owns its unique loopback listener", async () => {
     const f = await fakeChrome({
       args: debugArguments("/placeholder", 9321),

@@ -55,6 +55,18 @@ async function fixture() {
 }
 
 describe("paused Qianchuan status projection", () => {
+  it("reads captured details without repeatedly cloning history for unrelated recovery summaries", async () => {
+    const f = await fixture(), old = await f.batch(2);
+    await f.restart();
+    const tasks = vi.spyOn(f.store, "tasks"), intents = vi.spyOn(f.store, "intents");
+    const before = await readFile(path.join(f.store.root, "state.json"));
+    const detail = f.service.capturedStatus(old.projectId, []);
+    expect(detail.tasks).toEqual([]); expect(detail.recoverableBatches).toEqual([]);
+    expect(tasks).toHaveBeenCalledTimes(1); expect(intents).not.toHaveBeenCalled();
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before);
+    expect(f.dependencies.browser).not.toHaveBeenCalled();
+  });
+
   it("shows only current production without same-account historical blockers or durable changes", async () => {
     const f = await fixture(), old = await f.batch(8, "眼贴", true); await f.restart(); const current = await f.batch(12);
     const before = await readFile(path.join(f.store.root, "state.json"));
