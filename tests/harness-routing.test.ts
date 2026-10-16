@@ -441,3 +441,18 @@ describe("harness policy routing", () => {
     }
   });
 });
+
+it('routes Qianguanjia session contracts through provider consumers without unrelated media checks', () => {
+  const p = HarnessPolicySchema.parse(JSON.parse(readFileSync(new URL('../.agent/harness/policy.json', import.meta.url), 'utf8')));
+  for (const path of ['src/shared/qianguanjia.ts', 'src/main/qianchuan-qianguanjia-adapter.ts']) {
+    const r = selectChecks(p, scope([path]));
+    expect(r.checks.map(c => c.id)).toEqual(['typecheck', 'douyin-upload', 'documents']);
+    expect(r.checks.find(c => c.id === 'douyin-upload')?.kind).toBe('vitest');
+    const c = r.checks.find(c => c.id === 'douyin-upload');
+    if (c?.kind !== 'vitest') throw Error('Expected provider regressions');
+    expect(c.testFiles).toEqual(['tests/qianchuan-backend-adapter.test.ts','tests/qianguanjia-queries.test.ts','tests/qianguanjia-transport.test.ts']);
+  }
+  const fallback=selectChecks(p,scope(['src/main/qianchuan-unmapped-provider.ts']));
+  const check=fallback.checks.find(c=>c.id==='douyin-upload');
+  expect(check?.kind==='vitest' && check.testFiles.length>3).toBe(true);
+});

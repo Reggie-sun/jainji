@@ -118,6 +118,7 @@ export class QianguanjiaReadonlyAdapter {
             data = { source: "qianguanjia", observedAt, accounts };
           } else if (kind === "home") {
             const home = object(json.data);
+            const provided = Object.keys(home).length !== 0;
             const metrics = (value: unknown): QianguanjiaHomeMetrics => {
               const row = object(value);
               return Object.fromEntries(fields.map(field => {
@@ -128,9 +129,10 @@ export class QianguanjiaReadonlyAdapter {
               })) as unknown as QianguanjiaHomeMetrics;
             };
             const groups = Object.fromEntries((["ALL", "LIVE_PROM_GOODS", "VIDEO_PROM_GOODS"] as const).map(key => {
+              if (!provided) { const missing = Object.fromEntries(fields.map(field => [field, null])) as unknown as QianguanjiaHomeMetrics; return [key, { current: missing, comparison: { ...missing } }]; }
               const group = object(home[key]); return [key, { current: metrics(group.nowTotalData), comparison: metrics(group.oldTotalData) }];
             })) as QianguanjiaHomeSummary["groups"];
-            data = { source: "qianguanjia", scope: "supplier-home-aggregate", date, observedAt, groups };
+            data = { source: "qianguanjia", scope: "supplier-home-aggregate", date, observedAt, groups, availability: provided ? "provided" : "not-provided" };
           }
           if (kind === "report" || kind === "materials" || kind === "plan-report") {
             if (!analysis || analysis.kind !== kind) throw new Error();

@@ -94,7 +94,7 @@ it("keeps supplier navigation inside its own workspace and preserves native quer
     await rail(page, "千管家").click();
     expect(await nav.isVisible()).toBe(false);
     await page.getByRole("heading", { name: "数据概览", exact: true }).waitFor();
-    await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
+    expect(await page.getByRole("button", { name: "连接已授权账户", exact: true }).count()).toBe(0);
     await page.getByTestId("qianguanjia-home").waitFor();
     expect(await page.evaluate(() => (window as any).taskPagesFixture.calls.supplierReads)).toEqual(["discover", "accounts", "home"]);
     const supplierNav = page.getByRole("navigation", { name: "千管家页面" });
@@ -118,7 +118,7 @@ it("keeps supplier navigation inside its own workspace and preserves native quer
     await page.getByLabel("查询内容", { exact: true }).selectOption("report");
     await rail(page, "千管家").click();
     await page.getByRole("heading", { name: "数据概览", exact: true }).waitFor();
-    expect(await page.getByTestId("qianguanjia-home").count()).toBe(0);
+    await page.getByTestId("qianguanjia-home").waitFor();
     await rail(page, "千川").click();
     expect(await page.getByLabel("查询内容", { exact: true }).inputValue()).toBe("report");
     await nav.getByRole("button", { name: "上传任务", exact: true }).click();

@@ -25,11 +25,12 @@ export interface QianguanjiaAccountDirectory {
   accounts: { advertiserId: string; name: string; authStatus: number; authStatusDesc: string }[];
 }
 export interface QianguanjiaHomeMetrics {
-  statCost: string; totalPayOrderGmvIncludeCouponForRoi2: string;
-  totalPayOrderCountForRoi2: string; totalPrepayAndPayOrderRoi2: string;
+  statCost: string | null; totalPayOrderGmvIncludeCouponForRoi2: string | null;
+  totalPayOrderCountForRoi2: string | null; totalPrepayAndPayOrderRoi2: string | null;
 }
 export interface QianguanjiaHomeSummary {
   source: "qianguanjia"; scope: "supplier-home-aggregate"; observedAt: string; date: string;
+  availability?: "provided" | "not-provided";
   groups: Record<"ALL" | "LIVE_PROM_GOODS" | "VIDEO_PROM_GOODS", { current: QianguanjiaHomeMetrics; comparison: QianguanjiaHomeMetrics }>;
 }
 export type QianguanjiaResult = { requestId: string } & (

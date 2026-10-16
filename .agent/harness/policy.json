@@ -196,6 +196,7 @@
         "tests/qianguanjia-effects-ui.test.ts",
         "tests/qianguanjia-account-reports.test.ts",
         "tests/qianguanjia-account-reports-ui.test.ts",
+        "tests/qianguanjia-session-ui.test.ts",
         "tests/qianchuan-backend-ui.test.ts",
         "tests/qianchuan-backend-session.test.ts",
         "tests/qianchuan-plan-selection.test.ts",
@@ -1938,6 +1939,16 @@
       ]
     },
     {
+      "id": "domain-qianguanjia-session",
+      "tier": "domain",
+      "paths": ["src/shared/qianguanjia.ts", "src/main/qianchuan-qianguanjia-adapter.ts", "tests/qianchuan-backend-adapter.test.ts"],
+      "checkIds": ["typecheck", "douyin-upload", "documents"],
+      "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/qianguanjia-authorized-integration-2026-10-14.md", "docs/qianguanjia-history-materials-2026-10-16.md"],
+      "testFilesByCheck": {
+        "douyin-upload": ["tests/qianchuan-backend-adapter.test.ts", "tests/qianguanjia-queries.test.ts", "tests/qianguanjia-transport.test.ts"]
+      }
+    },
+    {
       "id": "domain-qianguanjia-analysis",
       "paths": [
         "src/shared/qianguanjia-analysis.ts",
@@ -1963,7 +1974,9 @@
         "tests/qianguanjia-account-reports.test.ts",
         "tests/qianguanjia-account-reports-ui.test.ts",
         "tests/helpers/qianguanjia-account-reports-ui-fixture.ts",
-        "src/renderer/QianguanjiaPanel.tsx"
+        "src/renderer/QianguanjiaPanel.tsx",
+        "tests/qianguanjia-session-ui.test.ts",
+        "tests/helpers/qianguanjia-session-ui-fixture.ts"
       ],
       "checkIds": [
         "typecheck",
@@ -1986,6 +1999,7 @@
           "tests/qianguanjia-effects-ui.test.ts",
           "tests/qianguanjia-account-reports.test.ts",
           "tests/qianguanjia-account-reports-ui.test.ts",
+          "tests/qianguanjia-session-ui.test.ts",
           "tests/qianchuan-effect.test.ts",
           "tests/qianchuan-effect-read.test.ts",
           "tests/qianchuan-effect-export.test.ts"

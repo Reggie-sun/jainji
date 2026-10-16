@@ -451,3 +451,9 @@ it("supplier plan ranking retains bounded rows when its reported total is incons
  const f=await supplierFixture({analysisResponse:{total:0,list:[{outPlanId:"1879999999999999997",planName:"fixture plan",statCostForRoi2:10,totalPayOrderCountForRoi2:"2",totalPayOrderGmvIncludeCouponForRoi2:20,totalPrepayAndPayOrderRoi2:2}],currentPage:1,totalPage:0}}),port=await QianguanjiaReadonlyAdapter.create(f.page,clock);
  try{expect(await port.analysis({kind:"plan-report",startDate:"2026-10-12",endDate:"2026-10-12",page:1,limit:10},signal)).toMatchObject({total:null,reportedTotal:0,coverage:"current-page-only",rows:[{planId:"1879999999999999997"}]});await expect(port.analysis({kind:"plan-report",startDate:"2026-10-12",endDate:"2026-10-12",page:2,limit:10} as any,signal)).rejects.toThrow();expect(f.requests).toHaveLength(2);}finally{await port.dispose()}
 });
+
+
+it("preserves an exact empty supplier home response as unavailable without inventing zero metrics", async () => {
+ const {page,requests}=await supplierFixture({response:{code:0,data:{}}}); const port=await QianguanjiaReadonlyAdapter.create(page,clock);
+ try {const result=await port.todayHomeSummary(new AbortController().signal); expect(result).toMatchObject({availability:"not-provided",groups:{ALL:{current:{statCost:null,totalPrepayAndPayOrderRoi2:null}}}});expect(requests).toHaveLength(1);} finally {await port.dispose();await page.close();}
+});
