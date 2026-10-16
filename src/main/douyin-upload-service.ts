@@ -13,6 +13,7 @@ import { QianchuanAccountConfigReader, QianchuanAccountConfigError } from "./qia
 import { QianchuanAccountSettings, type EgressChangeGuard } from "./qianchuan-account-settings.js";
 import { AutomationBrowserAccounts, assertAutomationBrowserSafe, historicalBrowserPageProof } from "./qianchuan-automation-browsers.js";
 import { egressIdentity } from "../shared/qianchuan-egress.js";
+import { EgressProbeUnavailable } from "./qianchuan-egress-probe.js";
 import type { TemplateAccountBinding } from "../shared/batch-upload.js";
 import { QianchuanAccountSetupSchema, QianchuanBrowserControlSchema, type QianchuanAccountSummary, type QianchuanProduct } from "../shared/qianchuan-account.js";
 import { QianchuanLibraryClearSchema, QianchuanPlanRecoverySchema, type QianchuanLibraryClear, type QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
@@ -551,11 +552,16 @@ export class DouyinUploadService {
     try { await this.accounts.openBrowser(input); } finally { this.browserPreparations--; }
     this.preloadPlans();
   }
-  async controlAccountBrowser(input: unknown): Promise<void> {
+  async controlAccountBrowser(input: unknown, assertBrowserLifecycleIdle: () => void = () => {}): Promise<void> {
     const parsed = QianchuanBrowserControlSchema.parse(input);
     await this.stopPlanPreload();
     if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未关闭浏览器。");
     if (!(this.accounts instanceof QianchuanAccountSettings)) throw new Error("当前账号设置不支持管理浏览器。");
+    const expectedTarget = await this.accounts.configuredAccount(parsed.product);
+    if (expectedTarget.advertiserId !== parsed.expectedAdvertiserId) throw new Error("账号设置已变化，未关闭任何浏览器，请重新选择账号。");
+    const localEgressRecovery = parsed.action === "reconnect-egress" && Boolean(expectedTarget.egress) && expectedTarget.egress?.mode !== "remote-browser";
+    if (!localEgressRecovery) assertBrowserLifecycleIdle();
+    if (this.busy || this.stopFailed || this.store.unavailable) throw new Error("制作、上传或账号操作仍在运行或状态不可用，未关闭浏览器。");
     this.managingBrowser = true;
     try {
       await this.control.catch(() => undefined);
@@ -569,8 +575,8 @@ export class DouyinUploadService {
           (this.store.hasMarker(task.result.upload_task_id) || task.result.upload_outcome !== "NOT_SELECTED" || this.eligible.has(task.result.upload_task_id)));
         const preparing = this.store.intents().some(intent => sharesBrowser(intent.authorization.target) && this.currentIntents.has(intentKey(intent)) && !this.cancelledIntents.has(intentKey(intent)) && !this.store.tasks().some(task => intentKey(task.input) === intentKey(intent)));
         if (protectedTasks.length || preparing) throw new Error("该账号仍有制作中、待上传、待确认或结果未知的任务，未关闭浏览器。请先核查原上传页面并明确结束对应本地批次；上传记录和防重传屏障会保留。");
-      });
-      this.planReads.invalidate(parsed.product);
+      }, expectedTarget);
+      if (!localEgressRecovery) this.planReads.invalidate(parsed.product);
       if (parsed.action === "restart") this.preloadPlans();
     } finally { this.managingBrowser = false; this.changed(); }
   }
@@ -1603,7 +1609,31 @@ export class DouyinUploadService {
       await this.bounded(inner => this.currentTarget(first, inner), t.navigation, signal); signal.throwIfAborted();
     }
     await this.phase(tasks, "OPENING_UPLOAD_PAGE");
-    const prepared = await this.bounded(inner => port.open(tasks, this.selectedFiles(first), inner), t.navigation, signal);
+    const generation = this.controlGeneration;
+    let prepared: Awaited<ReturnType<UploadBrowserPort["open"]>>;
+    for (let retry = 0; ; retry++) {
+      signal.throwIfAborted();
+      if (this.stopFailed || this.store.unavailable || generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，出口探测重试已停止。");
+      if (retry > 0) {
+        await this.bounded(inner => this.currentTarget(first, inner), t.navigation, signal);
+        for (const task of tasks) task.result.retry_count++;
+        await this.save(tasks);
+      }
+      try {
+        prepared = await this.bounded(inner => port.open(tasks, this.selectedFiles(first), inner), t.navigation, signal);
+        break;
+      } catch (error) {
+        // The uploader emits this only before touching the original platform page.
+        // An occupied page must retain its adapter, ownership and permanent fences.
+        // The existing initial-group reconnect loop owns retries on an empty page.
+        if (!(error instanceof EgressProbeUnavailable) || signal.aborted || !this.selectedFiles(first).length ||
+          tasks.some(task => task.result.upload_outcome !== "NOT_SELECTED" || this.store.hasMarker(task.result.upload_task_id))) throw error;
+        if (retry === 2) throw new UploadError({ ...error.failure, message: "原页出口探测已尝试 3 次，自动上传已暂停。", next_action: "核查原上传页面；已选或结果未知的文件不会自动重传。" });
+        for (const task of tasks) task.result = { ...task.result, failure: { ...error.failure, message: `出口探测暂时中断，正在原页重试（${retry + 1}/2）。` }, timestamp: timestamp() };
+        await this.save(tasks);
+        await delay(1000 * (retry + 1), undefined, { signal });
+      }
+    }
     for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }
     await this.bounded(inner => this.currentTarget(first, inner), t.navigation, signal); signal.throwIfAborted();
     await this.store.markSelecting(tasks.map(task => task.result.upload_task_id), prepared.pageOwnership, prepared.selectedIndex);

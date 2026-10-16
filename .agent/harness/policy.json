@@ -58,7 +58,7 @@
       "required": true,
       "command": "node",
       "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/task-pages.test.ts"],
+      "testFiles": ["tests/task-pages.test.ts", "tests/qianchuan-overview-ui.test.ts"],
       "timeoutMs": 120000
     },
     {
@@ -246,6 +246,7 @@
       "testFiles": [
         "tests/automatic-cover.test.ts",
         "tests/cover-track-provider.test.ts",
+        "tests/cover-sticker.test.ts",
         "tests/cover-review-approval.test.ts",
         "tests/human-region-cover.test.ts",
         "tests/human-region-compact-production.test.ts",
@@ -544,7 +545,6 @@
         "tests/cover-review-provider.test.ts",
         "tests/cover-save-agent.test.ts",
         "tests/cover-selection-provider.test.ts",
-        "tests/cover-sticker.test.ts",
         "tests/cover-track.integration.test.ts",
         "tests/cover-track.test.ts",
         "tests/curated-stickers.test.ts",
@@ -925,7 +925,7 @@
     {
       "id": "renderer-task-pages",
       "tier": "baseline",
-      "paths": ["src/renderer/**", "tests/task-pages.test.ts", "tests/helpers/task-pages-fixture.ts"],
+      "paths": ["src/renderer/**", "tests/task-pages.test.ts", "tests/helpers/task-pages-fixture.ts", "tests/qianchuan-overview-ui.test.ts", "tests/helpers/qianchuan-overview-fixture.ts"],
       "checkIds": ["typecheck", "task-pages", "documents"],
       "documentRefs": ["docs/superpowers/plans/2026-10-11-task-pages.md", "docs/decoration-production-contract.md", "docs/semi-automatic-cover-review-spec.md"]
     },
@@ -1121,6 +1121,7 @@
         "src/main/builtin-frames.ts",
         "src/main/decoration-frame.ts",
         "src/main/asset-library.ts",
+        "src/main/uploaded-stickers.ts",
         "src/renderer/FrameDecorationPicker.tsx",
         "tests/builtin-stickers.test.ts",
         "tests/uploaded-stickers.test.ts",
@@ -1325,6 +1326,7 @@
         "src/renderer/SourceSticker*",
         "tests/automatic-cover.test.ts",
         "tests/cover-track-provider.test.ts",
+        "tests/cover-sticker.test.ts",
         "tests/cover-review-approval.test.ts",
         "tests/human-region-cover.test.ts",
         "tests/human-region-compact-production.test.ts",
@@ -1567,7 +1569,6 @@
         "tests/cover-review-provider.test.ts",
         "tests/cover-save-agent.test.ts",
         "tests/cover-selection-provider.test.ts",
-        "tests/cover-sticker.test.ts",
         "tests/cover-track.integration.test.ts",
         "tests/cover-track.test.ts",
         "tests/curated-stickers.test.ts",
@@ -1655,6 +1656,15 @@
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md"
       ]
+    },
+    {
+      "id": "domain-task-page-fixtures",
+      "paths": [
+        "tests/helpers/task-pages-fixture.ts",
+        "tests/helpers/qianchuan-overview-fixture.ts"
+      ],
+      "checkIds": ["typecheck", "task-pages", "documents"],
+      "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/video-validation-harness-spec.md"]
     },
     {
       "id": "fallback-test-support",
@@ -1896,6 +1906,29 @@
       ]
     },
     {
+      "id": "domain-sticker-preview",
+      "paths": [
+        "src/main/sticker-preview.ts",
+        "tests/sticker-preview.test.ts"
+      ],
+      "checkIds": [
+        "typecheck",
+        "extended-regressions",
+        "documents"
+      ],
+      "testFilesByCheck": {
+        "extended-regressions": [
+          "tests/sticker-preview.test.ts"
+        ]
+      },
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/decoration-production-contract.md",
+        "docs/video-validation-harness-spec.md"
+      ]
+    },
+    {
       "id": "domain-results-panel",
       "paths": [
         "src/renderer/ResultsPanel.tsx",
@@ -1941,7 +1974,7 @@
     {
       "id": "domain-qianguanjia-session",
       "tier": "domain",
-      "paths": ["src/shared/qianguanjia.ts", "src/main/qianchuan-qianguanjia-adapter.ts", "tests/qianchuan-backend-adapter.test.ts"],
+      "paths": ["src/shared/qianguanjia.ts", "src/main/qianchuan-qianguanjia-adapter.ts", "src/main/qianguanjia-queries.ts", "tests/qianchuan-backend-adapter.test.ts"],
       "checkIds": ["typecheck", "douyin-upload", "documents"],
       "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/qianguanjia-authorized-integration-2026-10-14.md", "docs/qianguanjia-history-materials-2026-10-16.md"],
       "testFilesByCheck": {

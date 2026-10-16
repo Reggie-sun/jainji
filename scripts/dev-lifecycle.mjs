@@ -1,3 +1,13 @@
+import { createHash } from "node:crypto";
+
+/** Keep a healthy owner across UI rebuilds, but replace stale runtime code only after cleanup. */
+export async function refreshDevelopmentEgressHost(current, bytes, createHost) {
+  const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
+  if (current?.sourceSha256 === sourceSha256) return current;
+  if (current) await current.host.dispose();
+  return { sourceSha256, host: await createHost() };
+}
+
 /** Ask the app to save/close through its normal lifecycle. Never force-kill it. */
 export function requestDevelopmentQuit(child, { restart = false } = {}) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;

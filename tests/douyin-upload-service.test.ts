@@ -19,6 +19,8 @@ import { uploadFailure } from "../src/shared/douyin-upload";
 import * as localCdp from "../src/main/local-cdp-transport";
 import * as accountConnection from "../src/main/qianchuan-current-account";
 import { assertAutomationBrowserSafe } from "../src/main/qianchuan-automation-browsers";
+import { EgressProbeUnavailable } from "../src/main/qianchuan-egress-probe";
+import { qianchuanEgressRuntime } from "../src/main/qianchuan-egress-runtime";
 
 const selection = (accountProduct: QianchuanProduct): QianchuanUploadSelection => ({ enabled: true, accountProduct });
 const temporaryRoots = new Set<string>();
@@ -512,6 +514,98 @@ describe("Qianchuan upload service", () => {
     fixtureServices.add(service);
     await service.restoreConfig(); return { ...f, service };
   }
+  it("allows only a saved local egress reconnect past production and export idle gates", async () => {
+    const { default: ts } = await import("typescript"), { runInNewContext } = await import("node:vm"), { z } = await import("zod");
+    const source = await readFile(new URL("../src/main/index.ts", import.meta.url), "utf8");
+    const tree = ts.createSourceFile("index.ts", source, ts.ScriptTarget.Latest, true);
+    const registration = tree.statements.find(node => ts.isFunctionDeclaration(node) && node.name?.text === "registerHandlers")!;
+    const local = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+    const remote = { ...local, mode: "remote-browser" };
+    const runtime = {
+      recover: vi.spyOn(qianchuanEgressRuntime, "recover").mockImplementation(() => undefined),
+      ensure: vi.spyOn(qianchuanEgressRuntime, "ensure").mockResolvedValue({ identity: "fixture", signal: new AbortController().signal }),
+      verify: vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue({ identity: "fixture", signal: new AbortController().signal }),
+      remote: vi.spyOn(qianchuanRemoteRuntime, "reconnect").mockResolvedValue(),
+      browser: vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue(),
+    };
+
+    const createHandler = async (route: typeof local | typeof remote | undefined, action: "reconnect-egress" | "close" | "restart") => {
+      const f = await nativeFixture(undefined, async () => []);
+      const document = JSON.parse(await readFile(f.configPath, "utf8"));
+      const account = document.accounts.find((entry: { product: string }) => entry.product === "眼贴");
+      if (route) account.egress = route;
+      else delete account.egress;
+      await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+      await f.service.chooseConfig(f.configPath);
+
+      const state = { productionBusy: true, exportBusy: true };
+      const handlers = new Map<string, (event: unknown, input: unknown) => Promise<unknown>>();
+      const assertProductionIdle = vi.fn(() => { if (state.productionBusy) throw new Error("制作期间不可执行账号生命周期操作。"); });
+      const coverReview = { assertIdle: vi.fn() };
+      const taskStatuses = vi.fn(() => state.exportBusy ? new Map([["export", "running"]]) : new Map());
+      const queue = { retry: vi.fn(async () => {}), createBatch: vi.fn(async () => ({ id: "batch", tasks: [{ id: "task" }] })), start: vi.fn(), taskStatuses };
+      runInNewContext(ts.transpileModule(registration.getText(tree), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText + "\nregisterHandlers();", {
+        ipcMain: { handle: (name: string, handler: (event: unknown, input: unknown) => Promise<unknown>) => handlers.set(name, handler) },
+        z, uuidSchema: z.string().uuid(), UploadIdSchema: z.string(), registerBugFeedbackHandlers() {}, registerDecorationAssetHandlers() {},
+        assertTrustedSender() {}, assertProductionIdle, coverReview, mainWindow: {}, stickerAssets: {}, uploadedStickers: {}, uploadedFrames: {},
+        capabilities: { ready: true }, proofSchema: z.object({ mediaId: z.string().uuid() }), retrySchema: z.object({ taskIds: z.array(z.string().uuid()) }),
+        douyinUpload: f.service, queue, service: { currentProject: { id: randomUUID(), mediaItems: [] }, activeTemplate: {}, getMedia: () => ({}) },
+        app: { getPath: () => f.store.root }, path, mkdir: vi.fn(async () => {}), DEFAULT_PRESET, publicState: async () => ({ ok: true }),
+      });
+      return { f, state, handlers, assertProductionIdle, coverReview, taskStatuses, action };
+    };
+
+    const localCase = await createHandler(local, "reconnect-egress");
+    await expect(localCase.handlers.get("douyinUpload.controlAccountBrowser")!({}, { product: "眼贴", expectedAdvertiserId: "1003", action: localCase.action })).resolves.toEqual({ ok: true });
+    expect(localCase.assertProductionIdle).not.toHaveBeenCalled(); expect(localCase.coverReview.assertIdle).not.toHaveBeenCalled();
+    expect(localCase.taskStatuses).not.toHaveBeenCalled(); expect(runtime.recover).toHaveBeenCalledOnce();
+    expect(runtime.ensure).toHaveBeenCalledOnce(); expect(runtime.verify).toHaveBeenCalledOnce();
+    expect(runtime.remote).not.toHaveBeenCalled(); expect(runtime.browser).not.toHaveBeenCalled(); expect(localCase.f.events).toEqual([]);
+
+    for (const denied of [
+      { route: remote, action: "reconnect-egress" as const },
+      { route: undefined, action: "reconnect-egress" as const },
+      { route: local, action: "close" as const },
+      { route: local, action: "restart" as const },
+    ]) {
+      const item = await createHandler(denied.route, denied.action);
+      await expect(item.handlers.get("douyinUpload.controlAccountBrowser")!({}, { product: "眼贴", expectedAdvertiserId: "1003", action: item.action })).rejects.toThrow("制作期间");
+      expect(item.assertProductionIdle).toHaveBeenCalledOnce(); expect(item.taskStatuses).not.toHaveBeenCalled();
+      item.state.productionBusy = false;
+      await expect(item.handlers.get("douyinUpload.controlAccountBrowser")!({}, { product: "眼贴", expectedAdvertiserId: "1003", action: item.action })).rejects.toThrow("仍在导出");
+      expect(item.taskStatuses).toHaveBeenCalledOnce(); expect(item.f.events).toEqual([]);
+    }
+    expect(runtime.remote).not.toHaveBeenCalled(); expect(runtime.browser).not.toHaveBeenCalled();
+  });
+
+  it("rejects a local reconnect when its configured target changes after eligibility is read", async () => {
+    const f = await nativeFixture(undefined, async () => []);
+    const document = JSON.parse(await readFile(f.configPath, "utf8"));
+    const account = document.accounts.find((entry: { product: string }) => entry.product === "眼贴");
+    account.egress = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    await f.service.chooseConfig(f.configPath);
+    const mapping = path.join(f.store.root, "accounts", "mapping.json");
+    const original = QianchuanAccountSettings.prototype.configuredAccount;
+    let changed = false;
+    vi.spyOn(QianchuanAccountSettings.prototype, "configuredAccount").mockImplementation(async function (this: QianchuanAccountSettings, product: QianchuanProduct) {
+      const target = await original.call(this, product);
+      if (product === "眼贴" && !changed) {
+        changed = true;
+        const current = JSON.parse(await readFile(mapping, "utf8"));
+        current.accounts.find((entry: { product: string }) => entry.product === product).egress.localPort = 19382;
+        await writeFile(mapping, JSON.stringify(current), { mode: 0o600 });
+      }
+      return target;
+    });
+    const recover = vi.spyOn(qianchuanEgressRuntime, "recover").mockImplementation(() => undefined);
+    vi.spyOn(qianchuanEgressRuntime, "ensure").mockResolvedValue({ identity: "fixture", signal: new AbortController().signal });
+    vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue({ identity: "fixture", signal: new AbortController().signal });
+
+    await expect(f.service.controlAccountBrowser({ product: "眼贴", expectedAdvertiserId: "1003", action: "reconnect-egress" })).rejects.toThrow("账号配置已变化");
+    expect(changed).toBe(true); expect(recover).not.toHaveBeenCalled(); expect(f.events).toEqual([]);
+  });
+
   it("applies an idle account's upload method through normal browser closure without starting uploads", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath);
     const close = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
@@ -2812,6 +2906,69 @@ describe("Qianchuan upload service", () => {
     release(); await committed; await resumed; await f.service.runPending();
     await vi.waitFor(() => expect(f.service.status(batch.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED")).toBe(true));
     expect(f.events.filter(event => event === "file-input")).toHaveLength(2);
+  });
+
+  it.each(["transient", "exhausted", "generic"] as const)("preserves the occupied page during a later group's %s probe failure", async mode => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["already selected", "later file"]); const authorization = await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const original = f.store.tasks()[0]!, fencePath = path.join(f.store.root, "selection-fences", `${original.result.upload_task_id}.json`);
+    const fence = await readFile(fencePath, "utf8"), ownership = structuredClone(f.store.fence(original.result.upload_task_id)!.pageOwnership);
+    const open = f.port.open; let attempts = 0;
+    const stoppedAtStart = f.events.filter(event => event === "stop").length;
+    f.port.open = async (...args) => {
+      attempts++;
+      expect(f.events.filter(event => event === "stop")).toHaveLength(stoppedAtStart);
+      expect(args[1]).toHaveLength(1);
+      expect(f.ownershipByBatch.get(authorization.pageBatchId)).toEqual(ownership);
+      if (mode === "generic") throw uploadFailure("CDP_UNAVAILABLE", "browser", "Unproven connection failure", "Inspect original page", false, true);
+      if (mode === "exhausted" || attempts === 1) throw new EgressProbeUnavailable();
+      return open(...args);
+    };
+    await f.service.enqueueFinalArtifact(batch.identities[1]!); await f.service.runPending();
+    const later = f.store.tasks().find(task => task.input.export_task_id === batch.identities[1]!.export_task_id)!;
+    expect(attempts).toBe(mode === "transient" ? 2 : mode === "exhausted" ? 3 : 1);
+    expect(await readFile(fencePath, "utf8")).toBe(fence);
+    expect(f.store.fence(original.result.upload_task_id)!.pageOwnership).toEqual(ownership);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(mode === "transient" ? 2 : 1);
+    expect(later.result.retry_count).toBe(mode === "transient" ? 1 : mode === "exhausted" ? 2 : 0);
+    expect(later.result.upload_outcome).toBe(mode === "transient" ? "ACCEPTED" : "NOT_SELECTED");
+    if (mode !== "transient") expect(f.store.hasMarker(later.result.upload_task_id)).toBe(false);
+  });
+
+  it.each(["success", "cancel"] as const)("keeps a processing group's fences intact when an appended probe retries (%s)", async mode => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["processing file", "appended file"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    let completed = false, attempts = 0;
+    f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
+    const open = f.port.open;
+    f.port.open = async (...args) => {
+      if (args[1].length && ++attempts === 1) throw new EgressProbeUnavailable();
+      return open(...args);
+    };
+    const running = f.service.runPending();
+    try {
+      await vi.waitFor(() => expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(1));
+      const original = f.store.tasks()[0]!, fencePath = path.join(f.store.root, "selection-fences", `${original.result.upload_task_id}.json`);
+      const fence = await readFile(fencePath, "utf8");
+      await f.service.committed(batch.identities[1]!);
+      await vi.waitFor(() => expect(f.service.status(batch.projectId).tasks.some(task => task.failure?.message.includes("正在原页重试"))).toBe(true));
+      if (mode === "cancel") {
+        const later = f.store.tasks().find(task => task.input.export_task_id === batch.identities[1]!.export_task_id)!;
+        await f.service.cancel(later.result.upload_task_id); await running;
+        expect(attempts).toBe(1);
+        expect(f.store.hasMarker(later.result.upload_task_id)).toBe(false);
+        expect(later.result).toMatchObject({ upload_outcome: "NOT_SELECTED", retry_count: 0 });
+      } else {
+        await vi.waitFor(() => expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(2), { timeout: 3500 });
+        expect(f.events).not.toContain("stop");
+        expect(attempts).toBe(2);
+        completed = true; await running;
+      }
+      expect(await readFile(fencePath, "utf8")).toBe(fence);
+      expect(f.events.filter(event => event === "file-input")).toHaveLength(mode === "success" ? 2 : 1);
+    } finally { completed = true; await f.service.stop(); await running; }
   });
 
   it.each(["CDP_UNAVAILABLE", "TIMEOUT"] as const)("exhausts three %s connection attempts and only continues after an explicit request", async code => {

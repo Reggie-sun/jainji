@@ -3,6 +3,30 @@ import { expect, it, vi } from "vitest";
 
 const helperPath = new URL("../scripts/dev-lifecycle.mjs", import.meta.url).href;
 
+it("retains the egress owner for identical runtime bytes and replaces it only after old cleanup", async () => {
+  const { refreshDevelopmentEgressHost } = await import(helperPath);
+  let release!: () => void;
+  const stopped = new Promise<void>(resolve => { release = resolve; });
+  const oldHost = { dispose: vi.fn(() => stopped) }, nextHost = { dispose: vi.fn() };
+  const first = await refreshDevelopmentEgressHost(undefined, Buffer.from("runtime one"), async () => oldHost);
+  const create = vi.fn(async () => nextHost);
+  expect(await refreshDevelopmentEgressHost(first, Buffer.from("runtime one"), create)).toBe(first);
+  expect(oldHost.dispose).not.toHaveBeenCalled(); expect(create).not.toHaveBeenCalled();
+  const replacing = refreshDevelopmentEgressHost(first, Buffer.from("runtime two"), create);
+  await Promise.resolve(); expect(oldHost.dispose).toHaveBeenCalledOnce(); expect(create).not.toHaveBeenCalled();
+  release();
+  const next = await replacing;
+  expect(next.host).toBe(nextHost); expect(next.sourceSha256).not.toBe(first.sourceSha256);
+});
+
+it("does not create a replacement egress owner when old cleanup fails", async () => {
+  const { refreshDevelopmentEgressHost } = await import(helperPath);
+  const create = vi.fn();
+  const first = await refreshDevelopmentEgressHost(undefined, Buffer.from("runtime one"), async () => ({ dispose: async () => { throw Error("owned transport still running"); } }));
+  await expect(refreshDevelopmentEgressHost(first, Buffer.from("runtime two"), create)).rejects.toThrow("still running");
+  expect(create).not.toHaveBeenCalled();
+});
+
 it("distinguishes a rebuild restart from explicit shutdown", async () => {
   const { requestDevelopmentQuit } = await import(helperPath);
   const child = { exitCode: null, signalCode: null, connected: true, send: vi.fn() };

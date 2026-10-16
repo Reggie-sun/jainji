@@ -258,9 +258,12 @@ function registerHandlers(): void {
   ipcMain.handle("douyinUpload.cancelPlans", async (event, input: unknown) => { assertTrustedSender(event); douyinUpload.cancelPlanRead(input, event.sender.id); });
   ipcMain.handle("douyinUpload.openAccountBrowser", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); await douyinUpload.openAccountBrowser(input); return publicState(); });
   ipcMain.handle("douyinUpload.controlAccountBrowser", async (event, input: unknown) => {
-    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
-    if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未关闭账号浏览器。");
-    await douyinUpload.controlAccountBrowser(input); return publicState();
+    assertTrustedSender(event);
+    await douyinUpload.controlAccountBrowser(input, () => {
+      coverReview?.assertIdle(); assertProductionIdle();
+      if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("视频仍在导出，未关闭账号浏览器。");
+    });
+    return publicState();
   });
   ipcMain.handle("douyinUpload.clearVideoLibraries", async (event, input: unknown) => {
     assertTrustedSender(event); return clearVideoLibraries(input);

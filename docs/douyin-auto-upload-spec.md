@@ -251,6 +251,8 @@ Parent Self-Review：复用 canonical page/store/service，无第二队列或恢
 
 同一初始上传组的连接及准备阶段，只有 browser 类 CDP_UNAVAILABLE/retryable 或 TIMEOUT 且该批没有任何 fence 时，允许最多三次尝试、1/2 秒退避。每次先停止旧自动化连接，再建新 adapter；停止、取消、归属/快照变化、停止失败均阻断。账号登录、身份、容量及页面结构拒绝不自动重试。已有 fence 的追加组和所有发送结果未知任务不进入此重试分支。该窄修订替代旧“选前均无自动 retry”，不授权发送后重传。
 
+2026-10-17 出口探测修订：已识别的临时传输中断及探测超时由 uploader 在文件动作前转换为运行内专用错误；初始组沿用上述预算。追加组仅对此错误、且本组全部 NOT_SELECTED / 无 fence 时，在同一 adapter、原页及冻结目标下最多探测三次、1/2 秒退避，不重连或关闭原页；成功后仍须核对原 modal、已有文件及归属才能选择本组文件。该例外覆盖上段“已有 fence 的追加组不重试”的探测阶段限制；不扩大到普通连接错误、页面操作、协议/证书/身份/IP 不符、已撤销 lease 或发送后未知结果。连续追加的处理总期限不重置，取消或控制变化立即阻断；耗尽仍暂停，旧 fence 与 UNKNOWN 不变。
+
 批量详情的“安全继续”和“核查原上传页”以当前 runId/jobId/uploadTaskId 为输入；主进程从原批量 owner 取得冻结项目与捕获 export task 集合，核验实际上传任务归属后调用原 service.requestResume。单项目 IPC 的 currentProject 限制不放宽，renderer 不能指定替代项目或任务成员。未知成员只读核查；未选成员仍受账户级未知阻塞，不能以恢复入口解除。
 
 Self-Review：保留旧磁盘格式、原事实、原快照及唯一 service/store。历史蝴蝶贴未知记录不授重传；空列表不证明未上传。实施及验收见 [Upload Recovery Plan](superpowers/plans/2026-10-08-upload-recovery.md)。

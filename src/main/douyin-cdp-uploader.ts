@@ -6,6 +6,7 @@ import { MAX_UPLOAD_GROUP_SIZE, type UploadBrowserPort, type BatchSelectedFile, 
 import type { UploadTaskRecord } from "./douyin-upload-store.js";
 import { QianchuanPageSession, PRODUCTION_QIANCHUAN_CONTRACT, qianchuanReadiness, type QianchuanPageContract } from "./qianchuan-page-contract.js";
 import { verifyBrowserEgress } from "./qianchuan-egress-browser.js";
+import { BrowserEgressProbeError, EgressProbeUnavailable } from "./qianchuan-egress-probe.js";
 import type { EgressLease } from "./qianchuan-egress-runtime.js";
 import { qianchuanRemoteRuntime } from "./qianchuan-remote-runtime.js";
 import { selectRemoteFiles } from "./qianchuan-remote-selection.js";
@@ -33,16 +34,22 @@ export class DouyinCdpUploader implements UploadBrowserPort {
     this.check(signal); const cancel = () => { void this.stop(); }; signal.addEventListener("abort", cancel, { once: true });
     try { const result = await work(); this.check(signal); return result; } finally { signal.removeEventListener("abort", cancel); }
   }
+  private async verifyEgress(task: UploadTaskRecord, signal: AbortSignal): Promise<EgressLease | undefined> {
+    try { return await verifyBrowserEgress(task.authorization.target.cdpEndpoint, task.authorization.target.egress); }
+    catch (error) {
+      this.check(signal);
+      if (error instanceof BrowserEgressProbeError && error.retryable) throw new EgressProbeUnavailable();
+      throw uploadFailure("ACCOUNT_UNCONFIRMED", "account", "账号固定出口未通过验证，未执行上传。", "检查固定出口并明确重连；结果未知的原批次不能重传。", true);
+    }
+  }
   async connect(task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
     this.pageContract(); this.check(signal); if (this.browser?.isConnected()) return;
     const endpoint = task.authorization.target.cdpEndpoint;
     this.remote = task.authorization.target.egress?.mode === "remote-browser";
     if (!isLoopbackUrl(endpoint) || new URL(endpoint).pathname !== "/") throw new Error("Unsafe discovery endpoint");
-    try {
-      this.egressLease = await verifyBrowserEgress(endpoint, task.authorization.target.egress);
-      this.egressLease?.signal.addEventListener("abort", this.egressLost, { once: true });
-      this.check(signal);
-    } catch { throw uploadFailure("ACCOUNT_UNCONFIRMED", "account", "账号固定出口未通过验证，未执行上传。", "检查固定出口并明确重连；结果未知的原批次不能重传。", true); }
+    this.egressLease = await this.verifyEgress(task, signal);
+    this.egressLease?.signal.addEventListener("abort", this.egressLost, { once: true });
+    this.check(signal);
     await this.action(signal, async () => {
       try {
         const response = await fetch(new URL("/json/version", endpoint), { redirect: "error", signal: AbortSignal.any([signal, this.controller.signal]) });
@@ -93,7 +100,7 @@ export class DouyinCdpUploader implements UploadBrowserPort {
     const task = tasks[0]; if (!task || tasks.length > MAX_UPLOAD_GROUP_SIZE) throw new Error("Invalid upload group");
     const contract = this.pageContract();
     return this.action(signal, async () => {
-      if (task.authorization.target.egress) await verifyBrowserEgress(task.authorization.target.cdpEndpoint, task.authorization.target.egress);
+      if (task.authorization.target.egress) await this.verifyEgress(task, signal);
       this.check(signal);
       const initial = !this.page;
       if (!this.page) {

@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, context } from "esbuild";
-import { requestDevelopmentQuit, waitForDevelopmentQuit } from "./dev-lifecycle.mjs";
+import { refreshDevelopmentEgressHost, requestDevelopmentQuit, waitForDevelopmentQuit } from "./dev-lifecycle.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -23,6 +23,22 @@ let stopping = false;
 let shutdownPromise;
 let instanceDirectory;
 let egressHost;
+let egressRuntime;
+
+async function refreshEgressRuntime() {
+  if (process.platform !== "linux") return;
+  const egressBundle = path.join(root, "dist-electron/dev-egress.cjs");
+  const result = await build({ entryPoints: [path.join(root, "src/main/qianchuan-egress-runtime.ts")], bundle: true, platform: "node", format: "cjs", outfile: egressBundle, write: false });
+  egressRuntime = await refreshDevelopmentEgressHost(egressRuntime, result.outputFiles[0].contents, async () => {
+    const temporary = `${egressBundle}.${randomUUID()}.tmp`;
+    try { await writeFile(temporary, result.outputFiles[0].contents); await rename(temporary, egressBundle); }
+    finally { await unlink(temporary).catch(() => undefined); }
+    delete require.cache[require.resolve(egressBundle)];
+    const { DevelopmentEgressHost, QianchuanEgressRuntime } = require(egressBundle);
+    return new DevelopmentEgressHost(new QianchuanEgressRuntime());
+  });
+  egressHost = egressRuntime.host;
+}
 
 function start(command, args, options = {}) {
   const child = spawn(command, args, { cwd: root, stdio: "inherit", ...options });
@@ -134,7 +150,7 @@ async function shutdown(signal) {
       await waitForDevelopmentQuit(electron, { restart: signal === "SIGTERM" });
     }
     const remaining = [...children].filter(child => child !== electron);
-    egressHost?.dispose();
+    await egressHost?.dispose();
     for (const child of remaining) if (child.exitCode === null) child.kill("SIGTERM");
     setTimeout(() => {
       for (const child of remaining) {
@@ -178,15 +194,7 @@ let vite;
 try {
   await Promise.all([mainContext.watch(), preloadContext.watch(), mainReload.ready, preloadReload.ready]);
   // Reuse the canonical runtime; only its process owner outlives Electron rebuilds.
-  if (process.platform === "linux") {
-    const egressBundle = path.join(root, "dist-electron/dev-egress.cjs");
-    const result = await build({ entryPoints: [path.join(root, "src/main/qianchuan-egress-runtime.ts")], bundle: true, platform: "node", format: "cjs", outfile: egressBundle, write: false });
-    const temporary = `${egressBundle}.${randomUUID()}.tmp`;
-    try { await writeFile(temporary, result.outputFiles[0].contents); await rename(temporary, egressBundle); }
-    finally { await unlink(temporary).catch(() => undefined); }
-    const { DevelopmentEgressHost, QianchuanEgressRuntime } = require(egressBundle);
-    egressHost = new DevelopmentEgressHost(new QianchuanEgressRuntime());
-  }
+  await refreshEgressRuntime();
   vite = start(process.execPath, [viteCli, "--host", "127.0.0.1", "--port", String(port), "--strictPort"]);
   await waitForVite(vite, devServerUrl);
   while (!stopping) {
@@ -203,6 +211,7 @@ try {
     if (stopping) break;
     if (restartRequested) {
       restartRequested = false;
+      await refreshEgressRuntime();
       continue;
     }
     process.exitCode = exitCode;
