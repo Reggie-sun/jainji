@@ -401,7 +401,7 @@ export class ExportQueue {
     const reserved: string[] = [];
     const tasks: ExportTask[] = [];
     for (const item of media) {
-      const outputPath = await allocateOutputPath(input.outputDirectory, item.sourcePath, "_edited", reserved, parsedPreset.container);
+      const outputPath = await allocateOutputPath(input.outputDirectory, item.sourcePath, template.fission ? "_裂变" : "_edited", reserved, parsedPreset.container);
       reserved.push(outputPath);
       tasks.push(ExportTaskSchema.parse({
         id: randomUUID(), batchId, mediaId: item.id, status: "queued", progress: 0,
@@ -950,7 +950,17 @@ export class ExportQueue {
         return;
       }
       await syncFile(partialPath);
-      const artifact = await this.verifier.verify(partialPath, task.id);
+      const fission = state.batch.templateSnapshot.fission;
+      const artifact = await this.verifier.verify(partialPath, task.id, fission ? { media, preset: state.batch.preset, settings: fission } : undefined);
+      if (fission) {
+        const decode = this.dependencies.ffmpeg.run(["-v", "error", "-xerror", "-nostdin", "-threads", String(threads), "-i", partialPath, "-map", "0:v:0", "-map", "0:a?", "-threads", String(threads), "-f", "null", "-"]);
+        this.controllers.set(task.id, decode);
+        if (this.cancelRequested.has(task.id)) await decode.cancel();
+        let decoded;
+        try { decoded = await decode.promise; } finally { this.controllers.delete(task.id); }
+        if (decoded.code !== 0 && !this.cancelRequested.has(task.id)) throw new JianjiError("裂变成片完整解码检查失败。", "artifact_invalid", "verify", false);
+        if (await fingerprintFile(media.sourcePath) !== media.fingerprint) throw new Error("裂变期间原素材已变化，未发布成片。");
+      }
       await verifyApprovedHybridTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg);
       await verifyHumanRegionTemplate(state.batch.templateSnapshot, media, state.batch.preset, this.dependencies.ffmpeg, this.dependencies.sourceKnowledgeStore);
       await verifyHybridOutput(state.batch.templateSnapshot, partialPath, this.dependencies.ffmpeg);

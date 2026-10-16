@@ -16,6 +16,7 @@ import { FrozenShapeCoverSchema } from "../shared/shape-cover.js";
 import { HybridCoverBindingSchema } from "../shared/hybrid-cover.js";
 import { FrameIdSchema, isWideFrameId } from "../shared/frames.js";
 import { HumanRegionBindingSchema } from "../shared/human-region-cover.js";
+import { FissionSettingsSchema } from "../shared/video-fission.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -165,6 +166,7 @@ export const EditTemplateSchema = z.object({
   version: z.number().int().positive(),
   layers: z.array(LayerSchema).max(100),
   filter: FilterConfigSchema,
+  fission: FissionSettingsSchema.optional(),
   layoutPolicy: z.enum([LEGACY_CORNER_SAFE_POLICY.id, CORNER_SAFE_POLICY.id]).optional(),
   productPriceDraft: ProductPriceSchema.optional(),
   displayText: DisplayTextSchema.optional(),
@@ -182,6 +184,9 @@ export const EditTemplateSchema = z.object({
   createdAt: DateTime,
   updatedAt: DateTime,
 }).strict().superRefine((template, ctx) => {
+  if (template.fission && (template.layers.length || template.filter.presetId !== "none" || template.filter.intensity !== 0 || template.coverPlacement || template.sourceStickerKnowledge || template.displayText || template.productPrice)) {
+    ctx.addIssue({ code: "custom", path: ["fission"], message: "视频裂变只处理原片，不能混入包装图层、展示文字或覆盖方案。" });
+  }
   if (template.coverPlacement && template.sourceStickerKnowledge) ctx.addIssue({ code: "custom", message: "Cover placement cannot be represented as source knowledge" });
   const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
   const ids = new Set<string>();

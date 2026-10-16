@@ -727,7 +727,7 @@ describe("Qianchuan upload service", () => {
       z, uuidSchema: z.string().uuid(), UploadIdSchema: z.string(), registerBugFeedbackHandlers() {}, registerDecorationAssetHandlers() {}, assertTrustedSender() {},
       mainWindow: {}, stickerAssets: {}, uploadedStickers: {}, uploadedFrames: {}, membership,
       automation: { busy: false }, agent: production, batchRuntime: { controller: production }, coverReview: review,
-      quitting: false, douyinUpload: f.service, queue: { taskStatuses: () => statuses },
+      quitting: false, fissionSubmitting: false, douyinUpload: f.service, queue: { taskStatuses: () => statuses },
     };
     runInNewContext(ts.transpileModule(declarations.map(node => node.getText(tree)).join("\n"), { compilerOptions: { target: ts.ScriptTarget.ES2022 } }).outputText + "\nregisterHandlers();", context);
     const input = { confirmation: "DELETE_ALL_VIDEOS", accounts: [{ product: "眼贴", expectedAdvertiserId: "1003" }] };
@@ -740,6 +740,7 @@ describe("Qianchuan upload service", () => {
     await expect(invoke()).rejects.toThrow("membership denied");
     context.quitting = true; await expect(invoke()).rejects.toThrow("应用正在退出"); context.quitting = false;
     context.automation.busy = true; await expect(invoke()).rejects.toThrow("定时任务正在执行"); context.automation.busy = false;
+    context.fissionSubmitting = true; await expect(invoke()).rejects.toThrow("正在准备视频裂变任务"); context.fissionSubmitting = false;
     production.assertIdle.mockImplementationOnce(() => { throw new Error("production busy"); });
     await expect(invoke()).rejects.toThrow("production busy");
     review.assertIdle.mockImplementationOnce(() => { throw new Error("review busy"); });

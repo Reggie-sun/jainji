@@ -97,7 +97,7 @@ export class TemplateCompiler {
     assertPriceOnlyTemplate(template);
     const textFiles: TextFile[] = [];
     const binaryFiles: Array<{ path: string; content: Buffer }> = [];
-    const durationSeconds = Math.max(0.01, media.durationMs / 1000);
+    const durationSeconds = Math.max(0.01, media.durationMs / 1000 / (template.fission?.speed ?? 1));
     const displaySeconds = decorationDisplaySeconds(template.decorationDisplayMode);
     const displayLimit = displaySeconds ? `lt(t,${displaySeconds})` : undefined;
     const stickerLimit = template.stickerDisplayMode !== "full" && template.decorationDisplayMode === "first-3s" ? displayLimit : undefined;
@@ -116,7 +116,16 @@ export class TemplateCompiler {
     const layoutPolicy = getCornerSafePolicy(template.layoutPolicy);
     const frozenShape = template.layers.some(layer => layer.type === "sticker" && (layer.cover?.shapeMatched || layer.cover?.hybridApproved || layer.cover?.humanRegion));
     // Shape intervals must run on output PTS, before -r can duplicate/drop frames.
-    const sourceFilters = ["setpts=PTS-STARTPTS", frozenShape && preset.frameRateMode === "30" ? "fps=30" : null, outputScale(preset, dimensions), "format=yuv420p"].filter(Boolean).join(",");
+    const fission = template.fission;
+    const insetSize = fission ? {
+      width: Math.max(2, Math.round(dimensions.width * (1 - 2 * fission.inset / 720) / 2) * 2),
+      height: Math.max(2, Math.round(dimensions.height * (1 - 2 * fission.inset / 720) / 2) * 2),
+    } : undefined;
+    const sourceFilters = [fission ? `setpts=(PTS-STARTPTS)/${fission.speed}` : "setpts=PTS-STARTPTS",
+      (frozenShape || fission) && preset.frameRateMode === "30" ? "fps=30" : null,
+      outputScale(preset, dimensions),
+      fission ? `scale=${insetSize!.width}:${insetSize!.height}:flags=lanczos,pad=${dimensions.width}:${dimensions.height}:(ow-iw)/2:(oh-ih)/2:color=0x101010,setsar=1,eq=contrast=${fission.contrast}:saturation=${fission.saturation}:brightness=${fission.brightness}:gamma=${fission.gamma}` : null,
+      "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
 
     const fadeOnVideoClock = (sticker: string): string => {
@@ -302,6 +311,7 @@ export class TemplateCompiler {
       "-filter_complex", graph.join(";"),
       "-map", "[vout]",
       "-map", "0:a?",
+      ...(fission ? ["-af", `asetpts=PTS-STARTPTS,atempo=${fission.speed}`] : []),
       "-t", durationSeconds.toFixed(3),
       ...videoEncodingArgs(options.videoEncoder ?? "libx264", preset.quality),
       ...threadArgs,

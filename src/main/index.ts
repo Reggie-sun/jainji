@@ -26,6 +26,9 @@ import { openSourceStickerKnowledge, type KnowledgeRecoveryFailure } from "./sou
 import { installDevelopmentQuit } from "./development-lifecycle.js";
 import { claimDesktopInstance } from "./desktop-instance.js";
 import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
+import { FissionStartSchema } from "../shared/video-fission.js";
+import { createFissionBatches } from "./video-fission.js";
+import { videoPathsInDirectory } from "./media.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
 import { loadBundledStickerAssets } from "./bundled-stickers.js";
@@ -78,7 +81,7 @@ const productPriceDraftSchema = z.object({ projectId: uuidSchema, productPrice: 
 const savedProjectRenameSchema = z.object({ recentId: uuidSchema, name: MaterialNameSchema }).strict();
 const projectSaveSchema = z.object({ name: MaterialNameSchema.optional(), workspaceDraft: ProjectWorkspaceSchema.optional() }).strict();
 const projectWorkspaceSchema = z.object({ projectId: uuidSchema, workspaceDraft: ProjectWorkspaceSchema }).strict();
-const automaticOutputSchema = z.object({ mediaIds: z.array(uuidSchema).min(1).max(1000), existingDirectory: outputDirectorySchema.optional() }).strict();
+const automaticOutputSchema = z.object({ mediaIds: z.array(uuidSchema).min(1).max(1000), existingDirectory: outputDirectorySchema.optional(), purpose: z.literal("fission").optional() }).strict();
 
 let mainWindow: BrowserWindow | undefined;
 let service: ApplicationService;
@@ -148,7 +151,12 @@ protocol.registerSchemesAsPrivileged([
 function currentState(): QueueSnapshot { return queue.snapshot(); }
 
 function assertAutomationIdle(): void { if (automation?.busy) throw new Error("定时任务正在执行，请等待结束后操作。"); }
-function assertProductionIdle(): void { assertAutomationIdle(); batchRuntime?.controller.assertIdle(); agent.assertIdle(); }
+let fissionSubmitting = false;
+let fissionPreparation: AbortController | undefined;
+function assertProductionIdle(): void {
+  if (fissionSubmitting) throw new Error("正在准备视频裂变任务，请稍候。");
+  assertAutomationIdle(); batchRuntime?.controller.assertIdle(); agent.assertIdle();
+}
 
 function assertCleanupIdle() {
   if (quitting) throw new Error("应用正在退出，已停止清空视频库。");
@@ -373,6 +381,21 @@ function registerHandlers(): void {
     await service.addMedia(paths);
     return publicState();
   });
+  ipcMain.handle("media.selectVideoDirectory", async event => {
+    assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
+    const result = await dialog.showOpenDialog(mainWindow!, { title: "选择视频输入目录", properties: ["openDirectory"] });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const projectId = service.currentProject.id;
+    const directory = await canonicalPath(result.filePaths[0]);
+    const paths = await videoPathsInDirectory(directory);
+    coverReview?.assertIdle(); assertProductionIdle();
+    if (service.currentProject.id !== projectId) throw new Error("项目已切换，请重新选择输入目录。");
+    fissionSubmitting = true;
+    try { await service.addMedia(paths); } finally { fissionSubmitting = false; }
+    if (service.currentProject.id !== projectId) throw new Error("项目已切换，请重新选择输入目录。");
+    const included = new Set(paths);
+    return { directory, mediaIds: service.currentProject.mediaItems.filter(item => included.has(item.sourcePath)).map(item => item.id), state: await publicState() };
+  });
   ipcMain.handle("media.remove", async (event, input: unknown) => {
     assertTrustedSender(event); coverReview?.assertIdle(); assertProductionIdle();
     const id = uuidSchema.parse(input);
@@ -556,10 +579,10 @@ function registerHandlers(): void {
   });
   ipcMain.handle("output.createAutomaticDirectory", async (event, input: unknown) => {
     assertTrustedSender(event);
-    const { mediaIds, existingDirectory } = automaticOutputSchema.parse(input);
+    const { mediaIds, existingDirectory, purpose } = automaticOutputSchema.parse(input);
     const media = mediaIds.map((id) => service.getMedia(id));
     if (media.some((item) => !item)) throw new Error("所选素材已变化，请返回素材页重新选择。");
-    const created = await createAutomaticOutputDirectory(media.map((item) => item!.sourcePath), new Date(), existingDirectory);
+    const created = await createAutomaticOutputDirectory(media.map((item) => item!.sourcePath), new Date(), existingDirectory, purpose);
     const selected = await canonicalPath(created);
     approvedOutputDirectories.add(selected);
     return selected;
@@ -579,6 +602,30 @@ function registerHandlers(): void {
       void queue.start(batch.id);
       return { taskId: batch.tasks[0].id };
     });
+  });
+  ipcMain.handle("videoFission.start", async (event, input: unknown) => {
+    assertTrustedSender(event); assertProductionIdle(); coverReview?.assertIdle();
+    if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
+    const request = FissionStartSchema.parse(input);
+    if (service.currentProject.id !== request.projectId) throw new Error("项目已切换，请重新选择素材。");
+    fissionSubmitting = true;
+    const preparation = new AbortController();
+    fissionPreparation = preparation;
+    try {
+      return await douyinUpload.withExportAdmission(async () => {
+        const outputDirectory = await canonicalPath(request.outputDirectory);
+        if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
+        await douyinUpload.beginProduction();
+        const batches = await createFissionBatches(queue, { ...request, outputDirectory }, service.currentProject.mediaItems, preparation.signal);
+        try { await service.rememberExportProduction(batches); preparation.signal.throwIfAborted(); }
+        catch (error) {
+          for (const batch of batches) for (const task of batch.tasks) await queue.cancel(task.id);
+          throw error;
+        }
+        void Promise.all(batches.map(batch => queue.start(batch.id))).catch(() => safeLog("video fission export stopped"));
+        return publicState();
+      });
+    } finally { fissionSubmitting = false; fissionPreparation = undefined; }
   });
   ipcMain.handle("export.create", async (event, input: unknown) => {
     assertTrustedSender(event);
@@ -603,6 +650,7 @@ function registerHandlers(): void {
   ipcMain.handle("export.cancel", async (event, input: unknown) => { assertTrustedSender(event); await queue.cancel(taskSchema.parse(input).taskId); return publicState(); });
   ipcMain.handle("export.cancelAll", async (event) => {
     assertTrustedSender(event);
+    fissionPreparation?.abort();
     if (agent.snapshot()?.status === "running") await agent.cancel();
     await queue.cancelAll(service.currentProject.id);
     return publicState();
@@ -871,7 +919,7 @@ async function bootstrap(): Promise<void> {
     legacySchedule: videoLibrarySchedule,
     root: userData, trusted: assertTrustedSender, authorize: () => membership.assertAllowed(),
     changed: status => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("automation.changed", status); },
-    busy: () => quitting || batchRuntime.controller.busy || agent.busy || coverReview.busy || douyinUpload.busy ||
+    busy: () => quitting || fissionSubmitting || batchRuntime.controller.busy || agent.busy || coverReview.busy || douyinUpload.busy ||
       [...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status)),
     runtime: {
       loadProject: id => new ProjectStore(recentProjects.resolve(id)).readSnapshot(),
@@ -922,6 +970,7 @@ function safeLog(...args: unknown[]): void {
 }
 
 async function shutdownServices(): Promise<void> {
+  fissionPreparation?.abort();
   await qianguanjia.stop();
   membership?.dispose();
   videoLibrarySchedule?.stop();
@@ -1011,6 +1060,6 @@ process.on("SIGTERM", () => { safeLog(`[shutdown] sigterm received +${Date.now()
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 const startup = bootstrap();
 installDevelopmentQuit(process, startup, () => app.quit(), () =>
-  !automation?.busy && !batchRuntime?.controller.busy && !agent?.busy && !coverReview?.busy && !douyinUpload?.busy &&
+  !fissionSubmitting && !automation?.busy && !batchRuntime?.controller.busy && !agent?.busy && !coverReview?.busy && !douyinUpload?.busy &&
   [...queue.taskStatuses().values()].every(status => ["completed", "failed", "cancelled", "interrupted"].includes(status)));
 void startup.catch((error) => { console.error(error); app.quit(); });

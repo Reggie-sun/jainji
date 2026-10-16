@@ -22,6 +22,7 @@ import { BugFeedbackDialog } from "./BugFeedbackDialog";
 import { Heading, Icon } from "./ui";
 import { ModelSettingsDrawer } from "./ModelSettingsDrawer";
 import { WorkspaceHeader, WorkspaceRail } from "./WorkspaceChrome";
+import { VideoFissionPanel } from "./VideoFissionPanel";
 import { resolveWorkflowTarget, type Step, type WorkflowId } from "./workspace-flow";
 import { QianchuanUploadSelectionSchema } from "../shared/douyin-upload";
 import { DouyinUploadControls, type UploadSelectionDraft } from "./DouyinUploadControls";
@@ -57,6 +58,10 @@ export default function App() {
   const [brief, setBrief] = useState("");
   const [generatingBrief, setGeneratingBrief] = useState(false);
   const [outputDirectory, setOutputDirectory] = useState("");
+  const [fissionOutput, setFissionOutput] = useState("");
+  const [fissionInput, setFissionInput] = useState("");
+  const [fissionMediaIds, setFissionMediaIds] = useState<string[]>([]);
+  const [fissionSelected, setFissionSelected] = useState<string[]>([]);
   const [outputDirectoryMode, setOutputDirectoryMode] = useState<"automatic" | "manual">("automatic");
   const [automaticOutputFor, setAutomaticOutputFor] = useState("");
   const [exportSettings, setExportSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS);
@@ -82,6 +87,8 @@ export default function App() {
     const workspace = next.project.workspaceDraft;
     if (projectChanged) {
       projectId.current = next.project.id;
+      setFissionOutput("");
+      setFissionInput(""); setFissionMediaIds([]); setFissionSelected([]);
       returnContexts.current = [];
       scrollWorkspace();
       setDouyinUploadSelection(undefined);
@@ -355,6 +362,18 @@ export default function App() {
       });
     })();
   };
+  const startFission = (total: number) => {
+    if (locked || exporting || !canCreate) return;
+    const startProjectId = state.project.id;
+    void run(async () => {
+      const directory = fissionOutput || await window.jianji.createAutomaticOutputDirectory(fissionSelected, undefined, "fission");
+      if (projectId.current !== startProjectId) throw new Error("项目已切换，请重新开始裂变。");
+      setFissionOutput(directory);
+      apply(await window.jianji.startVideoFission({ projectId: startProjectId, mediaIds: fissionSelected, total, outputDirectory: directory }));
+      setStep("results");
+      scrollWorkspace();
+    });
+  };
   const generateBrief = () => void run(async () => {
     setGeneratingBrief(true);
     try { setBrief(await window.jianji.generateBrief({ ruleId: rule, decorations, brief })); }
@@ -419,7 +438,7 @@ export default function App() {
   };
 
   return <div className="app-shell">
-    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onBatch={() => navigate("batch")} onStickerLibrary={() => openContext("stickers")} onResults={() => navigateWorkflow("results")} onQianchuan={() => { setQianchuanBatch(undefined); navigate("qianchuan"); }} onQianguanjia={() => navigate("qianguanjia")} onAutomation={() => navigate("automation")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
+    <WorkspaceRail step={step} modelsOpen={modelsOpen} connectionConfigured={state.connection.configured} engineReady={state.capabilities.ready} engineLabel={engineLabel} onWorkflow={navigateWorkflow} onBatch={() => navigate("batch")} onFission={() => navigate("fission")} onStickerLibrary={() => openContext("stickers")} onResults={() => navigateWorkflow("results")} onQianchuan={() => { setQianchuanBatch(undefined); navigate("qianchuan"); }} onQianguanjia={() => navigate("qianguanjia")} onAutomation={() => navigate("automation")} onModels={openModelSettings} onFeedback={() => setFeedbackOpen(true)} />
     {/* 上传贴纸归入模板素材反馈分类，沿用现有中继接口。 */}
     <BugFeedbackDialog open={feedbackOpen} page={step === "import" ? "import" : step === "connection" ? "connection" : step === "templates" || step === "stickers" ? "templates" : "results"} onClose={() => setFeedbackOpen(false)} />
     <div className="main-area">
@@ -440,6 +459,7 @@ export default function App() {
           }));
         }} /></WorkspacePage>
         <WorkspacePage active={step === "connection"} label="模型设置"><ConnectionPanel onChooseModels={() => setModelsOpen(true)} connection={state.connection} chatgpt={state.chatgpt} library={state.connections ?? { profiles: [], selected: null }} busy={locked} onLogin={() => { setNotice(undefined); void window.jianji.loginChatGPT().then(apply).catch((error) => { const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "登录未完成，请重试。"; setNotice({ error: true, text: message }); }); }} onRefreshLogin={() => void run(async () => { apply(await window.jianji.refreshChatGPT()); })} onCancelLogin={() => void run(async () => { apply(await window.jianji.cancelChatGPTLogin()); })} onImport={(id, appType) => run(async () => { apply(await window.jianji.importCCSwitch(id, appType)); }, "已导入简辑，可从列表选择使用。")} onSelect={(id) => run(async () => { apply(await window.jianji.selectConnection(id)); returnToContext(); })} onRemove={(id) => run(async () => { apply(await window.jianji.removeConnection(id)); })} onSave={(input) => run(async () => { apply(await window.jianji.saveConnection(input)); })} onTest={() => void run(async () => { await window.jianji.testAgent(); }, "文本连接测试通过。图片能力会在处理素材时验证。")} onDisconnect={() => void run(async () => { apply(await window.jianji.disconnectAgent()); })} onContinue={returnToContext} /></WorkspacePage>
+        <WorkspacePage active={step === "fission"} label="视频裂变"><VideoFissionPanel key={state.project.id} media={state.project.mediaItems.filter(item => item.probeStatus === "ready" && fissionMediaIds.includes(item.id))} selected={fissionSelected} disabled={locked || exporting} engineReady={canCreate} inputDirectory={fissionInput} outputDirectory={fissionOutput} onSelection={setFissionSelected} onAutomaticOutput={() => setFissionOutput("")} onImport={() => void run(async () => { const result = await window.jianji.selectVideoInputDirectory(); if (result) { apply(result.state); setFissionInput(result.directory); setFissionMediaIds(result.mediaIds); setFissionSelected(result.mediaIds.filter(id => result.state.project.mediaItems.some(item => item.id === id && item.probeStatus === "ready"))); setFissionOutput(""); } })} onOutput={() => void run(async () => { const directory = await window.jianji.selectOutputDirectory(); if (directory) setFissionOutput(directory); })} onStart={startFission} onResults={() => navigateWorkflow("results")} /></WorkspacePage>
         <WorkspacePage active={step === "projects"} label="项目管理">
           <Heading title="项目管理">打开、命名或管理项目；当前草稿可通过顶部保存。</Heading>
           <MaterialCollection name={collectionName} disabled={locked} openingDisabled={locked || exporting} onName={renameCollection} onOpen={(id) => void changeProject(true, id)} onRename={renameSavedCollection} onDelete={removeSavedCollection} recentProjects={state.recentProjects ?? []} activeRecentId={state.activeRecentProjectId} />

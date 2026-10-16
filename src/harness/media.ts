@@ -364,6 +364,7 @@ async function taskChecks(
   }, specificationMatches ? undefined : "spec_mismatch"));
 
   const sourceDuration = durationMs(sourceProbe.probe, sourceVideo);
+  const fissionSpeed = batch.templateSnapshot.fission?.speed ?? 1;
   const outputDuration = durationMs(outputProbe.probe, outputVideo);
   const sourceRate = rate(sourceVideo.avg_frame_rate);
   const durationTolerance = Math.max(policy.media.durationMinimumToleranceMs, sourceRate ? policy.media.durationFramePeriods * 1_000 / sourceRate : 0);
@@ -371,11 +372,11 @@ async function taskChecks(
     checks.push(result(policy, "duration", scope, "NOT_EVALUATED", "A reliable source or output duration is unavailable.", { sourceDuration, outputDuration, durationTolerance }, "measurement_unavailable"));
   } else {
     const frozenDelta = Math.abs(sourceDuration - media.durationMs);
-    const outputDelta = Math.abs(outputDuration - sourceDuration);
+    const outputDelta = Math.abs(outputDuration - sourceDuration / fissionSpeed);
     const artifactDelta = Math.abs(outputDuration - task.outputArtifact!.durationMs);
     const matches = frozenDelta <= durationTolerance && outputDelta <= durationTolerance && artifactDelta <= durationTolerance;
     checks.push(result(policy, "duration", scope, matches ? "PASS" : "FAIL", matches ? "Frozen, source, and output durations are within tolerance." : "Source or output duration exceeds the configured tolerance.", {
-      expectedFrozenMs: media.durationMs, artifactDurationMs: task.outputArtifact!.durationMs, observedSourceMs: sourceDuration, observedOutputMs: outputDuration, frozenDeltaMs: frozenDelta, outputDeltaMs: outputDelta, artifactDeltaMs: artifactDelta, toleranceMs: durationTolerance,
+      expectedFrozenMs: media.durationMs, expectedOutputMs: sourceDuration / fissionSpeed, fissionSpeed, artifactDurationMs: task.outputArtifact!.durationMs, observedSourceMs: sourceDuration, observedOutputMs: outputDuration, frozenDeltaMs: frozenDelta, outputDeltaMs: outputDelta, artifactDeltaMs: artifactDelta, toleranceMs: durationTolerance,
     }, matches ? undefined : "duration_mismatch"));
   }
 
@@ -412,10 +413,11 @@ async function taskChecks(
     if (sourceAudioDuration === undefined || outputAudioDuration === undefined) {
       checks.push(result(policy, "audio", scope, "NOT_EVALUATED", "Audio duration is unavailable.", { codec: outputAudio.codec_name }, "measurement_unavailable"));
     } else {
-      const delta = Math.abs(outputAudioDuration - sourceAudioDuration);
+      const expectedAudioDuration = batch.templateSnapshot.fission ? Math.min(sourceAudioDuration / fissionSpeed, (sourceDuration ?? media.durationMs) / fissionSpeed) : sourceAudioDuration;
+      const delta = Math.abs(outputAudioDuration - expectedAudioDuration);
       const matches = outputAudio.codec_name === "aac" && delta <= policy.media.audioDurationToleranceMs;
       checks.push(result(policy, "audio", scope, matches ? "PASS" : "FAIL", matches ? "AAC audio presence and duration match the source." : "Output audio codec or duration is invalid.", {
-        expectedCodec: batch.preset.audioCodec, observedCodec: outputAudio.codec_name, sourceDurationMs: sourceAudioDuration, outputDurationMs: outputAudioDuration, deltaMs: delta, toleranceMs: policy.media.audioDurationToleranceMs,
+        expectedCodec: batch.preset.audioCodec, observedCodec: outputAudio.codec_name, sourceDurationMs: sourceAudioDuration, expectedDurationMs: expectedAudioDuration, fissionSpeed, outputDurationMs: outputAudioDuration, deltaMs: delta, toleranceMs: policy.media.audioDurationToleranceMs,
       }, matches ? undefined : "audio_mismatch"));
     }
   }
@@ -433,7 +435,8 @@ async function taskChecks(
     const { mkdir } = await import("node:fs/promises");
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const sourceFrame = await extractFrame(run, binaries.ffmpeg, media.sourcePath, path.join(directory, `source-${sample.position}.jpg`), sample.time, nearestTimestamp(sourceTimeline, sample.time), `${scope}-source-${sample.position}`, policy, signal);
-    const outputFrame = await extractFrame(run, binaries.ffmpeg, task.outputPath!, path.join(directory, `output-${sample.position}.jpg`), sample.time, nearestTimestamp(outputTimeline, sample.time), `${scope}-output-${sample.position}`, policy, signal);
+    const outputTime = sample.time / fissionSpeed;
+    const outputFrame = await extractFrame(run, binaries.ffmpeg, task.outputPath!, path.join(directory, `output-${sample.position}.jpg`), outputTime, nearestTimestamp(outputTimeline, outputTime), `${scope}-output-${sample.position}`, policy, signal);
     if (!sourceFrame || !outputFrame) framesOk = false;
     taskEvidence.frames.push({ position: sample.position, ...(sourceFrame ? { source: sourceFrame } : {}), ...(outputFrame ? { output: outputFrame } : {}) });
   }

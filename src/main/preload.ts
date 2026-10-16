@@ -25,8 +25,11 @@ import type { QianchuanLibraryClear, QianchuanLibraryResult, QianchuanPlanRecove
 import type { QianchuanLibraryScheduleSettings, QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule.js";
 import type { BatchProductionStart, BatchProjectOption, BatchProductionDetail, BatchProductionDetailRequest, BatchUploadResume } from "../shared/batch-production.js";
 import type { TemplateAccountBinding, TemplateAccountSelection } from "../shared/batch-upload.js";
+import type { FissionStart } from "../shared/video-fission.js";
 
 const api = {
+  startVideoFission: (input: FissionStart): Promise<DesktopState> => ipcRenderer.invoke("videoFission.start", input),
+  selectVideoInputDirectory: (): Promise<{ directory: string; mediaIds: string[]; state: DesktopState } | null> => ipcRenderer.invoke("media.selectVideoDirectory"),
   queryQianguanjia: (input: QianguanjiaQuery): Promise<QianguanjiaResult> => ipcRenderer.invoke("qianguanjia.query", input),
   cancelQianguanjiaQuery: (input: { requestId: string }): Promise<void> => ipcRenderer.invoke("qianguanjia.cancel", input),
   disconnectQianguanjia: (): Promise<void> => ipcRenderer.invoke("qianguanjia.disconnect"),
@@ -108,7 +111,7 @@ const api = {
   removeSavedProject: (recentId: string): Promise<DesktopState | null> => ipcRenderer.invoke("project.saved.remove", recentId),
   newProject: (): Promise<DesktopState> => ipcRenderer.invoke("project.new"),
   selectOutputDirectory: (): Promise<string | null> => ipcRenderer.invoke("output.selectDirectory"),
-  createAutomaticOutputDirectory: (mediaIds: string[], existingDirectory?: string): Promise<string> => ipcRenderer.invoke("output.createAutomaticDirectory", { mediaIds, ...(existingDirectory ? { existingDirectory } : {}) }),
+  createAutomaticOutputDirectory: (mediaIds: string[], existingDirectory?: string, purpose?: "fission"): Promise<string> => ipcRenderer.invoke("output.createAutomaticDirectory", { mediaIds, ...(existingDirectory ? { existingDirectory } : {}), ...(purpose ? { purpose } : {}) }),
   cancelExport: (taskId: string): Promise<DesktopState> => ipcRenderer.invoke("export.cancel", { taskId }),
   cancelAllExports: (): Promise<DesktopState> => ipcRenderer.invoke("export.cancelAll"),
   retryExport: (taskIds: string[]): Promise<DesktopState> => ipcRenderer.invoke("export.retry", { taskIds }),

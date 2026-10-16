@@ -15,7 +15,8 @@ function fixtureScript() {
     const account={product:"滴耳康",advertiserId:"1876131703522649",adId:"1877582409449488",available:true};
     const adId="1878488818847384";
     const uuid="55555555-5555-4555-8555-555555555555";
-    const prepared=input=>({preflightId:uuid,expiresAt:"2026-10-17T12:00:00.000Z",capabilityStatus:window.capabilityStatus??"live-read-verified",recipeEvidenceId:"first-qualification-v1",recipeDigest:"a".repeat(64),productIds:["7001"],draft:{schemaVersion:1,draftId:"66666666-6666-4666-8666-666666666666",provider:"qianchuan-browser",accountSlot:input.product,advertiserId:input.expectedAdvertiserId,mode:"product-cost-control",action:input.action,beforeVersion:"page-version-1",adId:input.adId,beforeValues:input.action==="set-budget"?{budget:"120.00",budgetType:"daily"}:{roi:"2.0"},target:input.action==="set-budget"?{budget:input.targetValue,budgetType:"daily"}:{roi:input.targetValue}}});
+    window.preflightExpiresAt=new Date(Date.now()+60*60*1000).toISOString();
+    const prepared=input=>({preflightId:uuid,expiresAt:window.preflightExpiresAt,capabilityStatus:window.capabilityStatus??"live-read-verified",recipeEvidenceId:"first-qualification-v1",recipeDigest:"a".repeat(64),productIds:["7001"],draft:{schemaVersion:1,draftId:"66666666-6666-4666-8666-666666666666",provider:"qianchuan-browser",accountSlot:input.product,advertiserId:input.expectedAdvertiserId,mode:"product-cost-control",action:input.action,beforeVersion:"page-version-1",adId:input.adId,beforeValues:input.action==="set-budget"?{budget:"120.00",budgetType:"daily"}:{roi:"2.0"},target:input.action==="set-budget"?{budget:input.targetValue,budgetType:"daily"}:{roi:input.targetValue}}});
     window.prepareCalls=[];window.confirmCalls=[];window.cancelCalls=[];window.preparePending=[];window.confirmPending=[];window.prepareDelay=false;window.confirmDelay=false;window.capabilityStatus="live-read-verified";
     window.jianji={
       prepareQianchuanDelivery:input=>{window.prepareCalls.push(input);if(window.prepareDelay)return new Promise(resolve=>window.preparePending.push(()=>resolve(prepared(input))));return Promise.resolve(prepared(input));},
@@ -37,8 +38,10 @@ async function fixture(): Promise<Page> {
 }
 
 async function fillBounds(page: Page) {
-  const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const local = new Date(tomorrow.getTime() - tomorrow.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  const local = await page.evaluate(() => {
+    const expiry = new Date(Date.now() + 30 * 60 * 1000);
+    return new Date(expiry.getTime() - expiry.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+  });
   await page.getByLabel("操作", { exact: true }).selectOption("set-budget");
   await page.getByLabel("目标值", { exact: true }).fill("150.00");
   await page.getByLabel("CNY 每日预算上限", { exact: true }).fill("200.00");
@@ -72,7 +75,7 @@ it("does not read on mount and requires explicit preflight before a single exact
     await page.waitForFunction(() => (window as any).confirmCalls.length === 1);
     const confirmation = await page.evaluate(() => (window as any).confirmCalls[0]);
     expect(confirmation).toMatchObject({ preflightId: "55555555-5555-4555-8555-555555555555", maxTargetBudget: "200.00", totalBudgetIncrease: "40.00", maxActions: 1 });
-    expect(Date.parse(confirmation.expiresAt)).toBeLessThanOrEqual(Date.parse("2026-10-17T12:00:00.000Z"));
+    expect(Date.parse(confirmation.expiresAt)).toBeLessThanOrEqual(Date.parse(await page.evaluate(() => (window as any).preflightExpiresAt)));
     expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
     await page.evaluate(() => (window as any).confirmPending[0]());
     await page.getByText(/结果未知.*不可重发/).waitFor();
@@ -114,6 +117,22 @@ it("rejects budget limits below the returned budget increase", async () => {
     await page.getByLabel("本次累计可增加额（CNY）", { exact: true }).fill("29.99");
     await page.getByRole("button", { name: "读取当前值并检查", exact: true }).click();
     await page.getByText(/本次累计可增加额不能低于本次预算上调额/).waitFor();
+    expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
+    expect(await page.evaluate(() => (window as any).confirmCalls)).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("rejects authorization beyond the returned preflight expiry", async () => {
+  const page = await fixture();
+  try {
+    await fillBounds(page);
+    const local = await page.evaluate(() => {
+      const expiry = new Date(Date.parse((window as any).preflightExpiresAt) + 60_000);
+      return new Date(expiry.getTime() - expiry.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    });
+    await page.getByLabel("授权截止时间（本地时间）", { exact: true }).fill(local);
+    await page.getByRole("button", { name: "读取当前值并检查", exact: true }).click();
+    await page.getByText("授权截止时间不能超过本次预检有效期。", { exact: true }).waitFor();
     expect(await page.getByRole("button", { name: "确认并执行一次", exact: true }).isDisabled()).toBe(true);
     expect(await page.evaluate(() => (window as any).confirmCalls)).toEqual([]);
   } finally { await page.close(); }

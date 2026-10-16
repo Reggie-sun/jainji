@@ -1,4 +1,4 @@
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { now, type MediaItem, type Project } from "./domain.js";
@@ -7,6 +7,15 @@ import { FfmpegAdapter } from "./ffmpeg.js";
 
 const SUPPORTED_CONTAINERS = new Set([".mp4", ".mov", ".mkv", ".webm"]);
 const SUPPORTED_VIDEO_CODECS = new Set(["av1", "cinepak", "flv1", "h263", "h264", "hevc", "mjpeg", "mpeg1video", "mpeg2video", "mpeg4", "msmpeg4v3", "prores", "theora", "vp8", "vp9", "vc1", "wmv3"]);
+
+/** Only direct regular videos: nested generated output directories are never re-imported. */
+export async function videoPathsInDirectory(directory: string): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const names = entries.filter(entry => entry.isFile() && SUPPORTED_CONTAINERS.has(path.extname(entry.name).toLowerCase())).map(entry => entry.name).sort((a, b) => a.localeCompare(b, "zh-CN", { numeric: true }));
+  if (!names.length) throw new Error("该目录中没有可读取的视频（MP4、MOV、MKV、WebM；不含子目录）。");
+  if (names.length > 1000) throw new Error("目录视频超过 1000 条，请选择更小的输入目录。");
+  return names.map(name => path.join(directory, name));
+}
 
 export interface MediaView extends Omit<MediaItem, "sourcePath"> {
   previewUrl: string;

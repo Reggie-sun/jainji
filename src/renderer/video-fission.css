@@ -1,0 +1,40 @@
+.video-fission-panel { width: 100%; max-width: 1040px; min-width: 0; margin: 0 auto; }
+.video-fission-heading { margin-bottom: 18px; }
+.video-fission-card { display: grid; gap: 22px; min-width: 0; padding: 22px; }
+.video-fission-intro { display: grid; gap: 6px; padding: 14px 16px; border: 1px solid var(--line-2); border-radius: 5px; background: var(--paper); color: var(--ink-2); line-height: 1.7; }
+.video-fission-intro small, .video-fission-section-heading small { color: var(--ink-3); font-size: 12px; }
+.video-fission-settings { display: grid; grid-template-columns: minmax(150px, 220px) minmax(0, 1fr); gap: 18px; align-items: start; }
+.video-fission-input-directory { display: grid; grid-column: 1 / -1; gap: 7px; min-width: 0; font-weight: 600; }
+.video-fission-total, .video-fission-output { display: grid; gap: 7px; min-width: 0; font-weight: 600; }
+.video-fission-total input { box-sizing: border-box; width: 100%; height: 40px; min-height: 40px; border: 1px solid var(--line); border-radius: 5px; padding: 0 10px; background: var(--surface); color: var(--ink); font-variant-numeric: tabular-nums; }
+.video-fission-total small { color: var(--ink-3); font-size: 12px; font-weight: 400; }
+.video-fission-directory-picker { box-sizing: border-box; width: 100%; height: 40px; min-height: 40px; padding: 0 12px; }
+.video-fission-automatic-output { justify-self: start; }
+.video-fission-materials { display: grid; gap: 12px; min-width: 0; }
+.video-fission-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.video-fission-section-heading > div { display: grid; gap: 3px; }
+.video-fission-section-heading h2 { font-size: 14px; font-weight: 650; }
+.video-fission-select-all, .video-fission-media-option { display: flex; align-items: center; gap: 9px; min-width: 0; cursor: pointer; }
+.video-fission-select-all { flex-shrink: 0; color: var(--ink-2); }
+.video-fission-media-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 320px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.video-fission-media-list li { min-width: 0; }
+.video-fission-media-option { min-height: 42px; padding: 8px 10px; border: 1px solid var(--line-2); border-radius: 5px; background: var(--surface); }
+.video-fission-media-option input { margin: 0; }
+.video-fission-media-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.video-fission-media-option small { flex-shrink: 0; color: var(--ink-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.video-fission-empty { padding: 16px; border: 1px dashed var(--line); border-radius: 5px; color: var(--ink-3); text-align: center; }
+.video-fission-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; padding-top: 14px; border-top: 1px solid var(--line-2); color: var(--ink-3); font-size: 12px; }
+.video-fission-summary > span:first-child { color: var(--ink-2); }
+.video-fission-summary strong { color: var(--seal); font-size: 16px; font-variant-numeric: tabular-nums; }
+.video-fission-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+.video-fission-action-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.video-fission-status { color: var(--bad); font-size: 12px; line-height: 1.6; }
+@media (max-width: 700px) {
+  .video-fission-card { gap: 18px; padding: 16px; }
+  .video-fission-settings { grid-template-columns: minmax(0, 1fr); gap: 14px; }
+  .video-fission-input-directory { grid-column: 1; }
+  .video-fission-media-list { grid-template-columns: minmax(0, 1fr); max-height: 260px; }
+  .video-fission-actions { align-items: stretch; flex-direction: column-reverse; }
+  .video-fission-action-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .video-fission-actions > .button { width: 100%; }
+}

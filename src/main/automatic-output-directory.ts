@@ -4,10 +4,10 @@ import path from "node:path";
 const MATERIAL_DIRECTORY_NAME = /素材/;
 const VIDEO_DIRECTORY_NAME = "视频";
 
-function productRootForSource(sourcePath: string): string | undefined {
+function productRootForSource(sourcePath: string, purpose?: "fission"): string | undefined {
   let directory = path.dirname(path.resolve(sourcePath));
   while (true) {
-    if (MATERIAL_DIRECTORY_NAME.test(path.basename(directory))) return path.dirname(directory);
+    if (MATERIAL_DIRECTORY_NAME.test(path.basename(directory)) || purpose && [VIDEO_DIRECTORY_NAME, "裂变"].includes(path.basename(directory))) return path.dirname(directory);
     const parent = path.dirname(directory);
     if (parent === directory) return undefined;
     directory = parent;
@@ -20,9 +20,9 @@ function outputDirectoryName(at: Date): string {
   return `${at.getMonth() + 1}.${at.getDate()} ${hours}：${minutes}`;
 }
 
-function automaticVideoRoot(sourcePaths: readonly string[]): string {
+function automaticVideoRoot(sourcePaths: readonly string[], purpose?: "fission"): string {
   if (!sourcePaths.length) throw new Error("请先选择素材，再自动创建成片目录。");
-  const roots = sourcePaths.map(productRootForSource);
+  const roots = sourcePaths.map(source => productRootForSource(source, purpose) ?? (purpose ? path.dirname(path.resolve(source)) : undefined));
   if (roots.some((root) => !root)) {
     throw new Error("无法从素材位置识别产品目录。请把素材放在目录名包含“素材”的目录中（如“产品/素材备份”或“产品/原始素材”），或手动选择成片目录。");
   }
@@ -31,11 +31,11 @@ function automaticVideoRoot(sourcePaths: readonly string[]): string {
     throw new Error("所选素材来自不同产品目录，无法自动确定成片位置。请只选择同一产品的素材，或手动选择成片目录。");
   }
 
-  return path.join([...productRoots][0], VIDEO_DIRECTORY_NAME);
+  return path.join([...productRoots][0], purpose ? "裂变" : VIDEO_DIRECTORY_NAME);
 }
 
-export async function createAutomaticOutputDirectory(sourcePaths: readonly string[], at = new Date(), existingDirectory?: string): Promise<string> {
-  const videoRoot = automaticVideoRoot(sourcePaths);
+export async function createAutomaticOutputDirectory(sourcePaths: readonly string[], at = new Date(), existingDirectory?: string, purpose?: "fission"): Promise<string> {
+  const videoRoot = automaticVideoRoot(sourcePaths, purpose);
   if (existingDirectory) {
     const existing = path.resolve(existingDirectory);
     const automaticName = /^\d{1,2}\.\d{1,2} \d{2}[:：]\d{2}(?: \(\d+\))?$/;

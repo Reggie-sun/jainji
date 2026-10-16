@@ -26,6 +26,7 @@
 
 | Concern | Canonical owner |
 | --- | --- |
+| 本地视频裂变参数与准备 | [video-fission.ts](../src/shared/video-fission.ts)、[preparation](../src/main/video-fission.ts)；生命周期、编译与发布仍由原队列 owner 独占 |
 | 制作请求、价格与装饰数据校验 | [agent.ts](../src/shared/agent.ts)、[decorations.ts](../src/shared/decorations.ts) |
 | 模板约束与布局几何 | [agent.ts](../src/shared/agent.ts)、[layout-policy.ts](../src/shared/layout-policy.ts) |
 | 制作准入、取消与逐素材执行 | [agent-controller.ts](../src/main/agent-controller.ts)、[agent-runner.ts](../src/main/agent-runner.ts) |

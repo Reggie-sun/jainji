@@ -685,6 +685,34 @@
         "scripts/build-qianchuan-remote.mjs"
       ],
       "timeoutMs": 60000
+    },
+    {
+      "id": "video-fission",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": [
+        "node_modules/vitest/vitest.mjs",
+        "run",
+        "--no-file-parallelism",
+        "--maxWorkers=1",
+        "--minWorkers=1"
+      ],
+      "testFiles": [
+        "tests/video-fission.test.ts",
+        "tests/video-fission.integration.test.ts"
+      ],
+      "timeoutMs": 120000
+    },
+    {
+      "id": "video-fission-smoke",
+      "kind": "command",
+      "required": true,
+      "command": "node",
+      "args": [
+        "scripts/video-fission-smoke.mjs"
+      ],
+      "timeoutMs": 120000
     }
   ],
   "media": {
@@ -1803,6 +1831,31 @@
         "docs/agent-contract-index.md",
         "docs/video-validation-harness-spec.md",
         "docs/qianguanjia-history-materials-2026-10-16.md"
+      ]
+    },
+    {
+      "id": "domain-video-fission",
+      "paths": [
+        "src/main/video-fission.ts",
+        "src/main/media.ts",
+        "src/shared/video-fission.ts",
+        "src/renderer/VideoFissionPanel.tsx",
+        "src/renderer/video-fission.css",
+        "tests/video-fission.test.ts",
+        "tests/video-fission.integration.test.ts",
+        "scripts/video-fission-smoke.mjs"
+      ],
+      "checkIds": [
+        "typecheck",
+        "video-fission",
+        "video-fission-smoke",
+        "documents"
+      ],
+      "documentRefs": [
+        "AGENTS.md",
+        "docs/agent-contract-index.md",
+        "docs/decoration-production-contract.md",
+        "docs/video-validation-harness-spec.md"
       ]
     }
   ],
