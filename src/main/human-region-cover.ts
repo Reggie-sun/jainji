@@ -32,6 +32,7 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     : Object.keys(input.assets).filter(id => eligibleSticker(id) && input.assets[id]).sort();
   if (candidates.length > 256) throw Error("人工覆盖本地候选超过 256 款，请缩小贴纸库后重试。");
   const rounds = new Map<string, Promise<Map<string, StickerLayer[]>>>();
+  const progress = new Map<string, (stage: string) => void>();
   const used = new Map<string, string[]>();
   const cache = new Map<string, MatchedArtwork | null>();
   const prepared = new Map<string, Promise<Awaited<ReturnType<typeof targets>>>>();
@@ -62,7 +63,7 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     trials.set(budgetKey, attempts);
     const maximum = draft.admission === "manual-production-v1"
       ? Math.max(512, candidates.length * draft.media.find(item => item.mediaId === target.media.id)!.segments.length) : 512;
-    if (attempts > maximum) throw Error(`人工覆盖匹配已达到${independent ? "此素材" : "本批"} ${maximum} 次候选预算；请调整覆盖框或贴纸库。`);
+    if (attempts > maximum) throw new ProviderError(`人工覆盖匹配已达到${independent ? "此素材" : "本批"} ${maximum} 次候选预算；请调整覆盖框或贴纸库。`);
     const tools = { ...input.tools, signal }, bitmap = humanRegionBitmap(target.target, target.projection);
     const selected = await searchHybridCornerShape([{ id, asset: input.assets[id]! }], bitmap, target.projection,
       draft.admission === "manual-production-v1" ? humanRegionArtworkScope(target.target)
@@ -94,13 +95,25 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
       cover: { stickerId: id, height: 1, regionId: target.segment.id, humanRegion: binding } } };
     cache.set(key, matched); return matched;
   };
+  const noFit = () => new ProviderError(draft.admission === "manual-production-v1"
+    ? "没有贴纸能在有限超框范围内用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会放大遮挡主体或添加白底。"
+    : "没有贴纸能用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会添加白底。");
   const round = (version: number, signal: AbortSignal, mediaId?: string): Promise<Map<string, StickerLayer[]>> => {
     const scope = mediaId ?? "round", key = `${scope}:${version}`;
     let pending = rounds.get(key);
     if (!pending) {
+      let timeout: AbortSignal | undefined;
       pending = (async () => {
         if (version > 1) await round(version - 1, signal, mediaId);
-        const timeout = AbortSignal.timeout(600_000), bounded = AbortSignal.any([signal, timeout]);
+        timeout = AbortSignal.timeout(600_000);
+        const bounded = AbortSignal.any([signal, timeout]), started = Date.now();
+        let lastProgress = 0;
+        const report = (stage: string, force = false) => {
+          if (force || Date.now() - lastProgress >= 300) {
+            lastProgress = Date.now(); progress.get(key)?.(`${stage} · 已用时 ${Math.floor((Date.now() - started) / 1000)} 秒`);
+          }
+        };
+        report("正在核对源文件与人工覆盖框", true);
         if (!prepared.has(scope)) prepared.set(scope, targets(bounded, mediaId));
         const all = await prepared.get(scope)!, result = new Map(input.media.map(m => [m.id, [] as StickerLayer[]]));
         const groups = new Map<string, typeof all>();
@@ -119,18 +132,21 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
           assigned.set(group[0].media.id, perMedia);
           const eligible = candidates.filter(id => !input.random || !perMedia.has(id));
           const tiers = [eligible.filter(id => !previous.includes(id)), eligible.filter(id => previous.includes(id) && id !== previous.at(-1)), eligible.filter(id => id === previous.at(-1))];
+          let hasMatch = false;
           for (const tier of tiers) for (let start = 0; start < tier.length; start += 8) {
             // Compare bounded windows; retain rotation priority and the original search budgets.
             const options: { id: string; matches: MatchedArtwork[]; excess: number; clipped: number }[] = [];
             for (const id of tier.slice(start, start + 8)) {
-              if (++assignments > 4096) throw Error("人工覆盖选材组合达到本轮预算，请减少目标或调整贴纸库。");
+              if (++assignments > 4096) throw new ProviderError("人工覆盖选材组合达到本轮预算，请减少目标或调整贴纸库。");
               bounded.throwIfAborted();
+              report(`正在匹配覆盖框 ${index + 1}/${entries.length} · 贴纸 ${candidates.indexOf(id) + 1}/${candidates.length}`);
               const matches: MatchedArtwork[] = [];
               for (const target of group) { const matched = await match(target, id, bounded); if (!matched) break; matches.push(matched); }
               if (matches.length === group.length) options.push({ id, matches, excess: matches.reduce((sum, matched) => sum + matched.excess, 0),
                 clipped: matches.reduce((sum, matched) => sum + matched.clipped, 0) });
             }
             options.sort((a, b) => a.clipped - b.clipped || a.excess - b.excess || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+            hasMatch ||= options.length > 0;
             for (const { id, matches } of options) {
               perMedia.add(id); selections.push({ key, id, group, matches });
               if (await solve(index + 1)) return true;
@@ -139,22 +155,44 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
               if (!input.random) return false;
             }
           }
+          // An impossible target cannot be repaired by permuting earlier assignments.
+          // Check excluded artwork too: it may fit after an earlier choice is reassigned.
+          if (input.random && !hasMatch) {
+            let excludedFits = false;
+            for (const id of perMedia) {
+              if (++assignments > 4096) throw new ProviderError("人工覆盖选材组合达到本轮预算，请减少目标或调整贴纸库。");
+              bounded.throwIfAborted();
+              let fits = true;
+              for (const target of group) if (!await match(target, id, bounded)) { fits = false; break; }
+              if (fits) { excludedFits = true; break; }
+            }
+            if (!excludedFits) throw noFit();
+          }
           return false;
         };
-        if (!await solve(0)) throw new ProviderError(draft.admission === "manual-production-v1"
-          ? "没有贴纸能在有限超框范围内用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会放大遮挡主体或添加白底。"
-          : "没有贴纸能用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会添加白底。");
+        if (!await solve(0)) throw noFit();
         bounded.throwIfAborted();
+        report("正在冻结已匹配贴纸并验证覆盖像素", true);
         for (const { key, id, group, matches } of selections) {
           used.set(key, [...used.get(key) ?? [], id]);
           const layers = await Promise.all(matches.map(matched => matched.publish()));
           layers.forEach((layer, index) => result.get(group[index].media.id)!.push(structuredClone(layer)));
         }
         return result;
-      })();
+      })().catch(error => {
+        if (!signal.aborted && timeout?.aborted) throw new ProviderError("人工覆盖匹配超过本素材本版 10 分钟上限，已停止本版；请调整覆盖框或贴纸库后重新制作。");
+        if (!signal.aborted && error instanceof Error && error.message === "HYBRID_SEARCH_LIMIT") throw new ProviderError("人工覆盖贴纸尺寸匹配达到搜索上限，已停止本版；请调整覆盖框或贴纸库。");
+        throw error;
+      });
       rounds.set(key, pending);
     }
     return pending;
   };
-  return async (media: MediaItem, version: number, _runId: string, signal: AbortSignal) => (await round(version, signal, independent ? media.id : undefined)).get(media.id)!;
+  return async (media: MediaItem, version: number, _runId: string, signal: AbortSignal, onStage?: (stage: string) => void) => {
+    const scope = independent ? media.id : "round", key = `${scope}:${version}`;
+    if (onStage) progress.set(key, onStage);
+    onStage?.(version > 1 ? "等待本素材上一版本完成覆盖匹配…" : "正在准备人工框真实贴纸覆盖…");
+    try { return (await round(version, signal, independent ? media.id : undefined)).get(media.id)!; }
+    finally { progress.delete(key); }
+  };
 }

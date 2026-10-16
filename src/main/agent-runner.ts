@@ -28,7 +28,7 @@ interface RunnerDependencies {
   publishApproved?(template: EditTemplate, media: MediaItem, samplePath: string, signal: AbortSignal): Promise<string>;
   shape?: ShapeCoverProduction;
   hybrid?: HybridProductionSession;
-  humanRegionLayers?(media: MediaItem, version: number, runId: string, signal: AbortSignal): Promise<StickerLayer[]>;
+  humanRegionLayers?(media: MediaItem, version: number, runId: string, signal: AbortSignal, onStage?: (stage: string) => void): Promise<StickerLayer[]>;
   /** Real render slots from the export queue (encoder-aware); defaults to the legacy cap when absent. */
   renderSlots?(): number;
   prepared?(template: EditTemplate, media: MediaItem, version: number, signal: AbortSignal): Promise<void>;
@@ -196,7 +196,7 @@ export class AgentRunner {
             stickerAssets: this.dependencies.stickerAssets, decorations: frameOptions[index], catalog: this.dependencies.autoCatalog,
             coverSticker, coverTracks, sourceStickerTracks, preserveCoverMotion: Boolean(this.dependencies.prepared), runId: run.id, version: item.version };
           const shapeCoverLayers = this.dependencies.shape ? await this.dependencies.shape.layers(item.version, coverSticker!.stickerId, source, run.id, signal) : undefined;
-          const humanRegionLayers = await this.dependencies.humanRegionLayers?.(source, item.version, run.id, signal);
+          const humanRegionLayers = await this.dependencies.humanRegionLayers?.(source, item.version, run.id, signal, onStage);
           let template = prepareAgentTemplate({ ...preparation, shapeCoverLayers, humanRegionLayers });
           let version: KnowledgeVersion | undefined;
           if ((knowledge && binding || placement) && !this.dependencies.prepared) {

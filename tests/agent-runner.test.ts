@@ -22,6 +22,19 @@ function plan(summary: string): PackagingPlan {
 const stickerAssets = Object.fromEntries(["sparkle", "arrow", "heart", "burst"].map((id) => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: `sha256:${id}` }])) as BuiltinStickerAssets;
 
 describe("supervisor production admission", () => {
+  it("shows local coverage matching progress before an export exists", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const runner = new AgentRunner({ frames: async () => [], plan: async () => plan("本地包装"), stickerAssets,
+      humanRegionLayers: async (...args) => {
+        (args[4] as ((stage: string) => void) | undefined)?.("正在匹配覆盖框 2/6 · 候选 8/80");
+        await pending; return [];
+      }, enqueue: async () => "task", onChange: () => {} });
+    runner.start("project", "clean", "", [media("one")]);
+    try { await expect.poll(() => runner.snapshot()?.items[0].summary).toContain("覆盖框 2/6"); }
+    finally { release(); await runner.settled(); }
+    expect(runner.snapshot()?.items[0].status).toBe("exporting");
+  });
   it("freezes random frames per media/version across supervisor rebuilds and respects independent overrides", async () => {
     const sources = [media("random"), media("manual"), media("none")];
     const assets = { ...stickerAssets, ...Object.fromEntries(["frame-stars", "frame-hearts", "frame-confetti"].map(id => [id, { assetPath: `/tmp/${id}.png`, assetFingerprint: "fixture" }])) };

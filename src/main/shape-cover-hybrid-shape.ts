@@ -9,7 +9,23 @@ export const HYBRID_SHAPE_SEARCH = freezeAI({ version: "hybrid-corner-shape-sear
   sizeFactors: [1, 1.25, 1.5, 2, 2.5] as readonly number[], translationFractions: [-0.1, 0, 0.1] as readonly number[],
   maximumTrials: 11520, maximumRasters: 1280, wallMs: 180_000 });
 export type HybridStickerCandidate = { id: string; asset: BuiltinStickerAsset };
-export type HybridArtworkCache = Map<string, Awaited<ReturnType<typeof trimShapeCoverArtwork>>>;
+type CachedArtwork = Awaited<ReturnType<typeof trimShapeCoverArtwork>>;
+type CachedRaster = { raster: Awaited<ReturnType<typeof rasterizeShapeCoverArtwork>> };
+/** Run-local measured bytes only; no placement, binding or admission is cached here. */
+export type HybridArtworkCache = Map<string, CachedArtwork | CachedRaster>;
+function rememberArtwork(cache: HybridArtworkCache | undefined, key: string, value: CachedArtwork | CachedRaster) {
+  if (!cache) return;
+  const cost = (entry: CachedArtwork | CachedRaster) => "raster" in entry ? entry.raster.rgba.length + entry.raster.alpha.length : entry.bytes.length;
+  const limit = 64 * 1024 * 1024;
+  if (cost(value) > limit) return;
+  cache.delete(key); cache.set(key, value);
+  let total = 0;
+  for (const entry of cache.values()) total += cost(entry);
+  for (const [oldKey, entry] of cache) {
+    if (total <= limit) break;
+    cache.delete(oldKey); total -= cost(entry);
+  }
+}
 export type HybridShapeMatch = {
   candidate: HybridStickerCandidate; placement: ShapeCoverPlacement; radiusPx: number;
   trimBox: ShapeCoverPlacement; trimmedSha256: string; alphaSha256: string;
@@ -53,8 +69,9 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
     let trimmed: Awaited<ReturnType<typeof trimShapeCoverArtwork>>;
     const sourceDigest = discoveryHash(bytes);
     try {
-      trimmed = artworkCache?.get(sourceDigest) ?? await trimShapeCoverArtwork(bytes, tools);
-      artworkCache?.set(sourceDigest, trimmed);
+      const cached = artworkCache?.get(sourceDigest);
+      trimmed = cached && "trimBox" in cached ? cached : await trimShapeCoverArtwork(bytes, tools);
+      rememberArtwork(artworkCache, sourceDigest, trimmed);
     }
     catch (error) {
       check();
@@ -78,7 +95,11 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
       if (clippedCompact && (scope.x > 0 && scope.x + scope.width < size.width && width > scope.width
         || scope.y > 0 && scope.y + scope.height < size.height && height > scope.height)) continue;
       seenSizes.add(`${width}/${height}`); metrics.rasters++; check();
-      const tile = await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools);
+      const rasterKey = `${trimmed.sha256}:${width}:${height}`;
+      const cached = artworkCache?.get(rasterKey);
+      const tile = cached && "raster" in cached ? cached.raster
+        : await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools);
+      rememberArtwork(artworkCache, rasterKey, { raster: tile });
       const positions = new Map<string, ShapeCoverPlacement>();
       if (clippedCompact) {
         const position = compactArtworkPlacement(tile.alpha, { width, height }, bounds, size, scope, tools.signal);

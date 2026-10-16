@@ -1,4 +1,5 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import * as alphaTools from "../src/main/shape-cover-alpha.js";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,6 +10,28 @@ import { discoveryHash } from "../src/main/source-fact-discovery-evidence.js";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin.js";
 
 const tools = { ffmpegPath: ffmpegBin, ffprobePath: ffprobeBin };
+it("reuses measured artwork sizes across targets while rechecking the asset bytes", async () => {
+  const root = await mkdtemp(join(tmpdir(), "h3-raster-cache-"));
+  const rasterize = vi.spyOn(alphaTools, "rasterizeShapeCoverArtwork");
+  try {
+    const bytes = await encodeShapeCoverPng(Buffer.alloc(16 * 8 * 4, 255), { width: 16, height: 8 }, tools);
+    const assetPath = join(root, "fixture.png"); await writeFile(assetPath, bytes);
+    const candidate = { id: "heart", asset: { assetPath, assetFingerprint: `sha256:${discoveryHash(bytes)}` } };
+    const size = { width: 80, height: 60 }, scope = { x: 0, y: 0, width: 80, height: 60 }, cache = new Map();
+    const old = new Uint8Array(4800); for (let y = 10; y < 18; y++) old.fill(1, y * 80 + 10, y * 80 + 26);
+    const first = await searchHybridCornerShape([candidate], old, size, scope, 1, tools, "compact-artwork", cache);
+    const measured = rasterize.mock.calls.length;
+    const second = await searchHybridCornerShape([candidate], old, size, scope, 1, tools, "compact-artwork", cache);
+    expect(first).not.toBeNull(); expect(second!.placement).toEqual(first!.placement);
+    expect(second!.raster.rgba).toEqual(first!.raster.rgba);
+    // A second target/search must not run the same FFmpeg size ladder again.
+    expect(measured).toBeGreaterThan(1);
+    expect(rasterize.mock.calls.length - measured).toBe(0);
+    await writeFile(assetPath, Buffer.from("changed"));
+    await expect(searchHybridCornerShape([candidate], old, size, scope, 1, tools, "compact-artwork", cache)).rejects.toThrow("HYBRID_CATALOG_BINDING");
+    await expect(searchHybridCornerShape([candidate], old, size, scope, 1, { ...tools, signal: AbortSignal.abort() }, "compact-artwork", cache)).rejects.toThrow();
+  } finally { rasterize.mockRestore(); await rm(root, { recursive: true, force: true }); }
+}, 60000);
 it("transparent trim preserves every visual pixel, including partial alpha", async () => {
   const size = { width: 12, height: 10 }, rgba = Buffer.alloc(480);
   for (let y = 2; y < 8; y++) for (let x = 3; x < 10; x++) { const p = (y * 12 + x) * 4; rgba[p] = 200; rgba[p + 3] = x === 3 ? 128 : 255; }

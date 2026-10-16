@@ -1,4 +1,5 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import * as shapeSearch from "../src/main/shape-cover-hybrid-shape";
 import { opaqueRegionCovered, projectHumanRectangle } from "../src/main/human-region-geometry";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
@@ -12,6 +13,67 @@ import { fingerprintFile } from "../src/main/paths";
 import { decodeShapeCoverPng } from "../src/main/shape-cover-alpha";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ProviderError } from "../src/main/agent-provider";
+
+it("reports a genuinely impossible last target without exhausting unrelated sticker combinations", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-no-fit-prune-"));
+  try {
+    const tools = new FfmpegAdapter(ffmpegBin, ffprobeBin), sourcePath = path.join(directory, "source.mp4");
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x120:r=24", "-t", "1", "-c:v", "libx264", sourcePath]).promise;
+    expect(generated.code, generated.stderr).toBe(0);
+    const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "no fit", durationMs: 1000,
+      width: 160, height: 120, rotation: 0, sizeBytes: (await stat(sourcePath)).size, importedAt: now(), probeStatus: "ready" };
+    const ids = Array.from({ length: 6 }, () => randomUUID());
+    const draft: HumanRegionIntent = { id: randomUUID(), projectId: randomUUID(), revision: 0, assistedArtwork: "human-region-v1", admission: "manual-production-v1",
+      media: [{ mediaId: media.id, sourceFingerprint: media.fingerprint, disposition: "cover",
+        identities: ids.map(id => ({ id, label: "target", semantics: "sticker", origin: "human" })),
+        segments: ids.map((id, index) => ({ id, identityId: id, origin: "human", track: { startMs: 0, endMs: 1000,
+          keyframes: [{ timeMs: 0, rectangle: { x: .1, y: index === 5 ? .8 : .1, width: .2, height: .1 } }] } })) }] };
+    const assetPath = path.join(directory, "solid.png"); await writeFile(assetPath, encodeRgbaPng(Buffer.alloc(40 * 16 * 4, 255), 40, 16));
+    const asset = { assetPath, assetFingerprint: await fingerprintFile(assetPath) };
+    const assets = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`uploaded-${i.toString(16).padStart(64, "0")}`, asset])) as StickerAssets;
+    const original = shapeSearch.searchHybridCornerShape;
+    let positive: ReturnType<typeof original> | undefined;
+    const search = vi.spyOn(shapeSearch, "searchHybridCornerShape").mockImplementation((candidates, ...args) => {
+      if (args[0][100 * 160 + 20]) return Promise.resolve(null);
+      positive ??= original(candidates, ...args);
+      return positive;
+    });
+    try {
+      const prepare = createHumanRegionCover({ draft, media: [media], preset: { ...DEFAULT_PRESET, resolutionMode: "source" }, assets,
+        tools, directory: path.join(directory, "frozen"), random: true });
+      await expect(prepare(media, 1, "no-fit", new AbortController().signal)).rejects.toThrow(/没有贴纸/);
+      expect(search.mock.calls.length).toBeLessThanOrEqual(72);
+      expect(await readdir(path.join(directory, "frozen"))).toEqual([]);
+    } finally { search.mockRestore(); }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}, 60000);
+
+it("keeps reassignment when the only artwork for a later target is temporarily used by an earlier target", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-reassign-cover-"));
+  try {
+    const tools = new FfmpegAdapter(ffmpegBin, ffprobeBin), sourcePath = path.join(directory, "source.mp4");
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x120:r=24", "-t", "1", "-c:v", "libx264", sourcePath]).promise;
+    expect(generated.code, generated.stderr).toBe(0);
+    const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "reassign", durationMs: 1000,
+      width: 160, height: 120, rotation: 0, sizeBytes: (await stat(sourcePath)).size, importedAt: now(), probeStatus: "ready" };
+    const ids = [randomUUID(), randomUUID()];
+    const draft: HumanRegionIntent = { id: randomUUID(), projectId: randomUUID(), revision: 0, assistedArtwork: "human-region-v1", admission: "manual-production-v1",
+      media: [{ mediaId: media.id, sourceFingerprint: media.fingerprint, disposition: "cover",
+        identities: ids.map(id => ({ id, label: "target", semantics: "sticker", origin: "human" })),
+        segments: ids.map((id, index) => ({ id, identityId: id, origin: "human", track: { startMs: 0, endMs: 1000,
+          keyframes: [{ timeMs: 0, rectangle: { x: .1, y: index ? .8 : .1, width: .2, height: .1 } }] } })) }] };
+    const assetPath = path.join(directory, "solid.png"); await writeFile(assetPath, encodeRgbaPng(Buffer.alloc(40 * 16 * 4, 255), 40, 16));
+    const asset = { assetPath, assetFingerprint: await fingerprintFile(assetPath) }, first = `uploaded-${"1".repeat(64)}`, second = `uploaded-${"2".repeat(64)}`;
+    const assets = { [first]: asset, [second]: asset } as StickerAssets, original = shapeSearch.searchHybridCornerShape;
+    const search = vi.spyOn(shapeSearch, "searchHybridCornerShape").mockImplementation((candidates, ...args) =>
+      args[0][100 * 160 + 20] && candidates[0].id === second ? Promise.resolve(null) : original(candidates, ...args));
+    try {
+      const layers = await createHumanRegionCover({ draft, media: [media], preset: { ...DEFAULT_PRESET, resolutionMode: "source" }, assets,
+        tools, directory: path.join(directory, "frozen"), random: true })(media, 1, "reassign", new AbortController().signal);
+      expect(layers.map(layer => layer.cover!.stickerId)).toEqual([second, first]);
+    } finally { search.mockRestore(); }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}, 60000);
 
 it("requires every target pixel to be originally fully opaque, including holes and translucent edges", () => {
   const size = { width: 6, height: 6 }, target = { x: 1, y: 1, width: 4, height: 4 };
