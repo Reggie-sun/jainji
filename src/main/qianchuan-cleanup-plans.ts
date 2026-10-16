@@ -21,12 +21,21 @@ export async function clearQianchuanAccountPlans(target: FrozenQianchuanAccount,
   };
   try {
     await guard();
-    const plans = selection.plans ?? (selection.plan ? [selection.plan] : undefined);
+    let plans = selection.plans ?? (selection.plan ? [selection.plan] : undefined);
     if (plans) {
       const current = QianchuanPlanListSchema.parse(await ports.readPlans(target, signal));
       await guard();
-      if (current.some(plan => plan.advertiserId !== target.advertiserId) || plans.some(plan => !current.some(item => item.advertiserId === plan.advertiserId && item.adId === plan.adId))) {
-        throw new Error("所选清理计划已失效，请刷新计划列表后重新选择，未删除素材。");
+      if (current.some(plan => plan.advertiserId !== target.advertiserId) || plans.some(plan => plan.advertiserId !== target.advertiserId)) {
+        throw new Error("清理计划不属于当前账号，未删除素材。");
+      }
+      const available = new Set(current.map(plan => plan.adId));
+      const missing = plans.filter(plan => !available.has(plan.adId));
+      if (missing.length) {
+        messages.push(`以下所选计划当前已不可用，已跳过：${missing.map(plan => `${plan.name} · ID ${plan.adId}`).join("、")}。`);
+        plans = plans.filter(plan => available.has(plan.adId));
+        if (!plans.length && confirmation === "DELETE_PLAN_MATERIALS") {
+          throw new Error("没有仍可清理的已选计划，请刷新计划列表后重新选择，未删除素材。");
+        }
       }
     }
     if (confirmation !== "DELETE_ALL_VIDEOS") {

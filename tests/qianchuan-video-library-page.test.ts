@@ -40,14 +40,24 @@ function boundResultWait(page: import("playwright-core").Page) {
   const wait = page.waitForFunction.bind(page);
   vi.spyOn(page, "waitForFunction").mockImplementation((fn, arg, options) => wait(fn, arg, { ...options, timeout: 500 }));
 }
-async function leaveStaleDeletionList(page: import("playwright-core").Page) {
-  await page.evaluate(() => {
+async function leaveStaleDeletionList(page: import("playwright-core").Page, retainSelection = false) {
+  await page.evaluate(retainSelection => {
     document.querySelector<HTMLButtonElement>("#confirm")!.onclick = async () => {
       await fetch("/fixture-delete", { method: "POST" });
       (document.querySelector(".ovui-modal") as HTMLElement).style.display = "none";
-      document.querySelector("#selected")!.textContent = "";
-      (document.querySelector("#remove") as HTMLElement).style.display = "none";
+      if (!retainSelection) {
+        document.querySelector("#selected")!.textContent = "";
+        (document.querySelector("#remove") as HTMLElement).style.display = "none";
+      }
     };
+  }, retainSelection);
+}
+function boundSelectionWait(page: import("playwright-core").Page) {
+  const getByText = page.getByText.bind(page);
+  vi.spyOn(page, "getByText").mockImplementation((text, options) => {
+    const locator = getByText(text, options), wait = locator.waitFor.bind(locator);
+    vi.spyOn(locator, "waitFor").mockImplementation(options => wait({ ...options, timeout: 500 }));
+    return locator;
   });
 }
 it("returns an initially empty library without changing a retained page-size selector", async () => {
@@ -112,6 +122,27 @@ it("recovers a stale deletion result through one fresh bound list without anothe
     expect(await f.session.refresh()).toEqual({ total: 0, ids: [] });
     expect(reload).toHaveBeenCalledTimes(1);
     expect(intents).toBe(1); expect(f.confirmations()).toBe(1);
+  } finally { await f.context.close(); }
+});
+it.each([true, false])("refreshes a retained selection after confirmation and requires actual deletion progress (%s)", async removed => {
+  const f = await fixture({ count: 2 });
+  try {
+    await f.session.open(); boundResultWait(f.page); boundSelectionWait(f.page);
+    await leaveStaleDeletionList(f.page, true);
+    if (!removed) await f.page.route("**/fixture-delete", route => route.fulfill({ body: "{}" }));
+    const reload = vi.spyOn(f.page, "reload");
+    let intents = 0, confirmations = 0;
+    f.page.on("request", request => { if (request.method() === "POST" && new URL(request.url()).pathname === "/fixture-delete") confirmations++; });
+    const deletion = f.session.deleteBatch(await f.session.read(), async () => { intents++; });
+    if (removed) {
+      await deletion;
+      expect(await f.session.refresh()).toEqual({ total: 0, ids: [] });
+    } else {
+      await expect(deletion).rejects.toThrow("刷新仍未观察到");
+      expect(await f.session.read()).toEqual({ total: 2, ids: ["7000", "7001"] });
+    }
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(intents).toBe(1); expect(confirmations).toBe(1);
   } finally { await f.context.close(); }
 });
 it.each(["display:none", "visibility:hidden"])("ignores a %s old table when the final visible list is empty", async hidden => {

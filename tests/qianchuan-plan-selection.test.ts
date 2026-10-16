@@ -178,6 +178,51 @@ describe("durable display catalogs", () => {
     expect(f.readPlans.mock.calls.filter(([target]) => target.product === "眼贴")).toEqual([]);
   });
 });
+describe("current selected cleanup plans", () => {
+  const target: FrozenQianchuanAccount = { product: "眼贴", advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:42001", configDigest: "d".repeat(64) };
+  function ports(current: QianchuanPlanOption[]) {
+    const cleared: string[] = [];
+    const library: string[] = [];
+    return { cleared, library, guard: async () => {}, signal: new AbortController().signal,
+      readPlans: async () => current,
+      clearPlan: async (account: FrozenQianchuanAccount) => {
+        cleared.push(account.adId);
+        return { product: account.product, advertiserId: account.advertiserId, state: "CLEARED" as const, deletedCount: 1, message: "计划素材已清理。" };
+      },
+      clearLibrary: async (account: FrozenQianchuanAccount) => {
+        library.push(account.advertiserId);
+        return { product: account.product, advertiserId: account.advertiserId, state: "CLEARED" as const, deletedCount: 2, message: "视频库已清空。" };
+      } };
+  }
+  it("skips an unavailable selected plan and cleans only the remaining selected plan before the library", async () => {
+    const p = ports([plan("9002"), plan("9003")]);
+    const result = await clearQianchuanAccountPlans(target, { product: target.product, expectedAdvertiserId: "1000", plans: [plan(), plan("9002")] }, "DELETE_VIDEOS_AND_PLAN_MATERIALS", p);
+    expect(result).toMatchObject({ state: "CLEARED", deletedCount: 3 });
+    expect(p.cleared).toEqual(["9002"]); expect(p.library).toEqual(["1000"]);
+    expect(result.message).toContain("9001"); expect(result.message).toContain("跳过");
+    expect(result.message).not.toContain("9003");
+  });
+  it("still clears the explicitly selected library when all selected plans are unavailable", async () => {
+    const p = ports([]);
+    const result = await clearQianchuanAccountPlans(target, { product: target.product, expectedAdvertiserId: "1000", plans: [plan()] }, "DELETE_VIDEOS_AND_PLAN_MATERIALS", p);
+    expect(result).toMatchObject({ state: "CLEARED", deletedCount: 2 });
+    expect(p.cleared).toEqual([]); expect(p.library).toEqual(["1000"]);
+    expect(result.message).toContain("9001"); expect(result.message).toContain("跳过");
+  });
+  it("does not claim a plan-only cleanup completed when no selected plan is still available", async () => {
+    const p = ports([plan("9002")]);
+    const result = await clearQianchuanAccountPlans(target, { product: target.product, expectedAdvertiserId: "1000", plans: [plan()] }, "DELETE_PLAN_MATERIALS", p);
+    expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
+    expect(p.cleared).toEqual([]); expect(p.library).toEqual([]);
+  });
+  it.each(["selected", "current"])("rejects a %s plan belonging to another account before any cleanup", async wrong => {
+    const foreign = { ...plan(), advertiserId: "1001" };
+    const p = ports(wrong === "current" ? [foreign] : [plan()]);
+    const result = await clearQianchuanAccountPlans(target, { product: target.product, expectedAdvertiserId: "1000", plans: wrong === "selected" ? [foreign] : [plan()] }, "DELETE_VIDEOS_AND_PLAN_MATERIALS", p);
+    expect(result).toMatchObject({ state: "BLOCKED", deletedCount: 0 });
+    expect(p.cleared).toEqual([]); expect(p.library).toEqual([]);
+  });
+});
 it.each(["CLEARED", "BLOCKED"] as const)("continues past historical partial plans and retains later %s state", async later => {
   const target = { product: "眼贴" as const, advertiserId: "1000", adId: "2000", cdpEndpoint: "http://127.0.0.1:42001", configDigest: "d".repeat(64) };
   const plans = [plan(), plan("9002"), plan("9003")];

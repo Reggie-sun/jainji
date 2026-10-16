@@ -194,9 +194,10 @@ export class QianchuanVideoLibraryPage {
     await confirm.click({ timeout: 10000 });
     this.mutationObserved = true;
     await modal.waitFor({ state: "hidden", timeout: 30000 });
-    await this.page.getByText(/^已选\s*[1-9]\d*\s*个\s*$/, { exact: true }).waitFor({ state: "hidden", timeout: 30000 });
-    await this.page.waitForTimeout(1000);
-    try { await this.page.waitForFunction(({ total, ids }) => {
+    try {
+      await this.page.getByText(/^已选\s*[1-9]\d*\s*个\s*$/, { exact: true }).waitFor({ state: "hidden", timeout: 30000 });
+      await this.page.waitForTimeout(1000);
+      await this.page.waitForFunction(({ total, ids }) => {
       const visible = (node: Element) => !!node.getClientRects().length && getComputedStyle(node).visibility !== "hidden";
       const totals = Array.from(document.querySelectorAll(".ovui-page-total")).filter(visible);
       const current = totals.length === 1 ? /^共\s*(\d+)\s*条记录$/.exec(totals[0].textContent?.trim() ?? "") : null;
