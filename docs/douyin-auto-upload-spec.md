@@ -13,6 +13,18 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 真实上传在选文件前激活本批计划页，当前网页账户的只读投影必须支持 `/uni-prom` 上唯一合法非空 `adId` 及上传/确认弹窗；仍核对原文档、唯一可见账户姓名与 URL 中的唯一 advertiser ID，不从弹窗或保存账号推断身份。CDP 使用独立 v2 隔离 world 的只读身份入口；目录 GET、账户切换及 native 命令继续使用原概览页和无弹窗限制。此观察不授选择或确认权限，原 uploader/page contract 的双 ID、精确归属、快照、永久 fence 和回执要求保持不变。
 
+## Manual Submission Continuation Amendment (2026-10-16)
+
+用户明确声明已在千川手动提交原批已选成员后，可通过独立的“接续剩余”动作恢复同批从未选择文件的成员。请求绑定当前项目、原 pageBatchId、一个待传任务、精确剩余数量及完整已选 task ID 集合；可信 IPC 先核制作、导出与上传控制空闲，再由原 service/store 串行复核，不自动恢复或建立第二队列。原完整未选历史恢复入口继续遵守下节限制。
+
+原已选成员必须全部为有永久 fence 的 READY，声明不生成 ACCEPTED 或平台回执。原 intents 必须全部落成唯一 tasks，冻结授权、配置及项目一致；实际成员可少于原计划数。UNKNOWN、alias、取消、已处置/结束、非允许的终止失败或声明分歧拒绝。只有已证明 NOT_SELECTED、无 fence 且通过原恢复资格及快照校验的剩余成员可迁移；兼容的旧准备超时仍须是已尝试、非人工门的 browser TIMEOUT。
+
+剩余成员沿原 store 私有归档与原子提交，建立仅 pageBatchId 和精确 expectedCount 不同的子批次；目标（包括原连接、账户、计划、配置 digest 与出口）、输入身份、字节、快照、配置、排序及 upload_task_id 保持不变。原已选 task、intent 与 fence 保持原样，原批不自动结束。迁移前核对冻结配置；原 `current-browser` 还须重建原连接及网页账户绑定，端口变化拒绝。文件动作继续受原页面契约约束；历史接续不进入新制作的重开、关闭或切换浏览器流程。子批次沿原九条分组及平台接收确认规则执行，仅其自有新上传页可按原接收证据关闭。
+
+归档记录完整原 tasks/intents、声明与新授权，文件及目录同步后才提交账本。若归档已落盘而账本未提交，显式请求仅可复用与当前完整前像、声明、冻结目标及剩余数量精确匹配且目的批次仍为空的原提案；未知或冲突归档阻断存储，不覆盖或重新编号。Service 使用 store 返回的实际持久授权签发运行资格。重复旧请求拒绝；迁移后重启的完整未选子批次沿原显式历史恢复入口处理，原已选成员仍不得重传。
+
+实现及验证入口见 [Unselected Continuation Plan](superpowers/plans/2026-10-16-qianchuan-unselected-continuation.md)；人工声明和模拟测试均不代替真实平台接收证据。
+
 ## Explicit Historical Upload Resume Amendment (2026-10-15)
 
 用户选择 C，要求软件提供历史未完成批次的明确恢复入口。本修订只覆盖“历史永不继续”的显式操作限制，启动、查询、刷新与新制作仍不自动恢复历史。批量上传详情可列出完整登记、全部 `NOT_SELECTED` 且无 fence、别名、终止、取消、处置或 closure 的历史批次；用户点击“恢复本批上传”提交原 run/job/task 和精确 pageBatchId。

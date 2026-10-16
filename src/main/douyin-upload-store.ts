@@ -4,7 +4,7 @@ import { mkdir, open, readdir, lstat, realpath } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import { atomicWriteJson } from "./store.js";
-import { AcceptedEvidenceSchema, ClosedUploadBatchSchema, type AcceptedEvidence, type ClosedUploadBatch } from "../shared/douyin-upload.js";
+import { AcceptedEvidenceSchema, ClosedUploadBatchSchema, QianchuanUnselectedContinuationSchema, type QianchuanUnselectedContinuation, type AcceptedEvidence, type ClosedUploadBatch } from "../shared/douyin-upload.js";
 import { LegacyMarkerSchema, validateLegacy } from "./douyin-upload-legacy.js";
 import { FinalArtifactInputSchema, UploadIdentitySchema, UploadIdSchema, QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema, QianchuanUploadResultSchema, UploadAuthorizationSchema, PageOwnershipSchema, uploadFailure, type UploadIdentity, type QianchuanUploadConfig, type PageOwnership, type UploadAuthorization } from "../shared/douyin-upload.js";
 
@@ -12,6 +12,8 @@ export const UploadIntentSchema = UploadIdentitySchema.extend({ selection: Qianc
 export type UploadIntent = z.infer<typeof UploadIntentSchema>;
 export const UploadInputSchema = FinalArtifactInputSchema.omit({ caption: true, metadata: true });
 const TaskSchema = z.object({ input: UploadInputSchema, inputDigest: UploadIdSchema, config: QianchuanUploadConfigSchema, authorization: UploadAuthorizationSchema, snapshotPath: z.string().min(1), result: QianchuanUploadResultSchema }).strict();
+const UnselectedContinuationArchiveSchema = z.object({ version: z.literal(1), action: z.literal("continue-unselected"), submittedTaskIds: z.array(UploadIdSchema),
+  intents: z.array(UploadIntentSchema), tasks: z.array(TaskSchema), newAuthorization: UploadAuthorizationSchema }).strict();
 export type UploadTaskRecord = z.infer<typeof TaskSchema>;
 const V2StateSchema = z.object({ version: z.literal(2), config: QianchuanUploadConfigSchema, intents: z.array(UploadIntentSchema), tasks: z.array(TaskSchema), legacy: z.boolean() }).strict();
 const StateSchema = V2StateSchema.extend({ version: z.literal(3), closedBatches: z.array(ClosedUploadBatchSchema) }).strict();
@@ -320,36 +322,78 @@ export class DouyinUploadStore {
   reconnectBatch(id: string, authorization: UploadAuthorization, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
     return this.moveUnselectedBatch(id, authorization, true, beforeCommit);
   }
-  private moveUnselectedBatch(id: string, authorization: UploadAuthorization, reconnect: boolean, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
+  /** A manual submission declaration never changes the selected records or grants acceptance. */
+  unselectedContinuation(input: QianchuanUnselectedContinuation): { selected: UploadTaskRecord[]; remaining: UploadTaskRecord[] } {
+    this.assertReady(); const ref = QianchuanUnselectedContinuationSchema.parse(input), task = this.task(ref.uploadTaskId);
+    const rejected = () => new Error("原批次或人工提交声明不匹配；仅可接续未选文件，已选及未知记录保持保护。");
+    if (!task || task.input.project_id !== ref.projectId || task.authorization.pageBatchId !== ref.expectedPageBatchId) throw rejected();
+    this.assertOpen(ref.expectedPageBatchId);
+    const batch = this.tasks().filter(other => other.authorization.pageBatchId === ref.expectedPageBatchId);
+    const intents = this.intents().filter(intent => intent.authorization.pageBatchId === ref.expectedPageBatchId);
+    const selected = batch.filter(other => this.hasMarker(other.result.upload_task_id)), remaining = batch.filter(other => !this.hasMarker(other.result.upload_task_id));
+    const ids = new Set(ref.submittedTaskIds), authorization = JSON.stringify(task.authorization), config = JSON.stringify(task.config);
+    if (batch.length !== intents.length || !selected.length || selected.length !== ids.size || remaining.length !== ref.expectedUnselectedCount ||
+      !remaining.some(other => other.result.upload_task_id === ref.uploadTaskId) || new Set(batch.map(other => intentKey(other.input))).size !== batch.length ||
+      batch.some(other => other.input.project_id !== ref.projectId || JSON.stringify(other.authorization) !== authorization || JSON.stringify(other.config) !== config || other.result.duplicate_of ||
+        !intents.some(intent => intentKey(intent) === intentKey(other.input) && JSON.stringify(intent.authorization) === authorization && JSON.stringify(intent.config) === config)) ||
+      selected.some(other => !ids.has(other.result.upload_task_id) || other.result.state !== "WAITING_FOR_CONFIRMATION" || other.result.upload_outcome !== "READY") ||
+      remaining.some(other => other.result.upload_outcome !== "NOT_SELECTED" || !["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(other.result.state) &&
+        !(other.result.state === "FAILED_TERMINAL" && other.result.attempt_count > 0 && other.result.failure?.category === "browser" && other.result.failure.code === "TIMEOUT" && !other.result.failure.requires_human))) throw rejected();
+    return { selected, remaining };
+  }
+  continueUnselectedBatch(ref: QianchuanUnselectedContinuation, authorization: UploadAuthorization, beforeCommit?: () => Promise<void>): Promise<UploadTaskRecord[]> {
+    return this.moveUnselectedBatch(ref.uploadTaskId, authorization, true, beforeCommit, ref);
+  }
+  private moveUnselectedBatch(id: string, authorization: UploadAuthorization, reconnect: boolean, beforeCommit?: () => Promise<void>, continuation?: QianchuanUnselectedContinuation): Promise<UploadTaskRecord[]> {
     return this.serial(async () => {
       this.assertReady();
-      const nextAuthorization = UploadAuthorizationSchema.parse(authorization), selected = this.data.tasks.find(task => task.result.upload_task_id === id);
+      let nextAuthorization = UploadAuthorizationSchema.parse(authorization);
+      const selected = this.data.tasks.find(task => task.result.upload_task_id === id);
       if (!selected) throw uploadFailure("INPUT_CONFLICT", "account", "找不到待改传任务。", "刷新上传记录后重新选择整批任务。", true);
       this.assertOpen(selected.authorization.pageBatchId);
       this.assertOpen(nextAuthorization.pageBatchId);
       const oldAuthorization = selected.authorization, oldBatchId = oldAuthorization.pageBatchId;
-      const batchTasks = this.data.tasks.filter(task => task.authorization.pageBatchId === oldBatchId);
-      const batchIntents = this.data.intents.filter(intent => intent.authorization.pageBatchId === oldBatchId);
+      const originalTasks = this.data.tasks.filter(task => task.authorization.pageBatchId === oldBatchId);
+      const originalIntents = this.data.intents.filter(intent => intent.authorization.pageBatchId === oldBatchId);
+      const batchTasks = continuation ? this.unselectedContinuation(continuation).remaining : originalTasks;
+      const batchIntents = originalIntents.filter(intent => batchTasks.some(task => intentKey(task.input) === intentKey(intent)));
       const identities = new Set(batchTasks.map(task => intentKey(task.input)));
       const rejected = () => uploadFailure("INPUT_CONFLICT", "account", reconnect ? "本批任务不满足恢复原账号连接的条件。" : "本批任务不满足改传当前计划的条件。", "仅完整未选文件批次可明确更新授权；含围栏、别名或目标冲突时需人工核查。", true);
-      const validTarget = reconnect
+      const validTarget = continuation ? JSON.stringify(nextAuthorization.target) === JSON.stringify(oldAuthorization.target) : reconnect
         ? nextAuthorization.target.cdpEndpoint !== oldAuthorization.target.cdpEndpoint &&
           JSON.stringify({ ...nextAuthorization.target, cdpEndpoint: oldAuthorization.target.cdpEndpoint }) === JSON.stringify(oldAuthorization.target)
         : nextAuthorization.target.cdpEndpoint === oldAuthorization.target.cdpEndpoint && nextAuthorization.target.adId !== oldAuthorization.target.adId;
 
-      if (nextAuthorization.expectedCount !== oldAuthorization.expectedCount || nextAuthorization.pageBatchId === oldBatchId ||
+      if (nextAuthorization.expectedCount !== (continuation ? batchTasks.length : oldAuthorization.expectedCount) || nextAuthorization.pageBatchId === oldBatchId ||
         nextAuthorization.target.product !== oldAuthorization.target.product || nextAuthorization.target.advertiserId !== oldAuthorization.target.advertiserId ||
         !validTarget ||
         this.data.tasks.some(task => task.authorization.pageBatchId === nextAuthorization.pageBatchId) ||
         this.data.intents.some(intent => intent.authorization.pageBatchId === nextAuthorization.pageBatchId) ||
-        batchTasks.length !== oldAuthorization.expectedCount || batchIntents.length !== oldAuthorization.expectedCount ||
+        batchTasks.length !== (continuation ? nextAuthorization.expectedCount : oldAuthorization.expectedCount) || batchIntents.length !== batchTasks.length ||
         identities.size !== batchTasks.length || batchTasks.some(task => JSON.stringify(task.authorization) !== JSON.stringify(oldAuthorization) ||
-          task.result.upload_outcome !== "NOT_SELECTED" || !["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(task.result.state) || task.result.duplicate_of ||
+          task.result.upload_outcome !== "NOT_SELECTED" || !continuation && !["PENDING", "FAILED_RETRYABLE", "NEEDS_HUMAN"].includes(task.result.state) || task.result.duplicate_of ||
           this.hasMarker(task.result.upload_task_id)) ||
         batchIntents.some(intent => JSON.stringify(intent.authorization) !== JSON.stringify(oldAuthorization) || !identities.has(intentKey(intent))) ||
-        [...this.fences.values()].some(fence => fence.pageOwnership.pageBatchId === oldBatchId || batchTasks.some(task => task.result.upload_task_id === fence.upload_task_id || sameTargetBytes(task, this.data.tasks.find(other => other.result.upload_task_id === fence.upload_task_id)!))) ||
+        [...this.fences.values()].some(fence => !continuation && fence.pageOwnership.pageBatchId === oldBatchId || batchTasks.some(task => task.result.upload_task_id === fence.upload_task_id || sameTargetBytes(task, this.data.tasks.find(other => other.result.upload_task_id === fence.upload_task_id)!))) ||
         this.data.tasks.some(task => task.result.duplicate_of && (identities.has(intentKey(task.result)) || batchTasks.some(candidate => task.result.duplicate_of === candidate.result.upload_task_id)))) throw rejected();
 
+      const archivePath = path.join(this.retargetHistoryDirectory, `${oldBatchId}.json`);
+      if (continuation) try {
+        await secureUploadDirectory(this.retargetHistoryDirectory);
+        const bytes = await privateBytes(archivePath, true), saved = UnselectedContinuationArchiveSchema.parse(JSON.parse(bytes.toString("utf8")));
+        const expected = Buffer.from(`${JSON.stringify({ version: 1, action: "continue-unselected", submittedTaskIds: [...continuation.submittedTaskIds].sort(),
+          intents: originalIntents, tasks: originalTasks, newAuthorization: saved.newAuthorization }, null, 2)}\n`);
+        if (!bytes.equals(expected) || JSON.stringify(saved.newAuthorization.target) !== JSON.stringify(nextAuthorization.target) ||
+          saved.newAuthorization.expectedCount !== nextAuthorization.expectedCount || saved.newAuthorization.pageBatchId === oldBatchId ||
+          this.isClosed(saved.newAuthorization.pageBatchId) || this.data.tasks.some(task => task.authorization.pageBatchId === saved.newAuthorization.pageBatchId) ||
+          this.data.intents.some(intent => intent.authorization.pageBatchId === saved.newAuthorization.pageBatchId)) throw new Error("Unmatched continuation proposal");
+        nextAuthorization = saved.newAuthorization;
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          this.blocked = true;
+          throw uploadFailure("STORE_UNAVAILABLE", "store", "未完成的接续归档与原批次不一致，上传记录已停用。", "保留原记录与文件选择屏障，人工核查接续归档。", true);
+        }
+      }
       const movedById = new Map<string, UploadTaskRecord>(), newIds = new Set<string>(), newTargetBytes = new Set<string>();
       for (const task of batchTasks) {
         const nextId = uploadTaskId(task.input, nextAuthorization.target);
@@ -371,8 +415,9 @@ export class DouyinUploadStore {
       } : intent.selection }));
       // A rejected reconnect must not leave a random, uncommitted proposal that poisons the next explicit request.
       if (reconnect) await beforeCommit?.();
-      const archive = { version: 1 as const, ...(reconnect ? { action: "reconnect" } : {}), intents: batchIntents, tasks: batchTasks, newAuthorization: nextAuthorization };
-      const archivePath = path.join(this.retargetHistoryDirectory, `${oldBatchId}.json`), archiveBytes = Buffer.from(`${JSON.stringify(archive, null, 2)}\n`);
+      const archive = { version: 1 as const, ...(continuation ? { action: "continue-unselected", submittedTaskIds: [...continuation.submittedTaskIds].sort() } : reconnect ? { action: "reconnect" } : {}),
+        intents: originalIntents, tasks: originalTasks, newAuthorization: nextAuthorization };
+      const archiveBytes = Buffer.from(`${JSON.stringify(archive, null, 2)}\n`);
       try {
         await secureUploadDirectory(this.retargetHistoryDirectory);
         await strictSyncDirectory(this.root);

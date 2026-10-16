@@ -39,7 +39,7 @@ import { BUILTIN_FRAMES, isFrameId } from "../shared/frames.js";
 import { assertDecorationFrameOptions, decorationFramePool } from "./decoration-frame.js";
 import { LIBRARY_FONTS } from "../shared/asset-library.js";
 import type { DesktopState } from "../shared/desktop.js";
-import { QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema, UploadIdSchema, UploadSuccessSchema } from "../shared/douyin-upload.js";
+import { QianchuanUnselectedContinuationSchema, QianchuanUploadConfigSchema, QianchuanUploadSelectionSchema as DouyinUploadSelectionSchema, UploadIdSchema, UploadSuccessSchema } from "../shared/douyin-upload.js";
 import { DouyinUploadStore } from "./douyin-upload-store.js";
 import { DouyinUploadService } from "./douyin-upload-service.js";
 import { QianchuanVideoLibrarySchedule } from "./qianchuan-video-library-schedule.js";
@@ -261,7 +261,13 @@ function registerHandlers(): void {
   });
   ipcMain.handle("videoLibrarySchedule.get", event => { assertTrustedSender(event); return videoLibrarySchedule.snapshot(); });
   ipcMain.handle("videoLibrarySchedule.save", event => { assertTrustedSender(event); throw new Error("请在每日自动化任务中创建或修改清理任务。"); });
-  ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId); return publicState(); });
+  ipcMain.handle("douyinUpload.resume", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.extend({ historicalPageBatchId: uuidSchema.optional() }).parse(input); assertUploadProject(ref); await douyinUpload.requestResume(ref.uploadTaskId, ref.historicalPageBatchId); return publicState(); });
+  ipcMain.handle("douyinUpload.continueUnselected", async (event, input: unknown) => {
+    assertTrustedSender(event); assertProductionIdle(); coverReview?.assertIdle();
+    if ([...queue.taskStatuses().values()].some(status => !["completed", "failed", "cancelled", "interrupted"].includes(status))) throw new Error("成片仍在导出，请等待结束后接续剩余上传。");
+    const ref = QianchuanUnselectedContinuationSchema.parse(input); assertUploadProject(ref);
+    await douyinUpload.requestResume(ref.uploadTaskId, undefined, ref); return publicState();
+  });
   ipcMain.handle("douyinUpload.retarget", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.extend({ expectedAdId: z.string().regex(/^\d+$/).max(32) }).parse(input); assertUploadProject(ref); await douyinUpload.retarget(ref.uploadTaskId, ref.expectedAdId); return publicState(); });
   ipcMain.handle("douyinUpload.stop", async (event, input: unknown) => { assertTrustedSender(event); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.cancel(ref.uploadTaskId); return publicState(); });
   ipcMain.handle("douyinUpload.discard", async (event, input: unknown) => { assertTrustedSender(event); assertAutomationIdle(); const ref = uploadRef.parse(input); assertUploadProject(ref); await douyinUpload.discard(ref.uploadTaskId); return publicState(); });

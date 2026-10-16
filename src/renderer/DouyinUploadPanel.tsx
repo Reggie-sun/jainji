@@ -10,6 +10,7 @@ import type { QianchuanLibraryClear } from "../shared/qianchuan-video-library";
 import type { QianchuanPage } from "./QianchuanWorkspace";
 import { qianchuanUploaded, qianchuanUploadLabel } from "./qianchuan-upload-status";
 import { qianchuanTargetName } from "./qianchuan-account-display";
+import { QianchuanUnselectedContinuation } from "./QianchuanUnselectedContinuation";
 const processingStates: QianchuanUploadResult["state"][] = ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"];
 const defaultConfig = QianchuanUploadConfigSchema.parse({});
 export function DouyinUploadPanel({ projectId, status, onState, page = "uploads", onPage, onAutomation, showProjectUploads = true }: {
@@ -38,6 +39,8 @@ export function DouyinUploadPanel({ projectId, status, onState, page = "uploads"
   };
   const renderClosureBatches = (batches: QianchuanUploadBatchSummary[]) => batches.map(batch => <div key={batch.pageBatchId} className="brief-card">
     <p>项目 {batch.projectId} · 批次 {batch.pageBatchId} · 计划 {batch.expectedCount} 条 · 已准入 {batch.taskIds.length} 条 · 尚未准入 {batch.expectedCount - batch.taskIds.length} 条 · {qianchuanTargetName(batch.advertiserId, status?.accounts ?? [])} · 账户 {batch.advertiserId} / 计划 {batch.adId} · 已准入结果 READY {batch.readyCount} / UNKNOWN {batch.unknownCount} / 未选 {batch.notSelectedCount} · 平台已接收 {batch.acceptedCount ?? 0}</p>
+    <QianchuanUnselectedContinuation batch={batch} busy={busy} onConfirm={input => void perform(() => window.jianji.continueUnselectedDouyinUpload(input))} />
+    {batch.historicalResumeTaskId && <button type="button" disabled={busy || !batch.canClose} onClick={() => void perform(() => window.jianji.resumeDouyinUpload(projectId, batch.historicalResumeTaskId!, batch.pageBatchId))}>恢复本批上传</button>}
     <button type="button" disabled={busy || !batch.canClose} onClick={() => setClosing(batch.pageBatchId)}>结束本批本地上传</button>
     {closing === batch.pageBatchId && <QianchuanClosureConfirmation batch={batch} accounts={status?.accounts} busy={busy}
       onConfirm={() => void perform(() => window.jianji.closeDouyinUploadBatch(projectId, batch.taskIds[0]!)).then(done => { if (done) setClosing(undefined); })}

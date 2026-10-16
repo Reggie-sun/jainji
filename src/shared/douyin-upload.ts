@@ -7,6 +7,11 @@ export type DouyinUploadSelection = z.infer<typeof DouyinUploadSelectionSchema>;
 export const UploadIdSchema = z.string().regex(/^[a-f0-9]{64}$/);
 export const QianchuanAccountBatchCloseSchema = z.object({ projectId: z.string().uuid(), uploadTaskId: UploadIdSchema, expectedPageBatchId: z.string().uuid() }).strict();
 export type QianchuanAccountBatchClose = z.infer<typeof QianchuanAccountBatchCloseSchema>;
+export const QianchuanUnselectedContinuationSchema = QianchuanAccountBatchCloseSchema.extend({
+  expectedUnselectedCount: z.number().int().min(1).max(250), submittedTaskIds: z.array(UploadIdSchema).min(1).max(250),
+  confirmation: z.literal("CONTINUE_UNSELECTED"),
+}).refine(value => new Set(value.submittedTaskIds).size === value.submittedTaskIds.length, "已提交成员不得重复。");
+export type QianchuanUnselectedContinuation = z.infer<typeof QianchuanUnselectedContinuationSchema>;
 export const UploadIdentitySchema = z.object({ project_id: z.string().uuid(), batch_id: z.string().uuid(), export_task_id: z.string().uuid() }).strict();
 export type UploadIdentity = z.infer<typeof UploadIdentitySchema>;
 
@@ -94,6 +99,8 @@ export type ClosedUploadBatch = z.infer<typeof ClosedUploadBatchSchema>;
 export interface QianchuanUploadBatchSummary {
   projectId: string; pageBatchId: string; advertiserId: string; adId: string; expectedCount: number;
   taskIds: string[]; readyCount: number; acceptedCount?: number; unknownCount: number; notSelectedCount: number; canClose: boolean;
+  unselectedContinuation?: { uploadTaskId: string; submittedTaskIds: string[]; count: number };
+  historicalResumeTaskId?: string;
 }
 export interface QianchuanClosedBatchSummary extends Omit<QianchuanUploadBatchSummary, "canClose"> { closedAt: string; tasks: QianchuanUploadResult[]; }
 

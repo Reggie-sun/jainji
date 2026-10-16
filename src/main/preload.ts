@@ -13,7 +13,7 @@ import type { LibraryAssetPreview } from "../shared/asset-library.js";
 import type { BugFeedback, FeedbackHistoryEntry, FeedbackReceipt } from "../shared/bug-feedback.js";
 import type { CoverReviewCommand } from "./cover-review-session.js";
 import type { ProjectWorkspace } from "../shared/project-workspace.js";
-import type { DouyinUploadStatus, UploadSuccess, QianchuanAccountBatchClose } from "../shared/douyin-upload.js";
+import type { DouyinUploadStatus, UploadSuccess, QianchuanAccountBatchClose, QianchuanUnselectedContinuation } from "../shared/douyin-upload.js";
 import type { QianchuanAccountSetup, QianchuanBrowserControl } from "../shared/qianchuan-account.js";
 import type { QianchuanPlanListRequest, QianchuanPlanCancel, QianchuanPlanListResult } from "../shared/qianchuan-plan-selection.js";
 import type { QianchuanBackendQuery, QianchuanBackendCancel, QianchuanBackendResult } from "../shared/qianchuan-backend.js";
@@ -143,7 +143,8 @@ const api = {
     return () => ipcRenderer.removeListener("videoLibrarySchedule.changed", handler);
   },
   refreshQianchuanAccounts: (): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.refreshAccounts"),
-  resumeDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.resume", { projectId, uploadTaskId }),
+  resumeDouyinUpload: (projectId: string, uploadTaskId: string, historicalPageBatchId?: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.resume", { projectId, uploadTaskId, ...(historicalPageBatchId ? { historicalPageBatchId } : {}) }),
+  continueUnselectedDouyinUpload: (input: QianchuanUnselectedContinuation): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.continueUnselected", input),
   retargetDouyinUpload: (projectId: string, uploadTaskId: string, expectedAdId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.retarget", { projectId, uploadTaskId, expectedAdId }),
   stopDouyinUpload: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.stop", { projectId, uploadTaskId }),
   discardDouyinUploadBatch: (projectId: string, uploadTaskId: string): Promise<DesktopState> => ipcRenderer.invoke("douyinUpload.discard", { projectId, uploadTaskId }),

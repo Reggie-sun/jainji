@@ -5,6 +5,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BATCH_SCHEMA_VERSION, DEFAULT_PRESET, QUEUE_SCHEMA_VERSION, createDefaultTemplate, now, type QueueState } from "../src/main/domain";
 import { QianchuanAccountConfigReader } from "../src/main/qianchuan-account-config";
+import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
+import { assertAutomationBrowserSafe } from "../src/main/qianchuan-automation-browsers";
 import { DouyinUploadStore, type UploadTaskRecord } from "../src/main/douyin-upload-store";
 import { DouyinUploadService, type UploadBrowserPort } from "../src/main/douyin-upload-service";
 import { QIANCHUAN_PRODUCTS, type QianchuanProduct } from "../src/shared/qianchuan-account";
@@ -13,14 +15,18 @@ import { uploadFailure, type PageOwnership, type ReadyEvidence, type UploadIdent
 const roots = new Set<string>();
 afterEach(async () => { await Promise.all([...roots].map(root => rm(root, { recursive: true, force: true }))); roots.clear(); });
 
-async function fixture() {
+async function fixture(remote = false) {
   const root = await mkdtemp(path.join(tmpdir(), "qianchuan-recovery-")); roots.add(root);
   const outputDirectory = path.join(root, "outputs"); await mkdir(outputDirectory);
   const accountPath = path.join(root, "accounts.json");
   await writeFile(accountPath, JSON.stringify({ version: 1, accounts: QIANCHUAN_PRODUCTS.map((product, index) => ({
     product, cdpEndpoint: `http://127.0.0.1:${13000 + index}`, advertiserId: `${3000 + index}`, adId: `${4000 + index}`,
+    ...(remote && product === "滴耳康" ? { egress: { mode: "remote-browser", group: "fixture", sshHost: "fixture-one", localPort: 19381, expectedIp: "203.0.113.11" } } : {}),
   })) }), { mode: 0o600 });
-  const accounts = new QianchuanAccountConfigReader(), store = new DouyinUploadStore(path.join(root, "private")); await store.load();
+  const store = new DouyinUploadStore(path.join(root, "private")); await store.load();
+  const accounts = remote ? new QianchuanAccountSettings(store.root, async id => `http://127.0.0.1:${10000 + Number(id)}`,
+    async id => `http://127.0.0.1:${10000 + Number(id)}`, async () => ({ advertiserId: "3000", name: "Fixture account" })) : new QianchuanAccountConfigReader();
+  if (accounts instanceof QianchuanAccountSettings) vi.spyOn(accounts, "controlBrowser").mockImplementation(async (_input, guard) => { guard((await accounts.preflight("滴耳康")).advertiserId); });
   let browserStore = store;
   const states = new Map<string, QueueState>(), groups: string[][] = [], checks: string[] = [];
   const owners = new Map<string, PageOwnership>();
@@ -46,10 +52,10 @@ async function fixture() {
     readOnlyCheck: async (task, owner, selected) => { checks.push(task.result.upload_task_id); return evidence(task, owner, selected.length); },
     stop: async () => {},
   };
-  const dependencies = { loadBatch: async (id: string) => structuredClone(states.get(id)!), accounts, browser: () => port };
+  const dependencies = { loadBatch: async (id: string) => structuredClone(states.get(id)!), accounts, browser: () => port, readPlans: async () => [] };
   const service = new DouyinUploadService(store, dependencies);
   await service.chooseConfig(accountPath); await service.configure({ enabled: true });
-  async function batch(count: number, product: QianchuanProduct = "滴耳康") {
+  async function batch(count: number, product: QianchuanProduct = "滴耳康", expectedCount = count) {
     const projectId = randomUUID(), batchId = randomUUID(), identities: UploadIdentity[] = [];
     const tasks: QueueState["batch"]["tasks"] = [];
     for (let index = 0; index < count; index++) {
@@ -63,7 +69,7 @@ async function fixture() {
       schemaVersion: BATCH_SCHEMA_VERSION, id: batchId, projectId, templateSnapshot: createDefaultTemplate(), mediaIds: [], outputDirectory,
       preset: DEFAULT_PRESET, status: "completed", estimatedBytes: 0, createdAt: now(), tasks,
     } });
-    const selection = { enabled: true as const, accountProduct: product }, authorization = await service.preflight(selection, count);
+    const selection = { enabled: true as const, accountProduct: product }, authorization = await service.preflight(selection, expectedCount);
     await service.registerBatch({ id: batchId, projectId, tasks: tasks.map(task => ({ id: task.id })) }, selection, authorization);
     return { projectId, identities, pageBatchId: authorization!.pageBatchId };
   }
@@ -82,6 +88,175 @@ async function fixture() {
 }
 
 describe("explicit Qianchuan batch recovery", () => {
+  async function manuallySubmitted(remote = false) {
+    const f = await fixture(remote), target = await f.batch(5, "滴耳康", 7);
+    for (const identity of target.identities.slice(0, 2)) await f.service.enqueueFinalArtifact(identity);
+    await f.service.runPending(); await f.service.stop();
+    const records = await f.admit(target, true), selected = records.filter(task => f.store.hasMarker(task.result.upload_task_id));
+    const remaining = records.filter(task => !f.store.hasMarker(task.result.upload_task_id));
+    const request = { projectId: target.projectId, uploadTaskId: remaining[0]!.result.upload_task_id,
+      expectedPageBatchId: target.pageBatchId, expectedUnselectedCount: 3,
+      submittedTaskIds: selected.map(task => task.result.upload_task_id), confirmation: "CONTINUE_UNSELECTED" as const };
+    const reopened = new DouyinUploadStore(f.store.root); await reopened.load(); f.useStore(reopened);
+    const recovered = new DouyinUploadService(reopened, f.dependencies); await recovered.beginProduction();
+    f.port.confirmAutomation = async tasks => tasks.map(task => ({ ...task.result.readyEvidence!, platformVideoId: `video-${task.result.upload_task_id}`,
+      attempt: task.result.attempt_count, requestSha256: "a".repeat(64), responseSha256: "b".repeat(64) }));
+    const closed: string[] = [];
+    if (remote) f.port.closeAcceptedAutomationPage = async (tasks, ownership, _signal, guard) => {
+      guard();
+      expect(tasks.map(task => task.result.upload_task_id).sort()).toEqual(remaining.map(task => task.result.upload_task_id).sort());
+      expect(tasks.every(task => task.result.state === "ACCEPTED")).toBe(true);
+      expect(ownership.pageBatchId).not.toBe(target.pageBatchId);
+      closed.push(ownership.pageBatchId);
+    };
+    return { ...f, target, records, selected, remaining, request, reopened, recovered, closed };
+  }
+
+  it.each([false, true])("continues only never-selected files after manual submission and restart, preserving the submitted records and fences (remote: %s)", async remote => {
+    const f = await manuallySubmitted(remote), before = f.selected.map(task => f.reopened.task(task.result.upload_task_id));
+    const prepare = vi.spyOn(f.accounts, "prepare");
+    const close = f.accounts instanceof QianchuanAccountSettings ? vi.mocked(f.accounts.controlBrowser) : undefined;
+    close?.mockClear();
+    const protectedBrowser = () => assertAutomationBrowserSafe(f.reopened, f.selected[0]!.authorization.target.advertiserId, new Set<string>(), new Set<string>(), new Set<string>());
+    expect(protectedBrowser).toThrow("未关闭或切换浏览器");
+    const fences = await Promise.all(f.selected.map(task => readFile(path.join(f.store.root, "selection-fences", `${task.result.upload_task_id}.json`))));
+    await f.recovered.resume(f.request.uploadTaskId, undefined, undefined, f.request);
+    expect(prepare).not.toHaveBeenCalled();
+    expect(close?.mock.calls ?? []).toEqual([]);
+    expect(protectedBrowser).toThrow("未关闭或切换浏览器");
+    expect(f.groups.map(group => group.length)).toEqual([2, 3]);
+    expect(f.checks).toEqual([]);
+    const moved = f.remaining.map(task => f.reopened.task(task.result.upload_task_id)!);
+    expect(f.closed).toEqual(remote ? [moved[0]!.authorization.pageBatchId] : []);
+    expect(new Set(moved.map(task => task.authorization.pageBatchId)).size).toBe(1);
+    expect(moved[0]!.authorization.pageBatchId).not.toBe(f.target.pageBatchId);
+    for (let i = 0; i < moved.length; i++) {
+      expect(moved[i]!.authorization).toEqual({ ...f.remaining[i]!.authorization, pageBatchId: moved[0]!.authorization.pageBatchId, expectedCount: 3 });
+      expect(moved[i]!.snapshotPath).toBe(f.remaining[i]!.snapshotPath);
+      expect(moved[i]!.input).toEqual(f.remaining[i]!.input);
+      expect(moved[i]!.result.state).toBe("ACCEPTED");
+    }
+    for (let i = 0; i < f.selected.length; i++) {
+      expect(f.reopened.task(f.selected[i]!.result.upload_task_id)).toEqual(before[i]);
+      expect(await readFile(path.join(f.store.root, "selection-fences", `${f.selected[i]!.result.upload_task_id}.json`))).toEqual(fences[i]);
+      expect(f.groups.flat().filter(id => id === f.selected[i]!.result.upload_task_id)).toHaveLength(1);
+    }
+    const archive = JSON.parse(await readFile(path.join(f.store.root, "retarget-history", `${f.target.pageBatchId}.json`), "utf8"));
+    expect(archive.action).toBe("continue-unselected"); expect(archive.tasks).toHaveLength(5);
+    expect(archive.submittedTaskIds.sort()).toEqual([...f.request.submittedTaskIds].sort());
+    const restart = new DouyinUploadStore(f.store.root); await restart.load(); expect(restart.unavailable).toBe(false);
+    expect(restart.tasks()).toEqual(f.reopened.tasks());
+    await expect(f.recovered.resume(f.request.uploadTaskId, undefined, undefined, f.request)).rejects.toThrow();
+    expect(f.groups.map(group => group.length)).toEqual([2, 3]);
+  });
+
+  it.each(["missing", "extra", "unknown", "cancelled", "count", "project", "target", "snapshot"])("rejects %s continuation without changing the ledger or selecting another file", async kind => {
+    const f = await manuallySubmitted();
+    if (kind === "unknown") {
+      const task = f.reopened.task(f.selected[0]!.result.upload_task_id)!;
+      task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined };
+      await f.reopened.saveTask(task);
+    }
+    if (kind === "cancelled") {
+      const task = f.reopened.task(f.remaining[1]!.result.upload_task_id)!;
+      task.result.state = "CANCELLED"; await f.reopened.saveTask(task);
+    }
+    if (kind === "missing") f.request.submittedTaskIds.pop();
+    if (kind === "extra") f.request.submittedTaskIds.push(f.remaining[1]!.result.upload_task_id);
+    if (kind === "count") f.request.expectedUnselectedCount = 2;
+    if (kind === "project") f.request.projectId = randomUUID();
+    if (kind === "target") vi.spyOn(f.accounts, "freeze").mockRejectedValue(new Error("changed frozen account"));
+    if (kind === "snapshot") { await import("node:fs/promises").then(fs => fs.chmod(f.remaining[1]!.snapshotPath, 0o600)); await writeFile(f.remaining[1]!.snapshotPath, "tampered"); }
+    const before = await readFile(path.join(f.store.root, "state.json"));
+    await expect(f.recovered.resume(f.request.uploadTaskId, undefined, undefined, f.request)).rejects.toThrow();
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before);
+    expect(f.groups.map(group => group.length)).toEqual([2]);
+  });
+
+  it("the store refuses to move the remaining files to a different frozen plan", async () => {
+    const f = await manuallySubmitted(), before = await readFile(path.join(f.store.root, "state.json"));
+    await expect(f.reopened.continueUnselectedBatch(f.request, { ...f.remaining[0]!.authorization, pageBatchId: randomUUID(), expectedCount: 3,
+      target: { ...f.remaining[0]!.authorization.target, adId: "999999" } })).rejects.toThrow();
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before);
+    expect(f.groups.map(group => group.length)).toEqual([2]);
+  });
+
+  it("a stop after durable migration leaves a recoverable unselected child and selects no files", async () => {
+    const f = await manuallySubmitted(), move = f.reopened.continueUnselectedBatch.bind(f.reopened);
+    let entered = false, release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(f.reopened, "continueUnselectedBatch").mockImplementation(async (...args) => { const result = await move(...args); entered = true; await gate; return result; });
+    const resumed = f.recovered.resume(f.request.uploadTaskId, undefined, undefined, f.request);
+    const result = resumed.catch(error => error);
+    try {
+      await vi.waitFor(() => expect(entered).toBe(true)); await f.recovered.stop(); release();
+      expect(await result).toBeInstanceOf(Error); expect(f.groups.map(group => group.length)).toEqual([2]);
+      const first = f.reopened.task(f.request.uploadTaskId)!;
+      expect(first.authorization.pageBatchId).not.toBe(f.target.pageBatchId);
+      expect(first.result.upload_outcome).toBe("NOT_SELECTED");
+      const restart = new DouyinUploadStore(f.store.root); await restart.load(); expect(restart.unavailable).toBe(false);
+      vi.restoreAllMocks(); await f.recovered.resume(f.request.uploadTaskId, undefined, first.authorization.pageBatchId);
+      expect(f.groups.map(group => group.length)).toEqual([2, 3]);
+    } finally { release(); await result; }
+  });
+
+  it("an archive write failure leaves every original member and fence intact", async () => {
+    const f = await manuallySubmitted(), before = await readFile(path.join(f.store.root, "state.json"));
+    await writeFile(path.join(f.store.root, "retarget-history"), "blocked directory");
+    await expect(f.recovered.resume(f.request.uploadTaskId, undefined, undefined, f.request)).rejects.toThrow();
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before);
+    expect(f.reopened.unavailable).toBe(true); expect(f.groups.map(group => group.length)).toEqual([2]);
+  });
+
+  it("reuses the durable proposal after interruption between archive sync and ledger commit", async () => {
+    const f = await manuallySubmitted(), before = await readFile(path.join(f.store.root, "state.json"));
+    const proposal = { ...f.remaining[0]!.authorization, pageBatchId: randomUUID(), expectedCount: 3 };
+    vi.spyOn(f.reopened as unknown as { commit(value: unknown): Promise<void> }, "commit").mockRejectedValueOnce(new Error("simulated process exit before ledger commit"));
+    await expect(f.reopened.continueUnselectedBatch(f.request, proposal)).rejects.toThrow("simulated process exit");
+    const archivePath = path.join(f.store.root, "retarget-history", `${f.target.pageBatchId}.json`), archive = await readFile(archivePath);
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before);
+    const restart = new DouyinUploadStore(f.store.root); await restart.load();
+    const moved = await restart.continueUnselectedBatch(f.request, { ...proposal, pageBatchId: randomUUID() });
+    expect(restart.unavailable).toBe(false); expect(moved).toHaveLength(3);
+    expect(moved.every(task => JSON.stringify(task.authorization) === JSON.stringify(proposal))).toBe(true);
+    expect(await readFile(archivePath)).toEqual(archive);
+    for (const selected of f.selected) expect(restart.task(selected.result.upload_task_id)).toEqual(selected);
+    const reloaded = new DouyinUploadStore(f.store.root); await reloaded.load(); expect(reloaded.tasks()).toEqual(restart.tasks());
+    expect(f.groups.map(group => group.length)).toEqual([2]);
+  });
+
+  it("resumes through the service using the archived child identity after an interrupted migration", async () => {
+    const f = await manuallySubmitted(), proposal = { ...f.remaining[0]!.authorization, pageBatchId: randomUUID(), expectedCount: 3 };
+    vi.spyOn(f.reopened as unknown as { commit(value: unknown): Promise<void> }, "commit").mockRejectedValueOnce(new Error("simulated process exit"));
+    await expect(f.reopened.continueUnselectedBatch(f.request, proposal)).rejects.toThrow("simulated process exit");
+    const restart = new DouyinUploadStore(f.store.root); await restart.load(); f.useStore(restart);
+    const recovered = new DouyinUploadService(restart, f.dependencies); await recovered.beginProduction();
+    await recovered.resume(f.request.uploadTaskId, undefined, undefined, f.request);
+    expect(f.groups.map(group => group.length)).toEqual([2, 3]);
+    for (const task of f.remaining) {
+      expect(restart.task(task.result.upload_task_id)!.authorization).toEqual(proposal);
+      expect(restart.task(task.result.upload_task_id)!.result.state).toBe("ACCEPTED");
+    }
+    for (const selected of f.selected) expect(restart.task(selected.result.upload_task_id)).toEqual(selected);
+  });
+
+  it.each(["preimage", "declaration", "target", "destination"])("rejects a mismatching archived %s without modifying the ledger or selecting files", async kind => {
+    const f = await manuallySubmitted(), proposal = { ...f.remaining[0]!.authorization, pageBatchId: randomUUID(), expectedCount: 3 };
+    vi.spyOn(f.reopened as unknown as { commit(value: unknown): Promise<void> }, "commit").mockRejectedValueOnce(new Error("simulated process exit"));
+    await expect(f.reopened.continueUnselectedBatch(f.request, proposal)).rejects.toThrow("simulated process exit");
+    const archivePath = path.join(f.store.root, "retarget-history", `${f.target.pageBatchId}.json`), archive = JSON.parse(await readFile(archivePath, "utf8"));
+    if (kind === "preimage") archive.tasks[0].result.timestamp = "2026-01-01T00:00:00.000Z";
+    if (kind === "declaration") archive.submittedTaskIds.pop();
+    if (kind === "target") archive.newAuthorization.target.adId = "999999";
+    if (kind === "destination") archive.newAuthorization.pageBatchId = f.target.pageBatchId;
+    const bytes = `${JSON.stringify(archive, null, 2)}\n`; await writeFile(archivePath, bytes);
+    const before = await readFile(path.join(f.store.root, "state.json")), restart = new DouyinUploadStore(f.store.root); await restart.load();
+    await expect(restart.continueUnselectedBatch(f.request, { ...proposal, pageBatchId: randomUUID() })).rejects.toThrow("接续归档");
+    expect(restart.unavailable).toBe(true); expect(await readFile(archivePath, "utf8")).toBe(bytes);
+    expect(await readFile(path.join(f.store.root, "state.json"))).toEqual(before);
+    for (const selected of f.selected) expect(restart.task(selected.result.upload_task_id)).toEqual(selected);
+    expect(f.groups.map(group => group.length)).toEqual([2]);
+  });
+
   it("resumes twenty outputs admitted while paused in 9/9/2 groups and leaves other accounts and batches untouched", async () => {
     const f = await fixture(), blocker = await f.pause(), target = await f.batch(20);
     const sameAccount = await f.batch(2), otherAccount = await f.batch(2, "氨糖膏");
