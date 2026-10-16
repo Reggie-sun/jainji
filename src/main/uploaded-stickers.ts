@@ -38,7 +38,8 @@ function assertImageDimensions(bytes: Buffer): void {
 }
 
 export class UploadedStickers {
-  constructor(private readonly root: string, private readonly decodePng: (bytes: Buffer) => Buffer, private readonly kind: "sticker" | "frame" = "sticker") {}
+  constructor(private readonly root: string, private readonly decodePng: (bytes: Buffer) => Buffer, private readonly kind: "sticker" | "frame" = "sticker",
+    private readonly prepareArtwork?: (asset: BuiltinStickerAsset) => Promise<void>) {}
 
   private validId(id: string): boolean { return this.kind === "frame" ? isUploadedFrameId(id) : isUploadedStickerId(id); }
   private id(bytes: Buffer): string { return `${this.kind === "frame" ? "uploaded-frame" : "uploaded"}-${digest(bytes)}`; }
@@ -73,8 +74,10 @@ export class UploadedStickers {
         if (digest(await readFile(assetPath)) !== hash) throw new Error("已保存的贴纸损坏，请检查本地素材目录。");
       }
     } finally { await rm(temporary, { force: true }); }
+    const asset = { assetPath, assetFingerprint: `sha256:${hash}` };
+    if (this.kind === "sticker") await this.prepareArtwork?.(asset);
     await rm(path.join(this.root, `${id}.deleted`), { force: true });
-    return { id, asset: { assetPath, assetFingerprint: `sha256:${hash}` } };
+    return { id, asset };
   }
 
   async remove(id: string): Promise<void> {

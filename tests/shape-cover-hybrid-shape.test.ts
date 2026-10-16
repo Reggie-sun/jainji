@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import * as alphaTools from "../src/main/shape-cover-alpha.js";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { encodeShapeCoverPng, trimShapeCoverArtwork } from "../src/main/shape-cover-alpha.js";
@@ -8,8 +8,95 @@ import { freezeShapeCoverRaster } from "../src/main/shape-cover-freeze.js";
 import { searchHybridCornerShape, HYBRID_SHAPE_SEARCH } from "../src/main/shape-cover-hybrid-shape.js";
 import { discoveryHash } from "../src/main/source-fact-discovery-evidence.js";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin.js";
+import { loadHumanRegionArtworkIndex, prepareHumanRegionArtworkIndex } from "../src/main/human-region-artwork-index.js";
+import * as artworkIndex from "../src/main/human-region-artwork-index.js";
+import { UploadedStickers } from "../src/main/uploaded-stickers.js";
 
 const tools = { ffmpegPath: ffmpegBin, ffprobePath: ffprobeBin };
+it("builds the cover index on import and reuses exact alpha across independent searches", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sticker-durable-index-"));
+  const indexed = { ...tools, artworkIndexDirectory: join(root, "indexes") };
+  const trim = vi.spyOn(alphaTools, "trimShapeCoverArtwork"), rasterize = vi.spyOn(alphaTools, "rasterizeShapeCoverArtwork"), loadIndex = vi.spyOn(artworkIndex, "loadHumanRegionArtworkIndex");
+  try {
+    const bytes = await encodeShapeCoverPng(Buffer.alloc(16 * 8 * 4, 255), { width: 16, height: 8 }, tools);
+    const source = join(root, "upload.png"); await writeFile(source, bytes);
+    const store = new UploadedStickers(join(root, "uploads"), png => png, "sticker", asset => prepareHumanRegionArtworkIndex(asset, indexed));
+    const imported = await store.importFile(source);
+    expect(trim).toHaveBeenCalledTimes(1);
+    expect(await readdir(indexed.artworkIndexDirectory)).toHaveLength(1);
+    const size = { width: 80, height: 60 }, scope = { x: 0, y: 0, width: 80, height: 60 };
+    const old = new Uint8Array(4800); for (let y = 10; y < 18; y++) old.fill(1, y * 80 + 10, y * 80 + 26);
+    const first = await searchHybridCornerShape([imported], old, size, scope, 1, indexed, "compact-artwork", new Map());
+    const measurements = rasterize.mock.calls.length;
+    const cache = new Map();
+    const second = await searchHybridCornerShape([imported], old, size, scope, 1, indexed, "compact-artwork", cache);
+    expect(first).not.toBeNull(); expect(second!.placement).toEqual(first!.placement);
+    expect(second!.raster.rgba).toEqual(first!.raster.rgba);
+    expect(trim).toHaveBeenCalledTimes(1);
+    expect(rasterize.mock.calls.length).toBe(measurements);
+    const indexLoads = loadIndex.mock.calls.length;
+    await searchHybridCornerShape([imported], old, size, scope, 1, indexed, "compact-artwork", cache);
+    expect(loadIndex.mock.calls.length).toBe(indexLoads);
+    const index = await loadHumanRegionArtworkIndex(imported.asset, bytes, indexed);
+    const produce = vi.fn(async () => new Uint8Array(35).fill(254));
+    expect(await index.alpha(7, 5, produce)).toEqual(new Uint8Array(35).fill(254));
+    const reloaded = await loadHumanRegionArtworkIndex(imported.asset, bytes, indexed);
+    expect(await reloaded.alpha(7, 5, produce)).toEqual(new Uint8Array(35).fill(254));
+    expect(produce).toHaveBeenCalledTimes(1);
+    await writeFile(imported.asset.assetPath, Buffer.from("changed"));
+    await expect(searchHybridCornerShape([imported], old, size, scope, 1, indexed, "compact-artwork", new Map())).rejects.toThrow("HYBRID_CATALOG_BINDING");
+  } finally { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); }
+}, 60000);
+
+it("repairs damaged indexes, invalidates decoder identity, and never writes after cancellation", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sticker-index-repair-"));
+  const indexed = { ...tools, artworkIndexDirectory: join(root, "indexes") };
+  const trim = vi.spyOn(alphaTools, "trimShapeCoverArtwork");
+  try {
+    const bytes = await encodeShapeCoverPng(Buffer.alloc(8 * 8 * 4, 255), { width: 8, height: 8 }, tools);
+    const asset = { assetPath: join(root, "asset.png"), assetFingerprint: `sha256:${discoveryHash(bytes)}` }; await writeFile(asset.assetPath, bytes);
+    await prepareHumanRegionArtworkIndex(asset, indexed);
+    const [name] = await readdir(indexed.artworkIndexDirectory), file = join(indexed.artworkIndexDirectory, name);
+    await writeFile(file, "{truncated");
+    const repaired = await loadHumanRegionArtworkIndex(asset, bytes, indexed);
+    expect(repaired.trimmed.trimBox).toEqual({ x: 0, y: 0, width: 8, height: 8 });
+    expect(trim).toHaveBeenCalledTimes(2);
+    const malformed = JSON.parse((await readFile(file)).toString());
+    const truncated = Buffer.from(malformed.trimmedPng.base64, "base64").subarray(0, 33);
+    malformed.trimmedPng.base64 = truncated.toString("base64");
+    malformed.trimmedPng.sha256 = discoveryHash(truncated);
+    await writeFile(file, JSON.stringify(malformed));
+    await loadHumanRegionArtworkIndex(asset, bytes, indexed);
+    expect(trim).toHaveBeenCalledTimes(3);
+    const staleDecoder = JSON.parse((await readFile(file)).toString());
+    staleDecoder.decoder.ffmpeg.mtimeMs -= 1;
+    await writeFile(file, JSON.stringify(staleDecoder));
+    await loadHumanRegionArtworkIndex(asset, bytes, indexed);
+    expect(trim).toHaveBeenCalledTimes(4);
+    await expect(loadHumanRegionArtworkIndex({ ...asset, assetFingerprint: `sha256:${"f".repeat(64)}` }, bytes, indexed)).rejects.toThrow();
+    const saved = await readFile(file);
+    await expect(loadHumanRegionArtworkIndex(asset, bytes, { ...indexed, signal: AbortSignal.abort() })).rejects.toThrow();
+    expect(await readFile(file)).toEqual(saved);
+    await expect(loadHumanRegionArtworkIndex(asset, bytes, { ...indexed, ffprobePath: join(root, "missing") })).rejects.toThrow();
+  } finally { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); }
+}, 60000);
+
+it("keeps valid ordinary uploads usable when cover indexing is unavailable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "sticker-index-optional-"));
+  try {
+    const bytes = await encodeShapeCoverPng(Buffer.alloc(8 * 8 * 4, 255), { width: 8, height: 8 }, tools);
+    const source = join(root, "upload.png"); await writeFile(source, bytes);
+    const unavailable = { ffmpegPath: join(root, "missing-ffmpeg"), ffprobePath: join(root, "missing-ffprobe"), artworkIndexDirectory: join(root, "indexes") };
+    const store = new UploadedStickers(join(root, "uploads"), png => png, "sticker", asset => prepareHumanRegionArtworkIndex(asset, unavailable));
+    const imported = await store.importFile(source);
+    expect((await store.load())[imported.id]).toEqual(imported.asset);
+    const indexed = await loadHumanRegionArtworkIndex(imported.asset, bytes, { ...tools, artworkIndexDirectory: source });
+    expect(indexed.trimmed.trimBox.width).toBe(8);
+    // Preparation is optional for ordinary uploads, cancellation remains binding.
+    await expect(prepareHumanRegionArtworkIndex(imported.asset, { ...unavailable, signal: AbortSignal.abort() })).rejects.toThrow();
+  } finally { await rm(root, { recursive: true, force: true }); }
+}, 60000);
+
 it("reuses measured artwork sizes across targets while rechecking the asset bytes", async () => {
   const root = await mkdtemp(join(tmpdir(), "h3-raster-cache-"));
   const rasterize = vi.spyOn(alphaTools, "rasterizeShapeCoverArtwork");

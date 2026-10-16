@@ -4,18 +4,19 @@ import { evaluateShapeCover, growOpaqueContour, SHAPE_COVER_PIXEL_CONTRACT, type
 import { discoveryHash } from "./source-fact-discovery-evidence.js";
 import { freezeAI } from "./source-fact-ai-contract.js";
 import { compactArtworkPlacement } from "./human-region-artwork-placement.js";
+import { loadHumanRegionArtworkIndex } from "./human-region-artwork-index.js";
 
 export const HYBRID_SHAPE_SEARCH = freezeAI({ version: "hybrid-corner-shape-search/v1", maximumCandidates: 256,
   sizeFactors: [1, 1.25, 1.5, 2, 2.5] as readonly number[], translationFractions: [-0.1, 0, 0.1] as readonly number[],
   maximumTrials: 11520, maximumRasters: 1280, wallMs: 180_000 });
 export type HybridStickerCandidate = { id: string; asset: BuiltinStickerAsset };
 type CachedArtwork = Awaited<ReturnType<typeof trimShapeCoverArtwork>>;
-type CachedRaster = { raster: Awaited<ReturnType<typeof rasterizeShapeCoverArtwork>> };
+type CachedRaster = { raster: { alpha: Uint8Array } };
 /** Run-local measured bytes only; no placement, binding or admission is cached here. */
 export type HybridArtworkCache = Map<string, CachedArtwork | CachedRaster>;
 function rememberArtwork(cache: HybridArtworkCache | undefined, key: string, value: CachedArtwork | CachedRaster) {
   if (!cache) return;
-  const cost = (entry: CachedArtwork | CachedRaster) => "raster" in entry ? entry.raster.rgba.length + entry.raster.alpha.length : entry.bytes.length;
+  const cost = (entry: CachedArtwork | CachedRaster) => "raster" in entry ? entry.raster.alpha.length : entry.bytes.length;
   const limit = 64 * 1024 * 1024;
   if (cost(value) > limit) return;
   cache.delete(key); cache.set(key, value);
@@ -67,10 +68,15 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
     try { bytes = await readShapeCoverAsset(candidate.asset, tools); }
     catch { check(); throw Error("HYBRID_CATALOG_BINDING"); }
     let trimmed: Awaited<ReturnType<typeof trimShapeCoverArtwork>>;
+    let index: Awaited<ReturnType<typeof loadHumanRegionArtworkIndex>> | undefined;
+    const indexed = coverageMode === "compact-artwork" && tools.artworkIndexDirectory;
+    const getIndex = async () => index ??= await loadHumanRegionArtworkIndex(candidate.asset, bytes, tools);
     const sourceDigest = discoveryHash(bytes);
     try {
+      // Only the manual compact path consumes the durable index. Every call still
+      // binds the source bytes above; placements and final pixels are never cached.
       const cached = artworkCache?.get(sourceDigest);
-      trimmed = cached && "trimBox" in cached ? cached : await trimShapeCoverArtwork(bytes, tools);
+      trimmed = cached && "trimBox" in cached ? cached : indexed ? (await getIndex()).trimmed : await trimShapeCoverArtwork(bytes, tools);
       rememberArtwork(artworkCache, sourceDigest, trimmed);
     }
     catch (error) {
@@ -98,7 +104,9 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
       const rasterKey = `${trimmed.sha256}:${width}:${height}`;
       const cached = artworkCache?.get(rasterKey);
       const tile = cached && "raster" in cached ? cached.raster
-        : await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools);
+        : { alpha: indexed ? await (await getIndex()).alpha(width, height, async () =>
+          (await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools)).alpha)
+          : (await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools)).alpha };
       rememberArtwork(artworkCache, rasterKey, { raster: tile });
       const positions = new Map<string, ShapeCoverPlacement>();
       if (clippedCompact) {

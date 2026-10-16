@@ -82,6 +82,7 @@ export interface FfprobeJson {
 }
 
 export class FfmpegAdapter {
+  artworkIndexDirectory?: string;
   constructor(public readonly ffmpegPath: string, public readonly ffprobePath: string) {}
 
   async probe(filePath: string): Promise<FfprobeJson> {

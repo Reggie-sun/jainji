@@ -9,7 +9,7 @@ import type { PixelSize, SourceToOutput } from "./shape-cover-pixel-gate.js";
 import { SHAPE_COVER_ALPHA_VERSION, MAX_FROZEN_SHAPE_BYTES } from "../shared/shape-cover.js";
 
 export interface ShapeCoverPlacement extends PixelSize { x: number; y: number }
-export interface ShapeCoverMediaTools { ffmpegPath: string; ffprobePath: string; signal?: AbortSignal }
+export interface ShapeCoverMediaTools { ffmpegPath: string; ffprobePath: string; signal?: AbortSignal; artworkIndexDirectory?: string }
 export { SHAPE_COVER_ALPHA_VERSION } from "../shared/shape-cover.js";
 const MAX_PIXELS = 16_777_216;
 const MAX_ASSET_BYTES = 10 * 1024 * 1024;

@@ -57,6 +57,34 @@ function scope(paths: string[]): HarnessTaskScope {
 
 describe("harness policy routing", () => {
   it.each([
+    ["tests/helpers/task-pages-fixture.ts", "tests/task-pages.test.ts"],
+    ["tests/helpers/qianchuan-overview-fixture.ts", "tests/qianchuan-overview-ui.test.ts"],
+  ])("routes known page fixture %s through its complete UI consumer group", (helper, consumer) => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const selected = selectChecks(candidate, scope([helper]));
+    expect(selected.checks.map(check => check.id)).toEqual(["task-pages", "typecheck", "documents"]);
+    expect(selected.checks.every(check => check.required)).toBe(true);
+    expect(selected.checks.find(check => check.id === "task-pages")).toMatchObject({
+      testFiles: ["tests/task-pages.test.ts", "tests/qianchuan-overview-ui.test.ts"],
+    });
+    expect(selected.checks.flatMap(check => check.kind === "vitest" ? check.testFiles : [])).toContain(consumer);
+    expect(selectChecks(candidate, scope(["tests/helpers/unregistered-page-fixture.ts"])).checks
+      .find(check => check.id === "extended-regressions")).toMatchObject({
+        testFiles: expect.arrayContaining(["tests/source-mask-static.test.ts"]),
+      });
+  });
+
+  it("registers the cover-sticker consumer once under the required cover contracts", () => {
+    const candidate = HarnessPolicySchema.parse(JSON.parse(readFileSync(".agent/harness/policy.json", "utf8")));
+    const file = "tests/cover-sticker.test.ts";
+    expect(candidate.codeChecks.filter(check => check.kind === "vitest" && check.testFiles.includes(file))
+      .map(check => check.id)).toEqual(["cover-contracts"]);
+    const selected = selectChecks(candidate, scope([file]));
+    expect(selected.checks.find(check => check.id === "cover-contracts")).toMatchObject({ testFiles: [file], required: true });
+    expect(selected.checks.map(check => check.id)).not.toContain("extended-regressions");
+  });
+
+  it.each([
     ["src/main/qianchuan-plan-material-recovery.ts", ["tests/qianchuan-plan-material-recovery.test.ts", "tests/douyin-upload-service.test.ts"]],
     ["src/main/qianchuan-egress-browser.ts", ["tests/qianchuan-egress-browser.test.ts", "tests/qianchuan-egress-upload.test.ts"]],
     ["src/main/qianchuan-account-settings.ts", ["tests/qianchuan-egress-settings.test.ts", "tests/douyin-upload-recovery.test.ts"]],

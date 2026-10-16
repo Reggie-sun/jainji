@@ -35,6 +35,7 @@ import { loadBundledStickerAssets } from "./bundled-stickers.js";
 import { BUNDLED_STICKERS } from "../shared/bundled-stickers.js";
 import { AssetLibrary } from "./asset-library.js";
 import { UploadedStickers } from "./uploaded-stickers.js";
+import { prepareHumanRegionArtworkIndex } from "./human-region-artwork-index.js";
 import { ensureBuiltinFrameAssets } from "./builtin-frames.js";
 import { assertFrameBitmap } from "./decoration-frame.js";
 import { registerDecorationAssetHandlers } from "./decoration-assets-ipc.js";
@@ -823,6 +824,7 @@ async function bootstrap(): Promise<void> {
   const checked = await checkCapabilities(userData, fontResolver.resolve);
   capabilities = checked.status;
   ffmpeg = checked.adapter ?? new FfmpegAdapter(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", process.env.JIANJI_FFPROBE_PATH || "ffprobe");
+  ffmpeg.artworkIndexDirectory = path.join(userData, "sticker-cover-index");
   service = new ApplicationService(ffmpeg, fontResolver);
   queue = new ExportQueue({
     authorize: () => membership.assertAllowed(),
@@ -860,7 +862,7 @@ async function bootstrap(): Promise<void> {
     const { width, height } = image.getSize();
     if (image.isEmpty() || width > 4096 || height > 4096) throw new Error("无效或过大的图片。");
     return image.toPNG();
-  });
+  }, "sticker", asset => prepareHumanRegionArtworkIndex(asset, ffmpeg));
   uploadedFrames = new UploadedStickers(path.join(userData, "uploaded-frames"), (bytes) => {
     const image = nativeImage.createFromBuffer(bytes);
     const { width, height } = image.getSize();
