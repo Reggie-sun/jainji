@@ -112,6 +112,7 @@ export async function captureQianchuanReport(
   const materialInput = {
     product: input.product, expectedAdvertiserId: input.expectedAdvertiserId, adId: input.adId,
     startDate: input.startDate, endDate: input.endDate, asOf,
+    ...(input.browserAccess ? { browserAccess: input.browserAccess } : {}),
   };
   const collected = await readWithinBudget(Promise.resolve().then(() => collectMaterialEffects(
     materialInput,

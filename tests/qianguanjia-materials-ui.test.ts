@@ -53,3 +53,23 @@ it('stops at the catalog page cap and identifies unread remaining materials',asy
   expect(await p.getByRole('alert').count()).toBe(0);
  }finally{await p.close()}
 },30000);
+
+
+it('keeps supplier and local reads disabled until an effect capture finishes cancellation cleanup',async()=>{
+ const p=await fixture();try{
+  await p.getByRole('button',{name:'读取本地上传记录',exact:true}).click();
+  await p.getByLabel('素材账户',{exact:true}).selectOption('9007199254740993');
+  const target=p.getByLabel('千管家效果目标');await target.selectOption({index:1});
+  await p.getByText('此账户、计划和日期范围没有已保存的完整素材快照',{exact:true}).waitFor();
+  await p.getByRole('button',{name:'读取并保存此范围的素材效果',exact:true}).click();
+  await p.waitForFunction(()=>(window as any).captureCalls.length===1);
+  for(const name of ['读取本地上传记录','读取平台素材'])expect(await p.getByRole('button',{name,exact:true}).isDisabled()).toBe(true);
+  await p.getByRole('button',{name:'取消效果读取',exact:true}).click();
+  await p.waitForFunction(()=>(window as any).effectCancels.length===1);
+  expect(await p.getByRole('button',{name:'读取平台素材',exact:true}).isDisabled()).toBe(true);
+  await p.evaluate(()=>(window as any).finishEffect());
+  await p.waitForFunction(()=>![...document.querySelectorAll('button')].find(b=>b.textContent==='读取平台素材')!.disabled);
+  expect(await p.evaluate(()=>(window as any).reads.map((r:any)=>r.kind))).toEqual(['local-materials']);
+  expect(await p.evaluate(()=>(window as any).captureCalls[0].browserAccess)).toBe('existing-only');
+ }finally{await p.close()}
+});

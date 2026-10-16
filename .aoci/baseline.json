@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-16T13:15:40Z",
+  "updated_at": "2026-10-16T13:31:37Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "5bf8d2e01c3d82948b86243841f3a3674c1e2142a1a89415454ce706f70400e4",
-      "size": 63110,
-      "normalized_sha256": "5bf8d2e01c3d82948b86243841f3a3674c1e2142a1a89415454ce706f70400e4"
+      "sha256": "767ab9de6811c53a6dd5ae1ff6c69df42732604674e22f59f29a431892c60d8a",
+      "size": 63549,
+      "normalized_sha256": "767ab9de6811c53a6dd5ae1ff6c69df42732604674e22f59f29a431892c60d8a"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "b410cba84a20e24d55f5cab589bbd6935ac9800bdd45a96f0393c51198f8ec56",
-      "size": 161475,
-      "normalized_sha256": "b410cba84a20e24d55f5cab589bbd6935ac9800bdd45a96f0393c51198f8ec56"
+      "sha256": "3bb2df2028b380a07d7539087cb335f63e46c78ae6724518bff0d4dc61ef8e78",
+      "size": 162873,
+      "normalized_sha256": "3bb2df2028b380a07d7539087cb335f63e46c78ae6724518bff0d4dc61ef8e78"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1643,9 +1643,9 @@
       "normalized_sha256": "0b6748eba6e0fc5792bd379666a649b781f58377185080c99143b2734263b9d7"
     },
     "src/main/qianchuan-backend-queries.ts": {
-      "sha256": "e21fac3bc96fc69a085f1f0a77383566d818cd9e4fd65dc56b1fa4e47c747b22",
-      "size": 3228,
-      "normalized_sha256": "e21fac3bc96fc69a085f1f0a77383566d818cd9e4fd65dc56b1fa4e47c747b22"
+      "sha256": "4cd0e5276d02fad8b0fac440971f48a10de08c18d0fe14d7609bd9e3d2ade6d1",
+      "size": 3323,
+      "normalized_sha256": "4cd0e5276d02fad8b0fac440971f48a10de08c18d0fe14d7609bd9e3d2ade6d1"
     },
     "src/main/qianchuan-backend-query.ts": {
       "sha256": "2974bf093cfb42783ec0dbd98ec619f816a865935d6ee24c0e98e7bc891594f6",
@@ -1893,9 +1893,9 @@
       "normalized_sha256": "614f535f5fe806b6254b420bd6c5616372c91c6df2d5d14b56a5404b7cfc31a3"
     },
     "src/main/qianchuan-report-capture.ts": {
-      "sha256": "318018009a2aa90adf5c669128cf104f62df3a0300b8dbc8b6a83f881e39a83c",
-      "size": 6560,
-      "normalized_sha256": "318018009a2aa90adf5c669128cf104f62df3a0300b8dbc8b6a83f881e39a83c"
+      "sha256": "f4c677b4666d236d73fee5cb85551f4234ea22b94962f1e1d2889c823bd149c3",
+      "size": 6636,
+      "normalized_sha256": "f4c677b4666d236d73fee5cb85551f4234ea22b94962f1e1d2889c823bd149c3"
     },
     "src/main/qianchuan-report-store.ts": {
       "sha256": "3f57c33cefd5117bdcef46cdef4c37b38d24b2a795e4c06e8256d17f190ae903",
@@ -2647,20 +2647,25 @@
       "size": 3431,
       "normalized_sha256": "6794a72494b272b3ab61fd442f0ccbc5417eaecb6e3792d8be4aac75cd7f9560"
     },
+    "src/renderer/QianguanjiaEffects.tsx": {
+      "sha256": "9935db4155c7d82e42a3170b965fd2d7f8a52446e6f7035a005787ac8c32d336",
+      "size": 27866,
+      "normalized_sha256": "9935db4155c7d82e42a3170b965fd2d7f8a52446e6f7035a005787ac8c32d336"
+    },
     "src/renderer/QianguanjiaHistory.tsx": {
       "sha256": "784532f88404872f245eaf85f6e54d6db9f3794d030fdfda704c61572388b099",
       "size": 27419,
       "normalized_sha256": "784532f88404872f245eaf85f6e54d6db9f3794d030fdfda704c61572388b099"
     },
     "src/renderer/QianguanjiaMaterials.tsx": {
-      "sha256": "f33bc364a0b87f096d6b0c1291a515d9297d4cdd7fe59afab957062b0cc99d04",
-      "size": 11233,
-      "normalized_sha256": "f33bc364a0b87f096d6b0c1291a515d9297d4cdd7fe59afab957062b0cc99d04"
+      "sha256": "609dabf4782f3d9d1b7dd00758c0eee3b50f34295adafb8d5931e1ab846b0234",
+      "size": 11934,
+      "normalized_sha256": "609dabf4782f3d9d1b7dd00758c0eee3b50f34295adafb8d5931e1ab846b0234"
     },
     "src/renderer/QianguanjiaPanel.tsx": {
-      "sha256": "2e261ec03fc118d61ec77469e1a7a8ab94d02ba865063852a27bcadd9e73add7",
-      "size": 14639,
-      "normalized_sha256": "2e261ec03fc118d61ec77469e1a7a8ab94d02ba865063852a27bcadd9e73add7"
+      "sha256": "c472adcb351bf70eaada351324dff326acbc84b163f8d26c9b7919e962b1ae35",
+      "size": 15574,
+      "normalized_sha256": "c472adcb351bf70eaada351324dff326acbc84b163f8d26c9b7919e962b1ae35"
     },
     "src/renderer/QianguanjiaPlans.tsx": {
       "sha256": "cf4ebecb469b12a95876d11e254be32f2dc04bf46ccf00c1b8697807bf4ea43b",
@@ -2999,9 +3004,9 @@
       "normalized_sha256": "47369bcb2a857da180db7ffa0a80a313b13bd623ec409206ed2a82e038f82458"
     },
     "src/shared/qianchuan-backend.ts": {
-      "sha256": "8d5a894aaec8c7e15146c34abc0f9a3dd5b0743616c380106cac0b51a2f872ba",
-      "size": 2761,
-      "normalized_sha256": "8d5a894aaec8c7e15146c34abc0f9a3dd5b0743616c380106cac0b51a2f872ba"
+      "sha256": "c37450be69887936f6c98621ae15f8ca58e03dd14064334a7b7cc44ca8b9d4d5",
+      "size": 2815,
+      "normalized_sha256": "c37450be69887936f6c98621ae15f8ca58e03dd14064334a7b7cc44ca8b9d4d5"
     },
     "src/shared/qianchuan-delivery.ts": {
       "sha256": "c8e7233ec0fd63867dde9472ef14666824e594ca3a38acbae7a83dfca24115a4",
@@ -3014,9 +3019,9 @@
       "normalized_sha256": "3247c555fdb4e6b021d6dc69145830f48fb7a21250f83df8d3db05df26f5bd50"
     },
     "src/shared/qianchuan-effect-read.ts": {
-      "sha256": "9d0607e30e3fdf0f5bcc365cbc6aba9b11910559bd88ce7c2c936d4fea0b8351",
-      "size": 2380,
-      "normalized_sha256": "9d0607e30e3fdf0f5bcc365cbc6aba9b11910559bd88ce7c2c936d4fea0b8351"
+      "sha256": "7077591d54696224860815f5bf38bd432f3d27684ab25846ead1bf94aa61435c",
+      "size": 2413,
+      "normalized_sha256": "7077591d54696224860815f5bf38bd432f3d27684ab25846ead1bf94aa61435c"
     },
     "src/shared/qianchuan-effect.ts": {
       "sha256": "c784f03f2902870b9bc3487840843db6abbbaf2e7c1673506a9c4a4170f547e8",
@@ -3049,9 +3054,9 @@
       "normalized_sha256": "933579917b44ea79ed01c6b2530be5fba84cdb143948065660bba3c84bda6d87"
     },
     "src/shared/qianchuan-report.ts": {
-      "sha256": "20e82a3d1e59e64911fd3cce63091c22d0f6840bde5005f0df2c922ed40849da",
-      "size": 4753,
-      "normalized_sha256": "20e82a3d1e59e64911fd3cce63091c22d0f6840bde5005f0df2c922ed40849da"
+      "sha256": "aa13a9678a8f28d13c206e45ecadcb3675c4804efb45391f4813ab6fdf9a1abb",
+      "size": 4809,
+      "normalized_sha256": "aa13a9678a8f28d13c206e45ecadcb3675c4804efb45391f4813ab6fdf9a1abb"
     },
     "src/shared/qianchuan-subaccounts.ts": {
       "sha256": "c0bf5d3dbedc64201993f4fae30edc6b47c891b0ca6c4cbfe0eef4ea2bb7c050",
@@ -3072,6 +3077,11 @@
       "sha256": "ab56d633391bfa7a1cad873f3b8086e663b1017479952903d2c43b3611b4c160",
       "size": 3248,
       "normalized_sha256": "ab56d633391bfa7a1cad873f3b8086e663b1017479952903d2c43b3611b4c160"
+    },
+    "src/shared/qianguanjia-effect-targets.ts": {
+      "sha256": "1c0254a57cd8e5e48cf57887c34620a403bb4742dc9637bb629d824573b55402",
+      "size": 3527,
+      "normalized_sha256": "1c0254a57cd8e5e48cf57887c34620a403bb4742dc9637bb629d824573b55402"
     },
     "src/shared/qianguanjia-materials.ts": {
       "sha256": "01b8888fdba73c08711d94029a9b09d768688818a14ee7cdfc39a3aa20e4e743",

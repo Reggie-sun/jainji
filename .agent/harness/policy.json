@@ -192,6 +192,8 @@
         "tests/qianguanjia-materials.test.ts",
         "tests/qianguanjia-analysis-ui.test.ts",
         "tests/qianguanjia-materials-ui.test.ts",
+        "tests/qianguanjia-effect-targets.test.ts",
+        "tests/qianguanjia-effects-ui.test.ts",
         "tests/qianchuan-backend-ui.test.ts",
         "tests/qianchuan-backend-session.test.ts",
         "tests/qianchuan-plan-selection.test.ts",
@@ -1819,7 +1821,13 @@
         "tests/qianguanjia-materials-ui.test.ts",
         "tests/helpers/qianguanjia-analysis-ui-fixture.ts",
         "tests/helpers/qianguanjia-materials-ui-fixture.ts",
-        "docs/qianguanjia-history-materials-2026-10-16.md"
+        "docs/qianguanjia-history-materials-2026-10-16.md",
+        "src/shared/qianguanjia-effect-targets.ts",
+        "src/renderer/QianguanjiaEffects.tsx",
+        "tests/qianguanjia-effect-targets.test.ts",
+        "tests/qianguanjia-effects-ui.test.ts",
+        "tests/helpers/qianguanjia-effects-ui-fixture.ts",
+        "docs/superpowers/plans/2026-10-16-qianguanjia-real-account-effects.md"
       ],
       "checkIds": [
         "typecheck",

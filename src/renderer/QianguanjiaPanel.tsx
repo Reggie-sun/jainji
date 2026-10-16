@@ -16,6 +16,10 @@ export function QianguanjiaPanel({ active, api, accounts = [] }: { active: boole
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [tab, setTab] = useState<"home" | "accounts" | "history" | "materials">("home"), [settings, setSettings] = useState(false);
   const [analysisBusy, setAnalysisBusy] = useState(false);
+  const childScope=useRef({tab,active,version:0});
+  if(childScope.current.tab!==tab||childScope.current.active!==active)childScope.current={tab,active,version:childScope.current.version+1};
+  const childVersion=childScope.current.version;
+  const childBusy=(source:typeof tab,value:boolean)=>{if(childScope.current.active&&childScope.current.tab===source&&childScope.current.version===childVersion)setAnalysisBusy(value);};
   const invalidateSession = useCallback(() => { setSessions([]);setSessionId("");setDirectory(undefined);setHome(undefined);setNotice("查询已停止或会话未能保持有效，请重新连接后读取。"); }, []);
   const [search, setSearch] = useState(""), [status, setStatus] = useState(""), [pageIndex, setPageIndex] = useState(0);
   const request = useRef<string>();
@@ -29,7 +33,7 @@ export function QianguanjiaPanel({ active, api, accounts = [] }: { active: boole
     if (connected) void api.disconnectQianguanjia().catch(() => undefined);
   };
   useEffect(() => {
-    if (!active) { release(); clear(); setBusy(false); setError(""); setNotice(""); }
+    if (!active) { release(); clear(); setBusy(false); setAnalysisBusy(false); setError(""); setNotice(""); }
     return release;
   }, [active]);
 
@@ -93,8 +97,8 @@ export function QianguanjiaPanel({ active, api, accounts = [] }: { active: boole
       </div></div>
     <div className="qianguanjia-console-messages">{!connected && <p role="alert">千管家界面接线尚未加载，请等待应用主进程更新。</p>}
       {busy && <p role="status">正在读取千管家…</p>}{error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}</div>
-    {tab === "history" && <QianguanjiaHistory active={active} api={api} sessionId={sessionId} directory={directory} accounts={accounts} onBusy={setAnalysisBusy} onSessionInvalid={invalidateSession} />}
-    {tab === "materials" && <QianguanjiaMaterials active={active} api={api} sessionId={sessionId} directory={directory} onBusy={setAnalysisBusy} onSessionInvalid={invalidateSession} />}
+    {tab === "history" && <QianguanjiaHistory active={active} api={api} sessionId={sessionId} directory={directory} accounts={accounts} onBusy={value=>childBusy('history',value)} onSessionInvalid={invalidateSession} />}
+    {tab === "materials" && <QianguanjiaMaterials active={active} api={api} sessionId={sessionId} directory={directory} accounts={accounts} onBusy={value=>childBusy('materials',value)} onSessionInvalid={invalidateSession} />}
     <details className="qianguanjia-connection-settings" open={settings} onToggle={event => setSettings(event.currentTarget.open)}><summary>连接设置</summary>
       <p>沿用已正常登录并授权的千管家首页或账户管理页，不需要再次授权。没有发现页面时，请确认原 Chrome 浏览器已允许本地调试连接。</p>
       <div className="qianchuan-query-fields"><label>千管家页面<select aria-label="千管家页面" value={sessionId} disabled={busy || analysisBusy || !active} onChange={event => {
@@ -123,6 +127,8 @@ export function QianguanjiaPanel({ active, api, accounts = [] }: { active: boole
       {directory ? <div data-testid="qianguanjia-directory">{!directory.accounts.length ? <p>当前会话没有返回授权账户。</p> : !filtered.length ? <p>没有匹配的授权账户。</p> : <><div className="qianchuan-query-table qianguanjia-account-table"><table><thead><tr><th>账户名称</th><th>广告主 ID</th><th>授权状态</th></tr></thead><tbody>{rows.map(item => <tr key={item.advertiserId}><td><span className="qianguanjia-account-avatar" aria-hidden="true">{item.name.slice(0, 1)}</span>{item.name}</td><td className="qianguanjia-advertiser-id">{item.advertiserId}</td><td><span className="qianguanjia-auth-status">{item.authStatusDesc}</span></td></tr>)}</tbody></table></div>
         <div className="qianguanjia-pagination"><span>共 {filtered.length} 条 · 第 {currentPage + 1} / {pages} 页</span><button type="button" className="button secondary" aria-label="上一页账户" disabled={currentPage === 0} onClick={() => setPageIndex(currentPage - 1)}>上一页</button><button type="button" className="button secondary" aria-label="下一页账户" disabled={currentPage + 1 >= pages} onClick={() => setPageIndex(currentPage + 1)}>下一页</button></div></>}
         <p className="qianguanjia-data-scope">读取于 {time(directory.observedAt)} · 目录仅供查看，不更改本地上传账号、计划和历史任务。</p></div> : <div className="qianguanjia-empty"><strong>尚未读取授权账户</strong><p>点击上方“连接已授权账户”，使用已有正常登录会话。</p></div>}
+      <p className="qianguanjia-data-scope">实际上传账户不一定都在千管家当前目录中。在素材中心读取本地记录后，可核对覆盖情况，并选择冻结账户和计划读取千川素材效果。</p>
+      <button type="button" className="button secondary" disabled={busy||analysisBusy||!active} onClick={()=>{setAnalysisBusy(false);setTab('materials');}}>核对实际投放覆盖与效果</button>
     </section>
   </section>;
 }

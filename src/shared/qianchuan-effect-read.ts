@@ -2,7 +2,7 @@ import { QianchuanBackendQuerySchema, type QianchuanBackendQuery, type Qianchuan
 import { z } from "zod";
 
 export type QianchuanEffectSnapshot = Extract<QianchuanBackendResult, { kind: "materials" }>;
-type Input = { product: string; expectedAdvertiserId: string; adId: string; startDate: string; endDate: string; asOf: string };
+type Input = { product: string; expectedAdvertiserId: string; adId: string; startDate: string; endDate: string; asOf: string; browserAccess?: "existing-only" };
 
 /** Bounded observations over the existing query owner. No upload, mutation, retries or durable jobs. */
 export async function collectMaterialEffects(input: Input, read: (query: QianchuanBackendQuery) => Promise<QianchuanBackendResult>, signal: AbortSignal): Promise<QianchuanEffectSnapshot> {

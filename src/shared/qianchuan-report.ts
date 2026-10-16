@@ -46,6 +46,7 @@ export const QianchuanReportMaterialSchema = z.object({
 const captureBase = {
   product: QianchuanProductSchema,
   expectedAdvertiserId: accountId,
+  browserAccess: z.literal("existing-only").optional(),
   requestId: uuid,
   startDate: date,
   endDate: date,

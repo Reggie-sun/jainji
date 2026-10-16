@@ -43,6 +43,18 @@ it("collects all pages with one frozen query identity and preserves large string
   expect(calls.map(query => query.kind === "materials" ? query.offset : -1)).toEqual([0, 100, 200]);
   expect(calls.every(query => query.kind === "materials" && query.asOf === fixedNow.toISOString() && query.requestId === input.requestId)).toBe(true);
 });
+it('carries existing-only browser access through every material page without persisting runtime control',async()=>{
+ const calls:QianchuanBackendQuery[]=[];
+ const result=await captureQianchuanReport({...input,browserAccess:'existing-only'},async q=>{calls.push(q);return page(q);},new AbortController().signal,fixedNow);
+ expect(calls).toHaveLength(3);expect(calls.every(q=>q.browserAccess==='existing-only')).toBe(true);
+ expect(result).not.toHaveProperty('browserAccess');
+});
+it('retains existing-only access for account report and rejects unsupported control before reading',async()=>{
+ const calls:QianchuanBackendQuery[]=[];
+ await captureQianchuanReport({...reportInput,browserAccess:'existing-only'},async q=>{calls.push(q);return report(q);},new AbortController().signal,fixedNow);
+ expect(calls[0]!.browserAccess).toBe('existing-only');
+ let read=0;await expect(captureQianchuanReport({...input,browserAccess:'launch'},async q=>{read++;return page(q);},new AbortController().signal,fixedNow)).rejects.toThrow();expect(read).toBe(0);
+});
 
 it.each(["identity", "kind", "window", "total", "offset", "limit", "missing", "duplicate", "metric"])("rejects %s drift without returning partial rows", async defect => {
   let calls = 0;

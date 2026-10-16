@@ -23,8 +23,8 @@ export class QianchuanBackendQueries {
       const configured = await this.accounts.preflight(query.product);
       signal.throwIfAborted();
       if (configured.advertiserId !== query.expectedAdvertiserId) throw new Error("广告账户已变化，请重新选择账号。");
-      const target = await (configured.egress?.mode === "remote-browser" ? this.accounts.prepare(query.product) :
-        this.accounts.prepareCatalog(query.product, true));
+      const target = await (query.browserAccess === "existing-only" ? this.accounts.prepareCatalog(query.product, false) :
+        configured.egress?.mode === "remote-browser" ? this.accounts.prepare(query.product) : this.accounts.prepareCatalog(query.product, true));
       signal.throwIfAborted();
       if (target.advertiserId !== query.expectedAdvertiserId || target.configDigest !== configured.configDigest ||
         egressIdentity(target.egress) !== egressIdentity(configured.egress)) throw new Error("账号连接或查询目标已变化，请重新查询。");

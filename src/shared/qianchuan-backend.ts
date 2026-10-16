@@ -11,7 +11,7 @@ const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
   const time = Date.parse(`${value}T00:00:00Z`);
   return Number.isFinite(time) && new Date(time).toISOString().slice(0, 10) === value;
 }, "请选择有效日期。");
-const account = { product: QianchuanProductSchema, expectedAdvertiserId: id, requestId: z.string().uuid() };
+const account = { product: QianchuanProductSchema, expectedAdvertiserId: id, requestId: z.string().uuid(), browserAccess: z.literal("existing-only").optional() };
 const period = { startDate: date, endDate: date, asOf: z.string().datetime().optional() };
 export const QianchuanBackendQuerySchema = z.discriminatedUnion("kind", [
   z.object({ ...account, kind: z.literal("plan"), adId: id }).strict(),

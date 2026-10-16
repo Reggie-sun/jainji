@@ -39,6 +39,20 @@ it("prepares the original VPS browser for an explicit query instead of requiring
   expect(f.read).toHaveBeenCalledWith(connected, expect.any(Object), expect.any(AbortSignal));
   expect(f.freeze).toHaveBeenCalledWith(target.product, remoteTarget.configDigest);
 });
+it.each([false,true])('existing-only reads never launch local or VPS Chrome (remote=%s)',async remote=>{
+ const f=fixture(),binding=remote?remoteTarget:target;
+ f.preflight.mockResolvedValue(binding);f.prepareCatalog.mockResolvedValue(binding);f.freeze.mockResolvedValue(binding);
+ const input={...query(),browserAccess:'existing-only'};
+ await expect(f.queries.run(input,7)).resolves.toEqual(result);
+ expect(f.prepareCatalog).toHaveBeenCalledWith(target.product,false);expect(f.prepare).not.toHaveBeenCalled();
+ expect(f.read).toHaveBeenCalledWith(binding,input,expect.any(AbortSignal));
+});
+it.each([false,true])('existing-only failure never retries or opens absent browser (remote=%s)',async remote=>{
+ const f=fixture();f.preflight.mockResolvedValue(remote?remoteTarget:target);
+ f.prepareCatalog.mockRejectedValue(new Error('existing browser unavailable'));
+ await expect(f.queries.run({...query(),browserAccess:'existing-only'},7)).rejects.toThrow('existing browser unavailable');
+ expect(f.prepare).not.toHaveBeenCalled();expect(f.prepareCatalog).toHaveBeenCalledTimes(1);expect(f.read).not.toHaveBeenCalled();expect(f.queries.busy).toBe(false);
+});
 it("rejects a stale selected advertiser before opening any browser", async () => {
   const f = fixture(); f.preflight.mockResolvedValue({ ...remoteTarget, advertiserId: "999" });
   await expect(f.queries.run(query(), 7)).rejects.toThrow("变化");
@@ -139,4 +153,18 @@ it("service holds its existing busy gate and stop drains backend reads", async (
   await expect(service.stop()).resolves.toBe(true);
   await expect(pending).rejects.toMatchObject({ name: "AbortError" });
   expect(service.busy).toBe(false); expect(store.tasks()).toEqual([]);
+});
+
+
+it('drains cancellation during existing-only preparation and never falls back to opening a browser',async()=>{
+ const f=fixture(),input={...query(),browserAccess:'existing-only' as const};
+ let release!:(value:FrozenQianchuanAccount)=>void;
+ f.prepareCatalog.mockImplementation(()=>new Promise<FrozenQianchuanAccount>(resolve=>{release=resolve}));
+ const pending=f.queries.run(input,7);void pending.catch(()=>undefined);
+ await vi.waitFor(()=>expect(release).toBeTypeOf('function'));
+ f.queries.cancel({requestId:input.requestId},7);expect(f.queries.busy).toBe(true);
+ expect(()=>f.queries.run({...query(),browserAccess:'existing-only'},8)).toThrow('正在进行');
+ release(target);await expect(pending).rejects.toMatchObject({name:'AbortError'});
+ expect(f.prepareCatalog).toHaveBeenCalledWith(target.product,false);expect(f.prepare).not.toHaveBeenCalled();
+ expect(f.read).not.toHaveBeenCalled();expect(f.freeze).not.toHaveBeenCalled();expect(f.queries.busy).toBe(false);
 });
