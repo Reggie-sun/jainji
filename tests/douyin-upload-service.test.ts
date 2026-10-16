@@ -2175,6 +2175,47 @@ describe("Qianchuan upload service", () => {
     expect(f.store.tasks()).toEqual([]); expect(f.events).not.toContain("file-input");
   });
 
+  it.each([
+    ["READY", false], ["MAY_HAVE_UPLOADED", false],
+    ["READY", true], ["MAY_HAVE_UPLOADED", true],
+  ] as const)("scopes local browser preparation to browser ownership for a %s peer sharing the exit (same browser: %s)", async (outcome, sameBrowser) => {
+    const f = await fixture();
+    const document = accountDocument();
+    const route = { group: "shared-exit", sshHost: "fixture-shared", localPort: 19381, expectedIp: "203.0.113.11" };
+    for (const account of document.accounts) if (["蝴蝶贴", "眼贴"].includes(account.product)) Object.assign(account, { egress: route });
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    const target = document.accounts.find(account => account.product === "眼贴")!;
+    const accounts = new QianchuanAccountSettings(f.store.root, async () => target.cdpEndpoint, async () => target.cdpEndpoint,
+      async () => ({ advertiserId: target.advertiserId, name: "Fixture separate shop" }));
+    await accounts.authorizeFile(f.configPath);
+    await f.service.chooseConfig(accounts.file); await f.service.configure({ enabled: true });
+    const old = await f.createBatch(["protected peer on shared exit"], { product: "蝴蝶贴" });
+    await f.register(old);
+    await f.service.enqueueFinalArtifact(old.identities[0]!); await f.service.runPending();
+    if (outcome === "MAY_HAVE_UPLOADED") {
+      const task = f.store.tasks()[0]!;
+      task.result = { ...task.result, state: "NEEDS_HUMAN", upload_outcome: outcome, readyEvidence: undefined };
+      await f.store.saveTask(task);
+    }
+    await f.service.stop();
+    const before = f.store.tasks(), configBefore = await readFile(f.configPath);
+    const prepare = vi.spyOn(QianchuanBrowserManager.prototype, "prepareUpload").mockImplementation(async (_id, guard, signal) => {
+      signal.throwIfAborted(); guard({ endpoint: sameBrowser ? document.accounts[0]!.cdpEndpoint : target.cdpEndpoint }); return target.cdpEndpoint;
+    });
+    const service = new DouyinUploadService(f.store, { accounts, browser: () => f.port,
+      loadBatch: async id => structuredClone(f.states.get(id)!), readiness: () => undefined });
+    fixtureServices.add(service);
+    await service.restoreConfig(); await service.beginProduction();
+    f.events.length = 0;
+    const pending = service.preflight(selection("眼贴"), 2);
+    if (sameBrowser) await expect(pending).rejects.toThrow("原页面");
+    else expect((await pending)?.target.advertiserId).toBe(target.advertiserId);
+    expect(prepare).toHaveBeenCalledOnce();
+    expect(f.store.tasks()).toEqual(before);
+    expect(await readFile(f.configPath)).toEqual(configBefore);
+    expect(f.events).not.toContain("file-input");
+  });
+
   it.each(["READY", "MAY_HAVE_UPLOADED"] as const)("does not repair a Chrome protecting a %s upload", async outcome => {
     const f = await fixedExitPreparation(outcome), before = f.store.tasks();
     await expect(f.service.preflight(f.selected, 2)).rejects.toThrow("原页面");
@@ -2200,6 +2241,29 @@ describe("Qianchuan upload service", () => {
       await expect(f.service.preflight(f.selected, 2)).rejects.toThrow();
       expect(f.repaired()).toBe(false); expect(f.store.tasks()).toEqual([]);
     } finally { release(); await operation; }
+  });
+
+  it.each(["import", "save"] as const)("rejects account %s while upload preparation owns its configuration snapshot", async operation => {
+    const f = await fixedExitPreparation("READY");
+    let release!: () => void, entered!: () => void;
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const configured = QianchuanAccountSettings.prototype.configuredAccount;
+    vi.spyOn(QianchuanAccountSettings.prototype, "configuredAccount").mockImplementationOnce(async function (this: QianchuanAccountSettings, product) {
+      const target = await configured.call(this, product); entered(); await hold; return target;
+    });
+    const before = f.store.tasks(), fences = before.map(task => f.store.fence(task.result.upload_task_id));
+    const preparing = f.service.preflight(f.selected, 2).then(() => undefined, () => undefined);
+    await started;
+    try {
+      const change = operation === "import" ? f.service.chooseConfig(f.configPath) : f.service.saveAccount({ product: "眼贴",
+        planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=9001",
+        egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" } });
+      await expect(change).rejects.toThrow("账号浏览器操作");
+    } finally { release(); await preparing; }
+    expect(f.store.tasks()).toEqual(before);
+    expect(before.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
+    expect(f.repaired()).toBe(false);
   });
 
   it("keeps a selected child distinct from the fixed-exit browser anchor during new upload preparation", async () => {
@@ -2232,6 +2296,26 @@ describe("Qianchuan upload service", () => {
     f.live.endpoint = "http://127.0.0.1:19391"; f.live.advertiserId = "7002"; f.live.fixedPreparations = 0;
     const before = f.store.tasks(), fences = before.map(task => f.store.fence(task.result.upload_task_id));
     await expect(f.service.preflight({ enabled: true, accountProduct: "蝴蝶贴", plan: { advertiserId: "7002", adId: "9001", name: "Fixture other child", accountSource: "current-browser" } }, 1)).rejects.toThrow("原页面");
+    expect(f.live.fixedPreparations).toBe(0); expect(f.store.tasks()).toEqual(before);
+    expect(before.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
+  });
+
+  it("does not mistake a historical child for an independent anchor added after its original browser moves", async () => {
+    const f = await currentBrowserUpload(false, 2, true, "7001");
+    f.port.confirmAutomation = async () => { throw new Error("fixture leaves confirmation unresolved"); };
+    await f.service.runPending();
+    const document = accountDocument();
+    Object.assign(document.accounts.find(account => account.product === "蝴蝶贴")!, {
+      advertiserId: "7000", cdpEndpoint: "http://127.0.0.1:19392",
+      egress: { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" },
+    });
+    Object.assign(document.accounts.find(account => account.product === "眼贴")!, { advertiserId: "7001" });
+    await writeFile(f.configPath, JSON.stringify(document), { mode: 0o600 });
+    await f.service.chooseConfig(f.configPath); await f.service.beginProduction();
+    f.live.endpoint = "http://127.0.0.1:19391"; f.live.advertiserId = "7002"; f.live.fixedPreparations = 0;
+    const before = f.store.tasks(), fences = before.map(task => f.store.fence(task.result.upload_task_id));
+    await expect(f.service.preflight({ enabled: true, accountProduct: "蝴蝶贴",
+      plan: { advertiserId: "7002", adId: "9001", name: "Fixture other child", accountSource: "current-browser" } }, 1)).rejects.toThrow("原页面");
     expect(f.live.fixedPreparations).toBe(0); expect(f.store.tasks()).toEqual(before);
     expect(before.map(task => f.store.fence(task.result.upload_task_id))).toEqual(fences);
   });

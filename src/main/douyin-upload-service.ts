@@ -351,6 +351,7 @@ export class DouyinUploadService {
     this.managingBrowser = true;
     try {
       await this.stopPlanPreload();
+      if (this.browserPreparations) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
       const summary = this.accounts instanceof QianchuanAccountSettings ? await this.accounts.authorizeFile(file, this.guardEgressChange) : await this.accounts.authorizeFile(file);
       await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts instanceof QianchuanAccountSettings ? this.accounts.file : file });
       this.summaries = summary; this.initializationFailure = undefined;
@@ -367,6 +368,7 @@ export class DouyinUploadService {
     this.managingBrowser = true;
     try {
       await this.stopPlanPreload();
+      if (this.browserPreparations) throw new Error("账号浏览器操作正在进行，请稍后设置账号。");
       const summaries = await this.accounts.savePlan(setup, this.guardEgressChange, true);
       await this.store.setConfig({ ...this.store.config, accountConfigPath: this.accounts.file });
       this.summaries = summaries; this.initializationFailure = undefined;
@@ -698,7 +700,16 @@ export class DouyinUploadService {
           this.stopping || this.beginningProduction || this.browserPreparations !== preparations || !this.store.config.enabled) throw new Error("上传控制已变化，未自动恢复账号浏览器。");
         const targets = [...this.store.tasks().map(task => task.authorization.target), ...this.store.intents().map(intent => intent.authorization.target)];
         const anchors = [advertiserId, ...(expectedAdvertiserId ? [expectedAdvertiserId] : [])];
-        const ids = new Set([...anchors, ...targets.filter(target => this.egressTargetAffected(target, anchors, [configured], browser)).map(target => target.advertiserId)]);
+        // Preparing one local browser keeps the exit configuration unchanged.
+        // Sharing an exit does not make another account's independent Chrome a shutdown target.
+        const browserAccount = { product: configured.product, cdpEndpoint: configured.cdpEndpoint };
+        const ids = new Set([...anchors, ...targets.filter(target => {
+          if (this.egressTargetAffected(target, anchors, [browserAccount], browser)) return true;
+          // An old child without a saved anchor may belong to this browser after a slot/port change.
+          const savedAnchor = target.configDigest === configured.configDigest &&
+            this.summaries.some(account => account.product === target.product && account.advertiserId === target.advertiserId);
+          return !savedAnchor && this.egressTargetAffected(target, anchors, [configured], browser);
+        }).map(target => target.advertiserId)]);
         for (const id of ids) assertAutomationBrowserSafe(this.store, id, this.eligible, this.currentIntents, this.cancelledIntents);
       }, controller.signal, expectedAdvertiserId);
     } finally { if (this.ordinaryBrowserController === controller) this.ordinaryBrowserController = undefined; }
