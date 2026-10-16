@@ -4,6 +4,7 @@ import { expect, it, vi } from "vitest";
 import { QianchuanEgressRuntime, sshEgressArguments, waitForEgressListener } from "../src/main/qianchuan-egress-runtime";
 import { QianchuanEgressSchema, validateEgressGroups } from "../src/shared/qianchuan-egress";
 import { z } from "zod";
+import { DevelopmentEgressClient, DevelopmentEgressHost } from "../src/main/qianchuan-egress-development";
 
 const route = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
 function fixture() {
@@ -72,4 +73,81 @@ it("waits for a late listener without binding its port and cancels unavailable s
   } finally { controller.abort(); if (server.listening) await new Promise<void>(resolve => server.close(() => resolve())); }
   const cancel = new AbortController(), pending = waitForEgressListener(port, cancel.signal);
   cancel.abort(); await expect(pending).rejects.toThrow();
+});
+
+function developmentFixture() {
+  const children: Array<ReturnType<typeof child>> = [];
+  function child() { return Object.assign(new EventEmitter(), { kill: vi.fn(() => true), exitCode: null as number | null, signalCode: null }); }
+  const launch = vi.fn(() => { const next = child(); children.push(next); return next; });
+  const runtime = new QianchuanEgressRuntime({ launch, probe: async () => route.expectedIp, portFree: async () => true });
+  const host = new DevelopmentEgressHost(runtime);
+  function connect() {
+    const app = Object.assign(new EventEmitter(), { connected: true, send: vi.fn((message: object, callback: (error: Error | null) => void) => { launcher.emit("message", message); callback(null); }) });
+    const launcher = Object.assign(new EventEmitter(), { connected: true, send: vi.fn((message: object, callback: (error: Error | null) => void) => { app.emit("message", message); callback(null); }) });
+    host.attach(launcher);
+    return { app, launcher, client: new DevelopmentEgressClient(app) };
+  }
+  return { children, launch, runtime, host, connect };
+}
+
+it("keeps the same owned SSH transport across Electron replacement and closes it with the launcher", async () => {
+  const f = developmentFixture(), first = f.connect();
+  const lease = await first.client.ensure(route);
+  first.client.dispose(); first.launcher.emit("exit");
+  expect(lease.signal.aborted).toBe(true);
+  expect(f.children[0].kill).not.toHaveBeenCalled();
+  const second = f.connect();
+  await second.client.ensure(route); await second.client.verify(route);
+  expect(f.launch).toHaveBeenCalledTimes(1);
+  f.host.dispose();
+  expect(f.children[0].kill).toHaveBeenCalledOnce();
+  second.client.dispose();
+});
+
+it("propagates transport loss and preserves the failure barrier across Electron replacement", async () => {
+  const f = developmentFixture(), first = f.connect(), lease = await first.client.ensure(route);
+  f.children[0].exitCode = 255; f.children[0].emit("exit", 255);
+  expect(lease.signal.aborted).toBe(true);
+  first.client.dispose(); first.launcher.emit("exit");
+  const second = f.connect();
+  await expect(second.client.ensure(route)).rejects.toThrow("出口");
+  expect(f.launch).toHaveBeenCalledTimes(1);
+  second.client.recover(route);
+  await second.client.ensure(route);
+  expect(f.launch).toHaveBeenCalledTimes(2);
+  second.client.dispose(); f.host.dispose();
+});
+
+it("aborts client leases and pending work when parent IPC is lost without falling back to local SSH", async () => {
+  const f = developmentFixture(), connection = f.connect(), lease = await connection.client.ensure(route);
+  connection.app.send.mockImplementation(() => {});
+  const pending = connection.client.verify(route);
+  connection.app.connected = false; connection.app.emit("disconnect");
+  await expect(pending).rejects.toThrow("出口");
+  expect(lease.signal.aborted).toBe(true);
+  await expect(connection.client.ensure(route)).rejects.toThrow("出口");
+  expect(f.launch).toHaveBeenCalledTimes(1);
+  connection.client.dispose(); f.host.dispose();
+});
+
+it("retiring a route aborts its remote leases and rejects conflicting route reuse", async () => {
+  const f = developmentFixture(), connection = f.connect(), lease = await connection.client.ensure(route);
+  await expect(connection.client.ensure({ ...route, expectedIp: "203.0.113.12" })).rejects.toThrow("出口");
+  connection.client.retireUnused([]);
+  expect(lease.signal.aborted).toBe(true);
+  expect(f.children[0].kill).toHaveBeenCalledOnce();
+  connection.client.dispose(); f.host.dispose();
+});
+
+it("does not publish a live lease if transport loss races with the first acquire reply", async () => {
+  const f = developmentFixture(), connection = f.connect();
+  connection.launcher.send.mockImplementation((message: object, callback: (error: Error | null) => void) => {
+    connection.app.emit("message", message);
+    if ((message as { type: string }).type === "jianji-egress-result") {
+      f.children[0].exitCode = 255; f.children[0].emit("exit", 255);
+    }
+    callback(null);
+  });
+  await expect(connection.client.ensure(route)).rejects.toThrow("出口");
+  connection.client.dispose(); f.host.dispose();
 });

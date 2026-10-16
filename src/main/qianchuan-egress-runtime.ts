@@ -4,6 +4,8 @@ import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import type { EventEmitter } from "node:events";
 import { egressIdentity, QianchuanEgressSchema, type QianchuanEgress } from "../shared/qianchuan-egress.js";
+import { DevelopmentEgressClient } from "./qianchuan-egress-development.js";
+export { DevelopmentEgressHost } from "./qianchuan-egress-development.js";
 
 const execute = promisify(execFile);
 const failure = () => new Error("固定出口连接或 IP 校验失败，已停止自动化且不会直连。请检查 VPS、SSH 密钥与主机指纹，然后明确重连。");
@@ -121,5 +123,13 @@ export class QianchuanEgressRuntime {
   }
   dispose(): void { for (const tunnel of this.tunnels.values()) this.fail(tunnel); }
 }
-export const qianchuanEgressRuntime = new QianchuanEgressRuntime();
+// A dev rebuild replaces Electron, but its launcher and original Chrome survive.
+// A missing/disconnected opted-in IPC owner must fail closed, never create another tunnel.
+export const qianchuanEgressRuntime = process.env.JIANJI_DEV_EGRESS === "1"
+  ? new DevelopmentEgressClient({ on: process.on.bind(process), off: process.off.bind(process),
+    get connected() { return process.connected; }, send: (message, callback) => {
+      if (!process.send) throw failure();
+      return process.send(message, callback);
+    } })
+  : new QianchuanEgressRuntime();
 process.once("exit", () => qianchuanEgressRuntime.dispose());
