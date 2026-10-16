@@ -1945,7 +1945,7 @@
       "checkIds": ["typecheck", "douyin-upload", "documents"],
       "documentRefs": ["AGENTS.md", "docs/agent-contract-index.md", "docs/qianguanjia-authorized-integration-2026-10-14.md", "docs/qianguanjia-history-materials-2026-10-16.md"],
       "testFilesByCheck": {
-        "douyin-upload": ["tests/qianchuan-backend-adapter.test.ts", "tests/qianguanjia-queries.test.ts", "tests/qianguanjia-transport.test.ts"]
+        "douyin-upload": ["tests/qianchuan-backend-adapter.test.ts", "tests/qianchuan-backend-ui.test.ts", "tests/qianguanjia-queries.test.ts", "tests/qianguanjia-transport.test.ts"]
       }
     },
     {
@@ -2000,6 +2000,7 @@
           "tests/qianguanjia-account-reports.test.ts",
           "tests/qianguanjia-account-reports-ui.test.ts",
           "tests/qianguanjia-session-ui.test.ts",
+          "tests/qianchuan-backend-ui.test.ts",
           "tests/qianchuan-effect.test.ts",
           "tests/qianchuan-effect-read.test.ts",
           "tests/qianchuan-effect-export.test.ts"

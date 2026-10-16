@@ -90,21 +90,17 @@ it("keeps narrow controls inside the viewport and hides unsafe bridge errors", a
     expect(await page.locator("body").textContent()).not.toContain("private-secret-token");
   } finally { await page.close(); }
 });
-it("connects supplier source and displays exact account IDs and aggregate scope", async () => {
+it("automatically reads the existing supplier source and displays exact account IDs and aggregate scope", async () => {
   const page = await fixture(360);
   try {
     await page.getByRole("button", { name: "千管家", exact: true }).click();
-    await page.locator(".qianguanjia-connection-settings summary").click();
-    expect(await page.getByRole("button", { name: "读取授权账户" }).isDisabled()).toBe(true);
-    await page.getByRole("button", { name: "发现已登录页面" }).click();
-    await page.waitForFunction(() => (document.querySelector('[aria-label="千管家页面"]') as HTMLSelectElement).value !== "");
-    await page.getByRole("button", { name: "读取授权账户" }).click();
-    await page.getByRole("cell", { name: "1879999999999999999", exact: true }).waitFor();
-    await page.getByRole("button", { name: "读取今日汇总" }).click();
-    await page.getByRole("heading", { name: "全部推广", exact: true }).waitFor();
+    await page.getByTestId("qianguanjia-home").waitFor();
+    expect(await page.getByRole("button", { name: "连接已授权账户", exact: true }).count()).toBe(0);
+    expect(await page.evaluate(() => (window as any).supplierReads.map((r: any) => r.kind))).toEqual(["discover", "accounts", "home"]);
     expect(await page.locator(".qianguanjia-console").textContent()).toContain("不代表任一单账户");
     expect(await page.getByTestId("qianguanjia-home").locator("dd").first().textContent()).toBe("12.34");
-    expect(await page.getByTestId("qianguanjia-directory").count()).toBe(1);
+    await page.getByRole("navigation", { name: "千管家页面" }).getByRole("button", { name: "账户管理" }).click();
+    await page.getByRole("cell", { name: "1879999999999999999", exact: true }).waitFor();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.getByRole("button", { name: "千川查询", exact: true }).click();
     await page.getByRole("button", { name: "查询", exact: true }).click();
@@ -114,12 +110,9 @@ it("connects supplier source and displays exact account IDs and aggregate scope"
 it.each(["cancel", "source", "hide"])("supplier %s cancels and rejects late observations", async action => {
   const page = await fixture();
   try {
+    await configureSupplier(page, { delayKind: "accounts" });
     await page.getByRole("button", { name: "千管家", exact: true }).click();
-    await page.locator(".qianguanjia-connection-settings summary").click();
-    await page.getByRole("button", { name: "发现已登录页面" }).click();
-    await page.waitForFunction(() => (document.querySelector('[aria-label="千管家页面"]') as HTMLSelectElement).value !== "");
-    await page.evaluate(() => { (window as any).supplierDelay = true; });
-    await page.getByRole("button", { name: "读取授权账户" }).click();
+    await page.waitForFunction(() => (window as any).supplierPending.length === 1);
     await page.getByRole("button", { name: "取消千管家查询" }).waitFor();
     if (action === "cancel") await page.getByRole("button", { name: "取消千管家查询" }).click();
     if (action === "source") await page.getByRole("button", { name: "千川查询", exact: true }).click();
@@ -128,35 +121,32 @@ it.each(["cancel", "source", "hide"])("supplier %s cancels and rejects late obse
     await page.evaluate(() => (window as any).supplierPending[0]());
     await page.waitForTimeout(50);
     expect(await page.getByTestId("qianguanjia-directory").count()).toBe(0);
+    expect(await page.evaluate(() => (window as any).supplierReads.map((r: any) => r.kind))).toEqual(["discover", "accounts"]);
     expect(await page.evaluate(() => (window as any).supplierDisconnects)).toBeGreaterThan(0);
   } finally { await page.close(); }
 });
 it("supplier shows empty directory and safely clears state on bridge failure", async () => {
   const page = await fixture();
   try {
-    await page.getByRole("button", { name: "千管家", exact: true }).click();
-    await page.locator(".qianguanjia-connection-settings summary").click();
-    await page.getByRole("button", { name: "发现已登录页面" }).click();
-    await page.waitForFunction(() => (document.querySelector('[aria-label="千管家页面"]') as HTMLSelectElement).value !== "");
     await page.evaluate(() => { (window as any).supplierEmpty = true; });
-    await page.getByRole("button", { name: "读取授权账户" }).click();
+    await page.getByRole("button", { name: "千管家", exact: true }).click();
+    await page.getByTestId("qianguanjia-home").waitFor();
+    await page.getByRole("navigation", { name: "千管家页面" }).getByRole("button", { name: "账户管理" }).click();
     await page.getByText("当前会话没有返回授权账户。").waitFor();
     await page.evaluate(() => { (window as any).supplierFail = true; });
-    await page.getByRole("button", { name: "读取今日汇总" }).click();
+    await page.getByRole("button", { name: "刷新数据", exact: true }).click();
     await page.getByRole("alert").waitFor();
     expect(await page.locator("body").textContent()).not.toContain("private-secret-token");
     expect(await page.getByTestId("qianguanjia-directory").count()).toBe(0);
-    expect(await page.getByRole("button", { name: "读取今日汇总" }).isDisabled()).toBe(true);
+    expect(await page.getByRole("button", { name: "刷新数据", exact: true }).isEnabled()).toBe(true);
   } finally { await page.close(); }
 });
 
-it("connects the business console once and filters exact authorised accounts with pagination", async () => {
+it("automatically reads the business console once and filters exact authorised accounts with pagination", async () => {
   const page = await fixture(1440);
   try {
     await configureSupplier(page, { count: 23 });
     await page.getByRole("button", { name: "千管家", exact: true }).click();
-    expect(await page.locator(".qianguanjia-kpis dd").allTextContents()).toEqual(["—", "—", "—", "—"]);
-    await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
     await page.getByTestId("qianguanjia-home").waitFor();
     expect(await page.evaluate(() => (window as any).supplierReads.map((r: any) => r.kind))).toEqual(["discover", "accounts", "home"]);
     await page.getByRole("navigation", { name: "千管家页面" }).getByRole("button", { name: "账户管理" }).click();
@@ -178,11 +168,10 @@ it.each([360, 820, 1440])("shows a usable business console at %i px without fake
     await page.getByRole("button", { name: "千管家", exact: true }).click();
     expect(await page.getByRole("heading", { name: "数据概览", exact: true }).isVisible()).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    expect(await page.evaluate(() => (window as any).supplierReads)).toEqual([]);
+    await page.getByTestId("qianguanjia-home").waitFor();
+    expect(await page.evaluate(() => (window as any).supplierReads.map((r: any) => r.kind))).toEqual(["discover", "accounts", "home"]);
     await page.getByRole("navigation", { name: "千管家页面" }).getByRole("button", { name: "账户管理" }).click();
     await page.getByRole("heading", { name: "账户管理", exact: true }).waitFor();
-    await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
-    await page.getByTestId("qianguanjia-home").waitFor();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(await page.locator(".qianguanjia-kpis dd").allTextContents()).toEqual(["12.34", "99.99", "3", "8.10"]);
   } finally { await page.close(); }
@@ -191,9 +180,8 @@ it.each([360, 820, 1440])("shows a usable business console at %i px without fake
 it("cancels a connection between directory and overview without starting the next read", async () => {
   const page = await fixture();
   try {
-    await page.getByRole("button", { name: "千管家", exact: true }).click();
     await configureSupplier(page, { delayKind: "accounts" });
-    await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
+    await page.getByRole("button", { name: "千管家", exact: true }).click();
     await page.waitForFunction(() => (window as any).supplierReads.length === 2);
     await page.getByRole("button", { name: "取消千管家查询" }).click();
     await page.evaluate(() => (window as any).supplierPending[0]());
@@ -207,11 +195,15 @@ it("cancels a connection between directory and overview without starting the nex
 it("requires an explicit page choice when connecting more than one supplier page", async () => {
   const page = await fixture();
   try {
-    await page.getByRole("button", { name: "千管家", exact: true }).click();
     await configureSupplier(page, { sessions: 2 });
-    await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
-    await page.getByText("发现多个业务页面，请在连接设置中选择要使用的页面。", { exact: true }).waitFor();
+    await page.getByRole("button", { name: "千管家", exact: true }).click();
+    await page.getByText("发现多个千管家页面，请选择本次数据来源。", { exact: true }).waitFor();
     expect(await page.evaluate(() => (window as any).supplierReads.map((r: any) => r.kind))).toEqual(["discover"]);
+    const source = page.getByRole("combobox", { name: "千管家页面", exact: true });
+    expect(await source.inputValue()).toBe("");
+    await source.selectOption("712f9350-51c4-4599-a5ab-a6d2d40486d8");
+    await page.getByTestId("qianguanjia-home").waitFor();
+    expect(await page.evaluate(() => (window as any).supplierReads.slice(1).map((r: any) => r.sessionId))).toEqual(["712f9350-51c4-4599-a5ab-a6d2d40486d8", "712f9350-51c4-4599-a5ab-a6d2d40486d8"]);
   } finally { await page.close(); }
 });
 
@@ -220,7 +212,6 @@ it("shows the observation time for the displayed overview instead of an older ac
   try {
     await configureSupplier(page, { homeAt: "2026-10-14T09:30:00Z" });
     await page.getByRole("button", { name: "千管家", exact: true }).click();
-    await page.getByRole("button", { name: "连接已授权账户", exact: true }).click();
     await page.getByTestId("qianguanjia-home").waitFor();
     expect(await page.locator(".qianguanjia-console-toolbar small").innerText()).toContain("17:30:00");
     await page.getByRole("navigation", { name: "千管家页面" }).getByRole("button", { name: "账户管理" }).click();

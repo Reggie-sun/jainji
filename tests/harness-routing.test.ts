@@ -450,8 +450,10 @@ it('routes Qianguanjia session contracts through provider consumers without unre
     expect(r.checks.find(c => c.id === 'douyin-upload')?.kind).toBe('vitest');
     const c = r.checks.find(c => c.id === 'douyin-upload');
     if (c?.kind !== 'vitest') throw Error('Expected provider regressions');
-    expect(c.testFiles).toEqual(['tests/qianchuan-backend-adapter.test.ts','tests/qianguanjia-queries.test.ts','tests/qianguanjia-transport.test.ts']);
+    expect(c.testFiles).toEqual(['tests/qianchuan-backend-adapter.test.ts','tests/qianguanjia-queries.test.ts','tests/qianguanjia-transport.test.ts','tests/qianchuan-backend-ui.test.ts']);
   }
+  const panel = selectChecks(p,scope(['src/renderer/QianguanjiaPanel.tsx'])).checks.find(c=>c.id==='douyin-upload');
+  expect(panel?.kind==='vitest' && panel.testFiles.includes('tests/qianchuan-backend-ui.test.ts')).toBe(true);
   const fallback=selectChecks(p,scope(['src/main/qianchuan-unmapped-provider.ts']));
   const check=fallback.checks.find(c=>c.id==='douyin-upload');
   expect(check?.kind==='vitest' && check.testFiles.length>3).toBe(true);
