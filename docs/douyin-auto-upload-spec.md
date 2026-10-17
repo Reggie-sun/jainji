@@ -19,6 +19,8 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 当前账户的只读身份入口支持视频库 `/tools/creative-management/video-library`；仍核对唯一 URL advertiser、可见账户及原文档。该支持不放宽目录 GET、账户切换、native 命令或上传确认权限。
 
+当前已核对 context 内的账户页若全部因历史上传 fence 被排除，账户读取应明确报告待确认或结果未知的上传记录保护；只用 target 元数据识别这一原因，不 attach、读取或操作被排除页面。不把此情形显示成网络或账户身份故障，不因更换出口、刷新目录或清理请求而解除保护、恢复上传或重放删除；存在独立可读账户页时仍沿原核验流程读取。
+
 ## Upload Document Identity Amendment (2026-10-15)
 
 真实上传在选文件前激活本批计划页，当前网页账户的只读投影必须支持 `/uni-prom` 上唯一合法非空 `adId` 及上传/确认弹窗；仍核对原文档、唯一可见账户姓名与 URL 中的唯一 advertiser ID，不从弹窗或保存账号推断身份。CDP 使用独立 v2 隔离 world 的只读身份入口；目录 GET、账户切换及 native 命令继续使用原概览页和无弹窗限制。此观察不授选择或确认权限，原 uploader/page contract 的双 ID、精确归属、快照、永久 fence 和回执要求保持不变。

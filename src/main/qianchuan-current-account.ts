@@ -330,6 +330,9 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
     if (browserContextId !== undefined && (!browserContextId || (await connection.call("Target.getBrowserContexts") as { defaultBrowserContextId?: unknown }).defaultBrowserContextId !== browserContextId)) throw new Error(FAILURE);
     const initialTargets = (await connection.call("Target.getTargets") as { targetInfos?: unknown })?.targetInfos;
     const initialCandidates = candidates(initialTargets, excludedTargets, allowRoot, browserContextId);
+    if (!initialCandidates.length && excludedTargets.size && candidates(initialTargets, new Set(), allowRoot, browserContextId).length) {
+      throw new Error("原千川网页仍被待确认或结果未知的上传记录保护，已保留原页并暂停当前操作。请在上传任务中核查原记录。");
+    }
     if (!initialCandidates.length && Array.isArray(initialTargets) && initialTargets.every(target => target.type !== "page" || target.url === "about:blank")) throw new AccountPageLoading();
     const first = [] as Array<{ candidate: Candidate; snapshot: PageSnapshot }>;
     for (const candidate of initialCandidates) first.push({ candidate, snapshot: await readPage(connection, candidate) });

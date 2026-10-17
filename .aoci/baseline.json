@@ -4,9 +4,9 @@
   "updated_at": "2026-10-17T17:11:18Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "2d123a5716f7ce2f189bfc2b8ec8f2ca24a4cee07b51c79adbec1f6417bf9c1c",
+      "sha256": "32c86ff3d11213f70e752bd65ef16a6a19818ca0942fb315b97e7edb7ffcb640",
       "size": 71709,
-      "normalized_sha256": "2d123a5716f7ce2f189bfc2b8ec8f2ca24a4cee07b51c79adbec1f6417bf9c1c"
+      "normalized_sha256": "32c86ff3d11213f70e752bd65ef16a6a19818ca0942fb315b97e7edb7ffcb640"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "de0729b0d03db22676a3d5493fa5f6202111eed40254da97e8cf3605b28e76ab",
-      "size": 171955,
-      "normalized_sha256": "de0729b0d03db22676a3d5493fa5f6202111eed40254da97e8cf3605b28e76ab"
+      "sha256": "949668cdf9be1c1ed4aaea0362b962a13ea6326e33bb482a691c6994de5a8d42",
+      "size": 171972,
+      "normalized_sha256": "949668cdf9be1c1ed4aaea0362b962a13ea6326e33bb482a691c6994de5a8d42"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1718,9 +1718,9 @@
       "normalized_sha256": "5bde7adbc36c081f9ac4d78f8817991fea7fe00b678498e062483f2e53f3d382"
     },
     "src/main/qianchuan-current-account.ts": {
-      "sha256": "a4573ca485499d67d0d792278208558e298aaa6a69056e3eadb55e08fdb749f3",
-      "size": 22061,
-      "normalized_sha256": "a4573ca485499d67d0d792278208558e298aaa6a69056e3eadb55e08fdb749f3"
+      "sha256": "51f1fd695d1b49b771a6208bfb0aaaa2f835c6d42e2cd7bd87034e9ba27d9bf9",
+      "size": 22379,
+      "normalized_sha256": "51f1fd695d1b49b771a6208bfb0aaaa2f835c6d42e2cd7bd87034e9ba27d9bf9"
     },
     "src/main/qianchuan-delivery-page.ts": {
       "sha256": "4b865cb7bdc6392c2470569af6226a903f4769b561f475cbb2c95ff8320a7135",

@@ -21,6 +21,7 @@ const account = (targetId: string, id: string, visibilityState: "visible" | "hid
 
 interface FakeOptions {
   targets?: ReturnType<typeof account>[];
+  browserContextId?: string;
   snapshot?: (target: ReturnType<typeof account>, read: number) => unknown;
   holdTargets?: boolean;
   holdEvaluation?: boolean;
@@ -64,7 +65,9 @@ async function fakeBrowser(options: FakeOptions = {}) {
     socket.on("message", raw => {
       const request = JSON.parse(raw.toString()) as { id: number; method: string; params?: { targetId?: string; sessionId?: string }; sessionId?: string };
       const respond = (result: unknown) => { if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ id: request.id, result })); };
-      if (request.method === "Target.getTargets") {
+      if (request.method === "Target.getBrowserContexts") {
+        respond({ defaultBrowserContextId: options.browserContextId });
+      } else if (request.method === "Target.getTargets") {
         if (!options.holdTargets) respond({ targetInfos: targets.map(({ snapshot: _snapshot, ...target }) => target) });
       } else if (request.method === "Target.attachToTarget") {
         const targetId = request.params?.targetId ?? "";
@@ -391,6 +394,29 @@ it("uses only visible eligible pages and detaches every inspected target session
     expect(fixture.evaluated).toEqual(["new-visible", "old-hidden", "new-visible", "old-hidden"]);
     expect(fixture.detached).toEqual(fixture.attached);
     expect(fixture.connected()).toBe(false);
+  } finally { await fixture.close(); }
+});
+
+it("explains a protected account page without attaching to or reading it", async () => {
+  const fixture = await fakeBrowser({ targets: [account("protected-upload", "200", "visible", "/uni-prom")] });
+  try {
+    await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(["protected-upload"]), { allowSingleHidden: true }))
+      .rejects.toThrow("待确认或结果未知的上传记录");
+    expect(fixture.attached).toEqual([]);
+    expect(fixture.evaluated).toEqual([]);
+  } finally { await fixture.close(); }
+});
+
+it("does not blame upload protection when excluded targets are unrelated or in another browser context", async () => {
+  const otherContext = { ...account("protected-upload", "200", "visible", "/uni-prom"), browserContextId: "other-context" };
+  const fixture = await fakeBrowser({ targets: [otherContext], browserContextId: "original-context" });
+  try {
+    await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(["protected-upload"]), {
+      allowSingleHidden: true, browserContextId: "original-context",
+    })).rejects.toThrow("无法确认千川网页当前子账户");
+    expect(fixture.attached).toEqual([]);
+    await expect(readCurrentQianchuanPage(fixture.endpoint, undefined, new Set(["unrelated-target"]), { allowSingleHidden: true }))
+      .resolves.toMatchObject({ account: { advertiserId: "200" }, targetId: "protected-upload" });
   } finally { await fixture.close(); }
 });
 

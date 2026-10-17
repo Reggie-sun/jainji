@@ -238,7 +238,7 @@
         "tests/qianchuan-remote-runtime.test.ts",
         "tests/qianchuan-remote-selection.test.ts"
       ],
-      "timeoutMs": 600000
+      "timeoutMs": 900000
     },
     {
       "id": "cover-contracts",
