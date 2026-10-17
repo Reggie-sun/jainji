@@ -50,7 +50,7 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
   coverageMode: "contour" | "artwork" | "compact-artwork" = "contour", artworkCache?: HybridArtworkCache): Promise<HybridShapeMatch | null> {
   const config = HYBRID_SHAPE_SEARCH, deadline = Date.now() + config.wallMs;
   const artwork = coverageMode !== "contour";
-  const factors = coverageMode === "compact-artwork" ? [1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5] : config.sizeFactors;
+  const factors = coverageMode === "compact-artwork" ? [1, 1.05, 1.1, 1.15, 1.2, 1.25, 1.3, 1.35, 1.4, 1.45, 1.5, 1.75, 2, 2.5, 3] : config.sizeFactors;
   if (candidates.length > config.maximumCandidates) throw Error("HYBRID_SEARCH_LIMIT");
   const bounds = hybridMaskBounds(oldFinal, size), points: number[] = [];
   for (let p = 0; p < oldFinal.length; p++) if (oldFinal[p]) points.push(p);
@@ -85,9 +85,7 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
       metrics.rejectedAssets++; continue;
     }
     const baseScale = Math.max(bounds.width / trimmed.trimBox.width, bounds.height / trimmed.trimBox.height);
-    const maximumScale = Math.min(
-      (scope.x > 0 && scope.x + scope.width < size.width ? scope.width : bounds.width * 2) / trimmed.trimBox.width,
-      (scope.y > 0 && scope.y + scope.height < size.height ? scope.height : bounds.height * 2) / trimmed.trimBox.height);
+    const maximumScale = Math.min(scope.width / trimmed.trimBox.width, scope.height / trimmed.trimBox.height);
     const candidateFactors = coverageMode === "compact-artwork" ? [...factors, maximumScale / baseScale].sort((a, b) => a - b) : factors;
     const seenSizes = new Set<string>(), sizes: PixelSize[] = [];
     for (const factor of candidateFactors) {
@@ -97,9 +95,7 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
       const clippedCompact = coverageMode === "compact-artwork";
       if ((!clippedCompact && (width > scope.width || height > scope.height)) || seenSizes.has(`${width}/${height}`)) continue;
       // Edge clipping is bounded too: never select a giant tile merely to show a tiny opaque fragment.
-      if (clippedCompact && (width > bounds.width * 2 || height > bounds.height * 2 || width * height > 16_777_216)) continue;
-      if (clippedCompact && (scope.x > 0 && scope.x + scope.width < size.width && width > scope.width
-        || scope.y > 0 && scope.y + scope.height < size.height && height > scope.height)) continue;
+      if (clippedCompact && (width > scope.width || height > scope.height || width * height > 16_777_216)) continue;
       seenSizes.add(`${width}/${height}`); sizes.push({ width, height });
     }
     const pendingTiles = new Map<string, Uint8Array>();

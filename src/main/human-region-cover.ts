@@ -96,7 +96,7 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
     cache.set(key, matched); return matched;
   };
   const noFit = () => new ProviderError(draft.admission === "manual-production-v1"
-    ? "没有贴纸能在有限超框范围内用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会放大遮挡主体或添加白底。"
+    ? "没有贴纸能在当前可用范围内用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会拉伸贴纸或添加白底。"
     : "没有贴纸能用自身不透明图案完整覆盖全部目标框。请调整框、时段或添加更合适的贴纸；不会添加白底。");
   const round = (version: number, signal: AbortSignal, mediaId?: string, runId = ""): Promise<Map<string, StickerLayer[]>> => {
     const scope = mediaId ?? "round", key = `${scope}:${version}`;

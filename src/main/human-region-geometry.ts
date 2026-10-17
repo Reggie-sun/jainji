@@ -30,8 +30,8 @@ export function humanRegionBitmap(box: HumanPixelBox, size: PixelSize): Uint8Arr
   return result;
 }
 
-/** New artwork may extend by at most a quarter of the target on each side. */
+/** Allow one target width/height beyond each side without unbounded canvas-sized artwork. */
 export function humanRegionArtworkScope(target: HumanPixelBox): HumanPixelBox {
-  const mx = Math.floor(target.width / 4), my = Math.floor(target.height / 4);
+  const mx = target.width, my = target.height;
   return { x: target.x - mx, y: target.y - my, width: target.width + mx * 2, height: target.height + my * 2 };
 }

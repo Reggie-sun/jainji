@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import * as shapeSearch from "../src/main/shape-cover-hybrid-shape";
-import { opaqueRegionCovered, projectHumanRectangle } from "../src/main/human-region-geometry";
+import { humanRegionArtworkScope, opaqueRegionCovered, projectHumanRectangle } from "../src/main/human-region-geometry";
 import { randomUUID } from "node:crypto";
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -185,9 +185,10 @@ it.each([100, 14])("uses the first bounded fit for a bottom strip with an earlie
     const prepare = createHumanRegionCover({ draft, media: [media], preset, assets: assets as StickerAssets, tools, directory: path.join(directory, "frozen"), random: false });
     const layers = await prepare(media, 1, "compact", new AbortController().signal), layer = layers[0];
     expect(layer.cover!.stickerId).toBe(`uploaded-${(height === 100 ? "f" : "1").repeat(64)}`);
-    const binding = layer.cover!.humanRegion!, target = binding.target, visible = binding.visualBounds;
-    expect(visible.y).toBeGreaterThanOrEqual(target.y - Math.floor(target.height / 4));
-    expect(visible.height).toBeLessThanOrEqual(target.height + 2 * Math.floor(target.height / 4));
+    const binding = layer.cover!.humanRegion!, target = binding.target, visible = binding.visualBounds, scope = humanRegionArtworkScope(target);
+    expect(visible.y).toBeGreaterThanOrEqual(Math.max(0, scope.y));
+    expect(visible.y + visible.height).toBeLessThanOrEqual(Math.min(binding.projection.height, scope.y + scope.height));
+    expect(binding.placement.height).toBeLessThanOrEqual(target.height * 3);
     const png = await readFile(layer.assetPath), rgba = await decodeShapeCoverPng(png, binding.projection, tools);
     const alpha = Uint8Array.from({ length: rgba.length / 4 }, (_, p) => rgba[p * 4 + 3]);
     expect(opaqueRegionCovered(alpha, binding.projection, target)).toBe(true);

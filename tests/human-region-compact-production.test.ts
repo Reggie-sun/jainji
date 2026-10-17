@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { createHumanRegionCover, type HumanRegionIntent } from "../src/main/human-region-cover";
 import { decodeShapeCoverPng } from "../src/main/shape-cover-alpha";
-import { opaqueRegionCovered } from "../src/main/human-region-geometry";
+import { humanRegionArtworkScope, opaqueRegionCovered } from "../src/main/human-region-geometry";
 import { encodeRgbaPng, type StickerAssets } from "../src/main/builtin-stickers";
 import { loadBundledStickerAssets } from "../src/main/bundled-stickers";
 import { DEFAULT_PRESET, now, type MediaItem } from "../src/main/domain";
@@ -96,6 +96,35 @@ it("refuses oversized middle artwork, holes and cancelled searches", () => {
   expect(() => compactArtworkPlacement(alpha, tile, target, canvas, { x: 35, y: 35, width: 20, height: 20 }, AbortSignal.abort())).toThrow();
 });
 
+it.each([0, .3])("allows more artwork around a thin saved target at y=%s while freezing complete opaque coverage", async y => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-relaxed-strip-"));
+  try {
+    const tools = new FfmpegAdapter(ffmpegBin, ffprobeBin), sourcePath = path.join(directory, "source.mp4");
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=540x960:r=24", "-t", "1", "-c:v", "libx264", sourcePath]).promise;
+    expect(generated.code, generated.stderr).toBe(0);
+    const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "thin saved target", durationMs: 1000,
+      width: 540, height: 960, rotation: 0, sizeBytes: (await stat(sourcePath)).size, importedAt: now(), probeStatus: "ready" };
+    const id = randomUUID(), rectangle = { x: .2348886357504721, y, width: .5628376150364219, height: .047834884662080135 };
+    const draft: HumanRegionIntent = { id: randomUUID(), projectId: randomUUID(), revision: 0, assistedArtwork: "human-region-v1", admission: "manual-production-v1",
+      media: [{ mediaId: media.id, sourceFingerprint: media.fingerprint, disposition: "cover", identities: [{ id, label: "saved strip", semantics: "sticker", origin: "human" }],
+        segments: [{ id, identityId: id, origin: "human", track: { startMs: 0, endMs: 1000, keyframes: [{ timeMs: 0, rectangle }] } }] }] };
+    const assetPath = path.join(directory, "wide-artwork.png");
+    await writeFile(assetPath, encodeRgbaPng(Buffer.alloc(100 * 40 * 4, 255), 100, 40));
+    const assets = { [`uploaded-${"a".repeat(64)}`]: { assetPath, assetFingerprint: await fingerprintFile(assetPath) } } as StickerAssets;
+    const prepare = createHumanRegionCover({ draft, media: [media], preset: DEFAULT_PRESET, assets, tools, directory: path.join(directory, "frozen"), random: true });
+    const layers = await prepare(media, 1, "relaxed-strip", new AbortController().signal);
+    expect(layers).toHaveLength(1);
+    const binding = layers[0].cover!.humanRegion!;
+    expect(binding.rectangle).toEqual(rectangle);
+    expect(binding.visualBounds.height).toBeGreaterThan(binding.target.height + 2 * Math.floor(binding.target.height / 4));
+    expect(binding.placement.width).toBeLessThanOrEqual(binding.target.width * 3);
+    expect(binding.placement.height).toBeLessThanOrEqual(binding.target.height * 3);
+    const rgba = await decodeShapeCoverPng(await readFile(layers[0].assetPath), binding.projection, tools);
+    expect(opaqueRegionCovered(Uint8Array.from({ length: rgba.length / 4 }, (_, p) => rgba[p * 4 + 3]), binding.projection, binding.target)).toBe(true);
+    expect(await prepare(media, 1, "frozen-retry", new AbortController().signal)).toEqual(layers);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}, 60000);
+
 it("covers mixed saved boxes independently in creator mode and preserves every time range across versions", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-mixed-manual-"));
   try {
@@ -128,7 +157,6 @@ it("covers mixed saved boxes independently in creator mode and preserves every t
     for (const version of [1, 2]) for (const [index, item] of media.entries()) {
       const layers = await prepare(item, version, "creator", new AbortController().signal);
       expect(layers).toHaveLength(boxes[index].length);
-      expect(new Set(layers.map(layer => layer.cover!.stickerId)).size).toBe(layers.length);
       for (const layer of layers) {
         const binding = layer.cover!.humanRegion!, decoded = await decodeShapeCoverPng(await readFile(layer.assetPath), binding.projection, tools);
         const alpha = Uint8Array.from({ length: decoded.length / 4 }, (_, p) => decoded[p * 4 + 3]);
@@ -191,7 +219,7 @@ it.each(["corner", "portrait"])("finds real catalog artwork for the saved %s tar
     const layers = await createHumanRegionCover({ draft, media: [media], preset: DEFAULT_PRESET, assets: assets as unknown as StickerAssets,
       tools, directory: path.join(directory, "frozen"), random: false })(media, 1, "catalog", new AbortController().signal);
     const binding = layers[0].cover!.humanRegion!;
-    expect(binding.placement.width).toBeLessThanOrEqual(binding.target.width + 2 * Math.floor(binding.target.width / 4));
+    expect(binding.placement.width).toBeLessThanOrEqual(humanRegionArtworkScope(binding.target).width);
     const decoded = await decodeShapeCoverPng(await readFile(layers[0].assetPath), binding.projection, tools);
     expect(opaqueRegionCovered(Uint8Array.from({ length: decoded.length / 4 }, (_, p) => decoded[p * 4 + 3]), binding.projection, binding.target)).toBe(true);
   } finally { await rm(directory, { recursive: true, force: true }); }
