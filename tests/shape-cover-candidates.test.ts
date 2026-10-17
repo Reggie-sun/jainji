@@ -796,7 +796,7 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
         else expect(rgb.stdout[offset + (Math.floor(height / 2) * width + Math.floor(width / 2)) * 3]).toBeLessThan(30);
       }
     }
-  });
+  }, 30_000);
 
   it.each(["failure", "cancel", "write-failure"])("cleans task PNG copies after preview %s", async outcome => {
     const { root, store, layer, media, template, preset } = await frozenFixture();

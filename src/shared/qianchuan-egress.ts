@@ -13,6 +13,7 @@ export const QianchuanEgressSchema = z.object({
 export type QianchuanEgress = z.infer<typeof QianchuanEgressSchema>;
 export const EGRESS_FLAG_NAMES = ["--proxy-server", "--proxy-bypass-list", "--proxy-pac-url", "--proxy-auto-detect", "--no-proxy-server",
   "--host-resolver-rules", "--disable-quic", "--force-webrtc-ip-handling-policy", "--disable-extensions"];
+export const QIANCHUAN_EGRESS_PROBE_ENDPOINTS = ["https://checkip.amazonaws.com", "https://ipv4.icanhazip.com", "https://4.ident.me"] as const;
 export const egressIdentity = (value: QianchuanEgress | undefined): string => value ? JSON.stringify(QianchuanEgressSchema.parse(value)) : "direct";
 export const egressProxy = (value: QianchuanEgress): string => `socks5://127.0.0.1:${value.localPort}`;
 

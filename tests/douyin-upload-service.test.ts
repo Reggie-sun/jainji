@@ -3060,15 +3060,44 @@ describe("Qianchuan upload service", () => {
     if (mode !== "transient") expect(f.store.hasMarker(later.result.upload_task_id)).toBe(false);
   });
 
+  it("uses the existing initial preselection attempt for both connection and page preparation", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    const batch = await f.createBatch(["retry the same frozen export"]); await f.register(batch);
+    const connect = f.port.connect, open = f.port.open;
+    const connectAttempts: unknown[] = [], openAttempts: unknown[] = [];
+    f.port.connect = async (...args) => {
+      connectAttempts.push((args as unknown[])[2]);
+      return connect(...args);
+    };
+    f.port.open = async (...args) => {
+      openAttempts.push((args as unknown[])[3]);
+      if (openAttempts.length < 3) throw new EgressProbeUnavailable();
+      return open(...args);
+    };
+    await f.service.enqueueFinalArtifact(batch.identities[0]!);
+    await f.service.runPending();
+
+    const task = f.service.status(batch.projectId).tasks[0]!;
+    expect(connectAttempts).toEqual([0, 1, 2]);
+    expect(openAttempts).toEqual([0, 1, 2]);
+    expect(task).toMatchObject({ upload_outcome: "ACCEPTED", retry_count: 2 });
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+  });
+
   it.each(["success", "cancel"] as const)("keeps a processing group's fences intact when an appended probe retries (%s)", async mode => {
     const f = await fixture(); await f.authorize();
     const batch = await f.createBatch(["processing file", "appended file"]); await f.register(batch);
     await f.service.enqueueFinalArtifact(batch.identities[0]!);
     let completed = false, attempts = 0;
+    const probeAttempts: unknown[] = [];
     f.port.pollReady = async (tasks, signal) => completed ? f.port.ready(tasks, signal) : undefined;
     const open = f.port.open;
     f.port.open = async (...args) => {
-      if (args[1].length && ++attempts === 1) throw new EgressProbeUnavailable();
+      if (args[1].length) {
+        attempts++;
+        probeAttempts.push((args as unknown[])[3]);
+        if (mode === "cancel" ? attempts === 1 : attempts < 3) throw new EgressProbeUnavailable();
+      }
       return open(...args);
     };
     const running = f.service.runPending();
@@ -3082,12 +3111,14 @@ describe("Qianchuan upload service", () => {
         const later = f.store.tasks().find(task => task.input.export_task_id === batch.identities[1]!.export_task_id)!;
         await f.service.cancel(later.result.upload_task_id); await running;
         expect(attempts).toBe(1);
+        expect(probeAttempts).toEqual([0]);
         expect(f.store.hasMarker(later.result.upload_task_id)).toBe(false);
         expect(later.result).toMatchObject({ upload_outcome: "NOT_SELECTED", retry_count: 0 });
       } else {
-        await vi.waitFor(() => expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(2), { timeout: 3500 });
+        await vi.waitFor(() => expect(f.store.tasks().filter(task => f.store.hasMarker(task.result.upload_task_id))).toHaveLength(2), { timeout: 6500 });
         expect(f.events).not.toContain("stop");
-        expect(attempts).toBe(2);
+        expect(attempts).toBe(3);
+        expect(probeAttempts).toEqual([0, 1, 2]);
         completed = true; await running;
       }
       expect(await readFile(fencePath, "utf8")).toBe(fence);

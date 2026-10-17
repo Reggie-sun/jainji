@@ -1,5 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { egressIdentity, egressProxy, type QianchuanEgress } from "../shared/qianchuan-egress.js";
+import { egressIdentity, egressProxy, QIANCHUAN_EGRESS_PROBE_ENDPOINTS, type QianchuanEgress } from "../shared/qianchuan-egress.js";
 import { runningChromeBrowsers, type RunningChromeBrowser } from "./qianchuan-browser-discovery.js";
 import { qianchuanEgressRuntime, type EgressLease } from "./qianchuan-egress-runtime.js";
 import { BrowserEgressProbeError, probeChromeEgress } from "./qianchuan-egress-probe.js";
@@ -69,7 +69,7 @@ async function verifyPreparedBrowserEgress(
 
     const activeSignal = AbortSignal.any([preparation.signal, lease.signal]);
     try {
-      await probeChromeEgress(endpoint, expectedIp, activeSignal);
+      await probeChromeEgress(endpoint, expectedIp, activeSignal, attempt);
     } catch (error) {
       if (!(error instanceof BrowserEgressProbeError) || !error.retryable) throw error;
       await checkPreparation(preparation);
@@ -105,14 +105,17 @@ export function assertEgressArguments(browser: RunningChromeBrowser, route?: Qia
   if (actual.length !== compatible.length || compatible.some(arg => !actual.includes(arg))) throw new Error("账号浏览器的固定出口与配置不一致，未执行自动化。请先关闭该账号浏览器，核查设置后重启并连接。");
 }
 export async function verifyBrowserEgress(endpoint: string, route?: QianchuanEgress, browsers = runningChromeBrowsers,
-  preparation?: BrowserEgressPreparation): Promise<EgressLease | undefined> {
+  preparation?: BrowserEgressPreparation, attempt = 0): Promise<EgressLease | undefined> {
   if (route?.mode === "remote-browser") return qianchuanRemoteRuntime.verify(endpoint, route);
+  if (route && (!Number.isInteger(attempt) || attempt < 0 || attempt >= QIANCHUAN_EGRESS_PROBE_ENDPOINTS.length)) {
+    throw new BrowserEgressProbeError(false);
+  }
   if (preparation && route) return verifyPreparedBrowserEgress(endpoint, route, browsers, preparation);
   const matches = (await browsers()).filter(browser => browser.endpoint === endpoint);
   if (matches.length !== 1 || matches[0].connectionIssue) throw new Error("无法唯一验证账号浏览器的固定出口。");
   assertEgressArguments(matches[0], route);
   if (!route) return;
   const lease = await qianchuanEgressRuntime.verify(route);
-  await probeChromeEgress(endpoint, route.expectedIp, lease.signal);
+  await probeChromeEgress(endpoint, route.expectedIp, lease.signal, attempt);
   return lease;
 }

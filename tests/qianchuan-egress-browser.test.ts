@@ -36,16 +36,18 @@ it("retries a transient browser probe only within the same prepared browser and 
   const browsers = vi.fn(async () => [stableChrome()]);
   const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
   const probe = vi.spyOn(egressProbe, "probeChromeEgress")
+    .mockRejectedValueOnce(new BrowserEgressProbeError(true))
     .mockRejectedValueOnce(new BrowserEgressProbeError(true)).mockResolvedValueOnce(undefined);
   const check = vi.fn();
   const controller = new AbortController();
 
   await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: controller.signal, check })).resolves.toBe(lease);
 
-  expect(probe).toHaveBeenCalledTimes(2);
+  expect(probe).toHaveBeenCalledTimes(3);
+  expect(probe.mock.calls.map(call => (call as unknown as unknown[])[3])).toEqual([0, 1, 2]);
   expect(probe.mock.calls[0]?.[2]).not.toBe(lease.signal);
-  expect(verify).toHaveBeenCalledTimes(2);
-  expect(browsers).toHaveBeenCalledTimes(3);
+  expect(verify).toHaveBeenCalledTimes(3);
+  expect(browsers).toHaveBeenCalledTimes(4);
   expect(check).toHaveBeenCalled();
   expect(lease.signal.aborted).toBe(false);
 });
@@ -60,6 +62,7 @@ it("stops after three transient browser probes under the prepared context", asyn
   await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: controller.signal, check: () => {} })).rejects.toBeInstanceOf(BrowserEgressProbeError);
 
   expect(probe).toHaveBeenCalledTimes(3);
+  expect(probe.mock.calls.map(call => (call as unknown as unknown[])[3])).toEqual([0, 1, 2]);
   expect(verify).toHaveBeenCalledTimes(3);
   expect(browsers).toHaveBeenCalledTimes(3);
   expect(lease.signal.aborted).toBe(false);
@@ -270,10 +273,30 @@ it("checks the actual browser response in a disposable tab, rejecting mismatches
     const port = (await readFile(path.join(root, "DevToolsActivePort"), "utf8")).split("\n")[0];
     const endpoint = `http://127.0.0.1:${port}`, original = context.pages()[0];
     await original.goto("data:text/html,Original%20user%20tab");
-    await context.route("https://api.ipify.org/**", route => route.abort("connectionrefused"));
-    await context.route("https://checkip.amazonaws.com/**", route => route.fulfill({ status: 200, contentType: "text/plain", body: "203.0.113.11\n" }));
-    await probeChromeEgress(endpoint, "203.0.113.11", new AbortController().signal);
-    await expect(probeChromeEgress(endpoint, "203.0.113.99", new AbortController().signal)).rejects.toThrow("实际出口");
+    const requestedHosts: string[] = [];
+    await context.route("https://checkip.amazonaws.com/**", route => {
+      requestedHosts.push(new URL(route.request().url()).hostname);
+      return route.abort("connectionrefused");
+    });
+    for (const host of ["ipv4.icanhazip.com", "4.ident.me"]) {
+      await context.route(`https://${host}/**`, route => {
+        requestedHosts.push(new URL(route.request().url()).hostname);
+        return route.fulfill({ status: 200, contentType: "text/plain", body: "203.0.113.11\n" });
+      });
+    }
+    const probeAtAttempt = (expectedIp: string, attempt: number) =>
+      probeChromeEgress(endpoint, expectedIp, new AbortController().signal, attempt);
+    await expect(probeAtAttempt("203.0.113.11", 0)).rejects.toMatchObject({ retryable: true });
+    await expect(probeAtAttempt("203.0.113.11", 1)).resolves.toBeUndefined();
+    await expect(probeAtAttempt("203.0.113.11", 2)).resolves.toBeUndefined();
+    await expect(probeAtAttempt("203.0.113.99", 1)).rejects.toThrow("实际出口");
+    expect(requestedHosts).toEqual([
+      "checkip.amazonaws.com", "ipv4.icanhazip.com", "4.ident.me", "ipv4.icanhazip.com",
+    ]);
+    for (const invalidAttempt of [-1, 1.5, 3]) {
+      await expect(probeAtAttempt("203.0.113.11", invalidAttempt)).rejects.toMatchObject({ retryable: false });
+    }
+    expect(requestedHosts).toHaveLength(4);
     expect(original.isClosed()).toBe(false);
     expect(await original.locator("body").innerText()).toBe("Original user tab");
     expect(context.pages().filter(page => !page.isClosed())).toHaveLength(1);

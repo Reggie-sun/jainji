@@ -34,20 +34,20 @@ export class DouyinCdpUploader implements UploadBrowserPort {
     this.check(signal); const cancel = () => { void this.stop(); }; signal.addEventListener("abort", cancel, { once: true });
     try { const result = await work(); this.check(signal); return result; } finally { signal.removeEventListener("abort", cancel); }
   }
-  private async verifyEgress(task: UploadTaskRecord, signal: AbortSignal): Promise<EgressLease | undefined> {
-    try { return await verifyBrowserEgress(task.authorization.target.cdpEndpoint, task.authorization.target.egress); }
+  private async verifyEgress(task: UploadTaskRecord, signal: AbortSignal, attempt = 0): Promise<EgressLease | undefined> {
+    try { return await verifyBrowserEgress(task.authorization.target.cdpEndpoint, task.authorization.target.egress, undefined, undefined, attempt); }
     catch (error) {
       this.check(signal);
       if (error instanceof BrowserEgressProbeError && error.retryable) throw new EgressProbeUnavailable();
       throw uploadFailure("ACCOUNT_UNCONFIRMED", "account", "账号固定出口未通过验证，未执行上传。", "检查固定出口并明确重连；结果未知的原批次不能重传。", true);
     }
   }
-  async connect(task: UploadTaskRecord, signal: AbortSignal): Promise<void> {
+  async connect(task: UploadTaskRecord, signal: AbortSignal, attempt = 0): Promise<void> {
     this.pageContract(); this.check(signal); if (this.browser?.isConnected()) return;
     const endpoint = task.authorization.target.cdpEndpoint;
     this.remote = task.authorization.target.egress?.mode === "remote-browser";
     if (!isLoopbackUrl(endpoint) || new URL(endpoint).pathname !== "/") throw new Error("Unsafe discovery endpoint");
-    this.egressLease = await this.verifyEgress(task, signal);
+    this.egressLease = await this.verifyEgress(task, signal, attempt);
     this.egressLease?.signal.addEventListener("abort", this.egressLost, { once: true });
     this.check(signal);
     await this.action(signal, async () => {
@@ -96,11 +96,11 @@ export class DouyinCdpUploader implements UploadBrowserPort {
     const session = await page.context().newCDPSession(page);
     try { return (await session.send("Target.getTargetInfo")).targetInfo.targetId; } finally { await session.detach(); }
   }
-  async open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }> {
+  async open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal, attempt = 0): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }> {
     const task = tasks[0]; if (!task || tasks.length > MAX_UPLOAD_GROUP_SIZE) throw new Error("Invalid upload group");
     const contract = this.pageContract();
     return this.action(signal, async () => {
-      if (task.authorization.target.egress) await this.verifyEgress(task, signal);
+      if (task.authorization.target.egress) await this.verifyEgress(task, signal, attempt);
       this.check(signal);
       const initial = !this.page;
       if (!this.page) {

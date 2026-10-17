@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import WebSocket from "ws";
 import { isLoopbackUrl, UploadError } from "../shared/douyin-upload.js";
+import { QIANCHUAN_EGRESS_PROBE_ENDPOINTS } from "../shared/qianchuan-egress.js";
 
 const MAX_DISCOVERY_BYTES = 16_384;
 const MAX_PROTOCOL_PAYLOAD = 65_536;
@@ -80,7 +81,10 @@ function navigationFailure(errorText: string): BrowserEgressProbeError {
 }
 
 /** Probe only an owned background tab; never attach or evaluate a user's platform tabs. */
-export async function probeChromeEgress(endpoint: string, expectedIp: string, parentSignal: AbortSignal): Promise<void> {
+export async function probeChromeEgress(endpoint: string, expectedIp: string, parentSignal: AbortSignal, attempt = 0): Promise<void> {
+  if (!Number.isInteger(attempt) || attempt < 0 || attempt >= QIANCHUAN_EGRESS_PROBE_ENDPOINTS.length) {
+    throw new BrowserEgressProbeError(false);
+  }
   const signal = AbortSignal.any([parentSignal, AbortSignal.timeout(PROBE_TIMEOUT_MS)]);
   let endpointUrl: URL;
   try {
@@ -230,7 +234,7 @@ export async function probeChromeEgress(endpoint: string, expectedIp: string, pa
       await call("Network.setCacheDisabled", { cacheDisabled: true }, sessionId);
       await call("Network.setBypassServiceWorker", { bypass: true }, sessionId);
 
-      const url = `https://checkip.amazonaws.com/?jianji=${randomUUID()}`;
+      const url = `${QIANCHUAN_EGRESS_PROBE_ENDPOINTS[attempt]}/?jianji=${randomUUID()}`;
       const navigation = await call("Page.navigate", { url }, sessionId);
       if (typeof navigation.frameId !== "string" || !navigation.frameId) throw new BrowserEgressProbeError(false);
       if (Object.hasOwn(navigation, "errorText")) {

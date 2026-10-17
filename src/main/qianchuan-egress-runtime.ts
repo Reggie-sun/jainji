@@ -3,7 +3,7 @@ import { createConnection, createServer } from "node:net";
 import { setTimeout as delay } from "node:timers/promises";
 import { promisify } from "node:util";
 import type { EventEmitter } from "node:events";
-import { egressIdentity, QianchuanEgressSchema, type QianchuanEgress } from "../shared/qianchuan-egress.js";
+import { egressIdentity, QIANCHUAN_EGRESS_PROBE_ENDPOINTS, QianchuanEgressSchema, type QianchuanEgress } from "../shared/qianchuan-egress.js";
 import { DevelopmentEgressClient } from "./qianchuan-egress-development.js";
 export { DevelopmentEgressHost } from "./qianchuan-egress-development.js";
 
@@ -15,7 +15,6 @@ const transientProbeFailure = () => Object.assign(failure(), { code: TRANSIENT_P
 const RETRYABLE_CURL_EXIT_CODES = new Set([5, 6, 7, 28, 55, 56]);
 const PROBE_RETRY_DELAYS = [100, 250] as const;
 const MAX_PROBE_ATTEMPTS = 3;
-const PROBE_ENDPOINTS = ["https://checkip.amazonaws.com", "https://ipv4.icanhazip.com", "https://4.ident.me"] as const;
 const PROBE_REQUEST_TIMEOUT_MS = 12_000;
 const MAX_OWNED_CHILD_RECOVERIES = 3;
 const CONNECTION_DEADLINE_MS = 25_000;
@@ -69,10 +68,10 @@ export async function waitForEgressListener(port: number, signal: AbortSignal): 
 }
 /** Explicit SOCKS5 remote DNS; no proxy environment, redirects, cookies or platform credentials. */
 export async function probeEgressIp(route: QianchuanEgress, signal: AbortSignal, attempt = 0): Promise<string> {
-  if (!Number.isInteger(attempt) || attempt < 0 || attempt >= PROBE_ENDPOINTS.length) throw failure();
+  if (!Number.isInteger(attempt) || attempt < 0 || attempt >= QIANCHUAN_EGRESS_PROBE_ENDPOINTS.length) throw failure();
   try {
     const { stdout } = await execute("/usr/bin/curl", ["--disable", "--silent", "--show-error", "--fail", "--proto", "=https", "--max-time", "10",
-      "--max-filesize", "64", "--noproxy", "", "--proxy", `socks5h://127.0.0.1:${route.localPort}`, PROBE_ENDPOINTS[attempt]],
+      "--max-filesize", "64", "--noproxy", "", "--proxy", `socks5h://127.0.0.1:${route.localPort}`, QIANCHUAN_EGRESS_PROBE_ENDPOINTS[attempt]],
     { signal, timeout: PROBE_REQUEST_TIMEOUT_MS, maxBuffer: 1024, env: { PATH: "/usr/bin:/bin", LANG: "C" } });
     const ip = stdout.trim();
     if (!QianchuanEgressSchema.shape.expectedIp.safeParse(ip).success) throw failure();

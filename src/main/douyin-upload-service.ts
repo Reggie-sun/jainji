@@ -40,9 +40,9 @@ export interface BatchSelectedFile { fileName: string; index: number; ready?: bo
 export const MAX_UPLOAD_GROUP_SIZE = 9;
 export type UploadReadyProgress = (fileNames: string[]) => Promise<void>;
 export interface UploadBrowserPort {
-  connect(task: UploadTaskRecord, signal: AbortSignal): Promise<void>;
+  connect(task: UploadTaskRecord, signal: AbortSignal, attempt?: number): Promise<void>;
   prepareFiles?(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
-  open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }>;
+  open(tasks: UploadTaskRecord[], selected: BatchSelectedFile[], signal: AbortSignal, attempt?: number): Promise<{ pageOwnership: PageOwnership; selectedIndex: number }>;
   upload(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<void>;
   ready(tasks: UploadTaskRecord[], signal: AbortSignal): Promise<ReadyEvidence[]>;
   pollReady(tasks: UploadTaskRecord[], signal: AbortSignal, onReady?: UploadReadyProgress): Promise<ReadyEvidence[] | undefined>;
@@ -1512,8 +1512,8 @@ export class DouyinUploadService {
           if (this.stopFailed || this.store.unavailable || generation !== this.controlGeneration || this.stopping) throw new Error("上传控制已变化，本次浏览器操作已阻断。");
           if (retry > 0) { for (const task of tasks) task.result.retry_count++; await this.save(tasks); retryCounted = true; }
           portStarted = true;
-          await this.bounded(signal => port!.connect(first, signal), t.connect, controller.signal);
-          if (!recovery) await this.selectGroup(tasks, port, controller.signal);
+          await this.bounded(signal => port!.connect(first, signal, retry), t.connect, controller.signal);
+          if (!recovery) await this.selectGroup(tasks, port, controller.signal, retry);
           break;
         }
         catch (error) {
@@ -1622,7 +1622,7 @@ export class DouyinUploadService {
     }
     await this.save(tasks);
   }
-  private async selectGroup(tasks: UploadTaskRecord[], port: UploadBrowserPort, signal: AbortSignal): Promise<void> {
+  private async selectGroup(tasks: UploadTaskRecord[], port: UploadBrowserPort, signal: AbortSignal, preparationAttempt = 0): Promise<void> {
     const first = tasks[0]!, t = first.config.timeouts;
     if (port.prepareFiles) {
       for (const task of tasks) { await this.snapshotValid(task); signal.throwIfAborted(); }
@@ -1641,7 +1641,9 @@ export class DouyinUploadService {
         await this.save(tasks);
       }
       try {
-        prepared = await this.bounded(inner => port.open(tasks, this.selectedFiles(first), inner), t.navigation, signal);
+        const selected = this.selectedFiles(first);
+        const probeAttempt = selected.length ? retry : preparationAttempt;
+        prepared = await this.bounded(inner => port.open(tasks, selected, inner, probeAttempt), t.navigation, signal);
         break;
       } catch (error) {
         // The uploader emits this only before touching the original platform page.

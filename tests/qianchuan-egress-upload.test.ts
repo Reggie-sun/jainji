@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { expect, it, vi } from "vitest";
 import { chromium, type BrowserContext } from "playwright-core";
-import { probeChromeEgress } from "../src/main/qianchuan-egress-probe";
+import { BrowserEgressProbeError, probeChromeEgress } from "../src/main/qianchuan-egress-probe";
 import { DouyinCdpUploader } from "../src/main/douyin-cdp-uploader";
 import * as egress from "../src/main/qianchuan-egress-browser";
 import { startQianchuanFixture } from "./helpers/douyin-cdp-fixture";
@@ -60,6 +60,30 @@ it("a fresh network lease cannot revive an uploader whose captured lease was rev
     expect(state.chromeRunning).toBe(true);
     expect(state.pages.some(page => page.id === fixture.originalTargetId)).toBe(true);
   } finally { await uploader.stop(); verify.mockRestore(); await fixture.stop(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+}, 15000);
+
+it("forwards the current preselection attempt to both uploader egress checks", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "jianji-egress-attempt-index-"));
+  const fixture = await startQianchuanFixture({ tempRoot: root });
+  const lease = new AbortController();
+  const verify = vi.spyOn(egress, "verifyBrowserEgress").mockResolvedValue({ identity: "frozen-route", signal: lease.signal });
+  const uploader = new DouyinCdpUploader(fixture.contract);
+  const task = { authorization: { target: { cdpEndpoint: fixture.cdpEndpoint,
+    egress: { group: "fixture", sshHost: "fixture", localPort: 19381, expectedIp: "203.0.113.11" } } },
+    config: { timeouts: { connect: 5000 } } } as UploadTaskRecord;
+  try {
+    const signal = new AbortController().signal;
+    await uploader.connect(task, signal, 2);
+    verify.mockRejectedValueOnce(new BrowserEgressProbeError(true));
+    await expect(uploader.open([task], [], signal, 1)).rejects.toMatchObject({
+      failure: { code: "CDP_UNAVAILABLE", category: "browser", retryable: true, requires_human: false },
+    });
+    expect(verify.mock.calls.map(call => (call as unknown as unknown[])[4])).toEqual([2, 1]);
+    expect((await fixture.inspect()).events).toEqual([]);
+  } finally {
+    await uploader.stop(); verify.mockRestore(); await fixture.stop();
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
 }, 15000);
 
 async function withProbe(reply: "reset" | string, work: (error: unknown, endpoint: string) => Promise<void>, lease?: AbortController) {

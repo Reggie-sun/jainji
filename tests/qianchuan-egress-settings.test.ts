@@ -64,7 +64,7 @@ it("restores the saved fixed exit for a surviving bound Chrome on app restart wi
   await new QianchuanAccountSettings(root).restore();
   expect(ensure).toHaveBeenCalledWith(route);
   expect(verify).toHaveBeenCalledWith(route);
-  expect(probe).toHaveBeenCalledWith(browser.endpoint, route.expectedIp, lease.signal);
+  expect(probe).toHaveBeenCalledWith(browser.endpoint, route.expectedIp, lease.signal, 0);
   expect(open).not.toHaveBeenCalled(); expect(control).not.toHaveBeenCalled(); expect(recover).not.toHaveBeenCalled();
   expect(await readFile(settings.file)).toEqual(before); expect(await bindings.get("123")).toEqual(bindingBefore);
 });
