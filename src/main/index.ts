@@ -1066,5 +1066,6 @@ app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(
 const startup = bootstrap();
 installDevelopmentQuit(process, startup, () => app.quit(), () =>
   !fissionSubmitting && !automation?.busy && !batchRuntime?.controller.busy && !agent?.busy && !coverReview?.busy && !douyinUpload?.busy &&
-  [...queue.taskStatuses().values()].every(status => ["completed", "failed", "cancelled", "interrupted"].includes(status)));
+  [...queue.taskStatuses().values()].every(status => ["completed", "failed", "cancelled", "interrupted"].includes(status)),
+  () => { automationBackground.show(); mainWindow?.setTitle("简辑 · 等待任务完成后重启"); });
 void startup.catch((error) => { console.error(error); app.quit(); });

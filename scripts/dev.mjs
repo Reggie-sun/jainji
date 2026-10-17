@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build, context } from "esbuild";
-import { refreshDevelopmentEgressHost, requestDevelopmentQuit, waitForDevelopmentQuit } from "./dev-lifecycle.mjs";
+import { refreshDevelopmentEgressHost, requestDevelopmentQuit, waitForDevelopmentQuit, waitForDevelopmentExit } from "./dev-lifecycle.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const require = createRequire(import.meta.url);
@@ -45,14 +45,6 @@ function start(command, args, options = {}) {
   children.add(child);
   child.once("exit", () => children.delete(child));
   return child;
-}
-
-function waitForExit(child) {
-  if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve(child.exitCode ?? 1);
-  return new Promise((resolve, reject) => {
-    child.once("error", reject);
-    child.once("exit", (code) => resolve(code ?? 1));
-  });
 }
 
 async function reservePort() {
@@ -137,7 +129,7 @@ function reloadPlugin(bundle) {
 async function shutdown(signal) {
   if (shutdownPromise) {
     // A repeated signal re-requests a normal quit; the user may have cancelled the save prompt.
-    try { requestDevelopmentQuit(electron, { restart: signal === "SIGTERM" }); }
+    try { requestDevelopmentQuit(electron, { restart: signal === "SIGTERM", showWindow: signal === "SIGTERM" }); }
     catch (error) { console.error(`[dev] ${error.message}`); }
     return shutdownPromise;
   }
@@ -147,7 +139,7 @@ async function shutdown(signal) {
   shutdownPromise = (async () => {
     if (electron?.exitCode === null && electron.signalCode === null) {
       console.log("[dev] Waiting for normal Electron shutdown; no forced-quit timeout.");
-      await waitForDevelopmentQuit(electron, { restart: signal === "SIGTERM" });
+      await waitForDevelopmentQuit(electron, { restart: signal === "SIGTERM", showWindow: signal === "SIGTERM" });
     }
     const remaining = [...children].filter(child => child !== electron);
     await egressHost?.dispose();
@@ -207,7 +199,7 @@ try {
     electron.on("message", message => {
       if (message?.type === "jianji-dev-instance" && typeof message.directory === "string") instanceDirectory = message.directory;
     });
-    const exitCode = await waitForExit(electron);
+    const exitCode = await waitForDevelopmentExit(electron);
     if (stopping) break;
     if (restartRequested) {
       restartRequested = false;

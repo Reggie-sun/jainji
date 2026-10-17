@@ -1,7 +1,42 @@
 import { EventEmitter } from "node:events";
+import { spawn } from "node:child_process";
 import { expect, it, vi } from "vitest";
 
 const helperPath = new URL("../scripts/dev-lifecycle.mjs", import.meta.url).href;
+
+it("releases an exited Electron IPC pipe even when a descendant inherited it", async () => {
+  const { waitForDevelopmentExit } = await import(helperPath);
+  const child = spawn(process.execPath, ["-e", `
+    const {spawn}=require('node:child_process');
+    const inherited=spawn(process.execPath,['-e','setTimeout(()=>{},3000)'],{stdio:['ignore','ignore','ignore',3]});
+    process.send(inherited.pid); inherited.unref(); process.exit(0);
+  `], { stdio: ["ignore", "ignore", "ignore", "ipc"] });
+  let descendant: number | undefined;
+  child.on("message", pid => { descendant = Number(pid); });
+  try {
+    expect(await waitForDevelopmentExit(child)).toBe(0);
+    expect(child.connected).toBe(false);
+    expect(child.channel).toBeNull();
+  } finally {
+    if (child.connected) child.disconnect();
+    if (descendant) { try { process.kill(descendant, "SIGTERM"); } catch {} }
+  }
+});
+
+it("releases an already exited channel without signalling any process", async () => {
+  const { waitForDevelopmentExit } = await import(helperPath);
+  const child = { exitCode: 0, signalCode: null, connected: true, disconnect: vi.fn(), kill: vi.fn() };
+  expect(await waitForDevelopmentExit(child)).toBe(0);
+  expect(child.disconnect).toHaveBeenCalledOnce();
+  expect(child.kill).not.toHaveBeenCalled();
+});
+
+it("requests the visible original window for an explicit make replacement", async () => {
+  const { requestDevelopmentQuit } = await import(helperPath);
+  const child = { exitCode: null, signalCode: null, connected: true, send: vi.fn() };
+  requestDevelopmentQuit(child, { restart: true, showWindow: true });
+  expect(child.send).toHaveBeenCalledWith({ type: "jianji-dev-restart", showWindow: true }, expect.any(Function));
+});
 
 it("retains the egress owner for identical runtime bytes and replaces it only after old cleanup", async () => {
   const { refreshDevelopmentEgressHost } = await import(helperPath);

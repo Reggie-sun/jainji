@@ -4,6 +4,28 @@ import { installDevelopmentQuit } from "../src/main/development-lifecycle";
 
 afterEach(() => vi.useRealTimers());
 
+it("shows the original window while a make replacement waits for active work, including repeated requests", async () => {
+  const parent = Object.assign(new EventEmitter(), { env: { JIANJI_DEV_SERVER_URL: "http://localhost" }, send: vi.fn() });
+  const quit = vi.fn(), show = vi.fn();
+  vi.useFakeTimers();
+  installDevelopmentQuit(parent, Promise.resolve(), quit, () => false, show);
+  parent.emit("message", { type: "jianji-dev-restart", showWindow: true });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(show).toHaveBeenCalledOnce(); expect(quit).not.toHaveBeenCalled();
+  parent.emit("message", { type: "jianji-dev-restart", showWindow: true });
+  await Promise.resolve(); expect(show).toHaveBeenCalledTimes(2);
+});
+
+it("does not bring a window to the front for an ordinary code rebuild", async () => {
+  vi.useFakeTimers();
+  const parent = Object.assign(new EventEmitter(), { env: { JIANJI_DEV_SERVER_URL: "http://localhost" }, send: vi.fn() });
+  const show = vi.fn();
+  installDevelopmentQuit(parent, Promise.resolve(), vi.fn(), () => false, show);
+  parent.emit("message", { type: "jianji-dev-restart" });
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(show).not.toHaveBeenCalled();
+});
+
 it("coalesces rebuilds and waits until production is idle before restarting", async () => {
   vi.useFakeTimers();
   const parent = Object.assign(new EventEmitter(), { env: { JIANJI_DEV_SERVER_URL: "http://localhost" }, send: vi.fn() });

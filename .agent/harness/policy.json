@@ -854,7 +854,7 @@
     },
     {
       "id": "domain-desktop-multi-instance",
-      "paths": ["Makefile", "scripts/dev.mjs", "scripts/dev-start.sh", "scripts/dev-multi-instance-smoke.mjs", "src/main/desktop-instance.ts", "src/main/index.ts", "src/main/qianchuan-scheduled-launch.ts", "tests/desktop-instance.test.ts", "tests/dev-start.test.ts", "tests/qianchuan-scheduled-launch.test.ts"],
+      "paths": ["Makefile", "scripts/dev.mjs", "scripts/dev-lifecycle.mjs", "scripts/dev-stop.sh", "scripts/dev-start.sh", "scripts/dev-multi-instance-smoke.mjs", "src/main/development-lifecycle.ts", "src/main/desktop-instance.ts", "src/main/index.ts", "src/main/qianchuan-scheduled-launch.ts", "tests/desktop-instance.test.ts", "tests/dev-start.test.ts", "tests/qianchuan-scheduled-launch.test.ts"],
       "checkIds": ["typecheck", "desktop-multi-instance", "desktop-multi-instance-smoke", "lifecycle", "extended-regressions", "documents"],
       "testFilesByCheck": { "lifecycle": ["tests/knowledge-startup.test.ts"], "extended-regressions": ["tests/dev-launcher.test.ts", "tests/development-lifecycle.test.ts"] },
       "documentRefs": ["AGENTS.md", "README.md", "docs/agent-contract-index.md", "docs/video-validation-harness-spec.md"]

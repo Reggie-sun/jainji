@@ -34,13 +34,18 @@ fi
 # The launcher requests the existing idle/save/close path and releases its Vite
 # and build watchers before this script permits a fresh launch.
 kill -TERM "$launcher_pid"
-echo "Waiting for the previous primary workspace to finish tasks and close normally..."
+echo "Waiting for Jianji window PID $primary_pid and launcher PID $launcher_pid to close normally."
+echo "The existing window will be shown; running tasks and any save prompt remain there."
 for i in $(seq 1 180); do
   if ! kill -0 "$primary_pid" 2>/dev/null && ! kill -0 "$launcher_pid" 2>/dev/null; then
     exit 0
   fi
   if [ "$((i % 15))" -eq 0 ]; then
-    echo "Still waiting (${i}s); no replacement will start before the original owner exits."
+    if kill -0 "$primary_pid" 2>/dev/null; then
+      echo "Still waiting (${i}s): window PID $primary_pid is finishing tasks or awaiting a save decision."
+    else
+      echo "Still waiting (${i}s): window has exited; launcher PID $launcher_pid is releasing development resources."
+    fi
   fi
   sleep 1
 done

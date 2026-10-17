@@ -32,6 +32,9 @@ for (const entry of await readdir(path.join(root, "resources"))) {
   await symlink(path.join(root, "resources", entry), path.join(fixture, "resources", entry));
 }
 await build({ entryPoints: ["src/main/index.ts"], bundle: true, platform: "node", format: "cjs",
+  // Playwright has no parent IPC. Enable the same parent-only listener in this
+  // disposable app so replacement requests exercise the production window wiring.
+  banner: { js: "process.send ??= () => true;" },
   external: ["electron", "playwright-core", "sql.js/*"], outfile: path.join(fixture, "dist-electron/main.cjs") });
 await build({ entryPoints: ["src/main/preload.ts"], bundle: true, platform: "node", format: "cjs",
   external: ["electron"], outfile: path.join(fixture, "dist-electron/preload.cjs") });
@@ -103,9 +106,37 @@ try {
   assert.equal(restored.project.name, "独立窗口B");
   assert.equal(restored.project.mediaItems[0].probeStatus, "ready");
   assert.equal(restored.recentProjects.some(project => project.name === "独立窗口A"), false);
+  await close(restarted);
+  const waiting = await launch();
+  await waiting.page.evaluate(media => window.jianji.addAndProbe([media]), media);
+  await waiting.application.evaluate(({ BrowserWindow, dialog }) => {
+    dialog.showMessageBox = () => new Promise(resolve => {
+      globalThis.restartPromptVisible = true;
+      globalThis.finishRestartPrompt = () => resolve({ response: 1 });
+      setTimeout(globalThis.finishRestartPrompt, 10_000).unref();
+    });
+    BrowserWindow.getAllWindows()[0].hide();
+    process.emit("message", { type: "jianji-dev-restart", showWindow: true });
+  });
+  const deadline = Date.now() + 5000;
+  while (!await waiting.application.evaluate(() => globalThis.restartPromptVisible === true)) {
+    if (Date.now() >= deadline) throw new Error("Replacement did not reach the normal save prompt.");
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  const visible = await waiting.application.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows()[0];
+    return { visible: window.isVisible(), minimized: window.isMinimized(), title: window.getTitle() };
+  });
+  assert.equal(visible.visible, true); assert.equal(visible.minimized, false);
+  assert.equal(visible.title, "简辑 · 等待任务完成后重启");
+  await waiting.page.screenshot({ path: path.join(directory, "replacement-visible.png") });
+  const exited = new Promise(resolve => waiting.application.process().once("exit", resolve));
+  await waiting.application.evaluate(() => globalThis.finishRestartPrompt());
+  await exited; applications.delete(waiting.application);
   const report = { result: "PASS", directory, primaryDirectoryRetained: true, separateProjectIds: true,
     independentEditing: true, closingFirstKeepsSecond: true, gracefulLockRelease: true, restartProfilePinned: true,
     independentHistoryRetained: true, primaryReusePreservesWorkspace: true, primaryReuseCreatesNoProfile: true,
+    replacementShowsHiddenWindow: true, replacementWaitsForSaveDecision: true,
     realAccounts: false, modelRequests: 0, uploads: 0 };
   await writeFile(path.join(directory, "report.json"), JSON.stringify(report, null, 2));
   console.log(JSON.stringify(report));

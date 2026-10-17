@@ -5,7 +5,7 @@ interface ParentChannel {
 }
 
 /** Parent-only development control; renderer IPC and packaged launches cannot use it. */
-export function installDevelopmentQuit(parent: ParentChannel, startup: Promise<void>, quit: () => void, canRestart: () => boolean = () => true): void {
+export function installDevelopmentQuit(parent: ParentChannel, startup: Promise<void>, quit: () => void, canRestart: () => boolean = () => true, showWindow: () => void = () => {}): void {
   if (!parent.env.JIANJI_DEV_SERVER_URL || typeof parent.send !== "function") return;
   let pendingRestart = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -33,6 +33,7 @@ export function installDevelopmentQuit(parent: ParentChannel, startup: Promise<v
   parent.on("message", message => {
     if (!message || typeof message !== "object" || !("type" in message)) return;
     if (message.type === "jianji-dev-restart") {
+      if ("showWindow" in message && message.showWindow === true) void startup.then(showWindow, () => {});
       if (pendingRestart) return;
       pendingRestart = true;
       void startup.then(tryRestart, () => {

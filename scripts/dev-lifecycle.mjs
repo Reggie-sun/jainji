@@ -9,11 +9,25 @@ export async function refreshDevelopmentEgressHost(current, bytes, createHost) {
 }
 
 /** Ask the app to save/close through its normal lifecycle. Never force-kill it. */
-export function requestDevelopmentQuit(child, { restart = false } = {}) {
+export function requestDevelopmentQuit(child, { restart = false, showWindow = false } = {}) {
   if (!child || child.exitCode !== null || child.signalCode !== null) return;
   if (!child.connected) throw new Error("Electron parent IPC unavailable; close the application normally before restarting.");
-  child.send({ type: restart ? "jianji-dev-restart" : "jianji-dev-quit" }, error => {
+  child.send({ type: restart ? "jianji-dev-restart" : "jianji-dev-quit", ...(showWindow ? { showWindow: true } : {}) }, error => {
     if (error) console.error("[dev] Could not request a normal quit; close Electron manually.");
+  });
+}
+
+/** Electron can exit while an inherited IPC pipe remains open. Release that
+ * exited child's channel so no invisible owner survives a rebuild or close. */
+export function waitForDevelopmentExit(child) {
+  const release = () => { if (child.connected) child.disconnect(); };
+  if (child.exitCode !== null || child.signalCode !== null) {
+    release();
+    return Promise.resolve(child.exitCode ?? 1);
+  }
+  return new Promise((resolve, reject) => {
+    child.once("error", reject);
+    child.once("exit", code => { release(); resolve(code ?? 1); });
   });
 }
 /** A disconnected parent channel requires manual close, not forced termination. */
