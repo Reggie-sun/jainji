@@ -108,7 +108,6 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
   const startReasons = [
     ...(busy ? ["正在准备，请稍候。"] : []),
     ...(loading ? ["正在读取模板，请稍候。"] : []),
-    ...(running ? ["当前批量制作尚未结束，请等待完成或停止整批。"] : []),
     ...(exporting ? ["仍有视频等待导出或正在导出，请等待完成。"] : []),
     ...(state.agentRun?.status === "running" ? ["当前 Agent 制作尚未结束，请等待完成。"] : []),
     ...(!state.capabilities.ready ? ["本地制作环境尚未就绪，请检查页面顶部的环境提示。"] : []),
@@ -117,11 +116,15 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
     ...(!entryValidation.success && selected.length && !rowErrors.length ? ["制作参数无效，请检查所选模板的设置。"] : []),
   ];
   const firstRowError = rowErrors[0];
-  const startHint = firstRowError && startReasons[0] === `${firstRowError.name}：${firstRowError.message}`
+  const startHint = running ? undefined : firstRowError && startReasons[0] === `${firstRowError.name}：${firstRowError.message}`
     ? `${rowErrors.filter(error => error.message === firstRowError.message).length} 个模板：${firstRowError.message}`
     : startReasons[0];
   const start = async () => {
-    if (!valid || busy || running) return;
+    if (running) {
+      window.alert("当前批量制作尚未结束，请等待完成或停止整批。");
+      return;
+    }
+    if (!valid || busy) return;
     setBusy(true); setError("");
     try {
       onState(await window.jianji.startBatchProduction(BatchProductionStartSchema.parse({ entries })));
@@ -204,7 +207,7 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
                   <option value="" disabled>请选择上传账号</option>
                   {(state.douyinUpload?.accounts ?? []).map(account => <option key={account.product} value={account.product} disabled={!account.available}>{qianchuanUploadAccountLabel(account, currentAccountFor(row), account.product === uploadAccount.accountProduct && row.uploadEnabled && account.available)}{!account.available && "（不可用）"}</option>)}
                 </select>
-                {row.uploadEnabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy || running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })}
+                {row.uploadEnabled && <QianchuanPlanSelect key={`${planAccount?.product}:${planAccount?.advertiserId}`} compact account={planAccount} value={row.uploadPlan} disabled={busy} subaccountDisabled={running} idPrefix={prefix} onChange={uploadPlan => update(row.recentProjectId, { uploadPlan })}
                   onAccountRead={account => setAccountReads(current => ({ ...current, [row.recentProjectId]: { product: planAccount?.product, anchor: planAccount?.advertiserId, account } }))} />}
                 {!uploadAccount.error && <small>{row.uploadBinding ? "已保存关联" : "同名匹配，可改选账号"}</small>}
               </div>
@@ -217,7 +220,7 @@ export function BatchProductionPanel({ state, visible, onState, onAutomation, on
       })}
     </div>
     <button type="button" className="button secondary compact" disabled={busy || loading || !automationProduction} onClick={() => automationProduction && onAutomation?.(automationProduction)}>保存为定时任务</button>
-    <div className="step-footer"><div style={{ minWidth: 0 }}><strong>已选择 {selected.length} 个模板，共制作 {total} 条视频</strong><small>开始后仍可编辑下一批参数；当前任务保留开始时的设置。失败项不会自动重试。</small></div><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>{startHint && <small id="batch-start-reasons" role="status" aria-live="polite" title={startReasons.join("\n")} style={{ color: "#b14444", marginTop: 0, maxWidth: 420, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{startHint}</small>}<button className="button primary" style={{ flexShrink: 0 }} aria-describedby={startHint ? "batch-start-reasons" : undefined} disabled={busy || loading || running || exporting || state.agentRun?.status === "running" || !state.capabilities.ready || Boolean(state.batchProductionWarning) || !valid} onClick={() => void start()}><Icon name="play" size={18} />{busy ? "正在准备…" : running ? "批量制作中" : "开始批量制作"}</button></div></div>
+    <div className="step-footer"><div style={{ minWidth: 0 }}><strong>已选择 {selected.length} 个模板，共制作 {total} 条视频</strong><small>开始后仍可编辑下一批参数；当前任务保留开始时的设置。失败项不会自动重试。</small></div><div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>{startHint && <small id="batch-start-reasons" role="status" aria-live="polite" title={startReasons.join("\n")} style={{ color: "#b14444", marginTop: 0, maxWidth: 420, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{startHint}</small>}<button className="button primary" style={{ flexShrink: 0 }} aria-describedby={startHint ? "batch-start-reasons" : undefined} disabled={busy || loading || (!running && (exporting || state.agentRun?.status === "running" || !state.capabilities.ready || Boolean(state.batchProductionWarning) || !valid))} onClick={() => void start()}><Icon name="play" size={18} />{busy ? "正在准备…" : "开始批量制作"}</button></div></div>
     {run && <section className="card batch-production-results" aria-label="批量制作进度"><div className="card-header"><h2>{running ? "批量制作进行中" : run.status === "interrupted" ? "上次批量制作已中断" : run.status === "cancelled" ? "批量制作已停止" : "批量制作结果"}</h2>{running && <button className="button secondary compact" disabled={stopping || run.status === "cancelling"} onClick={() => void stop()}>{stopping || run.status === "cancelling" ? "正在停止…" : "停止整批"}</button>}</div>{run.error && <p className="batch-error">{run.error}</p>}
       {run.jobs.map((job, index) => <div className="batch-result-row" key={job.id}><span className="batch-order">{index + 1}</span><div className="batch-result-info"><button type="button" className="text-button batch-result-name" aria-label={`查看 ${job.name} 作品`} onClick={() => openDetails({ runId: run.id, jobId: job.id, name: job.name })}>{job.name}</button><p>{job.completedCount} / {job.actualCount || job.requestedCount} 条完成{job.mode && ` · ${modeLabels[job.mode]}`} · 覆盖{job.coverEnabled ? "开启" : "关闭"} · 价格{job.displayMode === "full" ? "全程" : "前 5 秒"}</p>{job.error && <small className="batch-error">{job.error}</small>}{job.outputDirectory && <small>{job.outputDirectory}</small>}</div><span className={`status-tag ${job.status}`}>{labels[job.status]}</span>{running && ["queued", "preparing", "producing", "exporting"].includes(job.status) && <button type="button" className="text-button" aria-label={`取消 ${job.name} 制作`} disabled={stopping || run.status === "cancelling" || cancellingJobs.includes(job.id)} onClick={() => void cancelJob(run.id, job.id)}>{cancellingJobs.includes(job.id) ? "正在取消…" : "取消该项"}</button>}<button type="button" className="text-button" onClick={() => openDetails({ runId: run.id, jobId: job.id, name: job.name })}>查看作品</button>{job.completedTaskIds?.[0] && <div className="row-actions"><button className="text-button" onClick={() => void artifact(job.completedTaskIds![0], false)}>播放首条</button><button className="icon-button" aria-label={`打开 ${job.name} 成片文件夹`} onClick={() => void artifact(job.completedTaskIds![0], true)}><Icon name="folder" size={18} /></button></div>}</div>)}
     </section>}

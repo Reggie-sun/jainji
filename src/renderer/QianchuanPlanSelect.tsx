@@ -12,9 +12,10 @@ function planReadError(cause: unknown): string {
   return message;
 }
 
-export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, disabled = false, idPrefix = "qianchuan", compact = false, purpose = "upload" }: {
+export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, disabled = false, subaccountDisabled = false, idPrefix = "qianchuan", compact = false, purpose = "upload" }: {
   account?: QianchuanAccountSummary; value?: QianchuanPlanOption;
   onChange(value?: QianchuanPlanOption): void; disabled?: boolean; idPrefix?: string; compact?: boolean; purpose?: "upload" | "cleanup";
+  subaccountDisabled?: boolean;
   onAccountRead?(account?: QianchuanCurrentAccount): void;
 }) {
   const label = purpose === "cleanup" ? "清理计划" : "上传计划";
@@ -116,7 +117,7 @@ export function QianchuanPlanSelect({ account, value, onChange, onAccountRead, d
   const displayedAccount = scopedCatalog?.account ?? directoryCurrent;
   const accountLabel = displayedAccount && (displayedAccount.name ? `${displayedAccount.name} · 账户 ${displayedAccount.advertiserId}` : `网页账户 · 账户 ${displayedAccount.advertiserId}`);
   return <div className={`qianchuan-plan-select${compact ? " compact" : ""}`} style={{ gridColumn: compact ? undefined : "1 / -1", minWidth: 0 }}>
-    {purpose === "upload" && <QianchuanSubaccountSelect key={`${product}:${advertiserId}`} account={account} disabled={disabled || loading || switching} idPrefix={idPrefix} refreshKey={revision} forceRefresh={forceRefresh}
+    {purpose === "upload" && <QianchuanSubaccountSelect key={`${product}:${advertiserId}`} account={account} disabled={disabled || subaccountDisabled || loading || switching} idPrefix={idPrefix} refreshKey={revision} forceRefresh={forceRefresh}
       onAccountRead={(current, cache) => { setDirectoryAccount(current && product && advertiserId ? { product, anchor: advertiserId, current, ...(cache ? { cache } : {}) } : undefined); accountRead.current?.(current); }}
       onSwitching={value => { setSwitching(value); if (value) { change.current(undefined); setDirectoryAccount(undefined); accountRead.current?.(undefined); } }} />}
     <label htmlFor={`${idPrefix}-plan`}>{label}</label>

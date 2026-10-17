@@ -529,6 +529,49 @@ it("hands enabled automatic upload to new batch production and keeps it frozen d
   } finally { await page.close(); }
 }, 30000);
 
+it.each(["running", "cancelling"])("keeps batch plans and scheduling available during %s and warns only on start", async status => {
+  const { page, errors } = await fixture();
+  try {
+    await page.evaluate(() => (window as any).taskPagesFixture.configureAccounts());
+    await rail(page, "批量制作").click();
+    await page.getByLabel("选择模板 蝴蝶贴", { exact: true }).check();
+    await page.locator('[id$="-plan"]').first().selectOption("456");
+    await page.getByRole("button", { name: "开始批量制作", exact: true }).click();
+    const frozen = await page.evaluate(() => (window as any).taskPagesFixture.calls.batchStarts[0]);
+    await page.evaluate(status => { const f = (window as any).taskPagesFixture; f.state.batchProduction.status = status; f.emit(); }, status);
+    await page.getByRole("spinbutton", { name: "想制作的视频条数", exact: true }).first().fill("8");
+    const row = page.getByRole("region", { name: "蝴蝶贴制作设置", exact: true });
+    await page.waitForFunction(() => !document.querySelector('.batch-template-row select[id$="-plan"]')?.hasAttribute("disabled"));
+    expect(await row.getByRole("combobox", { name: "上传计划", exact: true }).isEnabled()).toBe(true);
+    expect(await row.getByRole("combobox", { name: "子账户", exact: true }).isDisabled()).toBe(true);
+    const reads = await page.evaluate(() => (window as any).taskPagesFixture.calls.plans.length);
+    await row.getByRole("button", { name: "刷新计划", exact: true }).click();
+    await page.waitForFunction(reads => (window as any).taskPagesFixture.calls.plans.length > reads, reads);
+    await row.getByRole("combobox", { name: "上传计划", exact: true }).selectOption("");
+    expect(await page.getByText("当前批量制作尚未结束，请等待完成或停止整批。", { exact: true }).count()).toBe(0);
+    const start = page.getByRole("button", { name: "开始批量制作", exact: true });
+    expect(await start.isEnabled()).toBe(true);
+    const dialog = page.waitForEvent("dialog");
+    const click = start.click();
+    const warning = await dialog;
+    expect(warning.type()).toBe("alert");
+    expect(warning.message()).toBe("当前批量制作尚未结束，请等待完成或停止整批。");
+    await warning.accept();
+    await click;
+    await row.getByRole("combobox", { name: "上传计划", exact: true }).selectOption("456");
+    await page.getByRole("button", { name: "保存为定时任务", exact: true }).click();
+    await page.getByLabel("任务名称", { exact: true }).fill("制作中的下一轮定时任务");
+    await page.getByLabel(/我授权简辑/).check();
+    await page.getByRole("button", { name: "保存定时任务", exact: true }).click();
+    await page.waitForFunction(() => (window as any).taskPagesFixture.calls.created.length === 1);
+    const calls = await page.evaluate(() => (window as any).taskPagesFixture.calls);
+    expect(calls.created[0].production.entries[0].requestedCount).toBe(8);
+    expect(calls.batchStarts).toEqual([frozen]);
+    expect(calls.sideEffects).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 30000);
+
 it("separates production stages, retains drafts and explains missing text beside output", async () => {
   const { page, errors } = await fixture();
   try {
