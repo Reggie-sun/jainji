@@ -1,5 +1,5 @@
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
-import { readShapeCoverAsset, trimShapeCoverArtwork, rasterizeShapeCoverArtwork, rasterizeClippedShapeArtwork, type ShapeCoverMediaTools, type ShapeCoverPlacement } from "./shape-cover-alpha.js";
+import { readShapeCoverAsset, trimShapeCoverArtwork, rasterizeShapeCoverArtwork, rasterizeShapeCoverAlphaBatch, rasterizeClippedShapeArtwork, type ShapeCoverMediaTools, type ShapeCoverPlacement } from "./shape-cover-alpha.js";
 import { evaluateShapeCover, growOpaqueContour, SHAPE_COVER_PIXEL_CONTRACT, type PixelSize } from "./shape-cover-pixel-gate.js";
 import { discoveryHash } from "./source-fact-discovery-evidence.js";
 import { freezeAI } from "./source-fact-ai-contract.js";
@@ -89,7 +89,7 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
       (scope.x > 0 && scope.x + scope.width < size.width ? scope.width : bounds.width * 2) / trimmed.trimBox.width,
       (scope.y > 0 && scope.y + scope.height < size.height ? scope.height : bounds.height * 2) / trimmed.trimBox.height);
     const candidateFactors = coverageMode === "compact-artwork" ? [...factors, maximumScale / baseScale].sort((a, b) => a - b) : factors;
-    const seenSizes = new Set<string>();
+    const seenSizes = new Set<string>(), sizes: PixelSize[] = [];
     for (const factor of candidateFactors) {
       check();
       const epsilon = coverageMode === "compact-artwork" ? 1e-9 : 0;
@@ -100,13 +100,33 @@ export async function searchHybridCornerShape(candidates: readonly HybridSticker
       if (clippedCompact && (width > bounds.width * 2 || height > bounds.height * 2 || width * height > 16_777_216)) continue;
       if (clippedCompact && (scope.x > 0 && scope.x + scope.width < size.width && width > scope.width
         || scope.y > 0 && scope.y + scope.height < size.height && height > scope.height)) continue;
-      seenSizes.add(`${width}/${height}`); metrics.rasters++; check();
+      seenSizes.add(`${width}/${height}`); sizes.push({ width, height });
+    }
+    const pendingTiles = new Map<string, Uint8Array>();
+    for (let sizeIndex = 0; sizeIndex < sizes.length; sizeIndex++) {
+      const { width, height } = sizes[sizeIndex], clippedCompact = coverageMode === "compact-artwork";
+      metrics.rasters++; check();
       const rasterKey = `${trimmed.sha256}:${width}:${height}`;
       const cached = artworkCache?.get(rasterKey);
-      const tile = cached && "raster" in cached ? cached.raster
-        : { alpha: indexed ? await (await getIndex()).alpha(width, height, async () =>
-          (await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools)).alpha)
-          : (await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools)).alpha };
+      let tile = cached && "raster" in cached ? cached.raster : pendingTiles.has(rasterKey) ? { alpha: pendingTiles.get(rasterKey)! } : undefined;
+      if (!tile && indexed) {
+        // Measure missing sizes together. Each packed decode is bounded by the same pixel cap.
+        const batch: PixelSize[] = [];
+        let packedWidth = 0, packedHeight = 0;
+        for (const next of sizes.slice(sizeIndex)) {
+          const hit = artworkCache?.get(`${trimmed.sha256}:${next.width}:${next.height}`);
+          if (hit && "raster" in hit) continue;
+          const nextWidth = packedWidth + next.width, nextHeight = Math.max(packedHeight, next.height);
+          if (batch.length && nextWidth * nextHeight > 16_777_216) break;
+          batch.push(next); packedWidth = nextWidth; packedHeight = nextHeight;
+        }
+        const rasters = await (await getIndex()).alphaBatch(batch, missing => rasterizeShapeCoverAlphaBatch(trimmed.bytes, missing, tools));
+        check();
+        batch.forEach((entry, i) => pendingTiles.set(`${trimmed.sha256}:${entry.width}:${entry.height}`, rasters[i]));
+        tile = { alpha: pendingTiles.get(rasterKey)! };
+      }
+      tile ??= { alpha: (await rasterizeShapeCoverArtwork(trimmed.bytes, { width, height }, { x: 0, y: 0, width, height }, tools)).alpha };
+      pendingTiles.delete(rasterKey);
       rememberArtwork(artworkCache, rasterKey, { raster: tile });
       const positions = new Map<string, ShapeCoverPlacement>();
       if (clippedCompact) {

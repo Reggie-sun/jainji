@@ -2,15 +2,16 @@ import { randomUUID, createHash } from "node:crypto";
 import { open, mkdir, rename, unlink, stat } from "node:fs/promises";
 import path from "node:path";
 import { deflateSync, inflateSync } from "node:zlib";
+import { PNG } from "pngjs";
 import type { BuiltinStickerAsset } from "./builtin-stickers.js";
-import { decodeShapeCoverPng, readShapeCoverAsset, trimShapeCoverArtwork, type ShapeCoverMediaTools } from "./shape-cover-alpha.js";
+import { readShapeCoverAsset, trimShapeCoverArtwork, type ShapeCoverMediaTools } from "./shape-cover-alpha.js";
 
 const CACHE_SCHEMA = "human-region-artwork-index";
 const CACHE_VERSION = 1;
 const MAX_CACHE_BYTES = 16 * 1024 * 1024;
 const MAX_PIXELS = 16_777_216;
 const MAX_ALPHA_BYTES = 32 * 1024 * 1024;
-const MAX_ALPHA_VARIANTS = 16;
+const MAX_ALPHA_VARIANTS = 64;
 const MAX_TRIM_DIMENSION = 4096;
 const DIGEST = /^[a-f0-9]{64}$/;
 const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -19,6 +20,7 @@ type TrimmedArtwork = Awaited<ReturnType<typeof trimShapeCoverArtwork>>;
 type BinaryIdentity = { path: string; size: number; mtimeMs: number };
 type DecoderIdentity = { ffmpeg: BinaryIdentity; ffprobe: BinaryIdentity };
 type AlphaVariant = { width: number; height: number; deflateBase64: string; sha256: string };
+type AlphaSize = { width: number; height: number };
 type ArtworkCache = {
   schema: typeof CACHE_SCHEMA;
   version: typeof CACHE_VERSION;
@@ -55,6 +57,22 @@ function pngDimensions(bytes: Buffer): { width: number; height: number } | undef
   if (bytes.length < 33 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE)
     || bytes.readUInt32BE(8) !== 13 || bytes.toString("ascii", 12, 16) !== "IHDR") return undefined;
   return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+function hasBoundedCachePngLayout(bytes: Buffer): boolean {
+  if (bytes[24] !== 8 || bytes[25] !== 6 || bytes[26] !== 0 || bytes[27] !== 0 || bytes[28] !== 0) return false;
+  let data = false;
+  for (let offset = 8; offset + 12 <= bytes.length;) {
+    const length = bytes.readUInt32BE(offset), end = offset + length + 12;
+    if (end > bytes.length) return false;
+    const kind = bytes.toString("ascii", offset + 4, offset + 8);
+    // A later IHDR must never replace the dimensions/interlace mode checked above.
+    if (kind === "IHDR" && offset !== 8 || ["acTL", "fcTL", "fdAT"].includes(kind)) return false;
+    if (kind === "IDAT") data = true;
+    if (kind === "IEND") return data && length === 0 && end === bytes.length;
+    offset = end;
+  }
+  return false;
 }
 
 function alphaKey(width: number, height: number): string {
@@ -117,7 +135,10 @@ function parseArtworkCache(value: unknown, sourceFingerprint: string, expectedDe
   const png = parseBase64(value.trimmedPng.base64, MAX_CACHE_BYTES);
   if (!png || png.length === 0 || digest(png) !== value.trimmedPng.sha256) return undefined;
   const dimensions = pngDimensions(png);
-  if (!dimensions || dimensions.width !== width || dimensions.height !== height) return undefined;
+  // Our encoder emits non-interlaced 8-bit RGBA. Preflight this before any inflation;
+  // pngjs bounds non-interlaced inflation by the already bounded dimensions.
+  if (!dimensions || dimensions.width !== width || dimensions.height !== height
+    || !hasBoundedCachePngLayout(png)) return undefined;
 
   if (!Array.isArray(value.alphaVariants) || value.alphaVariants.length > MAX_ALPHA_VARIANTS) return undefined;
   const alpha = new Map<string, Buffer>();
@@ -250,6 +271,7 @@ function isSupportedTrimBox(trimBox: TrimmedArtwork["trimBox"]): boolean {
 export async function loadHumanRegionArtworkIndex(asset: BuiltinStickerAsset, bytes: Buffer, tools: ShapeCoverMediaTools): Promise<{
   trimmed: TrimmedArtwork;
   alpha(width: number, height: number, produce: () => Promise<Uint8Array>): Promise<Uint8Array>;
+  alphaBatch(sizes: readonly AlphaSize[], produce: (missing: AlphaSize[]) => Promise<Uint8Array[]>): Promise<Uint8Array[]>;
 }> {
   const sourceFingerprint = `sha256:${digest(bytes)}`;
   if (asset.assetFingerprint !== sourceFingerprint) throw new Error("sticker asset fingerprint mismatch");
@@ -277,7 +299,10 @@ export async function loadHumanRegionArtworkIndex(asset: BuiltinStickerAsset, by
     const png = trimCacheBytes(cache);
     // The stored PNG is retained only after its digest and header dimensions have passed validation.
     try {
-      await decodeShapeCoverPng(png, { width: cache.trimBox.width, height: cache.trimBox.height }, tools);
+      const decoded = PNG.sync.read(png, { checkCRC: true });
+      if (decoded.width !== cache.trimBox.width || decoded.height !== cache.trimBox.height
+        || decoded.data.length !== cache.trimBox.width * cache.trimBox.height * 4) throw Error("invalid cached artwork PNG");
+      tools.signal?.throwIfAborted();
       trimmed = { bytes: png, trimBox: cache.trimBox, sha256: cache.trimmedPng.sha256 };
     } catch {
       tools.signal?.throwIfAborted();
@@ -309,33 +334,46 @@ export async function loadHumanRegionArtworkIndex(asset: BuiltinStickerAsset, by
     }
   }
 
-  return {
-    trimmed: { ...trimmed, bytes: Buffer.from(trimmed.bytes) },
-    async alpha(width, height, produce) {
-      tools.signal?.throwIfAborted();
+  const alphaBatch = async (sizes: readonly AlphaSize[], produce: (missing: AlphaSize[]) => Promise<Uint8Array[]>): Promise<Uint8Array[]> => {
+    tools.signal?.throwIfAborted();
+    const unique = new Map<string, AlphaSize>();
+    for (const { width, height } of sizes) {
       if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0 || width * height > MAX_PIXELS) {
         throw new Error("invalid final-pixel alpha raster size");
       }
-      const expectedLength = width * height;
-      const key = alphaKey(width, height);
-      const cached = alpha.get(key);
-      if (cached) return new Uint8Array(cached);
-
-      const produced = await produce();
+      unique.set(alphaKey(width, height), { width, height });
+    }
+    if (sizes.length > MAX_ALPHA_VARIANTS || sizes.reduce((n, size) => n + size.width * size.height, 0) > MAX_ALPHA_BYTES) {
+      throw new Error("oversized final-pixel alpha batch");
+    }
+    const missing = [...unique.entries()].filter(([key]) => !alpha.has(key));
+    const values = new Map([...unique.keys()].filter(key => alpha.has(key)).map(key => [key, alpha.get(key)!]));
+    if (missing.length) {
+      const produced = await produce(missing.map(([, size]) => size));
       tools.signal?.throwIfAborted();
-      if (!(produced instanceof Uint8Array) || produced.byteLength !== expectedLength) throw new Error("incomplete final-pixel alpha raster");
-      const raster = Buffer.from(produced);
-      if (alpha.has(key)) alpha.delete(key);
-      alpha.set(key, raster);
-      let retained = [...alpha.entries()];
-      let rawBytes = retained.reduce((total, [, value]) => total + value.length, 0);
-      while (retained.length > MAX_ALPHA_VARIANTS || rawBytes > MAX_ALPHA_BYTES) {
-        const [oldestKey, oldest] = retained.shift()!;
-        alpha.delete(oldestKey);
-        rawBytes -= oldest.length;
+      if (!Array.isArray(produced) || produced.length !== missing.length || produced.some((raster, i) =>
+        !(raster instanceof Uint8Array) || raster.byteLength !== missing[i][1].width * missing[i][1].height)) {
+        throw new Error("incomplete final-pixel alpha batch");
       }
+      for (let i = 0; i < missing.length; i++) {
+        const key = missing[i][0], raster = Buffer.from(produced[i]);
+        alpha.delete(key); alpha.set(key, raster); values.set(key, raster);
+      }
+      let rawBytes = [...alpha.values()].reduce((total, raster) => total + raster.length, 0);
+      for (const [key, raster] of alpha) {
+        if (alpha.size <= MAX_ALPHA_VARIANTS && rawBytes <= MAX_ALPHA_BYTES) break;
+        alpha.delete(key); rawBytes -= raster.length;
+      }
+      // Publish one complete measured batch, avoiding repeated recompression and writes per size.
       if (persistable && cache && filePath) await persistBestEffort(filePath, cache, alpha, tools.signal);
-      return new Uint8Array(raster);
+    }
+    return sizes.map(size => new Uint8Array(values.get(alphaKey(size.width, size.height))!));
+  };
+  return {
+    trimmed: { ...trimmed, bytes: Buffer.from(trimmed.bytes) },
+    alphaBatch,
+    async alpha(width, height, produce) {
+      return (await alphaBatch([{ width, height }], async () => [await produce()]))[0];
     },
   };
 }

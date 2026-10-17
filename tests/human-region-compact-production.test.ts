@@ -1,5 +1,5 @@
 import { expect, it, vi } from "vitest";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -18,6 +18,34 @@ import { isCoverPoolStickerId, isHumanRegionStickerId } from "../src/shared/cove
 import { AssetLibrary } from "../src/main/asset-library";
 import { LIBRARY_STICKERS } from "../src/shared/asset-library";
 import { DecorationSchema } from "../src/shared/decorations";
+import { loadHumanRegionArtworkIndex } from "../src/main/human-region-artwork-index";
+
+it("retains measured sizes across several target groups and batches only cache misses", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-size-batch-"));
+  try {
+    const bytes = encodeRgbaPng(Buffer.alloc(16, 255), 2, 2);
+    const asset = { assetPath: path.join(directory, "unused.png"), assetFingerprint: "sha256:" + createHash("sha256").update(bytes).digest("hex") };
+    const tools = { ffmpegPath: ffmpegBin, ffprobePath: ffprobeBin, artworkIndexDirectory: path.join(directory, "indexes") };
+    const index = await loadHumanRegionArtworkIndex(asset, bytes, tools);
+    const sizes = Array.from({ length: 36 }, (_, i) => ({ width: i + 1, height: 2 }));
+    const produce = vi.fn(async (missing: { width: number; height: number }[]) => missing.map(size => new Uint8Array(size.width * size.height).fill(254)));
+    for (let i = 0; i < sizes.length; i += 12) await index.alphaBatch(sizes.slice(i, i + 12), produce);
+    expect(produce).toHaveBeenCalledTimes(3);
+    const reloaded = await loadHumanRegionArtworkIndex(asset, bytes, tools);
+    const reused = await reloaded.alphaBatch(sizes.slice(0, 12), produce);
+    expect(produce).toHaveBeenCalledTimes(3);
+    expect(reused[0]).toEqual(new Uint8Array(2).fill(254));
+    reused[0].fill(0);
+    expect(await reloaded.alpha(1, 2, async () => { throw Error("must reuse"); })).toEqual(new Uint8Array(2).fill(254));
+    const mixed = await reloaded.alphaBatch([sizes[0], { width: 40, height: 2 }, sizes[0]], produce);
+    expect(produce.mock.calls.at(-1)![0]).toEqual([{ width: 40, height: 2 }]);
+    expect(mixed).toHaveLength(3);
+    await expect(reloaded.alphaBatch([{ width: 41, height: 2 }], async () => [new Uint8Array(1)])).rejects.toThrow();
+    const repair = vi.fn(async () => [new Uint8Array(82).fill(255)]);
+    expect((await reloaded.alphaBatch([{ width: 41, height: 2 }], repair))[0]).toHaveLength(82);
+    expect(repair).toHaveBeenCalledTimes(1);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+});
 
 it("admits reviewed local library artwork to the real cover pool without admitting unknown assets", () => {
   expect(isHumanRegionStickerId("fluent-031b8379abbc14775ef8879995f1935aadb49799")).toBe(true);

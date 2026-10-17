@@ -123,6 +123,56 @@ export async function rasterizeShapeCoverAlpha(bytes: Buffer, output: PixelSize,
   return result;
 }
 
+/** Decode a sticker once, branch each exact scalar scale/pad size, then unpack alpha tiles. */
+export async function rasterizeShapeCoverAlphaBatch(bytes: Buffer, sizes: PixelSize[], tools: ShapeCoverMediaTools): Promise<Uint8Array[]> {
+  tools.signal?.throwIfAborted();
+  if (!Array.isArray(sizes) || sizes.length > 16) throw new Error("invalid final-pixel alpha batch");
+  if (sizes.length === 0) return [];
+  let packedWidth = 0, packedHeight = 0;
+  for (const size of sizes) {
+    if (!size || !Number.isSafeInteger(size.width) || !Number.isSafeInteger(size.height) || size.width <= 0 || size.height <= 0
+      || size.width * size.height > MAX_PIXELS) throw new Error("invalid final-pixel alpha batch");
+    packedWidth += size.width;
+    packedHeight = Math.max(packedHeight, size.height);
+  }
+  const packedPixels = packedWidth * packedHeight;
+  if (!Number.isSafeInteger(packedWidth) || !Number.isSafeInteger(packedPixels) || packedPixels > MAX_PIXELS) {
+    throw new Error("final-pixel alpha batch exceeds pixel limit");
+  }
+
+  const probe = AssetProbe.parse(JSON.parse((await mediaCommand(tools, tools.ffprobePath,
+    ["-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries", "stream=codec_name,width,height,nb_read_frames,tags,side_data_list", "-of", "json", "pipe:0"], bytes)).stdout.toString("utf8"))).streams[0];
+  if (Number(probe.tags?.rotate ?? 0) !== 0 || probe.side_data_list?.some(item => item.rotation)) throw new Error("rotated sticker is unsupported");
+
+  const labels = sizes.map((_, index) => `[source${index}]`);
+  const filters = sizes.map((size, index) => {
+    const scale = Math.min(size.width / probe.width, size.height / probe.height);
+    const artworkWidth = Math.max(1, Math.round(probe.width * scale)), artworkHeight = Math.max(1, Math.round(probe.height * scale));
+    return `${labels[index]}scale=${artworkWidth}:${artworkHeight}:flags=bicubic,pad=${size.width}:${size.height}:(ow-iw)/2:(oh-ih)/2:color=black@0,format=rgba,pad=iw:${packedHeight}:0:0:color=black@0[tile${index}]`;
+  });
+  const split = sizes.length === 1
+    ? `[0:v]format=rgba${labels[0]}`
+    : `[0:v]format=rgba,split=${sizes.length}${labels.join("")}`;
+  filters.unshift(split);
+  filters.push(sizes.length === 1 ? "[tile0]null[packed]"
+    : `${sizes.map((_, index) => `[tile${index}]`).join("")}hstack=inputs=${sizes.length}[packed]`);
+  const packed = (await mediaCommand(tools, tools.ffmpegPath, ["-hide_banner", "-loglevel", "error", "-nostdin", "-threads", "1", "-noautorotate", "-i", "pipe:0",
+    "-filter_complex_threads", "1", "-filter_complex", filters.join(";"), "-map", "[packed]", "-frames:v", "1", "-threads", "1",
+    "-f", "rawvideo", "-pix_fmt", "rgba", "pipe:1"], bytes, packedPixels * 4)).stdout;
+  if (packed.length !== packedPixels * 4) throw new Error("incomplete FFmpeg alpha batch");
+
+  let offsetX = 0;
+  return sizes.map(size => {
+    const alpha = new Uint8Array(size.width * size.height);
+    for (let y = 0; y < size.height; y++) {
+      const source = (y * packedWidth + offsetX) * 4 + 3;
+      for (let x = 0; x < size.width; x++) alpha[y * size.width + x] = packed[source + x * 4];
+    }
+    offsetX += size.width;
+    return alpha;
+  });
+}
+
 /** Remove only all-transparent outer rows/columns. No opaque or partial-alpha pixel is changed. */
 export async function trimShapeCoverArtwork(bytes: Buffer, tools: ShapeCoverMediaTools) {
   const probe = AssetProbe.parse(JSON.parse((await mediaCommand(tools, tools.ffprobePath,

@@ -1,9 +1,10 @@
 import { expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
 import * as alphaTools from "../src/main/shape-cover-alpha.js";
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { encodeShapeCoverPng, trimShapeCoverArtwork } from "../src/main/shape-cover-alpha.js";
+import { encodeShapeCoverPng, rasterizeShapeCoverAlpha, rasterizeShapeCoverAlphaBatch, trimShapeCoverArtwork } from "../src/main/shape-cover-alpha.js";
 import { freezeShapeCoverRaster } from "../src/main/shape-cover-freeze.js";
 import { searchHybridCornerShape, HYBRID_SHAPE_SEARCH } from "../src/main/shape-cover-hybrid-shape.js";
 import { discoveryHash } from "../src/main/source-fact-discovery-evidence.js";
@@ -13,6 +14,68 @@ import * as artworkIndex from "../src/main/human-region-artwork-index.js";
 import { UploadedStickers } from "../src/main/uploaded-stickers.js";
 
 const tools = { ffmpegPath: ffmpegBin, ffprobePath: ffprobeBin };
+it("validates cached PNGs locally without starting a media decode", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cached-artwork-local-decode-"));
+  try {
+    const indexed = { ...tools, artworkIndexDirectory: root };
+    const bytes = await encodeShapeCoverPng(Buffer.alloc(4 * 3 * 4, 255), { width: 4, height: 3 }, tools);
+    const asset = { assetPath: join(root, "unused.png"), assetFingerprint: `sha256:${discoveryHash(bytes)}` };
+    await loadHumanRegionArtworkIndex(asset, bytes, indexed);
+    const decode = vi.spyOn(alphaTools, "decodeShapeCoverPng");
+    expect((await loadHumanRegionArtworkIndex(asset, bytes, indexed)).trimmed.bytes).toEqual(bytes);
+    expect(decode).not.toHaveBeenCalled();
+  } finally { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); }
+});
+
+it("rebuilds a cache with duplicate PNG headers before its dimensions can override the preflight", async () => {
+  const root = await mkdtemp(join(tmpdir(), "cached-artwork-header-"));
+  try {
+    const indexed = { ...tools, artworkIndexDirectory: root };
+    const bytes = await encodeShapeCoverPng(Buffer.alloc(4 * 3 * 4, 255), { width: 4, height: 3 }, tools);
+    const asset = { assetPath: join(root, "unused.png"), assetFingerprint: `sha256:${discoveryHash(bytes)}` };
+    await loadHumanRegionArtworkIndex(asset, bytes, indexed);
+    const file = join(root, (await readdir(root))[0]), data = JSON.parse(await readFile(file, "utf8"));
+    const png = Buffer.from(data.trimmedPng.base64, "base64");
+    const duplicate = Buffer.concat([png.subarray(0, 33), png.subarray(8, 33), png.subarray(33)]);
+    data.trimmedPng.base64 = duplicate.toString("base64"); data.trimmedPng.sha256 = discoveryHash(duplicate);
+    await writeFile(file, JSON.stringify(data));
+    const trim = vi.spyOn(alphaTools, "trimShapeCoverArtwork");
+    await loadHumanRegionArtworkIndex(asset, bytes, indexed);
+    expect(trim).toHaveBeenCalledTimes(1);
+  } finally { vi.restoreAllMocks(); await rm(root, { recursive: true, force: true }); }
+});
+
+it("batch alpha rasters exactly match scalar FFmpeg output in one decode", async () => {
+  const sourceSize = { width: 19, height: 13 }, rgba = Buffer.alloc(sourceSize.width * sourceSize.height * 4);
+  for (let y = 0; y < sourceSize.height; y++) for (let x = 0; x < sourceSize.width; x++) {
+    const pixel = (y * sourceSize.width + x) * 4;
+    rgba[pixel] = (x * 37 + y * 11) % 256; rgba[pixel + 1] = (x * 13 + y * 29) % 256; rgba[pixel + 2] = (x * 3 + y * 17) % 256;
+    rgba[pixel + 3] = (x + 2 * y) % 7 === 0 ? 0 : (x + y) % 4 === 0 ? 83 : (x + y) % 3 === 0 ? 173 : 255;
+  }
+  const bytes = await encodeShapeCoverPng(rgba, sourceSize, tools);
+  const sizes = [{ width: 13, height: 7 }, { width: 8, height: 11 }, { width: 1, height: 1 }, { width: 17, height: 5 }, { width: 9, height: 13 }];
+  const batched = await rasterizeShapeCoverAlphaBatch(bytes, sizes, tools);
+  expect(batched).toHaveLength(sizes.length);
+  for (let index = 0; index < sizes.length; index++) {
+    const size = sizes[index];
+    const scalar = await rasterizeShapeCoverAlpha(bytes, size, { ...size, x: 0, y: 0 }, tools);
+    expect(batched[index]).toEqual(scalar.alpha);
+    expect((await rasterizeShapeCoverAlphaBatch(bytes, [size], tools))[0]).toEqual(scalar.alpha);
+  }
+});
+
+it("batch alpha preflights bounds and rejects animated or cancelled media", async () => {
+  const bytes = await encodeShapeCoverPng(Buffer.alloc(8 * 8 * 4, 255), { width: 8, height: 8 }, tools);
+  await expect(rasterizeShapeCoverAlphaBatch(bytes, [{ width: 0, height: 1 }], tools)).rejects.toThrow(/invalid/i);
+  await expect(rasterizeShapeCoverAlphaBatch(bytes, Array.from({ length: 17 }, () => ({ width: 1, height: 1 })), tools)).rejects.toThrow(/invalid/i);
+  await expect(rasterizeShapeCoverAlphaBatch(bytes, [{ width: 4096, height: 4096 }, { width: 1, height: 4096 }], tools)).rejects.toThrow(/invalid|exceeds/i);
+  await expect(rasterizeShapeCoverAlphaBatch(bytes, [{ width: 1, height: 1 }], { ...tools, signal: AbortSignal.abort() })).rejects.toThrow();
+
+  const animated = execFileSync(ffmpegBin, ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=white:s=8x8:r=2",
+    "-frames:v", "2", "-c:v", "mjpeg", "-f", "image2pipe", "pipe:1"], { maxBuffer: 1024 * 1024 });
+  await expect(rasterizeShapeCoverAlphaBatch(animated, [{ width: 8, height: 8 }], tools)).rejects.toThrow();
+});
+
 it("builds the cover index on import and reuses exact alpha across independent searches", async () => {
   const root = await mkdtemp(join(tmpdir(), "sticker-durable-index-"));
   const indexed = { ...tools, artworkIndexDirectory: join(root, "indexes") };
