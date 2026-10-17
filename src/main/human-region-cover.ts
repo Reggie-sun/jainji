@@ -131,16 +131,18 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
           const perMedia = assigned.get(group[0].media.id) ?? new Set<string>();
           assigned.set(group[0].media.id, perMedia);
           const eligible = candidates.filter(id => !input.random || !perMedia.has(id));
-          // A stable random order per run/target prevents the first ID window from
+          // A stable random order per run/target prevents the first IDs from
           // winning on every source while preserving backtracking and version rotation.
           const ranks = new Map(input.random ? eligible.map(id => [id, createHash("sha256").update(`${runId}:${key}:${id}`).digest("hex")]) : []);
           if (input.random) eligible.sort((a, b) => ranks.get(a)!.localeCompare(ranks.get(b)!));
           const tiers = [eligible.filter(id => !previous.includes(id)), eligible.filter(id => previous.includes(id) && id !== previous.at(-1)), eligible.filter(id => id === previous.at(-1))];
           let hasMatch = false;
-          for (const tier of tiers) for (let start = 0; start < tier.length; start += 8) {
-            // Compare bounded windows; retain rotation priority and the original search budgets.
+          // New manual production tries the first safe fit immediately. Later conflicts
+          // can still backtrack; historical assisted selection keeps its comparison window.
+          const windowSize = draft.admission === "manual-production-v1" ? 1 : 8;
+          for (const tier of tiers) for (let start = 0; start < tier.length; start += windowSize) {
             const options: { id: string; matches: MatchedArtwork[]; excess: number; clipped: number }[] = [];
-            for (const id of tier.slice(start, start + 8)) {
+            for (const id of tier.slice(start, start + windowSize)) {
               if (++assignments > 4096) throw new ProviderError("人工覆盖选材组合达到本轮预算，请减少目标或调整贴纸库。");
               bounded.throwIfAborted();
               report(`正在匹配覆盖框 ${index + 1}/${entries.length} · 贴纸 ${candidates.indexOf(id) + 1}/${candidates.length}`);

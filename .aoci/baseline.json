@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-17T10:28:55Z",
+  "updated_at": "2026-10-17T10:49:27Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "c3d7259cb94f609791a046a366dbe2ea658bd7ab213482852622a8afd60d3c05",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "3bbf8556040d072b14bf8939f2e9b62323ae9df3bd683ede57933c5925d3fd95",
+      "sha256": "6d28284b906f4a75436cb10b7fe51376cd559bfc3139b1169c787f7c6e9a90bd",
       "size": 168979,
-      "normalized_sha256": "3bbf8556040d072b14bf8939f2e9b62323ae9df3bd683ede57933c5925d3fd95"
+      "normalized_sha256": "6d28284b906f4a75436cb10b7fe51376cd559bfc3139b1169c787f7c6e9a90bd"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1483,9 +1483,9 @@
       "normalized_sha256": "b18aff0e7125fab4c247be586fdce7e365b9a0951be0a73d51b553f6690468d4"
     },
     "src/main/human-region-cover.ts": {
-      "sha256": "8804542d230491f2e8dd89a9bf9b27ac6820f3de3b61a2b9ad81e4172c143940",
-      "size": 15320,
-      "normalized_sha256": "8804542d230491f2e8dd89a9bf9b27ac6820f3de3b61a2b9ad81e4172c143940"
+      "sha256": "dce6547619c97cb89eb9519145f3bd332543add812ad535b13ac7f3069f7acea",
+      "size": 15497,
+      "normalized_sha256": "dce6547619c97cb89eb9519145f3bd332543add812ad535b13ac7f3069f7acea"
     },
     "src/main/human-region-geometry.ts": {
       "sha256": "08d3167f12fd97f90f5441e079922e0be6ff642667f4667c64fb462f562fe376",

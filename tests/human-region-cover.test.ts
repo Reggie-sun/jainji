@@ -14,6 +14,45 @@ import { decodeShapeCoverPng } from "../src/main/shape-cover-alpha";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ProviderError } from "../src/main/agent-provider";
 
+it.each([false, true])("stops at the first suitable manual-cover sticker after skipping a non-fit (random=%s)", async random => {
+  const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-first-fit-"));
+  try {
+    const tools = new FfmpegAdapter(ffmpegBin, ffprobeBin), sourcePath = path.join(directory, "source.mp4");
+    const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x120:r=24", "-t", "1", "-c:v", "libx264", sourcePath]).promise;
+    expect(generated.code, generated.stderr).toBe(0);
+    const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "first fit", durationMs: 1000,
+      width: 160, height: 120, rotation: 0, sizeBytes: (await stat(sourcePath)).size, importedAt: now(), probeStatus: "ready" };
+    const id = randomUUID();
+    const draft: HumanRegionIntent = { id: randomUUID(), projectId: randomUUID(), revision: 0, assistedArtwork: "human-region-v1", admission: "manual-production-v1",
+      media: [{ mediaId: media.id, sourceFingerprint: media.fingerprint, disposition: "cover", identities: [{ id, label: "target", semantics: "sticker", origin: "human" }],
+        segments: [{ id, identityId: id, origin: "human", track: { startMs: 0, endMs: 1000,
+          keyframes: [{ timeMs: 0, rectangle: { x: .1, y: .1, width: .2, height: .1 } }] } }] }] };
+    const assetPath = path.join(directory, "solid.png");
+    await writeFile(assetPath, encodeRgbaPng(Buffer.alloc(40 * 16 * 4, 255), 40, 16));
+    const asset = { assetPath, assetFingerprint: await fingerprintFile(assetPath) };
+    const assets = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`uploaded-${i.toString(16).padStart(64, "0")}`, asset])) as StickerAssets;
+    const original = shapeSearch.searchHybridCornerShape;
+    let attempts = 0;
+    const search = vi.spyOn(shapeSearch, "searchHybridCornerShape").mockImplementation((...args) => {
+      if (++attempts === 1) return Promise.resolve(null);
+      if (attempts > 2) throw Error("inspected another sticker after a suitable match");
+      return original(...args);
+    });
+    try {
+      const prepare = createHumanRegionCover({ draft, media: [media], preset: { ...DEFAULT_PRESET, resolutionMode: "source" }, assets,
+        tools, directory: path.join(directory, "frozen"), random });
+      const layers = await prepare(media, 1, "first-fit", new AbortController().signal);
+      expect(search).toHaveBeenCalledTimes(2);
+      expect(layers[0].cover!.stickerId).toBe(search.mock.calls[1][0][0].id);
+      const binding = layers[0].cover!.humanRegion!;
+      const rgba = await decodeShapeCoverPng(await readFile(layers[0].assetPath), binding.projection, tools);
+      expect(opaqueRegionCovered(Uint8Array.from({ length: rgba.length / 4 }, (_, p) => rgba[p * 4 + 3]), binding.projection, binding.target)).toBe(true);
+      expect(await prepare(media, 1, "frozen-retry", new AbortController().signal)).toEqual(layers);
+      expect(search).toHaveBeenCalledTimes(2);
+    } finally { search.mockRestore(); }
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}, 60000);
+
 it("varies equally fitting random cover artwork across media instead of reusing the first sorted IDs", async () => {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-cover-diversity-"));
   try {
@@ -87,9 +126,9 @@ it("keeps reassignment when the only artwork for a later target is temporarily u
     const tools = new FfmpegAdapter(ffmpegBin, ffprobeBin), sourcePath = path.join(directory, "source.mp4");
     const generated = await runCommand(ffmpegBin, ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x120:r=24", "-t", "1", "-c:v", "libx264", sourcePath]).promise;
     expect(generated.code, generated.stderr).toBe(0);
-    const media: MediaItem = { id: randomUUID(), sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "reassign", durationMs: 1000,
+    const media: MediaItem = { id: "00000000-0000-4000-8000-000000000001", sourcePath, fingerprint: await fingerprintFile(sourcePath), displayName: "reassign", durationMs: 1000,
       width: 160, height: 120, rotation: 0, sizeBytes: (await stat(sourcePath)).size, importedAt: now(), probeStatus: "ready" };
-    const ids = [randomUUID(), randomUUID()];
+    const ids = ["00000000-0000-4000-8000-000000000101", "00000000-0000-4000-8000-000000000102"];
     const draft: HumanRegionIntent = { id: randomUUID(), projectId: randomUUID(), revision: 0, assistedArtwork: "human-region-v1", admission: "manual-production-v1",
       media: [{ mediaId: media.id, sourceFingerprint: media.fingerprint, disposition: "cover",
         identities: ids.map(id => ({ id, label: "target", semantics: "sticker", origin: "human" })),
@@ -102,7 +141,10 @@ it("keeps reassignment when the only artwork for a later target is temporarily u
       args[0][100 * 160 + 20] && candidates[0].id === second ? Promise.resolve(null) : original(candidates, ...args));
     try {
       const layers = await createHumanRegionCover({ draft, media: [media], preset: { ...DEFAULT_PRESET, resolutionMode: "source" }, assets,
-        tools, directory: path.join(directory, "frozen"), random: true })(media, 1, "reassign", new AbortController().signal);
+        tools, directory: path.join(directory, "frozen"), random: true })(media, 1, "reassign-first", new AbortController().signal);
+      // This seed initially gives the earlier target the later target's only fit.
+      expect(search.mock.calls[0][0][0].id).toBe(first);
+      expect(search.mock.calls[1][1][100 * 160 + 20]).toBe(1);
       expect(layers.map(layer => layer.cover!.stickerId)).toEqual([second, first]);
     } finally { search.mockRestore(); }
   } finally { await rm(directory, { recursive: true, force: true }); }
@@ -120,7 +162,7 @@ it("requires every target pixel to be originally fully opaque, including holes a
   expect(opaqueRegionCovered(alpha, size, target)).toBe(true);
 });
 
-it.each([100, 14])("selects compact artwork for a bottom strip instead of the earlier %spx-tall artwork", async (height) => {
+it.each([100, 14])("uses the first bounded fit for a bottom strip with an earlier %spx-tall candidate", async (height) => {
   const directory = await mkdtemp(path.join(tmpdir(), "jianji-compact-cover-"));
   try {
     const sourcePath = path.join(directory, "source.mp4"), tools = new FfmpegAdapter(ffmpegBin, ffprobeBin);
@@ -140,9 +182,9 @@ it.each([100, 14])("selects compact artwork for a bottom strip instead of the ea
       assets[`uploaded-${letter.repeat(64)}`] = { assetPath, assetFingerprint: await fingerprintFile(assetPath) };
     }
     const preset = { ...DEFAULT_PRESET, resolutionMode: "source" as const };
-    const prepare = createHumanRegionCover({ draft, media: [media], preset, assets: assets as StickerAssets, tools, directory: path.join(directory, "frozen"), random: true });
+    const prepare = createHumanRegionCover({ draft, media: [media], preset, assets: assets as StickerAssets, tools, directory: path.join(directory, "frozen"), random: false });
     const layers = await prepare(media, 1, "compact", new AbortController().signal), layer = layers[0];
-    expect(layer.cover!.stickerId).toBe(`uploaded-${"f".repeat(64)}`);
+    expect(layer.cover!.stickerId).toBe(`uploaded-${(height === 100 ? "f" : "1").repeat(64)}`);
     const binding = layer.cover!.humanRegion!, target = binding.target, visible = binding.visualBounds;
     expect(visible.y).toBeGreaterThanOrEqual(target.y - Math.floor(target.height / 4));
     expect(visible.height).toBeLessThanOrEqual(target.height + 2 * Math.floor(target.height / 4));
@@ -153,7 +195,7 @@ it.each([100, 14])("selects compact artwork for a bottom strip instead of the ea
     expect((await readdir(path.join(directory, "frozen"))).filter(name => name.endsWith(".png"))).toHaveLength(1);
     // A fresh version keeps the existing rotation rule, but never admits the huge square.
     const next = await prepare(media, 2, "next-version", new AbortController().signal);
-    expect(next[0].cover!.stickerId).toBe(`uploaded-${(height === 100 ? "f" : "1").repeat(64)}`);
+    expect(next[0].cover!.stickerId).toBe(`uploaded-${"f".repeat(64)}`);
     if (height === 100) {
       const onlyHuge = createHumanRegionCover({ draft, media: [media], preset, assets: { [`uploaded-${"1".repeat(64)}`]: assets[`uploaded-${"1".repeat(64)}`] } as StickerAssets,
         tools, directory: path.join(directory, "no-fit"), random: true });
