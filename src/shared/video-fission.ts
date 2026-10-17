@@ -26,6 +26,10 @@ export const FissionStartSchema = z.object({
 }).strict();
 export type FissionStart = z.infer<typeof FissionStartSchema>;
 
+/** No directory means allocate a fresh automatic directory at execution time. */
+export const FissionScheduleSchema = FissionStartSchema.extend({ outputDirectory: FissionStartSchema.shape.outputDirectory.optional() });
+export type FissionSchedule = z.infer<typeof FissionScheduleSchema>;
+
 export function fissionAllocation(sourceCount: number, total: number): number[] {
   z.number().int().min(1).max(MAX_FISSION_OUTPUTS).parse(sourceCount);
   FissionStartSchema.shape.total.parse(total);

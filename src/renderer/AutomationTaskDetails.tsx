@@ -11,9 +11,11 @@ export function AutomationTaskDetails({ task, accounts = [], tasks = [] }: {
   const production = request.production ?? source?.request.production;
   const planCleanup = request.cleanup && request.cleanup.confirmation !== "DELETE_ALL_VIDEOS";
   const libraryCleanup = request.cleanup && request.cleanup.confirmation !== "DELETE_PLAN_MATERIALS";
-  const steps = [planCleanup && "计划素材清理", libraryCleanup && "账号视频库全部清空", request.production && "制作", request.upload && "上传并确认批次"].filter(Boolean);
-  const uploadTargets = production?.entries.flatMap(entry => entry.douyinUpload?.plan ? [{ product: entry.douyinUpload.accountProduct,
-    expectedAdvertiserId: entry.douyinUpload.plan.advertiserId, plans: [entry.douyinUpload.plan] }] : []) ?? [];
+  const steps = [planCleanup && "计划素材清理", libraryCleanup && "账号视频库全部清空", request.production && "制作", request.fission && "视频裂变", request.upload && "上传并确认批次"].filter(Boolean);
+  const fissionSelection = request.fission?.douyinUpload;
+  const uploadTargets = [...(production?.entries.flatMap(entry => entry.douyinUpload?.plan ? [{ product: entry.douyinUpload.accountProduct,
+    expectedAdvertiserId: entry.douyinUpload.plan.advertiserId, plans: [entry.douyinUpload.plan] }] : []) ?? []),
+    ...(fissionSelection?.plan ? [{ product: fissionSelection.accountProduct, expectedAdvertiserId: fissionSelection.plan.advertiserId, plans: [fissionSelection.plan] }] : [])];
   const uniqueTargets = uploadTargets.filter((target, index) => uploadTargets.findIndex(value =>
     value.expectedAdvertiserId === target.expectedAdvertiserId && value.plans[0].adId === target.plans[0].adId) === index);
   return <div className="automation-task-details">
@@ -26,6 +28,11 @@ export function AutomationTaskDetails({ task, accounts = [], tasks = [] }: {
     {request.production && <div className="automation-task-scope">
       <p><strong>制作范围：</strong>{request.production.entries.length} 个模板，共 {request.production.entries.reduce((sum, entry) => sum + entry.requestedCount, 0)} 条{!request.upload ? "；不自动上传" : ""}</p>
       <details><summary>保存时的模板与素材信息</summary><p className="automation-saved-summary">{task.summary}</p></details>
+    </div>}
+    {request.fission && <div className="automation-task-scope">
+      <p><strong>裂变范围：</strong>{request.fission.mediaIds.length} 条源素材，共 {request.fission.total} 条成片{!request.upload ? "；不自动上传" : ""}</p>
+      <p>输出：{request.fission.outputDirectory ?? "每次执行时自动创建裂变目录"}</p>
+      <details><summary>保存时的素材信息</summary><p className="automation-saved-summary">{task.summary}</p></details>
     </div>}
     {request.uploadFrom && <p><strong>制作来源：</strong>{source?.request.name ?? task.summary}<small className="automation-source-id">任务 ID：{request.uploadFrom}</small></p>}
     {!!uniqueTargets.length && <div className="automation-task-scope">

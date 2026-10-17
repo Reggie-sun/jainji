@@ -28,7 +28,7 @@ import { installDevelopmentQuit } from "./development-lifecycle.js";
 import { claimDesktopInstance } from "./desktop-instance.js";
 import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
 import { FissionStartSchema } from "../shared/video-fission.js";
-import { prepareFissionProduction } from "./video-fission.js";
+import { prepareFissionProduction, executeScheduledFission } from "./video-fission.js";
 import { videoPathsInDirectory } from "./media.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -927,6 +927,21 @@ async function bootstrap(): Promise<void> {
         if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
         coverReview.assertIdle(); connections.assertConfigurationIdle(); agent.assertIdle(); batchRuntime.controller.assertIdle();
         await douyinUpload.withExportAdmission(async () => { await douyinUpload.beginProduction(); signal.throwIfAborted(); await batchRuntime.controller.start(input, projects); });
+      },
+      fission: {
+        loadProject: async id => {
+          if (service.currentProject.id !== id) throw new Error("项目已切换，请重新选择裂变素材后保存任务。");
+          return structuredClone(service.currentProject);
+        },
+        execute: async (input, project, signal) => {
+          await membership.assertAllowed(); await queueReady; signal.throwIfAborted();
+          if (!capabilities.ready) throw new Error(capabilities.message ?? "本地导出引擎未就绪。");
+          coverReview.assertIdle(); agent.assertIdle(); batchRuntime.controller.assertIdle();
+          return douyinUpload.withExportAdmission(async () => {
+            await douyinUpload.beginProduction(); signal.throwIfAborted();
+            return executeScheduledFission(queue, input, project.mediaItems, batches => service.rememberExportProduction(batches), signal);
+          });
+        },
       },
       clear: async (input, signal) => { await membership.assertAllowed(); signal.throwIfAborted(); return douyinUpload.clearAutomationVideoLibraries(input, signal); },
       upload: async (groups, signal, retainBrowser) => { await membership.assertAllowed(); signal.throwIfAborted(); await douyinUpload.uploadAutomation(groups, signal, retainBrowser); },

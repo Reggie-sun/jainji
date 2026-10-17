@@ -17,6 +17,7 @@ type Props = {
   onOutput(): void;
   onAutomaticOutput(): void;
   onStart(total: number): void;
+  onAutomation?(total: number): void;
   onResults(): void;
 };
 
@@ -33,6 +34,7 @@ export function VideoFissionPanel({
   onOutput,
   onAutomaticOutput,
   onStart,
+  onAutomation,
   onResults,
 }: Props) {
   const [total, setTotal] = useState<number | "">(100);
@@ -185,6 +187,7 @@ export function VideoFissionPanel({
       <div className="video-fission-actions">
         <div className="video-fission-action-group">
           <button type="button" className="button secondary" onClick={onResults}>查看作品</button>
+          {onAutomation && <button type="button" className="button secondary" disabled={disabled || !validSourceCount || validTotal === null} onClick={() => validTotal !== null && onAutomation(validTotal)}>保存为定时任务</button>}
         </div>
         <button type="button" className="button primary" disabled={!canStart} onClick={start}>开始裂变{validTotal !== null ? ` ${validTotal} 条` : ""}</button>
       </div>

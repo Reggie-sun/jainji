@@ -82,7 +82,7 @@ export class AutomationScheduler {
   async prepareCleanupMigration(request: AutomationRequest, source?: AutomationTask, lastRun?: AutomationRun): Promise<AutomationTask> {
     return this.serialize(async () => {
       this.assertEditable();
-      if (!request.cleanup || request.production || request.upload || request.uploadFrom) throw new Error("只能迁移独立清理任务。");
+      if (!request.cleanup || request.production || request.fission || request.upload || request.uploadFrom) throw new Error("只能迁移独立清理任务。");
       const id = randomUUID(), prepared = await this.dependencies.prepare(AutomationRequestSchema.parse(request), id);
       return AutomationTaskSchema.parse({ id, request, ...prepared, createdAt: source?.createdAt ?? this.now().toISOString(), lastRun });
     });
@@ -91,7 +91,7 @@ export class AutomationScheduler {
     await this.serialize(async () => {
       this.assertEditable();
       const { task, source } = AutomationCleanupMigrationSchema.parse(input);
-      if (!task.request.cleanup || task.request.production || task.request.upload || task.request.uploadFrom) throw new Error("只能迁移独立清理任务。");
+      if (!task.request.cleanup || task.request.production || task.request.fission || task.request.upload || task.request.uploadFrom) throw new Error("只能迁移独立清理任务。");
       const installed = this.tasks.find(value => value.id === task.id);
       if (installed) {
         if (automationDigest(installed) !== automationDigest(task) || source && this.tasks.some(value => value.id === source.id)) throw new Error("合并任务身份不一致。");

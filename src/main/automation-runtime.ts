@@ -3,7 +3,8 @@ import { z } from "zod";
 import { setTimeout as delay } from "node:timers/promises";
 import { AutomationRequestSchema, type AutomationRequest, type AutomationTask, type AutomationRun } from "../shared/automation.js";
 import { type BatchProductionStart } from "../shared/batch-production.js";
-import { FrozenAccountSchema, type UploadIdentity, type QianchuanUploadSelection } from "../shared/douyin-upload.js";
+import { FrozenAccountSchema, UploadIdentitySchema, type UploadIdentity, type QianchuanUploadSelection } from "../shared/douyin-upload.js";
+import type { FissionSchedule } from "../shared/video-fission.js";
 import type { QianchuanProduct } from "../shared/qianchuan-account.js";
 import type { QianchuanLibraryClear, QianchuanLibraryResult } from "../shared/qianchuan-video-library.js";
 import { ProjectSchema, type Project } from "./domain.js";
@@ -17,9 +18,11 @@ import { AutomationModelRolesSchema, automationModelRoles, type AutomationModelR
 
 const recipeSchema = z.object({ version: z.literal(1), id: z.string().uuid(), request: AutomationRequestSchema,
   projects: z.array(z.object({ recentProjectId: z.string().uuid(), project: ProjectSchema }).strict()).max(250),
+  fissionProject: ProjectSchema.optional(),
   // Legacy fields remain readable and digest-bound, but never select models for a new execution.
   accounts: z.array(FrozenAccountSchema).max(6), modelBinding: z.string().optional(), modelRoles: AutomationModelRolesSchema.optional(),
-}).strict().refine(recipe => !recipe.modelRoles || !!recipe.modelBinding);
+}).strict().refine(recipe => (!recipe.modelRoles || !!recipe.modelBinding) &&
+  (recipe.request.fission ? recipe.fissionProject?.id === recipe.request.fission.projectId : !recipe.fissionProject));
 type Recipe = z.infer<typeof recipeSchema>;
 interface Dependencies {
   loadProject(id: string): Promise<Project>;
@@ -30,12 +33,16 @@ interface Dependencies {
   queue: Pick<ExportQueue, "snapshot" | "waitForPersistence">;
   task(id: string): AutomationTask | undefined;
   produce(input: BatchProductionStart, projects: ReadonlyMap<string, Project>, signal: AbortSignal): Promise<void>;
+  fission?: {
+    loadProject(id: string): Promise<Project>;
+    execute(input: FissionSchedule, project: Project, signal: AbortSignal): Promise<UploadIdentity[]>;
+  };
   clear(input: QianchuanLibraryClear, signal: AbortSignal): Promise<QianchuanLibraryResult[]>;
   upload(groups: { selection: QianchuanUploadSelection; target: FrozenQianchuanAccount; exports: UploadIdentity[] }[], signal: AbortSignal, retainBrowser?: boolean): Promise<void>;
   finishUploadAccount(target: FrozenQianchuanAccount, signal: AbortSignal): Promise<void>;
   releaseUploadAccounts(): void;
 }
-const actions = (request: AutomationRequest) => ({ cleanup: request.cleanup, production: request.production, upload: request.upload, uploadFrom: request.uploadFrom });
+const actions = (request: AutomationRequest) => ({ cleanup: request.cleanup, production: request.production, fission: request.fission, upload: request.upload, uploadFrom: request.uploadFrom });
 const identity = (account: FrozenQianchuanAccount) => automationDigest(FrozenAccountSchema.parse(account));
 
 /** Sealed recipes adapt scheduled triggers into the original production owners. */
@@ -43,6 +50,7 @@ export class AutomationRuntime {
   constructor(private readonly root: string, private readonly dependencies: Dependencies) {}
   private file(id: string): string { return path.join(this.root, "recipes", `${z.string().uuid().parse(id)}.json`); }
   async prepare(request: AutomationRequest, id: string): Promise<{ binding: string; summary: string }> {
+    request = AutomationRequestSchema.parse(request);
     const projects: Recipe["projects"] = [], accounts = new Map<QianchuanProduct, FrozenQianchuanAccount>();
     const bindAccount = async (product: QianchuanProduct, advertiserId: string) => {
       const target = await this.dependencies.account(product);
@@ -63,6 +71,18 @@ export class AutomationRuntime {
       }
       projects.push({ recentProjectId: entry.recentProjectId, project });
     }
+    let fissionProject: Project | undefined;
+    if (request.fission) {
+      if (!this.dependencies.fission) throw new Error("当前版本未加载定时裂变服务。");
+      fissionProject = ProjectSchema.parse(await this.dependencies.fission.loadProject(request.fission.projectId));
+      if (fissionProject.id !== request.fission.projectId || request.fission.mediaIds.some(id => !fissionProject!.mediaItems.some(m => m.id === id && m.probeStatus === "ready"))) throw new Error("裂变素材未就绪，请重新选择。");
+      fissionProject.mediaItems = request.fission.mediaIds.map(id => fissionProject!.mediaItems.find(m => m.id === id)!);
+      fissionProject.exportBatches = []; delete fissionProject.latestProduction; delete fissionProject.reviewDrafts;
+      if (request.fission.outputDirectory && !this.dependencies.approvedDirectories.has(await canonicalPath(request.fission.outputDirectory))) throw new Error("请先通过系统对话框选择成片目录。");
+      const selection = request.fission.douyinUpload;
+      if (selection?.plan) await bindAccount(selection.accountProduct, selection.plan.advertiserId);
+      else if (selection) throw new Error("请明确选择定时上传计划。");
+    }
     if (request.uploadFrom) {
       const source = this.dependencies.task(request.uploadFrom);
       if (!source?.request.production || source.request.upload) throw new Error("上传来源必须是独立制作任务。");
@@ -70,7 +90,7 @@ export class AutomationRuntime {
       if (recipe.request.production!.entries.some(entry => !entry.douyinUpload?.plan)) throw new Error("来源制作任务尚未固定上传账号及计划，请重新保存带上传目标的制作任务。");
     }
     if (new Set(projects.map(value => value.project.id)).size !== projects.length) throw new Error("同一个项目不能以多个模板条目重复绑定。");
-    const recipe = recipeSchema.parse({ version: 1, id, request, projects, accounts: [...accounts.values()] });
+    const recipe = recipeSchema.parse({ version: 1, id, request, projects, ...(fissionProject ? { fissionProject } : {}), accounts: [...accounts.values()] });
     await this.verify(recipe, undefined, this.currentModelBinding(recipe));
     const summary = [
       ...(request.cleanup?.accounts.map(account => `清理账户 ${account.expectedAdvertiserId}${request.cleanup!.confirmation === "DELETE_ALL_VIDEOS" ? " · 视频库全部视频" : ` · 计划 ${(account.plans?.map(plan => plan.adId) ?? [account.expectedAdId]).join("、")}`}`) ?? []),
@@ -79,6 +99,7 @@ export class AutomationRuntime {
         const sources = [...new Set(project.mediaItems.map(media => path.dirname(media.sourcePath)))];
         return `${project.name} · ${entry.requestedCount} 条 · 素材 ${sources.join("、")}${entry.douyinUpload?.plan ? ` · 上传账户 ${entry.douyinUpload.plan.advertiserId} / 计划 ${entry.douyinUpload.plan.adId}` : ""}`;
       }),
+      ...(request.fission && fissionProject ? [`视频裂变 · ${request.fission.mediaIds.length} 条源素材 / ${request.fission.total} 条成片 · 素材 ${[...new Set(fissionProject.mediaItems.map(m => path.dirname(m.sourcePath)))].join("、")} · 输出 ${request.fission.outputDirectory ?? "每次自动创建裂变目录"}${request.fission.douyinUpload?.plan ? ` · 上传账户 ${request.fission.douyinUpload.plan.advertiserId} / 计划 ${request.fission.douyinUpload.plan.adId}` : ""}`] : []),
       ...(request.uploadFrom ? [`上传来源：${this.dependencies.task(request.uploadFrom)!.request.name}`] : []),
     ].join("\n");
     if (summary.length > 8000) throw new Error("定时任务配置过多，请拆分任务。");
@@ -95,6 +116,16 @@ export class AutomationRuntime {
       if (modelBinding !== undefined && modelBinding !== this.currentModelBinding(recipe)) throw new Error("模型配置已在本次执行中变化，已停止后续步骤。");
     };
     verifyModel();
+    const fission = recipe.request.fission;
+    if (fission) {
+      if (!this.dependencies.fission) throw new Error("当前版本未加载定时裂变服务。");
+      if (fission.outputDirectory && await canonicalPath(fission.outputDirectory) !== fission.outputDirectory) throw new Error("固定成片目录的实际位置已变化，请重新选择目录并保存任务。");
+      for (const id of fission.mediaIds) {
+        const media = recipe.fissionProject!.mediaItems.find(m => m.id === id);
+        if (!media || media.probeStatus !== "ready" || await fingerprintFile(media.sourcePath, { signal }) !== media.fingerprint) throw new Error("裂变源素材已变化，请重新保存定时任务。");
+        signal?.throwIfAborted();
+      }
+    }
     for (const entry of recipe.request.production?.entries ?? []) {
       if (entry.outputDirectory && await canonicalPath(entry.outputDirectory) !== entry.outputDirectory) throw new Error("固定成片目录的实际位置已变化，请重新选择目录并保存任务。");
       signal?.throwIfAborted();
@@ -158,6 +189,18 @@ export class AutomationRuntime {
     signal.throwIfAborted();
     let result: Pick<AutomationRun, "exports" | "productionRunId"> = {};
     const streaming = !!recipe.request.production && recipe.request.upload;
+    if (recipe.request.fission) {
+      await this.verify(recipe, signal, modelBinding); signal.throwIfAborted();
+      // Claim before generation, so an interrupted upload occurrence cannot regenerate/resend.
+      if (recipe.request.upload) await this.claimUpload(task, task.lastRun!.id);
+      signal.throwIfAborted();
+      const { douyinUpload: _target, ...input } = recipe.request.fission;
+      const exports = await this.dependencies.fission!.execute(input, recipe.fissionProject!, signal);
+      signal.throwIfAborted();
+      const validated = z.array(UploadIdentitySchema).length(input.total).safeParse(exports);
+      if (!validated.success || new Set(exports.map(e => e.export_task_id)).size !== input.total || exports.some(e => e.project_id !== input.projectId)) throw new Error("裂变成片数量或归属不一致，未上传。");
+      result = { exports: validated.data };
+    }
     if (recipe.request.production) {
       await this.verify(recipe, signal, modelBinding); signal.throwIfAborted();
       for (const entry of recipe.request.production.entries) if (entry.outputDirectory) this.dependencies.approvedDirectories.add(await canonicalPath(entry.outputDirectory));
@@ -204,7 +247,12 @@ export class AutomationRuntime {
         result = { exports: source.lastRun.exports, productionRunId: source.lastRun.productionRunId }; sourceRun = source.lastRun.id;
       }
       if (!result.exports?.length) throw new Error("本轮没有可上传的成片。");
-      const groups = sourceRecipe.projects.map(({ project, recentProjectId }) => {
+      const groups = sourceRecipe.request.fission ? (() => {
+        const selection = sourceRecipe.request.fission.douyinUpload;
+        const target = sourceRecipe.accounts.find(account => account.product === selection?.accountProduct);
+        if (!selection?.plan || !target) throw new Error("裂变任务没有固定上传目标。");
+        return [{ selection, target, exports: result.exports! }];
+      })() : sourceRecipe.projects.map(({ project, recentProjectId }) => {
         const selection = sourceRecipe.request.production!.entries.find(entry => entry.recentProjectId === recentProjectId)!.douyinUpload;
         if (!selection?.plan) throw new Error("制作任务没有固定上传目标。");
         const target = sourceRecipe.accounts.find(account => account.product === selection.accountProduct)!;
@@ -213,7 +261,7 @@ export class AutomationRuntime {
       if (groups.some(group => !group.exports.length) || groups.reduce((sum, group) => sum + group.exports.length, 0) !== result.exports.length) throw new Error("上传产物归属不一致。");
       // A source run can be consumed once, even by different upload schedules or after restart.
       signal.throwIfAborted();
-      await this.claimUpload(task, sourceRun, result.exports);
+      if (!recipe.request.fission) await this.claimUpload(task, sourceRun, result.exports);
       await this.dependencies.upload(groups, signal);
     }
     return result;

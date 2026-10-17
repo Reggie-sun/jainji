@@ -2,6 +2,7 @@ import { z } from "zod";
 import { BatchProductionStartSchema } from "./batch-production.js";
 import { QianchuanLibraryClearSchema } from "./qianchuan-video-library.js";
 import { UploadIdentitySchema } from "./douyin-upload.js";
+import { FissionScheduleSchema } from "./video-fission.js";
 
 export const AutomationRequestSchema = z.object({
   name: z.string().trim().min(1, "请填写任务名称。").max(80, "任务名称最多 80 个字。"),
@@ -9,6 +10,7 @@ export const AutomationRequestSchema = z.object({
   enabled: z.boolean(),
   cleanup: QianchuanLibraryClearSchema.optional(),
   production: BatchProductionStartSchema.optional(),
+  fission: FissionScheduleSchema.optional(),
   upload: z.boolean(),
   uploadFrom: z.string().uuid().optional(),
   confirmation: z.literal("AUTHORIZE_FIXED_AUTOMATION", { errorMap: () => ({ message: "请确认以上固定执行范围并勾选授权。" }) }),
@@ -16,8 +18,10 @@ export const AutomationRequestSchema = z.object({
   if (value.production && value.production.entries.reduce((sum, entry) => sum + entry.requestedCount, 0) > 2500) {
     context.addIssue({ code: "custom", message: "单个定时任务最多制作 2500 条，请拆分任务。" });
   }
-  if (!value.cleanup && !value.production && !value.upload || value.upload && !value.production && !value.uploadFrom ||
-    value.uploadFrom && (value.production || !value.upload) || value.production && value.upload && value.production.entries.some(entry => !entry.douyinUpload?.plan)) {
+  if (value.fission && (value.production || value.uploadFrom) ||
+    !value.cleanup && !value.production && !value.fission && !value.upload || value.upload && !value.production && !value.fission && !value.uploadFrom ||
+    value.uploadFrom && (value.production || !value.upload) || value.production && value.upload && value.production.entries.some(entry => !entry.douyinUpload?.plan) ||
+    value.fission && value.upload && !value.fission.douyinUpload?.plan) {
     context.addIssue({ code: "custom", message: "请选择清理、制作或上传；自动上传须绑定制作任务和明确计划。" });
   }
 });

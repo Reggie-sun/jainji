@@ -27,6 +27,7 @@
 | Concern | Canonical owner |
 | --- | --- |
 | 所有新作品微调与本地视频裂变 | [微调参数](../src/shared/video-micro-adjustments.ts)、[微调滤镜](../src/main/video-micro-adjustments.ts)、[裂变参数](../src/shared/video-fission.ts)、[裂变准备](../src/main/video-fission.ts)；编译、队列、上传与发布沿用原 owner |
+| 每日固定制作、裂变、清理及上传 | [调度合同](superpowers/plans/2026-10-10-scheduled-automation.md)、[裂变增量](decoration-production-contract.md#local-video-fission)；[schema](../src/shared/automation.ts)、[scheduler](../src/main/automation-scheduler.ts)、[runtime](../src/main/automation-runtime.ts) |
 | 制作请求、价格与装饰数据校验 | [agent.ts](../src/shared/agent.ts)、[decorations.ts](../src/shared/decorations.ts) |
 | 模板约束与布局几何 | [agent.ts](../src/shared/agent.ts)、[layout-policy.ts](../src/shared/layout-policy.ts) |
 | 制作准入、取消与逐素材执行 | [agent-controller.ts](../src/main/agent-controller.ts)、[agent-runner.ts](../src/main/agent-runner.ts) |

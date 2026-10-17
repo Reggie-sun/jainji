@@ -16,7 +16,7 @@ const productionWithoutPlan = {
     douyinUpload: { enabled: true, accountProduct: "蝴蝶贴" } }],
 };
 
-function automationFixtureScript(options: { component?: "composer" | "panel" | "cleanup" | "workspace"; production?: unknown; tasks?: unknown[]; accounts?: unknown[]; librarySchedule?: unknown; preflight?: boolean } = {}) {
+function automationFixtureScript(options: { component?: "composer" | "panel" | "cleanup" | "workspace"; production?: unknown; fission?: unknown; tasks?: unknown[]; accounts?: unknown[]; librarySchedule?: unknown; preflight?: boolean } = {}) {
   const sourceTasks = options.tasks ?? [];
   const taskArgument = sourceTasks[0] ?? {
     id: sourceTaskId,
@@ -65,6 +65,7 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
       },
     };
     const production = ${JSON.stringify(options.production ?? null)};
+    const fission = ${JSON.stringify(options.fission ?? null)};
     function Fixture() {
       const [cleanup, setCleanup] = useState();
       const [page, setPage] = useState("tasks");
@@ -72,7 +73,7 @@ function automationFixtureScript(options: { component?: "composer" | "panel" | "
       if (${JSON.stringify(options.component ?? "composer")} === "panel") return <AutomationPanel accounts={accounts}/>;
       if (${JSON.stringify(options.component ?? "composer")} === "workspace") return <AutomationWorkspace state={{douyinUpload:{accounts}}} page={page} onPage={setPage} revision={0} onSource={()=>{}}/>;
       if (${JSON.stringify(options.component ?? "composer")} === "cleanup") return cleanup ? <AutomationComposer cleanup={cleanup}/> : <QianchuanVideoLibraryActions accounts={[{ product: "蝴蝶贴", advertiserId: "123", adId: "456", available: true }]} busy={false} onAutomation={setCleanup}/>;
-      return <AutomationComposer production={production ?? undefined}/>;
+      return <AutomationComposer production={production ?? undefined} fission={fission ?? undefined}/>;
     }
     createRoot(document.getElementById("root")).render(<Fixture/>);
   `, resolveDir: process.cwd(), loader: "tsx" }, loader: { ".css": "empty" }, bundle: true, write: false, platform: "browser", format: "iife", jsx: "automatic" }).outputFiles[0]!.text;
@@ -97,6 +98,34 @@ async function fixture(options: Parameters<typeof automationFixtureScript>[0] = 
 }
 
 describe("scheduled automation browser interaction", () => {
+  it("saves fixed fission scope through the existing composer without starting immediate production", async () => {
+    const fission = { projectId: recentProjectId, mediaIds: [sourceTaskId], total: 5,
+      douyinUpload: { enabled: true, accountProduct: "蝴蝶贴", plan } };
+    const { page, pageErrors } = await fixture({ fission });
+    expect(await page.locator(".automation-scope").innerText()).toContain("裂变：固定 1 条源素材，共生成 5 条");
+    await page.getByLabel("任务名称", { exact: true }).fill("每日裂变");
+    await page.getByLabel("每天执行时间", { exact: true }).fill("03:20");
+    await page.getByRole("checkbox", { name: "裂变完成后自动上传并确认所选批次", exact: true }).check();
+    const save = page.getByRole("button", { name: "保存定时任务", exact: true });
+    expect(await save.isDisabled()).toBe(true);
+    await page.getByRole("checkbox", { name: /我授权简辑/ }).check(); await save.click();
+    expect(await page.evaluate(() => (window as any).automationCalls.created)).toEqual([{
+      name: "每日裂变", time: "03:20", enabled: false, fission, upload: true, confirmation: "AUTHORIZE_FIXED_AUTOMATION",
+    }]);
+    expect(pageErrors).toEqual([]); await page.close();
+  });
+
+  it("keeps fission upload disabled when no target was selected", async () => {
+    const { page, pageErrors } = await fixture({ fission: { projectId: recentProjectId, mediaIds: [sourceTaskId], total: 5 } });
+    expect(await page.getByRole("checkbox", { name: "裂变完成后自动上传并确认所选批次", exact: true }).count()).toBe(1);
+    expect(await page.getByRole("checkbox", { name: "裂变完成后自动上传并确认所选批次", exact: true }).isDisabled()).toBe(true);
+    await page.getByLabel("任务名称", { exact: true }).fill("本地每日裂变");
+    await page.getByRole("checkbox", { name: /我授权简辑/ }).check();
+    await page.getByRole("button", { name: "保存定时任务", exact: true }).click();
+    expect(await page.evaluate(() => (window as any).automationCalls.created[0].upload)).toBe(false);
+    expect(pageErrors).toEqual([]); await page.close();
+  });
+
   it("identifies an old blocked run as history after the schedule time changes", async () => {
     const task = { id: "11111111-1111-4111-8111-111111111111", request: { name: "改时制作", time: "18:08", enabled: true,
       production: { entries: [{ recentProjectId: "22222222-2222-4222-8222-222222222222", requestedCount: 1, coverEnabled: false }] } },

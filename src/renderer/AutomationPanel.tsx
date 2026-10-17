@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from "react";
 import { AutomationRequestSchema, type AutomationRun, type AutomationStatus, type AutomationTask } from "../shared/automation";
 import type { BatchProductionStart } from "../shared/batch-production";
+import type { FissionSchedule } from "../shared/video-fission";
 import type { QianchuanLibraryClear } from "../shared/qianchuan-video-library";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
 import type { QianchuanLibraryScheduleStatus } from "../shared/qianchuan-video-library-schedule";
@@ -9,6 +10,7 @@ import "./automation.css";
 
 type AutomationComposerProps = {
   production?: BatchProductionStart;
+  fission?: FissionSchedule;
   cleanup?: QianchuanLibraryClear;
   disabled?: boolean;
   onCreated?(): void;
@@ -17,7 +19,7 @@ type AutomationComposerProps = {
 const initialTime = "00:30";
 const runLabels: Record<AutomationRun["state"], string> = { RUNNING: "正在执行", COMPLETED: "已完成", BLOCKED: "已阻断", SKIPPED: "已跳过" };
 
-export function AutomationComposer({ production, cleanup, disabled = false, onCreated }: AutomationComposerProps) {
+export function AutomationComposer({ production, fission, cleanup, disabled = false, onCreated }: AutomationComposerProps) {
   const [name, setName] = useState("");
   const [time, setTime] = useState(initialTime);
   const [enabled, setEnabled] = useState(false);
@@ -59,10 +61,11 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
   const sourceTask = productionTasks.find(task => task.id === uploadFrom);
   const useExistingUpload = uploadExisting && Boolean(sourceTask);
   const useProduction = Boolean(production) && !uploadExisting;
-  const upload = uploadExisting ? useExistingUpload : useProduction && uploadAfterProduction;
+  const useFission = Boolean(fission) && !uploadExisting;
+  const upload = uploadExisting ? useExistingUpload : (useProduction || useFission) && uploadAfterProduction;
   const cleanupInputInvalid = !cleanup && scheduleCleanup && !currentCleanup;
   const authorizationScope = JSON.stringify({ name: name.trim(), time, enabled, cleanup: currentCleanup,
-    production: useProduction ? production : undefined, upload, uploadFrom: uploadExisting ? uploadFrom : undefined,
+    production: useProduction ? production : undefined, fission: useFission ? fission : undefined, upload, uploadFrom: uploadExisting ? uploadFrom : undefined,
     scheduleCleanup, auditMaterials, zeroImpressions, uploadAfterProduction, uploadExisting });
   useLayoutEffect(() => setAuthorized(false), [authorizationScope]);
   const candidate = {
@@ -71,6 +74,7 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
     enabled,
     ...(currentCleanup ? { cleanup: currentCleanup } : {}),
     ...(useProduction && production ? { production } : {}),
+    ...(useFission && fission ? { fission } : {}),
     upload,
     ...(useExistingUpload ? { uploadFrom } : {}),
     confirmation: authorized ? "AUTHORIZE_FIXED_AUTOMATION" : undefined,
@@ -124,7 +128,12 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
         </div>}
       </fieldset>}
     </div>}
-    {(production || !cleanup) && <div className="automation-options">
+    {fission && <div className="automation-options">
+      <label className="automation-option"><input type="checkbox" checked={uploadAfterProduction} disabled={disabled || saving || !fission.douyinUpload?.plan}
+        onChange={event => setUploadAfterProduction(event.target.checked)} /><span>裂变完成后自动上传并确认所选批次</span></label>
+      {!fission.douyinUpload?.plan && <small>如需自动上传，请先返回裂变页面选择账号和计划，再保存定时任务。</small>}
+    </div>}
+    {!fission && (production || !cleanup) && <div className="automation-options">
       <label className="automation-option"><input type="checkbox" checked={uploadExisting} disabled={disabled || saving || scheduleCleanup || !automationAvailable}
         onChange={event => { setUploadExisting(event.target.checked); setUploadFrom(""); setUploadAfterProduction(false); }} /><span>独立上传已有制作专用任务</span></label>
       {uploadExisting && <div className="automation-source">
@@ -143,9 +152,11 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
       {currentCleanup && currentCleanup.confirmation !== "DELETE_ALL_VIDEOS" && <p>计划素材清理：{cleanupPlanCount} 个已选计划，{currentCleanup.planMaterialRule === "ZERO_IMPRESSIONS_15D" ? "近 15 天零展示" : currentCleanup.planMaterialRule === "AUDIT_AND_ZERO_IMPRESSIONS_15D" ? "三类审核素材 + 近 15 天零展示" : "三类审核素材"}。{currentCleanup.confirmation === "DELETE_PLAN_MATERIALS" ? "不会清空账号视频库。" : "成功后再清空账号视频库。"}</p>}
       {currentCleanup && currentCleanup.confirmation !== "DELETE_PLAN_MATERIALS" && <p>视频库全部清空：永久删除 {currentCleanup.accounts.length} 个已选账号素材库中的全部视频，不按计划或零展示条件筛选。</p>}
       {useProduction && production && <p>制作：固定绑定 {production.entries.length} 个已选模板及当前设置。{upload ? "制作完成后自动上传并确认选定批次。" : "不自动上传；已选择的上传计划会保留为后续目标。"}</p>}
+      {useFission && fission && <><p>裂变：固定 {fission.mediaIds.length} 条源素材，共生成 {fission.total} 条。{upload ? "裂变完成后自动上传并确认选定批次。" : "不自动上传。"}</p><p>输出：{fission.outputDirectory ?? "每次执行时自动创建裂变目录"}；源素材变化时停止执行，不自动导入新增文件。</p></>}
+      {useFission && fission?.douyinUpload?.plan && <p>{upload ? "上传目标" : "预留上传目标"}：{fission.douyinUpload.accountProduct} · 账户 {fission.douyinUpload.plan.advertiserId} · {fission.douyinUpload.plan.name}（计划 {fission.douyinUpload.plan.adId}）</p>}
       {useExistingUpload && sourceTask && <p>独立上传：固定引用“{sourceTask.request.name}”的制作结果，并自动上传和确认对应批次。</p>}
       {uploadExisting && !sourceTask && <p>请选择一个已有制作专用任务。</p>}
-      {!currentCleanup && !useProduction && !useExistingUpload && <p>请选择有效的计划清理范围或制作模板。</p>}
+      {!currentCleanup && !useProduction && !useFission && !useExistingUpload && <p>请选择有效的计划清理范围、制作模板或裂变素材。</p>}
       {currentCleanup && <ul>{currentCleanup.accounts.map(account => <li key={account.expectedAdvertiserId}>{account.product} · 账户 {account.expectedAdvertiserId}{currentCleanup.confirmation !== "DELETE_ALL_VIDEOS" && (account.plans ?? []).map(plan => <span key={plan.adId}> · {plan.name}（计划 {plan.adId}）</span>)}</li>)}</ul>}
     </div>
 
@@ -153,7 +164,7 @@ export function AutomationComposer({ production, cleanup, disabled = false, onCr
     <label className="automation-option automation-enable"><input type="checkbox" checked={enabled} disabled={disabled || saving} onChange={event => setEnabled(event.target.checked)} /><span>保存后立即启用此每日任务</span></label>
     <label className="automation-option automation-authorization"><input type="checkbox" checked={authorized} disabled={disabled || saving} onChange={event => setAuthorized(event.target.checked)} /><span>我授权简辑在以上固定范围定时执行；如包含清理会自动删除上述计划素材或账号全部库视频，如包含上传会自动上传并确认批次。</span></label>
     {error && <p className="automation-error" role="alert">{error}</p>}
-    {!validation.success && (name || uploadExisting || currentCleanup || production) && <p className="automation-error" role="status">{validation.error.issues[0]?.message}</p>}
+    {!validation.success && (name || uploadExisting || currentCleanup || production || fission) && <p className="automation-error" role="status">{validation.error.issues[0]?.message}</p>}
     <button type="button" className="button primary" disabled={disabled || saving || !automationAvailable || cleanupInputInvalid || !validation.success} onClick={() => void create()}>{saving ? "正在保存…" : "保存定时任务"}</button>
   </section>;
 }

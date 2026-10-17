@@ -4,16 +4,17 @@ import type { BatchProductionStart } from "../shared/batch-production";
 import type { QianchuanLibraryClear } from "../shared/qianchuan-video-library";
 import type { AutomationTask, AutomationStatus } from "../shared/automation";
 import type { QianchuanAccountSummary } from "../shared/qianchuan-account";
+import type { FissionSchedule } from "../shared/video-fission";
 import { AutomationComposer, AutomationPanel } from "./AutomationPanel";
 import { AutomationTaskDetails } from "./AutomationTaskDetails";
 import { WorkspacePage } from "./WorkspacePage";
 import { Heading } from "./ui";
 
-export type AutomationDraft = { production?: BatchProductionStart; cleanup?: QianchuanLibraryClear };
+export type AutomationDraft = { production?: BatchProductionStart; fission?: FissionSchedule; cleanup?: QianchuanLibraryClear };
 export type AutomationPage = "tasks" | "create" | "edit";
 export function AutomationWorkspace({ state, page, onPage, draft, revision, onSource }: {
   state: DesktopState; page: AutomationPage; onPage(page: AutomationPage): void;
-  draft?: AutomationDraft; revision: number; onSource(source: "batch" | "cleanup"): void;
+  draft?: AutomationDraft; revision: number; onSource(source: "batch" | "fission" | "cleanup"): void;
 }) {
   const [editing, setEditing] = useState<AutomationStatus["tasks"][number]>();
   const [editingTasks, setEditingTasks] = useState<AutomationTask[]>([]);
@@ -30,8 +31,8 @@ export function AutomationWorkspace({ state, page, onPage, draft, revision, onSo
     </nav>
     <WorkspacePage active={page === "tasks"} label="任务管理"><AutomationPanel accounts={accounts} onEdit={(task, tasks) => { setEditing(task); setEditingTasks(tasks); setEditRevision(value => value + 1); onPage("edit"); }} /></WorkspacePage>
     <WorkspacePage active={page === "create"} label="创建自动化">
-      <div className="task-source-actions"><button type="button" className="text-button" onClick={() => onSource("batch")}>从批量制作选择模板</button><button type="button" className="text-button" onClick={() => onSource("cleanup")}>从素材管理选择清理范围</button></div>
-      <AutomationComposer key={revision} production={draft?.production} cleanup={draft?.cleanup} onCreated={() => onPage("tasks")} />
+      <div className="task-source-actions"><button type="button" className="text-button" onClick={() => onSource("batch")}>从批量制作选择模板</button><button type="button" className="text-button" onClick={() => onSource("fission")}>从视频裂变选择素材</button><button type="button" className="text-button" onClick={() => onSource("cleanup")}>从素材管理选择清理范围</button></div>
+      <AutomationComposer key={revision} production={draft?.production} fission={draft?.fission} cleanup={draft?.cleanup} onCreated={() => onPage("tasks")} />
     </WorkspacePage>
     <WorkspacePage active={page === "edit"} label="编辑自动化">{editing && <AutomationTaskEditor key={`${editing.id}:${editRevision}`} task={editing} accounts={accounts} tasks={editingTasks} onSaved={() => onPage("tasks")} />}</WorkspacePage>
   </>;

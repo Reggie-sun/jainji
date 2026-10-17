@@ -76,7 +76,7 @@
       "required": true,
       "command": "node",
       "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
-      "testFiles": ["tests/automation-scheduler.test.ts", "tests/automation-runtime.test.ts", "tests/automation-fixed-production.test.ts", "tests/automation-desktop.test.ts", "tests/automation-ui.test.ts", "tests/automation-upload.test.ts", "tests/automation-upload-page.test.ts", "tests/automation-upload-receipt.test.ts"],
+      "testFiles": ["tests/automation-scheduler.test.ts", "tests/automation-runtime.test.ts", "tests/automation-fission.test.ts", "tests/automation-fission.integration.test.ts", "tests/automation-fixed-production.test.ts", "tests/automation-desktop.test.ts", "tests/automation-ui.test.ts", "tests/automation-upload.test.ts", "tests/automation-upload-page.test.ts", "tests/automation-upload-receipt.test.ts"],
       "timeoutMs": 180000
     },
     {
@@ -976,6 +976,7 @@
         "src/shared/automation.ts",
         "src/renderer/AutomationPanel.tsx",
         "src/renderer/AutomationWorkspace.tsx",
+        "src/renderer/AutomationTaskDetails.tsx",
         "src/renderer/automation.css",
         "tests/automation-*.test.ts"
       ],
@@ -2075,8 +2076,12 @@
         "typecheck",
         "video-fission",
         "video-fission-smoke",
+        "scheduled-automation",
         "documents"
       ],
+      "testFilesByCheck": {
+        "scheduled-automation": ["tests/automation-fission.test.ts", "tests/automation-fission.integration.test.ts", "tests/automation-ui.test.ts"]
+      },
       "documentRefs": [
         "AGENTS.md",
         "docs/agent-contract-index.md",
