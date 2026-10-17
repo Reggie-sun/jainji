@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-17T11:25:37Z",
+  "updated_at": "2026-10-17T11:56:00Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "6b83f253140903e1f8e37e9fc6bf5d0b6a7607ee04239e6722e178f2f39ba082",
-      "size": 71505,
-      "normalized_sha256": "6b83f253140903e1f8e37e9fc6bf5d0b6a7607ee04239e6722e178f2f39ba082"
+      "sha256": "d7c8154944dccbea1ef9c6c0fac47f3bc80dd47b209b7f02591db14f413d1423",
+      "size": 71613,
+      "normalized_sha256": "d7c8154944dccbea1ef9c6c0fac47f3bc80dd47b209b7f02591db14f413d1423"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "d44b118d9a688e282c51037fbfaa512ce63177469e46bdb91edb2a502189f0cb",
-      "size": 169689,
-      "normalized_sha256": "d44b118d9a688e282c51037fbfaa512ce63177469e46bdb91edb2a502189f0cb"
+      "sha256": "5f73d2436c23110095f5c8e88d2a900dfeaea2ba2eb41bdd94a20d95ac85a4c0",
+      "size": 170234,
+      "normalized_sha256": "5f73d2436c23110095f5c8e88d2a900dfeaea2ba2eb41bdd94a20d95ac85a4c0"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1483,14 +1483,19 @@
       "normalized_sha256": "b18aff0e7125fab4c247be586fdce7e365b9a0951be0a73d51b553f6690468d4"
     },
     "src/main/human-region-cover.ts": {
-      "sha256": "c1bed1f1a342762c7684369b7bf4e8a9f0179a61bf5d5f2fd856a10926231795",
-      "size": 15491,
-      "normalized_sha256": "c1bed1f1a342762c7684369b7bf4e8a9f0179a61bf5d5f2fd856a10926231795"
+      "sha256": "fc39a7463cc583b5cc23b45c18064cae669e49968528f9e80ad96d070c6cc2ae",
+      "size": 15618,
+      "normalized_sha256": "fc39a7463cc583b5cc23b45c18064cae669e49968528f9e80ad96d070c6cc2ae"
     },
     "src/main/human-region-geometry.ts": {
       "sha256": "bdc615733e26f0d29c5b52ee01180b79683775d4eb1b90e3bcdcc856d2d5d6df",
       "size": 2759,
       "normalized_sha256": "bdc615733e26f0d29c5b52ee01180b79683775d4eb1b90e3bcdcc856d2d5d6df"
+    },
+    "src/main/human-region-placement-index.ts": {
+      "sha256": "72553b948d021c4a65a7ce7cbed2467d7563072481b0aa587477f593ba6a9343",
+      "size": 6522,
+      "normalized_sha256": "72553b948d021c4a65a7ce7cbed2467d7563072481b0aa587477f593ba6a9343"
     },
     "src/main/human-region-render.ts": {
       "sha256": "2c82a6be70b1236e8e1ac08888b80ba5c7c6cc44dd8a29d00a2ef6c34ed11277",

@@ -12,7 +12,7 @@ vite.config.ts[AB5T]: F:配置React桌面renderer的Vite构建及本地服务 | 
 vitest.config.ts[AB5T]: F:配置Node测试环境和FFmpeg测试初始化 | R:code:src/main/ffmpeg.ts | A:测试执行配置 | S:仅tests目录的test.ts进入默认测试集
 
 ===/home/reggie/vscode_folder/jianji/.agent/harness/===
-policy.json[FQ7L]: F:声明必需检查及局部owner消费者的分层回归路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts,code:src/main/state-notifications.ts | A:桌面多实例覆盖开发启动停止与IPC生命周期；状态通知限频验证归独立检查；已知UI及fixture取专项消费者；贴纸入库沿frame-assets，覆盖批量回归归cover-contracts；通配上传与未知辅助仅作fallback；共享报表及核心身份保留完整消费者，大影响可扩默认核心 | S:测试唯一登记；未知依赖不猜缩；cover按词边界不误匹配recovery或discovery；所选检查必需，专项不代平台验收
+policy.json[FQ7L]: F:声明必需检查及局部owner消费者的分层回归路由 | R:code:src/harness/routing.ts,code:src/harness/code.ts,code:src/main/state-notifications.ts | A:桌面多实例覆盖开发启动停止与IPC生命周期；状态通知限频验证归独立检查；已知UI及fixture取专项消费者；贴纸入库沿frame-assets，人工框持久匹配回归归cover-contracts；通配上传与未知辅助仅作fallback；共享报表及核心身份保留完整消费者，大影响可扩默认核心 | S:测试唯一登记；未知依赖不猜缩；cover按词边界不误匹配recovery或discovery；所选检查必需，专项不代平台验收
 
 ===/home/reggie/vscode_folder/jianji/src/feedback-server/===
 index.ts[EN5T]: F:启动独立本地反馈中继并解析令牌、端口与数据目录 | R:code:src/feedback-server/service.ts,code:src/shared/bug-feedback.ts | A:优先环境令牌，回退到gh auth；仅监听127.0.0.1并处理退出信号 | S:无令牌时拒绝启动
@@ -188,7 +188,7 @@ decoration-frame.ts[DB7T]: F:预检独立边框池并逐输出冻结使用及选
 qianchuan-cleanup-plans.ts[AW8T]: F:复核所选计划可用性并串行汇总清理进展 | R:code:src/main/qianchuan-plan-materials.ts,code:src/main/qianchuan-video-library.ts | A:实时同账号目录过滤失效选择并具名报告；仅处理仍有效的已选计划；聚合BLOCKED优先于PARTIAL；保留明细及30分钟界 | S:不加入未选计划；全失效的计划单独清理不报完成，独立已确认全库可继续；BLOCKED停止后续；PARTIAL不清库；旧未知不重试
 qianchuan-picker-transport.ts[IN7T]: F:为计划读取提供仅显式连接自有页面的CDP传输 | R:code:src/main/qianchuan-plan-catalog.ts,code:src/main/local-cdp-transport.ts | A:ws限loopback拒redirect；禁止根会话自动附着，保留页内子目标；负ID定向attach及有界等待；取消断连拒绝pending | S:不初始化或唤醒无关用户标签页；关闭仅断开连接，不关闭Chrome；连接不授账号或计划准入
 qianchuan-zero-impressions.ts[DB8T]: F:冻结零展示统计窗口和逐素材15天保护截止点并判定资格 | R:code:src/main/qianchuan-plan-material-page.ts,code:src/main/qianchuan-plan-materials.ts | A:前15个完整北京时间日期；保护为当前时刻减360小时；严格日期与整数显示值核验；零展示且创建时间不晚于截止点 | S:创建时间是首次加入当前计划而非计划年龄或库上传时间；缺失非法时间停止；展示不等于播放；不调用平台
-human-region-cover.ts[AB8M]: F:将人工固定框匹配成持久透明贴纸层 | R:code:src/main/human-region-geometry.ts,code:src/main/shape-cover-hybrid-shape.ts,code:src/main/shape-cover-freeze.ts | A:逐素材身份选材轮换；随机按运行目标打散；新手动制作首款合格即试下一目标，冲突可回溯；旧审阅比较八款窗口；回报进度预算失败 | S:自身alpha全覆盖零膨胀，新制作放宽超框仍等比；随机同素材各框不同款且重试冻结，Agent可复用；256候选4096组合十分钟界；所有候选含暂占款均不适合才能剪枝；无解不加底不授批准
+human-region-cover.ts[AB8M]: F:将人工固定框匹配成持久透明贴纸层 | R:code:src/main/human-region-geometry.ts,code:src/main/human-region-placement-index.ts,code:src/main/shape-cover-freeze.ts | A:逐素材身份选材轮换；随机按运行目标打散；新手动首款合格即试下一目标并复用持久几何，冲突可回溯；旧审阅比较八款窗口；回报进度预算失败 | S:自身alpha全覆盖零膨胀，新制作放宽超框仍等比；随机同素材各框不同款且重试冻结，Agent可复用；256候选4096组合十分钟界；所有候选含暂占款均不适合才能剪枝；无解不加底不授批准
 human-region-geometry.ts[KB7T]: F:投影人工矩形并核验逐像素完全不透明覆盖 | R:code:src/main/shape-cover-pixel-gate.ts,code:src/shared/human-region-cover.ts | A:测量缩放补边；向外保留滤波支撑；目标位图及每侧一个目标宽高的扩展搜索范围 | S:半透明及孔洞不算覆盖；人工框不是原贴纸alpha
 human-region-render.ts[AB8T]: F:校验人工冻结像素目标与入队来源 | R:code:src/main/cover-review-approval.ts,code:src/main/human-region-cover.ts,code:src/main/source-sticker-knowledge-store.ts | A:源资源输出绑定；解码覆盖；正常意图或历史批准分别核验 | S:正常入口拒绝review binding和错项目目标；无意图不放行；coverage只证明指定框；容器及视频时长源争议均检查
 cover-review-upload.ts[IW8T]: F:交接已批准导出到原千川上传账本 | R:code:src/main/douyin-upload-service.ts,code:src/main/douyin-upload-store.ts | A:核对完整任务集合；新登记共用数量授权并原子保存；全部相同记录直接返回 | S:重复批准不恢复浏览器权限；部分记录或目标冲突拒绝；无登记历史成片不追加；预览不准入
@@ -271,6 +271,7 @@ video-fission.ts[AW6T]: F:把精确裂变总数准备为原导出队列的冻结
 qianchuan-egress-development.ts[RN8S]: F:桥接开发启动器与Electron的分代固定出口租约 | R:code:src/main/qianchuan-egress-runtime.ts,code:src/shared/qianchuan-egress.ts | A:父进程复用canonical runtime；私有RPC核身份及host UUID递增代际；已撤销及高水位拒乱序响应；有界请求；recover与retireUnused透传；dispose解绑通道并等待runtime | S:IPC无凭据或平台写指令，不接远端浏览器；旧signal永不复活，迟到失效不误伤新代；缺失或跨host代际拒绝；断连超时撤销全部本地权限且不直连；Electron退出不终止隧道，仅父owner清理自有runtime
 human-region-artwork-index.ts[PP7M]: F:持久复用人工框覆盖图案裁边结果及精确尺寸alpha | R:code:src/main/shape-cover-alpha.ts,code:src/main/shape-cover-hybrid-shape.ts,code:src/main/uploaded-stickers.ts | A:索引绑定源及解码器身份；进程内校验有界单头非交错RGBA缓存PNG；合并缺失尺寸测量并一次原子保存；最多64项且原始alpha32MiB及文件16MiB限额不变；损坏从原图重建；上传尽力预热，旧库匹配补建 | S:不缓存摆放准入或冻结图层；生产仍核原图及最终像素；普通上传不因覆盖索引不可用而失败，取消必须传播
 state-notifications.ts[MP6T]: F:合并桌面状态订阅通知并限制完整状态构造频率 | R:code:src/main/index.ts | A:同一时间一个reader；构造起点至少间隔500ms；合并期间保留最新待更新信号；窗口失效不构造或发送；失败待后续通知恢复 | S:仅限制界面投影，不缓存生产状态或参与持久化及准入
+human-region-placement-index.ts[PP6S]: F:持久复用人工框与贴纸的成功摆放几何以跳过重复搜索 | R:code:src/main/shape-cover-hybrid-shape.ts,code:src/main/human-region-artwork-index.ts,code:src/main/human-region-geometry.ts | A:按目标投影指纹解码器算法隔离；限长校验与原子写入；命中再栅格检查；缺损回原搜索 | S:只缓存几何，不缓存选款批准或冻结绑定；每次校验当前素材并按当前任务重冻结；不改变随机轮换与失败关闭
 
 ===/home/reggie/vscode_folder/jianji/src/model-server/===
 gateway.ts[AB7T]: F:本地HTTP模型网关校验Bearer和消息并转发兼容API | R:code:src/model-server/index.ts | A:独立模型网关边界 | S:凭据不在请求回显且消息类型受限

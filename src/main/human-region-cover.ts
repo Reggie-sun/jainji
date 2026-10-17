@@ -10,10 +10,11 @@ import type { FfmpegAdapter } from "./ffmpeg.js";
 import { measureShapeCoverOutput } from "./shape-cover-alpha.js";
 import { searchHybridCornerShape, hybridMaskBounds, type HybridArtworkCache } from "./shape-cover-hybrid-shape.js";
 import { freezeShapeCoverRaster, publishShapeCoverPng } from "./shape-cover-freeze.js";
-import { humanRegionArtworkScope, humanRegionBitmap, opaqueRegionCovered, projectHumanRectangle } from "./human-region-geometry.js";
+import { humanRegionBitmap, opaqueRegionCovered, projectHumanRectangle } from "./human-region-geometry.js";
 import { reviewDigest } from "./cover-review-approval.js";
 import { shapeCoverDigest } from "./shape-cover-render.js";
 import { ProviderError } from "./agent-provider.js";
+import { matchHumanRegionArtwork } from "./human-region-placement-index.js";
 
 export type HumanRegionIntent = Pick<CoverReviewDraft, "id" | "projectId" | "revision" | "assistedArtwork"> & {
   admission?: "manual-production-v1";
@@ -65,11 +66,12 @@ export function createHumanRegionCover(input: { draft: HumanRegionIntent; media:
       ? Math.max(512, candidates.length * draft.media.find(item => item.mediaId === target.media.id)!.segments.length) : 512;
     if (attempts > maximum) throw new ProviderError(`人工覆盖匹配已达到${independent ? "此素材" : "本批"} ${maximum} 次候选预算；请调整覆盖框或贴纸库。`);
     const tools = { ...input.tools, signal }, bitmap = humanRegionBitmap(target.target, target.projection);
-    const selected = await searchHybridCornerShape([{ id, asset: input.assets[id]! }], bitmap, target.projection,
-      draft.admission === "manual-production-v1" ? humanRegionArtworkScope(target.target)
-        : { x: -target.projection.width, y: -target.projection.height, width: target.projection.width * 3, height: target.projection.height * 3 },
-      Math.min(target.projection.scaledWidth / target.source.width, target.projection.scaledHeight / target.source.height), tools,
-      draft.admission === "manual-production-v1" ? "compact-artwork" : "artwork", artworkCache);
+    const sourceScale = Math.min(target.projection.scaledWidth / target.source.width, target.projection.scaledHeight / target.source.height);
+    const selected = draft.admission === "manual-production-v1"
+      ? await matchHumanRegionArtwork({ id, asset: input.assets[id]! }, bitmap, target.projection, target.target, sourceScale, tools, artworkCache)
+      : await searchHybridCornerShape([{ id, asset: input.assets[id]! }], bitmap, target.projection,
+        { x: -target.projection.width, y: -target.projection.height, width: target.projection.width * 3, height: target.projection.height * 3 },
+        sourceScale, tools, "artwork", artworkCache);
     if (!selected) { cache.set(key, null); return null; }
     if (!opaqueRegionCovered(selected.raster.alpha, target.projection, target.target)) throw Error("人工覆盖不透明像素校验失败。");
     const frozen = await freezeShapeCoverRaster(selected.raster, bitmap, target.projection, 0, tools);
