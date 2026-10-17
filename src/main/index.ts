@@ -28,7 +28,7 @@ import { installDevelopmentQuit } from "./development-lifecycle.js";
 import { claimDesktopInstance } from "./desktop-instance.js";
 import { projectKnowledgeRisks } from "./source-sticker-knowledge-projection.js";
 import { FissionStartSchema } from "../shared/video-fission.js";
-import { createFissionBatches } from "./video-fission.js";
+import { prepareFissionProduction } from "./video-fission.js";
 import { videoPathsInDirectory } from "./media.js";
 import { ensureBuiltinStickerAssets } from "./builtin-stickers.js";
 import type { StickerAssets } from "./builtin-stickers.js";
@@ -611,12 +611,11 @@ function registerHandlers(): void {
         const outputDirectory = await canonicalPath(request.outputDirectory);
         if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
         await douyinUpload.beginProduction();
-        const batches = await createFissionBatches(queue, { ...request, outputDirectory }, service.currentProject.mediaItems, preparation.signal);
-        try { await service.rememberExportProduction(batches); preparation.signal.throwIfAborted(); }
-        catch (error) {
-          for (const batch of batches) for (const task of batch.tasks) await queue.cancel(task.id);
-          throw error;
-        }
+        const batches = await prepareFissionProduction(queue, { ...request, outputDirectory }, service.currentProject.mediaItems, {
+          preflight: (selection, total) => douyinUpload.preflight(selection, total),
+          registerBatches: (batches, selection, authorization) => douyinUpload.registerBatches(batches, selection, authorization),
+          remember: batches => service.rememberExportProduction(batches),
+        }, preparation.signal);
         void Promise.all(batches.map(batch => queue.start(batch.id))).catch(() => safeLog("video fission export stopped"));
         return publicState();
       });
@@ -631,7 +630,7 @@ function registerHandlers(): void {
     return douyinUpload.withExportAdmission(async () => {
       await douyinUpload.beginProduction();
       const uploadAuthorization = await douyinUpload.preflight(parsed.douyinUpload, new Set(parsed.mediaIds).size);
-      const preset = parsed.preset as ExportPreset;
+      const preset: ExportPreset = { ...parsed.preset, microAdjustments: parsed.preset.microAdjustments ?? DEFAULT_PRESET.microAdjustments };
       const outputDirectory = await canonicalPath(parsed.outputDirectory);
       if (!approvedOutputDirectories.has(outputDirectory)) throw new Error("请选择由系统对话框授权的输出目录。");
       assertProductionIdle();

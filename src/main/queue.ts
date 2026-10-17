@@ -7,6 +7,7 @@ import { access, constants, copyFile, unlink, writeFile, mkdir, realpath } from 
 import path from "node:path";
 import {
   BATCH_SCHEMA_VERSION, QUEUE_SCHEMA_VERSION,
+  DEFAULT_PRESET,
   assertPriceOnlyTemplate,
   BalancedStickerPicker,
   cloneTemplate,
@@ -448,7 +449,7 @@ export class ExportQueue {
     const created: ExportBatch[] = [];
     for (let index = 0; index < input.count; index += 1) {
       const template = cloneTemplateForRandom(source.templateSnapshot, input.productPrice, picker, framePicker);
-      created.push(await this.createBatchNow({ template, projectId: source.projectId, mediaIds: [...source.mediaIds], mediaItems: media, outputDirectory: input.outputDirectory, preset: source.preset }, signal));
+      created.push(await this.createBatchNow({ template, projectId: source.projectId, mediaIds: [...source.mediaIds], mediaItems: media, outputDirectory: input.outputDirectory, preset: { ...source.preset, microAdjustments: source.preset.microAdjustments ?? DEFAULT_PRESET.microAdjustments } }, signal));
     }
     return created;
   }

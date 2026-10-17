@@ -13,8 +13,8 @@ const directory = await mkdtemp(path.join(tmpdir(), "jianji-fission-smoke-"));
 let server, browser, queue;
 try {
   const bundle = path.join(directory, "owner.cjs");
-  await build({ stdin: { contents: 'export {ApplicationService} from "./src/main/application.ts"; export {FfmpegAdapter} from "./src/main/ffmpeg.ts"; export {ExportQueue} from "./src/main/queue.ts"; export {JobStore} from "./src/main/store.ts"; export {createFissionBatches} from "./src/main/video-fission.ts"; export {videoPathsInDirectory} from "./src/main/media.ts"; export {createAutomaticOutputDirectory} from "./src/main/automatic-output-directory.ts";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "cjs", outfile: bundle });
-  const { ApplicationService, FfmpegAdapter, ExportQueue, JobStore, createFissionBatches, videoPathsInDirectory, createAutomaticOutputDirectory } = createRequire(import.meta.url)(bundle);
+  await build({ stdin: { contents: 'export {ApplicationService} from "./src/main/application.ts"; export {FfmpegAdapter} from "./src/main/ffmpeg.ts"; export {ExportQueue} from "./src/main/queue.ts"; export {JobStore} from "./src/main/store.ts"; export {prepareFissionProduction} from "./src/main/video-fission.ts"; export {videoPathsInDirectory} from "./src/main/media.ts"; export {createAutomaticOutputDirectory} from "./src/main/automatic-output-directory.ts";', resolveDir: process.cwd() }, bundle: true, platform: "node", format: "cjs", outfile: bundle });
+  const { ApplicationService, FfmpegAdapter, ExportQueue, JobStore, prepareFissionProduction, videoPathsInDirectory, createAutomaticOutputDirectory } = createRequire(import.meta.url)(bundle);
   const ffmpeg = new FfmpegAdapter(process.env.JIANJI_FFMPEG_PATH || "ffmpeg", process.env.JIANJI_FFPROBE_PATH || "ffprobe");
   const fonts = { resolve: async () => null };
   const owner = new ApplicationService(ffmpeg, fonts);
@@ -27,7 +27,10 @@ try {
     execFileSync(ffmpeg.ffmpegPath, ["-v", "error", "-f", "lavfi", "-i", `testsrc2=s=180x320:r=30:d=2`, "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:v", "libx264", "-c:a", "aac", source]);
     originals.push([source, await readFile(source)]);
   }
-  const state = () => ({ ...owner.view(queue.snapshot()), capabilities: { ready: true, executionLimits: { exports: 1 } }, connection: { configured: false } });
+  // Isolated upload UI/admission fixture; no platform adapter or credentials.
+  const plan = { advertiserId: "1876000000000001", adId: "1876000000000002", name: "隔离测试计划", accountSource: "current-browser" };
+  const uploadEvents = [];
+  const state = () => ({ ...owner.view(queue.snapshot()), capabilities: { ready: true, executionLimits: { exports: 1 } }, connection: { configured: false }, douyinUpload: { config: { enabled: true }, accounts: [{ product: "眼贴", ...plan, available: true }], tasks: [], legacyTasks: [], batches: [], historicalBatches: [], accountBatches: [], closedBatches: [], ready: true, configSelected: true } });
   let work;
   server = await createServer({ cacheDir: path.join(directory, "vite-cache"), server: { host: "127.0.0.1", port: 5197, strictPort: false, watch: null }, plugins: [{ name: "fission-fixture", configureServer(instance) {
     instance.middlewares.use(async (request, response, next) => {
@@ -45,12 +48,15 @@ try {
             case "/__api/automatic": result = await createAutomaticOutputDirectory(data.ids.map(id => owner.getMedia(id).sourcePath), new Date(), undefined, data.purpose); break;
             case "/__api/output": result = path.join(directory, "手动输出"); break;
             case "/__api/start": {
-              const batches = await createFissionBatches(queue, data, owner.currentProject.mediaItems);
-              await owner.rememberExportProduction(batches);
+              const batches = await prepareFissionProduction(queue, data, owner.currentProject.mediaItems, {
+                preflight: async (selection, total) => { uploadEvents.push({ event: "preflight", selection, total }); return selection ? { pageBatchId: "isolated-fixture" } : undefined; },
+                remember: batches => owner.rememberExportProduction(batches),
+                registerBatches: async (batches, selection) => { assert.ok(batches.flatMap(batch => batch.tasks).every(task => task.status === "queued")); uploadEvents.push({ event: "register", selection, total: batches.flatMap(batch => batch.tasks).length }); },
+              });
               work = Promise.all(batches.map(b => queue.start(b.id)));
               result = state(); break;
             }
-            case "/__api/wait": await work; result = state(); break;
+            case "/__api/wait": await work; result = { ...state(), uploadEvents }; break;
             default: result = state();
           }
           response.setHeader("Content-Type", "application/json"); response.end(JSON.stringify(result));
@@ -62,7 +68,7 @@ try {
       response.end(await server.transformIndexHtml(request.url, `<!doctype html><html lang="zh-CN"><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">
         import React from 'react'; import {createRoot} from 'react-dom/client'; import App from '/src/renderer/App.tsx'; import '/src/renderer/styles.css'; import '/src/renderer/workspace-redesign.css';
         const api=async(action,input={})=>{const r=await fetch('/__api/'+action,{method:'POST',body:JSON.stringify(input)});const data=await r.json();if(!r.ok)throw new Error(data.error);return data;};
-        window.jianji={getState:()=>api('state'),onExportSnapshot:listener=>{const timer=setInterval(()=>api("state").then(listener),200);return ()=>clearInterval(timer)},selectVideoInputDirectory:()=>api('input'),selectOutputDirectory:()=>api('output'),createAutomaticOutputDirectory:(ids,existing,purpose)=>api('automatic',{ids,purpose}),startVideoFission:input=>api('start',input)};
+        window.jianji={listQianchuanPlans:async()=>({account:{advertiserId:'1876000000000001',name:'隔离测试账户'},plans:[${JSON.stringify(plan)}]}),getState:()=>api('state'),onExportSnapshot:listener=>{const timer=setInterval(()=>api("state").then(listener),200);return ()=>clearInterval(timer)},selectVideoInputDirectory:()=>api('input'),selectOutputDirectory:()=>api('output'),createAutomaticOutputDirectory:(ids,existing,purpose)=>api('automatic',{ids,purpose}),startVideoFission:input=>api('start',input)};
         createRoot(document.getElementById('root')).render(React.createElement(App));</script></body></html>`));
     });
   } }] });
@@ -90,11 +96,19 @@ try {
     await page.locator("#video-fission-total").fill("251");
     assert.equal(await page.getByRole("button", { name: "开始裂变", exact: true }).isDisabled(), true);
     await page.locator("#video-fission-total").fill("5");
+    await page.getByRole("checkbox", { name: "本次成片导出完成后自动上传并确认", exact: true }).check();
+    await page.getByRole("button", { name: "开始裂变 5 条", exact: true }).click();
+    await page.getByText("请选择上传计划后再开始裂变。", { exact: true }).waitFor();
+    assert.deepEqual(uploadEvents, []);
+    await page.getByRole("combobox", { name: "本次产品账号", exact: true }).selectOption("眼贴");
+    await page.getByRole("combobox", { name: "上传计划", exact: true }).selectOption({ label: "隔离测试计划 · ID 1876000000000002" });
     await page.getByRole("button", { name: "开始裂变 5 条", exact: true }).click();
     await page.getByRole("heading", { name: "作品与导出", exact: true }).waitFor();
     const done = await (await page.request.post(url.replace("/__fission", "/__api/wait"))).json();
     const tasks = done.queue.batches.flatMap(b => b.batch.tasks);
     await page.getByRole("button", { name: "播放", exact: true }).first().waitFor();
+    assert.deepEqual(uploadEvents.map(event => event.event), ["preflight", "register"]);
+    for (const event of uploadEvents) { assert.equal(event.total, 5); assert.equal(event.selection.accountProduct, "眼贴"); assert.deepEqual(event.selection.plan, plan); }
     assert.equal(tasks.length, 5); assert.equal(tasks.every(t => t.status === "completed"), true);
     assert.equal(tasks.every(t => t.outputPath.includes(`${path.sep}裂变${path.sep}`)), true);
     for (const [source, bytes] of originals) assert.deepEqual(await readFile(source), bytes);
@@ -102,6 +116,6 @@ try {
     await page.getByRole("button", { name: "视频裂变", exact: true }).click();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
     assert.deepEqual(errors, []);
-    console.log(JSON.stringify({ status: "PASS", inputDirectory: true, alignedControls: true, automaticFissionDirectory: true, exactTotal: 5, fullDecode: true, originalFilesUnchanged: true, narrowViewport: true, modelRequests: 0, platformWrites: 0 }));
+    console.log(JSON.stringify({ status: "PASS", inputDirectory: true, alignedControls: true, uploadSelectionAndAdmission: true, missingPlanBlocked: true, automaticFissionDirectory: true, exactTotal: 5, fullDecode: true, originalFilesUnchanged: true, narrowViewport: true, modelRequests: 0, platformWrites: 0 }));
   }
 } finally { await queue?.shutdown(); await browser?.close(); await server?.close(); await rm(directory, { recursive: true, force: true }); }

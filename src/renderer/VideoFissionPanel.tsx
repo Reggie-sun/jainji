@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { fissionAllocation, MAX_FISSION_OUTPUTS } from "../shared/video-fission";
 import "./video-fission.css";
 
@@ -11,6 +11,7 @@ type Props = {
   engineReady: boolean;
   inputDirectory: string;
   outputDirectory: string;
+  uploadControls?: ReactNode;
   onSelection(ids: string[]): void;
   onImport(): void;
   onOutput(): void;
@@ -26,6 +27,7 @@ export function VideoFissionPanel({
   engineReady,
   inputDirectory,
   outputDirectory,
+  uploadControls,
   onSelection,
   onImport,
   onOutput,
@@ -96,7 +98,8 @@ export function VideoFissionPanel({
     <div className="card video-fission-card">
       <div className="video-fission-intro">
         <p>本地裂变会轻微变速（0.97–1.0756 倍，时长会随之变化）、调色并等比缩小补边；完整保留口播、字幕和原边框，不加贴纸。</p>
-        <small>生成的视频保存在所选目录，不会自动上传。</small>
+        <small>自动微调色温、色调、色相、曝光、高光、阴影、黑白场、自然饱和度、锐化、颗粒、暗角，以及对比度、饱和度、亮度和 Gamma；仅使用极小幅度，尽量保持原有观感。</small>
+        <small>生成的视频保存在所选目录；可按需启用下方千川自动上传。</small>
       </div>
 
       <div className="video-fission-settings">
@@ -178,6 +181,7 @@ export function VideoFissionPanel({
         <span>{allocatedTotal === null ? "完成素材与条数设置后即可查看分配。" : "源素材按顺序均匀分配，合计与设置条数一致。"}</span>
       </div>
 
+      {uploadControls}
       <div className="video-fission-actions">
         <div className="video-fission-action-group">
           <button type="button" className="button secondary" onClick={onResults}>查看作品</button>

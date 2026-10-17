@@ -17,6 +17,7 @@ import { HybridCoverBindingSchema } from "../shared/hybrid-cover.js";
 import { FrameIdSchema, isWideFrameId } from "../shared/frames.js";
 import { HumanRegionBindingSchema } from "../shared/human-region-cover.js";
 import { FissionSettingsSchema } from "../shared/video-fission.js";
+import { VideoMicroAdjustmentsSchema, videoMicroAdjustmentRecipe } from "../shared/video-micro-adjustments.js";
 
 export { DEFAULT_TEXT_FONT_FAMILY } from "../shared/defaults.js";
 
@@ -443,6 +444,7 @@ export const ExportPresetSchema = ExportSettingsSchema.extend({
   container: ExportFormatSchema,
   videoCodec: z.literal("h264"),
   audioCodec: z.literal("aac"),
+  microAdjustments: VideoMicroAdjustmentsSchema.optional(),
 }).strict();
 export type ExportPreset = z.infer<typeof ExportPresetSchema>;
 
@@ -564,6 +566,7 @@ export const DEFAULT_PRESET: ExportPreset = {
   videoCodec: "h264",
   audioCodec: "aac",
   ...DEFAULT_EXPORT_SETTINGS,
+  microAdjustments: videoMicroAdjustmentRecipe(0),
 };
 
 export function now(): string {

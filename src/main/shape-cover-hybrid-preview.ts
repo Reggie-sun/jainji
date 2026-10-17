@@ -4,7 +4,7 @@ import path from "node:path";
 import { SourceIdentitySchema } from "../shared/source-sticker-knowledge.js";
 import { ExportSettingsSchema, outputDimensions } from "../shared/export-settings.js";
 import { TemplateCompiler, type CompiledCommand } from "./compiler.js";
-import { EditTemplateSchema, type MediaItem } from "./domain.js";
+import { DEFAULT_PRESET, EditTemplateSchema, type MediaItem } from "./domain.js";
 import { discoveryHash as hash } from "./source-fact-discovery-evidence.js";
 import { identifySource, sourceKey } from "./source-sticker-knowledge-store.js";
 import { fingerprintFile, publishWithoutReplacement } from "./paths.js";
@@ -98,7 +98,7 @@ export async function renderHybridPreview(preview: HybridPreviewInput, directory
     height: o.source.height, rotation: 0, probeStatus: "ready", importedAt: now };
   const template = EditTemplateSchema.parse({ schemaVersion: 1, id: randomUUID(), name: "H4 diagnostic", version: 1, layers: [],
     filter: { presetId: "none", intensity: 0 }, createdAt: now, updatedAt: now });
-  const command = await new TemplateCompiler().compile(template, media, { container: "mp4", videoCodec: "h264", audioCodec: "aac", ...o.settings },
+  const command = await new TemplateCompiler().compile(template, media, { ...DEFAULT_PRESET, ...o.settings },
     { ffmpegPath: input.ffmpeg.ffmpegPath, fontResolver: { resolve: async () => null }, textFilePath: () => { throw Error("H4_UNEXPECTED_TEXT"); }, threads: 2 });
   const args = appendHybridPreviewOverlay(command, frozenPath, o.range);
   const [timeNum, timeDen] = o.source.timeBase.split("/").map(Number);

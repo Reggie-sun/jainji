@@ -2060,6 +2060,8 @@
     {
       "id": "domain-video-fission",
       "paths": [
+        "src/main/video-micro-adjustments.ts",
+        "src/shared/video-micro-adjustments.ts",
         "src/main/video-fission.ts",
         "src/main/media.ts",
         "src/shared/video-fission.ts",

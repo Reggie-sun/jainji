@@ -60,7 +60,8 @@ describe("TemplateCompiler", () => {
       ffmpegPath: "/fake", fontResolver: { resolve: async () => null }, textFilePath: () => "/tmp/unused",
     });
     const graph = command.args[command.args.indexOf("-filter_complex") + 1];
-    expect(graph).not.toContain("scale=");
+    // Color-space conversion may use scale, but source mode must never resize it.
+    for (const match of graph.matchAll(/scale=([^,;]+)/g)) expect(match[1].split(":").slice(0, 2)).toEqual(["iw", "ih"]);
     expect(graph).not.toContain("pad=");
     expect(command.args).not.toContain("-r");
     expect(command.args).toContain("0:a?");

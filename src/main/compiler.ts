@@ -9,6 +9,8 @@ import { coverMotionExpression, coverRasterExpressions } from "./cover-motion.js
 import { decorationDisplaySeconds } from "../shared/decorations.js";
 import { readFrozenShapeCover } from "./shape-cover-render.js";
 import { readApprovedHybridCover, assertHybridTemplateReady } from "./hybrid-cover-production.js";
+import { fissionVideoFilters } from "./video-fission.js";
+import { videoMicroAdjustmentFilters } from "./video-micro-adjustments.js";
 
 export interface FontResolver {
   resolve(fontFamily: string): Promise<string | null>;
@@ -117,14 +119,10 @@ export class TemplateCompiler {
     const frozenShape = template.layers.some(layer => layer.type === "sticker" && (layer.cover?.shapeMatched || layer.cover?.hybridApproved || layer.cover?.humanRegion));
     // Shape intervals must run on output PTS, before -r can duplicate/drop frames.
     const fission = template.fission;
-    const insetSize = fission ? {
-      width: Math.max(2, Math.round(dimensions.width * (1 - 2 * fission.inset / 720) / 2) * 2),
-      height: Math.max(2, Math.round(dimensions.height * (1 - 2 * fission.inset / 720) / 2) * 2),
-    } : undefined;
     const sourceFilters = [fission ? `setpts=(PTS-STARTPTS)/${fission.speed}` : "setpts=PTS-STARTPTS",
       (frozenShape || fission) && preset.frameRateMode === "30" ? "fps=30" : null,
       outputScale(preset, dimensions),
-      fission ? `scale=${insetSize!.width}:${insetSize!.height}:flags=lanczos,pad=${dimensions.width}:${dimensions.height}:(ow-iw)/2:(oh-ih)/2:color=0x101010,setsar=1,eq=contrast=${fission.contrast}:saturation=${fission.saturation}:brightness=${fission.brightness}:gamma=${fission.gamma}` : null,
+      fission ? fissionVideoFilters(fission, dimensions) : preset.microAdjustments ? videoMicroAdjustmentFilters(preset.microAdjustments) : null,
       "format=yuv420p"].filter(Boolean).join(",");
     graph.push(`[0:v]${sourceFilters}[${baseLabel}]`);
 

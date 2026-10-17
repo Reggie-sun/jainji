@@ -33,7 +33,7 @@ it.each([false, true])("fresh H2→original mask→motion→local artwork→opaq
       candidateEvidence = await prepareDiscoveryEvidence(input);
       expect(candidateEvidence.receipt.frames.length).toBeGreaterThan(evidence.receipt.frames.length);
     }
-    const route = (role: VisionRole): VisionRoute => ({ provider: "fixture", model: role === "LUNA" ? "gpt-6-luna" : role === "SOL" ? "gpt-6.1-sol" : "MiniMax-M3",
+    const route = (role: VisionRole): VisionRoute => ({ provider: "fixture", model: role === "LUNA" ? "gpt-6-luna" : "gpt-6.1-sol",
       imageCapability: "AVAILABLE", verifyFresh: async () => {}, complete: async messages => {
         const content = messages[1].content as { text: string }[], p = JSON.parse(content[0].text), context = JSON.parse(content.at(-1)!.text), candidateIds = p.candidates.map((c: { candidateId: string }) => c.candidateId);
         return JSON.stringify({ packetDigest: p.packetDigest, corner: context.corner, decisions: candidateIds.map((candidateId: string) => ({ candidateId,

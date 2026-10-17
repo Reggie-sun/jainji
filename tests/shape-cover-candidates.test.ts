@@ -152,9 +152,11 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
       expect(sha(consumed[0])).toBe(binding.pngSha256);
       const compiled = await compiler.mock.results[0].value;
       expect(sha(compiled.binaryFiles[0].content)).toBe(binding.pngSha256);
-      const graph = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
+      const graph: string = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
       expect(graph).toContain("overlay=0:0");
-      expect(graph).not.toMatch(/color=white|lutrgb|\b(scale|crop|pad|fade)=/);
+      expect(graph).not.toMatch(/color=white|lutrgb|\b(crop|pad|fade)=/);
+      for (const scale of graph.matchAll(/scale=([^,;]+)/g)) expect(scale[1].split(":").slice(0, 2)).toEqual(["iw", "ih"]);
+      expect(graph.split(";").find(step => step.startsWith("[1:v]"))).toBe("[1:v]format=rgba,setpts=PTS-STARTPTS[sticker1]");
       expect(review.mock.calls[0][0].shapes[0].pngSha256).toBe(binding.pngSha256);
       const result = await custody.publish(publish);
       expect(compiler).toHaveBeenCalledTimes(1);
@@ -700,9 +702,11 @@ describe.skipIf(!available)("frozen shape pixels through the original compiler a
     const compiled = await compiledSpy.mock.results[0].value;
     expect(compiled.binaryFiles[0].content.equals(png)).toBe(true);
     expect(compiled.args).not.toContain(layer.assetPath);
-    const graph = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
+    const graph: string = compiled.args[compiled.args.indexOf("-filter_complex") + 1];
     expect(graph).toContain("overlay=0:0:enable='gte(t,0)*lt(t,2)'");
-    expect(graph).not.toMatch(/\b(scale|crop|pad|fade)=/);
+    expect(graph).not.toMatch(/\b(crop|pad|fade)=/);
+    for (const scale of graph.matchAll(/scale=([^,;]+)/g)) expect(scale[1].split(":").slice(0, 2)).toEqual(["iw", "ih"]);
+    expect(graph.split(";").find(step => step.startsWith("[1:v]"))).toBe("[1:v]format=rgba,setpts=PTS-STARTPTS[sticker1]");
     expect((await readdir(cacheDirectory)).filter(file => !file.endsWith(".mp4"))).toEqual([]);
     expect(queue.snapshot().batches).toEqual([]);
     expect(await jobStore.loadAll()).toEqual([]);

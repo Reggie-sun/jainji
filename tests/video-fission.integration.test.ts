@@ -1,14 +1,18 @@
 import { mkdtemp, readFile, stat, writeFile, mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
-import { now, type MediaItem } from "../src/main/domain";
+import { createDefaultTemplate, DEFAULT_PRESET, now, type MediaItem } from "../src/main/domain";
+import { fissionVariant, type FissionSettings } from "../src/shared/video-fission";
+import { TemplateCompiler } from "../src/main/compiler";
 import { FfmpegAdapter, runCommand } from "../src/main/ffmpeg";
 import { ffmpegBin, ffprobeBin } from "./helpers/ffmpeg-bin";
 import { ExportQueue } from "../src/main/queue";
 import { JobStore } from "../src/main/store";
 import { fingerprintFile } from "../src/main/paths";
-import { createFissionBatches } from "../src/main/video-fission";
+import { createFissionBatches, prepareFissionProduction } from "../src/main/video-fission";
+import type { UploadAuthorization } from "../src/shared/douyin-upload";
 import { videoPathsInDirectory } from "../src/main/media";
 import { createAutomaticOutputDirectory } from "../src/main/automatic-output-directory";
 import { loadMediaSelection, validateMediaSelection } from "../src/harness/media";
@@ -32,6 +36,87 @@ async function fixture(audio = true) {
 }
 
 describe("video fission real queue", () => {
+  it("freezes micro-adjustments in a new ordinary export without changing its timing or audio rate", { timeout: 60_000 }, async () => {
+    const { media, queue, input, ffmpeg, jobStore } = await fixture();
+    const run = vi.spyOn(ffmpeg, "run");
+    const batch = await queue.createBatch({ projectId: input.projectId, template: createDefaultTemplate(), mediaItems: [media], mediaIds: input.mediaIds, outputDirectory: input.outputDirectory, preset: { ...DEFAULT_PRESET, resolutionMode: "source" } });
+    await queue.start(batch.id);
+    const task = queue.snapshot().batches[0].batch.tasks[0];
+    expect(task.status).toBe("completed");
+    expect(batch.templateSnapshot.fission).toBeUndefined();
+    expect(batch.preset.microAdjustments).toEqual(DEFAULT_PRESET.microAdjustments);
+    const command = run.mock.calls.find(([args]) => args.includes("-filter_complex"))![0];
+    expect(command).not.toContain("-af");
+    expect(command[command.indexOf("-t") + 1]).toBe("3.000");
+    const probe = await ffmpeg.probe(task.outputPath!);
+    expect(probe.streams?.find(stream => stream.codec_type === "video")).toMatchObject({ width: 180, height: 320 });
+    expect(Number(probe.format?.duration)).toBeCloseTo(3, 1);
+    expect(probe.streams?.filter(stream => stream.codec_type === "audio")).toHaveLength(1);
+    const recovered = new ExportQueue({ ffmpeg, jobStore, fontResolver: { resolve: async () => null } });
+    await recovered.recover();
+    expect(recovered.snapshot().batches[0].batch.preset.microAdjustments).toEqual(batch.preset.microAdjustments);
+  });
+
+  it("preflights the exact total and registers every frozen fission task before rendering", async () => {
+    const { media, queue, input } = await fixture(false);
+    const selection = { enabled: true, accountProduct: "眼贴" } as const;
+    const authorization = { pageBatchId: crypto.randomUUID() } as UploadAuthorization;
+    const events: string[] = [];
+    const batches = await prepareFissionProduction(queue, { ...input, douyinUpload: selection }, [media], {
+      preflight: async (actual, total) => { events.push("preflight"); expect(actual).toEqual(selection); expect(total).toBe(2); expect(queue.snapshot().batches).toEqual([]); return authorization; },
+      remember: async batches => { events.push("remember"); expect(batches.flatMap(batch => batch.tasks)).toHaveLength(2); },
+      registerBatches: async (batches, actual, auth) => { events.push("register"); expect(actual).toEqual(selection); expect(auth).toBe(authorization); expect(batches.flatMap(batch => batch.tasks).map(task => task.status)).toEqual(["queued", "queued"]); },
+    });
+    expect(events).toEqual(["preflight", "remember", "register"]);
+    expect(batches.flatMap(batch => batch.tasks)).toHaveLength(2);
+    expect(queue.snapshot().batches.flatMap(state => state.batch.tasks).map(task => task.status)).toEqual(["queued", "queued"]);
+  });
+
+  it("creates no exports when upload preflight is denied", async () => {
+    const { media, queue, input } = await fixture(false);
+    await expect(prepareFissionProduction(queue, { ...input, douyinUpload: { enabled: true, accountProduct: "眼贴" } }, [media], {
+      preflight: async () => { throw new Error("fixture target rejected"); }, remember: async () => {}, registerBatches: async () => {},
+    })).rejects.toThrow("fixture target rejected");
+    expect(queue.snapshot().batches).toEqual([]);
+  });
+
+  it("cancels all prepared exports when upload intent registration is uncertain", async () => {
+    const { media, queue, input } = await fixture(false);
+    await expect(prepareFissionProduction(queue, { ...input, douyinUpload: { enabled: true, accountProduct: "眼贴" } }, [media], {
+      preflight: async () => ({ pageBatchId: crypto.randomUUID() }) as UploadAuthorization,
+      remember: async () => {}, registerBatches: async () => { throw new Error("fixture uncertain registration"); },
+    })).rejects.toThrow("fixture uncertain registration");
+    const tasks = queue.snapshot().batches.flatMap(state => state.batch.tasks);
+    expect(tasks.map(task => task.status)).toEqual(["cancelled", "cancelled"]);
+    for (const task of tasks) await expect(stat(task.outputPath!)).rejects.toThrow();
+  });
+  it("keeps combined color and detail adjustments close to neutral across bright, dark and skin-tone fixtures", { timeout: 60_000 }, async () => {
+    const media: MediaItem = { id: crypto.randomUUID(), sourcePath: "/unused", displayName: "fixture", fingerprint: "fixture", sizeBytes: 1, durationMs: 1000, width: 320, height: 180, rotation: 0, probeStatus: "ready", importedAt: now() };
+    const neutral = { speed: 1, inset: 0, contrast: 1, saturation: 1, brightness: 0, gamma: 1 } as const;
+    const render = async (source: string, settings: FissionSettings, pixelFormat = "rgb24") => {
+      const command = await new TemplateCompiler().compile({ ...createDefaultTemplate(), fission: settings }, media, { ...DEFAULT_PRESET, resolutionMode: "source" }, { ffmpegPath: ffmpegBin, fontResolver: { resolve: async () => null }, textFilePath: () => "/unused", threads: 1 });
+      return execFileSync(ffmpegBin, ["-v", "error", "-threads", "1", "-filter_complex_threads", "1", "-f", "lavfi", "-i", source, "-filter_complex", command.args[command.args.indexOf("-filter_complex") + 1], "-map", "[vout]", "-frames:v", "1", "-pix_fmt", pixelFormat, "-f", "rawvideo", "pipe:1"], { timeout: 10_000, maxBuffer: 2_000_000 });
+    };
+    for (const source of ["testsrc2=s=320x180:r=1:d=1", "smptebars=s=320x180:r=1:d=1", "color=c=0xcfae92:s=320x180:r=1:d=1", "color=c=0x101218:s=320x180:r=1:d=1"]) {
+      const baseline = await render(source, neutral);
+      for (const version of [0, 1, 13, 24, 73, 249]) {
+        // Hold geometry and timing equal to isolate the combined visual controls.
+        const changed = await render(source, { ...fissionVariant(version), speed: 1, inset: 0 });
+        expect(changed.length).toBe(baseline.length);
+        const errors = Array.from(changed, (value, index) => Math.abs(value - baseline[index])).sort((a, b) => a - b);
+        const mean = errors.reduce((sum, value) => sum + value, 0) / errors.length;
+        expect(mean, `${source}, variant ${version}`).toBeLessThanOrEqual(1.25);
+        expect(errors[Math.floor(errors.length * 0.99)], `${source}, variant ${version} p99`).toBeLessThanOrEqual(6);
+      }
+    }
+    const source = "testsrc2=s=320x180:r=1:d=1";
+    const base = { ...fissionVariant(0), speed: 1, inset: 0 } as const;
+    // Hold the entire pipeline equal: ignoring either requested control must fail.
+    for (const [low, high] of [[{ temperatureKelvin: 6460 }, { temperatureKelvin: 6540 }], [{ sharpness: 0 }, { sharpness: 0.045 }], [{ grainStrength: 0 }, { grainStrength: 2 }], [{ vignetteAngle: 0 }, { vignetteAngle: 0.08 }]]) {
+      expect(await render(source, { ...base, ...low }), JSON.stringify({ low, high })).not.toEqual(await render(source, { ...base, ...high }));
+    }
+    expect(await render(source, base)).toEqual(await render(source, base));
+  });
   it("imports only direct video files and reuses automatic output naming with a fission root", async () => {
     const { root, media } = await fixture(false);
     await writeFile(path.join(root, "readme.txt"), "ignore");
