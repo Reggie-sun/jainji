@@ -183,6 +183,7 @@
       "testFiles": [
         "tests/qianchuan-account-config.test.ts",
         "tests/qianchuan-egress.test.ts",
+        "tests/qianchuan-egress-probe-runtime.test.ts",
         "tests/qianchuan-egress-browser.test.ts",
         "tests/qianchuan-egress-settings.test.ts",
         "tests/qianchuan-egress-ui.test.ts",
@@ -1284,6 +1285,7 @@
         "tests/qianchuan-plan-selection-ui.test.ts",
         "tests/qianchuan-account-config.test.ts",
         "tests/qianchuan-egress.test.ts",
+        "tests/qianchuan-egress-probe-runtime.test.ts",
         "tests/qianchuan-egress-browser.test.ts",
         "tests/qianchuan-egress-settings.test.ts",
         "tests/qianchuan-egress-ui.test.ts",

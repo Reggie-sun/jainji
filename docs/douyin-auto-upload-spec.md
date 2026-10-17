@@ -49,7 +49,7 @@ source_baseline: 77b3de9898cdbd59789c5101424eda38ee53c3aa
 
 Parent Self-Review：复用原 service/store/队列与可信 IPC；新 helper 只判定恢复资格及原连接绑定。历史读请求没有执行能力，配置漂移明确拒绝。实现与验证见 [Historical Resume Plan](superpowers/plans/2026-10-15-historical-upload-resume.md)。
 
-用户后续要求修复后真实上传。原 `current-browser` 浏览器重启仅调试端口改变时，明确恢复请求可在原 canonical profile、账号、计划、配置 digest 与出口均通过核验后，复用原 store 整批原子迁移及私有归档：保留旧授权和 tasks/intents，建立仅端口与 pageBatchId 不同的新授权，快照、任务身份、历史计数和 selection 来源保持原样。已选、未知及不完整批次不能更新连接；非 `current-browser` 分支仍要求旧端口。当前已授权但尚在制作的 intents 也阻断历史抢占。隧道出口查询与浏览器查询统一使用既有 AWS 服务，保留 SOCKS、TLS、精确冻结 IP 和失败关闭，无直连回退。
+用户后续要求修复后真实上传。原 `current-browser` 浏览器重启仅调试端口改变时，明确恢复请求可在原 canonical profile、账号、计划、配置 digest 与出口均通过核验后，复用原 store 整批原子迁移及私有归档：保留旧授权和 tasks/intents，建立仅端口与 pageBatchId 不同的新授权，快照、任务身份、历史计数和 selection 来源保持原样。已选、未知及不完整批次不能更新连接；非 `current-browser` 分支仍要求旧端口。当前已授权但尚在制作的 intents 也阻断历史抢占。出口查询遵守 [Fixed VPS Egress](qianchuan-vps-egress.md)，保留 SOCKS、TLS、精确冻结 IP 和失败关闭，无直连回退。
 
 ## Remote Browser Window Budget Amendment (2026-10-14)
 
@@ -269,7 +269,7 @@ Parent Self-Review：复用 canonical page/store/service，无第二队列或恢
 
 本地端口占用时，尚未创建 SSH 子进程、未授租约的候选连接不保留失败缓存；后续连接重新检查端口，仍占用则拒绝，不接管或终止未知监听。已创建传输、已撤销租约、IP 不符及未知故障的保护屏障不因此重置。开发启动器仅通过有限错误分类区分端口占用、出口校验失败和 IPC 断连，不传递原始异常或凭据，也不恢复任何上传任务。
 
-仅因已识别的临时 IP 探测故障耗尽当前预算而失效时，后续独立连接请求可在同一保存 route 和原健康自有 SSH 下自动重新核验，成功后签发新的分代租约；先等待旧连接及校验结算，再重核归属、配置、期限及生命周期，并合并并发请求。旧租约永久撤销，已有 uploader 不接收新租约，网络恢复不继续或重传上传。每次连接仍最多三次探测、共享 25 秒，不足完整请求窗口时停止；SSH 重建预算不重置。未知错误、证书或响应格式异常及错误 IP 保持硬屏障；失效期间子进程退出、retire、dispose 或身份变化均阻断此重新核验分支。该窄例外替代仅对上述临时故障要求显式重连的限制；IP 探测仍使用原 AWS 地址，不切换出口或探测服务。
+仅因已识别的临时 IP 探测故障耗尽当前预算而失效时，后续独立连接请求可在同一保存 route 和原健康自有 SSH 下自动重新核验，成功后签发新的分代租约；先等待旧连接及校验结算，再重核归属、配置、期限及生命周期，并合并并发请求。旧租约永久撤销，已有 uploader 不接收新租约，网络恢复不继续或重传上传。每次连接仍最多三次探测、共享 25 秒，不足完整请求窗口时停止；SSH 重建预算不重置。未知错误、证书或响应格式异常及错误 IP 保持硬屏障；失效期间子进程退出、retire、dispose 或身份变化均阻断此重新核验分支。该窄例外替代仅对上述临时故障要求显式重连的限制；探测服务按 [Fixed VPS Egress](qianchuan-vps-egress.md) 的静态名单在原三次总预算内选择，不切换出口。2026-10-18 的这一调整处理同一 AWS 域名部分地址超时的实测故障，仅允许已识别临时传输错误推进服务；浏览器内探测、原页面、冻结目标、旧租约及上传恢复资格均不变。
 
 批量详情的“安全继续”和“核查原上传页”以当前 runId/jobId/uploadTaskId 为输入；主进程从原批量 owner 取得冻结项目与捕获 export task 集合，核验实际上传任务归属后调用原 service.requestResume。单项目 IPC 的 currentProject 限制不放宽，renderer 不能指定替代项目或任务成员。未知成员只读核查；未选成员仍受账户级未知阻塞，不能以恢复入口解除。
 

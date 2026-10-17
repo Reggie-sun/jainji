@@ -1,12 +1,12 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-17T18:03:38Z",
+  "updated_at": "2026-10-17T18:39:49Z",
   "files": {
     ".agent/harness/policy.json": {
-      "sha256": "22af11057919e611598bd7378c9442063667a39f6be6c69289ba7b35b8a4e0f3",
-      "size": 72060,
-      "normalized_sha256": "22af11057919e611598bd7378c9442063667a39f6be6c69289ba7b35b8a4e0f3"
+      "sha256": "9b21a233f1cb713a7959a818981b8ac0060006971309a6f5c23824e6858f96c0",
+      "size": 72172,
+      "normalized_sha256": "9b21a233f1cb713a7959a818981b8ac0060006971309a6f5c23824e6858f96c0"
     },
     ".gitattributes": {
       "sha256": "339a816c8083de45398b04e4f176daf24c49dbc0a5148452fbae349e712741e0",
@@ -263,9 +263,9 @@
       "normalized_sha256": "cb2bff8087a1b7e046e232d8ea4bb8230d351dae2cac1c70e5f4444ee195bf37"
     },
     "aoci.code.txt": {
-      "sha256": "65b3ca795b779c0743815aaef6721245fe3e2a6aa303ddbf20cc1fb58ec0b514",
-      "size": 172454,
-      "normalized_sha256": "65b3ca795b779c0743815aaef6721245fe3e2a6aa303ddbf20cc1fb58ec0b514"
+      "sha256": "d4228273141327068f16627340b731e68fc5b2a4f43615dea2eb5cc11b94753e",
+      "size": 172477,
+      "normalized_sha256": "d4228273141327068f16627340b731e68fc5b2a4f43615dea2eb5cc11b94753e"
     },
     "aoci.meta.txt": {
       "role": "index",
@@ -1758,9 +1758,9 @@
       "normalized_sha256": "28d58885613814422a812c28622bd47486eed076ebc8f6db158a93c6c3e04044"
     },
     "src/main/qianchuan-egress-runtime.ts": {
-      "sha256": "f1d3b63e780d782c716eff9eb7ae5865faf78a35281f50867f89572ceb23c9dc",
-      "size": 22739,
-      "normalized_sha256": "f1d3b63e780d782c716eff9eb7ae5865faf78a35281f50867f89572ceb23c9dc"
+      "sha256": "22ba130982fa7492d86ae4bca335dd15cee391956391535f7249ba92311e1b23",
+      "size": 22977,
+      "normalized_sha256": "22ba130982fa7492d86ae4bca335dd15cee391956391535f7249ba92311e1b23"
     },
     "src/main/qianchuan-extension-accounts.ts": {
       "sha256": "cb5080907f9830f48d460e5797ecd99f668727bdff6daadf09e8fd348fe6a485",
