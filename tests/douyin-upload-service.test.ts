@@ -226,7 +226,15 @@ describe("Qianchuan upload service", () => {
       await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
     }
     expect(f.store.tasks().map(task => task.result.upload_outcome)).toEqual(["ACCEPTED", "ACCEPTED", "ACCEPTED"]);
+    const original = f.store.tasks()[0]!;
+    expect(f.service.status(original.input.project_id).closedBatches).toContainEqual(expect.objectContaining({
+      pageBatchId: original.authorization.pageBatchId, acceptedCount: 1, newAcceptedCount: 1, duplicateCount: 0,
+    }));
     expect(f.store.tasks()[1]!.result.duplicate_of).toBe(f.store.tasks()[0]!.result.upload_task_id);
+    const alias = f.store.tasks()[1]!;
+    expect(f.service.status(alias.input.project_id).closedBatches).toContainEqual(expect.objectContaining({
+      pageBatchId: alias.authorization.pageBatchId, acceptedCount: 1, newAcceptedCount: 0, duplicateCount: 1,
+    }));
     expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
     expect(f.store.closedBatches()).toHaveLength(3);
   });

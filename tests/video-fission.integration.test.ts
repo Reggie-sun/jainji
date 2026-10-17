@@ -159,6 +159,26 @@ describe("video fission real queue", () => {
     expect(result.checks.filter(c => c.required && c.status !== "PASS")).toEqual([]);
   });
 
+  it("freezes a fresh recipe for each new production and renders different bytes for the same source and total", { timeout: 60_000 }, async () => {
+    const { media, queue, input } = await fixture();
+    const productionInput = { ...input, total: 1 };
+    const firstRun = await createFissionBatches(queue, productionInput, [media]);
+    const secondRun = await createFissionBatches(queue, productionInput, [media]);
+
+    expect(firstRun).toHaveLength(1);
+    expect(secondRun).toHaveLength(1);
+    expect(firstRun[0].templateSnapshot.fission).not.toEqual(secondRun[0].templateSnapshot.fission);
+
+    await queue.start(firstRun[0].id);
+    await queue.start(secondRun[0].id);
+    const snapshot = queue.snapshot();
+    const firstTask = snapshot.batches.find(state => state.batch.id === firstRun[0].id)!.batch.tasks[0];
+    const secondTask = snapshot.batches.find(state => state.batch.id === secondRun[0].id)!.batch.tasks[0];
+    expect(firstTask.status).toBe("completed");
+    expect(secondTask.status).toBe("completed");
+    expect(await fingerprintFile(firstTask.outputPath!)).not.toBe(await fingerprintFile(secondTask.outputPath!));
+  });
+
   it("rejects failed decoding without publishing, and retries the same frozen recipe", { timeout: 60_000 }, async () => {
     const { media, queue, input, ffmpeg } = await fixture();
     const run = ffmpeg.run.bind(ffmpeg);

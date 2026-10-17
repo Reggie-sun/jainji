@@ -5,7 +5,7 @@ import { QianchuanPlanCatalogSchema, QianchuanPlanDisplaySchema, type QianchuanC
 import type { QianchuanPage } from "./QianchuanWorkspace";
 import { acquireQianchuanPlans } from "./qianchuan-plan-requests";
 import { QianchuanSubaccountSelect, QIANCHUAN_ACCOUNT_CHANGED } from "./QianchuanSubaccountSelect";
-import { qianchuanUploaded } from "./qianchuan-upload-status";
+import { qianchuanDuplicate, qianchuanPlannedUploadCount, qianchuanUploaded } from "./qianchuan-upload-status";
 
 function QianchuanOverviewPlans({ account }: { account: QianchuanAccountSummary }) {
   const [directory, setDirectory] = useState<{ current: QianchuanCurrentAccount; revision: number; refresh: boolean }>();
@@ -64,12 +64,15 @@ export function QianchuanOverview({ state, onNavigate, active = true }: { state:
   const [product, setProduct] = useState<string>(accounts.find(account => account.available)?.product ?? "");
   const account = accounts.find(item => item.product === product) ?? accounts.find(item => item.available) ?? accounts[0];
   const tasks = state.douyinUpload?.tasks.filter(task => task.project_id === state.project.id && task.state !== "DISCARDED") ?? [];
-  const unknown = tasks.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED").length;
+  const activeTasks = tasks.filter(task => !qianchuanDuplicate(task));
+  const duplicates = tasks.filter(qianchuanDuplicate).length;
+  const unknown = activeTasks.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED").length;
+  const planned = qianchuanPlannedUploadCount(tasks, [...(state.douyinUpload?.batches ?? []), ...(state.douyinUpload?.closedBatches ?? [])]);
   return <section className="qianchuan-console qc-overview" aria-label="千川投放概览">
     <div className="qc-overview-summary">
       <div><span>登录账号</span><strong>{accounts.length}</strong><small>已保存的浏览器账号</small></div>
-      <div><span>本项目任务</span><strong>{tasks.length}</strong><small>当前项目的上传任务</small></div>
-      <div><span>本项目上传</span><strong>{tasks.filter(qianchuanUploaded).length}<small> / {tasks.length}</small></strong><small>已上传 / 全部任务</small></div>
+      <div><span>本项目任务</span><strong>{tasks.length}</strong><small>{duplicates} 条重复任务已跳过，未再次上传</small></div>
+      <div><span>本项目上传</span><strong>{activeTasks.filter(qianchuanUploaded).length}<small> / {planned}</small></strong><small>新上传 / 已计划成片</small></div>
       <div><span>上传结果待核查</span><strong>{unknown}</strong><small>结果未知的任务不可重传</small></div>
     </div>
     <section className="qc-card">

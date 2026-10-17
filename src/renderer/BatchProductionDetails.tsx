@@ -2,7 +2,7 @@ import type { BatchProductionDetail, BatchProductionDetailRequest } from "../sha
 import { SourceStickerKnowledgeDetails } from "./SourceStickerKnowledgeDetails";
 import { Heading, Icon } from "./ui";
 import { batchDetailError, useBatchProductionDetails } from "./useBatchProductionDetails";
-import { qianchuanUploaded } from "./qianchuan-upload-status";
+import { qianchuanDuplicate, qianchuanPlannedUploadCount, qianchuanUploaded } from "./qianchuan-upload-status";
 
 const labels: Record<string, string> = { queued: "等待导出", validating: "检查素材", running: "正在渲染", verifying: "校验成片", cancelling: "正在停止", completed: "已完成", failed: "失败", cancelled: "已停止", interrupted: "已中断" };
 const terminal = new Set(["completed", "failed", "cancelled", "interrupted"]);
@@ -30,15 +30,18 @@ export function BatchProductionWorkList({ detail, onArtifact, onUploads }: { det
     + unqueued.filter(item => item.status === "failed" || item.status === "cancelled").length;
   const total = job.actualCount || job.requestedCount;
   const uploads = detail.upload?.tasks ?? [];
-  const processing = uploads.filter(task => !qianchuanUploaded(task) && ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state));
-  const uploaded = uploads.filter(qianchuanUploaded).length;
-  const pending = uploads.filter(task => task.state === "PENDING").length;
-  const unknown = uploads.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED" && !qianchuanUploaded(task) && !processing.includes(task)).length;
+  const activeUploads = uploads.filter(task => !qianchuanDuplicate(task));
+  const duplicates = uploads.filter(qianchuanDuplicate).length;
+  const processing = activeUploads.filter(task => !qianchuanUploaded(task) && ["CONNECTING_BROWSER", "OPENING_UPLOAD_PAGE", "UPLOADING", "WAITING_UPLOAD_COMPLETE"].includes(task.state));
+  const uploaded = activeUploads.filter(qianchuanUploaded).length;
+  const pending = activeUploads.filter(task => task.state === "PENDING").length;
+  const unknown = activeUploads.filter(task => task.upload_outcome === "MAY_HAVE_UPLOADED" && !qianchuanUploaded(task) && !processing.includes(task)).length;
+  const uploadPlanned = qianchuanPlannedUploadCount(uploads, detail.upload?.closedBatches ?? [], total);
   return <>
     <div className="result-stats"><div><span>本批制作</span><strong>{total}<small>条</small></strong></div><div><span>正在处理</span><strong>{Math.max(0, tasks.filter(task => !terminal.has(task.status)).length + unqueued.filter(item => !["failed", "cancelled"].includes(item.status)).length)}</strong></div><div><span>已完成</span><strong className="green-text">{completed}</strong></div><div><span>需要处理</span><strong className={failed ? "red-text" : ""}>{failed}</strong></div></div>
     {job.error && <p className="notice error">{job.error}</p>}
     {job.accountProduct && <div className="batch-upload-summary" aria-label="本批上传摘要">
-      <p>千川上传：已上传 {uploaded} / {total} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条</p>
+      <p>千川上传：已上传 {uploaded} / {uploadPlanned} 条 · 重复跳过 {duplicates} 条 · 待上传 {pending} 条 · 处理中 {processing.length} 条 · 结果未知 {unknown} 条</p>
       {onUploads && <button type="button" className="button secondary compact" onClick={onUploads}>查看本批上传任务</button>}
       {detail.upload?.message && <small>{detail.upload.message}</small>}
     </div>}

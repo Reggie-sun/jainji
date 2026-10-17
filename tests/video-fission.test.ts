@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { FissionSettingsSchema, FissionStartSchema, fissionAllocation, fissionVariant } from "../src/shared/video-fission";
+import { FissionSettingsSchema, FissionStartSchema, fissionAllocation, fissionVariant, type FissionSettings } from "../src/shared/video-fission";
 import { createDefaultTemplate, DEFAULT_PRESET, EditTemplateSchema, type MediaItem } from "../src/main/domain";
 import { TemplateCompiler } from "../src/main/compiler";
 
@@ -25,6 +25,17 @@ describe("local video fission", () => {
     const template = { ...createDefaultTemplate(), fission: fissionVariant(0), filter: { presetId: "warm", intensity: 0.3 } };
     expect(EditTemplateSchema.safeParse(template).success).toBe(false);
     expect(EditTemplateSchema.safeParse({ ...createDefaultTemplate(), fission: { ...fissionVariant(0), speed: 2 } }).success).toBe(false);
+  });
+
+  it("keeps a recipe stable for the same production seed and changes it for a new seed", () => {
+    const seededVariant = fissionVariant as (version: number, productionSeed?: number) => FissionSettings;
+    const legacy = fissionVariant(17);
+    const firstRun = seededVariant(17, 481516);
+    expect(seededVariant(17, 481516)).toEqual(firstRun);
+    expect(seededVariant(17, 0)).toEqual(legacy);
+    expect(seededVariant(17, 271828)).not.toEqual(firstRun);
+    expect(() => seededVariant(0, -1)).toThrow();
+    expect(() => seededVariant(0, 2147483648)).toThrow();
   });
 
   it("includes the complete micro-adjustment recipe and rejects stronger new controls", () => {

@@ -36,13 +36,15 @@ export function fissionAllocation(sourceCount: number, total: number): number[] 
   return Array.from({ length: sourceCount }, (_, i) => Math.floor(total / sourceCount) + (i < total % sourceCount ? 1 : 0));
 }
 
-/** Deterministic micro-adjustments; previously frozen recipes are never regenerated. */
-export function fissionVariant(version: number): FissionSettings {
+/** Seeded recipes are repeatable once frozen; the default preserves historical recipes. */
+export function fissionVariant(version: number, productionSeed = 0): FissionSettings {
   z.number().int().min(0).max(MAX_FISSION_OUTPUTS - 1).parse(version);
+  z.number().int().min(0).max(0x7fffffff).parse(productionSeed);
+  const recipeIndex = (productionSeed + version) % 0x80000000;
   const rounded = (n: number) => Number(n.toFixed(4));
   return FissionSettingsSchema.parse({
-    speed: rounded(0.97 + ((version * 13) % 34) * 0.0032),
-    inset: [0, 4, 8][version % 3],
-    ...videoMicroAdjustmentRecipe(version),
+    speed: rounded(0.97 + ((recipeIndex * 13) % 34) * 0.0032),
+    inset: [0, 4, 8][recipeIndex % 3],
+    ...videoMicroAdjustmentRecipe(recipeIndex),
   });
 }

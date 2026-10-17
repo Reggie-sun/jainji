@@ -294,6 +294,7 @@ export class DouyinUploadService {
     const first = batch[0]!;
     return { projectId, pageBatchId: first.authorization.pageBatchId, advertiserId: first.authorization.target.advertiserId, adId: first.authorization.target.adId, expectedCount: first.authorization.expectedCount,
       taskIds: batch.map(task => task.result.upload_task_id).sort(), readyCount: batch.filter(task => task.result.upload_outcome === "READY").length, acceptedCount: batch.filter(task => task.result.upload_outcome === "ACCEPTED").length,
+      newAcceptedCount: batch.filter(task => task.result.upload_outcome === "ACCEPTED" && !task.result.duplicate_of).length, duplicateCount: batch.filter(task => Boolean(task.result.duplicate_of)).length,
       unknownCount: batch.filter(task => task.result.upload_outcome === "MAY_HAVE_UPLOADED").length, notSelectedCount: batch.filter(task => task.result.upload_outcome === "NOT_SELECTED").length };
   }
   private unresolvedAccountTasks(task: UploadTaskRecord, open = this.openTasks()): UploadTaskRecord[] {

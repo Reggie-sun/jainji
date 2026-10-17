@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import { FissionScheduleSchema, FissionStartSchema, fissionAllocation, fissionVariant, type FissionStart, type FissionSettings, type FissionSchedule } from "../shared/video-fission.js";
 import { createDefaultTemplate, DEFAULT_PRESET, type ExportBatch, type MediaItem } from "./domain.js";
 import type { ExportQueue } from "./queue.js";
@@ -19,12 +20,13 @@ export async function createFissionBatches(queue: ExportQueue, input: FissionSta
   const counts = fissionAllocation(request.mediaIds.length, request.total);
   const media = request.mediaIds.map(id => mediaItems.find(item => item.id === id));
   if (media.some(item => !item || item.probeStatus !== "ready")) throw new Error("所选素材已变化或无法读取，请重新选择。");
+  const productionSeed = randomInt(0, 0x7fffffff);
   const created: ExportBatch[] = [];
   try {
     for (let version = 0; version < Math.max(...counts); version++) {
       signal?.throwIfAborted();
       const template = createDefaultTemplate(`视频裂变 · 第 ${version + 1} 版`);
-      template.fission = fissionVariant(version);
+      template.fission = fissionVariant(version, productionSeed);
       created.push(await queue.createBatch({
         projectId: request.projectId, template, mediaItems,
         mediaIds: request.mediaIds.filter((_, i) => counts[i] > version),

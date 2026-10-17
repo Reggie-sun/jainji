@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 import { describe, expect, it } from "vitest";
 import type { BatchProductionDetail } from "../src/shared/batch-production";
+import type { QianchuanClosedBatchSummary } from "../src/shared/douyin-upload";
 import { BatchProductionWorkList } from "../src/renderer/BatchProductionDetails";
 
 import { BatchUploadList } from "../src/renderer/BatchUploadDetails";
@@ -115,5 +116,37 @@ describe("batch works presentation", () => {
     expect(html).toContain("已上传 12 / 30 条"); expect(html).toContain("待上传 9 条"); expect(html).toContain("结果未知 9 条");
     expect(html).toContain("9 条上传结果未知，需核查原 Chrome 上传页面");
     expect(html).not.toContain("安全继续"); expect(html).not.toContain("重新上传</button>");
+  });
+
+  it("shows aliases as skipped in both batch progress views without claiming old receipts as new uploads", () => {
+    const aliases = Array.from({ length: 18 }, (_, index) => ({ upload_task_id: `${index + 1}`.padStart(64, "0"), file_name: `裂变-${index + 1}.mp4`,
+      accountProduct: "眼贴", advertiserId: "123", adId: "456", state: "ACCEPTED", upload_outcome: "ACCEPTED", attempt_count: 0,
+      duplicate_of: "c".repeat(64), acceptedEvidence: { advertiserId: "123", adId: "456", fileName: "旧批次原片.mp4", selectedCount: 1,
+        observedAt: "2026-10-17T00:00:00.000Z", pageOwnership: { targetId: "old-tab", pageBatchId: "11111111-1111-4111-8111-111111111111", modalSessionId: "11111111-1111-4111-8111-111111111111" },
+        platformVideoId: "old-platform-video", attempt: 1, requestSha256: "d".repeat(64), responseSha256: "e".repeat(64) },
+    })) as NonNullable<BatchProductionDetail["upload"]>["tasks"];
+    const closedBatch = { projectId: "11111111-1111-4111-8111-111111111111", pageBatchId: "11111111-1111-4111-8111-111111111111", advertiserId: "123", adId: "456",
+      expectedCount: 50, taskIds: aliases.map(task => task.upload_task_id), readyCount: 0, acceptedCount: 18, newAcceptedCount: 0, duplicateCount: 18,
+      unknownCount: 0, notSelectedCount: 0, closedAt: "2026-10-18T00:00:00.000Z", tasks: aliases } as unknown as QianchuanClosedBatchSummary;
+    const job = { ...makeDetail().job, accountProduct: "眼贴" as const, requestedCount: 50, actualCount: 50 };
+    const detail = makeDetail({ job, upload: { message: "历史记录", tasks: aliases, closedBatches: [closedBatch] } });
+    const works = render(detail);
+    const uploads = renderUploads(detail);
+
+    expect(works).toContain("已上传 0 / 50 条"); expect(works).toContain("重复跳过 18 条");
+    expect(uploads).toContain("已上传 0 / 50 条"); expect(uploads).toContain("重复跳过 18 条"); expect(uploads).toContain("需处理 0 条");
+    expect(uploads).toContain("引用既有平台接收回执"); expect(uploads).not.toContain("平台已接收 · 视频 ID old-platform-video");
+    expect(uploads).not.toContain("安全继续"); expect(uploads).not.toContain("恢复本批上传");
+  });
+
+  it("keeps the existing continuation block when a skipped alias refers to an unknown original", () => {
+    const alias = { upload_task_id: "alias", file_name: "alias.mp4", state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", attempt_count: 0,
+      duplicate_of: "c".repeat(64) } as NonNullable<BatchProductionDetail["upload"]>["tasks"][number];
+    const pending = { upload_task_id: "pending", file_name: "pending.mp4", state: "PENDING", upload_outcome: "NOT_SELECTED" } as NonNullable<BatchProductionDetail["upload"]>["tasks"][number];
+    const detail = makeDetail({ job: { ...makeDetail().job, accountProduct: "蝴蝶贴" }, upload: { message: "", tasks: [alias, pending] } });
+    const html = renderToStaticMarkup(createElement(BatchUploadList, { detail, onResumeUpload: () => undefined }));
+
+    expect(html).toContain("重复跳过 1 条"); expect(html).toContain("结果未知 0 条");
+    expect(html).toContain("原上传结果未知"); expect(html).toMatch(/disabled="">安全继续<\/button>/);
   });
 });

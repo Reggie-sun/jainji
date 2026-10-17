@@ -1,13 +1,15 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, it } from "vitest";
-import { QianchuanUploadConfigSchema, QianchuanUploadResultSchema, type QianchuanUploadResult, type QianchuanClosedBatchSummary } from "../src/shared/douyin-upload";
+import { QianchuanUploadConfigSchema, QianchuanUploadResultSchema, type QianchuanUploadResult, type QianchuanClosedBatchSummary, type QianchuanUploadBatchSummary } from "../src/shared/douyin-upload";
 import { AppendProductionDialog } from "../src/renderer/AppendProductionDialog";
 import { DouyinUploadControls } from "../src/renderer/DouyinUploadControls";
 import { DouyinUploadPanel } from "../src/renderer/DouyinUploadPanel";
 import { QianchuanAccountSettings } from "../src/renderer/QianchuanAccountSettings";
 import { QianchuanCleanupResults } from "../src/renderer/QianchuanCleanupResults";
 import { QianchuanUploadHistory, QianchuanClosureConfirmation } from "../src/renderer/QianchuanUploadHistory";
+import { QianchuanAccountUploadBatches } from "../src/renderer/QianchuanAccountUploadBatches";
+import { qianchuanPlannedUploadCount } from "../src/renderer/qianchuan-upload-status";
 import type { PublicExportBatch } from "../src/main/application";
 
 const projectId = "11111111-1111-4111-8111-111111111111";
@@ -140,6 +142,87 @@ it("counts live completed rows without claiming a persisted READY result or enab
 });
 it("allows safe continuation only before selection and no actions on duplicate aliases", () => {
   expect(panel(task({ state: "CANCELLED", upload_outcome: "NOT_SELECTED" }))).toContain("安全继续");
-  const html = panel(task({ duplicate_of: "c".repeat(64) })); expect(html).toContain("已关联同目标");
+  const html = panel(task({ duplicate_of: "c".repeat(64) })); expect(html).toContain("关联既有记录的原上传结果未知");
   expect(html).not.toContain("只读核查页面"); expect(html).not.toContain("停止任务");
+});
+
+it("excludes copied accepted evidence from fresh upload progress and keeps the planned batch denominator", () => {
+  const observedAt = "2026-10-17T00:00:00.000Z";
+  const acceptedEvidence = { advertiserId: "123", adId: "456", fileName: "旧批次同内容.mp4", selectedCount: 1, observedAt,
+    pageOwnership: { targetId: "old-tab", pageBatchId: projectId, modalSessionId: projectId }, platformVideoId: "old-platform-video", attempt: 1,
+    requestSha256: "d".repeat(64), responseSha256: "e".repeat(64) };
+  const aliases = Array.from({ length: 18 }, (_, index) => task({ upload_task_id: String(index + 1).padStart(64, "0"), state: "ACCEPTED", upload_outcome: "ACCEPTED",
+    attempt_count: 0, duplicate_of: "c".repeat(64), acceptedEvidence }));
+  const batch = { projectId, pageBatchId: projectId, advertiserId: "123", adId: "456", expectedCount: 50,
+    taskIds: aliases.map(item => item.upload_task_id), readyCount: 0, acceptedCount: 18, newAcceptedCount: 0, duplicateCount: 18,
+    unknownCount: 0, notSelectedCount: 0, canClose: false } as unknown as QianchuanUploadBatchSummary;
+  const html = renderToStaticMarkup(createElement(DouyinUploadPanel, { projectId, status: {
+    config: QianchuanUploadConfigSchema.parse({}), configSelected: false, accounts: [], ready: false, message: "", tasks: aliases, batches: [batch], legacyTasks: [],
+  }, onState: () => {} }));
+
+  expect(html).toContain("已上传 0 / 50 条");
+  expect(html).toContain("重复跳过 18 条");
+  expect(html).toContain("本批新接收 0 条");
+  expect(html).toContain("尚未准入 32 条");
+  expect(html).toContain("需处理 0 条");
+  expect(html).toContain("引用既有平台接收回执");
+  expect(html).not.toContain("平台已接收该计划素材");
+  expect(html).not.toContain("安全继续");
+  expect(html).not.toContain("只读核查页面");
+});
+
+it("keeps fresh outcomes distinct from aliases and does not count an alias as an error", () => {
+  const accepted = task({ upload_task_id: "1".repeat(64), state: "ACCEPTED", upload_outcome: "ACCEPTED", acceptedEvidence: {
+    advertiserId: "123", adId: "456", fileName: "新上传.mp4", selectedCount: 1, observedAt: "2026-10-17T00:00:00.000Z",
+    pageOwnership: { targetId: "new-tab", pageBatchId: projectId, modalSessionId: projectId }, platformVideoId: "new-platform-video", attempt: 1,
+    requestSha256: "d".repeat(64), responseSha256: "e".repeat(64),
+  } });
+  const alias = task({ upload_task_id: "2".repeat(64), state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", attempt_count: 0,
+    duplicate_of: "c".repeat(64), acceptedEvidence: undefined, readyEvidence: undefined, failure: undefined });
+  const ready = task({ upload_task_id: "3".repeat(64), state: "WAITING_FOR_CONFIRMATION", upload_outcome: "READY", readyEvidence: {
+    advertiserId: "123", adId: "456", fileName: "待确认.mp4", selectedCount: 1, observedAt: "2026-10-17T00:00:00.000Z",
+    pageOwnership: { targetId: "ready-tab", pageBatchId: projectId, modalSessionId: projectId },
+  } });
+  const pending = task({ upload_task_id: "4".repeat(64), state: "PENDING", upload_outcome: "NOT_SELECTED", attempt_count: 0, failure: undefined });
+  const unknown = task({ upload_task_id: "5".repeat(64) });
+  const html = renderToStaticMarkup(createElement(DouyinUploadPanel, { projectId, status: {
+    config: QianchuanUploadConfigSchema.parse({}), configSelected: false, accounts: [], ready: false, message: "", tasks: [accepted, alias, ready, pending, unknown], legacyTasks: [],
+  }, onState: () => {} }));
+
+  expect(html).toContain("已上传 2 / 5 条");
+  expect(html).toContain("重复跳过 1 条");
+  expect(html).toContain("待上传 1 条");
+  expect(html).toContain("需处理 1 条");
+  expect(html).toContain("结果未知，禁止重新上传");
+  expect(html).toContain("重复任务，已跳过");
+  expect(html).not.toContain("需处理 2 条");
+});
+
+it("shows copied receipts as provenance in closed history and account batch summaries", () => {
+  const alias = task({ state: "ACCEPTED", upload_outcome: "ACCEPTED", attempt_count: 0, duplicate_of: "c".repeat(64), acceptedEvidence: {
+    advertiserId: "123", adId: "456", fileName: "旧批次同内容.mp4", selectedCount: 1, observedAt: "2026-10-17T00:00:00.000Z",
+    pageOwnership: { targetId: "old-tab", pageBatchId: projectId, modalSessionId: projectId }, platformVideoId: "old-platform-video", attempt: 1,
+    requestSha256: "d".repeat(64), responseSha256: "e".repeat(64),
+  } });
+  const batch = { projectId, pageBatchId: projectId, advertiserId: "123", adId: "456", expectedCount: 2, taskIds: [alias.upload_task_id],
+    readyCount: 0, acceptedCount: 1, newAcceptedCount: 0, duplicateCount: 1, unknownCount: 0, notSelectedCount: 0, canClose: false } as unknown as QianchuanUploadBatchSummary;
+  const history = renderToStaticMarkup(createElement(QianchuanUploadHistory, { batches: [{ ...batch, closedAt: "2026-10-18T00:00:00.000Z", tasks: [alias] }] as unknown as QianchuanClosedBatchSummary[] }));
+  const accountBatches = renderToStaticMarkup(createElement(QianchuanAccountUploadBatches, { batches: [{ ...batch, accountProduct: "眼贴" }], accounts: [], busy: false, onClose: async () => true }));
+  const confirmation = renderToStaticMarkup(createElement(QianchuanClosureConfirmation, { batch: { ...batch, canClose: true }, accounts: [], busy: false, onConfirm: () => {}, onCancel: () => {} }));
+
+  expect(history).toContain("重复跳过 1");
+  expect(history).toContain("引用既有平台接收回执");
+  expect(history).not.toContain("原平台接收回执 2026-10-17T00:00:00.000Z");
+  expect(accountBatches).toContain("本批新接收 0 条");
+  expect(accountBatches).toContain("重复跳过 1 条");
+  expect(accountBatches).not.toContain("已接收 1 条");
+  expect(confirmation).toContain("本批新接收 0 条");
+  expect(confirmation).toContain("重复跳过 1 条");
+});
+
+it("adds current tasks outside known batches to the planned progress denominator", () => {
+  const inBatch = task({ upload_task_id: "1".repeat(64) });
+  const orphan = task({ upload_task_id: "2".repeat(64) });
+  const batch = { pageBatchId: projectId, expectedCount: 50, taskIds: [inBatch.upload_task_id] } as QianchuanUploadBatchSummary;
+  expect(qianchuanPlannedUploadCount([inBatch, orphan], [batch, batch])).toBe(51);
 });

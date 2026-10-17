@@ -98,7 +98,7 @@ export const ClosedUploadBatchSchema = z.object({
 export type ClosedUploadBatch = z.infer<typeof ClosedUploadBatchSchema>;
 export interface QianchuanUploadBatchSummary {
   projectId: string; pageBatchId: string; advertiserId: string; adId: string; expectedCount: number;
-  taskIds: string[]; readyCount: number; acceptedCount?: number; unknownCount: number; notSelectedCount: number; canClose: boolean;
+  taskIds: string[]; readyCount: number; acceptedCount?: number; newAcceptedCount?: number; duplicateCount?: number; unknownCount: number; notSelectedCount: number; canClose: boolean;
   unselectedContinuation?: { uploadTaskId: string; submittedTaskIds: string[]; count: number };
   historicalResumeTaskId?: string;
 }
