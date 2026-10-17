@@ -505,30 +505,52 @@ export class DouyinUploadStore {
     });
   }
 
-  closeBatch(id: string, beforeCommit?: () => Promise<void>): Promise<void> {
+  /** Terminal platform receipts need no user decision; READY/UNKNOWN and missing members stay open. */
+  closeAcceptedBatches(beforeCommit?: () => Promise<void>, pageBatchId?: string): Promise<void> {
     return this.serial(async () => {
-      this.assertReady(); const task = this.task(id);
-      if (!task) throw new Error("找不到待结束的上传任务。");
-      const pageBatchId = task.authorization.pageBatchId; this.assertOpen(pageBatchId);
-      if (!this.canCloseBatch(pageBatchId)) throw new Error("仅可结束已登记意图与成员一致、无别名且未在运行的整批本地上传。");
-      const bytes = closureBytes(this.data, pageBatchId), file = path.join(this.closureHistoryDirectory, `${pageBatchId}.json`);
-      try {
-        await secureUploadDirectory(this.closureHistoryDirectory); await strictSyncDirectory(this.root);
-        let handle;
-        try { handle = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); await handle.writeFile(bytes); await handle.sync(); }
-        catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await privateBytes(file, true)).equals(bytes)) throw error; }
-        finally { await handle?.close(); }
-        await (this.durability.syncDirectory ?? strictSyncDirectory)(this.closureHistoryDirectory);
-      } catch {
-        this.blocked = true; throw uploadFailure("STORE_UNAVAILABLE", "store", "批次结束历史无法可靠保存，上传记录已停用。", "保留全部历史及文件选择屏障；检查本机存储。", true);
+      this.assertReady();
+      const groups = new Map<string, UploadTaskRecord[]>();
+      for (const task of this.data.tasks) {
+        const id = task.authorization.pageBatchId;
+        if (this.isClosed(id) || pageBatchId && id !== pageBatchId) continue;
+        const batch = groups.get(id) ?? []; batch.push(task); groups.set(id, batch);
       }
-      await beforeCommit?.();
-      const taskIds = this.data.tasks.filter(value => value.authorization.pageBatchId === pageBatchId).map(value => value.result.upload_task_id).sort();
-      const registeredIntentCount = this.data.intents.filter(intent => intent.authorization.pageBatchId === pageBatchId).length;
-      const closure = ClosedUploadBatchSchema.parse({ projectId: task.input.project_id, pageBatchId, advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId,
-        expectedCount: task.authorization.expectedCount, ...(taskIds.length < task.authorization.expectedCount ? { admittedCount: taskIds.length } : {}),
-        ...(registeredIntentCount < task.authorization.expectedCount ? { registeredIntentCount } : {}), taskIds, archiveSha256: createHash("sha256").update(bytes).digest("hex"), closedAt: new Date().toISOString() });
-      await this.commit({ ...this.data, closedBatches: [...this.data.closedBatches, closure] });
+      // Saving original results may move them behind aliases in the ledger.
+      // The existing closure rule requires originals to be closed first.
+      const batches = [...groups].sort(([, left], [, right]) => Number(left.some(task => task.result.duplicate_of)) - Number(right.some(task => task.result.duplicate_of)));
+      for (const [id, tasks] of batches) {
+        if (tasks.length !== tasks[0]!.authorization.expectedCount || !this.canCloseBatch(id) ||
+          tasks.some(task => task.result.state !== "ACCEPTED" || task.result.upload_outcome !== "ACCEPTED" || !task.result.acceptedEvidence)) continue;
+        await beforeCommit?.();
+        await this.writeBatchClosure(tasks[0]!.result.upload_task_id, beforeCommit);
+      }
     });
+  }
+  closeBatch(id: string, beforeCommit?: () => Promise<void>): Promise<void> {
+    return this.serial(() => this.writeBatchClosure(id, beforeCommit));
+  }
+  private async writeBatchClosure(id: string, beforeCommit?: () => Promise<void>): Promise<void> {
+    this.assertReady(); const task = this.task(id);
+    if (!task) throw new Error("找不到待结束的上传任务。");
+    const pageBatchId = task.authorization.pageBatchId; this.assertOpen(pageBatchId);
+    if (!this.canCloseBatch(pageBatchId)) throw new Error("仅可结束已登记意图与成员一致、无别名且未在运行的整批本地上传。");
+    const bytes = closureBytes(this.data, pageBatchId), file = path.join(this.closureHistoryDirectory, `${pageBatchId}.json`);
+    try {
+      await secureUploadDirectory(this.closureHistoryDirectory); await strictSyncDirectory(this.root);
+      let handle;
+      try { handle = await open(file, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); await handle.writeFile(bytes); await handle.sync(); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "EEXIST" || !(await privateBytes(file, true)).equals(bytes)) throw error; }
+      finally { await handle?.close(); }
+      await (this.durability.syncDirectory ?? strictSyncDirectory)(this.closureHistoryDirectory);
+    } catch {
+      this.blocked = true; throw uploadFailure("STORE_UNAVAILABLE", "store", "批次结束历史无法可靠保存，上传记录已停用。", "保留全部历史及文件选择屏障；检查本机存储。", true);
+    }
+    await beforeCommit?.();
+    const taskIds = this.data.tasks.filter(value => value.authorization.pageBatchId === pageBatchId).map(value => value.result.upload_task_id).sort();
+    const registeredIntentCount = this.data.intents.filter(intent => intent.authorization.pageBatchId === pageBatchId).length;
+    const closure = ClosedUploadBatchSchema.parse({ projectId: task.input.project_id, pageBatchId, advertiserId: task.authorization.target.advertiserId, adId: task.authorization.target.adId,
+      expectedCount: task.authorization.expectedCount, ...(taskIds.length < task.authorization.expectedCount ? { admittedCount: taskIds.length } : {}),
+      ...(registeredIntentCount < task.authorization.expectedCount ? { registeredIntentCount } : {}), taskIds, archiveSha256: createHash("sha256").update(bytes).digest("hex"), closedAt: new Date().toISOString() });
+    await this.commit({ ...this.data, closedBatches: [...this.data.closedBatches, closure] });
   }
 }

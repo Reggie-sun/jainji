@@ -183,6 +183,74 @@ function evidenceFor(task: UploadTaskRecord, pageOwnership: PageOwnership, selec
 }
 
 describe("Qianchuan upload service", () => {
+  it("automatically ends a newly accepted batch without stopping later batches or hiding current success", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    for (const name of ["automatic closure first", "automatic closure second"]) {
+      const batch = await f.createBatch([name]); await f.register(batch);
+      await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+      const task = f.store.tasks().find(task => task.input.export_task_id === batch.identities[0]!.export_task_id)!;
+      expect(task.result.upload_outcome).toBe("ACCEPTED");
+      expect(f.store.isClosed(task.authorization.pageBatchId)).toBe(true);
+      const status = f.service.status(batch.projectId);
+      expect(status.tasks.some(result => result.upload_task_id === task.result.upload_task_id && result.state === "ACCEPTED")).toBe(true);
+      const captured = f.service.capturedStatus(batch.projectId, batch.identities.map(identity => identity.export_task_id));
+      expect(captured.tasks.map(result => result.state)).toEqual(["ACCEPTED"]);
+      expect(status.accountBatches?.some(value => value.pageBatchId === task.authorization.pageBatchId)).toBe(false);
+    }
+    expect(f.store.tasks().filter(task => task.result.state === "ACCEPTED")).toHaveLength(2);
+    expect(f.store.closedBatches()).toHaveLength(2);
+  });
+
+  it("retires verified accepted history at a production boundary with zero browser actions and leaves READY history protected", async () => {
+    const f = await fixture(); await f.authorize();
+    const accepted = await f.createBatch(["historical accepted"]); await f.register(accepted);
+    await f.service.enqueueFinalArtifact(accepted.identities[0]!); await f.service.runPending();
+    const original = f.store.tasks()[0]!, handle = f.store.beginAutomationAcceptance([original]);
+    await f.store.saveTask({ ...original, result: { ...original.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined } });
+    await f.store.acceptAutomation(handle, [{ ...original.result.readyEvidence!, platformVideoId: "90001", attempt: original.result.attempt_count,
+      requestSha256: "a".repeat(64), responseSha256: "b".repeat(64) }]);
+    const pending = await f.createBatch(["historical ready"]); await f.register(pending);
+    await f.service.enqueueFinalArtifact(pending.identities[0]!); await f.service.runPending();
+    await f.service.stop();
+    const before = f.store.tasks(), events = [...f.events];
+    await f.service.beginProduction();
+    expect(f.store.closedBatches().map(batch => batch.pageBatchId)).toEqual([original.authorization.pageBatchId]);
+    expect(f.store.tasks()).toEqual(before); expect(f.events).toEqual(events);
+    expect(f.service.status(pending.projectId).accountBatches).toMatchObject([{ readyCount: 1, unknownCount: 0 }]);
+  });
+
+  it("automatically ends accepted aliases after the original batch without selecting the same bytes again", async () => {
+    const f = await fixture(); await f.authorize(); await f.service.beginProduction();
+    for (let index = 0; index < 3; index++) {
+      const batch = await f.createBatch(["same accepted artifact"]); await f.register(batch);
+      await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    }
+    expect(f.store.tasks().map(task => task.result.upload_outcome)).toEqual(["ACCEPTED", "ACCEPTED", "ACCEPTED"]);
+    expect(f.store.tasks()[1]!.result.duplicate_of).toBe(f.store.tasks()[0]!.result.upload_task_id);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(f.store.closedBatches()).toHaveLength(3);
+  });
+
+  it("keeps local production available when startup archival fails, while the upload store remains blocked", async () => {
+    const f = await fixture(); await f.authorize();
+    const batch = await f.createBatch(["accepted before archive failure"]); await f.register(batch);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    const original = f.store.tasks()[0]!, handle = f.store.beginAutomationAcceptance([original]);
+    await f.store.saveTask({ ...original, result: { ...original.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined } });
+    await f.store.acceptAutomation(handle, [{ ...original.result.readyEvidence!, platformVideoId: "90001", attempt: original.result.attempt_count,
+      requestSha256: "a".repeat(64), responseSha256: "b".repeat(64) }]);
+    await f.service.stop(); const before = f.store.tasks(), fence = f.store.fence(original.result.upload_task_id);
+    const store = new DouyinUploadStore(f.store.root, { syncDirectory: async () => { throw Error("archive sync failed"); } }); await store.load();
+    const browser = vi.fn(() => { throw Error("startup must not open Chrome"); });
+    const service = new DouyinUploadService(store, { browser, loadBatch: async () => { throw Error("startup must not read media"); } });
+    fixtureServices.add(service);
+    await expect(service.beginProduction()).resolves.toBeUndefined();
+    expect(store.unavailable).toBe(true); expect(service.status(batch.projectId).ready).toBe(false);
+    expect(store.tasks()).toEqual(before); expect(store.fence(original.result.upload_task_id)).toEqual(fence);
+    expect(service.capturedStatus(batch.projectId, batch.identities.map(identity => identity.export_task_id)).tasks[0]?.state).toBe("ACCEPTED");
+    expect(browser).not.toHaveBeenCalled();
+  });
+
   it.each(["ACCEPTED", "READY", "UNKNOWN", "ACCEPTED_AND_READY"])("excludes unfinished page owners but permits a verified accepted page for account reads (%s)", async outcome => {
     const f = await fixture(); await f.authorize();
     const batch = await f.createBatch(["previous upload"]); await f.register(batch);
@@ -615,6 +683,29 @@ describe("Qianchuan upload service", () => {
     expect(close.mock.calls.map(call => call.slice(0, 2))).toEqual([["1000", "close"]]);
     expect(f.service.status(randomUUID()).accounts.find(account => account.product === "蝴蝶贴")?.egress).toEqual(egress);
     expect(f.store.tasks()).toEqual([]); expect(f.events).toEqual([]);
+  });
+  it.each([false, true])("permits upload method changes after automatic completion unless another intent is unfinished: %s", async unfinished => {
+    const f = await nativeFixture(undefined, async () => []);
+    await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true }); await f.service.beginProduction();
+    const close = vi.spyOn(QianchuanBrowserManager.prototype, "control").mockResolvedValue();
+    vi.spyOn(QianchuanBrowserManager.prototype, "assertClosed").mockResolvedValue();
+    const selected = selection("眼贴"), batch = await f.createBatch(["completed before upload method change"]);
+    const authorization = await f.service.preflight(selected, 1);
+    await f.service.registerBatch(batch.batchIdentity, selected, authorization);
+    await f.service.enqueueFinalArtifact(batch.identities[0]!); await f.service.runPending();
+    expect(f.store.isClosed(f.store.tasks()[0]!.authorization.pageBatchId)).toBe(true);
+    if (unfinished) {
+      const pending = await f.createBatch(["registered but not admitted"]), target = await f.service.preflight(selected, 1);
+      await f.service.registerBatch(pending.batchIdentity, selected, target);
+    }
+    const egress = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+    const save = f.service.saveAccount({ product: "眼贴", planUrl: "https://qianchuan.jinritemai.com/uni-prom?aavid=1003&adId=2003", egress });
+    if (unfinished) { await expect(save).rejects.toThrow("待处理"); expect(close).not.toHaveBeenCalled(); }
+    else {
+      await expect(save).resolves.toBeUndefined();
+      expect(f.service.status(batch.projectId).accounts.find(account => account.product === "眼贴")?.egress).toEqual(egress);
+    }
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
   });
   it("protects another account's READY batch sharing the actual browser before automatic shutdown", async () => {
     const f = await nativeFixture(); await f.service.chooseConfig(f.configPath); await f.service.configure({ enabled: true });

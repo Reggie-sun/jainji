@@ -9,6 +9,64 @@ const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 async function fixture() { const f = await closureFixture(); roots.push(f.root); return f; }
 
+async function acceptedBatch(f: Awaited<ReturnType<typeof fixture>>, count = 2) {
+  const tasks = await f.batch(count), pageOwnership = { targetId: randomUUID(), pageBatchId: tasks[0]!.authorization.pageBatchId, modalSessionId: randomUUID() };
+  await f.store.markSelecting(tasks.map(task => task.result.upload_task_id), pageOwnership, 1);
+  const ready = tasks.map(task => ({ ...f.store.task(task.result.upload_task_id)!, result: { ...f.store.task(task.result.upload_task_id)!.result,
+    state: "WAITING_FOR_CONFIRMATION" as const, upload_outcome: "READY" as const,
+    readyEvidence: { advertiserId: "123", adId: "456", fileName: task.result.file_name, selectedCount: count, observedAt: new Date().toISOString(), pageOwnership } } }));
+  await f.store.saveTasks(ready);
+  const handle = f.store.beginAutomationAcceptance(ready);
+  await f.store.saveTasks(ready.map(task => ({ ...task, result: { ...task.result, state: "NEEDS_HUMAN", upload_outcome: "MAY_HAVE_UPLOADED", readyEvidence: undefined } })));
+  await f.store.acceptAutomation(handle, ready.map((task, index) => ({ ...task.result.readyEvidence, platformVideoId: String(9000 + index),
+    attempt: task.result.attempt_count, requestSha256: "a".repeat(64), responseSha256: "b".repeat(64) })));
+  return tasks[0]!.authorization.pageBatchId;
+}
+
+it("automatically archives only complete accepted batches, preserving original records, fences and restart protection", async () => {
+  const f = await fixture(), pageBatchId = await acceptedBatch(f), before = f.store.tasks(), intents = f.store.intents();
+  const ids = before.filter(task => task.authorization.pageBatchId === pageBatchId).map(task => task.result.upload_task_id);
+  const fences = await Promise.all(ids.map(id => readFile(path.join(f.root, "selection-fences", `${id}.json`))));
+  await f.store.closeAcceptedBatches();
+  expect(f.store.closedBatches().map(batch => batch.pageBatchId)).toEqual([pageBatchId]);
+  expect(f.store.isClosed(f.tasks[0]!.authorization.pageBatchId)).toBe(false);
+  expect(f.store.tasks()).toEqual(before); expect(f.store.intents()).toEqual(intents);
+  expect(await Promise.all(ids.map(id => readFile(path.join(f.root, "selection-fences", `${id}.json`))))).toEqual(fences);
+  await f.store.closeAcceptedBatches();
+  expect(f.store.closedBatches()).toHaveLength(1);
+  const restored = new DouyinUploadStore(f.root); await restored.load();
+  expect(restored.tasks()).toEqual(before); expect(restored.closedBatches()).toEqual(f.store.closedBatches());
+  await expect(restored.saveTask(restored.task(ids[0]!)!)).rejects.toThrow(/已结束/);
+});
+
+it("vetoes automatic closure after control changes and rejects incomplete accepted history on restart", async () => {
+  const f = await fixture(), pageBatchId = await acceptedBatch(f);
+  await expect(f.store.closeAcceptedBatches(async () => { throw Error("control changed"); })).rejects.toThrow("control changed");
+  expect(f.store.closedBatches()).toEqual([]);
+  const statePath = path.join(f.root, "state.json"), raw = JSON.parse(await readFile(statePath, "utf8"));
+  const missing = raw.tasks.find((task: typeof f.tasks[number]) => task.authorization.pageBatchId === pageBatchId);
+  raw.tasks = raw.tasks.filter((task: typeof f.tasks[number]) => task.result.upload_task_id !== missing.result.upload_task_id);
+  await writeFile(statePath, JSON.stringify(raw), { mode: 0o600 });
+  // A missing admitted task must also lack a fence; otherwise the existing loader rejects the ledger.
+  await rm(path.join(f.root, "selection-fences", `${missing.result.upload_task_id}.json`));
+  const partial = new DouyinUploadStore(f.root);
+  await expect(partial.load()).rejects.toMatchObject({ failure: { code: "STORE_UNAVAILABLE" } });
+  expect(partial.unavailable).toBe(true);
+  expect(JSON.parse(await readFile(statePath, "utf8")).closedBatches).toEqual([]);
+});
+
+it("fails closed if automatic archival cannot sync, retaining accepted results and every selection fence", async () => {
+  const f = await fixture(), pageBatchId = await acceptedBatch(f), statePath = path.join(f.root, "state.json"), before = await readFile(statePath);
+  const broken = new DouyinUploadStore(f.root, { syncDirectory: async () => { throw Error("archive sync failure"); } }); await broken.load();
+  await expect(broken.closeAcceptedBatches()).rejects.toMatchObject({ failure: { code: "STORE_UNAVAILABLE" } });
+  expect(broken.unavailable).toBe(true); expect(broken.isClosed(pageBatchId)).toBe(false);
+  expect(await readFile(statePath)).toEqual(before);
+  for (const task of f.store.tasks().filter(task => task.authorization.pageBatchId === pageBatchId)) {
+    expect(broken.task(task.result.upload_task_id)?.result.upload_outcome).toBe("ACCEPTED");
+    expect(broken.fence(task.result.upload_task_id)).toEqual(f.store.fence(task.result.upload_task_id));
+  }
+});
+
 it("closes a complete READY/UNKNOWN/PENDING batch without changing records or fences, and survives restart", async () => {
   const f = await fixture(), before = f.store.tasks(), intents = f.store.intents();
   const fences = await Promise.all([f.id, f.unknownId].map(id => readFile(path.join(f.root, "selection-fences", `${id}.json`))));

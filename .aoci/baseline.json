@@ -1,7 +1,7 @@
 {
   "version": 1,
   "created_at": "2026-09-23T13:33:36Z",
-  "updated_at": "2026-10-17T11:56:00Z",
+  "updated_at": "2026-10-17T15:00:10Z",
   "files": {
     ".agent/harness/policy.json": {
       "sha256": "d7c8154944dccbea1ef9c6c0fac47f3bc80dd47b209b7f02591db14f413d1423",
@@ -1438,14 +1438,14 @@
       "normalized_sha256": "d48c79f3b94fde9d685dabc0bff2addc8a1fe0c8786839a19a880d0cfe06b56e"
     },
     "src/main/douyin-upload-service.ts": {
-      "sha256": "ba0329d1a6116709a49bc8e6351681970f6f9d50a48bf07ea7cbdf018a7149ca",
-      "size": 148362,
-      "normalized_sha256": "ba0329d1a6116709a49bc8e6351681970f6f9d50a48bf07ea7cbdf018a7149ca"
+      "sha256": "0017a2a348ac41c7bd7e8575ef45bf0bd4e44c43890be130d07373df54eeb16d",
+      "size": 149665,
+      "normalized_sha256": "0017a2a348ac41c7bd7e8575ef45bf0bd4e44c43890be130d07373df54eeb16d"
     },
     "src/main/douyin-upload-store.ts": {
-      "sha256": "00124213a4e53b0882ab5182d4d85f6b5ac62dd5c902d5ae0f573173e00589b4",
-      "size": 51133,
-      "normalized_sha256": "00124213a4e53b0882ab5182d4d85f6b5ac62dd5c902d5ae0f573173e00589b4"
+      "sha256": "17c0ec12a41219d5988275aed41d8dcdae84ffd9087f68d94881c1fcf43986ae",
+      "size": 52563,
+      "normalized_sha256": "17c0ec12a41219d5988275aed41d8dcdae84ffd9087f68d94881c1fcf43986ae"
     },
     "src/main/errors.ts": {
       "sha256": "20deb9cdaad9284274b20c44ed341535964995e3c81dfb281f79a9b062ac35f6",
@@ -2578,9 +2578,9 @@
       "normalized_sha256": "55a6fb387b3ed915e05c1ede28419e8d80b632b353162669ee63c8ea0c52ef8a"
     },
     "src/renderer/QianchuanAccountUploadBatches.tsx": {
-      "sha256": "90d4219e2da2aee4ea4f49a0bf8db59c916fda16c42888aca00c3810553cda47",
-      "size": 1891,
-      "normalized_sha256": "90d4219e2da2aee4ea4f49a0bf8db59c916fda16c42888aca00c3810553cda47"
+      "sha256": "a28ddf60f8854565849a07a5035da58da92a075ec3d6e779daf6247eca8f4213",
+      "size": 1940,
+      "normalized_sha256": "a28ddf60f8854565849a07a5035da58da92a075ec3d6e779daf6247eca8f4213"
     },
     "src/renderer/QianchuanBackendPanel.tsx": {
       "sha256": "4429286d44e4e83295de2b25b0667ee943e14569ad33ad529e611faab9b6945a",

@@ -316,18 +316,20 @@ it("stops ordinary account rotation if closing the accepted page fails", async (
   expect(f.open).toEqual(new Set(["1003"]));
 });
 
-it("accepts and closes each of five remote accounts before opening the next, without changing fences or closing batches", async () => {
+it("accepts, archives and closes each of five remote accounts before opening the next while retaining fences", async () => {
   const f = await remoteFixture(), products = QIANCHUAN_PRODUCTS.slice(0, 5);
   const groups = await Promise.all(products.map((product, i) => f.group(product, `unique remote output ${i}`)));
   await f.service.uploadAutomation(groups, new AbortController().signal);
   expect(f.open.size).toBe(0); expect(f.store.tasks()).toHaveLength(5);
   expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED" && f.store.hasMarker(task.result.upload_task_id))).toBe(true);
-  expect(f.store.closedBatches()).toEqual([]);
+  expect(f.store.closedBatches()).toHaveLength(5);
   for (const group of groups) {
     const id = group.target.advertiserId, start = f.remoteEvents.indexOf(`open:${id}`), accepted = f.remoteEvents.indexOf(`accepted:${id}`);
     expect(start).toBeLessThan(accepted); expect(f.remoteEvents.indexOf(`close:${id}`, accepted)).toBeGreaterThan(accepted);
   }
-  await expect(f.service.controlAccountBrowser({ product: products[0], expectedAdvertiserId: groups[0].target.advertiserId, action: "close" })).rejects.toThrow("待确认");
+  const connections = f.remoteEvents.filter(event => event.startsWith("open:"));
+  await f.service.controlAccountBrowser({ product: products[0], expectedAdvertiserId: groups[0].target.advertiserId, action: "close" });
+  expect(f.remoteEvents.filter(event => event.startsWith("open:"))).toEqual(connections);
 });
 
 it("keeps the remote browser across accepted chunks, blocks manual opens, then closes once at account completion", async () => {
@@ -480,6 +482,22 @@ it("shares live acceptance with same-target duplicate groups without selecting o
   expect(f.store.tasks().every(task => task.result.upload_outcome === "ACCEPTED")).toBe(true);
   expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
   expect(f.events.filter(event => event === "confirm")).toHaveLength(1);
+});
+
+it("archives accepted originals and aliases in one startup pass after page closure failed", async () => {
+  const f = await remoteFixture(), first = await f.group("眼贴", "duplicate before interrupted close"), second = await f.group("眼贴", "duplicate before interrupted close");
+  f.port.closeAcceptedAutomationPage = async () => { throw Error("accepted page close failed"); };
+  await expect(f.service.uploadAutomation([first, second], new AbortController().signal)).rejects.toThrow();
+  const tasks = f.store.tasks();
+  expect(tasks.map(task => task.result.upload_outcome)).toEqual(["ACCEPTED", "ACCEPTED"]);
+  expect(tasks[0]!.result.duplicate_of).toBeTruthy();
+  const restored = new DouyinUploadStore(f.store.root); await restored.load();
+  const browser = vi.fn(() => { throw Error("startup must not access a browser"); });
+  const service = new DouyinUploadService(restored, { browser, loadBatch: async () => { throw Error("startup must not read media"); } });
+  await service.beginProduction();
+  expect(restored.closedBatches()).toHaveLength(2); expect(restored.tasks()).toEqual(tasks);
+  expect(service.status(tasks[0]!.input.project_id).accountBatches).toEqual([]);
+  expect(f.events.filter(event => event === "file-input")).toHaveLength(1); expect(browser).not.toHaveBeenCalled();
 });
 
 it("persists platform acceptance only for the live attempt, survives restart and never resubmits", async () => {
