@@ -59,7 +59,15 @@ export class DevelopmentEgressClient implements Runtime {
       } else if (message.ok === true && (pending.operation === "recover" || pending.operation === "retireUnused")) {
         clearTimeout(pending.timer); this.pending.delete(message.requestId); pending.resolve(undefined);
       } else if (message.ok === false) {
-        clearTimeout(pending.timer); this.pending.delete(message.requestId); pending.reject(unavailable());
+        clearTimeout(pending.timer); this.pending.delete(message.requestId);
+        const error = message.failure === "port-unavailable"
+          ? new Error("固定出口本地端口已被占用，未复用未知代理；下次连接会重新检查。")
+          : message.failure === "probe-unavailable"
+            ? new Error("固定出口 IP 探测暂时不可用，本次连接已停止；后续连接将自动重新校验，未继续或重传上传。")
+            : message.failure === "egress-unavailable"
+              ? new Error("固定出口连接或 IP 校验失败，已停止自动化且不会直连。")
+              : unavailable();
+        pending.reject(error);
       } else void this.dispose();
     }
   };
@@ -184,8 +192,13 @@ export class DevelopmentEgressHost {
         }
       }
       this.send(channel, { type: "jianji-egress-result", requestId: request.requestId, ok: true, identity: lease?.identity, generation });
-    } catch {
-      this.send(channel, { type: "jianji-egress-result", requestId: request.requestId, ok: false });
+    } catch (error) {
+      // Only fixed protocol categories cross IPC; raw errors can contain transport details.
+      const failure = error instanceof Error && (error as Error & { code?: unknown }).code === "EGRESS_LOCAL_PORT_BUSY"
+        ? "port-unavailable"
+        : error instanceof Error && (error as Error & { code?: unknown }).code === "EGRESS_TRANSIENT_PROBE_UNAVAILABLE"
+          ? "probe-unavailable" : "egress-unavailable";
+      this.send(channel, { type: "jianji-egress-result", requestId: request.requestId, ok: false, failure });
     }
   }
   dispose(): Promise<void> {

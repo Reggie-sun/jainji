@@ -3,14 +3,202 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { EventEmitter } from "node:events";
-import { expect, it, vi } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import { chromium } from "playwright-core";
+import { egressIdentity } from "../src/shared/qianchuan-egress.js";
+import type { RunningChromeBrowser } from "../src/main/qianchuan-browser-discovery.js";
 import { assertEgressArguments, chromeEgressArguments, verifyBrowserEgress } from "../src/main/qianchuan-egress-browser";
 import { accountChromeArguments } from "../src/main/qianchuan-browser-manager";
-import { probeChromeEgress } from "../src/main/qianchuan-egress-probe";
-import { QianchuanEgressRuntime } from "../src/main/qianchuan-egress-runtime";
+import * as egressProbe from "../src/main/qianchuan-egress-probe.js";
+import { BrowserEgressProbeError, probeChromeEgress } from "../src/main/qianchuan-egress-probe.js";
+import { QianchuanEgressRuntime, qianchuanEgressRuntime } from "../src/main/qianchuan-egress-runtime.js";
 
 const route = { group: "主体一", sshHost: "shop-one", localPort: 19381, expectedIp: "203.0.113.11" };
+const endpoint = "http://127.0.0.1:9222";
+const stableChrome = (overrides: Partial<RunningChromeBrowser> = {}): RunningChromeBrowser => ({
+  endpoint,
+  profile: "/tmp/qianchuan-account-profile",
+  profileDirectory: "Default",
+  windowClass: "account-200",
+  processId: 4521,
+  startedAt: "882910",
+  egressArguments: ["--proxy-server=socks5://127.0.0.1:19381", "--proxy-bypass-list=<-loopback>", "--disable-quic",
+    "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1, EXCLUDE localhost", "--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+  ...overrides,
+});
+function testLease(controller = new AbortController()) {
+  return { lease: { identity: egressIdentity(route), signal: controller.signal }, controller };
+}
+afterEach(() => vi.restoreAllMocks());
+
+it("retries a transient browser probe only within the same prepared browser and lease", async () => {
+  const { lease } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress")
+    .mockRejectedValueOnce(new BrowserEgressProbeError(true)).mockResolvedValueOnce(undefined);
+  const check = vi.fn();
+  const controller = new AbortController();
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: controller.signal, check })).resolves.toBe(lease);
+
+  expect(probe).toHaveBeenCalledTimes(2);
+  expect(probe.mock.calls[0]?.[2]).not.toBe(lease.signal);
+  expect(verify).toHaveBeenCalledTimes(2);
+  expect(browsers).toHaveBeenCalledTimes(3);
+  expect(check).toHaveBeenCalled();
+  expect(lease.signal.aborted).toBe(false);
+});
+
+it("stops after three transient browser probes under the prepared context", async () => {
+  const { lease } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockRejectedValue(new BrowserEgressProbeError(true));
+  const controller = new AbortController();
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: controller.signal, check: () => {} })).rejects.toBeInstanceOf(BrowserEgressProbeError);
+
+  expect(probe).toHaveBeenCalledTimes(3);
+  expect(verify).toHaveBeenCalledTimes(3);
+  expect(browsers).toHaveBeenCalledTimes(3);
+  expect(lease.signal.aborted).toBe(false);
+});
+
+it.each([
+  ["non-retryable probe result", () => new BrowserEgressProbeError(false)],
+  ["untyped retryable property", () => Object.assign(new Error("unclassified"), { retryable: true })],
+])("does not retry a %s", async (_label, makeError) => {
+  const { lease } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const error = makeError();
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockRejectedValue(error);
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: new AbortController().signal, check: () => {} })).rejects.toBe(error);
+
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(verify).toHaveBeenCalledTimes(1);
+});
+
+it("does not retry a route lease verification failure even if its error has a retryable flag", async () => {
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockRejectedValue(Object.assign(new Error("lease unavailable"), { retryable: true }));
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress");
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: new AbortController().signal, check: () => {} })).rejects.toThrow("lease unavailable");
+
+  expect(verify).toHaveBeenCalledTimes(1);
+  expect(probe).not.toHaveBeenCalled();
+});
+
+it("does not retry when the original process identity is not strong enough", async () => {
+  const { lease } = testLease();
+  const browsers = vi.fn(async () => [stableChrome({ processId: undefined, startedAt: undefined })]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockRejectedValue(new BrowserEgressProbeError(true));
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: new AbortController().signal, check: () => {} })).rejects.toBeInstanceOf(BrowserEgressProbeError);
+
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(verify).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  ["endpoint", { endpoint: "http://127.0.0.1:9223" }],
+  ["profile", { profile: "/tmp/other-profile" }],
+  ["profile directory", { profileDirectory: "Profile 2" }],
+  ["window class", { windowClass: "other-account" }],
+  ["process id", { processId: 4522 }],
+  ["process start time", { startedAt: "882911" }],
+  ["proxy flags", { egressArguments: ["--proxy-server=socks5://127.0.0.1:19382"] }],
+])("does not repeat the probe after the browser %s changes", async (_label, changed) => {
+  const { lease } = testLease();
+  let reads = 0;
+  const browsers = vi.fn(async () => [stableChrome(++reads === 1 ? {} : changed)]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockRejectedValue(new BrowserEgressProbeError(true));
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: new AbortController().signal, check: () => {} })).rejects.toThrow();
+
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(verify).toHaveBeenCalledTimes(1);
+  expect(lease.signal.aborted).toBe(false);
+});
+
+it("rejects a changed prepared route before a transient probe can be retried", async () => {
+  const { lease } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  let currentIdentity = egressIdentity(route);
+  const check = vi.fn(() => { if (currentIdentity !== egressIdentity(route)) throw new Error("prepared route changed"); });
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockImplementationOnce(async () => {
+    currentIdentity = "changed";
+    throw new BrowserEgressProbeError(true);
+  });
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: new AbortController().signal, check })).rejects.toThrow("prepared route changed");
+
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(verify).toHaveBeenCalledTimes(1);
+});
+
+it("does not ask the runtime for a replacement after the original lease is revoked", async () => {
+  const { lease, controller: leaseController } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockImplementationOnce(async () => {
+    leaseController.abort(new Error("revoked"));
+    throw new BrowserEgressProbeError(true);
+  });
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: new AbortController().signal, check: () => {} })).rejects.toThrow();
+
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(verify).toHaveBeenCalledTimes(1);
+});
+
+it("does not silently switch to a different live lease between transient probes", async () => {
+  const { lease: original } = testLease();
+  const { lease: replacement } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValueOnce(original).mockResolvedValueOnce(replacement);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockRejectedValueOnce(new BrowserEgressProbeError(true)).mockResolvedValueOnce(undefined);
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: new AbortController().signal, check: () => {} })).rejects.toThrow();
+
+  expect(original.signal.aborted).toBe(false);
+  expect(verify).toHaveBeenCalledTimes(2);
+  expect(probe).toHaveBeenCalledTimes(1);
+});
+
+it("cancels the contextual backoff without starting another browser probe", async () => {
+  const { lease } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockRejectedValue(new BrowserEgressProbeError(true));
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(new DOMException("Aborted", "AbortError")), 50);
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers, { signal: controller.signal, check: () => {} })).rejects.toMatchObject({ name: "AbortError" });
+
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(verify).toHaveBeenCalledTimes(1);
+});
+
+it("keeps unprepared browser verification single-shot and uses the lease signal directly", async () => {
+  const { lease } = testLease();
+  const browsers = vi.fn(async () => [stableChrome()]);
+  const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
+  const error = new BrowserEgressProbeError(true);
+  const probe = vi.spyOn(egressProbe, "probeChromeEgress").mockRejectedValue(error);
+
+  await expect(verifyBrowserEgress(endpoint, route, browsers)).rejects.toBe(error);
+
+  expect(probe).toHaveBeenCalledTimes(1);
+  expect(probe.mock.calls[0]?.[2]).toBe(lease.signal);
+  expect(verify).toHaveBeenCalledTimes(1);
+});
 it("rejects an unowned legacy endpoint before connecting even when its route is absent", async () => {
   await expect(verifyBrowserEgress("http://127.0.0.1:9222", undefined, async () => [])).rejects.toThrow("无法唯一");
 });

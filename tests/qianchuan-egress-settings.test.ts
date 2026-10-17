@@ -5,6 +5,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import { QianchuanAccountSettings } from "../src/main/qianchuan-account-settings";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import { QianchuanAccountSettingsSchema, QIANCHUAN_PRODUCTS } from "../src/shared/qianchuan-account";
+import { egressIdentity } from "../src/shared/qianchuan-egress";
 import { FrozenAccountSchema } from "../src/shared/douyin-upload";
 import { qianchuanEgressRuntime } from "../src/main/qianchuan-egress-runtime";
 import * as browserDiscovery from "../src/main/qianchuan-browser-discovery";
@@ -46,7 +47,7 @@ async function survivingEgressFixture() {
   await bindings.save({ advertiserId: "123", profile, profileDirectory: "Profile 9", windowClass: "shop-one" });
   const browser = { profile, profileDirectory: "Profile 9", windowClass: "shop-one", endpoint: "http://127.0.0.1:19390", egressArguments: chromeEgressArguments(route) };
   const browsers = vi.spyOn(browserDiscovery, "runningChromeBrowsers").mockResolvedValue([browser]);
-  const lease = { identity: "saved-route", signal: new AbortController().signal };
+  const lease = { identity: egressIdentity(route), signal: new AbortController().signal };
   const ensure = vi.spyOn(qianchuanEgressRuntime, "ensure").mockResolvedValue(lease);
   const verify = vi.spyOn(qianchuanEgressRuntime, "verify").mockResolvedValue(lease);
   const recover = vi.spyOn(qianchuanEgressRuntime, "recover");
@@ -171,6 +172,62 @@ it("does not restart a correctly configured Chrome when its fixed exit verificat
   f.verify.mockRejectedValue(new Error("fixed exit unavailable"));
   const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), shutdown, launch, egress: async () => route });
   await expect(manager.prepareUpload("123", () => {}, new AbortController().signal)).rejects.toThrow("fixed exit unavailable");
+  expect(shutdown).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
+});
+
+it("recovers a transient preparation probe in the same protected Chrome without changing saved settings", async () => {
+  const f = await survivingEgressFixture(), shutdown = vi.fn(), launch = vi.fn();
+  const browser = { ...f.browser, processId: 42, startedAt: "100" };
+  f.browsers.mockResolvedValue([browser]);
+  f.probe.mockRejectedValueOnce(new egressProbe.BrowserEgressProbeError(true));
+  const before = await readFile(f.settings.file), binding = await f.bindings.get("123");
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), shutdown, launch, egress: async () => route });
+  await expect(manager.prepareUpload("123", () => { throw new Error("protected lifecycle"); }, new AbortController().signal)).resolves.toBe(browser.endpoint);
+  expect(f.probe).toHaveBeenCalledTimes(2);
+  expect(shutdown).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
+  expect(await readFile(f.settings.file)).toEqual(before); expect(await f.bindings.get("123")).toEqual(binding);
+}, 10_000);
+
+it("finishes a new original browser's probe recovery before opening its account page", async () => {
+  const f = await survivingEgressFixture(), events: string[] = [];
+  const browser = { ...f.browser, processId: 43, startedAt: "101" };
+  let running: typeof browser[] = [], probes = 0;
+  f.browsers.mockImplementation(async () => running);
+  f.probe.mockImplementation(async () => {
+    events.push(`probe:${++probes}`);
+    if (probes === 1) throw new egressProbe.BrowserEgressProbeError(true);
+  });
+  const launch = vi.fn(async (_profile, _id, _binding, _route, openAccount = true) => {
+    events.push(`launch:${openAccount}`); running = [browser];
+  });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), launch, egress: async () => route, ready: async () => true });
+  await expect(manager.prepareUpload("123", () => {}, new AbortController().signal)).resolves.toBe(browser.endpoint);
+  expect(events).toEqual(["launch:false", "probe:1", "probe:2", "launch:true"]);
+  expect(f.waitAccount).toHaveBeenCalledWith(browser.endpoint, "123", expect.any(AbortSignal));
+}, 10_000);
+
+it("also recovers the production account-discovery probe before returning its original endpoint", async () => {
+  const f = await survivingEgressFixture(), shutdown = vi.fn(), launch = vi.fn();
+  f.browsers.mockResolvedValue([{ ...f.browser, processId: 45, startedAt: "103" }]);
+  f.probe.mockRejectedValueOnce(new egressProbe.BrowserEgressProbeError(true));
+  vi.spyOn(browserDiscovery, "discoverQianchuanBrowser").mockResolvedValue(f.browser.endpoint);
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), shutdown, launch, egress: async () => route });
+  await expect(manager.prepare("123")).resolves.toBe(f.browser.endpoint);
+  expect(f.probe).toHaveBeenCalledTimes(2);
+  expect(shutdown).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
+}, 10_000);
+
+it("rejects changed saved egress before a preparation probe can retry", async () => {
+  const f = await survivingEgressFixture(), shutdown = vi.fn(), launch = vi.fn();
+  let saved = route;
+  f.browsers.mockResolvedValue([{ ...f.browser, processId: 44, startedAt: "102" }]);
+  f.probe.mockImplementation(async () => {
+    saved = { ...route, expectedIp: "203.0.113.99" };
+    throw new egressProbe.BrowserEgressProbeError(true);
+  });
+  const manager = new QianchuanBrowserManager(f.root, { browsers: () => browserDiscovery.runningChromeBrowsers(), shutdown, launch, egress: async () => saved });
+  await expect(manager.prepareUpload("123", () => {}, new AbortController().signal)).rejects.toThrow("固定出口配置已变化");
+  expect(f.probe).toHaveBeenCalledOnce();
   expect(shutdown).not.toHaveBeenCalled(); expect(launch).not.toHaveBeenCalled();
 });
 

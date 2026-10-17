@@ -14,7 +14,8 @@ function fakeChild() {
 }
 function fixture() {
   const children: Array<ReturnType<typeof fakeChild>> = [];
-  const launch = vi.fn((_route: typeof route) => { const child = fakeChild(); children.push(child); return child; }), probe = vi.fn(async () => route.expectedIp);
+  const launch = vi.fn((_route: typeof route) => { const child = fakeChild(); children.push(child); return child; }),
+    probe = vi.fn(async (_route: typeof route, _signal: AbortSignal) => route.expectedIp);
   const runtime = new QianchuanEgressRuntime({ launch, probe, portFree: async () => true });
   return { get child() { return children[0]; }, children, launch, probe, runtime };
 }
@@ -87,14 +88,14 @@ it.each(["dispose", "retire"])("does not relaunch when %s interrupts the wait fo
     expect(f.launch).toHaveBeenCalledOnce();
   } finally { await f.runtime.dispose(); }
 });
-it.each(["unknown", "invalid", "exhausted"])("keeps a %s probe failure barrier when the owned child later exits", async failureKind => {
+it.each(["unknown", "invalid"])("keeps a %s probe failure barrier when the owned child later exits", async failureKind => {
   vi.useFakeTimers();
   const f = fixture();
   try {
     const old = await f.runtime.ensure(route);
     if (failureKind === "unknown") f.probe.mockRejectedValueOnce(new Error("unclassified fixture failure"));
     else if (failureKind === "invalid") f.probe.mockResolvedValueOnce("invalid response");
-    else for (let i = 0; i < 3; i++) f.probe.mockRejectedValueOnce(new TransientEgressProbeError());
+    else throw new Error("unreachable fixture state");
     const verification = expect(f.runtime.verify(route)).rejects.toThrow("出口");
     await vi.advanceTimersByTimeAsync(400); await verification;
     await expect(f.runtime.ensure(route)).rejects.toThrow("出口");
@@ -121,10 +122,49 @@ it("refuses pre-existing listeners and fails closed when a probe or SSH fails", 
   expect(launch).not.toHaveBeenCalled();
   const f = fixture(); const lease = await f.runtime.ensure(route);
   f.probe.mockRejectedValue(new Error("sensitive stderr"));
-  await expect(f.runtime.verify(route)).rejects.toThrow("出口");
+  await expect(f.runtime.verify(route)).rejects.toThrow("固定出口");
   expect(lease.signal.aborted).toBe(true);
   expect(f.child.kill).not.toHaveBeenCalled();
   await expect(f.runtime.ensure(route)).rejects.toThrow("重连");
+});
+it("rechecks a refused port after it becomes free without caching the no-child failure", async () => {
+  let free = false;
+  const portFree = vi.fn(async () => free), child = fakeChild();
+  const launch = vi.fn(() => child), probe = vi.fn(async () => route.expectedIp);
+  const runtime = new QianchuanEgressRuntime({ portFree, launch, probe });
+  try {
+    const refused = await Promise.allSettled([runtime.ensure(route), runtime.ensure(route)]);
+    expect(refused.every(result => result.status === "rejected" && /端口/.test(result.reason.message))).toBe(true);
+    expect(portFree).toHaveBeenCalledOnce();
+    expect(launch).not.toHaveBeenCalled(); expect(probe).not.toHaveBeenCalled();
+    await expect(runtime.ensure(route)).rejects.toThrow("端口");
+    expect(portFree).toHaveBeenCalledTimes(2); expect(launch).not.toHaveBeenCalled();
+    free = true;
+    const [a, b] = await Promise.all([runtime.ensure(route), runtime.ensure(route)]);
+    expect(a).toBe(b); expect(a.signal.aborted).toBe(false);
+    expect(portFree).toHaveBeenCalledTimes(3); expect(launch).toHaveBeenCalledOnce();
+    expect(launch).toHaveBeenCalledWith(route); expect(probe).toHaveBeenCalledOnce();
+    expect(child.kill).not.toHaveBeenCalled();
+  } finally { await runtime.dispose(); }
+});
+
+it("does not cache a busy-port refusal in the development host across app replacement", async () => {
+  // The launcher can outlive both a refused port and the original Electron client.
+  let free = false;
+  const portFree = vi.fn(async () => free), f = developmentFixture({ portFree });
+  const first = f.connect();
+  try {
+    await expect(first.client.ensure(route)).rejects.toThrow("端口");
+    expect(f.launch).not.toHaveBeenCalled();
+    await first.client.dispose(); first.launcher.emit("exit");
+    free = true;
+    const replacement = f.connect();
+    try {
+      const fresh = await replacement.client.ensure(route);
+      expect(fresh.signal.aborted).toBe(false); expect(f.launch).toHaveBeenCalledOnce();
+      expect(portFree).toHaveBeenCalledTimes(2);
+    } finally { await replacement.client.dispose(); }
+  } finally { await first.client.dispose(); await f.host.dispose(); }
 });
 it("retries only known transient probe transport failures on the same healthy SSH and coalesces concurrent checks", async () => {
   const f = fixture(), lease = await f.runtime.ensure(route);
@@ -149,14 +189,122 @@ it("retries only known transient probe transport failures on the same healthy SS
   expect(f.probe).toHaveBeenCalledTimes(3);
   expect(f.launch).toHaveBeenCalledOnce(); expect(lease.signal.aborted).toBe(false);
 });
-it("bounds transient probe retries at three and retains the healthy SSH without reviving the lease", async () => {
+it("renews only on the next request after transient probe exhaustion while retaining the healthy SSH", async () => {
   const f = fixture(), lease = await f.runtime.ensure(route);
-  f.probe.mockClear(); f.probe.mockRejectedValue(new TransientEgressProbeError());
-  await expect(f.runtime.verify(route)).rejects.toThrow("出口");
-  expect(f.probe).toHaveBeenCalledTimes(3);
+  f.probe.mockClear(); f.probe.mockRejectedValueOnce(new TransientEgressProbeError())
+    .mockRejectedValueOnce(new TransientEgressProbeError()).mockRejectedValueOnce(new TransientEgressProbeError());
+  let nextEnsure!: Promise<Awaited<ReturnType<typeof f.runtime.ensure>>>;
+  let nextVerify!: Promise<Awaited<ReturnType<typeof f.runtime.verify>>>;
+  lease.signal.addEventListener("abort", () => {
+    nextEnsure = f.runtime.ensure(route);
+    nextVerify = f.runtime.verify(route);
+  }, { once: true });
+  await expect(f.runtime.verify(route)).rejects.toMatchObject({ code: "EGRESS_TRANSIENT_PROBE_UNAVAILABLE", message: expect.stringContaining("固定出口") });
+  expect(f.probe.mock.calls.filter(([, signal]) => signal === lease.signal)).toHaveLength(3);
   expect(lease.signal.aborted).toBe(true); expect(f.child.kill).not.toHaveBeenCalled();
-  await expect(f.runtime.ensure(route)).rejects.toThrow();
-  expect(f.probe).toHaveBeenCalledTimes(3); expect(f.launch).toHaveBeenCalledOnce();
+  const [fresh, verified] = await Promise.all([nextEnsure, nextVerify]);
+  expect(verified).toBe(fresh);
+  expect(fresh).not.toBe(lease); expect(fresh.signal.aborted).toBe(false);
+  expect(lease.signal.aborted).toBe(true); expect(f.child.kill).not.toHaveBeenCalled();
+  expect(f.probe).toHaveBeenCalledTimes(4); expect(f.launch).toHaveBeenCalledOnce();
+  expect(f.probe.mock.calls.every(([calledRoute]) => calledRoute.expectedIp === route.expectedIp)).toBe(true);
+});
+it("lets the next request reverify the healthy automatic replacement after transient exhaustion", async () => {
+  const f = fixture(), old = await f.runtime.ensure(route);
+  f.probe.mockRejectedValueOnce(new TransientEgressProbeError())
+    .mockRejectedValueOnce(new TransientEgressProbeError()).mockRejectedValueOnce(new TransientEgressProbeError());
+  vi.useFakeTimers();
+  try {
+    f.child.exitCode = 255; f.child.emit("exit", 255);
+    const recovery = f.runtime.ensure(route);
+    const rejected = expect(recovery).rejects.toMatchObject({ code: "EGRESS_TRANSIENT_PROBE_UNAVAILABLE" });
+    await vi.advanceTimersByTimeAsync(2_000);
+    await rejected;
+    expect(f.launch).toHaveBeenCalledTimes(2);
+    expect(old.signal.aborted).toBe(true);
+    expect(f.children[1].signalCode).toBeNull();
+
+    f.probe.mockResolvedValue(route.expectedIp);
+    const fresh = await f.runtime.ensure(route);
+    expect(fresh.signal.aborted).toBe(false);
+    expect(fresh).not.toBe(old);
+    expect(f.launch).toHaveBeenCalledTimes(2);
+    expect(f.probe).toHaveBeenCalledTimes(5);
+    expect(f.children[1].signalCode).toBeNull();
+  } finally { await f.runtime.dispose(); vi.useRealTimers(); }
+});
+it("does not start a fresh curl window when a transient verification leaves insufficient deadline budget", async () => {
+  vi.useFakeTimers();
+  const f = fixture(), lease = await f.runtime.ensure(route);
+  f.probe.mockClear();
+  f.probe.mockImplementationOnce(async () => {
+    vi.setSystemTime(Date.now() + 20_000);
+    throw new TransientEgressProbeError();
+  });
+  try {
+    const verification = f.runtime.verify(route);
+    const rejected = expect(verification).rejects.toMatchObject({ code: "EGRESS_TRANSIENT_PROBE_UNAVAILABLE" });
+    await vi.advanceTimersByTimeAsync(100);
+    await rejected;
+    expect(f.probe).toHaveBeenCalledOnce();
+    expect(lease.signal.aborted).toBe(true);
+    f.probe.mockResolvedValue(route.expectedIp);
+    const fresh = await f.runtime.ensure(route);
+    expect(fresh.signal.aborted).toBe(false);
+    expect(f.launch).toHaveBeenCalledOnce();
+  } finally { await f.runtime.dispose(); vi.useRealTimers(); }
+});
+it("keeps a hard barrier when a fresh attempt after transient exhaustion has a hard result", async () => {
+  const f = fixture(), old = await f.runtime.ensure(route);
+  f.probe.mockRejectedValue(new TransientEgressProbeError());
+  await expect(f.runtime.verify(route)).rejects.toThrow("出口");
+  expect(old.signal.aborted).toBe(true);
+  f.probe.mockResolvedValue("203.0.113.99");
+  const probesBeforeFreshAttempt = f.probe.mock.calls.length;
+  await expect(f.runtime.ensure(route)).rejects.toThrow("出口");
+  expect(f.probe).toHaveBeenCalledTimes(probesBeforeFreshAttempt + 1);
+  const attempts = f.probe.mock.calls.length;
+  await expect(f.runtime.ensure(route)).rejects.toThrow("出口");
+  expect(f.probe).toHaveBeenCalledTimes(attempts);
+  expect(f.child.kill).toHaveBeenCalledOnce(); expect(f.launch).toHaveBeenCalledOnce();
+});
+it("turns an exhausted-transient barrier hard if the retained SSH exits before renewal", async () => {
+  vi.useFakeTimers();
+  const f = fixture(), old = await f.runtime.ensure(route);
+  try {
+    f.probe.mockRejectedValue(new TransientEgressProbeError());
+    const pending = f.runtime.verify(route), rejected = expect(pending).rejects.toMatchObject({ code: "EGRESS_TRANSIENT_PROBE_UNAVAILABLE" });
+    await vi.advanceTimersByTimeAsync(400); await rejected;
+    f.child.exitCode = 255; f.child.emit("exit", 255);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(old.signal.aborted).toBe(true);
+    await expect(f.runtime.ensure(route)).rejects.toThrow("出口");
+    expect(f.launch).toHaveBeenCalledOnce();
+    f.runtime.recover(route);
+    f.probe.mockResolvedValue(route.expectedIp);
+    const fresh = await f.runtime.ensure(route);
+    expect(fresh.signal.aborted).toBe(false); expect(f.launch).toHaveBeenCalledTimes(2);
+  } finally { await f.runtime.dispose(); vi.useRealTimers(); }
+});
+it.each(["retire", "dispose"])("does not resurrect an exhausted transient lease when %s races its pending renewal", async operation => {
+  const f = fixture(), old = await f.runtime.ensure(route);
+  let renewal!: Promise<Awaited<ReturnType<typeof f.runtime.ensure>>>;
+  let shutdown: Promise<void> | undefined;
+  old.signal.addEventListener("abort", () => {
+    renewal = f.runtime.ensure(route);
+    if (operation === "retire") f.runtime.retireUnused([]);
+    else shutdown = f.runtime.dispose();
+  }, { once: true });
+  f.probe.mockRejectedValue(new TransientEgressProbeError());
+  try {
+    const verification = f.runtime.verify(route);
+    await expect(verification).rejects.toThrow("出口");
+    await expect(renewal).rejects.toThrow("出口");
+    await shutdown;
+    expect(old.signal.aborted).toBe(true);
+    expect(f.probe).toHaveBeenCalledTimes(4); // initial attestation plus three transient probes
+    expect(f.launch).toHaveBeenCalledOnce();
+  } finally { await f.runtime.dispose(); }
 });
 it("bounds a probe that ignores cancellation by the absolute connection deadline", async () => {
   vi.useFakeTimers();
@@ -183,6 +331,8 @@ it("limits unexpected owned-child recovery to three new launches and never retri
   });
   await expect(f.runtime.ensure(route)).rejects.toThrow("出口");
   expect(f.launch).toHaveBeenCalledTimes(4); // original tunnel plus three bounded recovery launches
+  await expect(f.runtime.ensure(route)).rejects.toThrow("出口");
+  expect(f.launch).toHaveBeenCalledTimes(4); // an exhausted child-recovery budget stays a barrier
   const mismatch = fixture(); mismatch.probe.mockResolvedValue("203.0.113.99");
   await expect(mismatch.runtime.ensure(route)).rejects.toThrow("出口");
   expect(mismatch.launch).toHaveBeenCalledOnce(); expect(mismatch.child.kill).toHaveBeenCalledOnce();
@@ -268,12 +418,12 @@ it("waits for a late listener without binding its port and cancels unavailable s
   cancel.abort(); await expect(pending).rejects.toThrow();
 });
 
-function developmentFixture() {
+function developmentFixture(options: { portFree?: () => Promise<boolean> } = {}) {
   const children: Array<ReturnType<typeof child>> = [];
   function child() { return fakeChild(); }
   const launch = vi.fn(() => { const next = child(); children.push(next); return next; });
   const probe = vi.fn(async () => route.expectedIp);
-  const runtime = new QianchuanEgressRuntime({ launch, probe, portFree: async () => true });
+  const runtime = new QianchuanEgressRuntime({ launch, probe, portFree: options.portFree ?? (async () => true) });
   const host = new DevelopmentEgressHost(runtime);
   function connect() {
     const app = Object.assign(new EventEmitter(), { connected: true, send: vi.fn((message: object, callback: (error: Error | null) => void) => { launcher.emit("message", message); callback(null); }) });
@@ -300,6 +450,20 @@ it("propagates attestation failure across IPC and revalidates retained SSH only 
   f.children[0].exitCode = 255; f.children[0].emit("exit", 255);
   expect(fresh.signal.aborted).toBe(true);
   replacement.client.dispose(); f.host.dispose();
+});
+
+it("reports runtime failure separately from lost launcher IPC without forwarding raw details", async () => {
+  const f = developmentFixture(), connection = f.connect();
+  try {
+    await connection.client.ensure(route);
+    f.probe.mockRejectedValueOnce(new Error("sensitive stderr fixture"));
+    await expect(connection.client.verify(route)).rejects.toThrow("固定出口连接或 IP 校验失败");
+    const denied = connection.launcher.send.mock.calls.map(call => call[0]).find((message: any) => message.ok === false);
+    expect(denied).toMatchObject({ ok: false, failure: "egress-unavailable" });
+    expect(JSON.stringify(denied)).not.toContain("sensitive");
+    connection.app.connected = false; connection.app.emit("disconnect");
+    await expect(connection.client.ensure(route)).rejects.toThrow("开发启动器");
+  } finally { await connection.client.dispose(); await f.host.dispose(); }
 });
 
 it("keeps the same owned SSH transport across Electron replacement and closes it with the launcher", async () => {
@@ -348,6 +512,32 @@ it("binds remote leases to opaque transport generations and ignores a late abort
   expect(fresh.signal.aborted).toBe(true);
   await expect(connection.client.ensure(route)).rejects.toThrow("出口");
   await f.host.dispose();
+});
+
+it("publishes a new IPC lease after typed transient exhaustion and ignores a replayed old-generation abort", async () => {
+  const f = developmentFixture(), connection = f.connect(), received: any[] = [];
+  connection.app.on("message", message => received.push(message));
+  try {
+    const old = await connection.client.ensure(route);
+    const successes = () => received.filter(message => message?.type === "jianji-egress-result" && message.ok === true);
+    const firstGeneration = successes().at(-1).generation;
+    f.probe.mockRejectedValueOnce(new TransientEgressProbeError())
+      .mockRejectedValueOnce(new TransientEgressProbeError()).mockRejectedValueOnce(new TransientEgressProbeError());
+    await expect(connection.client.verify(route)).rejects.toThrow("固定出口");
+    expect(old.signal.aborted).toBe(true);
+    expect(f.children[0].kill).not.toHaveBeenCalled();
+
+    const fresh = await connection.client.ensure(route);
+    const nextGeneration = successes().at(-1).generation;
+    expect(nextGeneration).not.toBe(firstGeneration);
+    expect(fresh.signal.aborted).toBe(false); expect(old.signal.aborted).toBe(true);
+    expect(f.launch).toHaveBeenCalledOnce();
+
+    connection.app.emit("message", { type: "jianji-egress-aborted", identity: old.identity, generation: firstGeneration });
+    expect(fresh.signal.aborted).toBe(false);
+    await expect(connection.client.verify(route)).resolves.toBe(fresh);
+    expect(fresh.signal.aborted).toBe(false);
+  } finally { await connection.client.dispose(); await f.host.dispose(); }
 });
 
 it("rejects an acquire response revoked before its continuation can grant a lease", async () => {

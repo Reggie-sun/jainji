@@ -35,6 +35,33 @@ it("tunnel loss detaches automation and rejects later delivery while keeping ori
   } finally { await uploader.stop(); verify.mockRestore(); await fixture.stop(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
 }, 15000);
 
+it("a fresh network lease cannot revive an uploader whose captured lease was revoked during open", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "jianji-egress-new-lease-"));
+  const fixture = await startQianchuanFixture({ tempRoot: root });
+  const old = new AbortController(), fresh = new AbortController();
+  const verify = vi.spyOn(egress, "verifyBrowserEgress").mockResolvedValue({ identity: "frozen-route", signal: old.signal });
+  const uploader = new DouyinCdpUploader(fixture.contract);
+  const task = { authorization: { target: { cdpEndpoint: fixture.cdpEndpoint,
+    egress: { group: "fixture", sshHost: "fixture", localPort: 19381, expectedIp: "203.0.113.11" } } },
+    config: { timeouts: { connect: 5000 } } } as UploadTaskRecord;
+  try {
+    await uploader.connect(task, new AbortController().signal);
+    verify.mockImplementationOnce(async () => {
+      old.abort(new Error("Original lease permanently revoked"));
+      return { identity: "frozen-route", signal: fresh.signal };
+    });
+    await expect(uploader.open([task], [], new AbortController().signal)).rejects.toThrow();
+    expect(fresh.signal.aborted).toBe(false);
+    await expect(uploader.connect(task, new AbortController().signal)).rejects.toThrow();
+    await expect(uploader.upload([], new AbortController().signal)).rejects.toThrow();
+    expect(verify).toHaveBeenCalledTimes(2);
+    const state = await fixture.inspect();
+    expect(state.events).toEqual([]);
+    expect(state.chromeRunning).toBe(true);
+    expect(state.pages.some(page => page.id === fixture.originalTargetId)).toBe(true);
+  } finally { await uploader.stop(); verify.mockRestore(); await fixture.stop(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
+}, 15000);
+
 async function withProbe(reply: "reset" | string, work: (error: unknown, endpoint: string) => Promise<void>, lease?: AbortController) {
   const root = await mkdtemp(path.join(tmpdir(), "jianji-probe-recovery-"));
   let context: BrowserContext | undefined;
@@ -141,7 +168,7 @@ it("uses the same preselection error classification when open rechecks the brows
       const state = await fixture.inspect();
       expect(state.events).toEqual([]);
       expect(state.pages.some(page => page.id === fixture.originalTargetId)).toBe(true);
-    } finally { await uploader.stop(); await fixture.stop(); await rm(root, { recursive: true, force: true }); }
+    } finally { await uploader.stop(); await fixture.stop(); await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }); }
   });
 }, 15000);
 

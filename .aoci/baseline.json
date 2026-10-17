@@ -1678,9 +1678,9 @@
       "normalized_sha256": "7981d1c88e48830639bb8379c22bbf53e3852f224f35e553da123a174b00e533"
     },
     "src/main/qianchuan-browser-manager.ts": {
-      "sha256": "93176ec1fac90e809a6bc88f40dcdd10ee5da5d3aca2b0da786494de0fda0711",
-      "size": 22619,
-      "normalized_sha256": "93176ec1fac90e809a6bc88f40dcdd10ee5da5d3aca2b0da786494de0fda0711"
+      "sha256": "6c727f56edc74e519b13ec95096f718655af7a33425bb56287b8807522a2324a",
+      "size": 23697,
+      "normalized_sha256": "6c727f56edc74e519b13ec95096f718655af7a33425bb56287b8807522a2324a"
     },
     "src/main/qianchuan-browser-process.ts": {
       "sha256": "4b7ca0f56e5b488e448500591c02e73ec3a2b18eeb1e2d0eefbc7408291d7cef",
@@ -1743,14 +1743,14 @@
       "normalized_sha256": "49a8df1216895329908210dee1b19ab9e994ab56acd1ee1ddf3c586077e0c550"
     },
     "src/main/qianchuan-egress-browser.ts": {
-      "sha256": "4d55c12f37a3f5cc098ed2971fd223dac671d6fc0c33b9a9389871ce01647da2",
-      "size": 2265,
-      "normalized_sha256": "4d55c12f37a3f5cc098ed2971fd223dac671d6fc0c33b9a9389871ce01647da2"
+      "sha256": "6bc122724ada600989d7fdca349debb7c99a8044d4f3ef23202f25d046410490",
+      "size": 6574,
+      "normalized_sha256": "6bc122724ada600989d7fdca349debb7c99a8044d4f3ef23202f25d046410490"
     },
     "src/main/qianchuan-egress-development.ts": {
-      "sha256": "cafe343ed5441110197b218f85604e1d75851e3668abe33fc851d07ba5e0bf7f",
-      "size": 11174,
-      "normalized_sha256": "cafe343ed5441110197b218f85604e1d75851e3668abe33fc851d07ba5e0bf7f"
+      "sha256": "3abfb1038363f97ddd43d667b99a1e85f85105905fd96ee22721a86f855e8f18",
+      "size": 12188,
+      "normalized_sha256": "3abfb1038363f97ddd43d667b99a1e85f85105905fd96ee22721a86f855e8f18"
     },
     "src/main/qianchuan-egress-probe.ts": {
       "sha256": "28d58885613814422a812c28622bd47486eed076ebc8f6db158a93c6c3e04044",
@@ -1758,9 +1758,9 @@
       "normalized_sha256": "28d58885613814422a812c28622bd47486eed076ebc8f6db158a93c6c3e04044"
     },
     "src/main/qianchuan-egress-runtime.ts": {
-      "sha256": "e1cd78c62c016a796c056e56bf416abbace8c7cf6e05ff66c9e801a6fbe3505d",
-      "size": 18633,
-      "normalized_sha256": "e1cd78c62c016a796c056e56bf416abbace8c7cf6e05ff66c9e801a6fbe3505d"
+      "sha256": "f1d3b63e780d782c716eff9eb7ae5865faf78a35281f50867f89572ceb23c9dc",
+      "size": 22739,
+      "normalized_sha256": "f1d3b63e780d782c716eff9eb7ae5865faf78a35281f50867f89572ceb23c9dc"
     },
     "src/main/qianchuan-extension-accounts.ts": {
       "sha256": "cb5080907f9830f48d460e5797ecd99f668727bdff6daadf09e8fd348fe6a485",

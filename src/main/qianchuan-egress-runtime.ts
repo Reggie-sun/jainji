@@ -9,16 +9,21 @@ export { DevelopmentEgressHost } from "./qianchuan-egress-development.js";
 
 const execute = promisify(execFile);
 const failure = () => new Error("固定出口连接或 IP 校验失败，已停止自动化且不会直连。请检查 VPS、SSH 密钥与主机指纹，然后明确重连。");
+const PORT_BUSY_CODE = "EGRESS_LOCAL_PORT_BUSY";
+const TRANSIENT_PROBE_UNAVAILABLE_CODE = "EGRESS_TRANSIENT_PROBE_UNAVAILABLE";
+const transientProbeFailure = () => Object.assign(failure(), { code: TRANSIENT_PROBE_UNAVAILABLE_CODE });
 const RETRYABLE_CURL_EXIT_CODES = new Set([5, 6, 7, 28, 55, 56]);
 const PROBE_RETRY_DELAYS = [100, 250] as const;
 const MAX_PROBE_ATTEMPTS = 3;
+const PROBE_REQUEST_TIMEOUT_MS = 12_000;
 const MAX_OWNED_CHILD_RECOVERIES = 3;
 const CONNECTION_DEADLINE_MS = 25_000;
 interface TunnelChild extends EventEmitter { kill(signal?: NodeJS.Signals): boolean; exitCode: number | null; signalCode: string | null; pid?: number; }
 export interface EgressLease { readonly identity: string; readonly signal: AbortSignal; }
 type Transport = { child?: TunnelChild; stopped: boolean; unexpectedlyLost: boolean; deadline?: number; termination?: Promise<boolean>; };
 type Tunnel = { route: QianchuanEgress; controller: AbortController; transport: Transport; lease: EgressLease;
-  ready?: Promise<EgressLease>; verification?: Promise<void>; recovery?: Promise<EgressLease>; recoveryAttempts: number; attested: boolean; };
+  ready?: Promise<EgressLease>; verification?: Promise<void>; recovery?: Promise<EgressLease>; recoveryAttempts: number; attested: boolean;
+  failureKind?: "hard" | "transient-probe-exhausted"; };
 
 /** Internal marker for allowlisted curl network exits; its message carries no transport details. */
 export class TransientEgressProbeError extends Error {
@@ -66,7 +71,7 @@ export async function probeEgressIp(route: QianchuanEgress, signal: AbortSignal)
   try {
     const { stdout } = await execute("/usr/bin/curl", ["--disable", "--silent", "--show-error", "--fail", "--proto", "=https", "--max-time", "10",
       "--max-filesize", "64", "--noproxy", "", "--proxy", `socks5h://127.0.0.1:${route.localPort}`, "https://checkip.amazonaws.com"],
-    { signal, timeout: 12_000, maxBuffer: 1024, env: { PATH: "/usr/bin:/bin", LANG: "C" } });
+    { signal, timeout: PROBE_REQUEST_TIMEOUT_MS, maxBuffer: 1024, env: { PATH: "/usr/bin:/bin", LANG: "C" } });
     const ip = stdout.trim();
     if (!QianchuanEgressSchema.shape.expectedIp.safeParse(ip).success) throw failure();
     return ip;
@@ -87,7 +92,8 @@ export class QianchuanEgressRuntime {
     probe?: typeof probeEgressIp;
     portFree?: typeof portFree;
   } = {}) {}
-  private revoke(tunnel: Tunnel): void {
+  private revoke(tunnel: Tunnel, kind: "hard" | "transient-probe-exhausted" = "hard"): void {
+    if (kind === "hard" || !tunnel.controller.signal.aborted && tunnel.failureKind === undefined) tunnel.failureKind = kind;
     tunnel.controller.abort(failure());
   }
   private stop(tunnel: Tunnel): void {
@@ -131,6 +137,7 @@ export class QianchuanEgressRuntime {
       if (tunnel.lease.identity !== identity) throw failure();
       if (tunnel.recovery) return tunnel.recovery;
       if (tunnel.controller.signal.aborted) {
+        if (tunnel.failureKind === "transient-probe-exhausted") return this.renewAfterTransientProbeFailure(tunnel);
         if (!tunnel.transport.unexpectedlyLost) throw failure();
         return this.recoverUnexpectedChild(tunnel);
       }
@@ -150,8 +157,14 @@ export class QianchuanEgressRuntime {
       const { route, transport } = tunnel;
       if (!transport.child) {
         try {
-          if (!await (this.dependencies.portFree ?? portFree)(route.localPort)) throw new Error("固定出口本地端口已被占用，未复用未知代理。请核查后重连。");
+          const available = await (this.dependencies.portFree ?? portFree)(route.localPort);
           signal.throwIfAborted();
+          if (!available) {
+            // No child or lease was acquired. Refuse this listener, but let a
+            // later ensure check again after its independent owner releases it.
+            if (!transport.child && !transport.stopped && this.tunnels.get(route.group) === tunnel) this.tunnels.delete(route.group);
+            throw Object.assign(new Error("固定出口本地端口已被占用，未复用未知代理；下次连接会重新检查。"), { code: PORT_BUSY_CODE });
+          }
           transport.child = this.dependencies.launch ? this.dependencies.launch(route) : spawn("/usr/bin/ssh", sshEgressArguments(route), { stdio: "ignore" });
           // These callbacks own the transport, including any later lease generation.
           transport.child.once("error", () => this.unexpectedChildEnd(tunnel));
@@ -159,7 +172,7 @@ export class QianchuanEgressRuntime {
           // This is bounded startup readiness, not a repeated SSH/provider invocation.
           if (!this.dependencies.launch) await waitForEgressListener(route.localPort, signal);
         } catch (error) {
-          if (error instanceof Error && error.message.includes("端口")) throw error;
+          if (error instanceof Error && (error as Error & { code?: unknown }).code === PORT_BUSY_CODE) throw error;
           this.stop(tunnel); throw failure();
         }
       }
@@ -181,7 +194,7 @@ export class QianchuanEgressRuntime {
     const timer = setTimeout(() => this.revoke(tunnel), remaining);
     let onAbort: (() => void) | undefined;
     const aborted = new Promise<never>((_resolve, reject) => {
-      onAbort = () => reject(failure());
+      onAbort = () => queueMicrotask(() => reject(tunnel.failureKind === "transient-probe-exhausted" ? transientProbeFailure() : failure()));
       controller.signal.addEventListener("abort", onAbort, { once: true });
       if (controller.signal.aborted) onAbort();
     });
@@ -204,12 +217,40 @@ export class QianchuanEgressRuntime {
       })]);
     } finally { if (timer) clearTimeout(timer); }
   }
-  private assert(tunnel: Tunnel): void {
+  private assertOwnedTransport(tunnel: Tunnel): void {
     const { child, stopped } = tunnel.transport;
     if (!child) throw failure();
     if (!stopped && (child.exitCode !== null || child.signalCode !== null)) this.unexpectedChildEnd(tunnel);
     if (tunnel.transport.stopped || child.exitCode !== null || child.signalCode !== null) throw failure();
+  }
+  private assert(tunnel: Tunnel): void {
+    this.assertOwnedTransport(tunnel);
     if (tunnel.controller.signal.aborted) throw failure();
+  }
+  private renewAfterTransientProbeFailure(tunnel: Tunnel): Promise<EgressLease> {
+    if (tunnel.recovery) return tunnel.recovery;
+    let recovery!: Promise<EgressLease>;
+    recovery = Promise.resolve().then(async () => {
+      const previousOperations: Array<Promise<unknown>> = [];
+      if (tunnel.ready) previousOperations.push(tunnel.ready);
+      if (tunnel.verification) previousOperations.push(tunnel.verification);
+      await Promise.all(previousOperations.map(operation => operation.then(() => undefined, () => undefined)));
+      const identity = tunnel.lease.identity;
+      if (this.disposed || this.tunnels.get(tunnel.route.group) !== tunnel || tunnel.failureKind !== "transient-probe-exhausted" ||
+          !tunnel.controller.signal.aborted || egressIdentity(tunnel.route) !== identity || tunnel.transport.deadline !== undefined) throw failure();
+      this.assertOwnedTransport(tunnel);
+      if (this.tunnels.get(tunnel.route.group) !== tunnel || this.disposed || tunnel.failureKind !== "transient-probe-exhausted") throw failure();
+      const next = this.createTunnel(tunnel.route, tunnel.transport, tunnel.recoveryAttempts);
+      next.recovery = recovery;
+      this.tunnels.set(next.route.group, next);
+      return await (next.ready ??= this.connect(next));
+    }).finally(() => {
+      if (tunnel.recovery === recovery) tunnel.recovery = undefined;
+      const current = this.tunnels.get(tunnel.route.group);
+      if (current?.recovery === recovery) current.recovery = undefined;
+    });
+    tunnel.recovery = recovery;
+    return recovery;
   }
   private verifyTunnel(tunnel: Tunnel): Promise<void> {
     if (tunnel.verification) return tunnel.verification;
@@ -227,8 +268,15 @@ export class QianchuanEgressRuntime {
       try { ip = await (this.dependencies.probe ?? probeEgressIp)(tunnel.route, signal); }
       catch (error) {
         if (signal.aborted) throw failure();
-        if (!(error instanceof TransientEgressProbeError) || attempt === MAX_PROBE_ATTEMPTS - 1) {
+        if (!(error instanceof TransientEgressProbeError)) {
           this.revoke(tunnel); throw failure();
+        }
+        this.assert(tunnel);
+        const nextDelay = PROBE_RETRY_DELAYS[attempt] ?? 0;
+        const deadline = tunnel.transport.deadline;
+        const insufficientBudget = deadline !== undefined && deadline - Date.now() <= PROBE_REQUEST_TIMEOUT_MS + nextDelay;
+        if (attempt === MAX_PROBE_ATTEMPTS - 1 || insufficientBudget) {
+          this.revoke(tunnel, "transient-probe-exhausted"); throw transientProbeFailure();
         }
         try { await delay(PROBE_RETRY_DELAYS[attempt], undefined, { signal }); }
         catch { throw failure(); }
@@ -303,6 +351,19 @@ export class QianchuanEgressRuntime {
       const current = this.tunnels.get(tunnel.route.group);
       if (current?.recovery === recovery && current.lease === lease) current.recovery = undefined;
       return lease;
+    }, error => {
+      const current = this.tunnels.get(tunnel.route.group);
+      const child = current?.transport.child;
+      const transientExhaustion = error instanceof Error && (error as Error & { code?: unknown }).code === TRANSIENT_PROBE_UNAVAILABLE_CODE;
+      if (transientExhaustion && tunnel.recovery === recovery && current?.recovery === recovery &&
+          current.failureKind === "transient-probe-exhausted" && current.controller.signal.aborted &&
+          current.lease.identity === egressIdentity(tunnel.route) && !this.disposed &&
+          current.transport.deadline === undefined && !current.transport.stopped && !current.transport.unexpectedlyLost &&
+          child && child.exitCode === null && child.signalCode === null) {
+        tunnel.recovery = undefined;
+        current.recovery = undefined;
+      }
+      throw error;
     });
     tunnel.recovery = recovery;
     return recovery;
