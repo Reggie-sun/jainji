@@ -251,7 +251,7 @@ describe("Qianchuan upload service", () => {
     expect(browser).not.toHaveBeenCalled();
   });
 
-  it.each(["ACCEPTED", "READY", "UNKNOWN", "ACCEPTED_AND_READY"])("excludes unfinished page owners but permits a verified accepted page for account reads (%s)", async outcome => {
+  it.each(["ACCEPTED", "READY", "UNKNOWN", "ACCEPTED_AND_READY"])("allows explicit cleanup without releasing unfinished upload pages for new uploads (%s)", async outcome => {
     const f = await fixture(); await f.authorize();
     const batch = await f.createBatch(["previous upload"]); await f.register(batch);
     if (outcome === "UNKNOWN") f.port.upload = async () => { throw Error("fixture selected result unknown"); };
@@ -274,6 +274,8 @@ describe("Qianchuan upload service", () => {
     }
     await f.service.stop();
     const records = f.store.tasks(), events = [...f.events];
+    const fencePath = path.join(f.store.root, "selection-fences", `${original.result.upload_task_id}.json`);
+    const fenceBytes = await readFile(fencePath);
     const current = vi.fn(async (_target: unknown, _signal: AbortSignal, excluded?: ReadonlySet<string>) => {
       if (excluded?.has(ownership.targetId)) throw Error("protected upload page excluded");
       return { identity: "fixture-original-page", endpoint: original.authorization.target.cdpEndpoint, uploadEndpointVerified: true,
@@ -290,8 +292,20 @@ describe("Qianchuan upload service", () => {
     if (outcome === "ACCEPTED") await expect(read).resolves.toMatchObject({ account: { advertiserId: "1003" }, plans: [{ adId: "2003" }] });
     else await expect(read).rejects.toThrow("protected upload page excluded");
     expect(current).toHaveBeenCalled();
+    const materials = vi.spyOn(QianchuanPlanMaterials.prototype, "clear").mockImplementation(async (target, guard) => {
+      await guard();
+      return { product: target.product, advertiserId: target.advertiserId, state: "CLEARED", deletedCount: 0, message: "empty" };
+    });
+    const cleanup = await service.clearVideoLibraries({ confirmation: "DELETE_PLAN_MATERIALS", accounts: [{
+      product: "眼贴", expectedAdvertiserId: "1003", expectedCurrentAdvertiserId: "1003",
+      plans: [{ advertiserId: "1003", adId: "2003", name: "Fixture plan", accountSource: "current-browser" }],
+    }] });
+    expect(cleanup[0]).toMatchObject({ state: "CLEARED", advertiserId: "1003", deletedCount: 0 });
+    expect(materials).toHaveBeenCalledOnce();
     expect(f.store.tasks()).toEqual(records);
     expect(f.store.fence(original.result.upload_task_id)!.pageOwnership).toEqual(ownership);
+    expect(await readFile(fencePath)).toEqual(fenceBytes);
+    expect(f.store.hasMarker(original.result.upload_task_id)).toBe(true);
     expect(f.events).toEqual(events);
   });
 

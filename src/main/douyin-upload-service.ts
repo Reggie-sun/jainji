@@ -633,7 +633,9 @@ export class DouyinUploadService {
         try {
           await accountGuard(); const connected = await connect(target);
           const result = await clearQianchuanAccountPlans(connected, selection, parsed.confirmation, {
-            guard: accountGuard, signal, readPlans: (account, signal) => selection.expectedCurrentAdvertiserId ? this.currentPlanReads.request(account, signal) : this.readPlans(account, signal),
+            // Cleanup reads the current catalog without taking over the upload page; historical upload fences do not block it.
+            guard: accountGuard, signal, readPlans: (account, signal) => selection.expectedCurrentAdvertiserId && this.accounts instanceof QianchuanAccountSettings && this.accounts.currentAccountBacked
+              ? this.accounts.readCurrentPlans(account, signal) : this.readPlans(account, signal),
             clearPlan: (account, fresh, signal) => materials.clear(account, fresh, signal, parsed.planMaterialRule),
             clearLibrary: (account, fresh, signal) => library.clear(account, fresh, signal),
           });
