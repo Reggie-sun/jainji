@@ -2,6 +2,15 @@
   "schemaVersion": 2,
   "codeChecks": [
     {
+      "id": "state-notifications",
+      "kind": "vitest",
+      "required": true,
+      "command": "node",
+      "args": ["node_modules/vitest/vitest.mjs", "run", "--no-file-parallelism", "--maxWorkers=1", "--minWorkers=1"],
+      "testFiles": ["tests/state-notifications.test.ts"],
+      "timeoutMs": 120000
+    },
+    {
       "id": "material-plan-exclusion-smoke",
       "kind": "command",
       "required": true,
@@ -793,6 +802,12 @@
     }
   ],
   "routes": [
+    {
+      "id": "domain-state-notifications",
+      "paths": ["src/main/state-notifications.ts", "src/main/index.ts", "tests/state-notifications.test.ts"],
+      "checkIds": ["typecheck", "state-notifications", "documents"],
+      "documentRefs": ["AGENTS.md", "docs/video-validation-harness-spec.md"]
+    },
     {
       "id": "domain-material-plan-exclusion",
       "paths": ["src/renderer/SourceMediaList.tsx", "scripts/material-preview-smoke.mjs"],

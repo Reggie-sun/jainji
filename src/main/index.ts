@@ -4,6 +4,7 @@ import { FONT_CHOICES, ProductPriceSchema, isUploadedStickerId, type DecorationC
 import path from "node:path";
 import { z } from "zod";
 import { ApplicationService } from "./application.js";
+import { StateNotifications } from "./state-notifications.js";
 import { mediaResponse } from "./media-response.js";
 import { ArtifactVerifier } from "./artifact.js";
 import { DEFAULT_PRESET, EditTemplateSchema, ExportPresetSchema, now, type ExportPreset } from "./domain.js";
@@ -184,23 +185,13 @@ async function publicState(): Promise<DesktopState> {
   return { ...state, batchProduction: batchRuntime?.controller.snapshot(), batchProductionWarning: batchRuntime?.controller.warning, douyinUpload: douyinUpload?.status(state.project.id), sourceKnowledgeRisks, capabilities, connection: agent.provider.status(), visionConnection: connections.visionProvider.status(), reviewerConnection: connections.reviewerProvider.status(), chatgpt: connections.chatgpt.status(), connections: connections.store.snapshot(), agentRun: run, recentProjects: recentProjects.list(), activeRecentProjectId, recentProjectsWarning: recentProjects.warning };
 }
 
-let notifying = false, notificationPending = false;
+const stateNotifications = new StateNotifications({
+  read: publicState,
+  available: () => Boolean(mainWindow && !mainWindow.isDestroyed()),
+  send: (state) => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("export.subscribe", state); },
+});
 function notifyState(): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return;
-  notificationPending = true;
-  if (notifying) return;
-  notifying = true;
-  void (async () => {
-    try {
-      while (notificationPending && mainWindow && !mainWindow.isDestroyed()) {
-        notificationPending = false;
-        try {
-          const state = await publicState();
-          if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("export.subscribe", state);
-        } catch { /* Later notifications can retry; never accumulate snapshot readers. */ }
-      }
-    } finally { notifying = false; }
-  })();
+  stateNotifications.request();
 }
 
 function publish(snapshot: QueueSnapshot): void {
