@@ -253,6 +253,8 @@ Parent Self-Review：复用 canonical page/store/service，无第二队列或恢
 
 2026-10-17 出口探测修订：已识别的临时传输中断及探测超时由 uploader 在文件动作前转换为运行内专用错误；初始组沿用上述预算。追加组仅对此错误、且本组全部 NOT_SELECTED / 无 fence 时，在同一 adapter、原页及冻结目标下最多探测三次、1/2 秒退避，不重连或关闭原页；成功后仍须核对原 modal、已有文件及归属才能选择本组文件。该例外覆盖上段“已有 fence 的追加组不重试”的探测阶段限制；不扩大到普通连接错误、页面操作、协议/证书/身份/IP 不符、已撤销 lease 或发送后未知结果。连续追加的处理总期限不重置，取消或控制变化立即阻断；耗尽仍暂停，旧 fence 与 UNKNOWN 不变。
 
+当前账户只读核验保留可识别的 WebSocket 传输错误原因；仅确认页面尚在加载的专用错误进入初始组已有的三次准备预算，成功后仍须完整重核冻结目标。登录或验证提示、协议错误、账户歧义及进程、页面、配置漂移不进入此例外。该修订不恢复已经暂停的旧任务，不授历史重传或选后重试权限。
+
 批量详情的“安全继续”和“核查原上传页”以当前 runId/jobId/uploadTaskId 为输入；主进程从原批量 owner 取得冻结项目与捕获 export task 集合，核验实际上传任务归属后调用原 service.requestResume。单项目 IPC 的 currentProject 限制不放宽，renderer 不能指定替代项目或任务成员。未知成员只读核查；未选成员仍受账户级未知阻塞，不能以恢复入口解除。
 
 Self-Review：保留旧磁盘格式、原事实、原快照及唯一 service/store。历史蝴蝶贴未知记录不授重传；空列表不证明未上传。实施及验收见 [Upload Recovery Plan](superpowers/plans/2026-10-08-upload-recovery.md)。

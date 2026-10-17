@@ -1,12 +1,13 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { Socket } from "node:net";
 import http from "node:http";
 import { chromium, type BrowserContext, type Page } from "playwright-core";
 import WebSocket, { WebSocketServer } from "ws";
 import { afterEach, expect, it, vi } from "vitest";
 import { resolveChromeExecutable } from "./helpers/douyin-cdp-fixture";
-import { readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot, readCurrentQianchuanPage, waitForCurrentQianchuanAccount } from "../src/main/qianchuan-current-account";
+import { AccountPageLoading, readCurrentQianchuanAccount, readCurrentQianchuanAccountSnapshot, readCurrentQianchuanPage, waitForCurrentQianchuanAccount } from "../src/main/qianchuan-current-account";
 import { readQianchuanSubaccounts, switchQianchuanSubaccount } from "../src/main/qianchuan-subaccounts-browser";
 import { QianchuanBrowserManager } from "../src/main/qianchuan-browser-manager";
 import { QianchuanBrowserBindings } from "../src/main/qianchuan-browser-bindings";
@@ -27,6 +28,10 @@ interface FakeOptions {
   pageError?: boolean;
   detachDelayMs?: number;
   holdDetach?: boolean;
+  resetHandshake?: boolean;
+  holdHandshake?: boolean;
+  closeDuringEvaluation?: number;
+  malformedDuringEvaluation?: boolean;
 }
 
 async function fakeBrowser(options: FakeOptions = {}) {
@@ -35,12 +40,22 @@ async function fakeBrowser(options: FakeOptions = {}) {
   const sessions = new Map<string, string>();
   const attached: string[] = [], detached: string[] = [], evaluated: string[] = [];
   const sockets = new Set<WebSocket>();
+  const pendingHandshakes = new Set<Socket>();
   const server = http.createServer((_request, response) => {
     if (options.redirectMetadata) { response.writeHead(302, { location: "/json/version" }).end(); return; }
     response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ webSocketDebuggerUrl: wsUrl() }));
   });
   const wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 });
-  server.on("upgrade", (request, socket, head) => {
+  server.on("upgrade", (request, socket: Socket, head) => {
+    if (options.resetHandshake) {
+      socket.destroy();
+      return;
+    }
+    if (options.holdHandshake) {
+      pendingHandshakes.add(socket);
+      socket.once("close", () => pendingHandshakes.delete(socket));
+      return;
+    }
     wss.handleUpgrade(request, socket, head, client => wss.emit("connection", client, request));
   });
   wss.on("connection", socket => {
@@ -58,6 +73,12 @@ async function fakeBrowser(options: FakeOptions = {}) {
       } else if (request.method === "Runtime.evaluate") {
         const targetId = sessions.get(request.sessionId ?? "") ?? "";
         evaluated.push(targetId);
+        if (options.closeDuringEvaluation !== undefined) {
+          if (options.closeDuringEvaluation === 1006) socket.terminate();
+          else socket.close(options.closeDuringEvaluation, "fixture close");
+          return;
+        }
+        if (options.malformedDuringEvaluation) { socket.send("{"); return; }
         if (!options.holdEvaluation) {
           const target = targets.find(value => value.targetId === targetId)!;
           const count = (counts.get(targetId) ?? 0) + 1; counts.set(targetId, count);
@@ -87,6 +108,7 @@ async function fakeBrowser(options: FakeOptions = {}) {
     connected: () => sockets.size > 0,
     async close() {
       for (const socket of sockets) socket.terminate();
+      for (const socket of pendingHandshakes) socket.destroy();
       await new Promise<void>(resolve => { server.close(() => resolve()); server.closeAllConnections(); });
       await new Promise<void>(resolve => wss.close(() => resolve()));
     },
@@ -113,6 +135,66 @@ it("waits for the reopened account DOM before returning its original child", asy
     expect(await waitForCurrentQianchuanAccount(f.endpoint, "200", AbortSignal.timeout(2000))).toEqual({ advertiserId: "200" });
     expect(f.evaluated.length).toBeGreaterThan(2);
   } finally { await f.close(); }
+});
+
+it("keeps a known reset errno when the browser WebSocket handshake fails", async () => {
+  const fixture = await fakeBrowser({ resetHandshake: true });
+  try {
+    const error = await readCurrentQianchuanAccount(fixture.endpoint).then(() => undefined, value => value as Error & { cause?: { code?: string } });
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ cause: { code: "ECONNRESET" } });
+    expect(error?.message).toBe("无法确认千川网页当前子账户，请检查当前页面后重试。");
+  } finally { await fixture.close(); }
+});
+
+it("uses the bounded account-read deadline when the WebSocket handshake never completes", async () => {
+  const fixture = await fakeBrowser({ holdHandshake: true });
+  const startedAt = Date.now();
+  try {
+    const error = await readCurrentQianchuanAccount(fixture.endpoint).then(() => undefined, value => value as Error & { code?: string });
+    expect(error).toMatchObject({ code: "ETIMEDOUT" });
+    expect(Date.now() - startedAt).toBeGreaterThanOrEqual(3_500);
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(fixture.connected()).toBe(false);
+  } finally { await fixture.close(); }
+}, 8_000);
+
+it.each([1006, 1001])("marks an unexpected transport close (%i) during a pending account read as a reset", async closeCode => {
+  const fixture = await fakeBrowser({ closeDuringEvaluation: closeCode });
+  try {
+    const error = await readCurrentQianchuanAccount(fixture.endpoint).then(() => undefined, value => value as Error & { cause?: { code?: string } });
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toMatchObject({ cause: { code: "ECONNRESET" } });
+    expect(error?.message).toBe("无法确认千川网页当前子账户，请检查当前页面后重试。");
+    const closeDeadline = Date.now() + 500;
+    while (fixture.connected() && Date.now() < closeDeadline) await new Promise(resolve => setTimeout(resolve, 10));
+    expect(fixture.connected()).toBe(false);
+  } finally { await fixture.close(); }
+});
+
+it.each([1002, 1008])("keeps protocol or policy close %i hard during a pending account read", async closeCode => {
+  const fixture = await fakeBrowser({ closeDuringEvaluation: closeCode });
+  try {
+    const error = await readCurrentQianchuanAccount(fixture.endpoint).then(() => undefined, value => value as Error & { cause?: { code?: string } });
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.cause?.code).not.toBe("ECONNRESET");
+    expect(error?.message).toBe("无法确认千川网页当前子账户，请检查当前页面后重试。");
+  } finally { await fixture.close(); }
+});
+
+it("keeps malformed CDP data hard and identifies a loading account snapshot", async () => {
+  const malformed = await fakeBrowser({ malformedDuringEvaluation: true });
+  try {
+    const error = await readCurrentQianchuanAccount(malformed.endpoint).then(() => undefined, value => value as Error & { cause?: { code?: string } });
+    expect(error).toBeInstanceOf(Error);
+    expect(error?.cause?.code).not.toBe("ECONNRESET");
+  } finally { await malformed.close(); }
+
+  const loading = await fakeBrowser({ snapshot: target => ({ ...target.snapshot, accountTexts: [] }) });
+  try {
+    const error = await readCurrentQianchuanAccountSnapshot(loading.endpoint).then(() => undefined, value => value);
+    expect(error).toBeInstanceOf(AccountPageLoading);
+  } finally { await loading.close(); }
 });
 
 it.each(["different child", "different child loading", "conflicting DOM", "challenge", "challenge with account header"])("does not wait through a reopened page with %s", async failure => {

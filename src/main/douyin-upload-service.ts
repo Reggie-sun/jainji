@@ -11,6 +11,7 @@ import { uploadBatchSettled } from "./douyin-upload-group.js";
 import { historicalUploadBatch, historicalBrowserAnchor, recoverablePreparationTimeout } from "./douyin-upload-recovery.js";
 import { QianchuanAccountConfigReader, QianchuanAccountConfigError } from "./qianchuan-account-config.js";
 import { QianchuanAccountSettings, type EgressChangeGuard } from "./qianchuan-account-settings.js";
+import { AccountPageLoading } from "./qianchuan-current-account.js";
 import { AutomationBrowserAccounts, assertAutomationBrowserSafe, historicalBrowserPageProof } from "./qianchuan-automation-browsers.js";
 import { egressIdentity } from "../shared/qianchuan-egress.js";
 import { EgressProbeUnavailable } from "./qianchuan-egress-probe.js";
@@ -1445,7 +1446,8 @@ export class DouyinUploadService {
         signal.throwIfAborted();
         if (error instanceof UploadError) throw error;
         if (error instanceof QianchuanAccountConfigError) throw uploadFailure("INPUT_CONFLICT", "account", error.message, "核查原批次账号配置；旧冻结目标保持原样。", true);
-        // Only identified transport failures can retry. Ambiguous identity reads remain fail-closed.
+        // Only identified loading/transport failures can retry. Ambiguous identity reads remain fail-closed.
+        if (error instanceof AccountPageLoading) throw uploadFailure("CDP_UNAVAILABLE", "browser", "原账号网页仍在加载，尚未选择文件。", "程序将在原冻结目标下有限重试。", false, true);
         const code = (error as NodeJS.ErrnoException | undefined)?.code ?? (error as { cause?: NodeJS.ErrnoException } | undefined)?.cause?.code;
         if (error instanceof Error && error.name === "TimeoutError") throw uploadFailure("TIMEOUT", "browser", "读取原账号浏览器超时，尚未选择文件。", "程序将在原冻结目标下有限重试。", false, true);
         if (["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_SOCKET"].includes(code ?? "")) throw uploadFailure("CDP_UNAVAILABLE", "browser", "原账号浏览器连接暂时不可用，尚未选择文件。", "程序将在原冻结目标下有限重试。", false, true);

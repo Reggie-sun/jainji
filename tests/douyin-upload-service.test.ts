@@ -2726,6 +2726,25 @@ describe("Qianchuan upload service", () => {
     await f.service.runPending(); expect(f.live.reads).toBe(3);
   });
 
+  it("waits for a proven loading account page before selecting the current frozen files", async () => {
+    const f = await currentBrowserUpload();
+    f.live.failures.push(new accountConnection.AccountPageLoading());
+    await f.service.runPending();
+    expect(f.service.status(f.batch.projectId).tasks.every(task => task.upload_outcome === "ACCEPTED" && task.retry_count === 1 && !task.failure)).toBe(true);
+    expect(f.events.filter(event => event === "file-input")).toHaveLength(1);
+    expect(f.store.tasks().every(task => JSON.stringify(task.authorization) === JSON.stringify(f.authorization))).toBe(true);
+  });
+
+  it("bounds a still-loading current account without selecting or silently resuming it", async () => {
+    const f = await currentBrowserUpload();
+    f.live.failures.push(...Array.from({ length: 4 }, () => new accountConnection.AccountPageLoading()));
+    await f.service.runPending();
+    expect(f.live.reads).toBe(3);
+    expect(f.service.status(f.batch.projectId).tasks.every(task => task.state === "FAILED_RETRYABLE" && task.upload_outcome === "NOT_SELECTED" && task.failure?.code === "CDP_UNAVAILABLE" && task.retry_count === 2)).toBe(true);
+    expect(f.events).not.toContain("file-input");
+    await f.service.runPending(); expect(f.live.reads).toBe(3);
+  });
+
   it.each([
     Object.assign(new Error("Fixture transport"), { code: "ECONNRESET" }),
     Object.assign(new Error("Fixture current-account detach timeout"), { code: "ETIMEDOUT" }),

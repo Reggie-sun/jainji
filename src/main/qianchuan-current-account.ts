@@ -18,7 +18,18 @@ const FAILURE = "无法确认千川网页当前子账户，请检查当前页面
 
 interface Candidate { targetId: string; url: string; advertiserId: string; }
 interface PageSnapshot { href: string; visibilityState: string; accountTexts: string[]; accountBlocked?: boolean; }
-class AccountPageLoading extends Error { constructor() { super(FAILURE); } }
+export class AccountPageLoading extends Error { constructor() { super(FAILURE); } }
+
+function transportFailure(cause: unknown): Error {
+  return new Error(FAILURE, { cause });
+}
+
+function closeFailure(code: number): Error {
+  if (code === 1006 || code === 1001) {
+    return transportFailure(Object.assign(new Error("Browser connection closed during account read."), { code: "ECONNRESET" }));
+  }
+  return new Error(FAILURE);
+}
 
 function accountPageUrlIdentity(value: string): string | undefined {
   const url = new URL(value), hash = new URLSearchParams(url.hash.slice(1));
@@ -102,8 +113,8 @@ class CdpConnection {
       this.pending.delete(message.id);
       if (message.error) waiter.reject(new Error(FAILURE)); else waiter.resolve(message.result);
     });
-    socket.on("error", () => this.fail(new Error(FAILURE)));
-    socket.on("close", () => this.fail(new Error("千川浏览器连接已关闭，请重试。")));
+    socket.on("error", error => this.fail(transportFailure(error)));
+    socket.on("close", code => this.fail(closeFailure(code)));
     signal.addEventListener("abort", () => this.fail(signal.reason), { once: true });
   }
 
@@ -119,7 +130,7 @@ class CdpConnection {
       this.pending.set(id, { resolve, reject });
       const message = JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) });
       if (Buffer.byteLength(message) > 64 * 1024) { this.pending.delete(id); reject(new Error(FAILURE)); return; }
-      this.socket.send(message, error => { if (error) { this.pending.delete(id); reject(error); } });
+      this.socket.send(message, error => { if (error) { this.pending.delete(id); reject(transportFailure(error)); } });
     });
   }
 
@@ -127,6 +138,7 @@ class CdpConnection {
 
   async detach(sessionId: string): Promise<void> {
     if (!this.sessions.has(sessionId)) return;
+    if (this.socket.readyState !== WebSocket.OPEN) { this.sessions.delete(sessionId); return; }
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       await Promise.race([
@@ -306,10 +318,10 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
   try {
     const socketUrl = await browserEndpoint(endpoint, controller.signal);
     controller.signal.throwIfAborted();
-    socket = new WebSocket(socketUrl, { followRedirects: false, handshakeTimeout: 1_500, maxPayload: MAX_RESPONSE_BYTES, perMessageDeflate: false });
+    socket = new WebSocket(socketUrl, { followRedirects: false, maxPayload: MAX_RESPONSE_BYTES, perMessageDeflate: false });
     await new Promise<void>((resolve, reject) => {
       const opened = () => { cleanup(); resolve(); };
-      const failed = () => { cleanup(); reject(controller.signal.aborted ? controller.signal.reason : new Error(FAILURE)); };
+      const failed = (error: Error) => { cleanup(); reject(controller.signal.aborted ? controller.signal.reason : transportFailure(error)); };
       const aborted = () => { cleanup(); reject(controller.signal.reason); };
       const cleanup = () => { socket?.off("open", opened); socket?.off("error", failed); controller.signal.removeEventListener("abort", aborted); };
       socket!.once("open", opened); socket!.once("error", failed); controller.signal.addEventListener("abort", aborted, { once: true });
@@ -343,7 +355,7 @@ async function readCurrentAccountState(endpoint: string, parentSignal?: AbortSig
     parentSignal?.removeEventListener("abort", onParentAbort);
     if (connection) await connection.close();
     else if (socket && socket.readyState !== WebSocket.CLOSED) await new Promise<void>(resolve => {
-      socket!.once("close", resolve); socket!.terminate(); setTimeout(resolve, 100);
+      socket!.once("close", resolve); socket!.once("error", () => undefined); socket!.terminate(); setTimeout(resolve, 100);
     });
   }
 }
